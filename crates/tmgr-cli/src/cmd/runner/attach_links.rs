@@ -24,6 +24,9 @@ use tmgr_runner::attach::SessionRow;
 const MAX_RUNS_PER_LINK: usize = 200;
 const STREAMS_PER_LINK: usize = 2;
 const OUT_QUEUE: usize = 256;
+const MAX_NAME: usize = 64;
+const MAX_DETAIL: usize = 512;
+const MAX_WHY: usize = 200;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Timing {
@@ -36,6 +39,7 @@ pub(super) struct Timing {
     pub reconnect_after: Duration,
     pub reconnect_requests: u32,
     pub heartbeat: Duration,
+    pub silence: Duration,
     pub stream_renew: Duration,
     pub cooldown: Duration,
     pub shutdown_wait: Duration,
@@ -53,6 +57,7 @@ impl Default for Timing {
             reconnect_after: Duration::from_secs(9 * 60),
             reconnect_requests: 200,
             heartbeat: Duration::from_secs(10),
+            silence: Duration::from_secs(45),
             stream_renew: Duration::from_secs(55 * 60),
             cooldown: Duration::from_secs(30),
             shutdown_wait: Duration::from_secs(1),
@@ -103,6 +108,8 @@ pub(super) fn classify(e: &Error) -> DialErr {
 
 pub(super) trait Dialer: Send + Sync + 'static {
     fn dial(&self, link: &str) -> std::result::Result<Box<dyn LinkConn>, DialErr>;
+
+    fn shutdown(&self) {}
 }
 
 pub(super) trait LinkConn: Send {
@@ -112,7 +119,7 @@ pub(super) trait LinkConn: Send {
 
 pub(super) struct SshDialer {
     paths: Paths,
-    key: KeyFile,
+    key: Mutex<Option<KeyFile>>,
 }
 
 impl SshDialer {
@@ -121,17 +128,29 @@ impl SshDialer {
         let cfg = Config::load(&config::config_dir()?)?;
         let preferred = cfg.credential_store.as_deref().and_then(Backend::parse);
         let key = leader::materialise(&leader::credential_store(&paths, preferred))?;
-        Ok(SshDialer { paths, key })
+        Ok(SshDialer {
+            paths,
+            key: Mutex::new(Some(key)),
+        })
     }
 }
 
 impl Dialer for SshDialer {
     fn dial(&self, link: &str) -> std::result::Result<Box<dyn LinkConn>, DialErr> {
-        let mut client =
-            Client::dial_with_key(&self.paths, link, &self.key).map_err(|e| classify(&e))?;
+        let mut client = {
+            let key = lock(&self.key);
+            let key = key
+                .as_ref()
+                .ok_or_else(|| DialErr::Offline("the hub is shutting down".into()))?;
+            Client::dial_with_key(&self.paths, link, key).map_err(|e| classify(&e))?
+        };
         client.hello().map_err(|e| classify(&e))?;
         client.disarm();
         Ok(Box::new(SshConn(client)))
+    }
+
+    fn shutdown(&self) {
+        lock(&self.key).take();
     }
 }
 
@@ -144,7 +163,7 @@ impl LinkConn for SshConn {
 
     fn into_stream(mut self: Box<Self>) -> Result<(Box<dyn Read + Send>, Box<dyn Write + Send>)> {
         let (out, input) = self.0.take_stream()?;
-        let owner = Arc::new(Mutex::new(self.0));
+        let owner = Arc::new(Mutex::new(Some(self.0)));
         Ok((
             Box::new(HeldRead(out, Arc::clone(&owner))),
             Box::new(HeldWrite(input, owner)),
@@ -152,11 +171,14 @@ impl LinkConn for SshConn {
     }
 }
 
-struct HeldRead(ChildStdout, #[allow(dead_code)] Arc<Mutex<Client>>);
-struct HeldWrite(ChildStdin, #[allow(dead_code)] Arc<Mutex<Client>>);
+type Owner = Arc<Mutex<Option<Client>>>;
+
+struct HeldRead(ChildStdout, Owner);
+struct HeldWrite(ChildStdin, Owner);
 
 impl Read for HeldRead {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let _keep = &self.1;
         self.0.read(buf)
     }
 }
@@ -171,12 +193,21 @@ impl Write for HeldWrite {
     }
 }
 
+impl Drop for HeldWrite {
+    fn drop(&mut self) {
+        let _ = self.0.flush();
+        thread::sleep(Duration::from_millis(100));
+        lock(&self.1).take();
+    }
+}
+
 pub(super) fn followers(paths: &Paths) -> Vec<String> {
     Store::load(paths)
         .map(|s| {
             s.followers
                 .keys()
                 .filter(|n| tmgr_link::grammar::link_name(n).is_ok())
+                .filter(|n| tmgr_link::jump::referenced_by(&s, n).is_empty())
                 .cloned()
                 .collect()
         })
@@ -224,6 +255,18 @@ pub(super) enum LinkMsg {
         id: String,
         result: std::result::Result<(), String>,
     },
+}
+
+fn cap(s: &str, max: usize) -> String {
+    tmgr_core::text::truncate_chars(s, max).0
+}
+
+fn shorten(mut r: RunView) -> RunView {
+    r.name = cap(&r.name, MAX_NAME);
+    r.agent = r.agent.map(|a| cap(&a, MAX_NAME));
+    r.task = r.task.map(|t| cap(&t, MAX_NAME));
+    r.state.detail = r.state.detail.map(|d| cap(&d, MAX_DETAIL));
+    r
 }
 
 pub(super) fn view_id(link: &str, run: &str) -> String {
@@ -305,7 +348,7 @@ impl RemoteState {
                 break;
             }
             if valid_session_id(&r.id) && !kept.iter().any(|k| k.id == r.id) {
-                kept.push(r);
+                kept.push(shorten(r));
             }
         }
         entry.runs = kept.clone();
@@ -332,6 +375,7 @@ impl RemoteState {
                 {
                     r.state = ev.state.clone();
                 }
+                ev.state.detail = ev.state.detail.map(|d| cap(&d, MAX_DETAIL));
                 ev.session = view_id(link, &ev.session);
                 Some(Incoming::Event(ev))
             }
@@ -362,6 +406,12 @@ impl RemoteState {
         if let Some(e) = self.links.get_mut(link) {
             e.removed = true;
             e.runs.clear();
+        }
+    }
+
+    fn restore_link(&mut self, link: &str) {
+        if let Some(e) = self.links.get_mut(link) {
+            e.removed = false;
         }
     }
 
@@ -583,8 +633,20 @@ impl Hub {
         }
     }
 
-    pub(super) fn state(&self) -> MutexGuard<'_, RemoteState> {
+    fn state(&self) -> MutexGuard<'_, RemoteState> {
         lock(&self.inner.state)
+    }
+
+    pub(super) fn rows(&self, link: &str) -> Vec<SessionRow> {
+        self.state().rows(link)
+    }
+
+    pub(super) fn target_of<'a>(&self, id: &'a str) -> Target<'a> {
+        self.state().target_of(id)
+    }
+
+    pub(super) fn want_streams(&self, visible: &[String]) -> Wants {
+        self.state().want_streams(visible)
     }
 
     pub(super) fn halt(&self, link: &str, run: &str) -> std::result::Result<(), &'static str> {
@@ -719,6 +781,7 @@ impl Hub {
             let _ = tx.send(Cmd::Shutdown);
         }
         self.inner.drop_streams_where(|_, _| true);
+        self.inner.dialer.shutdown();
     }
 
     pub(super) fn shutdown(&self) {
@@ -832,6 +895,7 @@ fn control(inner: &Inner, link: &str, cmds: &Receiver<Cmd>) {
                 continue;
             }
         };
+        lock(&inner.state).restore_link(link);
         backoff = t.backoff_min;
         match session(inner, link, conn, cmds) {
             Exit::Shutdown => return,
@@ -915,13 +979,14 @@ fn halt(inner: &Inner, link: &str, run: &str, conn: &mut dyn LinkConn) {
     let result = if listed {
         conn.call("runs.halt", json!({"run": run}), inner.timing.halt)
             .map(|_| ())
-            .map_err(|e| e.message)
+            .map_err(|e| cap(&e.message, MAX_WHY))
     } else {
         Err("that run is not listed on this machine".to_string())
     };
     inner.emit(LinkMsg::Halted { id, result });
 }
 
+#[derive(Clone)]
 struct StreamSpec {
     id: String,
     link: String,
@@ -944,11 +1009,11 @@ fn open_stream(inner: &Inner, spec: &StreamSpec) -> std::result::Result<(bool, P
             json!({"run": spec.run, "read_only": false, "cols": spec.cols, "rows": spec.rows}),
             inner.timing.open,
         )
-        .map_err(|e| format!("{}: {}", spec.link, e.message))?;
+        .map_err(|e| cap(&format!("{}: {}", spec.link, e.message), MAX_WHY))?;
     let input = v.get("input").and_then(Value::as_bool).unwrap_or(false);
     let pair = conn
         .into_stream()
-        .map_err(|e| format!("{}: {}", spec.link, e.message))?;
+        .map_err(|e| cap(&format!("{}: {}", spec.link, e.message), MAX_WHY))?;
     Ok((input, pair))
 }
 
@@ -969,8 +1034,7 @@ fn reopens(why: &str) -> bool {
     why == "idle" || why.starts_with("detached")
 }
 
-fn stream_main(inner: &Inner, spec: &StreamSpec) {
-    let t = inner.timing;
+fn stream_main(inner: &Arc<Inner>, spec: &StreamSpec) {
     let (input, (mut reader, writer)) = match open_stream(inner, spec) {
         Ok(v) => v,
         Err(why) => return close_stream(inner, spec, why, false),
@@ -1003,13 +1067,18 @@ fn stream_main(inner: &Inner, spec: &StreamSpec) {
         input,
     });
     let born = Instant::now();
-    thread::spawn(move || writer_main(writer, &out_rx, t.heartbeat, t.stream_renew));
+    let heard = Arc::new(Mutex::new(Instant::now()));
+    {
+        let (inner, spec, heard) = (Arc::clone(inner), spec.clone(), Arc::clone(&heard));
+        thread::spawn(move || writer_main(&inner, &spec, writer, &out_rx, &heard));
+    }
     loop {
         let got = read_incoming(&mut reader, &spec.run);
         if !inner.alive(&spec.id, spec.gen) {
             return;
         }
-        let near_hour = born.elapsed() >= t.stream_renew;
+        *lock(&heard) = Instant::now();
+        let near_hour = born.elapsed() >= inner.timing.stream_renew;
         match got {
             Ok(Some(Incoming::Pong)) => {}
             Ok(Some(Incoming::Notice(text))) => {
@@ -1049,14 +1118,24 @@ fn stream_main(inner: &Inner, spec: &StreamSpec) {
 }
 
 fn writer_main(
+    inner: &Inner,
+    spec: &StreamSpec,
     mut w: Box<dyn Write + Send>,
     rx: &Receiver<Outgoing>,
-    heartbeat: Duration,
-    max_life: Duration,
+    heard: &Mutex<Instant>,
 ) {
+    let t = inner.timing;
     let born = Instant::now();
     loop {
-        match rx.recv_timeout(heartbeat) {
+        if born.elapsed() >= t.stream_renew {
+            let _ = write_outgoing(&mut w, &Outgoing::Detach);
+            return;
+        }
+        if lock(heard).elapsed() > t.silence {
+            let why = format!("no answer from {}", spec.link);
+            return close_stream(inner, spec, why, false);
+        }
+        match rx.recv_timeout(t.heartbeat) {
             Ok(m) => {
                 let last = m == Outgoing::Detach;
                 if write_outgoing(&mut w, &m).is_err() || last {
@@ -1064,10 +1143,6 @@ fn writer_main(
                 }
             }
             Err(RecvTimeoutError::Timeout) => {
-                if born.elapsed() >= max_life {
-                    let _ = write_outgoing(&mut w, &Outgoing::Detach);
-                    return;
-                }
                 if write_outgoing(&mut w, &Outgoing::Ping).is_err() {
                     return;
                 }
@@ -1156,7 +1231,7 @@ mod tests {
     }
 
     #[derive(Default)]
-    struct Fake(Mutex<HashMap<String, FakeLink>>);
+    struct Fake(Mutex<HashMap<String, FakeLink>>, AtomicBool);
 
     impl Fake {
         fn with<R>(&self, link: &str, f: impl FnOnce(&mut FakeLink) -> R) -> R {
@@ -1205,6 +1280,10 @@ mod tests {
     struct FakeDialer(Arc<Fake>);
 
     impl Dialer for FakeDialer {
+        fn shutdown(&self) {
+            self.0 .1.store(true, Ordering::SeqCst);
+        }
+
         fn dial(&self, link: &str) -> std::result::Result<Box<dyn LinkConn>, DialErr> {
             self.0.with(link, |l| {
                 l.dials.push(Instant::now());
@@ -1328,6 +1407,7 @@ mod tests {
             reconnect_after: Duration::from_secs(3600),
             reconnect_requests: 100_000,
             heartbeat: Duration::from_secs(3600),
+            silence: Duration::from_secs(3600),
             stream_renew: Duration::from_secs(3600),
             cooldown: Duration::from_millis(200),
             shutdown_wait: Duration::from_millis(500),
@@ -1620,6 +1700,17 @@ mod tests {
                     },
                 );
             }
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(
+            followers(&paths),
+            vec!["lab".to_string(), "spark".to_string()]
+        );
+        Store::update(&paths, |s| {
+            let hop = s.followers["spark"].clone();
+            s.followers.insert("hop".into(), hop);
+            s.jumps.insert("lab".into(), "hop".into());
             Ok(())
         })
         .unwrap();
@@ -2018,5 +2109,150 @@ mod tests {
             .hub
             .open(&view_id("spark", A), "spark", A, 80, 24)
             .is_err());
+    }
+
+    #[test]
+    fn long_follower_strings_are_cut_before_they_reach_the_sidebar() {
+        let mut st = RemoteState::new(&["spark".into()]);
+        let long = "x".repeat(5000);
+        let mut run = run_view(A);
+        run.name = long.clone();
+        run.agent = Some(long.clone());
+        run.task = Some(long.clone());
+        run.state.detail = Some(long.clone());
+        let kept = st.ingest_runs("spark", vec![run]);
+        assert!(kept[0].name.chars().count() <= MAX_NAME + 1);
+        assert!(kept[0].agent.as_deref().unwrap().chars().count() <= MAX_NAME + 1);
+        assert!(kept[0].task.as_deref().unwrap().chars().count() <= MAX_NAME + 1);
+        assert!(kept[0].state.detail.as_deref().unwrap().chars().count() <= MAX_DETAIL + 1);
+        let ev = EventMsg {
+            session: A.into(),
+            state: State {
+                detail: Some(long),
+                ..state(StateKind::Waiting)
+            },
+            task: None,
+            origin: None,
+        };
+        let Some(Incoming::Event(e)) = st.ingest("spark", Incoming::Event(ev)) else {
+            panic!("listed run must pass");
+        };
+        assert!(e.state.detail.unwrap().chars().count() <= MAX_DETAIL + 1);
+        assert!(st.rows("spark")[0].name.chars().count() <= MAX_NAME + 1);
+    }
+
+    #[test]
+    fn shutdown_and_drop_both_release_the_dialer() {
+        let r = rig(&["spark"], fast(), |_| {});
+        let fake = Arc::clone(&r.fake);
+        r.hub.shutdown();
+        assert!(fake.1.load(Ordering::SeqCst));
+        let r = rig(&["spark"], fast(), |_| {});
+        let fake = Arc::clone(&r.fake);
+        drop(r);
+        assert!(fake.1.load(Ordering::SeqCst));
+    }
+
+    struct NoKeychain;
+
+    impl tmgr_core::creds::Keychain for NoKeychain {
+        fn get(&self, _: &str) -> keyring::Result<String> {
+            Err(keyring::Error::NoEntry)
+        }
+
+        fn set(&self, _: &str, _: &str) -> keyring::Result<()> {
+            Err(keyring::Error::NoEntry)
+        }
+
+        fn delete(&self, _: &str) -> keyring::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn the_ssh_dialer_removes_the_link_key_on_shutdown_and_refuses_later_dials() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let paths = Paths::under(d.path());
+        let cred = tmgr_core::creds::CredentialStore::with_keychain(
+            &paths.config,
+            leader::KEY_ACCOUNT,
+            Some(Backend::File),
+            Box::new(NoKeychain),
+        );
+        leader::init(&paths, &cred, false).unwrap();
+        let key = leader::materialise(&cred).unwrap();
+        let key_path = key.path.clone();
+        let dialer = SshDialer {
+            paths,
+            key: Mutex::new(Some(key)),
+        };
+        assert!(key_path.exists());
+        dialer.shutdown();
+        assert!(!key_path.exists());
+        assert!(matches!(dialer.dial("spark"), Err(DialErr::Offline(_))));
+    }
+
+    #[test]
+    fn a_stream_that_goes_silent_is_closed_and_frees_its_slot() {
+        let t = Timing {
+            heartbeat: Duration::from_millis(20),
+            silence: Duration::from_millis(120),
+            ..fast()
+        };
+        let mut r = rig(&["spark"], t, |f| f.set_runs("spark", &[A]));
+        r.runs("spark", 1);
+        r.open("spark", A);
+        let (why, reopen) = r.until(|m| match m {
+            LinkMsg::StreamClosed { why, reopen, .. } => Some((why.clone(), *reopen)),
+            _ => None,
+        });
+        assert!(why.contains("no answer"), "{why}");
+        assert!(!reopen);
+        assert!(r.fake.written("spark", A).contains(&Outgoing::Ping));
+        assert_eq!(r.hub.want_streams(&[]).close, Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_stream_that_keeps_hearing_back_stays_open() {
+        let t = Timing {
+            heartbeat: Duration::from_millis(20),
+            silence: Duration::from_millis(150),
+            ..fast()
+        };
+        let mut r = rig(&["spark"], t, |f| f.set_runs("spark", &[A]));
+        r.runs("spark", 1);
+        r.open("spark", A);
+        for _ in 0..12 {
+            r.fake.feed("spark", A, br#"{"type":"pong"}"#);
+            thread::sleep(Duration::from_millis(30));
+        }
+        let msgs = r.drain(Duration::ZERO);
+        assert!(!msgs
+            .iter()
+            .any(|m| matches!(m, LinkMsg::StreamClosed { .. })));
+    }
+
+    #[test]
+    fn a_relinked_machine_gets_its_rows_back() {
+        let mut r = rig(&["spark"], fast(), |f| {
+            f.set_runs("spark", &[A]);
+            f.with("spark", |l| {
+                l.dial = VecDeque::from([Err(DialErr::Removed)])
+            });
+        });
+        r.state_is("spark", LinkState::Removed);
+        assert!(r.hub.rows("spark").is_empty());
+        r.hub.retry_all();
+        r.runs("spark", 1);
+        assert_eq!(r.hub.rows("spark").len(), 1);
+        assert_eq!(
+            r.hub.target_of(&format!("spark/{A}")),
+            Target::Remote {
+                link: "spark".into(),
+                run: A.into()
+            }
+        );
     }
 }
