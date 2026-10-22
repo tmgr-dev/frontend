@@ -249,13 +249,14 @@ test('page events on the workspace channel reach onPageEvent with their type', (
 		'page.created',
 		'page.updated',
 		'page.deleted',
+		'page.purged',
 		'page.restored',
 		'page.moved',
 	]) {
 		channel.callbacks[`.${type}`](payload);
 		expect(onPageEvent).toHaveBeenLastCalledWith(type, payload);
 	}
-	expect(onPageEvent).toHaveBeenCalledTimes(5);
+	expect(onPageEvent).toHaveBeenCalledTimes(6);
 });
 
 test('countdown events reach user handlers while a local workspace is active', () => {

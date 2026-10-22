@@ -254,6 +254,17 @@ export const deletePage = async (id: number): Promise<{ deleted: number }> =>
 export const restorePage = async (id: number): Promise<Page> =>
 	mutate($axios.post(`pages/${id}/restore`));
 
+export const permanentlyDeletePage = async (
+	idOrSlug: number | string,
+): Promise<{ deleted: number; files: number }> =>
+	mutate($axios.delete(`pages/${encodeURIComponent(idOrSlug)}/permanent`));
+
+export const emptyPagesTrash = async (): Promise<{
+	purged: number;
+	deleted: number;
+	skipped: number;
+}> => mutate($axios.post('pages/trash/empty'));
+
 export const getPageVersions = async (
 	idOrSlug: number | string,
 ): Promise<PageVersion[]> =>

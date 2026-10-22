@@ -92,14 +92,14 @@ async function mockPages(page, { deleteStatus = 200, scheme = 'light' } = {}) {
 
 const section = (page) => page.getByTestId('pages-sidebar-section');
 const dialog = (page) =>
-  page.getByRole('alertdialog', { name: 'Delete page?' });
+  page.getByRole('alertdialog', { name: 'Archive page' });
 
 const openDelete = async (page, id, scope = section(page)) => {
   const rowEl = scope.locator(`[data-page-id="${id}"]`);
   await expect(rowEl).toBeVisible({ timeout: 10000 });
   await rowEl.hover();
   await rowEl.getByRole('button', { name: 'Page actions' }).click();
-  await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Archive', exact: true }).click();
   await expect(dialog(page)).toBeVisible();
   // Wait for the zoom-in to settle before measuring or shooting.
   await expect
@@ -153,14 +153,14 @@ for (const scheme of ['light', 'dark'])
     const box = dialog(page);
     await expect(box).toHaveCount(1);
     await expect(
-      box.getByRole('heading', { name: 'Delete page?' }),
+      box.getByRole('heading', { name: 'Archive page' }),
     ).toBeVisible();
     await expect(box).toContainText(
-      '"Roadmap" and all its subpages will be moved to trash. You can restore them from there.',
+      '"Roadmap" and all its subpages will be moved to the archive. You can restore them from there.',
     );
-    await expect(box.getByRole('link', { name: 'trash' })).toBeVisible();
+    await expect(box.getByRole('link', { name: 'archive' })).toBeVisible();
     await expect(box.getByRole('button', { name: 'Cancel' })).toBeFocused();
-    const confirm = box.getByRole('button', { name: 'Move to trash' });
+    const confirm = box.getByRole('button', { name: 'Archive', exact: true });
     await expect(confirm).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Ok', exact: true }),
@@ -173,13 +173,15 @@ for (const scheme of ['light', 'dark'])
     expect(api.deletes()).toEqual([]);
   });
 
-test('Move to trash deletes the page with its subpages and refreshes the tree', async ({
+test('Archive moves the page with its subpages out of the tree', async ({
   page,
 }) => {
   const api = await mockPages(page);
   await page.goto('/demo/board');
   await openDelete(page, 1);
-  await dialog(page).getByRole('button', { name: 'Move to trash' }).click();
+  await dialog(page)
+    .getByRole('button', { name: 'Archive', exact: true })
+    .click();
 
   await expect(dialog(page)).toHaveCount(0);
   await expect.poll(() => api.deletes()).toEqual(['DELETE pages/1']);
@@ -225,18 +227,18 @@ test('Escape closes only the dialog', async ({ page }) => {
   expect(api.deletes()).toEqual([]);
 });
 
-test('the trash link opens the pages trash and closes the dialog', async ({
+test('the archive link opens the archive and closes the dialog', async ({
   page,
 }) => {
   const api = await mockPages(page);
   await page.goto('/demo/board');
   await openDelete(page, 3);
-  await dialog(page).getByRole('link', { name: 'trash' }).click();
+  await dialog(page).getByRole('link', { name: 'archive' }).click();
 
-  await expect(page).toHaveURL(/\/demo\/pages\/_\/trash$/);
+  await expect(page).toHaveURL(/\/demo\/pages\/_\/archive$/);
   await expect(dialog(page)).toHaveCount(0);
   await expect(
-    page.getByRole('heading', { name: 'Pages trash' }),
+    page.getByRole('heading', { name: 'Archive', exact: true }),
   ).toBeVisible();
   await expectBodyInteractive(page);
   expect(api.deletes()).toEqual([]);
@@ -272,12 +274,14 @@ test('a rejected DELETE closes the dialog, keeps the row and shows a toast', asy
   const api = await mockPages(page, { deleteStatus: 422 });
   await page.goto('/demo/board');
   await openDelete(page, 3);
-  await dialog(page).getByRole('button', { name: 'Move to trash' }).click();
+  await dialog(page)
+    .getByRole('button', { name: 'Archive', exact: true })
+    .click();
 
   await expect.poll(() => api.deletes()).toEqual(['DELETE pages/3']);
   await expect(dialog(page)).toHaveCount(0);
   await expect(
-    page.getByText('Failed to delete page', { exact: true }),
+    page.getByText('Failed to archive page', { exact: true }),
   ).toBeVisible();
   await expect(section(page).locator('[data-page-id="3"]')).toBeVisible();
   await expectBodyInteractive(page);
@@ -294,7 +298,9 @@ test('deleting from the All pages tree opens one dialog and updates both surface
   const tree = page.getByTestId('pages-index-tree');
   await openDelete(page, 3, tree);
   await expect(dialog(page)).toHaveCount(1);
-  await dialog(page).getByRole('button', { name: 'Move to trash' }).click();
+  await dialog(page)
+    .getByRole('button', { name: 'Archive', exact: true })
+    .click();
 
   await expect(dialog(page)).toHaveCount(0);
   await expect.poll(() => api.deletes()).toEqual(['DELETE pages/3']);
@@ -304,11 +310,13 @@ test('deleting from the All pages tree opens one dialog and updates both surface
   expect(api.errors).toEqual([]);
 });
 
-test('a double click on Move to trash sends one DELETE', async ({ page }) => {
+test('a double click on Archive sends one DELETE', async ({ page }) => {
   const api = await mockPages(page);
   await page.goto('/demo/board');
   await openDelete(page, 3);
-  await dialog(page).getByRole('button', { name: 'Move to trash' }).dblclick();
+  await dialog(page)
+    .getByRole('button', { name: 'Archive', exact: true })
+    .dblclick();
 
   await expect(section(page).locator('[data-page-id="3"]')).toHaveCount(0);
   await page.waitForTimeout(500);
@@ -331,7 +339,7 @@ test.describe('touch phone', () => {
       const rowEl = section(page).locator(`[data-page-id="${id}"]`);
       await expect(rowEl).toBeVisible();
       await rowEl.getByRole('button', { name: 'Page actions' }).tap();
-      await page.getByRole('menuitem', { name: 'Delete', exact: true }).tap();
+      await page.getByRole('menuitem', { name: 'Archive', exact: true }).tap();
       await expect(dialog(page)).toBeVisible();
       await expect(page.getByRole('menu')).toHaveCount(0);
       await expect
@@ -347,7 +355,9 @@ test.describe('touch phone', () => {
     expect(api.deletes()).toEqual([]);
 
     await pick(3);
-    await dialog(page).getByRole('button', { name: 'Move to trash' }).tap();
+    await dialog(page)
+      .getByRole('button', { name: 'Archive', exact: true })
+      .tap();
     await expect(dialog(page)).toHaveCount(0);
     await expect(section(page).locator('[data-page-id="3"]')).toHaveCount(0);
     await expect(section(page)).toBeVisible();

@@ -113,7 +113,7 @@ test('the sidebar lists pinned pages, then the 10 latest edits flat', async ({
     section(page).getByRole('link', { name: 'All pages' }),
   ).toBeVisible();
   await expect(
-    section(page).getByRole('link', { name: 'Trash' }),
+    section(page).getByRole('link', { name: 'Archive' }),
   ).toBeVisible();
   await expect(
     section(page).getByRole('button', { name: 'New page' }),
@@ -137,7 +137,7 @@ test('the sidebar lists pinned pages, then the 10 latest edits flat', async ({
     'Pin',
     'Export with subpages',
     'Import Markdown here…',
-    'Delete',
+    'Archive',
   ])
     await expect(
       page.getByRole('menuitem', { name, exact: true }),

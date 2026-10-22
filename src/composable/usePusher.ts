@@ -29,6 +29,7 @@ const PAGE_EVENT_TYPES: PageEventType[] = [
 	'page.created',
 	'page.updated',
 	'page.deleted',
+	'page.purged',
 	'page.restored',
 	'page.moved',
 ];

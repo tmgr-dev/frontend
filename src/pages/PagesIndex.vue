@@ -7,11 +7,11 @@
 		<PageHeader title="Pages">
 			<template #actions>
 				<router-link
-					:to="`/${workspaceCode}/pages/_/trash`"
+					:to="`/${workspaceCode}/pages/_/archive`"
 					class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm text-ink-subtle hover:bg-surface-hover hover:text-ink"
 				>
-					<Trash2 class="h-4 w-4" />
-					Trash
+					<Archive class="h-4 w-4" />
+					Archive
 				</router-link>
 				<button
 					type="button"
@@ -116,7 +116,7 @@
 	import PagesTreeNode from '@/components/pagesNav/PagesTreeNode.vue';
 	import { useFileDrop } from '@/composable/usePagesMarkdownIo';
 	import { usePagesTreeHost } from '@/composable/usePagesTreeHost';
-	import { Download, FileText, Plus, Trash2, Upload } from 'lucide-vue-next';
+	import { Archive, Download, FileText, Plus, Upload } from 'lucide-vue-next';
 	import { computed, defineComponent } from 'vue';
 	import { useRoute } from 'vue-router';
 	import Draggable from 'vuedraggable';
@@ -134,7 +134,7 @@
 			PagesTreeDialogs,
 			PagesTreeNode,
 			Plus,
-			Trash2,
+			Archive,
 			Upload,
 		},
 		setup() {
