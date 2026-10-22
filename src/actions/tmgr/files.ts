@@ -188,6 +188,19 @@ export const fetchFileObjectUrl = async (
 	return URL.createObjectURL(data);
 };
 
+/** The raw bytes, fetched with the bearer token, for viewers that need to re-wrap or read them. */
+export const fetchFileBlob = async (
+	fileId: number,
+	signal?: AbortSignal,
+): Promise<Blob> => {
+	const { data } = await $axios.get(`/files/${fileId}/content`, {
+		responseType: 'blob',
+		signal,
+	});
+
+	return data;
+};
+
 const signedLinks = createSignedLinkCache({
 	context: () => requestCache.getContext(),
 	sign: async (fileId: number) => {
