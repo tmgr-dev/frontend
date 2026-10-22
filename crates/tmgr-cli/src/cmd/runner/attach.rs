@@ -11,6 +11,7 @@ use super::attach_new::{
 };
 use super::attach_notes;
 use super::attach_prompts;
+use super::attach_push;
 use super::attach_questions::{claude_binary, questioner, QuestionJob};
 use super::attach_shell::{
     can_split, cwd_candidates, focus_new_pane, is_shell_session, ladder_for, merge_pending,
@@ -148,6 +149,7 @@ enum Msg {
     Summary(Generated),
     Exported(std::result::Result<String, String>),
     NotesSent(std::result::Result<String, String>),
+    Pushed(std::result::Result<(), String>),
     Posted(std::result::Result<String, String>, Box<SummaryDraft>),
     Chips(HashMap<String, TaskChip>),
     Peek {
@@ -351,6 +353,10 @@ struct App {
     signal_cfg: SignalSettings,
     prompt_send: bool,
     summary_mode: SummaryMode,
+    push_cfg: tmgr_runner::attach::PushSettings,
+    push: tmgr_runner::attach::PushTracker,
+    push_tx: SyncSender<(String, tmgr_core::notify::PushPayload)>,
+    push_dir: PathBuf,
     summary_tx: SyncSender<SummaryJob>,
     summary_auto: HashMap<String, SummaryDraft>,
     summary_dir: PathBuf,
@@ -436,6 +442,11 @@ impl App {
                 };
                 self.view.notes_sent(ok, &text);
                 self.notify(&text);
+            }
+            Msg::Pushed(result) => {
+                if let Err(e) = result {
+                    self.notify(&format!("phone push failed: {e}"));
+                }
             }
             Msg::Exported(result) => {
                 self.dirty = true;
@@ -890,6 +901,44 @@ impl App {
             workdir,
         };
         Some((draft, job))
+    }
+
+    fn check_push(&mut self) {
+        if !self.push_cfg.enabled() {
+            return;
+        }
+        let stopped = &self.stopped;
+        let shells = &self.shell_ids;
+        let events = self.push.update(
+            &self.view,
+            &self.push_cfg,
+            now_ms(),
+            minute_of_day(),
+            &|id| stopped.contains(id) || shells.contains(id),
+        );
+        for event in events {
+            let name = self
+                .view
+                .sessions
+                .iter()
+                .find(|r| r.id == event.session)
+                .map_or_else(|| event.session.clone(), |r| r.name.clone());
+            let chip = self.view.chip_of(&event.session);
+            let link = chip
+                .and_then(|c| open_urls(&self.web_base, c))
+                .map(|(_, web)| web);
+            let key = chip
+                .filter(|c| !c.key.starts_with('#'))
+                .map(|c| c.key.clone());
+            let payload = attach_push::payload(&event, &name, key.as_deref(), link.as_deref());
+            if !claim(&self.push_dir, &event.key) {
+                continue;
+            }
+            if self.push_tx.try_send((event.key.clone(), payload)).is_err() {
+                super::attach_summary::unclaim(&self.push_dir, &event.key);
+                self.notify("phone push queue full: one push was skipped");
+            }
+        }
     }
 
     fn check_exits(&mut self) {
@@ -3104,6 +3153,7 @@ impl App {
         self.poll_watchers();
         self.probe_git();
         self.check_exits();
+        self.check_push();
         self.probe_peek();
         self.probe_questions();
         self.paste_forks();
@@ -3567,6 +3617,16 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
             status_out.send(Msg::Status(found)).is_ok()
         })
     });
+    let push_dir = cfg.dir.join("push");
+    attach_push::prune(&push_dir);
+    let (push_tx, push_rx) = mpsc::sync_channel(8);
+    let push_out = tx.clone();
+    let push_thread_dir = push_dir.clone();
+    thread::spawn(move || {
+        attach_push::pusher(push_rx, push_thread_dir, move |r| {
+            push_out.send(Msg::Pushed(r)).is_ok()
+        })
+    });
     let (summary_tx, summary_rx) = mpsc::sync_channel(4);
     let summary_out = tx.clone();
     thread::spawn(move || {
@@ -3663,6 +3723,10 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         signal_cfg: signal_settings(&attach_cfg),
         prompt_send: attach_cfg.prompt_send.unwrap_or(false),
         summary_mode: SummaryMode::parse(attach_cfg.summary.as_deref()),
+        push_cfg: attach_push::settings(&attach_cfg),
+        push: tmgr_runner::attach::PushTracker::new(),
+        push_tx,
+        push_dir,
         summary_tx,
         summary_auto: HashMap::new(),
         summary_dir: cfg.dir.join("summaries"),
