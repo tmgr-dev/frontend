@@ -8,8 +8,8 @@
 				:class="[
 					'relative flex max-w-[14rem] items-center gap-1.5 overflow-hidden rounded-md border px-2 py-1 text-xs',
 					item.status === 'error'
-						? 'border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300'
-						: 'border-line bg-surface text-ink dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100',
+						? 'border-status-fix bg-status-fix-bg text-status-fix-fg'
+						: 'border-line-strong bg-surface text-ink',
 				]"
 				data-testid="attachment-chip"
 			>
@@ -23,12 +23,12 @@
 				/>
 				<FileText v-else class="h-3 w-3 flex-shrink-0 text-ink-subtle" />
 				<span class="min-w-0 truncate">{{ item.name }}</span>
-				<span class="flex-shrink-0 text-2xs text-ink-faint dark:text-gray-400">
+				<span class="flex-shrink-0 text-2xs text-ink-subtle">
 					{{ kind(item) }} · {{ size(item) }}
 				</span>
 				<button
 					type="button"
-					class="flex-shrink-0 rounded p-0.5 text-ink-subtle hover:bg-surface-hover hover:text-ink dark:hover:bg-gray-700"
+					class="flex-shrink-0 rounded p-0.5 text-ink-subtle hover:bg-surface-hover hover:text-ink"
 					:aria-label="`Remove ${item.name}`"
 					@click="$emit('remove', item.key)"
 				>
@@ -41,17 +41,13 @@
 				/>
 			</li>
 		</ul>
-		<p
-			v-if="notice"
-			class="text-xs text-red-600 dark:text-red-400"
-			role="alert"
-		>
+		<p v-if="notice" class="text-xs text-status-fix-fg" role="alert">
 			{{ notice }}
 		</p>
 		<p
 			v-for="item in failed"
 			:key="`err-${item.key}`"
-			class="text-xs text-red-600 dark:text-red-400"
+			class="text-xs text-status-fix-fg"
 			role="alert"
 		>
 			{{ item.name }}: {{ item.error }}

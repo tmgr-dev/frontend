@@ -10,7 +10,7 @@
 				v-for="page in pages"
 				:key="page.id"
 				:to="pageUrl(workspaceCode, page.slug)"
-				class="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs text-blue-800 hover:underline dark:bg-blue-900/40 dark:text-blue-200"
+				class="inline-flex items-center gap-1 rounded-full bg-brand-bg px-2.5 py-0.5 text-xs text-brand hover:underline"
 			>
 				<FileText class="h-3 w-3" />
 				{{ page.title }}

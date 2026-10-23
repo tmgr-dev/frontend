@@ -1,7 +1,7 @@
 <template>
 	<Dialog :open="open" @update:open="onOpenChange">
 		<DialogContent
-			class="left-0 top-0 flex h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-none bg-black/95 p-0 text-gray-200 data-[state=closed]:slide-out-to-left-0 data-[state=closed]:slide-out-to-top-0 data-[state=open]:slide-in-from-left-0 data-[state=open]:slide-in-from-top-0 sm:max-w-none sm:rounded-none"
+			class="left-0 top-0 flex h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-none bg-black/95 p-0 text-white/90 data-[state=closed]:slide-out-to-left-0 data-[state=closed]:slide-out-to-top-0 data-[state=open]:slide-in-from-left-0 data-[state=open]:slide-in-from-top-0 sm:max-w-none sm:rounded-none"
 		>
 			<DialogTitle class="sr-only">{{ current?.name ?? 'File' }}</DialogTitle>
 			<DialogDescription class="sr-only">
@@ -9,14 +9,14 @@
 			</DialogDescription>
 
 			<div
-				class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 pr-14 text-sm text-gray-200"
+				class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 pr-14 text-sm text-white/90"
 				data-testid="viewer-header"
 			>
 				<span class="min-w-0 flex-1 truncate">{{ current?.name }}</span>
-				<span v-if="current?.size" class="flex-shrink-0 text-gray-400">
+				<span v-if="current?.size" class="flex-shrink-0 text-white/60">
 					{{ formatFileSize(current.size) }}
 				</span>
-				<span v-if="images.length > 1" class="flex-shrink-0 text-gray-400">
+				<span v-if="images.length > 1" class="flex-shrink-0 text-white/60">
 					{{ index + 1 }} / {{ images.length }}
 				</span>
 				<span
@@ -33,7 +33,7 @@
 				>
 					<button
 						type="button"
-						class="rounded p-1.5 text-gray-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:hover:bg-transparent"
+						class="rounded p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:hover:bg-transparent"
 						title="Zoom out"
 						aria-label="Zoom out"
 						:disabled="zoom <= ZOOM_MIN"
@@ -43,7 +43,7 @@
 					</button>
 					<button
 						type="button"
-						class="rounded p-1.5 text-gray-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:hover:bg-transparent"
+						class="rounded p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:hover:bg-transparent"
 						title="Zoom in"
 						aria-label="Zoom in"
 						:disabled="zoom >= ZOOM_MAX"
@@ -53,7 +53,7 @@
 					</button>
 					<button
 						type="button"
-						class="rounded p-1.5 text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+						class="rounded p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
 						title="Fit to window (0)"
 						aria-label="Fit to window"
 						@click="fit"
@@ -62,7 +62,7 @@
 					</button>
 					<button
 						type="button"
-						class="rounded px-2 py-1 text-xs text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+						class="rounded px-2 py-1 text-xs text-white/80 transition-colors hover:bg-white/10 hover:text-white"
 						title="Actual size (100%)"
 						aria-label="Actual size"
 						@click="actualSize"
@@ -72,7 +72,7 @@
 				</div>
 				<button
 					type="button"
-					class="flex-shrink-0 rounded p-1.5 text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+					class="flex-shrink-0 rounded p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
 					title="Download"
 					aria-label="Download"
 					:disabled="downloading"
@@ -150,7 +150,7 @@
 					<Loader2
 						v-if="!imageError && !layers.thumb && !layers.full"
 						:size="28"
-						class="animate-spin text-gray-400"
+						class="animate-spin text-white/60"
 					/>
 				</template>
 
@@ -161,15 +161,15 @@
 					<Loader2
 						v-if="contentState === 'loading' || contentState === 'idle'"
 						:size="28"
-						class="animate-spin self-center text-gray-400"
+						class="animate-spin self-center text-white/60"
 					/>
 					<div
 						v-else-if="contentState === 'error'"
 						role="alert"
-						class="flex flex-col items-center justify-center gap-3 self-center text-center text-gray-200"
+						class="flex flex-col items-center justify-center gap-3 self-center text-center text-white/90"
 						data-testid="viewer-error"
 					>
-						<AlertCircle :size="28" class="text-gray-400" />
+						<AlertCircle :size="28" class="text-white/60" />
 						<p>Could not load file</p>
 						<button
 							type="button"
@@ -181,10 +181,10 @@
 					</div>
 					<div
 						v-else-if="contentState === 'unsupported'"
-						class="flex flex-col items-center justify-center gap-3 self-center text-center text-gray-200"
+						class="flex flex-col items-center justify-center gap-3 self-center text-center text-white/90"
 						data-testid="viewer-unsupported"
 					>
-						<FileIcon :size="28" class="text-gray-400" />
+						<FileIcon :size="28" class="text-white/60" />
 						<p>Preview is not available here</p>
 						<button
 							type="button"
@@ -204,7 +204,7 @@
 					></iframe>
 					<div
 						v-else-if="kind === 'markdown'"
-						class="h-full w-full max-w-3xl overflow-auto rounded-md bg-surface p-6 text-ink dark:bg-gray-900 dark:text-gray-100"
+						class="h-full w-full max-w-3xl overflow-auto rounded-md bg-surface p-6 text-ink"
 						tabindex="0"
 						:aria-label="`Preview of ${current?.name}`"
 						data-viewer-scroll
@@ -218,7 +218,7 @@
 					</div>
 					<pre
 						v-else-if="kind === 'text'"
-						class="h-full w-full max-w-4xl overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface p-4 font-mono text-xs text-ink dark:bg-gray-900 dark:text-gray-100"
+						class="h-full w-full max-w-4xl overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface p-4 font-mono text-xs text-ink"
 						tabindex="0"
 						:aria-label="`Preview of ${current?.name}`"
 						data-viewer-scroll

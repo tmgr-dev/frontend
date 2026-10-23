@@ -2,7 +2,7 @@
 	<div class="mb-1.5 flex items-start gap-1.5">
 		<button
 			type="button"
-			class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink disabled:opacity-40 dark:hover:bg-gray-700"
+			class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink disabled:opacity-40"
 			aria-label="Attach files"
 			:title="`Attach files (${hint})`"
 			:disabled="disabled"

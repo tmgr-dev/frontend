@@ -10,7 +10,7 @@
 		/>
 		<button
 			type="button"
-			class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink dark:hover:bg-gray-700"
+			class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
 			aria-label="Attach files"
 			title="Attach files"
 			data-testid="comment-attach"
