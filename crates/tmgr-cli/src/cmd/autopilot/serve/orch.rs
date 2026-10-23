@@ -2,7 +2,7 @@ use super::super::model::{NotPlanned, PlanDoc, PlanRow, PlanState, Slots, TaskBr
 use super::super::orchestrate::{
     self, ModeSetting, OrchInput, Plan, PlanItem, Poll, TeamMode, TriageItem, Verdict,
 };
-use super::super::start::colliding_keys;
+use super::super::start::make_keys_unique;
 use super::decide::{verdict, Decision, Facts};
 use super::ports::PlanFresh;
 use super::{Autopilot, MAX_PASS_ERRORS};
@@ -380,12 +380,7 @@ impl Autopilot<'_> {
             self.orch.phase = Phase::Failed(NOTHING_TO_PLAN.into());
             return Some(Flow::Stop(NOTHING_TO_PLAN.into()));
         }
-        let dup = colliding_keys(inputs.tasks.iter().map(|p| p.text.key.as_str()));
-        for p in &mut inputs.tasks {
-            if dup.contains(&p.text.key.to_lowercase()) {
-                p.text.key = format!("task-{}", p.text.task_id);
-            }
-        }
+        make_keys_unique(&mut inputs.tasks, |p| p.text.task_id, |p| &mut p.text.key);
         let ids: BTreeSet<i64> = inputs.tasks.iter().map(|p| p.text.task_id).collect();
         let order: Vec<i64> = self
             .s

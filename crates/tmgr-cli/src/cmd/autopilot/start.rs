@@ -247,27 +247,35 @@ const RETRY_PAUSE: std::time::Duration = std::time::Duration::from_millis(250);
 const OFFLINE_STREAK: usize = 3;
 const WORKERS: usize = 4;
 
-pub fn colliding_keys<'a>(
-    keys: impl Iterator<Item = &'a str>,
-) -> std::collections::HashSet<String> {
-    let mut seen = std::collections::HashSet::new();
-    let mut dup = std::collections::HashSet::new();
-    for k in keys {
-        let k = k.to_lowercase();
-        if !seen.insert(k.clone()) {
-            dup.insert(k);
+pub fn make_keys_unique<T>(
+    items: &mut [T],
+    id: impl Fn(&T) -> i64,
+    key: impl Fn(&mut T) -> &mut String,
+) {
+    loop {
+        let mut seen = std::collections::HashSet::new();
+        let mut dup = std::collections::HashSet::new();
+        for it in items.iter_mut() {
+            let k = key(it).to_lowercase();
+            if !seen.insert(k.clone()) {
+                dup.insert(k);
+            }
+        }
+        if dup.is_empty() {
+            return;
+        }
+        for it in items.iter_mut() {
+            let label = format!("task-{}", id(it));
+            let k = key(it);
+            if dup.contains(&k.to_lowercase()) {
+                *k = label;
+            }
         }
     }
-    dup
 }
 
 pub fn unique_keys(found: &mut [Found]) {
-    let dup = colliding_keys(found.iter().map(|f| f.key.as_str()));
-    for f in found.iter_mut() {
-        if dup.contains(&f.key.to_lowercase()) {
-            f.key = format!("task-{}", f.id);
-        }
-    }
+    make_keys_unique(found, |f| f.id, |f| &mut f.key);
 }
 
 fn unreachable_error(e: &Error) -> Error {
@@ -2091,6 +2099,26 @@ mod tests {
         unique_keys(&mut f);
         let keys: Vec<&str> = f.iter().map(|f| f.key.as_str()).collect();
         assert_eq!(keys, ["task-1", "task-2", "TM-211"]);
+    }
+
+    #[test]
+    fn a_relabel_that_collides_with_an_existing_key_is_relabelled_again() {
+        let mut f = vec![
+            found_with(1, "TM-210"),
+            found_with(2, "TM-210"),
+            found_with(3, "task-1"),
+        ];
+        unique_keys(&mut f);
+        let keys: Vec<&str> = f.iter().map(|f| f.key.as_str()).collect();
+        assert_eq!(keys, ["task-1", "task-2", "task-3"]);
+    }
+
+    #[test]
+    fn keys_differing_only_in_case_get_distinct_labels() {
+        let mut f = vec![found_with(1, "TM-1"), found_with(2, "tm-1")];
+        unique_keys(&mut f);
+        let keys: Vec<&str> = f.iter().map(|f| f.key.as_str()).collect();
+        assert_eq!(keys, ["task-1", "task-2"]);
     }
 
     fn card(id: i64, key: &str) -> queue::Card {

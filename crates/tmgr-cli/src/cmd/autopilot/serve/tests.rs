@@ -1981,6 +1981,41 @@ fn tasks_sharing_a_key_get_distinct_labels_and_the_plan_maps_by_id() {
     assert_eq!(last_policy(&rig).only.unwrap(), BTreeSet::from([1, 2]));
 }
 
+fn labels_for_keys(keys: &[&str]) -> Vec<String> {
+    let plan: Vec<_> = (1..=keys.len() as u32).map(|n| (n, "", "eco")).collect();
+    let rig = orch_rig(&plan, &[]);
+    for (i, k) in keys.iter().enumerate() {
+        rig.fake.w().plan_keys.insert(i as i64 + 1, (*k).into());
+    }
+    let ids: Vec<i64> = (1..=keys.len() as i64).collect();
+    let s = orch_settings(&ids);
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        tick_any(ap);
+    });
+    let w = rig.fake.0.borrow();
+    assert_eq!(w.orch_starts.len(), 1);
+    w.orch_starts[0]
+        .1
+        .tasks
+        .iter()
+        .map(|t| t.key.clone())
+        .collect()
+}
+
+#[test]
+fn a_relabel_that_collides_with_an_existing_key_is_relabelled_again() {
+    assert_eq!(
+        labels_for_keys(&["TM-210", "TM-210", "task-1"]),
+        ["task-1", "task-2", "task-3"]
+    );
+}
+
+#[test]
+fn keys_differing_only_in_case_get_distinct_labels() {
+    assert_eq!(labels_for_keys(&["TM-1", "tm-1"]), ["task-1", "task-2"]);
+}
+
 #[test]
 fn a_persistent_input_read_error_ends_the_run() {
     let rig = orch_rig(&[(1, "", "eco")], &[]);
