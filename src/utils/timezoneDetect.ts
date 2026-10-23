@@ -9,7 +9,7 @@ export interface TimeZoneDetectDeps {
 	onSaved: (timezone: string) => void;
 }
 
-let attemptedFor: number | null = null;
+let attemptedFor: number | null | undefined = null;
 
 export const resetTimeZoneDetection = () => {
 	attemptedFor = null;
