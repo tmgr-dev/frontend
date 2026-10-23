@@ -668,6 +668,61 @@ describeSqlite('local daily-routines API on SQLite', () => {
 		).toBe(offsetMinutes === 0);
 	});
 
+	describe('with an explicit time zone', () => {
+		const zone = (tz: string) => {
+			ctx = { ...ctx, timeZone: () => tz };
+		};
+		const plainDate = async (title: string, day: string) => {
+			const plain = await data('POST', 'daily-routines/tasks', { title });
+			const entries = await data(
+				'GET',
+				`daily-routines/expand?from=${day}&to=${day}`,
+			);
+			return entries.find((e: any) => e.task_id === plain.id)?.date;
+		};
+
+		it('puts a plain routine on the zone day, not the device day', async () => {
+			clock = new Date('2026-06-10T15:30:00Z');
+			zone('Asia/Tokyo');
+			expect(await plainDate('Tokyo day', '2026-06-11')).toBe('2026-06-11');
+			expect(await plainDate('Not device day', '2026-06-10')).toBeUndefined();
+		});
+
+		it('materializes the next instance against zone wall time', async () => {
+			clock = new Date('2026-06-10T15:30:00Z');
+			zone('Asia/Tokyo');
+			const routine = await data('POST', 'daily-routines/tasks/recurring', {
+				title: 'Tokyo morning',
+				recurrence: {
+					frequency: 'DAILY',
+					interval: 1,
+					time: { hours: 9, minutes: 0 },
+				},
+				scheduled_date: '2026-06-10',
+			});
+			await materializeDueInstances(ctx);
+			const instances = await data(
+				'GET',
+				`daily-routines/tasks/${routine.id}/instances`,
+			);
+			const days = instances.map((i: any) => i.scheduled_for.slice(0, 10));
+			expect(days).toContain('2026-06-11');
+		});
+
+		it('follows the Warsaw clock across spring forward', async () => {
+			clock = new Date('2026-03-28T23:30:00Z');
+			zone('Europe/Warsaw');
+			expect(await plainDate('Spring', '2026-03-29')).toBe('2026-03-29');
+		});
+
+		it('follows the Warsaw clock after fall back', async () => {
+			clock = new Date('2026-10-25T22:30:00Z');
+			zone('Europe/Warsaw');
+			expect(await plainDate('Autumn', '2026-10-25')).toBe('2026-10-25');
+			expect(await plainDate('Autumn next', '2026-10-26')).toBeUndefined();
+		});
+	});
+
 	it('builds year-stats by date from the same expansion', async () => {
 		const routine = await data('POST', 'daily-routines/tasks/recurring', {
 			title: 'Stretch',

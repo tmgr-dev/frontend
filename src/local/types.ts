@@ -66,6 +66,8 @@ export interface LocalContext {
 	workspace: LocalWorkspace;
 	user: LocalUser;
 	now: () => Date;
+	/** IANA zone for "today" in routines; absent = the device zone. */
+	timeZone?: () => string | undefined;
 	files: LocalFiles;
 	/** Set by the plugin's pinned client from its headers; absent for the app's own client (kind 'user'). */
 	actor?: LocalActor;

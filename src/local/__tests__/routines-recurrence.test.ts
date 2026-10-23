@@ -453,3 +453,21 @@ describe('resolveCategory', () => {
 		expect(resolveCategory('unknown')).toEqual(general);
 	});
 });
+
+describe('localDate / localDateTime with a zone', () => {
+	const at = new Date('2026-06-10T15:30:45Z');
+
+	it('formats the wall clock of the given zone', () => {
+		expect(localDate(at, 'Asia/Tokyo')).toBe('2026-06-11');
+		expect(localDateTime(at, 'Asia/Tokyo')).toBe('2026-06-11T00:30:45');
+		expect(localDateTime(at, 'America/Los_Angeles')).toBe(
+			'2026-06-10T08:30:45',
+		);
+	});
+
+	it('uses the device zone when none is given', () => {
+		const device = new Date(2026, 5, 10, 8, 5, 9);
+		expect(localDate(device)).toBe('2026-06-10');
+		expect(localDateTime(device)).toBe('2026-06-10T08:05:09');
+	});
+});

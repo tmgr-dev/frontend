@@ -1,3 +1,5 @@
+import { wallNowIn, wallPartsIn } from '@/utils/timezone';
+
 export type Frequency = 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 
 export interface RecurrencePattern {
@@ -68,13 +70,24 @@ export const daysBetween = (from: string, to: string): number => {
 	return Math.round((b - a) / 86400000);
 };
 
-export const localDate = (now: Date): string =>
-	`${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
-
-export const localDateTime = (now: Date): string =>
-	`${localDate(now)}T${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(
-		now.getSeconds(),
+export const localDate = (now: Date, timeZone?: string): string => {
+	if (timeZone) return wallNowIn(timeZone, now).date;
+	return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(
+		now.getDate(),
 	)}`;
+};
+
+export const localDateTime = (now: Date, timeZone?: string): string => {
+	if (timeZone) {
+		const p = wallPartsIn(timeZone, now);
+		return `${localDate(now, timeZone)}T${pad2(p.hours)}:${pad2(
+			p.minutes,
+		)}:${pad2(p.seconds)}`;
+	}
+	return `${localDate(now)}T${pad2(now.getHours())}:${pad2(
+		now.getMinutes(),
+	)}:${pad2(now.getSeconds())}`;
+};
 
 // ── datetime string helpers (naive 'YYYY-MM-DDTHH:MM:SS', UTC-based Date math) ──
 

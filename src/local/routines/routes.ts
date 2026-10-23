@@ -79,7 +79,7 @@ export const addRoutineRoutes = (router: LocalRouter): LocalRouter =>
 		)
 		.add('GET', 'daily-routines/tasks/upcoming', async ({ ctx, query }) => {
 			const limit = Math.max(1, Number(query.get('limit') ?? 100) || 100);
-			const from = `${localDate(ctx.now())}T00:00:00`;
+			const from = `${localDate(ctx.now(), ctx.timeZone?.())}T00:00:00`;
 			const rows = await ctx.db.select<any>(
 				`SELECT ri.* FROM routine_instances ri JOIN routines r ON r.id = ri.routine_id
 				 WHERE r.deleted_at IS NULL AND r.archived_at IS NULL AND ri.scheduled_for >= ?
@@ -120,7 +120,11 @@ export const addRoutineRoutes = (router: LocalRouter): LocalRouter =>
 			async ({ ctx, params }) => {
 				const row = await requireActive(ctx, Number(params.id));
 				return instanceJson(
-					await completeForDate(ctx, row.id, localDate(ctx.now())),
+					await completeForDate(
+						ctx,
+						row.id,
+						localDate(ctx.now(), ctx.timeZone?.()),
+					),
 				);
 			},
 		)
@@ -137,7 +141,10 @@ export const addRoutineRoutes = (router: LocalRouter): LocalRouter =>
 			'daily-routines/tasks/:id(\\d+)/complete-on',
 			async ({ ctx, params, body, query }) => {
 				const row = await requireActive(ctx, Number(params.id));
-				const date = query.get('date') || body?.date || localDate(ctx.now());
+				const date =
+					query.get('date') ||
+					body?.date ||
+					localDate(ctx.now(), ctx.timeZone?.());
 				const instance = await completeForDate(ctx, row.id, date);
 				return {
 					instance_id: instance.id,
@@ -280,7 +287,7 @@ export const addRoutineRoutes = (router: LocalRouter): LocalRouter =>
 		})
 		.add('GET', 'daily-routines/expand/stats', async ({ ctx, query }) => {
 			const year = query.get('year');
-			const today = localDate(ctx.now());
+			const today = localDate(ctx.now(), ctx.timeZone?.());
 			const from =
 				query.get('from') ??
 				(year ? `${year}-01-01` : `${today.slice(0, 4)}-01-01`);

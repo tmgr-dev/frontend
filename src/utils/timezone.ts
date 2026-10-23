@@ -57,7 +57,7 @@ export const setTimeZoneSource = (source: (() => string) | null) => {
 export const currentTimeZone = (): string =>
 	timeZoneSource?.() || browserTimeZone() || 'UTC';
 
-const partsIn = (tz: string, at: Date) => {
+export const wallPartsIn = (tz: string, at: Date) => {
 	const parts = new Intl.DateTimeFormat('en-US', {
 		timeZone: tz,
 		hourCycle: 'h23',
@@ -66,6 +66,7 @@ const partsIn = (tz: string, at: Date) => {
 		day: '2-digit',
 		hour: '2-digit',
 		minute: '2-digit',
+		second: '2-digit',
 	}).formatToParts(at);
 	const get = (type: string) =>
 		Number(parts.find((p) => p.type === type)?.value);
@@ -75,13 +76,14 @@ const partsIn = (tz: string, at: Date) => {
 		day: get('day'),
 		hours: get('hour') % 24,
 		minutes: get('minute'),
+		seconds: get('second'),
 	};
 };
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
 export const wallNowIn = (tz: string, at: Date = new Date()): WallNow => {
-	const p = partsIn(tz, at);
+	const p = wallPartsIn(tz, at);
 	return {
 		date: `${p.year}-${pad2(p.month)}-${pad2(p.day)}`,
 		hours: p.hours,
@@ -93,17 +95,17 @@ export const todayIn = (tz: string, at: Date = new Date()): string =>
 	wallNowIn(tz, at).date;
 
 export const todayDateIn = (tz: string, at: Date = new Date()): Date => {
-	const p = partsIn(tz, at);
+	const p = wallPartsIn(tz, at);
 	return new Date(p.year, p.month - 1, p.day);
 };
 
 export const nowDateIn = (tz: string, at: Date = new Date()): Date => {
-	const p = partsIn(tz, at);
+	const p = wallPartsIn(tz, at);
 	return new Date(p.year, p.month - 1, p.day, p.hours, p.minutes);
 };
 
 const offsetLabel = (tz: string, at: Date): string => {
-	const p = partsIn(tz, at);
+	const p = wallPartsIn(tz, at);
 	const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hours, p.minutes);
 	const minutes = Math.round(
 		(asUtc - Math.floor(at.getTime() / 60000) * 60000) / 60000,

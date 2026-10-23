@@ -227,7 +227,8 @@ export const createRecurringRoutine = async (ctx: LocalContext, body: any) => {
 	if (pattern) await savePattern(ctx, routineId, pattern);
 	if (body?.scheduled_date) {
 		const date =
-			normalizeDateField(body.scheduled_date) ?? localDate(ctx.now());
+			normalizeDateField(body.scheduled_date) ??
+			localDate(ctx.now(), ctx.timeZone?.());
 		await upsertInstanceForDate(
 			ctx,
 			routineId,
@@ -246,7 +247,7 @@ export const quickCreateRoutine = async (ctx: LocalContext, body: any) => {
 		priority: 'medium',
 		settings: '[]',
 	});
-	const today = localDate(ctx.now());
+	const today = localDate(ctx.now(), ctx.timeZone?.());
 	const requestedDate = normalizeDateField(body?.scheduled_date ?? body?.date);
 	const date = requestedDate ?? today;
 	const time = resolveTimeInput(body?.scheduled_time ?? body?.time);
@@ -301,7 +302,8 @@ export const updateRoutine = async (ctx: LocalContext, row: any, body: any) => {
 		);
 	} else if (body?.scheduled_date) {
 		const date =
-			normalizeDateField(body.scheduled_date) ?? localDate(ctx.now());
+			normalizeDateField(body.scheduled_date) ??
+			localDate(ctx.now(), ctx.timeZone?.());
 		await upsertInstanceForDate(
 			ctx,
 			row.id,
@@ -726,7 +728,7 @@ export const expandRange = async (
 	for (const row of orphanRows)
 		results.push(buildOrphanEntry(row, resolveCategory));
 
-	const today = localDate(ctx.now());
+	const today = localDate(ctx.now(), ctx.timeZone?.());
 	for (const row of plainRows) {
 		const day2 = row.scheduled_date ?? today;
 		if (day2 >= from && day2 <= to)
@@ -742,7 +744,7 @@ export const expandRange = async (
 export const materializeDueInstances = async (
 	ctx: LocalContext,
 ): Promise<number> => {
-	const now = localDateTime(ctx.now());
+	const now = localDateTime(ctx.now(), ctx.timeZone?.());
 	const rows = await ctx.db.select<any>(
 		`SELECT rp.* FROM routine_patterns rp
 		 JOIN routines r ON r.id = rp.routine_id
