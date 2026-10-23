@@ -2218,6 +2218,23 @@ fn queue_skips_from_an_earlier_session_are_not_shown_before_this_run_has_a_pass(
 }
 
 #[test]
+fn a_paused_pass_does_not_make_stale_skips_visible() {
+    let rig = Rig::new();
+    rig.fake
+        .w()
+        .state
+        .skips
+        .insert("r/1".into(), STALE_GATE.into());
+    rig.fake.w().state.paused = true;
+    let s = settings(&[1], |_| {});
+    with_ap(&rig, &s, |ap| {
+        tick_any(ap);
+        assert_eq!(ap.view.counts.skipped, 0);
+        assert!(skip_events(ap).is_empty(), "{:?}", skip_events(ap));
+    });
+}
+
+#[test]
 fn a_skip_recorded_by_a_pass_of_this_run_is_still_reported() {
     let rig = Rig::new();
     rig.fake
@@ -2249,6 +2266,45 @@ fn a_finished_pickup_from_before_this_run_is_not_counted() {
         tick_any(ap);
         assert_eq!(ap.view.counts.failed, 0);
         assert!(!ap.events.iter().any(|e| e.kind == "failed"));
+    });
+}
+
+#[test]
+fn an_approved_pickup_from_before_this_run_still_waits_for_a_slot() {
+    let rig = Rig::new();
+    let mut old = pickup("old", 1, "approved", None);
+    old.created_at = "2026-10-12T09:00:00Z".into();
+    rig.fake.add(old);
+    let s = settings(&[1], |_| {});
+    with_ap(&rig, &s, |ap| {
+        tick_any(ap);
+        assert_eq!(ap.view.counts.queued, 1);
+        assert_eq!(ap.view.eligible, 1);
+    });
+}
+
+#[test]
+fn a_pending_pickup_from_before_this_run_is_still_queued() {
+    let rig = Rig::new();
+    let mut old = pickup("old", 1, "pending_approval", None);
+    old.created_at = "2026-10-12T09:00:00Z".into();
+    rig.fake.add(old);
+    let s = settings(&[1], |_| {});
+    with_ap(&rig, &s, |ap| {
+        tick_any(ap);
+        assert_eq!(ap.view.counts.queued, 1);
+    });
+}
+
+#[test]
+fn a_pickup_created_in_the_same_second_as_the_run_counts_as_current() {
+    let rig = Rig::new();
+    rig.fake.add(pickup("same", 1, "failed", None));
+    let mut s = settings(&[1], |_| {});
+    s.created_at = t0() + chrono::Duration::milliseconds(500);
+    with_ap(&rig, &s, |ap| {
+        tick_any(ap);
+        assert_eq!(ap.view.counts.failed, 1);
     });
 }
 

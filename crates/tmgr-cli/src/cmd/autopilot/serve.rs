@@ -654,7 +654,6 @@ impl<'a> Autopilot<'a> {
         match self.p.queue.pass(policy) {
             Ok(report) => {
                 self.pass_errors = 0;
-                self.passed = true;
                 if !report.enabled {
                     return self.finish(
                         StopReason::Requested("the queue was turned off".into()),
@@ -681,8 +680,9 @@ impl<'a> Autopilot<'a> {
                         _ => {}
                     }
                 }
-                if clean {
-                    self.settled = true;
+                if !report.paused {
+                    self.passed = true;
+                    self.settled |= clean;
                 }
             }
             Err(e) => {
@@ -879,10 +879,17 @@ impl<'a> Autopilot<'a> {
     }
 
     fn is_current(&self, p: &Pickup) -> bool {
-        self.queue_mode
-            || p.occupies()
+        if self.queue_mode || p.occupies() {
+            return true;
+        }
+        let finished = matches!(
+            classify(p, &self.killed),
+            Class::Done | Class::Held | Class::Failed(_) | Class::Taken
+        );
+        let start = self.s.created_at.timestamp();
+        !finished
             || DateTime::parse_from_rfc3339(&p.created_at)
-                .map_or(true, |at| at >= self.s.created_at)
+                .map_or(true, |at| at.timestamp() >= start)
     }
 
     fn observe(&mut self, st: &State, now: DateTime<Utc>) {
