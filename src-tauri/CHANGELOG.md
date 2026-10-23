@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.65 — 2026-10-23
+
+- Design: the remaining screens follow the current design in every theme: tasks, comments and attachments, Pages, the dashboard and board, onboarding and tours, files, invitations, dialogs and empty states. Old blue and navy colours are gone, and links and main buttons use your theme's accent.
+- Editors: in dark themes the task description editor's toolbars, popovers and blocks are dark too, and the Pages editor's links and chips use the theme accent.
+- Dialogs: dialog panels, confirmations and empty states are readable in light, dark and coloured themes.
+
 ## 0.9.64 — 2026-10-23
 
 - Timezone: Settings → Theme has a Timezone setting. On first sign-in the app saves your device timezone, and you can change it there. Daily routines fire and days start in this timezone.
