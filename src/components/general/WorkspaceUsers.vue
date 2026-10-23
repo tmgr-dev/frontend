@@ -20,7 +20,7 @@
 						:name="user.name"
 						:has-avatar="user.has_avatar ?? false"
 						:size="32"
-						class="!bg-transparent !text-white"
+						class="!bg-transparent !text-inherit"
 					/>
 				</button>
 			</AppTooltip>
@@ -170,12 +170,12 @@
 	}
 
 	const avatarPalette = [
-		'bg-status-fix',
-		'bg-status-progress',
-		'bg-status-testing',
-		'bg-status-done',
-		'bg-status-todo',
-		'bg-brand',
+		'bg-status-fix-bg text-status-fix-fg',
+		'bg-status-progress-bg text-status-progress-fg',
+		'bg-status-testing-bg text-status-testing-fg',
+		'bg-status-done-bg text-status-done-fg',
+		'bg-status-todo-bg text-status-todo-fg',
+		'bg-brand-bg text-brand-fg',
 	];
 
 	function avatarColor(id: number): string {

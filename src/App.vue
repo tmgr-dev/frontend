@@ -26,10 +26,7 @@
 			<WindowControls />
 		</div>
 
-		<div
-			class="font-sans text-tmgr-blue dark:text-tmgr-gray"
-			:key="$store.state.appRerenderKey"
-		>
+		<div class="font-sans text-ink" :key="$store.state.appRerenderKey">
 			<div class="flex min-h-screen">
 				<CustomSidebar>
 					<router-view v-slot="{ Component, route }">
