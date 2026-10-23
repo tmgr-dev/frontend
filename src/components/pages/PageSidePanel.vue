@@ -12,7 +12,7 @@
 				<li v-for="entry in toc" :key="`${entry.text}-${entry.occurrence}`">
 					<button
 						type="button"
-						class="block w-full truncate text-left text-gray-700 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400"
+						class="block w-full truncate text-left text-ink-muted hover:text-brand"
 						@click="$emit('toc', entry)"
 					>
 						{{ entry.text }}
@@ -31,13 +31,13 @@
 				<li v-for="link in backlinks" :key="link.id">
 					<router-link
 						:to="`/${workspaceCode}/pages/${link.slug}`"
-						class="block truncate text-blue-600 hover:underline dark:text-blue-400"
+						class="block truncate text-brand hover:underline"
 					>
 						{{ link.title }}
 					</router-link>
 				</li>
 			</ul>
-			<p v-else class="text-gray-400 dark:text-gray-500">None</p>
+			<p v-else class="text-ink-faint">None</p>
 		</section>
 
 		<section data-testid="page-recent-versions">
@@ -49,7 +49,7 @@
 				</h2>
 				<router-link
 					:to="`/${workspaceCode}/pages/${slug}/versions`"
-					class="text-xs text-blue-600 hover:underline dark:text-blue-400"
+					class="text-xs text-brand hover:underline"
 				>
 					All
 				</router-link>
@@ -58,30 +58,28 @@
 				<li v-for="version in versions" :key="version.version">
 					<router-link
 						:to="`/${workspaceCode}/pages/${slug}/versions?v=${version.version}`"
-						class="block rounded p-1 hover:bg-gray-100 dark:hover:bg-gray-800"
+						class="block rounded p-1 hover:bg-surface-hover"
 					>
 						<span class="flex items-center gap-1.5">
-							<span class="font-medium text-gray-800 dark:text-gray-100"
-								>v{{ version.version }}</span
-							>
+							<span class="font-medium text-ink">v{{ version.version }}</span>
 							<AuthorBadge
 								:author="authorOf(version.author)"
 								:size="14"
 								:show-label="false"
 							/>
-							<span class="truncate text-xs text-gray-500 dark:text-gray-400">{{
+							<span class="truncate text-xs text-ink-subtle">{{
 								formatDate(version.created_at)
 							}}</span>
 						</span>
 						<span
 							v-if="version.summary"
-							class="block truncate text-xs text-gray-500 dark:text-gray-400"
+							class="block truncate text-xs text-ink-subtle"
 							>{{ version.summary }}</span
 						>
 					</router-link>
 				</li>
 			</ul>
-			<p v-else class="text-gray-400 dark:text-gray-500">None</p>
+			<p v-else class="text-ink-faint">None</p>
 		</section>
 
 		<EntityGraphSection

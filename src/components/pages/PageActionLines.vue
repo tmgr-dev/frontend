@@ -11,12 +11,10 @@
 				:key="line.line"
 				class="flex items-start justify-between gap-2"
 			>
-				<span class="min-w-0 break-words text-gray-700 dark:text-gray-300">{{
-					line.text
-				}}</span>
+				<span class="min-w-0 break-words text-ink-muted">{{ line.text }}</span>
 				<button
 					type="button"
-					class="shrink-0 rounded px-1.5 py-0.5 text-xs text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+					class="shrink-0 rounded px-1.5 py-0.5 text-xs text-brand hover:bg-surface-hover"
 					data-testid="action-to-task"
 					@click="$emit('convert', line.text)"
 				>

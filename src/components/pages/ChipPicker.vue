@@ -3,7 +3,7 @@
 		<span
 			v-for="chip in chips"
 			:key="chip.key"
-			class="inline-flex items-center gap-1 rounded-full bg-blue-100 py-0.5 pl-2.5 pr-1 text-xs text-blue-800 dark:bg-blue-900/40 dark:text-blue-200"
+			class="inline-flex items-center gap-1 rounded-full bg-tag-bg py-0.5 pl-2.5 pr-1 text-xs text-tag-fg"
 			data-testid="chip"
 		>
 			<button
@@ -15,7 +15,7 @@
 			</button>
 			<button
 				type="button"
-				class="rounded-full p-0.5 hover:bg-blue-200 dark:hover:bg-blue-800"
+				class="rounded-full p-0.5 hover:text-ink"
 				aria-label="Remove"
 				@click="$emit('remove', chip.key)"
 			>
@@ -27,7 +27,7 @@
 			<button
 				v-if="!open"
 				type="button"
-				class="inline-flex items-center gap-1 rounded-full border border-dashed border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+				class="inline-flex items-center gap-1 rounded-full border border-dashed border-line-strong px-2 py-0.5 text-xs text-ink-muted hover:bg-surface-hover"
 				@click="show"
 			>
 				<Plus class="h-3 w-3" />
@@ -38,7 +38,7 @@
 					ref="inputRef"
 					v-model="query"
 					type="text"
-					class="w-48 rounded border border-gray-300 bg-white px-2 py-0.5 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+					class="w-48 rounded border border-input bg-background px-2 py-0.5 text-sm text-ink"
 					:placeholder="placeholder"
 					data-testid="chip-picker-input"
 					@input="runSearch"
@@ -47,19 +47,19 @@
 				/>
 				<ul
 					v-if="items.length"
-					class="absolute left-0 top-full z-30 mt-1 max-h-60 w-64 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 text-sm shadow-lg dark:border-gray-700 dark:bg-gray-800"
+					class="absolute left-0 top-full z-30 mt-1 max-h-60 w-64 overflow-y-auto rounded-lg border border-line bg-popover py-1 text-sm text-popover-foreground shadow-lg"
 					role="listbox"
 				>
 					<li
 						v-for="item in items"
 						:key="item.key"
 						role="option"
-						class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-gray-800 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700"
+						class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-ink hover:bg-surface-hover"
 						@mousedown.prevent="choose(item)"
 					>
 						<span
 							v-if="item.hint"
-							class="w-14 shrink-0 text-2xs uppercase tracking-wide text-gray-400 dark:text-gray-500"
+							class="w-14 shrink-0 text-2xs uppercase tracking-wide text-ink-faint"
 							>{{ item.hint }}</span
 						>
 						<span class="truncate">{{ item.label }}</span>

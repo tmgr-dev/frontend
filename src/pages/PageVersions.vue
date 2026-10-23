@@ -5,12 +5,7 @@
 		</div>
 		<div v-else-if="loadError" role="alert" class="py-16 text-center">
 			<p class="text-ink">Failed to load history</p>
-			<button
-				class="mt-2 text-blue-600 underline dark:text-blue-400"
-				@click="load"
-			>
-				Retry
-			</button>
+			<button class="mt-2 text-brand underline" @click="load">Retry</button>
 		</div>
 
 		<template v-else-if="page">
@@ -28,32 +23,29 @@
 							class="w-full rounded-md border px-3 py-2 text-left text-sm"
 							:class="
 								selected === version.version
-									? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/20'
-									: 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800'
+									? 'border-brand bg-brand-bg'
+									: 'border-line hover:bg-surface-hover'
 							"
 							:data-testid="`version-${version.version}`"
 							@click="select(version.version)"
 						>
 							<span class="flex items-center justify-between gap-2">
-								<span class="font-medium text-gray-900 dark:text-gray-100"
-									>v{{ version.version }}</span
-								>
+								<span class="font-medium text-ink">v{{ version.version }}</span>
 								<span
 									v-if="version.version === page.version"
-									class="rounded bg-green-100 px-1.5 text-2xs text-green-800 dark:bg-green-900/40 dark:text-green-300"
+									class="rounded bg-status-done-bg px-1.5 text-2xs text-status-done-fg"
 									>current</span
 								>
 							</span>
 							<span class="mt-1 block">
 								<AuthorBadge :author="authorOf(version.author)" :size="16" />
 							</span>
-							<span
-								class="mt-1 block text-xs text-gray-500 dark:text-gray-400"
-								>{{ formatDate(version.created_at) }}</span
-							>
+							<span class="mt-1 block text-xs text-ink-subtle">{{
+								formatDate(version.created_at)
+							}}</span>
 							<span
 								v-if="version.summary"
-								class="mt-1 block truncate text-xs text-gray-600 dark:text-gray-300"
+								class="mt-1 block truncate text-xs text-ink-muted"
 								>{{ version.summary }}</span
 							>
 						</button>
@@ -68,7 +60,7 @@
 					<template v-else-if="snapshot">
 						<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
 							<div
-								class="flex items-center gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-800"
+								class="flex items-center gap-1 rounded-lg bg-surface-sunken p-1"
 							>
 								<button
 									v-for="option in modes"
@@ -77,8 +69,8 @@
 									class="rounded-md px-3 py-1 text-sm transition-colors"
 									:class="
 										mode === option.value
-											? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
-											: 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+											? 'bg-surface text-ink shadow-sm'
+											: 'text-ink-subtle hover:text-ink'
 									"
 									@click="mode = option.value"
 								>

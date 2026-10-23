@@ -71,12 +71,12 @@
 							>
 								<span
 									v-if="selected.status"
-									class="rounded-md bg-violet-100 px-2 py-1 text-violet-800 dark:bg-violet-500/20 dark:text-violet-200"
+									class="rounded-md bg-status-testing-bg px-2 py-1 text-status-testing-fg"
 									>{{ statusText(selected) }}</span
 								>
 								<span
 									v-if="selected.category"
-									class="rounded-md bg-blue-100 px-2 py-1 text-blue-800 dark:bg-blue-500/20 dark:text-blue-200"
+									class="rounded-md bg-status-todo-bg px-2 py-1 text-status-todo-fg"
 									>{{ selected.category }}</span
 								>
 							</div>

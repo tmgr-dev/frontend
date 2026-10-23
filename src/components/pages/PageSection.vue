@@ -1,6 +1,6 @@
 <template>
 	<section
-		class="my-4 -ml-4 rounded-lg border-l-[3px] border-violet-400 bg-violet-50/70 py-3 pl-[13px] pr-4 dark:border-violet-400/70 dark:bg-violet-500/10"
+		class="my-4 -ml-4 rounded-lg border-l-[3px] border-status-testing bg-status-testing-bg py-3 pl-[13px] pr-4"
 		:data-section-id="section.id"
 		data-testid="managed-section"
 		:data-read-only="readOnly ? 'true' : undefined"
@@ -11,24 +11,24 @@
 					v-if="author"
 					:author="author"
 					:size="20"
-					class="text-violet-700 dark:text-violet-300"
+					class="text-status-testing-fg"
 				/>
 				<span
 					v-else
-					class="inline-flex items-center gap-1.5 text-sm font-semibold text-violet-700 dark:text-violet-300"
+					class="inline-flex items-center gap-1.5 text-sm font-semibold text-status-testing-fg"
 				>
 					<component :is="ownerIcon" class="h-4 w-4" />
 					{{ label }}
 				</span>
 				<span
-					class="rounded bg-violet-100 px-1.5 py-0.5 text-2xs uppercase tracking-wide text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
+					class="rounded bg-surface-active px-1.5 py-0.5 text-2xs uppercase tracking-wide text-status-testing-fg"
 					>{{ section.owner }}</span
 				>
 			</span>
 			<button
 				v-if="!editing && !readOnly"
 				type="button"
-				class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-violet-700 hover:bg-violet-100 dark:text-violet-300 dark:hover:bg-violet-900/40"
+				class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-status-testing-fg hover:bg-surface-active"
 				@click="startEdit"
 			>
 				<Pencil class="h-3.5 w-3.5" />
@@ -40,13 +40,13 @@
 			<textarea
 				v-model="draft"
 				rows="8"
-				class="w-full rounded-md border border-gray-300 bg-white p-2 font-mono text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+				class="w-full rounded-md border border-input bg-background p-2 font-mono text-sm text-ink"
 				data-testid="section-textarea"
 			></textarea>
 			<div class="mt-2 flex justify-end gap-2">
 				<button
 					type="button"
-					class="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+					class="rounded-md px-3 py-1.5 text-sm text-ink-muted hover:bg-surface-hover"
 					:disabled="saving"
 					@click="editing = false"
 				>
@@ -54,7 +54,7 @@
 				</button>
 				<button
 					type="button"
-					class="rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+					class="rounded-md bg-status-testing-fg px-3 py-1.5 text-sm font-medium text-surface-base hover:opacity-90 disabled:opacity-50"
 					:disabled="saving"
 					@click="save"
 				>

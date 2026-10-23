@@ -12,7 +12,7 @@
 						: 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
 					: '',
 				flat ? 'pl-2' : '',
-				zone.dragging.value ? 'ring-2 ring-blue-500' : '',
+				zone.dragging.value ? 'ring-2 ring-brand' : '',
 			]"
 			:data-page-id="node.id"
 			v-on="zone.handlers"
@@ -20,7 +20,7 @@
 			<button
 				v-if="!flat && node.children.length"
 				type="button"
-				class="flex h-7 w-6 shrink-0 items-center justify-center rounded text-ink-subtle hover:text-ink dark:text-gray-400 dark:hover:text-gray-200"
+				class="flex h-7 w-6 shrink-0 items-center justify-center rounded text-ink-subtle hover:text-ink"
 				:aria-label="isExpanded ? 'Collapse' : 'Expand'"
 				@click.stop="ctx.toggle(node.id)"
 			>
@@ -39,10 +39,7 @@
 				draggable="false"
 				class="flex h-7 min-w-0 flex-1 items-center gap-1.5"
 			>
-				<Pin
-					v-if="node.pinned"
-					class="h-3 w-3 shrink-0 text-ink-subtle dark:text-gray-400"
-				/>
+				<Pin v-if="node.pinned" class="h-3 w-3 shrink-0 text-ink-subtle" />
 				<span class="truncate">{{ node.title }}</span>
 			</router-link>
 			<DropdownMenu>
@@ -116,9 +113,7 @@
 			group="pages"
 			item-key="id"
 			class="ml-3 min-h-[8px] border-l pl-1"
-			:class="
-				onPage ? 'border-line' : 'border-sidebar-border dark:border-gray-700'
-			"
+			:class="onPage ? 'border-line' : 'border-sidebar-border'"
 			:data-parent-id="node.id"
 			:force-fallback="true"
 			:fallback-on-body="true"
@@ -205,7 +200,7 @@
 			const ctx = inject(PAGES_TREE_KEY) as PagesTreeContext;
 			// Not a static class: radix-vue's as-child Slot deletes `class` from the child's props, and static props are shared by every row.
 			const actionsClass =
-				'flex h-6 w-6 shrink-0 items-center justify-center rounded text-ink-subtle opacity-0 hover:bg-black/5 hover:text-ink focus-visible:opacity-100 group-focus-within/page:opacity-100 group-hover/page:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200';
+				'flex h-6 w-6 shrink-0 items-center justify-center rounded text-ink-subtle opacity-0 hover:bg-surface-active hover:text-ink focus-visible:opacity-100 group-focus-within/page:opacity-100 group-hover/page:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100';
 			const route = useRoute();
 			const isExpanded = computed(() => ctx.expanded.value.has(props.node.id));
 			const showDropZone = computed(

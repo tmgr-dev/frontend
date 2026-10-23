@@ -7,7 +7,7 @@
 		>
 			<select
 				:value="alias.source"
-				class="rounded border bg-white px-2 py-0.5 text-sm text-gray-900 dark:bg-gray-800 dark:text-gray-100"
+				class="rounded border bg-background px-2 py-0.5 text-sm text-ink"
 				:class="fieldClass(index, 'source')"
 				@change="
 					patch(index, 'source', ($event.target as HTMLSelectElement).value)
@@ -21,7 +21,7 @@
 				type="text"
 				:value="alias.native_id"
 				placeholder="Identifier"
-				class="w-36 rounded border bg-white px-2 py-0.5 text-sm text-gray-900 dark:bg-gray-800 dark:text-gray-100"
+				class="w-36 rounded border bg-background px-2 py-0.5 text-sm text-ink"
 				:class="fieldClass(index, 'native_id')"
 				@change="
 					patch(index, 'native_id', ($event.target as HTMLInputElement).value)
@@ -31,7 +31,7 @@
 				type="text"
 				:value="alias.display"
 				placeholder="Display name"
-				class="w-36 rounded border bg-white px-2 py-0.5 text-sm text-gray-900 dark:bg-gray-800 dark:text-gray-100"
+				class="w-36 rounded border bg-background px-2 py-0.5 text-sm text-ink"
 				:class="fieldClass(index, 'display')"
 				@change="
 					patch(index, 'display', ($event.target as HTMLInputElement).value)
@@ -39,7 +39,7 @@
 			/>
 			<button
 				type="button"
-				class="rounded p-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+				class="rounded p-1 text-ink-subtle hover:bg-surface-hover"
 				aria-label="Remove alias"
 				@click="remove(index)"
 			>
@@ -48,7 +48,7 @@
 		</div>
 		<button
 			type="button"
-			class="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
+			class="inline-flex items-center gap-1 text-xs text-brand hover:underline"
 			data-testid="alias-add"
 			@click="add"
 		>
@@ -101,8 +101,8 @@
 				);
 			const fieldClass = (index: number, field: string) =>
 				props.errors[`aliases.${index}.${field}`]
-					? 'border-red-500'
-					: 'border-gray-300 dark:border-gray-600';
+					? 'border-destructive'
+					: 'border-input';
 			return { sources: ALIAS_SOURCES, patch, add, remove, fieldClass };
 		},
 	});

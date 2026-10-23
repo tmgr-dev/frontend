@@ -1,7 +1,7 @@
 <template>
 	<SidebarGroup
 		class="group-data-[collapsible=icon]:hidden"
-		:class="zone.dragging.value ? 'rounded-md ring-2 ring-blue-500' : ''"
+		:class="zone.dragging.value ? 'rounded-md ring-2 ring-brand' : ''"
 		data-testid="pages-sidebar-section"
 		data-pages-tree="sidebar"
 		data-tour="pages.tree"

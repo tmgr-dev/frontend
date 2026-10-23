@@ -16,7 +16,7 @@
 				<div>
 					<h3 class="mb-1 text-sm font-semibold">Their version</h3>
 					<pre
-						class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-gray-200 bg-gray-50 p-2 text-xs dark:border-gray-700 dark:bg-gray-800"
+						class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-line bg-surface-sunken p-2 text-xs"
 						data-testid="conflict-theirs"
 						>{{ theirs.body }}</pre
 					>
@@ -24,7 +24,7 @@
 				<div>
 					<h3 class="mb-1 text-sm font-semibold">Your draft</h3>
 					<pre
-						class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-gray-200 bg-gray-50 p-2 text-xs dark:border-gray-700 dark:bg-gray-800"
+						class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-line bg-surface-sunken p-2 text-xs"
 						data-testid="conflict-mine"
 						>{{ draftBody }}</pre
 					>
@@ -34,7 +34,7 @@
 					<PageDiff :before="theirs.body" :after="draftBody" />
 				</div>
 			</div>
-			<p v-else class="text-sm text-gray-600 dark:text-gray-300">
+			<p v-else class="text-sm text-ink-muted">
 				Take theirs — load version {{ theirs.version }} and discard your draft.
 				Keep mine — save your text over version {{ theirs.version }}.
 			</p>

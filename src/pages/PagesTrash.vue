@@ -8,7 +8,7 @@
 			<template v-if="loaded && !failed && pages.length" #actions>
 				<button
 					type="button"
-					class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+					class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm text-status-fix-fg hover:bg-surface-hover"
 					data-testid="pages-archive-empty"
 					@click="openEmpty"
 				>
@@ -44,7 +44,7 @@
 				<div class="ml-auto flex shrink-0 gap-2 whitespace-nowrap">
 					<button
 						type="button"
-						class="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-300 px-3 text-sm text-ink hover:bg-surface-hover disabled:opacity-50 dark:border-gray-600"
+						class="inline-flex h-8 items-center gap-1.5 rounded-md border border-input px-3 text-sm text-ink hover:bg-surface-hover disabled:opacity-50"
 						:disabled="restoring === page.id"
 						@click="restore(page)"
 					>
@@ -53,7 +53,7 @@
 					</button>
 					<button
 						type="button"
-						class="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-300 px-3 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
+						class="inline-flex h-8 items-center gap-1.5 rounded-md border border-status-fix px-3 text-sm text-status-fix-fg hover:bg-surface-hover disabled:opacity-50"
 						:disabled="busy"
 						@click="purging = page"
 					>
@@ -106,7 +106,7 @@
 							v-model="confirmWord"
 							data-selectable
 							autocomplete="off"
-							class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none dark:border-input dark:bg-background"
+							class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none"
 						/>
 					</label>
 					<AlertDialogFooter>
