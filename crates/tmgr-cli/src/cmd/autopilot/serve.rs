@@ -265,6 +265,7 @@ pub struct Autopilot<'a> {
     notified_limit: Option<(String, bool)>,
     pushes: Option<bool>,
     settled: bool,
+    passed: bool,
     pass_errors: u32,
     state_errors: u32,
     view: View,
@@ -342,6 +343,7 @@ impl<'a> Autopilot<'a> {
             notified_limit: None,
             pushes: None,
             settled: false,
+            passed: false,
             pass_errors: 0,
             state_errors: 0,
             view: View::default(),
@@ -652,6 +654,7 @@ impl<'a> Autopilot<'a> {
         match self.p.queue.pass(policy) {
             Ok(report) => {
                 self.pass_errors = 0;
+                self.passed = true;
                 if !report.enabled {
                     return self.finish(
                         StopReason::Requested("the queue was turned off".into()),
@@ -877,7 +880,11 @@ impl<'a> Autopilot<'a> {
 
     fn observe(&mut self, st: &State, now: DateTime<Utc>) {
         let mut view = View::default();
-        let skips = skipped_ids(st);
+        let skips = if self.passed {
+            skipped_ids(st)
+        } else {
+            BTreeSet::new()
+        };
         let sel_set = self.selected(st);
         let sel: Vec<i64> = sel_set.iter().copied().collect();
         view.counts.total = sel.len() as u32;

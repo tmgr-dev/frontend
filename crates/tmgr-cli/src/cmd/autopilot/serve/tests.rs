@@ -2157,6 +2157,61 @@ fn a_dry_run_ignores_old_failed_pickups_and_shows_the_tasks_as_planned() {
     assert_eq!(st.plan.unwrap().items[0].state, "planned (dry run)");
 }
 
+const STALE_GATE: &str = "gate:the task has no approval for agent runs (sign it first)";
+
+fn skip_events(ap: &Autopilot) -> Vec<String> {
+    ap.events
+        .iter()
+        .filter(|e| e.kind == "skipped")
+        .map(|e| e.text.clone())
+        .collect()
+}
+
+#[test]
+fn queue_skips_from_an_earlier_session_are_not_shown_before_this_run_has_a_pass() {
+    let rig = orch_rig(&[(1, "", "eco"), (2, "", "eco")], &[]);
+    rig.fake.w().orch_poll = Poll::Running;
+    for id in [1, 2] {
+        rig.fake
+            .w()
+            .state
+            .skips
+            .insert(format!("r/{id}"), STALE_GATE.into());
+    }
+    let s = orch_settings(&[1, 2]);
+    with_ap(&rig, &s, |ap| {
+        tick_any(ap);
+        tick_any(ap);
+        assert_eq!(ap.view.counts.skipped, 0);
+        assert!(skip_events(ap).is_empty(), "{:?}", skip_events(ap));
+        rig.fake.w().state.skips.clear();
+        tick_any(ap);
+        assert_eq!(ap.view.counts.skipped, 0);
+        assert!(skip_events(ap).is_empty());
+    });
+}
+
+#[test]
+fn a_skip_recorded_by_a_pass_of_this_run_is_still_reported() {
+    let rig = Rig::new();
+    rig.fake
+        .w()
+        .state
+        .skips
+        .insert("r/1".into(), STALE_GATE.into());
+    let s = settings(&[1], |_| {});
+    with_ap(&rig, &s, |ap| {
+        tick_any(ap);
+        assert_eq!(ap.view.counts.skipped, 1);
+        let events = skip_events(ap);
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert!(
+            events[0].contains("no approval for agent runs"),
+            "{events:?}"
+        );
+    });
+}
+
 #[test]
 fn a_run_limited_to_chosen_tasks_does_not_count_the_rest_as_new() {
     let rig = Rig::new();
