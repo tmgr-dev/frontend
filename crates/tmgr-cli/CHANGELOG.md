@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.51
 
 - Autopilot no longer reports signed tasks as "skipped: the task has no approval for agent runs" right after it starts. Those lines came from an older queue session saved on this machine, before the tasks were signed; autopilot now shows a skip only after the queue has checked the task again in this run. The counters on the status screen no longer include failed or finished tasks from earlier runs either; a task that is still running or waiting from an earlier run is still shown.
 - Two tasks with the same key (for example two tasks titled `TM-210: ...`) no longer stop the run with "task key TM-210 appears twice": the clashing keys get distinct labels (`task-<id>`) and the order you set is matched by task id.
