@@ -17,7 +17,7 @@
 		/>
 		<p
 			v-if="runLogged"
-			class="text-sm font-medium text-green-700 dark:text-green-400"
+			class="text-sm font-medium text-status-done-fg"
 			role="status"
 			data-testid="run-logged"
 		>

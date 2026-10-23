@@ -31,10 +31,10 @@
 			);
 			const dot = computed(() =>
 				props.state === 'connected'
-					? 'bg-green-500'
+					? 'bg-status-done'
 					: props.state === 'stalled'
-					? 'bg-amber-500'
-					: 'animate-pulse bg-red-400',
+					? 'bg-status-progress'
+					: 'animate-pulse bg-status-fix',
 			);
 			return { text, dot };
 		},

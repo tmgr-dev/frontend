@@ -3,7 +3,7 @@
 		<Teleport to="body">
 			<div
 				ref="root"
-				class="fixed inset-0 z-[55] overflow-y-auto bg-surface px-4 pb-[var(--screen-pad)] pt-6 dark:bg-gray-950 sm:pb-12"
+				class="fixed inset-0 z-[55] overflow-y-auto bg-surface-base px-4 pb-[var(--screen-pad)] pt-6 sm:pb-12"
 				:style="{
 					'--screen-pad': consentOpen ? `${consentPad + 24}px` : '3rem',
 				}"
@@ -41,11 +41,7 @@
 						/>
 					</div>
 
-					<p
-						v-if="error"
-						class="mt-4 text-sm text-red-600 dark:text-red-400"
-						role="alert"
-					>
+					<p v-if="error" class="mt-4 text-sm text-status-fix-fg" role="alert">
 						{{ error }}
 					</p>
 
@@ -81,7 +77,7 @@
 							v-for="(dot, index) in dots"
 							:key="dot"
 							class="h-2 w-2 rounded-full"
-							:class="index === 0 ? 'bg-brand' : 'bg-line dark:bg-gray-700'"
+							:class="index === 0 ? 'bg-brand' : 'bg-line'"
 						/>
 					</ol>
 				</main>

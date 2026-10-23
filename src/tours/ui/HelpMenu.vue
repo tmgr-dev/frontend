@@ -3,7 +3,7 @@
 		<DropdownMenuTrigger as-child>
 			<button
 				type="button"
-				class="flex h-8 w-8 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink dark:hover:bg-gray-800"
+				class="flex h-8 w-8 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
 				aria-label="Help and tours"
 				data-testid="help-menu"
 			>

@@ -12,7 +12,7 @@
 		</button>
 		<div
 			v-else
-			class="rounded-card border border-line bg-surface p-4 dark:border-gray-700 dark:bg-gray-900"
+			class="rounded-card border border-line bg-surface p-4"
 			role="region"
 			aria-labelledby="checklist-title"
 		>
@@ -45,7 +45,7 @@
 						v-if="menuOpen"
 						role="menu"
 						@keydown.esc="menuOpen = false"
-						class="absolute right-0 z-10 mt-1 w-44 rounded-md border border-line bg-surface py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+						class="absolute right-0 z-10 mt-1 w-44 rounded-md border border-line bg-surface py-1 shadow-lg"
 					>
 						<button
 							type="button"
@@ -61,7 +61,7 @@
 				</div>
 			</div>
 			<div
-				class="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-sunken dark:bg-gray-800"
+				class="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-sunken"
 				role="progressbar"
 				aria-labelledby="checklist-title"
 				aria-valuemin="0"
@@ -73,7 +73,7 @@
 					:style="{ width: progressWidth }"
 				/>
 			</div>
-			<ul class="mt-2 flex flex-col divide-y divide-line dark:divide-gray-700">
+			<ul class="mt-2 flex flex-col divide-y divide-line">
 				<li
 					v-for="item in checklist.items"
 					:key="item.id"

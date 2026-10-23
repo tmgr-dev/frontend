@@ -27,11 +27,7 @@
 				</label>
 			</fieldset>
 
-			<p
-				v-if="failed"
-				role="alert"
-				class="text-sm text-red-600 dark:text-red-400"
-			>
+			<p v-if="failed" role="alert" class="text-sm text-status-fix-fg">
 				Could not save your choice. Please try again.
 			</p>
 
