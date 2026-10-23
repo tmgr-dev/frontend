@@ -14,12 +14,12 @@
 
 					<!-- Error State -->
 					<div v-else-if="error">
-						<p class="mb-4 text-red-600">{{ error }}</p>
+						<p class="mb-4 text-status-fix-fg">{{ error }}</p>
 						<a
 							href="#"
 							@click="loginWithCorrectEmail()"
 							v-if="!user || errorCode === 403"
-							class="text-blue-600 hover:underline"
+							class="text-brand hover:underline"
 						>
 							Login with correct email
 						</a>
@@ -27,7 +27,9 @@
 
 					<!-- Success State -->
 					<div v-else-if="accepted">
-						<div class="mb-4 rounded-lg bg-green-100 p-4 text-green-800">
+						<div
+							class="mb-4 rounded-lg bg-status-done-bg p-4 text-status-done-fg"
+						>
 							<p class="font-semibold">
 								You have successfully joined the workspace!
 							</p>
@@ -35,7 +37,7 @@
 						<a
 							href="#"
 							@click="goToWorkspace()"
-							class="text-blue-600 hover:underline"
+							class="text-brand hover:underline"
 						>
 							Go to workspace
 						</a>
@@ -43,14 +45,9 @@
 
 					<!-- Accept State -->
 					<div v-else>
-						<button
-							@click="accept"
-							class="rounded bg-blue-600 px-4 py-2 font-bold text-white outline-none transition hover:bg-blue-700 disabled:bg-blue-300"
-							type="button"
-							:disabled="loading"
-						>
+						<Button @click="accept" type="button" :disabled="loading">
 							Accept Invitation
-						</button>
+						</Button>
 					</div>
 				</div>
 			</template>
@@ -65,11 +62,14 @@
 		getWorkspaces,
 		workspaceInvitationInfo,
 	} from '@/actions/tmgr/workspaces';
+	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { requestCache } from '@/utils/requestCache';
 
 	export default {
 		name: 'WorkspaceInvitation',
+
+		components: { Button },
 
 		data: () => ({
 			loading: true,

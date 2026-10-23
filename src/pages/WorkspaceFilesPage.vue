@@ -8,9 +8,7 @@
 				>
 			</template>
 			<template #actions>
-				<div
-					class="flex items-center gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-800"
-				>
+				<div class="flex items-center gap-1 rounded-lg bg-surface-sunken p-1">
 					<button
 						v-for="option in filters"
 						:key="String(option.value)"
@@ -18,8 +16,8 @@
 						class="rounded-md px-3 py-1 text-sm transition-colors"
 						:class="
 							imagesOnly === option.value
-								? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
-								: 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+								? 'bg-surface text-ink shadow-sm'
+								: 'text-ink-muted hover:text-ink'
 						"
 						@click="setFilter(option.value)"
 					>
@@ -39,10 +37,10 @@
 
 		<div
 			v-else-if="!files.length && !loadError"
-			class="rounded-lg border-2 border-dashed border-gray-300 py-16 text-center dark:border-gray-700"
+			class="rounded-lg border-2 border-dashed border-line-strong py-16 text-center"
 		>
-			<FileIcon :size="32" class="mx-auto mb-2 text-gray-400" />
-			<p class="text-sm text-gray-500 dark:text-gray-400">
+			<FileIcon :size="32" class="mx-auto mb-2 text-ink-faint" />
+			<p class="text-sm text-ink-subtle">
 				{{
 					imagesOnly
 						? 'No images attached anywhere in this workspace yet'
@@ -56,7 +54,7 @@
 				v-for="file in files"
 				:key="file.id"
 				:ref="(element) => observePreview(file, element)"
-				class="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800"
+				class="flex items-center gap-3 rounded-lg border border-line bg-surface-sunken p-3"
 			>
 				<div class="flex h-12 w-12 flex-shrink-0 items-center justify-center">
 					<button
@@ -76,27 +74,19 @@
 							class="h-12 w-12 rounded object-cover"
 						/>
 					</button>
-					<FileIcon
-						v-else
-						:size="20"
-						class="text-gray-500 dark:text-gray-400"
-					/>
+					<FileIcon v-else :size="20" class="text-ink-subtle" />
 				</div>
 
 				<div class="min-w-0 flex-1">
-					<p
-						class="truncate text-sm font-medium text-gray-900 dark:text-gray-100"
-					>
+					<p class="truncate text-sm font-medium text-ink">
 						{{ file.name }}
 					</p>
-					<p
-						class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
-					>
+					<p class="flex flex-wrap items-center gap-2 text-xs text-ink-subtle">
 						<span>{{ formatFileSize(file.size) }}</span>
 						<span aria-hidden="true">·</span>
 						<button
 							type="button"
-							class="truncate text-left text-blue-600 hover:underline dark:text-blue-400"
+							class="truncate text-left text-brand hover:underline"
 							:title="file.task.title || ''"
 							@click="openTask(file)"
 						>
@@ -107,7 +97,7 @@
 
 				<button
 					type="button"
-					class="flex-shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 dark:hover:bg-gray-700"
+					class="flex-shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-surface-active hover:text-ink"
 					title="Download"
 					@click="download(file)"
 				>
@@ -122,18 +112,16 @@
 		>
 			<button
 				type="button"
-				class="rounded-md px-3 py-1.5 text-sm text-gray-600 disabled:opacity-40 dark:text-gray-300"
+				class="rounded-md px-3 py-1.5 text-sm text-ink-muted disabled:opacity-40"
 				:disabled="page <= 1 || loading"
 				@click="goTo(page - 1)"
 			>
 				Previous
 			</button>
-			<span class="text-sm text-gray-500 dark:text-gray-400">
-				{{ page }} / {{ lastPage }}
-			</span>
+			<span class="text-sm text-ink-subtle"> {{ page }} / {{ lastPage }} </span>
 			<button
 				type="button"
-				class="rounded-md px-3 py-1.5 text-sm text-gray-600 disabled:opacity-40 dark:text-gray-300"
+				class="rounded-md px-3 py-1.5 text-sm text-ink-muted disabled:opacity-40"
 				:disabled="page >= lastPage || loading"
 				@click="goTo(page + 1)"
 			>
