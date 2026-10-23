@@ -264,12 +264,17 @@ pub fn make_keys_unique<T>(
         if dup.is_empty() {
             return;
         }
+        let mut changed = false;
         for it in items.iter_mut() {
             let label = format!("task-{}", id(it));
             let k = key(it);
-            if dup.contains(&k.to_lowercase()) {
+            if dup.contains(&k.to_lowercase()) && *k != label {
                 *k = label;
+                changed = true;
             }
+        }
+        if !changed {
+            return;
         }
     }
 }
@@ -2111,6 +2116,14 @@ mod tests {
         unique_keys(&mut f);
         let keys: Vec<&str> = f.iter().map(|f| f.key.as_str()).collect();
         assert_eq!(keys, ["task-1", "task-2", "task-3"]);
+    }
+
+    #[test]
+    fn relabelling_stops_when_ids_repeat() {
+        let mut f = vec![found_with(7, "TM-1"), found_with(7, "TM-1")];
+        unique_keys(&mut f);
+        let keys: Vec<&str> = f.iter().map(|f| f.key.as_str()).collect();
+        assert_eq!(keys, ["task-7", "task-7"]);
     }
 
     #[test]
