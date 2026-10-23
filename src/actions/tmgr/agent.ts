@@ -18,6 +18,7 @@ import {
 } from '@/utils/agentConfirmation';
 import { DEFAULT_PIN_LIMITS } from '@/utils/agentPins';
 import type { AttachedFile } from '@/utils/aiAttachments';
+import { currentTimeZone } from '@/utils/timezone';
 
 export const getOrCreateConversation = async (
 	workspaceId: number,
@@ -142,7 +143,7 @@ export const sendAgentMessage = async (
 			? {
 					scenario,
 					content,
-					timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+					timezone: currentTimeZone(),
 			  }
 			: {
 					content,

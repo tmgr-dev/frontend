@@ -4,6 +4,8 @@ import store from '@/store';
 import { pickThemeFromSettings } from '@/theme/reconcile';
 import { isDesktopApp } from '@/utils/desktop';
 import requestCache from '@/utils/requestCache';
+import { browserTimeZone } from '@/utils/timezone';
+import { detectUserTimeZone } from '@/utils/timezoneDetect';
 import { parseStoredToken, TOKEN_STORAGE_KEY } from '@/utils/tokenSync';
 import { withoutCurrentWorkspaceEntry } from '@/utils/workspaceContext';
 
@@ -48,7 +50,30 @@ export const getUser = async () => {
 	if (picked.colorScheme !== undefined)
 		store.commit('setColorScheme', picked.colorScheme);
 
+	void detectUserTimeZone({
+		userId: data?.id,
+		loggedIn: store.getters.isLoggedIn,
+		saved: store.getters.userSettingByKey('timezone')?.value,
+		detected: browserTimeZone(),
+		save: (timezone) => saveUserTimeZone(timezone, true),
+		onSaved: (timezone) => store.commit('setUserTimeZone', timezone),
+	});
+
 	return data;
+};
+
+export const saveUserTimeZone = async (
+	timezone: string,
+	ifUnset = false,
+): Promise<string | undefined> => {
+	const {
+		data: { data },
+	} = await $axios.put(
+		'user/timezone',
+		ifUnset ? { timezone, if_unset: true } : { timezone },
+	);
+
+	return data?.timezone;
 };
 
 const readRefreshToken = (): string | undefined => {

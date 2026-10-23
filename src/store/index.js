@@ -10,6 +10,7 @@ import { isDesktopApp } from '@/utils/desktop';
 import { DESKTOP_BAR_DISMISS_KEY } from '@/utils/openDesktopLink';
 import { requestCache } from '@/utils/requestCache';
 import { isInSecondaryWindow } from '@/utils/taskWindow';
+import { browserTimeZone, isValidTimeZone } from '@/utils/timezone';
 import {
 	isKnownWorkspaceId,
 	overlayCurrentWorkspace,
@@ -114,6 +115,10 @@ const getters = {
 	workspaceById: (state) => (id) => state.workspacesById[id],
 	workspaceStatusById: (state) => (id) => state.workspaceStatusesById[id],
 	userSettingByKey: (state) => (key) => state.userSettingsMap[key],
+	userTimeZone: (state) => {
+		const saved = state.userSettingsMap['timezone']?.value;
+		return isValidTimeZone(saved) ? saved : browserTimeZone() || 'UTC';
+	},
 	currentWorkspaceId: (state) => {
 		return state.userSettingsMap['current_workspace']?.value || null;
 	},
@@ -369,6 +374,17 @@ const mutations = {
 		state.currentTaskIdForModal = null;
 		state.createTaskInProjectCategoryId = null;
 		state.showCreatingTaskModal = false;
+	},
+	setUserTimeZone(state, timezone) {
+		const existing = state.userSettingsMap['timezone'];
+		const setting = existing
+			? { ...existing, value: timezone }
+			: { key: 'timezone', name: 'Timezone', value: timezone };
+		state.userSettingsMap = { ...state.userSettingsMap, timezone: setting };
+		if (Array.isArray(state.user?.settings)) {
+			const rest = state.user.settings.filter((s) => s.key !== 'timezone');
+			state.user = { ...state.user, settings: [...rest, setting] };
+		}
 	},
 	setUserSettings(state, settings) {
 		state.userSettings = settings;

@@ -24,6 +24,7 @@ import type {
 } from '@/types/dashboard';
 import { requestCache } from '@/utils/requestCache';
 import { createRequestSequence } from '@/utils/requestSequence';
+import { currentTimeZone } from '@/utils/timezone';
 import type { ComputedRef, Ref } from 'vue';
 import { computed, getCurrentInstance, onUnmounted, ref, watch } from 'vue';
 
@@ -150,7 +151,7 @@ export function useDashboard(
 		});
 	const heatmapRequest = (params?: HeatmapParams): HeatmapParams => ({
 		year: new Date().getFullYear(),
-		timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+		timezone: currentTimeZone(),
 		include_weekends: true,
 		...params,
 	});

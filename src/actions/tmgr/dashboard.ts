@@ -24,6 +24,7 @@ import type {
 	ValidationError,
 } from '@/types/dashboard';
 import { memberTasksPage } from '@/utils/dashboard/memberPageFormat';
+import { currentTimeZone } from '@/utils/timezone';
 import { AxiosRequestConfig } from 'axios';
 
 // Error handling utilities
@@ -322,8 +323,7 @@ export const getUserHeatmap = async (
 			...(params?.range === 'year' && { range: 'year' }),
 			year: params?.year || new Date().getFullYear(),
 			user_id: params?.user_id,
-			timezone:
-				params?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+			timezone: params?.timezone || currentTimeZone(),
 			include_weekends: params?.include_weekends ?? true,
 		};
 

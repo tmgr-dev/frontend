@@ -28,6 +28,7 @@ import { findInjectedScripts } from '@/utils/injectedScripts';
 import { requestCache } from '@/utils/requestCache';
 import { installRoutineSnapshotInvalidation } from '@/utils/routineSnapshotInvalidation';
 import { isDetachedWindowLabel } from '@/utils/taskWindow';
+import { setTimeZoneSource } from '@/utils/timezone';
 import { tokenFromStorageEvent } from '@/utils/tokenSync';
 import {
 	applyRelayedEvent,
@@ -43,6 +44,8 @@ import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/500.css';
 import { createApp, watch } from 'vue';
 import App from './App.vue';
+
+setTimeZoneSource(() => store.getters.userTimeZone);
 
 const profileReady: Promise<unknown> = isDesktopApp()
 	? store.dispatch('refreshLocalProfile')
