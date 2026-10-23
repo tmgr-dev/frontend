@@ -3,6 +3,16 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.64 — 2026-10-23
+
+- Timezone: Settings → Theme has a Timezone setting. On first sign-in the app saves your device timezone, and you can change it there. Daily routines fire and days start in this timezone.
+- Routines: today's highlight and the now-line follow your timezone.
+- Attachments: chat attachments show previews and open in a full-window viewer with zoom, PDF and markdown.
+- Quick add: choose routine, task or task with a screenshot; the last category is remembered and an unfinished draft survives reopening.
+- Task form: a title that is too long continues in the description.
+- Tasks list: the task count is shown next to the hours total, and tasks without tracked time show 0 minutes instead of NaN.
+- Dashboard: team activity has an all-time window.
+
 ## 0.9.63 — 2026-10-22
 
 - Search: press Cmd+K (Ctrl+K on Windows and Linux) anywhere to find tasks, pages, screens and workspaces; the sidebar Search opens the same palette.
