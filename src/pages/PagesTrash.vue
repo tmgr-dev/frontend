@@ -37,29 +37,57 @@
 				<Archive class="h-4 w-4 shrink-0 text-ink-subtle" />
 				<div class="min-w-0 flex-1 basis-48">
 					<p class="truncate text-sm font-medium text-ink">{{ page.title }}</p>
-					<p class="text-xs text-ink-subtle">
-						{{ `Archived ${formatDeleted(page.deleted_at)}` }}
+					<p
+						class="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-ink-subtle"
+					>
+						<span>{{ `Archived ${formatDeleted(page.deleted_at)}` }}</span>
+						<template v-if="page.author?.name">
+							<span aria-hidden="true">·</span>
+							<AuthorBadge
+								:author="toAuthorRef(page.author)"
+								:size="16"
+								data-testid="pages-archive-author"
+							/>
+						</template>
 					</p>
 				</div>
 				<div class="ml-auto flex shrink-0 gap-2 whitespace-nowrap">
-					<button
-						type="button"
-						class="inline-flex h-8 items-center gap-1.5 rounded-md border border-input px-3 text-sm text-ink hover:bg-surface-hover disabled:opacity-50"
-						:disabled="restoring === page.id"
-						@click="restore(page)"
+					<span
+						class="inline-flex"
+						:title="
+							page.can_restore === false
+								? 'Only the author or the workspace owner can restore this page'
+								: undefined
+						"
 					>
-						<Undo2 class="h-4 w-4" />
-						Restore
-					</button>
-					<button
-						type="button"
-						class="inline-flex h-8 items-center gap-1.5 rounded-md border border-status-fix px-3 text-sm text-status-fix-fg hover:bg-surface-hover disabled:opacity-50"
-						:disabled="busy"
-						@click="purging = page"
+						<button
+							type="button"
+							class="inline-flex h-8 items-center gap-1.5 rounded-md border border-input px-3 text-sm text-ink hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
+							:disabled="restoring === page.id || page.can_restore === false"
+							@click="restore(page)"
+						>
+							<Undo2 class="h-4 w-4" />
+							Restore
+						</button>
+					</span>
+					<span
+						class="inline-flex"
+						:title="
+							page.can_delete === false
+								? 'Only the author or the workspace owner can delete this page'
+								: undefined
+						"
 					>
-						<Trash2 class="h-4 w-4" />
-						Delete permanently
-					</button>
+						<button
+							type="button"
+							class="inline-flex h-8 items-center gap-1.5 rounded-md border border-status-fix px-3 text-sm text-status-fix-fg hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
+							:disabled="busy || page.can_delete === false"
+							@click="purging = page"
+						>
+							<Trash2 class="h-4 w-4" />
+							Delete
+						</button>
+					</span>
 				</div>
 			</li>
 		</ul>
@@ -133,8 +161,9 @@
 		getPagesTrash,
 		permanentlyDeletePage,
 		restorePage,
-		type PageSummary,
+		type TrashedPage,
 	} from '@/actions/tmgr/pages';
+	import AuthorBadge from '@/components/general/AuthorBadge.vue';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import {
@@ -148,6 +177,7 @@
 	} from '@/components/ui/alert-dialog';
 	import { Button } from '@/components/ui/button';
 	import { useToast } from '@/components/ui/toast';
+	import { toAuthorRef } from '@/utils/pages/author';
 	import { pageUrl } from '@/utils/pagesTree';
 	import { Archive, Trash2, Undo2 } from 'lucide-vue-next';
 	import { computed, defineComponent, onMounted, ref, watch } from 'vue';
@@ -170,6 +200,7 @@
 			AlertDialogHeader,
 			AlertDialogTitle,
 			Archive,
+			AuthorBadge,
 			Button,
 			PageContainer,
 			PageHeader,
@@ -182,11 +213,11 @@
 			const store = useStore();
 			const toaster = useToast();
 			const workspaceCode = computed(() => String(route.params.workspace_code));
-			const pages = ref<PageSummary[]>([]);
+			const pages = ref<TrashedPage[]>([]);
 			const loaded = ref(false);
 			const failed = ref(false);
 			const restoring = ref<number | null>(null);
-			const purging = ref<PageSummary | null>(null);
+			const purging = ref<TrashedPage | null>(null);
 			const emptyOpen = ref(false);
 			const confirmWord = ref('');
 			const busy = ref(false);
@@ -205,7 +236,7 @@
 			onMounted(load);
 			watch(() => store.state.pagesEvent?.seq, load);
 
-			const restore = async (page: PageSummary) => {
+			const restore = async (page: TrashedPage) => {
 				restoring.value = page.id;
 				try {
 					const restored = await restorePage(page.id);
@@ -309,6 +340,7 @@
 				countLabel,
 				busy,
 				formatDeleted,
+				toAuthorRef,
 			};
 		},
 	});

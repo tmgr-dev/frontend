@@ -196,7 +196,13 @@ export const getPagesTree = async (useCache = true): Promise<PageSummary[]> =>
 		{ ttl: 60000, cache: useCache },
 	);
 
-export const getPagesTrash = async (): Promise<PageSummary[]> =>
+export interface TrashedPage extends PageSummary {
+	author?: PageAuthor;
+	can_delete?: boolean;
+	can_restore?: boolean;
+}
+
+export const getPagesTrash = async (): Promise<TrashedPage[]> =>
 	unwrap($axios.get('pages/trash'));
 
 export const getPage = async (

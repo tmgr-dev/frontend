@@ -176,6 +176,8 @@ async function mockPages(
   };
 }
 
+const ann = { kind: 'user', id: 5, name: 'Ann Lee', avatar: null };
+
 const section = (page) => page.getByTestId('pages-sidebar-section');
 const archiveRow = (page, id) =>
   page
@@ -204,10 +206,11 @@ const openArchive = async (page) => {
   ).toBeVisible();
 };
 
+const purgeButton = (page, id) =>
+  archiveRow(page, id).getByRole('button', { name: 'Delete', exact: true });
+
 const askPurge = async (page, id) => {
-  await archiveRow(page, id)
-    .getByRole('button', { name: 'Delete permanently' })
-    .click();
+  await purgeButton(page, id).click();
   await expect(purgeDialog(page)).toBeVisible();
   await settle(purgeDialog(page));
 };
@@ -476,6 +479,66 @@ test('Delete all keeps the pages a member may not delete and says so', async ({
   expect(api.errors).toEqual([]);
 });
 
+test('each row shows its author and disables what the backend forbids', async ({
+  page,
+}) => {
+  const api = await mockPages(page, {
+    archived: [
+      {
+        ...row(7, 'Old notes'),
+        author: ann,
+        can_delete: false,
+        can_restore: false,
+      },
+      { ...row(8, 'Mine'), author: ann, can_delete: true, can_restore: true },
+      row(9, 'Legacy'),
+    ],
+  });
+  await openArchive(page);
+
+  const locked = archiveRow(page, 7);
+  await expect(locked.getByTestId('pages-archive-author')).toContainText(
+    'Ann Lee',
+  );
+  await expect(locked).toContainText(/Archived .+·.*Ann Lee/);
+  await expect(purgeButton(page, 7)).toBeDisabled();
+  await expect(locked.getByRole('button', { name: 'Restore' })).toBeDisabled();
+  await expect(
+    locked.locator(
+      'span[title="Only the author or the workspace owner can delete this page"]',
+    ),
+  ).toHaveCount(1);
+  await expect(
+    locked.locator(
+      'span[title="Only the author or the workspace owner can restore this page"]',
+    ),
+  ).toHaveCount(1);
+  await purgeButton(page, 7).click({ force: true });
+  await expect(purgeDialog(page)).toHaveCount(0);
+  await locked.getByRole('button', { name: 'Restore' }).click({ force: true });
+  await expect(locked).toBeVisible();
+  await expect(purgeButton(page, 8).locator('svg')).toHaveCount(1);
+
+  const mine = archiveRow(page, 8);
+  await expect(mine.getByTestId('pages-archive-author')).toContainText(
+    'Ann Lee',
+  );
+  await expect(purgeButton(page, 8)).toBeEnabled();
+  await expect(mine.getByRole('button', { name: 'Restore' })).toBeEnabled();
+  await expect(mine.locator('span[title^="Only the author"]')).toHaveCount(0);
+
+  const legacy = archiveRow(page, 9);
+  await expect(legacy.getByTestId('pages-archive-author')).toHaveCount(0);
+  await expect(legacy).not.toContainText('·');
+  await expect(purgeButton(page, 9)).toBeEnabled();
+  await expect(legacy.getByRole('button', { name: 'Restore' })).toBeEnabled();
+  await expect(legacy.locator('span[title^="Only the author"]')).toHaveCount(0);
+
+  expect(api.purges()).toEqual([]);
+  expect(api.calls.filter((c) => c.endsWith('/restore'))).toEqual([]);
+  expect(api.errors).toEqual([]);
+});
+
 test('the old trash URL lands on the archive', async ({ page }) => {
   await mockPages(page);
   await page.goto('/demo/pages/_/trash');
@@ -499,13 +562,15 @@ test('All pages links to the archive', async ({ page }) => {
 test('on a phone each archived row keeps its title readable', async ({
   page,
 }) => {
-  await mockPages(page, { archived: [row(7, 'Old notes')] });
+  await mockPages(page, {
+    archived: [{ ...row(7, 'Old notes'), author: ann, can_delete: false }],
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await openArchive(page);
   const item = archiveRow(page, 7);
   const title = item.getByText('Old notes', { exact: true });
   const restore = item.getByRole('button', { name: 'Restore' });
-  const purge = item.getByRole('button', { name: 'Delete permanently' });
+  const purge = purgeButton(page, 7);
   const [t, r, d] = await Promise.all(
     [title, restore, purge].map((l) => l.boundingBox()),
   );
@@ -518,9 +583,19 @@ test('on a phone each archived row keeps its title readable', async ({
     a.y < b.y + b.height &&
     b.y < a.y + a.height;
   expect(overlaps(t, r), 'title vs Restore').toBe(false);
-  expect(overlaps(t, d), 'title vs Delete permanently').toBe(false);
+  expect(overlaps(t, d), 'title vs Delete').toBe(false);
   const subtitle = await item.getByText(/^Archived /).boundingBox();
   expect(overlaps(subtitle, r), 'date vs Restore').toBe(false);
+  const author = await item.getByTestId('pages-archive-author').boundingBox();
+  expect(overlaps(author, r), 'author vs Restore').toBe(false);
+  expect(overlaps(author, d), 'author vs Delete').toBe(false);
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+    ),
+  ).toBeLessThanOrEqual(0);
 });
 
 for (const scheme of ['light', 'dark'])
@@ -535,7 +610,11 @@ for (const scheme of ['light', 'dark'])
         scheme,
         archived: [
           row(7, 'Old notes'),
-          row(8, 'Quarterly'.repeat(12)),
+          {
+            ...row(8, 'Quarterly'.repeat(12)),
+            author: ann,
+            can_restore: false,
+          },
           row(9, 'Drafts'),
         ],
       });
