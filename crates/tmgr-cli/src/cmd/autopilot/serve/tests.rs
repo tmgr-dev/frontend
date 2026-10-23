@@ -155,7 +155,7 @@ fn pickup(id: &str, task: i64, status: &str, run: Option<&str>) -> Pickup {
             "author": {"kind": "human"}, "comments": [], "pages": [],
             "launch": {"profile": "claude-code", "cwd": "/work/q"}},
         "bundle_sha256": "x", "context_tainted": false,
-        "created_at": "2026-10-19T00:00:00Z", "updated_at": "2026-10-19T00:00:00Z",
+        "created_at": "2026-10-19T12:00:00Z", "updated_at": "2026-10-19T00:00:00Z",
         "cloud": {
             "claim": {"host": "api.tmgr.dev", "user_id": 1, "workspace_id": 7, "task_id": task,
                 "category_id": 1, "content_sha256": "h", "key_id": "k", "signed_at": 1,
@@ -2209,6 +2209,33 @@ fn a_skip_recorded_by_a_pass_of_this_run_is_still_reported() {
             events[0].contains("no approval for agent runs"),
             "{events:?}"
         );
+    });
+}
+
+#[test]
+fn a_finished_pickup_from_before_this_run_is_not_counted() {
+    let rig = Rig::new();
+    let mut old = pickup("old", 1, "failed", None);
+    old.created_at = "2026-10-12T09:00:00Z".into();
+    rig.fake.add(old);
+    let s = settings(&[1], |_| {});
+    with_ap(&rig, &s, |ap| {
+        tick_any(ap);
+        assert_eq!(ap.view.counts.failed, 0);
+        assert!(!ap.events.iter().any(|e| e.kind == "failed"));
+    });
+}
+
+#[test]
+fn a_live_pickup_from_before_this_run_is_still_shown() {
+    let rig = Rig::new();
+    let mut old = running("old", 1);
+    old.created_at = "2026-10-12T09:00:00Z".into();
+    rig.fake.add(old);
+    let s = settings(&[1], |_| {});
+    with_ap(&rig, &s, |ap| {
+        tick_any(ap);
+        assert_eq!(ap.view.counts.in_work, 1);
     });
 }
 

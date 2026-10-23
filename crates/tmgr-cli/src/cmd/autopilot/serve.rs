@@ -878,6 +878,13 @@ impl<'a> Autopilot<'a> {
         self.push("Autopilot: usage limit", &text);
     }
 
+    fn is_current(&self, p: &Pickup) -> bool {
+        self.queue_mode
+            || p.occupies()
+            || DateTime::parse_from_rfc3339(&p.created_at)
+                .map_or(true, |at| at >= self.s.created_at)
+    }
+
     fn observe(&mut self, st: &State, now: DateTime<Utc>) {
         let mut view = View::default();
         let skips = if self.passed {
@@ -893,7 +900,9 @@ impl<'a> Autopilot<'a> {
         let triage_feedback = self.orch.applied_ids("needs_feedback");
         let triage_blocked = self.orch.applied_ids("blocked");
         for id in sel {
-            let p = latest(st, id).filter(|_| !self.s.dry_run);
+            let p = latest(st, id)
+                .filter(|_| !self.s.dry_run)
+                .filter(|p| self.is_current(p));
             if let Some(p) = p {
                 self.note_start(p);
                 self.track_run(p, now);
