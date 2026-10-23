@@ -1041,10 +1041,8 @@
 								v-if="hasAnyError && !isInitialLoad"
 								class="mb-6 rounded-lg border p-4"
 								:class="{
-									'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20':
-										!isOffline,
-									'border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20':
-										isOffline,
+									'border-status-fix bg-status-fix-bg': !isOffline,
+									'border-status-progress bg-status-progress-bg': isOffline,
 								}"
 								role="alert"
 								aria-live="polite"
@@ -1053,9 +1051,7 @@
 									<ExclamationTriangleIcon
 										:class="[
 											'mr-3 mt-0.5 h-5 w-5 flex-shrink-0',
-											isOffline
-												? 'text-yellow-600 dark:text-yellow-400'
-												: 'text-red-600 dark:text-red-400',
+											isOffline ? 'text-status-progress' : 'text-status-fix',
 										]"
 									/>
 									<div class="flex-1">
@@ -1063,8 +1059,8 @@
 											:class="[
 												'font-medium',
 												isOffline
-													? 'text-yellow-800 dark:text-yellow-200'
-													: 'text-red-800 dark:text-red-200',
+													? 'text-status-progress-fg'
+													: 'text-status-fix-fg',
 											]"
 										>
 											{{ isOffline ? 'Connection Lost' : 'Dashboard Error' }}
@@ -1073,8 +1069,8 @@
 											:class="[
 												'mt-1 text-sm',
 												isOffline
-													? 'text-yellow-700 dark:text-yellow-300'
-													: 'text-red-700 dark:text-red-300',
+													? 'text-status-progress-fg'
+													: 'text-status-fix-fg',
 											]"
 										>
 											{{ combinedErrorMessage }}
@@ -1087,8 +1083,8 @@
 												:disabled="isRetryingGlobal"
 												:class="[
 													isOffline
-														? 'border-yellow-300 text-yellow-700 hover:bg-yellow-50 dark:border-yellow-600 dark:text-yellow-300 dark:hover:bg-yellow-900/30'
-														: 'border-red-300 text-red-700 hover:bg-red-50 dark:border-red-600 dark:text-red-300 dark:hover:bg-red-900/30',
+														? 'border-status-progress text-status-progress-fg hover:bg-surface-hover hover:text-status-progress-fg'
+														: 'border-status-fix text-status-fix-fg hover:bg-surface-hover hover:text-status-fix-fg',
 												]"
 											>
 												<ArrowPathIcon
@@ -1105,7 +1101,7 @@
 												variant="outline"
 												size="sm"
 												@click="checkConnection"
-												class="border-yellow-300 text-yellow-700 hover:bg-yellow-50 dark:border-yellow-600 dark:text-yellow-300 dark:hover:bg-yellow-900/30"
+												class="border-status-progress text-status-progress-fg hover:bg-surface-hover hover:text-status-progress-fg"
 											>
 												Check Connection
 											</Button>
@@ -1276,9 +1272,9 @@
 										class="flex flex-col items-center justify-center py-20"
 									>
 										<ExclamationTriangleIcon
-											class="mb-4 h-12 w-12 text-red-500"
+											class="mb-4 h-12 w-12 text-status-fix"
 										/>
-										<p class="mb-4 text-sm text-red-600 dark:text-red-400">
+										<p class="mb-4 text-sm text-status-fix-fg">
 											Failed to load heatmap data
 										</p>
 										<Button @click="retryHeatmap" variant="outline" size="sm">
@@ -1300,7 +1296,7 @@
 										v-else
 										class="flex flex-col items-center justify-center py-20"
 									>
-										<p class="text-sm text-gray-600 dark:text-gray-400">
+										<p class="text-sm text-ink-muted">
 											No contribution data available
 										</p>
 									</div>
@@ -1437,16 +1433,12 @@
 							>
 								<div class="text-center">
 									<ArrowPathIcon
-										class="mx-auto mb-4 h-8 w-8 animate-spin text-gray-400"
+										class="mx-auto mb-4 h-8 w-8 animate-spin text-ink-subtle"
 									/>
-									<h3
-										class="mb-2 text-lg font-medium text-gray-900 dark:text-white"
-									>
+									<h3 class="mb-2 text-lg font-medium text-ink">
 										Loading Dashboard
 									</h3>
-									<p class="text-gray-600 dark:text-gray-400">
-										Fetching your workspace data...
-									</p>
+									<p class="text-ink-muted">Fetching your workspace data...</p>
 								</div>
 							</div>
 
@@ -1463,9 +1455,9 @@
 									v-if="showConnectionStatus || isOffline"
 									class="fixed bottom-4 right-4 z-50 rounded-lg p-4 shadow-lg"
 									:class="{
-										'border border-yellow-300 bg-yellow-100 dark:border-yellow-700 dark:bg-yellow-900/30':
+										'border border-status-progress bg-status-progress-bg':
 											isOffline,
-										'border border-green-300 bg-green-100 dark:border-green-700 dark:bg-green-900/30':
+										'border border-status-done bg-status-done-bg':
 											!isOffline && isRealTimeActive,
 									}"
 									role="status"
@@ -1474,18 +1466,17 @@
 									<div class="flex items-center">
 										<SignalSlashIcon
 											v-if="isOffline"
-											class="mr-2 h-5 w-5 text-yellow-600 dark:text-yellow-400"
+											class="mr-2 h-5 w-5 text-status-progress"
 										/>
 										<WifiIcon
 											v-else-if="isRealTimeActive"
-											class="mr-2 h-5 w-5 text-green-600 dark:text-green-400"
+											class="mr-2 h-5 w-5 text-status-done"
 										/>
 										<span
 											class="text-sm font-medium"
 											:class="{
-												'text-yellow-800 dark:text-yellow-200': isOffline,
-												'text-green-800 dark:text-green-200':
-													!isOffline && isRealTimeActive,
+												'text-status-progress-fg': isOffline,
+												'text-status-done-fg': !isOffline && isRealTimeActive,
 											}"
 										>
 											{{
@@ -1513,7 +1504,7 @@
 	.dashboard-container {
 		@apply min-h-screen;
 		scrollbar-width: thin;
-		scrollbar-color: rgb(156 163 175) transparent;
+		scrollbar-color: var(--line-strong-color) transparent;
 	}
 
 	.dashboard-section {
@@ -1567,7 +1558,7 @@
 	}
 
 	.dashboard-container::-webkit-scrollbar-thumb:hover {
-		@apply bg-gray-500;
+		@apply bg-ink-faint;
 	}
 
 	/* Animations */
@@ -1590,7 +1581,7 @@
 	}
 
 	.activity-item.new-activity {
-		@apply border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20;
+		@apply border-line-strong bg-brand-bg;
 		animation: pulse-subtle 2s ease-in-out;
 	}
 
@@ -1600,7 +1591,7 @@
 
 	/* Loading Skeleton with Shimmer */
 	.loading-skeleton {
-		@apply animate-pulse rounded bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700;
+		@apply animate-pulse rounded bg-gradient-to-r from-surface-sunken via-surface-active to-surface-sunken;
 		background-size: 200% 100%;
 		animation: loading-shimmer 1.5s infinite;
 	}
@@ -1631,11 +1622,11 @@
 	/* High Contrast Mode */
 	@media (prefers-contrast: high) {
 		.dashboard-container {
-			@apply border-2 border-gray-900 dark:border-gray-100;
+			@apply border-2 border-ink;
 		}
 
 		.dashboard-section {
-			@apply rounded-lg border-2 border-gray-900 bg-white p-4 text-black dark:border-gray-100 dark:bg-black dark:text-white;
+			@apply rounded-lg border-2 border-ink bg-surface p-4 text-ink;
 		}
 	}
 

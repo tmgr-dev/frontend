@@ -44,7 +44,7 @@
 						<PlayIcon class="h-3 w-3 shrink-0 text-status-done" />
 						<button
 							@click.stop="handleTaskClick(member.current_task.id)"
-							class="min-w-0 truncate hover:text-brand-fg"
+							class="min-w-0 truncate hover:text-brand"
 							:title="member.current_task.title"
 						>
 							{{ member.current_task.title }}
@@ -60,7 +60,7 @@
 						<span class="shrink-0">Last touched</span>
 						<button
 							@click.stop="handleTaskClick(member.last_task.id)"
-							class="min-w-0 truncate hover:text-brand-fg"
+							class="min-w-0 truncate hover:text-brand"
 							:title="member.last_task.title"
 						>
 							{{ member.last_task.title }}
@@ -183,8 +183,8 @@
 
 	const statusIndicatorClasses = computed(() => {
 		return cn(
-			'absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white dark:border-gray-800',
-			props.member.is_online ? 'bg-green-500' : 'bg-gray-400 dark:bg-gray-600',
+			'absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface',
+			props.member.is_online ? 'bg-status-done' : 'bg-ink-faint',
 		);
 	});
 

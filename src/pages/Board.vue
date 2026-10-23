@@ -117,7 +117,7 @@
 												:class="[
 													'rounded-pill border px-3 py-1 text-xs font-medium transition-colors',
 													boardFilterToggles[filter.key]
-														? 'bg-brand/10 border-brand text-brand'
+														? 'border-brand bg-brand-bg text-ink'
 														: 'border-line text-ink-subtle hover:bg-surface-hover',
 												]"
 												@click="toggleBoardFilter(filter.key)"
@@ -144,9 +144,7 @@
 													class="absolute -right-2 -top-2 z-10 opacity-50 transition-opacity hover:opacity-100"
 													@click="isFiltersModalShown = false"
 												>
-													<span
-														class="material-icons text-2xl text-gray-600 dark:text-gray-400"
-													>
+													<span class="material-icons text-2xl text-ink-muted">
 														close
 													</span>
 												</button>
@@ -169,12 +167,12 @@
 														@open-reorder-modal="openMobileReorderModal"
 													>
 														<template #actions-start>
-															<button
+															<Button
+																class="w-full justify-start"
 																@click="openCreateStatusModal"
-																class="w-full rounded-lg bg-tmgr-blue px-4 py-2 text-left text-sm text-white transition-colors hover:bg-blue-600"
 															>
 																Add status
-															</button>
+															</Button>
 														</template>
 													</FiltersBoard>
 												</div>
@@ -495,18 +493,20 @@
 																			class="task-title-input w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
 																		/>
 																		<div class="flex gap-2">
-																			<button
+																			<Button
+																				size="sm"
+																				class="flex-1"
 																				@click="createQuickTask(column)"
-																				class="flex-1 rounded-md bg-brand px-3 py-1.5 text-sm text-white transition-colors hover:bg-brand-hover"
 																			>
 																				Add
-																			</button>
-																			<button
+																			</Button>
+																			<Button
+																				variant="secondary"
+																				size="sm"
 																				@click="cancelCreatingTask"
-																				class="rounded-md bg-surface-sunken px-3 py-1.5 text-sm text-ink-muted transition-colors hover:bg-line"
 																			>
 																				Cancel
-																			</button>
+																			</Button>
 																		</div>
 																	</div>
 																</div>
@@ -538,9 +538,7 @@
 													class="absolute -right-2 -top-2 opacity-50 transition-opacity hover:opacity-100"
 													@click="closeModal"
 												>
-													<span
-														class="material-icons text-2xl text-gray-600 dark:text-gray-400"
-													>
+													<span class="material-icons text-2xl text-ink-muted">
 														close
 													</span>
 												</button>
@@ -587,22 +585,23 @@
 													</button>
 												</div>
 
-												<button
-													@click="saveNewStatus()"
-													class="mt-3 w-full rounded bg-orange-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
+												<Button
+													class="mt-3 w-full"
 													type="button"
+													@click="saveNewStatus()"
 												>
 													{{ isCreatingStatus ? 'Create' : 'Save' }}
-												</button>
+												</Button>
 
-												<button
+												<Button
 													v-if="!isCreatingStatus"
-													@click="deleteStatus"
-													class="mt-3 w-full rounded bg-red-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-red-700 sm:mb-0"
+													variant="outline"
+													class="mt-3 w-full text-status-fix-fg hover:text-status-fix-fg"
 													type="button"
+													@click="deleteStatus"
 												>
 													Delete
-												</button>
+												</Button>
 											</div>
 										</div>
 									</template>
@@ -622,7 +621,7 @@
 												class="absolute right-1 top-1 opacity-50 transition-opacity hover:opacity-100"
 											>
 												<span
-													class="material-icons text-2xl text-black dark:text-white"
+													class="material-icons text-2xl text-ink"
 													@click="closePickerModal"
 												>
 													close
@@ -637,13 +636,13 @@
 												@input="onInput"
 												@select="onColorSelect"
 											/>
-											<button
-												@click="applyColor"
-												class="mt-6 w-full rounded bg-tmgr-blue px-4 py-3 font-bold text-white outline-none transition hover:bg-blue-600"
+											<Button
+												class="mt-6 w-full"
 												type="button"
+												@click="applyColor"
 											>
 												Apply
-											</button>
+											</Button>
 										</div>
 									</template>
 								</Modal>
@@ -658,9 +657,7 @@
 											<h1 class="mb-4 text-center text-xl font-semibold">
 												Move all tasks to
 											</h1>
-											<p
-												class="mb-4 text-center text-sm text-gray-600 dark:text-gray-400"
-											>
+											<p class="mb-4 text-center text-sm text-ink-muted">
 												Move {{ sourceColumnForMove?.tasks.length }} task(s)
 												from "{{ sourceColumnForMove?.title }}" to:
 											</p>
@@ -669,29 +666,27 @@
 													v-for="column in availableColumnsForMove"
 													:key="column.status.id"
 													@click="moveAllTasksToColumn(column)"
-													class="w-full rounded-lg border-2 px-4 py-3 text-left font-medium transition-all hover:bg-gray-50 dark:hover:bg-gray-800"
+													class="w-full rounded-lg border-2 border-line px-4 py-3 text-left font-medium transition-all hover:bg-surface-hover"
 													:style="{
 														borderLeftColor: column.status.color,
 														borderLeftWidth: '4px',
 													}"
 												>
 													<div class="flex items-center justify-between">
-														<span class="text-gray-900 dark:text-gray-100">{{
-															column.title
-														}}</span>
-														<span
-															class="text-xs text-gray-500 dark:text-gray-400"
+														<span class="text-ink">{{ column.title }}</span>
+														<span class="text-xs text-ink-subtle"
 															>({{ column.taskCount }})</span
 														>
 													</div>
 												</button>
 											</div>
-											<button
+											<Button
+												variant="outline"
+												class="mt-4 w-full"
 												@click="closeMoveTasksModal"
-												class="mt-4 w-full rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-700 transition hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
 											>
 												Cancel
-											</button>
+											</Button>
 										</div>
 									</template>
 								</Modal>
@@ -712,16 +707,12 @@
 													class="absolute -right-2 -top-2 opacity-50 transition-opacity hover:opacity-100"
 													@click="closeMobileReorderModal"
 												>
-													<span
-														class="material-icons text-2xl text-gray-600 dark:text-gray-400"
-													>
+													<span class="material-icons text-2xl text-ink-muted">
 														close
 													</span>
 												</button>
 											</div>
-											<p
-												class="mb-4 text-center text-sm text-gray-600 dark:text-gray-400"
-											>
+											<p class="mb-4 text-center text-sm text-ink-muted">
 												Hold and drag the six dots icon to reorder
 											</p>
 											<Draggable
@@ -733,7 +724,7 @@
 											>
 												<template #item="{ element: column }">
 													<div
-														class="flex items-center gap-3 rounded-lg border-2 bg-white px-4 py-3 dark:bg-gray-800"
+														class="flex items-center gap-3 rounded-lg border-2 border-line bg-surface px-4 py-3"
 														:style="{
 															borderLeftColor: column.status.color,
 															borderLeftWidth: '4px',
@@ -743,36 +734,32 @@
 															class="drag-handle flex cursor-move items-center"
 														>
 															<EllipsisVerticalIcon
-																class="h-4 w-4 text-gray-400"
+																class="h-4 w-4 text-ink-subtle"
 																aria-hidden="true"
 															/>
 															<EllipsisVerticalIcon
-																class="-ml-2 h-4 w-4 text-gray-400"
+																class="-ml-2 h-4 w-4 text-ink-subtle"
 																aria-hidden="true"
 															/>
 														</div>
 														<div class="flex-1">
-															<span
-																class="font-medium text-gray-900 dark:text-gray-100"
-																>{{ column.title }}</span
-															>
+															<span class="font-medium text-ink">{{
+																column.title
+															}}</span>
 														</div>
 													</div>
 												</template>
 											</Draggable>
 											<div class="mt-4 flex gap-2">
-												<button
-													@click="saveMobileReorder"
-													class="flex-1 rounded-lg bg-tmgr-blue px-4 py-2 font-medium text-white transition hover:bg-blue-600"
-												>
+												<Button class="flex-1" @click="saveMobileReorder">
 													Save Order
-												</button>
-												<button
+												</Button>
+												<Button
+													variant="outline"
 													@click="closeMobileReorderModal"
-													class="rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-700 transition hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
 												>
 													Cancel
-												</button>
+												</Button>
 											</div>
 										</div>
 									</template>
@@ -797,7 +784,7 @@
 </template>
 <script>
 	import Modal from '@/components/Modal.vue';
-	import Button from '@/components/general/Button.vue';
+	import { Button } from '@/components/ui/button';
 	import Draggable from 'vuedraggable';
 
 	import { getCategories } from '@/actions/tmgr/categories';
