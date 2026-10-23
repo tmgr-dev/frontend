@@ -30,7 +30,7 @@
 					i % 7 === 0 ? '' : 'border-l border-line',
 					i < 7 ? '' : 'border-t border-line',
 					hoverKey === `day:${fmtIso(d)}`
-						? 'bg-brand/15 ring-brand/40 ring-1 ring-inset'
+						? 'bg-brand/15 ring-1 ring-inset ring-brand/40'
 						: '',
 				]"
 				:style="cellStyle(d)"
@@ -45,7 +45,7 @@
 				>
 					<span
 						v-if="isSameDay(d, today)"
-						class="inline-flex h-5 w-5 items-center justify-center rounded-pill bg-brand text-[10px] font-bold text-white"
+						class="inline-flex h-5 w-5 items-center justify-center rounded-pill bg-brand text-[10px] font-bold text-on-accent"
 					>
 						{{ d.getDate() }}
 					</span>

@@ -165,7 +165,7 @@
 		<div v-if="isOpen" class="flex flex-wrap items-center gap-2">
 			<button
 				type="button"
-				class="rounded-md bg-brand px-3 py-1 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+				class="rounded-md bg-brand px-3 py-1 text-xs font-medium text-on-accent hover:opacity-90 disabled:opacity-50"
 				:disabled="inFlight || !isOpen"
 				@click="onDecide('confirm')"
 			>

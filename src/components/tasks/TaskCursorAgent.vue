@@ -102,7 +102,7 @@
 						<button
 							@click="launchAgent"
 							:disabled="launching || !selectedBranch"
-							class="flex w-full items-center justify-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:opacity-50"
+							class="flex w-full items-center justify-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-on-accent transition hover:bg-brand-hover disabled:opacity-50"
 						>
 							<svg
 								v-if="!launching"
@@ -262,7 +262,7 @@
 
 					<div
 						v-if="agent.error_message"
-						class="border-status-fix-fg/30 rounded-md border bg-status-fix-bg p-3 text-sm text-status-fix-fg"
+						class="rounded-md border border-status-fix-fg/30 bg-status-fix-bg p-3 text-sm text-status-fix-fg"
 					>
 						{{ agent.error_message }}
 					</div>
@@ -282,7 +282,7 @@
 							<button
 								@click="sendFollowUpToAgent(agent.id)"
 								:disabled="!followUpPrompt || sendingFollowUp"
-								class="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:opacity-50"
+								class="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-on-accent transition hover:bg-brand-hover disabled:opacity-50"
 							>
 								{{ sendingFollowUp ? 'Sending...' : 'Send' }}
 							</button>
@@ -293,7 +293,7 @@
 
 			<div
 				v-if="error"
-				class="border-status-fix-fg/30 rounded-md border bg-status-fix-bg p-3 text-sm text-status-fix-fg"
+				class="rounded-md border border-status-fix-fg/30 bg-status-fix-bg p-3 text-sm text-status-fix-fg"
 			>
 				{{ error }}
 			</div>

@@ -49,7 +49,7 @@
 									openCombobox = false;
 								}
 							"
-							class="cursor-pointer text-ink hover:!bg-brand hover:!text-white"
+							class="cursor-pointer text-ink hover:!bg-brand hover:!text-on-accent"
 						>
 							{{ workspace.name }}
 							<Check
@@ -93,7 +93,7 @@
 						@click="createNewWorkspace()"
 						:disabled="flags.isLoading"
 						:class="{ 'bg-ink-faint hover:bg-ink-faint': flags.isLoading }"
-						class="mt-3 w-full rounded bg-brand px-4 py-2 font-bold text-white outline-none transition hover:bg-brand-hover sm:mb-0"
+						class="mt-3 w-full rounded bg-brand px-4 py-2 font-bold text-on-accent outline-none transition hover:bg-brand-hover sm:mb-0"
 						type="button"
 					>
 						Create
@@ -137,7 +137,7 @@
 						@click="createNewWorkspaceInvitation()"
 						:disabled="flags.isLoading"
 						:class="{ 'bg-ink-faint hover:bg-ink-faint': flags.isLoading }"
-						class="mr-5 mt-5 w-full rounded bg-brand px-4 py-2 font-bold text-white transition hover:bg-brand-hover sm:mb-0"
+						class="mr-5 mt-5 w-full rounded bg-brand px-4 py-2 font-bold text-on-accent transition hover:bg-brand-hover sm:mb-0"
 						type="button"
 					>
 						{{ flags.isLoading ? 'Creating...' : 'Send Invitation' }}

@@ -2791,7 +2791,7 @@
 							<Button
 								type="button"
 								size="sm"
-								class="h-8 bg-brand text-white hover:bg-brand-hover"
+								class="h-8 bg-brand text-on-accent hover:bg-brand-hover"
 								@click="applyLastTaskSettings"
 							>
 								Apply
@@ -3083,7 +3083,7 @@
 						<Button
 							type="button"
 							size="sm"
-							class="h-8 bg-brand text-white hover:bg-brand-hover"
+							class="h-8 bg-brand text-on-accent hover:bg-brand-hover"
 							@click="finishDescriptionEdit"
 						>
 							Done
@@ -3326,7 +3326,7 @@
 								!newComment?.trim() || isSendingComment || attachmentsBlocking
 							"
 							@click="submitComment"
-							class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
+							class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-on-accent transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
 							:title="
 								commentAiReply ? 'Ask AI (Enter)' : 'Send comment (Enter)'
 							"
@@ -3397,7 +3397,7 @@
 								type="button"
 								size="sm"
 								title="Create"
-								class="h-8 bg-brand text-white hover:bg-brand-hover"
+								class="h-8 bg-brand text-on-accent hover:bg-brand-hover"
 								@click="createTask"
 							>
 								<DocumentPlusIcon />
@@ -3415,7 +3415,7 @@
 								:data-unsaved="hasUnsavedChanges || undefined"
 								:class="
 									hasUnsavedChanges
-										? 'h-8 w-8 bg-brand text-white hover:bg-brand-hover hover:text-white'
+										? 'h-8 w-8 bg-brand text-on-accent hover:bg-brand-hover hover:text-on-accent'
 										: 'h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink'
 								"
 								@click="saveTask()"
@@ -3564,7 +3564,7 @@
 								!newComment?.trim() || isSendingComment || attachmentsBlocking
 							"
 							@click="submitComment"
-							class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
+							class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-on-accent transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
 							:title="
 								commentAiReply ? 'Ask AI (Enter)' : 'Send comment (Enter)'
 							"
@@ -3654,7 +3654,7 @@
 					</button>
 					<button
 						type="button"
-						class="h-9 rounded-pill bg-brand px-4 text-sm font-semibold text-white shadow-tmgr-xs transition-opacity hover:opacity-90"
+						class="h-9 rounded-pill bg-brand px-4 text-sm font-semibold text-on-accent shadow-tmgr-xs transition-opacity hover:opacity-90"
 						@click="goToCategorySettings"
 					>
 						{{ integrationHint?.ctaLabel }}

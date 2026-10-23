@@ -468,7 +468,7 @@
 					<Pin class="h-4 w-4" />
 					<span
 						v-if="pins.length"
-						class="absolute -right-1 -top-1 rounded-pill bg-brand px-1 text-[10px] leading-4 text-white"
+						class="absolute -right-1 -top-1 rounded-pill bg-brand px-1 text-[10px] leading-4 text-on-accent"
 						>{{ pins.length }}</span
 					>
 				</button>
@@ -539,7 +539,7 @@
 									Cancel
 								</button>
 								<button
-									class="rounded-pill bg-brand px-3 py-1 text-white disabled:opacity-40"
+									class="rounded-pill bg-brand px-3 py-1 text-on-accent disabled:opacity-40"
 									:disabled="
 										pinSaving || !canEditPin(pins, pinLimits, pin.id, editDraft)
 									"
@@ -590,7 +590,7 @@
 						>{{ pinDraft.length }}/{{ pinLimits.max_chars }}</span
 					>
 					<button
-						class="rounded-pill bg-brand px-3 py-1 text-white disabled:opacity-40"
+						class="rounded-pill bg-brand px-3 py-1 text-on-accent disabled:opacity-40"
 						:disabled="pinSaving || !canSubmitPin"
 						@click="submitPin"
 					>
@@ -744,7 +744,7 @@
 					:disabled="busy || loading"
 				/>
 				<button
-					class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-white disabled:opacity-40"
+					class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-on-accent disabled:opacity-40"
 					:disabled="!draft.trim() || busy || loading || !attachments?.canSend"
 					aria-label="Send"
 					title="Send (Enter)"

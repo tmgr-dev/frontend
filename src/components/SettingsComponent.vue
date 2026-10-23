@@ -69,7 +69,7 @@
 				<DialogClose as-child>
 					<button
 						type="button"
-						class="w-full rounded-md bg-brand px-3 py-2 text-sm font-semibold text-white hover:bg-brand-hover"
+						class="w-full rounded-md bg-brand px-3 py-2 text-sm font-semibold text-on-accent hover:bg-brand-hover"
 						@click="handleSave"
 					>
 						Save

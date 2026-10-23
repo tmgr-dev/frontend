@@ -74,7 +74,7 @@
 						<div class="mt-6 flex flex-col items-center gap-1">
 							<button
 								type="button"
-								class="min-h-[44px] rounded-md bg-brand px-6 text-sm font-medium text-white hover:opacity-90"
+								class="min-h-[44px] rounded-md bg-brand px-6 text-sm font-medium text-on-accent hover:opacity-90"
 								data-tour-avoid="cta"
 								@click="goWorkspace"
 							>
@@ -185,7 +185,7 @@
 									</p>
 									<button
 										type="button"
-										class="min-h-[44px] rounded-md bg-brand px-4 font-medium text-white"
+										class="min-h-[44px] rounded-md bg-brand px-4 font-medium text-on-accent"
 										@click="mint"
 									>
 										Generate a token
@@ -230,7 +230,7 @@
 									<div class="flex flex-wrap gap-2">
 										<button
 											type="button"
-											class="min-h-[44px] rounded-md bg-brand px-4 font-medium text-white disabled:opacity-50"
+											class="min-h-[44px] rounded-md bg-brand px-4 font-medium text-on-accent disabled:opacity-50"
 											:disabled="!pasted.trim()"
 											@click="usePasted"
 										>
@@ -258,7 +258,7 @@
 										<div class="mt-2 flex flex-wrap gap-2">
 											<button
 												type="button"
-												class="min-h-[44px] rounded-md bg-brand px-4 font-medium text-white"
+												class="min-h-[44px] rounded-md bg-brand px-4 font-medium text-on-accent"
 												@click="mint"
 											>
 												Generate new token
@@ -302,7 +302,7 @@
 									<template v-else-if="activeId === 'cursor'">
 										<a
 											:href="snippets.cursorDeeplink"
-											class="inline-flex min-h-[44px] items-center rounded-md bg-brand px-4 text-sm font-medium text-white hover:opacity-90"
+											class="inline-flex min-h-[44px] items-center rounded-md bg-brand px-4 text-sm font-medium text-on-accent hover:opacity-90"
 											@click="onCursorOpen"
 										>
 											Add to Cursor

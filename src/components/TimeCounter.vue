@@ -101,13 +101,13 @@
 		<button
 			type="button"
 			@click="toggleTimer"
-			class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white shadow-tmgr-sm transition-all hover:opacity-90"
+			class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full shadow-tmgr-sm transition-all hover:opacity-90"
 			:class="
 				isTimerActive
 					? isTimeOver
-						? 'bg-status-fix'
-						: 'bg-status-done'
-					: 'bg-brand'
+						? 'bg-status-fix text-white'
+						: 'bg-status-done text-white'
+					: 'bg-brand text-on-accent'
 			"
 			:title="isTimerActive ? 'Stop timer' : 'Start timer'"
 		>

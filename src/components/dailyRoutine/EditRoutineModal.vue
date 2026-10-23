@@ -333,7 +333,7 @@
 					<button
 						v-if="!isNew"
 						type="button"
-						class="bg-status-fix-bg/40 hover:bg-status-fix-bg/70 flex h-9 w-9 items-center justify-center rounded-card border border-status-fix-bg text-status-fix-fg"
+						class="flex h-9 w-9 items-center justify-center rounded-card border border-status-fix-bg bg-status-fix-bg/40 text-status-fix-fg hover:bg-status-fix-bg/70"
 						@click="onDelete"
 					>
 						<DRIcon name="trash" :size="14" stroke="currentColor" />
@@ -347,7 +347,7 @@
 					</button>
 					<button
 						type="button"
-						class="flex-1 rounded-card bg-brand px-4 py-2 text-sm font-semibold text-white shadow-tmgr-md transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-ink-subtle disabled:shadow-none"
+						class="flex-1 rounded-card bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-tmgr-md transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-ink-subtle disabled:shadow-none"
 						:disabled="!draft.title.trim()"
 						@click="onSave"
 					>

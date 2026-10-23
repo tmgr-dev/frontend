@@ -202,7 +202,7 @@
 					<h3 class="font-semibold text-ink">Comments</h3>
 					<span
 						v-if="commentsCount > 0"
-						class="flex items-center justify-center rounded-full bg-brand px-2 py-0.5 text-xs text-white"
+						class="flex items-center justify-center rounded-full bg-brand px-2 py-0.5 text-xs text-on-accent"
 					>
 						{{ commentsCount }}
 					</span>
@@ -295,7 +295,7 @@
 								class="relative max-w-[85%] rounded-2xl px-4 py-2"
 								:class="
 									isOwnComment(comment)
-										? 'bg-brand text-white'
+										? 'bg-brand text-on-accent'
 										: 'bg-surface-sunken text-ink'
 								"
 								style="overflow-wrap: break-word; word-break: break-word"

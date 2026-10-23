@@ -43,7 +43,7 @@
 					class="rounded px-2 py-1 text-xs"
 					:class="
 						option.key === window
-							? 'bg-brand text-white'
+							? 'bg-brand text-on-accent'
 							: 'bg-surface-sunken text-ink-subtle hover:text-ink'
 					"
 					@click="emit('window-change', option.key)"
@@ -73,7 +73,7 @@
 				<span
 					v-for="(height, index) in bars"
 					:key="index"
-					class="bg-brand/60 w-full rounded-sm"
+					class="w-full rounded-sm bg-brand/60"
 					:style="{ height: `${height}px` }"
 					:title="dayTitle(index)"
 				/>

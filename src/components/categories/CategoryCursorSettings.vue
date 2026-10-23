@@ -76,7 +76,7 @@
 				<button
 					@click="saveKey"
 					:disabled="!apiKey || saving"
-					class="h-10 w-full rounded-pill bg-brand text-sm font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
+					class="h-10 w-full rounded-pill bg-brand text-sm font-semibold text-on-accent shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
 				>
 					{{ saving ? 'Validating…' : 'Save API Key' }}
 				</button>
@@ -157,7 +157,7 @@
 					<button
 						@click="saveKey"
 						:disabled="!apiKey || saving"
-						class="inline-flex h-9 items-center justify-center rounded-pill bg-brand px-4 text-sm font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
+						class="inline-flex h-9 items-center justify-center rounded-pill bg-brand px-4 text-sm font-semibold text-on-accent shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
 					>
 						{{ saving ? 'Validating…' : 'Save' }}
 					</button>

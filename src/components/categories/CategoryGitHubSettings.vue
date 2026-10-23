@@ -41,7 +41,7 @@
 			<button
 				@click="installGitHubApp"
 				:disabled="installing"
-				class="mx-auto flex h-10 items-center justify-center rounded-pill bg-brand px-6 text-sm font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
+				class="mx-auto flex h-10 items-center justify-center rounded-pill bg-brand px-6 text-sm font-semibold text-on-accent shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
 			>
 				<span v-if="installing">Installing…</span>
 				<span v-else>Install GitHub App</span>
@@ -50,7 +50,7 @@
 
 		<div v-else-if="!status.repository" class="space-y-4">
 			<div
-				class="border-status-done/40 rounded-card border bg-status-done-bg p-4"
+				class="rounded-card border border-status-done/40 bg-status-done-bg p-4"
 			>
 				<p class="text-sm text-status-done-fg">
 					✓ GitHub App is installed. Select a repository to connect:
@@ -59,7 +59,7 @@
 
 			<div
 				v-if="status.available_repositories.length === 0"
-				class="border-status-fix/40 rounded-card border bg-status-fix-bg p-4"
+				class="rounded-card border border-status-fix/40 bg-status-fix-bg p-4"
 			>
 				<p class="text-sm text-status-fix-fg">
 					No repositories available. Make sure the GitHub App has access to your
@@ -88,7 +88,7 @@
 				<button
 					@click="connectRepository"
 					:disabled="!selectedRepo || connecting"
-					class="mt-4 inline-flex h-10 items-center justify-center rounded-pill bg-brand px-6 text-sm font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+					class="mt-4 inline-flex h-10 items-center justify-center rounded-pill bg-brand px-6 text-sm font-semibold text-on-accent shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					<span v-if="connecting">Connecting…</span>
 					<span v-else>Connect Repository</span>
@@ -98,7 +98,7 @@
 
 		<div v-else class="space-y-4">
 			<div
-				class="border-status-done/40 rounded-card border bg-status-done-bg p-4"
+				class="rounded-card border border-status-done/40 bg-status-done-bg p-4"
 			>
 				<div class="flex items-center justify-between gap-3">
 					<div>
@@ -114,7 +114,7 @@
 						</p>
 						<p
 							v-if="status.repository.last_synced_at"
-							class="text-status-done-fg/80 mt-1 text-xs"
+							class="mt-1 text-xs text-status-done-fg/80"
 						>
 							Last synced: {{ formatDate(status.repository.last_synced_at) }}
 						</p>
@@ -139,7 +139,7 @@
 				<button
 					@click="syncRepository"
 					:disabled="syncing"
-					class="inline-flex h-9 items-center justify-center rounded-pill bg-brand px-4 text-sm font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
+					class="inline-flex h-9 items-center justify-center rounded-pill bg-brand px-4 text-sm font-semibold text-on-accent shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
 				>
 					<span v-if="syncing">Syncing…</span>
 					<span v-else>Sync Now</span>
@@ -158,7 +158,7 @@
 				<button
 					@click="disconnectRepository"
 					:disabled="disconnecting"
-					class="border-status-fix/40 inline-flex h-9 items-center justify-center rounded-pill border bg-status-fix-bg px-4 text-sm font-semibold text-status-fix-fg transition-colors hover:opacity-90 disabled:opacity-50"
+					class="inline-flex h-9 items-center justify-center rounded-pill border border-status-fix/40 bg-status-fix-bg px-4 text-sm font-semibold text-status-fix-fg transition-colors hover:opacity-90 disabled:opacity-50"
 				>
 					<span v-if="disconnecting">Disconnecting…</span>
 					<span v-else>Disconnect</span>
@@ -168,7 +168,7 @@
 
 		<div
 			v-if="error"
-			class="border-status-fix/40 mt-4 rounded-card border bg-status-fix-bg p-4"
+			class="mt-4 rounded-card border border-status-fix/40 bg-status-fix-bg p-4"
 		>
 			<p class="text-sm text-status-fix-fg">{{ error }}</p>
 		</div>

@@ -68,7 +68,7 @@
 									>
 									<button
 										type="button"
-										class="flex h-8 shrink-0 items-center gap-1 rounded-pill bg-brand px-3 text-2xs font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+										class="flex h-8 shrink-0 items-center gap-1 rounded-pill bg-brand px-3 text-2xs font-semibold text-on-accent shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
 										:disabled="!quickTitle.trim()"
 										@click="onQuickAdd"
 									>
@@ -254,7 +254,7 @@
 								class="flex max-h-[220px] shrink-0 flex-col gap-1.5 overflow-y-auto rounded-card transition-colors"
 								:class="
 									dragHoverKey === `unsched:${todayIso}`
-										? 'bg-brand/10 ring-brand/40 ring-1'
+										? 'bg-brand/10 ring-1 ring-brand/40'
 										: ''
 								"
 								data-dr-drop
@@ -399,7 +399,7 @@
 
 					<button
 						type="button"
-						class="fixed bottom-20 right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-white shadow-tmgr-md transition-transform hover:scale-105 hover:bg-brand-hover md:bottom-6 md:right-6 md:h-14 md:w-14"
+						class="fixed bottom-20 right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-on-accent shadow-tmgr-md transition-transform hover:scale-105 hover:bg-brand-hover md:bottom-6 md:right-6 md:h-14 md:w-14"
 						title="New routine (N)"
 						aria-label="New routine"
 						data-tour="routines.add"

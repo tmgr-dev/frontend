@@ -260,7 +260,7 @@
 				:class="[
 					'rounded-full px-2 py-0.5 text-2xs font-medium transition-colors',
 					authorFilter === option.value
-						? 'bg-brand text-white'
+						? 'bg-brand text-on-accent'
 						: 'bg-surface-sunken text-ink-muted hover:bg-surface-active',
 				]"
 				@click="authorFilter = option.value"

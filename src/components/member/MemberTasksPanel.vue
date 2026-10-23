@@ -16,7 +16,7 @@
 				class="rounded px-2.5 py-1 text-xs"
 				:class="
 					option.key === tab
-						? 'bg-brand text-white'
+						? 'bg-brand text-on-accent'
 						: 'bg-surface-sunken text-ink-subtle hover:text-ink'
 				"
 				@click="emit('tab-change', option.key)"

@@ -157,7 +157,7 @@
 				Filters
 				<span
 					v-if="activeSelectCount"
-					class="rounded-full bg-brand px-1.5 text-xs font-semibold leading-5 text-white"
+					class="rounded-full bg-brand px-1.5 text-xs font-semibold leading-5 text-on-accent"
 				>
 					{{ activeSelectCount }}
 				</span>

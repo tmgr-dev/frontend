@@ -67,7 +67,7 @@
 				/>
 				<button
 					type="button"
-					class="flex size-6 shrink-0 items-center justify-center rounded-pill bg-brand text-white transition hover:bg-brand-hover"
+					class="flex size-6 shrink-0 items-center justify-center rounded-pill bg-brand text-on-accent transition hover:bg-brand-hover"
 					@click="saveTimeEdit(v as number)"
 					title="Save (Enter)"
 				>

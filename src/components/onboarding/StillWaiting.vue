@@ -23,7 +23,7 @@
 		<div class="mt-4 flex flex-wrap gap-2">
 			<button
 				type="button"
-				class="min-h-[44px] rounded-md bg-brand px-4 text-sm font-medium text-white hover:opacity-90 sm:min-h-[36px]"
+				class="min-h-[44px] rounded-md bg-brand px-4 text-sm font-medium text-on-accent hover:opacity-90 sm:min-h-[36px]"
 				data-tour-avoid="cta"
 				@click="$emit('check-again')"
 			>

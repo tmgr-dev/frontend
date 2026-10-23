@@ -22,7 +22,7 @@
 		</select>
 		<button
 			type="button"
-			class="rounded-md bg-brand px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-ink-subtle"
+			class="rounded-md bg-brand px-3 py-2 text-sm font-semibold text-on-accent transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-ink-subtle"
 			:disabled="!workspaceId || busy"
 			@click="onConvert"
 		>

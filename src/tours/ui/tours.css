@@ -209,7 +209,7 @@ html.dark .tour-ring {
 .tour-btn--primary {
 	background: var(--brand-color);
 	border-color: transparent;
-	color: #fff;
+	color: var(--on-accent-color);
 	font-weight: 600;
 }
 

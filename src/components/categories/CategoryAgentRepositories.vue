@@ -23,7 +23,7 @@
 		<button
 			type="button"
 			:disabled="loading || saving || !dirty"
-			class="mt-3 inline-flex h-9 items-center justify-center rounded-pill bg-brand px-4 text-sm font-semibold text-white shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+			class="mt-3 inline-flex h-9 items-center justify-center rounded-pill bg-brand px-4 text-sm font-semibold text-on-accent shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
 			data-testid="agent-repositories-save"
 			@click="save"
 		>
@@ -32,7 +32,7 @@
 		</button>
 		<div
 			v-if="error"
-			class="border-status-fix/40 mt-4 rounded-card border bg-status-fix-bg p-4"
+			class="mt-4 rounded-card border border-status-fix/40 bg-status-fix-bg p-4"
 		>
 			<p
 				class="text-sm text-status-fix-fg"

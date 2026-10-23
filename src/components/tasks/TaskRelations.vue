@@ -29,7 +29,7 @@
 			</div>
 			<button
 				@click="isAddingRelation = true"
-				class="inline-flex h-6 items-center justify-center gap-1 rounded-pill bg-brand px-2.5 text-xs font-medium text-white transition-colors hover:bg-brand-hover"
+				class="inline-flex h-6 items-center justify-center gap-1 rounded-pill bg-brand px-2.5 text-xs font-medium text-on-accent transition-colors hover:bg-brand-hover"
 			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -245,7 +245,7 @@
 				<!-- Error Message -->
 				<div
 					v-if="error"
-					class="border-status-fix-fg/30 rounded-md border bg-status-fix-bg px-3 py-2"
+					class="rounded-md border border-status-fix-fg/30 bg-status-fix-bg px-3 py-2"
 				>
 					<p class="text-sm text-status-fix-fg">{{ error }}</p>
 				</div>
@@ -262,7 +262,7 @@
 				<button
 					@click="handleAddRelation"
 					:disabled="!selectedTask || !newRelation.typeId || isLoading"
-					class="inline-flex h-9 items-center justify-center rounded-md bg-brand px-4 text-sm font-semibold text-white transition-colors hover:bg-brand-hover disabled:pointer-events-none disabled:opacity-50"
+					class="inline-flex h-9 items-center justify-center rounded-md bg-brand px-4 text-sm font-semibold text-on-accent transition-colors hover:bg-brand-hover disabled:pointer-events-none disabled:opacity-50"
 				>
 					{{ isLoading ? 'Linking…' : 'Link' }}
 				</button>
