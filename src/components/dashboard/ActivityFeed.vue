@@ -46,8 +46,8 @@
 				:class="[
 					'rounded-full px-2 py-0.5 text-2xs font-medium transition-colors',
 					authorFilter === option.value
-						? 'bg-tmgr-blue text-white'
-						: 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600',
+						? 'bg-brand-bg text-ink'
+						: 'bg-surface-sunken text-ink-muted hover:bg-surface-hover',
 				]"
 				@click="authorFilter = option.value"
 			>
@@ -64,7 +64,7 @@
 			<p
 				v-else-if="selectedDate && error && activities.length === 0"
 				role="alert"
-				class="py-4 text-center text-sm text-red-600 dark:text-red-400"
+				class="py-4 text-center text-sm text-status-fix-fg"
 			>
 				{{ error.message || "Couldn't load activities for this day" }}
 			</p>
@@ -115,9 +115,9 @@
 		<!-- Real-time indicator -->
 		<div
 			v-if="isRealTimeConnected"
-			class="mt-4 flex items-center justify-center text-xs text-green-600 dark:text-green-400"
+			class="mt-4 flex items-center justify-center text-xs text-status-done-fg"
 		>
-			<div class="mr-2 h-2 w-2 animate-pulse rounded-full bg-green-500"></div>
+			<div class="mr-2 h-2 w-2 animate-pulse rounded-full bg-status-done"></div>
 			Live updates enabled
 		</div>
 	</div>
@@ -244,10 +244,10 @@
 	}
 
 	.activity-list::-webkit-scrollbar-track {
-		@apply rounded bg-gray-100 dark:bg-gray-700;
+		@apply rounded bg-surface-sunken;
 	}
 
 	.activity-list::-webkit-scrollbar-thumb {
-		@apply rounded bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500;
+		@apply rounded bg-line-strong hover:bg-ink-faint;
 	}
 </style>

@@ -92,7 +92,7 @@
 	} from 'vue';
 
 	const TONE_TILE: Record<DashboardTone, string> = {
-		brand: 'bg-brand-bg text-brand-fg',
+		brand: 'bg-brand-bg text-brand',
 		done: 'bg-status-done-bg text-status-done-fg',
 		testing: 'bg-status-testing-bg text-status-testing-fg',
 		progress: 'bg-status-progress-bg text-status-progress-fg',

@@ -118,7 +118,7 @@
 			orange: 'bg-status-fix-bg text-status-fix-fg',
 			red: 'bg-status-fix-bg text-status-fix-fg',
 			purple: 'bg-status-testing-bg text-status-testing-fg',
-			indigo: 'bg-brand-bg text-brand-fg',
+			indigo: 'bg-brand-bg text-brand',
 		};
 
 		return cn(

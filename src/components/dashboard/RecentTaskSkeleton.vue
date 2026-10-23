@@ -1,5 +1,5 @@
 <template>
-	<div class="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+	<div class="rounded-lg border border-line p-3">
 		<div class="flex items-start justify-between">
 			<div class="min-w-0 flex-1 space-y-2">
 				<!-- Task Title and Status -->

@@ -1,9 +1,7 @@
 <template>
 	<div class="recent-tasks-list">
 		<div class="recent-tasks-header mb-4 flex items-center justify-between">
-			<h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-				Recent Tasks
-			</h3>
+			<h3 class="text-lg font-semibold text-ink">Recent Tasks</h3>
 			<div class="flex items-center space-x-2">
 				<Button
 					variant="ghost"
@@ -113,11 +111,11 @@
 
 <style scoped>
 	.recent-tasks-list {
-		@apply rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800;
+		@apply rounded-card border border-line bg-surface p-6;
 	}
 
 	.recent-tasks-header {
-		@apply mb-4 border-b border-gray-200 pb-4 dark:border-gray-700;
+		@apply mb-4 border-b border-line pb-4;
 	}
 
 	.recent-tasks-content {
@@ -130,10 +128,10 @@
 	}
 
 	.recent-tasks-content::-webkit-scrollbar-track {
-		@apply rounded bg-gray-100 dark:bg-gray-700;
+		@apply rounded bg-surface-sunken;
 	}
 
 	.recent-tasks-content::-webkit-scrollbar-thumb {
-		@apply rounded bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500;
+		@apply rounded bg-line-strong hover:bg-ink-faint;
 	}
 </style>
