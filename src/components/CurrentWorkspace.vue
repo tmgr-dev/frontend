@@ -25,13 +25,11 @@
 			</Button>
 		</PopoverTrigger>
 
-		<PopoverContent
-			class="rounded bg-white p-0 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400"
-		>
+		<PopoverContent class="rounded border-line bg-surface p-0 text-ink">
 			<Command>
 				<CommandInput
 					class="h-9"
-					wrapper-class="dark:border-gray-600"
+					wrapper-class="border-line"
 					placeholder="Search category..."
 					@input="(e) => (searchValue = e.target.value)"
 				/>
@@ -51,7 +49,7 @@
 									openCombobox = false;
 								}
 							"
-							class="cursor-pointer text-gray-900 hover:!bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
+							class="cursor-pointer text-ink hover:!bg-brand hover:!text-white"
 						>
 							{{ workspace.name }}
 							<Check
@@ -94,8 +92,8 @@
 					<button
 						@click="createNewWorkspace()"
 						:disabled="flags.isLoading"
-						:class="{ 'bg-neutral-400 hover:bg-neutral-400': flags.isLoading }"
-						class="mt-3 w-full rounded bg-orange-500 px-4 py-2 font-bold text-white outline-none transition hover:bg-orange-600 sm:mb-0"
+						:class="{ 'bg-ink-faint hover:bg-ink-faint': flags.isLoading }"
+						class="mt-3 w-full rounded bg-brand px-4 py-2 font-bold text-white outline-none transition hover:bg-brand-hover sm:mb-0"
 						type="button"
 					>
 						Create
@@ -127,10 +125,10 @@
 						<textarea
 							v-model="newWorkspaceInvitation.emails"
 							rows="3"
-							class="w-full rounded border border-gray-300 px-3 py-2"
+							class="w-full rounded border border-input bg-background px-3 py-2 text-ink"
 							placeholder="email1@example.com, email2@example.com"
 						></textarea>
-						<span class="text-sm text-gray-500">
+						<span class="text-sm text-ink-subtle">
 							Separate multiple emails with commas
 						</span>
 					</label>
@@ -138,8 +136,8 @@
 					<button
 						@click="createNewWorkspaceInvitation()"
 						:disabled="flags.isLoading"
-						:class="{ 'bg-neutral-400 hover:bg-neutral-400': flags.isLoading }"
-						class="mr-5 mt-5 w-full rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 sm:mb-0"
+						:class="{ 'bg-ink-faint hover:bg-ink-faint': flags.isLoading }"
+						class="mr-5 mt-5 w-full rounded bg-brand px-4 py-2 font-bold text-white transition hover:bg-brand-hover sm:mb-0"
 						type="button"
 					>
 						{{ flags.isLoading ? 'Creating...' : 'Send Invitation' }}
@@ -152,18 +150,18 @@
 						<h3 class="mb-2 text-lg font-bold">Invitation sent!</h3>
 						<p
 							v-if="newWorkspaceInvitation.emails"
-							class="mb-4 text-sm text-gray-600"
+							class="mb-4 text-sm text-ink-muted"
 						>
 							Invitations have been sent to the specified email addresses.
 						</p>
-						<p v-else class="mb-4 text-sm text-gray-600">
+						<p v-else class="mb-4 text-sm text-ink-muted">
 							You can share this link with anyone you want to invite:
 						</p>
 					</div>
 
 					<div
 						v-if="!newWorkspaceInvitation.emails"
-						class="flex gap-2 rounded bg-gray-50 p-3"
+						class="flex gap-2 rounded bg-surface-sunken p-3"
 					>
 						<code class="break-all text-sm">
 							{{ invitationLink }}
@@ -176,7 +174,7 @@
 						>
 							<span
 								class="material-icons transition-colors"
-								:class="{ 'text-green-500': flags.isCopied }"
+								:class="{ 'text-status-done-fg': flags.isCopied }"
 							>
 								content_copy
 							</span>

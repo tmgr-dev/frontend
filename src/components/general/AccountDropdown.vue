@@ -1,7 +1,7 @@
 <template>
 	<div class="relative mt-2 select-none md:mt-0" ref="$wrapper">
 		<div
-			class="flex cursor-pointer items-center gap-1 dark:text-white"
+			class="flex cursor-pointer items-center gap-1 text-ink"
 			@click="isOpenProfileDropdown = !isOpenProfileDropdown"
 		>
 			<div class="max-w-24 overflow-hidden">
@@ -16,30 +16,24 @@
 		<!--	dropdown block	-->
 		<div
 			v-if="isOpenProfileDropdown"
-			class="static mt-2 rounded border border-gray-200 bg-white py-2 shadow-lg dark:border-gray-700 dark:bg-gray-900 md:absolute md:right-0 md:top-[calc(100%+10px)] md:z-50 md:w-auto"
+			class="static mt-2 rounded border border-line bg-surface py-2 shadow-lg md:absolute md:right-0 md:top-[calc(100%+10px)] md:z-50 md:w-auto"
 		>
 			<div class="sm:flex">
 				<ul
-					class="border-b-2 px-4 py-2 dark:border-gray-700 sm:w-32 sm:border-b-0 sm:border-r-2"
+					class="border-b-2 border-line px-4 py-2 sm:w-32 sm:border-b-0 sm:border-r-2"
 				>
 					<li
 						v-for="link in links"
 						:key="link.id"
 						class="py-1 hover:opacity-75 md:p-2 lg:px-4"
 					>
-						<router-link
-							class="block text-tmgr-blue dark:text-tmgr-gray"
-							:to="link.to"
-						>
+						<router-link class="block text-ink" :to="link.to">
 							{{ link.name }}
 						</router-link>
 					</li>
 
 					<li class="py-1 hover:opacity-75 md:p-2 lg:px-4">
-						<a
-							class="block text-tmgr-blue dark:text-tmgr-gray"
-							href="#"
-							@click.prevent="logout"
+						<a class="block text-ink" href="#" @click.prevent="logout"
 							>Logout</a
 						>
 					</li>
@@ -54,11 +48,11 @@
 						@change="onSelectChange"
 					/>
 
-					<div class="mt-2 text-neutral-400">workspace users:</div>
+					<div class="mt-2 text-ink-faint">workspace users:</div>
 
 					<ul class="h-24 overflow-y-auto">
 						<li
-							class="py-1 text-tmgr-blue dark:text-tmgr-gray sm:px-0"
+							class="py-1 text-ink sm:px-0"
 							v-for="(user, index) in workspaceUsers"
 							:key="user.id || index"
 						>

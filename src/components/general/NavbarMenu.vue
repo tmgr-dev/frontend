@@ -13,7 +13,7 @@
 			:to="link.path"
 			custom
 		>
-			<li :class="{ 'text-purple dark:text-green': isActive }">
+			<li :class="{ 'text-brand': isActive }">
 				<a
 					:href="href"
 					:class="{ 'font-bold': isActive }"
@@ -25,7 +25,7 @@
 		</router-link>
 	</ul>
 	<button
-		class="flex appearance-none items-center rounded border bg-white px-2 transition-colors duration-300 dark:bg-gray-800"
+		class="flex appearance-none items-center rounded border border-line bg-surface px-2 text-ink transition-colors duration-300"
 		@click="showCreatingTaskModal"
 	>
 		<span class="mr-2">Create</span>

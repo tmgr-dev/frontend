@@ -5,22 +5,20 @@
 			:class="{ active: showMenu }"
 			@click="toggleMenu"
 		>
-			<div class="bar1 bg-gray-900 dark:bg-white"></div>
-			<div class="bar2 bg-gray-900 dark:bg-white"></div>
-			<div class="bar3 bg-gray-900 dark:bg-white"></div>
+			<div class="bar1 bg-ink"></div>
+			<div class="bar2 bg-ink"></div>
+			<div class="bar3 bg-ink"></div>
 		</div>
 	</div>
 
 	<nav
-		class="hidden bg-white shadow transition-colors duration-300 dark:bg-gray-900 md:block"
+		class="hidden bg-surface shadow transition-colors duration-300 md:block"
 		role="navigation"
 	>
 		<div class="container mx-auto flex p-4">
 			<navbar-menu @navigated="toggleMenu" />
 
-			<div
-				class="ml-auto mr-4 flex items-center justify-between text-black dark:text-white"
-			>
+			<div class="ml-auto mr-4 flex items-center justify-between text-ink">
 				<day-night-switch :key="store.state.colorScheme" v-model="switchOn" />
 			</div>
 
@@ -31,7 +29,7 @@
 	<transition name="translate-left" mode="out-in">
 		<nav
 			v-if="showMenu"
-			class="fixed inset-0 z-40 w-full bg-white shadow transition-colors duration-300 dark:bg-gray-900 md:hidden"
+			class="fixed inset-0 z-40 w-full bg-surface shadow transition-colors duration-300 md:hidden"
 			role="navigation"
 		>
 			<div class="mt-4 flex h-full flex-col items-center p-4 text-center">
@@ -39,9 +37,7 @@
 
 				<account-dropdown />
 
-				<div
-					class="mb-4 mt-auto flex items-center justify-between text-black dark:text-white"
-				>
+				<div class="mb-4 mt-auto flex items-center justify-between text-ink">
 					<day-night-switch :key="store.state.colorScheme" v-model="switchOn" />
 				</div>
 			</div>
