@@ -9,7 +9,7 @@
 			</DialogHeader>
 
 			<blockquote
-				class="max-h-24 overflow-y-auto whitespace-pre-wrap break-words rounded-md border-l-4 border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+				class="max-h-24 overflow-y-auto whitespace-pre-wrap break-words rounded-md border-l-4 border-line-strong bg-surface-sunken px-3 py-2 text-sm text-ink-muted"
 			>
 				{{ text }}
 			</blockquote>
@@ -19,7 +19,7 @@
 					<span class="mb-1 block text-xs text-ink-subtle">Category</span>
 					<select
 						v-model="categoryId"
-						class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+						class="w-full rounded border border-input bg-background px-2 py-1.5 text-ink"
 						data-testid="selection-category"
 					>
 						<option v-for="c in categories" :key="c.id" :value="c.id">
@@ -40,7 +40,7 @@
 					>
 					<select
 						v-model="statusId"
-						class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+						class="w-full rounded border border-input bg-background px-2 py-1.5 text-ink"
 						data-testid="selection-status"
 					>
 						<option :value="null">Default</option>
@@ -49,11 +49,7 @@
 						</option>
 					</select>
 				</label>
-				<p
-					v-if="error"
-					class="text-xs text-red-600 dark:text-red-400"
-					role="alert"
-				>
+				<p v-if="error" class="text-xs text-status-fix-fg" role="alert">
 					{{ error }}
 				</p>
 			</div>

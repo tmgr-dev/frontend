@@ -1,6 +1,6 @@
 <template>
 	<PageContainer
-		:class="zone.dragging.value ? 'rounded-card ring-2 ring-blue-500' : ''"
+		:class="zone.dragging.value ? 'rounded-card ring-2 ring-brand' : ''"
 		data-testid="pages-index"
 		v-on="zone.handlers"
 	>
@@ -34,15 +34,10 @@
 					<Download class="h-4 w-4" />
 					Export all
 				</button>
-				<button
-					type="button"
-					class="inline-flex h-9 items-center gap-2 rounded-md bg-tmgr-blue px-4 text-sm font-medium text-white hover:bg-tmgr-blue/90 dark:bg-blue-600 dark:hover:bg-blue-500"
-					data-tour="pages.new"
-					@click="create()"
-				>
-					<Plus class="h-4 w-4" />
+				<Button data-tour="pages.new" @click="create()">
+					<Plus />
 					Create page
-				</button>
+				</Button>
 			</template>
 		</PageHeader>
 
@@ -54,20 +49,14 @@
 			v-else-if="!pages.length"
 			class="flex flex-col items-center justify-center gap-3 py-16 text-center"
 		>
-			<FileText class="h-12 w-12 text-gray-400 dark:text-gray-500" />
-			<p class="text-xl font-bold text-gray-700 dark:text-gray-300">
-				No pages yet
-			</p>
-			<p class="text-sm text-gray-500 dark:text-gray-400">
+			<FileText class="h-12 w-12 text-ink-faint" />
+			<p class="text-xl font-bold text-ink">No pages yet</p>
+			<p class="text-sm text-ink-subtle">
 				Create your first page for notes and documentation.
 			</p>
-			<button
-				type="button"
-				class="mt-2 inline-flex h-10 items-center rounded-md bg-tmgr-blue px-6 text-sm font-semibold text-white hover:bg-tmgr-blue/90 dark:bg-blue-600 dark:hover:bg-blue-500"
-				@click="create()"
-			>
+			<Button size="lg" class="mt-2 px-6" @click="create()">
 				Create page
-			</button>
+			</Button>
 		</div>
 		<div v-else class="space-y-8">
 			<section v-if="pinned.length">
@@ -114,6 +103,7 @@
 	import PageRow from '@/components/pagesNav/PageRow.vue';
 	import PagesTreeDialogs from '@/components/pagesNav/PagesTreeDialogs.vue';
 	import PagesTreeNode from '@/components/pagesNav/PagesTreeNode.vue';
+	import { Button } from '@/components/ui/button';
 	import { useFileDrop } from '@/composable/usePagesMarkdownIo';
 	import { usePagesTreeHost } from '@/composable/usePagesTreeHost';
 	import { Archive, Download, FileText, Plus, Upload } from 'lucide-vue-next';
@@ -125,6 +115,7 @@
 	export default defineComponent({
 		name: 'PagesIndex',
 		components: {
+			Button,
 			Download,
 			Draggable,
 			FileText,

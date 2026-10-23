@@ -3,7 +3,7 @@
 		data-testid="page-files"
 		:class="
 			dragging
-				? 'rounded-md ring-2 ring-blue-400 ring-offset-2 dark:ring-offset-gray-900'
+				? 'rounded-md ring-2 ring-brand ring-offset-2 ring-offset-background'
 				: ''
 		"
 		@dragover.prevent="dragging = true"
@@ -16,7 +16,7 @@
 			</h2>
 			<button
 				type="button"
-				class="text-xs text-blue-600 hover:underline disabled:opacity-50 dark:text-blue-400"
+				class="text-xs text-brand hover:underline disabled:opacity-50"
 				:disabled="uploading"
 				data-testid="page-files-upload"
 				@click="pick"
@@ -35,23 +35,19 @@
 			<li v-for="file in files" :key="file.id" class="flex items-center gap-2">
 				<button
 					type="button"
-					class="min-w-0 flex-1 truncate text-left text-blue-600 hover:underline dark:text-blue-400"
+					class="min-w-0 flex-1 truncate text-left text-brand hover:underline"
 					:title="file.original_name || file.name"
 					@click="$emit('open', file)"
 				>
 					{{ file.original_name || file.name }}
 				</button>
-				<span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">{{
+				<span class="shrink-0 text-xs text-ink-subtle">{{
 					sizeOf(file.size)
 				}}</span>
 			</li>
 		</ul>
-		<p v-else class="text-gray-400 dark:text-gray-500">None</p>
-		<p
-			v-if="error"
-			class="mt-1 text-xs text-red-600 dark:text-red-400"
-			role="alert"
-		>
+		<p v-else class="text-ink-faint">None</p>
+		<p v-if="error" class="mt-1 text-xs text-status-fix-fg" role="alert">
 			{{ error }}
 		</p>
 	</div>

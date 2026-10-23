@@ -2,7 +2,7 @@
 	<div data-testid="page-properties">
 		<div class="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
 			<span
-				class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+				class="inline-flex items-center rounded-full bg-tag-bg px-2.5 py-0.5 text-xs font-medium text-tag-fg"
 				data-testid="page-type-badge"
 				>{{ typeLabel }}</span
 			>
@@ -36,7 +36,7 @@
 					<select
 						v-if="def.kind === 'enum'"
 						:value="valueOf(def.key) ?? ''"
-						class="rounded border border-gray-300 bg-white px-2 py-0.5 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+						class="rounded border border-input bg-background px-2 py-0.5 text-sm text-ink"
 						@change="
 							setText(def.key, ($event.target as HTMLSelectElement).value)
 						"
@@ -48,7 +48,7 @@
 					</select>
 					<span
 						v-else-if="def.kind === 'readonlyDate'"
-						class="text-gray-700 dark:text-gray-300"
+						class="text-ink-muted"
 						data-testid="last-contact"
 						>{{ valueOf(def.key) || '—' }}</span
 					>
@@ -105,11 +105,9 @@
 						v-else
 						:type="def.kind === 'date' ? 'date' : 'text'"
 						:value="valueOf(def.key) ?? ''"
-						class="rounded border bg-white px-2 py-0.5 text-sm text-gray-900 dark:bg-gray-800 dark:text-gray-100"
+						class="rounded border bg-background px-2 py-0.5 text-sm text-ink"
 						:class="
-							errorFor(errors, def.key)
-								? 'border-red-500'
-								: 'border-gray-300 dark:border-gray-600'
+							errorFor(errors, def.key) ? 'border-destructive' : 'border-input'
 						"
 						@change="
 							setText(def.key, ($event.target as HTMLInputElement).value)
@@ -117,7 +115,7 @@
 					/>
 					<p
 						v-if="errorFor(errors, def.key)"
-						class="mt-0.5 text-xs text-red-600 dark:text-red-400"
+						class="mt-0.5 text-xs text-status-fix-fg"
 						role="alert"
 						data-testid="property-error"
 					>
