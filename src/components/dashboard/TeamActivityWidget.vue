@@ -130,7 +130,7 @@
 							</div>
 						</div>
 						<div>
-							<div class="text-lg font-semibold tabular-nums text-brand-fg">
+							<div class="text-lg font-semibold tabular-nums text-brand">
 								{{ formatTrackedSeconds(teamActivity.tracked_seconds) }}
 							</div>
 							<div class="text-2xs uppercase tracking-wide text-ink-subtle">

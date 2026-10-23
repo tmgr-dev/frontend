@@ -117,7 +117,7 @@
 												:class="[
 													'rounded-pill border px-3 py-1 text-xs font-medium transition-colors',
 													boardFilterToggles[filter.key]
-														? 'border-brand bg-brand-bg text-brand-fg'
+														? 'border-brand bg-brand-bg text-ink'
 														: 'border-line text-ink-subtle hover:bg-surface-hover',
 												]"
 												@click="toggleBoardFilter(filter.key)"
@@ -596,7 +596,7 @@
 												<Button
 													v-if="!isCreatingStatus"
 													variant="outline"
-													class="mt-3 w-full text-destructive hover:text-destructive"
+													class="mt-3 w-full text-status-fix-fg hover:text-status-fix-fg"
 													type="button"
 													@click="deleteStatus"
 												>

@@ -17,7 +17,7 @@
 						{{ task.title }}
 					</h4>
 					<div v-if="task.is_overdue" class="flex items-center">
-						<ExclamationTriangleIcon class="h-4 w-4 text-red-500" />
+						<ExclamationTriangleIcon class="h-4 w-4 text-status-fix" />
 						<span class="sr-only">Overdue</span>
 					</div>
 				</div>
@@ -243,8 +243,8 @@
 		return cn(
 			'p-1',
 			props.task.timer_running
-				? 'text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300'
-				: 'text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300',
+				? 'text-status-fix-fg hover:text-status-fix'
+				: 'text-status-done-fg hover:text-status-done',
 		);
 	});
 
@@ -283,10 +283,8 @@
 			'p-3 rounded-lg border border-line',
 			'hover:bg-surface-hover transition-colors duration-150',
 			'cursor-pointer',
-			props.task.is_overdue &&
-				'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/10',
-			isTimeExceeded.value &&
-				'border-l-4 border-l-red-500 dark:border-l-red-400',
+			props.task.is_overdue && 'border-status-fix bg-status-fix-bg',
+			isTimeExceeded.value && 'border-l-4 border-l-status-fix',
 		);
 	});
 

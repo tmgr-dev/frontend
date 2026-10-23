@@ -172,19 +172,15 @@
 			task_deleted: 'bg-status-fix-bg text-status-fix-fg',
 			task_restored: 'bg-status-todo-bg text-status-todo-fg',
 			task_status_changed: 'bg-status-progress-bg text-status-progress-fg',
-			task_assigned:
-				'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
-			task_persona_assigned:
-				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
-			task_persona_unassigned:
-				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
+			task_assigned: 'bg-status-testing-bg text-status-testing-fg',
+			task_persona_assigned: 'bg-status-testing-bg text-status-testing-fg',
+			task_persona_unassigned: 'bg-status-testing-bg text-status-testing-fg',
 			task_timer_started: 'bg-status-done-bg text-status-done-fg',
 			task_timer_stopped: 'bg-status-fix-bg text-status-fix-fg',
 			comment_created: 'bg-status-todo-bg text-status-todo-fg',
 			comment_updated: 'bg-status-progress-bg text-status-progress-fg',
 			comment_deleted: 'bg-status-fix-bg text-status-fix-fg',
-			category_created:
-				'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400',
+			category_created: 'bg-status-testing-bg text-status-testing-fg',
 			category_updated: 'bg-status-progress-bg text-status-progress-fg',
 			category_deleted: 'bg-status-fix-bg text-status-fix-fg',
 			file_uploaded: 'bg-status-done-bg text-status-done-fg',
@@ -192,34 +188,20 @@
 			member_joined: 'bg-status-done-bg text-status-done-fg',
 			member_left: 'bg-status-fix-bg text-status-fix-fg',
 			routine_completed: 'bg-status-done-bg text-status-done-fg',
-			git_commit_pushed:
-				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
-			git_branch_created:
-				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
-			git_branch_deleted:
-				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
-			git_pr_opened:
-				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
-			git_pr_closed:
-				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
-			git_pr_merged:
-				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
-			git_repo_connected:
-				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
-			git_repo_disconnected:
-				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
-			github_app_installed:
-				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
-			github_app_uninstalled:
-				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
-			cursor_agent_started:
-				'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
-			cursor_agent_finished:
-				'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
-			cursor_agent_failed:
-				'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
-			cursor_agent_stopped:
-				'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
+			git_commit_pushed: 'bg-status-testing-bg text-status-testing-fg',
+			git_branch_created: 'bg-status-testing-bg text-status-testing-fg',
+			git_branch_deleted: 'bg-status-testing-bg text-status-testing-fg',
+			git_pr_opened: 'bg-status-testing-bg text-status-testing-fg',
+			git_pr_closed: 'bg-status-testing-bg text-status-testing-fg',
+			git_pr_merged: 'bg-status-testing-bg text-status-testing-fg',
+			git_repo_connected: 'bg-status-testing-bg text-status-testing-fg',
+			git_repo_disconnected: 'bg-status-testing-bg text-status-testing-fg',
+			github_app_installed: 'bg-status-testing-bg text-status-testing-fg',
+			github_app_uninstalled: 'bg-status-testing-bg text-status-testing-fg',
+			cursor_agent_started: 'bg-status-testing-bg text-status-testing-fg',
+			cursor_agent_finished: 'bg-status-testing-bg text-status-testing-fg',
+			cursor_agent_failed: 'bg-status-testing-bg text-status-testing-fg',
+			cursor_agent_stopped: 'bg-status-testing-bg text-status-testing-fg',
 		};
 
 		const baseClasses =
