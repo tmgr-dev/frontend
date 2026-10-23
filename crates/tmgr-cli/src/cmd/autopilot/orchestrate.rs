@@ -128,7 +128,7 @@ impl OrchInput {
         max_teams: u32,
         team_size: u32,
         team_mode: ModeSetting,
-        order_keys: &[String],
+        order: &[i64],
         tasks: Vec<TaskText>,
     ) -> Result<OrchInput> {
         let mut keys = BTreeSet::new();
@@ -142,13 +142,15 @@ impl OrchInput {
             }
         }
         let mut forced_order = Vec::new();
-        for k in order_keys {
+        for id in order {
             let n = tasks
                 .iter()
-                .position(|t| &t.key == k)
+                .position(|t| t.task_id == *id)
                 .map(|i| i as u32 + 1)
                 .ok_or_else(|| {
-                    Error::usage(format!("{k} is in the order list but is not selected"))
+                    Error::usage(format!(
+                        "task {id} is in the order list but is not selected"
+                    ))
                 })?;
             if !forced_order.contains(&n) {
                 forced_order.push(n);
@@ -736,11 +738,11 @@ mod tests {
         let mut dup_id = vec![text(1), text(2)];
         dup_id[1].task_id = 101;
         assert!(OrchInput::new(1, 1, ModeSetting::Eco, &[], dup_id).is_err());
-        let order = ["TM-3".to_string(), "TM-1".into(), "TM-3".into()];
+        let order = [103, 101, 103];
         let i =
             OrchInput::new(1, 1, ModeSetting::Eco, &order, (1..=3).map(text).collect()).unwrap();
         assert_eq!(i.settings.forced_order, [3, 1]);
-        assert!(OrchInput::new(1, 1, ModeSetting::Eco, &["TM-9".into()], vec![text(1)]).is_err());
+        assert!(OrchInput::new(1, 1, ModeSetting::Eco, &[109], vec![text(1)]).is_err());
     }
 
     #[test]

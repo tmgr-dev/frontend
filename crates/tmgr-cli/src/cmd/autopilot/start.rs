@@ -247,13 +247,24 @@ const RETRY_PAUSE: std::time::Duration = std::time::Duration::from_millis(250);
 const OFFLINE_STREAK: usize = 3;
 const WORKERS: usize = 4;
 
-pub fn unique_keys(found: &mut [Found]) {
-    let mut seen = std::collections::HashMap::<String, usize>::new();
-    for f in found.iter() {
-        *seen.entry(f.key.to_lowercase()).or_default() += 1;
+pub fn colliding_keys<'a>(
+    keys: impl Iterator<Item = &'a str>,
+) -> std::collections::HashSet<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut dup = std::collections::HashSet::new();
+    for k in keys {
+        let k = k.to_lowercase();
+        if !seen.insert(k.clone()) {
+            dup.insert(k);
+        }
     }
+    dup
+}
+
+pub fn unique_keys(found: &mut [Found]) {
+    let dup = colliding_keys(found.iter().map(|f| f.key.as_str()));
     for f in found.iter_mut() {
-        if seen[&f.key.to_lowercase()] > 1 {
+        if dup.contains(&f.key.to_lowercase()) {
             f.key = format!("task-{}", f.id);
         }
     }

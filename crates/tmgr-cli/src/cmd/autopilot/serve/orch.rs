@@ -2,12 +2,13 @@ use super::super::model::{NotPlanned, PlanDoc, PlanRow, PlanState, Slots, TaskBr
 use super::super::orchestrate::{
     self, ModeSetting, OrchInput, Plan, PlanItem, Poll, TeamMode, TriageItem, Verdict,
 };
+use super::super::start::colliding_keys;
 use super::decide::{verdict, Decision, Facts};
 use super::ports::PlanFresh;
 use super::{Autopilot, MAX_PASS_ERRORS};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tmgr_core::text::sanitize_line;
@@ -338,7 +339,7 @@ impl Autopilot<'_> {
     }
 
     fn prepare_input(&mut self) -> Option<Flow> {
-        let inputs = match self.p.planner.inputs(&self.s.rule, &self.s.tasks) {
+        let mut inputs = match self.p.planner.inputs(&self.s.rule, &self.s.tasks) {
             Ok(i) => i,
             Err(e) => {
                 self.orch.errors += 1;
@@ -379,16 +380,19 @@ impl Autopilot<'_> {
             self.orch.phase = Phase::Failed(NOTHING_TO_PLAN.into());
             return Some(Flow::Stop(NOTHING_TO_PLAN.into()));
         }
-        let keys: BTreeMap<i64, String> = inputs
-            .tasks
-            .iter()
-            .map(|p| (p.text.task_id, p.text.key.clone()))
-            .collect();
-        let order: Vec<String> = self
+        let dup = colliding_keys(inputs.tasks.iter().map(|p| p.text.key.as_str()));
+        for p in &mut inputs.tasks {
+            if dup.contains(&p.text.key.to_lowercase()) {
+                p.text.key = format!("task-{}", p.text.task_id);
+            }
+        }
+        let ids: BTreeSet<i64> = inputs.tasks.iter().map(|p| p.text.task_id).collect();
+        let order: Vec<i64> = self
             .s
             .order
             .iter()
-            .filter_map(|id| keys.get(id).cloned())
+            .copied()
+            .filter(|id| ids.contains(id))
             .collect();
         self.orch.seen = inputs
             .tasks

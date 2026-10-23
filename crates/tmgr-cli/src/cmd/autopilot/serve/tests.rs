@@ -52,6 +52,7 @@ struct World {
     statuses: Vec<(u64, String, String)>,
     status_sets: Vec<(i64, u64)>,
     input_failed: BTreeSet<i64>,
+    plan_keys: BTreeMap<i64, String>,
     status_calls: u32,
     statuses_fail_from: Option<u32>,
     crash_on_set_status: bool,
@@ -106,6 +107,7 @@ impl Fake {
             ],
             status_sets: Vec::new(),
             input_failed: BTreeSet::new(),
+            plan_keys: BTreeMap::new(),
             status_calls: 0,
             statuses_fail_from: None,
             crash_on_set_status: false,
@@ -400,7 +402,7 @@ impl Planner for Fake {
             out.tasks.push(Planned {
                 text: TaskText {
                     task_id: id,
-                    key: format!("TM-{id}"),
+                    key: w.plan_keys.get(&id).cloned().unwrap_or(format!("TM-{id}")),
                     title: format!("Task {id}"),
                     description: format!("Body {id}"),
                     repos: vec!["o/r".into()],
@@ -1953,6 +1955,30 @@ fn an_input_read_error_retries_next_tick_and_is_not_a_refusal() {
     let w = rig.fake.0.borrow();
     assert_eq!(w.orch_starts.len(), 1);
     assert_eq!(w.orch_starts[0].1.tasks.len(), 2);
+}
+
+#[test]
+fn tasks_sharing_a_key_get_distinct_labels_and_the_plan_maps_by_id() {
+    let rig = orch_rig(&[(1, "", "eco"), (2, "", "eco")], &[]);
+    {
+        let mut w = rig.fake.w();
+        w.plan_keys.insert(1, "TM-210".into());
+        w.plan_keys.insert(2, "TM-210".into());
+    }
+    let mut s = orch_settings(&[1, 2]);
+    s.order = vec![2, 1];
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        tick_any(ap);
+    });
+    let w = rig.fake.0.borrow();
+    assert_eq!(w.orch_starts.len(), 1);
+    let input = &w.orch_starts[0].1;
+    let keys: Vec<_> = input.tasks.iter().map(|t| t.key.as_str()).collect();
+    assert_eq!(keys, ["task-1", "task-2"]);
+    assert_eq!(input.settings.forced_order, [2, 1]);
+    drop(w);
+    assert_eq!(last_policy(&rig).only.unwrap(), BTreeSet::from([1, 2]));
 }
 
 #[test]
