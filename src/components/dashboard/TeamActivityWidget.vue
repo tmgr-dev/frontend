@@ -255,6 +255,6 @@
 	}
 
 	.team-activity-content::-webkit-scrollbar-thumb {
-		@apply rounded bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500;
+		@apply rounded bg-line-strong hover:bg-ink-faint;
 	}
 </style>

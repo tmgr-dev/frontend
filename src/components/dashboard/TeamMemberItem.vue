@@ -183,8 +183,8 @@
 
 	const statusIndicatorClasses = computed(() => {
 		return cn(
-			'absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white dark:border-gray-800',
-			props.member.is_online ? 'bg-green-500' : 'bg-gray-400 dark:bg-gray-600',
+			'absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface',
+			props.member.is_online ? 'bg-green-500' : 'bg-ink-faint',
 		);
 	});
 

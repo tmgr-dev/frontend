@@ -46,8 +46,8 @@
 				:class="[
 					'rounded-full px-2 py-0.5 text-2xs font-medium transition-colors',
 					authorFilter === option.value
-						? 'bg-tmgr-blue text-white'
-						: 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600',
+						? 'bg-brand-bg text-brand-fg'
+						: 'bg-surface-sunken text-ink-muted hover:bg-surface-hover',
 				]"
 				@click="authorFilter = option.value"
 			>
@@ -244,10 +244,10 @@
 	}
 
 	.activity-list::-webkit-scrollbar-track {
-		@apply rounded bg-gray-100 dark:bg-gray-700;
+		@apply rounded bg-surface-sunken;
 	}
 
 	.activity-list::-webkit-scrollbar-thumb {
-		@apply rounded bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500;
+		@apply rounded bg-line-strong hover:bg-ink-faint;
 	}
 </style>

@@ -1300,7 +1300,7 @@
 										v-else
 										class="flex flex-col items-center justify-center py-20"
 									>
-										<p class="text-sm text-gray-600 dark:text-gray-400">
+										<p class="text-sm text-ink-muted">
 											No contribution data available
 										</p>
 									</div>
@@ -1437,16 +1437,12 @@
 							>
 								<div class="text-center">
 									<ArrowPathIcon
-										class="mx-auto mb-4 h-8 w-8 animate-spin text-gray-400"
+										class="mx-auto mb-4 h-8 w-8 animate-spin text-ink-subtle"
 									/>
-									<h3
-										class="mb-2 text-lg font-medium text-gray-900 dark:text-white"
-									>
+									<h3 class="mb-2 text-lg font-medium text-ink">
 										Loading Dashboard
 									</h3>
-									<p class="text-gray-600 dark:text-gray-400">
-										Fetching your workspace data...
-									</p>
+									<p class="text-ink-muted">Fetching your workspace data...</p>
 								</div>
 							</div>
 
@@ -1513,7 +1509,7 @@
 	.dashboard-container {
 		@apply min-h-screen;
 		scrollbar-width: thin;
-		scrollbar-color: rgb(156 163 175) transparent;
+		scrollbar-color: var(--line-strong-color) transparent;
 	}
 
 	.dashboard-section {
@@ -1567,7 +1563,7 @@
 	}
 
 	.dashboard-container::-webkit-scrollbar-thumb:hover {
-		@apply bg-gray-500;
+		@apply bg-ink-faint;
 	}
 
 	/* Animations */
@@ -1590,7 +1586,7 @@
 	}
 
 	.activity-item.new-activity {
-		@apply border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20;
+		@apply border-line-strong bg-brand-bg;
 		animation: pulse-subtle 2s ease-in-out;
 	}
 
@@ -1600,7 +1596,7 @@
 
 	/* Loading Skeleton with Shimmer */
 	.loading-skeleton {
-		@apply animate-pulse rounded bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700;
+		@apply animate-pulse rounded bg-gradient-to-r from-surface-sunken via-surface-active to-surface-sunken;
 		background-size: 200% 100%;
 		animation: loading-shimmer 1.5s infinite;
 	}
@@ -1631,11 +1627,11 @@
 	/* High Contrast Mode */
 	@media (prefers-contrast: high) {
 		.dashboard-container {
-			@apply border-2 border-gray-900 dark:border-gray-100;
+			@apply border-2 border-ink;
 		}
 
 		.dashboard-section {
-			@apply rounded-lg border-2 border-gray-900 bg-white p-4 text-black dark:border-gray-100 dark:bg-black dark:text-white;
+			@apply rounded-lg border-2 border-ink bg-surface p-4 text-ink;
 		}
 	}
 

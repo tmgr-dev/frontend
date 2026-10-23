@@ -1,5 +1,5 @@
 <template>
-	<div class="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+	<div class="rounded-lg border border-line p-3">
 		<div class="flex items-center justify-between">
 			<div class="flex items-center space-x-3">
 				<!-- Member Avatar Skeleton -->

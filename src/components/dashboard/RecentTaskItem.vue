@@ -13,9 +13,7 @@
 				<!-- Task Title and Status -->
 				<div class="mb-2 flex items-center space-x-2">
 					<div :class="statusIndicatorClasses" :title="statusText"></div>
-					<h4
-						class="truncate text-sm font-medium text-gray-900 dark:text-white"
-					>
+					<h4 class="truncate text-sm font-medium text-ink">
 						{{ task.title }}
 					</h4>
 					<div v-if="task.is_overdue" class="flex items-center">
@@ -25,9 +23,7 @@
 				</div>
 
 				<!-- Task Metadata -->
-				<div
-					class="flex items-center space-x-4 text-xs text-gray-500 dark:text-gray-400"
-				>
+				<div class="flex items-center space-x-4 text-xs text-ink-subtle">
 					<!-- Category -->
 					<div
 						v-if="task.category && showSurface('categories.badge')"
@@ -66,9 +62,7 @@
 					v-if="task.assignees && task.assignees.length > 1"
 					class="mt-2 flex items-center space-x-1"
 				>
-					<span class="text-xs text-gray-500 dark:text-gray-400"
-						>Assignees:</span
-					>
+					<span class="text-xs text-ink-subtle">Assignees:</span>
 					<div class="flex -space-x-1">
 						<MemberAvatarLink
 							v-for="assignee in task.assignees.slice(0, 3)"
@@ -81,17 +75,15 @@
 								:name="assignee.name"
 								:has-avatar="assignee.has_avatar ?? false"
 								:size="20"
-								class="border border-white dark:border-gray-800"
+								class="border border-surface"
 							/>
 						</MemberAvatarLink>
 						<div
 							v-if="task.assignees.length > 3"
-							class="flex h-5 w-5 items-center justify-center rounded-full border border-white bg-gray-300 dark:border-gray-800 dark:bg-gray-600"
+							class="flex h-5 w-5 items-center justify-center rounded-full border border-surface bg-surface-sunken"
 							:title="`+${task.assignees.length - 3} more`"
 						>
-							<span
-								class="text-xs font-medium text-gray-600 dark:text-gray-300"
-							>
+							<span class="text-xs font-medium text-ink-muted">
 								+{{ task.assignees.length - 3 }}
 							</span>
 						</div>
@@ -154,7 +146,7 @@
 				<!-- Fallback when no status -->
 				<div
 					v-else
-					class="flex h-8 w-24 items-center justify-center rounded-md border border-gray-200 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400"
+					class="flex h-8 w-24 items-center justify-center rounded-md border border-line text-xs text-ink-subtle"
 				>
 					No Status
 				</div>
@@ -288,8 +280,8 @@
 
 	const itemClasses = computed(() => {
 		return cn(
-			'p-3 rounded-lg border border-gray-200 dark:border-gray-700',
-			'hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-150',
+			'p-3 rounded-lg border border-line',
+			'hover:bg-surface-hover transition-colors duration-150',
 			'cursor-pointer',
 			props.task.is_overdue &&
 				'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/10',

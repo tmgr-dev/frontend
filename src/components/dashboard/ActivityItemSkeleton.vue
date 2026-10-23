@@ -1,6 +1,6 @@
 <template>
 	<!-- CHANGES: Added fixed height h-24 to prevent CLS -->
-	<div class="h-24 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+	<div class="h-24 rounded-lg border border-line p-3">
 		<div class="flex items-start space-x-3">
 			<!-- Activity Icon Skeleton -->
 			<Skeleton class="h-8 w-8 rounded-full" />

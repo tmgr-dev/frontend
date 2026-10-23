@@ -19,17 +19,12 @@
 				<div class="flex items-start justify-between gap-3">
 					<div class="min-w-0 flex-1 break-words">
 						<!-- Activity Title (Action) -->
-						<h3
-							class="text-sm font-semibold leading-tight text-gray-900 dark:text-white"
-						>
+						<h3 class="text-sm font-semibold leading-tight text-ink">
 							{{ title }}
 						</h3>
 
 						<!-- Activity Subject (Resource name) -->
-						<p
-							v-if="subject"
-							class="mt-0.5 text-sm text-gray-600 dark:text-gray-400"
-						>
+						<p v-if="subject" class="mt-0.5 text-sm text-ink-muted">
 							{{ subject }}
 						</p>
 					</div>
@@ -37,7 +32,7 @@
 					<!-- Timestamp -->
 					<time
 						:datetime="activity.created_at"
-						class="flex-shrink-0 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400"
+						class="flex-shrink-0 whitespace-nowrap text-xs text-ink-subtle"
 						:title="formattedDate"
 					>
 						{{ time }}
@@ -63,9 +58,7 @@
 								:size="20"
 							/>
 						</MemberAvatarLink>
-						<span
-							class="min-w-0 truncate text-xs text-gray-600 dark:text-gray-400"
-						>
+						<span class="min-w-0 truncate text-xs text-ink-muted">
 							by {{ activity.user.name }}
 						</span>
 					</template>
@@ -173,50 +166,32 @@
 
 	const iconClasses = computed(() => {
 		const colorMap: Record<string, string> = {
-			task_created:
-				'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-400',
-			task_updated:
-				'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400',
-			task_completed:
-				'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-400',
-			task_deleted:
-				'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400',
-			task_restored:
-				'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400',
-			task_status_changed:
-				'bg-orange-100 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400',
+			task_created: 'bg-status-done-bg text-status-done-fg',
+			task_updated: 'bg-status-todo-bg text-status-todo-fg',
+			task_completed: 'bg-status-done-bg text-status-done-fg',
+			task_deleted: 'bg-status-fix-bg text-status-fix-fg',
+			task_restored: 'bg-status-todo-bg text-status-todo-fg',
+			task_status_changed: 'bg-status-progress-bg text-status-progress-fg',
 			task_assigned:
 				'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
 			task_persona_assigned:
 				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
 			task_persona_unassigned:
 				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
-			task_timer_started:
-				'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-400',
-			task_timer_stopped:
-				'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400',
-			comment_created:
-				'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400',
-			comment_updated:
-				'bg-orange-100 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400',
-			comment_deleted:
-				'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400',
+			task_timer_started: 'bg-status-done-bg text-status-done-fg',
+			task_timer_stopped: 'bg-status-fix-bg text-status-fix-fg',
+			comment_created: 'bg-status-todo-bg text-status-todo-fg',
+			comment_updated: 'bg-status-progress-bg text-status-progress-fg',
+			comment_deleted: 'bg-status-fix-bg text-status-fix-fg',
 			category_created:
 				'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400',
-			category_updated:
-				'bg-orange-100 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400',
-			category_deleted:
-				'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400',
-			file_uploaded:
-				'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-400',
-			file_deleted:
-				'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400',
-			member_joined:
-				'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-400',
-			member_left:
-				'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400',
-			routine_completed:
-				'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-400',
+			category_updated: 'bg-status-progress-bg text-status-progress-fg',
+			category_deleted: 'bg-status-fix-bg text-status-fix-fg',
+			file_uploaded: 'bg-status-done-bg text-status-done-fg',
+			file_deleted: 'bg-status-fix-bg text-status-fix-fg',
+			member_joined: 'bg-status-done-bg text-status-done-fg',
+			member_left: 'bg-status-fix-bg text-status-fix-fg',
+			routine_completed: 'bg-status-done-bg text-status-done-fg',
 			git_commit_pushed:
 				'bg-violet-100 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
 			git_branch_created:
@@ -250,8 +225,7 @@
 		const baseClasses =
 			'flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0';
 		const colorClass =
-			colorMap[props.activity.type] ||
-			'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
+			colorMap[props.activity.type] || 'bg-surface-sunken text-ink-muted';
 
 		return cn(baseClasses, colorClass);
 	});
@@ -259,7 +233,7 @@
 	const itemClasses = computed(() => {
 		return cn(
 			'p-4 rounded-lg transition-colors duration-150',
-			'hover:bg-gray-50 dark:hover:bg-gray-700/30',
+			'hover:bg-surface-hover',
 			'cursor-pointer',
 		);
 	});

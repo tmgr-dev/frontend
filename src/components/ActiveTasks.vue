@@ -71,9 +71,7 @@
 						<span
 							class="relative mr-5 inline-flex p-1 shadow-sm transition-colors duration-300"
 						>
-							<span
-								class="max-w-64 truncate text-secondary text-tmgr-blue dark:text-tmgr-gray"
-							>
+							<span class="max-w-64 truncate text-ink">
 								{{ task.title }}
 							</span>
 						</span>
