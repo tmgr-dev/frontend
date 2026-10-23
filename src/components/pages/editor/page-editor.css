@@ -12,16 +12,15 @@
 	--pe-subtle: var(--fg-subtle);
 	--pe-rule: var(--line-strong-color);
 	--pe-soft: var(--bg-hover);
-	--pe-code-bg: #f6f6f7;
-	--pe-inline-code-bg: rgba(24, 24, 27, 0.06);
-	--pe-link: rgb(37 99 235);
-	--pe-accent: rgb(59 130 246);
-	--pe-selection: rgb(59 130 246 / 0.2);
-	--pe-chip-bg: rgb(59 130 246 / 0.1);
-	--pe-chip-fg: rgb(29 78 216);
-	--pe-popover: #ffffff;
-	--pe-popover-shadow: 0 0 0 1px rgba(24, 24, 27, 0.08),
-		0 8px 24px -6px rgba(24, 24, 27, 0.16);
+	--pe-code-bg: var(--bg-hover);
+	--pe-inline-code-bg: var(--bg-active);
+	--pe-link: var(--brand-color);
+	--pe-accent: var(--brand-color);
+	--pe-selection: var(--selection-bg);
+	--pe-chip-bg: color-mix(in srgb, var(--brand-color) 14%, transparent);
+	--pe-chip-fg: var(--brand-color);
+	--pe-popover: var(--bg-raised);
+	--pe-popover-shadow: 0 0 0 1px var(--line-strong-color), var(--shadow-md);
 	--pe-tok-keyword: #cf222e;
 	--pe-tok-string: #0a3069;
 	--pe-tok-number: #0550ae;
@@ -33,16 +32,6 @@
 
 .dark .page-editor,
 .dark .page-prose {
-	--pe-code-bg: rgba(255, 255, 255, 0.04);
-	--pe-inline-code-bg: rgba(255, 255, 255, 0.09);
-	--pe-link: rgb(147 197 253);
-	--pe-accent: rgb(96 165 250);
-	--pe-selection: rgb(96 165 250 / 0.3);
-	--pe-chip-bg: rgb(96 165 250 / 0.16);
-	--pe-chip-fg: rgb(147 197 253);
-	--pe-popover: #222226;
-	--pe-popover-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08),
-		0 8px 24px -6px rgba(0, 0, 0, 0.6);
 	--pe-tok-keyword: #ff7b72;
 	--pe-tok-string: #a5d6ff;
 	--pe-tok-number: #79c0ff;
@@ -66,7 +55,7 @@
 	--crepe-color-inverse: var(--pe-text);
 	--crepe-color-on-inverse: var(--bg-raised);
 	--crepe-color-inline-code: var(--pe-text);
-	--crepe-color-error: rgb(220 38 38);
+	--crepe-color-error: var(--s-fix-fg);
 	--crepe-color-hover: var(--bg-active);
 	--crepe-color-selected: var(--pe-selection);
 	--crepe-color-inline-area: var(--pe-inline-code-bg);
@@ -204,19 +193,15 @@
 	max-width: 20rem;
 	overflow: hidden;
 	border-radius: 6px;
-	background: rgb(31 41 55);
+	background: var(--fg);
 	padding: 0.15rem 0.5rem;
 	font-size: 0.75rem;
 	font-weight: 400;
 	line-height: 1.5;
-	color: white;
+	color: var(--bg-raised);
 	white-space: nowrap;
 	text-overflow: ellipsis;
 	pointer-events: none;
-}
-
-.dark .page-editor a.tmgr-chip[data-current-title]:hover::after {
-	background: rgb(63 63 70);
 }
 
 .page-editor .milkdown .ProseMirror code,
@@ -624,7 +609,7 @@ body.pe-resizing * {
 }
 
 .pe-lightbox-button:focus-visible {
-	outline: 2px solid rgb(147 197 253);
+	outline: 2px solid var(--brand-color);
 	outline-offset: 2px;
 }
 
@@ -742,21 +727,10 @@ body.pe-resizing * {
 	svg.tmgr-check
 	.tick {
 	fill: none;
-	stroke: #ffffff;
+	stroke: hsl(var(--primary-foreground));
 	stroke-width: 2.2;
 	stroke-linecap: round;
 	stroke-linejoin: round;
-}
-
-.dark
-	.page-editor
-	.milkdown
-	.milkdown-list-item-block
-	li
-	.label-wrapper
-	svg.tmgr-check
-	.tick {
-	stroke: #0b0b0d;
 }
 
 .page-editor
@@ -1068,11 +1042,11 @@ body.pe-resizing * {
 
 .page-editor .tok-invalid,
 .page-editor .tok-deleted {
-	color: rgb(220 38 38);
+	color: var(--s-fix-fg);
 }
 
 .page-editor .tok-inserted {
-	color: rgb(22 163 74);
+	color: var(--s-done-fg);
 }
 
 /* ---------- tables ---------- */

@@ -387,20 +387,18 @@
 		--checkbox-background: transparent;
 	}
 
-	/* Improve readability in dark mode */
-	.dark .ce-block--selected .ce-block__content {
-		background-color: rgba(255, 255, 255, 0.1);
+	.codex-editor .ce-block--selected .ce-block__content {
+		background-color: var(--bg-active);
 	}
 
-	/* Fix text selection in dark mode - ensure text remains readable */
-	.dark .editorjs ::selection {
-		background-color: rgba(59, 130, 246, 0.5);
-		color: #ffffff;
+	.editorjs .codex-editor ::selection {
+		background-color: var(--selection-bg);
+		color: var(--fg);
 	}
 
-	.dark .editorjs ::-moz-selection {
-		background-color: rgba(59, 130, 246, 0.5);
-		color: #ffffff;
+	.editorjs .codex-editor ::-moz-selection {
+		background-color: var(--selection-bg);
+		color: var(--fg);
 	}
 
 	/* Ensure content is visible within the modal */
@@ -495,5 +493,141 @@
 		-moz-hyphens: auto;
 		-webkit-hyphens: auto;
 		hyphens: auto;
+	}
+	/* Editor.js floating UI reads these custom properties; point them at the app tokens. */
+	.codex-editor .ce-popover,
+	.codex-editor .ce-inline-toolbar {
+		--color-border: var(--line-color);
+		--color-background: var(--bg-raised);
+		--color-text-primary: var(--fg);
+		--color-text-secondary: var(--fg-muted);
+		--color-border-icon: var(--line-color);
+		--color-border-icon-disabled: var(--line-color);
+		--color-text-icon-active: var(--brand-color);
+		--color-background-icon-active: color-mix(
+			in srgb,
+			var(--brand-color) 14%,
+			transparent
+		);
+		--color-background-item-focus: color-mix(
+			in srgb,
+			var(--brand-color) 10%,
+			transparent
+		);
+		--color-shadow-item-focus: color-mix(
+			in srgb,
+			var(--brand-color) 20%,
+			transparent
+		);
+		--color-background-item-hover: var(--bg-hover);
+	}
+
+	.codex-editor .ce-popover__container {
+		box-shadow: var(--shadow-md);
+	}
+
+	.codex-editor .ce-popover__nothing-found-message,
+	.codex-editor .cdx-search-field__icon svg,
+	.codex-editor .cdx-search-field__input::placeholder,
+	.codex-editor .ce-inline-tool-input::placeholder {
+		color: var(--fg-subtle);
+	}
+
+	.codex-editor .cdx-search-field__input,
+	.codex-editor .ce-inline-tool-input {
+		color: var(--fg);
+	}
+
+	.codex-editor .cdx-search-field,
+	.codex-editor .ce-inline-tool-input {
+		background: var(--bg-sunken);
+		border-color: var(--line-color);
+	}
+
+	.codex-editor .ce-inline-toolbar__dropdown {
+		border-right-color: var(--line-color);
+	}
+
+	.codex-editor .ce-inline-toolbar__dropdown:hover,
+	.codex-editor .ce-inline-tool:hover,
+	.codex-editor .cdx-settings-button:hover,
+	.codex-editor .ce-toolbar__plus:hover,
+	.codex-editor .ce-toolbar__settings-btn:hover {
+		background-color: var(--bg-hover);
+	}
+
+	.codex-editor .ce-toolbar__plus--active,
+	.codex-editor .ce-toolbar__settings-btn--active {
+		background-color: var(--bg-active);
+	}
+
+	.codex-editor .ce-toolbar__plus,
+	.codex-editor .ce-toolbar__settings-btn {
+		color: var(--fg-muted);
+	}
+
+	.codex-editor .cdx-settings-button--active {
+		color: var(--brand-color);
+	}
+
+	.codex-editor .cdx-settings-button--focused {
+		background: color-mix(
+			in srgb,
+			var(--brand-color) 10%,
+			transparent
+		) !important;
+	}
+	/* Editor.js plugin content: library defaults are light-palette, point them at the tokens. */
+	.codex-editor .inline-code {
+		background: var(--bg-active);
+		color: var(--fg);
+	}
+
+	.codex-editor .cdx-input {
+		border-color: var(--line-strong-color);
+		box-shadow: none;
+	}
+
+	.codex-editor .cdx-list {
+		--color-border: var(--line-strong-color);
+		--color-bg-checked: var(--brand-color);
+		--color-bg-checked-hover: var(--brand-hover-color);
+		--color-tick: hsl(var(--primary-foreground));
+	}
+
+	.codex-editor .cdx-list-start-with-field {
+		background: var(--bg-sunken);
+		border-color: var(--line-color);
+	}
+
+	.codex-editor .cdx-list-start-with-field__input {
+		color: var(--fg);
+	}
+
+	.codex-editor .tc-wrap,
+	.codex-editor .tc-popover {
+		--color-border: var(--line-strong-color);
+		--color-background: var(--bg-sunken);
+		--color-background-hover: var(--bg-hover);
+		--color-text-secondary: var(--fg-muted);
+	}
+
+	.codex-editor .tc-popover {
+		--color-border: var(--line-color);
+		--color-background: var(--bg-raised);
+	}
+
+	.codex-editor .tc-toolbox {
+		--toggler-dots-color: var(--fg-subtle);
+		--toggler-dots-color-hovered: var(--fg);
+	}
+
+	.dark .codex-editor .cdx-warning::before {
+		filter: invert(1);
+	}
+
+	.dark .codex-editor .codeBoxHolder .light {
+		background-color: var(--bg-sunken);
+		color: var(--fg);
 	}
 </style>
