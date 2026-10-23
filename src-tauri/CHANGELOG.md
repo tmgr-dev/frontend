@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.66 — 2026-10-24
+
+- Pages archive: each archived page shows who wrote it, the delete button is now just "Delete", and Delete and Restore are disabled with a hint when only the author or the workspace owner can use them.
+
 ## 0.9.65 — 2026-10-23
 
 - Design: the remaining screens follow the current design in every theme: tasks, comments and attachments, Pages, the dashboard and board, onboarding and tours, files, invitations, dialogs and empty states. Old blue and navy colours are gone, and links and main buttons use your theme's accent.
