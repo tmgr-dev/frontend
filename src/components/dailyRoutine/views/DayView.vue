@@ -119,6 +119,7 @@
 	import { isSameDay, parseTime } from '@/utils/dailyRoutines/dateHelpers';
 	import { clusterEvents } from '@/utils/dailyRoutines/lanePacking';
 	import { sortUnscheduledNewestFirst } from '@/utils/dailyRoutines/sortRoutines';
+	import { currentTimeZone, nowDateIn, todayDateIn } from '@/utils/timezone';
 	import { computed, onMounted, ref } from 'vue';
 	import ClusterBlock from '../ClusterBlock.vue';
 	import EventBlock from '../EventBlock.vue';
@@ -181,10 +182,12 @@
 	const dateIso = computed(() => fmtIso(props.date));
 	const unschedHoverKey = computed(() => `unsched:${dateIso.value}`);
 
-	const isToday = computed(() => isSameDay(props.date, new Date()));
+	const isToday = computed(() =>
+		isSameDay(props.date, todayDateIn(currentTimeZone())),
+	);
 	const nowOffset = computed(() => {
 		if (!isToday.value) return null;
-		const now = new Date();
+		const now = nowDateIn(currentTimeZone());
 		return now.getHours() * HOUR_PX + (now.getMinutes() / 60) * HOUR_PX;
 	});
 

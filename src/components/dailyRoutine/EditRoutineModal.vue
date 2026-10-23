@@ -367,6 +367,7 @@
 		resolveCategory,
 	} from '@/utils/dailyRoutines/categoryMap';
 	import { isSameTimestamp } from '@/utils/dailyRoutines/relativeTime';
+	import { currentTimeZone, todayIn } from '@/utils/timezone';
 	import {
 		computed,
 		onBeforeUnmount,
@@ -400,15 +401,10 @@
 
 	const titleRef = ref<HTMLInputElement | null>(null);
 
-	function todayIso(): string {
-		const d = new Date();
-		const y = d.getFullYear();
-		const m = String(d.getMonth() + 1).padStart(2, '0');
-		const day = String(d.getDate()).padStart(2, '0');
-		return `${y}-${m}-${day}`;
-	}
-
-	const initial = routineDraftFrom(props.routine ?? {}, todayIso());
+	const initial = routineDraftFrom(
+		props.routine ?? {},
+		todayIn(currentTimeZone()),
+	);
 
 	const draft = reactive<RoutineDraft>(initial);
 	const isNew = computed(() => !props.routine?.id);

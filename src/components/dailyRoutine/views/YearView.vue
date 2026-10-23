@@ -60,9 +60,10 @@
 		startOfMonth,
 		startOfWeek,
 	} from '@/utils/dailyRoutines/dateHelpers';
+	import { currentTimeZone, todayDateIn } from '@/utils/timezone';
 	import { computed } from 'vue';
 
-	const today = new Date();
+	const today = todayDateIn(currentTimeZone());
 
 	const props = defineProps<{
 		year: number;

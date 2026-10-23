@@ -471,6 +471,7 @@
 	} from '@/utils/dailyRoutines/dateHelpers';
 	import { sortUnscheduledNewestFirst } from '@/utils/dailyRoutines/sortRoutines';
 	import { requestCache } from '@/utils/requestCache';
+	import { nowDateIn, todayDateIn, todayIn } from '@/utils/timezone';
 	import {
 		CalendarCheck,
 		Download,
@@ -502,7 +503,7 @@
 			localStorage.setItem(VIEW_STORAGE_KEY, v);
 		} catch {}
 	});
-	const cursor = ref<Date>(new Date());
+	const cursor = ref<Date>(todayDateIn(store.getters.userTimeZone));
 	const editingRoutine = ref<any | null>(null);
 	const quickTitle = ref('');
 	const quickFocused = ref(false);
@@ -541,7 +542,7 @@
 	);
 	const yearStats = computed(() => store.state.dailyRoutines.yearStats);
 
-	const todayIso = computed(() => fmtDate(new Date()));
+	const todayIso = computed(() => todayIn(store.getters.userTimeZone));
 	const todayEntries = computed(() =>
 		entries.value.filter((e) => e.date === todayIso.value),
 	);
@@ -611,7 +612,7 @@
 	}
 
 	function goToday() {
-		cursor.value = new Date();
+		cursor.value = todayDateIn(store.getters.userTimeZone);
 	}
 
 	function rangeForView(): { from: string; to: string } {
@@ -790,7 +791,7 @@
 	}
 
 	function onNewRoutine() {
-		const now = new Date();
+		const now = nowDateIn(store.getters.userTimeZone);
 		const h = now.getHours();
 		const m = now.getMinutes() < 30 ? 30 : 0;
 		const hours = m === 0 ? (h + 1) % 24 : h;

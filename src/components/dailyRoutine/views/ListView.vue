@@ -77,20 +77,14 @@
 	import { useRoutineDrag } from '@/composable/useRoutineDrag';
 	import type { RoutineEntry } from '@/types/dailyRoutine';
 	import { sortUnscheduledNewestFirst } from '@/utils/dailyRoutines/sortRoutines';
+	import { currentTimeZone, todayIn } from '@/utils/timezone';
 	import { computed } from 'vue';
 	import RoutineRow from '../RoutineRow.vue';
 
 	const { active, hoverKey } = useRoutineDrag();
 	const dragActive = computed(() => !!active.value);
 
-	function isoToday(): string {
-		const d = new Date();
-		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-			2,
-			'0',
-		)}-${String(d.getDate()).padStart(2, '0')}`;
-	}
-	const todayIso = isoToday();
+	const todayIso = todayIn(currentTimeZone());
 
 	const props = defineProps<{
 		entries: RoutineEntry[];

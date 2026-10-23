@@ -203,6 +203,7 @@
 	} from '@/utils/dailyRoutines/dateHelpers';
 	import { indexEntriesByDate } from '@/utils/dailyRoutines/entryIndex';
 	import { clusterEvents } from '@/utils/dailyRoutines/lanePacking';
+	import { currentTimeZone, nowDateIn, todayDateIn } from '@/utils/timezone';
 	import { computed, onMounted, ref, watch } from 'vue';
 	import ClusterBlock from '../ClusterBlock.vue';
 	import DRIcon from '../DRIcon.vue';
@@ -212,7 +213,7 @@
 	const dragActive = computed(() => !!active.value);
 
 	const HOUR_PX = 56;
-	const today = new Date();
+	const today = todayDateIn(currentTimeZone());
 
 	const props = defineProps<{
 		entries: RoutineEntry[];
@@ -295,7 +296,7 @@
 	);
 
 	const nowOffset = computed(() => {
-		const now = new Date();
+		const now = nowDateIn(currentTimeZone());
 		return now.getHours() * HOUR_PX + (now.getMinutes() / 60) * HOUR_PX;
 	});
 
