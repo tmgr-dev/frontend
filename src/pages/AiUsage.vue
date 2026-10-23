@@ -295,7 +295,7 @@
 													</router-link>
 													<span
 														v-if="showWorkspace"
-														class="text-ink-subtle/70 ml-2 text-xs"
+														class="ml-2 text-xs text-ink-subtle/70"
 														>{{ t.workspace }}</span
 													>
 													<span v-if="t.title" class="ml-2 text-ink-subtle">{{

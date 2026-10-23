@@ -4,7 +4,7 @@
 			v-if="unscheduled.length || dragActive"
 			class="flex max-h-[220px] shrink-0 flex-col gap-1.5 overflow-y-auto rounded-card transition-colors"
 			:class="
-				hoverKey === unschedHoverKey ? 'bg-brand/10 ring-brand/40 ring-1' : ''
+				hoverKey === unschedHoverKey ? 'bg-brand/10 ring-1 ring-brand/40' : ''
 			"
 			data-dr-drop
 			data-dr-kind="unscheduled"

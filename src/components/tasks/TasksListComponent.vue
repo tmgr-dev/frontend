@@ -60,7 +60,7 @@
 			class="relative border pb-2"
 			:class="[
 				hasSelectable
-					? 'border-brand/40 rounded-card border-dashed px-2'
+					? 'rounded-card border-dashed border-brand/40 px-2'
 					: 'border-transparent',
 			]"
 		>

@@ -29,7 +29,7 @@
 			<span
 				v-for="type in legend"
 				:key="type"
-				class="bg-surface/90 flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1"
+				class="flex items-center gap-1.5 rounded-full border border-line bg-surface/90 px-2.5 py-1"
 			>
 				<span class="legend-glyph" :style="glyphStyle(type)" />
 				{{ styles[type].label }}
@@ -39,7 +39,7 @@
 		<button
 			v-if="mode === 'mini'"
 			type="button"
-			class="bg-surface/90 absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-hover"
+			class="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface/90 px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-hover"
 			data-testid="graph-expand"
 			@click="$emit('expand')"
 		>
@@ -49,7 +49,7 @@
 
 		<div
 			v-else-if="shown"
-			class="bg-surface/90 absolute bottom-3 right-3 flex flex-col overflow-hidden rounded-lg border border-line"
+			class="absolute bottom-3 right-3 flex flex-col overflow-hidden rounded-lg border border-line bg-surface/90"
 		>
 			<button
 				type="button"
@@ -87,7 +87,7 @@
 
 		<p
 			v-if="truncatedNotice"
-			class="bg-surface/90 absolute bottom-3 rounded-md border border-line px-2 py-1 text-xs text-ink-muted"
+			class="absolute bottom-3 rounded-md border border-line bg-surface/90 px-2 py-1 text-xs text-ink-muted"
 			:class="mode === 'mini' ? 'left-3' : 'left-1/2 -translate-x-1/2'"
 			data-testid="graph-truncated"
 		>

@@ -57,7 +57,7 @@
 					:class="[
 						i === 0 ? '' : 'border-l border-line',
 						hoverKey === `unsched:${fmtIso(d)}`
-							? 'bg-brand/15 ring-brand/40 ring-1'
+							? 'bg-brand/15 ring-1 ring-brand/40'
 							: '',
 					]"
 					:style="

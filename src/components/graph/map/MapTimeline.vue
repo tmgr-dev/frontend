@@ -1,6 +1,6 @@
 <template>
 	<div
-		class="bg-surface/90 pointer-events-auto flex items-center gap-3 rounded-full border border-line py-1.5 pl-1.5 pr-4 shadow-sm backdrop-blur"
+		class="pointer-events-auto flex items-center gap-3 rounded-full border border-line bg-surface/90 py-1.5 pl-1.5 pr-4 shadow-sm backdrop-blur"
 		data-testid="map-timeline"
 	>
 		<button

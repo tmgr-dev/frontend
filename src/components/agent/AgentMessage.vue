@@ -79,7 +79,7 @@
 		:data-message-id="props.message.id"
 		class="flex justify-end rounded-lg"
 	>
-		<div class="bg-brand/10 max-w-[90%] rounded-lg px-3 py-2 text-sm text-ink">
+		<div class="max-w-[90%] rounded-lg bg-brand/10 px-3 py-2 text-sm text-ink">
 			<div class="mb-0.5 flex items-center gap-1.5 text-[11px] text-ink-subtle">
 				<span>You</span>
 				<time v-if="timeLabel()" :title="timeTitle()">{{ timeLabel() }}</time>

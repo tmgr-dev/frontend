@@ -5,7 +5,7 @@
 			class="rounded-card transition-colors"
 			:class="
 				hoverKey === `unsched:${todayIso}`
-					? 'bg-brand/10 ring-brand/40 ring-1'
+					? 'bg-brand/10 ring-1 ring-brand/40'
 					: ''
 			"
 			data-dr-drop
@@ -45,7 +45,7 @@
 		<section
 			class="rounded-card transition-colors"
 			:class="
-				hoverKey === `day:${todayIso}` ? 'bg-brand/10 ring-brand/40 ring-1' : ''
+				hoverKey === `day:${todayIso}` ? 'bg-brand/10 ring-1 ring-brand/40' : ''
 			"
 			data-dr-drop
 			data-dr-kind="day-cell"

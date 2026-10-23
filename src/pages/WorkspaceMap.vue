@@ -141,7 +141,7 @@
 
 						<div
 							v-if="notice"
-							class="bg-surface/90 absolute left-3 top-3 max-w-[70%] rounded-lg border border-line px-3 py-1.5 text-xs text-ink-muted backdrop-blur"
+							class="absolute left-3 top-3 max-w-[70%] rounded-lg border border-line bg-surface/90 px-3 py-1.5 text-xs text-ink-muted backdrop-blur"
 							role="status"
 							data-testid="map-truncated"
 						>
@@ -153,7 +153,7 @@
 								v-for="b in controls"
 								:key="b.label"
 								type="button"
-								class="bg-surface/90 rounded-lg border border-line p-2 text-ink-muted backdrop-blur hover:text-ink"
+								class="rounded-lg border border-line bg-surface/90 p-2 text-ink-muted backdrop-blur hover:text-ink"
 								:aria-label="b.label"
 								@click="b.run()"
 							>

@@ -47,7 +47,7 @@
 				<div class="my-1 h-px bg-line" />
 				<button
 					type="button"
-					class="hover:bg-status-fix-bg/40 flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-status-fix-fg transition-colors"
+					class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-status-fix-fg transition-colors hover:bg-status-fix-bg/40"
 					@click="onDelete"
 				>
 					<DRIcon name="trash" :size="13" stroke="currentColor" />
