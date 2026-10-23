@@ -37,14 +37,14 @@
 			<ChecklistCard />
 			<RemoveSampleTasksButton class="self-start" />
 			<section
-				class="rounded-card border border-line bg-surface p-4 dark:border-gray-700 dark:bg-gray-900"
+				class="rounded-card border border-line bg-surface p-4"
 				aria-labelledby="hub-progress-label"
 			>
 				<p id="hub-progress-label" class="text-sm font-medium text-ink">
 					{{ model.done }} of {{ model.total }} tours done
 				</p>
 				<div
-					class="mt-2 h-2 w-full max-w-md overflow-hidden rounded-full bg-surface-sunken dark:bg-gray-800"
+					class="mt-2 h-2 w-full max-w-md overflow-hidden rounded-full bg-surface-sunken"
 					role="progressbar"
 					aria-labelledby="hub-progress-label"
 					aria-valuemin="0"
@@ -63,12 +63,12 @@
 			<section
 				v-for="group in model.groups"
 				:key="group.group"
-				class="rounded-card border border-line bg-surface p-4 dark:border-gray-700 dark:bg-gray-900"
+				class="rounded-card border border-line bg-surface p-4"
 				:aria-labelledby="`hub-group-${group.group}`"
 			>
 				<h2
 					:id="`hub-group-${group.group}`"
-					class="mb-3 border-b border-line pb-2 text-base font-semibold text-ink dark:border-gray-700"
+					class="mb-3 border-b border-line pb-2 text-base font-semibold text-ink"
 				>
 					{{ group.title }}
 				</h2>
@@ -93,13 +93,13 @@
 							<span class="text-ink-subtle">{{ row.minutes }} min</span>
 							<span
 								v-if="row.updated"
-								class="rounded bg-amber-100 px-1.5 py-0.5 text-2xs font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+								class="rounded bg-status-progress-bg px-1.5 py-0.5 text-2xs font-semibold text-status-progress-fg"
 							>
 								Updated
 							</span>
 							<span
 								v-if="row.action === 'done'"
-								class="rounded bg-surface-sunken px-1.5 py-0.5 text-2xs font-semibold text-ink-muted dark:bg-gray-800 dark:text-gray-300"
+								class="rounded bg-surface-sunken px-1.5 py-0.5 text-2xs font-semibold text-ink-muted"
 							>
 								Done
 							</span>

@@ -5,7 +5,7 @@
 				:aria-label="label"
 				:class="[
 					textClass,
-					'rounded-md border border-line bg-surface-sunken px-3 py-3 font-mono text-xs text-ink dark:border-gray-700 dark:bg-gray-950',
+					'rounded-md border border-line bg-surface-sunken px-3 py-3 font-mono text-xs text-ink',
 				]"
 				data-testid="snippet-text"
 				>{{ display ?? code }}</pre
@@ -14,7 +14,7 @@
 				type="button"
 				:class="[
 					buttonClass,
-					'inline-flex min-h-[44px] items-center rounded-md border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-sunken dark:border-gray-700 dark:bg-gray-900 sm:min-h-[32px]',
+					'inline-flex min-h-[44px] items-center rounded-md border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-sunken sm:min-h-[32px]',
 				]"
 				data-testid="snippet-copy"
 				:disabled="!code"
@@ -27,11 +27,7 @@
 				copied ? 'Copied' : ''
 			}}</span>
 		</div>
-		<p
-			v-if="failed"
-			class="mt-1 text-xs text-red-600 dark:text-red-400"
-			role="alert"
-		>
+		<p v-if="failed" class="mt-1 text-xs text-status-fix-fg" role="alert">
 			Could not copy. Select the text and copy it by hand.
 		</p>
 	</div>

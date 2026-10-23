@@ -3,15 +3,13 @@
 		type="button"
 		:aria-pressed="selected"
 		:disabled="disabled"
-		class="flex min-h-[44px] flex-col items-center gap-3 rounded-card border border-line bg-surface p-6 text-center transition-colors hover:border-brand disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900"
+		class="flex min-h-[44px] flex-col items-center gap-3 rounded-card border border-line bg-surface p-6 text-center transition-colors hover:border-brand disabled:opacity-60"
 		:class="selected ? 'border-brand ring-2 ring-brand' : ''"
 		@click="$emit('select')"
 	>
 		<component :is="icon" class="h-10 w-10 text-brand" aria-hidden="true" />
 		<span class="text-lg font-semibold text-ink">{{ title }}</span>
-		<span
-			class="w-full border-t border-line pt-3 text-sm text-ink-subtle dark:border-gray-700"
-		>
+		<span class="w-full border-t border-line pt-3 text-sm text-ink-subtle">
 			{{ description }}
 		</span>
 	</button>

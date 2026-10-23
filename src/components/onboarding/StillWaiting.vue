@@ -1,6 +1,6 @@
 <template>
 	<section
-		class="rounded-card border border-line bg-surface-sunken p-4 text-sm text-ink dark:border-gray-700 dark:bg-gray-950"
+		class="rounded-card border border-line bg-surface-sunken p-4 text-sm text-ink"
 		aria-labelledby="still-waiting-title"
 		data-testid="still-waiting"
 	>
@@ -31,7 +31,7 @@
 			</button>
 			<button
 				type="button"
-				class="min-h-[44px] rounded-md border border-line px-4 text-sm font-medium text-ink hover:bg-surface dark:border-gray-700 sm:min-h-[36px]"
+				class="min-h-[44px] rounded-md border border-line px-4 text-sm font-medium text-ink hover:bg-surface sm:min-h-[36px]"
 				@click="$emit('different-client')"
 			>
 				Use a different client

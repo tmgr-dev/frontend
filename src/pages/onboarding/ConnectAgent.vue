@@ -3,7 +3,7 @@
 		<Teleport to="body">
 			<div
 				ref="root"
-				class="fixed inset-0 z-[55] overflow-y-auto bg-surface px-4 pb-[var(--screen-pad)] pt-6 dark:bg-gray-950 sm:pb-16"
+				class="fixed inset-0 z-[55] overflow-y-auto bg-surface-base px-4 pb-[var(--screen-pad)] pt-6 sm:pb-16"
 				:style="{
 					'--screen-pad': consentOpen ? `${consentPad + 24}px` : '4rem',
 				}"
@@ -20,7 +20,7 @@
 				</div>
 
 				<main
-					class="mx-auto mt-8 max-w-2xl rounded-card border border-line bg-surface p-5 dark:border-gray-700 dark:bg-gray-900 sm:p-8"
+					class="mx-auto mt-8 max-w-2xl rounded-card border border-line bg-surface p-5 sm:p-8"
 				>
 					<template v-if="blocked">
 						<h1 class="text-xl font-semibold text-ink">
@@ -62,13 +62,13 @@
 								class="flex items-center gap-2"
 							>
 								<Check
-									class="h-4 w-4 rounded-full bg-green-600 p-0.5 text-white"
+									class="h-4 w-4 rounded-full bg-status-done p-0.5 text-white"
 									aria-hidden="true"
 								/>
 								{{ item }}
 							</li>
 						</ul>
-						<div class="mt-6 border-t border-line pt-5 dark:border-gray-700">
+						<div class="mt-6 border-t border-line pt-5">
 							<StarterPrompt :run-logged="runLogged" />
 						</div>
 						<div class="mt-6 flex flex-col items-center gap-1">
@@ -109,7 +109,7 @@
 
 						<template v-else>
 							<div
-								class="mt-5 flex max-w-full flex-wrap gap-1 border-b border-line pb-2 dark:border-gray-700"
+								class="mt-5 flex max-w-full flex-wrap gap-1 border-b border-line pb-2"
 								role="tablist"
 								aria-label="Client"
 								data-tour="connect.client-tabs"
@@ -163,7 +163,7 @@
 									class="space-y-2 text-sm"
 									role="alert"
 								>
-									<p class="text-red-600 dark:text-red-400">
+									<p class="text-status-fix-fg">
 										Could not check your account.
 									</p>
 									<button
@@ -197,9 +197,7 @@
 									class="space-y-2 text-sm"
 									role="alert"
 								>
-									<p class="text-red-600 dark:text-red-400">
-										Could not create a token.
-									</p>
+									<p class="text-status-fix-fg">Could not create a token.</p>
 									<button
 										type="button"
 										class="min-h-[44px] text-ink underline"
@@ -225,7 +223,7 @@
 											autocomplete="off"
 											spellcheck="false"
 											placeholder="Paste your existing token"
-											class="min-h-[44px] w-full rounded-md border border-line bg-surface px-3 text-sm text-ink dark:border-gray-700 dark:bg-gray-950"
+											class="min-h-[44px] w-full rounded-md border border-line bg-surface px-3 text-sm text-ink"
 											@keydown.enter.prevent="usePasted"
 										/>
 									</label>
@@ -241,7 +239,7 @@
 										<button
 											v-if="tokenMode === 'choose'"
 											type="button"
-											class="min-h-[44px] rounded-md border border-line px-4 font-medium text-ink dark:border-gray-700"
+											class="min-h-[44px] rounded-md border border-line px-4 font-medium text-ink"
 											@click="tokenMode = 'confirm'"
 										>
 											Generate a new token
@@ -249,7 +247,7 @@
 									</div>
 									<div
 										v-if="tokenMode === 'confirm'"
-										class="rounded-md border border-amber-400 bg-amber-50 p-3 text-amber-900 dark:bg-amber-950 dark:text-amber-100"
+										class="rounded-md border border-status-progress bg-status-progress-bg p-3 text-status-progress-fg"
 										role="alertdialog"
 										aria-label="Generate a new token"
 									>
@@ -346,14 +344,12 @@
 							</div>
 						</template>
 
-						<div
-							class="mt-5 space-y-3 border-t border-line pt-5 dark:border-gray-700"
-						>
+						<div class="mt-5 space-y-3 border-t border-line pt-5">
 							<ConnectStatus :state="stalled ? 'stalled' : 'waiting'" />
 							<div v-if="!stalled" class="flex flex-col items-center gap-1">
 								<button
 									type="button"
-									class="min-h-[44px] w-full max-w-xs rounded-md border border-line px-4 text-sm font-medium text-ink hover:bg-surface-sunken dark:border-gray-700"
+									class="min-h-[44px] w-full max-w-xs rounded-md border border-line px-4 text-sm font-medium text-ink hover:bg-surface-sunken"
 									data-tour-avoid="cta"
 									@click="checkAgain"
 								>
