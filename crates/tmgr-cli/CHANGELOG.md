@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Autopilot no longer reports signed tasks as "skipped: the task has no approval for agent runs" right after it starts. Those lines came from an older queue session saved on this machine, before the tasks were signed; autopilot now shows a skip only after the queue has checked the task again in this run. The counters on the status screen no longer include failed or finished tasks from earlier runs either; a task still running from an earlier run is still shown.
+- Two tasks with the same key (for example two tasks titled `TM-210: ...`) no longer stop the run with "task key TM-210 appears twice": both are shown and planned as `task-<id>`, the same way the confirmation list shows them, and the order you set is matched by task id.
+
 ## 1.0.50
 
 - `tmgr autopilot <workspace>` works through the backlog of one workspace in one command (also listed in `tmgr --help`; `tmgr queue autopilot` is the same command). It picks the queue rule of that workspace itself (`--rule NAME` when there are several), takes all tasks of the rule's list and asks the setup questions only on the first run; the answers are remembered and `--setup` asks again.
