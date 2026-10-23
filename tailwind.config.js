@@ -1,5 +1,10 @@
 const animate = require('tailwindcss-animate');
 
+// Tailwind 3.4 emits no CSS for `bg-brand/10` when the colour is a bare var(), so the token
+// goes through color-mix: <alpha-value> becomes the modifier (or 1 when there is none).
+const tok = (name) =>
+	`color-mix(in srgb, var(${name}) calc(<alpha-value> * 100%), transparent)`;
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
 	darkMode: ['class'],
@@ -54,44 +59,45 @@ module.exports = {
 				// New design-system tokens (driven by CSS vars in _design-tokens.scss).
 				// Renamed away from shadcn-claimed names (border/accent/card/...) to avoid
 				// breaking existing shadcn-vue components.
-				'surface-base': 'var(--bg)',
-				surface: 'var(--bg-raised)',
-				'surface-sunken': 'var(--bg-sunken)',
-				'surface-hover': 'var(--bg-hover)',
-				'surface-active': 'var(--bg-active)',
+				'surface-base': tok('--bg'),
+				surface: tok('--bg-raised'),
+				'surface-sunken': tok('--bg-sunken'),
+				'surface-hover': tok('--bg-hover'),
+				'surface-active': tok('--bg-active'),
 
-				ink: 'var(--fg)',
-				'ink-muted': 'var(--fg-muted)',
-				'ink-subtle': 'var(--fg-subtle)',
-				'ink-faint': 'var(--fg-faint)',
+				ink: tok('--fg'),
+				'ink-muted': tok('--fg-muted'),
+				'ink-subtle': tok('--fg-subtle'),
+				'ink-faint': tok('--fg-faint'),
 
-				line: 'var(--line-color)',
-				'line-strong': 'var(--line-strong-color)',
-				'line-focus': 'var(--focus-border)',
+				line: tok('--line-color'),
+				'line-strong': tok('--line-strong-color'),
+				'line-focus': tok('--focus-border'),
 
-				brand: 'var(--brand-color)',
-				'brand-bg': 'var(--brand-bg-color)',
-				'brand-fg': 'var(--brand-fg-color)',
-				'brand-hover': 'var(--brand-hover-color)',
+				brand: tok('--brand-color'),
+				'brand-bg': tok('--brand-bg-color'),
+				'brand-fg': tok('--brand-fg-color'),
+				'brand-hover': tok('--brand-hover-color'),
+				'on-accent': tok('--on-accent-color'),
 
-				'status-todo': 'var(--s-todo)',
-				'status-todo-bg': 'var(--s-todo-bg)',
-				'status-todo-fg': 'var(--s-todo-fg)',
-				'status-progress': 'var(--s-progress)',
-				'status-progress-bg': 'var(--s-progress-bg)',
-				'status-progress-fg': 'var(--s-progress-fg)',
-				'status-testing': 'var(--s-testing)',
-				'status-testing-bg': 'var(--s-testing-bg)',
-				'status-testing-fg': 'var(--s-testing-fg)',
-				'status-fix': 'var(--s-fix)',
-				'status-fix-bg': 'var(--s-fix-bg)',
-				'status-fix-fg': 'var(--s-fix-fg)',
-				'status-done': 'var(--s-done)',
-				'status-done-bg': 'var(--s-done-bg)',
-				'status-done-fg': 'var(--s-done-fg)',
+				'status-todo': tok('--s-todo'),
+				'status-todo-bg': tok('--s-todo-bg'),
+				'status-todo-fg': tok('--s-todo-fg'),
+				'status-progress': tok('--s-progress'),
+				'status-progress-bg': tok('--s-progress-bg'),
+				'status-progress-fg': tok('--s-progress-fg'),
+				'status-testing': tok('--s-testing'),
+				'status-testing-bg': tok('--s-testing-bg'),
+				'status-testing-fg': tok('--s-testing-fg'),
+				'status-fix': tok('--s-fix'),
+				'status-fix-bg': tok('--s-fix-bg'),
+				'status-fix-fg': tok('--s-fix-fg'),
+				'status-done': tok('--s-done'),
+				'status-done-bg': tok('--s-done-bg'),
+				'status-done-fg': tok('--s-done-fg'),
 
-				'tag-bg': 'var(--tag-bg)',
-				'tag-fg': 'var(--tag-fg)',
+				'tag-bg': tok('--tag-bg'),
+				'tag-fg': tok('--tag-fg'),
 
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',

@@ -260,7 +260,7 @@
 			muted: 'var(--fg-muted)',
 			brand: 'var(--brand-color)',
 			timer: 'var(--timer-color, #30d158)',
-			onAccent: 'var(--brand-fg-color)',
+			onAccent: 'var(--on-accent-color)',
 		},
 	};
 

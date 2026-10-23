@@ -30,6 +30,60 @@ function hexToHslTriplet(hex: string): string {
 	)}%`;
 }
 
+function channels(hex: string): number[] {
+	let h = hex.trim().replace('#', '');
+	if (h.length === 3) {
+		h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+	}
+	return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+}
+
+function luminance(hex: string): number {
+	const [r, g, b] = channels(hex).map((v) => {
+		const c = v / 255;
+		return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+	});
+	return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+export function contrastRatio(a: string, b: string): number {
+	const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+	return (hi + 0.05) / (lo + 0.05);
+}
+
+const BRAND_TEXT_MIN_CONTRAST = 4.5;
+
+// Brand-coloured text sits on bg, surface and raised: where the plain brand colour reads
+// below 4.5:1 on one of them, it is pulled toward the theme text colour just far enough.
+export function brandTextColor(t: ThemeDef): string {
+	const { brand, bg, surface, raised, text } = t.tokens;
+	const grounds = [bg, surface, raised];
+	const ok = (c: string) =>
+		grounds.every((g) => contrastRatio(c, g) >= BRAND_TEXT_MIN_CONTRAST);
+	const from = channels(brand);
+	const to = channels(text);
+	for (let step = 0; step <= 20; step++) {
+		const mix =
+			'#' +
+			from
+				.map((v, i) => Math.round(v + ((to[i] - v) * step) / 20))
+				.map((v) => v.toString(16).padStart(2, '0'))
+				.join('');
+		if (ok(mix)) return mix;
+	}
+	return text;
+}
+
+// Text on a brand fill: the theme's own onAccent unless it reads below 4.5:1, then black or white.
+export function onAccentColor(t: ThemeDef): string {
+	const { brand, onAccent } = t.tokens;
+	if (contrastRatio(onAccent, brand) >= BRAND_TEXT_MIN_CONTRAST)
+		return onAccent;
+	return contrastRatio('#000000', brand) >= contrastRatio('#ffffff', brand)
+		? '#000000'
+		: '#ffffff';
+}
+
 export function buildPaletteCss(registry: ThemeDef[]): string {
 	return registry
 		.map((t) => {
@@ -41,7 +95,9 @@ export function buildPaletteCss(registry: ThemeDef[]): string {
 			const text = hexToHslTriplet(k.text);
 			const muted = hexToHslTriplet(k.muted);
 			const brand = hexToHslTriplet(k.brand);
-			const onAccent = hexToHslTriplet(k.onAccent);
+			const brandFg = brandTextColor(t);
+			const onAccentHex = onAccentColor(t);
+			const onAccent = hexToHslTriplet(onAccentHex);
 			return (
 				`html.theme-${t.id}{` +
 				// design-token layer (surfaces, text, brand, status accents)
@@ -49,9 +105,9 @@ export function buildPaletteCss(registry: ThemeDef[]): string {
 				`--bg-hover:${k.raised};--bg-active:${k.raised};` +
 				`--line-color:${k.border};--line-strong-color:${k.border};` +
 				`--fg:${k.text};--fg-muted:${k.muted};--fg-subtle:${k.muted};--fg-faint:${k.muted};` +
-				`--brand-color:${k.brand};--brand-bg-color:${k.raised};--brand-fg-color:${k.onAccent};` +
+				`--brand-color:${k.brand};--brand-bg-color:${k.raised};--brand-fg-color:${brandFg};` +
 				`--brand-hover-color:${k.brand};--brand-ring-color:${k.brand};` +
-				`--timer-color:${k.timer};--on-accent-color:${k.onAccent};` +
+				`--timer-color:${k.timer};--on-accent-color:${onAccentHex};` +
 				`--tag-bg:${k.raised};--tag-fg:${k.muted};` +
 				// shadcn HSL layer (sidebar, cards, buttons, inputs, popovers, borders)
 				`--background:${bg};--foreground:${text};` +

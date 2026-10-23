@@ -85,6 +85,7 @@
 	--brand-bg-color: oklch(0.95 0.03 var(--accent-h));
 	--brand-fg-color: oklch(0.47 0.18 var(--accent-h));
 	--brand-hover-color: oklch(0.53 0.2 var(--accent-h));
+	--on-accent-color: #fff;
 	--brand-ring-color: oklch(0.59 0.21 var(--accent-h) / 0.3);
 	--selection-bg: color-mix(in srgb, var(--brand-color) 32%, transparent);
 	--focus-ring: var(--fg);
@@ -145,6 +146,7 @@ html.dark {
 	--brand-bg-color: oklch(0.3 0.08 var(--accent-h));
 	--brand-fg-color: oklch(0.8 0.12 var(--accent-h));
 	--brand-hover-color: oklch(0.74 0.17 var(--accent-h));
+	--on-accent-color: #fff;
 	--brand-ring-color: oklch(0.68 0.19 var(--accent-h) / 0.4);
 
 	--s-todo: oklch(0.72 0.1 250);
