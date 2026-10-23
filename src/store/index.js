@@ -381,9 +381,13 @@ const mutations = {
 			? { ...existing, value: timezone }
 			: { key: 'timezone', name: 'Timezone', value: timezone };
 		state.userSettingsMap = { ...state.userSettingsMap, timezone: setting };
-		if (Array.isArray(state.user?.settings)) {
-			const rest = state.user.settings.filter((s) => s.key !== 'timezone');
-			state.user = { ...state.user, settings: [...rest, setting] };
+		if (existing && Array.isArray(state.user?.settings)) {
+			state.user = {
+				...state.user,
+				settings: state.user.settings.map((s) =>
+					s.key === 'timezone' ? setting : s,
+				),
+			};
 		}
 	},
 	setUserSettings(state, settings) {

@@ -170,11 +170,13 @@ export const persistThemeSettings = async (
 	const current = Array.isArray(store.state.user?.settings)
 		? store.state.user.settings
 		: [];
-	const payload = current.map((s: any) => {
-		if (s.key === 'theme') return { id: s.id, value: theme };
-		if (s.key === 'colorScheme') return { id: s.id, value: colorScheme };
-		return { id: s.id, value: s.value };
-	});
+	const payload = current
+		.filter((s: any) => typeof s.id === 'number')
+		.map((s: any) => {
+			if (s.key === 'theme') return { id: s.id, value: theme };
+			if (s.key === 'colorScheme') return { id: s.id, value: colorScheme };
+			return { id: s.id, value: s.value };
+		});
 	const updatedUser = await updateUserSettingsV2(payload);
 	store.commit('setUser', updatedUser);
 };
