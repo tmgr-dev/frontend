@@ -2,7 +2,7 @@
 	<div v-if="hasError" class="error-boundary">
 		<div class="error-boundary-content">
 			<div class="error-icon">
-				<ExclamationTriangleIcon class="h-12 w-12 text-red-500" />
+				<ExclamationTriangleIcon class="h-12 w-12 text-status-fix-fg" />
 			</div>
 
 			<div class="error-details">
@@ -17,12 +17,12 @@
 				<div v-if="showDetails && errorDetails" class="error-stack">
 					<details class="mt-4">
 						<summary
-							class="cursor-pointer text-sm text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+							class="cursor-pointer text-sm text-ink-muted hover:text-ink"
 						>
 							Show technical details
 						</summary>
 						<pre
-							class="mt-2 max-h-40 overflow-auto rounded bg-gray-100 p-3 text-xs dark:bg-gray-800"
+							class="mt-2 max-h-40 overflow-auto rounded bg-surface-sunken p-3 text-xs text-ink"
 							>{{ errorDetails }}</pre
 						>
 					</details>
@@ -318,11 +318,11 @@
 
 <style scoped>
 	.error-boundary {
-		@apply flex min-h-screen items-center justify-center bg-gray-50 p-4 dark:bg-gray-900;
+		@apply flex min-h-screen items-center justify-center bg-surface-base p-4;
 	}
 
 	.error-boundary-content {
-		@apply w-full max-w-md rounded-lg bg-white p-6 text-center shadow-lg dark:bg-gray-800;
+		@apply w-full max-w-md rounded-lg border border-line bg-surface p-6 text-center shadow-lg;
 	}
 
 	.error-icon {
@@ -330,11 +330,11 @@
 	}
 
 	.error-title {
-		@apply mb-2 text-xl font-semibold text-gray-900 dark:text-white;
+		@apply mb-2 text-xl font-semibold text-ink;
 	}
 
 	.error-message {
-		@apply mb-6 text-gray-600 dark:text-gray-300;
+		@apply mb-6 text-ink-muted;
 	}
 
 	.error-actions {

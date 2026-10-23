@@ -807,26 +807,21 @@
 				></line>
 			</g>
 		</svg>
-		<h2 class="mb-2 text-2xl font-semibold text-gray-800 dark:text-gray-200">
-			Access Denied
-		</h2>
-		<p class="text-gray-600 dark:text-gray-400">
+		<h2 class="mb-2 text-2xl font-semibold text-ink">Access Denied</h2>
+		<p class="text-ink-muted">
 			Sorry, you don't have the necessary permissions to view this content.
 		</p>
-		<p v-if="message" class="mt-2 text-sm text-gray-500 dark:text-gray-500">
+		<p v-if="message" class="mt-2 text-sm text-ink-subtle">
 			{{ message }}
 		</p>
-		<button
-			v-if="showBackButton"
-			@click="goBack"
-			class="hover:bg-tmgr-blue-dark mt-6 rounded bg-tmgr-blue px-4 py-2 text-white transition duration-150 ease-in-out"
-		>
+		<Button v-if="showBackButton" @click="goBack" class="mt-6">
 			Go Back
-		</button>
+		</Button>
 	</div>
 </template>
 
 <script setup lang="ts">
+	import { Button } from '@/components/ui/button';
 	import { useRouter } from 'vue-router';
 
 	defineProps({

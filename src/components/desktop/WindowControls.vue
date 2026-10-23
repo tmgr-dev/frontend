@@ -6,9 +6,9 @@
 			type="button"
 			:title="control.title"
 			:class="[
-				'flex h-7 w-7 items-center justify-center rounded-md text-tmgr-blue/60 transition-colors hover:bg-black/5 hover:text-tmgr-blue dark:text-tmgr-gray/60 dark:hover:bg-white/10 dark:hover:text-tmgr-gray',
+				'flex h-7 w-7 items-center justify-center rounded-md text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink',
 				control.action === 'close' &&
-					'hover:!bg-red-500 hover:!text-white dark:hover:!bg-red-500 dark:hover:!text-white',
+					'hover:!bg-destructive hover:!text-destructive-foreground',
 			]"
 			@click="run(control.action)"
 		>

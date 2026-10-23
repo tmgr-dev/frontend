@@ -12,7 +12,7 @@
 			:class="
 				notification.read_at
 					? 'bg-surface-sunken text-ink-subtle'
-					: 'bg-brand-bg text-brand-fg'
+					: 'bg-brand-bg text-brand'
 			"
 		>
 			<component :is="icon" :size="20" />
@@ -42,7 +42,7 @@
 		</div>
 
 		<button
-			class="shrink-0 rounded-md p-1 text-ink-subtle opacity-0 transition-colors hover:bg-surface-hover hover:text-red-500 focus-visible:opacity-100 group-hover:opacity-100"
+			class="shrink-0 rounded-md p-1 text-ink-subtle opacity-0 transition-colors hover:bg-surface-hover hover:text-status-fix-fg focus-visible:opacity-100 group-hover:opacity-100"
 			@click.stop="$emit('delete')"
 			aria-label="Delete notification"
 		>

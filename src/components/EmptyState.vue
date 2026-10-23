@@ -3,7 +3,7 @@
 		<component
 			v-if="iconComponent"
 			:is="iconComponent"
-			class="mb-4 h-12 w-12 text-gray-400"
+			class="mb-4 h-12 w-12 text-ink-faint"
 		/>
 		<img
 			v-else
@@ -13,23 +13,24 @@
 			height="296"
 			alt=""
 		/>
-		<p class="mt-4 text-xl font-bold text-gray-700 dark:text-gray-300">
+		<p class="mt-4 text-xl font-bold text-ink">
 			{{ title || 'Nothing here yet' }}
 		</p>
-		<p v-if="description" class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+		<p v-if="description" class="mt-2 text-sm text-ink-muted">
 			{{ description }}
 		</p>
-		<button
+		<Button
 			v-if="action"
-			class="mt-6 inline-flex h-11 items-center rounded-md bg-tmgr-blue px-8 text-base font-semibold text-white shadow-sm transition-colors hover:bg-tmgr-blue/90 dark:bg-blue-600 dark:hover:bg-blue-500"
+			class="mt-6 h-11 px-8 text-base font-semibold"
 			@click="action.onClick"
 		>
 			{{ action.label }}
-		</button>
+		</Button>
 	</div>
 </template>
 
 <script setup lang="ts">
+	import { Button } from '@/components/ui/button';
 	import { Activity, ClipboardList, Users } from 'lucide-vue-next';
 	import { computed } from 'vue';
 
