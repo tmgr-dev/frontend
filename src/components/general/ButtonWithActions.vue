@@ -1,6 +1,6 @@
 <template>
 	<div
-		:class="`relative rounded font-bold text-white shadow-md hover:rounded ${buttonClass} w-full`"
+		:class="`relative rounded font-bold text-primary-foreground shadow-md hover:rounded ${buttonClass} w-full`"
 	>
 		<button
 			:class="`h-full px-4`"
@@ -74,12 +74,12 @@
 			wrapperClass: {
 				required: false,
 				type: String,
-				default: 'bg-blue-500',
+				default: 'bg-primary',
 			},
 			buttonClass: {
 				required: false,
 				type: String,
-				default: 'bg-blue-500 hover:bg-blue-600',
+				default: 'bg-primary hover:bg-primary/90',
 			},
 			actions: {
 				required: true,
@@ -89,8 +89,8 @@
 				required: false,
 				type: String,
 				default: () => ({
-					down: `absolute z-50 w-full bg-blue-700`,
-					up: `absolute z-50 w-full bg-blue-700`,
+					down: `absolute z-50 w-full bg-primary`,
+					up: `absolute z-50 w-full bg-primary`,
 				}),
 			},
 		},

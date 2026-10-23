@@ -1,6 +1,6 @@
 <template>
 	<span
-		class="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-bg font-medium text-brand-fg"
+		class="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-bg font-medium text-ink"
 		:style="{
 			width: `${size}px`,
 			height: `${size}px`,

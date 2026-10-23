@@ -24,7 +24,7 @@
 			<span class="min-w-0 flex-1 truncate">{{ persona.name }}</span>
 			<span
 				v-if="persona.workspace_id"
-				class="ml-2 shrink-0 rounded bg-gray-100 px-1 text-2xs text-gray-500 dark:bg-gray-700 dark:text-gray-400"
+				class="ml-2 shrink-0 rounded bg-tag-bg px-1 text-2xs text-tag-fg"
 			>
 				workspace
 			</span>

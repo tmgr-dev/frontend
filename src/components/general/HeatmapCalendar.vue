@@ -109,10 +109,7 @@
 		<div
 			v-if="hoveredDate"
 			ref="tooltip"
-			class="pointer-events-none absolute z-50 whitespace-nowrap rounded px-2 py-1 text-xs"
-			:class="
-				theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-gray-800 text-white'
-			"
+			class="pointer-events-none absolute z-50 whitespace-nowrap rounded border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
 			:style="tooltipStyle"
 		>
 			{{ hoveredDate.count }}
@@ -230,7 +227,7 @@
 			},
 
 			textColorClass() {
-				return this.theme === 'dark' ? 'text-[#7d8590]' : 'text-[#656d76]';
+				return 'text-ink-muted';
 			},
 
 			emptySquareClass() {

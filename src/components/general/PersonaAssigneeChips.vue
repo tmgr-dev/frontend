@@ -9,7 +9,7 @@
 			<PopoverTrigger as-child>
 				<button
 					type="button"
-					class="flex shrink-0 rounded-full ring-2 ring-white dark:ring-gray-800"
+					class="flex shrink-0 rounded-full ring-2 ring-surface"
 					:class="{ '-ml-1.5': i > 0 }"
 					:title="persona.name"
 					:aria-label="`Persona ${persona.name}`"
@@ -25,7 +25,7 @@
 				</button>
 			</PopoverTrigger>
 			<PopoverContent
-				class="z-50 w-60 border-gray-200 bg-white p-3 text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+				class="z-50 w-60 p-3"
 				align="start"
 				side="bottom"
 				@click.stop
@@ -41,14 +41,14 @@
 						<p class="truncate text-sm font-semibold">{{ persona.name }}</p>
 						<p
 							v-if="persona.description"
-							class="line-clamp-2 text-xs text-gray-500 dark:text-gray-400"
+							class="line-clamp-2 text-xs text-ink-muted"
 						>
 							{{ persona.description }}
 						</p>
 					</div>
 				</div>
 				<div
-					class="mt-3 flex items-center gap-2 border-t border-gray-200 pt-3 text-xs text-gray-500 dark:border-gray-600 dark:text-gray-400"
+					class="mt-3 flex items-center gap-2 border-t border-line pt-3 text-xs text-ink-muted"
 				>
 					<UserAvatar
 						:user-id="persona.owner.id"
@@ -58,9 +58,7 @@
 					/>
 					<span class="min-w-0 truncate">
 						persona of
-						<span class="font-medium text-gray-900 dark:text-gray-200">{{
-							persona.owner.name
-						}}</span>
+						<span class="font-medium text-ink">{{ persona.owner.name }}</span>
 					</span>
 				</div>
 			</PopoverContent>

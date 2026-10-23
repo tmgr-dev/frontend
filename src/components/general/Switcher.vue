@@ -12,7 +12,7 @@
 			</label>
 
 			<div class="b-switch-list__text">
-				<div class="b-switch-list__title text-gray-800 dark:text-gray-400">
+				<div class="b-switch-list__title text-ink">
 					{{ placeholder }}
 				</div>
 			</div>

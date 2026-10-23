@@ -19,23 +19,20 @@
 
 				<!-- Overlay with enable CTA -->
 				<div
-					class="absolute inset-0 flex items-center justify-center bg-gray-900/30 backdrop-blur-sm dark:bg-gray-950/50"
+					class="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm"
 				>
 					<div
-						class="mx-4 max-w-md rounded-xl border border-gray-200 bg-white p-8 text-center shadow-2xl dark:border-gray-700 dark:bg-gray-800"
+						class="mx-4 max-w-md rounded-xl border border-line bg-surface p-8 text-center shadow-tmgr-lg"
 					>
 						<!-- Icon -->
 						<div
-							class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30"
+							class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-brand-bg"
 						>
-							<component
-								:is="iconComponent"
-								class="h-8 w-8 text-blue-600 dark:text-blue-400"
-							/>
+							<component :is="iconComponent" class="h-8 w-8 text-brand" />
 						</div>
 
 						<!-- Title -->
-						<h2 class="mb-2 text-xl font-bold text-gray-900 dark:text-white">
+						<h2 class="mb-2 text-xl font-bold text-ink">
 							{{ title }}
 						</h2>
 
@@ -45,24 +42,24 @@
 						/>
 						<p
 							v-else-if="mode === 'not-in-local-workspace'"
-							class="text-sm text-gray-500 dark:text-gray-400"
+							class="text-sm text-ink-muted"
 						>
 							Not available in local workspaces
 						</p>
 						<template v-else>
 							<!-- Description -->
-							<p class="mb-6 text-gray-600 dark:text-gray-400">
+							<p class="mb-6 text-ink-muted">
 								{{ description }}
 							</p>
 
 							<router-link
 								v-if="copy.kind === 'link'"
 								:to="copy.to"
-								class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+								:class="buttonVariants()"
 							>
 								{{ copy.text }}
 							</router-link>
-							<p v-else class="text-sm text-gray-500 dark:text-gray-400">
+							<p v-else class="text-sm text-ink-muted">
 								{{ copy.text }}
 							</p>
 						</template>
@@ -75,6 +72,7 @@
 
 <script setup lang="ts">
 	import RequiresAccount from '@/components/general/RequiresAccount.vue';
+	import { buttonVariants } from '@/components/ui/button';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { gateMode } from '@/utils/localOnly';
 	import { gateCopy } from '@/utils/modules';

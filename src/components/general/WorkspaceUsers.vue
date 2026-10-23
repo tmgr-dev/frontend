@@ -37,9 +37,7 @@
 					</DialogTrigger>
 				</AppTooltip>
 
-				<DialogContent
-					class="!rounded-[8px] bg-white dark:border-transparent dark:bg-gray-900 dark:text-white sm:max-w-[425px]"
-				>
+				<DialogContent class="!rounded-[8px] sm:max-w-[425px]">
 					<DialogHeader>
 						<DialogTitle>Send invitation(s)</DialogTitle>
 					</DialogHeader>
@@ -50,7 +48,7 @@
 						:placeholder="`Enter emails (comma separated), for example:\nuser1@example.com,\nuser2@example.com,\n...\nuserN@example.com`"
 					/>
 					<span
-						class="whitespace-pre text-red-500"
+						class="whitespace-pre text-status-fix-fg"
 						v-if="
 							!invitationEmailsValidationError.isValid &&
 							invitationEmails !== ''
