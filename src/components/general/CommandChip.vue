@@ -1,12 +1,12 @@
 <template>
 	<span
-		class="inline-flex max-w-full items-center gap-0.5 rounded bg-muted py-0.5 pl-1.5 pr-0.5 align-middle font-mono text-xs text-ink dark:bg-gray-800 dark:text-gray-100"
+		class="inline-flex max-w-full items-center gap-0.5 rounded bg-muted py-0.5 pl-1.5 pr-0.5 align-middle font-mono text-xs text-ink"
 		data-testid="command-chip"
 	>
 		<code class="break-all">{{ command }}</code>
 		<button
 			type="button"
-			class="inline-flex size-5 shrink-0 items-center justify-center rounded text-ink-subtle hover:bg-surface-sunken hover:text-ink dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100"
+			class="inline-flex size-5 shrink-0 items-center justify-center rounded text-ink-muted hover:bg-surface-sunken hover:text-ink"
 			:aria-label="`Copy command: ${command}`"
 			title="Copy"
 			data-testid="command-chip-copy"

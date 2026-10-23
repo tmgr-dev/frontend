@@ -2832,7 +2832,7 @@
 									v-if="!isAssignedToMe"
 									type="button"
 									@click="assignToMe"
-									class="flex h-7 items-center justify-center rounded-pill bg-brand-bg px-2 text-2xs font-semibold text-brand-fg hover:opacity-90"
+									class="flex h-7 items-center justify-center rounded-pill bg-brand-bg px-2 text-2xs font-semibold text-ink hover:opacity-90"
 									title="Assign to me"
 								>
 									<span class="material-icons" style="font-size: 14px"

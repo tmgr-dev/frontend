@@ -6,7 +6,7 @@
 	>
 		<template #modal-body>
 			<slot name="title">
-				<div class="text-bold text-xl text-tmgr-blue dark:text-gray-300">
+				<div class="text-bold text-xl text-ink">
 					<slot name="title-content">
 						{{ title }}
 					</slot>
@@ -14,7 +14,7 @@
 			</slot>
 
 			<slot name="body">
-				<p class="mt-1 text-tmgr-blue dark:text-gray-300">
+				<p class="mt-1 text-ink-muted">
 					<slot name="body-content">
 						{{ body }}
 					</slot>
@@ -23,20 +23,10 @@
 
 			<slot name="footer">
 				<div class="mt-6 flex justify-end gap-3">
-					<button
-						type="button"
-						class="rounded-md bg-gray-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-gray-700"
-						@click="$emit('onCancel')"
-					>
+					<Button type="button" variant="outline" @click="$emit('onCancel')">
 						Cancel
-					</button>
-					<button
-						type="button"
-						class="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700"
-						@click="$emit('onOk')"
-					>
-						Ok
-					</button>
+					</Button>
+					<Button type="button" @click="$emit('onOk')"> Ok </Button>
 				</div>
 			</slot>
 		</template>
@@ -45,6 +35,7 @@
 
 <script lang="ts">
 	import Modal from '@/components/Modal.vue';
+	import { Button } from '@/components/ui/button';
 
 	interface Props {
 		title: String;
@@ -56,7 +47,7 @@
 
 	export default {
 		name: 'Confirm',
-		components: { Modal },
+		components: { Modal, Button },
 		emits: ['onOk', 'onCancel'],
 		props: {
 			title: String,

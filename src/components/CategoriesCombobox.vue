@@ -64,18 +64,14 @@
 				</Button>
 			</PopoverTrigger>
 
-			<PopoverContent
-				class="w-52 rounded bg-white p-0 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400"
-				:class="props.class"
-			>
+			<PopoverContent class="w-52 rounded p-0" :class="props.class">
 				<Command>
 					<CommandInput
 						class="h-9"
-						wrapper-class="dark:border-gray-600"
 						placeholder="Search category..."
 						@input="(e) => (searchValue = e.target.value)"
 					/>
-					<CommandEmpty>No category found.</CommandEmpty>
+					<CommandEmpty class="text-ink-muted">No category found.</CommandEmpty>
 					<CommandList class="w-80">
 						<CommandGroup>
 							<CommandItem
@@ -91,7 +87,7 @@
 										openCombobox = false;
 									}
 								"
-								class="cursor-pointer text-gray-900 hover:!bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
+								class="cursor-pointer"
 							>
 								{{ category.title }}
 								<Check

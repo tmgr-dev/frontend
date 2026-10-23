@@ -95,11 +95,11 @@
 							:name="member.name"
 							:has-avatar="member.has_avatar ?? false"
 							:size="20"
-							class="ring-2 ring-white dark:ring-gray-800"
+							class="ring-2 ring-background"
 						/>
 						<span
 							v-if="selectedMembers.length > MAX_SUMMARY_AVATARS"
-							class="relative z-10 pl-2.5 text-xs text-gray-600 dark:text-gray-400"
+							class="relative z-10 pl-2.5 text-xs text-ink-muted"
 						>
 							+{{ selectedMembers.length - MAX_SUMMARY_AVATARS }}
 						</span>
@@ -111,17 +111,16 @@
 				</Button>
 			</PopoverTrigger>
 
-			<PopoverContent
-				class="w-52 rounded bg-white p-0 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400"
-			>
+			<PopoverContent class="w-52 rounded p-0">
 				<Command>
 					<CommandInput
 						class="h-9"
-						wrapper-class="dark:border-gray-600"
 						placeholder="Search assignees..."
 						@input="(e) => (searchValue = e.target.value)"
 					/>
-					<CommandEmpty>No assignees found.</CommandEmpty>
+					<CommandEmpty class="text-ink-muted"
+						>No assignees found.</CommandEmpty
+					>
 					<CommandList>
 						<CommandGroup>
 							<CommandItem
@@ -145,7 +144,7 @@
 										}
 									}
 								"
-								class="cursor-pointer text-gray-900 hover:!bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
+								class="cursor-pointer"
 							>
 								<UserAvatar
 									:user-id="assignee.id"

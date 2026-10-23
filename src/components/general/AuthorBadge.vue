@@ -17,7 +17,7 @@
 			/>
 			<span
 				v-else
-				class="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+				class="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-tag-bg font-medium text-tag-fg"
 				:style="{ width: `${size}px`, height: `${size}px` }"
 			>
 				<Plug v-if="resolved.kind === 'plugin'" :style="iconStyle" />
@@ -27,11 +27,9 @@
 			</span>
 			<span
 				v-if="resolved.kind === 'persona'"
-				class="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white ring-1 ring-white dark:bg-gray-900 dark:ring-gray-900"
+				class="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-surface ring-1 ring-surface"
 			>
-				<VenetianMask
-					class="h-2.5 w-2.5 text-violet-600 dark:text-violet-400"
-				/>
+				<VenetianMask class="h-2.5 w-2.5 text-status-testing" />
 			</span>
 		</span>
 		<span v-if="showLabel" class="inline-flex min-w-0 flex-col leading-tight">

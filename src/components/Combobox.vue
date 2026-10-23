@@ -75,17 +75,16 @@
 			</Button>
 		</PopoverTrigger>
 
-		<PopoverContent
-			class="rounded bg-white p-0 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400"
-		>
+		<PopoverContent class="rounded p-0">
 			<Command>
 				<CommandInput
 					class="h-9"
-					wrapper-class="dark:border-gray-600"
 					:placeholder="inputPlaceholder || 'Search entities'"
 					@input="(e: InputEvent) => (searchValue = (e.target as HTMLInputElement).value)"
 				/>
-				<CommandEmpty>{{ notFoundMessage || 'No entity found.' }}</CommandEmpty>
+				<CommandEmpty class="text-ink-muted">{{
+					notFoundMessage || 'No entity found.'
+				}}</CommandEmpty>
 				<CommandList class="w-80">
 					<CommandGroup>
 						<CommandItem
@@ -93,7 +92,7 @@
 							:key="entity.id"
 							:value="entity[valueKey]"
 							@select="handleSelect"
-							class="cursor-pointer text-gray-900 hover:!bg-tmgr-light-blue hover:!text-white dark:text-gray-400"
+							class="cursor-pointer"
 						>
 							{{ entity[labelKey] }}
 							<Check

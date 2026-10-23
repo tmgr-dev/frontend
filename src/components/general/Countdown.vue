@@ -53,8 +53,9 @@
 					v-if="!isFullScreen"
 					class="flex border px-5 py-2 leading-none outline-none hover:text-white"
 					:class="{
-						'border-red-400 text-red-600 hover:bg-red-400': task.start_time,
-						'border-blue-400 text-blue-600 hover:bg-blue-400': !task.start_time,
+						'border-status-fix text-status-fix-fg hover:bg-status-fix':
+							task.start_time,
+						'border-brand text-brand hover:bg-brand': !task.start_time,
 					}"
 					type="button"
 					@click="toggleCountdown"
@@ -104,7 +105,7 @@
 
 					<div class="mt-5 flex flex-nowrap items-center">
 						<button
-							class="mr-1 block w-2/4 rounded bg-gray-700 p-2 text-white"
+							class="mr-1 block w-2/4 rounded bg-muted p-2 text-ink"
 							type="button"
 							@click="isShowModalTimer = false"
 						>
@@ -112,7 +113,7 @@
 						</button>
 
 						<button
-							class="mr-1 block w-2/4 rounded bg-blue-700 p-2 text-white"
+							class="mr-1 block w-2/4 rounded bg-primary p-2 text-primary-foreground"
 							type="button"
 							@click="updateTimer"
 						>

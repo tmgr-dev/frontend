@@ -59,7 +59,7 @@
 						<a
 							href="https://cursor.com/dashboard?tab=cloud-agents"
 							target="_blank"
-							class="text-brand-fg hover:underline"
+							class="text-brand hover:underline"
 						>
 							Cursor Dashboard
 						</a>
@@ -68,7 +68,7 @@
 
 				<div
 					v-if="error"
-					class="border-status-fix/40 rounded-card border bg-status-fix-bg p-3 text-sm text-status-fix-fg"
+					class="rounded-card border border-status-fix bg-status-fix-bg p-3 text-sm text-status-fix-fg"
 				>
 					{{ error }}
 				</div>
@@ -84,18 +84,18 @@
 		</div>
 
 		<div v-else class="space-y-4">
-			<div class="border-brand/30 rounded-card border bg-brand-bg p-4">
+			<div class="rounded-card border border-brand bg-brand-bg p-4">
 				<div class="flex items-center justify-between gap-3">
 					<div>
-						<p class="text-sm font-semibold text-brand-fg">
+						<p class="text-sm font-semibold text-ink">
 							Cursor AI Agent Configured
 						</p>
-						<p class="text-brand-fg/80 mt-1 text-xs">
+						<p class="mt-1 text-xs text-ink-muted">
 							Ready to assist with code generation for this category
 						</p>
 					</div>
 					<svg
-						class="h-5 w-5 shrink-0 text-brand-fg"
+						class="h-5 w-5 shrink-0 text-brand"
 						fill="none"
 						stroke="currentColor"
 						viewBox="0 0 24 24"
@@ -120,7 +120,7 @@
 				<button
 					@click="removeKey"
 					:disabled="removing"
-					class="border-status-fix/40 inline-flex h-9 items-center justify-center rounded-pill border bg-status-fix-bg px-4 text-sm font-semibold text-status-fix-fg transition-colors hover:opacity-90 disabled:opacity-50"
+					class="inline-flex h-9 items-center justify-center rounded-pill border border-status-fix bg-status-fix-bg px-4 text-sm font-semibold text-status-fix-fg transition-colors hover:opacity-90 disabled:opacity-50"
 				>
 					{{ removing ? 'Removing…' : 'Remove Key' }}
 				</button>
@@ -148,7 +148,7 @@
 
 				<div
 					v-if="error"
-					class="border-status-fix/40 rounded-card border bg-status-fix-bg p-3 text-sm text-status-fix-fg"
+					class="rounded-card border border-status-fix bg-status-fix-bg p-3 text-sm text-status-fix-fg"
 				>
 					{{ error }}
 				</div>
