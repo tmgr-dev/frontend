@@ -84,7 +84,7 @@
 	const { active, hoverKey } = useRoutineDrag();
 	const dragActive = computed(() => !!active.value);
 
-	const todayIso = todayIn(currentTimeZone());
+	const todayIso = computed(() => todayIn(currentTimeZone()));
 
 	const props = defineProps<{
 		entries: RoutineEntry[];

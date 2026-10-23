@@ -63,7 +63,7 @@
 	import { currentTimeZone, todayDateIn } from '@/utils/timezone';
 	import { computed } from 'vue';
 
-	const today = todayDateIn(currentTimeZone());
+	const today = computed(() => todayDateIn(currentTimeZone()));
 
 	const props = defineProps<{
 		year: number;
@@ -119,7 +119,7 @@
 		const intensity = s.fires === 0 ? 0 : Math.max(0.15, ratio);
 		return {
 			background: heatColor(intensity),
-			border: isSameDay(d, today)
+			border: isSameDay(d, today.value)
 				? '1px solid #e8857d'
 				: '1px solid transparent',
 		};

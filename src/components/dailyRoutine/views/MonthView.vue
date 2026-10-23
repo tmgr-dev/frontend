@@ -101,7 +101,7 @@
 
 	const { hoverKey } = useRoutineDrag();
 
-	const today = todayDateIn(currentTimeZone());
+	const today = computed(() => todayDateIn(currentTimeZone()));
 
 	const props = defineProps<{
 		entries: RoutineEntry[];
@@ -168,7 +168,7 @@
 
 	function cellStyle(d: Date) {
 		const inMonth = d.getMonth() === props.monthDate.getMonth();
-		const isToday = isSameDay(d, today);
+		const isToday = isSameDay(d, today.value);
 		return {
 			background: isToday ? 'rgba(232,133,125,.08)' : 'transparent',
 			opacity: inMonth ? 1 : 0.35,
@@ -176,7 +176,7 @@
 	}
 	function dayLabelStyle(d: Date) {
 		const inMonth = d.getMonth() === props.monthDate.getMonth();
-		const isToday = isSameDay(d, today);
+		const isToday = isSameDay(d, today.value);
 		return {
 			color: isToday
 				? '#e8857d'

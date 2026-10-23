@@ -213,7 +213,7 @@
 	const dragActive = computed(() => !!active.value);
 
 	const HOUR_PX = 56;
-	const today = todayDateIn(currentTimeZone());
+	const today = computed(() => todayDateIn(currentTimeZone()));
 
 	const props = defineProps<{
 		entries: RoutineEntry[];
