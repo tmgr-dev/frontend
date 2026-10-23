@@ -18,25 +18,20 @@
 						: 'Failed to load page'
 				}}
 			</p>
-			<button
-				class="mt-2 text-blue-600 underline dark:text-blue-400"
-				@click="load"
-			>
-				Retry
-			</button>
+			<button class="mt-2 text-brand underline" @click="load">Retry</button>
 		</div>
 
 		<template v-else-if="page">
 			<div
 				v-if="updateBanner"
-				class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200"
+				class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-status-progress bg-status-progress-bg px-3 py-2 text-sm text-status-progress-fg"
 				role="status"
 				data-testid="page-update-banner"
 			>
 				<span>Page changed, version {{ updateBanner }}</span>
 				<button
 					type="button"
-					class="rounded-md bg-amber-600 px-3 py-1 text-white hover:bg-amber-700"
+					class="rounded-md bg-status-progress-fg px-3 py-1 text-surface-base hover:opacity-90"
 					@click="refresh"
 				>
 					Refresh
@@ -45,13 +40,13 @@
 
 			<div
 				v-if="conflict && !conflictOpen"
-				class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200"
+				class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-status-fix bg-status-fix-bg px-3 py-2 text-sm text-status-fix-fg"
 				role="alert"
 			>
 				<span>Not saved: version conflict</span>
 				<button
 					type="button"
-					class="rounded-md bg-red-600 px-3 py-1 text-white hover:bg-red-700"
+					class="rounded-md bg-destructive px-3 py-1 text-destructive-foreground hover:bg-destructive/90"
 					@click="conflictOpen = true"
 				>
 					Resolve
@@ -66,7 +61,7 @@
 						<input
 							v-model="form.title"
 							type="text"
-							class="w-full min-w-0 truncate border-0 bg-transparent p-0 text-[1.75rem] font-bold leading-tight tracking-tight text-ink placeholder-gray-400 dark:placeholder-gray-500 md:text-[2.25rem]"
+							class="w-full min-w-0 truncate border-0 bg-transparent p-0 text-[1.75rem] font-bold leading-tight tracking-tight text-ink placeholder:text-ink-faint md:text-[2.25rem]"
 							placeholder="Untitled"
 							:title="form.title"
 							maxlength="255"
@@ -88,14 +83,14 @@
 						<button
 							v-if="saveError"
 							type="button"
-							class="text-xs text-red-600 underline dark:text-red-400"
+							class="text-xs text-status-fix-fg underline"
 							@click="retrySave"
 						>
 							Retry
 						</button>
 						<button
 							type="button"
-							class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+							class="inline-flex items-center gap-1 rounded-md border border-input px-2.5 py-1 text-sm text-ink hover:bg-surface-hover disabled:opacity-50"
 							:disabled="followBusy"
 							:aria-pressed="following"
 							data-testid="page-follow"
@@ -107,7 +102,7 @@
 						<button
 							v-if="canOpenInWindow"
 							type="button"
-							class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+							class="inline-flex items-center gap-1 rounded-md border border-input px-2.5 py-1 text-sm text-ink hover:bg-surface-hover"
 							data-testid="page-open-window"
 							data-tour="task-form.open-window"
 							@click="openInWindow"
@@ -118,7 +113,7 @@
 						<router-link
 							:to="`/${workspaceCode}/pages/${page.slug}/versions`"
 							data-tour="page.versions"
-							class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+							class="inline-flex items-center gap-1 rounded-md border border-input px-2.5 py-1 text-sm text-ink hover:bg-surface-hover"
 						>
 							<History class="h-4 w-4" />
 							History
@@ -127,7 +122,7 @@
 							<DropdownMenuTrigger as-child>
 								<button
 									type="button"
-									class="inline-flex items-center rounded-md border border-gray-300 px-2 py-1 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+									class="inline-flex items-center rounded-md border border-input px-2 py-1 text-ink hover:bg-surface-hover"
 									aria-label="More actions"
 									data-testid="page-more-menu"
 								>
@@ -246,7 +241,7 @@
 				<button
 					v-if="selection && !taskDialog"
 					type="button"
-					class="fixed z-50 inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white shadow-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400"
+					class="fixed z-50 inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground shadow-lg hover:bg-primary/90"
 					:style="{ left: `${selection.x}px`, top: `${selection.y}px` }"
 					data-testid="selection-to-task"
 					@mousedown.prevent

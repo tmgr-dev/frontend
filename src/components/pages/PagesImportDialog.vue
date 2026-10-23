@@ -15,9 +15,7 @@
 				<div
 					class="flex flex-col items-center gap-2 rounded-md border-2 border-dashed px-4 py-8 text-center text-sm text-ink-subtle"
 					:class="
-						zone.dragging.value
-							? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-							: 'border-line'
+						zone.dragging.value ? 'border-brand bg-brand-bg' : 'border-line'
 					"
 					data-testid="pages-import-dropzone"
 					v-on="zone.handlers"
@@ -44,7 +42,7 @@
 				</div>
 				<p
 					v-if="flow.error.value"
-					class="text-sm text-red-600 dark:text-red-400"
+					class="text-sm text-status-fix-fg"
 					role="alert"
 					data-testid="pages-import-error"
 				>
@@ -92,12 +90,12 @@
 						}}</span>
 						<span
 							v-if="row.page.type !== 'plain'"
-							class="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-ink-subtle dark:bg-gray-800"
+							class="shrink-0 rounded bg-tag-bg px-1.5 py-0.5 text-xs text-tag-fg"
 							>{{ row.page.type }}</span
 						>
 						<span
 							v-if="row.page.conflict"
-							class="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-900 dark:bg-amber-900/30 dark:text-amber-200"
+							class="shrink-0 rounded bg-status-progress-bg px-1.5 py-0.5 text-xs text-status-progress-fg"
 							data-testid="pages-import-conflict-badge"
 							>{{ row.skipped ? 'skipped' : 'exists' }}</span
 						>
@@ -122,7 +120,7 @@
 
 				<div
 					v-if="flow.warnings.value.length"
-					class="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200"
+					class="rounded-md border border-status-progress bg-status-progress-bg p-3 text-sm text-status-progress-fg"
 					data-testid="pages-import-warnings"
 				>
 					<button
@@ -156,11 +154,9 @@
 				class="space-y-2 py-4"
 				data-testid="pages-import-progress"
 			>
-				<div
-					class="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
-				>
+				<div class="h-2 overflow-hidden rounded-full bg-line-strong">
 					<div
-						class="h-full bg-blue-600 transition-all dark:bg-blue-500"
+						class="h-full bg-primary transition-all"
 						:style="{ width: `${percent}%` }"
 					></div>
 				</div>
@@ -175,7 +171,7 @@
 			<div v-else class="space-y-3" data-testid="pages-import-summary">
 				<p
 					v-if="flow.result.value?.error"
-					class="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200"
+					class="rounded-md border border-status-fix bg-status-fix-bg p-3 text-sm text-status-fix-fg"
 					role="alert"
 					data-testid="pages-import-run-error"
 				>
@@ -189,7 +185,7 @@
 				</p>
 				<p
 					v-if="flow.incompleteMessage.value"
-					class="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200"
+					class="rounded-md border border-status-fix bg-status-fix-bg p-3 text-sm text-status-fix-fg"
 					role="alert"
 					data-testid="pages-import-incomplete"
 				>
@@ -205,7 +201,7 @@
 					<li v-for="page in created" :key="page.id">
 						<router-link
 							:to="`/${workspaceCode}/pages/${page.slug}`"
-							class="text-blue-600 underline dark:text-blue-400"
+							class="text-brand underline"
 							data-testid="pages-import-created-link"
 							@click="close"
 							>{{ page.title }}</router-link
@@ -214,7 +210,7 @@
 				</ul>
 				<ul
 					v-if="resultWarnings.length"
-					class="max-h-40 space-y-1 overflow-y-auto rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200"
+					class="max-h-40 space-y-1 overflow-y-auto rounded-md border border-status-progress bg-status-progress-bg p-3 text-sm text-status-progress-fg"
 				>
 					<li v-for="(warning, index) in resultWarnings" :key="index">
 						<span v-if="warning.path" class="font-mono text-xs"
