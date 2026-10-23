@@ -1,14 +1,16 @@
 <template>
-	<div class="fixed inset-0 z-50 flex" data-name="overlay">
-		<div class="absolute inset-0 bg-black/50" @click="zooming" />
+	<Teleport to="body">
+		<div class="fixed inset-0 z-50 flex" data-name="overlay" v-bind="$attrs">
+			<div class="absolute inset-0 bg-black/50" @click="zooming" />
 
-		<div
-			class="relative m-auto max-w-full border border-line bg-surface shadow-lg md:rounded-[8px]"
-			:class="[modalClass, { 'zoom-effect': isZooming }]"
-		>
-			<slot name="modal-body"></slot>
+			<div
+				class="relative m-auto max-w-full border border-line bg-surface shadow-lg md:rounded-[8px]"
+				:class="[modalClass, { 'zoom-effect': isZooming }]"
+			>
+				<slot name="modal-body"></slot>
+			</div>
 		</div>
-	</div>
+	</Teleport>
 </template>
 
 <script lang="ts" setup>
@@ -21,6 +23,7 @@
 		closeOnBgClick?: boolean;
 	}
 
+	defineOptions({ inheritAttrs: false });
 	defineProps<Props>();
 	const emit = defineEmits(['close', 'closingModal']);
 	const initialUrl = ref(location.href);
