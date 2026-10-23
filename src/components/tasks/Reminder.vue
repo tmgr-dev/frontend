@@ -30,9 +30,9 @@
 			@click="stopReminder"
 		>
 			<span
-				class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"
+				class="absolute inline-flex h-full w-full animate-ping rounded-full bg-status-done opacity-75"
 			/>
-			<span class="relative inline-flex h-5 w-5 rounded-full bg-green-500" />
+			<span class="relative inline-flex h-5 w-5 rounded-full bg-status-done" />
 		</span>
 	</div>
 </template>

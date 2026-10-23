@@ -3664,11 +3664,11 @@
 		</Dialog>
 		<div
 			v-if="isFileDragActive || isUploadingPendingFiles"
-			class="absolute inset-0 z-50 rounded-panel border-2 border-dashed border-blue-500 bg-blue-50/80 dark:border-blue-400 dark:bg-gray-900/80"
+			class="absolute inset-0 z-50 rounded-panel border-2 border-dashed border-brand bg-[color-mix(in_srgb,var(--brand-bg-color)_80%,transparent)]"
 			:class="{ 'pointer-events-none': !isUploadingPendingFiles }"
 		>
 			<div
-				class="sticky top-0 flex h-full max-h-[100dvh] flex-col items-center justify-center gap-2 text-blue-600 dark:text-blue-300"
+				class="sticky top-0 flex h-full max-h-[100dvh] flex-col items-center justify-center gap-2 text-brand"
 			>
 				<template v-if="isUploadingPendingFiles">
 					<Loader2 :size="32" class="animate-spin" />

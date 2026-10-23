@@ -1,8 +1,6 @@
 <template>
 	<div class="mt-4 w-full">
-		<div class="mb-2 text-sm font-medium text-tmgr-blue dark:text-gray-400">
-			Export Settings
-		</div>
+		<div class="mb-2 text-sm font-medium text-ink-muted">Export Settings</div>
 
 		<div class="space-y-2 text-sm">
 			<!-- Round hours up -->
@@ -10,7 +8,7 @@
 				<input
 					v-model="settings.round_hours_up"
 					type="checkbox"
-					class="h-4 w-4 rounded border-gray-300 text-green-600 dark:border-gray-600 dark:bg-gray-800"
+					class="h-4 w-4 rounded accent-brand"
 					@change="emitSettings"
 				/>
 				<span>Round hours up</span>
@@ -21,7 +19,7 @@
 				<input
 					v-model="settings.zero_expected_weekends"
 					type="checkbox"
-					class="h-4 w-4 rounded border-gray-300 text-green-600 dark:border-gray-600 dark:bg-gray-800"
+					class="h-4 w-4 rounded accent-brand"
 					@change="emitSettings"
 				/>
 				<span>Zero expected hours on off-days</span>
@@ -29,12 +27,12 @@
 
 			<!-- Weekend days -->
 			<div>
-				<span class="text-gray-500 dark:text-gray-400">Weekend days:</span>
+				<span class="text-ink-subtle">Weekend days:</span>
 				<div class="mt-1 flex flex-wrap gap-1">
 					<label
 						v-for="day in orderedDays"
 						:key="day.value"
-						class="flex cursor-pointer items-center gap-1 rounded-md border border-gray-200 px-2 py-1 dark:border-gray-600"
+						class="flex cursor-pointer items-center gap-1 rounded-md border border-line px-2 py-1"
 					>
 						<input
 							type="checkbox"
@@ -43,7 +41,7 @@
 								settings.weekend_days.length === 1 &&
 								settings.weekend_days.includes(day.value)
 							"
-							class="h-3.5 w-3.5 rounded border-gray-300 text-green-600 dark:border-gray-600 dark:bg-gray-800"
+							class="h-3.5 w-3.5 rounded accent-brand"
 							@change="toggleWeekendDay(day.value)"
 						/>
 						<span class="text-xs">{{ day.label }}</span>
@@ -53,15 +51,15 @@
 
 			<!-- Custom holidays -->
 			<div>
-				<span class="text-gray-500 dark:text-gray-400">Custom holidays:</span>
+				<span class="text-ink-subtle">Custom holidays:</span>
 				<div class="mt-1 flex items-center gap-2">
 					<input
 						v-model="holidayInput"
 						type="date"
-						class="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+						class="rounded-md border border-line-strong bg-surface px-2 py-1 text-sm text-ink"
 					/>
 					<button
-						class="rounded-md bg-green-600 px-3 py-1 text-sm text-white hover:bg-green-700"
+						class="rounded-md bg-status-done px-3 py-1 text-sm text-white hover:opacity-90"
 						@click="addHoliday"
 					>
 						Add
@@ -74,11 +72,11 @@
 					<span
 						v-for="(date, idx) in settings.custom_holidays"
 						:key="date"
-						class="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-0.5 text-xs dark:border-gray-600"
+						class="inline-flex items-center gap-1 rounded-md border border-line px-2 py-0.5 text-xs"
 					>
 						{{ date }}
 						<button
-							class="text-red-500 hover:text-red-400"
+							class="text-status-fix hover:text-status-fix-fg"
 							@click="removeHoliday(idx)"
 						>
 							&times;
@@ -92,7 +90,7 @@
 				<input
 					v-model="settings.parse_date_from_title"
 					type="checkbox"
-					class="h-4 w-4 rounded border-gray-300 text-green-600 dark:border-gray-600 dark:bg-gray-800"
+					class="h-4 w-4 rounded accent-brand"
 					@change="emitSettings"
 				/>
 				<span>Parse date from task title</span>

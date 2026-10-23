@@ -260,8 +260,8 @@
 				:class="[
 					'rounded-full px-2 py-0.5 text-2xs font-medium transition-colors',
 					authorFilter === option.value
-						? 'bg-tmgr-blue text-white'
-						: 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600',
+						? 'bg-brand text-white'
+						: 'bg-surface-sunken text-ink-muted hover:bg-surface-active',
 				]"
 				@click="authorFilter = option.value"
 			>
@@ -295,9 +295,9 @@
 				:class="[
 					'group flex gap-3',
 					comment.cursor_agent_id
-						? '-ml-3 rounded-lg border-l-4 border-violet-500 bg-violet-50 p-3 dark:bg-violet-900/20'
+						? '-ml-3 rounded-lg border-l-4 border-status-testing bg-surface-sunken p-3'
 						: comment.user?.email === 'ai@tmgr.dev'
-						? '-ml-3 rounded-lg border-l-4 border-blue-500 bg-blue-50 p-3 dark:bg-blue-900/20'
+						? '-ml-3 rounded-lg border-l-4 border-brand bg-surface-sunken p-3'
 						: '',
 				]"
 			>
@@ -308,16 +308,16 @@
 					"
 				>
 					<div
-						class="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900/30"
+						class="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-status-testing-bg"
 					>
-						<Bot class="h-4 w-4 text-violet-600 dark:text-violet-400" />
+						<Bot class="h-4 w-4 text-status-testing-fg" />
 					</div>
 				</template>
 				<template v-else-if="comment.user?.email === 'ai@tmgr.dev'">
 					<div
-						class="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30"
+						class="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-brand-bg"
 					>
-						<Sparkles class="h-4 w-4 text-blue-600 dark:text-blue-400" />
+						<Sparkles class="h-4 w-4 text-brand" />
 					</div>
 				</template>
 				<span
@@ -355,13 +355,13 @@
 								comment.cursor_agent_id &&
 								comment.cursor_message_type === 'assistant_message'
 							"
-							class="text-sm font-semibold text-violet-600 dark:text-violet-400"
+							class="text-sm font-semibold text-status-testing-fg"
 						>
 							Cursor Agent
 						</span>
 						<span
 							v-else-if="comment.user?.email === 'ai@tmgr.dev'"
-							class="text-sm font-semibold text-blue-600 dark:text-blue-400"
+							class="text-sm font-semibold text-brand"
 						>
 							AI Assistant
 						</span>
@@ -385,7 +385,7 @@
 							<Button
 								variant="ghost"
 								size="icon"
-								class="h-6 w-6 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/20"
+								class="h-6 w-6 hover:bg-status-fix-bg hover:text-status-fix-fg"
 								@click="handleDelete(comment.id)"
 							>
 								<Trash2 class="h-3 w-3" />
@@ -413,8 +413,8 @@
 							:class="[
 								'inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs transition-colors',
 								reaction.reacted
-									? 'border-tmgr-blue bg-tmgr-blue/10 text-tmgr-blue dark:border-tmgr-light-blue dark:text-tmgr-light-blue'
-									: 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700',
+									? 'border-brand bg-brand-bg text-brand'
+									: 'border-line bg-surface-sunken text-ink-muted hover:bg-surface-hover',
 							]"
 							@click="handleToggleReaction(comment, reaction.emoji)"
 						>
@@ -425,7 +425,7 @@
 						<div class="relative">
 							<button
 								type="button"
-								class="inline-flex h-6 w-6 items-center justify-center rounded-full text-gray-400 opacity-0 transition-opacity hover:bg-gray-100 hover:text-gray-600 group-hover:opacity-100 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+								class="inline-flex h-6 w-6 items-center justify-center rounded-full text-ink-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink group-hover:opacity-100"
 								:class="{ 'opacity-100': reactionPickerFor === comment.id }"
 								aria-label="Add reaction"
 								@click="toggleReactionPicker(comment.id)"
@@ -435,13 +435,13 @@
 
 							<div
 								v-if="reactionPickerFor === comment.id"
-								class="absolute left-0 z-10 mt-1 flex gap-0.5 rounded-lg border border-gray-200 bg-white p-1 shadow-md dark:border-gray-700 dark:bg-gray-800"
+								class="absolute left-0 z-10 mt-1 flex gap-0.5 rounded-lg border border-line bg-surface p-1 shadow-md"
 							>
 								<button
 									v-for="emoji in DEFAULT_REACTION_EMOJIS"
 									:key="emoji"
 									type="button"
-									class="rounded-md px-1.5 py-1 text-base leading-none transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
+									class="rounded-md px-1.5 py-1 text-base leading-none transition-colors hover:bg-surface-hover"
 									@click="handleToggleReaction(comment, emoji)"
 								>
 									{{ emoji }}
