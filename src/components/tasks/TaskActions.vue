@@ -3,7 +3,7 @@
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('removeTask')"
-			class="mr-auto rounded bg-red-500 px-4 py-2 font-bold text-white outline-none hover:bg-red-700"
+			class="mr-auto rounded bg-status-fix px-4 py-2 font-bold text-white outline-none hover:opacity-90"
 		>
 			Delete
 		</button>
@@ -14,7 +14,7 @@
 			<button
 				v-if="!isCreatingTask"
 				@click="$emit('saveTask')"
-				class="relative rounded bg-blue-500 px-8 py-2 font-bold text-white hover:bg-blue-700"
+				class="relative rounded bg-brand px-8 py-2 font-bold text-white hover:bg-brand-hover"
 				type="button"
 			>
 				<svg
@@ -46,16 +46,18 @@
 				class="absolute right-0 top-0 -mt-1 mr-4 flex h-5 w-5"
 			>
 				<span
-					class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"
+					class="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75"
 				/>
-				<span class="relative inline-flex h-5 w-5 rounded-full bg-yellow-500" />
+				<span
+					class="relative inline-flex h-5 w-5 rounded-full bg-status-progress"
+				/>
 			</span>
 		</span>
 
 		<button
 			v-if="isCreatingTask"
 			@click="$emit('createTask')"
-			class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 sm:mb-0"
+			class="mb-5 rounded bg-brand px-4 py-2 font-bold text-white transition hover:bg-brand-hover sm:mb-0"
 			type="button"
 		>
 			Create
@@ -64,7 +66,7 @@
 		<!--		<button
 			v-if="isCreatingTask"
 			@click="$emit('cancelCreateTask')"
-			class="mb-5 rounded bg-gray-500 py-2 px-4 font-bold text-white transition hover:bg-gray-600 sm:mb-0"
+			class="mb-5 rounded bg-surface-active px-4 py-2 font-bold text-ink transition hover:bg-surface-hover sm:mb-0"
 			type="button"
 		>
 			Cancel
@@ -73,7 +75,7 @@
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('settingsTask')"
-			class="rounded bg-gray-500 px-4 py-2 font-bold text-white hover:bg-gray-700"
+			class="rounded bg-surface-active px-4 py-2 font-bold text-ink hover:bg-surface-hover"
 			type="button"
 		>
 			Settings

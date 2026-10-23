@@ -6,7 +6,7 @@
 					v-if="isImage(file)"
 					:ref="(el) => bindPreview(file, el)"
 					type="button"
-					class="flex h-24 w-24 items-center justify-center overflow-hidden rounded-md border border-line bg-surface-sunken text-ink-subtle transition hover:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-500"
+					class="flex h-24 w-24 items-center justify-center overflow-hidden rounded-md border border-line bg-surface-sunken text-ink-subtle transition hover:border-line-strong"
 					:title="`Open ${file.name}`"
 					data-testid="attached-file"
 					@click="openViewer(file)"
@@ -28,16 +28,14 @@
 				<button
 					v-else
 					type="button"
-					class="flex max-w-[14rem] items-center gap-1.5 rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink transition hover:bg-surface-hover dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+					class="flex max-w-[14rem] items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2 py-1 text-xs text-ink transition hover:bg-surface-hover"
 					:title="`Open ${file.name}`"
 					data-testid="attached-file"
 					@click="openViewer(file)"
 				>
 					<FileText class="h-3 w-3 flex-shrink-0 text-ink-subtle" />
 					<span class="min-w-0 truncate">{{ file.name }}</span>
-					<span
-						class="flex-shrink-0 text-2xs text-ink-faint dark:text-gray-400"
-					>
+					<span class="flex-shrink-0 text-2xs text-ink-subtle">
 						{{ kind(file)
 						}}<template v-if="file.size != null"> · {{ size(file) }}</template>
 					</span>

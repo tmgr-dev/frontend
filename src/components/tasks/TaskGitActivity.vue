@@ -2,16 +2,16 @@
 	<div>
 		<div v-if="loading" class="flex items-center justify-center py-8">
 			<div
-				class="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"
+				class="h-8 w-8 animate-spin rounded-full border-4 border-brand border-t-transparent"
 			></div>
 		</div>
 
 		<div
 			v-else-if="!hasActivity"
-			class="rounded-lg border border-gray-300 bg-gray-50 p-8 text-center dark:border-gray-600 dark:bg-gray-800"
+			class="rounded-lg border border-line-strong bg-surface-sunken p-8 text-center"
 		>
 			<svg
-				class="mx-auto mb-3 h-12 w-12 text-gray-400"
+				class="mx-auto mb-3 h-12 w-12 text-ink-subtle"
 				fill="none"
 				stroke="currentColor"
 				viewBox="0 0 24 24"
@@ -23,10 +23,8 @@
 					d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
 				></path>
 			</svg>
-			<p class="text-gray-600 dark:text-gray-400">
-				No git activity linked to this task yet
-			</p>
-			<p class="mt-2 text-sm text-gray-500 dark:text-gray-500">
+			<p class="text-ink-muted">No git activity linked to this task yet</p>
+			<p class="mt-2 text-sm text-ink-subtle">
 				Use {{ categoryCode }}-{{ taskId }} in commits, branches, or PR titles
 				to link them
 			</p>
@@ -34,9 +32,7 @@
 
 		<div v-else class="space-y-6">
 			<div v-if="activity.branches && activity.branches.length > 0">
-				<h4
-					class="mb-3 flex items-center text-sm font-semibold text-gray-700 dark:text-gray-300"
-				>
+				<h4 class="mb-3 flex items-center text-sm font-semibold text-ink-muted">
 					<svg
 						class="mr-2 h-5 w-5"
 						fill="none"
@@ -58,28 +54,25 @@
 						:key="branch.id"
 						:href="branch.repository_url"
 						target="_blank"
-						class="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3 transition hover:border-blue-400 hover:bg-blue-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-blue-600 dark:hover:bg-gray-700"
+						class="flex items-center justify-between rounded-lg border border-line bg-surface p-3 transition hover:border-line-strong hover:bg-surface-hover"
 					>
 						<div class="flex items-center">
 							<span
 								:class="[
 									'mr-3 rounded px-2 py-1 font-mono text-xs',
 									branch.is_default
-										? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-										: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
+										? 'bg-status-done-bg text-status-done-fg'
+										: 'bg-surface-sunken text-ink-muted',
 								]"
 							>
 								{{ branch.name }}
 							</span>
-							<span
-								v-if="branch.repository"
-								class="text-xs text-gray-500 dark:text-gray-400"
-							>
+							<span v-if="branch.repository" class="text-xs text-ink-subtle">
 								{{ branch.repository }}
 							</span>
 						</div>
 						<svg
-							class="h-4 w-4 text-gray-400"
+							class="h-4 w-4 text-ink-subtle"
 							fill="none"
 							stroke="currentColor"
 							viewBox="0 0 24 24"
@@ -96,9 +89,7 @@
 			</div>
 
 			<div v-if="activity.commits && activity.commits.length > 0">
-				<h4
-					class="mb-3 flex items-center text-sm font-semibold text-gray-700 dark:text-gray-300"
-				>
+				<h4 class="mb-3 flex items-center text-sm font-semibold text-ink-muted">
 					<svg
 						class="mr-2 h-5 w-5"
 						fill="none"
@@ -120,15 +111,15 @@
 						:key="commit.id"
 						:href="commit.url"
 						target="_blank"
-						class="block rounded-lg border border-gray-200 bg-white p-3 transition hover:border-blue-400 hover:bg-blue-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-blue-600 dark:hover:bg-gray-700"
+						class="block rounded-lg border border-line bg-surface p-3 transition hover:border-line-strong hover:bg-surface-hover"
 					>
 						<div class="flex items-start justify-between">
 							<div class="flex-1">
-								<p class="text-sm text-gray-800 dark:text-gray-200">
+								<p class="text-sm text-ink">
 									{{ commit.message.split('\n')[0] }}
 								</p>
 								<div
-									class="mt-1 flex items-center space-x-3 text-xs text-gray-500 dark:text-gray-400"
+									class="mt-1 flex items-center space-x-3 text-xs text-ink-subtle"
 								>
 									<span class="font-mono">{{ commit.short_sha }}</span>
 									<span>{{ commit.author_name }}</span>
@@ -136,7 +127,7 @@
 								</div>
 							</div>
 							<svg
-								class="ml-2 h-4 w-4 flex-shrink-0 text-gray-400"
+								class="ml-2 h-4 w-4 flex-shrink-0 text-ink-subtle"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"
@@ -154,9 +145,7 @@
 			</div>
 
 			<div v-if="activity.pull_requests && activity.pull_requests.length > 0">
-				<h4
-					class="mb-3 flex items-center text-sm font-semibold text-gray-700 dark:text-gray-300"
-				>
+				<h4 class="mb-3 flex items-center text-sm font-semibold text-ink-muted">
 					<svg
 						class="mr-2 h-5 w-5"
 						fill="none"
@@ -178,7 +167,7 @@
 						:key="pr.id"
 						:href="pr.url"
 						target="_blank"
-						class="block rounded-lg border border-gray-200 bg-white p-3 transition hover:border-blue-400 hover:bg-blue-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-blue-600 dark:hover:bg-gray-700"
+						class="block rounded-lg border border-line bg-surface p-3 transition hover:border-line-strong hover:bg-surface-hover"
 					>
 						<div class="flex items-start justify-between">
 							<div class="flex-1">
@@ -187,30 +176,30 @@
 										:class="[
 											'mr-2 rounded px-2 py-1 text-xs font-semibold',
 											pr.state === 'open'
-												? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+												? 'bg-status-done-bg text-status-done-fg'
 												: pr.state === 'merged'
-												? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
-												: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+												? 'bg-status-testing-bg text-status-testing-fg'
+												: 'bg-status-fix-bg text-status-fix-fg',
 										]"
 									>
 										{{ pr.state }}
 									</span>
-									<span class="font-semibold text-gray-700 dark:text-gray-300"
+									<span class="font-semibold text-ink-muted"
 										>#{{ pr.number }}</span
 									>
 								</div>
-								<p class="mt-1 text-sm text-gray-800 dark:text-gray-200">
+								<p class="mt-1 text-sm text-ink">
 									{{ pr.title }}
 								</p>
 								<div
-									class="mt-1 flex items-center space-x-3 text-xs text-gray-500 dark:text-gray-400"
+									class="mt-1 flex items-center space-x-3 text-xs text-ink-subtle"
 								>
 									<span>{{ pr.source_branch }} → {{ pr.target_branch }}</span>
 									<span>by {{ pr.author_username }}</span>
 								</div>
 							</div>
 							<svg
-								class="ml-2 h-4 w-4 flex-shrink-0 text-gray-400"
+								class="ml-2 h-4 w-4 flex-shrink-0 text-ink-subtle"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"
@@ -230,9 +219,9 @@
 
 		<div
 			v-if="error"
-			class="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20"
+			class="mt-4 rounded-lg border border-status-fix bg-status-fix-bg p-4"
 		>
-			<p class="text-sm text-red-700 dark:text-red-400">{{ error }}</p>
+			<p class="text-sm text-status-fix-fg">{{ error }}</p>
 		</div>
 	</div>
 </template>

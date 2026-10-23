@@ -16,7 +16,7 @@
 			@updateStatus="updateStatusForSelectedTasks"
 			@confirm-agent-runs="openBulkAgentConfirm"
 		>
-			<p class="text-center text-gray-800 dark:text-gray-200">
+			<p class="text-center text-ink">
 				<b>Selected tasks: </b>{{ selected.filter(Boolean).length }}<br />
 				{{ timeForModal }}
 			</p>
@@ -64,10 +64,7 @@
 					: 'border-transparent',
 			]"
 		>
-			<div
-				class="border-black dark:border-gray-400"
-				:class="[hasSelectable ? 'selection' : '']"
-			/>
+			<div class="border-ink" :class="[hasSelectable ? 'selection' : '']" />
 
 			<div
 				v-for="(task, i) in tasks"

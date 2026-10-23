@@ -198,11 +198,11 @@
 		<div style="flex-shrink: 0; padding: 1rem">
 			<div class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<MessageCircle class="h-5 w-5 text-gray-600 dark:text-gray-400" />
-					<h3 class="font-semibold text-gray-900 dark:text-white">Comments</h3>
+					<MessageCircle class="h-5 w-5 text-ink-muted" />
+					<h3 class="font-semibold text-ink">Comments</h3>
 					<span
 						v-if="commentsCount > 0"
-						class="flex items-center justify-center rounded-full bg-tmgr-blue px-2 py-0.5 text-xs text-white"
+						class="flex items-center justify-center rounded-full bg-brand px-2 py-0.5 text-xs text-white"
 					>
 						{{ commentsCount }}
 					</span>
@@ -210,7 +210,7 @@
 				<button
 					v-if="showCloseButton"
 					@click="emit('close')"
-					class="rounded-lg p-1.5 text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+					class="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-surface-hover"
 				>
 					<X class="h-5 w-5" />
 				</button>
@@ -233,7 +233,7 @@
 			>
 				<div v-if="isLoading" class="flex items-center justify-center py-8">
 					<div
-						class="h-6 w-6 animate-spin rounded-full border-2 border-tmgr-blue border-t-transparent"
+						class="h-6 w-6 animate-spin rounded-full border-2 border-brand border-t-transparent"
 					></div>
 				</div>
 
@@ -241,15 +241,9 @@
 					v-else-if="comments.length === 0"
 					class="flex flex-col items-center justify-center py-12 text-center"
 				>
-					<MessageCircle
-						class="mb-3 h-12 w-12 text-gray-300 dark:text-gray-700"
-					/>
-					<p class="text-sm text-gray-500 dark:text-gray-400">
-						No comments yet
-					</p>
-					<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-						Start the conversation
-					</p>
+					<MessageCircle class="mb-3 h-12 w-12 text-ink-faint" />
+					<p class="text-sm text-ink-subtle">No comments yet</p>
+					<p class="mt-1 text-xs text-ink-subtle">Start the conversation</p>
 				</div>
 
 				<div v-else class="space-y-4">
@@ -276,23 +270,23 @@
 								class="flex items-center gap-2"
 								:class="{ 'flex-row-reverse': isOwnComment(comment) }"
 							>
-								<span class="text-sm font-medium text-gray-900 dark:text-white">
+								<span class="text-sm font-medium text-ink">
 									{{ comment.user.name }}
 								</span>
-								<span class="text-xs text-gray-500 dark:text-gray-400">
+								<span class="text-xs text-ink-subtle">
 									{{ formatRelativeTime(new Date(comment.created_at)) }}
 								</span>
 							</div>
 
 							<div
 								v-if="comment.parent_comment"
-								class="mb-1 max-w-[85%] rounded-lg border-l-2 border-gray-300 bg-gray-50 px-3 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-800/50"
+								class="mb-1 max-w-[85%] rounded-lg border-l-2 border-line-strong bg-surface-sunken px-3 py-1.5 text-xs"
 								:class="{ 'border-l-0 border-r-2': isOwnComment(comment) }"
 							>
-								<div class="font-medium text-gray-700 dark:text-gray-300">
+								<div class="font-medium text-ink-muted">
 									{{ comment.parent_comment.user.name }}
 								</div>
-								<div class="line-clamp-2 text-gray-600 dark:text-gray-400">
+								<div class="line-clamp-2 text-ink-muted">
 									{{ comment.parent_comment.message }}
 								</div>
 							</div>
@@ -301,8 +295,8 @@
 								class="relative max-w-[85%] rounded-2xl px-4 py-2"
 								:class="
 									isOwnComment(comment)
-										? 'bg-tmgr-blue text-white'
-										: 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-white'
+										? 'bg-brand text-white'
+										: 'bg-surface-sunken text-ink'
 								"
 								style="overflow-wrap: break-word; word-break: break-word"
 							>
@@ -317,7 +311,7 @@
 									<Button
 										variant="ghost"
 										size="icon"
-										class="h-7 w-7 hover:bg-gray-100 dark:hover:bg-gray-800"
+										class="h-7 w-7 hover:bg-surface-hover"
 										@click="handleEdit(comment)"
 									>
 										<Edit2 class="h-3.5 w-3.5" />
@@ -325,7 +319,7 @@
 									<Button
 										variant="ghost"
 										size="icon"
-										class="h-7 w-7 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/20"
+										class="h-7 w-7 hover:bg-status-fix-bg hover:text-status-fix-fg"
 										@click="handleDelete(comment.id)"
 									>
 										<Trash2 class="h-3.5 w-3.5" />
@@ -339,7 +333,7 @@
 									<Button
 										variant="ghost"
 										size="icon"
-										class="h-7 w-7 hover:bg-gray-100 dark:hover:bg-gray-800"
+										class="h-7 w-7 hover:bg-surface-hover"
 										@click="handleReply(comment)"
 									>
 										<Reply class="h-3.5 w-3.5" />
@@ -356,13 +350,13 @@
 		<div style="flex-shrink: 0; padding: 1rem">
 			<div
 				v-if="replyingTo"
-				class="mb-2 flex items-center justify-between rounded-lg bg-gray-100 px-3 py-2 dark:bg-gray-800"
+				class="mb-2 flex items-center justify-between rounded-lg bg-surface-sunken px-3 py-2"
 			>
 				<div class="flex-1">
-					<div class="text-xs font-medium text-gray-700 dark:text-gray-300">
+					<div class="text-xs font-medium text-ink-muted">
 						Replying to {{ replyingTo.user.name }}
 					</div>
-					<div class="line-clamp-1 text-xs text-gray-600 dark:text-gray-400">
+					<div class="line-clamp-1 text-xs text-ink-muted">
 						{{ replyingTo.message }}
 					</div>
 				</div>
@@ -378,11 +372,9 @@
 
 			<div
 				v-if="editingComment"
-				class="mb-2 flex items-center justify-between rounded-lg bg-blue-100 px-3 py-2 dark:bg-blue-900/20"
+				class="mb-2 flex items-center justify-between rounded-lg bg-brand-bg px-3 py-2"
 			>
-				<div class="text-xs font-medium text-blue-700 dark:text-blue-300">
-					Editing comment
-				</div>
+				<div class="text-xs font-medium text-brand">Editing comment</div>
 				<Button
 					variant="ghost"
 					size="icon"

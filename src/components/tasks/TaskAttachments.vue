@@ -5,16 +5,16 @@
 			<button class="underline" @click="load">Retry</button>
 		</div>
 		<div class="mb-3 flex items-center justify-between">
-			<h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">
+			<h3 class="text-sm font-semibold text-ink-muted">
 				Attachments
-				<span v-if="files.length" class="font-normal text-gray-400">
+				<span v-if="files.length" class="font-normal text-ink-subtle">
 					({{ files.length }})
 				</span>
 			</h3>
 			<button
 				type="button"
 				@click="handleAddFiles"
-				class="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-gray-800"
+				class="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-brand transition-colors hover:bg-brand-bg"
 			>
 				<Paperclip :size="16" />
 				<span>Add files</span>
@@ -29,18 +29,16 @@
 			<div
 				v-for="(file, index) in pendingFiles"
 				:key="`pending-${index}-${file.name}`"
-				class="flex items-center gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3 dark:border-gray-600 dark:bg-gray-800"
+				class="flex items-center gap-3 rounded-lg border border-dashed border-line-strong bg-surface-sunken p-3"
 			>
 				<div class="flex h-12 w-12 flex-shrink-0 items-center justify-center">
-					<FileIcon :size="20" class="text-gray-500 dark:text-gray-400" />
+					<FileIcon :size="20" class="text-ink-subtle" />
 				</div>
 				<div class="min-w-0 flex-1">
-					<p
-						class="truncate text-sm font-medium text-gray-900 dark:text-gray-100"
-					>
+					<p class="truncate text-sm font-medium text-ink">
 						{{ file.name }}
 					</p>
-					<p class="text-xs text-gray-500 dark:text-gray-400">
+					<p class="text-xs text-ink-subtle">
 						{{ formatFileSize(file.size) }} · Will upload when the task is
 						created
 					</p>
@@ -48,7 +46,7 @@
 				<button
 					type="button"
 					@click="removePending(index)"
-					class="flex-shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+					class="flex-shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-status-fix-bg hover:text-status-fix-fg"
 					title="Remove"
 				>
 					<X :size="16" />
@@ -59,7 +57,7 @@
 				v-for="file in files"
 				:key="file.id"
 				:ref="(element) => observePreview(file, element)"
-				class="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
+				class="flex items-center gap-3 rounded-lg border border-line bg-surface-sunken p-3 transition-colors hover:border-line-strong"
 			>
 				<div class="flex h-12 w-12 flex-shrink-0 items-center justify-center">
 					<button
@@ -79,19 +77,13 @@
 							class="h-12 w-12 rounded object-cover"
 						/>
 					</button>
-					<FileIcon
-						v-else
-						:size="20"
-						class="text-gray-500 dark:text-gray-400"
-					/>
+					<FileIcon v-else :size="20" class="text-ink-subtle" />
 				</div>
 				<div class="min-w-0 flex-1">
-					<p
-						class="truncate text-sm font-medium text-gray-900 dark:text-gray-100"
-					>
+					<p class="truncate text-sm font-medium text-ink">
 						{{ file.name }}
 					</p>
-					<p class="text-xs text-gray-500 dark:text-gray-400">
+					<p class="text-xs text-ink-subtle">
 						{{ formatFileSize(file.size) }}
 					</p>
 				</div>
@@ -99,7 +91,7 @@
 					type="button"
 					:disabled="busyFileId === file.id"
 					@click="download(file)"
-					class="flex-shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 disabled:opacity-50 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+					class="flex-shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-surface-active hover:text-ink disabled:opacity-50"
 					title="Download"
 				>
 					<Download :size="16" />
@@ -108,7 +100,7 @@
 					type="button"
 					:disabled="busyFileId === file.id"
 					@click="remove(file)"
-					class="flex-shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+					class="flex-shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-status-fix-bg hover:text-status-fix-fg disabled:opacity-50"
 					title="Remove"
 				>
 					<X :size="16" />
@@ -121,31 +113,25 @@
 				class="flex items-center gap-3 rounded-lg border p-3"
 				:class="
 					upload.error
-						? 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10'
-						: 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800'
+						? 'border-status-fix bg-status-fix-bg'
+						: 'border-line bg-surface-sunken'
 				"
 			>
 				<div class="flex-shrink-0">
 					<Loader2
 						v-if="!upload.error"
 						:size="20"
-						class="animate-spin text-blue-500"
+						class="animate-spin text-brand"
 					/>
-					<AlertCircle v-else :size="20" class="text-red-500" />
+					<AlertCircle v-else :size="20" class="text-status-fix" />
 				</div>
 				<div class="min-w-0 flex-1">
-					<p
-						class="truncate text-sm font-medium text-gray-900 dark:text-gray-100"
-					>
+					<p class="truncate text-sm font-medium text-ink">
 						{{ upload.name }}
 					</p>
 					<p
 						class="text-xs"
-						:class="
-							upload.error
-								? 'text-red-600 dark:text-red-400'
-								: 'text-gray-500 dark:text-gray-400'
-						"
+						:class="upload.error ? 'text-status-fix-fg' : 'text-ink-subtle'"
 					>
 						{{ upload.error || `Uploading ${formatFileSize(upload.size)}…` }}
 					</p>
@@ -154,7 +140,7 @@
 					v-if="upload.error"
 					type="button"
 					@click="dismissUpload(upload.id)"
-					class="flex-shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/20"
+					class="flex-shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-status-fix-bg hover:text-status-fix-fg"
 				>
 					<X :size="16" />
 				</button>
@@ -163,16 +149,13 @@
 
 		<div
 			@click="handleAddFiles"
-			class="cursor-pointer rounded-lg border-2 border-dashed border-gray-300 p-6 text-center transition-colors hover:border-gray-400 hover:bg-gray-50 dark:border-gray-600 dark:hover:border-gray-500 dark:hover:bg-gray-800/50"
+			class="cursor-pointer rounded-lg border-2 border-dashed border-line-strong p-6 text-center transition-colors hover:bg-surface-hover"
 		>
-			<FileIcon
-				:size="32"
-				class="mx-auto mb-2 text-gray-400 dark:text-gray-500"
-			/>
-			<p class="text-sm text-gray-500 dark:text-gray-400">
+			<FileIcon :size="32" class="mx-auto mb-2 text-ink-subtle" />
+			<p class="text-sm text-ink-subtle">
 				{{ files.length === 0 ? 'No attachments yet' : 'Add more files' }}
 			</p>
-			<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+			<p class="mt-1 text-xs text-ink-subtle">
 				Click or drag files here to attach documents, images, or other files
 			</p>
 		</div>

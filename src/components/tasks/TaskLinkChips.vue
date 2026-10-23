@@ -11,7 +11,7 @@
 			v-for="ref in refs"
 			:key="`${ref.kind}/${ref.id}`"
 			type="button"
-			class="inline-flex max-w-[16rem] items-center gap-1 truncate rounded-full bg-blue-100 px-2.5 py-0.5 text-xs text-blue-800 hover:underline dark:bg-blue-900/40 dark:text-blue-200"
+			class="inline-flex max-w-[16rem] items-center gap-1 truncate rounded-full bg-brand-bg px-2.5 py-0.5 text-xs text-brand hover:underline"
 			@click="open(ref)"
 		>
 			{{ label(ref) }}
