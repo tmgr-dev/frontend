@@ -7,21 +7,6 @@ const tok = (name) =>
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-	darkMode: ['class'],
-	safelist: [
-		'dark',
-		{
-			pattern:
-				/^(bg|text|border)-(status-(todo|progress|testing|fix|done))(-bg|-fg)?$/,
-		},
-		'bg-line-strong',
-		'bg-surface-sunken',
-		'text-ink-subtle',
-		'text-ink-muted',
-	],
-	prefix: '',
-	content: ['./src/index.template.html', './src/**/*.{vue,js,ts,jsx,tsx}'],
-
 	theme: {
 		container: {
 			center: true,

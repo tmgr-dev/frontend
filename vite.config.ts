@@ -1,8 +1,7 @@
+import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
-import autoprefixer from 'autoprefixer';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import tailwind from 'tailwindcss';
 import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { pwaWorkbox } from './pwa/pwaWorkbox';
@@ -57,6 +56,7 @@ const runnerTerminalDevCsp = (): Plugin => ({
 export default defineConfig({
 	define: { __APP_VERSION__: JSON.stringify(appVersion) },
 	plugins: [
+		tailwindcss(),
 		vue(),
 		desktopWithoutAnalytics(),
 		runnerTerminalDevCsp(),
@@ -125,9 +125,6 @@ export default defineConfig({
 				},
 				silenceDeprecations: ['legacy-js-api'],
 			},
-		},
-		postcss: {
-			plugins: [tailwind, autoprefixer],
 		},
 	},
 	server: {
