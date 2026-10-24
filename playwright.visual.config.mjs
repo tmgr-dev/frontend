@@ -6,6 +6,8 @@ import path from 'node:path';
 // Capture: VISUAL_DIST=<dist> npx playwright test -c playwright.visual.config.mjs --update-snapshots
 // Compare: VISUAL_DIST=<other dist> npx playwright test -c playwright.visual.config.mjs
 // VISUAL_SNAPSHOTS_DIR / VISUAL_OUTPUT_DIR keep PNGs outside the repo.
+// Build both dists with the same env (as in playwright.config.mjs), then copy dist/ out:
+// VITE_API_BASE_URL=http://127.0.0.1:4179/api/ VITE_PUSHER_KEY=browser-test VITE_PUSHER_HOST=127.0.0.1 VITE_TELEGRAM_BOT_NAME=tmgr_test_bot npx vite build
 const root = process.env.VISUAL_ROOT || path.join(os.tmpdir(), 'tmgr-visual');
 const snapshots =
   process.env.VISUAL_SNAPSHOTS_DIR || path.join(root, 'snapshots');
