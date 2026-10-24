@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.68 — 2026-10-24
+
+- System requirements: the desktop app now needs macOS 13.3 or later. On older macOS versions, keep using the web app at tmgr.dev.
+- Styles: the app moved to Tailwind CSS 4. Screens look the same as before; translucent highlights may differ by a barely visible shade.
+
 ## 0.9.67 — 2026-10-24
 
 - Themes: text on accent-coloured buttons, chips and timers is readable in every theme, including yellow accents in gruvbox, cobalt2 and ayu. Translucent accent highlights now show up where they were missing.
