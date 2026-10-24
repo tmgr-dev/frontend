@@ -361,7 +361,7 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 					? {
 							width: keepWidth,
 							height: Math.round((keepWidth * height) / width),
-					  }
+						}
 					: { width, height };
 			tr.setNodeMarkup(at, undefined, {
 				...target.attrs,

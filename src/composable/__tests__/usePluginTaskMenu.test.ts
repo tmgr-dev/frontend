@@ -19,7 +19,7 @@ const item = (pluginId: string, command: string): TaskMenuItem => ({
 const fakeHost = (
 	items: () => TaskMenuItem[],
 	runTaskMenuCommand = jest.fn(),
-) => ({ taskMenuItems: items, runTaskMenuCommand } as any);
+) => ({ taskMenuItems: items, runTaskMenuCommand }) as any;
 
 const resetState = () => {
 	setPluginHost(null);

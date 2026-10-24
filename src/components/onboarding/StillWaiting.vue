@@ -10,7 +10,7 @@
 		<p class="mt-1 text-ink-subtle">
 			No call has reached TMGR yet. Check these:
 		</p>
-		<ol class="mt-3 list-decimal space-y-2 pl-5">
+		<ol class="space-y-2 mt-3 list-decimal pl-5">
 			<li>
 				Run the command in the terminal where you start {{ client }}, not inside
 				a session.

@@ -4,7 +4,7 @@
 		class="flex flex-col gap-1"
 		data-testid="task-time-entries"
 	>
-		<span class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+		<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 			>Terminal sessions</span
 		>
 		<ul

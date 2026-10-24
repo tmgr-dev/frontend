@@ -116,7 +116,7 @@
 		:class="statClasses(true)"
 		@click="runNodeCommand(node)"
 	>
-		<div class="text-2xs uppercase tracking-wide text-muted-foreground">
+		<div class="text-2xs tracking-wide text-muted-foreground uppercase">
 			{{ node.label }}
 		</div>
 		<div :class="['text-lg font-semibold tabular-nums', toneClass(node.tone)]">
@@ -124,7 +124,7 @@
 		</div>
 	</button>
 	<div v-else-if="node.type === 'stat'" :class="statClasses(false)">
-		<div class="text-2xs uppercase tracking-wide text-muted-foreground">
+		<div class="text-2xs tracking-wide text-muted-foreground uppercase">
 			{{ node.label }}
 		</div>
 		<div :class="['text-lg font-semibold tabular-nums', toneClass(node.tone)]">
@@ -151,7 +151,7 @@
 	>
 		<table class="w-full text-sm">
 			<thead
-				class="bg-muted/50 text-left text-2xs uppercase text-muted-foreground"
+				class="bg-muted/50 text-left text-2xs text-muted-foreground uppercase"
 			>
 				<tr>
 					<th
@@ -248,7 +248,7 @@
 	</button>
 	<span
 		v-else-if="node.type === 'timeAgo'"
-		class="text-2xs tabular-nums text-muted-foreground"
+		class="text-2xs text-muted-foreground tabular-nums"
 		:title="node.at"
 	>
 		{{ timeAgoText }}
@@ -262,7 +262,7 @@
 	</span>
 	<dl
 		v-else-if="node.type === 'keyValue'"
-		class="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1.5 text-sm"
+		class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm"
 	>
 		<template v-for="(item, index) in node.items" :key="index">
 			<dt class="text-muted-foreground">{{ item.key }}</dt>
@@ -474,8 +474,8 @@
 				due.value?.urgency === 'overdue'
 					? 'text-red-600 dark:text-red-400'
 					: due.value?.urgency === 'soon'
-					? 'text-amber-600 dark:text-amber-400'
-					: 'text-foreground',
+						? 'text-amber-600 dark:text-amber-400'
+						: 'text-foreground',
 			);
 			const pluginName = computed(
 				() =>

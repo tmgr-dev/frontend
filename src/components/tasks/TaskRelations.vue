@@ -23,7 +23,7 @@
 						d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
 					/>
 				</svg>
-				<h3 class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">
+				<h3 class="text-2xs font-bold tracking-wide text-ink-subtle uppercase">
 					Linked Tasks
 				</h3>
 			</div>
@@ -62,7 +62,7 @@
 							class="h-3 w-3 text-ink-subtle"
 						/>
 						<h4
-							class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+							class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 						>
 							{{ type }}
 						</h4>
@@ -90,7 +90,7 @@
 							</div>
 							<button
 								@click="handleRemoveRelation(relation)"
-								class="ml-1 inline-flex h-5 w-5 items-center justify-center rounded opacity-0 transition-colors hover:bg-status-fix-bg hover:text-status-fix-fg group-hover:opacity-100"
+								class="ml-1 inline-flex h-5 w-5 items-center justify-center rounded opacity-0 transition-colors group-hover:opacity-100 hover:bg-status-fix-bg hover:text-status-fix-fg"
 							>
 								<svg
 									xmlns="http://www.w3.org/2000/svg"
@@ -115,11 +115,11 @@
 	<!-- Compact Modal -->
 	<div
 		v-if="isAddingRelation"
-		class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+		class="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs"
 		@click="cancelAdding"
 	>
 		<div
-			class="fixed left-[50%] top-[50%] z-50 grid w-full max-w-md translate-x-[-50%] translate-y-[-50%] gap-4 rounded-card border border-line bg-surface p-5 text-ink shadow-tmgr-lg"
+			class="fixed top-[50%] left-[50%] z-50 grid w-full max-w-md translate-x-[-50%] translate-y-[-50%] gap-4 rounded-card border border-line bg-surface p-5 text-ink shadow-tmgr-lg"
 			@click.stop
 		>
 			<!-- Dialog Header -->
@@ -152,7 +152,7 @@
 					<div class="relative">
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
-							class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
+							class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-ink-subtle"
 							viewBox="0 0 20 20"
 							fill="currentColor"
 						>
@@ -190,7 +190,7 @@
 							:key="task.id"
 							@click="selectTask(task)"
 							:class="[
-								'relative flex w-full items-center px-3 py-2 text-sm outline-none hover:bg-surface-hover',
+								'relative flex w-full items-center px-3 py-2 text-sm outline-hidden hover:bg-surface-hover',
 								selectedTask?.id === task.id ? 'bg-surface-hover' : '',
 							]"
 						>
@@ -218,7 +218,7 @@
 						</select>
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
-							class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
+							class="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-ink-subtle"
 							viewBox="0 0 20 20"
 							fill="currentColor"
 						>

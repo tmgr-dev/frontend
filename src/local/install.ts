@@ -344,7 +344,7 @@ export const installLocalWorkspaces = (
 				email: '',
 			};
 		const current = hooks.currentUser();
-		const user = current?.id ? current : recall('user')?.data ?? {};
+		const user = current?.id ? current : (recall('user')?.data ?? {});
 		return {
 			id: Number(user.id ?? 0),
 			name: user.name ?? '',

@@ -209,7 +209,7 @@ it('does not count the time a user spends in a file dialog against the plugin de
 				method === 'files.pick'
 					? new Promise((resolve) =>
 							setTimeout(() => resolve({ name: 'chosen.txt' }), 2600),
-					  )
+						)
 					: Promise.resolve(null),
 			onCrash: () => undefined,
 		},

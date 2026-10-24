@@ -11,7 +11,7 @@
 			</DialogHeader>
 
 			<div
-				class="relative mx-auto touch-none select-none overflow-hidden rounded-md bg-surface-sunken"
+				class="relative mx-auto touch-none overflow-hidden rounded-md bg-surface-sunken select-none"
 				:class="dragging ? 'cursor-grabbing' : 'cursor-grab'"
 				:style="{ width: `${VIEW}px`, height: `${VIEW}px` }"
 				@pointerdown="onPointerDown"
@@ -25,7 +25,7 @@
 					:src="url"
 					alt=""
 					draggable="false"
-					class="pointer-events-none absolute left-0 top-0 max-w-none"
+					class="pointer-events-none absolute top-0 left-0 max-w-none"
 					:style="imageStyle"
 				/>
 				<div
@@ -150,7 +150,7 @@
 			const scale = computed(() =>
 				natural.value
 					? coverScale(natural.value.width, natural.value.height, VIEW) *
-					  zoom.value
+						zoom.value
 					: 1,
 			);
 
@@ -162,7 +162,7 @@
 							natural.value.height,
 							scale.value,
 							VIEW,
-					  )
+						)
 					: next;
 
 			const imageStyle = computed(() => {

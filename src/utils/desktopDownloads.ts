@@ -22,10 +22,10 @@ export const downloadToast = ({
 				description: 'Saved to Downloads',
 				variant: 'default',
 				revealPath: path,
-		  }
+			}
 		: {
 				title: 'Download failed',
 				description: `${name ?? 'The file'} could not be saved.`,
 				variant: 'destructive',
 				revealPath: null,
-		  };
+			};

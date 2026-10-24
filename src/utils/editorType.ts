@@ -86,9 +86,7 @@ export const hasMarkdownContent = (description: unknown): boolean =>
  */
 export const resolveEditorType = (
 	task:
-		| { description?: unknown; description_json?: unknown }
-		| null
-		| undefined,
+		{ description?: unknown; description_json?: unknown } | null | undefined,
 	preferred: EditorType,
 ): EditorType => {
 	const hasJson =
@@ -113,11 +111,11 @@ export const buildDescriptionPayload = (
 		? {
 				description_json: task.description_json ?? null,
 				clear_description: true,
-		  }
+			}
 		: {
 				description: task.description ?? null,
 				clear_description_json: true,
-		  };
+			};
 
 /** Drops the description field a queued snapshot marked as cleared, so the request depends only on the snapshot. */
 export const toUpdateBody = <T extends Record<string, any>>(snapshot: T): T => {

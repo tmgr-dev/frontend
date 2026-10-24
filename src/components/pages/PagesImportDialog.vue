@@ -109,7 +109,7 @@
 					When a title already exists
 					<select
 						v-model="flow.policy.value"
-						class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none"
+						class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-hidden"
 						data-testid="pages-import-policy"
 					>
 						<option value="rename">Rename (adds (2))</option>
@@ -138,7 +138,7 @@
 					</button>
 					<ul
 						v-if="warningsShown"
-						class="mt-2 max-h-40 space-y-1 overflow-y-auto"
+						class="space-y-1 mt-2 max-h-40 overflow-y-auto"
 					>
 						<li v-for="(warning, index) in flow.warnings.value" :key="index">
 							<span v-if="warning.path" class="font-mono text-xs"
@@ -196,7 +196,7 @@
 				</p>
 				<ul
 					v-if="created.length"
-					class="max-h-60 space-y-1 overflow-y-auto text-sm"
+					class="space-y-1 max-h-60 overflow-y-auto text-sm"
 				>
 					<li v-for="page in created" :key="page.id">
 						<router-link
@@ -210,7 +210,7 @@
 				</ul>
 				<ul
 					v-if="resultWarnings.length"
-					class="max-h-40 space-y-1 overflow-y-auto rounded-md border border-status-progress bg-status-progress-bg p-3 text-sm text-status-progress-fg"
+					class="space-y-1 max-h-40 overflow-y-auto rounded-md border border-status-progress bg-status-progress-bg p-3 text-sm text-status-progress-fg"
 				>
 					<li v-for="(warning, index) in resultWarnings" :key="index">
 						<span v-if="warning.path" class="font-mono text-xs"

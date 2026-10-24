@@ -13,6 +13,7 @@ npm run typecheck  # vue-tsc --noEmit (same check the PR "Tests" workflow runs)
 npx jest path/to/file.test.ts   # Run a single test file
 JEST_TZ=Asia/Dubai npx jest src/local/__tests__/routines-api.test.ts src/local/__tests__/routines-recurrence.test.ts src/utils/__tests__/dnd.test.ts   # jest pins TZ=UTC; JEST_TZ runs local-day tests in another zone
 npm run format     # Prettier (singleQuote, trailingComma: all, printWidth 80)
+npm run test:visual  # Screenshot diff of two builds, local only (not CI); usage in playwright.visual.config.mjs
 ```
 
 Env: copy `.env.example` to `.env`. The required var is `VITE_API_BASE_URL`. Pusher/ntfy/Telegram vars are needed only if exercising those features.

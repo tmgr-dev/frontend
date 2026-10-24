@@ -252,7 +252,7 @@ const mutations = {
 							acc[setting.id] = setting;
 						}
 						return acc;
-				  }, {})
+					}, {})
 				: {};
 
 			nextUser.settings = nextUser.settings.map((setting) => {
@@ -345,8 +345,8 @@ const mutations = {
 			colorScheme === 'dark'
 				? 'dark'
 				: colorScheme === 'system' || colorScheme == null
-				? 'system'
-				: 'default';
+					? 'system'
+					: 'default';
 		state.userSettings.colorScheme = normalized;
 		state.colorScheme = normalized;
 		localStorage.setItem('colorScheme', normalized);
@@ -512,9 +512,8 @@ const actions = {
 	},
 
 	async startWithoutAccount({ commit, state }, { name } = {}) {
-		const { createLocalProfile, loadLocalProfile } = await import(
-			'@/utils/localProfile'
-		);
+		const { createLocalProfile, loadLocalProfile } =
+			await import('@/utils/localProfile');
 		const runtime = await import('@/local/runtime');
 		const firstRun = await import('@/onboarding/localFirstRun');
 		const storage = localStorageSafe();

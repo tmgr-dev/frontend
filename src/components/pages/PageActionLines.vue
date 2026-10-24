@@ -1,7 +1,7 @@
 <template>
 	<section v-if="lines.length" data-testid="page-action-lines">
 		<h2
-			class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle"
+			class="mb-2 text-xs font-semibold tracking-wide text-ink-subtle uppercase"
 		>
 			Action items
 		</h2>

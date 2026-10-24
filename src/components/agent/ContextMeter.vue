@@ -57,7 +57,7 @@
 					? contextPercent(
 							context.value.context_tokens,
 							context.value.context_limit,
-					  )
+						)
 					: null;
 				return LEVEL_CLASS[percent === null ? 'normal' : contextLevel(percent)];
 			});

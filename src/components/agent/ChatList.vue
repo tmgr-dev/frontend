@@ -1,6 +1,6 @@
 <template>
 	<div class="flex min-h-0 flex-1 flex-col">
-		<div class="shrink-0 space-y-2 border-b border-line px-4 py-3">
+		<div class="space-y-2 shrink-0 border-b border-line px-4 py-3">
 			<div class="flex items-center justify-between">
 				<h2 class="text-sm font-semibold text-ink">Chats</h2>
 				<button
@@ -16,7 +16,7 @@
 				maxlength="100"
 				aria-label="Search chats"
 				placeholder="Search chats…"
-				class="w-full rounded-pill border border-line bg-surface-sunken px-4 py-1.5 text-sm text-ink outline-none placeholder:text-ink-subtle focus:border-line-focus"
+				class="w-full rounded-pill border border-line bg-surface-sunken px-4 py-1.5 text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-focus"
 			/>
 			<label class="flex items-center gap-2 text-xs text-ink-subtle">
 				<input
@@ -53,7 +53,7 @@
 				<input
 					v-if="renamingId === item.id"
 					v-model="renameDraft"
-					class="min-w-0 flex-1 rounded border border-line bg-surface-sunken px-2 py-1 text-sm text-ink outline-none focus:border-line-focus"
+					class="min-w-0 flex-1 rounded border border-line bg-surface-sunken px-2 py-1 text-sm text-ink outline-hidden focus:border-line-focus"
 					aria-label="Chat title"
 					maxlength="255"
 					@keydown.enter.prevent="saveRename(item)"

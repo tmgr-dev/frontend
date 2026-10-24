@@ -119,7 +119,7 @@
 									{{ commit.message.split('\n')[0] }}
 								</p>
 								<div
-									class="mt-1 flex items-center space-x-3 text-xs text-ink-subtle"
+									class="space-x-3 mt-1 flex items-center text-xs text-ink-subtle"
 								>
 									<span class="font-mono">{{ commit.short_sha }}</span>
 									<span>{{ commit.author_name }}</span>
@@ -127,7 +127,7 @@
 								</div>
 							</div>
 							<svg
-								class="ml-2 h-4 w-4 flex-shrink-0 text-ink-subtle"
+								class="ml-2 h-4 w-4 shrink-0 text-ink-subtle"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"
@@ -178,8 +178,8 @@
 											pr.state === 'open'
 												? 'bg-status-done-bg text-status-done-fg'
 												: pr.state === 'merged'
-												? 'bg-status-testing-bg text-status-testing-fg'
-												: 'bg-status-fix-bg text-status-fix-fg',
+													? 'bg-status-testing-bg text-status-testing-fg'
+													: 'bg-status-fix-bg text-status-fix-fg',
 										]"
 									>
 										{{ pr.state }}
@@ -192,14 +192,14 @@
 									{{ pr.title }}
 								</p>
 								<div
-									class="mt-1 flex items-center space-x-3 text-xs text-ink-subtle"
+									class="space-x-3 mt-1 flex items-center text-xs text-ink-subtle"
 								>
 									<span>{{ pr.source_branch }} → {{ pr.target_branch }}</span>
 									<span>by {{ pr.author_username }}</span>
 								</div>
 							</div>
 							<svg
-								class="ml-2 h-4 w-4 flex-shrink-0 text-ink-subtle"
+								class="ml-2 h-4 w-4 shrink-0 text-ink-subtle"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"

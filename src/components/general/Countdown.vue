@@ -14,7 +14,7 @@
 		>
 			<div
 				v-if="lastStartTime"
-				:class="`countdown-wrapper select-none opacity-20`"
+				:class="`countdown-wrapper opacity-20 select-none`"
 				style="opacity: 0.2"
 			>
 				<span class="countdown-item">{{ lastStartTime.hours }}</span>
@@ -37,7 +37,7 @@
 
 			<div
 				v-if="approximatelyEndTime && !timeIsOver"
-				class="countdown-wrapper mb-4 select-none opacity-20"
+				class="countdown-wrapper mb-4 opacity-20 select-none"
 				style="opacity: 0.2"
 			>
 				<span class="countdown-item">{{ approximatelyEndTime.hours }}</span>
@@ -51,7 +51,7 @@
 			<div class="flex justify-center" :class="{ 'mt-2': task.start_time }">
 				<button
 					v-if="!isFullScreen"
-					class="flex border px-5 py-2 leading-none outline-none"
+					class="flex border px-5 py-2 leading-none outline-hidden"
 					:class="{
 						'border-status-fix text-status-fix-fg hover:bg-status-fix hover:text-white':
 							task.start_time,
@@ -68,7 +68,7 @@
 
 			<div
 				id="reminder-sound-teleport"
-				class="relative inline-flex rounded-md shadow-sm"
+				class="relative inline-flex rounded-md shadow-xs"
 			/>
 		</div>
 

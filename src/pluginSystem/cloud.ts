@@ -35,16 +35,16 @@ export const matchesPin = (
 	(record.repo === BUILTIN_REPO
 		? entry.source === 'builtin'
 		: entry.source === 'installed' &&
-		  entry.origin?.repo === record.repo &&
-		  entry.origin?.sha256 === record.sha256);
+			entry.origin?.repo === record.repo &&
+			entry.origin?.sha256 === record.sha256);
 
 /** Why a downloaded release is not the one the workspace pinned. */
 export const pinMismatch = (record: WorkspacePluginRecord, release: Release) =>
 	release.sha256 !== record.sha256
 		? 'the release on GitHub is not the one this workspace pinned'
 		: release.public_key !== record.public_key
-		? 'the release is signed with a different key than the pinned one'
-		: null;
+			? 'the release is signed with a different key than the pinned one'
+			: null;
 
 const MACHINE_PERMISSIONS = new Set([
 	'files:export',

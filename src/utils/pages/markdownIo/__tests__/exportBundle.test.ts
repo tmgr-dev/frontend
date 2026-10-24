@@ -35,7 +35,7 @@ const providerFor = (
 			properties: {},
 			version: 1,
 			files: [{ id: 9, name: 'a.png', original_name: 'a.png' }],
-		} as unknown as Page),
+		}) as unknown as Page,
 	fetchFile: async () => new Uint8Array([1]),
 	...overrides,
 });

@@ -113,7 +113,7 @@
 						:data-testid="`autopilot-counter-${c.key}`"
 						@click="open = open === c.key ? null : c.key"
 					>
-						<span class="block text-2xl font-semibold tabular-nums text-ink">{{
+						<span class="block text-2xl font-semibold text-ink tabular-nums">{{
 							c.count
 						}}</span>
 						<span class="block text-xs text-ink-subtle">{{ c.label }}</span>
@@ -151,7 +151,7 @@
 
 				<div v-if="view.runs.length" class="flex flex-col gap-2">
 					<h3
-						class="text-xs font-semibold uppercase tracking-wide text-ink-subtle"
+						class="text-xs font-semibold tracking-wide text-ink-subtle uppercase"
 					>
 						Active runs
 					</h3>
@@ -169,7 +169,7 @@
 								r.title
 							}}</span>
 							<span class="text-xs text-ink-subtle">{{ r.mode }}</span>
-							<span class="text-xs tabular-nums text-ink-subtle">{{
+							<span class="text-xs text-ink-subtle tabular-nums">{{
 								r.duration
 							}}</span>
 							<span v-if="r.repos.length" class="text-xs text-ink-subtle">{{
@@ -221,7 +221,7 @@
 					class="flex flex-col gap-3"
 				>
 					<h3
-						class="text-xs font-semibold uppercase tracking-wide text-ink-subtle"
+						class="text-xs font-semibold tracking-wide text-ink-subtle uppercase"
 					>
 						Limits
 					</h3>
@@ -287,12 +287,12 @@
 
 				<div v-if="view.events.length" class="flex flex-col gap-1">
 					<h3
-						class="text-xs font-semibold uppercase tracking-wide text-ink-subtle"
+						class="text-xs font-semibold tracking-wide text-ink-subtle uppercase"
 					>
 						Events
 					</h3>
 					<ul
-						class="max-h-64 divide-y divide-line overflow-auto rounded-card border border-line bg-surface text-sm"
+						class="divide-y divide-line max-h-64 overflow-auto rounded-card border border-line bg-surface text-sm"
 						data-testid="autopilot-events"
 					>
 						<li
@@ -300,7 +300,7 @@
 							:key="i"
 							class="flex flex-wrap gap-x-3 px-3 py-1.5"
 						>
-							<span class="tabular-nums text-ink-subtle">{{ e.at }}</span>
+							<span class="text-ink-subtle tabular-nums">{{ e.at }}</span>
 							<span class="font-medium text-ink">{{ e.kind }}</span>
 							<a
 								v-if="eventTarget(e)"
@@ -487,8 +487,8 @@
 				l.hard != null && l.usedPct! >= l.hard
 					? 'bg-red-500'
 					: l.soft != null && l.usedPct! >= l.soft
-					? 'bg-amber-500'
-					: 'bg-emerald-500';
+						? 'bg-amber-500'
+						: 'bg-emerald-500';
 
 			return {
 				view,

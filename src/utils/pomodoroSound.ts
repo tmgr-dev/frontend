@@ -191,9 +191,12 @@ export const playPomodoroSound = (id: SoundId, volume = 60): void => {
 	master.gain.value = v;
 	master.connect(audio.destination);
 	const dur = renderSound(audio, master, id);
-	window.setTimeout(() => {
-		try {
-			master.disconnect();
-		} catch {}
-	}, Math.ceil((dur + 0.2) * 1000));
+	window.setTimeout(
+		() => {
+			try {
+				master.disconnect();
+			} catch {}
+		},
+		Math.ceil((dur + 0.2) * 1000),
+	);
 };

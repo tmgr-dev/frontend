@@ -64,7 +64,7 @@ async function mockPages(page, { deleteStatus = 200, scheme = 'light' } = {}) {
           json: { message: 'Cannot delete' },
         });
       const gone = new Set([Number(del[1])]);
-      for (let grew = true; grew; ) {
+      for (let grew = true; grew;) {
         grew = false;
         for (const p of pages)
           if (gone.has(p.parent_id) && !gone.has(p.id)) {
@@ -103,8 +103,8 @@ const openDelete = async (page, id, scope = section(page)) => {
   await expect(dialog(page)).toBeVisible();
   // Wait for the zoom-in to settle before measuring or shooting.
   await expect
-    .poll(() => dialog(page).evaluate((el) => getComputedStyle(el).transform))
-    .toMatch(/^matrix\(1, 0, 0, 1, /);
+    .poll(() => dialog(page).evaluate((el) => el.getAnimations().length))
+    .toBe(0);
 };
 
 const rgb = (color) =>

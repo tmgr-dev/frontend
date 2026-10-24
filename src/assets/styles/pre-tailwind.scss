@@ -1,0 +1,5 @@
+// Loaded before tailwind.css (App.vue), where these partials sat before the Tailwind 3
+// directives: utilities must keep winning over equal-specificity rules here (.material-icons).
+@import 'design-tokens';
+@import 'app';
+@import 'fonts';

@@ -28,7 +28,7 @@
 					<button
 						type="button"
 						:aria-label="`Open ${member.name}`"
-						class="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg p-3 text-left outline-none"
+						class="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg p-3 text-left outline-hidden"
 						@click.stop="openMember(member)"
 					>
 						<UserAvatar
@@ -43,7 +43,7 @@
 								<span class="font-medium text-ink">{{ member.name }}</span>
 								<span
 									v-if="member.id === ownerId"
-									class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold uppercase text-muted-foreground"
+									class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground uppercase"
 								>
 									Owner
 								</span>
@@ -106,7 +106,7 @@
 				>
 				<AlertDialogAction
 					@click="confirmRemove"
-					class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+					class="bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
 				>
 					Remove
 				</AlertDialogAction>

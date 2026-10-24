@@ -1,5 +1,5 @@
 <template>
-	<div class="mt-3 space-y-3">
+	<div class="space-y-3 mt-3">
 		<Button
 			variant="outline"
 			class="h-10 w-full"

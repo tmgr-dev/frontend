@@ -9,8 +9,7 @@
 <p id="count">Counting…</p>
 <script>
 	tmgr.tasks.list({ perPage: 1 }).then(({ total }) => {
-		document.getElementById(
-			'count',
-		).textContent = `${total} tasks in this workspace`;
+		document.getElementById('count').textContent =
+			`${total} tasks in this workspace`;
 	});
 </script>

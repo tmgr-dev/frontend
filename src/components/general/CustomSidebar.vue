@@ -573,7 +573,7 @@
 													</span>
 													<span
 														v-if="activeWorkspace?.is_local"
-														class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
+														class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold text-amber-600 uppercase dark:text-amber-400"
 														data-testid="local-workspace-badge"
 														data-tour="local.badge"
 														>Local</span
@@ -596,7 +596,7 @@
 								</DropdownMenuTrigger>
 
 								<DropdownMenuContent
-									class="max-h-[30rem] w-[--radix-dropdown-menu-trigger-width] min-w-56 overflow-y-auto rounded-lg"
+									class="max-h-[30rem] w-(--radix-dropdown-menu-trigger-width) min-w-56 overflow-y-auto rounded-lg"
 									align="start"
 									side="bottom"
 									:side-offset="4"
@@ -821,7 +821,7 @@
 											}}</span>
 											<span
 												v-if="activeWorkspace?.is_local"
-												class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
+												class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold text-amber-600 uppercase dark:text-amber-400"
 												data-testid="local-routines-menu-badge"
 												>Local</span
 											>
@@ -926,7 +926,7 @@
 													aria-hidden="true"
 													data-testid="plugin-view-badge-dot"
 													:class="[
-														'absolute -right-0.5 -top-0.5 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block',
+														'absolute -top-0.5 -right-0.5 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block',
 														BADGE_DOT_CLASS[page.badge.tone],
 													]"
 												/>
@@ -1014,7 +1014,7 @@
 								</DropdownMenuTrigger>
 
 								<DropdownMenuContent
-									class="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+									class="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
 									side="bottom"
 									align="end"
 									:side-offset="4"
@@ -1090,7 +1090,7 @@
 			</Sidebar>
 
 			<SidebarInset
-				class="app-canvas pb-[var(--statusbar-h,0px)] pt-[var(--titlebar-h,0px)]"
+				class="app-canvas pt-[var(--titlebar-h,0px)] pb-[var(--statusbar-h,0px)]"
 			>
 				<DesktopAppBar />
 				<EmailVerifyBanner />
@@ -1248,7 +1248,7 @@
 					v-model="localName"
 					data-selectable
 					autofocus
-					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none dark:border-input dark:bg-background"
+					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-hidden dark:border-input dark:bg-background"
 					placeholder="Personal, Client under NDA…"
 				/>
 				<p v-if="localError" class="text-xs text-destructive">

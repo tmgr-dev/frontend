@@ -110,7 +110,7 @@ export function installTours(
 						shortcuts?.shortcutConfig.value[action as 'quickAdd'] ?? null,
 					describe: (accelerator) =>
 						shortcuts?.describeAccelerator(accelerator) ?? accelerator,
-			  }
+				}
 			: null;
 
 	const engine = configureTours({

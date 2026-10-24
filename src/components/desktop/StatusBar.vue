@@ -1,11 +1,11 @@
 <template>
 	<footer
-		class="statusbar-offset fixed bottom-0 right-0 z-30 flex h-[var(--statusbar-h)] items-center bg-sidebar text-xs text-muted-foreground"
+		class="statusbar-offset fixed right-0 bottom-0 z-30 flex h-[var(--statusbar-h)] items-center bg-sidebar text-xs text-muted-foreground"
 	>
 		<div class="flex h-full min-w-0 items-center gap-1.5 px-3">
 			<span
 				v-if="workspace?.is_local"
-				class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
+				class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold text-amber-600 uppercase dark:text-amber-400"
 				:title="workspace.path"
 				>Local</span
 			>
@@ -107,8 +107,8 @@
 				update.status === 'installing'
 					? 'Updating…'
 					: update.status === 'checking'
-					? 'Checking for updates…'
-					: `Update to v${update.version}`
+						? 'Checking for updates…'
+						: `Update to v${update.version}`
 			}}
 		</button>
 
@@ -238,14 +238,14 @@
 						connecting: 'Connecting…',
 						reconnecting: 'Reconnecting…',
 						error: 'Offline',
-					}[connectionState.value] || 'Offline'),
+					})[connectionState.value] || 'Offline',
 			);
 			const liveDotClass = computed(() =>
 				connectionState.value === 'connected'
 					? 'bg-emerald-500'
 					: ['connecting', 'reconnecting'].includes(connectionState.value)
-					? 'bg-amber-500'
-					: 'bg-muted-foreground',
+						? 'bg-amber-500'
+						: 'bg-muted-foreground',
 			);
 
 			return {

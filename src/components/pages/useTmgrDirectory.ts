@@ -107,14 +107,12 @@ export const useTmgrDirectory = (getWorkspaceCode: () => string) => {
 				tree
 					.filter((page) => includes(page.title, query))
 					.slice(0, 8)
-					.map(
-						(page): MentionItem => ({
-							kind: 'page',
-							id: String(page.id),
-							title: page.title,
-							hint: page.type === 'plain' ? undefined : page.type,
-						}),
-					),
+					.map((page): MentionItem => ({
+						kind: 'page',
+						id: String(page.id),
+						title: page.title,
+						hint: page.type === 'plain' ? undefined : page.type,
+					})),
 			)
 			.catch(() => [] as MentionItem[]);
 		if (pagesOnly) return pages;
@@ -123,13 +121,11 @@ export const useTmgrDirectory = (getWorkspaceCode: () => string) => {
 			query.length >= 2
 				? searchTasks(query, 6)
 						.then((found) =>
-							found.map(
-								(task): MentionItem => ({
-									kind: 'task',
-									id: String(task.id),
-									title: task.title,
-								}),
-							),
+							found.map((task): MentionItem => ({
+								kind: 'task',
+								id: String(task.id),
+								title: task.title,
+							})),
 						)
 						.catch(() => [] as MentionItem[])
 				: Promise.resolve([] as MentionItem[]);
@@ -138,13 +134,11 @@ export const useTmgrDirectory = (getWorkspaceCode: () => string) => {
 				list
 					.filter((category) => includes(category.title, query))
 					.slice(0, 4)
-					.map(
-						(category): MentionItem => ({
-							kind: 'category',
-							id: String(category.id),
-							title: category.title,
-						}),
-					),
+					.map((category): MentionItem => ({
+						kind: 'category',
+						id: String(category.id),
+						title: category.title,
+					})),
 			)
 			.catch(() => [] as MentionItem[]);
 		const members = loadMembers()
@@ -152,13 +146,11 @@ export const useTmgrDirectory = (getWorkspaceCode: () => string) => {
 				list
 					.filter((member) => includes(member.name, query))
 					.slice(0, 4)
-					.map(
-						(member): MentionItem => ({
-							kind: 'user',
-							id: String(member.id),
-							title: member.name,
-						}),
-					),
+					.map((member): MentionItem => ({
+						kind: 'user',
+						id: String(member.id),
+						title: member.name,
+					})),
 			)
 			.catch(() => [] as MentionItem[]);
 		const personas = loadPersonas()
@@ -168,13 +160,11 @@ export const useTmgrDirectory = (getWorkspaceCode: () => string) => {
 						(grant) => !grant.blocked && includes(grant.persona.name, query),
 					)
 					.slice(0, 4)
-					.map(
-						(grant): MentionItem => ({
-							kind: 'persona',
-							id: grant.persona.id,
-							title: grant.persona.name,
-						}),
-					),
+					.map((grant): MentionItem => ({
+						kind: 'persona',
+						id: grant.persona.id,
+						title: grant.persona.name,
+					})),
 			)
 			.catch(() => [] as MentionItem[]);
 
@@ -196,13 +186,11 @@ export const useTmgrDirectory = (getWorkspaceCode: () => string) => {
 						(page) => page.type === 'person' && includes(page.title, query),
 					)
 					.slice(0, 8)
-					.map(
-						(page): MentionItem => ({
-							kind: 'page',
-							id: String(page.id),
-							title: page.title,
-						}),
-					),
+					.map((page): MentionItem => ({
+						kind: 'page',
+						id: String(page.id),
+						title: page.title,
+					})),
 			)
 			.catch(() => [] as MentionItem[]);
 		const members = searchMembers(query);
@@ -215,13 +203,11 @@ export const useTmgrDirectory = (getWorkspaceCode: () => string) => {
 				list
 					.filter((member) => includes(member.name, query))
 					.slice(0, 8)
-					.map(
-						(member): MentionItem => ({
-							kind: 'user',
-							id: String(member.id),
-							title: member.name,
-						}),
-					),
+					.map((member): MentionItem => ({
+						kind: 'user',
+						id: String(member.id),
+						title: member.name,
+					})),
 			)
 			.catch(() => [] as MentionItem[]);
 
@@ -230,13 +216,11 @@ export const useTmgrDirectory = (getWorkspaceCode: () => string) => {
 			? Promise.resolve([])
 			: searchTasks(query, 8)
 					.then((found) =>
-						found.map(
-							(task): MentionItem => ({
-								kind: 'task',
-								id: String(task.id),
-								title: task.title,
-							}),
-						),
+						found.map((task): MentionItem => ({
+							kind: 'task',
+							id: String(task.id),
+							title: task.title,
+						})),
 					)
 					.catch(() => [] as MentionItem[]);
 

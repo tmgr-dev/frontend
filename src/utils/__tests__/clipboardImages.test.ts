@@ -3,10 +3,10 @@ import {
 	imagesFromClipboard,
 } from '@/utils/clipboardImages';
 
-const file = (name: string, type: string) => ({ name, type } as File);
+const file = (name: string, type: string) => ({ name, type }) as File;
 
 const item = (kind: string, type: string, f: File | null) =>
-	({ kind, type, getAsFile: () => f } as unknown as DataTransferItem);
+	({ kind, type, getAsFile: () => f }) as unknown as DataTransferItem;
 
 describe('imagesFromClipboard', () => {
 	it('picks the screenshot out of a paste', () => {

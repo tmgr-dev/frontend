@@ -627,7 +627,7 @@ export const refreshMultipleSections = async (
 				? createActionError('Some sections failed to refresh', 'server', {
 						errors,
 						successful_sections: Object.keys(data),
-				  })
+					})
 				: undefined,
 			200,
 			false,

@@ -2,7 +2,7 @@
 	<Teleport to="body">
 		<div
 			ref="dialog"
-			class="fixed inset-0 z-[100] flex flex-col bg-surface-base text-ink outline-none sm:p-4"
+			class="fixed inset-0 z-[100] flex flex-col bg-surface-base text-ink outline-hidden sm:p-4"
 			role="dialog"
 			aria-modal="true"
 			aria-label="Graph"
@@ -144,7 +144,7 @@
 									{{ step === 1 ? '1 step' : '2 steps' }}
 								</button>
 							</div>
-							<div class="mb-2 mt-3 text-xs tracking-wide text-ink-muted">
+							<div class="mt-3 mb-2 text-xs tracking-wide text-ink-muted">
 								SHOW
 							</div>
 							<div class="flex flex-col gap-2 text-sm">
@@ -214,7 +214,7 @@
 			const statusText = (node: GraphNode): string =>
 				simpleMode.value && node.type === 'task'
 					? stateLabel(node.status)
-					: node.status?.name ?? '';
+					: (node.status?.name ?? '');
 			const dialog = ref<HTMLElement | null>(null);
 			const entity = ref(props.entity);
 			const trail = ref<string[]>([]);
@@ -256,8 +256,8 @@
 				return type === 'task'
 					? 'Open task'
 					: type === 'page'
-					? 'Open page'
-					: '';
+						? 'Open page'
+						: '';
 			});
 			const canCenter = computed(() => {
 				const s = selected.value;

@@ -1,11 +1,7 @@
 import $axios from '@/plugins/axios';
 
 export type AgentWorkStatus =
-	| 'running'
-	| 'succeeded'
-	| 'failed'
-	| 'cancelled'
-	| 'abandoned';
+	'running' | 'succeeded' | 'failed' | 'cancelled' | 'abandoned';
 
 export interface AgentWorkCommit {
 	sha: string;

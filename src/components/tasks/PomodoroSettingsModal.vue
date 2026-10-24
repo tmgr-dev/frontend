@@ -89,7 +89,7 @@
 						class="flex items-center justify-center gap-1.5 rounded-[7px] py-2.5 text-xs font-medium transition"
 						:class="
 							draft.notify === opt.value
-								? 'bg-white/8 text-white'
+								? 'text-white'
 								: 'text-white/55 hover:bg-white/5'
 						"
 						@click="set('notify', opt.value)"
@@ -120,7 +120,7 @@
 						</button>
 					</div>
 					<div
-						class="mt-2 flex items-center gap-2.5 border-t border-white/5 px-2.5 pb-1 pt-2"
+						class="mt-2 flex items-center gap-2.5 border-t border-white/5 px-2.5 pt-2 pb-1"
 					>
 						<component
 							:is="draft.volume === 0 ? VolumeX : Volume2"
@@ -141,7 +141,7 @@
 							"
 						/>
 						<span
-							class="min-w-[32px] text-right text-[11px] tabular-nums text-white/50"
+							class="min-w-[32px] text-right text-[11px] text-white/50 tabular-nums"
 						>
 							{{ draft.volume }}%
 						</span>
@@ -223,11 +223,11 @@
 							if (e.key === 'Escape') this.editing = false;
 						},
 						class:
-							'flex-1 bg-transparent border-0 outline-none p-0 text-white tracking-wide',
+							'flex-1 bg-transparent border-0 outline-hidden p-0 text-white tracking-wide',
 						style: {
 							font: '600 18px/1 "JetBrains Mono", "SF Mono", ui-monospace, monospace',
 						},
-				  })
+					})
 				: h(
 						'span',
 						{
@@ -237,7 +237,7 @@
 							},
 						},
 						[mm, h('span', { class: 'text-white/35' }, ':00')],
-				  );
+					);
 			return h(
 				'div',
 				{
@@ -350,7 +350,7 @@
 								'div',
 								{ class: 'mt-0.5 text-[11px] text-white/45' },
 								this.subtitle,
-						  )
+							)
 						: null,
 				]),
 				h(

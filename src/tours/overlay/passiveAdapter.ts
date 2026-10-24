@@ -138,7 +138,7 @@ export function createPassiveAdapter(): OverlayAdapter {
 				? new MutationObserver(() => {
 						cancelAnimationFrame(frame);
 						frame = requestAnimationFrame(clamp);
-				  })
+					})
 				: null;
 		dialogs?.observe(document.body, { childList: true, subtree: true });
 

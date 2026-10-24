@@ -48,7 +48,7 @@
 											onClick: () => reveal(revealPath),
 										},
 										() => revealLabel,
-								  )
+									)
 								: undefined,
 						});
 					},

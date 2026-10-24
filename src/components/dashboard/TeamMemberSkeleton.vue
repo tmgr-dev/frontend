@@ -1,17 +1,17 @@
 <template>
 	<div class="rounded-lg border border-line p-3">
 		<div class="flex items-center justify-between">
-			<div class="flex items-center space-x-3">
+			<div class="space-x-3 flex items-center">
 				<!-- Member Avatar Skeleton -->
 				<div class="relative">
 					<Skeleton class="h-10 w-10 rounded-full" />
 					<Skeleton
-						class="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full"
+						class="absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full"
 					/>
 				</div>
 
 				<!-- Member Info Skeleton -->
-				<div class="min-w-0 flex-1 space-y-1">
+				<div class="space-y-1 min-w-0 flex-1">
 					<Skeleton class="h-4 w-24" />
 					<Skeleton class="h-3 w-32" />
 				</div>

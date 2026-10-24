@@ -72,10 +72,10 @@ export const previewSurfaces = (
 				next && !was
 					? 'new'
 					: !next && was && current
-					? 'will-hide'
-					: next
-					? 'on'
-					: 'off';
+						? 'will-hide'
+						: next
+							? 'on'
+							: 'off';
 			return { id, label, state };
 		});
 	return {

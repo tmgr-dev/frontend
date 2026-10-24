@@ -1,10 +1,5 @@
 export type AgentSessionState =
-	| 'working'
-	| 'waiting'
-	| 'blocked'
-	| 'idle'
-	| 'done'
-	| 'exited';
+	'working' | 'waiting' | 'blocked' | 'idle' | 'done' | 'exited';
 
 export interface AgentSession {
 	session_id: string;

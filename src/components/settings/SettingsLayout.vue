@@ -2,12 +2,12 @@
 	<div
 		:class="
 			hasColumn
-				? 'mx-auto flex w-full min-w-0 max-w-7xl flex-1'
+				? 'mx-auto flex w-full max-w-7xl min-w-0 flex-1'
 				: 'flex min-w-0 flex-1 flex-col'
 		"
 		:data-testid="hasColumn ? 'settings-layout' : undefined"
 	>
-		<aside v-if="hasColumn" class="w-52 shrink-0 pb-10 pl-6 pt-6">
+		<aside v-if="hasColumn" class="w-52 shrink-0 pt-6 pb-10 pl-6">
 			<SettingsNav class="sticky top-[calc(var(--titlebar-h,0px)+1.5rem)]" />
 		</aside>
 		<div v-else-if="!onSections" class="px-4 pt-4 md:px-6">

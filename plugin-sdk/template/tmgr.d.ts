@@ -346,13 +346,7 @@ type TmgrEvent =
 
 type TmgrTone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
 type TmgrColor =
-	| 'gray'
-	| 'green'
-	| 'yellow'
-	| 'red'
-	| 'blue'
-	| 'purple'
-	| 'orange';
+	'gray' | 'green' | 'yellow' | 'red' | 'blue' | 'purple' | 'orange';
 
 /** Gap between a stack's children (API 1.3). */
 type TmgrGap = 'none' | 'sm' | 'md' | 'lg';

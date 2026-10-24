@@ -2,7 +2,7 @@
 	<div class="relative">
 		<input
 			:type="type"
-			class="w-full rounded-md border border-line bg-surface px-3 py-1.5 text-ink outline-none transition-colors duration-300 placeholder:text-ink-subtle focus:border-line-strong"
+			class="w-full rounded-md border border-line bg-surface px-3 py-1.5 text-ink outline-hidden transition-colors duration-300 placeholder:text-ink-subtle focus:border-line-strong"
 			:class="[
 				inputClass,
 				hasError && '!border-red-500 placeholder:text-red-400',
@@ -63,24 +63,12 @@
 	.fade-left-enter-active,
 	.fade-left-leave-active {
 		transition: 0.5s;
-		transform: translateX(0) translateY(-50%);
+		transform: translateX(0);
 	}
 
 	.fade-left-enter-from,
 	.fade-left-leave-to {
 		opacity: 0;
-		transform: translateX(100px) translateY(-50%);
-	}
-
-	@media (max-width: 640px) {
-		.fade-left-enter-active,
-		.fade-left-leave-active {
-			transform: translateX(0) translateY(0);
-		}
-
-		.fade-left-enter-from,
-		.fade-left-leave-to {
-			transform: translateX(100px) translateY(0);
-		}
+		transform: translateX(100px);
 	}
 </style>

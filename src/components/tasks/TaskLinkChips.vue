@@ -4,7 +4,7 @@
 		class="flex flex-wrap items-center gap-1.5"
 		data-testid="task-link-chips"
 	>
-		<span class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+		<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 			>Links</span
 		>
 		<button

@@ -2,7 +2,7 @@
 	<div class="flex flex-col gap-2">
 		<div
 			v-if="isDesktop"
-			class="flex flex-col items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between"
+			class="flex flex-col items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 sm:flex-row sm:items-center sm:justify-between dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
 		>
 			<span>
 				Local workspaces aren't listed here. Open the local workspace, then

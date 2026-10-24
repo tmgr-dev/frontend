@@ -49,14 +49,14 @@
 					:data-testid="`bulk-row-${row.id}`"
 				>
 					<div
-						class="text-2xs font-bold uppercase text-ink-subtle"
+						class="text-2xs font-bold text-ink-subtle uppercase"
 						:data-testid="`bulk-category-${row.id}`"
 					>
 						Category: {{ row.category }}
 					</div>
 					<div
 						v-if="row.repositories"
-						class="text-2xs font-bold uppercase text-ink-subtle"
+						class="text-2xs font-bold text-ink-subtle uppercase"
 					>
 						Repositories
 					</div>
@@ -68,10 +68,10 @@
 						<li v-for="name in row.repositories" :key="name">{{ name }}</li>
 					</ul>
 					<pre
-						class="whitespace-pre-wrap break-words font-mono text-xs font-bold"
+						class="font-mono text-xs font-bold break-words whitespace-pre-wrap"
 					><template v-for="(piece, i) in row.title" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
 					<pre
-						class="mt-1 whitespace-pre-wrap break-words font-mono text-xs"
+						class="mt-1 font-mono text-xs break-words whitespace-pre-wrap"
 					><template v-if="!row.description.length">(empty)</template><template v-for="(piece, i) in row.description" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
 					<p
 						v-if="results[row.id]"

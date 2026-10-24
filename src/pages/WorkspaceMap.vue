@@ -3,7 +3,7 @@
 		<template #body>
 			<div
 				v-if="enabled"
-				class="flex min-h-0 flex-1 flex-col gap-4 px-4 pb-4 pt-4 md:px-6 md:pt-6"
+				class="flex min-h-0 flex-1 flex-col gap-4 px-4 pt-4 pb-4 md:px-6 md:pt-6"
 				data-testid="workspace-map"
 			>
 				<header
@@ -37,7 +37,7 @@
 									:aria-activedescendant="
 										active >= 0 ? `map-result-${active}` : undefined
 									"
-									class="w-36 bg-transparent text-ink outline-none placeholder:text-ink-subtle"
+									class="w-36 bg-transparent text-ink outline-hidden placeholder:text-ink-subtle"
 									data-testid="map-search"
 									data-tour="map.search"
 									@focus="listOpen = true"
@@ -57,7 +57,7 @@
 								id="map-results"
 								role="listbox"
 								aria-label="Search results"
-								class="absolute left-0 top-full z-20 mt-1 max-h-72 w-72 overflow-y-auto rounded-xl border border-line bg-surface-base py-1 shadow-lg"
+								class="absolute top-full left-0 z-20 mt-1 max-h-72 w-72 overflow-y-auto rounded-xl border border-line bg-surface-base py-1 shadow-lg"
 								data-testid="map-results"
 							>
 								<li
@@ -87,7 +87,7 @@
 								v-for="r in RANGES"
 								:key="r.key"
 								type="button"
-								class="whitespace-nowrap rounded-lg px-2 py-1.5 text-xs sm:px-3 sm:text-sm"
+								class="rounded-lg px-2 py-1.5 text-xs whitespace-nowrap sm:px-3 sm:text-sm"
 								:class="
 									range === r.key
 										? 'bg-ink text-surface-base'
@@ -141,14 +141,14 @@
 
 						<div
 							v-if="notice"
-							class="absolute left-3 top-3 max-w-[70%] rounded-lg border border-line bg-surface/90 px-3 py-1.5 text-xs text-ink-muted backdrop-blur"
+							class="absolute top-3 left-3 max-w-[70%] rounded-lg border border-line bg-surface/90 px-3 py-1.5 text-xs text-ink-muted backdrop-blur"
 							role="status"
 							data-testid="map-truncated"
 						>
 							{{ notice }}
 						</div>
 
-						<div class="absolute right-3 top-3 flex flex-col gap-1.5">
+						<div class="absolute top-3 right-3 flex flex-col gap-1.5">
 							<button
 								v-for="b in controls"
 								:key="b.label"
@@ -217,7 +217,7 @@
 						</div>
 						<div
 							v-if="!narrow"
-							class="pointer-events-none absolute bottom-3 left-4 right-4 text-xs text-ink-muted"
+							class="pointer-events-none absolute right-4 bottom-3 left-4 text-xs text-ink-muted"
 							data-testid="map-legend"
 						>
 							{{ MAP_LEGEND }}
@@ -373,7 +373,7 @@
 							prepared.value.nodes.length,
 							prepared.value.map.total,
 							prepared.value.map.truncated,
-					  )
+						)
 					: null,
 			);
 			const cursorMs = computed(() => timeline.value[step.value] ?? Infinity);
@@ -383,7 +383,7 @@
 					? new Date(t).toLocaleDateString('en', {
 							month: 'short',
 							day: 'numeric',
-					  })
+						})
 					: '';
 			});
 

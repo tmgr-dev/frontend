@@ -24,7 +24,7 @@ const key = (code: string, mods: Partial<KeyboardEvent> = {}) =>
 		metaKey: false,
 		ctrlKey: false,
 		...mods,
-	} as KeyboardEvent);
+	}) as KeyboardEvent;
 
 describe('eventToAccelerator', () => {
 	it('builds a Tauri accelerator from modifiers and the physical key', () => {

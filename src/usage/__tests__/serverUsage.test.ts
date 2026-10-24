@@ -56,7 +56,7 @@ const localAggregate = (
 		nodes: [],
 		context: { tools: [], mcp: [], hooks: [] },
 		truncated: { nodes: false, lists: false },
-	} as unknown as TaskUsageAggregate);
+	}) as unknown as TaskUsageAggregate;
 
 describe('serverAggregate', () => {
 	it('is null when nothing is synced', () => {

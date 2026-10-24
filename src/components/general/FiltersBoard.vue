@@ -127,7 +127,7 @@
 				type="text"
 				v-model="searchText"
 				placeholder="Search tasks…"
-				class="h-9 w-44 rounded-pill border border-line bg-surface pl-9 pr-3 text-sm text-ink outline-none placeholder:text-ink-subtle focus:border-line-strong lg:w-56"
+				class="h-9 w-44 rounded-pill border border-line bg-surface pr-3 pl-9 text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-strong lg:w-56"
 				@blur="searchOpen = false"
 				@keydown.esc="closeSearch"
 			/>
@@ -137,7 +137,7 @@
 				:class="[
 					'flex h-9 w-9 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink',
 					(searchOpen || searchText) &&
-						'pointer-events-none absolute left-0 top-0',
+						'pointer-events-none absolute top-0 left-0',
 				]"
 				@click="openSearch"
 			>
@@ -148,7 +148,7 @@
 		<!-- Category / user filters -->
 		<Popover class="relative shrink-0">
 			<PopoverButton
-				class="flex h-9 items-center gap-2 rounded-pill border bg-surface px-3 text-sm outline-none hover:bg-surface-hover"
+				class="flex h-9 items-center gap-2 rounded-pill border bg-surface px-3 text-sm outline-hidden hover:bg-surface-hover"
 				:class="
 					prioritySort ? 'border-brand text-brand' : 'border-line text-ink'
 				"
@@ -157,7 +157,7 @@
 				Filters
 				<span
 					v-if="activeSelectCount"
-					class="rounded-full bg-brand px-1.5 text-xs font-semibold leading-5 text-on-accent"
+					class="rounded-full bg-brand px-1.5 text-xs leading-5 font-semibold text-on-accent"
 				>
 					{{ activeSelectCount }}
 				</span>
@@ -169,7 +169,7 @@
 				<div v-if="showCategoryFilter" class="relative">
 					<select
 						v-model.number="selectedCategory"
-						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pl-3 pr-9 text-sm text-ink outline-none"
+						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pr-9 pl-3 text-sm text-ink outline-hidden"
 					>
 						<option :value="0">All categories</option>
 						<option
@@ -181,7 +181,7 @@
 						</option>
 					</select>
 					<ChevronDownIcon
-						class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
+						class="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-ink-subtle"
 					/>
 				</div>
 
@@ -219,7 +219,7 @@
 					<select
 						v-model="selectedPersona"
 						data-testid="persona-filter"
-						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pl-3 pr-9 text-sm text-ink outline-none"
+						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pr-9 pl-3 text-sm text-ink outline-hidden"
 					>
 						<option value="">All personas</option>
 						<option
@@ -231,7 +231,7 @@
 						</option>
 					</select>
 					<ChevronDownIcon
-						class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
+						class="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-ink-subtle"
 					/>
 				</div>
 				<div class="flex flex-col gap-2">

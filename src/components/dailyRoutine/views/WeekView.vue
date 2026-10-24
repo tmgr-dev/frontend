@@ -21,7 +21,7 @@
 					"
 				>
 					<div
-						class="text-[10px] font-bold uppercase tracking-wider"
+						class="text-[10px] font-bold tracking-wider uppercase"
 						:class="isSameDay(d, today) ? 'text-brand' : 'text-ink-subtle'"
 					>
 						{{ dowShort(d) }}
@@ -46,7 +46,7 @@
 				}"
 			>
 				<div
-					class="pr-2 pt-2 text-right text-[10px] font-bold tracking-wider text-ink-subtle"
+					class="pt-2 pr-2 text-right text-[10px] font-bold tracking-wider text-ink-subtle"
 				>
 					ALL-DAY
 				</div>
@@ -92,7 +92,7 @@
 						{{ e.title }}
 						<button
 							type="button"
-							class="dr-edit-btn absolute right-0.5 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-sm bg-black/30"
+							class="dr-edit-btn absolute top-1/2 right-0.5 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-sm bg-black/30"
 							@click.stop="$emit('edit', e)"
 						>
 							<DRIcon name="pencil" :size="8" stroke="rgba(255,255,255,.85)" />
@@ -104,7 +104,7 @@
 			<!-- Timeline -->
 			<div
 				ref="scrollRef"
-				class="flex-1 overflow-y-auto overflow-x-hidden"
+				class="flex-1 overflow-x-hidden overflow-y-auto"
 				:style="{ minWidth: innerMinWidth }"
 			>
 				<div
@@ -118,7 +118,7 @@
 						<div
 							v-for="h in 24"
 							:key="h"
-							class="absolute right-2 text-[10px] tabular-nums text-ink-subtle"
+							class="absolute right-2 text-[10px] text-ink-subtle tabular-nums"
 							:style="{ top: `${(h - 1) * HOUR_PX - 6}px` }"
 						>
 							{{ h === 1 ? '' : String(h - 1).padStart(2, '0') + ':00' }}
@@ -142,7 +142,7 @@
 						<div
 							v-for="h in 24"
 							:key="h"
-							class="absolute left-0 right-0"
+							class="absolute right-0 left-0"
 							:style="{
 								top: `${(h - 1) * HOUR_PX}px`,
 								height: 0,
@@ -173,7 +173,7 @@
 						</template>
 						<div
 							v-if="isSameDay(d, today) && nowOffset !== null"
-							class="absolute left-0 right-0 z-[5]"
+							class="absolute right-0 left-0 z-[5]"
 							:style="{
 								top: `${nowOffset}px`,
 								borderTop: '1.5px solid var(--routine-accent, #e8857d)',

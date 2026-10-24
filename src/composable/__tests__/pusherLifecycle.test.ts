@@ -65,12 +65,12 @@ function loadPusher(localWorkspaceActive = false) {
 			name === 'laravel-echo'
 				? Echo
 				: name === 'pusher-js'
-				? {}
-				: name === '@/local/runtime'
-				? { hasActiveLocalWorkspace: () => localWorkspaceActive }
-				: name === '@/utils/pusherChannelAuthorizer'
-				? require('../../utils/pusherChannelAuthorizer')
-				: require(name),
+					? {}
+					: name === '@/local/runtime'
+						? { hasActiveLocalWorkspace: () => localWorkspaceActive }
+						: name === '@/utils/pusherChannelAuthorizer'
+							? require('../../utils/pusherChannelAuthorizer')
+							: require(name),
 		result,
 		result.exports,
 	);
@@ -166,8 +166,8 @@ test('legacy Vuex setup stays lazy and its getter shares the composable transpor
 		name === '@/store/plugins/pusher'
 			? factory
 			: name.includes('token-provider')
-			? () => ({})
-			: {},
+				? () => ({})
+				: {},
 	);
 	const state = storeModule.state();
 	expect(instances).toHaveLength(0);

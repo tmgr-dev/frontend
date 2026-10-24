@@ -84,7 +84,7 @@
 				<span>You</span>
 				<time v-if="timeLabel()" :title="timeTitle()">{{ timeLabel() }}</time>
 			</div>
-			<ul v-if="props.message.quotes?.length" class="mb-1.5 space-y-1">
+			<ul v-if="props.message.quotes?.length" class="space-y-1 mb-1.5">
 				<li v-for="(quote, i) in props.message.quotes" :key="i">
 					<button
 						v-if="quoteAvailable(quote)"
@@ -155,7 +155,7 @@
 				<Loader2 class="h-3.5 w-3.5 animate-spin text-ink-subtle" />
 				<span>Thinking…</span>
 			</div>
-			<ul v-if="props.message.steps.length" class="mt-1 space-y-0.5">
+			<ul v-if="props.message.steps.length" class="space-y-0.5 mt-1">
 				<li
 					v-for="step in props.message.steps"
 					:key="step.seq"
@@ -172,7 +172,7 @@
 		</div>
 		<div
 			v-else-if="props.message.status === 'failed'"
-			class="max-w-[90%] whitespace-pre-wrap border-l-4 border-red-500 bg-red-50 px-3 py-2 text-sm text-ink dark:bg-red-900/20"
+			class="max-w-[90%] border-l-4 border-red-500 bg-red-50 px-3 py-2 text-sm whitespace-pre-wrap text-ink dark:bg-red-900/20"
 		>
 			{{ props.message.content }}
 			<p v-if="stats()" class="mt-1 text-[11px] text-ink-subtle">
@@ -205,7 +205,7 @@
 				<summary class="cursor-pointer select-none">
 					{{ props.message.steps.length }} steps
 				</summary>
-				<ul class="mt-1 space-y-0.5">
+				<ul class="space-y-0.5 mt-1">
 					<li v-for="step in props.message.steps" :key="step.seq">
 						{{ stepLabel(step) }}
 					</li>

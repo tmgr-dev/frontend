@@ -22,7 +22,7 @@
 		<div
 			v-if="!narrow"
 			ref="legendEl"
-			class="pointer-events-none absolute left-3 top-3 flex max-w-[78%] flex-wrap gap-1.5 text-ink-muted"
+			class="pointer-events-none absolute top-3 left-3 flex max-w-[78%] flex-wrap gap-1.5 text-ink-muted"
 			:class="mode === 'mini' ? 'text-2xs' : 'text-xs'"
 			data-testid="graph-legend"
 		>
@@ -39,7 +39,7 @@
 		<button
 			v-if="mode === 'mini'"
 			type="button"
-			class="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface/90 px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-hover"
+			class="absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface/90 px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-hover"
 			data-testid="graph-expand"
 			@click="$emit('expand')"
 		>
@@ -49,7 +49,7 @@
 
 		<div
 			v-else-if="shown"
-			class="absolute bottom-3 right-3 flex flex-col overflow-hidden rounded-lg border border-line bg-surface/90"
+			class="absolute right-3 bottom-3 flex flex-col overflow-hidden rounded-lg border border-line bg-surface/90"
 		>
 			<button
 				type="button"

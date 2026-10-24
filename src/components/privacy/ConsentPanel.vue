@@ -7,8 +7,8 @@
 		:class="
 			inline
 				? 'rounded-lg border border-border bg-card p-4 text-card-foreground'
-				: 'fixed inset-x-0 bottom-0 z-[60] max-h-[90vh] overflow-y-auto border-t border-border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-card-foreground shadow-lg sm:inset-x-auto sm:bottom-4 sm:right-4 sm:max-w-md sm:rounded-lg sm:border sm:pb-4' +
-				  (authPage ? ' lg:left-4 lg:right-auto' : '')
+				: 'fixed inset-x-0 bottom-0 z-[60] max-h-[90vh] overflow-y-auto border-t border-border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-card-foreground shadow-lg sm:inset-x-auto sm:right-4 sm:bottom-4 sm:max-w-md sm:rounded-lg sm:border sm:pb-4' +
+					(authPage ? ' lg:right-auto lg:left-4' : '')
 		"
 	>
 		<p v-if="saveFailed" role="alert" class="mb-3 text-sm text-destructive">
@@ -44,7 +44,7 @@
 					account: which screens and tours you open, which steps you finish, app
 					version and platform.
 				</p>
-				<dl class="mt-2 space-y-1 text-sm">
+				<dl class="space-y-1 mt-2 text-sm">
 					<div>
 						<dt class="inline font-medium">We send:</dt>
 						<dd class="inline text-muted-foreground">

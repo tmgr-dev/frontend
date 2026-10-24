@@ -31,7 +31,7 @@ export const STACK_JUSTIFY: Record<StackJustify, string> = {
 export const CARD_TONE: Record<CardTone, string> = {
 	default: 'bg-card text-card-foreground',
 	muted: 'bg-muted/50',
-	raised: 'bg-card shadow-sm',
+	raised: 'bg-card shadow-xs',
 };
 
 export const CARD_PADDING: Record<CardPadding, string> = {
@@ -72,8 +72,8 @@ export const stackClasses = (node: {
 	const align = node.align
 		? STACK_ALIGN[node.align]
 		: node.direction === 'row'
-		? 'items-stretch'
-		: '';
+			? 'items-stretch'
+			: '';
 	if (align) classes.push(align);
 	if (node.justify) classes.push(STACK_JUSTIFY[node.justify]);
 	if (node.grow) classes.push('min-w-0', 'flex-1');

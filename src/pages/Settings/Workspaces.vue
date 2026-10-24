@@ -219,11 +219,11 @@
 					? {
 							...setting,
 							...settingFromStoreWithValue,
-					  }
+						}
 					: {
 							...setting,
 							value: null,
-					  };
+						};
 			});
 
 			settings.value = mappedSettingWithUserSettings.filter(
@@ -477,7 +477,7 @@
 						: errorMessageFrom(
 								error,
 								'Failed to delete the workspace. Please try again.',
-						  ),
+							),
 				variant: 'destructive',
 			});
 		} finally {
@@ -669,7 +669,7 @@
 								:placeholder="`Enter emails (comma separated), for example:\nuser1@example.com,\nuser2@example.com,\n...\nuserN@example.com`"
 							/>
 							<span
-								class="whitespace-pre text-xs text-destructive"
+								class="text-xs whitespace-pre text-destructive"
 								v-if="
 									!invitationEmailsValidationError.isValid &&
 									invitationEmails !== ''
@@ -745,7 +745,7 @@
 								<AlertDialogCancel>Cancel</AlertDialogCancel>
 								<AlertDialogAction
 									@click="exitWorkspace"
-									class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+									class="bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
 								>
 									Exit from workspace
 								</AlertDialogAction>
@@ -788,8 +788,11 @@
 									v-if="setting.component_type === 'time_in_seconds'"
 									:model-value="convertToHHMM(settings[index].value)"
 									@input="
-								(e: InputEvent) => (settings[index].value = timeToSeconds((e.target as HTMLInputElement).value))
-							"
+										(e: InputEvent) =>
+											(settings[index].value = timeToSeconds(
+												(e.target as HTMLInputElement).value,
+											))
+									"
 									:placeholder="setting.description"
 								/>
 
@@ -893,7 +896,7 @@
 													workspaces.find((w) => w.id == activeWorkspace?.value)
 														?.user_id
 												"
-												class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold uppercase text-muted-foreground"
+												class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground uppercase"
 											>
 												Owner
 											</span>
@@ -941,7 +944,7 @@
 						>
 						<AlertDialogAction
 							@click="confirmRemoveMember"
-							class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+							class="bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
 						>
 							Remove
 						</AlertDialogAction>

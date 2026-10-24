@@ -1,7 +1,7 @@
 <template>
 	<span
 		:class="[
-			'inline-flex h-[22px] items-center gap-1.5 whitespace-nowrap rounded-pill px-2 text-2xs font-semibold',
+			'inline-flex h-[22px] items-center gap-1.5 rounded-pill px-2 text-2xs font-semibold whitespace-nowrap',
 			TONE_CLASS[view.tone],
 			view.highlight && 'agent-attention',
 		]"

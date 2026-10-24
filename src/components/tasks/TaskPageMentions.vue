@@ -1,7 +1,7 @@
 <template>
 	<section v-if="pages.length" data-testid="task-page-mentions">
 		<h3
-			class="mb-1.5 text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+			class="mb-1.5 text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 		>
 			Mentioned on pages
 		</h3>

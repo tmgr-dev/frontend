@@ -85,7 +85,7 @@ describeSqlite('local onboarding facts and starters on SQLite', () => {
 		stopEvents = domainEvents.on((event) => events.push(event));
 		handle = createOnboardingHandler(storage, {
 			ctxFor: async (code) =>
-				code ? [a, b].find((c) => c.workspace.code === code) ?? null : active,
+				code ? ([a, b].find((c) => c.workspace.code === code) ?? null) : active,
 			tokens: async () => tokens,
 		});
 	});

@@ -62,7 +62,7 @@
 						:aria-invalid="!!errors.code || undefined"
 						:class="[
 							inputClass,
-							'max-w-[220px] font-mono text-[13px]',
+							'max-w-[220px] font-mono',
 							errors.code && errorClass,
 						]"
 						@input="onCode"
@@ -202,8 +202,8 @@
 							open.cursor
 								? 'Close'
 								: category.cursor_connected
-								? 'Manage'
-								: 'Connect'
+									? 'Manage'
+									: 'Connect'
 						}}
 					</Button>
 					<template v-if="open.cursor" #below>
@@ -245,8 +245,8 @@
 							open.github
 								? 'Close'
 								: github && !github.has_installation
-								? 'Install GitHub App'
-								: 'Manage'
+									? 'Install GitHub App'
+									: 'Manage'
 						}}
 					</Button>
 					<template v-if="open.github" #below>
@@ -333,7 +333,7 @@
 
 		<div
 			v-if="isCreate || dirty"
-			class="sticky bottom-[calc(var(--statusbar-h,0px)+1rem)] z-10 flex flex-wrap items-center gap-x-3 gap-y-2.5 rounded-xl border border-line-strong bg-surface py-2.5 pl-4 pr-2.5 shadow-tmgr-lg max-lg:[body:has(.tour-host--sheet)_&]:mb-[50vh]"
+			class="sticky bottom-[calc(var(--statusbar-h,0px)+1rem)] z-10 flex flex-wrap items-center gap-x-3 gap-y-2.5 rounded-xl border border-line-strong bg-surface py-2.5 pr-2.5 pl-4 shadow-tmgr-lg max-lg:[body:has(.tour-host--sheet)_&]:mb-[50vh]"
 		>
 			<span class="text-[13px] font-medium text-ink">{{ barText }}</span>
 			<Button
@@ -368,7 +368,7 @@
 				<AlertDialogFooter>
 					<AlertDialogCancel>Cancel</AlertDialogCancel>
 					<AlertDialogAction
-						class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+						class="bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
 						@click="remove"
 					>
 						Delete
@@ -507,7 +507,7 @@
 	const FIELD_CLASS =
 		'h-9 rounded-lg border-line-strong bg-surface-base px-2.5 text-sm text-ink';
 	const INPUT_CLASS =
-		'h-9 w-full rounded-lg border border-line-strong bg-surface-base px-2.5 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-line-focus';
+		'h-9 w-full rounded-lg border border-line-strong bg-surface-base px-2.5 text-sm text-ink outline-hidden transition-colors placeholder:text-ink-faint focus:border-line-focus';
 	const ERROR_CLASS = '!border-status-fix';
 	const SMALL_BUTTON_CLASS =
 		'h-8 border-line-strong bg-surface px-3 text-[13px] text-ink hover:bg-surface-hover hover:text-ink';
@@ -821,8 +821,8 @@
 						? String(parent.value.id)
 						: 'none'
 					: c?.project_category_id != null
-					? String(c.project_category_id)
-					: 'none';
+						? String(c.project_category_id)
+						: 'none';
 				errors.value = {};
 				fillDefaults();
 				initial.value = current();
@@ -1156,7 +1156,7 @@
 			};
 
 			watch(
-				() => (props.isCreate ? null : category.value?.id ?? null),
+				() => (props.isCreate ? null : (category.value?.id ?? null)),
 				(id) => {
 					open.cursor = open.github = open.repos = false;
 					github.value = undefined;
@@ -1222,9 +1222,9 @@
 								'p',
 								{ id: noteId, class: 'text-xs text-status-fix-fg' },
 								DURATION_ERROR,
-						  )
+							)
 						: hint &&
-						  h('p', { id: noteId, class: 'text-xs text-ink-muted' }, hint),
+							h('p', { id: noteId, class: 'text-xs text-ink-muted' }, hint),
 				]);
 			};
 
@@ -1275,7 +1275,7 @@
 													'/ h',
 												),
 										],
-								  )
+									)
 							: h(
 									Select,
 									{
@@ -1313,13 +1313,13 @@
 													() =>
 														isDuration(def)
 															? formatDuration(option.value) ||
-															  String(option.value)
+																String(option.value)
 															: String(option.value),
 												),
 											),
 										),
 									],
-							  );
+								);
 						return h('div', { class: 'flex min-w-0 flex-col gap-2' }, [
 							control,
 							canCustom &&

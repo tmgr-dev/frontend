@@ -10,7 +10,7 @@
 		/>
 		<button
 			type="button"
-			class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
+			class="flex h-7 w-7 shrink-0 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
 			aria-label="Attach files"
 			title="Attach files"
 			data-testid="comment-attach"
@@ -20,7 +20,7 @@
 		</button>
 		<div
 			v-if="items.length || notice"
-			class="order-first basis-full pb-1 pt-0.5"
+			class="order-first basis-full pt-0.5 pb-1"
 		>
 			<AttachmentChips :items="items" :notice="notice" @remove="onRemove" />
 		</div>

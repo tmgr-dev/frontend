@@ -8,12 +8,10 @@ test('shared loading boundary reserves shape, preserves focused content and supp
   await page.goto('/');
   await expect(page.locator('[data-task-id="1"]')).toBeVisible();
   await page.evaluate(async () => {
-    const { createApp, h, reactive, ref } = await import(
-      '/node_modules/.vite/deps/vue.js'
-    );
-    const { default: AsyncContent } = await import(
-      '/src/components/async/AsyncContent.vue'
-    );
+    const { createApp, h, reactive, ref } =
+      await import('/node_modules/.vite/deps/vue.js');
+    const { default: AsyncContent } =
+      await import('/src/components/async/AsyncContent.vue');
     const host = document.createElement('div');
     host.id = 'loading-fixture';
     document.body.append(host);

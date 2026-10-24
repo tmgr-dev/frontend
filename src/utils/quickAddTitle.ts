@@ -27,8 +27,8 @@ const maskRegex = (mask: string): string =>
 			part in MASK_TOKENS
 				? MASK_TOKENS[part]
 				: /^[a-z]/.test(part)
-				? '.+?'
-				: escapeRegex(part),
+					? '.+?'
+					: escapeRegex(part),
 		);
 
 /** Port of the backend TaskTitlePattern.asRegex: indexes are digits, date masks match their rendered shape, the rest is literal. */

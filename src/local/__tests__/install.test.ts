@@ -78,19 +78,19 @@ describeSqlite('installLocalWorkspaces', () => {
 			config.url === 'workspaces'
 				? { data: [{ id: 56, name: 'TMGR.DEV', code: 'tmgrdev' }] }
 				: config.url === 'tasks/runned'
-				? {
-						data: [{ id: 900, title: 'Cloud timer', workspace_id: 56 }],
-						meta: {},
-				  }
-				: config.url === 'user' || config.url === 'v2/user/settings'
-				? {
-						data: {
-							id: 7,
-							name: 'Yurij',
-							settings: [{ id: 5, key: 'current_workspace', value: 56 }],
-						},
-				  }
-				: { data: 'from server' };
+					? {
+							data: [{ id: 900, title: 'Cloud timer', workspace_id: 56 }],
+							meta: {},
+						}
+					: config.url === 'user' || config.url === 'v2/user/settings'
+						? {
+								data: {
+									id: 7,
+									name: 'Yurij',
+									settings: [{ id: 5, key: 'current_workspace', value: 56 }],
+								},
+							}
+						: { data: 'from server' };
 		return {
 			data: JSON.stringify(body),
 			status: 200,

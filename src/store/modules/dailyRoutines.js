@@ -185,7 +185,7 @@ const dailyRoutinesModule = {
 						? `${String(timeH).padStart(2, '0')}:${String(timeM ?? 0).padStart(
 								2,
 								'0',
-						  )}`
+							)}`
 						: entry.time || '09:00';
 				const scheduledFor = `${date} ${
 					time.length === 5 ? time + ':00' : time

@@ -21,7 +21,7 @@ const categoriesQueryRedirect = (to) => {
 					name: 'WorkspaceCategoryCreateInCategory',
 					params: { workspace_code, category_id: String(create) },
 					query,
-			  };
+				};
 	if (category != null && category !== '')
 		return {
 			name: 'WorkspaceCategoryChildren',
@@ -359,8 +359,10 @@ const routes = [
 	// New URL structure for archive page
 	{
 		path: '/:workspace_code/files',
-		component: gatedPage('task.files', 'Files', () =>
-			import('@/pages/WorkspaceFilesPage.vue'),
+		component: gatedPage(
+			'task.files',
+			'Files',
+			() => import('@/pages/WorkspaceFilesPage.vue'),
 		),
 		meta: {
 			title: 'Files',
@@ -576,8 +578,10 @@ const routes = [
 	},
 	{
 		path: '/settings/personas',
-		component: gatedPage('personas', 'Personas', () =>
-			import('@/pages/Settings/Personas.vue'),
+		component: gatedPage(
+			'personas',
+			'Personas',
+			() => import('@/pages/Settings/Personas.vue'),
 		),
 		meta: {
 			title: 'Personas',
@@ -589,8 +593,10 @@ const routes = [
 	},
 	{
 		path: '/settings/agent-notifications',
-		component: gatedPage('alerts', 'Agent alerts', () =>
-			import('@/pages/Settings/AgentNotifications.vue'),
+		component: gatedPage(
+			'alerts',
+			'Agent alerts',
+			() => import('@/pages/Settings/AgentNotifications.vue'),
 		),
 		meta: {
 			title: 'Agent alerts',

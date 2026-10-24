@@ -16,11 +16,11 @@
 		<!--	dropdown block	-->
 		<div
 			v-if="isOpenProfileDropdown"
-			class="static mt-2 rounded border border-line bg-surface py-2 shadow-lg md:absolute md:right-0 md:top-[calc(100%+10px)] md:z-50 md:w-auto"
+			class="static mt-2 rounded border border-line bg-surface py-2 shadow-lg md:absolute md:top-[calc(100%+10px)] md:right-0 md:z-50 md:w-auto"
 		>
 			<div class="sm:flex">
 				<ul
-					class="border-b-2 border-line px-4 py-2 sm:w-32 sm:border-b-0 sm:border-r-2"
+					class="border-b-2 border-line px-4 py-2 sm:w-32 sm:border-r-2 sm:border-b-0"
 				>
 					<li
 						v-for="link in links"

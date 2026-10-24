@@ -171,8 +171,8 @@ export function matchRequest(
 						typeof page.type === 'string'
 							? page.type
 							: typeof parsed.type === 'string'
-							? parsed.type
-							: null,
+								? parsed.type
+								: null,
 				}),
 			];
 		}

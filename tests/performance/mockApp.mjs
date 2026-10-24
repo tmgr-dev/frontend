@@ -237,8 +237,8 @@ export async function mockApp(
               title: refresh
                 ? 'Updated task'
                 : url.searchParams.get('page') === '2'
-                ? 'Second page task'
-                : task.title,
+                  ? 'Second page task'
+                  : task.title,
             },
           ],
           meta: {

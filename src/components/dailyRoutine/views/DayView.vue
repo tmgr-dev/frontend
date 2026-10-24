@@ -12,14 +12,14 @@
 		>
 			<div class="flex items-center justify-between gap-2 px-1">
 				<div
-					class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle"
+					class="text-[10px] font-bold tracking-wider text-ink-subtle uppercase"
 				>
 					Unscheduled <span>{{ unscheduled.length }}</span>
 				</div>
 				<button
 					v-if="unscheduledDoneCount > 0"
 					type="button"
-					class="rounded-pill border border-line bg-surface px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-subtle hover:border-brand hover:text-brand"
+					class="rounded-pill border border-line bg-surface px-2.5 py-1 text-[10px] font-semibold tracking-wider text-ink-subtle uppercase hover:border-brand hover:text-brand"
 					@click="$emit('archive-done-unscheduled')"
 				>
 					Archive done ({{ unscheduledDoneCount }})
@@ -54,7 +54,7 @@
 				<div
 					v-for="h in 24"
 					:key="h"
-					class="absolute left-0 right-0"
+					class="absolute right-0 left-0"
 					:style="{
 						top: `${(h - 1) * HOUR_PX}px`,
 						height: `${HOUR_PX}px`,
@@ -63,7 +63,7 @@
 				>
 					<div
 						v-if="h > 1"
-						class="absolute left-0 w-12 pr-2 text-right text-[10px] tabular-nums text-ink-subtle"
+						class="absolute left-0 w-12 pr-2 text-right text-[10px] text-ink-subtle tabular-nums"
 						:style="{ top: '-7px' }"
 					>
 						{{ String(h - 1).padStart(2, '0') }}:00

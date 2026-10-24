@@ -64,7 +64,7 @@ const make = (over: Partial<ToursHostDeps> = {}, tipsMode = 'auto') => {
 				timer.live = false;
 			};
 		},
-		resolveAnchor: async () => ({ id: 'x' } as unknown as Element),
+		resolveAnchor: async () => ({ id: 'x' }) as unknown as Element,
 		...over,
 	};
 	const engine = createTours(deps);

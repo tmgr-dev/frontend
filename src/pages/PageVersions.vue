@@ -69,7 +69,7 @@
 									class="rounded-md px-3 py-1 text-sm transition-colors"
 									:class="
 										mode === option.value
-											? 'bg-surface text-ink shadow-sm'
+											? 'bg-surface text-ink shadow-xs'
 											: 'text-ink-subtle hover:text-ink'
 									"
 									@click="mode = option.value"
@@ -213,13 +213,13 @@
 
 			const diffBefore = computed(() =>
 				mode.value === 'current'
-					? snapshot.value?.body ?? ''
+					? (snapshot.value?.body ?? '')
 					: previousBody.value,
 			);
 			const diffAfter = computed(() =>
 				mode.value === 'current'
-					? page.value?.body ?? ''
-					: snapshot.value?.body ?? '',
+					? (page.value?.body ?? '')
+					: (snapshot.value?.body ?? ''),
 			);
 			const stats = computed(() =>
 				diffStats(diffLines(diffBefore.value, diffAfter.value)),

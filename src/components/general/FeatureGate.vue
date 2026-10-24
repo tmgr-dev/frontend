@@ -10,7 +10,7 @@
 			<div class="relative">
 				<!-- Preview content with blur/fade -->
 				<div
-					class="pointer-events-none select-none opacity-40 blur-[2px] filter"
+					class="pointer-events-none opacity-40 blur-[2px] filter select-none"
 				>
 					<slot name="preview">
 						<slot />
@@ -19,7 +19,7 @@
 
 				<!-- Overlay with enable CTA -->
 				<div
-					class="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm"
+					class="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-xs"
 				>
 					<div
 						class="mx-4 max-w-md rounded-xl border border-line bg-surface p-8 text-center shadow-tmgr-lg"

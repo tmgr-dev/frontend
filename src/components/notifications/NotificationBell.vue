@@ -10,7 +10,7 @@
 					<Bell :size="20" :class="{ 'animate-bell': hasNewNotification }" />
 					<span
 						v-if="unreadCount > 0"
-						class="absolute right-0.5 top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-pill px-1 text-[10px] font-semibold leading-none text-white"
+						class="absolute top-0.5 right-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-pill px-1 text-[10px] leading-none font-semibold text-white"
 						:class="
 							hasNewNotification
 								? 'animate-bounce-gentle bg-red-600 shadow-[0_0_8px] shadow-red-600/60'

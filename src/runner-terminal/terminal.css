@@ -34,7 +34,11 @@ body,
 	margin: 0;
 	background: var(--bg);
 	color: var(--fg);
-	font: 13px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+	font:
+		13px/1.4 -apple-system,
+		BlinkMacSystemFont,
+		'Segoe UI',
+		Roboto,
 		sans-serif;
 }
 

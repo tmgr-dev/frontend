@@ -11,7 +11,7 @@
 		@drop.prevent="onDrop"
 	>
 		<div class="mb-2 flex items-center justify-between">
-			<h2 class="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+			<h2 class="text-xs font-semibold tracking-wide text-ink-subtle uppercase">
 				Files
 			</h2>
 			<button

@@ -94,7 +94,7 @@ export function memberTasksPage(body: unknown): MemberTasksPage {
 	const raw = (body ?? {}) as Record<string, unknown>;
 	const nested = raw.data as Record<string, unknown> | undefined;
 	const page = (
-		Array.isArray(raw.data) || raw.total !== undefined ? raw : nested ?? {}
+		Array.isArray(raw.data) || raw.total !== undefined ? raw : (nested ?? {})
 	) as Record<string, unknown>;
 
 	return {

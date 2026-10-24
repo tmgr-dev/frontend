@@ -26,7 +26,7 @@
 					>{{ t.name }}</span
 				>
 				<span
-					class="font-mono text-[9px] uppercase tracking-wide"
+					class="font-mono text-[9px] tracking-wide uppercase"
 					:style="{ color: t.tokens.muted }"
 					>{{ t.tag }}</span
 				>

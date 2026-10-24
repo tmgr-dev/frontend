@@ -154,14 +154,14 @@
 		watch,
 	} from 'vue';
 	const NewForm = defineAsyncComponent(() => import('@/pages/NewForm.vue'));
-	const TourHost = defineAsyncComponent(() =>
-		import('@/tours/ui/TourHost.vue'),
+	const TourHost = defineAsyncComponent(
+		() => import('@/tours/ui/TourHost.vue'),
 	);
-	const AhaWatcher = defineAsyncComponent(() =>
-		import('@/components/onboarding/AhaWatcher.vue'),
+	const AhaWatcher = defineAsyncComponent(
+		() => import('@/components/onboarding/AhaWatcher.vue'),
 	);
-	const PagesImportDialog = defineAsyncComponent(() =>
-		import('@/components/pages/PagesImportDialog.vue'),
+	const PagesImportDialog = defineAsyncComponent(
+		() => import('@/components/pages/PagesImportDialog.vue'),
 	);
 
 	const DEFAULT_TRANSITION = 'fade';
@@ -712,4 +712,6 @@
 	});
 </script>
 
+<style lang="scss" src="@/assets/styles/pre-tailwind.scss"></style>
+<style src="@/assets/styles/tailwind.css"></style>
 <style lang="scss" src="@/assets/styles/index.scss"></style>

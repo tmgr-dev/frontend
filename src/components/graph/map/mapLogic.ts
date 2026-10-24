@@ -243,8 +243,8 @@ export const prepareMap = (
 			key === PAGES_CLUSTER
 				? PAGES_TITLE
 				: key === NONE_CLUSTER
-				? titles.get(key) ?? NONE_TITLE
-				: titles.get(key) ?? sample.category ?? 'Category';
+					? (titles.get(key) ?? NONE_TITLE)
+					: (titles.get(key) ?? sample.category ?? 'Category');
 		return {
 			key,
 			title,
@@ -582,7 +582,7 @@ export const buildInsights = (prepared: PreparedMap): MapInsights => {
 					total,
 					'item',
 					'items',
-			  )} — pages nobody links to, tasks with no relations`
+				)} — pages nobody links to, tasks with no relations`
 			: 'Every item has at least one link',
 		ids: orphanIds,
 	};

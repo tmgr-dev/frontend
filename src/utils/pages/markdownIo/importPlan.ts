@@ -137,8 +137,8 @@ export const resolveLink = (
 	const pageKey = isMarkdown
 		? index.pagesByPath.get(lower(path))
 		: extName(path)
-		? undefined
-		: index.pagesByPath.get(lower(`${path}.md`));
+			? undefined
+			: index.pagesByPath.get(lower(`${path}.md`));
 	if (pageKey) return { type: 'page', key: pageKey, fragment };
 	const file = isMarkdown ? undefined : index.filesByPath.get(lower(path));
 	if (file) return { type: 'file', path: file, image: IMAGE_EXT.test(file) };
@@ -261,7 +261,7 @@ export const buildImportPlan = (
 	for (const draft of drafts) {
 		parentOf.set(
 			draft,
-			draft.container ? folderDraft.get(draft.container) ?? null : null,
+			draft.container ? (folderDraft.get(draft.container) ?? null) : null,
 		);
 	}
 	const childrenOf = new Map<Draft | null, Draft[]>();
@@ -286,7 +286,7 @@ export const buildImportPlan = (
 	const ignoredKeys = new Set<string>();
 	const keptKey = new Map<Draft, string | null>();
 	const keyOf = (draft: Draft | null): string | null =>
-		draft === null ? null : keptKey.get(draft) ?? null;
+		draft === null ? null : (keptKey.get(draft) ?? null);
 
 	for (const draft of ordered) {
 		let body = '';

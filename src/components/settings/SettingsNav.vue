@@ -8,7 +8,7 @@
 		<div v-for="group in groups" :key="group.key">
 			<p
 				:id="`settings-nav-${group.key}`"
-				class="mb-1 text-2xs font-semibold uppercase tracking-wide text-ink-subtle dark:text-ink-subtle"
+				class="mb-1 text-2xs font-semibold tracking-wide text-ink-subtle uppercase dark:text-ink-subtle"
 				:class="variant === 'list' ? 'px-4' : 'px-2'"
 			>
 				{{ group.label }}
@@ -17,7 +17,7 @@
 				:aria-labelledby="`settings-nav-${group.key}`"
 				:class="
 					variant === 'list'
-						? 'divide-y divide-border overflow-hidden rounded-lg border border-border bg-card dark:divide-border dark:border-border dark:bg-card'
+						? 'divide-y divide-border dark:divide-border overflow-hidden rounded-lg border border-border bg-card dark:border-border dark:bg-card'
 						: 'flex flex-col gap-0.5'
 				"
 			>
@@ -98,10 +98,10 @@
 	};
 
 	const COLUMN_ROW =
-		'flex h-8 items-center gap-2 rounded-md px-2 text-sm text-ink-muted outline-none transition-colors hover:bg-surface-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[active=true]:bg-sidebar-primary/10 data-[active=true]:font-medium data-[active=true]:text-ink dark:text-ink-muted dark:hover:bg-surface-hover dark:hover:text-ink dark:data-[active=true]:bg-sidebar-primary/15 dark:data-[active=true]:text-ink [&[data-active=true]>svg]:text-sidebar-primary';
+		'flex h-8 items-center gap-2 rounded-md px-2 text-sm text-ink-muted outline-hidden transition-colors hover:bg-surface-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[active=true]:bg-sidebar-primary/10 data-[active=true]:font-medium data-[active=true]:text-ink dark:text-ink-muted dark:hover:bg-surface-hover dark:hover:text-ink dark:data-[active=true]:bg-sidebar-primary/15 dark:data-[active=true]:text-ink [&[data-active=true]>svg]:text-sidebar-primary';
 
 	const LIST_ROW =
-		'flex min-h-11 items-center gap-3 px-4 py-2.5 text-sm text-ink outline-none transition-colors hover:bg-surface-hover focus-visible:bg-surface-hover active:bg-surface-hover dark:text-ink dark:hover:bg-surface-hover [&>svg:first-child]:text-ink-subtle';
+		'flex min-h-11 items-center gap-3 px-4 py-2.5 text-sm text-ink outline-hidden transition-colors hover:bg-surface-hover focus-visible:bg-surface-hover active:bg-surface-hover dark:text-ink dark:hover:bg-surface-hover [&>svg:first-child]:text-ink-subtle';
 
 	export default defineComponent({
 		name: 'SettingsNav',

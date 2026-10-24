@@ -4,7 +4,7 @@
 		class="flex flex-col gap-1"
 		data-tour="task-form.agent-work"
 	>
-		<span class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+		<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 			>Agent work</span
 		>
 		<button
@@ -34,7 +34,7 @@
 		data-tour="task-form.agent-work"
 	>
 		<div class="flex items-baseline justify-between gap-2">
-			<span class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+			<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 				>Agent work</span
 			>
 			<span class="text-2xs text-ink-faint" data-tour="task-form.agent-totals">
@@ -74,7 +74,7 @@
 
 				<p
 					v-if="run.summary"
-					class="whitespace-pre-line text-sm text-ink"
+					class="text-sm whitespace-pre-line text-ink"
 					data-selectable
 				>
 					{{ run.summary }}
@@ -248,7 +248,7 @@
 								workspaceId: props.workspaceId,
 								workspaceCode: workspaceCode.value,
 								ownRuns: list,
-						  })
+							})
 								.then((r) => r.usage)
 								.catch(() => null)
 						: Promise.resolve(undefined),
@@ -292,7 +292,7 @@
 					ticker = running
 						? setInterval(() => {
 								now.value = Date.now();
-						  }, 1000)
+							}, 1000)
 						: null;
 				},
 				{ immediate: true },

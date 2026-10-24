@@ -127,7 +127,7 @@ export const applyStep = (
 		? message.steps
 		: [...message.steps, { seq: e.seq, tool: e.tool, summary: e.summary }].sort(
 				(a, b) => a.seq - b.seq,
-		  );
+			);
 
 	const messages = [...s.messages];
 	messages[index] = { ...message, steps };

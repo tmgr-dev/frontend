@@ -33,7 +33,7 @@
 								<div
 									v-for="month in monthLabels"
 									:key="month.key"
-									:class="['whitespace-nowrap text-[9px]', textColorClass]"
+									:class="['text-[9px] whitespace-nowrap', textColorClass]"
 									:style="{ gridColumnStart: month.column + 1 }"
 								>
 									{{ month.label }}
@@ -109,7 +109,7 @@
 		<div
 			v-if="hoveredDate"
 			ref="tooltip"
-			class="pointer-events-none absolute z-50 whitespace-nowrap rounded border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
+			class="pointer-events-none absolute z-50 rounded border bg-popover px-2 py-1 text-xs whitespace-nowrap text-popover-foreground shadow-md"
 			:style="tooltipStyle"
 		>
 			{{ hoveredDate.count }}

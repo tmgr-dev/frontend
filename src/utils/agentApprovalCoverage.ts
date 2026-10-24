@@ -38,12 +38,12 @@ export const sameContext = (
 	a === null || b === null
 		? a === b
 		: a.pages.length === b.pages.length &&
-		  a.pages.every(
+			a.pages.every(
 				(page, i) =>
 					page.id === b.pages[i].id &&
 					page.title === b.pages[i].title &&
 					page.body === b.pages[i].body,
-		  );
+			);
 
 export const currentCoverage = (approval: TaskApproval): CoverageTexts => ({
 	persona: approval.persona ?? null,

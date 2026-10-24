@@ -645,8 +645,8 @@ describeSqlite('local daily-routines API on SQLite', () => {
 			offsetMinutes > 0
 				? new Date(2026, 8, 26, 23, 45, 0) // local behind UTC: late local = next-day UTC
 				: offsetMinutes < 0
-				? new Date(2026, 8, 27, 0, 15, 0) // local ahead of UTC: early local = prev-day UTC
-				: new Date(2026, 8, 26, 12, 0, 0); // no offset: nothing to prove either way
+					? new Date(2026, 8, 27, 0, 15, 0) // local ahead of UTC: early local = prev-day UTC
+					: new Date(2026, 8, 26, 12, 0, 0); // no offset: nothing to prove either way
 		const localToday = `${clock.getFullYear()}-${String(
 			clock.getMonth() + 1,
 		).padStart(2, '0')}-${String(clock.getDate()).padStart(2, '0')}`;

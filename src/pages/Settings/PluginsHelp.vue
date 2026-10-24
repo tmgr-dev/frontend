@@ -139,8 +139,7 @@
 └─ my-plugin/
    ├─ manifest.json
    ├─ main.js
-   └─ ui/page.html</pre
-					>
+   └─ ui/page.html</pre>
 					<ol class="flex flex-col gap-2">
 						<li><StepLabel :n="1" text="Put the folder there" /></li>
 						<li>

@@ -1,7 +1,7 @@
 <template>
 	<div
 		ref="listRoot"
-		class="relative w-full items-center justify-center outline-none"
+		class="relative w-full items-center justify-center outline-hidden"
 		tabindex="-1"
 	>
 		<TasksMultipleActionsModal
@@ -78,7 +78,7 @@
 				data-tour="list.row"
 				:draggable="false"
 				tabindex="-1"
-				class="selectable relative mt-3 w-full outline-none"
+				class="selectable relative mt-3 w-full outline-hidden"
 			>
 				<BounceLoader
 					v-if="loadingActionTasksIds.includes(task.id)"
@@ -104,7 +104,7 @@
 					>
 						<PopoverTrigger as-child>
 							<button
-								class="group/assignee absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
+								class="group/assignee absolute top-3 right-3 z-10 flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
 								@click.stop
 								:title="
 									visibleAssignees(task).length
@@ -246,7 +246,7 @@
 						<div class="flex items-start gap-2 pr-16">
 							<div
 								v-if="draggable"
-								class="task-drag-handle flex-shrink-0 cursor-grab touch-none select-none pt-0.5 text-ink-faint hover:text-ink-subtle active:cursor-grabbing"
+								class="task-drag-handle shrink-0 cursor-grab touch-none pt-0.5 text-ink-faint select-none hover:text-ink-subtle active:cursor-grabbing"
 								:draggable="true"
 								@dragstart="onDragStart($event, task)"
 								@click.stop
@@ -269,7 +269,7 @@
 								/>
 
 								<div
-									class="text-left text-base font-medium leading-snug text-ink"
+									class="text-left text-base leading-snug font-medium text-ink"
 									:title="task.title?.length > 60 ? task.title : ''"
 								>
 									{{ taskTitles[String(task.id)] }}
@@ -419,7 +419,7 @@
 					<select
 						v-model="perPage"
 						@change="onPerPageChange"
-						class="h-9 rounded-pill border border-line bg-surface px-3 text-sm text-ink outline-none"
+						class="h-9 rounded-pill border border-line bg-surface px-3 text-sm text-ink outline-hidden"
 					>
 						<option :value="10">10 per page</option>
 						<option :value="25">25 per page</option>
@@ -436,7 +436,7 @@
 						Previous
 					</button>
 
-					<span class="whitespace-nowrap px-2 text-sm text-ink-subtle">
+					<span class="px-2 text-sm whitespace-nowrap text-ink-subtle">
 						Page {{ pagination.current_page }} of {{ pagination.last_page }}
 					</span>
 
@@ -848,21 +848,34 @@
 				return text;
 			},
 			taskComputedData() {
-				return this.tasks.reduce((acc, task) => {
-					// Running timers tick: evaluate time-based fields against the live total.
-					const live = task.start_time
-						? { ...task, common_time: liveTaskTime(task, this.nowSeconds) }
-						: task;
-					acc[String(task.id)] = {
-						title: this.truncateTitle(task.title),
-						timeExceeded: this.isTimeExceeded(live),
-						formattedTime: this.getTaskFormattedTime(live),
-						overtime: this.getTaskOvertime(live),
-						statusName: this.getStatusName(task),
-						statusColor: this.getStatusColor(task),
-					};
-					return acc;
-				}, {} as Record<string, { title: string; timeExceeded: boolean; formattedTime: string; overtime: string | null; statusName: string; statusColor: string }>);
+				return this.tasks.reduce(
+					(acc, task) => {
+						// Running timers tick: evaluate time-based fields against the live total.
+						const live = task.start_time
+							? { ...task, common_time: liveTaskTime(task, this.nowSeconds) }
+							: task;
+						acc[String(task.id)] = {
+							title: this.truncateTitle(task.title),
+							timeExceeded: this.isTimeExceeded(live),
+							formattedTime: this.getTaskFormattedTime(live),
+							overtime: this.getTaskOvertime(live),
+							statusName: this.getStatusName(task),
+							statusColor: this.getStatusColor(task),
+						};
+						return acc;
+					},
+					{} as Record<
+						string,
+						{
+							title: string;
+							timeExceeded: boolean;
+							formattedTime: string;
+							overtime: string | null;
+							statusName: string;
+							statusColor: string;
+						}
+					>,
+				);
 			},
 			taskTitles() {
 				const data: Record<string, string> = {};
@@ -1281,8 +1294,8 @@
 					this.selected[i] && v
 						? false
 						: v && !this.selected[i]
-						? true
-						: !v && this.selected[i],
+							? true
+							: !v && this.selected[i],
 				);
 
 				this.selecting = [];
@@ -1319,8 +1332,7 @@
 			},
 			async exportSelectedTasks(
 				payload:
-					| ExportType
-					| { type?: ExportType; settings?: ExportOptions } = {},
+					ExportType | { type?: ExportType; settings?: ExportOptions } = {},
 			) {
 				const exportType =
 					typeof payload === 'string' ? payload : payload.type || 'csv';

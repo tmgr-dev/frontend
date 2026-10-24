@@ -2,13 +2,7 @@ import { PLUGIN_API_VERSION } from './manifest';
 
 export type Tone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
 export type Color =
-	| 'gray'
-	| 'green'
-	| 'yellow'
-	| 'red'
-	| 'blue'
-	| 'purple'
-	| 'orange';
+	'gray' | 'green' | 'yellow' | 'red' | 'blue' | 'purple' | 'orange';
 
 export type Gap = 'none' | 'sm' | 'md' | 'lg';
 export type Command = { command: string; args?: unknown };
@@ -168,8 +162,8 @@ const text = (value: unknown): string | null =>
 	typeof value === 'string'
 		? value.slice(0, MAX_TEXT)
 		: typeof value === 'number' && Number.isFinite(value)
-		? String(value)
-		: null;
+			? String(value)
+			: null;
 
 const parseCommandArgs = (
 	value: any,
@@ -196,19 +190,19 @@ const findLabel = (nodes: UiNode[]): string | null => {
 			node.type === 'heading' || node.type === 'text' || node.type === 'badge'
 				? node.text
 				: node.type === 'stat'
-				? node.label
-				: null;
+					? node.label
+					: null;
 		if (direct) return direct.slice(0, MAX_LABEL_LENGTH);
 		const childNodes: UiNode[] =
 			node.type === 'stack' || node.type === 'card' || node.type === 'grid'
 				? node.children
 				: node.type === 'list'
-				? node.items
-				: node.type === 'keyValue'
-				? node.items.map((item) => item.value)
-				: node.type === 'table'
-				? node.rows.flatMap((row) => Object.values(row.cells))
-				: [];
+					? node.items
+					: node.type === 'keyValue'
+						? node.items.map((item) => item.value)
+						: node.type === 'table'
+							? node.rows.flatMap((row) => Object.values(row.cells))
+							: [];
 		const found = findLabel(childNodes);
 		if (found) return found;
 	}
@@ -276,7 +270,7 @@ export const sanitizeTree = (
 						: pick(value.accent, COLORS, 'gray');
 				const grow = value.grow === true ? true : undefined;
 				const onClick = parseCommandArgs(value.onClick);
-				const label = onClick ? findLabel(kids) ?? 'Card' : undefined;
+				const label = onClick ? (findLabel(kids) ?? 'Card') : undefined;
 				return {
 					type: 'card',
 					children: kids,
@@ -354,7 +348,7 @@ export const sanitizeTree = (
 							type: 'heading',
 							text: t,
 							level: pick(value.level, [1, 2, 3] as const, 2),
-					  };
+						};
 			}
 			case 'text': {
 				const t = text(value.text);
@@ -392,7 +386,7 @@ export const sanitizeTree = (
 							type: 'progress',
 							value: Math.max(0, Math.min(10, value.value)),
 							color: pick(value.color, COLORS, 'blue'),
-					  }
+						}
 					: null;
 			case 'list':
 				return { type: 'list', items: children(value.items, cardDepth) };

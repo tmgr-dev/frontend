@@ -357,8 +357,7 @@ describe('installLocalAccess wiring', () => {
 
 	it('registers the request handler before announcing readiness, and replies with the request id', async () => {
 		let handler:
-			| ((event: { payload: LocalAccessRequestPayload }) => void)
-			| undefined;
+			((event: { payload: LocalAccessRequestPayload }) => void) | undefined;
 		listenMock.mockImplementation(
 			(_channel: string, callback: typeof handler) => {
 				handler = callback;

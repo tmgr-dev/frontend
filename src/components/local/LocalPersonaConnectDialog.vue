@@ -82,20 +82,18 @@
 						Codex (<code>~/.codex/config.toml</code>)
 					</p>
 					<pre
-						class="overflow-x-auto whitespace-pre rounded bg-muted p-3 font-mono text-xs"
-						>{{ codexSnippet }}</pre
-					>
+						class="overflow-x-auto rounded bg-muted p-3 font-mono text-xs whitespace-pre"
+						>{{ codexSnippet }}</pre>
 
 					<p class="text-xs text-muted-foreground">
 						Claude Code: run this once in your terminal, then restart Claude
 						Code. TMGR must be running.
 					</p>
 					<pre
-						class="overflow-x-auto whitespace-pre rounded bg-muted p-3 font-mono text-xs"
-						>{{ claudeSnippet }}</pre
-					>
+						class="overflow-x-auto rounded bg-muted p-3 font-mono text-xs whitespace-pre"
+						>{{ claudeSnippet }}</pre>
 
-					<p class="break-words text-xs text-muted-foreground">
+					<p class="text-xs break-words text-muted-foreground">
 						Other companions: read the token id from
 						<code>--token-id {{ issuedToken.id }}</code
 						>, or point <code>TMGR_LOCAL_TOKEN</code> at the secret.

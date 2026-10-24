@@ -16,7 +16,7 @@ function fixture(limit = 4) {
 			return observer;
 		},
 	});
-	const elements = Array.from({ length: 10 }, () => ({} as Element));
+	const elements = Array.from({ length: 10 }, () => ({}) as Element);
 	const releases: Array<() => void> = [];
 	const started: number[] = [];
 	const bind = (id: number) =>

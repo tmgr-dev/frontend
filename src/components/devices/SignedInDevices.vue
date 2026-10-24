@@ -25,7 +25,7 @@
 			>
 				<div class="flex flex-wrap items-start justify-between gap-2">
 					<div class="min-w-0">
-						<p class="break-words text-sm font-medium text-ink">
+						<p class="text-sm font-medium break-words text-ink">
 							{{ device.client_name }}
 							<span class="font-normal text-ink-subtle"
 								>on {{ device.host_label }}</span

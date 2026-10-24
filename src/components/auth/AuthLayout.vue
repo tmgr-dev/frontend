@@ -3,7 +3,7 @@
 		class="min-h-screen bg-background text-foreground antialiased lg:grid lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]"
 	>
 		<aside
-			class="relative hidden flex-col overflow-hidden border-r border-sidebar-border bg-sidebar px-12 pb-10 pt-16 text-sidebar-foreground lg:flex xl:px-16"
+			class="relative hidden flex-col overflow-hidden border-r border-sidebar-border bg-sidebar px-12 pt-16 pb-10 text-sidebar-foreground lg:flex xl:px-16"
 		>
 			<div class="auth-dots pointer-events-none absolute inset-0" />
 
@@ -14,7 +14,7 @@
 
 			<div class="relative my-auto max-w-[480px] py-12">
 				<h2
-					class="text-[44px] font-semibold leading-[1.08] tracking-[-0.03em] text-foreground xl:text-[52px]"
+					class="text-[44px] leading-[1.08] font-semibold tracking-[-0.03em] text-foreground xl:text-[52px]"
 				>
 					Plan the work.<br />Keep the hours.
 				</h2>
@@ -74,9 +74,9 @@
 		</aside>
 
 		<main
-			class="relative flex min-h-screen flex-col px-4 pb-8 pt-14 sm:px-8 lg:pt-16"
+			class="relative flex min-h-screen flex-col px-4 pt-14 pb-8 sm:px-8 lg:pt-16"
 		>
-			<ThemeSwitch class="absolute right-4 top-12 sm:right-8 lg:top-14" />
+			<ThemeSwitch class="absolute top-12 right-4 sm:right-8 lg:top-14" />
 			<div class="flex items-center justify-center gap-2.5 lg:hidden">
 				<AuthMark />
 				<span class="text-[15px] font-semibold tracking-tight">TMGR</span>
@@ -89,7 +89,7 @@
 					>
 						<div class="mb-6">
 							<h1
-								class="text-[22px] font-semibold leading-tight tracking-tight"
+								class="text-[22px] leading-tight font-semibold tracking-tight"
 							>
 								<slot name="title" />
 							</h1>

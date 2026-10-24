@@ -3,7 +3,7 @@
 	<div class="activity-feed min-h-96">
 		<div class="activity-header mb-4 flex items-center justify-between">
 			<h2 class="text-lg font-semibold text-ink">Recent Activity</h2>
-			<div class="flex items-center space-x-2">
+			<div class="space-x-2 flex items-center">
 				<ActivityFilters
 					v-model="filters"
 					@update:model-value="handleFiltersChange"
@@ -220,6 +220,8 @@
 </script>
 
 <style scoped>
+	@reference '@/assets/styles/tailwind.css';
+
 	.activity-feed {
 		@apply rounded-card border border-line bg-surface p-6 shadow-tmgr-xs;
 	}

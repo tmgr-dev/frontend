@@ -86,7 +86,7 @@
 			const setAction = (choice: PersonaChoice, action: string) => {
 				choice.action = action as PersonaChoice['action'];
 				choice.cloudUuid =
-					action === 'map' ? cloudPersonas.value[0]?.id ?? null : null;
+					action === 'map' ? (cloudPersonas.value[0]?.id ?? null) : null;
 			};
 
 			const valid = computed(
@@ -183,7 +183,7 @@
 						v-model="cloudName"
 						data-selectable
 						maxlength="120"
-						class="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none"
+						class="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-hidden"
 					/>
 				</label>
 

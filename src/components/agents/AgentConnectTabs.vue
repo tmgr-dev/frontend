@@ -16,7 +16,7 @@
 				class="rounded px-3 py-1 text-sm font-medium transition-colors"
 				:class="
 					active === tab.id
-						? 'bg-background text-ink shadow-sm'
+						? 'bg-background text-ink shadow-xs'
 						: 'text-ink-subtle hover:text-ink'
 				"
 				@click="active = tab.id"

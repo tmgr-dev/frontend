@@ -1,6 +1,6 @@
 <template>
 	<section
-		class="my-4 -ml-4 rounded-lg border-l-[3px] border-status-testing bg-status-testing-bg py-3 pl-[13px] pr-4"
+		class="my-4 -ml-4 rounded-lg border-l-[3px] border-status-testing bg-status-testing-bg py-3 pr-4 pl-[13px]"
 		:data-section-id="section.id"
 		data-testid="managed-section"
 		:data-read-only="readOnly ? 'true' : undefined"
@@ -21,7 +21,7 @@
 					{{ label }}
 				</span>
 				<span
-					class="rounded bg-surface-active px-1.5 py-0.5 text-2xs uppercase tracking-wide text-status-testing-fg"
+					class="rounded bg-surface-active px-1.5 py-0.5 text-2xs tracking-wide text-status-testing-fg uppercase"
 					>{{ section.owner }}</span
 				>
 			</span>

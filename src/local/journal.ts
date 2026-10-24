@@ -226,11 +226,11 @@ export const journaledBatch = async (
 							WHERE COALESCE((SELECT hash FROM edit_journal ORDER BY seq DESC LIMIT 1), '${GENESIS_HASH}') = ?`,
 						params: [...rowParams(row), row.prev_hash],
 						expectChanges: true,
-				  }
+					}
 				: {
 						sql: `INSERT INTO edit_journal (${INSERT_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 						params: rowParams(row),
-				  },
+					},
 		);
 		const result = await ctx.db.batch([...statements, ...inserts]);
 		if (result.failedAt === null)
@@ -275,7 +275,7 @@ export const journaledCreate = async (
 			const message =
 				typeof error === 'string'
 					? error
-					: (error as { message?: string })?.message ?? '';
+					: ((error as { message?: string })?.message ?? '');
 			if (!DUPLICATE_ID.test(message)) throw error;
 		}
 	}

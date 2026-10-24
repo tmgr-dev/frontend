@@ -58,7 +58,7 @@
 
 			<div
 				id="nav-content"
-				class="z-20 mt-2 hidden w-full flex-grow p-4 text-black lg:mt-0 lg:block lg:flex lg:w-auto lg:items-center lg:bg-transparent lg:p-0"
+				class="z-20 mt-2 hidden w-full grow p-4 text-black lg:mt-0 lg:block lg:flex lg:w-auto lg:items-center lg:bg-transparent lg:p-0"
 			>
 				<ul class="list-reset flex-1 items-center justify-end lg:flex">
 					<li class="mr-3">

@@ -165,9 +165,8 @@ test('a routine deleted while away never shows on return', async ({ page }) => {
   await leaveToList(page);
 
   await page.evaluate(async () => {
-    const { deleteDailyTask } = await import(
-      '/src/actions/tmgr/daily-tasks.ts'
-    );
+    const { deleteDailyTask } =
+      await import('/src/actions/tmgr/daily-tasks.ts');
     await deleteDailyTask(11);
     window.__deletedSeen = false;
     const tick = () => {

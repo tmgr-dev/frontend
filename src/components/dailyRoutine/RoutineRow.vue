@@ -14,7 +14,7 @@
 		"
 	>
 		<span
-			class="absolute bottom-0 left-0 top-0 w-[3px]"
+			class="absolute top-0 bottom-0 left-0 w-[3px]"
 			:style="{ background: entry.routine_category.color }"
 		/>
 
@@ -61,7 +61,7 @@
 					{{ frequencyLabel }}
 				</span>
 				<span
-					class="text-[10px] font-semibold uppercase tracking-wide"
+					class="text-[10px] font-semibold tracking-wide uppercase"
 					:style="{ color: entry.routine_category.color }"
 				>
 					{{ entry.routine_category.name }}

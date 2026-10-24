@@ -23,8 +23,7 @@
 						</summary>
 						<pre
 							class="mt-2 max-h-40 overflow-auto rounded bg-surface-sunken p-3 text-xs text-ink"
-							>{{ errorDetails }}</pre
-						>
+							>{{ errorDetails }}</pre>
 					</details>
 				</div>
 
@@ -317,6 +316,8 @@
 </script>
 
 <style scoped>
+	@reference '@/assets/styles/tailwind.css';
+
 	.error-boundary {
 		@apply flex min-h-screen items-center justify-center bg-surface-base p-4;
 	}

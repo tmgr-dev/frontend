@@ -253,7 +253,7 @@
 						class="group flex gap-3"
 						:class="{ 'flex-row-reverse': isOwnComment(comment) }"
 					>
-						<Avatar class="h-8 w-8 flex-shrink-0">
+						<Avatar class="h-8 w-8 shrink-0">
 							<UserAvatar
 								:user-id="comment.user.id"
 								:name="comment.user.name"
@@ -281,7 +281,7 @@
 							<div
 								v-if="comment.parent_comment"
 								class="mb-1 max-w-[85%] rounded-lg border-l-2 border-line-strong bg-surface-sunken px-3 py-1.5 text-xs"
-								:class="{ 'border-l-0 border-r-2': isOwnComment(comment) }"
+								:class="{ 'border-r-2 border-l-0': isOwnComment(comment) }"
 							>
 								<div class="font-medium text-ink-muted">
 									{{ comment.parent_comment.user.name }}
@@ -300,13 +300,13 @@
 								"
 								style="overflow-wrap: break-word; word-break: break-word"
 							>
-								<p class="whitespace-pre-wrap break-words text-sm">
+								<p class="text-sm break-words whitespace-pre-wrap">
 									{{ comment.message }}
 								</p>
 
 								<div
 									v-if="isOwnComment(comment)"
-									class="absolute -left-20 top-1/2 flex -translate-y-1/2 gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+									class="absolute top-1/2 -left-20 flex -translate-y-1/2 gap-1 opacity-0 transition-opacity group-hover:opacity-100"
 								>
 									<Button
 										variant="ghost"
@@ -328,7 +328,7 @@
 
 								<div
 									v-else
-									class="absolute -right-10 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100"
+									class="absolute top-1/2 -right-10 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100"
 								>
 									<Button
 										variant="ghost"
@@ -363,7 +363,7 @@
 				<Button
 					variant="ghost"
 					size="icon"
-					class="h-6 w-6 flex-shrink-0"
+					class="h-6 w-6 shrink-0"
 					@click="cancelReply"
 				>
 					<span class="text-lg">&times;</span>
@@ -378,7 +378,7 @@
 				<Button
 					variant="ghost"
 					size="icon"
-					class="h-6 w-6 flex-shrink-0"
+					class="h-6 w-6 shrink-0"
 					@click="cancelEdit"
 				>
 					<span class="text-lg">&times;</span>
@@ -398,7 +398,7 @@
 						size="icon"
 						:disabled="!newMessage.trim() || isSending"
 						@click="sendMessage"
-						class="flex-shrink-0"
+						class="shrink-0"
 					>
 						<Send class="h-4 w-4" />
 					</Button>
@@ -407,7 +407,7 @@
 						variant="outline"
 						:disabled="!newMessage.trim() || isSending"
 						@click="askAI"
-						class="flex-shrink-0"
+						class="shrink-0"
 						title="Ask AI"
 					>
 						<Sparkles class="h-4 w-4" />

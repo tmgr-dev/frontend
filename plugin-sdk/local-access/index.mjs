@@ -317,7 +317,9 @@ async function connectEventStream({
                 req.destroy();
               } else if (type === 'reset') {
                 onReset?.(
-                  data && typeof data === 'object' ? data.cursor ?? data : data,
+                  data && typeof data === 'object'
+                    ? (data.cursor ?? data)
+                    : data,
                 );
               } else {
                 onEvent?.({ id: state.id, event: type, data });

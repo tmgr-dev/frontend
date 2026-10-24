@@ -9,7 +9,7 @@
 			</DialogHeader>
 
 			<section class="flex flex-col gap-2" data-section="totals">
-				<h3 class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">
+				<h3 class="text-2xs font-bold tracking-wide text-ink-subtle uppercase">
 					Totals
 				</h3>
 				<dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
@@ -82,7 +82,7 @@
 			<template v-if="aggregate">
 				<section class="flex flex-col gap-2" data-section="tokens">
 					<h3
-						class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+						class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 					>
 						Tokens
 						<span class="font-normal normal-case">· {{ sourceLabel }}</span>
@@ -114,7 +114,7 @@
 					data-section="agents"
 				>
 					<h3
-						class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+						class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 					>
 						Agents
 					</h3>
@@ -191,7 +191,7 @@
 					data-section="tools"
 				>
 					<h3
-						class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+						class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 					>
 						Tools
 					</h3>
@@ -232,7 +232,7 @@
 					data-section="context"
 				>
 					<h3
-						class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+						class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 					>
 						Context
 					</h3>
@@ -252,7 +252,7 @@
 				class="flex flex-col gap-2"
 				data-section="code"
 			>
-				<h3 class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">
+				<h3 class="text-2xs font-bold tracking-wide text-ink-subtle uppercase">
 					Code
 				</h3>
 				<div

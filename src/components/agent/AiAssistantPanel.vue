@@ -138,7 +138,7 @@
 					pinLimits.value,
 					editDraft.value,
 					editingPinId.value,
-			  ),
+				),
 	);
 
 	const quoteChips = computed(() =>
@@ -437,7 +437,7 @@
 <template>
 	<aside
 		v-show="open"
-		class="fixed bottom-[var(--statusbar-h,0px)] right-0 top-[var(--titlebar-h,0px)] z-40 flex w-full max-w-md flex-col border-l border-line bg-surface shadow-xl"
+		class="fixed top-[var(--titlebar-h,0px)] right-0 bottom-[var(--statusbar-h,0px)] z-40 flex w-full max-w-md flex-col border-l border-line bg-surface shadow-xl"
 		role="complementary"
 		aria-label="AI assistant"
 	>
@@ -468,7 +468,7 @@
 					<Pin class="h-4 w-4" />
 					<span
 						v-if="pins.length"
-						class="absolute -right-1 -top-1 rounded-pill bg-brand px-1 text-[10px] leading-4 text-on-accent"
+						class="absolute -top-1 -right-1 rounded-pill bg-brand px-1 text-[10px] leading-4 text-on-accent"
 						>{{ pins.length }}</span
 					>
 				</button>
@@ -499,7 +499,7 @@
 		</header>
 		<section
 			v-if="pinsOpen && view === 'chat'"
-			class="max-h-80 shrink-0 space-y-3 overflow-y-auto border-b border-line bg-surface px-4 py-3"
+			class="space-y-3 max-h-80 shrink-0 overflow-y-auto border-b border-line bg-surface px-4 py-3"
 			aria-label="Pinned facts"
 		>
 			<p class="text-xs text-ink-subtle">
@@ -524,7 +524,7 @@
 							rows="3"
 							:maxlength="pinLimits.max_chars"
 							aria-label="Edit pinned fact"
-							class="w-full resize-none rounded-lg border border-line bg-surface px-2 py-1.5 text-sm text-ink outline-none focus:border-line-focus"
+							class="w-full resize-none rounded-lg border border-line bg-surface px-2 py-1.5 text-sm text-ink outline-hidden focus:border-line-focus"
 						></textarea>
 						<div class="mt-1 flex items-center justify-between gap-2 text-xs">
 							<span class="text-ink-subtle"
@@ -554,7 +554,7 @@
 						</p>
 					</template>
 					<template v-else>
-						<p class="whitespace-pre-wrap break-words">{{ pin.content }}</p>
+						<p class="break-words whitespace-pre-wrap">{{ pin.content }}</p>
 						<div class="mt-1 flex items-center justify-end gap-1 text-xs">
 							<button
 								class="rounded-pill px-2 py-1 text-ink-subtle hover:bg-surface-hover hover:text-ink"
@@ -583,7 +583,7 @@
 					:disabled="pinSaving"
 					placeholder="Add a fact…"
 					aria-label="New pinned fact"
-					class="w-full resize-none rounded-lg border border-line bg-surface-sunken px-2 py-1.5 text-sm text-ink outline-none placeholder:text-ink-subtle focus:border-line-focus disabled:opacity-60"
+					class="w-full resize-none rounded-lg border border-line bg-surface-sunken px-2 py-1.5 text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-focus disabled:opacity-60"
 				></textarea>
 				<div class="mt-1 flex items-center justify-between gap-2 text-xs">
 					<span class="text-ink-subtle"
@@ -616,7 +616,7 @@
 		<div
 			v-show="view === 'chat'"
 			ref="scroller"
-			class="flex-1 space-y-3 overflow-y-auto px-4 py-3"
+			class="space-y-3 flex-1 overflow-y-auto px-4 py-3"
 			@scroll.passive="quoteButton = null"
 		>
 			<p
@@ -702,7 +702,7 @@
 				<li
 					v-for="(chip, i) in quoteChips"
 					:key="`${quotes[i].message_id}-${i}`"
-					class="flex max-w-full items-center gap-1 rounded-pill border border-line bg-surface-sunken py-0.5 pl-2.5 pr-1 text-xs text-ink-subtle"
+					class="flex max-w-full items-center gap-1 rounded-pill border border-line bg-surface-sunken py-0.5 pr-1 pl-2.5 text-xs text-ink-subtle"
 				>
 					<Quote class="h-3 w-3 shrink-0" />
 					<span class="truncate">
@@ -720,7 +720,7 @@
 				</li>
 			</ul>
 			<div
-				class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
+				class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pr-1.5 pl-4 focus-within:border-line-focus"
 				:class="
 					dragging
 						? 'ring-2 ring-brand ring-offset-1 ring-offset-surface dark:ring-offset-gray-900'
@@ -731,7 +731,7 @@
 					ref="input"
 					v-model="draft"
 					data-tour="ai.input"
-					class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
+					class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-hidden placeholder:text-ink-subtle"
 					placeholder="Ask about this workspace…"
 					:disabled="busy || loading"
 					@keydown.enter.prevent="submit"

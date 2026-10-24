@@ -805,7 +805,7 @@ export const createLocalApi = () => {
 				? await ctx.db.select<{ c: number }>(
 						`SELECT COUNT(*) AS c FROM tasks WHERE deleted_at IS NULL AND project_category_id = ?`,
 						[Number(category)],
-				  )
+					)
 				: [{ c: 0 }];
 			return { index: { workspace: Number(n) + 1, category: Number(c) + 1 } };
 		})

@@ -1,8 +1,8 @@
 <template>
 	<section class="border-b bg-white py-8">
-		<div class="container mx-auto flex flex-wrap pb-12 pt-4">
+		<div class="container mx-auto flex flex-wrap pt-4 pb-12">
 			<h1
-				class="my-2 w-full text-center text-5xl font-bold leading-tight text-gray-800"
+				class="my-2 w-full text-center text-5xl leading-tight font-bold text-gray-800"
 			>
 				Twitter
 			</h1>
@@ -12,7 +12,7 @@
 
 			<div class="flex w-full shrink grow flex-col p-6 md:w-1/3">
 				<div
-					class="flex-1 overflow-hidden rounded-b-none rounded-t bg-white shadow"
+					class="flex-1 overflow-hidden rounded-t rounded-b-none bg-white shadow"
 				>
 					<a class="flex flex-wrap no-underline hover:no-underline" href="#">
 						<p class="w-full px-6 text-xs text-gray-600 md:text-sm">
@@ -28,7 +28,7 @@
 					</a>
 				</div>
 				<div
-					class="mt-auto flex-none overflow-hidden rounded-b rounded-t-none bg-white p-6 shadow"
+					class="mt-auto flex-none overflow-hidden rounded-t-none rounded-b bg-white p-6 shadow"
 				>
 					<div class="flex items-center justify-start">
 						<button
@@ -42,7 +42,7 @@
 
 			<div class="flex w-full shrink grow flex-col p-6 md:w-1/3">
 				<div
-					class="flex-1 overflow-hidden rounded-b-none rounded-t bg-white shadow"
+					class="flex-1 overflow-hidden rounded-t rounded-b-none bg-white shadow"
 				>
 					<a class="flex flex-wrap no-underline hover:no-underline" href="#">
 						<p class="w-full px-6 text-xs text-gray-600 md:text-sm">
@@ -58,7 +58,7 @@
 					</a>
 				</div>
 				<div
-					class="mt-auto flex-none overflow-hidden rounded-b rounded-t-none bg-white p-6 shadow"
+					class="mt-auto flex-none overflow-hidden rounded-t-none rounded-b bg-white p-6 shadow"
 				>
 					<div class="flex items-center justify-center">
 						<button
@@ -72,7 +72,7 @@
 
 			<div class="flex w-full shrink grow flex-col p-6 md:w-1/3">
 				<div
-					class="flex-1 overflow-hidden rounded-b-none rounded-t bg-white shadow"
+					class="flex-1 overflow-hidden rounded-t rounded-b-none bg-white shadow"
 				>
 					<a class="flex flex-wrap no-underline hover:no-underline" href="#">
 						<p class="w-full px-6 text-xs text-gray-600 md:text-sm">
@@ -88,7 +88,7 @@
 					</a>
 				</div>
 				<div
-					class="mt-auto flex-none overflow-hidden rounded-b rounded-t-none bg-white p-6 shadow"
+					class="mt-auto flex-none overflow-hidden rounded-t-none rounded-b bg-white p-6 shadow"
 				>
 					<div class="flex items-center justify-end">
 						<button

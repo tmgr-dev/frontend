@@ -368,7 +368,7 @@ export const desktopPage = async (
           command,
           args instanceof Uint8Array
             ? { raw: Array.from(args), headers: options?.headers ?? {} }
-            : args ?? {},
+            : (args ?? {}),
         );
       },
       convertFileSrc: (path, protocol) =>

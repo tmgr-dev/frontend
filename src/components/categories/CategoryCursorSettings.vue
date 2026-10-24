@@ -39,7 +39,7 @@
 				category
 			</p>
 
-			<div class="mt-4 space-y-3">
+			<div class="space-y-3 mt-4">
 				<div>
 					<label
 						for="cursorApiKey"
@@ -52,7 +52,7 @@
 						v-model="apiKey"
 						type="password"
 						placeholder="cur_xxxxxxxxxxxxxxxx"
-						class="h-10 w-full rounded-card border border-line bg-surface px-3 font-mono text-sm text-ink outline-none placeholder:text-ink-faint focus:border-line-strong"
+						class="h-10 w-full rounded-card border border-line bg-surface px-3 font-mono text-sm text-ink outline-hidden placeholder:text-ink-faint focus:border-line-strong"
 					/>
 					<p class="mt-1.5 text-xs text-ink-muted">
 						Get your API key from
@@ -128,7 +128,7 @@
 
 			<div
 				v-if="editing"
-				class="mt-4 space-y-3 rounded-card border border-line bg-surface-sunken p-4"
+				class="space-y-3 mt-4 rounded-card border border-line bg-surface-sunken p-4"
 			>
 				<div>
 					<label
@@ -142,7 +142,7 @@
 						v-model="apiKey"
 						type="password"
 						placeholder="cur_xxxxxxxxxxxxxxxx"
-						class="h-10 w-full rounded-card border border-line bg-surface px-3 font-mono text-sm text-ink outline-none placeholder:text-ink-faint focus:border-line-strong"
+						class="h-10 w-full rounded-card border border-line bg-surface px-3 font-mono text-sm text-ink outline-hidden placeholder:text-ink-faint focus:border-line-strong"
 					/>
 				</div>
 

@@ -29,7 +29,7 @@ export const getWorkspaceTimeDaily = async (
 						date: String(d.date),
 						total_s: Number(d.total_s) || 0,
 						items: Array.isArray(d.items) ? d.items : [],
-				  }))
+					}))
 				: [];
 		},
 		{ ttl: 60000 },

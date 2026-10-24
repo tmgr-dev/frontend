@@ -16,7 +16,7 @@
 						class="rounded-md px-3 py-1 text-sm transition-colors"
 						:class="
 							imagesOnly === option.value
-								? 'bg-surface text-ink shadow-sm'
+								? 'bg-surface text-ink shadow-xs'
 								: 'text-ink-muted hover:text-ink'
 						"
 						@click="setFilter(option.value)"
@@ -56,7 +56,7 @@
 				:ref="(element) => observePreview(file, element)"
 				class="flex items-center gap-3 rounded-lg border border-line bg-surface-sunken p-3"
 			>
-				<div class="flex h-12 w-12 flex-shrink-0 items-center justify-center">
+				<div class="flex h-12 w-12 shrink-0 items-center justify-center">
 					<button
 						v-if="previews[file.id]"
 						type="button"
@@ -97,7 +97,7 @@
 
 				<button
 					type="button"
-					class="flex-shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-surface-active hover:text-ink"
+					class="shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-surface-active hover:text-ink"
 					title="Download"
 					@click="download(file)"
 				>

@@ -1,8 +1,7 @@
 import type { StepDef } from './types';
 
 export type BodyPart =
-	| { kind: 'text'; text: string }
-	| { kind: 'key'; text: string };
+	{ kind: 'text'; text: string } | { kind: 'key'; text: string };
 
 export interface KeycapEnv {
 	mac: boolean;

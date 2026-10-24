@@ -420,8 +420,7 @@
 			!hasTaskMeaningfulChanges({ ...incoming, ...known }, incoming),
 	);
 	let loadTaskReferenceData:
-		| ((taskWorkspaceId: number | null) => unknown)
-		| null = null;
+		((taskWorkspaceId: number | null) => unknown) | null = null;
 
 	const form = ref<Task>({
 		title: '',
@@ -803,8 +802,8 @@
 				editorType.value === 'markdown'
 					? markdownEditorRef.value
 					: editorType.value === 'block'
-					? blockEditorRef.value
-					: blockMdEditorRef.value;
+						? blockEditorRef.value
+						: blockMdEditorRef.value;
 			for (let i = 0; !current()?.prependParagraph && i < 300; i++)
 				await new Promise((resolve) => setTimeout(resolve, 16));
 			inserted =
@@ -984,7 +983,7 @@
 					(new Date().getTime() -
 						new Date().setTime(formValue.start_time * 1000)) /
 						1000,
-			  );
+				);
 		const currentTime = formValue.common_time + timeSinceStartTime;
 		if (formValue.checkpoints.length > 0) {
 			const prevCheckpointIndex = formValue.checkpoints.length - 1;
@@ -1978,7 +1977,7 @@
 			: backlogTimerPrompt(
 					form.value,
 					statuses.value || workspaceStatuses.value || [],
-			  );
+				);
 		if (prompt) {
 			backlogStatusChangeConfirm.value = {
 				taskId: taskId.value || (form.value.id as number),
@@ -2484,7 +2483,7 @@
 
 	<div
 		v-else-if="!taskReady"
-		class="min-h-[500px] space-y-4 p-6"
+		class="space-y-4 min-h-[500px] p-6"
 		:class="{ 'mx-auto w-full max-w-7xl': !isModal }"
 		:aria-busy="!taskLoadError"
 	>
@@ -2559,14 +2558,14 @@
 							v-if="simpleMode"
 							data-tour="task-form.done"
 							v-model="doneChecked"
-							class="h-7 rounded-pill bg-surface-sunken px-2.5 text-2xs font-bold uppercase tracking-wide hover:bg-surface-hover"
+							class="h-7 rounded-pill bg-surface-sunken px-2.5 text-2xs font-bold tracking-wide uppercase hover:bg-surface-hover"
 							:disabled="!canMarkDone"
 							:tooltip="DONE_DISABLED_TOOLTIP"
 						/>
 						<Select v-else v-model="statusIdStr">
 							<SelectTrigger
 								data-tour="task-form.status"
-								class="h-7 w-auto gap-1.5 rounded-pill border-0 bg-surface-sunken px-2.5 text-2xs font-bold uppercase tracking-wide text-ink-muted hover:bg-surface-hover"
+								class="h-7 w-auto gap-1.5 rounded-pill border-0 bg-surface-sunken px-2.5 text-2xs font-bold tracking-wide text-ink-muted uppercase hover:bg-surface-hover"
 							>
 								<SelectValue placeholder="status" />
 							</SelectTrigger>
@@ -2671,11 +2670,11 @@
 				<!-- MAIN - Scrollable content area -->
 				<main
 					ref="formMain"
-					class="flex flex-col gap-5 px-6 pb-4 pt-5"
+					class="flex flex-col gap-5 px-6 pt-5 pb-4"
 					:class="
 						isModal
-							? 'min-h-0 flex-1 overflow-y-auto overflow-x-hidden'
-							: 'lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overflow-x-hidden'
+							? 'min-h-0 flex-1 overflow-x-hidden overflow-y-auto'
+							: 'lg:min-h-0 lg:flex-1 lg:overflow-x-hidden lg:overflow-y-auto'
 					"
 				>
 					<!-- External Update Notification -->
@@ -2723,9 +2722,9 @@
 							data-tour="task-form.title"
 							v-model="form.title"
 							ref="titleTextarea"
-							class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 outline-none placeholder:text-ink-faint"
+							class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 outline-hidden placeholder:text-ink-faint"
 							:class="[
-								'text-2xl font-semibold leading-snug tracking-tight text-ink',
+								'text-2xl leading-snug font-semibold tracking-tight text-ink',
 								{ 'text-status-fix-fg': isTitleAtLimit },
 							]"
 							placeholder="Task name"
@@ -2925,7 +2924,7 @@
 										step="1"
 										v-model="taskKeyNumber"
 										placeholder="auto"
-										class="w-20 min-w-0 rounded-md border border-line bg-surface-sunken px-2 py-1 font-mono text-sm text-ink outline-none placeholder:text-ink-faint focus:border-line-strong"
+										class="w-20 min-w-0 rounded-md border border-line bg-surface-sunken px-2 py-1 font-mono text-sm text-ink outline-hidden placeholder:text-ink-faint focus:border-line-strong"
 									/>
 									<span
 										v-if="isAutoSaving && !taskKeyError"
@@ -2981,7 +2980,7 @@
 										form.relationTypeWithTask &&
 										form.relationTypeWithTask.length
 									"
-									class="text-xs tabular-nums text-ink"
+									class="text-xs text-ink tabular-nums"
 								>
 									{{ form.relationTypeWithTask.length }}
 									{{
@@ -3014,7 +3013,7 @@
 
 					<!-- DESCRIPTION label -->
 					<div
-						class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+						class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 					>
 						Description
 					</div>
@@ -3126,7 +3125,7 @@
 						<div class="flex items-center justify-between gap-2">
 							<div class="flex items-baseline gap-2">
 								<span
-									class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+									class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 									>Checkpoints</span
 								>
 								<span
@@ -3256,7 +3255,7 @@
 					/>
 					<div
 						v-if="isModal && aiPending && showSurface('comments.composer')"
-						class="mb-3 flex flex-nowrap items-center gap-2 overflow-x-auto whitespace-nowrap text-xs text-ink-subtle [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+						class="mb-3 flex [scrollbar-width:none] flex-nowrap items-center gap-2 overflow-x-auto text-xs whitespace-nowrap text-ink-subtle [&::-webkit-scrollbar]:hidden"
 					>
 						<Loader2 class="h-3.5 w-3.5 shrink-0 animate-spin" />
 						<span class="shrink-0"
@@ -3271,7 +3270,7 @@
 					</div>
 					<div
 						v-if="isModal && form.id && showSurface('comments.composer')"
-						class="mb-1.5 flex flex-wrap items-end gap-2 rounded-[18px] border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
+						class="mb-1.5 flex flex-wrap items-end gap-2 rounded-[18px] border border-line bg-surface-sunken py-1 pr-1.5 pl-4 focus-within:border-line-focus"
 						@mousedown.stop
 					>
 						<CommentAttachments ref="commentAttachments" :task-id="form.id" />
@@ -3284,7 +3283,7 @@
 							@dragover.prevent
 							@drop="commentAttachments?.onDrop($event)"
 							placeholder="Write a comment…"
-							class="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-5 text-ink outline-none placeholder:text-ink-subtle"
+							class="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-5 text-ink outline-hidden placeholder:text-ink-subtle"
 							@keydown.enter="onCommentEnter"
 							@keydown.esc="blurCommentInput"
 						/>
@@ -3462,7 +3461,7 @@
 			<aside
 				v-if="!isModal && form.id && showSurface('comments.rail')"
 				:style="footerHeightVars(footerHeight)"
-				class="flex w-full flex-col border-t border-line bg-surface lg:h-full lg:w-[380px] lg:shrink-0 lg:border-l lg:border-t-0 xl:w-[420px]"
+				class="flex w-full flex-col border-t border-line bg-surface lg:h-full lg:w-[380px] lg:shrink-0 lg:border-t-0 lg:border-l xl:w-[420px]"
 			>
 				<div
 					class="flex min-h-[var(--task-header-height)] shrink-0 items-center justify-between border-b border-line px-4 py-3"
@@ -3497,7 +3496,7 @@
 					/>
 					<div
 						v-if="aiPending"
-						class="mb-3 flex flex-nowrap items-center gap-2 overflow-x-auto whitespace-nowrap text-xs text-ink-subtle [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+						class="mb-3 flex [scrollbar-width:none] flex-nowrap items-center gap-2 overflow-x-auto text-xs whitespace-nowrap text-ink-subtle [&::-webkit-scrollbar]:hidden"
 					>
 						<Loader2 class="h-3.5 w-3.5 shrink-0 animate-spin" />
 						<span class="shrink-0"
@@ -3511,7 +3510,7 @@
 						>
 					</div>
 					<div
-						class="flex flex-wrap items-end gap-2 rounded-[18px] border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
+						class="flex flex-wrap items-end gap-2 rounded-[18px] border border-line bg-surface-sunken py-1 pr-1.5 pl-4 focus-within:border-line-focus"
 					>
 						<CommentAttachments ref="commentAttachments" :task-id="form.id" />
 						<textarea
@@ -3523,7 +3522,7 @@
 							@dragover.prevent
 							@drop="commentAttachments?.onDrop($event)"
 							placeholder="Write a comment…"
-							class="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-5 text-ink outline-none placeholder:text-ink-subtle"
+							class="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-5 text-ink outline-hidden placeholder:text-ink-subtle"
 							@keydown.enter="onCommentEnter"
 							@keydown.esc="blurCommentInput"
 						/>

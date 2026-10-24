@@ -1,6 +1,6 @@
 <template>
 	<div
-		class="pointer-events-auto flex items-center gap-3 rounded-full border border-line bg-surface/90 py-1.5 pl-1.5 pr-4 shadow-sm backdrop-blur"
+		class="pointer-events-auto flex items-center gap-3 rounded-full border border-line bg-surface/90 py-1.5 pr-4 pl-1.5 shadow-xs backdrop-blur"
 		data-testid="map-timeline"
 	>
 		<button
@@ -30,7 +30,7 @@
 			"
 		/>
 		<span
-			class="w-14 shrink-0 text-right text-xs tabular-nums text-ink-muted"
+			class="w-14 shrink-0 text-right text-xs text-ink-muted tabular-nums"
 			data-testid="map-cursor-label"
 			>{{ label }}</span
 		>

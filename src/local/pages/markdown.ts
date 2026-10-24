@@ -111,7 +111,7 @@ const maskInlineCode = (body: string, skip: Uint8Array) => {
 	const n = body.length;
 	const starts: number[] = [];
 	const lens: number[] = [];
-	for (let i = 0; i < n; ) {
+	for (let i = 0; i < n;) {
 		if (body[i] !== '`') {
 			i++;
 			continue;

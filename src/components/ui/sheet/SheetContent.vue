@@ -39,7 +39,7 @@
 <template>
 	<DialogPortal>
 		<DialogOverlay
-			class="fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+			class="fixed inset-0 z-50 bg-black/80 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0"
 		/>
 		<DialogContent
 			:class="cn(sheetVariants({ side }), props.class)"
@@ -53,7 +53,7 @@
 			<slot />
 
 			<DialogClose
-				class="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 disabled:pointer-events-none data-[state=open]:bg-secondary"
+				class="absolute top-4 right-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 disabled:pointer-events-none data-[state=open]:bg-secondary"
 			>
 				<X class="h-4 w-4 text-muted-foreground" />
 			</DialogClose>

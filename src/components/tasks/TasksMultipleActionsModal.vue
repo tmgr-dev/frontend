@@ -28,7 +28,7 @@
 				<div class="mt-4 flex items-center gap-2">
 					<select
 						v-model="selectedAction"
-						class="flex-1 rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink outline-none"
+						class="flex-1 rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink outline-hidden"
 					>
 						<optgroup v-if="simpleMode" label="Update tasks">
 							<option

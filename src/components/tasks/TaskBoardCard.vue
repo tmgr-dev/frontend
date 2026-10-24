@@ -6,7 +6,7 @@
 		@mouseleave="isHovered = false"
 	>
 		<span
-			class="pointer-events-none absolute bottom-[10px] left-0 top-[10px] w-[3px] rounded-full"
+			class="pointer-events-none absolute top-[10px] bottom-[10px] left-0 w-[3px] rounded-full"
 			:class="
 				task.start_time
 					? 'bg-status-done opacity-90'
@@ -15,10 +15,10 @@
 			aria-hidden="true"
 		></span>
 
-		<div class="-ml-0.5 mb-2 flex items-center gap-1.5">
+		<div class="mb-2 -ml-0.5 flex items-center gap-1.5">
 			<div
 				data-tour="board.card-handle"
-				class="task-drag-handle relative flex h-[18px] w-[14px] cursor-grab touch-none select-none items-center justify-center text-ink-faint transition-colors duration-150 after:absolute after:-inset-y-[13px] after:-left-[10px] after:-right-[5px] hover:text-ink-subtle active:cursor-grabbing"
+				class="task-drag-handle relative flex h-[18px] w-[14px] cursor-grab touch-none items-center justify-center text-ink-faint transition-colors duration-150 select-none after:absolute after:-inset-y-[13px] after:-right-[5px] after:-left-[10px] hover:text-ink-subtle active:cursor-grabbing"
 				:title="'Drag to reorder'"
 				role="img"
 				aria-label="Drag to move"
@@ -33,7 +33,7 @@
 			>
 				<button
 					:disabled="isLoadingTimer"
-					class="inline-flex h-[22px] items-center gap-1.5 rounded-pill bg-status-done-bg px-2 text-2xs font-semibold tabular-nums text-status-done-fg transition-colors hover:opacity-90 disabled:opacity-50"
+					class="inline-flex h-[22px] items-center gap-1.5 rounded-pill bg-status-done-bg px-2 text-2xs font-semibold text-status-done-fg tabular-nums transition-colors hover:opacity-90 disabled:opacity-50"
 					@click.stop="handleStopTimer"
 				>
 					<Loader v-if="isLoadingTimer" is-mini />
@@ -53,7 +53,7 @@
 			>
 				<button
 					:disabled="isLoadingTimer"
-					class="inline-flex h-[22px] items-center gap-1 rounded-pill bg-surface-sunken px-2 text-2xs font-semibold tabular-nums text-ink-muted transition-colors hover:bg-line disabled:opacity-50"
+					class="inline-flex h-[22px] items-center gap-1 rounded-pill bg-surface-sunken px-2 text-2xs font-semibold text-ink-muted tabular-nums transition-colors hover:bg-line disabled:opacity-50"
 					:class="{ 'text-status-fix-fg': isTimeExceeded }"
 					@click.stop="handleStartTimer"
 				>
@@ -209,7 +209,7 @@
 		</div>
 
 		<a
-			class="mb-2.5 block break-words text-sm font-normal leading-snug tracking-tight text-ink hover:text-brand"
+			class="mb-2.5 block text-sm leading-snug font-normal tracking-tight break-words text-ink hover:text-brand"
 			:href="getTaskUrl(task)"
 			:title="task.title"
 			@click.prevent="$store.commit('setCurrentTaskIdForModal', task.id)"
@@ -230,7 +230,7 @@
 					:style="{ width: `${checklistProgress.percent}%` }"
 				></div>
 			</div>
-			<span class="text-2xs tabular-nums text-ink-subtle">
+			<span class="text-2xs text-ink-subtle tabular-nums">
 				{{ checklistProgress.checked }}/{{ checklistProgress.total }}
 			</span>
 		</div>
@@ -256,7 +256,7 @@
 			<span
 				v-if="visiblePluginBadges.extra.length"
 				:title="visiblePluginBadges.extra.map((b) => b.text).join(', ')"
-				class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold tabular-nums text-muted-foreground"
+				class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground tabular-nums"
 			>
 				+{{ visiblePluginBadges.extra.length }}
 			</span>
@@ -495,7 +495,7 @@
 						blue: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
 						purple: 'bg-purple-500/15 text-purple-700 dark:text-purple-300',
 						orange: 'bg-orange-500/15 text-orange-700 dark:text-orange-300',
-					}[color] || 'bg-muted text-muted-foreground');
+					})[color] || 'bg-muted text-muted-foreground';
 			},
 			visiblePluginBadges() {
 				const badges = this.pluginBadges[this.task.id] || [];

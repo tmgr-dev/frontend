@@ -30,7 +30,7 @@
 					i % 7 === 0 ? '' : 'border-l border-line',
 					i < 7 ? '' : 'border-t border-line',
 					hoverKey === `day:${fmtIso(d)}`
-						? 'bg-brand/15 ring-1 ring-inset ring-brand/40'
+						? 'bg-brand/15 ring-1 ring-brand/40 ring-inset'
 						: '',
 				]"
 				:style="cellStyle(d)"
@@ -69,7 +69,7 @@
 				>
 					<span
 						v-if="e.time"
-						class="text-[10px] tabular-nums text-ink-subtle dark:text-white/60"
+						class="text-[10px] text-ink-subtle tabular-nums dark:text-white/60"
 						>{{ e.time }}</span
 					>
 					<span class="truncate">{{ e.title }}</span>
@@ -181,8 +181,8 @@
 			color: isToday
 				? '#e8857d'
 				: inMonth
-				? undefined
-				: 'rgba(255,255,255,.35)',
+					? undefined
+					: 'rgba(255,255,255,.35)',
 			fontWeight: isToday ? 700 : 500,
 		};
 	}

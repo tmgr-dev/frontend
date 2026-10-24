@@ -20,7 +20,7 @@ const session = (id: string, over: Record<string, unknown> = {}) =>
 		state: { kind: 'working', sinceMs: 1, detail: null },
 		createdMs: 100,
 		...over,
-	} as any);
+	}) as any;
 
 let handler: (event: api.WatchEvent) => void;
 

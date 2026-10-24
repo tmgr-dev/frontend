@@ -297,8 +297,8 @@
 					comment.cursor_agent_id
 						? '-ml-3 rounded-lg border-l-4 border-status-testing bg-surface-sunken p-3'
 						: comment.user?.email === 'ai@tmgr.dev'
-						? '-ml-3 rounded-lg border-l-4 border-brand bg-surface-sunken p-3'
-						: '',
+							? '-ml-3 rounded-lg border-l-4 border-brand bg-surface-sunken p-3'
+							: '',
 				]"
 			>
 				<template
@@ -308,21 +308,21 @@
 					"
 				>
 					<div
-						class="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-status-testing-bg"
+						class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-status-testing-bg"
 					>
 						<Bot class="h-4 w-4 text-status-testing-fg" />
 					</div>
 				</template>
 				<template v-else-if="comment.user?.email === 'ai@tmgr.dev'">
 					<div
-						class="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-brand-bg"
+						class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-bg"
 					>
 						<Sparkles class="h-4 w-4 text-brand" />
 					</div>
 				</template>
 				<span
 					v-else-if="comment.author && comment.author.kind !== 'user'"
-					class="mt-0.5 flex-shrink-0"
+					class="mt-0.5 shrink-0"
 				>
 					<AuthorBadge
 						:author="comment.author"
@@ -334,7 +334,7 @@
 					v-else
 					:user-id="comment.user.id"
 					:label="comment.user.name"
-					class="mt-0.5 h-7 w-7 flex-shrink-0"
+					class="mt-0.5 h-7 w-7 shrink-0"
 				>
 					<Avatar class="h-7 w-7">
 						<UserAvatar
@@ -425,7 +425,7 @@
 						<div class="relative">
 							<button
 								type="button"
-								class="inline-flex h-6 w-6 items-center justify-center rounded-full text-ink-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink group-hover:opacity-100"
+								class="inline-flex h-6 w-6 items-center justify-center rounded-full text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-ink"
 								:class="{ 'opacity-100': reactionPickerFor === comment.id }"
 								aria-label="Add reaction"
 								@click="toggleReactionPicker(comment.id)"

@@ -13,13 +13,13 @@
 		/>
 		<div
 			data-tauri-drag-region
-			class="flex items-center justify-between px-4 pb-1 pt-3 text-xs text-muted-foreground"
+			class="flex items-center justify-between px-4 pt-3 pb-1 text-xs text-muted-foreground"
 		>
 			<span data-tauri-drag-region class="flex items-center gap-1.5">
 				{{ headingText }}
 				<select
 					v-model="workspaceId"
-					class="rounded-md border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground outline-none dark:border-border dark:bg-background"
+					class="rounded-md border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground outline-hidden dark:border-border dark:bg-background"
 					:disabled="saving"
 					@change="rememberWorkspace"
 				>
@@ -71,7 +71,7 @@
 				<template v-if="isTask">
 					<select
 						v-model="categoryId"
-						class="min-w-0 max-w-[16rem] rounded-md border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground outline-none dark:border-border dark:bg-background"
+						class="max-w-[16rem] min-w-0 rounded-md border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground outline-hidden dark:border-border dark:bg-background"
 						:disabled="saving || categoriesLoading"
 						aria-label="Category"
 						data-testid="quick-add-category"
@@ -100,13 +100,13 @@
 					<input
 						v-model="pageQuery"
 						data-selectable
-						class="w-28 rounded-md border border-border bg-transparent px-1.5 py-1 outline-none dark:border-border"
+						class="w-28 rounded-md border border-border bg-transparent px-1.5 py-1 outline-hidden dark:border-border"
 						placeholder="Find page"
 						:disabled="saving"
 					/>
 					<select
 						v-model="pageId"
-						class="min-w-0 flex-1 rounded-md border border-border bg-transparent px-1.5 py-1 outline-none dark:border-border dark:bg-background"
+						class="min-w-0 flex-1 rounded-md border border-border bg-transparent px-1.5 py-1 outline-hidden dark:border-border dark:bg-background"
 						:disabled="saving || !pageOptions.length"
 						data-testid="quick-add-page"
 					>
@@ -123,7 +123,7 @@
 					</select>
 					<select
 						v-model="section"
-						class="w-40 rounded-md border border-border bg-transparent px-1.5 py-1 outline-none dark:border-border dark:bg-background"
+						class="w-40 rounded-md border border-border bg-transparent px-1.5 py-1 outline-hidden dark:border-border dark:bg-background"
 						:disabled="saving || !pageId"
 						data-testid="quick-add-section"
 					>
@@ -137,7 +137,7 @@
 					ref="pageTextInput"
 					v-model="pageText"
 					data-selectable
-					class="min-h-0 flex-1 resize-none rounded-md bg-muted/50 p-2 text-sm outline-none dark:bg-muted/30"
+					class="min-h-0 flex-1 resize-none rounded-md bg-muted/50 p-2 text-sm outline-hidden dark:bg-muted/30"
 					placeholder="What to add to the page?"
 					:disabled="saving"
 				/>
@@ -154,7 +154,7 @@
 					ref="titleInput"
 					v-model="title"
 					data-selectable
-					class="w-full min-w-0 bg-transparent text-xl font-medium outline-none placeholder:text-muted-foreground"
+					class="w-full min-w-0 bg-transparent text-xl font-medium outline-hidden placeholder:text-muted-foreground"
 					placeholder="What needs to be done?"
 					:disabled="saving"
 				/>
@@ -163,7 +163,7 @@
 				v-if="mode !== 'page' && (note || showNote)"
 				v-model="note"
 				data-selectable
-				class="min-h-0 flex-1 resize-none rounded-md bg-muted/50 p-2 text-sm outline-none dark:bg-muted/30"
+				class="min-h-0 flex-1 resize-none rounded-md bg-muted/50 p-2 text-sm outline-hidden dark:bg-muted/30"
 				placeholder="Description"
 				:disabled="saving"
 			/>
@@ -445,7 +445,7 @@
 					? settingValue(
 							categories.value.find((c) => c.id === categoryId.value),
 							TITLE_PATTERN_KEY,
-					  ).trim()
+						).trim()
 					: '',
 			);
 			const prefixText = computed(() =>
@@ -507,7 +507,7 @@
 					? pickRememberedCategory(
 							categories.value,
 							readLastCategory(workspaceId.value),
-					  )
+						)
 					: null;
 
 			const forgetCategories = () => {
@@ -546,8 +546,8 @@
 						keepSelection && list.some((c) => c.id === previous)
 							? previous
 							: keepSelection
-							? null
-							: rememberedCategory();
+								? null
+								: rememberedCategory();
 				} catch (e) {
 					if (request !== categoriesRequest) return;
 					console.error('quick add: categories not loaded', e);
@@ -956,14 +956,13 @@
 				() =>
 					Boolean(
 						mode.value === 'page' ||
-							mode.value === 'screenshot' ||
-							note.value ||
-							showNote.value,
+						mode.value === 'screenshot' ||
+						note.value ||
+						showNote.value,
 					),
 				async (expanded) => {
-					const { getCurrentWindow, LogicalSize } = await import(
-						'@tauri-apps/api/window'
-					);
+					const { getCurrentWindow, LogicalSize } =
+						await import('@tauri-apps/api/window');
 					await getCurrentWindow().setSize(
 						new LogicalSize(620, expanded ? EXPANDED : COMPACT),
 					);

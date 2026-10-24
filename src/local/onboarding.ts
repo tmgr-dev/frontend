@@ -180,7 +180,7 @@ export const createOnboardingHandler = (
 							typeof payload.workspace === 'string'
 								? payload.workspace
 								: undefined,
-					  )
+						)
 					: 0;
 			save(state);
 			return {

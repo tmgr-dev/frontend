@@ -93,7 +93,7 @@
 										{{ crumb }}
 									</p>
 									<h1
-										class="break-words text-[28px] font-semibold leading-tight tracking-[-0.02em] text-ink md:text-[34px]"
+										class="text-[28px] leading-tight font-semibold tracking-[-0.02em] break-words text-ink md:text-[34px]"
 									>
 										{{ heading }}
 									</h1>
@@ -140,7 +140,7 @@
 									:key="item.id"
 									:to="{ query: item.id === 'tasks' ? {} : { tab: item.id } }"
 									:aria-current="tab === item.id ? 'page' : undefined"
-									class="inline-flex h-10 shrink-0 items-center whitespace-nowrap border-b-2 px-0.5 text-sm font-medium transition-colors"
+									class="inline-flex h-10 shrink-0 items-center border-b-2 px-0.5 text-sm font-medium whitespace-nowrap transition-colors"
 									:class="
 										tab === item.id
 											? 'border-brand text-ink'
@@ -349,7 +349,7 @@
 						? crumbOf([
 								...parentNode.value.ancestors,
 								parentNode.value.category,
-						  ])
+							])
 						: 'Top level';
 				return crumbOf(node.value?.ancestors ?? []);
 			});
@@ -363,7 +363,7 @@
 							name: 'WorkspaceCategoryChildren',
 							params: { workspace_code: workspaceCode.value, id },
 							query,
-					  }
+						}
 					: { name: 'ProjectCategoryChildrenList', params: { id }, query };
 
 			const lastId = () => {
@@ -400,10 +400,10 @@
 					state.value === 'missing'
 						? 'Category not found'
 						: state.value === 'empty'
-						? 'Categories'
-						: state.value === 'create'
-						? heading.value
-						: node.value?.category.title,
+							? 'Categories'
+							: state.value === 'create'
+								? heading.value
+								: node.value?.category.title,
 				(title) => {
 					if (!title) return;
 					store.commit('setMetaTitle', title);
@@ -433,11 +433,11 @@
 									workspace_code: workspaceCode.value,
 									category_id: String(parentId),
 								},
-						  }
+							}
 						: {
 								name: 'WorkspaceCategoryCreate',
 								params: { workspace_code: workspaceCode.value },
-						  },
+							},
 				);
 			const goIndex = () =>
 				router.push({

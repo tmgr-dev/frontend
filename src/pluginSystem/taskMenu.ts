@@ -21,12 +21,12 @@ export const resolveTaskMenuItems = (
 		running && manifest.permissions.includes('menus:task')
 			? manifest.contributes.menus[TASK_MENU_LOCATION].filter((item) =>
 					registered.has(item.command),
-			  ).map((item) => ({
+				).map((item) => ({
 					pluginId: manifest.id,
 					pluginName: manifest.name,
 					command: item.command,
 					title: item.title,
-			  }))
+				}))
 			: [],
 	);
 

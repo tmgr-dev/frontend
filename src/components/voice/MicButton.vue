@@ -82,7 +82,7 @@
 	<span class="relative inline-flex items-center gap-1" @mousedown.prevent>
 		<span
 			v-if="recording"
-			class="text-xs tabular-nums text-ink-subtle"
+			class="text-xs text-ink-subtle tabular-nums"
 			:class="{ 'text-red-500': state.seconds >= MAX_SECONDS - 10 }"
 			>{{ formatClock(state.seconds) }}</span
 		>
@@ -117,7 +117,7 @@
 		<span
 			v-if="state.error"
 			role="alert"
-			class="absolute bottom-full right-0 z-10 mb-2 w-max max-w-[16rem] rounded-md border border-line bg-surface px-2 py-1 text-xs text-red-500 shadow-md"
+			class="absolute right-0 bottom-full z-10 mb-2 w-max max-w-[16rem] rounded-md border border-line bg-surface px-2 py-1 text-xs text-red-500 shadow-md"
 			>{{ state.error }}</span
 		>
 	</span>

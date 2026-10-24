@@ -179,7 +179,7 @@
 						).data;
 						activities.value =
 							nextPage === 1
-								? rows?.data ?? []
+								? (rows?.data ?? [])
 								: [...activities.value, ...(rows?.data ?? [])];
 						activitiesTotal.value =
 							rows?.meta?.total ?? activities.value.length;

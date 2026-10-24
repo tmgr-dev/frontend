@@ -62,11 +62,7 @@
 	} from 'vue';
 
 	export type SkipMenuKey =
-		| 'skip-step'
-		| 'pause'
-		| 'explore'
-		| 'never'
-		| 'skip-tour';
+		'skip-step' | 'pause' | 'explore' | 'never' | 'skip-tour';
 
 	const ALL_ITEMS: Array<{ key: SkipMenuKey; label: string; hint: string }> = [
 		{ key: 'skip-step', label: 'Skip this step', hint: 'Go to the next one' },

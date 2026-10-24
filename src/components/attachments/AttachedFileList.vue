@@ -33,9 +33,9 @@
 					data-testid="attached-file"
 					@click="openViewer(file)"
 				>
-					<FileText class="h-3 w-3 flex-shrink-0 text-ink-subtle" />
+					<FileText class="h-3 w-3 shrink-0 text-ink-subtle" />
 					<span class="min-w-0 truncate">{{ file.name }}</span>
-					<span class="flex-shrink-0 text-2xs text-ink-subtle">
+					<span class="shrink-0 text-2xs text-ink-subtle">
 						{{ kind(file)
 						}}<template v-if="file.size != null"> · {{ size(file) }}</template>
 					</span>

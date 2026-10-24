@@ -403,11 +403,7 @@ export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 // Predefined Sort Options
 export type ActivitySortField = 'created_at' | 'type' | 'user_name';
 export type TaskSortField =
-	| 'updated_at'
-	| 'created_at'
-	| 'title'
-	| 'priority'
-	| 'status';
+	'updated_at' | 'created_at' | 'title' | 'priority' | 'status';
 export type TeamSortField = 'name' | 'last_activity_at' | 'is_online';
 
 export interface TypedSortOption<T extends string> {
@@ -475,19 +471,21 @@ export interface PaginatedRequestParams extends BaseRequestParams {
 }
 
 // Request Parameters with Filtering and Sorting
-export interface FilteredRequestParams<TFilter = any, TSort = SortOption>
-	extends PaginatedRequestParams {
+export interface FilteredRequestParams<
+	TFilter = any,
+	TSort = SortOption,
+> extends PaginatedRequestParams {
 	filters?: TFilter;
 	sort?: TSort | TSort[];
 	search?: string;
 }
 
 // Dashboard API Response Types
-export interface DashboardStatisticsResponse
-	extends ApiResponse<DashboardStatistics> {}
+export interface DashboardStatisticsResponse extends ApiResponse<DashboardStatistics> {}
 
-export interface ActivityFeedResponse
-	extends ApiResponse<PaginatedResponse<Activity>> {}
+export interface ActivityFeedResponse extends ApiResponse<
+	PaginatedResponse<Activity>
+> {}
 
 export interface HeatmapDataResponse extends ApiResponse<HeatmapData> {}
 
@@ -997,11 +995,8 @@ export type UserFilter = number | 'all';
 export type DateRange = { from: string; to: string };
 
 // Response Type Utilities
-export type ApiResponseData<T extends ApiResponse<any>> = T extends ApiResponse<
-	infer U
->
-	? U
-	: never;
+export type ApiResponseData<T extends ApiResponse<any>> =
+	T extends ApiResponse<infer U> ? U : never;
 export type PaginatedData<T extends PaginatedResponse<any>> =
 	T extends PaginatedResponse<infer U> ? U : never;
 

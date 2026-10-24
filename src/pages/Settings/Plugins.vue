@@ -284,7 +284,7 @@
 								>v{{ plugin.manifest.version }}</span
 							>
 							<span
-								class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold uppercase text-muted-foreground"
+								class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground uppercase"
 							>
 								{{ sourceLabel(plugin.source) }}
 							</span>
@@ -729,9 +729,9 @@
 					removing.value = null;
 				},
 				sourceLabel: (source: PluginSource) =>
-					({ builtin: 'Built-in', folder: 'Folder', installed: 'Installed' }[
+					({ builtin: 'Built-in', folder: 'Folder', installed: 'Installed' })[
 						source
-					]),
+					],
 				plugins,
 				drafts,
 				devMode,
@@ -830,8 +830,8 @@
 							field.type === 'number'
 								? Number(raw)
 								: field.type === 'boolean'
-								? Boolean(raw)
-								: String(raw ?? '');
+									? Boolean(raw)
+									: String(raw ?? '');
 					}
 					await pluginHost()?.saveSettings(pluginId, values);
 					toast({ title: 'Plugin settings saved' });
@@ -848,21 +848,21 @@
 						failed: 'Failed to start',
 						crashed: 'Turned off after errors',
 						blocked: 'Blocked by TMGR',
-					}[status]),
+					})[status],
 				statusClass: (status: PluginStatus) =>
 					status === 'running'
 						? 'text-emerald-600 dark:text-emerald-400'
 						: status === 'failed' ||
-						  status === 'crashed' ||
-						  status === 'blocked'
-						? 'text-destructive'
-						: 'text-muted-foreground',
+							  status === 'crashed' ||
+							  status === 'blocked'
+							? 'text-destructive'
+							: 'text-muted-foreground',
 				logLineClass: (level: PluginEntry['log'][number]['level']) =>
 					({
 						error: 'text-destructive',
 						warn: 'text-amber-600 dark:text-amber-400',
 						info: 'text-muted-foreground',
-					}[level]),
+					})[level],
 				async copyDiagnostics(plugin: PluginEntry) {
 					const { getVersion } = await import('@tauri-apps/api/app');
 					const appVersion = await getVersion().catch(() => null);

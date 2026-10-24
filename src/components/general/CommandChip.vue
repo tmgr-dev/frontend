@@ -1,6 +1,6 @@
 <template>
 	<span
-		class="inline-flex max-w-full items-center gap-0.5 rounded bg-muted py-0.5 pl-1.5 pr-0.5 align-middle font-mono text-xs text-ink"
+		class="inline-flex max-w-full items-center gap-0.5 rounded bg-muted py-0.5 pr-0.5 pl-1.5 align-middle font-mono text-xs text-ink"
 		data-testid="command-chip"
 	>
 		<code class="break-all">{{ command }}</code>

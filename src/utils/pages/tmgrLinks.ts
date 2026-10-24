@@ -1,10 +1,5 @@
 export type TmgrKind =
-	| 'page'
-	| 'task'
-	| 'category'
-	| 'user'
-	| 'persona'
-	| 'file';
+	'page' | 'task' | 'category' | 'user' | 'persona' | 'file';
 
 export interface StorageRef {
 	kind: TmgrKind;

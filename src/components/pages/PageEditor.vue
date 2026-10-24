@@ -28,7 +28,7 @@
 					@mousedown.prevent="pick(item)"
 				>
 					<span
-						class="w-14 shrink-0 text-2xs uppercase tracking-wide text-ink-subtle"
+						class="w-14 shrink-0 text-2xs tracking-wide text-ink-subtle uppercase"
 						>{{ item.kind }}</span
 					>
 					<span class="truncate">{{ item.title }}</span>

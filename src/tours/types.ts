@@ -1,11 +1,7 @@
 export type TourId = string;
 
 export type Platform =
-	| 'web'
-	| 'mobile_web'
-	| 'desktop'
-	| 'desktop_local'
-	| 'ios';
+	'web' | 'mobile_web' | 'desktop' | 'desktop_local' | 'ios';
 
 export type TourGroup =
 	| 'start'

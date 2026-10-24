@@ -97,16 +97,16 @@ export const summarize = (view: MoveView): ProgressSummary => {
 				step >= stepIndex('bundleUploaded')
 					? 'done'
 					: step >= stepIndex('snapshotted')
-					? 'active'
-					: 'pending';
+						? 'active'
+						: 'pending';
 		} else if (serverDone || !job) state = 'done';
 		else if (current >= 0) {
 			state =
 				index === current
 					? 'active'
 					: (ROW_LAST[row.id] ?? Infinity) < order
-					? 'done'
-					: 'pending';
+						? 'done'
+						: 'pending';
 		}
 		if (
 			row.id === 'files' &&

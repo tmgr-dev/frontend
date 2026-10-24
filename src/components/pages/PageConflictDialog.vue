@@ -16,18 +16,16 @@
 				<div>
 					<h3 class="mb-1 text-sm font-semibold">Their version</h3>
 					<pre
-						class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-line bg-surface-sunken p-2 text-xs"
+						class="max-h-72 overflow-auto rounded-md border border-line bg-surface-sunken p-2 text-xs break-words whitespace-pre-wrap"
 						data-testid="conflict-theirs"
-						>{{ theirs.body }}</pre
-					>
+						>{{ theirs.body }}</pre>
 				</div>
 				<div>
 					<h3 class="mb-1 text-sm font-semibold">Your draft</h3>
 					<pre
-						class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-line bg-surface-sunken p-2 text-xs"
+						class="max-h-72 overflow-auto rounded-md border border-line bg-surface-sunken p-2 text-xs break-words whitespace-pre-wrap"
 						data-testid="conflict-mine"
-						>{{ draftBody }}</pre
-					>
+						>{{ draftBody }}</pre>
 				</div>
 				<div class="md:col-span-2">
 					<h3 class="mb-1 text-sm font-semibold">Difference</h3>

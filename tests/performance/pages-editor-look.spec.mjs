@@ -759,9 +759,9 @@ test.describe('QA verification', () => {
     await expect(chip).toHaveText('Original task');
     await expect
       .poll(async () =>
-        (
-          await savedBody(state)
-        ).startsWith('Ask [Original task](tmgr://task/1)'),
+        (await savedBody(state)).startsWith(
+          'Ask [Original task](tmgr://task/1)',
+        ),
       )
       .toBe(true);
     return chip;

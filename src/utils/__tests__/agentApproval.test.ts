@@ -183,7 +183,7 @@ describe('persona and workspace context (v3)', () => {
 					c.persona.id,
 					c.persona.name,
 					c.persona.instructions,
-			  )
+				)
 			: undefined;
 		expect(persona ?? null).toBe(c.persona_sha256);
 		for (const page of c.context ?? [])

@@ -1076,8 +1076,8 @@ const toolResultOk = (payload: any, tool: ToolDef) => ({
 			text: tool.raw
 				? payload
 				: tool.literal
-				? JSON.stringify(payload)
-				: JSON.stringify(camelizeDeep(payload)),
+					? JSON.stringify(payload)
+					: JSON.stringify(camelizeDeep(payload)),
 		},
 	],
 });

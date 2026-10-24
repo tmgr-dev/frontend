@@ -3,12 +3,7 @@ import { taskKeyFrom } from '@/utils/taskKeys';
 import type { LocalContext } from '../types';
 
 export type Group =
-	| 'tasks'
-	| 'pages'
-	| 'people'
-	| 'personas'
-	| 'agent_runs'
-	| 'comments';
+	'tasks' | 'pages' | 'people' | 'personas' | 'agent_runs' | 'comments';
 
 export const GROUP_OF: Record<GraphNodeType, Group> = {
 	task: 'tasks',

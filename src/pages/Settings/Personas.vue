@@ -81,7 +81,7 @@
 								<h4 class="text-base font-semibold">{{ persona.name }}</h4>
 								<span
 									v-if="persona.archived_at"
-									class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold uppercase text-muted-foreground"
+									class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground uppercase"
 								>
 									Archived
 								</span>
@@ -284,8 +284,7 @@
 			const currentWorkspace = computed(
 				() =>
 					store.getters.currentWorkspace as
-						| { id: number; name: string }
-						| undefined,
+						{ id: number; name: string } | undefined,
 			);
 			const sharedPersonas = computed(() =>
 				workspaceGrants.value.filter(
@@ -303,7 +302,7 @@
 							(store.state.workspaces as { id: number; name: string }[])?.find(
 								(w) => w.id === persona.workspace_id,
 							)?.name ?? 'this workspace'
-					  }`
+						}`
 					: personaScopeLabel(null);
 
 			const activePersonas = computed(() =>

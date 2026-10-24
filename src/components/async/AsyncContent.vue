@@ -24,7 +24,7 @@
 		typeof props.error === 'string'
 			? props.error
 			: (props.error as { message?: string })?.message ||
-			  'Could not load this section.',
+				'Could not load this section.',
 	);
 </script>
 <template>
@@ -45,7 +45,7 @@
 			role="status"
 			:class="
 				showIndicator && available
-					? 'pointer-events-none absolute right-0 top-0 rounded bg-surface px-2 py-1 text-xs text-ink-subtle'
+					? 'pointer-events-none absolute top-0 right-0 rounded bg-surface px-2 py-1 text-xs text-ink-subtle'
 					: 'sr-only'
 			"
 		>

@@ -142,7 +142,7 @@ export const toMappingPayload = (
 					local_uuid: choice.uuid,
 					action: 'map',
 					cloud_uuid: choice.cloudUuid ?? choice.uuid,
-			  }
+				}
 			: { local_uuid: choice.uuid, action: choice.action },
 	);
 

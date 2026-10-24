@@ -654,7 +654,7 @@ G
 								newOptions,
 								oldOptions,
 								this.selectedValue,
-						  )
+							)
 						: this.resetOnOptionsChange;
 
 				if (!this.taggable && shouldReset()) {
@@ -1117,7 +1117,7 @@ G
 				return !!this.$slots['search']
 					? this.$refs.selectedOptions.querySelector(
 							this.searchInputQuerySelector,
-					  )
+						)
 					: this.$refs.search;
 			},
 
@@ -1151,7 +1151,7 @@ G
 							this.filteredOptions[this.typeAheadPointer]
 								? {
 										'aria-activedescendant': `vs${this.uid}__option-${this.typeAheadPointer}`,
-								  }
+									}
 								: {}),
 						},
 						events: {

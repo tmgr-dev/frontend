@@ -220,7 +220,8 @@ export const harness = (
 		),
 		bundleUploaded: jest.fn(
 			async () => (
-				log('bundleUploaded'), verifiedStatus({ status: 'uploaded' })
+				log('bundleUploaded'),
+				verifiedStatus({ status: 'uploaded' })
 			),
 		),
 		presignFile: jest.fn(

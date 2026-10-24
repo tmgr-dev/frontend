@@ -102,7 +102,7 @@ describe('environment', () => {
 		({
 			innerWidth: width,
 			matchMedia: () => ({ matches: coarse }),
-		} as unknown as Window);
+		}) as unknown as Window;
 	const meta = (
 		width: number,
 		coarse: boolean,

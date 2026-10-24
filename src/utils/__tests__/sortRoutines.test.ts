@@ -1,7 +1,7 @@
 import { sortUnscheduledNewestFirst } from '../dailyRoutines/sortRoutines';
 
 const e = (task_id: number | undefined, created_at?: string | null) =>
-	({ task_id, created_at } as any);
+	({ task_id, created_at }) as any;
 
 describe('sortUnscheduledNewestFirst', () => {
 	it('orders by created_at descending (newest first)', () => {

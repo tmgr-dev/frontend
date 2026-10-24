@@ -9,7 +9,7 @@
 				:class="[
 					'rounded-sm px-3 py-1.5 text-sm font-medium transition-colors',
 					currentFilter === filter.value
-						? 'bg-background text-ink shadow-sm'
+						? 'bg-background text-ink shadow-xs'
 						: 'text-ink-subtle hover:text-ink',
 				]"
 			>
@@ -113,8 +113,8 @@
 							isExpired(invitation)
 								? 'Cannot revoke expired invitation'
 								: invitation.is_accepted
-								? 'Cannot revoke accepted invitation'
-								: 'Revoke invitation'
+									? 'Cannot revoke accepted invitation'
+									: 'Revoke invitation'
 						"
 					>
 						{{ revoking === invitation.id ? 'Revoking...' : 'Revoke' }}

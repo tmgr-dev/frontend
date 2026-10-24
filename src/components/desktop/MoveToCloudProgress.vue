@@ -87,7 +87,7 @@
 					? [
 							...serverErrorLines(view.value.status).slice(1),
 							...reportLines(view.value.status?.report),
-					  ]
+						]
 					: [],
 			);
 			const cancellable = computed(

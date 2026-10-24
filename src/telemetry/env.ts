@@ -14,8 +14,8 @@ const desktopPlatformName = (
 	desktop === 'windows'
 		? 'desktop_win'
 		: desktop === 'linux'
-		? 'desktop_linux'
-		: 'desktop_mac';
+			? 'desktop_linux'
+			: 'desktop_mac';
 
 export const makeMeta =
 	({ win, desktop, appVersion, accountMode }: EnvDeps) =>

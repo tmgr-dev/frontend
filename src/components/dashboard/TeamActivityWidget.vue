@@ -75,7 +75,7 @@
 				"
 			>
 				<div
-					class="sticky top-0 z-10 hidden bg-surface px-2 pb-2 text-2xs uppercase tracking-wide text-ink-faint sm:grid sm:grid-cols-[minmax(0,1fr)_3rem_4.5rem_3rem_5.5rem] sm:gap-x-3 md:grid-cols-[minmax(0,1fr)_4rem_3rem_4.5rem_3rem_5.5rem]"
+					class="sticky top-0 z-10 hidden bg-surface px-2 pb-2 text-2xs tracking-wide text-ink-faint uppercase sm:grid sm:grid-cols-[minmax(0,1fr)_3rem_4.5rem_3rem_5.5rem] sm:gap-x-3 md:grid-cols-[minmax(0,1fr)_4rem_3rem_4.5rem_3rem_5.5rem]"
 					aria-hidden="true"
 				>
 					<span>Member</span>
@@ -102,46 +102,46 @@
 						class="grid grid-cols-2 gap-4 text-center sm:grid-cols-3 lg:grid-cols-5"
 					>
 						<div>
-							<div class="text-lg font-semibold tabular-nums text-ink">
+							<div class="text-lg font-semibold text-ink tabular-nums">
 								{{ teamActivity.total_members }}
 							</div>
-							<div class="text-2xs uppercase tracking-wide text-ink-subtle">
+							<div class="text-2xs tracking-wide text-ink-subtle uppercase">
 								Total members
 							</div>
 						</div>
 						<div>
 							<div
-								class="text-lg font-semibold tabular-nums text-status-done-fg"
+								class="text-lg font-semibold text-status-done-fg tabular-nums"
 							>
 								{{ teamActivity.active_today }}
 							</div>
-							<div class="text-2xs uppercase tracking-wide text-ink-subtle">
+							<div class="text-2xs tracking-wide text-ink-subtle uppercase">
 								Active today
 							</div>
 						</div>
 						<div>
 							<div
-								class="text-lg font-semibold tabular-nums text-status-progress-fg"
+								class="text-lg font-semibold text-status-progress-fg tabular-nums"
 							>
 								{{ teamActivity.active_timers }}
 							</div>
-							<div class="text-2xs uppercase tracking-wide text-ink-subtle">
+							<div class="text-2xs tracking-wide text-ink-subtle uppercase">
 								Active timers
 							</div>
 						</div>
 						<div>
-							<div class="text-lg font-semibold tabular-nums text-brand">
+							<div class="text-lg font-semibold text-brand tabular-nums">
 								{{ formatTrackedSeconds(teamActivity.tracked_seconds) }}
 							</div>
-							<div class="text-2xs uppercase tracking-wide text-ink-subtle">
+							<div class="text-2xs tracking-wide text-ink-subtle uppercase">
 								Tracked · {{ windowLabel }}
 							</div>
 						</div>
 						<div>
-							<div class="text-lg font-semibold tabular-nums text-ink">
+							<div class="text-lg font-semibold text-ink tabular-nums">
 								{{ teamActivity.done_count }}
 							</div>
-							<div class="text-2xs uppercase tracking-wide text-ink-subtle">
+							<div class="text-2xs tracking-wide text-ink-subtle uppercase">
 								Done · {{ windowLabel }}
 							</div>
 						</div>
@@ -233,6 +233,8 @@
 </script>
 
 <style scoped>
+	@reference '@/assets/styles/tailwind.css';
+
 	.team-activity-widget {
 		@apply rounded-card border border-line bg-surface p-4 shadow-tmgr-xs sm:p-6;
 	}

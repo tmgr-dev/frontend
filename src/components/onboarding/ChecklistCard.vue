@@ -73,7 +73,7 @@
 					:style="{ width: progressWidth }"
 				/>
 			</div>
-			<ul class="mt-2 flex flex-col divide-y divide-line">
+			<ul class="divide-y divide-line mt-2 flex flex-col">
 				<li
 					v-for="item in checklist.items"
 					:key="item.id"
@@ -155,8 +155,7 @@
 						account: store.getters.isLocalOnly ? 'local' : 'cloud',
 						emailVerified: !!(
 							store.state.user as
-								| { email_verified_at?: string | null }
-								| undefined
+								{ email_verified_at?: string | null } | undefined
 						)?.email_verified_at,
 					},
 				),
@@ -165,7 +164,7 @@
 				checklist.value.total
 					? `${Math.round(
 							(checklist.value.done / checklist.value.total) * 100,
-					  )}%`
+						)}%`
 					: '0%',
 			);
 			const hidden = computed(

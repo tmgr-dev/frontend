@@ -139,21 +139,21 @@
 					<div class="mt-2 flex justify-center gap-1 font-mono tabular-nums">
 						<VueTheMask
 							v-model="timeDraft.hours"
-							class="w-10 bg-transparent text-center text-2xl font-bold text-ink outline-none"
+							class="w-10 bg-transparent text-center text-2xl font-bold text-ink outline-hidden"
 							:tokens="timeTokens"
 							mask="###"
 						/>
 						<span class="text-2xl text-ink-muted">:</span>
 						<VueTheMask
 							v-model="timeDraft.minutes"
-							class="w-10 bg-transparent text-center text-2xl font-bold text-ink outline-none"
+							class="w-10 bg-transparent text-center text-2xl font-bold text-ink outline-hidden"
 							:tokens="timeTokens"
 							mask="F#"
 						/>
 						<span class="text-2xl text-ink-muted">:</span>
 						<VueTheMask
 							v-model="timeDraft.seconds"
-							class="w-10 bg-transparent text-center text-2xl font-bold text-ink outline-none"
+							class="w-10 bg-transparent text-center text-2xl font-bold text-ink outline-hidden"
 							:tokens="timeTokens"
 							mask="F#"
 						/>

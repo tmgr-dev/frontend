@@ -420,9 +420,9 @@
 
 	const statusLabel = computed(
 		() =>
-			({ granted: 'Allowed', denied: 'Declined' }[
+			({ granted: 'Allowed', denied: 'Declined' })[
 				consent.value.analytics as string
-			] ?? 'Not chosen yet'),
+			] ?? 'Not chosen yet',
 	);
 
 	const scrollToHash = async () => {

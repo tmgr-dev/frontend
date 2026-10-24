@@ -15,12 +15,14 @@ const http = () => {
 		client: {
 			get: jest.fn(
 				async (url: string) => (
-					calls.push(['GET', url]), { data: { data: { ok: 'get' } } }
+					calls.push(['GET', url]),
+					{ data: { data: { ok: 'get' } } }
 				),
 			),
 			post: jest.fn(
 				async (url: string, body?: unknown) => (
-					calls.push(['POST', url, body]), { data: { data: { ok: 'post' } } }
+					calls.push(['POST', url, body]),
+					{ data: { data: { ok: 'post' } } }
 				),
 			),
 			delete: jest.fn(

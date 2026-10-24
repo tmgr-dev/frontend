@@ -1,10 +1,13 @@
 <template>
 	<div
 		class="dr-week-chip group absolute cursor-pointer overflow-hidden rounded-md transition-opacity"
-		:class="[
-			entry.completed ? 'opacity-50' : 'opacity-100',
-			isBeingDragged ? 'opacity-30' : '',
-		]"
+		:class="
+			entry.completed
+				? 'opacity-50'
+				: isBeingDragged
+					? 'opacity-30'
+					: 'opacity-100'
+		"
 		:style="blockStyle"
 		:title="`${entry.title} · ${entry.time} – ${endTimeStr}`"
 		@click="onClick"
@@ -31,7 +34,7 @@
 			class="flex items-center gap-1.5 truncate pr-5 text-[11px] font-medium text-ink dark:text-white"
 			:class="entry.completed ? 'line-through' : ''"
 		>
-			<span class="shrink-0 tabular-nums text-ink-subtle dark:text-white/70">{{
+			<span class="shrink-0 text-ink-subtle tabular-nums dark:text-white/70">{{
 				entry.time
 			}}</span>
 			<span class="truncate">{{ entry.title }}</span>
@@ -39,7 +42,7 @@
 		<button
 			v-if="!isShort"
 			type="button"
-			class="dr-edit-btn absolute right-1 top-1 flex h-[18px] w-[18px] items-center justify-center rounded-md bg-black/35"
+			class="dr-edit-btn absolute top-1 right-1 flex h-[18px] w-[18px] items-center justify-center rounded-md bg-black/35"
 			title="Edit"
 			@click.stop="$emit('edit', entry)"
 		>
@@ -49,14 +52,14 @@
 		<!-- Resize handles: top edge shifts the start, bottom edge changes the duration -->
 		<div
 			v-if="canResize"
-			class="dr-resize-handle absolute inset-x-0 top-0 h-2 cursor-ns-resize opacity-0 transition-opacity after:absolute after:inset-x-3 after:top-[2px] after:h-[2px] after:rounded-full after:bg-current after:opacity-40 after:content-[''] group-hover:opacity-100"
+			class="dr-resize-handle absolute inset-x-0 top-0 h-2 cursor-ns-resize opacity-0 transition-opacity group-hover:opacity-100 after:absolute after:inset-x-3 after:top-[2px] after:h-[2px] after:rounded-full after:bg-current after:opacity-40 after:content-['']"
 			title="Drag to change start time"
 			@pointerdown.stop.prevent="onResizeStart($event, 'top')"
 			@click.stop
 		/>
 		<div
 			v-if="canResize"
-			class="dr-resize-handle absolute inset-x-0 bottom-0 h-2 cursor-ns-resize opacity-0 transition-opacity after:absolute after:inset-x-3 after:bottom-[2px] after:h-[2px] after:rounded-full after:bg-current after:opacity-40 after:content-[''] group-hover:opacity-100"
+			class="dr-resize-handle absolute inset-x-0 bottom-0 h-2 cursor-ns-resize opacity-0 transition-opacity group-hover:opacity-100 after:absolute after:inset-x-3 after:bottom-[2px] after:h-[2px] after:rounded-full after:bg-current after:opacity-40 after:content-['']"
 			title="Drag to change duration"
 			@pointerdown.stop.prevent="onResizeStart($event, 'bottom')"
 			@click.stop

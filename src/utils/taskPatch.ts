@@ -17,11 +17,7 @@ export interface PatchableColumn {
 }
 
 export type ColumnPatch =
-	| 'inserted'
-	| 'updated'
-	| 'moved'
-	| 'removed'
-	| 'ignored';
+	'inserted' | 'updated' | 'moved' | 'removed' | 'ignored';
 
 const sameId = (a: unknown, b: unknown): boolean =>
 	a != null && b != null && Number(a) === Number(b);

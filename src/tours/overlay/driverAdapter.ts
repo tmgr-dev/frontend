@@ -95,7 +95,7 @@ export function createDriverAdapter(): OverlayAdapter {
 									frameClamp.schedule();
 									if (isSheetViewport())
 										room.revealAvoided(wrapper, currentAnchor);
-							  })
+								})
 							: null;
 					resize?.observe(host);
 					unmount = () => {

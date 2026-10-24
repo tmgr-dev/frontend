@@ -6,7 +6,7 @@
 			@click.self="$emit('close')"
 		>
 			<div
-				class="absolute min-w-[260px] max-w-[340px] rounded-card border border-line bg-surface p-2 shadow-tmgr-lg"
+				class="absolute max-w-[340px] min-w-[260px] rounded-card border border-line bg-surface p-2 shadow-tmgr-lg"
 				:style="popoverStyle"
 				@click.stop
 			>
@@ -14,7 +14,7 @@
 					class="mb-2 flex items-center justify-between border-b border-line px-2 pb-2"
 				>
 					<div
-						class="text-2xs font-semibold uppercase tracking-wide text-ink-subtle"
+						class="text-2xs font-semibold tracking-wide text-ink-subtle uppercase"
 					>
 						{{ events.length }} overlapping
 					</div>
@@ -62,12 +62,12 @@
 						>
 							{{ ev.title }}
 						</span>
-						<span class="text-2xs tabular-nums text-ink-subtle">{{
+						<span class="text-2xs text-ink-subtle tabular-nums">{{
 							ev.time
 						}}</span>
 						<button
 							type="button"
-							class="flex h-6 w-6 items-center justify-center rounded-pill text-ink-subtle opacity-0 hover:bg-surface-hover hover:text-brand group-hover:opacity-100"
+							class="flex h-6 w-6 items-center justify-center rounded-pill text-ink-subtle opacity-0 group-hover:opacity-100 hover:bg-surface-hover hover:text-brand"
 							@click="$emit('edit', ev)"
 						>
 							<DRIcon name="pencil" :size="11" stroke="currentColor" />

@@ -28,7 +28,7 @@
 				</div>
 
 				<!-- Description -->
-				<div class="mb-4 space-y-1">
+				<div class="space-y-1 mb-4">
 					<div
 						class="h-3 w-full animate-pulse rounded bg-gray-100 dark:bg-gray-600"
 					></div>

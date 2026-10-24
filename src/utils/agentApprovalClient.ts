@@ -82,22 +82,22 @@ export const deviceName = (): string => {
 			platform === 'macos'
 				? 'macOS'
 				: platform === 'windows'
-				? 'Windows'
-				: platform === 'linux'
-				? 'Linux'
-				: 'unknown'
+					? 'Windows'
+					: platform === 'linux'
+						? 'Linux'
+						: 'unknown'
 		})`;
 	}
 	const ua = navigator.userAgent;
 	const browser = /Edg\//.test(ua)
 		? 'Edge'
 		: /Firefox\//.test(ua)
-		? 'Firefox'
-		: /Chrome\//.test(ua)
-		? 'Chrome'
-		: /Safari\//.test(ua)
-		? 'Safari'
-		: 'browser';
+			? 'Firefox'
+			: /Chrome\//.test(ua)
+				? 'Chrome'
+				: /Safari\//.test(ua)
+					? 'Safari'
+					: 'browser';
 	return `Web (${browser})`;
 };
 
@@ -154,7 +154,7 @@ const sameRepositories = (
 	a === null || b === null
 		? a === b
 		: a.length === b.length &&
-		  [...a].sort().join('\n') === [...b].sort().join('\n');
+			[...a].sort().join('\n') === [...b].sort().join('\n');
 
 const repositoriesFor = (
 	approval: TaskApproval,

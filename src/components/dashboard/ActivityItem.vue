@@ -8,7 +8,7 @@
 		role="button"
 		:aria-label="accessibilityLabel"
 	>
-		<div class="flex items-start space-x-3">
+		<div class="space-x-3 flex items-start">
 			<!-- Activity Icon -->
 			<div :class="iconClasses">
 				<component :is="activityIcon" class="h-5 w-5" />
@@ -19,7 +19,7 @@
 				<div class="flex items-start justify-between gap-3">
 					<div class="min-w-0 flex-1 break-words">
 						<!-- Activity Title (Action) -->
-						<h3 class="text-sm font-semibold leading-tight text-ink">
+						<h3 class="text-sm leading-tight font-semibold text-ink">
 							{{ title }}
 						</h3>
 
@@ -32,7 +32,7 @@
 					<!-- Timestamp -->
 					<time
 						:datetime="activity.created_at"
-						class="flex-shrink-0 whitespace-nowrap text-xs text-ink-subtle"
+						class="shrink-0 text-xs whitespace-nowrap text-ink-subtle"
 						:title="formattedDate"
 					>
 						{{ time }}
@@ -40,7 +40,7 @@
 				</div>
 
 				<!-- User Info -->
-				<div class="mt-2 flex items-center space-x-2">
+				<div class="space-x-2 mt-2 flex items-center">
 					<AuthorBadge
 						v-if="activity.actor && activity.actor.kind !== 'user'"
 						:author="activity.actor"
@@ -205,7 +205,7 @@
 		};
 
 		const baseClasses =
-			'flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0';
+			'flex items-center justify-center w-10 h-10 rounded-full shrink-0';
 		const colorClass =
 			colorMap[props.activity.type] || 'bg-surface-sunken text-ink-muted';
 

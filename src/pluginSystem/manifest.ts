@@ -154,7 +154,7 @@ const parseDomain = (value: unknown): string =>
 		? value
 		: fail(
 				`links domain ${String(value)} must be a host name like example.com`,
-		  );
+			);
 
 const HTTPS_URL = /^https:\/\/.+/;
 

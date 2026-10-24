@@ -16,7 +16,7 @@ jest.mock('../usePusher', () => ({
 }));
 
 const feedMock = getActivityFeed as jest.Mock;
-const row = (id: number) => ({ id } as unknown as Activity);
+const row = (id: number) => ({ id }) as unknown as Activity;
 const page = (ids: number[], current = 1, last = 1, total = ids.length) => ({
 	success: true,
 	data: {

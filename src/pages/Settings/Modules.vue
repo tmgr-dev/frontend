@@ -78,7 +78,7 @@
 						<summary class="cursor-pointer text-ink-subtle">
 							Hide core sections for me
 						</summary>
-						<div class="mt-2 divide-y divide-border">
+						<div class="divide-y divide-border mt-2">
 							<SettingsRow
 								v-for="row in coreRows"
 								:key="row.key"

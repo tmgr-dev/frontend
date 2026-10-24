@@ -18,7 +18,7 @@
 			class="flex flex-col gap-0.5 p-1.5 text-2xs text-ink dark:text-white"
 		>
 			<div
-				class="flex items-center justify-between text-[10px] uppercase tracking-wider text-ink-subtle dark:text-white/70"
+				class="flex items-center justify-between text-[10px] tracking-wider text-ink-subtle uppercase dark:text-white/70"
 			>
 				<span>{{ events.length }} events</span>
 				<span>{{ rangeLabel }}</span>
@@ -37,7 +37,7 @@
 						}"
 					/>
 					<span
-						class="text-[10px] tabular-nums text-ink-subtle dark:text-white/70"
+						class="text-[10px] text-ink-subtle tabular-nums dark:text-white/70"
 						>{{ (ev.source.entry || ev.source).time }}</span
 					>
 					<span class="truncate">{{

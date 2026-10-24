@@ -13,7 +13,7 @@
 						Track your tasks here! Why not?
 					</p>
 					<h1
-						class="my-4 text-3xl font-bold leading-tight text-white lg:text-4xl xl:text-5xl"
+						class="my-4 text-3xl leading-tight font-bold text-white lg:text-4xl xl:text-5xl"
 					>
 						Lightweight application for tracking your heavy tasks.
 					</h1>

@@ -35,10 +35,13 @@
 			.filter((t) => !Number.isNaN(t) && t > current)
 			.sort((a, b) => a - b)[0];
 		if (next === undefined) return;
-		boundary = setTimeout(() => {
-			now.value = Date.now();
-			scheduleBoundary();
-		}, Math.min(next - current + 50, 2147483647));
+		boundary = setTimeout(
+			() => {
+				now.value = Date.now();
+				scheduleBoundary();
+			},
+			Math.min(next - current + 50, 2147483647),
+		);
 	}
 
 	onMounted(() => {
@@ -89,7 +92,7 @@
 
 <template>
 	<div
-		class="mt-2 space-y-2 rounded-md border border-line bg-surface p-2.5"
+		class="space-y-2 mt-2 rounded-md border border-line bg-surface p-2.5"
 		data-testid="agent-confirmation-card"
 	>
 		<div>
@@ -109,7 +112,7 @@
 				</span>
 				<span
 					v-if="action.risk === 'high'"
-					class="rounded-pill bg-red-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-red-700 dark:bg-red-900/30 dark:text-red-300"
+					class="rounded-pill bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 uppercase dark:bg-red-900/30 dark:text-red-300"
 				>
 					High risk
 				</span>

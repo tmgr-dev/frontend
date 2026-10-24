@@ -570,7 +570,7 @@
 
 								<p
 									v-if="category.deleted_at !== null"
-									class="mb-2 text-sm italic text-ink-subtle"
+									class="mb-2 text-sm text-ink-subtle italic"
 								>
 									(deleted, but can be restored)
 								</p>
@@ -604,7 +604,7 @@
 									</span>
 								</div>
 
-								<div class="absolute right-3 top-3 z-50">
+								<div class="absolute top-3 right-3 z-50">
 									<DropdownMenu>
 										<DropdownMenuTrigger
 											class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
@@ -613,7 +613,7 @@
 											<EllipsisIcon class="h-4 w-4" />
 										</DropdownMenuTrigger>
 
-										<DropdownMenuContent class="mr-4 mt-1">
+										<DropdownMenuContent class="mt-1 mr-4">
 											<DropdownMenuItem
 												@click="
 													() => {
@@ -764,7 +764,7 @@
 								Previous
 							</Button>
 
-							<span class="whitespace-nowrap px-2 text-sm text-ink-subtle">
+							<span class="px-2 text-sm whitespace-nowrap text-ink-subtle">
 								Page {{ categoriesPagination.current_page }} of
 								{{ categoriesPagination.last_page }}
 							</span>
@@ -797,7 +797,7 @@
 				:retry="loadTasks"
 				label="Loading category tasks"
 				><template #skeleton>
-					<div class="mt-6 min-h-96 space-y-2 px-2">
+					<div class="space-y-2 mt-6 min-h-96 px-2">
 						<Skeleton class="h-28 w-full" />
 						<Skeleton class="h-28 w-full" />
 						<Skeleton class="h-28 w-full" />

@@ -4,7 +4,7 @@
 	</div>
 
 	<ul
-		class="mt-4 flex flex-col gap-2 pt-4 md:mx-0 md:mr-4 md:mt-0 md:flex-row md:items-center md:gap-7 md:border-0 md:pt-0 lg:mr-8"
+		class="mt-4 flex flex-col gap-2 pt-4 md:mx-0 md:mt-0 md:mr-4 md:flex-row md:items-center md:gap-7 md:border-0 md:pt-0 lg:mr-8"
 	>
 		<router-link
 			v-for="link in links"

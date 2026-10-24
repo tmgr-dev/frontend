@@ -763,8 +763,8 @@ export class GraphEngine {
 			d.type === 'agent_run'
 				? d.status?.name
 				: d.type === 'page'
-				? (d.meta?.page_type as string | undefined)
-				: null;
+					? (d.meta?.page_type as string | undefined)
+					: null;
 		return {
 			title: truncateLabel(d.title, 22),
 			sub: extra && extra !== 'plain' ? `${type} · ${extra}` : type,
@@ -968,7 +968,7 @@ export class GraphEngine {
 			? neighbourhood(
 					this.links.map((l) => l.edge),
 					id,
-			  )
+				)
 			: null;
 		this.canvas.style.cursor = id ? 'pointer' : this.down ? 'grabbing' : 'grab';
 		this.applyEmphasis();

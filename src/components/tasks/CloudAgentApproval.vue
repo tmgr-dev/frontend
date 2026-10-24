@@ -5,7 +5,7 @@
 		data-testid="cloud-agent-approval"
 	>
 		<div class="flex flex-wrap items-center gap-2">
-			<span class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+			<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 				>Agent runs</span
 			>
 			<span
@@ -63,25 +63,25 @@
 						expect them.
 					</p>
 					<div>
-						<div class="text-2xs font-bold uppercase text-ink-subtle">
+						<div class="text-2xs font-bold text-ink-subtle uppercase">
 							Title
 						</div>
 						<pre
-							class="whitespace-pre-wrap break-words font-mono text-xs"
+							class="font-mono text-xs break-words whitespace-pre-wrap"
 							data-testid="cloud-confirm-title"
 						><template v-for="(piece, i) in titlePieces" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
 					</div>
 					<div>
-						<div class="text-2xs font-bold uppercase text-ink-subtle">
+						<div class="text-2xs font-bold text-ink-subtle uppercase">
 							Description
 						</div>
 						<pre
-							class="whitespace-pre-wrap break-words font-mono text-xs"
+							class="font-mono text-xs break-words whitespace-pre-wrap"
 							data-testid="cloud-confirm-description"
 						><template v-if="!descriptionPieces.length">(empty)</template><template v-for="(piece, i) in descriptionPieces" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
 					</div>
 					<div>
-						<div class="text-2xs font-bold uppercase text-ink-subtle">
+						<div class="text-2xs font-bold text-ink-subtle uppercase">
 							Category
 						</div>
 						<div class="text-sm" data-testid="cloud-confirm-category">
@@ -92,7 +92,7 @@
 						v-if="shownRepositories"
 						data-testid="cloud-confirm-repositories"
 					>
-						<div class="text-2xs font-bold uppercase text-ink-subtle">
+						<div class="text-2xs font-bold text-ink-subtle uppercase">
 							Repositories
 						</div>
 						<ul class="font-mono text-xs">

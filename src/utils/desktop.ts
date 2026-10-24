@@ -8,8 +8,10 @@ export type DesktopPlatform = 'macos' | 'windows' | 'linux';
 
 export const desktopPlatform = (
 	nav:
-		| { platform?: string; userAgent?: string }
-		| undefined = typeof navigator === 'undefined' ? undefined : navigator,
+		{ platform?: string; userAgent?: string } | undefined = typeof navigator ===
+	'undefined'
+		? undefined
+		: navigator,
 ): DesktopPlatform | null => {
 	const hint = `${nav?.platform ?? ''} ${nav?.userAgent ?? ''}`;
 	if (/mac|darwin/i.test(hint)) return 'macos';

@@ -3,11 +3,7 @@ import { desktopPlatform, isDesktopApp } from '@/utils/desktop';
 import { Channel, invoke } from '@tauri-apps/api/core';
 
 export type RunnerStateKind =
-	| 'starting'
-	| 'working'
-	| 'waiting'
-	| 'blocked'
-	| 'exited';
+	'starting' | 'working' | 'waiting' | 'blocked' | 'exited';
 
 export type RunnerExitDetail = 'done' | 'failed' | 'interrupted';
 
@@ -28,10 +24,7 @@ export interface RunnerSession {
 }
 
 export type RunnerStatusState =
-	| 'disabled'
-	| 'absent'
-	| 'incompatible'
-	| 'ready';
+	'disabled' | 'absent' | 'incompatible' | 'ready';
 
 export interface RunnerStatus {
 	state: RunnerStatusState;

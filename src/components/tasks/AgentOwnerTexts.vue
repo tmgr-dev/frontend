@@ -6,7 +6,7 @@
 			data-testid="cloud-confirm-persona"
 		>
 			<summary
-				class="cursor-pointer text-2xs font-bold uppercase text-ink-subtle"
+				class="cursor-pointer text-2xs font-bold text-ink-subtle uppercase"
 			>
 				Persona instructions (<template
 					v-for="(piece, i) in personaBlock.name"
@@ -21,7 +21,7 @@
 				}}</span>
 			</summary>
 			<pre
-				class="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words font-mono text-xs"
+				class="mt-1 max-h-48 overflow-y-auto font-mono text-xs break-words whitespace-pre-wrap"
 			><template v-for="(piece, i) in personaBlock.pieces" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
 		</details>
 		<details
@@ -30,7 +30,7 @@
 			data-testid="cloud-confirm-rules"
 		>
 			<summary
-				class="cursor-pointer text-2xs font-bold uppercase text-ink-subtle"
+				class="cursor-pointer text-2xs font-bold text-ink-subtle uppercase"
 			>
 				Workspace rules
 				<span v-if="rulesNote" class="font-normal normal-case">{{
@@ -52,7 +52,7 @@
 					>
 				</div>
 				<pre
-					class="max-h-48 overflow-y-auto whitespace-pre-wrap break-words font-mono text-xs"
+					class="max-h-48 overflow-y-auto font-mono text-xs break-words whitespace-pre-wrap"
 				><template v-if="!page.body.length">(empty)</template><template v-for="(piece, i) in page.body" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
 			</div>
 		</details>
@@ -87,7 +87,7 @@
 					? {
 							name: splitInvisible(props.persona.name),
 							pieces: splitInvisible(props.persona.instructions),
-					  }
+						}
 					: null,
 			);
 			const pageBlocks = computed(() =>

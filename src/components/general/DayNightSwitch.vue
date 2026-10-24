@@ -79,7 +79,9 @@
 					scale(var(--switch-handle-scale));
 				transition: var(--switch-transition-duration);
 				cursor: pointer;
-				box-shadow: 0 0 0.25em 0.0625em #fbee8d, 0 0 2em 0 #ffeb3b,
+				box-shadow:
+					0 0 0.25em 0.0625em #fbee8d,
+					0 0 2em 0 #ffeb3b,
 					inset -0.25em -0.25em 0 0 #fbee8e,
 					inset -0.3125em -0.3125em 0 0.625em #fff5b2;
 				margin-top: var(--switch-off-handle-x);
@@ -97,7 +99,8 @@
 					background: transparent;
 					transform: translateX(var(--switch-on-handle-x))
 						scale(var(--switch-handle-scale));
-					box-shadow: inset -0.1875em -0.1875em 0 0 #fbe7ef,
+					box-shadow:
+						inset -0.1875em -0.1875em 0 0 #fbe7ef,
 						inset -0.5625em -0.5625em 0 0 #fffff7;
 				}
 			}

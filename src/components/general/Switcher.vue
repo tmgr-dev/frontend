@@ -117,8 +117,10 @@
 
 	/* accessibility styles */
 	.b-switch input:focus + span:after {
-		box-shadow: inset 0 0 0 0.03em rgba(0, 0, 0, 0.15),
-			0 0 0.05em rgba(0, 0, 0, 0.08), 0 0.1em 0.2em rgba(0, 0, 0, 0.3);
+		box-shadow:
+			inset 0 0 0 0.03em rgba(0, 0, 0, 0.15),
+			0 0 0.05em rgba(0, 0, 0, 0.08),
+			0 0.1em 0.2em rgba(0, 0, 0, 0.3);
 		background: #fff;
 	}
 
@@ -132,8 +134,10 @@
 
 	/* reset accessibility style on hover */
 	.b-switch:hover input:focus + span:after {
-		box-shadow: inset 0 0 0 0.03em rgba(0, 0, 0, 0.1),
-			0 0 0.05em rgba(0, 0, 0, 0.05), 0 0.1em 0.2em rgba(0, 0, 0, 0.2);
+		box-shadow:
+			inset 0 0 0 0.03em rgba(0, 0, 0, 0.1),
+			0 0 0.05em rgba(0, 0, 0, 0.05),
+			0 0.1em 0.2em rgba(0, 0, 0, 0.2);
 		background: #fff;
 	}
 
