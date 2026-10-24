@@ -190,9 +190,7 @@ const emptyDialog = (page) =>
 const deleteAll = (page) => page.getByRole('button', { name: 'Delete all' });
 
 const settle = async (dialog) =>
-  expect
-    .poll(() => dialog.evaluate((el) => getComputedStyle(el).transform))
-    .toMatch(/^(none|matrix\(1, 0, 0, 1, .*)$/);
+  expect.poll(() => dialog.evaluate((el) => el.getAnimations().length)).toBe(0);
 
 const shot = async (page, name) => {
   if (shotsDir)

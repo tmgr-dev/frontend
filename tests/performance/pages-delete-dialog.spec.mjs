@@ -103,8 +103,8 @@ const openDelete = async (page, id, scope = section(page)) => {
   await expect(dialog(page)).toBeVisible();
   // Wait for the zoom-in to settle before measuring or shooting.
   await expect
-    .poll(() => dialog(page).evaluate((el) => getComputedStyle(el).transform))
-    .toMatch(/^matrix\(1, 0, 0, 1, /);
+    .poll(() => dialog(page).evaluate((el) => el.getAnimations().length))
+    .toBe(0);
 };
 
 const rgb = (color) =>

@@ -1,10 +1,13 @@
 <template>
 	<div
 		class="dr-week-chip group absolute cursor-pointer overflow-hidden rounded-md transition-opacity"
-		:class="[
-			entry.completed ? 'opacity-50' : 'opacity-100',
-			isBeingDragged ? 'opacity-30' : '',
-		]"
+		:class="
+			entry.completed
+				? 'opacity-50'
+				: isBeingDragged
+					? 'opacity-30'
+					: 'opacity-100'
+		"
 		:style="blockStyle"
 		:title="`${entry.title} · ${entry.time} – ${endTimeStr}`"
 		@click="onClick"

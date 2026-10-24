@@ -18,6 +18,9 @@ test('the sidebar slides in on a phone', async ({ page }) => {
   const sheet = page.locator('[data-mobile="true"][data-sidebar="sidebar"]');
   await expect(sheet).toBeVisible();
   await expect(sheet).toHaveCSS('position', 'fixed');
+  await expect
+    .poll(() => sheet.evaluate((el) => el.getAnimations().length))
+    .toBe(0);
   await expect(sheet).toHaveCSS('transform', 'none');
   const box = await sheet.boundingBox();
   expect(box.x).toBe(0);

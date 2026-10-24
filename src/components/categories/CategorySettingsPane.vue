@@ -62,7 +62,7 @@
 						:aria-invalid="!!errors.code || undefined"
 						:class="[
 							inputClass,
-							'max-w-[220px] font-mono text-[13px]',
+							'max-w-[220px] font-mono',
 							errors.code && errorClass,
 						]"
 						@input="onCode"
