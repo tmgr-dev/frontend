@@ -175,7 +175,7 @@ const statusHeader = (
 					updatedMs === null
 						? ''
 						: `, updated ${span((nowMs - updatedMs) / 1000)} ago`
-			  }`
+				}`
 			: null;
 
 	return {
@@ -210,7 +210,7 @@ const reasonItems = (v: unknown): CounterItem[] | null =>
 		? list(v).map((r) => ({
 				task: text(r.task, 64),
 				reason: text(r.reason, 300),
-		  }))
+			}))
 		: null;
 
 const limitView = (
@@ -376,7 +376,7 @@ export const buildView = (
 					count: int(tasks.queued),
 					items: null,
 				},
-		  ]
+			]
 		: [];
 
 	const limits = list(d.limits).map((l) => limitView(l, nowMs, tz));
@@ -406,7 +406,7 @@ export const buildView = (
 				? null
 				: `≈ ${Math.round(pctLeft)}% of the ${windowName(
 						text(nextRaw.window, 32),
-				  )} window left before "${text(nextRaw.kind, 200)}"`,
+					)} window left before "${text(nextRaw.kind, 200)}"`,
 		cost: hasStatus ? costView(d) : null,
 		unconfirmedNew: int(d.unconfirmed_new),
 		events: list(d.events)

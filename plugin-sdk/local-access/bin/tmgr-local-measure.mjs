@@ -115,13 +115,13 @@ async function runWatch(client, intervalSeconds) {
     const healthStatus = health.ok
       ? 'ok'
       : health.error instanceof LocalAccessError
-      ? health.error.code
-      : 'error';
+        ? health.error.code
+        : 'error';
     const whoamiStatus = whoami.ok
       ? 'ok'
       : whoami.error instanceof LocalAccessError
-      ? whoami.error.code
-      : 'error';
+        ? whoami.error.code
+        : 'error';
     console.log(
       `${timestamp}  health=${health.ms.toFixed(
         0,

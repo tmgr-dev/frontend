@@ -1,10 +1,5 @@
 export type RoutineCategoryId =
-	| 'work'
-	| 'health'
-	| 'learn'
-	| 'home'
-	| 'social'
-	| 'none';
+	'work' | 'health' | 'learn' | 'home' | 'social' | 'none';
 
 export interface RoutineCategory {
 	id: RoutineCategoryId;
@@ -13,11 +8,7 @@ export interface RoutineCategory {
 }
 
 export type RoutineFrequency =
-	| 'NONE'
-	| 'DAILY'
-	| 'WEEKLY'
-	| 'MONTHLY'
-	| 'YEARLY';
+	'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 
 export interface RoutinePattern {
 	frequency: RoutineFrequency;
@@ -29,9 +20,7 @@ export interface RoutinePattern {
 	start_at?: string | null;
 	end_at?: string | null;
 	scheduled_time?:
-		| { hours: number; minutes: number; seconds: number }
-		| string
-		| null;
+		{ hours: number; minutes: number; seconds: number } | string | null;
 	duration_min?: number | null;
 	reminder_min?: number | null;
 }

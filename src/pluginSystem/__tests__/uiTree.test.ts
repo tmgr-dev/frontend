@@ -319,7 +319,7 @@ it('counts table rows against the node budget, so nested tables cannot multiply'
 	const count = (node: any): number =>
 		node.type === 'table'
 			? node.rows.length +
-			  node.rows.reduce(
+				node.rows.reduce(
 					(sum: number, r: any) =>
 						sum +
 						(Object.values(r.cells) as any[]).reduce(
@@ -327,7 +327,7 @@ it('counts table rows against the node budget, so nested tables cannot multiply'
 							0,
 						),
 					0,
-			  )
+				)
 			: 1;
 	expect(count(sanitizeTree(outer))).toBeLessThanOrEqual(3000);
 });

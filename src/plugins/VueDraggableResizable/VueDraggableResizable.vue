@@ -627,12 +627,12 @@
 				const tmpDeltaX =
 					axis && axis !== 'y'
 						? mouseClickPosition.mouseX -
-						  (e.touches ? e.touches[0].pageX : e.pageX)
+							(e.touches ? e.touches[0].pageX : e.pageX)
 						: 0;
 				const tmpDeltaY =
 					axis && axis !== 'x'
 						? mouseClickPosition.mouseY -
-						  (e.touches ? e.touches[0].pageY : e.pageY)
+							(e.touches ? e.touches[0].pageY : e.pageY)
 						: 0;
 				const [deltaX, deltaY] = snapToGrid(
 					grid,

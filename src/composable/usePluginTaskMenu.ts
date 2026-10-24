@@ -14,7 +14,7 @@ export const usePluginTaskMenu = () => {
 
 	const items = computed<TaskMenuItem[]>(() =>
 		isInDetachedWindow()
-			? detachedTaskMenuClient()?.items.value ?? []
+			? (detachedTaskMenuClient()?.items.value ?? [])
 			: currentTaskMenuItems(),
 	);
 	const useSubmenu = computed(() => needsTaskMenuSubmenu(items.value));

@@ -23,8 +23,7 @@ export interface ToolCall {
 }
 
 export type ChatStreamEvent =
-	| { type: 'text'; delta: string }
-	| { type: 'tool_call'; call: ToolCall };
+	{ type: 'text'; delta: string } | { type: 'tool_call'; call: ToolCall };
 
 /** The Rust side turns the SSE stream from `llm_chat` into this; a test can fake it directly. */
 export type ChatFn = (
@@ -149,8 +148,8 @@ export const runPersonaAgent = async ({
 				const content =
 					typeof method !== 'string' || typeof path !== 'string'
 						? { message: 'method and path are required strings' }
-						: (await dispatchLocal(router, personaCtx, method, path, body))
-								?.data ?? { message: `no local route for ${method} ${path}` };
+						: ((await dispatchLocal(router, personaCtx, method, path, body))
+								?.data ?? { message: `no local route for ${method} ${path}` });
 				messages.push({
 					role: 'tool',
 					tool_call_id: call.id,

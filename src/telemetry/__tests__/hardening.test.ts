@@ -141,7 +141,8 @@ describe('receipts as one key per install', () => {
 			key: (i: number) => storage.key(i),
 			getItem: (k: string) => storage.getItem(k),
 			setItem: (k: string, v: string) => (
-				writes.push(k), storage.setItem(k, v)
+				writes.push(k),
+				storage.setItem(k, v)
 			),
 			removeItem: (k: string) => storage.removeItem(k),
 		} as unknown as Storage;

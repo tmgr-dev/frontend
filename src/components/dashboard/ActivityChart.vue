@@ -206,7 +206,7 @@
 							const y =
 								max > 0
 									? PLOT_BOTTOM -
-									  (Math.max(0, v) / max) * (PLOT_BOTTOM - PLOT_TOP)
+										(Math.max(0, v) / max) * (PLOT_BOTTOM - PLOT_TOP)
 									: PLOT_BOTTOM;
 							return `${x},${y}`;
 						})
@@ -232,7 +232,7 @@
 						max > 0
 							? `, peak ${s.format(max)} on ${formatDay(
 									props.dates[values.indexOf(max)],
-							  )}`
+								)}`
 							: '';
 					if (s.showTotal === false)
 						return `${s.label}: ${peak ? peak.slice(2) : 'none'}.`;

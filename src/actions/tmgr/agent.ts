@@ -144,12 +144,12 @@ export const sendAgentMessage = async (
 					scenario,
 					content,
 					timezone: currentTimeZone(),
-			  }
+				}
 			: {
 					content,
 					...(fileIds.length ? { file_ids: fileIds } : {}),
 					...(quotes.length ? { quotes } : {}),
-			  },
+				},
 	);
 	return data;
 };

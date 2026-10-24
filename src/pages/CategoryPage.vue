@@ -349,7 +349,7 @@
 						? crumbOf([
 								...parentNode.value.ancestors,
 								parentNode.value.category,
-						  ])
+							])
 						: 'Top level';
 				return crumbOf(node.value?.ancestors ?? []);
 			});
@@ -363,7 +363,7 @@
 							name: 'WorkspaceCategoryChildren',
 							params: { workspace_code: workspaceCode.value, id },
 							query,
-					  }
+						}
 					: { name: 'ProjectCategoryChildrenList', params: { id }, query };
 
 			const lastId = () => {
@@ -400,10 +400,10 @@
 					state.value === 'missing'
 						? 'Category not found'
 						: state.value === 'empty'
-						? 'Categories'
-						: state.value === 'create'
-						? heading.value
-						: node.value?.category.title,
+							? 'Categories'
+							: state.value === 'create'
+								? heading.value
+								: node.value?.category.title,
 				(title) => {
 					if (!title) return;
 					store.commit('setMetaTitle', title);
@@ -433,11 +433,11 @@
 									workspace_code: workspaceCode.value,
 									category_id: String(parentId),
 								},
-						  }
+							}
 						: {
 								name: 'WorkspaceCategoryCreate',
 								params: { workspace_code: workspaceCode.value },
-						  },
+							},
 				);
 			const goIndex = () =>
 				router.push({

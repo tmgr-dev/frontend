@@ -181,8 +181,8 @@
 			color: isToday
 				? '#e8857d'
 				: inMonth
-				? undefined
-				: 'rgba(255,255,255,.35)',
+					? undefined
+					: 'rgba(255,255,255,.35)',
 			fontWeight: isToday ? 700 : 500,
 		};
 	}

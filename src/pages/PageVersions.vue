@@ -213,13 +213,13 @@
 
 			const diffBefore = computed(() =>
 				mode.value === 'current'
-					? snapshot.value?.body ?? ''
+					? (snapshot.value?.body ?? '')
 					: previousBody.value,
 			);
 			const diffAfter = computed(() =>
 				mode.value === 'current'
-					? page.value?.body ?? ''
-					: snapshot.value?.body ?? '',
+					? (page.value?.body ?? '')
+					: (snapshot.value?.body ?? ''),
 			);
 			const stats = computed(() =>
 				diffStats(diffLines(diffBefore.value, diffAfter.value)),

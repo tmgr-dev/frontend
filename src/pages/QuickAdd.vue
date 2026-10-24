@@ -445,7 +445,7 @@
 					? settingValue(
 							categories.value.find((c) => c.id === categoryId.value),
 							TITLE_PATTERN_KEY,
-					  ).trim()
+						).trim()
 					: '',
 			);
 			const prefixText = computed(() =>
@@ -507,7 +507,7 @@
 					? pickRememberedCategory(
 							categories.value,
 							readLastCategory(workspaceId.value),
-					  )
+						)
 					: null;
 
 			const forgetCategories = () => {
@@ -546,8 +546,8 @@
 						keepSelection && list.some((c) => c.id === previous)
 							? previous
 							: keepSelection
-							? null
-							: rememberedCategory();
+								? null
+								: rememberedCategory();
 				} catch (e) {
 					if (request !== categoriesRequest) return;
 					console.error('quick add: categories not loaded', e);
@@ -956,14 +956,13 @@
 				() =>
 					Boolean(
 						mode.value === 'page' ||
-							mode.value === 'screenshot' ||
-							note.value ||
-							showNote.value,
+						mode.value === 'screenshot' ||
+						note.value ||
+						showNote.value,
 					),
 				async (expanded) => {
-					const { getCurrentWindow, LogicalSize } = await import(
-						'@tauri-apps/api/window'
-					);
+					const { getCurrentWindow, LogicalSize } =
+						await import('@tauri-apps/api/window');
 					await getCurrentWindow().setSize(
 						new LogicalSize(620, expanded ? EXPANDED : COMPACT),
 					);

@@ -59,16 +59,16 @@ export const setupMap = async (
               },
             }
           : graph
-          ? {
-              graph: {
-                key: 'graph',
-                name: 'graph',
-                group: 'graph',
-                type: 'boolean',
-                enabled: true,
-              },
-            }
-          : {},
+            ? {
+                graph: {
+                  key: 'graph',
+                  name: 'graph',
+                  group: 'graph',
+                  type: 'boolean',
+                  enabled: true,
+                },
+              }
+            : {},
       },
     }),
   );

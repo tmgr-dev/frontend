@@ -150,7 +150,7 @@
 			const scale = computed(() =>
 				natural.value
 					? coverScale(natural.value.width, natural.value.height, VIEW) *
-					  zoom.value
+						zoom.value
 					: 1,
 			);
 
@@ -162,7 +162,7 @@
 							natural.value.height,
 							scale.value,
 							VIEW,
-					  )
+						)
 					: next;
 
 			const imageStyle = computed(() => {

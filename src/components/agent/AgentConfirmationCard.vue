@@ -35,10 +35,13 @@
 			.filter((t) => !Number.isNaN(t) && t > current)
 			.sort((a, b) => a - b)[0];
 		if (next === undefined) return;
-		boundary = setTimeout(() => {
-			now.value = Date.now();
-			scheduleBoundary();
-		}, Math.min(next - current + 50, 2147483647));
+		boundary = setTimeout(
+			() => {
+				now.value = Date.now();
+				scheduleBoundary();
+			},
+			Math.min(next - current + 50, 2147483647),
+		);
 	}
 
 	onMounted(() => {

@@ -212,11 +212,11 @@
 				? `${heatmapHeadline(
 						data.total_contributions,
 						heatmapRange.year.value,
-				  )}. ${heatmapStreakText(
+					)}. ${heatmapStreakText(
 						data.streak,
 						heatmapRange.year.value,
 						utcToday(),
-				  )}.`
+					)}.`
 				: '',
 		};
 	});
@@ -323,7 +323,7 @@
 			? feedActivities.value
 			: feedActivities.value.filter(
 					(activity) => !String(activity.type ?? '').startsWith('agent_work'),
-			  ),
+				),
 	);
 	const activityLoading = feedLoading;
 	const activityLoadingMore = feedLoadingMore;

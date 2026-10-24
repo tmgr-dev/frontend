@@ -67,7 +67,7 @@
 						modelValue
 							? entities.find((entity) => entity[valueKey] == modelValue)?.[
 									labelKey
-							  ]
+								]
 							: selectedPlaceholder
 					}}
 				</span>
@@ -80,7 +80,10 @@
 				<CommandInput
 					class="h-9"
 					:placeholder="inputPlaceholder || 'Search entities'"
-					@input="(e: InputEvent) => (searchValue = (e.target as HTMLInputElement).value)"
+					@input="
+						(e: InputEvent) =>
+							(searchValue = (e.target as HTMLInputElement).value)
+					"
 				/>
 				<CommandEmpty class="text-ink-muted">{{
 					notFoundMessage || 'No entity found.'

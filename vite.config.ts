@@ -49,7 +49,7 @@ const runnerTerminalDevCsp = (): Plugin => ({
 				? html.replace(
 						'connect-src ipc: http://ipc.localhost',
 						'connect-src ipc: http://ipc.localhost ws://localhost:* ws://127.0.0.1:*',
-				  )
+					)
 				: html,
 	},
 });

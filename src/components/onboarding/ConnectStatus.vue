@@ -26,15 +26,15 @@
 				props.state === 'connected'
 					? 'Connected'
 					: props.state === 'stalled'
-					? 'Not connected yet'
-					: 'Waiting for your agent…',
+						? 'Not connected yet'
+						: 'Waiting for your agent…',
 			);
 			const dot = computed(() =>
 				props.state === 'connected'
 					? 'bg-status-done'
 					: props.state === 'stalled'
-					? 'bg-status-progress'
-					: 'animate-pulse bg-status-fix',
+						? 'bg-status-progress'
+						: 'animate-pulse bg-status-fix',
 			);
 			return { text, dot };
 		},

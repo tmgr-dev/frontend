@@ -79,19 +79,19 @@ export const computeFacts = async (
 						ctx,
 						`tasks WHERE deleted_at IS NULL AND common_time >= 60 AND id = ?`,
 						[taskId as number],
-				  )
+					)
 				: await exists(
 						ctx,
 						`tasks WHERE deleted_at IS NULL AND common_time >= 60`,
-				  );
+					);
 		} else if (key === 'has_board_move') {
 			facts[key] = scoped
 				? await exists(ctx, `meta WHERE key = ?`, [
 						`${BOARD_MOVE_META_PREFIX}${taskId}`,
-				  ])
+					])
 				: await exists(ctx, `meta WHERE key LIKE ?`, [
 						`${BOARD_MOVE_META_PREFIX}%`,
-				  ]);
+					]);
 		} else if (key === 'has_routine') {
 			facts[key] = await exists(ctx, `routines WHERE deleted_at IS NULL`);
 		} else if (key === 'has_page') {
@@ -184,7 +184,7 @@ export const removeStarters = async (ctx: LocalContext): Promise<number> => {
 					ids,
 				)}`,
 				ids,
-		  )
+			)
 		: [];
 	const api = createLocalApi();
 	let removed = 0;

@@ -138,7 +138,7 @@
 					pinLimits.value,
 					editDraft.value,
 					editingPinId.value,
-			  ),
+				),
 	);
 
 	const quoteChips = computed(() =>

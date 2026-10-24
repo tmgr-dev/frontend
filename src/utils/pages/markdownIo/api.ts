@@ -65,7 +65,7 @@ const pinWorkspace = (
 						...extra,
 						params: { workspace_id: id },
 						...(id > 0 ? { headers: { 'X-Workspace-Id': String(id) } } : {}),
-				  },
+					},
 	};
 };
 

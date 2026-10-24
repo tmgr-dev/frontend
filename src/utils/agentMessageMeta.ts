@@ -21,7 +21,7 @@ export const formatMessageFullTime = (
 		? date.toLocaleString('en-US', {
 				dateStyle: 'medium',
 				timeStyle: 'medium',
-		  })
+			})
 		: '';
 };
 

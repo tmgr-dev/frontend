@@ -184,7 +184,7 @@
 							value: m.comments_count,
 							hint: `on ${m.commented_tasks_count} tasks`,
 						},
-				  ]
+					]
 				: []),
 			{
 				label: 'Streak',

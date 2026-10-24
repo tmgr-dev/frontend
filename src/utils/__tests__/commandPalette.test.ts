@@ -34,7 +34,7 @@ const element = (inEditor: boolean, tag = 'div') =>
 		tagName: tag,
 		closest: (selector: string) =>
 			selector === '.codex-editor' && inEditor ? {} : null,
-	} as unknown as EventTarget);
+	}) as unknown as EventTarget;
 
 describe('isCommandPaletteHotkey', () => {
 	it('opens on Cmd+K on mac and Ctrl+K elsewhere', () => {

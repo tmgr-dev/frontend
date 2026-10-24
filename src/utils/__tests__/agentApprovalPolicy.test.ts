@@ -138,7 +138,7 @@ describe('expiringSoon', () => {
 			expired,
 			keys: 1,
 			repos: 0,
-		} as AllowedEntry);
+		}) as AllowedEntry;
 
 	it('selects entries expiring within 3 days only', () => {
 		const list = [

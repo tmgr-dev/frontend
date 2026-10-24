@@ -237,15 +237,14 @@ const syncWorkspacePlugins = async (workspaceId: number) => {
 		if (existing) {
 			// The member's own install is theirs: never replace it (with other permissions or an older
 			// release) behind their back. The pinned release simply does not run until they match.
-			errors[
-				record.plugin_id
-			] = `Shared workspace plugin: this workspace runs ${record.repo} ${
-				record.version
-			}, but ${
-				existing.source === 'installed'
-					? `you have ${existing.origin?.tag ?? 'another release'} installed`
-					: `a ${existing.source} plugin uses this id`
-			}. Remove yours to use the workspace's release.`;
+			errors[record.plugin_id] =
+				`Shared workspace plugin: this workspace runs ${record.repo} ${
+					record.version
+				}, but ${
+					existing.source === 'installed'
+						? `you have ${existing.origin?.tag ?? 'another release'} installed`
+						: `a ${existing.source} plugin uses this id`
+				}. Remove yours to use the workspace's release.`;
 			continue;
 		}
 		try {
@@ -284,7 +283,7 @@ const workspaceOf = (workspace: any): PluginWorkspace | null =>
 				kind: Number(workspace.id) < 0 ? 'local' : 'cloud',
 				ownerId:
 					workspace.user_id == null ? undefined : Number(workspace.user_id),
-		  }
+			}
 		: null;
 
 /** The store knows the workspace object only after a workspace page loaded the list; a local one is found by id. */
@@ -302,7 +301,7 @@ const resolveWorkspace = async (
 				code: `${LOCAL_CODE_PREFIX}${local.code}`,
 				name: local.name,
 				kind: 'local',
-		  }
+			}
 		: null;
 };
 
@@ -450,7 +449,7 @@ const showPluginNotification = (
 								void followNotificationClick(host, store, payload.token!),
 						},
 						() => (payload.command ? 'Run' : 'Open'),
-				  )
+					)
 				: undefined,
 		});
 		return;
@@ -500,7 +499,7 @@ export const installPlugins = async (
 						pluginName,
 						true,
 						workspace.id,
-				  )
+					)
 				: createDataApi(
 						clientFor(workspace.id, store),
 						pluginId,
@@ -508,7 +507,7 @@ export const installPlugins = async (
 						pluginName,
 						false,
 						workspace.id,
-				  ),
+					),
 		subscribe: (handler) => domainEvents.on(handler),
 		enabled: {
 			get: (pluginId, workspaceId) => {
@@ -708,7 +707,7 @@ export const installPlugins = async (
 		() =>
 			`${store.getters.currentWorkspaceId}|${
 				store.getters.currentWorkspace?.code ?? ''
-			}|${store.state.token ? store.state.user?.id ?? '' : ''}`,
+			}|${store.state.token ? (store.state.user?.id ?? '') : ''}`,
 		async () => {
 			const current = ++sequence;
 			// Another person (or nobody) signed in: nothing of the previous session may keep running.

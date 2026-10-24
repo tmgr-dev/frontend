@@ -83,7 +83,7 @@
 			: 'bg-surface',
 	];
 	const badge = (state: PreviewState) =>
-		({ off: 'off', new: 'new', 'will-hide': 'will hide', on: '' }[state]);
+		({ off: 'off', new: 'new', 'will-hide': 'will hide', on: '' })[state];
 	const badgeClass = (state: PreviewState) => [
 		'shrink-0 rounded px-1.5 text-2xs no-underline',
 		state === 'new'

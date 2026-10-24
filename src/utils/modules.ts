@@ -55,7 +55,7 @@ export const parseModulesPayload = (raw: any): ModulesPayload => {
 		: Object.entries(body.modules || {}).map(([key, entry]) => ({
 				...(entry as object),
 				key,
-		  }));
+			}));
 	return {
 		configured: body.configured !== false,
 		canManage: body.can_manage === true,
@@ -257,7 +257,7 @@ export const gateCopy = (isOwner: boolean, hiddenByMe = false) => {
 				kind: 'link',
 				text: 'Enable this feature',
 				to: '/settings/modules',
-		  } as const)
+			} as const)
 		: ({ kind: 'ask', text: 'Ask the owner to turn this on' } as const);
 };
 

@@ -60,7 +60,7 @@
 					p.bottleneck >= 0
 						? ` Bottleneck: ${
 								p.nodes[p.bottleneck].key ?? p.labels[p.bottleneck]
-						  } blocks ${p.bottleneckBlocks}.`
+							} blocks ${p.bottleneckBlocks}.`
 						: '';
 				return `Map of ${p.nodes.length} tasks and pages in ${p.clusters.length} clusters: ${names}.${bottleneck} Use the search box to move around the map by keyboard.`;
 			});

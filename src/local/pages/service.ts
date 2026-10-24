@@ -84,10 +84,10 @@ const actorKind = (ctx: LocalContext): ActorKind =>
 	!ctx.actor || ctx.actor.kind === 'user'
 		? 'user'
 		: ctx.actor.kind === 'persona'
-		? 'persona'
-		: ctx.actor.kind === 'system'
-		? 'system'
-		: 'plugin';
+			? 'persona'
+			: ctx.actor.kind === 'system'
+				? 'system'
+				: 'plugin';
 
 const actorRef = (ctx: LocalContext): string =>
 	actorKind(ctx) === 'user' ? String(ctx.user.id) : ctx.actor!.id;
@@ -118,7 +118,7 @@ const canonical = (value: unknown): string =>
 					Object.entries(v as Record<string, unknown>).sort(([a], [b]) =>
 						a < b ? -1 : 1,
 					),
-			  )
+				)
 			: v,
 	);
 
@@ -493,7 +493,7 @@ const planLinks = async (
 			: await ctx.db.select<{ target_kind: string; target_id: number }>(
 					`SELECT target_kind, target_id FROM page_links WHERE page_id = ?`,
 					[selfPageId],
-			  );
+				);
 	const before = new Set(stored.map((r) => `${r.target_kind}:${r.target_id}`));
 	const split = (key: string): [string, number] => {
 		const [kind, id] = key.split(':');
@@ -801,8 +801,8 @@ const messageOf = (error: unknown): string =>
 	typeof error === 'string'
 		? error
 		: error instanceof Error
-		? error.message
-		: String(error);
+			? error.message
+			: String(error);
 
 const insertPage = async (
 	ctx: LocalContext,
@@ -1047,7 +1047,7 @@ export const updatePage = async (ctx: LocalContext, ref: string, req: any) => {
 						row.type,
 						req.properties,
 						propertiesOf(row.properties),
-				  );
+					);
 		return { title, body, properties, summary: cleanSummary(req.summary) };
 	});
 };
@@ -1344,11 +1344,11 @@ export const movePage = async (ctx: LocalContext, ref: string, req: any) => {
 							sql: `UPDATE pages SET parent_id = ?, position = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
 							params: [parentId, index, at, id],
 							expectChanges: true,
-					  }
+						}
 					: {
 							sql: `UPDATE pages SET position = ? WHERE id = ? AND position <> ?`,
 							params: [index, id, index],
-					  },
+						},
 			),
 		);
 		if (outcome.failedAt !== null) throw pageNotFound();

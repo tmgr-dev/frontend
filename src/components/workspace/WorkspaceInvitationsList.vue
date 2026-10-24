@@ -113,8 +113,8 @@
 							isExpired(invitation)
 								? 'Cannot revoke expired invitation'
 								: invitation.is_accepted
-								? 'Cannot revoke accepted invitation'
-								: 'Revoke invitation'
+									? 'Cannot revoke accepted invitation'
+									: 'Revoke invitation'
 						"
 					>
 						{{ revoking === invitation.id ? 'Revoking...' : 'Revoke' }}

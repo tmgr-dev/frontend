@@ -91,8 +91,8 @@ const listItems = (
 				style === 'checklist'
 					? `- [${item.meta?.checked ? 'x' : ' '}]`
 					: style === 'ordered'
-					? `${start + index}.`
-					: '-';
+						? `${start + index}.`
+						: '-';
 			const line = `${'  '.repeat(depth)}${marker} ${stripHtml(
 				typeof item.content === 'string' ? item.content : '',
 			)}`;

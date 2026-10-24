@@ -24,7 +24,10 @@ export interface PluginProcessOptions {
 }
 
 export class DispatchError extends Error {
-	constructor(readonly code: string, message: string) {
+	constructor(
+		readonly code: string,
+		message: string,
+	) {
 		super(message);
 	}
 }

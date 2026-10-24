@@ -59,7 +59,7 @@ export const localModulesPayload = async (ctx: LocalContext) => {
 		else
 			enabled = stored.has(module.key)
 				? stored.get(module.key) === '1'
-				: LOCAL_DEFAULTS[module.key] ?? module.default;
+				: (LOCAL_DEFAULTS[module.key] ?? module.default);
 		return {
 			...module,
 			enabled,

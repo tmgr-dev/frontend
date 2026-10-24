@@ -47,8 +47,7 @@
 					name="password_confirmation"
 					type="password"
 					:class="{
-						'border-destructive':
-							(errors as any)?.password_confirmation?.[0],
+						'border-destructive': (errors as any)?.password_confirmation?.[0],
 					}"
 					placeholder="Password confirmation"
 					autocomplete="new-password"

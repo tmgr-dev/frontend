@@ -362,7 +362,7 @@ describe('confirmation flow', () => {
 			preview: { title: 'x', fields: [], body: null },
 			result: null,
 			expires_at: '2026-10-21T10:15:00Z',
-		} as unknown as PendingAction);
+		}) as unknown as PendingAction;
 
 	const withPending = () =>
 		appendPending(
@@ -547,7 +547,7 @@ describe('mergePendingActions', () => {
 			preview: { title, fields: [], body: null },
 			result: null,
 			expires_at: '',
-		} as never);
+		}) as never;
 
 	it('never moves a status backwards', () => {
 		const merged = mergePendingActions(

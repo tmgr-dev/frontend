@@ -615,7 +615,7 @@
 						? {
 								'order[column]': sortColumn.value,
 								'order[direction]': sortDirection.value,
-						  }
+							}
 						: {}),
 				},
 				page: pagination.value.current_page,
@@ -641,7 +641,7 @@
 							everything.data,
 							stateFilter.value,
 							workspaceStatuses.value,
-					  )
+						)
 					: filterTasksByStatusIds(everything.data, activeStatusIds.value);
 				const byPriority = byStatus.filter((task) =>
 					matchesPriorityFilter(task, activePriorities.value),

@@ -37,12 +37,7 @@ import {
 
 export type PluginSource = 'builtin' | 'folder' | 'installed';
 export type PluginStatus =
-	| 'stopped'
-	| 'starting'
-	| 'running'
-	| 'failed'
-	| 'crashed'
-	| 'blocked';
+	'stopped' | 'starting' | 'running' | 'failed' | 'crashed' | 'blocked';
 
 export interface PluginPackage {
 	manifest: PluginManifest;
@@ -495,7 +490,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			values[key] =
 				typeof saved[key] === property.type
 					? saved[key]
-					: property.default ?? null;
+					: (property.default ?? null);
 		}
 		return values;
 	};
@@ -551,17 +546,20 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		}
 		slot.pending = badge;
 		if (slot.timer) return;
-		slot.timer = setTimeout(() => {
-			if (
-				badgeTimers.get(key) !== slot ||
-				running.get(pluginId)?.generation !== generation
-			)
-				return;
-			slot.timer = null;
-			slot.at = now();
-			applyViewBadge(key, pluginId, viewId, slot.pending);
-			slot.pending = null;
-		}, VIEW_BADGE_WINDOW_MS - (now() - slot.at));
+		slot.timer = setTimeout(
+			() => {
+				if (
+					badgeTimers.get(key) !== slot ||
+					running.get(pluginId)?.generation !== generation
+				)
+					return;
+				slot.timer = null;
+				slot.at = now();
+				applyViewBadge(key, pluginId, viewId, slot.pending);
+				slot.pending = null;
+			},
+			VIEW_BADGE_WINDOW_MS - (now() - slot.at),
+		);
 	};
 
 	const clearViewBadgesOf = (pluginId: string) => {
@@ -757,7 +755,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 							setTrayItem(pluginId, manifest.name, itemId, generation, item),
 						setTitle: (text) => setTrayTitle(storageId, text),
 						isTitleOwner: () => deps.trayTitleOwner?.() === storageId,
-				  }
+					}
 				: undefined,
 			setStatusBarItem: (itemId, item) => {
 				const key = `${pluginId}:${itemId}`;
@@ -794,7 +792,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				? {
 						requestConnection: (opts) =>
 							deps.requestLocalConnection!(pluginId, opts),
-				  }
+					}
 				: undefined,
 			now,
 		});
@@ -1016,7 +1014,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 							type: event.type,
 							workspaceId: event.workspaceId,
 							pageId: event.pageId,
-					  }
+						}
 					: mapPageEvent(event as Parameters<typeof mapPageEvent>[0]);
 			for (const [pluginId, plugin] of running) {
 				if (

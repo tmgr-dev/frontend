@@ -133,7 +133,7 @@ export const parseAuthCallback = (url: string): AuthCallback | null => {
 };
 
 export const desktopTxFromState = (state: unknown): string | null =>
-	typeof state === 'string' ? DESKTOP_STATE.exec(state)?.[1] ?? null : null;
+	typeof state === 'string' ? (DESKTOP_STATE.exec(state)?.[1] ?? null) : null;
 
 export const parseRelayFragment = (hash: string): RelayResult | null =>
 	parseResult(hash.replace(/^#/, ''));

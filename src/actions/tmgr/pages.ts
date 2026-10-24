@@ -34,12 +34,7 @@ export interface PageSection {
 export type PersonaNetwork = 'operational' | 'personal' | 'strategic';
 
 export type AliasSource =
-	| 'telegram'
-	| 'rocketchat'
-	| 'slack'
-	| 'github'
-	| 'email'
-	| 'other';
+	'telegram' | 'rocketchat' | 'slack' | 'github' | 'email' | 'other';
 
 export interface PersonAlias {
 	source: AliasSource;

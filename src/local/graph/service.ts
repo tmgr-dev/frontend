@@ -101,7 +101,10 @@ const wantOf = (
 class Resolver {
 	infos = new Map<string, Info | null>();
 
-	constructor(private ctx: LocalContext, private pagesEnabled: boolean) {}
+	constructor(
+		private ctx: LocalContext,
+		private pagesEnabled: boolean,
+	) {}
 
 	async ensure(ids: Iterable<string>) {
 		const missing = [...new Set(ids)].filter((id) => !this.infos.has(id));
@@ -325,12 +328,12 @@ export const related = async (
 		a.id === center
 			? -1
 			: b.id === center
-			? 1
-			: a.hop - b.hop ||
-			  rank(
-					{ weight: a.weight, updated: updatedOf(a.id), id: a.id },
-					{ weight: b.weight, updated: updatedOf(b.id), id: b.id },
-			  ),
+				? 1
+				: a.hop - b.hop ||
+					rank(
+						{ weight: a.weight, updated: updatedOf(a.id), id: a.id },
+						{ weight: b.weight, updated: updatedOf(b.id), id: b.id },
+					),
 	);
 	const edges = [...pool.values()]
 		.filter((e) => nodes.has(e.from) && nodes.has(e.to))
@@ -412,21 +415,19 @@ export const path = async (
 
 	const chain: string[] = [];
 	const edges: GraphEdge[] = [];
-	for (let cur: string | null = to; cur; ) {
+	for (let cur: string | null = to; cur;) {
 		chain.unshift(cur);
 		const step: { prev: string; edge: GraphEdge } | null =
 			parent.get(cur) ?? null;
 		if (step) edges.unshift(step.edge);
 		cur = step ? step.prev : null;
 	}
-	const nodes = chain.map(
-		(id, hop): GraphNode => ({
-			...resolver.get(id)!.node,
-			hop,
-			weight: hop === 0 ? CENTER_WEIGHT : edges[hop - 1].weight,
-			rel: hop === 0 ? null : edges[hop - 1].label,
-		}),
-	);
+	const nodes = chain.map((id, hop): GraphNode => ({
+		...resolver.get(id)!.node,
+		hop,
+		weight: hop === 0 ? CENTER_WEIGHT : edges[hop - 1].weight,
+		rel: hop === 0 ? null : edges[hop - 1].label,
+	}));
 	return { from, to, nodes, edges, exhausted: false };
 };
 

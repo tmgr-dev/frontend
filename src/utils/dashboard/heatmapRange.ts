@@ -111,5 +111,5 @@ export const heatmapStreakText = (
 		? `Current streak: ${plural(streak.current, 'day')} • Longest: ${plural(
 				streak.longest,
 				'day',
-		  )}`
+			)}`
 		: `Longest streak in ${year}: ${plural(streak.longest, 'day')}`;

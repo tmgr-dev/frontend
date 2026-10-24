@@ -248,7 +248,7 @@
 								workspaceId: props.workspaceId,
 								workspaceCode: workspaceCode.value,
 								ownRuns: list,
-						  })
+							})
 								.then((r) => r.usage)
 								.catch(() => null)
 						: Promise.resolve(undefined),
@@ -292,7 +292,7 @@
 					ticker = running
 						? setInterval(() => {
 								now.value = Date.now();
-						  }, 1000)
+							}, 1000)
 						: null;
 				},
 				{ immediate: true },

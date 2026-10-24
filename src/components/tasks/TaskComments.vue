@@ -297,8 +297,8 @@
 					comment.cursor_agent_id
 						? '-ml-3 rounded-lg border-l-4 border-status-testing bg-surface-sunken p-3'
 						: comment.user?.email === 'ai@tmgr.dev'
-						? '-ml-3 rounded-lg border-l-4 border-brand bg-surface-sunken p-3'
-						: '',
+							? '-ml-3 rounded-lg border-l-4 border-brand bg-surface-sunken p-3'
+							: '',
 				]"
 			>
 				<template

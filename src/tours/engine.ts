@@ -276,7 +276,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
 								rest.step,
 								deps.keycaps?.() ?? DEFAULT_KEYCAP_ENV,
 							),
-					  }
+						}
 					: rest;
 			}
 			showView(view);

@@ -483,8 +483,8 @@ export const migrate = async (
 					typeof error === 'string'
 						? error
 						: typeof (error as { message?: unknown })?.message === 'string'
-						? (error as { message: string }).message
-						: '';
+							? (error as { message: string }).message
+							: '';
 				if (!/duplicate column name/i.test(message)) throw error;
 			}
 		}

@@ -79,8 +79,8 @@ const listItems = (items: any[], style: ListStyle): ListItem[] =>
 			item.items == null
 				? []
 				: Array.isArray(item.items)
-				? item.items
-				: [item.items];
+					? item.items
+					: [item.items];
 		return [
 			{
 				content: itemContent(item),
@@ -96,8 +96,8 @@ const normalizeList = (block: any) => {
 		block.type === 'checklist'
 			? 'checklist'
 			: LIST_STYLES.includes(data.style)
-			? data.style
-			: 'unordered';
+				? data.style
+				: 'unordered';
 	// list@2 throws on non-array items, so Editor.js keeps such a block as a stub
 	// and saves it back unchanged; normalising it could only lose data (TM-591 D-005).
 	if (
@@ -115,7 +115,7 @@ const normalizeList = (block: any) => {
 			? {
 					start: data.meta?.start,
 					counterType: data.meta?.counterType ?? 'numeric',
-			  }
+				}
 			: {};
 	return { ...block, type: 'list', data: { style, meta, items } };
 };
@@ -138,7 +138,7 @@ export const normalizeBlocks = (
 		...value,
 		blocks: (Array.isArray(blocks) ? blocks : []).flatMap((block) =>
 			block && (block.type === 'list' || block.type === 'checklist')
-				? normalizeList(block) ?? []
+				? (normalizeList(block) ?? [])
 				: [block],
 		),
 	};
@@ -150,7 +150,7 @@ const sortedKeys = (_key: string, value: unknown) =>
 				Object.keys(value)
 					.sort()
 					.map((key) => [key, (value as Record<string, unknown>)[key]]),
-		  )
+			)
 		: value;
 
 /** Saved Editor.js blocks equal the stored document, ignoring key order (a MySQL JSON column reorders keys). */

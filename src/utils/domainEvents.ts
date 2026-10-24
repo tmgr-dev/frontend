@@ -200,9 +200,9 @@ export const eventsForResponse = (
 		typeof entity?.workspace_id === 'number'
 			? entity.workspace_id
 			: Number.isFinite(requested) &&
-			  response.config.params?.workspace_id != null
-			? requested
-			: currentWorkspaceId();
+				  response.config.params?.workspace_id != null
+				? requested
+				: currentWorkspaceId();
 	const withTask = (
 		type: 'task.created' | 'task.updated',
 		id: number,
@@ -217,7 +217,7 @@ export const eventsForResponse = (
 						task: payload,
 						...(changed ? { changed } : {}),
 					},
-			  ]
+				]
 			: [];
 
 	let match: RegExpMatchArray | null;
@@ -355,8 +355,8 @@ export const eventsForResponse = (
 		const reactions = Array.isArray(raw)
 			? raw
 			: Array.isArray((raw as Entity)?.reactions)
-			? (raw as Entity).reactions
-			: [];
+				? (raw as Entity).reactions
+				: [];
 		const taskId = Array.isArray(raw) ? undefined : (raw as Entity)?.task_id;
 		return [
 			{
@@ -535,8 +535,8 @@ export const installDomainEvents = (
 			const actor = plugin
 				? `plugin:${plugin}`
 				: localAccessActor
-				? `persona:${localAccessActor}`
-				: undefined;
+					? `persona:${localAccessActor}`
+					: undefined;
 			const sentIn = (response.config as any)[SENT_IN];
 			const workspaceId = () =>
 				sentIn === undefined ? currentWorkspaceId() : sentIn;

@@ -18,8 +18,7 @@ export interface OpenTaskLinkDeps {
 export type TaskLinkFailure = 'workspace' | 'not_found' | 'forbidden' | 'error';
 
 export type OpenTaskLinkResult =
-	| { ok: true }
-	| { ok: false; reason: TaskLinkFailure };
+	{ ok: true } | { ok: false; reason: TaskLinkFailure };
 
 const MESSAGES: Record<TaskLinkFailure, string> = {
 	workspace: "This link points to a workspace you don't have access to.",

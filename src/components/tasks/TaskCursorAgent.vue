@@ -181,10 +181,10 @@
 									agent.status === 'RUNNING'
 										? 'bg-status-progress-bg text-status-progress-fg'
 										: agent.status === 'FINISHED'
-										? 'bg-status-done-bg text-status-done-fg'
-										: agent.status === 'FAILED'
-										? 'bg-status-fix-bg text-status-fix-fg'
-										: 'border border-line bg-surface text-ink-subtle',
+											? 'bg-status-done-bg text-status-done-fg'
+											: agent.status === 'FAILED'
+												? 'bg-status-fix-bg text-status-fix-fg'
+												: 'border border-line bg-surface text-ink-subtle',
 								]"
 							>
 								{{ agent.status }}

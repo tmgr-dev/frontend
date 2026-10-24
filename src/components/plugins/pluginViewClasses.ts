@@ -72,8 +72,8 @@ export const stackClasses = (node: {
 	const align = node.align
 		? STACK_ALIGN[node.align]
 		: node.direction === 'row'
-		? 'items-stretch'
-		: '';
+			? 'items-stretch'
+			: '';
 	if (align) classes.push(align);
 	if (node.justify) classes.push(STACK_JUSTIFY[node.justify]);
 	if (node.grow) classes.push('min-w-0', 'flex-1');

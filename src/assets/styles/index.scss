@@ -113,8 +113,10 @@ html:not([data-focus-source='pointer'])
 html:not([data-focus-source='pointer']) .focus-ring {
 	outline: 2px solid var(--focus-ring);
 	outline-offset: -2px;
-	box-shadow: inset 0 0 0 4px var(--bg-raised),
-		var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+	box-shadow:
+		inset 0 0 0 4px var(--bg-raised),
+		var(--tw-ring-offset-shadow, 0 0 #0000),
+		var(--tw-ring-shadow, 0 0 #0000),
 		var(--tw-shadow, 0 0 #0000);
 }
 
@@ -122,8 +124,9 @@ html:not([data-focus-source='pointer'])
 	:is([type='checkbox'], [type='radio'], [role='switch']):focus-visible:not(
 		[tabindex='-1']
 	):not(#{$focus-text-entry}) {
-	box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000),
-		var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow, 0 0 #0000);
+	box-shadow:
+		var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+		var(--tw-shadow, 0 0 #0000);
 }
 
 $focus-border-keep: "[aria-invalid='true'], .border-destructive, .border-red-500, [class~='!border-red-500']";
@@ -141,7 +144,9 @@ html:not([data-focus-source='pointer'])
 	):focus-visible:not([tabindex='-1']) {
 	outline: 2px solid var(--focus-ring);
 	outline-offset: -2px;
-	box-shadow: inset 0 0 0 4px hsl(var(--destructive)),
-		var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+	box-shadow:
+		inset 0 0 0 4px hsl(var(--destructive)),
+		var(--tw-ring-offset-shadow, 0 0 #0000),
+		var(--tw-ring-shadow, 0 0 #0000),
 		var(--tw-shadow, 0 0 #0000);
 }

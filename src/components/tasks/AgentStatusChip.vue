@@ -79,7 +79,7 @@
 						? trackAgentStatus(workspaceId, {
 								subscribeToWorkspace,
 								unsubscribeHandlerFromWorkspace,
-						  })
+							})
 						: null;
 				},
 				{ immediate: true },

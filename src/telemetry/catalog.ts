@@ -1345,17 +1345,15 @@ export type AccountMode = Enums['account_mode'][number];
 export type Viewport = Enums['viewport'][number];
 
 type Spec =
-	| { enum: string }
-	| { step_of: string }
-	| { int: readonly [number, number] };
+	{ enum: string } | { step_of: string } | { int: readonly [number, number] };
 
 type PropValue<S> = S extends { enum: infer E extends keyof Enums }
 	? Enums[E][number]
 	: S extends { step_of: string }
-	? string
-	: S extends { int: readonly [number, number] }
-	? number
-	: never;
+		? string
+		: S extends { int: readonly [number, number] }
+			? number
+			: never;
 
 export type EventProps = {
 	[N in EventName]: {

@@ -154,14 +154,14 @@
 		watch,
 	} from 'vue';
 	const NewForm = defineAsyncComponent(() => import('@/pages/NewForm.vue'));
-	const TourHost = defineAsyncComponent(() =>
-		import('@/tours/ui/TourHost.vue'),
+	const TourHost = defineAsyncComponent(
+		() => import('@/tours/ui/TourHost.vue'),
 	);
-	const AhaWatcher = defineAsyncComponent(() =>
-		import('@/components/onboarding/AhaWatcher.vue'),
+	const AhaWatcher = defineAsyncComponent(
+		() => import('@/components/onboarding/AhaWatcher.vue'),
 	);
-	const PagesImportDialog = defineAsyncComponent(() =>
-		import('@/components/pages/PagesImportDialog.vue'),
+	const PagesImportDialog = defineAsyncComponent(
+		() => import('@/components/pages/PagesImportDialog.vue'),
 	);
 
 	const DEFAULT_TRANSITION = 'fade';

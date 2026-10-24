@@ -83,8 +83,7 @@
 					</p>
 					<pre
 						class="overflow-x-auto whitespace-pre rounded bg-muted p-3 font-mono text-xs"
-						>{{ codexSnippet }}</pre
-					>
+						>{{ codexSnippet }}</pre>
 
 					<p class="text-xs text-muted-foreground">
 						Claude Code: run this once in your terminal, then restart Claude
@@ -92,8 +91,7 @@
 					</p>
 					<pre
 						class="overflow-x-auto whitespace-pre rounded bg-muted p-3 font-mono text-xs"
-						>{{ claudeSnippet }}</pre
-					>
+						>{{ claudeSnippet }}</pre>
 
 					<p class="break-words text-xs text-muted-foreground">
 						Other companions: read the token id from

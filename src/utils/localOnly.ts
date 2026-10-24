@@ -65,9 +65,7 @@ export const moduleNeedsAccount = (
 	!!entry && (entry.requires_account === true || entry.local === false);
 
 export type GateMode =
-	| 'requires-account'
-	| 'not-in-local-workspace'
-	| 'default';
+	'requires-account' | 'not-in-local-workspace' | 'default';
 
 export const gateMode = (input: {
 	entry: Record<string, unknown> | null | undefined;

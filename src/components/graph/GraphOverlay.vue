@@ -214,7 +214,7 @@
 			const statusText = (node: GraphNode): string =>
 				simpleMode.value && node.type === 'task'
 					? stateLabel(node.status)
-					: node.status?.name ?? '';
+					: (node.status?.name ?? '');
 			const dialog = ref<HTMLElement | null>(null);
 			const entity = ref(props.entity);
 			const trail = ref<string[]>([]);
@@ -256,8 +256,8 @@
 				return type === 'task'
 					? 'Open task'
 					: type === 'page'
-					? 'Open page'
-					: '';
+						? 'Open page'
+						: '';
 			});
 			const canCenter = computed(() => {
 				const s = selected.value;

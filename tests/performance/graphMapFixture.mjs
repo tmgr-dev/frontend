@@ -125,10 +125,10 @@ export function buildGraphMap({
     a.type === 'page' && b.type === 'page'
       ? 'links_to'
       : a.type === 'page'
-      ? 'linked_page'
-      : b.type === 'page'
-      ? 'mentioned_in'
-      : pick(['relates_to', 'relates_to', 'depends_on']);
+        ? 'linked_page'
+        : b.type === 'page'
+          ? 'mentioned_in'
+          : pick(['relates_to', 'relates_to', 'depends_on']);
 
   const clusters = [...byCluster.values()];
   for (const members of clusters) {

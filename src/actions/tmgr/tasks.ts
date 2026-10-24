@@ -293,10 +293,13 @@ export const getBatchTasksByStatuses = async (
 		),
 	);
 
-	return results.reduce((acc, { statusId, tasks }) => {
-		acc[statusId] = tasks;
-		return acc;
-	}, {} as Record<number, Task[]>);
+	return results.reduce(
+		(acc, { statusId, tasks }) => {
+			acc[statusId] = tasks;
+			return acc;
+		},
+		{} as Record<number, Task[]>,
+	);
 };
 
 export const updateTaskStatus = async (

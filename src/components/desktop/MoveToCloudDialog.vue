@@ -86,7 +86,7 @@
 			const setAction = (choice: PersonaChoice, action: string) => {
 				choice.action = action as PersonaChoice['action'];
 				choice.cloudUuid =
-					action === 'map' ? cloudPersonas.value[0]?.id ?? null : null;
+					action === 'map' ? (cloudPersonas.value[0]?.id ?? null) : null;
 			};
 
 			const valid = computed(

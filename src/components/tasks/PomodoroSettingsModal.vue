@@ -227,7 +227,7 @@
 						style: {
 							font: '600 18px/1 "JetBrains Mono", "SF Mono", ui-monospace, monospace',
 						},
-				  })
+					})
 				: h(
 						'span',
 						{
@@ -237,7 +237,7 @@
 							},
 						},
 						[mm, h('span', { class: 'text-white/35' }, ':00')],
-				  );
+					);
 			return h(
 				'div',
 				{
@@ -350,7 +350,7 @@
 								'div',
 								{ class: 'mt-0.5 text-[11px] text-white/45' },
 								this.subtitle,
-						  )
+							)
 						: null,
 				]),
 				h(

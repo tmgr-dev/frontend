@@ -77,7 +77,7 @@ async function mockPages(
     const subtree = (id) => {
       const root = archive.find((p) => p.id === id);
       const ids = new Set([id]);
-      for (let grew = true; grew; ) {
+      for (let grew = true; grew;) {
         grew = false;
         for (const p of archive)
           if (
@@ -99,7 +99,7 @@ async function mockPages(
     const archiveMatch = path.match(/^pages\/(\d+)$/);
     if (method === 'DELETE' && archiveMatch) {
       const gone = new Set([Number(archiveMatch[1])]);
-      for (let grew = true; grew; ) {
+      for (let grew = true; grew;) {
         grew = false;
         for (const p of pages)
           if (gone.has(p.parent_id) && !gone.has(p.id)) {

@@ -211,7 +211,7 @@ export const map = async (
 			const c = meta.find((m) => m.id === id);
 			return {
 				id,
-				title: id === null ? 'Uncategorized' : c?.title ?? String(id),
+				title: id === null ? 'Uncategorized' : (c?.title ?? String(id)),
 				code: c?.code ?? null,
 				count,
 			};

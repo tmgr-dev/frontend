@@ -31,9 +31,8 @@ const writeStorage = (key: string, value: string) => {
 };
 
 const loadChangelog = async (): Promise<ChangelogSection[]> => {
-	const { default: markdown } = await import(
-		'../../src-tauri/CHANGELOG.md?raw'
-	);
+	const { default: markdown } =
+		await import('../../src-tauri/CHANGELOG.md?raw');
 	return parseChangelog(markdown);
 };
 

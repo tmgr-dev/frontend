@@ -413,7 +413,9 @@
 	transform: translateY(-50%);
 	border-radius: 3px;
 	background: var(--pe-popover);
-	box-shadow: 0 0 0 1px var(--pe-subtle), 0 1px 3px rgb(0 0 0 / 0.25);
+	box-shadow:
+		0 0 0 1px var(--pe-subtle),
+		0 1px 3px rgb(0 0 0 / 0.25);
 }
 
 .page-editor .milkdown .pe-image-handle[data-side='left'] {

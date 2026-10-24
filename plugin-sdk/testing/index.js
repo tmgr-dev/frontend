@@ -31,7 +31,7 @@ const normalizeBadge = (badge) => ({
 
 const taskCategory = (state, task) =>
 	task.project_category_id != null
-		? state.categories.find((c) => c.id === task.project_category_id) ?? null
+		? (state.categories.find((c) => c.id === task.project_category_id) ?? null)
 		: null;
 
 const toWireTask = (state, task) => {
@@ -369,8 +369,8 @@ const createMockApi = (state, clock) => ({
 			const dates = routine.scheduledDate
 				? occurrencesInRange(routine, from, to)
 				: todayStr >= from && todayStr <= to
-				? [todayStr]
-				: [];
+					? [todayStr]
+					: [];
 			const recurring = !!(
 				routine.scheduledDate &&
 				routine.frequency &&
@@ -386,7 +386,7 @@ const createMockApi = (state, clock) => ({
 					title: routine.title,
 					description: routine.description,
 					date,
-					time: instance ? instance.time : routine.scheduledTime ?? null,
+					time: instance ? instance.time : (routine.scheduledTime ?? null),
 					status: instance ? instance.status : 'PENDING',
 					completed: instance ? instance.status === 'COMPLETED' : false,
 					recurring,
@@ -417,7 +417,7 @@ const createMockApi = (state, clock) => ({
 			title: fields.title,
 			description: fields.description ?? null,
 			scheduledDate: fields.date ?? null,
-			scheduledTime: fields.date ? fields.time ?? null : null,
+			scheduledTime: fields.date ? (fields.time ?? null) : null,
 			frequency: null,
 			createdAt: now,
 			updatedAt: now,
@@ -619,8 +619,8 @@ const createTestHost = async (options = {}) => {
 			title: r.title,
 			description: r.description ?? null,
 			scheduledDate: r.scheduledDate ?? null,
-			scheduledTime: r.scheduledDate ? r.scheduledTime ?? null : null,
-			frequency: r.scheduledDate ? r.frequency ?? null : null,
+			scheduledTime: r.scheduledDate ? (r.scheduledTime ?? null) : null,
+			frequency: r.scheduledDate ? (r.frequency ?? null) : null,
 			createdAt: r.createdAt ?? now,
 			updatedAt: r.updatedAt ?? now,
 		});
@@ -708,7 +708,7 @@ const createTestHost = async (options = {}) => {
 		dnd: () =>
 			typeof options.dnd === 'function'
 				? options.dnd()
-				: options.dnd ?? { active: false, until: null },
+				: (options.dnd ?? { active: false, until: null }),
 		tray: {
 			setItem: (itemId, item) => {
 				if (item) state.trayItems[itemId] = item;

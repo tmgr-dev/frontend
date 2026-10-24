@@ -284,8 +284,7 @@
 			const currentWorkspace = computed(
 				() =>
 					store.getters.currentWorkspace as
-						| { id: number; name: string }
-						| undefined,
+						{ id: number; name: string } | undefined,
 			);
 			const sharedPersonas = computed(() =>
 				workspaceGrants.value.filter(
@@ -303,7 +302,7 @@
 							(store.state.workspaces as { id: number; name: string }[])?.find(
 								(w) => w.id === persona.workspace_id,
 							)?.name ?? 'this workspace'
-					  }`
+						}`
 					: personaScopeLabel(null);
 
 			const activePersonas = computed(() =>

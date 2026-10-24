@@ -36,11 +36,7 @@ const PAGE_EVENT_TYPES: PageEventType[] = [
 
 // Connection state type
 type ConnectionState =
-	| 'connecting'
-	| 'connected'
-	| 'disconnected'
-	| 'error'
-	| 'reconnecting';
+	'connecting' | 'connected' | 'disconnected' | 'error' | 'reconnecting';
 
 // Channel subscription interface
 interface ChannelSubscription {

@@ -12,7 +12,7 @@ const box = (el: HTMLElement, left: number, top: number) => {
 			bottom: top + 50,
 			width: 100,
 			height: 50,
-		} as DOMRect);
+		}) as DOMRect;
 	return el;
 };
 

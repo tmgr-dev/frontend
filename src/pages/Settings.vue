@@ -273,8 +273,7 @@
 										</p>
 										<pre
 											class="overflow-x-auto whitespace-pre rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs text-ink"
-											>{{ mcpClientConfig }}</pre
-										>
+											>{{ mcpClientConfig }}</pre>
 									</div>
 									<p>
 										OAuth note: this TMGR MCP server is not an OAuth connector

@@ -78,8 +78,7 @@
 						<pre
 							class="whitespace-pre-wrap break-words font-mono text-xs"
 							data-testid="confirm-checkpoints-raw"
-							>{{ preview.checkpointsText }}</pre
-						>
+							>{{ preview.checkpointsText }}</pre>
 					</div>
 					<div v-if="preview.comments.length">
 						<div class="text-2xs font-bold uppercase text-ink-subtle">
@@ -182,9 +181,7 @@
 				open.value = true;
 				try {
 					preview.value = await buildConfirmPreview(
-						(
-							await context()
-						).db,
+						(await context()).db,
 						props.taskId,
 					);
 					if (!preview.value) error.value = 'Task not found.';

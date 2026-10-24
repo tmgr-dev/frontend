@@ -25,7 +25,7 @@
 					? runner.sessionForTask(
 							Number(props.workspaceId),
 							Number(props.taskId),
-					  )
+						)
 					: null,
 			);
 			return { session };

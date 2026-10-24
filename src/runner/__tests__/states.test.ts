@@ -1,7 +1,7 @@
 import { describeState, exitCodeLabel, sanitizeState } from '../states';
 
 const state = (kind: string, detail: unknown = null) =>
-	({ kind, sinceMs: 1, detail } as any);
+	({ kind, sinceMs: 1, detail }) as any;
 
 describe('describeState', () => {
 	it.each([
@@ -43,7 +43,7 @@ describe('sanitizeState', () => {
 
 describe('exit code', () => {
 	const exited = (detail: unknown, exitCode: unknown) =>
-		({ kind: 'exited', sinceMs: 1, detail, exitCode } as any);
+		({ kind: 'exited', sinceMs: 1, detail, exitCode }) as any;
 
 	it('is kept and labelled only for failed exits', () => {
 		expect(sanitizeState(exited('failed', 2)).exitCode).toBe(2);

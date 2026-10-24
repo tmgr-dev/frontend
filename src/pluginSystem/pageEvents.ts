@@ -44,8 +44,8 @@ export const createPageEventMapper = () => {
 		}
 		const author =
 			event.type === 'page.created'
-				? page.author ?? page.updated_by
-				: page.updated_by ?? page.author;
+				? (page.author ?? page.updated_by)
+				: (page.updated_by ?? page.author);
 		return {
 			type: event.type,
 			workspaceId: event.workspaceId,

@@ -10,7 +10,10 @@ import { MAX_USER_WAIT_MS, USER_WAIT_METHODS } from './protocol';
 export type SandboxErrorCode = 'TIMEOUT' | 'PLUGIN_ERROR' | 'DISPOSED';
 
 export class SandboxError extends Error {
-	constructor(readonly code: SandboxErrorCode, message: string) {
+	constructor(
+		readonly code: SandboxErrorCode,
+		message: string,
+	) {
 		super(message);
 	}
 }
@@ -261,7 +264,7 @@ export const createSandbox = ({
 						? `${error.name ?? 'Error'}: ${error.message}`
 						: String(error)
 					).slice(0, MAX_MESSAGE),
-			  );
+				);
 	};
 
 	const inFlight = new Set<(error: SandboxError) => void>();
@@ -290,7 +293,7 @@ export const createSandbox = ({
 						Object.assign(new Error('call arguments are larger than 1 MB'), {
 							code: 'INVALID_PARAMS',
 						}),
-				  )
+					)
 				: call(method, JSON.parse(json));
 		if (USER_WAIT_METHODS.has(method)) {
 			userWaits++;

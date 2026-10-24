@@ -1,10 +1,5 @@
 export type GraphInclude =
-	| 'tasks'
-	| 'pages'
-	| 'people'
-	| 'personas'
-	| 'agent_runs'
-	| 'comments';
+	'tasks' | 'pages' | 'people' | 'personas' | 'agent_runs' | 'comments';
 
 export interface GraphRelatedParams {
 	entity: string;

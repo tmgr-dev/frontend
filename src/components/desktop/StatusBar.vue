@@ -107,8 +107,8 @@
 				update.status === 'installing'
 					? 'Updating…'
 					: update.status === 'checking'
-					? 'Checking for updates…'
-					: `Update to v${update.version}`
+						? 'Checking for updates…'
+						: `Update to v${update.version}`
 			}}
 		</button>
 
@@ -238,14 +238,14 @@
 						connecting: 'Connecting…',
 						reconnecting: 'Reconnecting…',
 						error: 'Offline',
-					}[connectionState.value] || 'Offline'),
+					})[connectionState.value] || 'Offline',
 			);
 			const liveDotClass = computed(() =>
 				connectionState.value === 'connected'
 					? 'bg-emerald-500'
 					: ['connecting', 'reconnecting'].includes(connectionState.value)
-					? 'bg-amber-500'
-					: 'bg-muted-foreground',
+						? 'bg-amber-500'
+						: 'bg-muted-foreground',
 			);
 
 			return {

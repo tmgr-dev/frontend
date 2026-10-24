@@ -31,7 +31,7 @@ export const setConsent = (
 		: localStorage.setItem(
 				USAGE_KEY,
 				JSON.stringify({ on: usage === 'granted', generation }),
-		  );
+			);
 
 export const receiptKeys = (storage: Storage = localStorage): string[] =>
 	Object.keys(storage).filter((key) =>

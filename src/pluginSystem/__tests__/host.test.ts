@@ -198,7 +198,7 @@ it('delivers workspace events to subscribers, but not their own writes or other 
 			taskId: 1,
 			task: {},
 			...extra,
-		} as DomainEvent);
+		}) as DomainEvent;
 	events.emit(event());
 	events.emit(event({ taskId: 2, workspaceId: 56 }));
 	events.emit(event({ taskId: 3, actor: 'plugin:tmgr.watch' }));
@@ -642,7 +642,7 @@ it('marks a plugin whose worker was killed as crashed at once', async () => {
 		state,
 		packages: async () => [pkg('tmgr.silent', '')],
 		createEndpoint: () => silent as any,
-		api: () => ({} as DataApi),
+		api: () => ({}) as DataApi,
 		subscribe: () => () => undefined,
 		enabled: { get: () => undefined, set: () => undefined },
 		settings: { get: () => undefined, set: () => undefined },
@@ -819,7 +819,7 @@ describe('plugin windows', () => {
 				},
 			),
 			pages: { 'ui/board.html': '<h1>Board</h1>' },
-		} as PluginPackage);
+		}) as PluginPackage;
 
 	it('opens a view in its own window with the page from the package', async () => {
 		const opened: unknown[] = [];

@@ -223,8 +223,7 @@
 						:aria-label="`Preview of ${current?.name}`"
 						data-viewer-scroll
 						data-testid="viewer-text"
-						>{{ textContent }}</pre
-					>
+						>{{ textContent }}</pre>
 				</div>
 
 				<button

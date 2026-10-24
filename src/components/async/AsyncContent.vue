@@ -24,7 +24,7 @@
 		typeof props.error === 'string'
 			? props.error
 			: (props.error as { message?: string })?.message ||
-			  'Could not load this section.',
+				'Could not load this section.',
 	);
 </script>
 <template>

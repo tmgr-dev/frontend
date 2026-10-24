@@ -571,7 +571,7 @@
 													/>
 												</label>
 												<div
-													class="mb-3 mb-3 flex items-center justify-between font-medium"
+													class="mb-3 flex items-center justify-between font-medium"
 												>
 													<span>Status color :</span>
 													<button
@@ -1667,8 +1667,8 @@
 					query.my_personas === '1'
 						? MY_PERSONAS_FILTER
 						: typeof query.persona === 'string'
-						? query.persona
-						: '',
+							? query.persona
+							: '',
 				);
 				this.$store.commit(
 					'updateSelectedCategory',

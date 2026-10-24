@@ -98,7 +98,7 @@ test.each(['range', 'year'])(
 				? routines.actions.loadRange(ctx, {
 						from: '2026-01-01',
 						to: '2026-01-31',
-				  })
+					})
 				: routines.actions.loadYearStats(ctx, 2026);
 		ctx.rootState.token = { token: 'refreshed' };
 		response.resolve(operation === 'range' ? [{ id: 9 }] : { 2026: 9 });

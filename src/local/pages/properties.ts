@@ -97,18 +97,16 @@ const aliases = (value: unknown, errors: Errors): Props[] => {
 			!nativeId.trim() ||
 			nativeId.length > MAX_TEXT
 		) {
-			errors[
-				`${at}.native_id`
-			] = `must be a non-empty string of at most ${MAX_TEXT} characters`;
+			errors[`${at}.native_id`] =
+				`must be a non-empty string of at most ${MAX_TEXT} characters`;
 		}
 		if (
 			display !== null &&
 			display !== undefined &&
 			(typeof display !== 'string' || display.length > MAX_TEXT)
 		) {
-			errors[
-				`${at}.display`
-			] = `must be a string of at most ${MAX_TEXT} characters`;
+			errors[`${at}.display`] =
+				`must be a string of at most ${MAX_TEXT} characters`;
 		}
 		for (const key of Object.keys(alias)) {
 			if (!['source', 'native_id', 'display'].includes(key))

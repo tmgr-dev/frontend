@@ -96,7 +96,7 @@ export const createIdentityStore = ({
 					install_id: data.install_id,
 					secret: data.secret,
 					registered: data.registered === true,
-			  }
+				}
 			: null;
 	};
 
@@ -167,7 +167,7 @@ export const createIdentityStore = ({
 		read,
 		create: (allowed = () => true) =>
 			withLock(locks, 'identity', () =>
-				allowed() ? read() ?? create() : null,
+				allowed() ? (read() ?? create()) : null,
 			),
 		receipts: () => withLock(locks, 'identity', receipts),
 		markRegistered: (installId: string, registered: boolean) =>

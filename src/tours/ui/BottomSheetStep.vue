@@ -148,10 +148,10 @@
 				props.canTakeMe
 					? 'Take me there'
 					: props.unavailable
-					? 'Skip step'
-					: props.position >= props.total
-					? 'Done'
-					: 'Next',
+						? 'Skip step'
+						: props.position >= props.total
+							? 'Done'
+							: 'Next',
 			);
 
 			function primary() {
@@ -159,8 +159,8 @@
 					props.canTakeMe
 						? 'take-me'
 						: props.unavailable
-						? 'skip-step'
-						: 'next',
+							? 'skip-step'
+							: 'next',
 				);
 			}
 

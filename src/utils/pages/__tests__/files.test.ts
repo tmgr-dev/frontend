@@ -1,6 +1,6 @@
 import { fileMarkdown, formatFileSize, imageFilesOf } from '../files';
 
-const file = (name: string, type: string) => ({ name, type } as File);
+const file = (name: string, type: string) => ({ name, type }) as File;
 
 describe('page file helpers', () => {
 	it('formats sizes', () => {

@@ -122,12 +122,12 @@ describe('pinned facts', () => {
 								created_at: '',
 							},
 						},
-				  }
+					}
 				: {
 						data: {
 							data: pin(1, 'Use EUR'),
 						},
-				  },
+					},
 		);
 		mockGet.mockImplementation(async (url: string) =>
 			url.endsWith('/pins')

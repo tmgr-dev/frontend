@@ -42,7 +42,7 @@ describeSqlite('local workspace API on SQLite', () => {
 								ownerId: headerStorageId
 									? decodeURIComponent(String(headerStorageId))
 									: String(headerPluginId),
-						  }
+							}
 						: undefined;
 					const result = await dispatchLocal(
 						api,

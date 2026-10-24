@@ -299,11 +299,11 @@ export const createDataApi = (
 			const reactions = Array.isArray(body)
 				? body
 				: Array.isArray((body as any)?.reactions)
-				? (body as any).reactions
-				: [];
+					? (body as any).reactions
+					: [];
 			const taskId = Array.isArray(body)
 				? undefined
-				: (body as any)?.task_id ?? (body as any)?.taskId;
+				: ((body as any)?.task_id ?? (body as any)?.taskId);
 			return {
 				reactions,
 				...(taskId != null ? { taskId: Number(taskId) } : {}),
@@ -550,12 +550,12 @@ export const createDataApi = (
 						'daily-routines/tasks/recurring',
 						{ title, description, scheduled_date: date, scheduled_time: time },
 						{ headers },
-				  )
+					)
 				: await http.post(
 						'daily-routines/tasks',
 						{ title, description },
 						{ headers },
-				  );
+					);
 			return toRoutine(unwrap(response));
 		},
 		updateRoutine: async (id, patch) => {

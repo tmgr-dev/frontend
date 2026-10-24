@@ -487,8 +487,8 @@
 				l.hard != null && l.usedPct! >= l.hard
 					? 'bg-red-500'
 					: l.soft != null && l.usedPct! >= l.soft
-					? 'bg-amber-500'
-					: 'bg-emerald-500';
+						? 'bg-amber-500'
+						: 'bg-emerald-500';
 
 			return {
 				view,

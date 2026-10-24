@@ -131,12 +131,7 @@ export const applyFreeEdit = (
 };
 
 export type OwnerKind =
-	| 'system'
-	| 'agents'
-	| 'persona'
-	| 'plugin'
-	| 'user'
-	| 'unknown';
+	'system' | 'agents' | 'persona' | 'plugin' | 'user' | 'unknown';
 
 export const parseOwner = (
 	owner: string,

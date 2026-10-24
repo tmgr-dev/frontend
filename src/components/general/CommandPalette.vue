@@ -400,7 +400,7 @@
 			);
 			// Radix re-reads item order only when the item count changes, so ranked
 			// results of the same size would keep a stale arrow-key order.
-			const inRenderedOrder = <T>(_: T): T => itemValues.value as unknown as T;
+			const inRenderedOrder = <T,>(_: T): T => itemValues.value as unknown as T;
 
 			watch(trimmed, () => {
 				userMoved = false;

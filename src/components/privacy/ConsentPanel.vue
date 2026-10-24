@@ -8,7 +8,7 @@
 			inline
 				? 'rounded-lg border border-border bg-card p-4 text-card-foreground'
 				: 'fixed inset-x-0 bottom-0 z-[60] max-h-[90vh] overflow-y-auto border-t border-border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-card-foreground shadow-lg sm:inset-x-auto sm:bottom-4 sm:right-4 sm:max-w-md sm:rounded-lg sm:border sm:pb-4' +
-				  (authPage ? ' lg:left-4 lg:right-auto' : '')
+					(authPage ? ' lg:left-4 lg:right-auto' : '')
 		"
 	>
 		<p v-if="saveFailed" role="alert" class="mb-3 text-sm text-destructive">

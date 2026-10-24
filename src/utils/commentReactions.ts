@@ -45,8 +45,8 @@ export const normalizeReactions = (
 				typeof entry.reacted === 'boolean'
 					? entry.reacted
 					: currentUserId != null
-					? users.some((u) => u.id === currentUserId)
-					: false;
+						? users.some((u) => u.id === currentUserId)
+						: false;
 			return { emoji: entry.emoji, count, reacted, users };
 		})
 		.filter((r): r is ReactionSummary => r !== null && r.count > 0);
@@ -122,7 +122,7 @@ export const applyReactionsUpdate = <
 	const raw = Array.isArray(event.reactions)
 		? event.reactions.map((r: any) =>
 				r && typeof r === 'object' ? { ...r, reacted: undefined } : r,
-		  )
+			)
 		: [];
 	const next = comments.slice();
 	next[index] = {

@@ -29,8 +29,8 @@ it('maps plugin calls to the app API, marked as the plugin', async () => {
 		url === 'tasks'
 			? { data: [{ id: 1 }], meta: { total: 7 } }
 			: url.includes('/storage/')
-			? { data: { value: '{"a":1}' } }
-			: { data: { id: 9 } },
+				? { data: { value: '{"a":1}' } }
+				: { data: { id: 9 } },
 	);
 	const api = createDataApi(http, 'tmgr.estimate');
 	expect(
@@ -69,17 +69,17 @@ it('lists and reads attachments with text and base64', async () => {
 							created_at: 'x',
 						},
 					],
-			  }
+				}
 			: url === 'files/9'
-			? {
-					data: {
-						id: 9,
-						name: 'notes.md',
-						mime_type: 'text/markdown',
-						size: 4,
-					},
-			  }
-			: new Blob(['# Hi']),
+				? {
+						data: {
+							id: 9,
+							name: 'notes.md',
+							mime_type: 'text/markdown',
+							size: 4,
+						},
+					}
+				: new Blob(['# Hi']),
 	);
 	const api = createDataApi(http, 'tmgr.files');
 	expect(await api.listAttachments(4)).toEqual([
@@ -117,7 +117,7 @@ it('leaves cloud comments without a server author as unknown (null), but passes 
 							message: 'yo',
 						},
 					],
-			  }
+				}
 			: { data: { id: 3, userId: 9, message: 'new' } },
 	);
 	const api = createDataApi(http, 'tmgr.estimate');
@@ -291,7 +291,7 @@ it('computes the ticket key from category.code and category_tasks_sequence_id', 
 						category: { code: 'TM' },
 						category_tasks_sequence_id: 12,
 					},
-			  }
+				}
 			: { data: { id: 5, category: null, category_tasks_sequence_id: null } },
 	);
 	const api = createDataApi(http, 'tmgr.estimate');

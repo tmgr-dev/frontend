@@ -173,7 +173,7 @@ export const attachmentErrorCode = (error: unknown): string | null => {
 
 export const attachmentErrorMessage = (error: unknown): string | null => {
 	const code = attachmentErrorCode(error);
-	return code ? ERROR_MESSAGES[code] ?? null : null;
+	return code ? (ERROR_MESSAGES[code] ?? null) : null;
 };
 
 const pad = (n: number): string => String(n).padStart(2, '0');

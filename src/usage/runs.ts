@@ -46,10 +46,10 @@ const pageOf = (body: any): { items: any[]; cursor: string | null } => {
 	const items = Array.isArray(data)
 		? data
 		: Array.isArray(data?.runs)
-		? data.runs
-		: Array.isArray(data?.data)
-		? data.data
-		: [];
+			? data.runs
+			: Array.isArray(data?.data)
+				? data.data
+				: [];
 	const cursor =
 		data?.next_cursor ?? body?.next_cursor ?? body?.meta?.next_cursor ?? null;
 	return {

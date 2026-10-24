@@ -373,7 +373,7 @@
 							prepared.value.nodes.length,
 							prepared.value.map.total,
 							prepared.value.map.truncated,
-					  )
+						)
 					: null,
 			);
 			const cursorMs = computed(() => timeline.value[step.value] ?? Infinity);
@@ -383,7 +383,7 @@
 					? new Date(t).toLocaleDateString('en', {
 							month: 'short',
 							day: 'numeric',
-					  })
+						})
 					: '';
 			});
 

@@ -848,21 +848,34 @@
 				return text;
 			},
 			taskComputedData() {
-				return this.tasks.reduce((acc, task) => {
-					// Running timers tick: evaluate time-based fields against the live total.
-					const live = task.start_time
-						? { ...task, common_time: liveTaskTime(task, this.nowSeconds) }
-						: task;
-					acc[String(task.id)] = {
-						title: this.truncateTitle(task.title),
-						timeExceeded: this.isTimeExceeded(live),
-						formattedTime: this.getTaskFormattedTime(live),
-						overtime: this.getTaskOvertime(live),
-						statusName: this.getStatusName(task),
-						statusColor: this.getStatusColor(task),
-					};
-					return acc;
-				}, {} as Record<string, { title: string; timeExceeded: boolean; formattedTime: string; overtime: string | null; statusName: string; statusColor: string }>);
+				return this.tasks.reduce(
+					(acc, task) => {
+						// Running timers tick: evaluate time-based fields against the live total.
+						const live = task.start_time
+							? { ...task, common_time: liveTaskTime(task, this.nowSeconds) }
+							: task;
+						acc[String(task.id)] = {
+							title: this.truncateTitle(task.title),
+							timeExceeded: this.isTimeExceeded(live),
+							formattedTime: this.getTaskFormattedTime(live),
+							overtime: this.getTaskOvertime(live),
+							statusName: this.getStatusName(task),
+							statusColor: this.getStatusColor(task),
+						};
+						return acc;
+					},
+					{} as Record<
+						string,
+						{
+							title: string;
+							timeExceeded: boolean;
+							formattedTime: string;
+							overtime: string | null;
+							statusName: string;
+							statusColor: string;
+						}
+					>,
+				);
 			},
 			taskTitles() {
 				const data: Record<string, string> = {};
@@ -1281,8 +1294,8 @@
 					this.selected[i] && v
 						? false
 						: v && !this.selected[i]
-						? true
-						: !v && this.selected[i],
+							? true
+							: !v && this.selected[i],
 				);
 
 				this.selecting = [];
@@ -1319,8 +1332,7 @@
 			},
 			async exportSelectedTasks(
 				payload:
-					| ExportType
-					| { type?: ExportType; settings?: ExportOptions } = {},
+					ExportType | { type?: ExportType; settings?: ExportOptions } = {},
 			) {
 				const exportType =
 					typeof payload === 'string' ? payload : payload.type || 'csv';

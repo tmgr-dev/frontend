@@ -136,11 +136,7 @@ export interface PluginWorkspace {
 }
 
 export type RegistrationKind =
-	| 'event'
-	| 'command'
-	| 'badges'
-	| 'page'
-	| 'section';
+	'event' | 'command' | 'badges' | 'page' | 'section';
 
 export interface StatusBarItem {
 	text: string;
@@ -306,7 +302,7 @@ const graphemes = (value: string): string[] =>
 					granularity: 'grapheme',
 				}).segment(value),
 				(part: any) => part.segment as string,
-		  )
+			)
 		: [...value];
 
 /** At most `max` graphemes: a longer text keeps `max - 1` of them and a trailing "…". */
@@ -487,8 +483,8 @@ const nonNegativeInt = (value: unknown, field: string): number | null =>
 	value == null
 		? null
 		: Number.isSafeInteger(value) && (value as number) >= 0
-		? (value as number)
-		: invalid(`${field} must be a non-negative integer`);
+			? (value as number)
+			: invalid(`${field} must be a non-negative integer`);
 
 const testsField = (
 	value: unknown,

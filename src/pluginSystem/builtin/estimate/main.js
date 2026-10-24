@@ -75,7 +75,7 @@ const updateStatusBar = async () => {
 						over.length === 1 ? '' : 's'
 					} in progress went past the estimate`,
 					command: 'tmgr.estimate.refresh',
-			  }
+				}
 			: null,
 	);
 };
@@ -160,12 +160,12 @@ tmgr.ui.providePage('report', async () => {
 								},
 							},
 						})),
-				  }
+					}
 				: {
 						type: 'text',
 						text: 'No task has an estimate yet. Set one in the task panel to see it here.',
 						tone: 'muted',
-				  },
+					},
 			{ type: 'button', text: 'Recalculate', command: 'tmgr.estimate.refresh' },
 		],
 	};

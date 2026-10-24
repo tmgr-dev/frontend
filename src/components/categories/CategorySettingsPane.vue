@@ -202,8 +202,8 @@
 							open.cursor
 								? 'Close'
 								: category.cursor_connected
-								? 'Manage'
-								: 'Connect'
+									? 'Manage'
+									: 'Connect'
 						}}
 					</Button>
 					<template v-if="open.cursor" #below>
@@ -245,8 +245,8 @@
 							open.github
 								? 'Close'
 								: github && !github.has_installation
-								? 'Install GitHub App'
-								: 'Manage'
+									? 'Install GitHub App'
+									: 'Manage'
 						}}
 					</Button>
 					<template v-if="open.github" #below>
@@ -821,8 +821,8 @@
 						? String(parent.value.id)
 						: 'none'
 					: c?.project_category_id != null
-					? String(c.project_category_id)
-					: 'none';
+						? String(c.project_category_id)
+						: 'none';
 				errors.value = {};
 				fillDefaults();
 				initial.value = current();
@@ -1156,7 +1156,7 @@
 			};
 
 			watch(
-				() => (props.isCreate ? null : category.value?.id ?? null),
+				() => (props.isCreate ? null : (category.value?.id ?? null)),
 				(id) => {
 					open.cursor = open.github = open.repos = false;
 					github.value = undefined;
@@ -1222,9 +1222,9 @@
 								'p',
 								{ id: noteId, class: 'text-xs text-status-fix-fg' },
 								DURATION_ERROR,
-						  )
+							)
 						: hint &&
-						  h('p', { id: noteId, class: 'text-xs text-ink-muted' }, hint),
+							h('p', { id: noteId, class: 'text-xs text-ink-muted' }, hint),
 				]);
 			};
 
@@ -1275,7 +1275,7 @@
 													'/ h',
 												),
 										],
-								  )
+									)
 							: h(
 									Select,
 									{
@@ -1313,13 +1313,13 @@
 													() =>
 														isDuration(def)
 															? formatDuration(option.value) ||
-															  String(option.value)
+																String(option.value)
 															: String(option.value),
 												),
 											),
 										),
 									],
-							  );
+								);
 						return h('div', { class: 'flex min-w-0 flex-col gap-2' }, [
 							control,
 							canCustom &&

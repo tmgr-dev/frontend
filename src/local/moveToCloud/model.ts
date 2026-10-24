@@ -208,7 +208,7 @@ export const reasonLabel = (reason: ExcludedReason): string =>
 		too_large: 'too large',
 		mime: 'type not allowed',
 		refused: 'refused by the server',
-	}[reason]);
+	})[reason];
 
 export const splitSnapshotFiles = (
 	files: MoveSnapshotFile[],

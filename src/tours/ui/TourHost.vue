@@ -131,10 +131,10 @@
 				a.unavailable && a.onTargetPage
 					? ' You are on the right page, but this part is not open yet. Open it, or skip this step.'
 					: a.unavailable
-					? ' We could not find this on the screen right now.'
-					: a.hint === 'timer_too_short'
-					? ' Let the timer run for at least a minute.'
-					: '';
+						? ' We could not find this on the screen right now.'
+						: a.hint === 'timer_too_short'
+							? ' Let the timer run for at least a minute.'
+							: '';
 			const titleText = computed(() => active.value?.step.title ?? '');
 			const bodyText = computed(() => {
 				const a = active.value;
@@ -143,8 +143,8 @@
 					sheet.value && a.step.mobileBody
 						? a.step.mobileBody
 						: a.bodyParts
-						? partsToText(a.bodyParts)
-						: a.step.body;
+							? partsToText(a.bodyParts)
+							: a.step.body;
 				return base + bodySuffix(a);
 			});
 			const bodyPartsView = computed(() => {

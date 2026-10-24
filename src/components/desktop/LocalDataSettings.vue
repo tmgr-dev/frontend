@@ -212,9 +212,9 @@
 				return published
 					? `Copied to your cloud workspace ${
 							published.name
-					  } on ${formatMoveDate(
+						} on ${formatMoveDate(
 							published.at,
-					  )}. Backups stay on this computer.`
+						)}. Backups stay on this computer.`
 					: 'No cloud copy. Backups stay on this computer.';
 			};
 

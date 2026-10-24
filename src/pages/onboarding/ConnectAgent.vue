@@ -487,8 +487,8 @@
 				connected.value
 					? 'Agent connected'
 					: stalled.value
-					? 'Still waiting for your agent'
-					: '',
+						? 'Still waiting for your agent'
+						: '',
 			);
 			const doneItems = ['Token created', 'Command ran', 'Agent connected'];
 
@@ -586,12 +586,12 @@
 					event.key === 'ArrowRight'
 						? (index + 1) % TABS.length
 						: event.key === 'ArrowLeft'
-						? (index + last) % TABS.length
-						: event.key === 'Home'
-						? 0
-						: event.key === 'End'
-						? last
-						: -1;
+							? (index + last) % TABS.length
+							: event.key === 'Home'
+								? 0
+								: event.key === 'End'
+									? last
+									: -1;
 				if (next < 0) return;
 				event.preventDefault();
 				activeId.value = TABS[next].id;

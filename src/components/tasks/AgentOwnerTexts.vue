@@ -87,7 +87,7 @@
 					? {
 							name: splitInvisible(props.persona.name),
 							pieces: splitInvisible(props.persona.instructions),
-					  }
+						}
 					: null,
 			);
 			const pageBlocks = computed(() =>

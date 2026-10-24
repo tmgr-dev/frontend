@@ -94,7 +94,7 @@ export const primaryModifiersHint = (
 		? 'Use at least one of ⌘ ⌃ ⌥'
 		: `Use at least one of Ctrl, Alt, ${
 				platform === 'windows' ? 'Win' : 'Super'
-		  }`;
+			}`;
 
 const keyFromCode = (code: string): string | null => {
 	if (/^Key[A-Z]$/.test(code)) return code.slice(3);
@@ -181,7 +181,7 @@ export const describeAccelerator = (
 	}
 	const meta = platform === 'windows' ? 'Win' : 'Super';
 	return parts
-		.map((part) => (part === 'Super' ? meta : PLAIN_LABELS[part] ?? part))
+		.map((part) => (part === 'Super' ? meta : (PLAIN_LABELS[part] ?? part)))
 		.join('+');
 };
 
@@ -290,7 +290,7 @@ export const parseDeepLink = (url: string): DeepLink | null => {
 				pluginId,
 				commandId: `${pluginId}.${targetId}`,
 				params,
-		  }
+			}
 		: null;
 };
 

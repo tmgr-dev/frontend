@@ -41,7 +41,7 @@ export const linkConfirmationNotice = (provider: string): string => {
 
 export const linkConfirmationProvider = (code: unknown): LinkProvider | null =>
 	typeof code === 'string'
-		? (LINK_CONFIRMATION_CODE.exec(code)?.[1] as LinkProvider) ?? null
+		? ((LINK_CONFIRMATION_CODE.exec(code)?.[1] as LinkProvider) ?? null)
 		: null;
 
 export const linkConfirmationMessage = (

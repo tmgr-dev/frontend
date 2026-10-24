@@ -175,7 +175,7 @@ const writePage = async () => {
 				title: PAGE_TITLE,
 				body: PAGE_BODY,
 				properties: {},
-		  });
+			});
 	page = await tmgr.pages.append(page.id, {
 		markdown: `- written at ${new Date().toISOString()}`,
 		heading: 'Log',

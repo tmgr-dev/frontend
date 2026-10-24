@@ -53,7 +53,7 @@ const provider: ExportProvider = {
 				id === 1
 					? [{ id: 9, name: 'shot.png', original_name: 'My shot.png' }]
 					: [],
-		} as unknown as Page),
+		}) as unknown as Page,
 	fetchFile: async (id) => {
 		if (id === 9) return png;
 		throw new Error('missing');

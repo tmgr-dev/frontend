@@ -238,7 +238,7 @@
 						? new Date(away.value.awaySince * 1000).toLocaleTimeString([], {
 								hour: '2-digit',
 								minute: '2-digit',
-						  })
+							})
 						: '',
 				),
 				runningLabel,

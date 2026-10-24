@@ -23,8 +23,7 @@
 						</summary>
 						<pre
 							class="mt-2 max-h-40 overflow-auto rounded bg-surface-sunken p-3 text-xs text-ink"
-							>{{ errorDetails }}</pre
-						>
+							>{{ errorDetails }}</pre>
 					</details>
 				</div>
 

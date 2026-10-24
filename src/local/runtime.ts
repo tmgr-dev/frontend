@@ -62,7 +62,7 @@ export const createLocalWorkspace = async (
 };
 
 export const activeLocalWorkspace = (): LocalWorkspace | null =>
-	activeCode ? workspaces.find((w) => w.code === activeCode) ?? null : null;
+	activeCode ? (workspaces.find((w) => w.code === activeCode) ?? null) : null;
 
 export const activeLocalWorkspaceCode = (): string | null => activeCode;
 

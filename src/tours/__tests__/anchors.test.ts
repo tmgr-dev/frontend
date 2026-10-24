@@ -28,7 +28,7 @@ const box = (el: Element, w = 10, h = 10) => {
 			bottom: h,
 			x: 0,
 			y: 0,
-		} as DOMRect);
+		}) as DOMRect;
 };
 
 const add = (html: string) => {

@@ -166,7 +166,7 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                     : pick(value.accent, exports.COLORS, 'gray');
                 const grow = value.grow === true ? true : undefined;
                 const onClick = parseCommandArgs(value.onClick);
-                const label = onClick ? findLabel(kids) ?? 'Card' : undefined;
+                const label = onClick ? (findLabel(kids) ?? 'Card') : undefined;
                 return {
                     type: 'card',
                     children: kids,

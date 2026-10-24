@@ -56,7 +56,7 @@
 							categoryId
 								? props.categories.find(
 										(category) => category.id === categoryId,
-								  )?.title
+									)?.title
 								: 'Category'
 						}}
 					</span>

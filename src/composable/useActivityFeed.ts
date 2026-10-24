@@ -127,14 +127,14 @@ export function useActivityFeed(
 		const workspace =
 			typeof workspaceId === 'object'
 				? workspaceId.value
-				: workspaceId ?? store.getters.currentWorkspaceId;
+				: (workspaceId ?? store.getters.currentWorkspaceId);
 		return () =>
 			!disposed &&
 			requests.isCurrent(token) &&
 			workspace ===
 				(typeof workspaceId === 'object'
 					? workspaceId.value
-					: workspaceId ?? store.getters.currentWorkspaceId);
+					: (workspaceId ?? store.getters.currentWorkspaceId));
 	};
 	let subscribedWorkspaceId: number | null = null;
 	let subscriptionId = '';
@@ -512,7 +512,7 @@ export function useActivityFeed(
 		() =>
 			typeof workspaceId === 'object'
 				? workspaceId.value
-				: workspaceId ?? store.getters.currentWorkspaceId,
+				: (workspaceId ?? store.getters.currentWorkspaceId),
 		() => {
 			requests.begin();
 			activities.value = [];

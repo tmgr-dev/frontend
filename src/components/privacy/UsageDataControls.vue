@@ -100,8 +100,7 @@
 				<pre
 					data-testid="queue-json"
 					class="max-h-[60vh] overflow-auto rounded border border-border bg-muted p-3 text-xs"
-					>{{ queueText }}</pre
-				>
+					>{{ queueText }}</pre>
 			</DialogContent>
 		</Dialog>
 	</div>
@@ -147,8 +146,8 @@
 			deleteMessage.value = failed
 				? 'Could not delete everything. Sharing is off. Try again later.'
 				: deleted
-				? 'Deleted. Sharing is off.'
-				: 'Nothing to delete. Sharing is off.';
+					? 'Deleted. Sharing is off.'
+					: 'Nothing to delete. Sharing is off.';
 		} finally {
 			deleting.value = false;
 		}

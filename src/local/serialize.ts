@@ -68,7 +68,7 @@ export const taskJson = (row: any, ctx: LocalContext) => ({
 				code: row.c_code,
 				workspace_id: ctx.workspace.id,
 				project_category_id: row.c_parent_id ?? null,
-		  }
+			}
 		: null,
 	created_at: row.created_at,
 	updated_at: row.updated_at,

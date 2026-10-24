@@ -57,7 +57,7 @@ export const loadLastTaskSettings = (
 			? value.persona_assignees.filter(
 					(p): p is PersonaAssignee =>
 						!!p && typeof p === 'object' && typeof p.id === 'string',
-			  )
+				)
 			: [],
 		approximately_time: Number.isFinite(time) && time > 0 ? time : 0,
 	};

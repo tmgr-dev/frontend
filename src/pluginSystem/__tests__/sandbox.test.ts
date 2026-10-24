@@ -231,7 +231,7 @@ it('gives plugins a fetch-like response for local network calls', async () => {
 						status: 200,
 						headers: [['Content-Type', 'application/json']],
 						body: '{"response":"hello"}',
-				  }
+					}
 				: null,
 	);
 	expect(await sandbox.dispatch('command', 'tmgr.t.ask', null)).toEqual([

@@ -219,11 +219,11 @@
 					? {
 							...setting,
 							...settingFromStoreWithValue,
-					  }
+						}
 					: {
 							...setting,
 							value: null,
-					  };
+						};
 			});
 
 			settings.value = mappedSettingWithUserSettings.filter(
@@ -477,7 +477,7 @@
 						: errorMessageFrom(
 								error,
 								'Failed to delete the workspace. Please try again.',
-						  ),
+							),
 				variant: 'destructive',
 			});
 		} finally {
@@ -788,8 +788,11 @@
 									v-if="setting.component_type === 'time_in_seconds'"
 									:model-value="convertToHHMM(settings[index].value)"
 									@input="
-								(e: InputEvent) => (settings[index].value = timeToSeconds((e.target as HTMLInputElement).value))
-							"
+										(e: InputEvent) =>
+											(settings[index].value = timeToSeconds(
+												(e.target as HTMLInputElement).value,
+											))
+									"
 									:placeholder="setting.description"
 								/>
 

@@ -2,12 +2,7 @@ import { httpErrorInfo } from '@/utils/emailVerification';
 import { ref } from 'vue';
 
 export type ResendState =
-	| 'idle'
-	| 'sending'
-	| 'sent'
-	| 'already_verified'
-	| 'rate_limited'
-	| 'error';
+	'idle' | 'sending' | 'sent' | 'already_verified' | 'rate_limited' | 'error';
 
 export type VerifyState =
 	| 'verifying'

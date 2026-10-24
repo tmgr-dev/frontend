@@ -46,12 +46,16 @@
 	position: fixed;
 	z-index: 10015;
 	pointer-events: none;
-	box-shadow: 0 0 0 3px var(--brand-color), 0 0 0 8px var(--brand-ring-color);
+	box-shadow:
+		0 0 0 3px var(--brand-color),
+		0 0 0 8px var(--brand-ring-color);
 	animation: tour-pulse 1.8s var(--ease, ease-out) infinite;
 }
 
 html.dark .tour-ring {
-	box-shadow: 0 0 0 3px var(--brand-color), 0 0 0 8px var(--brand-ring-color),
+	box-shadow:
+		0 0 0 3px var(--brand-color),
+		0 0 0 8px var(--brand-ring-color),
 		0 0 24px 4px var(--brand-ring-color);
 }
 

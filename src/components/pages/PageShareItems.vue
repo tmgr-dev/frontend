@@ -46,7 +46,7 @@
 					? pageShareLinks(props.page, {
 							id: workspace.id,
 							code: props.workspaceCode,
-					  })
+						})
 					: { web: null, app: null };
 			});
 
@@ -55,7 +55,7 @@
 					? pageShareMarkdown(props.page as Page, props.workspaceCode)
 					: getPage(props.page.id).then((page) =>
 							pageShareMarkdown(page, props.workspaceCode),
-					  );
+						);
 
 			return { links, markdown };
 		},

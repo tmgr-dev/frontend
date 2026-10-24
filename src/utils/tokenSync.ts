@@ -20,8 +20,7 @@ export const parseStoredToken = (raw: string | null): TokenEnvelope | null => {
 };
 
 export type TokenSyncResult =
-	| { changed: false }
-	| { changed: true; token: TokenEnvelope | null };
+	{ changed: false } | { changed: true; token: TokenEnvelope | null };
 
 /**
  * Decide what a `storage` event from another tab means for this tab's

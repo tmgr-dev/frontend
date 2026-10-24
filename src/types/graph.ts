@@ -1,10 +1,5 @@
 export type GraphNodeType =
-	| 'task'
-	| 'page'
-	| 'user'
-	| 'persona'
-	| 'agent_run'
-	| 'comment';
+	'task' | 'page' | 'user' | 'persona' | 'agent_run' | 'comment';
 
 export interface GraphNode {
 	id: string;

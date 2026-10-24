@@ -178,8 +178,8 @@
 											pr.state === 'open'
 												? 'bg-status-done-bg text-status-done-fg'
 												: pr.state === 'merged'
-												? 'bg-status-testing-bg text-status-testing-fg'
-												: 'bg-status-fix-bg text-status-fix-fg',
+													? 'bg-status-testing-bg text-status-testing-fg'
+													: 'bg-status-fix-bg text-status-fix-fg',
 										]"
 									>
 										{{ pr.state }}

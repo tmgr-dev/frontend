@@ -11,7 +11,7 @@ export interface SelectedQuote {
 }
 
 const elementOf = (node: Node | null): Element | null =>
-	node instanceof Element ? node : node?.parentElement ?? null;
+	node instanceof Element ? node : (node?.parentElement ?? null);
 
 export const selectedQuote = (scope: Element | null): SelectedQuote | null => {
 	const selection = window.getSelection();

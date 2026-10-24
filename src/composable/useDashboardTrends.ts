@@ -195,7 +195,7 @@ export function useDashboardTrends(sources: {
 			const previous = timePrevious.value
 				? sumValues(
 						trackedSecondsForDays(timePrevious.value, previousKeys.value),
-				  )
+					)
 				: null;
 			return {
 				seconds,

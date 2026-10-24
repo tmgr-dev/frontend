@@ -474,8 +474,8 @@
 				due.value?.urgency === 'overdue'
 					? 'text-red-600 dark:text-red-400'
 					: due.value?.urgency === 'soon'
-					? 'text-amber-600 dark:text-amber-400'
-					: 'text-foreground',
+						? 'text-amber-600 dark:text-amber-400'
+						: 'text-foreground',
 			);
 			const pluginName = computed(
 				() =>

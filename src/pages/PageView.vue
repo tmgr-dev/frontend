@@ -14,8 +14,8 @@
 					loadError === 'not_found'
 						? 'Page not found'
 						: loadError === 'forbidden'
-						? 'Pages are disabled or you have no access'
-						: 'Failed to load page'
+							? 'Pages are disabled or you have no access'
+							: 'Failed to load page'
 				}}
 			</p>
 			<button class="mt-2 text-brand underline" @click="load">Retry</button>
@@ -193,7 +193,9 @@
 								:directory="directory"
 								:upload-file="uploadImage"
 								placeholder="Type / for blocks, @ to link, [[ for a page"
-								@change="(md: string, dirty: boolean) => onFreeChange(index, md, dirty)"
+								@change="
+									(md: string, dirty: boolean) => onFreeChange(index, md, dirty)
+								"
 								@make-task="openTaskDialog($event, false)"
 								@upload-error="onUploadError"
 								@navigate="onNavigate"
@@ -378,7 +380,7 @@
 	} from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 
-	const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+	const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 
 	export default defineComponent({
 		name: 'PageView',
@@ -441,7 +443,7 @@
 			let chain: Promise<unknown> = Promise.resolve();
 			let loadSeq = 0;
 
-			const runExclusive = <T>(task: () => Promise<T>): Promise<T> => {
+			const runExclusive = <T,>(task: () => Promise<T>): Promise<T> => {
 				const next = chain.then(task, task);
 				chain = next.catch(() => undefined);
 				return next;
@@ -829,8 +831,8 @@
 						status === 404
 							? 'not_found'
 							: status === 403
-							? 'forbidden'
-							: 'error';
+								? 'forbidden'
+								: 'error';
 					page.value = null;
 				} finally {
 					if (seq === loadSeq) loading.value = false;
@@ -876,7 +878,7 @@
 					? applyFreeEdit(segments.value, index, markdown)
 					: segments.value.map((segment, i) =>
 							i === index ? originals[index] : segment,
-					  );
+						);
 				segments.value = next;
 				form.value.body = joinSegments(next);
 			};

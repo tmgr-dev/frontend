@@ -40,7 +40,7 @@
 									onClick: () => installUpdate(),
 								},
 								() => 'Install and restart',
-						  )
+							)
 						: undefined,
 				});
 			};

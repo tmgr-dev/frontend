@@ -6,8 +6,8 @@ export const instrument = (page) =>
       t === window
         ? 'window'
         : t === document
-        ? 'document'
-        : t?.constructor?.name ?? 'other';
+          ? 'document'
+          : (t?.constructor?.name ?? 'other');
     const listeners = new WeakMap();
     const sig = (t, type, fn, opts) => {
       const cap = typeof opts === 'object' ? !!opts?.capture : !!opts;

@@ -588,10 +588,10 @@
 			return sameMonth
 				? `${monthShort(
 						ws,
-				  )} ${ws.getDate()} – ${we.getDate()}, ${ws.getFullYear()}`
+					)} ${ws.getDate()} – ${we.getDate()}, ${ws.getFullYear()}`
 				: `${monthShort(ws)} ${ws.getDate()} – ${monthShort(
 						we,
-				  )} ${we.getDate()}, ${ws.getFullYear()}`;
+					)} ${we.getDate()}, ${ws.getFullYear()}`;
 		}
 		if (view.value === 'month') {
 			return `${c.toLocaleDateString('en-US', {
@@ -662,7 +662,7 @@
 						workspace: workspaceIdentity.value,
 						year: cursor.value.getFullYear(),
 						today: todayIso.value,
-				  }
+					}
 				: { workspace: workspaceIdentity.value, ...rangeForView() },
 		);
 	}

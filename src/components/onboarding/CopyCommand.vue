@@ -8,8 +8,7 @@
 					'rounded-md border border-line bg-surface-sunken px-3 py-3 font-mono text-xs text-ink',
 				]"
 				data-testid="snippet-text"
-				>{{ display ?? code }}</pre
-			>
+				>{{ display ?? code }}</pre>
 			<button
 				type="button"
 				:class="[

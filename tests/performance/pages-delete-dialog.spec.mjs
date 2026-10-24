@@ -64,7 +64,7 @@ async function mockPages(page, { deleteStatus = 200, scheme = 'light' } = {}) {
           json: { message: 'Cannot delete' },
         });
       const gone = new Set([Number(del[1])]);
-      for (let grew = true; grew; ) {
+      for (let grew = true; grew;) {
         grew = false;
         for (const p of pages)
           if (gone.has(p.parent_id) && !gone.has(p.id)) {

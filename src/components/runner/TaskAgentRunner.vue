@@ -43,7 +43,7 @@
 					: runner.sessionForTask(
 							Number(props.workspaceId),
 							Number(props.taskId),
-					  ),
+						),
 			);
 			return { runner, latest };
 		},

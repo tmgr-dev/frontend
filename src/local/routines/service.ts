@@ -188,8 +188,8 @@ const insertRoutineRow = async (
 	const result = await ctx.db.execute(
 		`INSERT INTO routines (id, ${keys.join(', ')}, created_at, updated_at)
 		 SELECT COALESCE(MAX(id), ${ROUTINE_ID_BASE}) + 1, ${keys
-			.map(() => '?')
-			.join(', ')}, ?, ?
+				.map(() => '?')
+				.join(', ')}, ?, ?
 		 FROM routines`,
 		[...keys.map((k) => fields[k]), now, now],
 	);

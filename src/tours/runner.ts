@@ -16,11 +16,7 @@ export interface RunnerView extends ActiveTour {
 
 export type RunnerRoute = NonNullable<StepDef['route']>;
 export type FinishReason =
-	| 'completed'
-	| 'skipped'
-	| 'paused'
-	| 'module_off'
-	| 'navigated';
+	'completed' | 'skipped' | 'paused' | 'module_off' | 'navigated';
 
 export interface RunnerDeps {
 	getTour(id: TourId): TourDef | undefined;

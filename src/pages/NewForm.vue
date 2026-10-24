@@ -420,8 +420,7 @@
 			!hasTaskMeaningfulChanges({ ...incoming, ...known }, incoming),
 	);
 	let loadTaskReferenceData:
-		| ((taskWorkspaceId: number | null) => unknown)
-		| null = null;
+		((taskWorkspaceId: number | null) => unknown) | null = null;
 
 	const form = ref<Task>({
 		title: '',
@@ -803,8 +802,8 @@
 				editorType.value === 'markdown'
 					? markdownEditorRef.value
 					: editorType.value === 'block'
-					? blockEditorRef.value
-					: blockMdEditorRef.value;
+						? blockEditorRef.value
+						: blockMdEditorRef.value;
 			for (let i = 0; !current()?.prependParagraph && i < 300; i++)
 				await new Promise((resolve) => setTimeout(resolve, 16));
 			inserted =
@@ -984,7 +983,7 @@
 					(new Date().getTime() -
 						new Date().setTime(formValue.start_time * 1000)) /
 						1000,
-			  );
+				);
 		const currentTime = formValue.common_time + timeSinceStartTime;
 		if (formValue.checkpoints.length > 0) {
 			const prevCheckpointIndex = formValue.checkpoints.length - 1;
@@ -1978,7 +1977,7 @@
 			: backlogTimerPrompt(
 					form.value,
 					statuses.value || workspaceStatuses.value || [],
-			  );
+				);
 		if (prompt) {
 			backlogStatusChangeConfirm.value = {
 				taskId: taskId.value || (form.value.id as number),
