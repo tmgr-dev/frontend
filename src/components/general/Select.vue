@@ -135,24 +135,12 @@
 	.fade-left-enter-active,
 	.fade-left-leave-active {
 		transition: 0.5s;
-		transform: translateX(0) translateY(-50%);
+		transform: translateX(0);
 	}
 
 	.fade-left-enter-from,
 	.fade-left-leave-to {
 		opacity: 0;
-		transform: translateX(100px) translateY(-50%);
-	}
-
-	@media (max-width: 640px) {
-		.fade-left-enter-active,
-		.fade-left-leave-active {
-			transform: translateX(0) translateY(0);
-		}
-
-		.fade-left-enter-from,
-		.fade-left-leave-to {
-			transform: translateX(100px) translateY(0);
-		}
+		transform: translateX(100px);
 	}
 </style>

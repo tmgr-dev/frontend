@@ -89,7 +89,7 @@
 						class="flex items-center justify-center gap-1.5 rounded-[7px] py-2.5 text-xs font-medium transition"
 						:class="
 							draft.notify === opt.value
-								? 'bg-white/8 text-white'
+								? 'text-white'
 								: 'text-white/55 hover:bg-white/5'
 						"
 						@click="set('notify', opt.value)"
