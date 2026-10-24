@@ -573,7 +573,7 @@
 													</span>
 													<span
 														v-if="activeWorkspace?.is_local"
-														class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
+														class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold text-amber-600 uppercase dark:text-amber-400"
 														data-testid="local-workspace-badge"
 														data-tour="local.badge"
 														>Local</span
@@ -821,7 +821,7 @@
 											}}</span>
 											<span
 												v-if="activeWorkspace?.is_local"
-												class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
+												class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold text-amber-600 uppercase dark:text-amber-400"
 												data-testid="local-routines-menu-badge"
 												>Local</span
 											>
@@ -926,7 +926,7 @@
 													aria-hidden="true"
 													data-testid="plugin-view-badge-dot"
 													:class="[
-														'absolute -right-0.5 -top-0.5 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block',
+														'absolute -top-0.5 -right-0.5 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block',
 														BADGE_DOT_CLASS[page.badge.tone],
 													]"
 												/>
@@ -1090,7 +1090,7 @@
 			</Sidebar>
 
 			<SidebarInset
-				class="app-canvas pb-[var(--statusbar-h,0px)] pt-[var(--titlebar-h,0px)]"
+				class="app-canvas pt-[var(--titlebar-h,0px)] pb-[var(--statusbar-h,0px)]"
 			>
 				<DesktopAppBar />
 				<EmailVerifyBanner />

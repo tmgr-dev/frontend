@@ -34,7 +34,7 @@
 							stroke-linecap="round"
 							:stroke-dasharray="ringCircumference"
 							:stroke-dashoffset="ringOffset"
-							class="duration-[1000ms] transition-[stroke-dashoffset,stroke] ease-linear"
+							class="transition-[stroke-dashoffset,stroke] duration-[1000ms] ease-linear"
 						/>
 					</svg>
 					<div class="absolute inset-0 flex items-center justify-center">

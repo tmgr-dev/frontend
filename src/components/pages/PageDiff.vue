@@ -6,14 +6,14 @@
 		<div
 			v-for="(op, index) in ops"
 			:key="index"
-			class="flex whitespace-pre-wrap break-all px-2 py-0.5"
+			class="flex px-2 py-0.5 break-all whitespace-pre-wrap"
 			:class="{
 				'bg-status-done-bg text-status-done-fg': op.type === 'add',
 				'bg-status-fix-bg text-status-fix-fg': op.type === 'del',
 				'text-ink-muted': op.type === 'same',
 			}"
 		>
-			<span class="mr-2 w-3 shrink-0 select-none opacity-60">{{
+			<span class="mr-2 w-3 shrink-0 opacity-60 select-none">{{
 				op.type === 'add' ? '+' : op.type === 'del' ? '-' : ' '
 			}}</span>
 			<span class="min-w-0">{{ op.text }}</span>

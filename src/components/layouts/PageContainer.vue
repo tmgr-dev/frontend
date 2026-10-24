@@ -2,7 +2,7 @@
 	<div :class="classes" :data-page-width="width">
 		<div
 			v-if="width === 'narrow'"
-			class="flex w-full min-w-0 max-w-[46rem] flex-1 flex-col md:max-w-[45rem]"
+			class="flex w-full max-w-[46rem] min-w-0 flex-1 flex-col md:max-w-[45rem]"
 		>
 			<slot />
 		</div>

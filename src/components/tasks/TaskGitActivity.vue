@@ -119,7 +119,7 @@
 									{{ commit.message.split('\n')[0] }}
 								</p>
 								<div
-									class="mt-1 flex items-center space-x-3 text-xs text-ink-subtle"
+									class="space-x-3 mt-1 flex items-center text-xs text-ink-subtle"
 								>
 									<span class="font-mono">{{ commit.short_sha }}</span>
 									<span>{{ commit.author_name }}</span>
@@ -192,7 +192,7 @@
 									{{ pr.title }}
 								</p>
 								<div
-									class="mt-1 flex items-center space-x-3 text-xs text-ink-subtle"
+									class="space-x-3 mt-1 flex items-center text-xs text-ink-subtle"
 								>
 									<span>{{ pr.source_branch }} → {{ pr.target_branch }}</span>
 									<span>by {{ pr.author_username }}</span>

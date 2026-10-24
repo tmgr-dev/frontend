@@ -4,7 +4,7 @@
 		data-testid="preset-preview"
 	>
 		<section>
-			<h4 class="mb-1 font-medium uppercase tracking-wide text-ink-subtle">
+			<h4 class="mb-1 font-medium tracking-wide text-ink-subtle uppercase">
 				Menu
 			</h4>
 			<ul class="flex flex-col gap-1">
@@ -23,7 +23,7 @@
 			</ul>
 		</section>
 		<section>
-			<h4 class="mb-1 font-medium uppercase tracking-wide text-ink-subtle">
+			<h4 class="mb-1 font-medium tracking-wide text-ink-subtle uppercase">
 				Task
 			</h4>
 			<div

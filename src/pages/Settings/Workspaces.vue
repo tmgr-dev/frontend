@@ -669,7 +669,7 @@
 								:placeholder="`Enter emails (comma separated), for example:\nuser1@example.com,\nuser2@example.com,\n...\nuserN@example.com`"
 							/>
 							<span
-								class="whitespace-pre text-xs text-destructive"
+								class="text-xs whitespace-pre text-destructive"
 								v-if="
 									!invitationEmailsValidationError.isValid &&
 									invitationEmails !== ''
@@ -896,7 +896,7 @@
 													workspaces.find((w) => w.id == activeWorkspace?.value)
 														?.user_id
 												"
-												class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold uppercase text-muted-foreground"
+												class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground uppercase"
 											>
 												Owner
 											</span>

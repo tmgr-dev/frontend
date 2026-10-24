@@ -2,7 +2,7 @@
 	<div>
 		<div class="mb-1.5 flex items-baseline justify-between px-0.5">
 			<span
-				class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle"
+				class="text-[10px] font-bold tracking-wider text-ink-subtle uppercase"
 				>{{ label }}</span
 			>
 			<span v-if="hint" class="text-2xs text-ink-subtle">{{ hint }}</span>

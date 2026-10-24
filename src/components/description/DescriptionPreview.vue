@@ -6,7 +6,7 @@
 			size="icon"
 			title="Edit description"
 			aria-label="Edit description"
-			class="absolute right-1.5 top-1.5 z-10 h-7 w-7 text-ink-muted hover:bg-surface-hover hover:text-ink"
+			class="absolute top-1.5 right-1.5 z-10 h-7 w-7 text-ink-muted hover:bg-surface-hover hover:text-ink"
 			@click="$emit('edit')"
 		>
 			<Pencil class="h-4 w-4" />

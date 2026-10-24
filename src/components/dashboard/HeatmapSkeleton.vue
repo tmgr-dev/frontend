@@ -5,7 +5,7 @@
 <template>
 	<!-- CHANGES: Added min-h-48 to match heatmap-container and prevent CLS -->
 	<div class="min-h-48 w-full">
-		<div class="mb-6 space-y-2">
+		<div class="space-y-2 mb-6">
 			<Skeleton class="h-4 w-48" />
 			<Skeleton class="h-3 w-64" />
 		</div>

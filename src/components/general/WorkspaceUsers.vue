@@ -1,6 +1,6 @@
 <template>
 	<div class="flex items-center">
-		<div class="flex -space-x-2">
+		<div class="-space-x-2 flex">
 			<AppTooltip
 				v-for="user in users"
 				:key="user.id"

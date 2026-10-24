@@ -956,7 +956,7 @@
 						<!-- Connection Status Indicator -->
 						<div
 							v-if="showConnectionStatus || !isRealTimeActive"
-							class="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide"
+							class="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-2xs font-semibold tracking-wide uppercase"
 							:class="
 								isRealTimeActive
 									? 'bg-status-done-bg text-status-done-fg'
@@ -1050,7 +1050,7 @@
 								<div class="flex items-start">
 									<ExclamationTriangleIcon
 										:class="[
-											'mr-3 mt-0.5 h-5 w-5 shrink-0',
+											'mt-0.5 mr-3 h-5 w-5 shrink-0',
 											isOffline ? 'text-status-progress' : 'text-status-fix',
 										]"
 									/>
@@ -1453,7 +1453,7 @@
 							>
 								<div
 									v-if="showConnectionStatus || isOffline"
-									class="fixed bottom-4 right-4 z-50 rounded-lg p-4 shadow-lg"
+									class="fixed right-4 bottom-4 z-50 rounded-lg p-4 shadow-lg"
 									:class="{
 										'border border-status-progress bg-status-progress-bg':
 											isOffline,
@@ -1534,7 +1534,7 @@
 
 	@media (max-width: 640px) {
 		.dashboard-container {
-			@apply overflow-y-auto overflow-x-hidden;
+			@apply overflow-x-hidden overflow-y-auto;
 		}
 
 		.dashboard-section {

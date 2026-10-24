@@ -13,7 +13,7 @@
 		/>
 		<div
 			data-tauri-drag-region
-			class="flex items-center justify-between px-4 pb-1 pt-3 text-xs text-muted-foreground"
+			class="flex items-center justify-between px-4 pt-3 pb-1 text-xs text-muted-foreground"
 		>
 			<span data-tauri-drag-region class="flex items-center gap-1.5">
 				{{ headingText }}
@@ -71,7 +71,7 @@
 				<template v-if="isTask">
 					<select
 						v-model="categoryId"
-						class="min-w-0 max-w-[16rem] rounded-md border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground outline-hidden dark:border-border dark:bg-background"
+						class="max-w-[16rem] min-w-0 rounded-md border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground outline-hidden dark:border-border dark:bg-background"
 						:disabled="saving || categoriesLoading"
 						aria-label="Category"
 						data-testid="quick-add-category"

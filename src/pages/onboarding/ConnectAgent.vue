@@ -3,7 +3,7 @@
 		<Teleport to="body">
 			<div
 				ref="root"
-				class="fixed inset-0 z-[55] overflow-y-auto bg-surface-base px-4 pb-[var(--screen-pad)] pt-6 sm:pb-16"
+				class="fixed inset-0 z-[55] overflow-y-auto bg-surface-base px-4 pt-6 pb-[var(--screen-pad)] sm:pb-16"
 				:style="{
 					'--screen-pad': consentOpen ? `${consentPad + 24}px` : '4rem',
 				}"
@@ -55,7 +55,7 @@
 						<h1 class="text-center text-xl font-semibold text-ink">
 							{{ clientLabel }} is connected
 						</h1>
-						<ul class="mx-auto mt-5 max-w-xs space-y-2 text-sm text-ink">
+						<ul class="space-y-2 mx-auto mt-5 max-w-xs text-sm text-ink">
 							<li
 								v-for="item in doneItems"
 								:key="item"
@@ -140,7 +140,7 @@
 								:id="`connect-panel-${activeId}`"
 								role="tabpanel"
 								:aria-labelledby="`connect-tab-${activeId}`"
-								class="mt-4 space-y-3"
+								class="space-y-3 mt-4"
 							>
 								<div
 									v-if="tokenMode === 'checking'"
@@ -344,7 +344,7 @@
 							</div>
 						</template>
 
-						<div class="mt-5 space-y-3 border-t border-line pt-5">
+						<div class="space-y-3 mt-5 border-t border-line pt-5">
 							<ConnectStatus :state="stalled ? 'stalled' : 'waiting'" />
 							<div v-if="!stalled" class="flex flex-col items-center gap-1">
 								<button

@@ -1,6 +1,6 @@
 <template>
 	<PageContainer width="full">
-		<div class="mx-auto w-full max-w-[480px] px-4 pb-10 pt-6 md:pt-12">
+		<div class="mx-auto w-full max-w-[480px] px-4 pt-6 pb-10 md:pt-12">
 			<div
 				class="rounded-lg border border-border bg-card p-4 text-card-foreground sm:p-6"
 			>
@@ -14,7 +14,7 @@
 							<Input
 								id="device-code"
 								:model-value="approval.code.value"
-								class="h-11 font-mono text-lg uppercase tracking-widest"
+								class="h-11 font-mono text-lg tracking-widest uppercase"
 								placeholder="XXXX-XXXX"
 								autocomplete="off"
 								autocapitalize="characters"

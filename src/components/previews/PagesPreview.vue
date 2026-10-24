@@ -1,6 +1,6 @@
 <template>
 	<div class="mx-auto flex w-full max-w-5xl gap-6 p-6">
-		<div class="w-56 shrink-0 space-y-2">
+		<div class="space-y-2 w-56 shrink-0">
 			<div
 				v-for="width in [70, 55, 80, 45, 60]"
 				:key="width"
@@ -9,7 +9,7 @@
 			></div>
 		</div>
 		<div
-			class="flex-1 space-y-4 rounded-lg bg-white p-6 shadow-xs dark:bg-gray-800"
+			class="space-y-4 flex-1 rounded-lg bg-white p-6 shadow-xs dark:bg-gray-800"
 		>
 			<div
 				class="h-8 w-2/3 animate-pulse rounded bg-gray-200 dark:bg-gray-700"

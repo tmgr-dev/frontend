@@ -27,7 +27,7 @@
 			</span>
 			<span
 				v-if="resolved.kind === 'persona'"
-				class="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-surface ring-1 ring-surface"
+				class="absolute -right-0.5 -bottom-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-surface ring-1 ring-surface"
 			>
 				<VenetianMask class="h-2.5 w-2.5 text-status-testing" />
 			</span>

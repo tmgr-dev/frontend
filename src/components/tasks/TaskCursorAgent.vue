@@ -164,7 +164,7 @@
 			</div>
 
 			<div v-else class="space-y-3">
-				<h3 class="text-2xs font-bold uppercase tracking-wide text-ink-subtle">
+				<h3 class="text-2xs font-bold tracking-wide text-ink-subtle uppercase">
 					Agent History <span class="tabular-nums">({{ agents.length }})</span>
 				</h3>
 
@@ -177,7 +177,7 @@
 						<div class="flex items-center gap-2">
 							<span
 								:class="[
-									'rounded-pill px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide',
+									'rounded-pill px-2 py-0.5 text-2xs font-semibold tracking-wide uppercase',
 									agent.status === 'RUNNING'
 										? 'bg-status-progress-bg text-status-progress-fg'
 										: agent.status === 'FINISHED'
@@ -267,7 +267,7 @@
 						{{ agent.error_message }}
 					</div>
 
-					<div v-if="agent.status === 'RUNNING'" class="mt-4 space-y-2">
+					<div v-if="agent.status === 'RUNNING'" class="space-y-2 mt-4">
 						<label class="block text-sm font-medium text-ink">
 							Send Follow-up Instruction
 						</label>

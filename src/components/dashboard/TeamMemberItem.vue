@@ -33,7 +33,7 @@
 						{{ member.name }}
 					</h4>
 					<span
-						class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-2xs uppercase tracking-wide text-ink-subtle"
+						class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-2xs tracking-wide text-ink-subtle uppercase"
 						>{{ member.role }}</span
 					>
 				</div>
@@ -74,7 +74,7 @@
 		</div>
 
 		<p
-			class="mt-2 truncate text-xs tabular-nums text-ink-subtle sm:hidden"
+			class="mt-2 truncate text-xs text-ink-subtle tabular-nums sm:hidden"
 			aria-hidden="true"
 		>
 			{{ member.done_count }} done · {{ tracked }} ·
@@ -89,22 +89,22 @@
 			<span
 				v-for="(h, i) in bars"
 				:key="dailyActivityPoints[i]?.date ?? i"
-				class="min-w-px max-w-1.5 flex-1 rounded-sm"
+				class="max-w-1.5 min-w-px flex-1 rounded-sm"
 				:class="h > 0 ? 'bg-brand' : 'bg-surface-sunken'"
 				:style="{ height: `${Math.max(h, 2)}px` }"
 			></span>
 		</div>
 
 		<dl class="hidden text-sm sm:contents">
-			<div class="text-right tabular-nums text-ink">
+			<div class="text-right text-ink tabular-nums">
 				<dt class="sr-only">Done</dt>
 				<dd>{{ member.done_count }}</dd>
 			</div>
-			<div class="text-right tabular-nums text-ink">
+			<div class="text-right text-ink tabular-nums">
 				<dt class="sr-only">Tracked</dt>
 				<dd>{{ tracked }}</dd>
 			</div>
-			<div class="text-right tabular-nums text-ink">
+			<div class="text-right text-ink tabular-nums">
 				<dt class="sr-only">Active tasks</dt>
 				<dd>{{ member.active_tasks }}</dd>
 			</div>

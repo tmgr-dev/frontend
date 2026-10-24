@@ -6,7 +6,7 @@
 		<h3 class="text-base font-semibold text-ink">Top categories</h3>
 		<p v-if="subtitle" class="text-xs text-ink-muted">{{ subtitle }}</p>
 
-		<ul v-if="loading" class="mt-4 space-y-4">
+		<ul v-if="loading" class="space-y-4 mt-4">
 			<li v-for="i in 5" :key="`skeleton-${i}`">
 				<Skeleton class="h-4 w-full" />
 				<Skeleton class="mt-2 h-2 w-full rounded-full" />
@@ -19,7 +19,7 @@
 		>
 			No tracked time in this period
 		</p>
-		<ul v-else class="mt-4 space-y-4">
+		<ul v-else class="space-y-4 mt-4">
 			<li v-for="(item, i) in visible" :key="item.key" class="min-w-0">
 				<div class="flex items-center gap-2 text-sm">
 					<span
@@ -29,7 +29,7 @@
 					<span class="min-w-0 flex-1 truncate text-ink" :title="item.name">{{
 						item.name
 					}}</span>
-					<span class="shrink-0 text-right tabular-nums text-ink-muted">{{
+					<span class="shrink-0 text-right text-ink-muted tabular-nums">{{
 						formatTrackedSeconds(item.seconds)
 					}}</span>
 				</div>

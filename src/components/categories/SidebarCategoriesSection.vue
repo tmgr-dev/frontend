@@ -4,7 +4,7 @@
 		data-testid="categories-sidebar-section"
 	>
 		<SidebarGroupLabel>Categories</SidebarGroupLabel>
-		<div class="absolute right-3 top-3.5 flex items-center gap-0.5">
+		<div class="absolute top-3.5 right-3 flex items-center gap-0.5">
 			<button
 				type="button"
 				class="flex h-5 w-5 items-center justify-center rounded text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"

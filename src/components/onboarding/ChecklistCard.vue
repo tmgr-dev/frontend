@@ -73,7 +73,7 @@
 					:style="{ width: progressWidth }"
 				/>
 			</div>
-			<ul class="mt-2 flex flex-col divide-y divide-line">
+			<ul class="divide-y divide-line mt-2 flex flex-col">
 				<li
 					v-for="item in checklist.items"
 					:key="item.id"

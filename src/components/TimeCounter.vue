@@ -118,13 +118,13 @@
 		<div class="flex min-w-0 flex-1 flex-col">
 			<div class="flex items-center gap-2">
 				<span
-					class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+					class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 				>
 					Time tracked
 				</span>
 				<span
 					v-if="isTimerActive && !isTimeOver"
-					class="inline-flex items-center gap-1 text-2xs font-bold uppercase tracking-wide text-status-done-fg"
+					class="inline-flex items-center gap-1 text-2xs font-bold tracking-wide text-status-done-fg uppercase"
 				>
 					<span
 						class="h-1.5 w-1.5 animate-tmgr-pulse rounded-full bg-status-done"
@@ -133,14 +133,14 @@
 				</span>
 				<span
 					v-else-if="isTimeOver && isTimerActive"
-					class="text-2xs font-bold uppercase tracking-wide text-status-fix-fg"
+					class="text-2xs font-bold tracking-wide text-status-fix-fg uppercase"
 				>
 					Over time
 				</span>
 			</div>
 
 			<div
-				class="flex select-none items-baseline gap-0.5 whitespace-nowrap font-mono text-xl font-semibold tabular-nums"
+				class="flex items-baseline gap-0.5 font-mono text-xl font-semibold whitespace-nowrap tabular-nums select-none"
 				:class="[
 					isTimerActive && !isTimeOver && 'text-status-done-fg',
 					isTimeOver && 'text-status-fix-fg',

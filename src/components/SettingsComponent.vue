@@ -33,7 +33,7 @@
 				>
 					<label
 						:for="`setting-${setting.id}`"
-						class="mb-2 block text-left text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+						class="mb-2 block text-left text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 					>
 						{{ setting.name }}
 					</label>

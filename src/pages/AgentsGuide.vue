@@ -71,7 +71,7 @@
 						first, then calls your phone if it is not acknowledged (press 1 to
 						acknowledge). To make it reliable:
 					</p>
-					<ul class="list-disc space-y-1 pl-5">
+					<ul class="space-y-1 list-disc pl-5">
 						<li>Set and verify an alarm phone in Settings → Agent alerts.</li>
 						<li>Add the TMGR caller number to your contacts or Favorites.</li>
 						<li>Enable Repeated Calls in iOS settings.</li>
@@ -81,7 +81,7 @@
 
 				<section id="troubleshooting" class="space-y-3">
 					<h2 class="text-lg font-semibold">Troubleshooting</h2>
-					<ul class="list-disc space-y-1 pl-5">
+					<ul class="space-y-1 list-disc pl-5">
 						<li>
 							No push arrives: check that
 							<code class="font-mono">~/.config/tmgr-notify/env</code> exists
@@ -107,7 +107,7 @@
 
 				<section id="links" class="space-y-3">
 					<h2 class="text-lg font-semibold">Links</h2>
-					<ul class="list-disc space-y-1 pl-5">
+					<ul class="space-y-1 list-disc pl-5">
 						<li>
 							<a
 								href="https://www.npmjs.com/package/@tmgr/notify"

@@ -272,7 +272,7 @@
 											Client configuration
 										</p>
 										<pre
-											class="overflow-x-auto whitespace-pre rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs text-ink"
+											class="overflow-x-auto rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs whitespace-pre text-ink"
 											>{{ mcpClientConfig }}</pre>
 									</div>
 									<p>

@@ -26,7 +26,7 @@
 
 		<span
 			v-if="reminderSoundPlaying"
-			class="absolute right-0 top-0 -mr-2 -mt-1 flex h-5 w-5 cursor-pointer"
+			class="absolute top-0 right-0 -mt-1 -mr-2 flex h-5 w-5 cursor-pointer"
 			@click="stopReminder"
 		>
 			<span

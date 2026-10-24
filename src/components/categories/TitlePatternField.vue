@@ -14,12 +14,12 @@
 		/>
 		<div
 			v-if="literal"
-			class="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-status-progress-bg px-3 py-2.5 text-xs leading-relaxed text-ink dark:bg-[oklch(0.3_0.05_75/0.35)] lg:flex-nowrap"
+			class="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-status-progress-bg px-3 py-2.5 text-xs leading-relaxed text-ink lg:flex-nowrap dark:bg-[oklch(0.3_0.05_75/0.35)]"
 		>
 			<span class="min-w-0 flex-1">
 				<b class="font-semibold text-status-progress">No placeholders.</b>
 				Every new task will literally start with “<span
-					class="break-all font-mono"
+					class="font-mono break-all"
 					>{{ modelValue }}</span
 				>”.
 			</span>

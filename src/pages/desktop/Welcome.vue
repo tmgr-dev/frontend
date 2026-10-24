@@ -7,7 +7,7 @@
 
 		<div class="grid grid-cols-2 gap-2">
 			<Button
-				class="h-auto min-h-10 whitespace-normal px-4 py-2 text-center leading-tight"
+				class="h-auto min-h-10 px-4 py-2 text-center leading-tight whitespace-normal"
 				:variant="startOpen ? 'secondary' : 'default'"
 				:disabled="busy"
 				data-testid="start-local"
@@ -17,7 +17,7 @@
 			</Button>
 			<Button
 				variant="outline"
-				class="h-auto min-h-10 whitespace-normal px-4 py-2 text-center leading-tight"
+				class="h-auto min-h-10 px-4 py-2 text-center leading-tight whitespace-normal"
 				:disabled="busy"
 				data-testid="sign-in"
 				@click="signIn"
@@ -32,7 +32,7 @@
 
 		<form
 			v-if="startOpen"
-			class="mt-6 space-y-4"
+			class="space-y-4 mt-6"
 			data-testid="start-form"
 			@submit.prevent="start"
 		>

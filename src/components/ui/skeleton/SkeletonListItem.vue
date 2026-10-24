@@ -14,9 +14,9 @@
 </script>
 
 <template>
-	<div :class="cn('flex items-center space-x-3 p-3', props.class)">
+	<div :class="cn('space-x-3 flex items-center p-3', props.class)">
 		<Skeleton v-if="showAvatar" class="h-10 w-10 shrink-0 rounded-full" />
-		<div class="flex-1 space-y-2">
+		<div class="space-y-2 flex-1">
 			<Skeleton class="h-4 w-3/4" />
 			<Skeleton class="h-3 w-1/2" />
 		</div>

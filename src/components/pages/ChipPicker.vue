@@ -3,7 +3,7 @@
 		<span
 			v-for="chip in chips"
 			:key="chip.key"
-			class="inline-flex items-center gap-1 rounded-full bg-tag-bg py-0.5 pl-2.5 pr-1 text-xs text-tag-fg"
+			class="inline-flex items-center gap-1 rounded-full bg-tag-bg py-0.5 pr-1 pl-2.5 text-xs text-tag-fg"
 			data-testid="chip"
 		>
 			<button
@@ -47,7 +47,7 @@
 				/>
 				<ul
 					v-if="items.length"
-					class="absolute left-0 top-full z-30 mt-1 max-h-60 w-64 overflow-y-auto rounded-lg border border-line bg-popover py-1 text-sm text-popover-foreground shadow-lg"
+					class="absolute top-full left-0 z-30 mt-1 max-h-60 w-64 overflow-y-auto rounded-lg border border-line bg-popover py-1 text-sm text-popover-foreground shadow-lg"
 					role="listbox"
 				>
 					<li
@@ -59,7 +59,7 @@
 					>
 						<span
 							v-if="item.hint"
-							class="w-14 shrink-0 text-2xs uppercase tracking-wide text-ink-faint"
+							class="w-14 shrink-0 text-2xs tracking-wide text-ink-faint uppercase"
 							>{{ item.hint }}</span
 						>
 						<span class="truncate">{{ item.label }}</span>

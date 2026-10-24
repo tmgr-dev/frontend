@@ -73,7 +73,7 @@
 		<p v-if="otherAccount" role="alert" class="text-sm text-destructive">
 			{{ otherAccountMessage }}
 		</p>
-		<p v-if="error" role="alert" class="break-words text-sm text-destructive">
+		<p v-if="error" role="alert" class="text-sm break-words text-destructive">
 			{{ error }}
 		</p>
 

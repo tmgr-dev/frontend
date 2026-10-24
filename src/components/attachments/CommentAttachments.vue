@@ -20,7 +20,7 @@
 		</button>
 		<div
 			v-if="items.length || notice"
-			class="order-first basis-full pb-1 pt-0.5"
+			class="order-first basis-full pt-0.5 pb-1"
 		>
 			<AttachmentChips :items="items" :notice="notice" @remove="onRemove" />
 		</div>

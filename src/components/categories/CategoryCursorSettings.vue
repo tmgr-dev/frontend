@@ -39,7 +39,7 @@
 				category
 			</p>
 
-			<div class="mt-4 space-y-3">
+			<div class="space-y-3 mt-4">
 				<div>
 					<label
 						for="cursorApiKey"
@@ -128,7 +128,7 @@
 
 			<div
 				v-if="editing"
-				class="mt-4 space-y-3 rounded-card border border-line bg-surface-sunken p-4"
+				class="space-y-3 mt-4 rounded-card border border-line bg-surface-sunken p-4"
 			>
 				<div>
 					<label

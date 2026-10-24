@@ -1,5 +1,5 @@
 <template>
-	<div class="activity-filters flex items-center space-x-2">
+	<div class="activity-filters space-x-2 flex items-center">
 		<!-- Activity Type Filter -->
 		<Select
 			v-model="localFilters.type"

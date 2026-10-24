@@ -6,7 +6,7 @@
 			</div>
 			<div class="min-w-0 flex-1">
 				<p
-					class="truncate text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+					class="truncate text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 				>
 					{{ title }}
 				</p>

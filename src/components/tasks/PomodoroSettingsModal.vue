@@ -120,7 +120,7 @@
 						</button>
 					</div>
 					<div
-						class="mt-2 flex items-center gap-2.5 border-t border-white/5 px-2.5 pb-1 pt-2"
+						class="mt-2 flex items-center gap-2.5 border-t border-white/5 px-2.5 pt-2 pb-1"
 					>
 						<component
 							:is="draft.volume === 0 ? VolumeX : Volume2"
@@ -141,7 +141,7 @@
 							"
 						/>
 						<span
-							class="min-w-[32px] text-right text-[11px] tabular-nums text-white/50"
+							class="min-w-[32px] text-right text-[11px] text-white/50 tabular-nums"
 						>
 							{{ draft.volume }}%
 						</span>

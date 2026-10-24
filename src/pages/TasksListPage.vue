@@ -876,11 +876,11 @@
 								class="flex flex-col items-center justify-center text-center"
 							>
 								<div
-									class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+									class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 								>
 									Total Time
 								</div>
-								<div class="text-xl font-semibold tabular-nums text-ink">
+								<div class="text-xl font-semibold text-ink tabular-nums">
 									{{ summaryTime }}
 								</div>
 							</div>
@@ -888,7 +888,7 @@
 								class="flex flex-col items-center justify-center text-center"
 							>
 								<div
-									class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+									class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 								>
 									Working Days
 								</div>
@@ -901,7 +901,7 @@
 								class="flex flex-col items-center justify-center text-center"
 							>
 								<div
-									class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+									class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 								>
 									Working Months
 								</div>
@@ -914,7 +914,7 @@
 								class="flex flex-col items-center justify-center text-center"
 							>
 								<div
-									class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+									class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 								>
 									Working Years
 								</div>
@@ -928,7 +928,7 @@
 								class="col-span-2 flex flex-col items-center justify-center text-center sm:col-span-4"
 							>
 								<div
-									class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+									class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 								>
 									Overtime
 								</div>
@@ -939,7 +939,7 @@
 						</div>
 						<div
 							v-else-if="summaryTime"
-							class="w-full shrink-0 text-center text-2xl font-semibold tabular-nums text-ink sm:text-3xl"
+							class="w-full shrink-0 text-center text-2xl font-semibold text-ink tabular-nums sm:text-3xl"
 						>
 							<span
 								v-if="hasLoadedTasks"
@@ -998,7 +998,7 @@
 								v-model="searchText"
 								placeholder="search task"
 								type="search"
-								class="h-9 w-full rounded-pill border border-line bg-surface pl-4 pr-3 text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-strong"
+								class="h-9 w-full rounded-pill border border-line bg-surface pr-3 pl-4 text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-strong"
 							/>
 						</div>
 
@@ -1007,7 +1007,7 @@
 								v-model="sortColumn"
 								@change="changeSort"
 								title="Sort by date"
-								class="h-9 rounded-pill border border-line bg-surface pl-3 pr-7 text-sm text-ink outline-hidden"
+								class="h-9 rounded-pill border border-line bg-surface pr-7 pl-3 text-sm text-ink outline-hidden"
 							>
 								<option
 									v-for="field in SORT_FIELDS"
@@ -1208,7 +1208,7 @@
 
 				<div
 					v-if="isLoading && !hasLoadedTasks"
-					class="mt-6 space-y-2 px-2"
+					class="space-y-2 mt-6 px-2"
 					aria-hidden="true"
 				>
 					<Skeleton class="h-28 w-full" />

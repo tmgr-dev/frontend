@@ -21,7 +21,7 @@
 		<div class="min-w-0 flex-1">
 			<div class="mb-1 flex items-start gap-2">
 				<div
-					class="min-w-0 text-sm text-ink [overflow-wrap:anywhere]"
+					class="min-w-0 text-sm [overflow-wrap:anywhere] text-ink"
 					:class="notification.read_at ? 'font-medium' : 'font-semibold'"
 				>
 					{{ title }}
@@ -34,7 +34,7 @@
 			</div>
 			<div
 				v-if="notification.message"
-				class="mb-1 line-clamp-2 text-[0.8125rem] text-ink-muted [overflow-wrap:anywhere]"
+				class="mb-1 line-clamp-2 text-[0.8125rem] [overflow-wrap:anywhere] text-ink-muted"
 			>
 				{{ notification.message }}
 			</div>
@@ -42,7 +42,7 @@
 		</div>
 
 		<button
-			class="shrink-0 rounded-md p-1 text-ink-subtle opacity-0 transition-colors hover:bg-surface-hover hover:text-status-fix-fg focus-visible:opacity-100 group-hover:opacity-100"
+			class="shrink-0 rounded-md p-1 text-ink-subtle opacity-0 transition-colors group-hover:opacity-100 hover:bg-surface-hover hover:text-status-fix-fg focus-visible:opacity-100"
 			@click.stop="$emit('delete')"
 			aria-label="Delete notification"
 		>

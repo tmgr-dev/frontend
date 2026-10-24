@@ -141,7 +141,7 @@
 											<div class="relative">
 												<button
 													type="button"
-													class="absolute -right-2 -top-2 z-10 opacity-50 transition-opacity hover:opacity-100"
+													class="absolute -top-2 -right-2 z-10 opacity-50 transition-opacity hover:opacity-100"
 													@click="isFiltersModalShown = false"
 												>
 													<span class="material-icons text-2xl text-ink-muted">
@@ -185,7 +185,7 @@
 							<div
 								role="status"
 								aria-live="polite"
-								class="pointer-events-none fixed bottom-[calc(var(--statusbar-h,0px)+1rem)] right-4 z-20 [body:has([data-tour='nav.active-timers'])_&]:right-16"
+								class="pointer-events-none fixed right-4 bottom-[calc(var(--statusbar-h,0px)+1rem)] z-20 [body:has([data-tour='nav.active-timers'])_&]:right-16"
 							>
 								<template v-if="boardLoading && tasksLoaded">
 									<span
@@ -268,7 +268,7 @@
 																</div>
 
 																<span
-																	class="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-2xs font-bold uppercase tracking-wide"
+																	class="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-2xs font-bold tracking-wide uppercase"
 																	:class="getStatusBadgeClass(column.status)"
 																>
 																	<span
@@ -283,7 +283,7 @@
 
 																<span
 																	v-if="column.taskCount !== undefined"
-																	class="text-xs tabular-nums text-ink-subtle"
+																	class="text-xs text-ink-subtle tabular-nums"
 																>
 																	{{ column.taskCount }}
 																</span>
@@ -294,7 +294,7 @@
 																			column.summary &&
 																			showSurface('timer.totals')
 																		"
-																		class="font-mono text-2xs tabular-nums text-ink-subtle"
+																		class="font-mono text-2xs text-ink-subtle tabular-nums"
 																	>
 																		{{ column.summary }}
 																		<span
@@ -309,7 +309,7 @@
 																	<AppTooltip content="Create task" side="left">
 																		<button
 																			data-tour="board.add-in-column"
-																			class="flex h-5 w-5 items-center justify-center rounded text-ink-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
+																			class="flex h-5 w-5 items-center justify-center rounded text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-ink focus-visible:opacity-100"
 																			@click="openTaskModal(column)"
 																		>
 																			<span class="material-icons text-base"
@@ -482,7 +482,7 @@
 																"
 																:to="`.board-card-draggable[data-column-id='${column.status.id}']`"
 															>
-																<div class="shrink-0 px-1 pb-1 pt-1">
+																<div class="shrink-0 px-1 pt-1 pb-1">
 																	<div class="flex flex-col gap-2">
 																		<input
 																			v-model="newTaskTitle"
@@ -535,7 +535,7 @@
 											<div v-if="!isShowColorPicker" class="relative">
 												<button
 													type="button"
-													class="absolute -right-2 -top-2 opacity-50 transition-opacity hover:opacity-100"
+													class="absolute -top-2 -right-2 opacity-50 transition-opacity hover:opacity-100"
 													@click="closeModal"
 												>
 													<span class="material-icons text-2xl text-ink-muted">
@@ -618,7 +618,7 @@
 										<div class="relative p-8">
 											<button
 												type="button"
-												class="absolute right-1 top-1 opacity-50 transition-opacity hover:opacity-100"
+												class="absolute top-1 right-1 opacity-50 transition-opacity hover:opacity-100"
 											>
 												<span
 													class="material-icons text-2xl text-ink"
@@ -704,7 +704,7 @@
 												</h1>
 												<button
 													type="button"
-													class="absolute -right-2 -top-2 opacity-50 transition-opacity hover:opacity-100"
+													class="absolute -top-2 -right-2 opacity-50 transition-opacity hover:opacity-100"
 													@click="closeMobileReorderModal"
 												>
 													<span class="material-icons text-2xl text-ink-muted">

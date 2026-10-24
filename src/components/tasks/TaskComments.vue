@@ -425,7 +425,7 @@
 						<div class="relative">
 							<button
 								type="button"
-								class="inline-flex h-6 w-6 items-center justify-center rounded-full text-ink-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink group-hover:opacity-100"
+								class="inline-flex h-6 w-6 items-center justify-center rounded-full text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-ink"
 								:class="{ 'opacity-100': reactionPickerFor === comment.id }"
 								aria-label="Add reaction"
 								@click="toggleReactionPicker(comment.id)"

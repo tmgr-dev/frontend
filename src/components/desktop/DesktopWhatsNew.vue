@@ -13,7 +13,7 @@
 					</DialogDescription>
 				</DialogHeader>
 
-				<div class="max-h-[70vh] space-y-6 overflow-y-auto px-6 py-4">
+				<div class="space-y-6 max-h-[70vh] overflow-y-auto px-6 py-4">
 					<section v-for="section in view.sections" :key="section.version">
 						<div class="mb-2 flex items-baseline gap-2">
 							<h3 class="text-sm font-semibold">v{{ section.version }}</h3>

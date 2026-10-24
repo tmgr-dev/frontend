@@ -85,7 +85,7 @@
 				>
 					<span
 						v-if="selectedMembers.length"
-						class="flex shrink-0 items-center -space-x-1.5"
+						class="-space-x-1.5 flex shrink-0 items-center"
 						:title="triggerLabel"
 					>
 						<UserAvatar

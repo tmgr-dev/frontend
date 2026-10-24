@@ -1,6 +1,6 @@
 <template>
 	<div class="flex min-h-0 flex-1 flex-col">
-		<div class="shrink-0 space-y-2 border-b border-line px-4 py-3">
+		<div class="space-y-2 shrink-0 border-b border-line px-4 py-3">
 			<div class="flex items-center justify-between">
 				<h2 class="text-sm font-semibold text-ink">Chats</h2>
 				<button

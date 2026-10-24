@@ -1,6 +1,6 @@
 <template>
 	<div
-		class="markdown-text break-words text-sm leading-relaxed text-ink"
+		class="markdown-text text-sm leading-relaxed break-words text-ink"
 		v-html="html"
 		@click="onClick"
 	></div>

@@ -14,7 +14,7 @@
 				<component :is="icon" class="h-5 w-5" aria-hidden="true" />
 			</div>
 			<p
-				class="min-w-0 truncate text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+				class="min-w-0 truncate text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 			>
 				{{ label }}
 			</p>
@@ -39,7 +39,7 @@
 					</Button>
 				</template>
 				<template v-else>
-					<p class="truncate text-2xl font-semibold tabular-nums text-ink">
+					<p class="truncate text-2xl font-semibold text-ink tabular-nums">
 						{{ value ?? '—' }}
 					</p>
 					<p

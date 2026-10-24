@@ -137,7 +137,7 @@
 						@click="createNewWorkspaceInvitation()"
 						:disabled="flags.isLoading"
 						:class="{ 'bg-ink-faint hover:bg-ink-faint': flags.isLoading }"
-						class="mr-5 mt-5 w-full rounded bg-brand px-4 py-2 font-bold text-on-accent transition hover:bg-brand-hover sm:mb-0"
+						class="mt-5 mr-5 w-full rounded bg-brand px-4 py-2 font-bold text-on-accent transition hover:bg-brand-hover sm:mb-0"
 						type="button"
 					>
 						{{ flags.isLoading ? 'Creating...' : 'Send Invitation' }}
@@ -163,7 +163,7 @@
 						v-if="!newWorkspaceInvitation.emails"
 						class="flex gap-2 rounded bg-surface-sunken p-3"
 					>
-						<code class="break-all text-sm">
+						<code class="text-sm break-all">
 							{{ invitationLink }}
 						</code>
 

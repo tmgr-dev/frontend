@@ -104,7 +104,7 @@
 					>
 						<PopoverTrigger as-child>
 							<button
-								class="group/assignee absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
+								class="group/assignee absolute top-3 right-3 z-10 flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
 								@click.stop
 								:title="
 									visibleAssignees(task).length
@@ -246,7 +246,7 @@
 						<div class="flex items-start gap-2 pr-16">
 							<div
 								v-if="draggable"
-								class="task-drag-handle shrink-0 cursor-grab touch-none select-none pt-0.5 text-ink-faint hover:text-ink-subtle active:cursor-grabbing"
+								class="task-drag-handle shrink-0 cursor-grab touch-none pt-0.5 text-ink-faint select-none hover:text-ink-subtle active:cursor-grabbing"
 								:draggable="true"
 								@dragstart="onDragStart($event, task)"
 								@click.stop
@@ -269,7 +269,7 @@
 								/>
 
 								<div
-									class="text-left text-base font-medium leading-snug text-ink"
+									class="text-left text-base leading-snug font-medium text-ink"
 									:title="task.title?.length > 60 ? task.title : ''"
 								>
 									{{ taskTitles[String(task.id)] }}
@@ -436,7 +436,7 @@
 						Previous
 					</button>
 
-					<span class="whitespace-nowrap px-2 text-sm text-ink-subtle">
+					<span class="px-2 text-sm whitespace-nowrap text-ink-subtle">
 						Page {{ pagination.current_page }} of {{ pagination.last_page }}
 					</span>
 

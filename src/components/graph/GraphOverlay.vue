@@ -144,7 +144,7 @@
 									{{ step === 1 ? '1 step' : '2 steps' }}
 								</button>
 							</div>
-							<div class="mb-2 mt-3 text-xs tracking-wide text-ink-muted">
+							<div class="mt-3 mb-2 text-xs tracking-wide text-ink-muted">
 								SHOW
 							</div>
 							<div class="flex flex-col gap-2 text-sm">

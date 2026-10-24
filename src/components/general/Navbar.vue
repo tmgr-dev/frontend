@@ -18,7 +18,7 @@
 		<div class="container mx-auto flex p-4">
 			<navbar-menu @navigated="toggleMenu" />
 
-			<div class="ml-auto mr-4 flex items-center justify-between text-ink">
+			<div class="mr-4 ml-auto flex items-center justify-between text-ink">
 				<day-night-switch :key="store.state.colorScheme" v-model="switchOn" />
 			</div>
 
@@ -37,7 +37,7 @@
 
 				<account-dropdown />
 
-				<div class="mb-4 mt-auto flex items-center justify-between text-ink">
+				<div class="mt-auto mb-4 flex items-center justify-between text-ink">
 					<day-night-switch :key="store.state.colorScheme" v-model="switchOn" />
 				</div>
 			</div>

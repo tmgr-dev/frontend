@@ -24,7 +24,7 @@
 	<DialogTitle
 		v-bind="forwardedProps"
 		:class="
-			cn('text-lg font-semibold leading-none tracking-tight', props.class)
+			cn('text-lg leading-none font-semibold tracking-tight', props.class)
 		"
 	>
 		<slot />

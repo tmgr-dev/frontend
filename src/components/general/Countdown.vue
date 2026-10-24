@@ -14,7 +14,7 @@
 		>
 			<div
 				v-if="lastStartTime"
-				:class="`countdown-wrapper select-none opacity-20`"
+				:class="`countdown-wrapper opacity-20 select-none`"
 				style="opacity: 0.2"
 			>
 				<span class="countdown-item">{{ lastStartTime.hours }}</span>
@@ -37,7 +37,7 @@
 
 			<div
 				v-if="approximatelyEndTime && !timeIsOver"
-				class="countdown-wrapper mb-4 select-none opacity-20"
+				class="countdown-wrapper mb-4 opacity-20 select-none"
 				style="opacity: 0.2"
 			>
 				<span class="countdown-item">{{ approximatelyEndTime.hours }}</span>

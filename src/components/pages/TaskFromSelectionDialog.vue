@@ -9,7 +9,7 @@
 			</DialogHeader>
 
 			<blockquote
-				class="max-h-24 overflow-y-auto whitespace-pre-wrap break-words rounded-md border-l-4 border-line-strong bg-surface-sunken px-3 py-2 text-sm text-ink-muted"
+				class="max-h-24 overflow-y-auto rounded-md border-l-4 border-line-strong bg-surface-sunken px-3 py-2 text-sm break-words whitespace-pre-wrap text-ink-muted"
 			>
 				{{ text }}
 			</blockquote>

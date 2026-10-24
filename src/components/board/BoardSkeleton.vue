@@ -31,7 +31,7 @@
 			</div>
 
 			<!-- Cards -->
-			<div class="mt-2 space-y-3 px-1">
+			<div class="space-y-3 mt-2 px-1">
 				<div
 					v-for="card in n % 2 === 0 ? 2 : 3"
 					:key="card"
@@ -39,7 +39,7 @@
 				>
 					<!-- Left accent bar -->
 					<span
-						class="pointer-events-none absolute bottom-[10px] left-0 top-[10px] w-[3px] rounded-full bg-line-strong opacity-40"
+						class="pointer-events-none absolute top-[10px] bottom-[10px] left-0 w-[3px] rounded-full bg-line-strong opacity-40"
 						aria-hidden="true"
 					></span>
 

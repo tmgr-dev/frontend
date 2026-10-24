@@ -12,7 +12,7 @@
 			<div class="divide-y divide-border">
 				<SettingsRow label="Data folder">
 					<template #description>
-						<span class="break-all font-mono text-xs">{{
+						<span class="font-mono text-xs break-all">{{
 							row.workspace.path
 						}}</span>
 					</template>
@@ -22,7 +22,7 @@
 				</SettingsRow>
 				<SettingsRow label="Backups folder" data-tour="settings.data-backups">
 					<template #description>
-						<span class="break-all font-mono text-xs">{{
+						<span class="font-mono text-xs break-all">{{
 							row.status?.backups_dir ?? ''
 						}}</span>
 					</template>

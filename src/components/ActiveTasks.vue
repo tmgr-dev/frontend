@@ -47,7 +47,7 @@
 	<div
 		v-if="tasks?.length > 0"
 		data-tour="nav.active-timers"
-		class="fixed bottom-4 right-4 z-10 flex flex-col items-end gap-3"
+		class="fixed right-4 bottom-4 z-10 flex flex-col items-end gap-3"
 	>
 		<DropdownMenu>
 			<DropdownMenuTrigger>
@@ -62,7 +62,7 @@
 				</AnimatedRing>
 			</DropdownMenuTrigger>
 
-			<DropdownMenuContent class="mb-1 mr-4" side="top" align="end">
+			<DropdownMenuContent class="mr-4 mb-1" side="top" align="end">
 				<DropdownMenuItem v-for="task in tasks" :key="task.id">
 					<a
 						:href="getTaskUrl(task)"

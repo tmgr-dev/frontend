@@ -8,7 +8,7 @@
 		<div v-for="group in groups" :key="group.key">
 			<p
 				:id="`settings-nav-${group.key}`"
-				class="mb-1 text-2xs font-semibold uppercase tracking-wide text-ink-subtle dark:text-ink-subtle"
+				class="mb-1 text-2xs font-semibold tracking-wide text-ink-subtle uppercase dark:text-ink-subtle"
 				:class="variant === 'list' ? 'px-4' : 'px-2'"
 			>
 				{{ group.label }}
@@ -17,7 +17,7 @@
 				:aria-labelledby="`settings-nav-${group.key}`"
 				:class="
 					variant === 'list'
-						? 'divide-y divide-border overflow-hidden rounded-lg border border-border bg-card dark:divide-border dark:border-border dark:bg-card'
+						? 'divide-y divide-border dark:divide-border overflow-hidden rounded-lg border border-border bg-card dark:border-border dark:bg-card'
 						: 'flex flex-col gap-0.5'
 				"
 			>

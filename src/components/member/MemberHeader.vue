@@ -13,7 +13,7 @@
 					/>
 					<span
 						v-if="member?.is_online"
-						class="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-surface bg-green-500"
+						class="absolute -right-0.5 -bottom-0.5 h-3.5 w-3.5 rounded-full border-2 border-surface bg-green-500"
 						aria-label="Active now"
 					/>
 				</div>

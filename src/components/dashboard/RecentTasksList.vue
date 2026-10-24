@@ -2,7 +2,7 @@
 	<div class="recent-tasks-list">
 		<div class="recent-tasks-header mb-4 flex items-center justify-between">
 			<h3 class="text-lg font-semibold text-ink">Recent Tasks</h3>
-			<div class="flex items-center space-x-2">
+			<div class="space-x-2 flex items-center">
 				<Button
 					variant="ghost"
 					size="sm"

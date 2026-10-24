@@ -2,7 +2,7 @@
 	<section class="border-b bg-white py-8">
 		<div class="container m-8 mx-auto max-w-5xl">
 			<h1
-				class="my-2 w-full text-center text-5xl font-bold leading-tight text-gray-800"
+				class="my-2 w-full text-center text-5xl leading-tight font-bold text-gray-800"
 			>
 				Features
 			</h1>
@@ -12,7 +12,7 @@
 
 			<div class="flex flex-wrap">
 				<div class="w-5/6 p-6 sm:w-1/2">
-					<h3 class="mb-3 text-3xl font-bold leading-none text-gray-800">
+					<h3 class="mb-3 text-3xl leading-none font-bold text-gray-800">
 						Lorem ipsum dolor sit amet
 					</h3>
 					<p class="mb-8 text-gray-600">
@@ -454,7 +454,7 @@
 				</div>
 				<div class="mt-6 w-full p-6 sm:w-1/2">
 					<div class="align-middle">
-						<h3 class="mb-3 text-3xl font-bold leading-none text-gray-800">
+						<h3 class="mb-3 text-3xl leading-none font-bold text-gray-800">
 							Lorem ipsum dolor sit amet
 						</h3>
 						<p class="mb-8 text-gray-600">

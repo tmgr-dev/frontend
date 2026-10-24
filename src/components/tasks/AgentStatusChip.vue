@@ -6,7 +6,7 @@
 	>
 		<span
 			v-if="status"
-			class="inline-flex h-[22px] items-center gap-0.5 rounded-pill bg-surface-sunken px-1.5 text-2xs font-semibold leading-none"
+			class="inline-flex h-[22px] items-center gap-0.5 rounded-pill bg-surface-sunken px-1.5 text-2xs leading-none font-semibold"
 			:class="[stateClass, status.stale && 'opacity-50']"
 			:title="tooltip"
 			:aria-label="ariaLabel"

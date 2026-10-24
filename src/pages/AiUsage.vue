@@ -73,11 +73,11 @@
 								class="rounded-lg border border-border bg-card p-4"
 							>
 								<p
-									class="text-xs font-medium uppercase tracking-wide text-ink-subtle"
+									class="text-xs font-medium tracking-wide text-ink-subtle uppercase"
 								>
 									{{ w.label }}
 								</p>
-								<p class="text-2xl font-semibold tabular-nums text-ink">
+								<p class="text-2xl font-semibold text-ink tabular-nums">
 									{{ money(w.totals.cost_usd) }}
 								</p>
 								<p class="text-xs text-ink-subtle">
@@ -109,7 +109,7 @@
 												· {{ l.account }}
 											</span>
 										</span>
-										<span class="text-sm tabular-nums text-ink">
+										<span class="text-sm text-ink tabular-nums">
 											{{ percent(l.used_pct) }}% used
 										</span>
 									</div>

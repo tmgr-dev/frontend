@@ -16,31 +16,31 @@
 						<div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
 							<div class="rounded-lg border border-border bg-card p-4">
 								<p
-									class="text-xs font-medium uppercase tracking-wide text-ink-subtle"
+									class="text-xs font-medium tracking-wide text-ink-subtle uppercase"
 								>
 									Users
 								</p>
-								<p class="text-2xl font-semibold tabular-nums text-ink">
+								<p class="text-2xl font-semibold text-ink tabular-nums">
 									{{ formatCount(stats?.users) }}
 								</p>
 							</div>
 							<div class="rounded-lg border border-border bg-card p-4">
 								<p
-									class="text-xs font-medium uppercase tracking-wide text-ink-subtle"
+									class="text-xs font-medium tracking-wide text-ink-subtle uppercase"
 								>
 									Tasks
 								</p>
-								<p class="text-2xl font-semibold tabular-nums text-ink">
+								<p class="text-2xl font-semibold text-ink tabular-nums">
 									{{ formatCount(stats?.tasks) }}
 								</p>
 							</div>
 							<div class="rounded-lg border border-border bg-card p-4">
 								<p
-									class="text-xs font-medium uppercase tracking-wide text-ink-subtle"
+									class="text-xs font-medium tracking-wide text-ink-subtle uppercase"
 								>
 									Tracked hours
 								</p>
-								<p class="text-2xl font-semibold tabular-nums text-ink">
+								<p class="text-2xl font-semibold text-ink tabular-nums">
 									{{ formatHours(stats?.hours) }}
 								</p>
 								<p class="text-xs text-ink-subtle">
@@ -50,11 +50,11 @@
 							</div>
 							<div class="rounded-lg border border-border bg-card p-4">
 								<p
-									class="text-xs font-medium uppercase tracking-wide text-ink-subtle"
+									class="text-xs font-medium tracking-wide text-ink-subtle uppercase"
 								>
 									Active today
 								</p>
-								<p class="text-2xl font-semibold tabular-nums text-ink">
+								<p class="text-2xl font-semibold text-ink tabular-nums">
 									{{ formatCount(stats?.active_in_1_day) }}
 								</p>
 							</div>
@@ -64,25 +64,25 @@
 							<div class="divide-y divide-border">
 								<div class="flex items-center justify-between py-3 first:pt-0">
 									<span class="text-sm text-ink-subtle">Last 24 hours</span>
-									<span class="text-sm font-medium tabular-nums text-ink">
+									<span class="text-sm font-medium text-ink tabular-nums">
 										{{ formatCount(stats?.active_in_1_day) }}
 									</span>
 								</div>
 								<div class="flex items-center justify-between py-3">
 									<span class="text-sm text-ink-subtle">Last 7 days</span>
-									<span class="text-sm font-medium tabular-nums text-ink">
+									<span class="text-sm font-medium text-ink tabular-nums">
 										{{ formatCount(stats?.active_in_1_week) }}
 									</span>
 								</div>
 								<div class="flex items-center justify-between py-3">
 									<span class="text-sm text-ink-subtle">Last 30 days</span>
-									<span class="text-sm font-medium tabular-nums text-ink">
+									<span class="text-sm font-medium text-ink tabular-nums">
 										{{ formatCount(stats?.active_in_1_month) }}
 									</span>
 								</div>
 								<div class="flex items-center justify-between py-3 last:pb-0">
 									<span class="text-sm text-ink-subtle">Last 12 months</span>
-									<span class="text-sm font-medium tabular-nums text-ink">
+									<span class="text-sm font-medium text-ink tabular-nums">
 										{{ formatCount(stats?.active_in_1_year) }}
 									</span>
 								</div>

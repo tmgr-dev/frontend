@@ -24,7 +24,7 @@
 		<AttachmentsSkeleton v-if="loadingFiles && !files.length && !loadError" />
 		<div
 			v-if="files.length > 0 || uploads.length > 0 || pendingFiles.length > 0"
-			class="mb-3 space-y-2"
+			class="space-y-2 mb-3"
 		>
 			<div
 				v-for="(file, index) in pendingFiles"

@@ -11,7 +11,7 @@
 		<div class="flex items-start justify-between">
 			<div class="min-w-0 flex-1">
 				<!-- Task Title and Status -->
-				<div class="mb-2 flex items-center space-x-2">
+				<div class="space-x-2 mb-2 flex items-center">
 					<div :class="statusIndicatorClasses" :title="statusText"></div>
 					<h4 class="truncate text-sm font-medium text-ink">
 						{{ task.title }}
@@ -23,11 +23,11 @@
 				</div>
 
 				<!-- Task Metadata -->
-				<div class="flex items-center space-x-4 text-xs text-ink-subtle">
+				<div class="space-x-4 flex items-center text-xs text-ink-subtle">
 					<!-- Category -->
 					<div
 						v-if="task.category && showSurface('categories.badge')"
-						class="flex items-center space-x-1"
+						class="space-x-1 flex items-center"
 					>
 						<div
 							class="h-2 w-2 rounded-full"
@@ -37,19 +37,19 @@
 					</div>
 
 					<!-- Assignee -->
-					<div class="flex items-center space-x-1">
+					<div class="space-x-1 flex items-center">
 						<UserIcon class="h-3 w-3" />
 						<span>{{ task.user.name }}</span>
 					</div>
 
 					<!-- Priority -->
-					<div v-if="task.priority" class="flex items-center space-x-1">
+					<div v-if="task.priority" class="space-x-1 flex items-center">
 						<component :is="priorityIcon" :class="priorityIconClasses" />
 						<span class="capitalize">{{ task.priority }}</span>
 					</div>
 
 					<!-- Last Updated -->
-					<div class="flex items-center space-x-1">
+					<div class="space-x-1 flex items-center">
 						<ClockIcon class="h-3 w-3" />
 						<time :datetime="task.updated_at" :title="formattedDate">
 							{{ task.updated_at_human }}
@@ -60,10 +60,10 @@
 				<!-- Assignees (if multiple) -->
 				<div
 					v-if="task.assignees && task.assignees.length > 1"
-					class="mt-2 flex items-center space-x-1"
+					class="space-x-1 mt-2 flex items-center"
 				>
 					<span class="text-xs text-ink-subtle">Assignees:</span>
-					<div class="flex -space-x-1">
+					<div class="-space-x-1 flex">
 						<MemberAvatarLink
 							v-for="assignee in task.assignees.slice(0, 3)"
 							:key="assignee.id"
@@ -92,7 +92,7 @@
 			</div>
 
 			<!-- Actions -->
-			<div class="ml-4 flex items-center space-x-2">
+			<div class="space-x-2 ml-4 flex items-center">
 				<!-- Timer Button -->
 				<Button
 					v-if="isFeatureEnabled('task.countdown')"
@@ -132,7 +132,7 @@
 							:key="status.id"
 							:value="status.id.toString()"
 						>
-							<div class="flex items-center space-x-2">
+							<div class="space-x-2 flex items-center">
 								<div
 									class="h-2 w-2 rounded-full"
 									:style="{ backgroundColor: status.color || '#6B7280' }"

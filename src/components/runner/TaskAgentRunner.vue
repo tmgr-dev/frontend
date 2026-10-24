@@ -5,7 +5,7 @@
 		data-testid="task-agent-runner"
 	>
 		<div class="flex flex-wrap items-center gap-2">
-			<span class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+			<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 				>Agent runner</span
 			>
 			<span class="flex-1" />

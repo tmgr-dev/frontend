@@ -5,7 +5,7 @@
 		data-testid="confirm-for-agent-runs"
 	>
 		<div class="flex flex-wrap items-center gap-2">
-			<span class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+			<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 				>Agent runs</span
 			>
 			<span class="flex-1" />
@@ -36,38 +36,38 @@
 				</DialogHeader>
 				<div v-if="preview" class="flex flex-col gap-3 text-sm">
 					<div>
-						<div class="text-2xs font-bold uppercase text-ink-subtle">
+						<div class="text-2xs font-bold text-ink-subtle uppercase">
 							Title
 						</div>
-						<div class="whitespace-pre-wrap break-words">
+						<div class="break-words whitespace-pre-wrap">
 							{{ preview.title }}
 						</div>
 					</div>
 					<div>
-						<div class="text-2xs font-bold uppercase text-ink-subtle">
+						<div class="text-2xs font-bold text-ink-subtle uppercase">
 							Description
 						</div>
-						<pre class="whitespace-pre-wrap break-words font-sans">{{
+						<pre class="font-sans break-words whitespace-pre-wrap">{{
 							preview.description || '(empty)'
 						}}</pre>
 					</div>
 					<div v-if="preview.descriptionJson">
-						<div class="text-2xs font-bold uppercase text-ink-subtle">
+						<div class="text-2xs font-bold text-ink-subtle uppercase">
 							Description (editor data)
 						</div>
-						<pre class="whitespace-pre-wrap break-words font-mono text-xs">{{
+						<pre class="font-mono text-xs break-words whitespace-pre-wrap">{{
 							preview.descriptionJson
 						}}</pre>
 					</div>
 					<div v-if="preview.checkpoints.length">
-						<div class="text-2xs font-bold uppercase text-ink-subtle">
+						<div class="text-2xs font-bold text-ink-subtle uppercase">
 							Checkpoints
 						</div>
 						<ul class="list-none">
 							<li
 								v-for="(line, index) in preview.checkpoints"
 								:key="index"
-								class="whitespace-pre-wrap break-words"
+								class="break-words whitespace-pre-wrap"
 							>
 								{{ line }}
 							</li>
@@ -76,12 +76,12 @@
 							Stored checkpoints, in full:
 						</div>
 						<pre
-							class="whitespace-pre-wrap break-words font-mono text-xs"
+							class="font-mono text-xs break-words whitespace-pre-wrap"
 							data-testid="confirm-checkpoints-raw"
 							>{{ preview.checkpointsText }}</pre>
 					</div>
 					<div v-if="preview.comments.length">
-						<div class="text-2xs font-bold uppercase text-ink-subtle">
+						<div class="text-2xs font-bold text-ink-subtle uppercase">
 							Comments
 						</div>
 						<div
@@ -95,7 +95,7 @@
 									· {{ comment.author_name }}</template
 								>
 							</div>
-							<div class="whitespace-pre-wrap break-words">
+							<div class="break-words whitespace-pre-wrap">
 								{{ comment.message }}
 							</div>
 						</div>

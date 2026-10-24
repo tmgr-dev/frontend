@@ -26,7 +26,7 @@
 			>
 				<div v-for="pack in packs" :key="pack.key">
 					<h4
-						class="mb-1 text-xs font-medium uppercase tracking-wide text-ink-subtle"
+						class="mb-1 text-xs font-medium tracking-wide text-ink-subtle uppercase"
 					>
 						{{ pack.name }}
 					</h4>

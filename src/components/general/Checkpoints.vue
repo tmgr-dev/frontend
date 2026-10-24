@@ -8,7 +8,7 @@
 		>
 			<!-- duration -->
 			<span
-				class="w-11 shrink-0 text-center text-2xs font-bold tabular-nums leading-6 text-ink-muted"
+				class="w-11 shrink-0 text-center text-2xs leading-6 font-bold text-ink-muted tabular-nums"
 				:title="`${secondsToStringTime(
 					checkpoint.start,
 				)} – ${secondsToStringTime(checkpoint.end)}`"
@@ -28,7 +28,7 @@
 			<template v-if="!checkpoint.isEditingTime">
 				<button
 					type="button"
-					class="shrink-0 font-mono text-2xs tabular-nums leading-6 text-ink-subtle transition-colors hover:text-brand"
+					class="shrink-0 font-mono text-2xs leading-6 text-ink-subtle tabular-nums transition-colors hover:text-brand"
 					@click="startEditingTime(v as number)"
 					title="Click to edit time"
 				>
@@ -38,7 +38,7 @@
 				</button>
 				<button
 					type="button"
-					class="flex size-6 shrink-0 items-center justify-center rounded-pill text-ink-faint opacity-0 transition hover:bg-surface-hover hover:text-status-fix-fg group-hover:opacity-100"
+					class="flex size-6 shrink-0 items-center justify-center rounded-pill text-ink-faint opacity-0 transition group-hover:opacity-100 hover:bg-surface-hover hover:text-status-fix-fg"
 					@click="deleteCheckpoint(v as number)"
 					title="Delete entry"
 				>
@@ -52,7 +52,7 @@
 					type="text"
 					v-model="timeEditBuffer[v].start"
 					placeholder="00:00:00"
-					class="w-[62px] shrink-0 rounded-md border border-line bg-surface px-1 py-0.5 text-center font-mono text-2xs tabular-nums text-ink outline-hidden focus:border-line-strong"
+					class="w-[62px] shrink-0 rounded-md border border-line bg-surface px-1 py-0.5 text-center font-mono text-2xs text-ink tabular-nums outline-hidden focus:border-line-strong"
 					@keydown.enter="saveTimeEdit(v as number)"
 					@keydown.esc="cancelTimeEdit(v as number)"
 				/>
@@ -61,7 +61,7 @@
 					type="text"
 					v-model="timeEditBuffer[v].end"
 					placeholder="00:00:00"
-					class="w-[62px] shrink-0 rounded-md border border-line bg-surface px-1 py-0.5 text-center font-mono text-2xs tabular-nums text-ink outline-hidden focus:border-line-strong"
+					class="w-[62px] shrink-0 rounded-md border border-line bg-surface px-1 py-0.5 text-center font-mono text-2xs text-ink tabular-nums outline-hidden focus:border-line-strong"
 					@keydown.enter="saveTimeEdit(v as number)"
 					@keydown.esc="cancelTimeEdit(v as number)"
 				/>

@@ -4,7 +4,7 @@
 
 		<section v-if="toc.length" data-testid="page-toc">
 			<h2
-				class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle"
+				class="mb-2 text-xs font-semibold tracking-wide text-ink-subtle uppercase"
 			>
 				Contents
 			</h2>
@@ -23,7 +23,7 @@
 
 		<section data-testid="page-backlinks" data-tour="page.backlinks">
 			<h2
-				class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle"
+				class="mb-2 text-xs font-semibold tracking-wide text-ink-subtle uppercase"
 			>
 				Backlinks
 			</h2>
@@ -43,7 +43,7 @@
 		<section data-testid="page-recent-versions">
 			<div class="mb-2 flex items-center justify-between">
 				<h2
-					class="text-xs font-semibold uppercase tracking-wide text-ink-subtle"
+					class="text-xs font-semibold tracking-wide text-ink-subtle uppercase"
 				>
 					Versions
 				</h2>

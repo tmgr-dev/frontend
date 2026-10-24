@@ -17,11 +17,11 @@
 				>
 					<div
 						v-if="isLocalWorkspace"
-						class="flex flex-wrap items-center gap-2 border-b border-line pb-2 pt-3 md:pt-4"
+						class="flex flex-wrap items-center gap-2 border-b border-line pt-3 pb-2 md:pt-4"
 					>
 						<span class="text-sm font-semibold text-ink">Local routines</span>
 						<span
-							class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
+							class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold text-amber-600 uppercase dark:text-amber-400"
 							>Local</span
 						>
 						<span
@@ -34,7 +34,7 @@
 
 					<!-- Top toolbar -->
 					<div
-						class="flex flex-col gap-3 border-b border-line pb-3 pt-3 md:pt-4"
+						class="flex flex-col gap-3 border-b border-line pt-3 pb-3 md:pt-4"
 					>
 						<!-- Row 1: Quick-add (full width on mobile; chips + import/export inline on desktop) -->
 						<div class="flex flex-wrap items-center gap-2.5">
@@ -103,16 +103,16 @@
 						<!-- Mobile only: stats chip strip (horizontal scroll) -->
 						<div
 							v-if="isMobile"
-							class="flex shrink-0 gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none]"
+							class="flex shrink-0 [scrollbar-width:none] gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none]"
 						>
 							<div
 								class="flex shrink-0 items-baseline gap-1.5 rounded-pill border border-line bg-surface px-2.5 py-1"
 							>
-								<span class="text-sm font-bold tabular-nums text-ink">{{
+								<span class="text-sm font-bold text-ink tabular-nums">{{
 									counts.routines
 								}}</span>
 								<span
-									class="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle"
+									class="text-[10px] font-semibold tracking-wider text-ink-subtle uppercase"
 									>Routines</span
 								>
 							</div>
@@ -125,18 +125,18 @@
 									>{{ counts.completed }}</span
 								>
 								<span
-									class="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle"
+									class="text-[10px] font-semibold tracking-wider text-ink-subtle uppercase"
 									>Done</span
 								>
 							</div>
 							<div
 								class="flex shrink-0 items-baseline gap-1.5 rounded-pill border border-line bg-surface px-2.5 py-1"
 							>
-								<span class="text-sm font-bold tabular-nums text-ink">{{
+								<span class="text-sm font-bold text-ink tabular-nums">{{
 									counts.archived
 								}}</span>
 								<span
-									class="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle"
+									class="text-[10px] font-semibold tracking-wider text-ink-subtle uppercase"
 									>Archived</span
 								>
 							</div>
@@ -224,7 +224,7 @@
 									</button>
 								</div>
 								<span
-									class="ml-1 whitespace-nowrap text-sm font-semibold text-ink"
+									class="ml-1 text-sm font-semibold whitespace-nowrap text-ink"
 									>{{ dateLabel }}</span
 								>
 							</template>
@@ -263,14 +263,14 @@
 							>
 								<div class="flex items-center justify-between gap-2 px-1">
 									<div
-										class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle"
+										class="text-[10px] font-bold tracking-wider text-ink-subtle uppercase"
 									>
 										Unscheduled <span>{{ unscheduledEntries.length }}</span>
 									</div>
 									<button
 										v-if="unscheduledDoneCount > 0"
 										type="button"
-										class="rounded-pill border border-line bg-surface px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-subtle hover:border-brand hover:text-brand"
+										class="rounded-pill border border-line bg-surface px-2.5 py-1 text-[10px] font-semibold tracking-wider text-ink-subtle uppercase hover:border-brand hover:text-brand"
 										@click="onArchiveDoneUnscheduled"
 									>
 										Archive done ({{ unscheduledDoneCount }})
@@ -399,7 +399,7 @@
 
 					<button
 						type="button"
-						class="fixed bottom-20 right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-on-accent shadow-tmgr-md transition-transform hover:scale-105 hover:bg-brand-hover md:bottom-6 md:right-6 md:h-14 md:w-14"
+						class="fixed right-4 bottom-20 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-on-accent shadow-tmgr-md transition-transform hover:scale-105 hover:bg-brand-hover md:right-6 md:bottom-6 md:h-14 md:w-14"
 						title="New routine (N)"
 						aria-label="New routine"
 						data-tour="routines.add"

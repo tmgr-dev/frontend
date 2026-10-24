@@ -333,7 +333,7 @@
 
 		<div
 			v-if="isCreate || dirty"
-			class="sticky bottom-[calc(var(--statusbar-h,0px)+1rem)] z-10 flex flex-wrap items-center gap-x-3 gap-y-2.5 rounded-xl border border-line-strong bg-surface py-2.5 pl-4 pr-2.5 shadow-tmgr-lg max-lg:[body:has(.tour-host--sheet)_&]:mb-[50vh]"
+			class="sticky bottom-[calc(var(--statusbar-h,0px)+1rem)] z-10 flex flex-wrap items-center gap-x-3 gap-y-2.5 rounded-xl border border-line-strong bg-surface py-2.5 pr-2.5 pl-4 shadow-tmgr-lg max-lg:[body:has(.tour-host--sheet)_&]:mb-[50vh]"
 		>
 			<span class="text-[13px] font-medium text-ink">{{ barText }}</span>
 			<Button

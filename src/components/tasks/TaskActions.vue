@@ -19,7 +19,7 @@
 			>
 				<svg
 					v-if="isSaving"
-					class="absolute left-1.5 top-2.5 inline h-5 w-5 animate-spin text-white"
+					class="absolute top-2.5 left-1.5 inline h-5 w-5 animate-spin text-white"
 					xmlns="http://www.w3.org/2000/svg"
 					fill="none"
 					viewBox="0 0 24 24"
@@ -43,7 +43,7 @@
 
 			<span
 				v-if="isDataEdited"
-				class="absolute right-0 top-0 -mt-1 mr-4 flex h-5 w-5"
+				class="absolute top-0 right-0 -mt-1 mr-4 flex h-5 w-5"
 			>
 				<span
 					class="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75"

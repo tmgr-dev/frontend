@@ -1,6 +1,6 @@
 <template>
 	<label
-		class="inline-flex select-none items-center gap-1.5 text-ink-muted"
+		class="inline-flex items-center gap-1.5 text-ink-muted select-none"
 		:class="disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'"
 		:title="disabled ? tooltip : undefined"
 		data-testid="done-checkbox"

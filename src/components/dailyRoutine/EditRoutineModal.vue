@@ -19,7 +19,7 @@
 					/>
 					<div class="min-w-0 flex-1">
 						<div
-							class="text-[10px] font-bold uppercase tracking-wider text-ink-subtle"
+							class="text-[10px] font-bold tracking-wider text-ink-subtle uppercase"
 						>
 							{{ isNew ? 'New routine' : 'Edit routine' }}
 						</div>
@@ -130,7 +130,7 @@
 								<div class="flex items-end gap-2">
 									<label class="flex flex-1 flex-col gap-1">
 										<span
-											class="text-[10px] font-bold uppercase tracking-wider text-ink-faint"
+											class="text-[10px] font-bold tracking-wider text-ink-faint uppercase"
 											>Start</span
 										>
 										<div
@@ -148,7 +148,7 @@
 									<span class="pb-2.5 text-ink-faint">→</span>
 									<label class="flex flex-1 flex-col gap-1">
 										<span
-											class="text-[10px] font-bold uppercase tracking-wider text-ink-faint"
+											class="text-[10px] font-bold tracking-wider text-ink-faint uppercase"
 											>End</span
 										>
 										<div
@@ -263,7 +263,7 @@
 
 							<div
 								v-if="draft.frequency !== 'NONE'"
-								class="mt-2.5 text-2xs italic text-ink-subtle"
+								class="mt-2.5 text-2xs text-ink-subtle italic"
 							>
 								{{ summary }}
 							</div>

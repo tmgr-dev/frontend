@@ -10,7 +10,7 @@
 			<div class="relative">
 				<!-- Preview content with blur/fade -->
 				<div
-					class="pointer-events-none select-none opacity-40 blur-[2px] filter"
+					class="pointer-events-none opacity-40 blur-[2px] filter select-none"
 				>
 					<slot name="preview">
 						<slot />

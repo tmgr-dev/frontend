@@ -61,7 +61,7 @@
 						<input
 							v-model="form.title"
 							type="text"
-							class="w-full min-w-0 truncate border-0 bg-transparent p-0 text-[1.75rem] font-bold leading-tight tracking-tight text-ink placeholder:text-ink-faint md:text-[2.25rem]"
+							class="w-full min-w-0 truncate border-0 bg-transparent p-0 text-[1.75rem] leading-tight font-bold tracking-tight text-ink placeholder:text-ink-faint md:text-[2.25rem]"
 							placeholder="Untitled"
 							:title="form.title"
 							maxlength="255"
@@ -177,7 +177,7 @@
 					<div
 						:key="page.id"
 						ref="contentRef"
-						class="page-doc min-w-0 max-w-[46rem]"
+						class="page-doc max-w-[46rem] min-w-0"
 						data-testid="page-content"
 						data-tour="page.editor"
 						@mouseup="scheduleSelectionRead"
@@ -212,7 +212,7 @@
 					</div>
 
 					<PageSidePanel
-						class="border-t border-line pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0"
+						class="border-t border-line pt-6 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6"
 						:toc="toc"
 						:backlinks="page.backlinks || []"
 						:versions="versions"

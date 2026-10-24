@@ -43,7 +43,7 @@
 								<span class="font-medium text-ink">{{ member.name }}</span>
 								<span
 									v-if="member.id === ownerId"
-									class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold uppercase text-muted-foreground"
+									class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground uppercase"
 								>
 									Owner
 								</span>

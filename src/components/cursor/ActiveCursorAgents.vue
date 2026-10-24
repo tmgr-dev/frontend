@@ -9,7 +9,7 @@
 					<Bot :size="20" />
 					<span
 						v-if="activeAgents.length > 0"
-						class="absolute right-0.5 top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-[9px] bg-brand px-1 text-[10px] font-semibold leading-none text-on-accent"
+						class="absolute top-0.5 right-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-[9px] bg-brand px-1 text-[10px] leading-none font-semibold text-on-accent"
 					>
 						{{ activeAgents.length > 99 ? '99+' : activeAgents.length }}
 					</span>

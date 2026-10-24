@@ -3,7 +3,7 @@
 		<Teleport to="body">
 			<div
 				ref="root"
-				class="fixed inset-0 z-[55] overflow-y-auto bg-surface-base px-4 pb-[var(--screen-pad)] pt-6 sm:pb-12"
+				class="fixed inset-0 z-[55] overflow-y-auto bg-surface-base px-4 pt-6 pb-[var(--screen-pad)] sm:pb-12"
 				:style="{
 					'--screen-pad': consentOpen ? `${consentPad + 24}px` : '3rem',
 				}"
