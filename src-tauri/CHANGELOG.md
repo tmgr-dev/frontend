@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.67 — 2026-10-24
+
+- Themes: text on accent-coloured buttons, chips and timers is readable in every theme, including yellow accents in gruvbox, cobalt2 and ayu. Translucent accent highlights now show up where they were missing.
+- Dialogs: dialogs open above the sidebar instead of under it.
+- Workspace members: avatar initials are readable in every theme.
+
 ## 0.9.66 — 2026-10-24
 
 - Pages archive: each archived page shows who wrote it, the delete button is now just "Delete", and Delete and Restore are disabled with a hint when only the author or the workspace owner can use them.
