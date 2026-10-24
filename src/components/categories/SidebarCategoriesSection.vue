@@ -37,7 +37,7 @@
 			type="search"
 			placeholder="Filter categories"
 			aria-label="Filter categories"
-			class="mb-1 h-7 w-full rounded-md border border-sidebar-border bg-transparent px-2 text-sm text-sidebar-foreground outline-none placeholder:text-sidebar-foreground/50 focus:border-line-focus"
+			class="mb-1 h-7 w-full rounded-md border border-sidebar-border bg-transparent px-2 text-sm text-sidebar-foreground outline-hidden placeholder:text-sidebar-foreground/50 focus:border-line-focus"
 			@keydown.esc="closeFilter"
 		/>
 

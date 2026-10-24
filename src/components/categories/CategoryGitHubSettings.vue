@@ -73,7 +73,7 @@
 				</label>
 				<select
 					v-model="selectedRepo"
-					class="h-10 w-full rounded-card border border-line bg-surface px-3 text-sm text-ink outline-none"
+					class="h-10 w-full rounded-card border border-line bg-surface px-3 text-sm text-ink outline-hidden"
 				>
 					<option :value="null">— Select repository —</option>
 					<option

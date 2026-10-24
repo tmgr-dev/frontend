@@ -15,7 +15,7 @@
 					<div class="flex min-h-0 flex-1 flex-col justify-center">
 						<div class="flex h-full min-h-0 w-full flex-col overflow-x-auto">
 							<div
-								class="min-h-[56px] flex-shrink-0 px-4 py-2 max-sm:min-h-0 md:px-6 xl-custom:hidden"
+								class="min-h-[56px] shrink-0 px-4 py-2 max-sm:min-h-0 md:px-6 xl-custom:hidden"
 							>
 								<div
 									class="flex flex-wrap items-center gap-3 xl-custom:flex-nowrap"
@@ -236,7 +236,7 @@
 													<div
 														class="column-width flex h-full flex-col px-1 pb-3"
 													>
-														<div class="flex-shrink-0">
+														<div class="shrink-0">
 															<div
 																class="mx-1 mb-2.5 h-[3px] rounded-full"
 																:style="{
@@ -482,7 +482,7 @@
 																"
 																:to="`.board-card-draggable[data-column-id='${column.status.id}']`"
 															>
-																<div class="flex-shrink-0 px-1 pb-1 pt-1">
+																<div class="shrink-0 px-1 pb-1 pt-1">
 																	<div class="flex flex-col gap-2">
 																		<input
 																			v-model="newTaskTitle"
@@ -577,7 +577,7 @@
 													<button
 														type="button"
 														:style="{ backgroundColor: statusColor }"
-														class="w-2/4 rounded px-4 py-2 font-bold text-white outline-none transition sm:mb-0"
+														class="w-2/4 rounded px-4 py-2 font-bold text-white outline-hidden transition sm:mb-0"
 														:class="'bg-' + '[' + statusColor + ']'"
 														@click="openPickerModal"
 													>

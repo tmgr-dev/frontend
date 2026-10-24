@@ -3,14 +3,14 @@
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('removeTask')"
-			class="mr-auto rounded bg-status-fix px-4 py-2 font-bold text-white outline-none hover:opacity-90"
+			class="mr-auto rounded bg-status-fix px-4 py-2 font-bold text-white outline-hidden hover:opacity-90"
 		>
 			Delete
 		</button>
 
 		<slot />
 
-		<span class="relative inline-flex rounded-md shadow-sm">
+		<span class="relative inline-flex rounded-md shadow-xs">
 			<button
 				v-if="!isCreatingTask"
 				@click="$emit('saveTask')"

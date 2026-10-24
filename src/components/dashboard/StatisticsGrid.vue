@@ -184,6 +184,8 @@
 </script>
 
 <style scoped>
+	@reference '@/assets/styles/tailwind.css';
+
 	.statistics-grid {
 		@apply w-full;
 	}

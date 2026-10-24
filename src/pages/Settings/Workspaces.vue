@@ -745,7 +745,7 @@
 								<AlertDialogCancel>Cancel</AlertDialogCancel>
 								<AlertDialogAction
 									@click="exitWorkspace"
-									class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+									class="bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
 								>
 									Exit from workspace
 								</AlertDialogAction>
@@ -944,7 +944,7 @@
 						>
 						<AlertDialogAction
 							@click="confirmRemoveMember"
-							class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+							class="bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
 						>
 							Remove
 						</AlertDialogAction>

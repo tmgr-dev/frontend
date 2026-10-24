@@ -262,7 +262,7 @@
 	</span>
 	<dl
 		v-else-if="node.type === 'keyValue'"
-		class="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1.5 text-sm"
+		class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm"
 	>
 		<template v-for="(item, index) in node.items" :key="index">
 			<dt class="text-muted-foreground">{{ item.key }}</dt>

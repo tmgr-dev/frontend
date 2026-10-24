@@ -17,7 +17,7 @@
 			spellcheck="false"
 			placeholder="owner/name"
 			:disabled="loading || saving"
-			class="w-full rounded-card border border-line bg-surface px-3 py-2 font-mono text-sm text-ink outline-none"
+			class="w-full rounded-card border border-line bg-surface px-3 py-2 font-mono text-sm text-ink outline-hidden"
 			data-testid="agent-repositories-input"
 		></textarea>
 		<button

@@ -253,7 +253,7 @@
 						class="group flex gap-3"
 						:class="{ 'flex-row-reverse': isOwnComment(comment) }"
 					>
-						<Avatar class="h-8 w-8 flex-shrink-0">
+						<Avatar class="h-8 w-8 shrink-0">
 							<UserAvatar
 								:user-id="comment.user.id"
 								:name="comment.user.name"
@@ -363,7 +363,7 @@
 				<Button
 					variant="ghost"
 					size="icon"
-					class="h-6 w-6 flex-shrink-0"
+					class="h-6 w-6 shrink-0"
 					@click="cancelReply"
 				>
 					<span class="text-lg">&times;</span>
@@ -378,7 +378,7 @@
 				<Button
 					variant="ghost"
 					size="icon"
-					class="h-6 w-6 flex-shrink-0"
+					class="h-6 w-6 shrink-0"
 					@click="cancelEdit"
 				>
 					<span class="text-lg">&times;</span>
@@ -398,7 +398,7 @@
 						size="icon"
 						:disabled="!newMessage.trim() || isSending"
 						@click="sendMessage"
-						class="flex-shrink-0"
+						class="shrink-0"
 					>
 						<Send class="h-4 w-4" />
 					</Button>
@@ -407,7 +407,7 @@
 						variant="outline"
 						:disabled="!newMessage.trim() || isSending"
 						@click="askAI"
-						class="flex-shrink-0"
+						class="shrink-0"
 						title="Ask AI"
 					>
 						<Sparkles class="h-4 w-4" />

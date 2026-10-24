@@ -1,9 +1,3 @@
-@import 'design-tokens';
-@import 'app';
-@import 'fonts';
-@import 'tailwindcss/base';
-@import 'tailwindcss/components';
-@import 'tailwindcss/utilities';
 @import 'task';
 @import 'alert';
 @import 'checkbox';
@@ -91,7 +85,7 @@ body {
 }
 
 /* Keyboard focus: one indicator for the whole app (TM-540). Kept last and more
-   specific than `outline-none` so utilities can't cancel it. Text entry shows
+   specific than `outline-hidden` so utilities can't cancel it. Text entry shows
    focus with its border; [tabindex='-1'] targets are only focused by script;
    menus, listboxes, their items and options use the item highlight; nothing is
    drawn right after a pointer interaction (see utils/focusSource.ts). The ring

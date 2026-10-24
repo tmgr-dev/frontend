@@ -13,24 +13,21 @@
 				data-testid="viewer-header"
 			>
 				<span class="min-w-0 flex-1 truncate">{{ current?.name }}</span>
-				<span v-if="current?.size" class="flex-shrink-0 text-white/60">
+				<span v-if="current?.size" class="shrink-0 text-white/60">
 					{{ formatFileSize(current.size) }}
 				</span>
-				<span v-if="images.length > 1" class="flex-shrink-0 text-white/60">
+				<span v-if="images.length > 1" class="shrink-0 text-white/60">
 					{{ index + 1 }} / {{ images.length }}
 				</span>
 				<span
 					v-if="downloadError"
 					role="alert"
-					class="flex-shrink-0 text-red-300"
+					class="shrink-0 text-red-300"
 					data-testid="viewer-download-error"
 				>
 					Download failed
 				</span>
-				<div
-					v-if="kind === 'image'"
-					class="flex flex-shrink-0 items-center gap-0.5"
-				>
+				<div v-if="kind === 'image'" class="flex shrink-0 items-center gap-0.5">
 					<button
 						type="button"
 						class="rounded p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:hover:bg-transparent"
@@ -72,7 +69,7 @@
 				</div>
 				<button
 					type="button"
-					class="flex-shrink-0 rounded p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+					class="shrink-0 rounded p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
 					title="Download"
 					aria-label="Download"
 					:disabled="downloading"
@@ -124,7 +121,7 @@
 								:alt="current?.name"
 								aria-hidden="true"
 								draggable="false"
-								class="absolute max-h-full max-w-full select-none object-contain blur-sm"
+								class="absolute max-h-full max-w-full select-none object-contain blur-xs"
 							/>
 							<img
 								v-if="layers.full"

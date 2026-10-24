@@ -46,7 +46,7 @@
 			<select
 				:value="perPage"
 				aria-label="Items per page"
-				class="appearance-none bg-transparent text-xs text-ink-subtle underline outline-none"
+				class="appearance-none bg-transparent text-xs text-ink-subtle underline outline-hidden"
 				@change="
 					$emit('per-page', Number(($event.target as HTMLSelectElement).value))
 				"

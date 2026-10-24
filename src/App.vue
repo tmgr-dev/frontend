@@ -712,4 +712,6 @@
 	});
 </script>
 
+<style lang="scss" src="@/assets/styles/pre-tailwind.scss"></style>
+<style src="@/assets/styles/tailwind.css"></style>
 <style lang="scss" src="@/assets/styles/index.scss"></style>

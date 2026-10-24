@@ -19,7 +19,7 @@
 
 				<!-- Overlay with enable CTA -->
 				<div
-					class="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm"
+					class="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-xs"
 				>
 					<div
 						class="mx-4 max-w-md rounded-xl border border-line bg-surface p-8 text-center shadow-tmgr-lg"

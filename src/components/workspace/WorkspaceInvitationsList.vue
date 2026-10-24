@@ -9,7 +9,7 @@
 				:class="[
 					'rounded-sm px-3 py-1.5 text-sm font-medium transition-colors',
 					currentFilter === filter.value
-						? 'bg-background text-ink shadow-sm'
+						? 'bg-background text-ink shadow-xs'
 						: 'text-ink-subtle hover:text-ink',
 				]"
 			>

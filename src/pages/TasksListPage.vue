@@ -998,7 +998,7 @@
 								v-model="searchText"
 								placeholder="search task"
 								type="search"
-								class="h-9 w-full rounded-pill border border-line bg-surface pl-4 pr-3 text-sm text-ink outline-none placeholder:text-ink-subtle focus:border-line-strong"
+								class="h-9 w-full rounded-pill border border-line bg-surface pl-4 pr-3 text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-strong"
 							/>
 						</div>
 
@@ -1007,7 +1007,7 @@
 								v-model="sortColumn"
 								@change="changeSort"
 								title="Sort by date"
-								class="h-9 rounded-pill border border-line bg-surface pl-3 pr-7 text-sm text-ink outline-none"
+								class="h-9 rounded-pill border border-line bg-surface pl-3 pr-7 text-sm text-ink outline-hidden"
 							>
 								<option
 									v-for="field in SORT_FIELDS"

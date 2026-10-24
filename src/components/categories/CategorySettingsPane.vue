@@ -368,7 +368,7 @@
 				<AlertDialogFooter>
 					<AlertDialogCancel>Cancel</AlertDialogCancel>
 					<AlertDialogAction
-						class="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+						class="bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
 						@click="remove"
 					>
 						Delete
@@ -507,7 +507,7 @@
 	const FIELD_CLASS =
 		'h-9 rounded-lg border-line-strong bg-surface-base px-2.5 text-sm text-ink';
 	const INPUT_CLASS =
-		'h-9 w-full rounded-lg border border-line-strong bg-surface-base px-2.5 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-line-focus';
+		'h-9 w-full rounded-lg border border-line-strong bg-surface-base px-2.5 text-sm text-ink outline-hidden transition-colors placeholder:text-ink-faint focus:border-line-focus';
 	const ERROR_CLASS = '!border-status-fix';
 	const SMALL_BUTTON_CLASS =
 		'h-8 border-line-strong bg-surface px-3 text-[13px] text-ink hover:bg-surface-hover hover:text-ink';

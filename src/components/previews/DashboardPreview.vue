@@ -10,25 +10,25 @@
 		<!-- Stats cards -->
 		<div class="mb-8 grid grid-cols-1 gap-4 md:grid-cols-4">
 			<div
-				class="rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 p-6 text-white"
+				class="rounded-xl bg-linear-to-br/srgb from-blue-500 to-blue-600 p-6 text-white"
 			>
 				<div class="text-sm opacity-80">Total Tasks</div>
 				<div class="mt-2 h-10 w-16 animate-pulse rounded bg-white/20"></div>
 			</div>
 			<div
-				class="rounded-xl bg-gradient-to-br from-green-500 to-green-600 p-6 text-white"
+				class="rounded-xl bg-linear-to-br/srgb from-green-500 to-green-600 p-6 text-white"
 			>
 				<div class="text-sm opacity-80">Completed</div>
 				<div class="mt-2 h-10 w-20 animate-pulse rounded bg-white/20"></div>
 			</div>
 			<div
-				class="rounded-xl bg-gradient-to-br from-yellow-500 to-orange-500 p-6 text-white"
+				class="rounded-xl bg-linear-to-br/srgb from-yellow-500 to-orange-500 p-6 text-white"
 			>
 				<div class="text-sm opacity-80">In Progress</div>
 				<div class="mt-2 h-10 w-14 animate-pulse rounded bg-white/20"></div>
 			</div>
 			<div
-				class="rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 p-6 text-white"
+				class="rounded-xl bg-linear-to-br/srgb from-purple-500 to-purple-600 p-6 text-white"
 			>
 				<div class="text-sm opacity-80">Time Tracked</div>
 				<div class="mt-2 h-10 w-24 animate-pulse rounded bg-white/20"></div>

@@ -54,7 +54,7 @@
 										:placeholder="
 											isMobile ? 'Quick add…' : 'Quick add → Unscheduled'
 										"
-										class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
+										class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-hidden placeholder:text-ink-subtle"
 										data-tour="routines.quick-add"
 										@focus="quickFocused = true"
 										@blur="quickFocused = false"

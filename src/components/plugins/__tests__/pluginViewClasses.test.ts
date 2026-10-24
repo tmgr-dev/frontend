@@ -57,7 +57,7 @@ describe('class maps', () => {
 			{
 			  "default": "bg-card text-card-foreground",
 			  "muted": "bg-muted/50",
-			  "raised": "bg-card shadow-sm",
+			  "raised": "bg-card shadow-xs",
 			}
 		`);
 	});

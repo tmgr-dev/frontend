@@ -134,7 +134,7 @@
 							v-model="confirmWord"
 							data-selectable
 							autocomplete="off"
-							class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none"
+							class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-hidden"
 						/>
 					</label>
 					<AlertDialogFooter>

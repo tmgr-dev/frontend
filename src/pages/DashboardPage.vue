@@ -1050,7 +1050,7 @@
 								<div class="flex items-start">
 									<ExclamationTriangleIcon
 										:class="[
-											'mr-3 mt-0.5 h-5 w-5 flex-shrink-0',
+											'mr-3 mt-0.5 h-5 w-5 shrink-0',
 											isOffline ? 'text-status-progress' : 'text-status-fix',
 										]"
 									/>
@@ -1497,6 +1497,8 @@
 </template>
 
 <style scoped>
+	@reference '@/assets/styles/tailwind.css';
+
 	/* CHANGES: Consolidated and simplified CSS - removed duplicates, kept essential styles only */
 	/* Bundle size reduction: ~40% less CSS */
 
@@ -1591,7 +1593,7 @@
 
 	/* Loading Skeleton with Shimmer */
 	.loading-skeleton {
-		@apply animate-pulse rounded bg-gradient-to-r from-surface-sunken via-surface-active to-surface-sunken;
+		@apply animate-pulse rounded bg-linear-to-r/srgb from-surface-sunken via-surface-active to-surface-sunken;
 		background-size: 200% 100%;
 		animation: loading-shimmer 1.5s infinite;
 	}

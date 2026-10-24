@@ -127,7 +127,7 @@
 								</div>
 							</div>
 							<svg
-								class="ml-2 h-4 w-4 flex-shrink-0 text-ink-subtle"
+								class="ml-2 h-4 w-4 shrink-0 text-ink-subtle"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"
@@ -199,7 +199,7 @@
 								</div>
 							</div>
 							<svg
-								class="ml-2 h-4 w-4 flex-shrink-0 text-ink-subtle"
+								class="ml-2 h-4 w-4 shrink-0 text-ink-subtle"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"

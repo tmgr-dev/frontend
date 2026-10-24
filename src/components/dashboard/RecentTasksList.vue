@@ -110,6 +110,8 @@
 </script>
 
 <style scoped>
+	@reference '@/assets/styles/tailwind.css';
+
 	.recent-tasks-list {
 		@apply rounded-card border border-line bg-surface p-6;
 	}

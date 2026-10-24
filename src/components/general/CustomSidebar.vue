@@ -596,7 +596,7 @@
 								</DropdownMenuTrigger>
 
 								<DropdownMenuContent
-									class="max-h-[30rem] w-[--radix-dropdown-menu-trigger-width] min-w-56 overflow-y-auto rounded-lg"
+									class="max-h-[30rem] w-(--radix-dropdown-menu-trigger-width) min-w-56 overflow-y-auto rounded-lg"
 									align="start"
 									side="bottom"
 									:side-offset="4"
@@ -1014,7 +1014,7 @@
 								</DropdownMenuTrigger>
 
 								<DropdownMenuContent
-									class="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+									class="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
 									side="bottom"
 									align="end"
 									:side-offset="4"
@@ -1248,7 +1248,7 @@
 					v-model="localName"
 					data-selectable
 					autofocus
-					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none dark:border-input dark:bg-background"
+					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-hidden dark:border-input dark:bg-background"
 					placeholder="Personal, Client under NDA…"
 				/>
 				<p v-if="localError" class="text-xs text-destructive">

@@ -233,6 +233,8 @@
 </script>
 
 <style scoped>
+	@reference '@/assets/styles/tailwind.css';
+
 	.team-activity-widget {
 		@apply rounded-card border border-line bg-surface p-4 shadow-tmgr-xs sm:p-6;
 	}

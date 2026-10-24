@@ -308,21 +308,21 @@
 					"
 				>
 					<div
-						class="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-status-testing-bg"
+						class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-status-testing-bg"
 					>
 						<Bot class="h-4 w-4 text-status-testing-fg" />
 					</div>
 				</template>
 				<template v-else-if="comment.user?.email === 'ai@tmgr.dev'">
 					<div
-						class="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-brand-bg"
+						class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-bg"
 					>
 						<Sparkles class="h-4 w-4 text-brand" />
 					</div>
 				</template>
 				<span
 					v-else-if="comment.author && comment.author.kind !== 'user'"
-					class="mt-0.5 flex-shrink-0"
+					class="mt-0.5 shrink-0"
 				>
 					<AuthorBadge
 						:author="comment.author"
@@ -334,7 +334,7 @@
 					v-else
 					:user-id="comment.user.id"
 					:label="comment.user.name"
-					class="mt-0.5 h-7 w-7 flex-shrink-0"
+					class="mt-0.5 h-7 w-7 shrink-0"
 				>
 					<Avatar class="h-7 w-7">
 						<UserAvatar

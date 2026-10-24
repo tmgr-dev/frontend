@@ -316,6 +316,8 @@
 </script>
 
 <style scoped>
+	@reference '@/assets/styles/tailwind.css';
+
 	.error-boundary {
 		@apply flex min-h-screen items-center justify-center bg-surface-base p-4;
 	}

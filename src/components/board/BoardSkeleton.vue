@@ -15,7 +15,7 @@
 		<div
 			v-for="n in columnsCount"
 			:key="n"
-			class="flex w-[300px] flex-shrink-0 flex-col px-1"
+			class="flex w-[300px] shrink-0 flex-col px-1"
 		>
 			<!-- Status bar -->
 			<Skeleton class="mb-2.5 h-[3px] rounded-full" />

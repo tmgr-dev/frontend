@@ -183,7 +183,7 @@
 						v-model="cloudName"
 						data-selectable
 						maxlength="120"
-						class="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none"
+						class="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-hidden"
 					/>
 				</label>
 

@@ -18,9 +18,7 @@
 		<!-- Kanban columns -->
 		<div class="flex gap-4 overflow-x-auto pb-4">
 			<!-- Column: To Do -->
-			<div
-				class="w-72 flex-shrink-0 rounded-lg bg-gray-100 p-4 dark:bg-gray-800"
-			>
+			<div class="w-72 shrink-0 rounded-lg bg-gray-100 p-4 dark:bg-gray-800">
 				<div class="mb-4 flex items-center justify-between">
 					<div class="flex items-center gap-2">
 						<div class="h-3 w-3 rounded-full bg-blue-500"></div>
@@ -34,7 +32,7 @@
 					>
 				</div>
 				<div class="space-y-3">
-					<div class="rounded-lg bg-white p-4 shadow-sm dark:bg-gray-700">
+					<div class="rounded-lg bg-white p-4 shadow-xs dark:bg-gray-700">
 						<div
 							class="mb-2 h-4 w-3/4 animate-pulse rounded bg-gray-200 dark:bg-gray-600"
 						></div>
@@ -48,7 +46,7 @@
 							></div>
 						</div>
 					</div>
-					<div class="rounded-lg bg-white p-4 shadow-sm dark:bg-gray-700">
+					<div class="rounded-lg bg-white p-4 shadow-xs dark:bg-gray-700">
 						<div
 							class="mb-2 h-4 w-full animate-pulse rounded bg-gray-200 dark:bg-gray-600"
 						></div>
@@ -64,7 +62,7 @@
 							></div>
 						</div>
 					</div>
-					<div class="rounded-lg bg-white p-4 shadow-sm dark:bg-gray-700">
+					<div class="rounded-lg bg-white p-4 shadow-xs dark:bg-gray-700">
 						<div
 							class="mb-2 h-4 w-2/3 animate-pulse rounded bg-gray-200 dark:bg-gray-600"
 						></div>
@@ -76,9 +74,7 @@
 			</div>
 
 			<!-- Column: In Progress -->
-			<div
-				class="w-72 flex-shrink-0 rounded-lg bg-gray-100 p-4 dark:bg-gray-800"
-			>
+			<div class="w-72 shrink-0 rounded-lg bg-gray-100 p-4 dark:bg-gray-800">
 				<div class="mb-4 flex items-center justify-between">
 					<div class="flex items-center gap-2">
 						<div class="h-3 w-3 rounded-full bg-yellow-500"></div>
@@ -92,7 +88,7 @@
 					>
 				</div>
 				<div class="space-y-3">
-					<div class="rounded-lg bg-white p-4 shadow-sm dark:bg-gray-700">
+					<div class="rounded-lg bg-white p-4 shadow-xs dark:bg-gray-700">
 						<div
 							class="mb-2 h-4 w-full animate-pulse rounded bg-gray-200 dark:bg-gray-600"
 						></div>
@@ -108,7 +104,7 @@
 							></div>
 						</div>
 					</div>
-					<div class="rounded-lg bg-white p-4 shadow-sm dark:bg-gray-700">
+					<div class="rounded-lg bg-white p-4 shadow-xs dark:bg-gray-700">
 						<div
 							class="mb-2 h-4 w-2/3 animate-pulse rounded bg-gray-200 dark:bg-gray-600"
 						></div>
@@ -126,9 +122,7 @@
 			</div>
 
 			<!-- Column: Done -->
-			<div
-				class="w-72 flex-shrink-0 rounded-lg bg-gray-100 p-4 dark:bg-gray-800"
-			>
+			<div class="w-72 shrink-0 rounded-lg bg-gray-100 p-4 dark:bg-gray-800">
 				<div class="mb-4 flex items-center justify-between">
 					<div class="flex items-center gap-2">
 						<div class="h-3 w-3 rounded-full bg-green-500"></div>
@@ -143,7 +137,7 @@
 				</div>
 				<div class="space-y-3">
 					<div
-						class="rounded-lg bg-white p-4 opacity-60 shadow-sm dark:bg-gray-700"
+						class="rounded-lg bg-white p-4 opacity-60 shadow-xs dark:bg-gray-700"
 					>
 						<div
 							class="mb-2 h-4 w-3/4 animate-pulse rounded bg-gray-200 dark:bg-gray-600"
@@ -153,7 +147,7 @@
 						></div>
 					</div>
 					<div
-						class="rounded-lg bg-white p-4 opacity-60 shadow-sm dark:bg-gray-700"
+						class="rounded-lg bg-white p-4 opacity-60 shadow-xs dark:bg-gray-700"
 					>
 						<div
 							class="mb-2 h-4 w-full animate-pulse rounded bg-gray-200 dark:bg-gray-600"
@@ -166,9 +160,7 @@
 			</div>
 
 			<!-- Column: Archived -->
-			<div
-				class="w-72 flex-shrink-0 rounded-lg bg-gray-100 p-4 dark:bg-gray-800"
-			>
+			<div class="w-72 shrink-0 rounded-lg bg-gray-100 p-4 dark:bg-gray-800">
 				<div class="mb-4 flex items-center justify-between">
 					<div class="flex items-center gap-2">
 						<div class="h-3 w-3 rounded-full bg-gray-400"></div>
@@ -183,7 +175,7 @@
 				</div>
 				<div class="space-y-3">
 					<div
-						class="rounded-lg bg-white p-4 opacity-40 shadow-sm dark:bg-gray-700"
+						class="rounded-lg bg-white p-4 opacity-40 shadow-xs dark:bg-gray-700"
 					>
 						<div
 							class="mb-2 h-4 w-2/3 animate-pulse rounded bg-gray-200 dark:bg-gray-600"

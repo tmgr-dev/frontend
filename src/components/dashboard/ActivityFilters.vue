@@ -282,6 +282,8 @@
 </script>
 
 <style scoped>
+	@reference '@/assets/styles/tailwind.css';
+
 	.activity-filters {
 		@apply flex-wrap gap-2;
 	}

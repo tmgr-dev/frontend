@@ -2,7 +2,7 @@
 	<Teleport to="body">
 		<div
 			ref="dialog"
-			class="fixed inset-0 z-[100] flex flex-col bg-surface-base text-ink outline-none sm:p-4"
+			class="fixed inset-0 z-[100] flex flex-col bg-surface-base text-ink outline-hidden sm:p-4"
 			role="dialog"
 			aria-modal="true"
 			aria-label="Graph"

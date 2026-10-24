@@ -15,20 +15,20 @@
 			>
 				<Loader2
 					v-if="item.status === 'uploading'"
-					class="h-3 w-3 flex-shrink-0 animate-spin text-ink-subtle"
+					class="h-3 w-3 shrink-0 animate-spin text-ink-subtle"
 				/>
 				<AlertCircle
 					v-else-if="item.status === 'error'"
-					class="h-3 w-3 flex-shrink-0"
+					class="h-3 w-3 shrink-0"
 				/>
-				<FileText v-else class="h-3 w-3 flex-shrink-0 text-ink-subtle" />
+				<FileText v-else class="h-3 w-3 shrink-0 text-ink-subtle" />
 				<span class="min-w-0 truncate">{{ item.name }}</span>
-				<span class="flex-shrink-0 text-2xs text-ink-subtle">
+				<span class="shrink-0 text-2xs text-ink-subtle">
 					{{ kind(item) }} · {{ size(item) }}
 				</span>
 				<button
 					type="button"
-					class="flex-shrink-0 rounded p-0.5 text-ink-subtle hover:bg-surface-hover hover:text-ink"
+					class="shrink-0 rounded p-0.5 text-ink-subtle hover:bg-surface-hover hover:text-ink"
 					:aria-label="`Remove ${item.name}`"
 					@click="$emit('remove', item.key)"
 				>

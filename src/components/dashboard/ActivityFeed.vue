@@ -220,6 +220,8 @@
 </script>
 
 <style scoped>
+	@reference '@/assets/styles/tailwind.css';
+
 	.activity-feed {
 		@apply rounded-card border border-line bg-surface p-6 shadow-tmgr-xs;
 	}

@@ -1,7 +1,7 @@
 <template>
 	<div
 		ref="listRoot"
-		class="relative w-full items-center justify-center outline-none"
+		class="relative w-full items-center justify-center outline-hidden"
 		tabindex="-1"
 	>
 		<TasksMultipleActionsModal
@@ -78,7 +78,7 @@
 				data-tour="list.row"
 				:draggable="false"
 				tabindex="-1"
-				class="selectable relative mt-3 w-full outline-none"
+				class="selectable relative mt-3 w-full outline-hidden"
 			>
 				<BounceLoader
 					v-if="loadingActionTasksIds.includes(task.id)"
@@ -246,7 +246,7 @@
 						<div class="flex items-start gap-2 pr-16">
 							<div
 								v-if="draggable"
-								class="task-drag-handle flex-shrink-0 cursor-grab touch-none select-none pt-0.5 text-ink-faint hover:text-ink-subtle active:cursor-grabbing"
+								class="task-drag-handle shrink-0 cursor-grab touch-none select-none pt-0.5 text-ink-faint hover:text-ink-subtle active:cursor-grabbing"
 								:draggable="true"
 								@dragstart="onDragStart($event, task)"
 								@click.stop
@@ -419,7 +419,7 @@
 					<select
 						v-model="perPage"
 						@change="onPerPageChange"
-						class="h-9 rounded-pill border border-line bg-surface px-3 text-sm text-ink outline-none"
+						class="h-9 rounded-pill border border-line bg-surface px-3 text-sm text-ink outline-hidden"
 					>
 						<option :value="10">10 per page</option>
 						<option :value="25">25 per page</option>

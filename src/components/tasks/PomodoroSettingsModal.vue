@@ -223,7 +223,7 @@
 							if (e.key === 'Escape') this.editing = false;
 						},
 						class:
-							'flex-1 bg-transparent border-0 outline-none p-0 text-white tracking-wide',
+							'flex-1 bg-transparent border-0 outline-hidden p-0 text-white tracking-wide',
 						style: {
 							font: '600 18px/1 "JetBrains Mono", "SF Mono", ui-monospace, monospace',
 						},

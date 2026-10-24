@@ -12,7 +12,7 @@
 					v-model="ctx.renameTitle.value"
 					data-selectable
 					maxlength="255"
-					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none dark:border-input dark:bg-background"
+					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-hidden dark:border-input dark:bg-background"
 					placeholder="Title"
 				/>
 				<DialogFooter>

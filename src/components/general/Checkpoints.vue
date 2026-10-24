@@ -20,7 +20,7 @@
 				v-model="checkpoint.description"
 				rows="1"
 				placeholder="What did you work on?"
-				class="checkpoint-description min-h-6 min-w-0 flex-1 resize-none overflow-hidden rounded-md bg-transparent px-1 py-0.5 text-sm leading-5 text-ink outline-none placeholder:text-ink-faint focus:bg-surface-sunken"
+				class="checkpoint-description min-h-6 min-w-0 flex-1 resize-none overflow-hidden rounded-md bg-transparent px-1 py-0.5 text-sm leading-5 text-ink outline-hidden placeholder:text-ink-faint focus:bg-surface-sunken"
 				@input="autoResize($event.target as HTMLTextAreaElement)"
 			/>
 
@@ -52,7 +52,7 @@
 					type="text"
 					v-model="timeEditBuffer[v].start"
 					placeholder="00:00:00"
-					class="w-[62px] shrink-0 rounded-md border border-line bg-surface px-1 py-0.5 text-center font-mono text-2xs tabular-nums text-ink outline-none focus:border-line-strong"
+					class="w-[62px] shrink-0 rounded-md border border-line bg-surface px-1 py-0.5 text-center font-mono text-2xs tabular-nums text-ink outline-hidden focus:border-line-strong"
 					@keydown.enter="saveTimeEdit(v as number)"
 					@keydown.esc="cancelTimeEdit(v as number)"
 				/>
@@ -61,7 +61,7 @@
 					type="text"
 					v-model="timeEditBuffer[v].end"
 					placeholder="00:00:00"
-					class="w-[62px] shrink-0 rounded-md border border-line bg-surface px-1 py-0.5 text-center font-mono text-2xs tabular-nums text-ink outline-none focus:border-line-strong"
+					class="w-[62px] shrink-0 rounded-md border border-line bg-surface px-1 py-0.5 text-center font-mono text-2xs tabular-nums text-ink outline-hidden focus:border-line-strong"
 					@keydown.enter="saveTimeEdit(v as number)"
 					@keydown.esc="cancelTimeEdit(v as number)"
 				/>

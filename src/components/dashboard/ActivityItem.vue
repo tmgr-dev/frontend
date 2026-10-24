@@ -32,7 +32,7 @@
 					<!-- Timestamp -->
 					<time
 						:datetime="activity.created_at"
-						class="flex-shrink-0 whitespace-nowrap text-xs text-ink-subtle"
+						class="shrink-0 whitespace-nowrap text-xs text-ink-subtle"
 						:title="formattedDate"
 					>
 						{{ time }}
@@ -205,7 +205,7 @@
 		};
 
 		const baseClasses =
-			'flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0';
+			'flex items-center justify-center w-10 h-10 rounded-full shrink-0';
 		const colorClass =
 			colorMap[props.activity.type] || 'bg-surface-sunken text-ink-muted';
 

@@ -93,7 +93,7 @@
 						@click="createNewWorkspace()"
 						:disabled="flags.isLoading"
 						:class="{ 'bg-ink-faint hover:bg-ink-faint': flags.isLoading }"
-						class="mt-3 w-full rounded bg-brand px-4 py-2 font-bold text-on-accent outline-none transition hover:bg-brand-hover sm:mb-0"
+						class="mt-3 w-full rounded bg-brand px-4 py-2 font-bold text-on-accent outline-hidden transition hover:bg-brand-hover sm:mb-0"
 						type="button"
 					>
 						Create
@@ -169,7 +169,7 @@
 
 						<button
 							@click="copyToClipboard(invitationLink)"
-							class="flex-shrink-0"
+							class="shrink-0"
 							:title="flags.isCopied ? 'Copied!' : 'Copy to clipboard'"
 						>
 							<span

@@ -31,7 +31,7 @@
 				:key="`pending-${index}-${file.name}`"
 				class="flex items-center gap-3 rounded-lg border border-dashed border-line-strong bg-surface-sunken p-3"
 			>
-				<div class="flex h-12 w-12 flex-shrink-0 items-center justify-center">
+				<div class="flex h-12 w-12 shrink-0 items-center justify-center">
 					<FileIcon :size="20" class="text-ink-subtle" />
 				</div>
 				<div class="min-w-0 flex-1">
@@ -46,7 +46,7 @@
 				<button
 					type="button"
 					@click="removePending(index)"
-					class="flex-shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-status-fix-bg hover:text-status-fix-fg"
+					class="shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-status-fix-bg hover:text-status-fix-fg"
 					title="Remove"
 				>
 					<X :size="16" />
@@ -59,7 +59,7 @@
 				:ref="(element) => observePreview(file, element)"
 				class="flex items-center gap-3 rounded-lg border border-line bg-surface-sunken p-3 transition-colors hover:border-line-strong"
 			>
-				<div class="flex h-12 w-12 flex-shrink-0 items-center justify-center">
+				<div class="flex h-12 w-12 shrink-0 items-center justify-center">
 					<button
 						v-if="previews[file.id]"
 						type="button"
@@ -91,7 +91,7 @@
 					type="button"
 					:disabled="busyFileId === file.id"
 					@click="download(file)"
-					class="flex-shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-surface-active hover:text-ink disabled:opacity-50"
+					class="shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-surface-active hover:text-ink disabled:opacity-50"
 					title="Download"
 				>
 					<Download :size="16" />
@@ -100,7 +100,7 @@
 					type="button"
 					:disabled="busyFileId === file.id"
 					@click="remove(file)"
-					class="flex-shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-status-fix-bg hover:text-status-fix-fg disabled:opacity-50"
+					class="shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-status-fix-bg hover:text-status-fix-fg disabled:opacity-50"
 					title="Remove"
 				>
 					<X :size="16" />
@@ -117,7 +117,7 @@
 						: 'border-line bg-surface-sunken'
 				"
 			>
-				<div class="flex-shrink-0">
+				<div class="shrink-0">
 					<Loader2
 						v-if="!upload.error"
 						:size="20"
@@ -140,7 +140,7 @@
 					v-if="upload.error"
 					type="button"
 					@click="dismissUpload(upload.id)"
-					class="flex-shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-status-fix-bg hover:text-status-fix-fg"
+					class="shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-status-fix-bg hover:text-status-fix-fg"
 				>
 					<X :size="16" />
 				</button>

@@ -2722,7 +2722,7 @@
 							data-tour="task-form.title"
 							v-model="form.title"
 							ref="titleTextarea"
-							class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 outline-none placeholder:text-ink-faint"
+							class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 outline-hidden placeholder:text-ink-faint"
 							:class="[
 								'text-2xl font-semibold leading-snug tracking-tight text-ink',
 								{ 'text-status-fix-fg': isTitleAtLimit },
@@ -2924,7 +2924,7 @@
 										step="1"
 										v-model="taskKeyNumber"
 										placeholder="auto"
-										class="w-20 min-w-0 rounded-md border border-line bg-surface-sunken px-2 py-1 font-mono text-sm text-ink outline-none placeholder:text-ink-faint focus:border-line-strong"
+										class="w-20 min-w-0 rounded-md border border-line bg-surface-sunken px-2 py-1 font-mono text-sm text-ink outline-hidden placeholder:text-ink-faint focus:border-line-strong"
 									/>
 									<span
 										v-if="isAutoSaving && !taskKeyError"
@@ -3283,7 +3283,7 @@
 							@dragover.prevent
 							@drop="commentAttachments?.onDrop($event)"
 							placeholder="Write a comment…"
-							class="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-5 text-ink outline-none placeholder:text-ink-subtle"
+							class="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-5 text-ink outline-hidden placeholder:text-ink-subtle"
 							@keydown.enter="onCommentEnter"
 							@keydown.esc="blurCommentInput"
 						/>
@@ -3522,7 +3522,7 @@
 							@dragover.prevent
 							@drop="commentAttachments?.onDrop($event)"
 							placeholder="Write a comment…"
-							class="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-5 text-ink outline-none placeholder:text-ink-subtle"
+							class="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-5 text-ink outline-hidden placeholder:text-ink-subtle"
 							@keydown.enter="onCommentEnter"
 							@keydown.esc="blurCommentInput"
 						/>

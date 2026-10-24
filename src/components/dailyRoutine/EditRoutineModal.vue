@@ -46,7 +46,7 @@
 								v-model="draft.title"
 								type="text"
 								placeholder="What's the routine?"
-								class="w-full rounded-card border border-line bg-surface-sunken px-3.5 py-3 text-sm text-ink outline-none focus:border-line-strong"
+								class="w-full rounded-card border border-line bg-surface-sunken px-3.5 py-3 text-sm text-ink outline-hidden focus:border-line-strong"
 							/>
 						</ERSection>
 
@@ -63,7 +63,7 @@
 								v-model="draft.description"
 								rows="3"
 								placeholder="Notes, context, links, checklist…"
-								class="max-h-[220px] min-h-[64px] w-full resize-y rounded-card border border-line bg-surface-sunken px-3.5 py-2.5 text-sm leading-relaxed text-ink outline-none focus:border-line-strong"
+								class="max-h-[220px] min-h-[64px] w-full resize-y rounded-card border border-line bg-surface-sunken px-3.5 py-2.5 text-sm leading-relaxed text-ink outline-hidden focus:border-line-strong"
 							/>
 						</ERSection>
 
@@ -117,7 +117,7 @@
 							<input
 								v-model="draft.scheduledDate"
 								type="date"
-								class="w-full rounded-card border border-line bg-surface-sunken px-3.5 py-2.5 text-sm text-ink outline-none focus:border-line-strong"
+								class="w-full rounded-card border border-line bg-surface-sunken px-3.5 py-2.5 text-sm text-ink outline-hidden focus:border-line-strong"
 							/>
 						</ERSection>
 
@@ -140,7 +140,7 @@
 												v-model="startStr"
 												type="time"
 												step="900"
-												class="dr-time w-full bg-transparent font-mono text-sm font-semibold text-ink outline-none"
+												class="dr-time w-full bg-transparent font-mono text-sm font-semibold text-ink outline-hidden"
 											/>
 											<DRIcon name="clock" :size="13" :stroke="catColor" />
 										</div>
@@ -158,7 +158,7 @@
 												v-model="endStr"
 												type="time"
 												step="900"
-												class="dr-time w-full bg-transparent font-mono text-sm font-semibold text-ink outline-none"
+												class="dr-time w-full bg-transparent font-mono text-sm font-semibold text-ink outline-hidden"
 											/>
 											<DRIcon name="clock" :size="13" :stroke="catColor" />
 										</div>

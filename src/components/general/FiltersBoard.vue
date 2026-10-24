@@ -127,7 +127,7 @@
 				type="text"
 				v-model="searchText"
 				placeholder="Search tasks…"
-				class="h-9 w-44 rounded-pill border border-line bg-surface pl-9 pr-3 text-sm text-ink outline-none placeholder:text-ink-subtle focus:border-line-strong lg:w-56"
+				class="h-9 w-44 rounded-pill border border-line bg-surface pl-9 pr-3 text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-strong lg:w-56"
 				@blur="searchOpen = false"
 				@keydown.esc="closeSearch"
 			/>
@@ -148,7 +148,7 @@
 		<!-- Category / user filters -->
 		<Popover class="relative shrink-0">
 			<PopoverButton
-				class="flex h-9 items-center gap-2 rounded-pill border bg-surface px-3 text-sm outline-none hover:bg-surface-hover"
+				class="flex h-9 items-center gap-2 rounded-pill border bg-surface px-3 text-sm outline-hidden hover:bg-surface-hover"
 				:class="
 					prioritySort ? 'border-brand text-brand' : 'border-line text-ink'
 				"
@@ -169,7 +169,7 @@
 				<div v-if="showCategoryFilter" class="relative">
 					<select
 						v-model.number="selectedCategory"
-						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pl-3 pr-9 text-sm text-ink outline-none"
+						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pl-3 pr-9 text-sm text-ink outline-hidden"
 					>
 						<option :value="0">All categories</option>
 						<option
@@ -219,7 +219,7 @@
 					<select
 						v-model="selectedPersona"
 						data-testid="persona-filter"
-						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pl-3 pr-9 text-sm text-ink outline-none"
+						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pl-3 pr-9 text-sm text-ink outline-hidden"
 					>
 						<option value="">All personas</option>
 						<option

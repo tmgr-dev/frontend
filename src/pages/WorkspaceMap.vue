@@ -37,7 +37,7 @@
 									:aria-activedescendant="
 										active >= 0 ? `map-result-${active}` : undefined
 									"
-									class="w-36 bg-transparent text-ink outline-none placeholder:text-ink-subtle"
+									class="w-36 bg-transparent text-ink outline-hidden placeholder:text-ink-subtle"
 									data-testid="map-search"
 									data-tour="map.search"
 									@focus="listOpen = true"

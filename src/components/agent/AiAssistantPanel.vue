@@ -524,7 +524,7 @@
 							rows="3"
 							:maxlength="pinLimits.max_chars"
 							aria-label="Edit pinned fact"
-							class="w-full resize-none rounded-lg border border-line bg-surface px-2 py-1.5 text-sm text-ink outline-none focus:border-line-focus"
+							class="w-full resize-none rounded-lg border border-line bg-surface px-2 py-1.5 text-sm text-ink outline-hidden focus:border-line-focus"
 						></textarea>
 						<div class="mt-1 flex items-center justify-between gap-2 text-xs">
 							<span class="text-ink-subtle"
@@ -583,7 +583,7 @@
 					:disabled="pinSaving"
 					placeholder="Add a fact…"
 					aria-label="New pinned fact"
-					class="w-full resize-none rounded-lg border border-line bg-surface-sunken px-2 py-1.5 text-sm text-ink outline-none placeholder:text-ink-subtle focus:border-line-focus disabled:opacity-60"
+					class="w-full resize-none rounded-lg border border-line bg-surface-sunken px-2 py-1.5 text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-focus disabled:opacity-60"
 				></textarea>
 				<div class="mt-1 flex items-center justify-between gap-2 text-xs">
 					<span class="text-ink-subtle"
@@ -731,7 +731,7 @@
 					ref="input"
 					v-model="draft"
 					data-tour="ai.input"
-					class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
+					class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-hidden placeholder:text-ink-subtle"
 					placeholder="Ask about this workspace…"
 					:disabled="busy || loading"
 					@keydown.enter.prevent="submit"

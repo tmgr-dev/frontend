@@ -31,7 +31,7 @@ export const STACK_JUSTIFY: Record<StackJustify, string> = {
 export const CARD_TONE: Record<CardTone, string> = {
 	default: 'bg-card text-card-foreground',
 	muted: 'bg-muted/50',
-	raised: 'bg-card shadow-sm',
+	raised: 'bg-card shadow-xs',
 };
 
 export const CARD_PADDING: Record<CardPadding, string> = {

@@ -11,7 +11,7 @@
 
 	<div
 		v-if="isActiveReminder"
-		class="relative inline-flex rounded-md shadow-sm"
+		class="relative inline-flex rounded-md shadow-xs"
 	>
 		<Button
 			:color="reminderSoundPlaying ? 'green' : 'gray'"

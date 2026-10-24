@@ -1,6 +1,6 @@
 <template>
 	<div
-		class="inline-flex items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-sm"
+		class="inline-flex items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-xs"
 		role="radiogroup"
 		aria-label="Theme"
 	>
