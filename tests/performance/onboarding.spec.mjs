@@ -639,9 +639,12 @@ test.describe('agent intent turns on agent work and personas (TM-526)', () => {
       await expect(
         page.locator('[data-checklist-item="first-agent-run"] em'),
       ).toBeVisible();
+      await expect(picker(page)).toBeVisible();
+      await picker(page).getByRole('button', { name: 'Not now' }).click();
+      await expect(picker(page)).toHaveCount(0);
       await page.goto('/settings/personas');
       await expect(
-        page.getByRole('heading', { name: 'Personas' }),
+        page.getByRole('heading', { name: 'Personas', level: 1 }),
       ).toBeVisible();
       await expect(page.getByRole('link', { name: 'Personas' })).toHaveCount(0);
     },
