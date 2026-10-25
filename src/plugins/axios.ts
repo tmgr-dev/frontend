@@ -5,9 +5,8 @@ import {
 	showFeatureDisabledToast,
 } from '@/utils/featureDisabledNotice';
 import {
-	moduleKeyForRequest,
+	moduleGateBlocks,
 	moduleOffError,
-	shouldBlockRequest,
 	workspaceIdInUrl,
 } from '@/utils/moduleRequestGate';
 import { markSessionExpired } from '@/utils/sessionExpiry';
@@ -116,25 +115,22 @@ const hardLogout = async () => {
 };
 
 $axios.interceptors.request.use(
-	(config) => {
-		const entryFor = store.getters['featureToggles/moduleEntry'];
-		const urlWorkspace = workspaceIdInUrl(config.url);
-		const sameWorkspace =
-			urlWorkspace == null ||
-			urlWorkspace === String(store.getters.currentWorkspaceId);
-		if (
-			entryFor &&
-			sameWorkspace &&
-			shouldBlockRequest(
-				config.method,
-				config.url,
-				entryFor,
-				store.getters['featureToggles/modulesKnown'],
-			)
-		) {
-			return Promise.reject(
-				moduleOffError(config, moduleKeyForRequest(config.url) as string),
-			);
+	async (config) => {
+		const blockedModule = await moduleGateBlocks(config.method, config.url, {
+			entryFor: () => store.getters['featureToggles/moduleEntry'],
+			sameWorkspace: () => {
+				const urlWorkspace = workspaceIdInUrl(config.url);
+				return (
+					urlWorkspace == null ||
+					urlWorkspace === String(store.getters.currentWorkspaceId)
+				);
+			},
+			modulesKnown: () => !!store.getters['featureToggles/modulesKnown'],
+			loadModules: () =>
+				store.dispatch('featureToggles/ensureWorkspaceModules'),
+		});
+		if (blockedModule) {
+			throw moduleOffError(config, blockedModule);
 		}
 		const token = store.state.token?.token;
 		if (token && config.headers) {

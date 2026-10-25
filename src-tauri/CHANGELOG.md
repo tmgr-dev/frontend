@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.69 — 2026-10-25
+
+- AI Usage: more stats — tokens and cost by type, a limit forecast at the current pace, a 30-day chart by tool and model, usage by project, and a comparison with last week.
+- Onboarding: choosing "Connect my AI agent" in a new workspace now turns on Agent work and Personas.
+- Fix: opening Routines or another module page directly no longer shows "Module is off" before the data loads.
+
 ## 0.9.68 — 2026-10-24
 
 - System requirements: the desktop app now needs macOS 13.3 or later. On older macOS versions, keep using the web app at tmgr.dev.

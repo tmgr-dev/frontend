@@ -89,9 +89,13 @@
 	} from '@/utils/modules';
 	import { presetTarget, previewSurfaces } from '@/utils/previewSurfaces';
 	import { computed, reactive, ref, watch } from 'vue';
+	import { useRoute } from 'vue-router';
 	import { useStore } from 'vuex';
 
+	const WELCOME_ROUTES = ['WelcomeSetup', 'WelcomeSetupAgent'];
+
 	const store = useStore();
+	const route = useRoute();
 	const toaster = useToast();
 
 	const open = ref(false);
@@ -133,6 +137,7 @@
 	const eligible = computed(
 		() =>
 			!!meta.value &&
+			!WELCOME_ROUTES.includes(String(route.name)) &&
 			!isPickerDismissed(workspaceId.value) &&
 			shouldShowPicker({
 				configured: meta.value.configured,

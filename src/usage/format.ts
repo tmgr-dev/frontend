@@ -73,3 +73,48 @@ export const barTone = (value: number | null | undefined): BarTone => {
 	if (p >= 70) return 'warn';
 	return 'ok';
 };
+
+export const axisMoney = (usd: number): string =>
+	`$${Number.isInteger(usd) ? usd.toLocaleString('en-US') : usd.toFixed(2)}`;
+
+export const share = (value: number): string => {
+	if (!Number.isFinite(value)) return '—';
+	if (value > 0 && value < 1) return '<1%';
+	return `${Math.round(value)}%`;
+};
+
+export const signedPercent = (value: number): string => {
+	const rounded = Math.round(value);
+	return `${rounded > 0 ? '+' : rounded < 0 ? '−' : ''}${Math.abs(rounded)}%`;
+};
+
+const MONTHS = [
+	'Jan',
+	'Feb',
+	'Mar',
+	'Apr',
+	'May',
+	'Jun',
+	'Jul',
+	'Aug',
+	'Sep',
+	'Oct',
+	'Nov',
+	'Dec',
+];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const dayParts = (day: string): [number, number, number] => {
+	const [y, m, d] = day.split('-').map(Number);
+	return [y, m - 1, d];
+};
+
+export const shortDay = (day: string): string => {
+	const [, m, d] = dayParts(day);
+	return `${MONTHS[m] ?? '—'} ${d}`;
+};
+
+export const longDay = (day: string): string => {
+	const [y, m, d] = dayParts(day);
+	return `${WEEKDAYS[new Date(y, m, d).getDay()]}, ${shortDay(day)}`;
+};

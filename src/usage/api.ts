@@ -1,5 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
 
+export interface UsageCostByType {
+	input: number;
+	output: number;
+	cache_read: number;
+	cache_write: number;
+}
+
 export interface UsageRow {
 	cost_usd: number;
 	tokens_total: number;
@@ -10,11 +17,17 @@ export interface UsageRow {
 	reasoning: number;
 	events: number;
 	unpriced_events: number;
+	cost_by_type: UsageCostByType;
 }
 
 export interface UsageModelRow extends UsageRow {
 	tool: string;
 	model: string;
+}
+
+export interface UsageProjectRow extends UsageRow {
+	key: string;
+	name: string;
 }
 
 export interface UsageWindow {
@@ -24,13 +37,16 @@ export interface UsageWindow {
 	to: string;
 	totals: UsageRow;
 	rows: UsageModelRow[];
+	projects: UsageProjectRow[];
 }
 
 export interface UsageDay {
 	day: string;
 	tool: string;
+	model: string;
 	cost_usd: number;
 	tokens_total: number;
+	events: number;
 }
 
 export interface UsageLimit {
@@ -38,6 +54,7 @@ export interface UsageLimit {
 	account: string;
 	window: string;
 	window_label: string;
+	window_s: number | null;
 	used_pct: number;
 	resets_at: string | null;
 	resets_in_s: number | null;

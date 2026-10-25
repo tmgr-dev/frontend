@@ -100,6 +100,8 @@
 							</div>
 						</div>
 
+						<UsageWeekStrip :days="overview.days" />
+
 						<SettingsSection title="Limits">
 							<div v-if="overview.limits.length" class="flex flex-col gap-4">
 								<div v-for="l in overview.limits" :key="limitKey(l)">
@@ -137,6 +139,7 @@
 										<template v-if="l.plan"> · {{ l.plan }}</template>
 										· {{ l.source }} · updated {{ ago(l.age_s) }}
 									</p>
+									<LimitForecast :limit="l" />
 								</div>
 							</div>
 							<p
@@ -154,6 +157,8 @@
 								No Codex limits yet. They appear after your next Codex session.
 							</p>
 						</SettingsSection>
+
+						<UsageDailyChart :days="overview.days" />
 
 						<SettingsSection title="By tool and model">
 							<template #actions>
@@ -228,38 +233,17 @@
 							</p>
 						</SettingsSection>
 
-						<SettingsSection title="Last 30 days">
-							<div v-if="trend.length" class="flex h-32 items-end gap-0.5">
-								<div
-									v-for="d in trend"
-									:key="d.day"
-									class="flex h-full min-w-0 flex-1 items-end"
-									:title="
-										d.day +
-										' · ' +
-										money(d.cost) +
-										' · ' +
-										count(d.tokens) +
-										' tokens'
-									"
-								>
-									<div
-										class="w-full rounded-t bg-ink-subtle"
-										:style="{ height: d.height + '%' }"
-									/>
-								</div>
-							</div>
-							<p v-else class="text-sm text-ink-subtle">
-								No usage in the last 30 days.
-							</p>
-							<p
-								v-if="trend.length"
-								class="mt-2 flex justify-between text-xs text-ink-subtle"
-							>
-								<span>{{ trend[0].day }}</span>
-								<span>{{ trend[trend.length - 1].day }}</span>
-							</p>
-						</SettingsSection>
+						<UsageTokenTypes
+							v-if="currentWindow"
+							:totals="currentWindow.totals"
+							:label="currentWindow.label"
+						/>
+
+						<UsageProjects
+							v-if="currentWindow"
+							:projects="currentWindow.projects"
+							:label="currentWindow.label"
+						/>
 
 						<SettingsSection
 							title="Tasks"
@@ -379,6 +363,11 @@
 <script lang="ts">
 	import CommandChip from '@/components/general/CommandChip.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
+	import LimitForecast from '@/components/usage/LimitForecast.vue';
+	import UsageDailyChart from '@/components/usage/UsageDailyChart.vue';
+	import UsageProjects from '@/components/usage/UsageProjects.vue';
+	import UsageTokenTypes from '@/components/usage/UsageTokenTypes.vue';
+	import UsageWeekStrip from '@/components/usage/UsageWeekStrip.vue';
 	import AutopilotPanel from '@/components/runner/AutopilotPanel.vue';
 	import { consentGate } from '@/components/usage/consent';
 	import UsageConsentGate from '@/components/usage/UsageConsentGate.vue';
@@ -431,8 +420,13 @@
 			AutopilotPanel,
 			Button,
 			CommandChip,
+			LimitForecast,
 			SettingsSection,
 			UsageConsentGate,
+			UsageDailyChart,
+			UsageProjects,
+			UsageTokenTypes,
+			UsageWeekStrip,
 		},
 		setup() {
 			const runner = useRunner();
@@ -548,23 +542,9 @@
 					overview.value?.windows.find((w) => w.key === period.value)?.rows ??
 					[],
 			);
-			const trend = computed(() => {
-				const byDay = new Map<string, { cost: number; tokens: number }>();
-				for (const d of overview.value?.days ?? []) {
-					const entry = byDay.get(d.day) ?? { cost: 0, tokens: 0 };
-					entry.cost += d.cost_usd;
-					entry.tokens += d.tokens_total;
-					byDay.set(d.day, entry);
-				}
-				const days = [...byDay.entries()]
-					.sort(([a], [b]) => a.localeCompare(b))
-					.map(([day, v]) => ({ day, ...v }));
-				const max = Math.max(...days.map((d) => d.cost), 0);
-				return days.map((d) => ({
-					...d,
-					height: max > 0 ? Math.max(2, Math.round((d.cost / max) * 100)) : 2,
-				}));
-			});
+			const currentWindow = computed(() =>
+				overview.value?.windows.find((w) => w.key === period.value),
+			);
 			const taskRows = computed(() =>
 				(tasks.value?.tasks ?? []).map((t) => ({
 					...t,
@@ -595,7 +575,7 @@
 				tasksPending,
 				tasksError,
 				rows,
-				trend,
+				currentWindow,
 				taskRows,
 				showAccount,
 				showWorkspace,

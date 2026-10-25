@@ -5,12 +5,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tmgr_usage::consent::{forget, ConsentChange, ReadLogs, FORGET_WAIT};
 use tmgr_usage::error::UsageError;
 use tmgr_usage::limits::LimitWindow;
+use tmgr_usage::pricing::PriceEntry;
 use tmgr_usage::bind::{facts_from, Linker, RunIds};
 use tmgr_usage::link::{Link, RunWindow, Totals as LinkTotals};
 use tmgr_usage::task::{build, facts_as_events, TaskIdent, TaskInput, TaskUsageAggregate};
 use tmgr_usage::paths::{self, Env};
 use tmgr_usage::refresh::refresh;
-use tmgr_usage::{GroupBy, Query, Row as AggRow, Store, Tz};
+use tmgr_usage::{GroupBy, PriceBook, Query, Row as AggRow, Store, Tokens, Tz};
 
 const SNAP_REASON: &str = "AI usage is not available in the Snap build, which cannot read other apps' logs.";
 const MAX_RUNS: usize = 5000;
@@ -198,6 +199,57 @@ fn forget_inner(flag: &AtomicBool, env: &Env, now: DateTime<Utc>, wait: std::tim
   consent_out(env, &dir, &store)
 }
 
+#[derive(Serialize, Debug, Default, Clone, Copy, PartialEq)]
+pub struct CostByType {
+  pub input: f64,
+  pub output: f64,
+  pub cache_read: f64,
+  pub cache_write: f64,
+}
+
+impl CostByType {
+  fn add(&mut self, o: &CostByType) {
+    self.input += o.input;
+    self.output += o.output;
+    self.cache_read += o.cache_read;
+    self.cache_write += o.cache_write;
+  }
+
+  fn rounded(self) -> CostByType {
+    CostByType {
+      input: round6(self.input),
+      output: round6(self.output),
+      cache_read: round6(self.cache_read),
+      cache_write: round6(self.cache_write),
+    }
+  }
+}
+
+// Splits one (tool, model) row's stored cost by tokens x base list rate. Never reprices:
+// cost_at on summed tokens would trip the long-context switch.
+fn split_cost(entry: Option<&PriceEntry>, t: &Tokens, cost: f64) -> CostByType {
+  let Some(e) = entry else {
+    return CostByType::default();
+  };
+  let get = |k: &str| e.costs.get(k).copied();
+  let (Some(r_in), Some(r_out)) = (get("input_cost_per_token"), get("output_cost_per_token")) else {
+    return CostByType::default();
+  };
+  let r_cr = get("cache_read_input_token_cost").unwrap_or(r_in);
+  let r_cw5 = get("cache_creation_input_token_cost").unwrap_or(r_in);
+  let r_cw1 = get("cache_creation_input_token_cost_above_1hr").unwrap_or(r_cw5);
+  let w_in = t.input as f64 * r_in;
+  let w_out = t.output as f64 * r_out;
+  let w_cr = t.cache_read as f64 * r_cr;
+  let w_cw = t.cache_write_5m as f64 * r_cw5 + t.cache_write_1h as f64 * r_cw1;
+  let sum = w_in + w_out + w_cr + w_cw;
+  if !(sum.is_finite() && sum > 0.0) {
+    return CostByType::default();
+  }
+  let part = |w: f64| cost * w / sum;
+  CostByType { input: part(w_in), output: part(w_out), cache_read: part(w_cr), cache_write: part(w_cw) }
+}
+
 #[derive(Serialize, Debug, Default, PartialEq)]
 pub struct Row {
   pub cost_usd: f64,
@@ -209,6 +261,7 @@ pub struct Row {
   pub reasoning: u64,
   pub events: u64,
   pub unpriced_events: u64,
+  pub cost_by_type: CostByType,
 }
 
 fn row_of(r: &AggRow) -> Row {
@@ -224,6 +277,7 @@ fn row_of(r: &AggRow) -> Row {
     reasoning: t.reasoning,
     events: r.events,
     unpriced_events: r.unpriced_events,
+    cost_by_type: CostByType::default(),
   }
 }
 
@@ -243,14 +297,25 @@ pub struct WindowOut {
   pub to: String,
   pub totals: Row,
   pub rows: Vec<ModelRow>,
+  pub projects: Vec<ProjectRow>,
+}
+
+#[derive(Serialize, Debug)]
+pub struct ProjectRow {
+  pub key: String,
+  pub name: String,
+  #[serde(flatten)]
+  pub row: Row,
 }
 
 #[derive(Serialize, Debug)]
 pub struct DayOut {
   pub day: String,
   pub tool: String,
+  pub model: String,
   pub cost_usd: f64,
   pub tokens_total: u64,
+  pub events: u64,
 }
 
 #[derive(Serialize, Debug)]
@@ -265,6 +330,7 @@ pub struct LimitOut {
   pub account: String,
   pub window: String,
   pub window_label: String,
+  pub window_s: Option<i64>,
   pub used_pct: f64,
   pub resets_at: Option<String>,
   pub resets_in_s: Option<i64>,
@@ -294,6 +360,17 @@ fn window_label(w: &LimitWindow) -> String {
   }
 }
 
+fn window_secs(w: &LimitWindow) -> Option<i64> {
+  match w {
+    LimitWindow::Session => Some(5 * 3600),
+    LimitWindow::Weekly => Some(7 * 86400),
+    LimitWindow::Model(m) => match m.strip_prefix("window:") {
+      Some(rest) => rest.strip_suffix('m')?.parse::<i64>().ok().filter(|n| *n > 0)?.checked_mul(60),
+      None => Some(7 * 86400),
+    },
+  }
+}
+
 fn query(from: DateTime<Utc>, to: DateTime<Utc>, group_by: Vec<GroupBy>) -> Query {
   Query { from, to, tz: Tz::Local, group_by, filters: Default::default() }
 }
@@ -304,25 +381,54 @@ fn overview_inner(env: &Env, now: DateTime<Utc>) -> Result<OverviewOut, String> 
   let to = day_bounds(today).1;
   let specs: [(&'static str, &'static str, i64); 3] =
     [("today", "Today", 1), ("week", "Last 7 days", 7), ("month", "Last 30 days", MONTH_DAYS)];
+  let book = match store.load_prices().map_err(user_error)? {
+    Some((book, _)) => book,
+    None => PriceBook::bundled(),
+  };
   let mut windows = Vec::new();
   for (key, label, days) in specs {
     let from = day_bounds(today - Duration::days(days - 1)).0;
     let report = store.aggregate(&query(from, to, vec![GroupBy::Tool, GroupBy::Model])).map_err(user_error)?;
+    let mut split_total = CostByType::default();
     let rows = report
       .rows
       .iter()
-      .map(|r| ModelRow { tool: r.keys[0].clone(), model: r.keys[1].clone(), row: row_of(r) })
+      .map(|r| {
+        let split = split_cost(book.lookup(&r.keys[1]), &r.tokens, r.cost_usd);
+        split_total.add(&split);
+        let mut row = row_of(r);
+        row.cost_by_type = split.rounded();
+        ModelRow { tool: r.keys[0].clone(), model: r.keys[1].clone(), row }
+      })
       .collect();
-    windows.push(WindowOut { key, label, from: stamp(from), to: stamp(to), totals: row_of(&report.totals), rows });
+    let mut totals = row_of(&report.totals);
+    totals.cost_by_type = split_total.rounded();
+    let by_project = store.aggregate(&query(from, to, vec![GroupBy::Project])).map_err(user_error)?;
+    let mut projects: Vec<ProjectRow> = by_project
+      .rows
+      .iter()
+      .map(|r| ProjectRow { key: r.keys[0].chars().take(12).collect(), name: r.labels[0].clone(), row: row_of(r) })
+      .collect();
+    projects.sort_by(|a, b| {
+      b.row.cost_usd.total_cmp(&a.row.cost_usd).then(b.row.tokens_total.cmp(&a.row.tokens_total))
+    });
+    windows.push(WindowOut { key, label, from: stamp(from), to: stamp(to), totals, rows, projects });
   }
   let month_from = day_bounds(today - Duration::days(MONTH_DAYS - 1)).0;
-  let by_day = store.aggregate(&query(month_from, to, vec![GroupBy::Day, GroupBy::Tool])).map_err(user_error)?;
+  let by_day = store.aggregate(&query(month_from, to, vec![GroupBy::Day, GroupBy::Tool, GroupBy::Model])).map_err(user_error)?;
   let days = by_day
     .rows
     .iter()
     .map(|r| {
       let row = row_of(r);
-      DayOut { day: r.keys[0].clone(), tool: r.keys[1].clone(), cost_usd: row.cost_usd, tokens_total: row.tokens_total }
+      DayOut {
+        day: r.keys[0].clone(),
+        tool: r.keys[1].clone(),
+        model: r.keys[2].clone(),
+        cost_usd: row.cost_usd,
+        tokens_total: row.tokens_total,
+        events: row.events,
+      }
     })
     .collect();
   let limits = store
@@ -334,6 +440,7 @@ fn overview_inner(env: &Env, now: DateTime<Utc>) -> Result<OverviewOut, String> 
       account: l.account,
       window: l.window.as_key(),
       window_label: window_label(&l.window),
+      window_s: window_secs(&l.window),
       used_pct: l.used_pct,
       resets_at: l.resets_at.map(stamp),
       resets_in_s: l.resets_at.map(|t| (t - now).num_seconds().max(0)),
@@ -878,7 +985,7 @@ mod tests {
     assert_eq!(l.used_pct, 42.0);
     assert!(l.resets_in_s.unwrap() > 0);
     let text = serde_json::to_string(&ov).unwrap();
-    assert!(!text.contains("sess-1") && !text.contains("alpha") && !text.contains(&*tmp.path().to_string_lossy()));
+    assert!(!text.contains("sess-1") && !text.contains("/work/alpha") && !text.contains(&*tmp.path().to_string_lossy()));
   }
 
   #[test]
@@ -1137,5 +1244,170 @@ mod tests {
     std::env::remove_var("SNAP");
     assert!(!out.supported);
     assert_eq!(out.unsupported_reason.as_deref(), Some(SNAP_REASON));
+  }
+
+  fn priced_log(home: &Path, now: DateTime<Utc>) {
+    let line = |msg: &str, ago: i64, cwd: &str, out: u32| {
+      format!(
+        r#"{{"type":"assistant","sessionId":"sess-{msg}","timestamp":"{}",{cwd}"gitBranch":"main","isSidechain":false,"requestId":"req-{msg}","message":{{"id":"{msg}","model":"claude-sonnet-4-5","content":[{{"type":"text","text":"x"}}],"usage":{{"input_tokens":1000,"output_tokens":{out},"cache_read_input_tokens":5000,"cache_creation_input_tokens":400}}}}}}"#,
+        at(now, ago)
+      )
+    };
+    write(&home.join(".claude/projects/-work-delta/sess-p1.jsonl"), &[line("p1", 30, r#""cwd":"/work/delta","#, 200)]);
+    write(&home.join(".claude/projects/-nocwd/sess-p2.jsonl"), &[line("p2", 20, "", 20)]);
+  }
+
+  fn scanned(now: DateTime<Utc>) -> (tempfile::TempDir, Env) {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = granted(tmp.path());
+    claude_log(tmp.path(), now);
+    codex_log(tmp.path(), now);
+    priced_log(tmp.path(), now);
+    scan_inner(&AtomicBool::new(false), &env, now).unwrap();
+    (tmp, env)
+  }
+
+  #[test]
+  fn cost_by_type_parts_add_up_to_the_row_cost() {
+    let now = local_noon();
+    let (_tmp, env) = scanned(now);
+    let ov = overview_inner(&env, now).unwrap();
+    let w = &ov.windows[0];
+    let sonnet = w.rows.iter().find(|r| r.model == "claude-sonnet-4-5").unwrap();
+    assert!(sonnet.row.cost_usd > 0.0);
+    let c = &sonnet.row.cost_by_type;
+    assert!(c.input > 0.0 && c.output > 0.0 && c.cache_read > 0.0 && c.cache_write > 0.0);
+    for win in &ov.windows {
+      for r in &win.rows {
+        let sum = r.row.cost_by_type;
+        let parts = sum.input + sum.output + sum.cache_read + sum.cache_write;
+        if r.model == "claude-sonnet-4-5" {
+          assert!((parts - r.row.cost_usd).abs() < 1e-6, "{parts} vs {}", r.row.cost_usd);
+        }
+      }
+      let t = win.totals.cost_by_type;
+      let model_sum: f64 = win.rows.iter().map(|r| r.row.cost_by_type.input).sum();
+      assert!((t.input - model_sum).abs() < 1e-5);
+    }
+    let unpriced = w.rows.iter().find(|r| r.model == "claude-test-opus-1").unwrap();
+    assert_eq!(unpriced.row.cost_by_type, CostByType::default());
+  }
+
+  #[test]
+  fn split_cost_follows_the_cache_fallbacks_and_skips_unrated_models() {
+    let t = Tokens { input: 100, output: 50, cache_read: 10, cache_write_5m: 20, cache_write_1h: 30, reasoning: 0 };
+    let entry = |pairs: &[(&str, f64)]| PriceEntry { costs: pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect() };
+    let only_base = entry(&[("input_cost_per_token", 1.0), ("output_cost_per_token", 2.0)]);
+    let c = split_cost(Some(&only_base), &t, 10.0);
+    // weights: in 100, out 100, cache_read 10 (input rate), cache_write 50 (input rate for 5m and 1h)
+    let total = 100.0 + 100.0 + 10.0 + 50.0;
+    assert!((c.input - 10.0 * 100.0 / total).abs() < 1e-9);
+    assert!((c.cache_write - 10.0 * 50.0 / total).abs() < 1e-9);
+    assert!((c.input + c.output + c.cache_read + c.cache_write - 10.0).abs() < 1e-9);
+    let one_hour = entry(&[
+      ("input_cost_per_token", 1.0),
+      ("output_cost_per_token", 2.0),
+      ("cache_creation_input_token_cost", 1.5),
+      ("cache_creation_input_token_cost_above_1hr", 3.0),
+    ]);
+    let c = split_cost(Some(&one_hour), &t, 10.0);
+    assert!((c.cache_write - 10.0 * (20.0 * 1.5 + 30.0 * 3.0) / (100.0 + 100.0 + 10.0 + 120.0)).abs() < 1e-9);
+    assert_eq!(split_cost(Some(&entry(&[("input_cost_per_token", 1.0)])), &t, 10.0), CostByType::default());
+    assert_eq!(split_cost(None, &t, 10.0), CostByType::default());
+    assert_eq!(split_cost(Some(&only_base), &Tokens::default(), 10.0), CostByType::default());
+  }
+
+  #[test]
+  fn projects_group_by_hash_with_basename_and_a_short_key() {
+    let now = local_noon();
+    let (_tmp, env) = scanned(now);
+    let ov = overview_inner(&env, now).unwrap();
+    for w in &ov.windows {
+      for p in &w.projects {
+        assert!(!p.key.contains(['/', '\\']) && !p.name.contains(['/', '\\']));
+        assert!(p.key.is_empty() || p.key.len() == 12);
+        assert_eq!(p.row.cost_by_type, CostByType::default());
+      }
+      assert_eq!(w.projects.iter().map(|p| p.row.events).sum::<u64>(), w.totals.events);
+      assert!(w.projects.windows(2).all(|p| {
+        let (a, b) = (&p[0].row, &p[1].row);
+        a.cost_usd > b.cost_usd || (a.cost_usd == b.cost_usd && a.tokens_total >= b.tokens_total)
+      }));
+    }
+    let names: Vec<_> = ov.windows[0].projects.iter().map(|p| (p.name.as_str(), p.key.len())).collect();
+    assert!(names.contains(&("alpha", 12)) && names.contains(&("beta", 12)) && names.contains(&("delta", 12)));
+    let none = ov.windows[0].projects.iter().find(|p| p.name.is_empty()).unwrap();
+    assert_eq!((none.key.as_str(), none.row.events), ("", 1));
+    assert_eq!(ov.windows[0].projects[0].name, "delta");
+    let text = serde_json::to_string(&ov).unwrap();
+    assert!(!text.contains("/work/"));
+  }
+
+  #[test]
+  fn days_carry_model_and_events_and_still_sum_to_the_day_totals() {
+    let now = local_noon();
+    let (_tmp, env) = scanned(now);
+    let ov = overview_inner(&env, now).unwrap();
+    assert!(ov.days.iter().all(|d| !d.model.is_empty() && d.events > 0));
+    assert!(ov.days.iter().any(|d| d.model == "gpt-test") && ov.days.iter().any(|d| d.model == "claude-sonnet-4-5"));
+    let (_, store) = open(&env).unwrap();
+    let from = day_bounds(local_today(now) - Duration::days(MONTH_DAYS - 1)).0;
+    let old = store.aggregate(&query(from, day_bounds(local_today(now)).1, vec![GroupBy::Day, GroupBy::Tool])).unwrap();
+    assert!(!old.rows.is_empty());
+    for r in &old.rows {
+      let mine: Vec<_> = ov.days.iter().filter(|d| d.day == r.keys[0] && d.tool == r.keys[1]).collect();
+      let (cost, tokens, events) = (r.cost_usd, row_of(r).tokens_total, r.events);
+      assert!((mine.iter().map(|d| d.cost_usd).sum::<f64>() - cost).abs() < 1e-5);
+      assert_eq!(mine.iter().map(|d| d.tokens_total).sum::<u64>(), tokens);
+      assert_eq!(mine.iter().map(|d| d.events).sum::<u64>(), events);
+    }
+  }
+
+  #[test]
+  fn limit_window_lengths_in_seconds() {
+    let secs = |k: &str| window_secs(&LimitWindow::from_key(k).unwrap());
+    assert_eq!(secs("session"), Some(18_000));
+    assert_eq!(secs("weekly"), Some(604_800));
+    assert_eq!(secs("model:opus"), Some(604_800));
+    assert_eq!(secs("model:window:300m"), Some(18_000));
+    assert_eq!(secs("model:window:90m"), Some(5_400));
+    assert_eq!(secs("model:window:m"), None);
+    assert_eq!(secs("model:window:0m"), None);
+    assert_eq!(secs("model:window:xm"), None);
+    assert_eq!(secs("model:window:300"), None);
+    let now = local_noon();
+    let (_tmp, env) = scanned(now);
+    let ov = overview_inner(&env, now).unwrap();
+    assert_eq!(ov.limits[0].window_s, Some(18_000));
+  }
+
+  // QA regression (TM-578): the frontend's "last 7 days" strip sums `days`; it must equal the "Last 7 days" window.
+  #[test]
+  fn last_seven_local_days_of_days_equal_the_week_window() {
+    let now = local_noon();
+    let tmp = tempfile::tempdir().unwrap();
+    let env = granted(tmp.path());
+    let line = |n: i64, out: u32| {
+      format!(
+        r#"{{"type":"assistant","sessionId":"sess-d{n}","timestamp":"{}","cwd":"/work/alpha","gitBranch":"main","isSidechain":false,"requestId":"req-d{n}","message":{{"id":"d{n}","model":"claude-sonnet-4-5","content":[{{"type":"text","text":"x"}}],"usage":{{"input_tokens":1000,"output_tokens":{out},"cache_read_input_tokens":5000,"cache_creation_input_tokens":400}}}}}}"#,
+        at(now, n * 24 * 60)
+      )
+    };
+    let offsets = [0_i64, 1, 3, 6, 7, 8, 13, 14, 20, 29];
+    let lines: Vec<String> = offsets.iter().map(|n| line(*n, 100 + *n as u32 * 10)).collect();
+    write(&tmp.path().join(".claude/projects/-work-alpha/sess-d.jsonl"), &lines);
+    scan_inner(&AtomicBool::new(false), &env, now).unwrap();
+    let ov = overview_inner(&env, now).unwrap();
+    let today = local_today(now);
+    for (idx, span) in [(0usize, 1i64), (1, 7), (2, 30)] {
+      let keys: Vec<String> = (0..span).map(|k| (today - Duration::days(k)).format("%Y-%m-%d").to_string()).collect();
+      let mine: Vec<_> = ov.days.iter().filter(|d| keys.contains(&d.day)).collect();
+      let w = &ov.windows[idx].totals;
+      assert_eq!(mine.iter().map(|d| d.events).sum::<u64>(), w.events, "events, window {idx}");
+      assert_eq!(mine.iter().map(|d| d.tokens_total).sum::<u64>(), w.tokens_total, "tokens, window {idx}");
+      assert!((mine.iter().map(|d| d.cost_usd).sum::<f64>() - w.cost_usd).abs() < 1e-5, "cost, window {idx}");
+    }
+    assert_eq!(ov.windows[1].totals.events, 4);
+    assert_eq!(ov.windows[2].totals.events, 10);
   }
 }
