@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.70 — 2026-10-25
+
+- Privacy: TMGR now asks before reading your Claude Code and Codex session logs on this device. Nothing is read until you choose Allow on the AI Usage page. You can change this any time in Settings → Privacy → AI usage, turn each tool on or off, or forget the data already scanned. Background scans and Autopilot follow the same choice.
+- Autopilot: a run with an API key and a cost cap does not start while the logs for its tool are off or can't be read, because its cost can't be checked.
+
 ## 0.9.69 — 2026-10-25
 
 - AI Usage: more stats — tokens and cost by type, a limit forecast at the current pace, a 30-day chart by tool and model, usage by project, and a comparison with last week.
