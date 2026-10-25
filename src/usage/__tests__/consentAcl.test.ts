@@ -24,9 +24,7 @@ describe('usage consent commands in the desktop ACL', () => {
 			);
 			const cap = capability(file);
 			expect(cap.windows).toContain('main');
-			expect(cap.permissions).toContain(
-				`allow-${command.replace(/_/g, '-')}`,
-			);
+			expect(cap.permissions).toContain(`allow-${command.replace(/_/g, '-')}`);
 		},
 	);
 
