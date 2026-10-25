@@ -51,10 +51,35 @@ export const shouldBlockRequest = (
 	const key = moduleKeyForRequest(url);
 	if (!key) return false;
 	const read = ['get', 'head'].includes((method || 'get').toLowerCase());
-	if (read && !modulesKnown) return true;
+	if (read && !modulesKnown) return false;
 	const entry = entryFor(key);
 	if (!entry) return false;
 	return read ? !isEntryVisible({ key, ...entry }) : entry.enabled === false;
+};
+
+type GateDeps = {
+	entryFor: () => EntryLookup | undefined;
+	sameWorkspace: () => boolean;
+	modulesKnown: () => boolean;
+	loadModules: () => Promise<unknown>;
+};
+
+// Modules still unknown after the load (no workspace yet, load failed) → the
+// server, which enforces modules itself, decides.
+export const moduleGateBlocks = async (
+	method: string | undefined,
+	url: string | undefined,
+	deps: GateDeps,
+): Promise<string | null> => {
+	const key = moduleKeyForRequest(url);
+	if (!key || !deps.sameWorkspace()) return null;
+	if (!deps.modulesKnown()) await deps.loadModules().catch(() => undefined);
+	const entryFor = deps.entryFor();
+	return entryFor &&
+		deps.sameWorkspace() &&
+		shouldBlockRequest(method, url, entryFor, deps.modulesKnown())
+		? key
+		: null;
 };
 
 export const workspaceIdInUrl = (url: string | undefined): string | null =>

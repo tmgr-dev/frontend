@@ -1,4 +1,5 @@
 import {
+	moduleGateBlocks,
 	moduleKeyForRequest,
 	moduleOffError,
 	shouldBlockRequest,
@@ -80,10 +81,10 @@ describe('shouldBlockRequest', () => {
 
 describe('shouldBlockRequest while modules are unknown', () => {
 	const none = () => undefined;
-	it('refuses gated reads until the modules state is known', () => {
+	it('leaves gated reads to the server while the modules state is unknown', () => {
 		expect(
 			shouldBlockRequest('get', 'daily-routines/tasks/count', none, false),
-		).toBe(true);
+		).toBe(false);
 		expect(
 			shouldBlockRequest('get', 'daily-routines/tasks/count', none, true),
 		).toBe(false);
@@ -93,6 +94,95 @@ describe('shouldBlockRequest while modules are unknown', () => {
 		expect(shouldBlockRequest('post', 'tasks/9/pomodoro', none, false)).toBe(
 			false,
 		);
+	});
+});
+
+describe('moduleGateBlocks on a cold load (TM-728)', () => {
+	const gate = (
+		entries: Record<string, { enabled?: boolean; hidden?: boolean }>,
+		load: (state: { known: boolean }) => Promise<unknown>,
+	) => {
+		const state = { known: false };
+		const loadModules = jest.fn(() => load(state));
+		const deps = {
+			entryFor: () => (key: string) => (state.known ? entries[key] : undefined),
+			sameWorkspace: () => true,
+			modulesKnown: () => state.known,
+			loadModules,
+		};
+		return { deps, loadModules };
+	};
+	const loaded = async (state: { known: boolean }) => {
+		state.known = true;
+	};
+
+	it('waits for the modules load and lets an enabled module through', async () => {
+		const { deps, loadModules } = gate(
+			{ daily_routines: { enabled: true } },
+			loaded,
+		);
+		await expect(
+			moduleGateBlocks('get', 'daily-routines/tasks?from=1', deps),
+		).resolves.toBeNull();
+		expect(loadModules).toHaveBeenCalledTimes(1);
+	});
+
+	it('still blocks a module that is really off once modules load', async () => {
+		const { deps } = gate({ daily_routines: { enabled: false } }, loaded);
+		await expect(
+			moduleGateBlocks('get', 'daily-routines/tasks', deps),
+		).resolves.toBe('daily_routines');
+	});
+
+	it('passes through to the server when modules stay unknown', async () => {
+		const { deps, loadModules } = gate(
+			{ daily_routines: { enabled: false } },
+			async () => undefined,
+		);
+		await expect(
+			moduleGateBlocks('get', 'daily-routines/tasks', deps),
+		).resolves.toBeNull();
+		expect(loadModules).toHaveBeenCalledTimes(1);
+	});
+
+	it('passes through when the modules load fails', async () => {
+		const { deps } = gate({ daily_routines: { enabled: false } }, () =>
+			Promise.reject(new Error('network')),
+		);
+		await expect(
+			moduleGateBlocks('get', 'daily-routines/tasks', deps),
+		).resolves.toBeNull();
+	});
+
+	it('never loads modules for ungated requests, the modules fetch included', async () => {
+		const { deps, loadModules } = gate({}, loaded);
+		await expect(
+			moduleGateBlocks('get', '/workspaces/5/modules', deps),
+		).resolves.toBeNull();
+		await expect(moduleGateBlocks('get', 'tasks', deps)).resolves.toBeNull();
+		expect(loadModules).not.toHaveBeenCalled();
+	});
+
+	it('does not load again when modules are already known', async () => {
+		const { deps, loadModules } = gate({ pages: { enabled: true } }, loaded);
+		deps.modulesKnown = () => true;
+		deps.entryFor = () => (key: string) => ({ pages: { enabled: true } })[key];
+		await expect(
+			moduleGateBlocks('get', 'pages/tree', deps),
+		).resolves.toBeNull();
+		expect(loadModules).not.toHaveBeenCalled();
+	});
+
+	it('skips the gate for another workspace', async () => {
+		const { deps, loadModules } = gate(
+			{ dashboard: { enabled: false } },
+			loaded,
+		);
+		deps.sameWorkspace = () => false;
+		await expect(
+			moduleGateBlocks('get', '/workspaces/7/dashboard/heatmap', deps),
+		).resolves.toBeNull();
+		expect(loadModules).not.toHaveBeenCalled();
 	});
 });
 
