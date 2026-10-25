@@ -325,47 +325,6 @@ fn racing_scans_store_a_file_once() {
     assert_eq!(racing.event_count().unwrap(), 1);
 }
 
-/// Counts the chunks and fails the one numbered `fail_at` (1-based; 0 = never).
-struct Chunks {
-    calls: std::cell::Cell<u32>,
-    fail_at: u32,
-}
-
-impl Collector for Chunks {
-    fn tool(&self) -> Tool {
-        Tool::Claude
-    }
-    fn parser_version(&self) -> u32 {
-        ClaudeCollector.parser_version()
-    }
-    fn discover(&self, account: &Account) -> Vec<LogFile> {
-        ClaudeCollector.discover(account)
-    }
-    fn parse(
-        &self,
-        file: &LogFile,
-        from: u64,
-        state: &mut ParserState,
-        sink: &mut dyn FnMut(ParsedRecord),
-    ) -> Result<ParseOutcome> {
-        self.parse_until(file, from, u64::MAX, state, sink)
-    }
-    fn parse_until(
-        &self,
-        file: &LogFile,
-        from: u64,
-        until: u64,
-        state: &mut ParserState,
-        sink: &mut dyn FnMut(ParsedRecord),
-    ) -> Result<ParseOutcome> {
-        self.calls.set(self.calls.get() + 1);
-        if self.calls.get() == self.fail_at {
-            return Err(UsageError::Invalid("simulated crash".into()));
-        }
-        ClaudeCollector.parse_until(file, from, until, state, sink)
-    }
-}
-
 fn six_lines(home: &std::path::Path) {
     let lines: Vec<String> = (1..=6)
         .map(|i| assistant_line("s", T, &format!("m{i}"), 10, 1))
@@ -377,10 +336,7 @@ fn six_lines(home: &std::path::Path) {
 fn a_large_backlog_is_stored_in_several_chunks() {
     let (_tmp, home, mut store) = setup();
     six_lines(&home);
-    let c = Chunks {
-        calls: std::cell::Cell::new(0),
-        fail_at: 0,
-    };
+    let c = Spy::new(&ClaudeCollector);
     let account = claude_account(&home);
     let r = scan_in_chunks(&mut store, &c, &account, &book(), now(), 1).unwrap();
     assert_eq!((r.events_new, r.files, r.errors), (6, 1, 0));
@@ -389,23 +345,78 @@ fn a_large_backlog_is_stored_in_several_chunks() {
     assert_eq!((again.files_unchanged, again.events_new), (1, 0));
 }
 
+fn stored_offset(dir: &std::path::Path) -> u64 {
+    rusqlite::Connection::open(dir.join("usage.db"))
+        .unwrap()
+        .query_row("SELECT byte_offset FROM usage_file_state", [], |r| r.get(0))
+        .unwrap()
+}
+
 #[test]
 fn an_interrupted_scan_resumes_from_the_last_stored_chunk() {
-    let (_tmp, home, mut store) = setup();
-    six_lines(&home);
+    let (tmp, home, mut store) = setup();
     let account = claude_account(&home);
-    let c = Chunks {
-        calls: std::cell::Cell::new(0),
+    let line = |i: u32| assistant_line("s", T, &format!("m{i}"), 10, 1);
+    let path = projects_file(&home, "s.jsonl");
+    write_lines(&path, &[line(1)]);
+    scan_account(&mut store, &account, &book(), now()).unwrap();
+    for i in 2..=6 {
+        append(&path, &(line(i) + "\n"));
+    }
+    let c = Spy {
         fail_at: 3,
+        ..Spy::new(&ClaudeCollector)
     };
     let r = scan_in_chunks(&mut store, &c, &account, &book(), now(), 1).unwrap();
     assert_eq!((r.events_new, r.errors, r.files), (2, 1, 0));
-    assert_eq!(store.event_count().unwrap(), 2);
-    let resumed = scan_account(&mut store, &account, &book(), now()).unwrap();
-    assert_eq!((resumed.events_new, resumed.events_updated), (4, 0));
+    assert_eq!(store.event_count().unwrap(), 3);
+    let three_lines = (1..=3).map(|i| line(i).len() as u64 + 1).sum::<u64>();
+    assert_eq!(stored_offset(tmp.path()), three_lines);
+    let watch = Spy::new(&ClaudeCollector);
+    let resumed = scan_with(&mut store, &watch, &account, &book(), now()).unwrap();
+    assert_eq!(
+        watch.froms.borrow()[0],
+        three_lines,
+        "the stored lines are not read again"
+    );
+    assert_eq!((resumed.events_new, resumed.events_updated), (3, 0));
     assert_eq!(store.event_count().unwrap(), 6);
     let again = scan_account(&mut store, &account, &book(), now()).unwrap();
     assert_eq!((again.files_unchanged, again.events_new), (1, 0));
+}
+
+#[test]
+fn a_file_rewritten_in_place_between_chunks_stores_nothing_more_and_is_read_again_as_new() {
+    let (_tmp, home, mut store) = setup();
+    scan_account(&mut store, &claude_account(&home), &book(), now()).unwrap();
+    six_lines(&home);
+    let path = projects_file(&home, "s.jsonl");
+    let replacement: Vec<String> = (1..=6)
+        .map(|i| assistant_line("replaced", T, &format!("r{i}"), 20, 2))
+        .collect();
+    let c = Spy {
+        before: Box::new(|n| {
+            if n == 2 {
+                use std::io::Write;
+                let mut f = std::fs::OpenOptions::new()
+                    .write(true)
+                    .truncate(true)
+                    .open(&path)
+                    .unwrap();
+                f.write_all((replacement.join("\n") + "\n").as_bytes())
+                    .unwrap();
+            }
+        }),
+        ..Spy::new(&ClaudeCollector)
+    };
+    let account = claude_account(&home);
+    let r = scan_in_chunks(&mut store, &c, &account, &book(), now(), 1).unwrap();
+    assert_eq!(c.calls.get(), 2);
+    assert_eq!((r.events_new, r.files, r.rescans_deferred), (1, 0, 1));
+    assert_eq!(store.event_count().unwrap(), 1);
+    let next = scan_account(&mut store, &account, &book(), now()).unwrap();
+    assert_eq!(next.events_new, 6, "the replacement is read from its start");
+    assert_eq!(store.event_count().unwrap(), 7);
 }
 
 #[cfg(unix)]
@@ -446,10 +457,7 @@ fn after_a_denial_committed_with_chunk_one_the_next_chunk_is_not_read() {
                END;"#,
         )
         .unwrap();
-    let c = Chunks {
-        calls: std::cell::Cell::new(0),
-        fail_at: 0,
-    };
+    let c = Spy::new(&ClaudeCollector);
     let r = scan_in_chunks(&mut store, &c, &claude_account(&home), &book(), now(), 1).unwrap();
     assert_eq!(c.calls.get(), 1, "no chunk is read after the denial");
     assert_eq!((r.events_new, r.files), (1, 0));

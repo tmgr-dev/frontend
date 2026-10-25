@@ -326,9 +326,9 @@ fn scan_file(
     if let Some(rp) = reparse.as_mut() {
         rp.begin_file();
     }
-    let (from, mut pstate) = match row {
-        None => (0, ParserState::default()),
-        Some(_) if reparse.is_some() => (0, ParserState::default()),
+    let (from, mut pstate, mut head) = match row {
+        None => (0, ParserState::default(), None),
+        Some(_) if reparse.is_some() => (0, ParserState::default(), None),
         Some(r) => {
             if (r.dev, r.ino, r.size, r.mtime_ns) == (st.dev, st.ino, st.size, st.mtime_ns) {
                 report.files_unchanged += 1;
@@ -341,26 +341,42 @@ fn scan_file(
                     && head_tag(&file.path, salt, r.head_len).ok().as_deref()
                         != Some(r.head_tag.as_str()));
             if rotated {
-                (0, ParserState::default())
+                (0, ParserState::default(), None)
             } else {
                 let state = r
                     .parser_state
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .map(ParserState)
                     .unwrap_or_default();
-                (r.offset, state)
+                let head = (r.head_len > 0).then_some((r.head_len, r.head_tag));
+                (r.offset, state, head)
             }
         }
     };
 
     let tool = collector.tool();
     if reparse.is_some() && tool == Tool::Codex {
-        // A Codex reparse is all or nothing per file: check the whole file first, storing nothing.
+        // A Codex reparse is all or nothing per file: check the whole file first, storing nothing,
+        // chunk by chunk so a denial stops the read.
         let mut probe = pstate.clone();
-        let o = collector.parse(file, from, &mut probe, &mut |_| {})?;
-        let whole = o.bad_lines == 0
-            && o.oversized == 0
-            && previous.is_none_or(|(size, offset)| st.size >= size && o.next_offset >= offset);
+        let (mut at, mut bad, mut oversized) = (from, 0, 0);
+        loop {
+            if !store.log_consent()?.allows(tool, true) {
+                return Ok(FileEnd::Denied);
+            }
+            let until = at.saturating_add(chunk_bytes);
+            let o = collector.parse_until(file, at, until, &mut probe, &mut |_| {})?;
+            bad += o.bad_lines;
+            oversized += o.oversized;
+            let done = o.next_offset <= at || o.next_offset < until;
+            at = o.next_offset;
+            if done {
+                break;
+            }
+        }
+        let whole = bad == 0
+            && oversized == 0
+            && previous.is_none_or(|(size, offset)| st.size >= size && at >= offset);
         if !whole {
             report.rescans_deferred += 1;
             return Ok(FileEnd::Done);
@@ -379,6 +395,28 @@ fn scan_file(
         if let Some(rp) = reparse.as_mut() {
             rp.begin_file();
         }
+        // Every chunk opens the file again: it must still be the same file (inode, not shorter,
+        // same first bytes) before and after reading, or this scan stores nothing more for it and
+        // the next one sees it as replaced (D-032).
+        let guard = match &head {
+            Some(h) => h.clone(),
+            None => {
+                let len = st.size.min(HEAD_BYTES);
+                let tag = if len > 0 {
+                    head_tag(&file.path, salt, len)?
+                } else {
+                    String::new()
+                };
+                (len, tag)
+            }
+        };
+        if !same_file(&file.path, &st, at, salt, &guard) {
+            if let Some(rp) = reparse.as_mut() {
+                rp.rollback_file();
+            }
+            report.rescans_deferred += 1;
+            return Ok(FileEnd::Done);
+        }
         let mut tally = Tally::default();
         let mut records = Vec::new();
         let mut next_state = pstate.clone();
@@ -390,13 +428,28 @@ fn scan_file(
             &mut |rec| records.push(rec),
         );
         let outcome = match parsed {
-            Ok(o) => o,
+            Ok(o) if same_file(&file.path, &st, o.next_offset, salt, &guard) => o,
+            Ok(_) => {
+                if let Some(rp) = reparse.as_mut() {
+                    rp.rollback_file();
+                }
+                report.rescans_deferred += 1;
+                return Ok(FileEnd::Done);
+            }
             Err(e) => {
                 if let Some(rp) = reparse.as_mut() {
                     rp.rollback_file();
                 }
                 return Err(e);
             }
+        };
+        let head_len = outcome.next_offset.min(HEAD_BYTES);
+        let new_head = if head_len == guard.0 {
+            guard
+        } else if head_len > 0 {
+            (head_len, head_tag(&file.path, salt, head_len)?)
+        } else {
+            (0, String::new())
         };
         let done =
             outcome.next_offset <= at || outcome.next_offset < at.saturating_add(chunk_bytes);
@@ -439,12 +492,6 @@ fn scan_file(
             }
         }
         last_ts = last_ts.max(tally.last_ts);
-        let head_len = outcome.next_offset.min(HEAD_BYTES);
-        let tag = if head_len > 0 {
-            head_tag(&file.path, salt, head_len)?
-        } else {
-            String::new()
-        };
         let state_text = match &next_state.0 {
             serde_json::Value::Null => None,
             v => Some(serde_json::to_string(v)?),
@@ -469,8 +516,8 @@ fn scan_file(
                 size as i64,
                 mtime_ns,
                 outcome.next_offset as i64,
-                head_len as i64,
-                tag,
+                new_head.0 as i64,
+                new_head.1,
                 state_text,
                 last_ts,
             ],
@@ -495,7 +542,18 @@ fn scan_file(
         }
         at = outcome.next_offset;
         pstate = next_state;
+        head = (new_head.0 > 0).then_some(new_head);
     }
+}
+
+/// Still the file the scan started on: same inode, at least `at` bytes, same first bytes.
+fn same_file(path: &Path, st: &FileStat, at: u64, salt: &str, head: &(u64, String)) -> bool {
+    let Ok(now) = stat_file(path) else {
+        return false;
+    };
+    (now.dev, now.ino) == (st.dev, st.ino)
+        && now.size >= at
+        && (head.0 == 0 || head_tag(path, salt, head.0).ok().as_deref() == Some(head.1.as_str()))
 }
 
 #[allow(clippy::too_many_arguments)]
