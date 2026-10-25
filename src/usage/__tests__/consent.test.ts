@@ -6,7 +6,6 @@ jest.mock('@tauri-apps/api/core', () => ({
 import {
 	consentGate,
 	FORGET_DONE,
-	nextConsent,
 	readingNote,
 	useUsageConsent,
 } from '@/components/usage/consent';
@@ -50,42 +49,6 @@ describe('readingNote', () => {
 	});
 });
 
-describe('nextConsent', () => {
-	it('keeps the tool flags when reading is switched', () => {
-		const c = consent({ state: 'granted', codex: false });
-		expect(nextConsent(c, { state: 'denied' })).toEqual({
-			state: 'denied',
-			claude: true,
-			codex: false,
-		});
-	});
-
-	it('turns both tools on when reading is switched on with both off', () => {
-		const c = consent({ state: 'denied', claude: false, codex: false });
-		expect(nextConsent(c, { state: 'granted' })).toEqual({
-			state: 'granted',
-			claude: true,
-			codex: true,
-		});
-	});
-
-	it('sends explicit tool choices as they are', () => {
-		const c = consent({ state: 'granted' });
-		expect(nextConsent(c, { codex: false })).toEqual({
-			state: 'granted',
-			claude: true,
-			codex: false,
-		});
-		expect(
-			nextConsent(consent(), { state: 'denied', claude: false, codex: true }),
-		).toEqual({ state: 'denied', claude: false, codex: true });
-	});
-
-	it('does not grant from an unset choice when only a tool changes', () => {
-		expect(nextConsent(consent(), { claude: false }).state).toBe('denied');
-	});
-});
-
 describe('useUsageConsent', () => {
 	const g = global as { window?: unknown };
 
@@ -123,23 +86,36 @@ describe('useUsageConsent', () => {
 	it('Not now stores denied and shows the off card, no scan', async () => {
 		invoke.mockResolvedValue(consent({ state: 'denied' }));
 		const c = useUsageConsent(consent());
-		await c.save({ state: 'denied', claude: true, codex: true });
+		await c.save({ state: 'denied' });
 		expect(c.gate.value).toBe('off');
-		expect(commands()).toEqual(['usage_consent_set']);
+		expect(invoke.mock.calls).toEqual([
+			['usage_consent_set', { state: 'denied' }],
+		]);
 	});
 
-	it('renders what the backend stored, not what was sent', async () => {
-		invoke.mockResolvedValue(
+	it('a stale page sends only the changed field and shows the stored value', async () => {
+		// Cached as granted, but another window denied reading meanwhile.
+		const stored = consent({ state: 'denied', claude: false, codex: true });
+		invoke.mockResolvedValue(stored);
+		const c = useUsageConsent(consent({ state: 'granted' }));
+		await c.save({ claude: false });
+		expect(invoke.mock.calls).toEqual([
+			['usage_consent_set', { claude: false }],
+		]);
+		expect(c.consent.value).toEqual(stored);
+		expect(c.gate.value).toBe('off');
+	});
+
+	it('the read switch sends only the state', async () => {
+		invoke.mockResolvedValue(consent({ state: 'granted' }));
+		const c = useUsageConsent(
 			consent({ state: 'denied', claude: false, codex: false }),
 		);
-		const c = useUsageConsent(consent({ state: 'granted', codex: false }));
-		await c.save({ claude: false });
-		expect(invoke.mock.calls[0][1]).toEqual({
-			state: 'granted',
-			claude: false,
-			codex: false,
-		});
-		expect(c.gate.value).toBe('off');
+		await c.save({ state: 'granted' });
+		expect(invoke.mock.calls).toEqual([
+			['usage_consent_set', { state: 'granted' }],
+		]);
+		expect(c.consent.value?.claude).toBe(true);
 	});
 
 	it('shows a read error and retries', async () => {

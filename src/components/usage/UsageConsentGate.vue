@@ -46,8 +46,13 @@
 			</p>
 			<p class="text-ink-subtle">
 				Nothing leaves this device unless you set up uploads with
-				<CommandChip command="tmgr usage sync" />. Your choice applies to the
-				tmgr CLI on this device too.
+				<CommandChip command="tmgr usage sync" />.
+			</p>
+			<p class="text-ink-subtle" data-testid="usage-consent-scope">
+				Your choice covers AI usage in this app, background jobs, agent
+				notifications and the tmgr CLI on this device. The TMGR runner still
+				reads the sessions it starts itself, in its own sandbox, for titles,
+				questions and status, and keeps nothing from them.
 			</p>
 			<p v-if="current.has_data" class="text-ink-subtle">
 				Numbers TMGR read earlier stay on this device. To delete them, use
@@ -63,7 +68,7 @@
 				<Button
 					variant="outline"
 					:disabled="busy"
-					@click="choose({ state: 'denied', ...picked })"
+					@click="choose({ state: 'denied' })"
 				>
 					Not now
 				</Button>
@@ -113,7 +118,7 @@
 	import CommandChip from '@/components/general/CommandChip.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import { Button } from '@/components/ui/button';
-	import type { UsageConsent } from '@/usage/api';
+	import type { UsageConsent, UsageConsentChange } from '@/usage/api';
 	import { toolName } from '@/usage/format';
 	import {
 		computed,
@@ -122,7 +127,7 @@
 		watch,
 		type PropType,
 	} from 'vue';
-	import { useUsageConsent, type ConsentChange } from './consent';
+	import { useUsageConsent } from './consent';
 
 	const TOOLS = ['claude', 'codex'] as const;
 
@@ -148,7 +153,7 @@
 			});
 			const foldersOf = (tool: string) =>
 				current.value.folders.filter((f) => f.tool === tool);
-			const choose = async (change: ConsentChange) => {
+			const choose = async (change: UsageConsentChange) => {
 				if (await save(change)) emit('update', consent.value);
 			};
 			return {

@@ -80,10 +80,10 @@ export interface UsageConsent {
 	has_data: boolean;
 }
 
-export interface UsageConsentChoice {
-	state: 'granted' | 'denied';
-	claude: boolean;
-	codex: boolean;
+export interface UsageConsentChange {
+	state?: 'granted' | 'denied';
+	claude?: boolean;
+	codex?: boolean;
 }
 
 export interface RawRun {
@@ -124,8 +124,8 @@ export const usageConsent = (): Promise<UsageConsent> =>
 	invoke('usage_consent');
 
 export const usageConsentSet = (
-	choice: UsageConsentChoice,
-): Promise<UsageConsent> => invoke('usage_consent_set', { ...choice });
+	change: UsageConsentChange,
+): Promise<UsageConsent> => invoke('usage_consent_set', { ...change });
 
 export const usageForget = (): Promise<UsageConsent> => invoke('usage_forget');
 

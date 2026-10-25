@@ -4,7 +4,7 @@ import {
 	usageConsentSet,
 	usageForget,
 	type UsageConsent,
-	type UsageConsentChoice,
+	type UsageConsentChange,
 } from '@/usage/api';
 import { isDesktopApp } from '@/utils/desktop';
 import { computed, ref } from 'vue';
@@ -16,23 +16,6 @@ export const consentGate = (c: UsageConsent | null): ConsentGate | null => {
 	if (!c.supported) return 'unsupported';
 	if (c.state === 'unset') return 'ask';
 	return c.state === 'granted' ? 'granted' : 'off';
-};
-
-export type ConsentChange = Partial<UsageConsentChoice>;
-
-export const nextConsent = (
-	c: UsageConsent,
-	change: ConsentChange,
-): UsageConsentChoice => {
-	const claude = change.claude ?? c.claude;
-	const codex = change.codex ?? c.codex;
-	const state = change.state ?? (c.state === 'granted' ? 'granted' : 'denied');
-	const turnOn =
-		change.state === 'granted' &&
-		change.claude === undefined &&
-		change.codex === undefined;
-	if (turnOn && !claude && !codex) return { state, claude: true, codex: true };
-	return { state, claude, codex };
 };
 
 export const readingNote = (state: UsageConsent['state']): string =>
@@ -71,11 +54,8 @@ export const useUsageConsent = (initial: UsageConsent | null = null) => {
 	const load = (): Promise<boolean> =>
 		isDesktopApp() ? run(usageConsent) : Promise.resolve(false);
 
-	const save = (change: ConsentChange): Promise<boolean> => {
-		const current = consent.value;
-		if (!current || busy.value) return Promise.resolve(false);
-		return run(() => usageConsentSet(nextConsent(current, change)));
-	};
+	const save = (change: UsageConsentChange): Promise<boolean> =>
+		busy.value ? Promise.resolve(false) : run(() => usageConsentSet(change));
 
 	const forget = async (): Promise<boolean> => {
 		if (busy.value) return false;

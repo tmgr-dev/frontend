@@ -51,14 +51,17 @@ const fakeUsage = (initial = {}) => {
       case 'usage_consent':
         return consent;
       case 'usage_consent_set': {
-        const off = args.state === 'granted' && !args.claude && !args.codex;
-        consent = {
-          ...consent,
-          state: off ? 'denied' : args.state,
-          claude: args.claude,
-          codex: args.codex,
-          decided_at: new Date().toISOString(),
-        };
+        // Field-level rules of the real command (D-020).
+        const next = { ...consent, decided_at: new Date().toISOString() };
+        if (args.claude !== undefined) next.claude = args.claude;
+        if (args.codex !== undefined) next.codex = args.codex;
+        const noTools = args.claude === undefined && args.codex === undefined;
+        if (args.state === 'granted' && noTools && !next.claude && !next.codex)
+          next.claude = next.codex = true;
+        if (args.state) next.state = args.state;
+        if (next.state === 'granted' && !next.claude && !next.codex)
+          next.state = 'denied';
+        consent = next;
         return consent;
       }
       case 'usage_forget':
@@ -201,7 +204,11 @@ test('Not now shows the off card and never scans; Allow there scans', async ({
 }) => {
   const usage = fakeUsage();
   await openUsage(page, usage, 'light', { runner });
+  await expect(page.getByTestId('usage-consent-scope')).toContainText(
+    'The TMGR runner still reads the sessions it starts itself',
+  );
   await page.getByRole('button', { name: 'Not now' }).click();
+  expect(usage.calls.at(-1).args).toEqual({ state: 'denied' });
   const off = page.getByTestId('usage-consent-off');
   await expect(off).toContainText('Reading AI tool logs is off');
   await expect(page.getByTestId('autopilot-panel')).toBeVisible();
@@ -296,7 +303,7 @@ test('Settings → Privacy: switches, Forget behind a confirm', async ({
   );
   expect(usage.calls.at(-1)).toEqual({
     command: 'usage_consent_set',
-    args: { state: 'granted', claude: true, codex: false },
+    args: { codex: false },
   });
 
   usage.replies.usage_forget = 'A scan is running. Try again in a moment.';
@@ -332,11 +339,11 @@ test('Settings → Privacy: switches, Forget behind a confirm', async ({
     'data-state',
     'checked',
   );
-  expect(usage.calls.at(-1).args).toEqual({
-    state: 'granted',
-    claude: true,
-    codex: false,
-  });
+  expect(usage.calls.at(-1).args).toEqual({ state: 'granted' });
+  await expect(page.getByTestId('usage-codex-switch')).toHaveAttribute(
+    'data-state',
+    'unchecked',
+  );
 });
 
 test('Settings tells an undecided device what still reads logs', async ({

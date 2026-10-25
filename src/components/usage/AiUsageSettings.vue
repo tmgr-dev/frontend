@@ -6,7 +6,7 @@
 	>
 		<SettingsSection
 			title="AI usage"
-			description="The AI Usage page reads the session logs Claude Code and Codex write on this computer to show cost and limits. What you or the AI wrote is never stored."
+			description="Lets the AI Usage page, background jobs, agent notifications and the tmgr CLI read the session logs Claude Code and Codex write on this computer. Prompt and reply text is never stored. The TMGR runner still reads the sessions it starts itself, in its own sandbox, for titles, questions and status, and keeps nothing from them."
 		>
 			<div class="flex flex-col gap-2">
 				<template v-if="consent">
