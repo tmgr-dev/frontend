@@ -20,6 +20,7 @@ pub enum Blocker {
     Limit(Hit),
     UsageUnknown,
     CostCap,
+    CostUnknown,
     MaxTasks,
     Hours,
     Failures,
@@ -38,6 +39,8 @@ pub struct Inputs<'a> {
     pub billing: Billing,
     pub api_usd: Option<f64>,
     pub cost_cap: Option<f64>,
+    /// The AI tool logs are not read on this device, so `api_usd` misses new spending.
+    pub logs_unread: bool,
     pub started: u32,
     pub max_tasks: Option<u32>,
     pub max_hours: Option<f64>,
@@ -123,9 +126,11 @@ pub fn decide(i: &Inputs) -> Decision {
             blockers.push(Blocker::UsageUnknown);
         }
     }
-    if let (Some(cap), Some(spent)) = (i.cost_cap, i.api_usd) {
-        if spent >= cap {
+    if let Some(cap) = i.cost_cap {
+        if i.api_usd.is_some_and(|spent| spent >= cap) {
             blockers.push(Blocker::CostCap);
+        } else if i.logs_unread && i.billing != Billing::Subscription {
+            blockers.push(Blocker::CostUnknown);
         }
     }
     if i.max_tasks.is_some_and(|m| i.started >= m) {
@@ -303,6 +308,7 @@ mod tests {
         billing: Billing,
         api_usd: Option<f64>,
         cost_cap: Option<f64>,
+        logs_unread: bool,
         started: u32,
         max_tasks: Option<u32>,
         max_hours: Option<f64>,
@@ -320,6 +326,7 @@ mod tests {
                 billing: Billing::Subscription,
                 api_usd: None,
                 cost_cap: None,
+                logs_unread: false,
                 started: 0,
                 max_tasks: None,
                 max_hours: None,
@@ -344,6 +351,7 @@ mod tests {
                 billing: self.billing,
                 api_usd: self.api_usd,
                 cost_cap: self.cost_cap,
+                logs_unread: self.logs_unread,
                 started: self.started,
                 max_tasks: self.max_tasks,
                 max_hours: self.max_hours,
@@ -360,6 +368,7 @@ mod tests {
                 Blocker::Limit(_) => "limit",
                 Blocker::UsageUnknown => "unknown",
                 Blocker::CostCap => "cost",
+                Blocker::CostUnknown => "cost_unknown",
                 Blocker::MaxTasks => "tasks",
                 Blocker::Hours => "hours",
                 Blocker::Failures => "failures",
@@ -446,6 +455,26 @@ mod tests {
         assert!(c.decide().starts_allowed());
         c.api_usd = Some(5.0);
         assert_eq!(kinds(&c.decide()), ["cost"]);
+    }
+
+    #[test]
+    fn unread_logs_close_starts_only_when_a_cost_cap_applies() {
+        let l = vec![];
+        let mut c = Case::new(&l);
+        c.billing = Billing::ApiKey;
+        c.logs_unread = true;
+        assert!(c.decide().starts_allowed());
+        c.cost_cap = Some(5.0);
+        assert_eq!(kinds(&c.decide()), ["cost_unknown"]);
+        c.api_usd = Some(1.0);
+        assert_eq!(kinds(&c.decide()), ["cost_unknown"]);
+        c.api_usd = Some(5.0);
+        assert_eq!(kinds(&c.decide()), ["cost"]);
+        let l = rows(Some(1.0), Some(1.0));
+        let mut sub = Case::new(&l);
+        sub.cost_cap = Some(5.0);
+        sub.logs_unread = true;
+        assert!(sub.decide().starts_allowed());
     }
 
     #[test]

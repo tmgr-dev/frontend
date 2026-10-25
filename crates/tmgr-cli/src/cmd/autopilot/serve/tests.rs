@@ -58,6 +58,7 @@ struct World {
     crash_on_set_status: bool,
     reading_off: bool,
     scans: u32,
+    billing: Billing,
 }
 
 struct Fake(RefCell<World>);
@@ -115,6 +116,7 @@ impl Fake {
             crash_on_set_status: false,
             reading_off: false,
             scans: 0,
+            billing: Billing::Subscription,
         }))
     }
 
@@ -481,7 +483,7 @@ impl UsagePort for Fake {
         let now = w.now;
         match &w.probe {
             Ok(rows) => Ok(Probed {
-                billing: Billing::Subscription,
+                billing: w.billing,
                 windows: rows
                     .iter()
                     .flat_map(|(five, week)| {
@@ -1436,6 +1438,52 @@ fn logs_not_readable_is_said_once_and_the_probe_still_guards() {
             .as_str()
             .unwrap()
             .starts_with("usage limit: five_hour at 55%"));
+    });
+}
+
+#[test]
+fn an_api_key_with_a_cost_cap_starts_nothing_while_logs_are_not_read() {
+    let rig = Rig::new();
+    rig.fake.add(pickup("q2", 2, "approved", None));
+    {
+        let mut w = rig.fake.w();
+        w.billing = Billing::ApiKey;
+        w.reading_off = true;
+    }
+    let s = settings(&[2], |a| a.max_cost_usd = Some(5.0));
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        assert!(!rig.fake.0.borrow().passes.last().unwrap().starts_allowed);
+        assert_eq!(
+            rig.status().extra["blockers"],
+            json!(["cost unknown: AI usage logs are not read"])
+        );
+        let said: Vec<_> = ap.events.iter().filter(|e| e.kind == "usage").collect();
+        assert_eq!(said.len(), 1);
+        assert!(
+            said[0]
+                .text
+                .contains("The cost cap cannot be checked, so no new task starts."),
+            "{}",
+            said[0].text
+        );
+        rig.fake.w().reading_off = false;
+        rig.fake.advance(Duration::minutes(6));
+        tick_on(ap);
+        assert!(rig.fake.0.borrow().passes.last().unwrap().starts_allowed);
+    });
+}
+
+#[test]
+fn an_api_key_with_a_cost_cap_starts_when_logs_are_read() {
+    let rig = Rig::new();
+    rig.fake.add(pickup("q2", 2, "approved", None));
+    rig.fake.w().billing = Billing::ApiKey;
+    let s = settings(&[2], |a| a.max_cost_usd = Some(5.0));
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        assert!(rig.fake.0.borrow().passes.last().unwrap().starts_allowed);
+        assert!(!ap.events.iter().any(|e| e.kind == "usage"));
     });
 }
 

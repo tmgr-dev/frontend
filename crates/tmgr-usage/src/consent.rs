@@ -145,15 +145,16 @@ pub fn wipe(store: &mut Store, dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// "Forget scanned data": wipe, then turn reading off (the per-tool flags are kept).
+/// "Forget scanned data": turn reading off first (the per-tool flags are kept), then wipe, so a failed
+/// wipe or a scan racing it never leaves reading on.
 pub fn forget(store: &mut Store, dir: &Path, now: DateTime<Utc>) -> Result<LogConsent> {
-    wipe(store, dir)?;
     let c = LogConsent {
         state: ReadLogs::Denied,
         decided_at: Some(now),
         ..store.log_consent()?
     };
     store.set_log_consent(&c)?;
+    wipe(store, dir)?;
     store.log_consent()
 }
 
@@ -268,5 +269,26 @@ mod tests {
         assert!(!paths::snapshots_dir(tmp.path()).exists());
         assert!(s.sync_consent().unwrap().is_none());
         assert_eq!(forget(&mut s, tmp.path(), later).unwrap(), c);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_wipe_still_leaves_reading_off() {
+        use std::os::unix::fs::PermissionsExt;
+        let (tmp, mut s) = store();
+        s.set_log_consent(&LogConsent {
+            state: ReadLogs::Granted,
+            decided_at: Some(t()),
+            ..LogConsent::default()
+        })
+        .unwrap();
+        let locked = paths::snapshots_dir(tmp.path()).join("claude");
+        std::fs::create_dir_all(&locked).unwrap();
+        std::fs::write(locked.join("x.json"), "{}").unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o500)).unwrap();
+        let result = forget(&mut s, tmp.path(), t());
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(result.is_err());
+        assert_eq!(s.log_consent().unwrap().state, ReadLogs::Denied);
     }
 }

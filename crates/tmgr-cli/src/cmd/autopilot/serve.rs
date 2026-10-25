@@ -262,6 +262,7 @@ pub struct Autopilot<'a> {
     cost: Cost,
     last_scan: Option<DateTime<Utc>>,
     noted_reading_off: bool,
+    logs_unread: bool,
     remote: RemoteCache,
     notified_limit: Option<(String, bool)>,
     pushes: Option<bool>,
@@ -341,6 +342,7 @@ impl<'a> Autopilot<'a> {
             cost: Cost::default(),
             last_scan: None,
             noted_reading_off: false,
+            logs_unread: false,
             remote: RemoteCache::default(),
             notified_limit: None,
             pushes: None,
@@ -811,6 +813,7 @@ impl<'a> Autopilot<'a> {
             billing: self.billing,
             api_usd: self.cost.api_usd,
             cost_cap: self.s.answers.max_cost_usd.filter(|_| !self.queue_mode),
+            logs_unread: self.logs_unread,
             started: self.started_ids.len() as u32,
             max_tasks: self.s.answers.max_tasks.filter(|_| !self.queue_mode),
             max_hours: self.s.answers.max_hours.filter(|_| !self.queue_mode),
@@ -844,6 +847,7 @@ impl<'a> Autopilot<'a> {
                 Blocker::Limit(h) => format!("usage limit: {}", limit_text(h)),
                 Blocker::UsageUnknown => "no fresh usage numbers".into(),
                 Blocker::CostCap => "cost cap reached".into(),
+                Blocker::CostUnknown => "cost unknown: AI usage logs are not read".into(),
                 Blocker::MaxTasks => "task limit reached".into(),
                 Blocker::Hours => "time limit reached".into(),
                 Blocker::Failures => "3 failures in a row".into(),
@@ -1213,18 +1217,30 @@ impl<'a> Autopilot<'a> {
         self.guard = guard_limits(&snaps, now, self.t.usage_max_age);
         if self.last_scan.is_none_or(|t| now - t >= self.t.scan_every) {
             self.last_scan = Some(now);
-            if !self.p.usage.scan(now) && !self.noted_reading_off {
+            self.logs_unread = !self.p.usage.scan(now);
+            if self.logs_unread && !self.noted_reading_off {
                 self.noted_reading_off = true;
                 let tool = match self.tool {
                     Some(Tool::Claude) => "Claude Code",
                     Some(Tool::Codex) => "Codex",
                     None => "agent",
                 };
-                let text = format!("AI usage logs are not read on this device, limits come only from the {tool} usage probe. Allow reading on the AI Usage page or run `tmgr usage consent allow`.");
+                let cap = if self.cost_cap_applies() {
+                    " The cost cap cannot be checked, so no new task starts."
+                } else {
+                    ""
+                };
+                let text = format!("AI usage logs are not read on this device, limits come only from the {tool} usage probe.{cap} Allow reading on the AI Usage page or run `tmgr usage consent allow`.");
                 self.event("usage", None, text);
             }
             self.refresh_cost(now);
         }
+    }
+
+    fn cost_cap_applies(&self) -> bool {
+        self.s.answers.max_cost_usd.is_some()
+            && !self.queue_mode
+            && self.billing != Billing::Subscription
     }
 
     fn refresh_cost(&mut self, now: DateTime<Utc>) {
