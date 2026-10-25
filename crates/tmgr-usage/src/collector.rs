@@ -52,6 +52,18 @@ pub trait Collector {
         state: &mut ParserState,
         sink: &mut dyn FnMut(ParsedRecord),
     ) -> Result<ParseOutcome>;
+    /// Like `parse`, but may stop at the first line end at or past `until` (one bounded chunk);
+    /// `state` then holds what the next chunk needs. The default reads to the end.
+    fn parse_until(
+        &self,
+        file: &LogFile,
+        from: u64,
+        _until: u64,
+        state: &mut ParserState,
+        sink: &mut dyn FnMut(ParsedRecord),
+    ) -> Result<ParseOutcome> {
+        self.parse(file, from, state, sink)
+    }
 }
 
 pub struct LineScan {
@@ -62,6 +74,18 @@ pub struct LineScan {
 pub fn for_each_line(
     path: &Path,
     from: u64,
+    max_line: usize,
+    f: &mut dyn FnMut(&[u8]),
+) -> Result<LineScan> {
+    for_each_line_until(path, from, u64::MAX, max_line, f)
+}
+
+/// Like `for_each_line`, but stops at the first line end at or past `until`, so a caller can read a
+/// file in bounded chunks; `next_offset` is where the next chunk starts.
+pub fn for_each_line_until(
+    path: &Path,
+    from: u64,
+    until: u64,
     max_line: usize,
     f: &mut dyn FnMut(&[u8]),
 ) -> Result<LineScan> {
@@ -108,6 +132,9 @@ pub fn for_each_line(
             line.clear();
             too_long = false;
             line_start = offset;
+            if line_start >= until {
+                break;
+            }
         }
     }
     Ok(LineScan {

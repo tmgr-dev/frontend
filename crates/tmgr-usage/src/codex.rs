@@ -3,8 +3,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashSet;
 
 use crate::collector::{
-    for_each_line, rel_key, walk_files_checked, Collector, LogFile, ParseOutcome, ParserState,
-    MAX_LINE_BYTES,
+    for_each_line_until, rel_key, walk_files_checked, Collector, LogFile, ParseOutcome,
+    ParserState, MAX_LINE_BYTES,
 };
 use crate::error::Result;
 use crate::limits::{LimitSnapshot, LimitSource, LimitWindow};
@@ -690,6 +690,17 @@ impl Collector for CodexCollector {
         state: &mut ParserState,
         sink: &mut dyn FnMut(ParsedRecord),
     ) -> Result<ParseOutcome> {
+        self.parse_until(file, from, u64::MAX, state, sink)
+    }
+
+    fn parse_until(
+        &self,
+        file: &LogFile,
+        from: u64,
+        until: u64,
+        state: &mut ParserState,
+        sink: &mut dyn FnMut(ParsedRecord),
+    ) -> Result<ParseOutcome> {
         let mut st: State = if from == 0 {
             State::default()
         } else {
@@ -697,7 +708,7 @@ impl Collector for CodexCollector {
         };
         let mut bad_lines = 0;
         let mut ctx = Ctx { file, sink };
-        let scan = for_each_line(&file.path, from, MAX_LINE_BYTES, &mut |raw| {
+        let scan = for_each_line_until(&file.path, from, until, MAX_LINE_BYTES, &mut |raw| {
             if !relevant(raw) {
                 return;
             }

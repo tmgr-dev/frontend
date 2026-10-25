@@ -4,8 +4,8 @@ use std::io::Read;
 use std::path::Path;
 
 use crate::collector::{
-    for_each_line, rel_key, walk_files_checked, Collector, LogFile, ParseOutcome, ParserState,
-    MAX_LINE_BYTES,
+    for_each_line_until, rel_key, walk_files_checked, Collector, LogFile, ParseOutcome,
+    ParserState, MAX_LINE_BYTES,
 };
 use crate::error::Result;
 use crate::model::{
@@ -362,6 +362,17 @@ impl Collector for ClaudeCollector {
         state: &mut ParserState,
         sink: &mut dyn FnMut(ParsedRecord),
     ) -> Result<ParseOutcome> {
+        self.parse_until(file, from, u64::MAX, state, sink)
+    }
+
+    fn parse_until(
+        &self,
+        file: &LogFile,
+        from: u64,
+        until: u64,
+        state: &mut ParserState,
+        sink: &mut dyn FnMut(ParsedRecord),
+    ) -> Result<ParseOutcome> {
         let mut st: ClaudeState = if from == 0 {
             ClaudeState::default()
         } else {
@@ -369,7 +380,7 @@ impl Collector for ClaudeCollector {
         };
         let file_agent = subagent_id_from_path(&file.path);
         let mut bad_lines = 0;
-        let scan = for_each_line(&file.path, from, MAX_LINE_BYTES, &mut |raw| {
+        let scan = for_each_line_until(&file.path, from, until, MAX_LINE_BYTES, &mut |raw| {
             if !wanted(raw) {
                 return;
             }

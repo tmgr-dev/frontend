@@ -1,7 +1,7 @@
 //! Whether this device lets tmgr read the local Claude Code and Codex logs (TM-638).
 
 use chrono::{DateTime, SecondsFormat, Utc};
-use rusqlite::{Transaction, TransactionBehavior};
+use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use std::fs::{File, TryLockError};
 use std::path::Path;
@@ -115,12 +115,22 @@ impl LogConsent {
     }
 }
 
+/// The choice as `conn` sees it (inside its transaction, if one is open).
+pub(crate) fn read_consent(conn: &Connection) -> Result<LogConsent> {
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            [READ_LOGS_KEY],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(raw.map_or_else(LogConsent::default, |raw| LogConsent::parse(&raw)))
+}
+
 impl Store {
     /// Missing key = unset; a value that cannot be read = denied (fail closed).
     pub fn log_consent(&self) -> Result<LogConsent> {
-        Ok(self
-            .setting(READ_LOGS_KEY)?
-            .map_or_else(LogConsent::default, |raw| LogConsent::parse(&raw)))
+        read_consent(&self.conn)
     }
 
     /// Stores the value as given; granted with both tools off is stored as denied.
