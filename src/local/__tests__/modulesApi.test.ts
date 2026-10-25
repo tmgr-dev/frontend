@@ -1,3 +1,4 @@
+import { agentModulesToEnable } from '@/onboarding/agentModules';
 import { parseModulesPayload } from '@/utils/modules';
 import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
@@ -178,5 +179,14 @@ describeSqlite('local modules API', () => {
 		});
 
 		expect(result.modules.find((m) => m.key === 'pages')?.hidden).toBe(true);
+	});
+
+	it('starts with agent work and personas on, so the agent intent changes nothing', async () => {
+		const fresh = await payload();
+		expect(enabled(fresh.modules)).toMatchObject({
+			agent_work: true,
+			personas: true,
+		});
+		expect(agentModulesToEnable(fresh)).toBeNull();
 	});
 });
