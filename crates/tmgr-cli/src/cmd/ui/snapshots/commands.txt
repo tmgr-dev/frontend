@@ -67,6 +67,10 @@ usage sync auto status | Usage | -
 usage sync off | Usage | -
 usage sync status | Usage | -
 usage sync forget | Usage | task
+usage consent | Usage | -
+usage consent status | Usage | -
+usage consent allow | Usage | -
+usage consent deny | Usage | -
 usage reset | Usage | -
 usage statusline install | Usage | account, install
 usage statusline uninstall | Usage | account

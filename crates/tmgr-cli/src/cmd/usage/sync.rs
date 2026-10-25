@@ -356,6 +356,7 @@ fn collect(
     u: &mut Usage,
     days: i64,
     no_scan: bool,
+    user_run: bool,
     task: Option<&str>,
 ) -> Result<(Corpus, Vec<Prepared>)> {
     let want = match task.map(parse_task_ref).transpose()? {
@@ -363,7 +364,7 @@ fn collect(
         Some(TaskRef::Key(k)) => Some(WantedTask::Key(k)),
         None => None,
     };
-    let c = Corpus::load(ctx, u, days, no_scan)?;
+    let c = Corpus::load(ctx, u, days, no_scan, user_run)?;
     let mut buckets = c.buckets();
     if let Some(want) = &want {
         buckets.retain(|b| matches(b, want));
@@ -555,7 +556,14 @@ fn sync(ctx: &Ctx, args: &SyncRunArgs) -> Result<Output> {
     if !args.dry_run && u.store.sync_consent().map_err(fail)?.is_none() {
         return Err(consent_error());
     }
-    let (_, prepared) = collect(ctx, &mut u, args.days, args.no_scan, task.as_deref())?;
+    let (_, prepared) = collect(
+        ctx,
+        &mut u,
+        args.days,
+        args.no_scan,
+        !args.auto,
+        task.as_deref(),
+    )?;
     let mut rows: Vec<Row> = Vec::new();
     let mut stopped: Option<Stop> = None;
     let mut off_workspaces: BTreeSet<String> = BTreeSet::new();
@@ -845,7 +853,7 @@ fn on(ctx: &Ctx, yes_auto: bool) -> Result<Output> {
             "Uploading is already on. `tmgr usage sync off` turns it off.",
         ));
     }
-    let (c, prepared) = collect(ctx, &mut u, 30, false, None)?;
+    let (c, prepared) = collect(ctx, &mut u, 30, false, true, None)?;
     let cloud: Vec<(&Prepared, &Ready)> = prepared
         .iter()
         .filter_map(|p| match &p.state {

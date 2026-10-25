@@ -76,7 +76,8 @@ pub struct Probed {
 pub trait Usage {
     fn probe(&self, tool: Tool) -> Result<Probed>;
     fn stored(&self, now: DateTime<Utc>) -> Vec<LimitSnapshot>;
-    fn scan(&self, now: DateTime<Utc>);
+    /// False when reading the AI tool logs is not allowed on this device (nothing was scanned).
+    fn scan(&self, now: DateTime<Utc>) -> bool;
     fn cost(
         &self,
         from: DateTime<Utc>,

@@ -79,7 +79,7 @@ pub enum UsageCommand {
     },
     /// Cost, time, tokens and the agent tree of one task
     Task(TaskArgs),
-    /// Read new log lines into the local usage database
+    /// Read new log lines into the local usage database (not when reading is denied, see `tmgr usage consent`)
     Scan,
     /// Accounts whose logs are scanned (default roots plus the ones you add)
     Accounts {
@@ -93,6 +93,14 @@ pub enum UsageCommand {
     },
     /// Upload per-task usage to TMGR (opt-in; automatic uploads only after a separate confirmation)
     Sync(SyncArgs),
+    /// Whether tmgr may read the Claude Code and Codex logs on this device: status, allow or deny
+    #[command(
+        long_about = "Whether tmgr may read the local Claude Code and Codex logs on this device. The choice is stored in the usage data folder and shared with TMGR desktop (AI Usage, Settings -> Privacy).\n\nUntil you choose, commands you run by hand (`tmgr usage`, `limits`, `task`, `scan`, `sync`) still read the logs, while TMGR desktop and background scans (autopilot, automatic sync after an agent run) do not. After `deny` nothing reads them; the commands show the stored data. Only token counts, model, timestamps, branch, session id and the project folder name are kept, never prompt or reply text, and nothing leaves this device."
+    )]
+    Consent {
+        #[command(subcommand)]
+        command: Option<ConsentCommand>,
+    },
     /// Delete all usage data (database and statusline snapshots)
     Reset,
     /// Claude Code statusLine integration for rate limits
@@ -199,6 +207,16 @@ pub enum AutoCommand {
     Off,
     /// Whether automatic uploads are on
     Status,
+}
+
+#[derive(Subcommand, Clone, Copy)]
+pub enum ConsentCommand {
+    /// Show the current choice (default)
+    Status,
+    /// Allow reading the logs on this device
+    Allow,
+    /// Stop reading the logs on this device (stored data stays; `tmgr usage reset` deletes it)
+    Deny,
 }
 
 #[derive(Subcommand)]

@@ -261,6 +261,7 @@ pub struct Autopilot<'a> {
     unknown_since: Option<DateTime<Utc>>,
     cost: Cost,
     last_scan: Option<DateTime<Utc>>,
+    noted_reading_off: bool,
     remote: RemoteCache,
     notified_limit: Option<(String, bool)>,
     pushes: Option<bool>,
@@ -339,6 +340,7 @@ impl<'a> Autopilot<'a> {
             unknown_since: None,
             cost: Cost::default(),
             last_scan: None,
+            noted_reading_off: false,
             remote: RemoteCache::default(),
             notified_limit: None,
             pushes: None,
@@ -1211,7 +1213,16 @@ impl<'a> Autopilot<'a> {
         self.guard = guard_limits(&snaps, now, self.t.usage_max_age);
         if self.last_scan.is_none_or(|t| now - t >= self.t.scan_every) {
             self.last_scan = Some(now);
-            self.p.usage.scan(now);
+            if !self.p.usage.scan(now) && !self.noted_reading_off {
+                self.noted_reading_off = true;
+                let tool = match self.tool {
+                    Some(Tool::Claude) => "Claude Code",
+                    Some(Tool::Codex) => "Codex",
+                    None => "agent",
+                };
+                let text = format!("AI usage logs are not read on this device, limits come only from the {tool} usage probe. Allow reading on the AI Usage page or run `tmgr usage consent allow`.");
+                self.event("usage", None, text);
+            }
             self.refresh_cost(now);
         }
     }

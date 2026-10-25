@@ -2,6 +2,7 @@ use chrono::{DateTime, Duration, Local, NaiveDate, NaiveDateTime, SecondsFormat,
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tmgr_usage::consent::{forget, LogConsent, ReadLogs};
 use tmgr_usage::error::UsageError;
 use tmgr_usage::limits::LimitWindow;
 use tmgr_usage::bind::{facts_from, Linker, RunIds};
@@ -93,6 +94,9 @@ fn scan_inner(flag: &AtomicBool, env: &Env, now: DateTime<Utc>) -> Result<ScanOu
     return Ok(ScanOut { state: "busy", files: 0, events_new: 0, events_updated: 0, errors: 0, bad_lines: 0 });
   };
   let (dir, mut store) = open(env)?;
+  if !store.log_consent().map_err(user_error)?.allows_any(false) {
+    return Ok(ScanOut { state: "off", files: 0, events_new: 0, events_updated: 0, errors: 0, bad_lines: 0 });
+  }
   let r = refresh(&mut store, &dir, env, now).map_err(user_error)?;
   Ok(ScanOut {
     state: "done",
@@ -102,6 +106,82 @@ fn scan_inner(flag: &AtomicBool, env: &Env, now: DateTime<Utc>) -> Result<ScanOu
     errors: r.errors,
     bad_lines: r.bad_lines,
   })
+}
+
+#[derive(Serialize, Debug)]
+pub struct FolderOut {
+  pub tool: &'static str,
+  pub label: String,
+  pub path: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct UsageConsentOut {
+  pub supported: bool,
+  pub unsupported_reason: Option<String>,
+  pub state: &'static str,
+  pub claude: bool,
+  pub codex: bool,
+  pub decided_at: Option<String>,
+  pub folders: Vec<FolderOut>,
+  pub has_data: bool,
+}
+
+fn shown_path(path: &std::path::Path, home: Option<&std::path::Path>) -> String {
+  if let Some(home) = home.filter(|h| h.as_os_str().len() > 1) {
+    for base in [home.to_path_buf(), paths::canonical(home)] {
+      for p in [path.to_path_buf(), paths::canonical(path)] {
+        if let Ok(rest) = p.strip_prefix(&base) {
+          return if rest.as_os_str().is_empty() { "~".into() } else { format!("~/{}", rest.display()) };
+        }
+      }
+    }
+  }
+  path.display().to_string()
+}
+
+fn consent_out(env: &Env, dir: &std::path::Path, store: &Store) -> Result<UsageConsentOut, String> {
+  let c = store.log_consent().map_err(user_error)?;
+  let folders = paths::all_accounts(dir, env)
+    .map_err(user_error)?
+    .into_iter()
+    .map(|a| FolderOut { tool: a.tool.as_str(), path: shown_path(&a.root, env.home.as_deref()), label: a.label })
+    .collect();
+  Ok(UsageConsentOut {
+    supported: true,
+    unsupported_reason: None,
+    state: c.state.as_str(),
+    claude: c.claude,
+    codex: c.codex,
+    decided_at: c.decided_at.map(stamp),
+    folders,
+    has_data: store.event_count().map_err(user_error)? > 0,
+  })
+}
+
+fn consent_inner(env: &Env) -> Result<UsageConsentOut, String> {
+  let (dir, store) = open(env)?;
+  consent_out(env, &dir, &store)
+}
+
+fn consent_set_inner(env: &Env, now: DateTime<Utc>, state: &str, claude: bool, codex: bool) -> Result<UsageConsentOut, String> {
+  let state = match state {
+    "granted" => ReadLogs::Granted,
+    "denied" => ReadLogs::Denied,
+    _ => return Err("Unknown choice.".into()),
+  };
+  let (dir, store) = open(env)?;
+  store.set_log_consent(&LogConsent { state, claude, codex, decided_at: Some(now) }).map_err(user_error)?;
+  consent_out(env, &dir, &store)
+}
+
+fn forget_inner(flag: &AtomicBool, env: &Env, now: DateTime<Utc>) -> Result<UsageConsentOut, String> {
+  let Some(_guard) = ScanGuard::acquire(flag) else {
+    return Err("A scan is running. Try again in a moment.".into());
+  };
+  let (dir, mut store) = open(env)?;
+  forget(&mut store, &dir, now).map_err(|_| "The usage data could not be deleted.".to_string())?;
+  consent_out(env, &dir, &store)
 }
 
 #[derive(Serialize, Debug, Default, PartialEq)]
@@ -488,6 +568,39 @@ pub async fn usage_scan() -> Result<ScanOut, String> {
 }
 
 #[tauri::command]
+pub async fn usage_consent() -> Result<UsageConsentOut, String> {
+  if snap() {
+    return Ok(UsageConsentOut {
+      supported: false,
+      unsupported_reason: Some(SNAP_REASON.into()),
+      state: "unset",
+      claude: true,
+      codex: true,
+      decided_at: None,
+      folders: Vec::new(),
+      has_data: false,
+    });
+  }
+  blocking(|| consent_inner(&Env::from_process())).await
+}
+
+#[tauri::command]
+pub async fn usage_consent_set(state: String, claude: bool, codex: bool) -> Result<UsageConsentOut, String> {
+  if snap() {
+    return Err(SNAP_REASON.into());
+  }
+  blocking(move || consent_set_inner(&Env::from_process(), Utc::now(), &state, claude, codex)).await
+}
+
+#[tauri::command]
+pub async fn usage_forget() -> Result<UsageConsentOut, String> {
+  if snap() {
+    return Err(SNAP_REASON.into());
+  }
+  blocking(|| forget_inner(&SCANNING, &Env::from_process(), Utc::now())).await
+}
+
+#[tauri::command]
 pub async fn usage_overview() -> Result<OverviewOut, String> {
   if snap() {
     return Ok(OverviewOut { supported: false, unsupported_reason: Some(SNAP_REASON.into()), ..Default::default() });
@@ -519,6 +632,111 @@ mod tests {
 
   fn env_in(home: &Path) -> Env {
     Env { home: Some(home.to_path_buf()), vars: HashMap::new() }
+  }
+
+  fn granted(home: &Path) -> Env {
+    let env = env_in(home);
+    consent_set_inner(&env, local_noon(), "granted", true, true).unwrap();
+    env
+  }
+
+  fn events(env: &Env) -> u64 {
+    open(env).unwrap().1.event_count().unwrap()
+  }
+
+  #[test]
+  fn no_choice_yet_reads_nothing_and_lists_the_folders() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = env_in(tmp.path());
+    let now = local_noon();
+    claude_log(tmp.path(), now);
+    codex_log(tmp.path(), now);
+    let scan = scan_inner(&AtomicBool::new(false), &env, now).unwrap();
+    assert_eq!((scan.state, scan.files, scan.events_new), ("off", 0, 0));
+    assert_eq!(events(&env), 0);
+    let c = consent_inner(&env).unwrap();
+    assert!(c.supported && c.unsupported_reason.is_none());
+    assert_eq!((c.state, c.claude, c.codex, c.has_data), ("unset", true, true, false));
+    assert!(c.decided_at.is_none());
+    let folders: Vec<_> = c.folders.iter().map(|f| (f.tool, f.label.as_str(), f.path.as_str())).collect();
+    assert_eq!(folders, [("claude", "claude", "~/.claude"), ("codex", "codex", "~/.codex")]);
+  }
+
+  #[test]
+  fn granted_reads_both_tools_and_codex_off_reads_only_claude() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = env_in(tmp.path());
+    let now = local_noon();
+    claude_log(tmp.path(), now);
+    codex_log(tmp.path(), now);
+    let c = consent_set_inner(&env, now, "granted", true, false).unwrap();
+    assert_eq!((c.state, c.claude, c.codex), ("granted", true, false));
+    assert_eq!(c.decided_at.as_deref(), Some(stamp(now).as_str()));
+    let scan = scan_inner(&AtomicBool::new(false), &env, now).unwrap();
+    assert_eq!((scan.state, scan.events_new), ("done", 2));
+    let ov = overview_inner(&env, now).unwrap();
+    assert!(ov.windows[0].rows.iter().all(|r| r.tool == "claude"));
+    consent_set_inner(&env, now, "granted", true, true).unwrap();
+    assert_eq!(scan_inner(&AtomicBool::new(false), &env, now).unwrap().events_new, 1);
+    assert!(consent_inner(&env).unwrap().has_data);
+  }
+
+  #[test]
+  fn denied_or_both_tools_off_reads_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = env_in(tmp.path());
+    let now = local_noon();
+    claude_log(tmp.path(), now);
+    let c = consent_set_inner(&env, now, "granted", false, false).unwrap();
+    assert_eq!((c.state, c.claude, c.codex), ("denied", false, false));
+    assert_eq!(scan_inner(&AtomicBool::new(false), &env, now).unwrap().state, "off");
+    consent_set_inner(&env, now, "denied", true, true).unwrap();
+    let again = consent_set_inner(&env, now, "denied", true, true).unwrap();
+    assert_eq!((again.state, again.claude, again.codex), ("denied", true, true));
+    assert_eq!(scan_inner(&AtomicBool::new(false), &env, now).unwrap().state, "off");
+    assert_eq!(events(&env), 0);
+    assert_eq!(consent_set_inner(&env, now, "unset", true, true).unwrap_err(), "Unknown choice.");
+    assert_eq!(consent_inner(&env).unwrap().state, "denied");
+  }
+
+  #[test]
+  fn forget_deletes_events_limits_and_snapshots_and_turns_reading_off() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = granted(tmp.path());
+    let now = local_noon();
+    claude_log(tmp.path(), now);
+    codex_log(tmp.path(), now);
+    scan_inner(&AtomicBool::new(false), &env, now).unwrap();
+    assert!(overview_inner(&env, now).unwrap().limits.len() == 1);
+    let snaps = paths::snapshots_dir(&paths::data_dir(&env).unwrap()).join("claude");
+    std::fs::create_dir_all(&snaps).unwrap();
+    std::fs::write(snaps.join("s.json"), "{}").unwrap();
+
+    let flag = AtomicBool::new(false);
+    let c = forget_inner(&flag, &env, now).unwrap();
+    assert_eq!((c.state, c.claude, c.codex, c.has_data), ("denied", true, true, false));
+    assert!(!flag.load(Ordering::Acquire));
+    assert_eq!(events(&env), 0);
+    let ov = overview_inner(&env, now).unwrap();
+    assert!(!ov.has_data && ov.limits.is_empty());
+    assert!(!snaps.exists());
+    assert_eq!(scan_inner(&flag, &env, now).unwrap().state, "off");
+    assert_eq!(forget_inner(&flag, &env, now).unwrap().state, "denied");
+  }
+
+  #[test]
+  fn forget_while_a_scan_runs_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = granted(tmp.path());
+    let now = local_noon();
+    claude_log(tmp.path(), now);
+    scan_inner(&AtomicBool::new(false), &env, now).unwrap();
+    let flag = AtomicBool::new(false);
+    let held = ScanGuard::acquire(&flag).unwrap();
+    assert_eq!(forget_inner(&flag, &env, now).unwrap_err(), "A scan is running. Try again in a moment.");
+    assert_eq!(events(&env), 2);
+    assert_eq!(consent_inner(&env).unwrap().state, "granted");
+    drop(held);
   }
 
   fn local_noon() -> DateTime<Utc> {
@@ -578,7 +796,7 @@ mod tests {
   #[test]
   fn overview_shows_scanned_tools_models_windows_and_limits() {
     let tmp = tempfile::tempdir().unwrap();
-    let env = env_in(tmp.path());
+    let env = granted(tmp.path());
     let now = local_noon();
     claude_log(tmp.path(), now);
     codex_log(tmp.path(), now);
@@ -611,7 +829,7 @@ mod tests {
   #[test]
   fn empty_home_has_no_data() {
     let tmp = tempfile::tempdir().unwrap();
-    let env = env_in(tmp.path());
+    let env = granted(tmp.path());
     let now = local_noon();
     let scan = scan_inner(&AtomicBool::new(false), &env, now).unwrap();
     assert_eq!((scan.state, scan.files), ("done", 0));
@@ -630,7 +848,7 @@ mod tests {
   #[test]
   fn second_scan_is_busy_and_the_guard_releases() {
     let tmp = tempfile::tempdir().unwrap();
-    let env = env_in(tmp.path());
+    let env = granted(tmp.path());
     let flag = AtomicBool::new(false);
     let held = ScanGuard::acquire(&flag).unwrap();
     let busy = scan_inner(&flag, &env, local_noon()).unwrap();
@@ -649,7 +867,7 @@ mod tests {
   #[test]
   fn tasks_link_by_session_id_and_keep_runs_without_keys() {
     let tmp = tempfile::tempdir().unwrap();
-    let env = env_in(tmp.path());
+    let env = granted(tmp.path());
     let now = local_noon();
     claude_log(tmp.path(), now);
     scan_inner(&AtomicBool::new(false), &env, now).unwrap();
@@ -668,7 +886,7 @@ mod tests {
   #[test]
   fn tasks_leave_unmatched_usage_unattributed_and_skip_future_runs() {
     let tmp = tempfile::tempdir().unwrap();
-    let env = env_in(tmp.path());
+    let env = granted(tmp.path());
     let now = local_noon();
     claude_log(tmp.path(), now);
     scan_inner(&AtomicBool::new(false), &env, now).unwrap();
@@ -684,7 +902,7 @@ mod tests {
   #[test]
   fn run_cap_keeps_the_newest_eligible_runs_and_reports_truncation() {
     let tmp = tempfile::tempdir().unwrap();
-    let env = env_in(tmp.path());
+    let env = granted(tmp.path());
     let now = local_noon();
     claude_log(tmp.path(), now);
     scan_inner(&AtomicBool::new(false), &env, now).unwrap();
@@ -728,7 +946,7 @@ mod tests {
   #[test]
   fn task_usage_links_by_session_id() {
     let tmp = tempfile::tempdir().unwrap();
-    let env = env_in(tmp.path());
+    let env = granted(tmp.path());
     let now = local_noon();
     claude_log(tmp.path(), now);
     scan_inner(&AtomicBool::new(false), &env, now).unwrap();
@@ -761,7 +979,7 @@ mod tests {
   #[test]
   fn task_usage_links_an_mcp_only_run_through_its_start_call() {
     let tmp = tempfile::tempdir().unwrap();
-    let env = env_in(tmp.path());
+    let env = granted(tmp.path());
     let now = local_noon();
     mcp_only_log(tmp.path(), now);
     scan_inner(&AtomicBool::new(false), &env, now).unwrap();
@@ -779,7 +997,7 @@ mod tests {
   #[test]
   fn runs_with_a_text_id_still_link_by_session() {
     let tmp = tempfile::tempdir().unwrap();
-    let env = env_in(tmp.path());
+    let env = granted(tmp.path());
     let now = local_noon();
     claude_log(tmp.path(), now);
     scan_inner(&AtomicBool::new(false), &env, now).unwrap();
@@ -792,7 +1010,7 @@ mod tests {
   #[test]
   fn successive_mcp_tasks_in_one_session_split_at_the_finish() {
     let tmp = tempfile::tempdir().unwrap();
-    let env = env_in(tmp.path());
+    let env = granted(tmp.path());
     let now = local_noon();
     let line = |msg: &str, ago: i64, call: &str| {
       format!(
@@ -826,7 +1044,7 @@ mod tests {
   #[test]
   fn task_usage_excludes_events_won_by_a_competing_run() {
     let tmp = tempfile::tempdir().unwrap();
-    let env = env_in(tmp.path());
+    let env = granted(tmp.path());
     let now = local_noon();
     claude_log(tmp.path(), now);
     scan_inner(&AtomicBool::new(false), &env, now).unwrap();
@@ -846,7 +1064,7 @@ mod tests {
   #[test]
   fn task_usage_without_runs_has_no_aggregate() {
     let tmp = tempfile::tempdir().unwrap();
-    let env = env_in(tmp.path());
+    let env = granted(tmp.path());
     let now = local_noon();
     claude_log(tmp.path(), now);
     scan_inner(&AtomicBool::new(false), &env, now).unwrap();

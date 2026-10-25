@@ -51,11 +51,17 @@ pub struct Bucket {
 }
 
 impl Corpus {
-    pub fn load(ctx: &Ctx, u: &mut Usage, days: i64, no_scan: bool) -> Result<Corpus> {
+    pub fn load(
+        ctx: &Ctx,
+        u: &mut Usage,
+        days: i64,
+        no_scan: bool,
+        user_run: bool,
+    ) -> Result<Corpus> {
         let now = Utc::now();
         let (from, to) = (now - Duration::days(days), now + Duration::minutes(1));
         if !no_scan {
-            scan(ctx, u, now)?;
+            scan(ctx, u, now, user_run)?;
         }
         let (events, tokens): (Vec<_>, Vec<_>) = u
             .store
@@ -196,7 +202,7 @@ pub fn run(ctx: &Ctx, args: &TaskArgs) -> Result<Output> {
         TaskRef::Key(k) => WantedTask::Key(k),
     };
     let mut u = Usage::open()?;
-    let c = Corpus::load(ctx, &mut u, args.days, args.no_scan)?;
+    let c = Corpus::load(ctx, &mut u, args.days, args.no_scan, true)?;
     let (set, report, fact_report) = (&c.set, &c.report, &c.fact_report);
     let matching = |links: &[Link]| -> Vec<usize> {
         links

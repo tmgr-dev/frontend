@@ -8,7 +8,7 @@ mod summary;
 mod sync;
 mod task;
 
-use crate::cli_usage::{UsageArgs, UsageCommand};
+use crate::cli_usage::{ConsentCommand, UsageArgs, UsageCommand};
 use crate::ctx::Ctx;
 use crate::out::Output;
 use chrono::{DateTime, Utc};
@@ -17,6 +17,7 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 use tmgr_core::error::{Error, Result};
 use tmgr_usage::collector::Collector;
+use tmgr_usage::consent::ReadLogs;
 use tmgr_usage::error::UsageError;
 use tmgr_usage::paths::{self, Env};
 use tmgr_usage::{scan_account, Account, PriceBook, Store, Tool, Tz};
@@ -77,6 +78,7 @@ pub struct ScanTotals {
     pub errors: u64,
     pub bad_lines: u64,
     pub skipped_before_floor: u64,
+    pub reading_off: bool,
 }
 
 fn first_scan_is_big(u: &Usage, accounts: &[Account]) -> bool {
@@ -98,8 +100,23 @@ fn first_scan_is_big(u: &Usage, accounts: &[Account]) -> bool {
     bytes > BIG_FIRST_SCAN_BYTES
 }
 
-pub fn scan(ctx: &Ctx, u: &mut Usage, now: DateTime<Utc>) -> Result<ScanTotals> {
-    let accounts = u.accounts()?;
+const READING_OFF: &str = "Reading Claude Code and Codex logs is off on this device. Turn it on in TMGR desktop (AI Usage) or run `tmgr usage consent allow`.";
+
+/// `user_run`: the user typed this command; background scans (autopilot, `sync --auto`) pass false
+/// and need reading granted. A scan skipped for consent returns `reading_off`.
+pub fn scan(ctx: &Ctx, u: &mut Usage, now: DateTime<Utc>, user_run: bool) -> Result<ScanTotals> {
+    let consent = u.store.log_consent().map_err(fail)?;
+    if !consent.allows_any(user_run) {
+        if user_run {
+            ctx.warn("usage_reading_off", READING_OFF);
+        }
+        return Ok(ScanTotals {
+            reading_off: true,
+            ..ScanTotals::default()
+        });
+    }
+    let mut accounts = u.accounts()?;
+    accounts.retain(|a| consent.allows(a.tool, user_run));
     if !ctx.json && std::io::stderr().is_terminal() && first_scan_is_big(u, &accounts) {
         eprintln!("Reading AI tool logs for the first time, this can take a minute...");
     }
@@ -190,6 +207,7 @@ pub fn run(ctx: &Ctx, args: &UsageArgs) -> Result<Output> {
         Some(UsageCommand::Accounts { command }) => accounts::run(ctx, command.as_ref()),
         Some(UsageCommand::Pricing { command }) => pricing::run(ctx, command.as_ref()),
         Some(UsageCommand::Sync(sync_args)) => sync::run(ctx, sync_args),
+        Some(UsageCommand::Consent { command }) => consent(*command),
         Some(UsageCommand::Reset) => reset(ctx),
         Some(UsageCommand::Statusline { command }) => statusline::run(ctx, command),
         Some(UsageCommand::StatuslineHook(_)) => {
@@ -200,7 +218,7 @@ pub fn run(ctx: &Ctx, args: &UsageArgs) -> Result<Output> {
 
 fn run_scan(ctx: &Ctx) -> Result<Output> {
     let mut u = Usage::open()?;
-    let t = scan(ctx, &mut u, Utc::now())?;
+    let t = scan(ctx, &mut u, Utc::now(), true)?;
     let events = u.store.event_count().map_err(fail)?;
     Ok(Output::new(
         json!({
@@ -210,12 +228,59 @@ fn run_scan(ctx: &Ctx) -> Result<Output> {
             "errors": t.errors,
             "bad_lines": t.bad_lines,
             "skipped_before_floor": t.skipped_before_floor,
+            "reading_off": t.reading_off,
             "events_total": events,
         }),
         format!(
             "Scanned {} log files: {} new events, {} updated ({} stored in total).",
             t.files, t.events_new, t.events_updated, events
         ),
+    ))
+}
+
+fn consent(command: Option<ConsentCommand>) -> Result<Output> {
+    let u = Usage::open()?;
+    let mut c = u.store.log_consent().map_err(fail)?;
+    match command.unwrap_or(ConsentCommand::Status) {
+        ConsentCommand::Status => {}
+        ConsentCommand::Allow => {
+            if !c.claude && !c.codex {
+                (c.claude, c.codex) = (true, true);
+            }
+            c.state = ReadLogs::Granted;
+            c.decided_at = Some(Utc::now());
+            u.store.set_log_consent(&c).map_err(fail)?;
+        }
+        ConsentCommand::Deny => {
+            c.state = ReadLogs::Denied;
+            c.decided_at = Some(Utc::now());
+            u.store.set_log_consent(&c).map_err(fail)?;
+        }
+    }
+    let c = u.store.log_consent().map_err(fail)?;
+    let tools: Vec<&str> = [(c.claude, "Claude Code"), (c.codex, "Codex")]
+        .into_iter()
+        .filter_map(|(on, name)| on.then_some(name))
+        .collect();
+    let kept = "Kept: token counts, model, times, branch and project folder name; never prompt or reply text, and nothing leaves this device.";
+    let human = match c.state {
+        ReadLogs::Granted => format!(
+            "Reading {} logs is on for this device. {kept}",
+            tools.join(" and ")
+        ),
+        ReadLogs::Denied => "Reading Claude Code and Codex logs is off on this device; usage shows only stored data. `tmgr usage consent allow` turns it on.".to_string(),
+        ReadLogs::Unset => format!(
+            "Not decided yet: tmgr reads the Claude Code and Codex logs only when you run a usage command; TMGR desktop and background scans wait for `tmgr usage consent allow`. {kept}"
+        ),
+    };
+    Ok(Output::new(
+        json!({
+            "state": c.state.as_str(),
+            "claude": c.claude,
+            "codex": c.codex,
+            "decided_at": c.decided_at.map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
+        }),
+        human,
     ))
 }
 
@@ -226,11 +291,7 @@ fn reset(ctx: &Ctx) -> Result<Output> {
         ctx.yes,
     )?;
     let mut u = Usage::open()?;
-    u.store.delete_all().map_err(fail)?;
-    let snaps = paths::snapshots_dir(&u.dir);
-    if snaps.is_dir() {
-        let _ = std::fs::remove_dir_all(&snaps);
-    }
+    tmgr_usage::consent::wipe(&mut u.store, &u.dir).map_err(fail)?;
     Ok(Output::new(
         json!({"reset": true}),
         "Usage data deleted. The next `tmgr usage` reads the logs again.",

@@ -459,6 +459,105 @@ fn json_summary_follows_the_schema_and_leaks_no_paths() {
     assert!(warnings.iter().any(|w| w["code"] == "usage_unpriced"));
 }
 
+fn stored_events(u: &U) -> u64 {
+    Store::open(&u.p("data/usage.db"))
+        .unwrap()
+        .event_count()
+        .unwrap()
+}
+
+#[test]
+fn without_a_choice_commands_typed_by_hand_still_read_the_logs() {
+    let u = U::new();
+    u.standard_fixture();
+    let v = u.json(&["usage", "consent"]);
+    assert_eq!(v["data"]["state"], "unset");
+    assert_eq!(v["data"]["decided_at"], Value::Null);
+    let human = text(&u.ok(&["usage", "consent", "status"]).stdout);
+    assert!(human.contains("Not decided yet"), "{human}");
+    assert_eq!(u.json(&["usage", "scan"])["data"]["events_new"], 5);
+}
+
+#[test]
+fn denied_reading_skips_the_scan_with_one_warning_until_allowed() {
+    let u = U::new();
+    u.standard_fixture();
+    let v = u.json(&["usage", "consent", "deny"]);
+    assert_eq!(v["data"]["state"], "denied");
+    assert!(v["data"]["decided_at"].is_string());
+    for args in [&["usage"][..], &["usage", "scan"], &["usage", "limits"]] {
+        let v = u.json(args);
+        let off: Vec<_> = v["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|w| w["code"] == "usage_reading_off")
+            .collect();
+        assert_eq!(off.len(), 1, "{args:?}: {v}");
+        assert_eq!(
+            off[0]["message"],
+            "Reading Claude Code and Codex logs is off on this device. Turn it on in TMGR desktop (AI Usage) or run `tmgr usage consent allow`."
+        );
+    }
+    assert_eq!(u.json(&["usage", "scan"])["data"]["reading_off"], true);
+    let summary = u.json(&["usage"]);
+    assert_valid("usage_summary", &summary);
+    assert_eq!(stored_events(&u), 0);
+
+    let v = u.json(&["usage", "consent", "allow"]);
+    assert_eq!(
+        (
+            &v["data"]["state"],
+            &v["data"]["claude"],
+            &v["data"]["codex"]
+        ),
+        (&json!("granted"), &json!(true), &json!(true))
+    );
+    let human = text(&u.ok(&["usage", "consent"]).stdout);
+    assert!(
+        human.contains("Reading Claude Code and Codex logs is on"),
+        "{human}"
+    );
+    let v = u.json(&["usage", "scan"]);
+    assert_eq!(v["data"]["events_new"], 5);
+    assert_eq!(v["data"]["reading_off"], false);
+    assert!(!v["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|w| w["code"] == "usage_reading_off"));
+}
+
+#[test]
+fn allow_after_both_tools_were_turned_off_turns_both_on() {
+    let u = U::new();
+    u.standard_fixture();
+    Store::open(&u.p("data/usage.db"))
+        .unwrap()
+        .set_log_consent(&tmgr_usage::consent::LogConsent {
+            state: tmgr_usage::consent::ReadLogs::Granted,
+            claude: false,
+            codex: false,
+            decided_at: None,
+        })
+        .unwrap();
+    assert_eq!(u.json(&["usage", "consent"])["data"]["state"], "denied");
+    let v = u.json(&["usage", "consent", "allow"]);
+    assert_eq!(
+        (&v["data"]["claude"], &v["data"]["codex"]),
+        (&json!(true), &json!(true))
+    );
+}
+
+#[test]
+fn reset_keeps_the_reading_choice() {
+    let u = U::new();
+    u.standard_fixture();
+    u.ok(&["usage", "consent", "deny"]);
+    u.ok(&["--yes", "usage", "reset"]);
+    assert_eq!(u.json(&["usage", "consent"])["data"]["state"], "denied");
+}
+
 #[test]
 fn scanning_is_incremental_and_no_scan_reads_only_the_database() {
     let u = U::new();
@@ -3302,6 +3401,35 @@ mod usage_sync {
         assert!(out.stdout.is_empty() && out.stderr.is_empty());
         assert_eq!(c.all_requests().await, 0);
         assert!(c.puts().await.is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn auto_trigger_reads_no_logs_until_reading_is_granted() {
+        let c = Cloud::new(vec![]).await;
+        c.consent();
+        c.store().set_sync_auto(Utc::now()).unwrap();
+        let before = c.store().event_count().unwrap();
+        c.u.session_file(
+            "-s/sess-new.jsonl",
+            &[Ev::new(
+                "sess-new",
+                at(-1, "11:00:00"),
+                "n1",
+                "claude-test-sonnet-1",
+                5,
+                5,
+            )
+            .line()],
+        );
+        let trigger = ["usage", "sync", "--auto", "--task-id", "9", "-q"];
+        let out = c.u.run(&trigger);
+        assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+        assert!(out.stderr.is_empty(), "{}", text(&out.stderr));
+        assert_eq!(c.store().event_count().unwrap(), before);
+        c.u.ok(&["usage", "consent", "allow"]);
+        let out = c.u.run(&trigger);
+        assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+        assert_eq!(c.store().event_count().unwrap(), before + 1);
     }
 
     #[tokio::test(flavor = "multi_thread")]

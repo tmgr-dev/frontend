@@ -56,6 +56,8 @@ struct World {
     status_calls: u32,
     statuses_fail_from: Option<u32>,
     crash_on_set_status: bool,
+    reading_off: bool,
+    scans: u32,
 }
 
 struct Fake(RefCell<World>);
@@ -111,6 +113,8 @@ impl Fake {
             status_calls: 0,
             statuses_fail_from: None,
             crash_on_set_status: false,
+            reading_off: false,
+            scans: 0,
         }))
     }
 
@@ -504,7 +508,11 @@ impl UsagePort for Fake {
         Vec::new()
     }
 
-    fn scan(&self, _now: DateTime<Utc>) {}
+    fn scan(&self, _now: DateTime<Utc>) -> bool {
+        let mut w = self.w();
+        w.scans += 1;
+        !w.reading_off
+    }
 
     fn cost(
         &self,
@@ -1398,6 +1406,48 @@ fn unknown_usage_blocks_starts_and_stops_after_fifteen_minutes() {
         rig.fake.advance(Duration::minutes(2));
         let out = ap.tick().unwrap().expect("stopped");
         assert_eq!(out.reason, "no fresh usage numbers for 15 minutes");
+    });
+}
+
+#[test]
+fn logs_not_readable_is_said_once_and_the_probe_still_guards() {
+    let rig = Rig::new();
+    rig.fake.add(running("q1", 1));
+    rig.fake.add(pickup("q2", 2, "approved", None));
+    rig.fake.w().reading_off = true;
+    let s = settings(&[1, 2], |_| {});
+    with_ap(&rig, &s, |ap| {
+        for _ in 0..3 {
+            tick_on(ap);
+            rig.fake.advance(Duration::minutes(6));
+        }
+        assert!(rig.fake.0.borrow().scans >= 3);
+        let said: Vec<_> = ap
+            .events
+            .iter()
+            .filter(|e| e.kind == "usage")
+            .map(|e| e.text.clone())
+            .collect();
+        assert_eq!(said, ["AI usage logs are not read on this device, limits come only from the Claude Code usage probe. Allow reading on the AI Usage page or run `tmgr usage consent allow`."]);
+        rig.fake.w().probe = Ok(vec![(55.0, 10.0)]);
+        tick_on(ap);
+        assert!(!rig.fake.0.borrow().passes.last().unwrap().starts_allowed);
+        assert!(rig.status().extra["blockers"][0]
+            .as_str()
+            .unwrap()
+            .starts_with("usage limit: five_hour at 55%"));
+    });
+}
+
+#[test]
+fn readable_logs_say_nothing_about_reading() {
+    let rig = Rig::new();
+    rig.fake.add(pickup("q2", 2, "approved", None));
+    let s = settings(&[2], |_| {});
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        assert_eq!(rig.fake.0.borrow().scans, 1);
+        assert!(!ap.events.iter().any(|e| e.kind == "usage"));
     });
 }
 

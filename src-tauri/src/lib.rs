@@ -207,6 +207,9 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       idle::idle_supported,
       usage::usage_scan,
+      usage::usage_consent,
+      usage::usage_consent_set,
+      usage::usage_forget,
       usage::usage_overview,
       usage::usage_tasks,
       usage::usage_task,

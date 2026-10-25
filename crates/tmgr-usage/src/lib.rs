@@ -3,6 +3,7 @@ pub mod bind;
 pub mod claude;
 pub mod codex;
 pub mod collector;
+pub mod consent;
 pub mod cost;
 pub mod error;
 pub mod facts;
