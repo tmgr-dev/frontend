@@ -3449,7 +3449,7 @@ mod usage_sync {
         let lock = std::fs::read_dir(c.u.p("data"))
             .unwrap()
             .filter_map(|e| e.ok())
-            .any(|e| e.file_name().to_string_lossy().ends_with(".lock"));
+            .any(|e| e.file_name().to_string_lossy().starts_with("sync-auto-"));
         assert!(!lock);
     }
 

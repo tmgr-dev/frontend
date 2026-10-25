@@ -24,18 +24,17 @@ pub fn refresh(
     env: &Env,
     now: DateTime<Utc>,
 ) -> Result<RefreshReport> {
-    let consent = store.log_consent()?;
-    if !consent.allows_any(false) {
+    let _lock = crate::consent::scan_lock(dir)?;
+    if !store.log_consent()?.allows_any(false) {
         return Ok(RefreshReport::default());
     }
-    let mut accounts = paths::all_accounts(dir, env)?;
-    accounts.retain(|a| consent.allows(a.tool, false));
+    let accounts = paths::all_accounts(dir, env)?;
     let book = match store.load_prices()? {
         Some((book, _)) => book,
         None => PriceBook::bundled(),
     };
     let mut report = RefreshReport::default();
-    for acc in &accounts {
+    crate::consent::each_allowed(store, &accounts, false, |store, acc| {
         match scan_account(store, acc, &book, now) {
             Ok(r) => {
                 report.files += r.files;
@@ -46,11 +45,13 @@ pub fn refresh(
             }
             Err(_) => report.errors += 1,
         }
+    })?;
+    if store.log_consent()?.allows(Tool::Claude, false) {
+        let snapshots = paths::snapshots_dir(dir).join("claude");
+        ingest_statusline(store, &snapshots, &accounts);
+        crate::statusline::prune_snapshots(&snapshots, now, SNAPSHOT_KEEP_DAYS);
     }
-    let snapshots = paths::snapshots_dir(dir).join("claude");
-    ingest_statusline(store, &snapshots, &accounts);
     let _ = store.prune_with_tz(RETENTION_DAYS, now, Tz::Local);
-    crate::statusline::prune_snapshots(&snapshots, now, SNAPSHOT_KEEP_DAYS);
     Ok(report)
 }
 
@@ -162,5 +163,38 @@ mod tests {
         store.set_log_consent(&c).unwrap();
         refresh(&mut store, &dir, &env, now).unwrap();
         assert_eq!(tools(&store, now), ["claude", "codex"]);
+    }
+
+    #[test]
+    fn statusline_snapshots_are_read_only_under_the_claude_rule() {
+        let tmp = tempfile::tempdir().unwrap();
+        let now = Utc::now();
+        let (env, dir, mut store) = fixture(tmp.path(), now);
+        let reset = (now + Duration::hours(2)).timestamp();
+        let body = format!(
+            r#"{{"session_id":"abc","rate_limits":{{"five_hour":{{"used_percentage":55,"resets_at":{reset}}}}}}}"#
+        );
+        let snaps = paths::snapshots_dir(&dir).join("claude");
+        crate::statusline::write_snapshot(&snaps, Some("default"), body.as_bytes()).unwrap();
+        let claude_limits = |store: &Store| {
+            store
+                .current_limits(now)
+                .unwrap()
+                .iter()
+                .filter(|l| l.tool == Tool::Claude)
+                .count()
+        };
+        let mut c = LogConsent {
+            state: ReadLogs::Granted,
+            claude: false,
+            ..LogConsent::default()
+        };
+        store.set_log_consent(&c).unwrap();
+        refresh(&mut store, &dir, &env, now).unwrap();
+        assert_eq!(claude_limits(&store), 0);
+        c.claude = true;
+        store.set_log_consent(&c).unwrap();
+        refresh(&mut store, &dir, &env, now).unwrap();
+        assert_eq!(claude_limits(&store), 1);
     }
 }

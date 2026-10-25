@@ -168,6 +168,20 @@ async fn the_transcript_gives_the_turn_start_when_no_prompt_hook_ran() {
     let stop = json!({"session_id": "s3", "cwd": "/work/api", "transcript_path": transcript.display().to_string()}).to_string();
     let (out, _) = hook(&env, &["hook", "claude", "stop"], stop.as_bytes());
     quiet(&out);
+    assert_eq!(
+        pushes(&env).await.len(),
+        0,
+        "the transcript is not read before Claude reading is allowed"
+    );
+    assert!(!env.tmp.path().join(".local/share/tmgr/usage").exists());
+    let allow = env
+        .cmd()
+        .args(["usage", "consent", "allow"])
+        .output()
+        .unwrap();
+    assert!(allow.status.success(), "{}", text(&allow.stderr));
+    let (out, _) = hook(&env, &["hook", "claude", "stop"], stop.as_bytes());
+    quiet(&out);
     assert_eq!(pushes(&env).await.len(), 1);
 }
 

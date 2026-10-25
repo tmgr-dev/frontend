@@ -1,4 +1,5 @@
 use super::super::orchestrate::{OrchInput, Poll, TaskText};
+use super::decide::LogRead;
 use chrono::{DateTime, Duration, Utc};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -76,8 +77,8 @@ pub struct Probed {
 pub trait Usage {
     fn probe(&self, tool: Tool) -> Result<Probed>;
     fn stored(&self, now: DateTime<Utc>) -> Vec<LimitSnapshot>;
-    /// False when reading the AI tool logs is not allowed on this device (nothing was scanned).
-    fn scan(&self, now: DateTime<Utc>) -> bool;
+    /// Scans the logs (background rule) and says whether `tool`'s logs were read; no tool = both.
+    fn scan(&self, now: DateTime<Utc>, tool: Option<Tool>) -> LogRead;
     fn cost(
         &self,
         from: DateTime<Utc>,

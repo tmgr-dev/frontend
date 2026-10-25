@@ -14,13 +14,23 @@ pub struct Hit {
     pub resets_at: Option<DateTime<Utc>>,
 }
 
+/// Whether the AI tool logs behind the cost numbers were read this time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LogRead {
+    Readable,
+    /// Reading is not allowed on this device.
+    Denied,
+    /// Allowed, but the store, the choice or the log files could not be read.
+    Unavailable,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Blocker {
     Paused,
     Limit(Hit),
     UsageUnknown,
     CostCap,
-    CostUnknown,
+    CostUnknown(LogRead),
     MaxTasks,
     Hours,
     Failures,
@@ -39,8 +49,8 @@ pub struct Inputs<'a> {
     pub billing: Billing,
     pub api_usd: Option<f64>,
     pub cost_cap: Option<f64>,
-    /// The AI tool logs are not read on this device, so `api_usd` misses new spending.
-    pub logs_unread: bool,
+    /// Unless `Readable`, `api_usd` misses new spending.
+    pub logs: LogRead,
     pub started: u32,
     pub max_tasks: Option<u32>,
     pub max_hours: Option<f64>,
@@ -70,6 +80,29 @@ impl Decision {
             _ => None,
         })
     }
+}
+
+/// The outcome for the rule's tool (no tool = both): readable only when it was allowed for the whole
+/// scan and nothing failed; a failure counts before a denial.
+pub fn log_read(allowed: &[Tool], failed: &[Tool], tool: Option<Tool>) -> LogRead {
+    let tools = match tool {
+        Some(one) => vec![one],
+        None => vec![Tool::Claude, Tool::Codex],
+    };
+    let each = |t: &Tool| {
+        if !allowed.contains(t) {
+            LogRead::Denied
+        } else if failed.contains(t) {
+            LogRead::Unavailable
+        } else {
+            LogRead::Readable
+        }
+    };
+    let found: Vec<LogRead> = tools.iter().map(each).collect();
+    [LogRead::Unavailable, LogRead::Denied]
+        .into_iter()
+        .find(|bad| found.contains(bad))
+        .unwrap_or(LogRead::Readable)
 }
 
 fn is_model_window(w: &str) -> bool {
@@ -129,8 +162,8 @@ pub fn decide(i: &Inputs) -> Decision {
     if let Some(cap) = i.cost_cap {
         if i.api_usd.is_some_and(|spent| spent >= cap) {
             blockers.push(Blocker::CostCap);
-        } else if i.logs_unread && i.billing != Billing::Subscription {
-            blockers.push(Blocker::CostUnknown);
+        } else if i.logs != LogRead::Readable && i.billing != Billing::Subscription {
+            blockers.push(Blocker::CostUnknown(i.logs));
         }
     }
     if i.max_tasks.is_some_and(|m| i.started >= m) {
@@ -308,7 +341,7 @@ mod tests {
         billing: Billing,
         api_usd: Option<f64>,
         cost_cap: Option<f64>,
-        logs_unread: bool,
+        logs: LogRead,
         started: u32,
         max_tasks: Option<u32>,
         max_hours: Option<f64>,
@@ -326,7 +359,7 @@ mod tests {
                 billing: Billing::Subscription,
                 api_usd: None,
                 cost_cap: None,
-                logs_unread: false,
+                logs: LogRead::Readable,
                 started: 0,
                 max_tasks: None,
                 max_hours: None,
@@ -351,7 +384,7 @@ mod tests {
                 billing: self.billing,
                 api_usd: self.api_usd,
                 cost_cap: self.cost_cap,
-                logs_unread: self.logs_unread,
+                logs: self.logs,
                 started: self.started,
                 max_tasks: self.max_tasks,
                 max_hours: self.max_hours,
@@ -368,7 +401,7 @@ mod tests {
                 Blocker::Limit(_) => "limit",
                 Blocker::UsageUnknown => "unknown",
                 Blocker::CostCap => "cost",
-                Blocker::CostUnknown => "cost_unknown",
+                Blocker::CostUnknown(_) => "cost_unknown",
                 Blocker::MaxTasks => "tasks",
                 Blocker::Hours => "hours",
                 Blocker::Failures => "failures",
@@ -458,11 +491,34 @@ mod tests {
     }
 
     #[test]
+    fn only_the_rules_tool_counts_and_failures_are_unavailable() {
+        use LogRead::*;
+        let (c, x) = (Tool::Claude, Tool::Codex);
+        assert_eq!(log_read(&[x], &[], Some(c)), Denied);
+        assert_eq!(log_read(&[x], &[], Some(x)), Readable);
+        assert_eq!(log_read(&[c, x], &[c], Some(c)), Unavailable);
+        assert_eq!(log_read(&[c, x], &[c], Some(x)), Readable);
+        assert_eq!(log_read(&[c], &[], None), Denied);
+        assert_eq!(log_read(&[c], &[c], None), Unavailable);
+        assert_eq!(log_read(&[c, x], &[], None), Readable);
+    }
+
+    #[test]
+    fn claude_off_and_codex_on_keep_a_claude_api_key_run_capped() {
+        let l = vec![];
+        let mut c = Case::new(&l);
+        c.billing = Billing::ApiKey;
+        c.cost_cap = Some(5.0);
+        c.logs = log_read(&[Tool::Codex], &[], Some(Tool::Claude));
+        assert_eq!(c.decide().blockers, [Blocker::CostUnknown(LogRead::Denied)]);
+    }
+
+    #[test]
     fn unread_logs_close_starts_only_when_a_cost_cap_applies() {
         let l = vec![];
         let mut c = Case::new(&l);
         c.billing = Billing::ApiKey;
-        c.logs_unread = true;
+        c.logs = LogRead::Denied;
         assert!(c.decide().starts_allowed());
         c.cost_cap = Some(5.0);
         assert_eq!(kinds(&c.decide()), ["cost_unknown"]);
@@ -470,10 +526,16 @@ mod tests {
         assert_eq!(kinds(&c.decide()), ["cost_unknown"]);
         c.api_usd = Some(5.0);
         assert_eq!(kinds(&c.decide()), ["cost"]);
+        c.api_usd = None;
+        c.logs = LogRead::Unavailable;
+        assert_eq!(
+            c.decide().blockers,
+            [Blocker::CostUnknown(LogRead::Unavailable)]
+        );
         let l = rows(Some(1.0), Some(1.0));
         let mut sub = Case::new(&l);
         sub.cost_cap = Some(5.0);
-        sub.logs_unread = true;
+        sub.logs = LogRead::Unavailable;
         assert!(sub.decide().starts_allowed());
     }
 

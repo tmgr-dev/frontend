@@ -56,8 +56,8 @@ struct World {
     status_calls: u32,
     statuses_fail_from: Option<u32>,
     crash_on_set_status: bool,
-    reading_off: bool,
-    scans: u32,
+    logs: LogRead,
+    scans: Vec<Option<Tool>>,
     billing: Billing,
 }
 
@@ -114,8 +114,8 @@ impl Fake {
             status_calls: 0,
             statuses_fail_from: None,
             crash_on_set_status: false,
-            reading_off: false,
-            scans: 0,
+            logs: LogRead::Readable,
+            scans: Vec::new(),
             billing: Billing::Subscription,
         }))
     }
@@ -510,10 +510,10 @@ impl UsagePort for Fake {
         Vec::new()
     }
 
-    fn scan(&self, _now: DateTime<Utc>) -> bool {
+    fn scan(&self, _now: DateTime<Utc>, tool: Option<Tool>) -> LogRead {
         let mut w = self.w();
-        w.scans += 1;
-        !w.reading_off
+        w.scans.push(tool);
+        w.logs
     }
 
     fn cost(
@@ -1416,14 +1416,21 @@ fn logs_not_readable_is_said_once_and_the_probe_still_guards() {
     let rig = Rig::new();
     rig.fake.add(running("q1", 1));
     rig.fake.add(pickup("q2", 2, "approved", None));
-    rig.fake.w().reading_off = true;
+    rig.fake.w().logs = LogRead::Denied;
     let s = settings(&[1, 2], |_| {});
     with_ap(&rig, &s, |ap| {
         for _ in 0..3 {
             tick_on(ap);
             rig.fake.advance(Duration::minutes(6));
         }
-        assert!(rig.fake.0.borrow().scans >= 3);
+        assert!(rig.fake.0.borrow().scans.len() >= 3);
+        assert!(rig
+            .fake
+            .0
+            .borrow()
+            .scans
+            .iter()
+            .all(|t| *t == Some(Tool::Claude)));
         let said: Vec<_> = ap
             .events
             .iter()
@@ -1448,7 +1455,7 @@ fn an_api_key_with_a_cost_cap_starts_nothing_while_logs_are_not_read() {
     {
         let mut w = rig.fake.w();
         w.billing = Billing::ApiKey;
-        w.reading_off = true;
+        w.logs = LogRead::Denied;
     }
     let s = settings(&[2], |a| a.max_cost_usd = Some(5.0));
     with_ap(&rig, &s, |ap| {
@@ -1467,10 +1474,45 @@ fn an_api_key_with_a_cost_cap_starts_nothing_while_logs_are_not_read() {
             "{}",
             said[0].text
         );
-        rig.fake.w().reading_off = false;
+        rig.fake.w().logs = LogRead::Readable;
         rig.fake.advance(Duration::minutes(6));
         tick_on(ap);
         assert!(rig.fake.0.borrow().passes.last().unwrap().starts_allowed);
+    });
+}
+
+#[test]
+fn logs_that_could_not_be_read_keep_a_capped_run_closed_and_say_so() {
+    let rig = Rig::new();
+    rig.fake.add(pickup("q2", 2, "approved", None));
+    {
+        let mut w = rig.fake.w();
+        w.billing = Billing::ApiKey;
+        w.logs = LogRead::Unavailable;
+    }
+    let s = settings(&[2], |a| a.max_cost_usd = Some(5.0));
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        assert!(!rig.fake.0.borrow().passes.last().unwrap().starts_allowed);
+        assert_eq!(
+            rig.status().extra["blockers"],
+            json!(["cost unknown: AI usage logs could not be read"])
+        );
+        let said: Vec<_> = ap
+            .events
+            .iter()
+            .filter(|e| e.kind == "usage")
+            .map(|e| e.text.clone())
+            .collect();
+        assert_eq!(said, ["AI usage logs could not be read, limits come only from the Claude Code usage probe. The cost cap cannot be checked, so no new task starts. `tmgr usage scan` shows what failed."]);
+        rig.fake.w().logs = LogRead::Denied;
+        rig.fake.advance(Duration::minutes(6));
+        tick_on(ap);
+        assert_eq!(
+            rig.status().extra["blockers"],
+            json!(["cost unknown: AI usage logs are not read"])
+        );
+        assert_eq!(ap.events.iter().filter(|e| e.kind == "usage").count(), 2);
     });
 }
 
@@ -1494,7 +1536,7 @@ fn readable_logs_say_nothing_about_reading() {
     let s = settings(&[2], |_| {});
     with_ap(&rig, &s, |ap| {
         tick_on(ap);
-        assert_eq!(rig.fake.0.borrow().scans, 1);
+        assert_eq!(rig.fake.0.borrow().scans.len(), 1);
         assert!(!ap.events.iter().any(|e| e.kind == "usage"));
     });
 }

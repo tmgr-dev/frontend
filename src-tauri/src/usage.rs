@@ -2,7 +2,7 @@ use chrono::{DateTime, Duration, Local, NaiveDate, NaiveDateTime, SecondsFormat,
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tmgr_usage::consent::{forget, LogConsent, ReadLogs};
+use tmgr_usage::consent::{forget, ConsentChange, ReadLogs, FORGET_WAIT};
 use tmgr_usage::error::UsageError;
 use tmgr_usage::limits::LimitWindow;
 use tmgr_usage::bind::{facts_from, Linker, RunIds};
@@ -164,23 +164,37 @@ fn consent_inner(env: &Env) -> Result<UsageConsentOut, String> {
   consent_out(env, &dir, &store)
 }
 
-fn consent_set_inner(env: &Env, now: DateTime<Utc>, state: &str, claude: bool, codex: bool) -> Result<UsageConsentOut, String> {
+fn consent_set_inner(
+  env: &Env,
+  now: DateTime<Utc>,
+  state: Option<&str>,
+  claude: Option<bool>,
+  codex: Option<bool>,
+) -> Result<UsageConsentOut, String> {
   let state = match state {
-    "granted" => ReadLogs::Granted,
-    "denied" => ReadLogs::Denied,
-    _ => return Err("Unknown choice.".into()),
+    None => None,
+    Some("granted") => Some(ReadLogs::Granted),
+    Some("denied") => Some(ReadLogs::Denied),
+    Some(_) => return Err("Unknown choice.".into()),
   };
   let (dir, store) = open(env)?;
-  store.set_log_consent(&LogConsent { state, claude, codex, decided_at: Some(now) }).map_err(user_error)?;
+  store.change_log_consent(&ConsentChange { state, claude, codex }, now).map_err(user_error)?;
   consent_out(env, &dir, &store)
 }
 
-fn forget_inner(flag: &AtomicBool, env: &Env, now: DateTime<Utc>) -> Result<UsageConsentOut, String> {
-  let Some(_guard) = ScanGuard::acquire(flag) else {
-    return Err("A scan is running. Try again in a moment.".into());
-  };
+const BUSY: &str = "A scan is running. Try again in a moment.";
+
+fn forget_inner(flag: &AtomicBool, env: &Env, now: DateTime<Utc>, wait: std::time::Duration) -> Result<UsageConsentOut, String> {
   let (dir, mut store) = open(env)?;
-  forget(&mut store, &dir, now).map_err(|_| "The usage data could not be deleted.".to_string())?;
+  let Some(_guard) = ScanGuard::acquire(flag) else {
+    let deny = ConsentChange { state: Some(ReadLogs::Denied), ..ConsentChange::default() };
+    store.change_log_consent(&deny, now).map_err(user_error)?;
+    return Err(BUSY.into());
+  };
+  forget(&mut store, &dir, now, wait).map_err(|e| match e {
+    UsageError::Busy => BUSY.to_string(),
+    _ => "The usage data could not be deleted.".to_string(),
+  })?;
   consent_out(env, &dir, &store)
 }
 
@@ -585,11 +599,15 @@ pub async fn usage_consent() -> Result<UsageConsentOut, String> {
 }
 
 #[tauri::command]
-pub async fn usage_consent_set(state: String, claude: bool, codex: bool) -> Result<UsageConsentOut, String> {
+pub async fn usage_consent_set(
+  state: Option<String>,
+  claude: Option<bool>,
+  codex: Option<bool>,
+) -> Result<UsageConsentOut, String> {
   if snap() {
     return Err(SNAP_REASON.into());
   }
-  blocking(move || consent_set_inner(&Env::from_process(), Utc::now(), &state, claude, codex)).await
+  blocking(move || consent_set_inner(&Env::from_process(), Utc::now(), state.as_deref(), claude, codex)).await
 }
 
 #[tauri::command]
@@ -597,7 +615,7 @@ pub async fn usage_forget() -> Result<UsageConsentOut, String> {
   if snap() {
     return Err(SNAP_REASON.into());
   }
-  blocking(|| forget_inner(&SCANNING, &Env::from_process(), Utc::now())).await
+  blocking(|| forget_inner(&SCANNING, &Env::from_process(), Utc::now(), FORGET_WAIT)).await
 }
 
 #[tauri::command]
@@ -636,7 +654,7 @@ mod tests {
 
   fn granted(home: &Path) -> Env {
     let env = env_in(home);
-    consent_set_inner(&env, local_noon(), "granted", true, true).unwrap();
+    consent_set_inner(&env, local_noon(), Some("granted"), Some(true), Some(true)).unwrap();
     env
   }
 
@@ -669,14 +687,14 @@ mod tests {
     let now = local_noon();
     claude_log(tmp.path(), now);
     codex_log(tmp.path(), now);
-    let c = consent_set_inner(&env, now, "granted", true, false).unwrap();
+    let c = consent_set_inner(&env, now, Some("granted"), Some(true), Some(false)).unwrap();
     assert_eq!((c.state, c.claude, c.codex), ("granted", true, false));
     assert_eq!(c.decided_at.as_deref(), Some(stamp(now).as_str()));
     let scan = scan_inner(&AtomicBool::new(false), &env, now).unwrap();
     assert_eq!((scan.state, scan.events_new), ("done", 2));
     let ov = overview_inner(&env, now).unwrap();
     assert!(ov.windows[0].rows.iter().all(|r| r.tool == "claude"));
-    consent_set_inner(&env, now, "granted", true, true).unwrap();
+    consent_set_inner(&env, now, Some("granted"), Some(true), Some(true)).unwrap();
     assert_eq!(scan_inner(&AtomicBool::new(false), &env, now).unwrap().events_new, 1);
     assert!(consent_inner(&env).unwrap().has_data);
   }
@@ -687,15 +705,15 @@ mod tests {
     let env = env_in(tmp.path());
     let now = local_noon();
     claude_log(tmp.path(), now);
-    let c = consent_set_inner(&env, now, "granted", false, false).unwrap();
+    let c = consent_set_inner(&env, now, Some("granted"), Some(false), Some(false)).unwrap();
     assert_eq!((c.state, c.claude, c.codex), ("denied", false, false));
     assert_eq!(scan_inner(&AtomicBool::new(false), &env, now).unwrap().state, "off");
-    consent_set_inner(&env, now, "denied", true, true).unwrap();
-    let again = consent_set_inner(&env, now, "denied", true, true).unwrap();
+    consent_set_inner(&env, now, Some("denied"), Some(true), Some(true)).unwrap();
+    let again = consent_set_inner(&env, now, Some("denied"), Some(true), Some(true)).unwrap();
     assert_eq!((again.state, again.claude, again.codex), ("denied", true, true));
     assert_eq!(scan_inner(&AtomicBool::new(false), &env, now).unwrap().state, "off");
     assert_eq!(events(&env), 0);
-    assert_eq!(consent_set_inner(&env, now, "unset", true, true).unwrap_err(), "Unknown choice.");
+    assert_eq!(consent_set_inner(&env, now, Some("unset"), None, None).unwrap_err(), "Unknown choice.");
     assert_eq!(consent_inner(&env).unwrap().state, "denied");
   }
 
@@ -713,7 +731,7 @@ mod tests {
     std::fs::write(snaps.join("s.json"), "{}").unwrap();
 
     let flag = AtomicBool::new(false);
-    let c = forget_inner(&flag, &env, now).unwrap();
+    let c = forget_inner(&flag, &env, now, FORGET_WAIT).unwrap();
     assert_eq!((c.state, c.claude, c.codex, c.has_data), ("denied", true, true, false));
     assert!(!flag.load(Ordering::Acquire));
     assert_eq!(events(&env), 0);
@@ -721,7 +739,7 @@ mod tests {
     assert!(!ov.has_data && ov.limits.is_empty());
     assert!(!snaps.exists());
     assert_eq!(scan_inner(&flag, &env, now).unwrap().state, "off");
-    assert_eq!(forget_inner(&flag, &env, now).unwrap().state, "denied");
+    assert_eq!(forget_inner(&flag, &env, now, FORGET_WAIT).unwrap().state, "denied");
   }
 
   #[test]
@@ -733,10 +751,47 @@ mod tests {
     scan_inner(&AtomicBool::new(false), &env, now).unwrap();
     let flag = AtomicBool::new(false);
     let held = ScanGuard::acquire(&flag).unwrap();
-    assert_eq!(forget_inner(&flag, &env, now).unwrap_err(), "A scan is running. Try again in a moment.");
+    assert_eq!(forget_inner(&flag, &env, now, FORGET_WAIT).unwrap_err(), "A scan is running. Try again in a moment.");
     assert_eq!(events(&env), 2);
-    assert_eq!(consent_inner(&env).unwrap().state, "granted");
+    assert_eq!(consent_inner(&env).unwrap().state, "denied", "reading is off even though nothing was deleted");
     drop(held);
+  }
+
+  #[test]
+  fn forget_while_another_process_scans_times_out_with_reading_off() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = granted(tmp.path());
+    let now = local_noon();
+    claude_log(tmp.path(), now);
+    scan_inner(&AtomicBool::new(false), &env, now).unwrap();
+    let held = tmgr_usage::consent::scan_lock(&paths::data_dir(&env).unwrap()).unwrap();
+    let flag = AtomicBool::new(false);
+    let err = forget_inner(&flag, &env, now, std::time::Duration::from_millis(120)).unwrap_err();
+    assert_eq!(err, "A scan is running. Try again in a moment.");
+    assert_eq!(events(&env), 2);
+    assert_eq!(consent_inner(&env).unwrap().state, "denied");
+    drop(held);
+    assert!(!forget_inner(&flag, &env, now, FORGET_WAIT).unwrap().has_data);
+  }
+
+  #[test]
+  fn consent_changes_are_field_level_so_a_stale_page_cannot_grant() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = env_in(tmp.path());
+    let now = local_noon();
+    let c = consent_set_inner(&env, now, Some("denied"), None, None).unwrap();
+    assert_eq!((c.state, c.claude, c.codex), ("denied", true, true));
+    let stale = consent_set_inner(&env, now, None, Some(false), None).unwrap();
+    assert_eq!((stale.state, stale.claude, stale.codex), ("denied", false, true));
+    let none = consent_set_inner(&env, now + Duration::hours(1), None, None, None).unwrap();
+    assert_eq!((none.state, none.decided_at.clone()), ("denied", stale.decided_at.clone()));
+    consent_set_inner(&env, now, None, None, Some(false)).unwrap();
+    let on = consent_set_inner(&env, now, Some("granted"), None, None).unwrap();
+    assert_eq!((on.state, on.claude, on.codex), ("granted", true, true), "granted with both off turns both on");
+    let one = consent_set_inner(&env, now, None, None, Some(false)).unwrap();
+    assert_eq!((one.state, one.claude, one.codex), ("granted", true, false));
+    let off = consent_set_inner(&env, now, None, Some(false), None).unwrap();
+    assert_eq!((off.state, off.claude, off.codex), ("denied", false, false));
   }
 
   fn local_noon() -> DateTime<Utc> {

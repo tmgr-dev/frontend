@@ -1,3 +1,4 @@
+use super::decide::{log_read, LogRead};
 use super::ports::{
     Clock, Notifier, PlanFresh, PlanInputs, Planned, Planner, Ports, Probed, Queue, Remote,
     RunControl, Timing, Usage as UsagePort,
@@ -427,11 +428,12 @@ impl UsagePort for RealUsage<'_> {
             .unwrap_or_default()
     }
 
-    fn scan(&self, now: DateTime<Utc>) -> bool {
+    fn scan(&self, now: DateTime<Utc>, tool: Option<Tool>) -> LogRead {
         let ctx = self.ctx;
-        self.with(|u| usage::scan(ctx, u, now, false))
-            .and_then(Result::ok)
-            .is_none_or(|t| !t.reading_off)
+        let Some(Ok(t)) = self.with(|u| usage::scan(ctx, u, now, false)) else {
+            return LogRead::Unavailable;
+        };
+        log_read(&t.allowed, &t.failed, tool)
     }
 
     fn cost(

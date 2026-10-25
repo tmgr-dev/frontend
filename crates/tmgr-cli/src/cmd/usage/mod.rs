@@ -70,7 +70,7 @@ impl Usage {
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone)]
 pub struct ScanTotals {
     pub files: u64,
     pub events_new: u64,
@@ -79,6 +79,12 @@ pub struct ScanTotals {
     pub bad_lines: u64,
     pub skipped_before_floor: u64,
     pub reading_off: bool,
+    /// Tools whose logs were allowed for the whole scan.
+    #[cfg_attr(not(feature = "runner"), allow(dead_code))]
+    pub allowed: Vec<Tool>,
+    /// Tools with log files or accounts that could not be read.
+    #[cfg_attr(not(feature = "runner"), allow(dead_code))]
+    pub failed: Vec<Tool>,
 }
 
 fn first_scan_is_big(u: &Usage, accounts: &[Account]) -> bool {
@@ -103,8 +109,10 @@ fn first_scan_is_big(u: &Usage, accounts: &[Account]) -> bool {
 const READING_OFF: &str = "Reading Claude Code and Codex logs is off on this device. Turn it on in TMGR desktop (AI Usage) or run `tmgr usage consent allow`.";
 
 /// `user_run`: the user typed this command; background scans (autopilot, `sync --auto`) pass false
-/// and need reading granted. A scan skipped for consent returns `reading_off`.
+/// and need reading granted. A scan skipped for consent returns `reading_off`. Holds the shared
+/// scan lock and re-reads the choice before each account and before the statusLine snapshots.
 pub fn scan(ctx: &Ctx, u: &mut Usage, now: DateTime<Utc>, user_run: bool) -> Result<ScanTotals> {
+    let _lock = tmgr_usage::consent::scan_lock(&u.dir).map_err(fail)?;
     let consent = u.store.log_consent().map_err(fail)?;
     if !consent.allows_any(user_run) {
         if user_run {
@@ -115,31 +123,51 @@ pub fn scan(ctx: &Ctx, u: &mut Usage, now: DateTime<Utc>, user_run: bool) -> Res
             ..ScanTotals::default()
         });
     }
-    let mut accounts = u.accounts()?;
-    accounts.retain(|a| consent.allows(a.tool, user_run));
-    if !ctx.json && std::io::stderr().is_terminal() && first_scan_is_big(u, &accounts) {
+    let accounts = u.accounts()?;
+    let allowed: Vec<Account> = accounts
+        .iter()
+        .filter(|a| consent.allows(a.tool, user_run))
+        .cloned()
+        .collect();
+    if !ctx.json && std::io::stderr().is_terminal() && first_scan_is_big(u, &allowed) {
         eprintln!("Reading AI tool logs for the first time, this can take a minute...");
     }
-    let mut totals = ScanTotals::default();
-    for acc in &accounts {
-        match scan_account(&mut u.store, acc, &u.book, now) {
-            Ok(r) => {
-                totals.files += r.files;
-                totals.events_new += r.events_new;
-                totals.events_updated += r.events_updated;
-                totals.errors += r.errors;
-                totals.bad_lines += r.bad_lines + r.skipped_oversized;
-                totals.skipped_before_floor += r.skipped_before_floor;
+    let mut totals = ScanTotals {
+        allowed: [Tool::Claude, Tool::Codex]
+            .into_iter()
+            .filter(|t| consent.allows(*t, user_run))
+            .collect(),
+        ..ScanTotals::default()
+    };
+    let book = &u.book;
+    let skipped =
+        tmgr_usage::consent::each_allowed(&mut u.store, &accounts, user_run, |store, acc| {
+            match scan_account(store, acc, book, now) {
+                Ok(r) => {
+                    totals.files += r.files;
+                    totals.events_new += r.events_new;
+                    totals.events_updated += r.events_updated;
+                    totals.errors += r.errors;
+                    totals.bad_lines += r.bad_lines + r.skipped_oversized;
+                    totals.skipped_before_floor += r.skipped_before_floor;
+                    if r.errors > 0 && !totals.failed.contains(&acc.tool) {
+                        totals.failed.push(acc.tool);
+                    }
+                }
+                Err(_) => {
+                    totals.errors += 1;
+                    if !totals.failed.contains(&acc.tool) {
+                        totals.failed.push(acc.tool);
+                    }
+                    ctx.warn(
+                        "usage_scan_failed",
+                        format!("scanning the account {} failed", acc.label),
+                    );
+                }
             }
-            Err(_) => {
-                totals.errors += 1;
-                ctx.warn(
-                    "usage_scan_failed",
-                    format!("scanning the account {} failed", acc.label),
-                );
-            }
-        }
-    }
+        })
+        .map_err(fail)?;
+    totals.allowed.retain(|t| !skipped.contains(t));
     if totals.errors > 0 {
         ctx.warn(
             "usage_scan_errors",
@@ -170,9 +198,15 @@ pub fn scan(ctx: &Ctx, u: &mut Usage, now: DateTime<Utc>, user_run: bool) -> Res
             ),
         );
     }
-    ingest_statusline(u, &accounts);
+    if u.store
+        .log_consent()
+        .map_err(fail)?
+        .allows(Tool::Claude, user_run)
+    {
+        ingest_statusline(u, &accounts);
+        tmgr_usage::statusline::prune_snapshots(&u.claude_snapshots(), now, SNAPSHOT_KEEP_DAYS);
+    }
     let _ = u.store.prune_with_tz(RETENTION_DAYS, now, Tz::Local);
-    tmgr_usage::statusline::prune_snapshots(&u.claude_snapshots(), now, SNAPSHOT_KEEP_DAYS);
     Ok(totals)
 }
 
@@ -240,29 +274,24 @@ fn run_scan(ctx: &Ctx) -> Result<Output> {
 
 fn consent(command: Option<ConsentCommand>) -> Result<Output> {
     let u = Usage::open()?;
-    let mut c = u.store.log_consent().map_err(fail)?;
-    match command.unwrap_or(ConsentCommand::Status) {
-        ConsentCommand::Status => {}
-        ConsentCommand::Allow => {
-            if !c.claude && !c.codex {
-                (c.claude, c.codex) = (true, true);
-            }
-            c.state = ReadLogs::Granted;
-            c.decided_at = Some(Utc::now());
-            u.store.set_log_consent(&c).map_err(fail)?;
-        }
-        ConsentCommand::Deny => {
-            c.state = ReadLogs::Denied;
-            c.decided_at = Some(Utc::now());
-            u.store.set_log_consent(&c).map_err(fail)?;
-        }
-    }
-    let c = u.store.log_consent().map_err(fail)?;
+    let state = match command.unwrap_or(ConsentCommand::Status) {
+        ConsentCommand::Status => None,
+        ConsentCommand::Allow => Some(ReadLogs::Granted),
+        ConsentCommand::Deny => Some(ReadLogs::Denied),
+    };
+    let change = tmgr_usage::consent::ConsentChange {
+        state,
+        ..Default::default()
+    };
+    let c = u
+        .store
+        .change_log_consent(&change, Utc::now())
+        .map_err(fail)?;
     let tools: Vec<&str> = [(c.claude, "Claude Code"), (c.codex, "Codex")]
         .into_iter()
         .filter_map(|(on, name)| on.then_some(name))
         .collect();
-    let kept = "Kept: counts, tokens, cost, model names, timestamps, session ids, project folders and branches, names of the tools, skills and commands used, edited file types and pull requests. Prompt and reply text is never stored. Nothing leaves this device unless you upload it with `tmgr usage sync`.";
+    let kept = "Kept: counts, tokens, cost, model names, timestamps, session ids, project folders and branches, names of the tools, skills and commands used, edited file types and pull requests. Prompt and reply text is never stored. Nothing leaves this device unless you upload it with `tmgr usage sync`. The runner reads only the transcripts of sessions it started, for titles, questions and status, and stores nothing from them.";
     let human = match c.state {
         ReadLogs::Granted => format!(
             "Reading {} logs is on for this device. {kept}",
