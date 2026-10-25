@@ -35,8 +35,14 @@
 						<Button variant="outline" size="sm" @click="load">Retry</Button>
 					</div>
 
+					<UsageConsentGate
+						v-if="consent && gated"
+						:consent="consent"
+						@update="onConsent"
+					/>
+
 					<div
-						v-if="!overview && !error"
+						v-if="!overview && !error && !gated"
 						class="rounded-lg border border-border bg-card p-6 text-sm text-ink-subtle"
 					>
 						Loading usage
@@ -369,6 +375,8 @@
 	import CommandChip from '@/components/general/CommandChip.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import AutopilotPanel from '@/components/runner/AutopilotPanel.vue';
+	import { consentGate } from '@/components/usage/consent';
+	import UsageConsentGate from '@/components/usage/UsageConsentGate.vue';
 	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { isRunnerSupported } from '@/runner/api';
@@ -376,9 +384,11 @@
 	import store from '@/store';
 	import {
 		errorText,
+		usageConsent,
 		usageOverview,
 		usageScan,
 		usageTasks,
+		type UsageConsent,
 		type UsageLimit,
 		type UsageOverview,
 		type UsageTasks,
@@ -412,7 +422,13 @@
 
 	export default defineComponent({
 		name: 'AiUsage',
-		components: { AutopilotPanel, Button, CommandChip, SettingsSection },
+		components: {
+			AutopilotPanel,
+			Button,
+			CommandChip,
+			SettingsSection,
+			UsageConsentGate,
+		},
 		setup() {
 			const runner = useRunner();
 			const showAutopilot = computed(
@@ -432,7 +448,11 @@
 				failedWorkspaces = ref(0),
 				pagesTruncated = ref(0),
 				runsTruncated = ref(false),
-				tasksError = ref<string | null>(null);
+				tasksError = ref<string | null>(null),
+				consent = ref<UsageConsent | null>(null);
+			const gated = computed(() =>
+				['ask', 'off'].includes(consentGate(consent.value) ?? ''),
+			);
 			let disposed = false;
 			let timer: ReturnType<typeof setTimeout> | null = null;
 			let generation = 0;
@@ -467,6 +487,12 @@
 				error.value = null;
 				scanIncomplete.value = false;
 				try {
+					consent.value = await usageConsent();
+					if (disposed || run !== generation) return;
+					if (gated.value) {
+						overview.value = null;
+						return;
+					}
 					overview.value = await usageOverview();
 					if (disposed || run !== generation) return;
 					if (!overview.value.supported) return;
@@ -478,6 +504,14 @@
 						scan = await usageScan();
 					}
 					if (disposed || run !== generation) return;
+					if (scan.state === 'off') {
+						consent.value = await usageConsent();
+						if (disposed || run !== generation) return;
+						if (gated.value) {
+							overview.value = null;
+							return;
+						}
+					}
 					scanning.value = false;
 					scanIncomplete.value = scan.errors > 0 || scan.bad_lines > 0;
 					overview.value = await usageOverview();
@@ -489,6 +523,11 @@
 				}
 				if (!disposed && run === generation) await loadTasks(run);
 			}
+
+			const onConsent = (next: UsageConsent) => {
+				consent.value = next;
+				if (!gated.value) void load();
+			};
 
 			onMounted(() => {
 				setDocumentTitle('AI usage');
@@ -540,6 +579,9 @@
 
 			return {
 				showAutopilot,
+				consent,
+				gated,
+				onConsent,
 				overview,
 				error,
 				scanning,

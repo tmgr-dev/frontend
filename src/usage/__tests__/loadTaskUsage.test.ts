@@ -1,6 +1,8 @@
-import { collectRuns, resetRunsCache } from '../loadTaskUsage';
+import { usageScan } from '../api';
+import { collectRuns, resetRunsCache, scanThenRead } from '../loadTaskUsage';
 import { fetchRuns } from '../runs';
 import { pricedCost } from '../taskModel';
+import { usageTask } from '../taskUsage';
 
 jest.mock('../runs', () => ({
 	fetchRuns: jest.fn(),
@@ -64,6 +66,23 @@ describe('collectRuns', () => {
 		await collectRuns(req, 1000);
 		await collectRuns(req, 30_000);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('scanThenRead', () => {
+	it('reads nothing when log reading is off on this device', async () => {
+		(usageScan as jest.Mock).mockResolvedValue({
+			state: 'off',
+			files: 0,
+			events_new: 0,
+			events_updated: 0,
+			errors: 0,
+			bad_lines: 0,
+		});
+		const req = { taskId: 5, workspaceCode: 'ws', ownRuns: [] };
+		expect(await scanThenRead(req, [])).toBeNull();
+		expect(usageScan).toHaveBeenCalledTimes(1);
+		expect(usageTask).not.toHaveBeenCalled();
 	});
 });
 
