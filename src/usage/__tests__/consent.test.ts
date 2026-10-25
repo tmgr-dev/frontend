@@ -192,6 +192,17 @@ describe('useUsageConsent', () => {
 		expect(c.consent.value).toEqual(before);
 	});
 
+	it('forget that fails after turning reading off shows the stored choice', async () => {
+		invoke
+			.mockRejectedValueOnce('The usage data could not be deleted.')
+			.mockResolvedValueOnce(consent({ state: 'denied' }));
+		const c = useUsageConsent(consent({ state: 'granted' }));
+		expect(await c.forget()).toBe(false);
+		expect(commands()).toEqual(['usage_forget', 'usage_consent']);
+		expect(c.error.value).toBe('The usage data could not be deleted.');
+		expect(c.gate.value).toBe('off');
+	});
+
 	it('ignores a second action while one is running', async () => {
 		let finish: (v: UsageConsent) => void = () => {};
 		invoke.mockReturnValue(new Promise((r) => (finish = r)));

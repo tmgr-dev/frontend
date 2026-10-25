@@ -80,8 +80,14 @@ export const useUsageConsent = (initial: UsageConsent | null = null) => {
 	const forget = async (): Promise<boolean> => {
 		if (busy.value) return false;
 		const ok = await run(usageForget);
-		if (ok) message.value = FORGET_DONE;
-		return ok;
+		if (ok) {
+			message.value = FORGET_DONE;
+			return true;
+		}
+		const failure = error.value;
+		await load();
+		error.value = failure;
+		return false;
 	};
 
 	return { consent, busy, error, message, gate, load, save, forget };
