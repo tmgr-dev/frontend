@@ -506,3 +506,147 @@ test.describe('welcome screens: consent banner and keyboard', () => {
     },
   );
 });
+
+const mockModules = async (page, { failPut = false } = {}) => {
+  const fx = { puts: [], on: { agent_work: false, personas: false } };
+  await page.route('**/api/workspaces/1/modules', async (route) => {
+    const request = route.request();
+    if (request.method() === 'PUT') {
+      fx.puts.push(request.postDataJSON());
+      if (failPut) {
+        await route.fulfill({
+          status: 500,
+          json: { message: 'Fixture failure' },
+        });
+        return;
+      }
+      Object.assign(fx.on, request.postDataJSON().modules);
+    }
+    const configured = fx.puts.length > 0 && !failPut;
+    await route.fulfill({
+      json: {
+        data: {
+          configured,
+          preset: configured ? 'custom' : null,
+          can_manage: true,
+          packs: [{ key: 'ai', name: 'AI agents' }],
+          presets: [],
+          notices: [],
+          modules: Object.entries(fx.on).map(([key, enabled]) => ({
+            key,
+            name: key === 'personas' ? 'Personas' : 'Agent work',
+            pack: 'ai',
+            scope: 'workspace',
+            core: false,
+            enabled,
+            hidden: false,
+          })),
+        },
+      },
+    });
+  });
+  return fx;
+};
+
+const picker = (page) =>
+  page.getByRole('dialog', { name: 'What do you want TMGR for?' });
+
+const mockConnectToken = (page) =>
+  page.route('**/api/smart-device/token/**', (route) =>
+    route.fulfill({
+      json: { data: { token: 'fixture-token', has_token: false } },
+    }),
+  );
+
+test.describe('agent intent turns on agent work and personas (TM-526)', () => {
+  for (const [size, scheme] of SIZES_SCHEMES) {
+    flow(
+      `agent intent enables the agent modules at ${size.name}, ${scheme}`,
+      async ({ page }) => {
+        await boot(page, size, { user: NEW_USER });
+        const modules = await mockModules(page);
+        await mockConnectToken(page);
+        await page.goto('/');
+        await expect(page).toHaveURL(/\/welcome-setup$/);
+        await page.getByRole('button', { name: /Connect my AI agent/ }).click();
+        await expect(page).toHaveURL(/\/welcome-setup\/agent$/);
+        expect(modules.puts).toEqual([
+          { modules: { agent_work: true, personas: true } },
+        ]);
+        await shoot(page, 'tm526-agent-connect', size, scheme);
+
+        await page.goto('/demo/getting-started');
+        const run = page.locator('[data-checklist-item="first-agent-run"]');
+        await expect(run).toBeVisible();
+        await expect(run.locator('em')).toHaveCount(0);
+        await shoot(page, 'tm526-agent-checklist', size, scheme);
+        await expect(picker(page)).toHaveCount(0);
+
+        await page.goto('/settings/personas');
+        await expect(
+          size.width < 640
+            ? page.getByRole('heading', { name: 'Personas', level: 1 })
+            : page.getByRole('link', { name: 'Personas' }).first(),
+        ).toBeVisible();
+        await shoot(page, 'tm526-agent-personas', size, scheme);
+        expect(modules.puts).toHaveLength(1);
+      },
+    );
+  }
+
+  flow(
+    'human intent leaves the modules alone and gets the picker after',
+    async ({ page }) => {
+      const fx = await boot(page, SIZES[0], { user: NEW_USER });
+      const modules = await mockModules(page);
+      await page.goto('/');
+      await expect(picker(page)).toHaveCount(0);
+      await page.getByRole('button', { name: /Just track my tasks/ }).click();
+      await expect(page).toHaveURL(/\/demo\/list$/);
+      await expect
+        .poll(() => fx.writes.find((w) => w.path === 'onboarding/intent')?.body)
+        .toMatchObject({ intent: 'human' });
+      await expect(picker(page)).toBeVisible();
+      await shoot(page, 'tm526-human-picker', SIZES[0], 'light');
+      expect(modules.puts).toEqual([]);
+    },
+  );
+
+  flow('skip leaves the modules alone', async ({ page }) => {
+    await boot(page, SIZES[0], { user: NEW_USER });
+    const modules = await mockModules(page);
+    await page.goto('/');
+    await page.getByTestId('intent-skip').click();
+    await expect(page).toHaveURL(/\/demo\/list$/);
+    await expect(picker(page)).toBeVisible();
+    expect(modules.puts).toEqual([]);
+  });
+
+  flow(
+    'a failed modules save still opens the connect screen',
+    async ({ page }) => {
+      await boot(page, SIZES[0], { user: NEW_USER });
+      const modules = await mockModules(page, { failPut: true });
+      await mockConnectToken(page);
+      await page.goto('/');
+      await page.getByRole('button', { name: /Connect my AI agent/ }).click();
+      await expect(page).toHaveURL(/\/welcome-setup\/agent$/);
+      await expect(page.getByText('Waiting for your agent')).toBeVisible();
+      await expect(picker(page)).toHaveCount(0);
+      expect(modules.puts).toHaveLength(1);
+
+      await page.goto('/demo/getting-started');
+      await expect(
+        page.locator('[data-checklist-item="first-agent-run"] em'),
+      ).toBeVisible();
+      await expect(picker(page)).toBeVisible();
+      await picker(page).getByRole('button', { name: 'Not now' }).click();
+      await expect(picker(page)).toHaveCount(0);
+      await page.goto('/settings/personas');
+      await expect(
+        page.getByRole('heading', { name: 'Personas', level: 1 }),
+      ).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Personas' })).toHaveCount(0);
+    },
+  );
+});

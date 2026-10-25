@@ -87,7 +87,12 @@
 </template>
 
 <script lang="ts">
+	import {
+		getWorkspaceModules,
+		saveModulesChoice,
+	} from '@/actions/tmgr/modules';
 	import IntentCard from '@/components/onboarding/IntentCard.vue';
+	import { enableAgentModules } from '@/onboarding/agentModules';
 	import { steps } from '@/onboarding/flow';
 	import { useFocusedScreen } from '@/onboarding/useFocusedScreen';
 	import { useTours } from '@/tours/useTours';
@@ -143,6 +148,18 @@
 				if (busy.value) return;
 				selected.value = intent;
 				if (!(await save(intent, seed))) return;
+				const workspaceId = store.getters.currentWorkspaceId;
+				if (workspaceId) {
+					const payload = await enableAgentModules(intent, {
+						load: () => getWorkspaceModules(workspaceId),
+						save: (modules) => saveModulesChoice(workspaceId, { modules }),
+					});
+					if (payload)
+						store.commit('featureToggles/setWorkspaceModules', {
+							workspaceId,
+							payload,
+						});
+				}
 				if (intent === 'agent') {
 					await router.push({ name: 'WelcomeSetupAgent' });
 					return;
