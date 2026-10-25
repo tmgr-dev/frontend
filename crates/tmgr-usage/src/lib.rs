@@ -3,6 +3,7 @@ pub mod bind;
 pub mod claude;
 pub mod codex;
 pub mod collector;
+pub mod consent;
 pub mod cost;
 pub mod error;
 pub mod facts;
@@ -32,5 +33,5 @@ pub use model::{
     Tool, UsageEvent,
 };
 pub use pricing::PriceBook;
-pub use scan::{scan_account, scan_with, ScanReport};
+pub use scan::{scan_account, scan_in_chunks, scan_with, ScanReport};
 pub use store::{PruneReport, Store};

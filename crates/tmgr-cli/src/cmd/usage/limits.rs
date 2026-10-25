@@ -20,7 +20,7 @@ pub fn run(ctx: &Ctx, no_scan: bool) -> Result<Output> {
     let mut u = Usage::open()?;
     let now = Utc::now();
     if !no_scan {
-        scan(ctx, &mut u, now)?;
+        scan(ctx, &mut u, now, true)?;
     }
     let limits = u.store.current_limits(now).map_err(fail)?;
     let claude_fresh = limits

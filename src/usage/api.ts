@@ -76,12 +76,31 @@ export interface UsageOverview {
 }
 
 export interface UsageScan {
-	state: 'done' | 'busy';
+	state: 'done' | 'busy' | 'off';
 	files: number;
 	events_new: number;
 	events_updated: number;
 	errors: number;
 	bad_lines: number;
+}
+
+export type ConsentState = 'unset' | 'granted' | 'denied';
+
+export interface UsageConsent {
+	supported: boolean;
+	unsupported_reason: string | null;
+	state: ConsentState;
+	claude: boolean;
+	codex: boolean;
+	decided_at: string | null;
+	folders: { tool: 'claude' | 'codex'; label: string; path: string }[];
+	has_data: boolean;
+}
+
+export interface UsageConsentChange {
+	state?: 'granted' | 'denied';
+	claude?: boolean;
+	codex?: boolean;
 }
 
 export interface RawRun {
@@ -117,6 +136,15 @@ export interface UsageTasks {
 }
 
 export const usageScan = (): Promise<UsageScan> => invoke('usage_scan');
+
+export const usageConsent = (): Promise<UsageConsent> =>
+	invoke('usage_consent');
+
+export const usageConsentSet = (
+	change: UsageConsentChange,
+): Promise<UsageConsent> => invoke('usage_consent_set', { ...change });
+
+export const usageForget = (): Promise<UsageConsent> => invoke('usage_forget');
 
 export const usageOverview = (): Promise<UsageOverview> =>
 	invoke('usage_overview');

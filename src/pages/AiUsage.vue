@@ -35,8 +35,14 @@
 						<Button variant="outline" size="sm" @click="load">Retry</Button>
 					</div>
 
+					<UsageConsentGate
+						v-if="consent && gated"
+						:consent="consent"
+						@update="onConsent"
+					/>
+
 					<div
-						v-if="!overview && !error"
+						v-if="!overview && !error && !gated"
 						class="rounded-lg border border-border bg-card p-6 text-sm text-ink-subtle"
 					>
 						Loading usage
@@ -337,11 +343,16 @@
 						</p>
 					</template>
 
-					<p class="text-xs text-ink-subtle">
-						TMGR reads the usage counters your AI tools already write on this
-						computer: model name, token counts, timestamps, session ids, git
-						branches and the project folder. It never reads or stores what you
-						or the AI wrote. Data stays on this device.
+					<p
+						v-if="consent?.state === 'granted'"
+						class="text-xs text-ink-subtle"
+					>
+						TMGR reads the session logs your AI tools write on this computer and
+						keeps token counts, cost, model names, timestamps, session ids,
+						project folders and git branches, and the names of tools, skills and
+						commands the AI used, file types it edited and pull requests it
+						opened. Prompt and reply text is never stored. Data stays on this
+						device unless you upload it with tmgr usage sync.
 					</p>
 				</div>
 			</template>
@@ -358,6 +369,8 @@
 	import UsageTokenTypes from '@/components/usage/UsageTokenTypes.vue';
 	import UsageWeekStrip from '@/components/usage/UsageWeekStrip.vue';
 	import AutopilotPanel from '@/components/runner/AutopilotPanel.vue';
+	import { consentGate } from '@/components/usage/consent';
+	import UsageConsentGate from '@/components/usage/UsageConsentGate.vue';
 	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { isRunnerSupported } from '@/runner/api';
@@ -365,9 +378,11 @@
 	import store from '@/store';
 	import {
 		errorText,
+		usageConsent,
 		usageOverview,
 		usageScan,
 		usageTasks,
+		type UsageConsent,
 		type UsageLimit,
 		type UsageOverview,
 		type UsageTasks,
@@ -407,6 +422,7 @@
 			CommandChip,
 			LimitForecast,
 			SettingsSection,
+			UsageConsentGate,
 			UsageDailyChart,
 			UsageProjects,
 			UsageTokenTypes,
@@ -431,7 +447,11 @@
 				failedWorkspaces = ref(0),
 				pagesTruncated = ref(0),
 				runsTruncated = ref(false),
-				tasksError = ref<string | null>(null);
+				tasksError = ref<string | null>(null),
+				consent = ref<UsageConsent | null>(null);
+			const gated = computed(() =>
+				['ask', 'off'].includes(consentGate(consent.value) ?? ''),
+			);
 			let disposed = false;
 			let timer: ReturnType<typeof setTimeout> | null = null;
 			let generation = 0;
@@ -466,6 +486,12 @@
 				error.value = null;
 				scanIncomplete.value = false;
 				try {
+					consent.value = await usageConsent();
+					if (disposed || run !== generation) return;
+					if (gated.value) {
+						overview.value = null;
+						return;
+					}
 					overview.value = await usageOverview();
 					if (disposed || run !== generation) return;
 					if (!overview.value.supported) return;
@@ -477,6 +503,14 @@
 						scan = await usageScan();
 					}
 					if (disposed || run !== generation) return;
+					if (scan.state === 'off') {
+						consent.value = await usageConsent();
+						if (disposed || run !== generation) return;
+						if (gated.value) {
+							overview.value = null;
+							return;
+						}
+					}
 					scanning.value = false;
 					scanIncomplete.value = scan.errors > 0 || scan.bad_lines > 0;
 					overview.value = await usageOverview();
@@ -488,6 +522,11 @@
 				}
 				if (!disposed && run === generation) await loadTasks(run);
 			}
+
+			const onConsent = (next: UsageConsent) => {
+				consent.value = next;
+				if (!gated.value) void load();
+			};
 
 			onMounted(() => {
 				setDocumentTitle('AI usage');
@@ -525,6 +564,9 @@
 
 			return {
 				showAutopilot,
+				consent,
+				gated,
+				onConsent,
 				overview,
 				error,
 				scanning,

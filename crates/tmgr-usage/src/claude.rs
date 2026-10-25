@@ -4,8 +4,8 @@ use std::io::Read;
 use std::path::Path;
 
 use crate::collector::{
-    for_each_line, rel_key, walk_files, Collector, LogFile, ParseOutcome, ParserState,
-    MAX_LINE_BYTES,
+    for_each_line_until, rel_key, walk_files_checked, Collector, LogFile, ParseOutcome,
+    ParserState, MAX_LINE_BYTES,
 };
 use crate::error::Result;
 use crate::model::{
@@ -338,7 +338,12 @@ impl Collector for ClaudeCollector {
     }
 
     fn discover(&self, account: &Account) -> Vec<LogFile> {
-        walk_files(&account.root.join("projects"), "jsonl")
+        self.discover_checked(account).0
+    }
+
+    fn discover_checked(&self, account: &Account) -> (Vec<LogFile>, u64) {
+        let (paths, errors) = walk_files_checked(&account.root.join("projects"), "jsonl");
+        let files = paths
             .into_iter()
             .map(|path| LogFile {
                 rel: rel_key(&account.root, &path),
@@ -346,13 +351,25 @@ impl Collector for ClaudeCollector {
                 account: account.label.clone(),
                 tool: Tool::Claude,
             })
-            .collect()
+            .collect();
+        (files, errors)
     }
 
     fn parse(
         &self,
         file: &LogFile,
         from: u64,
+        state: &mut ParserState,
+        sink: &mut dyn FnMut(ParsedRecord),
+    ) -> Result<ParseOutcome> {
+        self.parse_until(file, from, u64::MAX, state, sink)
+    }
+
+    fn parse_until(
+        &self,
+        file: &LogFile,
+        from: u64,
+        until: u64,
         state: &mut ParserState,
         sink: &mut dyn FnMut(ParsedRecord),
     ) -> Result<ParseOutcome> {
@@ -363,7 +380,7 @@ impl Collector for ClaudeCollector {
         };
         let file_agent = subagent_id_from_path(&file.path);
         let mut bad_lines = 0;
-        let scan = for_each_line(&file.path, from, MAX_LINE_BYTES, &mut |raw| {
+        let scan = for_each_line_until(&file.path, from, until, MAX_LINE_BYTES, &mut |raw| {
             if !wanted(raw) {
                 return;
             }

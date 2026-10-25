@@ -49,6 +49,23 @@ struct FileRow {
     parser_state: Option<String>,
 }
 
+impl FileRow {
+    /// What another scan of the same file would have moved.
+    fn position(&self) -> (u64, u64, u64, i64, u64) {
+        (self.dev, self.ino, self.size, self.mtime_ns, self.offset)
+    }
+}
+
+/// New lines read and stored per transaction (plus at most one long line past it).
+pub const CHUNK_BYTES: u64 = 8 * 1024 * 1024;
+const UNFINISHED_MTIME: i64 = -1;
+
+enum FileEnd {
+    Done,
+    /// Reading this tool's logs was turned off: stop the scan of this account.
+    Denied,
+}
+
 #[derive(Default)]
 struct Tally {
     new: u64,
@@ -121,15 +138,29 @@ pub fn scan_with(
     pricebook: &PriceBook,
     now: DateTime<Utc>,
 ) -> Result<ScanReport> {
+    scan_in_chunks(store, collector, account, pricebook, now, CHUNK_BYTES)
+}
+
+/// `scan_with` with another chunk size (tests use small ones).
+pub fn scan_in_chunks(
+    store: &mut Store,
+    collector: &dyn Collector,
+    account: &Account,
+    pricebook: &PriceBook,
+    now: DateTime<Utc>,
+    chunk_bytes: u64,
+) -> Result<ScanReport> {
     let tool = collector.tool();
     let source = prepare_source(store, tool, &account.label, collector.parser_version())?;
     let salt = store.fingerprint_salt()?;
     let floor = store.rollup_floor_ms()?;
     let mut report = ScanReport::default();
     let mut reparse = source.reparse.then(Reparse::default);
-    let mut unreadable = 0;
-    for file in collector.discover(account) {
-        if scan_file(
+    let (files, discover_errors) = collector.discover_checked(account);
+    let mut unreadable = discover_errors;
+    let mut stopped = false;
+    for file in files {
+        match scan_file(
             store,
             collector,
             source.id,
@@ -139,14 +170,18 @@ pub fn scan_with(
             floor,
             &mut reparse,
             &mut report,
-        )
-        .is_err()
-        {
-            unreadable += 1;
+            chunk_bytes,
+        ) {
+            Ok(FileEnd::Done) => {}
+            Ok(FileEnd::Denied) => {
+                stopped = true;
+                break;
+            }
+            Err(_) => unreadable += 1,
         }
     }
     report.errors += unreadable;
-    if source.reparse && unreadable == 0 && report.rescans_deferred == 0 {
+    if source.reparse && !stopped && unreadable == 0 && report.rescans_deferred == 0 {
         store.conn.execute(
             "UPDATE usage_source SET parser_version = ?2 WHERE id = ?1 AND parser_version < ?2",
             params![source.id, collector.parser_version()],
@@ -264,7 +299,11 @@ fn scan_file(
     floor: i64,
     reparse: &mut Option<Reparse>,
     report: &mut ScanReport,
-) -> Result<()> {
+    chunk_bytes: u64,
+) -> Result<FileEnd> {
+    if !store.log_consent()?.allows(collector.tool(), true) {
+        return Ok(FileEnd::Denied);
+    }
     let st = stat_file(&file.path)?;
     let mut behind = (reparse.is_none() && context_gap(&store.conn, source_id, &file.rel)?)
         .then(Reparse::default);
@@ -278,24 +317,22 @@ fn scan_file(
             && (r.dev, r.ino, r.size, r.mtime_ns) == (st.dev, st.ino, st.size, st.mtime_ns)
         {
             report.files_unchanged += 1;
-            return Ok(());
+            return Ok(FileEnd::Done);
         }
     }
-    let tx = store
-        .conn
-        .transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let row = load_row(&tx, source_id, &file.rel)?;
+    let row = load_row(&store.conn, source_id, &file.rel)?;
+    let mut seen = row.as_ref().map(FileRow::position);
     let previous = row.as_ref().map(|r| (r.size, r.offset));
     if let Some(rp) = reparse.as_mut() {
         rp.begin_file();
     }
-    let (from, mut pstate) = match row {
-        None => (0, ParserState::default()),
-        Some(_) if reparse.is_some() => (0, ParserState::default()),
+    let (from, mut pstate, mut head) = match row {
+        None => (0, ParserState::default(), None),
+        Some(_) if reparse.is_some() => (0, ParserState::default(), None),
         Some(r) => {
             if (r.dev, r.ino, r.size, r.mtime_ns) == (st.dev, st.ino, st.size, st.mtime_ns) {
                 report.files_unchanged += 1;
-                return Ok(());
+                return Ok(FileEnd::Done);
             }
             let rotated = (r.dev, r.ino) != (st.dev, st.ino)
                 || st.size < r.size
@@ -304,107 +341,219 @@ fn scan_file(
                     && head_tag(&file.path, salt, r.head_len).ok().as_deref()
                         != Some(r.head_tag.as_str()));
             if rotated {
-                (0, ParserState::default())
+                (0, ParserState::default(), None)
             } else {
                 let state = r
                     .parser_state
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .map(ParserState)
                     .unwrap_or_default();
-                (r.offset, state)
+                let head = (r.head_len > 0).then_some((r.head_len, r.head_tag));
+                (r.offset, state, head)
             }
         }
     };
 
     let tool = collector.tool();
-    let mut tally = Tally::default();
-    let mut failure: Option<UsageError> = None;
-    let outcome = collector.parse(file, from, &mut pstate, &mut |rec| {
-        if failure.is_some() {
-            return;
-        }
-        if let Err(e) = apply(
-            &tx,
-            tool,
-            &file.account,
-            pricebook,
-            floor,
-            reparse.as_mut(),
-            rec,
-            &mut tally,
-        ) {
-            failure = Some(e);
-        }
-    });
-    let outcome = match (failure, outcome) {
-        (None, Ok(o)) => o,
-        (failed, res) => {
-            if let Some(rp) = reparse.as_mut() {
-                rp.rollback_file();
+    if reparse.is_some() && tool == Tool::Codex {
+        // A Codex reparse is all or nothing per file: check the whole file first, storing nothing,
+        // chunk by chunk so a denial stops the read.
+        let mut probe = pstate.clone();
+        let (mut at, mut bad, mut oversized) = (from, 0, 0);
+        loop {
+            if !store.log_consent()?.allows(tool, true) {
+                return Ok(FileEnd::Denied);
             }
-            return Err(failed
-                .or(res.err())
-                .unwrap_or(UsageError::Invalid("scan failed".into())));
+            let until = at.saturating_add(chunk_bytes);
+            let o = collector.parse_until(file, at, until, &mut probe, &mut |_| {})?;
+            bad += o.bad_lines;
+            oversized += o.oversized;
+            let done = o.next_offset <= at || o.next_offset < until;
+            at = o.next_offset;
+            if done {
+                break;
+            }
         }
-    };
-
-    if let Some(rp) = reparse.as_mut() {
-        let whole = outcome.bad_lines == 0
-            && outcome.oversized == 0
-            && previous
-                .is_none_or(|(size, offset)| st.size >= size && outcome.next_offset >= offset);
-        if tool == Tool::Codex && !whole {
-            rp.rollback_file();
-            drop(tx);
+        let whole = bad == 0
+            && oversized == 0
+            && previous.is_none_or(|(size, offset)| st.size >= size && at >= offset);
+        if !whole {
             report.rescans_deferred += 1;
-            return Ok(());
+            return Ok(FileEnd::Done);
         }
     }
 
-    let head_len = outcome.next_offset.min(HEAD_BYTES);
-    let tag = if head_len > 0 {
-        head_tag(&file.path, salt, head_len)?
-    } else {
-        String::new()
-    };
-    let state_text = match &pstate.0 {
-        serde_json::Value::Null => None,
-        v => Some(serde_json::to_string(v)?),
-    };
-    tx.execute(
-        "INSERT OR REPLACE INTO usage_file_state
-           (source_id, file_key, dev, inode, size, mtime_ns, byte_offset, head_len, head_tag,
-            parser_state, last_event_ts)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        params![
-            source_id,
-            file.rel,
-            st.dev as i64,
-            st.ino as i64,
-            st.size as i64,
-            st.mtime_ns,
-            outcome.next_offset as i64,
-            head_len as i64,
-            tag,
-            state_text,
-            tally.last_ts,
-        ],
-    )?;
-    tx.execute(
-        "INSERT OR REPLACE INTO usage_context_file_state (source_id, file_key, byte_offset)
-         VALUES (?1, ?2, ?3)",
-        params![source_id, file.rel, outcome.next_offset as i64],
-    )?;
-    tx.commit()?;
+    // Each chunk is parsed without a lock, then stored in its own short transaction that first
+    // re-checks the file position (another scan may have stored it) and the reading choice, so
+    // saving "off" never waits behind parsing or a long write (D-027, D-030).
+    let mut at = from;
+    let mut last_ts = None;
+    loop {
+        if !store.log_consent()?.allows(tool, true) {
+            return Ok(FileEnd::Denied);
+        }
+        if let Some(rp) = reparse.as_mut() {
+            rp.begin_file();
+        }
+        // Every chunk opens the file again: it must still be the same file (inode, not shorter,
+        // same first bytes) before and after reading, or this scan stores nothing more for it and
+        // the next one sees it as replaced (D-032).
+        let guard = match &head {
+            Some(h) => h.clone(),
+            None => {
+                let len = st.size.min(HEAD_BYTES);
+                let tag = if len > 0 {
+                    head_tag(&file.path, salt, len)?
+                } else {
+                    String::new()
+                };
+                (len, tag)
+            }
+        };
+        if !same_file(&file.path, &st, at, salt, &guard) {
+            if let Some(rp) = reparse.as_mut() {
+                rp.rollback_file();
+            }
+            report.rescans_deferred += 1;
+            return Ok(FileEnd::Done);
+        }
+        let mut tally = Tally::default();
+        let mut records = Vec::new();
+        let mut next_state = pstate.clone();
+        let parsed = collector.parse_until(
+            file,
+            at,
+            at.saturating_add(chunk_bytes),
+            &mut next_state,
+            &mut |rec| records.push(rec),
+        );
+        let outcome = match parsed {
+            Ok(o) if same_file(&file.path, &st, o.next_offset, salt, &guard) => o,
+            Ok(_) => {
+                if let Some(rp) = reparse.as_mut() {
+                    rp.rollback_file();
+                }
+                report.rescans_deferred += 1;
+                return Ok(FileEnd::Done);
+            }
+            Err(e) => {
+                if let Some(rp) = reparse.as_mut() {
+                    rp.rollback_file();
+                }
+                return Err(e);
+            }
+        };
+        let head_len = outcome.next_offset.min(HEAD_BYTES);
+        let new_head = if head_len == guard.0 {
+            guard
+        } else if head_len > 0 {
+            (head_len, head_tag(&file.path, salt, head_len)?)
+        } else {
+            (0, String::new())
+        };
+        let done =
+            outcome.next_offset <= at || outcome.next_offset < at.saturating_add(chunk_bytes);
+        let tx = store
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let moved = load_row(&tx, source_id, &file.rel)?
+            .as_ref()
+            .map(FileRow::position)
+            != seen;
+        // Inside the write lock the choice cannot change; `true`: any denial or tool switch-off
+        // stops (background scans only start when granted).
+        let off = !crate::consent::read_consent(&tx)?.allows(tool, true);
+        if moved || off {
+            if let Some(rp) = reparse.as_mut() {
+                rp.rollback_file();
+            }
+            drop(tx);
+            if off {
+                return Ok(FileEnd::Denied);
+            }
+            report.files_unchanged += 1;
+            return Ok(FileEnd::Done);
+        }
+        for rec in records {
+            if let Err(e) = apply(
+                &tx,
+                tool,
+                &file.account,
+                pricebook,
+                floor,
+                reparse.as_mut(),
+                rec,
+                &mut tally,
+            ) {
+                if let Some(rp) = reparse.as_mut() {
+                    rp.rollback_file();
+                }
+                return Err(e);
+            }
+        }
+        last_ts = last_ts.max(tally.last_ts);
+        let state_text = match &next_state.0 {
+            serde_json::Value::Null => None,
+            v => Some(serde_json::to_string(v)?),
+        };
+        // An unfinished file is stored with its read position as size and no mtime, so the next
+        // scan never takes it for unchanged and resumes from the last stored chunk.
+        let (size, mtime_ns) = if done {
+            (st.size, st.mtime_ns)
+        } else {
+            (outcome.next_offset, UNFINISHED_MTIME)
+        };
+        tx.execute(
+            "INSERT OR REPLACE INTO usage_file_state
+               (source_id, file_key, dev, inode, size, mtime_ns, byte_offset, head_len, head_tag,
+                parser_state, last_event_ts)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                source_id,
+                file.rel,
+                st.dev as i64,
+                st.ino as i64,
+                size as i64,
+                mtime_ns,
+                outcome.next_offset as i64,
+                new_head.0 as i64,
+                new_head.1,
+                state_text,
+                last_ts,
+            ],
+        )?;
+        tx.execute(
+            "INSERT OR REPLACE INTO usage_context_file_state (source_id, file_key, byte_offset)
+             VALUES (?1, ?2, ?3)",
+            params![source_id, file.rel, outcome.next_offset as i64],
+        )?;
+        tx.commit()?;
 
-    report.files += 1;
-    report.bytes += outcome.next_offset.saturating_sub(from);
-    report.events_new += tally.new;
-    report.events_updated += tally.updated;
-    report.skipped_before_floor += tally.skipped_before_floor;
-    report.skipped_oversized += outcome.oversized;
-    report.bad_lines += outcome.bad_lines;
-    Ok(())
+        report.bytes += outcome.next_offset.saturating_sub(at);
+        report.events_new += tally.new;
+        report.events_updated += tally.updated;
+        report.skipped_before_floor += tally.skipped_before_floor;
+        report.skipped_oversized += outcome.oversized;
+        report.bad_lines += outcome.bad_lines;
+        seen = Some((st.dev, st.ino, size, mtime_ns, outcome.next_offset));
+        if done {
+            report.files += 1;
+            return Ok(FileEnd::Done);
+        }
+        at = outcome.next_offset;
+        pstate = next_state;
+        head = (new_head.0 > 0).then_some(new_head);
+    }
+}
+
+/// Still the file the scan started on: same inode, at least `at` bytes, same first bytes.
+fn same_file(path: &Path, st: &FileStat, at: u64, salt: &str, head: &(u64, String)) -> bool {
+    let Ok(now) = stat_file(path) else {
+        return false;
+    };
+    (now.dev, now.ino) == (st.dev, st.ino)
+        && now.size >= at
+        && (head.0 == 0 || head_tag(path, salt, head.0).ok().as_deref() == Some(head.1.as_str()))
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -6,8 +6,13 @@ pub enum UsageError {
     Db(String),
     Json,
     Invalid(String),
-    SchemaTooNew { found: i64, supported: i64 },
+    SchemaTooNew {
+        found: i64,
+        supported: i64,
+    },
     Unsupported,
+    /// A scan is still running (it holds the scan lock).
+    Busy,
 }
 
 pub type Result<T> = std::result::Result<T, UsageError>;
@@ -24,6 +29,7 @@ impl fmt::Display for UsageError {
                 "usage database schema {found} is newer than supported {supported}"
             ),
             UsageError::Unsupported => write!(f, "not supported"),
+            UsageError::Busy => write!(f, "a scan is running"),
         }
     }
 }

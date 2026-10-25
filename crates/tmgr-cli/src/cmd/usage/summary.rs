@@ -217,7 +217,7 @@ pub fn run(ctx: &Ctx, args: &SummaryArgs) -> Result<Output> {
     let scanned = if args.no_scan {
         None
     } else {
-        Some(scan(ctx, &mut u, now)?)
+        Some(scan(ctx, &mut u, now, true)?)
     };
     let out = if task_mode {
         task_view(ctx, &u, args, &wins[0], want.as_ref(), now)?

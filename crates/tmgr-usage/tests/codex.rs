@@ -678,3 +678,99 @@ fn a_child_thread_keeps_its_parent_link_across_prune_and_later_events() {
     assert_eq!(events[0].tool_session_id, "child");
     assert_eq!(events[0].parent_session_id.as_deref(), Some("parent"));
 }
+
+fn cumulative_rollout() -> Vec<String> {
+    vec![
+        meta("s1", None),
+        turn(1, "gpt-a"),
+        tc(2, Some((100, 40, 10, 4)), None),
+        tc(3, Some((250, 100, 30, 9)), None),
+        tc(4, Some((400, 160, 50, 12)), None),
+        tc(5, Some((600, 200, 80, 20)), None),
+    ]
+}
+
+fn stored_totals(store: &tmgr_usage::Store) -> (u64, Tokens) {
+    let t = store
+        .aggregate(&tmgr_usage::Query {
+            from: chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 2026, 9, 1, 0, 0, 0).unwrap(),
+            to: chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 2026, 11, 1, 0, 0, 0).unwrap(),
+            tz: tmgr_usage::Tz::Fixed(chrono::FixedOffset::east_opt(0).unwrap()),
+            group_by: vec![],
+            filters: tmgr_usage::Filters::default(),
+        })
+        .unwrap()
+        .totals;
+    (t.events, t.tokens)
+}
+
+/// A store whose Codex source already exists (so the next scan is not a first-time reparse) and a
+/// rollout with cumulative token counters.
+fn codex_home() -> (tempfile::TempDir, PathBuf, tmgr_usage::Store) {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("codex");
+    std::fs::create_dir_all(root.join("sessions")).unwrap();
+    let mut store = open_store(tmp.path());
+    scan_account(&mut store, &account(&root), &book(), now()).unwrap();
+    write(
+        &root.join("sessions/2026/10/14/rollout-a.jsonl"),
+        &cumulative_rollout(),
+    );
+    (tmp, root, store)
+}
+
+#[test]
+fn cumulative_counters_carry_across_chunks_and_a_resume() {
+    let (_a, root, mut whole) = codex_home();
+    scan_account(&mut whole, &account(&root), &book(), now()).unwrap();
+    let expected = stored_totals(&whole);
+    assert_eq!(expected.0, 4);
+
+    let (_b, root, mut chunked) = codex_home();
+    let spy = Spy::new(&CodexCollector);
+    tmgr_usage::scan_in_chunks(&mut chunked, &spy, &account(&root), &book(), now(), 1).unwrap();
+    assert!(spy.calls.get() >= 6, "{} chunks", spy.calls.get());
+    assert_eq!(stored_totals(&chunked), expected);
+
+    let (_c, root, mut resumed) = codex_home();
+    let failing = Spy {
+        fail_at: 5,
+        ..Spy::new(&CodexCollector)
+    };
+    let r = tmgr_usage::scan_in_chunks(&mut resumed, &failing, &account(&root), &book(), now(), 1)
+        .unwrap();
+    assert_eq!((r.errors, r.events_new), (1, 2));
+    let rest = scan_account(&mut resumed, &account(&root), &book(), now()).unwrap();
+    assert_eq!((rest.events_new, rest.events_updated), (2, 0));
+    assert_eq!(stored_totals(&resumed), expected);
+}
+
+#[test]
+fn a_denial_during_the_codex_reparse_check_stops_reading() {
+    use tmgr_usage::consent::{ConsentChange, ReadLogs};
+    let (tmp, root, mut store) = codex_home();
+    scan_account(&mut store, &account(&root), &book(), now()).unwrap();
+    let db = tmp.path().join("usage.db");
+    let bumped = Spy {
+        version: CodexCollector.parser_version() + 1,
+        before: Box::new(|n| {
+            if n == 1 {
+                let deny = ConsentChange {
+                    state: Some(ReadLogs::Denied),
+                    ..ConsentChange::default()
+                };
+                tmgr_usage::Store::open(&db)
+                    .unwrap()
+                    .change_log_consent(&deny, now())
+                    .unwrap();
+            }
+        }),
+        ..Spy::new(&CodexCollector)
+    };
+    let r = tmgr_usage::scan_in_chunks(&mut store, &bumped, &account(&root), &book(), now(), 1)
+        .unwrap();
+    assert_eq!(bumped.calls.get(), 1, "the check stops at the next chunk");
+    assert_eq!(bumped.whole_calls.get(), 0, "no whole-file pass");
+    assert_eq!((r.events_new, r.events_updated), (0, 0));
+    assert_eq!(stored_totals(&store).0, 4);
+}

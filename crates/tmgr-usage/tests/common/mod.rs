@@ -77,6 +77,71 @@ pub fn assistant_line(session: &str, ts: &str, msg: &str, input: u64, output: u6
     )
 }
 
+/// Wraps a collector to watch chunked scans: counts `parse_until` calls (and whole-file `parse`
+/// calls), records each chunk's start, runs `before(n)` before chunk n and fails chunk `fail_at`.
+pub struct Spy<'a> {
+    pub inner: &'a dyn tmgr_usage::collector::Collector,
+    pub version: u32,
+    pub calls: std::cell::Cell<u32>,
+    pub whole_calls: std::cell::Cell<u32>,
+    pub froms: std::cell::RefCell<Vec<u64>>,
+    pub fail_at: u32,
+    pub before: Box<dyn Fn(u32) + 'a>,
+}
+
+impl<'a> Spy<'a> {
+    pub fn new(inner: &'a dyn tmgr_usage::collector::Collector) -> Self {
+        Spy {
+            inner,
+            version: inner.parser_version(),
+            calls: Default::default(),
+            whole_calls: Default::default(),
+            froms: Default::default(),
+            fail_at: 0,
+            before: Box::new(|_| {}),
+        }
+    }
+}
+
+impl tmgr_usage::collector::Collector for Spy<'_> {
+    fn tool(&self) -> Tool {
+        self.inner.tool()
+    }
+    fn parser_version(&self) -> u32 {
+        self.version
+    }
+    fn discover(&self, account: &Account) -> Vec<tmgr_usage::collector::LogFile> {
+        self.inner.discover(account)
+    }
+    fn parse(
+        &self,
+        file: &tmgr_usage::collector::LogFile,
+        from: u64,
+        state: &mut tmgr_usage::ParserState,
+        sink: &mut dyn FnMut(tmgr_usage::ParsedRecord),
+    ) -> tmgr_usage::Result<tmgr_usage::collector::ParseOutcome> {
+        self.whole_calls.set(self.whole_calls.get() + 1);
+        self.inner.parse(file, from, state, sink)
+    }
+    fn parse_until(
+        &self,
+        file: &tmgr_usage::collector::LogFile,
+        from: u64,
+        until: u64,
+        state: &mut tmgr_usage::ParserState,
+        sink: &mut dyn FnMut(tmgr_usage::ParsedRecord),
+    ) -> tmgr_usage::Result<tmgr_usage::collector::ParseOutcome> {
+        let n = self.calls.get() + 1;
+        self.calls.set(n);
+        self.froms.borrow_mut().push(from);
+        (self.before)(n);
+        if n == self.fail_at {
+            return Err(tmgr_usage::UsageError::Invalid("simulated crash".into()));
+        }
+        self.inner.parse_until(file, from, until, state, sink)
+    }
+}
+
 pub fn projects_file(root: &Path, name: &str) -> PathBuf {
     root.join("projects").join("-work-alpha").join(name)
 }

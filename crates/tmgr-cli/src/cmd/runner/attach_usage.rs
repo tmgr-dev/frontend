@@ -55,7 +55,10 @@ fn build(
     let mut limits = store
         .and_then(|s| s.current_limits(now).ok())
         .unwrap_or_default();
-    if let Some(src) = source {
+    let claude_granted = store
+        .and_then(|s| s.log_consent().ok())
+        .is_some_and(|c| c.allows(Tool::Claude, false));
+    if let Some(src) = source.filter(|_| claude_granted) {
         for snap in read_snapshots(&src.snapshots).unwrap_or_default() {
             limits.extend(snap.to_limits_at("claude", now));
         }
@@ -305,11 +308,28 @@ mod tests {
             body.as_bytes(),
         )
         .unwrap();
+        assert_eq!(
+            run(Some(&db), Vec::new()),
+            UsageBar::default(),
+            "no store, no consent: snapshots are not read"
+        );
+        assert!(!db.exists());
+        let store = Store::open(&db).unwrap();
+        let grant = |claude: bool| {
+            let change = tmgr_usage::consent::ConsentChange {
+                state: Some(tmgr_usage::consent::ReadLogs::Granted),
+                claude: Some(claude),
+                codex: Some(true),
+            };
+            store.change_log_consent(&change, Utc::now()).unwrap();
+        };
+        grant(false);
+        assert!(run(Some(&db), Vec::new()).claude_5h.is_none());
+        grant(true);
         let bar = run(Some(&db), Vec::new());
         assert_eq!(bar.claude_5h.map(|r| (r.pct, r.stale)), Some((55.0, false)));
         assert_eq!(bar.claude_week.map(|r| r.pct), Some(12.0));
         assert!(bar.codex_week.is_none());
-        assert!(!db.exists());
     }
 
     #[test]

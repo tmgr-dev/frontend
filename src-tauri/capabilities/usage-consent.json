@@ -1,0 +1,7 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "usage-consent",
+	"description": "Changing AI tool log reading and forgetting scanned data: main window only.",
+	"windows": ["main"],
+	"permissions": ["allow-usage-consent-set", "allow-usage-forget"]
+}

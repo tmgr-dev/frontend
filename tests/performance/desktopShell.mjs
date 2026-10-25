@@ -8,6 +8,7 @@ const fakeShell = async ({
   appVersion = '0.9.8',
   profile: initialProfile = null,
   runner = null,
+  usage = null,
 } = {}) => {
   const { createHash } = await import('node:crypto');
   const installed = new Map();
@@ -281,6 +282,7 @@ const fakeShell = async ({
       default:
         if (runner && command.startsWith('runner_'))
           return runner(command, args);
+        if (usage && command.startsWith('usage_')) return usage(command, args);
         unknown.push(command);
         return null;
     }

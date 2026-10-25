@@ -10,7 +10,8 @@ use super::model::{
 use super::store::Store;
 use chrono::{DateTime, Duration, Utc};
 use decide::{
-    deadline, decide, next_stop, verdict, Blocker, Decision, Facts, Hit, Inputs, StopReason,
+    deadline, decide, next_stop, verdict, Blocker, Decision, Facts, Hit, Inputs, LogRead,
+    StopReason,
 };
 use orch::{Flow, Frozen, Orch};
 use ports::{Ports, Timing};
@@ -261,6 +262,8 @@ pub struct Autopilot<'a> {
     unknown_since: Option<DateTime<Utc>>,
     cost: Cost,
     last_scan: Option<DateTime<Utc>>,
+    noted_logs: Vec<LogRead>,
+    logs: LogRead,
     remote: RemoteCache,
     notified_limit: Option<(String, bool)>,
     pushes: Option<bool>,
@@ -339,6 +342,8 @@ impl<'a> Autopilot<'a> {
             unknown_since: None,
             cost: Cost::default(),
             last_scan: None,
+            noted_logs: Vec::new(),
+            logs: LogRead::Readable,
             remote: RemoteCache::default(),
             notified_limit: None,
             pushes: None,
@@ -809,6 +814,7 @@ impl<'a> Autopilot<'a> {
             billing: self.billing,
             api_usd: self.cost.api_usd,
             cost_cap: self.s.answers.max_cost_usd.filter(|_| !self.queue_mode),
+            logs: self.logs,
             started: self.started_ids.len() as u32,
             max_tasks: self.s.answers.max_tasks.filter(|_| !self.queue_mode),
             max_hours: self.s.answers.max_hours.filter(|_| !self.queue_mode),
@@ -842,6 +848,10 @@ impl<'a> Autopilot<'a> {
                 Blocker::Limit(h) => format!("usage limit: {}", limit_text(h)),
                 Blocker::UsageUnknown => "no fresh usage numbers".into(),
                 Blocker::CostCap => "cost cap reached".into(),
+                Blocker::CostUnknown(LogRead::Denied) => {
+                    "cost unknown: AI usage logs are not read".into()
+                }
+                Blocker::CostUnknown(_) => "cost unknown: AI usage logs could not be read".into(),
                 Blocker::MaxTasks => "task limit reached".into(),
                 Blocker::Hours => "time limit reached".into(),
                 Blocker::Failures => "3 failures in a row".into(),
@@ -1211,9 +1221,34 @@ impl<'a> Autopilot<'a> {
         self.guard = guard_limits(&snaps, now, self.t.usage_max_age);
         if self.last_scan.is_none_or(|t| now - t >= self.t.scan_every) {
             self.last_scan = Some(now);
-            self.p.usage.scan(now);
+            self.logs = self.p.usage.scan(now, self.tool);
+            if self.logs != LogRead::Readable && !self.noted_logs.contains(&self.logs) {
+                self.noted_logs.push(self.logs);
+                let tool = match self.tool {
+                    Some(Tool::Claude) => "Claude Code",
+                    Some(Tool::Codex) => "Codex",
+                    None => "agent",
+                };
+                let cap = if self.cost_cap_applies() {
+                    " The cost cap cannot be checked, so no new task starts."
+                } else {
+                    ""
+                };
+                let text = if self.logs == LogRead::Denied {
+                    format!("AI usage logs are not read on this device, limits come only from the {tool} usage probe.{cap} Allow reading on the AI Usage page or run `tmgr usage consent allow`.")
+                } else {
+                    format!("AI usage logs could not be read, limits come only from the {tool} usage probe.{cap} `tmgr usage scan` shows what failed.")
+                };
+                self.event("usage", None, text);
+            }
             self.refresh_cost(now);
         }
+    }
+
+    fn cost_cap_applies(&self) -> bool {
+        self.s.answers.max_cost_usd.is_some()
+            && !self.queue_mode
+            && self.billing != Billing::Subscription
     }
 
     fn refresh_cost(&mut self, now: DateTime<Utc>) {

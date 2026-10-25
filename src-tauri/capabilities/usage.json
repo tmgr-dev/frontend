@@ -5,6 +5,7 @@
 	"windows": ["main", "task-*"],
 	"permissions": [
 		"allow-usage-scan",
+		"allow-usage-consent",
 		"allow-usage-overview",
 		"allow-usage-tasks",
 		"allow-usage-task"

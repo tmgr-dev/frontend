@@ -3,7 +3,15 @@ jest.mock('@tauri-apps/api/core', () => ({
 	invoke: (...a: unknown[]) => invoke(...a),
 }));
 
-import { errorText, usageOverview, usageScan, usageTasks } from '../api';
+import {
+	errorText,
+	usageConsent,
+	usageConsentSet,
+	usageForget,
+	usageOverview,
+	usageScan,
+	usageTasks,
+} from '../api';
 
 describe('usage api', () => {
 	beforeEach(() => invoke.mockReset());
@@ -14,10 +22,16 @@ describe('usage api', () => {
 		await usageOverview();
 		const runs = [{ id: 1 }] as any;
 		await usageTasks(runs);
+		await usageConsent();
+		await usageConsentSet({ state: 'granted', claude: true, codex: false });
+		await usageForget();
 		expect(invoke.mock.calls).toEqual([
 			['usage_scan'],
 			['usage_overview'],
 			['usage_tasks', { runs }],
+			['usage_consent'],
+			['usage_consent_set', { state: 'granted', claude: true, codex: false }],
+			['usage_forget'],
 		]);
 	});
 

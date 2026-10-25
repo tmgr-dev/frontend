@@ -606,8 +606,18 @@ fn claude_work(event: &str, server_override: Option<String>) {
             } else {
                 consume_prompt(&session)
             }
-            .or_else(|| str_of(&input, "transcript_path").and_then(transcript_started_ms));
-            let payload = notify::stop_push(&input, started, now_ms, env.stop_min_minutes());
+            .or_else(|| {
+                let env = tmgr_usage::paths::Env::from_process();
+                if !tmgr_usage::consent::granted_read_only(&env, tmgr_usage::Tool::Claude) {
+                    return None;
+                }
+                str_of(&input, "transcript_path").and_then(transcript_started_ms)
+            });
+            let payload = if started.is_none() && session.is_empty() {
+                None
+            } else {
+                notify::stop_push(&input, started, now_ms, env.stop_min_minutes())
+            };
             push_and_touch(&env, payload, &cwd, Touch::Commits);
         }
         "session-end" => {
