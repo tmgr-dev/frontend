@@ -39,13 +39,13 @@ const loadRequestInterceptor = (): ((config: any) => any) => {
 };
 
 describe('X-Workspace-Id request header', () => {
-	it('attaches the current workspace by default', () => {
-		const config = loadRequestInterceptor()({ headers: {} });
+	it('attaches the current workspace by default', async () => {
+		const config = await loadRequestInterceptor()({ headers: {} });
 		expect(config.headers['X-Workspace-Id']).toBe('6');
 	});
 
-	it('keeps a header the caller set explicitly', () => {
-		const config = loadRequestInterceptor()({
+	it('keeps a header the caller set explicitly', async () => {
+		const config = await loadRequestInterceptor()({
 			headers: { 'X-Workspace-Id': '5' },
 		});
 		expect(config.headers['X-Workspace-Id']).toBe('5');
