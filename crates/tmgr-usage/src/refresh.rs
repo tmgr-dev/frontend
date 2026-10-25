@@ -34,7 +34,7 @@ pub fn refresh(
         None => PriceBook::bundled(),
     };
     let mut report = RefreshReport::default();
-    crate::consent::each_allowed(store, &accounts, false, |store, acc| {
+    let covered = crate::consent::each_allowed(store, &accounts, false, |store, acc| {
         match scan_account(store, acc, &book, now) {
             Ok(r) => {
                 report.files += r.files;
@@ -46,7 +46,7 @@ pub fn refresh(
             Err(_) => report.errors += 1,
         }
     })?;
-    if store.log_consent()?.allows(Tool::Claude, false) {
+    if covered.contains(&Tool::Claude) {
         let snapshots = paths::snapshots_dir(dir).join("claude");
         ingest_statusline(store, &snapshots, &accounts);
         crate::statusline::prune_snapshots(&snapshots, now, SNAPSHOT_KEEP_DAYS);

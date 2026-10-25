@@ -214,3 +214,105 @@ fn missing_account_root_scans_nothing() {
     let report = scan_account(&mut store, &account, &book(), now()).unwrap();
     assert_eq!(report.files, 0);
 }
+
+struct SlowParse {
+    parsing: std::sync::mpsc::Sender<()>,
+    release: std::sync::mpsc::Receiver<()>,
+}
+
+impl Collector for SlowParse {
+    fn tool(&self) -> Tool {
+        Tool::Claude
+    }
+    fn parser_version(&self) -> u32 {
+        ClaudeCollector.parser_version()
+    }
+    fn discover(&self, account: &Account) -> Vec<LogFile> {
+        ClaudeCollector.discover(account)
+    }
+    fn parse(
+        &self,
+        file: &LogFile,
+        from: u64,
+        state: &mut ParserState,
+        sink: &mut dyn FnMut(ParsedRecord),
+    ) -> Result<ParseOutcome> {
+        self.parsing.send(()).unwrap();
+        self.release.recv().unwrap();
+        ClaudeCollector.parse(file, from, state, sink)
+    }
+}
+
+#[test]
+fn turning_reading_off_never_waits_behind_a_slow_parse_and_racing_scans_store_once() {
+    use tmgr_usage::consent::{ConsentChange, ReadLogs};
+    let (tmp, home, _store) = setup();
+    write_lines(
+        &projects_file(&home, "s.jsonl"),
+        &[assistant_line("s", T, "m1", 10, 1)],
+    );
+    let (parsing_tx, parsing) = std::sync::mpsc::channel();
+    let (release, release_rx) = std::sync::mpsc::channel();
+    let dir = tmp.path().to_path_buf();
+    let account = claude_account(&home);
+    let slow = std::thread::spawn({
+        let account = account.clone();
+        move || {
+            let mut store = open_store(&dir);
+            let c = SlowParse {
+                parsing: parsing_tx,
+                release: release_rx,
+            };
+            scan_with(&mut store, &c, &account, &book(), now()).unwrap()
+        }
+    });
+    parsing.recv().unwrap();
+    let other = open_store(tmp.path());
+    let started = std::time::Instant::now();
+    let deny = ConsentChange {
+        state: Some(ReadLogs::Denied),
+        ..ConsentChange::default()
+    };
+    let c = other.change_log_consent(&deny, now()).unwrap();
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(2),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(c.state, ReadLogs::Denied);
+    let mut racing = open_store(tmp.path());
+    assert_eq!(
+        scan_account(&mut racing, &account, &book(), now())
+            .unwrap()
+            .events_new,
+        1
+    );
+    release.send(()).unwrap();
+    let late = slow.join().unwrap();
+    assert_eq!((late.events_new, late.files_unchanged), (0, 1));
+    assert_eq!(other.event_count().unwrap(), 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_log_dir_is_a_scan_error_and_a_missing_root_is_not() {
+    use std::os::unix::fs::PermissionsExt;
+    let (_tmp, home, mut store) = setup();
+    let locked = home.join("projects/p");
+    write_lines(
+        &locked.join("s.jsonl"),
+        &[assistant_line("s", T, "m1", 10, 1)],
+    );
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let readable_anyway = std::fs::read_dir(&locked).is_ok();
+    let report = scan_account(&mut store, &claude_account(&home), &book(), now());
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+    if readable_anyway {
+        return;
+    }
+    let report = report.unwrap();
+    assert_eq!((report.errors, report.files), (1, 0));
+    let gone = home.join("not-installed");
+    let report = scan_account(&mut store, &claude_account(&gone), &book(), now()).unwrap();
+    assert_eq!(report.errors, 0);
+}

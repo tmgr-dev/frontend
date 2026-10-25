@@ -40,6 +40,11 @@ pub trait Collector {
     fn tool(&self) -> Tool;
     fn parser_version(&self) -> u32;
     fn discover(&self, account: &Account) -> Vec<LogFile>;
+    /// The files plus how many log directories or entries could not be read (counted as scan
+    /// errors).
+    fn discover_checked(&self, account: &Account) -> (Vec<LogFile>, u64) {
+        (self.discover(account), 0)
+    }
     fn parse(
         &self,
         file: &LogFile,
@@ -112,16 +117,38 @@ pub fn for_each_line(
 }
 
 pub fn walk_files(dir: &Path, ext: &str) -> Vec<PathBuf> {
+    walk_files_checked(dir, ext).0
+}
+
+/// Like `walk_files`, plus how many directories or entries could not be read. Something that is
+/// gone (a missing root: the tool is not installed, or a file removed meanwhile) is not an error.
+pub fn walk_files_checked(dir: &Path, ext: &str) -> (Vec<PathBuf>, u64) {
+    let gone = |e: &std::io::Error| e.kind() == std::io::ErrorKind::NotFound;
     let mut out = Vec::new();
+    let mut errors = 0;
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&d) else {
-            continue;
-        };
-        for entry in rd.flatten() {
-            let path = entry.path();
-            let Ok(meta) = std::fs::symlink_metadata(&path) else {
+        let rd = match std::fs::read_dir(&d) {
+            Ok(rd) => rd,
+            Err(e) => {
+                errors += u64::from(!gone(&e));
                 continue;
+            }
+        };
+        for entry in rd {
+            let path = match entry {
+                Ok(entry) => entry.path(),
+                Err(e) => {
+                    errors += u64::from(!gone(&e));
+                    continue;
+                }
+            };
+            let meta = match std::fs::symlink_metadata(&path) {
+                Ok(meta) => meta,
+                Err(e) => {
+                    errors += u64::from(!gone(&e));
+                    continue;
+                }
             };
             if meta.file_type().is_symlink() {
                 continue;
@@ -134,7 +161,7 @@ pub fn walk_files(dir: &Path, ext: &str) -> Vec<PathBuf> {
         }
     }
     out.sort();
-    out
+    (out, errors)
 }
 
 pub fn rel_key(root: &Path, path: &Path) -> String {

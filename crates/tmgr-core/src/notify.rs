@@ -209,8 +209,9 @@ pub fn stop_push(
     now_ms: i64,
     min_minutes: f64,
 ) -> Option<PushPayload> {
-    let started = started_ms?;
-    if (now_ms - started) as f64 / 60_000.0 < min_minutes {
+    // An unknown start (no prompt hook record, transcript not read) is sent: only a known short
+    // turn is filtered out (D-026).
+    if started_ms.is_some_and(|started| ((now_ms - started) as f64 / 60_000.0) < min_minutes) {
         return None;
     }
     let project = project_name(input.get("cwd").and_then(Value::as_str).unwrap_or(""));
@@ -764,11 +765,12 @@ mod tests {
     }
 
     #[test]
-    fn stop_hook_notifies_only_after_a_long_turn() {
+    fn stop_hook_skips_only_a_known_short_turn() {
         let input =
             serde_json::json!({"cwd": "/work/api", "last_assistant_message": "Done.\nmore"});
         let now = 10_000_000;
-        assert!(stop_push(&input, None, now, 5.0).is_none());
+        let unknown = stop_push(&input, None, now, 5.0).unwrap();
+        assert_eq!(unknown.title, "Claude Code · api · done");
         assert!(stop_push(&input, Some(now - 4 * 60_000), now, 5.0).is_none());
         let p = stop_push(&input, Some(now - 6 * 60_000), now, 5.0).unwrap();
         assert_eq!(p.title, "Claude Code · api · done");

@@ -160,18 +160,18 @@ async fn the_transcript_gives_the_turn_start_when_no_prompt_hook_ran() {
     let env = Env::new().await;
     mock_push(&env).await;
     let transcript = env.tmp.path().join("t.jsonl");
-    std::fs::write(
-        &transcript,
-        "{\"type\":\"user\",\"timestamp\":\"2020-01-01T00:00:00Z\",\"message\":{\"role\":\"user\",\"content\":\"go\"}}\n",
-    )
-    .unwrap();
+    let prompt_at = |ts: &str| {
+        format!("{{\"type\":\"user\",\"timestamp\":\"{ts}\",\"message\":{{\"role\":\"user\",\"content\":\"go\"}}}}\n")
+    };
+    let just_now = (chrono::Utc::now() - chrono::Duration::minutes(1)).to_rfc3339();
+    std::fs::write(&transcript, prompt_at(&just_now)).unwrap();
     let stop = json!({"session_id": "s3", "cwd": "/work/api", "transcript_path": transcript.display().to_string()}).to_string();
     let (out, _) = hook(&env, &["hook", "claude", "stop"], stop.as_bytes());
     quiet(&out);
     assert_eq!(
         pushes(&env).await.len(),
-        0,
-        "the transcript is not read before Claude reading is allowed"
+        1,
+        "the start is unknown without reading the transcript, so the push goes out"
     );
     assert!(!env.tmp.path().join(".local/share/tmgr/usage").exists());
     let allow = env
@@ -182,7 +182,15 @@ async fn the_transcript_gives_the_turn_start_when_no_prompt_hook_ran() {
     assert!(allow.status.success(), "{}", text(&allow.stderr));
     let (out, _) = hook(&env, &["hook", "claude", "stop"], stop.as_bytes());
     quiet(&out);
-    assert_eq!(pushes(&env).await.len(), 1);
+    assert_eq!(
+        pushes(&env).await.len(),
+        1,
+        "now the transcript is read: a one-minute turn stays silent"
+    );
+    std::fs::write(&transcript, prompt_at("2020-01-01T00:00:00Z")).unwrap();
+    let (out, _) = hook(&env, &["hook", "claude", "stop"], stop.as_bytes());
+    quiet(&out);
+    assert_eq!(pushes(&env).await.len(), 2);
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -4,7 +4,7 @@ use std::io::Read;
 use std::path::Path;
 
 use crate::collector::{
-    for_each_line, rel_key, walk_files, Collector, LogFile, ParseOutcome, ParserState,
+    for_each_line, rel_key, walk_files_checked, Collector, LogFile, ParseOutcome, ParserState,
     MAX_LINE_BYTES,
 };
 use crate::error::Result;
@@ -338,7 +338,12 @@ impl Collector for ClaudeCollector {
     }
 
     fn discover(&self, account: &Account) -> Vec<LogFile> {
-        walk_files(&account.root.join("projects"), "jsonl")
+        self.discover_checked(account).0
+    }
+
+    fn discover_checked(&self, account: &Account) -> (Vec<LogFile>, u64) {
+        let (paths, errors) = walk_files_checked(&account.root.join("projects"), "jsonl");
+        let files = paths
             .into_iter()
             .map(|path| LogFile {
                 rel: rel_key(&account.root, &path),
@@ -346,7 +351,8 @@ impl Collector for ClaudeCollector {
                 account: account.label.clone(),
                 tool: Tool::Claude,
             })
-            .collect()
+            .collect();
+        (files, errors)
     }
 
     fn parse(

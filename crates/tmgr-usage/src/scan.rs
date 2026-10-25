@@ -49,6 +49,13 @@ struct FileRow {
     parser_state: Option<String>,
 }
 
+impl FileRow {
+    /// What another scan of the same file would have moved.
+    fn position(&self) -> (u64, u64, u64, i64, u64) {
+        (self.dev, self.ino, self.size, self.mtime_ns, self.offset)
+    }
+}
+
 #[derive(Default)]
 struct Tally {
     new: u64,
@@ -127,8 +134,9 @@ pub fn scan_with(
     let floor = store.rollup_floor_ms()?;
     let mut report = ScanReport::default();
     let mut reparse = source.reparse.then(Reparse::default);
-    let mut unreadable = 0;
-    for file in collector.discover(account) {
+    let (files, discover_errors) = collector.discover_checked(account);
+    let mut unreadable = discover_errors;
+    for file in files {
         if scan_file(
             store,
             collector,
@@ -281,10 +289,8 @@ fn scan_file(
             return Ok(());
         }
     }
-    let tx = store
-        .conn
-        .transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let row = load_row(&tx, source_id, &file.rel)?;
+    let row = load_row(&store.conn, source_id, &file.rel)?;
+    let seen = row.as_ref().map(FileRow::position);
     let previous = row.as_ref().map(|r| (r.size, r.offset));
     if let Some(rp) = reparse.as_mut() {
         rp.begin_file();
@@ -318,33 +324,48 @@ fn scan_file(
 
     let tool = collector.tool();
     let mut tally = Tally::default();
-    let mut failure: Option<UsageError> = None;
-    let outcome = collector.parse(file, from, &mut pstate, &mut |rec| {
-        if failure.is_some() {
-            return;
+    // Parse before taking the write lock, so a consent change (Forget) never waits behind a slow
+    // log file, only behind the short write below (D-027).
+    // ponytail: the new lines' records of one file are held in memory; stream in chunks if a single
+    // file's backlog ever gets too big for that.
+    let mut records = Vec::new();
+    let parsed = collector.parse(file, from, &mut pstate, &mut |rec| records.push(rec));
+    let tx = store
+        .conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)?;
+    if load_row(&tx, source_id, &file.rel)?
+        .as_ref()
+        .map(FileRow::position)
+        != seen
+    {
+        if let Some(rp) = reparse.as_mut() {
+            rp.rollback_file();
         }
-        if let Err(e) = apply(
-            &tx,
-            tool,
-            &file.account,
-            pricebook,
-            floor,
-            reparse.as_mut(),
-            rec,
-            &mut tally,
-        ) {
-            failure = Some(e);
+        report.files_unchanged += 1;
+        return Ok(());
+    }
+    let applied = parsed.and_then(|o| {
+        for rec in records {
+            apply(
+                &tx,
+                tool,
+                &file.account,
+                pricebook,
+                floor,
+                reparse.as_mut(),
+                rec,
+                &mut tally,
+            )?;
         }
+        Ok(o)
     });
-    let outcome = match (failure, outcome) {
-        (None, Ok(o)) => o,
-        (failed, res) => {
+    let outcome = match applied {
+        Ok(o) => o,
+        Err(e) => {
             if let Some(rp) = reparse.as_mut() {
                 rp.rollback_file();
             }
-            return Err(failed
-                .or(res.err())
-                .unwrap_or(UsageError::Invalid("scan failed".into())));
+            return Err(e);
         }
     };
 

@@ -33,6 +33,7 @@ pub fn fail(e: UsageError) -> Error {
     match e {
         UsageError::Invalid(msg) => Error::usage(msg),
         UsageError::Unsupported => Error::internal("this part of tmgr usage is not available yet"),
+        UsageError::Busy => Error::conflict("a usage scan is running; try again in a moment"),
         other => Error::internal(format!("usage data: {other}")),
     }
 }
@@ -79,7 +80,7 @@ pub struct ScanTotals {
     pub bad_lines: u64,
     pub skipped_before_floor: u64,
     pub reading_off: bool,
-    /// Tools whose logs were allowed for the whole scan.
+    /// Tools covered: allowed by the choice as it stood after the last account, never skipped.
     #[cfg_attr(not(feature = "runner"), allow(dead_code))]
     pub allowed: Vec<Tool>,
     /// Tools with log files or accounts that could not be read.
@@ -132,15 +133,9 @@ pub fn scan(ctx: &Ctx, u: &mut Usage, now: DateTime<Utc>, user_run: bool) -> Res
     if !ctx.json && std::io::stderr().is_terminal() && first_scan_is_big(u, &allowed) {
         eprintln!("Reading AI tool logs for the first time, this can take a minute...");
     }
-    let mut totals = ScanTotals {
-        allowed: [Tool::Claude, Tool::Codex]
-            .into_iter()
-            .filter(|t| consent.allows(*t, user_run))
-            .collect(),
-        ..ScanTotals::default()
-    };
+    let mut totals = ScanTotals::default();
     let book = &u.book;
-    let skipped =
+    let covered =
         tmgr_usage::consent::each_allowed(&mut u.store, &accounts, user_run, |store, acc| {
             match scan_account(store, acc, book, now) {
                 Ok(r) => {
@@ -167,7 +162,7 @@ pub fn scan(ctx: &Ctx, u: &mut Usage, now: DateTime<Utc>, user_run: bool) -> Res
             }
         })
         .map_err(fail)?;
-    totals.allowed.retain(|t| !skipped.contains(t));
+    totals.allowed.clone_from(&covered);
     if totals.errors > 0 {
         ctx.warn(
             "usage_scan_errors",
@@ -198,11 +193,7 @@ pub fn scan(ctx: &Ctx, u: &mut Usage, now: DateTime<Utc>, user_run: bool) -> Res
             ),
         );
     }
-    if u.store
-        .log_consent()
-        .map_err(fail)?
-        .allows(Tool::Claude, user_run)
-    {
+    if covered.contains(&Tool::Claude) {
         ingest_statusline(u, &accounts);
         tmgr_usage::statusline::prune_snapshots(&u.claude_snapshots(), now, SNAPSHOT_KEEP_DAYS);
     }
@@ -291,7 +282,7 @@ fn consent(command: Option<ConsentCommand>) -> Result<Output> {
         .into_iter()
         .filter_map(|(on, name)| on.then_some(name))
         .collect();
-    let kept = "Kept: counts, tokens, cost, model names, timestamps, session ids, project folders and branches, names of the tools, skills and commands used, edited file types and pull requests. Prompt and reply text is never stored. Nothing leaves this device unless you upload it with `tmgr usage sync`. The runner reads only the transcripts of sessions it started, for titles, questions and status, and stores nothing from them.";
+    let kept = "Kept: counts, tokens, cost, model names, timestamps, session ids, project folders and branches, names of the tools, skills and commands used, edited file types and pull requests. Prompt and reply text is never stored. Nothing leaves this device unless you upload it with `tmgr usage sync`. Not covered yet: for sessions it launched, the runner reads their transcripts for titles, questions and status, saves detected questions (prompt and reply text) on disk and may send reply text to Claude (Haiku) to classify them.";
     let human = match c.state {
         ReadLogs::Granted => format!(
             "Reading {} logs is on for this device. {kept}",
@@ -320,6 +311,8 @@ fn reset(ctx: &Ctx) -> Result<Output> {
         ctx.yes,
     )?;
     let mut u = Usage::open()?;
+    let _lock = tmgr_usage::consent::exclusive_lock(&u.dir, tmgr_usage::consent::FORGET_WAIT)
+        .map_err(fail)?;
     tmgr_usage::consent::wipe(&mut u.store, &u.dir).map_err(fail)?;
     let denied = u.store.log_consent().map_err(fail)?.state == ReadLogs::Denied;
     Ok(Output::new(

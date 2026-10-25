@@ -613,7 +613,11 @@ fn claude_work(event: &str, server_override: Option<String>) {
                 }
                 str_of(&input, "transcript_path").and_then(transcript_started_ms)
             });
-            let payload = notify::stop_push(&input, started, now_ms, env.stop_min_minutes());
+            let payload = if started.is_none() && session.is_empty() {
+                None
+            } else {
+                notify::stop_push(&input, started, now_ms, env.stop_min_minutes())
+            };
             push_and_touch(&env, payload, &cwd, Touch::Commits);
         }
         "session-end" => {

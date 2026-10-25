@@ -3,7 +3,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashSet;
 
 use crate::collector::{
-    for_each_line, rel_key, walk_files, Collector, LogFile, ParseOutcome, ParserState,
+    for_each_line, rel_key, walk_files_checked, Collector, LogFile, ParseOutcome, ParserState,
     MAX_LINE_BYTES,
 };
 use crate::error::Result;
@@ -650,13 +650,20 @@ impl Collector for CodexCollector {
     }
 
     fn discover(&self, account: &Account) -> Vec<LogFile> {
+        self.discover_checked(account).0
+    }
+
+    fn discover_checked(&self, account: &Account) -> (Vec<LogFile>, u64) {
         let to_file = |path: std::path::PathBuf| LogFile {
             rel: rel_key(&account.root, &path),
             path,
             account: account.label.clone(),
             tool: Tool::Codex,
         };
-        let active: Vec<LogFile> = walk_files(&account.root.join("sessions"), "jsonl")
+        let (sessions, active_errors) = walk_files_checked(&account.root.join("sessions"), "jsonl");
+        let (archived, archived_errors) =
+            walk_files_checked(&account.root.join("archived_sessions"), "jsonl");
+        let active: Vec<LogFile> = sessions
             .into_iter()
             .filter(|p| {
                 p.file_name()
@@ -668,11 +675,12 @@ impl Collector for CodexCollector {
             .iter()
             .map(|f| strip_root(&f.rel).to_string())
             .collect();
-        let archived = walk_files(&account.root.join("archived_sessions"), "jsonl")
+        let archived = archived
             .into_iter()
             .map(to_file)
             .filter(|f| !seen.contains(strip_root(&f.rel)));
-        active.iter().cloned().chain(archived).collect()
+        let files = active.iter().cloned().chain(archived).collect();
+        (files, active_errors + archived_errors)
     }
 
     fn parse(

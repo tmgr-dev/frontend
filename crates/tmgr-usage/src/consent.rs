@@ -191,7 +191,8 @@ fn lock_file(dir: &Path) -> Result<File> {
         .open(dir.join("scan.lock"))?)
 }
 
-fn exclusive_lock(dir: &Path, wait: Duration) -> Result<File> {
+/// Exclusive lock on `<dir>/scan.lock`: waits up to `wait` for running scans, then `UsageError::Busy`.
+pub fn exclusive_lock(dir: &Path, wait: Duration) -> Result<File> {
     let f = lock_file(dir)?;
     let until = Instant::now() + wait;
     loop {
@@ -207,7 +208,8 @@ fn exclusive_lock(dir: &Path, wait: Duration) -> Result<File> {
 }
 
 /// Runs `each` for every account whose tool is still allowed, re-reading the choice before each
-/// one (Forget may turn reading off meanwhile). Returns the tools skipped that way.
+/// one (Forget may turn reading off meanwhile). Returns the tools covered: allowed by the choice as
+/// it stands after the last account, and never skipped.
 pub fn each_allowed(
     store: &mut Store,
     accounts: &[Account],
@@ -222,7 +224,11 @@ pub fn each_allowed(
             skipped.push(acc.tool);
         }
     }
-    Ok(skipped)
+    let last = store.log_consent()?;
+    Ok([Tool::Claude, Tool::Codex]
+        .into_iter()
+        .filter(|t| last.allows(*t, user_run) && !skipped.contains(t))
+        .collect())
 }
 
 /// For background readers that must not create anything: whether `tool` may be read under the
@@ -479,15 +485,37 @@ mod tests {
             root: PathBuf::from("/nowhere"),
         };
         let mut seen = Vec::new();
-        let skipped = each_allowed(&mut s, &[acc("a"), acc("b")], false, |store, a| {
+        let covered = each_allowed(&mut s, &[acc("a"), acc("b")], false, |store, a| {
             seen.push(a.label.clone());
+            store
+                .change_log_consent(&change(None, Some(false), None), t())
+                .unwrap();
+        })
+        .unwrap();
+        assert_eq!(seen, ["a"]);
+        assert_eq!(covered, [Tool::Codex], "claude was turned off midway");
+    }
+
+    #[test]
+    fn reading_turned_off_during_the_last_account_is_not_covered() {
+        let (_tmp, mut s) = store();
+        s.set_log_consent(&LogConsent {
+            state: ReadLogs::Granted,
+            ..LogConsent::default()
+        })
+        .unwrap();
+        let acc = Account {
+            tool: Tool::Codex,
+            label: "codex".into(),
+            root: PathBuf::from("/nowhere"),
+        };
+        let covered = each_allowed(&mut s, &[acc], false, |store, _| {
             store
                 .change_log_consent(&change(Some(ReadLogs::Denied), None, None), t())
                 .unwrap();
         })
         .unwrap();
-        assert_eq!(seen, ["a"]);
-        assert_eq!(skipped, [Tool::Claude]);
+        assert!(covered.is_empty(), "{covered:?}");
     }
 
     #[test]
