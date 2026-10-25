@@ -29,7 +29,7 @@ const totals = {
 };
 const sums = { cost_usd: 0, tokens_total: 0, events: 0, unpriced_events: 0 };
 
-const fakeUsage = (initial = {}) => {
+const fakeUsage = (initial = {}, overview = {}) => {
   const calls = [];
   const replies = {};
   let consent = {
@@ -106,9 +106,11 @@ const fakeUsage = (initial = {}) => {
             to: '2026-10-25T00:00:00Z',
             totals,
             rows: [],
+            projects: [],
           })),
           days: [],
           limits: [],
+          ...overview,
         };
       case 'usage_tasks':
         return {
@@ -251,6 +253,86 @@ test('on a phone the off card link lands on the AI usage section', async ({
   await expect(page).toHaveURL(/tab=privacy/);
   await expect(page.getByTestId('usage-read-switch')).toBeInViewport();
 });
+
+const dayStamp = (back) =>
+  new Date(Date.now() - back * 86400000).toISOString().slice(0, 10);
+
+const statsOverview = () => {
+  const now = Date.now();
+  const row = {
+    ...totals,
+    input: 60000,
+    output: 20000,
+    cache_read: 30000,
+    cache_write: 10000,
+  };
+  return {
+    accounts: [{ tool: 'claude', label: 'claude' }],
+    windows: ['today', 'week', 'month'].map((key) => ({
+      key,
+      label: key[0].toUpperCase() + key.slice(1),
+      from: new Date(now - 30 * 86400000).toISOString(),
+      to: new Date(now).toISOString(),
+      totals: row,
+      rows: [{ ...row, tool: 'claude', model: 'claude-sonnet-4-5' }],
+      projects: [{ ...row, key: 'p1', name: 'tmgr' }],
+    })),
+    days: Array.from({ length: 14 }, (_, i) => ({
+      day: dayStamp(i),
+      tool: 'claude',
+      model: 'claude-sonnet-4-5',
+      cost_usd: 0.5 + i / 10,
+      tokens_total: 10000 + i * 1000,
+      events: 3,
+    })),
+    limits: [
+      {
+        tool: 'claude',
+        account: 'claude',
+        window: 'five_hour',
+        window_label: '5-hour',
+        window_s: 18000,
+        used_pct: 80,
+        resets_at: new Date(now + 2 * 3600000).toISOString(),
+        resets_in_s: 7200,
+        plan: null,
+        source: 'statusline',
+        observed_at: new Date(now - 60000).toISOString(),
+        age_s: 60,
+      },
+    ],
+  };
+};
+
+for (const scheme of ['light', 'dark'])
+  test(`granted page shows the stats sections and the footer (${scheme})`, async ({
+    page,
+  }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+    const usage = fakeUsage({ state: 'granted' }, statsOverview());
+    await openUsage(page, usage, scheme);
+    for (const title of [
+      'Compared with last week',
+      'Last 30 days',
+      'Tokens by type · Week',
+      'By project · Week',
+    ])
+      await expect(page.getByRole('heading', { name: title })).toBeVisible();
+    await expect(page.getByTestId('usage-chart')).toBeVisible();
+    await expect(page.getByTestId('limit-forecast')).toBeVisible();
+    await expect(page.getByText(FOOTER)).toBeVisible();
+    await expect(page.getByTestId('usage-consent')).toHaveCount(0);
+    await expect(page.getByTestId('usage-consent-off')).toHaveCount(0);
+    if (screensDir) {
+      await page.setViewportSize({ width: 1280, height: 2000 });
+      await page.screenshot({
+        path: join(screensDir, `granted-${scheme}.png`),
+      });
+    }
+    expect(errors).toEqual([]);
+  });
 
 test('a consent read error shows Retry', async ({ page }) => {
   const usage = fakeUsage();
