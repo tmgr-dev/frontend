@@ -39,9 +39,9 @@ export const readingNote = (state: UsageConsent['state']): string =>
 	({
 		granted:
 			'On: TMGR reads these logs on this device to show cost and limits.',
-		denied: "Off: TMGR doesn't open these logs on this device.",
+		denied: "Off: TMGR doesn't read these logs for AI usage on this device.",
 		unset:
-			"Not chosen yet: the desktop app and background jobs don't read them, tmgr usage commands you run yourself still do.",
+			"Not chosen yet: the desktop app and background jobs don't read them for AI usage, tmgr usage commands you run yourself still do.",
 	})[state];
 
 export const FORGET_DONE = 'Deleted. Reading AI tool logs is off.';

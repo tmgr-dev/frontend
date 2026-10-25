@@ -359,11 +359,15 @@
 						</p>
 					</template>
 
-					<p class="text-xs text-ink-subtle">
+					<p
+						v-if="consent?.state === 'granted'"
+						class="text-xs text-ink-subtle"
+					>
 						TMGR reads the usage counters your AI tools already write on this
 						computer: model name, token counts, timestamps, session ids, git
 						branches and the project folder. It never reads or stores what you
-						or the AI wrote. Data stays on this device.
+						or the AI wrote. Data stays on this device unless you upload it with
+						tmgr usage sync.
 					</p>
 				</div>
 			</template>

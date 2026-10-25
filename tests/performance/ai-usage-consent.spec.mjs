@@ -130,6 +130,8 @@ const runner = (command) =>
       ? { state: 'ready', version: '0.4.0', caps: [] }
       : null;
 
+const FOOTER = 'TMGR reads the usage counters your AI tools already write';
+
 const openUsage = async (page, usage, scheme = 'light', shell = {}) => {
   await page.addInitScript(
     (s) => localStorage.setItem('colorScheme', s),
@@ -160,6 +162,7 @@ test('first open asks before any log is read, Allow then scans', async ({
   await page.waitForTimeout(300);
   expect(usage.commands()).not.toContain('usage_scan');
   expect(usage.commands()).not.toContain('usage_overview');
+  await expect(page.getByText(FOOTER)).toHaveCount(0);
   await shot(page, 'consent-light.png');
 
   await page.getByTestId('usage-consent-codex').uncheck();
@@ -173,6 +176,9 @@ test('first open asks before any log is read, Allow then scans', async ({
     usage.calls.find((c) => c.command === 'usage_consent_set').args,
   ).toEqual({ state: 'granted', claude: true, codex: false });
   await expect(screen).toHaveCount(0);
+  await expect(page.getByText(FOOTER)).toContainText(
+    'unless you upload it with tmgr usage sync',
+  );
 });
 
 test('consent screen in dark mode', async ({ page }) => {
@@ -203,7 +209,9 @@ test('Not now shows the off card and never scans; Allow there scans', async ({
     off.getByRole('link', { name: 'Settings → Privacy' }),
   ).toBeVisible();
   expect(usage.commands()).not.toContain('usage_scan');
-  await shot(page, 'off-card.png');
+  await expect(off).toContainText('logs for AI usage on this device');
+  await expect(page.getByText(FOOTER)).toHaveCount(0);
+  await shot(page, 'off-card-light.png');
 
   await page.reload();
   await expect(off).toBeVisible();
@@ -212,6 +220,25 @@ test('Not now shows the off card and never scans; Allow there scans', async ({
   await off.getByRole('button', { name: 'Allow' }).click();
   await expect(page.getByText('$1.25').first()).toBeVisible();
   expect(usage.commands()).toContain('usage_scan');
+});
+
+test('off card in dark mode', async ({ page }) => {
+  await openUsage(page, fakeUsage({ state: 'denied' }), 'dark');
+  await expect(page.getByTestId('usage-consent-off')).toBeVisible();
+  await shot(page, 'off-card-dark.png');
+});
+
+test('on a phone the off card link lands on the AI usage section', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openUsage(page, fakeUsage({ state: 'denied' }));
+  await page
+    .getByTestId('usage-consent-off')
+    .getByRole('link', { name: 'Settings → Privacy' })
+    .click();
+  await expect(page).toHaveURL(/tab=privacy/);
+  await expect(page.getByTestId('usage-read-switch')).toBeInViewport();
 });
 
 test('a consent read error shows Retry', async ({ page }) => {
@@ -319,7 +346,7 @@ test('Settings tells an undecided device what still reads logs', async ({
   await desktopPage(page, { onboarding: { tips_mode: 'off' } }, { usage });
   await page.goto('/settings?tab=privacy');
   await expect(page.getByTestId('ai-usage-settings')).toContainText(
-    "Not chosen yet: the desktop app and background jobs don't read them",
+    "Not chosen yet: the desktop app and background jobs don't read them for AI usage",
   );
   await expect(page.getByTestId('usage-read-switch')).toHaveAttribute(
     'data-state',

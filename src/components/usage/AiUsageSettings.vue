@@ -1,5 +1,9 @@
 <template>
-	<div v-if="consent?.supported || error" data-testid="ai-usage-settings">
+	<div
+		v-if="consent?.supported || error"
+		ref="root"
+		data-testid="ai-usage-settings"
+	>
 		<SettingsSection
 			title="AI usage"
 			description="The AI Usage page reads the session logs Claude Code and Codex write on this computer to show cost and limits. What you or the AI wrote is never stored."
@@ -130,7 +134,8 @@
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
 	import { toolName } from '@/usage/format';
-	import { computed, defineComponent, onMounted, ref } from 'vue';
+	import { computed, defineComponent, nextTick, onMounted, ref } from 'vue';
+	import { useRoute } from 'vue-router';
 	import { readingNote, useUsageConsent } from './consent';
 
 	const TOOLS = ['claude', 'codex'] as const;
@@ -158,9 +163,17 @@
 			const reading = computed(() => consent.value?.state === 'granted');
 			const foldersOf = (tool: string) =>
 				consent.value?.folders.filter((f) => f.tool === tool) ?? [];
-			onMounted(() => void load());
+			const route = useRoute();
+			const root = ref<HTMLElement | null>(null);
+			onMounted(async () => {
+				await load();
+				if (route.query.section !== 'ai-usage') return;
+				await nextTick();
+				root.value?.scrollIntoView({ block: 'start' });
+			});
 			return {
 				TOOLS,
+				root,
 				consent,
 				busy,
 				error,

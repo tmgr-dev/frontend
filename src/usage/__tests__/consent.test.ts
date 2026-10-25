@@ -40,7 +40,9 @@ describe('consentGate', () => {
 
 describe('readingNote', () => {
 	it('tells the truth about each stored choice', () => {
-		expect(readingNote('denied')).toMatch(/^Off: TMGR doesn't open/);
+		expect(readingNote('denied')).toMatch(
+			/^Off: TMGR doesn't read these logs for AI usage/,
+		);
 		expect(readingNote('granted')).toMatch(/^On:/);
 		expect(readingNote('unset')).toContain(
 			'tmgr usage commands you run yourself still do',

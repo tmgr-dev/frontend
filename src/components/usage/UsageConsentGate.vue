@@ -53,7 +53,7 @@
 				Numbers TMGR read earlier stay on this device. To delete them, use
 				Forget scanned data in
 				<router-link
-					to="/settings?tab=privacy"
+					to="/settings?tab=privacy&section=ai-usage"
 					class="text-primary hover:underline"
 					>Settings → Privacy</router-link
 				>.
@@ -86,10 +86,10 @@
 		<div class="min-w-0 text-sm">
 			<p class="font-medium text-ink">Reading AI tool logs is off</p>
 			<p class="mt-0.5 text-ink-subtle">
-				TMGR doesn't read Claude Code or Codex logs on this device. Change it
-				here or in
+				TMGR doesn't read your Claude Code or Codex logs for AI usage on this
+				device. Change it here or in
 				<router-link
-					to="/settings?tab=privacy"
+					to="/settings?tab=privacy&section=ai-usage"
 					class="text-primary hover:underline"
 					>Settings → Privacy</router-link
 				>.
