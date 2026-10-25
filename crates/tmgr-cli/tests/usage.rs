@@ -554,7 +554,8 @@ fn reset_keeps_the_reading_choice() {
     let u = U::new();
     u.standard_fixture();
     u.ok(&["usage", "consent", "deny"]);
-    u.ok(&["--yes", "usage", "reset"]);
+    let shown = text(&u.ok(&["--yes", "usage", "reset"]).stdout);
+    assert!(shown.contains("Reading the logs stays off"), "{shown}");
     assert_eq!(u.json(&["usage", "consent"])["data"]["state"], "denied");
 }
 

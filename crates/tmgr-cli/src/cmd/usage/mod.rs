@@ -262,7 +262,7 @@ fn consent(command: Option<ConsentCommand>) -> Result<Output> {
         .into_iter()
         .filter_map(|(on, name)| on.then_some(name))
         .collect();
-    let kept = "Kept: token counts, model, times, branch and project folder name; never prompt or reply text, and nothing leaves this device.";
+    let kept = "Kept: counts, tokens, cost, model names, timestamps, session ids, project folders and branches, names of the tools, skills and commands used, edited file types and pull requests. Prompt and reply text is never stored. Nothing leaves this device unless you upload it with `tmgr usage sync`.";
     let human = match c.state {
         ReadLogs::Granted => format!(
             "Reading {} logs is on for this device. {kept}",
@@ -292,8 +292,13 @@ fn reset(ctx: &Ctx) -> Result<Output> {
     )?;
     let mut u = Usage::open()?;
     tmgr_usage::consent::wipe(&mut u.store, &u.dir).map_err(fail)?;
+    let denied = u.store.log_consent().map_err(fail)?.state == ReadLogs::Denied;
     Ok(Output::new(
         json!({"reset": true}),
-        "Usage data deleted. The next `tmgr usage` reads the logs again.",
+        if denied {
+            "Usage data deleted. Reading the logs stays off (`tmgr usage consent allow` turns it on)."
+        } else {
+            "Usage data deleted. The next `tmgr usage` reads the logs again."
+        },
     ))
 }
