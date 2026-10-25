@@ -6,7 +6,7 @@
 	>
 		<SettingsSection
 			title="AI usage"
-			description="Lets the AI Usage page, background jobs, agent notifications and the tmgr CLI read the session logs Claude Code and Codex write on this computer. Prompt and reply text is never stored. The TMGR runner still reads the sessions it starts itself, in its own sandbox, for titles, questions and status, and keeps nothing from them."
+			description="Lets the AI Usage page, background jobs, agent notifications and the tmgr CLI read the session logs Claude Code and Codex write on this computer. Prompt and reply text is never stored. This setting doesn't cover the TMGR runner yet: for sessions it starts, it reads their logs for titles, questions and status, saves detected questions with your prompt and the reply on this device, and may send reply text to Claude (Haiku) to spot questions."
 		>
 			<div class="flex flex-col gap-2">
 				<template v-if="consent">

@@ -65,6 +65,10 @@ const fakeUsage = (initial = {}) => {
         return consent;
       }
       case 'usage_forget':
+        if (handler.forgetTimesOut) {
+          consent = { ...consent, state: 'denied' };
+          throw 'A scan is running. Try again in a moment.';
+        }
         events = 0;
         consent = { ...consent, state: 'denied', has_data: false };
         return consent;
@@ -205,7 +209,7 @@ test('Not now shows the off card and never scans; Allow there scans', async ({
   const usage = fakeUsage();
   await openUsage(page, usage, 'light', { runner });
   await expect(page.getByTestId('usage-consent-scope')).toContainText(
-    'The TMGR runner still reads the sessions it starts itself',
+    "This setting doesn't cover the TMGR runner yet",
   );
   await page.getByRole('button', { name: 'Not now' }).click();
   expect(usage.calls.at(-1).args).toEqual({ state: 'denied' });
@@ -306,13 +310,24 @@ test('Settings → Privacy: switches, Forget behind a confirm', async ({
     args: { codex: false },
   });
 
-  usage.replies.usage_forget = 'A scan is running. Try again in a moment.';
+  // The real Forget stores "denied" first, then times out waiting for a scan.
+  usage.forgetTimesOut = true;
   await page.getByTestId('usage-forget').click();
   await page.getByRole('button', { name: 'Forget', exact: true }).click();
   await expect(page.getByTestId('usage-settings-error')).toHaveText(
     'A scan is running. Try again in a moment.',
   );
-  delete usage.replies.usage_forget;
+  await expect(page.getByTestId('usage-read-switch')).toHaveAttribute(
+    'data-state',
+    'unchecked',
+  );
+  await expect(page.getByTestId('usage-claude-switch')).toBeDisabled();
+  usage.forgetTimesOut = false;
+  await page.getByTestId('usage-read-switch').click();
+  await expect(page.getByTestId('usage-read-switch')).toHaveAttribute(
+    'data-state',
+    'checked',
+  );
 
   await page.getByTestId('usage-forget').click();
   await expect(

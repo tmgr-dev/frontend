@@ -50,9 +50,11 @@
 			</p>
 			<p class="text-ink-subtle" data-testid="usage-consent-scope">
 				Your choice covers AI usage in this app, background jobs, agent
-				notifications and the tmgr CLI on this device. The TMGR runner still
-				reads the sessions it starts itself, in its own sandbox, for titles,
-				questions and status, and keeps nothing from them.
+				notifications and the tmgr CLI on this device. This setting doesn't
+				cover the TMGR runner yet: for sessions it starts, it reads their logs
+				for titles, questions and status, saves detected questions with your
+				prompt and the reply on this device, and may send reply text to Claude
+				(Haiku) to spot questions.
 			</p>
 			<p v-if="current.has_data" class="text-ink-subtle">
 				Numbers TMGR read earlier stay on this device. To delete them, use
