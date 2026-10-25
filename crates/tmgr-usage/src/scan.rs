@@ -373,6 +373,9 @@ fn scan_file(
     let mut at = from;
     let mut last_ts = None;
     loop {
+        if !store.log_consent()?.allows(tool, true) {
+            return Ok(FileEnd::Denied);
+        }
         if let Some(rp) = reparse.as_mut() {
             rp.begin_file();
         }

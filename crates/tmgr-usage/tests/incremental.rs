@@ -431,3 +431,27 @@ fn an_unreadable_log_dir_is_a_scan_error_and_a_missing_root_is_not() {
     let report = scan_account(&mut store, &claude_account(&gone), &book(), now()).unwrap();
     assert_eq!(report.errors, 0);
 }
+
+#[test]
+fn after_a_denial_committed_with_chunk_one_the_next_chunk_is_not_read() {
+    let (tmp, home, mut store) = setup();
+    six_lines(&home);
+    // The denial lands in the same commit as the first chunk, i.e. after its in-transaction check.
+    rusqlite::Connection::open(tmp.path().join("usage.db"))
+        .unwrap()
+        .execute_batch(
+            r#"CREATE TRIGGER deny_after_first_chunk AFTER INSERT ON usage_file_state BEGIN
+                 INSERT OR REPLACE INTO settings (key, value)
+                 VALUES ('read_logs', '{"state":"denied","claude":true,"codex":true}');
+               END;"#,
+        )
+        .unwrap();
+    let c = Chunks {
+        calls: std::cell::Cell::new(0),
+        fail_at: 0,
+    };
+    let r = scan_in_chunks(&mut store, &c, &claude_account(&home), &book(), now(), 1).unwrap();
+    assert_eq!(c.calls.get(), 1, "no chunk is read after the denial");
+    assert_eq!((r.events_new, r.files), (1, 0));
+    assert_eq!(store.event_count().unwrap(), 1);
+}
