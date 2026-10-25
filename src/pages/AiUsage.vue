@@ -363,11 +363,12 @@
 						v-if="consent?.state === 'granted'"
 						class="text-xs text-ink-subtle"
 					>
-						TMGR reads the usage counters your AI tools already write on this
-						computer: model name, token counts, timestamps, session ids, git
-						branches and the project folder. It never reads or stores what you
-						or the AI wrote. Data stays on this device unless you upload it with
-						tmgr usage sync.
+						TMGR reads the session logs your AI tools write on this computer and
+						keeps token counts, cost, model names, timestamps, session ids,
+						project folders and git branches, and the names of tools, skills and
+						commands the AI used, file types it edited and pull requests it
+						opened. Prompt and reply text is never stored. Data stays on this
+						device unless you upload it with tmgr usage sync.
 					</p>
 				</div>
 			</template>

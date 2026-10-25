@@ -130,7 +130,7 @@ const runner = (command) =>
       ? { state: 'ready', version: '0.4.0', caps: [] }
       : null;
 
-const FOOTER = 'TMGR reads the usage counters your AI tools already write';
+const FOOTER = 'TMGR reads the session logs your AI tools write';
 
 const openUsage = async (page, usage, scheme = 'light', shell = {}) => {
   await page.addInitScript(
@@ -177,7 +177,7 @@ test('first open asks before any log is read, Allow then scans', async ({
   ).toEqual({ state: 'granted', claude: true, codex: false });
   await expect(screen).toHaveCount(0);
   await expect(page.getByText(FOOTER)).toContainText(
-    'unless you upload it with tmgr usage sync',
+    'Prompt and reply text is never stored. Data stays on this device unless you upload it with tmgr usage sync.',
   );
 });
 

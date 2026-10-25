@@ -102,7 +102,9 @@
 						reading off. Uploads set up with
 						<code class="font-mono">tmgr usage sync</code> are turned off too;
 						what was already uploaded is not deleted. Your AI tools' own logs
-						are not touched.
+						are not touched. If the Claude Code status line hook is installed,
+						it keeps saving limit snapshots here; they aren't read while reading
+						is off.
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
