@@ -355,8 +355,12 @@ const pageCenter = {
   meta: { slug: 'ann-lee', page_type: 'person' },
 };
 
-const setup = async (page, { graph = true } = {}) => {
+const setup = async (page, { graph = true, expanded = true } = {}) => {
   await mockApp(page);
+  if (expanded)
+    await page.addInitScript(() =>
+      localStorage.setItem('tmgr:graph-section:expanded', '1'),
+    );
   const requests = [];
   await page.route('**/api/**/feature-toggles', (route) => {
     const toggle = (key) => ({
@@ -644,5 +648,72 @@ test.describe('Graph neighbourhood view', () => {
     await setScheme(page, 'light');
     await page.waitForTimeout(400);
     await shot(page, 'overlay-390-light');
+  });
+
+  test('graph section is collapsed by default, loads on expand and remembers the choice', async ({
+    page,
+  }) => {
+    const requests = await setup(page, { expanded: false });
+    const taskRequests = () => requests.filter((r) => r.entity === 'task:1');
+    const openModal = async () => {
+      await page.goto('/demo/list');
+      await page.locator('[data-task-id="1"]').first().click();
+      const form = page.locator('.new-form-container');
+      await expect(form.getByPlaceholder('Task name')).toHaveValue(
+        'Original task',
+      );
+      const section = form.getByTestId('entity-graph');
+      await section.scrollIntoViewIfNeeded();
+      return {
+        section,
+        toggle: section.getByRole('button', { name: 'Graph' }),
+      };
+    };
+
+    let { section, toggle } = await openModal();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await page.waitForTimeout(1500);
+    await expect(section.locator('canvas')).toHaveCount(0);
+    await expect(section.getByTestId('graph-legend')).toHaveCount(0);
+    await expect(section.locator('.h-\\[280px\\]')).toHaveCount(0);
+    expect(taskRequests()).toHaveLength(0);
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(section.getByTestId('graph-legend')).toBeVisible();
+    expect(taskRequests().length).toBeGreaterThan(0);
+
+    ({ section, toggle } = await openModal());
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(section.getByTestId('graph-legend')).toBeVisible();
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(section.getByTestId('graph-legend')).toHaveCount(0);
+
+    ({ section, toggle } = await openModal());
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(section.getByTestId('graph-legend')).toHaveCount(0);
+  });
+
+  test('page side panel graph is collapsed by default and opens from its header', async ({
+    page,
+  }) => {
+    const requests = await setup(page, { expanded: false });
+    await page.goto('/demo/pages/ann-lee');
+    const section = page
+      .getByTestId('page-side-panel')
+      .getByTestId('entity-graph');
+    await section.scrollIntoViewIfNeeded();
+    const toggle = section.getByRole('button', { name: 'Graph' });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await page.waitForTimeout(1500);
+    await expect(section.locator('canvas')).toHaveCount(0);
+    expect(requests.filter((r) => r.entity === 'page:ann-lee')).toHaveLength(0);
+    await toggle.click();
+    await expect(section.locator('canvas')).toBeVisible();
+    expect(
+      requests.filter((r) => r.entity === 'page:ann-lee').length,
+    ).toBeGreaterThan(0);
   });
 });
