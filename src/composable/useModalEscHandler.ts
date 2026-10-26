@@ -80,5 +80,9 @@ export function useModalEscHandler() {
 		}
 	}
 
-	return { registerModal, unregisterModal };
+	function hasUnderlyingModal() {
+		return modalRegistry.length > 1;
+	}
+
+	return { registerModal, unregisterModal, hasUnderlyingModal };
 }

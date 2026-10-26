@@ -526,7 +526,6 @@
 								<Modal
 									v-if="isShowStatusModal"
 									modal-class="p-6 w-96"
-									close-on-bg-click
 									@close="closeModal"
 									@closing-modal="closingModal"
 								>
@@ -610,7 +609,6 @@
 									id="modal2"
 									v-if="isShowColorPicker"
 									modal-class=""
-									close-on-bg-click
 									@close="closePickerModal"
 									@closing-modal="closingModal"
 								>
@@ -618,12 +616,11 @@
 										<div class="relative p-8">
 											<button
 												type="button"
+												aria-label="Close"
 												class="absolute top-1 right-1 opacity-50 transition-opacity hover:opacity-100"
+												@click="closePickerModal"
 											>
-												<span
-													class="material-icons text-2xl text-ink"
-													@click="closePickerModal"
-												>
+												<span class="material-icons text-2xl text-ink">
 													close
 												</span>
 											</button>
@@ -693,7 +690,6 @@
 								<Modal
 									v-if="isShowMobileReorderModal"
 									modal-class="p-6 w-96"
-									close-on-bg-click
 									@close="closeMobileReorderModal"
 								>
 									<template #modal-body>
@@ -823,6 +819,7 @@
 	import BoardPreview from '@/components/previews/BoardPreview.vue';
 	import ViewportTaskCard from '@/components/tasks/ViewportTaskCard.vue';
 	import { BreadcrumbItem, BreadcrumbLink } from '@/components/ui/breadcrumb';
+	import { useToast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { usePusher } from '@/composable/usePusher';
@@ -884,10 +881,12 @@
 		setup() {
 			const pusher = usePusher();
 			const { showSurface } = useFeatureToggles();
+			const { toast } = useToast();
 			return {
 				showSurface,
 				SquareKanban,
 				pusher,
+				toast,
 			};
 		},
 
@@ -1463,12 +1462,37 @@
 				}
 				const { tasks } = column;
 				const taskIds = tasks.map((t) => t.id);
-				const archiveStatus = this.statuses.find((s) => s.type === 'archived');
-				if (!archiveStatus) {
+				if (!taskIds.length) {
+					this.toast({ title: 'No tasks to archive in this column' });
 					return;
 				}
-				await updateStatusOfTasks(taskIds, archiveStatus.id);
-				await this.loadTasks();
+				const archiveStatus = this.statuses?.find((s) => s.type === 'archived');
+				if (!archiveStatus) {
+					this.toast({
+						title: 'Archive status not found',
+						description: 'Create an archive status first.',
+						variant: 'destructive',
+					});
+					return;
+				}
+				const archiveAll = async () => {
+					this.confirm = undefined;
+					try {
+						await updateStatusOfTasks(taskIds, archiveStatus.id);
+						await this.loadTasks();
+					} catch {
+						this.toast({
+							title: 'Failed to archive tasks',
+							description: 'Please try again.',
+							variant: 'destructive',
+						});
+					}
+				};
+				this.showConfirm(
+					`Archive ${taskIds.length} ${taskIds.length === 1 ? 'task' : 'tasks'}?`,
+					`All tasks in "${column.status.name}" will be moved to the archive.`,
+					archiveAll,
+				);
 			},
 			openMoveTasksModal(column) {
 				this.sourceColumnForMove = column;

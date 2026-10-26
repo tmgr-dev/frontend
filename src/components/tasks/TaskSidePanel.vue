@@ -6,6 +6,7 @@
 		></div>
 
 		<aside
+			ref="panelEl"
 			class="absolute inset-0 flex animate-tmgr-slide-in-right flex-col overflow-hidden border border-line bg-surface shadow-tmgr-lg sm:top-3 sm:right-3 sm:bottom-3 sm:left-auto sm:w-[640px] sm:max-w-[calc(100vw-24px)] sm:rounded-panel lg:w-[720px] xl:w-[760px]"
 			role="dialog"
 			aria-modal="true"
@@ -16,8 +17,9 @@
 </template>
 
 <script lang="ts" setup>
+	import { useDialogFocus } from '@/composable/useDialogFocus';
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
-	import { onMounted, onUnmounted, ref } from 'vue';
+	import { onBeforeUnmount, onMounted, onUnmounted, ref } from 'vue';
 	import { useStore } from 'vuex';
 
 	interface Props {
@@ -34,6 +36,9 @@
 	const isClosing = ref(false);
 	const initialUrl = ref(location.href);
 	const { registerModal, unregisterModal } = useModalEscHandler();
+	const panelEl = ref<HTMLElement | null>(null);
+	const dialogFocus = useDialogFocus(modalId.value, panelEl, 'Task', true);
+	dialogFocus.remember();
 
 	function handleBackdrop() {
 		if (props.closeOnBgClick) {
@@ -51,6 +56,11 @@
 		document.body.classList.add('overflow-hidden');
 		store.commit('pushModalToStack', modalId.value);
 		registerModal(modalId.value, () => triggerClose());
+		dialogFocus.activate();
+	});
+
+	onBeforeUnmount(() => {
+		dialogFocus.deactivate();
 	});
 
 	onUnmounted(() => {
