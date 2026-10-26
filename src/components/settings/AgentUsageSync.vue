@@ -59,7 +59,7 @@
 						row.cost
 					}}</span>
 					<span class="font-mono text-ink-subtle">{{ row.tokens }}</span>
-					<span class="ml-auto text-xs text-ink-faint">{{
+					<span class="ml-auto text-xs text-ink-subtle">{{
 						ago(row.updated)
 					}}</span>
 				</li>

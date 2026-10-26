@@ -42,9 +42,9 @@
 		working: 'text-tmgr-light-blue dark:text-sky-400',
 		blocked: 'text-amber-600 dark:text-amber-400',
 		waiting: 'text-amber-600 dark:text-amber-400',
-		idle: 'text-ink-faint',
+		idle: 'text-ink-subtle',
 		done: 'text-status-done-fg',
-		exited: 'text-ink-faint',
+		exited: 'text-ink-subtle',
 	};
 
 	export default defineComponent({

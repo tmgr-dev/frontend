@@ -507,7 +507,7 @@
 	const FIELD_CLASS =
 		'h-9 rounded-lg border-line-strong bg-surface-base px-2.5 text-sm text-ink';
 	const INPUT_CLASS =
-		'h-9 w-full rounded-lg border border-line-strong bg-surface-base px-2.5 text-sm text-ink outline-hidden transition-colors placeholder:text-ink-faint focus:border-line-focus';
+		'h-9 w-full rounded-lg border border-line-strong bg-surface-base px-2.5 text-sm text-ink outline-hidden transition-colors placeholder:text-ink-subtle focus:border-line-focus';
 	const ERROR_CLASS = '!border-status-fix';
 	const SMALL_BUTTON_CLASS =
 		'h-8 border-line-strong bg-surface px-3 text-[13px] text-ink hover:bg-surface-hover hover:text-ink';

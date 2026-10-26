@@ -2722,7 +2722,7 @@
 							data-tour="task-form.title"
 							v-model="form.title"
 							ref="titleTextarea"
-							class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 outline-hidden placeholder:text-ink-faint"
+							class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 outline-hidden placeholder:text-ink-subtle"
 							:class="[
 								'text-2xl leading-snug font-semibold tracking-tight text-ink',
 								{ 'text-status-fix-fg': isTitleAtLimit },
@@ -2924,11 +2924,11 @@
 										step="1"
 										v-model="taskKeyNumber"
 										placeholder="auto"
-										class="w-20 min-w-0 rounded-md border border-line bg-surface-sunken px-2 py-1 font-mono text-sm text-ink outline-hidden placeholder:text-ink-faint focus:border-line-strong"
+										class="w-20 min-w-0 rounded-md border border-line bg-surface-sunken px-2 py-1 font-mono text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-strong"
 									/>
 									<span
 										v-if="isAutoSaving && !taskKeyError"
-										class="text-2xs text-ink-faint"
+										class="text-2xs text-ink-subtle"
 										>Saving…</span
 									>
 								</div>
@@ -3130,7 +3130,7 @@
 								>
 								<span
 									v-if="checkpointsTotalLabel"
-									class="text-2xs text-ink-faint"
+									class="text-2xs text-ink-subtle"
 									>· {{ checkpointsTotalLabel }} logged</span
 								>
 							</div>
@@ -3365,7 +3365,7 @@
 
 						<div
 							v-if="taskId || form.id"
-							class="flex min-w-0 flex-wrap items-center gap-x-2 text-[11px] text-ink-faint"
+							class="flex min-w-0 flex-wrap items-center gap-x-2 text-[11px] text-ink-subtle"
 						>
 							<span
 								v-if="creator"

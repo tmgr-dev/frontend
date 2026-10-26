@@ -103,7 +103,7 @@
 						<div class="flex items-start gap-2 pr-16">
 							<div
 								v-if="draggable"
-								class="task-drag-handle shrink-0 cursor-grab touch-none pt-0.5 text-ink-faint select-none hover:text-ink-subtle active:cursor-grabbing"
+								class="task-drag-handle shrink-0 cursor-grab touch-none pt-0.5 text-ink-subtle select-none hover:text-ink-muted active:cursor-grabbing"
 								:draggable="true"
 								@dragstart="onDragStart($event, task)"
 								@click.stop
@@ -350,7 +350,7 @@
 							</AppTooltip>
 						</div>
 
-						<div class="mt-3 flex items-center gap-x-3 text-2xs text-ink-faint">
+						<div class="mt-3 flex items-center gap-x-3 text-2xs text-ink-subtle">
 							<TaskTimeInfo
 								:created-at="task.created_at"
 								:updated-at="task.updated_at"

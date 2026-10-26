@@ -48,7 +48,7 @@
 						@change="onSelectChange"
 					/>
 
-					<div class="mt-2 text-ink-faint">workspace users:</div>
+					<div class="mt-2 text-ink-subtle">workspace users:</div>
 
 					<ul class="h-24 overflow-y-auto">
 						<li

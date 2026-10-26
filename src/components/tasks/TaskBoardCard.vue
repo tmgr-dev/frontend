@@ -18,7 +18,7 @@
 		<div class="mb-2 -ml-0.5 flex items-center gap-1.5">
 			<div
 				data-tour="board.card-handle"
-				class="task-drag-handle relative flex h-[18px] w-[14px] cursor-grab touch-none items-center justify-center text-ink-faint transition-colors duration-150 select-none after:absolute after:-inset-y-[13px] after:-right-[5px] after:-left-[10px] hover:text-ink-subtle active:cursor-grabbing"
+				class="task-drag-handle relative flex h-[18px] w-[14px] cursor-grab touch-none items-center justify-center text-ink-subtle transition-colors duration-150 select-none after:absolute after:-inset-y-[13px] after:-right-[5px] after:-left-[10px] hover:text-ink-muted active:cursor-grabbing"
 				:title="'Drag to reorder'"
 				role="img"
 				aria-label="Drag to move"
@@ -167,7 +167,7 @@
 			<DropdownMenu>
 				<DropdownMenuTrigger as-child>
 					<button
-						class="flex h-[22px] w-[22px] items-center justify-center rounded-pill text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+						class="flex h-[22px] w-[22px] items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
 						aria-label="Task actions"
 						@click.stop
 					>

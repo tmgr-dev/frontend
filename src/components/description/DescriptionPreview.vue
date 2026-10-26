@@ -14,7 +14,7 @@
 		<button
 			v-if="isEmpty"
 			type="button"
-			class="w-full px-4 py-3 text-left text-sm text-ink-faint hover:text-ink-muted"
+			class="w-full px-4 py-3 text-left text-sm text-ink-subtle hover:text-ink-muted"
 			@click="$emit('edit')"
 		>
 			No description — click to add

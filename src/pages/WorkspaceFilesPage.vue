@@ -39,7 +39,7 @@
 			v-else-if="!files.length && !loadError"
 			class="rounded-lg border-2 border-dashed border-line-strong py-16 text-center"
 		>
-			<FileIcon :size="32" class="mx-auto mb-2 text-ink-faint" />
+			<FileIcon :size="32" class="mx-auto mb-2 text-ink-subtle" />
 			<p class="text-sm text-ink-subtle">
 				{{
 					imagesOnly

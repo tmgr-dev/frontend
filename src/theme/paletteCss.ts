@@ -30,6 +30,21 @@ function hexToHslTriplet(hex: string): string {
 	)}%`;
 }
 
+export function hslTripletToHex(triplet: string): string {
+	const [hd, sp, lp] = triplet.split(' ').map((v) => parseFloat(v));
+	const s = sp / 100;
+	const l = lp / 100;
+	const a = s * Math.min(l, 1 - l);
+	const f = (n: number) => {
+		const k = (n + hd / 30) % 12;
+		const v = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+		return Math.round(v * 255)
+			.toString(16)
+			.padStart(2, '0');
+	};
+	return '#' + f(0) + f(8) + f(4);
+}
+
 function channels(hex: string): number[] {
 	let h = hex.trim().replace('#', '');
 	if (h.length === 3) {
@@ -53,15 +68,13 @@ export function contrastRatio(a: string, b: string): number {
 
 const BRAND_TEXT_MIN_CONTRAST = 4.5;
 
-// Brand-coloured text sits on bg, surface and raised: where the plain brand colour reads
-// below 4.5:1 on one of them, it is pulled toward the theme text colour just far enough.
-export function brandTextColor(t: ThemeDef): string {
-	const { brand, bg, surface, raised, text } = t.tokens;
-	const grounds = [bg, surface, raised];
-	const ok = (c: string) =>
-		grounds.every((g) => contrastRatio(c, g) >= BRAND_TEXT_MIN_CONTRAST);
-	const from = channels(brand);
-	const to = channels(text);
+function pullToward(
+	t: ThemeDef,
+	start: string,
+	ok: (c: string) => boolean,
+): string {
+	const from = channels(start);
+	const to = channels(t.tokens.text);
 	for (let step = 0; step <= 20; step++) {
 		const mix =
 			'#' +
@@ -71,7 +84,31 @@ export function brandTextColor(t: ThemeDef): string {
 				.join('');
 		if (ok(mix)) return mix;
 	}
-	return text;
+	return t.tokens.text;
+}
+
+const readsOnGrounds = (t: ThemeDef, c: string) =>
+	[t.tokens.bg, t.tokens.surface, t.tokens.raised].every(
+		(g) => contrastRatio(c, g) >= BRAND_TEXT_MIN_CONTRAST,
+	);
+
+// Brand-coloured text sits on bg, surface and raised: where the plain brand colour reads
+// below 4.5:1 on one of them, it is pulled toward the theme text colour just far enough.
+export function brandTextColor(t: ThemeDef): string {
+	return pullToward(t, t.tokens.brand, (c) => readsOnGrounds(t, c));
+}
+
+// Secondary text (muted/subtle/tag) is the theme's muted colour pulled the same way. The
+// check also converts through the HSL triplet used by --muted-foreground, whose rounding can
+// cost contrast.
+export function mutedTextColor(t: ThemeDef): string {
+	return pullToward(
+		t,
+		t.tokens.muted,
+		(c) =>
+			readsOnGrounds(t, c) &&
+			readsOnGrounds(t, hslTripletToHex(hexToHslTriplet(c))),
+	);
 }
 
 // Text on a brand fill: the theme's own onAccent unless it reads below 4.5:1, then black or white.
@@ -93,7 +130,8 @@ export function buildPaletteCss(registry: ThemeDef[]): string {
 			const raised = hexToHslTriplet(k.raised);
 			const border = hexToHslTriplet(k.border);
 			const text = hexToHslTriplet(k.text);
-			const muted = hexToHslTriplet(k.muted);
+			const mutedHex = mutedTextColor(t);
+			const muted = hexToHslTriplet(mutedHex);
 			const brand = hexToHslTriplet(k.brand);
 			const brandFg = brandTextColor(t);
 			const onAccentHex = onAccentColor(t);
@@ -104,11 +142,11 @@ export function buildPaletteCss(registry: ThemeDef[]): string {
 				`--bg:${k.bg};--bg-raised:${k.surface};--bg-sunken:${k.bg};` +
 				`--bg-hover:${k.raised};--bg-active:${k.raised};` +
 				`--line-color:${k.border};--line-strong-color:${k.border};` +
-				`--fg:${k.text};--fg-muted:${k.muted};--fg-subtle:${k.muted};--fg-faint:${k.muted};` +
+				`--fg:${k.text};--fg-muted:${mutedHex};--fg-subtle:${mutedHex};--fg-faint:${k.muted};` +
 				`--brand-color:${k.brand};--brand-bg-color:${k.raised};--brand-fg-color:${brandFg};` +
 				`--brand-hover-color:${k.brand};--brand-ring-color:${k.brand};` +
 				`--timer-color:${k.timer};--on-accent-color:${onAccentHex};` +
-				`--tag-bg:${k.raised};--tag-fg:${k.muted};` +
+				`--tag-bg:${k.raised};--tag-fg:${mutedHex};` +
 				// shadcn HSL layer (sidebar, cards, buttons, inputs, popovers, borders)
 				`--background:${bg};--foreground:${text};` +
 				`--card:${surface};--card-foreground:${text};` +

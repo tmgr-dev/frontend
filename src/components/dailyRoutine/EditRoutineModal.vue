@@ -133,7 +133,7 @@
 								<div class="flex items-end gap-2">
 									<label class="flex flex-1 flex-col gap-1">
 										<span
-											class="text-[10px] font-bold tracking-wider text-ink-faint uppercase"
+											class="text-[10px] font-bold tracking-wider text-ink-subtle uppercase"
 											>Start</span
 										>
 										<div
@@ -148,10 +148,10 @@
 											<DRIcon name="clock" :size="13" :stroke="catColor" />
 										</div>
 									</label>
-									<span class="pb-2.5 text-ink-faint">→</span>
+									<span class="pb-2.5 text-ink-subtle">→</span>
 									<label class="flex flex-1 flex-col gap-1">
 										<span
-											class="text-[10px] font-bold tracking-wider text-ink-faint uppercase"
+											class="text-[10px] font-bold tracking-wider text-ink-subtle uppercase"
 											>End</span
 										>
 										<div

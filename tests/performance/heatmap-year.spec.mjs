@@ -25,10 +25,10 @@ const days = (from, to) => {
 };
 
 // Rolling: 2 a day this week, 1 a day before (60 days) → KPI 7d 14 (+100%), 30d 37 (+23%), as in dashboard-trends.
-const rolling = ({ legacy = false } = {}) => {
+const rolling = ({ legacy = false, empty = false } = {}) => {
   const contributions = days(ROLLING_FROM, TODAY).map((date) => {
     const back = Math.round((todayMs() - Date.parse(date)) / DAY);
-    const count = back < 7 ? 2 : back < 60 ? 1 : 0;
+    const count = empty ? 0 : back < 7 ? 2 : back < 60 ? 1 : 0;
     return { date, count, level: count };
   });
   const base = {
@@ -77,7 +77,13 @@ const teamActivity = (window) => ({
 
 const setup = async (
   page,
-  { legacy = false, yearStatus = () => 200, yearDelay = 0, dark = false } = {},
+  {
+    legacy = false,
+    empty = false,
+    yearStatus = () => 200,
+    yearDelay = 0,
+    dark = false,
+  } = {},
 ) => {
   const heatmapRequests = [];
   const activityDates = [];
@@ -112,7 +118,7 @@ const setup = async (
         const params = Object.fromEntries(url.searchParams);
         heatmapRequests.push(params);
         if (params.range !== 'year')
-          return r.fulfill({ json: { data: rolling({ legacy }) } });
+          return r.fulfill({ json: { data: rolling({ legacy, empty }) } });
         const y = Number(params.year);
         if (yearDelay) await new Promise((res) => setTimeout(res, yearDelay));
         const status = yearStatus(y);
@@ -501,4 +507,126 @@ test('narrow 390px: card header keeps the select inside the card', async ({
   await shot(card(page), 'light-390-past-year');
   expect(errors).toEqual([]);
   expect(warnings).toEqual([]);
+});
+
+// TM-735: weekday labels share the day grid's rows; the chart is one Tab stop with arrow-key navigation.
+const stop = (page) =>
+  page.locator('.heatmap-calendar [data-date][tabindex="0"]');
+const cell = (page, date) =>
+  page.locator(`.heatmap-calendar [data-date="${date}"]`);
+const tabStops = (page) =>
+  page.evaluate(() => {
+    const cells = [
+      ...document.querySelectorAll('.heatmap-calendar [data-date]'),
+    ];
+    return {
+      total: cells.length,
+      tabbable: cells
+        .filter((el) => el.getAttribute('tabindex') === '0')
+        .map((el) => el.dataset.date),
+      rovers: cells.filter((el) => el.getAttribute('tabindex') === '-1').length,
+    };
+  });
+
+for (const width of [1440, 390])
+  test(`weekday labels sit in the same rows as Monday, Wednesday and Friday cells at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const { errors } = await open(page);
+    await expectGrid(page, ROLLING_FROM, TODAY);
+    const rows = await page.evaluate(() => {
+      const centre = (el) => {
+        const r = el.getBoundingClientRect();
+        return r.top + r.height / 2;
+      };
+      const labels = [
+        ...document.querySelectorAll(
+          '.heatmap-calendar [data-testid="heatmap-weekdays"] > div',
+        ),
+      ];
+      const week = document.querySelectorAll('.heatmap-calendar [data-date]')[7]
+        .parentElement;
+      const cellRows = [0, 2, 4].map((row) => week.children[row]);
+      const cell = week.children[0].getBoundingClientRect();
+      return {
+        weekHeight: week.getBoundingClientRect().height,
+        cellsHeight: 7 * cell.height + 6 * 2,
+        labelsHeight: labels[0].parentElement.getBoundingClientRect().height,
+        text: labels.map((l) => l.textContent.trim()),
+        offsets: labels.map((l, i) =>
+          Math.abs(centre(l) - centre(cellRows[i])),
+        ),
+        weekdays: cellRows.map((c) =>
+          new Date(`${c.dataset.date}T00:00:00Z`).getUTCDay(),
+        ),
+      };
+    });
+    expect(rows.text).toEqual(['Mon', 'Wed', 'Fri']);
+    expect(rows.weekdays).toEqual([1, 3, 5]);
+    expect(Math.abs(rows.weekHeight - rows.cellsHeight)).toBeLessThanOrEqual(
+      0.5,
+    );
+    expect(Math.abs(rows.labelsHeight - rows.weekHeight)).toBeLessThanOrEqual(
+      0.5,
+    );
+    for (const offset of rows.offsets) expect(offset).toBeLessThanOrEqual(1);
+    await shot(card(page), `weekday-labels-${width}`);
+    expect(errors).toEqual([]);
+  });
+
+test('one Tab stop (last day), arrows move by day and week, Enter and click select', async ({
+  page,
+}) => {
+  const { activityDates, errors } = await open(page);
+  await expectGrid(page, ROLLING_FROM, TODAY);
+  const initial = await tabStops(page);
+  expect(initial.tabbable).toEqual([TODAY]);
+  expect(initial.rovers).toBe(initial.total - 1);
+
+  await stop(page).focus();
+  await expect(cell(page, TODAY)).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(cell(page, TODAY)).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect(cell(page, dayKey(7))).toBeFocused();
+  await expect(stop(page)).toHaveAttribute('data-date', dayKey(7));
+  await page.keyboard.press('ArrowUp');
+  await expect(cell(page, dayKey(8))).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await expect(cell(page, dayKey(6))).toBeFocused();
+  expect((await tabStops(page)).tabbable).toEqual([dayKey(6)]);
+  await shot(card(page), 'keyboard-focus');
+
+  await page.keyboard.press('Enter');
+  await expect(cell(page, dayKey(6))).toHaveAttribute('aria-pressed', 'true');
+  expect(activityDates).toContain(dayKey(6));
+  expect((await tabStops(page)).tabbable).toEqual([dayKey(6)]);
+
+  await cell(page, dayKey(20)).click();
+  await expect(cell(page, dayKey(20))).toHaveAttribute('aria-pressed', 'true');
+  expect((await tabStops(page)).tabbable).toEqual([dayKey(20)]);
+  expect(errors).toEqual([]);
+});
+
+test('with no activity there is still one Tab stop and arrows stop at the range edges', async ({
+  page,
+}) => {
+  const { errors } = await open(page, { empty: true });
+  await expectGrid(page, ROLLING_FROM, TODAY);
+  const initial = await tabStops(page);
+  expect(initial.tabbable).toEqual([TODAY]);
+  expect(initial.rovers).toBe(initial.total - 1);
+
+  await cell(page, ROLLING_FROM).focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect(cell(page, ROLLING_FROM)).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(cell(page, ROLLING_FROM)).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(
+    cell(page, key(Date.parse(ROLLING_FROM) + 7 * DAY)),
+  ).toBeFocused();
+  expect(errors).toEqual([]);
 });

@@ -3,7 +3,7 @@
 		<component
 			v-if="iconComponent"
 			:is="iconComponent"
-			class="mb-4 h-12 w-12 text-ink-faint"
+			class="mb-4 h-12 w-12 text-ink-subtle"
 		/>
 		<img
 			v-else

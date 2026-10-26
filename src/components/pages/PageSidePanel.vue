@@ -37,7 +37,7 @@
 					</router-link>
 				</li>
 			</ul>
-			<p v-else class="text-ink-faint">None</p>
+			<p v-else class="text-ink-subtle">None</p>
 		</section>
 
 		<section data-testid="page-recent-versions">
@@ -79,7 +79,7 @@
 					</router-link>
 				</li>
 			</ul>
-			<p v-else class="text-ink-faint">None</p>
+			<p v-else class="text-ink-subtle">None</p>
 		</section>
 
 		<EntityGraphSection

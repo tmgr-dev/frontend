@@ -20,7 +20,7 @@
 				v-model="checkpoint.description"
 				rows="1"
 				placeholder="What did you work on?"
-				class="checkpoint-description min-h-6 min-w-0 flex-1 resize-none overflow-hidden rounded-md bg-transparent px-1 py-0.5 text-sm leading-5 text-ink outline-hidden placeholder:text-ink-faint focus:bg-surface-sunken"
+				class="checkpoint-description min-h-6 min-w-0 flex-1 resize-none overflow-hidden rounded-md bg-transparent px-1 py-0.5 text-sm leading-5 text-ink outline-hidden placeholder:text-ink-subtle focus:bg-surface-sunken"
 				@input="autoResize($event.target as HTMLTextAreaElement)"
 			/>
 
@@ -38,7 +38,7 @@
 				</button>
 				<button
 					type="button"
-					class="flex size-6 shrink-0 items-center justify-center rounded-pill text-ink-faint opacity-0 transition group-hover:opacity-100 hover:bg-surface-hover hover:text-status-fix-fg"
+					class="flex size-6 shrink-0 items-center justify-center rounded-pill text-ink-subtle opacity-0 transition group-hover:opacity-100 hover:bg-surface-hover hover:text-status-fix-fg"
 					@click="deleteCheckpoint(v as number)"
 					title="Delete entry"
 				>
@@ -56,7 +56,7 @@
 					@keydown.enter="saveTimeEdit(v as number)"
 					@keydown.esc="cancelTimeEdit(v as number)"
 				/>
-				<span class="shrink-0 text-2xs text-ink-faint">–</span>
+				<span class="shrink-0 text-2xs text-ink-subtle">–</span>
 				<input
 					type="text"
 					v-model="timeEditBuffer[v].end"

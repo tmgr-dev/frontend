@@ -254,7 +254,7 @@
 															>
 																<div
 																	v-if="activeDraggable"
-																	class="column-drag-handle flex cursor-grab items-center text-ink-faint active:cursor-grabbing"
+																	class="column-drag-handle flex cursor-grab items-center text-ink-subtle active:cursor-grabbing"
 																	title="Drag to reorder columns"
 																>
 																	<EllipsisVerticalIcon

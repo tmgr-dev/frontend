@@ -59,7 +59,7 @@
 					>
 						<span
 							v-if="item.hint"
-							class="w-14 shrink-0 text-2xs tracking-wide text-ink-faint uppercase"
+							class="w-14 shrink-0 text-2xs tracking-wide text-ink-subtle uppercase"
 							>{{ item.hint }}</span
 						>
 						<span class="truncate">{{ item.label }}</span>
