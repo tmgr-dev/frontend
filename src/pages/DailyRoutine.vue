@@ -51,6 +51,7 @@
 									<input
 										ref="quickInputRef"
 										v-model="quickTitle"
+										aria-label="Quick add routine"
 										:placeholder="
 											isMobile ? 'Quick add…' : 'Quick add → Unscheduled'
 										"
@@ -210,6 +211,7 @@
 								<div class="flex shrink-0 gap-0.5">
 									<button
 										type="button"
+										aria-label="Previous period"
 										class="flex h-7 w-7 items-center justify-center rounded-md text-ink-subtle hover:bg-surface-hover hover:text-ink"
 										@click="step(-1)"
 									>
@@ -217,6 +219,7 @@
 									</button>
 									<button
 										type="button"
+										aria-label="Next period"
 										class="flex h-7 w-7 items-center justify-center rounded-md text-ink-subtle hover:bg-surface-hover hover:text-ink"
 										@click="step(1)"
 									>
@@ -350,10 +353,19 @@
 					<EditRoutineModal
 						v-if="editingRoutine"
 						:routine="editingRoutine"
+						:busy="editorBusy"
+						:error="editorError"
+						:confirm-open="deleteDialogOpen"
 						@close="editingRoutine = null"
 						@save="onSaveRoutine"
 						@delete="onDeleteRoutine"
 						@convert="onConvertRoutine"
+					/>
+
+					<DeleteRoutineDialog
+						v-model:open="deleteDialogOpen"
+						:title="deleteTarget?.title ?? ''"
+						@confirm="confirmDelete"
 					/>
 
 					<AlertDialog
@@ -426,6 +438,7 @@
 	import ConvertRoutineModal from '@/components/dailyRoutine/ConvertRoutineModal.vue';
 	import CountChip from '@/components/dailyRoutine/CountChip.vue';
 	import DRIcon from '@/components/dailyRoutine/DRIcon.vue';
+	import DeleteRoutineDialog from '@/components/dailyRoutine/DeleteRoutineDialog.vue';
 	import EditRoutineModal from '@/components/dailyRoutine/EditRoutineModal.vue';
 	import RoutineContextMenu from '@/components/dailyRoutine/RoutineContextMenu.vue';
 	import {
@@ -479,7 +492,14 @@
 		Plus,
 		Upload,
 	} from 'lucide-vue-next';
-	import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+	import {
+		computed,
+		onBeforeUnmount,
+		onMounted,
+		ref,
+		watch,
+		type Ref,
+	} from 'vue';
 	import { useStore } from 'vuex';
 
 	const store = useStore();
@@ -505,6 +525,21 @@
 	});
 	const cursor = ref<Date>(todayDateIn(store.getters.userTimeZone));
 	const editingRoutine = ref<any | null>(null);
+	const editorBusy = ref(false);
+	const editorError = ref('');
+	// Set once quick-create succeeded, so a retry after a failed follow-up PUT
+	// updates that row instead of creating a duplicate.
+	const createdRoutineId = ref<number | null>(null);
+	watch(editingRoutine, () => {
+		editorError.value = '';
+		createdRoutineId.value = null;
+	});
+	const deleteDialogOpen = ref(false);
+	const deleteTarget = ref<{
+		taskId: number;
+		title: string;
+		fromEditor: boolean;
+	} | null>(null);
 	const quickTitle = ref('');
 	const quickFocused = ref(false);
 	const quickInputRef = ref<HTMLInputElement | null>(null);
@@ -817,7 +852,8 @@
 			(t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
 		)
 			return;
-		if (editingRoutine.value || convertingEntry.value) return;
+		if (editingRoutine.value || convertingEntry.value || deleteDialogOpen.value)
+			return;
 		if (e.key === 'n' || e.key === 'N') {
 			e.preventDefault();
 			onNewRoutine();
@@ -864,9 +900,39 @@
 		}
 	}
 
-	async function onDelete(entry: RoutineEntry) {
-		await store.dispatch('dailyRoutines/deleteRoutine', entry.task_id);
-		await reload();
+	function onDelete(entry: RoutineEntry) {
+		deleteTarget.value = {
+			taskId: entry.task_id,
+			title: entry.title,
+			fromEditor: false,
+		};
+		deleteDialogOpen.value = true;
+	}
+
+	async function confirmDelete() {
+		const target = deleteTarget.value;
+		if (!target) return;
+		if (target.fromEditor) {
+			editorBusy.value = true;
+			editorError.value = '';
+		}
+		try {
+			await store.dispatch('dailyRoutines/deleteRoutine', target.taskId);
+			if (target.fromEditor) editingRoutine.value = null;
+			await reload();
+		} catch (error) {
+			if (target.fromEditor) {
+				editorError.value = errorText(error);
+			} else {
+				toast({
+					title: 'Could not delete the routine',
+					description: errorText(error),
+					variant: 'destructive',
+				});
+			}
+		} finally {
+			editorBusy.value = false;
+		}
 	}
 
 	async function onArchive(entry: RoutineEntry) {
@@ -899,7 +965,11 @@
 		view.value = 'day';
 	}
 
-	async function saveRoutine(draft: RoutineDraft, fallbackDate?: string) {
+	async function saveRoutine(
+		draft: RoutineDraft,
+		fallbackDate?: string,
+		created?: Ref<number | null>,
+	) {
 		const time = `${String(draft.timeH).padStart(2, '0')}:${String(
 			draft.timeM,
 		).padStart(2, '0')}`;
@@ -917,13 +987,17 @@
 			const draftDate = isUnscheduled
 				? undefined
 				: draft.scheduledDate || fallbackDate;
-			const created = await quickCreateRoutine({
-				title: draft.title,
-				date: draftDate,
-				time: isUnscheduled ? undefined : time,
-				category: draft.cat,
-			});
-			const newId = created?.id ?? created?.task_id;
+			let newId = created?.value ?? null;
+			if (!newId) {
+				const quick = await quickCreateRoutine({
+					title: draft.title,
+					date: draftDate,
+					time: isUnscheduled ? undefined : time,
+					category: draft.cat,
+				});
+				newId = quick?.id ?? quick?.task_id;
+				if (created && newId) created.value = newId;
+			}
 			// Quick-create only stores title/date/time; always follow up so
 			// duration, description and recurrence are persisted too.
 			if (newId) {
@@ -933,9 +1007,23 @@
 	}
 
 	async function onSaveRoutine(draft: RoutineDraft) {
-		await saveRoutine(draft, editingRoutine.value?._draftDate);
-		editingRoutine.value = null;
-		await reload();
+		editorBusy.value = true;
+		editorError.value = '';
+		let saved = false;
+		try {
+			await saveRoutine(
+				draft,
+				editingRoutine.value?._draftDate,
+				createdRoutineId,
+			);
+			editingRoutine.value = null;
+			saved = true;
+		} catch (error) {
+			editorError.value = errorText(error);
+		} finally {
+			editorBusy.value = false;
+		}
+		if (saved || createdRoutineId.value) await reload();
 	}
 
 	async function onDuplicate(entry: RoutineEntry) {
@@ -995,10 +1083,13 @@
 		await reload();
 	}
 
-	async function onDeleteRoutine(routine: any) {
-		await store.dispatch('dailyRoutines/deleteRoutine', routine.id);
-		editingRoutine.value = null;
-		await reload();
+	function onDeleteRoutine(routine: any) {
+		deleteTarget.value = {
+			taskId: routine.id,
+			title: routine.title,
+			fromEditor: true,
+		};
+		deleteDialogOpen.value = true;
 	}
 
 	async function onConvertRoutine(payload: {

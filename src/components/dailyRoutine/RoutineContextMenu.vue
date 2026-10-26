@@ -130,8 +130,6 @@
 	}
 
 	function onDelete() {
-		// eslint-disable-next-line no-alert
-		if (!confirm(`Delete "${props.entry.title}"?`)) return;
 		emit('delete', props.entry);
 		emit('close');
 	}
