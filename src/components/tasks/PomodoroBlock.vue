@@ -93,7 +93,7 @@
 						<div class="flex-1" />
 						<button
 							type="button"
-							class="inline-flex items-center gap-1.5 rounded-md border-0 bg-[rgba(245,181,74,.1)] px-2 py-1 text-[10px] font-semibold tracking-[.05em] text-[#f5b54a] hover:bg-[rgba(245,181,74,.18)]"
+							class="inline-flex items-center gap-1.5 rounded-md border-0 bg-status-progress-bg px-2 py-1 text-[10px] font-semibold tracking-[.05em] text-status-progress-fg hover:bg-status-progress/20"
 							title="I got distracted"
 							@click="handleDistract"
 						>
