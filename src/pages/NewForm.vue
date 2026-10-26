@@ -2603,7 +2603,7 @@
 							:class="[
 								'relative flex h-7 w-7 items-center justify-center rounded-pill text-sm leading-none transition disabled:opacity-50',
 								pomodoroEnabled
-									? 'bg-[rgba(232,90,79,0.15)] text-[#e85a4f] hover:bg-[rgba(232,90,79,0.25)]'
+									? 'bg-status-fix-bg text-status-fix-fg hover:bg-status-fix/25'
 									: 'text-ink-subtle hover:bg-surface-hover hover:text-ink',
 							]"
 							:title="pomodoroEnabled ? 'Disable Pomodoro' : 'Enable Pomodoro'"
