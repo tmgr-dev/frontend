@@ -14,94 +14,84 @@
 
 		<div ref="scroller" class="w-full overflow-x-auto scroll-smooth">
 			<div class="min-w-[600px]">
-				<div>
-					<div class="grid grid-cols-[auto_1fr] gap-4">
-						<div class="flex flex-col justify-around" style="height: 105px">
-							<div :class="['text-[9px] leading-none', textColorClass]">
-								Mon
-							</div>
-							<div :class="['text-[9px] leading-none', textColorClass]">
-								Wed
-							</div>
-							<div :class="['text-[9px] leading-none', textColorClass]">
-								Fri
-							</div>
+				<div class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4">
+					<div />
+					<div class="mb-2 grid gap-[2px] px-[2px]" :style="weekGridStyle">
+						<div
+							v-for="month in monthLabels"
+							:key="month.key"
+							:class="['text-[9px] whitespace-nowrap', textColorClass]"
+							:style="{ gridColumnStart: month.column + 1 }"
+						>
+							{{ month.label }}
 						</div>
-
-						<div class="min-w-0 flex-1">
-							<div class="mb-2 grid gap-[2px] px-[2px]" :style="weekGridStyle">
-								<div
-									v-for="month in monthLabels"
-									:key="month.key"
-									:class="['text-[9px] whitespace-nowrap', textColorClass]"
-									:style="{ gridColumnStart: month.column + 1 }"
-								>
-									{{ month.label }}
-								</div>
-							</div>
-
-							<div class="grid gap-[2px] px-[2px]" :style="weekGridStyle">
-								<div
-									v-for="(week, weekIndex) in calendarGrid"
-									:key="weekIndex"
-									class="grid gap-[2px]"
-									:style="dayGridStyle"
-								>
-									<div
-										v-for="day in week"
-										:key="day.key"
-										:data-date="day.date || undefined"
-										:class="[
-											getSquareClass(day),
-											day.date &&
-												'cursor-pointer transition-transform duration-200 hover:scale-110',
-											day.date &&
-												day.date === selectedDate &&
-												'relative z-10 ring-2 ring-ink ring-offset-1 ring-offset-surface',
-										]"
-										class="rounded-[2px]"
-										:style="squareStyle"
-										:role="day.date ? 'button' : undefined"
-										:tabindex="day.date ? 0 : undefined"
-										:aria-pressed="
-											day.date ? String(day.date === selectedDate) : undefined
-										"
-										:aria-label="day.date ? getDayLabel(day) : undefined"
-										@click="selectDay(day)"
-										@keydown.enter="selectDay(day)"
-										@keydown.space.prevent="selectDay(day)"
-										@mouseenter="handleSquareHover(day, $event)"
-										@mouseleave="handleSquareLeave"
-										:title="getTooltipText(day)"
-									/>
-								</div>
-							</div>
-
-							<div class="mt-3 flex items-center justify-end gap-2">
-								<span :class="['text-[9px]', textColorClass]">Less</span>
-								<div class="flex gap-[3px]">
-									<div
-										:class="[
-											'h-[11px] w-[11px] rounded-[2px]',
-											emptySquareClass,
-										]"
-									/>
-									<div
-										:class="['h-[11px] w-[11px] rounded-[2px]', level1Class]"
-									/>
-									<div
-										:class="['h-[11px] w-[11px] rounded-[2px]', level2Class]"
-									/>
-									<div
-										:class="['h-[11px] w-[11px] rounded-[2px]', level3Class]"
-									/>
-									<div
-										:class="['h-[11px] w-[11px] rounded-[2px]', level4Class]"
-									/>
-								</div>
-								<span :class="['text-[9px]', textColorClass]">More</span>
-							</div>
+					</div>
+					<div
+						class="grid h-0 min-h-full gap-[2px]"
+						:style="weekdayGridStyle"
+						data-testid="heatmap-weekdays"
+					>
+						<div
+							v-for="label in weekdayLabels"
+							:key="label.row"
+							:class="['self-center text-[9px] leading-none', textColorClass]"
+							:style="{ gridRowStart: label.row }"
+						>
+							{{ label.text }}
 						</div>
+					</div>
+					<div class="grid gap-[2px] px-[2px]" :style="weekGridStyle">
+						<div
+							v-for="(week, weekIndex) in calendarGrid"
+							:key="weekIndex"
+							class="grid gap-[2px]"
+							:style="dayGridStyle"
+						>
+							<div
+								v-for="day in week"
+								:key="day.key"
+								:data-date="day.date || undefined"
+								:class="[
+									getSquareClass(day),
+									day.date &&
+										'cursor-pointer transition-transform duration-200 hover:scale-110',
+									day.date &&
+										day.date === selectedDate &&
+										'relative z-10 ring-2 ring-ink ring-offset-1 ring-offset-surface',
+								]"
+								class="rounded-[2px]"
+								:style="squareStyle"
+								:role="day.date ? 'button' : undefined"
+								:tabindex="
+									day.date ? (day.date === tabDate ? 0 : -1) : undefined
+								"
+								:aria-pressed="
+									day.date ? String(day.date === selectedDate) : undefined
+								"
+								:aria-label="day.date ? getDayLabel(day) : undefined"
+								@click="selectDay(day)"
+								@keydown.enter="selectDay(day)"
+								@keydown.space.prevent="selectDay(day)"
+								@keydown="moveFocus(day, $event)"
+								@mouseenter="handleSquareHover(day, $event)"
+								@mouseleave="handleSquareLeave"
+								:title="getTooltipText(day)"
+							/>
+						</div>
+					</div>
+					<div />
+					<div class="mt-3 flex items-center justify-end gap-2">
+						<span :class="['text-[9px]', textColorClass]">Less</span>
+						<div class="flex gap-[3px]">
+							<div
+								:class="['h-[11px] w-[11px] rounded-[2px]', emptySquareClass]"
+							/>
+							<div :class="['h-[11px] w-[11px] rounded-[2px]', level1Class]" />
+							<div :class="['h-[11px] w-[11px] rounded-[2px]', level2Class]" />
+							<div :class="['h-[11px] w-[11px] rounded-[2px]', level3Class]" />
+							<div :class="['h-[11px] w-[11px] rounded-[2px]', level4Class]" />
+						</div>
+						<span :class="['text-[9px]', textColorClass]">More</span>
 					</div>
 				</div>
 			</div>
@@ -133,6 +123,18 @@
 		utcToday,
 	} from '@/utils/dashboard/heatmapRange';
 	import { defineComponent } from 'vue';
+
+	const WEEKDAY_LABELS = [
+		{ row: 1, text: 'Mon' },
+		{ row: 3, text: 'Wed' },
+		{ row: 5, text: 'Fri' },
+	];
+	const ARROW_STEPS = {
+		ArrowUp: -1,
+		ArrowDown: 1,
+		ArrowLeft: -7,
+		ArrowRight: 7,
+	};
 
 	export default defineComponent({
 		name: 'HeatmapCalendar',
@@ -167,6 +169,9 @@
 		},
 		emits: ['select'],
 		watch: {
+			selectedDate(value) {
+				if (value) this.activeDate = value;
+			},
 			year() {
 				this.$nextTick(this.scrollToLatest);
 			},
@@ -177,6 +182,7 @@
 		data() {
 			return {
 				hoveredDate: null,
+				activeDate: null,
 				tooltipPosition: { x: 0, y: 0 },
 			};
 		},
@@ -190,6 +196,22 @@
 					resolveHeatmapRange(this.data, this.today),
 					this.data.contributions,
 				);
+			},
+
+			flatDays() {
+				return this.calendarGrid.flat();
+			},
+
+			tabDate() {
+				const dates = this.flatDays.filter((d) => d.date).map((d) => d.date);
+				return (
+					[this.activeDate, this.selectedDate].find((d) => dates.includes(d)) ??
+					dates[dates.length - 1]
+				);
+			},
+
+			weekdayLabels() {
+				return WEEKDAY_LABELS;
 			},
 
 			monthLabels() {
@@ -216,6 +238,12 @@
 				return {
 					gridTemplateRows: 'repeat(7, 1fr)',
 					gridAutoFlow: 'row',
+				};
+			},
+
+			weekdayGridStyle() {
+				return {
+					gridTemplateRows: 'repeat(7, minmax(0, 1fr))',
 				};
 			},
 
@@ -323,7 +351,33 @@
 			},
 
 			selectDay(day) {
-				if (day.date) this.$emit('select', day.date);
+				if (!day.date) return;
+				this.activeDate = day.date;
+				this.$emit('select', day.date);
+			},
+
+			moveFocus(day, event) {
+				const step = ARROW_STEPS[event.key];
+				if (
+					!step ||
+					!day.date ||
+					event.altKey ||
+					event.ctrlKey ||
+					event.metaKey
+				)
+					return;
+				event.preventDefault();
+				const target =
+					this.flatDays[
+						this.flatDays.findIndex((d) => d.date === day.date) + step
+					];
+				if (!target?.date) return;
+				this.activeDate = target.date;
+				this.$nextTick(() =>
+					this.$refs.scroller
+						?.querySelector(`[data-date="${target.date}"]`)
+						?.focus(),
+				);
 			},
 
 			getDayLabel(day) {
