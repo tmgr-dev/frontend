@@ -79,7 +79,6 @@
 		<Modal
 			v-if="flags.isShowWorkspaceModal"
 			modal-class="p-6 w-96"
-			close-on-bg-click
 			@close="flags.isShowWorkspaceModal = false"
 		>
 			<template #modal-body>

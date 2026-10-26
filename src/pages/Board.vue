@@ -526,7 +526,6 @@
 								<Modal
 									v-if="isShowStatusModal"
 									modal-class="p-6 w-96"
-									close-on-bg-click
 									@close="closeModal"
 									@closing-modal="closingModal"
 								>
@@ -610,7 +609,6 @@
 									id="modal2"
 									v-if="isShowColorPicker"
 									modal-class=""
-									close-on-bg-click
 									@close="closePickerModal"
 									@closing-modal="closingModal"
 								>
@@ -693,7 +691,6 @@
 								<Modal
 									v-if="isShowMobileReorderModal"
 									modal-class="p-6 w-96"
-									close-on-bg-click
 									@close="closeMobileReorderModal"
 								>
 									<template #modal-body>
