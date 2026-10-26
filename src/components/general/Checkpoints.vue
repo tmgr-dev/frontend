@@ -38,9 +38,10 @@
 				</button>
 				<button
 					type="button"
-					class="flex size-6 shrink-0 items-center justify-center rounded-pill text-ink-faint opacity-0 transition group-hover:opacity-100 hover:bg-surface-hover hover:text-status-fix-fg"
+					class="flex size-6 shrink-0 items-center justify-center rounded-pill text-ink-faint opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-surface-hover hover:text-status-fix-fg focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
 					@click="deleteCheckpoint(v as number)"
 					title="Delete entry"
+					aria-label="Delete entry"
 				>
 					<span class="material-icons" style="font-size: 14px">delete</span>
 				</button>

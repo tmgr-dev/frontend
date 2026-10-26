@@ -380,12 +380,13 @@
 							v-if="
 								comment.user.id === currentUser?.id && !comment.cursor_agent_id
 							"
-							class="ml-auto flex gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+							class="ml-auto flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
 						>
 							<Button
 								variant="ghost"
 								size="icon"
 								class="h-6 w-6 hover:bg-status-fix-bg hover:text-status-fix-fg"
+								aria-label="Delete comment"
 								@click="handleDelete(comment.id)"
 							>
 								<Trash2 class="h-3 w-3" />

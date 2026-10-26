@@ -182,6 +182,7 @@
 	import { generateTaskUrl } from '@/utils/url';
 	import {
 		DocumentPlusIcon,
+		PlusIcon,
 		TrashIcon,
 		XMarkIcon,
 	} from '@heroicons/vue/20/solid';
@@ -770,7 +771,9 @@
 		if (titleTextarea.value) {
 			titleTextarea.value.style.height = 'auto';
 			titleTextarea.value.style.height =
-				titleTextarea.value.scrollHeight + 'px';
+				titleTextarea.value.scrollHeight +
+				(titleTextarea.value.offsetHeight - titleTextarea.value.clientHeight) +
+				'px';
 		}
 	};
 
@@ -1928,9 +1931,16 @@
 			}
 		} catch (e) {
 			console.error(e);
+			toast({ title: "Couldn't delete the task", variant: 'destructive' });
 		} finally {
 			isLoading.value = false;
 		}
+	};
+
+	const showDeleteConfirm = ref(false);
+	const confirmDeleteTask = () => {
+		showDeleteConfirm.value = false;
+		deleteCurrentTask();
 	};
 
 	const backlogStatusChangeConfirm = ref<{
@@ -2507,13 +2517,13 @@
 			:class="[
 				isModal
 					? 'h-full max-h-[100dvh] w-full flex-col overflow-hidden'
-					: 'mx-auto w-full max-w-7xl flex-col border-line lg:h-[calc(100dvh-var(--app-chrome-h,4rem))] lg:flex-row lg:overflow-hidden min-[1537px]:border-x',
+					: 'mx-auto w-full max-w-7xl flex-col border-line xl:h-[calc(100dvh-var(--app-chrome-h,4rem))] xl:flex-row xl:overflow-hidden min-[1537px]:border-x',
 			]"
 		>
 			<!-- Form Panel (main / left column) -->
 			<div
 				class="flex w-full flex-col"
-				:class="isModal ? 'min-h-0 flex-1' : 'lg:min-h-0 lg:min-w-0 lg:flex-1'"
+				:class="isModal ? 'min-h-0 flex-1' : 'xl:min-h-0 xl:min-w-0 xl:flex-1'"
 			>
 				<div
 					v-if="saveError || recoverableDraft"
@@ -2674,7 +2684,7 @@
 					:class="
 						isModal
 							? 'min-h-0 flex-1 overflow-x-hidden overflow-y-auto'
-							: 'lg:min-h-0 lg:flex-1 lg:overflow-x-hidden lg:overflow-y-auto'
+							: 'xl:min-h-0 xl:flex-1 xl:overflow-x-hidden xl:overflow-y-auto'
 					"
 				>
 					<!-- External Update Notification -->
@@ -2722,7 +2732,8 @@
 							data-tour="task-form.title"
 							v-model="form.title"
 							ref="titleTextarea"
-							class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 outline-hidden placeholder:text-ink-faint"
+							aria-label="Task name"
+							class="w-full resize-none overflow-hidden border-b-2 border-transparent bg-transparent px-0 outline-hidden placeholder:text-ink-faint"
 							:class="[
 								'text-2xl leading-snug font-semibold tracking-tight text-ink',
 								{ 'text-status-fix-fg': isTitleAtLimit },
@@ -3446,8 +3457,9 @@
 								size="icon"
 								title="Delete"
 								aria-label="Delete"
+								:disabled="isLoading"
 								class="h-8 w-8 text-ink-muted hover:bg-status-fix-bg hover:text-status-fix focus-visible:bg-status-fix-bg focus-visible:text-status-fix"
-								@click="deleteCurrentTask"
+								@click="showDeleteConfirm = true"
 							>
 								<TrashIcon />
 							</Button>
@@ -3461,7 +3473,7 @@
 			<aside
 				v-if="!isModal && form.id && showSurface('comments.rail')"
 				:style="footerHeightVars(footerHeight)"
-				class="flex w-full flex-col border-t border-line bg-surface lg:h-full lg:w-[380px] lg:shrink-0 lg:border-t-0 lg:border-l xl:w-[420px]"
+				class="flex w-full flex-col border-t border-line bg-surface xl:h-full xl:w-[420px] xl:shrink-0 xl:border-t-0 xl:border-l"
 			>
 				<div
 					class="flex min-h-[var(--task-header-height)] shrink-0 items-center justify-between border-b border-line px-4 py-3"
@@ -3473,7 +3485,7 @@
 				</div>
 				<div
 					ref="commentsRailScroller"
-					class="px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+					class="px-4 py-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto"
 				>
 					<TaskComments
 						data-tour="task-form.comments"
@@ -3484,7 +3496,7 @@
 					/>
 				</div>
 				<div
-					class="flex shrink-0 flex-col justify-center border-t border-line bg-surface px-4 py-3 lg:min-h-[var(--task-footer-height)]"
+					class="flex shrink-0 flex-col justify-center border-t border-line bg-surface px-4 py-3 xl:min-h-[var(--task-footer-height)]"
 					@mousedown.stop
 				>
 					<AskPersonaButton
@@ -3574,6 +3586,15 @@
 				</div>
 			</aside>
 		</div>
+
+		<Confirm
+			v-if="showDeleteConfirm"
+			title="Delete task"
+			:body="`Are you sure you want to delete &quot;${form.title}&quot;?`"
+			@onCancel="showDeleteConfirm = false"
+			@closing-modal="showDeleteConfirm = false"
+			@onOk="confirmDeleteTask"
+		/>
 
 		<Confirm
 			v-if="showBacklogStatusChangeConfirm"

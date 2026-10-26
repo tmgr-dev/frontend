@@ -140,6 +140,7 @@
 					v-if="upload.error"
 					type="button"
 					@click="dismissUpload(upload.id)"
+					aria-label="Dismiss upload"
 					class="shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-status-fix-bg hover:text-status-fix-fg"
 				>
 					<X :size="16" />

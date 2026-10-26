@@ -25,3 +25,11 @@
 .md-editor-preview ul {
 	padding-inline-start: 2.35em;
 }
+
+/* The library breaks every word at any letter; wrap at word boundaries and only
+   split a word (URL, long inline code) when it can't fit on a line. */
+.md-editor-preview,
+.md-editor-html {
+	word-break: normal;
+	overflow-wrap: anywhere;
+}

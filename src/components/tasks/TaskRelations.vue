@@ -90,7 +90,8 @@
 							</div>
 							<button
 								@click="handleRemoveRelation(relation)"
-								class="ml-1 inline-flex h-5 w-5 items-center justify-center rounded opacity-0 transition-colors group-hover:opacity-100 hover:bg-status-fix-bg hover:text-status-fix-fg"
+								aria-label="Remove relation"
+								class="ml-1 inline-flex h-5 w-5 items-center justify-center rounded opacity-0 transition-colors group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-status-fix-bg hover:text-status-fix-fg focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
 							>
 								<svg
 									xmlns="http://www.w3.org/2000/svg"
@@ -127,6 +128,7 @@
 				<h2 class="text-base font-semibold">Link Issue</h2>
 				<button
 					@click="cancelAdding"
+					aria-label="Close"
 					class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
 				>
 					<svg
