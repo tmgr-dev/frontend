@@ -52,7 +52,7 @@
 						v-model="apiKey"
 						type="password"
 						placeholder="cur_xxxxxxxxxxxxxxxx"
-						class="h-10 w-full rounded-card border border-line bg-surface px-3 font-mono text-sm text-ink outline-hidden placeholder:text-ink-faint focus:border-line-strong"
+						class="h-10 w-full rounded-card border border-line bg-surface px-3 font-mono text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-strong"
 					/>
 					<p class="mt-1.5 text-xs text-ink-muted">
 						Get your API key from
@@ -142,7 +142,7 @@
 						v-model="apiKey"
 						type="password"
 						placeholder="cur_xxxxxxxxxxxxxxxx"
-						class="h-10 w-full rounded-card border border-line bg-surface px-3 font-mono text-sm text-ink outline-hidden placeholder:text-ink-faint focus:border-line-strong"
+						class="h-10 w-full rounded-card border border-line bg-surface px-3 font-mono text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-strong"
 					/>
 				</div>
 

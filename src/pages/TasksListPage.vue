@@ -895,7 +895,7 @@
 								<div class="text-xl font-semibold text-status-done-fg">
 									{{ timeStats.workingDays }}
 								</div>
-								<div class="text-2xs text-ink-faint">(8h/day)</div>
+								<div class="text-2xs text-ink-subtle">(8h/day)</div>
 							</div>
 							<div
 								class="flex flex-col items-center justify-center text-center"
@@ -908,7 +908,7 @@
 								<div class="text-xl font-semibold text-status-testing-fg">
 									{{ timeStats.workingMonths }}
 								</div>
-								<div class="text-2xs text-ink-faint">(160h/month)</div>
+								<div class="text-2xs text-ink-subtle">(160h/month)</div>
 							</div>
 							<div
 								class="flex flex-col items-center justify-center text-center"
@@ -921,7 +921,7 @@
 								<div class="text-xl font-semibold text-status-progress-fg">
 									{{ timeStats.workingYears }}
 								</div>
-								<div class="text-2xs text-ink-faint">(2000h/year)</div>
+								<div class="text-2xs text-ink-subtle">(2000h/year)</div>
 							</div>
 							<div
 								v-if="formattedTotalOvertime"

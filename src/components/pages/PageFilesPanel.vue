@@ -46,7 +46,7 @@
 				}}</span>
 			</li>
 		</ul>
-		<p v-else class="text-ink-faint">None</p>
+		<p v-else class="text-ink-subtle">None</p>
 		<p v-if="error" class="mt-1 text-xs text-status-fix-fg" role="alert">
 			{{ error }}
 		</p>

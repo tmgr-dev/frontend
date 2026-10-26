@@ -49,7 +49,7 @@
 			v-else-if="!pages.length"
 			class="flex flex-col items-center justify-center gap-3 py-16 text-center"
 		>
-			<FileText class="h-12 w-12 text-ink-faint" />
+			<FileText class="h-12 w-12 text-ink-subtle" />
 			<p class="text-xl font-bold text-ink">No pages yet</p>
 			<p class="text-sm text-ink-subtle">
 				Create your first page for notes and documentation.

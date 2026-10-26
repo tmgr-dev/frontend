@@ -241,7 +241,7 @@
 					v-else-if="comments.length === 0"
 					class="flex flex-col items-center justify-center py-12 text-center"
 				>
-					<MessageCircle class="mb-3 h-12 w-12 text-ink-faint" />
+					<MessageCircle class="mb-3 h-12 w-12 text-ink-subtle" />
 					<p class="text-sm text-ink-subtle">No comments yet</p>
 					<p class="mt-1 text-xs text-ink-subtle">Start the conversation</p>
 				</div>

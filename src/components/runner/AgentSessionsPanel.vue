@@ -39,7 +39,7 @@
 				<span v-if="session.profile" class="text-xs text-ink-subtle">{{
 					profileLabel(session.profile)
 				}}</span>
-				<span class="text-xs text-ink-faint">{{
+				<span class="text-xs text-ink-subtle">{{
 					formatAge(session.createdMs, now)
 				}}</span>
 				<Button

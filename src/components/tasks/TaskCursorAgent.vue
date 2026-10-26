@@ -148,7 +148,7 @@
 				class="rounded-card border border-line bg-surface-sunken p-8 text-center"
 			>
 				<svg
-					class="mx-auto mb-3 h-12 w-12 text-ink-faint"
+					class="mx-auto mb-3 h-12 w-12 text-ink-subtle"
 					fill="none"
 					stroke="currentColor"
 					viewBox="0 0 24 24"

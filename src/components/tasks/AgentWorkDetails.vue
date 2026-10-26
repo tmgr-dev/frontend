@@ -91,7 +91,7 @@
 						<li v-for="row in tokenList" :key="row.key">
 							<span class="text-ink-subtle">{{ row.label }}</span>
 							<span class="ml-1 font-mono">{{ formatTokens(row.value) }}</span>
-							<span v-if="row.pct != null" class="ml-1 text-2xs text-ink-faint"
+							<span v-if="row.pct != null" class="ml-1 text-2xs text-ink-subtle"
 								>({{ row.pct }}% of input side)</span
 							>
 						</li>
@@ -128,7 +128,7 @@
 								@click="select(row.node.id)"
 							>
 								<span class="font-semibold">{{ nodeLabel(row.node) }}</span>
-								<span class="text-ink-faint">{{
+								<span class="text-ink-subtle">{{
 									modelShort(row.node.model)
 								}}</span>
 								<span
@@ -156,7 +156,7 @@
 					>
 						<div class="font-semibold">
 							{{ nodeLabel(selected) }} · {{ modelShort(selected.model) }}
-							<span v-if="selected.origin" class="font-normal text-ink-faint"
+							<span v-if="selected.origin" class="font-normal text-ink-subtle"
 								>· {{ selected.origin }}</span
 							>
 						</div>
@@ -171,7 +171,7 @@
 							<li v-for="row in selectedTokens" :key="row.key">
 								{{ row.label }}
 								<span class="font-mono">{{ formatTokens(row.value) }}</span>
-								<span v-if="row.pct != null" class="text-ink-faint"
+								<span v-if="row.pct != null" class="text-ink-subtle"
 									>({{ row.pct }}%)</span
 								>
 							</li>
@@ -180,7 +180,7 @@
 							{{ toolTotals(selected.tools, 8).map(formatTool).join(' · ') }}
 						</div>
 					</div>
-					<p v-if="aggregate.truncated.nodes" class="text-2xs text-ink-faint">
+					<p v-if="aggregate.truncated.nodes" class="text-2xs text-ink-subtle">
 						Some agents are not shown: the tree is capped.
 					</p>
 				</section>
@@ -302,7 +302,7 @@
 							>
 							<span
 								v-if="rel.digest"
-								class="ml-2 font-mono text-ink-faint"
+								class="ml-2 font-mono text-ink-subtle"
 								:title="rel.digestTitle"
 								>{{ rel.digest }}</span
 							>

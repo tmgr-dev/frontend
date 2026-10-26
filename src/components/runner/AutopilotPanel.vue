@@ -175,7 +175,7 @@
 							<span v-if="r.repos.length" class="text-xs text-ink-subtle">{{
 								r.repos.join(', ')
 							}}</span>
-							<span class="text-xs text-ink-faint">{{ r.step }}</span>
+							<span class="text-xs text-ink-subtle">{{ r.step }}</span>
 							<span v-if="r.agents" class="text-xs text-ink-subtle">{{
 								r.agents
 							}}</span>

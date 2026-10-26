@@ -373,7 +373,7 @@
 						<span v-else class="text-sm font-semibold text-ink">
 							{{ comment.user.name }}
 						</span>
-						<span class="text-2xs text-ink-faint">
+						<span class="text-2xs text-ink-subtle">
 							{{ formatRelativeTime(new Date(comment.created_at)) }}
 						</span>
 						<div

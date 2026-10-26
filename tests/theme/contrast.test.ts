@@ -3,9 +3,12 @@ import {
 	brandTextColor,
 	buildPaletteCss,
 	contrastRatio,
+	hslTripletToHex,
+	mutedTextColor,
 	onAccentColor,
 } from '@/theme/paletteCss';
 import { THEME_REGISTRY } from '@/theme/registry';
+import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -38,6 +41,20 @@ describe.each(THEME_REGISTRY.map((t) => [t.id, t] as const))('%s', (id, t) => {
 			plain ? k.brand : brandTextColor(t),
 		);
 		expect(decl(rule(id), '--brand-fg-color')).not.toBe(k.onAccent);
+	});
+
+	test('secondary text tokens read on bg, surface and raised', () => {
+		const body = rule(id);
+		const muted = mutedTextColor(t);
+		expect(decl(body, '--fg-muted')).toBe(muted);
+		expect(decl(body, '--fg-subtle')).toBe(muted);
+		expect(decl(body, '--tag-fg')).toBe(muted);
+		expect(decl(body, '--fg-faint')).toBe(k.muted);
+		const fromTriplet = hslTripletToHex(decl(body, '--muted-foreground'));
+		for (const ground of [k.bg, k.surface, k.raised]) {
+			expect(contrastRatio(muted, ground)).toBeGreaterThanOrEqual(MIN);
+			expect(contrastRatio(fromTriplet, ground)).toBeGreaterThanOrEqual(MIN);
+		}
 	});
 
 	test('on-accent text reads on the brand fill', () => {
@@ -88,4 +105,45 @@ describe('default and unknown themes use the :root token defaults', () => {
 		expect(light).toMatch(/--on-accent-color:\s*#fff;/);
 		expect(dark).toMatch(/--on-accent-color:\s*#fff;/);
 	});
+});
+
+describe('default light and dark secondary text tokens', () => {
+	const scss = readFileSync(
+		join(__dirname, '../../src/assets/styles/_design-tokens.scss'),
+		'utf8',
+	);
+	const light = scss.slice(
+		scss.indexOf(':root {'),
+		scss.indexOf('html.dark {'),
+	);
+	const dark = scss.slice(scss.indexOf('html.dark {'));
+	const val = (block: string, name: string) =>
+		(block.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6});`)) || [])[1];
+
+	test.each([
+		['light', light],
+		['dark', dark],
+	])('%s fg-muted and fg-subtle read on bg, raised and sunken', (_n, block) => {
+		for (const token of ['--fg-muted', '--fg-subtle']) {
+			for (const ground of ['--bg', '--bg-raised', '--bg-sunken']) {
+				expect(
+					contrastRatio(val(block, token), val(block, ground)),
+				).toBeGreaterThanOrEqual(MIN);
+			}
+		}
+	});
+});
+
+test('no text-ink-faint class is left in src', () => {
+	let hits = '';
+	try {
+		hits = execFileSync(
+			'grep',
+			['-rn', 'text-ink-faint', join(__dirname, '../../src')],
+			{ encoding: 'utf8' },
+		);
+	} catch (e) {
+		if ((e as { status?: number }).status !== 1) throw e;
+	}
+	expect(hits).toBe('');
 });

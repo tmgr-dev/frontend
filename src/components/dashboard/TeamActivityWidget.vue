@@ -24,7 +24,7 @@
 							'px-2.5 py-1',
 							w.key === window
 								? 'bg-surface-sunken text-ink'
-								: 'text-ink-faint hover:text-ink',
+								: 'text-ink-subtle hover:text-ink',
 						]"
 						@click="emit('window-change', w.key)"
 					>
@@ -75,7 +75,7 @@
 				"
 			>
 				<div
-					class="sticky top-0 z-10 hidden bg-surface px-2 pb-2 text-2xs tracking-wide text-ink-faint uppercase sm:grid sm:grid-cols-[minmax(0,1fr)_3rem_4.5rem_3rem_5.5rem] sm:gap-x-3 md:grid-cols-[minmax(0,1fr)_4rem_3rem_4.5rem_3rem_5.5rem]"
+					class="sticky top-0 z-10 hidden bg-surface px-2 pb-2 text-2xs tracking-wide text-ink-subtle uppercase sm:grid sm:grid-cols-[minmax(0,1fr)_3rem_4.5rem_3rem_5.5rem] sm:gap-x-3 md:grid-cols-[minmax(0,1fr)_4rem_3rem_4.5rem_3rem_5.5rem]"
 					aria-hidden="true"
 				>
 					<span>Member</span>

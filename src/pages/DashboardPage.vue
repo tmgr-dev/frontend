@@ -946,7 +946,7 @@
 									'px-3 py-1.5 font-medium transition-colors',
 									option.key === period
 										? 'bg-surface-sunken text-ink'
-										: 'text-ink-faint hover:text-ink',
+										: 'text-ink-subtle hover:text-ink',
 								]"
 								@click="setPeriod(option.key)"
 							>

@@ -37,7 +37,7 @@
 			<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 				>Agent work</span
 			>
-			<span class="text-2xs text-ink-faint" data-tour="task-form.agent-totals">
+			<span class="text-2xs text-ink-subtle" data-tour="task-form.agent-totals">
 				Agents {{ formatWorkDuration(totals.agentSeconds) }} · You
 				{{ formatWorkDuration(totals.humanSeconds) }}
 			</span>
@@ -55,7 +55,7 @@
 					<span class="font-semibold text-ink">{{
 						agentLabel(run.agent)
 					}}</span>
-					<span v-if="run.model" class="text-ink-faint">{{ run.model }}</span>
+					<span v-if="run.model" class="text-ink-subtle">{{ run.model }}</span>
 					<span
 						:class="[
 							'rounded-pill px-2 py-0.5 text-2xs font-semibold',
@@ -116,7 +116,7 @@
 							></template
 						>
 					</span>
-					<span class="ml-auto text-ink-faint">{{
+					<span class="ml-auto text-ink-subtle">{{
 						startedLabel(run.started_at)
 					}}</span>
 				</div>

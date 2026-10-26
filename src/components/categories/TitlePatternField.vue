@@ -8,7 +8,7 @@
 			spellcheck="false"
 			:aria-label="label"
 			:aria-invalid="literal || undefined"
-			class="h-9 w-full rounded-lg border bg-surface-base px-2.5 font-mono text-[13px] text-ink outline-hidden transition-colors placeholder:text-ink-faint"
+			class="h-9 w-full rounded-lg border bg-surface-base px-2.5 font-mono text-[13px] text-ink outline-hidden transition-colors placeholder:text-ink-subtle"
 			:class="literal ? 'border-status-progress' : 'border-line-strong'"
 			@input="$emit('update:modelValue', $event.target.value)"
 		/>
