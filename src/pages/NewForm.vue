@@ -666,6 +666,17 @@
 		window.removeEventListener('resize', resizeCommentInputs),
 	);
 	const commentsCount = ref(0);
+	// Board cards and list rows show comments_count: keep it on the form (other paths commit
+	// form.value too, and it is not an autosaved field) and patch the one task.
+	const onCommentsCount = (count: number) => {
+		commentsCount.value = count;
+		const task = form.value as Task & { comments_count?: number };
+		if (!task.id || Number(task.comments_count ?? 0) === count) return;
+		task.comments_count = count;
+		requestCache.invalidate(`task-${task.id}`);
+		requestCache.invalidate(/^tasks-status-/);
+		store.commit('updateSingleTask', { ...task });
+	};
 	const showGitActivityModal = ref(false);
 	const gitActivityCount = ref(0);
 	const showCursorAgentModal = ref(false);
@@ -3243,7 +3254,7 @@
 						ref="taskCommentsRef"
 						:task-id="form.id"
 						class="mt-4"
-						@update:count="commentsCount = $event"
+						@update:count="onCommentsCount"
 					/>
 				</main>
 
@@ -3492,7 +3503,7 @@
 						ref="taskCommentsRef"
 						:task-id="form.id"
 						hide-header
-						@update:count="commentsCount = $event"
+						@update:count="onCommentsCount"
 					/>
 				</div>
 				<div

@@ -357,6 +357,16 @@
 								:overtime="taskOvertimes[String(task.id)] ?? undefined"
 							/>
 
+							<span
+								v-if="commentsCountOf(task) > 0"
+								class="flex items-center gap-1 text-ink-subtle tabular-nums"
+								data-testid="task-comment-count"
+							>
+								<MessageCircle class="size-2.5" aria-hidden="true" />
+								<span aria-hidden="true">{{ commentsCountOf(task) }}</span>
+								<span class="sr-only">{{ commentsLabelOf(task) }}</span>
+							</span>
+
 							<PersonaAssigneeChips
 								v-if="
 									isFeatureEnabled('task.assignees') &&
@@ -578,6 +588,7 @@
 		Check,
 		ClockPlus,
 		Eye,
+		MessageCircle,
 		MoreVertical,
 		Play,
 		Settings2,
@@ -637,6 +648,7 @@
 			UserPlus,
 			Check,
 			Eye,
+			MessageCircle,
 			MoreVertical,
 			Settings2,
 			ClockPlus,
@@ -941,6 +953,16 @@
 			},
 			visibleAssignees(task: Task): any[] {
 				return visibleHumanAssignees(task as any);
+			},
+			commentsCountOf(task: Task): number {
+				return (
+					Number((task as Task & { comments_count?: number }).comments_count) ||
+					0
+				);
+			},
+			commentsLabelOf(task: Task): string {
+				const count = this.commentsCountOf(task);
+				return count === 1 ? '1 comment' : `${count} comments`;
 			},
 			personaAssigneesOf(task: Task) {
 				return personaAssigneesOf(task);
