@@ -198,18 +198,17 @@ for (const mode of ['modal', 'page']) {
       else await expect(page).not.toHaveURL(/\/tasks\/1$/);
     });
 
-    test('Escape closes only the confirm; the backdrop closes nothing', async ({
-      page,
-    }) => {
+    test('Escape and the backdrop close only the confirm', async ({ page }) => {
       const { deletes } = await setup(page);
       const form = await open(page);
       await form.locator('footer').getByLabel('Delete').click();
       const body = page.getByText('Are you sure you want to delete');
       await expect(body).toBeVisible();
       await page.mouse.click(4, 4);
-      await expect(page.locator('.zoom-effect')).toHaveCount(1);
-      await expect(body).toBeVisible();
+      await expect(body).toHaveCount(0);
       await expect(form.getByLabel('Task name')).toBeVisible();
+      await form.locator('footer').getByLabel('Delete').click();
+      await expect(body).toBeVisible();
       await page.keyboard.press('Escape');
       await expect(body).toHaveCount(0);
       await expect(form.getByLabel('Task name')).toBeVisible();
