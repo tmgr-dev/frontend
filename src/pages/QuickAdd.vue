@@ -19,6 +19,7 @@
 				{{ headingText }}
 				<select
 					v-model="workspaceId"
+					aria-label="Workspace"
 					class="rounded-md border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground outline-hidden dark:border-border dark:bg-background"
 					:disabled="saving"
 					@change="rememberWorkspace"
@@ -102,10 +103,12 @@
 						data-selectable
 						class="w-28 rounded-md border border-border bg-transparent px-1.5 py-1 outline-hidden dark:border-border"
 						placeholder="Find page"
+						aria-label="Find page"
 						:disabled="saving"
 					/>
 					<select
 						v-model="pageId"
+						aria-label="Page"
 						class="min-w-0 flex-1 rounded-md border border-border bg-transparent px-1.5 py-1 outline-hidden dark:border-border dark:bg-background"
 						:disabled="saving || !pageOptions.length"
 						data-testid="quick-add-page"
@@ -123,6 +126,7 @@
 					</select>
 					<select
 						v-model="section"
+						aria-label="Section"
 						class="w-40 rounded-md border border-border bg-transparent px-1.5 py-1 outline-hidden dark:border-border dark:bg-background"
 						:disabled="saving || !pageId"
 						data-testid="quick-add-section"
@@ -137,8 +141,9 @@
 					ref="pageTextInput"
 					v-model="pageText"
 					data-selectable
-					class="min-h-0 flex-1 resize-none rounded-md bg-muted/50 p-2 text-sm outline-hidden dark:bg-muted/30"
+					class="min-h-0 flex-1 resize-none rounded-md border border-border bg-muted/50 p-2 text-sm outline-hidden dark:bg-muted/30"
 					placeholder="What to add to the page?"
+					aria-label="Text to add to the page"
 					:disabled="saving"
 				/>
 			</div>
@@ -154,8 +159,9 @@
 					ref="titleInput"
 					v-model="title"
 					data-selectable
-					class="w-full min-w-0 bg-transparent text-xl font-medium outline-hidden placeholder:text-muted-foreground"
+					class="w-full min-w-0 border-b border-border bg-transparent pb-1 text-xl font-medium outline-hidden placeholder:text-muted-foreground"
 					placeholder="What needs to be done?"
+					aria-label="Title"
 					:disabled="saving"
 				/>
 			</div>
@@ -163,8 +169,9 @@
 				v-if="mode !== 'page' && (note || showNote)"
 				v-model="note"
 				data-selectable
-				class="min-h-0 flex-1 resize-none rounded-md bg-muted/50 p-2 text-sm outline-hidden dark:bg-muted/30"
+				class="min-h-0 flex-1 resize-none rounded-md border border-border bg-muted/50 p-2 text-sm outline-hidden dark:bg-muted/30"
 				placeholder="Description"
+				aria-label="Description"
 				:disabled="saving"
 			/>
 			<div
