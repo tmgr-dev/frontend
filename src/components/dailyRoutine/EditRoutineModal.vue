@@ -2,11 +2,11 @@
 	<Teleport to="body">
 		<div
 			class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/55 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-5"
-			@click.self="$emit('close')"
+			@click.self="requestClose"
 		>
 			<div
 				class="flex max-h-[calc(100vh-40px)] w-full max-w-[520px] flex-col overflow-hidden rounded-card border border-line bg-surface shadow-tmgr-lg supports-[height:100dvh]:max-h-[calc(100dvh-24px)]"
-				@keydown.esc="$emit('close')"
+				@keydown.esc="requestClose"
 			>
 				<!-- Header -->
 				<div class="flex items-center gap-3 border-b border-line px-5 py-3.5">
@@ -29,8 +29,9 @@
 					</div>
 					<button
 						type="button"
+						aria-label="Close"
 						class="flex h-7 w-7 items-center justify-center rounded-md bg-surface-sunken hover:bg-surface-hover"
-						@click="$emit('close')"
+						@click="requestClose"
 					>
 						<DRIcon name="close" :size="13" stroke="currentColor" />
 					</button>
@@ -45,6 +46,7 @@
 								ref="titleRef"
 								v-model="draft.title"
 								type="text"
+								aria-label="Title"
 								placeholder="What's the routine?"
 								class="w-full rounded-card border border-line bg-surface-sunken px-3.5 py-3 text-sm text-ink outline-hidden focus:border-line-strong"
 							/>
@@ -62,6 +64,7 @@
 							<textarea
 								v-model="draft.description"
 								rows="3"
+								aria-label="Description"
 								placeholder="Notes, context, links, checklist…"
 								class="max-h-[220px] min-h-[64px] w-full resize-y rounded-card border border-line bg-surface-sunken px-3.5 py-2.5 text-sm leading-relaxed text-ink outline-hidden focus:border-line-strong"
 							/>
@@ -328,12 +331,22 @@
 					>
 				</div>
 
+				<div
+					v-if="error"
+					role="alert"
+					class="mx-3.5 mb-2 rounded-card border border-status-fix-fg/40 bg-status-fix-bg px-3 py-2 text-xs text-status-fix-fg"
+				>
+					{{ error }}
+				</div>
+
 				<!-- Footer -->
 				<div class="flex items-center gap-2.5 border-t border-line p-3.5">
 					<button
 						v-if="!isNew"
 						type="button"
-						class="flex h-9 w-9 items-center justify-center rounded-card border border-status-fix-bg bg-status-fix-bg/40 text-status-fix-fg hover:bg-status-fix-bg/70"
+						aria-label="Delete routine"
+						:disabled="busy"
+						class="flex h-9 w-9 items-center justify-center rounded-card border border-status-fix-bg bg-status-fix-bg/40 text-status-fix-fg hover:bg-status-fix-bg/70 disabled:cursor-not-allowed disabled:opacity-50"
 						@click="onDelete"
 					>
 						<DRIcon name="trash" :size="14" stroke="currentColor" />
@@ -341,14 +354,14 @@
 					<button
 						type="button"
 						class="rounded-card border border-line bg-transparent px-4 py-2 text-sm text-ink-subtle hover:bg-surface-hover hover:text-ink"
-						@click="$emit('close')"
+						@click="requestClose"
 					>
 						Cancel
 					</button>
 					<button
 						type="button"
 						class="flex-1 rounded-card bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-tmgr-md transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-ink-subtle disabled:shadow-none"
-						:disabled="!draft.title.trim()"
+						:disabled="!draft.title.trim() || busy"
 						@click="onSave"
 					>
 						{{ isNew ? 'Create routine' : 'Save changes' }}
@@ -383,6 +396,9 @@
 
 	const props = defineProps<{
 		routine: any | null;
+		busy?: boolean;
+		error?: string;
+		confirmOpen?: boolean;
 	}>();
 
 	const emit = defineEmits<{
@@ -509,14 +525,12 @@
 	});
 
 	function onSave() {
-		if (!draft.title.trim()) return;
+		if (!draft.title.trim() || props.busy) return;
 		emit('save', { ...draft });
-		emit('close');
 	}
 
 	function onDelete() {
 		emit('delete', props.routine);
-		emit('close');
 	}
 
 	function tsLabel(value: string | null | undefined): string {
@@ -556,7 +570,12 @@
 	}
 
 	function onKey(e: KeyboardEvent) {
-		if (e.key === 'Escape') emit('close');
+		if (e.key === 'Escape' && !props.confirmOpen) requestClose();
+	}
+
+	function requestClose() {
+		if (props.busy) return;
+		emit('close');
 	}
 
 	onMounted(() => {
