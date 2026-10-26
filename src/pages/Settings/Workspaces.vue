@@ -15,6 +15,7 @@
 		getWorkspaceMembers,
 		getWorkspaces,
 		removeMemberFromWorkspace,
+		updateWorkspace as updateWorkspaceAction,
 		Workspace,
 		type WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
@@ -61,9 +62,16 @@
 	import { serverMessageFrom } from '@/utils/serverError';
 	import { convertToHHMM, timeToSeconds } from '@/utils/timeUtils';
 	import {
+		normalizeWorkspaceColor,
+		WORKSPACE_COLORS,
+		workspaceIconStyle,
+	} from '@/utils/workspaceColor';
+	import {
+		CheckIcon,
 		CircleCheckBigIcon,
 		FolderKanbanIcon,
 		LogOutIcon,
+		PackageOpen,
 		SaveIcon,
 		Trash2Icon,
 		UserPlus,
@@ -108,6 +116,29 @@
 			workspaces.value.find(
 				(workspace) => workspace.id == activeWorkspace.value?.value,
 			)?.name ?? '',
+	);
+	const activeWorkspaceItem = computed(() =>
+		workspaces.value.find(
+			(workspace) => workspace.id == activeWorkspace.value?.value,
+		),
+	);
+	const workspaceName = ref('');
+	const workspaceColor = ref('');
+	const savingWorkspace = ref(false);
+	const trimmedWorkspaceName = computed(() => workspaceName.value.trim());
+	const workspaceDirty = computed(
+		() =>
+			trimmedWorkspaceName.value !== activeWorkspaceItem.value?.name ||
+			workspaceColor.value !==
+				normalizeWorkspaceColor(activeWorkspaceItem.value?.color),
+	);
+	watch(
+		activeWorkspaceItem,
+		(workspace) => {
+			workspaceName.value = workspace?.name ?? '';
+			workspaceColor.value = normalizeWorkspaceColor(workspace?.color);
+		},
+		{ immediate: true },
 	);
 	const isDeleteDialogOpen = ref(false);
 	const isDeleting = ref(false);
@@ -335,6 +366,45 @@
 			});
 		} finally {
 			savingSettings.value = false;
+		}
+	}
+
+	async function saveWorkspace() {
+		const current = activeWorkspaceItem.value;
+		if (
+			!current ||
+			savingWorkspace.value ||
+			trimmedWorkspaceName.value === '' ||
+			!workspaceDirty.value
+		)
+			return;
+		const payload: { name?: string; color?: string } = {};
+		if (trimmedWorkspaceName.value !== current.name)
+			payload.name = trimmedWorkspaceName.value;
+		if (workspaceColor.value !== normalizeWorkspaceColor(current.color))
+			payload.color = workspaceColor.value;
+		savingWorkspace.value = true;
+		try {
+			const updated = await updateWorkspaceAction(current.id, payload);
+			if (!disposed)
+				workspaces.value = workspaces.value.map((workspace) =>
+					workspace.id === updated.id ? updated : workspace,
+				);
+			toaster.toast({
+				variant: 'default',
+				title: 'Workspace saved',
+				action: CircleCheckBigIcon,
+				class: 'bg-green-500 border-0 text-white',
+			});
+		} catch (e) {
+			console.error(e);
+			toaster.toast({
+				title: 'Error',
+				description: serverMessageFrom(e, 'Failed to save workspace'),
+				variant: 'destructive',
+			});
+		} finally {
+			savingWorkspace.value = false;
 		}
 	}
 
@@ -768,6 +838,115 @@
 			label="Loading workspace settings"
 		>
 			<div class="flex flex-col gap-6">
+				<SettingsSection
+					v-if="!isLocalActiveWorkspace && activeWorkspaceItem"
+					title="Workspace"
+					data-testid="workspace-general"
+				>
+					<form
+						v-if="isOwnedActiveWorkspace"
+						id="workspace-general-form"
+						class="flex flex-col gap-4"
+						@submit.prevent="saveWorkspace"
+					>
+						<div class="flex flex-col gap-1.5">
+							<Label for="workspace-name">Name</Label>
+							<Input
+								id="workspace-name"
+								v-model="workspaceName"
+								:disabled="savingWorkspace"
+								maxlength="255"
+								autocomplete="off"
+								:aria-invalid="trimmedWorkspaceName === ''"
+								aria-describedby="workspace-name-hint"
+							/>
+							<p
+								v-if="trimmedWorkspaceName === ''"
+								id="workspace-name-hint"
+								class="text-xs text-status-fix-fg"
+								data-testid="workspace-name-hint"
+							>
+								Name can't be empty
+							</p>
+						</div>
+
+						<div class="flex flex-col gap-1.5">
+							<span id="workspace-color-label" class="text-sm font-medium">
+								Colour
+							</span>
+							<div
+								role="radiogroup"
+								aria-labelledby="workspace-color-label"
+								class="flex flex-wrap items-center gap-2.5 p-1"
+							>
+								<button
+									type="button"
+									role="radio"
+									aria-label="Default"
+									title="Default"
+									:aria-checked="workspaceColor === ''"
+									data-testid="workspace-color-default"
+									:class="[
+										'flex size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground transition',
+										workspaceColor === '' ? 'ring-2 ring-ink' : '',
+									]"
+									:disabled="savingWorkspace"
+									@click="workspaceColor = ''"
+								>
+									<PackageOpen class="size-4" />
+								</button>
+								<button
+									v-for="swatch in WORKSPACE_COLORS"
+									:key="swatch.value"
+									type="button"
+									role="radio"
+									:aria-label="swatch.name"
+									:title="swatch.name"
+									:aria-checked="workspaceColor === swatch.value"
+									:data-testid="`workspace-color-${swatch.value.slice(1)}`"
+									:class="[
+										'flex size-8 items-center justify-center rounded-lg transition',
+										workspaceColor === swatch.value ? 'ring-2 ring-ink' : '',
+									]"
+									:style="workspaceIconStyle(swatch.value)"
+									:disabled="savingWorkspace"
+									@click="workspaceColor = swatch.value"
+								>
+									<CheckIcon
+										v-if="workspaceColor === swatch.value"
+										class="size-4"
+									/>
+								</button>
+							</div>
+						</div>
+					</form>
+					<SettingsRow v-else label="Name">
+						<span
+							class="text-sm text-ink"
+							data-testid="workspace-name-readonly"
+						>
+							{{ activeWorkspaceItem.name }}
+						</span>
+					</SettingsRow>
+
+					<template v-if="isOwnedActiveWorkspace" #footer>
+						<Button
+							type="submit"
+							form="workspace-general-form"
+							variant="default"
+							data-testid="workspace-save"
+							:disabled="
+								savingWorkspace ||
+								trimmedWorkspaceName === '' ||
+								!workspaceDirty
+							"
+							:aria-busy="savingWorkspace"
+						>
+							<SaveIcon /> Save
+						</Button>
+					</template>
+				</SettingsSection>
+
 				<SettingsSection title="Preferences">
 					<div class="flex flex-col gap-4">
 						<div

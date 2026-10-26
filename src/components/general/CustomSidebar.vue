@@ -91,6 +91,7 @@
 	import { pagesAvailable } from '@/utils/pagesTree';
 	import { requestCache } from '@/utils/requestCache';
 	import { serverMessageFrom } from '@/utils/serverError';
+	import { workspaceIconStyle } from '@/utils/workspaceColor';
 	import { useMediaQuery } from '@vueuse/core';
 	import {
 		ArchiveIcon,
@@ -317,6 +318,20 @@
 		() => {
 			if (sidebarBooting) return;
 			void loadSidebar();
+		},
+	);
+
+	// A rename or colour change commits to the store; store items win, the sidebar keeps its own membership.
+	watch(
+		() => store.state.workspaces,
+		() => {
+			const byId = store.state.workspacesById as Record<number, Workspace>;
+			workspaces.value = workspaces.value.map(
+				(workspace) => byId[workspace.id] ?? workspace,
+			);
+			const id = activeWorkspace.value?.id;
+			const same = workspaces.value.find((workspace) => workspace.id === id);
+			if (same) activeWorkspace.value = same;
 		},
 	);
 
@@ -562,6 +577,7 @@
 										>
 											<div
 												class="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
+												:style="workspaceIconStyle(activeWorkspace?.color)"
 											>
 												<PackageOpen class="size-4" />
 											</div>
@@ -613,6 +629,7 @@
 									>
 										<div
 											class="flex size-6 items-center justify-center rounded-sm border"
+											:style="workspaceIconStyle(workspace.color)"
 										>
 											<component
 												:is="
