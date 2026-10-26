@@ -30,13 +30,21 @@
 	} from '@/utils/personas';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import {
+		autoUpdate,
+		computePosition,
+		flip,
+		getOverflowAncestors,
+		offset,
+		shift,
+	} from '@floating-ui/dom';
+	import {
 		Bot,
 		MessageCircle,
 		SmilePlus,
 		Sparkles,
 		Trash2,
 	} from 'lucide-vue-next';
-	import { computed, onMounted, ref, watch } from 'vue';
+	import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 	interface ChatComment {
 		id: number;
@@ -110,11 +118,11 @@
 	const loadComments = async () => {
 		if (!props.taskId) return;
 
+		const taskId = props.taskId;
 		isLoading.value = comments.value.length === 0;
 		try {
-			const data = (await getComments(
-				props.taskId,
-			)) as unknown as ChatComment[];
+			const data = (await getComments(taskId)) as unknown as ChatComment[];
+			if (taskId !== props.taskId) return;
 			const known = new Map(comments.value.map((c) => [c.id, c]));
 			comments.value = data.map((comment) => {
 				const next = {
@@ -133,7 +141,7 @@
 		} catch (error) {
 			console.error('Failed to load comments:', error);
 		} finally {
-			isLoading.value = false;
+			if (taskId === props.taskId) isLoading.value = false;
 		}
 	};
 
@@ -163,7 +171,7 @@
 		if (reactionInFlight.has(key)) return;
 		reactionInFlight.add(key);
 
-		reactionPickerFor.value = null;
+		if (reactionPickerFor.value !== null) closeReactionPicker(true);
 
 		const previous = comment.reactions ?? [];
 		comment.reactions = toggleReaction(previous, emoji, {
@@ -190,10 +198,154 @@
 		}
 	};
 
-	const toggleReactionPicker = (commentId: number) => {
-		reactionPickerFor.value =
-			reactionPickerFor.value === commentId ? null : commentId;
+	let pickerEl: HTMLElement | null = null;
+	let pickerAnchor: HTMLElement | null = null;
+	let stopFloating: (() => void) | null = null;
+
+	const closeReactionPicker = (restoreFocus = false) => {
+		const anchor = pickerAnchor;
+		reactionPickerFor.value = null;
+		pickerAnchor = null;
+		if (restoreFocus) anchor?.focus({ preventScroll: true });
 	};
+
+	const toggleReactionPicker = (commentId: number, event?: Event) => {
+		if (reactionPickerFor.value === commentId) {
+			closeReactionPicker();
+			return;
+		}
+		pickerAnchor =
+			event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+		reactionPickerFor.value = commentId;
+	};
+
+	const scrollParentOf = (el: HTMLElement) =>
+		getOverflowAncestors(el).find(
+			(ancestor): ancestor is HTMLElement =>
+				ancestor instanceof HTMLElement &&
+				/auto|scroll|overlay/.test(getComputedStyle(ancestor).overflowY),
+		);
+
+	const emojiButtons = () =>
+		Array.from(
+			pickerEl?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+		);
+
+	// Placed with position: fixed so the scroll container of the modal cannot clip it; it
+	// stays hidden until the first computed position, then takes focus.
+	const setPickerEl = (el: unknown) => {
+		if (el === pickerEl) return;
+		stopFloating?.();
+		stopFloating = null;
+		pickerEl = el instanceof HTMLElement ? el : null;
+		const anchor = pickerAnchor;
+		if (!pickerEl || !anchor) return;
+		const floating = pickerEl;
+		const boundary = scrollParentOf(anchor);
+		let focused = false;
+		stopFloating = autoUpdate(anchor, floating, async () => {
+			const { x, y } = await computePosition(anchor, floating, {
+				strategy: 'fixed',
+				placement: 'top-start',
+				middleware: [
+					offset(4),
+					flip({ boundary, rootBoundary: 'viewport', padding: 4 }),
+					shift({ boundary, rootBoundary: 'viewport', padding: 4 }),
+				],
+			});
+			floating.style.left = `${x}px`;
+			floating.style.top = `${y}px`;
+			floating.style.visibility = 'visible';
+			if (!focused) {
+				focused = true;
+				emojiButtons()[0]?.focus({ preventScroll: true });
+			}
+		});
+	};
+
+	const onPickerKeydown = (event: KeyboardEvent) => {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopPropagation();
+			closeReactionPicker(true);
+			return;
+		}
+		const items = emojiButtons();
+		const index = items.indexOf(document.activeElement as HTMLElement);
+		if (index === -1 || items.length === 0) return;
+		let next: number;
+		if (event.key === 'ArrowRight' || (event.key === 'Tab' && !event.shiftKey))
+			next = (index + 1) % items.length;
+		else if (
+			event.key === 'ArrowLeft' ||
+			(event.key === 'Tab' && event.shiftKey)
+		)
+			next = (index - 1 + items.length) % items.length;
+		else if (event.key === 'Home') next = 0;
+		else if (event.key === 'End') next = items.length - 1;
+		else return;
+		event.preventDefault();
+		items[next].focus({ preventScroll: true });
+	};
+
+	// Esc must close the picker wherever focus is (a mousedown on the picker padding drops it
+	// to <body>); the global modal handler skips while the menu is open.
+	const onDocumentKeydown = (event: KeyboardEvent) => {
+		if (event.key !== 'Escape') return;
+		event.preventDefault();
+		const active = document.activeElement;
+		closeReactionPicker(
+			active === document.body || !!pickerEl?.contains(active),
+		);
+	};
+
+	// The click that follows a dismissing pointerdown on the modal backdrop would close the
+	// whole modal; swallow that one click (same node as the pointerdown), nothing else.
+	const swallowNextClick = (backdrop: Node) => {
+		const cleanup = () => {
+			window.removeEventListener('click', swallow, true);
+			clearTimeout(timer);
+		};
+		const swallow = (event: Event) => {
+			if (event.target === backdrop) {
+				event.stopPropagation();
+				event.preventDefault();
+			}
+			cleanup();
+		};
+		const timer = setTimeout(cleanup, 1000);
+		window.addEventListener('click', swallow, true);
+	};
+
+	const onOutsidePointerDown = (event: PointerEvent) => {
+		const target = event.target as Node | null;
+		if (!target || pickerEl?.contains(target) || pickerAnchor?.contains(target))
+			return;
+		const dialog = pickerEl?.closest('[role="dialog"]');
+		const onBackdrop =
+			!!dialog &&
+			!dialog.contains(target) &&
+			!!dialog.parentElement?.contains(target);
+		closeReactionPicker();
+		if (onBackdrop) swallowNextClick(target);
+	};
+
+	const removeDismissListeners = () => {
+		document.removeEventListener('pointerdown', onOutsidePointerDown, true);
+		document.removeEventListener('keydown', onDocumentKeydown);
+	};
+
+	watch(reactionPickerFor, (id) => {
+		removeDismissListeners();
+		if (id === null) return;
+		document.addEventListener('pointerdown', onOutsidePointerDown, true);
+		document.addEventListener('keydown', onDocumentKeydown);
+	});
+
+	onBeforeUnmount(() => {
+		stopFloating?.();
+		removeDismissListeners();
+	});
 
 	const AVATAR_COLORS = [
 		'#14b8a6',
@@ -426,22 +578,32 @@
 						<div class="relative">
 							<button
 								type="button"
-								class="inline-flex h-6 w-6 items-center justify-center rounded-full text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-ink"
+								class="inline-flex h-6 w-6 items-center justify-center rounded-full text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-ink focus-visible:opacity-100"
 								:class="{ 'opacity-100': reactionPickerFor === comment.id }"
 								aria-label="Add reaction"
-								@click="toggleReactionPicker(comment.id)"
+								aria-haspopup="menu"
+								:aria-expanded="reactionPickerFor === comment.id"
+								@click="toggleReactionPicker(comment.id, $event)"
 							>
 								<SmilePlus class="h-3.5 w-3.5" />
 							</button>
 
 							<div
 								v-if="reactionPickerFor === comment.id"
-								class="absolute left-0 z-10 mt-1 flex gap-0.5 rounded-lg border border-line bg-surface p-1 shadow-md"
+								:ref="setPickerEl"
+								role="menu"
+								data-state="open"
+								aria-label="Add reaction"
+								data-testid="reaction-picker"
+								class="invisible fixed top-0 left-0 z-50 flex gap-0.5 rounded-lg border border-line bg-surface p-1 shadow-md"
+								@keydown="onPickerKeydown"
 							>
 								<button
 									v-for="emoji in DEFAULT_REACTION_EMOJIS"
 									:key="emoji"
 									type="button"
+									role="menuitem"
+									:aria-label="emoji"
 									class="rounded-md px-1.5 py-1 text-base leading-none transition-colors hover:bg-surface-hover"
 									@click="handleToggleReaction(comment, emoji)"
 								>
