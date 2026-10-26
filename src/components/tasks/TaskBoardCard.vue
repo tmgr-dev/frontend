@@ -355,6 +355,7 @@
 		PopoverContent,
 		PopoverTrigger,
 	} from '@/components/ui/popover';
+	import { useToast } from '@/components/ui/toast';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import TasksListMixin from '@/mixins/TasksListMixin';
 	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
@@ -393,7 +394,13 @@
 		inject: { pluginBadges: { default: () => ({}) } },
 		setup() {
 			const { isFeatureEnabled, showSurface } = useFeatureToggles();
-			return { isFeatureEnabled, showSurface, isDesktop: isDesktopApp() };
+			const { toast } = useToast();
+			return {
+				isFeatureEnabled,
+				showSurface,
+				toast,
+				isDesktop: isDesktopApp(),
+			};
 		},
 		components: {
 			TaskCardAgentChip,
@@ -855,9 +862,11 @@
 						(s) => s.type === 'archived',
 					);
 					if (!archiveStatus) {
-						alert(
-							'Archive status not found. Please create an archive status first.',
-						);
+						this.toast({
+							title: 'Archive status not found',
+							description: 'Create an archive status first.',
+							variant: 'destructive',
+						});
 						return;
 					}
 
@@ -872,7 +881,11 @@
 					});
 				} catch (e) {
 					console.error('Failed to archive task:', e);
-					alert('Failed to archive task. Please try again.');
+					this.toast({
+						title: 'Failed to archive task',
+						description: 'Please try again.',
+						variant: 'destructive',
+					});
 				}
 			},
 			handleDelete() {

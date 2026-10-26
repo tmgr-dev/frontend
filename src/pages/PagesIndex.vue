@@ -42,9 +42,10 @@
 		</PageHeader>
 
 		<p v-if="!loaded" class="text-sm text-ink-subtle">Loading…</p>
-		<p v-else-if="failed" class="text-sm text-destructive">
-			Failed to load pages
-		</p>
+		<div v-else-if="failed" class="flex items-center gap-3">
+			<p class="text-sm text-destructive">Failed to load pages</p>
+			<Button variant="outline" size="sm" @click="refresh()">Retry</Button>
+		</div>
 		<div
 			v-else-if="!pages.length"
 			class="flex flex-col items-center justify-center gap-3 py-16 text-center"
@@ -152,6 +153,7 @@
 				tree: tree.tree,
 				loaded: tree.loaded,
 				failed: tree.failed,
+				refresh: tree.refresh,
 				pinned,
 				dragging,
 				onDragStart,

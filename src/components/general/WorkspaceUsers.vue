@@ -9,6 +9,7 @@
 			>
 				<button
 					type="button"
+					:aria-label="`${user.name} – workspace members`"
 					:class="[
 						'relative flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 border-surface shadow-tmgr-xs transition-all hover:z-20 hover:scale-110',
 						avatarColor(user.id),

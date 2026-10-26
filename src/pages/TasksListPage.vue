@@ -997,6 +997,7 @@
 							<input
 								v-model="searchText"
 								placeholder="search task"
+								aria-label="Search tasks"
 								type="search"
 								class="h-9 w-full rounded-pill border border-line bg-surface pr-3 pl-4 text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-strong"
 							/>
