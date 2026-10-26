@@ -648,7 +648,11 @@
 						v-model:open="isOpenInvitation"
 					>
 						<DialogTrigger as-child>
-							<Button variant="outline" data-tour="workspace.members">
+							<Button
+								variant="outline"
+								aria-label="Invite"
+								data-tour="workspace.members"
+							>
 								<UserPlus />
 								<span class="hidden lg:inline">Invite</span>
 							</Button>
@@ -702,6 +706,7 @@
 					>
 						<Button
 							variant="outline"
+							aria-label="Delete workspace"
 							class="text-destructive hover:text-destructive"
 							@click="isDeleteDialogOpen = true"
 						>

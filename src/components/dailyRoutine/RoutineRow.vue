@@ -21,11 +21,16 @@
 		<button
 			type="button"
 			data-tour="routines.instance"
+			:aria-label="`Mark &quot;${entry.title}&quot; done`"
+			:aria-pressed="!!entry.completed"
 			class="flex h-7 w-7 shrink-0 items-center justify-center rounded-pill border transition-colors"
 			:class="
 				entry.completed
 					? 'border-status-done bg-status-done text-white'
-					: 'border-line text-ink-subtle hover:border-status-done hover:text-status-done'
+					: [
+							selected ? 'border-brand' : 'border-ink-muted',
+							'text-ink-subtle hover:border-status-done hover:text-status-done',
+						]
 			"
 			@click.stop="$emit('toggle', entry)"
 		>
@@ -38,14 +43,20 @@
 			/>
 		</button>
 
-		<div class="min-w-0 flex-1">
-			<div
-				class="truncate text-sm leading-snug"
+		<div
+			role="button"
+			tabindex="0"
+			class="-m-1 flex min-w-0 flex-1 flex-col rounded-md p-1 text-left"
+			@keydown.enter.self="onActivate"
+			@keydown.space.self.prevent="onActivate"
+		>
+			<span
+				class="block truncate text-sm leading-snug"
 				:class="entry.completed ? 'text-ink-subtle line-through' : 'text-ink'"
 			>
 				{{ entry.title }}
-			</div>
-			<div
+			</span>
+			<span
 				v-if="entry.time || entry.frequency !== 'NONE' || timeMeta"
 				class="mt-1 flex items-center gap-2.5 text-2xs text-ink-subtle"
 			>
@@ -72,12 +83,13 @@
 				>
 					{{ timeMeta }}
 				</span>
-			</div>
+			</span>
 		</div>
 
 		<button
 			type="button"
-			class="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-brand"
+			class="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill transition-colors hover:bg-surface-hover hover:text-brand"
+			:class="selected ? 'text-brand' : 'text-ink-muted'"
 			title="More (right-click for menu)"
 			aria-label="More"
 			@click.stop="
@@ -143,6 +155,10 @@
 
 	function onClick() {
 		if (active.value) return;
+		emit('select', props.entry);
+	}
+
+	function onActivate() {
 		emit('select', props.entry);
 	}
 </script>

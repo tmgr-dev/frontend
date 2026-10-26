@@ -2,6 +2,7 @@
 	<div
 		class="notification-item group flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 transition-colors last:border-b-0 hover:bg-surface-hover"
 		:class="{ unread: !notification.read_at }"
+		role="link"
 		tabindex="0"
 		@click="$emit('click')"
 		@keydown.enter.self="$emit('click')"

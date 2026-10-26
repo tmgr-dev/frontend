@@ -20,6 +20,7 @@
 					</div>
 					<button
 						type="button"
+						aria-label="Close"
 						class="flex h-6 w-6 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
 						@click="$emit('close')"
 					>
@@ -34,11 +35,13 @@
 					>
 						<button
 							type="button"
+							:aria-label="`Mark &quot;${ev.title}&quot; done`"
+							:aria-pressed="!!ev.completed"
 							class="flex h-5 w-5 shrink-0 items-center justify-center rounded-pill border transition-colors"
 							:class="
 								ev.completed
 									? 'border-status-done bg-status-done text-white'
-									: 'border-line text-ink-subtle hover:border-status-done'
+									: 'border-ink-muted text-ink-subtle group-hover:border-ink hover:border-status-done'
 							"
 							@click="$emit('toggle', ev)"
 						>
@@ -67,7 +70,8 @@
 						}}</span>
 						<button
 							type="button"
-							class="flex h-6 w-6 items-center justify-center rounded-pill text-ink-subtle opacity-0 group-hover:opacity-100 hover:bg-surface-hover hover:text-brand"
+							:aria-label="`Edit &quot;${ev.title}&quot;`"
+							class="flex h-6 w-6 items-center justify-center rounded-pill text-ink opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-surface-hover hover:text-brand focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
 							@click="$emit('edit', ev)"
 						>
 							<DRIcon name="pencil" :size="11" stroke="currentColor" />
