@@ -85,161 +85,18 @@
 					class="l-0 t-0 absolute z-10"
 				/>
 
-				<button
-					type="button"
+				<div
 					:class="{
 						'border-l-[3px] border-l-status-done': task.start_time,
 						'border-status-fix hover:border-status-fix':
 							taskTimeExceeded[String(task.id)],
 						'focus-ring': focusedIndex === i,
 					}"
-					class="group/list-item relative w-full overflow-hidden rounded-card border border-line bg-surface text-left shadow-tmgr-xs transition-all duration-150 hover:border-line-strong hover:shadow-tmgr-md md:flex"
+					class="group/list-item relative w-full cursor-pointer overflow-hidden rounded-card border border-line bg-surface text-left shadow-tmgr-xs transition-all duration-150 hover:border-line-strong hover:shadow-tmgr-md md:flex"
 					@click="$store.commit('setCurrentTaskIdForModal', task.id)"
 					@mouseenter="hoveredTaskId = task.id"
 					@mouseleave="hoveredTaskId = null"
 				>
-					<Popover
-						v-if="isFeatureEnabled('task.assignees')"
-						v-model:open="assigneePopoverOpen[String(task.id)]"
-					>
-						<PopoverTrigger as-child>
-							<button
-								class="group/assignee absolute top-3 right-3 z-10 flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
-								@click.stop
-								:title="
-									visibleAssignees(task).length
-										? 'Change assignee'
-										: 'Assign someone'
-								"
-							>
-								<UserPlus
-									v-if="
-										assigneePopoverOpen[String(task.id)] ||
-										!visibleAssignees(task).length
-									"
-									class="h-6 w-6 rounded-pill bg-surface-sunken p-1"
-								/>
-								<template v-else>
-									<UserPlus
-										class="hidden h-6 w-6 rounded-pill bg-surface-sunken p-1 group-hover/assignee:block"
-									/>
-									<AssigneeUsers
-										class="group-hover/assignee:hidden"
-										:assignees="visibleAssignees(task)"
-										avatarsClass="h-6 w-6"
-										:show-assignee-controls="false"
-									/>
-								</template>
-							</button>
-						</PopoverTrigger>
-						<PopoverContent
-							class="z-50 w-52 p-0"
-							align="end"
-							side="bottom"
-							@click.stop
-						>
-							<Command>
-								<CommandInput placeholder="Search members..." class="h-9" />
-								<CommandEmpty>No members found.</CommandEmpty>
-								<CommandList>
-									<CommandGroup>
-										<CommandItem
-											v-for="member in workspaceMembers"
-											:key="member.id"
-											:value="member.id"
-											@select="toggleAssignee(task, member.id)"
-											class="cursor-pointer"
-										>
-											<Check
-												:class="[
-													'mr-2 h-4 w-4',
-													isAssignedTo(task, member.id)
-														? 'opacity-100'
-														: 'opacity-0',
-												]"
-											/>
-											<UserAvatar
-												:user-id="member.id"
-												:name="member.name"
-												:has-avatar="member.has_avatar ?? false"
-												:size="20"
-												class="mr-2"
-											/>
-											<span class="truncate">{{ member.name }}</span>
-										</CommandItem>
-									</CommandGroup>
-									<AssigneePersonaGroup
-										v-if="isFeatureEnabled('personas')"
-										:personas="assignablePersonas"
-										:selected-ids="personaIdsOf(task)"
-										@toggle="(persona) => togglePersona(task, persona)"
-									/>
-								</CommandList>
-							</Command>
-						</PopoverContent>
-					</Popover>
-
-					<DropdownMenu>
-						<DropdownMenuTrigger as-child>
-							<button
-								type="button"
-								class="absolute top-3 z-10 flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
-								:class="
-									isFeatureEnabled('task.assignees') ? 'right-11' : 'right-3'
-								"
-								aria-label="Task actions"
-								@click.stop
-							>
-								<MoreVertical class="h-4 w-4" />
-							</button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" class="w-48">
-							<DropdownMenuItem
-								@click="$store.commit('setCurrentTaskIdForModal', task.id)"
-							>
-								<Eye class="mr-2 h-4 w-4" />
-								<span>Open details</span>
-							</DropdownMenuItem>
-							<DropdownMenuItem @click="settingsTask = task">
-								<Settings2 class="mr-2 h-4 w-4" />
-								<span>Settings</span>
-							</DropdownMenuItem>
-							<DropdownMenuItem
-								v-if="canArchive(task)"
-								@click="archiveTask(task)"
-							>
-								<Archive class="mr-2 h-4 w-4" />
-								<span>Archive</span>
-							</DropdownMenuItem>
-							<DropdownMenuItem
-								v-if="canUnarchive(task)"
-								@click="unarchiveTask(task)"
-							>
-								<ArchiveRestore class="mr-2 h-4 w-4" />
-								<span>Restore</span>
-							</DropdownMenuItem>
-							<DropdownMenuItem
-								v-if="getShowButtons(task).restore"
-								@click="restoreTask(task)"
-							>
-								<Undo2 class="mr-2 h-4 w-4" />
-								<span>Restore from trash</span>
-							</DropdownMenuItem>
-							<TaskShareItems :task="task" submenu />
-							<PluginTaskMenuItems :task-id="task.id as number" />
-							<template v-if="getShowButtons(task).deleteTask">
-								<DropdownMenuSeparator />
-								<DropdownMenuItem
-									class="text-red-600 dark:text-red-400"
-									@click="removeTask(task)"
-								>
-									<Trash2 class="mr-2 h-4 w-4" />
-									<span>Delete task</span>
-								</DropdownMenuItem>
-							</template>
-						</DropdownMenuContent>
-					</DropdownMenu>
-
 					<div
 						class="w-full px-4 py-3 transition-colors duration-150 group-hover/list-item:bg-surface-hover"
 					>
@@ -268,12 +125,13 @@
 									"
 								/>
 
-								<div
-									class="text-left text-base leading-snug font-medium text-ink"
-									:title="task.title?.length > 60 ? task.title : ''"
+								<button
+									type="button"
+									class="-mx-1 block w-[calc(100%+0.5rem)] px-1 text-left text-base leading-snug font-medium text-ink"
+									:title="task.title"
 								>
-									{{ taskTitles[String(task.id)] }}
-								</div>
+									<span class="line-clamp-2 break-words">{{ task.title }}</span>
+								</button>
 							</div>
 							<TaskPriorityBadge class="mt-1" :priority="task.priority" />
 							<AgentStatusChip
@@ -281,6 +139,148 @@
 								:workspace-id="Number(task.workspace_id) || undefined"
 							/>
 						</div>
+
+						<Popover
+							v-if="isFeatureEnabled('task.assignees')"
+							v-model:open="assigneePopoverOpen[String(task.id)]"
+						>
+							<PopoverTrigger as-child>
+								<button
+									class="group/assignee absolute top-3 right-3 z-10 flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
+									@click.stop
+									:title="
+										visibleAssignees(task).length
+											? 'Change assignee'
+											: 'Assign someone'
+									"
+								>
+									<UserPlus
+										v-if="
+											assigneePopoverOpen[String(task.id)] ||
+											!visibleAssignees(task).length
+										"
+										class="h-6 w-6 rounded-pill bg-surface-sunken p-1"
+									/>
+									<template v-else>
+										<UserPlus
+											class="hidden h-6 w-6 rounded-pill bg-surface-sunken p-1 group-hover/assignee:block"
+										/>
+										<AssigneeUsers
+											class="group-hover/assignee:hidden"
+											:assignees="visibleAssignees(task)"
+											avatarsClass="h-6 w-6"
+											:show-assignee-controls="false"
+										/>
+									</template>
+								</button>
+							</PopoverTrigger>
+							<PopoverContent
+								class="z-50 w-52 p-0"
+								align="end"
+								side="bottom"
+								@click.stop
+							>
+								<Command>
+									<CommandInput placeholder="Search members..." class="h-9" />
+									<CommandEmpty>No members found.</CommandEmpty>
+									<CommandList>
+										<CommandGroup>
+											<CommandItem
+												v-for="member in workspaceMembers"
+												:key="member.id"
+												:value="member.id"
+												@select="toggleAssignee(task, member.id)"
+												class="cursor-pointer"
+											>
+												<Check
+													:class="[
+														'mr-2 h-4 w-4',
+														isAssignedTo(task, member.id)
+															? 'opacity-100'
+															: 'opacity-0',
+													]"
+												/>
+												<UserAvatar
+													:user-id="member.id"
+													:name="member.name"
+													:has-avatar="member.has_avatar ?? false"
+													:size="20"
+													class="mr-2"
+												/>
+												<span class="truncate">{{ member.name }}</span>
+											</CommandItem>
+										</CommandGroup>
+										<AssigneePersonaGroup
+											v-if="isFeatureEnabled('personas')"
+											:personas="assignablePersonas"
+											:selected-ids="personaIdsOf(task)"
+											@toggle="(persona) => togglePersona(task, persona)"
+										/>
+									</CommandList>
+								</Command>
+							</PopoverContent>
+						</Popover>
+
+						<DropdownMenu>
+							<DropdownMenuTrigger as-child>
+								<button
+									type="button"
+									class="absolute top-3 z-10 flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
+									:class="
+										isFeatureEnabled('task.assignees') ? 'right-11' : 'right-3'
+									"
+									aria-label="Task actions"
+									@click.stop
+								>
+									<MoreVertical class="h-4 w-4" />
+								</button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end" class="w-48">
+								<DropdownMenuItem
+									@click="$store.commit('setCurrentTaskIdForModal', task.id)"
+								>
+									<Eye class="mr-2 h-4 w-4" />
+									<span>Open details</span>
+								</DropdownMenuItem>
+								<DropdownMenuItem @click="settingsTask = task">
+									<Settings2 class="mr-2 h-4 w-4" />
+									<span>Settings</span>
+								</DropdownMenuItem>
+								<DropdownMenuItem
+									v-if="canArchive(task)"
+									@click="archiveTask(task)"
+								>
+									<Archive class="mr-2 h-4 w-4" />
+									<span>Archive</span>
+								</DropdownMenuItem>
+								<DropdownMenuItem
+									v-if="canUnarchive(task)"
+									@click="unarchiveTask(task)"
+								>
+									<ArchiveRestore class="mr-2 h-4 w-4" />
+									<span>Restore</span>
+								</DropdownMenuItem>
+								<DropdownMenuItem
+									v-if="getShowButtons(task).restore"
+									@click="restoreTask(task)"
+								>
+									<Undo2 class="mr-2 h-4 w-4" />
+									<span>Restore from trash</span>
+								</DropdownMenuItem>
+								<TaskShareItems :task="task" submenu />
+								<PluginTaskMenuItems :task-id="task.id as number" />
+								<template v-if="getShowButtons(task).deleteTask">
+									<DropdownMenuSeparator />
+									<DropdownMenuItem
+										class="text-red-600 dark:text-red-400"
+										@click="removeTask(task)"
+									>
+										<Trash2 class="mr-2 h-4 w-4" />
+										<span>Delete task</span>
+									</DropdownMenuItem>
+								</template>
+							</DropdownMenuContent>
+						</DropdownMenu>
 
 						<div
 							v-if="isFeatureEnabled('task.countdown')"
@@ -320,8 +320,10 @@
 								side="top"
 							>
 								<button
+									type="button"
+									aria-label="Start timer"
 									:disabled="isLoadingActions[`start-${task.id}`]"
-									class="ml-1 flex h-5 w-5 items-center justify-center rounded bg-status-done text-white shadow-tmgr-xs transition-opacity hover:opacity-90 disabled:opacity-50"
+									class="ml-1 flex h-6 w-6 items-center justify-center rounded bg-status-done text-white shadow-tmgr-xs transition-opacity hover:opacity-90 disabled:opacity-50"
 									@click.stop="startCountdown(task, `start-${task.id}`)"
 								>
 									<Play
@@ -333,8 +335,10 @@
 							</AppTooltip>
 							<AppTooltip v-else content="Stop timer" side="top">
 								<button
+									type="button"
+									aria-label="Stop timer"
 									:disabled="isLoadingActions[`stop-${task.id}`]"
-									class="ml-1 flex h-5 w-5 items-center justify-center rounded bg-status-fix text-white shadow-tmgr-xs transition-opacity hover:opacity-90 disabled:opacity-50"
+									class="ml-1 flex h-6 w-6 items-center justify-center rounded bg-status-fix text-white shadow-tmgr-xs transition-opacity hover:opacity-90 disabled:opacity-50"
 									@click.stop="stopCountdown(task, `stop-${task.id}`)"
 								>
 									<Square
@@ -385,7 +389,7 @@
 							</span>
 						</div>
 					</div>
-				</button>
+				</div>
 			</div>
 
 			<MobilePagination
@@ -855,7 +859,6 @@
 							? { ...task, common_time: liveTaskTime(task, this.nowSeconds) }
 							: task;
 						acc[String(task.id)] = {
-							title: this.truncateTitle(task.title),
 							timeExceeded: this.isTimeExceeded(live),
 							formattedTime: this.getTaskFormattedTime(live),
 							overtime: this.getTaskOvertime(live),
@@ -867,7 +870,6 @@
 					{} as Record<
 						string,
 						{
-							title: string;
 							timeExceeded: boolean;
 							formattedTime: string;
 							overtime: string | null;
@@ -876,13 +878,6 @@
 						}
 					>,
 				);
-			},
-			taskTitles() {
-				const data: Record<string, string> = {};
-				for (const id in this.taskComputedData) {
-					data[id] = this.taskComputedData[id].title;
-				}
-				return data;
 			},
 			taskTimeExceeded() {
 				const data: Record<string, boolean> = {};
@@ -921,10 +916,6 @@
 			},
 		},
 		methods: {
-			truncateTitle(title: string) {
-				if (!title) return '';
-				return title.length > 60 ? title.substring(0, 60) + '...' : title;
-			},
 			async loadWorkspaceMembers() {
 				if (this.workspaceMembers.length > 0) return;
 				try {
