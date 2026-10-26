@@ -388,6 +388,7 @@
 	import { Input } from '@/components/ui/input';
 	import { Label } from '@/components/ui/label';
 	import { Switch } from '@/components/ui/switch';
+	import { useToast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import Profile from '@/pages/Profile.vue';
 	import { isRunnerSupported } from '@/runner/api';
@@ -395,11 +396,18 @@
 	import { isDesktopApp } from '@/utils/desktop';
 	import { resolveMcpUrl } from '@/utils/mcpConnectSnippets';
 	import { writeNtfySubscribed } from '@/utils/ntfySubscription';
+	import { serverMessageFrom } from '@/utils/serverError';
 	import {
 		hasSmartDeviceToken,
 		smartDeviceTokenState,
 	} from '@/utils/smartDeviceToken';
-	import { Check, Copy, Eye, EyeOff } from 'lucide-vue-next';
+	import {
+		Check,
+		CircleCheckBigIcon,
+		Copy,
+		Eye,
+		EyeOff,
+	} from 'lucide-vue-next';
 
 	export default {
 		name: 'Settings',
@@ -433,6 +441,9 @@
 			Copy,
 			Eye,
 			EyeOff,
+		},
+		setup() {
+			return { toaster: useToast() };
 		},
 		created() {
 			this.handleTabFromQuery();
@@ -821,17 +832,23 @@
 						? 'Are you sure you want to generate a new token? This will invalidate the existing token and any devices using it will need to be updated.'
 						: 'Generate a new token for your smart devices?',
 					async () => {
+						let response;
 						try {
-							const response = await generateSmartDeviceToken();
-							this.freshToken = response?.data?.token ?? null;
-							this.showToken = false;
-							this.user = await getUser();
-							this.confirm = null;
-							this.showAlert('Token generated successfully');
+							response = await generateSmartDeviceToken();
 						} catch (error) {
 							console.error('Failed to generate token:', error);
-							this.showAlert('Failed to generate token', 'error');
+							this.confirm = null;
+							this.showAlert(
+								serverMessageFrom(error, 'Failed to generate token'),
+								'error',
+							);
+							return;
 						}
+						this.freshToken = response?.data?.token ?? null;
+						this.showToken = false;
+						this.confirm = null;
+						this.showAlert('Token generated successfully');
+						await this.refreshUserAfterTokenChange();
 					},
 				);
 			},
@@ -843,22 +860,50 @@
 					async () => {
 						try {
 							await revokeSmartDeviceToken();
-							this.freshToken = null;
-							this.user = await getUser();
-							this.confirm = null;
-							this.showAlert('Token revoked successfully');
 						} catch (error) {
 							console.error('Failed to revoke token:', error);
-							this.showAlert('Failed to revoke token', 'error');
+							this.confirm = null;
+							this.showAlert(
+								serverMessageFrom(error, 'Failed to revoke token'),
+								'error',
+							);
+							return;
 						}
+						this.freshToken = null;
+						this.user = {
+							...this.user,
+							has_smart_device_token: false,
+							smart_device_token: null,
+						};
+						this.confirm = null;
+						this.showAlert('Token revoked successfully');
+						await this.refreshUserAfterTokenChange();
 					},
 				);
 			},
 
+			async refreshUserAfterTokenChange() {
+				try {
+					this.user = await getUser();
+				} catch (error) {
+					console.error('Failed to refresh user:', error);
+				}
+			},
+
 			showAlert(message, type = 'success') {
-				// Implement your alert system here
-				// This could be a toast notification or any other alert mechanism
-				console.log(`${type}: ${message}`);
+				if (type === 'error') {
+					this.toaster.toast({
+						title: 'Error',
+						description: message,
+						variant: 'destructive',
+					});
+					return;
+				}
+				this.toaster.toast({
+					title: message,
+					action: CircleCheckBigIcon,
+					class: 'bg-green-500 border-0 text-white',
+				});
 			},
 
 			async generateTelegramLink() {
