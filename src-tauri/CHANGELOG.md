@@ -3,6 +3,18 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.71 — 2026-10-27
+
+- Workspaces: the owner can rename a workspace and pick its colour in Settings → Workspace. The workspace icon in the sidebar and the switcher uses that colour.
+- Tasks: descriptions no longer break words in the middle. Deleting a task from the task view asks first and shows an error if it fails. Below 1280 px wide, comments move under the task.
+- Comments: the reaction picker opens above the button and closes with Esc or a click outside without closing the task. Board cards and list rows show how many comments a task has.
+- Graph: the graph section in tasks and pages starts collapsed and loads only when you open it.
+- Routines: a failed save keeps your edits and shows the error. Deleting a routine asks first.
+- Board and list: "Archive all" asks first and reports errors. List titles use the full row width.
+- Dialogs: keyboard focus stays inside an open dialog and returns where it was. Esc in Pomodoro settings closes only them, and Pomodoro follows the theme.
+- Settings: saving and smart-device token actions show a confirmation or an error. The Pages list has a Retry button after a failed load.
+- Accessibility: icon-only buttons have names for screen readers, and actions that appeared only on hover now show on keyboard focus and on touch.
+
 ## 0.9.70 — 2026-10-25
 
 - Privacy: TMGR now asks before reading your Claude Code and Codex session logs on this device. Nothing is read until you choose Allow on the AI Usage page. You can change this any time in Settings → Privacy → AI usage, turn each tool on or off, or forget the data already scanned. Background scans and Autopilot follow the same choice.
