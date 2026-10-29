@@ -15,7 +15,7 @@ runner bind | Runner | target, path
 runner unbind | Runner | target
 runner list | Runner | -
 runner watch | Runner | dir, cmd
-run | Agents | task, agent_cmd, agent, model, cwd, name, no_attach, trust, mode, base, fetch, publish, review, push, drop
+run | Agents | task, agent_cmd, agent, model, cwd, name, no_attach, trust, mode, no_sandbox, base, fetch, publish, review, push, drop
 agents | Agents | -
 agents login | Agents | profile, replace
 agents logout | Agents | profile

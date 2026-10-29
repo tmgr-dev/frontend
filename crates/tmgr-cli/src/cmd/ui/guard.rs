@@ -23,6 +23,7 @@ pub const GUARDED: &[Rule] = &[
     rule(&["runner", "unbind"], None, None),
     rule(&["runner", "install-service"], Some("install"), None),
     rule(&["run"], Some("mode"), Some("bypass")),
+    rule(&["run"], Some("no_sandbox"), None),
     rule(&["run"], Some("trust"), None),
     rule(&["run"], Some("publish"), None),
     rule(&["run"], Some("review"), None),

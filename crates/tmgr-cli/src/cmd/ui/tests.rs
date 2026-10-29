@@ -1003,6 +1003,10 @@ fn run_is_guarded_only_for_bypass_trust_and_publish_flags() {
         run,
         &vals(&[("trust", Value::Bool(true))])
     ));
+    assert!(guard::is_guarded(
+        run,
+        &vals(&[("no_sandbox", Value::Bool(true))])
+    ));
     assert!(!guard::is_guarded(run, &vals(&[("mode", text("ask"))])));
     assert!(!guard::is_guarded(run, &Values::new()));
 }

@@ -55,6 +55,7 @@ tmgr run
   no_attach kind=bool required=false default=false sensitive=false positional=false
   trust kind=bool required=false default=false sensitive=false positional=false
   mode kind=select(ask|accept-edits|plan|bypass) required=false default=- sensitive=false positional=false
+  no_sandbox kind=bool required=false default=false sensitive=false positional=false
   base kind=text required=false default=- sensitive=false positional=false
   fetch kind=bool required=false default=false sensitive=false positional=false
   publish kind=bool required=false default=false sensitive=false positional=false

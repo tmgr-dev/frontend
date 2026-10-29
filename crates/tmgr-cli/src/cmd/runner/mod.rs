@@ -28,6 +28,7 @@ mod gate;
 mod local;
 mod observe;
 mod ops;
+mod privilege;
 mod remote;
 mod remote_attach;
 mod restart;
@@ -243,9 +244,21 @@ pub struct RunArgs {
     /// [experimental] Pre-accept the agent's folder-trust prompt for this folder, for this run only
     #[arg(long, requires = "agent", conflicts_with_all = ["agent_cmd", "on", "task"])]
     pub trust: bool,
-    /// Permission mode for a task run (default ask; accept-edits for a cloud task; bypass only for a cloud task)
-    #[arg(long, value_enum, requires = "task", conflicts_with = "on")]
+    /// Permission mode (default ask; accept-edits for a cloud task). bypass skips the agent's permission prompts; asks you to confirm
+    #[arg(
+        long,
+        value_enum,
+        conflicts_with_all = ["on", "agent_cmd"],
+        requires = "agent"
+    )]
     pub mode: Option<PermissionMode>,
+    /// Run the agent outside the sandbox with your real home folder and environment; asks you to type a confirmation
+    #[arg(
+        long,
+        requires = "agent",
+        conflicts_with_all = ["on", "agent_cmd", "trust"]
+    )]
+    pub no_sandbox: bool,
     /// Branch or commit the task's clone starts from (default: the repository's current branch)
     #[arg(long, value_name = "BASE", requires = "task", conflicts_with = "on")]
     pub base: Option<String>,

@@ -261,7 +261,18 @@ pub(super) fn run_create_run(
         unattended: false,
         exe_pin: None,
         argv_sha256: None,
+        no_sandbox: None,
     }
+}
+
+fn elevated(
+    mut req: RunCreateReq,
+    mode: Option<super::PermissionMode>,
+    no_sandbox: bool,
+) -> RunCreateReq {
+    req.permission_mode = mode.map(|m| m.as_str().to_string());
+    req.no_sandbox = super::privilege::request(no_sandbox);
+    req
 }
 
 fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
@@ -302,8 +313,12 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
             ),
         }
     }
+    let bypass = a.mode == Some(super::PermissionMode::Bypass);
     if raw.is_none() {
-        login_preflight(a.agent.as_deref().unwrap_or_default())?;
+        super::privilege::confirm(bypass, a.no_sandbox, false, false)?;
+        if !a.no_sandbox {
+            login_preflight(a.agent.as_deref().unwrap_or_default())?;
+        }
     }
     let cfg = runner_config()?;
     daemon::start_background(&cfg).map_err(rerr)?;
@@ -313,15 +328,20 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
         }
     }
     let mut client = connect(&cfg)?;
+    super::privilege::check_caps(&client.welcome().caps, bypass, a.no_sandbox)?;
     let info = match raw {
         Some(argv) => client.create(run_create_req(argv, cwd_str, a.name.clone(), cols, rows)),
-        None => client.create_run(run_create_run(
-            a.agent.clone().unwrap_or_default(),
-            cwd_str,
-            a.name.clone(),
-            a.model.clone(),
-            (cols, rows),
-            a.trust,
+        None => client.create_run(elevated(
+            run_create_run(
+                a.agent.clone().unwrap_or_default(),
+                cwd_str,
+                a.name.clone(),
+                a.model.clone(),
+                (cols, rows),
+                a.trust,
+            ),
+            a.mode,
+            a.no_sandbox,
         )),
     }
     .map_err(rerr)?;

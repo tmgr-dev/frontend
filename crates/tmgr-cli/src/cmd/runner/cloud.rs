@@ -23,7 +23,7 @@ use tmgr_core::notify::build_push;
 use tmgr_core::text::{sanitize_line, truncate_chars};
 use tmgr_ipc::api::{
     caps, sha256_hex, AuthorKind, BundleAuthor, BundleLaunch, BundlePage, BundlePersona, CloneSpec,
-    CloudApproval, ExePin, RunBundle, RunCreateReq, TaskRef,
+    CloudApproval, ExePin, NoSandbox, RunBundle, RunCreateReq, TaskRef,
 };
 use tmgr_link::privileged;
 use tmgr_queue::clones::{plan_clones, ClaimRepo, ClonePlan};
@@ -1037,6 +1037,7 @@ struct RunPlan<'a> {
     unattended: bool,
     exe_pin: ExePin,
     argv_sha256: String,
+    no_sandbox: Option<NoSandbox>,
 }
 
 fn run_request(p: &RunPlan) -> RunCreateReq {
@@ -1063,6 +1064,7 @@ fn run_request(p: &RunPlan) -> RunCreateReq {
         unattended: p.unattended,
         exe_pin: Some(p.exe_pin.clone()),
         argv_sha256: Some(p.argv_sha256.clone()),
+        no_sandbox: p.no_sandbox.clone(),
     }
 }
 
@@ -1168,27 +1170,24 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             sanitize_line(&profile)
         );
     }
-    if mode_arg == PermissionMode::Bypass {
+    if mode_arg == PermissionMode::Bypass && !a.no_sandbox {
         eprintln!(
             "warning: bypass mode: the agent will not ask before running commands; only the OS sandbox and a restricted network limit it."
         );
     }
     let interactive = crate::interact::is_interactive();
-    let open_bypass = bypass_needs_consent(
+    let typed = super::privilege::confirm(
         mode_arg == PermissionMode::Bypass,
+        a.no_sandbox,
         tmgr_runner::sandbox::network_restriction_enforced(),
         a.yes,
-        interactive,
     )?;
-    if open_bypass {
-        crate::interact::confirm(
-            "Network restriction is not enforced on this platform: the agent will have open network access without asking. Start anyway?",
-            false,
-            false,
-        )?;
+    if !typed {
+        crate::interact::confirm("Start this run?", true, a.yes)?;
     }
-    crate::interact::confirm("Start this run?", true, a.yes)?;
-    super::ops::login_preflight(&profile)?;
+    if !a.no_sandbox {
+        super::ops::login_preflight(&profile)?;
+    }
     let (exe_pin, argv_digest) = super::run_task::launch_pin(&profile, a.model.as_deref(), mode)?;
     if target.exists() {
         return Err(Error::new(
@@ -1325,6 +1324,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         )
         .hint(format!("{0} runner restart", super::bin())));
     }
+    super::privilege::check_caps(have, false, a.no_sandbox)?;
     let via_repo = have.iter().any(|h| h == caps::TRUST_VIA_REPO_V1)
         && !privileged::RUN_ENV
             .iter()
@@ -1362,6 +1362,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             unattended: a.yes || !interactive,
             exe_pin,
             argv_sha256: argv_digest,
+            no_sandbox: super::privilege::request(a.no_sandbox),
         }))
         .map_err(rerr)?;
     write_record(
@@ -2694,6 +2695,7 @@ mod tests {
                 sha256: "e".repeat(64),
             },
             argv_sha256: "a".repeat(64),
+            no_sandbox: None,
         });
         assert_eq!(
             serde_json::to_string(&req).unwrap(),
@@ -2738,6 +2740,7 @@ mod tests {
                 sha256: "e".repeat(64),
             },
             argv_sha256: "a".repeat(64),
+            no_sandbox: None,
         });
         let v = serde_json::to_value(&req).unwrap();
         assert!(v.get("clone_of").is_none());
@@ -3148,6 +3151,7 @@ mod tests {
                 unattended: true,
                 exe_pin: None,
                 argv_sha256: None,
+                no_sandbox: None,
             };
             r.bundle.as_mut().unwrap().launch.permission_mode = None;
             r.bundle_sha256 = Some(r.bundle.as_ref().unwrap().sha256());

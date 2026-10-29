@@ -1376,6 +1376,7 @@ fn run_create_req(req: &StartRequest) -> RunCreateReq {
             sha256: req.exe_sha256.clone(),
         }),
         argv_sha256: Some(req.argv_sha256.clone()),
+        no_sandbox: None,
     }
 }
 
@@ -1642,6 +1643,13 @@ mod run_request_tests {
             text,
             r#"{"profile":"claude-code","task":{"workspace_id":56,"task_id":9002},"cwd":"/work/repo-worktrees/queue/q_1","name":"TM-410 rule:r","model":"opus","cols":120,"rows":40,"bundle":{"v":1,"task":{"workspace_id":56,"task_id":9002},"title":"t","body":"b","author":{"kind":"human"},"comments":[],"pages":[],"launch":{"profile":"claude-code","cwd":"/work/repo-worktrees/queue/q_1"}},"bundle_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","permission_mode":"accept-edits","start_key":"q_1-1","clone_of":"/work/repo","exe_pin":{"path":"/bin/claude","sha256":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},"argv_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","agent_work":true,"cloud":{"host":"api.tmgr.dev","user_id":1,"workspace_id":56,"task_id":9002,"category_id":127,"content_sha256":"h","key_id":"k","signed_at":1,"signature":"s","kind":"author"},"unattended":true}"#
         );
+    }
+
+    #[test]
+    fn a_queue_request_never_asks_for_bypass_or_no_sandbox() {
+        let v = serde_json::to_value(run_create_req(&start_request())).unwrap();
+        assert!(v.get("no_sandbox").is_none());
+        assert_ne!(v["permission_mode"], json!("bypass"));
     }
 
     #[test]
