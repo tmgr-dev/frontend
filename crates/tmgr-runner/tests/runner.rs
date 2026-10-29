@@ -3190,13 +3190,24 @@ fn permission_modes_append_the_profile_arguments_and_default_to_ask() {
     for (profile, mode, want) in [
         ("modal", "accept-edits", "cannot run in mode accept-edits"),
         ("plain", "ask", "cannot run in mode ask"),
-        ("modal", "bypass", "permission_mode must be"),
     ] {
         let mut req = h.run_req(profile);
         req.permission_mode = Some(mode.into());
         let e = err_text(c.create_run(req));
         assert!(e.starts_with("invalid_params: ") && e.contains(want), "{e}");
     }
+    let mut req = h.run_req("modal");
+    req.permission_mode = Some("bypass".into());
+    let e = err_text(c.create_run(req.clone()));
+    assert!(
+        e.starts_with("forbidden: ") && e.contains("manual run"),
+        "{e}"
+    );
+    let e = err_text(h.client().create_run(req));
+    assert!(
+        e.starts_with("invalid_params: ") && e.contains("cannot run in mode bypass"),
+        "{e}"
+    );
     for (id, table) in [
         ("noask", "plan = [\"--plan\"]"),
         ("onlyedits", "accept-edits = [\"--edits\"]"),
@@ -4780,13 +4791,10 @@ fn bypass_is_refused_without_a_verified_cloud_approval() {
     forged.cloud.as_mut().unwrap().signature = "AAAA".into();
     let mut unbound = fx.req("bypass", false);
     unbound.clone_of = Some(fx.h.work.display().to_string());
-    let mut plain = fx.h.run_req("cloudy");
-    plain.permission_mode = Some("bypass".into());
     for (name, r) in [
         ("missing", none),
         ("forged", forged),
         ("other repo", unbound),
-        ("not a task run", plain),
     ] {
         let e = err_text(fx.h.client().create_run(r));
         assert!(
@@ -4796,6 +4804,73 @@ fn bypass_is_refused_without_a_verified_cloud_approval() {
     }
     assert!(fx.h.client().list().unwrap().is_empty());
     assert!(!fx.clone.join(".tmgr/task.md").exists());
+}
+
+#[test]
+fn a_manual_cli_bypass_run_needs_no_cloud_approval() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = cloud_fx(true);
+    let mut plain = fx.h.run_req("cloudy");
+    plain.permission_mode = Some("bypass".into());
+    let info = fx.h.client().create_run(plain).unwrap();
+    assert_eq!(info.permission_mode.as_deref(), Some("bypass"));
+    fx.launch_env(&fx.h.work);
+    let args = fs::read_to_string(fx.h.work.join("args.txt")).unwrap();
+    assert!(args.contains("--yolo"), "{args}");
+    let _ = fx.h.client().kill(&info.id, "kill");
+}
+
+#[test]
+fn bypass_and_no_sandbox_are_refused_outside_a_manual_cli_run() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = cloud_fx(true);
+    let bypass = |fx: &CloudFx| {
+        let mut r = fx.h.run_req("cloudy");
+        r.permission_mode = Some("bypass".into());
+        r
+    };
+    let bare = |fx: &CloudFx| {
+        let mut r = fx.h.run_req("cloudy");
+        r.no_sandbox = Some(tmgr_ipc::api::NoSandbox::default());
+        r
+    };
+    let link = Origin {
+        link: "laptop".into(),
+        generation: 1,
+    };
+    for (what, make) in [
+        ("bypass", &bypass as &dyn Fn(&CloudFx) -> RunCreateReq),
+        ("no_sandbox", &bare),
+    ] {
+        let mut keyed = make(&fx);
+        keyed.start_key = Some("q_manual-1".into());
+        let mut unattended = make(&fx);
+        unattended.unattended = true;
+        let mut cloned = make(&fx);
+        cloned.clones = vec![tmgr_ipc::api::CloneSpec {
+            name: "a".into(),
+            clone_of: fx.repo.display().to_string(),
+        }];
+        let mut linked = make(&fx);
+        linked.origin = Some(link.clone());
+        for (name, client, req) in [
+            ("start_key", "cli", keyed),
+            ("unattended", "cli", unattended),
+            ("clones", "cli", cloned),
+            ("origin", "worker", linked),
+            ("desktop", "desktop", make(&fx)),
+            ("worker", "worker", make(&fx)),
+        ] {
+            let mut c = Client::connect_as(&fx.h.run, client).unwrap();
+            let e = err_text(c.create_run(req));
+            assert!(e.starts_with("forbidden: "), "{what} {name}: {e}");
+        }
+    }
+    assert!(fx.h.client().list().unwrap().is_empty());
 }
 
 #[test]
@@ -4840,6 +4915,136 @@ fn cloud_runs_are_restricted_and_plain_runs_stay_open() {
     let env = fx.launch_env(&fx.h.work);
     assert!(!env.iter().any(|(k, _)| k == "HTTPS_PROXY"));
     let _ = fx.h.client().kill(&info.id, "kill");
+}
+
+struct BareFx {
+    h: Harness,
+    home: PathBuf,
+}
+
+fn bare_fx(env: Vec<(String, String)>) -> BareFx {
+    let mut h = Harness::new();
+    let home = fs::canonicalize(h.tmp.path()).unwrap().join("realhome");
+    fs::create_dir(&home).unwrap();
+    fs::write(home.join("keep"), "mine").unwrap();
+    let script = h.script(
+        "bare.sh",
+        "printf '%s\\n' \"$@\" > args.txt\nenv > env.txt\nsleep 30\n",
+    );
+    fs::write(
+        h.agents.join("bare.toml"),
+        format!(
+            "id = \"bare\"\nname = \"bare\"\ncommand = [\"/bin/sh\", {script:?}]\n\
+             [permission_modes]\nask = [\"--ask\"]\nbypass = [\"--yolo\"]\n"
+        ),
+    )
+    .unwrap();
+    h.real_home = Some(home.clone());
+    h.env = env;
+    BareFx { h, home }
+}
+
+fn read_env(dir: &Path) -> Vec<(String, String)> {
+    let path = dir.join("env.txt");
+    wait_for("agent env", || path.exists());
+    thread::sleep(Duration::from_millis(200));
+    fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .filter_map(|l| l.split_once('='))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+}
+
+fn listing(dir: &Path) -> Vec<String> {
+    let mut v: Vec<String> = fs::read_dir(dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    v.sort();
+    v
+}
+
+#[test]
+fn a_no_sandbox_run_gets_the_real_home_and_the_callers_env_and_is_never_restored() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = bare_fx(Vec::new());
+    fx.h.start(5000);
+    let mut req = fx.h.run_req("bare");
+    req.permission_mode = Some("bypass".into());
+    req.no_sandbox = Some(tmgr_ipc::api::NoSandbox {
+        env: [
+            ("PATH", "/usr/bin:/bin"),
+            ("FOO", "bar"),
+            ("TMGR_RUN_TOKEN", "secret"),
+            ("HOME", "/nope"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect(),
+    });
+    let info = fx.h.client().create_run(req).unwrap();
+    let env = read_env(&fx.h.work);
+    let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str());
+    assert_eq!(get("HOME"), Some(fx.home.to_str().unwrap()));
+    assert_eq!(get("FOO"), Some("bar"));
+    assert_eq!(get("TERM"), Some("xterm-256color"));
+    assert_eq!(get("TMGR_SESSION_ID"), Some(info.id.as_str()));
+    assert_eq!(get("TMGR_RUN_TOKEN"), None);
+    assert_eq!(get("HTTPS_PROXY"), None);
+    assert_eq!(get("XDG_CONFIG_HOME"), None);
+    let args = fs::read_to_string(fx.h.work.join("args.txt")).unwrap();
+    assert!(args.contains("--yolo"), "{args}");
+    assert_eq!(listing(&fx.home), ["keep"]);
+    assert!(fx.h.homes.path().join(&info.id).is_dir());
+    let store = tmgr_runner::restore::store(fx.h.homes.path());
+    let t = fs::read_to_string(store.join(format!("{}.json", info.id))).unwrap();
+    assert!(t.contains("\"no_sandbox\":true"), "{t}");
+    let _ = fx.h.client().kill(&info.id, "kill");
+    wait_exited(&mut fx.h.client(), &info.id);
+    let e = err_text(fx.h.client().resume(&info.id, 80, 24));
+    assert!(
+        e.starts_with("forbidden: ") && e.contains("without the sandbox"),
+        "{e}"
+    );
+}
+
+#[test]
+fn a_no_sandbox_run_that_fails_to_start_leaves_the_real_home_alone() {
+    if !sessions_available() {
+        return;
+    }
+    let scratch = tempfile::tempdir().unwrap();
+    let hold = scratch.path().join("hold");
+    let mut fx = bare_fx(vec![(
+        "TMGR_TEST_HOLD_BEFORE_SPAWN".into(),
+        hold.display().to_string(),
+    )]);
+    fx.h.start(5000);
+    let before = listing(&fx.home);
+    let sessions = fx.h.run.join("sessions");
+    let mut req = fx.h.run_req("bare");
+    req.no_sandbox = Some(tmgr_ipc::api::NoSandbox::default());
+    let failed = create_held(
+        &fx.h,
+        &hold,
+        move |mut c| c.create_run(req),
+        move || {
+            for e in fs::read_dir(&sessions).unwrap().flatten() {
+                let _ = fs::remove_file(e.path().join("launch.json"));
+            }
+        },
+    );
+    assert!(failed.is_err());
+    assert_eq!(listing(&fx.home), before);
+    assert_eq!(fs::read_to_string(fx.home.join("keep")).unwrap(), "mine");
+    assert!(listing(fx.h.homes.path())
+        .iter()
+        .all(|n| !n.starts_with("s_")));
+    assert!(fx.h.client().list().unwrap().is_empty());
 }
 
 const MULTI_TASK: TaskRef = TaskRef {

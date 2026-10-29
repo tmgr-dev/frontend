@@ -282,6 +282,8 @@ struct Meta {
     env_pass: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     boot: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    no_sandbox: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -307,6 +309,7 @@ struct RunExtra {
     run_id_env: bool,
     resume_of: Option<ResumeSeed>,
     fork: Option<ForkSeed>,
+    no_sandbox: Option<std::collections::BTreeMap<String, String>>,
 }
 
 #[derive(Clone)]
@@ -845,7 +848,7 @@ impl Session {
             &intent.agent,
             intent.model.as_deref(),
             &self.id,
-            intent.hold_success,
+            (intent.hold_success, intent.audit.clone()),
         ) {
             Ok(()) => *pending = None,
             Err(e) => {
@@ -1356,6 +1359,7 @@ fn intent_from_meta(meta: &Meta, profile: &str) -> Result<restore::Intent, ApiEr
         argv_sha256: None,
         resume_decl: None,
         bypass: meta.permission_mode.as_deref() == Some("bypass"),
+        no_sandbox: meta.no_sandbox,
         boot: None,
         pids: Vec::new(),
         created_ms: meta.created_ms,
@@ -1551,6 +1555,7 @@ fn plan_mode(
     prof: &Profile,
     req: &RunCreateReq,
     cloud: &Option<Result<(), String>>,
+    manual: bool,
     sandbox: bool,
     net_enforced: bool,
 ) -> Result<ModePlan, ApiErr> {
@@ -1570,14 +1575,12 @@ fn plan_mode(
         });
     }
     match cloud {
-        None => {
-            return Err(api(
-                ErrorCode::InvalidParams,
-                "permission_mode must be ask, accept-edits or plan",
-            ))
-        }
+        None if !manual => return Err(api(
+            ErrorCode::Forbidden,
+            "bypass without a cloud approval is accepted only for a manual run from the tmgr CLI",
+        )),
         Some(Err(m)) => return Err(api(ErrorCode::Forbidden, m.clone())),
-        Some(Ok(())) => {}
+        None | Some(Ok(())) => {}
     }
     let bypass_args = prof
         .bypass_args()
@@ -1593,7 +1596,7 @@ fn plan_mode(
     } else {
         Orig::Manual
     };
-    let d = decide_mode(origin, Mode::Bypass, true, sandbox, net_enforced)
+    let d = decide_mode(origin, Mode::Bypass, verified, sandbox, net_enforced)
         .map_err(|r| api(ErrorCode::Forbidden, r.0))?;
     if d.mode == Mode::Bypass {
         return Ok(ModePlan {
@@ -1813,7 +1816,12 @@ impl Runner {
                         ));
                     }
                 }
-                self.create_run(req).map(|i| to_json(&i))
+                let manual = conn.client == CLIENT_CLI
+                    && req.origin.is_none()
+                    && req.start_key.is_none()
+                    && !req.unattended
+                    && req.clones.is_empty();
+                self.create_run(req, manual).map(|i| to_json(&i))
             }
             method::ORCHESTRATOR_CREATE => {
                 if conn.client != CLIENT_CLI {
@@ -2292,6 +2300,7 @@ impl Runner {
                         .then_some(&claim.intent.resume_decl);
                     self.create_run_as(
                         restore::request(&claim.intent, bundle),
+                        false,
                         Some(old),
                         pinned_resume,
                         None,
@@ -2504,6 +2513,7 @@ impl Runner {
         let pinned_resume = intent.argv_sha256.is_some().then_some(&intent.resume_decl);
         let (info, resumed, _, via) = self.create_run_as(
             req,
+            false,
             None,
             pinned_resume,
             Some(ResumeCtx {
@@ -2553,6 +2563,7 @@ impl Runner {
         let pinned_resume = intent.argv_sha256.is_some().then_some(&intent.resume_decl);
         let (info, resumed, _, via) = self.create_run_as(
             req,
+            false,
             Some(old),
             pinned_resume,
             Some(ResumeCtx {
@@ -2597,8 +2608,12 @@ impl Runner {
         Ok((info, false, "rerun"))
     }
 
-    fn create_run(self: &Arc<Self>, req: RunCreateReq) -> Result<SessionInfo, ApiErr> {
-        self.create_run_as(req, None, None, None)
+    fn create_run(
+        self: &Arc<Self>,
+        req: RunCreateReq,
+        manual: bool,
+    ) -> Result<SessionInfo, ApiErr> {
+        self.create_run_as(req, manual, None, None, None)
             .map(|(info, _, _, _)| info)
     }
 
@@ -2702,10 +2717,17 @@ impl Runner {
     fn create_run_as(
         self: &Arc<Self>,
         req: RunCreateReq,
+        manual: bool,
         restore_from: Option<&str>,
         pinned_resume: Option<&Option<restore::ResumeRec>>,
         resume_ctx: Option<ResumeCtx>,
     ) -> Result<(SessionInfo, bool, bool, &'static str), ApiErr> {
+        if req.no_sandbox.is_some() && !manual {
+            return Err(api(
+                ErrorCode::Forbidden,
+                "no_sandbox is accepted only for a manual run from the tmgr CLI",
+            ));
+        }
         let start = match &req.start_key {
             Some(k) if !valid_start_key(k) => {
                 return Err(api(
@@ -2747,14 +2769,20 @@ impl Runner {
         hold_at("TMGR_TEST_HOLD_AFTER_PROFILE");
         let id_approved = check_resume_pin(prof.resume.as_ref().map(resume_rec), pinned_resume)?;
         let cloud = cloud_verdict(&req);
-        let plan = plan_mode(
+        let no_sandbox = req.no_sandbox.is_some();
+        let mut plan = plan_mode(
             prof,
             &req,
             &cloud,
-            true,
+            manual,
+            !no_sandbox,
             sandbox::network_restriction_enforced(),
         )?;
+        if no_sandbox {
+            plan.restricted = false;
+        }
         let (mode, perm_args) = (plan.mode.clone(), plan.args.clone());
+        let audit = agentwork::audit_note(mode.as_deref(), no_sandbox);
         if req.agent_work {
             check_agent_work(&req, mode.as_deref())?;
         } else if req.cloud.is_some() {
@@ -2856,7 +2884,7 @@ impl Runner {
                 .argv_with(req.model.as_deref(), &perm_args)
                 .map_err(|e| api(ErrorCode::InvalidParams, e))?,
         };
-        let explicit = match (req.trust_cwd == Some(true), &prof.trust) {
+        let explicit = match (req.trust_cwd == Some(true) && !no_sandbox, &prof.trust) {
             (false, _) => None,
             (true, Some(t)) => Some(t.clone()),
             (true, None) => {
@@ -2872,9 +2900,11 @@ impl Runner {
         let unattended =
             req.start_key.is_some() || req.clone_of.is_some() || req.origin.is_some() || multi;
         let remembered = explicit.is_none()
+            && !no_sandbox
             && !unattended
             && dir.is_some_and(|d| folders::is_trusted(&self.cfg.homes, &d.path, d.id()));
         let via_repo = explicit.is_none()
+            && !no_sandbox
             && req.trust_via_repo == Some(true)
             && req.start_key.is_none()
             && req.origin.is_none()
@@ -2902,6 +2932,7 @@ impl Runner {
             _ => (None, None),
         };
         let learn_trust = trust.is_none()
+            && !no_sandbox
             && !unattended
             && restore_from.is_none()
             && dir.is_some()
@@ -2929,6 +2960,7 @@ impl Runner {
                 _ => None,
             },
             fork,
+            no_sandbox: req.no_sandbox.as_ref().map(|n| n.env.clone()),
         };
         if plan.restricted {
             extra.egress = Some(
@@ -3031,6 +3063,7 @@ impl Runner {
                 exe_pin: req.exe_pin,
                 argv_sha256: req.argv_sha256,
                 bypass: plan.bypass,
+                no_sandbox,
                 boot: restore::boot_marker(),
                 pids: vec![info.shim_pid, info.child_pid],
                 created_ms: info.created_ms,
@@ -3062,6 +3095,7 @@ impl Runner {
                 agent: info.profile.clone().unwrap_or_default(),
                 model: info_model,
                 hold_success: cloud_run,
+                audit,
             });
             s.prepare_agent_work();
         }
@@ -3093,7 +3127,9 @@ impl Runner {
         restore_from: Option<&str>,
     ) -> Result<SessionInfo, ApiErr> {
         let cwd = self.validate(&req)?;
-        sandbox::landlock_tier(landlock_abi()).map_err(|e| api(ErrorCode::Sandbox, e))?;
+        if extra.no_sandbox.is_none() {
+            sandbox::landlock_tier(landlock_abi()).map_err(|e| api(ErrorCode::Sandbox, e))?;
+        }
         let matcher = match prof {
             None => None,
             Some(p) => Some(Matcher::new(p).map_err(|e| api(ErrorCode::UnknownProfile, e))?),
@@ -3268,12 +3304,19 @@ impl Runner {
         let real_home = std::env::var_os("HOME")
             .map(PathBuf::from)
             .unwrap_or_default();
+        let unsandboxed = extra.no_sandbox.as_ref();
+        if unsandboxed.is_some() && !real_home.is_absolute() {
+            return Err(api(
+                ErrorCode::Sandbox,
+                "a run without the sandbox needs an absolute HOME",
+            ));
+        }
         let mut base = base_env();
         let profile_protected = profile_protected_paths()?;
         let mut grants = sandbox::Grants::default();
         let mut seeds = Vec::new();
         let mut secret_files = Vec::new();
-        if let Some(p) = prof {
+        if let (Some(p), None) = (prof, unsandboxed) {
             let pid = &p.id;
             {
                 let mut protected = vec![
@@ -3313,14 +3356,14 @@ impl Runner {
                 format!("{}:{}", cwd.display(), above.display()),
             ));
         }
-        let proxy = match &extra.egress {
+        let proxy = match extra.egress.as_ref().filter(|_| unsandboxed.is_none()) {
             Some(allow) => Some(
                 crate::egress::Proxy::start(allow.clone())
                     .map_err(|e| api(ErrorCode::Sandbox, format!("egress proxy: {e}")))?,
             ),
             None => None,
         };
-        let launch = sandbox::prepare(&SandboxSpec {
+        let spec = SandboxSpec {
             session_id: id.to_string(),
             argv: req.argv.clone(),
             cwd: cwd.to_path_buf(),
@@ -3335,7 +3378,18 @@ impl Runner {
             network: proxy.as_ref().map_or(sandbox::Network::Open, |p| {
                 sandbox::Network::Restricted { proxy_port: p.port }
             }),
-        })
+        };
+        let launch = match unsandboxed {
+            Some(caller) => sandbox::unsandboxed_env(
+                caller,
+                &spec.base_env,
+                &spec.real_home,
+                id,
+                extra.run_id_env,
+            )
+            .and_then(|env| sandbox::prepare_unsandboxed(&spec, env)),
+            None => sandbox::prepare(&spec),
+        }
         .map_err(|e| api(ErrorCode::Sandbox, e))?;
         if let Some(note) = &extra.mode_note {
             log(&format!(
@@ -3345,15 +3399,18 @@ impl Runner {
         for n in &launch.notes {
             log(&format!("session {id}: {n}"));
         }
-        let records = login::apply_seeds(&seeds, home).map_err(|e| api(ErrorCode::Sandbox, e))?;
-        seedguard::save(sdir, &records).map_err(internal)?;
-        if let Some(t) = &extra.trust {
-            login::apply_trust(home, t, cwd).map_err(|e| api(ErrorCode::Sandbox, e))?;
-        }
-        for note in login::apply_secret_files(&secret_files, home)
-            .map_err(|e| api(ErrorCode::Sandbox, e))?
-        {
-            log(&format!("session {id}: {note}"));
+        if unsandboxed.is_none() {
+            let records =
+                login::apply_seeds(&seeds, home).map_err(|e| api(ErrorCode::Sandbox, e))?;
+            seedguard::save(sdir, &records).map_err(internal)?;
+            if let Some(t) = &extra.trust {
+                login::apply_trust(home, t, cwd).map_err(|e| api(ErrorCode::Sandbox, e))?;
+            }
+            for note in login::apply_secret_files(&secret_files, home)
+                .map_err(|e| api(ErrorCode::Sandbox, e))?
+            {
+                log(&format!("session {id}: {note}"));
+            }
         }
         let (cols, rows) = clamp_size(req.cols, req.rows);
         let lf = LaunchFile {
@@ -3460,7 +3517,7 @@ impl Runner {
             exit_signal: None,
             trust_file: extra.trust.as_ref().map(|t| t.file.clone()),
             learn_trust: match (&prof.and_then(|p| p.trust.clone()), extra.learn_trust) {
-                (Some(t), true) => Some(LearnTrust {
+                (Some(t), true) if unsandboxed.is_none() => Some(LearnTrust {
                     home: home.display().to_string(),
                     file: t.file.clone(),
                     path: t.path.clone(),
@@ -3471,6 +3528,7 @@ impl Runner {
             resumed_from: extra.resume_of.as_ref().map(|r| r.from.clone()),
             env_pass: req.env_pass.clone(),
             boot: restore::boot_marker(),
+            no_sandbox: unsandboxed.is_some(),
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
@@ -3485,7 +3543,11 @@ impl Runner {
             session.seed_prior(&r.text);
         }
         *lock(&session.proxy) = proxy;
-        session.worklog.created(&session.info(), extra.trust_note);
+        session.worklog.created(
+            &session.info(),
+            extra.trust_note,
+            (extra.permission_mode.as_deref(), unsandboxed.is_some()),
+        );
         session.attach_shim(stream, hello, true);
         lock(&self.sessions).insert(id.to_string(), session.clone());
         log(&format!("session {id} created: {}", req.argv[0]));
@@ -4458,20 +4520,54 @@ mod tests {
         sandbox: bool,
         net: bool,
     ) -> Result<ModePlan, ApiErr> {
+        plan_as(mode, unattended, cloud, !unattended, sandbox, net)
+    }
+
+    fn plan_as(
+        mode: &str,
+        unattended: bool,
+        cloud: Option<Result<(), String>>,
+        manual: bool,
+        sandbox: bool,
+        net: bool,
+    ) -> Result<ModePlan, ApiErr> {
         let (set, _) = ProfileSet::load(None);
         plan_mode(
             set.get("claude-code").unwrap(),
             &plan_req(mode, unattended),
             &cloud,
+            manual,
             sandbox,
             net,
         )
     }
 
     #[test]
-    fn bypass_needs_a_verified_cloud_approval() {
-        let none = plan("bypass", false, None, true, true).err().unwrap();
-        assert!(none.msg.contains("permission_mode must be"), "{}", none.msg);
+    fn bypass_needs_a_verified_cloud_approval_unless_the_run_is_manual() {
+        let none = plan_as("bypass", false, None, false, true, true)
+            .err()
+            .unwrap();
+        assert!(matches!(none.code, ErrorCode::Forbidden), "{}", none.msg);
+        let unattended = plan_as("bypass", true, None, false, true, true)
+            .err()
+            .unwrap();
+        assert!(matches!(unattended.code, ErrorCode::Forbidden));
+        let manual = plan_as("bypass", false, None, true, true, true).unwrap();
+        assert!(manual.bypass && manual.mode.as_deref() == Some("bypass"));
+        assert_eq!(manual.args, ["--permission-mode", "bypassPermissions"]);
+        let bare = plan_as("bypass", false, None, true, false, true).unwrap();
+        assert!(bare.bypass && !bare.restricted);
+        let forged_manual = plan_as(
+            "bypass",
+            false,
+            Some(Err("forged".into())),
+            true,
+            true,
+            true,
+        )
+        .err()
+        .unwrap();
+        assert!(matches!(forged_manual.code, ErrorCode::Forbidden));
         let forged = plan("bypass", false, Some(Err("forged".into())), true, true)
             .err()
             .unwrap();
@@ -4483,6 +4579,21 @@ mod tests {
         let ok = plan("bypass", false, Some(Ok(())), true, true).unwrap();
         assert!(ok.bypass && ok.restricted && ok.mode.as_deref() == Some("bypass"));
         assert_eq!(ok.args, ["--permission-mode", "bypassPermissions"]);
+    }
+
+    #[test]
+    fn manual_bypass_uses_each_profiles_bypass_args() {
+        let (set, _) = ProfileSet::load(None);
+        for (id, arg) in [("claude-code", "bypassPermissions"), ("codex", "never")] {
+            let mut req = plan_req("bypass", false);
+            req.profile = id.into();
+            let p = plan_mode(set.get(id).unwrap(), &req, &None, true, true, true).unwrap();
+            assert!(
+                p.bypass && p.args.iter().any(|a| a == arg),
+                "{id}: {:?}",
+                p.args
+            );
+        }
     }
 
     #[test]

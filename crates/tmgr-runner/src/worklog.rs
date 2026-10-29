@@ -33,6 +33,10 @@ enum Ev {
         cwd_head: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         trust: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mode: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sandbox: Option<String>,
     },
     State {
         ts: u64,
@@ -201,7 +205,7 @@ impl Log {
         }
     }
 
-    pub fn created(&self, info: &SessionInfo, trust: Option<&str>) {
+    pub fn created(&self, info: &SessionInfo, trust: Option<&str>, audit: (Option<&str>, bool)) {
         {
             let mut st = lock(&self.st);
             if st.created {
@@ -229,6 +233,8 @@ impl Log {
                 cwd_branch: branch,
                 cwd_head: head,
                 trust: trust.map(str::to_string),
+                mode: audit.0.map(str::to_string),
+                sandbox: Some(if audit.1 { "off" } else { "on" }.to_string()),
             },
             true,
         );
@@ -407,6 +413,27 @@ mod tests {
         format!(
             r#"{{"ev":"created","ts":{ts},"profile":null,"argv0_basename":"sh","task":null,"bundle_sha256":null,"cwd_branch":"main","cwd_head":null}}"#
         )
+    }
+
+    #[test]
+    fn created_carries_the_mode_and_sandbox_and_old_lines_still_parse() {
+        let old: Ev = serde_json::from_str(&created(1)).unwrap();
+        assert!(matches!(
+            old,
+            Ev::Created {
+                mode: None,
+                sandbox: None,
+                ..
+            }
+        ));
+        let new = created(1).replace('}', r#","mode":"bypass","sandbox":"off"}"#);
+        match serde_json::from_str::<Ev>(&new).unwrap() {
+            Ev::Created { mode, sandbox, .. } => {
+                assert_eq!(mode.as_deref(), Some("bypass"));
+                assert_eq!(sandbox.as_deref(), Some("off"));
+            }
+            _ => panic!("not a created event"),
+        }
     }
 
     fn state(ts: u64, kind: &str) -> String {

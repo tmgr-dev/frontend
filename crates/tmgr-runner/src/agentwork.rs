@@ -33,6 +33,18 @@ pub struct State {
     pub last_update_ms: u64,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hold_success: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audit: Option<String>,
+}
+
+pub fn audit_note(mode: Option<&str>, no_sandbox: bool) -> Option<String> {
+    (mode == Some("bypass") || no_sandbox).then(|| {
+        format!(
+            "mode: {}, sandbox: {}",
+            mode.unwrap_or("-"),
+            if no_sandbox { "off" } else { "on" }
+        )
+    })
 }
 
 #[derive(Clone, Debug)]
@@ -41,6 +53,7 @@ pub struct Intent {
     pub agent: String,
     pub model: Option<String>,
     pub hold_success: bool,
+    pub audit: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -80,7 +93,7 @@ pub fn begin(
     agent: &str,
     model: Option<&str>,
     session: &str,
-    hold_success: bool,
+    (hold_success, audit): (bool, Option<String>),
 ) -> io::Result<()> {
     save(
         dir,
@@ -94,6 +107,7 @@ pub fn begin(
             finished: false,
             last_update_ms: 0,
             hold_success,
+            audit,
         },
     )
 }
@@ -252,7 +266,7 @@ pub fn step(
             return Ok(Some("hold"));
         }
         let reason = (status == "cancelled").then(|| halt_reason(dir)).flatten();
-        let text = reason.unwrap_or_else(|| {
+        let mut text = reason.unwrap_or_else(|| {
             format!(
                 "{} by the runner after {} ({} working), {} commit(s)",
                 match status {
@@ -265,6 +279,9 @@ pub fn step(
                 summary.commits.len()
             )
         });
+        if let Some(a) = &s.audit {
+            text = format!("{text}; {a}");
+        }
         call(
             helper,
             &json!({
@@ -344,7 +361,15 @@ mod tests {
             workspace_id: -2,
             task_id: 7,
         };
-        begin(&dir, task, "claude-code", Some("opus"), "s_abc", false).unwrap();
+        begin(
+            &dir,
+            task,
+            "claude-code",
+            Some("opus"),
+            "s_abc",
+            (false, None),
+        )
+        .unwrap();
         let t0 = 1_000_000;
         let ended = Some(Exit {
             code: Some(0),
@@ -416,12 +441,59 @@ mod tests {
         for (exit, want) in [(ok, "hold"), (bad, "finish")] {
             let dir = tmp.path().join(want);
             std::fs::create_dir(&dir).unwrap();
-            begin(&dir, task, "claude-code", None, "s_abc", true).unwrap();
+            begin(&dir, task, "claude-code", None, "s_abc", (true, None)).unwrap();
             assert_eq!(step(&helper, &dir, 1, None).unwrap(), Some("start"));
             assert_eq!(step(&helper, &dir, 2, exit).unwrap(), Some(want));
             assert_eq!(step(&helper, &dir, 3, exit).unwrap(), None);
         }
         assert_eq!(ops(), ["start", "update", "start", "finish"]);
+    }
+
+    #[test]
+    fn the_finish_summary_names_bypass_and_a_missing_sandbox() {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(audit_note(Some("ask"), false), None);
+        assert_eq!(
+            audit_note(Some("bypass"), false).as_deref(),
+            Some("mode: bypass, sandbox: on")
+        );
+        assert_eq!(
+            audit_note(Some("bypass"), true).as_deref(),
+            Some("mode: bypass, sandbox: off")
+        );
+        let tmp = tempfile::tempdir().unwrap();
+        let calls = tmp.path().join("calls");
+        let helper = tmp.path().join("helper.sh");
+        std::fs::write(
+            &helper,
+            format!("#!/bin/sh\ncat >> {calls:?}\necho >> {calls:?}\necho '{{\"run_id\":5}}'\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let dir = tmp.path().join("s");
+        std::fs::create_dir(&dir).unwrap();
+        let task = TaskRef {
+            workspace_id: -2,
+            task_id: 7,
+        };
+        let audit = audit_note(Some("bypass"), true);
+        begin(&dir, task, "claude-code", None, "s_abc", (false, audit)).unwrap();
+        let ended = Some(Exit {
+            code: Some(0),
+            interrupted: false,
+        });
+        step(&helper, &dir, 1, None).unwrap();
+        step(&helper, &dir, 2, ended).unwrap();
+        let finish = std::fs::read_to_string(&calls)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str::<Value>(l).unwrap())
+            .find(|v| v["op"] == "finish")
+            .unwrap();
+        assert!(finish["summary"]
+            .as_str()
+            .unwrap()
+            .ends_with("; mode: bypass, sandbox: off"));
     }
 
     #[test]

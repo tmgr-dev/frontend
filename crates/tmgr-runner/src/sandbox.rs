@@ -658,6 +658,145 @@ pub fn landlock_tier(kernel_abi: i32) -> Result<LandlockTier, String> {
     }
 }
 
+pub fn unsandboxed_env(
+    caller: &BTreeMap<String, String>,
+    fallback: &[(String, String)],
+    real_home: &Path,
+    session_id: &str,
+    run_id: bool,
+) -> Result<Vec<(String, String)>, String> {
+    let mut env = BTreeMap::new();
+    let source: Vec<(&String, &String)> = if caller.is_empty() {
+        fallback.iter().map(|(k, v)| (k, v)).collect()
+    } else {
+        caller.iter().collect()
+    };
+    for (k, v) in source {
+        if env_name_valid(k) && !v.contains('\0') && !k.to_ascii_uppercase().starts_with("TMGR_") {
+            env.insert(k.clone(), v.clone());
+        }
+    }
+    env.insert("TMGR_SESSION_ID".into(), session_id.to_string());
+    if run_id {
+        env.insert("TMGR_RUN_ID".into(), session_id.to_string());
+    }
+    env.insert("TERM".into(), "xterm-256color".into());
+    env.insert("HOME".into(), path_str(real_home)?);
+    Ok(env.into_iter().collect())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ControlPlane {
+    pub fenced: Vec<PathBuf>,
+    pub write_protected: Vec<PathBuf>,
+}
+
+pub fn control_plane(spec: &SandboxSpec, env: &[(String, String)]) -> ControlPlane {
+    let mut fenced = Vec::new();
+    let mut add = |p: &Path| {
+        push_unique(&mut fenced, p.to_path_buf());
+        push_unique(&mut fenced, canon_lossy(p));
+    };
+    add(&spec.runner_dir);
+    if let Some(homes) = spec.home.parent() {
+        add(homes);
+    }
+    if let Ok(dir) = crate::trust::store_dir() {
+        add(&dir);
+    }
+    add(&spec.real_home.join(".config").join("tmgr"));
+    if let Some((_, x)) = env.iter().find(|(k, _)| k == "XDG_CONFIG_HOME") {
+        let x = Path::new(x);
+        if x.is_absolute() {
+            add(&x.join("tmgr"));
+        }
+    }
+    add(&spec.real_home.join(".tmgr.dev"));
+    for d in &spec.grants.deny {
+        add(d);
+    }
+    let mut write_protected = Vec::new();
+    push_unique(&mut write_protected, spec.self_exe.clone());
+    push_unique(&mut write_protected, canon_lossy(&spec.self_exe));
+    ControlPlane {
+        fenced,
+        write_protected,
+    }
+}
+
+pub fn control_plane_profile(c: &ControlPlane) -> Result<String, String> {
+    let mut s = String::from("(version 1)\n(allow default)\n");
+    for d in &c.fenced {
+        let q = sbpl_quote(d)?;
+        s.push_str(&format!("(deny file-write* (subpath {q}))\n"));
+        s.push_str(&format!(
+            "(deny network-outbound (remote unix-socket (subpath {q})))\n"
+        ));
+    }
+    for f in &c.write_protected {
+        s.push_str(&format!(
+            "(deny file-write* (literal {}))\n",
+            sbpl_quote(f)?
+        ));
+    }
+    Ok(s)
+}
+
+pub fn prepare_unsandboxed(
+    spec: &SandboxSpec,
+    env: Vec<(String, String)>,
+) -> Result<Launch, String> {
+    if spec.argv.is_empty() {
+        return Err("empty command".into());
+    }
+    require_abs("cwd", &spec.cwd)?;
+    let cwd = spec
+        .cwd
+        .canonicalize()
+        .map_err(|e| format!("cwd {} is not usable: {e}", spec.cwd.display()))?;
+    let meta = cwd
+        .metadata()
+        .map_err(|e| format!("cwd {} is not usable: {e}", cwd.display()))?;
+    if !meta.is_dir() {
+        return Err(format!("cwd {} is not a directory", cwd.display()));
+    }
+    if spec.cwd_id.is_some_and(|id| id != (meta.dev(), meta.ino())) {
+        return Err(format!(
+            "cwd {} changed after validation; the run does not start",
+            cwd.display()
+        ));
+    }
+    let notes = vec!["running without the sandbox".to_string()];
+    #[cfg(target_os = "macos")]
+    {
+        const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
+        if !Path::new(SANDBOX_EXEC).exists() {
+            return Err(format!("{SANDBOX_EXEC} is missing; the run does not start"));
+        }
+        let profile = control_plane_profile(&control_plane(spec, &env))?;
+        let mut argv = vec![
+            SANDBOX_EXEC.to_string(),
+            "-p".to_string(),
+            profile,
+            "--".to_string(),
+        ];
+        argv.extend(spec.argv.iter().cloned());
+        Ok(Launch {
+            argv,
+            env,
+            cwd,
+            notes,
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    Ok(Launch {
+        argv: spec.argv.clone(),
+        env,
+        cwd,
+        notes,
+    })
+}
+
 #[cfg(target_os = "macos")]
 pub fn prepare(spec: &SandboxSpec) -> Result<Launch, String> {
     const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
@@ -1088,6 +1227,117 @@ mod tests {
         assert_eq!(fs::metadata(&home).unwrap().mode() & 0o777, 0o700);
         assert!(Path::new(&home).join("tmp").is_dir());
         assert!(Path::new(&home).join(".local/share").is_dir());
+    }
+
+    #[test]
+    fn unsandboxed_env_uses_the_callers_env_and_the_real_home() {
+        let caller: BTreeMap<String, String> = [
+            kv("PATH", "/opt/bin"),
+            kv("GITHUB_TOKEN", "t"),
+            kv("TMGR_RUN_TOKEN", "x"),
+            kv("tmgr_other", "y"),
+            kv("HOME", "/elsewhere"),
+            kv("TERM", "dumb"),
+        ]
+        .into_iter()
+        .collect();
+        let fallback = vec![kv("PATH", "/usr/bin")];
+        let e: BTreeMap<_, _> = unsandboxed_env(
+            &caller,
+            &fallback,
+            Path::new("/home/u"),
+            "s_abcdefghij",
+            false,
+        )
+        .unwrap()
+        .into_iter()
+        .collect();
+        assert_eq!(e["PATH"], "/opt/bin");
+        assert_eq!(e["GITHUB_TOKEN"], "t");
+        assert_eq!(e["HOME"], "/home/u");
+        assert_eq!(e["TERM"], "xterm-256color");
+        assert_eq!(e["TMGR_SESSION_ID"], "s_abcdefghij");
+        assert!(!e.contains_key("TMGR_RUN_TOKEN"));
+        assert!(!e.contains_key("tmgr_other"));
+        assert!(!e.contains_key("TMGR_RUN_ID"));
+        assert!(!e.contains_key("XDG_CONFIG_HOME") && !e.contains_key("TMPDIR"));
+        let empty = unsandboxed_env(
+            &BTreeMap::new(),
+            &fallback,
+            Path::new("/home/u"),
+            "s_abcdefghij",
+            true,
+        )
+        .unwrap();
+        let e: BTreeMap<_, _> = empty.into_iter().collect();
+        assert_eq!(e["PATH"], "/usr/bin");
+        assert_eq!(e["TMGR_RUN_ID"], "s_abcdefghij");
+    }
+
+    #[test]
+    fn the_unsandboxed_profile_fences_only_the_control_plane() {
+        let mut f = fx();
+        f.spec.self_exe = f.spec.runner_dir.join("tmgr");
+        f.spec.grants.deny = vec![f.spec.real_home.join(".config/tmgr/secrets.toml")];
+        let env = vec![kv("XDG_CONFIG_HOME", "/xdg/cfg")];
+        let c = control_plane(&f.spec, &env);
+        let profile = control_plane_profile(&c).unwrap();
+        assert!(profile.starts_with("(version 1)\n(allow default)\n"));
+        let q = |p: &Path| sbpl_quote(p).unwrap();
+        let fenced = [
+            f.spec.runner_dir.clone(),
+            f.spec.home.parent().unwrap().to_path_buf(),
+            f.spec.real_home.join(".config/tmgr"),
+            PathBuf::from("/xdg/cfg/tmgr"),
+            f.spec.real_home.join(".tmgr.dev"),
+            f.spec.real_home.join(".config/tmgr/secrets.toml"),
+        ];
+        for d in &fenced {
+            assert!(
+                profile.contains(&format!("(deny file-write* (subpath {}))", q(d))),
+                "{}",
+                d.display()
+            );
+            assert!(profile.contains(&format!(
+                "(deny network-outbound (remote unix-socket (subpath {})))",
+                q(d)
+            )));
+        }
+        assert!(profile.contains(&format!(
+            "(deny file-write* (literal {}))",
+            q(&f.spec.self_exe)
+        )));
+        assert!(!profile.contains("(deny network-outbound)"));
+        assert!(!profile.contains("deny signal"));
+        assert!(!profile.contains("file-read"));
+        assert!(!profile.contains("/dev/tty"));
+    }
+
+    #[test]
+    fn the_unsandboxed_fence_covers_a_symlinked_config_dir_in_both_forms() {
+        let f = fx();
+        let real = f.spec.real_home.join("dotfiles/config");
+        fs::create_dir_all(real.join("tmgr")).unwrap();
+        std::os::unix::fs::symlink(&real, f.spec.real_home.join(".config")).unwrap();
+        let c = control_plane(&f.spec, &[]);
+        assert!(c.fenced.contains(&f.spec.real_home.join(".config/tmgr")));
+        assert!(c.fenced.contains(&real.join("tmgr")));
+    }
+
+    #[test]
+    fn prepare_unsandboxed_keeps_the_given_env_and_command() {
+        let f = fx();
+        let env = vec![kv("HOME", "/h")];
+        let l = prepare_unsandboxed(&f.spec, env.clone()).unwrap();
+        assert_eq!(l.env, env);
+        assert!(l.argv.ends_with(&f.spec.argv));
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(l.argv[0], "/usr/bin/sandbox-exec");
+            assert!(l.argv[2].starts_with("(version 1)"));
+        }
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(l.argv, f.spec.argv);
     }
 
     #[test]

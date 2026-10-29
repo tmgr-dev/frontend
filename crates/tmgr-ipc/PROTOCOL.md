@@ -104,6 +104,8 @@ Both sides must finish within 5 seconds. A refusal is
 | `runs.restore.v1` | `runs.restore` (section 5, "Restoring interrupted runs") |
 | `sessions_resume.v1` | `sessions.resume`; `resumed_from` on `SessionInfo`; `via` in the result (section 5, "Resuming an exited session") |
 | `sessions_fork.v1` | `sessions.fork` (section 5, "Forking a Claude Code session") |
+| `manual_bypass.v1` | `permission_mode: "bypass"` without a cloud approval for a manual CLI run (section 5, "Queue capabilities") |
+| `no_sandbox.v1` | `no_sandbox` on `runs.create` (section 5, "Runs without the sandbox") |
 | `permission_mode.v1` | `permission_mode` on `runs.create`, `SessionInfo` and `launch` of a bundle (section 5, "Queue capabilities") |
 | `start_key.v1` | `start_key` on `runs.create`; `runs.lookup` (section 5, "Queue capabilities") |
 | `run_status.v1` | `runs.status` (section 5, "Queue capabilities") |
@@ -221,8 +223,8 @@ runner lost (reboot, logout) keep it.
 
 `runs.restore {id}` (cap `runs.restore.v1`, `cli` only) claims the record by renaming it,
 so two restores of the same session cannot both start. It refuses records older than
-7 days, records with an `origin` (a link run is re-requested by its leader) and bypass
-runs; then it sends the recorded launch through the same path as `runs.create`, with
+7 days, records with an `origin` (a link run is re-requested by its leader), bypass
+runs and runs started with `no_sandbox`; then it sends the recorded launch through the same path as `runs.create`, with
 the stored bundle and `cwd_pin`, so the bundle hash and the folder identity are checked
 again (a replaced folder answers `invalid_params` "approved folder changed"). When the
 old run's home still exists it is moved to the new session and, if the profile has
@@ -240,7 +242,7 @@ session is not touched. `agent_id` must be a lowercase UUID and the runner finds
 itself, only in the old session's run home (`.claude/projects/*/<agent_id>.jsonl`, opened without following
 links, at most 512 MiB) and copies that one file into the new run home before the agent starts. The launch
 is rebuilt exactly like a resume of that session (launch record or `meta.json`, same folder identity check,
-same refusals for link, bypass, expired and unpinned queue runs); the profile must declare `[resume] by_id`.
+same refusals for link, bypass, no-sandbox, expired and unpinned queue runs); the profile must declare `[resume] by_id`.
 Any other profile is `forbidden`.
 
 ### Resuming an exited session
@@ -259,7 +261,7 @@ An agent run (a profile) is relaunched from a copy of its launch record that the
 keeps in the session directory (`relaunch.json`, plus the canonical bundle when there is one),
 so it survives the clean exit and the kill that drop the `runs.restore` record. The same
 rules as `runs.restore` apply and nothing is weakened: records with an `origin` (link), bypass
-runs, records older than 7 days and queue runs without an `exe_pin` are `forbidden`; the
+and no-sandbox runs, records older than 7 days and queue runs without an `exe_pin` are `forbidden`; the
 executable pin, the argv digest, the folder identity (`cwd_pin`) and the stored bundle hash
 are checked again. A session without a launch record (started before `relaunch.json` existed) is rebuilt
 from its own `meta.json`: the profile is looked up in the runner's current profile table (the stored
@@ -377,13 +379,15 @@ means nothing is pending. The owner applies a candidate with `tmgr agents sync <
 
 All four are additive: new optional fields and methods, no change for clients that do not send them.
 
-**`permission_mode.v1`.** `runs.create` takes an optional `permission_mode`: `ask`, `accept-edits` or `plan` (there is no bypass). The profile maps each mode it supports to arguments (`permission_modes` table) and the runner appends them after the profile's own arguments. A request names a mode the profile has no entry for, or a profile that has a `permission_modes` table but no entry for `ask` gets no mode: `invalid_params` ("profile X cannot run in mode Y"). A profile without any `permission_modes` table keeps its old behavior when no mode is requested (no extra arguments, no recorded mode). The effective mode (request value, else `ask`) is stored and returned as `SessionInfo.permission_mode`. `launch.permission_mode` of a bundle is optional and hashed only when present; when the request carries a bundle, the bundle's value must equal the effective mode, and an absent value (old bundles) is accepted only when the effective mode is `ask` or none. `sessions.create` is not affected.
+**`permission_mode.v1`.** `runs.create` takes an optional `permission_mode`: `ask`, `accept-edits`, `plan` or `bypass`. Bypass is accepted in two cases only: a cloud task with a verified approval, or a manual run from the CLI. A manual run is `client: "cli"` with no `origin`, no `start_key`, no `unattended` and no `clones`; it needs no cloud approval (a cloud task, a local-workspace task or no task at all). Every other request for bypass (desktop and worker clients, queue and autopilot runs, link runs, clones) is `forbidden`, and so is a forged or unbound cloud approval. The profile must have a `bypass` entry in `permission_modes`. The profile maps each mode it supports to arguments (`permission_modes` table) and the runner appends them after the profile's own arguments. A request names a mode the profile has no entry for, or a profile that has a `permission_modes` table but no entry for `ask` gets no mode: `invalid_params` ("profile X cannot run in mode Y"). A profile without any `permission_modes` table keeps its old behavior when no mode is requested (no extra arguments, no recorded mode). The effective mode (request value, else `ask`) is stored and returned as `SessionInfo.permission_mode`. `launch.permission_mode` of a bundle is optional and hashed only when present; when the request carries a bundle, the bundle's value must equal the effective mode, and an absent value (old bundles) is accepted only when the effective mode is `ask` or none. `sessions.create` is not affected.
 
 **`start_key.v1`.** `runs.create` takes an optional `start_key` (`[A-Za-z0-9._:-]`, 1 to 64 characters). The runner stores it with a hash of the other parameters (everything except `cols`, `rows` and `start_key`). A second `runs.create` with the same key and the same hash returns the existing `SessionInfo` in whatever state it is, and starts nothing; the same key with other parameters is `busy` ("start key already used for a different request"). Keys survive a runner restart and are forgotten when the session is removed. `runs.lookup {start_key}` returns the `SessionInfo` or `not_found`.
 
 **`run_status.v1`.** `runs.status {id}` returns `{id, alive, state, exit_code, signal, started_ms, ended_ms}`: `state` is the state kind, `alive` is true while the shim is reachable and the child has not exited, `exit_code`, `signal` and `ended_ms` are `null` until the child exits, `started_ms` is `created_ms`. It carries no screen.
 
 **`clone_dir.v1`.** `runs.create` takes an optional `clone_of`, the absolute path of a repository. Before the sandbox is prepared the runner checks, walking descriptors without following any symlink, that the repository is a work tree root with a real `.git` directory, that the canonical `cwd` lies strictly inside `<repo parent>/<repo name>-worktrees/` (any depth), that `cwd/.git` is a real directory (not a worktree file) and that `cwd/.git/objects/info/alternates`, if present (at most 4 KiB), lists only `<repo>/.git/objects`. Any violation is `invalid_params`. The sandbox then gets read-only access to `<repo>/.git/objects` and nothing else of the repository; writes stay limited to `cwd` and the per-run home.
+
+**Runs without the sandbox (`no_sandbox.v1`).** `runs.create` takes an optional `no_sandbox: {"env": {...}}`. It is accepted only for a manual CLI run (see `permission_mode.v1`); any other request is `forbidden`. The agent then runs as it would outside tmgr: its `HOME` is the real home, its environment is `env` (every `TMGR_*` name is dropped; the runner sets `TMGR_SESSION_ID`, `TMGR_RUN_ID` when it applies, `TERM` and `HOME`), and the runner writes no seeds, credential files, secrets or folder trust, applies no Landlock policy and starts no egress proxy. The per-run home still exists as a plain directory and is the only one the runner ever removes. Hooks, agent work, the work log, the live view and attach keep working. On macOS the command still runs under a minimal Seatbelt profile that only denies writes to, and unix-socket connects under, the runner directory, the homes directory, the tmgr config directory, `~/.tmgr.dev` and the profile-protected paths, and writes to the runner executable; reads are not restricted. On Linux there is no such fence. The work log records `mode` and `sandbox` ("on" or "off") in its `created` event, and the agent work summary on finish names `mode: bypass, sandbox: off`. Such a session is never restored, resumed or forked.
 
 **`agent_work.v1`.** `runs.create` takes an optional `agent_work: true` (absent means false). The runner then records the run as Agent work of its task in the local workspace: it needs a `task` of a local workspace (negative `workspace_id`; a cloud task is `invalid_params`, owner decision 16a.11), a profile with a `permission_modes` table (otherwise `invalid_params` naming the profile), and is `forbidden` for link runs. The runner calls its own executable as `<self> __agent-work` with one JSON request on stdin (`op` `start`, `update` or `finish`) and keeps the run id with the session: `start` when the session is created (agent = profile id, model, branch, session id), `update` with the branch and commits from the work log at most every 10 minutes, and `finish` once when the child has exited: `succeeded` for exit code 0, `cancelled` after `sessions.kill`, a revocation or a session lost while the runner was down, otherwise `failed`, with a one-line summary and the commits. Failed calls are retried and never block the session; a session that ended while the runner was down is finished after the restart. A `start_key` replay returns the existing session and opens no second run. The flag is part of the start-key hash.
 

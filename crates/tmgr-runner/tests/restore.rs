@@ -548,6 +548,7 @@ fn forged(h: &H, id: &str, edit: impl Fn(&mut Intent)) {
         exe_pin: None,
         argv_sha256: None,
         bypass: false,
+        no_sandbox: false,
         boot: None,
         pids: Vec::new(),
         created_ms: now_ms(),
@@ -573,9 +574,11 @@ fn link_bypass_expired_and_bundle_less_records_are_refused() {
     forged(&h, "s_dddddddddd", |i| {
         i.bundle_sha256 = Some("ab".repeat(32));
     });
+    forged(&h, "s_eeeeeeeeee", |i| i.no_sandbox = true);
     for (id, want) in [
         ("s_aaaaaaaaaa", "forbidden"),
         ("s_bbbbbbbbbb", "forbidden"),
+        ("s_eeeeeeeeee", "forbidden"),
         ("s_cccccccccc", "forbidden"),
         ("s_dddddddddd", "invalid_params"),
     ] {

@@ -67,6 +67,8 @@ pub struct Intent {
     pub resume_decl: Option<ResumeRec>,
     #[serde(default)]
     pub bypass: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_sandbox: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub boot: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -85,6 +87,7 @@ pub enum Status {
     Expired,
     Link,
     Bypass,
+    NoSandbox,
 }
 
 impl Status {
@@ -96,6 +99,9 @@ impl Status {
             Status::Expired => "older than 7 days; start it again with tmgr run",
             Status::Link => "started over a link; the leader has to request it again",
             Status::Bypass => "bypass runs are never restored; start it again with tmgr run",
+            Status::NoSandbox => {
+                "runs without the sandbox are never restored; start it again with tmgr run"
+            }
         }
     }
 }
@@ -296,6 +302,8 @@ pub fn status(i: &Intent, now_ms: u64, running: bool) -> Status {
         Status::Running
     } else if i.origin.is_some() {
         Status::Link
+    } else if i.no_sandbox {
+        Status::NoSandbox
     } else if i.bypass {
         Status::Bypass
     } else if now_ms.saturating_sub(i.created_ms) > TTL_MS {
@@ -614,6 +622,7 @@ mod tests {
             exe_pin: None,
             argv_sha256: None,
             bypass: false,
+            no_sandbox: false,
             boot: None,
             pids: Vec::new(),
             created_ms: 1_000,
@@ -679,6 +688,11 @@ mod tests {
         let mut b = i.clone();
         b.bypass = true;
         assert_eq!(status(&b, 2_000, false), Status::Bypass);
+        let mut n = i.clone();
+        n.no_sandbox = true;
+        assert_eq!(status(&n, 2_000, false), Status::NoSandbox);
+        n.bypass = true;
+        assert_eq!(status(&n, 2_000, false), Status::NoSandbox);
         assert_eq!(status(&i, 2_000, false), Status::Restorable);
     }
 
