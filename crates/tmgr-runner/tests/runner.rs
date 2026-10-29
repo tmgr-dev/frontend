@@ -217,6 +217,7 @@ impl Harness {
             unattended: false,
             exe_pin: None,
             argv_sha256: None,
+            no_sandbox: None,
         }
     }
 

@@ -57,8 +57,10 @@ pub mod caps {
     pub const SESSIONS_RESUME_V1: &str = "sessions_resume.v1";
     pub const HUMAN_TIME_V1: &str = "human_time.v1";
     pub const SESSIONS_FORK_V1: &str = "sessions_fork.v1";
+    pub const MANUAL_BYPASS_V1: &str = "manual_bypass.v1";
+    pub const NO_SANDBOX_V1: &str = "no_sandbox.v1";
 
-    pub const ALL: [&str; 30] = [
+    pub const ALL: [&str; 32] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -89,6 +91,8 @@ pub mod caps {
         SESSIONS_RESUME_V1,
         HUMAN_TIME_V1,
         SESSIONS_FORK_V1,
+        MANUAL_BYPASS_V1,
+        NO_SANDBOX_V1,
     ];
 }
 

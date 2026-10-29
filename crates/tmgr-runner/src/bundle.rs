@@ -794,6 +794,7 @@ mod tests {
             argv_sha256: None,
             bundle_sha256: Some(bundle.sha256()),
             bundle: Some(bundle),
+            no_sandbox: None,
         }
     }
 

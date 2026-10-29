@@ -255,6 +255,7 @@ fn requests_and_responses() {
         unattended: false,
         exe_pin: None,
         argv_sha256: None,
+        no_sandbox: None,
     };
     golden("run_create_req", &run);
     golden(
@@ -293,6 +294,16 @@ fn requests_and_responses() {
         "run_create_req_start_key",
         &RunCreateReq {
             start_key: Some("q_abc-1".into()),
+            ..run.clone()
+        },
+    );
+    golden(
+        "run_create_req_no_sandbox",
+        &RunCreateReq {
+            permission_mode: Some("bypass".into()),
+            no_sandbox: Some(NoSandbox {
+                env: [("EDITOR".to_string(), "vi".to_string())].into(),
+            }),
             ..run.clone()
         },
     );
@@ -845,7 +856,9 @@ fn constants_are_pinned() {
             "orchestrator.v1",
             "sessions_resume.v1",
             "human_time.v1",
-            "sessions_fork.v1"
+            "sessions_fork.v1",
+            "manual_bypass.v1",
+            "no_sandbox.v1"
         ]
     );
     let methods = [
@@ -931,7 +944,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 30);
+    assert_eq!(w.caps.len(), 32);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);

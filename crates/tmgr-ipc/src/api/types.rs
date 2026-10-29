@@ -100,6 +100,16 @@ pub struct RunCreateReq {
     pub unattended: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clones: Vec<CloneSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_sandbox: Option<NoSandbox>,
+}
+
+/// A manual run outside the OS sandbox (`client: "cli"` only): the agent gets the real home and the caller's environment.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NoSandbox {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
 }
 
 /// Params of `orchestrator.create` (`client: "cli"` only): the runner builds the command and the prompt itself.
@@ -140,6 +150,7 @@ impl OrchestratorCreateReq {
             cloud: None,
             unattended: true,
             clones: Vec::new(),
+            no_sandbox: None,
         }
     }
 }

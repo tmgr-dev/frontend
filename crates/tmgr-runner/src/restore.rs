@@ -420,6 +420,7 @@ pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
         unattended: false,
         exe_pin: i.exe_pin.clone(),
         argv_sha256: i.argv_sha256.clone(),
+        no_sandbox: None,
     }
 }
 

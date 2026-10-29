@@ -454,6 +454,7 @@ fn create(
         unattended: false,
         exe_pin: None,
         argv_sha256: None,
+        no_sandbox: None,
     };
     let mut generation = generation;
     let call = |st: &mut State, req: &RunCreateReq| -> Result<SessionInfo, BackendError> {
