@@ -2744,7 +2744,7 @@
 							v-model="form.title"
 							ref="titleTextarea"
 							aria-label="Task name"
-							class="w-full resize-none overflow-hidden border-b-2 border-transparent bg-transparent px-0 outline-hidden placeholder:text-ink-faint"
+							class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 outline-hidden placeholder:text-ink-faint"
 							:class="[
 								'text-2xl leading-snug font-semibold tracking-tight text-ink',
 								{ 'text-status-fix-fg': isTitleAtLimit },
