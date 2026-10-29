@@ -19,7 +19,11 @@ pub fn gate(
     interactive: bool,
 ) -> Result<Gate> {
     let enforced = net_enforced && !no_sandbox;
-    if !no_sandbox && (!bypass || enforced) {
+    if !no_sandbox && !bypass {
+        return Ok(Gate::Open);
+    }
+    privileged::check(in_agent, true)?;
+    if enforced {
         return Ok(Gate::Open);
     }
     privileged::check(in_agent, interactive)?;
@@ -124,6 +128,16 @@ mod tests {
         );
         assert_eq!(
             g(false, true, true, false, true, true)
+                .unwrap_err()
+                .exit_code(),
+            5
+        );
+    }
+
+    #[test]
+    fn cloud_bypass_with_a_restricted_network_is_refused_in_an_agent_session() {
+        assert_eq!(
+            g(true, false, true, true, true, true)
                 .unwrap_err()
                 .exit_code(),
             5
