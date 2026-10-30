@@ -962,9 +962,14 @@ struct Record {
     agent: Option<String>,
     clones: Vec<CloneRecord>,
     held: Option<Held>,
+    audit: Option<String>,
 }
 
 fn set_held(code: &str, task_id: i64, held: Option<&Held>) -> Result<()> {
+    set_key(code, task_id, "held", held.map(|h| json!(h)))
+}
+
+fn set_key(code: &str, task_id: i64, key: &str, value: Option<serde_json::Value>) -> Result<()> {
     let Some(path) = record_path(code, task_id) else {
         return Ok(());
     };
@@ -972,11 +977,11 @@ fn set_held(code: &str, task_id: i64, held: Option<&Held>) -> Result<()> {
         .map_err(|_| Error::not_found("no cloud run of this task is recorded on this machine"))?;
     let mut v: serde_json::Value = serde_json::from_str(&text)
         .map_err(|_| Error::internal("the run record of this task is damaged"))?;
-    match held {
-        Some(h) => v["held"] = json!(h),
+    match value {
+        Some(x) => v[key] = x,
         None => {
             if let Some(m) = v.as_object_mut() {
-                m.remove("held");
+                m.remove(key);
             }
         }
     }
@@ -1002,6 +1007,7 @@ fn read_record(code: &str, task_id: i64) -> Result<Record> {
         session: text_of("session"),
         agent: text_of("agent"),
         held: serde_json::from_value(v["held"].clone()).ok(),
+        audit: text_of("audit"),
         clones: v["clones"]
             .as_array()
             .map(|list| {
@@ -1374,6 +1380,9 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         Some((&info.id, &profile)),
         &clone_records,
     )?;
+    if let Some(note) = tmgr_runner::agentwork::audit_note(Some(mode), a.no_sandbox) {
+        set_key(&ws.code, task_id, "audit", Some(json!(note)))?;
+    }
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         return attach::run(&cfg, &info.id);
     }
@@ -1532,6 +1541,7 @@ pub struct Published<'a> {
     pub pr_url: &'a str,
     pub agent: Option<&'a str>,
     pub branch: &'a str,
+    pub audit: Option<&'a str>,
 }
 
 pub struct PublishedAll<'a> {
@@ -1540,6 +1550,7 @@ pub struct PublishedAll<'a> {
     pub urls: &'a [(String, String)],
     pub agent: Option<&'a str>,
     pub branch: &'a str,
+    pub audit: Option<&'a str>,
 }
 
 pub fn report_published(client: &tmgr_core::api::Client, p: &Published) -> Vec<String> {
@@ -1553,6 +1564,7 @@ pub fn report_published(client: &tmgr_core::api::Client, p: &Published) -> Vec<S
             branch: p.branch,
             summary: format!("Opened {}", p.pr_url),
             comment: format!("The agent finished. Pull request: {}", p.pr_url),
+            audit: p.audit,
         },
     )
 }
@@ -1575,6 +1587,7 @@ pub fn report_published_all(client: &tmgr_core::api::Client, p: &PublishedAll) -
             branch: p.branch,
             summary: format!("Opened {}", joined.join(", ")),
             comment: format!("The agent finished. Pull requests:\n{}", list.join("\n")),
+            audit: p.audit,
         },
     )
 }
@@ -1611,6 +1624,7 @@ pub fn report_resumed(client: &tmgr_core::api::Client, p: &PublishedAll) -> Vec<
             branch: p.branch,
             summary: format!("Resumed and updated {}", joined.join(", ")),
             comment: resumed_comment(p.urls),
+            audit: p.audit,
         },
     )
 }
@@ -1634,6 +1648,7 @@ struct Report<'a> {
     branch: &'a str,
     summary: String,
     comment: String,
+    audit: Option<&'a str>,
 }
 
 fn running_run(
@@ -1720,7 +1735,10 @@ fn report_with(client: &tmgr_core::api::Client, p: &Report) -> Vec<String> {
         Some(run) => {
             let progress = agentwork::Progress {
                 pr_url: Some(p.pr_url.to_string()),
-                summary: Some(p.summary.clone()),
+                summary: Some(match p.audit {
+                    Some(a) => format!("{}; {a}", p.summary),
+                    None => p.summary.clone(),
+                }),
                 ..Default::default()
             };
             if let Err(e) = agentwork::finish(client, run.id, "succeeded", &progress) {
@@ -1757,6 +1775,7 @@ pub struct PublishTarget {
     pub repo: Option<String>,
     pub clones: Vec<CloneRef>,
     pub resume: BTreeMap<String, String>,
+    pub audit: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1860,6 +1879,7 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
                         urls,
                         agent: t.agent.as_deref(),
                         branch: &t.branch,
+                        audit: t.audit.as_deref(),
                     };
                     let warnings = if resumed {
                         report_resumed(client, &published)
@@ -1961,6 +1981,7 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
             urls: &urls,
             agent: t.agent.as_deref(),
             branch: &t.branch,
+            audit: t.audit.as_deref(),
         };
         let warnings = if draft {
             report_published_all(client, &published)
@@ -1986,6 +2007,7 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
             pr_url: &pr_url,
             agent: t.agent.as_deref(),
             branch: &t.branch,
+            audit: t.audit.as_deref(),
         },
     ) {
         eprintln!("warning: {w}");
@@ -2198,6 +2220,7 @@ fn target_of(ws_code: String, task_id: i64, rec: Record) -> PublishTarget {
             })
             .collect(),
         resume: BTreeMap::new(),
+        audit: rec.audit,
     }
 }
 
@@ -3404,6 +3427,7 @@ mod tests {
             repo: None,
             clones,
             resume: BTreeMap::new(),
+            audit: None,
         };
         let refs = || {
             ["backend", "frontend"]

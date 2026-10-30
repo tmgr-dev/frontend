@@ -672,7 +672,11 @@ pub fn unsandboxed_env(
         caller.iter().collect()
     };
     for (k, v) in source {
-        if env_name_valid(k) && !v.contains('\0') && !k.to_ascii_uppercase().starts_with("TMGR_") {
+        let up = k.to_ascii_uppercase();
+        if env_name_valid(k)
+            && !v.contains('\0')
+            && !["TMGR_", "LD_", "DYLD_"].iter().any(|p| up.starts_with(p))
+        {
             env.insert(k.clone(), v.clone());
         }
     }
@@ -688,20 +692,25 @@ pub fn unsandboxed_env(
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ControlPlane {
     pub fenced: Vec<PathBuf>,
+    pub hidden: Vec<PathBuf>,
     pub write_protected: Vec<PathBuf>,
 }
 
 pub fn control_plane(spec: &SandboxSpec, env: &[(String, String)]) -> ControlPlane {
-    let mut fenced = Vec::new();
+    let mut hidden = Vec::new();
+    for d in std::iter::once(spec.runner_dir.as_path()).chain(spec.home.parent()) {
+        push_unique(&mut hidden, d.to_path_buf());
+        push_unique(&mut hidden, canon_lossy(d));
+    }
+    let mut fenced = hidden.clone();
     let mut add = |p: &Path| {
         push_unique(&mut fenced, p.to_path_buf());
         push_unique(&mut fenced, canon_lossy(p));
     };
-    add(&spec.runner_dir);
-    if let Some(homes) = spec.home.parent() {
-        add(homes);
-    }
     if let Ok(dir) = crate::trust::store_dir() {
+        add(&dir);
+    }
+    if let Some(dir) = crate::profile::user_dir() {
         add(&dir);
     }
     add(&spec.real_home.join(".config").join("tmgr"));
@@ -720,6 +729,7 @@ pub fn control_plane(spec: &SandboxSpec, env: &[(String, String)]) -> ControlPla
     push_unique(&mut write_protected, canon_lossy(&spec.self_exe));
     ControlPlane {
         fenced,
+        hidden,
         write_protected,
     }
 }
@@ -732,6 +742,9 @@ pub fn control_plane_profile(c: &ControlPlane) -> Result<String, String> {
         s.push_str(&format!(
             "(deny network-outbound (remote unix-socket (subpath {q})))\n"
         ));
+    }
+    for d in &c.hidden {
+        s.push_str(&format!("(deny file-read* (subpath {}))\n", sbpl_quote(d)?));
     }
     for f in &c.write_protected {
         s.push_str(&format!(
@@ -1236,6 +1249,8 @@ mod tests {
             kv("GITHUB_TOKEN", "t"),
             kv("TMGR_RUN_TOKEN", "x"),
             kv("tmgr_other", "y"),
+            kv("DYLD_INSERT_LIBRARIES", "/x.dylib"),
+            kv("LD_PRELOAD", "/x.so"),
             kv("HOME", "/elsewhere"),
             kv("TERM", "dumb"),
         ]
@@ -1259,6 +1274,7 @@ mod tests {
         assert_eq!(e["TMGR_SESSION_ID"], "s_abcdefghij");
         assert!(!e.contains_key("TMGR_RUN_TOKEN"));
         assert!(!e.contains_key("tmgr_other"));
+        assert!(!e.contains_key("DYLD_INSERT_LIBRARIES") && !e.contains_key("LD_PRELOAD"));
         assert!(!e.contains_key("TMGR_RUN_ID"));
         assert!(!e.contains_key("XDG_CONFIG_HOME") && !e.contains_key("TMPDIR"));
         let empty = unsandboxed_env(
@@ -1309,7 +1325,13 @@ mod tests {
         )));
         assert!(!profile.contains("(deny network-outbound)"));
         assert!(!profile.contains("deny signal"));
-        assert!(!profile.contains("file-read"));
+        for d in [
+            &f.spec.runner_dir,
+            &f.spec.home.parent().unwrap().to_path_buf(),
+        ] {
+            assert!(profile.contains(&format!("(deny file-read* (subpath {}))", q(d))));
+        }
+        assert_eq!(profile.matches("file-read").count(), c.hidden.len());
         assert!(!profile.contains("/dev/tty"));
     }
 

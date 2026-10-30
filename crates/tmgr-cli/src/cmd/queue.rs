@@ -1216,6 +1216,7 @@ pub(crate) fn publish_target(pickup: &state::Pickup) -> Result<PublishTarget> {
         } else {
             Default::default()
         },
+        audit: None,
     })
 }
 
