@@ -5201,7 +5201,7 @@ dependencies = [
  "unicode-width",
  "url",
  "windows-sys 0.61.2",
- "zip 9.0.2",
+ "zip 9.0.5",
 ]
 
 [[package]]
@@ -6874,9 +6874,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.0.2"
+version = "9.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e2fc56a6707efb066c40aead2409ebb1224e6dde24a074e9fbc78ced500507b"
+checksum = "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
 dependencies = [
  "crc32fast",
  "flate2",
