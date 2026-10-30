@@ -178,7 +178,7 @@ fn create_params(r: &StartRun) -> Result<Value, String> {
     bundle_sha256: Some(r.bundle.sha256.clone()),
     cwd_pin: Some(CwdPin { dev: r.cwd_pin.0, ino: r.cwd_pin.1 }),
     origin: None,
-    permission_mode: None, start_key: None, clone_of: None, trust_cwd: None, trust_via_repo: None, exe_pin: None, argv_sha256: None, agent_work: false, cloud: None, unattended: false, clones: Vec::new(),
+    permission_mode: None, start_key: None, clone_of: None, trust_cwd: None, trust_via_repo: None, exe_pin: None, argv_sha256: None, agent_work: false, cloud: None, unattended: false, clones: Vec::new(), no_sandbox: None,
   };
   serde_json::to_value(&req).map_err(|e| e.to_string())
 }

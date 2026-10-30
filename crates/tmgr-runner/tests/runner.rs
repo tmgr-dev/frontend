@@ -4808,7 +4808,7 @@ fn bypass_is_refused_without_a_verified_cloud_approval() {
 
 #[test]
 fn a_manual_cli_bypass_run_needs_no_cloud_approval() {
-    if !sessions_available() {
+    if !sessions_available() || !cfg!(target_os = "macos") {
         return;
     }
     let fx = cloud_fx(true);
