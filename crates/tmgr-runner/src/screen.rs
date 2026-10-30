@@ -313,10 +313,9 @@ impl ScreenModel {
 
 fn row_texts(screen: &vt100::Screen, cols: u16) -> impl Iterator<Item = (String, bool)> + '_ {
     screen.rows(0, cols).enumerate().map(move |(r, l)| {
-        (
-            sanitize_text(l.trim_end()).into_owned(),
-            screen.row_wrapped(r as u16),
-        )
+        let wrapped = screen.row_wrapped(r as u16);
+        let text = if wrapped { l.as_str() } else { l.trim_end() };
+        (sanitize_text(text).into_owned(), wrapped)
     })
 }
 
@@ -622,6 +621,18 @@ mod tests {
         let (_, _, _, lines, wrapped) = m.text_lines(None);
         assert_eq!(lines, ["abcd", "efgh", "ij", "wxyz", "q"]);
         assert_eq!(wrapped, [true, true, false, false, false]);
+    }
+
+    #[test]
+    fn a_space_at_the_wrap_point_stays_in_the_wrapped_row() {
+        let mut m = ScreenModel::new(5, 4, 100);
+        m.feed(b"abc def");
+        let (_, _, _, lines, wrapped) = m.text_lines(None);
+        assert_eq!(lines[..2], ["abc ", "def"]);
+        assert_eq!(wrapped[..2], [true, false]);
+        m.feed(b"\r\nxyz \r\nq");
+        let (_, _, _, lines, _) = m.text_lines(None);
+        assert!(lines.contains(&"xyz".to_string()));
     }
 
     #[test]

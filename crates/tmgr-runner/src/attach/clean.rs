@@ -1,6 +1,6 @@
 struct Line {
     eff: usize,
-    lead: usize,
+    marker: bool,
     text: String,
 }
 
@@ -27,7 +27,12 @@ pub fn clean_copy(text: &str) -> String {
             if l.text.is_empty() {
                 String::new()
             } else {
-                format!("{}{}", " ".repeat(l.lead.saturating_sub(dedent)), l.text)
+                let indent = if l.marker {
+                    0
+                } else {
+                    l.eff.saturating_sub(dedent)
+                };
+                format!("{}{}", " ".repeat(indent), l.text)
             }
         })
         .collect::<Vec<_>>()
@@ -79,36 +84,37 @@ fn strip_ansi(text: &str) -> String {
 fn clean_line(line: &str) -> Line {
     let s: String = line.chars().filter(|&c| !is_zero_width(c)).collect();
     let k = s.len() - s.trim_start_matches(' ').len();
-    let (pre, body) = match decoration(&s[k..]) {
-        Some((bytes, chars)) => (k + chars, &s[k + bytes..]),
-        None => (0, s.as_str()),
+    let (pre, body, marker) = match decoration(&s[k..]) {
+        Some((bytes, chars, marker)) => (k + chars, &s[k + bytes..], marker),
+        None => (0, s.as_str(), false),
     };
     let visible: String = body.chars().filter(|&c| !is_art(c)).collect();
     let body = visible.trim_end_matches([' ', '\t', '\r']);
     let lead = body.len() - body.trim_start_matches(' ').len();
-    Line {
-        eff: pre + lead,
-        lead,
-        text: body[lead..].to_string(),
-    }
+    let (eff, text) = if marker {
+        (pre, body[lead..].to_string())
+    } else {
+        (pre + lead, body[lead..].to_string())
+    };
+    Line { eff, marker, text }
 }
 
-fn decoration(rest: &str) -> Option<(usize, usize)> {
+fn decoration(rest: &str) -> Option<(usize, usize, bool)> {
     let first = rest.chars().next()?;
-    let (bytes, chars) = if is_box(first) {
+    let (bytes, chars, marker) = if is_box(first) {
         let run = rest.find(|c: char| !is_box(c)).unwrap_or(rest.len());
-        (run, rest[..run].chars().count())
+        (run, rest[..run].chars().count(), false)
     } else if MARKERS.contains(&first) {
         let after = &rest[first.len_utf8()..];
         if !after.is_empty() && !after.starts_with([' ', '\t']) {
             return None;
         }
-        (first.len_utf8(), 1)
+        (first.len_utf8(), 1, true)
     } else {
         return None;
     };
     let space = usize::from(rest[bytes..].starts_with([' ', '\t']));
-    Some((bytes + space, chars + space))
+    Some((bytes + space, chars + space, marker))
 }
 
 fn is_box(c: char) -> bool {
@@ -120,7 +126,10 @@ fn is_art(c: char) -> bool {
 }
 
 fn is_zero_width(c: char) -> bool {
-    matches!(c, '\u{200b}'..='\u{200d}' | '\u{feff}')
+    matches!(
+        c,
+        '\u{200b}'..='\u{200d}' | '\u{feff}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+    )
 }
 
 #[cfg(test)]
@@ -208,5 +217,18 @@ mod tests {
             let once = clean_copy(example);
             assert_eq!(clean_copy(&once), once, "input: {example:?}");
         }
+    }
+
+    #[test]
+    fn code_indent_inside_a_frame_is_kept() {
+        assert_eq!(
+            clean_copy("\u{2502} def f():\n\u{2502}     return 1"),
+            "def f():\n    return 1"
+        );
+    }
+
+    #[test]
+    fn bidi_overrides_are_removed() {
+        assert_eq!(clean_copy("a\u{202e}b"), "ab");
     }
 }

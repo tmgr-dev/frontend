@@ -1726,7 +1726,7 @@ fn dragging_in_a_pane_copies_only_that_panes_cleaned_text_over_osc52() {
         assert!(Instant::now() < until, "no OSC 52; screen:\n{}", pty.text());
         thread::sleep(Duration::from_millis(50));
     };
-    assert_eq!(copied, "alpha line one\n  second line");
+    assert_eq!(copied, "alpha line one\n    second line");
     assert!(!copied.contains("NEIGHBOUR-TEXT") && !copied.contains('│'));
     pty.wait_for("copied");
     pty.detach();

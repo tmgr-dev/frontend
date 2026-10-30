@@ -2063,7 +2063,11 @@ impl ViewState {
                     out.redraw = true;
                 }
                 let agent = !local && wants(pane.mouse, kind);
-                if ev.is_left_press() && self.copy.is_none() && !(agent && has_modifiers(&ev)) {
+                if ev.is_left_press()
+                    && self.copy.is_none()
+                    && self.machine_of(&session).is_none()
+                    && !(agent && has_modifiers(&ev))
+                {
                     if let Some(at) = at {
                         self.msel_press(&session, at, ev, agent, pane);
                         out.redraw = true;

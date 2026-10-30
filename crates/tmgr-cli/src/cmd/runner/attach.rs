@@ -545,12 +545,21 @@ impl App {
                         }
                     }
                     Ok(_) => {
-                        if waiting {
+                        if waiting
+                            && self
+                                .view
+                                .msel
+                                .as_ref()
+                                .is_some_and(|m| m.session == session)
+                        {
                             self.view.clear_msel();
                         }
                     }
-                    Err(e) => {
+                    Err(e) if waiting => {
                         self.view.clear_msel();
+                        self.notify(&e);
+                    }
+                    Err(e) => {
                         self.view.clear_find();
                         self.view.scroll = None;
                         self.sync_scroll_mode();
@@ -2853,6 +2862,7 @@ impl App {
                 Action::FocusOut => {
                     self.focus_seen = true;
                     self.window_focused = false;
+                    self.view.clear_msel();
                 }
                 Action::Forward(data) if self.view.palette.is_some() => {
                     match self.view.edit_palette(&data) {

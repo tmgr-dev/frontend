@@ -36,6 +36,7 @@ pub struct MouseSel {
     pub gran: Gran,
     pub deferred: Option<MouseEvent>,
     pub finish: Finish,
+    pub last_scroll: Option<Instant>,
 }
 
 #[derive(Clone, Debug)]
@@ -242,9 +243,17 @@ impl ViewState {
     }
 
     pub fn msel_tick(&mut self, area: Rect, info: &dyn Fn(&str) -> PaneInfo) -> bool {
-        let Some(pos) = self.msel.as_ref().filter(|m| m.held).map(|m| m.pointer) else {
+        let now = Instant::now();
+        let Some(m) = self.msel.as_mut().filter(|m| m.held) else {
             return false;
         };
+        if m.last_scroll
+            .is_some_and(|t| now.saturating_duration_since(t) < Duration::from_millis(60))
+        {
+            return false;
+        }
+        m.last_scroll = Some(now);
+        let pos = m.pointer;
         self.msel_track(area, info, pos)
             .is_some_and(|(_, changed)| changed)
     }
@@ -288,6 +297,7 @@ impl ViewState {
             gran,
             deferred: agent.then_some(ev),
             finish: Finish::None,
+            last_scroll: None,
         });
     }
 
@@ -493,6 +503,7 @@ mod tests {
             gran,
             deferred: None,
             finish: Finish::Pending,
+            last_scroll: None,
         }
     }
 
