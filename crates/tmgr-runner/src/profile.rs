@@ -1081,12 +1081,7 @@ idle = ['^> $']
         );
         assert_eq!(
             set.get("codex").unwrap().bypass_args().unwrap(),
-            [
-                "--ask-for-approval",
-                "never",
-                "--sandbox",
-                "workspace-write"
-            ]
+            ["--dangerously-bypass-approvals-and-sandbox"]
         );
         for id in ["agy", "opencode", "cursor-agent", "aider"] {
             assert!(set.get(id).unwrap().bypass_args().is_none(), "{id}");

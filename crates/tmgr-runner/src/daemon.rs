@@ -1604,7 +1604,7 @@ fn plan_mode(
             mode: Some("bypass".into()),
             args: bypass_args.clone(),
             pin_args: bypass_args,
-            restricted: d.network == NetworkPolicy::Restricted,
+            restricted: verified && d.network == NetworkPolicy::Restricted,
             bypass: true,
             note: None,
         });
@@ -4554,6 +4554,7 @@ mod tests {
         assert!(matches!(unattended.code, ErrorCode::Forbidden));
         let manual = plan_as("bypass", false, None, true, true, true).unwrap();
         assert!(manual.bypass && manual.mode.as_deref() == Some("bypass"));
+        assert!(!manual.restricted);
         assert_eq!(manual.args, ["--permission-mode", "bypassPermissions"]);
         let bare = plan_as("bypass", false, None, true, false, true).unwrap();
         assert!(bare.bypass && !bare.restricted);
@@ -4584,7 +4585,10 @@ mod tests {
     #[test]
     fn manual_bypass_uses_each_profiles_bypass_args() {
         let (set, _) = ProfileSet::load(None);
-        for (id, arg) in [("claude-code", "bypassPermissions"), ("codex", "never")] {
+        for (id, arg) in [
+            ("claude-code", "bypassPermissions"),
+            ("codex", "--dangerously-bypass-approvals-and-sandbox"),
+        ] {
             let mut req = plan_req("bypass", false);
             req.profile = id.into();
             let p = plan_mode(set.get(id).unwrap(), &req, &None, true, true, true).unwrap();

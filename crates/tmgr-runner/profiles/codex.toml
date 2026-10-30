@@ -40,7 +40,7 @@ kind = "config-override"
 
 [permission_modes]
 ask = ["--ask-for-approval", "on-request"]
-bypass = ["--ask-for-approval", "never", "--sandbox", "workspace-write"]
+bypass = ["--dangerously-bypass-approvals-and-sandbox"]
 
 [network]
 allow = ["api.openai.com", "chatgpt.com", "auth.openai.com"]
