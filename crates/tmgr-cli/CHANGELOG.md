@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.52
 
 - In `tmgr attach` / `tmgr run`, dragging the mouse inside a pane now selects text in that pane only (never the neighbour panes, sidebar, borders or status line), highlights it and copies it when you release the button: to the system clipboard, and over SSH through OSC 52. Double-click selects a word, triple-click a line; dragging past the top or bottom edge scrolls the history. Lines the terminal wrapped at the pane width are joined into one line, real line breaks stay (the runner now reports which rows were soft-wrapped). When a program in the pane uses the mouse itself, a plain drag selects text and a plain click still goes to the program; hold Ctrl or Alt while dragging to send the drag to the program. Shift-drag (Option-drag in iTerm2) and `--no-mouse` work as before.
 - Copied text is cleaned by default (also for the keyboard copy mode): ANSI sequences, box-drawing and block characters, spinners, zero-width characters and trailing spaces are removed, a leading box frame or UI marker (`⏺ ⎿ ❯ ✻ ●` and similar) is dropped and the common indent of the answer frame is removed. `tmgr config set attach.copy.clean false` copies the text as it is.
