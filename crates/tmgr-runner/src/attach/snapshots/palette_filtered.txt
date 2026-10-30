@@ -21,4 +21,4 @@
                   │ Export this session to Markdown or a page           Ctrl-] e │                 │
                   │ Session notes, saved locally, can go to the task    Ctrl-] o │                 │
  + New session    │ Make the sidebar narrower                           Ctrl-] < │─────────────────╯
- tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help
+ tmgr runner · loc╰──────────────────────────────────────────────────────────────╯es  Ctrl-] ? help

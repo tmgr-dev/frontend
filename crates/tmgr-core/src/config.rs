@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SERVER: &str = "https://api.tmgr.dev";
 pub const DEFAULT_PROFILE: &str = "default";
-pub const KEYS: [&str; 21] = [
+pub const KEYS: [&str; 22] = [
     "server",
     "default_workspace",
     "web_url",
@@ -29,6 +29,7 @@ pub const KEYS: [&str; 21] = [
     "attach.push.blocked",
     "attach.push.quiet",
     "attach.push.debounce",
+    "attach.copy.clean",
 ];
 pub const SUMMARY_MODES: [&str; 3] = ["ask", "always", "never"];
 pub const MIN_SIDEBAR_WIDTH: u16 = 16;
@@ -63,6 +64,8 @@ pub struct AttachConfig {
     pub push_quiet: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub push_debounce: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copy_clean: Option<bool>,
 }
 
 pub fn parse_quiet_hours(value: &str) -> Option<(u16, u16)> {
@@ -181,6 +184,7 @@ impl Config {
             "attach.push.blocked" => self.attach.push_blocked.map(|m| m.to_string()),
             "attach.push.quiet" => self.attach.push_quiet.clone(),
             "attach.push.debounce" => self.attach.push_debounce.map(|m| m.to_string()),
+            "attach.copy.clean" => Some(self.attach_copy_clean().to_string()),
             _ => return Err(unknown_key(key)),
         })
     }
@@ -325,6 +329,13 @@ impl Config {
                 self.attach.push_quiet = Some(v.clone());
                 Ok(v)
             }
+            "attach.copy.clean" => {
+                let v = parse_bool(value).ok_or_else(|| {
+                    Error::usage("invalid attach.copy.clean").hint("use true or false")
+                })?;
+                self.attach.copy_clean = Some(v);
+                Ok(v.to_string())
+            }
             "attach.summary" => {
                 let v = value.trim().to_ascii_lowercase();
                 if !SUMMARY_MODES.contains(&v.as_str()) {
@@ -357,6 +368,10 @@ impl Config {
 
     pub fn hook_git_commits(&self) -> bool {
         self.hook_git_commits.unwrap_or(true)
+    }
+
+    pub fn attach_copy_clean(&self) -> bool {
+        self.attach.copy_clean.unwrap_or(true)
     }
 
     pub fn branch_template(&self) -> &str {
@@ -633,6 +648,19 @@ mod tests {
         assert!(Config::load(tmp.path()).unwrap().upload_status());
         assert_eq!(c.set("upload_status", "0").unwrap(), "false");
         assert!(!c.upload_status());
+    }
+
+    #[test]
+    fn attach_copy_clean_is_on_by_default_and_parses_booleans() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut c = Config::default();
+        assert!(c.attach_copy_clean());
+        assert_eq!(c.get("attach.copy.clean").unwrap().as_deref(), Some("true"));
+        assert_eq!(c.set("attach.copy.clean", "Off").unwrap(), "false");
+        assert!(!c.attach_copy_clean());
+        assert!(c.set("attach.copy.clean", "maybe").is_err());
+        c.save(tmp.path()).unwrap();
+        assert!(!Config::load(tmp.path()).unwrap().attach_copy_clean());
     }
 
     #[test]

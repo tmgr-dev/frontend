@@ -21,4 +21,4 @@
                   │ Rename the tab                                      Ctrl-] , │                 │
                   │ Close the tab (sessions keep running)               Ctrl-] & │                 │
  + New session    │ Resume the focused session                  Ctrl-] Enter / R │─────────────────╯
- tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help
+ tmgr runner · loc╰──────────────────────────────────────────────────────────────╯es  Ctrl-] ? help

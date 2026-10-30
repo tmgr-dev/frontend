@@ -5,6 +5,7 @@ use super::find::{CopyState, ScrollText, SearchState};
 use super::keys::{Cmd, ScrollKey};
 use super::layouts::{LayoutOffer, LayoutRestore, SavedLayout};
 use super::mouse::{encode, wants, Kind, MouseEvent};
+use super::msel::{has_modifiers, strip_modifiers, Click, MouseSel};
 use super::newsession::{NewEdit, NewSession, Place, TaskOpt};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::place::Loc;
@@ -163,6 +164,8 @@ pub struct ViewState {
     pub search: Option<SearchState>,
     pub copy: Option<CopyState>,
     pub copied: Option<String>,
+    pub msel: Option<MouseSel>,
+    pub(crate) last_click: Option<Click>,
     pub new_tasks: Vec<TaskOpt>,
     pub new_tasks_note: Option<String>,
     pub sidebar_focus: Option<SidebarItem>,
@@ -434,6 +437,8 @@ impl ViewState {
             search: None,
             copy: None,
             copied: None,
+            msel: None,
+            last_click: None,
             new_tasks: Vec::new(),
             new_tasks_note: None,
             sidebar_focus: None,
@@ -1896,6 +1901,9 @@ impl ViewState {
         {
             self.border_drag = None;
             self.split_drag = None;
+            if self.msel.as_ref().is_some_and(|m| m.held) {
+                self.msel = None;
+            }
         }
         if self.new_session.is_some() {
             return self.new_session_mouse(area, ev, out);
@@ -1953,6 +1961,7 @@ impl ViewState {
                     let c = ev.col.clamp(p.inner.x, p.inner.right() - 1) - p.inner.x;
                     let r = ev.row.clamp(p.inner.y, p.inner.bottom() - 1) - p.inner.y;
                     if wants(pane.mouse, kind) {
+                        let ev = strip_modifiers(ev);
                         out.forward = Some((g, encode(&ev, c, r, pane.mouse.encoding)));
                     }
                 }
@@ -1961,6 +1970,9 @@ impl ViewState {
                 }
                 return out;
             }
+        }
+        if self.msel_handles(&ev) {
+            return self.msel_mouse(area, ev, info, out);
         }
         match self.hit(area, ev.col, ev.row) {
             Hit::Button(id, ctl) => {
@@ -2050,11 +2062,20 @@ impl ViewState {
                     self.focus_pane(idx);
                     out.redraw = true;
                 }
-                if !local && wants(pane.mouse, kind) {
+                let agent = !local && wants(pane.mouse, kind);
+                if ev.is_left_press() && self.copy.is_none() && !(agent && has_modifiers(&ev)) {
+                    if let Some(at) = at {
+                        self.msel_press(&session, at, ev, agent, pane);
+                        out.redraw = true;
+                        return out;
+                    }
+                }
+                if agent {
                     if let Some((c, r)) = at {
                         if kind == Kind::Press {
                             self.grab = Some(session.clone());
                         }
+                        let ev = strip_modifiers(ev);
                         out.forward = Some((session, encode(&ev, c, r, pane.mouse.encoding)));
                     }
                 }
@@ -2110,7 +2131,7 @@ impl ViewState {
         out
     }
 
-    fn wheel(&mut self, idx: usize, up: bool, scroll_max: usize) -> bool {
+    pub(super) fn wheel(&mut self, idx: usize, up: bool, scroll_max: usize) -> bool {
         self.focus_pane(idx);
         if up {
             if self.scroll.is_none() {
@@ -2490,6 +2511,7 @@ pub struct MouseOut {
     pub notes: Option<super::notes::NotesAction>,
     pub new_edit: Option<NewEdit>,
     pub question: Option<QEdit>,
+    pub want_text: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

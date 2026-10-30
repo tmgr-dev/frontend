@@ -540,13 +540,15 @@ impl Session {
 
     fn text(&self, lines: Option<u32>) -> SessionText {
         let mut i = lock(&self.inner);
-        let (rows, cols, scroll_max, mut lines) = i.screen.text_lines(lines.map(|n| n as usize));
-        cap_text(&mut lines, MAX_TEXT_BYTES);
+        let (rows, cols, scroll_max, mut lines, mut wrapped) =
+            i.screen.text_lines(lines.map(|n| n as usize));
+        cap_text(&mut lines, &mut wrapped, MAX_TEXT_BYTES);
         SessionText {
             id: i.meta.id.clone(),
             rows,
             cols,
             lines,
+            wrapped,
             scroll_max,
         }
     }
@@ -1091,7 +1093,7 @@ impl Session {
 
     fn prior_text(&self) -> String {
         let mut i = lock(&self.inner);
-        let (_, _, _, lines) = i.screen.text_lines(Some(SCROLLBACK + 1000));
+        let (_, _, _, lines, _) = i.screen.text_lines(Some(SCROLLBACK + 1000));
         let end = lines
             .iter()
             .rposition(|l| !l.is_empty())
@@ -4284,7 +4286,7 @@ pub fn start_background(cfg: &RunnerConfig) -> io::Result<u32> {
 
 const MAX_TEXT_BYTES: usize = 512 << 10;
 
-fn cap_text(lines: &mut Vec<String>, max: usize) {
+fn cap_text(lines: &mut Vec<String>, wrapped: &mut Vec<bool>, max: usize) {
     let mut total: usize = lines.iter().map(|l| l.len() + 8).sum();
     let mut drop = 0;
     while total > max && drop < lines.len() {
@@ -4292,6 +4294,7 @@ fn cap_text(lines: &mut Vec<String>, max: usize) {
         drop += 1;
     }
     lines.drain(..drop);
+    wrapped.drain(..drop);
 }
 
 const FORK_COPY_CAP: u64 = 512 * 1024 * 1024;
@@ -4427,11 +4430,15 @@ mod tests {
     #[test]
     fn session_text_drops_the_oldest_lines_to_fit_one_frame() {
         let mut lines: Vec<String> = (0..10).map(|i| format!("{i}{}", "x".repeat(99))).collect();
-        cap_text(&mut lines, 5 * 108);
+        let mut wrapped = vec![false; 10];
+        cap_text(&mut lines, &mut wrapped, 5 * 108);
         assert_eq!(lines.len(), 5);
+        assert_eq!(wrapped.len(), 5);
         assert!(lines[0].starts_with('5') && lines[4].starts_with('9'));
         let mut small = vec!["a".to_string()];
-        cap_text(&mut small, 100);
+        let mut small_wrapped = vec![true];
+        cap_text(&mut small, &mut small_wrapped, 100);
+        assert_eq!(small_wrapped, [true]);
         assert_eq!(small, ["a"]);
     }
 

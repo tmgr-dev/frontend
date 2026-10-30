@@ -488,6 +488,7 @@ fn method_params_and_results() {
                 "hi".into(),
                 String::new(),
             ],
+            wrapped: vec![true, false, false, false],
             scroll_max: 42,
         },
     );

@@ -274,7 +274,7 @@ impl ScreenModel {
         }
     }
 
-    pub fn text_lines(&mut self, n: Option<usize>) -> (u16, u16, u32, Vec<String>) {
+    pub fn text_lines(&mut self, n: Option<usize>) -> (u16, u16, u32, Vec<String>, Vec<bool>) {
         let screen = self.parser.screen_mut();
         screen.set_scrollback(usize::MAX);
         let scroll_max = screen.scrollback();
@@ -282,17 +282,18 @@ impl ScreenModel {
         let n = n.unwrap_or(rows as usize);
         let mut offset = n.saturating_sub(rows as usize).min(scroll_max);
         let keep = n.min(rows as usize);
-        let mut lines = Vec::new();
+        let mut out = Vec::new();
         while offset > 0 {
             let take = offset.min(rows as usize);
             screen.set_scrollback(offset);
-            lines.extend(row_texts(screen, cols).take(take));
+            out.extend(row_texts(screen, cols).take(take));
             offset -= take;
         }
         screen.set_scrollback(0);
-        let bottom: Vec<String> = row_texts(screen, cols).collect();
-        lines.extend(bottom[bottom.len() - keep..].iter().cloned());
-        (rows, cols, scroll_max as u32, lines)
+        let bottom: Vec<(String, bool)> = row_texts(screen, cols).collect();
+        out.extend(bottom[bottom.len() - keep..].iter().cloned());
+        let (lines, wrapped) = out.into_iter().unzip();
+        (rows, cols, scroll_max as u32, lines, wrapped)
     }
 
     pub fn bottom_text(&self, n: usize) -> Vec<String> {
@@ -310,10 +311,13 @@ impl ScreenModel {
     }
 }
 
-fn row_texts(screen: &vt100::Screen, cols: u16) -> impl Iterator<Item = String> + '_ {
-    screen
-        .rows(0, cols)
-        .map(|l| sanitize_text(l.trim_end()).into_owned())
+fn row_texts(screen: &vt100::Screen, cols: u16) -> impl Iterator<Item = (String, bool)> + '_ {
+    screen.rows(0, cols).enumerate().map(move |(r, l)| {
+        (
+            sanitize_text(l.trim_end()).into_owned(),
+            screen.row_wrapped(r as u16),
+        )
+    })
 }
 
 fn mouse_mode(screen: &vt100::Screen) -> MouseMode {
@@ -408,7 +412,7 @@ mod tests {
     fn seeded_text_goes_to_scrollback_and_leaves_a_dim_marker() {
         let mut m = model();
         m.seed_scrollback("one\ntwo\x1b[31m\nthree");
-        let (_, _, scroll_max, lines) = m.text_lines(Some(500));
+        let (_, _, scroll_max, lines, _) = m.text_lines(Some(500));
         assert!(scroll_max >= 3);
         let text = lines.join("\n");
         assert!(text.contains("one\ntwo?[31m\nthree"), "{text}");
@@ -609,6 +613,15 @@ mod tests {
         );
         assert_eq!(m.snapshot(0), live);
         assert_eq!(m.snapshot(1_000_000).scroll_offset, back.scroll_max);
+    }
+
+    #[test]
+    fn text_lines_flag_soft_wraps_only() {
+        let mut m = ScreenModel::new(5, 4, 100);
+        m.feed(b"abcdefghij\r\nwxyz\r\nq");
+        let (_, _, _, lines, wrapped) = m.text_lines(None);
+        assert_eq!(lines, ["abcd", "efgh", "ij", "wxyz", "q"]);
+        assert_eq!(wrapped, [true, true, false, false, false]);
     }
 
     #[test]

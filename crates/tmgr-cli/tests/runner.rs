@@ -202,11 +202,20 @@ impl Env {
     }
 
     fn pty(&self, args: &[&str]) -> Pty {
-        Pty::spawn(self, args, None)
+        Pty::spawn(self, args, None, &[])
+    }
+
+    fn pty_ssh(&self, args: &[&str]) -> Pty {
+        Pty::spawn(
+            self,
+            args,
+            None,
+            &[("SSH_CONNECTION", "192.0.2.1 1 192.0.2.2 22")],
+        )
     }
 
     fn pty_home(&self, args: &[&str], home: &Path) -> Pty {
-        Pty::spawn(self, args, Some(home))
+        Pty::spawn(self, args, Some(home), &[])
     }
 }
 
@@ -251,6 +260,7 @@ fn shutdown_runner(run: &Path) {
 
 struct Pty {
     screen: Arc<Mutex<vt100::Parser>>,
+    raw: Arc<Mutex<Vec<u8>>>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
     _master: Box<dyn portable_pty::MasterPty + Send>,
@@ -263,7 +273,7 @@ impl Drop for Pty {
 }
 
 impl Pty {
-    fn spawn(env: &Env, args: &[&str], home: Option<&Path>) -> Pty {
+    fn spawn(env: &Env, args: &[&str], home: Option<&Path>, extra: &[(&str, &str)]) -> Pty {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: 30,
@@ -280,22 +290,29 @@ impl Pty {
         if let Some(h) = home {
             cmd.env("HOME", h);
         }
+        for (k, v) in extra {
+            cmd.env(k, v);
+        }
         let child = pair.slave.spawn_command(cmd).unwrap();
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().unwrap();
         let screen = Arc::new(Mutex::new(vt100::Parser::new(30, 100, 0)));
         let sink = screen.clone();
+        let raw = Arc::new(Mutex::new(Vec::new()));
+        let raw_sink = raw.clone();
         thread::spawn(move || {
             let mut buf = [0u8; 4096];
             while let Ok(n) = reader.read(&mut buf) {
                 if n == 0 {
                     break;
                 }
+                raw_sink.lock().unwrap().extend_from_slice(&buf[..n]);
                 sink.lock().unwrap().process(&buf[..n]);
             }
         });
         Pty {
             screen,
+            raw,
             writer: pair.master.take_writer().unwrap(),
             child,
             _master: pair.master,
@@ -1656,5 +1673,61 @@ fn stop_asks_first_and_the_header_button_stops_after_yes() {
         assert!(Instant::now() < end, "{}", pty.text());
         thread::sleep(Duration::from_millis(200));
     }
+    pty.detach();
+}
+
+fn osc52_payloads(raw: &[u8]) -> Vec<String> {
+    use base64::Engine;
+    let text = String::from_utf8_lossy(raw);
+    text.split("\x1b]52;c;")
+        .skip(1)
+        .filter_map(|rest| rest.split('\x07').next())
+        .filter_map(|b64| base64::engine::general_purpose::STANDARD.decode(b64).ok())
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .collect()
+}
+
+#[test]
+fn dragging_in_a_pane_copies_only_that_panes_cleaned_text_over_osc52() {
+    let env = Env::new();
+    let a = env.script(
+        "a.sh",
+        "echo '│ ⏺ alpha line one   │'\necho '│   second line      │'\necho READY-A\nsleep 300\n",
+    );
+    let b = env.script("b.sh", "echo NEIGHBOUR-TEXT\nsleep 300\n");
+    let Some(ida) = env.start(&a, "aaa-agent") else {
+        return;
+    };
+    env.start(&b, "bbb-neighbour").unwrap();
+    let mut pty = env.pty_ssh(&["attach", &ida]);
+    pty.wait_for("READY-A");
+    pty.type_bytes(b"\x1d");
+    pty.type_bytes(b"s");
+    pty.wait_for("NEIGHBOUR-TEXT");
+    thread::sleep(Duration::from_millis(500));
+    let rows: Vec<String> = pty.screen.lock().unwrap().screen().rows(0, 100).collect();
+    let first = rows
+        .iter()
+        .position(|r| r.contains("alpha line one"))
+        .unwrap();
+    let second = rows.iter().position(|r| r.contains("second line")).unwrap();
+    let col_of = |row: &str, needle: &str| row[..row.find(needle).unwrap()].chars().count();
+    let start = col_of(&rows[first], "alpha") + 1;
+    let end = col_of(&rows[second], "second line") + "second line".len() + 1;
+    pty.type_bytes(format!("\x1b[<0;{start};{}M", first + 1).as_bytes());
+    pty.type_bytes(format!("\x1b[<32;{};{}M", start + 5, first + 1).as_bytes());
+    pty.type_bytes(format!("\x1b[<32;{end};{}M", second + 1).as_bytes());
+    pty.type_bytes(format!("\x1b[<0;{end};{}m", second + 1).as_bytes());
+    let until = Instant::now() + Duration::from_secs(15);
+    let copied = loop {
+        if let Some(p) = osc52_payloads(&pty.raw.lock().unwrap()).pop() {
+            break p;
+        }
+        assert!(Instant::now() < until, "no OSC 52; screen:\n{}", pty.text());
+        thread::sleep(Duration::from_millis(50));
+    };
+    assert_eq!(copied, "alpha line one\n  second line");
+    assert!(!copied.contains("NEIGHBOUR-TEXT") && !copied.contains('│'));
+    pty.wait_for("copied");
     pty.detach();
 }

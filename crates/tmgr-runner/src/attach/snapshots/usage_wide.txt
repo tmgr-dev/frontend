@@ -19,4 +19,4 @@
                         │                                                        ││                                                        │
                         │                                                        ││                                                        │
  + New session     tmpl ╰────────────────────────────────────────────────────────╯╰────────────────────────────────────────────────────────╯
- tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                               5h 34% · wk 82% · cx ~8% · $1.23  Ctrl-] ? help
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                  5h 34% · wk 82% · cx ~8% · $1.23  drag copies  Ctrl-] ? help

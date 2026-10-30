@@ -963,6 +963,9 @@ fn draw_pane(buf: &mut Buffer, p: &PaneRect, st: &ViewState, screens: &dyn Scree
             if st.scroll.is_some() && st.focused_session() == Some(p.session.as_str()) {
                 super::find::draw_overlay(buf, p.outer, inner, snap, st, &p.session);
             }
+            if let Some(m) = st.msel.as_ref().filter(|m| m.session == p.session) {
+                super::msel::paint(buf, inner, snap, m);
+            }
         }
         None => {
             let label = match st.machine_of(&p.session) {
@@ -1183,7 +1186,7 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
             spans.extend(counts(st));
         }
     }
-    let hint = "Ctrl-] ? help";
+    let hint = "drag copies  Ctrl-] ? help";
     let hint_w = hint.width() as u16 + 1;
     let used: usize = spans.iter().map(|s| s.content.width()).sum();
     let usage = st.usage_parts();
@@ -1214,7 +1217,7 @@ const MOUSE: &[(&str, &str)] = &[
     ("drop", "a dropped file is pasted there"),
     (
         "drag",
-        "a line resizes; Shift-drag selects (iTerm2: Option)",
+        "select + copy; Ctrl/Alt-drag: app; Shift-drag: terminal",
     ),
 ];
 

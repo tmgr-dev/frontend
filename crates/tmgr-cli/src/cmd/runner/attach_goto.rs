@@ -47,6 +47,9 @@ pub(super) fn text_call(cfg: &RunnerConfig, session: &str) -> Result<ScrollText,
         session: session.to_string(),
         lines: text.lines,
         cols: usize::from(text.cols),
+        wrapped: text.wrapped,
+        scroll_max: text.scroll_max as usize,
+        rows: usize::from(text.rows),
     })
 }
 

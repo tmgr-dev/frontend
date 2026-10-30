@@ -55,14 +55,14 @@ use tmgr_ipc::api::{
 };
 use tmgr_ipc::proto::{valid_session_id, ServerMsg};
 use tmgr_runner::attach::{
-    cursor, deliver, enter_mouse, focus_on, kind_for_background, layout, mode_changes, open_urls,
-    parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes, valid_pr_url, Action,
-    AgentTitle, AttentionTracker, Cmd, Confirm, Control, GitAction, GitInfo, Hit, InputSplitter,
-    LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier, PaletteEdit, PaletteEntry,
-    PaletteMode, PaneInfo, Place, PostTarget, PrLookup, QEdit, RenameEdit, ScreenSource, ScrollKey,
-    ScrollState, ScrollText, SearchEdit, SessionRow, SessionStatus, SidebarEdit, SignalSettings,
-    SignalTracker, SplitDir, SummaryAction, SummaryDraft, TaskChip, TaskOpt, ThemeKind, UsageBar,
-    ViewState, OSC11_QUERY,
+    clean_copy, cursor, deliver, enter_mouse, focus_on, kind_for_background, layout, mode_changes,
+    open_urls, parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes, valid_pr_url,
+    Action, AgentTitle, AttentionTracker, Cmd, Confirm, Control, GitAction, GitInfo, Hit,
+    InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier, PaletteEdit,
+    PaletteEntry, PaletteMode, PaneInfo, Place, PostTarget, PrLookup, QEdit, RenameEdit,
+    ScreenSource, ScrollKey, ScrollState, ScrollText, SearchEdit, SessionRow, SessionStatus,
+    SidebarEdit, SignalSettings, SignalTracker, SplitDir, SummaryAction, SummaryDraft, TaskChip,
+    TaskOpt, ThemeKind, UsageBar, ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -528,15 +528,29 @@ impl App {
                 self.text_pending = None;
                 self.text_at = Instant::now();
                 self.dirty = true;
-                let active = (self.view.search.is_some() || self.view.copy.is_some())
-                    && self.view.scroll.is_some();
+                let waiting = self.view.msel_waiting();
+                let active = waiting
+                    || ((self.view.search.is_some() || self.view.copy.is_some())
+                        && self.view.scroll.is_some());
                 match result {
                     Ok(text) if active && self.view.focused_session() == Some(session.as_str()) => {
                         let rows = self.page() + 1;
                         self.view.set_scroll_text(text, rows);
+                        if waiting {
+                            self.view.finish_msel();
+                            if self.view.search.is_none() && self.view.copy.is_none() {
+                                self.view.stext = None;
+                            }
+                            self.copy_out();
+                        }
                     }
-                    Ok(_) => {}
+                    Ok(_) => {
+                        if waiting {
+                            self.view.clear_msel();
+                        }
+                    }
                     Err(e) => {
+                        self.view.clear_msel();
                         self.view.clear_find();
                         self.view.scroll = None;
                         self.sync_scroll_mode();
@@ -2129,16 +2143,26 @@ impl App {
     fn after_find(&mut self) {
         self.dirty = true;
         self.sync_scroll_mode();
-        if let Some(text) = self.view.take_copied() {
-            let msg = self.clipboard.copy(&text);
-            self.notify(&msg);
-        }
+        self.copy_out();
         if (self.view.search.is_some() || self.view.copy.is_some()) && self.view.stext.is_none() {
             self.request_text();
         }
         if let Some(n) = self.view.notice.take() {
             self.notify(&n);
         }
+    }
+
+    fn copy_out(&mut self) {
+        let Some(text) = self.view.take_copied() else {
+            return;
+        };
+        let clean = tmgr_core::config::config_dir()
+            .ok()
+            .and_then(|d| tmgr_core::config::Config::load(&d).ok())
+            .is_none_or(|c| c.attach_copy_clean());
+        let text = if clean { clean_copy(&text) } else { text };
+        let msg = self.clipboard.copy(&text);
+        self.notify(&msg);
     }
 
     fn request_text(&mut self) {
@@ -3013,6 +3037,9 @@ impl App {
                     if let Some((id, bytes)) = out.forward {
                         self.send_to(&id, &bytes)?;
                     }
+                    if out.want_text.is_some() {
+                        self.request_text();
+                    }
                     if let Some((id, ctl)) = out.control {
                         self.control(&id, ctl)?;
                     }
@@ -3267,6 +3294,22 @@ impl App {
         if self.scroll_mode && self.view.scroll.is_none() {
             self.scroll_mode = false;
             self.splitter.set_scroll_mode(false);
+        }
+        let area = self.area();
+        let cache = &self.cache;
+        let info = |id: &str| {
+            cache
+                .snapshot(id)
+                .map(|s| PaneInfo {
+                    mouse: s.modes.mouse,
+                    scroll_max: s.scroll_max,
+                    alt_screen: s.modes.alt_screen,
+                    app_cursor: s.modes.app_cursor,
+                })
+                .unwrap_or_default()
+        };
+        if self.view.msel_tick(area, &info) {
+            self.dirty = true;
         }
         if self.view.scroll.is_none() {
             if self.view.search.is_some() || self.view.copy.is_some() || self.view.stext.is_some() {

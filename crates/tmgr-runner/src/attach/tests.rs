@@ -969,7 +969,7 @@ fn clicks_are_forwarded_with_pane_relative_coordinates() {
     v.apply(Cmd::Sidebar);
     let out = v.on_mouse(
         AREA,
-        ev(0, 10, 7, false),
+        ev(16, 10, 7, false),
         &mouse_info(sgr_mode(MouseLevel::Press), 0),
     );
     assert_eq!(out.forward, Some(("a".into(), b"\x1b[<0;10;7M".to_vec())));
@@ -1004,7 +1004,7 @@ fn motion_needs_any_motion_and_drag_follows_the_grab() {
             .forward,
         None
     );
-    v.on_mouse(AREA, ev(0, 5, 5, false), &mouse_info(press, 0));
+    v.on_mouse(AREA, ev(16, 5, 5, false), &mouse_info(press, 0));
     let out = v.on_mouse(AREA, ev(32, 400, 400, false), &mouse_info(press, 0));
     assert_eq!(out.forward.map(|f| f.0), Some("a".to_string()));
     let out = v.on_mouse(AREA, ev(0, 400, 400, true), &mouse_info(press, 0));
@@ -2040,7 +2040,7 @@ fn drag_from_one_pane_stays_clamped_to_it_when_over_another() {
     let info = mouse_info(sgr_mode(MouseLevel::Drag), 0);
     let out = v.on_mouse(
         AREA,
-        ev(0, first.inner.x + 1, first.inner.y + 1, false),
+        ev(16, first.inner.x + 1, first.inner.y + 1, false),
         &info,
     );
     assert_eq!(out.forward.as_ref().map(|f| f.0.as_str()), Some("a"));
@@ -2098,7 +2098,7 @@ fn grab_is_cleared_when_its_session_leaves_the_panes() {
     let p = layout(AREA, &v).panes[0].clone();
     v.on_mouse(
         AREA,
-        ev(0, p.inner.x + 1, p.inner.y + 1, false),
+        ev(16, p.inner.x + 1, p.inner.y + 1, false),
         &mouse_info(sgr_mode(MouseLevel::Drag), 0),
     );
     assert_eq!(v.grab.as_deref(), Some("a"));
@@ -2239,7 +2239,7 @@ fn help_shows_the_mouse_section_at_34_rows() {
     v.help = true;
     let text = draw(&v, &screens(), 140, 34);
     assert!(text.contains("pick a tab, a session or a pane"));
-    assert!(text.contains("Shift-drag selects"));
+    assert!(text.contains("select + copy"));
     assert!(text.contains("? again closes this box"));
 }
 
@@ -7020,6 +7020,7 @@ fn find_view(lines: &[&str], cols: usize) -> ViewState {
             session: "a".into(),
             lines: lines_of(lines),
             cols,
+            ..Default::default()
         },
         10,
     );
@@ -7034,22 +7035,22 @@ fn type_search(v: &mut ViewState, text: &str) -> SearchEdit {
 #[test]
 fn search_finds_every_hit_and_smart_case_decides_sensitivity() {
     let lines = lines_of(&["Error: build failed", "error again", "no match"]);
-    let hits = super::find::find_hits(&lines, 40, "error");
+    let hits = super::find::find_hits(&lines, 40, &[], "error");
     assert_eq!(hits.len(), 2);
-    assert_eq!(super::find::find_hits(&lines, 40, "Error").len(), 1);
-    assert!(super::find::find_hits(&lines, 40, "").is_empty());
+    assert_eq!(super::find::find_hits(&lines, 40, &[], "Error").len(), 1);
+    assert!(super::find::find_hits(&lines, 40, &[], "").is_empty());
 }
 
 #[test]
 fn search_joins_wrapped_rows_but_not_separate_lines() {
     let lines = lines_of(&["0123456789", "abc def", "tail"]);
-    let hits = super::find::find_hits(&lines, 10, "89ab");
+    let hits = super::find::find_hits(&lines, 10, &[], "89ab");
     assert_eq!(hits.len(), 1);
     assert_eq!(
         (hits[0].l0, hits[0].c0, hits[0].l1, hits[0].c1),
         (0, 8, 1, 2)
     );
-    assert!(super::find::find_hits(&lines, 10, "deftail").is_empty());
+    assert!(super::find::find_hits(&lines, 10, &[], "deftail").is_empty());
 }
 
 #[test]
@@ -7067,6 +7068,7 @@ fn typing_a_query_marks_hits_starts_at_the_newest_and_scrolls_to_it() {
             session: "a".into(),
             lines,
             cols: 40,
+            ..Default::default()
         },
         10,
     );
@@ -7124,16 +7126,16 @@ fn n_without_a_search_says_so() {
 fn selection_text_joins_wrapped_rows_and_strips_controls() {
     let lines = lines_of(&["0123456789", "abc", "x\u{1b}[31my"]);
     assert_eq!(
-        super::find::selection_text(&lines, 10, (0, 8), (1, 1)),
+        super::find::selection_text(&lines, 10, &[], (0, 8), (1, 1)),
         "89ab"
     );
     assert_eq!(
-        super::find::selection_text(&lines, 10, (1, 0), (2, 5)),
+        super::find::selection_text(&lines, 10, &[], (1, 0), (2, 5)),
         "abc
 x[31my"
     );
     assert_eq!(
-        super::find::selection_text(&lines, 10, (1, 2), (1, 0)),
+        super::find::selection_text(&lines, 10, &[], (1, 2), (1, 0)),
         "abc"
     );
 }
@@ -7251,6 +7253,7 @@ fn hits_are_highlighted_in_the_visible_rows_and_the_bar_shows_the_count() {
             session: "a".into(),
             lines: lines_of(&["alpha beta", "gamma", "beta again beta", "> "]),
             cols: 40,
+            ..Default::default()
         },
         4,
     );
@@ -7278,6 +7281,7 @@ fn copy_selection_is_reversed_and_the_bar_names_the_mode() {
             session: "a".into(),
             lines: lines_of(&["alpha beta", "gamma", "beta again beta", "> "]),
             cols: 40,
+            ..Default::default()
         },
         4,
     );
@@ -7304,6 +7308,7 @@ fn clicking_in_copy_mode_places_the_cursor_without_forwarding() {
             session: "a".into(),
             lines: lines_of(&["alpha beta", "gamma", "beta again beta", "> "]),
             cols: 40,
+            ..Default::default()
         },
         4,
     );
@@ -7370,6 +7375,7 @@ fn the_bar_sits_on_the_border_row_and_the_caret_stays_off_it() {
             session: "a".into(),
             lines: lines_of(&["alpha beta", "gamma", "beta again beta", "> "]),
             cols: 40,
+            ..Default::default()
         },
         4,
     );

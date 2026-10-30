@@ -7,4 +7,4 @@
 │                                                                                                                                          │
 │                                                                                                                                          │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
- tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                                                                 Ctrl-] ? help
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                                                    drag copies  Ctrl-] ? help

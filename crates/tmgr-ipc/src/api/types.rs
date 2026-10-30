@@ -308,6 +308,8 @@ pub struct SessionText {
     pub rows: u16,
     pub cols: u16,
     pub lines: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub wrapped: Vec<bool>,
     pub scroll_max: u32,
 }
 

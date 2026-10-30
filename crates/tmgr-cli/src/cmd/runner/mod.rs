@@ -61,7 +61,7 @@ pub enum RunnerCommands {
     Agents(AgentsArgs),
     /// [experimental] Open the live full-screen view of sessions
     #[command(
-        after_help = "Mouse: click a session in the sidebar or a pane to switch, wheel scrolls history, dropped files are pasted into the pane under the mouse.\nSelect text with Shift-drag (Option-drag in iTerm2), or start with --no-mouse."
+        after_help = "Mouse: click a session in the sidebar or a pane to switch, wheel scrolls history, dropped files are pasted into the pane under the mouse.\nDrag inside a pane selects text in that pane only and copies it on release (double-click a word, triple-click a line); soft-wrapped lines are joined and box-drawing, UI markers and trailing spaces are removed (tmgr config set attach.copy.clean false keeps the text as is). Hold Ctrl or Alt while dragging to send the drag to a program that uses the mouse itself. Shift-drag (Option-drag in iTerm2) is the terminal's own selection, or start with --no-mouse."
     )]
     Attach(AttachArgs),
     /// [experimental] Type a line of text into a session, optionally waiting for the agent to answer

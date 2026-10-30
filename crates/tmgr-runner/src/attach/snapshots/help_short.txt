@@ -21,4 +21,4 @@
                   │ x / X         stop (asks first) / remove if exited           │                 │
                   │ [             scroll back through history                    │                 │
  + New session    │ q / u / ?     agent questions / subagents / this help        │─────────────────╯
- tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help
+ tmgr runner · loc╰──────────────────────────────────────────────────────────────╯es  Ctrl-] ? help

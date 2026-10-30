@@ -2,6 +2,7 @@ mod actions;
 mod attention;
 mod broadcast;
 mod chip;
+mod clean;
 mod export;
 mod filter;
 mod find;
@@ -10,6 +11,7 @@ mod keys;
 mod layouts;
 mod modes;
 mod mouse;
+mod msel;
 mod newsession;
 mod notes;
 mod palette;
@@ -36,6 +38,7 @@ pub use actions::{ActionDef, ACTIONS};
 pub use attention::AttentionTracker;
 pub use broadcast::{peer_bytes, Broadcast};
 pub use chip::{chip_text, open_urls, TaskChip};
+pub use clean::clean_copy;
 pub use export::{
     escape_markdown, fmt_size, markdown_lines, scan as scan_export,
     transcript as export_transcript, Decision, ExportAction, ExportState, Finding,
@@ -54,6 +57,7 @@ pub use layouts::{
 };
 pub use modes::{enter_mouse, focus_on, mode_changes, reset_modes};
 pub use mouse::{encode, wants, Kind, MouseEvent};
+pub use msel::{click_count, Click, Finish, Gran, MouseSel};
 pub use newsession::{
     KindOpt, NewEdit, NewField, NewRequest, NewSession, Place, SpawnKind, TaskOpt,
 };
