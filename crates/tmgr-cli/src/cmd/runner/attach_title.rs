@@ -1,3 +1,4 @@
+use super::attach_consent::Reads;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
@@ -61,6 +62,7 @@ pub(super) struct TitleJob {
 
 pub(super) fn titler(
     jobs: Receiver<Vec<TitleJob>>,
+    consent: impl Fn() -> Reads,
     mut send: impl FnMut(Vec<(String, Option<AgentTitle>)>) -> bool,
 ) {
     let mut scans: HashMap<String, TitleScan> = HashMap::new();
@@ -69,9 +71,10 @@ pub(super) fn titler(
             let keep: HashSet<&str> = batch.iter().map(|j| j.id.as_str()).collect();
             scans.retain(|id, _| keep.contains(id.as_str()));
         }
+        let reads = consent();
         let found = batch
             .iter()
-            .map(|job| (job.id.clone(), title_for(job, &mut scans)))
+            .map(|job| (job.id.clone(), title_for(job, &mut scans, reads)))
             .collect();
         if !send(found) {
             return;
@@ -79,7 +82,15 @@ pub(super) fn titler(
     }
 }
 
-fn title_for(job: &TitleJob, scans: &mut HashMap<String, TitleScan>) -> Option<AgentTitle> {
+fn title_for(
+    job: &TitleJob,
+    scans: &mut HashMap<String, TitleScan>,
+    reads: Reads,
+) -> Option<AgentTitle> {
+    if !reads.allows(job.src.format) {
+        scans.remove(&job.id);
+        return None;
+    }
     if let Some(home) = job.real_home.as_deref() {
         let Some((path, id)) =
             locate_unsandboxed_claude(home, &job.src.cwd, job.pid, job.src.created_ms)
@@ -201,6 +212,11 @@ mod tests {
         file
     }
 
+    const ALL: Reads = Reads {
+        claude: true,
+        codex: true,
+    };
+
     const AUTO: &str = "{\"type\":\"ai-title\",\"aiTitle\":\"Auto\"}\n";
 
     const U: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
@@ -221,7 +237,7 @@ mod tests {
         std::fs::write(&file, "{\"type\":\"ai-title\",\"aiTitle\":\"Auto\"}\n").unwrap();
         let j = job(dir.path(), Format::Claude, "claude-code", "/work/app");
         let mut scans = HashMap::new();
-        let t = title_for(&j, &mut scans).unwrap();
+        let t = title_for(&j, &mut scans, ALL).unwrap();
         assert_eq!(
             (t.text.as_str(), t.auto, t.base.as_str()),
             ("Auto", true, "claude")
@@ -231,7 +247,7 @@ mod tests {
             "{\"type\":\"ai-title\",\"aiTitle\":\"Auto\"}\n{\"type\":\"custom-title\",\"customTitle\":\"Mine\"}\n",
         )
         .unwrap();
-        let t = title_for(&j, &mut scans).unwrap();
+        let t = title_for(&j, &mut scans, ALL).unwrap();
         assert_eq!((t.text.as_str(), t.auto), ("Mine", false));
         std::fs::remove_file(home.join(".claude/sessions/4242.json")).unwrap();
         std::fs::write(
@@ -246,7 +262,7 @@ mod tests {
         .unwrap();
         let mut gone = job(dir.path(), Format::Claude, "claude-code", "/work/app");
         gone.pid = 0;
-        let t = title_for(&gone, &mut scans).unwrap();
+        let t = title_for(&gone, &mut scans, ALL).unwrap();
         assert_eq!(t.text, "Mine");
     }
 
@@ -262,7 +278,10 @@ mod tests {
         .unwrap();
         let j = job(dir.path(), Format::Codex, "codex", "/w");
         let mut scans = HashMap::new();
-        assert_eq!(title_for(&j, &mut scans).unwrap().text, "Review the PR");
+        assert_eq!(
+            title_for(&j, &mut scans, ALL).unwrap().text,
+            "Review the PR"
+        );
     }
 
     #[test]
@@ -270,7 +289,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut scans = HashMap::new();
         let j = job(dir.path(), Format::Codex, "codex", "/w");
-        assert!(title_for(&j, &mut scans).is_none());
+        assert!(title_for(&j, &mut scans, ALL).is_none());
         let real = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(real.path().join(".codex")).unwrap();
         std::fs::write(
@@ -280,7 +299,7 @@ mod tests {
         .unwrap();
         std::fs::create_dir_all(dir.path().join("homes")).unwrap();
         std::os::unix::fs::symlink(real.path(), &j.sandbox_home).unwrap();
-        assert!(title_for(&j, &mut scans).is_none());
+        assert!(title_for(&j, &mut scans, ALL).is_none());
     }
 
     #[test]
@@ -290,7 +309,7 @@ mod tests {
         let file = plant(real.path(), "-work-app", 4242, U, AUTO);
         let j = unsandboxed_job(dir.path(), Format::Claude, real.path());
         let mut scans = HashMap::new();
-        let t = title_for(&j, &mut scans).unwrap();
+        let t = title_for(&j, &mut scans, ALL).unwrap();
         assert_eq!(
             (t.text.as_str(), t.auto, t.base.as_str()),
             ("Auto", true, "claude")
@@ -300,7 +319,7 @@ mod tests {
             format!("{AUTO}{{\"type\":\"custom-title\",\"customTitle\":\"Mine\"}}\n"),
         )
         .unwrap();
-        let t = title_for(&j, &mut scans).unwrap();
+        let t = title_for(&j, &mut scans, ALL).unwrap();
         assert_eq!((t.text.as_str(), t.auto), ("Mine", false));
     }
 
@@ -311,17 +330,17 @@ mod tests {
         plant(real.path(), "-work-app", 4242, U, AUTO);
         let j = unsandboxed_job(dir.path(), Format::Claude, real.path());
         let mut scans = HashMap::new();
-        assert_eq!(title_for(&j, &mut scans).unwrap().text, "Auto");
+        assert_eq!(title_for(&j, &mut scans, ALL).unwrap().text, "Auto");
         std::fs::remove_file(real.path().join(".claude/sessions/4242.json")).unwrap();
         let mut gone = unsandboxed_job(dir.path(), Format::Claude, real.path());
         gone.pid = 0;
-        assert_eq!(title_for(&gone, &mut scans).unwrap().text, "Auto");
+        assert_eq!(title_for(&gone, &mut scans, ALL).unwrap().text, "Auto");
         std::fs::write(
             dir.path().join("output.log"),
             format!("bye\r\nclaude --resume {U}\r\n"),
         )
         .unwrap();
-        assert!(title_for(&gone, &mut HashMap::new()).is_none());
+        assert!(title_for(&gone, &mut HashMap::new(), ALL).is_none());
     }
 
     #[test]
@@ -332,7 +351,7 @@ mod tests {
         std::fs::create_dir_all(&proj).unwrap();
         std::fs::write(proj.join(format!("{U}.jsonl")), AUTO).unwrap();
         let j = unsandboxed_job(dir.path(), Format::Claude, real.path());
-        assert!(title_for(&j, &mut HashMap::new()).is_none());
+        assert!(title_for(&j, &mut HashMap::new(), ALL).is_none());
     }
 
     #[test]
@@ -341,13 +360,13 @@ mod tests {
         let real = tempfile::tempdir().unwrap();
         plant(real.path(), "-elsewhere", 4242, U, AUTO);
         let j = unsandboxed_job(dir.path(), Format::Claude, real.path());
-        assert!(title_for(&j, &mut HashMap::new()).is_none());
+        assert!(title_for(&j, &mut HashMap::new(), ALL).is_none());
         std::fs::write(
             real.path().join(".claude/sessions/4242.json"),
             format!("{{\"pid\":4242,\"sessionId\":\"{U}\",\"cwd\":\"/elsewhere\"}}"),
         )
         .unwrap();
-        assert!(title_for(&j, &mut HashMap::new()).is_none());
+        assert!(title_for(&j, &mut HashMap::new(), ALL).is_none());
     }
 
     #[test]
@@ -356,7 +375,7 @@ mod tests {
         let real = tempfile::tempdir().unwrap();
         let j = unsandboxed_job(dir.path(), Format::Claude, real.path());
         plant(&j.sandbox_home, "-work-app", 4242, U, AUTO);
-        assert!(title_for(&j, &mut HashMap::new()).is_none());
+        assert!(title_for(&j, &mut HashMap::new(), ALL).is_none());
     }
 
     #[test]
@@ -364,10 +383,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut j = job(dir.path(), Format::Claude, "claude-code", "/work/app");
         plant(&j.sandbox_home, "-work-app", 4242, U, AUTO);
-        assert_eq!(title_for(&j, &mut HashMap::new()).unwrap().text, "Auto");
+        assert_eq!(
+            title_for(&j, &mut HashMap::new(), ALL).unwrap().text,
+            "Auto"
+        );
         j.src.no_sandbox = true;
         assert!(j.real_home.is_none());
-        assert!(title_for(&j, &mut HashMap::new()).is_none());
+        assert!(title_for(&j, &mut HashMap::new(), ALL).is_none());
     }
 
     #[test]
@@ -379,7 +401,7 @@ mod tests {
         j.real_home = title_real_home(&j.src, Some(real.path().to_path_buf()));
         assert!(j.real_home.is_none());
         std::fs::create_dir_all(&j.sandbox_home).unwrap();
-        assert!(title_for(&j, &mut HashMap::new()).is_none());
+        assert!(title_for(&j, &mut HashMap::new(), ALL).is_none());
     }
 
     #[test]
@@ -421,7 +443,7 @@ mod tests {
         .unwrap();
         let j = unsandboxed_job(dir.path(), Format::Codex, real.path());
         assert!(j.real_home.is_none());
-        assert!(title_for(&j, &mut HashMap::new()).is_none());
+        assert!(title_for(&j, &mut HashMap::new(), ALL).is_none());
     }
 
     #[test]
@@ -445,9 +467,9 @@ mod tests {
         let real = tempfile::tempdir().unwrap();
         let mut j = unsandboxed_job(dir.path(), Format::Claude, real.path());
         plant(real.path(), "-work-app", 4242, U, AUTO);
-        assert!(title_for(&j, &mut HashMap::new()).is_some());
+        assert!(title_for(&j, &mut HashMap::new(), ALL).is_some());
         j.src.created_ms = now_ms() + 3_600_000;
-        assert!(title_for(&j, &mut HashMap::new()).is_none());
+        assert!(title_for(&j, &mut HashMap::new(), ALL).is_none());
     }
 
     fn now_ms() -> u64 {
@@ -465,12 +487,139 @@ mod tests {
             .unwrap();
         drop(tx);
         let mut got = Vec::new();
-        titler(rx, |found| {
-            got.push(found);
-            true
-        });
+        titler(
+            rx,
+            || ALL,
+            |found| {
+                got.push(found);
+                true
+            },
+        );
         assert_eq!(got.len(), 1);
         assert_eq!(got[0][0].0, "s1");
         assert!(got[0][0].1.is_none());
+    }
+
+    const NONE: Reads = Reads {
+        claude: false,
+        codex: false,
+    };
+
+    fn claude_only() -> Reads {
+        Reads {
+            claude: true,
+            codex: false,
+        }
+    }
+
+    fn codex_only() -> Reads {
+        Reads {
+            claude: false,
+            codex: true,
+        }
+    }
+
+    fn codex_job(dir: &Path) -> TitleJob {
+        let home = dir.join("homes/s1/.codex");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(
+            home.join("session_index.jsonl"),
+            "{\"id\":\"b\",\"thread_name\":\"Review the PR\"}\n",
+        )
+        .unwrap();
+        job(dir, Format::Codex, "codex", "/w")
+    }
+
+    #[test]
+    fn without_consent_a_sandbox_session_gets_no_title() {
+        let dir = tempfile::tempdir().unwrap();
+        let j = job(dir.path(), Format::Claude, "claude-code", "/work/app");
+        plant(&j.sandbox_home, "-work-app", 4242, U, AUTO);
+        assert!(title_for(&j, &mut HashMap::new(), NONE).is_none());
+        assert!(title_for(&j, &mut HashMap::new(), codex_only()).is_none());
+        assert_eq!(
+            title_for(&j, &mut HashMap::new(), claude_only())
+                .unwrap()
+                .text,
+            "Auto"
+        );
+    }
+
+    #[test]
+    fn without_consent_an_unsandboxed_session_never_touches_the_real_home() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = tempfile::tempdir().unwrap();
+        let file = plant(real.path(), "-work-app", 4242, U, AUTO);
+        let j = unsandboxed_job(dir.path(), Format::Claude, real.path());
+        assert!(j.real_home.is_some());
+        let mut scans = HashMap::new();
+        assert!(title_for(&j, &mut scans, NONE).is_none());
+        assert!(title_for(&j, &mut scans, codex_only()).is_none());
+        assert!(scans.is_empty());
+        std::fs::remove_file(&file).unwrap();
+        assert!(title_for(&j, &mut scans, claude_only()).is_none());
+    }
+
+    #[test]
+    fn consent_is_per_tool() {
+        let dir = tempfile::tempdir().unwrap();
+        let j = codex_job(dir.path());
+        assert!(title_for(&j, &mut HashMap::new(), claude_only()).is_none());
+        assert_eq!(
+            title_for(&j, &mut HashMap::new(), codex_only())
+                .unwrap()
+                .text,
+            "Review the PR"
+        );
+        let c = job(dir.path(), Format::Claude, "claude-code", "/work/app");
+        plant(&c.sandbox_home, "-work-app", 4242, U, AUTO);
+        assert!(title_for(&c, &mut HashMap::new(), codex_only()).is_none());
+    }
+
+    #[test]
+    fn withdrawing_consent_clears_the_title_drops_the_scan_and_ignores_later_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let j = job(dir.path(), Format::Claude, "claude-code", "/work/app");
+        let file = plant(&j.sandbox_home, "-work-app", 4242, U, AUTO);
+        let mut scans = HashMap::new();
+        assert_eq!(title_for(&j, &mut scans, ALL).unwrap().text, "Auto");
+        assert_eq!(scans.len(), 1);
+        assert!(title_for(&j, &mut scans, NONE).is_none());
+        assert!(scans.is_empty());
+        std::fs::write(
+            &file,
+            format!("{AUTO}{{\"type\":\"custom-title\",\"customTitle\":\"Mine\"}}\n"),
+        )
+        .unwrap();
+        assert!(title_for(&j, &mut scans, NONE).is_none());
+        assert!(scans.is_empty());
+    }
+
+    #[test]
+    fn the_titler_reads_consent_fresh_for_every_batch() {
+        use std::cell::Cell;
+        let dir = tempfile::tempdir().unwrap();
+        let j = || job(dir.path(), Format::Claude, "claude-code", "/work/app");
+        plant(&j().sandbox_home, "-work-app", 4242, U, AUTO);
+        let (tx, rx) = std::sync::mpsc::channel();
+        for _ in 0..3 {
+            tx.send(vec![j()]).unwrap();
+        }
+        drop(tx);
+        let state = Cell::new(ALL);
+        let mut titles = Vec::new();
+        titler(
+            rx,
+            || state.get(),
+            |found| {
+                titles.push(found[0].1.as_ref().map(|t| t.text.clone()));
+                state.set(if titles.len() == 1 { NONE } else { ALL });
+                true
+            },
+        );
+        assert_eq!(
+            titles,
+            [Some("Auto".to_string()), None, Some("Auto".to_string())]
+        );
     }
 }

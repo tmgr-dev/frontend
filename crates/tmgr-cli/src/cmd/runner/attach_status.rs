@@ -1,3 +1,4 @@
+use super::attach_consent::Reads;
 use super::attach_questions::{session_src, QuestionJob};
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::Receiver;
@@ -9,6 +10,7 @@ const MAX_SCANS: usize = 64;
 
 pub(super) fn status_worker(
     jobs: Receiver<Vec<QuestionJob>>,
+    consent: impl Fn() -> Reads,
     mut send: impl FnMut(HashMap<String, SessionStatus>) -> bool,
 ) {
     let mut scans: HashMap<String, StatusScan> = HashMap::new();
@@ -17,8 +19,13 @@ pub(super) fn status_worker(
             let keep: HashSet<&str> = batch.iter().map(|j| j.id.as_str()).collect();
             scans.retain(|id, _| keep.contains(id.as_str()));
         }
+        let reads = consent();
         let mut found = HashMap::new();
         for job in batch.iter().filter(|j| j.src.format == Format::Claude) {
+            if !reads.allows(job.src.format) {
+                scans.remove(&job.id);
+                continue;
+            }
             if let Some(status) = status_for(job, &mut scans) {
                 found.insert(job.id.clone(), status);
             }
@@ -37,10 +44,14 @@ pub(super) struct PeekJob {
 
 pub(super) fn peek_worker(
     jobs: Receiver<PeekJob>,
+    consent: impl Fn() -> Reads,
     mut send: impl FnMut(String, String, Vec<String>) -> bool,
 ) {
     for PeekJob { job, sub, agent } in jobs {
-        let lines = session_src(&job)
+        let allowed = consent().allows(job.src.format);
+        let lines = allowed
+            .then_some(&job)
+            .and_then(session_src)
             .and_then(|src| {
                 let path = transcript_path(&src)?;
                 Some(peek_lines(&src.home, &path, &sub, agent.as_deref()))
@@ -82,6 +93,15 @@ mod tests {
 
     const U: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
 
+    const ALL: Reads = Reads {
+        claude: true,
+        codex: true,
+    };
+    const NONE: Reads = Reads {
+        claude: false,
+        codex: false,
+    };
+
     fn job(home: &std::path::Path, dir: &std::path::Path) -> QuestionJob {
         QuestionJob {
             id: "s_abcdefghjk".into(),
@@ -122,8 +142,9 @@ mod tests {
         .unwrap();
         let (tx, rx) = mpsc::sync_channel(1);
         let (out_tx, out_rx) = mpsc::channel();
-        let handle =
-            std::thread::spawn(move || status_worker(rx, move |found| out_tx.send(found).is_ok()));
+        let handle = std::thread::spawn(move || {
+            status_worker(rx, || ALL, move |found| out_tx.send(found).is_ok())
+        });
         tx.send(vec![job(home.path(), runner.path())]).unwrap();
         let found = out_rx.recv().unwrap();
         let activity = found["s_abcdefghjk"].activity.clone().unwrap();
@@ -141,8 +162,9 @@ mod tests {
         j.src.format = Format::Codex;
         let (tx, rx) = mpsc::sync_channel(1);
         let (out_tx, out_rx) = mpsc::channel();
-        let handle =
-            std::thread::spawn(move || status_worker(rx, move |found| out_tx.send(found).is_ok()));
+        let handle = std::thread::spawn(move || {
+            status_worker(rx, || ALL, move |found| out_tx.send(found).is_ok())
+        });
         tx.send(vec![j]).unwrap();
         assert!(out_rx.recv().unwrap().is_empty());
         drop(tx);
@@ -171,9 +193,11 @@ mod tests {
         let (tx, rx) = mpsc::sync_channel(1);
         let (out_tx, out_rx) = mpsc::channel();
         let handle = std::thread::spawn(move || {
-            peek_worker(rx, move |s, sub, lines| {
-                out_tx.send((s, sub, lines)).is_ok()
-            })
+            peek_worker(
+                rx,
+                || ALL,
+                move |s, sub, lines| out_tx.send((s, sub, lines)).is_ok(),
+            )
         });
         tx.send(PeekJob {
             job: job(home.path(), runner.path()),
@@ -188,5 +212,126 @@ mod tests {
         assert!(!lines[0].contains("abc123"), "{lines:?}");
         drop(tx);
         handle.join().unwrap();
+    }
+
+    fn tool_use(cmd: &str) -> String {
+        format!(
+            "{{\"type\":\"assistant\",\"message\":{{\"role\":\"assistant\",\"content\":[{{\"type\":\"tool_use\",\"id\":\"a\",\"name\":\"Bash\",\"input\":{{\"command\":\"{cmd}\"}}}}]}}}}\n"
+        )
+    }
+
+    fn session(runner: &std::path::Path, home: &std::path::Path) -> std::path::PathBuf {
+        let proj = home.join(".claude/projects/-work-x");
+        std::fs::create_dir_all(&proj).unwrap();
+        let file = proj.join(format!("{U}.jsonl"));
+        std::fs::write(&file, tool_use("ls")).unwrap();
+        std::fs::write(runner.join("output.log"), format!("claude --resume {U}\n")).unwrap();
+        file
+    }
+
+    fn append_line(file: &std::path::Path, line: &str) {
+        let mut f = std::fs::OpenOptions::new().append(true).open(file).unwrap();
+        f.write_all(line.as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn the_status_worker_reports_nothing_without_consent_and_stops_following_the_file() {
+        use std::cell::Cell;
+        let runner = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let file = session(runner.path(), home.path());
+        let (tx, rx) = mpsc::channel();
+        for _ in 0..4 {
+            tx.send(vec![job(home.path(), runner.path())]).unwrap();
+        }
+        drop(tx);
+        let state = Cell::new(NONE);
+        let mut round = 0;
+        let mut got = Vec::new();
+        status_worker(
+            rx,
+            || state.get(),
+            |found| {
+                got.push(found.get("s_abcdefghjk").and_then(|s| s.activity.clone()));
+                round += 1;
+                match round {
+                    1 => state.set(ALL),
+                    2 => state.set(NONE),
+                    _ => {}
+                }
+                if round == 2 {
+                    append_line(&file, &tool_use("secret-after-denial"));
+                }
+                true
+            },
+        );
+        assert_eq!(got[0], None);
+        assert_eq!(got[1].as_deref(), Some("Bash: ls"));
+        assert_eq!(got[2], None);
+        assert_eq!(got[3], None);
+    }
+
+    #[test]
+    fn a_denied_peek_sends_empty_lines() {
+        use std::cell::Cell;
+        let runner = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        session(runner.path(), home.path());
+        let proj = home.path().join(".claude/projects/-work-x");
+        let subs = proj.join(U).join("subagents");
+        std::fs::create_dir_all(&subs).unwrap();
+        std::fs::write(subs.join("agent-z.meta.json"), r#"{"toolUseId":"tu1"}"#).unwrap();
+        std::fs::write(
+            subs.join("agent-z.jsonl"),
+            r#"{"type":"user","message":{"role":"user","content":"look at this"}}"#,
+        )
+        .unwrap();
+        let (tx, rx) = mpsc::channel();
+        for _ in 0..3 {
+            tx.send(PeekJob {
+                job: job(home.path(), runner.path()),
+                sub: "tu1".into(),
+                agent: None,
+            })
+            .unwrap();
+        }
+        drop(tx);
+        let state = Cell::new(NONE);
+        let mut got = Vec::new();
+        peek_worker(
+            rx,
+            || state.get(),
+            |_, _, lines| {
+                got.push(lines);
+                state.set(if got.len() == 1 { ALL } else { NONE });
+                true
+            },
+        );
+        assert!(got[0].is_empty());
+        assert_eq!(got[1].len(), 1);
+        assert!(got[2].is_empty());
+    }
+
+    #[test]
+    fn consent_for_codex_alone_does_not_open_a_claude_transcript() {
+        let runner = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        session(runner.path(), home.path());
+        let (tx, rx) = mpsc::channel();
+        tx.send(vec![job(home.path(), runner.path())]).unwrap();
+        drop(tx);
+        let mut got = Vec::new();
+        status_worker(
+            rx,
+            || Reads {
+                claude: false,
+                codex: true,
+            },
+            |found| {
+                got.push(found);
+                true
+            },
+        );
+        assert!(got[0].is_empty());
     }
 }

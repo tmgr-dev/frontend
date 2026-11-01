@@ -132,6 +132,10 @@ impl Env {
             ("TMGR_RUNNER_HOMES", self.homes.path().display().to_string()),
             ("TMGR_T0_QUIET_MS", self.quiet_ms.to_string()),
             ("XDG_CONFIG_HOME", cfg.display().to_string()),
+            (
+                "TMGR_USAGE_DIR",
+                self.tmp.path().join("usage").display().to_string(),
+            ),
             ("TMGR_AGENTS_DIR", cfg.join("agents").display().to_string()),
             ("TERM", "xterm-256color".into()),
             ("NO_COLOR", "1".into()),
