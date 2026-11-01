@@ -689,7 +689,7 @@ describe('per-task plugin data', () => {
 				}),
 			),
 		).toBe('PERMISSION_DENIED');
-		const { broker } = setup(['tasks:read'], { api });
+		const { broker } = setup(['tasks:read', 'tasks:write'], { api });
 		expect(
 			await broker.call('taskData.get', { taskId: 1, key: 'estimate' }),
 		).toBeNull();
@@ -715,8 +715,49 @@ describe('per-task plugin data', () => {
 		).toBeNull();
 	});
 
+	it('refuses set and delete without tasks:write, and get and getMany without tasks:read', async () => {
+		const taskDataSet = jest.fn(async () => undefined);
+		const taskDataDelete = jest.fn(async () => undefined);
+		const api = {
+			...fakeApi(),
+			taskDataGet: async () => null,
+			taskDataGetMany: async () => ({}),
+			taskDataSet,
+			taskDataDelete,
+		};
+		const reader = setup(['tasks:read'], { api }).broker;
+		expect(
+			await code(
+				reader.call('taskData.set', { taskId: 1, key: 'k', value: 1 }),
+			),
+		).toBe('PERMISSION_DENIED');
+		expect(
+			await code(reader.call('taskData.delete', { taskId: 1, key: 'k' })),
+		).toBe('PERMISSION_DENIED');
+		expect(taskDataSet).not.toHaveBeenCalled();
+		expect(taskDataDelete).not.toHaveBeenCalled();
+		await expect(
+			reader.call('taskData.get', { taskId: 1, key: 'k' }),
+		).resolves.toBeNull();
+		await expect(
+			reader.call('taskData.getMany', { taskIds: [1], key: 'k' }),
+		).resolves.toEqual({});
+
+		const writer = setup(['tasks:write'], { api }).broker;
+		await writer.call('taskData.set', { taskId: 1, key: 'k', value: 1 });
+		await writer.call('taskData.delete', { taskId: 1, key: 'k' });
+		expect(taskDataSet).toHaveBeenCalledTimes(1);
+		expect(taskDataDelete).toHaveBeenCalledTimes(1);
+		expect(
+			await code(writer.call('taskData.get', { taskId: 1, key: 'k' })),
+		).toBe('PERMISSION_DENIED');
+		expect(
+			await code(writer.call('taskData.getMany', { taskIds: [1], key: 'k' })),
+		).toBe('PERMISSION_DENIED');
+	});
+
 	it('rejects an oversized value and a key that is too long, byte-accurate for multi-byte text', async () => {
-		const { broker } = setup(['tasks:read']);
+		const { broker } = setup(['tasks:read', 'tasks:write']);
 		expect(
 			await code(
 				broker.call('taskData.set', {

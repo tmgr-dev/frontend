@@ -980,7 +980,7 @@ export const createBroker = (deps: BrokerDeps) => {
 			},
 		},
 		'taskData.set': {
-			permission: 'tasks:read',
+			permission: 'tasks:write',
 			write: true,
 			run: (p) => {
 				const json = JSON.stringify(p.value ?? null);
@@ -994,7 +994,7 @@ export const createBroker = (deps: BrokerDeps) => {
 			},
 		},
 		'taskData.delete': {
-			permission: 'tasks:read',
+			permission: 'tasks:write',
 			write: true,
 			run: (p) =>
 				api.taskDataDelete(id(p.taskId, 'taskId'), taskDataKey(p.key)),

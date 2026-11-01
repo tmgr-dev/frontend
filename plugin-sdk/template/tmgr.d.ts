@@ -558,14 +558,17 @@ declare const tmgr: {
 		keys(): Promise<string[]>;
 	};
 	/**
-	 * Per-task JSON values up to 64 KB, sharing the 5 MB / 1000 key quota with `storage`. No
-	 * permission needed beyond the task existing. Not available in shared workspaces yet.
+	 * Per-task JSON values up to 64 KB, sharing the 5 MB / 1000 key quota with `storage`. Not
+	 * available in shared workspaces yet.
 	 */
 	taskData: {
+		/** Needs tasks:read. */
 		get<T = unknown>(taskId: number, key: string): Promise<T | null>;
+		/** Needs tasks:write. */
 		set(taskId: number, key: string, value: unknown): Promise<void>;
+		/** Needs tasks:write. */
 		delete(taskId: number, key: string): Promise<void>;
-		/** Up to 500 task ids in one call; meant for `ui.provideBadges` (one call per batch). */
+		/** Needs tasks:read. Up to 500 task ids in one call; meant for `ui.provideBadges` (one call per batch). */
 		getMany<T = unknown>(
 			taskIds: number[],
 			key: string,
