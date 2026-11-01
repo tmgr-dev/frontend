@@ -850,7 +850,10 @@ fn attach_loop(
                         }
                         other => match forward(chan, run, other) {
                             Ok(true) => {}
-                            Ok(false) => return ("the leader went away".into(), stats),
+                            Ok(false) => {
+                                let _ = flush(&mut pending);
+                                return ("the leader went away".into(), stats);
+                            }
                             Err(why) => {
                                 return end(
                                     chan,
@@ -988,7 +991,10 @@ fn attach_loop(
                 let _ = flush(&mut pending);
                 return ("the leader disconnected".into(), stats);
             }
-            Err(e) => return (format!("channel: {e}"), stats),
+            Err(e) => {
+                let _ = flush(&mut pending);
+                return (format!("channel: {e}"), stats);
+            }
         }
         if last_leader.elapsed() > ATTACH_IDLE {
             return end(chan, "idle", &mut pending, stats);
