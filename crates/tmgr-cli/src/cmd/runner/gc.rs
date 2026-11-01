@@ -244,7 +244,7 @@ fn under(inner: &Path, outer: &Path) -> bool {
 #[derive(Default)]
 pub(super) struct Probe {
     sessions: Vec<(String, PathBuf)>,
-    cwds: Vec<PathBuf>,
+    paths: Vec<PathBuf>,
 }
 
 impl Probe {
@@ -271,14 +271,14 @@ impl Probe {
                 (s.id, cwd)
             })
             .collect();
-        let cwds = process_cwds().map_err(|e| {
+        let paths = process_paths().map_err(|e| {
             Error::new(
                 Kind::Conflict,
-                format!("cannot list the working folders of processes: {e}"),
+                format!("cannot list the folders processes work or run in: {e}"),
             )
             .hint("nothing was removed")
         })?;
-        Ok(Probe { sessions, cwds })
+        Ok(Probe { sessions, paths })
     }
 
     pub(super) fn holds(&self, folder: &Path, session: Option<&str>) -> Option<String> {
@@ -290,10 +290,10 @@ impl Probe {
                 ));
             }
         }
-        self.cwds
+        self.paths
             .iter()
             .any(|c| under(c, folder))
-            .then(|| "a process has its working folder inside it".to_string())
+            .then(|| "a process is working in it or running from it".to_string())
     }
 }
 
@@ -311,9 +311,9 @@ pub(super) fn parse_lsof(text: &str) -> Vec<(u32, PathBuf)> {
 }
 
 #[cfg(target_os = "macos")]
-fn raw_cwds() -> std::result::Result<Vec<(u32, PathBuf)>, String> {
+fn raw_paths() -> std::result::Result<Vec<(u32, PathBuf)>, String> {
     let out = std::process::Command::new("/usr/sbin/lsof")
-        .args(["-w", "-d", "cwd", "-Fn"])
+        .args(["-w", "-d", "cwd,txt", "-Fn"])
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .output()
@@ -322,20 +322,24 @@ fn raw_cwds() -> std::result::Result<Vec<(u32, PathBuf)>, String> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn raw_cwds() -> std::result::Result<Vec<(u32, PathBuf)>, String> {
+fn raw_paths() -> std::result::Result<Vec<(u32, PathBuf)>, String> {
     let dir = std::fs::read_dir("/proc").map_err(|e| format!("/proc: {e}"))?;
-    Ok(dir
-        .filter_map(|e| e.ok())
-        .filter_map(|e| {
-            let pid: u32 = e.file_name().to_str()?.parse().ok()?;
-            let cwd = std::fs::read_link(e.path().join("cwd")).ok()?;
-            Some((pid, cwd))
-        })
-        .collect())
+    let mut out = Vec::new();
+    for e in dir.filter_map(|e| e.ok()) {
+        let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else {
+            continue;
+        };
+        for link in ["cwd", "exe"] {
+            if let Ok(p) = std::fs::read_link(e.path().join(link)) {
+                out.push((pid, p));
+            }
+        }
+    }
+    Ok(out)
 }
 
-fn process_cwds() -> std::result::Result<Vec<PathBuf>, String> {
-    let all = raw_cwds()?;
+fn process_paths() -> std::result::Result<Vec<PathBuf>, String> {
+    let all = raw_paths()?;
     let me = std::process::id();
     if !all.iter().any(|(p, _)| *p == me) {
         return Err("the scan did not list this process".into());
@@ -378,6 +382,23 @@ pub(super) fn git_facts(dir: &Path, branch: &str) -> std::result::Result<GitFact
     }
     if exists(&dir.join(".gitmodules")) || exists(&dir.join(".git/modules")) {
         return Err("the copy has submodules, which are not checked".into());
+    }
+    if !git_text(
+        dir,
+        &[
+            "rev-list",
+            "--max-count=1",
+            "--exclude=refs/stash",
+            "--all",
+            "--not",
+            "--remotes",
+            "HEAD",
+        ],
+    )?
+    .iter()
+    .all(|b| b.is_ascii_whitespace())
+    {
+        return Err("local commits outside the branch".into());
     }
     let staged = git_text(dir, &["ls-files", "-s", "-z"])?;
     if staged.split(|b| *b == 0).any(|e| e.starts_with(b"160000 ")) {
@@ -965,8 +986,13 @@ fn release_pickup(id: &str) -> Result<()> {
 }
 
 fn pickup_changed(id: &str) -> Option<String> {
-    let paths = tmgr_queue::Paths::from_env().ok()?;
-    let st = state::load(&paths).ok()?;
+    let unreadable = || Some("cannot read queue state".to_string());
+    let Ok(paths) = tmgr_queue::Paths::from_env() else {
+        return unreadable();
+    };
+    let Ok(st) = state::load(&paths) else {
+        return unreadable();
+    };
     match st.pickups.iter().find(|p| p.id == id) {
         Some(p) => pickup_in_use(p),
         None => Some("the queue pickup disappeared".into()),
@@ -1030,8 +1056,12 @@ fn evaluate(c: &Candidate, probe: &mut Option<Probe>, dry: bool) -> Result<Optio
     }
     match remove_folder(&c.folder, c.levels) {
         Ok(()) => {
-            item.decision = "removed";
             item.reason = after_removal(c);
+            item.decision = if item.reason.is_some() {
+                "failed"
+            } else {
+                "removed"
+            };
         }
         Err(e) => {
             item.decision = "failed";
@@ -1372,7 +1402,7 @@ mod tests {
     fn a_process_folder_matches_by_component() {
         let probe = Probe {
             sessions: vec![],
-            cwds: vec![PathBuf::from("/w/repo-worktrees/x-2/sub")],
+            paths: vec![PathBuf::from("/w/repo-worktrees/x-2/sub")],
         };
         assert!(probe
             .holds(Path::new("/w/repo-worktrees/x"), None)
@@ -1386,7 +1416,7 @@ mod tests {
     fn a_session_matches_by_id_or_folder() {
         let probe = Probe {
             sessions: vec![("s_1".into(), PathBuf::from("/other"))],
-            cwds: vec![],
+            paths: vec![],
         };
         assert!(probe.holds(Path::new("/w/x"), Some("s_1")).is_some());
         assert!(probe.holds(Path::new("/w/x"), Some("s_2")).is_none());

@@ -381,6 +381,21 @@ async fn a_stash_keeps_the_copy() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_tag_on_a_local_commit_keeps_the_copy() {
+    let mut rig = Rig::new().await;
+    rig.start_runner();
+    rig.merged();
+    git(&rig.copy, &["checkout", "-q", "-b", "side"]);
+    std::fs::write(rig.copy.join("side.txt"), "side\n").unwrap();
+    git(&rig.copy, &["add", "side.txt"]);
+    git(&rig.copy, &["commit", "-q", "-m", "side"]);
+    git(&rig.copy, &["tag", "-a", "keep-me", "-m", "keep"]);
+    git(&rig.copy, &["checkout", "-q", BRANCH]);
+    git(&rig.copy, &["branch", "-q", "-D", "side"]);
+    rig.assert_skipped("outside the branch");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_branch_not_merged_into_head_keeps_the_copy() {
     let mut rig = Rig::new().await;
     rig.start_runner();
@@ -553,6 +568,38 @@ async fn a_process_working_inside_the_copy_keeps_it() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_process_running_a_binary_from_the_copy_keeps_it() {
+    let mut rig = Rig::new().await;
+    rig.start_runner();
+    rig.merged();
+    let bin = rig.copy.join("target/debug/sleeper");
+    std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+    std::fs::copy("/bin/sleep", &bin).unwrap();
+    if cfg!(target_os = "macos") {
+        let signed = Command::new("codesign")
+            .args(["-s", "-", "--force"])
+            .arg(&bin)
+            .output()
+            .unwrap();
+        assert!(signed.status.success());
+    }
+    let mut child: Child = Command::new(&bin)
+        .arg("300")
+        .current_dir(&rig.root)
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    let (out, v) = rig.gc(&[]);
+    let _ = child.kill();
+    let _ = child.wait();
+    let c = rig.copy_json(&v, 0);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(c["decision"], "skipped", "{c}");
+    assert!(c["reason"].as_str().unwrap().contains("process"), "{c}");
+    assert!(rig.copy.exists());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_live_runner_session_in_the_copy_keeps_it() {
     let mut rig = Rig::new().await;
     rig.start_runner();
@@ -704,6 +751,54 @@ async fn a_running_queue_pickup_keeps_its_copy() {
     let c = rig.copy_json(&v, 0);
     assert_eq!(c["decision"], "skipped", "{c}");
     assert!(copy.exists());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unreadable_queue_state_at_removal_keeps_the_copy() {
+    let mut rig = Rig::new().await;
+    rig.start_runner();
+    let copy = queue_copy(&mut rig);
+    rig.merged();
+    write_queue(&rig, pickup(&rig, "started", true, &copy));
+    let state = rig.env.config_dir().join("queue-state.json");
+    write_script(
+        &rig.root.join("stub"),
+        "gh",
+        &format!(
+            "echo '{{' > \"{}\"\ncat \"{}\"",
+            state.display(),
+            rig.root.join("gh/acme-widgets.json").display()
+        ),
+    );
+    let (out, v) = rig.gc(&[]);
+    let c = rig.copy_json(&v, 0);
+    assert_eq!(out.status.code(), Some(0), "{c}");
+    assert_eq!(c["decision"], "skipped", "{c}");
+    assert!(
+        c["reason"]
+            .as_str()
+            .unwrap()
+            .contains("cannot read queue state"),
+        "{c}"
+    );
+    assert!(copy.exists());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_record_that_cannot_be_deleted_after_removal_is_a_failure() {
+    let mut rig = Rig::new().await;
+    rig.start_runner();
+    rig.merged();
+    let dir = rig.record_path().parent().unwrap().to_path_buf();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let (out, v) = rig.gc(&[]);
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let c = rig.copy_json(&v, 0);
+    assert_eq!(out.status.code(), Some(1), "{c}");
+    assert_eq!(c["decision"], "failed", "{c}");
+    assert!(c["reason"].as_str().unwrap().contains("record"), "{c}");
+    assert_eq!(v["data"]["failed"], 1);
+    assert!(!rig.copy.exists());
 }
 
 fn multi_setup(rig: &Rig) -> (PathBuf, PathBuf, PathBuf) {
