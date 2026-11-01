@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.55
+
+- The runner now asks first. In `tmgr attach` and the runner commands, transcripts of Claude Code and Codex sessions are read only after you allow reading on this device (`tmgr usage consent allow`, or per tool in TMGR desktop under AI Usage). That covers titles, activity status, subagent peek, question detection, Haiku classification, per-session cost, export, summaries (including automatic ones posted to the server) and fork. With no decision yet nothing is read, even when you ask by hand. Sessions then show the plain agent name, no new questions are detected and one short line says how to allow; running, waiting, blocked and exited keep working. Denying stops the next read. Open `tmgr attach` windows from an older version keep their old behaviour until you reattach; the runner itself doesn't need a restart.
+- `tmgr usage reset` also deletes the questions the runner saved (`tmgr questions`), except the `tmgr questions haiku` setting. Questions saved earlier stay after `deny` until then. If you allow reading again, questions from sessions whose logs are still there can be detected again.
+
 ## 1.0.54
 
 - In `tmgr attach`, a `tmgr run --no-sandbox` Claude session now shows its `/rename` or automatic title in the sidebar and pane header. This is an exception to the rule that titles are read only from the sandbox home: for such a session tmgr reads your real `~/.claude`, but only that session's own files: `sessions/<pid>.json` to get its id, then that id's transcript in the project folder of the session's working folder. Sandboxed sessions still never read the real home. A title is not available if the session had already exited when you attached, and no-sandbox Codex sessions show no agent title. A name set in tmgr still wins, including the task key a task run is named after.
