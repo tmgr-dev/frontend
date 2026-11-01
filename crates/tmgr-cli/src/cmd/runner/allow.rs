@@ -205,7 +205,14 @@ fn restart_notice() -> Option<String> {
             sanitize_line(&v)
         }
         Err(e) if super::is_down(&e) => return None,
-        Err(_) => String::new(),
+        Err(_) => {
+            let probe = tmgr_ipc::endpoint::Endpoint::load_runner(&cfg.dir)
+                .and_then(|ep| tmgr_ipc::endpoint::connect(&ep));
+            if probe.is_err_and(|e| super::is_down(&e)) {
+                return None;
+            }
+            String::new()
+        }
     };
     let bin = super::bin();
     Some(if version.is_empty() {

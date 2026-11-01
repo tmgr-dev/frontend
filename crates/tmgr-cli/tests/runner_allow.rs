@@ -638,3 +638,54 @@ async fn a_stale_socket_with_nothing_listening_says_nothing() {
     let out = allowed_in(&env, dir.path(), false);
     assert_eq!(common::text(&out.stderr), "");
 }
+
+fn garbage_secret(dir: &std::path::Path) {
+    let path = dir.join("client.secret");
+    let _ = std::fs::remove_file(&path);
+    std::fs::write(&path, "x".repeat(300)).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_malformed_secret_file_with_no_daemon_says_nothing() {
+    let env = setup(vec![key(KEY_ID, KEY, "laptop")]).await;
+    let dir = runner_dir();
+    garbage_secret(dir.path());
+    let (code, shown) = allow_in(&env, dir.path(), &["--require-signed-rules"]);
+    assert_eq!(code, 0, "{shown}");
+    assert_eq!(restart_lines(&shown), 0, "{shown}");
+    assert_eq!(policy(&env), (json!(true), json!(false)));
+    let out = allowed_in(&env, dir.path(), false);
+    assert_eq!(common::text(&out.stderr), "");
+    let out = allowed_in(&env, dir.path(), true);
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(v["warnings"].as_array().unwrap().is_empty(), "{v}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_malformed_secret_file_with_a_live_daemon_warns() {
+    let env = setup(vec![key(KEY_ID, KEY, "laptop")]).await;
+    let dir = runner_dir();
+    fake_daemon(dir.path(), "1.0.54");
+    garbage_secret(dir.path());
+    let (code, shown) = allow_in(&env, dir.path(), &["--require-signed-rules"]);
+    assert_eq!(code, 0, "{shown}");
+    assert_eq!(restart_lines(&shown), 1, "{shown}");
+    assert!(shown.contains("did not report its version"), "{shown}");
+    let out = allowed_in(&env, dir.path(), false);
+    assert_eq!(restart_lines(&common::text(&out.stderr)), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_daemon_that_welcomes_with_an_empty_version_is_named_as_such() {
+    let env = setup(vec![key(KEY_ID, KEY, "laptop")]).await;
+    let dir = runner_dir();
+    fake_daemon(dir.path(), "");
+    let (code, shown) = allow_in(&env, dir.path(), &["--require-signed-rules"]);
+    assert_eq!(code, 0, "{shown}");
+    assert_eq!(restart_lines(&shown), 1, "{shown}");
+    assert!(shown.contains("did not report its version"), "{shown}");
+    assert_eq!(policy(&env), (json!(true), json!(false)));
+    let out = allowed_in(&env, dir.path(), false);
+    assert!(common::text(&out.stderr).contains("did not report its version"));
+}
