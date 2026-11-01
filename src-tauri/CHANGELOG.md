@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.72 — 2026-11-01
+
+- Local access: stricter checks on tokens, the socket path and event streams. Revoking a token now also removes its stored secret, and removing a local workspace revokes its tokens.
+- Personas: reading a file attached to a page now also requires access to pages.
+
 ## 0.9.71 — 2026-10-27
 
 - Workspaces: the owner can rename a workspace and pick its colour in Settings → Workspace. The workspace icon in the sidebar and the switcher uses that colour.
