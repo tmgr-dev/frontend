@@ -849,7 +849,7 @@ fn nothing_stored(rig: &Rig) {
     assert_eq!((file.offset, file.transcript.as_str()), (0, ""));
     assert!(file.questions.is_empty());
     assert!(rig.texts().is_empty());
-    let saved = std::fs::read_dir(rig.runner.path())
+    let saved = std::fs::read_dir(Store::new(rig.runner.path()).dir())
         .map(|d| {
             d.flatten()
                 .filter(|e| e.file_name().to_string_lossy().starts_with("s_"))
@@ -888,9 +888,10 @@ fn consent_withdrawn_before_haiku_never_runs_the_binary_and_saves_nothing() {
         "touch called.txt\ncat >/dev/null\necho '{\"questions\":[]}'",
     );
     append(&rig.transcript, &asking());
-    let (_, gate) = counting_gate(1);
+    let (calls, gate) = counting_gate(1);
     let mut s = rig.scanner_with(Some(bin), gate);
     assert!(!s.scan(&[rig.src(true)], 1000));
+    assert!(calls.load(std::sync::atomic::Ordering::SeqCst) >= 2);
     assert!(!rig.work.path().join("called.txt").exists());
     nothing_stored(&rig);
 }
@@ -930,4 +931,31 @@ fn reading_resumes_after_a_later_allow_and_finds_what_was_missed() {
     on.store(true, std::sync::atomic::Ordering::SeqCst);
     assert!(s.scan(&[rig.src(true)], 1002));
     assert_eq!(rig.texts().len(), 2);
+}
+
+#[test]
+fn forget_denied_drops_the_tails_of_a_denied_format_only() {
+    let rig = Rig::new();
+    append(&rig.transcript, &asking());
+    let allowed = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0b11));
+    let gate = allowed.clone();
+    let mut s = rig.scanner_with(None, move |f| {
+        let bit = if f == Format::Claude { 1 } else { 2 };
+        gate.load(std::sync::atomic::Ordering::SeqCst) & bit != 0
+    });
+    s.scan(&[rig.src(true)], 1000);
+    s.tails.insert(
+        "other".into(),
+        Tailer::new(
+            Format::Codex,
+            rig.runner.path().to_path_buf(),
+            rig.runner.path().join("x.jsonl"),
+            None,
+        ),
+    );
+    assert_eq!(s.tails.len(), 2);
+    allowed.store(0b10, std::sync::atomic::Ordering::SeqCst);
+    s.forget_denied();
+    assert_eq!(s.tails.len(), 1);
+    assert!(s.tails.values().all(|t| t.format() == Format::Codex));
 }

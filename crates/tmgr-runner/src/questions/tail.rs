@@ -69,6 +69,10 @@ impl Tailer {
         }
     }
 
+    pub fn format(&self) -> Format {
+        self.format
+    }
+
     pub fn is_for(&self, path: &Path) -> bool {
         self.path == path
     }

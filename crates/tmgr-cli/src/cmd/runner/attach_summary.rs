@@ -28,7 +28,7 @@ pub(super) struct Generated {
     pub tainted: bool,
 }
 
-pub(super) fn generate(job: &SummaryJob, home: &str, reads: Reads) -> Generated {
+pub(super) fn generate(job: &SummaryJob, home: &str, consent: &dyn Fn() -> Reads) -> Generated {
     let key = job.key.clone();
     let failed = |text: &str| Generated {
         key: key.clone(),
@@ -36,7 +36,7 @@ pub(super) fn generate(job: &SummaryJob, home: &str, reads: Reads) -> Generated 
         plain: true,
         tainted: false,
     };
-    if let Some(hint) = reads.denial(job.job.src.format) {
+    if let Some(hint) = consent().denial(job.job.src.format) {
         return failed(hint);
     }
     let Some(src) = session_src(&job.job) else {
@@ -48,6 +48,9 @@ pub(super) fn generate(job: &SummaryJob, home: &str, reads: Reads) -> Generated 
     let Some(d) = digest(&src.home, &path, &job.job.src.cwd, home) else {
         return failed("The session transcript cannot be read.");
     };
+    if let Some(hint) = consent().denial(job.job.src.format) {
+        return failed(hint);
+    }
     summarize(&key, &d, job.claude.as_deref(), &job.workdir)
 }
 
@@ -85,7 +88,7 @@ pub(super) fn summarizer(
 ) {
     let home = std::env::var("HOME").unwrap_or_default();
     for job in jobs {
-        if !send(generate(&job, &home, consent())) {
+        if !send(generate(&job, &home, &consent)) {
             return;
         }
     }
@@ -232,7 +235,7 @@ pub(super) fn print_summary(
         workdir,
         ..job
     };
-    let done = generate(&job, &std::env::var("HOME").unwrap_or_default(), reads);
+    let done = generate(&job, &std::env::var("HOME").unwrap_or_default(), &|| reads);
     let human = done.text.clone();
     Ok(super::emit(
         o,
@@ -531,12 +534,12 @@ mod tests {
             codex: true,
         };
         for reads in [Reads::default(), off] {
-            let g = generate(&job, "/home/u", reads);
+            let g = generate(&job, "/home/u", &|| reads);
             assert_eq!(g.text, reads.hint().unwrap());
             assert!(g.plain && !g.tainted);
         }
         assert!(!marker.exists());
-        let g = generate(&job, "/home/u", ALL);
+        let g = generate(&job, "/home/u", &|| ALL);
         assert_ne!(g.text, Reads::default().hint().unwrap());
         assert!(marker.exists());
     }
@@ -563,5 +566,27 @@ mod tests {
         );
         assert_eq!(texts[0], Reads::default().hint().unwrap());
         assert_ne!(texts[1], texts[0]);
+    }
+
+    #[test]
+    fn consent_withdrawn_between_digest_and_haiku_never_calls_claude() {
+        use std::cell::Cell;
+        let d = tempfile::tempdir().unwrap();
+        let marker = d.path().join("ran");
+        let bin = fake_claude(d.path(), &format!("touch {}", marker.display()));
+        let job = summary_job(d.path(), Some(bin));
+        let calls = Cell::new(0);
+        let g = generate(&job, "/home/u", &|| {
+            calls.set(calls.get() + 1);
+            if calls.get() == 1 {
+                ALL
+            } else {
+                Reads::default()
+            }
+        });
+        assert_eq!(calls.get(), 2);
+        assert_eq!(g.text, Reads::default().hint().unwrap());
+        assert!(g.plain);
+        assert!(!marker.exists());
     }
 }

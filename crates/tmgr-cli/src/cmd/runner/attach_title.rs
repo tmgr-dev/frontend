@@ -71,10 +71,9 @@ pub(super) fn titler(
             let keep: HashSet<&str> = batch.iter().map(|j| j.id.as_str()).collect();
             scans.retain(|id, _| keep.contains(id.as_str()));
         }
-        let reads = consent();
         let found = batch
             .iter()
-            .map(|job| (job.id.clone(), title_for(job, &mut scans, reads)))
+            .map(|job| (job.id.clone(), title_for(job, &mut scans, consent())))
             .collect();
         if !send(found) {
             return;
@@ -621,5 +620,40 @@ mod tests {
             titles,
             [Some("Auto".to_string()), None, Some("Auto".to_string())]
         );
+    }
+
+    #[test]
+    fn a_denial_during_a_batch_stops_the_next_job_from_being_read() {
+        use std::cell::Cell;
+        let dir = tempfile::tempdir().unwrap();
+        let first = job(dir.path(), Format::Claude, "claude-code", "/work/app");
+        plant(&first.sandbox_home, "-work-app", 4242, U, AUTO);
+        let mut second = job(dir.path(), Format::Claude, "claude-code", "/work/app");
+        second.id = "s2".into();
+        second.sandbox_home = dir.path().join("homes").join("s2");
+        plant(&second.sandbox_home, "-work-app", 4242, U, AUTO);
+        let (tx, rx) = std::sync::mpsc::channel();
+        tx.send(vec![first, second]).unwrap();
+        drop(tx);
+        let calls = Cell::new(0);
+        let mut got = Vec::new();
+        titler(
+            rx,
+            || {
+                calls.set(calls.get() + 1);
+                if calls.get() == 1 {
+                    ALL
+                } else {
+                    NONE
+                }
+            },
+            |found| {
+                got = found;
+                true
+            },
+        );
+        assert_eq!(calls.get(), 2);
+        assert_eq!(got[0].1.as_ref().map(|t| t.text.as_str()), Some("Auto"));
+        assert!(got[1].1.is_none());
     }
 }
