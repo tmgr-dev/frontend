@@ -233,10 +233,6 @@ fn outbound_denial(reads: Reads) -> Option<&'static str> {
     reads.denial(tmgr_runner::attach::Format::Claude)
 }
 
-fn newly_allowed(before: Reads, now: Reads) -> bool {
-    (now.claude && !before.claude) || (now.codex && !before.codex)
-}
-
 fn short_age(now: u64, since: u64) -> String {
     let s = now.saturating_sub(since) / 1000;
     match s {
@@ -765,9 +761,20 @@ impl App {
         }
         self.last_title = Instant::now();
         self.titles_tried.extend(jobs.iter().map(|j| j.id.clone()));
-        self.exit_scanned
-            .extend(jobs.iter().filter(|j| j.pid == 0).map(|j| j.id.clone()));
+        let exited: Vec<String> = jobs
+            .iter()
+            .filter(|j| {
+                self.view
+                    .sessions
+                    .iter()
+                    .any(|r| r.id == j.id && r.exited())
+            })
+            .map(|j| j.id.clone())
+            .collect();
         self.title_pending = self.title_tx.try_send(jobs).is_ok();
+        if self.title_pending {
+            self.exit_scanned.extend(exited);
+        }
     }
 
     fn question_job(&self, row: &SessionRow, src: &AgentSrc) -> QuestionJob {
@@ -1206,7 +1213,7 @@ impl App {
     }
 
     fn on_reads(&mut self, reads: Reads) {
-        if newly_allowed(self.reads, reads) {
+        if reads != self.reads {
             self.question_exited.clear();
             self.exit_scanned.clear();
         }
@@ -4228,29 +4235,6 @@ mod tests {
             codex: false
         })
         .is_none());
-    }
-
-    #[test]
-    fn only_a_denied_to_allowed_flip_counts_as_newly_allowed() {
-        let none = Reads::default();
-        let claude = Reads {
-            claude: true,
-            codex: false,
-        };
-        let codex = Reads {
-            claude: false,
-            codex: true,
-        };
-        let both = Reads {
-            claude: true,
-            codex: true,
-        };
-        assert!(newly_allowed(none, claude));
-        assert!(newly_allowed(claude, both));
-        assert!(newly_allowed(claude, codex));
-        assert!(!newly_allowed(both, claude));
-        assert!(!newly_allowed(both, both));
-        assert!(!newly_allowed(none, none));
     }
 
     #[test]
