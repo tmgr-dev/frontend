@@ -56,10 +56,17 @@ describe('rewrite session', () => {
 			addRevision(addRevision(createRewriteSession('orig'), 'one'), 'two'),
 			1,
 		);
-		expect(acceptRevision(s, 'current')).toEqual({
+		expect(acceptRevision(s, 'orig')).toEqual({
 			next: 'one',
-			previous: 'current',
+			previous: 'orig',
 		});
+	});
+});
+
+describe('acceptRevision when the description changed meanwhile', () => {
+	it('refuses, so newer text is not overwritten', () => {
+		const s = addRevision(createRewriteSession('original'), 'one');
+		expect(acceptRevision(s, 'edited in the meantime')).toBeNull();
 	});
 });
 

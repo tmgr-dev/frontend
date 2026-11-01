@@ -268,10 +268,15 @@
 	};
 
 	const accept = () => {
-		const { next, previous } = acceptRevision(session.value, props.description);
-		undoText.value = previous;
-		acceptedText.value = next;
-		emit('apply', next);
+		const accepted = acceptRevision(session.value, props.description);
+		if (!accepted) {
+			error.value =
+				'The description changed while this was open. Close and rewrite it again.';
+			return;
+		}
+		undoText.value = accepted.previous;
+		acceptedText.value = accepted.next;
+		emit('apply', accepted.next);
 		close();
 	};
 

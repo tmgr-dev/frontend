@@ -39,10 +39,10 @@ export const selectRevision = (
 export const selectedText = (session: RewriteSession) =>
 	session.revisions[session.selected];
 
-export const acceptRevision = (session: RewriteSession, current: string) => ({
-	next: selectedText(session),
-	previous: current,
-});
+export const acceptRevision = (session: RewriteSession, current: string) =>
+	current === session.revisions[0]
+		? { next: selectedText(session), previous: current }
+		: null;
 
 export const createRequestGuard = () => {
 	let latest = 0;
