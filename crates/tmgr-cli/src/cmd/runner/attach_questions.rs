@@ -1,6 +1,8 @@
+use super::attach_consent::Reads;
 use super::attach_title::AgentSrc;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
+use std::sync::Arc;
 use tmgr_runner::questions::haiku::find_claude;
 use tmgr_runner::questions::{transcript_path, Entry, Scanner, SessionSrc, Status, Store};
 use tmgr_runner::resume::id_from_log;
@@ -48,23 +50,31 @@ pub(super) fn questioner(
     jobs: Receiver<Vec<QuestionJob>>,
     runner_dir: PathBuf,
     claude: Option<PathBuf>,
-    mut send: impl FnMut(Vec<Entry>) -> bool,
+    consent: impl Fn() -> Reads + Send + Sync + 'static,
+    mut send: impl FnMut(Vec<Entry>, Reads) -> bool,
 ) {
     let store = Store::new(&runner_dir);
     let workdir = store.dir().join("haiku-cwd");
     let claude = claude.filter(|_| tmgr_ipc::dirs::ensure_private_dir(&workdir).is_ok());
-    let mut scanner = Scanner::new(store.clone(), claude, workdir);
+    let consent = Arc::new(consent);
+    let gate = consent.clone();
+    let mut scanner = Scanner::new(store.clone(), claude, workdir, move |f| gate().allows(f));
     for batch in jobs {
-        if !batch.is_empty() {
+        let reads = consent();
+        if !batch.is_empty() && reads.any() {
             if let Ok(Some(_lock)) = store.try_lock() {
-                let sources: Vec<SessionSrc> = batch.iter().filter_map(session_src).collect();
+                let sources: Vec<SessionSrc> = batch
+                    .iter()
+                    .filter(|j| reads.allows(j.src.format))
+                    .filter_map(session_src)
+                    .collect();
                 scanner.scan(&sources, now_ms() / 1000);
             }
         }
         let mut entries = store.entries(None);
         entries.sort_by_key(|e| e.status != Status::Open);
         entries.truncate(MAX_ENTRIES);
-        if !send(entries) {
+        if !send(entries, reads) {
             return;
         }
     }
@@ -78,6 +88,11 @@ mod tests {
     use tmgr_runner::attach::Format;
 
     const U: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
+
+    const ALL: Reads = Reads {
+        claude: true,
+        codex: true,
+    };
 
     fn job(home: &std::path::Path, dir: &std::path::Path, settled: bool) -> QuestionJob {
         QuestionJob {
@@ -127,7 +142,13 @@ mod tests {
         let (out_tx, out_rx) = mpsc::channel();
         let dir = runner.path().to_path_buf();
         let handle = std::thread::spawn(move || {
-            questioner(rx, dir, None, move |found| out_tx.send(found).is_ok())
+            questioner(
+                rx,
+                dir,
+                None,
+                || ALL,
+                move |found, _| out_tx.send(found).is_ok(),
+            )
         });
         tx.send(vec![job(home.path(), runner.path(), true)])
             .unwrap();
@@ -146,5 +167,102 @@ mod tests {
         let runner = tempfile::tempdir().unwrap();
         let missing = runner.path().join("nope");
         assert!(session_src(&job(&missing, runner.path(), true)).is_none());
+    }
+
+    fn private(dir: &std::path::Path) {
+        std::fs::set_permissions(dir, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
+    }
+
+    fn transcript(home: &std::path::Path, runner: &std::path::Path, text: &str) {
+        let proj = home.join(".claude/projects/-work-x");
+        std::fs::create_dir_all(&proj).unwrap();
+        let mut f = std::fs::File::create(proj.join(format!("{U}.jsonl"))).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"go"}}}}"#
+        )
+        .unwrap();
+        writeln!(f, r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"{text}"}}]}}}}"#).unwrap();
+        std::fs::write(runner.join("output.log"), format!("claude --resume {U}\n")).unwrap();
+    }
+
+    #[test]
+    fn without_consent_nothing_new_is_stored_but_stored_questions_are_still_sent() {
+        use tmgr_runner::questions::{Origin, Question, SessionFile};
+        let runner = tempfile::tempdir().unwrap();
+        private(runner.path());
+        let home = tempfile::tempdir().unwrap();
+        transcript(
+            home.path(),
+            runner.path(),
+            "Done. Should I also update the docs?",
+        );
+        let store = Store::new(runner.path());
+        let old = Question {
+            id: "aaaa11112222".into(),
+            session: "s_zzzzzzzzzz".into(),
+            text: "Kept from before?".into(),
+            asked_s: now_ms() / 1000,
+            origin: Origin::Rule,
+            user: String::new(),
+            reply: String::new(),
+            item: String::new(),
+            pos: 0,
+            turn: 0,
+        };
+        let file = SessionFile {
+            questions: vec![old],
+            ..SessionFile::default()
+        };
+        store.save("s_zzzzzzzzzz", &file, now_ms() / 1000).unwrap();
+
+        let (tx, rx) = mpsc::sync_channel(1);
+        let (out_tx, out_rx) = mpsc::channel();
+        let dir = runner.path().to_path_buf();
+        let handle = std::thread::spawn(move || {
+            questioner(rx, dir, None, Reads::default, move |found, reads| {
+                out_tx.send((found, reads)).is_ok()
+            })
+        });
+        tx.send(vec![job(home.path(), runner.path(), true)])
+            .unwrap();
+        let (found, reads) = out_rx.recv().unwrap();
+        assert_eq!(reads, Reads::default());
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].q.text, "Kept from before?");
+        assert!(!runner.path().join("s_abcdefghjk.json").exists());
+        drop(tx);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn a_tool_without_consent_is_not_scanned_while_the_other_is() {
+        let runner = tempfile::tempdir().unwrap();
+        private(runner.path());
+        let home = tempfile::tempdir().unwrap();
+        transcript(
+            home.path(),
+            runner.path(),
+            "Done. Should I also update the docs?",
+        );
+        let only_codex = || Reads {
+            claude: false,
+            codex: true,
+        };
+        let (tx, rx) = mpsc::sync_channel(1);
+        let (out_tx, out_rx) = mpsc::channel();
+        let dir = runner.path().to_path_buf();
+        let handle = std::thread::spawn(move || {
+            questioner(rx, dir, None, only_codex, move |found, reads| {
+                out_tx.send((found, reads)).is_ok()
+            })
+        });
+        tx.send(vec![job(home.path(), runner.path(), true)])
+            .unwrap();
+        let (found, reads) = out_rx.recv().unwrap();
+        assert!(found.is_empty());
+        assert_eq!(reads, only_codex());
+        drop(tx);
+        handle.join().unwrap();
     }
 }

@@ -1,3 +1,4 @@
+use super::runner::attach_consent::Reads;
 use crate::ctx::Ctx;
 use crate::out::Output;
 use chrono::Utc;
@@ -53,7 +54,7 @@ pub enum Switch {
     Off,
 }
 
-pub fn run(_ctx: &Ctx, args: &QuestionsArgs) -> Result<Output> {
+pub fn run(ctx: &Ctx, args: &QuestionsArgs) -> Result<Output> {
     let dir = tmgr_ipc::dirs::runner_dir()
         .map_err(|e| Error::internal(format!("cannot locate the runner directory: {e}")))?;
     let store = Store::new(&dir);
@@ -62,7 +63,13 @@ pub fn run(_ctx: &Ctx, args: &QuestionsArgs) -> Result<Output> {
         Some(QuestionsCommand::Answer { id }) => mark(&store, id, Status::Answered, now_s),
         Some(QuestionsCommand::Ignore { id }) => mark(&store, id, Status::Ignored, now_s),
         Some(QuestionsCommand::Haiku { state }) => haiku(&store, *state),
-        None => list(&store, args, now_s),
+        None => {
+            let hint = Reads::current().hint();
+            if let Some(hint) = hint.filter(|_| ctx.json) {
+                ctx.warn("questions_reading_off", hint);
+            }
+            list(&store, args, now_s, hint.filter(|_| !ctx.json))
+        }
     }
 }
 
@@ -106,7 +113,7 @@ fn wanted(e: &Entry, which: Which) -> bool {
     }
 }
 
-fn list(store: &Store, args: &QuestionsArgs, now_s: u64) -> Result<Output> {
+fn list(store: &Store, args: &QuestionsArgs, now_s: u64, hint: Option<&str>) -> Result<Output> {
     let entries: Vec<Entry> = store
         .entries(args.session.as_deref())
         .into_iter()
@@ -129,6 +136,9 @@ fn list(store: &Store, args: &QuestionsArgs, now_s: u64) -> Result<Output> {
                 sanitize_line(&e.q.text)
             ));
         }
+    }
+    if let Some(hint) = hint {
+        lines.push(hint.to_string());
     }
     let data: Vec<_> = entries
         .iter()
@@ -196,7 +206,7 @@ mod tests {
     #[test]
     fn lists_open_questions_and_strips_escapes() {
         let (_d, store) = seeded();
-        let out = list(&store, &args(Which::Open), 400).unwrap();
+        let out = list(&store, &args(Which::Open), 400, None).unwrap();
         assert!(out.human.contains("Should I update the docs?"));
         assert!(!out.human.contains('\u{1b}'));
         assert_eq!(out.data["questions"].as_array().unwrap().len(), 2);
@@ -209,10 +219,10 @@ mod tests {
         let (_d, store) = seeded();
         mark(&store, "aaaa", Status::Answered, 500).unwrap();
         mark(&store, "bbbb", Status::Ignored, 501).unwrap();
-        assert!(list(&store, &args(Which::Open), 600).unwrap().human == "No questions");
-        let ignored = list(&store, &args(Which::Ignored), 600).unwrap();
+        assert!(list(&store, &args(Which::Open), 600, None).unwrap().human == "No questions");
+        let ignored = list(&store, &args(Which::Ignored), 600, None).unwrap();
         assert_eq!(ignored.data["questions"][0]["id"], "bbbb33334444");
-        let all = list(&store, &args(Which::All), 600).unwrap();
+        let all = list(&store, &args(Which::All), 600, None).unwrap();
         assert_eq!(all.data["questions"].as_array().unwrap().len(), 2);
     }
 
@@ -228,7 +238,7 @@ mod tests {
         let (_d, store) = seeded();
         let mut a = args(Which::All);
         a.session = Some("s_zzzzzzzzzz".into());
-        assert_eq!(list(&store, &a, 400).unwrap().human, "No questions");
+        assert_eq!(list(&store, &a, 400, None).unwrap().human, "No questions");
     }
 
     #[test]
@@ -244,5 +254,18 @@ mod tests {
             .starts_with("Haiku is off"));
         assert!(!store.settings().haiku);
         assert_eq!(haiku(&store, Some(Switch::On)).unwrap().data["haiku"], true);
+    }
+
+    #[test]
+    fn the_hint_is_a_last_line_and_stored_questions_stay_listed() {
+        let (_d, store) = seeded();
+        let hint = "Titles and questions are off: run tmgr usage consent allow";
+        let out = list(&store, &args(Which::Open), 400, Some(hint)).unwrap();
+        assert!(out.human.contains("Should I update the docs?"));
+        assert_eq!(out.human.lines().last(), Some(hint));
+        assert_eq!(out.data["questions"].as_array().unwrap().len(), 2);
+        let none = list(&store, &args(Which::Ignored), 400, Some(hint)).unwrap();
+        assert!(none.human.starts_with("No questions"));
+        assert!(none.human.ends_with(hint));
     }
 }

@@ -5352,6 +5352,54 @@ mod questions_ui {
     }
 
     #[test]
+    fn the_reads_hint_replaces_the_empty_open_list_text_only() {
+        let hint = "Titles and questions are off: run tmgr usage consent allow";
+        let mut v = two_pane(140);
+        v.now_s = NOW;
+        v.set_questions(vec![entry(
+            "q1",
+            "a",
+            "Keep the old API?",
+            Status::Ignored,
+            90,
+        )]);
+        assert!(v.open_questions(None));
+        v.edit_qmenu(b"\t");
+        assert!(!v.qmenu.as_ref().unwrap().ignored);
+        assert!(draw(&v, &screens(), 140, 30).contains("No open questions"));
+        assert!(v.set_reads_hint(Some(hint)));
+        assert!(!v.set_reads_hint(Some(hint)));
+        let text = draw(&v, &screens(), 140, 30);
+        assert!(text.contains(hint), "{text}");
+        assert!(!text.contains("No open questions"));
+        v.set_reads_hint(None);
+        assert!(draw(&v, &screens(), 140, 30).contains("No open questions"));
+    }
+
+    #[test]
+    fn with_no_questions_at_all_the_notice_carries_the_hint() {
+        let hint = "Titles and questions are off: run tmgr usage consent allow";
+        let mut v = two_pane(140);
+        assert!(!v.open_questions(None));
+        assert_eq!(v.notice.as_deref(), Some("no unanswered questions"));
+        v.set_reads_hint(Some(hint));
+        assert!(!v.open_questions(None));
+        assert_eq!(v.notice.as_deref(), Some(hint));
+    }
+
+    #[test]
+    fn a_list_with_entries_ignores_the_reads_hint() {
+        let mut v = with_questions(140);
+        v.set_reads_hint(Some(
+            "Titles and questions are off: run tmgr usage consent allow",
+        ));
+        v.open_questions(Some("a".into()));
+        let text = draw(&v, &screens(), 140, 30);
+        assert!(text.contains("Should I also gate"), "{text}");
+        assert!(!text.contains("Titles and questions are off"));
+    }
+
+    #[test]
     fn escape_and_q_close_the_menu() {
         for key in [&b"\x1b"[..], b"q"] {
             let mut v = with_questions(140);

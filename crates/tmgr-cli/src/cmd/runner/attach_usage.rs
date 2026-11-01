@@ -1,3 +1,4 @@
+use super::attach_consent::Reads;
 use super::attach_questions::{session_src, QuestionJob};
 use chrono::{DateTime, Duration, FixedOffset, TimeZone, Utc};
 use std::path::PathBuf;
@@ -29,6 +30,7 @@ pub(super) fn usage_source() -> Option<Source> {
 pub(super) fn usage_worker(
     source: Option<Source>,
     jobs: Receiver<Vec<QuestionJob>>,
+    consent: impl Fn() -> Reads,
     mut send: impl FnMut(UsageBar) -> bool,
 ) {
     let mut store: Option<Store> = None;
@@ -39,7 +41,13 @@ pub(super) fn usage_worker(
                 .filter(|s| s.db.exists())
                 .and_then(|s| Store::open_read_only(&s.db).ok());
         }
-        let bar = build(store.as_ref(), source.as_ref(), &batch, Utc::now());
+        let bar = build(
+            store.as_ref(),
+            source.as_ref(),
+            &batch,
+            Utc::now(),
+            consent(),
+        );
         if !send(bar) {
             return;
         }
@@ -51,6 +59,7 @@ fn build(
     source: Option<&Source>,
     batch: &[QuestionJob],
     now: DateTime<Utc>,
+    reads: Reads,
 ) -> UsageBar {
     let mut limits = store
         .and_then(|s| s.current_limits(now).ok())
@@ -71,7 +80,7 @@ fn build(
     };
     if let Some(store) = store {
         for job in batch.iter().filter(|j| j.src.format == Format::Claude) {
-            if let Some(cost) = session_cost(store, job, now) {
+            if let Some(cost) = session_cost(store, job, now, reads) {
                 bar.costs.insert(job.id.clone(), cost);
             }
         }
@@ -95,7 +104,15 @@ fn reading(
     })
 }
 
-fn session_cost(store: &Store, job: &QuestionJob, now: DateTime<Utc>) -> Option<Cost> {
+fn session_cost(
+    store: &Store,
+    job: &QuestionJob,
+    now: DateTime<Utc>,
+    reads: Reads,
+) -> Option<Cost> {
+    if !reads.allows(job.src.format) {
+        return None;
+    }
     let src = session_src(job)?;
     let path = transcript_path(&src)?;
     let name = path.file_name()?.to_str()?.to_string();
@@ -245,12 +262,26 @@ mod tests {
         }
     }
 
+    const ALL: Reads = Reads {
+        claude: true,
+        codex: true,
+    };
+
     fn run(db: Option<&Path>, jobs: Vec<QuestionJob>) -> UsageBar {
+        run_with(db, jobs, ALL)
+    }
+
+    fn run_with(db: Option<&Path>, jobs: Vec<QuestionJob>, reads: Reads) -> UsageBar {
         let source = db.map(source);
         let (tx, rx) = mpsc::sync_channel(1);
         let (out_tx, out_rx) = mpsc::channel();
         let handle = std::thread::spawn(move || {
-            usage_worker(source, rx, move |bar| out_tx.send(bar).is_ok())
+            usage_worker(
+                source,
+                rx,
+                move || reads,
+                move |bar| out_tx.send(bar).is_ok(),
+            )
         });
         tx.send(jobs).unwrap();
         let bar = out_rx.recv().unwrap();
@@ -354,5 +385,21 @@ mod tests {
         let mut j = job(&f.home, &f.runner);
         j.src.format = Format::Codex;
         assert!(run(Some(&f.db), vec![j]).costs.is_empty());
+    }
+
+    #[test]
+    fn without_claude_consent_the_cost_is_not_read_but_limits_still_show() {
+        let f = fixture();
+        let off = Reads {
+            claude: false,
+            codex: true,
+        };
+        let bar = run_with(Some(&f.db), vec![job(&f.home, &f.runner)], off);
+        assert!(bar.costs.is_empty());
+        assert_eq!(bar.claude_week.map(|r| r.pct), Some(81.0));
+        let none = run_with(Some(&f.db), vec![job(&f.home, &f.runner)], Reads::default());
+        assert!(none.costs.is_empty());
+        let on = run_with(Some(&f.db), vec![job(&f.home, &f.runner)], ALL);
+        assert!(on.costs.contains_key("s_abcdefghjk"));
     }
 }
