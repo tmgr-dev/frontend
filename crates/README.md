@@ -114,6 +114,10 @@ Reads open the database read-only; a write takes the desktop's write lock for on
 
 `TM-512` (key as shown in the title), `#8974` or `8974` (global task id). `tmgr help refs` prints the grammar.
 
+## Signed persona and rules policy (`tmgr runner allow`, `runner` feature)
+
+`tmgr runner allow WS [--require-signed-rules] [--require-signed-persona]` sets a local policy on the allow entry in `runner-allow.json`: a cloud run starts only if its signed approval covers the workspace rules (`context_sha256`) and/or a persona (`persona_sha256`). An approval made before persona and rules were signed covers neither, so it is refused under any policy, and so is a workspace with no rules under `--require-signed-rules`. The policy only narrows: running `allow` again without the flags keeps it, and only `tmgr runner disallow WS` followed by `allow` clears it. The server cannot set, read or change it. It is checked in `tmgr_approval::check_claim`, after the signature, by `tmgr run`, the queue, autopilot and the runner daemon alike; `tmgr runner allowed` shows it in a POLICY column and in `--json`.
+
 ## Queue (`tmgr queue`, hidden, `runner` feature)
 
 `tmgr-queue` is the local auto-run queue. It is off by default. `run-once` starts approved pickups through the runner (`runs.create` with the bundle, `permission_mode = ask`, the start key, `clone_of` and `agent_work`); the CLI implements `RunsClient` over the runner client.

@@ -2738,6 +2738,8 @@ mod tests {
                 public_key: f["key"]["public_key"].as_str().unwrap().into(),
                 device_name: "laptop".into(),
             }],
+            require_signed_rules: false,
+            require_signed_persona: false,
             repos: [(
                 "127".to_string(),
                 tmgr_approval::RepoBinding::Path("/repo".into()),

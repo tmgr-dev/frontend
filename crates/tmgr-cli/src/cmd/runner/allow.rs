@@ -176,7 +176,22 @@ pub fn key_conflict(previous: &Entry, keys: &[(PinnedKey, Option<String>)]) -> R
     Ok(())
 }
 
-pub fn allow(o: &Opts, workspace: &str, lifetime: Lifetime) -> Result<i32> {
+pub fn policy_text(rules: bool, persona: bool) -> Option<String> {
+    match (rules, persona) {
+        (false, false) => None,
+        (true, false) => Some("rules".into()),
+        (false, true) => Some("persona".into()),
+        (true, true) => Some("rules, persona".into()),
+    }
+}
+
+pub fn allow(
+    o: &Opts,
+    workspace: &str,
+    lifetime: Lifetime,
+    require_rules: bool,
+    require_persona: bool,
+) -> Result<i32> {
     privileged::guard()?;
     if workspace.starts_with(tmgr_core::local::PREFIX) {
         return Err(Error::usage(
@@ -232,6 +247,19 @@ pub fn allow(o: &Opts, workspace: &str, lifetime: Lifetime) -> Result<i32> {
         "A task is started only if it carries a signature by one of the keys below, made over its exact title and description. \
 These keys are pinned now; a key added later is not trusted until you run this again. Anyone who controls one of these keys can start agents on this machine."
     );
+    let (rules, persona) = previous
+        .as_ref()
+        .map_or((require_rules, require_persona), |p| {
+            (
+                p.require_signed_rules || require_rules,
+                p.require_signed_persona || require_persona,
+            )
+        });
+    if let Some(what) = policy_text(rules, persona) {
+        eprintln!(
+            "Policy: a run starts only if its approval covers signed {what}. Only `tmgr runner disallow` followed by `tmgr runner allow` lifts it."
+        );
+    }
     for (k, created) in &keys {
         let fresh = previous
             .as_ref()
@@ -277,6 +305,10 @@ These keys are pinned now; a key added later is not trusted until you run this a
             allowed_at: stamp(now),
             expires_at: expires.map(stamp),
             keys: keys.iter().map(|(k, _)| k.clone()).collect(),
+            require_signed_rules: require_rules
+                || current.as_ref().is_some_and(|p| p.require_signed_rules),
+            require_signed_persona: require_persona
+                || current.as_ref().is_some_and(|p| p.require_signed_persona),
             repos: current.map(|p| p.repos).unwrap_or_default(),
         };
         file.upsert(entry.clone());
@@ -331,6 +363,8 @@ pub fn describe(e: &Entry, now: DateTime<Utc>) -> Value {
             "fingerprint": fingerprint(&k.public_key),
         })).collect::<Vec<_>>(),
         "repos": e.repos,
+        "require_signed_rules": e.require_signed_rules,
+        "require_signed_persona": e.require_signed_persona,
     })
 }
 
@@ -369,6 +403,7 @@ pub fn allowed(o: &Opts) -> Result<i32> {
             "SERVER".into(),
             "EXPIRES".into(),
             "KEYS".into(),
+            "POLICY".into(),
         ]];
         for e in &file.entries {
             let expires = match (&e.expires_at, e.expired(now)) {
@@ -385,6 +420,8 @@ pub fn allowed(o: &Opts) -> Result<i32> {
                     .map(|k| fingerprint(&k.public_key))
                     .collect::<Vec<_>>()
                     .join(", "),
+                policy_text(e.require_signed_rules, e.require_signed_persona)
+                    .unwrap_or_else(|| "-".into()),
             ]);
         }
         let mut out = crate::out::table(&rows);
@@ -450,6 +487,8 @@ mod key_tests {
             allowed_at: "2025-10-01T00:00:00Z".into(),
             expires_at: None,
             keys: vec![pin("k1", A)],
+            require_signed_rules: false,
+            require_signed_persona: false,
             repos: BTreeMap::new(),
         }
     }
@@ -561,5 +600,42 @@ mod key_tests {
         AllowFile::update_at(&path, |f| pin_into(f, "s", 1, 2, &own(), "CLI (macOS)")).unwrap();
         let loaded = AllowFile::load_from(&path).unwrap();
         assert!(loaded.find("s", 1, 2).unwrap().key("c1").is_some());
+    }
+}
+
+#[cfg(test)]
+mod policy_tests {
+    use super::*;
+
+    #[test]
+    fn pinning_a_key_keeps_the_policy() {
+        let own = OwnKey {
+            key_id: "k9".into(),
+            public_key: "BImU1e2SPEdD/HKLzjfuQlNuLgKE44/qEF5a+626Bj0KtbPSIGIwmRlfUMIyP75vzLHw7BUXRArO87Ad8xnmazE=".into(),
+        };
+        let mut file = AllowFile::default();
+        file.upsert(Entry {
+            server: "s".into(),
+            user_id: 1,
+            workspace_id: 2,
+            workspace_code: "w".into(),
+            allowed_at: "2025-10-01T00:00:00Z".into(),
+            expires_at: None,
+            keys: vec![],
+            repos: Default::default(),
+            require_signed_rules: true,
+            require_signed_persona: true,
+        });
+        assert!(pin_into(&mut file, "s", 1, 2, &own, "CLI").unwrap());
+        let e = &file.entries[0];
+        assert!(e.require_signed_rules && e.require_signed_persona && e.keys.len() == 1);
+    }
+
+    #[test]
+    fn the_policy_text_names_what_is_required() {
+        assert_eq!(policy_text(false, false), None);
+        assert_eq!(policy_text(true, false).as_deref(), Some("rules"));
+        assert_eq!(policy_text(false, true).as_deref(), Some("persona"));
+        assert_eq!(policy_text(true, true).as_deref(), Some("rules, persona"));
     }
 }

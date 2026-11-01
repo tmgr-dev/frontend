@@ -8,7 +8,7 @@ runner uninstall-service | Runner | -
 runner trust | Runner | dir
 runner untrust | Runner | dir
 runner trusted | Runner | -
-runner allow | Runner | workspace, lifetime
+runner allow | Runner | workspace, lifetime, require_signed_rules, require_signed_persona
 runner disallow | Runner | workspace
 runner allowed | Runner | -
 runner bind | Runner | target, path

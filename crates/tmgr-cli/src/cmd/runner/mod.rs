@@ -170,6 +170,12 @@ pub struct AllowArgs {
     /// How long the permission lasts: 8h, 7d, 30d or forever
     #[arg(long = "for", value_name = "DURATION", default_value = "30d", value_parser = allow::Lifetime::parse)]
     pub lifetime: allow::Lifetime,
+    /// Start a run only if its approval covers the workspace rules (kept until disallow)
+    #[arg(long)]
+    pub require_signed_rules: bool,
+    /// Start a run only if its approval covers a persona (kept until disallow)
+    #[arg(long)]
+    pub require_signed_persona: bool,
 }
 
 #[derive(Args)]

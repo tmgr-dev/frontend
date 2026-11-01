@@ -371,3 +371,81 @@ async fn only_foreign_cli_keys_means_no_signing_key_for_this_machine() {
     assert_eq!(p.exit_code(), 6, "{}", p.text());
     assert!(!allow_file(&env).exists());
 }
+
+fn allow_with(env: &Env, extra: &[&str]) -> (u32, String) {
+    let mut args = vec!["runner", "allow", "tmgrdev"];
+    args.extend_from_slice(extra);
+    let mut p = Pty::spawn(env, &args);
+    p.wait_for("Type the workspace code");
+    p.type_line("tmgrdev");
+    let code = p.exit_code();
+    (code, p.text())
+}
+
+fn policy(env: &Env) -> (Value, Value) {
+    let e = &read_allow(env)["entries"][0];
+    (
+        e.get("require_signed_rules")
+            .cloned()
+            .unwrap_or(json!(false)),
+        e.get("require_signed_persona")
+            .cloned()
+            .unwrap_or(json!(false)),
+    )
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_signed_rules_policy_is_stored_kept_widened_and_cleared_only_by_disallow() {
+    let env = setup(vec![key(KEY_ID, KEY, "laptop")]).await;
+    let (code, shown) = allow_with(&env, &["--require-signed-rules"]);
+    assert_eq!(code, 0, "{shown}");
+    assert!(shown.contains("covers signed rules"), "{shown}");
+    assert_eq!(policy(&env), (json!(true), json!(false)));
+    assert!(read_allow(&env)["entries"][0]
+        .get("require_signed_persona")
+        .is_none());
+
+    let (code, shown) = allow_with(&env, &[]);
+    assert_eq!(code, 0, "{shown}");
+    assert!(shown.contains("covers signed rules"), "{shown}");
+    assert_eq!(policy(&env), (json!(true), json!(false)));
+
+    let (code, _) = allow_with(&env, &["--require-signed-persona"]);
+    assert_eq!(code, 0);
+    assert_eq!(policy(&env), (json!(true), json!(true)));
+
+    let out = env
+        .cmd()
+        .args(["runner", "allowed", "--json"])
+        .output()
+        .unwrap();
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"][0]["require_signed_rules"], true);
+    assert_eq!(v["data"][0]["require_signed_persona"], true);
+    let out = env.cmd().args(["runner", "allowed"]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(
+        text.contains("POLICY") && text.contains("rules, persona"),
+        "{text}"
+    );
+
+    let out = env
+        .cmd()
+        .args(["runner", "disallow", "tmgrdev"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let (code, _) = allow_with(&env, &[]);
+    assert_eq!(code, 0);
+    assert_eq!(policy(&env), (json!(false), json!(false)));
+    let out = env.cmd().args(["runner", "allowed"]).output().unwrap();
+    assert!(!String::from_utf8_lossy(&out.stdout).contains("rules"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_persona_policy_alone_is_stored() {
+    let env = setup(vec![key(KEY_ID, KEY, "laptop")]).await;
+    let (code, shown) = allow_with(&env, &["--require-signed-persona"]);
+    assert_eq!(code, 0, "{shown}");
+    assert_eq!(policy(&env), (json!(false), json!(true)));
+}

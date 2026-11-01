@@ -803,6 +803,8 @@ mod tests {
                 public_key: own.public_key.clone(),
                 device_name: "CLI".into(),
             }],
+            require_signed_rules: false,
+            require_signed_persona: false,
             repos: Default::default(),
         }
     }

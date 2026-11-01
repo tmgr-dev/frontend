@@ -2431,6 +2431,8 @@ mod tests {
                 vec![]
             },
             repos: BTreeMap::new(),
+            require_signed_rules: false,
+            require_signed_persona: false,
         });
         a
     }
@@ -3535,5 +3537,84 @@ mod tests {
             record_body("/work/be", clone, "tmgr/x", None, &rec).to_string(),
             r#"{"repo":"/work/be","clone":"/work/be-worktrees/tmgr-x","branch":"tmgr/x","cloud":true,"clones":[{"name":"backend","repo":"tmgr-dev/backend","dev":7,"ino":9}]}"#
         );
+    }
+
+    fn with_policy(rules: bool, persona: bool) -> AllowFile {
+        let mut a = ok_allow();
+        a.entries[0].require_signed_rules = rules;
+        a.entries[0].require_signed_persona = persona;
+        a
+    }
+
+    fn bundle_v3_rules_only() -> Value {
+        let c = &fx()["cases_v3"][2];
+        let mut b = bundle_v3(2);
+        b["category"] = json!({"id": 127, "code": "TM", "github_full_name": null, "default_branch": null,
+            "repositories": c["repositories"], "repos_sha256": c["repos_sha256"]});
+        b["approval"]["repos_sha256"] = c["repos_sha256"].clone();
+        b
+    }
+
+    #[test]
+    fn the_rules_policy_needs_a_v3_approval_that_covers_the_rules() {
+        let a = with_policy(true, false);
+        assert!(gate(&a, bundle_v2(), &live(), None).is_err());
+        assert!(gate(&a, bundle(), &live(), None).is_err());
+        assert!(gate(&a, bundle_v3(0), &live(), None).is_ok());
+        assert!(gate(&a, bundle_v3_rules_only(), &live(), None).is_ok());
+        let r = gate(&a, bundle_v3(1), &live(), None).unwrap_err();
+        assert!(r.message.contains("workspace rules"), "{}", r.message);
+        assert_eq!(r.fix, RECONFIRM);
+    }
+
+    #[test]
+    fn the_persona_policy_needs_a_v3_approval_that_covers_a_persona() {
+        let a = with_policy(false, true);
+        assert!(gate(&a, bundle_v2(), &live(), None).is_err());
+        assert!(gate(&a, bundle(), &live(), None).is_err());
+        assert!(gate(&a, bundle_v3(1), &live(), None).is_ok());
+        assert!(gate(&a, bundle_v3(0), &live(), None).is_ok());
+        let r = gate(&a, bundle_v3_rules_only(), &live(), None).unwrap_err();
+        assert!(r.message.contains("persona"), "{}", r.message);
+    }
+
+    #[test]
+    fn both_policies_need_both_and_off_changes_nothing() {
+        let a = with_policy(true, true);
+        assert!(gate(&a, bundle_v3(0), &live(), None).is_ok());
+        assert!(gate(&a, bundle_v3(1), &live(), None).is_err());
+        assert!(gate(&a, bundle_v3_rules_only(), &live(), None).is_err());
+        assert!(gate(&a, bundle_v2(), &live(), None).is_err());
+        let off = with_policy(false, false);
+        assert!(gate(&off, bundle_v2(), &live(), None).is_ok());
+        assert!(gate(&off, bundle(), &live(), None).is_ok());
+    }
+
+    #[test]
+    fn a_server_cannot_claim_coverage_the_signature_does_not_have() {
+        let a = with_policy(true, true);
+        let mut b = bundle();
+        b["approval"]["persona_sha256"] = fx()["cases_v3"][0]["persona_sha256"].clone();
+        b["approval"]["context_sha256"] = fx()["cases_v3"][0]["context_sha256"].clone();
+        b["persona"] = fx()["cases_v3"][0]["persona"].clone();
+        let r = gate(&a, b, &live(), None).unwrap_err();
+        assert!(!r.message.contains("requires signed"), "{}", r.message);
+    }
+
+    #[test]
+    fn a_refused_policy_leaves_the_rollback_state_alone() {
+        let rollback = Rollback::default();
+        let key = Rollback::key("api.tmgr.dev", 1, 56, 9100);
+        let r = cloud_gate(
+            &with_policy(true, false),
+            &live(),
+            &parse_eligibility(bundle_v2()).unwrap(),
+            "api.tmgr.dev",
+            1,
+            now(),
+            rollback.seen(&key),
+        );
+        assert!(r.is_err());
+        assert_eq!(rollback, Rollback::default());
     }
 }

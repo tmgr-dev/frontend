@@ -1718,6 +1718,8 @@ mod rule_binding_tests {
             allowed_at: "2025-10-01T00:00:00Z".into(),
             expires_at: None,
             keys: vec![],
+            require_signed_rules: false,
+            require_signed_persona: false,
             repos,
         }
     }

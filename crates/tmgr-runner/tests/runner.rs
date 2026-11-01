@@ -4679,6 +4679,8 @@ fn cloud_fx(signed_repo: bool) -> CloudFx {
             public_key: f["key"]["public_key"].as_str().unwrap().into(),
             device_name: "laptop".into(),
         }],
+        require_signed_rules: false,
+        require_signed_persona: false,
         repos: repos
             .into_iter()
             .map(|(k, v)| (k, tmgr_approval::RepoBinding::Path(v)))
@@ -5095,6 +5097,8 @@ fn multi_fx() -> MultiFx {
             public_key: f["key"]["public_key"].as_str().unwrap().into(),
             device_name: "laptop".into(),
         }],
+        require_signed_rules: false,
+        require_signed_persona: false,
         repos: [(
             "127".to_string(),
             tmgr_approval::RepoBinding::Set(
