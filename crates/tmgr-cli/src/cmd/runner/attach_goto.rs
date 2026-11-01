@@ -1,3 +1,4 @@
+use super::attach_consent::Reads;
 use super::attach_questions::QuestionJob;
 use super::{connect, rerr};
 use std::time::Duration;
@@ -88,7 +89,11 @@ pub(super) fn fork_call(
     job: &QuestionJob,
     name: &str,
     (cols, rows): (u16, u16),
+    reads: Reads,
 ) -> Result<RestoredRun, String> {
+    if let Some(hint) = reads.denial(job.src.format) {
+        return Err(hint.to_string());
+    }
     let clean = |s: String| sanitize_text(&s).into_owned();
     let agent_id = conversation_id(job)
         .ok_or_else(|| "cannot tell which conversation this session has".to_string())?;
@@ -118,5 +123,55 @@ mod tests {
         assert_eq!(fork_name(&["api-fork-1"], "api-fork-1"), "api-fork-2");
         assert_eq!(fork_name(&[], "x-fork-"), "x-fork--fork-1");
         assert_eq!(fork_name(&[], "-fork-3"), "-fork-3-fork-1");
+    }
+
+    #[test]
+    fn a_fork_needs_consent_and_fails_before_the_conversation_is_looked_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = RunnerConfig {
+            dir: dir.path().join("none"),
+            homes: dir.path().join("homes"),
+            self_exe: dir.path().join("tmgr"),
+            quiet_ms: 0,
+            version: "0".into(),
+            max_sessions: 1,
+        };
+        let job = QuestionJob {
+            id: "s_abcdefghjk".into(),
+            src: super::super::attach_title::AgentSrc {
+                profile: "claude-code".into(),
+                format: Format::Claude,
+                cwd: "/work/x".into(),
+                pid: 0,
+                default_name: "claude".into(),
+                no_sandbox: false,
+                created_ms: 0,
+            },
+            pid: 0,
+            sandbox_home: dir.path().join("home"),
+            log: dir.path().join("output.log"),
+            exited: true,
+            settled: true,
+        };
+        let err = fork_call(&cfg, &job, "x", (80, 24), Reads::default()).unwrap_err();
+        assert_eq!(err, Reads::default().hint().unwrap());
+        let off = Reads {
+            claude: false,
+            codex: true,
+        };
+        let err = fork_call(&cfg, &job, "x", (80, 24), off).unwrap_err();
+        assert!(err.starts_with("Claude Code titles"), "{err}");
+        let err = fork_call(
+            &cfg,
+            &job,
+            "x",
+            (80, 24),
+            Reads {
+                claude: true,
+                codex: false,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, "cannot tell which conversation this session has");
     }
 }

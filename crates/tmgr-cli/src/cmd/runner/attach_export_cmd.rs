@@ -1,3 +1,4 @@
+use super::attach_consent::Reads;
 use super::attach_export::{
     decide_all, dir_is_safe, home_dir, load, new_job, page_title, state_for, write_private,
 };
@@ -26,6 +27,7 @@ pub(super) fn run(o: &Opts, a: &super::ExportArgs) -> Result<i32> {
     let src = agent_src(info)
         .filter(|s| s.format == tmgr_runner::attach::Format::Claude)
         .ok_or_else(|| Error::usage("export is available for Claude sessions"))?;
+    require_consent(Reads::current(), src.format)?;
     let home = home_dir().ok_or_else(|| Error::usage("cannot find your home folder"))?;
     let home_s = home.to_string_lossy().to_string();
     let job = new_job(
@@ -92,6 +94,13 @@ pub(super) fn run(o: &Opts, a: &super::ExportArgs) -> Result<i32> {
         serde_json::json!({"page_id": page.id, "workspace": ws.code}),
         human,
     ))
+}
+
+fn require_consent(reads: Reads, format: tmgr_runner::attach::Format) -> Result<()> {
+    match reads.denial(format) {
+        Some(hint) => Err(Error::usage(hint)),
+        None => Ok(()),
+    }
 }
 
 fn target(path: &Path, session_cwd: &str, tty: bool) -> Result<(PathBuf, bool)> {
@@ -249,5 +258,22 @@ mod tests {
         let open = tempfile::tempdir().unwrap();
         std::fs::set_permissions(open.path(), std::fs::Permissions::from_mode(0o777)).unwrap();
         assert!(target(&open.path().join("x.md"), &cwd, false).is_err());
+    }
+
+    #[test]
+    fn export_is_refused_without_consent_for_the_sessions_tool() {
+        use tmgr_runner::attach::Format;
+        let err = require_consent(Reads::default(), Format::Claude).unwrap_err();
+        assert!(
+            err.message.contains("tmgr usage consent allow"),
+            "{}",
+            err.message
+        );
+        let codex_only = Reads {
+            claude: false,
+            codex: true,
+        };
+        assert!(require_consent(codex_only, Format::Claude).is_err());
+        assert!(require_consent(codex_only, Format::Codex).is_ok());
     }
 }

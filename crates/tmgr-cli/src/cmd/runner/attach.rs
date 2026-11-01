@@ -1,5 +1,6 @@
 use super::attach_chip::{chipper, ChipJob, Opener, SystemOpener};
 use super::attach_clip::{Clipboard, SystemClipboard};
+use super::attach_consent::Reads;
 use super::attach_export;
 use super::attach_git::{diff_argv, git_worker, GitJob};
 use super::attach_goto::{fork_call, fork_name, goto_call, text_call, Found, FORK_PASTE_WAIT};
@@ -162,7 +163,7 @@ enum Msg {
         sub: String,
         lines: Vec<String>,
     },
-    Questions(Vec<Entry>),
+    Questions(Vec<Entry>, Reads),
     Goto {
         session: String,
         question: String,
@@ -389,6 +390,8 @@ struct App {
     question_pending: bool,
     last_question: Instant,
     question_exited: HashSet<String>,
+    reads: Reads,
+    reads_notified: bool,
     qstore: Store,
     forking: HashSet<String>,
     fork_paste: HashMap<String, (String, Instant)>,
@@ -484,8 +487,9 @@ impl App {
                     self.dirty = true;
                 }
             }
-            Msg::Questions(entries) => {
+            Msg::Questions(entries, reads) => {
                 self.question_pending = false;
+                self.on_reads(reads);
                 if self.view.set_questions(entries) {
                     self.dirty = true;
                 }
@@ -1003,7 +1007,7 @@ impl App {
         }
         self.running_seen
             .retain(|id| self.view.sessions.iter().any(|r| &r.id == id));
-        if self.summary_mode == SummaryMode::Never {
+        if self.summary_mode == SummaryMode::Never || !self.reads.claude {
             return;
         }
         for (id, since) in ended {
@@ -1043,6 +1047,9 @@ impl App {
         };
         if src.format != tmgr_runner::attach::Format::Claude {
             return self.notify("export is available for Claude sessions");
+        }
+        if let Some(hint) = Reads::current().denial(src.format) {
+            return self.notify(hint);
         }
         let Some(home) = attach_export::home_dir() else {
             return self.notify("cannot find your home folder");
@@ -1176,10 +1183,25 @@ impl App {
         let Some((draft, job)) = self.summary_job(&id, now_ms()) else {
             return self.notify("summaries are available for Claude sessions");
         };
+        if let Some(hint) = Reads::current().denial(job.job.src.format) {
+            return self.notify(hint);
+        }
         if self.summary_tx.try_send(job).is_err() {
             return self.notify("a summary is already being prepared, try again in a moment");
         }
         self.view.show_summary(draft);
+    }
+
+    fn on_reads(&mut self, reads: Reads) {
+        self.reads = reads;
+        let hint = reads.hint();
+        if self.view.set_reads_hint(hint) {
+            self.dirty = true;
+        }
+        if let Some(hint) = hint.filter(|_| !self.reads_notified && !self.agents.is_empty()) {
+            self.reads_notified = true;
+            self.notify(hint);
+        }
     }
 
     fn on_summary(&mut self, done: Generated) {
@@ -1483,7 +1505,7 @@ impl App {
         let cfg = self.cfg.clone();
         let tx = self.tx.clone();
         thread::spawn(move || {
-            let result = fork_call(&cfg, &job, &name, size);
+            let result = fork_call(&cfg, &job, &name, size, Reads::current());
             let sent = tx.send(Msg::Forked {
                 source: job.id,
                 prefill,
@@ -3750,7 +3772,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     let (title_tx, title_rx) = mpsc::sync_channel(1);
     let title_out = tx.clone();
     thread::spawn(move || {
-        titler(title_rx, move |found| {
+        titler(title_rx, Reads::current, move |found| {
             title_out.send(Msg::Titles(found)).is_ok()
         })
     });
@@ -3764,7 +3786,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     let (peek_tx, peek_rx) = mpsc::sync_channel(1);
     let peek_out = tx.clone();
     thread::spawn(move || {
-        peek_worker(peek_rx, move |session, sub, lines| {
+        peek_worker(peek_rx, Reads::current, move |session, sub, lines| {
             peek_out
                 .send(Msg::Peek {
                     session,
@@ -3777,7 +3799,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     let (status_tx, status_rx) = mpsc::sync_channel(1);
     let status_out = tx.clone();
     thread::spawn(move || {
-        status_worker(status_rx, move |found| {
+        status_worker(status_rx, Reads::current, move |found| {
             status_out.send(Msg::Status(found)).is_ok()
         })
     });
@@ -3794,7 +3816,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     let (summary_tx, summary_rx) = mpsc::sync_channel(4);
     let summary_out = tx.clone();
     thread::spawn(move || {
-        summarizer(summary_rx, move |done| {
+        summarizer(summary_rx, Reads::current, move |done| {
             summary_out.send(Msg::Summary(done)).is_ok()
         })
     });
@@ -3804,7 +3826,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     let (usage_tx, usage_rx) = mpsc::sync_channel(1);
     let usage_out = tx.clone();
     thread::spawn(move || {
-        usage_worker(usage_source(), usage_rx, move |bar| {
+        usage_worker(usage_source(), usage_rx, Reads::current, move |bar| {
             usage_out.send(Msg::Usage(bar)).is_ok()
         })
     });
@@ -3812,9 +3834,13 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     let question_out = tx.clone();
     let question_dir = cfg.dir.clone();
     thread::spawn(move || {
-        questioner(question_rx, question_dir, claude_binary(), move |found| {
-            question_out.send(Msg::Questions(found)).is_ok()
-        })
+        questioner(
+            question_rx,
+            question_dir,
+            claude_binary(),
+            Reads::current,
+            move |found, reads| question_out.send(Msg::Questions(found, reads)).is_ok(),
+        )
     });
     let poll = thread::spawn(move || poller(ctl, tx, prefs_rx));
 
@@ -3918,6 +3944,8 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         question_pending: false,
         last_question: Instant::now() - QUESTIONS_EVERY,
         question_exited: HashSet::new(),
+        reads: Reads::default(),
+        reads_notified: false,
         qstore: Store::new(&cfg.dir),
         forking: HashSet::new(),
         fork_paste: HashMap::new(),

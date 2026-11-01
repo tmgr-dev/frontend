@@ -1,3 +1,4 @@
+use super::attach_consent::Reads;
 use super::attach_questions::{session_src, QuestionJob};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
@@ -27,7 +28,7 @@ pub(super) struct Generated {
     pub tainted: bool,
 }
 
-pub(super) fn generate(job: &SummaryJob, home: &str) -> Generated {
+pub(super) fn generate(job: &SummaryJob, home: &str, reads: Reads) -> Generated {
     let key = job.key.clone();
     let failed = |text: &str| Generated {
         key: key.clone(),
@@ -35,6 +36,9 @@ pub(super) fn generate(job: &SummaryJob, home: &str) -> Generated {
         plain: true,
         tainted: false,
     };
+    if let Some(hint) = reads.denial(job.job.src.format) {
+        return failed(hint);
+    }
     let Some(src) = session_src(&job.job) else {
         return failed("The session transcript is not available.");
     };
@@ -74,10 +78,14 @@ pub(super) fn summarize(key: &str, d: &Digest, claude: Option<&Path>, workdir: &
     }
 }
 
-pub(super) fn summarizer(jobs: Receiver<SummaryJob>, mut send: impl FnMut(Generated) -> bool) {
+pub(super) fn summarizer(
+    jobs: Receiver<SummaryJob>,
+    consent: impl Fn() -> Reads,
+    mut send: impl FnMut(Generated) -> bool,
+) {
     let home = std::env::var("HOME").unwrap_or_default();
     for job in jobs {
-        if !send(generate(&job, &home)) {
+        if !send(generate(&job, &home, consent())) {
             return;
         }
     }
@@ -199,6 +207,10 @@ pub(super) fn print_summary(
     let src = agent_src(info)
         .filter(|s| s.format == tmgr_runner::attach::Format::Claude)
         .ok_or_else(|| Error::usage("summaries are available for Claude sessions"))?;
+    let reads = Reads::current();
+    if let Some(hint) = reads.denial(src.format) {
+        return Err(Error::usage(hint));
+    }
     let job = SummaryJob {
         key: info.id.clone(),
         job: QuestionJob {
@@ -220,7 +232,7 @@ pub(super) fn print_summary(
         workdir,
         ..job
     };
-    let done = generate(&job, &std::env::var("HOME").unwrap_or_default());
+    let done = generate(&job, &std::env::var("HOME").unwrap_or_default(), reads);
     let human = done.text.clone();
     Ok(super::emit(
         o,
@@ -461,5 +473,95 @@ mod tests {
         let bin = fake_claude(d.path(), &format!("touch {}", marker.display()));
         let g = summarize("k", &Digest::default(), Some(&bin), d.path());
         assert!(g.plain && !marker.exists());
+    }
+
+    const U: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
+    const ALL: Reads = Reads {
+        claude: true,
+        codex: true,
+    };
+
+    fn summary_job(d: &Path, claude: Option<PathBuf>) -> SummaryJob {
+        let home = d.join("home");
+        let proj = home.join(".claude/projects/-work-x");
+        std::fs::create_dir_all(&proj).unwrap();
+        std::fs::write(
+            proj.join(format!("{U}.jsonl")),
+            concat!(
+                r#"{"type":"user","message":{"role":"user","content":"fix the login bug"}}"#,
+                "\n",
+                r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(d.join("output.log"), format!("claude --resume {U}\n")).unwrap();
+        SummaryJob {
+            key: "k".into(),
+            job: QuestionJob {
+                id: "s_abcdefghjk".into(),
+                src: super::super::attach_title::AgentSrc {
+                    profile: "claude-code".into(),
+                    format: tmgr_runner::attach::Format::Claude,
+                    cwd: "/work/x".into(),
+                    pid: 0,
+                    default_name: "claude".into(),
+                    no_sandbox: false,
+                    created_ms: 0,
+                },
+                pid: 0,
+                sandbox_home: home,
+                log: d.join("output.log"),
+                exited: true,
+                settled: true,
+            },
+            claude,
+            workdir: d.to_path_buf(),
+        }
+    }
+
+    #[test]
+    fn without_consent_no_transcript_is_read_and_claude_is_not_called() {
+        let d = tempfile::tempdir().unwrap();
+        let marker = d.path().join("ran");
+        let bin = fake_claude(d.path(), &format!("touch {}", marker.display()));
+        let job = summary_job(d.path(), Some(bin));
+        let off = Reads {
+            claude: false,
+            codex: true,
+        };
+        for reads in [Reads::default(), off] {
+            let g = generate(&job, "/home/u", reads);
+            assert_eq!(g.text, reads.hint().unwrap());
+            assert!(g.plain && !g.tainted);
+        }
+        assert!(!marker.exists());
+        let g = generate(&job, "/home/u", ALL);
+        assert_ne!(g.text, Reads::default().hint().unwrap());
+        assert!(marker.exists());
+    }
+
+    #[test]
+    fn the_summarizer_reads_consent_for_every_job() {
+        use std::cell::Cell;
+        let d = tempfile::tempdir().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        for _ in 0..2 {
+            tx.send(summary_job(d.path(), None)).unwrap();
+        }
+        drop(tx);
+        let state = Cell::new(Reads::default());
+        let mut texts = Vec::new();
+        summarizer(
+            rx,
+            || state.get(),
+            |g| {
+                texts.push(g.text);
+                state.set(ALL);
+                true
+            },
+        );
+        assert_eq!(texts[0], Reads::default().hint().unwrap());
+        assert_ne!(texts[1], texts[0]);
     }
 }
