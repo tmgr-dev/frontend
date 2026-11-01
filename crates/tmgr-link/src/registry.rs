@@ -456,6 +456,10 @@ mod tests {
         })
         .unwrap();
         assert_eq!(t.signalled, 1);
+        let end = Instant::now() + Duration::from_secs(5);
+        while marked.try_wait().unwrap().is_none() && Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(20));
+        }
         assert!(marked.try_wait().unwrap().is_some());
         assert!(plain.try_wait().unwrap().is_none());
         plain.kill().unwrap();
