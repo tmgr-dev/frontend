@@ -284,6 +284,8 @@ pub struct SessionInfo {
     pub resumed_from: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub human_s: Option<u64>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_sandbox: bool,
 }
 
 /// Params of `runs.lookup`.

@@ -517,6 +517,7 @@ impl Session {
             permission_mode: m.permission_mode.clone(),
             resumed_from: m.resumed_from.clone(),
             human_s: None,
+            no_sandbox: m.no_sandbox,
         }
     }
 

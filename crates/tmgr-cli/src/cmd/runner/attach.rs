@@ -27,7 +27,7 @@ use super::attach_status::{peek_worker, status_worker, PeekJob};
 use super::attach_summary::{claim, post_real, summarizer, unclaim, Generated, SummaryJob};
 use super::attach_tasks;
 use super::attach_templates;
-use super::attach_title::{agent_src, titler, AgentSrc, TitleJob};
+use super::attach_title::{agent_src, title_real_home, titler, AgentSrc, TitleJob};
 use super::attach_usage::{usage_source, usage_worker};
 use super::run_task::Prepared;
 use super::watch as watcher;
@@ -741,6 +741,7 @@ impl App {
                     src: src.clone(),
                     sandbox_home: self.cfg.homes.join(&id),
                     log: self.cfg.dir.join("sessions").join(&id).join("output.log"),
+                    real_home: title_real_home(src, attach_export::home_dir()),
                     id,
                 })
             })
@@ -4199,6 +4200,7 @@ mod tests {
             permission_mode: None,
             resumed_from: None,
             human_s: None,
+            no_sandbox: false,
         }
     }
 

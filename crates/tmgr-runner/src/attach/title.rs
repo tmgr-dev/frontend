@@ -237,6 +237,16 @@ pub fn locate(src: &Source<'_>) -> Option<(PathBuf, Option<String>)> {
     }
 }
 
+pub fn locate_unsandboxed_claude(home: &Path, cwd: &str, pid: u32) -> Option<(PathBuf, String)> {
+    let id = pid_file_id(home, pid)?;
+    let file = format!("{id}.jsonl");
+    project_dirs(home, cwd)
+        .into_iter()
+        .map(|d| d.join(&file))
+        .find(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file()))
+        .map(|p| (p, id))
+}
+
 fn locate_claude(src: &Source<'_>) -> Option<(PathBuf, Option<String>)> {
     let id = pid_file_id(src.home, src.pid).or_else(|| {
         src.log_id
@@ -653,6 +663,93 @@ mod tests {
             "{\"pid\":77,\"sessionId\":\"../../etc/passwd\"}",
         );
         assert!(locate(&src(h.path(), "/w", 77)).is_none());
+    }
+
+    fn pid_file(h: &Path, pid: u32, body: &str) {
+        write(&h.join(format!(".claude/sessions/{pid}.json")), body);
+    }
+
+    #[test]
+    fn unsandboxed_locate_finds_the_pid_file_id_in_the_cwd_project_dir() {
+        let h = home();
+        let want = h
+            .path()
+            .join(format!(".claude/projects/-work-app/{U}.jsonl"));
+        write(&want, "");
+        pid_file(
+            h.path(),
+            77,
+            &format!("{{\"pid\":77,\"sessionId\":\"{U}\"}}"),
+        );
+        let (path, id) = locate_unsandboxed_claude(h.path(), "/work/app", 77).unwrap();
+        assert_eq!((path, id.as_str()), (want, U));
+    }
+
+    #[test]
+    fn unsandboxed_locate_needs_a_pid_and_a_pid_file() {
+        let h = home();
+        write(&h.path().join(format!(".claude/projects/-w/{U}.jsonl")), "");
+        pid_file(
+            h.path(),
+            77,
+            &format!("{{\"pid\":77,\"sessionId\":\"{U}\"}}"),
+        );
+        assert!(locate_unsandboxed_claude(h.path(), "/w", 0).is_none());
+        assert!(locate_unsandboxed_claude(h.path(), "/w", 78).is_none());
+    }
+
+    #[test]
+    fn unsandboxed_locate_rejects_a_traversing_id_and_another_pid() {
+        let h = home();
+        write(&h.path().join(format!(".claude/projects/-w/{U}.jsonl")), "");
+        pid_file(
+            h.path(),
+            77,
+            "{\"pid\":77,\"sessionId\":\"../../etc/passwd-aaaaaaaaaaaaaaaaaaaa\"}",
+        );
+        assert!(locate_unsandboxed_claude(h.path(), "/w", 77).is_none());
+        pid_file(
+            h.path(),
+            77,
+            &format!("{{\"pid\":78,\"sessionId\":\"{U}\"}}"),
+        );
+        assert!(locate_unsandboxed_claude(h.path(), "/w", 77).is_none());
+    }
+
+    #[test]
+    fn unsandboxed_locate_skips_a_symlinked_transcript() {
+        let h = home();
+        let target = h.path().join("elsewhere.jsonl");
+        write(&target, "");
+        let link = h.path().join(format!(".claude/projects/-w/{U}.jsonl"));
+        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        pid_file(
+            h.path(),
+            77,
+            &format!("{{\"pid\":77,\"sessionId\":\"{U}\"}}"),
+        );
+        assert!(locate_unsandboxed_claude(h.path(), "/w", 77).is_none());
+    }
+
+    #[test]
+    fn unsandboxed_locate_never_returns_a_newer_sibling_or_another_project() {
+        let h = home();
+        write(
+            &h.path()
+                .join(".claude/projects/-w/aaaaaaaa-5b7d-4e8f-9a1b-3c4d5e6f7a8b.jsonl"),
+            "",
+        );
+        write(
+            &h.path().join(format!(".claude/projects/-other/{U}.jsonl")),
+            "",
+        );
+        pid_file(
+            h.path(),
+            77,
+            &format!("{{\"pid\":77,\"sessionId\":\"{U}\"}}"),
+        );
+        assert!(locate_unsandboxed_claude(h.path(), "/w", 77).is_none());
     }
 
     #[test]

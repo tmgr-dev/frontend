@@ -95,6 +95,7 @@ fn info(id: &str, req: &RunCreateReq) -> SessionInfo {
         permission_mode: None,
         resumed_from: None,
         human_s: None,
+        no_sandbox: false,
     }
 }
 

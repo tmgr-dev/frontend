@@ -1218,6 +1218,7 @@ fn runs_create_with_a_bundle_stores_it_writes_the_context_and_survives_restart()
     let canonical = req.bundle.as_ref().unwrap().canonical();
     let info = h.client().create_run(req).unwrap();
     assert_eq!(info.bundle_sha256.as_deref(), Some(sha.as_str()));
+    assert!(!info.no_sandbox);
 
     let stored = h.run.join("sessions").join(&info.id).join("bundle.json");
     assert_eq!(fs::read_to_string(&stored).unwrap(), canonical);
@@ -4987,6 +4988,8 @@ fn a_no_sandbox_run_gets_the_real_home_and_the_callers_env_and_is_never_restored
         .collect(),
     });
     let info = fx.h.client().create_run(req).unwrap();
+    assert!(info.no_sandbox);
+    assert!(info_of(&mut fx.h.client(), &info.id).no_sandbox);
     let env = read_env(&fx.h.work);
     let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str());
     assert_eq!(get("HOME"), Some(fx.home.to_str().unwrap()));

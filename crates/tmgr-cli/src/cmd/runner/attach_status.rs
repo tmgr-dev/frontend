@@ -91,6 +91,7 @@ mod tests {
                 cwd: "/work/x".into(),
                 pid: 0,
                 default_name: "claude".into(),
+                no_sandbox: false,
             },
             pid: 0,
             sandbox_home: home.to_path_buf(),

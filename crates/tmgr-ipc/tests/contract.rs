@@ -157,6 +157,7 @@ fn session_info() -> SessionInfo {
         permission_mode: None,
         resumed_from: None,
         human_s: None,
+        no_sandbox: false,
     }
 }
 
@@ -444,6 +445,13 @@ fn method_params_and_results() {
         },
     );
     golden(
+        "session_info_no_sandbox",
+        &SessionInfo {
+            no_sandbox: true,
+            ..session_info()
+        },
+    );
+    golden(
         "lookup_params",
         &LookupParams {
             start_key: "q_abc-1".into(),
@@ -595,6 +603,7 @@ fn method_params_and_results() {
             permission_mode: None,
             resumed_from: None,
             human_s: None,
+            no_sandbox: false,
         },
     );
     golden(
@@ -926,6 +935,12 @@ fn constants_are_pinned() {
     );
     assert_eq!(CLIENT_CLI, "cli");
     assert_eq!(CLIENT_WORKER, "worker");
+}
+
+#[test]
+fn a_session_info_without_the_no_sandbox_field_is_sandboxed() {
+    let info: SessionInfo = serde_json::from_value(fixture("session_info")).unwrap();
+    assert!(!info.no_sandbox);
 }
 
 #[test]

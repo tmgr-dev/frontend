@@ -5,6 +5,10 @@
 - Copying from `tmgr attach` / `tmgr run` now joins a paragraph that the agent wrapped at its own width into one line, and removes the indent of the next lines when the selection starts after a marker such as `⏺`. Lists, tables, headings, indented blocks, short lines, log lines, lines starting with the same word as the previous one or with a path or flag, and lines ending in `;`, `{`, `}`, `:` or `\` keep their breaks. Long lines of code without such an ending can still be joined; `tmgr config set attach.copy.clean false` copies the text as it is.
 - Over SSH the copy notice now says `sent N characters to the terminal clipboard` instead of `copied`, because the terminal never confirms that it accepted the text. If the clipboard stays empty, allow OSC 52 in your terminal (in Warp: `osc52_clipboard_access = "write_only"` under `[terminal]` in its `settings.toml`).
 
+## Unreleased
+
+- In `tmgr attach`, a `tmgr run --no-sandbox` Claude session now shows its `/rename` or automatic title in the sidebar and pane header. This is an exception to the rule that titles are read only from the sandbox home: for such a session tmgr reads your real `~/.claude`, but only that session's own files: `sessions/<pid>.json` to get its id, then that id's transcript in the project folder of the session's working folder. Sandboxed sessions still never read the real home. A title is not available if the session had already exited when you attached, and no-sandbox Codex sessions show no agent title. A name set in tmgr still wins.
+
 ## 1.0.52
 
 - `tmgr run --mode bypass` now works for tasks of a local workspace (`--ws local:<code>`) and for `--agent` without a task, not only for cloud tasks. It shows a warning and asks you to type `bypass`; `--yes` is not accepted, and it is refused inside agent sessions and without a terminal.

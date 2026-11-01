@@ -83,7 +83,9 @@ pub use templates::{
     shell_quote, substitute as substitute_template, Field, Template, TemplateForm,
 };
 pub use theme::{kind_for_background, parse_osc11, ThemeKind, OSC11_QUERY};
-pub use title::{age_label, clip, locate, AgentTitle, Format, Source, TitleScan};
+pub use title::{
+    age_label, clip, locate, locate_unsandboxed_claude, AgentTitle, Format, Source, TitleScan,
+};
 pub use tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES};
 pub use usage::{Cost, Part, Reading, SessionMeta, Tone, UsageBar};
 pub use view::{
