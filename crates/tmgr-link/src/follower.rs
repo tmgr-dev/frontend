@@ -18,6 +18,8 @@ pub struct ScopeInput {
     pub max: Option<u32>,
     pub from: Option<Vec<String>>,
     pub allow_attach_input: Option<bool>,
+    pub remote_control: Option<bool>,
+    pub include_bypass: Option<bool>,
 }
 
 fn build_scope(base: &Scope, input: &ScopeInput) -> Result<Scope> {
@@ -69,6 +71,12 @@ fn build_scope(base: &Scope, input: &ScopeInput) -> Result<Scope> {
     }
     if let Some(from) = &input.from {
         scope.from = grammar::parse_cidr_list(from)?;
+    }
+    if let Some(on) = input.remote_control {
+        scope.remote_control = on;
+    }
+    if let Some(on) = input.include_bypass {
+        scope.include_bypass = on;
     }
     if let Some(allow) = input.allow_attach_input {
         scope.allow_attach_input = allow;
@@ -690,6 +698,8 @@ mod tests {
                 max: Some(3),
                 from: None,
                 allow_attach_input: None,
+                remote_control: None,
+                include_bypass: None,
             },
         }
     }

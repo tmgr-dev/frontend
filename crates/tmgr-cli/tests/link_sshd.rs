@@ -74,6 +74,7 @@ fn leader_reaches_a_real_sshd_through_the_isolated_transport() {
                     max: 1,
                     from: vec!["127.0.0.1".into()],
                     allow_attach_input: false,
+                    ..Default::default()
                 },
             },
         );

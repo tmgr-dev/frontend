@@ -5,11 +5,21 @@ use std::time::{Duration, Instant};
 use tmgr_core::config::{ensure_private_dir, write_atomic};
 use tmgr_core::error::Result;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Attached {
+    pub run: String,
+    pub input: bool,
+    pub remote: bool,
+    pub bypass: bool,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct Rec {
     pid: u32,
     start: String,
     enrollment: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    attached: Option<Attached>,
 }
 
 fn dir(paths: &Paths) -> PathBuf {
@@ -83,12 +93,77 @@ pub fn register(paths: &Paths, name: &str, enrollment: &str) -> Result<WorkerGua
         pid,
         start,
         enrollment: enrollment.to_string(),
+        attached: None,
     };
     let path = file(paths, name, pid);
-    let bytes = serde_json::to_vec(&rec)
-        .map_err(|_| tmgr_core::error::Error::internal("cannot serialize a worker record"))?;
-    write_atomic(&path, &bytes, 0o600)?;
+    write_rec(&path, &rec)?;
     Ok(WorkerGuard { path })
+}
+
+fn write_rec(path: &std::path::Path, rec: &Rec) -> Result<()> {
+    let bytes = serde_json::to_vec(rec)
+        .map_err(|_| tmgr_core::error::Error::internal("cannot serialize a worker record"))?;
+    write_atomic(path, &bytes, 0o600)
+}
+
+pub fn set_attached(
+    paths: &Paths,
+    name: &str,
+    enrollment: &str,
+    attached: Option<Attached>,
+) -> Result<()> {
+    ensure_private_dir(&paths.config)?;
+    ensure_private_dir(&paths.link_dir())?;
+    ensure_private_dir(&dir(paths))?;
+    let pid = std::process::id();
+    write_rec(
+        &file(paths, name, pid),
+        &Rec {
+            pid,
+            start: process_start(pid).unwrap_or_default(),
+            enrollment: enrollment.to_string(),
+            attached,
+        },
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttachedLeader {
+    pub link: String,
+    pub input: bool,
+}
+
+pub fn attached_leaders(paths: &Paths) -> std::collections::BTreeMap<String, Vec<AttachedLeader>> {
+    let mut out: std::collections::BTreeMap<String, Vec<AttachedLeader>> = Default::default();
+    let Ok(entries) = std::fs::read_dir(dir(paths)) else {
+        return out;
+    };
+    for e in entries.flatten() {
+        let fname = e.file_name().to_string_lossy().to_string();
+        let Some(link) = fname
+            .strip_suffix(".json")
+            .and_then(|f| f.rsplit_once('.'))
+            .map(|(link, _)| link.to_string())
+        else {
+            continue;
+        };
+        let rec: Option<Rec> = std::fs::read(e.path())
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok());
+        let Some(rec) = rec else { continue };
+        let Some(a) = &rec.attached else { continue };
+        if !rec.start.is_empty() && alive(rec.pid, &rec.start) {
+            out.entry(a.run.clone()).or_default().push(AttachedLeader {
+                link,
+                input: a.input,
+            });
+        }
+    }
+    for leaders in out.values_mut() {
+        leaders.sort_by(|a, b| (&a.link, a.input).cmp(&(&b.link, b.input)));
+        leaders.dedup();
+    }
+    out
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -115,6 +190,15 @@ pub fn terminate(
     grace: Duration,
     select: &dyn Fn(&str) -> bool,
 ) -> Result<Terminated> {
+    terminate_where(paths, name, grace, &|e, _| select(e))
+}
+
+pub fn terminate_where(
+    paths: &Paths,
+    name: &str,
+    grace: Duration,
+    select: &dyn Fn(&str, Option<&Attached>) -> bool,
+) -> Result<Terminated> {
     let mut out = Terminated::default();
     let Ok(entries) = std::fs::read_dir(dir(paths)) else {
         return Ok(out);
@@ -133,7 +217,10 @@ pub fn terminate(
         let rec: Option<Rec> = std::fs::read(e.path())
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok());
-        if rec.as_ref().is_some_and(|r| !select(&r.enrollment)) {
+        if rec
+            .as_ref()
+            .is_some_and(|r| !select(&r.enrollment, r.attached.as_ref()))
+        {
             continue;
         }
         match rec {
@@ -184,6 +271,7 @@ mod tests {
             pid: child.id(),
             start,
             enrollment: "e".into(),
+            attached: None,
         };
         write_atomic(
             &file(paths, name, child.id()),
@@ -259,6 +347,7 @@ mod tests {
                 pid: child.id(),
                 start: process_start(child.id()).unwrap(),
                 enrollment: enrollment.into(),
+                attached: None,
             };
             write_atomic(
                 &file(&paths, "laptop", child.id()),

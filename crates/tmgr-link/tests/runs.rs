@@ -298,6 +298,7 @@ fn scope(repo: &str, input: bool) -> Scope {
         max: 2,
         from: vec![],
         allow_attach_input: input,
+        ..Default::default()
     }
 }
 

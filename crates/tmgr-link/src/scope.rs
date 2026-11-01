@@ -17,9 +17,31 @@ pub struct Scope {
     pub from: Vec<String>,
     #[serde(default)]
     pub allow_attach_input: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub remote_control: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub include_bypass: bool,
+}
+
+pub fn is_bypass_session(s: &tmgr_ipc::api::SessionInfo) -> bool {
+    s.no_sandbox
+        || s.permission_mode.as_deref() == Some("bypass")
+        || tmgr_ipc::api::policy::argv_is_bypass(&s.argv)
 }
 
 impl Scope {
+    pub fn controls(&self, bypass: bool) -> bool {
+        self.remote_control && (!bypass || self.include_bypass)
+    }
+
+    pub fn may_see(&self, owned: bool, bypass: bool) -> bool {
+        owned || self.controls(bypass)
+    }
+
+    pub fn may_input(&self, owned: bool, bypass: bool) -> bool {
+        self.controls(bypass) || (owned && self.allow_attach_input)
+    }
+
     pub fn widens(&self, old: &Scope) -> bool {
         let repos = self
             .repos
@@ -35,7 +57,9 @@ impl Scope {
         let models = !old.models.is_empty()
             && (self.models.is_empty() || self.models.iter().any(|m| !old.models.contains(m)));
         let input = self.allow_attach_input && !old.allow_attach_input;
-        repos || agents || models || self.max > old.max || from || input
+        let remote = (self.remote_control && !old.remote_control)
+            || (self.include_bypass && !old.include_bypass);
+        repos || agents || models || self.max > old.max || from || input || remote
     }
 
     pub fn summary(&self) -> String {
@@ -64,8 +88,14 @@ impl Scope {
         } else {
             "attach input: forbidden"
         };
+        let remote = match (self.remote_control, self.include_bypass) {
+            (false, false) => "remote control: off",
+            (true, false) => "remote control: on, bypass sessions excluded",
+            (true, true) => "remote control: on, bypass sessions included",
+            (false, true) => "remote control: off (include-bypass has no effect)",
+        };
         format!(
-            "{repos} · {agents} · {models} · max {} running · {from} · {input} · bypass-permissions: forbidden",
+            "{repos} · {agents} · {models} · max {} running · {from} · {input} · {remote} · bypass-permissions: forbidden",
             self.max
         )
     }
@@ -302,6 +332,7 @@ mod tests {
             max: 2,
             from: vec![],
             allow_attach_input: false,
+            ..Default::default()
         }
     }
 
@@ -446,6 +477,7 @@ mod tests {
             max: 2,
             from: vec!["192.0.2.0/24".into()],
             allow_attach_input: false,
+            ..Default::default()
         };
         assert!(!base.widens(&base));
         let mut narrower = base.clone();

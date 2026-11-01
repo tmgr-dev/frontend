@@ -636,6 +636,7 @@ mod tests {
                         max: 2,
                         from: vec![],
                         allow_attach_input: false,
+                        ..Default::default()
                     },
                     enrollment: ENR.into(),
                     authorized_keys: String::new(),

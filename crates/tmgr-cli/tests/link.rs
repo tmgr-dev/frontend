@@ -70,6 +70,7 @@ impl Fx {
             max: 2,
             from: vec![],
             allow_attach_input: false,
+            ..Default::default()
         }
     }
 

@@ -381,6 +381,7 @@ fn follower_machine(
                     max: 1,
                     from: vec!["127.0.0.1".into()],
                     allow_attach_input: false,
+                    ..Default::default()
                 },
             },
         );

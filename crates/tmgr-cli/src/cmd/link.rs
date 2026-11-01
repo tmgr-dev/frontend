@@ -214,6 +214,8 @@ fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
             max: a.max,
             from: Some(a.from.clone()),
             allow_attach_input: a.allow_attach_input.then_some(true),
+            remote_control: None,
+            include_bypass: None,
         },
     };
     let plan = follower::plan_trust(paths, &input, &bin, check)?;
@@ -374,6 +376,8 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
         max: a.max,
         from,
         allow_attach_input: a.allow_attach_input,
+        remote_control: None,
+        include_bypass: None,
     };
     let plan = follower::plan_scope(paths, &a.name, &input)?;
     let changes = a.repos.is_some()

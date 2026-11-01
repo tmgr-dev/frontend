@@ -296,6 +296,7 @@ mod tests {
                 from: vec!["192.0.2.0/24".into()],
                 allow_attach_input: false,
                 models: vec![],
+                ..Default::default()
             },
             enrollment: "ab".repeat(16),
             authorized_keys: "/home/u/.ssh/authorized_keys".into(),
