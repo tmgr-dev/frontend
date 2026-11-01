@@ -710,16 +710,7 @@ fn format_entry(ctx: &Ctx, e: &Value) -> String {
         .unwrap_or_else(|_| text("ts"));
     let link = text("link");
     if text("event") == "worker.request" {
-        let args = e
-            .get("args")
-            .and_then(Value::as_object)
-            .map(|m| {
-                m.iter()
-                    .map(|(k, v)| format!("{k}={}", sanitize_line(v.as_str().unwrap_or(""))))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            })
-            .unwrap_or_default();
+        let args = request_args(e);
         let decision = text("decision");
         let reason = text("reason");
         let verdict = if decision == "accepted" {
@@ -745,7 +736,8 @@ fn format_entry(ctx: &Ctx, e: &Value) -> String {
         .filter(|(k, _)| !matches!(k.as_str(), "v" | "seq" | "ts" | "prev" | "event" | "link"))
         .map(|(k, v)| {
             format!(
-                "{k}={}",
+                "{}={}",
+                sanitize_line(k),
                 sanitize_line(&v.as_str().map_or_else(|| v.to_string(), str::to_string))
             )
         })
@@ -753,6 +745,24 @@ fn format_entry(ctx: &Ctx, e: &Value) -> String {
     format!("{when} {} {link} {}", text("event"), rest.join(" "))
         .trim_end()
         .to_string()
+}
+
+fn request_args(e: &Value) -> String {
+    e.get("args")
+        .and_then(Value::as_object)
+        .map(|m| {
+            m.iter()
+                .map(|(k, v)| {
+                    format!(
+                        "{}={}",
+                        sanitize_line(k),
+                        sanitize_line(v.as_str().unwrap_or(""))
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_default()
 }
 
 fn remote_line(e: &Value, when: &str, link: &str) -> Option<String> {
@@ -769,10 +779,16 @@ fn remote_line(e: &Value, when: &str, link: &str) -> Option<String> {
             } else {
                 ""
             };
+            let count = e
+                .get("msgs")
+                .and_then(Value::as_u64)
+                .map_or(String::new(), |n| format!(", {n} messages"));
             Some(
-                format!("{when} worker.attach_input {link} input sent to session {session}{via}")
-                    .trim_end()
-                    .to_string(),
+                format!(
+                    "{when} worker.attach_input {link} input sent to session {session}{via}{count}"
+                )
+                .trim_end()
+                .to_string(),
             )
         }
         "link.scope.closed" => {
@@ -799,6 +815,20 @@ mod tests {
         assert!(line.contains("s_abc"));
         assert!(line.contains("remote control"));
         assert!(!line.contains("SECRET"));
+    }
+
+    #[test]
+    fn audit_view_strips_terminal_controls_from_request_field_names() {
+        let e = json!({"args": {"\u{1b}[2Jevil": "\u{1b}[31mv"}});
+        assert!(!request_args(&e).contains('\u{1b}'));
+    }
+
+    #[test]
+    fn attach_input_audit_shows_the_count() {
+        let e = json!({"event": "worker.attach_input", "link": "macbook", "run": "s_abc", "via": "remote_control", "msgs": 3, "bytes": 12});
+        assert!(remote_line(&e, "t", "macbook")
+            .unwrap()
+            .contains("3 messages"));
     }
 
     #[test]

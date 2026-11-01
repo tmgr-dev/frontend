@@ -27,6 +27,9 @@ pub fn is_bypass_session(s: &tmgr_ipc::api::SessionInfo) -> bool {
     s.no_sandbox
         || s.permission_mode.as_deref() == Some("bypass")
         || tmgr_ipc::api::policy::argv_is_bypass(&s.argv)
+        || s.argv
+            .iter()
+            .any(|a| a == "--no-sandbox" || a.starts_with("--no-sandbox="))
 }
 
 impl Scope {
@@ -162,13 +165,26 @@ pub struct Accepted {
     pub repo: Option<String>,
 }
 
+pub const AUDIT_VALUE_MAX: usize = 256;
+const AUDIT_FIELDS: &[&str] = &[
+    "run",
+    "task",
+    "task_hash",
+    "repo",
+    "agent",
+    "persona",
+    "model",
+    "mode",
+];
+
 pub fn audit_args(params: &Value) -> Value {
     match params {
         Value::Object(m) => {
             let mut out = Map::new();
-            for (k, v) in m.iter().take(12) {
-                if let Value::String(s) = v {
-                    out.insert(k.clone(), Value::String(s.clone()));
+            for (k, v) in m {
+                if let (true, Value::String(s)) = (AUDIT_FIELDS.contains(&k.as_str()), v) {
+                    let bounded = s.chars().take(AUDIT_VALUE_MAX).collect();
+                    out.insert(k.clone(), Value::String(bounded));
                 }
             }
             Value::Object(out)
@@ -539,6 +555,15 @@ mod tests {
     fn audit_args_keep_only_short_string_fields() {
         let a = audit_args(&json!({"task":"TM-1","n":5,"nested":{"a":1}}));
         assert_eq!(a, json!({"task":"TM-1"}));
+    }
+
+    #[test]
+    fn audit_args_drop_unknown_fields_and_bound_the_values() {
+        let long = "x".repeat(5000);
+        let a = audit_args(&json!({"text":"typed","\u{1b}[2Jevil":"v","run":long}));
+        let m = a.as_object().unwrap();
+        assert_eq!(m.keys().collect::<Vec<_>>(), ["run"]);
+        assert_eq!(m["run"].as_str().unwrap().chars().count(), AUDIT_VALUE_MAX);
     }
 
     #[test]

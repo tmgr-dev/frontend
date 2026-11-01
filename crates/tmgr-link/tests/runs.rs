@@ -46,6 +46,7 @@ struct FakeState {
     refuse_create: Option<&'static str>,
     next: u32,
     reports_modes: bool,
+    remote_off_on_list: Option<Paths>,
 }
 
 #[derive(Clone, Default)]
@@ -112,6 +113,15 @@ impl Backend for Fake {
     fn list(&mut self) -> Result<Vec<SessionInfo>, BackendError> {
         let mut s = self.0.lock().unwrap();
         s.calls.push("sessions.list".into());
+        if let Some(paths) = s.remote_off_on_list.take() {
+            Store::update(&paths, |st| {
+                let scope = &mut st.leaders.get_mut("laptop").unwrap().scope;
+                scope.remote_control = false;
+                scope.include_bypass = false;
+                Ok(())
+            })
+            .unwrap();
+        }
         if s.list_delay_ms > 0 {
             let delay = Duration::from_millis(s.list_delay_ms);
             let limit = s.deadline.map_or(Duration::from_secs(3600), |d| {
@@ -1675,6 +1685,57 @@ fn every_bypass_form_is_invisible_and_refused_without_include_bypass() {
 }
 
 #[test]
+fn a_raw_no_sandbox_argument_counts_as_a_bypass_session() {
+    for arg in ["--no-sandbox", "--no-sandbox=true"] {
+        let w = world();
+        control(&w, true, false, true);
+        let fake = fleet(true);
+        let id = "s_rawnosb0001";
+        fake.0.lock().unwrap().sessions.push(local(id, |s| {
+            s.argv = vec!["agent".into(), arg.into()];
+        }));
+        assert!(!listed(&w, &fake).contains(&id.to_string()), "{arg}");
+        assert!(refused(&probe(&w, &fake, id)), "{arg}");
+        assert_eq!(fake.called("sessions.kill"), 0, "{arg}");
+    }
+}
+
+#[test]
+fn turning_off_during_authorization_refuses_the_attach() {
+    let w = world();
+    control(&w, true, false, true);
+    let fake = fleet(true);
+    fake.0.lock().unwrap().remote_off_on_list = Some(w.paths.clone());
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[json!({"id":1,"method":"attach.open","params":{"run":PLAIN}})],
+    );
+    assert_eq!(r[0]["error"], "not_found", "{r:?}");
+    assert_eq!(fake.called("attach.open"), 0);
+    assert!(tmgr_link::registry::attached_leaders(&w.paths).is_empty());
+}
+
+#[test]
+fn turning_off_during_authorization_refuses_the_halt() {
+    let w = world();
+    control(&w, true, false, true);
+    let fake = fleet(true);
+    fake.0.lock().unwrap().remote_off_on_list = Some(w.paths.clone());
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[json!({"id":1,"method":"runs.halt","params":{"run":PLAIN}})],
+    );
+    assert_eq!(r[0]["error"], "not_found", "{r:?}");
+    assert_eq!(fake.called("sessions.kill"), 0);
+}
+
+#[test]
 fn include_bypass_alone_gives_no_force_at_all() {
     let w = world();
     control(&w, false, true, true);
@@ -1945,6 +2006,23 @@ fn an_owned_attach_survives_remote_control_going_off() {
 }
 
 #[test]
+fn without_mode_reporting_remote_control_grants_no_input_on_an_owned_run() {
+    let w = world();
+    let fake = fleet(false);
+    let (mut l, id) = started(&w, &fake);
+    control(&w, true, true, false);
+    let r = l.call(1, "attach.open", json!({"run": id}));
+    assert_eq!(r["result"]["input"], false);
+    l.finish();
+
+    control(&w, true, true, true);
+    let mut l = live(&w, "laptop", E1, &fake);
+    let r = l.call(1, "attach.open", json!({"run": id}));
+    assert_eq!(r["result"]["input"], true);
+    l.finish();
+}
+
+#[test]
 fn the_marker_shows_the_link_while_attached_and_clears_after() {
     let w = world();
     control(&w, true, false, false);
@@ -2053,6 +2131,50 @@ fn the_input_fact_is_on_disk_before_the_first_send_of_a_tick() {
     l.say(Outgoing::Detach);
     wait_closed(&mut l, PLAIN);
     l.finish();
+}
+
+fn input_msgs(w: &World) -> u64 {
+    w.audit()
+        .iter()
+        .filter(|e| e["event"] == "worker.attach_input")
+        .filter_map(|e| e["msgs"].as_u64())
+        .sum()
+}
+
+#[test]
+fn every_remote_input_is_counted_on_disk_while_the_attach_is_open() {
+    let w = world();
+    control(&w, true, false, false);
+    let fake = fleet(true);
+    let mut l = live(&w, "laptop", E1, &fake);
+    l.call(1, "attach.open", json!({"run": PLAIN}));
+    for _ in 0..3 {
+        l.say(Outgoing::Input("zq9-typed".into()));
+    }
+    l.say(Outgoing::Ping);
+    assert_eq!(l.next(PLAIN), Some(Incoming::Pong));
+    std::thread::sleep(Duration::from_millis(1200));
+    l.say(Outgoing::Ping);
+    assert_eq!(l.next(PLAIN), Some(Incoming::Pong));
+    assert_eq!(input_msgs(&w), 3);
+    assert!(!audit_files_contain(&w, "zq9-typed"));
+    l.say(Outgoing::Detach);
+    wait_closed(&mut l, PLAIN);
+    l.finish();
+}
+
+#[test]
+fn input_is_counted_when_the_leader_disconnects_without_detaching() {
+    let w = world();
+    control(&w, true, false, false);
+    let fake = fleet(true);
+    let mut l = live(&w, "laptop", E1, &fake);
+    l.call(1, "attach.open", json!({"run": PLAIN}));
+    l.say(Outgoing::Input("x".into()));
+    l.say(Outgoing::Ping);
+    assert_eq!(l.next(PLAIN), Some(Incoming::Pong));
+    l.finish();
+    assert_eq!(input_msgs(&w), 1);
 }
 
 #[test]

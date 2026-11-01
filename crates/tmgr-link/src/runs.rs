@@ -361,6 +361,9 @@ fn halt(
         Ok(r) => r,
         Err(step) => return step,
     };
+    if !matches!(conn.current(), Ok(Ok(s)) if reach.owned || s.controls(reach.bypass)) {
+        return deny(conn, "runs.halt", args, id, "not_found", "no such run");
+    }
     if conn
         .record("runs.halt", args.clone(), "accepted", "")
         .is_err()
@@ -673,7 +676,12 @@ fn attach_open(
         Ok(r) => r,
         Err(step) => return step,
     };
-    let input = !read_only && scope.may_input(reach.owned, reach.bypass);
+    let grants = if reports_modes(st) {
+        scope.may_input(reach.owned, reach.bypass)
+    } else {
+        reach.owned && scope.allow_attach_input
+    };
+    let input = !read_only && grants;
     let remote = !reach.owned || (input && !scope.allow_attach_input);
     let (mode, reason) = if input {
         ("interactive", "")
@@ -708,6 +716,10 @@ fn attach_open(
             "unavailable",
             "cannot record the attach",
         );
+    }
+    if !matches!(conn.current(), Ok(Ok(s)) if !remote || s.controls(reach.bypass)) {
+        let _ = marker(None);
+        return deny(conn, method, args, id, "not_found", "no such run");
     }
     let mut session = match with_backend(conn, st, true, None, |b| {
         b.attach(&run, input.then_some(size))
@@ -807,17 +819,12 @@ fn attach_loop(
         if pending.0 == 0 {
             return true;
         }
+        let mut fact =
+            json!({"link": conn.name, "run": run, "msgs": pending.0, "bytes": pending.1});
         if access.remote {
-            *pending = (0, 0);
-            return true;
+            fact["via"] = json!("remote_control");
         }
-        let ok = conn
-            .audit
-            .append(
-                "worker.attach_input",
-                json!({"link": conn.name, "run": run, "msgs": pending.0, "bytes": pending.1}),
-            )
-            .is_ok();
+        let ok = conn.audit.append("worker.attach_input", fact).is_ok();
         *pending = (0, 0);
         ok
     };
@@ -977,7 +984,10 @@ fn attach_loop(
                 }
             }
             Ok(Poll::Idle) => {}
-            Ok(Poll::Closed) => return ("the leader disconnected".into(), stats),
+            Ok(Poll::Closed) => {
+                let _ = flush(&mut pending);
+                return ("the leader disconnected".into(), stats);
+            }
             Err(e) => return (format!("channel: {e}"), stats),
         }
         if last_leader.elapsed() > ATTACH_IDLE {
