@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.73 — 2026-11-01
+
+- AI Usage: the setting for reading AI tool logs now also covers the runner on this device (tmgr CLI 1.0.55 or newer). Until you turn it on for a tool, the runner doesn't read that tool's sessions: no titles, new questions, summaries, export or cost for them. Whether a session is working or waiting still shows. Questions saved earlier stay until you use Forget scanned data.
+- Forget scanned data also deletes the questions the runner saved on this device.
+
 ## 0.9.72 — 2026-11-01
 
 - Local access: hardened token and permission checks.
