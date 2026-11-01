@@ -580,28 +580,28 @@ describe('routines', () => {
 		scheduled_time: '10:00:00',
 	};
 	const routineRow = { id: 3, title: 'r', description: null };
-	const cloudAnswer = (method: string, url: string) => {
+	const cloudAnswer = (_method: string, url: string) => {
 		if (url === 'daily-routines/expand')
-			return [
-				{
-					task_id: 3,
-					instance_id: 5,
-					title: 'r',
-					date: '2026-11-01',
-					time: '10:00',
-					status: 'pending',
-					completed: false,
-					virtual: false,
-					frequency: null,
-				},
-			];
-		if (url === 'daily-routines/tasks/3' && method === 'get')
-			return { data: routineRow };
-		if (url === 'daily-routines/tasks/3') return routineRow;
-		if (url === 'daily-routines/tasks/3/instances') return [instance];
-		if (url === 'daily-routines/tasks/3/instances/virtual') return instance;
+			return {
+				data: [
+					{
+						task_id: 3,
+						instance_id: 5,
+						title: 'r',
+						date: '2026-11-01',
+						time: '10:00',
+						status: 'pending',
+						completed: false,
+						virtual: false,
+						frequency: null,
+					},
+				],
+			};
+		if (url === 'daily-routines/tasks/3/instances') return { data: [instance] };
+		if (url === 'daily-routines/tasks/3/instances/virtual')
+			return { data: instance };
 		if (url.startsWith('daily-routines/tasks/3/instances/5/'))
-			return { ...instance, status: 'COMPLETED' };
+			return { data: { ...instance, status: 'COMPLETED' } };
 		return { data: routineRow };
 	};
 	const cloudApi = () => {
@@ -612,7 +612,7 @@ describe('routines', () => {
 		};
 	};
 
-	it('lists with the token workspace in the query and unwraps the bare array', async () => {
+	it('lists with the token workspace in the query', async () => {
 		const { api, seen } = cloudApi();
 		const rows = await api.listRoutines('2026-11-01', '2026-11-02');
 		expect(seen[0]).toContain('"workspace_id":7');
@@ -639,7 +639,7 @@ describe('routines', () => {
 		expect(seen[1]).toContain('"workspace_id":7');
 	});
 
-	it('gets the wrapped routine, lists bare instances and updates without a workspace field', async () => {
+	it('gets the routine, lists instances and updates without a workspace field', async () => {
 		const { api, seen } = cloudApi();
 		expect((await api.getRoutine(3)).id).toBe(3);
 		expect(await api.listRoutineInstances(3)).toMatchObject([
@@ -649,7 +649,7 @@ describe('routines', () => {
 		expect(seen[2]).not.toContain('workspace_id');
 	});
 
-	it('completes and skips through bare instance responses', async () => {
+	it('completes and skips through the instance routes', async () => {
 		const { api } = cloudApi();
 		expect(await api.completeRoutine(3, '2026-11-01')).toMatchObject({
 			id: 5,
@@ -667,7 +667,7 @@ describe('routines', () => {
 		expect(seen[0]).toContain('"workspace_id":7');
 	});
 
-	it('keeps the local path unchanged: no workspace field, wrapped answers', async () => {
+	it('keeps the local path unchanged: no workspace field', async () => {
 		const { http, seen } = recording((_method, url) =>
 			url === 'daily-routines/expand'
 				? { data: [] }

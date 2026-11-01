@@ -107,9 +107,6 @@ export const createDataApi = (
 			storageId,
 		)}/pages/${pageId}/data/${encodeURIComponent(key)}`;
 	const inWorkspace = cloud ? { workspace_id: workspaceId } : {};
-	/** The server wraps routine reads and creates in {data} but returns the other routine routes bare. */
-	const routineData = (response: { data: any }, bare = false) =>
-		cloud && bare ? response.data : unwrap(response);
 	// Overlapping calls on one routine would each see no instance for the date and create two.
 	const routineQueues = new Map<number, Promise<unknown>>();
 	const routineSerial = <T>(id: number, run: () => Promise<T>): Promise<T> => {
@@ -127,24 +124,22 @@ export const createDataApi = (
 		date: string,
 		status: 'COMPLETED' | 'SKIPPED',
 	) => {
-		const instances = (routineData(
+		const instances = (unwrap(
 			await http.get(`daily-routines/tasks/${id}/instances`, { headers }),
-			true,
 		) ?? []) as any[];
 		let instance = instances.find(
 			(row) => String(row.scheduled_for).slice(0, 10) === date,
 		);
 		if (instance?.status === status) return toRoutineInstance(instance);
-		instance ??= routineData(
+		instance ??= unwrap(
 			await http.patch(
 				`daily-routines/tasks/${id}/instances/virtual`,
 				{ scheduled_date: date },
 				{ headers },
 			),
-			true,
 		);
 		return toRoutineInstance(
-			routineData(
+			unwrap(
 				await http.post(
 					`daily-routines/tasks/${id}/instances/${instance.id}/${
 						status === 'COMPLETED' ? 'complete' : 'skip'
@@ -152,7 +147,6 @@ export const createDataApi = (
 					undefined,
 					{ headers },
 				),
-				true,
 			),
 		);
 	};
@@ -520,12 +514,11 @@ export const createDataApi = (
 			};
 		},
 		listRoutines: async (from, to) => {
-			const rows = (routineData(
+			const rows = (unwrap(
 				await http.get('daily-routines/expand', {
 					headers,
 					params: { from, to, ...inWorkspace },
 				}),
-				true,
 			) ?? []) as any[];
 			return rows.map(toRoutineEntry);
 		},
@@ -535,9 +528,8 @@ export const createDataApi = (
 			);
 		},
 		listRoutineInstances: async (id) => {
-			const rows = (routineData(
+			const rows = (unwrap(
 				await http.get(`daily-routines/tasks/${id}/instances`, { headers }),
-				true,
 			) ?? []) as any[];
 			return rows.map(toRoutineInstance);
 		},
@@ -563,9 +555,8 @@ export const createDataApi = (
 		},
 		updateRoutine: async (id, patch) => {
 			return toRoutine(
-				routineData(
+				unwrap(
 					await http.put(`daily-routines/tasks/${id}`, patch, { headers }),
-					true,
 				),
 			);
 		},
