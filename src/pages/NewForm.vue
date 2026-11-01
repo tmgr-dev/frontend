@@ -59,6 +59,7 @@
 	import TaskAgentRunner from '@/components/runner/TaskAgentRunner.vue';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
+	import AiRewritePanel from '@/components/tasks/AiRewritePanel.vue';
 	import AskPersonaButton from '@/components/tasks/AskPersonaButton.vue';
 	import CloudAgentApproval from '@/components/tasks/CloudAgentApproval.vue';
 	import ConfirmForAgentRuns from '@/components/tasks/ConfirmForAgentRuns.vue';
@@ -3034,10 +3035,23 @@
 					</div>
 
 					<!-- DESCRIPTION label -->
-					<div
-						class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
-					>
-						Description
+					<div class="flex items-center justify-between gap-2">
+						<div
+							class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
+						>
+							Description
+						</div>
+						<AiRewritePanel
+							v-if="!isLocalWorkspaceTask && isFeatureEnabled('ai.assistant')"
+							:key="form.id"
+							:description="form.description ?? ''"
+							:disabled-reason="
+								editorType === 'block'
+									? 'Not available for descriptions written in Editor.js'
+									: undefined
+							"
+							@apply="onDescriptionInput('description', $event)"
+						/>
 					</div>
 
 					<!-- Editor section with toggle button -->
