@@ -5,8 +5,7 @@ workflow copies that section into the GitHub release and the in-app update notes
 
 ## 0.9.72 — 2026-11-01
 
-- Local access: stricter checks on tokens, the socket path and event streams. Revoking a token now also removes its stored secret, and removing a local workspace revokes its tokens.
-- Personas: reading a file attached to a page now also requires access to pages.
+- Local access: hardened token and permission checks.
 
 ## 0.9.71 — 2026-10-27
 
