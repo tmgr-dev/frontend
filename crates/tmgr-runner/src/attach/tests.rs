@@ -7652,6 +7652,19 @@ fn the_summary_key_is_free_and_s_opens_a_queued_draft_only_when_asked() {
 }
 
 #[test]
+fn dropping_a_summary_clears_it_from_the_preview_and_the_queue() {
+    let mut v = two_pane(140);
+    v.show_summary(draft(None, true));
+    v.drop_summary("9-a-1");
+    assert!(v.summary.is_none());
+    v.queue_summary(draft(None, true));
+    v.drop_summary("other");
+    assert!(!v.queue_summary(draft(None, true)));
+    v.drop_summary("9-a-1");
+    assert!(v.queue_summary(draft(None, true)));
+}
+
+#[test]
 fn preview_keys_post_edit_and_skip_and_nothing_posts_without_text_or_target() {
     let mut v = two_pane(140);
     v.show_summary(draft(None, true));
