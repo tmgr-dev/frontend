@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.56
+
+- The runner now checks the reading choice itself before it forks a Claude Code session. It is the same choice you set with `tmgr usage consent allow` or in TMGR desktop under AI Usage. Without it the fork is refused and the message says how to allow it. This takes effect after `tmgr runner restart`, which keeps your sessions but closes open `tmgr attach` windows, so attach again afterwards.
+- `tmgr runner allow WS --require-signed-rules` or `--require-signed-persona` now prints one line when the running runner is older than 1.0.55 and ignores the policy until `tmgr runner restart`. `tmgr runner allowed` prints the same line. The policy is saved either way, and tmgr does not restart the runner for you.
+- New `tmgr runner gc` (experimental): removes the copies of finished `tmgr run` tasks whose pull request is merged or closed and that have nothing running in them. `--dry-run` shows what it would remove.
+
 ## 1.0.55
 
 - The runner now asks first. In `tmgr attach` and the runner commands, transcripts of Claude Code and Codex sessions are read only after you allow reading on this device (`tmgr usage consent allow`, or per tool in TMGR desktop under AI Usage). That covers titles, activity status, subagent peek, question detection, Haiku classification, per-session cost, export, summaries (including automatic ones posted to the server) and fork. With no decision yet nothing is read, even when you ask by hand. Sessions then show the plain agent name, no new questions are detected and one short line says how to allow; running, waiting, blocked and exited keep working. Denying stops the next read. Open `tmgr attach` windows from an older version keep their old behaviour until you reattach; this consent check doesn't need a runner restart.
