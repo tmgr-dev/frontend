@@ -247,6 +247,9 @@ pub(super) fn print_summary(
         &std::env::var("HOME").unwrap_or_default(),
         &Reads::current,
     );
+    if done.denied {
+        return Err(Error::usage(done.text));
+    }
     let human = done.text.clone();
     Ok(super::emit(
         o,
