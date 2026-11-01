@@ -61,6 +61,7 @@ pub(super) fn questioner(
     let mut scanner = Scanner::new(store.clone(), claude, workdir, move |f| gate().allows(f));
     for batch in jobs {
         let reads = consent();
+        scanner.forget_denied();
         if !batch.is_empty() && reads.any() {
             if let Ok(Some(_lock)) = store.try_lock() {
                 let sources: Vec<SessionSrc> = batch
@@ -230,7 +231,10 @@ mod tests {
         assert_eq!(reads, Reads::default());
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].q.text, "Kept from before?");
-        assert!(!runner.path().join("s_abcdefghjk.json").exists());
+        assert!(!Store::new(runner.path())
+            .dir()
+            .join("s_abcdefghjk.json")
+            .exists());
         drop(tx);
         handle.join().unwrap();
     }
