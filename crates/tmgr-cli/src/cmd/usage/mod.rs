@@ -282,13 +282,13 @@ fn consent(command: Option<ConsentCommand>) -> Result<Output> {
         .into_iter()
         .filter_map(|(on, name)| on.then_some(name))
         .collect();
-    let kept = "Kept: counts, tokens, cost, model names, timestamps, session ids, project folders and branches, names of the tools, skills and commands used, edited file types and pull requests. Prompt and reply text is never stored. Nothing leaves this device unless you upload it with `tmgr usage sync`. Not covered yet: for sessions it launched, the runner reads their transcripts for titles, questions and status, saves detected questions (prompt and reply text) on disk and may send reply text to Claude (Haiku) to classify them.";
+    let kept = "Kept: counts, tokens, cost, model names, timestamps, session ids, project folders and branches, names of the tools, skills and commands used, edited file types and pull requests. Prompt and reply text is never stored. Nothing leaves this device unless you upload it with `tmgr usage sync`. The runner reads the logs of sessions it started only while reading is on (see `tmgr usage consent`); it saves detected questions (prompt and reply text) on disk and may send reply text to Claude (Haiku) to classify them.";
     let human = match c.state {
         ReadLogs::Granted => format!(
             "Reading {} logs is on for this device. {kept}",
             tools.join(" and ")
         ),
-        ReadLogs::Denied => "Reading Claude Code and Codex logs is off on this device; usage shows only stored data. `tmgr usage consent allow` turns it on.".to_string(),
+        ReadLogs::Denied => "Reading Claude Code and Codex logs is off on this device; usage shows only stored data, and the runner reads no session logs. `tmgr usage consent allow` turns it on.".to_string(),
         ReadLogs::Unset => format!(
             "Not decided yet: tmgr reads the Claude Code and Codex logs only when you run a usage command; TMGR desktop and background scans wait for `tmgr usage consent allow`. {kept}"
         ),
@@ -305,22 +305,41 @@ fn consent(command: Option<ConsentCommand>) -> Result<Output> {
 }
 
 fn reset(ctx: &Ctx) -> Result<Output> {
-    crate::interact::confirm(
-        "Delete all stored usage data (the AI tool logs themselves stay)?",
-        true,
-        ctx.yes,
-    )?;
+    #[cfg(feature = "runner")]
+    let prompt = "Delete all stored usage data and saved runner questions (the AI tool logs themselves stay)?";
+    #[cfg(not(feature = "runner"))]
+    let prompt = "Delete all stored usage data (the AI tool logs themselves stay)?";
+    crate::interact::confirm(prompt, true, ctx.yes)?;
     let mut u = Usage::open()?;
     let _lock = tmgr_usage::consent::exclusive_lock(&u.dir, tmgr_usage::consent::FORGET_WAIT)
         .map_err(fail)?;
     tmgr_usage::consent::wipe(&mut u.store, &u.dir).map_err(fail)?;
+    #[cfg(feature = "runner")]
+    let questions = {
+        let runner_dir = tmgr_ipc::dirs::runner_dir()
+            .map_err(|e| Error::internal(format!("runner directory: {e}")))?;
+        if !tmgr_ipc::dirs::clear_questions(&runner_dir, tmgr_usage::consent::FORGET_WAIT)
+            .map_err(|e| Error::internal(format!("runner questions: {e}")))?
+        {
+            return Err(fail(UsageError::Busy));
+        }
+        " Saved runner questions deleted too."
+    };
+    #[cfg(not(feature = "runner"))]
+    let questions = "";
     let denied = u.store.log_consent().map_err(fail)?.state == ReadLogs::Denied;
+    #[cfg_attr(not(feature = "runner"), allow(unused_mut))]
+    let mut data = json!({"reset": true});
+    #[cfg(feature = "runner")]
+    {
+        data["questions_deleted"] = json!(true);
+    }
     Ok(Output::new(
-        json!({"reset": true}),
+        data,
         if denied {
-            "Usage data deleted. Reading the logs stays off (`tmgr usage consent allow` turns it on)."
+            format!("Usage data deleted.{questions} Reading the logs stays off (`tmgr usage consent allow` turns it on).")
         } else {
-            "Usage data deleted. The next `tmgr usage` reads the logs again."
+            format!("Usage data deleted.{questions} The next `tmgr usage` reads the logs again.")
         },
     ))
 }
