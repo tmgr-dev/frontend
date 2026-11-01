@@ -244,14 +244,17 @@ pub fn each_allowed(
 /// For background readers that must not create anything: whether `tool` may be read under the
 /// background rule. A missing or unreadable store means no.
 pub fn granted_read_only(env: &Env, tool: Tool) -> bool {
-    let Ok(dir) = paths::data_dir(env) else {
-        return false;
-    };
-    let db = paths::db_path(&dir);
-    db.is_file()
-        && Store::open_read_only(&db)
-            .and_then(|s| s.log_consent())
-            .is_ok_and(|c| c.allows(tool, false))
+    consent_read_only(env).is_some_and(|c| c.allows(tool, false))
+}
+
+pub fn consent_read_only(env: &Env) -> Option<LogConsent> {
+    let db = paths::db_path(&paths::data_dir(env).ok()?);
+    if !db.is_file() {
+        return None;
+    }
+    Store::open_read_only(&db)
+        .and_then(|s| s.log_consent())
+        .ok()
 }
 
 /// Deletes everything scanned (database rows and statusLine snapshots); the reading choice stays.
