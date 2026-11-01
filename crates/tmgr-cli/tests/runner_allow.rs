@@ -75,6 +75,10 @@ impl Drop for Pty {
 
 impl Pty {
     fn spawn(env: &Env, args: &[&str]) -> Pty {
+        Pty::spawn_with(env, args, &[])
+    }
+
+    fn spawn_with(env: &Env, args: &[&str], extra: &[(&str, &std::path::Path)]) -> Pty {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: 40,
@@ -92,6 +96,9 @@ impl Pty {
         cmd.env("TMGR_SERVER", env.server.uri());
         cmd.env("NO_COLOR", "1");
         cmd.env("TERM", "xterm");
+        for (k, v) in extra {
+            cmd.env(k, v);
+        }
         let child = pair.slave.spawn_command(cmd).unwrap();
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().unwrap();
@@ -448,4 +455,186 @@ async fn the_persona_policy_alone_is_stored() {
     let (code, shown) = allow_with(&env, &["--require-signed-persona"]);
     assert_eq!(code, 0, "{shown}");
     assert_eq!(policy(&env), (json!(false), json!(true)));
+}
+
+const RESTART: &str = "runner restart";
+
+fn runner_dir() -> tempfile::TempDir {
+    let dir = tempfile::Builder::new()
+        .prefix("r")
+        .tempdir_in("/tmp")
+        .unwrap();
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    dir
+}
+
+fn listing(dir: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+fn secret_in(dir: &std::path::Path) -> String {
+    tmgr_ipc::secret::write_new(&dir.join("client.secret")).unwrap()
+}
+
+fn fake_daemon(dir: &std::path::Path, version: &'static str) {
+    let ep = tmgr_ipc::endpoint::Endpoint::new_runner(dir).unwrap();
+    let secret = secret_in(dir);
+    let listener = tmgr_ipc::endpoint::bind(&ep).unwrap();
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(stream) = stream else { break };
+            let _ = tmgr_ipc::server::handshake_server(&stream, &secret, version);
+        }
+    });
+}
+
+fn unparseable_daemon(dir: &std::path::Path) {
+    let ep = tmgr_ipc::endpoint::Endpoint::new_runner(dir).unwrap();
+    secret_in(dir);
+    let listener = tmgr_ipc::endpoint::bind(&ep).unwrap();
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(stream) = stream else { break };
+            let _ = tmgr_ipc::frame::read_frame(&mut &stream);
+            let _ =
+                tmgr_ipc::frame::write_json(&mut &stream, &json!({"type": "welcome", "proto": 1}));
+        }
+    });
+}
+
+fn stale_socket(dir: &std::path::Path) {
+    let ep = tmgr_ipc::endpoint::Endpoint::new_runner(dir).unwrap();
+    secret_in(dir);
+    drop(tmgr_ipc::endpoint::bind(&ep).unwrap());
+}
+
+fn allow_in(env: &Env, dir: &std::path::Path, extra: &[&str]) -> (u32, String) {
+    let mut args = vec!["runner", "allow", "tmgrdev"];
+    args.extend_from_slice(extra);
+    let mut p = Pty::spawn_with(env, &args, &[("TMGR_RUNNER_DIR", dir)]);
+    p.wait_for("Type the workspace code");
+    p.type_line("tmgrdev");
+    let code = p.exit_code();
+    (code, p.text())
+}
+
+fn allowed_in(env: &Env, dir: &std::path::Path, json: bool) -> std::process::Output {
+    let mut c = env.cmd();
+    c.env("TMGR_RUNNER_DIR", dir).args(["runner", "allowed"]);
+    if json {
+        c.arg("--json");
+    }
+    c.output().unwrap()
+}
+
+fn restart_lines(text: &str) -> usize {
+    text.lines().filter(|l| l.contains(RESTART)).count()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_older_daemon_is_named_once_by_allow_and_by_allowed_in_both_modes() {
+    let env = setup(vec![key(KEY_ID, KEY, "laptop")]).await;
+    let dir = runner_dir();
+    fake_daemon(dir.path(), "1.0.54");
+    let before = listing(dir.path());
+    let (code, shown) = allow_in(&env, dir.path(), &["--require-signed-rules"]);
+    assert_eq!(code, 0, "{shown}");
+    assert_eq!(restart_lines(&shown), 1, "{shown}");
+    assert!(shown.contains("version 1.0.54"), "{shown}");
+    assert_eq!(policy(&env), (json!(true), json!(false)));
+
+    let out = allowed_in(&env, dir.path(), false);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(restart_lines(&common::text(&out.stdout)), 0);
+    assert_eq!(restart_lines(&common::text(&out.stderr)), 1);
+
+    let out = allowed_in(&env, dir.path(), true);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(common::text(&out.stderr), "");
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"][0]["require_signed_rules"], true);
+    let warnings = v["warnings"].as_array().unwrap();
+    assert_eq!(warnings.len(), 1, "{v}");
+    assert!(warnings[0]["message"].as_str().unwrap().contains(RESTART));
+    assert_eq!(listing(dir.path()), before);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_daemon_at_the_floor_or_at_this_version_says_nothing() {
+    for version in ["1.0.55", env!("CARGO_PKG_VERSION")] {
+        let env = setup(vec![key(KEY_ID, KEY, "laptop")]).await;
+        let dir = runner_dir();
+        fake_daemon(dir.path(), version);
+        let (code, shown) = allow_in(&env, dir.path(), &["--require-signed-persona"]);
+        assert_eq!(code, 0, "{shown}");
+        assert_eq!(restart_lines(&shown), 0, "{version}: {shown}");
+        assert_eq!(policy(&env), (json!(false), json!(true)));
+        let out = allowed_in(&env, dir.path(), false);
+        assert_eq!(restart_lines(&common::text(&out.stderr)), 0);
+        let out = allowed_in(&env, dir.path(), true);
+        let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert!(v["warnings"].as_array().unwrap().is_empty(), "{v}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn no_daemon_says_nothing_and_nothing_is_started() {
+    let env = setup(vec![key(KEY_ID, KEY, "laptop")]).await;
+    let dir = runner_dir();
+    let (code, shown) = allow_in(&env, dir.path(), &["--require-signed-rules"]);
+    assert_eq!(code, 0, "{shown}");
+    assert_eq!(restart_lines(&shown), 0, "{shown}");
+    assert!(!shown.contains("runner is not running"), "{shown}");
+    assert_eq!(policy(&env), (json!(true), json!(false)));
+    let out = allowed_in(&env, dir.path(), false);
+    assert_eq!(common::text(&out.stderr), "");
+    let out = allowed_in(&env, dir.path(), true);
+    assert_eq!(common::text(&out.stderr), "");
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(v["warnings"].as_array().unwrap().is_empty(), "{v}");
+    assert!(listing(dir.path()).is_empty(), "{:?}", listing(dir.path()));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_daemon_that_reports_no_version_is_named_as_such() {
+    let env = setup(vec![key(KEY_ID, KEY, "laptop")]).await;
+    let dir = runner_dir();
+    unparseable_daemon(dir.path());
+    let (code, shown) = allow_in(&env, dir.path(), &["--require-signed-rules"]);
+    assert_eq!(code, 0, "{shown}");
+    assert_eq!(restart_lines(&shown), 1, "{shown}");
+    assert!(shown.contains("did not report its version"), "{shown}");
+    assert_eq!(policy(&env), (json!(true), json!(false)));
+    let out = allowed_in(&env, dir.path(), false);
+    assert!(common::text(&out.stderr).contains("did not report its version"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn without_a_policy_an_older_daemon_is_not_mentioned() {
+    let env = setup(vec![key(KEY_ID, KEY, "laptop")]).await;
+    let dir = runner_dir();
+    fake_daemon(dir.path(), "1.0.54");
+    let (code, shown) = allow_in(&env, dir.path(), &[]);
+    assert_eq!(code, 0, "{shown}");
+    assert_eq!(restart_lines(&shown), 0, "{shown}");
+    assert_eq!(policy(&env), (json!(false), json!(false)));
+    let out = allowed_in(&env, dir.path(), false);
+    assert_eq!(common::text(&out.stderr), "");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_stale_socket_with_nothing_listening_says_nothing() {
+    let env = setup(vec![key(KEY_ID, KEY, "laptop")]).await;
+    let dir = runner_dir();
+    stale_socket(dir.path());
+    let (code, shown) = allow_in(&env, dir.path(), &["--require-signed-rules"]);
+    assert_eq!(code, 0, "{shown}");
+    assert_eq!(restart_lines(&shown), 0, "{shown}");
+    let out = allowed_in(&env, dir.path(), false);
+    assert_eq!(common::text(&out.stderr), "");
 }

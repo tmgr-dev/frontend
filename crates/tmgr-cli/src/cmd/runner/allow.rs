@@ -6,12 +6,17 @@ use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
+use tmgr_core::api::Warning;
 use tmgr_core::approval::{
     fingerprint, valid_public_key, AllowFile, Entry, PinnedKey, RepoBinding,
 };
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::text::sanitize_line;
+use tmgr_core::Envelope;
 use tmgr_link::privileged;
+use tmgr_runner::client::Client;
+
+const POLICY_MIN_VERSION: (u64, u64, u64) = (1, 0, 55);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lifetime {
@@ -185,6 +190,54 @@ pub fn policy_text(rules: bool, persona: bool) -> Option<String> {
     }
 }
 
+fn applies_policy(version: &str) -> bool {
+    super::restart::parse_version(version).is_some_and(|v| v >= POLICY_MIN_VERSION)
+}
+
+fn restart_notice() -> Option<String> {
+    let cfg = super::runner_config().ok()?;
+    let version = match Client::connect(&cfg.dir) {
+        Ok(c) => {
+            let v = c.welcome().runner_version.clone();
+            if applies_policy(&v) {
+                return None;
+            }
+            sanitize_line(&v)
+        }
+        Err(e) if super::is_down(&e) => return None,
+        Err(_) => String::new(),
+    };
+    let bin = super::bin();
+    Some(if version.is_empty() {
+        format!("the running runner did not report its version, so it may ignore the signed run policy until you run `{bin} runner restart`; until then cloud runs may not be refused")
+    } else {
+        format!("the running runner (version {version}) ignores the signed run policy until you run `{bin} runner restart`; until then cloud runs are not refused")
+    })
+}
+
+fn has_policy(e: &Entry) -> bool {
+    e.require_signed_rules || e.require_signed_persona
+}
+
+fn emit_with_notice(o: &Opts, data: Value, human: String, notice: Option<String>) -> i32 {
+    let Some(line) = notice else {
+        return emit(o, data, human);
+    };
+    if o.json {
+        let env = Envelope::with_warnings(data, vec![Warning::new("runner_restart", line)]);
+        println!(
+            "{}",
+            serde_json::to_string(&env).expect("envelope serializes")
+        );
+        return 0;
+    }
+    let code = emit(o, data, human);
+    if !o.quiet {
+        eprintln!("{line}");
+    }
+    code
+}
+
 pub fn allow(
     o: &Opts,
     workspace: &str,
@@ -321,7 +374,8 @@ These keys are pinned now; a key added later is not trusted until you run this a
         sanitize_line(&ws.code),
         expires.map_or(String::new(), |e| format!(" until {}", stamp(e)))
     );
-    Ok(emit(o, data, human))
+    let notice = has_policy(&entry).then(restart_notice).flatten();
+    Ok(emit_with_notice(o, data, human, notice))
 }
 
 pub fn disallow(o: &Opts, workspace: &str) -> Result<i32> {
@@ -431,7 +485,13 @@ pub fn allowed(o: &Opts) -> Result<i32> {
         }
         out
     };
-    Ok(emit(o, data, human))
+    let notice = file
+        .entries
+        .iter()
+        .any(has_policy)
+        .then(restart_notice)
+        .flatten();
+    Ok(emit_with_notice(o, json!(data), human, notice))
 }
 
 #[cfg(test)]
@@ -637,5 +697,26 @@ mod policy_tests {
         assert_eq!(policy_text(true, false).as_deref(), Some("rules"));
         assert_eq!(policy_text(false, true).as_deref(), Some("persona"));
         assert_eq!(policy_text(true, true).as_deref(), Some("rules, persona"));
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::*;
+
+    #[test]
+    fn only_runners_from_the_policy_release_on_apply_the_policy() {
+        for (v, applies) in [
+            ("1.0.54", false),
+            ("1.0.55", true),
+            ("1.0.56", true),
+            ("1.0.55-dev", true),
+            ("0.9.75", false),
+            ("2.0.0", true),
+            ("", false),
+            ("garbage", false),
+        ] {
+            assert_eq!(applies_policy(v), applies, "{v:?}");
+        }
     }
 }
