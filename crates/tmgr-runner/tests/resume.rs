@@ -1,5 +1,6 @@
 #![cfg(unix)]
 
+use chrono::Utc;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -11,6 +12,9 @@ use tmgr_ipc::api::{
 };
 use tmgr_runner::client::Client;
 use tmgr_runner::restore;
+use tmgr_usage::consent::{ConsentChange, ReadLogs};
+use tmgr_usage::paths::db_path;
+use tmgr_usage::Store;
 
 const HOST: &str = env!("CARGO_BIN_EXE_tmgr-runner-host");
 const U1: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
@@ -116,6 +120,8 @@ impl H {
                 .env("TMGR_RUNNER_HOMES", &self.homes)
                 .env("TMGR_AGENTS_DIR", self.tmp.path().join("a"))
                 .env("XDG_CONFIG_HOME", self.tmp.path().join("c"))
+                .env("TMGR_USAGE_DIR", self.usage_dir())
+                .env("XDG_DATA_HOME", self.tmp.path().join("xdg-data"))
                 .env("TMGR_T0_QUIET_MS", "5000")
                 .env("TMGR_RESTORE_FORGET_MS", "300")
                 .stdin(Stdio::null())
@@ -129,6 +135,26 @@ impl H {
             assert!(Instant::now() < deadline, "runner did not start");
             thread::sleep(Duration::from_millis(50));
         }
+    }
+
+    fn usage_dir(&self) -> PathBuf {
+        self.tmp.path().join("usage")
+    }
+
+    fn consent(&self, state: Option<ReadLogs>, claude: Option<bool>, codex: Option<bool>) {
+        let dir = self.usage_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let store = Store::open(&db_path(&dir)).unwrap();
+        let ch = ConsentChange {
+            state,
+            claude,
+            codex,
+        };
+        store.change_log_consent(&ch, Utc::now()).unwrap();
+    }
+
+    fn allow_forks(&self) {
+        self.consent(Some(ReadLogs::Granted), None, None);
     }
 
     fn stop_runner(&mut self) {
@@ -1067,6 +1093,7 @@ fn fork_copies_the_transcript_into_a_new_home_and_leaves_the_live_session_alone(
         return;
     }
     let mut h = H::full();
+    h.allow_forks();
     h.start();
     let first = h.started();
     let proj = h.homes.join(&first.id).join(".claude/projects/-w");
@@ -1103,6 +1130,7 @@ fn fork_refuses_bad_ids_a_missing_transcript_and_other_agents() {
         return;
     }
     let mut h = H::full();
+    h.allow_forks();
     h.start();
     let first = h.started();
     let bad = h
@@ -1131,4 +1159,122 @@ fn fork_is_refused_for_agents_other_than_claude_code() {
     let s = o.started();
     let e = o.client().fork(&s.id, U1, None, (80, 24)).unwrap_err();
     assert!(e.to_string().starts_with("forbidden"), "{e}");
+}
+
+fn refused_fork_leaves_nothing(h: &H, first: &SessionInfo) {
+    let e = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
+    assert!(e.to_string().starts_with("forbidden"), "{e}");
+    assert!(e.to_string().contains("cannot be forked"), "{e}");
+    assert_eq!(h.log().matches("fork-session").count(), 0, "{}", h.log());
+    let copies = fs::read_dir(&h.homes)
+        .unwrap()
+        .flatten()
+        .filter(|d| {
+            d.path()
+                .join(format!(".claude/projects/-w/{U1}.jsonl"))
+                .exists()
+        })
+        .count();
+    assert_eq!(copies, 1);
+    assert_eq!(h.client().list().unwrap().len(), 1);
+}
+
+fn fork_fixture() -> (H, SessionInfo) {
+    let mut h = H::full();
+    h.start();
+    let first = h.started();
+    let proj = h.homes.join(&first.id).join(".claude/projects/-w");
+    fs::create_dir_all(&proj).unwrap();
+    fs::write(proj.join(format!("{U1}.jsonl")), b"{\"type\":\"user\"}\n").unwrap();
+    (h, first)
+}
+
+#[test]
+fn fork_is_refused_without_a_consent_database() {
+    if !sessions_available() {
+        return;
+    }
+    let (h, first) = fork_fixture();
+    assert!(!h.usage_dir().exists());
+    refused_fork_leaves_nothing(&h, &first);
+}
+
+#[test]
+fn fork_is_refused_when_reading_is_denied() {
+    if !sessions_available() {
+        return;
+    }
+    let (h, first) = fork_fixture();
+    h.consent(Some(ReadLogs::Denied), Some(true), Some(true));
+    refused_fork_leaves_nothing(&h, &first);
+}
+
+#[test]
+fn fork_is_refused_when_the_choice_is_undecided() {
+    if !sessions_available() {
+        return;
+    }
+    let (h, first) = fork_fixture();
+    h.consent(None, Some(true), None);
+    refused_fork_leaves_nothing(&h, &first);
+}
+
+#[test]
+fn fork_is_refused_when_only_codex_may_be_read() {
+    if !sessions_available() {
+        return;
+    }
+    let (h, first) = fork_fixture();
+    h.consent(Some(ReadLogs::Granted), Some(false), Some(true));
+    refused_fork_leaves_nothing(&h, &first);
+}
+
+#[test]
+fn fork_is_refused_when_consent_is_withdrawn_before_the_copy() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    h.allow_forks();
+    let go = h.tmp.path().join("go");
+    fs::write(&go, b"").unwrap();
+    h.env.push((
+        "TMGR_TEST_HOLD_AFTER_PROFILE".into(),
+        go.display().to_string(),
+    ));
+    h.start();
+    let first = h.started();
+    let proj = h.homes.join(&first.id).join(".claude/projects/-w");
+    fs::create_dir_all(&proj).unwrap();
+    fs::write(proj.join(format!("{U1}.jsonl")), b"{\"type\":\"user\"}\n").unwrap();
+    fs::remove_file(&go).unwrap();
+    let c = h.client();
+    let id = first.id.clone();
+    let worker = thread::spawn(move || {
+        let mut c = c;
+        c.fork(&id, U1, None, (80, 24))
+    });
+    let reached = go.with_extension("reached");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !reached.exists() {
+        assert!(Instant::now() < deadline, "the fork never started");
+        thread::sleep(Duration::from_millis(20));
+    }
+    h.consent(Some(ReadLogs::Denied), None, None);
+    fs::write(&go, b"").unwrap();
+    let e = worker.join().unwrap().unwrap_err();
+    assert!(e.to_string().starts_with("forbidden"), "{e}");
+    assert!(e.to_string().contains("cannot be forked"), "{e}");
+    assert_eq!(h.log().matches("fork-session").count(), 0, "{}", h.log());
+    assert_eq!(h.client().list().unwrap().len(), 1);
+    let copies = fs::read_dir(&h.homes)
+        .unwrap()
+        .flatten()
+        .filter(|d| {
+            d.path()
+                .join(format!(".claude/projects/-w/{U1}.jsonl"))
+                .exists()
+        })
+        .count();
+    assert_eq!(copies, 1);
 }

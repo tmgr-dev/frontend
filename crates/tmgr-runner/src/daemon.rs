@@ -2468,6 +2468,7 @@ impl Runner {
                 ))
             }
         };
+        fork_consent()?;
         let from_home = self.cfg.homes.join(&q.id);
         let found = crate::attach::locate(&crate::attach::Source {
             home: &from_home,
@@ -3295,6 +3296,7 @@ impl Runner {
         ensure_private_dir(sdir).map_err(internal)?;
         ensure_private_leaf(home).map_err(internal)?;
         if let Some(f) = &extra.fork {
+            fork_consent()?;
             copy_transcript(&f.from_home, &f.rel, home).map_err(|e| {
                 api(
                     ErrorCode::Internal,
@@ -4258,6 +4260,17 @@ fn test_passthrough(_: &str) -> bool {
     false
 }
 
+fn fork_consent() -> Result<(), ApiErr> {
+    let env = tmgr_usage::paths::Env::from_process();
+    if tmgr_usage::consent::granted_read_only(&env, tmgr_usage::Tool::Claude) {
+        return Ok(());
+    }
+    Err(api(
+        ErrorCode::Forbidden,
+        "reading Claude Code transcripts is off on this device, so this session cannot be forked: run tmgr usage consent allow, or turn it on in TMGR desktop (AI Usage)",
+    ))
+}
+
 pub fn daemon_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
     const KEEP: &[&str] = &[
         "HOME",
@@ -4272,6 +4285,7 @@ pub fn daemon_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
         "XDG_CONFIG_HOME",
         "XDG_STATE_HOME",
         "XDG_DATA_HOME",
+        "TMGR_USAGE_DIR",
         "XDG_CACHE_HOME",
         "XDG_RUNTIME_DIR",
         "TMGR_RUNNER_DIR",

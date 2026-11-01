@@ -4156,6 +4156,7 @@ dependencies = [
  "tmgr-approval",
  "tmgr-fuzzy",
  "tmgr-ipc",
+ "tmgr-usage",
  "toml",
  "unicode-width",
  "vt100",
