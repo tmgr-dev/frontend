@@ -30,6 +30,28 @@
 						>
 							Stored only on this device — not synced to the cloud.
 						</span>
+						<button
+							v-if="cloudTargets.length"
+							type="button"
+							class="rounded-md border px-2.5 py-1 text-xs font-medium transition-colors md:ml-auto"
+							:class="
+								selectMode
+									? 'border-brand bg-brand-bg text-brand'
+									: 'border-line text-ink hover:bg-surface-hover'
+							"
+							:aria-pressed="selectMode"
+							data-testid="local-routines-select"
+							@click="selectMode = !selectMode"
+						>
+							Select
+						</button>
+						<span
+							v-else
+							class="text-xs text-ink-subtle md:ml-auto"
+							data-testid="local-routines-move-note"
+						>
+							{{ moveNote }}
+						</span>
 					</div>
 
 					<!-- Top toolbar -->
@@ -236,7 +258,14 @@
 
 					<!-- Body -->
 					<div class="flex flex-1 flex-col gap-3 overflow-hidden p-2 md:p-5">
+						<MoveRoutinesPicker
+							v-if="isLocalWorkspace && selectMode"
+							:targets="cloudTargets"
+							@cancel="selectMode = false"
+							@changed="reload"
+						/>
 						<AsyncContent
+							v-else
 							class="flex min-h-0 flex-1 flex-col gap-3"
 							:pending="viewPending"
 							:loaded="viewLoaded"
@@ -410,6 +439,7 @@
 					/>
 
 					<button
+						v-if="!selectMode"
 						type="button"
 						class="fixed right-4 bottom-20 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-on-accent shadow-tmgr-md transition-transform hover:scale-105 hover:bg-brand-hover md:right-6 md:bottom-6 md:h-14 md:w-14"
 						title="New routine (N)"
@@ -433,7 +463,7 @@
 		updateDailyTask,
 	} from '@/actions/tmgr/daily-tasks';
 	import { updateTask } from '@/actions/tmgr/tasks';
-	import { getWorkspaces } from '@/actions/tmgr/workspaces';
+	import { getWorkspaces, type Workspace } from '@/actions/tmgr/workspaces';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 	import ConvertRoutineModal from '@/components/dailyRoutine/ConvertRoutineModal.vue';
 	import CountChip from '@/components/dailyRoutine/CountChip.vue';
@@ -448,6 +478,7 @@
 		routineForEdit,
 		type RoutineDraft,
 	} from '@/components/dailyRoutine/routinePayload';
+	import MoveRoutinesPicker from '@/components/dailyRoutine/moveToCloud/MoveRoutinesPicker.vue';
 	import RoutineRow from '@/components/dailyRoutine/RoutineRow.vue';
 	import RoutineViewSkeleton from '@/components/dailyRoutine/RoutineViewSkeleton.vue';
 	import DayView from '@/components/dailyRoutine/views/DayView.vue';
@@ -738,6 +769,13 @@
 	);
 	// /routines is workspace-independent, so store.state.workspaces may be empty here.
 	const isLocalWorkspace = ref(false);
+	const selectMode = ref(false);
+	const cloudTargets = ref<Workspace[]>([]);
+	const moveNote = computed(() =>
+		store.getters.isLoggedIn
+			? 'No cloud workspace to move routines to.'
+			: 'Sign in to move routines to the cloud.',
+	);
 	const { isFeatureEnabled } = useFeatureToggles();
 	const pageTitle = computed(() =>
 		isLocalWorkspace.value ? 'Local routines' : 'Daily routines',
@@ -749,6 +787,11 @@
 			isLocalWorkspace.value = Boolean(
 				workspaces.find((w) => Number(w.id) === Number(id))?.is_local,
 			);
+			cloudTargets.value =
+				isLocalWorkspace.value && store.getters.isLoggedIn
+					? workspaces.filter((w) => !w.is_local && Number(w.id) > 0)
+					: [];
+			if (!isLocalWorkspace.value) selectMode.value = false;
 		},
 		{ immediate: true },
 	);
