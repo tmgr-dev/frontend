@@ -19,14 +19,9 @@ pub(super) fn status_worker(
             let keep: HashSet<&str> = batch.iter().map(|j| j.id.as_str()).collect();
             scans.retain(|id, _| keep.contains(id.as_str()));
         }
-        let reads = consent();
         let mut found = HashMap::new();
         for job in batch.iter().filter(|j| j.src.format == Format::Claude) {
-            if !reads.allows(job.src.format) {
-                scans.remove(&job.id);
-                continue;
-            }
-            if let Some(status) = status_for(job, &mut scans) {
+            if let Some(status) = status_if_allowed(job, consent(), &mut scans) {
                 found.insert(job.id.clone(), status);
             }
         }
@@ -64,6 +59,18 @@ pub(super) fn peek_worker(
             return;
         }
     }
+}
+
+fn status_if_allowed(
+    job: &QuestionJob,
+    reads: Reads,
+    scans: &mut HashMap<String, StatusScan>,
+) -> Option<SessionStatus> {
+    if !reads.allows(job.src.format) {
+        scans.remove(&job.id);
+        return None;
+    }
+    status_for(job, scans)
 }
 
 fn status_for(job: &QuestionJob, scans: &mut HashMap<String, StatusScan>) -> Option<SessionStatus> {
@@ -269,6 +276,53 @@ mod tests {
         assert_eq!(got[1].as_deref(), Some("Bash: ls"));
         assert_eq!(got[2], None);
         assert_eq!(got[3], None);
+    }
+
+    #[test]
+    fn a_denied_job_drops_its_scan_and_an_allowed_one_keeps_it() {
+        let runner = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        session(runner.path(), home.path());
+        let j = job(home.path(), runner.path());
+        let mut scans = HashMap::new();
+        assert!(status_if_allowed(&j, ALL, &mut scans).is_some());
+        assert_eq!(scans.len(), 1);
+        assert!(status_if_allowed(&j, NONE, &mut scans).is_none());
+        assert!(scans.is_empty());
+    }
+
+    #[test]
+    fn a_denial_during_a_batch_stops_the_next_file_from_being_read() {
+        use std::cell::Cell;
+        let runner = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        session(runner.path(), home.path());
+        let mut second = job(home.path(), runner.path());
+        second.id = "s_bcdefghjkm".into();
+        let (tx, rx) = mpsc::channel();
+        tx.send(vec![job(home.path(), runner.path()), second])
+            .unwrap();
+        drop(tx);
+        let calls = Cell::new(0);
+        let mut got = Vec::new();
+        status_worker(
+            rx,
+            || {
+                calls.set(calls.get() + 1);
+                if calls.get() == 1 {
+                    ALL
+                } else {
+                    NONE
+                }
+            },
+            |found| {
+                got.push(found);
+                true
+            },
+        );
+        assert_eq!(calls.get(), 2);
+        assert!(got[0].contains_key("s_abcdefghjk"));
+        assert!(!got[0].contains_key("s_bcdefghjkm"));
     }
 
     #[test]

@@ -229,6 +229,14 @@ impl ScreenSource for Screens<'_> {
     }
 }
 
+fn outbound_denial(reads: Reads) -> Option<&'static str> {
+    reads.denial(tmgr_runner::attach::Format::Claude)
+}
+
+fn newly_allowed(before: Reads, now: Reads) -> bool {
+    (now.claude && !before.claude) || (now.codex && !before.codex)
+}
+
 fn short_age(now: u64, since: u64) -> String {
     let s = now.saturating_sub(since) / 1000;
     match s {
@@ -1007,7 +1015,7 @@ impl App {
         }
         self.running_seen
             .retain(|id| self.view.sessions.iter().any(|r| &r.id == id));
-        if self.summary_mode == SummaryMode::Never || !self.reads.claude {
+        if ended.is_empty() || self.summary_mode == SummaryMode::Never || !Reads::current().claude {
             return;
         }
         for (id, since) in ended {
@@ -1153,6 +1161,9 @@ impl App {
     fn export_action(&mut self, action: tmgr_runner::attach::ExportAction) {
         use tmgr_runner::attach::ExportAction;
         self.dirty = true;
+        if let Some(hint) = outbound_denial(Reads::current()) {
+            return self.notify(hint);
+        }
         self.notify("exporting…");
         let tx = self.tx.clone();
         match action {
@@ -1193,6 +1204,10 @@ impl App {
     }
 
     fn on_reads(&mut self, reads: Reads) {
+        if newly_allowed(self.reads, reads) {
+            self.question_exited.clear();
+            self.exit_scanned.clear();
+        }
         self.reads = reads;
         let hint = reads.hint();
         if self.view.set_reads_hint(hint) {
@@ -1239,6 +1254,9 @@ impl App {
     }
 
     fn post_now(&mut self, draft: SummaryDraft) {
+        if let Some(hint) = outbound_denial(Reads::current()) {
+            return self.notify(hint);
+        }
         let kept = Box::new(draft.clone());
         let (Some(target), Some(text)) = (draft.target, draft.text) else {
             return;
@@ -4189,6 +4207,45 @@ fn dropped_path_exists(data: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn transcript_text_leaves_only_with_claude_consent() {
+        let off = Reads {
+            claude: false,
+            codex: true,
+        };
+        assert_eq!(outbound_denial(off), off.hint());
+        assert!(outbound_denial(off).is_some());
+        assert!(outbound_denial(Reads::default()).is_some());
+        assert!(outbound_denial(Reads {
+            claude: true,
+            codex: false
+        })
+        .is_none());
+    }
+
+    #[test]
+    fn only_a_denied_to_allowed_flip_counts_as_newly_allowed() {
+        let none = Reads::default();
+        let claude = Reads {
+            claude: true,
+            codex: false,
+        };
+        let codex = Reads {
+            claude: false,
+            codex: true,
+        };
+        let both = Reads {
+            claude: true,
+            codex: true,
+        };
+        assert!(newly_allowed(none, claude));
+        assert!(newly_allowed(claude, both));
+        assert!(newly_allowed(claude, codex));
+        assert!(!newly_allowed(both, claude));
+        assert!(!newly_allowed(both, both));
+        assert!(!newly_allowed(none, none));
+    }
+
     #[test]
     fn background_reply_is_cut_out_and_typed_bytes_are_kept() {
         let mut buf = b"ab\x1b]11;rgb:ff/ff/ff\x07cd\x1b[?62;4cef".to_vec();
