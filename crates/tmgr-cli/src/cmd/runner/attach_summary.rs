@@ -26,6 +26,7 @@ pub(super) struct Generated {
     pub text: String,
     pub plain: bool,
     pub tainted: bool,
+    pub denied: bool,
 }
 
 pub(super) fn generate(job: &SummaryJob, home: &str, consent: &dyn Fn() -> Reads) -> Generated {
@@ -35,9 +36,14 @@ pub(super) fn generate(job: &SummaryJob, home: &str, consent: &dyn Fn() -> Reads
         text: text.to_string(),
         plain: true,
         tainted: false,
+        denied: false,
+    };
+    let denied = |hint: &str| Generated {
+        denied: true,
+        ..failed(hint)
     };
     if let Some(hint) = consent().denial(job.job.src.format) {
-        return failed(hint);
+        return denied(hint);
     }
     let Some(src) = session_src(&job.job) else {
         return failed("The session transcript is not available.");
@@ -49,7 +55,7 @@ pub(super) fn generate(job: &SummaryJob, home: &str, consent: &dyn Fn() -> Reads
         return failed("The session transcript cannot be read.");
     };
     if let Some(hint) = consent().denial(job.job.src.format) {
-        return failed(hint);
+        return denied(hint);
     }
     summarize(&key, &d, job.claude.as_deref(), &job.workdir)
 }
@@ -60,6 +66,7 @@ pub(super) fn summarize(key: &str, d: &Digest, claude: Option<&Path>, workdir: &
         text: plain_summary(d),
         plain: true,
         tainted: false,
+        denied: false,
     };
     let Some(bin) = claude.filter(|_| !d.is_empty()) else {
         return plain();
@@ -75,6 +82,7 @@ pub(super) fn summarize(key: &str, d: &Digest, claude: Option<&Path>, workdir: &
                 text: compose(Some(&prose), d),
                 plain: false,
                 tainted,
+                denied: false,
             }
         }
         Err(_) => plain(),
@@ -210,8 +218,7 @@ pub(super) fn print_summary(
     let src = agent_src(info)
         .filter(|s| s.format == tmgr_runner::attach::Format::Claude)
         .ok_or_else(|| Error::usage("summaries are available for Claude sessions"))?;
-    let reads = Reads::current();
-    if let Some(hint) = reads.denial(src.format) {
+    if let Some(hint) = Reads::current().denial(src.format) {
         return Err(Error::usage(hint));
     }
     let job = SummaryJob {
@@ -235,7 +242,11 @@ pub(super) fn print_summary(
         workdir,
         ..job
     };
-    let done = generate(&job, &std::env::var("HOME").unwrap_or_default(), &|| reads);
+    let done = generate(
+        &job,
+        &std::env::var("HOME").unwrap_or_default(),
+        &Reads::current,
+    );
     let human = done.text.clone();
     Ok(super::emit(
         o,
@@ -586,7 +597,7 @@ mod tests {
         });
         assert_eq!(calls.get(), 2);
         assert_eq!(g.text, Reads::default().hint().unwrap());
-        assert!(g.plain);
+        assert!(g.denied);
         assert!(!marker.exists());
     }
 }

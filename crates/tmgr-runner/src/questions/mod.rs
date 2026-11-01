@@ -67,8 +67,12 @@ impl Scanner {
     }
 
     pub fn forget_denied(&mut self) {
-        let allowed = &self.allowed;
-        self.tails.retain(|_, t| allowed(t.format()));
+        let claude = (self.allowed)(Format::Claude);
+        let codex = (self.allowed)(Format::Codex);
+        self.tails.retain(|_, t| match t.format() {
+            Format::Claude => claude,
+            Format::Codex => codex,
+        });
     }
 
     pub fn scan(&mut self, sources: &[SessionSrc], now_s: u64) -> bool {

@@ -745,7 +745,7 @@ impl App {
                 if row.name != src.default_name {
                     return None;
                 }
-                if row.exited() && !self.exit_scanned.insert(id.clone()) {
+                if row.exited() && self.exit_scanned.contains(&id) {
                     return None;
                 }
                 Some(TitleJob {
@@ -765,6 +765,8 @@ impl App {
         }
         self.last_title = Instant::now();
         self.titles_tried.extend(jobs.iter().map(|j| j.id.clone()));
+        self.exit_scanned
+            .extend(jobs.iter().filter(|j| j.pid == 0).map(|j| j.id.clone()));
         self.title_pending = self.title_tx.try_send(jobs).is_ok();
     }
 
@@ -1222,6 +1224,11 @@ impl App {
 
     fn on_summary(&mut self, done: Generated) {
         self.dirty = true;
+        if done.denied {
+            self.summary_auto.remove(&done.key);
+            self.view.drop_summary(&done.key);
+            return self.notify(&done.text);
+        }
         if let Some(mut draft) = self.summary_auto.remove(&done.key) {
             draft.text = Some(done.text);
             draft.plain = done.plain;

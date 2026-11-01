@@ -27,7 +27,8 @@ pub(super) fn run(o: &Opts, a: &super::ExportArgs) -> Result<i32> {
     let src = agent_src(info)
         .filter(|s| s.format == tmgr_runner::attach::Format::Claude)
         .ok_or_else(|| Error::usage("export is available for Claude sessions"))?;
-    require_consent(Reads::current(), src.format)?;
+    let format = src.format;
+    require_consent(Reads::current(), format)?;
     let home = home_dir().ok_or_else(|| Error::usage("cannot find your home folder"))?;
     let home_s = home.to_string_lossy().to_string();
     let job = new_job(
@@ -61,6 +62,7 @@ pub(super) fn run(o: &Opts, a: &super::ExportArgs) -> Result<i32> {
     })?;
     if let Some(path) = &a.md {
         let (path, overwrite) = target(path, &info.cwd, tty)?;
+        require_consent(Reads::current(), format)?;
         write_private(&path, text.as_bytes(), overwrite)?;
         let human = format!("exported {} to {}", fmt_size(text.len()), path.display());
         return Ok(emit(
@@ -87,6 +89,7 @@ pub(super) fn run(o: &Opts, a: &super::ExportArgs) -> Result<i32> {
         &info.name,
         &chrono::Local::now().format("%Y-%m-%d %H:%M").to_string(),
     );
+    require_consent(Reads::current(), format)?;
     let page = client.page_create(ws.id, &serde_json::json!({"title": title, "body": text}))?;
     let human = format!("exported to a new page in {} (id {})", ws.code, page.id);
     Ok(emit(
