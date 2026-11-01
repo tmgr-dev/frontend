@@ -2,6 +2,7 @@ pub(crate) mod allow;
 mod attach;
 mod attach_chip;
 mod attach_clip;
+pub(crate) mod attach_consent;
 mod attach_export;
 mod attach_export_cmd;
 mod attach_git;

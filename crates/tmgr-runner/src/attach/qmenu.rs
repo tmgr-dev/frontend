@@ -283,6 +283,12 @@ impl ViewState {
         true
     }
 
+    pub fn set_reads_hint(&mut self, hint: Option<&'static str>) -> bool {
+        let changed = self.reads_hint != hint;
+        self.reads_hint = hint;
+        changed
+    }
+
     pub fn set_question_status(&mut self, id: &str, status: Status) {
         for e in self.questions.iter_mut().filter(|e| e.q.id == id) {
             e.status = status;
@@ -315,7 +321,10 @@ impl ViewState {
             .filter(known)
             .any(|e| e.status != Status::Answered);
         if !has {
-            self.notice = Some("no unanswered questions".into());
+            self.notice = Some(
+                self.reads_hint
+                    .map_or_else(|| "no unanswered questions".into(), str::to_string),
+            );
             return false;
         }
         let scope = scope.filter(|s| {
@@ -680,10 +689,10 @@ pub(crate) fn draw_qmenu(buf: &mut Buffer, area: Rect, st: &ViewState) {
         put(buf, *x, g.inner.y, label, style, *w);
     }
     if let Some(y) = g.empty_y {
-        let msg = if menu.ignored {
-            "Nothing ignored"
-        } else {
-            "No open questions"
+        let msg = match (menu.ignored, st.reads_hint) {
+            (true, _) => "Nothing ignored",
+            (false, Some(hint)) => hint,
+            (false, None) => "No open questions",
         };
         put(
             buf,
