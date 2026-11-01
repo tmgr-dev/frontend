@@ -47,6 +47,12 @@ describe('readingNote', () => {
 			'tmgr usage commands you run yourself still do',
 		);
 	});
+
+	it('says what the choice means for the runner', () => {
+		expect(readingNote('granted')).toContain('the runner reads the sessions');
+		expect(readingNote('denied')).toContain('runner reads none');
+		expect(readingNote('unset')).toContain('runner reads none');
+	});
 });
 
 describe('useUsageConsent', () => {
