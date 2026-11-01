@@ -6,7 +6,7 @@
 	>
 		<SettingsSection
 			title="AI usage"
-			description="Lets the AI Usage page, background jobs, agent notifications and the tmgr CLI read the session logs Claude Code and Codex write on this computer. AI usage never stores prompt or reply text. This setting doesn't cover the TMGR runner yet: for sessions it starts, it reads their logs for titles, questions and status, saves detected questions with your prompt and the reply on this device, and may send reply text to Claude (Haiku) to spot questions."
+			description="Lets the AI Usage page, background jobs, agent notifications, the tmgr CLI and the TMGR runner read the session logs Claude Code and Codex write on this computer. AI usage never stores prompt or reply text. The runner reads the sessions it starts for titles, questions and status, saves detected questions with your prompt and the reply on this device, and may send reply text to Claude (Haiku) to spot questions. Turning reading off stops this; saved questions stay until you use Forget scanned data."
 		>
 			<div class="flex flex-col gap-2">
 				<template v-if="consent">
@@ -55,7 +55,7 @@
 					</SettingsRow>
 					<SettingsRow
 						label="Scanned data"
-						description="Usage numbers TMGR keeps on this device."
+						description="Usage numbers and runner questions TMGR keeps on this device."
 					>
 						<Button
 							variant="outline"
@@ -99,7 +99,8 @@
 					<AlertDialogTitle>Forget scanned data?</AlertDialogTitle>
 					<AlertDialogDescription>
 						This deletes the usage numbers TMGR keeps on this device and turns
-						reading off. Uploads set up with
+						reading off. Questions the runner saved here, with your prompt and
+						the reply, are deleted too. Uploads set up with
 						<code class="font-mono">tmgr usage sync</code> are turned off too;
 						what was already uploaded is not deleted. Your AI tools' own logs
 						are not touched. If the Claude Code status line hook is installed,

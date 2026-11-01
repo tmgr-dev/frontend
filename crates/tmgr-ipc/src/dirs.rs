@@ -1,7 +1,9 @@
 use std::fs::{self, DirBuilder};
 use std::io;
-use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+use std::os::fd::AsRawFd;
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Component, Path, PathBuf};
+use std::time::{Duration, Instant};
 
 fn env_path(name: &str) -> Option<PathBuf> {
     std::env::var_os(name)
@@ -55,6 +57,57 @@ pub fn time_dir(runner_dir: &Path) -> PathBuf {
 
 pub fn questions_dir(runner_dir: &Path) -> PathBuf {
     persistent_dir(runner_dir, "questions")
+}
+
+pub const QUESTIONS_LOCK: &str = "scan.lock";
+
+/// `Ok(false)`: a scan holds the lock for longer than `wait`, nothing was removed.
+pub fn clear_questions(runner_dir: &Path, wait: Duration) -> io::Result<bool> {
+    let dir = questions_dir(runner_dir);
+    match fs::symlink_metadata(&dir) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            return Err(denied(format!("{} is a symlink", dir.display())));
+        }
+        Ok(meta) if !meta.is_dir() => {
+            return Err(denied(format!("{} is not a directory", dir.display())));
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(true),
+        Err(e) => return Err(e),
+    }
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(dir.join(QUESTIONS_LOCK))?;
+    let until = Instant::now() + wait;
+    while unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        let err = io::Error::last_os_error();
+        if err.kind() != io::ErrorKind::WouldBlock {
+            return Err(err);
+        }
+        if Instant::now() >= until {
+            return Ok(false);
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    for entry in fs::read_dir(&dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let saved = name.ends_with(".json") && name != "settings.json";
+        let stale_temp =
+            name.starts_with('.') && name.ends_with(".tmp") && !name.starts_with(".settings.json.");
+        if saved || stale_temp || name == "marks.jsonl" {
+            fs::remove_file(entry.path())?;
+        }
+    }
+    Ok(true)
 }
 
 fn persistent_dir(runner_dir: &Path, name: &str) -> PathBuf {
@@ -368,6 +421,76 @@ mod tests {
         fs::write(&f, "x").unwrap();
         assert!(check_private_dir(&f).is_err());
         assert!(check_private_dir(&t.path().join("none")).is_err());
+    }
+
+    fn questions_fixture() -> (tempfile::TempDir, PathBuf) {
+        let t = private_tmp();
+        let q = questions_dir(t.path());
+        ensure_private_dir(&q).unwrap();
+        for (name, body) in [
+            ("a1b2.json", "{}"),
+            ("c3d4.json", "{}"),
+            ("marks.jsonl", "\n{}\n"),
+            (".a1b2.json.00ff.tmp", "{}"),
+            ("settings.json", "{\"haiku\":false}"),
+            (QUESTIONS_LOCK, ""),
+        ] {
+            fs::write(q.join(name), body).unwrap();
+        }
+        fs::create_dir(q.join("haiku-cwd")).unwrap();
+        fs::write(q.join("haiku-cwd/keep.json"), "x").unwrap();
+        (t, q)
+    }
+
+    fn names(dir: &Path) -> Vec<String> {
+        let mut v: Vec<_> = fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn clear_questions_removes_sessions_and_marks_and_keeps_settings_lock_and_haiku_cwd() {
+        let (t, q) = questions_fixture();
+        assert!(clear_questions(t.path(), Duration::from_millis(100)).unwrap());
+        assert_eq!(names(&q), ["haiku-cwd", "scan.lock", "settings.json"]);
+        assert!(q.join("haiku-cwd/keep.json").exists());
+        assert!(clear_questions(t.path(), Duration::from_millis(100)).unwrap());
+    }
+
+    #[test]
+    fn clear_questions_with_no_questions_dir_creates_nothing() {
+        let t = private_tmp();
+        assert!(clear_questions(t.path(), Duration::from_millis(100)).unwrap());
+        assert_eq!(names(t.path()), Vec::<String>::new());
+    }
+
+    #[test]
+    fn clear_questions_reports_busy_and_removes_nothing_while_the_scan_lock_is_held() {
+        let (t, q) = questions_fixture();
+        let held = fs::File::open(q.join(QUESTIONS_LOCK)).unwrap();
+        assert_eq!(
+            unsafe { libc::flock(held.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
+            0
+        );
+        let before = names(&q);
+        assert!(!clear_questions(t.path(), Duration::from_millis(120)).unwrap());
+        assert_eq!(names(&q), before);
+        drop(held);
+        assert!(clear_questions(t.path(), Duration::from_millis(120)).unwrap());
+    }
+
+    #[test]
+    fn clear_questions_refuses_a_symlinked_questions_dir() {
+        let (t, q) = questions_fixture();
+        let moved = t.path().join("elsewhere");
+        fs::rename(&q, &moved).unwrap();
+        symlink(&moved, &q).unwrap();
+        let e = clear_questions(t.path(), Duration::from_millis(100)).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::PermissionDenied);
+        assert!(moved.join("a1b2.json").exists());
     }
 
     #[test]

@@ -154,6 +154,7 @@ impl U {
             .env("XDG_CONFIG_HOME", self.p("xdg"))
             .env("XDG_STATE_HOME", self.p("state"))
             .env("TMGR_USAGE_DIR", self.p("data"))
+            .env("TMGR_RUNNER_DIR", self.p("run"))
             .env("CLAUDE_CONFIG_DIR", self.p("claude"))
             .env("CODEX_HOME", self.p("codex"))
             .env("TMGR_LOCAL_ROOT", self.p("tmgr-home/workspaces"))
@@ -892,6 +893,24 @@ fn reset_needs_confirmation_and_deletes_everything() {
     assert_eq!(after["data"]["windows"][0]["totals"]["events"], 0);
     let rescanned = u.json(&["usage", "scan"]);
     assert_eq!(rescanned["data"]["events_new"], 5);
+}
+
+#[cfg(all(unix, feature = "runner"))]
+#[test]
+fn reset_also_deletes_saved_runner_questions_and_keeps_their_settings() {
+    let u = U::new();
+    u.standard_fixture();
+    let q = tmgr_ipc::dirs::questions_dir(&u.p("run"));
+    std::fs::create_dir_all(&q).unwrap();
+    for f in ["s1.json", "marks.jsonl", "settings.json"] {
+        std::fs::write(q.join(f), "{}").unwrap();
+    }
+    let out = u.ok(&["--yes", "usage", "reset"]);
+    assert!(text(&out.stdout).contains("runner questions deleted"));
+    assert!(!q.join("s1.json").exists() && !q.join("marks.jsonl").exists());
+    assert!(q.join("settings.json").exists());
+    let v = stdout_json(&u.ok(&["--json", "--yes", "usage", "reset"]));
+    assert_eq!(v["data"]["questions_deleted"], true);
 }
 
 #[test]
