@@ -7,6 +7,9 @@ struct Line {
     col: usize,
     marker: bool,
     fragment: bool,
+    ruled: bool,
+    indent: usize,
+    item: Option<usize>,
     text: String,
 }
 
@@ -30,9 +33,15 @@ pub fn clean_selection(text: &str, ctx: &CopyContext) -> String {
         Some(body) => (body, true),
         None => (stripped.as_str(), false),
     };
-    let lead_is_decoration = clean_line(&ctx.lead).text.is_empty();
+    let lead = clean_line(&ctx.lead);
+    let lead_is_decoration = lead.text.is_empty();
     let source = if lead_is_decoration {
-        format!("{}{body}", ctx.lead)
+        let gap = if ctx.lead.is_empty() || ctx.lead.ends_with([' ', '\t']) {
+            ""
+        } else {
+            " "
+        };
+        format!("{}{gap}{body}", ctx.lead)
     } else {
         body.to_string()
     };
@@ -41,8 +50,10 @@ pub fn clean_selection(text: &str, ctx: &CopyContext) -> String {
         if let Some(first) = lines.first_mut() {
             first.fragment = true;
             first.col += ctx.lead.width();
+            first.indent = lead.col;
         }
     }
+    mark_list_items(&mut lines, &lead);
     let dedent = lines
         .iter()
         .filter(|l| !l.text.is_empty() && !l.fragment)
@@ -53,7 +64,8 @@ pub fn clean_selection(text: &str, ctx: &CopyContext) -> String {
     let mut out = String::new();
     for (i, l) in lines.iter().enumerate() {
         if i > 0 {
-            let joined = wrap_width.is_some_and(|w| continues(&lines[i - 1], l, w, ctx.cols));
+            let joined =
+                wrap_width.is_some_and(|w| continues(&lines[i - 1], l, w, ctx.cols, dedent));
             out.push(if joined { ' ' } else { '\n' });
             if joined {
                 out.push_str(&l.text);
@@ -86,19 +98,49 @@ fn wrap_width(lines: &[Line], cols: usize) -> Option<usize> {
         .filter(|w| w + WRAP_MARGIN >= cols)
 }
 
-fn continues(a: &Line, b: &Line, wrap_width: usize, cols: usize) -> bool {
+fn mark_list_items(lines: &mut [Line], lead: &Line) {
+    let mut item = None;
+    for l in lines.iter_mut() {
+        let prefix = if l.fragment {
+            list_prefix(&lead.text).map(|p| lead.col + p)
+        } else {
+            list_prefix(&l.text).map(|p| l.col + p)
+        };
+        item = prefix.or(item.filter(|hang| *hang == l.col));
+        l.item = item;
+    }
+}
+
+fn continues(a: &Line, b: &Line, wrap_width: usize, cols: usize, dedent: usize) -> bool {
     if a.text.is_empty() || b.text.is_empty() || b.marker || row_width(a) > cols {
         return false;
     }
-    if a.text.ends_with([';', '{', '}']) || starts_a_block(&b.text) {
+    if a.ruled || b.ruled {
         return false;
     }
-    let hanging = a.col + list_prefix(&a.text).unwrap_or(0);
-    if !a.fragment && b.col != a.col && b.col != hanging {
+    if a.text.ends_with([';', '{', '}', ':', '\\']) || starts_a_block(&b.text) {
         return false;
     }
-    let word = b.text.split(' ').next().unwrap_or("").width();
-    row_width(a) + 1 + word > wrap_width
+    if !a.fragment
+        && (!a.text.contains(' ') || a.text.starts_with('#') || a.text.starts_with("```"))
+    {
+        return false;
+    }
+    let body = b.col == a.indent && a.indent <= dedent;
+    if !body && a.item != Some(b.col) {
+        return false;
+    }
+    let first_a = a.text.split(' ').next().unwrap_or("");
+    let first_b = b.text.split(' ').next().unwrap_or("");
+    if first_a == first_b || starts_a_record(first_b) {
+        return false;
+    }
+    row_width(a) + 1 + first_b.width() > wrap_width
+}
+
+fn starts_a_record(word: &str) -> bool {
+    let stamp = word.starts_with(|c: char| c.is_ascii_digit()) && word.contains([':', '-']);
+    stamp || word.starts_with(['/', '~', '$', '-', '[']) || word.starts_with("./")
 }
 
 fn starts_a_block(text: &str) -> bool {
@@ -172,6 +214,9 @@ fn clean_line(line: &str) -> Line {
         col,
         marker,
         fragment: false,
+        ruled: s.chars().any(is_box),
+        indent: col,
+        item: None,
         text: body[lead..].to_string(),
     }
 }
@@ -222,6 +267,56 @@ mod tests {
             cols,
         };
         clean_selection(text, &ctx)
+    }
+
+    #[test]
+    fn rows_that_only_look_wrapped_keep_their_breaks() {
+        for (text, cols) in [
+            ("docker exec a b c d\ndocker exec e", 20),
+            ("curl https://example.com/x \\\n-H 'Accept: json'", 30),
+            ("12:00:01 INFO started the worker\n12:00:02 INFO done", 34),
+            ("src/a.rs was changed in this commit\n/tmp/other.rs", 36),
+            ("## A long heading about the copy\nNext line here", 34),
+            ("Do the following steps right now:\nopen the file", 34),
+            ("https://example.com/very/long/pat\nh/here", 33),
+            (
+                "Intro\n    result = compute_the_thing(a)\n    value = compute_other(b)",
+                34,
+            ),
+        ] {
+            assert_eq!(in_pane(text, "", cols), text);
+        }
+    }
+
+    #[test]
+    fn a_box_table_keeps_one_row_per_line() {
+        let out = in_pane("│ name     │ type   │\n│ user_id  │ bigint │", "", 24);
+        assert_eq!(out.lines().count(), 2);
+    }
+
+    #[test]
+    fn an_indented_block_never_joins_a_partial_first_line() {
+        assert_eq!(
+            in_pane("please do this now\n    cargo build --release", "Run ", 26),
+            "please do this now\ncargo build --release"
+        );
+    }
+
+    #[test]
+    fn a_marker_before_the_selection_never_enters_the_copy() {
+        assert_eq!(in_pane("foo bar", "·", 10), "foo bar");
+    }
+
+    #[test]
+    fn a_wrapped_list_item_after_a_partial_first_line_still_joins() {
+        assert_eq!(
+            in_pane(
+                "first part of item\n  second part of it\n  third",
+                "- x ",
+                22
+            ),
+            "first part of item second part of it third"
+        );
     }
 
     #[test]

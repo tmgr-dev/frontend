@@ -130,6 +130,14 @@ fn segments(span: &Span, lines: &[String]) -> Vec<(usize, usize, usize)> {
         .collect()
 }
 
+pub fn yank_lead(lines: &[String], a: (usize, usize), b: (usize, usize)) -> String {
+    let (line, col) = a.min(b);
+    lines
+        .get(line)
+        .map(|l| chars_of(l).iter().take(col).collect())
+        .unwrap_or_default()
+}
+
 pub fn selection_text(
     lines: &[String],
     cols: usize,
@@ -457,7 +465,7 @@ impl ViewState {
                         self.notice = Some("nothing to copy".into());
                     } else {
                         self.copied_context = CopyContext {
-                            lead: chars_of(&t.lines[from.0]).iter().take(from.1).collect(),
+                            lead: yank_lead(&t.lines, from, to),
                             cols: t.cols,
                         };
                         self.copied = Some(text);

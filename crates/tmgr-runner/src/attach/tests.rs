@@ -7123,6 +7123,14 @@ fn n_without_a_search_says_so() {
 }
 
 #[test]
+fn yank_lead_comes_from_the_top_of_the_selection_in_either_direction() {
+    let lines = lines_of(&["top row", "bottom row"]);
+    assert_eq!(super::find::yank_lead(&lines, (0, 4), (1, 2)), "top ");
+    assert_eq!(super::find::yank_lead(&lines, (1, 2), (0, 4)), "top ");
+    assert_eq!(super::find::yank_lead(&lines, (9, 2), (9, 4)), "");
+}
+
+#[test]
 fn selection_text_joins_wrapped_rows_and_strips_controls() {
     let lines = lines_of(&["0123456789", "abc", "x\u{1b}[31my"]);
     assert_eq!(
