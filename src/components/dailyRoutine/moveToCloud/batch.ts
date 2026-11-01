@@ -11,7 +11,10 @@ export interface MoveTarget {
 export type CloudErrorKind = 'auth' | 'network' | 'rejected';
 
 export class CloudError extends Error {
-	constructor(readonly kind: CloudErrorKind, message: string) {
+	constructor(
+		readonly kind: CloudErrorKind,
+		message: string,
+	) {
 		super(message);
 		this.name = 'CloudError';
 	}
@@ -93,7 +96,7 @@ const process = async (
 			item.message = STOP_MESSAGE[stopped];
 			continue;
 		}
-		let cloudId = prior?.status === 'in_cloud' ? prior.cloudId ?? null : null;
+		let cloudId = prior?.status === 'in_cloud' ? (prior.cloudId ?? null) : null;
 		if (prior?.status !== 'in_cloud') {
 			try {
 				cloudId = (await deps.create(routine, mode, target, item.key)).id;

@@ -154,9 +154,9 @@ test('converting to cloud tasks sends the chosen category and the first active s
   const { localTitles, sent } = await openLocalRoutines(page);
   await selectBoth(page);
   await page.getByRole('button', { name: 'Convert to cloud tasks' }).click();
-  await expect(
-    page.getByRole('dialog').getByLabel('Category'),
-  ).toContainText('Home');
+  await expect(page.getByRole('dialog').getByLabel('Category')).toContainText(
+    'Home',
+  );
   await page
     .getByRole('dialog')
     .getByLabel('Category')
@@ -172,7 +172,9 @@ test('converting to cloud tasks sends the chosen category and the first active s
   );
 
   expect(sent.map((s) => s.path)).toEqual(['tasks', 'tasks']);
-  expect(sent.map((s) => s.body).sort((a, b) => a.title.localeCompare(b.title))).toEqual([
+  expect(
+    sent.map((s) => s.body).sort((a, b) => a.title.localeCompare(b.title)),
+  ).toEqual([
     {
       title: 'Morning stretch',
       workspace_id: 1,
@@ -219,7 +221,9 @@ test('a rejected routine stays on this device with the server message and moves 
   await expect(page.getByTestId('move-routines-summary')).toContainText(
     '2 of 2 moved to Demo',
   );
-  expect(sent.filter((s) => s.body.title === 'Morning stretch')).toHaveLength(1);
+  expect(sent.filter((s) => s.body.title === 'Morning stretch')).toHaveLength(
+    1,
+  );
   await expect.poll(localTitles).toEqual([]);
 });
 

@@ -34,7 +34,11 @@ describe('createCloudApi', () => {
 	});
 
 	it.each([
-		['routine', (api: any) => api.createRoutine('daily-routines/tasks', { workspace_id: 7 })],
+		[
+			'routine',
+			(api: any) =>
+				api.createRoutine('daily-routines/tasks', { workspace_id: 7 }),
+		],
 		['task', (api: any) => api.createTask({ workspace_id: 7 }, 'k')],
 	])('rejects a 2xx %s response that carries no id', async (_name, call) => {
 		const api = createCloudApi({

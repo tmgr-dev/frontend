@@ -69,7 +69,7 @@
 					after the server confirms it.
 				</p>
 				<ul
-					class="max-h-40 divide-y divide-line overflow-y-auto rounded-md border border-line bg-surface-sunken text-sm"
+					class="divide-y divide-line max-h-40 overflow-y-auto rounded-md border border-line bg-surface-sunken text-sm"
 				>
 					<li
 						v-for="r in routines"
@@ -79,7 +79,7 @@
 						<span class="min-w-0 flex-1 truncate">{{ r.title }}</span>
 						<span
 							v-if="r.pattern"
-							class="shrink-0 text-2xs uppercase tracking-wide text-ink-subtle"
+							class="shrink-0 text-2xs tracking-wide text-ink-subtle uppercase"
 							>Repeats</span
 						>
 					</li>
@@ -139,7 +139,7 @@
 					{{ movedCount }} of {{ results.length }} moved to {{ targetName }}.
 				</p>
 				<ul
-					class="max-h-56 divide-y divide-line overflow-y-auto rounded-md border border-line bg-surface-sunken text-sm"
+					class="divide-y divide-line max-h-56 overflow-y-auto rounded-md border border-line bg-surface-sunken text-sm"
 				>
 					<li
 						v-for="item in results"
@@ -150,7 +150,7 @@
 						<div class="flex items-center gap-2">
 							<span class="min-w-0 flex-1 truncate">{{ item.title }}</span>
 							<span
-								class="shrink-0 text-2xs font-semibold uppercase tracking-wide"
+								class="shrink-0 text-2xs font-semibold tracking-wide uppercase"
 								:class="
 									item.status === 'moved'
 										? 'text-status-done'

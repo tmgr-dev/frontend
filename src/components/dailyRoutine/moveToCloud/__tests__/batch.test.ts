@@ -123,7 +123,12 @@ describe('runMove', () => {
 				throw new CloudError('network', 'Network Error');
 			},
 		});
-		const { results } = await runMove([routine(1)], 'routines', target, d.value);
+		const { results } = await runMove(
+			[routine(1)],
+			'routines',
+			target,
+			d.value,
+		);
 		expect(results[0]).toMatchObject({
 			status: 'failed',
 			message:
