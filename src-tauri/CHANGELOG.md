@@ -3,7 +3,7 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
-## 0.9.76 — 2026-11-01
+## 0.9.76 — 2026-11-02
 
 - Plugins: a plugin now needs the `pages:write` permission to save or delete its per-page data (`pageData.set`, `pageData.delete`). Reading it (`pageData.get`, `pageData.getMany`) still needs `pages:read`. Plugin authors: add `pages:write` to your manifest if your plugin writes per-page data. A plugin with only `pages:read` that writes now gets a permission refusal. Local workspaces only.
 
