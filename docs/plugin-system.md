@@ -17,7 +17,7 @@ Plugins read and write the workspace's pages. Types are in `plugin-sdk/template/
 | `tmgr.pages.update(id, { version, title?, body?, properties?, summary? })` | Changes a page. `version` is required. | `pages:write` | A stale `version` rejects with `page_conflict`, see below. |
 | `tmgr.pages.append(id, { markdown, heading?, createHeading?, summary? })` | Adds markdown at the end of the page, or of the `##` section named `heading` (created when `createHeading` is set). No `version` needed. | `pages:write` | |
 | `tmgr.pages.setSection(id, sectionId, markdown, { summary?, heading? })` | Replaces the text of a managed section the plugin owns, or creates it at the end of the page when it does not exist. | `pages:sections` | Only sections whose owner is `plugin:<this plugin's id>`. |
-| `tmgr.pageData.get/set/delete/getMany` | Per-page JSON storage of the plugin, like `taskData`. | `pages:read` | Value at most 64 KB, key at most 200 characters, `getMany` up to 500 page ids. Own quota of 5 MB / 1000 keys. Local workspaces only. |
+| `tmgr.pageData.get/set/delete/getMany` | Per-page JSON storage of the plugin, like `taskData`. | `pages:read` (`get`, `getMany`) / `pages:write` (`set`, `delete`) | Value at most 64 KB, key at most 200 characters, `getMany` up to 500 page ids. Own quota of 5 MB / 1000 keys. Local workspaces only. |
 
 Rules:
 
@@ -43,8 +43,9 @@ Rules:
   it is now. Re-read the data you need from `error.current`, merge, and call `update` again with
   `error.current.version`.
 - In shared (cloud) workspaces the `pages:*` permissions are sent to the server when a workspace pins the
-  plugin, and the server applies the same rules (on a backend that supports pages for plugins). `pageData` is
-  local-only, like `taskData`.
+  plugin, and the server applies the same rules (on a backend that supports pages for plugins). `pageData` has
+  no server endpoints and works only in local workspaces. `taskData` has server endpoints, but the desktop app
+  does not use them in shared workspaces yet, so `tmgr.taskData` rejects there with `NOT_SUPPORTED`.
 - `pageData` of a page is removed when the page is permanently deleted, not when it goes to the trash.
 
 ### Page events

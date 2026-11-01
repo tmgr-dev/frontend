@@ -1115,7 +1115,7 @@ export const createBroker = (deps: BrokerDeps) => {
 			},
 		},
 		'pageData.set': {
-			permission: 'pages:read',
+			permission: 'pages:write',
 			write: true,
 			run: (p) => {
 				const json = JSON.stringify(p.value ?? null);
@@ -1129,7 +1129,7 @@ export const createBroker = (deps: BrokerDeps) => {
 			},
 		},
 		'pageData.delete': {
-			permission: 'pages:read',
+			permission: 'pages:write',
 			write: true,
 			run: (p) =>
 				api.pageDataDelete(id(p.pageId, 'pageId'), taskDataKey(p.key)),

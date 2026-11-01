@@ -558,8 +558,9 @@ declare const tmgr: {
 		keys(): Promise<string[]>;
 	};
 	/**
-	 * Per-task JSON values up to 64 KB, sharing the 5 MB / 1000 key quota with `storage`. Not
-	 * available in shared workspaces yet.
+	 * Per-task JSON values up to 64 KB, sharing the 5 MB / 1000 key quota with `storage`. In shared
+	 * workspaces the calls reject with NOT_SUPPORTED: the server has the endpoints, but the desktop
+	 * app does not use them there yet.
 	 */
 	taskData: {
 		/** Needs tasks:read. */
@@ -635,14 +636,17 @@ declare const tmgr: {
 		): Promise<TmgrPage>;
 	};
 	/**
-	 * API 1.5, needs pages:read. Per-page JSON values up to 64 KB, with their own 5 MB / 1000 key quota per
+	 * API 1.5. Per-page JSON values up to 64 KB, with their own 5 MB / 1000 key quota per
 	 * plugin. Local workspaces only. Removed when the page is permanently deleted.
 	 */
 	pageData: {
+		/** Needs pages:read. */
 		get<T = unknown>(pageId: number, key: string): Promise<T | null>;
+		/** Needs pages:write. */
 		set(pageId: number, key: string, value: unknown): Promise<void>;
+		/** Needs pages:write. */
 		delete(pageId: number, key: string): Promise<void>;
-		/** Up to 500 page ids in one call. */
+		/** Needs pages:read. Up to 500 page ids in one call. */
 		getMany<T = unknown>(
 			pageIds: number[],
 			key: string,

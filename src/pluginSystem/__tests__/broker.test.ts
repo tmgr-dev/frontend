@@ -1688,8 +1688,47 @@ describe('pages (API 1.5)', () => {
 		]);
 	});
 
+	it('refuses pageData set and delete without pages:write, and get and getMany without pages:read', async () => {
+		const pageDataSet = jest.fn(async () => undefined);
+		const pageDataDelete = jest.fn(async () => undefined);
+		const api = {
+			...fakeApi(),
+			pageDataGet: async () => null,
+			pageDataGetMany: async () => ({}),
+			pageDataSet,
+			pageDataDelete,
+		};
+		const reader = setup(['pages:read'], { api }).broker;
+		expect(
+			await code(
+				reader.call('pageData.set', { pageId: 5, key: 'k', value: 1 }),
+			),
+		).toBe('PERMISSION_DENIED');
+		expect(
+			await code(reader.call('pageData.delete', { pageId: 5, key: 'k' })),
+		).toBe('PERMISSION_DENIED');
+		expect(pageDataSet).not.toHaveBeenCalled();
+		expect(pageDataDelete).not.toHaveBeenCalled();
+		await expect(
+			reader.call('pageData.get', { pageId: 5, key: 'k' }),
+		).resolves.toBeNull();
+		await expect(
+			reader.call('pageData.getMany', { pageIds: [5], key: 'k' }),
+		).resolves.toEqual({});
+
+		const both = setup(['pages:read', 'pages:write'], { api }).broker;
+		await both.call('pageData.set', { pageId: 5, key: 'k', value: 1 });
+		await both.call('pageData.delete', { pageId: 5, key: 'k' });
+		expect(pageDataSet).toHaveBeenCalledTimes(1);
+		expect(pageDataDelete).toHaveBeenCalledTimes(1);
+
+		expect(() => setup(['pages:write'], { api })).toThrow(
+			'pages:write needs pages:read',
+		);
+	});
+
 	it('stores per-page data as JSON with a 200-character key and a 64 KB value', async () => {
-		const { broker, api } = setup(['pages:read']);
+		const { broker, api } = setup(['pages:read', 'pages:write']);
 		await broker.call('pageData.set', {
 			pageId: 5,
 			key: 'seen',

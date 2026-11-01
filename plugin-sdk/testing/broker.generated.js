@@ -732,7 +732,7 @@ const createBroker = (deps) => {
             },
         },
         'pageData.set': {
-            permission: 'pages:read',
+            permission: 'pages:write',
             write: true,
             run: (p) => {
                 const json = JSON.stringify(p.value ?? null);
@@ -742,7 +742,7 @@ const createBroker = (deps) => {
             },
         },
         'pageData.delete': {
-            permission: 'pages:read',
+            permission: 'pages:write',
             write: true,
             run: (p) => api.pageDataDelete(id(p.pageId, 'pageId'), taskDataKey(p.key)),
         },
