@@ -81,6 +81,28 @@
 			</span>
 		</label>
 
+		<label class="flex flex-col gap-1">
+			<span class="text-sm font-medium">
+				Notify me about this persona's activity
+			</span>
+			<Select
+				:model-value="modelValue.owner_notifications"
+				@update:model-value="(v) => update('owner_notifications', String(v))"
+			>
+				<SelectTrigger aria-label="Notify me about this persona's activity">
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					<SelectItem value="all">All</SelectItem>
+					<SelectItem value="mentions">Only when it asks for me</SelectItem>
+					<SelectItem value="none">Never</SelectItem>
+				</SelectContent>
+			</Select>
+			<span v-if="fieldErrors.owner_notifications" class="text-xs text-destructive">
+				{{ fieldErrors.owner_notifications.join(' ') }}
+			</span>
+		</label>
+
 		<div class="flex gap-2">
 			<Button type="submit" size="sm" :disabled="saving || promptOverLimit">
 				{{ submitLabel }}
@@ -101,7 +123,15 @@
 <script lang="ts">
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
+	import {
+		Select,
+		SelectContent,
+		SelectItem,
+		SelectTrigger,
+		SelectValue,
+	} from '@/components/ui/select';
 	import { Textarea } from '@/components/ui/textarea';
+	import type { PersonaOwnerNotifications } from '@/actions/tmgr/personas';
 	import { byteLength, PROMPT_MAX_BYTES } from '@/utils/personas';
 	import { computed, defineComponent, type PropType } from 'vue';
 
@@ -110,11 +140,21 @@
 		description: string;
 		system_prompt: string;
 		scope: 'account' | 'workspace';
+		owner_notifications: PersonaOwnerNotifications;
 	}
 
 	export default defineComponent({
 		name: 'PersonaForm',
-		components: { Button, Input, Textarea },
+		components: {
+			Button,
+			Input,
+			Select,
+			SelectContent,
+			SelectItem,
+			SelectTrigger,
+			SelectValue,
+			Textarea,
+		},
 		props: {
 			modelValue: {
 				type: Object as PropType<PersonaFormModel>,

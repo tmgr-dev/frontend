@@ -34,6 +34,54 @@ test('the Personas settings page lists personas and offers a create form', async
   await expect(page.getByPlaceholder('Reviewer')).toBeVisible();
 });
 
+test('editing a persona saves its owner notification setting', async ({
+  page,
+}) => {
+  await mockApp(page);
+  let saved = null;
+  await page.route('**/api/personas/uuid-1', (route) => {
+    saved = route.request().postDataJSON();
+    return route.fulfill({ json: { data: {} } });
+  });
+  await page.route('**/api/personas*', (route) =>
+    route.fulfill({
+      json: {
+        data: [
+          {
+            id: 'uuid-1',
+            name: 'Reviewer',
+            description: null,
+            avatar_url: null,
+            system_prompt: '',
+            owner_notifications: 'none',
+            prompt_version: 1,
+            archived_at: null,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+            owner: { id: 1, name: 'Test User' },
+            can_edit: true,
+          },
+        ],
+      },
+    }),
+  );
+
+  await page.goto('/settings/personas');
+  const select = page.getByRole('combobox', {
+    name: "Notify me about this persona's activity",
+  });
+  await expect(select).toHaveText('All');
+
+  await page.getByRole('button', { name: 'Edit' }).first().click();
+  await expect(select).toHaveText('Never');
+
+  await select.click();
+  await page.getByRole('option', { name: 'Only when it asks for me' }).click();
+  await page.getByRole('button', { name: 'Save' }).click();
+
+  await expect.poll(() => saved?.owner_notifications).toBe('mentions');
+});
+
 test('an empty persona list shows the empty state instead of an error', async ({
   page,
 }) => {

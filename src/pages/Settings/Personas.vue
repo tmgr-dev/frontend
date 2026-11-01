@@ -249,6 +249,7 @@
 		name: '',
 		description: '',
 		system_prompt: '',
+		owner_notifications: 'all',
 		scope: 'account',
 	});
 
@@ -341,6 +342,7 @@
 					name: persona.name,
 					description: persona.description ?? '',
 					system_prompt: persona.system_prompt ?? '',
+					owner_notifications: persona.owner_notifications ?? 'all',
 					scope: persona.workspace_id ? 'workspace' : 'account',
 				};
 				formErrors.value = {};
@@ -359,6 +361,7 @@
 					name: form.value.name,
 					description: form.value.description || undefined,
 					system_prompt: form.value.system_prompt || undefined,
+					owner_notifications: form.value.owner_notifications,
 				};
 				if (
 					!editingId.value &&
