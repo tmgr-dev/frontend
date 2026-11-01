@@ -2,10 +2,8 @@
 	<Dialog :open="true" @update:open="(open) => !open && onClose()">
 		<DialogContent
 			class="max-h-[calc(100dvh-2rem)] w-[calc(100%-1.5rem)] max-w-[460px] gap-3 overflow-y-auto border-line bg-surface p-4 text-ink sm:p-5"
-			@interact-outside="
-				(event) => step === 'running' && event.preventDefault()
-			"
-			@escape-key-down="(event) => step === 'running' && event.preventDefault()"
+			@interact-outside="(event) => locked && event.preventDefault()"
+			@escape-key-down="(event) => locked && event.preventDefault()"
 		>
 			<DialogHeader>
 				<DialogTitle class="text-base text-ink">{{ title }}</DialogTitle>
@@ -193,11 +191,18 @@
 						v-if="movedCount"
 						type="button"
 						:class="ghostButton"
+						:disabled="busy"
 						@click="openTarget"
 					>
 						Open {{ targetName }}
 					</button>
-					<button type="button" :class="primaryButton" @click="onClose">
+					<button
+						type="button"
+						:class="primaryButton"
+						:disabled="busy"
+						data-testid="move-routines-done"
+						@click="onClose"
+					>
 						Done
 					</button>
 				</div>
@@ -261,6 +266,7 @@
 	const results = ref<ItemResult[]>([]);
 	const stopped = ref<MoveOutcome['stopped']>(null);
 	const busy = ref(false);
+	const locked = computed(() => step.value === 'running' || busy.value);
 	const localCode = activeLocalWorkspaceCode();
 	let api: CloudApi | null = null;
 	let target: MoveTarget | null = null;
@@ -346,8 +352,9 @@
 			deps: ReturnType<typeof createMoveDeps>,
 		) => Promise<MoveOutcome>,
 	) => {
-		const cloud = await getApi();
+		let cloud: CloudApi;
 		try {
+			cloud = await getApi();
 			target ??= await prepareTarget(
 				cloud,
 				props.mode,
@@ -387,7 +394,7 @@
 	};
 
 	const onClose = () => {
-		if (step.value === 'running') return;
+		if (locked.value) return;
 		emit(
 			'close',
 			results.value.some((r) => r.status === 'moved'),

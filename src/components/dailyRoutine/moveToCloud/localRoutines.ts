@@ -10,7 +10,6 @@ const parseDays = (value: unknown): string[] => {
 	}
 };
 
-/** Every active routine of the open local workspace, with its pattern and its next pending slot. */
 export const readLocalRoutines = async (): Promise<LocalRoutine[]> => {
 	const workspace = activeLocalWorkspace();
 	if (!workspace) return [];

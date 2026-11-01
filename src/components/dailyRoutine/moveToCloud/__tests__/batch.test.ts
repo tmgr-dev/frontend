@@ -117,6 +117,31 @@ describe('runMove', () => {
 		});
 	});
 
+	it('warns that a routine may have reached the server after a network failure', async () => {
+		const d = deps({
+			create: async () => {
+				throw new CloudError('network', 'Network Error');
+			},
+		});
+		const { results } = await runMove([routine(1)], 'routines', target, d.value);
+		expect(results[0]).toMatchObject({
+			status: 'failed',
+			message:
+				'May have reached the server. Check the workspace before retrying.',
+		});
+		expect(d.removed).toEqual([]);
+	});
+
+	it('keeps the plain network message for tasks, which carry an idempotency key', async () => {
+		const d = deps({
+			create: async () => {
+				throw new CloudError('network', 'Network Error');
+			},
+		});
+		const { results } = await runMove([routine(1)], 'tasks', target, d.value);
+		expect(results[0].message).toBe('Network Error');
+	});
+
 	it('gives every item its own idempotency key', async () => {
 		const keys: string[] = [];
 		const d = deps({

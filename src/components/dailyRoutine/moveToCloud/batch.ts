@@ -49,6 +49,9 @@ export const STOP_MESSAGE = {
 		'The TMGR server could not be reached, so the remaining routines were not sent. Check your connection and retry them.',
 } as const;
 
+const MAYBE_SENT_MESSAGE =
+	'May have reached the server. Check the workspace before retrying.';
+
 let counter = 0;
 const newKey = (): string => {
 	const random =
@@ -96,7 +99,12 @@ const process = async (
 				cloudId = (await deps.create(routine, mode, target, item.key)).id;
 			} catch (error) {
 				item.status = 'failed';
-				item.message = toMessage(error);
+				item.message =
+					mode === 'routines' &&
+					error instanceof CloudError &&
+					error.kind === 'network'
+						? MAYBE_SENT_MESSAGE
+						: toMessage(error);
 				if (error instanceof CloudError && error.kind !== 'rejected')
 					stopped = error.kind;
 				continue;

@@ -1,10 +1,7 @@
 import axios from 'axios';
 import { createCloudApi, type CloudApi } from './cloud';
 
-/**
- * A server client that is not routed by the local-workspace interceptor on the app's axios, which
- * answers every routine and task call from this device while a local workspace is active.
- */
+// Not the app's axios: its local-workspace interceptor answers routine and task calls from this device.
 export const serverCloudApi = async (): Promise<CloudApi> => {
 	const [{ default: $axios }, { default: store }] = await Promise.all([
 		import('@/plugins/axios'),

@@ -52,7 +52,6 @@ export const toCloudError = (error: unknown): CloudError => {
 	);
 };
 
-/** The status a new task gets: the first active one, as the server's own convert does. */
 export const firstActiveStatusId = (statuses: CloudStatus[]): number | null => {
 	const active = statuses
 		.filter((s) => s.pivot?.is_active)
@@ -86,9 +85,15 @@ export const createCloudApi = (
 	) => ({
 		headers: { 'X-Workspace-Id': String(workspaceId), ...extra },
 	});
-	const created = (response: { data: any }) => ({
-		id: response.data?.data?.id ?? response.data?.id ?? null,
-	});
+	const created = (response: { data: any }) => {
+		const id = response.data?.data?.id ?? response.data?.id;
+		if (id == null)
+			throw new CloudError(
+				'rejected',
+				'The server did not confirm the routine was created.',
+			);
+		return { id };
+	};
 	return {
 		statuses: (workspaceId) =>
 			send(

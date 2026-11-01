@@ -26,7 +26,10 @@ const shoot = async (page, name) => {
   await page.setViewportSize(size);
 };
 
-const cloud = async (page, { reject = () => null } = {}) => {
+const cloud = async (
+  page,
+  { reject = () => null, hold = async () => {} } = {},
+) => {
   const sent = [];
   await page.route(
     (url) =>
@@ -46,6 +49,7 @@ const cloud = async (page, { reject = () => null } = {}) => {
       if (request.method() !== 'POST') return route.fallback();
       const body = request.postDataJSON();
       const failure = reject(body);
+      await hold(body);
       sent.push({ path, body, headers: request.headers() });
       if (failure) {
         await route.fulfill({ status: failure.status, json: failure.json });
@@ -217,6 +221,71 @@ test('a rejected routine stays on this device with the server message and moves 
   );
   expect(sent.filter((s) => s.body.title === 'Morning stretch')).toHaveLength(1);
   await expect.poll(localTitles).toEqual([]);
+});
+
+test('the dialog cannot be closed while a retry is in flight', async ({
+  page,
+}) => {
+  let reject = true;
+  let release = () => {};
+  let holding = false;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  await openLocalRoutines(page, {
+    reject: (body) =>
+      reject && body.title === 'Water plants'
+        ? { status: 422, json: { message: 'The title is not allowed.' } }
+        : null,
+    hold: async () => {
+      if (holding) await gate;
+    },
+  });
+  await selectBoth(page);
+  await page.getByRole('button', { name: 'Move to cloud routines' }).click();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByTestId('move-routines-confirm').click();
+  await expect(page.getByTestId('move-routines-summary')).toContainText(
+    '1 of 2 moved to Demo',
+  );
+
+  reject = false;
+  holding = true;
+  await page.getByTestId('move-routines-retry').click();
+  const done = page.getByTestId('move-routines-done');
+  await expect(done).toBeDisabled();
+  await expect(page.getByRole('button', { name: /^Open / })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  release();
+  await expect(page.getByTestId('move-routines-summary')).toContainText(
+    '2 of 2 moved to Demo',
+  );
+  await expect(done).toBeEnabled();
+  await done.click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('a failure to build the server client shows an error and leaves the dialog usable', async ({
+  page,
+}) => {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.route(/moveToCloud\/cloudHttp\.ts/, (route) =>
+    route.fulfill({
+      contentType: 'text/javascript',
+      body: "export const serverCloudApi = async () => { throw new Error('Client unavailable'); };",
+    }),
+  );
+  const { localTitles } = await openLocalRoutines(page);
+  await selectBoth(page);
+  await page.getByRole('button', { name: 'Move to cloud routines' }).click();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByTestId('move-routines-confirm').click();
+  await expect(page.getByRole('alert')).toContainText('Client unavailable');
+  await expect(page.getByTestId('move-routines-confirm')).toBeEnabled();
+  expect(errors.filter((m) => /Client unavailable/.test(m))).toEqual([]);
+  expect(await localTitles()).toEqual(['Morning stretch', 'Water plants']);
 });
 
 test('an account-less desktop offers no move and says why', async ({

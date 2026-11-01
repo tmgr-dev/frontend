@@ -33,6 +33,30 @@ describe('createCloudApi', () => {
 		});
 	});
 
+	it.each([
+		['routine', (api: any) => api.createRoutine('daily-routines/tasks', { workspace_id: 7 })],
+		['task', (api: any) => api.createTask({ workspace_id: 7 }, 'k')],
+	])('rejects a 2xx %s response that carries no id', async (_name, call) => {
+		const api = createCloudApi({
+			get: jest.fn(),
+			post: jest.fn(async () => ({ data: {} })),
+		});
+		const error = await call(api).catch((e: unknown) => e);
+		expect(error).toBeInstanceOf(CloudError);
+		expect(error).toMatchObject({
+			kind: 'rejected',
+			message: 'The server did not confirm the routine was created.',
+		});
+	});
+
+	it('reads the id from a top-level id too', async () => {
+		const api = createCloudApi({
+			get: jest.fn(),
+			post: jest.fn(async () => ({ data: { id: 5 } })),
+		});
+		expect(await api.createTask({ workspace_id: 7 }, 'k')).toEqual({ id: 5 });
+	});
+
 	it('posts a task with the idempotency key', async () => {
 		const h = http();
 		await createCloudApi(h).createTask(
