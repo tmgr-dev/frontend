@@ -743,7 +743,7 @@ pub async fn usage_forget() -> Result<UsageConsentOut, String> {
   #[cfg(unix)]
   let runner_dir = Some(tmgr_ipc::dirs::runner_dir().map_err(|_| NOT_DELETED.to_string())?);
   #[cfg(not(unix))]
-  let runner_dir = None;
+  let runner_dir: Option<std::path::PathBuf> = None;
   blocking(move || forget_inner(&SCANNING, &Env::from_process(), Utc::now(), FORGET_WAIT, runner_dir.as_deref())).await
 }
 

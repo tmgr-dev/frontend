@@ -66,6 +66,11 @@ impl Scanner {
         &self.store
     }
 
+    pub fn forget_denied(&mut self) {
+        let allowed = &self.allowed;
+        self.tails.retain(|_, t| allowed(t.format()));
+    }
+
     pub fn scan(&mut self, sources: &[SessionSrc], now_s: u64) -> bool {
         if self.tails.len() > MAX_TAILS {
             self.tails

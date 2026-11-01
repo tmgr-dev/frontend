@@ -46,7 +46,7 @@ pub(super) fn usage_worker(
             source.as_ref(),
             &batch,
             Utc::now(),
-            consent(),
+            &consent,
         );
         if !send(bar) {
             return;
@@ -59,7 +59,7 @@ fn build(
     source: Option<&Source>,
     batch: &[QuestionJob],
     now: DateTime<Utc>,
-    reads: Reads,
+    consent: &dyn Fn() -> Reads,
 ) -> UsageBar {
     let mut limits = store
         .and_then(|s| s.current_limits(now).ok())
@@ -80,7 +80,7 @@ fn build(
     };
     if let Some(store) = store {
         for job in batch.iter().filter(|j| j.src.format == Format::Claude) {
-            if let Some(cost) = session_cost(store, job, now, reads) {
+            if let Some(cost) = session_cost(store, job, now, consent()) {
                 bar.costs.insert(job.id.clone(), cost);
             }
         }
@@ -401,5 +401,32 @@ mod tests {
         assert!(none.costs.is_empty());
         let on = run_with(Some(&f.db), vec![job(&f.home, &f.runner)], ALL);
         assert!(on.costs.contains_key("s_abcdefghjk"));
+    }
+
+    #[test]
+    fn a_denial_during_a_batch_stops_the_next_session_from_being_read() {
+        use std::cell::Cell;
+        let f = fixture();
+        let mut second = job(&f.home, &f.runner);
+        second.id = "s_bcdefghjkm".into();
+        let store = Store::open_read_only(&f.db).unwrap();
+        let calls = Cell::new(0);
+        let bar = build(
+            Some(&store),
+            Some(&source(&f.db)),
+            &[job(&f.home, &f.runner), second],
+            Utc::now(),
+            &|| {
+                calls.set(calls.get() + 1);
+                if calls.get() == 1 {
+                    ALL
+                } else {
+                    Reads::default()
+                }
+            },
+        );
+        assert_eq!(calls.get(), 2);
+        assert!(bar.costs.contains_key("s_abcdefghjk"));
+        assert!(!bar.costs.contains_key("s_bcdefghjkm"));
     }
 }
