@@ -1198,7 +1198,8 @@ impl App {
         if self.view.set_reads_hint(hint) {
             self.dirty = true;
         }
-        if let Some(hint) = hint.filter(|_| !self.reads_notified && !self.agents.is_empty()) {
+        let affected = self.agents.values().any(|a| !reads.allows(a.format));
+        if let Some(hint) = hint.filter(|_| !self.reads_notified && affected) {
             self.reads_notified = true;
             self.notify(hint);
         }

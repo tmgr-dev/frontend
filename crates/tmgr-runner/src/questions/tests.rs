@@ -350,7 +350,12 @@ fn only_one_scanner_holds_the_lock() {
     let held = store.try_lock().unwrap().unwrap();
     assert!(store.try_lock().unwrap().is_none());
     drop(held);
-    assert!(store.try_lock().unwrap().is_some());
+    // A child spawned by a parallel test can hold the descriptor until its exec.
+    let free = (0..200).any(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        store.try_lock().unwrap().is_some()
+    });
+    assert!(free);
 }
 
 fn fake(dir: &Path, body: &str) -> std::path::PathBuf {
