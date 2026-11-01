@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.54
 
 - In `tmgr attach`, a `tmgr run --no-sandbox` Claude session now shows its `/rename` or automatic title in the sidebar and pane header. This is an exception to the rule that titles are read only from the sandbox home: for such a session tmgr reads your real `~/.claude`, but only that session's own files: `sessions/<pid>.json` to get its id, then that id's transcript in the project folder of the session's working folder. Sandboxed sessions still never read the real home. A title is not available if the session had already exited when you attached, and no-sandbox Codex sessions show no agent title. A name set in tmgr still wins, including the task key a task run is named after.
 
