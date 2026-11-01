@@ -1722,6 +1722,14 @@ describe('pages (API 1.5)', () => {
 		expect(pageDataSet).toHaveBeenCalledTimes(1);
 		expect(pageDataDelete).toHaveBeenCalledTimes(1);
 
+		const none = setup([], { api }).broker;
+		expect(await code(none.call('pageData.get', { pageId: 5, key: 'k' }))).toBe(
+			'PERMISSION_DENIED',
+		);
+		expect(
+			await code(none.call('pageData.getMany', { pageIds: [5], key: 'k' })),
+		).toBe('PERMISSION_DENIED');
+
 		expect(() => setup(['pages:write'], { api })).toThrow(
 			'pages:write needs pages:read',
 		);
