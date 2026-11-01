@@ -1,5 +1,5 @@
 use tmgr_runner::attach::Format;
-use tmgr_usage::consent::granted_read_only;
+use tmgr_usage::consent::consent_read_only;
 use tmgr_usage::paths::Env;
 use tmgr_usage::Tool;
 
@@ -16,9 +16,12 @@ const CODEX_OFF: &str = "Codex titles and questions are off: turn it on in TMGR 
 
 impl Reads {
     pub fn of(env: &Env) -> Reads {
+        let Some(c) = consent_read_only(env) else {
+            return Reads::default();
+        };
         Reads {
-            claude: granted_read_only(env, Tool::Claude),
-            codex: granted_read_only(env, Tool::Codex),
+            claude: c.allows(Tool::Claude, false),
+            codex: c.allows(Tool::Codex, false),
         }
     }
 
