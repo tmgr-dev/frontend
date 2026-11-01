@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.72 — 2026-11-01
+
+- AI Usage: the setting for reading AI tool logs now also covers the runner on this device. Until you turn it on for a tool, the runner doesn't read that tool's sessions, so it shows no titles or questions for them. Activity status from the running process still works.
+- Forget scanned data also deletes the questions the runner saved on this device.
+
 ## 0.9.71 — 2026-10-27
 
 - Workspaces: the owner can rename a workspace and pick its colour in Settings → Workspace. The workspace icon in the sidebar and the switcher uses that colour.
