@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.73 — 2026-11-01
+
+- Routines: in a local workspace you can select routines and move them to a cloud workspace, as routines or as tasks. The dialog says what is sent to the server, what is lost and that the local copy is removed.
+- Tasks: the task form can rewrite the description with AI. You see the result first and choose whether to accept it.
+
 ## 0.9.72 — 2026-11-01
 
 - Local access: hardened token and permission checks.
