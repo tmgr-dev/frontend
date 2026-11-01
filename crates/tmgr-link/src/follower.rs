@@ -526,6 +526,23 @@ fn survivors(backend: &mut dyn crate::runner::Backend, link: &str, cutoff: u64) 
     }
 }
 
+pub fn close_after_scope_change(
+    paths: &Paths,
+    name: &str,
+    old: &Scope,
+    new: &Scope,
+    grace: std::time::Duration,
+) -> Result<crate::registry::Terminated> {
+    let control_off = old.remote_control && !new.remote_control;
+    let bypass_off = old.include_bypass && !new.include_bypass;
+    if !control_off && !bypass_off {
+        return Ok(Default::default());
+    }
+    crate::registry::terminate_where(paths, name, grace, &|_, attached| {
+        attached.is_some_and(|a| a.remote && (control_off || a.bypass))
+    })
+}
+
 pub fn contain(
     paths: &Paths,
     name: &str,
@@ -1253,5 +1270,111 @@ mod tests {
         std::fs::remove_file(f.paths.authorized_keys()).unwrap();
         assert_eq!(revoke(&f.paths, "laptop").unwrap().keys_removed, 0);
         assert!(Store::load(&f.paths).unwrap().leaders.is_empty());
+    }
+
+    fn marked_worker(f: &Fx, remote: bool, bypass: bool) -> std::process::Child {
+        let child = std::process::Command::new("sleep")
+            .arg("60")
+            .stdin(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let dir = f.paths.link_dir().join("workers");
+        tmgr_core::config::ensure_private_dir(&f.paths.config).unwrap();
+        tmgr_core::config::ensure_private_dir(&f.paths.link_dir()).unwrap();
+        tmgr_core::config::ensure_private_dir(&dir).unwrap();
+        let rec = json!({
+            "pid": child.id(),
+            "start": crate::registry::process_start(child.id()).unwrap(),
+            "enrollment": "e",
+            "attached": {"run": "s_abc", "input": true, "remote": remote, "bypass": bypass},
+        });
+        std::fs::write(
+            dir.join(format!("laptop.{}.json", child.id())),
+            serde_json::to_vec(&rec).unwrap(),
+        )
+        .unwrap();
+        child
+    }
+
+    fn flags(remote_control: bool, include_bypass: bool) -> Scope {
+        Scope {
+            remote_control,
+            include_bypass,
+            ..Default::default()
+        }
+    }
+
+    fn survivors(children: &mut [std::process::Child]) -> Vec<bool> {
+        let alive: Vec<bool> = children
+            .iter_mut()
+            .map(|c| c.try_wait().unwrap().is_none())
+            .collect();
+        for c in children.iter_mut() {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+        alive
+    }
+
+    #[test]
+    fn turning_remote_control_off_closes_every_remote_attach_and_spares_owned_ones() {
+        let f = fx();
+        let mut ws = [
+            marked_worker(&f, true, false),
+            marked_worker(&f, true, true),
+            marked_worker(&f, false, false),
+        ];
+        let t = close_after_scope_change(
+            &f.paths,
+            "laptop",
+            &flags(true, true),
+            &flags(false, true),
+            std::time::Duration::from_secs(5),
+        )
+        .unwrap();
+        assert_eq!(t.signalled, 2);
+        assert_eq!(survivors(&mut ws), [false, false, true]);
+    }
+
+    #[test]
+    fn dropping_include_bypass_closes_only_remote_bypass_attaches() {
+        let f = fx();
+        let mut ws = [
+            marked_worker(&f, true, false),
+            marked_worker(&f, true, true),
+            marked_worker(&f, false, true),
+        ];
+        let t = close_after_scope_change(
+            &f.paths,
+            "laptop",
+            &flags(true, true),
+            &flags(true, false),
+            std::time::Duration::from_secs(5),
+        )
+        .unwrap();
+        assert_eq!(t.signalled, 1);
+        assert_eq!(survivors(&mut ws), [true, false, true]);
+    }
+
+    #[test]
+    fn a_scope_change_that_takes_nothing_away_closes_nothing() {
+        let f = fx();
+        let mut ws = [marked_worker(&f, true, true)];
+        for (old, new) in [
+            (flags(false, false), flags(true, true)),
+            (flags(true, false), flags(true, true)),
+            (flags(true, true), flags(true, true)),
+        ] {
+            let t = close_after_scope_change(
+                &f.paths,
+                "laptop",
+                &old,
+                &new,
+                std::time::Duration::from_secs(1),
+            )
+            .unwrap();
+            assert_eq!(t.signalled, 0);
+        }
+        assert_eq!(survivors(&mut ws), [true]);
     }
 }

@@ -540,4 +540,53 @@ mod tests {
         let a = audit_args(&json!({"task":"TM-1","n":5,"nested":{"a":1}}));
         assert_eq!(a, json!({"task":"TM-1"}));
     }
+
+    #[test]
+    fn access_needs_remote_control_and_bypass_needs_its_own_flag() {
+        let mut s = Scope::default();
+        for bypass in [false, true] {
+            assert!(s.may_see(true, bypass));
+            assert!(!s.may_see(false, bypass));
+            assert!(!s.may_input(false, bypass));
+        }
+        s.include_bypass = true;
+        assert!(!s.may_see(false, false) && !s.may_see(false, true));
+        assert!(!s.may_input(false, true));
+        s.remote_control = true;
+        s.include_bypass = false;
+        assert!(s.may_see(false, false) && s.may_input(false, false));
+        assert!(!s.may_see(false, true) && !s.may_input(false, true));
+        s.include_bypass = true;
+        assert!(s.may_see(false, true) && s.may_input(false, true));
+    }
+
+    #[test]
+    fn owned_input_keeps_the_old_rule_unless_remote_control_applies() {
+        let mut s = Scope::default();
+        assert!(!s.may_input(true, false));
+        s.allow_attach_input = true;
+        assert!(s.may_input(true, false) && s.may_input(true, true));
+        s.allow_attach_input = false;
+        s.remote_control = true;
+        assert!(s.may_input(true, false) && !s.may_input(true, true));
+    }
+
+    #[test]
+    fn bypass_is_detected_from_every_form() {
+        let mut s = serde_json::from_value::<tmgr_ipc::api::SessionInfo>(json!({
+            "id": "s_x", "name": "n", "argv": [], "cwd": "/", "profile": null,
+            "state": {"kind": "working", "since_ms": 1, "detail": null, "exit_code": null},
+            "created_ms": 1, "cols": 80, "rows": 24, "shim_pid": 1, "child_pid": 2
+        }))
+        .unwrap();
+        assert!(!is_bypass_session(&s));
+        s.no_sandbox = true;
+        assert!(is_bypass_session(&s));
+        s.no_sandbox = false;
+        s.permission_mode = Some("bypass".into());
+        assert!(is_bypass_session(&s));
+        s.permission_mode = None;
+        s.argv = vec!["claude".into(), "--dangerously-skip-permissions".into()];
+        assert!(is_bypass_session(&s));
+    }
 }

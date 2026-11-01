@@ -45,6 +45,7 @@ struct FakeState {
     revokes: Vec<(String, u64)>,
     refuse_create: Option<&'static str>,
     next: u32,
+    reports_modes: bool,
 }
 
 #[derive(Clone, Default)]
@@ -100,6 +101,10 @@ fn info(id: &str, req: &RunCreateReq) -> SessionInfo {
 }
 
 impl Backend for Fake {
+    fn reports_modes(&self) -> bool {
+        self.0.lock().unwrap().reports_modes
+    }
+
     fn set_deadline(&mut self, deadline: Option<Instant>) {
         self.0.lock().unwrap().deadline = deadline;
     }
@@ -1498,4 +1503,573 @@ fn a_slow_handshake_and_a_slow_list_still_answer_inside_the_deadline() {
     assert!(reply["error"].is_string(), "{reply}");
     assert!(took < tmgr_link::runs::BUSY_BUDGET, "{took:?}");
     assert_eq!(fake.called("runs.create"), 0);
+}
+
+fn local(id: &str, edit: impl FnOnce(&mut SessionInfo)) -> SessionInfo {
+    let mut s = SessionInfo {
+        id: id.into(),
+        name: "hand-started".into(),
+        argv: vec!["/usr/bin/true".into()],
+        cwd: "/nowhere/secret-cwd".into(),
+        profile: Some("codex".into()),
+        state: State {
+            kind: StateKind::Working,
+            since_ms: 10,
+            detail: None,
+            exit_code: None,
+        },
+        created_ms: tmgr_link::ownership::now_ms(),
+        cols: 80,
+        rows: 24,
+        shim_pid: 1,
+        child_pid: 2,
+        task: None,
+        bundle_sha256: None,
+        origin: None,
+        permission_mode: None,
+        resumed_from: None,
+        human_s: None,
+        no_sandbox: false,
+    };
+    edit(&mut s);
+    s
+}
+
+const PLAIN: &str = "s_plain00001";
+const NOSB: &str = "s_nosand0001";
+const MODE: &str = "s_bypmode001";
+const ARGV: &str = "s_rawargv001";
+
+fn fleet(modes: bool) -> Fake {
+    let fake = Fake::default();
+    {
+        let mut st = fake.0.lock().unwrap();
+        st.reports_modes = modes;
+        st.sessions.push(local(PLAIN, |_| {}));
+        st.sessions.push(local(NOSB, |s| s.no_sandbox = true));
+        st.sessions
+            .push(local(MODE, |s| s.permission_mode = Some("bypass".into())));
+        st.sessions.push(local(ARGV, |s| {
+            s.argv = vec!["claude".into(), "--dangerously-skip-permissions".into()]
+        }));
+    }
+    fake
+}
+
+fn control(w: &World, remote: bool, bypass: bool, input: bool) {
+    w.set_scope("laptop", |s| {
+        s.remote_control = remote;
+        s.include_bypass = bypass;
+        s.allow_attach_input = input;
+    });
+}
+
+fn probe(w: &World, fake: &Fake, run: &str) -> Vec<Value> {
+    session(
+        w,
+        "laptop",
+        E1,
+        fake,
+        &[
+            json!({"id":1,"method":"runs.get","params":{"run":run}}),
+            json!({"id":2,"method":"attach.open","params":{"run":run,"read_only":true}}),
+            json!({"id":3,"method":"runs.halt","params":{"run":run}}),
+        ],
+    )
+}
+
+fn refused(r: &[Value]) -> bool {
+    r.iter().all(|x| x["error"] == "not_found")
+}
+
+fn listed(w: &World, fake: &Fake) -> Vec<String> {
+    let r = session(
+        w,
+        "laptop",
+        E1,
+        fake,
+        &[json!({"id":1,"method":"runs.list"})],
+    );
+    let mut ids: Vec<String> = r[0]["result"]["runs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v["id"].as_str().unwrap().to_string())
+        .collect();
+    ids.sort();
+    ids
+}
+
+fn strip_id(mut v: Value) -> Value {
+    v.as_object_mut().unwrap().remove("id");
+    v
+}
+
+#[test]
+fn flags_off_a_hidden_session_is_refused_exactly_like_a_missing_one() {
+    let w = world();
+    let fake = fleet(true);
+    assert!(listed(&w, &fake).is_empty());
+    let seen = probe(&w, &fake, PLAIN);
+    let gone = probe(&w, &fake, "s_missing0001");
+    assert!(refused(&seen));
+    for (a, b) in seen.into_iter().zip(gone) {
+        assert_eq!(strip_id(a), strip_id(b));
+    }
+    assert_eq!(fake.called("sessions.kill"), 0);
+    assert_eq!(fake.called("attach.open"), 0);
+}
+
+#[test]
+fn with_remote_control_a_hidden_session_still_matches_a_missing_one() {
+    let w = world();
+    control(&w, true, false, false);
+    let fake = fleet(true);
+    let seen = probe(&w, &fake, NOSB);
+    let gone = probe(&w, &fake, "s_missing0001");
+    assert!(refused(&seen));
+    for (a, b) in seen.into_iter().zip(gone) {
+        assert_eq!(strip_id(a), strip_id(b));
+    }
+}
+
+#[test]
+fn remote_control_reaches_a_non_bypass_local_session() {
+    let w = world();
+    control(&w, true, false, false);
+    let fake = fleet(true);
+    assert_eq!(listed(&w, &fake), [PLAIN]);
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[json!({"id":1,"method":"runs.get","params":{"run":PLAIN}})],
+    );
+    assert_eq!(r[0]["result"]["id"], PLAIN);
+    assert_eq!(r[0]["result"]["via"], "remote_control");
+    let text = r[0]["result"].to_string();
+    assert!(!text.contains("secret-cwd") && !text.contains("argv"));
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[json!({"id":1,"method":"runs.halt","params":{"run":PLAIN}})],
+    );
+    assert_eq!(r[0]["result"]["exited"], true);
+    assert_eq!(fake.called("sessions.kill"), 1);
+}
+
+#[test]
+fn every_bypass_form_is_invisible_and_refused_without_include_bypass() {
+    for id in [NOSB, MODE, ARGV] {
+        let w = world();
+        control(&w, true, false, true);
+        let fake = fleet(true);
+        assert!(!listed(&w, &fake).contains(&id.to_string()), "{id}");
+        assert!(refused(&probe(&w, &fake, id)), "{id}");
+        assert_eq!(fake.called("sessions.kill"), 0, "{id}");
+        assert_eq!(fake.called("attach.open"), 0, "{id}");
+    }
+}
+
+#[test]
+fn include_bypass_alone_gives_no_force_at_all() {
+    let w = world();
+    control(&w, false, true, true);
+    let fake = fleet(true);
+    assert!(listed(&w, &fake).is_empty());
+    for id in [PLAIN, NOSB, MODE, ARGV] {
+        assert!(refused(&probe(&w, &fake, id)), "{id}");
+    }
+    assert_eq!(fake.called("sessions.kill"), 0);
+    assert_eq!(fake.called("attach.open"), 0);
+}
+
+#[test]
+fn both_flags_reach_the_bypass_sessions() {
+    let w = world();
+    control(&w, true, true, false);
+    let fake = fleet(true);
+    let mut want = vec![PLAIN, NOSB, MODE, ARGV];
+    want.sort();
+    assert_eq!(listed(&w, &fake), want);
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[json!({"id":1,"method":"runs.halt","params":{"run":NOSB}})],
+    );
+    assert_eq!(r[0]["result"]["exited"], true);
+}
+
+#[test]
+fn without_mode_reporting_non_owned_sessions_stay_hidden() {
+    let w = world();
+    control(&w, true, true, true);
+    let fake = fleet(false);
+    assert!(listed(&w, &fake).is_empty());
+    for id in [PLAIN, NOSB] {
+        assert!(refused(&probe(&w, &fake, id)), "{id}");
+    }
+    assert_eq!(fake.called("sessions.kill"), 0);
+    assert_eq!(fake.called("attach.open"), 0);
+}
+
+#[test]
+fn a_jump_enrollment_stays_refused_for_run_methods_even_with_remote_control() {
+    let w = world();
+    control(&w, true, true, true);
+    Store::update(&w.paths, |s| {
+        s.jump_for.insert("laptop".into(), vec!["host:22".into()]);
+        Ok(())
+    })
+    .unwrap();
+    let fake = fleet(true);
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[
+            json!({"id":1,"method":"runs.list"}),
+            json!({"id":2,"method":"runs.get","params":{"run":PLAIN}}),
+            json!({"id":3,"method":"runs.halt","params":{"run":PLAIN}}),
+            json!({"id":4,"method":"attach.open","params":{"run":PLAIN}}),
+        ],
+    );
+    assert_eq!(r.len(), 4);
+    assert!(r.iter().all(|x| x["error"] == "forbidden"), "{r:?}");
+    assert!(fake.calls().is_empty());
+}
+
+#[test]
+fn create_with_both_flags_still_rejects_bypass_and_sends_no_modes() {
+    let w = world();
+    control(&w, true, true, true);
+    let fake = Fake::default();
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[create(&w, json!({"mode":"bypass"}))],
+    );
+    assert!(r[0]["error"].is_string(), "{r:?}");
+    assert_eq!(fake.called("runs.create"), 0);
+    let r = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    assert!(r[0]["result"].is_object(), "{r:?}");
+    let st = fake.0.lock().unwrap();
+    assert_eq!(st.creates.len(), 1);
+    assert_eq!(st.creates[0].permission_mode, None);
+    assert_eq!(st.creates[0].no_sandbox, None);
+}
+
+#[test]
+fn remote_sessions_never_enter_the_ownership_records() {
+    let w = world();
+    control(&w, true, false, false);
+    let fake = fleet(true);
+    let own = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    let own = run_id(&own[0]);
+    let before = std::fs::read(w.paths.link_dir().join("runs.json")).ok();
+    assert!(listed(&w, &fake).contains(&PLAIN.to_string()));
+    session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[json!({"id":1,"method":"runs.halt","params":{"run":PLAIN}})],
+    );
+    let runs = tmgr_link::ownership::Runs::lock(&w.paths).unwrap();
+    assert!(runs.get(PLAIN).is_none());
+    assert!(!runs.recorded(PLAIN));
+    assert!(runs.get(&own).is_some());
+    drop(runs);
+    assert_eq!(
+        std::fs::read(w.paths.link_dir().join("runs.json")).ok(),
+        before
+    );
+}
+
+#[test]
+fn revoke_with_halt_leaves_local_sessions_alone() {
+    let w = world();
+    control(&w, true, true, true);
+    let fake = fleet(true);
+    let own = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    let own = run_id(&own[0]);
+    tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
+    let mut backend = fake.clone();
+    let out = tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).unwrap();
+    assert_eq!(out.runs_halted, 1);
+    let st = fake.0.lock().unwrap();
+    for id in [PLAIN, NOSB, MODE, ARGV] {
+        let s = st.sessions.iter().find(|s| s.id == id).unwrap();
+        assert_ne!(s.state.kind, StateKind::Exited, "{id}");
+    }
+    let s = st.sessions.iter().find(|s| s.id == own).unwrap();
+    assert_eq!(s.state.kind, StateKind::Exited);
+}
+
+#[test]
+fn exited_local_sessions_are_not_reaped_and_do_not_count_toward_the_max() {
+    let w = world();
+    control(&w, true, true, false);
+    let fake = fleet(true);
+    fake.exit(PLAIN);
+    for _ in 0..2 {
+        let r = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+        assert!(r[0]["result"].is_object(), "{r:?}");
+    }
+    assert_eq!(fake.called("sessions.remove"), 0);
+    let st = fake.0.lock().unwrap();
+    assert!(st.sessions.iter().any(|s| s.id == PLAIN));
+}
+
+fn wait_closed(l: &mut Live, run: &str) -> String {
+    match l.next(run) {
+        Some(Incoming::Closed(why)) => why,
+        other => panic!("{other:?}"),
+    }
+}
+
+fn marker(w: &World) -> Vec<tmgr_link::registry::AttachedLeader> {
+    tmgr_link::registry::attached_leaders(&w.paths)
+        .remove(PLAIN)
+        .unwrap_or_default()
+}
+
+fn until(mut f: impl FnMut() -> bool) -> bool {
+    let end = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < end {
+        if f() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    f()
+}
+
+#[test]
+fn turning_remote_control_off_closes_the_attach_and_stops_input() {
+    let w = world();
+    control(&w, true, false, false);
+    let fake = fleet(true);
+    let mut l = live(&w, "laptop", E1, &fake);
+    let r = l.call(1, "attach.open", json!({"run": PLAIN}));
+    assert_eq!(r["result"]["input"], true);
+    l.say(Outgoing::Input("one".into()));
+    l.say(Outgoing::Ping);
+    assert_eq!(l.next(PLAIN), Some(Incoming::Pong));
+    control(&w, false, false, false);
+    l.say(Outgoing::Input("two".into()));
+    wait_closed(&mut l, PLAIN);
+    l.finish();
+    let sends = fake.0.lock().unwrap().sends.clone();
+    assert_eq!(sends, [(PLAIN.to_string(), "one".to_string())]);
+}
+
+#[test]
+fn the_tick_closes_an_idle_remote_attach_when_the_flag_goes_off() {
+    let w = world();
+    control(&w, true, false, false);
+    let fake = fleet(true);
+    let mut l = live(&w, "laptop", E1, &fake);
+    l.call(1, "attach.open", json!({"run": PLAIN, "read_only": true}));
+    control(&w, false, false, false);
+    let why = wait_closed(&mut l, PLAIN);
+    assert!(why.contains("no longer yours"), "{why}");
+    l.finish();
+}
+
+#[test]
+fn dropping_include_bypass_closes_a_bypass_attach_and_keeps_a_plain_one() {
+    let w = world();
+    let both = |s: &mut Scope| {
+        s.remote_control = true;
+        s.include_bypass = true;
+    };
+    w.set_scope("laptop", both);
+    w.set_scope("phone", both);
+    let fake = fleet(true);
+    let mut plain = live(&w, "laptop", E1, &fake);
+    let mut risky = live(&w, "phone", E2, &fake);
+    plain.call(1, "attach.open", json!({"run": PLAIN}));
+    risky.call(1, "attach.open", json!({"run": NOSB}));
+    let narrow = |s: &mut Scope| s.include_bypass = false;
+    w.set_scope("laptop", narrow);
+    w.set_scope("phone", narrow);
+    wait_closed(&mut risky, NOSB);
+    risky.finish();
+    plain.say(Outgoing::Input("still".into()));
+    plain.say(Outgoing::Ping);
+    assert_eq!(plain.next(PLAIN), Some(Incoming::Pong));
+    plain.finish();
+    let sends = fake.0.lock().unwrap().sends.clone();
+    assert_eq!(sends, [(PLAIN.to_string(), "still".to_string())]);
+}
+
+#[test]
+fn revoking_closes_a_remote_attach() {
+    let w = world();
+    control(&w, true, false, false);
+    let fake = fleet(true);
+    let mut l = live(&w, "laptop", E1, &fake);
+    l.call(1, "attach.open", json!({"run": PLAIN, "read_only": true}));
+    tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
+    let why = wait_closed(&mut l, PLAIN);
+    assert!(why.contains("no longer trusted"), "{why}");
+    l.finish();
+}
+
+#[test]
+fn an_owned_attach_survives_remote_control_going_off() {
+    let w = world();
+    w.set_scope("laptop", |s| {
+        s.allow_attach_input = true;
+        s.remote_control = true;
+    });
+    let fake = fleet(true);
+    let (mut l, id) = started(&w, &fake);
+    l.call(1, "attach.open", json!({"run": id}));
+    w.set_scope("laptop", |s| s.remote_control = false);
+    std::thread::sleep(Duration::from_millis(1500));
+    l.say(Outgoing::Input("ok".into()));
+    l.say(Outgoing::Ping);
+    assert_eq!(l.next(&id), Some(Incoming::Pong));
+    l.finish();
+    assert_eq!(fake.0.lock().unwrap().sends.len(), 1);
+}
+
+#[test]
+fn the_marker_shows_the_link_while_attached_and_clears_after() {
+    let w = world();
+    control(&w, true, false, false);
+    let fake = fleet(true);
+    let mut l = live(&w, "laptop", E1, &fake);
+    l.call(1, "attach.open", json!({"run": PLAIN}));
+    assert_eq!(
+        marker(&w),
+        [tmgr_link::registry::AttachedLeader {
+            link: "laptop".into(),
+            input: true
+        }]
+    );
+    l.say(Outgoing::Detach);
+    wait_closed(&mut l, PLAIN);
+    l.finish();
+    assert!(until(|| marker(&w).is_empty()));
+}
+
+#[test]
+fn an_attach_is_refused_when_the_marker_cannot_be_written() {
+    let w = world();
+    control(&w, true, false, false);
+    let fake = fleet(true);
+    let mut l = live(&w, "laptop", E1, &fake);
+    l.call(1, "hello", json!({"protocol": 1}));
+    let rec = w
+        .paths
+        .link_dir()
+        .join("workers")
+        .join(format!("laptop.{}.json", std::process::id()));
+    std::fs::remove_file(&rec).unwrap();
+    std::fs::create_dir(&rec).unwrap();
+    std::fs::write(rec.join("block"), b"x").unwrap();
+    let r = l.call(2, "attach.open", json!({"run": PLAIN}));
+    assert!(r["error"].is_string(), "{r:?}");
+    l.finish();
+    assert_eq!(fake.called("attach.open"), 0);
+}
+
+fn audit_files_contain(w: &World, needle: &str) -> bool {
+    std::fs::read_dir(w.paths.audit_dir()).unwrap().any(|e| {
+        let b = std::fs::read(e.unwrap().path()).unwrap();
+        b.windows(needle.len()).any(|x| x == needle.as_bytes())
+    })
+}
+
+#[test]
+fn remote_open_input_and_halt_are_audited_without_the_typed_content() {
+    let w = world();
+    control(&w, true, false, false);
+    let fake = fleet(true);
+    let mut l = live(&w, "laptop", E1, &fake);
+    l.call(1, "attach.open", json!({"run": PLAIN}));
+    l.say(Outgoing::Input("zq9-distinct-typed-text".into()));
+    l.say(Outgoing::Ping);
+    assert_eq!(l.next(PLAIN), Some(Incoming::Pong));
+    l.say(Outgoing::Detach);
+    wait_closed(&mut l, PLAIN);
+    l.finish();
+    session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[json!({"id":1,"method":"runs.halt","params":{"run":PLAIN}})],
+    );
+    let ev = w.audit();
+    let open = ev
+        .iter()
+        .find(|e| e["method"] == "attach.open" && e["decision"] == "accepted")
+        .unwrap();
+    assert_eq!(open["args"]["via"], "remote_control");
+    assert_eq!(open["args"]["run"], PLAIN);
+    assert_eq!(open["link"], "laptop");
+    let input = ev
+        .iter()
+        .find(|e| e["event"] == "worker.attach_input")
+        .unwrap();
+    assert_eq!(input["link"], "laptop");
+    assert_eq!(input["run"], PLAIN);
+    let halt = ev
+        .iter()
+        .find(|e| e["event"] == "worker.run_halted")
+        .unwrap();
+    assert_eq!(halt["link"], "laptop");
+    assert_eq!(halt["run"], PLAIN);
+    assert!(!audit_files_contain(&w, "zq9-distinct-typed-text"));
+    assert!(Audit::new(&w.paths.audit_dir()).verify().unwrap().is_ok());
+}
+
+#[test]
+fn the_input_fact_is_on_disk_before_the_first_send_of_a_tick() {
+    let w = world();
+    control(&w, true, false, false);
+    let fake = fleet(true);
+    let mut l = live(&w, "laptop", E1, &fake);
+    l.call(1, "attach.open", json!({"run": PLAIN}));
+    fake.0.lock().unwrap().busy = true;
+    l.say(Outgoing::Input("a".into()));
+    let _ = l.next(PLAIN);
+    assert!(w
+        .audit()
+        .iter()
+        .any(|e| e["event"] == "worker.attach_input"));
+    l.say(Outgoing::Detach);
+    wait_closed(&mut l, PLAIN);
+    l.finish();
+}
+
+#[test]
+fn an_owned_attach_audit_has_no_remote_label() {
+    let w = world();
+    w.set_scope("laptop", |s| s.allow_attach_input = true);
+    let fake = Fake::default();
+    let (mut l, id) = started(&w, &fake);
+    l.call(1, "attach.open", json!({"run": id}));
+    l.say(Outgoing::Input("x".into()));
+    l.say(Outgoing::Detach);
+    wait_closed(&mut l, &id);
+    l.finish();
+    let ev = w.audit();
+    let open = ev
+        .iter()
+        .find(|e| e["method"] == "attach.open" && e["decision"] == "accepted")
+        .unwrap();
+    assert!(open["args"].get("via").is_none());
 }

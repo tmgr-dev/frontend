@@ -396,4 +396,69 @@ mod tests {
         drop(guard);
         assert!(!p.exists());
     }
+
+    #[test]
+    fn the_attached_marker_lists_the_link_and_clears() {
+        let d = crate::testutil::private_tempdir();
+        let paths = Paths::under(d.path());
+        assert!(attached_leaders(&paths).is_empty());
+        let a = Attached {
+            run: "s_abc".into(),
+            input: true,
+            remote: true,
+            bypass: false,
+        };
+        set_attached(&paths, "laptop", "e", Some(a)).unwrap();
+        let got = attached_leaders(&paths);
+        assert_eq!(
+            got["s_abc"],
+            [AttachedLeader {
+                link: "laptop".into(),
+                input: true
+            }]
+        );
+        set_attached(&paths, "laptop", "e", None).unwrap();
+        assert!(attached_leaders(&paths).is_empty());
+    }
+
+    #[test]
+    fn terminate_where_selects_on_the_attached_record() {
+        let d = crate::testutil::private_tempdir();
+        let paths = Paths::under(d.path());
+        let mut plain = sleeper();
+        let mut marked = sleeper();
+        fake_worker(&paths, "laptop", &plain, process_start(plain.id()).unwrap());
+        fake_worker(
+            &paths,
+            "laptop",
+            &marked,
+            process_start(marked.id()).unwrap(),
+        );
+        let rec = Rec {
+            pid: marked.id(),
+            start: process_start(marked.id()).unwrap(),
+            enrollment: "e".into(),
+            attached: Some(Attached {
+                run: "s_abc".into(),
+                input: false,
+                remote: true,
+                bypass: true,
+            }),
+        };
+        write_atomic(
+            &file(&paths, "laptop", marked.id()),
+            &serde_json::to_vec(&rec).unwrap(),
+            0o600,
+        )
+        .unwrap();
+        let t = terminate_where(&paths, "laptop", Duration::from_secs(5), &|_, a| {
+            a.is_some_and(|a| a.remote && a.bypass)
+        })
+        .unwrap();
+        assert_eq!(t.signalled, 1);
+        assert!(marked.try_wait().unwrap().is_some());
+        assert!(plain.try_wait().unwrap().is_none());
+        plain.kill().unwrap();
+        plain.wait().unwrap();
+    }
 }

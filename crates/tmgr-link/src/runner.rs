@@ -78,6 +78,9 @@ pub trait AttachSession: Send {
 
 pub trait Backend: Send {
     fn set_deadline(&mut self, _deadline: Option<Instant>) {}
+    fn reports_modes(&self) -> bool {
+        false
+    }
     fn list(&mut self) -> Result<Vec<SessionInfo>, BackendError>;
     fn create_run(&mut self, req: &RunCreateReq) -> Result<SessionInfo, BackendError>;
     fn kill(&mut self, id: &str, signal: &str) -> Result<(), BackendError>;
@@ -96,6 +99,7 @@ pub struct RunnerClient {
     stream: UnixStream,
     next_id: u64,
     deadline: Option<Instant>,
+    modes: bool,
 }
 
 const HANDSHAKE_CAP: Duration = Duration::from_secs(5);
@@ -118,7 +122,7 @@ fn open(
     client: &str,
     required: &[&str],
     deadline: Option<Instant>,
-) -> Result<UnixStream, BackendError> {
+) -> Result<(UnixStream, bool), BackendError> {
     dirs::check_private_dir(dir).map_err(unavailable)?;
     let secret = secret::read(&dir.join("client.secret")).map_err(unavailable)?;
     let ep = endpoint::Endpoint::load_runner(dir).map_err(unavailable)?;
@@ -151,7 +155,10 @@ fn open(
         }
     }
     arm(&stream, deadline)?;
-    Ok(stream)
+    let modes = [caps::NO_SANDBOX_V1, caps::PERMISSION_MODE_V1]
+        .iter()
+        .all(|cap| welcome.caps.iter().any(|c| c == cap));
+    Ok((stream, modes))
 }
 
 impl RunnerClient {
@@ -168,7 +175,7 @@ impl RunnerClient {
         client: &str,
         deadline: Option<Instant>,
     ) -> Result<RunnerClient, BackendError> {
-        let stream = open(
+        let (stream, modes) = open(
             dir,
             client,
             &[
@@ -184,6 +191,7 @@ impl RunnerClient {
             stream,
             next_id: 1,
             deadline,
+            modes,
         })
     }
 
@@ -270,6 +278,10 @@ fn params<T: serde::Serialize>(v: &T) -> Result<Value, BackendError> {
 }
 
 impl Backend for RunnerClient {
+    fn reports_modes(&self) -> bool {
+        self.modes
+    }
+
     fn set_deadline(&mut self, deadline: Option<Instant>) {
         self.deadline = deadline;
     }
@@ -327,7 +339,7 @@ impl Backend for RunnerClient {
         id: &str,
         size: Option<(u16, u16)>,
     ) -> Result<Box<dyn AttachSession>, BackendError> {
-        let mut stream = open(
+        let (mut stream, _) = open(
             &self.dir,
             CLIENT_NAME,
             &[caps::ATTACH_V1, caps::SESSIONS_V1],

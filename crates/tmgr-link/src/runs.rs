@@ -1,8 +1,9 @@
 use crate::attach::{self, Outgoing};
 use crate::ownership::{RunRecord, Runs};
 use crate::proto::{self, Channel, Poll, Request};
+use crate::registry::{self, Attached};
 use crate::runner::{AttachRecv, AttachSession, Backend, BackendError};
-use crate::scope::{self, canonical_repo, Scope};
+use crate::scope::{self, canonical_repo, is_bypass_session, Scope};
 use crate::taskref::format_ref;
 use crate::worker::{say, Conn, State, Step};
 use serde_json::{json, Value};
@@ -103,7 +104,7 @@ fn clean_line(s: &str, max: usize) -> String {
 }
 
 fn view(s: &SessionInfo, rec: Option<&RunRecord>) -> Value {
-    json!({
+    let mut v = json!({
         "id": s.id,
         "name": clean_line(&s.name, 64),
         "agent": s.profile,
@@ -117,7 +118,62 @@ fn view(s: &SessionInfo, rec: Option<&RunRecord>) -> Value {
         "task": s.task.as_ref().map(format_ref).or_else(|| rec.map(|r| r.task.clone())),
         "persona": rec.and_then(|r| r.persona.clone()),
         "model": rec.and_then(|r| r.model.clone()),
-    })
+    });
+    if rec.is_none() {
+        v["via"] = json!("remote_control");
+    }
+    v
+}
+
+struct Reach {
+    owned: bool,
+    bypass: bool,
+}
+
+fn reports_modes(st: &State) -> bool {
+    st.backend.as_ref().is_some_and(|b| b.reports_modes())
+}
+
+fn resolve(
+    conn: &Conn,
+    st: &mut State,
+    id: Option<u64>,
+    method: &str,
+    args: &Value,
+    run: &str,
+    scope: &Scope,
+) -> Result<Reach, Step> {
+    let hidden = || deny(conn, method, args.clone(), id, "not_found", "no such run");
+    let Some(owned) = owned(conn, run) else {
+        return Err(Step::Close(proto::error(
+            id,
+            "unavailable",
+            "request refused",
+        )));
+    };
+    if !owned && !scope.remote_control {
+        return Err(hidden());
+    }
+    if !scope.remote_control {
+        return Ok(Reach {
+            owned,
+            bypass: false,
+        });
+    }
+    let listed = with_backend(conn, st, true, None, |b| b.list());
+    let found = match &listed {
+        Ok(l) => l.iter().find(|s| s.id == run),
+        Err(e) if !owned => return Err(failed(conn, method, args.clone(), id, e)),
+        Err(_) => None,
+    };
+    let bypass = found.map_or(owned, is_bypass_session);
+    if owned {
+        return Ok(Reach { owned, bypass });
+    }
+    if found.is_none() || !reports_modes(st) || !scope.may_see(false, bypass) {
+        return Err(hidden());
+    }
+    Ok(Reach { owned, bypass })
 }
 
 fn run_param(params: &Value) -> String {
@@ -152,15 +208,15 @@ pub(crate) fn run_method(
         obj.insert("repo_canonical".into(), json!(repo));
     }
     match method {
-        "runs.list" => list(conn, st, id, args),
-        "runs.get" => get(conn, st, id, args, &run_param(&params)),
-        "runs.halt" => halt(conn, st, id, args, &run_param(&params)),
+        "runs.list" => list(conn, st, id, args, scope),
+        "runs.get" => get(conn, st, id, args, &run_param(&params), scope),
+        "runs.halt" => halt(conn, st, id, args, &run_param(&params), scope),
         "runs.create" => create(conn, st, id, args, &params, accepted.repo, scope),
         _ => attach_open(conn, st, chan, id, args, &params, scope),
     }
 }
 
-fn list(conn: &Conn, st: &mut State, id: Option<u64>, args: Value) -> Step {
+fn list(conn: &Conn, st: &mut State, id: Option<u64>, args: Value, scope: &Scope) -> Step {
     if conn
         .record("runs.list", args.clone(), "accepted", "")
         .is_err()
@@ -179,10 +235,20 @@ fn list(conn: &Conn, st: &mut State, id: Option<u64>, args: Value) -> Step {
     }
     let existing: Vec<String> = listed.iter().map(|s| s.id.clone()).collect();
     let _ = runs.retain_existing(&existing);
+    let modes = reports_modes(st);
     let mine: Vec<Value> = listed
         .iter()
-        .filter(|s| runs.owns(conn.name, conn.enrollment, &s.id))
-        .map(|s| view(s, runs.get(&s.id)))
+        .filter(|s| {
+            runs.owns(conn.name, conn.enrollment, &s.id)
+                || (modes && scope.may_see(false, is_bypass_session(s)))
+        })
+        .map(|s| {
+            view(
+                s,
+                runs.get(&s.id)
+                    .filter(|_| runs.owns(conn.name, conn.enrollment, &s.id)),
+            )
+        })
         .collect();
     Step::Reply(proto::ok(id, json!({"runs": mine})))
 }
@@ -215,12 +281,18 @@ fn owned(conn: &Conn, run: &str) -> Option<bool> {
         .map(|r| r.owns(conn.name, conn.enrollment, run))
 }
 
-fn get(conn: &Conn, st: &mut State, id: Option<u64>, args: Value, run: &str) -> Step {
-    match owned(conn, run) {
-        None => return Step::Close(proto::error(id, "unavailable", "request refused")),
-        Some(false) => return deny(conn, "runs.get", args, id, "not_found", "no such run"),
-        Some(true) => {}
-    }
+fn get(
+    conn: &Conn,
+    st: &mut State,
+    id: Option<u64>,
+    args: Value,
+    run: &str,
+    scope: &Scope,
+) -> Step {
+    let reach = match resolve(conn, st, id, "runs.get", &args, run, scope) {
+        Ok(r) => r,
+        Err(step) => return step,
+    };
     if conn
         .record("runs.get", args.clone(), "accepted", "")
         .is_err()
@@ -234,7 +306,8 @@ fn get(conn: &Conn, st: &mut State, id: Option<u64>, args: Value, run: &str) -> 
             Some(s) => {
                 let rec = Runs::lock(conn.paths)
                     .ok()
-                    .and_then(|r| r.get(run).cloned());
+                    .and_then(|r| r.get(run).cloned())
+                    .filter(|_| reach.owned);
                 Step::Reply(proto::ok(id, view(s, rec.as_ref())))
             }
         },
@@ -276,12 +349,18 @@ pub fn stop_run(b: &mut dyn Backend, run: &str) -> Result<&'static str, BackendE
     })
 }
 
-fn halt(conn: &Conn, st: &mut State, id: Option<u64>, args: Value, run: &str) -> Step {
-    match owned(conn, run) {
-        None => return Step::Close(proto::error(id, "unavailable", "request refused")),
-        Some(false) => return deny(conn, "runs.halt", args, id, "not_found", "no such run"),
-        Some(true) => {}
-    }
+fn halt(
+    conn: &Conn,
+    st: &mut State,
+    id: Option<u64>,
+    args: Value,
+    run: &str,
+    scope: &Scope,
+) -> Step {
+    let reach = match resolve(conn, st, id, "runs.halt", &args, run, scope) {
+        Ok(r) => r,
+        Err(step) => return step,
+    };
     if conn
         .record("runs.halt", args.clone(), "accepted", "")
         .is_err()
@@ -294,7 +373,11 @@ fn halt(conn: &Conn, st: &mut State, id: Option<u64>, args: Value, run: &str) ->
                 .audit
                 .append(
                     "worker.run_halted",
-                    json!({"link": conn.name, "run": run, "signal": signal}),
+                    if reach.owned {
+                        json!({"link": conn.name, "run": run, "signal": signal})
+                    } else {
+                        json!({"link": conn.name, "run": run, "signal": signal, "via": "remote_control"})
+                    },
                 )
                 .is_err()
             {
@@ -586,12 +669,12 @@ fn attach_open(
             .map_or(default, |n| n as u16)
     };
     let size = (dim("cols", DEFAULT_SIZE.0), dim("rows", DEFAULT_SIZE.1));
-    match owned(conn, &run) {
-        None => return Step::Close(proto::error(id, "unavailable", "request refused")),
-        Some(false) => return deny(conn, method, args, id, "not_found", "no such run"),
-        Some(true) => {}
-    }
-    let input = !read_only && scope.allow_attach_input;
+    let reach = match resolve(conn, st, id, method, &args, &run, scope) {
+        Ok(r) => r,
+        Err(step) => return step,
+    };
+    let input = !read_only && scope.may_input(reach.owned, reach.bypass);
+    let remote = !reach.owned || (input && !scope.allow_attach_input);
     let (mode, reason) = if input {
         ("interactive", "")
     } else if read_only {
@@ -601,23 +684,60 @@ fn attach_open(
     };
     if let Value::Object(m) = &mut args {
         m.insert("mode".into(), json!(mode));
+        if !reach.owned {
+            m.insert("via".into(), json!("remote_control"));
+        }
+    }
+    let marker = |attached: Option<Attached>| {
+        registry::set_attached(conn.paths, conn.name, conn.enrollment, attached)
+    };
+    if marker(Some(Attached {
+        run: run.clone(),
+        input,
+        remote,
+        bypass: reach.bypass,
+    }))
+    .is_err()
+    {
+        let _ = marker(None);
+        return deny(
+            conn,
+            method,
+            args,
+            id,
+            "unavailable",
+            "cannot record the attach",
+        );
     }
     let mut session = match with_backend(conn, st, true, None, |b| {
         b.attach(&run, input.then_some(size))
     }) {
         Ok(s) => s,
-        Err(e) => return failed(conn, method, args, id, &e),
+        Err(e) => {
+            let _ = marker(None);
+            return failed(conn, method, args, id, &e);
+        }
     };
     if conn.record(method, args, "accepted", reason).is_err() {
+        session.detach();
+        let _ = marker(None);
         return audit_down();
     }
     if !say(chan, proto::ok(id, json!({"run": run, "input": input}))) {
         session.detach();
+        let _ = marker(None);
         return Step::Done;
     }
     chan.extend_deadline(ATTACH_MAX);
-    let (why, stats) = attach_loop(conn, st, chan, session.as_mut(), &run, input);
+    let access = Access {
+        owned: reach.owned,
+        bypass: reach.bypass,
+        input,
+        remote,
+    };
+    let (why, stats) = attach_loop(conn, st, chan, session.as_mut(), &run, &access);
     session.detach();
+    let _ = marker(None);
     let _ = conn.audit.append(
         "worker.attach_end",
         json!({
@@ -657,8 +777,15 @@ fn forward(chan: &mut dyn Channel, run: &str, msg: ServerMsg) -> Result<bool, St
     }
 }
 
-fn input_still_allowed(conn: &Conn) -> bool {
-    matches!(conn.current(), Ok(Ok(s)) if s.allow_attach_input)
+struct Access {
+    owned: bool,
+    bypass: bool,
+    input: bool,
+    remote: bool,
+}
+
+fn input_still_allowed(conn: &Conn, access: &Access) -> bool {
+    matches!(conn.current(), Ok(Ok(s)) if s.may_input(access.owned, access.bypass))
 }
 
 fn attach_loop(
@@ -667,8 +794,10 @@ fn attach_loop(
     chan: &mut dyn Channel,
     session: &mut dyn AttachSession,
     run: &str,
-    input_allowed: bool,
+    access: &Access,
 ) -> (String, Stats) {
+    let input_allowed = access.input;
+    let mut announced = false;
     let mut stats = Stats { msgs: 0, bytes: 0 };
     let mut last_leader = Instant::now();
     let mut last_tick = Instant::now();
@@ -676,6 +805,10 @@ fn attach_loop(
     let mut pending = (0u32, 0usize);
     let flush = |pending: &mut (u32, usize)| -> bool {
         if pending.0 == 0 {
+            return true;
+        }
+        if access.remote {
+            *pending = (0, 0);
             return true;
         }
         let ok = conn
@@ -749,7 +882,7 @@ fn attach_loop(
                     }
                     Ok(Outgoing::Resize { cols, rows }) => {
                         if input_allowed {
-                            if !input_still_allowed(conn) {
+                            if !input_still_allowed(conn, access) {
                                 let _ = conn.record(
                                     "attach.resize",
                                     json!({"run": run}),
@@ -779,7 +912,7 @@ fn attach_loop(
                             return end(chan, "input is not allowed here", &mut pending, stats);
                         }
                         match conn.current() {
-                            Ok(Ok(s)) if s.allow_attach_input => {}
+                            Ok(Ok(s)) if s.may_input(access.owned, access.bypass) => {}
                             _ => {
                                 let _ = conn.record(
                                     "attach.input",
@@ -807,6 +940,14 @@ fn attach_loop(
                                 attach::encode_notice("typing too fast, input dropped"),
                             );
                             continue;
+                        }
+                        if access.remote && !announced {
+                            let fact =
+                                json!({"link": conn.name, "run": run, "via": "remote_control"});
+                            if conn.audit.append("worker.attach_input", fact).is_err() {
+                                return end(chan, "audit unavailable", &mut pending, stats);
+                            }
+                            announced = true;
                         }
                         match with_backend(conn, st, false, None, |b| b.send(run, &text)) {
                             Ok(()) => {
@@ -844,14 +985,15 @@ fn attach_loop(
         }
         if last_tick.elapsed() >= TICK {
             last_tick = Instant::now();
+            announced = false;
             if !flush(&mut pending) {
                 return end(chan, "audit unavailable", &mut pending, stats);
             }
-            match conn.current() {
-                Ok(Ok(_)) => {}
-                _ => return end(chan, "this link is no longer trusted", &mut pending, stats),
-            }
-            if owned(conn, run) != Some(true) {
+            let Ok(Ok(now)) = conn.current() else {
+                return end(chan, "this link is no longer trusted", &mut pending, stats);
+            };
+            let seen = now.may_see(owned(conn, run) == Some(true), access.bypass);
+            if !seen {
                 return end(chan, "the run is no longer yours", &mut pending, stats);
             }
         }
