@@ -44,6 +44,7 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             RunnerCmd::Bind(a) => super::bind::bind(o, &a.target, &a.path),
             RunnerCmd::Unbind(a) => super::bind::unbind(o, &a.target),
             RunnerCmd::List => super::bind::list(o),
+            RunnerCmd::Gc(a) => super::gc::run(o, a.dry_run),
             RunnerCmd::Serve => serve(),
             RunnerCmd::Watch(a) => super::watch::run(&a.dir, &a.cmd),
         },

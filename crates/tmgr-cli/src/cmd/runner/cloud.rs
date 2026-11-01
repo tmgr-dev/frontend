@@ -895,16 +895,16 @@ fn notify_started(ctx: &Ctx, ok: &GateOk) {
     }
 }
 
-fn record_path(code: &str, task_id: i64) -> Option<PathBuf> {
+pub(super) fn record_path(code: &str, task_id: i64) -> Option<PathBuf> {
     tmgr_core::active::state_dir()
         .map(|d| d.join("task-runs").join(format!("{code}-{task_id}.json")))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct CloneRecord {
-    name: String,
-    repo: String,
-    identity: Option<(u64, u64)>,
+pub(super) struct CloneRecord {
+    pub(super) name: String,
+    pub(super) repo: String,
+    pub(super) identity: Option<(u64, u64)>,
 }
 
 fn record_body(
@@ -954,13 +954,13 @@ fn write_record(
     config::write_atomic(&path, body.to_string().as_bytes(), 0o600)
 }
 
-struct Record {
-    repo: String,
-    clone: PathBuf,
-    branch: String,
-    session: Option<String>,
+pub(super) struct Record {
+    pub(super) repo: String,
+    pub(super) clone: PathBuf,
+    pub(super) branch: String,
+    pub(super) session: Option<String>,
     agent: Option<String>,
-    clones: Vec<CloneRecord>,
+    pub(super) clones: Vec<CloneRecord>,
     held: Option<Held>,
     audit: Option<String>,
 }
@@ -988,7 +988,7 @@ fn set_key(code: &str, task_id: i64, key: &str, value: Option<serde_json::Value>
     config::write_atomic(&path, v.to_string().as_bytes(), 0o600)
 }
 
-fn read_record(code: &str, task_id: i64) -> Result<Record> {
+pub(super) fn read_record(code: &str, task_id: i64) -> Result<Record> {
     let missing = || {
         Error::not_found("no cloud run of this task is recorded on this machine")
             .hint("start it with tmgr run <task> --agent <profile>")

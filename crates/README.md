@@ -118,6 +118,19 @@ Reads open the database read-only; a write takes the desktop's write lock for on
 
 `tmgr runner allow WS [--require-signed-rules] [--require-signed-persona]` sets a local policy on the allow entry in `runner-allow.json`: a cloud run starts only if its signed approval covers the workspace rules (`context_sha256`) and/or a persona (`persona_sha256`). An approval made before persona and rules were signed covers neither, so it is refused under any policy, and so is a workspace with no rules under `--require-signed-rules`. The policy only narrows: running `allow` again without the flags keeps it, and only `tmgr runner disallow WS` followed by `allow` clears it. The server cannot set, read or change it. It is checked in `tmgr_approval::check_claim`, after the signature, by `tmgr run`, the queue, autopilot and the runner daemon alike; `tmgr runner allowed` shows it in a POLICY column and in `--json`.
 
+## Task copies (`tmgr runner gc`, `runner` feature)
+
+`tmgr runner gc [--dry-run]` removes the copy a `tmgr run` task keeps in `<repo>-worktrees/` (the clone and its build output) once its pull request is merged or closed and nothing runs in it. It only looks at copies named by local records (`task-runs/*.json` in the state folder and the pickups of the queue state), never at folders it finds, and it runs only when you call it. Every doubt is a skip with a printed reason; `--dry-run` prints the same decisions and changes nothing.
+
+A copy is removed only when all of these hold:
+
+- Its path is the one `tmgr run` or the queue would compute from the record, a real folder (no symlink) inside `<repo>-worktrees`, with a real `.git` folder and the recorded device and inode of each clone of a multi-repository run.
+- The run is not held, paused or still running, the runner has no live session in it and no process has its working folder inside it. gc asks the running runner and refuses (exit 7, nothing removed) when it cannot; it never starts the runner.
+- The local git config runs no programs, and `git status` shows no tracked change and no untracked file. Ignored files are allowed only below known build output folders (`target`, `node_modules`, `dist`, `build` and the like); an ignored `.env` keeps the copy. A stash, a merge, rebase or cherry-pick in progress, assume-unchanged or skip-worktree entries, submodules, a branch not merged into HEAD, or a HEAD off the recorded branch keep it too.
+- `gh pr list --head <branch>` for the repository of the origin shows no open pull request and one merged or closed pull request whose head commit is exactly the copy's HEAD. No pull request, `gh` failing, an unparsable or cut answer (100 entries), or a different head (unpushed commits) is a skip.
+
+A multi-repository run is removed all or nothing. The copy is renamed to a hidden sibling and deleted, then the record is deleted (a queue pickup is marked released). `--json` prints one entry per copy with `path`, `decision` (`removed`, `would_remove`, `skipped`, `gone`, `failed`), `pr`, `reason` and `bytes`, plus `reclaimed_bytes`. Exit 0 also when copies were skipped; non-zero only for a refusal or a failed removal.
+
 ## Queue (`tmgr queue`, hidden, `runner` feature)
 
 `tmgr-queue` is the local auto-run queue. It is off by default. `run-once` starts approved pickups through the runner (`runs.create` with the bundle, `permission_mode = ask`, the start key, `clone_of` and `agent_work`); the CLI implements `RunsClient` over the runner client.

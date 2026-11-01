@@ -173,7 +173,7 @@ fn lookup_pr(root: &Path) -> PrLookup {
     }
 }
 
-fn config_runs_programs(list: &str) -> bool {
+pub(super) fn config_runs_programs(list: &str) -> bool {
     list.lines().any(|line| {
         let Some((scope, key)) = line.split_once('\t') else {
             return false;

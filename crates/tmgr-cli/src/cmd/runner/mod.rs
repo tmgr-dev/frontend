@@ -26,6 +26,7 @@ mod attach_usage;
 pub(crate) mod bind;
 pub(crate) mod cloud;
 mod gate;
+mod gc;
 mod local;
 mod observe;
 mod ops;
@@ -149,10 +150,19 @@ pub enum RunnerCmd {
     Unbind(bind::UnbindArgs),
     /// [experimental] List the repositories bound to categories on this machine
     List,
+    /// [experimental] Remove the copies of finished `tmgr run` tasks (pull request merged or closed, nothing running in them)
+    Gc(GcArgs),
     #[command(hide = true)]
     Serve,
     #[command(hide = true)]
     Watch(WatchArgs),
+}
+
+#[derive(Args)]
+pub struct GcArgs {
+    /// Check everything and print what would be removed, without changing anything
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[derive(Args)]

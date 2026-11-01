@@ -52,7 +52,7 @@ pub(crate) fn git_command(dir: Option<&Path>) -> Command {
     cmd
 }
 
-pub(crate) fn git_bytes(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<Vec<u8>> {
+pub fn git_bytes(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<Vec<u8>> {
     let mut cmd = git_command(Some(dir));
     cmd.args(["-c", "core.quotepath=off"]).args(args);
     let out = output_within_input(&mut cmd, GIT_TIMEOUT, input)?;
