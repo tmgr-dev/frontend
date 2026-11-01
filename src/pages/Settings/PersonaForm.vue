@@ -98,7 +98,10 @@
 					<SelectItem value="none">Never</SelectItem>
 				</SelectContent>
 			</Select>
-			<span v-if="fieldErrors.owner_notifications" class="text-xs text-destructive">
+			<span
+				v-if="fieldErrors.owner_notifications"
+				class="text-xs text-destructive"
+			>
 				{{ fieldErrors.owner_notifications.join(' ') }}
 			</span>
 		</label>
