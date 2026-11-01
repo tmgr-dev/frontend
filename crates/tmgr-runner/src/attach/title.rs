@@ -237,8 +237,26 @@ pub fn locate(src: &Source<'_>) -> Option<(PathBuf, Option<String>)> {
     }
 }
 
-pub fn locate_unsandboxed_claude(home: &Path, cwd: &str, pid: u32) -> Option<(PathBuf, String)> {
+pub fn locate_unsandboxed_claude(
+    home: &Path,
+    cwd: &str,
+    pid: u32,
+    created_ms: u64,
+) -> Option<(PathBuf, String)> {
     let id = pid_file_id(home, pid)?;
+    let pid_path = home
+        .join(".claude")
+        .join("sessions")
+        .join(format!("{pid}.json"));
+    let written = std::fs::symlink_metadata(pid_path)
+        .ok()?
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    if written < created_ms / 1000 {
+        return None;
+    }
     let file = format!("{id}.jsonl");
     project_dirs(home, cwd)
         .into_iter()
@@ -681,8 +699,49 @@ mod tests {
             77,
             &format!("{{\"pid\":77,\"sessionId\":\"{U}\"}}"),
         );
-        let (path, id) = locate_unsandboxed_claude(h.path(), "/work/app", 77).unwrap();
+        let (path, id) = locate_unsandboxed_claude(h.path(), "/work/app", 77, 0).unwrap();
         assert_eq!((path, id.as_str()), (want, U));
+    }
+
+    fn age_pid_file(h: &Path, pid: u32, secs_ago: u64) {
+        let file = std::fs::File::options()
+            .write(true)
+            .open(h.join(format!(".claude/sessions/{pid}.json")))
+            .unwrap();
+        file.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(secs_ago))
+            .unwrap();
+    }
+
+    fn pid_file_setup(h: &Path) {
+        write(&h.join(format!(".claude/projects/-w/{U}.jsonl")), "");
+        pid_file(h, 77, &format!("{{\"pid\":77,\"sessionId\":\"{U}\"}}"));
+    }
+
+    fn now_ms() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+    }
+
+    #[test]
+    fn unsandboxed_locate_ignores_a_pid_file_older_than_the_session() {
+        let h = home();
+        pid_file_setup(h.path());
+        age_pid_file(h.path(), 77, 3600);
+        assert!(locate_unsandboxed_claude(h.path(), "/w", 77, now_ms()).is_none());
+    }
+
+    #[test]
+    fn unsandboxed_locate_reads_a_pid_file_written_after_the_session_began() {
+        let h = home();
+        pid_file_setup(h.path());
+        age_pid_file(h.path(), 77, 3600);
+        let created = now_ms() - 7_200_000;
+        let (_, id) = locate_unsandboxed_claude(h.path(), "/w", 77, created).unwrap();
+        assert_eq!(id, U);
+        age_pid_file(h.path(), 77, 0);
+        assert!(locate_unsandboxed_claude(h.path(), "/w", 77, now_ms()).is_some());
     }
 
     #[test]
@@ -694,8 +753,8 @@ mod tests {
             77,
             &format!("{{\"pid\":77,\"sessionId\":\"{U}\"}}"),
         );
-        assert!(locate_unsandboxed_claude(h.path(), "/w", 0).is_none());
-        assert!(locate_unsandboxed_claude(h.path(), "/w", 78).is_none());
+        assert!(locate_unsandboxed_claude(h.path(), "/w", 0, 0).is_none());
+        assert!(locate_unsandboxed_claude(h.path(), "/w", 78, 0).is_none());
     }
 
     #[test]
@@ -707,13 +766,13 @@ mod tests {
             77,
             "{\"pid\":77,\"sessionId\":\"../../etc/passwd-aaaaaaaaaaaaaaaaaaaa\"}",
         );
-        assert!(locate_unsandboxed_claude(h.path(), "/w", 77).is_none());
+        assert!(locate_unsandboxed_claude(h.path(), "/w", 77, 0).is_none());
         pid_file(
             h.path(),
             77,
             &format!("{{\"pid\":78,\"sessionId\":\"{U}\"}}"),
         );
-        assert!(locate_unsandboxed_claude(h.path(), "/w", 77).is_none());
+        assert!(locate_unsandboxed_claude(h.path(), "/w", 77, 0).is_none());
     }
 
     #[test]
@@ -729,7 +788,7 @@ mod tests {
             77,
             &format!("{{\"pid\":77,\"sessionId\":\"{U}\"}}"),
         );
-        assert!(locate_unsandboxed_claude(h.path(), "/w", 77).is_none());
+        assert!(locate_unsandboxed_claude(h.path(), "/w", 77, 0).is_none());
     }
 
     #[test]
@@ -749,7 +808,7 @@ mod tests {
             77,
             &format!("{{\"pid\":77,\"sessionId\":\"{U}\"}}"),
         );
-        assert!(locate_unsandboxed_claude(h.path(), "/w", 77).is_none());
+        assert!(locate_unsandboxed_claude(h.path(), "/w", 77, 0).is_none());
     }
 
     #[test]

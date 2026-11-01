@@ -92,6 +92,7 @@ mod tests {
                 pid: 0,
                 default_name: "claude".into(),
                 no_sandbox: false,
+                created_ms: 0,
             },
             pid: 0,
             sandbox_home: home.to_path_buf(),

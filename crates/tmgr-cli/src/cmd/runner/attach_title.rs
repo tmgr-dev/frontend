@@ -18,6 +18,7 @@ pub(super) struct AgentSrc {
     pub pid: u32,
     pub default_name: String,
     pub no_sandbox: bool,
+    pub created_ms: u64,
 }
 
 pub(super) fn agent_src(s: &SessionInfo) -> Option<AgentSrc> {
@@ -29,6 +30,7 @@ pub(super) fn agent_src(s: &SessionInfo) -> Option<AgentSrc> {
         pid: s.child_pid,
         default_name: default_name(s.argv.first().map_or("", String::as_str)),
         no_sandbox: s.no_sandbox,
+        created_ms: s.created_ms,
     })
 }
 
@@ -79,7 +81,9 @@ pub(super) fn titler(
 
 fn title_for(job: &TitleJob, scans: &mut HashMap<String, TitleScan>) -> Option<AgentTitle> {
     if let Some(home) = job.real_home.as_deref() {
-        let Some((path, id)) = locate_unsandboxed_claude(home, &job.src.cwd, job.pid) else {
+        let Some((path, id)) =
+            locate_unsandboxed_claude(home, &job.src.cwd, job.pid, job.src.created_ms)
+        else {
             return retained_title(job, scans);
         };
         return scan_title(job, home, path, Some(id), scans);
@@ -158,6 +162,7 @@ mod tests {
                 pid: 4242,
                 default_name: "claude".into(),
                 no_sandbox: false,
+                created_ms: 0,
             },
             pid: 4242,
             sandbox_home: dir.join("homes").join("s1"),
@@ -372,6 +377,7 @@ mod tests {
             pid: 1,
             default_name: "p".into(),
             no_sandbox,
+            created_ms: 0,
         };
         let home = Some(PathBuf::from("/h"));
         assert_eq!(
@@ -417,6 +423,24 @@ mod tests {
         };
         assert!(agent_src(&info(true)).unwrap().no_sandbox);
         assert!(!agent_src(&info(false)).unwrap().no_sandbox);
+    }
+
+    #[test]
+    fn a_stale_pid_file_from_before_the_session_gives_no_title() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = tempfile::tempdir().unwrap();
+        let mut j = unsandboxed_job(dir.path(), Format::Claude, real.path());
+        plant(real.path(), "-work-app", 4242, U, AUTO);
+        assert!(title_for(&j, &mut HashMap::new()).is_some());
+        j.src.created_ms = now_ms() + 3_600_000;
+        assert!(title_for(&j, &mut HashMap::new()).is_none());
+    }
+
+    fn now_ms() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
     }
 
     #[test]
