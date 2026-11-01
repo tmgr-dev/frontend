@@ -88,6 +88,9 @@ fn title_for(job: &TitleJob, scans: &mut HashMap<String, TitleScan>) -> Option<A
         };
         return scan_title(job, home, path, Some(id), scans);
     }
+    if job.src.no_sandbox {
+        return None;
+    }
     let home = job.sandbox_home.as_path();
     if !std::fs::symlink_metadata(home).is_ok_and(|m| m.is_dir()) {
         scans.remove(&job.id);
@@ -353,6 +356,17 @@ mod tests {
         let real = tempfile::tempdir().unwrap();
         let j = unsandboxed_job(dir.path(), Format::Claude, real.path());
         plant(&j.sandbox_home, "-work-app", 4242, U, AUTO);
+        assert!(title_for(&j, &mut HashMap::new()).is_none());
+    }
+
+    #[test]
+    fn an_unsandboxed_session_without_a_real_home_ignores_its_per_run_home() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut j = job(dir.path(), Format::Claude, "claude-code", "/work/app");
+        plant(&j.sandbox_home, "-work-app", 4242, U, AUTO);
+        assert_eq!(title_for(&j, &mut HashMap::new()).unwrap().text, "Auto");
+        j.src.no_sandbox = true;
+        assert!(j.real_home.is_none());
         assert!(title_for(&j, &mut HashMap::new()).is_none());
     }
 
