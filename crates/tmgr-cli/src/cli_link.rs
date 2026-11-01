@@ -92,6 +92,24 @@ pub struct ScopeArgs {
     /// Let the leader type into attached runs (widening needs a terminal)
     #[arg(long, value_name = "BOOL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "true")]
     pub allow_attach_input: Option<bool>,
+    /// on|off. Remote control: this leader can see, attach with input to, and halt ALL runner sessions on this machine, including ones you started locally. Only sessions started by the runner are controllable; a plain `claude` outside the runner is not. Turning it on needs a terminal and a typed confirmation; turning it off is always allowed
+    #[arg(long, value_enum, value_name = "on|off")]
+    pub remote_control: Option<Switch>,
+    /// on|off. Extend remote control to sessions started with --no-sandbox or --mode bypass. Has no effect unless remote control is on. Turning it on needs a terminal and a typed confirmation; turning it off is always allowed
+    #[arg(long, value_enum, value_name = "on|off")]
+    pub include_bypass: Option<Switch>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Switch {
+    On,
+    Off,
+}
+
+impl Switch {
+    pub fn is_on(self) -> bool {
+        self == Switch::On
+    }
 }
 
 #[derive(Args)]

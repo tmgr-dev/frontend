@@ -651,6 +651,28 @@ fn agent_apply(profile: &str) -> Result<i32> {
     Ok(0)
 }
 
+pub(super) fn leader_markers(
+    paths: &tmgr_link::store::Paths,
+) -> std::collections::HashMap<String, String> {
+    tmgr_link::registry::attached_leaders(paths)
+        .into_iter()
+        .map(|(run, leaders)| {
+            let text = leaders
+                .iter()
+                .map(|l| {
+                    format!(
+                        "{} attached ({})",
+                        tmgr_core::text::sanitize_line(&l.link),
+                        if l.input { "control" } else { "view" }
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            (run, text)
+        })
+        .collect()
+}
+
 fn agents(o: &Opts) -> Result<i32> {
     let cfg = runner_config()?;
     let sessions = list_or_empty(&cfg)?;
@@ -682,7 +704,12 @@ fn agents(o: &Opts) -> Result<i32> {
             .collect();
         return Ok(emit(o, json!({"sessions": tagged, "summary": summary}), ""));
     }
-    let show_origin = sessions.iter().any(|s| origins.contains_key(&s.id));
+    let attached = tmgr_link::store::Paths::from_env()
+        .map(|p| leader_markers(&p))
+        .unwrap_or_default();
+    let show_origin = sessions
+        .iter()
+        .any(|s| origins.contains_key(&s.id) || attached.contains_key(&s.id));
     let restorable = super::restore::count(&cfg, &sessions);
     let hint = || {
         if restorable > 0 {
@@ -722,7 +749,15 @@ fn agents(o: &Opts) -> Result<i32> {
             tmgr_core::text::sanitize_line(&short_cwd(&s.cwd)),
         ];
         if show_origin {
-            row.push(origins.get(&s.id).map_or("-".into(), |o| clean(o)));
+            let mut origin = origins.get(&s.id).map_or("-".into(), |o| clean(o));
+            if let Some(marker) = attached.get(&s.id) {
+                origin = if origin == "-" {
+                    clean(marker)
+                } else {
+                    format!("{origin}, {}", clean(marker))
+                };
+            }
+            row.push(origin);
         }
         rows.push(row);
     }

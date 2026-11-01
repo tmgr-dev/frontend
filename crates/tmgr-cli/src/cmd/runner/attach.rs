@@ -610,6 +610,13 @@ impl App {
     }
 
     fn on_sessions(&mut self, list: &[SessionInfo]) {
+        let leaders = tmgr_link::store::Paths::from_env()
+            .map(|p| super::ops::leader_markers(&p))
+            .unwrap_or_default();
+        if leaders != self.view.leaders {
+            self.view.leaders = leaders;
+            self.dirty = true;
+        }
         let new = merge_pending(
             rows(list),
             &local_rows(&self.view.sessions),

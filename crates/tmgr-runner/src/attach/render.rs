@@ -415,8 +415,20 @@ fn draw_session_row(
             label.to_string()
         };
         let drawn = put(buf, name_x, y, &shown, name_style, name_room);
-        if fits {
-            put(buf, drawn, y, &format!(" (+{subs})"), dim(), suffix_w);
+        let drawn = if fits {
+            put(buf, drawn, y, &format!(" (+{subs})"), dim(), suffix_w)
+        } else {
+            drawn
+        };
+        if let Some(marker) = st.leaders.get(&row.id) {
+            let room = age_x.saturating_sub(drawn + 1);
+            let full = format!(" [{marker}]");
+            let shown = if full.width() <= usize::from(room) {
+                full
+            } else {
+                " ◉".to_string()
+            };
+            put(buf, drawn, y, &shown, Style::new().fg(colors().warn), room);
         }
         put(
             buf,
@@ -867,6 +879,12 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
             spans.push(text(&geo.shown, label_style));
             if let Some(machine) = st.machine_of(&p.session) {
                 spans.push(text(&format!(" @{machine}"), dim()));
+            }
+            if let Some(marker) = st.leaders.get(&p.session) {
+                spans.push(text(
+                    &format!(" [{marker}]"),
+                    Style::new().fg(colors().warn),
+                ));
             }
             spans.push(text(&format!(" · {}", geo.state), Style::new()));
             let mut spare = geo.spare;

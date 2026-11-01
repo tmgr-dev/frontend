@@ -83,6 +83,7 @@ impl Fx {
             .env_remove("TMGR_RUNNER_DIR")
             .env_remove("TMGR_RUN_TOKEN")
             .env_remove("TMGR_RUN_ID")
+            .env_remove("TMGR_SESSION_ID")
             .env("TMGR_RUNNER_DIR", self.home.join("no-runner"))
             .env("TMGR_CREDENTIAL_STORE", "file")
             .env("NO_COLOR", "1");
@@ -651,4 +652,246 @@ fn files_written_by_the_cli_are_private() {
     assert_eq!(mode(&f.paths.audit_dir()), 0o700);
     assert_eq!(mode(&Audit::new(&f.paths.audit_dir()).current()), 0o600);
     assert_eq!(mode(&f.paths.config.join("credentials.json")), 0o600);
+}
+
+fn scope_flags(f: &Fx) -> (bool, bool) {
+    let s = Store::load(&f.paths).unwrap().leaders["laptop"]
+        .scope
+        .clone();
+    (s.remote_control, s.include_bypass)
+}
+
+fn links_bytes(f: &Fx) -> Vec<u8> {
+    std::fs::read(f.paths.links_toml()).unwrap()
+}
+
+#[test]
+fn enabling_remote_control_or_include_bypass_is_refused_in_an_agent_session_with_exit_5() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let before = links_bytes(&f);
+    for flag in ["--remote-control", "--include-bypass"] {
+        let out = f
+            .tmgr()
+            .env("TMGR_SESSION_ID", "s_x")
+            .args(["link", "scope", "laptop", flag, "on", "--yes"])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(5), "{flag}: {}", err_text(&out));
+        assert_eq!(links_bytes(&f), before, "{flag}");
+    }
+}
+
+#[test]
+fn a_mixed_call_that_turns_one_flag_on_is_still_guarded() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            include_bypass: true,
+            ..f.scope()
+        },
+    );
+    let before = links_bytes(&f);
+    for args in [
+        &["--remote-control", "on", "--include-bypass", "off"][..],
+        &["--remote-control", "on", "--max", "1"][..],
+    ] {
+        let mut a = vec!["link", "scope", "laptop"];
+        a.extend_from_slice(args);
+        let out = f
+            .tmgr()
+            .env("TMGR_SESSION_ID", "s_x")
+            .args(&a)
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(5), "{args:?}");
+        let out = f.tmgr().args(&a).output().unwrap();
+        assert_eq!(out.status.code(), Some(10), "{args:?}");
+        assert_eq!(links_bytes(&f), before, "{args:?}");
+    }
+}
+
+#[test]
+fn enabling_remote_control_without_a_terminal_exits_10_and_changes_nothing() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let before = links_bytes(&f);
+    for flag in ["--remote-control", "--include-bypass"] {
+        let out = f
+            .tmgr()
+            .args(["link", "scope", "laptop", flag, "on", "--yes"])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(10), "{flag}: {}", err_text(&out));
+        assert_eq!(links_bytes(&f), before, "{flag}");
+    }
+}
+
+#[test]
+fn turning_remote_control_or_include_bypass_off_works_from_an_agent_session_without_a_terminal() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            include_bypass: true,
+            ..f.scope()
+        },
+    );
+    for (flag, want) in [
+        ("--include-bypass", (true, false)),
+        ("--remote-control", (false, false)),
+    ] {
+        let out = f
+            .tmgr()
+            .env("TMGR_SESSION_ID", "s_x")
+            .args(["link", "scope", "laptop", flag, "off"])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(0), "{flag}: {}", err_text(&out));
+        assert_eq!(scope_flags(&f), want, "{flag}");
+    }
+}
+
+#[test]
+fn old_links_files_parse_as_off_and_new_links_start_off() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let raw = String::from_utf8(links_bytes(&f)).unwrap();
+    assert!(!raw.contains("remote_control") && !raw.contains("include_bypass"));
+    assert_eq!(scope_flags(&f), (false, false));
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--json"])
+        .output()
+        .unwrap();
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"]["scope"]["remote_control"], false);
+    assert_eq!(v["data"]["scope"]["include_bypass"], false);
+    assert_eq!(v["data"]["scope"]["allow_bypass"], false);
+}
+
+#[test]
+fn trust_has_no_remote_control_flags() {
+    let f = fx();
+    for flag in ["--remote-control", "--include-bypass"] {
+        let out = f
+            .tmgr()
+            .args([
+                "link",
+                "trust",
+                "ssh-ed25519",
+                "AAAA",
+                "--as",
+                "leader",
+                "--name",
+                "l",
+                flag,
+                "on",
+            ])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(2), "{flag}");
+        assert!(err_text(&out).contains("unexpected argument"), "{flag}");
+    }
+}
+
+#[test]
+fn remote_control_values_must_be_explicit_on_or_off() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let before = links_bytes(&f);
+    for args in [
+        &["--remote-control", "maybe"][..],
+        &["--remote-control"][..],
+        &["--include-bypass", "true"][..],
+    ] {
+        let mut a = vec!["link", "scope", "laptop"];
+        a.extend_from_slice(args);
+        let out = f.tmgr().args(&a).output().unwrap();
+        assert_eq!(out.status.code(), Some(2), "{args:?}: {}", err_text(&out));
+        assert_eq!(links_bytes(&f), before);
+    }
+}
+
+fn fake_attached_worker(f: &Fx, bypass: bool) -> std::process::Child {
+    let child = std::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .unwrap();
+    let dir = f.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&dir).unwrap();
+    let rec = json!({
+        "pid": child.id(),
+        "start": tmgr_link::registry::process_start(child.id()).unwrap(),
+        "enrollment": ENR,
+        "attached": {"run": "s_abc", "input": true, "remote": true, "bypass": bypass},
+    });
+    std::fs::write(
+        dir.join(format!("laptop.{}.json", child.id())),
+        rec.to_string(),
+    )
+    .unwrap();
+    child
+}
+
+#[test]
+fn turning_remote_control_off_stops_remote_attach_workers_and_audits_it() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            ..f.scope()
+        },
+    );
+    let mut worker = fake_attached_worker(&f, false);
+    let out = f
+        .tmgr()
+        .args([
+            "link",
+            "scope",
+            "laptop",
+            "--remote-control",
+            "off",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    assert!(worker.wait().is_ok_and(|s| !s.success()));
+    let entries = Audit::new(&f.paths.audit_dir()).tail(10).unwrap();
+    let closed = entries
+        .iter()
+        .find(|e| e["event"] == "link.scope.closed")
+        .expect("closed entry");
+    assert_eq!(closed["link"], "laptop");
+    assert_eq!(closed["signalled"], 1);
+    assert_eq!(closed["survivors"], 0);
+}
+
+#[test]
+fn turning_only_include_bypass_off_stops_bypass_attaches_and_spares_the_rest() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            include_bypass: true,
+            ..f.scope()
+        },
+    );
+    let mut bypass = fake_attached_worker(&f, true);
+    let mut plain = fake_attached_worker(&f, false);
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--include-bypass", "off"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    assert!(bypass.wait().is_ok_and(|s| !s.success()));
+    assert!(plain.try_wait().unwrap().is_none());
+    plain.kill().unwrap();
+    plain.wait().unwrap();
 }

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Experimental (`tmgr link`): remote control over the link. On the follower, `tmgr link scope <leader> --remote-control on|off` lets that leader see, attach with input to, and halt ALL runner sessions on this machine, including ones you started locally; from the leader, `tmgr attach --on <follower>` and `tmgr agents --host <follower>` then show them (FROM column: `leader` or `local`). `--include-bypass on|off` extends this to sessions started with `--no-sandbox` or `--mode bypass`; it has no effect unless remote control is on. Both flags default to off, `tmgr link trust` has no such flags, and the values must be written as `on` or `off`.
+- Turning either flag on needs a terminal, is refused inside agent sessions, never accepts `--yes`, and asks for a second typed confirmation (`full access`) that says the leader gets full access to this machine with your tokens and keys (and, for include-bypass, that sandbox-free sessions become reachable). Turning them off is always allowed, also from an agent session: open remote attaches are closed within a couple of seconds and `tmgr link audit` shows `link.scope.closed`.
+- Only sessions started by the runner are controllable; a plain `claude` outside the runner is not. Several attaches to one session share one screen: input from each interleaves without locking, opening an attach with input resizes the session and the last resizer wins, and typing locally resizes it back. A remote attach ends after 1 hour or 45 seconds without activity and attaching again works; the permission itself does not expire. At most 4 workers run per link. A runner daemon too old to report session modes hides other sessions from the leader until you run `tmgr runner restart`.
+- While a leader is attached, `tmgr attach` shows `<leader> attached (control)` or `(view)` on that session's pane title and sidebar row, and `tmgr agents` shows it in the ORIGIN column. The audit log records connect, input (that input happened, never what was typed) and halt with the link name and session id.
+- The server and the web app are not involved: control exists only over the link, through SSH between the two machines.
+- On the leader, `tmgr attach --on <follower>` without a session no longer picks a session started on the follower itself; with several candidates it asks for an explicit id. `tmgr halt --on` refuses a name shared by several runs.
+
 ## 1.0.56
 
 - The runner now checks the reading choice itself before it forks a Claude Code session. It is the same choice you set with `tmgr usage consent allow` or in TMGR desktop under AI Usage. Without it the fork is refused and the message says how to allow it. This takes effect after `tmgr runner restart`, which keeps your sessions but closes open `tmgr attach` windows, so attach again afterwards.

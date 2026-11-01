@@ -29,6 +29,61 @@ pub(super) struct RunView {
     pub state: State,
     #[serde(default)]
     pub task: Option<String>,
+    #[serde(default)]
+    pub via: Option<String>,
+}
+
+impl RunView {
+    fn foreign(&self) -> bool {
+        self.via.as_deref() == Some("remote_control")
+    }
+}
+
+fn origin(r: &RunView) -> &'static str {
+    if r.foreign() {
+        "local"
+    } else {
+        "leader"
+    }
+}
+
+fn active(r: &RunView) -> bool {
+    r.state.kind != StateKind::Exited
+}
+
+fn default_target(runs: &[RunView]) -> Option<&RunView> {
+    let owned_active: Vec<&RunView> = runs.iter().filter(|r| !r.foreign() && active(r)).collect();
+    let strangers = runs.iter().any(RunView::foreign);
+    match (owned_active.len(), strangers) {
+        (1, _) | (_, false) if !owned_active.is_empty() => owned_active.last().copied(),
+        (0, false) => runs.last(),
+        _ => None,
+    }
+}
+
+fn find_by_key<'a>(runs: &'a [RunView], key: &str) -> Result<Option<&'a RunView>> {
+    if let Some(r) = runs.iter().find(|r| r.id == key) {
+        return Ok(Some(r));
+    }
+    let named: Vec<&RunView> = runs.iter().filter(|r| r.name == key).collect();
+    let live: Vec<&RunView> = named.iter().copied().filter(|r| active(r)).collect();
+    let pool = if live.is_empty() { named } else { live };
+    match pool.as_slice() {
+        [] => {}
+        [one] => return Ok(Some(one)),
+        many => {
+            let ids: Vec<String> = many.iter().map(|r| clean(&r.id)).collect();
+            return Err(Error::usage(format!(
+                "{} runs are named {:?}: {}",
+                many.len(),
+                clean(key),
+                ids.join(", ")
+            ))
+            .hint("pass the id instead of the name"));
+        }
+    }
+    let mut hits = runs.iter().filter(|r| r.id.starts_with(key));
+    Ok(hits.next().filter(|_| hits.next().is_none()))
 }
 
 fn clean(s: &str) -> String {
@@ -167,11 +222,11 @@ pub fn agents(o: &Opts, link: &str) -> Result<i32> {
     }
     if runs.is_empty() {
         let bin = super::bin();
-        println!("No runs from this leader on {link}. Start one with: {bin} run <REF> --on {link} --agent <profile>");
+        println!("No runs from this leader or under remote control on {link}. Start one with: {bin} run <REF> --on {link} --agent <profile>");
         return Ok(0);
     }
     let now = now_ms();
-    let mut rows = vec![["NAME", "STATE", "ID", "AGENT", "TASK"]
+    let mut rows = vec![["NAME", "STATE", "ID", "FROM", "AGENT", "TASK"]
         .map(String::from)
         .to_vec()];
     for r in runs.iter().take(MAX_ROWS) {
@@ -180,6 +235,7 @@ pub fn agents(o: &Opts, link: &str) -> Result<i32> {
             cell(&r.name),
             format!("{} {since}", label(r)),
             cell(&r.id),
+            origin(r).to_string(),
             cell(r.agent.as_deref().unwrap_or("")),
             cell(r.task.as_deref().unwrap_or("")),
         ]);
@@ -198,22 +254,18 @@ pub fn attach(link: &str, a: &AttachArgs) -> Result<i32> {
     let (mut client, _key) = dial(link)?;
     let runs = list_runs(&mut client)?;
     let target = match &a.session {
-        Some(key) => runs
-            .iter()
-            .find(|r| r.id == *key)
-            .or_else(|| runs.iter().find(|r| r.name == *key))
-            .or_else(|| {
-                let mut hits = runs.iter().filter(|r| r.id.starts_with(key.as_str()));
-                hits.next().filter(|_| hits.next().is_none())
-            }),
-        None => runs
-            .iter()
-            .rev()
-            .find(|r| r.state.kind != StateKind::Exited)
-            .or(runs.last()),
+        Some(key) => find_by_key(&runs, key)?,
+        None if runs.is_empty() => None,
+        None => Some(default_target(&runs).ok_or_else(|| {
+            Error::usage("several runs are available, or none of them started from this leader")
+                .hint(format!(
+                    "pick one: {} agents --host {link}, then attach <id> --on {link}",
+                    super::bin()
+                ))
+        })?),
     }
     .ok_or_else(|| {
-        Error::not_found("no run of this leader on the follower matches")
+        Error::not_found("no run on the follower matches")
             .hint(format!("{} agents --host {link}", super::bin()))
     })?
     .clone();
@@ -232,16 +284,11 @@ pub fn attach(link: &str, a: &AttachArgs) -> Result<i32> {
 pub fn halt(o: &Opts, link: &str, a: &HaltArgs) -> Result<i32> {
     let (mut client, _key) = dial(link)?;
     let runs = list_runs(&mut client)?;
-    let target = runs
-        .iter()
-        .find(|r| r.id == a.session)
-        .or_else(|| runs.iter().rev().find(|r| r.name == a.session))
+    let target = find_by_key(&runs, &a.session)?
+        .filter(|r| r.id == a.session || r.name == a.session)
         .ok_or_else(|| {
-            Error::not_found(format!(
-                "no run {:?} of this leader on {link}",
-                clean(&a.session)
-            ))
-            .hint(format!("{} agents --host {link}", super::bin()))
+            Error::not_found(format!("no run {:?} on {link}", clean(&a.session)))
+                .hint(format!("{} agents --host {link}", super::bin()))
         })?;
     let v = check(client.call("runs.halt", json!({"run": target.id}))?)?;
     Ok(emit(
@@ -249,4 +296,70 @@ pub fn halt(o: &Opts, link: &str, a: &HaltArgs) -> Result<i32> {
         json!({"link": link, "result": v}),
         format!("{} stopped on {link}", clean(&target.name)),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run(id: &str, name: &str, via: Option<&str>, exited: bool) -> RunView {
+        serde_json::from_value(json!({
+            "id": id, "name": name, "via": via,
+            "state": {"kind": if exited { "exited" } else { "working" }, "since_ms": 0},
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn default_attach_target_never_picks_a_run_started_locally() {
+        let only_foreign = [run("s_aaaaaaaaaa", "a", Some("remote_control"), false)];
+        assert!(default_target(&only_foreign).is_none());
+        let two_foreign_one_owned = [
+            run("s_aaaaaaaaaa", "a", Some("remote_control"), false),
+            run("s_bbbbbbbbbb", "b", None, false),
+            run("s_cccccccccc", "c", Some("remote_control"), false),
+        ];
+        assert_eq!(
+            default_target(&two_foreign_one_owned).unwrap().id,
+            "s_bbbbbbbbbb"
+        );
+        let two_owned_with_foreign = [
+            run("s_aaaaaaaaaa", "a", None, false),
+            run("s_bbbbbbbbbb", "b", None, false),
+            run("s_cccccccccc", "c", Some("remote_control"), false),
+        ];
+        assert!(default_target(&two_owned_with_foreign).is_none());
+    }
+
+    #[test]
+    fn old_followers_without_via_keep_the_newest_active_default() {
+        let runs = [
+            run("s_aaaaaaaaaa", "a", None, false),
+            run("s_bbbbbbbbbb", "b", None, false),
+            run("s_cccccccccc", "c", None, true),
+        ];
+        assert_eq!(default_target(&runs).unwrap().id, "s_bbbbbbbbbb");
+    }
+
+    #[test]
+    fn an_ambiguous_name_is_refused_and_an_id_still_works() {
+        let runs = [
+            run("s_aaaaaaaaaa", "dev", None, false),
+            run("s_bbbbbbbbbb", "dev", Some("remote_control"), false),
+        ];
+        let e = find_by_key(&runs, "dev").unwrap_err();
+        assert!(e.message.contains("2 runs are named"));
+        assert_eq!(
+            find_by_key(&runs, "s_bbbbbbbbbb").unwrap().unwrap().id,
+            "s_bbbbbbbbbb"
+        );
+        let one_live = [
+            run("s_aaaaaaaaaa", "dev", None, true),
+            run("s_bbbbbbbbbb", "dev", None, false),
+        ];
+        assert_eq!(
+            find_by_key(&one_live, "dev").unwrap().unwrap().id,
+            "s_bbbbbbbbbb"
+        );
+    }
 }

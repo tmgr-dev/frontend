@@ -9480,3 +9480,21 @@ fn stop_on_an_exited_linked_run_does_not_offer_the_local_remove_key() {
     assert_eq!(v.notice.as_deref(), Some("already exited"));
     assert!(v.confirm.is_none());
 }
+
+#[test]
+fn pane_title_and_sidebar_show_who_is_attached() {
+    let mut v = ViewState::new(four(), "a");
+    v.width = 140;
+    let quiet = draw(&v, &screens(), 140, 22);
+    assert!(!quiet.contains("attached"));
+    v.leaders
+        .insert("a".into(), "macbook attached (control)".into());
+    let shown = draw(&v, &screens(), 140, 22);
+    assert!(shown.contains("macbook attached (control)"));
+    assert!(shown.contains("claude ◉"));
+    v.leaders
+        .insert("a".into(), "macbook attached (view)".into());
+    let shown = draw(&v, &screens(), 140, 22);
+    assert!(shown.contains("macbook attached (view)"));
+    assert!(!shown.contains("attached (control)"));
+}

@@ -1,5 +1,5 @@
 use crate::cli_link::{
-    AddArgs, AuditArgs, InitArgs, LinkCommand, RevokeArgs, ScopeArgs, TrustArgs,
+    AddArgs, AuditArgs, InitArgs, LinkCommand, RevokeArgs, ScopeArgs, Switch, TrustArgs,
 };
 use crate::ctx::Ctx;
 use crate::out::{table, Output};
@@ -15,6 +15,7 @@ use tmgr_link::grammar;
 use tmgr_link::jump;
 use tmgr_link::leader::{self, Client, SshTarget};
 use tmgr_link::privileged;
+use tmgr_link::registry::{self, Terminated};
 use tmgr_link::scope::Scope;
 use tmgr_link::sshd::{self, Verdict};
 use tmgr_link::store::{Follower, Paths, Store};
@@ -184,7 +185,7 @@ fn add(ctx: &Ctx, paths: &Paths, a: &AddArgs) -> Result<Output> {
 }
 
 fn scope_json(s: &Scope) -> Value {
-    json!({"repos": s.repos, "agents": s.agents, "models": s.models, "max": s.max, "from": s.from, "allow_attach_input": s.allow_attach_input, "allow_bypass": false})
+    json!({"repos": s.repos, "agents": s.agents, "models": s.models, "max": s.max, "from": s.from, "allow_attach_input": s.allow_attach_input, "remote_control": s.remote_control, "include_bypass": s.include_bypass, "allow_bypass": false})
 }
 
 fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
@@ -376,8 +377,8 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
         max: a.max,
         from,
         allow_attach_input: a.allow_attach_input,
-        remote_control: None,
-        include_bypass: None,
+        remote_control: a.remote_control.map(Switch::is_on),
+        include_bypass: a.include_bypass.map(Switch::is_on),
     };
     let plan = follower::plan_scope(paths, &a.name, &input)?;
     let changes = a.repos.is_some()
@@ -385,7 +386,9 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
         || a.models.is_some()
         || a.max.is_some()
         || a.from.is_some()
-        || a.allow_attach_input.is_some();
+        || a.allow_attach_input.is_some()
+        || a.remote_control.is_some()
+        || a.include_bypass.is_some();
     if !changes {
         return Ok(Output::new(
             json!({"link": plan.name, "scope": scope_json(&plan.new)}),
@@ -402,9 +405,19 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
                 plan.name, plan.name
             ),
         )?;
+        for warning in full_access_warnings(&plan.old, &plan.new) {
+            eprintln!("{warning}");
+        }
+        if !full_access_warnings(&plan.old, &plan.new).is_empty() {
+            privileged::confirm_typed_stdio(
+                FULL_ACCESS_WORD,
+                &format!("Type {FULL_ACCESS_WORD} to give {} this access:", plan.name),
+            )?;
+        }
     }
     let bin = std::env::current_exe()?;
     follower::apply_scope(paths, &plan, &bin)?;
+    let closed = close_attached(paths, &plan.name, &plan.old, &plan.new)?;
     let kind = if plan.widening {
         "widened"
     } else if plan.old == plan.new {
@@ -412,15 +425,90 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
     } else {
         "narrowed"
     };
+    let mut human = format!(
+        "{} scope {kind}: {}",
+        ctx.style.good("✓"),
+        plan.new.summary()
+    );
+    if plan.new.include_bypass && !plan.new.remote_control {
+        human.push_str("\nnote: include-bypass has no effect until remote control is on");
+    }
+    if let Some(t) = &closed {
+        human.push_str(&format!(
+            "\nclosed {} open remote attach(es), {} still running",
+            t.signalled, t.survivors
+        ));
+    }
     Ok(Output::new(
-        json!({"link": plan.name, "change": kind, "scope": scope_json(&plan.new)}),
-        format!(
-            "{} scope {kind}: {}",
-            ctx.style.good("✓"),
-            plan.new.summary()
-        ),
+        json!({
+            "link": plan.name,
+            "change": kind,
+            "scope": scope_json(&plan.new),
+            "closed": closed.as_ref().map(|t| json!({"signalled": t.signalled, "survivors": t.survivors})),
+        }),
+        human,
     ))
 }
+
+const FULL_ACCESS_WORD: &str = "full access";
+
+fn full_access_warnings(old: &Scope, new: &Scope) -> Vec<String> {
+    let mut out = Vec::new();
+    if new.remote_control && !old.remote_control {
+        out.push(
+            "Remote control gives this leader FULL ACCESS to this machine with your tokens and keys: it can see, type into and halt every runner session here, including ones you started yourself."
+                .to_string(),
+        );
+    }
+    if new.include_bypass && !old.include_bypass {
+        out.push(
+            "Include-bypass makes sandbox-free sessions (--no-sandbox, --mode bypass) reachable too: full access to this machine with your tokens and keys, without the sandbox."
+                .to_string(),
+        );
+        if !new.remote_control {
+            out.push("It has no effect until remote control is on.".to_string());
+        }
+    }
+    out
+}
+
+fn close_attached(
+    paths: &Paths,
+    name: &str,
+    old: &Scope,
+    new: &Scope,
+) -> Result<Option<Terminated>> {
+    let remote_off = old.remote_control && !new.remote_control;
+    let bypass_off = old.include_bypass && !new.include_bypass;
+    if !remote_off && !bypass_off {
+        return Ok(None);
+    }
+    let attached = registry::attached_leaders(paths)
+        .values()
+        .any(|l| l.iter().any(|l| l.link == name));
+    if !attached {
+        return Ok(None);
+    }
+    std::thread::sleep(CLOSE_WAIT);
+    let t = registry::terminate_where(paths, name, CLOSE_GRACE, &|_, a| {
+        a.is_some_and(|a| a.remote && (remote_off || a.bypass))
+    })?;
+    Audit::new(&paths.audit_dir()).append(
+        "link.scope.closed",
+        json!({"link": name, "signalled": t.signalled, "survivors": t.survivors}),
+    )?;
+    if t.survivors > 0 {
+        return Err(Error::internal(format!(
+            "{} remote attach worker(s) of {name} did not stop",
+            t.survivors
+        ))
+        .hint(format!("tmgr link revoke {name}")));
+    }
+    Ok(Some(t))
+}
+
+const CLOSE_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
+const CLOSE_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
 
 fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
     let name = a.name.as_str();
@@ -649,6 +737,9 @@ fn format_entry(ctx: &Ctx, e: &Value) -> String {
         let what = format!("{} {args}", text("method"));
         return format!("{when} from {link}  {}  {verdict}", what.trim_end());
     }
+    if let Some(line) = remote_line(e, &when, &link) {
+        return line;
+    }
     let rest: Vec<String> = e
         .as_object()
         .into_iter()
@@ -664,4 +755,86 @@ fn format_entry(ctx: &Ctx, e: &Value) -> String {
     format!("{when} {} {link} {}", text("event"), rest.join(" "))
         .trim_end()
         .to_string()
+}
+
+fn remote_line(e: &Value, when: &str, link: &str) -> Option<String> {
+    let text = |k: &str| sanitize_line(e.get(k).and_then(Value::as_str).unwrap_or(""));
+    match text("event").as_str() {
+        "worker.attach_input" => {
+            let session = ["run", "session", "id"]
+                .iter()
+                .map(|k| text(k))
+                .find(|v| !v.is_empty())
+                .unwrap_or_default();
+            let via = if text("via") == "remote_control" {
+                " (remote control)"
+            } else {
+                ""
+            };
+            Some(
+                format!("{when} worker.attach_input {link} input sent to session {session}{via}")
+                    .trim_end()
+                    .to_string(),
+            )
+        }
+        "link.scope.closed" => {
+            let num = |k: &str| e.get(k).and_then(Value::as_u64).unwrap_or(0);
+            Some(format!(
+                "{when} link.scope.closed {link} remote attaches stopped={} still-running={}",
+                num("signalled"),
+                num("survivors")
+            ))
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attach_input_audit_names_link_and_session_but_never_content() {
+        let e = json!({"event": "worker.attach_input", "link": "macbook", "run": "s_abc", "via": "remote_control", "bytes": 12, "data": "SECRET"});
+        let line = remote_line(&e, "t", "macbook").unwrap();
+        assert!(line.contains("macbook"));
+        assert!(line.contains("s_abc"));
+        assert!(line.contains("remote control"));
+        assert!(!line.contains("SECRET"));
+    }
+
+    #[test]
+    fn scope_closed_audit_shows_the_link() {
+        let e = json!({"event": "link.scope.closed", "link": "macbook", "signalled": 2, "survivors": 0});
+        let line = remote_line(&e, "t", "macbook").unwrap();
+        assert!(line.contains("macbook"));
+        assert!(line.contains("stopped=2"));
+    }
+
+    #[test]
+    fn enabling_remote_control_warns_about_full_access_and_bypass_about_the_sandbox() {
+        let off = Scope::default();
+        let remote = Scope {
+            remote_control: true,
+            ..Default::default()
+        };
+        let both = Scope {
+            remote_control: true,
+            include_bypass: true,
+            ..Default::default()
+        };
+        let text = full_access_warnings(&off, &remote).join(" ");
+        assert!(text.contains("FULL ACCESS") && text.contains("tokens and keys"));
+        assert!(!text.contains("sandbox"));
+        let text = full_access_warnings(&remote, &both).join(" ");
+        assert!(text.contains("sandbox-free") && text.contains("tokens and keys"));
+        assert!(full_access_warnings(&both, &off).is_empty());
+        let alone = Scope {
+            include_bypass: true,
+            ..Default::default()
+        };
+        assert!(full_access_warnings(&off, &alone)
+            .join(" ")
+            .contains("no effect until remote control is on"));
+    }
 }
