@@ -18,6 +18,7 @@ import {
 	unassignPersona,
 	withPersonaAssignees,
 } from './personaAssignees';
+import { requirePersonaPermission } from './personaGate';
 import { LocalRouter } from './router';
 import { addRoutineRoutes } from './routines/routes';
 import { isRoutineId, updateRoutineTaskFields } from './routines/service';
@@ -1342,7 +1343,7 @@ export const createLocalApi = () => {
 			201,
 		)
 		.add('GET', 'files/:id(\\d+)', async ({ ctx, params }) =>
-			fileJson(await loadFile(ctx, Number(params.id)), ctx),
+			fileJson(await loadReadableFile(ctx, Number(params.id)), ctx),
 		)
 		.add('GET', 'files/:id(\\d+)/signed-url', async ({ ctx, params }) => {
 			const file = await loadFile(ctx, Number(params.id));
@@ -1352,7 +1353,7 @@ export const createLocalApi = () => {
 			};
 		})
 		.add('GET', 'files/:id(\\d+)/content', async ({ ctx, params }) => {
-			const file = await loadFile(ctx, Number(params.id));
+			const file = await loadReadableFile(ctx, Number(params.id));
 			return new LocalRaw(await ctx.files.read(file.file_path));
 		})
 		.add('DELETE', 'files/:id(\\d+)', async ({ ctx, params }) => {
@@ -2002,6 +2003,12 @@ const loadFile = async (ctx: LocalContext, id: number) => {
 	]);
 	if (!row) throw notFound('File');
 	return row;
+};
+
+const loadReadableFile = async (ctx: LocalContext, id: number) => {
+	const file = await loadFile(ctx, id);
+	if (file.page_id != null) await requirePersonaPermission(ctx, 'pages:read');
+	return file;
 };
 
 const commentJson = (row: any, ctx: LocalContext) => ({

@@ -234,3 +234,19 @@ export const checkPersonaAccess = async (
 		);
 	}
 };
+
+export const requirePersonaPermission = async (
+	ctx: LocalContext,
+	permission: PersonaPermission,
+): Promise<void> => {
+	if (ctx.actor?.kind !== 'persona') return;
+	const grant = await checkPersonaIdentity(ctx);
+	const permissions: string[] = JSON.parse(grant.permissions || '[]');
+	if (!permissions.includes(permission)) {
+		throw new LocalHttpError(
+			403,
+			`Persona is missing permission ${permission}`,
+			'PERMISSION_MISSING',
+		);
+	}
+};
