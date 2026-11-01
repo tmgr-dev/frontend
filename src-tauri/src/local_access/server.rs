@@ -261,7 +261,7 @@ async fn handle_sse(
     }
 
     let mut ping = tokio::time::interval(deps.sse_ping_interval);
-    ping.tick().await; // the first tick fires immediately; skip it so ping really means "every 15s"
+    ping.tick().await; // the first tick fires immediately
     loop {
       tokio::select! {
         _ = ping.tick() => {
@@ -281,10 +281,6 @@ async fn handle_sse(
               if pending.is_empty() {
                 continue;
               }
-              if deps.tokens.verify(&secret, (deps.now_epoch)()).is_err() {
-                let _ = tx.send(sse_revoked_frame());
-                break;
-              }
               let permissions = match fetch_grant(&deps, &token, &next_id).await {
                 Ok(permissions) => permissions,
                 Err(()) => {
@@ -292,6 +288,10 @@ async fn handle_sse(
                   break;
                 }
               };
+              if deps.tokens.verify(&secret, (deps.now_epoch)()).is_err() {
+                let _ = tx.send(sse_revoked_frame());
+                break;
+              }
               let mut closed = false;
               for entry in pending {
                 last_seq = entry.seq;

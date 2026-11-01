@@ -364,6 +364,7 @@ impl TokenStore {
     }
     token.revoked_at = Some(epoch_to_iso(now_epoch));
     self.persist(&tokens)?;
+    drop(tokens);
     self.delete_secret(id);
     Ok(true)
   }
@@ -399,6 +400,7 @@ impl TokenStore {
     }
     if !revoked_ids.is_empty() {
       self.persist(&tokens)?;
+      drop(tokens);
       for id in &revoked_ids {
         self.delete_secret(id);
       }
@@ -679,7 +681,7 @@ mod tests {
     let (info, _) = store.issue(issue_params("local-personal"), 0).unwrap();
     assert!(secrets.get(&info.id).unwrap().is_some());
     assert!(store.revoke(&info.id, 10).unwrap());
-    assert_eq!(secrets.get(&info.id).unwrap(), None);
+    assert!(secrets.get(&info.id).unwrap().is_none());
   }
 
   #[test]
@@ -689,7 +691,7 @@ mod tests {
     let (a, _) = store.issue(issue_params("ws-a"), 0).unwrap();
     let (b, _) = store.issue(issue_params("ws-b"), 0).unwrap();
     assert_eq!(store.revoke_all(None, None, Some("ws-a"), 10).unwrap(), 1);
-    assert_eq!(secrets.get(&a.id).unwrap(), None);
+    assert!(secrets.get(&a.id).unwrap().is_none());
     assert!(secrets.get(&b.id).unwrap().is_some());
   }
 
@@ -701,7 +703,7 @@ mod tests {
     assert!(store.revoke(&a.id, 10).unwrap());
     assert_eq!(store.verify(&secret, 20).unwrap_err(), TokenError::Revoked);
     assert_eq!(store.revoke_all(None, None, Some("ws-b"), 10).unwrap(), 1);
-    assert_eq!(store.copy_secret(&b.id, 20).unwrap(), None);
+    assert!(store.copy_secret(&b.id, 20).unwrap().is_none());
   }
 
   #[test]
@@ -710,13 +712,13 @@ mod tests {
     let store = store_with_secrets("copy-live-only", secrets.clone());
     let (live, live_secret) = store.issue(issue_params("ws-a"), 1000).unwrap();
     let expires_at = 1000 + 90 * 86_400;
-    assert_eq!(store.copy_secret(&live.id, 2000).unwrap(), Some(live_secret.clone()));
-    assert_eq!(store.copy_secret(&live.id, expires_at).unwrap(), None);
-    assert_eq!(store.copy_secret("lt_missing", 2000).unwrap(), None);
+    assert!(store.copy_secret(&live.id, 2000).unwrap().is_some_and(|secret| secret == live_secret));
+    assert!(store.copy_secret(&live.id, expires_at).unwrap().is_none());
+    assert!(store.copy_secret("lt_missing", 2000).unwrap().is_none());
 
     let (revoked, _) = store.issue(issue_params("ws-b"), 1000).unwrap();
     store.revoke(&revoked.id, 1500).unwrap();
     secrets.set(&revoked.id, "leftover").unwrap();
-    assert_eq!(store.copy_secret(&revoked.id, 2000).unwrap(), None);
+    assert!(store.copy_secret(&revoked.id, 2000).unwrap().is_none());
   }
 }
