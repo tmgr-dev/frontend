@@ -1395,28 +1395,23 @@ describe('routines', () => {
 		).toBe('INVALID_PARAMS');
 	});
 
-	it('refuses every routines.* call outside a local workspace, before touching the api', async () => {
+	it('serves routines.* calls in a shared workspace through the api', async () => {
 		const { broker, api } = setup(['routines:read', 'routines:write'], {
 			workspace: { id: -7, code: 'shared', name: 'Shared', kind: 'cloud' },
 		});
-		expect(
-			await code(
-				broker.call('routines.list', { from: '2026-09-01', to: '2026-09-02' }),
-			),
-		).toBe('NOT_SUPPORTED');
-		expect(await code(broker.call('routines.get', { id: 1 }))).toBe(
-			'NOT_SUPPORTED',
-		);
-		expect(await code(broker.call('routines.create', { title: 'x' }))).toBe(
-			'NOT_SUPPORTED',
-		);
-		expect(await code(broker.call('routines.complete', { id: 1 }))).toBe(
-			'NOT_SUPPORTED',
-		);
-		expect(await code(broker.call('routines.convertToTask', { id: 1 }))).toBe(
-			'NOT_SUPPORTED',
-		);
-		expect(api.calls).toEqual([]);
+		await broker.call('routines.list', {
+			from: '2026-09-01',
+			to: '2026-09-02',
+		});
+		await broker.call('routines.get', { id: 1 });
+		await broker.call('routines.create', { title: 'x' });
+		await broker.call('routines.complete', { id: 1, date: '2026-09-01' });
+		expect(api.calls.map((call) => call[0])).toEqual([
+			'listRoutines',
+			'getRoutine',
+			'createRoutine',
+			'completeRoutine',
+		]);
 	});
 
 	it('convertToTask needs both routines:write and tasks:write', async () => {

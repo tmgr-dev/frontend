@@ -569,3 +569,121 @@ describe('pages (API 1.5)', () => {
 		});
 	});
 });
+
+describe('routines', () => {
+	const instance = {
+		id: 5,
+		task_id: 3,
+		scheduled_for: '2026-11-01T10:00:00Z',
+		status: 'PENDING',
+		scheduled_date: '2026-11-01',
+		scheduled_time: '10:00:00',
+	};
+	const routineRow = { id: 3, title: 'r', description: null };
+	const cloudAnswer = (method: string, url: string) => {
+		if (url === 'daily-routines/expand')
+			return [
+				{
+					task_id: 3,
+					instance_id: 5,
+					title: 'r',
+					date: '2026-11-01',
+					time: '10:00',
+					status: 'pending',
+					completed: false,
+					virtual: false,
+					frequency: null,
+				},
+			];
+		if (url === 'daily-routines/tasks/3' && method === 'get')
+			return { data: routineRow };
+		if (url === 'daily-routines/tasks/3') return routineRow;
+		if (url === 'daily-routines/tasks/3/instances') return [instance];
+		if (url === 'daily-routines/tasks/3/instances/virtual') return instance;
+		if (url.startsWith('daily-routines/tasks/3/instances/5/'))
+			return { ...instance, status: 'COMPLETED' };
+		return { data: routineRow };
+	};
+	const cloudApi = () => {
+		const { http, seen } = recording(cloudAnswer);
+		return {
+			seen,
+			api: createDataApi(http, 'acme.r', 'acme.r', 'R', true, 7),
+		};
+	};
+
+	it('lists with the token workspace in the query and unwraps the bare array', async () => {
+		const { api, seen } = cloudApi();
+		const rows = await api.listRoutines('2026-11-01', '2026-11-02');
+		expect(seen[0]).toContain('"workspace_id":7');
+		expect(rows).toMatchObject([{ routineId: 3, instanceId: 5 }]);
+	});
+
+	it('creates with workspace_id in the body, plain and recurring', async () => {
+		const { api, seen } = cloudApi();
+		const plain = await api.createRoutine({
+			title: 'n',
+			description: null,
+			date: null,
+			time: null,
+		});
+		await api.createRoutine({
+			title: 'n',
+			description: null,
+			date: '2026-11-01',
+			time: '10:00',
+		});
+		expect(plain.id).toBe(3);
+		expect(seen[0]).toContain('"workspace_id":7');
+		expect(seen[1]).toContain('POST daily-routines/tasks/recurring');
+		expect(seen[1]).toContain('"workspace_id":7');
+	});
+
+	it('gets the wrapped routine, lists bare instances and updates without a workspace field', async () => {
+		const { api, seen } = cloudApi();
+		expect((await api.getRoutine(3)).id).toBe(3);
+		expect(await api.listRoutineInstances(3)).toMatchObject([
+			{ id: 5, routineId: 3, date: '2026-11-01' },
+		]);
+		expect((await api.updateRoutine(3, { title: 'x' })).id).toBe(3);
+		expect(seen[2]).not.toContain('workspace_id');
+	});
+
+	it('completes and skips through bare instance responses', async () => {
+		const { api } = cloudApi();
+		expect(await api.completeRoutine(3, '2026-11-01')).toMatchObject({
+			id: 5,
+			status: 'COMPLETED',
+		});
+		expect(await api.skipRoutine(3, '2026-11-02')).toMatchObject({
+			id: 5,
+			routineId: 3,
+		});
+	});
+
+	it('converts with workspace_id', async () => {
+		const { api, seen } = cloudApi();
+		await api.convertRoutine(3, { categoryId: 1, statusId: 2 });
+		expect(seen[0]).toContain('"workspace_id":7');
+	});
+
+	it('keeps the local path unchanged: no workspace field, wrapped answers', async () => {
+		const { http, seen } = recording((_method, url) =>
+			url === 'daily-routines/expand'
+				? { data: [] }
+				: url.endsWith('/instances')
+					? { data: [instance] }
+					: { data: routineRow },
+		);
+		const api = createDataApi(http, 'acme.r', 'acme.r', 'R', false, -42);
+		await api.listRoutines('2026-11-01', '2026-11-02');
+		await api.createRoutine({
+			title: 'n',
+			description: null,
+			date: null,
+			time: null,
+		});
+		expect(await api.listRoutineInstances(3)).toHaveLength(1);
+		expect(seen.join('\n')).not.toContain('workspace_id');
+	});
+});

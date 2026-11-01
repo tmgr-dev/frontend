@@ -106,14 +106,10 @@ export const createDataApi = (
 		`plugins/${encodeURIComponent(
 			storageId,
 		)}/pages/${pageId}/data/${encodeURIComponent(key)}`;
-	/** Defence in depth: the broker already refuses every routines.* call outside a local workspace. */
-	const routinesNotSupported = () => {
-		if (cloud)
-			throw new PluginError(
-				'NOT_SUPPORTED',
-				'routines are not available in shared workspaces yet',
-			);
-	};
+	const inWorkspace = cloud ? { workspace_id: workspaceId } : {};
+	/** The server wraps routine reads and creates in {data} but returns the other routine routes bare. */
+	const routineData = (response: { data: any }, bare = false) =>
+		cloud && bare ? response.data : unwrap(response);
 	// Overlapping calls on one routine would each see no instance for the date and create two.
 	const routineQueues = new Map<number, Promise<unknown>>();
 	const routineSerial = <T>(id: number, run: () => Promise<T>): Promise<T> => {
@@ -131,22 +127,24 @@ export const createDataApi = (
 		date: string,
 		status: 'COMPLETED' | 'SKIPPED',
 	) => {
-		const instances = (unwrap(
+		const instances = (routineData(
 			await http.get(`daily-routines/tasks/${id}/instances`, { headers }),
+			true,
 		) ?? []) as any[];
 		let instance = instances.find(
 			(row) => String(row.scheduled_for).slice(0, 10) === date,
 		);
 		if (instance?.status === status) return toRoutineInstance(instance);
-		instance ??= unwrap(
+		instance ??= routineData(
 			await http.patch(
 				`daily-routines/tasks/${id}/instances/virtual`,
 				{ scheduled_date: date },
 				{ headers },
 			),
+			true,
 		);
 		return toRoutineInstance(
-			unwrap(
+			routineData(
 				await http.post(
 					`daily-routines/tasks/${id}/instances/${instance.id}/${
 						status === 'COMPLETED' ? 'complete' : 'skip'
@@ -154,6 +152,7 @@ export const createDataApi = (
 					undefined,
 					{ headers },
 				),
+				true,
 			),
 		);
 	};
@@ -521,61 +520,62 @@ export const createDataApi = (
 			};
 		},
 		listRoutines: async (from, to) => {
-			routinesNotSupported();
-			const rows = (unwrap(
+			const rows = (routineData(
 				await http.get('daily-routines/expand', {
 					headers,
-					params: { from, to },
+					params: { from, to, ...inWorkspace },
 				}),
+				true,
 			) ?? []) as any[];
 			return rows.map(toRoutineEntry);
 		},
 		getRoutine: async (id) => {
-			routinesNotSupported();
 			return toRoutine(
 				unwrap(await http.get(`daily-routines/tasks/${id}`, { headers })),
 			);
 		},
 		listRoutineInstances: async (id) => {
-			routinesNotSupported();
-			const rows = (unwrap(
+			const rows = (routineData(
 				await http.get(`daily-routines/tasks/${id}/instances`, { headers }),
+				true,
 			) ?? []) as any[];
 			return rows.map(toRoutineInstance);
 		},
 		createRoutine: async ({ title, description, date, time }) => {
-			routinesNotSupported();
 			const response = date
 				? await http.post(
 						'daily-routines/tasks/recurring',
-						{ title, description, scheduled_date: date, scheduled_time: time },
+						{
+							title,
+							description,
+							scheduled_date: date,
+							scheduled_time: time,
+							...inWorkspace,
+						},
 						{ headers },
 					)
 				: await http.post(
 						'daily-routines/tasks',
-						{ title, description },
+						{ title, description, ...inWorkspace },
 						{ headers },
 					);
 			return toRoutine(unwrap(response));
 		},
 		updateRoutine: async (id, patch) => {
-			routinesNotSupported();
 			return toRoutine(
-				unwrap(
+				routineData(
 					await http.put(`daily-routines/tasks/${id}`, patch, { headers }),
+					true,
 				),
 			);
 		},
 		completeRoutine: async (id, date) => {
-			routinesNotSupported();
 			return routineSerial(id, () => setRoutineStatus(id, date, 'COMPLETED'));
 		},
 		skipRoutine: async (id, date) => {
-			routinesNotSupported();
 			return routineSerial(id, () => setRoutineStatus(id, date, 'SKIPPED'));
 		},
 		convertRoutine: async (id, { categoryId, statusId }) => {
-			routinesNotSupported();
 			return withKey(
 				unwrap(
 					await http.post(

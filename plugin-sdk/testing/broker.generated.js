@@ -442,11 +442,6 @@ const createBroker = (deps) => {
             throw new PluginError('HOST_ERROR', 'alarms are not available');
         return deps.alarms;
     };
-    const requireLocalWorkspace = () => {
-        if (deps.workspace.kind !== 'local') {
-            throw new PluginError('NOT_SUPPORTED', 'routines are not available in shared workspaces yet');
-        }
-    };
     const needTray = () => {
         if (!deps.tray) {
             throw new PluginError('PERMISSION_DENIED', 'the tray is not available: not allowed on this computer');
@@ -805,7 +800,6 @@ const createBroker = (deps) => {
         'routines.list': {
             permission: 'routines:read',
             run: (p) => {
-                requireLocalWorkspace();
                 const from = routineDate(p.from, 'from');
                 const to = routineDate(p.to, 'to');
                 if (from > to)
@@ -820,14 +814,12 @@ const createBroker = (deps) => {
         'routines.get': {
             permission: 'routines:read',
             run: (p) => {
-                requireLocalWorkspace();
                 return api.getRoutine(id(p.id));
             },
         },
         'routines.instances': {
             permission: 'routines:read',
             run: (p) => {
-                requireLocalWorkspace();
                 return api.listRoutineInstances(id(p.id));
             },
         },
@@ -835,7 +827,6 @@ const createBroker = (deps) => {
             permission: 'routines:write',
             write: true,
             run: (p) => {
-                requireLocalWorkspace();
                 const title = string(p.title, 'title', 500);
                 const description = p.description == null
                     ? null
@@ -851,7 +842,6 @@ const createBroker = (deps) => {
             permission: 'routines:write',
             write: true,
             run: (p) => {
-                requireLocalWorkspace();
                 if (!p.patch || typeof p.patch !== 'object' || Array.isArray(p.patch))
                     invalid('patch must be an object');
                 const patch = p.patch;
@@ -873,7 +863,6 @@ const createBroker = (deps) => {
             permission: 'routines:write',
             write: true,
             run: (p) => {
-                requireLocalWorkspace();
                 const date = p.date == null ? todayLocal(deps.now()) : routineDate(p.date, 'date');
                 return api.completeRoutine(id(p.id), date);
             },
@@ -882,7 +871,6 @@ const createBroker = (deps) => {
             permission: 'routines:write',
             write: true,
             run: (p) => {
-                requireLocalWorkspace();
                 const date = p.date == null ? todayLocal(deps.now()) : routineDate(p.date, 'date');
                 return api.skipRoutine(id(p.id), date);
             },
@@ -891,7 +879,6 @@ const createBroker = (deps) => {
             permission: 'routines:write',
             write: true,
             run: (p) => {
-                requireLocalWorkspace();
                 if (!granted.has('tasks:write')) {
                     throw new PluginError('PERMISSION_DENIED', 'routines.convertToTask needs tasks:write');
                 }
