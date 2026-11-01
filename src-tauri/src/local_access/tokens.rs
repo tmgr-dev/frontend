@@ -364,6 +364,7 @@ impl TokenStore {
     }
     token.revoked_at = Some(epoch_to_iso(now_epoch));
     self.persist(&tokens)?;
+    self.delete_secret(id);
     Ok(true)
   }
 
@@ -379,7 +380,7 @@ impl TokenStore {
       return Err("at least one filter is required".into());
     }
     let mut tokens = self.tokens.lock().map_err(|e| e.to_string())?;
-    let mut count = 0usize;
+    let mut revoked_ids = Vec::new();
     for token in tokens.iter_mut() {
       if token.revoked_at.is_some() {
         continue;
@@ -394,15 +395,31 @@ impl TokenStore {
         continue;
       }
       token.revoked_at = Some(epoch_to_iso(now_epoch));
-      count += 1;
+      revoked_ids.push(token.id.clone());
     }
-    if count > 0 {
+    if !revoked_ids.is_empty() {
       self.persist(&tokens)?;
+      for id in &revoked_ids {
+        self.delete_secret(id);
+      }
     }
-    Ok(count)
+    Ok(revoked_ids.len())
   }
 
-  pub fn copy_secret(&self, id: &str) -> Result<Option<String>, String> {
+  fn delete_secret(&self, id: &str) {
+    if let Err(error) = self.secrets.delete(id) {
+      log::warn!("[local-access] could not delete the stored secret of token {id}: {error}");
+    }
+  }
+
+  pub fn copy_secret(&self, id: &str, now_epoch: i64) -> Result<Option<String>, String> {
+    {
+      let tokens = self.tokens.lock().map_err(|e| e.to_string())?;
+      match tokens.iter().find(|t| t.id == id) {
+        Some(token) if token.revoked_at.is_none() && token.expires_at_epoch > now_epoch => {}
+        _ => return Ok(None),
+      }
+    }
     self.secrets.get(id)
   }
 
@@ -630,10 +647,76 @@ mod tests {
   fn issued_secret_is_never_returned_again() {
     let store = store("secret-once");
     let (info, secret) = store.issue(issue_params("local-personal"), 0).unwrap();
-    assert_eq!(store.copy_secret(&info.id).unwrap(), Some(secret.clone()));
+    assert_eq!(store.copy_secret(&info.id, 0).unwrap(), Some(secret.clone()));
     let listed = store.list(None).unwrap();
     let json = serde_json::to_string(&listed[0]).unwrap();
     assert!(!json.contains(&secret));
     assert!(json.contains(&listed[0].prefix));
+  }
+
+  struct FailingDelete(MemorySecrets);
+
+  impl SecretStore for FailingDelete {
+    fn set(&self, id: &str, secret: &str) -> Result<(), String> {
+      self.0.set(id, secret)
+    }
+    fn get(&self, id: &str) -> Result<Option<String>, String> {
+      self.0.get(id)
+    }
+    fn delete(&self, _id: &str) -> Result<(), String> {
+      Err("keychain unavailable".into())
+    }
+  }
+
+  fn store_with_secrets(name: &str, secrets: Arc<dyn SecretStore>) -> TokenStore {
+    TokenStore::open(temp_dir(name), secrets).unwrap()
+  }
+
+  #[test]
+  fn revoke_removes_the_stored_secret() {
+    let secrets = Arc::new(MemorySecrets::new());
+    let store = store_with_secrets("revoke-deletes", secrets.clone());
+    let (info, _) = store.issue(issue_params("local-personal"), 0).unwrap();
+    assert!(secrets.get(&info.id).unwrap().is_some());
+    assert!(store.revoke(&info.id, 10).unwrap());
+    assert_eq!(secrets.get(&info.id).unwrap(), None);
+  }
+
+  #[test]
+  fn revoke_all_removes_the_stored_secrets_of_the_revoked_tokens_only() {
+    let secrets = Arc::new(MemorySecrets::new());
+    let store = store_with_secrets("revoke-all-deletes", secrets.clone());
+    let (a, _) = store.issue(issue_params("ws-a"), 0).unwrap();
+    let (b, _) = store.issue(issue_params("ws-b"), 0).unwrap();
+    assert_eq!(store.revoke_all(None, None, Some("ws-a"), 10).unwrap(), 1);
+    assert_eq!(secrets.get(&a.id).unwrap(), None);
+    assert!(secrets.get(&b.id).unwrap().is_some());
+  }
+
+  #[test]
+  fn revocation_succeeds_when_the_secret_cannot_be_deleted() {
+    let store = store_with_secrets("revoke-delete-fails", Arc::new(FailingDelete(MemorySecrets::new())));
+    let (a, secret) = store.issue(issue_params("ws-a"), 0).unwrap();
+    let (b, _) = store.issue(issue_params("ws-b"), 0).unwrap();
+    assert!(store.revoke(&a.id, 10).unwrap());
+    assert_eq!(store.verify(&secret, 20).unwrap_err(), TokenError::Revoked);
+    assert_eq!(store.revoke_all(None, None, Some("ws-b"), 10).unwrap(), 1);
+    assert_eq!(store.copy_secret(&b.id, 20).unwrap(), None);
+  }
+
+  #[test]
+  fn copy_secret_only_returns_secrets_of_live_tokens() {
+    let secrets = Arc::new(MemorySecrets::new());
+    let store = store_with_secrets("copy-live-only", secrets.clone());
+    let (live, live_secret) = store.issue(issue_params("ws-a"), 1000).unwrap();
+    let expires_at = 1000 + 90 * 86_400;
+    assert_eq!(store.copy_secret(&live.id, 2000).unwrap(), Some(live_secret.clone()));
+    assert_eq!(store.copy_secret(&live.id, expires_at).unwrap(), None);
+    assert_eq!(store.copy_secret("lt_missing", 2000).unwrap(), None);
+
+    let (revoked, _) = store.issue(issue_params("ws-b"), 1000).unwrap();
+    store.revoke(&revoked.id, 1500).unwrap();
+    secrets.set(&revoked.id, "leftover").unwrap();
+    assert_eq!(store.copy_secret(&revoked.id, 2000).unwrap(), None);
   }
 }

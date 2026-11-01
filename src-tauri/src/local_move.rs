@@ -13,6 +13,8 @@ use tauri::{AppHandle, Runtime, State};
 
 use crate::local_backups::{rfc3339, stamp, verify};
 use crate::local_db::{live_connection, with_connection, LocalDbs};
+use crate::local_access::tokens::TokenStore;
+use crate::local_access::LocalAccessState;
 use crate::local_files::{content_type, file_path, parse_target};
 use crate::local_workspaces::{self, LocalWorkspace};
 
@@ -1457,6 +1459,20 @@ pub fn remove_folder(workspaces_root: &Path, code: &str, workspace_dir: &Path, n
   Ok(target)
 }
 
+pub fn remove_folder_and_revoke_tokens(
+  tokens: &TokenStore,
+  workspaces_root: &Path,
+  code: &str,
+  workspace_dir: &Path,
+  now: i64,
+) -> Result<PathBuf, String> {
+  let target = remove_folder(workspaces_root, code, workspace_dir, now)?;
+  if let Err(error) = tokens.revoke_all(None, None, Some(code), now) {
+    log::error!("[local] could not revoke local access tokens of {code}: {error}");
+  }
+  Ok(target)
+}
+
 #[cfg(test)]
 pub fn remove_in(
   workspaces_root: &Path,
@@ -1661,6 +1677,7 @@ pub async fn local_workspace_remove<R: Runtime>(
   app: AppHandle<R>,
   dbs: State<'_, LocalDbs>,
   moving: State<'_, Moving>,
+  access: State<'_, LocalAccessState>,
   code: String,
   typed_name: String,
   expected_revision: String,
@@ -1706,7 +1723,8 @@ pub async fn local_workspace_remove<R: Runtime>(
   drop(connection);
   let target = {
     let code = code.clone();
-    tauri::async_runtime::spawn_blocking(move || remove_folder(&root, &code, &workspace_dir, now))
+    let tokens = access.token_store.clone();
+    tauri::async_runtime::spawn_blocking(move || remove_folder_and_revoke_tokens(&tokens, &root, &code, &workspace_dir, now))
       .await
       .map_err(|e| e.to_string())??
   };
@@ -2950,5 +2968,31 @@ mod tests {
     }
     let unreachable = fetch_job("http://127.0.0.1:9/api/", "job-1", "secret-token").await.unwrap_err();
     assert!(!unreachable.contains("secret-token"));
+  }
+
+  #[test]
+  fn removing_a_workspace_revokes_only_its_local_access_tokens() {
+    use crate::local_access::tokens::{IssueParams, MemorySecrets, TokenError};
+    let root = temp("revoke-on-remove").join("workspaces");
+    let ws = local_workspaces::create_in(&root, "Gone", "2026-01-01T00:00:00Z").unwrap();
+    let other = local_workspaces::create_in(&root, "Kept", "2026-01-01T00:00:00Z").unwrap();
+    let tokens = TokenStore::open(temp("revoke-on-remove-tokens"), Arc::new(MemorySecrets::new())).unwrap();
+    let params = |code: &str| IssueParams {
+      persona_uuid: "persona-1".into(),
+      persona_name: "Reviewer".into(),
+      workspace_code: code.into(),
+      workspace_id: -1,
+      label: "test".into(),
+      expires_in_days: 90,
+      plugin_id: None,
+    };
+    let (_, gone_secret) = tokens.issue(params(&ws.manifest.code), 1000).unwrap();
+    let (_, kept_secret) = tokens.issue(params(&other.manifest.code), 1000).unwrap();
+    assert!(tokens.verify(&gone_secret, 1001).is_ok());
+
+    remove_folder_and_revoke_tokens(&tokens, &root, &ws.manifest.code, Path::new(&ws.path), 2000).unwrap();
+
+    assert_eq!(tokens.verify(&gone_secret, 2001).unwrap_err(), TokenError::Revoked);
+    assert!(tokens.verify(&kept_secret, 2001).is_ok());
   }
 }

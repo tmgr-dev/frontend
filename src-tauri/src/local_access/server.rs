@@ -31,8 +31,7 @@ const RATE_LIMIT_WRITE_PER_SEC: u32 = 10;
 const HEALTH_PATH: &str = "/api/local/health";
 const EVENTS_PATH: &str = "/api/local/events";
 const GRANT_PATH: &str = "/api/local/_grant";
-const SSE_PING_INTERVAL: Duration = Duration::from_secs(15);
-const GRANT_CACHE_TTL: Duration = Duration::from_secs(1);
+pub const SSE_PING_INTERVAL: Duration = Duration::from_secs(15);
 const MAX_SSE_PER_TOKEN: usize = 4;
 
 pub type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
@@ -56,6 +55,7 @@ pub struct ServerDeps {
   pub app_version: String,
   pub now_epoch: Arc<dyn Fn() -> i64 + Send + Sync>,
   pub events: Arc<EventBus>,
+  pub sse_ping_interval: Duration,
 }
 
 #[derive(Default)]
@@ -180,11 +180,6 @@ fn sse_ping_frame() -> Bytes {
   Bytes::from_static(b": ping\n\n")
 }
 
-struct GrantCache {
-  permissions: Vec<String>,
-  fetched_at: Instant,
-}
-
 /// Asks the main window for the persona's current grant over the same bridge normal requests use,
 /// with a synthetic internal path the HTTP entrypoint refuses from the outside (see `handle`).
 async fn fetch_grant(deps: &ServerDeps, token: &StoredToken, next_id: &AtomicU64) -> Result<Vec<String>, ()> {
@@ -214,24 +209,8 @@ async fn fetch_grant(deps: &ServerDeps, token: &StoredToken, next_id: &AtomicU64
   )
 }
 
-async fn cached_grant(
-  cache: &mut Option<GrantCache>,
-  deps: &ServerDeps,
-  token: &StoredToken,
-  next_id: &AtomicU64,
-) -> Result<Vec<String>, ()> {
-  if let Some(cached) = cache {
-    if cached.fetched_at.elapsed() < GRANT_CACHE_TTL {
-      return Ok(cached.permissions.clone());
-    }
-  }
-  let permissions = fetch_grant(deps, token, next_id).await?;
-  *cache = Some(GrantCache { permissions: permissions.clone(), fetched_at: Instant::now() });
-  Ok(permissions)
-}
-
 /// One SSE connection: replays buffered events past the client's cursor, then follows the live
-/// buffer, checking the token and grant again before every batch so a revoke closes the stream.
+/// buffer, checking the token and grant again on every ping and before every batch so a revoke closes the stream.
 async fn handle_sse(
   deps: Arc<ServerDeps>,
   sse_limiter: Arc<SseConnLimiter>,
@@ -254,14 +233,17 @@ async fn handle_sse(
 
   tauri::async_runtime::spawn(async move {
     let _guard = SseGuard { limiter: sse_limiter, token_id: token.id.clone() };
-    let mut grant_cache: Option<GrantCache> = None;
-    let permissions = match cached_grant(&mut grant_cache, &deps, &token, &next_id).await {
+    let permissions = match fetch_grant(&deps, &token, &next_id).await {
       Ok(permissions) => permissions,
       Err(()) => {
         let _ = tx.send(sse_revoked_frame());
         return;
       }
     };
+    if deps.tokens.verify(&secret, (deps.now_epoch)()).is_err() {
+      let _ = tx.send(sse_revoked_frame());
+      return;
+    }
 
     match replay {
       Replay::Reset { cursor } => {
@@ -278,11 +260,15 @@ async fn handle_sse(
       }
     }
 
-    let mut ping = tokio::time::interval(SSE_PING_INTERVAL);
+    let mut ping = tokio::time::interval(deps.sse_ping_interval);
     ping.tick().await; // the first tick fires immediately; skip it so ping really means "every 15s"
     loop {
       tokio::select! {
         _ = ping.tick() => {
+          if deps.tokens.verify(&secret, (deps.now_epoch)()).is_err() {
+            let _ = tx.send(sse_revoked_frame());
+            break;
+          }
           if tx.send(sse_ping_frame()).is_err() {
             break;
           }
@@ -291,11 +277,15 @@ async fn handle_sse(
           match changed {
             Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+              let pending = deps.events.since(&workspace_code, last_seq);
+              if pending.is_empty() {
+                continue;
+              }
               if deps.tokens.verify(&secret, (deps.now_epoch)()).is_err() {
                 let _ = tx.send(sse_revoked_frame());
                 break;
               }
-              let permissions = match cached_grant(&mut grant_cache, &deps, &token, &next_id).await {
+              let permissions = match fetch_grant(&deps, &token, &next_id).await {
                 Ok(permissions) => permissions,
                 Err(()) => {
                   let _ = tx.send(sse_revoked_frame());
@@ -303,7 +293,7 @@ async fn handle_sse(
                 }
               };
               let mut closed = false;
-              for entry in deps.events.since(&workspace_code, last_seq) {
+              for entry in pending {
                 last_seq = entry.seq;
                 if permissions.contains(&entry.permission) && tx.send(sse_event_frame(&boot, &entry)).is_err() {
                   closed = true;
@@ -506,12 +496,33 @@ fn fallback_socket_path() -> PathBuf {
   std::env::temp_dir().join(format!("tmgr-{uid}")).join("local-access.sock")
 }
 
+pub fn current_uid() -> u32 {
+  unsafe { libc::getuid() }
+}
+
+pub fn check_socket_dir(dir: &Path, uid: u32) -> Result<(), String> {
+  use std::os::unix::fs::MetadataExt;
+  let meta = std::fs::symlink_metadata(dir).map_err(|e| format!("cannot inspect {}: {e}", dir.display()))?;
+  if meta.file_type().is_symlink() || !meta.is_dir() {
+    return Err(format!("{} is not a plain directory", dir.display()));
+  }
+  if meta.uid() != uid {
+    return Err(format!("{} is not owned by the current user", dir.display()));
+  }
+  Ok(())
+}
+
 fn file_ino(path: &Path) -> Option<u64> {
   use std::os::unix::fs::MetadataExt;
   std::fs::symlink_metadata(path).ok().map(|meta| meta.ino())
 }
 
 async fn prepare_socket_path(path: &Path) -> Result<(), String> {
+  if let Some(parent) = path.parent() {
+    std::fs::create_dir_all(parent).map_err(|e| format!("create_dir_all {}: {e}", parent.display()))?;
+    check_socket_dir(parent, current_uid())?;
+    chmod(parent, 0o700).map_err(|e| format!("chmod {}: {e}", parent.display()))?;
+  }
   if path.exists() {
     match UnixStream::connect(path).await {
       // A live listener already owns this path: never steal another instance's socket.
@@ -520,10 +531,6 @@ async fn prepare_socket_path(path: &Path) -> Result<(), String> {
         let _ = std::fs::remove_file(path);
       }
     }
-  }
-  if let Some(parent) = path.parent() {
-    std::fs::create_dir_all(parent).map_err(|e| format!("create_dir_all {}: {e}", parent.display()))?;
-    chmod(parent, 0o700).map_err(|e| format!("chmod {}: {e}", parent.display()))?;
   }
   Ok(())
 }
@@ -670,6 +677,59 @@ mod tests {
     assert_ne!(long, short);
   }
 
+  #[test]
+  fn refuses_a_socket_dir_owned_by_another_user() {
+    let dir = tempfile::tempdir().unwrap();
+    assert!(check_socket_dir(dir.path(), current_uid()).is_ok());
+    let error = check_socket_dir(dir.path(), current_uid() + 1).unwrap_err();
+    assert!(error.contains(&dir.path().display().to_string()));
+  }
+
+  #[test]
+  fn refuses_a_socket_dir_that_is_a_symlink_or_not_a_directory() {
+    use std::os::unix::fs::symlink;
+    let root = tempfile::tempdir().unwrap();
+    let real = root.path().join("real");
+    std::fs::create_dir(&real).unwrap();
+    let link = root.path().join("link");
+    symlink(&real, &link).unwrap();
+    assert!(check_socket_dir(&link, current_uid()).is_err());
+    let file = root.path().join("file");
+    std::fs::write(&file, b"").unwrap();
+    assert!(check_socket_dir(&file, current_uid()).is_err());
+    assert!(check_socket_dir(&real, current_uid()).is_ok());
+  }
+
+  #[tokio::test]
+  async fn prepare_socket_path_leaves_a_symlink_target_untouched_and_fails() {
+    use std::os::unix::fs::{symlink, PermissionsExt};
+    let root = tempfile::tempdir().unwrap();
+    let victim = root.path().join("victim");
+    std::fs::create_dir(&victim).unwrap();
+    std::fs::set_permissions(&victim, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let existing = victim.join("local-access.sock");
+    std::fs::write(&existing, b"keep").unwrap();
+    let link = root.path().join("tmgr-link");
+    symlink(&victim, &link).unwrap();
+
+    let result = prepare_socket_path(&link.join("local-access.sock")).await;
+
+    assert!(result.is_err());
+    let mode = std::fs::metadata(&victim).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o755);
+    assert_eq!(std::fs::read(&existing).unwrap(), b"keep");
+  }
+
+  #[tokio::test]
+  async fn prepare_socket_path_creates_a_private_dir_for_a_fresh_path() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("tmgr-fresh").join("local-access.sock");
+    prepare_socket_path(&path).await.unwrap();
+    let mode = std::fs::metadata(path.parent().unwrap()).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o700);
+  }
+
   fn test_deps(secret_holder: &mut Option<String>) -> (ServerDeps, String) {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -703,6 +763,7 @@ mod tests {
       app_version: "0.0.0-test".into(),
       now_epoch: Arc::new(|| 0),
       events: Arc::new(super::EventBus::new("boot-1".into())),
+      sse_ping_interval: SSE_PING_INTERVAL,
     };
     (deps, info.id)
   }
@@ -1047,6 +1108,7 @@ mod tests {
       app_version: "0.0.0-test".into(),
       now_epoch: Arc::new(|| 0),
       events: events.clone(),
+      sse_ping_interval: SSE_PING_INTERVAL,
     };
     (deps, events)
   }
@@ -1205,6 +1267,94 @@ mod tests {
     }
     assert_eq!(&statuses[..4], &[200u16; 4]);
     assert_eq!(statuses[4], 429);
+
+    let _ = shutdown_tx.send(true);
+    let _ = handle.await;
+  }
+
+  async fn open_events_stream(
+    secret: &str,
+    socket_path: &Path,
+  ) -> (hyper::body::Incoming, hyper::client::conn::http1::SendRequest<Empty<Bytes>>) {
+    let mut sender = connect_client(socket_path).await;
+    let req = Request::builder()
+      .method("GET")
+      .uri("/api/local/events")
+      .header("X-Persona-Token", secret)
+      .body(Empty::<Bytes>::new())
+      .unwrap();
+    let res = send(&mut sender, req).await;
+    assert_eq!(res.status(), 200);
+    (res.into_body(), sender)
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn an_event_pushed_right_after_a_permission_is_removed_is_not_delivered() {
+    let mut secret_holder = None;
+    let grant = Arc::new(GrantState {
+      permissions: Mutex::new(vec!["tasks:read".into()]),
+      fail: std::sync::atomic::AtomicBool::new(false),
+    });
+    let (deps, events) = sse_test_deps(&mut secret_holder, grant.clone());
+    let secret = secret_holder.unwrap();
+    let socket_dir = std::env::temp_dir().join(format!("tmgr-it-sse-grant-fresh-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&socket_dir);
+    let socket_path = socket_dir.join("sock");
+    let server = Server::new(deps, Arc::new(AtomicU64::new(0)));
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let path = socket_path.clone();
+    let handle = tokio::spawn(async move { server.serve(&path, shutdown_rx, None).await });
+    wait_for_socket(&socket_path).await;
+    let (mut body, _sender) = open_events_stream(&secret, &socket_path).await;
+
+    events.push("local-personal", "task.created".into(), "tasks:read".into(), r#"{"type":"task.created"}"#.into());
+    let frame = tokio::time::timeout(Duration::from_secs(5), body.frame()).await.unwrap().unwrap().unwrap();
+    assert!(String::from_utf8_lossy(frame.data_ref().unwrap()).contains("event: task.created"));
+
+    grant.permissions.lock().unwrap().clear();
+    events.push("local-personal", "task.updated".into(), "tasks:read".into(), r#"{"type":"task.updated"}"#.into());
+
+    let next = tokio::time::timeout(Duration::from_millis(600), body.frame()).await;
+    if let Ok(Some(Ok(frame))) = next {
+      panic!("event delivered after the permission was removed: {:?}", frame.data_ref());
+    }
+
+    let _ = shutdown_tx.send(true);
+    let _ = handle.await;
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn an_idle_stream_sends_revoked_and_closes_once_its_token_is_revoked() {
+    let mut secret_holder = None;
+    let grant = Arc::new(GrantState { permissions: Mutex::new(vec![]), fail: std::sync::atomic::AtomicBool::new(false) });
+    let (mut deps, _events) = sse_test_deps(&mut secret_holder, grant);
+    deps.sse_ping_interval = Duration::from_millis(100);
+    let secret = secret_holder.unwrap();
+    let tokens = deps.tokens.clone();
+    let socket_dir = std::env::temp_dir().join(format!("tmgr-it-sse-idle-revoke-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&socket_dir);
+    let socket_path = socket_dir.join("sock");
+    let server = Server::new(deps, Arc::new(AtomicU64::new(0)));
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let path = socket_path.clone();
+    let handle = tokio::spawn(async move { server.serve(&path, shutdown_rx, None).await });
+    wait_for_socket(&socket_path).await;
+    let (mut body, _sender) = open_events_stream(&secret, &socket_path).await;
+
+    let id = tokens.list(None).unwrap()[0].id.clone();
+    assert!(tokens.revoke(&id, 1).unwrap());
+
+    let mut saw_revoked = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    while let Ok(Some(Ok(frame))) = tokio::time::timeout_at(deadline, body.frame()).await {
+      if String::from_utf8_lossy(frame.data_ref().unwrap()).contains("event: revoked") {
+        saw_revoked = true;
+        break;
+      }
+    }
+    assert!(saw_revoked, "expected a revoked event on the idle stream");
+    let next = tokio::time::timeout(Duration::from_secs(2), body.frame()).await.unwrap();
+    assert!(next.is_none(), "the stream must close after revoking");
 
     let _ = shutdown_tx.send(true);
     let _ = handle.await;

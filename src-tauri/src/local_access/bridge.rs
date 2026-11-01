@@ -108,13 +108,54 @@ fn resolve_token(args: &BridgeArgs) -> Result<String, String> {
 }
 
 #[cfg(unix)]
-fn resolve_socket(args: &BridgeArgs) -> Result<PathBuf, String> {
+pub struct SocketTarget {
+  pub path: PathBuf,
+  pub check_parent: bool,
+}
+
+#[cfg(unix)]
+impl SocketTarget {
+  fn explicit(path: PathBuf) -> Self {
+    Self { path, check_parent: false }
+  }
+
+  fn resolved(path: PathBuf) -> Self {
+    Self { path, check_parent: true }
+  }
+}
+
+#[cfg(unix)]
+fn verify_socket_target(target: &SocketTarget, uid: u32) -> Result<(), String> {
+  use std::os::unix::fs::{FileTypeExt, MetadataExt};
+  let path = &target.path;
+  let meta = match std::fs::symlink_metadata(path) {
+    Ok(meta) => meta,
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+    Err(error) => return Err(format!("cannot inspect socket {}: {error}", path.display())),
+  };
+  if !meta.file_type().is_socket() || meta.uid() != uid {
+    return Err(format!("refusing socket {}: not a socket owned by the current user", path.display()));
+  }
+  if target.check_parent {
+    let parent = path.parent().ok_or_else(|| format!("refusing socket {}: no parent directory", path.display()))?;
+    super::server::check_socket_dir(parent, uid).map_err(|e| format!("refusing socket {}: {e}", path.display()))?;
+    let parent_meta = std::fs::symlink_metadata(parent)
+      .map_err(|e| format!("refusing socket {}: cannot inspect parent directory: {e}", path.display()))?;
+    if parent_meta.mode() & 0o077 != 0 {
+      return Err(format!("refusing socket {}: parent directory is accessible to other users", path.display()));
+    }
+  }
+  Ok(())
+}
+
+#[cfg(unix)]
+fn resolve_socket(args: &BridgeArgs) -> Result<SocketTarget, String> {
   if let Some(path) = &args.socket_path {
-    return Ok(path.clone());
+    return Ok(SocketTarget::explicit(path.clone()));
   }
   if let Ok(path) = std::env::var("TMGR_LOCAL_SOCKET") {
     if !path.is_empty() {
-      return Ok(PathBuf::from(path));
+      return Ok(SocketTarget::explicit(PathBuf::from(path)));
     }
   }
   let data_dir = app_data_dir()?;
@@ -122,16 +163,17 @@ fn resolve_socket(args: &BridgeArgs) -> Result<PathBuf, String> {
   if let Ok(contents) = std::fs::read_to_string(&socket_path_file) {
     let trimmed = contents.trim();
     if !trimmed.is_empty() {
-      return Ok(PathBuf::from(trimmed));
+      return Ok(SocketTarget::resolved(PathBuf::from(trimmed)));
     }
   }
-  Ok(super::server::resolve_socket_path(&data_dir))
+  Ok(SocketTarget::resolved(super::server::resolve_socket_path(&data_dir)))
 }
 
 #[cfg(unix)]
-fn send_request(socket_path: &Path, token: &str, line: &str) -> Result<(u16, String), String> {
+fn send_request(target: &SocketTarget, token: &str, line: &str) -> Result<(u16, String), String> {
   use std::os::unix::net::UnixStream;
-  let mut stream = UnixStream::connect(socket_path).map_err(|e| e.to_string())?;
+  verify_socket_target(target, super::server::current_uid())?;
+  let mut stream = UnixStream::connect(&target.path).map_err(|e| e.to_string())?;
   stream.write_all(&build_http_request(token, line)).map_err(|e| e.to_string())?;
   let mut raw = Vec::new();
   stream.read_to_end(&mut raw).map_err(|e| e.to_string())?;
@@ -141,14 +183,14 @@ fn send_request(socket_path: &Path, token: &str, line: &str) -> Result<(u16, Str
 /// Reads newline-delimited JSON-RPC from `stdin`, POSTs each line to `/mcp` over the socket, and
 /// writes the response body as one line to `stdout`. Never prints the token.
 #[cfg(unix)]
-pub fn run<R: BufRead, W: Write, E: Write>(socket_path: &Path, token: &str, stdin: R, mut stdout: W, mut stderr: E) {
+pub fn run<R: BufRead, W: Write, E: Write>(target: &SocketTarget, token: &str, stdin: R, mut stdout: W, mut stderr: E) {
   for line in stdin.lines() {
     let Ok(line) = line else { break };
     let line = line.trim();
     if line.is_empty() {
       continue;
     }
-    match send_request(socket_path, token, line) {
+    match send_request(target, token, line) {
       Ok((202, _)) => {}
       Ok((_, body)) => {
         if !body.is_empty() {
@@ -181,7 +223,7 @@ pub fn maybe_run_and_exit() {
       std::process::exit(1);
     }
   };
-  let socket_path = match resolve_socket(&parsed) {
+  let target = match resolve_socket(&parsed) {
     Ok(path) => path,
     Err(error) => {
       eprintln!("[tmgr mcp] {error}");
@@ -191,7 +233,7 @@ pub fn maybe_run_and_exit() {
   let stdin = std::io::stdin();
   let stdout = std::io::stdout();
   let stderr = std::io::stderr();
-  run(&socket_path, &token, stdin.lock(), stdout.lock(), stderr.lock());
+  run(&target, &token, stdin.lock(), stdout.lock(), stderr.lock());
   std::process::exit(0);
 }
 
@@ -300,7 +342,7 @@ mod tests {
     });
 
     let (status, body) =
-      send_request(&socket_path, "tmgrl_test", r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#).unwrap();
+      send_request(&SocketTarget::explicit(socket_path.clone()), "tmgrl_test", r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#).unwrap();
     server.join().unwrap();
     assert_eq!(status, 200);
     assert_eq!(body, r#"{"jsonrpc":"2.0","id":1,"result":{}}"#);
@@ -331,7 +373,7 @@ mod tests {
         .unwrap();
     });
 
-    let result = send_request(&socket_path, "tmgrl_test", r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#);
+    let result = send_request(&SocketTarget::explicit(socket_path.clone()), "tmgrl_test", r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#);
     server.join().unwrap();
     assert_eq!(result.unwrap().0, 200);
 
@@ -345,12 +387,104 @@ mod tests {
     let input = "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"ping\"}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n".to_string();
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
-    run(&missing_socket, "tmgrl_test", input.as_bytes(), &mut stdout, &mut stderr);
+    run(&SocketTarget::explicit(missing_socket), "tmgrl_test", input.as_bytes(), &mut stdout, &mut stderr);
     let out = String::from_utf8(stdout).unwrap();
     assert_eq!(out.lines().count(), 1);
     let value: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
     assert_eq!(value["id"], 7);
     assert_eq!(value["error"]["code"], -32000);
     assert!(!String::from_utf8(stderr).unwrap().is_empty());
+  }
+
+  #[cfg(unix)]
+  fn listener_in_dir_with_mode(mode: u32) -> (tempfile::TempDir, PathBuf, std::os::unix::net::UnixListener) {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("local-access");
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode)).unwrap();
+    let socket_path = dir.join("local-access.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    (root, socket_path, listener)
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn refuses_a_resolved_socket_in_a_group_or_world_accessible_dir_without_connecting() {
+    let (_root, socket_path, listener) = listener_in_dir_with_mode(0o777);
+    let target = SocketTarget::resolved(socket_path.clone());
+    let client = std::thread::spawn(move || send_request(&target, "tmgrl_secret", "{}"));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+    let mut connected = false;
+    while std::time::Instant::now() < deadline {
+      if listener.accept().is_ok() {
+        connected = true;
+        break;
+      }
+      std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(!connected, "no connection may reach the listener");
+    let error = client.join().unwrap().unwrap_err();
+    assert!(error.contains(&socket_path.display().to_string()));
+    assert!(!error.contains("tmgrl_secret"));
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn refuses_a_resolved_socket_when_the_current_user_is_not_the_owner() {
+    let (_root, socket_path, listener) = listener_in_dir_with_mode(0o700);
+    let target = SocketTarget::resolved(socket_path.clone());
+    let foreign = super::super::server::current_uid() + 1;
+    let error = verify_socket_target(&target, foreign).unwrap_err();
+    assert!(error.contains(&socket_path.display().to_string()));
+    assert!(listener.accept().is_err());
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn refuses_a_resolved_path_that_is_not_a_socket() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("local-access");
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let file = dir.join("local-access.sock");
+    std::fs::write(&file, b"").unwrap();
+    assert!(send_request(&SocketTarget::resolved(file), "tmgrl_secret", "{}").is_err());
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn accepts_a_resolved_socket_in_a_private_dir_end_to_end() {
+    let (_root, socket_path, listener) = listener_in_dir_with_mode(0o700);
+    listener.set_nonblocking(false).unwrap();
+    let server = std::thread::spawn(move || {
+      let (mut stream, _) = listener.accept().unwrap();
+      let mut buf = [0u8; 4096];
+      let n = stream.read(&mut buf).unwrap();
+      assert!(String::from_utf8_lossy(&buf[..n]).contains("X-Persona-Token: tmgrl_test"));
+      stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n{}").unwrap();
+    });
+    let (status, _) = send_request(&SocketTarget::resolved(socket_path), "tmgrl_test", "{}").unwrap();
+    server.join().unwrap();
+    assert_eq!(status, 200);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn an_explicit_socket_only_needs_to_be_a_socket_owned_by_the_user() {
+    let (_root, socket_path, listener) = listener_in_dir_with_mode(0o777);
+    listener.set_nonblocking(false).unwrap();
+    let server = std::thread::spawn(move || {
+      let (mut stream, _) = listener.accept().unwrap();
+      let mut buf = [0u8; 4096];
+      let _ = stream.read(&mut buf).unwrap();
+      stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n{}").unwrap();
+    });
+    let target = SocketTarget::explicit(socket_path.clone());
+    assert!(verify_socket_target(&target, super::super::server::current_uid() + 1).is_err());
+    assert_eq!(send_request(&target, "tmgrl_test", "{}").unwrap().0, 200);
+    server.join().unwrap();
   }
 }

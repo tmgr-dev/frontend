@@ -1,6 +1,6 @@
 pub mod bridge;
 mod server;
-mod tokens;
+pub(crate) mod tokens;
 
 use std::collections::{HashMap, VecDeque};
 use std::fs;
@@ -223,7 +223,7 @@ struct RunningServer {
 
 /// Owns the token store and (on unix) the running socket server. One instance is `app.manage`d.
 pub struct LocalAccessState {
-  token_store: Arc<TokenStore>,
+  pub(crate) token_store: Arc<TokenStore>,
   user_id: Arc<Mutex<Option<i64>>>,
   #[cfg_attr(not(unix), allow(dead_code))]
   pending: Arc<Mutex<HashMap<u64, oneshot::Sender<BridgeReply>>>>,
@@ -349,6 +349,7 @@ fn ensure_started<R: Runtime>(app: &AppHandle<R>, state: &LocalAccessState) -> R
     app_version: app.package_info().version.to_string(),
     now_epoch: Arc::new(now_epoch),
     events: state.events.clone(),
+    sse_ping_interval: server::SSE_PING_INTERVAL,
   };
   let generation = state.generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
   let server = Server::new(deps, state.next_id.clone());
@@ -456,7 +457,7 @@ pub fn local_token_copy<R: Runtime>(
   state: tauri::State<'_, LocalAccessState>,
   id: String,
 ) -> Result<(), String> {
-  let secret = state.token_store.copy_secret(&id)?.ok_or_else(|| "token not found".to_string())?;
+  let secret = state.token_store.copy_secret(&id, now_epoch())?.ok_or_else(|| "token not found".to_string())?;
   use tauri_plugin_clipboard_manager::ClipboardExt;
   app.clipboard().write_text(secret).map_err(|e| e.to_string())
 }
