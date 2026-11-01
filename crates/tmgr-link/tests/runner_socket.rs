@@ -358,3 +358,9 @@ fn a_stalled_handshake_and_a_stalled_call_both_stop_at_the_deadline() {
         started.elapsed()
     );
 }
+
+#[test]
+fn a_current_runner_welcome_reports_session_modes() {
+    let r = runner("sec", "sec");
+    assert!(RunnerClient::connect(&r.dir).unwrap().reports_modes());
+}

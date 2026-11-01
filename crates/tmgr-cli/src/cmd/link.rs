@@ -460,7 +460,7 @@ fn full_access_warnings(old: &Scope, new: &Scope) -> Vec<String> {
                 .to_string(),
         );
     }
-    if new.include_bypass && !old.include_bypass {
+    if new.include_bypass && (!old.include_bypass || (new.remote_control && !old.remote_control)) {
         out.push(
             "Include-bypass makes sandbox-free sessions (--no-sandbox, --mode bypass) reachable too: full access to this machine with your tokens and keys, without the sandbox."
                 .to_string(),
@@ -490,9 +490,7 @@ fn close_attached(
         return Ok(None);
     }
     std::thread::sleep(CLOSE_WAIT);
-    let t = registry::terminate_where(paths, name, CLOSE_GRACE, &|_, a| {
-        a.is_some_and(|a| a.remote && (remote_off || a.bypass))
-    })?;
+    let t = follower::close_after_scope_change(paths, name, old, new, CLOSE_GRACE)?;
     Audit::new(&paths.audit_dir()).append(
         "link.scope.closed",
         json!({"link": name, "signalled": t.signalled, "survivors": t.survivors}),
@@ -829,6 +827,13 @@ mod tests {
         let text = full_access_warnings(&remote, &both).join(" ");
         assert!(text.contains("sandbox-free") && text.contains("tokens and keys"));
         assert!(full_access_warnings(&both, &off).is_empty());
+        let stored = Scope {
+            include_bypass: true,
+            ..Default::default()
+        };
+        assert!(full_access_warnings(&stored, &both)
+            .join(" ")
+            .contains("sandbox-free"));
         let alone = Scope {
             include_bypass: true,
             ..Default::default()
