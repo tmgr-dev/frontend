@@ -1304,16 +1304,24 @@ mod tests {
         }
     }
 
-    fn survivors(children: &mut [std::process::Child]) -> Vec<bool> {
-        let alive: Vec<bool> = children
-            .iter_mut()
-            .map(|c| c.try_wait().unwrap().is_none())
-            .collect();
+    fn assert_survivors(children: &mut [std::process::Child], want: &[bool]) {
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut alive: Vec<bool>;
+        loop {
+            alive = children
+                .iter_mut()
+                .map(|c| c.try_wait().unwrap().is_none())
+                .collect();
+            if alive == want || std::time::Instant::now() >= end {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
         for c in children.iter_mut() {
             let _ = c.kill();
             let _ = c.wait();
         }
-        alive
+        assert_eq!(alive, want);
     }
 
     #[test]
@@ -1333,7 +1341,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(t.signalled, 2);
-        assert_eq!(survivors(&mut ws), [false, false, true]);
+        assert_survivors(&mut ws, &[false, false, true]);
     }
 
     #[test]
@@ -1353,7 +1361,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(t.signalled, 1);
-        assert_eq!(survivors(&mut ws), [true, false, true]);
+        assert_survivors(&mut ws, &[true, false, true]);
     }
 
     #[test]
@@ -1375,6 +1383,6 @@ mod tests {
             .unwrap();
             assert_eq!(t.signalled, 0);
         }
-        assert_eq!(survivors(&mut ws), [true]);
+        assert_survivors(&mut ws, &[true]);
     }
 }
