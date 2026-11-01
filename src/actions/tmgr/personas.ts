@@ -7,12 +7,15 @@ export interface PersonaOwnerRef {
 	name: string;
 }
 
+export type PersonaOwnerNotifications = 'all' | 'mentions' | 'none';
+
 export interface Persona {
 	id: string;
 	name: string;
 	description: string | null;
 	avatar_url: string | null;
 	system_prompt?: string;
+	owner_notifications?: PersonaOwnerNotifications;
 	prompt_version?: number;
 	archived_at: string | null;
 	created_at: string;
@@ -70,6 +73,7 @@ export interface PersonaInput {
 	name: string;
 	description?: string;
 	system_prompt?: string;
+	owner_notifications?: PersonaOwnerNotifications;
 	workspace_id?: number;
 }
 
