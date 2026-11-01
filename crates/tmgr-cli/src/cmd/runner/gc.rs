@@ -297,6 +297,7 @@ impl Probe {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(super) fn parse_lsof(text: &str) -> Vec<(u32, PathBuf)> {
     let mut pid = 0u32;
     let mut out = Vec::new();
