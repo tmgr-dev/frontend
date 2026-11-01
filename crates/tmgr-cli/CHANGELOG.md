@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.57
 
 - Experimental (`tmgr link`): remote control over the link. On the follower, `tmgr link scope <leader> --remote-control on|off` lets that leader see, attach with input to, and halt ALL runner sessions on this machine, including ones you started locally; from the leader, `tmgr attach --on <follower>` and `tmgr agents --host <follower>` then show them (FROM column: `leader` or `local`). `--include-bypass on|off` extends this to sessions started with `--no-sandbox` or `--mode bypass`; it has no effect unless remote control is on. Both flags default to off, `tmgr link trust` has no such flags, and the values must be written as `on` or `off`.
 - Turning either flag on needs a terminal, is refused inside agent sessions, never accepts `--yes`, and asks for a second typed confirmation (`full access`) that says the leader gets full access to this machine with your tokens and keys (and, for include-bypass, that sandbox-free sessions become reachable). Turning them off is always allowed, also from an agent session: open remote attaches are closed within a couple of seconds and `tmgr link audit` shows `link.scope.closed`.
