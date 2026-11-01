@@ -1,5 +1,6 @@
 use super::broadcast::Broadcast;
 use super::chip::TaskChip;
+use super::clean::CopyContext;
 use super::filter::Filter;
 use super::find::{CopyState, ScrollText, SearchState};
 use super::keys::{Cmd, ScrollKey};
@@ -164,6 +165,7 @@ pub struct ViewState {
     pub search: Option<SearchState>,
     pub copy: Option<CopyState>,
     pub copied: Option<String>,
+    pub copied_context: CopyContext,
     pub msel: Option<MouseSel>,
     pub(crate) last_click: Option<Click>,
     pub new_tasks: Vec<TaskOpt>,
@@ -437,6 +439,7 @@ impl ViewState {
             search: None,
             copy: None,
             copied: None,
+            copied_context: CopyContext::default(),
             msel: None,
             last_click: None,
             new_tasks: Vec::new(),

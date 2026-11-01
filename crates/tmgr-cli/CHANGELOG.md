@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Copying from `tmgr attach` / `tmgr run` now joins a paragraph that the agent wrapped at its own width into one line, and removes the indent of the next lines when the selection starts after a marker such as `⏺`. Lists, blank lines, short lines and lines ending in `;`, `{` or `}` keep their breaks. Long lines of code without such an ending can still be joined; `tmgr config set attach.copy.clean false` copies the text as it is.
+- Over SSH the copy notice now says `sent N characters to the terminal clipboard` instead of `copied`, because the terminal never confirms that it accepted the text. If the clipboard stays empty, allow OSC 52 in your terminal (in Warp: `osc52_clipboard_access = "write_only"` under `[terminal]` in its `settings.toml`).
+
 ## 1.0.52
 
 - `tmgr run --mode bypass` now works for tasks of a local workspace (`--ws local:<code>`) and for `--agent` without a task, not only for cloud tasks. It shows a warning and asks you to type `bypass`; `--yes` is not accepted, and it is refused inside agent sessions and without a terminal.

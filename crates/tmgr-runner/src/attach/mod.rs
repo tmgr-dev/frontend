@@ -38,7 +38,7 @@ pub use actions::{ActionDef, ACTIONS};
 pub use attention::AttentionTracker;
 pub use broadcast::{peer_bytes, Broadcast};
 pub use chip::{chip_text, open_urls, TaskChip};
-pub use clean::clean_copy;
+pub use clean::{clean_copy, clean_selection, CopyContext};
 pub use export::{
     escape_markdown, fmt_size, markdown_lines, scan as scan_export,
     transcript as export_transcript, Decision, ExportAction, ExportState, Finding,

@@ -1,6 +1,12 @@
+use unicode_width::UnicodeWidthStr;
+
+const WRAP_MARGIN: usize = 12;
+
 struct Line {
     eff: usize,
+    col: usize,
     marker: bool,
+    fragment: bool,
     text: String,
 }
 
@@ -8,39 +14,108 @@ const MARKERS: [char; 18] = [
     '⏺', '⎿', '❯', '✻', '✳', '✶', '✽', '✢', '·', '●', '○', '◐', '◑', '◒', '◓', '▪', '▸', '›',
 ];
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CopyContext {
+    pub lead: String,
+    pub cols: usize,
+}
+
 pub fn clean_copy(text: &str) -> String {
+    clean_selection(text, &CopyContext::default())
+}
+
+pub fn clean_selection(text: &str, ctx: &CopyContext) -> String {
     let stripped = strip_ansi(text);
     let (body, trailing_newline) = match stripped.strip_suffix('\n') {
         Some(body) => (body, true),
         None => (stripped.as_str(), false),
     };
-    let lines: Vec<Line> = body.split('\n').map(clean_line).collect();
+    let lead_is_decoration = clean_line(&ctx.lead).text.is_empty();
+    let source = if lead_is_decoration {
+        format!("{}{body}", ctx.lead)
+    } else {
+        body.to_string()
+    };
+    let mut lines: Vec<Line> = source.split('\n').map(clean_line).collect();
+    if !lead_is_decoration {
+        if let Some(first) = lines.first_mut() {
+            first.fragment = true;
+            first.col += ctx.lead.width();
+        }
+    }
     let dedent = lines
         .iter()
-        .filter(|l| !l.text.is_empty())
+        .filter(|l| !l.text.is_empty() && !l.fragment)
         .map(|l| l.eff)
         .min()
         .unwrap_or(0);
-    let mut out = lines
-        .iter()
-        .map(|l| {
-            if l.text.is_empty() {
-                String::new()
-            } else {
-                let indent = if l.marker {
-                    0
-                } else {
-                    l.eff.saturating_sub(dedent)
-                };
-                format!("{}{}", " ".repeat(indent), l.text)
+    let wrap_width = wrap_width(&lines, ctx.cols);
+    let mut out = String::new();
+    for (i, l) in lines.iter().enumerate() {
+        if i > 0 {
+            let joined = wrap_width.is_some_and(|w| continues(&lines[i - 1], l, w, ctx.cols));
+            out.push(if joined { ' ' } else { '\n' });
+            if joined {
+                out.push_str(&l.text);
+                continue;
             }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+        }
+        if !l.text.is_empty() {
+            if !l.marker && !l.fragment {
+                out.push_str(&" ".repeat(l.eff.saturating_sub(dedent)));
+            }
+            out.push_str(&l.text);
+        }
+    }
     if trailing_newline {
         out.push('\n');
     }
     out
+}
+
+fn row_width(l: &Line) -> usize {
+    l.col + l.text.width()
+}
+
+fn wrap_width(lines: &[Line], cols: usize) -> Option<usize> {
+    lines
+        .iter()
+        .map(row_width)
+        .filter(|w| *w <= cols)
+        .max()
+        .filter(|w| w + WRAP_MARGIN >= cols)
+}
+
+fn continues(a: &Line, b: &Line, wrap_width: usize, cols: usize) -> bool {
+    if a.text.is_empty() || b.text.is_empty() || b.marker || row_width(a) > cols {
+        return false;
+    }
+    if a.text.ends_with([';', '{', '}']) || starts_a_block(&b.text) {
+        return false;
+    }
+    let hanging = a.col + list_prefix(&a.text).unwrap_or(0);
+    if !a.fragment && b.col != a.col && b.col != hanging {
+        return false;
+    }
+    let word = b.text.split(' ').next().unwrap_or("").width();
+    row_width(a) + 1 + word > wrap_width
+}
+
+fn starts_a_block(text: &str) -> bool {
+    list_prefix(text).is_some()
+        || text.starts_with(['#', '>', '|', '}', ')', ']'])
+        || text.starts_with("```")
+}
+
+fn list_prefix(text: &str) -> Option<usize> {
+    let digits = text.chars().take_while(char::is_ascii_digit).count();
+    let marker = if digits > 0 {
+        text[digits..].starts_with(['.', ')']).then_some(digits + 1)
+    } else {
+        text.starts_with(['-', '*', '+', '•']).then_some(1)
+    }?;
+    let after = text.chars().nth(marker)?;
+    (after == ' ').then_some(marker + 1)
 }
 
 fn strip_ansi(text: &str) -> String {
@@ -91,12 +166,14 @@ fn clean_line(line: &str) -> Line {
     let visible: String = body.chars().filter(|&c| !is_art(c)).collect();
     let body = visible.trim_end_matches([' ', '\t', '\r']);
     let lead = body.len() - body.trim_start_matches(' ').len();
-    let (eff, text) = if marker {
-        (pre, body[lead..].to_string())
-    } else {
-        (pre + lead, body[lead..].to_string())
-    };
-    Line { eff, marker, text }
+    let col = pre + lead;
+    Line {
+        eff: if marker { pre } else { col },
+        col,
+        marker,
+        fragment: false,
+        text: body[lead..].to_string(),
+    }
 }
 
 fn decoration(rest: &str) -> Option<(usize, usize, bool)> {
@@ -134,7 +211,96 @@ fn is_zero_width(c: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::clean_copy;
+    use super::{clean_copy, clean_selection, CopyContext};
+
+    const ANSWER: &str = "TMGR.dev: таск-менеджер (tmgr.dev) с воркспейсами,\n  задачами, страницами и агентской работой.\n  Agent-команды репортят в него прогресс через MCP.\n  Описание собрано из CLAUDE.md и memory, код не\n  открывал.";
+    const ANSWER_LINE: &str = "TMGR.dev: таск-менеджер (tmgr.dev) с воркспейсами, задачами, страницами и агентской работой. Agent-команды репортят в него прогресс через MCP. Описание собрано из CLAUDE.md и memory, код не открывал.";
+
+    fn in_pane(text: &str, lead: &str, cols: usize) -> String {
+        let ctx = CopyContext {
+            lead: lead.into(),
+            cols,
+        };
+        clean_selection(text, &ctx)
+    }
+
+    #[test]
+    fn an_agent_paragraph_selected_after_its_marker_becomes_one_line() {
+        assert_eq!(in_pane(ANSWER, "⏺ ", 58), ANSWER_LINE);
+    }
+
+    #[test]
+    fn an_agent_paragraph_selected_with_its_marker_becomes_one_line() {
+        assert_eq!(in_pane(&format!("⏺ {ANSWER}"), "", 58), ANSWER_LINE);
+    }
+
+    #[test]
+    fn a_selection_from_the_middle_of_a_row_loses_the_indent_of_the_next_rows() {
+        let text = "таск-менеджер (tmgr.dev) с воркспейсами,\n  задачами, страницами и агентской работой.\n    вложено";
+        assert_eq!(
+            in_pane(text, "TMGR.dev: ", 200),
+            "таск-менеджер (tmgr.dev) с воркспейсами,\nзадачами, страницами и агентской работой.\n  вложено"
+        );
+    }
+
+    #[test]
+    fn a_wrapped_list_item_is_joined_and_the_next_item_stays_apart() {
+        let text = "- первый пункт списка довольно длинный и он\n  переносится на вторую строку\n- второй пункт\n1. третий";
+        assert_eq!(
+            in_pane(text, "", 50),
+            "- первый пункт списка довольно длинный и он переносится на вторую строку\n- второй пункт\n1. третий"
+        );
+    }
+
+    #[test]
+    fn a_blank_line_still_separates_paragraphs() {
+        let text = "первая строка абзаца довольно длинная вот\nтак\n\nследующий абзац";
+        assert_eq!(
+            in_pane(text, "", 48),
+            "первая строка абзаца довольно длинная вот так\n\nследующий абзац"
+        );
+    }
+
+    #[test]
+    fn short_lines_keep_their_breaks() {
+        let text = "git status\ngit diff\nlet result = compute_something_rather_long(input);";
+        assert_eq!(in_pane(text, "", 56), text);
+    }
+
+    #[test]
+    fn long_code_lines_keep_their_breaks() {
+        let text = "let first_value = compute_the_first_thing(input);\nlet second_value = compute_the_second(input);\nif second_value > first_value {\n    return;\n}";
+        assert_eq!(in_pane(text, "", 52), text);
+    }
+
+    #[test]
+    fn text_much_narrower_than_the_pane_keeps_its_breaks() {
+        assert_eq!(
+            in_pane("foo bar\nbazqux quux", "", 100),
+            "foo bar\nbazqux quux"
+        );
+    }
+
+    #[test]
+    fn a_line_longer_than_the_pane_was_wrapped_by_the_terminal_and_stays_apart() {
+        let long = "слово ".repeat(20);
+        let text = format!("{}\nследующая строка команды", long.trim_end());
+        assert_eq!(in_pane(&text, "", 60), text);
+    }
+
+    #[test]
+    fn an_unknown_pane_width_never_joins_lines() {
+        assert_eq!(in_pane("a b\nc", "", 0), "a b\nc");
+    }
+
+    #[test]
+    fn a_trailing_newline_is_kept_after_joining() {
+        let text = "первая строка абзаца довольно длинная вот\nтак\n";
+        assert_eq!(
+            in_pane(text, "", 48),
+            "первая строка абзаца довольно длинная вот так\n"
+        );
+    }
 
     #[test]
     fn strips_csi_and_osc_sequences() {

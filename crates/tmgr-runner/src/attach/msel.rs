@@ -1,3 +1,4 @@
+use super::clean::CopyContext;
 use super::find::{chars_of, row_wrapped, selection_text, ScrollText};
 use super::mouse::{encode, wants, Kind, MouseEvent};
 use super::view::{layout, MouseOut, PaneInfo, ViewState};
@@ -140,6 +141,24 @@ pub fn logical_range(lines: &[String], cols: usize, flags: &[bool], line: usize)
     (s, e)
 }
 
+fn lead_of(t: &ScrollText, m: &MouseSel) -> String {
+    if m.gran != Gran::Cell {
+        return String::new();
+    }
+    let base = (t.scroll_max + t.rows).saturating_sub(t.lines.len());
+    let (from, _) = order(m.anchor, m.head);
+    from.0
+        .checked_sub(base)
+        .and_then(|l| t.lines.get(l))
+        .map(|line| {
+            chars_of(line)
+                .iter()
+                .take(char_at_cell(line, from.1))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub fn extract(t: &ScrollText, m: &MouseSel) -> String {
     let Some(last) = t.lines.len().checked_sub(1) else {
         return String::new();
@@ -228,15 +247,18 @@ impl ViewState {
         let Some(m) = self.msel.take() else {
             return false;
         };
-        let text = self
-            .stext
-            .as_ref()
-            .filter(|t| t.session == m.session)
-            .map(|t| extract(t, &m))
-            .unwrap_or_default();
+        let Some(t) = self.stext.as_ref().filter(|t| t.session == m.session) else {
+            self.notice = Some("nothing to copy".into());
+            return true;
+        };
+        let text = extract(t, &m);
         if text.is_empty() {
             self.notice = Some("nothing to copy".into());
         } else {
+            self.copied_context = CopyContext {
+                lead: lead_of(t, &m),
+                cols: t.cols,
+            };
             self.copied = Some(text);
         }
         true
@@ -552,6 +574,20 @@ mod tests {
         assert_eq!(word_range(line, 2), Some((2, 2)));
         assert_eq!(word_range(line, 18), Some((18, 18)));
         assert_eq!(word_range(line, 99), None);
+    }
+
+    #[test]
+    fn the_context_holds_the_row_text_left_of_a_cell_selection() {
+        let t = ScrollText {
+            session: "s".into(),
+            lines: vec!["⏺ hello".into(), "  world".into()],
+            cols: 40,
+            wrapped: vec![false, false],
+            scroll_max: 0,
+            rows: 2,
+        };
+        assert_eq!(lead_of(&t, &sel((0, 2), (1, 6), Gran::Cell)), "⏺ ");
+        assert_eq!(lead_of(&t, &sel((0, 2), (1, 6), Gran::Line)), "");
     }
 
     #[test]

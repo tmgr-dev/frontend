@@ -1,3 +1,4 @@
+use super::clean::CopyContext;
 use super::keys::ScrollKey;
 use super::palette::{esc_key, next_char, query_tail};
 use super::render::put;
@@ -226,6 +227,10 @@ impl ViewState {
         self.copied.take()
     }
 
+    pub fn take_copied_context(&mut self) -> CopyContext {
+        std::mem::take(&mut self.copied_context)
+    }
+
     fn recompute(&mut self, rows: usize) {
         let Some(t) = self.stext.clone() else {
             return;
@@ -451,6 +456,10 @@ impl ViewState {
                     if text.is_empty() {
                         self.notice = Some("nothing to copy".into());
                     } else {
+                        self.copied_context = CopyContext {
+                            lead: chars_of(&t.lines[from.0]).iter().take(from.1).collect(),
+                            cols: t.cols,
+                        };
                         self.copied = Some(text);
                     }
                 }

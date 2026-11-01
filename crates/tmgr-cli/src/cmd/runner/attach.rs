@@ -55,10 +55,10 @@ use tmgr_ipc::api::{
 };
 use tmgr_ipc::proto::{valid_session_id, ServerMsg};
 use tmgr_runner::attach::{
-    clean_copy, cursor, deliver, enter_mouse, focus_on, kind_for_background, layout, mode_changes,
-    open_urls, parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes, valid_pr_url,
-    Action, AgentTitle, AttentionTracker, Cmd, Confirm, Control, GitAction, GitInfo, Hit,
-    InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier, PaletteEdit,
+    clean_selection, cursor, deliver, enter_mouse, focus_on, kind_for_background, layout,
+    mode_changes, open_urls, parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes,
+    valid_pr_url, Action, AgentTitle, AttentionTracker, Cmd, Confirm, Control, GitAction, GitInfo,
+    Hit, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier, PaletteEdit,
     PaletteEntry, PaletteMode, PaneInfo, Place, PostTarget, PrLookup, QEdit, RenameEdit,
     ScreenSource, ScrollKey, ScrollState, ScrollText, SearchEdit, SessionRow, SessionStatus,
     SidebarEdit, SignalSettings, SignalTracker, SplitDir, SummaryAction, SummaryDraft, TaskChip,
@@ -2169,7 +2169,12 @@ impl App {
             .ok()
             .and_then(|d| tmgr_core::config::Config::load(&d).ok())
             .is_none_or(|c| c.attach_copy_clean());
-        let text = if clean { clean_copy(&text) } else { text };
+        let context = self.view.take_copied_context();
+        let text = if clean {
+            clean_selection(&text, &context)
+        } else {
+            text
+        };
         let msg = self.clipboard.copy(&text);
         self.notify(&msg);
     }
