@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.60
+
+- `tmgr runner halt --kill` now stops the background processes an exited session left behind and waits up to 5 seconds for them. A session blocked from resuming by such processes can be resumed afterwards.
+- `tmgr runner halt --kill` on a running session keeps the kill going until the whole session has stopped, for up to 30 seconds.
+- `tmgr runner halt` on an exited session sends no signal and says when background processes may still be running.
+- `tmgr runner resume`: the refusal for leftover background processes now names `halt --kill`.
+
 ## 1.0.59
 
 - `tmgr link`: a worker whose process could not be queried is now reported as "could not be checked", no longer as gone. Its record stays and `tmgr link revoke` does not report success in that case.
