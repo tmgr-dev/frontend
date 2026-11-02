@@ -992,7 +992,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 34);
+    assert_eq!(w.caps.len(), 35);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1477,6 +1477,7 @@ fn full_bundle() -> RunBundle {
 fn full_req() -> RunCreateReq {
     RunCreateReq {
         team: None,
+        permission_cards: false,
         profile: "claude".into(),
         task: Some(TaskRef {
             workspace_id: -3,
@@ -1512,6 +1513,7 @@ fn full_req() -> RunCreateReq {
 fn full_info() -> SessionInfo {
     SessionInfo {
         team: None,
+        permission_cards: false,
         id: "s_abcdefghij".into(),
         name: "n".into(),
         argv: vec!["claude".into()],
