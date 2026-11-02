@@ -100,15 +100,14 @@ async fn runner_processes_do_not_keep_inherited_fds() {
         stop(&env);
         unsafe { libc::close(read_fd) };
         let err = std::fs::read_to_string(root.join("run.err")).unwrap_or_default();
-        eprintln!("skipped: the runner could not start a session here ({started:?}): {err}");
-        return;
+        panic!("the runner could not start a session ({started:?}): {err}");
     };
     std::thread::sleep(Duration::from_millis(800));
     if !alive(shim) {
         stop(&env);
         unsafe { libc::close(read_fd) };
-        eprintln!("skipped: the sandbox could not keep the session alive here");
-        return;
+        let err = std::fs::read_to_string(root.join("run.err")).unwrap_or_default();
+        panic!("the session shim exited early ({started:?}): {err}");
     }
 
     let (tx, rx) = mpsc::channel();
