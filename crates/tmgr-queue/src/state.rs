@@ -157,6 +157,10 @@ impl TeamState {
     pub fn all_exited(&self) -> bool {
         self.members.iter().all(|m| m.exited)
     }
+
+    pub fn ready_to_publish(&self) -> bool {
+        self.phase == TeamPhase::Finishing && self.lead_exit_sent && self.all_exited()
+    }
 }
 
 /// The models of a team: `(lead, worker)`. Aliases the claude profile and `queue.toml` accept.
@@ -239,7 +243,7 @@ impl Pickup {
             && self.publish_attempts < MAX_PUBLISH_ATTEMPTS
             && self.held.is_none()
             && !self.paused_draft
-            && self.team.as_ref().is_none_or(TeamState::all_exited)
+            && self.team.as_ref().is_none_or(TeamState::ready_to_publish)
     }
 
     pub fn resumable(&self) -> bool {
