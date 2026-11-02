@@ -3525,6 +3525,99 @@ fn details_are_dropped_before_rows_when_the_sidebar_is_short() {
         .all(|(l, _)| !matches!(l, SidebarLine::Detail(_))));
 }
 
+fn team_link(of: &str, role: tmgr_ipc::api::TeamRole) -> tmgr_ipc::api::TeamLink {
+    tmgr_ipc::api::TeamLink {
+        role,
+        of: of.into(),
+    }
+}
+
+fn team_view() -> ViewState {
+    use tmgr_ipc::api::TeamRole::{Lead, Worker};
+    let rows = ["x", "w2", "lead", "w1", "y"]
+        .iter()
+        .map(|id| row(id, id, StateKind::Working, "1m"))
+        .collect();
+    let mut v = ViewState::new(rows, "local");
+    v.width = 140;
+    v.grouped = true;
+    v.set_locs(
+        AREA,
+        vec![
+            ("x".into(), loc("/w/app", "/w/app", Some("main"))),
+            ("w2".into(), loc("/q/p1/w2", "/q/p1/w2", Some("t/w2"))),
+            ("lead".into(), loc("/q/p1/lead", "/q/p1/lead", Some("t"))),
+            ("w1".into(), loc("/q/p1/w1", "/q/p1/w1", Some("t/w1"))),
+            ("y".into(), loc("/w/app", "/w/app/src", Some("main"))),
+        ],
+    );
+    v.set_teams(
+        AREA,
+        HashMap::from([
+            ("w2".into(), team_link("p1", Worker(2))),
+            ("lead".into(), team_link("p1", Lead)),
+            ("w1".into(), team_link("p1", Worker(1))),
+        ]),
+    );
+    v
+}
+
+#[test]
+fn team_sessions_group_together_lead_first_then_workers_by_number() {
+    let v = team_view();
+    let team = shape(&v);
+    assert!(
+        team.contains(&"H \0team:p1 3 false".to_string()),
+        "{team:?}"
+    );
+    let at = team
+        .iter()
+        .position(|l| l.starts_with("H \0team:p1"))
+        .unwrap();
+    assert_eq!(team[at + 1..at + 4], ["  lead", "  w1", "  w2"]);
+}
+
+#[test]
+fn team_members_are_labelled_lead_and_w_number() {
+    let mut v = team_view();
+    for _ in 0..20 {
+        v.apply(Cmd::SidebarWider);
+    }
+    let text = draw(&v, &screens(), 140, 22);
+    for label in ["[lead]", "[w1]", "[w2]"] {
+        assert!(text.contains(label), "{label}\n{text}");
+    }
+    let narrow = draw(&team_view(), &screens(), 140, 22);
+    assert!(narrow.contains("lead L"), "{narrow}");
+}
+
+#[test]
+fn a_team_group_does_not_swallow_sessions_of_other_teams_or_plain_ones() {
+    use tmgr_ipc::api::TeamRole::{Lead, Worker};
+    let mut v = team_view();
+    v.set_teams(
+        AREA,
+        HashMap::from([
+            ("w2".into(), team_link("p2", Worker(1))),
+            ("lead".into(), team_link("p1", Lead)),
+            ("w1".into(), team_link("p1", Worker(1))),
+        ]),
+    );
+    let s = shape(&v);
+    assert!(s.iter().any(|l| l.starts_with("H \0team:p1 2")), "{s:?}");
+    assert!(s.iter().any(|l| l == "w2" || l.ends_with("w2")), "{s:?}");
+    assert!(s.iter().any(|l| l.starts_with("H /w/app 2")), "{s:?}");
+}
+
+#[test]
+fn without_team_links_the_sidebar_is_byte_identical_to_the_pinned_snapshot() {
+    let mut v = grouped_view();
+    assert!(!v.set_teams(AREA, HashMap::new()));
+    assert_snapshot("grouped", &draw(&v, &screens(), 140, 22));
+    v.collapsed.insert("/w/app".into());
+    assert_snapshot("grouped_folded", &draw(&v, &screens(), 140, 22));
+}
+
 #[test]
 fn snapshot_grouped_sidebar() {
     let v = grouped_view();
