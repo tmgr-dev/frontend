@@ -693,13 +693,13 @@ fn text(g: &GitEnv, args: &[&str]) -> Result<String, CpError> {
         .to_string())
 }
 
-fn global_excludes(env: &Env) -> String {
+fn effective_excludes(env: &Env, cwd: &Path) -> String {
     let mut cmd = Command::new("git");
     cmd.env_clear()
         .env("GIT_CONFIG_NOSYSTEM", "1")
-        .current_dir("/")
+        .current_dir(cwd)
         .stdin(Stdio::null())
-        .args(["config", "--global", "--path", "--get", "core.excludesFile"]);
+        .args(["config", "--path", "--get", "core.excludesFile"]);
     if let Some(p) = std::env::var_os("PATH") {
         cmd.env("PATH", p);
     }
@@ -711,7 +711,8 @@ fn global_excludes(env: &Env) -> String {
     }
     if let Ok(o) = run_bounded(cmd, FACTS_DEADLINE, 64 * 1024, 64 * 1024) {
         let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
-        if o.status.success() && Path::new(&path).is_absolute() {
+        let usable = fs::metadata(&path).map_or(true, |m| m.is_file());
+        if o.status.success() && Path::new(&path).is_absolute() && usable {
             return path;
         }
     }
@@ -963,7 +964,7 @@ impl<'a> Op<'a> {
         Op {
             store,
             env,
-            excludes: global_excludes(env),
+            excludes: effective_excludes(env, &store.cwd),
         }
     }
 
@@ -1486,17 +1487,20 @@ impl Op<'_> {
     ) -> Result<(), CpError> {
         let root = open_root(&self.store.cwd).map_err(|e| failed("cannot open directory", e))?;
         let mut blobs = Blobs::open(&self.git())?;
+        let mut blocked = Vec::new();
         for e in target {
             match self.write_one(root.as_fd(), e, before, &mut blobs)? {
                 Outcome::Written => rep.written += 1,
-                Outcome::Left => {
-                    rep.left
-                        .insert(String::from_utf8_lossy(&e.path).into_owned());
-                }
+                Outcome::Left => blocked.push(e),
                 Outcome::Same | Outcome::Deleted => {}
             }
         }
         let wanted: BTreeSet<&[u8]> = target.iter().map(|e| e.path.as_slice()).collect();
+        let wanted_files: BTreeSet<(u64, u64)> = target
+            .iter()
+            .filter_map(|e| before.entries.get(&e.path))
+            .map(|meta| (meta.fp.dev, meta.fp.ino))
+            .collect();
         let mut emptied = BTreeSet::new();
         for path in self.enumerate()? {
             if wanted.contains(path.as_slice()) {
@@ -1505,6 +1509,11 @@ impl Op<'_> {
             let Some(meta) = before.entries.get(&path) else {
                 continue;
             };
+            // Case-insensitive volumes: another spelling of a wanted path is the same file.
+            if wanted_files.contains(&(meta.fp.dev, meta.fp.ino)) {
+                rep.left.insert(String::from_utf8_lossy(&path).into_owned());
+                continue;
+            }
             match delete_one(root.as_fd(), &path, meta) {
                 Outcome::Deleted => {
                     rep.deleted += 1;
@@ -1519,6 +1528,15 @@ impl Op<'_> {
         }
         for dir in emptied.iter().rev() {
             prune_empty(root.as_fd(), dir.strip_suffix(b"/").unwrap_or(dir));
+        }
+        for e in blocked {
+            match self.write_one(root.as_fd(), e, before, &mut blobs)? {
+                Outcome::Written => rep.written += 1,
+                _ => {
+                    rep.left
+                        .insert(String::from_utf8_lossy(&e.path).into_owned());
+                }
+            }
         }
         Ok(())
     }
@@ -2102,6 +2120,78 @@ mod tests {
         let items = st.list();
         assert_eq!(items[2].kind, CheckpointKind::Restored);
         assert_eq!(items[2].restored_from, Some(1));
+    }
+
+    #[test]
+    fn restore_puts_a_file_back_where_a_directory_grew() {
+        let fx = Fx::new();
+        fx.w("a", b"file");
+        let st = fx.store();
+        snap(&fx, &st);
+        fs::remove_file(fx.repo.join("a")).unwrap();
+        fx.w("a/b/c", b"nested");
+        snap(&fx, &st);
+        let res = st.restore_in(&fx.env(), 1).unwrap();
+        assert_eq!(fx.r("a"), b"file");
+        assert!(res.left_as_is.is_empty(), "{:?}", res.left_as_is);
+        assert_eq!((res.written, res.deleted), (1, 1));
+        let undo = st.restore_in(&fx.env(), res.before_n).unwrap();
+        assert_eq!(fx.r("a/b/c"), b"nested");
+        assert!(undo.left_as_is.is_empty(), "{:?}", undo.left_as_is);
+    }
+
+    #[test]
+    fn restore_keeps_a_directory_holding_an_ignored_file_in_the_way_of_a_file() {
+        let fx = Fx::new();
+        fx.w(".gitignore", b"*.keep\n");
+        fx.w("a", b"file");
+        let st = fx.store();
+        snap(&fx, &st);
+        fs::remove_file(fx.repo.join("a")).unwrap();
+        fx.w("a/x.keep", b"ignored");
+        fx.w("a/y", b"tracked");
+        snap(&fx, &st);
+        let res = st.restore_in(&fx.env(), 1).unwrap();
+        assert_eq!(fx.r("a/x.keep"), b"ignored");
+        assert_eq!(res.left_as_is, ["a"]);
+    }
+
+    #[test]
+    fn case_only_rename_with_same_bytes_keeps_the_file() {
+        let fx = Fx::new();
+        fx.w("probe", b"");
+        if !fx.exists("PROBE") {
+            return;
+        }
+        fs::remove_file(fx.repo.join("probe")).unwrap();
+        fx.w("readme.md", b"same bytes");
+        fx.commit_all("c");
+        let st = fx.store();
+        snap(&fx, &st);
+        fx.pg(&["mv", "readme.md", "README.md"]);
+        fx.w("other", b"x");
+        snap(&fx, &st);
+        let res = st.restore_in(&fx.env(), 1).unwrap();
+        assert_eq!(fx.r("readme.md"), b"same bytes");
+        assert!(!fx.exists("other"));
+        assert_eq!(res.deleted, 1);
+    }
+
+    #[test]
+    fn repo_local_excludes_file_is_respected() {
+        let fx = Fx::new();
+        let local = fx.root.join("local-ignore");
+        fs::write(&local, "secret.local\n").unwrap();
+        fx.pg(&["config", "core.excludesFile", local.to_str().unwrap()]);
+        fx.w("a", b"1");
+        let st = fx.store();
+        snap(&fx, &st);
+        fx.w("secret.local", b"s");
+        fx.w("a", b"2");
+        snap(&fx, &st);
+        assert_eq!(tree_paths(&fx, &commit_of(&st, 2)), ["a"]);
+        st.restore_in(&fx.env(), 1).unwrap();
+        assert_eq!(fx.r("secret.local"), b"s");
     }
 
     #[test]

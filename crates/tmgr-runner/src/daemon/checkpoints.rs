@@ -261,6 +261,7 @@ impl Runner {
             return;
         };
         let _g = lock(&os.cp.lock);
+        let _n = lock(&ns.cp.lock);
         lock(&ns.inner).meta.checkpoints = Some(keep);
         let Some(to) = ns.checkpoint_store() else {
             return;
