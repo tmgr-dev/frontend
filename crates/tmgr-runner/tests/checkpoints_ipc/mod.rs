@@ -175,13 +175,14 @@ fn restore_round_trips_over_ipc_and_is_undoable() {
     let h = fx();
     let mut c = h.client();
     let info = c.create(h.sh(TURNS)).unwrap();
-    c.checkpoints_enable(&info.id, None).unwrap();
     wait_waiting(&mut c, &info.id);
+    c.checkpoints_enable(&info.id, None).unwrap();
     let first = wait_items(&mut c, &info.id, 1);
     let start = first.items[0].n;
     assert_eq!(read_f(&h), "v1\n");
     c.send(&info.id, "go\r").unwrap();
     wait_items(&mut c, &info.id, 2);
+    wait_waiting(&mut c, &info.id);
     assert_eq!(read_f(&h), "v2\n");
     let preview = c
         .checkpoints_diff(&info.id, start, DiffAgainst::Current)

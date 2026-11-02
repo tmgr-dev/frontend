@@ -200,6 +200,7 @@ fn list_of_a_session_without_checkpoints_says_they_are_off() {
 fn list_diff_and_restore_work_end_to_end_with_json() {
     let e = Env::new();
     e.git_repo();
+    fs::write(e.proj.join("f.txt"), "v1\n").unwrap();
     let script = e.script("agent.sh", TURNS);
     let Some(id) = e.run_cp(&script, &["--checkpoints"]) else {
         return;
@@ -215,6 +216,7 @@ fn list_diff_and_restore_work_end_to_end_with_json() {
     c.send(&id, "go\r").unwrap();
     let items = e.items(&id, 2);
     assert_eq!(items[1]["kind"], "turn");
+    e.wait_waiting(&id);
     let text =
         String::from_utf8_lossy(&e.cp_out(&["checkpoints", "list", &id]).stdout).into_owned();
     assert!(text.contains("after turn 1"), "{text}");
