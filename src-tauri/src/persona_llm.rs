@@ -371,6 +371,11 @@ fn save_config<S: SecretStore, W: FnOnce(&LlmConfigFile) -> Result<(), String>>(
   apply_save(store, &account, &plan, new_key.as_deref().filter(|_| !clear_api_key), || write(&file))
 }
 
+fn slot_has_key<S: SecretStore>(store: &S, identity: Option<i64>, user_id: i64) -> Result<bool, String> {
+  let _ = identity;
+  Ok(store.get(&format!("{ACCOUNT}:{user_id}"))?.is_some())
+}
+
 /// `api_key: None`/blank leaves a previously saved key untouched unless `base_url` moved to a new
 /// origin, in which case the key is dropped rather than carried over; `clear_api_key: true` always removes it.
 #[tauri::command]
@@ -413,11 +418,7 @@ pub fn llm_config_get<R: Runtime>(app: AppHandle<R>, window: tauri::Window<R>, u
     return Err("llm_config_get may only be called from the main window".into());
   }
   let file = read_config(&app)?;
-  let has_api_key = match keyring_entry(user_id)?.get_password() {
-    Ok(_) => true,
-    Err(keyring::Error::NoEntry) => false,
-    Err(e) => return Err(e.to_string()),
-  };
+  let has_api_key = slot_has_key(&PersonaLlmSecrets, crate::local_identity::current_id(&app), user_id)?;
   let is_local = classify_url(&file.base_url).map(|kind| kind == UrlKind::Local).unwrap_or(false);
   Ok(LlmConfigOut { base_url: file.base_url, model: file.model, has_api_key, is_local })
 }
@@ -1038,6 +1039,207 @@ mod tests {
     for url in ["http:localhost:8000", "http:/my-mac.local", "ht\ttp://my-mac.local:8000"] {
       assert!(refuses_plaintext_key(url, true).is_ok(), "{url:?}");
     }
+  }
+
+  struct Spy {
+    inner: crate::local_access::tokens::MemorySecrets,
+    gets: std::sync::atomic::AtomicU32,
+  }
+
+  impl Spy {
+    fn with(slots: &[(i64, &str)]) -> Self {
+      let inner = crate::local_access::tokens::MemorySecrets::new();
+      for (id, key) in slots {
+        inner.set(&format!("api-key:{id}"), key).unwrap();
+      }
+      Spy { inner, gets: std::sync::atomic::AtomicU32::new(0) }
+    }
+    fn key(&self, id: i64) -> Option<String> {
+      self.inner.get(&format!("api-key:{id}")).unwrap()
+    }
+  }
+
+  impl SecretStore for Spy {
+    fn set(&self, id: &str, secret: &str) -> Result<(), String> {
+      self.inner.set(id, secret)
+    }
+    fn get(&self, id: &str) -> Result<Option<String>, String> {
+      self.gets.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+      self.inner.get(id)
+    }
+    fn delete(&self, id: &str) -> Result<(), String> {
+      self.inner.delete(id)
+    }
+  }
+
+  struct FailingGet;
+
+  impl SecretStore for FailingGet {
+    fn set(&self, _id: &str, _secret: &str) -> Result<(), String> {
+      Ok(())
+    }
+    fn get(&self, _id: &str) -> Result<Option<String>, String> {
+      Err("keychain unavailable".into())
+    }
+    fn delete(&self, _id: &str) -> Result<(), String> {
+      Ok(())
+    }
+  }
+
+  const REFUSAL: &str = "These AI provider settings belong to another account. If you just signed in, try again in a moment.";
+
+  fn request(identity: Option<i64>, user_id: i64, api_key: Option<&str>, clear_api_key: bool) -> SaveRequest {
+    SaveRequest {
+      identity,
+      user_id,
+      base_url: B.into(),
+      model: "m".into(),
+      api_key: api_key.map(String::from),
+      clear_api_key,
+    }
+  }
+
+  struct Saved {
+    result: Result<(), String>,
+    written: Option<LlmConfigFile>,
+    read: bool,
+  }
+
+  fn run_save(store: &Spy, req: SaveRequest, config: LlmConfigFile) -> Saved {
+    let read = std::cell::Cell::new(false);
+    let written = std::cell::RefCell::new(None);
+    let result = save_config(
+      store,
+      req,
+      || {
+        read.set(true);
+        Ok(config)
+      },
+      || {
+        Ok(|file: &LlmConfigFile| {
+          *written.borrow_mut() = Some(file.clone());
+          Ok(())
+        })
+      },
+    );
+    let written = written.into_inner();
+    Saved { result, written, read: read.get() }
+  }
+
+  fn config_for_slot(user_id: &str) -> LlmConfigFile {
+    file_with(None, &[(user_id, A_ORIGIN)])
+  }
+
+  #[test]
+  fn saving_a_new_key_for_another_accounts_slot_is_refused_and_touches_nothing() {
+    let store = Spy::with(&[(8, "K8")]);
+    let saved = run_save(&store, request(Some(7), 8, Some("NEW"), false), config_for_slot("8"));
+    assert_eq!(saved.result, Err(REFUSAL.to_string()));
+    assert_eq!(store.key(8).as_deref(), Some("K8"));
+    assert!(saved.written.is_none());
+  }
+
+  #[test]
+  fn clearing_another_accounts_key_is_refused_and_touches_nothing() {
+    let store = Spy::with(&[(8, "K8")]);
+    let saved = run_save(&store, request(Some(7), 8, None, true), config_for_slot("8"));
+    assert_eq!(saved.result, Err(REFUSAL.to_string()));
+    assert_eq!(store.key(8).as_deref(), Some("K8"));
+    assert!(saved.written.is_none());
+  }
+
+  #[test]
+  fn a_signed_in_account_cannot_touch_the_local_slot() {
+    let store = Spy::with(&[(-1, "KL")]);
+    let saved = run_save(&store, request(Some(7), -1, None, true), config_for_slot("-1"));
+    assert_eq!(saved.result, Err(REFUSAL.to_string()));
+    assert_eq!(store.key(-1).as_deref(), Some("KL"));
+    assert!(saved.written.is_none());
+  }
+
+  #[test]
+  fn the_local_account_cannot_touch_an_accounts_slot() {
+    let store = Spy::with(&[(8, "K8")]);
+    let saved = run_save(&store, request(None, 8, Some("NEW"), false), config_for_slot("8"));
+    assert_eq!(saved.result, Err(REFUSAL.to_string()));
+    assert_eq!(store.key(8).as_deref(), Some("K8"));
+    assert!(saved.written.is_none());
+  }
+
+  #[test]
+  fn slot_zero_is_refused() {
+    for identity in [None, Some(7)] {
+      let store = Spy::with(&[(0, "K0")]);
+      let saved = run_save(&store, request(identity, 0, Some("NEW"), false), LlmConfigFile::default());
+      assert_eq!(saved.result, Err(REFUSAL.to_string()));
+      assert_eq!(store.key(0).as_deref(), Some("K0"));
+      assert!(saved.written.is_none());
+    }
+  }
+
+  #[test]
+  fn a_refused_save_reads_neither_the_config_nor_the_keychain() {
+    let store = Spy::with(&[(8, "K8")]);
+    let result = save_config(
+      &store,
+      request(Some(7), 8, Some("NEW"), false),
+      || panic!("config was read"),
+      || Ok(|_: &LlmConfigFile| panic!("config was written")),
+    );
+    assert_eq!(result, Err(REFUSAL.to_string()));
+    assert_eq!(store.gets.load(std::sync::atomic::Ordering::SeqCst), 0);
+  }
+
+  #[test]
+  fn a_save_for_the_current_account_stores_the_key_and_its_origin() {
+    let store = Spy::with(&[]);
+    let saved = run_save(&store, request(Some(7), 7, Some("NEW"), false), LlmConfigFile::default());
+    assert_eq!(saved.result, Ok(()));
+    assert!(saved.read);
+    assert_eq!(store.key(7).as_deref(), Some("NEW"));
+    let written = saved.written.unwrap();
+    assert_eq!(written.key_origins.get("7").map(String::as_str), Some(B_ORIGIN));
+  }
+
+  #[test]
+  fn a_save_for_the_local_account_works_when_signed_out() {
+    let store = Spy::with(&[]);
+    let saved = run_save(&store, request(None, -1, Some("NEW"), false), LlmConfigFile::default());
+    assert_eq!(saved.result, Ok(()));
+    assert_eq!(store.key(-1).as_deref(), Some("NEW"));
+    assert!(saved.written.is_some());
+  }
+
+  #[test]
+  fn a_config_path_error_surfaces_and_deletes_nothing() {
+    let store = Spy::with(&[(7, "K7")]);
+    let result = save_config(
+      &store,
+      request(Some(7), 7, None, true),
+      || Ok(config_for_slot("7")),
+      || Err::<fn(&LlmConfigFile) -> Result<(), String>, _>("no data dir".to_string()),
+    );
+    assert_eq!(result, Err("no data dir".to_string()));
+    assert_eq!(store.key(7).as_deref(), Some("K7"));
+  }
+
+  #[test]
+  fn another_accounts_slot_reports_no_key_without_reading_the_store() {
+    let store = Spy::with(&[(8, "K8")]);
+    assert_eq!(slot_has_key(&store, Some(7), 8), Ok(false));
+    assert_eq!(store.gets.load(std::sync::atomic::Ordering::SeqCst), 0);
+  }
+
+  #[test]
+  fn the_current_accounts_slot_reports_whether_it_holds_a_key() {
+    let store = Spy::with(&[(7, "K7")]);
+    assert_eq!(slot_has_key(&store, Some(7), 7), Ok(true));
+    assert_eq!(slot_has_key(&Spy::with(&[]), Some(7), 7), Ok(false));
+  }
+
+  #[test]
+  fn a_store_error_on_the_current_accounts_slot_propagates() {
+    assert!(slot_has_key(&FailingGet, Some(7), 7).is_err());
   }
 
   #[test]
