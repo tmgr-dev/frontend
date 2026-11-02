@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.79 — 2026-11-02
+
+- AI provider key: a saved key now works only with the server it was saved for, tracked separately for each account on this computer. If it doesn't match, asking a persona shows a message that names the server and asks you to enter the key again in Settings. The key is not deleted. You will see this if your key was saved for a different server than the one now set, was saved with an invalid server URL, or an earlier version lost the record of its server.
+- Using the desktop without an account: asking a persona from the task form now uses your saved provider key and your local profile. The first time, it creates the workspace's context page. That page is stored only in the local workspace.
+- Cloud agent runs: the desktop now notifies you when a workspace's permission to run cloud agents on this computer expires within 3 days. It checks at startup and every 6 hours, and notifies at most once a day per workspace, so several workspaces mean several notifications.
+
 ## 0.9.78 — 2026-11-02
 
 - Using the desktop without an account: you can now create an account or sign in from inside the app. Your local workspaces stay, and your cloud workspace appears next to them.
