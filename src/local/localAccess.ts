@@ -180,7 +180,7 @@ const whoamiBody = async (
 				: {
 						id: persona?.owner_user_id ?? ctx.user.id,
 						name: persona?.owner_name ?? ctx.user.name,
-				  },
+					},
 			prompt_version: promptVersion,
 			workspace: {
 				id: ctx.workspace.id,
@@ -351,8 +351,7 @@ export const handleLocalAccessRequest = async (
 		} catch (error) {
 			if (axios.isAxiosError(error) && error.response) {
 				const data = error.response.data as
-					| { message?: string; code?: string }
-					| undefined;
+					{ message?: string; code?: string } | undefined;
 				const code = data?.code ?? defaultCodeFor(error.response.status);
 				const extra = data && typeof data === 'object' ? data : {};
 				return {

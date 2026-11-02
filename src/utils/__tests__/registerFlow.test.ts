@@ -43,7 +43,9 @@ test('no response is reported as offline', async () => {
 	const result = await submitRegistration(form, async () => {
 		throw new Error('Network Error');
 	});
-	expect((result as any).message).toMatch(/couldn't reach the server.*sign in instead/);
+	expect((result as any).message).toMatch(
+		/couldn't reach the server.*sign in instead/,
+	);
 });
 
 test('422 keeps field errors as an object', async () => {

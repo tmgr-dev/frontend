@@ -514,7 +514,7 @@ const TOOLS: ToolDef[] = [
 						: {
 								id: persona?.owner_user_id ?? ctx.user.id,
 								name: persona?.owner_name ?? ctx.user.name,
-						  },
+							},
 					prompt_version: prompt?.prompt_version ?? null,
 					workspace: {
 						id: ctx.workspace.id,
@@ -1082,8 +1082,8 @@ const toolResultOk = (payload: any, tool: ToolDef) => ({
 			text: tool.raw
 				? payload
 				: tool.literal
-				? JSON.stringify(payload)
-				: JSON.stringify(camelizeDeep(payload)),
+					? JSON.stringify(payload)
+					: JSON.stringify(camelizeDeep(payload)),
 		},
 	],
 });
