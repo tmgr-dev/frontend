@@ -10,9 +10,10 @@ use tmgr_ipc::api::{
     AutopilotLog, AutopilotLogParams, AutopilotStartParams, AutopilotStarted, AutopilotStatus,
     CandidateInfo, CheckpointDiff, CheckpointDiffParams, CheckpointEnableParams, CheckpointList,
     CheckpointRestoreParams, CheckpointRestored, CreateReq, DiffAgainst, EventMsg, ForkParams,
-    IdParams, KillParams, LayoutSetParams, Line, LookupParams, OrchestratorCreateReq, PermissionAnswer, PermissionCard, RenameParams,
-    RestoredRun, ResumeParams, RunCreateReq, RunStatus, ScreenPush, SendParams, SessionInfo,
-    SessionText, Snapshot, StatusInfo, TextParams, Welcome, WorkSummary, CLIENT_CLI,
+    IdParams, KillParams, LayoutSetParams, Line, LookupParams, OrchestratorCreateReq,
+    PermissionAnswer, PermissionCard, RenameParams, RestoredRun, ResumeParams, RunCreateReq,
+    RunStatus, ScreenPush, SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams,
+    Welcome, WorkSummary, CLIENT_CLI,
 };
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};

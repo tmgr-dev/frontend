@@ -164,6 +164,18 @@ pub fn fingerprint(session: &str, d: &Dialog, h: &HookEvent) -> String {
     put(session);
     put(d.agent.name());
     put(&h.id);
+    put(&h.tool);
+    for v in [&h.command, &h.description, &h.file_path, &h.content, &h.cwd] {
+        match v {
+            Some(v) => {
+                put("some");
+                put(v);
+            }
+            None => put("none"),
+        }
+    }
+    put(if h.rule_for_bash { "rule" } else { "norule" });
+    put(if h.truncated { "cut" } else { "whole" });
     put(&d.text);
     for o in &d.options {
         put(&o.key);

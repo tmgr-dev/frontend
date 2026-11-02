@@ -46,6 +46,10 @@ static RULES: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
             format!(r"\bbase64\b{SEG}\s(-d|-D|--decode)\b"),
             "decodes and may run hidden text",
         ),
+        r(
+            format!(r"\b(python[0-9.]*|perl|ruby|node|php)\b{SEG}\s-[a-zA-Z]*[ce]\b"),
+            "runs a code string in an interpreter",
+        ),
         r(r"\bdd\b".into(), "raw disk copy (dd)"),
         r(r"\bmkfs".into(), "formats a disk (mkfs)"),
         r(r"\bshred\b".into(), "destroys files (shred)"),
@@ -85,7 +89,11 @@ pub fn danger(
     if text.contains("$(") {
         out.push("runs a command substitution");
     }
+    if hides_a_name(text) {
+        out.push("uses a shell expansion that can hide the command");
+    }
     let n: String = text
+        .replace("\\\n", "")
         .chars()
         .filter(|c| !matches!(c, '"' | '\'' | '\\'))
         .collect();
@@ -98,6 +106,25 @@ pub fn danger(
         out.push(OUTSIDE);
     }
     out
+}
+
+fn hides_a_name(text: &str) -> bool {
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '$'
+            && chars
+                .peek()
+                .is_some_and(|n| !n.is_whitespace() && *n != '(')
+        {
+            return true;
+        }
+    }
+    SPLIT.split(text).any(|seg| {
+        seg.trim_start_matches(|c: char| c.is_whitespace() || c == '(' || c == '{')
+            .split_whitespace()
+            .next()
+            .is_some_and(|name| name.contains(['*', '?', '[']))
+    })
 }
 
 fn outside(target: &str, cwd: Option<&str>) -> bool {

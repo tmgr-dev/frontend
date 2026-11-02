@@ -784,14 +784,17 @@ impl Session {
         let hook = self
             .newest_hook(c.consumed)
             .or_else(|| c.answered.is_some().then(|| c.last_hook.clone()).flatten());
-        let rows = lock(&self.inner).screen.text_lines(None).3;
+        let (rows, cwd) = {
+            let mut i = lock(&self.inner);
+            (i.screen.text_lines(None).3, i.meta.cwd.clone())
+        };
         let fg = self.foreground_is_agent();
         let base = PermissionCard {
             session: self.id.clone(),
             agent: agent.name().into(),
             ..PermissionCard::default()
         };
-        let Some(ev) = Eval::new(&self.id, agent, &rows, hook) else {
+        let Some(ev) = Eval::new(&self.id, &cwd, agent, &rows, hook) else {
             c.first_seen = None;
             c.answered = None;
             let state = self.state();
@@ -845,8 +848,11 @@ impl Session {
             return Err(refused("this prompt was already answered"));
         }
         let hook = self.newest_hook(c.consumed);
-        let rows = lock(&self.inner).screen.text_lines(None).3;
-        let ev = Eval::new(&self.id, agent, &rows, hook)
+        let (rows, cwd) = {
+            let mut i = lock(&self.inner);
+            (i.screen.text_lines(None).3, i.meta.cwd.clone())
+        };
+        let ev = Eval::new(&self.id, &cwd, agent, &rows, hook)
             .ok_or_else(|| refused("the prompt is no longer on screen"))?;
         if ev.id != a.card {
             return Err(refused("the prompt changed since the card was shown"));

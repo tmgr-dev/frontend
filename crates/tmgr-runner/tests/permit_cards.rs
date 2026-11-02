@@ -663,7 +663,8 @@ fn a_matching_hook_and_dialog_gives_the_full_text_and_yes_sends_exactly_one_key(
         fx.hook(&a, &bash_hook_json(&command, false));
         fx.paint(&claude_screen(&command, &PLAIN_OPTS));
         let card = fx.armed(&a);
-        assert_eq!(card.text, command);
+        let solid = |t: &str| t.split_whitespace().collect::<String>();
+        assert_eq!(solid(&card.text), solid(&command));
         assert_eq!(card.tool, "Bash");
         assert_eq!(card.agent, "claude");
         assert_eq!(card.reason.as_deref(), Some("run it"));

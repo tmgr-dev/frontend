@@ -37,9 +37,42 @@ pub struct Eval {
     pub danger: Vec<&'static str>,
 }
 
+fn shown_rows(rows: &[String]) -> Vec<&str> {
+    let indent = rows
+        .iter()
+        .filter(|r| !r.trim().is_empty())
+        .map(|r| r.len() - r.trim_start().len())
+        .min()
+        .unwrap_or(0);
+    rows.iter()
+        .map(|r| r.get(indent..).unwrap_or("").trim_end())
+        .collect()
+}
+
+fn all_danger(h: &HookEvent, d: &Dialog, session_cwd: &str) -> Vec<&'static str> {
+    let mut texts = vec![h.command.clone().unwrap_or_default()];
+    if let DialogBody::Command { rows, .. } = &d.body {
+        let shown = shown_rows(rows);
+        texts.push(shown.join("\n"));
+        texts.push(shown.join(" "));
+    }
+    let mut out: Vec<&'static str> = Vec::new();
+    for text in &texts {
+        for cwd in [h.cwd.as_deref(), Some(session_cwd)] {
+            for why in danger(&h.tool, text, h.file_path.as_deref(), cwd) {
+                if !out.contains(&why) {
+                    out.push(why);
+                }
+            }
+        }
+    }
+    out
+}
+
 impl Eval {
     pub fn new(
         session: &str,
+        session_cwd: &str,
         agent: Agent,
         rows: &[String],
         hook: Option<HookEvent>,
@@ -50,15 +83,9 @@ impl Eval {
             Some(h) => fingerprint(session, &dialog, h),
             None => digest(&[session, &dialog.text]),
         };
-        let danger = match &hook {
-            Some(h) => danger(
-                &h.tool,
-                h.command.as_deref().unwrap_or(""),
-                h.file_path.as_deref(),
-                h.cwd.as_deref(),
-            ),
-            None => Vec::new(),
-        };
+        let danger = hook
+            .as_ref()
+            .map_or_else(Vec::new, |h| all_danger(h, &dialog, session_cwd));
         Some(Eval {
             id,
             dialog,
@@ -89,17 +116,12 @@ impl Eval {
 
     pub fn text(&self) -> String {
         if let Some(h) = self.approved_hook() {
-            let full = match (h.tool.as_str(), &h.command, &h.file_path, &h.content) {
-                ("Bash", Some(c), ..) => Some(c.clone()),
-                ("Write", _, Some(p), Some(c)) => Some(format!("{p}\n{c}")),
-                _ => None,
-            };
-            if let Some(t) = full {
-                return clean_text(&t);
+            if let ("Write", Some(p), Some(c)) = (h.tool.as_str(), &h.file_path, &h.content) {
+                return clean_text(&format!("{p}\n{c}"));
             }
         }
         let shown = match &self.dialog.body {
-            DialogBody::Command { rows, .. } => rows.join("\n").trim().to_string(),
+            DialogBody::Command { rows, .. } => shown_rows(rows).join("\n").trim().to_string(),
             DialogBody::WriteFile {
                 shown_path,
                 preview,
