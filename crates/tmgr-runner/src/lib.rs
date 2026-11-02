@@ -37,6 +37,8 @@ pub mod restore;
 #[cfg(unix)]
 pub mod service;
 #[cfg(unix)]
+pub mod sessionwt;
+#[cfg(unix)]
 pub mod shim;
 #[cfg(unix)]
 pub mod trust;

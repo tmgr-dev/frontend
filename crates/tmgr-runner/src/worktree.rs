@@ -262,7 +262,7 @@ impl GitEnv {
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     }
 
-    fn succeeds(&self, args: &[&str]) -> bool {
+    pub(crate) fn succeeds(&self, args: &[&str]) -> bool {
         self.run_raw(args).is_ok_and(|o| o.status.success())
     }
 }
@@ -313,7 +313,7 @@ fn filter_name(key: &str) -> Option<&str> {
     Some(name)
 }
 
-fn valid_ref(name: &str) -> Result<(), String> {
+pub(crate) fn valid_ref(name: &str) -> Result<(), String> {
     let bad = |why: &str| Err(format!("invalid ref name {name:?}: {why}"));
     if name.is_empty() || name.len() > MAX_REF {
         return bad("empty or too long");
@@ -339,7 +339,7 @@ fn valid_ref(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn utf8(p: &Path) -> Result<&str, String> {
+pub(crate) fn utf8(p: &Path) -> Result<&str, String> {
     p.to_str()
         .ok_or_else(|| format!("path is not valid UTF-8: {}", p.display()))
 }
@@ -348,7 +348,7 @@ fn is_symlink(p: &Path) -> bool {
     fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink())
 }
 
-fn worktrees_root(repo: &Path) -> Result<PathBuf, String> {
+pub(crate) fn worktrees_root(repo: &Path) -> Result<PathBuf, String> {
     let name = repo
         .file_name()
         .and_then(|n| n.to_str())
@@ -357,7 +357,7 @@ fn worktrees_root(repo: &Path) -> Result<PathBuf, String> {
     Ok(parent.join(format!("{name}-worktrees")))
 }
 
-fn approved_path(repo: &Path, path: &Path) -> Result<(), String> {
+pub(crate) fn approved_path(repo: &Path, path: &Path) -> Result<(), String> {
     let root = worktrees_root(repo)?;
     if is_symlink(&root) {
         return Err(format!("{} is a symlink", root.display()));
