@@ -213,10 +213,15 @@ pub fn assert_no_secrets(out: &std::process::Output) {
 }
 
 pub fn dead_server() -> String {
-    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = l.local_addr().unwrap();
-    drop(l);
-    format!("http://{addr}")
+    loop {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap();
+        drop(l);
+        let probe = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(1));
+        if probe.is_err_and(|e| e.kind() == std::io::ErrorKind::ConnectionRefused) {
+            return format!("http://{addr}");
+        }
+    }
 }
 
 impl Env {

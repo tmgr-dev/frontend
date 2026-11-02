@@ -825,9 +825,14 @@ mod tests {
 
     #[test]
     fn unreachable_upstream_is_502() {
-        let dead = {
+        let dead = loop {
             let l = TcpListener::bind("127.0.0.1:0").unwrap();
-            l.local_addr().unwrap()
+            let addr = l.local_addr().unwrap();
+            drop(l);
+            let probe = TcpStream::connect_timeout(&addr, Duration::from_secs(1));
+            if probe.is_err_and(|e| e.kind() == std::io::ErrorKind::ConnectionRefused) {
+                break addr;
+            }
         };
         let (resolver, _) = counted(dead);
         let proxy = Proxy::start_with(pats(&["files.example.com"]), resolver).unwrap();
