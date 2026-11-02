@@ -211,8 +211,11 @@ impl Fx {
     }
 
     fn tmgr(&self, args: &[&str]) -> Output {
-        let mut child = self
-            .cmd(args)
+        self.bounded(self.cmd(args), args)
+    }
+
+    fn bounded(&self, mut command: Command, args: &[&str]) -> Output {
+        let mut child = command
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -522,11 +525,9 @@ fn the_runner_refuses_a_command_line_other_than_the_confirmed_one() {
         confirmed.replace("ask = [\"--ask\"]", "ask = [\"--ask\", \"--extra\"]"),
     )
     .unwrap();
-    let started = fx
-        .cmd(&["runner", "start"])
-        .env("TMGR_AGENTS_DIR", &other)
-        .output()
-        .unwrap();
+    let mut start = fx.cmd(&["runner", "start"]);
+    start.env("TMGR_AGENTS_DIR", &other);
+    let started = fx.bounded(start, &["runner", "start"]);
     assert!(
         started.status.success(),
         "{}",
