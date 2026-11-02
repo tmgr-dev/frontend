@@ -255,7 +255,20 @@ impl Rig {
 impl Drop for Rig {
     fn drop(&mut self) {
         if self.up {
-            let _ = self.cmd(&["runner", "stop"]);
+            let Ok(mut child) = self
+                .command(&["runner", "stop"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+            else {
+                return;
+            };
+            let deadline = Instant::now() + Duration::from_secs(30);
+            while child.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(50));
+            }
+            let _ = child.kill();
+            let _ = child.wait();
         }
     }
 }

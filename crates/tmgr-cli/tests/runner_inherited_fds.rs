@@ -71,7 +71,7 @@ async fn runner_processes_do_not_keep_inherited_fds() {
     unsafe { libc::close(write_fd) };
 
     let stop = |env: &Env| {
-        let _ = env
+        let Ok(mut child) = env
             .std_cmd()
             .env("PATH", path_with(None))
             .env("TMGR_RUNNER_DIR", &runner)
@@ -79,7 +79,16 @@ async fn runner_processes_do_not_keep_inherited_fds() {
             .args(["runner", "stop"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .status();
+            .spawn()
+        else {
+            return;
+        };
+        let limit = Instant::now() + Duration::from_secs(30);
+        while child.try_wait().ok().flatten().is_none() && Instant::now() < limit {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let _ = child.kill();
+        let _ = child.wait();
     };
 
     let deadline = Instant::now() + Duration::from_secs(15);
