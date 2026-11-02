@@ -365,6 +365,45 @@ fn turning_remote_control_off_with_an_unknown_worker_record_saves_off_and_fails(
 }
 
 #[test]
+fn running_off_again_with_an_unknown_worker_record_still_fails() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let workers = f.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&workers).unwrap();
+    std::fs::write(workers.join("laptop.4242.json"), b"not json").unwrap();
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--include-bypass", "off"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    assert!(err_text(&out).contains("saved"), "{}", err_text(&out));
+}
+
+#[test]
+fn an_unknown_worker_record_only_warns_on_an_unrelated_scope_change() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            allow_attach_input: true,
+            ..f.scope()
+        },
+    );
+    let workers = f.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&workers).unwrap();
+    std::fs::write(workers.join("laptop.4242.json"), b"not json").unwrap();
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--allow-attach-input", "false"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("could not be checked"), "{text}");
+}
+
+#[test]
 fn an_unknown_worker_record_does_not_fail_a_scope_change_with_both_flags_on() {
     let f = fx();
     f.trust_leader(

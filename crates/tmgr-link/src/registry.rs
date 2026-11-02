@@ -194,25 +194,31 @@ pub fn terminate(
     terminate_where(paths, name, grace, &|e, _| select(e))
 }
 
-fn record_files(paths: &Paths, name: &str) -> Result<Vec<PathBuf>> {
+fn record_files(paths: &Paths, name: &str) -> Result<(Vec<PathBuf>, usize)> {
     let entries = match std::fs::read_dir(dir(paths)) {
         Ok(entries) => entries,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((Vec::new(), 0)),
         Err(e) => return Err(e.into()),
     };
     let prefix = format!("{name}.");
-    Ok(entries
-        .collect::<std::io::Result<Vec<_>>>()?
-        .into_iter()
-        .filter(|e| {
-            e.file_name()
-                .to_string_lossy()
-                .strip_prefix(&prefix)
-                .and_then(|r| r.strip_suffix(".json"))
-                .is_some_and(|pid| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()))
-        })
-        .map(|e| e.path())
-        .collect())
+    let mut files = Vec::new();
+    let mut unreadable = 0;
+    for entry in entries {
+        let Ok(e) = entry else {
+            unreadable += 1;
+            continue;
+        };
+        let ours = e
+            .file_name()
+            .to_string_lossy()
+            .strip_prefix(&prefix)
+            .and_then(|r| r.strip_suffix(".json"))
+            .is_some_and(|pid| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()));
+        if ours {
+            files.push(e.path());
+        }
+    }
+    Ok((files, unreadable))
 }
 
 enum Read {
@@ -233,9 +239,9 @@ fn read_rec(path: &std::path::Path) -> Read {
 }
 
 pub fn any_attached(paths: &Paths, name: &str, select: &dyn Fn(&Attached) -> bool) -> Result<bool> {
-    Ok(record_files(paths, name)?
-        .iter()
-        .any(|path| match read_rec(path) {
+    let (files, unreadable) = record_files(paths, name)?;
+    Ok(unreadable > 0
+        || files.iter().any(|path| match read_rec(path) {
             Read::Gone => false,
             Read::Unknown => true,
             Read::Rec(r) => alive(r.pid, &r.start) && r.attached.as_ref().is_some_and(select),
@@ -250,7 +256,9 @@ pub fn terminate_where(
 ) -> Result<Terminated> {
     let mut out = Terminated::default();
     let mut live: Vec<(PathBuf, Rec)> = Vec::new();
-    for path in record_files(paths, name)? {
+    let (files, unreadable) = record_files(paths, name)?;
+    out.unknown = unreadable;
+    for path in files {
         match read_rec(&path) {
             Read::Gone => {}
             Read::Unknown => out.unknown += 1,

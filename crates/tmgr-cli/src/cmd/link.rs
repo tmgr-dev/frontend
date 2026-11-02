@@ -418,6 +418,17 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
     let bin = std::env::current_exe()?;
     follower::apply_scope(paths, &plan, &bin)?;
     let closed = close_attached(paths, &plan.name, &plan.new)?;
+    let unknown = closed.as_ref().map_or(0, |t| t.unknown);
+    let unchecked = format!(
+        "{unknown} worker record(s) of {} could not be checked, so an attach may still be open until its next check",
+        plan.name
+    );
+    if unknown > 0 && (input.remote_control == Some(false) || input.include_bypass == Some(false)) {
+        return Err(
+            Error::internal(format!("the scope is saved, but {unchecked}"))
+                .hint(unknown_workers_hint(paths, &plan.name)),
+        );
+    }
     let kind = if plan.widening {
         "widened"
     } else if plan.old == plan.new {
@@ -439,12 +450,15 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
             t.signalled, t.survivors
         ));
     }
+    if unknown > 0 {
+        human.push_str(&format!("\nwarning: {unchecked}"));
+    }
     Ok(Output::new(
         json!({
             "link": plan.name,
             "change": kind,
             "scope": scope_json(&plan.new),
-            "closed": closed.as_ref().map(|t| json!({"signalled": t.signalled, "survivors": t.survivors})),
+            "closed": closed.as_ref().map(|t| json!({"signalled": t.signalled, "survivors": t.survivors, "unknown": t.unknown})),
         }),
         human,
     ))
@@ -476,22 +490,16 @@ fn close_attached(paths: &Paths, name: &str, new: &Scope) -> Result<Option<Termi
     if new.remote_control && new.include_bypass {
         return Ok(None);
     }
-    if !registry::any_attached(paths, name, &|a| follower::must_close(new, a))? {
+    let hint = |e: Error| e.hint(unknown_workers_hint(paths, name));
+    if !registry::any_attached(paths, name, &|a| follower::must_close(new, a)).map_err(hint)? {
         return Ok(None);
     }
     std::thread::sleep(CLOSE_WAIT);
-    let t = follower::close_after_scope_change(paths, name, new, CLOSE_GRACE)?;
+    let t = follower::close_after_scope_change(paths, name, new, CLOSE_GRACE).map_err(hint)?;
     Audit::new(&paths.audit_dir()).append(
         "link.scope.closed",
         json!({"link": name, "signalled": t.signalled, "survivors": t.survivors, "unknown": t.unknown}),
     )?;
-    if t.unknown > 0 {
-        return Err(Error::internal(format!(
-            "{} worker record(s) of {name} could not be checked, so an attach may still be open until its next check",
-            t.unknown
-        ))
-        .hint(unknown_workers_hint(paths, name)));
-    }
     if t.survivors > 0 {
         return Err(Error::internal(format!(
             "{} remote attach worker(s) of {name} did not stop",
@@ -772,7 +780,10 @@ fn format_entry(ctx: &Ctx, e: &Value) -> String {
 
 fn audit_field(raw: &str) -> String {
     let clean = sanitize_line(raw);
-    if !clean.chars().all(|c| c.is_ascii_graphic()) {
+    if !clean
+        .chars()
+        .all(|c| c.is_ascii_graphic() && !matches!(c, '"' | '\\' | '='))
+    {
         format!("{clean:?}")
     } else {
         clean
@@ -833,9 +844,10 @@ fn remote_line(e: &Value, when: &str, link: &str) -> Option<String> {
         "link.scope.closed" => {
             let num = |k: &str| e.get(k).and_then(Value::as_u64).unwrap_or(0);
             Some(format!(
-                "{when} link.scope.closed {link} remote attaches stopped={} still-running={}",
+                "{when} link.scope.closed {link} remote attaches stopped={} still-running={} unknown={}",
                 num("signalled"),
-                num("survivors")
+                num("survivors"),
+                num("unknown")
             ))
         }
         _ => None,
@@ -878,6 +890,12 @@ mod tests {
     }
 
     #[test]
+    fn audit_view_keeps_quote_characters_from_joining_fields() {
+        let e = json!({"args": {"a": "\"x", "b": "y\""}});
+        assert_eq!(request_args(&e), r#"a="\"x" b="y\"""#);
+    }
+
+    #[test]
     fn audit_view_quotes_blank_looking_unicode() {
         let e = json!({"method": "runs.halt\u{2800}\u{2800}accepted"});
         assert!(request_what(&e).starts_with('"'));
@@ -897,6 +915,10 @@ mod tests {
         let line = remote_line(&e, "t", "macbook").unwrap();
         assert!(line.contains("macbook"));
         assert!(line.contains("stopped=2"));
+        let e = json!({"event": "link.scope.closed", "link": "macbook", "unknown": 1});
+        assert!(remote_line(&e, "t", "macbook")
+            .unwrap()
+            .contains("unknown=1"));
     }
 
     #[test]
