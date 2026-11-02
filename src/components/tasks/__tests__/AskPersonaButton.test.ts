@@ -98,3 +98,18 @@ test('a signed-in user keeps the account id', async () => {
 	expect(mockReadPersonaCache).toHaveBeenCalledWith('p1', 42);
 	expect(mockCreateLlmChat).toHaveBeenCalledWith(expect.anything(), 42);
 });
+
+test('the account mode is read when asking, not when the window opens', async () => {
+	mounted.length = 0;
+	mockStore.state = {
+		user: { id: 42, name: 'Bo', email: 'b@example.com' },
+		localProfile: { name: 'Ann' },
+	};
+	mockStore.getters = { isLocalOnly: true };
+	const setup = loadComponent().setup({ taskId: 1 }, { emit: jest.fn() });
+	for (const fn of mounted) await fn();
+	mockStore.getters = { isLocalOnly: false };
+	await setup.ask();
+	expect(mockReadPersonaCache).toHaveBeenCalledWith('p1', 42);
+	expect(mockCreateLlmChat).toHaveBeenCalledWith(expect.anything(), 42);
+});

@@ -77,10 +77,8 @@
 				),
 			);
 
-			const localOnly = !!store.getters?.isLocalOnly;
-
 			const currentUser = () =>
-				localOnly
+				store.getters?.isLocalOnly
 					? {
 							id: LOCAL_OWNER_ID,
 							name:
