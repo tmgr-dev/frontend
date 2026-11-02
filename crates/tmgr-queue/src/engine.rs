@@ -16,6 +16,10 @@ use std::sync::Arc;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{BundleLaunch, BundlePersona, BundleTeam, CloneSpec, RunBundle};
 
+mod team;
+pub use crate::state::team_models;
+pub use team::request_team;
+
 const APPROVAL_TTL_HOURS: i64 = 24;
 pub const MAX_BUNDLE: usize = 64 * 1024;
 const MAX_CLOUD_BUNDLE: usize = 512 * 1024;
@@ -868,6 +872,7 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                     wip_heads: BTreeMap::new(),
                     continues: None,
                     continued_by: None,
+                    team: None,
                 });
                 pass.audit.append(
                     "candidate",
@@ -1623,6 +1628,7 @@ pub fn requeue_paused(
         wip_heads: p.wip_heads.clone(),
         continues: Some(p.id.clone()),
         continued_by: None,
+        team: None,
     });
     st.pickups[i].continued_by = Some(id.clone());
     st.pickups[i].released = true;
