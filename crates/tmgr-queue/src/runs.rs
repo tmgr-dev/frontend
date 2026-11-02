@@ -1,5 +1,5 @@
 use tmgr_core::error::Result;
-use tmgr_ipc::api::{caps, CloneSpec, CloudApproval, RunBundle, TaskRef};
+use tmgr_ipc::api::{caps, CloneSpec, CloudApproval, RunBundle, TaskRef, TeamLink};
 
 pub const PERMISSION_MODE: &str = "ask";
 
@@ -47,12 +47,18 @@ pub struct StartRequest {
     pub cloud: Option<CloudApproval>,
     pub unattended: bool,
     pub clones: Vec<CloneSpec>,
+    pub team: Option<TeamLink>,
 }
 
 pub trait RunsClient {
     fn create(&self, req: &StartRequest) -> Result<String>;
     fn status(&self, run_id: &str) -> RunState;
     fn lookup(&self, start_key: &str) -> Lookup;
+    /// Types fixed text into a run. Callers send engine-made text only, never agent-written text.
+    fn send(&self, run_id: &str, text: &str) -> Result<()>;
+    fn kill_run(&self, run_id: &str, reason: &str) -> Result<()>;
+    /// Whether the agent of the run is idle and waiting for input.
+    fn idle(&self, run_id: &str) -> bool;
 }
 
 pub const REQUIRED_CAPS: [&str; 8] = [

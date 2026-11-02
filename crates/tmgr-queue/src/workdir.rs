@@ -28,6 +28,29 @@ pub fn branch_name(pickup_id: &str) -> String {
     format!("queue/{pickup_id}")
 }
 
+pub const LEAD_DIR: &str = "lead";
+
+pub fn lead_dir(team_dir: &Path) -> PathBuf {
+    team_dir.join(LEAD_DIR)
+}
+
+pub fn worker_dir(team_dir: &Path, k: u8) -> PathBuf {
+    team_dir.join(format!("w{k}"))
+}
+
+pub fn worker_branch(pickup_id: &str, k: u8) -> String {
+    format!("{TEAM_REF_PREFIX}{pickup_id}/w{k}")
+}
+
+const TEAM_REF_PREFIX: &str = "queue-team/";
+
+fn member_dir_name(name: &str) -> bool {
+    name == LEAD_DIR
+        || name
+            .strip_prefix('w')
+            .is_some_and(|k| matches!(k, "1" | "2" | "3" | "4" | "5"))
+}
+
 pub fn absolute_path_entries(value: &std::ffi::OsStr) -> std::ffi::OsString {
     let kept: Vec<PathBuf> = std::env::split_paths(value)
         .filter(|entry| entry.is_absolute())
@@ -338,6 +361,19 @@ pub trait WorkDirs {
     ) -> Result<()> {
         Err(Error::internal(
             "this work directory provider cannot pin a branch",
+        ))
+    }
+
+    /// One clone of a team run (`<run folder>/lead` or `<run folder>/wK`) on a new `branch`.
+    fn prepare_member(
+        &self,
+        _repo: &str,
+        _pickup_id: &str,
+        _cwd: &str,
+        _branch: &str,
+    ) -> Result<()> {
+        Err(Error::internal(
+            "this work directory provider cannot make team clones",
         ))
     }
 
@@ -856,12 +892,16 @@ fn validate_branch(branch: &str) -> Result<()> {
 pub struct GitClone;
 
 pub fn discard_run_dir(pickup_id: &str, cwd: &str) {
-    let dir = Path::new(cwd);
+    let mut dir = Path::new(cwd);
     let named = |p: Option<&Path>, want: &dyn Fn(&str) -> bool| {
         p.and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
             .is_some_and(want)
     };
+    let team = named(Some(dir), &|n| n == LEAD_DIR) && named(dir.parent(), &|n| n == pickup_id);
+    if team {
+        dir = dir.parent().unwrap_or(dir);
+    }
     let ours = named(Some(dir), &|n| n == pickup_id)
         && named(dir.parent(), &|n| n == "queue")
         && named(dir.parent().and_then(Path::parent), &|n| {
@@ -870,6 +910,42 @@ pub fn discard_run_dir(pickup_id: &str, cwd: &str) {
     let real = std::fs::symlink_metadata(dir).is_ok_and(|m| m.is_dir());
     if ours && real {
         let _ = std::fs::remove_dir_all(dir);
+        if team {
+            if let Some(repo) = repo_of_run_dir(dir) {
+                remove_team_refs(&repo, pickup_id);
+            }
+        }
+    }
+}
+
+/// `<parent>/<repo>` for a run folder `<parent>/<repo>-worktrees/queue/<id>`.
+pub fn repo_of_run_dir(run_dir: &Path) -> Option<PathBuf> {
+    let worktrees = run_dir.parent()?.parent()?;
+    let stem = worktrees
+        .file_name()?
+        .to_str()?
+        .strip_suffix("-worktrees")?;
+    Some(worktrees.parent()?.join(stem))
+}
+
+/// Deletes the temporary `queue-team/<pickup>/*` branches of a finished team run from the repository.
+pub fn remove_team_refs(repo: &Path, pickup_id: &str) {
+    let plain = !pickup_id.is_empty()
+        && pickup_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    if !plain {
+        return;
+    }
+    let prefix = format!("refs/heads/{TEAM_REF_PREFIX}{pickup_id}/");
+    let Ok(listed) = git(
+        Some(repo),
+        &["for-each-ref", "--format=%(refname)", &prefix],
+    ) else {
+        return;
+    };
+    for name in listed.lines().filter(|l| l.starts_with(&prefix)) {
+        let _ = git(Some(repo), &["update-ref", "-d", name]);
     }
 }
 
@@ -898,6 +974,22 @@ impl WorkDirs for GitClone {
             ));
         }
         prepare_clone(repo, &dest, branch, None)
+    }
+
+    fn prepare_member(&self, repo: &str, pickup_id: &str, cwd: &str, branch: &str) -> Result<()> {
+        let team_dir = clone_dir(repo, pickup_id)
+            .ok_or_else(|| Error::internal("the repository path has no parent directory"))?;
+        let dest = Path::new(cwd);
+        let named = dest
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(member_dir_name);
+        if dest.parent() != Some(team_dir.as_path()) || !named {
+            return Err(Error::internal(
+                "the run directory does not belong to this pickup",
+            ));
+        }
+        prepare_clone(repo, dest, branch, None)
     }
 
     fn prepare_multi(
