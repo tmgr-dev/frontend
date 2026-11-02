@@ -165,7 +165,6 @@ mod tests {
                 pid: 0,
                 default_name: "claude".into(),
                 no_sandbox: false,
-                checkpoints: None,
                 created_ms: 0,
             },
             pid: 0,
