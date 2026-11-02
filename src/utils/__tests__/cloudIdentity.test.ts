@@ -1,4 +1,7 @@
-import { installCloudIdentitySync } from '../cloudIdentity';
+import {
+	installCloudIdentitySync,
+	resyncCloudIdentity,
+} from '../cloudIdentity';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -134,5 +137,74 @@ describe('installCloudIdentitySync', () => {
 		expect(invoke).toHaveBeenCalledTimes(2);
 		expect(spy).toHaveBeenCalled();
 		spy.mockRestore();
+	});
+
+	describe('resyncCloudIdentity', () => {
+		let spy: jest.SpyInstance;
+		beforeEach(() => {
+			spy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+		});
+		afterEach(() => spy.mockRestore());
+
+		it('resends a set that was rejected', async () => {
+			const invoke = jest
+				.fn()
+				.mockRejectedValueOnce(new Error('boom'))
+				.mockResolvedValue(undefined);
+			setup({ token: 't', user: { id: 1, name: 'A' } }, invoke);
+			await flush();
+			await resyncCloudIdentity();
+			expect(invoke.mock.calls).toEqual([
+				['local_identity_set', { id: 1, name: 'A' }],
+				['local_identity_set', { id: 1, name: 'A' }],
+			]);
+		});
+
+		it('resends a clear that was rejected', async () => {
+			const invoke = jest
+				.fn()
+				.mockRejectedValueOnce(new Error('boom'))
+				.mockResolvedValue(undefined);
+			setup({}, invoke);
+			await flush();
+			await resyncCloudIdentity();
+			expect(invoke.mock.calls).toEqual([
+				['local_identity_clear', undefined],
+				['local_identity_clear', undefined],
+			]);
+		});
+
+		it('sends nothing when nothing failed', async () => {
+			const { invoke } = setup({ token: 't', user: { id: 1, name: 'A' } });
+			await flush();
+			await resyncCloudIdentity();
+			expect(invoke).toHaveBeenCalledTimes(1);
+		});
+
+		it('sends only the new account after a switch', async () => {
+			const invoke = jest
+				.fn()
+				.mockRejectedValueOnce(new Error('boom'))
+				.mockResolvedValue(undefined);
+			const { commit } = setup(
+				{ token: 't', user: { id: 1, name: 'A' } },
+				invoke,
+			);
+			await flush();
+			commit('setUser', { id: 2, name: 'B' });
+			await resyncCloudIdentity();
+			expect(invoke.mock.calls.map((c) => c[1])).toEqual([
+				{ id: 1, name: 'A' },
+				{ id: 2, name: 'B' },
+			]);
+		});
+
+		it('resolves when sync is not installed', async () => {
+			let fresh: typeof import('../cloudIdentity') | undefined;
+			jest.isolateModules(() => {
+				fresh = require('../cloudIdentity');
+			});
+			await expect(fresh!.resyncCloudIdentity()).resolves.toBeUndefined();
+		});
 	});
 });

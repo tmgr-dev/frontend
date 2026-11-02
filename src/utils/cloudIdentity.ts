@@ -27,6 +27,11 @@ const defaultInvoke: Invoke = async (command, args) => {
 	return invoke(command, args);
 };
 
+let resyncHandle: (() => Promise<void>) | null = null;
+
+export const resyncCloudIdentity = (): Promise<void> =>
+	resyncHandle ? resyncHandle() : Promise.resolve();
+
 export const installCloudIdentitySync = (
 	store: IdentityStore,
 	invoke: Invoke = defaultInvoke,
@@ -45,7 +50,7 @@ export const installCloudIdentitySync = (
 			invoke(command, args).then(
 				() => undefined,
 				(error) => {
-					last = null;
+					if (last === key) last = null;
 					console.error(
 						'[identity] failed to update the shared identity',
 						error,
@@ -65,8 +70,17 @@ export const installCloudIdentitySync = (
 
 	const hasToken = () => !!store.state.token?.token;
 
-	if (!hasToken()) clear();
-	else share(store.state.user);
+	const sendCurrent = () => {
+		if (!hasToken()) clear();
+		else share(store.state.user);
+	};
+
+	resyncHandle = () => {
+		sendCurrent();
+		return queue;
+	};
+
+	sendCurrent();
 
 	store.subscribe((mutation) => {
 		if (mutation.type !== 'setUser' && mutation.type !== 'setToken') return;

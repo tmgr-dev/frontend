@@ -3,10 +3,11 @@ import { renderToString } from '@vue/server-renderer';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import ts from 'typescript';
-import { createSSRApp } from 'vue';
+import { createSSRApp, nextTick, reactive } from 'vue';
 
 const mockInvoke = jest.fn();
-const mockStore = { state: { user: { id: 7 } }, getters: {} };
+const mockStore = reactive({ state: { user: { id: 7 } as any }, getters: {} });
+const mockResync = jest.fn();
 
 jest.mock('vue', () => ({
 	...jest.requireActual('vue'),
@@ -46,6 +47,9 @@ jest.mock('@/local/personas', () => ({}));
 jest.mock('@/local/runtime', () => ({
 	activeLocalWorkspace: () => ({ code: 'w' }),
 	localContext: jest.fn(),
+}));
+jest.mock('@/utils/cloudIdentity', () => ({
+	resyncCloudIdentity: (...args: unknown[]) => mockResync(...args),
 }));
 jest.mock('@/pluginSystem/state', () => ({
 	localAccessConnect: { current: null },
@@ -113,6 +117,9 @@ const config = {
 };
 
 beforeEach(() => {
+	mockStore.state.user = { id: 7 };
+	mockResync.mockReset();
+	mockResync.mockResolvedValue(undefined);
 	mockInvoke.mockReset();
 	mockInvoke.mockImplementation(async (command: string) => {
 		if (command === 'llm_config_get') return config;
@@ -163,4 +170,108 @@ test('a successful retry clears the previous error', async () => {
 
 	expect(await render()).not.toContain(REMOTE_HTTP_ERROR);
 	expect(state.llmForm.apiKey).toBe('');
+});
+
+const mountLive = () => {
+	const component = loadComponent();
+	const state = component.setup({}, {});
+	const render = () =>
+		renderToString(createSSRApp({ ...component, setup: () => state }));
+	return { state, render };
+};
+
+const settle = async () => {
+	for (let i = 0; i < 5; i++) {
+		await nextTick();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	}
+};
+
+test('resync is awaited before llm_config_get', async () => {
+	const { state } = mountLive();
+	let release!: () => void;
+	mockResync.mockReturnValueOnce(new Promise<void>((r) => (release = r)));
+	const pending = state.refreshLlmConfig();
+	await settle();
+	expect(mockInvoke).not.toHaveBeenCalled();
+	release();
+	await pending;
+	expect(mockInvoke).toHaveBeenCalledWith('llm_config_get', { userId: 7 });
+});
+
+test('resync is awaited before llm_config_set', async () => {
+	const { state } = mountLive();
+	let release!: () => void;
+	mockResync.mockReturnValueOnce(new Promise<void>((r) => (release = r)));
+	const pending = state.saveLlmConfig();
+	await settle();
+	expect(mockInvoke).not.toHaveBeenCalled();
+	release();
+	await pending;
+	expect(mockInvoke.mock.calls[0][0]).toBe('llm_config_set');
+});
+
+test('the account arriving later refreshes only the key status and slot state', async () => {
+	mockStore.state.user = { id: 0 };
+	mockInvoke.mockImplementation(async (command: string) => {
+		if (command === 'llm_config_get')
+			return { ...config, base_url: 'http://saved', model: 'saved' };
+	});
+	const { state } = mountLive();
+	state.llmForm.baseUrl = 'http://typed';
+	state.llmForm.model = 'typed-model';
+	state.llmForm.apiKey = 'sk-typed';
+	mockStore.state.user = { id: 9 };
+	await settle();
+	expect(mockInvoke).toHaveBeenCalledWith('llm_config_get', { userId: 9 });
+	expect(state.llmStatus.hasApiKey).toBe(true);
+	expect(state.llmForm.baseUrl).toBe('http://typed');
+	expect(state.llmForm.model).toBe('typed-model');
+	expect(state.llmForm.apiKey).toBe('sk-typed');
+});
+
+test('a status response for a previous account is dropped', async () => {
+	mockStore.state.user = { id: 0 };
+	let answer!: (value: unknown) => void;
+	mockInvoke.mockImplementation(
+		(command: string) =>
+			command === 'llm_config_get' &&
+			new Promise((resolve) => (answer = resolve)),
+	);
+	const { state } = mountLive();
+	mockStore.state.user = { id: 9 };
+	await settle();
+	mockStore.state.user = { id: 10 };
+	answer({ ...config, has_api_key: true, slot_state: 'ok' });
+	await settle();
+	expect(state.llmStatus.hasApiKey).toBe(false);
+});
+
+test('a not ready slot shows the note', async () => {
+	mockInvoke.mockImplementation(async (command: string) => {
+		if (command === 'llm_config_get')
+			return { ...config, has_api_key: false, slot_state: 'not_ready' };
+	});
+	const { state, render } = mountLive();
+	await state.refreshLlmConfig();
+	expect(await render()).toContain(
+		'Your account is not available to the desktop app yet. Reload the app or sign in again to manage the API key.',
+	);
+});
+
+test('another account slot shows its note and a ready slot shows none', async () => {
+	mockInvoke.mockImplementation(async (command: string) => {
+		if (command === 'llm_config_get')
+			return { ...config, slot_state: 'other_account' };
+	});
+	const { state, render } = mountLive();
+	await state.refreshLlmConfig();
+	expect(await render()).toContain(
+		'These AI provider settings belong to another account.',
+	);
+	mockInvoke.mockImplementation(async () => config);
+	await state.refreshLlmConfig();
+	const html = await render();
+	expect(html).not.toContain('belong to another account');
+	expect(html).not.toContain('not available to the desktop app');
 });

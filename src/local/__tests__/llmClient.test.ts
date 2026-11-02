@@ -17,6 +17,13 @@ jest.mock('@tauri-apps/api/event', () => ({
 	},
 }));
 
+const order: string[] = [];
+jest.mock('@/utils/cloudIdentity', () => ({
+	resyncCloudIdentity: async () => {
+		order.push('resync');
+	},
+}));
+
 const emit = (requestId: string, event: unknown) =>
 	handler?.({ payload: { request_id: requestId, event } });
 
@@ -166,5 +173,22 @@ describe('createLlmChat tool calls', () => {
 		expect(events.map((e) => e.call.id)).toEqual(['a', 'b']);
 		expect(events[0].call.args).toEqual(getCall('tasks/1'));
 		expect(events[1].call.args).toEqual(getCall('tasks/2'));
+	});
+});
+
+describe('createLlmChat identity resync', () => {
+	it('resyncs the shared identity before llm_chat', async () => {
+		order.length = 0;
+		let requestId = '';
+		mockInvoke.mockImplementation(async (command: string, args: any) => {
+			order.push(command);
+			if (command === 'llm_chat') requestId = args.requestId;
+		});
+		const { chat } = createLlmChat([], 1);
+		const running = drain(chat([]));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		emit(requestId, { type: 'done' });
+		await running;
+		expect(order).toEqual(['resync', 'llm_chat']);
 	});
 });

@@ -83,6 +83,19 @@
 					Remove key
 				</Button>
 			</div>
+			<p
+				v-if="llmStatus.slotState === 'not_ready'"
+				class="text-sm text-amber-600 dark:text-amber-400"
+			>
+				Your account is not available to the desktop app yet. Reload the app or
+				sign in again to manage the API key.
+			</p>
+			<p
+				v-else-if="llmStatus.slotState === 'other_account'"
+				class="text-sm text-amber-600 dark:text-amber-400"
+			>
+				These AI provider settings belong to another account.
+			</p>
 			<p v-if="llmError" class="text-sm text-red-600 dark:text-red-400">
 				{{ llmError }}
 			</p>
@@ -350,8 +363,16 @@
 		localAccessConnect,
 		resolveLocalAccessConnect,
 	} from '@/pluginSystem/state';
+	import { resyncCloudIdentity } from '@/utils/cloudIdentity';
 	import { supportsLocalAccess } from '@/utils/desktop';
-	import { computed, defineComponent, onMounted, reactive, ref } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onMounted,
+		reactive,
+		ref,
+		watch,
+	} from 'vue';
 	import { useStore } from 'vuex';
 
 	/** Mirrors the Rust classify_url check, so the warning reacts to what's typed, not last saved. */
@@ -390,7 +411,10 @@
 			const drafts = reactive<Record<string, PersonaPermission[]>>({});
 			const llmForm = reactive({ baseUrl: '', model: '', apiKey: '' });
 			const isTypedUrlLocal = computed(() => isLocalLlmUrl(llmForm.baseUrl));
-			const llmStatus = reactive({ hasApiKey: false });
+			const llmStatus = reactive({
+				hasApiKey: false,
+				slotState: 'ok' as 'ok' | 'not_ready' | 'other_account',
+			});
 			const savingLlm = ref(false);
 			const llmError = ref<string | null>(null);
 			const tokens = ref<TokenInfo[]>([]);
@@ -419,12 +443,12 @@
 							name:
 								store.state.user?.name || store.state.localProfile?.name || '',
 							email: '',
-						}
+					  }
 					: {
 							id: Number(store.state.user?.id) || 0,
 							name: store.state.user?.name ?? '',
 							email: store.state.user?.email ?? '',
-						};
+					  };
 
 			const ctxFor = async () => {
 				if (!workspace) throw new Error('No local workspace is open');
@@ -459,7 +483,7 @@
 					drafts[persona.uuid] = persona.permissions ?? [];
 			};
 
-			const invoke = async <T,>(
+			const invoke = async <T>(
 				command: string,
 				args?: Record<string, unknown>,
 			): Promise<T> => {
@@ -467,17 +491,43 @@
 				return core.invoke<T>(command, args);
 			};
 
+			type LlmConfig = {
+				base_url: string;
+				model: string;
+				has_api_key: boolean;
+				is_local: boolean;
+				slot_state?: 'ok' | 'not_ready' | 'other_account';
+			};
+
+			const fetchLlmConfig = async () => {
+				await resyncCloudIdentity();
+				return invoke<LlmConfig>('llm_config_get', {
+					userId: currentUser().id,
+				});
+			};
+
 			const refreshLlmConfig = async () => {
-				const config = await invoke<{
-					base_url: string;
-					model: string;
-					has_api_key: boolean;
-					is_local: boolean;
-				}>('llm_config_get', { userId: currentUser().id });
+				const config = await fetchLlmConfig();
 				llmForm.baseUrl = config.base_url;
 				llmForm.model = config.model;
 				llmStatus.hasApiKey = config.has_api_key;
+				llmStatus.slotState = config.slot_state ?? 'ok';
 			};
+
+			watch(
+				() => currentUser().id,
+				async (id) => {
+					if (!workspace) return;
+					try {
+						const config = await fetchLlmConfig();
+						if (currentUser().id !== id) return;
+						llmStatus.hasApiKey = config.has_api_key;
+						llmStatus.slotState = config.slot_state ?? 'ok';
+					} catch (error) {
+						console.error('[llm] failed to refresh the key status', error);
+					}
+				},
+			);
 
 			const refreshTokens = async () => {
 				if (!workspace) return;
@@ -620,6 +670,7 @@
 				savingLlm.value = true;
 				llmError.value = null;
 				try {
+					await resyncCloudIdentity();
 					await invoke('llm_config_set', {
 						userId: currentUser().id,
 						baseUrl: llmForm.baseUrl,
@@ -641,6 +692,7 @@
 				savingLlm.value = true;
 				llmError.value = null;
 				try {
+					await resyncCloudIdentity();
 					await invoke('llm_config_set', {
 						userId: currentUser().id,
 						baseUrl: llmForm.baseUrl,
@@ -681,6 +733,7 @@
 				togglePermission,
 				sync,
 				saveLlmConfig,
+				refreshLlmConfig,
 				removeApiKey,
 				tokens,
 				connectPersona,

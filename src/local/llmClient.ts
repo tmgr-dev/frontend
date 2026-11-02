@@ -1,3 +1,4 @@
+import { resyncCloudIdentity } from '@/utils/cloudIdentity';
 import type { ChatFn, ChatMessage, ChatStreamEvent } from './personaAgent';
 
 interface RustChatEvent {
@@ -44,6 +45,7 @@ export const createLlmChat = (
 			},
 		);
 		try {
+			await resyncCloudIdentity();
 			await invoke('llm_chat', { userId, requestId, messages, tools });
 			if (cancelled) await invoke('llm_cancel', { requestId });
 			type ToolBuffer = { id: string; name: string; arguments: string };
