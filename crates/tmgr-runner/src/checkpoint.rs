@@ -795,8 +795,14 @@ impl Store {
         if let Some(hook) = env.after_before {
             hook();
         }
+        let stopped = |e: CpError| {
+            let (CpError::NotGit(why) | CpError::Refused(why) | CpError::Failed(why)) = e;
+            CpError::Failed(format!(
+                "restore stopped; the previous state is saved as checkpoint {before_n}: {why}"
+            ))
+        };
         let mut rep = Report::default();
-        op.apply(&target, &before, &mut rep)?;
+        op.apply(&target, &before, &mut rep).map_err(stopped)?;
         let after_n = op
             .capture(&[])
             .and_then(|after| {
@@ -809,14 +815,7 @@ impl Store {
                     &[n, before_n],
                 )
             })
-            .map_err(|e| {
-                CpError::Failed(format!(
-                    "files were restored, but the final checkpoint failed: {}",
-                    match e {
-                        CpError::NotGit(s) | CpError::Refused(s) | CpError::Failed(s) => s,
-                    }
-                ))
-            })?
+            .map_err(stopped)?
             .n;
         Ok(CheckpointRestored {
             n,
@@ -2117,6 +2116,37 @@ mod tests {
         let items = st.list();
         assert_eq!(items[1].kind, CheckpointKind::BeforeRestore);
         assert_eq!(blob_at(&fx, &commit_of(&st, 2), "a"), b"2");
+    }
+
+    #[test]
+    fn interrupted_restore_reports_the_saved_state_and_is_recoverable() {
+        let fx = Fx::new();
+        fx.w("a", b"1");
+        fx.w("b", b"b1");
+        let st = fx.store();
+        snap(&fx, &st);
+        fx.w("a", b"2");
+        fx.w("b", b"b2");
+        fx.w("extra", b"e");
+        let dirty = fx.dump();
+        let (git_dir, away) = (fx.repo.join(".git"), fx.repo.join(".git-away"));
+        let hook = || fs::rename(&git_dir, &away).unwrap();
+        let env = Env {
+            after_before: Some(&hook),
+            ..fx.env()
+        };
+        let Err(CpError::Failed(msg)) = st.restore_in(&env, 1) else {
+            panic!("restore must fail without a repository");
+        };
+        fs::rename(&away, &git_dir).unwrap();
+        assert!(msg.contains("checkpoint 2"), "{msg}");
+        assert_eq!(
+            st.list().last().unwrap().kind,
+            CheckpointKind::BeforeRestore
+        );
+        assert!(fx.dump().keys().all(|k| !k.contains(".tmgr-restore-")));
+        st.restore_in(&fx.env(), 2).unwrap();
+        assert_eq!(fx.dump(), dirty);
     }
 
     #[test]
