@@ -87,6 +87,11 @@ impl Fx {
             .env("TMGR_RUNNER_DIR", self.home.join("no-runner"))
             .env("TMGR_CREDENTIAL_STORE", "file")
             .env("NO_COLOR", "1");
+        for (name, _) in std::env::vars_os() {
+            if tmgr_local::in_agent_session([name.to_string_lossy()]) {
+                c.env_remove(name);
+            }
+        }
         c
     }
 
@@ -679,6 +684,28 @@ fn enabling_remote_control_or_include_bypass_is_refused_in_an_agent_session_with
             .unwrap();
         assert_eq!(out.status.code(), Some(5), "{flag}: {}", err_text(&out));
         assert_eq!(links_bytes(&f), before, "{flag}");
+    }
+}
+
+#[test]
+fn enabling_is_refused_under_every_agent_session_marker() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let before = links_bytes(&f);
+    for marker in [
+        "CLAUDECODE",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CODEX_SANDBOX_MODE",
+        "TMGR_AGENT_SESSION",
+    ] {
+        let out = f
+            .tmgr()
+            .env(marker, "1")
+            .args(["link", "scope", "laptop", "--remote-control", "on"])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(5), "{marker}: {}", err_text(&out));
+        assert_eq!(links_bytes(&f), before, "{marker}");
     }
 }
 

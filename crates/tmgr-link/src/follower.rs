@@ -355,7 +355,9 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
         return Ok(());
     }
     let _lock = crate::store::lock_links(paths)?;
-    crate::tombstone::check_capacity(paths)?;
+    if plan.widening {
+        crate::tombstone::check_capacity(paths)?;
+    }
     let mut store = Store::load(paths)?;
     if store.version != plan.store_version {
         return Err(changed_meanwhile());
@@ -526,20 +528,18 @@ fn survivors(backend: &mut dyn crate::runner::Backend, link: &str, cutoff: u64) 
     }
 }
 
+pub fn must_close(new: &Scope, attached: &crate::registry::Attached) -> bool {
+    attached.remote && (!new.remote_control || (attached.bypass && !new.include_bypass))
+}
+
 pub fn close_after_scope_change(
     paths: &Paths,
     name: &str,
-    old: &Scope,
     new: &Scope,
     grace: std::time::Duration,
 ) -> Result<crate::registry::Terminated> {
-    let control_off = old.remote_control && !new.remote_control;
-    let bypass_off = old.include_bypass && !new.include_bypass;
-    if !control_off && !bypass_off {
-        return Ok(Default::default());
-    }
     crate::registry::terminate_where(paths, name, grace, &|_, attached| {
-        attached.is_some_and(|a| a.remote && (control_off || a.bypass))
+        attached.is_some_and(|a| must_close(new, a))
     })
 }
 
@@ -1335,7 +1335,6 @@ mod tests {
         let t = close_after_scope_change(
             &f.paths,
             "laptop",
-            &flags(true, true),
             &flags(false, true),
             std::time::Duration::from_secs(5),
         )
@@ -1355,7 +1354,6 @@ mod tests {
         let t = close_after_scope_change(
             &f.paths,
             "laptop",
-            &flags(true, true),
             &flags(true, false),
             std::time::Duration::from_secs(5),
         )
@@ -1365,24 +1363,58 @@ mod tests {
     }
 
     #[test]
+    fn running_off_again_closes_a_remote_attach_left_open() {
+        let f = fx();
+        let mut ws = [
+            marked_worker(&f, true, false),
+            marked_worker(&f, false, false),
+        ];
+        let t = close_after_scope_change(
+            &f.paths,
+            "laptop",
+            &flags(false, false),
+            std::time::Duration::from_secs(5),
+        )
+        .unwrap();
+        assert_eq!(t.signalled, 1);
+        assert_survivors(&mut ws, &[false, true]);
+    }
+
+    #[test]
+    fn a_full_tombstone_file_refuses_widening_but_not_turning_a_flag_off() {
+        let f = fx();
+        trust(&f, "laptop");
+        let on = ScopeInput {
+            remote_control: Some(true),
+            ..Default::default()
+        };
+        let plan = plan_scope(&f.paths, "laptop", &on).unwrap();
+        apply_scope(&f.paths, &plan, &f.bin).unwrap();
+        for i in 0..crate::tombstone::MAX_UNRESOLVED {
+            crate::tombstone::record(&f.paths, &format!("l{i}"), "e", i as u64).unwrap();
+        }
+        let off = ScopeInput {
+            remote_control: Some(false),
+            ..Default::default()
+        };
+        let plan = plan_scope(&f.paths, "laptop", &off).unwrap();
+        apply_scope(&f.paths, &plan, &f.bin).unwrap();
+        let plan = plan_scope(&f.paths, "laptop", &on).unwrap();
+        assert!(apply_scope(&f.paths, &plan, &f.bin).is_err());
+    }
+
+    #[test]
     fn a_scope_change_that_takes_nothing_away_closes_nothing() {
         let f = fx();
         let mut ws = [marked_worker(&f, true, true)];
-        for (old, new) in [
-            (flags(false, false), flags(true, true)),
-            (flags(true, false), flags(true, true)),
-            (flags(true, true), flags(true, true)),
-        ] {
-            let t = close_after_scope_change(
-                &f.paths,
-                "laptop",
-                &old,
-                &new,
-                std::time::Duration::from_secs(1),
-            )
-            .unwrap();
-            assert_eq!(t.signalled, 0);
-        }
+        let t = close_after_scope_change(
+            &f.paths,
+            "laptop",
+            &flags(true, true),
+            std::time::Duration::from_secs(1),
+        )
+        .unwrap();
+        assert_eq!(t.signalled, 0);
         assert_survivors(&mut ws, &[true]);
     }
 }

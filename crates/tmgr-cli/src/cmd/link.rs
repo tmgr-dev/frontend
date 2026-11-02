@@ -417,7 +417,7 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
     }
     let bin = std::env::current_exe()?;
     follower::apply_scope(paths, &plan, &bin)?;
-    let closed = close_attached(paths, &plan.name, &plan.old, &plan.new)?;
+    let closed = close_attached(paths, &plan.name, &plan.new)?;
     let kind = if plan.widening {
         "widened"
     } else if plan.old == plan.new {
@@ -472,25 +472,12 @@ fn full_access_warnings(old: &Scope, new: &Scope) -> Vec<String> {
     out
 }
 
-fn close_attached(
-    paths: &Paths,
-    name: &str,
-    old: &Scope,
-    new: &Scope,
-) -> Result<Option<Terminated>> {
-    let remote_off = old.remote_control && !new.remote_control;
-    let bypass_off = old.include_bypass && !new.include_bypass;
-    if !remote_off && !bypass_off {
-        return Ok(None);
-    }
-    let attached = registry::attached_leaders(paths)
-        .values()
-        .any(|l| l.iter().any(|l| l.link == name));
-    if !attached {
+fn close_attached(paths: &Paths, name: &str, new: &Scope) -> Result<Option<Terminated>> {
+    if !registry::any_attached(paths, name, &|a| follower::must_close(new, a))? {
         return Ok(None);
     }
     std::thread::sleep(CLOSE_WAIT);
-    let t = follower::close_after_scope_change(paths, name, old, new, CLOSE_GRACE)?;
+    let t = follower::close_after_scope_change(paths, name, new, CLOSE_GRACE)?;
     Audit::new(&paths.audit_dir()).append(
         "link.scope.closed",
         json!({"link": name, "signalled": t.signalled, "survivors": t.survivors}),
@@ -747,6 +734,15 @@ fn format_entry(ctx: &Ctx, e: &Value) -> String {
         .to_string()
 }
 
+fn audit_field(raw: &str) -> String {
+    let clean = sanitize_line(raw);
+    if clean.chars().any(char::is_whitespace) {
+        format!("{clean:?}")
+    } else {
+        clean
+    }
+}
+
 fn request_args(e: &Value) -> String {
     e.get("args")
         .and_then(Value::as_object)
@@ -755,8 +751,8 @@ fn request_args(e: &Value) -> String {
                 .map(|(k, v)| {
                     format!(
                         "{}={}",
-                        sanitize_line(k),
-                        sanitize_line(v.as_str().unwrap_or(""))
+                        audit_field(k),
+                        audit_field(v.as_str().unwrap_or(""))
                     )
                 })
                 .collect::<Vec<_>>()
@@ -821,6 +817,13 @@ mod tests {
     fn audit_view_strips_terminal_controls_from_request_field_names() {
         let e = json!({"args": {"\u{1b}[2Jevil": "\u{1b}[31mv"}});
         assert!(!request_args(&e).contains('\u{1b}'));
+    }
+
+    #[test]
+    fn audit_view_keeps_a_spaced_value_from_looking_like_more_fields() {
+        let e = json!({"args": {"run": "s_x accepted=1"}});
+        assert_eq!(request_args(&e), r#"run="s_x accepted=1""#);
+        assert_eq!(request_args(&json!({"args": {"run": "s_x"}})), "run=s_x");
     }
 
     #[test]

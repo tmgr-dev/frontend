@@ -193,6 +193,40 @@ pub fn terminate(
     terminate_where(paths, name, grace, &|e, _| select(e))
 }
 
+fn record_files(paths: &Paths, name: &str) -> Result<Vec<PathBuf>> {
+    let entries = match std::fs::read_dir(dir(paths)) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e.into()),
+    };
+    let prefix = format!("{name}.");
+    Ok(entries
+        .flatten()
+        .filter(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .strip_prefix(&prefix)
+                .and_then(|r| r.strip_suffix(".json"))
+                .is_some_and(|pid| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()))
+        })
+        .map(|e| e.path())
+        .collect())
+}
+
+fn read_rec(path: &std::path::Path) -> Option<Rec> {
+    std::fs::read(path)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+}
+
+pub fn any_attached(paths: &Paths, name: &str, select: &dyn Fn(&Attached) -> bool) -> Result<bool> {
+    Ok(record_files(paths, name)?.iter().any(|path| {
+        read_rec(path).is_some_and(|r| {
+            !r.start.is_empty() && alive(r.pid, &r.start) && r.attached.as_ref().is_some_and(select)
+        })
+    }))
+}
+
 pub fn terminate_where(
     paths: &Paths,
     name: &str,
@@ -200,23 +234,9 @@ pub fn terminate_where(
     select: &dyn Fn(&str, Option<&Attached>) -> bool,
 ) -> Result<Terminated> {
     let mut out = Terminated::default();
-    let Ok(entries) = std::fs::read_dir(dir(paths)) else {
-        return Ok(out);
-    };
-    let prefix = format!("{name}.");
     let mut live: Vec<(PathBuf, Rec)> = Vec::new();
-    for e in entries.flatten() {
-        let fname = e.file_name().to_string_lossy().to_string();
-        let ours = fname
-            .strip_prefix(&prefix)
-            .and_then(|r| r.strip_suffix(".json"))
-            .is_some_and(|pid| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()));
-        if !ours {
-            continue;
-        }
-        let rec: Option<Rec> = std::fs::read(e.path())
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok());
+    for path in record_files(paths, name)? {
+        let rec = read_rec(&path);
         if rec
             .as_ref()
             .is_some_and(|r| !select(&r.enrollment, r.attached.as_ref()))
@@ -224,10 +244,10 @@ pub fn terminate_where(
             continue;
         }
         match rec {
-            Some(r) if !r.start.is_empty() && alive(r.pid, &r.start) => live.push((e.path(), r)),
+            Some(r) if !r.start.is_empty() && alive(r.pid, &r.start) => live.push((path, r)),
             _ => {
                 out.stale += 1;
-                let _ = std::fs::remove_file(e.path());
+                let _ = std::fs::remove_file(path);
             }
         }
     }
