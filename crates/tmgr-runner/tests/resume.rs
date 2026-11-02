@@ -1407,3 +1407,105 @@ fn fork_is_refused_when_consent_is_withdrawn_before_the_copy() {
         .count();
     assert_eq!(copies, 1);
 }
+
+fn snapshot(root: &Path) -> Vec<(PathBuf, u32, u64, i64, u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for e in fs::read_dir(&d).unwrap() {
+            let p = e.unwrap().path();
+            let m = fs::symlink_metadata(&p).unwrap();
+            out.push((p.clone(), m.mode(), m.len(), m.mtime(), m.nlink(), m.ino()));
+            if m.is_dir() {
+                stack.push(p);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+fn git_clone_fixture(dir: &Path, args: &[&str]) {
+    let out = Command::new("git")
+        .current_dir(dir)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_AUTHOR_NAME", "t")
+        .env("GIT_AUTHOR_EMAIL", "t@example.com")
+        .env("GIT_COMMITTER_NAME", "t")
+        .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn a_clone_that_shares_object_files_is_refused_at_resume_and_left_alone() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    h.start();
+    let code = fs::canonicalize(h.tmp.path()).unwrap().join("code");
+    let repo = code.join("repo");
+    let queue = code.join("repo-worktrees/queue");
+    fs::create_dir_all(&repo).unwrap();
+    fs::create_dir_all(&queue).unwrap();
+    git_clone_fixture(&repo, &["init", "-q", "-b", "main"]);
+    fs::write(repo.join("a.txt"), "hello\n").unwrap();
+    git_clone_fixture(&repo, &["add", "."]);
+    git_clone_fixture(&repo, &["commit", "-q", "-m", "init"]);
+    let make = |name: &str| {
+        let dest = queue.join(name);
+        git_clone_fixture(
+            &queue,
+            &[
+                "clone",
+                "-q",
+                "--no-local",
+                "--reference",
+                repo.to_str().unwrap(),
+                repo.to_str().unwrap(),
+                dest.to_str().unwrap(),
+            ],
+        );
+        let mut req = h.req();
+        req.cwd = dest.display().to_string();
+        req.clone_of = Some(repo.display().to_string());
+        let first = h.client().create_run(req).unwrap();
+        let _ = h.client().kill(&first.id, "term");
+        h.wait_exited(&first.id);
+        (dest, first.id)
+    };
+
+    let (shared, shared_id) = make("q_shared");
+    let twin = code.join("twin");
+    fs::write(&twin, "x").unwrap();
+    fs::hard_link(&twin, shared.join(".git/objects/info/linked")).unwrap();
+    let before = snapshot(&shared);
+    let sessions = h.client().list().unwrap().len();
+    let err = h
+        .client()
+        .resume(&shared_id, 80, 24)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains(shared.to_str().unwrap()), "{err}");
+    assert!(err.contains("re-clone"), "{err}");
+    assert_eq!(h.client().list().unwrap().len(), sessions);
+    assert_eq!(snapshot(&shared), before);
+
+    let (_, clean_id) = make("q_clean");
+    match h.client().resume(&clean_id, 80, 24) {
+        Ok(r) => {
+            let _ = h.client().kill(&r.session.id, "term");
+            h.wait_exited(&r.session.id);
+        }
+        Err(e) => assert!(!e.to_string().contains("shares object files"), "{e}"),
+    }
+}
