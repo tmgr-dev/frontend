@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::ffi::OsString;
+use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tmgr_core::error::{Error, Kind, Result};
@@ -12,6 +14,14 @@ pub fn clone_dir(repo: &str, pickup_id: &str) -> Option<PathBuf> {
             .join("queue")
             .join(pickup_id),
     )
+}
+
+/// Whether `path` lies in a run directory made by `clone_dir`, where a queue agent may be writing.
+pub fn in_queue_run_dir(path: &Path) -> bool {
+    let names: Vec<_> = path.components().map(|c| c.as_os_str()).collect();
+    names
+        .windows(3)
+        .any(|w| w[1] == "queue" && w[0].to_str().is_some_and(|n| n.ends_with("-worktrees")))
 }
 
 pub fn branch_name(pickup_id: &str) -> String {
@@ -71,22 +81,31 @@ fn fixed_git_command() -> Command {
     cmd
 }
 
-fn named_program_overrides(names: &[u8]) -> Vec<(String, &'static str)> {
+fn named_program_overrides(names: &[u8]) -> Vec<(OsString, &'static str)> {
+    let key = |section: &str, sub: &[u8], var: &str| {
+        let mut k = format!("{section}.").into_bytes();
+        k.extend_from_slice(sub);
+        k.push(b'.');
+        k.extend_from_slice(var.as_bytes());
+        OsString::from_vec(k)
+    };
     let mut out = Vec::new();
-    for name in String::from_utf8_lossy(names).split('\0') {
-        let Some((section, rest)) = name.split_once('.') else {
+    for name in names.split(|b| *b == 0) {
+        let Some(dot) = name.iter().position(|b| *b == b'.') else {
             continue;
         };
-        let Some((sub, _)) = rest.rsplit_once('.') else {
+        let (section, rest) = (&name[..dot], &name[dot + 1..]);
+        let Some(last) = rest.iter().rposition(|b| *b == b'.') else {
             continue;
         };
+        let sub = &rest[..last];
         match section {
-            "hook" => out.push((format!("hook.{sub}.enabled"), "false")),
-            "filter" => {
-                for key in ["clean", "smudge", "process"] {
-                    out.push((format!("filter.{sub}.{key}"), ""));
+            b"hook" => out.push((key("hook", sub, "enabled"), "false")),
+            b"filter" => {
+                for var in ["clean", "smudge", "process"] {
+                    out.push((key("filter", sub, var), ""));
                 }
-                out.push((format!("filter.{sub}.required"), "false"));
+                out.push((key("filter", sub, "required"), "false"));
             }
             _ => {}
         }
@@ -1043,6 +1062,15 @@ mod tests {
         git(Some(&repo), &["config", "unknown.setting", "1"]).unwrap();
         assert!(!repo_config_is_plain(&repo));
         assert!(!repo_config_is_plain(&repo.join("missing")));
+    }
+
+    #[test]
+    fn only_queue_run_directories_count_as_queue_run_directories() {
+        assert!(in_queue_run_dir(Path::new("/w/p-worktrees/queue/id")));
+        assert!(in_queue_run_dir(Path::new("/w/p-worktrees/queue/id/src")));
+        assert!(!in_queue_run_dir(Path::new("/w/p-worktrees/queue")));
+        assert!(!in_queue_run_dir(Path::new("/w/p-worktrees/feature")));
+        assert!(!in_queue_run_dir(Path::new("/w/queue/id/src")));
     }
 
     #[test]

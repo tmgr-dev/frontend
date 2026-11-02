@@ -333,6 +333,7 @@ struct App {
     cfg: RunnerConfig,
     tx: SyncSender<Msg>,
     starts: HashMap<String, (String, u32)>,
+    unsandboxed: HashSet<String>,
     pending: HashMap<String, Instant>,
     creating: HashMap<String, String>,
     new_flow: NewFlow,
@@ -666,6 +667,11 @@ impl App {
         self.dirty |= meta;
         self.starts
             .retain(|id, _| list.iter().any(|s| &s.id == id) || self.pending.contains_key(id));
+        self.unsandboxed = list
+            .iter()
+            .filter(|s| s.no_sandbox)
+            .map(|s| s.id.clone())
+            .collect();
         for s in list {
             self.starts
                 .insert(s.id.clone(), (s.cwd.clone(), s.child_pid));
@@ -1349,6 +1355,14 @@ impl App {
             return;
         }
         self.last_git = Instant::now();
+        let sandboxed: Vec<PathBuf> = self
+            .view
+            .sessions
+            .iter()
+            .filter(|r| !r.exited() && !self.unsandboxed.contains(&r.id))
+            .filter_map(|r| self.starts.get(&r.id))
+            .map(|(start, _)| PathBuf::from(start))
+            .collect();
         let jobs: Vec<GitJob> = self
             .view
             .panes()
@@ -1362,9 +1376,15 @@ impl App {
                     .into_iter()
                     .map(PathBuf::from)
                     .collect();
+                let branch_only = !self.unsandboxed.contains(id)
+                    || cwds.iter().any(|c| {
+                        tmgr_queue::workdir::in_queue_run_dir(c)
+                            || sandboxed.iter().any(|s| c.starts_with(s))
+                    });
                 (!row.exited() || !cwds.is_empty()).then(|| GitJob {
                     id: id.clone(),
                     cwds,
+                    branch_only,
                 })
             })
             .collect();
@@ -4175,6 +4195,11 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         shell_ids: list
             .iter()
             .filter(|s| is_shell_session(&s.argv, &s.name))
+            .map(|s| s.id.clone())
+            .collect(),
+        unsandboxed: list
+            .iter()
+            .filter(|s| s.no_sandbox)
             .map(|s| s.id.clone())
             .collect(),
         starts: list

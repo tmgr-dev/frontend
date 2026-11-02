@@ -15,6 +15,7 @@ const MAX_SCANS: usize = 64;
 pub(super) struct GitJob {
     pub id: String,
     pub cwds: Vec<PathBuf>,
+    pub branch_only: bool,
 }
 
 const SAFE: [&str; 6] = [
@@ -254,6 +255,62 @@ pub(super) fn collect(
         base,
         ahead_base,
         pr,
+        branch_only: false,
+    })
+}
+
+fn read_small_file(path: &Path) -> Option<String> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
+        .open(path)
+        .ok()?;
+    if !file.metadata().ok()?.is_file() {
+        return None;
+    }
+    let mut text = String::new();
+    (&mut file).take(4096).read_to_string(&mut text).ok()?;
+    Some(text)
+}
+
+fn git_dir_of(dir: &Path) -> Option<PathBuf> {
+    let entry = dir.join(".git");
+    let meta = std::fs::symlink_metadata(&entry).ok()?;
+    if meta.is_dir() {
+        return Some(entry);
+    }
+    let text = read_small_file(&entry)?;
+    Some(dir.join(text.strip_prefix("gitdir: ")?.trim_end()))
+}
+
+fn branch_of_head(head: &str) -> String {
+    head.trim_end()
+        .strip_prefix("ref: refs/heads/")
+        .filter(|name| {
+            !name.is_empty()
+                && name.len() <= 100
+                && !name.chars().any(|c| c.is_control() || c.is_whitespace())
+        })
+        .unwrap_or("(detached)")
+        .to_string()
+}
+
+pub(super) fn collect_branch_only(cwd: &Path) -> Option<GitInfo> {
+    if !real_dir(cwd) {
+        return None;
+    }
+    let cwd = std::fs::canonicalize(cwd).ok()?;
+    let (root, git_dir) = cwd
+        .ancestors()
+        .find_map(|dir| Some((dir, git_dir_of(dir)?)))?;
+    let head = read_small_file(&git_dir.join("HEAD"))?;
+    Some(GitInfo {
+        root: root.to_string_lossy().into_owned(),
+        branch: branch_of_head(&head),
+        branch_only: true,
+        pr: PrLookup::Unavailable,
+        ..GitInfo::default()
     })
 }
 
@@ -269,6 +326,9 @@ pub(super) fn git_worker(
         let mut found = HashMap::new();
         for job in &batch {
             let info = job.cwds.iter().find_map(|cwd| {
+                if job.branch_only {
+                    return collect_branch_only(cwd);
+                }
                 collect(cwd, |branch, root| match prs.get(&job.id) {
                     Some((b, r, at, pr))
                         if b == branch && root == Path::new(r) && at.elapsed() < PR_EVERY =>
@@ -516,6 +576,75 @@ mod tests {
     }
 
     #[test]
+    fn a_sandboxed_session_reads_its_branch_without_running_git() {
+        let dir = repo();
+        let p = canon(dir.path());
+        let touched = p.join("touched");
+        std::fs::write(p.join(".gitattributes"), "*.txt filter=x\n").unwrap();
+        let config = format!(
+            "[filter \"x\"]\n\tclean = touch {0}\n[core]\n\tfsmonitor = touch {0}\n",
+            touched.display()
+        );
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(p.join(".git/config"))
+            .unwrap();
+        std::io::Write::write_all(&mut file, config.as_bytes()).unwrap();
+        let (tx, rx) = mpsc::sync_channel(1);
+        let (out_tx, out_rx) = mpsc::channel();
+        let handle = std::thread::spawn(move || git_worker(rx, move |m| out_tx.send(m).is_ok()));
+        tx.send(vec![GitJob {
+            id: "a".into(),
+            cwds: vec![p.clone()],
+            branch_only: true,
+        }])
+        .unwrap();
+        let found = out_rx.recv().unwrap();
+        drop(tx);
+        handle.join().unwrap();
+        assert!(!touched.exists());
+        let info = &found["a"];
+        assert_eq!(info.branch, "feature");
+        assert_eq!(info.root, p.to_string_lossy());
+        assert!(info.branch_only);
+        assert_eq!(info.pr, PrLookup::Unavailable);
+    }
+
+    #[test]
+    fn the_branch_is_read_from_a_git_file_and_from_a_subfolder() {
+        let dir = repo();
+        let p = canon(dir.path());
+        let other = tempfile::tempdir().unwrap();
+        let other = canon(other.path());
+        std::fs::create_dir(other.join("sub")).unwrap();
+        std::fs::write(
+            other.join(".git"),
+            format!("gitdir: {}\n", p.join(".git").display()),
+        )
+        .unwrap();
+        let info = collect_branch_only(&other.join("sub")).unwrap();
+        assert_eq!(info.branch, "feature");
+        assert_eq!(info.root, other.to_string_lossy());
+    }
+
+    #[test]
+    fn an_odd_head_never_reaches_the_screen_or_blocks_the_reader() {
+        assert_eq!(branch_of_head("ref: refs/heads/a\x1b[2Jb\n"), "(detached)");
+        assert_eq!(branch_of_head("ref: refs/tags/v1\n"), "(detached)");
+        assert_eq!(branch_of_head("0123abc\n"), "(detached)");
+        let dir = repo();
+        let p = canon(dir.path());
+        let head = p.join(".git/HEAD");
+        std::fs::remove_file(&head).unwrap();
+        let status = Command::new("mkfifo").arg(&head).status().unwrap();
+        assert!(status.success());
+        assert_eq!(collect_branch_only(&p), None);
+        std::fs::remove_file(&head).unwrap();
+        std::os::unix::fs::symlink("/etc/hosts", &head).unwrap();
+        assert_eq!(collect_branch_only(&p), None);
+    }
+
+    #[test]
     fn the_worker_reports_repos_only_and_caches_the_pr_lookup() {
         let dir = repo();
         let plain = tempfile::tempdir().unwrap();
@@ -526,10 +655,12 @@ mod tests {
             GitJob {
                 id: "a".into(),
                 cwds: vec![canon(plain.path()), canon(dir.path())],
+                branch_only: false,
             },
             GitJob {
                 id: "b".into(),
                 cwds: vec![canon(plain.path())],
+                branch_only: false,
             },
         ])
         .unwrap();

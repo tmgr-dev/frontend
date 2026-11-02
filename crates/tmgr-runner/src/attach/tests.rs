@@ -6702,6 +6702,7 @@ fn git_info() -> GitInfo {
             url: "https://github.com/acme/shop/pull/615".into(),
             state: "open".into(),
         }),
+        branch_only: false,
     }
 }
 
@@ -9500,4 +9501,17 @@ fn pane_title_and_sidebar_show_who_is_attached() {
     let shown = draw(&v, &screens(), 140, 22);
     assert!(shown.contains("macbook attached (view)"));
     assert!(!shown.contains("attached (control)"));
+}
+
+#[test]
+fn a_panel_with_only_a_branch_says_the_rest_was_not_read() {
+    let mut v = two_pane(140);
+    let focused = v.focused_session().unwrap().to_string();
+    let mut info = git_info();
+    info.branch_only = true;
+    v.set_git(HashMap::from([(focused, info)]));
+    v.apply(Cmd::Git);
+    let text = draw(&v, &screens(), 140, 22);
+    assert!(text.contains("not read for a sandboxed session"));
+    assert!(!text.contains("origin/main"));
 }
