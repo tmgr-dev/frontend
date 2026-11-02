@@ -1,6 +1,6 @@
 use serde::Serialize;
 use serde_json::Value;
-use tmgr_ipc::api::{caps, method, limits, AuthorKind, AutopilotCommand, AutopilotControlParams, AutopilotControlled, AutopilotStatus, ClientMsg, CwdPin, Request, RunCreateReq, SessionInfo, State};
+use tmgr_ipc::api::{caps, method, limits, AuthorKind, AutopilotCommand, AutopilotControlParams, AutopilotControlled, AutopilotStatus, ClientMsg, CwdPin, Request, RunCreateReq, SessionInfo, State, TeamLink, TeamRole};
 
 pub use tmgr_ipc::api::StateKind;
 
@@ -48,6 +48,25 @@ pub struct RunnerSession {
   pub task: Option<TaskRef>,
   pub state: RunnerState,
   pub created_ms: u64,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub team: Option<RunnerTeam>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RunnerTeam {
+  pub of: String,
+  pub role: &'static str,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub worker: Option<u8>,
+}
+
+fn team_from_ipc(t: Option<TeamLink>) -> Option<RunnerTeam> {
+  let t = t.filter(|t| t.validate().is_ok())?;
+  let (role, worker) = match t.role {
+    TeamRole::Lead => ("lead", None),
+    TeamRole::Worker(n) => ("worker", Some(n)),
+  };
+  Some(RunnerTeam { of: t.of, role, worker })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,6 +106,7 @@ pub fn session_from_info(w: SessionInfo) -> Option<RunnerSession> {
     task: w.task.map(TaskRef::from),
     state: state_from_ipc(&w.state, Detail::ExitOnly),
     created_ms: w.created_ms,
+    team: team_from_ipc(w.team),
     id: w.id,
   })
 }
@@ -591,5 +611,37 @@ mod tests {
     assert_eq!(s.state.kind, StateKind::Working);
     let notask: Value = serde_json::from_str(include_str!("../../../crates/tmgr-ipc/tests/fixtures/session_info_notask.json")).unwrap();
     assert_eq!(session_from_value(&notask).unwrap().task, None);
+  }
+
+  fn with_team(team: Value) -> Value {
+    let mut v = session(SID, json!({"kind": "working", "since_ms": 1}));
+    v["team"] = team;
+    v
+  }
+
+  #[test]
+  fn a_valid_team_label_is_kept() {
+    let lead = session_from_value(&with_team(json!({"role": "lead", "of": "team-1"}))).unwrap();
+    assert_eq!(lead.team, Some(RunnerTeam { of: "team-1".into(), role: "lead", worker: None }));
+    let worker = session_from_value(&with_team(json!({"role": {"worker": 2}, "of": "team-1"}))).unwrap();
+    assert_eq!(worker.team, Some(RunnerTeam { of: "team-1".into(), role: "worker", worker: Some(2) }));
+  }
+
+  #[test]
+  fn an_invalid_team_label_is_dropped_and_the_session_kept() {
+    for bad in [json!({"role": {"worker": 0}, "of": "t"}), json!({"role": "lead", "of": ""}), json!({"role": "lead", "of": "a/b"}), json!({"role": "lead", "of": "x".repeat(65)})] {
+      let s = session_from_value(&with_team(bad.clone())).unwrap_or_else(|| panic!("{bad}"));
+      assert_eq!(s.team, None, "{bad}");
+    }
+  }
+
+  #[test]
+  fn a_session_without_a_team_serialises_without_the_key() {
+    let s = session_from_value(&session(SID, json!({"kind": "working", "since_ms": 1}))).unwrap();
+    assert!(serde_json::to_value(&s).unwrap().get("team").is_none());
+    let t = session_from_value(&with_team(json!({"role": "lead", "of": "t"}))).unwrap();
+    assert_eq!(serde_json::to_value(&t).unwrap()["team"], json!({"of": "t", "role": "lead"}));
+    let w = session_from_value(&with_team(json!({"role": {"worker": 1}, "of": "t"}))).unwrap();
+    assert_eq!(serde_json::to_value(&w).unwrap()["team"], json!({"of": "t", "role": "worker", "worker": 1}));
   }
 }
