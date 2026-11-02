@@ -1302,6 +1302,56 @@ describeSqlite('local workspace API on SQLite', () => {
 		).toBe(409);
 	});
 
+	it("treats a run started as the local account (-1) as the signed-in user's, but nobody else's", async () => {
+		const task = await data('POST', 'tasks', { title: 'Legacy run' });
+		const start = async (storedActor?: string) => {
+			const run = await data('POST', `tasks/${task.id}/agent-work`, {
+				agent: 'codex',
+			});
+			if (storedActor)
+				await ctx.db.execute(
+					`UPDATE agent_work_runs SET actor_id = ? WHERE id = ?`,
+					[storedActor, run.id],
+				);
+			return run;
+		};
+		const as = (id: number, method: string, url: string, body?: unknown) =>
+			dispatchLocal(
+				api,
+				{ ...ctx, user: { ...ctx.user, id } },
+				method,
+				url,
+				body,
+			);
+
+		const own = await start();
+		for (const id of [8, -1, -2, 0]) {
+			const refused = await as(id, 'PATCH', `agent-work/${own.id}`, {
+				summary: 'x',
+			});
+			expect([id, refused!.status]).toEqual([id, 403]);
+			expect(refused!.data.code).toBe('NOT_OWN');
+		}
+
+		const legacy = await start('-1');
+		for (const id of [0, -2]) {
+			const refused = await as(id, 'PATCH', `agent-work/${legacy.id}`, {
+				summary: 'x',
+			});
+			expect([id, refused!.status]).toEqual([id, 403]);
+		}
+		const finished = await as(7, 'POST', `agent-work/${legacy.id}/finish`, {
+			status: 'succeeded',
+		});
+		expect(finished!.status).toBe(200);
+
+		const again = await start('-1');
+		const asLocal = await as(-1, 'PATCH', `agent-work/${again.id}`, {
+			summary: 'x',
+		});
+		expect(asLocal!.status).toBe(200);
+	});
+
 	it('abandons a still-running run of the same agent and actor when a new one starts, ending at its last update', async () => {
 		const task = await data('POST', 'tasks', { title: 'Two runs' });
 		const first = await data('POST', `tasks/${task.id}/agent-work`, {

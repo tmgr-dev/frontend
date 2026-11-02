@@ -1,0 +1,7 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "local-identity",
+	"description": "Signed-in account id and name shared with the tmgr CLI: main window only.",
+	"windows": ["main"],
+	"permissions": ["allow-local-identity-set", "allow-local-identity-clear"]
+}

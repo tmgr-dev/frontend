@@ -12,6 +12,8 @@ const APP_COMMANDS: &[&str] = &[
   "local_db_select",
   "local_export_write",
   "local_reveal",
+  "local_identity_set",
+  "local_identity_clear",
   "local_profile_get",
   "local_profile_create",
   "local_profile_update",

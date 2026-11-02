@@ -431,8 +431,14 @@ fn own_running_run(req: &Request<'_>, id: i64) -> Result<Row, Outcome> {
     ))?
     .ok_or_else(|| not_found("Agent work run"))?;
     let actor = req.ctx.acting();
-    let same_actor = col(&row, "actor_kind").as_str() == Some(actor.kind.as_str())
-        && js::string(col(&row, "actor_id")) == actor.owner();
+    let stored_id = js::string(col(&row, "actor_id"));
+    let legacy_local_user = actor.kind == "user"
+        && actor.id.parse::<i64>().is_ok_and(|id| id > 0)
+        && col(&row, "actor_kind").as_str() == Some("user")
+        && stored_id == "-1";
+    let same_actor = legacy_local_user
+        || (col(&row, "actor_kind").as_str() == Some(actor.kind.as_str())
+            && stored_id == actor.owner());
     let agent = js::string(col(&row, "agent"));
     let namespace = format!("plugin:{}", actor.id);
     let same_namespace =
@@ -636,6 +642,43 @@ mod tests {
             get(&conn, &c, "workspaces/-42/agent-work?since=yesterday").0,
             422
         );
+    }
+
+    fn finish_as(user_id: i64, stored_actor: &str) -> u16 {
+        let conn = db(&format!(
+            "INSERT INTO tasks (id, title, created_at, updated_at) VALUES (1, 't', 'x', 'x');
+             INSERT INTO agent_work_runs (id, task_id, agent, status, started_at, actor_kind, actor_id, created_at, updated_at)
+             VALUES (1, 1, 'codex', 'running', '2026-10-13T11:00:00.000Z', 'user', '{stored_actor}', 'x', 'x');"
+        ));
+        conn.execute_batch("PRAGMA query_only = OFF").unwrap();
+        let mut c = ctx("2026-10-13T12:00:00.000Z");
+        c.user.id = user_id;
+        crate::dispatch(
+            &conn,
+            &c,
+            "POST",
+            "agent-work/1/finish",
+            Some(&json!({ "status": "succeeded" })),
+        )
+        .unwrap()
+        .unwrap()
+        .status
+    }
+
+    #[test]
+    fn a_run_started_as_the_local_account_can_be_finished_by_a_signed_in_user() {
+        assert_eq!(finish_as(7, "-1"), 200);
+        assert_eq!(finish_as(-1, "-1"), 200);
+        assert_eq!(finish_as(7, "7"), 200);
+    }
+
+    #[test]
+    fn another_user_still_cannot_finish_the_run() {
+        assert_eq!(finish_as(8, "7"), 403);
+        assert_eq!(finish_as(-1, "7"), 403);
+        assert_eq!(finish_as(-2, "-1"), 403);
+        assert_eq!(finish_as(0, "-1"), 403);
+        assert_eq!(finish_as(7, "-2"), 403);
     }
 
     #[test]

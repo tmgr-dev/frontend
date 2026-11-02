@@ -49,21 +49,88 @@ pub fn find_at(root: &Path, code: &str) -> Result<LocalWorkspace> {
     })
 }
 
-/// Who the CLI is in a local workspace: `local_user_id` from the config when set, else the desktop's
-/// accountless profile (`~/.tmgr.dev/profile.json`), else id -1 with no name.
+const HINT_MAX_BYTES: u64 = 4096;
+const HINT_MAX_ID: i64 = (1 << 53) - 1;
+const HINT_MAX_NAME_CHARS: usize = 80;
+
+fn read_hint(path: &Path) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(not(unix))]
+    if !std::fs::symlink_metadata(path).ok()?.is_file() {
+        return None;
+    }
+    let file = options.open(path).ok()?;
+    let meta = file.metadata().ok()?;
+    if !meta.is_file() || meta.len() > HINT_MAX_BYTES {
+        return None;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if meta.uid() != unsafe { libc::geteuid() } || meta.mode() & 0o022 != 0 {
+            return None;
+        }
+    }
+    let mut raw = Vec::new();
+    file.take(HINT_MAX_BYTES).read_to_end(&mut raw).ok()?;
+    Some(raw)
+}
+
+fn is_invisible(c: char) -> bool {
+    c.is_control()
+        || matches!(c,
+            '\u{00AD}' | '\u{0600}'..='\u{0605}' | '\u{061C}' | '\u{06DD}' | '\u{070F}' | '\u{08E2}'
+            | '\u{180E}' | '\u{200B}'..='\u{200F}' | '\u{2028}'..='\u{202E}' | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{206F}' | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}' | '\u{110BD}' | '\u{110CD}'
+            | '\u{1D173}'..='\u{1D17A}' | '\u{E0001}' | '\u{E0020}'..='\u{E007F}')
+}
+
+fn cloud_identity(dir: &Path) -> Option<(i64, String)> {
+    let value: Value =
+        serde_json::from_slice(&read_hint(&dir.join("cloud-identity.json"))?).ok()?;
+    let id = value
+        .get("id")?
+        .as_i64()
+        .filter(|id| (1..=HINT_MAX_ID).contains(id))?;
+    let name: String = value
+        .get("name")?
+        .as_str()?
+        .chars()
+        .filter(|c| !is_invisible(*c))
+        .collect();
+    Some((id, name.trim().chars().take(HINT_MAX_NAME_CHARS).collect()))
+}
+
+/// Who the CLI is in a local workspace: `local_user_id` from the config when set, else the cloud account
+/// the desktop wrote to `cloud-identity.json` next to the workspaces folder, else the accountless profile
+/// (`~/.tmgr.dev/profile.json`), else id -1 with no name. The hint file is untrusted input.
 pub fn identity(root: &Path, configured_id: Option<i64>) -> User {
-    let profile: Option<Value> = root
-        .parent()
+    let dir = root.parent();
+    let profile: Option<Value> = dir
         .and_then(|dir| std::fs::read_to_string(dir.join("profile.json")).ok())
         .and_then(|raw| serde_json::from_str(&raw).ok());
     let field = |k: &str| profile.as_ref().and_then(|p| p.get(k).cloned());
-    User {
-        id: configured_id
-            .or_else(|| field("id").and_then(|v| v.as_i64()))
-            .unwrap_or(-1),
-        name: field("name")
+    let cloud = dir.and_then(cloud_identity);
+    let id = configured_id
+        .or(cloud.as_ref().map(|(id, _)| *id))
+        .or_else(|| field("id").and_then(|v| v.as_i64()))
+        .unwrap_or(-1);
+    let name = match cloud {
+        Some((cloud_id, name)) if cloud_id == id => name,
+        _ => field("name")
             .and_then(|v| v.as_str().map(str::to_string))
             .unwrap_or_default(),
+    };
+    User {
+        id,
+        name,
         email: String::new(),
     }
 }
@@ -267,6 +334,109 @@ mod tests {
         let me = identity(&root, None);
         assert_eq!((me.id, me.name.as_str()), (-1, "Owner"));
         assert_eq!(identity(&root, Some(42)).id, 42);
+    }
+
+    fn hint(dir: &Path, content: &str) {
+        std::fs::write(dir.join("cloud-identity.json"), content).unwrap();
+    }
+
+    fn hinted(content: &str) -> (i64, String) {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("profile.json"),
+            r#"{"id":-1,"name":"Owner"}"#,
+        )
+        .unwrap();
+        hint(dir.path(), content);
+        let me = identity(&dir.path().join("workspaces"), None);
+        (me.id, me.name)
+    }
+
+    #[test]
+    fn the_desktop_account_hint_beats_the_profile_and_loses_to_the_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspaces");
+        hint(dir.path(), r#"{"id":7,"name":"  Ann\u0000 \u200bLee "}"#);
+        let me = identity(&root, None);
+        assert_eq!((me.id, me.name.as_str()), (7, "Ann Lee"));
+        let me = identity(&root, Some(42));
+        assert_eq!((me.id, me.name.as_str()), (42, ""));
+        std::fs::write(
+            dir.path().join("profile.json"),
+            r#"{"id":9,"name":"Profile"}"#,
+        )
+        .unwrap();
+        assert_eq!(identity(&root, None).id, 7);
+        assert_eq!(identity(&root, Some(9)).name, "Profile");
+        assert_eq!(identity(&root, Some(7)).name, "Ann Lee");
+    }
+
+    #[test]
+    fn a_usable_hint_ignores_extra_keys_and_caps_the_name() {
+        let long = "x".repeat(200);
+        let (id, name) = hinted(&format!(r#"{{"id":5,"name":"{long}","other":[1]}}"#));
+        assert_eq!((id, name.chars().count()), (5, 80));
+        let (id, _) = hinted(r#"{"id":9007199254740991,"name":"Max"}"#);
+        assert_eq!(id, 9_007_199_254_740_991);
+    }
+
+    #[test]
+    fn an_unusable_hint_falls_back_to_the_profile() {
+        let big = format!(r#"{{"id":5,"name":"{}"}}"#, "x".repeat(5000));
+        let cases = [
+            "not json",
+            "[]",
+            r#"{"id":"5","name":"A"}"#,
+            r#"{"id":0,"name":"A"}"#,
+            r#"{"id":-3,"name":"A"}"#,
+            r#"{"id":5.5,"name":"A"}"#,
+            r#"{"id":5.0,"name":"A"}"#,
+            r#"{"id":9007199254740992,"name":"A"}"#,
+            r#"{"id":99999999999999999999,"name":"A"}"#,
+            r#"{"id":5,"name":7}"#,
+            r#"{"id":5}"#,
+            big.as_str(),
+        ];
+        for case in cases {
+            assert_eq!(hinted(case), (-1, "Owner".to_string()), "{case}");
+        }
+    }
+
+    #[test]
+    fn a_missing_hint_or_a_directory_in_its_place_is_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspaces");
+        assert_eq!(identity(&root, None).id, -1);
+        std::fs::create_dir(dir.path().join("cloud-identity.json")).unwrap();
+        assert_eq!(identity(&root, None).id, -1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_or_writable_or_special_hint_is_ignored() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspaces");
+        let real = dir.path().join("real.json");
+        std::fs::write(&real, r#"{"id":5,"name":"A"}"#).unwrap();
+        let link = dir.path().join("cloud-identity.json");
+        symlink(&real, &link).unwrap();
+        assert_eq!(identity(&root, None).id, -1);
+        std::fs::remove_file(&link).unwrap();
+
+        std::fs::copy(&real, &link).unwrap();
+        assert_eq!(identity(&root, None).id, 5);
+        for mode in [0o666, 0o662, 0o620] {
+            std::fs::set_permissions(&link, std::fs::Permissions::from_mode(mode)).unwrap();
+            assert_eq!(identity(&root, None).id, -1, "{mode:o}");
+        }
+        std::fs::set_permissions(&link, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(identity(&root, None).id, 5);
+        std::fs::remove_file(&link).unwrap();
+
+        let fifo = std::ffi::CString::new(link.to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+        assert_eq!(identity(&root, None).id, -1);
     }
 
     #[test]

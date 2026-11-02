@@ -13,6 +13,7 @@ import store from '@/store';
 import { installTours } from '@/tours/boot';
 import { installTourTelemetry } from '@/tours/telemetryAdapter';
 import { shouldReloadOnModeChange } from '@/utils/accountModeSwitch';
+import { installCloudIdentitySync } from '@/utils/cloudIdentity';
 import {
 	desktopPlatform,
 	desktopWindowLabel,
@@ -211,6 +212,7 @@ const start = async () => {
 	await profileReady;
 	if (isDesktopApp() && desktopWindowLabel() === 'main') {
 		void startRunnerStore();
+		installCloudIdentitySync(store);
 		watch(
 			() => store.getters.accountMode,
 			(next, previous) => {

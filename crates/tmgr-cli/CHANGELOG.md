@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Local workspaces (`local:<code>`): the CLI now picks up the account the desktop is signed in to automatically, so runs, comments and personas of that account work without `tmgr config set local_user_id`. The config value still wins when set. Runs and comments that the local account (id -1) wrote earlier stay yours.
+
 ## 1.0.57
 
 - Experimental (`tmgr link`): remote control over the link. On the follower, `tmgr link scope <leader> --remote-control on|off` lets that leader see, attach with input to, and halt ALL runner sessions on this machine, including ones you started locally; from the leader, `tmgr attach --on <follower>` and `tmgr agents --host <follower>` then show them (FROM column: `leader` or `local`). `--include-bypass on|off` extends this to sessions started with `--no-sandbox` or `--mode bypass`; it has no effect unless remote control is on. Both flags default to off, `tmgr link trust` has no such flags, and the values must be written as `on` or `off`.

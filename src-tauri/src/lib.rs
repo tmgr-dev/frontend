@@ -11,6 +11,7 @@ mod local_db;
 mod local_export;
 mod local_files;
 mod local_move;
+mod local_identity;
 mod local_profile;
 mod local_workspaces;
 mod plugin_catalog;
@@ -234,6 +235,8 @@ pub fn run() {
       local_db::local_db_execute,
       local_db::local_db_backup,
       local_db::local_db_batch,
+      local_identity::local_identity_set,
+      local_identity::local_identity_clear,
       local_profile::local_profile_get,
       local_profile::local_profile_create,
       local_profile::local_profile_update,

@@ -274,8 +274,16 @@ const requireOwnRunningRun = async (ctx: LocalContext, id: number) => {
 	);
 	if (!row) throw notFound('Agent work run');
 	const actor = actorOf(ctx);
+	const legacyLocalUser =
+		actor.kind === 'user' &&
+		Number.isInteger(Number(actor.id)) &&
+		Number(actor.id) > 0 &&
+		row.actor_kind === 'user' &&
+		String(row.actor_id) === '-1';
 	const sameActor =
-		row.actor_kind === actor.kind && String(row.actor_id) === ownerIdOf(actor);
+		legacyLocalUser ||
+		(row.actor_kind === actor.kind &&
+			String(row.actor_id) === ownerIdOf(actor));
 	const sameNamespace =
 		actor.kind !== 'plugin' || inPluginNamespace(row.agent, actor.id);
 	if (!sameActor || !sameNamespace) {
