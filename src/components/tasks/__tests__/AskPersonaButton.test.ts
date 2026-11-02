@@ -230,7 +230,7 @@ test('the Cancel press reaches the persona agent through isCancelled', async () 
 	let isCancelled!: () => boolean;
 	mockAskPersonaOnTask.mockImplementationOnce(
 		(params: any) =>
-			new Promise((resolve) => {
+			new Promise<any>((resolve) => {
 				isCancelled = params.isCancelled;
 				release = () => resolve({ text: '', toolCalls: 0, posted: false });
 			}),
