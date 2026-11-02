@@ -62,27 +62,94 @@ impl InputQueue {
     }
 }
 
+const CLD_EXITED: i32 = 1;
+const KILL_FAST: Duration = Duration::from_secs(2);
+const KILL_LIMIT: Duration = Duration::from_secs(30);
+
+fn pace(kill_elapsed: Option<Duration>) -> (bool, Duration) {
+    match kill_elapsed {
+        None => (false, Duration::from_secs(1)),
+        Some(e) if e < KILL_FAST => (true, Duration::from_millis(20)),
+        Some(e) if e < KILL_LIMIT => (true, Duration::from_secs(1)),
+        Some(_) => (false, Duration::from_secs(1)),
+    }
+}
+
+#[cfg(target_os = "linux")]
+unsafe fn si_status(info: &libc::siginfo_t) -> libc::c_int {
+    let off = 12usize.next_multiple_of(std::mem::align_of::<usize>()) + 8;
+    (info as *const libc::siginfo_t)
+        .cast::<u8>()
+        .add(off)
+        .cast::<libc::c_int>()
+        .read()
+}
+
+#[cfg(not(target_os = "linux"))]
+unsafe fn si_status(info: &libc::siginfo_t) -> libc::c_int {
+    info.si_status()
+}
+
+struct GuardState {
+    reaped: bool,
+    kill_since: Option<Instant>,
+}
+
 struct ChildGuard {
     pid: i32,
-    exited: Mutex<bool>,
+    state: Mutex<GuardState>,
 }
 
 impl ChildGuard {
     fn new(pid: i32) -> ChildGuard {
         ChildGuard {
             pid,
-            exited: Mutex::new(false),
+            state: Mutex::new(GuardState {
+                reaped: false,
+                kill_since: None,
+            }),
         }
     }
 
     fn signal(&self, sig: i32) -> bool {
-        let exited = lock(&self.exited);
-        !*exited && unsafe { libc::kill(-self.pid, sig) } == 0
+        let mut st = lock(&self.state);
+        if st.reaped {
+            return false;
+        }
+        if sig == libc::SIGKILL {
+            st.kill_since.get_or_insert_with(Instant::now);
+        }
+        unsafe { libc::kill(-self.pid, sig) == 0 }
     }
 
-    fn wait(&self) -> libc::c_int {
+    fn reaped(&self) -> bool {
+        lock(&self.state).reaped
+    }
+
+    fn reap_locked(&self, st: &mut GuardState) {
+        st.reaped = true;
+        let mut status: libc::c_int = 0;
         loop {
-            let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+            let r = unsafe { libc::waitpid(self.pid, &mut status, 0) };
+            if r == self.pid
+                || (r < 0 && io::Error::last_os_error().kind() != io::ErrorKind::Interrupted)
+            {
+                return;
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn reap_now(&self) {
+        let mut st = lock(&self.state);
+        if !st.reaped {
+            self.reap_locked(&mut st);
+        }
+    }
+
+    fn wait(&self) -> ExitInfo {
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        loop {
             let r = unsafe {
                 libc::waitid(
                     libc::P_PID,
@@ -91,21 +158,78 @@ impl ChildGuard {
                     libc::WEXITED | libc::WNOWAIT,
                 )
             };
-            if r == 0 || io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
+            if r == 0 {
                 break;
             }
+            if io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
+                let mut st = lock(&self.state);
+                self.reap_locked(&mut st);
+                return ExitInfo {
+                    code: Some(0),
+                    signal: None,
+                };
+            }
         }
-        let mut exited = lock(&self.exited);
-        *exited = true;
-        let mut status: libc::c_int = 0;
+        let status = unsafe { si_status(&info) };
+        let exit = if info.si_code == CLD_EXITED {
+            ExitInfo {
+                code: Some(status),
+                signal: None,
+            }
+        } else {
+            ExitInfo {
+                code: None,
+                signal: Some(status),
+            }
+        };
+        let grace = if lock(&self.state).kill_since.is_some() {
+            Duration::from_secs(1)
+        } else {
+            Duration::ZERO
+        };
+        self.settle(Some(Instant::now() + grace));
+        exit
+    }
+
+    fn settle(&self, deadline: Option<Instant>) -> bool {
         loop {
-            let r = unsafe { libc::waitpid(self.pid, &mut status, 0) };
-            if r == self.pid {
-                return status;
-            }
-            if r < 0 && io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
-                return 0;
-            }
+            let nap = {
+                let mut st = lock(&self.state);
+                if st.reaped {
+                    return true;
+                }
+                let elapsed = st.kill_since.map(|t| t.elapsed());
+                let (send, nap) = pace(elapsed);
+                if elapsed.is_some_and(|e| e >= KILL_LIMIT) {
+                    st.kill_since = None;
+                }
+                if send {
+                    unsafe { libc::kill(-self.pid, libc::SIGKILL) };
+                }
+                if !proc::group_has_live_member(self.pid) {
+                    self.reap_locked(&mut st);
+                    return true;
+                }
+                nap
+            };
+            let nap = match deadline {
+                Some(d) => {
+                    let left = d.saturating_duration_since(Instant::now());
+                    if left.is_zero() {
+                        return false;
+                    }
+                    nap.min(left)
+                }
+                None => nap,
+            };
+            thread::sleep(nap);
+        }
+    }
+
+    fn last_kill(&self) {
+        let st = lock(&self.state);
+        if !st.reaped && st.kill_since.is_some() {
+            unsafe { libc::kill(-self.pid, libc::SIGKILL) };
         }
     }
 }
@@ -317,6 +441,7 @@ impl Shim {
                         self.send(&mut st, &FromShim::SignalAck { sig, delivered, id });
                     }
                     Ok(ToShim::Reap) => {
+                        self.child.last_kill();
                         self.cleanup();
                         std::process::exit(0);
                     }
@@ -334,20 +459,6 @@ impl Shim {
 
 fn read_secret(dir: &Path, id: &str) -> io::Result<String> {
     secret::read(&dir.join("sessions").join(id).join("adopt.secret"))
-}
-
-fn exit_info(status: libc::c_int) -> ExitInfo {
-    if libc::WIFEXITED(status) {
-        ExitInfo {
-            code: Some(libc::WEXITSTATUS(status)),
-            signal: None,
-        }
-    } else {
-        ExitInfo {
-            code: None,
-            signal: Some(libc::WTERMSIG(status)),
-        }
-    }
 }
 
 pub fn shim_main(dir: &Path, id: &str) -> i32 {
@@ -504,8 +615,13 @@ fn spawn_waiter(shim: &Arc<Shim>, child: Box<dyn portable_pty::Child + Send + Sy
     let shim = shim.clone();
     thread::spawn(move || {
         let _keep = child;
-        let status = shim.child.wait();
-        let info = exit_info(status);
+        let info = shim.child.wait();
+        if !shim.child.reaped() {
+            let shim = shim.clone();
+            thread::spawn(move || {
+                shim.child.settle(None);
+            });
+        }
         let deadline = Instant::now() + Duration::from_secs(1);
         while !shim.reader_done.load(Ordering::SeqCst) && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(10));
@@ -567,6 +683,31 @@ mod proc {
         Some(ticks * (1_000_000_000 / hz))
     }
 
+    pub(crate) fn group_has_live_member(pgid: i32) -> bool {
+        let Ok(rd) = std::fs::read_dir("/proc") else {
+            return false;
+        };
+        rd.flatten().any(|e| {
+            let name = e.file_name();
+            let Some(name) = name.to_str() else {
+                return false;
+            };
+            if name.is_empty() || !name.bytes().all(|b| b.is_ascii_digit()) {
+                return false;
+            }
+            let Ok(text) = std::fs::read_to_string(e.path().join("stat")) else {
+                return false;
+            };
+            let Some(i) = text.rfind(')') else {
+                return false;
+            };
+            let mut f = text.get(i + 2..).unwrap_or("").split(' ');
+            let state = f.next().unwrap_or("");
+            let pgrp = f.nth(1).and_then(|v| v.parse::<i32>().ok());
+            pgrp == Some(pgid) && !matches!(state, "Z" | "X")
+        })
+    }
+
     pub fn waiting_tty(pid: i32) -> Option<bool> {
         let wchan = std::fs::read_to_string(format!("/proc/{pid}/wchan")).unwrap_or_default();
         let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
@@ -625,6 +766,11 @@ mod proc {
         rc == 0 && v == 1
     }
 
+    pub(crate) fn group_has_live_member(pgid: i32) -> bool {
+        // EPERM means only zombies are left
+        unsafe { libc::kill(-pgid, 0) == 0 }
+    }
+
     pub fn waiting_tty(_pid: i32) -> Option<bool> {
         None
     }
@@ -636,63 +782,311 @@ mod proc {
         None
     }
 
+    pub(crate) fn group_has_live_member(_pgid: i32) -> bool {
+        false
+    }
+
     pub fn waiting_tty(_pid: i32) -> Option<bool> {
         None
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::zombie_processes)]
 mod tests {
     use super::{proc, ChildGuard, InputQueue, INPUT_CAP, INPUT_FRAMES};
-    use std::io::{BufRead, BufReader};
     use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
     use std::sync::atomic::Ordering;
     use std::time::Duration;
 
-    #[test]
-    #[allow(clippy::zombie_processes)]
-    fn signal_is_refused_once_the_child_exited_and_never_reaches_the_group() {
+    fn spawn_group(script: &str) -> std::process::Child {
         let mut cmd = Command::new("/bin/sh");
-        cmd.args(["-c", "sleep 30 & echo $!; exit 0"])
-            .stdout(Stdio::piped());
+        cmd.args(["-c", script]).stdout(Stdio::piped());
         unsafe {
             cmd.pre_exec(|| {
                 libc::setsid();
                 Ok(())
             });
         }
-        let mut child = cmd.spawn().unwrap();
-        let mut line = String::new();
-        BufReader::new(child.stdout.take().unwrap())
-            .read_line(&mut line)
-            .unwrap();
-        let grandchild: i32 = line.trim().parse().unwrap();
-        let guard = ChildGuard::new(child.id() as i32);
-        let status = guard.wait();
-        assert!(libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0);
-        assert!(!guard.signal(libc::SIGKILL));
-        let alive = unsafe { libc::kill(grandchild, 0) } == 0;
-        unsafe { libc::kill(grandchild, libc::SIGKILL) };
-        assert!(alive, "the group was signalled after the child exited");
+        cmd.spawn().unwrap()
+    }
+
+    fn pipe_reaches_eof(out: &mut std::process::ChildStdout, bound: Duration) -> bool {
+        use std::os::fd::AsRawFd;
+        let fd = out.as_raw_fd();
+        let deadline = std::time::Instant::now() + bound;
+        let mut buf = [0u8; 4096];
+        while std::time::Instant::now() < deadline {
+            let mut p = libc::pollfd {
+                fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            if unsafe { libc::poll(&mut p, 1, 20) } <= 0 {
+                continue;
+            }
+            let n = unsafe { libc::read(fd, buf.as_mut_ptr().cast(), buf.len()) };
+            if n == 0 {
+                return true;
+            }
+        }
+        false
     }
 
     #[test]
-    #[allow(clippy::zombie_processes)]
-    fn signal_reaches_a_running_child_group() {
-        let mut cmd = Command::new("/bin/sleep");
-        cmd.arg("30");
-        unsafe {
-            cmd.pre_exec(|| {
-                libc::setsid();
-                Ok(())
-            });
+    fn sigkill_empties_a_group_that_forks_during_the_kill() {
+        let mut survivors = 0;
+        let mut survived_first_kill = 0;
+        let trials = 60;
+        for i in 0..trials {
+            let mut child =
+                spawn_group("i=0; while [ $i -lt 500 ]; do sleep 20 & i=$((i+1)); done");
+            let mut out = child.stdout.take().unwrap();
+            let guard = ChildGuard::new(child.id() as i32);
+            std::thread::sleep(Duration::from_millis(2 + (i * 28 / trials) as u64));
+            let pgid = child.id() as i32;
+            guard.signal(libc::SIGKILL);
+            let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+            unsafe {
+                libc::waitid(
+                    libc::P_PID,
+                    pgid as libc::id_t,
+                    &mut info,
+                    libc::WEXITED | libc::WNOWAIT,
+                )
+            };
+            std::thread::sleep(Duration::from_millis(50));
+            if proc::group_has_live_member(pgid) {
+                survived_first_kill += 1;
+            }
+            let _ = guard.wait();
+            if !pipe_reaches_eof(&mut out, Duration::from_secs(2)) {
+                survivors += 1;
+            }
         }
-        let child = cmd.spawn().unwrap();
+        let line = format!(
+            "tm756-probe fork-race os={} trials={trials} survived_first_kill={survived_first_kill}\n",
+            std::env::consts::OS
+        );
+        let _ = std::io::Write::write_all(&mut std::io::stderr(), line.as_bytes());
+        assert_eq!(survivors, 0, "{survivors}/{trials} trials left a survivor");
+    }
+
+    fn read_pid(out: &mut std::process::ChildStdout) -> i32 {
+        use std::io::Read;
+        let mut line = Vec::new();
+        let mut b = [0u8; 1];
+        while out.read(&mut b).unwrap() == 1 && b[0] != b'\n' {
+            line.push(b[0]);
+        }
+        String::from_utf8(line).unwrap().trim().parse().unwrap()
+    }
+
+    fn alive(pid: i32) -> bool {
+        unsafe { libc::kill(pid, 0) == 0 }
+    }
+
+    fn kill_pid(pid: i32) {
+        unsafe { libc::kill(pid, libc::SIGKILL) };
+    }
+
+    const HOLDOUT: &str = "(trap '' TERM HUP; exec sleep 30) & echo $!; ";
+
+    #[test]
+    fn signal_is_refused_after_the_reap_and_never_reaches_the_group() {
+        let mut child = spawn_group("sleep 30 & echo $!; exit 0");
+        let mut out = child.stdout.take().unwrap();
+        let member = read_pid(&mut out);
+        let guard = ChildGuard::new(child.id() as i32);
+        let exit = guard.wait();
+        assert_eq!(exit.code, Some(0));
+        assert!(!guard.reaped());
+        guard.reap_now();
+        assert!(guard.reaped());
+        assert!(!guard.signal(libc::SIGKILL));
+        let still = alive(member);
+        kill_pid(member);
+        assert!(still, "the group was signalled after the reap");
+    }
+
+    #[test]
+    fn signal_reaches_a_running_child_group() {
+        let mut child = spawn_group("exec sleep 30");
         let guard = ChildGuard::new(child.id() as i32);
         assert!(guard.signal(libc::SIGKILL));
-        let status = guard.wait();
-        assert_eq!(libc::WTERMSIG(status), libc::SIGKILL);
+        let exit = guard.wait();
+        assert_eq!(exit.signal, Some(libc::SIGKILL));
+        assert!(guard.reaped());
+        let _ = child.wait();
+    }
+
+    #[test]
+    fn signal_reaches_a_member_after_the_leader_exited() {
+        let mut child = spawn_group(&format!("{HOLDOUT}exit 0"));
+        let mut out = child.stdout.take().unwrap();
+        let member = read_pid(&mut out);
+        std::thread::sleep(Duration::from_millis(200));
+        let guard = ChildGuard::new(child.id() as i32);
+        assert_eq!(guard.wait().code, Some(0));
+        assert!(!guard.reaped());
+        assert!(guard.signal(libc::SIGKILL));
+        let settled = guard.settle(Some(std::time::Instant::now() + Duration::from_secs(5)));
+        let eof = pipe_reaches_eof(&mut out, Duration::from_secs(2));
+        kill_pid(member);
+        assert!(settled && guard.reaped());
+        assert!(eof, "the member survived the group kill");
+    }
+
+    #[test]
+    fn a_lone_child_is_reaped_at_once() {
+        let mut child = spawn_group("exit 3");
+        let guard = ChildGuard::new(child.id() as i32);
+        assert_eq!(guard.wait().code, Some(3));
+        assert!(guard.reaped());
+        let _ = child.wait();
+    }
+
+    #[test]
+    fn a_polite_signal_does_not_escalate() {
+        let mut child = spawn_group(&format!(
+            "{HOLDOUT}trap 'exit 0' TERM; while :; do sleep 0.1; done"
+        ));
+        let mut out = child.stdout.take().unwrap();
+        let member = read_pid(&mut out);
+        std::thread::sleep(Duration::from_millis(200));
+        let guard = ChildGuard::new(child.id() as i32);
+        assert!(guard.signal(libc::SIGTERM));
+        assert_eq!(guard.wait().code, Some(0));
+        let settled = guard.settle(Some(std::time::Instant::now() + Duration::from_millis(300)));
+        guard.last_kill();
+        let early_eof = pipe_reaches_eof(&mut out, Duration::from_millis(200));
+        let still = alive(member);
+        assert!(guard.signal(libc::SIGKILL));
+        let cleared = guard.settle(Some(std::time::Instant::now() + Duration::from_secs(5)));
+        let eof = pipe_reaches_eof(&mut out, Duration::from_secs(2));
+        kill_pid(member);
+        assert!(!settled && !early_eof && still, "a polite signal escalated");
+        assert!(cleared && eof);
+    }
+
+    #[test]
+    fn a_member_that_left_the_group_is_not_touched() {
+        if Command::new("perl").arg("-v").output().is_err() {
+            eprintln!("perl is missing, skipping");
+            return;
+        }
+        let mut child = spawn_group(
+            "perl -e 'use POSIX; $|=1; if (fork()==0) { POSIX::setsid(); print \"$$\\n\"; exec \"sleep\",\"20\" }'; exec sleep 20",
+        );
+        let mut out = child.stdout.take().unwrap();
+        let escapee = read_pid(&mut out);
+        let guard = ChildGuard::new(child.id() as i32);
+        assert!(guard.signal(libc::SIGKILL));
+        let _ = guard.wait();
+        let settled = guard.settle(Some(std::time::Instant::now() + Duration::from_secs(5)));
+        let still = alive(escapee);
+        kill_pid(escapee);
+        assert!(settled && guard.reaped());
+        assert!(still, "a process outside the group was killed");
+    }
+
+    #[test]
+    fn a_leftover_survives_without_a_sigkill_request() {
+        let mut child = spawn_group(&format!("{HOLDOUT}exit 0"));
+        let mut out = child.stdout.take().unwrap();
+        let member = read_pid(&mut out);
+        std::thread::sleep(Duration::from_millis(200));
+        let guard = ChildGuard::new(child.id() as i32);
+        let _ = guard.wait();
+        let settled = guard.settle(Some(std::time::Instant::now() + Duration::from_millis(300)));
+        guard.last_kill();
+        let still = alive(member);
+        kill_pid(member);
+        assert!(!settled && still);
+        assert!(guard.settle(Some(std::time::Instant::now() + Duration::from_secs(5))));
+    }
+
+    #[test]
+    fn group_membership_ignores_zombies_and_missing_groups() {
+        let mut child = spawn_group("exec sleep 20");
+        let pgid = child.id() as i32;
+        assert!(proc::group_has_live_member(pgid));
+        unsafe { libc::kill(pgid, libc::SIGKILL) };
+        let t = std::time::Instant::now();
+        while proc::group_has_live_member(pgid) && t.elapsed() < Duration::from_secs(3) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!proc::group_has_live_member(pgid), "a zombie counted");
+        let _ = child.wait();
+        assert!(!proc::group_has_live_member(pgid));
+    }
+
+    #[test]
+    fn a_zombie_leader_with_a_live_member_still_counts() {
+        let mut child = spawn_group("sleep 20 & echo $!; exit 0");
+        let mut out = child.stdout.take().unwrap();
+        let member = read_pid(&mut out);
+        let pgid = child.id() as i32;
+        std::thread::sleep(Duration::from_millis(200));
+        let counted = proc::group_has_live_member(pgid);
+        kill_pid(member);
+        let t = std::time::Instant::now();
+        while proc::group_has_live_member(pgid) && t.elapsed() < Duration::from_secs(3) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let emptied = !proc::group_has_live_member(pgid);
+        let _ = child.wait();
+        assert!(counted, "a live member behind a zombie leader was missed");
+        assert!(emptied);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn scanning_for_a_missing_group_is_cheap() {
+        let mut kids: Vec<std::process::Child> = (0..500)
+            .map(|_| Command::new("/bin/sleep").arg("60").spawn().unwrap())
+            .collect();
+        let procs = std::fs::read_dir("/proc")
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .bytes()
+                    .all(|b| b.is_ascii_digit())
+            })
+            .count();
+        let runs = 50u32;
+        let t = std::time::Instant::now();
+        for _ in 0..runs {
+            assert!(!proc::group_has_live_member(i32::MAX - 7));
+        }
+        let mean = t.elapsed() / runs;
+        let line = format!(
+            "tm756-probe scan-cost procs={procs} mean_us={}\n",
+            mean.as_micros()
+        );
+        let _ = std::io::Write::write_all(&mut std::io::stderr(), line.as_bytes());
+        for k in &mut kids {
+            let _ = k.kill();
+            let _ = k.wait();
+        }
+        assert!(mean < Duration::from_millis(50), "scan took {mean:?}");
+    }
+
+    #[test]
+    fn pace_follows_the_kill_phases() {
+        use super::pace;
+        let ms = Duration::from_millis;
+        let s = Duration::from_secs;
+        assert_eq!(pace(None), (false, s(1)));
+        assert_eq!(pace(Some(ms(0))), (true, ms(20)));
+        assert_eq!(pace(Some(ms(1999))), (true, ms(20)));
+        assert_eq!(pace(Some(s(2))), (true, s(1)));
+        assert_eq!(pace(Some(ms(29_999))), (true, s(1)));
+        assert_eq!(pace(Some(s(30))), (false, s(1)));
+        assert_eq!(pace(Some(s(3600))), (false, s(1)));
     }
 
     #[test]
