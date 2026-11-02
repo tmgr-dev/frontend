@@ -2050,14 +2050,21 @@ impl Runner {
         let not_running = || api(ErrorCode::NotRunning, "session is not running");
         let asked = p.get("leftovers").and_then(Value::as_bool) == Some(true)
             && p.get("signal").and_then(Value::as_str) == Some("kill");
-        if conn.client != CLIENT_CLI || !asked || !s.has_shim() {
+        if conn.client != CLIENT_CLI || !asked {
             return Err(not_running());
         }
         kill_reason(p)?;
+        let none_left = || api(ErrorCode::NotRunning, "no background processes are left");
         let meta = lock(&s.inner).meta.clone();
         let boot = restore::boot_marker();
         if !restore::group_may_run(meta.child_pid, meta.boot.as_deref(), boot.as_deref()) {
-            return Err(not_running());
+            return Err(none_left());
+        }
+        if !s.has_shim() {
+            return Err(api(
+                ErrorCode::Busy,
+                "the session no longer controls its background processes; stop them by hand",
+            ));
         }
         let id = s.sig_seq.fetch_add(1, Ordering::SeqCst) + 1;
         s.shim_msg(&ToShim::Signal {
@@ -2072,9 +2079,10 @@ impl Runner {
             }
             thread::sleep(Duration::from_millis(10));
         };
-        if ack == Some(false)
-            && restore::group_may_run(meta.child_pid, meta.boot.as_deref(), boot.as_deref())
-        {
+        if ack == Some(false) {
+            if !restore::group_may_run(meta.child_pid, meta.boot.as_deref(), boot.as_deref()) {
+                return Err(none_left());
+            }
             return Err(api(
                 ErrorCode::Busy,
                 "the session cannot signal its background processes; it may predate a runner update. Stop them by hand",

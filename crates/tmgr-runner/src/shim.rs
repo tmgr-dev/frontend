@@ -173,7 +173,7 @@ impl ChildGuard {
         let status = unsafe { si_status(&info) };
         let exit = if info.si_code == CLD_EXITED {
             ExitInfo {
-                code: Some(status),
+                code: Some(status & 0xff),
                 signal: None,
             }
         } else {
@@ -183,7 +183,7 @@ impl ChildGuard {
             }
         };
         let grace = if lock(&self.state).kill_since.is_some() {
-            Duration::from_secs(1)
+            Duration::from_millis(500)
         } else {
             Duration::ZERO
         };
@@ -466,7 +466,10 @@ pub fn shim_main(dir: &Path, id: &str) -> i32 {
         eprintln!("shim: invalid session id");
         return 2;
     }
-    unsafe { libc::setsid() };
+    unsafe {
+        libc::setsid();
+        libc::signal(libc::SIGCHLD, libc::SIG_DFL);
+    }
     match run(dir, id) {
         Ok(()) => 0,
         Err(e) => {
@@ -616,12 +619,6 @@ fn spawn_waiter(shim: &Arc<Shim>, child: Box<dyn portable_pty::Child + Send + Sy
     thread::spawn(move || {
         let _keep = child;
         let info = shim.child.wait();
-        if !shim.child.reaped() {
-            let shim = shim.clone();
-            thread::spawn(move || {
-                shim.child.settle(None);
-            });
-        }
         let deadline = Instant::now() + Duration::from_secs(1);
         while !shim.reader_done.load(Ordering::SeqCst) && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(10));
@@ -630,6 +627,10 @@ fn spawn_waiter(shim: &Arc<Shim>, child: Box<dyn portable_pty::Child + Send + Sy
         st.exit = Some(info.clone());
         st.exited_at = Some(Instant::now());
         shim.send(&mut st, &FromShim::Exited(info));
+        drop(st);
+        if !shim.child.reaped() {
+            shim.child.settle(None);
+        }
     });
 }
 
@@ -837,7 +838,6 @@ mod tests {
     #[test]
     fn sigkill_empties_a_group_that_forks_during_the_kill() {
         let mut survivors = 0;
-        let mut survived_first_kill = 0;
         let trials = 60;
         for i in 0..trials {
             let mut child =
@@ -845,31 +845,12 @@ mod tests {
             let mut out = child.stdout.take().unwrap();
             let guard = ChildGuard::new(child.id() as i32);
             std::thread::sleep(Duration::from_millis(2 + (i * 28 / trials) as u64));
-            let pgid = child.id() as i32;
             guard.signal(libc::SIGKILL);
-            let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
-            unsafe {
-                libc::waitid(
-                    libc::P_PID,
-                    pgid as libc::id_t,
-                    &mut info,
-                    libc::WEXITED | libc::WNOWAIT,
-                )
-            };
-            std::thread::sleep(Duration::from_millis(50));
-            if proc::group_has_live_member(pgid) {
-                survived_first_kill += 1;
-            }
             let _ = guard.wait();
             if !pipe_reaches_eof(&mut out, Duration::from_secs(2)) {
                 survivors += 1;
             }
         }
-        let line = format!(
-            "tm756-probe fork-race os={} trials={trials} survived_first_kill={survived_first_kill}\n",
-            std::env::consts::OS
-        );
-        let _ = std::io::Write::write_all(&mut std::io::stderr(), line.as_bytes());
         assert_eq!(survivors, 0, "{survivors}/{trials} trials left a survivor");
     }
 
@@ -1041,38 +1022,19 @@ mod tests {
         assert!(emptied);
     }
 
-    #[cfg(target_os = "linux")]
     #[test]
-    fn scanning_for_a_missing_group_is_cheap() {
-        let mut kids: Vec<std::process::Child> = (0..500)
-            .map(|_| Command::new("/bin/sleep").arg("60").spawn().unwrap())
-            .collect();
-        let procs = std::fs::read_dir("/proc")
-            .unwrap()
-            .flatten()
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .bytes()
-                    .all(|b| b.is_ascii_digit())
-            })
-            .count();
-        let runs = 50u32;
-        let t = std::time::Instant::now();
-        for _ in 0..runs {
-            assert!(!proc::group_has_live_member(i32::MAX - 7));
+    fn the_exit_code_is_truncated_to_eight_bits() {
+        if Command::new("perl").arg("-v").output().is_err() {
+            eprintln!("perl is missing, skipping");
+            return;
         }
-        let mean = t.elapsed() / runs;
-        let line = format!(
-            "tm756-probe scan-cost procs={procs} mean_us={}\n",
-            mean.as_micros()
-        );
-        let _ = std::io::Write::write_all(&mut std::io::stderr(), line.as_bytes());
-        for k in &mut kids {
-            let _ = k.kill();
-            let _ = k.wait();
+        for (arg, want) in [("256", 0), ("-1", 255)] {
+            let mut child = spawn_group(&format!("exec perl -MPOSIX -e 'POSIX::_exit({arg})'"));
+            let guard = ChildGuard::new(child.id() as i32);
+            let exit = guard.wait();
+            assert_eq!((exit.code, exit.signal), (Some(want), None), "_exit({arg})");
+            let _ = child.wait();
         }
-        assert!(mean < Duration::from_millis(50), "scan took {mean:?}");
     }
 
     #[test]

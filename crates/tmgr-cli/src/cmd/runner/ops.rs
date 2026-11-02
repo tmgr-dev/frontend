@@ -911,7 +911,7 @@ fn halt_exited(o: &Opts, c: &mut Client, s: &SessionInfo, kill: bool) -> Result<
             o,
             json!({"id": s.id, "signal": null, "exited": true, "background": true}),
             format!(
-                "{name} has already exited; background processes are still running (stop them with {} halt --kill)",
+                "{name} has already exited; background processes may still be running (stop them with {} halt --kill)",
                 super::bin()
             ),
         ));
@@ -923,18 +923,27 @@ fn halt_exited(o: &Opts, c: &mut Client, s: &SessionInfo, kill: bool) -> Result<
         match c.kill_leftovers(&s.id) {
             Ok(()) => sent = true,
             Err(e) if e.to_string().starts_with("not_running") => {
-                if !leftover() {
+                if e.to_string().contains("no background processes are left") {
                     break;
                 }
-                if !sent {
+                if !sent && leftover() {
                     return Err(Error::new(
                         Kind::Conflict,
                         "the running runner is older than this tmgr and cannot stop background processes",
                     )
                     .hint(format!("{} runner restart", super::bin())));
                 }
+                if !leftover() {
+                    break;
+                }
             }
-            Err(e) if e.to_string().starts_with("busy") => busy = Some(rerr(e).to_string()),
+            Err(e) if e.to_string().starts_with("busy") => {
+                let msg = rerr(e).to_string();
+                if msg.contains("no longer controls") {
+                    return Err(Error::conflict(msg));
+                }
+                busy = Some(msg);
+            }
             Err(e) => return Err(rerr(e)),
         }
         if Instant::now() >= deadline {

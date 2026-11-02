@@ -1101,9 +1101,13 @@ fn only_the_cli_with_an_explicit_request_kills_a_leftover() {
     not_running(ask(CLIENT_DESKTOP, "kill", true));
     not_running(ask(CLIENT_CLI, "term", true));
     not_running(ask(CLIENT_CLI, "kill", false));
+    thread::sleep(Duration::from_millis(300));
     assert!(pid_alive(&leaked), "a refused request killed the leftover");
     ask(CLIENT_CLI, "kill", true).unwrap();
     wait_group_gone(group);
+    let err = ask(CLIENT_CLI, "kill", true).unwrap_err().to_string();
+    assert!(err.starts_with("not_running"), "{err}");
+    assert!(err.contains("no background processes are left"), "{err}");
 }
 
 #[test]
