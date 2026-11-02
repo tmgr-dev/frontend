@@ -81,7 +81,7 @@ fn drain<R: Read + Send + 'static>(
     })
 }
 
-fn run_bounded(
+pub(crate) fn run_bounded(
     mut cmd: Command,
     deadline: Duration,
     max_stdout: usize,
