@@ -2569,6 +2569,7 @@ impl App {
             name: None,
             place: Place::Right,
             task: None,
+            worktree: false,
         };
         let (cols, rows) = spawn_size(content, req.place);
         self.notify(&format!("starting {}...", sanitize_text(&t.name)));
@@ -2779,6 +2780,7 @@ impl App {
                 name: None,
                 place: Place::Right,
                 task: None,
+                worktree: false,
             };
             let mut run_req = req.clone();
             if registers_shell(&req) {
@@ -3671,6 +3673,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         .map(|c| c.attach)
         .unwrap_or_default();
     view.sidebar_default = attach_cfg.sidebar_width.unwrap_or(view.sidebar_default);
+    view.worktree_default = attach_cfg.worktree.unwrap_or(false);
     let layouts_dir = attach_layouts::dir();
     let prompts_dir = attach_prompts::dir();
     let mut notice_set = false;
@@ -3687,6 +3690,11 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
             view.notice = warn;
             notice_set = view.notice.is_some();
         }
+    }
+    if view.worktree_default && view.notice.is_none() {
+        view.notice =
+            Some("worktrees on: new agent sessions get their own checkout (tmgr config set attach.worktree false)".into());
+        notice_set = true;
     }
     let layouts_seen = attach_layouts::names(&view.layouts);
     if let Some(dir) = attach_templates::dir() {
@@ -4455,6 +4463,7 @@ mod tests {
                 name: None,
                 place: Place::Right,
                 task: None,
+                worktree: false,
             },
             target: "a".into(),
         })
@@ -4530,6 +4539,7 @@ mod tests {
                 name: name.map(str::to_string),
                 place: Place::Right,
                 task: None,
+                worktree: false,
             },
             target: "a".into(),
         };

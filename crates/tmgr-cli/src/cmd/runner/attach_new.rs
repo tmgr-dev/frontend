@@ -167,6 +167,7 @@ pub(super) fn dialog_for(base: &NewSession, req: &NewRequest) -> NewSession {
     ns.folder = req.folder.clone();
     ns.name = req.name.clone().unwrap_or_default();
     ns.place = req.place;
+    ns.worktree = req.worktree;
     if let SpawnKind::Custom { line } = &req.kind {
         ns.command = line.clone();
     }
@@ -468,7 +469,18 @@ pub(super) fn start_session(
     let mut client = connect(cfg).map_err(|e| fail(&e.message))?;
     match plan {
         Plan::Create(r) => client.create(r),
-        Plan::CreateRun(r) => client.create_run(*r),
+        Plan::CreateRun(mut r) => {
+            if req.worktree {
+                let taken: Vec<String> = client
+                    .list()
+                    .map_err(|e| fail(&rerr(e).message))?
+                    .into_iter()
+                    .map(|s| s.name)
+                    .collect();
+                super::session_wt::start(&mut r, &taken).map_err(|e| fail(&e))?;
+            }
+            client.create_run(*r)
+        }
     }
     .map_err(|e| fail(&rerr(e).message))
 }
@@ -486,6 +498,7 @@ mod tests {
             name: None,
             place: Place::Right,
             task: None,
+            worktree: false,
         }
     }
 

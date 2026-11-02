@@ -1,14 +1,14 @@
     ╭ New session ─────────────────────────────────────────────────────────╮    
-    │ > Kind     claude   codex   shell   custom                           │    
-    │   Folder  ~/code                                                     │    
-    │   Task    local workspaces only, see `tmgr run`                      │    
+    │ > Kind      claude   codex   shell   custom                          │    
+    │   Folder   ~/code                                                    │    
+    │   Task     local workspaces only, see `tmgr run`                     │    
     │   Name                                                               │    
-    │   Where    New tab   Right   Below   Replace                         │    
-    │           [ Start ]                                                  │    
+    │   Worktree  Off   On                                                 │    
+    │   Where     New tab   Right   Below   Replace                        │    
+    │            [ Start ]                                                 │    
     │                                                                      │    
     │                                                                      │    
     │                                                                      │    
     │ Enter starts, Esc cancels                                            │    
-    │                                                                      │    
     │                                                                      │    
     ╰──────────────────────────────────────────────────────────────────────╯    

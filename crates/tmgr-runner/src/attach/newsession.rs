@@ -48,6 +48,7 @@ pub struct NewRequest {
     pub name: Option<String>,
     pub place: Place,
     pub task: Option<String>,
+    pub worktree: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -65,7 +66,7 @@ const MAX_TASK: usize = 128;
 const MAX_TASK_OPTS: usize = 200;
 const MAX_ENTRIES: usize = 500;
 const MAX_WIDTH: u16 = 72;
-const LABEL_W: u16 = 10;
+const LABEL_W: u16 = 11;
 const START_LABEL: &str = "[ Start ]";
 
 impl Place {
@@ -88,6 +89,7 @@ pub enum NewField {
     Command,
     Folder,
     Name,
+    Worktree,
     Where,
     Start,
 }
@@ -100,6 +102,7 @@ pub struct NewSession {
     pub command: String,
     pub name: String,
     pub place: Place,
+    pub worktree: bool,
     pub error: Option<String>,
     pub error_hint: Option<String>,
     pub focus: NewField,
@@ -242,7 +245,11 @@ impl NewSession {
         if self.is_agent() {
             f.push(NewField::Task);
         }
-        f.extend([NewField::Name, NewField::Where, NewField::Start]);
+        f.push(NewField::Name);
+        if self.is_agent() {
+            f.push(NewField::Worktree);
+        }
+        f.extend([NewField::Where, NewField::Start]);
         f
     }
 
@@ -303,6 +310,10 @@ impl NewSession {
                         (at + n - 1) % n
                     };
                 }
+            }
+            NewField::Worktree => {
+                self.worktree = !self.worktree;
+                self.clear_error();
             }
             NewField::Where => {
                 let at = Place::ALL
@@ -432,6 +443,7 @@ impl NewSession {
             folder,
             name: (!name.is_empty()).then(|| name.to_string()),
             place: self.place,
+            worktree: self.worktree && self.is_agent() && task.is_none(),
             task,
         })
     }
@@ -588,6 +600,10 @@ fn option_labels(ns: &NewSession, field: NewField) -> (Vec<String>, usize) {
             ns.kinds.iter().map(|k| strip_control(&k.label)).collect(),
             ns.kind,
         ),
+        NewField::Worktree => (
+            vec!["Off".to_string(), "On".to_string()],
+            usize::from(ns.worktree),
+        ),
         _ => (
             Place::ALL.iter().map(|p| p.label().to_string()).collect(),
             Place::ALL.iter().position(|p| *p == ns.place).unwrap_or(0),
@@ -603,6 +619,7 @@ fn field_label(f: NewField) -> &'static str {
         NewField::Folder => "Folder",
         NewField::Name => "Name",
         NewField::Where => "Where",
+        NewField::Worktree => "Worktree",
         NewField::Start => "",
     }
 }
@@ -702,7 +719,7 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
         let x = value_x(*row);
         let avail = value_avail(*row);
         match f {
-            NewField::Kind | NewField::Where => {
+            NewField::Kind | NewField::Where | NewField::Worktree => {
                 let (labels, sel) = option_labels(ns, *f);
                 for (i, off, w) in option_spans(&labels, sel, avail) {
                     let style = if i == sel {
@@ -833,6 +850,7 @@ impl ViewState {
             command: String::new(),
             name: String::new(),
             place: self.new_place.unwrap_or_default(),
+            worktree: self.worktree_default,
             error: None,
             error_hint: None,
             focus: NewField::Kind,
@@ -1004,7 +1022,7 @@ impl ViewState {
         let x = value_x(row);
         let avail = value_avail(row);
         match field {
-            NewField::Kind | NewField::Where => {
+            NewField::Kind | NewField::Where | NewField::Worktree => {
                 let (labels, sel) = option_labels(ns, field);
                 let hit = option_spans(&labels, sel, avail)
                     .into_iter()
@@ -1012,6 +1030,8 @@ impl ViewState {
                 if let Some((i, _, _)) = hit {
                     if field == NewField::Kind {
                         ns.kind = i;
+                    } else if field == NewField::Worktree {
+                        ns.worktree = i == 1;
                     } else {
                         ns.place = Place::ALL[i];
                     }
@@ -1153,6 +1173,7 @@ mod tests {
             name: None,
             place: Place::Below,
             task: None,
+            worktree: false,
         };
         v.remember_new_session(&req, "shell");
         let p = v.prefs();
@@ -1213,7 +1234,7 @@ mod tests {
     fn where_cycles_and_tab_moves_between_fields() {
         let h = tmp();
         let mut v = open("/", h.path());
-        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B");
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B");
         assert_eq!(ns(&mut v).focus, NewField::Where);
         v.edit_new_session(b"\x1b[C");
         assert_eq!(ns(&mut v).place, Place::Below);
@@ -1252,7 +1273,7 @@ mod tests {
         std::fs::create_dir(h.path().join("proj")).unwrap();
         let mut v = open("~/proj/", h.path());
         ns(&mut v).name = "  work ".into();
-        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[C");
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[C");
         let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
             panic!("expected submit");
         };
@@ -1272,6 +1293,56 @@ mod tests {
         };
         assert_eq!(req.folder, h.path().to_string_lossy());
         assert_eq!(req.name, None);
+    }
+
+    #[test]
+    fn the_worktree_row_is_off_by_default_and_for_agents_only() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        assert!(ns(&mut v).fields().contains(&NewField::Worktree));
+        assert!(!ns(&mut v).worktree);
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B");
+        assert_eq!(ns(&mut v).focus, NewField::Worktree);
+        v.edit_new_session(b"\x1b[C");
+        assert!(ns(&mut v).worktree);
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert!(req.worktree);
+        let mut v = open("/", h.path());
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[C");
+        v.edit_new_session(b"\x1b[A\x1b[A\x1b[A\x1b[A\x1b[D");
+        assert_eq!(ns(&mut v).kind, 3);
+        assert!(!ns(&mut v).fields().contains(&NewField::Worktree));
+        ns(&mut v).command = "echo".into();
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert!(!req.worktree);
+    }
+
+    #[test]
+    fn the_worktree_row_starts_from_the_configured_default() {
+        let h = tmp();
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.worktree_default = true;
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        assert!(ns(&mut v).worktree);
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[D");
+        assert!(!ns(&mut v).worktree);
+    }
+
+    #[test]
+    fn a_task_start_makes_its_own_clone_so_the_worktree_flag_is_dropped() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        with_tasks(&mut v);
+        ns(&mut v).worktree = true;
+        ns(&mut v).task = "TM-12".into();
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert!(req.task.is_some() && !req.worktree);
     }
 
     #[test]
