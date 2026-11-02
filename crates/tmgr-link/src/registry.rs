@@ -45,8 +45,7 @@ enum Life {
     Unknown,
 }
 
-#[doc(hidden)]
-pub fn after_failed_query(pid: u32) -> Probe {
+fn after_failed_query(pid: u32) -> Probe {
     if pid == 0 || pid > i32::MAX as u32 {
         return Probe::Unknown;
     }
@@ -84,28 +83,18 @@ fn query(pid: u32) -> Probe {
         libc::proc_pidinfo(
             pid as libc::c_int,
             libc::PROC_PIDTBSDINFO,
-            0,
+            1,
             &mut info as *mut _ as *mut libc::c_void,
             size,
         )
     };
-    let err = std::io::Error::last_os_error().raw_os_error();
     if got == size {
         Probe::Running {
             start: format!("{}.{}", info.pbi_start_tvsec, info.pbi_start_tvusec),
             zombie: info.pbi_status == 5,
         }
     } else if got == 0 {
-        let exists = (1..=i32::MAX as u32).contains(&pid)
-            && unsafe { libc::kill(pid as libc::pid_t, 0) } == 0;
-        if exists && err == Some(libc::ESRCH) {
-            Probe::Running {
-                start: String::new(),
-                zombie: true,
-            }
-        } else {
-            after_failed_query(pid)
-        }
+        after_failed_query(pid)
     } else {
         Probe::Unknown
     }
@@ -815,11 +804,8 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(10));
         };
-        assert!(matches!(
-            state,
-            Probe::Running { zombie: true, .. } | Probe::Gone
-        ));
-        let alive_now = life(&query, child.id(), &start.unwrap_or_default());
+        assert!(matches!(state, Probe::Running { zombie: true, .. }));
+        let alive_now = life(&query, child.id(), &start.unwrap());
         assert!(alive_now == Life::Gone);
         child.wait().unwrap();
     }
