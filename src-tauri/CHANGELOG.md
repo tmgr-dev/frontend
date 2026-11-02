@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.80 — 2026-11-02
+
+- AI provider settings: Settings now shows a message next to the save button when saving your provider settings or removing your key fails, instead of failing silently.
+- AI provider settings: settings can be saved only for the account you are using now. If you save right after signing in and see a message about another account, try again in a moment.
+
 ## 0.9.79 — 2026-11-02
 
 - AI provider key: a saved key now works only with the server recorded for it, tracked separately for each account on this computer. If it doesn't match, asking a persona shows a message that names the server and asks you to enter the key again in Settings. The key is not deleted. You will see this if your key was saved for a different server than the one now set, was saved with an invalid server URL, or an earlier version lost the record of its server.
