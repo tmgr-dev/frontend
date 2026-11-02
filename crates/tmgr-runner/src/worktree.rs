@@ -151,6 +151,16 @@ pub(crate) fn run_bounded(
     })
 }
 
+pub(crate) fn absolute_path_entries(value: &std::ffi::OsStr) -> std::ffi::OsString {
+    let kept: Vec<PathBuf> = std::env::split_paths(value)
+        .filter(|entry| entry.is_absolute())
+        .collect();
+    match std::env::join_paths(kept) {
+        Ok(joined) if !joined.is_empty() => joined,
+        _ => "/usr/bin:/bin".into(),
+    }
+}
+
 impl GitEnv {
     pub fn new() -> GitEnv {
         GitEnv {
@@ -187,8 +197,10 @@ impl GitEnv {
         if !raw.status.success() {
             return Err(format!("not a git repository: {}", dir.display()));
         }
+        let names = std::str::from_utf8(&raw.stdout)
+            .map_err(|_| "repository config has a key that is not valid text".to_string())?;
         let mut filters = BTreeSet::new();
-        for name in String::from_utf8_lossy(&raw.stdout).split('\0') {
+        for name in names.split('\0') {
             if name.is_empty() {
                 continue;
             }
@@ -213,15 +225,19 @@ impl GitEnv {
         cmd.env_clear();
         for (k, v) in std::env::vars_os() {
             let key = k.to_string_lossy();
-            if matches!(key.as_ref(), "PATH" | "HOME" | "LANG") || key.starts_with("LC_") {
+            if matches!(key.as_ref(), "HOME" | "LANG") || key.starts_with("LC_") {
                 cmd.env(k, v);
             }
         }
-        cmd.env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .env("GIT_NO_LAZY_FETCH", "1")
-            .env("GIT_OPTIONAL_LOCKS", "0");
+        cmd.env(
+            "PATH",
+            absolute_path_entries(&std::env::var_os("PATH").unwrap_or_default()),
+        )
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_NO_LAZY_FETCH", "1")
+        .env("GIT_OPTIONAL_LOCKS", "0");
         for (k, v) in &self.extra {
             cmd.env(k, v);
         }
@@ -1018,6 +1034,18 @@ mod tests {
         fs::create_dir(&sub).unwrap();
         assert!(plan(&sub, "x", None).is_err());
         assert!(plan(&fx.outside, "x", None).is_err());
+    }
+
+    #[test]
+    fn git_runs_with_absolute_path_entries_only() {
+        assert_eq!(
+            absolute_path_entries(":.:/usr/bin:bin".as_ref()),
+            std::ffi::OsString::from("/usr/bin")
+        );
+        assert_eq!(
+            absolute_path_entries("".as_ref()),
+            std::ffi::OsString::from("/usr/bin:/bin")
+        );
     }
 
     #[test]

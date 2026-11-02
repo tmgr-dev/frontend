@@ -40,6 +40,7 @@ pub struct GitInfo {
     pub base: Option<String>,
     pub ahead_base: Option<u32>,
     pub pr: PrLookup,
+    pub branch_only: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -305,13 +306,21 @@ pub(crate) fn draw_git(buf: &mut Buffer, area: Rect, st: &ViewState) {
         PrLookup::Unavailable => "unknown (gh is not available)".to_string(),
     };
     let root = g.root.rsplit('/').next().unwrap_or("");
-    let rows = [
-        ("Repo", root.to_string()),
-        ("Branch", track),
-        ("Base", base),
-        ("Changes", changes),
-        ("PR", pr),
-    ];
+    let rows = if g.branch_only {
+        vec![
+            ("Repo", root.to_string()),
+            ("Branch", g.branch.clone()),
+            ("Status", "not read for a sandboxed session".to_string()),
+        ]
+    } else {
+        vec![
+            ("Repo", root.to_string()),
+            ("Branch", track),
+            ("Base", base),
+            ("Changes", changes),
+            ("PR", pr),
+        ]
+    };
     for (i, (label, value)) in rows.iter().enumerate() {
         let y = inner.y + i as u16;
         if y >= inner.bottom() {

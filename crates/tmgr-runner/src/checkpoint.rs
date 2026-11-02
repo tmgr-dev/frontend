@@ -23,6 +23,7 @@ use crate::wire::write_atomic;
 use crate::worktree::{run_bounded, GitEnv};
 
 pub const DEFAULT_KEEP: u32 = 50;
+pub const PAUSED_NOTE: &str = "checkpoints are off for sandboxed sessions for now";
 
 const KEEP_MIN: u32 = 3;
 const KEEP_MAX: u32 = 1000;
@@ -35,6 +36,7 @@ const DIFF_TEXT_CAP: usize = 1024 * 1024;
 const DIFF_RAW_CAP: usize = 16 * 1024 * 1024;
 const LIST_CAP: usize = 256 * 1024 * 1024;
 const ERR_CAP: usize = 1024 * 1024;
+const HOOK_NAMES_CAP: usize = 16 * 1024 * 1024;
 const LINK_CAP: usize = 4096;
 const GIT_DEADLINE: Duration = Duration::from_secs(600);
 const FACTS_DEADLINE: Duration = Duration::from_secs(5);
@@ -53,6 +55,7 @@ pub struct Store {
     pub sdir: PathBuf,
     pub cwd: PathBuf,
     pub keep: u32,
+    pub paused: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,6 +86,8 @@ struct Manifest {
     note: Option<String>,
     #[serde(default)]
     common_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    refs_of: Option<String>,
     #[serde(default)]
     items: Vec<Entry>,
 }
@@ -647,8 +652,8 @@ impl Blobs {
     }
 }
 
-fn base_git(dir: &Path, excludes: &str) -> GitEnv {
-    let cfg = [
+fn base_git(dir: &Path, excludes: &str, more: &[(String, &str)]) -> GitEnv {
+    let mut cfg = vec![
         ("protocol.allow", "never"),
         ("core.logAllRefUpdates", "false"),
         ("core.splitIndex", "false"),
@@ -656,6 +661,7 @@ fn base_git(dir: &Path, excludes: &str) -> GitEnv {
         ("commit.gpgsign", "false"),
         ("core.excludesFile", excludes),
     ];
+    cfg.extend(more.iter().map(|(k, v)| (k.as_str(), *v)));
     let mut g = GitEnv::bare(dir)
         .env("GIT_NO_REPLACE_OBJECTS", "1")
         .env("GIT_CONFIG_COUNT", &cfg.len().to_string());
@@ -665,6 +671,29 @@ fn base_git(dir: &Path, excludes: &str) -> GitEnv {
             .env(&format!("GIT_CONFIG_VALUE_{i}"), v);
     }
     g
+}
+
+fn git_without_hooks(dir: &Path, excludes: &str, git_dir: Option<&str>) -> GitEnv {
+    let env = |more: &[(String, &str)]| {
+        let g = base_git(dir, excludes, more);
+        match git_dir {
+            Some(d) => g.env("GIT_DIR", d),
+            None => g,
+        }
+    };
+    let names = out(
+        &env(&[]),
+        &["config", "--name-only", "--list", "-z"],
+        None,
+        HOOK_NAMES_CAP,
+    )
+    .unwrap_or_default();
+    let off: Vec<(String, &str)> = String::from_utf8_lossy(&names)
+        .split('\0')
+        .filter_map(|name| name.strip_prefix("hook.")?.rsplit_once('.'))
+        .map(|(hook, _)| (format!("hook.{hook}.enabled"), "false"))
+        .collect();
+    env(&off)
 }
 
 fn exec(g: &GitEnv, args: &[&str], stdin: Option<&Path>, cap: usize) -> Result<Output, CpError> {
@@ -702,9 +731,10 @@ fn effective_excludes(env: &Env, cwd: &Path) -> String {
         .current_dir(cwd)
         .stdin(Stdio::null())
         .args(["config", "--path", "--get", "core.excludesFile"]);
-    if let Some(p) = std::env::var_os("PATH") {
-        cmd.env("PATH", p);
-    }
+    cmd.env(
+        "PATH",
+        crate::worktree::absolute_path_entries(&std::env::var_os("PATH").unwrap_or_default()),
+    );
     if let Some(h) = &env.home {
         cmd.env("HOME", h);
     }
@@ -765,6 +795,9 @@ impl Store {
 
     fn snapshot_in(&self, env: &Env) -> Result<Option<CheckpointItem>, CpError> {
         self.check_session()?;
+        if self.paused {
+            return Ok(None);
+        }
         let op = Op::new(self, env);
         let mut m = self.load();
         let repo = op.repo_or_mark(&mut m)?;
@@ -785,6 +818,9 @@ impl Store {
 
     fn restore_in(&self, env: &Env, n: u64) -> Result<CheckpointRestored, CpError> {
         self.check_session()?;
+        if self.paused {
+            return Err(CpError::Refused(PAUSED_NOTE.into()));
+        }
         let op = Op::new(self, env);
         let mut m = self.load();
         let Some(entry) = m.items.iter().find(|e| e.item.n == n).cloned() else {
@@ -832,6 +868,9 @@ impl Store {
 
     fn diff_in(&self, env: &Env, n: u64, against: DiffAgainst) -> Result<CheckpointDiff, CpError> {
         self.check_session()?;
+        if self.paused {
+            return Err(CpError::Refused(PAUSED_NOTE.into()));
+        }
         let m = self.load();
         let Some(pos) = m.items.iter().position(|e| e.item.n == n) else {
             return Err(CpError::Refused("no such checkpoint".into()));
@@ -861,9 +900,14 @@ impl Store {
 
     pub fn status(&self) -> CheckpointStatus {
         let m = self.load();
+        let note = if self.paused {
+            Some(PAUSED_NOTE.to_string())
+        } else {
+            m.note
+        };
         CheckpointStatus {
-            available: m.note.is_none(),
-            note: m.note,
+            available: note.is_none(),
+            note,
             count: m.items.len() as u32,
         }
     }
@@ -877,11 +921,15 @@ impl Store {
     }
 
     pub fn remove_all(&self) {
-        if self.check_session().is_ok() {
+        if !self.paused && self.check_session().is_ok() {
             if let Some(dir) = self.load().common_dir {
                 self.delete_refs(&dir);
             }
         }
+        self.remove_local();
+    }
+
+    fn remove_local(&self) {
         for name in [MANIFEST, CACHE] {
             let _ = fs::remove_file(self.sdir.join(name));
         }
@@ -903,25 +951,33 @@ impl Store {
     pub fn transfer(&self, to: &Store) -> Result<(), CpError> {
         self.check_session()?;
         to.check_session()?;
-        let m = self.load();
+        let mut m = self.load();
         let Some(dir) = m.common_dir.clone() else {
             return Ok(());
         };
         fs::create_dir_all(&to.sdir).map_err(|e| failed("cannot create session directory", e))?;
-        let g = base_git(&to.sdir, NO_EXCLUDES).env("GIT_DIR", &dir);
-        for e in &m.items {
-            text(&g, &["update-ref", &to.ref_name(e.item.n), &e.commit])?;
+        if self.paused || to.paused {
+            m.refs_of.get_or_insert_with(|| self.session.clone());
+        } else {
+            let g = git_without_hooks(&to.sdir, NO_EXCLUDES, Some(&dir));
+            for e in &m.items {
+                text(&g, &["update-ref", &to.ref_name(e.item.n), &e.commit])?;
+            }
         }
         to.save(&m)?;
         if let Ok(bytes) = fs::read(self.cache_path()) {
             let _ = write_atomic(&to.cache_path(), &bytes);
         }
-        self.remove_all();
+        if self.paused || to.paused {
+            self.remove_local();
+        } else {
+            self.remove_all();
+        }
         Ok(())
     }
 
     fn delete_refs(&self, common_dir: &str) {
-        let g = base_git(&self.sdir, NO_EXCLUDES).env("GIT_DIR", common_dir);
+        let g = git_without_hooks(&self.sdir, NO_EXCLUDES, Some(common_dir));
         let prefix = format!("{REF_ROOT}/{}/", self.session);
         let Ok(list) = text(&g, &["for-each-ref", "--format=%(refname)", &prefix]) else {
             return;
@@ -971,7 +1027,7 @@ impl<'a> Op<'a> {
     }
 
     fn git(&self) -> GitEnv {
-        base_git(&self.store.cwd, &self.excludes)
+        git_without_hooks(&self.store.cwd, &self.excludes, None)
     }
 
     fn repo(&self) -> Result<Repo, CpError> {
@@ -1812,6 +1868,7 @@ mod tests {
                 sdir: self.sdir.clone(),
                 cwd: self.repo.clone(),
                 keep: 50,
+                paused: false,
             }
         }
 
@@ -2780,6 +2837,48 @@ mod tests {
     }
 
     #[test]
+    fn a_paused_store_runs_no_git_and_keeps_what_exists() {
+        let fx = Fx::new();
+        let st = fx.store();
+        fx.w("a", b"1");
+        snap(&fx, &st);
+        fx.w("a", b"2");
+        snap(&fx, &st);
+        let refs = refs_under(&fx, "refs/tmgr");
+        fx.w("a", b"3");
+        let paused = Store { paused: true, ..st };
+        assert!(paused.snapshot_in(&fx.env()).unwrap().is_none());
+        let off = CpError::Refused(PAUSED_NOTE.to_string());
+        assert_eq!(paused.restore_in(&fx.env(), 1).unwrap_err(), off);
+        assert_eq!(
+            paused
+                .diff_in(&fx.env(), 2, DiffAgainst::Previous)
+                .map(|_| ())
+                .unwrap_err(),
+            off
+        );
+        let status = paused.status();
+        assert!(!status.available);
+        assert_eq!(status.note.as_deref(), Some(PAUSED_NOTE));
+        assert_eq!(status.count, 2);
+        assert_eq!(paused.list().len(), 2);
+
+        let to_sdir = fx.root.join("sdir2");
+        fs::create_dir_all(&to_sdir).unwrap();
+        let to = Store {
+            session: S2.to_string(),
+            sdir: to_sdir,
+            ..paused.clone()
+        };
+        paused.transfer(&to).unwrap();
+        assert_eq!(to.list().len(), 2);
+        assert!(paused.list().is_empty());
+        to.remove_all();
+        assert_eq!(refs_under(&fx, "refs/tmgr"), refs);
+        assert_eq!(fx.r("a"), b"3");
+    }
+
+    #[test]
     fn local_ssh_command_and_credential_config_do_not_block() {
         let fx = Fx::new();
         fx.pg(&["config", "core.sshCommand", "false"]);
@@ -3078,6 +3177,7 @@ mod tests {
             sdir: to_sdir,
             cwd: fx.repo.clone(),
             keep: 50,
+            paused: false,
         };
         let items = st.list();
         st.transfer(&to).unwrap();
