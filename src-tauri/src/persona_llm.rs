@@ -58,11 +58,52 @@ fn check_key_origin(slot_origin: Option<&str>, base_url: &str) -> Result<(), Str
   })
 }
 
-fn user_slot_allowed(identity: Option<i64>, user_id: i64) -> bool {
-  match identity {
-    Some(id) => user_id == id,
-    None => user_id == LOCAL_OWNER_ID,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SlotAccess {
+  Allowed,
+  NotReady,
+  OtherAccount,
+}
+
+impl SlotAccess {
+  fn save_refusal(self) -> String {
+    match self {
+      SlotAccess::OtherAccount => "These AI provider settings belong to another account.",
+      _ => NOT_READY_MESSAGE,
+    }
+    .into()
   }
+
+  fn chat_refusal(self) -> String {
+    match self {
+      SlotAccess::OtherAccount => "This AI provider key belongs to another account.",
+      _ => NOT_READY_MESSAGE,
+    }
+    .into()
+  }
+
+  fn state(self) -> &'static str {
+    match self {
+      SlotAccess::Allowed => "ok",
+      SlotAccess::NotReady => "not_ready",
+      SlotAccess::OtherAccount => "other_account",
+    }
+  }
+}
+
+const NOT_READY_MESSAGE: &str = "Your account is not available to the desktop app yet. Reload the app or sign in again, then retry.";
+
+fn slot_access(identity: Option<i64>, user_id: i64) -> SlotAccess {
+  match (identity, user_id) {
+    (Some(id), u) if u == id => SlotAccess::Allowed,
+    (None, LOCAL_OWNER_ID) => SlotAccess::Allowed,
+    (Some(_), u) if u > 0 => SlotAccess::OtherAccount,
+    _ => SlotAccess::NotReady,
+  }
+}
+
+fn user_slot_allowed(identity: Option<i64>, user_id: i64) -> bool {
+  slot_access(identity, user_id) == SlotAccess::Allowed
 }
 
 fn next_key_origins(
@@ -202,6 +243,7 @@ pub struct LlmConfigOut {
   model: String,
   has_api_key: bool,
   is_local: bool,
+  slot_state: &'static str,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -359,13 +401,19 @@ fn save_config<S: SecretStore, W: FnOnce(&LlmConfigFile) -> Result<(), String>>(
   prepare_write: impl FnOnce() -> Result<W, String>,
 ) -> Result<(), String> {
   let SaveRequest { identity, user_id, base_url, model, api_key, clear_api_key } = request;
-  if !user_slot_allowed(identity, user_id) {
-    return Err("These AI provider settings belong to another account. If you just signed in, try again in a moment.".into());
+  let new_key = api_key.filter(|k| !k.is_empty());
+  let access = slot_access(identity, user_id);
+  if access != SlotAccess::Allowed {
+    if new_key.is_some() || clear_api_key {
+      return Err(access.save_refusal());
+    }
+    let previous = read_previous()?;
+    let file = LlmConfigFile { base_url, model, ..previous };
+    return prepare_write()?(&file);
   }
   let previous = read_previous()?;
   let new_origin = normalize_origin(&base_url).ok();
   let account = format!("{ACCOUNT}:{user_id}");
-  let new_key = api_key.filter(|k| !k.is_empty());
 
   let had_key = store.get(&account)?.is_some();
   let plan = plan_save(slot_origin(&previous, user_id), &previous.base_url, &base_url, new_key.is_some(), clear_api_key, had_key);
@@ -430,9 +478,10 @@ pub fn llm_config_get<R: Runtime>(app: AppHandle<R>, window: tauri::Window<R>, u
     return Err("llm_config_get may only be called from the main window".into());
   }
   let file = read_config(&app)?;
-  let has_api_key = slot_has_key(&PersonaLlmSecrets, crate::local_identity::current_id(&app), user_id)?;
+  let identity = crate::local_identity::current_id(&app);
+  let has_api_key = slot_has_key(&PersonaLlmSecrets, identity, user_id)?;
   let is_local = classify_url(&file.base_url).map(|kind| kind == UrlKind::Local).unwrap_or(false);
-  Ok(LlmConfigOut { base_url: file.base_url, model: file.model, has_api_key, is_local })
+  Ok(LlmConfigOut { base_url: file.base_url, model: file.model, has_api_key, is_local, slot_state: slot_access(identity, user_id).state() })
 }
 
 /// Best-effort logout cleanup: this user's saved key, plus the pre-namespacing global key if one is still around.
@@ -566,8 +615,9 @@ pub async fn llm_chat<R: Runtime>(
   messages: Vec<Value>,
   tools: Option<Value>,
 ) -> Result<(), String> {
-  if !user_slot_allowed(crate::local_identity::current_id(&app), user_id) {
-    return Err("This AI provider key belongs to another account.".into());
+  let access = slot_access(crate::local_identity::current_id(&app), user_id);
+  if access != SlotAccess::Allowed {
+    return Err(access.chat_refusal());
   }
   let config = read_config(&app)?;
   if config.base_url.is_empty() {
@@ -1107,7 +1157,8 @@ mod tests {
     }
   }
 
-  const REFUSAL: &str = "These AI provider settings belong to another account. If you just signed in, try again in a moment.";
+  const REFUSAL: &str = "These AI provider settings belong to another account.";
+  const NOT_READY: &str = "Your account is not available to the desktop app yet. Reload the app or sign in again, then retry.";
 
   fn request(identity: Option<i64>, user_id: i64, api_key: Option<&str>, clear_api_key: bool) -> SaveRequest {
     SaveRequest {
@@ -1173,7 +1224,7 @@ mod tests {
   fn a_signed_in_account_cannot_touch_the_local_slot() {
     let store = Spy::with(&[(-1, "KL")]);
     let saved = run_save(&store, request(Some(7), -1, None, true), config_for_slot("-1"));
-    assert_eq!(saved.result, Err(REFUSAL.to_string()));
+    assert_eq!(saved.result, Err(NOT_READY.to_string()));
     assert_eq!(store.key(-1).as_deref(), Some("KL"));
     assert!(saved.written.is_none());
   }
@@ -1182,7 +1233,7 @@ mod tests {
   fn the_local_account_cannot_touch_an_accounts_slot() {
     let store = Spy::with(&[(8, "K8")]);
     let saved = run_save(&store, request(None, 8, Some("NEW"), false), config_for_slot("8"));
-    assert_eq!(saved.result, Err(REFUSAL.to_string()));
+    assert_eq!(saved.result, Err(NOT_READY.to_string()));
     assert_eq!(store.key(8).as_deref(), Some("K8"));
     assert!(saved.written.is_none());
   }
@@ -1192,7 +1243,7 @@ mod tests {
     for identity in [None, Some(7)] {
       let store = Spy::with(&[(0, "K0")]);
       let saved = run_save(&store, request(identity, 0, Some("NEW"), false), LlmConfigFile::default());
-      assert_eq!(saved.result, Err(REFUSAL.to_string()));
+      assert_eq!(saved.result, Err(NOT_READY.to_string()));
       assert_eq!(store.key(0).as_deref(), Some("K0"));
       assert!(saved.written.is_none());
     }
@@ -1209,6 +1260,75 @@ mod tests {
     );
     assert_eq!(result, Err(REFUSAL.to_string()));
     assert_eq!(store.gets.load(std::sync::atomic::Ordering::SeqCst), 0);
+  }
+
+  #[test]
+  fn slot_access_classifies_identity_and_slot() {
+    for (identity, user_id, expected) in [
+      (Some(5), 0, SlotAccess::NotReady),
+      (None, 7, SlotAccess::NotReady),
+      (Some(5), -1, SlotAccess::NotReady),
+      (None, 0, SlotAccess::NotReady),
+      (None, -2, SlotAccess::NotReady),
+      (Some(5), 6, SlotAccess::OtherAccount),
+      (Some(5), 5, SlotAccess::Allowed),
+      (None, -1, SlotAccess::Allowed),
+    ] {
+      assert_eq!(slot_access(identity, user_id), expected, "{identity:?} {user_id}");
+    }
+  }
+
+  fn keyless_edit(identity: Option<i64>, user_id: i64, base_url: &str, model: &str) -> SaveRequest {
+    SaveRequest { identity, user_id, base_url: base_url.into(), model: model.into(), api_key: None, clear_api_key: false }
+  }
+
+  #[test]
+  fn a_keyless_edit_is_saved_without_the_keychain_when_not_allowed() {
+    for (identity, user_id) in [(Some(5), 0), (None, 7), (Some(5), 6)] {
+      let store = Spy::with(&[(user_id, "K")]);
+      let config = LlmConfigFile { base_url: A.into(), model: "old".into(), ..config_for_slot(&user_id.to_string()) };
+      let saved = run_save(&store, keyless_edit(identity, user_id, B, "new"), config.clone());
+      assert_eq!(saved.result, Ok(()), "{identity:?} {user_id}");
+      let written = saved.written.unwrap();
+      assert_eq!(written.base_url, B);
+      assert_eq!(written.model, "new");
+      assert_eq!(written.key_origins, config.key_origins);
+      assert_eq!(written.key_origin, config.key_origin);
+      assert_eq!(store.gets.load(std::sync::atomic::Ordering::SeqCst), 0);
+      assert_eq!(store.key(user_id).as_deref(), Some("K"));
+    }
+  }
+
+  #[test]
+  fn a_keyful_save_is_refused_with_the_matching_message_when_not_allowed() {
+    for (identity, user_id, message) in [(Some(5), 0, NOT_READY), (None, 7, NOT_READY), (Some(5), 6, REFUSAL)] {
+      for (api_key, clear) in [(Some("NEW"), false), (None, true)] {
+        let store = Spy::with(&[(user_id, "K")]);
+        let saved = run_save(&store, request(identity, user_id, api_key, clear), config_for_slot(&user_id.to_string()));
+        assert_eq!(saved.result, Err(message.to_string()), "{identity:?} {user_id}");
+        assert!(saved.written.is_none());
+        assert!(!saved.read);
+        assert_eq!(store.key(user_id).as_deref(), Some("K"));
+      }
+    }
+  }
+
+  #[test]
+  fn a_keyless_origin_move_while_not_ready_keeps_the_key_and_a_later_save_back_still_uses_it() {
+    let store = Spy::with(&[(7, "K7")]);
+    let config = file_with(None, &[("7", A_ORIGIN)]);
+    let moved = run_save(&store, keyless_edit(None, 7, B, "m"), config);
+    assert_eq!(moved.result, Ok(()));
+    let after_move = moved.written.unwrap();
+    assert_eq!(after_move.key_origins.get("7").map(String::as_str), Some(A_ORIGIN));
+    assert_eq!(store.key(7).as_deref(), Some("K7"));
+
+    let back = run_save(&store, keyless_edit(Some(7), 7, A, "m"), after_move);
+    assert_eq!(back.result, Ok(()));
+    assert_eq!(store.key(7).as_deref(), Some("K7"));
+    let written = back.written.unwrap();
+    assert_eq!(written.key_origins.get("7").map(String::as_str), Some(A_ORIGIN));
+    assert!(!plan_save(slot_origin(&written, 7), &written.base_url, &written.base_url, false, false, true).stale_key);
   }
 
   #[test]
