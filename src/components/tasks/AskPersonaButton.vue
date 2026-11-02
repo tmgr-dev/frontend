@@ -170,7 +170,7 @@
 				} finally {
 					if (posted || wrote) emit('posted');
 					asking.value = false;
-					partialText.value = '';
+					if (cancelRequested || !error.value) partialText.value = '';
 					cancelCurrent = null;
 				}
 			};

@@ -184,6 +184,44 @@ test('a cancel pressed before the chat exists stops the ask quietly', async () =
 	expect(setup.asking.value).toBe(false);
 });
 
+test('a failed ask keeps the streamed partial answer visible until the next ask', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: { id: 42, name: 'Bo', email: 'b@example.com' } };
+	mockStore.getters = { isLocalOnly: false };
+	const setup = loadComponent().setup({ taskId: 1 }, { emit: jest.fn() });
+	for (const fn of mounted) await fn();
+	mockAskPersonaOnTask.mockImplementationOnce(async (params: any) => {
+		params.onText('Half of the answer');
+		throw new Error('stream cut off');
+	});
+	await setup.ask();
+	expect(setup.error.value).toBe('stream cut off');
+	expect(setup.partialText.value).toBe('Half of the answer');
+	mockAskPersonaOnTask.mockImplementationOnce(async () => ({
+		text: 'ok',
+		toolCalls: 0,
+	}));
+	await setup.ask();
+	expect(setup.error.value).toBeNull();
+	expect(setup.partialText.value).toBe('');
+});
+
+test('a cancelled ask clears the streamed partial answer', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: { id: 42, name: 'Bo', email: 'b@example.com' } };
+	mockStore.getters = { isLocalOnly: false };
+	const setup = loadComponent().setup({ taskId: 1 }, { emit: jest.fn() });
+	for (const fn of mounted) await fn();
+	mockAskPersonaOnTask.mockImplementationOnce(async (params: any) => {
+		params.onText('Half of the answer');
+		setup.cancelAsk();
+		throw new Error('cancelled');
+	});
+	await setup.ask();
+	expect(setup.error.value).toBeNull();
+	expect(setup.partialText.value).toBe('');
+});
+
 test('the partial answer has its own scrolling block below the status row', () => {
 	const filename = join(__dirname, '../AskPersonaButton.vue');
 	const { descriptor } = parse(readFileSync(filename, 'utf8'), { filename });

@@ -239,6 +239,44 @@ describe('createLlmChat missing tool call fields', () => {
 		expect(events[0].call.rawArguments).toBe('{}');
 		expect(events[0].call.args).toEqual({});
 	});
+
+	it('truncates invalid tool arguments in the error to 200 characters', async () => {
+		mockInvoke.mockImplementation(async (command: string, args: any) => {
+			if (command !== 'llm_chat') return;
+			emit(args.requestId, {
+				type: 'tool_call',
+				index: 0,
+				id: 'c0',
+				name: 'tmgr_request',
+				arguments: 'x'.repeat(500),
+			});
+			emit(args.requestId, { type: 'done' });
+		});
+		const { chat } = createLlmChat([], 1);
+		const error = await drain(chat([])).catch((e: Error) => e);
+		expect((error as Error).message).toBe(
+			`The model sent invalid tool arguments: ${'x'.repeat(200)}…`,
+		);
+	});
+
+	it('keeps short invalid tool arguments whole in the error', async () => {
+		mockInvoke.mockImplementation(async (command: string, args: any) => {
+			if (command !== 'llm_chat') return;
+			emit(args.requestId, {
+				type: 'tool_call',
+				index: 0,
+				id: 'c0',
+				name: 'tmgr_request',
+				arguments: '{"method":',
+			});
+			emit(args.requestId, { type: 'done' });
+		});
+		const { chat } = createLlmChat([], 1);
+		const error = await drain(chat([])).catch((e: Error) => e);
+		expect((error as Error).message).toBe(
+			'The model sent invalid tool arguments: {"method":',
+		);
+	});
 });
 
 describe('createLlmChat identity resync', () => {

@@ -87,9 +87,11 @@ export const createLlmChat = (
 				try {
 					args = JSON.parse(rawArguments);
 				} catch {
-					throw new Error(
-						`The model sent invalid tool arguments: ${rawArguments}`,
-					);
+					const shown =
+						rawArguments.length > 200
+							? `${rawArguments.slice(0, 200)}…`
+							: rawArguments;
+					throw new Error(`The model sent invalid tool arguments: ${shown}`);
 				}
 				yield {
 					type: 'tool_call',
