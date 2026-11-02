@@ -40,6 +40,7 @@
 		askPersonaOnTask,
 		personaToolDefinition,
 	} from '@/local/personaAgent';
+	import { LOCAL_OWNER_ID } from '@/local/personaGate';
 	import { readPersonaCache } from '@/local/personaCache';
 	import {
 		listLocalPersonas,
@@ -76,11 +77,21 @@
 				),
 			);
 
-			const currentUser = () => ({
-				id: Number(store.state.user?.id) || 0,
-				name: store.state.user?.name ?? '',
-				email: store.state.user?.email ?? '',
-			});
+			const localOnly = !!store.getters?.isLocalOnly;
+
+			const currentUser = () =>
+				localOnly
+					? {
+							id: LOCAL_OWNER_ID,
+							name:
+								store.state.user?.name || store.state.localProfile?.name || '',
+							email: '',
+						}
+					: {
+							id: Number(store.state.user?.id) || 0,
+							name: store.state.user?.name ?? '',
+							email: store.state.user?.email ?? '',
+						};
 
 			onMounted(async () => {
 				if (!show || !workspace) return;
