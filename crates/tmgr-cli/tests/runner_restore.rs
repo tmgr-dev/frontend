@@ -99,6 +99,7 @@ impl Env {
                 created_ms: now_ms(),
                 cols: 80,
                 rows: 24,
+                permission_cards: false,
             },
             None,
         )

@@ -9,6 +9,7 @@ use std::io::{BufRead, IsTerminal, Write};
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
+use tmgr_core::config::{self, Config};
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{CandidateInfo, CreateReq, RestoredRun, RunCreateReq, SessionInfo, StateKind};
 use tmgr_runner::client::Client;
@@ -270,6 +271,7 @@ pub(super) fn run_create_run(
         exe_pin: None,
         argv_sha256: None,
         no_sandbox: None,
+        permission_cards: false,
     }
 }
 
@@ -368,6 +370,12 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
                 }
                 made = Some(sc);
             }
+            req.permission_cards = a.permission_cards
+                || config::config_dir()
+                    .ok()
+                    .and_then(|d| Config::load(&d).ok())
+                    .is_some_and(|c| c.attach_permission_cards());
+            super::privilege::check_cards_cap(&client.welcome().caps, req.permission_cards)?;
             let started = client.create_run(elevated(req, a.mode, a.no_sandbox));
             if let (Err(_), Some(sc)) = (&started, &made) {
                 tmgr_runner::sessionwt::abandon(sc);

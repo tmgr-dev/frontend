@@ -69,6 +69,8 @@ pub struct Intent {
     pub bypass: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub no_sandbox: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub permission_cards: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub boot: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -429,6 +431,7 @@ pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
         exe_pin: i.exe_pin.clone(),
         argv_sha256: i.argv_sha256.clone(),
         no_sandbox: None,
+        permission_cards: i.permission_cards,
     }
 }
 
@@ -628,6 +631,7 @@ mod tests {
             created_ms: 1_000,
             cols: 100,
             rows: 30,
+            permission_cards: false,
         }
     }
 
@@ -894,6 +898,20 @@ mod tests {
         assert_eq!(req.task, i.task);
         assert_eq!(req.origin, None);
         assert_eq!((req.cols, req.rows), (100, 30));
+    }
+
+    #[test]
+    fn request_carries_the_permission_cards_flag_and_old_records_default_to_off() {
+        let mut i = intent(A);
+        assert!(!request(&i, None).permission_cards);
+        i.permission_cards = true;
+        assert!(request(&i, None).permission_cards);
+        let text = serde_json::to_string(&i).unwrap();
+        assert!(text.contains("\"permission_cards\":true"));
+        let mut old: serde_json::Value = serde_json::from_str(&text).unwrap();
+        old.as_object_mut().unwrap().remove("permission_cards");
+        let back: Intent = serde_json::from_value(old).unwrap();
+        assert!(!back.permission_cards);
     }
 
     #[test]

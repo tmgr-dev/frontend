@@ -34,6 +34,8 @@ pub mod folders;
 #[cfg(unix)]
 pub mod humantime;
 #[cfg(unix)]
+pub mod permit_hook;
+#[cfg(unix)]
 pub mod questions;
 #[cfg(unix)]
 pub mod restore;

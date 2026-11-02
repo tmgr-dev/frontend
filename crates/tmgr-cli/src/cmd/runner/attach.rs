@@ -2698,6 +2698,7 @@ impl App {
             task: None,
             worktree: false,
             checkpoints: None,
+            permission_cards: false,
         };
         let (cols, rows) = spawn_size(content, req.place);
         self.notify(&format!("starting {}...", sanitize_text(&t.name)));
@@ -2910,6 +2911,7 @@ impl App {
                 task: None,
                 worktree: false,
                 checkpoints: None,
+                permission_cards: false,
             };
             let mut run_req = req.clone();
             if registers_shell(&req) {
@@ -3842,6 +3844,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         .unwrap_or_default();
     view.sidebar_default = attach_cfg.sidebar_width.unwrap_or(view.sidebar_default);
     view.worktree_default = attach_cfg.worktree.unwrap_or(false);
+    view.permission_cards_default = attach_cfg.permission_cards.unwrap_or(false);
     let layouts_dir = attach_layouts::dir();
     let prompts_dir = attach_prompts::dir();
     let mut notice_set = false;
@@ -4465,6 +4468,7 @@ mod tests {
             human_s: None,
             no_sandbox: false,
             checkpoints: None,
+            permission_cards: false,
         }
     }
 
@@ -4637,6 +4641,7 @@ mod tests {
                 task: None,
                 worktree: false,
                 checkpoints: None,
+                permission_cards: false,
             },
             target: "a".into(),
         })
@@ -4714,6 +4719,7 @@ mod tests {
                 task: None,
                 worktree: false,
                 checkpoints: None,
+                permission_cards: false,
             },
             target: "a".into(),
         };

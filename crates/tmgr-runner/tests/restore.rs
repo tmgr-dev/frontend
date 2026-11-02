@@ -160,6 +160,7 @@ impl H {
             exe_pin: None,
             argv_sha256: None,
             no_sandbox: None,
+            permission_cards: false,
         }
     }
 
@@ -569,6 +570,7 @@ fn forged(h: &H, id: &str, edit: impl Fn(&mut Intent)) {
         created_ms: now_ms(),
         cols: 80,
         rows: 24,
+        permission_cards: false,
     };
     edit(&mut i);
     restore::record(&h.store(), &i, None).unwrap();

@@ -159,6 +159,7 @@ fn session_info() -> SessionInfo {
         human_s: None,
         no_sandbox: false,
         checkpoints: None,
+        permission_cards: false,
     }
 }
 
@@ -258,6 +259,7 @@ fn requests_and_responses() {
         exe_pin: None,
         argv_sha256: None,
         no_sandbox: None,
+        permission_cards: false,
     };
     golden("run_create_req", &run);
     golden(
@@ -606,6 +608,7 @@ fn method_params_and_results() {
             human_s: None,
             no_sandbox: false,
             checkpoints: None,
+            permission_cards: false,
         },
     );
     golden(
@@ -887,7 +890,8 @@ fn constants_are_pinned() {
             "sessions_fork.v1",
             "manual_bypass.v1",
             "no_sandbox.v1",
-            "checkpoints.v1"
+            "checkpoints.v1",
+            "permission_cards.v1"
         ]
     );
     let methods = [

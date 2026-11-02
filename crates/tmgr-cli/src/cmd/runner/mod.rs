@@ -291,6 +291,13 @@ pub struct RunArgs {
     /// Do not save checkpoints for this session even if `attach.checkpoints` is on
     #[arg(long, conflicts_with_all = ["on", "fetch", "publish", "review"])]
     pub no_checkpoints: bool,
+    /// Record the agent's permission requests so attach can show them as cards (default: config attach.permission_cards); only for claude-code and codex
+    #[arg(
+        long,
+        requires = "agent",
+        conflicts_with_all = ["on", "agent_cmd", "task"]
+    )]
+    pub permission_cards: bool,
     /// Branch or commit the task's clone starts from (default: the repository's current branch)
     #[arg(long, value_name = "BASE", requires = "task", conflicts_with = "on")]
     pub base: Option<String>,
@@ -523,6 +530,9 @@ pub fn internal_entry() -> Option<i32> {
             &PathBuf::from(&args[1]),
             &args[2],
         )),
+        Some("__permission-hook") if args.len() == 2 => {
+            Some(tmgr_runner::permit_hook::hook_main(&args[1]))
+        }
         Some("__sandbox-exec") => Some(tmgr_runner::sandbox::exec_helper(&args[1..])),
         Some("__agent-work") if args.len() == 1 => Some(local::agent_work_main()),
         _ => None,

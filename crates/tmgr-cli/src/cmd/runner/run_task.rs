@@ -347,6 +347,7 @@ fn create_request(
         exe_pin: Some(exe_pin),
         argv_sha256: Some(argv_digest),
         no_sandbox,
+        permission_cards: false,
     }
 }
 

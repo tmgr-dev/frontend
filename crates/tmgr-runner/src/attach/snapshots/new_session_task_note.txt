@@ -4,6 +4,7 @@
     │   Task     local workspaces only, see `tmgr run`                     │    
     │   Name                                                               │    
     │   Worktree  Off   On                                                 │    
+    │   Approvals Off   On                                                 │    
     │   Where     New tab   Right   Below   Replace                        │    
     │   Rewind    Off   On                                                 │    
     │            [ Start ]                                                 │    

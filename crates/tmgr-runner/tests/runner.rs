@@ -218,6 +218,7 @@ impl Harness {
             exe_pin: None,
             argv_sha256: None,
             no_sandbox: None,
+            permission_cards: false,
         }
     }
 

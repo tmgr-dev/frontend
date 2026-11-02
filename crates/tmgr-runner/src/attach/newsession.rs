@@ -50,6 +50,7 @@ pub struct NewRequest {
     pub task: Option<String>,
     pub worktree: bool,
     pub checkpoints: Option<bool>,
+    pub permission_cards: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -91,6 +92,7 @@ pub enum NewField {
     Folder,
     Name,
     Worktree,
+    PermissionCards,
     Where,
     Checkpoints,
     Start,
@@ -105,6 +107,7 @@ pub struct NewSession {
     pub name: String,
     pub place: Place,
     pub worktree: bool,
+    pub permission_cards: bool,
     pub error: Option<String>,
     pub error_hint: Option<String>,
     pub focus: NewField,
@@ -251,6 +254,7 @@ impl NewSession {
         f.push(NewField::Name);
         if self.is_agent() {
             f.push(NewField::Worktree);
+            f.push(NewField::PermissionCards);
         }
         f.extend([NewField::Where, NewField::Checkpoints, NewField::Start]);
         f
@@ -320,6 +324,10 @@ impl NewSession {
             }
             NewField::Checkpoints => {
                 self.checkpoints = !self.checkpoints;
+                self.clear_error();
+            }
+            NewField::PermissionCards => {
+                self.permission_cards = !self.permission_cards;
                 self.clear_error();
             }
             NewField::Where => {
@@ -451,6 +459,7 @@ impl NewSession {
             name: (!name.is_empty()).then(|| name.to_string()),
             place: self.place,
             worktree: self.worktree && self.is_agent() && task.is_none(),
+            permission_cards: self.permission_cards && self.is_agent() && task.is_none(),
             task,
             checkpoints: Some(self.checkpoints),
         })
@@ -616,6 +625,10 @@ fn option_labels(ns: &NewSession, field: NewField) -> (Vec<String>, usize) {
             vec!["Off".to_string(), "On".to_string()],
             usize::from(ns.checkpoints),
         ),
+        NewField::PermissionCards => (
+            vec!["Off".to_string(), "On".to_string()],
+            usize::from(ns.permission_cards),
+        ),
         _ => (
             Place::ALL.iter().map(|p| p.label().to_string()).collect(),
             Place::ALL.iter().position(|p| *p == ns.place).unwrap_or(0),
@@ -633,6 +646,7 @@ fn field_label(f: NewField) -> &'static str {
         NewField::Where => "Where",
         NewField::Worktree => "Worktree",
         NewField::Checkpoints => "Rewind",
+        NewField::PermissionCards => "Approvals",
         NewField::Start => "",
     }
 }
@@ -732,7 +746,11 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
         let x = value_x(*row);
         let avail = value_avail(*row);
         match f {
-            NewField::Kind | NewField::Where | NewField::Worktree | NewField::Checkpoints => {
+            NewField::Kind
+            | NewField::Where
+            | NewField::Worktree
+            | NewField::Checkpoints
+            | NewField::PermissionCards => {
                 let (labels, sel) = option_labels(ns, *f);
                 for (i, off, w) in option_spans(&labels, sel, avail) {
                     let style = if i == sel {
@@ -864,6 +882,7 @@ impl ViewState {
             name: String::new(),
             place: self.new_place.unwrap_or_default(),
             worktree: self.worktree_default,
+            permission_cards: self.permission_cards_default,
             error: None,
             error_hint: None,
             focus: NewField::Kind,
@@ -1036,7 +1055,11 @@ impl ViewState {
         let x = value_x(row);
         let avail = value_avail(row);
         match field {
-            NewField::Kind | NewField::Where | NewField::Worktree | NewField::Checkpoints => {
+            NewField::Kind
+            | NewField::Where
+            | NewField::Worktree
+            | NewField::Checkpoints
+            | NewField::PermissionCards => {
                 let (labels, sel) = option_labels(ns, field);
                 let hit = option_spans(&labels, sel, avail)
                     .into_iter()
@@ -1048,6 +1071,8 @@ impl ViewState {
                         ns.worktree = i == 1;
                     } else if field == NewField::Checkpoints {
                         ns.checkpoints = i == 1;
+                    } else if field == NewField::PermissionCards {
+                        ns.permission_cards = i == 1;
                     } else {
                         ns.place = Place::ALL[i];
                     }
@@ -1191,6 +1216,7 @@ mod tests {
             task: None,
             worktree: false,
             checkpoints: None,
+            permission_cards: false,
         };
         v.remember_new_session(&req, "shell");
         let p = v.prefs();
@@ -1251,7 +1277,7 @@ mod tests {
     fn where_cycles_and_tab_moves_between_fields() {
         let h = tmp();
         let mut v = open("/", h.path());
-        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B");
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B");
         assert_eq!(ns(&mut v).focus, NewField::Where);
         v.edit_new_session(b"\x1b[C");
         assert_eq!(ns(&mut v).place, Place::Below);
@@ -1292,7 +1318,7 @@ mod tests {
         std::fs::create_dir(h.path().join("proj")).unwrap();
         let mut v = open("~/proj/", h.path());
         ns(&mut v).name = "  work ".into();
-        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[C");
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[C");
         let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
             panic!("expected submit");
         };
@@ -1349,6 +1375,40 @@ mod tests {
         assert!(ns(&mut v).worktree);
         v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[D");
         assert!(!ns(&mut v).worktree);
+    }
+
+    #[test]
+    fn the_permission_cards_row_is_off_by_default_and_for_agents_only() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        assert!(ns(&mut v).fields().contains(&NewField::PermissionCards));
+        assert!(!ns(&mut v).permission_cards);
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B");
+        assert_eq!(ns(&mut v).focus, NewField::PermissionCards);
+        v.edit_new_session(b"\x1b[C");
+        assert!(ns(&mut v).permission_cards);
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert!(req.permission_cards);
+        let mut v = open("/", h.path());
+        ns(&mut v).permission_cards = true;
+        v.edit_new_session(b"\x1b[C\x1b[C\x1b[C");
+        assert!(!ns(&mut v).fields().contains(&NewField::PermissionCards));
+        ns(&mut v).command = "echo".into();
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert!(!req.permission_cards);
+    }
+
+    #[test]
+    fn the_permission_cards_row_starts_from_the_configured_default() {
+        let h = tmp();
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.permission_cards_default = true;
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        assert!(ns(&mut v).permission_cards);
     }
 
     #[test]

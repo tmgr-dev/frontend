@@ -8,6 +8,7 @@ use crate::folders;
 use crate::humantime;
 use crate::login;
 use crate::orchestrator;
+use crate::permit_hook;
 use crate::profile::{self, Matcher, Profile, ProfileSet};
 use crate::restore;
 use crate::resume;
@@ -288,6 +289,8 @@ struct Meta {
     no_sandbox: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     checkpoints: Option<u32>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    permission_cards: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -314,6 +317,7 @@ struct RunExtra {
     resume_of: Option<ResumeSeed>,
     fork: Option<ForkSeed>,
     no_sandbox: Option<std::collections::BTreeMap<String, String>>,
+    permission_cards: bool,
 }
 
 #[derive(Clone)]
@@ -524,6 +528,7 @@ impl Session {
             human_s: None,
             no_sandbox: m.no_sandbox,
             checkpoints: self.cp_info(&i),
+            permission_cards: m.permission_cards,
         }
     }
 
@@ -1369,6 +1374,7 @@ fn intent_from_meta(meta: &Meta, profile: &str) -> Result<restore::Intent, ApiEr
         resume_decl: None,
         bypass: meta.permission_mode.as_deref() == Some("bypass"),
         no_sandbox: meta.no_sandbox,
+        permission_cards: meta.permission_cards,
         boot: None,
         pids: Vec::new(),
         created_ms: meta.created_ms,
@@ -1830,6 +1836,12 @@ impl Runner {
                     && req.start_key.is_none()
                     && !req.unattended
                     && req.clones.is_empty();
+                if req.permission_cards && !manual {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "permission_cards is accepted only for a manual run from the tmgr CLI",
+                    ));
+                }
                 self.create_run(req, manual).map(|i| to_json(&i))
             }
             method::ORCHESTRATOR_CREATE => {
@@ -3012,6 +3024,9 @@ impl Runner {
             && prof.id == "claude-code"
             && prof.source == profile::Source::Builtin
             && prof.trust.is_some();
+        let permission_cards = req.permission_cards
+            && prof.source == profile::Source::Builtin
+            && permit_hook::supported_profile(&prof.id);
         let mut extra = RunExtra {
             trust,
             trust_note,
@@ -3034,6 +3049,7 @@ impl Runner {
             },
             fork,
             no_sandbox: req.no_sandbox.as_ref().map(|n| n.env.clone()),
+            permission_cards,
         };
         if plan.restricted {
             extra.egress = Some(
@@ -3064,6 +3080,10 @@ impl Runner {
                     "the agent command line differs from the approved one",
                 ));
             }
+        }
+        if permission_cards && prof.id == "claude-code" {
+            argv.push("--settings".to_string());
+            argv.push(permit_hook::claude_settings(&self.cfg.self_exe));
         }
         if let (false, Some(_), Some(b)) = (resumed, &checked, &req.bundle) {
             let args = prof.prompt_args(&bundle::prompt(b));
@@ -3137,6 +3157,7 @@ impl Runner {
                 argv_sha256: req.argv_sha256,
                 bypass: plan.bypass,
                 no_sandbox,
+                permission_cards,
                 boot: restore::boot_marker(),
                 pids: vec![info.shim_pid, info.child_pid],
                 created_ms: info.created_ms,
@@ -3480,6 +3501,16 @@ impl Runner {
             if let Some(t) = &extra.trust {
                 login::apply_trust(home, t, cwd).map_err(|e| api(ErrorCode::Sandbox, e))?;
             }
+            if extra.permission_cards && prof.is_some_and(|p| p.id == "codex") {
+                let command = permit_hook::hook_command(&self.cfg.self_exe, "codex");
+                let config = fs::canonicalize(home)
+                    .map_err(|e| api(ErrorCode::Sandbox, e.to_string()))?
+                    .join(".codex/config.toml");
+                login::edit_in_home(home, Path::new(".codex/config.toml"), |existing| {
+                    permit_hook::codex_config(existing, &command, &config)
+                })
+                .map_err(|e| api(ErrorCode::Sandbox, e))?;
+            }
             for note in login::apply_secret_files(&secret_files, home)
                 .map_err(|e| api(ErrorCode::Sandbox, e))?
             {
@@ -3604,6 +3635,7 @@ impl Runner {
             boot: restore::boot_marker(),
             no_sandbox: unsandboxed.is_some(),
             checkpoints: None,
+            permission_cards: extra.permission_cards,
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);

@@ -4,6 +4,7 @@
     │ > Task     login  -> TM-30 Login page copy (1/2)                     │    
     │   Name                                                               │    
     │   Worktree  Off   On                                                 │    
+    │   Approvals Off   On                                                 │    
     │   Where     New tab   Right   Below   Replace                        │    
     │   Rewind    Off   On                                                 │    
     │            [ Start ]                                                 │    

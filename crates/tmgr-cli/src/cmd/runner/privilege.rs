@@ -82,6 +82,17 @@ pub fn check_caps(have: &[String], bypass: bool, no_sandbox: bool) -> Result<()>
     Ok(())
 }
 
+pub fn check_cards_cap(have: &[String], permission_cards: bool) -> Result<()> {
+    if permission_cards && !have.iter().any(|h| h == caps::PERMISSION_CARDS_V1) {
+        return Err(Error::new(
+            Kind::Conflict,
+            "the running runner is older than this tmgr and cannot start a run with permission cards",
+        )
+        .hint(format!("{0} runner restart", super::bin())));
+    }
+    Ok(())
+}
+
 pub fn sandbox_env(vars: impl Iterator<Item = (OsString, OsString)>) -> NoSandbox {
     NoSandbox {
         env: vars

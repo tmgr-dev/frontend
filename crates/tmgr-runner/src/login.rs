@@ -953,36 +953,44 @@ pub fn apply_trust(home: &Path, decl: &TrustDecl, cwd: &Path) -> Result<(), Stri
     let cwd = cwd.to_str().ok_or_else(|| {
         "cwd is not valid UTF-8, so its trust entry cannot be written".to_string()
     })?;
-    let rel = Path::new(&decl.file);
+    edit_in_home(home, Path::new(&decl.file), |existing| {
+        merge_trust(existing, decl, cwd)
+    })
+}
+
+pub fn edit_in_home(
+    home: &Path,
+    rel: &Path,
+    edit: impl FnOnce(Option<&[u8]>) -> Result<Vec<u8>, String>,
+) -> Result<(), String> {
+    let name = rel.display();
     let target = home.join(rel);
     let mut file = match open_below_with(home, &target, libc::O_RDWR | libc::O_NONBLOCK) {
         Ok(f) => Some(f),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) if is_symlink_error(&e) => {
             return Err(format!(
-                "{} in the run home is or passes through a symlink, refusing to edit it",
-                decl.file
+                "{name} in the run home is or passes through a symlink, refusing to edit it"
             ))
         }
-        Err(e) => return Err(format!("cannot open {} in the run home: {e}", decl.file)),
+        Err(e) => return Err(format!("cannot open {name} in the run home: {e}")),
     };
     let Some(f) = file.as_mut() else {
-        return write_new_below(home, rel, &merge_trust(None, decl, cwd)?);
+        return write_new_below(home, rel, &edit(None)?);
     };
     let meta = f.metadata().map_err(|e| e.to_string())?;
     if !meta.is_file() || meta.len() > MAX_SEED_BYTES {
         return Err(format!(
-            "{} in the run home is not a regular file within {MAX_SEED_BYTES} bytes",
-            decl.file
+            "{name} in the run home is not a regular file within {MAX_SEED_BYTES} bytes"
         ));
     }
     let mut buf = Vec::new();
     f.read_to_end(&mut buf)
-        .map_err(|e| format!("cannot read {} in the run home: {e}", decl.file))?;
-    let out = merge_trust(Some(&buf), decl, cwd)?;
+        .map_err(|e| format!("cannot read {name} in the run home: {e}"))?;
+    let out = edit(Some(&buf))?;
     f.set_len(0)
         .and_then(|()| std::os::unix::fs::FileExt::write_all_at(f, &out, 0))
-        .map_err(|e| format!("cannot write {} in the run home: {e}", decl.file))
+        .map_err(|e| format!("cannot write {name} in the run home: {e}"))
 }
 
 #[cfg(test)]

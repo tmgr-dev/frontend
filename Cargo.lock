@@ -4158,6 +4158,7 @@ dependencies = [
  "tmgr-ipc",
  "tmgr-usage",
  "toml",
+ "toml_edit 0.22.27",
  "unicode-width",
  "vt100",
  "vte",

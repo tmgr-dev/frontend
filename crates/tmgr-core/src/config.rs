@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SERVER: &str = "https://api.tmgr.dev";
 pub const DEFAULT_PROFILE: &str = "default";
-pub const KEYS: [&str; 25] = [
+pub const KEYS: [&str; 26] = [
     "server",
     "default_workspace",
     "web_url",
@@ -33,6 +33,7 @@ pub const KEYS: [&str; 25] = [
     "attach.worktree",
     "attach.checkpoints",
     "attach.checkpoints_keep",
+    "attach.permission_cards",
 ];
 pub const SUMMARY_MODES: [&str; 3] = ["ask", "always", "never"];
 pub const MIN_SIDEBAR_WIDTH: u16 = 16;
@@ -75,6 +76,8 @@ pub struct AttachConfig {
     pub checkpoints: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoints_keep: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_cards: Option<bool>,
 }
 
 pub fn parse_quiet_hours(value: &str) -> Option<(u16, u16)> {
@@ -197,6 +200,7 @@ impl Config {
             "attach.worktree" => Some(self.attach_worktree().to_string()),
             "attach.checkpoints" => self.attach.checkpoints.map(|b| b.to_string()),
             "attach.checkpoints_keep" => self.attach.checkpoints_keep.map(|n| n.to_string()),
+            "attach.permission_cards" => Some(self.attach_permission_cards().to_string()),
             _ => return Err(unknown_key(key)),
         })
     }
@@ -375,6 +379,13 @@ impl Config {
                 self.attach.worktree = Some(v);
                 Ok(v.to_string())
             }
+            "attach.permission_cards" => {
+                let v = parse_bool(value).ok_or_else(|| {
+                    Error::usage("invalid attach.permission_cards").hint("use true or false")
+                })?;
+                self.attach.permission_cards = Some(v);
+                Ok(v.to_string())
+            }
             "attach.summary" => {
                 let v = value.trim().to_ascii_lowercase();
                 if !SUMMARY_MODES.contains(&v.as_str()) {
@@ -415,6 +426,10 @@ impl Config {
 
     pub fn attach_worktree(&self) -> bool {
         self.attach.worktree.unwrap_or(false)
+    }
+
+    pub fn attach_permission_cards(&self) -> bool {
+        self.attach.permission_cards.unwrap_or(false)
     }
 
     pub fn branch_template(&self) -> &str {
@@ -704,6 +719,21 @@ mod tests {
         assert!(c.set("attach.worktree", "maybe").is_err());
         c.save(tmp.path()).unwrap();
         assert!(Config::load(tmp.path()).unwrap().attach_worktree());
+    }
+
+    #[test]
+    fn attach_permission_cards_is_off_by_default_and_parses_booleans() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut c = Config::load(tmp.path()).unwrap();
+        assert!(!c.attach_permission_cards());
+        assert_eq!(
+            c.get("attach.permission_cards").unwrap().as_deref(),
+            Some("false")
+        );
+        assert_eq!(c.set("attach.permission_cards", "On").unwrap(), "true");
+        assert!(c.set("attach.permission_cards", "maybe").is_err());
+        c.save(tmp.path()).unwrap();
+        assert!(Config::load(tmp.path()).unwrap().attach_permission_cards());
     }
 
     #[test]

@@ -171,6 +171,7 @@ pub(super) fn dialog_for(base: &NewSession, req: &NewRequest) -> NewSession {
     ns.name = req.name.clone().unwrap_or_default();
     ns.place = req.place;
     ns.worktree = req.worktree;
+    ns.permission_cards = req.permission_cards;
     if let SpawnKind::Custom { line } = &req.kind {
         ns.command = line.clone();
     }
@@ -247,14 +248,18 @@ pub(super) fn plan(
     resolve: &dyn Fn(&str) -> Result<String>,
 ) -> std::result::Result<Plan, String> {
     match &req.kind {
-        SpawnKind::Agent { profile } => Ok(Plan::CreateRun(Box::new(run_create_run(
-            profile.clone(),
-            req.folder.clone(),
-            req.name.clone(),
-            None,
-            (cols, rows),
-            false,
-        )))),
+        SpawnKind::Agent { profile } => {
+            let mut run = run_create_run(
+                profile.clone(),
+                req.folder.clone(),
+                req.name.clone(),
+                None,
+                (cols, rows),
+                false,
+            );
+            run.permission_cards = req.permission_cards;
+            Ok(Plan::CreateRun(Box::new(run)))
+        }
         SpawnKind::Shell => Ok(Plan::Create(run_create_req(
             shell_argv(),
             req.folder.clone(),
@@ -473,6 +478,8 @@ pub(super) fn start_session(
     match plan {
         Plan::Create(r) => client.create(r),
         Plan::CreateRun(mut r) => {
+            super::privilege::check_cards_cap(&client.welcome().caps, r.permission_cards)
+                .map_err(|e| fail(&e.message))?;
             let mut made = None;
             if req.worktree {
                 let taken: Vec<String> = client
@@ -509,6 +516,7 @@ mod tests {
             task: None,
             worktree: false,
             checkpoints: None,
+            permission_cards: false,
         }
     }
 

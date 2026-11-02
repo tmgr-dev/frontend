@@ -102,6 +102,8 @@ pub struct RunCreateReq {
     pub clones: Vec<CloneSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub no_sandbox: Option<NoSandbox>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub permission_cards: bool,
 }
 
 /// A manual run outside the OS sandbox (`client: "cli"` only): the agent gets the real home and the caller's environment.
@@ -151,6 +153,7 @@ impl OrchestratorCreateReq {
             unattended: true,
             clones: Vec::new(),
             no_sandbox: None,
+            permission_cards: false,
         }
     }
 }
@@ -288,6 +291,8 @@ pub struct SessionInfo {
     pub no_sandbox: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoints: Option<super::checkpoints::CheckpointStatus>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub permission_cards: bool,
 }
 
 /// Params of `runs.lookup`.

@@ -2716,6 +2716,7 @@ mod tests {
             exe_pin: None,
             argv_sha256: None,
             no_sandbox: None,
+            permission_cards: false,
         }
     }
 
