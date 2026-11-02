@@ -2961,13 +2961,26 @@ impl App {
                 self.dirty = true;
             }
             if let Some((ask, prompt)) = self.worktree_offer.take() {
-                let modal = self.view.new_session.is_some()
+                let shown = self.view.notice.as_deref() == Some(prompt.as_str());
+                let blocked = route(&self.view, &action) != Route::Other
+                    || self.view.new_session.is_some()
                     || self.view.palette.is_some()
                     || self.view.confirm.is_some()
                     || self.view.rename.is_some()
                     || self.view.qmenu.is_some()
-                    || self.view.filter_input();
-                if !modal && self.view.notice.as_deref() == Some(prompt.as_str()) {
+                    || self.view.filter_input()
+                    || self.view.layout_offer.is_some()
+                    || self.view.help
+                    || self.view.copy.is_some()
+                    || self.view.search.is_some()
+                    || self.view.sidebar_focus.is_some();
+                if !shown {
+                    if let Some(h) = self.worktree_held.take() {
+                        self.notify(&h);
+                    }
+                } else if blocked {
+                    self.worktree_offer = Some((ask, prompt));
+                } else {
                     match &action {
                         Action::Forward(d) => {
                             let yes = matches!(d.as_slice(), [b'y' | b'Y']);
@@ -2980,8 +2993,6 @@ impl App {
                         }
                         _ => self.worktree_offer = Some((ask, prompt)),
                     }
-                } else if let Some(h) = self.worktree_held.take() {
-                    self.notify(&h);
                 }
             }
             if self.view.layout_offer.is_some() && self.view.confirm.is_none() {

@@ -1074,14 +1074,17 @@ fn rm_checkout(o: &Opts, path: &str) -> Result<i32> {
             clean(&shown)
         ))
     })?;
-    Ok(emit(o, json!({"worktree": note}), note.clone()))
+    let deleted = note.ends_with(" deleted");
+    emit(o, json!({"worktree": note}), note.clone());
+    Ok(if deleted { 0 } else { 1 })
 }
 
 fn rm(o: &Opts, a: &RmArgs) -> Result<i32> {
-    if a.session.contains('/') {
-        return rm_checkout(o, &a.session);
-    }
-    let (mut c, s) = with_session(&a.session)?;
+    let (mut c, s) = match with_session(&a.session) {
+        Ok(found) => found,
+        Err(_) if a.session.contains('/') => return rm_checkout(o, &a.session),
+        Err(e) => return Err(e),
+    };
     c.remove(&s.id).map_err(rerr)?;
     let others: Vec<String> = c
         .list()

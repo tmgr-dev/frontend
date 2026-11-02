@@ -28,6 +28,7 @@ pub enum Verdict {
         branch: String,
         has_commits: bool,
         ignored: Vec<String>,
+        unreferenced: usize,
     },
     Kept(String),
 }
@@ -231,12 +232,6 @@ fn session_dir(repo: &Path, path: &Path) -> Result<String, String> {
     if !meta.is_dir() || !git_meta.is_dir() {
         return Err(format!("{} is not a plain git checkout", path.display()));
     }
-    let dot_git = path.join(".git");
-    if dot_git.join("commondir").exists()
-        || fs::read_dir(dot_git.join("worktrees")).is_ok_and(|mut d| d.next().is_some())
-    {
-        return Err(format!("{} is not a plain git checkout", path.display()));
-    }
     path.file_name()
         .and_then(|n| n.to_str())
         .map(String::from)
@@ -258,9 +253,22 @@ struct Facts {
     tip: String,
     has_commits: bool,
     ignored: Vec<String>,
+    unreferenced: usize,
 }
 
-const MAX_REFLOG: usize = 200;
+const CHUNK: usize = 100;
+
+fn is_oid(s: &str) -> bool {
+    matches!(s.len(), 40 | 64) && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn all_in_repo(main: &GitEnv, oids: &[&str]) -> bool {
+    oids.chunks(CHUNK).all(|c| {
+        let mut args = vec!["rev-list", "--no-walk"];
+        args.extend_from_slice(c);
+        main.run(&args).is_ok()
+    })
+}
 
 fn gather(repo: &Path, path: &Path) -> Result<Result<Facts, String>, String> {
     let name = session_dir(repo, path)?;
@@ -277,6 +285,12 @@ fn inspect(
     let base = main
         .run(&["rev-parse", "--verify", "--quiet", &base_ref(&name)])
         .map_err(|_| format!("{} was not made by tmgr", shown.display()))?;
+    let dot_git = path.join(".git");
+    if dot_git.join("commondir").exists()
+        || fs::read_dir(dot_git.join("worktrees")).is_ok_and(|mut d| d.next().is_some())
+    {
+        return Ok(Err("it is linked to another repository's git folder".into()));
+    }
     let inner = GitEnv::open(path)?;
     let keys = inner.run(&["config", "--local", "--name-only", "--list"])?;
     if keys
@@ -333,27 +347,32 @@ fn inspect(
     }
     let main_head = main.run(&["rev-parse", "--verify", "HEAD^{commit}"])?;
     let own = format!("refs/heads/{name}");
-    let refs = inner.run(&["for-each-ref", "--format=%(objectname) %(refname)"])?;
-    for line in refs.lines() {
-        let Some((oid, refname)) = line.split_once(' ') else {
+    let listing = inner.run(&[
+        "for-each-ref",
+        "--format=%(objectname)\t%(symref)\t%(refname)",
+    ])?;
+    let mut ref_oids: Vec<(String, String)> = Vec::new();
+    for line in listing.lines() {
+        let mut f = line.splitn(3, '\t');
+        let (Some(oid), Some(symref), Some(refname)) = (f.next(), f.next(), f.next()) else {
             continue;
         };
-        if refname == own || refname.ends_with("/HEAD") {
+        if refname == own || !symref.is_empty() || !is_oid(oid) {
             continue;
         }
-        let mirrored = match refname.strip_prefix("refs/remotes/origin/") {
-            Some(b) => format!("refs/heads/{b}"),
-            None => refname.to_string(),
-        };
-        let same = main
-            .run(&["rev-parse", "--verify", "--quiet", &mirrored])
-            .is_ok_and(|o| o == oid);
-        let merged = main.succeeds(&["merge-base", "--is-ancestor", oid, &main_head]);
-        if !same && !merged {
-            return Ok(Err(format!(
-                "{refname} is not in the repository or merged into the current branch"
-            )));
-        }
+        ref_oids.push((oid.to_string(), refname.to_string()));
+    }
+    let mut oids: Vec<&str> = ref_oids.iter().map(|(o, _)| o.as_str()).collect();
+    oids.sort_unstable();
+    oids.dedup();
+    if !all_in_repo(&main, &oids) {
+        let culprit = ref_oids
+            .iter()
+            .find(|(o, _)| !all_in_repo(&main, &[o.as_str()]))
+            .map_or("a ref", |(_, r)| r.as_str());
+        return Ok(Err(format!(
+            "{culprit} points to commits that are not in the repository"
+        )));
     }
     let tip = inner.run(&["rev-parse", "--verify", "HEAD^{commit}"])?;
     let has_commits = tip != base;
@@ -371,29 +390,24 @@ fn inspect(
             )));
         }
     }
-    let reflog = inner
-        .run(&["log", "-g", "--format=%H", "--all"])
-        .unwrap_or_default();
+    let reflog = inner.run(&["log", "-g", "--format=%H", "--all"])?;
     let mut shas: Vec<&str> = reflog.lines().collect();
+    if shas.iter().any(|s| !is_oid(s)) {
+        return Ok(Err("its reflog could not be read".into()));
+    }
     shas.sort_unstable();
     shas.dedup();
-    if shas.len() > MAX_REFLOG {
-        return Ok(Err("its reflog is too long to check".into()));
-    }
-    if !shas.is_empty() {
-        let mut args = vec!["rev-list", "--no-walk"];
-        args.extend(shas);
-        if main.run(&args).is_err() {
-            return Ok(Err(
-                "its reflog has commits that are not in the repository".into()
-            ));
-        }
-    }
+    let unreferenced = if all_in_repo(&main, &shas) {
+        0
+    } else {
+        shas.iter().filter(|s| !all_in_repo(&main, &[**s])).count()
+    };
     Ok(Ok(Facts {
         name,
         tip,
         has_commits,
         ignored,
+        unreferenced,
     }))
 }
 
@@ -402,6 +416,7 @@ fn verdict(f: Facts) -> Verdict {
         branch: f.name,
         has_commits: f.has_commits,
         ignored: f.ignored,
+        unreferenced: f.unreferenced,
     }
 }
 
@@ -520,6 +535,7 @@ mod tests {
             branch: branch.into(),
             has_commits,
             ignored: Vec::new(),
+            unreferenced: 0,
         }
     }
 
@@ -780,19 +796,20 @@ mod tests {
         let fx = fixture();
         let s = make(&fx, "decoy");
         fs::write(s.path.join(".git/commondir"), "../../proj/.git\n").unwrap();
-        assert!(assess(&fx.repo, &s.path).is_err());
+        assert!(kept(assess(&fx.repo, &s.path).unwrap()).contains("linked"));
         assert!(s.path.exists());
     }
 
     #[test]
-    fn work_dropped_from_every_ref_is_found_in_the_reflog() {
+    fn work_dropped_from_every_ref_is_counted_in_the_verdict() {
         let fx = fixture();
         let s = make(&fx, "lost");
         commit(&s.path, "gone.txt");
         git(&s.path, &["reset", "--hard", &s.base]);
-        let w = kept(assess(&fx.repo, &s.path).unwrap());
-        assert!(w.contains("reflog"), "{w}");
-        assert!(s.path.exists());
+        let Verdict::Removable { unreferenced, .. } = assess(&fx.repo, &s.path).unwrap() else {
+            panic!("expected removable");
+        };
+        assert_eq!(unreferenced, 1);
     }
 
     #[test]
@@ -804,6 +821,23 @@ mod tests {
         git(&fx.repo, &["checkout", "-q", "main"]);
         let s = make(&fx, "calm");
         git(&fx.repo, &["checkout", "-q", "other"]);
+        assert!(matches!(
+            assess(&fx.repo, &s.path).unwrap(),
+            Verdict::Removable { .. }
+        ));
+    }
+
+    #[test]
+    fn a_branch_that_moved_or_vanished_in_main_after_the_start_does_not_block_removal() {
+        let fx = fixture();
+        git(&fx.repo, &["checkout", "-q", "-b", "feat"]);
+        commit(&fx.repo, "f.txt");
+        git(&fx.repo, &["checkout", "-q", "main"]);
+        let s = make(&fx, "late");
+        git(&fx.repo, &["checkout", "-q", "feat"]);
+        git(&fx.repo, &["commit", "--amend", "-m", "amended"]);
+        git(&fx.repo, &["checkout", "-q", "main"]);
+        git(&fx.repo, &["branch", "-D", "feat"]);
         assert!(matches!(
             assess(&fx.repo, &s.path).unwrap(),
             Verdict::Removable { .. }

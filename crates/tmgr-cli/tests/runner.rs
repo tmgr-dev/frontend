@@ -1908,7 +1908,7 @@ fn worktree_session_can_commit_in_its_checkout_and_rm_keeps_unmerged_work() {
     let env = Env::new();
     worktree_agent(
         &env,
-        "echo x > made.txt\ngit add made.txt\ngit -c user.name=a -c user.email=a@example.com commit -q -m made\n",
+        "exec 2>err.log\necho x > made.txt\ngit add made.txt\ngit -c user.name=a -c user.email=a@example.com commit -q -m made && rm -f err.log\n",
     );
     git_repo(&env.proj);
     if !sandbox_usable() {
@@ -1932,7 +1932,12 @@ fn worktree_session_can_commit_in_its_checkout_and_rm_keeps_unmerged_work() {
         .args(["log", "--format=%s", "-1"])
         .output()
         .unwrap();
-    assert_eq!(String::from_utf8_lossy(&log.stdout).trim(), "made");
+    assert_eq!(
+        String::from_utf8_lossy(&log.stdout).trim(),
+        "made",
+        "{}",
+        fs::read_to_string(wt.join("err.log")).unwrap_or_default()
+    );
     let rm = env.tmgr(&["rm", &id, "--json"]);
     assert!(rm.status.success(), "{}", out_text(&rm));
     let note = json_of(&rm)["data"]["worktree"]
@@ -1984,7 +1989,7 @@ fn rm_accepts_the_path_of_a_checkout_whose_session_is_gone() {
     let _ = env.tmgr(&["rm", &id]);
     let wt = env.tmp.path().join("p-worktrees/eps");
     let by_path = env.tmgr(&["rm", wt.to_str().unwrap()]);
-    assert!(by_path.status.success(), "{}", out_text(&by_path));
+    assert_eq!(by_path.status.code(), Some(1), "{}", out_text(&by_path));
     assert!(
         out_text(&by_path).contains("can be deleted"),
         "{}",

@@ -110,13 +110,14 @@ fn plan_removal_with(
     if let Some(why) = in_use(&path, others, probe) {
         return kept(&why);
     }
-    let (branch, has_commits, ignored) = match sessionwt::assess(&repo, &path) {
+    let (branch, has_commits, ignored, unreferenced) = match sessionwt::assess(&repo, &path) {
         Ok(sessionwt::Verdict::Kept(why)) => return kept(&why),
         Ok(sessionwt::Verdict::Removable {
             branch,
             has_commits,
             ignored,
-        }) => (branch, has_commits, ignored),
+            unreferenced,
+        }) => (branch, has_commits, ignored, unreferenced),
         Err(e) => return kept(&e),
     };
     let keeps = if has_commits {
@@ -139,8 +140,13 @@ fn plan_removal_with(
             shown.join(", ")
         )
     };
+    let dropped = if unreferenced > 0 {
+        format!("; {unreferenced} commit(s) that only the reflog remembers are lost")
+    } else {
+        String::new()
+    };
     let question = format!(
-        "Delete the worktree {} ({keeps}{lost})?",
+        "Delete the worktree {} ({keeps}{lost}{dropped})?",
         clean(&path.display().to_string())
     );
     Some(Removal::Ask(Ask {

@@ -480,7 +480,7 @@ pub struct RenameArgs {
 
 #[derive(Args)]
 pub struct RmArgs {
-    /// Session id or name
+    /// Session id or name, or the folder of a `run --worktree` checkout whose session is gone
     pub session: String,
 }
 
