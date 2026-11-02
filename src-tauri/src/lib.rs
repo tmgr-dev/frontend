@@ -11,13 +11,15 @@ mod local_db;
 mod local_export;
 mod local_files;
 mod local_move;
-mod local_identity;
+#[doc(hidden)]
+pub mod local_identity;
 mod local_profile;
 mod local_watch;
 mod local_workspaces;
 mod plugin_catalog;
 mod persona_cache;
-mod persona_llm;
+#[doc(hidden)]
+pub mod persona_llm;
 mod plugin_dev;
 mod plugin_files;
 mod plugin_market;
