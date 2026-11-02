@@ -537,11 +537,13 @@ mod tests {
     }
 
     fn go(dir: &Path, now: u64, fake: &Rc<Fake>) -> FlushReport {
-        flush_waiting(dir, now, Duration::from_secs(10), &|| {
+        let report = flush_waiting(dir, now, Duration::from_secs(10), &|| {
             fake.connects.set(fake.connects.get() + 1);
             Ok(Box::new(fake.clone()) as Box<dyn Server>)
         })
-        .unwrap()
+        .unwrap();
+        assert!(!report.busy);
+        report
     }
 
     fn go_now(dir: &Path, now: u64, fake: &Rc<Fake>) -> FlushReport {
