@@ -337,7 +337,13 @@ mod tests {
     }
 
     fn hint(dir: &Path, content: &str) {
-        std::fs::write(dir.join("cloud-identity.json"), content).unwrap();
+        let path = dir.join("cloud-identity.json");
+        std::fs::write(&path, content).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
     }
 
     fn hinted(content: &str) -> (i64, String) {
@@ -425,6 +431,7 @@ mod tests {
         std::fs::remove_file(&link).unwrap();
 
         std::fs::copy(&real, &link).unwrap();
+        std::fs::set_permissions(&link, std::fs::Permissions::from_mode(0o600)).unwrap();
         assert_eq!(identity(&root, None).id, 5);
         for mode in [0o666, 0o662, 0o620] {
             std::fs::set_permissions(&link, std::fs::Permissions::from_mode(mode)).unwrap();
