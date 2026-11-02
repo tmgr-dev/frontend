@@ -475,6 +475,7 @@
 																		"
 																	>
 																		<button
+																			key="quick-add"
 																			type="button"
 																			class="board-add-task mx-1 mt-1 flex w-[calc(100%-0.5rem)] items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
 																			@click="startCreatingTask(column)"
@@ -492,7 +493,10 @@
 																			creatingTaskColumnId === column.status.id
 																		"
 																	>
-																		<div class="shrink-0 px-1 pt-1 pb-1">
+																		<div
+																			key="quick-add-input"
+																			class="shrink-0 px-1 pt-1 pb-1"
+																		>
 																			<div class="flex flex-col gap-2">
 																				<input
 																					v-model="newTaskTitle"
