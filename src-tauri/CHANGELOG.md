@@ -3,6 +3,14 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.83 — 2026-11-02
+
+- Asking a persona: an answer that stops at the tool call limit, an empty answer, or one the server cut off now shows a message instead of ending silently, and the run is no longer recorded as a success.
+- Asking a persona: cancelling is recorded as cancelled, and closing the task window stops the question.
+- Asking a persona: errors from the AI server (including its own message) are shown, and non-streaming replies work.
+- Local-only mode: the default local persona is created when you open a task, so Ask persona no longer waits for a visit to Settings.
+- AI provider settings: base URLs with a query string, a fragment, spaces or a full chat-completions path work.
+
 ## 0.9.82 — 2026-11-02
 
 - AI provider settings: when your account has not reached the desktop app yet, the message now says so and what to do, instead of blaming another account. The base URL and model can still be saved in that state; the API key is left alone.
