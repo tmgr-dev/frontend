@@ -52,6 +52,8 @@ tmgr run
   model kind=text required=false default=- sensitive=false positional=false
   cwd kind=path required=false default=- sensitive=false positional=false
   name kind=text required=false default=- sensitive=false positional=false
+  worktree kind=bool required=false default=false sensitive=false positional=false
+  no_worktree kind=bool required=false default=false sensitive=false positional=false
   no_attach kind=bool required=false default=false sensitive=false positional=false
   trust kind=bool required=false default=false sensitive=false positional=false
   mode kind=select(ask|accept-edits|plan|bypass) required=false default=- sensitive=false positional=false
