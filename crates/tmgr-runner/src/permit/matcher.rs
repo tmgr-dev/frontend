@@ -78,6 +78,8 @@ fn match_rows(text: &str, rows: &[String]) -> bool {
     p == t.len()
 }
 
+const MAX_TIP_ROWS: usize = 3;
+
 fn command_matches(
     rows: &[String],
     reason: Option<&str>,
@@ -91,18 +93,28 @@ fn command_matches(
         return Err("shown command differs from the hook command");
     }
     let desc = h.description.as_deref().filter(|d| !d.trim().is_empty());
-    match (reason, desc) {
-        (None, None) => Ok(()),
-        (Some(r), Some(d)) if clean(d) => {
-            let rr: Vec<String> = r.lines().map(String::from).collect();
-            if match_rows(d, &rr) {
-                Ok(())
-            } else {
-                Err("shown description differs from the hook")
-            }
-        }
-        _ => Err("shown description differs from the hook"),
+    if description_matches(reason, desc) {
+        Ok(())
+    } else {
+        Err("shown description differs from the hook")
     }
+}
+
+fn description_matches(reason: Option<&str>, desc: Option<&str>) -> bool {
+    let rows: Vec<String> = reason.unwrap_or("").lines().map(String::from).collect();
+    let tip = rows
+        .first()
+        .is_some_and(|r| r.trim_start().starts_with("Tip: "));
+    let skips = if tip {
+        0..=rows.len().min(MAX_TIP_ROWS)
+    } else {
+        0..=0
+    };
+    skips.into_iter().any(|skip| match (&rows[skip..], desc) {
+        ([], None) => skip <= 1,
+        (rest, Some(d)) if !rest.is_empty() => clean(d) && match_rows(d, rest),
+        _ => false,
+    })
 }
 
 fn write_matches(shown: &str, preview: &[String], h: &HookEvent) -> Result<(), &'static str> {

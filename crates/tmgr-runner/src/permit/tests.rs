@@ -1,6 +1,7 @@
 use super::*;
 
 const CLAUDE_BASH: &str = include_str!("../../profiles/screens/claude-bash-approval.txt");
+const CLAUDE_BASH_TIP: &str = include_str!("../../profiles/screens/claude-bash-tip-approval.txt");
 const CLAUDE_WITHHELD: &str = include_str!("../../profiles/screens/claude-long-withheld.txt");
 const CLAUDE_WRITE: &str = include_str!("../../profiles/screens/claude-write-approval.txt");
 const CLAUDE_WRITE_OUT: &str =
@@ -753,4 +754,26 @@ fn fingerprint_length_prefix_prevents_field_shifting() {
     let mut b = a.clone();
     b.id = "c".into();
     assert_ne!(fingerprint("ab", &d, &a), fingerprint("abb", &d, &b));
+}
+
+#[test]
+fn a_tip_row_above_the_description_is_tolerated_and_no_is_the_last_option() {
+    let d = parse(Agent::Claude, CLAUDE_BASH_TIP);
+    let h = bash_hook(Agent::Claude, "touch hello.txt; ls -la", Some("run it"));
+    assert_eq!(verdict(&d, Some(&h)), Verdict::Approvable);
+    assert_eq!(key_for(&d, Some(&h), Choice::Yes), Some(b"1".to_vec()));
+    assert_eq!(key_for(&d, Some(&h), Choice::No), Some(b"4".to_vec()));
+    assert_eq!(key_for(&d, Some(&h), Choice::Always), None);
+}
+
+#[test]
+fn a_tip_row_does_not_excuse_a_different_description_or_command() {
+    let d = parse(Agent::Claude, CLAUDE_BASH_TIP);
+    for h in [
+        bash_hook(Agent::Claude, "touch hello.txt; ls -la", Some("other")),
+        bash_hook(Agent::Claude, "touch hello.txt; ls -la", None),
+        bash_hook(Agent::Claude, "touch hello.txt; ls -lb", Some("run it")),
+    ] {
+        assert!(matches!(verdict(&d, Some(&h)), Verdict::ViewOnly(_)));
+    }
 }

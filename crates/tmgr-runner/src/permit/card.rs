@@ -118,6 +118,9 @@ impl Eval {
     }
 
     pub fn reason(&self) -> Option<String> {
+        if let Some(h) = self.approved_hook() {
+            return h.description.as_deref().map(clean_text);
+        }
         match &self.dialog.body {
             DialogBody::Command { reason, .. } => reason.as_deref().map(clean_text),
             _ => None,
