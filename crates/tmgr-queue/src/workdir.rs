@@ -652,6 +652,20 @@ pub(crate) fn open_beneath(
     at(dir.as_raw_fd(), last.as_bytes(), last_flags)
 }
 
+pub(crate) fn unlink_beneath(root: &Path, rel: &str) -> bool {
+    use std::os::fd::AsRawFd;
+    let Some((parent, name)) = rel.rsplit_once('/') else {
+        return false;
+    };
+    let Some(dir) = open_beneath(root, parent, libc::O_DIRECTORY) else {
+        return false;
+    };
+    let Ok(name) = std::ffi::CString::new(name) else {
+        return false;
+    };
+    unsafe { libc::unlinkat(dir.as_raw_fd(), name.as_ptr(), 0) == 0 }
+}
+
 pub(crate) fn open_in(
     dir: &std::fs::File,
     name: &std::ffi::OsStr,
@@ -1327,6 +1341,48 @@ mod tests {
         std::fs::rename(&objects, root.join("moved-objects")).unwrap();
         std::os::unix::fs::symlink(root.join("moved-objects"), &objects).unwrap();
         assert!(import_branch(&r, &dest, "tm-2-fix").is_err());
+    }
+
+    #[test]
+    fn a_lead_squashes_imported_worker_commits_through_alternates_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let r = repo.to_string_lossy().into_owned();
+        let base = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        let team = clone_dir(&r, "q_team").unwrap();
+        let lead = lead_dir(&team);
+        let mut tips = Vec::new();
+        for k in 1..=2u8 {
+            let w = worker_dir(&team, k);
+            let branch = worker_branch("q_team", k);
+            GitClone
+                .prepare_member(&r, "q_team", &w.to_string_lossy(), &branch)
+                .unwrap();
+            commit_file(&w, &format!("w{k}.txt"));
+            commit_file(&w, &format!("w{k}b.txt"));
+            tips.push(import_branch(&r, &w, &branch).unwrap());
+        }
+        GitClone
+            .prepare_member(&r, "q_team", &lead.to_string_lossy(), "queue/q_team")
+            .unwrap();
+        for (k, tip) in tips.iter().enumerate() {
+            run_git(&lead, &["merge", "--squash", tip]);
+            run_git(&lead, &["commit", "-q", "-m", &format!("worker {}", k + 1)]);
+        }
+        for f in ["w1.txt", "w1b.txt", "w2.txt", "w2b.txt"] {
+            assert!(lead.join(f).is_file(), "{f}");
+        }
+        let head = git(Some(&lead), &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(history_facts(&lead, &base, &head).unwrap(), (true, 0));
+        let count = git(
+            Some(&lead),
+            &["rev-list", "--count", &format!("{base}..{head}")],
+        )
+        .unwrap();
+        assert_eq!(count, "2");
     }
 
     #[test]
