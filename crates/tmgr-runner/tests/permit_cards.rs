@@ -34,6 +34,7 @@ impl Fx {
             .prefix("pc")
             .tempdir_in("/tmp")
             .unwrap();
+        fs::set_permissions(tmp.path(), fs::Permissions::from_mode(0o700)).unwrap();
         let base = fs::canonicalize(tmp.path()).unwrap();
         let dir = |name: &str| {
             let p = base.join(name);
