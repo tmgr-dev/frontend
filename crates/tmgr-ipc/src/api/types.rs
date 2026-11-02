@@ -286,6 +286,8 @@ pub struct SessionInfo {
     pub human_s: Option<u64>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub no_sandbox: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoints: Option<super::checkpoints::CheckpointStatus>,
 }
 
 /// Params of `runs.lookup`.

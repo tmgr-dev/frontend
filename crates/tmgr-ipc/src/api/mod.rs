@@ -8,6 +8,7 @@
 
 mod autopilot;
 mod bundle;
+mod checkpoints;
 mod error;
 pub mod policy;
 mod screen;
@@ -16,6 +17,7 @@ mod worklog;
 
 pub use autopilot::*;
 pub use bundle::*;
+pub use checkpoints::*;
 pub use error::ErrorCode;
 pub use screen::*;
 pub use types::*;
@@ -59,8 +61,9 @@ pub mod caps {
     pub const SESSIONS_FORK_V1: &str = "sessions_fork.v1";
     pub const MANUAL_BYPASS_V1: &str = "manual_bypass.v1";
     pub const NO_SANDBOX_V1: &str = "no_sandbox.v1";
+    pub const CHECKPOINTS_V1: &str = "checkpoints.v1";
 
-    pub const ALL: [&str; 32] = [
+    pub const ALL: [&str; 33] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -93,6 +96,7 @@ pub mod caps {
         SESSIONS_FORK_V1,
         MANUAL_BYPASS_V1,
         NO_SANDBOX_V1,
+        CHECKPOINTS_V1,
     ];
 }
 
@@ -127,6 +131,10 @@ pub mod method {
     pub const AUTOPILOT_CONTROL: &str = "autopilot.control";
     pub const AUTOPILOT_LOG: &str = "autopilot.log";
     pub const ORCHESTRATOR_CREATE: &str = "orchestrator.create";
+    pub const CHECKPOINTS_ENABLE: &str = "checkpoints.enable";
+    pub const CHECKPOINTS_LIST: &str = "checkpoints.list";
+    pub const CHECKPOINTS_DIFF: &str = "checkpoints.diff";
+    pub const CHECKPOINTS_RESTORE: &str = "checkpoints.restore";
 }
 
 pub mod limits {

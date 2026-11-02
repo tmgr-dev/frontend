@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SERVER: &str = "https://api.tmgr.dev";
 pub const DEFAULT_PROFILE: &str = "default";
-pub const KEYS: [&str; 23] = [
+pub const KEYS: [&str; 25] = [
     "server",
     "default_workspace",
     "web_url",
@@ -31,6 +31,8 @@ pub const KEYS: [&str; 23] = [
     "attach.push.debounce",
     "attach.copy.clean",
     "attach.worktree",
+    "attach.checkpoints",
+    "attach.checkpoints_keep",
 ];
 pub const SUMMARY_MODES: [&str; 3] = ["ask", "always", "never"];
 pub const MIN_SIDEBAR_WIDTH: u16 = 16;
@@ -69,6 +71,9 @@ pub struct AttachConfig {
     pub copy_clean: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<bool>,
+    pub checkpoints: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoints_keep: Option<u32>,
 }
 
 pub fn parse_quiet_hours(value: &str) -> Option<(u16, u16)> {
@@ -189,6 +194,8 @@ impl Config {
             "attach.push.debounce" => self.attach.push_debounce.map(|m| m.to_string()),
             "attach.copy.clean" => Some(self.attach_copy_clean().to_string()),
             "attach.worktree" => Some(self.attach_worktree().to_string()),
+            "attach.checkpoints" => self.attach.checkpoints.map(|b| b.to_string()),
+            "attach.checkpoints_keep" => self.attach.checkpoints_keep.map(|n| n.to_string()),
             _ => return Err(unknown_key(key)),
         })
     }
@@ -332,6 +339,23 @@ impl Config {
                 })?;
                 self.attach.push_quiet = Some(v.clone());
                 Ok(v)
+            }
+            "attach.checkpoints" => {
+                let v = v.parse::<bool>().map_err(|_| {
+                    Error::usage("invalid attach.checkpoints").hint("use true or false")
+                })?;
+                self.attach.checkpoints = Some(v);
+            }
+            "attach.checkpoints_keep" => {
+                let n = v
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|n| (3..=1000).contains(n))
+                    .ok_or_else(|| {
+                        Error::usage("invalid attach.checkpoints_keep")
+                            .hint("a number from 3 to 1000")
+                    })?;
+                self.attach.checkpoints_keep = Some(n);
             }
             "attach.copy.clean" => {
                 let v = parse_bool(value).ok_or_else(|| {

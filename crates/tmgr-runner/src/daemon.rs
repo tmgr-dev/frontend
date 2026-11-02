@@ -518,6 +518,7 @@ impl Session {
             resumed_from: m.resumed_from.clone(),
             human_s: None,
             no_sandbox: m.no_sandbox,
+            checkpoints: None,
         }
     }
 

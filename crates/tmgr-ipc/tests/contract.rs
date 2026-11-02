@@ -158,6 +158,7 @@ fn session_info() -> SessionInfo {
         resumed_from: None,
         human_s: None,
         no_sandbox: false,
+        checkpoints: None,
     }
 }
 
@@ -604,6 +605,7 @@ fn method_params_and_results() {
             resumed_from: None,
             human_s: None,
             no_sandbox: false,
+            checkpoints: None,
         },
     );
     golden(
@@ -831,6 +833,23 @@ fn error_codes_use_todays_strings_and_keep_unknown_ones() {
 }
 
 #[test]
+fn checkpoint_types_round_trip_and_off_sessions_stay_unchanged() {
+    let item =
+        json!({"n": 7, "kind": "before_restore", "turn": 5, "files": 3, "skipped": 0, "at_ms": 12});
+    let parsed: CheckpointItem = serde_json::from_value(item.clone()).unwrap();
+    assert_eq!(parsed.kind, CheckpointKind::BeforeRestore);
+    assert_eq!(serde_json::to_value(&parsed).unwrap(), item);
+    let params: CheckpointDiffParams = serde_json::from_value(json!({"id": "s", "n": 1})).unwrap();
+    assert_eq!(params.against, DiffAgainst::Previous);
+    let mut session = serde_json::to_value(session_info()).unwrap();
+    assert!(session.get("checkpoints").is_none());
+    session["checkpoints"] =
+        json!({"available": false, "note": "not a git repository", "count": 0});
+    let parsed: SessionInfo = serde_json::from_value(session).unwrap();
+    assert!(!parsed.checkpoints.unwrap().available);
+}
+
+#[test]
 fn constants_are_pinned() {
     assert_eq!(PROTO_VERSION, 1);
     assert_eq!(
@@ -867,7 +886,8 @@ fn constants_are_pinned() {
             "human_time.v1",
             "sessions_fork.v1",
             "manual_bypass.v1",
-            "no_sandbox.v1"
+            "no_sandbox.v1",
+            "checkpoints.v1"
         ]
     );
     let methods = [
@@ -959,7 +979,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 32);
+    assert_eq!(w.caps.len(), 33);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);

@@ -4383,6 +4383,7 @@ mod tests {
             resumed_from: None,
             human_s: None,
             no_sandbox: false,
+            checkpoints: None,
         }
     }
 

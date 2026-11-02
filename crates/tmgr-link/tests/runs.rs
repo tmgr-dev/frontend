@@ -99,6 +99,7 @@ fn info(id: &str, req: &RunCreateReq) -> SessionInfo {
         resumed_from: None,
         human_s: None,
         no_sandbox: false,
+        checkpoints: None,
     }
 }
 
@@ -1582,6 +1583,7 @@ fn local(id: &str, edit: impl FnOnce(&mut SessionInfo)) -> SessionInfo {
         resumed_from: None,
         human_s: None,
         no_sandbox: false,
+        checkpoints: None,
     };
     edit(&mut s);
     s

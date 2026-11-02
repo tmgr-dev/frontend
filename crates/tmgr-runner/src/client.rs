@@ -8,10 +8,11 @@ use tmgr_ipc::api::limits::MAX_INPUT;
 use tmgr_ipc::api::{
     method, AttachParams, AutopilotCommand, AutopilotControlParams, AutopilotControlled,
     AutopilotLog, AutopilotLogParams, AutopilotStartParams, AutopilotStarted, AutopilotStatus,
-    CandidateInfo, CreateReq, EventMsg, ForkParams, IdParams, KillParams, LayoutSetParams, Line,
-    LookupParams, OrchestratorCreateReq, RenameParams, RestoredRun, ResumeParams, RunCreateReq,
-    RunStatus, ScreenPush, SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams,
-    Welcome, WorkSummary, CLIENT_CLI,
+    CandidateInfo, CheckpointDiff, CheckpointDiffParams, CheckpointEnableParams, CheckpointList,
+    CheckpointRestoreParams, CheckpointRestored, CreateReq, DiffAgainst, EventMsg, ForkParams,
+    IdParams, KillParams, LayoutSetParams, Line, LookupParams, OrchestratorCreateReq, RenameParams,
+    RestoredRun, ResumeParams, RunCreateReq, RunStatus, ScreenPush, SendParams, SessionInfo,
+    SessionText, Snapshot, StatusInfo, TextParams, Welcome, WorkSummary, CLIENT_CLI,
 };
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};
@@ -261,6 +262,42 @@ impl Client {
     pub fn worklog(&mut self, id: &str) -> io::Result<WorkSummary> {
         let params = IdParams { id: id.into() };
         from_value(self.call(method::SESSIONS_WORKLOG, to_params(&params)?)?)
+    }
+
+    pub fn checkpoints_enable(
+        &mut self,
+        id: &str,
+        keep: Option<u32>,
+    ) -> io::Result<CheckpointList> {
+        let params = CheckpointEnableParams {
+            id: id.into(),
+            keep,
+        };
+        from_value(self.call(method::CHECKPOINTS_ENABLE, to_params(&params)?)?)
+    }
+
+    pub fn checkpoints_list(&mut self, id: &str) -> io::Result<CheckpointList> {
+        let params = IdParams { id: id.into() };
+        from_value(self.call(method::CHECKPOINTS_LIST, to_params(&params)?)?)
+    }
+
+    pub fn checkpoints_diff(
+        &mut self,
+        id: &str,
+        n: u64,
+        against: DiffAgainst,
+    ) -> io::Result<CheckpointDiff> {
+        let params = CheckpointDiffParams {
+            id: id.into(),
+            n,
+            against,
+        };
+        from_value(self.call(method::CHECKPOINTS_DIFF, to_params(&params)?)?)
+    }
+
+    pub fn checkpoints_restore(&mut self, id: &str, n: u64) -> io::Result<CheckpointRestored> {
+        let params = CheckpointRestoreParams { id: id.into(), n };
+        from_value(self.call(method::CHECKPOINTS_RESTORE, to_params(&params)?)?)
     }
 
     pub fn stop(&mut self) -> io::Result<()> {

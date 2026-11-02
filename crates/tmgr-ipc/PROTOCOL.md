@@ -106,6 +106,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `sessions_fork.v1` | `sessions.fork` (section 5, "Forking a Claude Code session") |
 | `manual_bypass.v1` | `permission_mode: "bypass"` without a cloud approval for a manual CLI run (section 5, "Queue capabilities") |
 | `no_sandbox.v1` | `no_sandbox` on `runs.create` and `SessionInfo` (section 5, "Runs without the sandbox") |
+| `checkpoints.v1` | `checkpoints.*`; `checkpoints` on `SessionInfo` (section 5, "Checkpoints") |
 | `permission_mode.v1` | `permission_mode` on `runs.create`, `SessionInfo` and `launch` of a bundle (section 5, "Queue capabilities") |
 | `start_key.v1` | `start_key` on `runs.create`; `runs.lookup` (section 5, "Queue capabilities") |
 | `run_status.v1` | `runs.status` (section 5, "Queue capabilities") |
@@ -169,6 +170,10 @@ missing params) and `internal`.
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
 | `sessions.rename` | `{id, name}` (1 to 64 printable characters, unique among sessions) | `null` | `not_found`, `invalid_params`, `busy` (name taken) | any |
 | `sessions.worklog` | `{id}` | `WorkSummary` | `not_found` | any |
+| `checkpoints.enable` | `{id, keep?}` | `CheckpointList` | `not_found`, `invalid_params` | `cli` |
+| `checkpoints.list` | `{id}` | `CheckpointList` | `not_found` | `cli` |
+| `checkpoints.diff` | `{id, n, against?}` | `CheckpointDiff` | `not_found`, `invalid_params` | `cli` |
+| `checkpoints.restore` | `{id, n}` | `CheckpointRestored` | `not_found`, `busy`, `forbidden` | `cli` |
 | `layout.get` | none | the stored JSON value or `null` | | any |
 | `layout.set` | `{layout}` (any JSON, at most 64 KiB serialized) | `null` | | any |
 | `attach.open` | `AttachParams` | `null`, then pushes start | `not_found` | any |
@@ -624,6 +629,19 @@ Never recorded: terminal output, input, screen content, the text of a question
 or prompt, environment, or file contents. The log survives runner restarts;
 adopting a session does not repeat `created`. A session started before this
 capability has no log and returns an all-zero summary.
+
+### Checkpoints
+
+Capability `checkpoints.v1`, off unless a CLI client calls `checkpoints.enable`. After a turn the
+runner stores the session's working folder as a commit on `refs/tmgr/checkpoints/<id>/<n>`, built
+with plumbing and a temporary index: the user's branch, index and stash are not touched. Ignored
+files are not stored. The runner's own manifest in the session folder decides what exists; a ref
+that disagrees with it is refused.
+
+`checkpoints.restore` answers `busy` while the session, or another session in an overlapping
+folder, is working. It first stores the current state (`before_n`), then only overwrites or
+deletes what that stored state holds byte for byte; anything else is listed in `left_as_is`.
+Link workers and the desktop get `forbidden`: restore is started on this machine, from the CLI.
 
 ## 6. Who may call what
 

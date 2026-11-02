@@ -19,6 +19,8 @@ pub mod autopilot;
 #[cfg(unix)]
 pub mod bundle;
 #[cfg(unix)]
+pub mod checkpoint;
+#[cfg(unix)]
 pub mod client;
 #[cfg(unix)]
 pub mod clone;

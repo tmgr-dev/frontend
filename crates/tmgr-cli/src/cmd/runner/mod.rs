@@ -24,6 +24,7 @@ mod attach_templates;
 mod attach_title;
 mod attach_usage;
 pub(crate) mod bind;
+pub(crate) mod checkpoints;
 pub(crate) mod cloud;
 mod gate;
 mod gc;
