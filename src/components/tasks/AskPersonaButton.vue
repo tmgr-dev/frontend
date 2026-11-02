@@ -1,7 +1,7 @@
 <template>
 	<div
 		v-if="show && enabledPersonas.length"
-		class="mb-3 flex items-center gap-2 text-xs"
+		class="mb-3 flex flex-wrap items-center gap-2 text-xs"
 	>
 		<select
 			v-model="selected"
@@ -21,9 +21,6 @@
 		</button>
 		<template v-else>
 			<span class="text-ink-subtle">Asking…</span>
-			<span v-if="partialText" class="max-w-md truncate text-ink-subtle">{{
-				partialText
-			}}</span>
 			<button
 				type="button"
 				class="rounded-pill border border-line px-3 py-1"
@@ -32,6 +29,12 @@
 				Cancel
 			</button>
 		</template>
+		<div
+			v-if="partialText"
+			class="flex max-h-32 w-full flex-col-reverse overflow-y-auto text-ink-subtle"
+		>
+			<div class="whitespace-pre-wrap">{{ partialText }}</div>
+		</div>
 		<span v-if="error" class="text-red-600 dark:text-red-400">{{ error }}</span>
 	</div>
 </template>

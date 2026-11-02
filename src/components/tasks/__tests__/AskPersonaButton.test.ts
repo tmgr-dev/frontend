@@ -178,3 +178,13 @@ test('a cancel pressed before the chat exists stops the ask quietly', async () =
 	expect(setup.error.value).toBeNull();
 	expect(setup.asking.value).toBe(false);
 });
+
+test('the partial answer has its own scrolling block below the status row', () => {
+	const filename = join(__dirname, '../AskPersonaButton.vue');
+	const { descriptor } = parse(readFileSync(filename, 'utf8'), { filename });
+	const template = descriptor.template!.content;
+	expect(template).toMatch(
+		/<div\s+v-if="partialText"[^>]*flex-col-reverse[^>]*overflow-y-auto[^>]*>\s*<div class="whitespace-pre-wrap">/,
+	);
+	expect(template).not.toContain('truncate');
+});
