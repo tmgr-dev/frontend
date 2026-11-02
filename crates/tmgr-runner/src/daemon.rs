@@ -3756,11 +3756,13 @@ impl Runner {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(log_file);
+        let fd_limit = crate::wire::inherited_fd_limit();
         unsafe {
             shim_cmd.pre_exec(move || {
                 if libc::dup2(src, SHIM_CWD_FD) < 0 {
                     return Err(io::Error::last_os_error());
                 }
+                crate::wire::cloexec_from(SHIM_CWD_FD + 1, fd_limit);
                 Ok(())
             })
         };
@@ -4643,8 +4645,10 @@ pub fn start_background(cfg: &RunnerConfig) -> io::Result<u32> {
         .stdin(Stdio::null())
         .stdout(log_file.try_clone()?)
         .stderr(log_file);
+    let fd_limit = crate::wire::inherited_fd_limit();
     unsafe {
-        cmd.pre_exec(|| {
+        cmd.pre_exec(move || {
+            crate::wire::cloexec_from(3, fd_limit);
             match libc::fork() {
                 -1 => return Err(io::Error::last_os_error()),
                 0 => {}

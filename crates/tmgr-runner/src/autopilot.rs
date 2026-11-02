@@ -266,8 +266,10 @@ impl Inner {
             .stdin(Stdio::null())
             .stdout(out.try_clone().map_err(internal)?)
             .stderr(out);
+        let fd_limit = crate::wire::inherited_fd_limit();
         unsafe {
-            cmd.pre_exec(|| {
+            cmd.pre_exec(move || {
+                crate::wire::cloexec_from(3, fd_limit);
                 libc::setsid();
                 Ok(())
             });

@@ -67,6 +67,23 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 
 pub const SHIM_CWD_FD: i32 = 3;
 
+pub(crate) fn inherited_fd_limit() -> libc::c_int {
+    let mut lim = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) } != 0 {
+        return 1024;
+    }
+    lim.rlim_cur.min(65536) as libc::c_int
+}
+
+pub(crate) fn cloexec_from(first: libc::c_int, limit: libc::c_int) {
+    for fd in first..limit {
+        unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LaunchFile {
     pub argv: Vec<String>,

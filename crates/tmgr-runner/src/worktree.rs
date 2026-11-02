@@ -88,8 +88,10 @@ pub(crate) fn run_bounded(
     max_stderr: usize,
 ) -> Result<Output, String> {
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let fd_limit = crate::wire::inherited_fd_limit();
     unsafe {
-        cmd.pre_exec(|| {
+        cmd.pre_exec(move || {
+            crate::wire::cloexec_from(3, fd_limit);
             if libc::setpgid(0, 0) < 0 {
                 return Err(std::io::Error::last_os_error());
             }
