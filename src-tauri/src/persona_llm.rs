@@ -83,7 +83,11 @@ fn move_local_key_origin(origins: &mut HashMap<String, String>, status: &Migrate
   let Some(origin) = origins.remove(&LOCAL_OWNER_ID.to_string()) else {
     return false;
   };
-  origins.entry(to.to_string()).or_insert(origin);
+  if matches!(status, MigrateStatus::Moved) {
+    origins.insert(to.to_string(), origin);
+  } else {
+    origins.entry(to.to_string()).or_insert(origin);
+  }
   true
 }
 
@@ -689,6 +693,13 @@ mod tests {
     let mut map = origins(&[("-1", "https://a.example:443"), ("7", "https://b.example:443")]);
     assert!(move_local_key_origin(&mut map, &MigrateStatus::Already, 7));
     assert_eq!(map, origins(&[("7", "https://b.example:443")]));
+  }
+
+  #[test]
+  fn a_moved_key_takes_its_own_origin_over_a_stale_account_entry() {
+    let mut map = origins(&[("-1", "https://a.example:443"), ("7", "https://stale.example:443")]);
+    assert!(move_local_key_origin(&mut map, &MigrateStatus::Moved, 7));
+    assert_eq!(map, origins(&[("7", "https://a.example:443")]));
   }
 
   #[test]
