@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 const MAX_REF: usize = 100;
 const MAX_COPY: u64 = 1024 * 1024;
+const DRAIN_AFTER_STOP: usize = 1024 * 1024;
 const HARDENING: [&str; 14] = [
     "-c",
     "core.hooksPath=/dev/null",
@@ -66,14 +67,18 @@ fn drain<R: Read + AsRawFd + Send + 'static>(
     std::thread::spawn(move || {
         let mut buf = Vec::new();
         let mut chunk = [0u8; 8192];
+        let mut after_stop = 0;
         loop {
             let stopping = stop.load(Ordering::SeqCst);
+            if stopping && after_stop >= DRAIN_AFTER_STOP {
+                break;
+            }
             let mut pfd = libc::pollfd {
                 fd: src.as_raw_fd(),
                 events: libc::POLLIN,
                 revents: 0,
             };
-            let ready = unsafe { libc::poll(&mut pfd, 1, 20) };
+            let ready = unsafe { libc::poll(&mut pfd, 1, if stopping { 0 } else { 20 }) };
             if ready == 0 {
                 if stopping {
                     break;
@@ -89,6 +94,9 @@ fn drain<R: Read + AsRawFd + Send + 'static>(
             match src.read(&mut chunk) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
+                    if stopping {
+                        after_stop += n;
+                    }
                     if buf.len() + n > cap {
                         over.store(true, Ordering::SeqCst);
                         break;
@@ -926,6 +934,40 @@ mod tests {
         assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
         assert_eq!(out.stdout, b"hi\n");
         assert_eq!(out.stderr, b"oops\n");
+    }
+
+    #[test]
+    fn run_bounded_returns_when_an_escaped_process_keeps_writing() {
+        let sh = CString::new("/bin/sh").unwrap();
+        let dash_c = CString::new("-c").unwrap();
+        let script = CString::new("while :; do echo 0123456789abcdef; done").unwrap();
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", "exit 0"]);
+        c.stdin(Stdio::null());
+        unsafe {
+            c.pre_exec(move || {
+                if libc::fork() == 0 {
+                    libc::setsid();
+                    let argv = [
+                        sh.as_ptr(),
+                        dash_c.as_ptr(),
+                        script.as_ptr(),
+                        std::ptr::null(),
+                    ];
+                    libc::execv(sh.as_ptr(), argv.as_ptr());
+                    libc::_exit(127);
+                }
+                Ok(())
+            });
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(run_bounded(c, Duration::from_secs(30), 1 << 30, 1024));
+        });
+        let out = rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("run_bounded hung");
+        assert!(out.is_ok(), "{out:?}");
     }
 
     #[test]
