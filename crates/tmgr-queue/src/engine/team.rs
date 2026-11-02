@@ -4,7 +4,7 @@ use crate::paths::Paths;
 use crate::rules::{ProfilePin, Rule};
 use crate::runs::{mode_name, Lookup, RunState, StartRequest, PERMISSION_MODE};
 use crate::state::{self, Member, Pickup, Status, TeamPhase, TeamRequest, TeamState};
-use crate::workdir::{clone_tip, is_sha, open_beneath, worker_branch, worker_dir};
+use crate::workdir::{clone_tip, is_sha, open_beneath, unlink_beneath, worker_branch, worker_dir};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::json;
@@ -97,6 +97,10 @@ pub fn marker_present(cwd: &Path) -> bool {
     open_beneath(cwd, DONE_FILE, libc::O_NONBLOCK)
         .and_then(|f| f.metadata().ok())
         .is_some_and(|m| m.file_type().is_file())
+}
+
+fn clear_marker(cwd: &Path) -> bool {
+    !marker_present(cwd) || (unlink_beneath(cwd, DONE_FILE) && !marker_present(cwd))
 }
 
 fn refused_text(size: u8) -> String {
@@ -534,7 +538,9 @@ fn integrating(
         }
     }
     let text = integrate_text(&tips, &failed);
-    if deps.runs.send(lead_run, &format!("{text}\r")).is_err() {
+    if !clear_marker(Path::new(&p.bundle.launch.cwd))
+        || deps.runs.send(lead_run, &format!("{text}\r")).is_err()
+    {
         return Ok(());
     }
     for (k, sha) in &tips {

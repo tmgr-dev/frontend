@@ -431,6 +431,53 @@ fn a_marker_on_a_solo_pickup_does_nothing_and_on_a_team_only_causes_an_exit() {
 }
 
 #[test]
+fn a_lead_marker_written_before_the_integrate_text_never_ends_the_lead_early() {
+    let fx = team_fx(1);
+    let lead_cwd = pickup(&fx).bundle.launch.cwd;
+    plan(&fx, r#"{"v":1,"workers":[]}"#);
+    marker(&lead_cwd);
+    idle(&fx, "mock-1");
+    fx.pass().unwrap();
+    fx.pass().unwrap();
+    assert_eq!(team(&fx).phase, TeamPhase::Finishing);
+    assert!(
+        fx.runs.sent.borrow().iter().all(|(_, t)| t != "/exit\r"),
+        "the stale marker ended the lead before it merged"
+    );
+    assert!(!team(&fx).lead_exit_sent);
+    assert!(!Path::new(&lead_cwd).join(".tmgr/done").exists());
+    marker(&lead_cwd);
+    fx.pass().unwrap();
+    assert!(team(&fx).lead_exit_sent);
+}
+
+#[test]
+fn clearing_the_lead_marker_never_follows_a_link() {
+    let fx = team_fx(1);
+    let lead_cwd = pickup(&fx).bundle.launch.cwd;
+    plan(&fx, r#"{"v":1,"workers":[]}"#);
+    let outside = Path::new(&fx.repo).parent().unwrap().join("outside-done");
+    std::fs::write(&outside, "keep").unwrap();
+    std::os::unix::fs::symlink(&outside, Path::new(&lead_cwd).join(".tmgr/done")).unwrap();
+    idle(&fx, "mock-1");
+    fx.pass().unwrap();
+    assert_eq!(team(&fx).phase, TeamPhase::Finishing);
+    assert_eq!(std::fs::read_to_string(&outside).unwrap(), "keep");
+
+    let fx = team_fx(1);
+    let lead_cwd = pickup(&fx).bundle.launch.cwd;
+    plan(&fx, r#"{"v":1,"workers":[]}"#);
+    let dir = Path::new(&fx.repo).parent().unwrap().join("outside-dir");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("done"), "keep").unwrap();
+    std::fs::remove_dir_all(Path::new(&lead_cwd).join(".tmgr")).unwrap();
+    std::os::unix::fs::symlink(&dir, Path::new(&lead_cwd).join(".tmgr")).unwrap();
+    idle(&fx, "mock-1");
+    fx.pass().unwrap();
+    assert!(dir.join("done").is_file());
+}
+
+#[test]
 fn a_marker_never_skips_a_failing_publish_gate() {
     let fx = team_fx(1);
     plan(&fx, r#"{"v":1,"workers":[]}"#);
