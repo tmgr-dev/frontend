@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use tmgr_core::approval::{AllowFile, RepoBinding};
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::text::{sanitize_line, truncate_chars};
-use tmgr_ipc::api::StateKind;
+use tmgr_ipc::api::{StateKind, TeamRole};
 use tmgr_queue::clones::plan_clones;
 use tmgr_queue::state::{self, Pickup, Status};
 use tmgr_queue::workdir;
@@ -81,11 +81,21 @@ pub(super) struct CloneFacts {
 }
 
 #[derive(Clone, Debug)]
+pub(super) struct WorkerFacts {
+    pub name: String,
+    pub branch: String,
+    pub base: Option<String>,
+    pub git: std::result::Result<GitFacts, String>,
+    pub imported: std::result::Result<Option<String>, String>,
+}
+
+#[derive(Clone, Debug)]
 pub(super) struct RunFacts {
     pub branch: String,
     pub in_use: Option<String>,
     pub proof: std::result::Result<(), String>,
     pub clones: Vec<CloneFacts>,
+    pub workers: Vec<WorkerFacts>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -165,8 +175,7 @@ fn short(sha: &str) -> &str {
     &sha[..sha.len().min(10)]
 }
 
-fn clean_clone(branch: &str, c: &CloneFacts) -> std::result::Result<PrRef, String> {
-    let g = c.git.as_ref().map_err(|e| e.clone())?;
+fn clean_copy(branch: &str, g: &GitFacts) -> std::result::Result<(), String> {
     if !g.on_branch {
         return Err(format!("HEAD is not on the branch {branch}"));
     }
@@ -192,6 +201,30 @@ fn clean_clone(branch: &str, c: &CloneFacts) -> std::result::Result<PrRef, Strin
             EntryKind::Ignored => {}
         }
     }
+    Ok(())
+}
+
+fn clean_worker(w: &WorkerFacts) -> std::result::Result<(), String> {
+    let g = w.git.as_ref().map_err(|e| e.clone())?;
+    clean_copy(&w.branch, g)?;
+    let imported = w.imported.as_ref().map_err(|e| e.clone())?;
+    let kept = match imported {
+        Some(sha) => *sha == g.head,
+        None => w.base.as_deref() == Some(g.head.as_str()),
+    };
+    if kept {
+        Ok(())
+    } else {
+        Err(format!(
+            "HEAD {} was not brought into the repository by the team run",
+            short(&g.head)
+        ))
+    }
+}
+
+fn clean_clone(branch: &str, c: &CloneFacts) -> std::result::Result<PrRef, String> {
+    let g = c.git.as_ref().map_err(|e| e.clone())?;
+    clean_copy(branch, g)?;
     let list = match &c.prs {
         Prs::Uncertain(why) => return Err(format!("pull request state is uncertain: {why}")),
         Prs::Listed(l) => l,
@@ -232,6 +265,11 @@ pub(super) fn decide(f: &RunFacts) -> Decision {
             Ok(r) => refs.push(r),
             Err(why) if c.name.is_empty() => return Decision::Skip(why),
             Err(why) => return Decision::Skip(format!("clone {}: {why}", c.name)),
+        }
+    }
+    for w in &f.workers {
+        if let Err(why) = clean_worker(w) {
+            return Decision::Skip(format!("worker {}: {why}", w.name));
         }
     }
     Decision::Remove(refs)
@@ -539,6 +577,7 @@ struct Candidate {
     in_use: Option<String>,
     drop_if_gone: bool,
     team_refs: Option<(PathBuf, String)>,
+    team_bases: Vec<(u8, Option<String>)>,
 }
 
 impl Candidate {
@@ -556,6 +595,7 @@ impl Candidate {
             in_use: None,
             drop_if_gone: false,
             team_refs: None,
+            team_bases: Vec::new(),
         }
     }
 }
@@ -696,6 +736,7 @@ fn record_candidate(file: &Path) -> Candidate {
         in_use,
         drop_if_gone: false,
         team_refs: None,
+        team_bases: Vec::new(),
     }
 }
 
@@ -792,10 +833,20 @@ fn pickup_candidate(p: &Pickup) -> Candidate {
     if want != cwd {
         return broken("the recorded folder is not where the queue puts the clone of this pickup");
     }
+    let team_bases = p
+        .team
+        .iter()
+        .flat_map(|t| &t.members)
+        .filter_map(|m| match m.role {
+            TeamRole::Worker(k) => Some((k, m.base.clone())),
+            TeamRole::Lead => None,
+        })
+        .collect();
     Candidate {
         origin: origin(),
         shown: cwd.clone(),
         team_refs: team_dir.is_some().then(|| (anchor.clone(), p.id.clone())),
+
         folder: team_dir.unwrap_or(cwd),
         levels: 2,
         branch: claim.branch.clone(),
@@ -805,6 +856,7 @@ fn pickup_candidate(p: &Pickup) -> Candidate {
         unusable: None,
         in_use: pickup_in_use(p),
         drop_if_gone: p.released,
+        team_bases,
     }
 }
 
@@ -813,7 +865,11 @@ fn real_dir(p: &Path) -> bool {
 }
 
 fn prove_clone(spec: &CloneSpec) -> std::result::Result<(), String> {
-    let git = spec.dir.join(".git");
+    prove_dir(&spec.dir)
+}
+
+fn prove_dir(dir: &Path) -> std::result::Result<(), String> {
+    let git = dir.join(".git");
     if !real_dir(&git) {
         return Err("the clone's .git is not a real folder".into());
     }
@@ -921,11 +977,38 @@ fn gather(c: &Candidate, probe: &Probe, prs: Option<&[Prs]>) -> RunFacts {
             });
         }
     }
+    let mut workers = Vec::new();
+    if let (false, Some((repo, id))) = (clones.is_empty(), &c.team_refs) {
+        for k in 1..=5u8 {
+            let name = format!("w{k}");
+            let dir = workdir::worker_dir(&c.folder, k);
+            if !exists(&dir) {
+                continue;
+            }
+            let branch = workdir::worker_branch(id, k);
+            workers.push(WorkerFacts {
+                name,
+                base: c
+                    .team_bases
+                    .iter()
+                    .find(|(n, _)| *n == k)
+                    .and_then(|(_, b)| b.clone()),
+                git: if real_dir(&dir) {
+                    prove_dir(&dir).and_then(|()| git_facts(&dir, &branch))
+                } else {
+                    Err("the copy is not a real folder".into())
+                },
+                imported: workdir::branch_tip(repo, &branch).map_err(|e| sanitize_line(&e.message)),
+                branch,
+            });
+        }
+    }
     RunFacts {
         branch: c.branch.clone(),
         in_use,
         proof,
         clones,
+        workers,
     }
 }
 
@@ -1243,6 +1326,7 @@ mod tests {
                 git: Ok(git),
                 prs,
             }],
+            workers: Vec::new(),
         }
     }
 
@@ -1570,5 +1654,164 @@ mod tests {
         remove_folder(&team_dir, 2).unwrap();
         assert!(!team_dir.exists());
         assert!(victim.join("keep.txt").exists());
+    }
+
+    fn worker(git: GitFacts, imported: Option<&str>, base: Option<&str>) -> WorkerFacts {
+        WorkerFacts {
+            name: "w1".into(),
+            branch: "queue-team/q_abc/w1".into(),
+            base: base.map(str::to_string),
+            git: Ok(git),
+            imported: Ok(imported.map(str::to_string)),
+        }
+    }
+
+    fn with_workers(workers: Vec<WorkerFacts>) -> RunFacts {
+        RunFacts {
+            workers,
+            ..facts(clean_git(), merged())
+        }
+    }
+
+    #[test]
+    fn a_worker_copy_with_changes_keeps_the_team_folder() {
+        let mut dirty = clean_git();
+        dirty.entries = vec![entry(EntryKind::Tracked, "a.rs")];
+        let got = skip_of(&with_workers(vec![worker(dirty, Some(HEAD), None)]));
+        assert!(got.contains("worker w1") && got.contains("a.rs"), "{got}");
+        let mut untracked = clean_git();
+        untracked.entries = vec![entry(EntryKind::Untracked, "n.txt")];
+        let got = skip_of(&with_workers(vec![worker(untracked, Some(HEAD), None)]));
+        assert!(got.contains("worker w1") && got.contains("n.txt"), "{got}");
+    }
+
+    #[test]
+    fn a_worker_head_the_run_did_not_bring_in_keeps_the_team_folder() {
+        let other = "b".repeat(40);
+        for (imported, base) in [
+            (Some(other.as_str()), None),
+            (None, None),
+            (None, Some(other.as_str())),
+        ] {
+            let got = skip_of(&with_workers(vec![worker(clean_git(), imported, base)]));
+            assert!(
+                got.contains("worker w1") && got.contains("not brought"),
+                "{got}"
+            );
+        }
+    }
+
+    #[test]
+    fn clean_imported_workers_leave_the_team_folder_removable() {
+        let f = with_workers(vec![
+            worker(clean_git(), Some(HEAD), None),
+            worker(clean_git(), None, Some(HEAD)),
+        ]);
+        assert!(matches!(decide(&f), Decision::Remove(_)));
+        assert!(matches!(
+            decide(&facts(clean_git(), merged())),
+            Decision::Remove(_)
+        ));
+    }
+
+    #[test]
+    fn a_failed_worker_check_keeps_the_team_folder() {
+        let mut w = worker(clean_git(), Some(HEAD), None);
+        w.git = Err("the copy's local git config runs programs".into());
+        assert!(skip_of(&with_workers(vec![w])).contains("worker w1"));
+        let mut w = worker(clean_git(), Some(HEAD), None);
+        w.imported = Err("git rev-parse failed".into());
+        assert!(skip_of(&with_workers(vec![w])).contains("worker w1"));
+    }
+
+    fn sh(dir: &Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("git")
+            .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{args:?}");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    #[test]
+    fn gathered_worker_copies_decide_on_their_own_state_and_the_brought_in_ref() {
+        use tmgr_queue::workdir::{
+            clone_dir, import_branch, lead_dir, worker_branch, worker_dir, GitClone, WorkDirs,
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        sh(&repo, &["init", "-q", "-b", "main"]);
+        sh(&repo, &["commit", "-q", "--allow-empty", "-m", "init"]);
+        let r = repo.to_string_lossy().into_owned();
+        let team = clone_dir(&r, "q_abc").unwrap();
+        let (lead, w1) = (lead_dir(&team), worker_dir(&team, 1));
+        let branch = worker_branch("q_abc", 1);
+        GitClone
+            .prepare_member(&r, "q_abc", &lead.to_string_lossy(), "tmgr/x")
+            .unwrap();
+        GitClone
+            .prepare_member(&r, "q_abc", &w1.to_string_lossy(), &branch)
+            .unwrap();
+        let base = sh(&w1, &["rev-parse", "HEAD"]);
+        let lead_head = sh(&lead, &["rev-parse", "HEAD"]);
+        let candidate = |bases: Vec<(u8, Option<String>)>| Candidate {
+            origin: Origin::Pickup("q_abc".into()),
+            shown: lead.clone(),
+            folder: team.clone(),
+            levels: 2,
+            branch: "tmgr/x".into(),
+            session: None,
+            multi: false,
+            clones: vec![CloneSpec {
+                name: String::new(),
+                dir: lead.clone(),
+                repo: Err("unused".into()),
+                identity: None,
+            }],
+            unusable: None,
+            in_use: None,
+            drop_if_gone: false,
+            team_refs: Some((repo.clone(), "q_abc".into())),
+            team_bases: bases,
+        };
+        let prs = [Prs::Listed(vec![pr(1, "MERGED", &lead_head, false)])];
+        let verdict = |c: &Candidate| decide(&gather(c, &Probe::default(), Some(&prs)));
+        let skip = |c: &Candidate| match verdict(c) {
+            Decision::Skip(s) => s,
+            d => panic!("expected a skip, got {d:?}"),
+        };
+
+        assert!(skip(&candidate(Vec::new())).contains("worker w1"));
+        assert!(matches!(
+            verdict(&candidate(vec![(1, Some(base.clone()))])),
+            Decision::Remove(_)
+        ));
+
+        std::fs::write(w1.join("n.txt"), "x").unwrap();
+        assert!(skip(&candidate(vec![(1, Some(base.clone()))])).contains("n.txt"));
+        sh(&w1, &["add", "n.txt"]);
+        assert!(skip(&candidate(vec![(1, Some(base.clone()))])).contains("n.txt"));
+        sh(&w1, &["commit", "-q", "-m", "work"]);
+
+        let c = candidate(vec![(1, Some(base.clone()))]);
+        assert!(skip(&c).contains("not brought"));
+        import_branch(&r, &w1, &branch).unwrap();
+        assert!(matches!(verdict(&c), Decision::Remove(_)));
+
+        std::fs::write(w1.join("later.txt"), "x").unwrap();
+        assert!(skip(&c).contains("later.txt"));
+        std::fs::remove_file(w1.join("later.txt")).unwrap();
+        sh(&w1, &["commit", "-q", "--allow-empty", "-m", "more"]);
+        assert!(skip(&c).contains("not brought"));
+        import_branch(&r, &w1, &branch).unwrap();
+
+        let outside = root.join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, team.join("w2")).unwrap();
+        assert!(skip(&c).contains("worker w2"));
     }
 }
