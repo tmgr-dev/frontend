@@ -545,6 +545,45 @@ impl Fx {
         self.confirmed(&args, "I AGREE")
     }
 
+    fn claude_rule(&self, max: &str) {
+        let agents = self.tmp.path().join("agents");
+        std::fs::write(
+            agents.join("claude-code.toml"),
+            "id = \"claude-code\"\nname = \"Claude\"\ncommand = [\"/bin/sh\", \"-c\", \"true\", \"agent\"]\n[permission_modes]\nask = [\"--ask\"]\n",
+        )
+        .unwrap();
+        let repo = self.repo();
+        let (code, screen) = self.confirmed(
+            &[
+                "queue",
+                "rules",
+                "add",
+                "team-rule",
+                "--workspace",
+                "local:personal",
+                "--persona",
+                "builder",
+                "--profile",
+                "claude-code",
+                "--repo",
+                repo.to_str().unwrap(),
+                "--project",
+                "WK",
+                "--max-concurrent",
+                max,
+            ],
+            "I AGREE",
+        );
+        assert_eq!(code, 0, "{screen}");
+    }
+
+    fn team_state(&self) -> Value {
+        std::fs::read_to_string(self.cfg().join("queue-state.json"))
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or(Value::Null)
+    }
+
     fn audit_events(&self) -> Vec<Value> {
         std::fs::read_to_string(self.cfg().join("queue-audit.jsonl"))
             .unwrap_or_default()
@@ -1705,3 +1744,195 @@ fn the_tail_is_not_available_as_json() {
         assert_eq!(out.status.code(), Some(2), "{alias}");
     }
 }
+
+fn team_requests(fx: &Fx) -> usize {
+    fx.team_state()["team_requests"]
+        .as_array()
+        .map_or(0, Vec::len)
+}
+
+#[test]
+fn a_team_size_outside_one_to_five_is_refused_before_anything_else() {
+    let fx = Fx::new();
+    fx.task(1, "t", "b");
+    for n in ["0", "6", "300"] {
+        let out = fx.run(&["queue", "add", "WK-1", "--team", n]);
+        assert_eq!(out.status.code(), Some(2), "{n}: {}", text(&out.stderr));
+        assert!(text(&out.stderr).contains("--team is 1 to 5"), "{n}");
+    }
+    let out = fx.run(&["queue", "add", "WK-1"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(text(&out.stderr).contains("needs --team N"));
+    assert_eq!(team_requests(&fx), 0);
+}
+
+#[test]
+fn a_team_cannot_be_requested_inside_an_agent_session() {
+    let fx = Fx::new();
+    fx.task(1, "t", "b");
+    fx.claude_rule("1");
+    for var in ["TMGR_RUN_TOKEN", "TMGR_RUN_ID", "TMGR_SESSION_ID"] {
+        let out = fx
+            .cmd()
+            .env(var, "x")
+            .args(["queue", "add", "WK-1", "--team", "2"])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(5), "{var}");
+        let mut p = fx.pty(&["queue", "add", "WK-1", "--team", "2"], &[(var, "x")]);
+        assert_eq!(p.exit(), 5, "{var} on a terminal: {}", p.text());
+    }
+    assert_eq!(team_requests(&fx), 0);
+}
+
+#[test]
+fn a_team_needs_a_real_terminal_and_never_accepts_yes() {
+    let fx = Fx::new();
+    fx.task(1, "t", "b");
+    fx.claude_rule("1");
+    for args in [
+        vec!["queue", "add", "WK-1", "--team", "2"],
+        vec!["--yes", "queue", "add", "WK-1", "--team", "2"],
+    ] {
+        let out = fx.run(&args);
+        assert_eq!(out.status.code(), Some(10), "{}", text(&out.stderr));
+    }
+    assert_eq!(team_requests(&fx), 0);
+}
+
+#[test]
+fn a_team_is_refused_without_a_matching_rule_and_for_other_profiles() {
+    let fx = Fx::new();
+    fx.task(1, "t", "b");
+    let mut p = fx.pty(
+        &[
+            "--ws",
+            "local:personal",
+            "queue",
+            "add",
+            "WK-1",
+            "--team",
+            "2",
+        ],
+        &[],
+    );
+    assert_eq!(p.exit(), 3, "{}", p.text());
+    assert!(p.text().contains("no queue rule matches"), "{}", p.text());
+    let (code, screen) = fx.add_rule("plain", &[]);
+    assert_eq!(code, 0, "{screen}");
+    let mut p = fx.pty(
+        &[
+            "--ws",
+            "local:personal",
+            "queue",
+            "add",
+            "WK-1",
+            "--team",
+            "2",
+        ],
+        &[],
+    );
+    assert_eq!(p.exit(), 2, "{}", p.text());
+    assert!(p.text().contains("claude-code profile"), "{}", p.text());
+    assert_eq!(team_requests(&fx), 0);
+}
+
+#[test]
+fn the_confirmation_shows_the_agent_count_and_models_and_a_wrong_phrase_records_nothing() {
+    let fx = Fx::new();
+    fx.task(1, "t", "b");
+    fx.claude_rule("3");
+    let events = fx.audit_events().len();
+    let (code, screen) = fx.confirmed(
+        &[
+            "--ws",
+            "local:personal",
+            "queue",
+            "add",
+            "WK-1",
+            "--team",
+            "5",
+        ],
+        "team",
+    );
+    assert_ne!(code, 0, "{screen}");
+    for want in [
+        "max_concurrent 3 x (1 + 5) = 18",
+        "lead sonnet, workers haiku",
+        "come from the rule",
+    ] {
+        assert!(screen.contains(want), "{want}\n{screen}");
+    }
+    assert_eq!(team_requests(&fx), 0);
+    assert_eq!(fx.audit_events().len(), events);
+    let (code, screen) = fx.confirmed(
+        &[
+            "--ws",
+            "local:personal",
+            "queue",
+            "add",
+            "WK-1",
+            "--team",
+            "2",
+            "--mode",
+            "heavy",
+        ],
+        "TEAM",
+    );
+    assert_eq!(code, 0, "{screen}");
+    for want in [
+        "max_concurrent 3 x (1 + 2) = 9",
+        "lead opus, workers sonnet",
+    ] {
+        assert!(screen.contains(want), "{want}\n{screen}");
+    }
+    assert_eq!(team_requests(&fx), 1);
+    assert_eq!(fx.count("team_requested"), 1);
+    let status = fx.json(&["status"]);
+    assert_eq!(status["data"]["team_requests"][0]["workers"], 2);
+    assert_eq!(status["data"]["team_requests"][0]["mode"], "heavy");
+    assert!(status["data"]["audit"]["ok"] == true);
+}
+
+#[test]
+fn help_tells_team_mode_from_permission_mode() {
+    let fx = Fx::new();
+    let add = text(&fx.run(&["queue", "add", "--help"]).stdout);
+    assert!(
+        add.contains("team mode") || add.contains("Team mode"),
+        "{add}"
+    );
+    assert!(add.contains("queue rules add --mode"), "{add}");
+    let rules = text(&fx.run(&["queue", "rules", "add", "--help"]).stdout);
+    assert!(rules.contains("queue add --mode"), "{rules}");
+    assert!(rules.contains("Permission mode"), "{rules}");
+}
+
+#[test]
+fn status_without_a_team_has_no_team_keys_or_lines() {
+    let fx = Fx::new();
+    let (code, screen) = fx.add_rule("builder-backlog", &[]);
+    assert_eq!(code, 0, "{screen}");
+    let data = fx.json(&["status"])["data"].clone();
+    let mut keys: Vec<&String> = data.as_object().unwrap().keys().collect();
+    keys.sort();
+    assert_eq!(
+        keys,
+        [
+            "audit",
+            "background",
+            "enabled",
+            "paused",
+            "pickups",
+            "rules",
+            "tampered"
+        ]
+    );
+    let out = text(&fx.run(&["queue", "status"]).stdout);
+    assert!(!out.contains("Team"), "{out}");
+    let repo = std::fs::canonicalize(fx.repo()).unwrap();
+    let shown = out.replace(repo.to_str().unwrap(), "<repo>");
+    assert_eq!(shown, NO_TEAM_STATUS);
+}
+
+const NO_TEAM_STATUS: &str = "Queue is off.\nBackground loop: not running (the runner is off).\nRules:\n  builder-backlog: local:personal project WK persona builder profile sh-agent repo <repo> max 1 hours any authors human approval needed\nNo open pickups.\n";
