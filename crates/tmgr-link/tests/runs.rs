@@ -8,6 +8,7 @@ use tmgr_ipc::proto::ServerMsg;
 use tmgr_link::attach::{self, Incoming, Outgoing};
 use tmgr_link::audit::Audit;
 use tmgr_link::proto::{self, Channel, Framed, Timed, MAX_FRAME};
+use tmgr_link::registry::Probe;
 use tmgr_link::runner::{AttachRecv, AttachSession, Backend, BackendError, OriginKilled};
 use tmgr_link::scope::Scope;
 use tmgr_link::store::{Leader, Paths, Store};
@@ -2022,6 +2023,75 @@ fn revoking_closes_a_remote_attach() {
     let mut l = live(&w, "laptop", E1, &fake);
     l.call(1, "attach.open", json!({"run": PLAIN, "read_only": true}));
     tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
+    let why = wait_closed(&mut l, PLAIN);
+    assert!(why.contains("no longer trusted"), "{why}");
+    l.finish();
+}
+
+fn own_record(w: &World) -> std::path::PathBuf {
+    w.paths
+        .link_dir()
+        .join("workers")
+        .join(format!("laptop.{}.json", std::process::id()))
+}
+
+#[test]
+fn the_tick_closes_a_remote_attach_when_the_process_query_fails_on_revoke() {
+    let w = world();
+    control(&w, true, false, false);
+    let fake = fleet(true);
+    let mut l = live(&w, "laptop", E1, &fake);
+    l.call(1, "attach.open", json!({"run": PLAIN, "read_only": true}));
+    tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
+    let t = tmgr_link::registry::terminate_where_with(
+        &w.paths,
+        "laptop",
+        Duration::from_millis(50),
+        &|_, _| true,
+        &|_| Probe::Unknown,
+    )
+    .unwrap();
+    assert_eq!(t.signalled, 0);
+    assert!(t.unknown >= 1, "{t:?}");
+    assert!(own_record(&w).exists());
+    let why = wait_closed(&mut l, PLAIN);
+    assert!(why.contains("no longer trusted"), "{why}");
+    l.finish();
+}
+
+#[test]
+fn the_tick_closes_a_remote_attach_when_the_process_query_fails_after_a_scope_change() {
+    let w = world();
+    control(&w, true, false, false);
+    let fake = fleet(true);
+    let mut l = live(&w, "laptop", E1, &fake);
+    l.call(1, "attach.open", json!({"run": PLAIN, "read_only": true}));
+    control(&w, false, false, false);
+    let narrowed = Scope::default();
+    let t = tmgr_link::registry::terminate_where_with(
+        &w.paths,
+        "laptop",
+        Duration::from_millis(50),
+        &|_, a| a.is_some_and(|a| tmgr_link::follower::must_close(&narrowed, a)),
+        &|_| Probe::Unknown,
+    )
+    .unwrap();
+    assert_eq!(t.signalled, 0);
+    assert!(t.unknown >= 1, "{t:?}");
+    assert!(own_record(&w).exists());
+    let why = wait_closed(&mut l, PLAIN);
+    assert!(why.contains("no longer yours"), "{why}");
+    l.finish();
+}
+
+#[test]
+fn the_tick_closes_the_attach_when_the_trust_store_cannot_be_read() {
+    let w = world();
+    control(&w, true, false, false);
+    let fake = fleet(true);
+    let mut l = live(&w, "laptop", E1, &fake);
+    l.call(1, "attach.open", json!({"run": PLAIN, "read_only": true}));
+    std::fs::write(w.paths.links_toml(), b"\x00 not toml").unwrap();
     let why = wait_closed(&mut l, PLAIN);
     assert!(why.contains("no longer trusted"), "{why}");
     l.finish();
