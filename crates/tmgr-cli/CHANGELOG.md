@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Runner sessions no longer keep file descriptors they inherited from the command that started them, so a script or test reading `tmgr` output is not left waiting after `tmgr` exits.
+- A git command that leaves a stray background process behind no longer blocks the runner after the command itself finishes.
+- When a git command fails, the error now includes its exit status.
+- A finished session's background process now exits once its runner folder has been removed.
+
 ## 1.0.65
 
 - Hardening: host `git` and `gh` commands that the runner and `tmgr attach` run in session folders now ignore repository settings that could start other programs. For sandboxed sessions the attach Git panel shows only the branch and says the rest was not read.
