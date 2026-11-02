@@ -299,8 +299,12 @@ export type TaskMoveBody = {
 export const moveTask = async (
 	taskId: number,
 	body: TaskMoveBody,
+	sourceInstanceId?: string,
 ): Promise<{ data: Task; meta?: { renumbered?: boolean } }> => {
-	const { data } = await $axios.post(`tasks/${taskId}/move`, body);
+	const config = sourceInstanceId
+		? { headers: { 'X-Source-Instance-Id': sourceInstanceId } }
+		: {};
+	const { data } = await $axios.post(`tasks/${taskId}/move`, body, config);
 
 	requestCache.invalidate(`task-${taskId}`);
 	requestCache.invalidate(/^tasks-status-/);

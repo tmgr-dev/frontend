@@ -40,6 +40,8 @@ export interface ColumnPaging {
 	complete: boolean;
 	epoch: number;
 	loading: boolean;
+	settled: number;
+	reload?: number;
 	total?: number;
 	totalSeconds?: number;
 	totalOvertimeSeconds?: number;
@@ -83,6 +85,7 @@ export function createColumnPaging(meta: PageMeta | undefined): ColumnPaging {
 		complete: cursor === null,
 		epoch: nextEpoch(),
 		loading: false,
+		settled: 0,
 		total: meta?.total,
 		totalSeconds: meta?.total_seconds,
 		totalOvertimeSeconds: meta?.total_overtime_seconds,
@@ -105,6 +108,11 @@ export function bumpColumnEpochs(
 			column.paging.epoch = nextEpoch();
 	}
 }
+
+const bumpAll = (columns: PagedColumn[]) => {
+	for (const column of columns)
+		if (column.paging) column.paging.epoch = nextEpoch();
+};
 
 const findColumn = <T extends PagedTask>(
 	columns: Array<PagedColumn<T>>,
@@ -180,7 +188,7 @@ export async function loadNextPage<T extends PagedTask>(
 	try {
 		for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
 			const paging = findColumn(getColumns(), statusId)?.paging;
-			if (!paging || paging.complete) return;
+			if (!paging || paging.complete) break;
 			const epoch = paging.epoch;
 			const cursor = paging.cursor;
 			const response = await fetchPage(Number(statusId), cursor, limit);
@@ -191,12 +199,14 @@ export async function loadNextPage<T extends PagedTask>(
 				response,
 				options.pending,
 			);
-			if (result === 'applied') return;
+			if (result === 'applied') break;
 			if (result === 'reset') {
 				await reloadWindow(getColumns, statusId, fetchPage, options);
-				return;
+				break;
 			}
 		}
+		const settled = findColumn(getColumns(), statusId)?.paging;
+		if (settled) settled.settled++;
 	} finally {
 		const paging = findColumn(getColumns(), statusId)?.paging;
 		if (paging) paging.loading = false;
@@ -206,57 +216,62 @@ export async function loadNextPage<T extends PagedTask>(
 
 /**
  * Reload a column's loaded window from the top. The window keeps its size so the
- * board does not jump; a newer reload or own move drops this one.
+ * board does not jump. A newer reload or a replaced column drops this one; an epoch
+ * bump from a move or a realtime event, or a reset from the server, restarts it.
+ * After too many restarts the column is left untouched.
  */
 export async function reloadWindow<T extends PagedTask>(
 	getColumns: () => Array<PagedColumn<T>>,
 	statusId: number | string,
 	fetchPage: FetchPage<T>,
-	options: { limit?: number; pending?: ReadonlySet<number> } = {},
+	options: { limit?: number } = {},
 ): Promise<void> {
 	const column = findColumn(getColumns(), statusId);
 	if (!column?.paging) return;
 	const paging = column.paging;
 	const size = Math.max(column.tasks.length, options.limit ?? BOARD_PAGE_SIZE);
-	const epoch = nextEpoch();
-	paging.epoch = epoch;
-	const incoming: T[] = [];
-	let cursor: string | null = null;
-	let meta: PageMeta | undefined;
-	do {
-		const response: PageResponse<T> = await fetchPage(
-			Number(statusId),
-			cursor,
-			pageLimit(size - incoming.length),
-		);
-		const current = findColumn(getColumns(), statusId)?.paging;
-		if (!current || current.epoch !== epoch) return;
-		if (response.meta?.reset && cursor !== null) {
-			cursor = null;
-			incoming.length = 0;
-			continue;
+	const id = nextEpoch();
+	paging.reload = id;
+	for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+		const epoch = nextEpoch();
+		paging.epoch = epoch;
+		const incoming: T[] = [];
+		let cursor: string | null = null;
+		let meta: PageMeta | undefined;
+		let restart = false;
+		for (;;) {
+			const response: PageResponse<T> = await fetchPage(
+				Number(statusId),
+				cursor,
+				pageLimit(size - incoming.length),
+			);
+			const current = findColumn(getColumns(), statusId)?.paging;
+			if (current !== paging || paging.reload !== id) return;
+			if (paging.epoch !== epoch || response.meta?.reset) {
+				restart = true;
+				break;
+			}
+			incoming.push(...response.data);
+			cursor = response.meta?.next_cursor ?? null;
+			meta ??= response.meta;
+			if (cursor === null || incoming.length >= size) break;
 		}
-		incoming.push(...response.data);
-		cursor = response.meta?.next_cursor ?? null;
-		meta ??= response.meta;
-	} while (cursor !== null && incoming.length < size);
-	const target = findColumn(getColumns(), statusId);
-	if (!target?.paging || target.paging.epoch !== epoch) return;
-	const pending = options.pending ?? new Set<number>();
-	const seen = idsOutside(getColumns() as PagedColumn[], target);
-	const next: T[] = [];
-	for (const task of incoming) {
-		if (seen.has(task.id) || pending.has(task.id)) continue;
-		seen.add(task.id);
-		next.push(task);
-	}
-	for (const task of target.tasks)
-		if (pending.has(task.id) && !next.some((t) => t.id === task.id))
+		if (restart) continue;
+		const target = findColumn(getColumns(), statusId)!;
+		const seen = idsOutside(getColumns() as PagedColumn[], target);
+		const next: T[] = [];
+		for (const task of incoming) {
+			if (seen.has(task.id)) continue;
+			seen.add(task.id);
 			next.push(task);
-	target.tasks.splice(0, target.tasks.length, ...next);
-	target.paging.cursor = cursor;
-	target.paging.complete = cursor === null;
-	applyTotals(target.paging, meta);
+		}
+		target.tasks.splice(0, target.tasks.length, ...next);
+		paging.cursor = cursor;
+		paging.complete = cursor === null;
+		paging.settled++;
+		applyTotals(paging, meta);
+		return;
+	}
 }
 
 export async function loadAllPages<T extends PagedTask>(
@@ -297,21 +312,33 @@ function insertByKey(column: PagedColumn, task: PagedTask) {
 	else column.tasks.splice(index, 0, task);
 }
 
+const isFullTask = (task: PagedTask) => 'title' in task && 'status_id' in task;
+
 /**
  * A foreign `task.updated`: paged columns place the card by its key when the key is
  * inside the loaded window, otherwise the card leaves the window and arrives with its
- * page. A card with a pending own move keeps its local placement.
+ * page. A card with a pending own move keeps its local placement. A full payload
+ * without `order` means a NULL order; a partial one has an unknown key ('reload') and
+ * its target column is reloaded. Every merge bumps the epochs so a page read before
+ * the event cannot land over it.
  */
 export function mergeRealtimeTask(
 	columns: PagedColumn[],
-	task: PagedTask,
+	incoming: PagedTask,
 	pending: ReadonlySet<number> = new Set(),
-): ColumnPatch {
+): ColumnPatch | 'reload' {
+	if (!columns.some((c) => c.paging))
+		return upsertTaskInColumns(columns, incoming);
+	bumpAll(columns);
+	const task =
+		incoming.order === undefined && isFullTask(incoming)
+			? { ...incoming, order: null }
+			: incoming;
 	const target = findColumn(columns, task.status_id);
 	const holder = columns.find((c) => c.tasks.some((t) => t.id === task.id));
-	if (!columns.some((c) => c.paging)) return upsertTaskInColumns(columns, task);
-	if (holder && pending.has(task.id)) {
-		const local = holder.tasks.find((t) => t.id === task.id)!;
+	if (pending.has(task.id)) {
+		const local = holder?.tasks.find((t) => t.id === task.id);
+		if (!local) return 'ignored';
 		Object.assign(local, task, {
 			status_id: local.status_id,
 			order: local.order,
@@ -323,15 +350,14 @@ export function mergeRealtimeTask(
 		removeTaskFromColumns(columns, task.id);
 		return 'removed';
 	}
-	const keyed = target.paging && task.order !== undefined;
-	if (!target.paging || !keyed) {
+	if (!target.paging || task.order === undefined) {
 		if (holder === target) {
 			const index = target.tasks.findIndex((t) => t.id === task.id);
 			target.tasks.splice(index, 1, { ...target.tasks[index], ...task });
 			return 'updated';
 		}
 		if (holder) removeTaskFromColumns(columns, task.id);
-		if (target.paging) return holder ? 'removed' : 'ignored';
+		if (target.paging) return 'reload';
 		target.tasks.unshift(task);
 		return holder ? 'moved' : 'inserted';
 	}
@@ -341,6 +367,76 @@ export function mergeRealtimeTask(
 	insertByKey(target, previous ? { ...previous, ...task } : task);
 	if (!holder) return 'inserted';
 	return holder === target ? 'updated' : 'moved';
+}
+
+export function removeRealtimeTask(
+	columns: PagedColumn[],
+	taskId: number,
+): boolean {
+	bumpAll(columns);
+	return removeTaskFromColumns(columns, taskId);
+}
+
+export function beginOwnMove(
+	columns: PagedColumn[],
+	taskId: number,
+	statusIds: Array<number | string>,
+	pending: Set<number>,
+) {
+	bumpColumnEpochs(columns, statusIds);
+	pending.add(taskId);
+}
+
+export function applyMoveResult<T extends PagedTask>(
+	columns: Array<PagedColumn<T>>,
+	data: T,
+): ColumnPatch | 'reload' {
+	for (const column of columns) {
+		const local = column.tasks.find((t) => t.id === data.id);
+		if (local) {
+			Object.assign(local, data);
+			return 'updated';
+		}
+	}
+	return mergeRealtimeTask(columns as PagedColumn[], data);
+}
+
+/**
+ * Settle an own move after the request ran: apply the answer, or on failure take the
+ * card off the board and reload source and then target, one after the other, so the
+ * card cannot be dropped from both by cross-column dedupe.
+ */
+export async function completeOwnMove<T extends PagedTask>(options: {
+	getColumns: () => Array<PagedColumn<T>>;
+	taskId: number;
+	sourceStatus: number;
+	targetStatus: number;
+	pending: Set<number>;
+	send: () => Promise<{ data: T; meta?: { renumbered?: boolean } }>;
+	fetchPage: FetchPage<T>;
+	limit?: number;
+}): Promise<{ ok: true } | { ok: false; error: unknown }> {
+	const { getColumns, taskId, sourceStatus, targetStatus } = options;
+	let reload: number[] = [];
+	let outcome: { ok: true } | { ok: false; error: unknown } = { ok: true };
+	try {
+		const { data, meta } = await options.send();
+		options.pending.delete(taskId);
+		bumpColumnEpochs(getColumns(), [sourceStatus, targetStatus]);
+		const patch = applyMoveResult(getColumns(), data);
+		if (meta?.renumbered || patch === 'reload') reload = [targetStatus];
+	} catch (error) {
+		options.pending.delete(taskId);
+		removeTaskFromColumns(getColumns(), taskId);
+		bumpColumnEpochs(getColumns(), [sourceStatus, targetStatus]);
+		reload = [...new Set([sourceStatus, targetStatus])];
+		outcome = { ok: false, error };
+	}
+	for (const statusId of reload)
+		await reloadWindow(getColumns, statusId, options.fetchPage, {
+			limit: options.limit,
+		});
+	return outcome;
 }
 
 export type MovePlacement =

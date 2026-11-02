@@ -807,7 +807,7 @@ export interface EventHandlers {
 		updatedByUserId?: number,
 		sourceInstanceId?: string,
 	) => void;
-	onTasksReordered?: (statusId: number) => void;
+	onTasksReordered?: (statusId: number, sourceInstanceId?: string) => void;
 	onTaskAssignmentChanged?: (event: TaskAssignmentEvent) => void;
 	onMemberStatusChanged?: (member: TeamMemberStatus) => void;
 	onNotificationCreated?: (data: any) => void;
