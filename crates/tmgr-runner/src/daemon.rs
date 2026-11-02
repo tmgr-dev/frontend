@@ -1803,6 +1803,10 @@ fn plan_mode(
     })
 }
 
+fn holds_success(cloud_run: bool, team: Option<&TeamLink>) -> bool {
+    cloud_run && !team.is_some_and(TeamLink::is_worker)
+}
+
 fn check_multi_request(req: &RunCreateReq) -> Result<(), ApiErr> {
     if !req.agent_work {
         return Err(api(
@@ -3402,7 +3406,7 @@ impl Runner {
                 task,
                 agent: info.profile.clone().unwrap_or_default(),
                 model: info_model,
-                hold_success: cloud_run,
+                hold_success: holds_success(cloud_run, req.team.as_ref()),
                 audit,
                 role: req.team.as_ref().map(|t| match t.role {
                     TeamRole::Lead => "lead".to_string(),
@@ -4858,6 +4862,19 @@ mod tests {
         cap_text(&mut small, &mut small_wrapped, 100);
         assert_eq!(small_wrapped, [true]);
         assert_eq!(small, ["a"]);
+    }
+
+    #[test]
+    fn only_a_worker_run_closes_its_agent_work_on_a_clean_exit() {
+        let team = |role| TeamLink {
+            role,
+            of: "q_team".into(),
+        };
+        assert!(holds_success(true, None));
+        assert!(holds_success(true, Some(&team(TeamRole::Lead))));
+        assert!(!holds_success(true, Some(&team(TeamRole::Worker(1)))));
+        assert!(!holds_success(false, None));
+        assert!(!holds_success(false, Some(&team(TeamRole::Lead))));
     }
 
     fn plan_req(mode: &str, unattended: bool) -> RunCreateReq {
