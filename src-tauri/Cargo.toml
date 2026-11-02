@@ -81,3 +81,4 @@ tauri-plugin-updater = "2"
 
 [dev-dependencies]
 tempfile = "3"
+tauri = { version = "2.11.6", features = ["tray-icon", "test"] }
