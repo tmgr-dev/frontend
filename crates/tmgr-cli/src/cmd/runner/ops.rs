@@ -16,6 +16,7 @@ use tmgr_runner::daemon::{self, RunnerConfig};
 use tmgr_runner::exe;
 use tmgr_runner::login;
 use tmgr_runner::profile::{self, ProfileSet};
+use tmgr_runner::restore;
 use tmgr_runner::sanitize::sanitize_text;
 use tmgr_runner::seedguard;
 use tmgr_runner::wire::now_ms;
@@ -869,11 +870,7 @@ fn wait_exit(c: &mut Client, id: &str, limit: Duration) -> Result<bool> {
 fn halt(o: &Opts, a: &HaltArgs) -> Result<i32> {
     let (mut c, s) = with_session(&a.session)?;
     if s.state.kind == StateKind::Exited {
-        return Ok(emit(
-            o,
-            json!({"id": s.id, "signal": null, "exited": true}),
-            format!("{} has already exited", clean(&s.name)),
-        ));
+        return halt_exited(o, &mut c, &s, a.kill);
     }
     let mut signal = if a.kill { "kill" } else { "int" };
     c.kill(&s.id, signal).map_err(rerr)?;
@@ -894,6 +891,68 @@ fn halt(o: &Opts, a: &HaltArgs) -> Result<i32> {
         json!({"id": s.id, "signal": signal, "exited": true}),
         format!("{} stopped", clean(&s.name)),
     ))
+}
+
+fn halt_exited(o: &Opts, c: &mut Client, s: &SessionInfo, kill: bool) -> Result<i32> {
+    let name = clean(&s.name);
+    let leftover = || restore::group_may_run(s.child_pid, None, None);
+    let gone = || {
+        emit(
+            o,
+            json!({"id": s.id, "signal": null, "exited": true}),
+            format!("{name} has already exited"),
+        )
+    };
+    if !leftover() {
+        return Ok(gone());
+    }
+    if !kill {
+        return Ok(emit(
+            o,
+            json!({"id": s.id, "signal": null, "exited": true, "background": true}),
+            format!(
+                "{name} has already exited; background processes are still running (stop them with {} halt --kill)",
+                super::bin()
+            ),
+        ));
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut sent = false;
+    let mut busy: Option<String> = None;
+    loop {
+        match c.kill_leftovers(&s.id) {
+            Ok(()) => sent = true,
+            Err(e) if e.to_string().starts_with("not_running") => {
+                if !leftover() {
+                    break;
+                }
+                if !sent {
+                    return Err(Error::new(
+                        Kind::Conflict,
+                        "the running runner is older than this tmgr and cannot stop background processes",
+                    )
+                    .hint(format!("{} runner restart", super::bin())));
+                }
+            }
+            Err(e) if e.to_string().starts_with("busy") => busy = Some(rerr(e).to_string()),
+            Err(e) => return Err(rerr(e)),
+        }
+        if Instant::now() >= deadline {
+            return Err(Error::conflict(busy.unwrap_or_else(|| {
+                format!("{name} has exited, but background processes are still running")
+            })));
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    Ok(if sent {
+        emit(
+            o,
+            json!({"id": s.id, "signal": "kill", "exited": true}),
+            format!("{name}: background processes killed"),
+        )
+    } else {
+        gone()
+    })
 }
 
 fn work_log(o: &Opts, key: &str) -> Result<i32> {

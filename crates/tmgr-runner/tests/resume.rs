@@ -8,7 +8,7 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
-    CreateReq, RunCreateReq, SessionInfo, StateKind, CLIENT_DESKTOP, CLIENT_WORKER,
+    CreateReq, RunCreateReq, SessionInfo, StateKind, CLIENT_CLI, CLIENT_DESKTOP, CLIENT_WORKER,
 };
 use tmgr_runner::client::Client;
 use tmgr_runner::restore;
@@ -1010,6 +1010,101 @@ fn background_processes_of_the_old_session_block_the_resume() {
     }
     let r = h.client().resume(&first.id, 80, 24).unwrap();
     assert_ne!(r.session.id, first.id);
+}
+
+fn pid_alive(pid: &str) -> bool {
+    Command::new("kill")
+        .args(["-0", pid])
+        .stderr(Stdio::null())
+        .status()
+        .unwrap()
+        .success()
+}
+
+fn exited_with_leftover(h: &mut H) -> (String, String, u32) {
+    h.start();
+    fs::write(h.work.join("leak"), b"").unwrap();
+    let first = h.started();
+    let pid_file = h.work.join("leakpid");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while fs::read_to_string(&pid_file).map_or(true, |t| t.trim().is_empty()) {
+        assert!(Instant::now() < deadline, "no leftover process started");
+        thread::sleep(Duration::from_millis(50));
+    }
+    let leaked = fs::read_to_string(&pid_file).unwrap().trim().to_string();
+    let group = h.stop_leaving_group(&first.id);
+    assert!(pid_alive(&leaked), "the leftover process did not survive");
+    (first.id, leaked, group)
+}
+
+fn wait_group_gone(group: u32) {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while restore::group_may_run(group, None, None) {
+        assert!(Instant::now() < deadline, "process group {group} stayed");
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn not_running(r: std::io::Result<impl std::fmt::Debug>) {
+    let err = r.unwrap_err().to_string();
+    assert!(err.starts_with("not_running"), "{err}");
+}
+
+#[test]
+fn killing_the_leftovers_of_an_exited_session_lets_the_resume_through() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    let (id, _, group) = exited_with_leftover(&mut h);
+    let err = h.client().resume(&id, 80, 24).unwrap_err().to_string();
+    assert!(err.starts_with("busy"), "{err}");
+    assert!(err.contains("background processes"), "{err}");
+    h.client().kill_leftovers(&id).unwrap();
+    wait_group_gone(group);
+    fs::remove_file(h.work.join("leak")).unwrap();
+    let r = h.client().resume(&id, 80, 24).unwrap();
+    assert_ne!(r.session.id, id);
+    not_running(h.client().kill_leftovers(&id));
+}
+
+#[test]
+fn a_leftover_survives_the_remove_when_nobody_asked_to_kill_it() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    let (id, leaked, _) = exited_with_leftover(&mut h);
+    h.client().remove(&id).unwrap();
+    thread::sleep(Duration::from_secs(2));
+    let survived = pid_alive(&leaked);
+    let _ = Command::new("kill").args(["-9", &leaked]).status();
+    assert!(survived, "the leftover died without a kill request");
+}
+
+#[test]
+fn only_the_cli_with_an_explicit_request_kills_a_leftover() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    let (id, leaked, group) = exited_with_leftover(&mut h);
+    let ask = |client: &str, signal: &str, leftovers: bool| {
+        let mut c = Client::connect_as(&h.run, client).unwrap();
+        c.set_timeouts(Duration::from_secs(60)).unwrap();
+        c.call(
+            "sessions.kill",
+            serde_json::json!({"id": id, "signal": signal, "leftovers": leftovers}),
+        )
+    };
+    not_running(h.client().kill(&id, "kill"));
+    not_running(ask(CLIENT_WORKER, "kill", true));
+    not_running(ask(CLIENT_DESKTOP, "kill", true));
+    not_running(ask(CLIENT_CLI, "term", true));
+    not_running(ask(CLIENT_CLI, "kill", false));
+    assert!(pid_alive(&leaked), "a refused request killed the leftover");
+    ask(CLIENT_CLI, "kill", true).unwrap();
+    wait_group_gone(group);
 }
 
 #[test]
