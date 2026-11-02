@@ -214,7 +214,7 @@ pub fn run_clone_dir(repo: &str, branch: &str) -> Option<PathBuf> {
     )
 }
 
-/// A hardened `git clone --reference` of `repo` at `dest` on a new `branch` (from `base`, else the repo's
+/// A hardened `git clone --no-local --reference` of `repo` at `dest` on a new `branch` (from `base`, else the repo's
 /// current branch); hooks, fsmonitor and credential helpers are off. Nothing is left behind on failure.
 pub fn prepare_clone(repo: &str, dest: &Path, branch: &str, base: Option<&str>) -> Result<()> {
     if dest.exists() {
@@ -269,6 +269,7 @@ fn make_clone(repo: &str, dest: &Path, checkout: &dyn Fn(&Path) -> Result<()>) -
             &[
                 "clone",
                 "--no-checkout",
+                "--no-local",
                 "--template=",
                 "--reference",
                 repo,
@@ -1281,5 +1282,128 @@ mod tests {
             .unwrap_err();
         assert!(err.message.contains("not at the commit"), "{}", err.message);
         assert!(!dest.exists());
+    }
+
+    fn shared_objects(dir: &Path) -> Vec<PathBuf> {
+        use std::os::unix::fs::MetadataExt;
+        let mut out = Vec::new();
+        let mut todo = vec![dir.join(".git/objects")];
+        while let Some(d) = todo.pop() {
+            for e in std::fs::read_dir(&d).unwrap() {
+                let p = e.unwrap().path();
+                let m = std::fs::symlink_metadata(&p).unwrap();
+                if m.is_dir() {
+                    todo.push(p);
+                } else if m.is_file() && m.nlink() > 1 {
+                    out.push(p);
+                }
+            }
+        }
+        out
+    }
+
+    fn objects_by_kind(dir: &Path) -> (usize, usize) {
+        let mut loose = 0;
+        let mut packed = 0;
+        for e in std::fs::read_dir(dir.join(".git/objects")).unwrap() {
+            let p = e.unwrap().path();
+            let name = p.file_name().unwrap().to_string_lossy().into_owned();
+            if name.len() == 2 {
+                loose += std::fs::read_dir(&p).unwrap().count();
+            } else if name == "pack" {
+                packed += std::fs::read_dir(&p)
+                    .unwrap()
+                    .filter(|e| {
+                        e.as_ref()
+                            .unwrap()
+                            .path()
+                            .extension()
+                            .is_some_and(|x| x == "pack")
+                    })
+                    .count();
+            }
+        }
+        (loose, packed)
+    }
+
+    #[test]
+    fn a_clone_shares_no_object_files_with_its_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(tmp.path()).unwrap().join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        run_git(&repo, &["gc", "-q"]);
+        std::fs::write(repo.join("later.txt"), "later\n").unwrap();
+        run_git(&repo, &["add", "."]);
+        run_git(&repo, &["commit", "-q", "-m", "later"]);
+        let (loose, packed) = objects_by_kind(&repo);
+        assert!(loose > 0 && packed > 0);
+        let r = repo.to_string_lossy().into_owned();
+        let dest = clone_dir(&r, "q_nl").unwrap();
+        GitClone
+            .prepare(&r, "q_nl", &dest.to_string_lossy())
+            .unwrap();
+        assert!(dest.join(".git/objects/info/alternates").is_file());
+        assert_eq!(shared_objects(&dest), Vec::<PathBuf>::new());
+        assert_eq!(shared_objects(&repo), Vec::<PathBuf>::new());
+        let log = git(Some(&dest), &["log", "--format=%s", "-n", "5"]).unwrap();
+        assert_eq!(log, "later\ninit");
+        assert!(dest.join("later.txt").is_file());
+    }
+
+    #[test]
+    fn a_clone_works_from_a_source_that_has_alternates() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let base = root.join("base");
+        std::fs::create_dir(&base).unwrap();
+        init_repo(&base);
+        let source = root.join("proj");
+        run_git(
+            &root,
+            &[
+                "clone",
+                "-q",
+                "--reference",
+                base.to_str().unwrap(),
+                base.to_str().unwrap(),
+                "proj",
+            ],
+        );
+        assert!(source.join(".git/objects/info/alternates").is_file());
+        let r = source.to_string_lossy().into_owned();
+        let dest = clone_dir(&r, "q_alt").unwrap();
+        GitClone
+            .prepare(&r, "q_alt", &dest.to_string_lossy())
+            .unwrap();
+        assert_eq!(shared_objects(&dest), Vec::<PathBuf>::new());
+        assert!(dest.join("README.md").is_file());
+        git(Some(&dest), &["fsck", "--connectivity-only"]).unwrap();
+    }
+
+    #[test]
+    fn a_clone_works_from_a_repository_without_packs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(tmp.path()).unwrap().join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        assert_eq!(objects_by_kind(&repo).1, 0);
+        let r = repo.to_string_lossy().into_owned();
+        let dest = clone_dir(&r, "q_np").unwrap();
+        GitClone
+            .prepare(&r, "q_np", &dest.to_string_lossy())
+            .unwrap();
+        assert_eq!(shared_objects(&dest), Vec::<PathBuf>::new());
+        assert_eq!(
+            git(Some(&dest), &["rev-list", "--count", "HEAD"]).unwrap(),
+            "1"
+        );
+        std::fs::write(dest.join("new.txt"), "n\n").unwrap();
+        run_git(&dest, &["add", "."]);
+        run_git(&dest, &["commit", "-q", "-m", "next"]);
+        assert_eq!(
+            git(Some(&dest), &["rev-list", "--count", "HEAD"]).unwrap(),
+            "2"
+        );
     }
 }

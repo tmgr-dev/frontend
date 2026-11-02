@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.63
+
+- Queue and `--worktree` checkouts are now cloned without sharing object files with the source repository.
+
 ## 1.0.62
 
 - `tmgr attach`: session checkpoints, off by default. With them on, the runner stores the session's folder after each agent turn, so you can go back. Turn them on for one session with `tmgr run --checkpoints` or the `Rewind` row in the new-session form, or for new sessions with `tmgr config set attach.checkpoints true`. `tmgr config set attach.checkpoints_keep <n>` sets how many are kept per session (default 50, 3 to 1000).

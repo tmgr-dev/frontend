@@ -508,6 +508,7 @@ pub fn clone_mode(plan: &Plan) -> Result<Worktree, String> {
     src.run(&[
         "clone",
         "--no-checkout",
+        "--no-local",
         "--reference",
         repo,
         "--",
@@ -1341,5 +1342,82 @@ mod tests {
         for n in ["hook", "smudge", "clean", "process"] {
             assert!(!fx.outside.join(n).exists());
         }
+    }
+
+    fn shared_objects(dir: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        let mut todo = vec![dir.join(".git/objects")];
+        while let Some(d) = todo.pop() {
+            for e in fs::read_dir(&d).unwrap() {
+                let p = e.unwrap().path();
+                let m = fs::symlink_metadata(&p).unwrap();
+                if m.is_dir() {
+                    todo.push(p);
+                } else if m.is_file() && m.nlink() > 1 {
+                    out.push(p);
+                }
+            }
+        }
+        out
+    }
+
+    fn loose_objects(dir: &Path) -> usize {
+        fs::read_dir(dir.join(".git/objects"))
+            .unwrap()
+            .filter_map(|e| {
+                let p = e.unwrap().path();
+                (p.file_name().unwrap().len() == 2).then(|| fs::read_dir(p).unwrap().count())
+            })
+            .sum()
+    }
+
+    #[test]
+    fn clone_mode_shares_no_object_files_with_the_source() {
+        let fx = fixture();
+        git(&fx.repo, &["gc", "-q"]);
+        commit_file(&fx.repo, "later.txt", "later");
+        assert!(packs(&fx.repo) > 0 && loose_objects(&fx.repo) > 0);
+        let wt = clone_mode(&plan(&fx.repo, "feat/nl", None).unwrap()).unwrap();
+        assert!(wt.path.join(".git/objects/info/alternates").is_file());
+        assert_eq!(shared_objects(&wt.path), Vec::<PathBuf>::new());
+        assert_eq!(shared_objects(&fx.repo), Vec::<PathBuf>::new());
+        assert_eq!(
+            git(&wt.path, &["log", "--format=%s", "-n", "5"]),
+            "later.txt\na.txt"
+        );
+        assert!(wt.path.join("later.txt").is_file());
+    }
+
+    #[test]
+    fn clone_mode_works_from_a_source_that_has_alternates() {
+        let fx = fixture();
+        let shared = fx.outside.join("shared");
+        git(
+            &fx.outside,
+            &[
+                "clone",
+                "-q",
+                "--reference",
+                fx.repo.to_str().unwrap(),
+                fx.repo.to_str().unwrap(),
+                "shared",
+            ],
+        );
+        assert!(shared.join(".git/objects/info/alternates").is_file());
+        let wt = clone_mode(&plan(&shared, "feat/alt", None).unwrap()).unwrap();
+        assert_eq!(shared_objects(&wt.path), Vec::<PathBuf>::new());
+        assert!(wt.path.join("a.txt").is_file());
+        git(&wt.path, &["fsck", "--connectivity-only"]);
+    }
+
+    #[test]
+    fn clone_mode_works_from_a_repository_without_packs() {
+        let fx = fixture();
+        assert_eq!(packs(&fx.repo), 0);
+        let wt = clone_mode(&plan(&fx.repo, "feat/np", None).unwrap()).unwrap();
+        assert_eq!(shared_objects(&wt.path), Vec::<PathBuf>::new());
+        assert_eq!(git(&wt.path, &["rev-list", "--count", "HEAD"]), "1");
+        commit_file(&wt.path, "n.txt", "n");
+        assert_eq!(git(&wt.path, &["rev-list", "--count", "HEAD"]), "2");
     }
 }
