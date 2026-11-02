@@ -657,6 +657,14 @@ impl App {
             self.view.leaders = leaders;
             self.dirty = true;
         }
+        let teams = list
+            .iter()
+            .filter_map(|s| {
+                let t = s.team.as_ref().filter(|t| t.validate().is_ok())?;
+                Some((s.id.clone(), t.clone()))
+            })
+            .collect();
+        self.dirty |= self.view.set_teams(self.area(), teams);
         let new = merge_pending(
             rows(list),
             &local_rows(&self.view.sessions),
