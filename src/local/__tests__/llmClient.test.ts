@@ -1,0 +1,68 @@
+import { createLlmChat } from '../llmClient';
+
+type Handler = (e: { payload: { request_id: string; event: any } }) => void;
+
+let handler: Handler | null = null;
+const mockInvoke = jest.fn();
+
+jest.mock('@tauri-apps/api/core', () => ({
+	invoke: (...args: unknown[]) => mockInvoke(...args),
+}));
+jest.mock('@tauri-apps/api/event', () => ({
+	listen: async (_name: string, fn: Handler) => {
+		handler = fn;
+		return () => {
+			handler = null;
+		};
+	},
+}));
+
+const emit = (requestId: string, event: unknown) =>
+	handler?.({ payload: { request_id: requestId, event } });
+
+const drain = async (iterable: AsyncIterable<any>) => {
+	const out: any[] = [];
+	for await (const event of iterable) out.push(event);
+	return out;
+};
+
+beforeEach(() => {
+	mockInvoke.mockReset();
+	handler = null;
+});
+
+describe('createLlmChat cancel', () => {
+	it('re-issues llm_cancel once the request is registered when cancel arrives during setup', async () => {
+		let finishSetup!: () => void;
+		const cancels: string[] = [];
+		mockInvoke.mockImplementation(async (command: string, args: any) => {
+			if (command === 'llm_chat') {
+				await new Promise<void>((resolve) => {
+					finishSetup = resolve;
+				});
+			} else if (command === 'llm_cancel') {
+				cancels.push(args.requestId);
+			}
+		});
+		const { chat, cancel } = createLlmChat([], 1);
+		const running = drain(chat([])).catch((e: Error) => e);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await cancel();
+		expect(cancels).toHaveLength(1);
+		const requestId = cancels[0];
+		finishSetup();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(cancels).toEqual([requestId, requestId]);
+		emit(requestId, { type: 'error', message: 'cancelled' });
+		const result = await running;
+		expect(result).toBeInstanceOf(Error);
+	});
+
+	it('throws on the next chat() after cancel, without starting a request', async () => {
+		mockInvoke.mockResolvedValue(undefined);
+		const { chat, cancel } = createLlmChat([], 1);
+		await cancel();
+		await expect(drain(chat([]))).rejects.toThrow('cancelled');
+		expect(mockInvoke).not.toHaveBeenCalledWith('llm_chat', expect.anything());
+	});
+});

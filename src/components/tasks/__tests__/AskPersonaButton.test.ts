@@ -136,3 +136,22 @@ test('shows the partial answer while asking and clears it after', async () => {
 	expect(shown).toEqual(['Hel', 'Hello']);
 	expect(setup.partialText.value).toBe('');
 });
+
+test('a cancelled ask shows no error, a failed one does', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: { id: 42, name: 'Bo', email: 'b@example.com' } };
+	mockStore.getters = { isLocalOnly: false };
+	const setup = loadComponent().setup({ taskId: 1 }, { emit: jest.fn() });
+	for (const fn of mounted) await fn();
+	mockAskPersonaOnTask.mockImplementationOnce(async () => {
+		setup.cancelAsk();
+		throw new Error('cancelled');
+	});
+	await setup.ask();
+	expect(setup.error.value).toBeNull();
+	mockAskPersonaOnTask.mockImplementationOnce(async () => {
+		throw new Error('LLM server unreachable');
+	});
+	await setup.ask();
+	expect(setup.error.value).toBe('LLM server unreachable');
+});

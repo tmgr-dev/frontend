@@ -24,10 +24,12 @@ export const createLlmChat = (
 	userId: number,
 ): { chat: ChatFn; cancel: () => Promise<void> } => {
 	let activeRequestId: string | null = null;
+	let cancelled = false;
 
 	const chat: ChatFn = async function* (
 		messages: ChatMessage[],
 	): AsyncIterable<ChatStreamEvent> {
+		if (cancelled) throw new Error('cancelled');
 		const requestId = crypto.randomUUID();
 		activeRequestId = requestId;
 		const { listen } = await import('@tauri-apps/api/event');
@@ -43,6 +45,7 @@ export const createLlmChat = (
 		);
 		try {
 			await invoke('llm_chat', { userId, requestId, messages, tools });
+			if (cancelled) await invoke('llm_cancel', { requestId });
 			const toolBuffers = new Map<
 				number,
 				{ id: string; name: string; arguments: string }
@@ -102,6 +105,7 @@ export const createLlmChat = (
 	};
 
 	const cancel = async () => {
+		cancelled = true;
 		if (activeRequestId)
 			await invoke('llm_cancel', { requestId: activeRequestId });
 	};

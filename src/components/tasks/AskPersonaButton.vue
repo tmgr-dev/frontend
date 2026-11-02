@@ -69,6 +69,7 @@
 			const error = ref<string | null>(null);
 			const partialText = ref('');
 			let cancelCurrent: (() => Promise<void>) | null = null;
+			let cancelRequested = false;
 
 			// Asking needs agent_work:write to record the run and comments:write to post the answer.
 			const enabledPersonas = computed(() =>
@@ -111,6 +112,7 @@
 				asking.value = true;
 				error.value = null;
 				partialText.value = '';
+				cancelRequested = false;
 				try {
 					const ctx = await localContext(workspace, currentUser());
 					const cached = await readPersonaCache(persona.uuid, currentUser().id);
@@ -137,7 +139,8 @@
 					});
 					emit('posted');
 				} catch (e) {
-					error.value = e instanceof Error ? e.message : String(e);
+					if (!cancelRequested)
+						error.value = e instanceof Error ? e.message : String(e);
 				} finally {
 					asking.value = false;
 					partialText.value = '';
@@ -145,7 +148,10 @@
 				}
 			};
 
-			const cancelAsk = () => cancelCurrent?.();
+			const cancelAsk = () => {
+				cancelRequested = true;
+				return cancelCurrent?.();
+			};
 
 			return {
 				show,
