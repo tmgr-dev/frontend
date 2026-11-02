@@ -259,8 +259,32 @@ impl H {
     }
 
     fn stop(&self, id: &str) {
+        let pid = self.stop_leaving_group(id);
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while restore::group_may_run(pid, None, None) {
+            if Instant::now() >= deadline {
+                let ps = Command::new("ps")
+                    .args(["-A", "-o", "pid,ppid,pgid,stat,command"])
+                    .output()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                    .unwrap_or_default();
+                panic!("process group {pid} of {id} outlived its exit:\n{ps}");
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn stop_leaving_group(&self, id: &str) -> u32 {
+        let pid = self
+            .client()
+            .list()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.id == id)
+            .map_or(0, |s| s.child_pid);
         self.client().kill(id, "term").unwrap();
         self.wait_exited(id);
+        pid
     }
 
     fn lines(&self, id: &str) -> Vec<String> {
@@ -953,7 +977,7 @@ fn background_processes_of_the_old_session_block_the_resume() {
         thread::sleep(Duration::from_millis(50));
     }
     let leaked = fs::read_to_string(&pid_file).unwrap().trim().to_string();
-    h.stop(&first.id);
+    let group = h.stop_leaving_group(&first.id);
     let alive = |pid: &str| {
         Command::new("kill")
             .args(["-0", pid])
@@ -979,6 +1003,11 @@ fn background_processes_of_the_old_session_block_the_resume() {
         thread::sleep(Duration::from_millis(50));
     }
     fs::remove_file(h.work.join("leak")).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while restore::group_may_run(group, None, None) {
+        assert!(Instant::now() < deadline, "process group {group} stayed");
+        thread::sleep(Duration::from_millis(50));
+    }
     let r = h.client().resume(&first.id, 80, 24).unwrap();
     assert_ne!(r.session.id, first.id);
 }
