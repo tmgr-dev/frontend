@@ -3,6 +3,7 @@ mod common;
 
 use common::*;
 use std::fs;
+use std::io::Write;
 use std::os::linux::net::SocketAddrExt;
 use std::os::unix::net::{SocketAddr, UnixListener};
 use std::process::Command;
@@ -14,7 +15,8 @@ fn fx() -> Fx {
 fn landlock_usable(f: &Fx) -> bool {
     let o = f.run("exit 0");
     if o.code == Some(78) {
-        eprintln!("SKIPPED: {}", o.stderr);
+        // Not eprintln: the test harness hides that when a test passes.
+        let _ = writeln!(std::io::stderr(), "SKIPPED: {}", o.stderr);
         assert!(o.stderr.contains("sandbox"), "{}", o.stderr);
         assert!(o.stderr.contains("the run does not start"), "{}", o.stderr);
         return false;
@@ -363,6 +365,9 @@ fn git_commands_work_in_the_work_folder() {
     }
     let o = f.run("git init -q . && git config tmgr.probe 1");
     assert!(o.ok(), "{}", o.stderr);
+    let o = f.run("printf '[tmgr]\\n\\tdirect = 1\\n' >> .git/config");
+    assert!(o.ok(), "{}", o.stderr);
     let config = fs::read_to_string(f.cwd.join(".git/config")).unwrap();
     assert!(config.contains("probe"));
+    assert!(config.contains("direct = 1"));
 }
