@@ -289,15 +289,28 @@ fn is_local_v6(ip: Ipv6Addr) -> bool {
 #[derive(Default)]
 pub struct SseBuffer {
   pending: Vec<u8>,
+  after_cr: bool,
 }
 
 impl SseBuffer {
   pub fn push(&mut self, chunk: &[u8]) -> Vec<String> {
-    self.pending.extend_from_slice(chunk);
+    for &byte in chunk {
+      match byte {
+        b'\r' => {
+          self.pending.push(b'\n');
+          self.after_cr = true;
+        }
+        b'\n' if self.after_cr => self.after_cr = false,
+        _ => {
+          self.pending.push(byte);
+          self.after_cr = false;
+        }
+      }
+    }
     let mut events = Vec::new();
-    while let Some((pos, len)) = find_event_end(&self.pending) {
-      let raw: Vec<u8> = self.pending.drain(..pos + len).collect();
-      let text = String::from_utf8_lossy(&raw).replace("\r\n", "\n");
+    while let Some(pos) = self.pending.windows(2).position(|w| w == b"\n\n") {
+      let raw: Vec<u8> = self.pending.drain(..pos + 2).collect();
+      let text = String::from_utf8_lossy(&raw);
       let data: Vec<&str> =
         text.lines().filter_map(|line| line.strip_prefix("data:").map(str::trim_start)).collect();
       if !data.is_empty() {
@@ -305,18 +318,6 @@ impl SseBuffer {
       }
     }
     events
-  }
-}
-
-/// The offset and length of the blank line ending one SSE event (`\n\n` or `\r\n\r\n`).
-fn find_event_end(buf: &[u8]) -> Option<(usize, usize)> {
-  let lf = buf.windows(2).position(|w| w == b"\n\n").map(|p| (p, 2));
-  let crlf = buf.windows(4).position(|w| w == b"\r\n\r\n").map(|p| (p, 4));
-  match (lf, crlf) {
-    (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
-    (Some(a), None) => Some(a),
-    (None, Some(b)) => Some(b),
-    (None, None) => None,
   }
 }
 
@@ -338,8 +339,9 @@ pub fn parse_chat_events(data: &str) -> Vec<ChatEvent> {
   let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
     return Vec::new();
   };
+  let error = value.get("error").filter(|e| !e.is_null()).map(error_message);
   let Some(delta) = value.get("choices").and_then(|c| c.get(0)).and_then(|c| c.get("delta")) else {
-    return Vec::new();
+    return error.map(|message| ChatEvent::Error { message }).into_iter().collect();
   };
   let mut events = Vec::new();
   if let Some(content) = delta.get("content").and_then(Value::as_str) {
@@ -359,7 +361,92 @@ pub fn parse_chat_events(data: &str) -> Vec<ChatEvent> {
       .to_string();
     events.push(ChatEvent::ToolCall { index, id, name, arguments });
   }
+  if let Some(message) = error {
+    events.push(ChatEvent::Error { message });
+  }
   events
+}
+
+const NO_USABLE_CONTENT: &str = "The LLM server returned no usable content";
+const ERROR_MESSAGE_CHARS: usize = 200;
+
+fn truncate_chars(text: &str, max: usize) -> String {
+  if text.chars().count() <= max {
+    return text.to_string();
+  }
+  let mut cut: String = text.chars().take(max).collect();
+  cut.push('…');
+  cut
+}
+
+fn server_message(error: &Value) -> Option<&str> {
+  error
+    .as_str()
+    .or_else(|| error.get("message").and_then(Value::as_str))
+    .map(str::trim)
+    .filter(|m| !m.is_empty())
+}
+
+fn error_message(error: &Value) -> String {
+  server_message(error)
+    .map(|m| truncate_chars(m, ERROR_MESSAGE_CHARS))
+    .unwrap_or_else(|| "The LLM server returned an error".to_string())
+}
+
+pub fn parse_chat_json_reply(body: &str) -> Vec<ChatEvent> {
+  let no_content = || vec![ChatEvent::Error { message: NO_USABLE_CONTENT.into() }];
+  let Ok(value) = serde_json::from_str::<Value>(body.trim()) else {
+    return no_content();
+  };
+  if let Some(error) = value.get("error").filter(|e| !e.is_null()) {
+    return vec![ChatEvent::Error { message: error_message(error) }];
+  }
+  let Some(message) = value.get("choices").and_then(|c| c.get(0)).and_then(|c| c.get("message")) else {
+    return no_content();
+  };
+  let mut events = Vec::new();
+  if let Some(content) = message.get("content").and_then(Value::as_str).filter(|c| !c.is_empty()) {
+    events.push(ChatEvent::Delta { text: content.to_string() });
+  }
+  for (index, call) in message.get("tool_calls").and_then(Value::as_array).into_iter().flatten().enumerate() {
+    let function = call.get("function");
+    events.push(ChatEvent::ToolCall {
+      index: index as u32,
+      id: call.get("id").and_then(Value::as_str).map(str::to_string),
+      name: function.and_then(|f| f.get("name")).and_then(Value::as_str).map(str::to_string),
+      arguments: function.and_then(|f| f.get("arguments")).and_then(Value::as_str).unwrap_or("").to_string(),
+    });
+  }
+  if events.is_empty() {
+    return no_content();
+  }
+  events.push(ChatEvent::Done);
+  events
+}
+
+pub fn sanitize_error_body(status: &str, body: &str, api_key: Option<&str>) -> String {
+  let base = format!("LLM server returned {status}");
+  let message = serde_json::from_str::<Value>(body.trim())
+    .ok()
+    .and_then(|v| v.get("error").and_then(server_message).map(str::to_string));
+  let Some(mut message) = message else {
+    return base;
+  };
+  if let Some(key) = api_key.filter(|k| !k.is_empty()) {
+    message = message.replace(key, "[redacted]");
+  }
+  if message.trim_start().starts_with('<') {
+    return base;
+  }
+  format!("{base}: {}", truncate_chars(&message, ERROR_MESSAGE_CHARS))
+}
+
+pub fn end_of_stream_event(useful: bool) -> ChatEvent {
+  if useful {
+    ChatEvent::Done
+  } else {
+    ChatEvent::Error { message: NO_USABLE_CONTENT.into() }
+  }
 }
 
 fn config_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
@@ -553,6 +640,20 @@ pub fn chat_completions_url(base_url: &str) -> String {
   }
 }
 
+const ERROR_BODY_CAP: usize = 64 * 1024;
+const JSON_BODY_CAP: usize = 4 * 1024 * 1024;
+
+async fn read_capped(response: &mut reqwest::Response, cap: usize) -> Result<Vec<u8>, String> {
+  let mut body = Vec::new();
+  while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+    body.extend_from_slice(&chunk);
+    if body.len() > cap {
+      return Err("The LLM server reply is too large".into());
+    }
+  }
+  Ok(body)
+}
+
 async fn stream_chat<R: Runtime>(
   app: &AppHandle<R>,
   request_id: &str,
@@ -588,21 +689,37 @@ async fn stream_chat<R: Runtime>(
   }
   let mut response = builder.send().await.map_err(|e| format!("LLM server unreachable: {e}"))?;
   if !response.status().is_success() {
-    return Err(format!("LLM server returned {}", response.status()));
+    let status = response.status().to_string();
+    let body = read_capped(&mut response, ERROR_BODY_CAP).await.unwrap_or_default();
+    return Err(sanitize_error_body(&status, &String::from_utf8_lossy(&body), api_key));
+  }
+  let is_json = response
+    .headers()
+    .get("content-type")
+    .and_then(|v| v.to_str().ok())
+    .is_some_and(|v| v.to_ascii_lowercase().contains("json"));
+  if is_json {
+    let body = read_capped(&mut response, JSON_BODY_CAP).await?;
+    for event in parse_chat_json_reply(&String::from_utf8_lossy(&body)) {
+      emit_event(app, request_id, event);
+    }
+    return Ok(());
   }
   let mut buffer = SseBuffer::default();
+  let mut useful = false;
   while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
     for raw in buffer.push(&chunk) {
       for event in parse_chat_events(&raw) {
-        let done = matches!(event, ChatEvent::Done);
+        let terminal = matches!(event, ChatEvent::Done | ChatEvent::Error { .. });
+        useful |= matches!(event, ChatEvent::Delta { .. } | ChatEvent::ToolCall { .. });
         emit_event(app, request_id, event);
-        if done {
+        if terminal {
           return Ok(());
         }
       }
     }
   }
-  emit_event(app, request_id, ChatEvent::Done);
+  emit_event(app, request_id, end_of_stream_event(useful));
   Ok(())
 }
 
@@ -1489,4 +1606,199 @@ mod tests {
     }
   }
 
+  fn push_all(chunks: &[&[u8]]) -> Vec<String> {
+    let mut buffer = SseBuffer::default();
+    chunks.iter().flat_map(|c| buffer.push(c)).collect()
+  }
+
+  #[test]
+  fn sse_buffer_splits_events_on_every_line_ending_style() {
+    for (name, input) in [
+      ("cr only", "data: a\rdata: b\r\rdata: c\r\r"),
+      ("double cr", "data: a\r\rdata: c\r\r"),
+      ("lf crlf", "data: a\n\r\ndata: c\n\r\n"),
+      ("crlf lf", "data: a\r\n\ndata: c\r\n\n"),
+      ("crlf", "data: a\r\n\r\ndata: c\r\n\r\n"),
+    ] {
+      let events = push_all(&[input.as_bytes()]);
+      assert_eq!(events.last().map(String::as_str), Some("c"), "{name}");
+      assert!(events.iter().any(|e| e == "a" || e == "a\nb"), "{name}: {events:?}");
+    }
+  }
+
+  #[test]
+  fn sse_buffer_cr_only_joins_data_lines_of_one_event() {
+    assert_eq!(push_all(&[b"data: a\rdata: b\r\r"]), vec!["a\nb"]);
+  }
+
+  #[test]
+  fn sse_buffer_handles_a_chunk_split_between_cr_and_lf() {
+    assert_eq!(push_all(&[b"data: a\r", b"\n\r", b"\ndata: b\r\n\r\n"]), vec!["a", "b"]);
+    assert_eq!(push_all(&[b"data: a\r\n\r", b"\n"]), vec!["a"]);
+  }
+
+  #[test]
+  fn sse_buffer_cr_at_chunk_end_does_not_swallow_the_next_event() {
+    assert_eq!(push_all(&[b"data: a\r\r", b"data: b\r\r"]), vec!["a", "b"]);
+  }
+
+  #[test]
+  fn parses_a_mid_stream_error_object_with_a_message() {
+    assert_eq!(
+      parse_chat_events("{\"error\":{\"message\":\"Context length exceeded\",\"type\":\"x\"}}"),
+      vec![ChatEvent::Error { message: "Context length exceeded".into() }]
+    );
+  }
+
+  #[test]
+  fn parses_a_mid_stream_error_given_as_a_string() {
+    assert_eq!(
+      parse_chat_events("{\"error\":\"model crashed\"}"),
+      vec![ChatEvent::Error { message: "model crashed".into() }]
+    );
+  }
+
+  #[test]
+  fn a_delta_comes_before_an_error_in_the_same_chunk() {
+    assert_eq!(
+      parse_chat_events("{\"choices\":[{\"delta\":{\"content\":\"Hi\"}}],\"error\":{\"message\":\"boom\"}}"),
+      vec![ChatEvent::Delta { text: "Hi".into() }, ChatEvent::Error { message: "boom".into() }]
+    );
+  }
+
+  #[test]
+  fn an_error_without_a_message_gets_a_generic_one() {
+    assert_eq!(
+      parse_chat_events("{\"error\":{\"code\":500}}"),
+      vec![ChatEvent::Error { message: "The LLM server returned an error".into() }]
+    );
+  }
+
+  #[test]
+  fn a_null_error_field_is_not_an_error() {
+    assert_eq!(
+      parse_chat_events("{\"error\":null,\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}"),
+      vec![ChatEvent::Delta { text: "Hi".into() }]
+    );
+  }
+
+  #[test]
+  fn a_long_stream_error_message_is_truncated() {
+    let long = "x".repeat(500);
+    let events = parse_chat_events(&format!("{{\"error\":\"{long}\"}}"));
+    let ChatEvent::Error { message } = &events[0] else { panic!("{events:?}") };
+    assert!(message.chars().count() <= 201, "{}", message.chars().count());
+  }
+
+  #[test]
+  fn parses_a_non_streaming_reply_with_content() {
+    assert_eq!(
+      parse_chat_json_reply("{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Hello\"}}]}"),
+      vec![ChatEvent::Delta { text: "Hello".into() }, ChatEvent::Done]
+    );
+  }
+
+  #[test]
+  fn non_streaming_tool_calls_use_the_array_position_as_index() {
+    let body = r#"{"choices":[{"message":{"content":null,"tool_calls":[
+      {"id":"call_a","type":"function","function":{"name":"tmgr_request","arguments":"{\"a\":1}"}},
+      {"id":"call_b","type":"function","function":{"name":"tmgr_request","arguments":"{\"b\":2}"}}]}}]}"#;
+    assert_eq!(
+      parse_chat_json_reply(body),
+      vec![
+        ChatEvent::ToolCall {
+          index: 0,
+          id: Some("call_a".into()),
+          name: Some("tmgr_request".into()),
+          arguments: "{\"a\":1}".into(),
+        },
+        ChatEvent::ToolCall {
+          index: 1,
+          id: Some("call_b".into()),
+          name: Some("tmgr_request".into()),
+          arguments: "{\"b\":2}".into(),
+        },
+        ChatEvent::Done,
+      ]
+    );
+  }
+
+  #[test]
+  fn a_non_streaming_error_body_becomes_an_error_event() {
+    assert_eq!(
+      parse_chat_json_reply("{\"error\":{\"message\":\"Invalid model\"}}"),
+      vec![ChatEvent::Error { message: "Invalid model".into() }]
+    );
+    assert_eq!(
+      parse_chat_json_reply("{\"error\":\"overloaded\"}"),
+      vec![ChatEvent::Error { message: "overloaded".into() }]
+    );
+  }
+
+  #[test]
+  fn a_non_streaming_reply_without_content_or_tool_calls_is_an_error() {
+    for body in ["{\"choices\":[{\"message\":{\"content\":\"\"}}]}", "{\"choices\":[]}", "{}", "not json", ""] {
+      assert_eq!(
+        parse_chat_json_reply(body),
+        vec![ChatEvent::Error { message: "The LLM server returned no usable content".into() }],
+        "{body}"
+      );
+    }
+  }
+
+  #[test]
+  fn an_empty_stream_is_an_error_and_a_useful_one_is_done() {
+    assert_eq!(
+      end_of_stream_event(false),
+      ChatEvent::Error { message: "The LLM server returned no usable content".into() }
+    );
+    assert_eq!(end_of_stream_event(true), ChatEvent::Done);
+  }
+
+  #[test]
+  fn error_body_uses_the_server_message_when_it_is_json() {
+    assert_eq!(
+      sanitize_error_body("401 Unauthorized", "{\"error\":{\"message\":\"Bad key\"}}", None),
+      "LLM server returned 401 Unauthorized: Bad key"
+    );
+    assert_eq!(
+      sanitize_error_body("400 Bad Request", "{\"error\":\"nope\"}", None),
+      "LLM server returned 400 Bad Request: nope"
+    );
+  }
+
+  #[test]
+  fn error_body_replaces_an_echoed_api_key() {
+    let message = sanitize_error_body(
+      "401 Unauthorized",
+      "{\"error\":{\"message\":\"Incorrect API key provided: sk-secret-123\"}}",
+      Some("sk-secret-123"),
+    );
+    assert!(!message.contains("sk-secret-123"), "{message}");
+    assert!(message.contains("[redacted]"), "{message}");
+  }
+
+  #[test]
+  fn error_body_is_truncated_by_characters_not_bytes() {
+    let long = "Ж".repeat(500);
+    let message = sanitize_error_body("500 Internal Server Error", &format!("{{\"error\":\"{long}\"}}"), None);
+    let shown = message.strip_prefix("LLM server returned 500 Internal Server Error: ").unwrap();
+    assert!(shown.chars().count() <= 201, "{}", shown.chars().count());
+    assert!(shown.starts_with("ЖЖЖ"));
+  }
+
+  #[test]
+  fn error_body_never_shows_html_or_plain_text() {
+    for body in ["<html><body>Bad gateway</body></html>", "  <!DOCTYPE html><h1>x</h1>", "plain text oops", ""] {
+      assert_eq!(
+        sanitize_error_body("502 Bad Gateway", body, None),
+        "LLM server returned 502 Bad Gateway",
+        "{body}"
+      );
+    }
+    assert_eq!(
+      sanitize_error_body("502 Bad Gateway", "{\"error\":\"<b>html</b>\"}", None),
+      "LLM server returned 502 Bad Gateway"
+    );
+  }
 }
