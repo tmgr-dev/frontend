@@ -1437,3 +1437,92 @@ fn a_team_changes_the_hash_only_when_present_and_is_validated() {
     v["team"] = json!({"size": 2, "mode": "eco", "extra": 1});
     assert!(serde_json::from_value::<RunBundle>(v).is_err());
 }
+
+fn full_bundle() -> RunBundle {
+    RunBundle {
+        v: 1,
+        task: TaskRef { workspace_id: -3, task_id: 412 },
+        title: "Fix login".into(),
+        body: "body\n</x>".into(),
+        author: BundleAuthor { kind: AuthorKind::Human, id: Some("u_7".into()) },
+        comments: vec![],
+        pages: vec![],
+        persona: None,
+        context: vec![],
+        team: Some(BundleTeam { size: 3, mode: TeamMode::Eco }),
+        launch: BundleLaunch {
+            profile: "claude".into(),
+            model: Some("opus".into()),
+            cwd: "/work/project".into(),
+            permission_mode: Some("plan".into()),
+        },
+    }
+}
+
+fn full_req() -> RunCreateReq {
+    RunCreateReq {
+        profile: "claude".into(),
+        task: Some(TaskRef { workspace_id: -3, task_id: 412 }),
+        cwd: "/work/project".into(),
+        name: Some("n".into()),
+        model: Some("opus".into()),
+        cols: 100,
+        rows: 30,
+        bundle: Some(full_bundle()),
+        bundle_sha256: Some("a".repeat(64)),
+        cwd_pin: None,
+        origin: Some(Origin { link: "laptop".into(), generation: 7 }),
+        permission_mode: Some("plan".into()),
+        start_key: Some("k".into()),
+        clone_of: Some("/work/project".into()),
+        trust_cwd: Some(true),
+        trust_via_repo: Some(true),
+        exe_pin: None,
+        argv_sha256: Some("b".repeat(64)),
+        agent_work: true,
+        cloud: None,
+        unattended: true,
+        clones: Vec::new(),
+        no_sandbox: None,
+    }
+}
+
+fn full_info() -> SessionInfo {
+    SessionInfo {
+        id: "s_abcdefghij".into(),
+        name: "n".into(),
+        argv: vec!["claude".into()],
+        cwd: "/work/project".into(),
+        profile: Some("claude".into()),
+        state: State { kind: StateKind::Working, since_ms: 1, detail: None, exit_code: None },
+        created_ms: 2,
+        cols: 100,
+        rows: 30,
+        shim_pid: 5,
+        child_pid: 6,
+        task: Some(TaskRef { workspace_id: -3, task_id: 412 }),
+        bundle_sha256: Some("a".repeat(64)),
+        origin: Some(Origin { link: "laptop".into(), generation: 7 }),
+        permission_mode: Some("plan".into()),
+        resumed_from: Some("s_zzzzzzzzzz".into()),
+        human_s: Some(9),
+        no_sandbox: true,
+        checkpoints: None,
+    }
+}
+
+fn base_fixture(name: &str) -> String {
+    let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"))
+}
+
+#[test]
+fn non_team_wire_forms_match_the_base_fixtures() {
+    let req = serde_json::to_string(&full_req()).unwrap();
+    assert_eq!(req, base_fixture("base_full_run_create_req.json"));
+    let info = serde_json::to_string(&full_info()).unwrap();
+    assert_eq!(info, base_fixture("base_full_session_info.json"));
+    let b = full_bundle();
+    assert_eq!(b.canonical(), base_fixture("base_full_bundle.canonical.json"));
+    assert_eq!(b.sha256(), base_fixture("base_full_bundle.sha256"));
+}
