@@ -35,6 +35,8 @@ fn run(program: &str, args: &[String], cwd: &Path, timeout: Duration) -> Option<
     let mut child = Command::new(program)
         .args(args)
         .current_dir(cwd)
+        .env("PATH", tmgr_queue::workdir::absolute_path())
+        .env("GIT_NO_LAZY_FETCH", "1")
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_CONFIG_COUNT", "2")
@@ -203,19 +205,31 @@ pub(super) fn collect(
     }
     let cwd = std::fs::canonicalize(cwd).ok()?;
     let root = repo_root(&cwd)?;
+    if !tmgr_queue::workdir::repo_config_is_plain(&root) {
+        return None;
+    }
     if config_runs_programs(&git(
         &root,
         &["config", "--list", "--show-scope", "--name-only"],
     )?) {
         return None;
     }
-    let status = parse_status(&git(&root, &["status", "--porcelain=v2", "--branch"])?);
+    let status = parse_status(&git(
+        &root,
+        &[
+            "status",
+            "--porcelain=v2",
+            "--branch",
+            "--ignore-submodules=all",
+        ],
+    )?);
     let (added, deleted) = git(
         &root,
         &[
             "diff",
             "--no-ext-diff",
             "--no-textconv",
+            "--ignore-submodules=all",
             "--numstat",
             "HEAD",
         ],

@@ -381,6 +381,9 @@ pub(super) fn git_facts(dir: &Path, branch: &str) -> std::result::Result<GitFact
     if redirects {
         return Err("the copy's local git config redirects git".into());
     }
+    if !workdir::repo_config_is_plain(dir) {
+        return Err("the copy's local git config has settings that are not checked".into());
+    }
     if exists(&dir.join(".gitmodules")) || exists(&dir.join(".git/modules")) {
         return Err("the copy has submodules, which are not checked".into());
     }
