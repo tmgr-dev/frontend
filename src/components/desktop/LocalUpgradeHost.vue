@@ -101,7 +101,7 @@
 				const list = ((store.state.workspaces ?? []) as any[]).filter(
 					(workspace) => !workspace.is_local && Number(workspace.id) > 0,
 				);
-				const preferred = Number(store.state.defaultWorkspaceId);
+				const preferred = Number((store.state as any).defaultWorkspaceId);
 				return list.find((w) => Number(w.id) === preferred) ?? list[0] ?? null;
 			});
 

@@ -74,7 +74,7 @@ export const onActiveLocalWorkspaceChange = (listener: () => void) => {
 const announceActive = () => activeListeners.forEach((listener) => listener());
 
 export const activeLocalWorkspace = (): LocalWorkspace | null =>
-	activeCode ? workspaces.find((w) => w.code === activeCode) ?? null : null;
+	activeCode ? (workspaces.find((w) => w.code === activeCode) ?? null) : null;
 
 export const activeLocalWorkspaceCode = (): string | null => activeCode;
 

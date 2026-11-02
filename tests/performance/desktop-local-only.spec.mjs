@@ -304,8 +304,8 @@ test('sign up from local mode keeps local workspaces next to the cloud one and s
   );
   expect(shell.upgradeCalls.map((c) => c.command)).toEqual([
     'local_profile_link',
-    'persona_llm_migrate_local',
     'persona_cache_migrate_local',
+    'persona_llm_migrate_local',
   ]);
   expect(shell.profile.linked_user_id).toBe(1);
   expect(

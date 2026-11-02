@@ -144,10 +144,10 @@ export const installLocalUpgrade = (
 		}
 
 		try {
+			await invoke('persona_cache_migrate_local', { toUserId: userId });
 			const llm = (await invoke('persona_llm_migrate_local', {
 				toUserId: userId,
 			})) as { status?: string } | null;
-			await invoke('persona_cache_migrate_local', { toUserId: userId });
 			const status = llm?.status;
 			upgradeState.key =
 				status === 'moved' || status === 'already' || status === 'conflict'

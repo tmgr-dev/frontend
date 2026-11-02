@@ -158,8 +158,8 @@ test.each(['persona_llm_migrate_local', 'persona_cache_migrate_local'])(
 		await retryLocalUpgrade();
 		expect(commandsOf(invoke)).toEqual([
 			'local_profile_link',
-			'persona_llm_migrate_local',
 			'persona_cache_migrate_local',
+			'persona_llm_migrate_local',
 		]);
 		expect(readUpgradeMarker(storage)?.migrate).toBe(false);
 		expect(upgradeState.phase).toBe('done');
