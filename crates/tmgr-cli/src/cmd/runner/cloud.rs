@@ -1517,6 +1517,13 @@ fn repo_state(repo: &Path, head: &str, server_default: Option<&str>) -> Result<R
     })
 }
 
+fn any_live(sessions: &[tmgr_ipc::api::SessionInfo], task: TaskRef, session: Option<&str>) -> bool {
+    sessions.iter().any(|s| {
+        s.state.kind != tmgr_ipc::api::StateKind::Exited
+            && (session == Some(s.id.as_str()) || s.task == Some(task))
+    })
+}
+
 fn ensure_not_live(task: TaskRef, session: Option<&str>) -> Result<()> {
     let cfg = runner_config()?;
     let mut rc = tmgr_runner::client::Client::connect(&cfg.dir).map_err(|_| {
@@ -1526,11 +1533,7 @@ fn ensure_not_live(task: TaskRef, session: Option<&str>) -> Result<()> {
         )
         .hint(format!("{} runner start", super::bin()))
     })?;
-    let live = rc.list().map_err(rerr)?.into_iter().any(|s| {
-        s.state.kind != tmgr_ipc::api::StateKind::Exited
-            && (session == Some(s.id.as_str()) || s.task == Some(task))
-    });
-    if live {
+    if any_live(&rc.list().map_err(rerr)?, task, session) {
         return Err(
             Error::new(Kind::Conflict, "the run of this task is still live")
                 .hint("wait for the agent to finish or stop it, then publish again"),
@@ -2393,6 +2396,47 @@ pub fn publish_cmd(o: &Opts, reference: &str) -> Result<i32> {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    fn session(
+        id: &str,
+        state: &str,
+        task: i64,
+        team: Option<serde_json::Value>,
+    ) -> tmgr_ipc::api::SessionInfo {
+        let mut v = serde_json::json!({
+            "id": id, "name": "n", "argv": ["claude"], "cwd": "/w", "cols": 80, "rows": 24,
+            "created_ms": 1, "shim_pid": 1, "child_pid": 2,
+            "task": {"workspace_id": 5, "task_id": task},
+            "state": {"kind": state, "since_ms": 1}
+        });
+        if let Some(t) = team {
+            v["team"] = t;
+        }
+        serde_json::from_value(v).unwrap()
+    }
+
+    #[test]
+    fn publishing_waits_for_every_member_of_a_team_and_passes_once_all_have_exited() {
+        let task = TaskRef {
+            workspace_id: 5,
+            task_id: 1,
+        };
+        let link = |role: serde_json::Value| Some(serde_json::json!({"role": role, "of": "q_abc"}));
+        let live = [
+            session("s_lead", "exited", 1, link(serde_json::json!("lead"))),
+            session("s_w1", "exited", 1, link(serde_json::json!({"worker": 1}))),
+            session("s_w2", "waiting", 1, link(serde_json::json!({"worker": 2}))),
+        ];
+        assert!(any_live(&live, task, Some("s_lead")));
+        let done = [
+            session("s_lead", "exited", 1, link(serde_json::json!("lead"))),
+            session("s_w1", "exited", 1, link(serde_json::json!({"worker": 1}))),
+            session("s_w2", "exited", 1, link(serde_json::json!({"worker": 2}))),
+            session("s_other", "working", 2, None),
+        ];
+        assert!(!any_live(&done, task, Some("s_lead")));
+    }
+
     use serde_json::{json, Value};
     use std::collections::BTreeMap;
     use tmgr_core::approval::PinnedKey;

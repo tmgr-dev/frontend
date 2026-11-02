@@ -46,7 +46,7 @@ use tmgr_ipc::api::{
     EventMsg, ExePin, ForkParams, LookupParams, OrchestratorCreateReq, Origin, OriginRevokeParams,
     OriginRevoked, PathParams, PermissionAnswer, PermissionCard, PermissionChoice, RestoredRun,
     ResumeParams, RunCreateReq, RunStatus, SessionInfo, SessionText, Snapshot, State, StateKind,
-    StatusInfo, TaskRef, TeamLink, TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP,
+    StatusInfo, TaskRef, TeamLink, TeamRole, TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP,
     CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
@@ -1016,13 +1016,14 @@ impl Session {
         let Some(intent) = pending.as_ref() else {
             return;
         };
-        match agentwork::begin(
+        match agentwork::begin_as(
             &self.dir,
             intent.task,
             &intent.agent,
             intent.model.as_deref(),
             &self.id,
             (intent.hold_success, intent.audit.clone()),
+            intent.role.clone(),
         ) {
             Ok(()) => *pending = None,
             Err(e) => {
@@ -3293,7 +3294,7 @@ impl Runner {
             argv.push(permit_hook::claude_settings(&self.cfg.self_exe));
         }
         if let (false, Some(_), Some(b)) = (resumed, &checked, &req.bundle) {
-            let args = prof.prompt_args(&bundle::prompt(b));
+            let args = prof.prompt_args(&bundle::prompt_for(b, req.team.as_ref()));
             extra.prompt_at = prof
                 .prompt
                 .args
@@ -3397,6 +3398,10 @@ impl Runner {
                 model: info_model,
                 hold_success: cloud_run,
                 audit,
+                role: req.team.as_ref().map(|t| match t.role {
+                    TeamRole::Lead => "lead".to_string(),
+                    TeamRole::Worker(k) => format!("worker-{k}"),
+                }),
             });
             s.prepare_agent_work();
         }

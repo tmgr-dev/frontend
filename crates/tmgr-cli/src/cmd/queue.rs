@@ -1352,7 +1352,7 @@ impl RunnerRuns {
 
 fn run_create_req(req: &StartRequest) -> RunCreateReq {
     RunCreateReq {
-        team: None,
+        team: req.team.clone(),
         clones: req.clones.clone(),
         profile: req.profile.clone(),
         task: Some(req.task),
@@ -1384,7 +1384,11 @@ fn run_create_req(req: &StartRequest) -> RunCreateReq {
 }
 
 fn team_supported(bundle: &tmgr_ipc::api::RunBundle, caps: &[String]) -> Result<()> {
-    if bundle.team.is_some() && !caps.iter().any(|c| c == tmgr_ipc::api::caps::TEAM_V1) {
+    needs_cap(bundle.team.is_some(), tmgr_ipc::api::caps::TEAM_V1, caps)
+}
+
+fn needs_cap(needed: bool, cap: &str, caps: &[String]) -> Result<()> {
+    if needed && !caps.iter().any(|c| c == cap) {
         return Err(Error::new(
             Kind::Conflict,
             "the runner is too old for team runs; restart it after the update",
@@ -1407,6 +1411,11 @@ impl RunsClient for RunnerRuns {
             .map(|c| c.welcome().caps.clone())
             .unwrap_or_default();
         team_supported(&req.bundle, &caps)?;
+        needs_cap(
+            req.team.is_some(),
+            tmgr_ipc::api::caps::TEAM_WORKERS_V1,
+            &caps,
+        )?;
         if tmgr_runner::bundle::has_owner_text(&req.bundle) {
             let supported = self.client.borrow().as_ref().is_some_and(|c| {
                 c.welcome()
@@ -1476,6 +1485,21 @@ impl RunsClient for RunnerRuns {
             Err(e) if answered_not_found(&e) => Lookup::NotFound,
             Err(_) => Lookup::Unsupported,
         }
+    }
+
+    fn send(&self, run_id: &str, text: &str) -> Result<()> {
+        self.with(|c| c.send(run_id, text))
+            .map_err(|e| Error::new(Kind::Offline, e.to_string()))
+    }
+
+    fn kill_run(&self, run_id: &str, reason: &str) -> Result<()> {
+        RunnerRuns::kill(self, run_id, "term", reason)
+            .map_err(|e| Error::new(Kind::Offline, e.to_string()))
+    }
+
+    fn idle(&self, run_id: &str) -> bool {
+        self.with(|c| c.run_status(run_id))
+            .is_ok_and(|s| s.alive && s.state == StateKind::Waiting)
     }
 }
 
@@ -1636,6 +1660,7 @@ mod run_request_tests {
             .unwrap(),
             unattended: true,
             clones: Vec::new(),
+            team: None,
         }
     }
 
@@ -1854,6 +1879,15 @@ mod team_cap_tests {
         assert!(e.message.contains("too old for team runs"), "{}", e.message);
         assert!(team_supported(&bundle(team()), &new).is_ok());
         assert!(team_supported(&bundle(None), &old).is_ok());
+    }
+
+    #[test]
+    fn a_team_member_needs_the_workers_capability() {
+        let old = vec![caps::TEAM_V1.to_string()];
+        let new = vec![caps::TEAM_WORKERS_V1.to_string()];
+        assert!(needs_cap(true, caps::TEAM_WORKERS_V1, &old).is_err());
+        assert!(needs_cap(true, caps::TEAM_WORKERS_V1, &new).is_ok());
+        assert!(needs_cap(false, caps::TEAM_WORKERS_V1, &old).is_ok());
     }
 }
 
