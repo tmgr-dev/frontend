@@ -488,6 +488,15 @@ fn emit_event<R: Runtime>(app: &AppHandle<R>, request_id: &str, event: ChatEvent
   let _ = app.emit("llm://chat", serde_json::json!({ "request_id": request_id, "event": event }));
 }
 
+pub fn chat_completions_url(base_url: &str) -> String {
+  let base = base_url.trim_end_matches('/');
+  if base.ends_with("/v1") {
+    format!("{base}/chat/completions")
+  } else {
+    format!("{base}/v1/chat/completions")
+  }
+}
+
 async fn stream_chat<R: Runtime>(
   app: &AppHandle<R>,
   request_id: &str,
@@ -504,7 +513,7 @@ async fn stream_chat<R: Runtime>(
     .connect_timeout(Duration::from_secs(5))
     .build()
     .map_err(|e| e.to_string())?;
-  let url = format!("{}/v1/chat/completions", config.base_url.trim_end_matches('/'));
+  let url = chat_completions_url(&config.base_url);
   // A typed struct here would silently drop fields the agent loop already built (tool_calls, tool_call_id).
   let mut body = serde_json::json!({
     "model": config.model,
@@ -1296,6 +1305,20 @@ mod tests {
       })
     );
     assert_eq!(parse_chat_event("[DONE]"), Some(ChatEvent::Done));
+  }
+
+  #[test]
+  fn builds_the_chat_completions_url_from_any_base() {
+    for (base, expected) in [
+      ("http://localhost:1234", "http://localhost:1234/v1/chat/completions"),
+      ("http://localhost:1234/", "http://localhost:1234/v1/chat/completions"),
+      ("http://localhost:1234/v1", "http://localhost:1234/v1/chat/completions"),
+      ("http://localhost:1234/v1/", "http://localhost:1234/v1/chat/completions"),
+      ("https://host.example/api", "https://host.example/api/v1/chat/completions"),
+      ("https://host.example/api/v1", "https://host.example/api/v1/chat/completions"),
+    ] {
+      assert_eq!(chat_completions_url(base), expected, "{base}");
+    }
   }
 
   #[test]
