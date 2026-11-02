@@ -104,8 +104,12 @@ impl Fx {
                 .unwrap(),
         );
         let deadline = Instant::now() + Duration::from_secs(10);
-        while Client::connect(&self.run).is_err() {
-            assert!(Instant::now() < deadline, "runner did not start");
+        while let Err(e) = Client::connect(&self.run) {
+            assert!(
+                Instant::now() < deadline,
+                "runner did not start: {e}; {}",
+                fs::read_to_string(self.tmp.path().join("runner.err")).unwrap_or_default()
+            );
             thread::sleep(Duration::from_millis(50));
         }
     }
