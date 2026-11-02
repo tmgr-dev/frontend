@@ -193,10 +193,36 @@ export const createLocalPersona = async (
 export const ensureDefaultLocalPersona = async (
 	ctx: LocalContext,
 ): Promise<{ uuid: string }> => {
-	const [existing] = await ctx.db.select<{ uuid: string }>(
-		`SELECT uuid FROM personas WHERE owner_user_id = ? ORDER BY synced_at, uuid LIMIT 1`,
-		[LOCAL_OWNER_ID],
-	);
+	const select = () =>
+		ctx.db.select<{ uuid: string }>(
+			`SELECT uuid FROM personas WHERE owner_user_id = ? ORDER BY synced_at, uuid LIMIT 1`,
+			[LOCAL_OWNER_ID],
+		);
+	const [existing] = await select();
 	if (existing) return existing;
-	return createLocalPersona(ctx, { name: DEFAULT_LOCAL_PERSONA_NAME });
+	const uuid = crypto.randomUUID();
+	const now = ctx.now().toISOString();
+	await ctx.db.batch([
+		{
+			sql: `INSERT INTO personas (uuid, owner_user_id, owner_name, name, description, avatar_file, synced_at, archived_at)
+			 SELECT ?, ?, ?, ?, NULL, NULL, ?, NULL
+			 WHERE NOT EXISTS (SELECT 1 FROM personas WHERE owner_user_id = ?)`,
+			params: [
+				uuid,
+				LOCAL_OWNER_ID,
+				ctx.user.name,
+				DEFAULT_LOCAL_PERSONA_NAME,
+				now,
+				LOCAL_OWNER_ID,
+			],
+			expectChanges: true,
+		},
+		{
+			sql: `INSERT INTO workspace_personas (persona_uuid, permissions, enabled_at, disabled_at)
+			 VALUES (?, ?, ?, NULL)`,
+			params: [uuid, JSON.stringify([...PERSONA_PERMISSIONS]), now],
+		},
+	]);
+	const [created] = await select();
+	return created;
 };

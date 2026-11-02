@@ -4,6 +4,8 @@ import { join } from 'path';
 import ts from 'typescript';
 
 const mounted: Array<() => Promise<void>> = [];
+const unmounting: Array<() => void> = [];
+const mockEnsureDefault = jest.fn(async (_ctx: unknown) => ({ uuid: 'p1' }));
 const mockStore: { state: any; getters: any } = { state: {}, getters: {} };
 const mockLocalContext = jest.fn(async (_w: unknown, user: unknown) => ({
 	user,
@@ -17,6 +19,7 @@ const mockCreateLlmChat = jest.fn(() => ({
 jest.mock('vue', () => ({
 	...jest.requireActual('vue'),
 	onMounted: (fn: () => Promise<void>) => mounted.push(fn),
+	onBeforeUnmount: (fn: () => void) => unmounting.push(fn),
 }));
 jest.mock('@/store', () => ({ __esModule: true, default: mockStore }));
 jest.mock('@/utils/desktop', () => ({ isDesktopApp: () => true }));
@@ -26,6 +29,7 @@ jest.mock('@/local/runtime', () => ({
 	localContext: (...args: [unknown, unknown]) => mockLocalContext(...args),
 }));
 jest.mock('@/local/personas', () => ({
+	ensureDefaultLocalPersona: (ctx: unknown) => mockEnsureDefault(ctx),
 	listLocalPersonas: async () => [
 		{
 			uuid: 'p1',
@@ -79,6 +83,7 @@ const askAs = async (state: any, getters: any) => {
 
 beforeEach(() => {
 	jest.clearAllMocks();
+	unmounting.length = 0;
 });
 
 test('local-only mode uses the local profile id everywhere', async () => {
@@ -242,4 +247,115 @@ test('the Cancel press reaches the persona agent through isCancelled', async () 
 	expect(isCancelled()).toBe(true);
 	release();
 	await asking;
+});
+
+test('unmounting while asking cancels the ask', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: { id: 42, name: 'Bo', email: 'b@example.com' } };
+	mockStore.getters = { isLocalOnly: false };
+	const cancel = jest.fn(async () => {});
+	mockCreateLlmChat.mockReturnValueOnce({ chat: jest.fn(), cancel });
+	const setup = loadComponent().setup({ taskId: 1 }, { emit: jest.fn() });
+	for (const fn of mounted) await fn();
+	let release!: () => void;
+	let isCancelled!: () => boolean;
+	mockAskPersonaOnTask.mockImplementationOnce(
+		(params: any) =>
+			new Promise<any>((resolve) => {
+				isCancelled = params.isCancelled;
+				release = () => resolve({ text: '', toolCalls: 0, posted: false });
+			}),
+	);
+	const asking = setup.ask();
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	for (const fn of unmounting) fn();
+	expect(cancel).toHaveBeenCalledTimes(1);
+	expect(isCancelled()).toBe(true);
+	release();
+	await asking;
+});
+
+test('a rejected cancel on unmount does not escape', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: { id: 42, name: 'Bo', email: 'b@example.com' } };
+	mockStore.getters = { isLocalOnly: false };
+	const cancel = jest.fn(async () => {
+		throw new Error('already gone');
+	});
+	mockCreateLlmChat.mockReturnValueOnce({ chat: jest.fn(), cancel });
+	const setup = loadComponent().setup({ taskId: 1 }, { emit: jest.fn() });
+	for (const fn of mounted) await fn();
+	let release!: () => void;
+	mockAskPersonaOnTask.mockImplementationOnce(
+		() =>
+			new Promise<any>((resolve) => {
+				release = () => resolve({ text: '', toolCalls: 0, posted: false });
+			}),
+	);
+	const asking = setup.ask();
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	expect(() => unmounting.forEach((fn) => fn())).not.toThrow();
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	release();
+	await asking;
+});
+
+test('a write tool call emits posted even when the ask is cancelled', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: { id: 42, name: 'Bo', email: 'b@example.com' } };
+	mockStore.getters = { isLocalOnly: false };
+	const emit = jest.fn();
+	const setup = loadComponent().setup({ taskId: 1 }, { emit });
+	for (const fn of mounted) await fn();
+	mockAskPersonaOnTask.mockImplementationOnce(async (params: any) => {
+		params.onToolCall('POST');
+		setup.cancelAsk();
+		throw new Error('cancelled');
+	});
+	await setup.ask();
+	expect(emit).toHaveBeenCalledWith('posted');
+});
+
+test('read-only tool calls and a cancel emit no posted', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: { id: 42, name: 'Bo', email: 'b@example.com' } };
+	mockStore.getters = { isLocalOnly: false };
+	const emit = jest.fn();
+	const setup = loadComponent().setup({ taskId: 1 }, { emit });
+	for (const fn of mounted) await fn();
+	mockAskPersonaOnTask.mockImplementationOnce(async (params: any) => {
+		params.onToolCall('GET');
+		setup.cancelAsk();
+		throw new Error('cancelled');
+	});
+	await setup.ask();
+	expect(emit).not.toHaveBeenCalled();
+});
+
+test('local-only mode creates the default persona before listing', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: {}, localProfile: { name: 'Ann' } };
+	mockStore.getters = { isLocalOnly: true };
+	loadComponent().setup({ taskId: 1 }, { emit: jest.fn() });
+	for (const fn of mounted) await fn();
+	expect(mockEnsureDefault).toHaveBeenCalledTimes(1);
+});
+
+test('a signed-in user does not create a default persona', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: { id: 42, name: 'Bo', email: 'b@example.com' } };
+	mockStore.getters = { isLocalOnly: false };
+	loadComponent().setup({ taskId: 1 }, { emit: jest.fn() });
+	for (const fn of mounted) await fn();
+	expect(mockEnsureDefault).not.toHaveBeenCalled();
+});
+
+test('a failing default persona creation still lists the personas', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: {}, localProfile: { name: 'Ann' } };
+	mockStore.getters = { isLocalOnly: true };
+	mockEnsureDefault.mockRejectedValueOnce(new Error('db busy'));
+	const setup = loadComponent().setup({ taskId: 1 }, { emit: jest.fn() });
+	for (const fn of mounted) await fn();
+	expect(setup.enabledPersonas.value).toHaveLength(1);
 });

@@ -3279,6 +3279,7 @@
 				>
 					<!-- Comment composer (modal only — page has it in the right rail) -->
 					<AskPersonaButton
+						:key="form.id"
 						v-if="
 							showSurface('comments.composer') &&
 							isFeatureEnabled('personas') &&
@@ -3525,6 +3526,7 @@
 					@mousedown.stop
 				>
 					<AskPersonaButton
+						:key="form.id"
 						v-if="
 							isFeatureEnabled('personas') && form.id && isLocalWorkspaceTask
 						"

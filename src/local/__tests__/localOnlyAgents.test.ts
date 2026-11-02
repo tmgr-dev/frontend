@@ -90,6 +90,18 @@ describeSqlite('local-only personas', () => {
 		expect(rows.map((r) => r.name)).toEqual(['Local agent']);
 	});
 
+	it('creates exactly one default persona with permissions under concurrent calls', async () => {
+		const results = await Promise.all([
+			ensureDefaultLocalPersona(ctx),
+			ensureDefaultLocalPersona(ctx),
+			ensureDefaultLocalPersona(ctx),
+		]);
+		expect(new Set(results.map((r) => r.uuid)).size).toBe(1);
+		const rows = await listLocalPersonas(ctx);
+		expect(rows).toHaveLength(1);
+		expect(rows[0].permissions).toEqual([...PERSONA_PERMISSIONS]);
+	});
+
 	it('does not add a default when the workspace already has a local persona', async () => {
 		await createLocalPersona(ctx, { name: 'Scribe' });
 		await ensureDefaultLocalPersona(ctx);

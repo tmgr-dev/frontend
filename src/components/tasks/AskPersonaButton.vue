@@ -49,13 +49,20 @@
 	import { LOCAL_OWNER_ID } from '@/local/personaGate';
 	import { readPersonaCache } from '@/local/personaCache';
 	import {
+		ensureDefaultLocalPersona,
 		listLocalPersonas,
 		type WorkspacePersonaRow,
 	} from '@/local/personas';
 	import { activeLocalWorkspace, localContext } from '@/local/runtime';
 	import store from '@/store';
 	import { isDesktopApp } from '@/utils/desktop';
-	import { computed, defineComponent, onMounted, ref } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onBeforeUnmount,
+		onMounted,
+		ref,
+	} from 'vue';
 
 	export default defineComponent({
 		name: 'AskPersonaButton',
@@ -102,6 +109,13 @@
 			onMounted(async () => {
 				if (!show || !workspace) return;
 				const ctx = await localContext(workspace, currentUser());
+				if (store.getters?.isLocalOnly) {
+					try {
+						await ensureDefaultLocalPersona(ctx);
+					} catch {
+						/* listing below still shows whatever personas exist */
+					}
+				}
 				personas.value = await listLocalPersonas(ctx);
 				selected.value = enabledPersonas.value[0]?.uuid ?? null;
 			});
@@ -116,6 +130,8 @@
 				error.value = null;
 				partialText.value = '';
 				cancelRequested = false;
+				let wrote = false;
+				let posted = false;
 				try {
 					const ctx = await localContext(workspace, currentUser());
 					const cached = await readPersonaCache(persona.uuid, currentUser().id);
@@ -141,12 +157,16 @@
 							partialText.value = text;
 						},
 						isCancelled: () => cancelRequested,
+						onToolCall: (method: string) => {
+							if (method !== 'GET') wrote = true;
+						},
 					});
-					if (result.posted || !cancelRequested) emit('posted');
+					posted = !!result.posted || !cancelRequested;
 				} catch (e) {
 					if (!cancelRequested)
 						error.value = e instanceof Error ? e.message : String(e);
 				} finally {
+					if (posted || wrote) emit('posted');
 					asking.value = false;
 					partialText.value = '';
 					cancelCurrent = null;
@@ -157,6 +177,10 @@
 				cancelRequested = true;
 				return cancelCurrent?.();
 			};
+
+			onBeforeUnmount(() => {
+				Promise.resolve(cancelAsk()).catch(() => {});
+			});
 
 			return {
 				show,
