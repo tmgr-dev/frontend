@@ -33,6 +33,7 @@ pub(super) enum Plan {
 pub(super) enum Route {
     Dialog,
     Git,
+    Checkpoints,
     Summary,
     Export,
     Notes,
@@ -65,6 +66,8 @@ pub(super) fn route(view: &ViewState, action: &Action) -> Route {
         Route::Dialog
     } else if view.git_open {
         Route::Git
+    } else if view.cp.is_open() {
+        Route::Checkpoints
     } else if view.qmenu.is_some() {
         Route::Questions
     } else if view.peek.is_some() {
@@ -505,6 +508,7 @@ mod tests {
             place: Place::Right,
             task: None,
             worktree: false,
+            checkpoints: None,
         }
     }
 

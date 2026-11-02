@@ -5,6 +5,7 @@
     │   Name                                                               │    
     │   Worktree  Off   On                                                 │    
     │   Where     New tab   Right   Below   Replace                        │    
+    │   Rewind    Off   On                                                 │    
     │            [ Start ]                                                 │    
     │                                                                      │    
     │                                                                      │    

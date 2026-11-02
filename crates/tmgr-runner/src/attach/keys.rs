@@ -48,6 +48,7 @@ pub enum Cmd {
     Broadcast,
     BroadcastMark,
     Git,
+    Checkpoints,
     Summary,
     Export,
     Notes,

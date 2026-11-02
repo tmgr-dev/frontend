@@ -20,5 +20,5 @@
                   │ Enter / R / M resume exited / reconnect linked machines      │                 │
                   │ x / X         stop (asks first) / remove if exited           │                 │
                   │ [             scroll back through history                    │                 │
- + New session    │ q / u / ?     agent questions / subagents / this help        │─────────────────╯
+ + New session    │ q / u / C     agent questions / subagents / checkpoints      │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯es  Ctrl-] ? help

@@ -49,6 +49,7 @@ pub struct NewRequest {
     pub place: Place,
     pub task: Option<String>,
     pub worktree: bool,
+    pub checkpoints: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -91,6 +92,7 @@ pub enum NewField {
     Name,
     Worktree,
     Where,
+    Checkpoints,
     Start,
 }
 
@@ -111,6 +113,7 @@ pub struct NewSession {
     pub tasks: Vec<TaskOpt>,
     pub task_at: usize,
     pub task_note: Option<String>,
+    pub checkpoints: bool,
     pub review: Option<Vec<String>>,
     pub home: PathBuf,
     pub list_dir: fn(&Path) -> Vec<String>,
@@ -249,7 +252,7 @@ impl NewSession {
         if self.is_agent() {
             f.push(NewField::Worktree);
         }
-        f.extend([NewField::Where, NewField::Start]);
+        f.extend([NewField::Where, NewField::Checkpoints, NewField::Start]);
         f
     }
 
@@ -313,6 +316,10 @@ impl NewSession {
             }
             NewField::Worktree => {
                 self.worktree = !self.worktree;
+                self.clear_error();
+            }
+            NewField::Checkpoints => {
+                self.checkpoints = !self.checkpoints;
                 self.clear_error();
             }
             NewField::Where => {
@@ -445,6 +452,7 @@ impl NewSession {
             place: self.place,
             worktree: self.worktree && self.is_agent() && task.is_none(),
             task,
+            checkpoints: Some(self.checkpoints),
         })
     }
 }
@@ -604,6 +612,10 @@ fn option_labels(ns: &NewSession, field: NewField) -> (Vec<String>, usize) {
             vec!["Off".to_string(), "On".to_string()],
             usize::from(ns.worktree),
         ),
+        NewField::Checkpoints => (
+            vec!["Off".to_string(), "On".to_string()],
+            usize::from(ns.checkpoints),
+        ),
         _ => (
             Place::ALL.iter().map(|p| p.label().to_string()).collect(),
             Place::ALL.iter().position(|p| *p == ns.place).unwrap_or(0),
@@ -620,6 +632,7 @@ fn field_label(f: NewField) -> &'static str {
         NewField::Name => "Name",
         NewField::Where => "Where",
         NewField::Worktree => "Worktree",
+        NewField::Checkpoints => "Rewind",
         NewField::Start => "",
     }
 }
@@ -719,7 +732,7 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
         let x = value_x(*row);
         let avail = value_avail(*row);
         match f {
-            NewField::Kind | NewField::Where | NewField::Worktree => {
+            NewField::Kind | NewField::Where | NewField::Worktree | NewField::Checkpoints => {
                 let (labels, sel) = option_labels(ns, *f);
                 for (i, off, w) in option_spans(&labels, sel, avail) {
                     let style = if i == sel {
@@ -859,6 +872,7 @@ impl ViewState {
             tasks: self.new_tasks.clone(),
             task_at: 0,
             task_note: self.new_tasks_note.clone(),
+            checkpoints: self.cp.form_default,
             review: None,
             home,
             list_dir: list_dirs,
@@ -1022,7 +1036,7 @@ impl ViewState {
         let x = value_x(row);
         let avail = value_avail(row);
         match field {
-            NewField::Kind | NewField::Where | NewField::Worktree => {
+            NewField::Kind | NewField::Where | NewField::Worktree | NewField::Checkpoints => {
                 let (labels, sel) = option_labels(ns, field);
                 let hit = option_spans(&labels, sel, avail)
                     .into_iter()
@@ -1032,6 +1046,8 @@ impl ViewState {
                         ns.kind = i;
                     } else if field == NewField::Worktree {
                         ns.worktree = i == 1;
+                    } else if field == NewField::Checkpoints {
+                        ns.checkpoints = i == 1;
                     } else {
                         ns.place = Place::ALL[i];
                     }
@@ -1174,6 +1190,7 @@ mod tests {
             place: Place::Below,
             task: None,
             worktree: false,
+            checkpoints: None,
         };
         v.remember_new_session(&req, "shell");
         let p = v.prefs();
@@ -1243,8 +1260,10 @@ mod tests {
         v.edit_new_session(b"\x1b[D");
         assert_eq!(ns(&mut v).place, Place::Replace);
         v.edit_new_session(b"\t");
+        assert_eq!(ns(&mut v).focus, NewField::Checkpoints);
+        v.edit_new_session(b"\t");
         assert_eq!(ns(&mut v).focus, NewField::Start);
-        v.edit_new_session(b"\x1b[Z");
+        v.edit_new_session(b"\x1b[Z\x1b[Z");
         assert_eq!(ns(&mut v).focus, NewField::Where);
     }
 

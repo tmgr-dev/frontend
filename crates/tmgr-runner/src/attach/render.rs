@@ -167,6 +167,9 @@ fn render_all(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
     if st.git_open {
         super::git::draw_git(buf, area, st);
     }
+    if st.cp.is_open() {
+        super::checkpoints::draw_checkpoints(buf, area, st);
+    }
     if st.notes.is_some() {
         super::notes::draw_notes(buf, area, st);
     }
@@ -852,6 +855,27 @@ pub(crate) fn header_watch(st: &ViewState, p: &PaneRect) -> Option<(u16, u16)> {
     Some((x, w))
 }
 
+fn header_cp_text(st: &ViewState, p: &PaneRect, geo: &HeaderGeo, taken: usize) -> Option<String> {
+    super::checkpoints::badge(
+        st.cp.status.get(&p.session)?,
+        geo.spare.saturating_sub(taken),
+    )
+}
+
+pub(crate) fn header_checkpoints(st: &ViewState, p: &PaneRect) -> Option<(u16, u16)> {
+    let geo = header_geo(p, st)?;
+    let chip_w = header_chip_text(st, p, &geo).map_or(0, |c| c.width());
+    let git_w = header_git_text(st, p, &geo, chip_w).map_or(0, |c| c.width());
+    let watch_w = header_watch_text(st, p, &geo, chip_w + git_w).map_or(0, |c| c.width());
+    let taken = chip_w + git_w + watch_w;
+    let badge = header_cp_text(st, p, &geo, taken)?;
+    let before =
+        1 + geo.index.to_string().width() + 2 + geo.shown.width() + 3 + geo.state.width() + taken;
+    let x = p.outer.x + 1 + u16::try_from(before).ok()? + 3;
+    let w = u16::try_from(badge.width()).ok()?.checked_sub(3)?;
+    Some((x, w))
+}
+
 fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
     let geo = header_geo(p, st);
     let index = geo.as_ref().map_or_else(
@@ -906,6 +930,11 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
                     _ => dim(),
                 };
                 spans.push(text(&badge, style));
+            }
+            let watch_w = header_watch_text(st, p, &geo, chip_w + git_w).map_or(0, |c| c.width());
+            if let Some(badge) = header_cp_text(st, p, &geo, chip_w + git_w + watch_w) {
+                spare = spare.saturating_sub(badge.width());
+                spans.push(text(&badge, dim()));
             }
             if let Some(parts) = header_meta(st, &p.session, spare) {
                 spare = spare.saturating_sub(3 + parts_width(&parts));
@@ -1337,8 +1366,8 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "scroll back through history",
     ),
     (
-        HelpKey::Cmds(&[Cmd::Questions, Cmd::Subagents, Cmd::Help]),
-        "agent questions / subagents / this help",
+        HelpKey::Cmds(&[Cmd::Questions, Cmd::Subagents, Cmd::Checkpoints]),
+        "agent questions / subagents / checkpoints",
     ),
     (
         HelpKey::Lit("Ctrl-]"),

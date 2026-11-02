@@ -143,6 +143,7 @@ pub struct ViewState {
     pub palette: Option<Palette>,
     pub git: HashMap<String, super::git::GitInfo>,
     pub git_open: bool,
+    pub cp: super::checkpoints::CpState,
     pub export: Option<super::export::ExportState>,
     pub notes: Option<super::notes::NotesState>,
     pub summary: Option<super::summary::SummaryDraft>,
@@ -420,6 +421,7 @@ impl ViewState {
             palette: None,
             git: HashMap::new(),
             git_open: false,
+            cp: Default::default(),
             export: None,
             notes: None,
             summary: None,
@@ -1484,6 +1486,7 @@ impl ViewState {
                 }
             }
             Cmd::Git => self.toggle_git(),
+            Cmd::Checkpoints => self.toggle_checkpoints(),
             Cmd::Broadcast => self.toggle_broadcast(),
             Cmd::BroadcastMark => self.mark_broadcast(),
             Cmd::Detach
@@ -1830,6 +1833,11 @@ impl ViewState {
                             return Hit::Watch(p.session.clone());
                         }
                     }
+                    if let Some((x, w)) = super::render::header_checkpoints(self, p) {
+                        if col >= x && col < x + w {
+                            return Hit::Checkpoints(p.session.clone());
+                        }
+                    }
                 }
                 if row + 1 == p.outer.bottom() {
                     if let Some(r) = super::broadcast::marker_rect(p, self) {
@@ -1860,6 +1868,7 @@ impl ViewState {
             | Hit::Subs(_)
             | Hit::Chip(_)
             | Hit::Git(_)
+            | Hit::Checkpoints(_)
             | Hit::Broadcast(_)
             | Hit::Sub(..)
             | Hit::Filter
@@ -1901,6 +1910,7 @@ impl ViewState {
             || self.new_session.is_some()
             || self.palette.is_some()
             || self.git_open
+            || self.cp.is_open()
             || self.summary.is_some()
             || self.export.is_some()
             || self.notes.is_some()
@@ -1931,6 +1941,9 @@ impl ViewState {
         }
         if self.git_open {
             return self.git_mouse(area, ev, out);
+        }
+        if self.cp.is_open() {
+            return self.cp_mouse(area, ev, out);
         }
         if self.qmenu.is_some() {
             return self.qmenu_mouse(area, ev, out);
@@ -2006,6 +2019,13 @@ impl ViewState {
                 if ev.is_left_press() {
                     self.open(&id);
                     self.toggle_git();
+                    out.redraw = true;
+                }
+            }
+            Hit::Checkpoints(id) => {
+                if ev.is_left_press() {
+                    self.open(&id);
+                    self.toggle_checkpoints();
                     out.redraw = true;
                 }
             }
@@ -2538,6 +2558,7 @@ pub enum Hit {
     Subs(String),
     Chip(String),
     Git(String),
+    Checkpoints(String),
     Broadcast(String),
     Sub(String, String),
     Filter,

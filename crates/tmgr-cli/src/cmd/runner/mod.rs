@@ -1,5 +1,6 @@
 pub(crate) mod allow;
 mod attach;
+mod attach_checkpoints;
 mod attach_chip;
 mod attach_clip;
 pub(crate) mod attach_consent;

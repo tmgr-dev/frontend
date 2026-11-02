@@ -9,6 +9,8 @@ use std::collections::HashMap;
 use tmgr_ipc::api::{Attr, Color, Line, Modes, Snapshot, Span, BOLD};
 use tmgr_ipc::api::{MouseEncoding, MouseLevel, MouseMode, State, StateKind};
 
+mod checkpoints;
+
 fn forward(b: &[u8]) -> Action {
     Action::Forward(b.to_vec())
 }

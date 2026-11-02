@@ -13,12 +13,12 @@
                   │ Watcher pane: rerun a command when files change     Ctrl-] W │                 │
                   │ Focus previous pane                         Ctrl-] Shift-Tab │                 │
                   │ Search the focused pane's scrollback                Ctrl-] / │                 │
+                  │ Checkpoints: list, preview and restore the working  Ctrl-] C │                 │
                   │ dev-server                                           waiting │                 │
                   │ Group the sidebar by tab or by repo                 Ctrl-] g │                 │
                   │ Show or hide the sidebar                            Ctrl-] b │                 │
                   │ Make the sidebar wider                              Ctrl-] > │                 │
                   │ Named layouts: save or switch panes and tabs        Ctrl-] L │                 │
                   │ Export this session to Markdown or a page           Ctrl-] e │                 │
-                  │ Session notes, saved locally, can go to the task    Ctrl-] o │                 │
- + New session    │ Make the sidebar narrower                           Ctrl-] < │─────────────────╯
+ + New session    │ Session notes, saved locally, can go to the task    Ctrl-] o │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯es  Ctrl-] ? help

@@ -193,6 +193,13 @@ pub const ACTIONS: &[ActionDef] = &[
         true,
     ),
     def(
+        Cmd::Checkpoints,
+        b"C",
+        "C",
+        "Checkpoints: list, preview and restore the working tree",
+        true,
+    ),
+    def(
         Cmd::Summary,
         b"S",
         "S",

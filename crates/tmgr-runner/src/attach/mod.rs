@@ -1,6 +1,7 @@
 mod actions;
 mod attention;
 mod broadcast;
+mod checkpoints;
 mod chip;
 mod clean;
 mod export;
@@ -37,6 +38,10 @@ mod tests;
 pub use actions::{ActionDef, ACTIONS};
 pub use attention::AttentionTracker;
 pub use broadcast::{peer_bytes, Broadcast};
+pub use checkpoints::{
+    badge as checkpoints_badge, friendly_error as checkpoints_error, CpAction, CpFetch, CpMsg,
+    CpState, BUSY_MESSAGE, OFF_MESSAGE,
+};
 pub use chip::{chip_text, open_urls, TaskChip};
 pub use clean::{clean_copy, clean_selection, CopyContext};
 pub use export::{

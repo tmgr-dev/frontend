@@ -1,3 +1,4 @@
+use super::attach_checkpoints;
 use super::attach_chip::{chipper, ChipJob, Opener, SystemOpener};
 use super::attach_clip::{Clipboard, SystemClipboard};
 use super::attach_consent::Reads;
@@ -53,18 +54,19 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{
-    caps, CreateReq, Modes, RestoredRun, SessionInfo, Snapshot, StateKind, TaskRef,
+    caps, CheckpointStatus, CreateReq, Modes, RestoredRun, SessionInfo, Snapshot, StateKind,
+    TaskRef,
 };
 use tmgr_ipc::proto::{valid_session_id, ServerMsg};
 use tmgr_runner::attach::{
     clean_selection, cursor, deliver, enter_mouse, focus_on, kind_for_background, layout,
     mode_changes, open_urls, parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes,
-    valid_pr_url, Action, AgentTitle, AttentionTracker, Cmd, Confirm, Control, GitAction, GitInfo,
-    Hit, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier, PaletteEdit,
-    PaletteEntry, PaletteMode, PaneInfo, Place, PostTarget, PrLookup, QEdit, RenameEdit,
-    ScreenSource, ScrollKey, ScrollState, ScrollText, SearchEdit, SessionRow, SessionStatus,
-    SidebarEdit, SignalSettings, SignalTracker, SplitDir, SummaryAction, SummaryDraft, TaskChip,
-    TaskOpt, ThemeKind, UsageBar, ViewState, OSC11_QUERY,
+    valid_pr_url, Action, AgentTitle, AttentionTracker, Cmd, Confirm, Control, CpAction, CpMsg,
+    GitAction, GitInfo, Hit, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession,
+    Notifier, PaletteEdit, PaletteEntry, PaletteMode, PaneInfo, Place, PostTarget, PrLookup, QEdit,
+    RenameEdit, ScreenSource, ScrollKey, ScrollState, ScrollText, SearchEdit, SessionRow,
+    SessionStatus, SidebarEdit, SignalSettings, SignalTracker, SplitDir, SummaryAction,
+    SummaryDraft, TaskChip, TaskOpt, ThemeKind, UsageBar, ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -154,6 +156,8 @@ enum Msg {
     Status(HashMap<String, SessionStatus>),
     Usage(UsageBar),
     Git(HashMap<String, GitInfo>),
+    Checkpoints(CpMsg),
+    CheckpointsNote(String),
     Summary(Generated),
     Exported(std::result::Result<String, String>),
     NotesSent(std::result::Result<String, String>),
@@ -411,6 +415,7 @@ type ProbeJob = (String, u32, String);
 
 impl App {
     fn on_msg(&mut self, msg: Msg) -> io::Result<Option<Exit>> {
+        self.enable_checkpoints_for(&msg);
         match msg {
             Msg::Stdin(bytes) => return self.on_stdin(&bytes),
             Msg::StdinClosed => return Ok(Some(Exit::Detached)),
@@ -489,6 +494,12 @@ impl App {
                     self.dirty = true;
                 }
             }
+            Msg::Checkpoints(msg) => {
+                if self.view.cp_msg(msg) {
+                    self.dirty = true;
+                }
+            }
+            Msg::CheckpointsNote(note) => self.notify(&note),
             Msg::Usage(bar) => {
                 self.usage_pending = false;
                 if self.view.set_usage(bar) {
@@ -635,6 +646,13 @@ impl App {
         for s in list {
             self.starts
                 .insert(s.id.clone(), (s.cwd.clone(), s.child_pid));
+        }
+        let statuses: HashMap<String, CheckpointStatus> = list
+            .iter()
+            .filter_map(|s| Some((s.id.clone(), s.checkpoints.clone()?)))
+            .collect();
+        if self.view.set_checkpoints(statuses) {
+            self.dirty = true;
         }
         self.view.watchers = list
             .iter()
@@ -1330,6 +1348,56 @@ impl App {
         self.git_pending = self.git_tx.try_send(jobs).is_ok();
     }
 
+    fn enable_checkpoints_for(&self, msg: &Msg) {
+        let (id, flag) = match msg {
+            Msg::Spawned {
+                result: Ok(info),
+                req,
+                ..
+            }
+            | Msg::TemplateStarted {
+                result: Ok(info),
+                req,
+                ..
+            }
+            | Msg::LayoutStarted {
+                result: Ok(info),
+                req,
+                ..
+            } => (info.id.clone(), req.checkpoints),
+            Msg::Created {
+                result: Ok(info), ..
+            } => (info.id.clone(), None),
+            _ => return,
+        };
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            if let Some(note) = attach_checkpoints::enable(&cfg, &id, flag) {
+                let _ = tx.send(Msg::CheckpointsNote(note));
+            }
+        });
+    }
+
+    fn probe_checkpoints(&mut self) {
+        for job in self.view.cp_due(Instant::now()) {
+            let cfg = self.cfg.clone();
+            let tx = self.tx.clone();
+            thread::spawn(move || {
+                let _ = tx.send(Msg::Checkpoints(attach_checkpoints::fetch(&cfg, job)));
+            });
+        }
+    }
+
+    fn checkpoints_action(&mut self, action: CpAction) {
+        self.dirty = true;
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let _ = tx.send(Msg::Checkpoints(attach_checkpoints::act(&cfg, action)));
+        });
+    }
+
     fn git_action(&mut self, action: GitAction) {
         self.dirty = true;
         match action {
@@ -2008,6 +2076,12 @@ impl App {
                 }
                 self.dirty = true;
             }
+            (Route::Checkpoints, Action::Forward(data)) => {
+                self.dirty = true;
+                if let Some(action) = self.view.edit_cp(&data) {
+                    self.checkpoints_action(action);
+                }
+            }
             (Route::Export, Action::Forward(data)) => {
                 if let Some(action) = self.view.edit_export(&data) {
                     self.export_action(action);
@@ -2623,6 +2697,7 @@ impl App {
             place: Place::Right,
             task: None,
             worktree: false,
+            checkpoints: None,
         };
         let (cols, rows) = spawn_size(content, req.place);
         self.notify(&format!("starting {}...", sanitize_text(&t.name)));
@@ -2834,6 +2909,7 @@ impl App {
                 place: Place::Right,
                 task: None,
                 worktree: false,
+                checkpoints: None,
             };
             let mut run_req = req.clone();
             if registers_shell(&req) {
@@ -3280,6 +3356,9 @@ impl App {
                     if cmd != Cmd::Git {
                         self.view.git_open = false;
                     }
+                    if cmd != Cmd::Checkpoints {
+                        self.view.cp.close();
+                    }
                     self.view.sidebar_focus = None;
                     self.view.layout_offer = None;
                     if cmd != Cmd::Filter {
@@ -3430,6 +3509,7 @@ impl App {
         self.probe_usage();
         self.poll_watchers();
         self.probe_git();
+        self.probe_checkpoints();
         self.check_exits();
         self.check_push();
         self.probe_peek();
@@ -3820,6 +3900,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         .collect();
     let first = ratatui::crossterm::terminal::size().unwrap_or((view.width, 24));
     view.set_locs(Rect::new(0, 0, first.0, first.1), seeded);
+    view.cp.form_default = attach_checkpoints::form_default();
     let attach_client = connect(cfg)?;
     let human_time = attach_client
         .welcome()
@@ -4555,6 +4636,7 @@ mod tests {
                 place: Place::Right,
                 task: None,
                 worktree: false,
+                checkpoints: None,
             },
             target: "a".into(),
         })
@@ -4631,6 +4713,7 @@ mod tests {
                 place: Place::Right,
                 task: None,
                 worktree: false,
+                checkpoints: None,
             },
             target: "a".into(),
         };
