@@ -31,7 +31,16 @@ fn cache_path<R: Runtime>(app: &AppHandle<R>, user_id: i64, uuid: &str) -> Resul
 }
 
 #[tauri::command]
-pub fn persona_cache_put<R: Runtime>(app: AppHandle<R>, user_id: i64, uuid: String, data: Value) -> Result<(), String> {
+pub fn persona_cache_put<R: Runtime>(
+  app: AppHandle<R>,
+  window: tauri::Window<R>,
+  user_id: i64,
+  uuid: String,
+  data: Value,
+) -> Result<(), String> {
+  if window.label() != "main" {
+    return Err("persona_cache_put may only be called from the main window".into());
+  }
   let path = cache_path(&app, user_id, &uuid)?;
   fs::write(path, serde_json::to_vec(&data).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
