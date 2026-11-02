@@ -86,6 +86,7 @@ fn snapshot() -> Snapshot {
 
 fn bundle() -> RunBundle {
     RunBundle {
+        assignment: None,
         v: 1,
         task: TASK,
         title: "Fix \"login\" é中".into(),
@@ -136,6 +137,7 @@ fn origin() -> Origin {
 
 fn session_info() -> SessionInfo {
     SessionInfo {
+        team: None,
         id: SID.into(),
         name: "fix login".into(),
         argv: vec![
@@ -236,6 +238,7 @@ fn handshake_messages() {
 #[test]
 fn requests_and_responses() {
     let run = RunCreateReq {
+        team: None,
         clones: Vec::new(),
         profile: "codex".into(),
         task: Some(TASK),
@@ -589,6 +592,7 @@ fn method_params_and_results() {
     golden(
         "session_info_notask",
         &SessionInfo {
+            team: None,
             id: SID.into(),
             name: "sh".into(),
             argv: vec!["/bin/sh".into()],
@@ -891,7 +895,8 @@ fn constants_are_pinned() {
             "manual_bypass.v1",
             "no_sandbox.v1",
             "checkpoints.v1",
-            "permission_cards.v1"
+            "permission_cards.v1",
+            "team.workers.v1"
         ]
     );
     let methods = [
@@ -1440,16 +1445,26 @@ fn a_team_changes_the_hash_only_when_present_and_is_validated() {
 
 fn full_bundle() -> RunBundle {
     RunBundle {
+        assignment: None,
         v: 1,
-        task: TaskRef { workspace_id: -3, task_id: 412 },
+        task: TaskRef {
+            workspace_id: -3,
+            task_id: 412,
+        },
         title: "Fix login".into(),
         body: "body\n</x>".into(),
-        author: BundleAuthor { kind: AuthorKind::Human, id: Some("u_7".into()) },
+        author: BundleAuthor {
+            kind: AuthorKind::Human,
+            id: Some("u_7".into()),
+        },
         comments: vec![],
         pages: vec![],
         persona: None,
         context: vec![],
-        team: Some(BundleTeam { size: 3, mode: TeamMode::Eco }),
+        team: Some(BundleTeam {
+            size: 3,
+            mode: TeamMode::Eco,
+        }),
         launch: BundleLaunch {
             profile: "claude".into(),
             model: Some("opus".into()),
@@ -1461,8 +1476,12 @@ fn full_bundle() -> RunBundle {
 
 fn full_req() -> RunCreateReq {
     RunCreateReq {
+        team: None,
         profile: "claude".into(),
-        task: Some(TaskRef { workspace_id: -3, task_id: 412 }),
+        task: Some(TaskRef {
+            workspace_id: -3,
+            task_id: 412,
+        }),
         cwd: "/work/project".into(),
         name: Some("n".into()),
         model: Some("opus".into()),
@@ -1471,7 +1490,10 @@ fn full_req() -> RunCreateReq {
         bundle: Some(full_bundle()),
         bundle_sha256: Some("a".repeat(64)),
         cwd_pin: None,
-        origin: Some(Origin { link: "laptop".into(), generation: 7 }),
+        origin: Some(Origin {
+            link: "laptop".into(),
+            generation: 7,
+        }),
         permission_mode: Some("plan".into()),
         start_key: Some("k".into()),
         clone_of: Some("/work/project".into()),
@@ -1489,20 +1511,32 @@ fn full_req() -> RunCreateReq {
 
 fn full_info() -> SessionInfo {
     SessionInfo {
+        team: None,
         id: "s_abcdefghij".into(),
         name: "n".into(),
         argv: vec!["claude".into()],
         cwd: "/work/project".into(),
         profile: Some("claude".into()),
-        state: State { kind: StateKind::Working, since_ms: 1, detail: None, exit_code: None },
+        state: State {
+            kind: StateKind::Working,
+            since_ms: 1,
+            detail: None,
+            exit_code: None,
+        },
         created_ms: 2,
         cols: 100,
         rows: 30,
         shim_pid: 5,
         child_pid: 6,
-        task: Some(TaskRef { workspace_id: -3, task_id: 412 }),
+        task: Some(TaskRef {
+            workspace_id: -3,
+            task_id: 412,
+        }),
         bundle_sha256: Some("a".repeat(64)),
-        origin: Some(Origin { link: "laptop".into(), generation: 7 }),
+        origin: Some(Origin {
+            link: "laptop".into(),
+            generation: 7,
+        }),
         permission_mode: Some("plan".into()),
         resumed_from: Some("s_zzzzzzzzzz".into()),
         human_s: Some(9),
@@ -1523,6 +1557,72 @@ fn non_team_wire_forms_match_the_base_fixtures() {
     let info = serde_json::to_string(&full_info()).unwrap();
     assert_eq!(info, base_fixture("base_full_session_info.json"));
     let b = full_bundle();
-    assert_eq!(b.canonical(), base_fixture("base_full_bundle.canonical.json"));
+    assert_eq!(
+        b.canonical(),
+        base_fixture("base_full_bundle.canonical.json")
+    );
     assert_eq!(b.sha256(), base_fixture("base_full_bundle.sha256"));
+}
+
+#[test]
+fn team_link_wire_form_round_trips_and_is_validated() {
+    let lead = TeamLink {
+        role: TeamRole::Lead,
+        of: "p_1".into(),
+    };
+    let worker = TeamLink {
+        role: TeamRole::Worker(2),
+        of: "p_1".into(),
+    };
+    assert_eq!(
+        serde_json::to_value(&lead).unwrap(),
+        json!({"role": "lead", "of": "p_1"})
+    );
+    assert_eq!(
+        serde_json::to_value(&worker).unwrap(),
+        json!({"role": {"worker": 2}, "of": "p_1"})
+    );
+    let mut req = full_req();
+    req.team = Some(worker.clone());
+    let v = serde_json::to_value(&req).unwrap();
+    assert_eq!(v["team"], json!({"role": {"worker": 2}, "of": "p_1"}));
+    assert_eq!(serde_json::from_value::<RunCreateReq>(v).unwrap(), req);
+    assert!(
+        serde_json::from_value::<TeamLink>(json!({"role": "lead", "of": "p", "x": 1})).is_err()
+    );
+    assert!(lead.validate().is_ok() && worker.validate().is_ok());
+    assert!(TeamLink {
+        of: String::new(),
+        ..lead.clone()
+    }
+    .validate()
+    .is_err());
+    assert!(TeamLink {
+        of: "a/b".into(),
+        ..lead
+    }
+    .validate()
+    .is_err());
+    assert!(TeamLink {
+        role: TeamRole::Worker(0),
+        ..worker
+    }
+    .validate()
+    .is_err());
+    assert!(caps::ALL.contains(&caps::TEAM_WORKERS_V1));
+    assert_eq!(caps::TEAM_WORKERS_V1, "team.workers.v1");
+}
+
+#[test]
+fn an_assignment_is_hashed_only_when_present_and_is_size_limited() {
+    let mut b = full_bundle();
+    let base = b.sha256();
+    b.assignment = Some("part one".into());
+    assert_ne!(b.sha256(), base);
+    assert!(b.canonical().contains(r#""assignment":"part one""#));
+    assert!(b.validate().is_ok());
+    b.assignment = Some("x".repeat(MAX_ASSIGNMENT_BYTES + 1));
+    assert!(b.validate().is_err());
+    b.assignment = None;
+    assert_eq!(b.sha256(), base);
 }

@@ -1048,6 +1048,7 @@ struct RunPlan<'a> {
 
 fn run_request(p: &RunPlan) -> RunCreateReq {
     RunCreateReq {
+        team: None,
         clones: p.clones.clone(),
         profile: p.profile.to_string(),
         task: Some(p.task),
@@ -1285,6 +1286,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         task_id,
     };
     let bundle = RunBundle {
+        assignment: None,
         v: 1,
         task: task_ref,
         title: ok.title.clone(),
@@ -3156,6 +3158,7 @@ mod tests {
         let request = |c: &Candidate| {
             let bundle = bundle_of(&rule, c, "/tmp/clone", &Default::default());
             let mut r = RunCreateReq {
+                team: None,
                 clones: Vec::new(),
                 profile: "claude-code".into(),
                 task: Some(task),

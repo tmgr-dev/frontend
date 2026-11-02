@@ -248,6 +248,7 @@ pub(super) fn run_create_run(
     trust: bool,
 ) -> RunCreateReq {
     RunCreateReq {
+        team: None,
         clones: Vec::new(),
         profile,
         task: None,

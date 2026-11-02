@@ -195,6 +195,7 @@ impl Harness {
 
     fn run_req(&self, profile: &str) -> RunCreateReq {
         RunCreateReq {
+            team: None,
             clones: Vec::new(),
             profile: profile.into(),
             task: None,
@@ -1159,6 +1160,7 @@ impl Harness {
     fn bundled_at(&self, profile: &str, dir: &Path) -> RunCreateReq {
         let cwd = fs::canonicalize(dir).unwrap().display().to_string();
         let bundle = RunBundle {
+            assignment: None,
             v: 1,
             task: BUNDLE_TASK,
             title: "Fix login".into(),
@@ -4721,6 +4723,7 @@ impl CloudFx {
         let c = &f["cases"][2];
         let cwd = self.clone.display().to_string();
         let bundle = RunBundle {
+            assignment: None,
             v: 1,
             task: CLOUD_TASK,
             title: c["title"].as_str().unwrap().into(),
@@ -5176,6 +5179,7 @@ impl MultiFx {
         let c = &f["cases_v2"][0];
         let cwd = dir.display().to_string();
         let bundle = RunBundle {
+            assignment: None,
             v: 1,
             task: MULTI_TASK,
             title: c["title"].as_str().unwrap().into(),

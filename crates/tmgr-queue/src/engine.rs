@@ -192,6 +192,7 @@ pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str, policy: &StartPolicy) ->
         ),
     };
     RunBundle {
+        assignment: None,
         v: 1,
         task: c.task,
         title: c.title.clone(),
@@ -2679,6 +2680,7 @@ mod tests {
         bundle.title = case["title"].as_str().unwrap().into();
         bundle.body = case["description"].as_str().unwrap().into();
         RunCreateReq {
+            team: None,
             clones: Vec::new(),
             profile: start.profile.clone(),
             task: Some(task),
