@@ -404,7 +404,7 @@ fn save_config<S: SecretStore, W: FnOnce(&LlmConfigFile) -> Result<(), String>>(
   let new_key = api_key.filter(|k| !k.is_empty());
   let access = slot_access(identity, user_id);
   if access != SlotAccess::Allowed {
-    if new_key.is_some() || clear_api_key {
+    if access == SlotAccess::OtherAccount || new_key.is_some() || clear_api_key {
       return Err(access.save_refusal());
     }
     let previous = read_previous()?;
@@ -629,6 +629,7 @@ pub async fn llm_chat<R: Runtime>(
     Err(e) => return Err(e.to_string()),
   };
   if api_key.is_some() {
+    refuses_plaintext_key(&config.base_url, true)?;
     check_key_origin(slot_origin(&config, user_id), &config.base_url)?;
   }
 
@@ -1284,7 +1285,7 @@ mod tests {
 
   #[test]
   fn a_keyless_edit_is_saved_without_the_keychain_when_not_allowed() {
-    for (identity, user_id) in [(Some(5), 0), (None, 7), (Some(5), 6)] {
+    for (identity, user_id) in [(Some(5), 0), (None, 7)] {
       let store = Spy::with(&[(user_id, "K")]);
       let config = LlmConfigFile { base_url: A.into(), model: "old".into(), ..config_for_slot(&user_id.to_string()) };
       let saved = run_save(&store, keyless_edit(identity, user_id, B, "new"), config.clone());
@@ -1297,6 +1298,15 @@ mod tests {
       assert_eq!(store.gets.load(std::sync::atomic::Ordering::SeqCst), 0);
       assert_eq!(store.key(user_id).as_deref(), Some("K"));
     }
+  }
+
+  #[test]
+  fn a_keyless_edit_for_another_account_is_refused_and_writes_nothing() {
+    let store = Spy::with(&[(6, "K")]);
+    let saved = run_save(&store, keyless_edit(Some(5), 6, B, "new"), config_for_slot("6"));
+    assert_eq!(saved.result, Err(REFUSAL.to_string()));
+    assert!(saved.written.is_none());
+    assert!(!saved.read);
   }
 
   #[test]

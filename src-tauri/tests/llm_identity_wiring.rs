@@ -149,3 +149,17 @@ fn chat_lets_the_current_account_through_to_the_config_check() {
   let f = fixture(Some(IDENTITY));
   assert_eq!(chat(&f, IDENTITY).unwrap_err(), "Set an LLM base URL first");
 }
+
+#[test]
+fn chat_refuses_a_key_for_a_remote_http_server() {
+  let f = fixture(Some(IDENTITY));
+  plant_key(IDENTITY);
+  let dir = f.app.path().app_data_dir().unwrap();
+  std::fs::create_dir_all(&dir).unwrap();
+  std::fs::write(
+    dir.join("llm_config.json"),
+    r#"{"base_url":"http://remote.invalid/v1","model":"m","key_origins":{"7":"http://remote.invalid:80"}}"#,
+  )
+  .unwrap();
+  assert!(chat(&f, IDENTITY).unwrap_err().contains("plain HTTP"));
+}
