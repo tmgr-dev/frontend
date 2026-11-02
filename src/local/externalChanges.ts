@@ -176,8 +176,10 @@ export const installExternalChanges = async (
 		}
 		if (reactionsChanged) deps.invalidate(/^comments-task-/);
 		if (reactionsChanged || relationsChanged) deps.invalidate(/^task-\d+$/);
-		for (const taskId of commentTasks)
+		for (const taskId of commentTasks) {
 			deps.invalidate(`comments-task-${taskId}`);
+			deps.deliver(id, (h) => h.onCommentUpdated?.({ task_id: taskId }));
+		}
 
 		if (refetch.size + gone.length > BULK_THRESHOLD) {
 			deps.invalidate(/^task-\d+$/);

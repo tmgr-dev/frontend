@@ -62,7 +62,7 @@ describeSqlite('installExternalChanges', () => {
 	let emit: (code: string) => void;
 	let activeCode: string | null;
 	let handlers: Record<
-		'onTaskUpdated' | 'onReconnect' | 'onAgentWorkChanged',
+		'onTaskUpdated' | 'onReconnect' | 'onAgentWorkChanged' | 'onCommentUpdated',
 		jest.Mock
 	>;
 	let deps: Record<string, any>;
@@ -94,6 +94,7 @@ describeSqlite('installExternalChanges', () => {
 			onTaskUpdated: jest.fn(),
 			onReconnect: jest.fn(),
 			onAgentWorkChanged: jest.fn(),
+			onCommentUpdated: jest.fn(),
 		};
 		deps = {
 			active: () => (activeCode ? { id: -1, code: activeCode } : null),
@@ -169,6 +170,7 @@ describeSqlite('installExternalChanges', () => {
 		emit('ws');
 		await flush();
 		expect(deps.invalidate).toHaveBeenCalledWith('comments-task-1');
+		expect(handlers.onCommentUpdated).toHaveBeenCalledWith({ task_id: 1 });
 		expect(deps.fetchTask).toHaveBeenCalledWith(-1, 1);
 		expect(handlers.onTaskUpdated).toHaveBeenCalledWith({ id: 1 }, 'updated');
 	});
