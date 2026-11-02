@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.78 — 2026-11-02
+
+- Using the desktop without an account: you can now create an account or sign in from inside the app. Your local workspaces stay, and your cloud workspace appears next to them.
+- After you sign in, your local AI provider key moves to that account. If the move fails, the key stays where it was, the app shows a warning with Retry, and it tries again at the next start.
+- Local comments and personas you created now show as yours when you use the first account you signed in with on this computer.
+
 ## 0.9.77 — 2026-11-02
 
 - The desktop shares your signed-in account id and name with the tmgr CLI through a small file, so CLI actions on local workspaces are attributed to you. The file is removed when you sign out.
