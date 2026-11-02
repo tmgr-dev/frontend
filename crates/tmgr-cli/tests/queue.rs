@@ -1895,6 +1895,30 @@ fn the_confirmation_shows_the_agent_count_and_models_and_a_wrong_phrase_records_
 }
 
 #[test]
+fn yes_on_a_terminal_still_asks_for_the_typed_phrase() {
+    let fx = Fx::new();
+    fx.task(1, "t", "b");
+    fx.claude_rule("1");
+    let mut p = fx.pty(
+        &[
+            "--yes",
+            "--ws",
+            "local:personal",
+            "queue",
+            "add",
+            "WK-1",
+            "--team",
+            "2",
+        ],
+        &[],
+    );
+    p.wait_for("Type TEAM");
+    p.line("yes");
+    assert_ne!(p.exit(), 0, "{}", p.text());
+    assert_eq!(team_requests(&fx), 0);
+}
+
+#[test]
 fn help_tells_team_mode_from_permission_mode() {
     let fx = Fx::new();
     let add = text(&fx.run(&["queue", "add", "--help"]).stdout);
