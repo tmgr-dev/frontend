@@ -902,6 +902,22 @@ mod tests {
     }
 
     #[test]
+    fn run_bounded_children_do_not_inherit_fds() {
+        let mut fds = [0 as libc::c_int; 2];
+        assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+        unsafe { libc::fcntl(fds[1], libc::F_SETFD, 0) };
+        let mut c = Command::new("/bin/sh");
+        c.arg("-c").arg(format!("test -e /dev/fd/{}", fds[1]));
+        let out = run_bounded(c, Duration::from_secs(5), 1024, 1024);
+        unsafe {
+            libc::close(fds[0]);
+            libc::close(fds[1]);
+        }
+        let out = out.unwrap();
+        assert!(!out.status.success(), "the child still sees the fd");
+    }
+
+    #[test]
     fn run_bounded_returns_output_within_limits() {
         let mut c = Command::new("/bin/sh");
         c.args(["-c", "echo hi; echo oops >&2; exit 3"]);
