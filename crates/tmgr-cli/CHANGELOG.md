@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.59
+
+- `tmgr link`: a worker whose process could not be queried is now reported as "could not be checked", no longer as gone. Its record stays and `tmgr link revoke` does not report success in that case.
+- `tmgr link`: worker records past a directory read error are read again, and any that stay unreadable are reported.
+- `tmgr link scope`: an error after the save now says the scope was saved, and records that could not be checked are reported whichever flags are on, also as `closed.unknown` with `--json`.
+- `tmgr link audit`: the fallback view quotes values the same way as request fields.
+
 ## 1.0.58
 
 - Local workspaces (`local:<code>`): the CLI now picks up the account the desktop is signed in to automatically, so runs, comments and personas of that account work without `tmgr config set local_user_id`. The config value still wins when set. Runs and comments that the local account (id -1) wrote earlier stay yours.
