@@ -3,6 +3,7 @@
 use rusqlite::Connection;
 use serde_json::{json, Value};
 use std::fs;
+use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -13,6 +14,7 @@ use tmgr_runner::client::Client;
 
 const BIN: &str = env!("CARGO_BIN_EXE_tmgr");
 const WS_ID: i64 = -444_001;
+const COMMAND_LIMIT: Duration = Duration::from_secs(120);
 
 struct Fx {
     tmp: tempfile::TempDir,
@@ -208,7 +210,49 @@ impl Fx {
     }
 
     fn tmgr(&self, args: &[&str]) -> Output {
-        self.cmd(args).output().unwrap()
+        let mut child = self
+            .cmd(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut out = child.stdout.take().unwrap();
+        let mut err = child.stderr.take().unwrap();
+        let out = thread::spawn(move || {
+            let mut b = Vec::new();
+            let _ = out.read_to_end(&mut b);
+            b
+        });
+        let err = thread::spawn(move || {
+            let mut b = Vec::new();
+            let _ = err.read_to_end(&mut b);
+            b
+        });
+        let deadline = Instant::now() + COMMAND_LIMIT;
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                let ps = Command::new("ps")
+                    .args(["-axo", "pid,ppid,stat,command"])
+                    .output()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                    .unwrap_or_default();
+                panic!(
+                    "tmgr {args:?} did not finish within {COMMAND_LIMIT:?}\nrunner log:\n{}\nprocesses:\n{ps}",
+                    fs::read_to_string(self.run().join("runner.log")).unwrap_or_default()
+                );
+            }
+            thread::sleep(Duration::from_millis(50));
+        };
+        Output {
+            status,
+            stdout: out.join().unwrap(),
+            stderr: err.join().unwrap(),
+        }
     }
 
     fn json(&self, args: &[&str]) -> (bool, Value) {

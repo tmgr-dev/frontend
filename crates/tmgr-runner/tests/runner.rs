@@ -920,9 +920,13 @@ fn shim_caps_pending_connections() {
         .collect();
     thread::sleep(Duration::from_millis(200));
     let mut extra = tmgr_ipc::endpoint::connect(&ep).unwrap();
-    extra
-        .set_read_timeout(Some(Duration::from_secs(2)))
-        .unwrap();
+    if let Err(e) = extra.set_read_timeout(Some(Duration::from_secs(2))) {
+        assert_eq!(
+            e.kind(),
+            std::io::ErrorKind::InvalidInput,
+            "set_read_timeout failed: {e:?}"
+        );
+    }
     let mut b = [0u8; 1];
     let n = std::io::Read::read(&mut extra, &mut b);
     assert!(matches!(n, Ok(0)), "extra connection was not closed: {n:?}");

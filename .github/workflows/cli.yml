@@ -30,6 +30,7 @@ jobs:
   lint:
     name: fmt and clippy
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -48,6 +49,7 @@ jobs:
   test:
     name: test ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -76,6 +78,7 @@ jobs:
           key: ${{ matrix.name }}
 
       - name: test
+        timeout-minutes: 30
         env:
           TARGET: ${{ matrix.target }}
           TMGR_BUILD_COMMIT: ${{ github.sha }}
@@ -84,6 +87,7 @@ jobs:
           cargo test --workspace --locked --no-fail-fast ${TARGET:+--target "$TARGET"}
 
       - name: test runner feature
+        timeout-minutes: 20
         env:
           TARGET: ${{ matrix.target }}
           TMGR_BUILD_COMMIT: ${{ github.sha }}
