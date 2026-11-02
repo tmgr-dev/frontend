@@ -3,7 +3,7 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
-## Unreleased
+## 0.9.77 — 2026-11-02
 
 - The desktop shares your signed-in account id and name with the tmgr CLI through a small file, so CLI actions on local workspaces are attributed to you. The file is removed when you sign out.
 - Local workspaces: the desktop picks up changes made by the tmgr CLI or other processes within about a second, without reloading.
