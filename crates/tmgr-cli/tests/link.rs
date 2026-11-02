@@ -294,6 +294,100 @@ fn revoke_with_an_unreadable_runs_file_exits_1_and_says_so() {
 }
 
 #[test]
+fn revoke_with_an_unreadable_worker_registry_exits_1_and_says_so() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let dir = f.paths.link_dir();
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("workers"), b"").unwrap();
+    let out = f
+        .tmgr()
+        .args(["link", "revoke", "laptop"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    let text = err_text(&out);
+    assert!(text.contains("worker registry"), "{text}");
+    assert!(text.contains("not a directory"), "{text}");
+    assert!(
+        text.contains("tmgr link revoke laptop --halt-runs"),
+        "{text}"
+    );
+    assert!(Store::load(&f.paths).unwrap().leaders.is_empty());
+}
+
+#[test]
+fn revoke_with_an_unknown_worker_record_exits_1_and_says_so() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let workers = f.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&workers).unwrap();
+    std::fs::write(workers.join("laptop.4242.json"), b"not json").unwrap();
+    let out = f
+        .tmgr()
+        .args(["link", "revoke", "laptop"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    assert!(
+        err_text(&out).contains("could not be checked"),
+        "{}",
+        err_text(&out)
+    );
+}
+
+#[test]
+fn turning_remote_control_off_with_an_unknown_worker_record_saves_off_and_fails() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            ..f.scope()
+        },
+    );
+    let workers = f.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&workers).unwrap();
+    std::fs::write(workers.join("laptop.4242.json"), b"not json").unwrap();
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--remote-control", "off"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    assert!(
+        err_text(&out).contains("could not be checked"),
+        "{}",
+        err_text(&out)
+    );
+    let store = Store::load(&f.paths).unwrap();
+    assert!(!store.leaders["laptop"].scope.remote_control);
+}
+
+#[test]
+fn an_unknown_worker_record_does_not_fail_a_scope_change_with_both_flags_on() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            include_bypass: true,
+            allow_attach_input: true,
+            ..f.scope()
+        },
+    );
+    let workers = f.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&workers).unwrap();
+    std::fs::write(workers.join("laptop.4242.json"), b"not json").unwrap();
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--allow-attach-input", "false"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+}
+
+#[test]
 fn revoke_is_always_allowed_and_audited() {
     let f = fx();
     f.trust_leader("laptop", f.scope());

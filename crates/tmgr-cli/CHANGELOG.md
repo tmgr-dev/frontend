@@ -8,6 +8,7 @@
 - While a leader is attached, `tmgr attach` shows `<leader> attached (control)` or `(view)` on that session's pane title and sidebar row, and `tmgr agents` shows it in the ORIGIN column. The audit log records connect, input (that input happened and how many messages, never what was typed; written before the first send of each second and counted each second) and halt with the link name and session id. Rejected requests keep only known fields, bounded in length.
 - Privileged commands (`tmgr link trust`, `tmgr link scope` when it widens, and the others behind the same check) are now refused in more agent sessions, also when they run outside the runner.
 - The server and the web app are not involved: control exists only over the link, through SSH between the two machines.
+- `tmgr link revoke` and turning a remote control flag off now fail with a clear message when a worker record cannot be checked, and keep the record, instead of reporting success.
 - On the leader, `tmgr attach --on <follower>` without a session no longer picks a session started on the follower itself; with several candidates it asks for an explicit id. `tmgr halt --on` refuses a name shared by several runs.
 
 ## 1.0.56

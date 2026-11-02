@@ -494,7 +494,7 @@ pub struct Contained {
     pub runs_surviving: usize,
     pub unconfirmed: Vec<String>,
     pub runs_unreadable: bool,
-    pub workers_unreadable: bool,
+    pub workers_unreadable: Option<String>,
     pub tombstones: usize,
     pub nothing_to_contain: bool,
 }
@@ -506,7 +506,8 @@ impl Contained {
             || !self.unconfirmed.is_empty()
             || self.workers.survivors > 0
             || self.runs_unreadable
-            || self.workers_unreadable
+            || self.workers.unknown > 0
+            || self.workers_unreadable.is_some()
     }
 }
 
@@ -585,8 +586,10 @@ pub fn contain_revoked(
     let runs = crate::ownership::Runs::lock_lenient(paths)?;
     let terminated =
         crate::registry::terminate(paths, name, std::time::Duration::from_secs(3), &ours);
-    let workers_unreadable = terminated.is_err();
-    let workers = terminated.unwrap_or_default();
+    let (workers, workers_unreadable) = match terminated {
+        Ok(t) => (t, None),
+        Err(e) => (Default::default(), Some(e.to_string())),
+    };
     let records: Vec<String> = runs
         .of_link(name)
         .into_iter()
@@ -652,6 +655,7 @@ pub fn contain_revoked(
             "workers_signalled": out.workers.signalled,
             "workers_stale": out.workers.stale,
             "workers_surviving": out.workers.survivors,
+            "workers_unknown": out.workers.unknown,
             "runs_known": out.runs_known,
             "runs_halted": out.runs_halted,
             "halt_failed": out.halt_failed,

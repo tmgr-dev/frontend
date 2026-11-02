@@ -1211,8 +1211,29 @@ fn an_unreadable_worker_registry_still_halts_the_runs_and_stays_incomplete() {
     let mut backend = fake.clone();
     let out = tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).unwrap();
     assert_eq!(out.runs_halted, 1);
-    assert!(out.workers_unreadable);
+    assert!(out.workers_unreadable.is_some());
     assert!(out.incomplete());
+    assert!(!tmgr_link::tombstone::for_link(&w.paths, "laptop")
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn an_unknown_worker_record_stays_incomplete_and_keeps_the_tombstone() {
+    let w = world();
+    let fake = Fake::default();
+    session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
+    let workers = w.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&workers).unwrap();
+    let bad = workers.join("laptop.4242.json");
+    std::fs::write(&bad, b"not json").unwrap();
+    let mut backend = fake.clone();
+    let out = tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).unwrap();
+    assert_eq!(out.runs_halted, 1);
+    assert_eq!(out.workers.unknown, 1);
+    assert!(out.incomplete());
+    assert!(bad.exists());
     assert!(!tmgr_link::tombstone::for_link(&w.paths, "laptop")
         .unwrap()
         .is_empty());

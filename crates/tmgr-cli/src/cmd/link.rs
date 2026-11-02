@@ -473,6 +473,9 @@ fn full_access_warnings(old: &Scope, new: &Scope) -> Vec<String> {
 }
 
 fn close_attached(paths: &Paths, name: &str, new: &Scope) -> Result<Option<Terminated>> {
+    if new.remote_control && new.include_bypass {
+        return Ok(None);
+    }
     if !registry::any_attached(paths, name, &|a| follower::must_close(new, a))? {
         return Ok(None);
     }
@@ -480,8 +483,15 @@ fn close_attached(paths: &Paths, name: &str, new: &Scope) -> Result<Option<Termi
     let t = follower::close_after_scope_change(paths, name, new, CLOSE_GRACE)?;
     Audit::new(&paths.audit_dir()).append(
         "link.scope.closed",
-        json!({"link": name, "signalled": t.signalled, "survivors": t.survivors}),
+        json!({"link": name, "signalled": t.signalled, "survivors": t.survivors, "unknown": t.unknown}),
     )?;
+    if t.unknown > 0 {
+        return Err(Error::internal(format!(
+            "{} worker record(s) of {name} could not be checked, so an attach may still be open until its next check",
+            t.unknown
+        ))
+        .hint(unknown_workers_hint(paths, name)));
+    }
     if t.survivors > 0 {
         return Err(Error::internal(format!(
             "{} remote attach worker(s) of {name} did not stop",
@@ -490,6 +500,13 @@ fn close_attached(paths: &Paths, name: &str, new: &Scope) -> Result<Option<Termi
         .hint(format!("tmgr link revoke {name}")));
     }
     Ok(Some(t))
+}
+
+fn unknown_workers_hint(paths: &Paths, name: &str) -> String {
+    format!(
+        "check the records of {name} in {}, remove one only once its worker is gone, then rerun",
+        paths.link_dir().join("workers").display()
+    )
 }
 
 const CLOSE_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
@@ -525,10 +542,16 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
             contained.workers.survivors
         ));
     }
-    if contained.workers_unreadable {
-        problems.push(
-            "the worker registry is unreadable, so its workers could not be stopped".to_string(),
-        );
+    if let Some(cause) = &contained.workers_unreadable {
+        problems.push(format!(
+            "the worker registry could not be read ({cause}), so its workers could not be checked"
+        ));
+    }
+    if contained.workers.unknown > 0 {
+        problems.push(format!(
+            "{} worker record(s) could not be checked",
+            contained.workers.unknown
+        ));
     }
     if contained.runs_unreadable {
         problems
@@ -554,14 +577,24 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
             contained.runs_surviving
         ));
     }
+    if contained.incomplete() && problems.is_empty() {
+        problems.push("a containment step did not finish".to_string());
+    }
     if !problems.is_empty() {
+        let retry = format!(
+            "start the runner if needed and retry: tmgr runner start; tmgr link revoke {name} --halt-runs"
+        );
+        let workers_unclear =
+            contained.workers_unreadable.is_some() || contained.workers.unknown > 0;
         return Err(Error::internal(format!(
             "containment incomplete after revoking {name}: {}",
             problems.join("; ")
         ))
-        .hint(format!(
-            "start the runner if needed and retry: tmgr runner start; tmgr link revoke {name} --halt-runs"
-        )));
+        .hint(if workers_unclear {
+            format!("{}; {retry}", unknown_workers_hint(paths, name))
+        } else {
+            retry
+        }));
     }
     let keys_removed = r.as_ref().map_or(0, |r| r.keys_removed);
     let removed = if r.is_none() {
@@ -739,7 +772,7 @@ fn format_entry(ctx: &Ctx, e: &Value) -> String {
 
 fn audit_field(raw: &str) -> String {
     let clean = sanitize_line(raw);
-    if clean.chars().any(char::is_whitespace) {
+    if !clean.chars().all(|c| c.is_ascii_graphic()) {
         format!("{clean:?}")
     } else {
         clean
@@ -842,6 +875,12 @@ mod tests {
         assert_eq!(request_what(&e), r#""runs.halt accepted" run=s_x"#);
         let plain = json!({"method": "runs.list"});
         assert_eq!(request_what(&plain), "runs.list");
+    }
+
+    #[test]
+    fn audit_view_quotes_blank_looking_unicode() {
+        let e = json!({"method": "runs.halt\u{2800}\u{2800}accepted"});
+        assert!(request_what(&e).starts_with('"'));
     }
 
     #[test]

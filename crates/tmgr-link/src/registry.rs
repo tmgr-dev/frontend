@@ -171,6 +171,7 @@ pub struct Terminated {
     pub signalled: usize,
     pub stale: usize,
     pub survivors: usize,
+    pub unknown: usize,
 }
 
 fn wait_gone(pid: u32, start: &str, limit: Duration) -> bool {
@@ -201,7 +202,8 @@ fn record_files(paths: &Paths, name: &str) -> Result<Vec<PathBuf>> {
     };
     let prefix = format!("{name}.");
     Ok(entries
-        .flatten()
+        .collect::<std::io::Result<Vec<_>>>()?
+        .into_iter()
         .filter(|e| {
             e.file_name()
                 .to_string_lossy()
@@ -213,18 +215,31 @@ fn record_files(paths: &Paths, name: &str) -> Result<Vec<PathBuf>> {
         .collect())
 }
 
-fn read_rec(path: &std::path::Path) -> Option<Rec> {
-    std::fs::read(path)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
+enum Read {
+    Gone,
+    Unknown,
+    Rec(Rec),
+}
+
+fn read_rec(path: &std::path::Path) -> Read {
+    match std::fs::read(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Read::Gone,
+        Err(_) => Read::Unknown,
+        Ok(bytes) => match serde_json::from_slice::<Rec>(&bytes) {
+            Ok(r) if !r.start.is_empty() => Read::Rec(r),
+            _ => Read::Unknown,
+        },
+    }
 }
 
 pub fn any_attached(paths: &Paths, name: &str, select: &dyn Fn(&Attached) -> bool) -> Result<bool> {
-    Ok(record_files(paths, name)?.iter().any(|path| {
-        read_rec(path).is_some_and(|r| {
-            !r.start.is_empty() && alive(r.pid, &r.start) && r.attached.as_ref().is_some_and(select)
-        })
-    }))
+    Ok(record_files(paths, name)?
+        .iter()
+        .any(|path| match read_rec(path) {
+            Read::Gone => false,
+            Read::Unknown => true,
+            Read::Rec(r) => alive(r.pid, &r.start) && r.attached.as_ref().is_some_and(select),
+        }))
 }
 
 pub fn terminate_where(
@@ -236,16 +251,12 @@ pub fn terminate_where(
     let mut out = Terminated::default();
     let mut live: Vec<(PathBuf, Rec)> = Vec::new();
     for path in record_files(paths, name)? {
-        let rec = read_rec(&path);
-        if rec
-            .as_ref()
-            .is_some_and(|r| !select(&r.enrollment, r.attached.as_ref()))
-        {
-            continue;
-        }
-        match rec {
-            Some(r) if !r.start.is_empty() && alive(r.pid, &r.start) => live.push((path, r)),
-            _ => {
+        match read_rec(&path) {
+            Read::Gone => {}
+            Read::Unknown => out.unknown += 1,
+            Read::Rec(r) if !select(&r.enrollment, r.attached.as_ref()) => {}
+            Read::Rec(r) if alive(r.pid, &r.start) => live.push((path, r)),
+            Read::Rec(_) => {
                 out.stale += 1;
                 let _ = std::fs::remove_file(path);
             }
@@ -275,7 +286,64 @@ pub fn terminate_where(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use std::process::{Command, Stdio};
+
+    fn registry_dir(paths: &Paths) {
+        ensure_private_dir(&paths.config).unwrap();
+        ensure_private_dir(&paths.link_dir()).unwrap();
+        ensure_private_dir(&dir(paths)).unwrap();
+    }
+
+    #[test]
+    fn an_unparsable_record_is_unknown_and_kept() {
+        let d = crate::testutil::private_tempdir();
+        let paths = Paths::under(d.path());
+        registry_dir(&paths);
+        let bad = file(&paths, "laptop", 4242);
+        std::fs::write(&bad, b"not json").unwrap();
+        let t = terminate(&paths, "laptop", Duration::from_millis(10), &|_| true).unwrap();
+        assert_eq!((t.unknown, t.stale), (1, 0));
+        assert!(bad.exists());
+        assert!(any_attached(&paths, "laptop", &|_| false).unwrap());
+    }
+
+    #[test]
+    fn a_record_without_a_start_marker_is_unknown_and_kept() {
+        let d = crate::testutil::private_tempdir();
+        let paths = Paths::under(d.path());
+        registry_dir(&paths);
+        let rec = file(&paths, "laptop", 4242);
+        let body = json!({"pid": 4242, "start": "", "enrollment": "e"}).to_string();
+        std::fs::write(&rec, body).unwrap();
+        let t = terminate(&paths, "laptop", Duration::from_millis(10), &|_| true).unwrap();
+        assert_eq!((t.unknown, t.stale), (1, 0));
+        assert!(rec.exists());
+    }
+
+    #[test]
+    fn a_record_whose_process_is_gone_is_still_stale() {
+        let d = crate::testutil::private_tempdir();
+        let paths = Paths::under(d.path());
+        registry_dir(&paths);
+        let rec = file(&paths, "laptop", u32::MAX - 1);
+        let body = json!({"pid": u32::MAX - 1, "start": "1.1", "enrollment": "e"}).to_string();
+        std::fs::write(&rec, body).unwrap();
+        let t = terminate(&paths, "laptop", Duration::from_millis(10), &|_| true).unwrap();
+        assert_eq!((t.unknown, t.stale), (0, 1));
+        assert!(!rec.exists());
+    }
+
+    #[test]
+    fn a_record_removed_after_listing_is_not_unknown() {
+        let d = crate::testutil::private_tempdir();
+        let paths = Paths::under(d.path());
+        registry_dir(&paths);
+        assert!(matches!(
+            read_rec(&file(&paths, "laptop", 4242)),
+            Read::Gone
+        ));
+    }
 
     #[test]
     fn own_process_has_a_start_marker() {
