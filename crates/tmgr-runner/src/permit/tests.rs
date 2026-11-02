@@ -2,6 +2,8 @@ use super::*;
 
 const CLAUDE_BASH: &str = include_str!("../../profiles/screens/claude-bash-approval.txt");
 const CLAUDE_BASH_TIP: &str = include_str!("../../profiles/screens/claude-bash-tip-approval.txt");
+const CLAUDE_BASH_WRAPPED: &str =
+    include_str!("../../profiles/screens/claude-bash-wrapped-approval.txt");
 const CLAUDE_WITHHELD: &str = include_str!("../../profiles/screens/claude-long-withheld.txt");
 const CLAUDE_WRITE: &str = include_str!("../../profiles/screens/claude-write-approval.txt");
 const CLAUDE_WRITE_OUT: &str =
@@ -889,4 +891,52 @@ fn shell_tricks_that_hide_a_command_are_dangerous() {
             "{c}"
         );
     }
+}
+
+const WRAPPED_COMMAND: &str = "echo word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29 word30 word31 word32 word33 word34 word35 word36 word37 word38 word39 > /dev/null; touch hello.txt";
+
+#[test]
+fn a_real_wrapped_command_with_a_gutter_is_approvable_and_shows_no_gutter() {
+    let h = bash_hook(Agent::Claude, WRAPPED_COMMAND, Some("run it"));
+    let ev = Eval::new(
+        "s1",
+        "/work/proj",
+        Agent::Claude,
+        &rows(CLAUDE_BASH_WRAPPED),
+        Some(h),
+    )
+    .unwrap();
+    assert!(ev.approvable());
+    assert!(!ev.text().contains('│'));
+    assert_eq!(ev.text().replace('\n', " "), WRAPPED_COMMAND);
+}
+
+#[test]
+fn a_gutter_does_not_excuse_a_different_command() {
+    let d = parse_dialog(Agent::Claude, &rows(CLAUDE_BASH_WRAPPED)).unwrap();
+    let other = WRAPPED_COMMAND.replace("touch hello.txt", "touch hello.tx");
+    assert!(is_view_only(
+        &d,
+        &bash_hook(Agent::Claude, &other, Some("run it"))
+    ));
+}
+
+#[test]
+fn a_gutter_on_only_some_rows_is_view_only() {
+    let ev = eval_rows(&["│ echo a", "echo b"], "echo a echo b", "/work/proj");
+    assert!(!ev.approvable());
+}
+
+#[test]
+fn a_command_that_itself_starts_with_a_bar_is_view_only() {
+    let ev = eval_rows(&["│ echo a"], "│ echo a", "/work/proj");
+    assert!(!ev.approvable());
+}
+
+#[test]
+fn a_gutter_hides_no_row_from_the_danger_check() {
+    let ev = eval_rows(&["│ echo a;", "│ rm -f b"], "echo a; rm -f b", "/work/proj");
+    assert!(ev.approvable());
+    assert!(!ev.danger.is_empty());
+    assert_eq!(ev.text(), "echo a;\nrm -f b");
 }

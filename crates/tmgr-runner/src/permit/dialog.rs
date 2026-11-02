@@ -154,6 +154,14 @@ fn finish_options(agent: Agent, raw: Vec<Raw>) -> Option<Vec<DialogOption>> {
     Some(out)
 }
 
+fn drop_gutter(rows: &mut [String]) {
+    if rows.iter().all(|r| r.is_empty() || r.starts_with('│')) {
+        for r in rows.iter_mut() {
+            *r = r.strip_prefix('│').unwrap_or(r).trim().to_string();
+        }
+    }
+}
+
 fn claude(rows: &[String]) -> Option<Dialog> {
     let (raw, first) = collect_options(rows, '❯')?;
     let options = finish_options(Agent::Claude, raw)?;
@@ -193,7 +201,10 @@ fn claude(rows: &[String]) -> Option<Dialog> {
     let kind = *header.first()?;
     let rest = &header[1..];
 
-    let body_rows: Vec<String> = body.iter().map(|r| r.trim().to_string()).collect();
+    let mut body_rows: Vec<String> = body.iter().map(|r| r.trim().to_string()).collect();
+    if kind == "Bash command" {
+        drop_gutter(&mut body_rows);
+    }
     let nonblank: Vec<&String> = body_rows.iter().filter(|r| !r.is_empty()).collect();
     let parsed = if kind == "Bash command" && question == "Do you want to proceed?" {
         if nonblank.len() == 1 && nonblank[0] == WITHHELD {
