@@ -83,6 +83,9 @@
 					Remove key
 				</Button>
 			</div>
+			<p v-if="llmError" class="text-sm text-red-600 dark:text-red-400">
+				{{ llmError }}
+			</p>
 		</section>
 
 		<section
@@ -389,6 +392,7 @@
 			const isTypedUrlLocal = computed(() => isLocalLlmUrl(llmForm.baseUrl));
 			const llmStatus = reactive({ hasApiKey: false });
 			const savingLlm = ref(false);
+			const llmError = ref<string | null>(null);
 			const tokens = ref<TokenInfo[]>([]);
 			const connectPersona = ref<WorkspacePersonaRow | null>(null);
 			const accessStatus = reactive<LocalAccessStatus>({
@@ -614,6 +618,7 @@
 
 			const saveLlmConfig = async () => {
 				savingLlm.value = true;
+				llmError.value = null;
 				try {
 					await invoke('llm_config_set', {
 						userId: currentUser().id,
@@ -624,6 +629,9 @@
 					});
 					llmForm.apiKey = '';
 					await refreshLlmConfig();
+				} catch (error) {
+					llmError.value =
+						error instanceof Error ? error.message : String(error);
 				} finally {
 					savingLlm.value = false;
 				}
@@ -631,6 +639,7 @@
 
 			const removeApiKey = async () => {
 				savingLlm.value = true;
+				llmError.value = null;
 				try {
 					await invoke('llm_config_set', {
 						userId: currentUser().id,
@@ -641,6 +650,9 @@
 					});
 					llmForm.apiKey = '';
 					await refreshLlmConfig();
+				} catch (error) {
+					llmError.value =
+						error instanceof Error ? error.message : String(error);
 				} finally {
 					savingLlm.value = false;
 				}
@@ -659,6 +671,7 @@
 				syncError,
 				llmForm,
 				llmStatus,
+				llmError,
 				isTypedUrlLocal,
 				savingLlm,
 				PERSONA_PERMISSIONS,
