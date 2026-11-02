@@ -287,30 +287,37 @@ pub enum ChatEvent {
   Error { message: String },
 }
 
-/// `None` for a chunk with nothing the agent loop cares about (e.g. a bare role delta).
-pub fn parse_chat_event(data: &str) -> Option<ChatEvent> {
+/// Empty for a chunk with nothing the agent loop cares about (e.g. a bare role delta); content comes before tool calls.
+pub fn parse_chat_events(data: &str) -> Vec<ChatEvent> {
   let trimmed = data.trim();
   if trimmed == "[DONE]" {
-    return Some(ChatEvent::Done);
+    return vec![ChatEvent::Done];
   }
-  let value: Value = serde_json::from_str(trimmed).ok()?;
-  let delta = value.get("choices")?.get(0)?.get("delta")?;
+  let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+    return Vec::new();
+  };
+  let Some(delta) = value.get("choices").and_then(|c| c.get(0)).and_then(|c| c.get("delta")) else {
+    return Vec::new();
+  };
+  let mut events = Vec::new();
   if let Some(content) = delta.get("content").and_then(Value::as_str) {
     if !content.is_empty() {
-      return Some(ChatEvent::Delta { text: content.to_string() });
+      events.push(ChatEvent::Delta { text: content.to_string() });
     }
   }
-  let call = delta.get("tool_calls").and_then(Value::as_array).and_then(|calls| calls.first())?;
-  let index = call.get("index").and_then(Value::as_u64).unwrap_or(0) as u32;
-  let id = call.get("id").and_then(Value::as_str).map(str::to_string);
-  let function = call.get("function");
-  let name = function.and_then(|f| f.get("name")).and_then(Value::as_str).map(str::to_string);
-  let arguments = function
-    .and_then(|f| f.get("arguments"))
-    .and_then(Value::as_str)
-    .unwrap_or("")
-    .to_string();
-  Some(ChatEvent::ToolCall { index, id, name, arguments })
+  for call in delta.get("tool_calls").and_then(Value::as_array).into_iter().flatten() {
+    let index = call.get("index").and_then(Value::as_u64).unwrap_or(0) as u32;
+    let id = call.get("id").and_then(Value::as_str).map(str::to_string);
+    let function = call.get("function");
+    let name = function.and_then(|f| f.get("name")).and_then(Value::as_str).map(str::to_string);
+    let arguments = function
+      .and_then(|f| f.get("arguments"))
+      .and_then(Value::as_str)
+      .unwrap_or("")
+      .to_string();
+    events.push(ChatEvent::ToolCall { index, id, name, arguments });
+  }
+  events
 }
 
 fn config_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
@@ -537,7 +544,7 @@ async fn stream_chat<R: Runtime>(
   let mut buffer = SseBuffer::default();
   while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
     for raw in buffer.push(&chunk) {
-      if let Some(event) = parse_chat_event(&raw) {
+      for event in parse_chat_events(&raw) {
         let done = matches!(event, ChatEvent::Done);
         emit_event(app, request_id, event);
         if done {
@@ -1290,21 +1297,52 @@ mod tests {
   #[test]
   fn parses_a_text_delta_a_tool_call_and_done() {
     assert_eq!(
-      parse_chat_event("{\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}"),
-      Some(ChatEvent::Delta { text: "Hi".into() })
+      parse_chat_events("{\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}"),
+      vec![ChatEvent::Delta { text: "Hi".into() }]
     );
     assert_eq!(
-      parse_chat_event(
+      parse_chat_events(
         "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"tmgr_request\",\"arguments\":\"{\\\"method\\\"\"}}]}}]}"
       ),
-      Some(ChatEvent::ToolCall {
+      vec![ChatEvent::ToolCall {
         index: 0,
         id: Some("call_1".into()),
         name: Some("tmgr_request".into()),
         arguments: "{\"method\"".into(),
-      })
+      }]
     );
-    assert_eq!(parse_chat_event("[DONE]"), Some(ChatEvent::Done));
+    assert_eq!(parse_chat_events("[DONE]"), vec![ChatEvent::Done]);
+  }
+
+  #[test]
+  fn keeps_every_tool_call_in_a_chunk_and_the_content_before_them() {
+    let chunk = r#"{"choices":[{"delta":{"content":"Let me look.","tool_calls":[
+      {"index":0,"id":"call_1","function":{"name":"tmgr_request","arguments":"{\"a\":1}"}},
+      {"index":1,"id":"call_2","function":{"name":"tmgr_request","arguments":"{\"b\":2}"}}]}}]}"#;
+    assert_eq!(
+      parse_chat_events(chunk),
+      vec![
+        ChatEvent::Delta { text: "Let me look.".into() },
+        ChatEvent::ToolCall {
+          index: 0,
+          id: Some("call_1".into()),
+          name: Some("tmgr_request".into()),
+          arguments: "{\"a\":1}".into(),
+        },
+        ChatEvent::ToolCall {
+          index: 1,
+          id: Some("call_2".into()),
+          name: Some("tmgr_request".into()),
+          arguments: "{\"b\":2}".into(),
+        },
+      ]
+    );
+  }
+
+  #[test]
+  fn ignores_a_role_only_delta_and_invalid_json() {
+    assert!(parse_chat_events("{\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}").is_empty());
+    assert!(parse_chat_events("not json").is_empty());
   }
 
   #[test]
@@ -1321,9 +1359,4 @@ mod tests {
     }
   }
 
-  #[test]
-  fn ignores_a_role_only_delta_and_invalid_json() {
-    assert_eq!(parse_chat_event("{\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}"), None);
-    assert_eq!(parse_chat_event("not json"), None);
-  }
 }

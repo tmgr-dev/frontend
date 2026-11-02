@@ -66,3 +66,39 @@ describe('createLlmChat cancel', () => {
 		expect(mockInvoke).not.toHaveBeenCalledWith('llm_chat', expect.anything());
 	});
 });
+
+describe('createLlmChat tool calls', () => {
+	it('assembles several calls by index, with arguments split across chunks', async () => {
+		mockInvoke.mockImplementation(async (command: string, args: any) => {
+			if (command !== 'llm_chat') return;
+			const call = (index: number, id: any, name: any, argumentsPart: string) =>
+				emit(args.requestId, {
+					type: 'tool_call',
+					index,
+					id,
+					name,
+					arguments: argumentsPart,
+				});
+			emit(args.requestId, { type: 'delta', text: 'Looking.' });
+			call(0, 'c0', 'tmgr_request', '{"method":"GET",');
+			call(1, 'c1', 'tmgr_request', '{"method":"GET","path":"tasks/2"}');
+			call(0, null, null, '"path":"tasks/1"}');
+			emit(args.requestId, { type: 'done' });
+		});
+		const { chat } = createLlmChat([], 1);
+		const events = await drain(chat([]));
+		expect(events.map((e) => e.type)).toEqual([
+			'text',
+			'tool_call',
+			'tool_call',
+		]);
+		expect(events[1].call).toMatchObject({
+			id: 'c0',
+			args: { method: 'GET', path: 'tasks/1' },
+		});
+		expect(events[2].call).toMatchObject({
+			id: 'c1',
+			args: { method: 'GET', path: 'tasks/2' },
+		});
+	});
+});
