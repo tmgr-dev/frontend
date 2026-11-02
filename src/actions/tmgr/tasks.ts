@@ -281,6 +281,33 @@ export const getSortedTasksByStatus = async (
 	);
 };
 
+export const getTasksByStatusPage = async (
+	statusId: number,
+	params: Record<string, unknown>,
+): Promise<{ data: Task[]; meta?: Record<string, any> }> => {
+	const { data } = await $axios.get(`tasks/status/${statusId}`, { params });
+	return data;
+};
+
+export type TaskMoveBody = {
+	status_id: number;
+	after_id?: number;
+	before_id?: number;
+	position?: 'top' | 'bottom';
+};
+
+export const moveTask = async (
+	taskId: number,
+	body: TaskMoveBody,
+): Promise<{ data: Task; meta?: { renumbered?: boolean } }> => {
+	const { data } = await $axios.post(`tasks/${taskId}/move`, body);
+
+	requestCache.invalidate(`task-${taskId}`);
+	requestCache.invalidate(/^tasks-status-/);
+
+	return data;
+};
+
 export const getBatchTasksByStatuses = async (
 	statusIds: number[],
 	params: AxiosRequestConfig = {},

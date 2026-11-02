@@ -452,6 +452,12 @@
 																</template>
 															</Draggable>
 
+															<ColumnSentinel
+																v-if="column.paging && !column.paging.complete"
+																:key="column.tasks.length"
+																@visible="loadMoreTasks(column)"
+															/>
+
 															<!-- TM-151: quick-add right under the last card. Teleported into the
 												     scroll container like the inline input; the drag handle selector
 												     keeps Sortable from ever picking it up. -->
@@ -793,6 +799,8 @@
 	import {
 		createTask,
 		getSortedTasksByStatus,
+		getTasksByStatusPage,
+		moveTask,
 		refreshAssignedTask,
 		updateStatusOfTasks,
 		updateTaskOrders,
@@ -806,6 +814,7 @@
 		updateWorkspaceOrder,
 	} from '@/actions/tmgr/workspaces';
 	import BoardTaskCount from '@/components/board/BoardTaskCount.vue';
+	import ColumnSentinel from '@/components/board/ColumnSentinel.vue';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import Dropdown from '@/components/general/Dropdown.vue';
@@ -830,6 +839,19 @@
 		filterBoardTasks,
 		MY_PERSONAS_FILTER,
 	} from '@/utils/boardLoading';
+	import {
+		applyTotals,
+		BOARD_PAGE_SIZE,
+		bumpColumnEpochs,
+		createColumnPaging,
+		dedupeFirstPages,
+		isKeysetResponse,
+		loadAllPages,
+		loadNextPage,
+		mergeRealtimeTask,
+		placementAt,
+		reloadWindow,
+	} from '@/utils/boardColumnPaging';
 	import { boardTaskCounts } from '@/utils/boardSummary';
 	import { hexToHsl, hslToHex } from '@/utils/colors';
 	import {
@@ -838,10 +860,7 @@
 		sortByPriority,
 	} from '@/utils/priority';
 	import { createRequestSequence } from '@/utils/requestSequence';
-	import {
-		removeTaskFromColumns,
-		upsertTaskInColumns,
-	} from '@/utils/taskPatch';
+	import { removeTaskFromColumns } from '@/utils/taskPatch';
 	import { MenuItem } from '@headlessui/vue';
 	import { EllipsisVerticalIcon } from '@heroicons/vue/20/solid';
 	import ColorPicker from '@radial-color-picker/vue-color-picker';
@@ -872,6 +891,7 @@
 			Confirm,
 			WorkspaceUsers,
 			BoardTaskCount,
+			ColumnSentinel,
 			RemoveSampleTasksButton,
 			FeatureGate,
 			BoardPreview,
@@ -965,6 +985,8 @@
 			boardError: '',
 			boardReady: false,
 			dragSaveQueue: Promise.resolve(),
+			pendingMoveIds: markRaw(new Set()),
+			totalsTimer: null,
 			boardInitializing: false,
 			boardDisposed: false,
 			boardLoader: null,
@@ -982,6 +1004,9 @@
 				this.pluginBadgeFeed.update(
 					this.columns.flatMap((column) => column.tasks),
 				);
+			},
+			needsFullLoad() {
+				if (this.boardReady) this.boardLoader.schedule();
 			},
 			'$store.state.reloadTasksKey'() {
 				this.loadTasks();
@@ -1060,6 +1085,14 @@
 					)
 					.join(',');
 			},
+			needsFullLoad() {
+				const filter = this.$store.state.filter;
+				return (
+					filter.prioritySort ||
+					filter.selectedPriorities.length > 0 ||
+					this.activeBoardFilters.length > 0
+				);
+			},
 			workspaceUsersWithoutAll() {
 				return this.workspaceUsers.filter((user) => user.id !== 0);
 			},
@@ -1126,8 +1159,17 @@
 						)
 						.map((column) => column.status.id),
 				);
-				if (upsertTaskInColumns(this.columns, updatedTask) === 'ignored')
-					return;
+				const patch = mergeRealtimeTask(
+					this.columns,
+					updatedTask,
+					this.pendingMoveIds,
+				);
+				this.scheduleTotalsRefresh();
+				if (patch === 'removed' && updatedTask.order === undefined) {
+					const target = this.findColumn(updatedTask.status_id);
+					if (target?.paging) void this.reloadColumnWindow(target.status.id);
+				}
+				if (patch === 'ignored') return;
 				if (this.prioritySortActive) this.sortColumnsByPriority(affected);
 				this.refreshColumnSummaries(affected);
 			},
@@ -1141,18 +1183,114 @@
 				if (removeTaskFromColumns(this.columns, taskId)) {
 					this.refreshColumnSummaries();
 				}
+				this.scheduleTotalsRefresh();
+			},
+			fetchKeysetPage(statusId, cursor, limit) {
+				const filter = this.$store.state.filter;
+				const params = { limit, fields: 'card' };
+				if (cursor) params.cursor = cursor;
+				if (filter.searchText) params.search = filter.searchText;
+				if (filter.selectedCategory)
+					params.project_category_id = filter.selectedCategory;
+				if (filter.selectedUser) params.assignee_id = filter.selectedUser;
+				if (filter.selectedPersona === MY_PERSONAS_FILTER)
+					params.my_personas = 1;
+				else if (filter.selectedPersona)
+					params.persona = filter.selectedPersona;
+				return getTasksByStatusPage(statusId, params);
+			},
+			async loadMoreTasks(column) {
+				try {
+					await loadNextPage(
+						() => this.columns,
+						column.status.id,
+						this.fetchKeysetPage,
+						{ limit: BOARD_PAGE_SIZE, pending: this.pendingMoveIds },
+					);
+					this.refreshColumnSummaries(new Set([column.status.id]));
+				} catch {
+					this.boardError = 'Could not load more tasks.';
+				}
+			},
+			async reloadColumnWindow(statusId) {
+				try {
+					await reloadWindow(
+						() => this.columns,
+						statusId,
+						this.fetchKeysetPage,
+						{ limit: BOARD_PAGE_SIZE, pending: this.pendingMoveIds },
+					);
+					this.refreshColumnSummaries(new Set([statusId]));
+				} catch {
+					this.boardError = 'Could not refresh the column.';
+				}
+			},
+			async ensureColumnComplete(column) {
+				if (!column?.paging || column.paging.complete) return true;
+				try {
+					await loadAllPages(
+						() => this.columns,
+						column.status.id,
+						this.fetchKeysetPage,
+						{ pending: this.pendingMoveIds },
+					);
+				} catch {
+					this.toast({
+						title: 'Could not load all tasks',
+						description: 'Please try again.',
+						variant: 'destructive',
+					});
+					return false;
+				}
+				this.refreshColumnSummaries(new Set([column.status.id]));
+				return !!this.findColumn(column.status.id)?.paging?.complete;
+			},
+			scheduleTotalsRefresh() {
+				if (!this.columns.some((c) => c.paging && !c.paging.complete)) return;
+				clearTimeout(this.totalsTimer);
+				this.totalsTimer = setTimeout(() => {
+					void this.refreshTotals();
+				}, 800);
+			},
+			async refreshTotals() {
+				if (this.boardDisposed) return;
+				const targets = this.columns.filter(
+					(c) => c.paging && !c.paging.complete,
+				);
+				await Promise.all(
+					targets.map(async (column) => {
+						const paging = column.paging;
+						try {
+							const page = await this.fetchKeysetPage(
+								column.status.id,
+								null,
+								1,
+							);
+							if (this.findColumn(column.status.id)?.paging === paging)
+								applyTotals(paging, page.meta);
+						} catch {}
+					}),
+				);
+				if (!this.boardDisposed) this.refreshColumnSummaries();
 			},
 			refreshColumnSummaries(affected = null) {
 				this.columns = this.columns.map((column) => {
 					if (affected && !affected.has(column.status.id)) return column;
 					const tasksInColumn = column.tasks;
-					const taskCount = tasksInColumn.length;
-					const summary = tasksInColumn.reduce(
-						(acc, task) => (task.common_time || 0) + acc,
-						0,
-					);
+					const paging = column.paging;
+					const serverTotals =
+						paging && !paging.complete && paging.total !== undefined;
+					const taskCount = serverTotals ? paging.total : tasksInColumn.length;
+					const summary = serverTotals
+						? Number(paging.totalSeconds) || 0
+						: tasksInColumn.reduce(
+								(acc, task) => (task.common_time || 0) + acc,
+								0,
+							);
 					const summaryInHours = this.formatTime(summary);
-					const overtimeSeconds = this.calculateColumnOvertime(tasksInColumn);
+					const overtimeSeconds = serverTotals
+						? Number(paging.totalOvertimeSeconds) || 0
+						: this.calculateColumnOvertime(tasksInColumn);
 					const overtimeFormatted = this.formatOvertime(overtimeSeconds);
 
 					return {
@@ -1349,6 +1487,18 @@
 				if (!task) return;
 				const sorted = this.prioritySortActive;
 				const target = this.findColumn(status);
+				if (target?.paging) {
+					const index = target.tasks.findIndex((t) => t.id === id);
+					if (index === -1) return;
+					task.status_id = status;
+					await this.moveCardKeyset(
+						task,
+						sourceStatus,
+						status,
+						placementAt(target.tasks, index),
+					);
+					return;
+				}
 				if (sorted && target)
 					this.sortColumnsByPriority(new Set([target.status.id]));
 				const dropOrder = (statusId) =>
@@ -1366,6 +1516,34 @@
 						this.boardError =
 							'Could not save task order. Refresh to restore the server order.';
 					});
+				await this.dragSaveQueue;
+			},
+			async moveCardKeyset(task, sourceStatus, targetStatus, placement) {
+				const id = task.id;
+				bumpColumnEpochs(this.columns, [sourceStatus, targetStatus]);
+				this.pendingMoveIds.add(id);
+				this.dragSaveQueue = this.dragSaveQueue.then(async () => {
+					let reload = [];
+					try {
+						const { data, meta } = await moveTask(id, {
+							status_id: targetStatus,
+							...placement,
+						});
+						const local = this.boardTasks.find((t) => t.id === id);
+						if (local) Object.assign(local, data);
+						if (meta?.renumbered) reload = [targetStatus];
+					} catch (error) {
+						if (error?.response?.status !== 409)
+							this.boardError =
+								'Could not move the task. The column was refreshed.';
+						reload = [...new Set([sourceStatus, targetStatus])];
+					}
+					this.pendingMoveIds.delete(id);
+					bumpColumnEpochs(this.columns, [sourceStatus, targetStatus]);
+					await Promise.all(reload.map((s) => this.reloadColumnWindow(s)));
+					this.refreshColumnSummaries();
+					this.scheduleTotalsRefresh();
+				});
 				await this.dragSaveQueue;
 			},
 			async onMove() {
@@ -1415,6 +1593,14 @@
 				if (taskIndex === -1 || taskIndex === 0) {
 					return;
 				}
+				if (column.paging) {
+					column.tasks.splice(taskIndex, 1);
+					column.tasks.unshift(task);
+					await this.moveCardKeyset(task, column.status.id, column.status.id, {
+						position: 'top',
+					});
+					return;
+				}
 
 				column.tasks.splice(taskIndex, 1);
 				column.tasks.unshift(task);
@@ -1425,6 +1611,14 @@
 				if (this.prioritySortActive) return;
 				const taskIndex = column.tasks.findIndex((t) => t.id === task.id);
 				if (taskIndex === -1 || taskIndex === column.tasks.length - 1) {
+					return;
+				}
+				if (column.paging) {
+					column.tasks.splice(taskIndex, 1);
+					if (column.paging.complete) column.tasks.push(task);
+					await this.moveCardKeyset(task, column.status.id, column.status.id, {
+						position: 'bottom',
+					});
 					return;
 				}
 
@@ -1460,6 +1654,8 @@
 				if (!column) {
 					return null;
 				}
+				if (!(await this.ensureColumnComplete(column))) return;
+				column = this.findColumn(column.status.id) ?? column;
 				const { tasks } = column;
 				const taskIds = tasks.map((t) => t.id);
 				if (!taskIds.length) {
@@ -1494,8 +1690,9 @@
 					archiveAll,
 				);
 			},
-			openMoveTasksModal(column) {
-				this.sourceColumnForMove = column;
+			async openMoveTasksModal(column) {
+				if (!(await this.ensureColumnComplete(column))) return;
+				this.sourceColumnForMove = this.findColumn(column.status.id) ?? column;
 				this.isShowMoveTasksModal = true;
 				this.$store.commit('openModal');
 			},
@@ -1595,6 +1792,9 @@
 						tasks:
 							this.columns.find((column) => column.status.id === status.id)
 								?.tasks || [],
+						paging: this.columns.find(
+							(column) => column.status.id === status.id,
+						)?.paging,
 					});
 				}
 
@@ -1662,22 +1862,45 @@
 					...this.$store.state.filter,
 					myUserId: this.$store.state.user?.id,
 				};
-				const tasks = await Promise.all(
-					columns.map((column) =>
-						getSortedTasksByStatus(column.status.id, {
+				const keyset = !this.needsFullLoad;
+				const results = await Promise.all(
+					columns.map(async (column) => {
+						if (keyset) {
+							const page = await this.fetchKeysetPage(
+								column.status.id,
+								null,
+								BOARD_PAGE_SIZE,
+							);
+							if (isKeysetResponse(page)) return { page };
+						}
+						const tasks = await getSortedTasksByStatus(column.status.id, {
 							params: {
 								fields: 'card',
 								'order[column]': 'order',
 								'order[direction]': 'asc',
 								...(filter.searchText ? { search: filter.searchText } : {}),
 							},
-						}),
-					),
+						});
+						return { tasks };
+					}),
 				);
-				return columns.map((column, index) => ({
-					...column,
-					tasks: filterBoardTasks(tasks[index], filter),
-				}));
+				const pages = dedupeFirstPages(
+					results.map((result) => result.page ?? { data: [] }),
+				);
+				return columns.map((column, index) => {
+					const { page, tasks } = results[index];
+					if (!page)
+						return {
+							...column,
+							tasks: filterBoardTasks(tasks, filter),
+							paging: undefined,
+						};
+					return {
+						...column,
+						tasks: pages[index],
+						paging: createColumnPaging(page.meta),
+					};
+				});
 			},
 			syncBoardFilters() {
 				const query = this.$route.query;
@@ -1817,6 +2040,9 @@
 									} else {
 										this.updateSingleTaskInBoard(task);
 									}
+								},
+								onTasksReordered: (statusId) => {
+									void this.reloadColumnWindow(statusId);
 								},
 								onTaskAssignmentChanged: ({ task_id }) => {
 									const onBoard = this.columns.some((column) =>
@@ -1983,6 +2209,7 @@
 			this.pluginBadgeFeed.dispose();
 			this.boardLoader.dispose();
 			this.columnSequence.dispose();
+			clearTimeout(this.totalsTimer);
 		},
 		unmounted() {
 			document.body.classList.remove('overflow-hidden');

@@ -503,6 +503,13 @@ export function usePusher(): UsePusherReturn {
 				},
 			);
 
+			channel.listen('.tasks.reordered', (data: { status_id: number }) => {
+				const sub = subscriptions.get(channelName);
+				if (sub) {
+					sub.handlers.forEach((h) => h.onTasksReordered?.(data.status_id));
+				}
+			});
+
 			(['assigned', 'unassigned'] as const).forEach((type) => {
 				channel.listen(
 					`.task.${type}`,
