@@ -239,14 +239,21 @@ impl Runner {
         }
         let cwd = PathBuf::from(&lock(&s.inner).meta.cwd);
         for o in self.all() {
-            if o.id == s.id || !working(&o) {
+            if o.id == s.id || o.is_exited() {
                 continue;
             }
-            let other = PathBuf::from(&lock(&o.inner).meta.cwd);
+            let (name, other) = {
+                let i = lock(&o.inner);
+                (i.meta.name.clone(), PathBuf::from(&i.meta.cwd))
+            };
             if overlaps(&cwd, &other) {
                 return Err(api(
                     ErrorCode::Busy,
-                    format!("session {} is working in an overlapping folder", o.id),
+                    format!(
+                        "session {name} ({}) is running in {}, which overlaps this folder; stop it before restoring",
+                        o.id,
+                        other.display()
+                    ),
                 ));
             }
         }
@@ -274,5 +281,30 @@ impl Runner {
         }
         ns.persist();
         ns.cp_refresh();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::overlaps;
+    use std::fs;
+
+    #[test]
+    fn overlap_covers_the_same_folder_and_nesting_either_way_through_symlinks() {
+        let t = tempfile::tempdir().unwrap();
+        let repo = t.path().join("repo");
+        let sub = repo.join("sub");
+        let sibling = t.path().join("repo-worktrees/s");
+        fs::create_dir_all(&sub).unwrap();
+        fs::create_dir_all(&sibling).unwrap();
+        let link = t.path().join("link");
+        std::os::unix::fs::symlink(&sub, &link).unwrap();
+        assert!(overlaps(&repo, &repo));
+        assert!(overlaps(&repo, &sub));
+        assert!(overlaps(&sub, &repo));
+        assert!(overlaps(&repo, &link));
+        assert!(overlaps(&link, &repo));
+        assert!(!overlaps(&repo, &sibling));
+        assert!(!overlaps(&sibling, &repo));
     }
 }

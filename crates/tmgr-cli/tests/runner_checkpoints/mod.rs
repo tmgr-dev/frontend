@@ -197,6 +197,33 @@ fn list_of_a_session_without_checkpoints_says_they_are_off() {
 }
 
 #[test]
+fn restore_goes_ahead_while_a_worktree_session_of_the_same_repo_runs() {
+    let e = Env::new();
+    e.git_repo();
+    fs::write(e.proj.join("f.txt"), "v1\n").unwrap();
+    let script = e.script("agent.sh", TURNS);
+    let Some(id) = e.run_cp(&script, &["--checkpoints"]) else {
+        return;
+    };
+    e.wait_waiting(&id);
+    let start = e.items(&id, 1)[0]["n"].as_u64().unwrap().to_string();
+    worktree_agent(&e, "sleep 30\n");
+    let cwd = e.proj.display().to_string();
+    let wt = e.cp_out(&[
+        "run",
+        "--agent",
+        "wt",
+        "--cwd",
+        &cwd,
+        "--worktree",
+        "--no-attach",
+        "--json",
+    ]);
+    assert!(wt.status.success(), "{}", out_text(&wt));
+    e.cp_data(&["checkpoints", "restore", &id, &start, "--yes", "--json"]);
+}
+
+#[test]
 fn list_diff_and_restore_work_end_to_end_with_json() {
     let e = Env::new();
     e.git_repo();

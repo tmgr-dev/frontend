@@ -10,6 +10,7 @@ use std::time::Duration;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::text::sanitize_line;
 use tmgr_ipc::api::{CheckpointDiff, CheckpointItem, CheckpointKind, DiffAgainst};
+use tmgr_runner::checkpoint::RESTORE_WARNING;
 use tmgr_runner::client::Client;
 
 const LONG_READ: Duration = Duration::from_secs(600);
@@ -124,6 +125,13 @@ fn open(key: &str) -> Result<(Client, tmgr_ipc::api::SessionInfo)> {
     Ok((c, s))
 }
 
+fn restore_prompt(n: u64, preview: &CheckpointDiff) -> String {
+    format!(
+        "{RESTORE_WARNING}\nRestore to #{n}? {}",
+        restore_summary(preview)
+    )
+}
+
 fn confirm(prompt: &str) -> Result<bool> {
     eprint!("{prompt} [y/N] ");
     let _ = std::io::stderr().flush();
@@ -204,7 +212,7 @@ fn restore(ctx: &Ctx, key: &str, n: u64) -> Result<Output> {
         let preview = c
             .checkpoints_diff(&s.id, n, DiffAgainst::Current)
             .map_err(rerr)?;
-        let q = format!("Restore to #{n}? {}", restore_summary(&preview));
+        let q = restore_prompt(n, &preview);
         if !confirm(&q)? {
             return Err(Error::new(Kind::Interrupted, "restore cancelled"));
         }
@@ -253,6 +261,22 @@ pub fn enable_new(client: &mut Client, id: &str, flag: Option<bool>) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_restore_prompt_warns_about_writes_during_restore() {
+        let d = CheckpointDiff {
+            n: 4,
+            text: String::new(),
+            truncated: false,
+            added: 1,
+            modified: 0,
+            deleted: 0,
+        };
+        let q = restore_prompt(4, &d);
+        assert!(q.contains("Writes to this folder during restore can be lost"));
+        assert!(q.contains("undo will not bring them back"));
+        assert!(q.ends_with(&format!("Restore to #4? {}", restore_summary(&d))));
+    }
 
     fn item(kind: CheckpointKind, turn: u64, files: u32) -> CheckpointItem {
         CheckpointItem {

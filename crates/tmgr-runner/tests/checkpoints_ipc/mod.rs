@@ -167,6 +167,102 @@ fn restore_is_refused_while_a_session_in_an_overlapping_folder_works() {
     let _ = c.kill(&other.id, "kill");
 }
 
+fn restore_with_another_session_in(h: &Harness, cwd: &Path) -> (Result<(), String>, String) {
+    let mut c = h.client();
+    let own = c.create(h.sh(TURNS)).unwrap();
+    c.checkpoints_enable(&own.id, None).unwrap();
+    wait_waiting(&mut c, &own.id);
+    wait_items(&mut c, &own.id, 1);
+    let mut req = h.req(&["/bin/sh", "-c", "read a\n"]);
+    req.cwd = cwd.display().to_string();
+    let other = c.create(req).unwrap();
+    let res = c
+        .checkpoints_restore(&own.id, 1)
+        .map(drop)
+        .map_err(|e| e.to_string());
+    let _ = c.kill(&other.id, "kill");
+    let _ = c.kill(&own.id, "kill");
+    (res, other.id)
+}
+
+#[test]
+fn restore_is_refused_while_another_live_session_shares_the_folder() {
+    if !sessions_available() {
+        return;
+    }
+    let h = fx();
+    let (res, other) = restore_with_another_session_in(&h, &h.work);
+    let e = res.unwrap_err();
+    assert!(e.starts_with("busy"), "{e}");
+    assert!(e.contains(&other), "{e}");
+}
+
+#[test]
+fn restore_is_refused_while_another_live_session_runs_in_a_subfolder() {
+    if !sessions_available() {
+        return;
+    }
+    let h = fx();
+    let sub = h.work.join("sub");
+    fs::create_dir(&sub).unwrap();
+    let (res, other) = restore_with_another_session_in(&h, &sub);
+    let e = res.unwrap_err();
+    assert!(e.starts_with("busy"), "{e}");
+    assert!(e.contains(&other), "{e}");
+}
+
+#[test]
+fn restore_is_refused_while_another_live_session_runs_in_a_parent_folder() {
+    if !sessions_available() {
+        return;
+    }
+    let h = fx();
+    let parent = h.work.parent().unwrap().to_path_buf();
+    let (res, other) = restore_with_another_session_in(&h, &parent);
+    let e = res.unwrap_err();
+    assert!(e.starts_with("busy"), "{e}");
+    assert!(e.contains(&other), "{e}");
+}
+
+#[test]
+fn restore_goes_ahead_with_a_live_session_in_a_separate_checkout() {
+    if !sessions_available() {
+        return;
+    }
+    let h = fx();
+    let name = h.work.file_name().unwrap().to_string_lossy().into_owned();
+    let checkout = h.work.with_file_name(format!("{name}-worktrees")).join("s");
+    fs::create_dir_all(&checkout).unwrap();
+    let (res, _) = restore_with_another_session_in(&h, &checkout);
+    res.unwrap();
+}
+
+#[test]
+fn restore_goes_ahead_once_the_other_session_has_exited() {
+    if !sessions_available() {
+        return;
+    }
+    let h = fx();
+    let mut c = h.client();
+    let own = c.create(h.sh(TURNS)).unwrap();
+    c.checkpoints_enable(&own.id, None).unwrap();
+    wait_waiting(&mut c, &own.id);
+    wait_items(&mut c, &own.id, 1);
+    let other = c.create(h.sh("exit 0\n")).unwrap();
+    let start = Instant::now();
+    while c
+        .list()
+        .unwrap()
+        .iter()
+        .any(|s| s.id == other.id && s.state.kind != StateKind::Exited)
+    {
+        assert!(start.elapsed() < Duration::from_secs(20), "never exited");
+        thread::sleep(Duration::from_millis(50));
+    }
+    c.checkpoints_restore(&own.id, 1).unwrap();
+    let _ = c.kill(&own.id, "kill");
+}
+
 #[test]
 fn restore_round_trips_over_ipc_and_is_undoable() {
     if !sessions_available() {

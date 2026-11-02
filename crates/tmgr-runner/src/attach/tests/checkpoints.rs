@@ -212,6 +212,7 @@ fn restore_asks_with_the_counts_and_only_y_runs_it() {
     assert!(out.contains(
         "Restore to #6? 4 files change, 2 are removed. Current state is saved first. y/n"
     ));
+    assert!(out.contains("during restore can be lost"));
     assert_eq!(v.edit_cp(b"y"), Some(CpAction::Restore(id.clone(), 6)));
     assert!(shown(&v).contains("Restoring..."));
 

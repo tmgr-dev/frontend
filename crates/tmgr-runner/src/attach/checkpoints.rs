@@ -3,6 +3,7 @@ use super::prompts::clean;
 use super::render::{dim, put};
 use super::theme::colors;
 use super::view::{contains, MouseOut, ViewState};
+use crate::checkpoint::RESTORE_WARNING;
 use chrono::TimeZone;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Margin, Rect};
@@ -23,7 +24,7 @@ const OLD_RUNNER: &str = "The running runner is older than this tmgr. Restart it
 const DEBOUNCE: Duration = Duration::from_millis(200);
 const PANEL_W: u16 = 100;
 const PANEL_H: u16 = 24;
-const STATUS_ROWS: u16 = 3;
+const STATUS_ROWS: u16 = 4;
 const MAX_TEXT: usize = 400;
 
 pub fn friendly_error(raw: &str) -> String {
@@ -234,11 +235,14 @@ impl Panel {
     fn status_lines(&self) -> Vec<String> {
         match &self.mode {
             Mode::Checking(_) => vec!["Checking what a restore would change...".into()],
-            Mode::Confirm { n, change, removed } => vec![format!(
-                "Restore to #{n}? {change} {}, {removed} {}. Current state is saved first. y/n",
-                plural(*change, "file changes", "files change"),
-                plural(*removed, "is removed", "are removed"),
-            )],
+            Mode::Confirm { n, change, removed } => vec![
+                RESTORE_WARNING.to_string(),
+                format!(
+                    "Restore to #{n}? {change} {}, {removed} {}. Current state is saved first. y/n",
+                    plural(*change, "file changes", "files change"),
+                    plural(*removed, "is removed", "are removed"),
+                ),
+            ],
             Mode::Restoring(_) => vec!["Restoring...".into()],
             Mode::Browse => self.result.clone(),
         }

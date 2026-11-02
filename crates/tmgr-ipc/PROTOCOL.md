@@ -638,8 +638,8 @@ with plumbing and a temporary index: the user's branch, index and stash are not 
 files are not stored. The runner's own manifest in the session folder decides what exists; a ref
 that disagrees with it is refused.
 
-`checkpoints.restore` answers `busy` while the session, or another session in an overlapping
-folder, is working. It first stores the current state (`before_n`), then only overwrites or
+`checkpoints.restore` answers `busy` while the session is working or while another live session
+runs in the same folder, a subfolder or a parent folder. It first stores the current state (`before_n`), then only overwrites or
 deletes what that stored state holds byte for byte; anything else is listed in `left_as_is`.
 Link workers and the desktop get `forbidden`: restore is started on this machine, from the CLI.
 

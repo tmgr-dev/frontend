@@ -26,6 +26,8 @@ pub const DEFAULT_KEEP: u32 = 50;
 
 const KEEP_MIN: u32 = 3;
 const KEEP_MAX: u32 = 1000;
+pub const RESTORE_WARNING: &str =
+    "Writes to this folder during restore can be lost, and undo will not bring them back.";
 const MAX_FILE: u64 = 100 * 1024 * 1024;
 const MAX_TOTAL: u64 = 2 * 1024 * 1024 * 1024;
 const FRESH_SECS: i64 = 2;
