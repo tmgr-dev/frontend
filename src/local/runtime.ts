@@ -61,8 +61,19 @@ export const createLocalWorkspace = async (
 	return created;
 };
 
+const activeListeners = new Set<() => void>();
+
+export const onActiveLocalWorkspaceChange = (listener: () => void) => {
+	activeListeners.add(listener);
+	return () => {
+		activeListeners.delete(listener);
+	};
+};
+
+const announceActive = () => activeListeners.forEach((listener) => listener());
+
 export const activeLocalWorkspace = (): LocalWorkspace | null =>
-	activeCode ? (workspaces.find((w) => w.code === activeCode) ?? null) : null;
+	activeCode ? workspaces.find((w) => w.code === activeCode) ?? null : null;
 
 export const activeLocalWorkspaceCode = (): string | null => activeCode;
 
@@ -71,6 +82,7 @@ export const hasActiveLocalWorkspace = (): boolean => activeCode !== null;
 
 export const setActiveLocalWorkspace = (workspace: LocalWorkspace | null) => {
 	activeCode = workspace?.code ?? null;
+	announceActive();
 	if (isDetachedWindowLabel(desktopWindowLabel())) return;
 	try {
 		if (activeCode) localStorage.setItem(ACTIVE_KEY, activeCode);
@@ -83,6 +95,7 @@ export const setActiveLocalWorkspace = (workspace: LocalWorkspace | null) => {
 /** This window only, never persisted: follow the local workspace the app has open, or none so calls go to the cloud. */
 export const followActiveLocalWorkspace = (follow = true) => {
 	activeCode = follow ? readActive() : null;
+	announceActive();
 };
 
 export const localWorkspaceById = async (id: number) =>

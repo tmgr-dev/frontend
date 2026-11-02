@@ -6,6 +6,7 @@ workflow copies that section into the GitHub release and the in-app update notes
 ## Unreleased
 
 - The desktop shares your signed-in account id and name with the tmgr CLI through a small file, so CLI actions on local workspaces are attributed to you. The file is removed when you sign out.
+- Local workspaces: the desktop picks up changes made by the tmgr CLI or other processes within about a second, without reloading.
 
 ## 0.9.76 — 2026-11-02
 

@@ -179,6 +179,57 @@ if (isDesktopApp()) {
 					invalidate: (key) => requestCache.invalidate(key),
 				}),
 		);
+		void Promise.all([
+			import('@/local/externalChanges'),
+			import('@/local/runtime'),
+			import('@/composable/usePusher'),
+			import('@/actions/tmgr/tasks'),
+			import('@/actions/tmgr/agentWork'),
+			import('@tauri-apps/api/event'),
+		]).then(
+			async ([
+				{ installExternalChanges, EXTERNAL_CHANGE_EVENT },
+				runtime,
+				{ deliverToWorkspace, deliverToUser },
+				{ getTask },
+				{ getAgentWork },
+				{ listen },
+			]) => {
+				await runtime.listLocalWorkspaces();
+				return installExternalChanges({
+					active: () => runtime.activeLocalWorkspace(),
+					subscribeActive: runtime.onActiveLocalWorkspaceChange,
+					listen: (handler) =>
+						listen<{ code: string }>(EXTERNAL_CHANGE_EVENT, (event) =>
+							handler(event.payload.code),
+						),
+					getDb: async (workspace) =>
+						(
+							await runtime.localContext(workspace as any, {
+								id: 0,
+								name: '',
+								email: '',
+							})
+						).db,
+					fetchTask: async (workspaceId, taskId) =>
+						runtime.activeLocalWorkspace()?.id === workspaceId
+							? getTask(taskId)
+							: null,
+					fetchAgentRuns: async (workspaceId, taskId) =>
+						runtime.activeLocalWorkspace()?.id === workspaceId
+							? (await getAgentWork(taskId)).runs
+							: [],
+					deliver: deliverToWorkspace,
+					deliverToUser: (call) => {
+						const userId = store.state.user?.id;
+						if (userId) deliverToUser(userId, call);
+					},
+					invalidate: (key) => requestCache.invalidate(key),
+					reloadActiveTasks: () =>
+						store.commit('incrementReloadActiveTasksKey'),
+				});
+			},
+		);
 	}
 }
 

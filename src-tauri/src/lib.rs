@@ -13,6 +13,7 @@ mod local_files;
 mod local_move;
 mod local_identity;
 mod local_profile;
+mod local_watch;
 mod local_workspaces;
 mod plugin_catalog;
 mod persona_cache;
@@ -401,6 +402,7 @@ pub fn run() {
       idle::start(app.handle());
       local_backups::start(app.handle());
       plugin_tick::start(app.handle());
+      local_watch::start(app.handle());
       runner::commands::setup(app.handle());
       if let Err(error) = local_access::setup(app.handle()) {
         log::error!("[local-access] failed to start: {error}");

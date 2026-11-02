@@ -8,6 +8,7 @@ use serde_json::{Map, Number, Value as Json};
 use tauri::{AppHandle, Runtime, State};
 
 use crate::local_move::{Moving, Permit};
+use crate::local_watch::{data_version, watch_key, ChangeWatch};
 use crate::local_workspaces;
 
 type Connections = HashMap<String, (String, Arc<Mutex<Connection>>)>;
@@ -15,7 +16,7 @@ type Connections = HashMap<String, (String, Arc<Mutex<Connection>>)>;
 /// One connection per local workspace, opened lazily. SQLite serialises writers anyway; a single
 /// connection also keeps per-connection pragmas (foreign_keys) reliable.
 #[derive(Default)]
-pub struct LocalDbs(Mutex<Connections>);
+pub struct LocalDbs(Mutex<Connections>, Mutex<ChangeWatch>);
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,6 +55,34 @@ impl LocalDbs {
     if let Ok(mut map) = self.0.lock() {
       map.remove(code);
     }
+  }
+
+  pub(crate) fn register(&self, code: &str, path: String, conn: Arc<Mutex<Connection>>) {
+    let version = conn.lock().ok().and_then(|guard| data_version(&guard));
+    if let Ok(mut map) = self.0.lock() {
+      map.insert(code.to_string(), (path, conn.clone()));
+      if let (Some(version), Ok(mut watch)) = (version, self.1.lock()) {
+        watch.seed(watch_key(code, &conn), version);
+      }
+    }
+  }
+
+  pub(crate) fn snapshot_for_watch(&self) -> Vec<(String, Arc<Mutex<Connection>>)> {
+    let Ok(map) = self.0.lock() else { return Vec::new() };
+    let live: Vec<_> = map.iter().map(|(code, (_, conn))| (code.clone(), conn.clone())).collect();
+    if let Ok(mut watch) = self.1.lock() {
+      watch.retain(&live.iter().map(|(code, conn)| watch_key(code, conn)).collect());
+    }
+    live
+  }
+
+  pub(crate) fn observe_version(&self, key: &str, version: i64) -> bool {
+    self.1.lock().is_ok_and(|mut watch| watch.observe(key, version))
+  }
+
+  #[cfg(test)]
+  pub(crate) fn watch_len(&self) -> usize {
+    self.1.lock().map_or(0, |watch| watch.len())
   }
 }
 
@@ -196,10 +225,7 @@ fn connection<R: Runtime>(app: &AppHandle<R>, dbs: &LocalDbs, code: &str) -> Res
   }
   let workspace = local_workspaces::find(app, code)?;
   let conn = Arc::new(Mutex::new(open(&workspace.database)?));
-  dbs.0
-    .lock()
-    .map_err(|e| e.to_string())?
-    .insert(code.to_string(), (workspace.database, conn.clone()));
+  dbs.register(code, workspace.database, conn.clone());
   Ok(conn)
 }
 
