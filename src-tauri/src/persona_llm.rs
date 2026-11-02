@@ -336,6 +336,41 @@ fn legacy_keyring_entry() -> Result<keyring::Entry, String> {
   keyring::Entry::new(SERVICE, ACCOUNT).map_err(|e| e.to_string())
 }
 
+struct SaveRequest {
+  identity: Option<i64>,
+  user_id: i64,
+  base_url: String,
+  model: String,
+  api_key: Option<String>,
+  clear_api_key: bool,
+}
+
+fn save_config<S: SecretStore, W: FnOnce(&LlmConfigFile) -> Result<(), String>>(
+  store: &S,
+  request: SaveRequest,
+  read_previous: impl FnOnce() -> Result<LlmConfigFile, String>,
+  prepare_write: impl FnOnce() -> Result<W, String>,
+) -> Result<(), String> {
+  let SaveRequest { identity: _, user_id, base_url, model, api_key, clear_api_key } = request;
+  let previous = read_previous()?;
+  let new_origin = normalize_origin(&base_url).ok();
+  let account = format!("{ACCOUNT}:{user_id}");
+  let new_key = api_key.filter(|k| !k.is_empty());
+
+  let had_key = store.get(&account)?.is_some();
+  let plan = plan_save(slot_origin(&previous, user_id), &previous.base_url, &base_url, new_key.is_some(), clear_api_key, had_key);
+  refuses_plaintext_key(&base_url, plan.key_after && !plan.stale_key)?;
+
+  let file = LlmConfigFile {
+    base_url,
+    model,
+    key_origin: previous.key_origin,
+    key_origins: origins_after(&plan, previous.key_origins, user_id, new_origin),
+  };
+  let write = prepare_write()?;
+  apply_save(store, &account, &plan, new_key.as_deref().filter(|_| !clear_api_key), || write(&file))
+}
+
 /// `api_key: None`/blank leaves a previously saved key untouched unless `base_url` moved to a new
 /// origin, in which case the key is dropped rather than carried over; `clear_api_key: true` always removes it.
 #[tauri::command]
@@ -351,25 +386,25 @@ pub fn llm_config_set<R: Runtime>(
   if window.label() != "main" {
     return Err("llm_config_set may only be called from the main window".into());
   }
-  let previous = read_config(&app)?;
-  let new_origin = normalize_origin(&base_url).ok();
-  let account = format!("{ACCOUNT}:{user_id}");
-  let new_key = api_key.filter(|k| !k.is_empty());
-
-  let had_key = PersonaLlmSecrets.get(&account)?.is_some();
-  let plan = plan_save(slot_origin(&previous, user_id), &previous.base_url, &base_url, new_key.is_some(), clear_api_key, had_key);
-  refuses_plaintext_key(&base_url, plan.key_after && !plan.stale_key)?;
-
-  let file = LlmConfigFile {
+  let request = SaveRequest {
+    identity: crate::local_identity::current_id(&app),
+    user_id,
     base_url,
     model,
-    key_origin: previous.key_origin,
-    key_origins: origins_after(&plan, previous.key_origins, user_id, new_origin),
+    api_key,
+    clear_api_key,
   };
-  let path = config_path(&app)?;
-  apply_save(&PersonaLlmSecrets, &account, &plan, new_key.as_deref().filter(|_| !clear_api_key), || {
-    std::fs::write(path, serde_json::to_vec(&file).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
-  })
+  save_config(
+    &PersonaLlmSecrets,
+    request,
+    || read_config(&app),
+    || {
+      let path = config_path(&app)?;
+      Ok(move |file: &LlmConfigFile| {
+        std::fs::write(path, serde_json::to_vec(file).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+      })
+    },
+  )
 }
 
 #[tauri::command]
