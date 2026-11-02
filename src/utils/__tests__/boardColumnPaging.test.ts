@@ -467,7 +467,7 @@ describe.each(loaders)('%s', (_name, Loader, passes) => {
 
 describe('own moves', () => {
 	const setup = (
-		rows: Parameters<typeof FakeServer>[0],
+		rows: ConstructorParameters<typeof FakeServer>[0],
 		statuses: number[],
 	) => {
 		const server = new FakeServer(rows);
