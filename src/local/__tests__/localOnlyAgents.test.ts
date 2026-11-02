@@ -102,6 +102,30 @@ describeSqlite('local-only personas', () => {
 		expect(rows[0].permissions).toEqual([...PERSONA_PERMISSIONS]);
 	});
 
+	it('rolls back the persona row when the permissions insert fails', async () => {
+		await ctx.db.execute(
+			`CREATE TRIGGER fail_wp BEFORE INSERT ON workspace_personas
+			 BEGIN SELECT RAISE(ABORT, 'boom'); END`,
+		);
+		await expect(ensureDefaultLocalPersona(ctx)).rejects.toThrow();
+		const rows = await ctx.db.select(`SELECT uuid FROM personas`);
+		expect(rows).toHaveLength(0);
+	});
+
+	it('adds the missing permissions row to an older default persona', async () => {
+		await ctx.db.execute(
+			`INSERT INTO personas (uuid, owner_user_id, owner_name, name, description, avatar_file, synced_at, archived_at)
+			 VALUES ('legacy-default', -1, 'Ada', 'Local agent', NULL, NULL, ?, NULL)`,
+			[clock.toISOString()],
+		);
+		const healed = await ensureDefaultLocalPersona(ctx);
+		expect(healed.uuid).toBe('legacy-default');
+		const rows = await listLocalPersonas(ctx);
+		expect(rows).toHaveLength(1);
+		expect(rows[0].permissions).toEqual([...PERSONA_PERMISSIONS]);
+		expect(rows[0].enabled_at).not.toBeNull();
+	});
+
 	it('does not add a default when the workspace already has a local persona', async () => {
 		await createLocalPersona(ctx, { name: 'Scribe' });
 		await ensureDefaultLocalPersona(ctx);

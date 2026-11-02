@@ -350,6 +350,16 @@ test('a signed-in user does not create a default persona', async () => {
 	expect(mockEnsureDefault).not.toHaveBeenCalled();
 });
 
+test('both AskPersonaButton usages in NewForm are keyed by the form id', () => {
+	const source = readFileSync(
+		join(__dirname, '../../../pages/NewForm.vue'),
+		'utf8',
+	);
+	const usages = source.match(/<AskPersonaButton\b[^>]*>/g) ?? [];
+	expect(usages).toHaveLength(2);
+	for (const usage of usages) expect(usage).toContain(':key="form.id"');
+});
+
 test('a failing default persona creation still lists the personas', async () => {
 	mounted.length = 0;
 	mockStore.state = { user: {}, localProfile: { name: 'Ann' } };

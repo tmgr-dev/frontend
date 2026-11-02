@@ -112,9 +112,7 @@
 				if (store.getters?.isLocalOnly) {
 					try {
 						await ensureDefaultLocalPersona(ctx);
-					} catch {
-						/* listing below still shows whatever personas exist */
-					}
+					} catch {}
 				}
 				personas.value = await listLocalPersonas(ctx);
 				selected.value = enabledPersonas.value[0]?.uuid ?? null;
@@ -158,7 +156,11 @@
 						},
 						isCancelled: () => cancelRequested,
 						onToolCall: (method: string) => {
-							if (method !== 'GET') wrote = true;
+							if (
+								typeof method === 'string' &&
+								String(method).toUpperCase() !== 'GET'
+							)
+								wrote = true;
 						},
 					});
 					posted = !!result.posted || !cancelRequested;

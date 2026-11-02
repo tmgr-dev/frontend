@@ -3,7 +3,11 @@ import {
 	PERSONA_PERMISSIONS,
 	type PersonaPermission,
 } from './personaGate';
-import { LocalHttpError, type LocalContext } from './types';
+import {
+	LocalHttpError,
+	type BatchStatement,
+	type LocalContext,
+} from './types';
 
 /** Owner-view Persona shape from `GET /api/personas`. Only identity fields are kept locally — the prompt goes to the persona cache, never to workspace.db. */
 export interface CloudPersona {
@@ -199,11 +203,18 @@ export const ensureDefaultLocalPersona = async (
 			[LOCAL_OWNER_ID],
 		);
 	const [existing] = await select();
-	if (existing) return existing;
-	const uuid = crypto.randomUUID();
+	if (existing) {
+		const enabled = await ctx.db.select<{ persona_uuid: string }>(
+			`SELECT persona_uuid FROM workspace_personas WHERE persona_uuid = ?`,
+			[existing.uuid],
+		);
+		if (enabled.length) return existing;
+	}
+	const uuid = existing?.uuid ?? crypto.randomUUID();
 	const now = ctx.now().toISOString();
-	await ctx.db.batch([
-		{
+	const statements: BatchStatement[] = [];
+	if (!existing)
+		statements.push({
 			sql: `INSERT INTO personas (uuid, owner_user_id, owner_name, name, description, avatar_file, synced_at, archived_at)
 			 SELECT ?, ?, ?, ?, NULL, NULL, ?, NULL
 			 WHERE NOT EXISTS (SELECT 1 FROM personas WHERE owner_user_id = ?)`,
@@ -216,13 +227,14 @@ export const ensureDefaultLocalPersona = async (
 				LOCAL_OWNER_ID,
 			],
 			expectChanges: true,
-		},
-		{
-			sql: `INSERT INTO workspace_personas (persona_uuid, permissions, enabled_at, disabled_at)
-			 VALUES (?, ?, ?, NULL)`,
-			params: [uuid, JSON.stringify([...PERSONA_PERMISSIONS]), now],
-		},
-	]);
+		});
+	statements.push({
+		sql: `INSERT INTO workspace_personas (persona_uuid, permissions, enabled_at, disabled_at)
+			 SELECT ?, ?, ?, NULL
+			 WHERE NOT EXISTS (SELECT 1 FROM workspace_personas WHERE persona_uuid = ?)`,
+		params: [uuid, JSON.stringify([...PERSONA_PERMISSIONS]), now, uuid],
+	});
+	await ctx.db.batch(statements);
 	const [created] = await select();
 	return created;
 };
