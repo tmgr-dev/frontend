@@ -30,6 +30,8 @@ struct LlmConfigFile {
   key_origins: HashMap<String, String>,
 }
 
+const UNKNOWN_ORIGIN: &str = "";
+
 fn slot_origin(file: &LlmConfigFile, user_id: i64) -> Option<&str> {
   file.key_origins.get(&user_id.to_string()).or(file.key_origin.as_ref()).map(String::as_str)
 }
@@ -49,7 +51,7 @@ fn check_key_origin(slot_origin: Option<&str>, base_url: &str) -> Result<(), Str
   }
   let host = Url::parse(base_url.trim()).ok().and_then(|u| u.host_str().map(str::to_string));
   let target = host.unwrap_or_else(|| "this server".to_string());
-  Err(if slot_origin.is_some() {
+  Err(if slot_origin.is_some_and(|o| o != UNKNOWN_ORIGIN) {
     format!("Your saved API key was issued for a different server. Enter it again in Settings to use it with {target}.")
   } else {
     format!("Your saved API key is not tied to a server. Enter it again in Settings to use it with {target}.")
@@ -71,6 +73,7 @@ fn next_key_origins(
 ) -> HashMap<String, String> {
   match new_origin {
     Some(origin) if key_after => origins.insert(user_id.to_string(), origin),
+    None if key_after => origins.insert(user_id.to_string(), UNKNOWN_ORIGIN.to_string()),
     _ => origins.remove(&user_id.to_string()),
   };
   origins
@@ -81,7 +84,7 @@ fn move_local_key_origin(origins: &mut HashMap<String, String>, status: &Migrate
     return false;
   }
   let Some(origin) = origins.remove(&LOCAL_OWNER_ID.to_string()) else {
-    return false;
+    return matches!(status, MigrateStatus::Moved) && origins.remove(&to.to_string()).is_some();
   };
   if matches!(status, MigrateStatus::Moved) {
     origins.insert(to.to_string(), origin);
@@ -353,7 +356,7 @@ pub fn llm_config_set<R: Runtime>(
   let account = format!("{ACCOUNT}:{user_id}");
   let new_key = api_key.filter(|k| !k.is_empty());
 
-  let had_key = PersonaLlmSecrets.get(&account).ok().flatten().is_some();
+  let had_key = PersonaLlmSecrets.get(&account)?.is_some();
   let plan = plan_save(slot_origin(&previous, user_id), &previous.base_url, &base_url, new_key.is_some(), clear_api_key, had_key);
   refuses_plaintext_key(&base_url, plan.key_after && !plan.stale_key)?;
 
@@ -710,7 +713,48 @@ mod tests {
     let no_key = next_key_origins(set.clone(), 2, false, Some("https://b.example:443".into()));
     assert_eq!(no_key, start);
     let no_origin = next_key_origins(set, 2, true, None);
-    assert_eq!(no_origin, start);
+    assert_eq!(no_origin["2"], UNKNOWN_ORIGIN);
+    assert_eq!(no_origin["1"], "https://a.example:443");
+  }
+
+  #[test]
+  fn a_kept_key_without_a_url_origin_gets_a_placeholder_entry() {
+    let start = origins(&[("1", "https://a.example:443")]);
+    let kept = next_key_origins(start.clone(), 2, true, None);
+    assert_eq!(kept["2"], UNKNOWN_ORIGIN);
+    assert_eq!(kept["1"], "https://a.example:443");
+    assert_eq!(next_key_origins(kept, 2, false, None), start);
+  }
+
+  #[test]
+  fn a_placeholder_entry_shadows_the_legacy_origin_and_is_never_sendable() {
+    let file = file_with(Some("https://a.example:443"), &[("2", UNKNOWN_ORIGIN)]);
+    assert_eq!(slot_origin(&file, 2), Some(UNKNOWN_ORIGIN));
+    assert!(!key_may_be_sent(slot_origin(&file, 2), "https://a.example"));
+    let err = check_key_origin(slot_origin(&file, 2), "https://a.example/v1").unwrap_err();
+    assert!(err.contains("not tied to a server"), "{err}");
+    assert!(!err.contains("different server"), "{err}");
+  }
+
+  #[test]
+  fn a_keyless_save_keeps_the_placeholder_and_a_new_key_replaces_it() {
+    let start = origins(&[("2", UNKNOWN_ORIGIN)]);
+    let keyless = plan_save(Some(UNKNOWN_ORIGIN), "https://a.example", "https://a.example", false, false, true);
+    assert!(keyless.stale_key && keyless.key_after);
+    let kept = origins_after(&keyless, start.clone(), 2, normalize_origin("https://a.example").ok());
+    assert_eq!(kept, start);
+    assert!(!key_may_be_sent(kept.get("2").map(String::as_str), "https://a.example"));
+    let fresh = plan_save(Some(UNKNOWN_ORIGIN), "https://a.example", "https://a.example", true, false, true);
+    let replaced = origins_after(&fresh, start, 2, normalize_origin("https://a.example").ok());
+    assert_eq!(replaced, origins(&[("2", "https://a.example:443")]));
+  }
+
+  #[test]
+  fn a_moved_key_does_not_inherit_a_leftover_account_origin() {
+    let mut map = origins(&[("7", "https://stale.example:443"), ("9", "https://c.example:443")]);
+    assert!(move_local_key_origin(&mut map, &MigrateStatus::Moved, 7));
+    assert_eq!(map, origins(&[("9", "https://c.example:443")]));
+    assert!(!move_local_key_origin(&mut map, &MigrateStatus::Moved, 7));
   }
 
   #[test]
