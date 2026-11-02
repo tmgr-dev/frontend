@@ -331,7 +331,7 @@ pub enum ChatEvent {
 }
 
 /// Empty for a chunk with nothing the agent loop cares about (e.g. a bare role delta); content comes before tool calls.
-pub fn parse_chat_events(data: &str) -> Vec<ChatEvent> {
+pub fn parse_chat_events(data: &str, api_key: Option<&str>) -> Vec<ChatEvent> {
   let trimmed = data.trim();
   if trimmed == "[DONE]" {
     return vec![ChatEvent::Done];
@@ -339,7 +339,7 @@ pub fn parse_chat_events(data: &str) -> Vec<ChatEvent> {
   let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
     return Vec::new();
   };
-  let error = value.get("error").filter(|e| !e.is_null()).map(error_message);
+  let error = present_error(&value).map(|e| error_message(e, api_key));
   let Some(delta) = value.get("choices").and_then(|c| c.get(0)).and_then(|c| c.get("delta")) else {
     return error.map(|message| ChatEvent::Error { message }).into_iter().collect();
   };
@@ -387,19 +387,39 @@ fn server_message(error: &Value) -> Option<&str> {
     .filter(|m| !m.is_empty())
 }
 
-fn error_message(error: &Value) -> String {
+fn present_error(value: &Value) -> Option<&Value> {
+  value.get("error").filter(|e| match e {
+    Value::Null | Value::Bool(false) => false,
+    Value::String(text) => !text.trim().is_empty(),
+    Value::Object(fields) => !fields.is_empty(),
+    _ => true,
+  })
+}
+
+fn clean_server_message(message: &str, api_key: Option<&str>) -> Option<String> {
+  let mut message = message.to_string();
+  if let Some(key) = api_key.filter(|k| !k.is_empty()) {
+    message = message.replace(key, "[redacted]");
+  }
+  if message.trim_start().starts_with('<') {
+    return None;
+  }
+  Some(truncate_chars(&message, ERROR_MESSAGE_CHARS))
+}
+
+fn error_message(error: &Value, api_key: Option<&str>) -> String {
   server_message(error)
-    .map(|m| truncate_chars(m, ERROR_MESSAGE_CHARS))
+    .and_then(|m| clean_server_message(m, api_key))
     .unwrap_or_else(|| "The LLM server returned an error".to_string())
 }
 
-pub fn parse_chat_json_reply(body: &str) -> Vec<ChatEvent> {
+pub fn parse_chat_json_reply(body: &str, api_key: Option<&str>) -> Vec<ChatEvent> {
   let no_content = || vec![ChatEvent::Error { message: NO_USABLE_CONTENT.into() }];
   let Ok(value) = serde_json::from_str::<Value>(body.trim()) else {
     return no_content();
   };
-  if let Some(error) = value.get("error").filter(|e| !e.is_null()) {
-    return vec![ChatEvent::Error { message: error_message(error) }];
+  if let Some(error) = present_error(&value) {
+    return vec![ChatEvent::Error { message: error_message(error, api_key) }];
   }
   let Some(message) = value.get("choices").and_then(|c| c.get(0)).and_then(|c| c.get("message")) else {
     return no_content();
@@ -429,16 +449,37 @@ pub fn sanitize_error_body(status: &str, body: &str, api_key: Option<&str>) -> S
   let message = serde_json::from_str::<Value>(body.trim())
     .ok()
     .and_then(|v| v.get("error").and_then(server_message).map(str::to_string));
-  let Some(mut message) = message else {
+  let Some(message) = message.and_then(|m| clean_server_message(&m, api_key)) else {
     return base;
   };
-  if let Some(key) = api_key.filter(|k| !k.is_empty()) {
-    message = message.replace(key, "[redacted]");
+  format!("{base}: {message}")
+}
+
+fn drain_events(raws: Vec<String>, api_key: Option<&str>, useful: &mut bool) -> (Vec<ChatEvent>, bool) {
+  let mut out = Vec::new();
+  for raw in raws {
+    for event in parse_chat_events(&raw, api_key) {
+      let terminal = matches!(event, ChatEvent::Done | ChatEvent::Error { .. });
+      *useful |= matches!(event, ChatEvent::Delta { .. } | ChatEvent::ToolCall { .. });
+      out.push(event);
+      if terminal {
+        return (out, true);
+      }
+    }
   }
-  if message.trim_start().starts_with('<') {
-    return base;
+  (out, false)
+}
+
+pub fn parse_sse_text(body: &str, api_key: Option<&str>) -> Vec<ChatEvent> {
+  let mut buffer = SseBuffer::default();
+  let mut raws = buffer.push(body.as_bytes());
+  raws.extend(buffer.push(b"\n\n"));
+  let mut useful = false;
+  let (mut events, terminal) = drain_events(raws, api_key, &mut useful);
+  if !terminal {
+    events.push(end_of_stream_event(useful));
   }
-  format!("{base}: {}", truncate_chars(&message, ERROR_MESSAGE_CHARS))
+  events
 }
 
 pub fn end_of_stream_event(useful: bool) -> ChatEvent {
@@ -690,7 +731,11 @@ async fn stream_chat<R: Runtime>(
   let mut response = builder.send().await.map_err(|e| format!("LLM server unreachable: {e}"))?;
   if !response.status().is_success() {
     let status = response.status().to_string();
-    let body = read_capped(&mut response, ERROR_BODY_CAP).await.unwrap_or_default();
+    let body = tokio::time::timeout(Duration::from_secs(5), read_capped(&mut response, ERROR_BODY_CAP))
+      .await
+      .ok()
+      .and_then(Result::ok)
+      .unwrap_or_default();
     return Err(sanitize_error_body(&status, &String::from_utf8_lossy(&body), api_key));
   }
   let is_json = response
@@ -700,7 +745,13 @@ async fn stream_chat<R: Runtime>(
     .is_some_and(|v| v.to_ascii_lowercase().contains("json"));
   if is_json {
     let body = read_capped(&mut response, JSON_BODY_CAP).await?;
-    for event in parse_chat_json_reply(&String::from_utf8_lossy(&body)) {
+    let text = String::from_utf8_lossy(&body);
+    let events = if text.trim_start().starts_with("data:") {
+      parse_sse_text(&text, api_key)
+    } else {
+      parse_chat_json_reply(&text, api_key)
+    };
+    for event in events {
       emit_event(app, request_id, event);
     }
     return Ok(());
@@ -708,15 +759,12 @@ async fn stream_chat<R: Runtime>(
   let mut buffer = SseBuffer::default();
   let mut useful = false;
   while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-    for raw in buffer.push(&chunk) {
-      for event in parse_chat_events(&raw) {
-        let terminal = matches!(event, ChatEvent::Done | ChatEvent::Error { .. });
-        useful |= matches!(event, ChatEvent::Delta { .. } | ChatEvent::ToolCall { .. });
-        emit_event(app, request_id, event);
-        if terminal {
-          return Ok(());
-        }
-      }
+    let (events, terminal) = drain_events(buffer.push(&chunk), api_key, &mut useful);
+    for event in events {
+      emit_event(app, request_id, event);
+    }
+    if terminal {
+      return Ok(());
     }
   }
   emit_event(app, request_id, end_of_stream_event(useful));
@@ -1544,12 +1592,13 @@ mod tests {
   #[test]
   fn parses_a_text_delta_a_tool_call_and_done() {
     assert_eq!(
-      parse_chat_events("{\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}"),
+      parse_chat_events("{\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}", None),
       vec![ChatEvent::Delta { text: "Hi".into() }]
     );
     assert_eq!(
       parse_chat_events(
-        "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"tmgr_request\",\"arguments\":\"{\\\"method\\\"\"}}]}}]}"
+        "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"tmgr_request\",\"arguments\":\"{\\\"method\\\"\"}}]}}]}",
+        None
       ),
       vec![ChatEvent::ToolCall {
         index: 0,
@@ -1558,7 +1607,7 @@ mod tests {
         arguments: "{\"method\"".into(),
       }]
     );
-    assert_eq!(parse_chat_events("[DONE]"), vec![ChatEvent::Done]);
+    assert_eq!(parse_chat_events("[DONE]", None), vec![ChatEvent::Done]);
   }
 
   #[test]
@@ -1567,7 +1616,7 @@ mod tests {
       {"index":0,"id":"call_1","function":{"name":"tmgr_request","arguments":"{\"a\":1}"}},
       {"index":1,"id":"call_2","function":{"name":"tmgr_request","arguments":"{\"b\":2}"}}]}}]}"#;
     assert_eq!(
-      parse_chat_events(chunk),
+      parse_chat_events(chunk, None),
       vec![
         ChatEvent::Delta { text: "Let me look.".into() },
         ChatEvent::ToolCall {
@@ -1588,8 +1637,8 @@ mod tests {
 
   #[test]
   fn ignores_a_role_only_delta_and_invalid_json() {
-    assert!(parse_chat_events("{\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}").is_empty());
-    assert!(parse_chat_events("not json").is_empty());
+    assert!(parse_chat_events("{\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}", None).is_empty());
+    assert!(parse_chat_events("not json", None).is_empty());
   }
 
   #[test]
@@ -1613,16 +1662,14 @@ mod tests {
 
   #[test]
   fn sse_buffer_splits_events_on_every_line_ending_style() {
-    for (name, input) in [
-      ("cr only", "data: a\rdata: b\r\rdata: c\r\r"),
-      ("double cr", "data: a\r\rdata: c\r\r"),
-      ("lf crlf", "data: a\n\r\ndata: c\n\r\n"),
-      ("crlf lf", "data: a\r\n\ndata: c\r\n\n"),
-      ("crlf", "data: a\r\n\r\ndata: c\r\n\r\n"),
+    for (name, input, expected) in [
+      ("cr only", "data: a\rdata: b\r\rdata: c\r\r", vec!["a\nb", "c"]),
+      ("double cr", "data: a\r\rdata: c\r\r", vec!["a", "c"]),
+      ("lf crlf", "data: a\n\r\ndata: c\n\r\n", vec!["a", "c"]),
+      ("crlf lf", "data: a\r\n\ndata: c\r\n\n", vec!["a", "c"]),
+      ("crlf", "data: a\r\n\r\ndata: c\r\n\r\n", vec!["a", "c"]),
     ] {
-      let events = push_all(&[input.as_bytes()]);
-      assert_eq!(events.last().map(String::as_str), Some("c"), "{name}");
-      assert!(events.iter().any(|e| e == "a" || e == "a\nb"), "{name}: {events:?}");
+      assert_eq!(push_all(&[input.as_bytes()]), expected, "{name}");
     }
   }
 
@@ -1645,7 +1692,7 @@ mod tests {
   #[test]
   fn parses_a_mid_stream_error_object_with_a_message() {
     assert_eq!(
-      parse_chat_events("{\"error\":{\"message\":\"Context length exceeded\",\"type\":\"x\"}}"),
+      parse_chat_events("{\"error\":{\"message\":\"Context length exceeded\",\"type\":\"x\"}}", None),
       vec![ChatEvent::Error { message: "Context length exceeded".into() }]
     );
   }
@@ -1653,7 +1700,7 @@ mod tests {
   #[test]
   fn parses_a_mid_stream_error_given_as_a_string() {
     assert_eq!(
-      parse_chat_events("{\"error\":\"model crashed\"}"),
+      parse_chat_events("{\"error\":\"model crashed\"}", None),
       vec![ChatEvent::Error { message: "model crashed".into() }]
     );
   }
@@ -1661,7 +1708,7 @@ mod tests {
   #[test]
   fn a_delta_comes_before_an_error_in_the_same_chunk() {
     assert_eq!(
-      parse_chat_events("{\"choices\":[{\"delta\":{\"content\":\"Hi\"}}],\"error\":{\"message\":\"boom\"}}"),
+      parse_chat_events("{\"choices\":[{\"delta\":{\"content\":\"Hi\"}}],\"error\":{\"message\":\"boom\"}}", None),
       vec![ChatEvent::Delta { text: "Hi".into() }, ChatEvent::Error { message: "boom".into() }]
     );
   }
@@ -1669,7 +1716,7 @@ mod tests {
   #[test]
   fn an_error_without_a_message_gets_a_generic_one() {
     assert_eq!(
-      parse_chat_events("{\"error\":{\"code\":500}}"),
+      parse_chat_events("{\"error\":{\"code\":500}}", None),
       vec![ChatEvent::Error { message: "The LLM server returned an error".into() }]
     );
   }
@@ -1677,7 +1724,7 @@ mod tests {
   #[test]
   fn a_null_error_field_is_not_an_error() {
     assert_eq!(
-      parse_chat_events("{\"error\":null,\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}"),
+      parse_chat_events("{\"error\":null,\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}", None),
       vec![ChatEvent::Delta { text: "Hi".into() }]
     );
   }
@@ -1685,7 +1732,7 @@ mod tests {
   #[test]
   fn a_long_stream_error_message_is_truncated() {
     let long = "x".repeat(500);
-    let events = parse_chat_events(&format!("{{\"error\":\"{long}\"}}"));
+    let events = parse_chat_events(&format!("{{\"error\":\"{long}\"}}"), None);
     let ChatEvent::Error { message } = &events[0] else { panic!("{events:?}") };
     assert!(message.chars().count() <= 201, "{}", message.chars().count());
   }
@@ -1693,7 +1740,7 @@ mod tests {
   #[test]
   fn parses_a_non_streaming_reply_with_content() {
     assert_eq!(
-      parse_chat_json_reply("{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Hello\"}}]}"),
+      parse_chat_json_reply("{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Hello\"}}]}", None),
       vec![ChatEvent::Delta { text: "Hello".into() }, ChatEvent::Done]
     );
   }
@@ -1704,7 +1751,7 @@ mod tests {
       {"id":"call_a","type":"function","function":{"name":"tmgr_request","arguments":"{\"a\":1}"}},
       {"id":"call_b","type":"function","function":{"name":"tmgr_request","arguments":"{\"b\":2}"}}]}}]}"#;
     assert_eq!(
-      parse_chat_json_reply(body),
+      parse_chat_json_reply(body, None),
       vec![
         ChatEvent::ToolCall {
           index: 0,
@@ -1726,11 +1773,11 @@ mod tests {
   #[test]
   fn a_non_streaming_error_body_becomes_an_error_event() {
     assert_eq!(
-      parse_chat_json_reply("{\"error\":{\"message\":\"Invalid model\"}}"),
+      parse_chat_json_reply("{\"error\":{\"message\":\"Invalid model\"}}", None),
       vec![ChatEvent::Error { message: "Invalid model".into() }]
     );
     assert_eq!(
-      parse_chat_json_reply("{\"error\":\"overloaded\"}"),
+      parse_chat_json_reply("{\"error\":\"overloaded\"}", None),
       vec![ChatEvent::Error { message: "overloaded".into() }]
     );
   }
@@ -1739,7 +1786,7 @@ mod tests {
   fn a_non_streaming_reply_without_content_or_tool_calls_is_an_error() {
     for body in ["{\"choices\":[{\"message\":{\"content\":\"\"}}]}", "{\"choices\":[]}", "{}", "not json", ""] {
       assert_eq!(
-        parse_chat_json_reply(body),
+        parse_chat_json_reply(body, None),
         vec![ChatEvent::Error { message: "The LLM server returned no usable content".into() }],
         "{body}"
       );
@@ -1800,5 +1847,94 @@ mod tests {
       sanitize_error_body("502 Bad Gateway", "{\"error\":\"<b>html</b>\"}", None),
       "LLM server returned 502 Bad Gateway"
     );
+  }
+
+  const KEY: &str = "sk-secret-key-123456";
+
+  fn error_text(events: &[ChatEvent]) -> &str {
+    match events {
+      [ChatEvent::Error { message }] => message,
+      other => panic!("{other:?}"),
+    }
+  }
+
+  #[test]
+  fn a_key_echoed_in_a_mid_stream_error_is_redacted() {
+    let events = parse_chat_events(&format!("{{\"error\":{{\"message\":\"bad key {KEY} given\"}}}}"), Some(KEY));
+    assert_eq!(error_text(&events), "bad key [redacted] given");
+  }
+
+  #[test]
+  fn a_key_echoed_in_a_200_json_reply_is_redacted() {
+    let events = parse_chat_json_reply(&format!("{{\"error\":\"invalid {KEY}\"}}"), Some(KEY));
+    assert_eq!(error_text(&events), "invalid [redacted]");
+  }
+
+  #[test]
+  fn a_key_straddling_the_truncation_cut_does_not_survive() {
+    let message = format!("{}{KEY}", "x".repeat(190));
+    let streamed = parse_chat_events(&format!("{{\"error\":\"{message}\"}}"), Some(KEY));
+    let replied = parse_chat_json_reply(&format!("{{\"error\":\"{message}\"}}"), Some(KEY));
+    for events in [streamed, replied] {
+      let text = error_text(&events);
+      assert!(!text.contains("sk-secret"), "{text}");
+      assert!(text.contains("[redacted]"), "{text}");
+    }
+  }
+
+  #[test]
+  fn an_html_error_message_gets_the_generic_text() {
+    let streamed = parse_chat_events("{\"error\":\"<html>nope</html>\"}", None);
+    let replied = parse_chat_json_reply("{\"error\":{\"message\":\" <html>nope</html>\"}}", None);
+    assert_eq!(error_text(&streamed), "The LLM server returned an error");
+    assert_eq!(error_text(&replied), "The LLM server returned an error");
+  }
+
+  #[test]
+  fn falsy_error_values_do_not_kill_a_healthy_stream() {
+    for falsy in ["\"\"", "false", "{}", "null", "\"  \""] {
+      assert_eq!(
+        parse_chat_events(&format!("{{\"error\":{falsy},\"choices\":[{{\"delta\":{{\"content\":\"Hi\"}}}}]}}"), None),
+        vec![ChatEvent::Delta { text: "Hi".into() }],
+        "{falsy}"
+      );
+    }
+    let reply = "{\"error\":false,\"choices\":[{\"message\":{\"content\":\"Hi\"}}]}";
+    assert_eq!(parse_chat_json_reply(reply, None), vec![ChatEvent::Delta { text: "Hi".into() }, ChatEvent::Done]);
+  }
+
+  #[test]
+  fn truthy_error_values_stay_errors() {
+    for truthy in ["{\"code\":500}", "\"boom\"", "{\"message\":\"boom\"}", "true"] {
+      let events = parse_chat_events(&format!("{{\"error\":{truthy}}}"), None);
+      assert!(matches!(events.as_slice(), [ChatEvent::Error { .. }]), "{truthy}: {events:?}");
+    }
+  }
+
+  #[test]
+  fn data_lines_under_a_json_content_type_are_parsed_as_a_stream() {
+    let body = "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"lo\"}}]}\n\ndata: [DONE]\n\n";
+    assert_eq!(
+      parse_sse_text(body, None),
+      vec![ChatEvent::Delta { text: "Hel".into() }, ChatEvent::Delta { text: "lo".into() }, ChatEvent::Done]
+    );
+  }
+
+  #[test]
+  fn a_data_body_without_a_trailing_blank_line_is_still_parsed() {
+    assert_eq!(
+      parse_sse_text("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}", None),
+      vec![ChatEvent::Delta { text: "Hi".into() }, ChatEvent::Done]
+    );
+  }
+
+  #[test]
+  fn a_data_body_with_no_usable_content_is_an_error_and_redacts_the_key() {
+    assert_eq!(
+      parse_sse_text("data: {\"role\":\"x\"}\n\n", None),
+      vec![ChatEvent::Error { message: NO_USABLE_CONTENT.into() }]
+    );
+    let events = parse_sse_text(&format!("data: {{\"error\":\"{KEY}\"}}\n\n"), Some(KEY));
+    assert_eq!(error_text(&events), "[redacted]");
   }
 }
