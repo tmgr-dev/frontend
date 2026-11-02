@@ -1341,7 +1341,8 @@ pub fn needs_runner(paths: &Paths) -> Result<bool> {
         matches!(
             p.status,
             Status::Approved | Status::Starting | Status::UnknownStart
-        ) || (p.status == Status::Started && !p.run_exited)
+        ) || (p.status == Status::Started
+            && (!p.run_exited || p.team.as_ref().is_some_and(|t| !t.all_exited())))
     });
     Ok(open || (!st.paused && loaded.file.rules.iter().any(|r| r.auto)))
 }

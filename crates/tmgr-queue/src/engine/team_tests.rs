@@ -636,3 +636,23 @@ fn git_plain(dir: &Path, args: &[&str]) -> String {
         .unwrap();
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
+
+#[test]
+fn the_runner_is_still_needed_while_a_worker_runs_after_the_lead_has_gone() {
+    let fx = working_team();
+    let mut st = state::load(&fx.paths).unwrap();
+    st.paused = true;
+    state::save(&fx.paths, &mut st).unwrap();
+    assert!(needs_runner(&fx.paths).unwrap());
+    let mut st = state::load(&fx.paths).unwrap();
+    st.pickups[0].run_exited = true;
+    st.pickups[0].held = Some(state::Held::default());
+    state::save(&fx.paths, &mut st).unwrap();
+    assert!(needs_runner(&fx.paths).unwrap());
+    let mut st = state::load(&fx.paths).unwrap();
+    for m in &mut st.pickups[0].team.as_mut().unwrap().members {
+        m.exited = true;
+    }
+    state::save(&fx.paths, &mut st).unwrap();
+    assert!(!needs_runner(&fx.paths).unwrap());
+}
