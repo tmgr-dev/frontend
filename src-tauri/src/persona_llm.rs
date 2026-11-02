@@ -310,14 +310,24 @@ impl SseBuffer {
     let mut events = Vec::new();
     while let Some(pos) = self.pending.windows(2).position(|w| w == b"\n\n") {
       let raw: Vec<u8> = self.pending.drain(..pos + 2).collect();
-      let text = String::from_utf8_lossy(&raw);
-      let data: Vec<&str> =
-        text.lines().filter_map(|line| line.strip_prefix("data:").map(str::trim_start)).collect();
-      if !data.is_empty() {
-        events.push(data.join("\n"));
-      }
+      events.extend(event_data(&raw));
     }
     events
+  }
+
+  pub fn finish(&mut self) -> Option<String> {
+    self.after_cr = false;
+    event_data(&std::mem::take(&mut self.pending))
+  }
+}
+
+fn event_data(raw: &[u8]) -> Option<String> {
+  let text = String::from_utf8_lossy(raw);
+  let data: Vec<&str> = text.lines().filter_map(|line| line.strip_prefix("data:").map(str::trim_start)).collect();
+  if data.is_empty() {
+    None
+  } else {
+    Some(data.join("\n"))
   }
 }
 
@@ -340,8 +350,9 @@ pub fn parse_chat_events(data: &str, api_key: Option<&str>) -> Vec<ChatEvent> {
     return Vec::new();
   };
   let error = present_error(&value).map(|e| error_message(e, api_key));
+  let finish_error = finish_reason(&value).and_then(finish_error_message);
   let Some(delta) = value.get("choices").and_then(|c| c.get(0)).and_then(|c| c.get("delta")) else {
-    return error.map(|message| ChatEvent::Error { message }).into_iter().collect();
+    return error.or(finish_error).map(|message| ChatEvent::Error { message }).into_iter().collect();
   };
   let mut events = Vec::new();
   if let Some(content) = delta.get("content").and_then(Value::as_str) {
@@ -361,10 +372,35 @@ pub fn parse_chat_events(data: &str, api_key: Option<&str>) -> Vec<ChatEvent> {
       .to_string();
     events.push(ChatEvent::ToolCall { index, id, name, arguments });
   }
+  if let Some(message) = finish_error {
+    events.push(ChatEvent::Error { message });
+  }
   if let Some(message) = error {
     events.push(ChatEvent::Error { message });
   }
   events
+}
+
+pub fn finish_reason(value: &Value) -> Option<&str> {
+  value
+    .get("choices")
+    .and_then(|c| c.get(0))
+    .and_then(|c| c.get("finish_reason"))
+    .and_then(Value::as_str)
+    .filter(|r| !r.is_empty())
+}
+
+pub fn stream_finish_reason(data: &str) -> Option<String> {
+  let value = serde_json::from_str::<Value>(data.trim()).ok()?;
+  finish_reason(&value).map(str::to_string)
+}
+
+fn finish_error_message(reason: &str) -> Option<String> {
+  match reason {
+    "length" => Some("The answer was cut off: the model hit its length limit".into()),
+    "content_filter" => Some("The answer was blocked by the server's content filter".into()),
+    _ => None,
+  }
 }
 
 const NO_USABLE_CONTENT: &str = "The LLM server returned no usable content";
@@ -437,6 +473,10 @@ pub fn parse_chat_json_reply(body: &str, api_key: Option<&str>) -> Vec<ChatEvent
       arguments: function.and_then(|f| f.get("arguments")).and_then(Value::as_str).unwrap_or("").to_string(),
     });
   }
+  if let Some(message) = finish_reason(&value).and_then(finish_error_message) {
+    events.push(ChatEvent::Error { message });
+    return events;
+  }
   if events.is_empty() {
     return no_content();
   }
@@ -455,9 +495,15 @@ pub fn sanitize_error_body(status: &str, body: &str, api_key: Option<&str>) -> S
   format!("{base}: {message}")
 }
 
-fn drain_events(raws: Vec<String>, api_key: Option<&str>, useful: &mut bool) -> (Vec<ChatEvent>, bool) {
+fn drain_events(
+  raws: Vec<String>,
+  api_key: Option<&str>,
+  useful: &mut bool,
+  saw_finish: &mut bool,
+) -> (Vec<ChatEvent>, bool) {
   let mut out = Vec::new();
   for raw in raws {
+    *saw_finish |= stream_finish_reason(&raw).is_some();
     for event in parse_chat_events(&raw, api_key) {
       let terminal = matches!(event, ChatEvent::Done | ChatEvent::Error { .. });
       *useful |= matches!(event, ChatEvent::Delta { .. } | ChatEvent::ToolCall { .. });
@@ -475,15 +521,18 @@ pub fn parse_sse_text(body: &str, api_key: Option<&str>) -> Vec<ChatEvent> {
   let mut raws = buffer.push(body.as_bytes());
   raws.extend(buffer.push(b"\n\n"));
   let mut useful = false;
-  let (mut events, terminal) = drain_events(raws, api_key, &mut useful);
+  let mut saw_finish = false;
+  let (mut events, terminal) = drain_events(raws, api_key, &mut useful, &mut saw_finish);
   if !terminal {
-    events.push(end_of_stream_event(useful));
+    events.push(end_of_stream_event(useful, saw_finish));
   }
   events
 }
 
-pub fn end_of_stream_event(useful: bool) -> ChatEvent {
-  if useful {
+pub fn end_of_stream_event(useful: bool, saw_finish: bool) -> ChatEvent {
+  if !saw_finish {
+    ChatEvent::Error { message: "The LLM server closed the stream before the answer finished".into() }
+  } else if useful {
     ChatEvent::Done
   } else {
     ChatEvent::Error { message: NO_USABLE_CONTENT.into() }
@@ -673,12 +722,26 @@ fn emit_event<R: Runtime>(app: &AppHandle<R>, request_id: &str, event: ChatEvent
 }
 
 pub fn chat_completions_url(base_url: &str) -> String {
-  let base = base_url.trim_end_matches('/');
-  if base.ends_with("/v1") {
+  let trimmed = base_url.trim();
+  let without_fragment = trimmed.split('#').next().unwrap_or("");
+  let (head, query) = match without_fragment.split_once('?') {
+    Some((head, query)) => (head, Some(query).filter(|q| !q.is_empty())),
+    None => (without_fragment, None),
+  };
+  let base = head.trim_end_matches('/');
+  let lower = base.to_ascii_lowercase();
+  let mut url = if lower.ends_with("/chat/completions") {
+    base.to_string()
+  } else if lower.ends_with("/v1") {
     format!("{base}/chat/completions")
   } else {
     format!("{base}/v1/chat/completions")
+  };
+  if let Some(query) = query {
+    url.push('?');
+    url.push_str(query);
   }
+  url
 }
 
 const ERROR_BODY_CAP: usize = 64 * 1024;
@@ -695,6 +758,44 @@ async fn read_capped(response: &mut reqwest::Response, cap: usize) -> Result<Vec
   Ok(body)
 }
 
+fn llm_http_client() -> Result<reqwest::Client, String> {
+  if rustls::crypto::CryptoProvider::get_default().is_none() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+  }
+  // Only the connect is capped: a local model may legitimately take minutes to finish a turn.
+  reqwest::Client::builder()
+    .connect_timeout(Duration::from_secs(5))
+    .redirect(reqwest::redirect::Policy::none())
+    .build()
+    .map_err(|e| e.to_string())
+}
+
+fn redirect_error(request_url: &str, location: Option<&str>) -> String {
+  let host = location
+    .and_then(|l| Url::parse(request_url).ok()?.join(l).ok())
+    .and_then(|u| u.host_str().map(str::to_string))
+    .unwrap_or_else(|| "another address".to_string());
+  format!("The LLM server redirected the request to {host}. Update the base URL in Settings.")
+}
+
+async fn post_chat(
+  client: &reqwest::Client,
+  url: &str,
+  body: Vec<u8>,
+  api_key: Option<&str>,
+) -> Result<reqwest::Response, String> {
+  let mut builder = client.post(url).header("content-type", "application/json").body(body);
+  if let Some(key) = api_key {
+    builder = builder.header("authorization", format!("Bearer {key}"));
+  }
+  let response = builder.send().await.map_err(|e| format!("LLM server unreachable: {e}"))?;
+  if response.status().is_redirection() {
+    let location = response.headers().get("location").and_then(|v| v.to_str().ok());
+    return Err(redirect_error(url, location));
+  }
+  Ok(response)
+}
+
 async fn stream_chat<R: Runtime>(
   app: &AppHandle<R>,
   request_id: &str,
@@ -703,14 +804,7 @@ async fn stream_chat<R: Runtime>(
   messages: Vec<Value>,
   tools: Option<Value>,
 ) -> Result<(), String> {
-  if rustls::crypto::CryptoProvider::get_default().is_none() {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-  }
-  // Only the connect is capped: a local model may legitimately take minutes to finish a turn.
-  let client = reqwest::Client::builder()
-    .connect_timeout(Duration::from_secs(5))
-    .build()
-    .map_err(|e| e.to_string())?;
+  let client = llm_http_client()?;
   let url = chat_completions_url(&config.base_url);
   // A typed struct here would silently drop fields the agent loop already built (tool_calls, tool_call_id).
   let mut body = serde_json::json!({
@@ -721,14 +815,8 @@ async fn stream_chat<R: Runtime>(
   if let Some(tools) = tools {
     body["tools"] = tools;
   }
-  let mut builder = client
-    .post(&url)
-    .header("content-type", "application/json")
-    .body(serde_json::to_vec(&body).map_err(|e| e.to_string())?);
-  if let Some(key) = api_key {
-    builder = builder.header("authorization", format!("Bearer {key}"));
-  }
-  let mut response = builder.send().await.map_err(|e| format!("LLM server unreachable: {e}"))?;
+  let body = serde_json::to_vec(&body).map_err(|e| e.to_string())?;
+  let mut response = post_chat(&client, &url, body, api_key).await?;
   if !response.status().is_success() {
     let status = response.status().to_string();
     let body = tokio::time::timeout(Duration::from_secs(5), read_capped(&mut response, ERROR_BODY_CAP))
@@ -758,16 +846,26 @@ async fn stream_chat<R: Runtime>(
   }
   let mut buffer = SseBuffer::default();
   let mut useful = false;
-  while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-    let (events, terminal) = drain_events(buffer.push(&chunk), api_key, &mut useful);
+  let mut saw_finish = false;
+  loop {
+    let chunk = response.chunk().await.map_err(|e| e.to_string())?;
+    let eof = chunk.is_none();
+    let raws = match chunk {
+      Some(chunk) => buffer.push(&chunk),
+      None => buffer.finish().into_iter().collect(),
+    };
+    let (events, terminal) = drain_events(raws, api_key, &mut useful, &mut saw_finish);
     for event in events {
       emit_event(app, request_id, event);
     }
     if terminal {
       return Ok(());
     }
+    if eof {
+      break;
+    }
   }
-  emit_event(app, request_id, end_of_stream_event(useful));
+  emit_event(app, request_id, end_of_stream_event(useful, saw_finish));
   Ok(())
 }
 
@@ -813,11 +911,20 @@ pub async fn llm_chat<R: Runtime>(
   Ok(())
 }
 
+fn cancel_in_flight(map: &mut HashMap<String, tokio::task::AbortHandle>, request_id: &str) -> bool {
+  match map.remove(request_id) {
+    Some(handle) => {
+      handle.abort();
+      true
+    }
+    None => false,
+  }
+}
+
 /// Emits an error event too, so a caller blocked reading `llm://chat` unblocks instead of hanging.
 #[tauri::command]
 pub fn llm_cancel<R: Runtime>(app: AppHandle<R>, request_id: String) -> Result<(), String> {
-  if let Some(handle) = IN_FLIGHT.lock().map_err(|_| "lock poisoned".to_string())?.remove(&request_id) {
-    handle.abort();
+  if cancel_in_flight(&mut *IN_FLIGHT.lock().map_err(|_| "lock poisoned".to_string())?, &request_id) {
     emit_event(&app, &request_id, ChatEvent::Error { message: "cancelled".into() });
   }
   Ok(())
@@ -1655,6 +1762,48 @@ mod tests {
     }
   }
 
+  #[test]
+  fn builds_the_chat_completions_url_from_unusual_base_forms() {
+    for (base, expected) in [
+      ("  http://localhost:1234/v1  ", "http://localhost:1234/v1/chat/completions"),
+      ("http://localhost:1234/v1#frag", "http://localhost:1234/v1/chat/completions"),
+      ("http://localhost:1234#frag", "http://localhost:1234/v1/chat/completions"),
+      ("http://localhost:1234/V1", "http://localhost:1234/V1/chat/completions"),
+      ("http://localhost:1234/v1/chat/completions", "http://localhost:1234/v1/chat/completions"),
+      ("http://localhost:1234/v1/chat/completions/", "http://localhost:1234/v1/chat/completions"),
+      ("http://localhost:1234/V1/Chat/Completions", "http://localhost:1234/V1/Chat/Completions"),
+      ("http://localhost:1234//", "http://localhost:1234/v1/chat/completions"),
+      ("http://localhost:1234/v1//", "http://localhost:1234/v1/chat/completions"),
+      ("https://h.example/api?key=1", "https://h.example/api/v1/chat/completions?key=1"),
+      ("https://h.example/api/v1/?key=1#x", "https://h.example/api/v1/chat/completions?key=1"),
+      ("https://h.example/?", "https://h.example/v1/chat/completions"),
+      ("localhost:1234", "localhost:1234/v1/chat/completions"),
+    ] {
+      assert_eq!(chat_completions_url(base), expected, "{base}");
+    }
+  }
+
+  #[test]
+  fn the_request_goes_to_the_origin_the_key_check_validated() {
+    for base in [
+      "http://localhost:1234",
+      "  https://Host.Example:443/v1  ",
+      "https://h.example/api?key=1",
+      "https://h.example/api/v1/chat/completions",
+      "https://h.example#@evil.example",
+      "https://h.example/V1#frag",
+      "http://user:pw@h.example:80/v1",
+      "http://127.0.0.1:8080//",
+      "http://[::1]:11434/v1/",
+    ] {
+      let built = chat_completions_url(base);
+      let parsed = Url::parse(&built).unwrap_or_else(|e| panic!("{built}: {e}"));
+      assert_eq!(normalize_origin(base).unwrap(), normalize_origin(&built).unwrap(), "{base}");
+      assert_eq!(Url::parse(base.trim()).unwrap().host_str(), parsed.host_str(), "{base}");
+      assert_eq!(parsed.fragment(), None, "{base}");
+    }
+  }
+
   fn push_all(chunks: &[&[u8]]) -> Vec<String> {
     let mut buffer = SseBuffer::default();
     chunks.iter().flat_map(|c| buffer.push(c)).collect()
@@ -1796,10 +1945,97 @@ mod tests {
   #[test]
   fn an_empty_stream_is_an_error_and_a_useful_one_is_done() {
     assert_eq!(
-      end_of_stream_event(false),
+      end_of_stream_event(false, true),
       ChatEvent::Error { message: "The LLM server returned no usable content".into() }
     );
-    assert_eq!(end_of_stream_event(true), ChatEvent::Done);
+    assert_eq!(end_of_stream_event(true, true), ChatEvent::Done);
+  }
+
+  #[test]
+  fn a_stream_that_ends_without_done_or_finish_reason_is_an_error() {
+    let truncated = ChatEvent::Error { message: "The LLM server closed the stream before the answer finished".into() };
+    assert_eq!(end_of_stream_event(true, false), truncated);
+    assert_eq!(end_of_stream_event(false, false), truncated);
+  }
+
+  #[test]
+  fn stream_finish_reason_reads_the_first_choice() {
+    assert_eq!(stream_finish_reason("{\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}").as_deref(), Some("stop"));
+    assert_eq!(stream_finish_reason("{\"choices\":[{\"delta\":{},\"finish_reason\":null}]}"), None);
+    assert_eq!(stream_finish_reason("{\"choices\":[{\"delta\":{\"content\":\"a\"}}]}"), None);
+    assert_eq!(stream_finish_reason("[DONE]"), None);
+  }
+
+  #[test]
+  fn a_length_or_filter_finish_in_a_stream_is_an_error_after_the_content() {
+    let length = parse_chat_events("{\"choices\":[{\"delta\":{\"content\":\"abc\"},\"finish_reason\":\"length\"}]}", None);
+    assert_eq!(
+      length,
+      vec![
+        ChatEvent::Delta { text: "abc".into() },
+        ChatEvent::Error { message: "The answer was cut off: the model hit its length limit".into() },
+      ]
+    );
+    assert_eq!(
+      parse_chat_events("{\"choices\":[{\"delta\":{},\"finish_reason\":\"content_filter\"}]}", None),
+      vec![ChatEvent::Error { message: "The answer was blocked by the server's content filter".into() }]
+    );
+    assert_eq!(
+      parse_chat_events("{\"choices\":[{\"finish_reason\":\"length\"}]}", None),
+      vec![ChatEvent::Error { message: "The answer was cut off: the model hit its length limit".into() }]
+    );
+  }
+
+  #[test]
+  fn a_stop_or_tool_calls_finish_adds_no_event() {
+    for reason in ["stop", "tool_calls", "function_call"] {
+      let chunk = format!("{{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"{reason}\"}}]}}");
+      assert!(parse_chat_events(&chunk, None).is_empty(), "{reason}");
+    }
+  }
+
+  #[test]
+  fn a_length_or_filter_finish_in_a_json_reply_is_an_error_instead_of_done() {
+    assert_eq!(
+      parse_chat_json_reply("{\"choices\":[{\"message\":{\"content\":\"abc\"},\"finish_reason\":\"length\"}]}", None),
+      vec![
+        ChatEvent::Delta { text: "abc".into() },
+        ChatEvent::Error { message: "The answer was cut off: the model hit its length limit".into() },
+      ]
+    );
+    assert_eq!(
+      parse_chat_json_reply("{\"choices\":[{\"message\":{\"content\":null},\"finish_reason\":\"content_filter\"}]}", None),
+      vec![ChatEvent::Error { message: "The answer was blocked by the server's content filter".into() }]
+    );
+    assert_eq!(
+      parse_chat_json_reply("{\"choices\":[{\"message\":{\"content\":\"abc\"},\"finish_reason\":\"stop\"}]}", None),
+      vec![ChatEvent::Delta { text: "abc".into() }, ChatEvent::Done]
+    );
+  }
+
+  #[test]
+  fn sse_buffer_finish_returns_an_unterminated_final_event() {
+    let mut buffer = SseBuffer::default();
+    assert!(buffer.push(b"data: {\"a\":1}\n\ndata: [DONE]").len() == 1);
+    assert_eq!(buffer.finish().as_deref(), Some("[DONE]"));
+    assert_eq!(buffer.finish(), None);
+    let mut crlf = SseBuffer::default();
+    assert!(crlf.push(b"data: x\r\n").is_empty());
+    assert_eq!(crlf.finish().as_deref(), Some("x"));
+    assert_eq!(SseBuffer::default().finish(), None);
+  }
+
+  #[tokio::test]
+  async fn cancelling_removes_the_entry_and_aborts_the_task() {
+    let task = tokio::spawn(tokio::time::sleep(Duration::from_secs(60)));
+    let mut map = HashMap::new();
+    map.insert("r1".to_string(), task.abort_handle());
+    assert!(!cancel_in_flight(&mut map, "other"));
+    assert_eq!(map.len(), 1);
+    assert!(cancel_in_flight(&mut map, "r1"));
+    assert!(map.is_empty());
+    assert!(task.await.unwrap_err().is_cancelled());
+    assert!(!cancel_in_flight(&mut map, "r1"));
   }
 
   #[test]
@@ -1923,7 +2159,7 @@ mod tests {
   #[test]
   fn a_data_body_without_a_trailing_blank_line_is_still_parsed() {
     assert_eq!(
-      parse_sse_text("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}", None),
+      parse_sse_text("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"},\"finish_reason\":\"stop\"}]}", None),
       vec![ChatEvent::Delta { text: "Hi".into() }, ChatEvent::Done]
     );
   }
@@ -1931,10 +2167,58 @@ mod tests {
   #[test]
   fn a_data_body_with_no_usable_content_is_an_error_and_redacts_the_key() {
     assert_eq!(
-      parse_sse_text("data: {\"role\":\"x\"}\n\n", None),
+      parse_sse_text("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n", None),
       vec![ChatEvent::Error { message: NO_USABLE_CONTENT.into() }]
     );
     let events = parse_sse_text(&format!("data: {{\"error\":\"{KEY}\"}}\n\n"), Some(KEY));
     assert_eq!(error_text(&events), "[redacted]");
+  }
+
+  async fn serve_once(listener: tokio::net::TcpListener, reply: String, received: std::sync::Arc<Mutex<Vec<u8>>>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    while let Ok((mut socket, _)) = listener.accept().await {
+      let mut buf = [0u8; 4096];
+      let mut seen = Vec::new();
+      while let Ok(Ok(n)) = tokio::time::timeout(Duration::from_millis(100), socket.read(&mut buf)).await {
+        if n == 0 {
+          break;
+        }
+        seen.extend_from_slice(&buf[..n]);
+        if seen.windows(4).any(|w| w == b"\r\n\r\n") && seen.ends_with(b"}") {
+          break;
+        }
+      }
+      received.lock().unwrap().extend_from_slice(&seen);
+      let _ = socket.write_all(reply.as_bytes()).await;
+    }
+  }
+
+  #[tokio::test]
+  async fn llm_requests_do_not_follow_redirects() {
+    use std::sync::Arc;
+    let target = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let target_port = target.local_addr().unwrap().port();
+    let target_seen = Arc::new(Mutex::new(Vec::new()));
+    tokio::spawn(serve_once(
+      target,
+      "HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n".into(),
+      target_seen.clone(),
+    ));
+    let origin = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin_port = origin.local_addr().unwrap().port();
+    tokio::spawn(serve_once(
+      origin,
+      format!("HTTP/1.1 307 Temporary Redirect\r\nlocation: http://localhost:{target_port}/steal?x=1\r\ncontent-length: 0\r\n\r\n"),
+      Arc::new(Mutex::new(Vec::new())),
+    ));
+    let client = llm_http_client().unwrap();
+    let url = format!("http://127.0.0.1:{origin_port}/v1/chat/completions");
+    let result = post_chat(&client, &url, br#"{"secret":"payload"}"#.to_vec(), Some("sk-test")).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(
+      result.err().as_deref(),
+      Some("The LLM server redirected the request to localhost. Update the base URL in Settings.")
+    );
+    assert!(target_seen.lock().unwrap().is_empty());
   }
 }
