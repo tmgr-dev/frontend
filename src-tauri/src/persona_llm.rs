@@ -122,13 +122,71 @@ fn key_will_exist(clear_api_key: bool, new_key_present: bool, origin_changed: bo
   }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct SavePlan {
+  key_after: bool,
+  stale_key: bool,
+  drop_old_key: bool,
+}
+
+/// `stale_key`: a keyless save that did not move the URL itself, so the slot's key (issued for another origin) is kept as it was.
+fn plan_save(
+  slot_origin: Option<&str>,
+  previous_url: &str,
+  base_url: &str,
+  new_key_present: bool,
+  clear_api_key: bool,
+  had_key: bool,
+) -> SavePlan {
+  let new_origin = normalize_origin(base_url).ok();
+  let origin_changed = new_origin.as_deref() != slot_origin;
+  let url_moved = normalize_origin(previous_url).ok() != new_origin;
+  let stale_key = origin_changed && !url_moved && !new_key_present && !clear_api_key;
+  SavePlan {
+    key_after: if stale_key { had_key } else { key_will_exist(clear_api_key, new_key_present, origin_changed, had_key) },
+    stale_key,
+    drop_old_key: clear_api_key || (origin_changed && !stale_key),
+  }
+}
+
+fn origins_after(
+  plan: &SavePlan,
+  previous: HashMap<String, String>,
+  user_id: i64,
+  new_origin: Option<String>,
+) -> HashMap<String, String> {
+  if plan.stale_key && plan.key_after {
+    previous
+  } else {
+    next_key_origins(previous, user_id, plan.key_after, new_origin)
+  }
+}
+
+/// The old key is deleted before the config moves to a new server, so a failed save can never leave it paired with that server.
+fn apply_save<S: SecretStore>(
+  store: &S,
+  account: &str,
+  plan: &SavePlan,
+  new_key: Option<&str>,
+  write_config: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+  if plan.drop_old_key {
+    store.delete(account)?;
+  }
+  write_config()?;
+  if let Some(key) = new_key {
+    store.set(account, key)?;
+  }
+  Ok(())
+}
+
 /// A key must never be saved for use over plaintext HTTP to a host outside the local network.
 fn refuses_plaintext_key(base_url: &str, key_will_exist: bool) -> Result<(), String> {
   if !key_will_exist {
     return Ok(());
   }
   let is_remote = matches!(classify_url(base_url), Ok(UrlKind::Remote));
-  let is_http = base_url.trim().to_ascii_lowercase().starts_with("http://");
+  let is_http = Url::parse(base_url.trim()).is_ok_and(|u| u.scheme() == "http");
   if is_remote && is_http {
     return Err("Refusing to save an API key for a remote endpoint over plain HTTP; use HTTPS.".into());
   }
@@ -292,32 +350,23 @@ pub fn llm_config_set<R: Runtime>(
   }
   let previous = read_config(&app)?;
   let new_origin = normalize_origin(&base_url).ok();
-  let origin_changed = new_origin.as_deref() != slot_origin(&previous, user_id);
-  let entry = keyring_entry(user_id)?;
+  let account = format!("{ACCOUNT}:{user_id}");
   let new_key = api_key.filter(|k| !k.is_empty());
 
-  let had_key = entry.get_password().is_ok();
-  let key_after = key_will_exist(clear_api_key, new_key.is_some(), origin_changed, had_key);
-  refuses_plaintext_key(&base_url, key_after)?;
+  let had_key = PersonaLlmSecrets.get(&account).ok().flatten().is_some();
+  let plan = plan_save(slot_origin(&previous, user_id), &previous.base_url, &base_url, new_key.is_some(), clear_api_key, had_key);
+  refuses_plaintext_key(&base_url, plan.key_after && !plan.stale_key)?;
 
   let file = LlmConfigFile {
     base_url,
     model,
     key_origin: previous.key_origin,
-    key_origins: next_key_origins(previous.key_origins, user_id, key_after, new_origin),
+    key_origins: origins_after(&plan, previous.key_origins, user_id, new_origin),
   };
-  std::fs::write(config_path(&app)?, serde_json::to_vec(&file).map_err(|e| e.to_string())?)
-    .map_err(|e| e.to_string())?;
-
-  if clear_api_key || (new_key.is_none() && origin_changed) {
-    match entry.delete_credential() {
-      Ok(()) | Err(keyring::Error::NoEntry) => {}
-      Err(e) => return Err(e.to_string()),
-    }
-  } else if let Some(key) = new_key {
-    entry.set_password(&key).map_err(|e| e.to_string())?;
-  }
-  Ok(())
+  let path = config_path(&app)?;
+  apply_save(&PersonaLlmSecrets, &account, &plan, new_key.as_deref().filter(|_| !clear_api_key), || {
+    std::fs::write(path, serde_json::to_vec(&file).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+  })
 }
 
 #[tauri::command]
@@ -754,6 +803,162 @@ mod tests {
   #[test]
   fn allows_a_key_over_https_to_a_remote_host() {
     assert!(refuses_plaintext_key("https://api.openai.com/v1", true).is_ok());
+  }
+
+  struct FailingSet(crate::local_access::tokens::MemorySecrets);
+
+  impl SecretStore for FailingSet {
+    fn set(&self, _id: &str, _secret: &str) -> Result<(), String> {
+      Err("keychain unavailable".into())
+    }
+    fn get(&self, id: &str) -> Result<Option<String>, String> {
+      self.0.get(id)
+    }
+    fn delete(&self, id: &str) -> Result<(), String> {
+      self.0.delete(id)
+    }
+  }
+
+  struct FailingDelete(crate::local_access::tokens::MemorySecrets);
+
+  impl SecretStore for FailingDelete {
+    fn set(&self, id: &str, secret: &str) -> Result<(), String> {
+      self.0.set(id, secret)
+    }
+    fn get(&self, id: &str) -> Result<Option<String>, String> {
+      self.0.get(id)
+    }
+    fn delete(&self, _id: &str) -> Result<(), String> {
+      Err("keychain unavailable".into())
+    }
+  }
+
+  const A: &str = "https://a.example/v1";
+  const B: &str = "https://b.example/v1";
+  const A_ORIGIN: &str = "https://a.example:443";
+  const B_ORIGIN: &str = "https://b.example:443";
+
+  #[test]
+  fn a_failed_key_write_on_a_new_server_leaves_no_old_key_behind() {
+    let store = FailingSet(crate::local_access::tokens::MemorySecrets::new());
+    store.0.set("api-key:7", "K1").unwrap();
+    let plan = plan_save(Some(A_ORIGIN), A, B, true, false, true);
+    let mut config_origin = A_ORIGIN;
+    let result = apply_save(&store, "api-key:7", &plan, Some("K2"), || {
+      config_origin = B_ORIGIN;
+      Ok(())
+    });
+    assert!(result.is_err());
+    assert_eq!(config_origin, B_ORIGIN);
+    assert_eq!(store.get("api-key:7").unwrap(), None);
+  }
+
+  #[test]
+  fn a_failed_key_delete_writes_nothing() {
+    let store = FailingDelete(crate::local_access::tokens::MemorySecrets::new());
+    store.0.set("api-key:7", "K1").unwrap();
+    let plan = plan_save(Some(A_ORIGIN), A, B, true, false, true);
+    let mut written = false;
+    let result = apply_save(&store, "api-key:7", &plan, Some("K2"), || {
+      written = true;
+      Ok(())
+    });
+    assert!(result.is_err());
+    assert!(!written);
+    assert_eq!(store.get("api-key:7").unwrap().as_deref(), Some("K1"));
+  }
+
+  #[test]
+  fn a_failed_key_write_at_the_same_server_keeps_the_old_key() {
+    let store = FailingSet(crate::local_access::tokens::MemorySecrets::new());
+    store.0.set("api-key:7", "K1").unwrap();
+    let plan = plan_save(Some(A_ORIGIN), A, A, true, false, true);
+    assert!(apply_save(&store, "api-key:7", &plan, Some("K2"), || Ok(())).is_err());
+    assert_eq!(store.get("api-key:7").unwrap().as_deref(), Some("K1"));
+  }
+
+  #[test]
+  fn a_failed_config_write_keeps_the_old_key_at_the_same_server() {
+    let store = crate::local_access::tokens::MemorySecrets::new();
+    store.set("api-key:7", "K1").unwrap();
+    let plan = plan_save(Some(A_ORIGIN), A, A, true, false, true);
+    assert!(apply_save(&store, "api-key:7", &plan, Some("K2"), || Err("disk full".into())).is_err());
+    assert_eq!(store.get("api-key:7").unwrap().as_deref(), Some("K1"));
+  }
+
+  #[test]
+  fn a_new_key_at_a_new_server_replaces_the_old_one() {
+    let store = crate::local_access::tokens::MemorySecrets::new();
+    store.set("api-key:7", "K1").unwrap();
+    let plan = plan_save(Some(A_ORIGIN), A, B, true, false, true);
+    apply_save(&store, "api-key:7", &plan, Some("K2"), || Ok(())).unwrap();
+    assert_eq!(store.get("api-key:7").unwrap().as_deref(), Some("K2"));
+  }
+
+  #[test]
+  fn a_save_that_does_not_move_the_server_keeps_the_key_and_its_origin() {
+    let plan = plan_save(Some(A_ORIGIN), B, B, false, false, true);
+    assert!(plan.stale_key);
+    assert!(plan.key_after);
+    assert!(!plan.drop_old_key);
+    let store = crate::local_access::tokens::MemorySecrets::new();
+    store.set("api-key:7", "K1").unwrap();
+    apply_save(&store, "api-key:7", &plan, None, || Ok(())).unwrap();
+    assert_eq!(store.get("api-key:7").unwrap().as_deref(), Some("K1"));
+  }
+
+  #[test]
+  fn a_refused_key_stays_refused_after_a_save_that_did_not_move_the_server() {
+    let plan = plan_save(Some(A_ORIGIN), B, B, false, false, true);
+    let before = origins(&[("7", A_ORIGIN)]);
+    let after = origins_after(&plan, before.clone(), 7, normalize_origin(B).ok());
+    assert_eq!(after, before);
+    assert!(!key_may_be_sent(after.get("7").map(String::as_str), B));
+  }
+
+  #[test]
+  fn a_user_who_moves_the_server_with_a_blank_key_still_drops_the_key() {
+    let plan = plan_save(Some(A_ORIGIN), A, B, false, false, true);
+    assert!(!plan.stale_key);
+    assert!(!plan.key_after);
+    assert!(plan.drop_old_key);
+  }
+
+  #[test]
+  fn returning_to_the_slot_origin_keeps_the_key() {
+    let plan = plan_save(Some(A_ORIGIN), B, A, false, false, true);
+    assert!(!plan.stale_key);
+    assert!(plan.key_after);
+    assert!(!plan.drop_old_key);
+  }
+
+  #[test]
+  fn a_keyless_save_at_an_unchanged_url_keeps_a_key_with_no_origin() {
+    let plan = plan_save(None, A, A, false, false, true);
+    assert!(plan.stale_key);
+    assert!(plan.key_after);
+    assert!(!plan.drop_old_key);
+  }
+
+  #[test]
+  fn a_new_key_or_a_clear_is_never_stale() {
+    assert!(!plan_save(Some(A_ORIGIN), B, B, true, false, true).stale_key);
+    assert!(!plan_save(Some(A_ORIGIN), B, B, false, true, true).stale_key);
+    assert!(plan_save(Some(A_ORIGIN), B, B, false, true, true).drop_old_key);
+  }
+
+  #[test]
+  fn refuses_a_key_over_plain_http_written_in_unusual_forms() {
+    for url in ["http:api.example.com", "http:/api.example.com", "ht\ttp://api.example.com", "HTTP://api.example.com", "  http://api.example.com"] {
+      assert!(refuses_plaintext_key(url, true).is_err(), "{url:?}");
+    }
+  }
+
+  #[test]
+  fn unusual_http_forms_to_local_hosts_stay_allowed() {
+    for url in ["http:localhost:8000", "http:/my-mac.local", "ht\ttp://my-mac.local:8000"] {
+      assert!(refuses_plaintext_key(url, true).is_ok(), "{url:?}");
+    }
   }
 
   #[test]
