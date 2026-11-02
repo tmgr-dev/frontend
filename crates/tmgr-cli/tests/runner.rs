@@ -1782,3 +1782,123 @@ fn dragging_in_a_pane_copies_only_that_panes_cleaned_text_over_osc52() {
     pty.wait_for("terminal clipboard");
     pty.detach();
 }
+
+fn worktree_agent(env: &Env, body: &str) {
+    let script = env.script("wt-agent.sh", body);
+    let agents = env.tmp.path().join("cfg/agents");
+    fs::create_dir_all(&agents).unwrap();
+    fs::write(
+        agents.join("wt.toml"),
+        format!("id = \"wt\"\nname = \"Wt\"\ncommand = [{script:?}]\n"),
+    )
+    .unwrap();
+}
+
+fn git_repo(dir: &Path) {
+    git_cli(dir, &["init", "-q", "-b", "main"]);
+    fs::write(dir.join("a.txt"), "a").unwrap();
+    git_cli(dir, &["add", "a.txt"]);
+    git_cli(dir, &["commit", "-q", "-m", "a"]);
+}
+
+fn wt_run(env: &Env, extra: &[&str]) -> Output {
+    let cwd = env.proj.display().to_string();
+    let mut args = vec![
+        "run",
+        "--agent",
+        "wt",
+        "--cwd",
+        &cwd,
+        "--no-attach",
+        "--json",
+    ];
+    args.extend_from_slice(extra);
+    env.tmgr(&args)
+}
+
+#[test]
+fn worktree_run_in_a_folder_that_is_not_a_repository_is_refused() {
+    let env = Env::new();
+    worktree_agent(&env, "sleep 30\n");
+    let out = wt_run(&env, &["--worktree"]);
+    assert!(!out.status.success());
+    assert!(
+        out_text(&out).contains("not inside a git repository"),
+        "{}",
+        out_text(&out)
+    );
+    assert!(!env.tmp.path().join("p-worktrees").exists());
+    assert!(env.sessions().is_empty());
+}
+
+#[test]
+fn worktree_is_off_unless_asked_and_the_config_turns_it_on() {
+    let env = Env::new();
+    worktree_agent(&env, "sleep 30\n");
+    git_repo(&env.proj);
+    let Some(()) = sandbox_usable().then_some(()) else {
+        return;
+    };
+    let out = wt_run(&env, &[]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    assert!(!env.tmp.path().join("p-worktrees").exists());
+    let cfg = env.tmp.path().join("cfg/tmgr");
+    fs::create_dir_all(&cfg).unwrap();
+    fs::write(cfg.join("config.toml"), "[attach]\nworktree = true\n").unwrap();
+    let out = wt_run(&env, &["--name", "cfgon"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    assert!(env.tmp.path().join("p-worktrees/cfgon/.git").is_dir());
+    let out = wt_run(&env, &["--no-worktree", "--name", "plain"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    assert!(!env.tmp.path().join("p-worktrees/plain").exists());
+}
+
+#[test]
+fn worktree_run_gets_its_own_checkout_and_rm_never_deletes_without_a_terminal() {
+    let env = Env::new();
+    worktree_agent(&env, "echo READY\nsleep 1\n");
+    git_repo(&env.proj);
+    if !sandbox_usable() {
+        return;
+    }
+    let out = wt_run(&env, &["--worktree", "--name", "alpha"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    let id = json_of(&out)["data"]["id"].as_str().unwrap().to_string();
+    let wt = env.tmp.path().join("p-worktrees/alpha");
+    let real = fs::canonicalize(&wt).unwrap();
+    assert_eq!(json_of(&out)["data"]["cwd"], real.to_str().unwrap());
+    assert!(wt.join("a.txt").exists());
+    let again = wt_run(&env, &["--worktree", "--name", "alpha"]);
+    assert!(!again.status.success());
+    wait_session_state(&env, &id, "exited");
+    fs::write(wt.join("scratch"), "x").unwrap();
+    let rm = env.tmgr(&["rm", &id]);
+    assert!(rm.status.success(), "{}", out_text(&rm));
+    assert!(
+        out_text(&rm).contains("kept: it has uncommitted"),
+        "{}",
+        out_text(&rm)
+    );
+    assert!(wt.join("scratch").exists());
+}
+
+#[test]
+fn worktree_rm_of_a_clean_checkout_only_tells_how_to_delete_it() {
+    let env = Env::new();
+    worktree_agent(&env, "echo READY\nsleep 1\n");
+    git_repo(&env.proj);
+    if !sandbox_usable() {
+        return;
+    }
+    let out = wt_run(&env, &["--worktree", "--name", "beta"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    let id = json_of(&out)["data"]["id"].as_str().unwrap().to_string();
+    wait_session_state(&env, &id, "exited");
+    let rm = env.tmgr(&["rm", &id]);
+    assert!(
+        out_text(&rm).contains("can be deleted"),
+        "{}",
+        out_text(&rm)
+    );
+    assert!(env.tmp.path().join("p-worktrees/beta").exists());
+}

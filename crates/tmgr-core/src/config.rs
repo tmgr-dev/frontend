@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SERVER: &str = "https://api.tmgr.dev";
 pub const DEFAULT_PROFILE: &str = "default";
-pub const KEYS: [&str; 22] = [
+pub const KEYS: [&str; 23] = [
     "server",
     "default_workspace",
     "web_url",
@@ -30,6 +30,7 @@ pub const KEYS: [&str; 22] = [
     "attach.push.quiet",
     "attach.push.debounce",
     "attach.copy.clean",
+    "attach.worktree",
 ];
 pub const SUMMARY_MODES: [&str; 3] = ["ask", "always", "never"];
 pub const MIN_SIDEBAR_WIDTH: u16 = 16;
@@ -66,6 +67,8 @@ pub struct AttachConfig {
     pub push_debounce: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub copy_clean: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<bool>,
 }
 
 pub fn parse_quiet_hours(value: &str) -> Option<(u16, u16)> {
@@ -185,6 +188,7 @@ impl Config {
             "attach.push.quiet" => self.attach.push_quiet.clone(),
             "attach.push.debounce" => self.attach.push_debounce.map(|m| m.to_string()),
             "attach.copy.clean" => Some(self.attach_copy_clean().to_string()),
+            "attach.worktree" => Some(self.attach_worktree().to_string()),
             _ => return Err(unknown_key(key)),
         })
     }
@@ -336,6 +340,13 @@ impl Config {
                 self.attach.copy_clean = Some(v);
                 Ok(v.to_string())
             }
+            "attach.worktree" => {
+                let v = parse_bool(value).ok_or_else(|| {
+                    Error::usage("invalid attach.worktree").hint("use true or false")
+                })?;
+                self.attach.worktree = Some(v);
+                Ok(v.to_string())
+            }
             "attach.summary" => {
                 let v = value.trim().to_ascii_lowercase();
                 if !SUMMARY_MODES.contains(&v.as_str()) {
@@ -372,6 +383,10 @@ impl Config {
 
     pub fn attach_copy_clean(&self) -> bool {
         self.attach.copy_clean.unwrap_or(true)
+    }
+
+    pub fn attach_worktree(&self) -> bool {
+        self.attach.worktree.unwrap_or(false)
     }
 
     pub fn branch_template(&self) -> &str {
@@ -648,6 +663,19 @@ mod tests {
         assert!(Config::load(tmp.path()).unwrap().upload_status());
         assert_eq!(c.set("upload_status", "0").unwrap(), "false");
         assert!(!c.upload_status());
+    }
+
+    #[test]
+    fn attach_worktree_is_off_by_default_and_parses_booleans() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut c = Config::load(tmp.path()).unwrap();
+        assert!(!c.attach_worktree());
+        assert_eq!(c.get("attach.worktree").unwrap().as_deref(), Some("false"));
+        assert_eq!(c.set("attach.worktree", "On").unwrap(), "true");
+        assert!(c.attach_worktree());
+        assert!(c.set("attach.worktree", "maybe").is_err());
+        c.save(tmp.path()).unwrap();
+        assert!(Config::load(tmp.path()).unwrap().attach_worktree());
     }
 
     #[test]

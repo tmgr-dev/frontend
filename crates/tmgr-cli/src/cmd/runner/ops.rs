@@ -339,18 +339,38 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
     super::privilege::check_caps(&client.welcome().caps, bypass, a.no_sandbox)?;
     let info = match raw {
         Some(argv) => client.create(run_create_req(argv, cwd_str, a.name.clone(), cols, rows)),
-        None => client.create_run(elevated(
-            run_create_run(
+        None => {
+            let mut req = run_create_run(
                 a.agent.clone().unwrap_or_default(),
                 cwd_str,
                 a.name.clone(),
                 a.model.clone(),
                 (cols, rows),
                 a.trust,
-            ),
-            a.mode,
-            a.no_sandbox,
-        )),
+            );
+            if super::session_wt::wanted(a.worktree, a.no_worktree) {
+                let taken: Vec<String> = client
+                    .list()
+                    .map_err(rerr)?
+                    .into_iter()
+                    .map(|s| s.name)
+                    .collect();
+                let sc = super::session_wt::start(&mut req, &taken).map_err(|e| {
+                    Error::usage(e).hint(format!(
+                        "run it in a git repository, or pass --no-worktree to start in {}",
+                        clean(&cwd.display().to_string())
+                    ))
+                })?;
+                if !o.json && !o.quiet {
+                    eprintln!(
+                        "worktree {} on branch {}",
+                        clean(&sc.path.display().to_string()),
+                        clean(&sc.name)
+                    );
+                }
+            }
+            client.create_run(elevated(req, a.mode, a.no_sandbox))
+        }
     }
     .map_err(rerr)?;
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
@@ -1034,11 +1054,17 @@ fn rename(o: &Opts, a: &RenameArgs) -> Result<i32> {
 fn rm(o: &Opts, a: &RmArgs) -> Result<i32> {
     let (mut c, s) = with_session(&a.session)?;
     c.remove(&s.id).map_err(rerr)?;
-    Ok(emit(
-        o,
-        json!({"id": s.id}),
-        format!("removed {}", clean(&s.name)),
-    ))
+    let note = if o.json {
+        None
+    } else {
+        super::session_wt::offer_removal(&s.cwd, crate::interact::is_interactive())?
+    };
+    let mut human = format!("removed {}", clean(&s.name));
+    if let Some(n) = note {
+        human.push('\n');
+        human.push_str(&n);
+    }
+    Ok(emit(o, json!({"id": s.id}), human))
 }
 
 fn resume_report(r: &RestoredRun, bin: &str) -> String {

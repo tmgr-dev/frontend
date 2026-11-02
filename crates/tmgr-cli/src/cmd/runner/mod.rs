@@ -37,6 +37,7 @@ mod restart;
 mod restore;
 mod run_task;
 mod service;
+mod session_wt;
 mod trusted;
 mod watch;
 
@@ -255,6 +256,12 @@ pub struct RunArgs {
     /// Session name
     #[arg(long, value_name = "NAME")]
     pub name: Option<String>,
+    /// Start the agent in its own checkout `<repo>-worktrees/<session name>` on a new branch of the same name, so two agents never write the same files (config attach.worktree makes this the default)
+    #[arg(long, requires = "agent", conflicts_with_all = ["agent_cmd", "task", "on", "trust", "no_worktree"])]
+    pub worktree: bool,
+    /// Start in the working directory itself even when attach.worktree is on
+    #[arg(long, conflicts_with = "worktree")]
+    pub no_worktree: bool,
     /// Start the session without opening the live view
     #[arg(long)]
     pub no_attach: bool,

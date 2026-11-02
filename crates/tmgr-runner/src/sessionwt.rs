@@ -130,6 +130,16 @@ fn session_dir(repo: &Path, path: &Path) -> Result<String, String> {
         .ok_or_else(|| "worktree path has no name".to_string())
 }
 
+pub fn repo_of(path: &Path) -> Option<PathBuf> {
+    let parent = path.parent()?;
+    let stem = parent.file_name()?.to_str()?.strip_suffix("-worktrees")?;
+    let repo = parent.parent()?.join(stem);
+    session_dir(&repo, path).ok()?;
+    let inner = GitEnv::open(path).ok()?;
+    inner.run(&["config", "--local", "--get", BASE_KEY]).ok()?;
+    Some(repo)
+}
+
 struct Facts {
     name: String,
     tip: String,
@@ -406,6 +416,18 @@ mod tests {
             assert!(remove(&fx.repo, &bad).is_err(), "{bad:?}");
         }
         assert!(fx.repo.join("a.txt").exists());
+    }
+
+    #[test]
+    fn only_checkouts_made_here_have_a_repo() {
+        let fx = fixture();
+        let s = make(&fx, "mine");
+        assert_eq!(repo_of(&s.path), Some(fx.repo.clone()));
+        let other = fx.root.join("proj-worktrees/other");
+        fs::create_dir_all(&other).unwrap();
+        git(&other, &["init", "-q"]);
+        assert_eq!(repo_of(&other), None);
+        assert_eq!(repo_of(&fx.repo), None);
     }
 
     #[test]
