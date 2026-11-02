@@ -397,6 +397,65 @@ describeSqlite('local persona agent loop', () => {
 		});
 	});
 
+	describe('cancel between tool calls of one turn', () => {
+		const writeCall = (id: string): ChatStreamEvent => ({
+			type: 'tool_call',
+			call: {
+				id,
+				name: 'tmgr_request',
+				rawArguments: '{}',
+				args: {
+					method: 'POST',
+					path: `tasks/${taskId}/comments`,
+					body: { message: `note ${id}` },
+				},
+			},
+		});
+		const twoWrites = async function* (
+			messages: ChatMessage[],
+		): AsyncIterable<ChatStreamEvent> {
+			if (messages.some((m) => m.role === 'tool')) {
+				yield { type: 'text', delta: 'done' };
+				return;
+			}
+			yield writeCall('a');
+			yield writeCall('b');
+		};
+		const run = (isCancelled?: () => boolean) =>
+			runPersonaAgent({
+				ctx,
+				router,
+				persona,
+				taskId,
+				systemPrompt: 'x',
+				grantedPermissions: ['comments:write'],
+				chat: twoWrites,
+				isCancelled,
+			});
+		const comments = async () =>
+			(await dispatchLocal(router, ctx, 'GET', `tasks/${taskId}/comments`))!
+				.data.data;
+
+		it('does not dispatch the remaining calls once cancelled, and ends the run failed', async () => {
+			let checks = 0;
+			await expect(run(() => ++checks > 1)).rejects.toThrow('cancelled');
+			expect((await comments()).map((c: any) => c.message)).toEqual(['note a']);
+			const [row] = await ctx.db.select<any>(
+				`SELECT status FROM agent_work_runs WHERE task_id = ?`,
+				[taskId],
+			);
+			expect(row.status).toBe('failed');
+		});
+
+		it.each([undefined, () => false])(
+			'runs every call when isCancelled is absent or false',
+			async (isCancelled) => {
+				await run(isCancelled);
+				expect(await comments()).toHaveLength(2);
+			},
+		);
+	});
+
 	it('throws instead of silently dropping the answer when posting the comment is refused', async () => {
 		const chat = async function* (): AsyncIterable<ChatStreamEvent> {
 			yield { type: 'text', delta: 'No blockers found.' };

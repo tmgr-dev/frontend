@@ -90,6 +90,7 @@ export const runPersonaAgent = async ({
 	chat,
 	maxToolCalls = 8,
 	onText,
+	isCancelled,
 }: PersonaAgentParams): Promise<PersonaAgentResult> => {
 	const actor = {
 		kind: 'persona' as const,
@@ -151,6 +152,7 @@ export const runPersonaAgent = async ({
 			});
 			for (const call of calls) {
 				if (toolCalls >= maxToolCalls) break;
+				if (isCancelled?.()) throw new Error('cancelled');
 				toolCalls += 1;
 				const { method, path, body } = call.args ?? {};
 				const content =
