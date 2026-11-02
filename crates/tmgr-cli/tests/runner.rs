@@ -1784,12 +1784,11 @@ fn dragging_in_a_pane_copies_only_that_panes_cleaned_text_over_osc52() {
 }
 
 fn worktree_agent(env: &Env, body: &str) {
-    let script = env.script("wt-agent.sh", body);
     let agents = env.tmp.path().join("cfg/agents");
     fs::create_dir_all(&agents).unwrap();
     fs::write(
         agents.join("wt.toml"),
-        format!("id = \"wt\"\nname = \"Wt\"\ncommand = [{script:?}]\n"),
+        format!("id = \"wt\"\nname = \"Wt\"\ncommand = [\"/bin/sh\", \"-c\", {body:?}]\n"),
     )
     .unwrap();
 }
