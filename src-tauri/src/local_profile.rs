@@ -328,6 +328,21 @@ mod tests {
   }
 
   #[test]
+  fn claim_refuses_when_nothing_is_linked() {
+    let file = created("claim-missing");
+    assert!(require_claim_at(&file, 5).is_err());
+    let _ = fs::remove_dir_all(file.parent().unwrap());
+  }
+
+  #[test]
+  fn claim_refuses_a_target_other_than_the_linked_account() {
+    let file = created("claim-other");
+    link_at(&file, 5).unwrap();
+    assert!(require_claim_at(&file, 9).is_err());
+    let _ = fs::remove_dir_all(file.parent().unwrap());
+  }
+
+  #[test]
   fn claim_from_the_field_alone_when_sidecar_is_missing() {
     let file = created("claim-field");
     link_at(&file, 5).unwrap();
