@@ -61,10 +61,11 @@ describeSqlite('installExternalChanges', () => {
 	let cli: LocalDb;
 	let emit: (code: string) => void;
 	let activeCode: string | null;
-	let handlers: Required<
-		Pick<EventHandlers, 'onTaskUpdated' | 'onReconnect' | 'onAgentWorkChanged'>
+	let handlers: Record<
+		'onTaskUpdated' | 'onReconnect' | 'onAgentWorkChanged',
+		jest.Mock
 	>;
-	let deps: ExternalChangeDeps & Record<string, any>;
+	let deps: Record<string, any>;
 	let stop: () => void;
 	const stamp = new Date().toISOString();
 
@@ -112,15 +113,15 @@ describeSqlite('installExternalChanges', () => {
 				).map((r) => ({ id: r.id, task_id: r.task_id })),
 			),
 			deliver: jest.fn((_w: number, call: (h: EventHandlers) => void) =>
-				call(handlers),
+				call(handlers as EventHandlers),
 			),
 			deliverToUser: jest.fn((call: (h: EventHandlers) => void) =>
-				call(handlers),
+				call(handlers as EventHandlers),
 			),
 			invalidate: jest.fn(),
 			reloadActiveTasks: jest.fn(),
 		};
-		stop = await installExternalChanges(deps);
+		stop = await installExternalChanges(deps as ExternalChangeDeps);
 	});
 
 	afterEach(() => {
@@ -134,7 +135,10 @@ describeSqlite('installExternalChanges', () => {
 		await touch(cli, 1);
 		emit('ws');
 		await flush();
-		const calls = handlers.onTaskUpdated.mock.calls.map(([t, a]) => [t.id, a]);
+		const calls = handlers.onTaskUpdated.mock.calls.map(([t, a]: any[]) => [
+			t.id,
+			a,
+		]);
 		expect(calls).toEqual(
 			expect.arrayContaining([
 				[1, 'updated'],
@@ -272,7 +276,9 @@ describeSqlite('installExternalChanges', () => {
 		await addTask(cli, 'from cli');
 		emit('ws');
 		await flush();
-		const ids = handlers.onTaskUpdated.mock.calls.map(([t]) => t.id).sort();
+		const ids = handlers.onTaskUpdated.mock.calls
+			.map(([t]: any[]) => t.id)
+			.sort();
 		expect(ids).toEqual([1, 3]);
 		handlers.onTaskUpdated.mockClear();
 		emit('ws');
