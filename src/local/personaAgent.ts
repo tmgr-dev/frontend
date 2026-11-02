@@ -73,6 +73,7 @@ export interface PersonaAgentParams {
 	chat: ChatFn;
 	maxToolCalls?: number;
 	onText?: (textSoFar: string) => void;
+	isCancelled?: () => boolean;
 }
 
 export interface PersonaAgentResult {
@@ -187,9 +188,9 @@ export const runPersonaAgent = async ({
 /** Needs `comments:write` in the grant, same as any other persona-authored comment. */
 export const askPersonaOnTask = async (
 	params: PersonaAgentParams,
-): Promise<PersonaAgentResult> => {
+): Promise<PersonaAgentResult & { posted: boolean }> => {
 	const result = await runPersonaAgent(params);
-	if (result.text.trim()) {
+	if (result.text.trim() && !params.isCancelled?.()) {
 		const actor = {
 			kind: 'persona' as const,
 			id: params.persona.uuid,
@@ -209,6 +210,7 @@ export const askPersonaOnTask = async (
 				}`,
 			);
 		}
+		return { ...result, posted: true };
 	}
-	return result;
+	return { ...result, posted: false };
 };

@@ -365,6 +365,38 @@ describeSqlite('local persona agent loop', () => {
 		expect(comments!.data.data[0].message).toBe('All good.');
 	});
 
+	describe('cancelled after the answer is complete', () => {
+		const answer = async function* (): AsyncIterable<ChatStreamEvent> {
+			yield { type: 'text', delta: 'Done.' };
+		};
+		const commentCount = async () =>
+			(await dispatchLocal(router, ctx, 'GET', `tasks/${taskId}/comments`))!
+				.data.data.length;
+		const ask = (isCancelled?: () => boolean) =>
+			askPersonaOnTask({
+				ctx,
+				router,
+				persona,
+				taskId,
+				systemPrompt: 'x',
+				grantedPermissions: ['comments:write'],
+				chat: answer,
+				isCancelled,
+			});
+
+		it('posts no comment when isCancelled is true', async () => {
+			const result = await ask(() => true);
+			expect(await commentCount()).toBe(0);
+			expect(result.posted).toBe(false);
+		});
+
+		it('posts as before when isCancelled is false or absent', async () => {
+			expect((await ask(() => false)).posted).toBe(true);
+			expect((await ask()).posted).toBe(true);
+			expect(await commentCount()).toBe(2);
+		});
+	});
+
 	it('throws instead of silently dropping the answer when posting the comment is refused', async () => {
 		const chat = async function* (): AsyncIterable<ChatStreamEvent> {
 			yield { type: 'text', delta: 'No blockers found.' };

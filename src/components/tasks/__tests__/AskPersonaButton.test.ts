@@ -188,3 +188,34 @@ test('the partial answer has its own scrolling block below the status row', () =
 	);
 	expect(template).not.toContain('truncate');
 });
+
+test('a cancel after the stream ends emits no posted and shows no error', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: { id: 42, name: 'Bo', email: 'b@example.com' } };
+	mockStore.getters = { isLocalOnly: false };
+	const emit = jest.fn();
+	const setup = loadComponent().setup({ taskId: 1 }, { emit });
+	for (const fn of mounted) await fn();
+	mockAskPersonaOnTask.mockImplementationOnce(async () => {
+		setup.cancelAsk();
+		return { text: 'Hi', toolCalls: 0, posted: false };
+	});
+	await setup.ask();
+	expect(emit).not.toHaveBeenCalled();
+	expect(setup.error.value).toBeNull();
+});
+
+test('a cancel that arrives after the comment was posted still emits posted', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: { id: 42, name: 'Bo', email: 'b@example.com' } };
+	mockStore.getters = { isLocalOnly: false };
+	const emit = jest.fn();
+	const setup = loadComponent().setup({ taskId: 1 }, { emit });
+	for (const fn of mounted) await fn();
+	mockAskPersonaOnTask.mockImplementationOnce(async () => {
+		setup.cancelAsk();
+		return { text: 'Hi', toolCalls: 0, posted: true };
+	});
+	await setup.ask();
+	expect(emit).toHaveBeenCalledWith('posted');
+});

@@ -129,7 +129,7 @@
 					);
 					cancelCurrent = cancel;
 					if (cancelRequested) return;
-					await askPersonaOnTask({
+					const result = await askPersonaOnTask({
 						ctx,
 						router,
 						persona: { uuid: persona.uuid, name: persona.name },
@@ -140,8 +140,9 @@
 						onText: (text) => {
 							partialText.value = text;
 						},
+						isCancelled: () => cancelRequested,
 					});
-					emit('posted');
+					if (result.posted || !cancelRequested) emit('posted');
 				} catch (e) {
 					if (!cancelRequested)
 						error.value = e instanceof Error ? e.message : String(e);
