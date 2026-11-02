@@ -16,7 +16,7 @@ runner unbind | Runner | target
 runner list | Runner | -
 runner gc | Runner | dry_run
 runner watch | Runner | dir, cmd
-run | Agents | task, agent_cmd, agent, model, cwd, name, worktree, no_worktree, no_attach, trust, mode, no_sandbox, base, fetch, publish, review, push, drop
+run | Agents | task, agent_cmd, agent, model, cwd, name, worktree, no_worktree, no_attach, trust, mode, no_sandbox, checkpoints, no_checkpoints, base, fetch, publish, review, push, drop
 agents | Agents | -
 agents login | Agents | profile, replace
 agents logout | Agents | profile
@@ -41,6 +41,9 @@ questions | Agents | session, status
 questions answer | Agents | id
 questions ignore | Agents | id
 questions haiku | Agents | state
+checkpoints list | Agents | session
+checkpoints diff | Agents | session, n, current
+checkpoints restore | Agents | session, n
 version | Other | -
 login | Account | scopes, with_token, label, no_browser
 logout | Account | -
