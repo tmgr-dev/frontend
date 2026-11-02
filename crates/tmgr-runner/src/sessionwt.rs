@@ -244,6 +244,10 @@ struct Facts {
 
 fn gather(repo: &Path, path: &Path) -> Result<Result<Facts, String>, String> {
     let name = session_dir(repo, path)?;
+    inspect(repo, path, name)
+}
+
+fn inspect(repo: &Path, path: &Path, name: String) -> Result<Result<Facts, String>, String> {
     let main = GitEnv::open(repo)?;
     let base = main
         .run(&["rev-parse", "--verify", "--quiet", &base_ref(&name)])
@@ -275,6 +279,16 @@ fn gather(repo: &Path, path: &Path) -> Result<Result<Facts, String>, String> {
     if status.lines().any(|l| !l.starts_with("!! ")) {
         return Ok(Err("it has uncommitted or untracked changes".into()));
     }
+    let listed = inner.run(&["ls-files", "-v"])?;
+    if let Some(l) = listed
+        .lines()
+        .find(|l| l.starts_with(|c: char| c.is_ascii_lowercase()) || l.starts_with("S "))
+    {
+        return Ok(Err(format!(
+            "its index hides changes ({})",
+            l.get(2..).unwrap_or("")
+        )));
+    }
     if !inner
         .run(&["for-each-ref", "--format=%(refname)", "refs/stash"])?
         .is_empty()
@@ -288,19 +302,23 @@ fn gather(repo: &Path, path: &Path) -> Result<Result<Facts, String>, String> {
             head.as_deref().unwrap_or("a detached HEAD")
         )));
     }
+    let main_head = main.run(&["rev-parse", "--verify", "HEAD^{commit}"])?;
+    let own = format!("refs/heads/{name}");
     let others = inner.run(&[
         "for-each-ref",
-        "--no-merged=HEAD",
-        "--format=%(refname:short)",
-        "refs/heads",
+        "--no-merged",
+        &main_head,
+        "--format=%(refname)",
     ])?;
-    if let Some(b) = others.lines().next() {
-        return Ok(Err(format!("the branch {b} is not merged into {name}")));
+    if let Some(r) = others
+        .lines()
+        .find(|r| *r != own && !r.starts_with("refs/remotes/"))
+    {
+        return Ok(Err(format!("{r} is not merged into the current branch")));
     }
     let tip = inner.run(&["rev-parse", "--verify", "HEAD^{commit}"])?;
     let has_commits = tip != base;
     if has_commits {
-        let main_head = main.run(&["rev-parse", "--verify", "HEAD^{commit}"])?;
         if !inner.succeeds(&["merge-base", "--is-ancestor", &tip, &main_head]) {
             let n = inner
                 .run(&["rev-list", "--count", &format!("{base}..{tip}")])
@@ -355,11 +373,23 @@ pub fn remove(repo: &Path, path: &Path) -> Result<Verdict, String> {
         .map_or(0, |d| d.as_nanos());
     let hidden = root.join(format!(".tmgr-del-{}-{nanos}", std::process::id()));
     fs::rename(path, &hidden).map_err(|e| format!("cannot move the checkout aside: {e}"))?;
-    if id(&hidden).ok() != Some(before) {
+    let restore = |why: String| {
         let _ = fs::rename(&hidden, path);
-        return Err("the checkout changed while it was being moved".into());
+        why
+    };
+    if id(&hidden).ok() != Some(before) {
+        return Err(restore(
+            "the checkout changed while it was being moved".into(),
+        ));
     }
-    main.run(&["update-ref", "-d", &base_ref(&facts.name)])?;
+    match inspect(repo, &hidden, facts.name.clone()) {
+        Ok(Ok(_)) => {}
+        Ok(Err(why)) => return Ok(Verdict::Kept(restore(why))),
+        Err(e) => return Err(restore(e)),
+    }
+    if let Err(e) = main.run(&["update-ref", "-d", &base_ref(&facts.name)]) {
+        return Err(restore(e));
+    }
     fs::remove_dir_all(&hidden)
         .map_err(|e| format!("{e}; what is left is in {}", hidden.display()))?;
     Ok(verdict(facts))
@@ -638,6 +668,29 @@ mod tests {
         commit(&s.path, "side.txt");
         git(&s.path, &["checkout", "-q", "hidden"]);
         assert!(kept(assess(&fx.repo, &s.path).unwrap()).contains("side"));
+    }
+
+    #[test]
+    fn hidden_index_flags_and_unique_tags_keep_the_checkout() {
+        let fx = fixture();
+        let s = make(&fx, "sneaky");
+        git(&s.path, &["update-index", "--assume-unchanged", "a.txt"]);
+        fs::write(s.path.join("a.txt"), "edited").unwrap();
+        assert!(kept(assess(&fx.repo, &s.path).unwrap()).contains("hides"));
+        git(&s.path, &["update-index", "--no-assume-unchanged", "a.txt"]);
+        git(&s.path, &["checkout", "--", "a.txt"]);
+        git(&s.path, &["update-index", "--skip-worktree", "a.txt"]);
+        assert!(kept(assess(&fx.repo, &s.path).unwrap()).contains("hides"));
+        git(&s.path, &["update-index", "--no-skip-worktree", "a.txt"]);
+        assert!(matches!(
+            assess(&fx.repo, &s.path).unwrap(),
+            Verdict::Removable { .. }
+        ));
+        commit(&s.path, "t.txt");
+        git(&s.path, &["tag", "keepme"]);
+        git(&s.path, &["reset", "--hard", "HEAD~1"]);
+        let w = kept(assess(&fx.repo, &s.path).unwrap());
+        assert!(w.contains("refs/tags/keepme"), "{w}");
     }
 
     #[test]

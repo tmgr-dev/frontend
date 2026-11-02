@@ -341,7 +341,8 @@ struct App {
     last_prefs: Option<LayoutPrefs>,
     scrolled: Option<(String, u32)>,
     notice_until: Option<Instant>,
-    worktree_offer: Option<Ask>,
+    worktree_offer: Option<(Ask, String)>,
+    worktree_held: Option<String>,
     probe_tx: SyncSender<Vec<ProbeJob>>,
     probe_pending: bool,
     tried: HashSet<String>,
@@ -2495,24 +2496,32 @@ impl App {
     fn on_worktree(&mut self, removal: Removal) {
         self.dirty = true;
         match removal {
+            Removal::Note(n) if self.worktree_offer.is_some() => self.worktree_held = Some(n),
             Removal::Note(n) => self.notify(&n),
             Removal::Ask(ask) => {
-                self.view.notice = Some(format!("{} y/n", ask.question));
+                let prompt = format!("{} y/n", ask.question);
+                self.view.notice = Some(prompt.clone());
                 self.notice_until = None;
-                self.worktree_offer = Some(ask);
+                self.worktree_offer = Some((ask, prompt));
             }
         }
     }
 
     fn worktree_answer(&mut self, ask: Ask, yes: bool) {
         self.dirty = true;
+        let held = self.worktree_held.take();
         if !yes {
-            return self.notify(&format!("worktree {} kept", ask.name));
+            let kept = format!("worktree {} kept", ask.name);
+            return self.notify(&held.map_or(kept.clone(), |h| format!("{kept}; {h}")));
         }
         self.notify(&format!("deleting worktree {}...", ask.name));
         let tx = self.tx.clone();
         thread::spawn(move || {
-            let _ = tx.send(Msg::Worktree(Removal::Note(delete(&ask))));
+            let mut note = delete(&ask);
+            if let Some(h) = held {
+                note = format!("{note}; {h}");
+            }
+            let _ = tx.send(Msg::Worktree(Removal::Note(note)));
         });
     }
 
@@ -2951,18 +2960,22 @@ impl App {
             if !matches!(action, Action::Mouse(_)) {
                 self.dirty = true;
             }
-            if let Some(ask) = self.worktree_offer.take() {
-                match &action {
-                    Action::Forward(d) => {
-                        let yes = matches!(d.as_slice(), [b'y' | b'Y']);
-                        self.worktree_answer(ask, yes);
-                        continue;
+            if let Some((ask, prompt)) = self.worktree_offer.take() {
+                if self.view.notice.as_deref() == Some(prompt.as_str()) {
+                    match &action {
+                        Action::Forward(d) => {
+                            let yes = matches!(d.as_slice(), [b'y' | b'Y']);
+                            self.worktree_answer(ask, yes);
+                            continue;
+                        }
+                        Action::Drop(_) | Action::Paste { .. } => {
+                            self.worktree_answer(ask, false);
+                            continue;
+                        }
+                        _ => self.worktree_offer = Some((ask, prompt)),
                     }
-                    Action::Drop(_) | Action::Paste { .. } => {
-                        self.worktree_answer(ask, false);
-                        continue;
-                    }
-                    _ => self.worktree_offer = Some(ask),
+                } else if let Some(h) = self.worktree_held.take() {
+                    self.notify(&h);
                 }
             }
             if self.view.layout_offer.is_some() && self.view.confirm.is_none() {
@@ -3993,6 +4006,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         scrolled: None,
         notice_until: notice_set.then(|| Instant::now() + NOTICE_FOR),
         worktree_offer: None,
+        worktree_held: None,
         probe_tx,
         probe_pending: false,
         tried: HashSet::new(),
