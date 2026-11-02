@@ -1561,6 +1561,7 @@ impl Op<'_> {
         };
         let dir = dir.as_fd();
         let mut keep_perm = None;
+        let mut present = None;
         match stat_at(dir, name) {
             Err(err) if err.raw_os_error() == Some(libc::ENOENT) => {}
             Err(_) => return Ok(Outcome::Left),
@@ -1580,6 +1581,7 @@ impl Op<'_> {
                 if is_kind(&st, libc::S_IFREG) {
                     keep_perm = Some(mode_bits(&st) & 0o777);
                 }
+                present = Some(fp_of(&st));
             }
         }
         let tmp = format!(".tmgr-restore-{}", rand_hex()).into_bytes();
@@ -1591,7 +1593,11 @@ impl Op<'_> {
         let made = made.inspect_err(|_| {
             let _ = unlink_at(dir, &tmp, 0);
         })?;
-        let placed = made.is_ok() && rename_at(dir, &tmp, name).is_ok();
+        let unchanged = match stat_at(dir, name) {
+            Ok(st) => present == Some(fp_of(&st)),
+            Err(err) => present.is_none() && err.raw_os_error() == Some(libc::ENOENT),
+        };
+        let placed = made.is_ok() && unchanged && rename_at(dir, &tmp, name).is_ok();
         if placed {
             Ok(Outcome::Written)
         } else {
@@ -2330,6 +2336,56 @@ mod tests {
         assert_eq!(fx.r("d/x.log"), b"ignored");
         assert!(!fx.exists("e"));
         assert_eq!(res.deleted, 2);
+    }
+
+    fn write_once_the_restore_temp_file_appears(
+        fx: &Fx,
+        path: &str,
+    ) -> std::thread::JoinHandle<()> {
+        let repo = fx.repo.clone();
+        let target = repo.join(path);
+        std::thread::spawn(move || {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+            while std::time::Instant::now() < deadline {
+                let started = fs::read_dir(&repo)
+                    .unwrap()
+                    .flatten()
+                    .any(|e| e.file_name().as_bytes().starts_with(b".tmgr-restore-"));
+                if started {
+                    fs::write(&target, b"written during restore").unwrap();
+                    return;
+                }
+            }
+            panic!("restore never made a temp file");
+        })
+    }
+
+    #[test]
+    fn a_write_while_the_restored_file_is_being_prepared_is_kept() {
+        let fx = Fx::new();
+        fx.w("big", &vec![7u8; 48 * 1024 * 1024]);
+        let st = fx.store();
+        snap(&fx, &st);
+        fx.w("big", b"current");
+        let writer = write_once_the_restore_temp_file_appears(&fx, "big");
+        let res = st.restore_in(&fx.env(), 1).unwrap();
+        writer.join().unwrap();
+        assert_eq!(fx.r("big"), b"written during restore");
+        assert!(res.left_as_is.iter().any(|p| p == "big"));
+    }
+
+    #[test]
+    fn a_file_created_while_the_restored_file_is_being_prepared_is_kept() {
+        let fx = Fx::new();
+        fx.w("big", &vec![7u8; 48 * 1024 * 1024]);
+        let st = fx.store();
+        snap(&fx, &st);
+        fs::remove_file(fx.repo.join("big")).unwrap();
+        let writer = write_once_the_restore_temp_file_appears(&fx, "big");
+        let res = st.restore_in(&fx.env(), 1).unwrap();
+        writer.join().unwrap();
+        assert_eq!(fx.r("big"), b"written during restore");
+        assert!(res.left_as_is.iter().any(|p| p == "big"));
     }
 
     #[test]
