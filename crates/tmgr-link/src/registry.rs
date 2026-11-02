@@ -792,6 +792,15 @@ mod tests {
         assert_eq!(after_failed_query(u32::MAX - 1), Probe::Unknown);
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_live_process_of_another_user_is_unknown_not_gone() {
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        assert_eq!(query(1), Probe::Unknown);
+    }
+
     #[test]
     fn an_exited_unreaped_process_reads_as_gone() {
         let mut child = Command::new("true").spawn().unwrap();
