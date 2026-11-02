@@ -197,6 +197,11 @@ impl Client {
             .map(drop)
     }
 
+    pub fn kill_leftovers(&mut self, id: &str) -> io::Result<()> {
+        let params = serde_json::json!({"id": id, "signal": "kill", "leftovers": true});
+        self.call(method::SESSIONS_KILL, params).map(drop)
+    }
+
     pub fn autopilot_start(&mut self, settings_id: &str) -> io::Result<AutopilotStarted> {
         let params = AutopilotStartParams {
             settings_id: settings_id.into(),

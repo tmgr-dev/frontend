@@ -1914,7 +1914,11 @@ impl Runner {
                 self.origin_revoke(params(p)?).map(|r| to_json(&r))
             }
             method::SESSIONS_KILL => {
-                let s = self.live(&session_id_param(p)?)?;
+                let sid = session_id_param(p)?;
+                if let Some(s) = self.session(&sid).filter(|s| s.is_exited()) {
+                    return self.kill_leftovers(conn, &s, p);
+                }
+                let s = self.live(&sid)?;
                 let name = p.get("signal").and_then(Value::as_str).unwrap_or("");
                 let sig = signal_number(name).ok_or_else(|| {
                     api(
@@ -2040,6 +2044,43 @@ impl Runner {
             method::ATTACH_SET => self.attach_set(conn, p),
             m => Err(api(ErrorCode::UnknownMethod, format!("unknown method {m}"))),
         }
+    }
+
+    fn kill_leftovers(&self, conn: &Conn, s: &Arc<Session>, p: &Value) -> Result<Value, ApiErr> {
+        let not_running = || api(ErrorCode::NotRunning, "session is not running");
+        let asked = p.get("leftovers").and_then(Value::as_bool) == Some(true)
+            && p.get("signal").and_then(Value::as_str) == Some("kill");
+        if conn.client != CLIENT_CLI || !asked || !s.has_shim() {
+            return Err(not_running());
+        }
+        kill_reason(p)?;
+        let meta = lock(&s.inner).meta.clone();
+        let boot = restore::boot_marker();
+        if !restore::group_may_run(meta.child_pid, meta.boot.as_deref(), boot.as_deref()) {
+            return Err(not_running());
+        }
+        let id = s.sig_seq.fetch_add(1, Ordering::SeqCst) + 1;
+        s.shim_msg(&ToShim::Signal {
+            sig: libc::SIGKILL,
+            id,
+        });
+        let deadline = Instant::now() + Duration::from_secs(1);
+        let ack = loop {
+            let ack = lock(&s.sig_acks).remove(&id);
+            if ack.is_some() || Instant::now() >= deadline {
+                break ack;
+            }
+            thread::sleep(Duration::from_millis(10));
+        };
+        if ack == Some(false)
+            && restore::group_may_run(meta.child_pid, meta.boot.as_deref(), boot.as_deref())
+        {
+            return Err(api(
+                ErrorCode::Busy,
+                "the session cannot signal its background processes; it may predate a runner update. Stop them by hand",
+            ));
+        }
+        Ok(Value::Null)
     }
 
     fn live(&self, id: &str) -> Result<Arc<Session>, ApiErr> {
@@ -2384,7 +2425,7 @@ impl Runner {
         ) {
             return Err(api(
                 ErrorCode::Busy,
-                "background processes of the old session are still running",
+                "background processes of the old session are still running; stop them with halt --kill",
             ));
         }
         let prior = s.prior_text();

@@ -738,6 +738,53 @@ fn halt_send_and_rm_manage_a_session() {
 }
 
 #[test]
+fn halt_kill_stops_the_leftovers_of_an_exited_session() {
+    let env = Env::new();
+    let pid_file = env.proj.join("bg.pid");
+    let script = env.script(
+        "bg.sh",
+        &format!(
+            "(trap '' TERM HUP INT; exec sleep 300) &\necho $! > {}\nwait\n",
+            pid_file.display()
+        ),
+    );
+    let Some(id) = env.start(&script, "bg") else {
+        return;
+    };
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while fs::read_to_string(&pid_file).map_or(true, |t| t.trim().is_empty()) {
+        assert!(Instant::now() < deadline, "no leftover process started");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let leftover = fs::read_to_string(&pid_file).unwrap().trim().to_string();
+    let alive = || {
+        Command::new("kill")
+            .args(["-0", &leftover])
+            .stderr(Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    };
+    env.tmgr(&["halt", &id]);
+    assert!(alive(), "the leftover did not survive the stop");
+    let plain = env.data(&["halt", &id, "--json"]);
+    assert_eq!(plain["background"], true);
+    assert!(alive(), "a plain halt killed the leftover");
+    let killed = env.data(&["halt", &id, "--kill", "--json"]);
+    assert_eq!(killed["signal"], "kill");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while alive() {
+        assert!(
+            Instant::now() < deadline,
+            "the leftover survived halt --kill"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let again = env.data(&["halt", &id, "--kill", "--json"]);
+    assert!(again.get("background").is_none());
+}
+
+#[test]
 fn run_is_refused_without_a_usable_sandbox() {
     if tmgr_runner::daemon::landlock_abi() >= 6 {
         eprintln!("skipped: the sandbox is usable here");
