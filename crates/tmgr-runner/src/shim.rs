@@ -532,6 +532,7 @@ fn run(dir: &Path, id: &str) -> io::Result<()> {
     }
     cmd.cwd(".");
     let child = pair.slave.spawn_command(cmd).map_err(io::Error::other)?;
+    std::env::set_current_dir("/")?;
     drop(pair.slave);
     let child_pid = child
         .process_id()

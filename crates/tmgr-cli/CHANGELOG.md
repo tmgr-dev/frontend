@@ -6,6 +6,7 @@
 - A git command that leaves a stray background process behind no longer blocks the runner after the command itself finishes.
 - When a git command fails, the error now includes its exit status.
 - A finished session's background process now exits once its runner folder has been removed.
+- A session's background process no longer stays in the folder its agent was started in, so `tmgr rm` does not report the folder as in use while that process is exiting.
 
 ## 1.0.65
 

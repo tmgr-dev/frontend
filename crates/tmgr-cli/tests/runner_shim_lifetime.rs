@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{path_with, write_script, Env};
+use common::{path_with, Env};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -24,6 +24,24 @@ fn find_shim_pid(dir: &Path) -> Option<PathBuf> {
 
 fn alive(pid: i32) -> bool {
     unsafe { libc::kill(pid, 0) == 0 }
+}
+
+fn cwd_of(pid: i32) -> String {
+    #[cfg(target_os = "macos")]
+    {
+        let out = std::process::Command::new("/usr/sbin/lsof")
+            .args(["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"])
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        let found = text.lines().find_map(|l| l.strip_prefix('n'));
+        found.unwrap().to_string()
+    }
+    #[cfg(not(target_os = "macos"))]
+    std::fs::read_link(format!("/proc/{pid}/cwd"))
+        .unwrap()
+        .display()
+        .to_string()
 }
 
 fn wait_until(limit: Duration, mut done: impl FnMut() -> bool) -> bool {
@@ -56,14 +74,12 @@ impl Fx {
         let runner = root.join("run/r");
         let cwd = root.join("code");
         std::fs::create_dir_all(&cwd).unwrap();
-        let script = write_script(&root.join("agent"), "agent.sh", agent);
         let status = env
             .std_cmd()
             .env("PATH", path_with(None))
             .env("TMGR_RUNNER_DIR", &runner)
             .env("TMGR_RUNNER_HOMES", root.join("h"))
-            .args(["run", "--agent-cmd"])
-            .arg(&script)
+            .args(["run", "--agent-cmd", agent])
             .arg("--cwd")
             .arg(&cwd)
             .arg("--no-attach")
@@ -142,7 +158,7 @@ impl Drop for Fx {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_finished_session_shim_exits_once_the_run_dir_is_removed() {
-    let fx = Fx::start("exit 0").await;
+    let fx = Fx::start("/usr/bin/true").await;
     fx.stop();
     fx.remove_run_dir();
     assert!(
@@ -152,8 +168,19 @@ async fn a_finished_session_shim_exits_once_the_run_dir_is_removed() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_shim_does_not_stay_in_the_folder_it_launched_the_agent_in() {
+    let fx = Fx::start("/bin/sleep 5").await;
+    let cwd = cwd_of(fx.shim);
+    let folder = fx.root.join("code");
+    assert!(
+        !Path::new(&cwd).starts_with(&folder),
+        "the shim works in {cwd}, so `tmgr rm` can see it as using the folder"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_finished_session_shim_stays_while_the_run_dir_exists() {
-    let fx = Fx::start("exit 0").await;
+    let fx = Fx::start("/usr/bin/true").await;
     fx.stop();
     std::thread::sleep(Duration::from_secs(3));
     assert!(alive(fx.shim), "the shim left although the run dir exists");
@@ -161,7 +188,7 @@ async fn a_finished_session_shim_stays_while_the_run_dir_exists() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_running_agent_keeps_its_shim_when_the_run_dir_is_removed() {
-    let fx = Fx::start("exec /bin/sleep 5").await;
+    let fx = Fx::start("/bin/sleep 5").await;
     let sdir = find_shim_pid(&fx.runner)
         .unwrap()
         .parent()
@@ -194,7 +221,7 @@ async fn an_unreadable_run_dir_does_not_end_the_shim() {
         0,
         "this test needs a non-root user"
     );
-    let fx = Fx::start("exit 0").await;
+    let fx = Fx::start("/usr/bin/true").await;
     fx.stop();
     let parent = fx.root.join("run");
     std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o000)).unwrap();
