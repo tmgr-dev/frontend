@@ -468,7 +468,11 @@ pub(super) fn start(req: &Request<'_>) -> Handled {
     let branch = limited_or_null(body.get("branch").unwrap_or(&none), 255)?;
     let actor = req.ctx.acting();
     let now = req.ctx.iso_now();
-    sql(execute(
+    let teammate = body
+        .get("role")
+        .is_some_and(|r| r.as_str().is_some_and(|r| !r.is_empty()));
+    if !teammate {
+        sql(execute(
         req.conn,
         "UPDATE agent_work_runs SET status = 'abandoned', ended_at = COALESCE(updated_at, started_at),
 					duration_seconds = CAST((julianday(COALESCE(updated_at, started_at)) - julianday(started_at)) * 86400 AS INTEGER),
@@ -476,6 +480,7 @@ pub(super) fn start(req: &Request<'_>) -> Handled {
 				 WHERE task_id = ? AND actor_kind = ? AND actor_id = ? AND agent = ? AND status = 'running'",
         &[text(&now), int(task_id), text(&actor.kind), text(actor.owner()), text(&agent)],
     ))?;
+    }
     let inserted = sql(execute(
         req.conn,
         "INSERT INTO agent_work_runs
@@ -679,6 +684,37 @@ mod tests {
         assert_eq!(finish_as(-2, "-1"), 403);
         assert_eq!(finish_as(0, "-1"), 403);
         assert_eq!(finish_as(7, "-2"), 403);
+    }
+
+    fn running_after_two_starts(second: serde_json::Value) -> i64 {
+        let conn =
+            db("INSERT INTO tasks (id, title, created_at, updated_at) VALUES (1, 't', 'x', 'x');");
+        conn.execute_batch("PRAGMA query_only = OFF").unwrap();
+        let c = ctx("2026-10-13T12:00:00.000Z");
+        for body in [json!({ "agent": "claude-code", "role": "lead" }), second] {
+            let out = crate::dispatch(&conn, &c, "POST", "tasks/1/agent-work", Some(&body))
+                .unwrap()
+                .unwrap();
+            assert_eq!(out.status, 201, "{:?}", out.data);
+        }
+        conn.query_row(
+            "SELECT COUNT(*) FROM agent_work_runs WHERE status = 'running'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_team_member_does_not_end_the_run_of_a_teammate_but_a_plain_start_still_does() {
+        assert_eq!(
+            running_after_two_starts(json!({ "agent": "claude-code", "role": "worker-1" })),
+            2
+        );
+        assert_eq!(
+            running_after_two_starts(json!({ "agent": "claude-code" })),
+            1
+        );
     }
 
     #[test]

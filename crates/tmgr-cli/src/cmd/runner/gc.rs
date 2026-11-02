@@ -538,6 +538,7 @@ struct Candidate {
     unusable: Option<String>,
     in_use: Option<String>,
     drop_if_gone: bool,
+    team_refs: Option<(PathBuf, String)>,
 }
 
 impl Candidate {
@@ -554,6 +555,7 @@ impl Candidate {
             unusable: Some(why.into()),
             in_use: None,
             drop_if_gone: false,
+            team_refs: None,
         }
     }
 }
@@ -693,6 +695,7 @@ fn record_candidate(file: &Path) -> Candidate {
         unusable: None,
         in_use,
         drop_if_gone: false,
+        team_refs: None,
     }
 }
 
@@ -702,6 +705,9 @@ fn pickup_in_use(p: &Pickup) -> Option<String> {
             "the queue pickup has not finished starting"
         }
         Status::Started if !p.run_exited => "the queue run is still running",
+        Status::Started if p.team.as_ref().is_some_and(|t| !t.all_exited()) => {
+            "a worker of the queue run is still running"
+        }
         _ if p.held.is_some() => "the queue run is held by the leak gate",
         _ if p.paused_draft => "the queue run is paused",
         _ if p.awaits_publish() => "the queue run waits to be published",
@@ -760,8 +766,8 @@ fn pickup_candidate(p: &Pickup) -> Candidate {
         (PathBuf::from(&primary.path), specs)
     } else {
         let anchor = cwd
-            .parent()
-            .and_then(Path::parent)
+            .ancestors()
+            .nth(if p.team.is_some() { 3 } else { 2 })
             .and_then(|wt| {
                 let stem = wt.file_name()?.to_str()?.strip_suffix("-worktrees")?;
                 Some(wt.parent()?.join(stem))
@@ -778,13 +784,19 @@ fn pickup_candidate(p: &Pickup) -> Candidate {
     let Some(expected) = workdir::clone_dir(&anchor.to_string_lossy(), &p.id) else {
         return broken("the repository path has no parent folder");
     };
-    if expected != cwd {
+    let team_dir = p.team.as_ref().map(|_| expected.clone());
+    let want = match &team_dir {
+        Some(dir) => workdir::lead_dir(dir),
+        None => expected.clone(),
+    };
+    if want != cwd {
         return broken("the recorded folder is not where the queue puts the clone of this pickup");
     }
     Candidate {
         origin: origin(),
         shown: cwd.clone(),
-        folder: cwd,
+        team_refs: team_dir.is_some().then(|| (anchor.clone(), p.id.clone())),
+        folder: team_dir.unwrap_or(cwd),
         levels: 2,
         branch: claim.branch.clone(),
         session: p.run_id.clone(),
@@ -852,6 +864,23 @@ fn prove(c: &Candidate) -> std::result::Result<(), String> {
                     sanitize_line(&spec.name)
                 ));
             }
+        }
+    }
+    if c.team_refs.is_some() {
+        let names = std::fs::read_dir(folder)
+            .map_err(|e| format!("cannot read the run folder: {e}"))?
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned());
+        let mut has_lead = false;
+        for name in names {
+            has_lead |= name == workdir::LEAD_DIR;
+            let worker = matches!(name.as_str(), "w1" | "w2" | "w3" | "w4" | "w5");
+            if name != workdir::LEAD_DIR && !worker {
+                return Err("the run folder holds something besides the clones of the team".into());
+            }
+        }
+        if !has_lead {
+            return Err("the run folder of the team has no lead clone".into());
         }
     }
     if c.multi {
@@ -1060,6 +1089,9 @@ fn evaluate(c: &Candidate, probe: &mut Option<Probe>, dry: bool) -> Result<Optio
     }
     match remove_folder(&c.folder, c.levels) {
         Ok(()) => {
+            if let Some((repo, id)) = &c.team_refs {
+                workdir::remove_team_refs(repo, id);
+            }
             item.reason = after_removal(c);
             item.decision = if item.reason.is_some() {
                 "failed"
@@ -1430,5 +1462,113 @@ mod tests {
     fn size_text_units() {
         assert_eq!(size_text(10), "10 B");
         assert_eq!(size_text(2048), "2.0 KiB");
+    }
+
+    fn queue_pickup(cwd: &Path, team: bool) -> Pickup {
+        let mut bundle: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../tmgr-ipc/tests/fixtures/run_bundle.json"
+        ))
+        .unwrap();
+        bundle["launch"]["cwd"] = json!(cwd.to_string_lossy());
+        let mut p = json!({
+            "id": "q_abc", "rule": "r", "task": {"workspace_id": 5, "task_id": 1}, "key": "TM-1",
+            "status": "started", "bundle": bundle, "bundle_sha256": "x", "context_tainted": false,
+            "created_at": "t", "updated_at": "t", "run_exited": true, "run_clean": true,
+            "cloud": {
+                "claim": {"host": "h", "user_id": 1, "workspace_id": 5, "task_id": 1, "category_id": 1,
+                    "content_sha256": "c", "key_id": "k", "signed_at": 1, "signature": "s", "kind": "author"},
+                "workspace_code": "w", "branch": "tmgr/tm-1"
+            }
+        });
+        if team {
+            p["team"] =
+                json!({"size": 2, "mode": "eco", "phase": "finishing", "lead_exit_sent": true});
+        }
+        serde_json::from_value(p).unwrap()
+    }
+
+    fn team_tree(root: &Path) -> (PathBuf, PathBuf) {
+        let team_dir = root.join("proj-worktrees/queue/q_abc");
+        for name in ["lead", "w1", "w2"] {
+            std::fs::create_dir_all(team_dir.join(name).join(".git")).unwrap();
+        }
+        (team_dir.clone(), team_dir.join("lead"))
+    }
+
+    #[test]
+    fn a_team_pickup_is_collected_as_its_whole_run_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (team_dir, lead) = team_tree(&root);
+        let c = pickup_candidate(&queue_pickup(&lead, true));
+        assert!(c.unusable.is_none(), "{:?}", c.unusable);
+        assert_eq!(c.folder, team_dir);
+        assert_eq!(c.shown, lead);
+        assert_eq!(c.clones.len(), 1);
+        assert_eq!(c.clones[0].dir, lead);
+        assert_eq!(
+            c.team_refs.as_ref().map(|(_, id)| id.as_str()),
+            Some("q_abc")
+        );
+        assert!(prove(&c).is_ok(), "{:?}", prove(&c));
+    }
+
+    #[test]
+    fn a_team_folder_with_foreign_content_or_no_lead_is_not_collected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (team_dir, lead) = team_tree(&root);
+        let c = pickup_candidate(&queue_pickup(&lead, true));
+        std::fs::write(team_dir.join("notes.txt"), "x").unwrap();
+        assert!(prove(&c).unwrap_err().contains("besides"));
+        std::fs::remove_file(team_dir.join("notes.txt")).unwrap();
+        std::fs::create_dir(team_dir.join("w9")).unwrap();
+        assert!(prove(&c).is_err());
+    }
+
+    #[test]
+    fn a_team_pickup_in_the_wrong_place_or_a_solo_one_in_a_team_place_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (team_dir, lead) = team_tree(&root);
+        assert!(pickup_candidate(&queue_pickup(&team_dir, true))
+            .unusable
+            .is_some());
+        assert!(pickup_candidate(&queue_pickup(&lead, false))
+            .unusable
+            .is_some());
+        let solo = pickup_candidate(&queue_pickup(&team_dir, false));
+        assert!(solo.unusable.is_none());
+        assert_eq!(solo.folder, team_dir);
+        assert!(solo.team_refs.is_none());
+    }
+
+    #[test]
+    fn a_team_with_a_running_worker_is_in_use() {
+        let mut p = queue_pickup(Path::new("/x"), true);
+        p.pr_url = Some("u".into());
+        assert!(pickup_in_use(&p).is_none());
+        p.team.as_mut().unwrap().members.push(
+            serde_json::from_value(json!({
+                "role": {"worker": 1}, "cwd": "/x", "branch": "b", "start_key": "k", "exited": false
+            }))
+            .unwrap(),
+        );
+        assert!(pickup_in_use(&p).is_some());
+    }
+
+    #[test]
+    fn removing_a_team_folder_never_follows_a_link_inside_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (team_dir, _) = team_tree(&root);
+        let victim = root.join("victim");
+        std::fs::create_dir(&victim).unwrap();
+        std::fs::write(victim.join("keep.txt"), "keep").unwrap();
+        std::os::unix::fs::symlink(&victim, team_dir.join("w1/link")).unwrap();
+        std::os::unix::fs::symlink(&victim, team_dir.join("w3")).unwrap();
+        remove_folder(&team_dir, 2).unwrap();
+        assert!(!team_dir.exists());
+        assert!(victim.join("keep.txt").exists());
     }
 }
