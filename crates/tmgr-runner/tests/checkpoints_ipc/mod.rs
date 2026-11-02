@@ -168,8 +168,18 @@ fn restore_is_refused_while_a_session_in_an_overlapping_folder_works() {
 }
 
 fn restore_with_another_session_in(h: &Harness, cwd: &Path) -> (Result<(), String>, String) {
+    restore_from_with_another_session_in(h, &h.work, cwd)
+}
+
+fn restore_from_with_another_session_in(
+    h: &Harness,
+    own_cwd: &Path,
+    cwd: &Path,
+) -> (Result<(), String>, String) {
     let mut c = h.client();
-    let own = c.create(h.sh(TURNS)).unwrap();
+    let mut own = h.sh(TURNS);
+    own.cwd = own_cwd.display().to_string();
+    let own = c.create(own).unwrap();
     c.checkpoints_enable(&own.id, None).unwrap();
     wait_waiting(&mut c, &own.id);
     wait_items(&mut c, &own.id, 1);
@@ -217,8 +227,10 @@ fn restore_is_refused_while_another_live_session_runs_in_a_parent_folder() {
         return;
     }
     let h = fx();
-    let parent = h.work.parent().unwrap().to_path_buf();
-    let (res, other) = restore_with_another_session_in(&h, &parent);
+    let nested = h.work.join("nested");
+    fs::create_dir(&nested).unwrap();
+    init_repo(&nested);
+    let (res, other) = restore_from_with_another_session_in(&h, &nested, &h.work);
     let e = res.unwrap_err();
     assert!(e.starts_with("busy"), "{e}");
     assert!(e.contains(&other), "{e}");
