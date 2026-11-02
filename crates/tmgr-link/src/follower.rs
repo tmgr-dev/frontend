@@ -494,6 +494,7 @@ pub struct Contained {
     pub runs_surviving: usize,
     pub unconfirmed: Vec<String>,
     pub runs_unreadable: bool,
+    pub workers_unreadable: bool,
     pub tombstones: usize,
     pub nothing_to_contain: bool,
 }
@@ -505,6 +506,7 @@ impl Contained {
             || !self.unconfirmed.is_empty()
             || self.workers.survivors > 0
             || self.runs_unreadable
+            || self.workers_unreadable
     }
 }
 
@@ -581,8 +583,10 @@ pub fn contain_revoked(
     let cutoff = tombs.iter().map(|t| t.generation).max();
     let ours = |enrollment: &str| revoked.iter().any(|e| e == enrollment);
     let runs = crate::ownership::Runs::lock_lenient(paths)?;
-    let workers =
-        crate::registry::terminate(paths, name, std::time::Duration::from_secs(3), &ours)?;
+    let terminated =
+        crate::registry::terminate(paths, name, std::time::Duration::from_secs(3), &ours);
+    let workers_unreadable = terminated.is_err();
+    let workers = terminated.unwrap_or_default();
     let records: Vec<String> = runs
         .of_link(name)
         .into_iter()
@@ -593,6 +597,7 @@ pub fn contain_revoked(
         workers,
         runs_known: records.len(),
         runs_unreadable: runs.is_damaged(),
+        workers_unreadable,
         tombstones: tombs.len(),
         ..Contained::default()
     };
@@ -653,6 +658,7 @@ pub fn contain_revoked(
             "runs_surviving": out.runs_surviving,
             "unconfirmed": out.unconfirmed,
             "runs_unreadable": out.runs_unreadable,
+            "workers_unreadable": out.workers_unreadable,
             "cutoff_generation": cutoff,
         }),
     )?;

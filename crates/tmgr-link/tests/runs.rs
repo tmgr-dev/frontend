@@ -1199,6 +1199,26 @@ fn revoke_fixes_the_cutoff_and_a_retry_never_touches_a_re_trusted_link() {
 }
 
 #[test]
+fn an_unreadable_worker_registry_still_halts_the_runs_and_stays_incomplete() {
+    let w = world();
+    let fake = Fake::default();
+    session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
+    let workers = w.paths.link_dir().join("workers");
+    std::fs::create_dir_all(w.paths.link_dir()).unwrap();
+    let _ = std::fs::remove_dir_all(&workers);
+    std::fs::write(&workers, b"").unwrap();
+    let mut backend = fake.clone();
+    let out = tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).unwrap();
+    assert_eq!(out.runs_halted, 1);
+    assert!(out.workers_unreadable);
+    assert!(out.incomplete());
+    assert!(!tmgr_link::tombstone::for_link(&w.paths, "laptop")
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
 fn a_failed_or_missing_origin_revoke_is_incomplete_and_keeps_the_tombstone() {
     let w = world();
     let fake = Fake::default();

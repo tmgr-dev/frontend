@@ -525,6 +525,11 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
             contained.workers.survivors
         ));
     }
+    if contained.workers_unreadable {
+        problems.push(
+            "the worker registry is unreadable, so its workers could not be stopped".to_string(),
+        );
+    }
     if contained.runs_unreadable {
         problems
             .push("the link runs file is unreadable, so its runs could not be checked".to_string());
@@ -697,7 +702,6 @@ fn format_entry(ctx: &Ctx, e: &Value) -> String {
         .unwrap_or_else(|_| text("ts"));
     let link = text("link");
     if text("event") == "worker.request" {
-        let args = request_args(e);
         let decision = text("decision");
         let reason = text("reason");
         let verdict = if decision == "accepted" {
@@ -710,8 +714,7 @@ fn format_entry(ctx: &Ctx, e: &Value) -> String {
             };
             ctx.style.accent(&tail)
         };
-        let what = format!("{} {args}", text("method"));
-        return format!("{when} from {link}  {}  {verdict}", what.trim_end());
+        return format!("{when} from {link}  {}  {verdict}", request_what(e));
     }
     if let Some(line) = remote_line(e, &when, &link) {
         return line;
@@ -741,6 +744,13 @@ fn audit_field(raw: &str) -> String {
     } else {
         clean
     }
+}
+
+fn request_what(e: &Value) -> String {
+    let method = audit_field(e.get("method").and_then(Value::as_str).unwrap_or(""));
+    format!("{method} {}", request_args(e))
+        .trim_end()
+        .to_string()
 }
 
 fn request_args(e: &Value) -> String {
@@ -824,6 +834,14 @@ mod tests {
         let e = json!({"args": {"run": "s_x accepted=1"}});
         assert_eq!(request_args(&e), r#"run="s_x accepted=1""#);
         assert_eq!(request_args(&json!({"args": {"run": "s_x"}})), "run=s_x");
+    }
+
+    #[test]
+    fn audit_view_keeps_a_spaced_method_from_looking_like_more_fields() {
+        let e = json!({"method": "runs.halt accepted", "args": {"run": "s_x"}});
+        assert_eq!(request_what(&e), r#""runs.halt accepted" run=s_x"#);
+        let plain = json!({"method": "runs.list"});
+        assert_eq!(request_what(&plain), "runs.list");
     }
 
     #[test]
