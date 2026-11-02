@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.58
 
 - Local workspaces (`local:<code>`): the CLI now picks up the account the desktop is signed in to automatically, so runs, comments and personas of that account work without `tmgr config set local_user_id`. The config value still wins when set. Runs and comments that the local account (id -1) wrote earlier stay yours.
 
