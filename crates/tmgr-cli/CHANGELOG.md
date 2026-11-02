@@ -8,7 +8,7 @@
 - A checkpoint holds tracked and untracked files and leaves out ignored ones. Your branch, index, stash and history are not touched: checkpoints live on private refs, `refs/tmgr/checkpoints/<session>/<n>`, removed when the session is removed.
 - Restore only overwrites or deletes what the stored current state holds byte for byte. Anything else stays, and restore lists it as left as is. Ignored files stay.
 - A folder that is not a git repository has no checkpoints, and the session says so.
-- Limits: files over the size cap and hard-linked files are not stored and are counted as skipped. Nested repositories and submodules are not covered. Untracked files that are not ignored, secrets included, end up in the local `.git/objects`. `git log --all` shows checkpoint commits, and `git push --mirror` would push the refs. The agent is not told about a restore. Sessions started from the desktop or the queue do not pick up the global setting.
+- Limits: another program writing a file at the very moment restore replaces or deletes it can lose that write. Files over the size cap and hard-linked files are not stored and are counted as skipped. Nested repositories and submodules are not covered. Untracked files that are not ignored, secrets included, end up in the local `.git/objects`. `git log --all` shows checkpoint commits, and `git push --mirror` would push the refs. The agent is not told about a restore. Sessions started from the desktop or the queue do not pick up the global setting.
 
 ## 1.0.61
 

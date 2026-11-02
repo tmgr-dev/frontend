@@ -71,6 +71,7 @@ pub struct AttachConfig {
     pub copy_clean: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoints: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoints_keep: Option<u32>,
