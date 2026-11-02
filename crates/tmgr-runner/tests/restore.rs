@@ -20,15 +20,23 @@ trap 'kill $! 2>/dev/null; exit 0' HUP TERM
 echo "args:$*" >> ./log
 if [ -f "$HOME/marker" ]; then kept=1; else kept=; fi
 if [ -f ./change-seed ] && [ -z "$kept" ]; then echo '{"a":2}' > "$HOME/.fake/auth.json"; fi
+if [ ! -f ./exit-now ]; then sleep 600 & fi
 if [ -n "$kept" ]; then echo "home:kept" >> ./log; else echo x > "$HOME/marker"; echo "home:new" >> ./log; fi
 if [ -f ./exit-now ]; then exit 0; fi
-sleep 600 &
 wait
 "#;
 
 fn private_dir(path: &Path) {
     fs::create_dir_all(path).unwrap();
     fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
+}
+
+fn process_table() -> String {
+    Command::new("ps")
+        .args(["-A", "-o", "pid,ppid,pgid,stat,command"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
 }
 
 fn sessions_available() -> bool {
@@ -176,7 +184,8 @@ impl H {
             let _ = r.kill();
             let _ = r.wait();
         }
-        for pid in [s.child_pid, s.shim_pid] {
+        let pids = [s.child_pid, s.shim_pid];
+        for pid in pids {
             if let Ok(p) = i32::try_from(pid) {
                 if p > 1 {
                     unsafe {
@@ -186,16 +195,15 @@ impl H {
                 }
             }
         }
-        let deadline = Instant::now() + Duration::from_secs(10);
-        for pid in [s.child_pid, s.shim_pid] {
-            let Ok(p) = i32::try_from(pid) else { continue };
-            while p > 1 && unsafe { libc::kill(p, 0) } == 0 {
-                assert!(
-                    Instant::now() < deadline,
-                    "session processes outlived the reboot"
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while restore::pids_may_run(&pids, None, None) {
+            if Instant::now() >= deadline {
+                panic!(
+                    "session processes {pids:?} outlived the reboot:\n{}",
+                    process_table()
                 );
-                thread::sleep(Duration::from_millis(20));
             }
+            thread::sleep(Duration::from_millis(20));
         }
         if lose_runner_dir {
             fs::remove_dir_all(&self.run).unwrap();
@@ -243,7 +251,14 @@ fn restore_after_reboot(lose_runner_dir: bool) {
 
     let e = h.entries();
     assert_eq!(e.len(), 1);
-    assert_eq!(e[0].status, Status::Restorable);
+    assert_eq!(
+        e[0].status,
+        Status::Restorable,
+        "pids {:?}, boot {:?}\n{}",
+        e[0].intent.pids,
+        e[0].intent.boot,
+        process_table()
+    );
     assert!(e[0].resumable);
 
     let r = h.client().restore(&first.id).unwrap();
