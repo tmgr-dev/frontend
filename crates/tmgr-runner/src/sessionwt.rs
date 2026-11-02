@@ -318,16 +318,14 @@ fn inspect(repo: &Path, path: &Path, name: String) -> Result<Result<Facts, Strin
     }
     let tip = inner.run(&["rev-parse", "--verify", "HEAD^{commit}"])?;
     let has_commits = tip != base;
-    if has_commits {
-        if !inner.succeeds(&["merge-base", "--is-ancestor", &tip, &main_head]) {
-            let n = inner
-                .run(&["rev-list", "--count", &format!("{base}..{tip}")])
-                .unwrap_or_default();
-            return Ok(Err(format!(
-                "branch {name} has {n} commit(s) that are not merged into the current branch; bring them over with: {}",
-                import_hint(repo, path, &name)
-            )));
-        }
+    if has_commits && !inner.succeeds(&["merge-base", "--is-ancestor", &tip, &main_head]) {
+        let n = inner
+            .run(&["rev-list", "--count", &format!("{base}..{tip}")])
+            .unwrap_or_default();
+        return Ok(Err(format!(
+            "branch {name} has {n} commit(s) that are not merged into the current branch; bring them over with: {}",
+            import_hint(repo, path, &name)
+        )));
     }
     Ok(Ok(Facts {
         name,
