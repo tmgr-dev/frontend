@@ -290,6 +290,7 @@ fn is_local_v6(ip: Ipv6Addr) -> bool {
 pub struct SseBuffer {
   pending: Vec<u8>,
   after_cr: bool,
+  overflowed: bool,
 }
 
 impl SseBuffer {
@@ -312,7 +313,15 @@ impl SseBuffer {
       let raw: Vec<u8> = self.pending.drain(..pos + 2).collect();
       events.extend(event_data(&raw));
     }
+    if self.pending.len() > JSON_BODY_CAP {
+      self.pending = Vec::new();
+      self.overflowed = true;
+    }
     events
+  }
+
+  pub fn overflowed(&self) -> bool {
+    self.overflowed
   }
 
   pub fn finish(&mut self) -> Option<String> {
@@ -372,10 +381,7 @@ pub fn parse_chat_events(data: &str, api_key: Option<&str>) -> Vec<ChatEvent> {
       .to_string();
     events.push(ChatEvent::ToolCall { index, id, name, arguments });
   }
-  if let Some(message) = finish_error {
-    events.push(ChatEvent::Error { message });
-  }
-  if let Some(message) = error {
+  if let Some(message) = error.or(finish_error) {
     events.push(ChatEvent::Error { message });
   }
   events
@@ -396,9 +402,10 @@ pub fn stream_finish_reason(data: &str) -> Option<String> {
 }
 
 fn finish_error_message(reason: &str) -> Option<String> {
-  match reason {
-    "length" => Some("The answer was cut off: the model hit its length limit".into()),
+  match reason.to_ascii_lowercase().as_str() {
+    "length" | "max_tokens" | "model_length" => Some("The answer was cut off: the model hit its length limit".into()),
     "content_filter" => Some("The answer was blocked by the server's content filter".into()),
+    "error" => Some("The LLM server ended the answer with an error".into()),
     _ => None,
   }
 }
@@ -770,11 +777,27 @@ fn llm_http_client() -> Result<reqwest::Client, String> {
     .map_err(|e| e.to_string())
 }
 
-fn redirect_error(request_url: &str, location: Option<&str>) -> String {
-  let host = location
-    .and_then(|l| Url::parse(request_url).ok()?.join(l).ok())
-    .and_then(|u| u.host_str().map(str::to_string))
-    .unwrap_or_else(|| "another address".to_string());
+fn redirect_target(location: Option<&str>, api_key: Option<&str>) -> String {
+  const FALLBACK: &str = "another address";
+  let Some(url) = location.and_then(|l| Url::parse(l).ok()) else {
+    return FALLBACK.into();
+  };
+  let Some(host) = url.host_str() else {
+    return FALLBACK.into();
+  };
+  let mut origin = format!("{}://{host}", url.scheme());
+  if let Some(port) = url.port() {
+    origin.push_str(&format!(":{port}"));
+  }
+  let origin = truncate_chars(&origin, ERROR_MESSAGE_CHARS);
+  match api_key.filter(|k| !k.is_empty()) {
+    Some(key) if origin.to_lowercase().contains(&key.to_lowercase()) => FALLBACK.into(),
+    _ => origin,
+  }
+}
+
+fn redirect_error(location: Option<&str>, api_key: Option<&str>) -> String {
+  let host = redirect_target(location, api_key);
   format!("The LLM server redirected the request to {host}. Update the base URL in Settings.")
 }
 
@@ -788,10 +811,10 @@ async fn post_chat(
   if let Some(key) = api_key {
     builder = builder.header("authorization", format!("Bearer {key}"));
   }
-  let response = builder.send().await.map_err(|e| format!("LLM server unreachable: {e}"))?;
+  let response = builder.send().await.map_err(|e| format!("LLM server unreachable: {}", e.without_url()))?;
   if response.status().is_redirection() {
     let location = response.headers().get("location").and_then(|v| v.to_str().ok());
-    return Err(redirect_error(url, location));
+    return Err(redirect_error(location, api_key));
   }
   Ok(response)
 }
@@ -844,20 +867,38 @@ async fn stream_chat<R: Runtime>(
     }
     return Ok(());
   }
+  pump_stream(&mut response, api_key, |event| emit_event(app, request_id, event)).await
+}
+
+async fn pump_stream<F: FnMut(ChatEvent)>(
+  response: &mut reqwest::Response,
+  api_key: Option<&str>,
+  mut emit: F,
+) -> Result<(), String> {
   let mut buffer = SseBuffer::default();
   let mut useful = false;
   let mut saw_finish = false;
+  let mut saw_data = false;
   loop {
-    let chunk = response.chunk().await.map_err(|e| e.to_string())?;
+    let chunk = match response.chunk().await {
+      Ok(chunk) => chunk,
+      Err(_) if saw_finish && useful => {
+        emit(ChatEvent::Done);
+        return Ok(());
+      }
+      Err(e) => return Err(e.without_url().to_string()),
+    };
     let eof = chunk.is_none();
     let raws = match chunk {
       Some(chunk) => buffer.push(&chunk),
       None => buffer.finish().into_iter().collect(),
     };
-    let (events, terminal) = drain_events(raws, api_key, &mut useful, &mut saw_finish);
-    for event in events {
-      emit_event(app, request_id, event);
+    if buffer.overflowed() {
+      return Err("The LLM server reply is too large".into());
     }
+    saw_data |= !raws.is_empty();
+    let (events, terminal) = drain_events(raws, api_key, &mut useful, &mut saw_finish);
+    events.into_iter().for_each(&mut emit);
     if terminal {
       return Ok(());
     }
@@ -865,7 +906,7 @@ async fn stream_chat<R: Runtime>(
       break;
     }
   }
-  emit_event(app, request_id, end_of_stream_event(useful, saw_finish));
+  emit(if saw_data { end_of_stream_event(useful, saw_finish) } else { ChatEvent::Error { message: NO_USABLE_CONTENT.into() } });
   Ok(())
 }
 
@@ -2156,8 +2197,14 @@ mod tests {
     );
   }
 
+  const TRUNCATED: &str = "The LLM server closed the stream before the answer finished";
+
   #[test]
   fn a_data_body_without_a_trailing_blank_line_is_still_parsed() {
+    assert_eq!(
+      parse_sse_text("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}", None),
+      vec![ChatEvent::Delta { text: "Hi".into() }, ChatEvent::Error { message: TRUNCATED.into() }]
+    );
     assert_eq!(
       parse_sse_text("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"},\"finish_reason\":\"stop\"}]}", None),
       vec![ChatEvent::Delta { text: "Hi".into() }, ChatEvent::Done]
@@ -2166,6 +2213,10 @@ mod tests {
 
   #[test]
   fn a_data_body_with_no_usable_content_is_an_error_and_redacts_the_key() {
+    assert_eq!(
+      parse_sse_text("data: {\"choices\":[{\"delta\":{}}]}\n\n", None),
+      vec![ChatEvent::Error { message: TRUNCATED.into() }]
+    );
     assert_eq!(
       parse_sse_text("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n", None),
       vec![ChatEvent::Error { message: NO_USABLE_CONTENT.into() }]
@@ -2217,8 +2268,177 @@ mod tests {
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert_eq!(
       result.err().as_deref(),
-      Some("The LLM server redirected the request to localhost. Update the base URL in Settings.")
+      Some(format!("The LLM server redirected the request to http://localhost:{target_port}. Update the base URL in Settings.").as_str())
     );
     assert!(target_seen.lock().unwrap().is_empty());
+  }
+
+  #[tokio::test]
+  async fn an_unreachable_server_message_has_no_query() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    let client = llm_http_client().unwrap();
+    let url = format!("http://127.0.0.1:{port}/v1/chat/completions?key=QUERYSECRET");
+    let message = post_chat(&client, &url, b"{}".to_vec(), None).await.err().unwrap();
+    assert!(message.starts_with("LLM server unreachable"), "{message}");
+    assert!(!message.contains("QUERYSECRET"), "{message}");
+  }
+
+  fn redirect_text(location: Option<&str>, key: Option<&str>) -> String {
+    redirect_error(location, key)
+  }
+
+  #[test]
+  fn a_redirect_names_only_the_target_origin() {
+    assert_eq!(
+      redirect_text(Some("https://evil.example:8443/steal?x=1#f"), None),
+      "The LLM server redirected the request to https://evil.example:8443. Update the base URL in Settings."
+    );
+    assert!(redirect_text(Some("http://evil.example/a/b?token=1"), None).contains("to http://evil.example."));
+  }
+
+  #[test]
+  fn a_relative_or_missing_redirect_target_is_another_address() {
+    for location in [Some("/other/path?x=1"), Some(""), Some("mailto:a@b.c"), None] {
+      assert_eq!(
+        redirect_text(location, None),
+        "The LLM server redirected the request to another address. Update the base URL in Settings.",
+        "{location:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn a_redirect_target_containing_the_key_or_too_long_is_cut_down() {
+    let leaky = format!("https://{}.example.com/x", KEY.to_uppercase());
+    assert!(redirect_text(Some(&leaky), Some(KEY)).contains("to another address."));
+    let long = format!("https://{}.example.com/x", "a".repeat(300));
+    let text = redirect_text(Some(&long), None);
+    assert!(text.contains('…') && text.len() < 400, "{text}");
+  }
+
+  #[test]
+  fn finish_reasons_are_matched_case_insensitively() {
+    let length = "The answer was cut off: the model hit its length limit";
+    for reason in ["length", "LENGTH", "max_tokens", "Max_Tokens", "model_length"] {
+      let data = format!("{{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"{reason}\"}}]}}");
+      assert_eq!(error_text(&parse_chat_events(&data, None)), length, "{reason}");
+    }
+    let data = "{\"choices\":[{\"delta\":{},\"finish_reason\":\"Content_Filter\"}]}";
+    assert_eq!(error_text(&parse_chat_events(data, None)), "The answer was blocked by the server's content filter");
+    let data = "{\"choices\":[{\"delta\":{},\"finish_reason\":\"error\"}]}";
+    assert_eq!(error_text(&parse_chat_events(data, None)), "The LLM server ended the answer with an error");
+    assert!(parse_chat_events("{\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}", None).is_empty());
+  }
+
+  #[test]
+  fn a_server_error_wins_over_a_finish_error_with_or_without_a_delta() {
+    let with_delta = "{\"error\":\"boom\",\"choices\":[{\"delta\":{\"content\":\"Hi\"},\"finish_reason\":\"length\"}]}";
+    assert_eq!(
+      parse_chat_events(with_delta, None),
+      vec![ChatEvent::Delta { text: "Hi".into() }, ChatEvent::Error { message: "boom".into() }]
+    );
+    let without = "{\"error\":\"boom\",\"choices\":[{\"finish_reason\":\"length\"}]}";
+    assert_eq!(parse_chat_events(without, None), vec![ChatEvent::Error { message: "boom".into() }]);
+  }
+
+  async fn pump(reply: String) -> (Result<(), String>, Vec<ChatEvent>) {
+    use std::sync::Arc;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(serve_once(listener, reply, Arc::new(Mutex::new(Vec::new()))));
+    let client = llm_http_client().unwrap();
+    let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
+    let mut response = post_chat(&client, &url, b"{}".to_vec(), None).await.unwrap();
+    let mut events = Vec::new();
+    let result = pump_stream(&mut response, None, |e| events.push(e)).await;
+    (result, events)
+  }
+
+  fn sse_reply(body: &str) -> String {
+    format!("HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n{body}")
+  }
+
+  fn chunk(delta: &str, finish: &str) -> String {
+    format!("data: {{\"choices\":[{{\"delta\":{delta},\"finish_reason\":{finish}}}]}}\n\n")
+  }
+
+  #[tokio::test]
+  async fn an_unterminated_done_marker_then_close_is_done() {
+    let (result, events) = pump(sse_reply("data: [DONE]")).await;
+    assert_eq!((result, events), (Ok(()), vec![ChatEvent::Done]));
+  }
+
+  #[tokio::test]
+  async fn content_then_close_is_the_truncation_error() {
+    let (result, events) = pump(sse_reply(&chunk("{\"content\":\"Hi\"}", "null"))).await;
+    assert_eq!(result, Ok(()));
+    assert_eq!(events, vec![ChatEvent::Delta { text: "Hi".into() }, ChatEvent::Error { message: TRUNCATED.into() }]);
+  }
+
+  #[tokio::test]
+  async fn content_then_an_empty_stop_chunk_then_close_is_done() {
+    let body = format!("{}{}", chunk("{\"content\":\"Hi\"}", "null"), chunk("{}", "\"stop\""));
+    let (result, events) = pump(sse_reply(&body)).await;
+    assert_eq!(result, Ok(()));
+    assert_eq!(events, vec![ChatEvent::Delta { text: "Hi".into() }, ChatEvent::Done]);
+  }
+
+  #[tokio::test]
+  async fn a_tool_call_stream_ending_with_tool_calls_is_tool_calls_then_done() {
+    let call = "{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"function\":{\"name\":\"f\",\"arguments\":\"{}\"}}]}";
+    let body = format!("{}{}", chunk(call, "null"), chunk("{}", "\"tool_calls\""));
+    let (result, events) = pump(sse_reply(&body)).await;
+    assert_eq!(result, Ok(()));
+    assert_eq!(
+      events,
+      vec![
+        ChatEvent::ToolCall { index: 0, id: Some("c1".into()), name: Some("f".into()), arguments: "{}".into() },
+        ChatEvent::Done
+      ]
+    );
+  }
+
+  #[tokio::test]
+  async fn a_json_body_under_an_event_stream_type_is_no_usable_content() {
+    let (result, events) = pump(sse_reply("{\"choices\":[]}")).await;
+    assert_eq!(result, Ok(()));
+    assert_eq!(events, vec![ChatEvent::Error { message: NO_USABLE_CONTENT.into() }]);
+  }
+
+  #[tokio::test]
+  async fn a_transport_failure_after_the_finish_reason_is_done() {
+    let body = format!("{}{}", chunk("{\"content\":\"Hi\"}", "null"), chunk("{}", "\"stop\""));
+    let reply = format!("HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\n\r\n{body}", body.len() + 100);
+    let (result, events) = pump(reply).await;
+    assert_eq!(result, Ok(()));
+    assert_eq!(events, vec![ChatEvent::Delta { text: "Hi".into() }, ChatEvent::Done]);
+  }
+
+  #[tokio::test]
+  async fn a_transport_failure_before_the_finish_reason_stays_an_error() {
+    let body = chunk("{\"content\":\"Hi\"}", "null");
+    let reply = format!("HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\n\r\n{body}", body.len() + 100);
+    let (result, events) = pump(reply).await;
+    assert!(result.is_err());
+    assert_eq!(events, vec![ChatEvent::Delta { text: "Hi".into() }]);
+  }
+
+  #[tokio::test]
+  async fn an_unbounded_event_is_rejected_as_too_large() {
+    let body = format!("data: {}", "x".repeat(JSON_BODY_CAP + 1024));
+    let (result, _) = pump(sse_reply(&body)).await;
+    assert_eq!(result, Err("The LLM server reply is too large".into()));
+  }
+
+  #[test]
+  fn the_sse_buffer_drops_a_pending_event_over_the_cap() {
+    let mut buffer = SseBuffer::default();
+    assert!(buffer.push(&vec![b'x'; JSON_BODY_CAP]).is_empty());
+    assert!(!buffer.overflowed());
+    buffer.push(b"x");
+    assert!(buffer.overflowed());
+    assert_eq!(buffer.finish(), None);
   }
 }
