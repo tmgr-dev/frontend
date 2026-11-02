@@ -50,7 +50,10 @@ export const personaToolDefinition = (grantedPermissions: string[]) => {
 			parameters: {
 				type: 'object',
 				properties: {
-					method: { type: 'string', enum: ['GET', 'POST', 'PATCH', 'DELETE'] },
+					method: {
+						type: 'string',
+						enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+					},
 					path: { type: 'string' },
 					body: { type: 'object' },
 				},

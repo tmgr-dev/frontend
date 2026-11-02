@@ -180,6 +180,79 @@ describeSqlite('local persona agent loop', () => {
 		expect(tool.function.parameters.required).toEqual(['method', 'path']);
 	});
 
+	it('offers every method its route list names, PUT included', () => {
+		const tool = personaToolDefinition(['comments:write', 'pages:write']);
+		expect(tool.function.description).toContain('PUT comments/{id}');
+		expect(tool.function.parameters.properties.method.enum).toEqual(
+			expect.arrayContaining(['GET', 'POST', 'PATCH', 'DELETE', 'PUT']),
+		);
+	});
+
+	it('runs a PUT tool call through the whitelist: own comment edited, another comment and ungranted routes refused', async () => {
+		const own = await dispatchLocal(
+			router,
+			{ ...ctx, actor: { kind: 'persona', id: 'p-1', name: 'Reviewer' } },
+			'POST',
+			`tasks/${taskId}/comments`,
+			{ message: 'mine' },
+		);
+		const others = await dispatchLocal(
+			router,
+			ctx,
+			'POST',
+			`tasks/${taskId}/comments`,
+			{ message: 'the owner' },
+		);
+		const put = (path: string, body: unknown, id: string): ChatStreamEvent => ({
+			type: 'tool_call',
+			call: {
+				id,
+				name: 'tmgr_request',
+				rawArguments: JSON.stringify({ method: 'PUT', path, body }),
+				args: { method: 'PUT', path, body },
+			},
+		});
+		const toolResults: any[] = [];
+		let turn = 0;
+		const chat = async function* (
+			messages: ChatMessage[],
+		): AsyncIterable<ChatStreamEvent> {
+			turn += 1;
+			if (turn === 1) {
+				yield put(`comments/${own!.data.data.id}`, { message: 'edited' }, 'a');
+				yield put(
+					`comments/${others!.data.data.id}`,
+					{ message: 'hijacked' },
+					'b',
+				);
+				yield put(`tasks/${taskId}`, { title: 'renamed' }, 'c');
+			} else {
+				for (const m of messages)
+					if (m.role === 'tool') toolResults.push(JSON.parse(m.content!));
+				yield { type: 'text', delta: 'ok' };
+			}
+		};
+		await runPersonaAgent({
+			ctx,
+			router,
+			persona,
+			taskId,
+			systemPrompt: 'x',
+			grantedPermissions: ['comments:write'],
+			chat,
+		});
+		expect(toolResults[0].data.message).toBe('edited');
+		expect(toolResults[1].code).toBe('NOT_OWN');
+		expect(toolResults[2].code).toBeDefined();
+		const untouched = await dispatchLocal(
+			router,
+			ctx,
+			'GET',
+			`tasks/${taskId}`,
+		);
+		expect(untouched!.data.data.title).toBe('Review the PR');
+	});
+
 	it('reports a malformed tool call instead of crashing, and keeps going', async () => {
 		let calls = 0;
 		const chat = async function* (): AsyncIterable<ChatStreamEvent> {
