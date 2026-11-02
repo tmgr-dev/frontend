@@ -46,6 +46,7 @@ export const createLlmChat = (
 		);
 		try {
 			await resyncCloudIdentity();
+			if (cancelled) throw new Error('cancelled');
 			await invoke('llm_chat', { userId, requestId, messages, tools });
 			if (cancelled) await invoke('llm_cancel', { requestId });
 			type ToolBuffer = { id: string; name: string; arguments: string };
@@ -80,21 +81,22 @@ export const createLlmChat = (
 					throw new Error(event.message ?? 'LLM request failed');
 				}
 			}
-			for (const buf of toolBuffers) {
+			for (const [position, buf] of toolBuffers.entries()) {
+				const rawArguments = buf.arguments || '{}';
 				let args: { method: string; path: string; body?: unknown };
 				try {
-					args = JSON.parse(buf.arguments || '{}');
+					args = JSON.parse(rawArguments);
 				} catch {
 					throw new Error(
-						`The model sent invalid tool arguments: ${buf.arguments}`,
+						`The model sent invalid tool arguments: ${rawArguments}`,
 					);
 				}
 				yield {
 					type: 'tool_call',
 					call: {
-						id: buf.id,
+						id: buf.id || `call_${requestId}_${position}`,
 						name: buf.name,
-						rawArguments: buf.arguments,
+						rawArguments,
 						args,
 					},
 				};

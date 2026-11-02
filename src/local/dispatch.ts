@@ -109,7 +109,14 @@ export const dispatchLocal = async (
 ): Promise<LocalResponse | null> => {
 	const path = normalizePath(url);
 	const upperMethod = method.toUpperCase();
-	const route = router.match(method, path);
+	let route: ReturnType<LocalRouter['match']>;
+	try {
+		route = router.match(method, path);
+	} catch (error) {
+		if (error instanceof URIError)
+			return { status: 400, data: { message: 'Malformed path' } };
+		throw error;
+	}
 	if (!route) return null;
 	const actor = ctx.actor;
 	try {

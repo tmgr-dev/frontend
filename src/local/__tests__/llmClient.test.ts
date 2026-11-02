@@ -18,10 +18,11 @@ jest.mock('@tauri-apps/api/event', () => ({
 }));
 
 const order: string[] = [];
+let mockResync: () => Promise<void> = async () => {
+	order.push('resync');
+};
 jest.mock('@/utils/cloudIdentity', () => ({
-	resyncCloudIdentity: async () => {
-		order.push('resync');
-	},
+	resyncCloudIdentity: () => mockResync(),
 }));
 
 const emit = (requestId: string, event: unknown) =>
@@ -36,9 +37,33 @@ const drain = async (iterable: AsyncIterable<any>) => {
 beforeEach(() => {
 	mockInvoke.mockReset();
 	handler = null;
+	mockResync = async () => {
+		order.push('resync');
+	};
 });
 
 describe('createLlmChat cancel', () => {
+	it('does not send the prompt when cancelled during identity resync', async () => {
+		let releaseResync!: () => void;
+		mockResync = () =>
+			new Promise<void>((resolve) => {
+				releaseResync = resolve;
+			});
+		mockInvoke.mockImplementation(async (command: string, args: any) => {
+			if (command === 'llm_chat') emit(args.requestId, { type: 'done' });
+		});
+		const { chat, cancel } = createLlmChat([], 1);
+		const running = drain(chat([])).catch((e: Error) => e);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await cancel();
+		releaseResync();
+		const result = await running;
+		expect(result).toBeInstanceOf(Error);
+		expect((result as Error).message).toBe('cancelled');
+		expect(mockInvoke).not.toHaveBeenCalledWith('llm_chat', expect.anything());
+		expect(handler).toBeNull();
+	});
+
 	it('re-issues llm_cancel once the request is registered when cancel arrives during setup', async () => {
 		let finishSetup!: () => void;
 		const cancels: string[] = [];
@@ -173,6 +198,46 @@ describe('createLlmChat tool calls', () => {
 		expect(events.map((e) => e.call.id)).toEqual(['a', 'b']);
 		expect(events[0].call.args).toEqual(getCall('tasks/1'));
 		expect(events[1].call.args).toEqual(getCall('tasks/2'));
+	});
+});
+
+describe('createLlmChat missing tool call fields', () => {
+	const runWithoutIds = async (
+		chunks: { index: number; args: string }[],
+	): Promise<{ events: any[]; requestId: string }> => {
+		let requestId = '';
+		mockInvoke.mockImplementation(async (command: string, args: any) => {
+			if (command !== 'llm_chat') return;
+			requestId = args.requestId;
+			for (const chunk of chunks)
+				emit(args.requestId, {
+					type: 'tool_call',
+					index: chunk.index,
+					id: null,
+					name: 'tmgr_request',
+					arguments: chunk.args,
+				});
+			emit(args.requestId, { type: 'done' });
+		});
+		const { chat } = createLlmChat([], 1);
+		return { events: await drain(chat([])), requestId };
+	};
+
+	it('assigns each call without an id a unique fallback id tied to the request and position', async () => {
+		const { events, requestId } = await runWithoutIds([
+			{ index: 0, args: '{"method":"GET","path":"tasks/1"}' },
+			{ index: 1, args: '{"method":"GET","path":"tasks/2"}' },
+		]);
+		expect(events.map((e) => e.call.id)).toEqual([
+			`call_${requestId}_0`,
+			`call_${requestId}_1`,
+		]);
+	});
+
+	it('echoes {} as the raw arguments when a call sends none', async () => {
+		const { events } = await runWithoutIds([{ index: 0, args: '' }]);
+		expect(events[0].call.rawArguments).toBe('{}');
+		expect(events[0].call.args).toEqual({});
 	});
 });
 
