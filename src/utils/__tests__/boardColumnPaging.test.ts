@@ -523,7 +523,7 @@ describe('own moves', () => {
 			targetStatus: 1,
 			pending: impl.pending,
 			send: () =>
-				new Promise((resolve) => {
+				new Promise<{ data: Row }>((resolve) => {
 					const data = server.moveBottom(1);
 					ack = () => resolve({ data });
 				}),
