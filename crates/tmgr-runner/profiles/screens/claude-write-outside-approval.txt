@@ -1,0 +1,21 @@
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Haiku 4.5 · API Usage Billing
+ ▝▝   ▝▝   /work/proj
+
+❯ hello
+
+⏺ Write(/tmp-other/outside-tm676.txt)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ Create file
+ ../../../../../../outside-tm676.txt
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+  1 x
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Do you want to create outside-tm676.txt?
+ ❯ 1. Yes
+   2. Yes, and switch to accept edits (auto-approve file edits and common file commands) for this
+      session; Yes, and always allow access to /tmp-other for this session (shift+tab)
+   3. No
+
+ Esc to cancel · Tab to amend

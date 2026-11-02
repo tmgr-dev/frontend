@@ -1,0 +1,19 @@
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Haiku 4.5 · API Usage Billing
+ ▝▝   ▝▝   /work/proj
+
+❯ hello
+
+⏺ Fetch(https://example.com/x)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ Fetch
+ Claude wants to fetch content from example.com
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ url: https://example.com/x
+ prompt: read
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Do you want to allow Claude to fetch this content?
+ ❯ 1. Yes
+   2. Yes, and don't ask again for example.com
+   3. No, and tell Claude what to do differently (esc)
