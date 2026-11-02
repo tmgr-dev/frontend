@@ -344,12 +344,14 @@ fn walk_dirs(root: BorrowedFd, comps: &[&[u8]]) -> io::Result<OwnedFd> {
     Ok(cur)
 }
 
-fn file_kind(st: &libc::stat) -> u32 {
-    st.st_mode as u32 & libc::S_IFMT as u32
+#[allow(clippy::unnecessary_cast)]
+fn mode_bits(st: &libc::stat) -> u32 {
+    st.st_mode as u32
 }
 
+#[allow(clippy::unnecessary_cast)]
 fn is_kind(st: &libc::stat, kind: libc::mode_t) -> bool {
-    file_kind(st) == kind as u32
+    mode_bits(st) & libc::S_IFMT as u32 == kind as u32
 }
 
 #[allow(clippy::unnecessary_cast)]
@@ -362,12 +364,12 @@ fn fp_of(st: &libc::stat) -> Fp {
         mt_ns: st.st_mtime_nsec as i64,
         ct_s: st.st_ctime as i64,
         ct_ns: st.st_ctime_nsec as i64,
-        mode: st.st_mode as u32,
+        mode: mode_bits(st),
     }
 }
 
 fn blob_mode(st: &libc::stat) -> u32 {
-    if st.st_mode as u32 & 0o100 != 0 {
+    if mode_bits(st) & 0o100 != 0 {
         MODE_EXEC
     } else {
         MODE_FILE
@@ -1559,16 +1561,19 @@ impl Op<'_> {
                     return Ok(Outcome::Left);
                 }
                 if is_kind(&st, libc::S_IFREG) {
-                    keep_perm = Some(st.st_mode as u32 & 0o777);
+                    keep_perm = Some(mode_bits(&st) & 0o777);
                 }
             }
         }
         let tmp = format!(".tmgr-restore-{}", rand_hex()).into_bytes();
         let made = if e.mode == MODE_LINK {
-            write_link(dir, &tmp, &e.oid, blobs)?
+            write_link(dir, &tmp, &e.oid, blobs)
         } else {
-            write_file(dir, &tmp, e, keep_perm, blobs)?
+            write_file(dir, &tmp, e, keep_perm, blobs)
         };
+        let made = made.inspect_err(|_| {
+            let _ = unlink_at(dir, &tmp, 0);
+        })?;
         let placed = made.is_ok() && rename_at(dir, &tmp, name).is_ok();
         if placed {
             Ok(Outcome::Written)
