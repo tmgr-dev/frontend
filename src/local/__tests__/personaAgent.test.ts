@@ -285,24 +285,23 @@ describeSqlite('local persona agent loop', () => {
 		expect(result).toEqual({ text: 'done', toolCalls: 1 });
 	});
 
-	it('stops after maxToolCalls even if the model keeps calling tools', async () => {
+	it('throws at maxToolCalls when the model still wants another tool', async () => {
 		const chat = async function* (): AsyncIterable<ChatStreamEvent> {
 			yield toolCallEvent(`tasks/${taskId}`, 't');
 		};
 
-		const result = await runPersonaAgent({
-			ctx,
-			router,
-			persona,
-			taskId,
-			systemPrompt: 'loop forever',
-			grantedPermissions: ['tasks:read'],
-			chat,
-			maxToolCalls: 3,
-		});
-
-		expect(result.toolCalls).toBe(3);
-		expect(result.text).toBe('');
+		await expect(
+			runPersonaAgent({
+				ctx,
+				router,
+				persona,
+				taskId,
+				systemPrompt: 'loop forever',
+				grantedPermissions: ['tasks:read'],
+				chat,
+				maxToolCalls: 3,
+			}),
+		).rejects.toThrow('The agent stopped after 3 tool calls without an answer');
 	});
 
 	it('posts the final text as a comment authored by the persona (ask persona on a task)', async () => {
@@ -421,7 +420,10 @@ describeSqlite('local persona agent loop', () => {
 			yield writeCall('a');
 			yield writeCall('b');
 		};
-		const run = (isCancelled?: () => boolean) =>
+		const run = (
+			isCancelled?: () => boolean,
+			onToolCall?: (method: string) => void,
+		) =>
 			runPersonaAgent({
 				ctx,
 				router,
@@ -431,20 +433,28 @@ describeSqlite('local persona agent loop', () => {
 				grantedPermissions: ['comments:write'],
 				chat: twoWrites,
 				isCancelled,
+				onToolCall,
 			});
 		const comments = async () =>
 			(await dispatchLocal(router, ctx, 'GET', `tasks/${taskId}/comments`))!
 				.data.data;
 
-		it('does not dispatch the remaining calls once cancelled, and ends the run failed', async () => {
-			let checks = 0;
-			await expect(run(() => ++checks > 1)).rejects.toThrow('cancelled');
+		it('does not dispatch the remaining calls once cancelled, and ends the run cancelled', async () => {
+			let stop = false;
+			await expect(
+				run(
+					() => stop,
+					() => {
+						stop = true;
+					},
+				),
+			).rejects.toThrow('cancelled');
 			expect((await comments()).map((c: any) => c.message)).toEqual(['note a']);
 			const [row] = await ctx.db.select<any>(
 				`SELECT status FROM agent_work_runs WHERE task_id = ?`,
 				[taskId],
 			);
-			expect(row.status).toBe('failed');
+			expect(row.status).toBe('cancelled');
 		});
 
 		it.each([undefined, () => false])(
@@ -454,6 +464,202 @@ describeSqlite('local persona agent loop', () => {
 				expect(await comments()).toHaveLength(2);
 			},
 		);
+	});
+
+	describe('tool limit, empty answers, delivery and finish', () => {
+		const answer = async function* (): AsyncIterable<ChatStreamEvent> {
+			yield { type: 'text', delta: 'Done.' };
+		};
+		const statusOf = async () =>
+			(
+				await ctx.db.select<any>(
+					`SELECT status FROM agent_work_runs WHERE task_id = ?`,
+					[taskId],
+				)
+			)[0].status;
+		const agent = (
+			chat: (messages: ChatMessage[]) => AsyncIterable<ChatStreamEvent>,
+			extra: Partial<Parameters<typeof runPersonaAgent>[0]> = {},
+		) =>
+			runPersonaAgent({
+				ctx,
+				router,
+				persona,
+				taskId,
+				systemPrompt: 'x',
+				grantedPermissions: ['tasks:read'],
+				chat,
+				...extra,
+			});
+
+		it('gives the model one more turn after the last allowed tool call, pairing only the executed calls', async () => {
+			const seenMessages: ChatMessage[][] = [];
+			const chat = async function* (
+				messages: ChatMessage[],
+			): AsyncIterable<ChatStreamEvent> {
+				seenMessages.push(messages.map((m) => ({ ...m })));
+				if (seenMessages.length === 1) {
+					yield toolCallEvent(`tasks/${taskId}`, 'a');
+					yield toolCallEvent(`tasks/${taskId}`, 'b');
+				} else {
+					yield { type: 'text', delta: 'done' };
+				}
+			};
+
+			const result = await agent(chat, { maxToolCalls: 1 });
+
+			expect(result).toEqual({ text: 'done', toolCalls: 1 });
+			const assistant = seenMessages[1].find((m) => m.role === 'assistant');
+			expect(assistant?.tool_calls?.map((c) => c.id)).toEqual(['a']);
+			expect(
+				seenMessages[1]
+					.filter((m) => m.role === 'tool')
+					.map((m) => m.tool_call_id),
+			).toEqual(['a']);
+		});
+
+		it('throws when the model answers with only whitespace and no tool call, and ends the run failed', async () => {
+			const chat = async function* (): AsyncIterable<ChatStreamEvent> {
+				yield { type: 'text', delta: '   ' };
+			};
+
+			await expect(agent(chat)).rejects.toThrow(
+				'The model returned an empty answer',
+			);
+			expect(await statusOf()).toBe('failed');
+		});
+
+		it('ends the run failed when the stream fails and the user did not cancel', async () => {
+			const chat = async function* (): AsyncIterable<ChatStreamEvent> {
+				throw new Error('network down');
+			};
+
+			await expect(agent(chat)).rejects.toThrow('network down');
+			expect(await statusOf()).toBe('failed');
+		});
+
+		it('ends the run cancelled when the stream fails after the user cancelled', async () => {
+			const chat = async function* (): AsyncIterable<ChatStreamEvent> {
+				throw new Error('aborted');
+			};
+
+			await expect(agent(chat, { isCancelled: () => true })).rejects.toThrow(
+				'aborted',
+			);
+			expect(await statusOf()).toBe('cancelled');
+		});
+
+		it('ends the run cancelled and delivers nothing when the user cancels after the answer streamed', async () => {
+			let delivered = 0;
+			const result = await agent(answer, {
+				isCancelled: () => true,
+				deliver: async () => {
+					delivered += 1;
+				},
+			});
+
+			expect(result.text).toBe('Done.');
+			expect(delivered).toBe(0);
+			expect(await statusOf()).toBe('cancelled');
+		});
+
+		it('hands the final text to deliver, and ends the run succeeded', async () => {
+			const delivered: string[] = [];
+			await agent(answer, {
+				deliver: async (text) => {
+					delivered.push(text);
+				},
+			});
+
+			expect(delivered).toEqual(['Done.']);
+			expect(await statusOf()).toBe('succeeded');
+		});
+
+		it('keeps the run succeeded when the user cancels after delivery', async () => {
+			let cancelled = false;
+			await agent(answer, {
+				isCancelled: () => cancelled,
+				deliver: async () => {
+					cancelled = true;
+				},
+			});
+
+			expect(await statusOf()).toBe('succeeded');
+		});
+
+		it('ends the run failed when delivery is refused', async () => {
+			await expect(
+				agent(answer, {
+					deliver: async () => {
+						throw new Error('Could not post the persona');
+					},
+				}),
+			).rejects.toThrow('Could not post the persona');
+			expect(await statusOf()).toBe('failed');
+		});
+
+		it('reports the method of each executed tool call', async () => {
+			let turn = 0;
+			const chat = async function* (): AsyncIterable<ChatStreamEvent> {
+				turn += 1;
+				if (turn === 1) {
+					yield toolCallEvent(`tasks/${taskId}`, 'a');
+					yield toolCallEvent(`tasks/${taskId}`, 'b');
+				} else {
+					yield { type: 'text', delta: 'ok' };
+				}
+			};
+			const methods: string[] = [];
+
+			await agent(chat, { onToolCall: (method) => methods.push(method) });
+
+			expect(methods).toEqual(['GET', 'GET']);
+		});
+
+		describe('when recording the finish fails', () => {
+			const failingFinishCtx = (): LocalContext => ({
+				...ctx,
+				db: {
+					...ctx.db,
+					execute: (sql, params) =>
+						sql.includes('ended_at = ?')
+							? Promise.reject(new Error('db down'))
+							: ctx.db.execute(sql, params),
+				},
+			});
+
+			it('keeps the original error', async () => {
+				const chat = async function* (): AsyncIterable<ChatStreamEvent> {
+					throw new Error('boom');
+				};
+
+				await expect(
+					runPersonaAgent({
+						ctx: failingFinishCtx(),
+						router,
+						persona,
+						taskId,
+						systemPrompt: 'x',
+						grantedPermissions: ['tasks:read'],
+						chat,
+					}),
+				).rejects.toThrow('boom');
+			});
+
+			it('still returns the answer', async () => {
+				const result = await runPersonaAgent({
+					ctx: failingFinishCtx(),
+					router,
+					persona,
+					taskId,
+					systemPrompt: 'x',
+					grantedPermissions: ['tasks:read'],
+					chat: answer,
+				});
+
+				expect(result.text).toBe('Done.');
+			});
+		});
 	});
 
 	it('throws instead of silently dropping the answer when posting the comment is refused', async () => {

@@ -73,7 +73,9 @@ export interface PersonaAgentParams {
 	chat: ChatFn;
 	maxToolCalls?: number;
 	onText?: (textSoFar: string) => void;
+	onToolCall?: (method: string) => void;
 	isCancelled?: () => boolean;
+	deliver?: (text: string) => Promise<void>;
 }
 
 export interface PersonaAgentResult {
@@ -90,7 +92,9 @@ export const runPersonaAgent = async ({
 	chat,
 	maxToolCalls = 8,
 	onText,
+	onToolCall,
 	isCancelled,
+	deliver,
 }: PersonaAgentParams): Promise<PersonaAgentResult> => {
 	const actor = {
 		kind: 'persona' as const,
@@ -126,9 +130,9 @@ export const runPersonaAgent = async ({
 
 	let toolCalls = 0;
 	let finalText = '';
-	let status: 'succeeded' | 'failed' = 'succeeded';
+	let status: 'succeeded' | 'failed' | 'cancelled' = 'succeeded';
 	try {
-		while (toolCalls < maxToolCalls) {
+		for (;;) {
 			const calls: ToolCall[] = [];
 			let textBuffer = '';
 			for await (const event of chat(messages)) {
@@ -138,23 +142,32 @@ export const runPersonaAgent = async ({
 				} else calls.push(event.call);
 			}
 			if (!calls.length) {
+				if (!textBuffer.trim()) {
+					throw new Error('The model returned an empty answer');
+				}
 				finalText = textBuffer;
 				break;
 			}
+			if (toolCalls >= maxToolCalls) {
+				throw new Error(
+					`The agent stopped after ${maxToolCalls} tool calls without an answer`,
+				);
+			}
+			const batch = calls.slice(0, maxToolCalls - toolCalls);
 			messages.push({
 				role: 'assistant',
 				content: textBuffer || null,
-				tool_calls: calls.map((call) => ({
+				tool_calls: batch.map((call) => ({
 					id: call.id,
 					type: 'function',
 					function: { name: call.name, arguments: call.rawArguments },
 				})),
 			});
-			for (const call of calls) {
-				if (toolCalls >= maxToolCalls) break;
+			for (const call of batch) {
 				if (isCancelled?.()) throw new Error('cancelled');
 				toolCalls += 1;
 				const { method, path, body } = call.args ?? {};
+				onToolCall?.(method);
 				const content =
 					typeof method !== 'string' || typeof path !== 'string'
 						? { message: 'method and path are required strings' }
@@ -167,8 +180,10 @@ export const runPersonaAgent = async ({
 				});
 			}
 		}
+		if (isCancelled?.()) status = 'cancelled';
+		else await deliver?.(finalText);
 	} catch (error) {
-		status = 'failed';
+		status = isCancelled?.() ? 'cancelled' : 'failed';
 		throw error;
 	} finally {
 		if (runId !== null) {
@@ -181,7 +196,7 @@ export const runPersonaAgent = async ({
 					status,
 					summary: finalText.slice(0, 2000),
 				},
-			);
+			).catch(() => undefined);
 		}
 	}
 	return { text: finalText, toolCalls };
@@ -191,28 +206,31 @@ export const runPersonaAgent = async ({
 export const askPersonaOnTask = async (
 	params: PersonaAgentParams,
 ): Promise<PersonaAgentResult & { posted: boolean }> => {
-	const result = await runPersonaAgent(params);
-	if (result.text.trim() && !params.isCancelled?.()) {
-		const actor = {
-			kind: 'persona' as const,
-			id: params.persona.uuid,
-			name: params.persona.name,
-		};
-		const posted = await dispatchLocal(
-			params.router,
-			{ ...params.ctx, actor },
-			'POST',
-			`tasks/${params.taskId}/comments`,
-			{ message: result.text },
-		);
-		if (!posted || posted.status >= 400) {
-			throw new Error(
-				`Could not post the persona's answer as a comment: ${
-					posted?.data?.message ?? 'no route'
-				}`,
+	let posted = false;
+	const result = await runPersonaAgent({
+		...params,
+		deliver: async (text) => {
+			const actor = {
+				kind: 'persona' as const,
+				id: params.persona.uuid,
+				name: params.persona.name,
+			};
+			const response = await dispatchLocal(
+				params.router,
+				{ ...params.ctx, actor },
+				'POST',
+				`tasks/${params.taskId}/comments`,
+				{ message: text },
 			);
-		}
-		return { ...result, posted: true };
-	}
-	return { ...result, posted: false };
+			if (!response || response.status >= 400) {
+				throw new Error(
+					`Could not post the persona's answer as a comment: ${
+						response?.data?.message ?? 'no route'
+					}`,
+				);
+			}
+			posted = true;
+		},
+	});
+	return { ...result, posted };
 };
