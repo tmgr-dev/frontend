@@ -7,6 +7,7 @@ use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::StateKind;
@@ -216,42 +217,61 @@ impl Fx {
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        let mut out = child.stdout.take().unwrap();
-        let mut err = child.stderr.take().unwrap();
-        let out = thread::spawn(move || {
-            let mut b = Vec::new();
-            let _ = out.read_to_end(&mut b);
-            b
-        });
-        let err = thread::spawn(move || {
-            let mut b = Vec::new();
-            let _ = err.read_to_end(&mut b);
-            b
-        });
+        let (tx, rx) = mpsc::channel();
+        for (i, pipe) in [
+            Box::new(child.stdout.take().unwrap()) as Box<dyn Read + Send>,
+            Box::new(child.stderr.take().unwrap()),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let tx = tx.clone();
+            thread::spawn(move || {
+                let mut pipe = pipe;
+                let mut b = Vec::new();
+                let _ = pipe.read_to_end(&mut b);
+                let _ = tx.send((i, b));
+            });
+        }
         let deadline = Instant::now() + COMMAND_LIMIT;
+        let stuck = |what: &str, child: &mut std::process::Child| -> ! {
+            let ps = Command::new("ps")
+                .args(["-axo", "pid,ppid,stat,etime,command"])
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                .unwrap_or_default();
+            let ps: String = ps
+                .lines()
+                .filter(|l| l.contains(&*self.tmp.path().to_string_lossy()) || l.contains("tmgr"))
+                .map(|l| format!("{l}\n"))
+                .collect();
+            let log = fs::read_to_string(self.run().join("runner.log")).unwrap_or_default();
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("tmgr {args:?} {what} within {COMMAND_LIMIT:?}\nrunner log:\n{log}\nprocesses:\n{ps}");
+        };
         let status = loop {
             if let Some(status) = child.try_wait().unwrap() {
                 break status;
             }
             if Instant::now() >= deadline {
-                let _ = child.kill();
-                let _ = child.wait();
-                let ps = Command::new("ps")
-                    .args(["-axo", "pid,ppid,stat,command"])
-                    .output()
-                    .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-                    .unwrap_or_default();
-                panic!(
-                    "tmgr {args:?} did not finish within {COMMAND_LIMIT:?}\nrunner log:\n{}\nprocesses:\n{ps}",
-                    fs::read_to_string(self.run().join("runner.log")).unwrap_or_default()
-                );
+                stuck("did not exit", &mut child);
             }
             thread::sleep(Duration::from_millis(50));
         };
+        let mut bytes = [Vec::new(), Vec::new()];
+        for _ in 0..2 {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match rx.recv_timeout(left.max(Duration::from_secs(1))) {
+                Ok((i, b)) => bytes[i] = b,
+                Err(_) => stuck("exited but kept its output open", &mut child),
+            }
+        }
+        let [stdout, stderr] = bytes;
         Output {
             status,
-            stdout: out.join().unwrap(),
-            stderr: err.join().unwrap(),
+            stdout,
+            stderr,
         }
     }
 
