@@ -3048,6 +3048,12 @@ impl Runner {
         }
         if let Some(t) = &req.team {
             t.validate().map_err(|m| api(ErrorCode::InvalidParams, m))?;
+            if req.origin.is_some() {
+                return Err(api(
+                    ErrorCode::InvalidParams,
+                    "a team label cannot be combined with origin",
+                ));
+            }
         }
         let checked = bundle::check(&req, tmgr_ipc::api::limits::MAX_BUNDLE)
             .map_err(|(code, m)| api(code, m))?;
