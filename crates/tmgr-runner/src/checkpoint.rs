@@ -710,8 +710,9 @@ fn out(g: &GitEnv, args: &[&str], stdin: Option<&Path>, cap: usize) -> Result<Ve
     let o = exec(g, args, stdin, cap)?;
     if !o.status.success() {
         return Err(CpError::Failed(format!(
-            "git {} failed: {}",
+            "git {} failed ({}): {}",
             args.first().copied().unwrap_or(""),
+            o.status,
             String::from_utf8_lossy(&o.stderr).trim()
         )));
     }
