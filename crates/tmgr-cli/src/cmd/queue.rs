@@ -336,7 +336,7 @@ fn status(paths: &Paths) -> Result<Output> {
     let pickups: Vec<Value> = st
         .pickups
         .iter()
-        .filter(|p| !p.released)
+        .filter(|p| p.listed())
         .map(|p| {
             let mut v = json!({"id": p.id, "rule": p.rule, "task": p.key, "status": shown_status(p),
                 "bundle_sha256": p.bundle_sha256, "tainted": p.context_tainted,
@@ -367,7 +367,7 @@ fn status(paths: &Paths) -> Result<Output> {
     let rows: Vec<Vec<String>> = st
         .pickups
         .iter()
-        .filter(|p| !p.released)
+        .filter(|p| p.listed())
         .map(|p| {
             vec![
                 p.id.clone(),
@@ -456,7 +456,7 @@ fn team_lines(st: &state::State) -> Vec<String> {
             ));
         }
     }
-    for p in st.pickups.iter().filter(|p| !p.released) {
+    for p in st.pickups.iter().filter(|p| p.listed()) {
         if let Some(t) = &p.team {
             out.extend(team_block(&p.id, t.phase, &members_of(p, t)));
         }

@@ -3,6 +3,7 @@ mod common;
 
 use common::*;
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 
 #[cfg(target_os = "linux")]
@@ -112,7 +113,7 @@ fn measure_whether_a_sibling_copy_can_be_read() {
         "denied"
     };
     let line = format!("TM606_SIBLING_READ {PLATFORM} {verdict}");
-    eprintln!("{line}");
+    writeln!(std::io::stderr(), "{line}").unwrap();
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("tm606_sibling_read.txt"), format!("{line}\n")).unwrap();
