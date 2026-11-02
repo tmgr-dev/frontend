@@ -1254,7 +1254,7 @@ fn a_bundled_run_hands_the_task_to_the_agent_as_its_prompt() {
     let mut h = Harness::new();
     let script = h.script(
         "echo-agent.sh",
-        "printf '%s\\n' \"$@\" > \"$PWD/argv.txt\"\nwhile true; do sleep 0.2; done\n",
+        "printf '%s\\n' \"$@\" > \"$PWD/argv.tmp\" && mv \"$PWD/argv.tmp\" \"$PWD/argv.txt\"\nwhile true; do sleep 0.2; done\n",
     );
     fs::write(
         h.agents.join("echo.toml"),
@@ -1283,6 +1283,7 @@ fn a_bundled_run_hands_the_task_to_the_agent_as_its_prompt() {
     while !out.exists() && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(50));
     }
+    assert!(out.exists(), "agent never wrote argv.txt");
     let seen = fs::read_to_string(&out).unwrap();
     assert!(seen.starts_with("--task\nTask: Fix login\n"), "{seen}");
     assert!(
