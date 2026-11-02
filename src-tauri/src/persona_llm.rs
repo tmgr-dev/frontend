@@ -9,19 +9,82 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use url::{Host, Url};
 
-use crate::local_access::tokens::{migrate_secret, validate_user_id, LlmMigrateOut, SecretStore};
+use crate::local_access::tokens::{
+  migrate_secret, validate_user_id, LlmMigrateOut, MigrateStatus, SecretStore,
+};
 
 const SERVICE: &str = "dev.tmgr.persona-llm";
 const ACCOUNT: &str = "api-key";
 const CONFIG_FILE: &str = "llm_config.json";
+const LOCAL_OWNER_ID: i64 = -1;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct LlmConfigFile {
   base_url: String,
   model: String,
-  /// The origin the saved Keychain key was issued for; the key is dropped, never carried over, once `base_url` moves to another origin.
+  /// The pre-per-slot origin; read-only, new code never writes it.
   #[serde(default)]
   key_origin: Option<String>,
+  /// The origin each account's saved Keychain key was issued for, keyed by user id.
+  #[serde(default)]
+  key_origins: HashMap<String, String>,
+}
+
+fn slot_origin(file: &LlmConfigFile, user_id: i64) -> Option<&str> {
+  file.key_origins.get(&user_id.to_string()).or(file.key_origin.as_ref()).map(String::as_str)
+}
+
+/// A saved key may only be sent to the origin it was issued for.
+fn key_may_be_sent(slot_origin: Option<&str>, base_url: &str) -> bool {
+  match (slot_origin, normalize_origin(base_url)) {
+    (Some(issued), Ok(current)) => issued == current,
+    _ => false,
+  }
+}
+
+/// Pure on purpose: a refusal only reports, it never touches the saved key.
+fn check_key_origin(slot_origin: Option<&str>, base_url: &str) -> Result<(), String> {
+  if key_may_be_sent(slot_origin, base_url) {
+    return Ok(());
+  }
+  let host = Url::parse(base_url.trim()).ok().and_then(|u| u.host_str().map(str::to_string));
+  let target = host.unwrap_or_else(|| "this server".to_string());
+  Err(if slot_origin.is_some() {
+    format!("Your saved API key was issued for a different server. Enter it again in Settings to use it with {target}.")
+  } else {
+    format!("Your saved API key is not tied to a server. Enter it again in Settings to use it with {target}.")
+  })
+}
+
+fn user_slot_allowed(identity: Option<i64>, user_id: i64) -> bool {
+  match identity {
+    Some(id) => user_id == id,
+    None => user_id == LOCAL_OWNER_ID,
+  }
+}
+
+fn next_key_origins(
+  mut origins: HashMap<String, String>,
+  user_id: i64,
+  key_after: bool,
+  new_origin: Option<String>,
+) -> HashMap<String, String> {
+  match new_origin {
+    Some(origin) if key_after => origins.insert(user_id.to_string(), origin),
+    _ => origins.remove(&user_id.to_string()),
+  };
+  origins
+}
+
+fn move_local_key_origin(origins: &mut HashMap<String, String>, status: &MigrateStatus, to: i64) -> bool {
+  if !matches!(status, MigrateStatus::Moved | MigrateStatus::Already) {
+    return false;
+  }
+  let Some(origin) = origins.remove(&LOCAL_OWNER_ID.to_string()) else {
+    return false;
+  };
+  origins.entry(to.to_string()).or_insert(origin);
+  true
 }
 
 /// Scheme + lowercased host + port (default ports folded in), so a path-only edit to `base_url` is not an origin change.
@@ -213,15 +276,19 @@ fn legacy_keyring_entry() -> Result<keyring::Entry, String> {
 #[tauri::command]
 pub fn llm_config_set<R: Runtime>(
   app: AppHandle<R>,
+  window: tauri::Window<R>,
   user_id: i64,
   base_url: String,
   model: String,
   api_key: Option<String>,
   clear_api_key: bool,
 ) -> Result<(), String> {
+  if window.label() != "main" {
+    return Err("llm_config_set may only be called from the main window".into());
+  }
   let previous = read_config(&app)?;
   let new_origin = normalize_origin(&base_url).ok();
-  let origin_changed = new_origin != previous.key_origin;
+  let origin_changed = new_origin.as_deref() != slot_origin(&previous, user_id);
   let entry = keyring_entry(user_id)?;
   let new_key = api_key.filter(|k| !k.is_empty());
 
@@ -229,7 +296,12 @@ pub fn llm_config_set<R: Runtime>(
   let key_after = key_will_exist(clear_api_key, new_key.is_some(), origin_changed, had_key);
   refuses_plaintext_key(&base_url, key_after)?;
 
-  let file = LlmConfigFile { base_url, model, key_origin: if key_after { new_origin } else { None } };
+  let file = LlmConfigFile {
+    base_url,
+    model,
+    key_origin: previous.key_origin,
+    key_origins: next_key_origins(previous.key_origins, user_id, key_after, new_origin),
+  };
   std::fs::write(config_path(&app)?, serde_json::to_vec(&file).map_err(|e| e.to_string())?)
     .map_err(|e| e.to_string())?;
 
@@ -245,7 +317,10 @@ pub fn llm_config_set<R: Runtime>(
 }
 
 #[tauri::command]
-pub fn llm_config_get<R: Runtime>(app: AppHandle<R>, user_id: i64) -> Result<LlmConfigOut, String> {
+pub fn llm_config_get<R: Runtime>(app: AppHandle<R>, window: tauri::Window<R>, user_id: i64) -> Result<LlmConfigOut, String> {
+  if window.label() != "main" {
+    return Err("llm_config_get may only be called from the main window".into());
+  }
   let file = read_config(&app)?;
   let has_api_key = match keyring_entry(user_id)?.get_password() {
     Ok(_) => true,
@@ -300,7 +375,12 @@ pub fn persona_llm_migrate_local<R: Runtime>(app: AppHandle<R>, window: tauri::W
   }
   let to = validate_user_id(to_user_id)?;
   crate::local_profile::require_claim(&app, to)?;
+  let mut file = read_config(&app)?;
   let status = migrate_secret(&PersonaLlmSecrets, &format!("{ACCOUNT}:-1"), &format!("{ACCOUNT}:{to}"))?;
+  if move_local_key_origin(&mut file.key_origins, &status, to) {
+    std::fs::write(config_path(&app)?, serde_json::to_vec(&file).map_err(|e| e.to_string())?)
+      .map_err(|e| e.to_string())?;
+  }
   Ok(LlmMigrateOut { status })
 }
 
@@ -373,6 +453,9 @@ pub async fn llm_chat<R: Runtime>(
   messages: Vec<Value>,
   tools: Option<Value>,
 ) -> Result<(), String> {
+  if !user_slot_allowed(crate::local_identity::current_id(&app), user_id) {
+    return Err("This AI provider key belongs to another account.".into());
+  }
   let config = read_config(&app)?;
   if config.base_url.is_empty() {
     return Err("Set an LLM base URL first".into());
@@ -382,6 +465,9 @@ pub async fn llm_chat<R: Runtime>(
     Err(keyring::Error::NoEntry) => None,
     Err(e) => return Err(e.to_string()),
   };
+  if api_key.is_some() {
+    check_key_origin(slot_origin(&config, user_id), &config.base_url)?;
+  }
 
   let task_app = app.clone();
   let task_request_id = request_id.clone();
@@ -470,6 +556,156 @@ mod tests {
   fn normalize_origin_rejects_an_empty_or_unparseable_url() {
     assert!(normalize_origin("").is_err());
     assert!(normalize_origin("not a url").is_err());
+  }
+
+  fn file_with(legacy: Option<&str>, slots: &[(&str, &str)]) -> LlmConfigFile {
+    LlmConfigFile {
+      key_origin: legacy.map(str::to_string),
+      key_origins: slots.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+      ..Default::default()
+    }
+  }
+
+  #[test]
+  fn slot_origin_prefers_the_slot_entry_over_the_legacy_value() {
+    let file = file_with(Some("https://old.example:443"), &[("7", "https://a.example:443")]);
+    assert_eq!(slot_origin(&file, 7), Some("https://a.example:443"));
+    assert_eq!(slot_origin(&file, 8), Some("https://old.example:443"));
+    assert_eq!(slot_origin(&file_with(None, &[]), 8), None);
+  }
+
+  #[test]
+  fn a_key_is_sent_only_to_the_origin_it_was_issued_for() {
+    assert!(key_may_be_sent(Some("https://api.example.com:443"), "https://API.example.com/v1"));
+    assert!(!key_may_be_sent(Some("https://a.example:443"), "https://b.example/v1"));
+    assert!(!key_may_be_sent(Some("https://a.example:443"), "http://a.example/v1"));
+    assert!(!key_may_be_sent(Some("https://a.example:443"), "not a url"));
+    assert!(!key_may_be_sent(Some("https://a.example:443"), ""));
+  }
+
+  #[test]
+  fn refusal_names_only_the_host_and_never_credentials_or_path() {
+    let err = check_key_origin(Some("https://a.example:443"), "https://user:s3cret@b.example:8443/v1/path?k=1").unwrap_err();
+    assert!(err.contains("b.example"), "{err}");
+    for leaked in ["user", "s3cret", "/v1", "k=1", "8443"] {
+      assert!(!err.contains(leaked), "{err}");
+    }
+    let err = check_key_origin(None, "https://user:s3cret@b.example/v1").unwrap_err();
+    assert!(err.contains("b.example") && !err.contains("s3cret"), "{err}");
+    assert!(!err.contains("different server"), "{err}");
+    assert!(check_key_origin(Some("https://a.example:443"), "not a url").unwrap_err().contains("this server"));
+  }
+
+  #[test]
+  fn a_refusal_leaves_the_stored_key_and_origins_untouched() {
+    let file = file_with(None, &[("1", "https://a.example:443")]);
+    let before = file.key_origins.clone();
+    let store = crate::local_access::tokens::MemorySecrets::new();
+    store.set("api-key:1", "sk-test").unwrap();
+    assert!(check_key_origin(slot_origin(&file, 1), "https://b.example").is_err());
+    assert_eq!(store.get("api-key:1").unwrap().as_deref(), Some("sk-test"));
+    assert_eq!(file.key_origins, before);
+  }
+
+  #[test]
+  fn a_key_moved_by_the_migration_is_allowed_in_the_new_slot() {
+    let mut file = file_with(None, &[("-1", "https://a.example:443")]);
+    assert!(check_key_origin(slot_origin(&file, 7), "https://a.example/v1").is_err());
+    assert!(move_local_key_origin(&mut file.key_origins, &MigrateStatus::Moved, 7));
+    assert!(check_key_origin(slot_origin(&file, 7), "https://a.example/v1").is_ok());
+    assert!(check_key_origin(slot_origin(&file, -1), "https://a.example/v1").is_err());
+  }
+
+  #[test]
+  fn a_key_migrated_before_slot_origins_existed_falls_back_to_the_legacy_origin() {
+    let file = file_with(Some("https://a.example:443"), &[]);
+    assert!(check_key_origin(slot_origin(&file, 7), "https://a.example/v1").is_ok());
+    assert!(check_key_origin(slot_origin(&file, 7), "https://b.example/v1").is_err());
+    assert!(check_key_origin(slot_origin(&file_with(None, &[]), 7), "https://a.example/v1").is_err());
+  }
+
+  #[test]
+  fn the_local_profile_slot_goes_through_the_same_origin_check() {
+    let file = file_with(None, &[("-1", "https://a.example:443")]);
+    assert!(user_slot_allowed(None, -1));
+    assert!(check_key_origin(slot_origin(&file, -1), "https://a.example").is_ok());
+    assert!(check_key_origin(slot_origin(&file, -1), "https://b.example").is_err());
+  }
+
+  #[test]
+  fn a_key_without_a_recorded_origin_is_not_sent() {
+    assert!(!key_may_be_sent(None, "https://a.example/v1"));
+  }
+
+  #[test]
+  fn slot_origins_are_tracked_per_account() {
+    let mut file = file_with(None, &[("1", "https://a.example:443")]);
+    file.key_origins = next_key_origins(file.key_origins, 2, true, Some("https://b.example:443".into()));
+    assert!(key_may_be_sent(slot_origin(&file, 2), "https://b.example"));
+    assert!(!key_may_be_sent(slot_origin(&file, 1), "https://b.example"));
+    assert!(key_may_be_sent(slot_origin(&file, 1), "https://a.example"));
+  }
+
+  #[test]
+  fn next_key_origins_sets_or_removes_only_this_slot() {
+    let start: HashMap<String, String> =
+      [("1".to_string(), "https://a.example:443".to_string())].into_iter().collect();
+    let set = next_key_origins(start.clone(), 2, true, Some("https://b.example:443".into()));
+    assert_eq!(set.len(), 2);
+    assert_eq!(set["1"], "https://a.example:443");
+    assert_eq!(set["2"], "https://b.example:443");
+    let no_key = next_key_origins(set.clone(), 2, false, Some("https://b.example:443".into()));
+    assert_eq!(no_key, start);
+    let no_origin = next_key_origins(set, 2, true, None);
+    assert_eq!(no_origin, start);
+  }
+
+  #[test]
+  fn user_slot_allowed_follows_the_shared_identity() {
+    assert!(user_slot_allowed(Some(5), 5));
+    assert!(!user_slot_allowed(Some(5), 6));
+    assert!(!user_slot_allowed(Some(5), -1));
+    assert!(!user_slot_allowed(Some(5), 0));
+    assert!(user_slot_allowed(None, -1));
+    assert!(!user_slot_allowed(None, 0));
+    assert!(!user_slot_allowed(None, 5));
+  }
+
+  fn origins(entries: &[(&str, &str)]) -> HashMap<String, String> {
+    entries.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+  }
+
+  #[test]
+  fn migrating_moves_the_local_origin_to_the_account() {
+    for status in [MigrateStatus::Moved, MigrateStatus::Already] {
+      let mut map = origins(&[("-1", "https://a.example:443"), ("9", "https://c.example:443")]);
+      assert!(move_local_key_origin(&mut map, &status, 7));
+      assert_eq!(map, origins(&[("7", "https://a.example:443"), ("9", "https://c.example:443")]));
+    }
+  }
+
+  #[test]
+  fn migrating_never_overwrites_an_existing_account_origin() {
+    let mut map = origins(&[("-1", "https://a.example:443"), ("7", "https://b.example:443")]);
+    assert!(move_local_key_origin(&mut map, &MigrateStatus::Already, 7));
+    assert_eq!(map, origins(&[("7", "https://b.example:443")]));
+  }
+
+  #[test]
+  fn migrating_changes_nothing_on_conflict_or_none() {
+    for status in [MigrateStatus::Conflict, MigrateStatus::None] {
+      let mut map = origins(&[("-1", "https://a.example:443")]);
+      assert!(!move_local_key_origin(&mut map, &status, 7));
+      assert_eq!(map, origins(&[("-1", "https://a.example:443")]));
+    }
+  }
+
+  #[test]
+  fn legacy_config_without_slot_origins_still_parses() {
+    let file: LlmConfigFile =
+      serde_json::from_str(r#"{"base_url":"https://a.example","model":"m","key_origin":"https://a.example:443"}"#).unwrap();
+    assert!(file.key_origins.is_empty());
+    assert_eq!(slot_origin(&file, 3), Some("https://a.example:443"));
   }
 
   #[test]

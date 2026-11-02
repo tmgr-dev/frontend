@@ -92,6 +92,16 @@ pub fn clear_at(path: &Path) -> Result<(), String> {
   }
 }
 
+pub fn read_at(path: &Path) -> Option<i64> {
+  let value: serde_json::Value = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
+  let id = value.get("id")?.as_i64()?;
+  (id > 0 && id <= ID_MAX).then_some(id)
+}
+
+pub fn current_id<R: Runtime>(app: &AppHandle<R>) -> Option<i64> {
+  read_at(&path(app).ok()?)
+}
+
 #[tauri::command]
 pub fn local_identity_set<R: Runtime>(app: AppHandle<R>, id: i64, name: String) -> Result<(), String> {
   set_at(&path(&app)?, id, &name)
@@ -171,6 +181,30 @@ mod tests {
     }
     assert!(!file.exists());
     set_at(&file, ID_MAX, "A").unwrap();
+  }
+
+  #[test]
+  fn read_returns_the_written_id() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = target(&dir);
+    assert_eq!(read_at(&file), None);
+    set_at(&file, 42, "A").unwrap();
+    assert_eq!(read_at(&file), Some(42));
+    clear_at(&file).unwrap();
+    assert_eq!(read_at(&file), None);
+  }
+
+  #[test]
+  fn read_ignores_unparseable_files_and_out_of_range_ids() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = target(&dir);
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    for body in ["", "not json", "{}", r#"{"id":"5"}"#, r#"{"id":0}"#, r#"{"id":-1}"#, r#"{"id":1.5}"#, r#"{"id":9007199254740992}"#] {
+      fs::write(&file, body).unwrap();
+      assert_eq!(read_at(&file), None, "{body}");
+    }
+    fs::write(&file, r#"{"id":9007199254740991}"#).unwrap();
+    assert_eq!(read_at(&file), Some(ID_MAX));
   }
 
   #[test]
