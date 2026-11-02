@@ -4,10 +4,14 @@ mod common;
 
 use common::{git, init_repo, path_with, write_script, Env};
 use serde_json::{json, Value};
+use std::io::Read;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
+const COMMAND_LIMIT: Duration = Duration::from_secs(120);
 const BRANCH: &str = "tmgr/tm-410-fix-login";
 const FLAT: &str = "tmgr-tm-410-fix-login";
 
@@ -131,11 +135,65 @@ impl Rig {
     }
 
     fn cmd(&self, args: &[&str]) -> Output {
-        self.command(args).output().unwrap()
+        let mut child = self.command(args).spawn().unwrap();
+        let mut pipes = [
+            Box::new(child.stdout.take().unwrap()) as Box<dyn Read + Send>,
+            Box::new(child.stderr.take().unwrap()),
+        ]
+        .into_iter()
+        .map(|mut pipe| {
+            thread::spawn(move || {
+                let mut b = Vec::new();
+                let _ = pipe.read_to_end(&mut b);
+                b
+            })
+        });
+        let (out, err) = (pipes.next().unwrap(), pipes.next().unwrap());
+        let deadline = Instant::now() + COMMAND_LIMIT;
+        let stuck = |what: &str, child: &mut Child| -> ! {
+            let ps = Command::new("ps")
+                .args(["-axo", "pid,ppid,stat,etime,command"])
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                .unwrap_or_default();
+            let root = self.root.to_string_lossy().into_owned();
+            let run = self.runner.path().to_string_lossy().into_owned();
+            let ps: String = ps
+                .lines()
+                .filter(|l| l.contains(&root) || l.contains(&run) || l.contains("tmgr"))
+                .map(|l| format!("{l}\n"))
+                .collect();
+            let log = std::fs::read_to_string(self.runner.path().join("r/runner.log"))
+                .unwrap_or_default();
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("tmgr {args:?} {what} within {COMMAND_LIMIT:?}\nrunner log:\n{log}\nprocesses:\n{ps}");
+        };
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                stuck("did not exit", &mut child);
+            }
+            thread::sleep(Duration::from_millis(50));
+        };
+        while !(out.is_finished() && err.is_finished()) {
+            if Instant::now() >= deadline {
+                stuck("exited but kept its output open", &mut child);
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        Output {
+            status,
+            stdout: out.join().unwrap(),
+            stderr: err.join().unwrap(),
+        }
     }
 
-    fn command(&self, args: &[&str]) -> assert_cmd::Command {
-        let mut c = self.env.cmd();
+    fn command(&self, args: &[&str]) -> Command {
+        let mut c = self.env.std_cmd();
+        c.stdin(Stdio::null());
         c.env("PATH", path_with(Some(&self.root.join("stub"))))
             .env("TMGR_RUNNER_DIR", self.runner.path().join("r"))
             .env("TMGR_RUNNER_HOMES", self.runner.path().join("h"))
