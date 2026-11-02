@@ -1661,6 +1661,70 @@ mod tests {
         assert_eq!(p.write.len(), 2);
     }
 
+    fn team_member_fx(member: &str) -> (Fx, PathBuf, PathBuf) {
+        let mut f = fx();
+        let root = f.spec.cwd.parent().unwrap().to_path_buf();
+        let repo = root.join("repo");
+        let pickup = root.join("repo-worktrees/queue/p_1");
+        for d in ["lead", "w1", "w2"] {
+            fs::create_dir_all(pickup.join(d)).unwrap();
+        }
+        fs::create_dir_all(&repo).unwrap();
+        f.spec.cwd = pickup.join(member);
+        f.spec.cwd_id = None;
+        (f, repo, pickup)
+    }
+
+    fn quoted(p: &Path) -> String {
+        sbpl_quote(p).unwrap()
+    }
+
+    #[test]
+    fn a_team_worker_can_write_only_its_own_folder_and_home() {
+        let (f, repo, pickup) = team_member_fx("w1");
+        let p = plan(&f.spec).unwrap().paths;
+        let own = pickup.join("w1");
+        assert_eq!(p.write, vec![own.clone(), p.home.clone()]);
+        for sibling in [pickup.join("w2"), pickup.join("lead"), repo] {
+            assert!(
+                !p.write.iter().any(|w| w.starts_with(&sibling)),
+                "{sibling:?}"
+            );
+        }
+        for ancestor in [pickup.clone(), pickup.parent().unwrap().to_path_buf()] {
+            assert!(!p.write.contains(&ancestor), "{ancestor:?}");
+        }
+        let profile = seatbelt_profile(&p).unwrap();
+        let allowed: Vec<&str> = profile
+            .lines()
+            .filter(|l| l.starts_with("(allow file-write* (subpath ") && !l.contains("\"/dev/fd\""))
+            .collect();
+        assert_eq!(
+            allowed,
+            vec![
+                format!("(allow file-write* (subpath {}))", quoted(&own)),
+                format!("(allow file-write* (subpath {}))", quoted(&p.home)),
+            ]
+        );
+        for other in ["w2", "lead"] {
+            assert!(!profile.contains(&quoted(&pickup.join(other))), "{other}");
+        }
+        assert!(!profile.contains(&quoted(&pickup)));
+    }
+
+    #[test]
+    fn a_team_member_is_built_exactly_like_a_single_run() {
+        let (w, _, _) = team_member_fx("w1");
+        let (l, _, _) = team_member_fx("lead");
+        let pw = plan(&w.spec).unwrap().paths;
+        let pl = plan(&l.spec).unwrap().paths;
+        assert_eq!(pw.write.len(), pl.write.len());
+        assert_eq!(pw.deny.len(), pl.deny.len());
+        assert_eq!(pw.read.len(), pl.read.len());
+        assert!(pl.write.contains(&l.spec.cwd.canonicalize().unwrap()));
+        assert!(!pl.write.contains(&w.spec.cwd.canonicalize().unwrap()));
+    }
+
     #[test]
     fn sbpl_escapes_quotes_and_backslashes() {
         assert_eq!(
@@ -1856,6 +1920,35 @@ mod tests {
         assert_eq!(v["write"].as_array().unwrap().len(), 2);
         assert!(v["deny"].as_array().unwrap().len() >= 2);
         assert!(v["cwd_ino"].as_u64().unwrap() > 0);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_team_worker_policy_writes_only_its_folder_and_home() {
+        let (f, _, pickup) = team_member_fx("w1");
+        let l = prepare(&f.spec).unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&fs::read(&l.argv[2]).unwrap()).unwrap();
+        let write: Vec<&str> = v["write"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p.as_str().unwrap())
+            .collect();
+        let own = pickup.join("w1");
+        assert_eq!(write.len(), 2);
+        assert!(write.contains(&own.to_str().unwrap()));
+        assert!(write.contains(
+            &f.spec
+                .home
+                .canonicalize()
+                .unwrap_or(f.spec.home.clone())
+                .to_str()
+                .unwrap()
+        ));
+        for other in ["w2", "lead"] {
+            assert!(!write.iter().any(|w| w.contains(other)), "{other}");
+        }
+        assert!(!write.contains(&pickup.to_str().unwrap()));
     }
 
     #[cfg(target_os = "linux")]
