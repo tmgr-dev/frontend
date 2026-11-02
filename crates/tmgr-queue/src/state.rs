@@ -258,6 +258,10 @@ impl Pickup {
     pub fn occupies(&self) -> bool {
         self.status.is_live() && !self.run_exited
     }
+
+    pub fn listed(&self) -> bool {
+        !self.released || (self.team.is_some() && self.status.is_live())
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]

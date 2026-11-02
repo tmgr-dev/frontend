@@ -703,3 +703,17 @@ fn the_runner_is_still_needed_while_a_worker_runs_after_the_lead_has_gone() {
     state::save(&fx.paths, &mut st).unwrap();
     assert!(!needs_runner(&fx.paths).unwrap());
 }
+
+#[test]
+fn a_released_pickup_stays_listed_only_while_its_team_is_live() {
+    let fx = working_team();
+    let mut p = pickup(&fx);
+    assert!(p.listed());
+    p.released = true;
+    assert!(p.listed());
+    p.status = Status::Failed;
+    assert!(!p.listed());
+    p.status = Status::Started;
+    p.team = None;
+    assert!(!p.listed());
+}
