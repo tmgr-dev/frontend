@@ -8,6 +8,7 @@ use crate::folders;
 use crate::humantime;
 use crate::login;
 use crate::orchestrator;
+use crate::permit::{self, spool, Eval};
 use crate::permit_hook;
 use crate::profile::{self, Matcher, Profile, ProfileSet};
 use crate::restore;
@@ -43,9 +44,9 @@ use tmgr_ipc::api::{
     limits, method, AutopilotCommand, AutopilotControlParams, AutopilotControlled, AutopilotLog,
     AutopilotLogParams, AutopilotStartParams, AutopilotStarted, CreateReq, CwdPin, ErrorCode,
     EventMsg, ExePin, ForkParams, LookupParams, OrchestratorCreateReq, Origin, OriginRevokeParams,
-    OriginRevoked, PathParams, RestoredRun, ResumeParams, RunCreateReq, RunStatus, SessionInfo,
-    SessionText, Snapshot, State, StateKind, StatusInfo, TaskRef, TextParams, TrustRemoved,
-    CLIENT_CLI, CLIENT_DESKTOP, CLIENT_WORKER,
+    OriginRevoked, PathParams, PermissionAnswer, PermissionCard, PermissionChoice, RestoredRun,
+    ResumeParams, RunCreateReq, RunStatus, SessionInfo, SessionText, Snapshot, State, StateKind,
+    StatusInfo, TaskRef, TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP, CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -402,6 +403,17 @@ impl ShimLink {
     }
 }
 
+#[derive(Default)]
+struct Cards {
+    first_seen: Option<(String, Instant)>,
+    answered: Option<String>,
+    consumed: Option<(u64, u64)>,
+    last_hook: Option<permit::HookEvent>,
+}
+
+const CARD_ARM: Duration = Duration::from_millis(300);
+const STAT_FRESH: Duration = Duration::from_secs(1);
+
 struct ReplyBudget {
     window: Instant,
     used: u32,
@@ -432,6 +444,9 @@ struct Session {
     foreign_input: AtomicBool,
     resuming: AtomicBool,
     cp: checkpoints::Cp,
+    home: PathBuf,
+    fg: Mutex<Option<(i32, Instant)>>,
+    cards: Mutex<Cards>,
 }
 
 fn write_meta(dir: &Path, meta: &Meta) {
@@ -741,6 +756,140 @@ impl Session {
         }
     }
 
+    fn card_agent(&self) -> Option<permit::Agent> {
+        let i = lock(&self.inner);
+        i.meta
+            .profile
+            .as_deref()
+            .and_then(permit::agent_of)
+            .filter(|_| i.meta.permission_cards)
+    }
+
+    fn newest_hook(&self, consumed: Option<(u64, u64)>) -> Option<permit::HookEvent> {
+        let ev = spool::newest(&self.home, &self.id)?;
+        let key = spool::order(&ev.id)?;
+        consumed.is_none_or(|c| key > c).then_some(ev)
+    }
+
+    fn foreground_is_agent(&self) -> bool {
+        let child = lock(&self.inner).meta.child_pid;
+        lock(&self.fg).is_some_and(|(pg, at)| {
+            at.elapsed() <= STAT_FRESH && u32::try_from(pg).is_ok_and(|p| p == child)
+        })
+    }
+
+    fn card(&self) -> Option<PermissionCard> {
+        let agent = self.card_agent()?;
+        let mut c = lock(&self.cards);
+        let hook = self
+            .newest_hook(c.consumed)
+            .or_else(|| c.answered.is_some().then(|| c.last_hook.clone()).flatten());
+        let rows = lock(&self.inner).screen.text_lines(None).3;
+        let fg = self.foreground_is_agent();
+        let base = PermissionCard {
+            session: self.id.clone(),
+            agent: agent.name().into(),
+            ..PermissionCard::default()
+        };
+        let Some(ev) = Eval::new(&self.id, agent, &rows, hook) else {
+            c.first_seen = None;
+            c.answered = None;
+            let state = self.state();
+            let detail = state.detail.filter(|d| {
+                state.kind == StateKind::Blocked && !d.to_lowercase().contains("trust this folder")
+            })?;
+            return Some(PermissionCard {
+                id: permit::digest(&[&self.id, &detail]),
+                text: permit::clean_text(&detail),
+                why_not: Some("open the pane to answer".into()),
+                ..base
+            });
+        };
+        if c.first_seen.as_ref().is_none_or(|(id, _)| *id != ev.id) {
+            c.first_seen = Some((ev.id.clone(), Instant::now()));
+        }
+        let waited = c
+            .first_seen
+            .as_ref()
+            .map_or(Duration::ZERO, |(_, t)| t.elapsed());
+        let why_not = if c.answered.as_deref() == Some(&ev.id) {
+            Some("answered".to_string())
+        } else if let permit::Verdict::ViewOnly(why) = ev.verdict {
+            Some(why.to_string())
+        } else if !fg {
+            Some("another process is in the foreground".to_string())
+        } else {
+            None
+        };
+        Some(PermissionCard {
+            id: ev.id.clone(),
+            tool: ev.tool(),
+            text: ev.text(),
+            path: ev.path(),
+            reason: ev.reason(),
+            danger: ev.danger.iter().map(|d| d.to_string()).collect(),
+            can_answer: why_not.is_none(),
+            why_not,
+            always_label: ev.always_label(),
+            armed_in_ms: CARD_ARM.saturating_sub(waited).as_millis() as u64,
+            ..base
+        })
+    }
+
+    fn answer_card(&self, client: &str, a: &PermissionAnswer) -> Result<(), ApiErr> {
+        let agent = self
+            .card_agent()
+            .ok_or_else(|| refused("permission cards are off for this session"))?;
+        let mut c = lock(&self.cards);
+        if c.answered.as_deref() == Some(&a.card) {
+            return Err(refused("this prompt was already answered"));
+        }
+        let hook = self.newest_hook(c.consumed);
+        let rows = lock(&self.inner).screen.text_lines(None).3;
+        let ev = Eval::new(&self.id, agent, &rows, hook)
+            .ok_or_else(|| refused("the prompt is no longer on screen"))?;
+        if ev.id != a.card {
+            return Err(refused("the prompt changed since the card was shown"));
+        }
+        if let permit::Verdict::ViewOnly(why) = ev.verdict {
+            return Err(refused(why));
+        }
+        if !self.foreground_is_agent() {
+            return Err(refused("another process is in the foreground"));
+        }
+        let first = match &c.first_seen {
+            Some((id, t)) if *id == ev.id => *t,
+            _ => {
+                c.first_seen = Some((ev.id.clone(), Instant::now()));
+                return Err(refused("the card was just shown; try again"));
+            }
+        };
+        if first.elapsed() < CARD_ARM {
+            return Err(refused("the card was just shown; try again"));
+        }
+        let choice = match a.choice {
+            PermissionChoice::Yes => permit::Choice::Yes,
+            PermissionChoice::Always => permit::Choice::Always,
+            PermissionChoice::No => permit::Choice::No,
+        };
+        let key = ev.key(choice, a.confirmed).map_err(refused)?;
+        c.answered = Some(ev.id.clone());
+        if let Some(h) = &ev.hook {
+            c.consumed = spool::order(&h.id);
+            c.last_hook = Some(h.clone());
+            spool::remove(&self.home, &self.id, &h.id);
+        }
+        self.note_input_from(client);
+        if self.input(&key) {
+            Ok(())
+        } else {
+            Err(api(
+                ErrorCode::Busy,
+                "input queue full; the agent is not reading its input",
+            ))
+        }
+    }
+
     fn input(&self, bytes: &[u8]) -> bool {
         let accepted = self.shim_input(bytes);
         if accepted && !bytes.is_empty() {
@@ -991,7 +1140,10 @@ impl Session {
             match frame {
                 Frame::Bin(b) => self.feed(&b.data, answer_replay || b.tag != TAG_REPLAY),
                 Frame::Json(v) => match serde_json::from_value::<FromShim>(v) {
-                    Ok(FromShim::Stat(s)) => self.on_stat(s.fg_cpu_ns, s.fg_waiting_tty),
+                    Ok(FromShim::Stat(s)) => {
+                        *lock(&self.fg) = s.fg_pgid.map(|p| (p, Instant::now()));
+                        self.on_stat(s.fg_cpu_ns, s.fg_waiting_tty)
+                    }
                     Ok(FromShim::Exited(e)) => self.on_exit_report(&e),
                     Ok(FromShim::SignalAck { id, delivered, .. }) => {
                         let mut acks = lock(&self.sig_acks);
@@ -1712,6 +1864,13 @@ fn kill_reason(p: &Value) -> Result<Option<String>, ApiErr> {
     Ok((!clean.is_empty()).then_some(clean))
 }
 
+fn refused(why: &str) -> ApiErr {
+    api(
+        ErrorCode::Forbidden,
+        format!("permission answer refused: {why}"),
+    )
+}
+
 fn session_id_param(v: &Value) -> Result<String, ApiErr> {
     let id = v
         .get("id")
@@ -2015,6 +2174,39 @@ impl Runner {
                         "input queue full; the agent is not reading its input",
                     ));
                 }
+                Ok(Value::Null)
+            }
+            method::PERMISSIONS_LIST => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "permission cards are only available to the tmgr CLI",
+                    ));
+                }
+                let mut cards: Vec<PermissionCard> = self
+                    .all()
+                    .iter()
+                    .filter(|s| !s.is_exited() && s.has_shim())
+                    .filter_map(|s| s.card())
+                    .collect();
+                cards.sort_by(|a, b| a.session.cmp(&b.session));
+                Ok(to_json(&cards))
+            }
+            method::PERMISSIONS_ANSWER => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "permission cards are only available to the tmgr CLI",
+                    ));
+                }
+                let a: PermissionAnswer = params(p)?;
+                let s = self
+                    .session(&a.session)
+                    .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
+                if s.is_exited() || !s.has_shim() {
+                    return Err(refused("the session is not running"));
+                }
+                s.answer_card(&conn.client, &a)?;
                 Ok(Value::Null)
             }
             method::SESSIONS_TEXT => {
@@ -3663,6 +3855,13 @@ impl Runner {
 
     fn new_session(&self, meta: Meta, matcher: Option<Matcher>, sdir: &Path) -> Arc<Session> {
         let screen = ScreenModel::new(meta.rows, meta.cols, SCROLLBACK);
+        let home = if meta.no_sandbox {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_default()
+        } else {
+            self.cfg.homes.join(&meta.id)
+        };
         let session = Arc::new(Session {
             id: meta.id.clone(),
             dir: sdir.to_path_buf(),
@@ -3698,6 +3897,9 @@ impl Runner {
             foreign_input: AtomicBool::new(false),
             resuming: AtomicBool::new(false),
             cp: checkpoints::Cp::new(self.cfg.homes.clone()),
+            home,
+            fg: Mutex::new(None),
+            cards: Mutex::new(Cards::default()),
         });
         session.cp_refresh();
         session

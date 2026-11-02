@@ -1,12 +1,16 @@
+mod card;
 mod danger;
 mod dialog;
 mod matcher;
+#[cfg(unix)]
+pub mod spool;
 #[cfg(test)]
 mod tests;
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+pub use card::{agent_of, clean_text, digest, Eval};
 pub use danger::danger;
 pub use dialog::parse_dialog;
 pub use matcher::verdict;
@@ -20,7 +24,7 @@ pub enum Agent {
 }
 
 impl Agent {
-    fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Agent::Claude => "claude",
             Agent::Codex => "codex",
