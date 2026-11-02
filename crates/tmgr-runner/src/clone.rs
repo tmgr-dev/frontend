@@ -264,3 +264,52 @@ pub fn check_multi(
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bundle::open_path;
+    use std::process::Command;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let out = Command::new("git")
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{args:?}: {out:?}");
+    }
+
+    #[test]
+    fn a_team_member_clone_below_queue_pickup_is_accepted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        git(&repo, &["init", "-q", "-b", "main"]);
+        git(&repo, &["commit", "-q", "--allow-empty", "-m", "initial"]);
+        let pickup = root.join("repo-worktrees/queue/p_1");
+        std::fs::create_dir_all(&pickup).unwrap();
+        let src = repo.to_str().unwrap();
+        for member in ["lead", "w1"] {
+            let dest = pickup.join(member);
+            git(
+                &pickup,
+                &[
+                    "clone",
+                    "-q",
+                    "--reference",
+                    src,
+                    src,
+                    dest.to_str().unwrap(),
+                ],
+            );
+            let objects = check(&open_path(dest).unwrap(), src).unwrap();
+            assert!(!objects.task_clone);
+            assert_eq!(objects.path, repo.join(".git/objects"));
+        }
+    }
+}
