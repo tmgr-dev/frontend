@@ -443,12 +443,12 @@
 							name:
 								store.state.user?.name || store.state.localProfile?.name || '',
 							email: '',
-					  }
+						}
 					: {
 							id: Number(store.state.user?.id) || 0,
 							name: store.state.user?.name ?? '',
 							email: store.state.user?.email ?? '',
-					  };
+						};
 
 			const ctxFor = async () => {
 				if (!workspace) throw new Error('No local workspace is open');
@@ -483,7 +483,7 @@
 					drafts[persona.uuid] = persona.permissions ?? [];
 			};
 
-			const invoke = async <T>(
+			const invoke = async <T,>(
 				command: string,
 				args?: Record<string, unknown>,
 			): Promise<T> => {

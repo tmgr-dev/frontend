@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.82 — 2026-11-02
+
+- AI provider settings: when your account has not reached the desktop app yet, the message now says so and what to do, instead of blaming another account. The base URL and model can still be saved in that state; the API key is left alone.
+- AI provider settings: the panel now picks up your account as soon as it is available and shows whether a key is saved, without reopening the page.
+- A failed attempt to share your account with the desktop app is retried before AI settings and chat are used.
+
 ## 0.9.81 — 2026-11-02
 
 - Asking a persona: the answer now appears as it is written, in a small scrolling area under Asking…. The finished answer is still posted as a comment.

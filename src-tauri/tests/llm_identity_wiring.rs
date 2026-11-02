@@ -55,9 +55,9 @@ const IDENTITY: i64 = 7;
 const OTHER: i64 = 8;
 
 struct Fixture {
-  _guard: MutexGuard<'static, ()>,
   app: App<MockRuntime>,
   window: tauri::Window<MockRuntime>,
+  _guard: MutexGuard<'static, ()>,
 }
 
 fn identity_file() -> std::path::PathBuf {
@@ -76,7 +76,7 @@ fn fixture(identity: Option<i64>) -> Fixture {
   WebviewWindowBuilder::new(&app, "main", WebviewUrl::default()).build().unwrap();
   let _ = std::fs::remove_file(app.path().app_data_dir().unwrap().join("llm_config.json"));
   let window = app.get_webview_window("main").unwrap().as_ref().window();
-  Fixture { _guard: guard, app, window }
+  Fixture { app, window, _guard: guard }
 }
 
 fn plant_key(user_id: i64) {
