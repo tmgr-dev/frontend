@@ -86,6 +86,7 @@ const APP_COMMANDS: &[&str] = &[
   "local_access_ready",
   "local_access_reply",
   "runner_enabled",
+  "runner_allowed_list",
   "runner_set_enabled",
   "runner_status",
   "runner_profiles",
