@@ -574,7 +574,13 @@ async fn a_process_running_a_binary_from_the_copy_keeps_it() {
     rig.merged();
     let bin = rig.copy.join("target/debug/sleeper");
     std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
-    std::fs::copy("/bin/sleep", &bin).unwrap();
+    // Copied by a child: a write fd held here would be inherited by a parallel test's fork (ETXTBSY).
+    let copied = Command::new("cp")
+        .arg("/bin/sleep")
+        .arg(&bin)
+        .status()
+        .unwrap();
+    assert!(copied.success());
     if cfg!(target_os = "macos") {
         let signed = Command::new("codesign")
             .args(["-s", "-", "--force"])
