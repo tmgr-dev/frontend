@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.64
+
+- `tmgr attach`: answer an agent's permission prompt from the sidebar, off by default. Turn it on with `tmgr run --permission-cards`, the Approvals row in the new-session form, or `tmgr config set attach.permission_cards true`. The setting is read when a session is created. The status line shows `cards on` and such sessions carry a `◈` marker.
+- A card shows the session and the agent's full command or file, with Allow and Deny. It shows the agent's "always" option only when the agent offers one for that command. If the text does not fit, Show all opens it in an overlay and the buttons appear at the end. `Ctrl-] a` or "Permission requests" in the palette opens the cards.
+- Risky commands are red and need a second confirmation. Nothing is approved automatically. The second confirmation comes from a list of known risky patterns, so a command that is not red is not proven safe.
+- The answer is one key typed into the agent's own prompt, and the card goes away when the agent continues.
+- Answers work for Claude Code Bash, Claude Code Write with the full content visible, and Codex commands in a sandboxed session. Anything else, or anything that does not match exactly what the agent shows, gets a view-only card with Open pane and no buttons.
+- Cards are local only. Remote attach shows none, and no server or web path can answer a prompt.
+
 ## 1.0.63
 
 - Queue and `--worktree` checkouts are now cloned without sharing object files with the source repository.
