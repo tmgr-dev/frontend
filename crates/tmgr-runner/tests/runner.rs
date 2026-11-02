@@ -3461,6 +3461,7 @@ impl CloneFx {
             &[
                 "clone",
                 "-q",
+                "--no-local",
                 "--reference",
                 self.repo.to_str().unwrap(),
                 self.repo.to_str().unwrap(),
@@ -4049,7 +4050,7 @@ fn clone_into(repo: &Path, dest: &Path, reference: bool) -> PathBuf {
     let parent = dest.parent().unwrap();
     fs::create_dir_all(parent).unwrap();
     let r = repo.to_str().unwrap();
-    let mut args = vec!["clone", "-q"];
+    let mut args = vec!["clone", "-q", "--no-local"];
     if reference {
         args.extend(["--reference", r]);
     }

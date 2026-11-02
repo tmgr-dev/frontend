@@ -122,7 +122,7 @@ impl Repo {
         }
     }
 
-    fn check_clone(&self, dir: i32) -> Result<bool, Refusal> {
+    fn check_clone(&self, dir: i32, folder: &Path) -> Result<bool, Refusal> {
         let clone_git = open_at(dir, ".git", DIR).map_err(|_| {
             (
                 ErrorCode::InvalidParams,
@@ -130,6 +130,7 @@ impl Repo {
                     .to_string(),
             )
         })?;
+        refuse_shared_objects(&clone_git, folder)?;
         let want = self.path.join(".git/objects");
         let want = want.to_str().unwrap_or("");
         let info = walk(&clone_git, &["objects", "info"]);
@@ -170,6 +171,92 @@ impl Repo {
     }
 }
 
+fn first_shared(objects: File) -> std::io::Result<bool> {
+    let mut stack = vec![objects];
+    while let Some(dir) = stack.pop() {
+        let fd = unsafe { libc::dup(dir.as_raw_fd()) };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let stream = unsafe { libc::fdopendir(fd) };
+        if stream.is_null() {
+            let e = std::io::Error::last_os_error();
+            unsafe { libc::close(fd) };
+            return Err(e);
+        }
+        let mut names = Vec::new();
+        loop {
+            let ent = unsafe { libc::readdir(stream) };
+            if ent.is_null() {
+                break;
+            }
+            let name = unsafe { std::ffi::CStr::from_ptr((*ent).d_name.as_ptr()) }.to_owned();
+            if !matches!(name.to_bytes(), b"." | b"..") {
+                names.push(name);
+            }
+        }
+        unsafe { libc::closedir(stream) };
+        for name in names {
+            let mut st: libc::stat = unsafe { std::mem::zeroed() };
+            let rc = unsafe {
+                libc::fstatat(
+                    dir.as_raw_fd(),
+                    name.as_ptr(),
+                    &mut st,
+                    libc::AT_SYMLINK_NOFOLLOW,
+                )
+            };
+            if rc != 0 {
+                let e = std::io::Error::last_os_error();
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    continue;
+                }
+                return Err(e);
+            }
+            match st.st_mode & libc::S_IFMT {
+                libc::S_IFREG if st.st_nlink > 1 => return Ok(true),
+                libc::S_IFDIR => {
+                    use std::os::unix::ffi::OsStrExt;
+                    match open_at(
+                        dir.as_raw_fd(),
+                        std::ffi::OsStr::from_bytes(name.to_bytes()),
+                        DIR,
+                    ) {
+                        Ok(sub) => stack.push(sub),
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(e) => return Err(e),
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn refuse_shared_objects(clone_git: &File, folder: &Path) -> Result<(), Refusal> {
+    let unreadable = |_| {
+        (
+            ErrorCode::InvalidParams,
+            format!(
+                "clone_of: the object files of {} cannot be read; re-clone it or remove it",
+                folder.display()
+            ),
+        )
+    };
+    let objects = walk(clone_git, &["objects"]).map_err(unreadable)?;
+    if first_shared(objects).map_err(unreadable)? {
+        return Err((
+            ErrorCode::InvalidParams,
+            format!(
+                "clone_of: {} shares object files with another repository; re-clone it or remove it. The runner leaves the folder as it is",
+                folder.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
 fn folder_below(cwd: &Dir, root: &Path) -> Result<Vec<String>, Refusal> {
     let root_fd = open_root(root).map_err(|_| {
         (
@@ -201,7 +288,7 @@ fn folder_below(cwd: &Dir, root: &Path) -> Result<Vec<String>, Refusal> {
 pub fn check(cwd: &Dir, clone_of: &str) -> Result<Objects, Refusal> {
     let repo = Repo::open(clone_of)?;
     let rel = folder_below(cwd, &repo.worktrees())?;
-    let referenced = repo.check_clone(cwd.raw_fd())?;
+    let referenced = repo.check_clone(cwd.raw_fd(), &cwd.path)?;
     Ok(repo.objects(referenced && rel.len() == 1 && rel[0] != "queue"))
 }
 
@@ -259,7 +346,7 @@ pub fn check_multi(
                 format!("clone_of: {name} is not a real directory inside the run folder"),
             )
         })?;
-        let referenced = repo.check_clone(dir.as_raw_fd())?;
+        let referenced = repo.check_clone(dir.as_raw_fd(), &run.path.join(name))?;
         out.push(repo.objects(referenced && task_folder));
     }
     Ok(out)
@@ -276,11 +363,18 @@ mod tests {
             .current_dir(dir)
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .env("GIT_CONFIG_NOSYSTEM", "1")
-            .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
             .args(args)
             .output()
             .unwrap();
-        assert!(out.status.success(), "{args:?}: {out:?}");
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 
     #[test]
@@ -301,6 +395,7 @@ mod tests {
                 &[
                     "clone",
                     "-q",
+                    "--no-local",
                     "--reference",
                     src,
                     src,
@@ -311,5 +406,158 @@ mod tests {
             assert!(!objects.task_clone);
             assert_eq!(objects.path, repo.join(".git/objects"));
         }
+    }
+
+    struct Fx {
+        _tmp: tempfile::TempDir,
+        repo: PathBuf,
+        work: PathBuf,
+    }
+
+    fn fx() -> Fx {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("repo");
+        let work = root.join("repo-worktrees");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::create_dir_all(&work).unwrap();
+        git(&repo, &["init", "-q", "-b", "main"]);
+        std::fs::write(repo.join("a.txt"), "hello\n").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-q", "-m", "init"]);
+        Fx {
+            _tmp: tmp,
+            repo,
+            work,
+        }
+    }
+
+    impl Fx {
+        fn hardlinked(&self, at: &Path) {
+            git(
+                &self.work,
+                &[
+                    "clone",
+                    "-q",
+                    "--local",
+                    self.repo.to_str().unwrap(),
+                    at.to_str().unwrap(),
+                ],
+            );
+        }
+
+        fn referenced(&self, at: &Path) {
+            git(
+                &self.work,
+                &[
+                    "clone",
+                    "-q",
+                    "--no-local",
+                    "--reference",
+                    self.repo.to_str().unwrap(),
+                    self.repo.to_str().unwrap(),
+                    at.to_str().unwrap(),
+                ],
+            );
+        }
+
+        fn check(&self, dir: &Path) -> Result<Objects, Refusal> {
+            check(
+                &open_path(dir.to_path_buf()).unwrap(),
+                self.repo.to_str().unwrap(),
+            )
+        }
+    }
+
+    fn snapshot(root: &Path) -> Vec<(PathBuf, u32, u64, i64, u64, u64)> {
+        let mut out = Vec::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).unwrap() {
+                let p = e.unwrap().path();
+                let m = std::fs::symlink_metadata(&p).unwrap();
+                out.push((p.clone(), m.mode(), m.len(), m.mtime(), m.nlink(), m.ino()));
+                if m.is_dir() {
+                    stack.push(p);
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    #[test]
+    fn a_clone_that_shares_object_files_is_refused_and_named() {
+        let f = fx();
+        let dir = f.work.join("task");
+        f.hardlinked(&dir);
+        let shared = std::fs::read_dir(dir.join(".git/objects"))
+            .unwrap()
+            .flat_map(|d| std::fs::read_dir(d.unwrap().path()).into_iter().flatten())
+            .any(|e| {
+                std::fs::symlink_metadata(e.unwrap().path())
+                    .unwrap()
+                    .nlink()
+                    > 1
+            });
+        assert!(shared, "the fixture must hold hardlinked objects");
+        let (code, msg) = f.check(&dir).unwrap_err();
+        assert_eq!(code, ErrorCode::InvalidParams);
+        assert!(msg.contains(dir.to_str().unwrap()), "{msg}");
+        assert!(msg.contains("re-clone"), "{msg}");
+        assert!(msg.contains("remove"), "{msg}");
+    }
+
+    #[test]
+    fn a_reference_clone_without_shared_files_passes() {
+        let f = fx();
+        let dir = f.work.join("task");
+        f.referenced(&dir);
+        let objects = f.check(&dir).unwrap();
+        assert!(objects.task_clone);
+    }
+
+    #[test]
+    fn a_refused_clone_is_left_exactly_as_it_was() {
+        let f = fx();
+        let dir = f.work.join("task");
+        f.hardlinked(&dir);
+        std::fs::write(dir.join("wip.txt"), "unsaved\n").unwrap();
+        let before = snapshot(&dir);
+        assert!(f.check(&dir).is_err());
+        assert_eq!(snapshot(&dir), before);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("wip.txt")).unwrap(),
+            "unsaved\n"
+        );
+    }
+
+    #[test]
+    fn every_clone_of_a_run_folder_is_checked() {
+        let f = fx();
+        let run = f.work.join("run");
+        std::fs::create_dir_all(&run).unwrap();
+        f.referenced(&run.join("good"));
+        f.hardlinked(&run.join("old"));
+        let repo = f.repo.to_str().unwrap().to_string();
+        let one = [("good".to_string(), repo.clone())];
+        let both = [one[0].clone(), ("old".to_string(), repo.clone())];
+        let dir = open_path(run.clone()).unwrap();
+        assert!(check_multi(&dir, &repo, &one).is_ok());
+        let (_, msg) = check_multi(&dir, &repo, &both).unwrap_err();
+        assert!(msg.contains(run.join("old").to_str().unwrap()), "{msg}");
+    }
+
+    #[test]
+    fn a_symlink_inside_the_objects_is_not_followed() {
+        let f = fx();
+        let dir = f.work.join("task");
+        f.referenced(&dir);
+        let twin = f.work.join("twin.txt");
+        std::fs::write(&twin, "x").unwrap();
+        std::fs::hard_link(&twin, f.work.join("twin2.txt")).unwrap();
+        std::os::unix::fs::symlink(&twin, dir.join(".git/objects/link")).unwrap();
+        std::os::unix::fs::symlink(&f.repo, dir.join(".git/objects/linkdir")).unwrap();
+        assert!(f.check(&dir).is_ok());
     }
 }
