@@ -1229,7 +1229,7 @@ impl<'a> Op<'a> {
         target: u64,
     ) -> Result<u64, CpError> {
         if let Some(last) = m.items.last() {
-            if last.tree == before.tree {
+            if last.tree == before.tree && self.verify_ref(last.item.n, &last.commit).is_ok() {
                 return Ok(last.item.n);
             }
         }
@@ -2192,6 +2192,22 @@ mod tests {
         assert_eq!(tree_paths(&fx, &commit_of(&st, 2)), ["a"]);
         st.restore_in(&fx.env(), 1).unwrap();
         assert_eq!(fx.r("secret.local"), b"s");
+    }
+
+    #[test]
+    fn restore_does_not_rely_on_a_latest_checkpoint_whose_ref_is_gone() {
+        let fx = Fx::new();
+        fx.w("a", b"one");
+        let st = fx.store();
+        snap(&fx, &st);
+        fx.w("a", b"two");
+        snap(&fx, &st);
+        fx.pg(&["update-ref", "-d", &st.ref_name(2)]);
+        let res = st.restore_in(&fx.env(), 1).unwrap();
+        assert_eq!(fx.r("a"), b"one");
+        assert_ne!(res.before_n, 2);
+        st.restore_in(&fx.env(), res.before_n).unwrap();
+        assert_eq!(fx.r("a"), b"two");
     }
 
     #[test]
