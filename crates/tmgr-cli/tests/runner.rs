@@ -1902,3 +1902,69 @@ fn worktree_rm_of_a_clean_checkout_only_tells_how_to_delete_it() {
     );
     assert!(env.tmp.path().join("p-worktrees/beta").exists());
 }
+
+#[test]
+fn worktree_session_can_commit_in_its_checkout_and_rm_keeps_unmerged_work() {
+    let env = Env::new();
+    worktree_agent(
+        &env,
+        "echo x > made.txt\ngit add made.txt\ngit -c user.name=a -c user.email=a@example.com commit -q -m made\n",
+    );
+    git_repo(&env.proj);
+    if !sandbox_usable() {
+        return;
+    }
+    let out = wt_run(&env, &["--worktree", "--name", "gamma"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    let id = json_of(&out)["data"]["id"].as_str().unwrap().to_string();
+    wait_session_state(&env, &id, "exited");
+    let wt = env.tmp.path().join("p-worktrees/gamma");
+    if env
+        .sessions()
+        .iter()
+        .any(|s| s["id"] == id.as_str() && s["state"]["exit_code"] == 71)
+    {
+        eprintln!("skipped: the sandbox could not be applied on this host");
+        return;
+    }
+    let log = Command::new("git")
+        .current_dir(&wt)
+        .args(["log", "--format=%s", "-1"])
+        .output()
+        .unwrap();
+    assert_eq!(String::from_utf8_lossy(&log.stdout).trim(), "made");
+    let rm = env.tmgr(&["rm", &id, "--json"]);
+    assert!(rm.status.success(), "{}", out_text(&rm));
+    let note = json_of(&rm)["data"]["worktree"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        note.contains("kept") && note.contains("not merged"),
+        "{note}"
+    );
+    assert!(wt.join("made.txt").exists());
+    let main_log = Command::new("git")
+        .current_dir(&env.proj)
+        .args(["branch", "--list", "gamma"])
+        .output()
+        .unwrap();
+    assert!(main_log.stdout.is_empty());
+}
+
+#[test]
+fn gc_never_lists_a_session_checkout() {
+    let env = Env::new();
+    worktree_agent(&env, "sleep 1\n");
+    git_repo(&env.proj);
+    if !sandbox_usable() {
+        return;
+    }
+    let out = wt_run(&env, &["--worktree", "--name", "delta"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    let id = json_of(&out)["data"]["id"].as_str().unwrap().to_string();
+    wait_session_state(&env, &id, "exited");
+    let gc = env.tmgr(&["runner", "gc", "--dry-run", "--json"]);
+    assert!(!out_text(&gc).contains("delta"), "{}", out_text(&gc));
+    assert!(env.tmp.path().join("p-worktrees/delta/.git").is_dir());
+}

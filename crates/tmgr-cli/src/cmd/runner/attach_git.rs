@@ -386,6 +386,28 @@ mod tests {
     }
 
     #[test]
+    fn a_session_checkout_shows_its_branch_and_commits_ahead_of_the_base() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = canon(dir.path()).join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        sh(&repo, &["init", "-q", "-b", "main"]);
+        std::fs::write(repo.join("a"), "a").unwrap();
+        sh(&repo, &["add", "a"]);
+        sh(&repo, &["commit", "-q", "-m", "a"]);
+        let sc = tmgr_runner::sessionwt::create(&repo, Some("agent-1"), "claude", &[]).unwrap();
+        std::fs::write(sc.path.join("b"), "b").unwrap();
+        sh(&sc.path, &["add", "b"]);
+        sh(&sc.path, &["commit", "-q", "-m", "b"]);
+        let info = collect(&sc.path, |_, _| PrLookup::NoPr).unwrap();
+        assert_eq!(info.branch, "agent-1");
+        assert_eq!(
+            info.base.as_deref().map(|b| b.ends_with("main")),
+            Some(true)
+        );
+        assert_eq!(info.ahead_base, Some(1));
+    }
+
+    #[test]
     fn a_subdirectory_resolves_to_the_repo_root_and_a_plain_dir_to_none() {
         let dir = repo();
         let sub = canon(dir.path()).join("sub");

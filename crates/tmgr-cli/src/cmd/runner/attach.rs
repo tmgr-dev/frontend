@@ -31,6 +31,7 @@ use super::attach_templates;
 use super::attach_title::{agent_src, title_real_home, titler, AgentSrc, TitleJob};
 use super::attach_usage::{usage_source, usage_worker};
 use super::run_task::Prepared;
+use super::session_wt::{delete, plan_removal, Ask, Removal};
 use super::watch as watcher;
 use super::{connect, rerr};
 use ratatui::backend::CrosstermBackend;
@@ -147,6 +148,7 @@ enum Msg {
     Down(String),
     Link(LinkMsg),
     Sessions(Vec<SessionInfo>),
+    Worktree(Removal),
     Locs(Vec<(String, Loc)>),
     Titles(Vec<(String, Option<AgentTitle>)>),
     Status(HashMap<String, SessionStatus>),
@@ -339,6 +341,7 @@ struct App {
     last_prefs: Option<LayoutPrefs>,
     scrolled: Option<(String, u32)>,
     notice_until: Option<Instant>,
+    worktree_offer: Option<Ask>,
     probe_tx: SyncSender<Vec<ProbeJob>>,
     probe_pending: bool,
     tried: HashSet<String>,
@@ -519,6 +522,7 @@ impl App {
                 req,
                 target,
             } => self.on_spawned(id, result, &req, &target),
+            Msg::Worktree(removal) => self.on_worktree(removal),
             Msg::Resumed { old, result } => self.on_resumed(&old, result),
             Msg::TemplateStarted {
                 result,
@@ -2464,11 +2468,51 @@ impl App {
             return;
         }
         let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
         let id = id.to_string();
         thread::spawn(move || {
-            if let Ok(mut c) = connect(&cfg) {
-                let _ = c.remove(&id);
+            let Ok(mut c) = connect(&cfg) else {
+                return;
+            };
+            let cwd = c
+                .list()
+                .ok()
+                .and_then(|l| l.into_iter().find(|s| s.id == id))
+                .map(|s| s.cwd);
+            if c.remove(&id).is_err() {
+                return;
             }
+            let others: Vec<String> = c
+                .list()
+                .map(|l| l.into_iter().map(|s| s.cwd).collect())
+                .unwrap_or_default();
+            if let Some(removal) = cwd.and_then(|cwd| plan_removal(&cwd, &others)) {
+                let _ = tx.send(Msg::Worktree(removal));
+            }
+        });
+    }
+
+    fn on_worktree(&mut self, removal: Removal) {
+        self.dirty = true;
+        match removal {
+            Removal::Note(n) => self.notify(&n),
+            Removal::Ask(ask) => {
+                self.view.notice = Some(format!("{} y/n", ask.question));
+                self.notice_until = None;
+                self.worktree_offer = Some(ask);
+            }
+        }
+    }
+
+    fn worktree_answer(&mut self, ask: Ask, yes: bool) {
+        self.dirty = true;
+        if !yes {
+            return self.notify(&format!("worktree {} kept", ask.name));
+        }
+        self.notify(&format!("deleting worktree {}...", ask.name));
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let _ = tx.send(Msg::Worktree(Removal::Note(delete(&ask))));
         });
     }
 
@@ -2906,6 +2950,20 @@ impl App {
         for action in actions {
             if !matches!(action, Action::Mouse(_)) {
                 self.dirty = true;
+            }
+            if let Some(ask) = self.worktree_offer.take() {
+                match &action {
+                    Action::Forward(d) => {
+                        let yes = matches!(d.as_slice(), [b'y' | b'Y']);
+                        self.worktree_answer(ask, yes);
+                        continue;
+                    }
+                    Action::Drop(_) | Action::Paste { .. } => {
+                        self.worktree_answer(ask, false);
+                        continue;
+                    }
+                    _ => self.worktree_offer = Some(ask),
+                }
             }
             if self.view.layout_offer.is_some() && self.view.confirm.is_none() {
                 let answer = matches!(&action, Action::Forward(d) if offer_answer(d));
@@ -3934,6 +3992,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         last_prefs: None,
         scrolled: None,
         notice_until: notice_set.then(|| Instant::now() + NOTICE_FOR),
+        worktree_offer: None,
         probe_tx,
         probe_pending: false,
         tried: HashSet::new(),

@@ -248,7 +248,7 @@ pub(super) struct Probe {
 }
 
 impl Probe {
-    fn take() -> Result<Probe> {
+    pub(super) fn take() -> Result<Probe> {
         let cfg = runner_config()?;
         let mut client = Client::connect(&cfg.dir).map_err(|e| {
             if is_down(&e) {

@@ -470,6 +470,7 @@ pub(super) fn start_session(
     match plan {
         Plan::Create(r) => client.create(r),
         Plan::CreateRun(mut r) => {
+            let mut made = None;
             if req.worktree {
                 let taken: Vec<String> = client
                     .list()
@@ -477,9 +478,14 @@ pub(super) fn start_session(
                     .into_iter()
                     .map(|s| s.name)
                     .collect();
-                super::session_wt::start(&mut r, &taken).map_err(|e| fail(&e))?;
+                let caps = client.welcome().caps.clone();
+                made = Some(super::session_wt::start(&mut r, &taken, &caps).map_err(|e| fail(&e))?);
             }
-            client.create_run(*r)
+            let started = client.create_run(*r);
+            if let (Err(_), Some(sc)) = (&started, &made) {
+                tmgr_runner::sessionwt::abandon(sc);
+            }
+            started
         }
     }
     .map_err(|e| fail(&rerr(e).message))

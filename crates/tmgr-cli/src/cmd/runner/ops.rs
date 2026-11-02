@@ -348,28 +348,31 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
                 (cols, rows),
                 a.trust,
             );
-            if super::session_wt::wanted(a.worktree, a.no_worktree) {
+            let mut made = None;
+            if super::session_wt::wanted(a.worktree, a.no_worktree, a.trust) {
                 let taken: Vec<String> = client
                     .list()
                     .map_err(rerr)?
                     .into_iter()
                     .map(|s| s.name)
                     .collect();
-                let sc = super::session_wt::start(&mut req, &taken).map_err(|e| {
+                let caps = client.welcome().caps.clone();
+                let sc = super::session_wt::start(&mut req, &taken, &caps).map_err(|e| {
                     Error::usage(e).hint(format!(
                         "run it in a git repository, or pass --no-worktree to start in {}",
                         clean(&cwd.display().to_string())
                     ))
                 })?;
                 if !o.json && !o.quiet {
-                    eprintln!(
-                        "worktree {} on branch {}",
-                        clean(&sc.path.display().to_string()),
-                        clean(&sc.name)
-                    );
+                    eprintln!("{}", super::session_wt::started_note(&sc));
                 }
+                made = Some(sc);
             }
-            client.create_run(elevated(req, a.mode, a.no_sandbox))
+            let started = client.create_run(elevated(req, a.mode, a.no_sandbox));
+            if let (Err(_), Some(sc)) = (&started, &made) {
+                tmgr_runner::sessionwt::abandon(sc);
+            }
+            started
         }
     }
     .map_err(rerr)?;
@@ -1054,17 +1057,21 @@ fn rename(o: &Opts, a: &RenameArgs) -> Result<i32> {
 fn rm(o: &Opts, a: &RmArgs) -> Result<i32> {
     let (mut c, s) = with_session(&a.session)?;
     c.remove(&s.id).map_err(rerr)?;
-    let note = if o.json {
-        None
-    } else {
-        super::session_wt::offer_removal(&s.cwd, crate::interact::is_interactive())?
-    };
+    let others: Vec<String> = c
+        .list()
+        .map(|l| l.into_iter().map(|x| x.cwd).collect())
+        .unwrap_or_default();
+    let note = super::session_wt::offer_removal(
+        &s.cwd,
+        &others,
+        !o.json && crate::interact::is_interactive(),
+    );
     let mut human = format!("removed {}", clean(&s.name));
-    if let Some(n) = note {
+    if let Some(n) = &note {
         human.push('\n');
-        human.push_str(&n);
+        human.push_str(n);
     }
-    Ok(emit(o, json!({"id": s.id}), human))
+    Ok(emit(o, json!({"id": s.id, "worktree": note}), human))
 }
 
 fn resume_report(r: &RestoredRun, bin: &str) -> String {
