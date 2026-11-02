@@ -186,6 +186,8 @@ pub struct ViewState {
     pub questions: Vec<Entry>,
     pub reads_hint: Option<&'static str>,
     pub qmenu: Option<QMenu>,
+    pub perm_cards: Vec<tmgr_ipc::api::PermissionCard>,
+    pub perm: super::permcard::PermUi,
     pub goto: Option<GotoMark>,
     pub forkable: Vec<String>,
     pub now_s: u64,
@@ -295,6 +297,11 @@ pub enum SidebarLine {
         id: String,
     },
     Detail(String),
+    Perm {
+        session: String,
+        row: usize,
+        full: bool,
+    },
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -465,6 +472,8 @@ impl ViewState {
             questions: Vec::new(),
             reads_hint: None,
             qmenu: None,
+            perm_cards: Vec::new(),
+            perm: super::permcard::PermUi::default(),
             goto: None,
             forkable: Vec::new(),
             now_s: 0,
@@ -492,7 +501,7 @@ impl ViewState {
         self.remote.get(id).map(String::as_str)
     }
 
-    fn is_local(&self, id: &str) -> bool {
+    pub(crate) fn is_local(&self, id: &str) -> bool {
         self.machines.is_empty() || !self.remote.contains_key(id)
     }
 
@@ -888,6 +897,7 @@ impl ViewState {
                 SidebarLine::Activity(_)
                 | SidebarLine::Sub { .. }
                 | SidebarLine::Detail(_)
+                | SidebarLine::Perm { .. }
                 | SidebarLine::Empty(_) => None,
             })
             .collect();
@@ -914,6 +924,7 @@ impl ViewState {
                 plan.retain(|l| !matches!(l, SidebarLine::Detail(_)));
             }
         }
+        let plan = self.perm_expand(plan, room, rect.width);
         let lines = plan.into_iter().zip(rect.y + 1..last).collect();
         SidebarLayout { lines, new_row }
     }
@@ -942,6 +953,7 @@ impl ViewState {
     }
 
     fn status_lines(&self, id: &str, out: &mut Vec<SidebarLine>) {
+        self.perm_line(id, out);
         if self.status_line(id).is_none() {
             return;
         }
@@ -1482,6 +1494,7 @@ impl ViewState {
             Cmd::Filter => self.open_filter(),
             Cmd::Questions => self.toggle_questions(),
             Cmd::NeedsYou => self.jump_to_needing(),
+            Cmd::Permissions => self.open_permissions(),
             Cmd::Subagents => {
                 if let Some(id) = self.focused_session().map(str::to_string) {
                     self.toggle_subs(&id);
@@ -1781,6 +1794,7 @@ impl ViewState {
                         return Hit::Sub(session.clone(), id.clone())
                     }
                     SidebarLine::Detail(id) => return Hit::Session(id.clone()),
+                    SidebarLine::Perm { session, .. } => return Hit::Session(session.clone()),
                     SidebarLine::Session { id, .. } => id,
                 };
                 let Some(r) = self.sessions.iter().find(|s| s.id == *id) else {
@@ -1917,6 +1931,7 @@ impl ViewState {
             || self.export.is_some()
             || self.notes.is_some()
             || self.qmenu.is_some()
+            || self.perm_overlay_open()
             || self.peek.is_some()
             || self.help
         {
@@ -1949,6 +1964,9 @@ impl ViewState {
         }
         if self.qmenu.is_some() {
             return self.qmenu_mouse(area, ev, out);
+        }
+        if self.perm_mouse(area, ev, &mut out) {
+            return out;
         }
         if ev.is_left_press() && self.sidebar_focus.take().is_some() {
             out.redraw = true;
@@ -2546,6 +2564,7 @@ pub struct MouseOut {
     pub notes: Option<super::notes::NotesAction>,
     pub new_edit: Option<NewEdit>,
     pub question: Option<QEdit>,
+    pub perm: Option<tmgr_ipc::api::PermissionAnswer>,
     pub want_text: Option<String>,
 }
 

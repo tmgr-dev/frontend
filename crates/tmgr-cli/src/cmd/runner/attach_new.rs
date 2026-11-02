@@ -38,6 +38,7 @@ pub(super) enum Route {
     Export,
     Notes,
     Questions,
+    Perm,
     Peek,
     Sidebar,
     Other,
@@ -68,6 +69,8 @@ pub(super) fn route(view: &ViewState, action: &Action) -> Route {
         Route::Git
     } else if view.cp.is_open() {
         Route::Checkpoints
+    } else if view.perm_overlay_open() {
+        Route::Perm
     } else if view.qmenu.is_some() {
         Route::Questions
     } else if view.peek.is_some() {

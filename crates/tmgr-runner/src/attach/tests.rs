@@ -3334,6 +3334,7 @@ fn shape(v: &ViewState) -> Vec<String> {
                 format!("{}{id}", if indent { "  " } else { "" })
             }
             SidebarLine::Detail(id) => format!("~{id}"),
+            SidebarLine::Perm { session, row, .. } => format!("!{session}{row}"),
             SidebarLine::Activity(id) => format!("^{id}"),
             SidebarLine::Sub { id, .. } => format!("*{id}"),
             SidebarLine::Machine {

@@ -182,6 +182,9 @@ fn render_all(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
     if st.qmenu.is_some() {
         draw_qmenu(buf, area, st);
     }
+    if st.perm_overlay_open() {
+        super::permcard::draw_overlay(buf, area, st);
+    }
     if let Some(peek) = &st.peek {
         draw_peek(buf, area, peek);
     }
@@ -269,6 +272,9 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
             SidebarLine::Activity(id) => draw_activity(buf, area, st, id, nested, y),
             SidebarLine::Sub { session, id } => draw_sub(buf, area, st, session, id, nested, y),
             SidebarLine::Detail(id) => draw_detail(buf, area, st, id, nested, y),
+            SidebarLine::Perm { session, row, full } => {
+                super::permcard::draw_row(buf, area, st, session, *row, *full, y)
+            }
             SidebarLine::Session { id, indent } => {
                 nested = *indent;
                 draw_session_row(buf, area, st, id, *indent, focused, y);
@@ -432,6 +438,10 @@ fn draw_session_row(
                 " ◉".to_string()
             };
             put(buf, drawn, y, &shown, Style::new().fg(colors().warn), room);
+        }
+        if st.cards_on(&row.id) && !st.leaders.contains_key(&row.id) {
+            let room = age_x.saturating_sub(drawn + 1);
+            put(buf, drawn, y, " ◈", dim(), room.min(2));
         }
         put(
             buf,
@@ -1106,6 +1116,7 @@ pub fn cursor(st: &ViewState, lay: &Layout, screens: &dyn ScreenSource) -> Optio
         || st.help
         || st.sidebar_focus.is_some()
         || st.qmenu.is_some()
+        || st.perm_overlay_open()
         || st.filter_input()
     {
         return None;
@@ -1194,6 +1205,9 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
         _ => st.notice.clone(),
     };
     let focused = match st.focused_row() {
+        Some(r) if st.cards_on(&r.id) => {
+            format!("{} · {} · cards on", r.name, state_label(r))
+        }
         Some(r) => format!("{} · {}", r.name, state_label(r)),
         None => "no sessions".to_string(),
     };

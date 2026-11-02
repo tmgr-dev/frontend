@@ -16,6 +16,7 @@ mod msel;
 mod newsession;
 mod notes;
 mod palette;
+mod permcard;
 mod place;
 mod prompts;
 mod push;
@@ -68,6 +69,7 @@ pub use newsession::{
 };
 pub use notes::{NotesAction, NotesState, NotesTask};
 pub use palette::{Palette, PaletteEdit, PaletteEntry, PaletteMode, RowView};
+pub use permcard::{PermBtn, PermUi};
 pub use place::{fit, probe, tail2, Loc};
 pub use prompts::{defaults as default_prompts, paste_bytes, Prompt, PromptForm};
 pub use prompts::{parse as parse_prompts, render as render_prompts};

@@ -54,8 +54,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{
-    caps, CheckpointStatus, CreateReq, Modes, RestoredRun, SessionInfo, Snapshot, StateKind,
-    TaskRef,
+    caps, CheckpointStatus, CreateReq, Modes, PermissionAnswer, PermissionCard, RestoredRun,
+    SessionInfo, Snapshot, StateKind, TaskRef,
 };
 use tmgr_ipc::proto::{valid_session_id, ServerMsg};
 use tmgr_runner::attach::{
@@ -150,6 +150,11 @@ enum Msg {
     Down(String),
     Link(LinkMsg),
     Sessions(Vec<SessionInfo>),
+    PermCards(Vec<PermissionCard>),
+    PermAnswered {
+        card: String,
+        result: std::result::Result<(), String>,
+    },
     Worktree(Removal),
     Locs(Vec<(String, Loc)>),
     Titles(Vec<(String, Option<AgentTitle>)>),
@@ -254,6 +259,7 @@ fn attention_target(view: &ViewState) -> Option<&str> {
         || view.new_session.is_some()
         || view.palette.is_some()
         || view.qmenu.is_some()
+        || view.perm_overlay_open()
         || view.confirm.is_some()
         || view.rename.is_some()
         || view.filter_input()
@@ -323,6 +329,7 @@ struct App {
     last_user: Instant,
     attention: AttentionTracker,
     prefs_tx: Sender<Value>,
+    perm_tx: Sender<PermissionAnswer>,
     cfg: RunnerConfig,
     tx: SyncSender<Msg>,
     starts: HashMap<String, (String, u32)>,
@@ -422,6 +429,19 @@ impl App {
             Msg::Down(why) => return Ok(Some(Exit::Lost(why))),
             Msg::Link(msg) => self.on_link(msg),
             Msg::Sessions(list) => self.on_sessions(&list),
+            Msg::PermCards(cards) => {
+                self.view.perm_clock(now_ms());
+                if self.view.set_perm_cards(cards) {
+                    self.dirty = true;
+                }
+            }
+            Msg::PermAnswered { card, result } => {
+                self.dirty = true;
+                if let Err(e) = result {
+                    self.view.perm_refused(&card);
+                    self.notify(&format!("permission: {}", sanitize_text(&e)));
+                }
+            }
             Msg::Locs(found) => {
                 self.probe_pending = false;
                 if self.view.set_locs(self.area(), found) {
@@ -626,6 +646,9 @@ impl App {
     }
 
     fn on_sessions(&mut self, list: &[SessionInfo]) {
+        if self.view.set_cards_on(cards_wanted(list)) {
+            self.dirty = true;
+        }
         let leaders = tmgr_link::store::Paths::from_env()
             .map(|p| super::ops::leader_markers(&p))
             .unwrap_or_default();
@@ -1465,6 +1488,15 @@ impl App {
         self.question_pending = self.question_tx.try_send(jobs).is_ok();
     }
 
+    fn perm_answer(&mut self, answer: PermissionAnswer) {
+        self.dirty = true;
+        let card = answer.card.clone();
+        if self.perm_tx.send(answer).is_err() {
+            self.view.perm_refused(&card);
+            self.notify("permission: answer worker is gone");
+        }
+    }
+
     fn questions_input(&mut self, data: &[u8]) {
         self.dirty = true;
         let edit = self.view.edit_qmenu(data);
@@ -2107,6 +2139,13 @@ impl App {
                 self.dirty = true;
             }
             (Route::Questions, Action::Forward(data)) => self.questions_input(&data),
+            (Route::Perm, Action::Forward(data)) => {
+                let area = self.area();
+                if let Some(answer) = self.view.edit_perm(area, &data) {
+                    self.perm_answer(answer);
+                }
+                self.dirty = true;
+            }
             (Route::Peek, Action::Forward(data)) => {
                 self.view.edit_peek(&data);
                 self.dirty = true;
@@ -3030,6 +3069,7 @@ impl App {
     }
 
     fn handle(&mut self, actions: Vec<Action>) -> io::Result<Option<Exit>> {
+        self.view.perm_clock(now_ms());
         let user_action = actions.iter().any(|a| is_user_action(&self.view, a));
         if user_action {
             self.last_user = Instant::now();
@@ -3301,6 +3341,9 @@ impl App {
                     if let Some(edit) = out.question {
                         self.question_edit(edit);
                     }
+                    if let Some(answer) = out.perm {
+                        self.perm_answer(answer);
+                    }
                     if out.new_session {
                         self.open_new_session();
                     }
@@ -3478,6 +3521,10 @@ impl App {
             }
         }
         self.report_attention(false);
+        self.view.perm_clock(now_ms());
+        if self.view.perm_tick() {
+            self.dirty = true;
+        }
         if self
             .send_enter
             .as_ref()
@@ -3736,14 +3783,53 @@ fn prober(jobs: mpsc::Receiver<Vec<ProbeJob>>, tx: SyncSender<Msg>) {
     }
 }
 
+const PERM_EVERY: Duration = Duration::from_millis(500);
+
+fn cards_wanted(list: &[SessionInfo]) -> HashSet<String> {
+    list.iter()
+        .filter(|s| s.permission_cards)
+        .map(|s| s.id.clone())
+        .collect()
+}
+
+fn answerer(cfg: RunnerConfig, jobs: mpsc::Receiver<PermissionAnswer>, tx: SyncSender<Msg>) {
+    let mut ctl = None;
+    for answer in jobs {
+        if ctl.is_none() {
+            ctl = connect(&cfg).ok();
+        }
+        let result = match ctl.as_mut() {
+            Some(c) => c.answer_permission(&answer).map_err(|e| e.to_string()),
+            None => Err("the runner is not reachable".into()),
+        };
+        if result.is_err() {
+            ctl = None;
+        }
+        let msg = Msg::PermAnswered {
+            card: answer.card,
+            result,
+        };
+        if tx.send(msg).is_err() {
+            return;
+        }
+    }
+}
+
 fn poller(
     mut ctl: tmgr_runner::client::Client,
     tx: SyncSender<Msg>,
     layouts: mpsc::Receiver<Value>,
 ) {
     let mut next_list = Instant::now() + LIST_EVERY;
+    let mut next_perm = Instant::now() + PERM_EVERY;
+    let mut polling = false;
     loop {
-        match layouts.recv_timeout(next_list.saturating_duration_since(Instant::now())) {
+        let wake = if polling {
+            next_list.min(next_perm)
+        } else {
+            next_list
+        };
+        match layouts.recv_timeout(wake.saturating_duration_since(Instant::now())) {
             Ok(mut latest) => {
                 while let Ok(newer) = layouts.recv_timeout(LAYOUT_DEBOUNCE) {
                     latest = newer;
@@ -3755,10 +3841,26 @@ fn poller(
         }
         if Instant::now() >= next_list {
             next_list = Instant::now() + LIST_EVERY;
-            if let Ok(list) = ctl.list() {
-                if tx.send(Msg::Sessions(list)).is_err() {
-                    break;
+            let now_polling = match ctl.list() {
+                Ok(list) => {
+                    let on = !cards_wanted(&list).is_empty();
+                    if tx.send(Msg::Sessions(list)).is_err() {
+                        break;
+                    }
+                    on
                 }
+                Err(_) => false,
+            };
+            if polling && !now_polling && tx.send(Msg::PermCards(Vec::new())).is_err() {
+                break;
+            }
+            polling = now_polling;
+        }
+        if polling && Instant::now() >= next_perm {
+            next_perm = Instant::now() + PERM_EVERY;
+            let cards = ctl.permissions().unwrap_or_default();
+            if tx.send(Msg::PermCards(cards)).is_err() {
+                break;
             }
         }
     }
@@ -4062,6 +4164,10 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
             move |found, reads| question_out.send(Msg::Questions(found, reads)).is_ok(),
         )
     });
+    let (perm_tx, perm_rx) = mpsc::channel();
+    let perm_out = tx.clone();
+    let perm_cfg = cfg.clone();
+    thread::spawn(move || answerer(perm_cfg, perm_rx, perm_out));
     let poll = thread::spawn(move || poller(ctl, tx, prefs_rx));
 
     let mut app = App {
@@ -4087,6 +4193,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         last_user: Instant::now(),
         attention: AttentionTracker::new(),
         prefs_tx,
+        perm_tx,
         cfg: cfg.clone(),
         tx: app_tx,
         pending: HashMap::new(),
@@ -4470,6 +4577,28 @@ mod tests {
             checkpoints: None,
             permission_cards: false,
         }
+    }
+
+    #[test]
+    fn cards_are_polled_only_for_sessions_with_the_flag() {
+        let mut on = info("s_on");
+        on.permission_cards = true;
+        assert!(cards_wanted(&[info("s_off")]).is_empty());
+        assert_eq!(
+            cards_wanted(&[info("s_off"), on]),
+            HashSet::from(["s_on".to_string()])
+        );
+    }
+
+    #[test]
+    fn keys_reach_the_pane_unless_the_card_overlay_is_open() {
+        let mut view = ViewState::new(Vec::new(), "local");
+        let key = Action::Forward(b"y".to_vec());
+        assert_eq!(route(&view, &key), Route::Other);
+        view.set_cards_on(HashSet::from(["a".to_string()]));
+        assert_eq!(route(&view, &key), Route::Other);
+        view.open_permissions();
+        assert_eq!(route(&view, &key), Route::Other);
     }
 
     fn created(id: &str, target: &str) -> Msg {

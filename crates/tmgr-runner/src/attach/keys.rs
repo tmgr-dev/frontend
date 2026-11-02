@@ -44,6 +44,7 @@ pub enum Cmd {
     Questions,
     Subagents,
     NeedsYou,
+    Permissions,
     OpenTask,
     Broadcast,
     BroadcastMark,
