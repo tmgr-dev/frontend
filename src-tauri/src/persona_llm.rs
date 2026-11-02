@@ -351,7 +351,10 @@ fn save_config<S: SecretStore, W: FnOnce(&LlmConfigFile) -> Result<(), String>>(
   read_previous: impl FnOnce() -> Result<LlmConfigFile, String>,
   prepare_write: impl FnOnce() -> Result<W, String>,
 ) -> Result<(), String> {
-  let SaveRequest { identity: _, user_id, base_url, model, api_key, clear_api_key } = request;
+  let SaveRequest { identity, user_id, base_url, model, api_key, clear_api_key } = request;
+  if !user_slot_allowed(identity, user_id) {
+    return Err("These AI provider settings belong to another account. If you just signed in, try again in a moment.".into());
+  }
   let previous = read_previous()?;
   let new_origin = normalize_origin(&base_url).ok();
   let account = format!("{ACCOUNT}:{user_id}");
@@ -372,7 +375,9 @@ fn save_config<S: SecretStore, W: FnOnce(&LlmConfigFile) -> Result<(), String>>(
 }
 
 fn slot_has_key<S: SecretStore>(store: &S, identity: Option<i64>, user_id: i64) -> Result<bool, String> {
-  let _ = identity;
+  if !user_slot_allowed(identity, user_id) {
+    return Ok(false);
+  }
   Ok(store.get(&format!("{ACCOUNT}:{user_id}"))?.is_some())
 }
 
