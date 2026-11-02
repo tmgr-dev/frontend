@@ -34,6 +34,16 @@ pub fn lead_dir(team_dir: &Path) -> PathBuf {
     team_dir.join(LEAD_DIR)
 }
 
+pub fn is_team_lead_clone(dir: &Path) -> bool {
+    fn name(p: Option<&Path>) -> Option<&str> {
+        p.and_then(|p| p.file_name()).and_then(|n| n.to_str())
+    }
+    let queue = dir.parent().and_then(Path::parent);
+    name(Some(dir)) == Some(LEAD_DIR)
+        && name(queue) == Some("queue")
+        && name(queue.and_then(Path::parent)).is_some_and(|n| n.ends_with("-worktrees"))
+}
+
 pub fn worker_dir(team_dir: &Path, k: u8) -> PathBuf {
     team_dir.join(format!("w{k}"))
 }
@@ -1383,6 +1393,22 @@ mod tests {
         )
         .unwrap();
         assert_eq!(count, "2");
+    }
+
+    #[test]
+    fn only_the_lead_folder_of_a_queue_run_is_a_team_lead_clone() {
+        assert!(is_team_lead_clone(Path::new(
+            "/w/proj-worktrees/queue/q_1/lead"
+        )));
+        for other in [
+            "/w/proj-worktrees/queue/q_1/w1",
+            "/w/proj-worktrees/queue/q_1",
+            "/w/proj-worktrees/lead",
+            "/w/proj/queue/q_1/lead",
+            "/w/proj-worktrees/other/q_1/lead",
+        ] {
+            assert!(!is_team_lead_clone(Path::new(other)), "{other}");
+        }
     }
 
     #[test]

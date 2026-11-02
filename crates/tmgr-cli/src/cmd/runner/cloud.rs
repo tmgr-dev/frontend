@@ -1551,6 +1551,7 @@ pub struct Published<'a> {
     pub agent: Option<&'a str>,
     pub branch: &'a str,
     pub audit: Option<&'a str>,
+    pub team: bool,
 }
 
 pub struct PublishedAll<'a> {
@@ -1574,6 +1575,7 @@ pub fn report_published(client: &tmgr_core::api::Client, p: &Published) -> Vec<S
             summary: format!("Opened {}", p.pr_url),
             comment: format!("The agent finished. Pull request: {}", p.pr_url),
             audit: p.audit,
+            team: p.team,
         },
     )
 }
@@ -1597,6 +1599,7 @@ pub fn report_published_all(client: &tmgr_core::api::Client, p: &PublishedAll) -
             summary: format!("Opened {}", joined.join(", ")),
             comment: format!("The agent finished. Pull requests:\n{}", list.join("\n")),
             audit: p.audit,
+            team: false,
         },
     )
 }
@@ -1634,6 +1637,7 @@ pub fn report_resumed(client: &tmgr_core::api::Client, p: &PublishedAll) -> Vec<
             summary: format!("Resumed and updated {}", joined.join(", ")),
             comment: resumed_comment(p.urls),
             audit: p.audit,
+            team: false,
         },
     )
 }
@@ -1658,6 +1662,7 @@ struct Report<'a> {
     summary: String,
     comment: String,
     audit: Option<&'a str>,
+    team: bool,
 }
 
 fn running_run(
@@ -1665,6 +1670,7 @@ fn running_run(
     task_id: u64,
     agent: Option<&str>,
     branch: &str,
+    team: bool,
 ) -> Option<tmgr_core::agentwork::RunView> {
     use tmgr_core::agentwork;
     client
@@ -1674,11 +1680,21 @@ fn running_run(
         .unwrap_or_default()
         .into_iter()
         .filter_map(|r| agentwork::parse_run(r).ok())
-        .find(|r| {
-            r.status == "running"
-                && agent.is_none_or(|a| r.agent.as_deref() == Some(a))
-                && r.branch.as_deref().is_none_or(|b| b == branch)
-        })
+        .find(|r| run_matches(r, agent, branch, team))
+}
+
+fn run_matches(
+    r: &tmgr_core::agentwork::RunView,
+    agent: Option<&str>,
+    branch: &str,
+    team: bool,
+) -> bool {
+    r.status == "running"
+        && agent.is_none_or(|a| r.agent.as_deref() == Some(a))
+        && match r.branch.as_deref() {
+            Some(b) => b == branch,
+            None => !team,
+        }
 }
 
 fn already_held(t: &PublishTarget, held: &Held) -> bool {
@@ -1709,7 +1725,13 @@ fn report_held(
 ) {
     use tmgr_core::agentwork;
     let task_id = u64::try_from(t.task_id).unwrap_or_default();
-    if let Some(run) = running_run(client, task_id, t.agent.as_deref(), &t.branch) {
+    if let Some(run) = running_run(
+        client,
+        task_id,
+        t.agent.as_deref(),
+        &t.branch,
+        workdir::is_team_lead_clone(&t.clone_dir),
+    ) {
         let progress = agentwork::Progress {
             summary: Some(format!(
                 "Held before publish by the leak gate: {}. Nothing was pushed.",
@@ -1739,7 +1761,7 @@ fn report_with(client: &tmgr_core::api::Client, p: &Report) -> Vec<String> {
     use tmgr_core::agentwork;
     let mut warnings = Vec::new();
     let note = |what: &str, e: &Error| format!("{what}: {}", sanitize_line(&e.message));
-    let running = running_run(client, p.task_id, p.agent, p.branch);
+    let running = running_run(client, p.task_id, p.agent, p.branch, p.team);
     match running {
         Some(run) => {
             let progress = agentwork::Progress {
@@ -2017,6 +2039,7 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
             agent: t.agent.as_deref(),
             branch: &t.branch,
             audit: t.audit.as_deref(),
+            team: workdir::is_team_lead_clone(&t.clone_dir),
         },
     ) {
         eprintln!("warning: {w}");
@@ -2398,6 +2421,39 @@ pub fn publish_cmd(o: &Opts, reference: &str) -> Result<i32> {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    fn run_view(branch: Option<&str>, status: &str) -> tmgr_core::agentwork::RunView {
+        tmgr_core::agentwork::RunView {
+            id: 1,
+            status: status.into(),
+            agent: Some("claude-code".into()),
+            branch: branch.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_publish_matches_the_lead_run_and_never_a_worker_run() {
+        let task = "queue/q_abc";
+        let team = |r| run_matches(&r, Some("claude-code"), task, true);
+        assert!(team(run_view(Some(task), "running")));
+        assert!(
+            !team(run_view(None, "running")),
+            "a worker run without a branch"
+        );
+        assert!(!team(run_view(Some("queue-team/q_abc/w1"), "running")));
+        assert!(!team(run_view(Some(task), "succeeded")));
+        let solo = |r| run_matches(&r, Some("claude-code"), task, false);
+        assert!(solo(run_view(Some(task), "running")));
+        assert!(solo(run_view(None, "running")));
+        assert!(!solo(run_view(Some("other"), "running")));
+        assert!(run_matches(
+            &run_view(Some("other"), "running"),
+            None,
+            "other",
+            false
+        ));
+    }
 
     fn session(
         id: &str,
