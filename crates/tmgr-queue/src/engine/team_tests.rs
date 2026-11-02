@@ -223,6 +223,7 @@ fn a_plan_that_is_a_symlink_or_a_folder_starts_nothing() {
     fx.pass().unwrap();
     assert_eq!(fx.runs.created.borrow().len(), 1);
     assert_eq!(team(&fx).phase, TeamPhase::Planning);
+    assert_eq!(fx.runs.sent.borrow().len(), 1, "the lead is told once");
 
     let fx = team_fx(2);
     let cwd = pickup(&fx).bundle.launch.cwd;
