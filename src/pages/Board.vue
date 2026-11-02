@@ -450,81 +450,80 @@
 																		@task-archived="updateSingleTaskInBoard"
 																	/>
 																</template>
-															</Draggable>
-
-															<Teleport
-																v-if="
-																	tasksLoaded &&
-																	column.paging &&
-																	!column.paging.complete
-																"
-																:to="`.board-card-draggable[data-column-id='${column.status.id}']`"
-															>
-																<ColumnSentinel
-																	:key="`${column.tasks.length}:${column.paging.settled}`"
-																	@visible="loadMoreTasks(column)"
-																/>
-															</Teleport>
-
-															<!-- TM-151: quick-add right under the last card. Teleported into the
-												     scroll container like the inline input; the drag handle selector
-												     keeps Sortable from ever picking it up. -->
-															<Teleport
-																v-if="
-																	tasksLoaded &&
-																	column.tasks.length > 0 &&
-																	creatingTaskColumnId !== column.status.id
-																"
-																:to="`.board-card-draggable[data-column-id='${column.status.id}']`"
-															>
-																<button
-																	type="button"
-																	class="board-add-task mx-1 mt-1 flex w-[calc(100%-0.5rem)] items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
-																	@click="startCreatingTask(column)"
+																<template #footer>
+																<template
+																	v-if="
+																		tasksLoaded &&
+																		column.paging &&
+																		!column.paging.complete
+																	"
 																>
-																	<span class="material-icons text-sm"
-																		>add</span
-																	>
-																	Add task
-																</button>
-															</Teleport>
+																	<ColumnSentinel
+																		:key="`${column.tasks.length}:${column.paging.settled}`"
+																		@visible="loadMoreTasks(column)"
+																	/>
+																</template>
 
-															<Teleport
-																v-if="
-																	tasksLoaded &&
-																	creatingTaskColumnId === column.status.id
-																"
-																:to="`.board-card-draggable[data-column-id='${column.status.id}']`"
-															>
-																<div class="shrink-0 px-1 pt-1 pb-1">
-																	<div class="flex flex-col gap-2">
-																		<input
-																			v-model="newTaskTitle"
-																			@keyup.enter="createQuickTask(column)"
-																			@keyup.esc="cancelCreatingTask"
-																			@blur="handleInputBlur"
-																			placeholder="Enter task title..."
-																			class="task-title-input w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
-																		/>
-																		<div class="flex gap-2">
-																			<Button
-																				size="sm"
-																				class="flex-1"
-																				@click="createQuickTask(column)"
-																			>
-																				Add
-																			</Button>
-																			<Button
-																				variant="secondary"
-																				size="sm"
-																				@click="cancelCreatingTask"
-																			>
-																				Cancel
-																			</Button>
+																<!-- TM-151: quick-add right under the last card. In the
+													     scroll container like the inline input; the drag handle selector
+													     keeps Sortable from ever picking it up. -->
+																<template
+																	v-if="
+																		tasksLoaded &&
+																		column.tasks.length > 0 &&
+																		creatingTaskColumnId !== column.status.id
+																	"
+																>
+																	<button
+																		type="button"
+																		class="board-add-task mx-1 mt-1 flex w-[calc(100%-0.5rem)] items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
+																		@click="startCreatingTask(column)"
+																	>
+																		<span class="material-icons text-sm"
+																			>add</span
+																		>
+																		Add task
+																	</button>
+																</template>
+
+																<template
+																	v-if="
+																		tasksLoaded &&
+																		creatingTaskColumnId === column.status.id
+																	"
+																>
+																	<div class="shrink-0 px-1 pt-1 pb-1">
+																		<div class="flex flex-col gap-2">
+																			<input
+																				v-model="newTaskTitle"
+																				@keyup.enter="createQuickTask(column)"
+																				@keyup.esc="cancelCreatingTask"
+																				@blur="handleInputBlur"
+																				placeholder="Enter task title..."
+																				class="task-title-input w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
+																			/>
+																			<div class="flex gap-2">
+																				<Button
+																					size="sm"
+																					class="flex-1"
+																					@click="createQuickTask(column)"
+																				>
+																					Add
+																				</Button>
+																				<Button
+																					variant="secondary"
+																					size="sm"
+																					@click="cancelCreatingTask"
+																				>
+																					Cancel
+																				</Button>
+																			</div>
 																		</div>
 																	</div>
-																</div>
-															</Teleport>
+																</template>
+																</template>
+															</Draggable>
+
 														</div>
 													</div>
 												</div>
