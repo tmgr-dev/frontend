@@ -3,6 +3,14 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.81 — 2026-11-02
+
+- Asking a persona: the answer now appears as it is written, in a small scrolling area under Asking…. The finished answer is still posted as a comment.
+- Asking a persona: Cancel now works at any point, including between the persona's steps, and shows no error.
+- AI provider: a base URL that already ends in `/v1`, as LM Studio and vLLM document, now works. Before, it failed with a 404.
+- AI provider: tool calls are no longer lost when a server sends several in one piece, or sends them together with text.
+- Personas can now use the routes that edit their own comment and a page section, within the permissions you gave them.
+
 ## 0.9.80 — 2026-11-02
 
 - AI provider settings: Settings now shows a message next to the save button when saving your provider settings or removing your key fails, instead of failing silently.
