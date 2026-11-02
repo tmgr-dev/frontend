@@ -18,18 +18,30 @@ pub fn branch_name(pickup_id: &str) -> String {
     format!("queue/{pickup_id}")
 }
 
-pub(crate) fn git_command(dir: Option<&Path>) -> Command {
+pub fn absolute_path_entries(value: &std::ffi::OsStr) -> std::ffi::OsString {
+    let kept: Vec<PathBuf> = std::env::split_paths(value)
+        .filter(|entry| entry.is_absolute())
+        .collect();
+    match std::env::join_paths(kept) {
+        Ok(joined) if !joined.is_empty() => joined,
+        _ => "/usr/bin:/bin".into(),
+    }
+}
+
+pub fn absolute_path() -> std::ffi::OsString {
+    absolute_path_entries(&std::env::var_os("PATH").unwrap_or_default())
+}
+
+fn fixed_git_command() -> Command {
     let mut cmd = Command::new("git");
     cmd.env_clear()
-        .env(
-            "PATH",
-            std::env::var_os("PATH").unwrap_or_else(|| "/usr/bin:/bin".into()),
-        )
+        .env("PATH", absolute_path())
         .env("HOME", "/nonexistent")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_ALLOW_PROTOCOL", "file")
+        .env("GIT_NO_LAZY_FETCH", "1")
         .args([
             "-c",
             "core.hooksPath=/dev/null",
@@ -45,11 +57,146 @@ pub(crate) fn git_command(dir: Option<&Path>) -> Command {
             "diff.external=",
             "-c",
             "core.pager=cat",
+            "-c",
+            "core.alternateRefsCommand=",
+            "-c",
+            "gc.auto=0",
+            "-c",
+            "maintenance.auto=false",
+            "-c",
+            "submodule.recurse=false",
+            "-c",
+            "fetch.recurseSubmodules=false",
         ]);
+    cmd
+}
+
+fn named_program_overrides(names: &[u8]) -> Vec<(String, &'static str)> {
+    let mut out = Vec::new();
+    for name in String::from_utf8_lossy(names).split('\0') {
+        let Some((section, rest)) = name.split_once('.') else {
+            continue;
+        };
+        let Some((sub, _)) = rest.rsplit_once('.') else {
+            continue;
+        };
+        match section {
+            "hook" => out.push((format!("hook.{sub}.enabled"), "false")),
+            "filter" => {
+                for key in ["clean", "smudge", "process"] {
+                    out.push((format!("filter.{sub}.{key}"), ""));
+                }
+                out.push((format!("filter.{sub}.required"), "false"));
+            }
+            _ => {}
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+pub(crate) fn git_command(dir: Option<&Path>) -> Command {
+    let mut cmd = fixed_git_command();
     if let Some(d) = dir {
+        let mut list = fixed_git_command();
+        list.arg("-C")
+            .arg(d)
+            .args(["config", "--name-only", "--list", "-z"]);
+        let names = output_within(&mut list, GIT_TIMEOUT)
+            .map(|o| o.stdout)
+            .unwrap_or_default();
+        let overrides = named_program_overrides(&names);
+        cmd.env("GIT_CONFIG_COUNT", overrides.len().to_string());
+        for (i, (key, value)) in overrides.iter().enumerate() {
+            cmd.env(format!("GIT_CONFIG_KEY_{i}"), key)
+                .env(format!("GIT_CONFIG_VALUE_{i}"), value);
+        }
         cmd.arg("-C").arg(d);
     }
     cmd
+}
+
+fn plain_config_key(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    let Some((section, rest)) = n.split_once('.') else {
+        return false;
+    };
+    let var = rest.rsplit('.').next().unwrap_or("");
+    match section {
+        "branch" | "user" => true,
+        "remote" => matches!(
+            var,
+            "url" | "pushurl" | "fetch" | "push" | "tagopt" | "prune" | "mirror"
+        ),
+        "core" => matches!(
+            rest,
+            "repositoryformatversion"
+                | "filemode"
+                | "bare"
+                | "logallrefupdates"
+                | "ignorecase"
+                | "precomposeunicode"
+                | "symlinks"
+                | "autocrlf"
+                | "eol"
+                | "safecrlf"
+                | "abbrev"
+                | "quotepath"
+                | "untrackedcache"
+                | "hookspath"
+                | "fsmonitor"
+        ),
+        "lfs" => matches!(var, "locksverify" | "repositoryformatversion"),
+        _ => matches!(
+            n.as_str(),
+            "commit.gpgsign"
+                | "tag.gpgsign"
+                | "pull.rebase"
+                | "pull.ff"
+                | "push.default"
+                | "push.autosetupremote"
+                | "fetch.prune"
+                | "init.defaultbranch"
+                | "rebase.autostash"
+                | "gc.auto"
+                | "maintenance.auto"
+        ),
+    }
+}
+
+/// Whether the repository's own configuration holds only settings that run nothing once git commands pin core.hooksPath and core.fsmonitor.
+pub fn repo_config_is_plain(dir: &Path) -> bool {
+    let mut common = fixed_git_command();
+    common
+        .arg("-C")
+        .arg(dir)
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    let Ok(out) = output_within(&mut common, GIT_TIMEOUT) else {
+        return false;
+    };
+    if !out.status.success() {
+        return false;
+    }
+    let git_dir = String::from_utf8_lossy(&out.stdout).trim_end().to_string();
+    let mut list = fixed_git_command();
+    list.args([
+        "config",
+        "--no-includes",
+        "--name-only",
+        "--list",
+        "-z",
+        "--file",
+    ])
+    .arg(Path::new(&git_dir).join("config"));
+    let Ok(out) = output_within(&mut list, GIT_TIMEOUT) else {
+        return false;
+    };
+    out.status.success()
+        && String::from_utf8_lossy(&out.stdout)
+            .split('\0')
+            .filter(|name| !name.is_empty())
+            .all(plain_config_key)
 }
 
 pub fn git_bytes(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<Vec<u8>> {
@@ -870,6 +1017,67 @@ mod tests {
             assert!(!bad.exists());
         }
         assert!(prepare_clone(&r, &dest.with_file_name("dash"), "-x", None).is_err());
+    }
+
+    #[test]
+    fn host_git_commands_keep_only_absolute_path_entries() {
+        assert_eq!(
+            absolute_path_entries(":.:/usr/bin:bin:/bin".as_ref()),
+            std::ffi::OsString::from("/usr/bin:/bin")
+        );
+        assert_eq!(
+            absolute_path_entries("relative".as_ref()),
+            std::ffi::OsString::from("/usr/bin:/bin")
+        );
+    }
+
+    #[test]
+    fn only_settings_known_to_run_nothing_count_as_plain() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(tmp.path()).unwrap();
+        init_repo(&repo);
+        assert!(repo_config_is_plain(&repo));
+        git(Some(&repo), &["config", "remote.origin.url", "file:///x"]).unwrap();
+        git(Some(&repo), &["config", "branch.main.remote", "origin"]).unwrap();
+        assert!(repo_config_is_plain(&repo));
+        git(Some(&repo), &["config", "unknown.setting", "1"]).unwrap();
+        assert!(!repo_config_is_plain(&repo));
+        assert!(!repo_config_is_plain(&repo.join("missing")));
+    }
+
+    #[test]
+    fn a_git_file_is_followed_to_the_configuration_it_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("repo");
+        let other = root.join("other");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        init_repo(&repo);
+        std::fs::write(
+            other.join(".git"),
+            format!("gitdir: {}\n", repo.join(".git").display()),
+        )
+        .unwrap();
+        assert!(repo_config_is_plain(&other));
+        git(Some(&repo), &["config", "include.path", "elsewhere"]).unwrap();
+        assert!(!repo_config_is_plain(&other));
+    }
+
+    #[test]
+    fn a_repository_with_a_large_file_filter_still_answers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(tmp.path()).unwrap();
+        init_repo(&repo);
+        git(
+            Some(&repo),
+            &["config", "filter.lfs.clean", "git-lfs clean -- %f"],
+        )
+        .unwrap();
+        git(Some(&repo), &["config", "filter.lfs.required", "true"]).unwrap();
+        let head = git_query(&repo, &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(head.len(), 40);
+        assert_eq!(branch_tip(&repo, "main").unwrap().as_deref(), Some(&*head));
     }
 
     #[test]

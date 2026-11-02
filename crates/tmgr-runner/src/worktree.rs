@@ -279,6 +279,9 @@ fn forbidden(name: &str) -> Option<&'static str> {
     if n.starts_with("include.") || n.starts_with("includeif.") {
         return Some("config includes");
     }
+    if n.starts_with("hook.") || n == "gc.recentobjectshook" {
+        return Some("runs an external program");
+    }
     if n.starts_with("credential.") || n.starts_with("uploadpack.") || n.starts_with("protocol.") {
         return Some("runs or widens external programs");
     }
@@ -1022,6 +1025,8 @@ mod tests {
         for (key, val) in [
             ("include.path", "../x"),
             ("includeIf.gitdir:/x.path", "../x"),
+            ("hook.x.command", "touch /nope"),
+            ("gc.recentObjectsHook", "touch /nope"),
             ("core.fsmonitor", "true"),
             ("core.sshCommand", "touch /nope"),
             ("extensions.worktreeConfig", "true"),
