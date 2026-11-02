@@ -454,6 +454,50 @@ impl TokenStore {
   }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MigrateStatus {
+  None,
+  Moved,
+  Already,
+  Conflict,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LlmMigrateOut {
+  pub status: MigrateStatus,
+}
+
+pub fn validate_user_id(id: i64) -> Result<i64, String> {
+  if id > 0 && id <= 9_007_199_254_740_991 {
+    Ok(id)
+  } else {
+    Err("invalid user id".into())
+  }
+}
+
+pub fn migrate_secret<S: SecretStore>(store: &S, src: &str, dst: &str) -> Result<MigrateStatus, String> {
+  let Some(secret) = store.get(src).map_err(|_| "could not read the saved key")? else {
+    return Ok(MigrateStatus::None);
+  };
+  match store.get(dst).map_err(|_| "could not read the destination key")? {
+    Some(existing) if existing == secret => {
+      store.delete(src).map_err(|_| "could not remove the old key")?;
+      Ok(MigrateStatus::Already)
+    }
+    Some(_) => Ok(MigrateStatus::Conflict),
+    None => {
+      let written = store.set(dst, &secret).is_ok() && store.get(dst).ok().flatten().as_deref() == Some(secret.as_str());
+      if !written {
+        let _ = store.delete(dst);
+        return Err("could not write the key to the new account".into());
+      }
+      store.delete(src).map_err(|_| "could not remove the old key")?;
+      Ok(MigrateStatus::Moved)
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -720,5 +764,202 @@ mod tests {
     store.revoke(&revoked.id, 1500).unwrap();
     secrets.set(&revoked.id, "leftover").unwrap();
     assert!(store.copy_secret(&revoked.id, 2000).unwrap().is_none());
+  }
+}
+
+#[cfg(test)]
+mod migrate_tests {
+  use super::*;
+  use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
+
+  #[derive(Default)]
+  struct Flaky {
+    inner: MemorySecrets,
+    fail_get_dst: AtomicBool,
+    fail_set: AtomicBool,
+    drop_set: AtomicBool,
+    garble_set: AtomicBool,
+    fail_delete_src: AtomicBool,
+  }
+
+  impl SecretStore for Flaky {
+    fn set(&self, id: &str, secret: &str) -> Result<(), String> {
+      if self.fail_set.load(SeqCst) {
+        return Err("set failed".into());
+      }
+      if self.drop_set.load(SeqCst) {
+        return Ok(());
+      }
+      if self.garble_set.load(SeqCst) {
+        return self.inner.set(id, "garbled");
+      }
+      self.inner.set(id, secret)
+    }
+
+    fn get(&self, id: &str) -> Result<Option<String>, String> {
+      if id == DST && self.fail_get_dst.load(SeqCst) {
+        return Err("get failed".into());
+      }
+      self.inner.get(id)
+    }
+
+    fn delete(&self, id: &str) -> Result<(), String> {
+      if id == SRC && self.fail_delete_src.load(SeqCst) {
+        return Err("delete failed".into());
+      }
+      self.inner.delete(id)
+    }
+  }
+
+  const SRC: &str = "api-key:-1";
+  const DST: &str = "api-key:7";
+  const KEY: &str = "sk-secret-value";
+
+  fn run(s: &Flaky) -> Result<MigrateStatus, String> {
+    migrate_secret(s, SRC, DST)
+  }
+
+  fn with_src() -> Flaky {
+    let s = Flaky::default();
+    s.inner.set(SRC, KEY).unwrap();
+    s
+  }
+
+  #[test]
+  fn none_when_source_is_empty() {
+    let s = Flaky::default();
+    assert_eq!(run(&s).unwrap(), MigrateStatus::None);
+    assert_eq!(s.inner.get(DST).unwrap(), None);
+  }
+
+  #[test]
+  fn moves_when_destination_is_empty() {
+    let s = with_src();
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Moved);
+    assert_eq!(s.inner.get(SRC).unwrap(), None);
+    assert_eq!(s.inner.get(DST).unwrap().as_deref(), Some(KEY));
+    assert_eq!(run(&s).unwrap(), MigrateStatus::None);
+  }
+
+  #[test]
+  fn already_when_destination_equals_source_and_removes_source() {
+    let s = with_src();
+    s.inner.set(DST, KEY).unwrap();
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Already);
+    assert_eq!(s.inner.get(SRC).unwrap(), None);
+    assert_eq!(s.inner.get(DST).unwrap().as_deref(), Some(KEY));
+  }
+
+  #[test]
+  fn conflict_changes_nothing() {
+    let s = with_src();
+    s.inner.set(DST, "other").unwrap();
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Conflict);
+    assert_eq!(s.inner.get(SRC).unwrap().as_deref(), Some(KEY));
+    assert_eq!(s.inner.get(DST).unwrap().as_deref(), Some("other"));
+  }
+
+  #[test]
+  fn destination_read_error_changes_nothing_and_rerun_moves() {
+    let s = with_src();
+    s.fail_get_dst.store(true, SeqCst);
+    assert!(run(&s).is_err());
+    assert_eq!(s.inner.get(SRC).unwrap().as_deref(), Some(KEY));
+    assert_eq!(s.inner.get(DST).unwrap(), None);
+    s.fail_get_dst.store(false, SeqCst);
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Moved);
+  }
+
+  #[test]
+  fn failed_write_keeps_source_and_rerun_moves() {
+    let s = with_src();
+    s.fail_set.store(true, SeqCst);
+    let err = run(&s).unwrap_err();
+    assert!(!err.contains(KEY));
+    assert_eq!(s.inner.get(SRC).unwrap().as_deref(), Some(KEY));
+    assert_eq!(s.inner.get(DST).unwrap(), None);
+    s.fail_set.store(false, SeqCst);
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Moved);
+    assert_eq!(s.inner.get(DST).unwrap().as_deref(), Some(KEY));
+  }
+
+  #[test]
+  fn silently_dropped_write_is_an_error_and_keeps_source() {
+    let s = with_src();
+    s.drop_set.store(true, SeqCst);
+    assert!(run(&s).is_err());
+    assert_eq!(s.inner.get(SRC).unwrap().as_deref(), Some(KEY));
+    assert_eq!(s.inner.get(DST).unwrap(), None);
+    s.drop_set.store(false, SeqCst);
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Moved);
+  }
+
+  #[test]
+  fn read_back_mismatch_removes_destination_keeps_source() {
+    let s = with_src();
+    s.garble_set.store(true, SeqCst);
+    let err = run(&s).unwrap_err();
+    assert!(!err.contains(KEY) && !err.contains("garbled"));
+    assert_eq!(s.inner.get(SRC).unwrap().as_deref(), Some(KEY));
+    assert_eq!(s.inner.get(DST).unwrap(), None);
+    s.garble_set.store(false, SeqCst);
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Moved);
+  }
+
+  #[test]
+  fn failed_source_delete_keeps_both_and_rerun_is_already() {
+    let s = with_src();
+    s.fail_delete_src.store(true, SeqCst);
+    let err = run(&s).unwrap_err();
+    assert!(!err.contains(KEY));
+    assert_eq!(s.inner.get(SRC).unwrap().as_deref(), Some(KEY));
+    assert_eq!(s.inner.get(DST).unwrap().as_deref(), Some(KEY));
+    assert_eq!(run(&s).unwrap_err(), err);
+    s.fail_delete_src.store(false, SeqCst);
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Already);
+    assert_eq!(s.inner.get(SRC).unwrap(), None);
+  }
+
+  #[test]
+  fn user_id_bounds() {
+    assert!(validate_user_id(1).is_ok());
+    assert!(validate_user_id(9_007_199_254_740_991).is_ok());
+    for bad in [0, -1, i64::MIN, 9_007_199_254_740_992, i64::MAX] {
+      assert!(validate_user_id(bad).is_err(), "{bad}");
+    }
+  }
+
+  #[test]
+  fn status_serialises_lowercase() {
+    let json = |s| serde_json::to_string(&s).unwrap();
+    assert_eq!(json(MigrateStatus::None), "\"none\"");
+    assert_eq!(json(MigrateStatus::Moved), "\"moved\"");
+    assert_eq!(json(MigrateStatus::Already), "\"already\"");
+    assert_eq!(json(MigrateStatus::Conflict), "\"conflict\"");
+  }
+
+  #[test]
+  fn serialised_result_and_errors_never_contain_the_key() {
+    let mut seen = Vec::new();
+    for case in 0..6 {
+      let s = with_src();
+      match case {
+        1 => s.inner.set(DST, KEY).unwrap(),
+        2 => s.inner.set(DST, "other").unwrap(),
+        3 => s.fail_set.store(true, SeqCst),
+        4 => s.garble_set.store(true, SeqCst),
+        5 => s.fail_delete_src.store(true, SeqCst),
+        _ => {}
+      }
+      seen.push(match run(&s) {
+        Ok(status) => serde_json::to_string(&LlmMigrateOut { status }).unwrap(),
+        Err(e) => e,
+      });
+    }
+    assert_eq!(seen[0], r#"{"status":"moved"}"#);
+    assert_eq!(seen[2], r#"{"status":"conflict"}"#);
+    for out in &seen {
+      assert!(!out.contains(KEY) && !out.contains("other") && !out.contains("garbled"), "{out}");
+    }
   }
 }

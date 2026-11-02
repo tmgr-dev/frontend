@@ -1,6 +1,7 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Manager, Runtime};
 
@@ -62,6 +63,48 @@ pub fn persona_cache_clear_for_user<R: Runtime>(app: AppHandle<R>, user_id: i64)
   Ok(())
 }
 
+#[derive(Debug, Default, PartialEq, Eq, Serialize)]
+pub struct CacheMigrateOut {
+  pub moved: u32,
+  pub conflicts: u32,
+}
+
+pub fn migrate_dir(src: &Path, dst: &Path) -> Result<CacheMigrateOut, String> {
+  let mut out = CacheMigrateOut::default();
+  if !src.is_dir() {
+    return Ok(out);
+  }
+  fs::create_dir_all(dst).map_err(|e| e.to_string())?;
+  for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
+    let entry = entry.map_err(|e| e.to_string())?;
+    if !entry.file_type().map_err(|e| e.to_string())?.is_file() {
+      continue;
+    }
+    let target = dst.join(entry.file_name());
+    if target.exists() {
+      out.conflicts += 1;
+    } else {
+      fs::rename(entry.path(), &target).map_err(|e| e.to_string())?;
+      out.moved += 1;
+    }
+  }
+  Ok(out)
+}
+
+#[tauri::command]
+pub fn persona_cache_migrate_local<R: Runtime>(
+  app: AppHandle<R>,
+  window: tauri::Window<R>,
+  to_user_id: i64,
+) -> Result<CacheMigrateOut, String> {
+  if window.label() != "main" {
+    return Err("persona_cache_migrate_local may only be called from the main window".into());
+  }
+  let to = crate::local_access::tokens::validate_user_id(to_user_id)?;
+  let root = cache_root(&app)?;
+  migrate_dir(&root.join("-1"), &root.join(to.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -83,5 +126,46 @@ mod tests {
     assert!(safe_uuid_filename("").is_err());
     assert!(safe_uuid_filename(&"a".repeat(65)).is_err());
     assert!(safe_uuid_filename(&"a".repeat(64)).is_ok());
+  }
+
+  fn put(dir: &Path, name: &str, body: &str) {
+    fs::create_dir_all(dir).unwrap();
+    fs::write(dir.join(name), body).unwrap();
+  }
+
+  #[test]
+  fn migrate_dir_moves_files_and_counts_conflicts() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (src, dst) = (tmp.path().join("-1"), tmp.path().join("7"));
+    put(&src, "a.json", "A");
+    put(&src, "b.json", "B");
+    put(&dst, "b.json", "OLD");
+    let out = migrate_dir(&src, &dst).unwrap();
+    assert_eq!(out, CacheMigrateOut { moved: 1, conflicts: 1 });
+    assert_eq!(fs::read_to_string(dst.join("a.json")).unwrap(), "A");
+    assert_eq!(fs::read_to_string(dst.join("b.json")).unwrap(), "OLD");
+    assert_eq!(fs::read_to_string(src.join("b.json")).unwrap(), "B");
+    assert!(!src.join("a.json").exists());
+  }
+
+  #[test]
+  fn migrate_dir_missing_source_is_zero_and_creates_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (src, dst) = (tmp.path().join("-1"), tmp.path().join("7"));
+    assert_eq!(migrate_dir(&src, &dst).unwrap(), CacheMigrateOut::default());
+    assert!(!src.exists() && !dst.exists());
+  }
+
+  #[test]
+  fn migrate_dir_rerun_after_partial_move_finishes_the_rest() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (src, dst) = (tmp.path().join("-1"), tmp.path().join("7"));
+    put(&src, "a.json", "A");
+    put(&src, "b.json", "B");
+    put(&dst, "a.json", "A");
+    fs::remove_file(src.join("a.json")).unwrap();
+    assert_eq!(migrate_dir(&src, &dst).unwrap(), CacheMigrateOut { moved: 1, conflicts: 0 });
+    assert_eq!(migrate_dir(&src, &dst).unwrap(), CacheMigrateOut::default());
+    assert_eq!(fs::read_to_string(dst.join("b.json")).unwrap(), "B");
   }
 }

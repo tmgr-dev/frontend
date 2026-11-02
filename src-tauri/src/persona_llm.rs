@@ -9,6 +9,8 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use url::{Host, Url};
 
+use crate::local_access::tokens::{migrate_secret, validate_user_id, LlmMigrateOut, SecretStore};
+
 const SERVICE: &str = "dev.tmgr.persona-llm";
 const ACCOUNT: &str = "api-key";
 const CONFIG_FILE: &str = "llm_config.json";
@@ -266,6 +268,39 @@ pub fn persona_llm_clear_for_user(user_id: i64) -> Result<(), String> {
     Err(e) => return Err(e.to_string()),
   }
   Ok(())
+}
+
+struct PersonaLlmSecrets;
+
+impl SecretStore for PersonaLlmSecrets {
+  fn set(&self, id: &str, secret: &str) -> Result<(), String> {
+    keyring::Entry::new(SERVICE, id).map_err(|e| e.to_string())?.set_password(secret).map_err(|e| e.to_string())
+  }
+
+  fn get(&self, id: &str) -> Result<Option<String>, String> {
+    match keyring::Entry::new(SERVICE, id).map_err(|e| e.to_string())?.get_password() {
+      Ok(secret) => Ok(Some(secret)),
+      Err(keyring::Error::NoEntry) => Ok(None),
+      Err(e) => Err(e.to_string()),
+    }
+  }
+
+  fn delete(&self, id: &str) -> Result<(), String> {
+    match keyring::Entry::new(SERVICE, id).map_err(|e| e.to_string())?.delete_credential() {
+      Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+      Err(e) => Err(e.to_string()),
+    }
+  }
+}
+
+#[tauri::command]
+pub fn persona_llm_migrate_local<R: Runtime>(window: tauri::Window<R>, to_user_id: i64) -> Result<LlmMigrateOut, String> {
+  if window.label() != "main" {
+    return Err("persona_llm_migrate_local may only be called from the main window".into());
+  }
+  let to = validate_user_id(to_user_id)?;
+  let status = migrate_secret(&PersonaLlmSecrets, &format!("{ACCOUNT}:-1"), &format!("{ACCOUNT}:{to}"))?;
+  Ok(LlmMigrateOut { status })
 }
 
 static IN_FLIGHT: LazyLock<Mutex<HashMap<String, tokio::task::AbortHandle>>> =
