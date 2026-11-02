@@ -57,6 +57,8 @@ use tmgr_ipc::proto::{
 };
 use tmgr_ipc::{auth, secret, server};
 
+mod checkpoints;
+
 const MAX_CONNS: usize = 64;
 const SHIM_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const SHIM_QUEUE: usize = 1024;
@@ -284,6 +286,8 @@ struct Meta {
     boot: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     no_sandbox: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checkpoints: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -423,6 +427,7 @@ struct Session {
     halted: AtomicBool,
     foreign_input: AtomicBool,
     resuming: AtomicBool,
+    cp: checkpoints::Cp,
 }
 
 fn write_meta(dir: &Path, meta: &Meta) {
@@ -518,7 +523,7 @@ impl Session {
             resumed_from: m.resumed_from.clone(),
             human_s: None,
             no_sandbox: m.no_sandbox,
-            checkpoints: None,
+            checkpoints: self.cp_info(&i),
         }
     }
 
@@ -614,6 +619,7 @@ impl Session {
             (i.meta.task, i.meta.origin.clone())
         };
         self.persist();
+        self.cp_note(&states);
         for state in states {
             self.hub.broadcast(to_json(&EventMsg {
                 session: self.id.clone(),
@@ -836,6 +842,7 @@ impl Session {
 
     fn tick(self: &Arc<Self>) {
         self.change(|i, now, out| out.extend(i.det.tick(now)));
+        self.cp_tick();
         self.agent_work();
     }
 
@@ -2019,6 +2026,18 @@ impl Runner {
                     .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
                 Ok(to_json(&s.text(q.lines)))
             }
+            method::CHECKPOINTS_ENABLE
+            | method::CHECKPOINTS_LIST
+            | method::CHECKPOINTS_DIFF
+            | method::CHECKPOINTS_RESTORE => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "checkpoints are accepted only from the tmgr CLI",
+                    ));
+                }
+                self.checkpoints_call(req.method.as_str(), p)
+            }
             method::SESSIONS_WORKLOG => {
                 let s = self
                     .session(&session_id_param(p)?)
@@ -2370,6 +2389,7 @@ impl Runner {
                     ));
                     claim.keep();
                 }
+                self.carry_checkpoints(old, &session.id);
                 if self.session(old).is_some_and(|s| s.is_exited()) {
                     let _ = self.remove(old);
                 }
@@ -2452,6 +2472,7 @@ impl Runner {
             None => self.resume_raw(&meta, old, (cols, rows), prior)?,
         };
         restore::forget(&self.intents(), old);
+        self.carry_checkpoints(old, &info.id);
         let _ = self.remove_session(old);
         log(&format!("session {old} resumed as {} ({via})", info.id));
         Ok(RestoredRun {
@@ -3582,6 +3603,7 @@ impl Runner {
             env_pass: req.env_pass.clone(),
             boot: restore::boot_marker(),
             no_sandbox: unsandboxed.is_some(),
+            checkpoints: None,
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
@@ -3609,7 +3631,7 @@ impl Runner {
 
     fn new_session(&self, meta: Meta, matcher: Option<Matcher>, sdir: &Path) -> Arc<Session> {
         let screen = ScreenModel::new(meta.rows, meta.cols, SCROLLBACK);
-        Arc::new(Session {
+        let session = Arc::new(Session {
             id: meta.id.clone(),
             dir: sdir.to_path_buf(),
             hub: self.hub.clone(),
@@ -3643,7 +3665,10 @@ impl Runner {
             halted: AtomicBool::new(false),
             foreign_input: AtomicBool::new(false),
             resuming: AtomicBool::new(false),
-        })
+            cp: checkpoints::Cp::new(self.cfg.homes.clone()),
+        });
+        session.cp_refresh();
+        session
     }
 
     fn rename(&self, id: &str, name: &str) -> Result<(), ApiErr> {
@@ -3701,6 +3726,7 @@ impl Runner {
             log(&format!("session {id}: {line}"));
         }
         lock(&self.sessions).remove(id);
+        s.cp_forget();
         let _ = fs::remove_dir_all(self.sdir(id));
         let _ = fs::remove_dir_all(self.cfg.homes.join(id));
         let s_dir = self.cfg.dir.join("s");

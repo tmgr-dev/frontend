@@ -6367,3 +6367,6 @@ fn orchestrator_create_checks_the_executable_pin() {
     let info = c.create_orchestrator(right).unwrap();
     let _ = c.kill(&info.id, "kill");
 }
+
+#[path = "checkpoints_ipc/mod.rs"]
+mod checkpoints_ipc;
