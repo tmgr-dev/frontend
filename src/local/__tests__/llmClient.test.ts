@@ -101,4 +101,70 @@ describe('createLlmChat tool calls', () => {
 			args: { method: 'GET', path: 'tasks/2' },
 		});
 	});
+
+	const run = async (
+		chunks: { index?: number; id?: string | null; args: string }[],
+	) => {
+		mockInvoke.mockImplementation(async (command: string, args: any) => {
+			if (command !== 'llm_chat') return;
+			for (const chunk of chunks)
+				emit(args.requestId, {
+					type: 'tool_call',
+					index: chunk.index,
+					id: chunk.id,
+					name: chunk.id ? 'tmgr_request' : null,
+					arguments: chunk.args,
+				});
+			emit(args.requestId, { type: 'done' });
+		});
+		const { chat } = createLlmChat([], 1);
+		return drain(chat([]));
+	};
+	const getCall = (path: string) => ({
+		method: 'GET',
+		path,
+	});
+
+	it('keeps two calls with different ids apart when they share an index', async () => {
+		const events = await run([
+			{ index: 0, id: 'a', args: '{"method":"GET","path":"tasks/1"}' },
+			{ index: 0, id: 'b', args: '{"method":"GET","path":"tasks/2"}' },
+		]);
+		expect(events.map((e) => e.call.id)).toEqual(['a', 'b']);
+		expect(events[0].call.args).toEqual(getCall('tasks/1'));
+		expect(events[1].call.args).toEqual(getCall('tasks/2'));
+	});
+
+	it('keeps two calls with different ids apart when the index is missing', async () => {
+		const events = await run([
+			{ id: 'a', args: '{"method":"GET","path":"tasks/1"}' },
+			{ id: 'b', args: '{"method":"GET","path":"tasks/2"}' },
+		]);
+		expect(events.map((e) => e.call.id)).toEqual(['a', 'b']);
+		expect(events[1].call.args).toEqual(getCall('tasks/2'));
+	});
+
+	it('appends continuation chunks after the second id to the second call', async () => {
+		const events = await run([
+			{ index: 0, id: 'a', args: '{"method":"GET","path":"tasks/1"}' },
+			{ index: 0, id: 'b', args: '{"method":"GET",' },
+			{ index: 0, id: null, args: '"path":"tas' },
+			{ index: 0, id: 'b', args: 'ks/2"}' },
+		]);
+		expect(events.map((e) => e.call.id)).toEqual(['a', 'b']);
+		expect(events[0].call.args).toEqual(getCall('tasks/1'));
+		expect(events[1].call.args).toEqual(getCall('tasks/2'));
+	});
+
+	it('still handles interleaved deltas with distinct indexes', async () => {
+		const events = await run([
+			{ index: 0, id: 'a', args: '{"method":"GET",' },
+			{ index: 1, id: 'b', args: '{"method":"GET",' },
+			{ index: 0, id: null, args: '"path":"tasks/1"}' },
+			{ index: 1, id: null, args: '"path":"tasks/2"}' },
+		]);
+		expect(events.map((e) => e.call.id)).toEqual(['a', 'b']);
+		expect(events[0].call.args).toEqual(getCall('tasks/1'));
+		expect(events[1].call.args).toEqual(getCall('tasks/2'));
+	});
 });

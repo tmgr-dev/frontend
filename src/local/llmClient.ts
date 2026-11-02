@@ -46,10 +46,9 @@ export const createLlmChat = (
 		try {
 			await invoke('llm_chat', { userId, requestId, messages, tools });
 			if (cancelled) await invoke('llm_cancel', { requestId });
-			const toolBuffers = new Map<
-				number,
-				{ id: string; name: string; arguments: string }
-			>();
+			type ToolBuffer = { id: string; name: string; arguments: string };
+			const toolBuffers: ToolBuffer[] = [];
+			const currentByIndex = new Map<number, ToolBuffer>();
 			let done = false;
 			while (!done) {
 				if (!queue.length) {
@@ -64,22 +63,22 @@ export const createLlmChat = (
 					yield { type: 'text', delta: event.text };
 				} else if (event.type === 'tool_call') {
 					const index = event.index ?? 0;
-					const buf = toolBuffers.get(index) ?? {
-						id: '',
-						name: '',
-						arguments: '',
-					};
+					let buf = currentByIndex.get(index);
+					if (!buf || (event.id && buf.id && buf.id !== event.id)) {
+						buf = { id: '', name: '', arguments: '' };
+						currentByIndex.set(index, buf);
+						toolBuffers.push(buf);
+					}
 					if (event.id) buf.id = event.id;
 					if (event.name) buf.name = event.name;
 					buf.arguments += event.arguments ?? '';
-					toolBuffers.set(index, buf);
 				} else if (event.type === 'done') {
 					done = true;
 				} else if (event.type === 'error') {
 					throw new Error(event.message ?? 'LLM request failed');
 				}
 			}
-			for (const buf of toolBuffers.values()) {
+			for (const buf of toolBuffers) {
 				let args: { method: string; path: string; body?: unknown };
 				try {
 					args = JSON.parse(buf.arguments || '{}');
