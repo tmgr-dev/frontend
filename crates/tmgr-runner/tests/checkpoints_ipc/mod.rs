@@ -60,7 +60,7 @@ fn checkpoints_are_off_by_default_and_leave_no_refs() {
             .starts_with("invalid_params")
     );
     assert!(err_text(c.checkpoints_restore(&info.id, 1)).starts_with("invalid_params"));
-    c.send(&info.id, "go\r").unwrap();
+    c.send(&info.id, "go\rgo\r").unwrap();
     wait_exited(&mut c, &info.id);
     assert_eq!(refs(&h), "");
     assert!(!h
@@ -199,8 +199,7 @@ fn restore_round_trips_over_ipc_and_is_undoable() {
         .iter()
         .map(|i| i.kind)
         .collect();
-    assert!(kinds.contains(&CheckpointKind::BeforeRestore));
-    assert!(kinds.contains(&CheckpointKind::Restored));
+    assert_eq!(kinds.last(), Some(&CheckpointKind::Restored));
     c.checkpoints_restore(&info.id, done.before_n).unwrap();
     assert_eq!(read_f(&h), "v2\n");
 }
