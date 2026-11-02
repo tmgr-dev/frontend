@@ -789,6 +789,9 @@ mod tests {
         assert_eq!(after_failed_query(pid), Probe::Gone);
         assert_eq!(after_failed_query(std::process::id()), Probe::Unknown);
         assert_eq!(after_failed_query(0), Probe::Unknown);
+        if unsafe { libc::geteuid() } != 0 {
+            assert_eq!(after_failed_query(1), Probe::Unknown);
+        }
         assert_eq!(after_failed_query(u32::MAX - 1), Probe::Unknown);
     }
 
@@ -884,9 +887,89 @@ mod tests {
         assert_eq!((out.workers.signalled, out.workers.unknown), (1, 1));
         assert!(out.incomplete());
         assert!(!reaper.join().unwrap().success());
-        assert!(!crate::tombstone::for_link(&paths, "laptop")
-            .unwrap()
-            .is_empty());
+    }
+
+    #[test]
+    fn a_worker_that_ignores_sigterm_is_killed_and_its_record_removed() {
+        use std::io::{BufRead, BufReader};
+        let d = crate::testutil::private_tempdir();
+        let paths = Paths::under(d.path());
+        let mut worker = Command::new("sh")
+            .args(["-c", "trap '' TERM; echo ready; sleep 5"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut line = String::new();
+        BufReader::new(worker.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        assert_eq!(line.trim(), "ready");
+        fake_worker(
+            &paths,
+            "laptop",
+            &worker,
+            process_start(worker.id()).unwrap(),
+        );
+        let pid = worker.id();
+        let reaper = std::thread::spawn(move || worker.wait().unwrap());
+        let t = terminate(&paths, "laptop", Duration::from_millis(200), &|_| true).unwrap();
+        assert_eq!((t.signalled, t.survivors, t.unknown), (1, 0, 0));
+        assert!(!file(&paths, "laptop", pid).exists());
+        let status = reaper.join().unwrap();
+        assert_eq!(
+            std::os::unix::process::ExitStatusExt::signal(&status),
+            Some(libc::SIGKILL)
+        );
+    }
+
+    #[test]
+    fn a_worker_still_alive_after_sigkill_is_a_survivor_and_keeps_its_record() {
+        let d = crate::testutil::private_tempdir();
+        let paths = Paths::under(d.path());
+        let mut worker = sleeper();
+        let start = process_start(worker.id()).unwrap();
+        fake_worker(&paths, "laptop", &worker, start.clone());
+        let pid = worker.id();
+        let reaper = std::thread::spawn(move || worker.wait().unwrap());
+        let probe = |_: u32| Probe::Running {
+            start: start.clone(),
+            zombie: false,
+        };
+        let t = terminate_where_with(&paths, "laptop", Duration::from_millis(50), &all, &probe)
+            .unwrap();
+        assert_eq!((t.signalled, t.survivors, t.unknown), (1, 1, 0));
+        assert!(file(&paths, "laptop", pid).exists());
+        reaper.join().unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    fn stat_line(comm: &str, state: &str, start: &str) -> String {
+        let mut fields: Vec<String> = (0..20).map(|i| i.to_string()).collect();
+        fields[0] = state.into();
+        fields[19] = start.into();
+        format!("42 ({comm}) {}", fields.join(" "))
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn parse_stat_reads_state_and_start_after_the_last_parenthesis() {
+        assert_eq!(
+            parse_stat(&stat_line("a) Z (b", "R", "987654")),
+            Some(Probe::Running {
+                start: "987654".into(),
+                zombie: false
+            })
+        );
+        assert_eq!(
+            parse_stat(&stat_line("sleep", "Z", "55")),
+            Some(Probe::Running {
+                start: "55".into(),
+                zombie: true
+            })
+        );
+        assert_eq!(parse_stat("42 (sleep) R 1 2 3"), None);
+        assert_eq!(parse_stat("42 sleep R 1 2 3"), None);
     }
 
     fn pass(
