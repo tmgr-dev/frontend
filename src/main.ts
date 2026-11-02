@@ -26,6 +26,7 @@ import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import { installFileDropGuard } from '@/utils/fileDrag';
 import { installFocusSource } from '@/utils/focusSource';
 import { findInjectedScripts } from '@/utils/injectedScripts';
+import { installLocalUpgrade, markLocalUpgrade } from '@/utils/localUpgrade';
 import { requestCache } from '@/utils/requestCache';
 import { installRoutineSnapshotInvalidation } from '@/utils/routineSnapshotInvalidation';
 import { isDetachedWindowLabel } from '@/utils/taskWindow';
@@ -264,11 +265,14 @@ const start = async () => {
 	if (isDesktopApp() && desktopWindowLabel() === 'main') {
 		void startRunnerStore();
 		installCloudIdentitySync(store);
+		if (store.state.localProfile) installLocalUpgrade(store);
 		watch(
 			() => store.getters.accountMode,
 			(next, previous) => {
-				if (shouldReloadOnModeChange(previous, next))
+				if (shouldReloadOnModeChange(previous, next)) {
+					if (previous === 'local' && next === 'cloud') markLocalUpgrade();
 					window.location.assign('/app');
+				}
 			},
 		);
 	}

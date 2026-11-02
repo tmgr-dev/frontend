@@ -27,6 +27,7 @@
 	import DesktopAppBar from '@/components/desktop/DesktopAppBar.vue';
 	import LocalMoveBanner from '@/components/desktop/LocalMoveBanner.vue';
 	import LocalOnlyBanner from '@/components/desktop/LocalOnlyBanner.vue';
+	import LocalUpgradeHost from '@/components/desktop/LocalUpgradeHost.vue';
 	import MoveToCloudHost from '@/components/desktop/MoveToCloudHost.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import DarkMode from '@/components/general/DarkMode.vue';
@@ -991,7 +992,7 @@
 								size="sm"
 								data-testid="sidebar-create-account"
 								data-tour="nav.create-account"
-								@click="$router.push({ name: 'Login' })"
+								@click="$router.push({ name: 'Register' })"
 							>
 								Create account
 							</Button>
@@ -1285,6 +1286,7 @@
 	</Dialog>
 
 	<MoveToCloudHost v-if="isDesktop && !isLocalOnly" />
+	<LocalUpgradeHost v-if="isDesktop && !isLocalOnly" />
 
 	<Confirm
 		v-if="showExitConfirm"

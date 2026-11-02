@@ -9,6 +9,7 @@ export async function mockApp(
     account = true,
     apiRequests = [],
     loginAs = null,
+    registerOutcomes = [],
     authHeaders = [],
     consent = true,
     onboarding = null,
@@ -237,8 +238,8 @@ export async function mockApp(
               title: refresh
                 ? 'Updated task'
                 : url.searchParams.get('page') === '2'
-                  ? 'Second page task'
-                  : task.title,
+                ? 'Second page task'
+                : task.title,
             },
           ],
           meta: {
@@ -275,6 +276,19 @@ export async function mockApp(
         path.endsWith('/auth/login')
       ) {
         apiRequests.push(`POST ${path}`);
+        anonymous = false;
+        await route.fulfill({ json: { data: { token: loginAs } } });
+        return;
+      }
+      if (
+        anonymous &&
+        request.method() === 'POST' &&
+        path.endsWith('/auth/register')
+      ) {
+        apiRequests.push(`POST ${path}`);
+        const outcome = registerOutcomes.shift() ?? 'ok';
+        if (outcome === 'abort') return route.abort('internetdisconnected');
+        if (outcome !== 'ok') return route.fulfill(outcome);
         anonymous = false;
         await route.fulfill({ json: { data: { token: loginAs } } });
         return;

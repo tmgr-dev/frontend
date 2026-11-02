@@ -248,3 +248,26 @@ test('login state flips clear the desktop bar dismissal, token rotation does not
 	mutations.setToken(state, null);
 	expect(removeItem).toHaveBeenCalledWith('tmgr:desktop-bar-dismissed');
 });
+
+test('logout with the local user id -1 does not touch the persona slot', () => {
+	const clearPersonaLlmForLogout = jest.fn();
+	const { config } = fixture({
+		'@/local/personaCache': { clearPersonaLlmForLogout },
+		'@/utils/desktop': { isDesktopApp: jest.fn().mockReturnValue(true) },
+	});
+	config.actions.logout({
+		commit: jest.fn(),
+		state: { user: { id: -1 }, token: null },
+	});
+	expect(clearPersonaLlmForLogout).not.toHaveBeenCalled();
+});
+
+test('logout leaves the local upgrade marker alone', () => {
+	const removeItem = jest.fn();
+	const { config } = fixture(
+		{ '@/utils/desktop': { isDesktopApp: jest.fn().mockReturnValue(false) } },
+		{ getItem: () => null, setItem: jest.fn(), removeItem },
+	);
+	config.actions.logout({ commit: jest.fn(), state: { user: null } });
+	expect(removeItem).not.toHaveBeenCalledWith('tmgr:local-upgrade');
+});

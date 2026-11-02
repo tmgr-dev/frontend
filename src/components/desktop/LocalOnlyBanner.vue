@@ -168,7 +168,7 @@
 			const openBackups = () => {
 				if (status.value) void revealBackups(status.value.code).catch(() => {});
 			};
-			const createAccount = () => router.push({ name: 'Login' });
+			const createAccount = () => router.push({ name: 'Register' });
 			const backupNowClick = async () => {
 				if (!status.value || backingUp.value) return;
 				backingUp.value = true;

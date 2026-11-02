@@ -9,6 +9,7 @@ const fakeShell = async ({
   profile: initialProfile = null,
   runner = null,
   usage = null,
+  upgrade = {},
 } = {}) => {
   const { createHash } = await import('node:crypto');
   const installed = new Map();
@@ -34,6 +35,15 @@ const fakeShell = async ({
   const tokens = new Map();
   const accessReplies = [];
   let profile = initialProfile;
+  const upgradeCalls = [];
+  const upgradeState = {
+    llm: 'moved',
+    keyValue: null,
+    failLink: 0,
+    failLlm: 0,
+    failCache: 0,
+    ...upgrade,
+  };
   const unknown = [];
   const backups = new Map();
   const backupRows = (code) => backups.get(code) ?? [];
@@ -80,6 +90,30 @@ const fakeShell = async ({
       case 'local_profile_update':
         profile = { ...profile, name: args.name };
         return profile;
+      case 'local_profile_link': {
+        upgradeCalls.push({ command, args });
+        if (upgradeState.failLink > 0) {
+          upgradeState.failLink--;
+          throw new Error('link failed');
+        }
+        profile = { ...profile };
+        profile.linked_user_id ??= args.userId;
+        return profile;
+      }
+      case 'persona_llm_migrate_local':
+        upgradeCalls.push({ command, args });
+        if (upgradeState.failLlm > 0) {
+          upgradeState.failLlm--;
+          throw new Error('llm failed');
+        }
+        return { status: upgradeState.llm };
+      case 'persona_cache_migrate_local':
+        upgradeCalls.push({ command, args });
+        if (upgradeState.failCache > 0) {
+          upgradeState.failCache--;
+          throw new Error('cache failed');
+        }
+        return { moved: 0, conflicts: 0 };
       case 'local_backup_status':
         return workspaces.map((workspace) => {
           const rows = backupRows(workspace.code);
@@ -305,6 +339,8 @@ const fakeShell = async ({
     tokens,
     accessReplies,
     unknown,
+    upgradeCalls,
+    upgradeState,
   });
 };
 
@@ -370,7 +406,7 @@ export const desktopPage = async (
           command,
           args instanceof Uint8Array
             ? { raw: Array.from(args), headers: options?.headers ?? {} }
-            : (args ?? {}),
+            : args ?? {},
         );
       },
       convertFileSrc: (path, protocol) =>

@@ -43,7 +43,7 @@
 		},
 		setup() {
 			const router = useRouter();
-			const createAccount = () => router.push({ name: 'Login' });
+			const createAccount = () => router.push({ name: 'Register' });
 			return { createAccount };
 		},
 	});

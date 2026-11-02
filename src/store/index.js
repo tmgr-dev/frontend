@@ -469,7 +469,7 @@ const actions = {
 		// preferred_editor, …) survive, but per-user data must not leak to
 		// the next account on a shared browser.
 		const userId = state.user?.id;
-		if (isDesktopApp() && userId != null) {
+		if (isDesktopApp() && userId > 0) {
 			clearPersonaLlmForLogout(userId).catch((error) => {
 				console.error(
 					'[auth] failed to clear persona LLM data on logout',

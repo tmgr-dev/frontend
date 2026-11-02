@@ -13,14 +13,20 @@ test.use({ viewport: { width: 1280, height: 800 } });
 
 const localPage = async (
   page,
-  { profile = null, dark = false, loginAs = null } = {},
+  {
+    profile = null,
+    dark = false,
+    loginAs = null,
+    registerOutcomes = [],
+    upgrade = {},
+  } = {},
 ) => {
   const apiRequests = [];
   const authHeaders = [];
   const shell = await desktopPage(
     page,
-    { account: false, apiRequests, loginAs, authHeaders },
-    { profile },
+    { account: false, apiRequests, loginAs, authHeaders, registerOutcomes },
+    { profile, upgrade },
   );
   await page.addInitScript(
     (scheme) => {
@@ -218,12 +224,17 @@ test('sign in from local-only mode keeps local workspaces next to the cloud one'
   expect(apiRequests).toEqual([]);
 
   await page.getByRole('button', { name: 'Create account' }).first().click();
+  await expect(page).toHaveURL(/\/register/);
+  await page.getByRole('link', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/login/);
   await page.locator('input[type="email"]').fill('test@example.test');
   await page.locator('input[type="password"]').fill('secret-pass');
   await page.locator('form button[type="submit"]').click();
 
   await expect(page).toHaveURL(/\/local-my-workspace\//);
+  await page
+    .getByRole('button', { name: 'Stay in the local workspace' })
+    .click();
   await expect(page.getByText('Local only task').first()).toBeVisible();
   await expect.poll(() => authHeaders.length).toBeGreaterThan(0);
   expect(authHeaders.every((h) => h === 'Bearer cloud-token')).toBe(true);
@@ -242,4 +253,248 @@ test('sign in from local-only mode keeps local workspaces next to the cloud one'
   await page.getByRole('menuitem', { name: /My workspace/ }).click();
   await expect(page).toHaveURL(/\/local-my-workspace\//);
   await expect(page.getByText('Local only task').first()).toBeVisible();
+});
+
+const fillRegister = async (page, { confirm = 'secret-pass' } = {}) => {
+  await page.locator('#name').fill('Ada');
+  await page.locator('#email').fill('ada@example.test');
+  await page.locator('#password').fill('secret-pass');
+  await page.locator('#password_confirmation').fill(confirm);
+  await page.locator('form button[type="submit"]').click();
+};
+
+const markerOf = (page) =>
+  page.evaluate(() => localStorage.getItem('tmgr:local-upgrade'));
+
+const upgradeDialog = (page) =>
+  page.getByRole('dialog', { name: 'Your account is ready' });
+
+const SENTINEL_KEY = 'SENTINEL-PROVIDER-KEY-VALUE';
+const SENTINEL_WORKSPACE = 'SENTINEL-WS-ALPHA';
+
+const withLocalWorkspace = async (page, options) => {
+  const ctx = await localPage(page, options);
+  await ctx.shell('local_workspace_create', { name: SENTINEL_WORKSPACE });
+  await ctx.shell('local_workspace_set_schema', {});
+  return ctx;
+};
+
+test('sign up from local mode keeps local workspaces next to the cloud one and shows the dialog once', async ({
+  page,
+}) => {
+  const { shell } = await withLocalWorkspace(page, {
+    profile,
+    loginAs: 'cloud-token',
+  });
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/local-/);
+  await page.getByRole('button', { name: 'Create account' }).first().click();
+  await expect(page).toHaveURL(/\/register/);
+  await fillRegister(page);
+
+  const dialog = upgradeDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('Your account is ready')).toBeVisible();
+  await expect(page.getByTestId('local-upgrade-local')).toContainText(
+    SENTINEL_WORKSPACE,
+  );
+  await expect(page.getByTestId('local-upgrade-cloud')).toContainText('Demo');
+  await expect(page.getByTestId('local-upgrade-key')).toContainText(
+    'Your AI provider key moved to this account.',
+  );
+  expect(shell.upgradeCalls.map((c) => c.command)).toEqual([
+    'local_profile_link',
+    'persona_llm_migrate_local',
+    'persona_cache_migrate_local',
+  ]);
+  expect(shell.profile.linked_user_id).toBe(1);
+  expect(
+    shell.upgradeCalls.every(
+      (c) => c.args.userId === 1 || c.args.toUserId === 1,
+    ),
+  ).toBe(true);
+
+  await page.getByTestId('local-upgrade-stay').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(/\/local-/);
+  expect(await markerOf(page)).toBeNull();
+  await page.reload();
+  await expect(page.getByTestId('sidebar-create-account')).toHaveCount(0);
+  await expect(upgradeDialog(page)).toHaveCount(0);
+
+  await page.getByTitle('Switch workspace').first().click();
+  await expect(
+    page.getByRole('menuitem', { name: new RegExp(SENTINEL_WORKSPACE) }),
+  ).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /Demo/ })).toBeVisible();
+});
+
+test('open the cloud workspace from the dialog', async ({ page }) => {
+  await withLocalWorkspace(page, { profile, loginAs: 'cloud-token' });
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/local-/);
+  await page.getByRole('button', { name: 'Create account' }).first().click();
+  await fillRegister(page);
+  await page.getByTestId('local-upgrade-open-cloud').click();
+  await expect(page).toHaveURL(/\/demo\//);
+  await expect(upgradeDialog(page)).toHaveCount(0);
+  expect(await markerOf(page)).toBeNull();
+});
+
+test('failed and offline sign-up leave local mode intact and a retry works', async ({
+  page,
+}) => {
+  const { apiRequests } = await withLocalWorkspace(page, {
+    profile,
+    loginAs: 'cloud-token',
+    registerOutcomes: [
+      { status: 409, json: { error: 'email_taken' } },
+      { status: 429, json: { error: 'rate_limited' } },
+      'abort',
+      'ok',
+    ],
+  });
+  const register = () =>
+    apiRequests.filter((r) => r === 'POST /api/auth/register').length;
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/local-/);
+  await page.getByRole('button', { name: 'Create account' }).first().click();
+  await expect(page).toHaveURL(/\/register/);
+
+  await fillRegister(page, { confirm: 'different' });
+  await expect(page.getByText('does not match')).toBeVisible();
+  expect(register()).toBe(0);
+
+  await page.locator('#password_confirmation').fill('secret-pass');
+  await page.locator('form button[type="submit"]').click();
+  await expect(page.getByTestId('register-error')).toContainText(
+    'already exists',
+  );
+  await expect(
+    page.getByTestId('register-error').getByRole('link', { name: 'Sign in' }),
+  ).toBeVisible();
+
+  await page.locator('form button[type="submit"]').click();
+  await expect(page.getByTestId('register-error')).toContainText(
+    'Too many attempts',
+  );
+
+  await page.locator('form button[type="submit"]').click();
+  await expect(page.getByTestId('register-error')).toContainText(
+    'No connection',
+  );
+  await expect(page.locator('form button[type="submit"]')).toBeEnabled();
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull();
+  expect(await markerOf(page)).toBeNull();
+
+  await page.getByTestId('continue-without-account').click();
+  await expect(page).toHaveURL(/\/local-/);
+  await expect(page.getByTestId('sidebar-create-account')).toBeVisible();
+
+  await page.getByTestId('sidebar-create-account').click();
+  await fillRegister(page);
+  await expect(upgradeDialog(page)).toBeVisible();
+  expect(register()).toBe(4);
+});
+
+test('Login offers to continue without an account', async ({ page }) => {
+  await localPage(page, { profile });
+  await page.goto('/login');
+  await page.getByTestId('continue-without-account').click();
+  await expect(page).toHaveURL(/\/local-/);
+});
+
+test('a failed key migration shows a warning, Retry succeeds and sign-in stays usable', async ({
+  page,
+}) => {
+  const { shell } = await withLocalWorkspace(page, {
+    profile,
+    loginAs: 'cloud-token',
+    upgrade: { failLlm: 1 },
+  });
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/local-/);
+  await page.getByRole('button', { name: 'Create account' }).first().click();
+  await fillRegister(page);
+  await expect(page.getByTestId('local-upgrade-warning')).toBeVisible();
+  await expect(page.getByTestId('local-upgrade-key')).toHaveCount(0);
+  expect(JSON.parse(await markerOf(page))).toEqual({
+    migrate: true,
+    dialog: true,
+  });
+  await page.getByRole('button', { name: 'Retry' }).click();
+  await expect(page.getByTestId('local-upgrade-warning')).toHaveCount(0);
+  await expect(page.getByTestId('local-upgrade-key')).toContainText('moved');
+  expect(JSON.parse(await markerOf(page))).toEqual({
+    migrate: false,
+    dialog: true,
+  });
+  expect(
+    shell.upgradeCalls.filter((c) => c.command === 'persona_llm_migrate_local'),
+  ).toHaveLength(2);
+});
+
+test.describe('nothing local is uploaded', () => {
+  const bootWrites = [];
+
+  const run = async (page, { linkedTo, upgrade }) => {
+    const ctx = await withLocalWorkspace(page, {
+      profile: linkedTo ? { ...profile, linked_user_id: linkedTo } : profile,
+      loginAs: 'cloud-token',
+      upgrade: { keyValue: SENTINEL_KEY, ...upgrade },
+    });
+    const seen = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (!url.pathname.startsWith('/api/')) return;
+      seen.push({
+        method: request.method(),
+        path: url.pathname,
+        text: `${request.url()} ${request.postData() ?? ''}`,
+      });
+    });
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/local-/);
+    await page.getByRole('button', { name: 'Create account' }).first().click();
+    await fillRegister(page);
+    await expect(upgradeDialog(page)).toBeVisible();
+    if (upgrade.failLlm) {
+      await page.getByRole('button', { name: 'Retry' }).click();
+      await expect(page.getByTestId('local-upgrade-key')).toBeVisible();
+    }
+    await page.getByTestId('local-upgrade-stay').click();
+    await page.reload();
+    await expect(page.getByTestId('sidebar-create-account')).toHaveCount(0);
+    return { ...ctx, seen };
+  };
+
+  const check = (seen) => {
+    expect(seen.length).toBeGreaterThan(0);
+    for (const entry of seen) {
+      expect(entry.text).not.toContain(SENTINEL_KEY);
+      expect(entry.text).not.toContain(SENTINEL_WORKSPACE);
+    }
+    const writes = seen
+      .filter((e) => !['GET', 'HEAD', 'OPTIONS'].includes(e.method))
+      .map((e) => `${e.method} ${e.path}`);
+    return [...new Set(writes)].sort();
+  };
+
+  test('linked account, with a Retry', async ({ page }) => {
+    const { seen, shell } = await run(page, { upgrade: { failLlm: 1 } });
+    expect(shell.upgradeCalls.length).toBeGreaterThan(3);
+    expect(check(seen)).toEqual(
+      ['POST /api/auth/register', ...bootWrites].sort(),
+    );
+  });
+
+  test('account B', async ({ page }) => {
+    const { seen, shell } = await run(page, { linkedTo: 99, upgrade: {} });
+    expect(shell.upgradeCalls.map((c) => c.command)).toEqual([
+      'local_profile_link',
+    ]);
+    expect(check(seen)).toEqual(
+      ['POST /api/auth/register', ...bootWrites].sort(),
+    );
+  });
 });
