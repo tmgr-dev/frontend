@@ -177,7 +177,7 @@ fn restore_from_with_another_session_in(
     cwd: &Path,
 ) -> (Result<(), String>, String) {
     let mut c = h.client();
-    let mut own = h.sh(TURNS);
+    let mut own = h.req(&["/bin/sh", "-c", TURNS]);
     own.cwd = own_cwd.display().to_string();
     let own = c.create(own).unwrap();
     c.checkpoints_enable(&own.id, None).unwrap();
