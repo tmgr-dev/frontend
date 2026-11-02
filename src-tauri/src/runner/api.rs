@@ -620,6 +620,18 @@ mod tests {
   }
 
   #[test]
+  fn a_team_listed_by_the_runner_arrives_labelled() {
+    let mut m = Mock::new("secret");
+    m.sessions = mock::team_sessions("team-1");
+    let (mut conn, server) = connected(m);
+    let list = list_sessions(&mut conn).unwrap();
+    drop(conn);
+    server.join().unwrap();
+    let roles: Vec<_> = list.iter().map(|s| (s.team.as_ref().unwrap().role, s.team.as_ref().unwrap().worker)).collect();
+    assert_eq!(roles, [("worker", Some(1)), ("lead", None), ("worker", Some(2))]);
+  }
+
+  #[test]
   fn a_valid_team_label_is_kept() {
     let lead = session_from_value(&with_team(json!({"role": "lead", "of": "team-1"}))).unwrap();
     assert_eq!(lead.team, Some(RunnerTeam { of: "team-1".into(), role: "lead", worker: None }));
