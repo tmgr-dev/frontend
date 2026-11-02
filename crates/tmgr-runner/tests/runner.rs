@@ -2054,6 +2054,28 @@ fn only_the_worker_may_name_an_origin_and_the_worker_must() {
 }
 
 #[test]
+fn a_run_for_a_link_cannot_carry_a_team_label() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    fx.trust_one(3, &["fake"], &[], 2);
+    fx.h.start(5000);
+    let mut r = fx.req("laptop", 3);
+    r.team = Some(tmgr_ipc::api::TeamLink {
+        role: tmgr_ipc::api::TeamRole::Worker(1),
+        of: "q_team".into(),
+    });
+    let e = err_text(fx.worker().create_run(r));
+    assert!(
+        e.starts_with("invalid_params: ") && e.contains("team"),
+        "{e}"
+    );
+    assert!(fx.h.client().list().unwrap().is_empty());
+    assert!(fx.worker().create_run(fx.req("laptop", 3)).is_ok());
+}
+
+#[test]
 fn stale_generation_unknown_link_and_a_dropped_link_are_forbidden() {
     if !sessions_available() {
         return;
