@@ -3,6 +3,7 @@
 ## 1.0.63
 
 - Queue and `--worktree` checkouts are now cloned without sharing object files with the source repository.
+- A queue or `--worktree` checkout now needs the source repository's objects to stay available.
 
 ## 1.0.62
 
