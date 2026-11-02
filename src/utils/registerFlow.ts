@@ -22,7 +22,7 @@ export const describeRegisterError = (error: unknown): RegisterFailure => {
 		return {
 			...none,
 			message:
-				'No connection. Check your internet and try again. Nothing was created.',
+				"We couldn't reach the server. Check your connection and try again. If you already created this account, sign in instead.",
 		};
 	const { status, data } = response;
 	if (status === 409 || data?.error === 'email_taken')

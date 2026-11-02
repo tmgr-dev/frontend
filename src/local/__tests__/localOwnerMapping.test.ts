@@ -159,6 +159,24 @@ describeSqlite('stored -1 identity read per context', () => {
 		});
 	});
 
+	it('counts and lists the person once when both the -1 row and the linked row exist', async () => {
+		await base.db.execute(
+			`INSERT INTO comment_reactions (comment_id, emoji, actor_kind, actor_id, created_at) VALUES (?, '👍', 'user', '7', ?)`,
+			[commentId, clock.toISOString()],
+		);
+		expect(await reactionsOf(linked())).toEqual([
+			{
+				emoji: '👍',
+				count: 1,
+				reacted: true,
+				users: [{ id: 7, name: 'Yurij' }],
+			},
+		]);
+		expect((await reactionsOf(missingField()))[0]).toMatchObject({
+			count: 2,
+		});
+	});
+
 	const toggle = (ctx: LocalContext) =>
 		api(ctx, 'POST', `comments/${commentId}/reactions/toggle`, { emoji: '👍' });
 	const stored = async () =>

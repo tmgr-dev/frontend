@@ -6,6 +6,9 @@
 	"permissions": [
 		"allow-local-profile-create",
 		"allow-local-profile-update",
+		"allow-local-profile-link",
+		"allow-persona-llm-migrate-local",
+		"allow-persona-cache-migrate-local",
 		"allow-local-backup-now",
 		"allow-local-backup-list",
 		"allow-local-backup-status",

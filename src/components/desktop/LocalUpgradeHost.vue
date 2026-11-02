@@ -4,7 +4,7 @@
 			<DialogHeader>
 				<DialogTitle>Your account is ready</DialogTitle>
 				<DialogDescription>
-					Your local workspaces stay on this device. Your new cloud workspace is
+					Your local workspaces stay on this device. Your cloud workspace is
 					next to them.
 				</DialogDescription>
 			</DialogHeader>
@@ -134,7 +134,7 @@
 			const keySentence = computed(() => {
 				if (upgradeState.phase !== 'done') return '';
 				if (upgradeState.key === 'moved' || upgradeState.key === 'already')
-					return 'Your AI provider key moved to this account. Signing out removes it from this device.';
+					return 'Your AI provider key moved to this account.';
 				if (upgradeState.key === 'conflict')
 					return 'This account already has an AI provider key, so it was kept. Your local key is still saved for local mode.';
 				return '';

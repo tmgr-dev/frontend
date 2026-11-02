@@ -381,7 +381,7 @@ test('failed and offline sign-up leave local mode intact and a retry works', asy
 
   await page.locator('form button[type="submit"]').click();
   await expect(page.getByTestId('register-error')).toContainText(
-    'No connection',
+    "couldn't reach the server",
   );
   await expect(page.locator('form button[type="submit"]')).toBeEnabled();
   expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull();

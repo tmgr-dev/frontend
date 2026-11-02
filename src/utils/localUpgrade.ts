@@ -143,8 +143,11 @@ export const installLocalUpgrade = (
 			return;
 		}
 
+		const stale = () => positiveId(store.state.user) !== userId;
 		try {
+			if (stale()) return;
 			await invoke('persona_cache_migrate_local', { toUserId: userId });
+			if (stale()) return;
 			const llm = (await invoke('persona_llm_migrate_local', {
 				toUserId: userId,
 			})) as { status?: string } | null;

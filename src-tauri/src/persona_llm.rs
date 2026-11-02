@@ -294,11 +294,12 @@ impl SecretStore for PersonaLlmSecrets {
 }
 
 #[tauri::command]
-pub fn persona_llm_migrate_local<R: Runtime>(window: tauri::Window<R>, to_user_id: i64) -> Result<LlmMigrateOut, String> {
+pub fn persona_llm_migrate_local<R: Runtime>(app: AppHandle<R>, window: tauri::Window<R>, to_user_id: i64) -> Result<LlmMigrateOut, String> {
   if window.label() != "main" {
     return Err("persona_llm_migrate_local may only be called from the main window".into());
   }
   let to = validate_user_id(to_user_id)?;
+  crate::local_profile::require_claim(&app, to)?;
   let status = migrate_secret(&PersonaLlmSecrets, &format!("{ACCOUNT}:-1"), &format!("{ACCOUNT}:{to}"))?;
   Ok(LlmMigrateOut { status })
 }

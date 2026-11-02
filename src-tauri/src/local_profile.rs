@@ -103,6 +103,22 @@ pub fn link_at(path: &Path, user_id: i64) -> Result<LocalProfile, String> {
   Ok(profile)
 }
 
+pub fn linked_id_at(path: &Path) -> Result<Option<i64>, String> {
+  let sidecar = read_link(&path.with_file_name(LINK_FILE))?;
+  Ok(sidecar.or_else(|| get_at(path).and_then(|p| p.linked_user_id)))
+}
+
+pub fn require_claim_at(path: &Path, to_user_id: i64) -> Result<(), String> {
+  match linked_id_at(path)? {
+    Some(id) if id == to_user_id => Ok(()),
+    _ => Err("local profile is not linked to this account".into()),
+  }
+}
+
+pub fn require_claim<R: Runtime>(app: &AppHandle<R>, to_user_id: i64) -> Result<(), String> {
+  require_claim_at(&path(app)?, to_user_id)
+}
+
 #[tauri::command]
 pub fn local_profile_get<R: Runtime>(app: AppHandle<R>) -> Result<Option<LocalProfile>, String> {
   Ok(get_at(&path(&app)?))
@@ -292,6 +308,32 @@ mod tests {
     assert!(!link_file(&file).exists());
     fs::remove_dir_all(&tmp).unwrap();
     assert_eq!(link_at(&file, 5).unwrap().linked_user_id, Some(5));
+    let _ = fs::remove_dir_all(file.parent().unwrap());
+  }
+
+  #[test]
+  fn claim_requires_a_matching_link() {
+    let file = created("claim");
+    assert!(require_claim_at(&file, 5).is_err());
+    link_at(&file, 5).unwrap();
+    assert!(require_claim_at(&file, 5).is_ok());
+    assert!(require_claim_at(&file, 9).is_err());
+    strip_field(&file);
+    assert_eq!(linked_id_at(&file).unwrap(), Some(5));
+    assert!(require_claim_at(&file, 5).is_ok());
+    assert!(require_claim_at(&file, 9).is_err());
+    fs::write(link_file(&file), "{nope").unwrap();
+    assert!(require_claim_at(&file, 5).is_err());
+    let _ = fs::remove_dir_all(file.parent().unwrap());
+  }
+
+  #[test]
+  fn claim_from_the_field_alone_when_sidecar_is_missing() {
+    let file = created("claim-field");
+    link_at(&file, 5).unwrap();
+    fs::remove_file(link_file(&file)).unwrap();
+    assert!(require_claim_at(&file, 5).is_ok());
+    assert!(require_claim_at(&file, 9).is_err());
     let _ = fs::remove_dir_all(file.parent().unwrap());
   }
 

@@ -101,6 +101,7 @@ pub fn persona_cache_migrate_local<R: Runtime>(
     return Err("persona_cache_migrate_local may only be called from the main window".into());
   }
   let to = crate::local_access::tokens::validate_user_id(to_user_id)?;
+  crate::local_profile::require_claim(&app, to)?;
   let root = cache_root(&app)?;
   migrate_dir(&root.join("-1"), &root.join(to.to_string()))
 }

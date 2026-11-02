@@ -820,7 +820,7 @@ export const createLocalApi = () => {
 				? await ctx.db.select<{ c: number }>(
 						`SELECT COUNT(*) AS c FROM tasks WHERE deleted_at IS NULL AND project_category_id = ?`,
 						[Number(category)],
-				  )
+					)
 				: [{ c: 0 }];
 			return { index: { workspace: Number(n) + 1, category: Number(c) + 1 } };
 		})
@@ -2054,8 +2054,8 @@ const commentJson = (row: any, ctx: LocalContext) => {
 			kind: row.author_kind ?? 'user',
 			id: authorMapped
 				? String(ctx.user.id)
-				: row.author_id ?? String(ctx.user.id),
-			name: authorMapped ? ctx.user.name : row.author_name ?? ctx.user.name,
+				: (row.author_id ?? String(ctx.user.id)),
+			name: authorMapped ? ctx.user.name : (row.author_name ?? ctx.user.name),
 			...((row.author_kind ?? 'user') === 'user'
 				? {}
 				: { owner: { id: String(ctx.user.id), name: ctx.user.name } }),
@@ -2105,15 +2105,22 @@ const reactionsFor = async (ctx: LocalContext, commentIds: number[]) => {
 			reacted: false,
 			users: [],
 		};
-		entry.count += 1;
 		const mapped =
 			row.actor_kind === 'user' && mapsLocalIdentity(ctx, row.actor_id);
+		const duplicate =
+			ctx.localOwnerLinked === true &&
+			row.actor_kind === 'user' &&
+			entry.users.some(
+				(u: { id: number }) =>
+					u.id === (mapped ? ctx.user.id : Number(row.actor_id)),
+			);
+		if (!duplicate) entry.count += 1;
 		if (
 			row.actor_kind === actor.kind &&
 			(String(row.actor_id) === ownerId || (mapped && actor.kind === 'user'))
 		)
 			entry.reacted = true;
-		if (row.actor_kind === 'user')
+		if (row.actor_kind === 'user' && !duplicate)
 			entry.users.push({
 				id: mapped ? ctx.user.id : Number(row.actor_id),
 				name: ctx.user.name,

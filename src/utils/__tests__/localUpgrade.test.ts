@@ -276,3 +276,41 @@ test('the installer makes no HTTP calls', async () => {
 	(globalThis as any).fetch = original;
 	expect(fetchSpy).not.toHaveBeenCalled();
 });
+
+test.each(['local_profile_link', 'persona_cache_migrate_local'])(
+	'a user change during %s stops the old attempt and re-evaluates for the new user',
+	async (during) => {
+		const storage = memoryStorage();
+		markLocalUpgrade(storage);
+		const { store, signIn } = makeStore(7);
+		let switched = false;
+		const switchUser = () => {
+			if (switched) return;
+			switched = true;
+			signIn(8);
+		};
+		const invoke = makeInvoke({
+			local_profile_link: (a) => {
+				if (during === 'local_profile_link') switchUser();
+				return linkedTo(a.userId)(a);
+			},
+			persona_cache_migrate_local: () => {
+				if (during === 'persona_cache_migrate_local') switchUser();
+				return { moved: 0, conflicts: 0 };
+			},
+			persona_llm_migrate_local: () => ({ status: 'none' }),
+		});
+		installLocalUpgrade(store, invoke, storage);
+		await flush();
+		const migrateIds = invoke.mock.calls
+			.filter((c) => c[0].endsWith('migrate_local'))
+			.map((c) => c[1]?.toUserId);
+		const firstNew = migrateIds.indexOf(8);
+		expect(firstNew).toBeGreaterThanOrEqual(0);
+		expect(migrateIds.slice(firstNew)).not.toContain(7);
+		const staleCalls = migrateIds.slice(0, firstNew).filter((id) => id === 7);
+		expect(staleCalls.length).toBe(during === 'local_profile_link' ? 0 : 1);
+		expect(upgradeState.phase).toBe('done');
+		expect(readUpgradeMarker(storage)?.migrate).toBe(false);
+	},
+);
