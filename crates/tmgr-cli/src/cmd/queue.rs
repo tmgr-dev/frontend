@@ -1352,6 +1352,7 @@ impl RunnerRuns {
 
 fn run_create_req(req: &StartRequest) -> RunCreateReq {
     RunCreateReq {
+        team: None,
         clones: req.clones.clone(),
         profile: req.profile.clone(),
         task: Some(req.task),

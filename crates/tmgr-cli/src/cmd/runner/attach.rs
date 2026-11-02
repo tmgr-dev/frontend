@@ -4576,6 +4576,7 @@ mod tests {
 
     fn info(id: &str) -> SessionInfo {
         SessionInfo {
+            team: None,
             id: id.into(),
             name: id.into(),
             argv: Vec::new(),

@@ -488,6 +488,7 @@ pub fn bundle_from_local(
         });
     }
     let bundle = RunBundle {
+        assignment: None,
         v: 1,
         task: TaskRef {
             workspace_id: ws.manifest.id,

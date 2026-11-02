@@ -115,6 +115,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `multi_clone.v1` | `clones` on `runs.create`; `repos_sha256` in `cloud` (section 5, "Queue capabilities") |
 | `signed_context.v1` | `persona.id`, `persona.instructions` and `context` in a bundle; `persona_sha256`, `context_sha256` in `cloud` (section 5, "Run bundles") |
 | `team.v1` | `team` in a run bundle (section 5, "Run bundles") |
+| `team.workers.v1` | `team` on `runs.create` and `SessionInfo`; `assignment` in a run bundle (section 5, "Run bundles") |
 | `orchestrator.v1` | `orchestrator.create` (section 5, "Orchestrator session") |
 | `session_text.v1` | `sessions.text` (section 5, "Session text") |
 | `trust_cwd.v1` | `trust_cwd` on `runs.create`; `trust` in `WorkSummary` (section 5, "Pre-accepted folder trust") |
@@ -197,7 +198,7 @@ protected path); `name` is 1 to 64 printable characters; `cols`/`rows` are
 clamped to 1..500 and 1..200.
 
 `SessionInfo`: `{id, name, argv, cwd, profile: str|null, state, created_ms,
-cols, rows, shim_pid, child_pid, task?, bundle_sha256?, origin?, resumed_from?, human_s?, no_sandbox?, permission_cards?}`. `task`, `bundle_sha256`, `origin`, `resumed_from`, `human_s`, `no_sandbox` and `permission_cards` are absent when not set. `no_sandbox` (cap `no_sandbox.v1`) is `true` for a run started with `no_sandbox`; absent otherwise, and a client treats absent as sandboxed. `human_s` (cap `human_time.v1`, `sessions.list` only) is the human seconds counted for the session, closed chunks plus the open one; absent when 0. `resumed_from` is the id of the exited session this one replaced through `sessions.resume`; a client that tracks sessions by id maps the old id to this one.
+cols, rows, shim_pid, child_pid, task?, bundle_sha256?, origin?, resumed_from?, human_s?, no_sandbox?, permission_cards?, team?}`. `task`, `bundle_sha256`, `origin`, `resumed_from`, `human_s`, `no_sandbox`, `permission_cards` and `team` are absent when not set. `team` (cap `team.workers.v1`) is the label the run was created with. `no_sandbox` (cap `no_sandbox.v1`) is `true` for a run started with `no_sandbox`; absent otherwise, and a client treats absent as sandboxed. `human_s` (cap `human_time.v1`, `sessions.list` only) is the human seconds counted for the session, closed chunks plus the open one; absent when 0. `resumed_from` is the id of the exited session this one replaced through `sessions.resume`; a client that tracks sessions by id maps the old id to this one.
 
 `TaskRef`: `{workspace_id: i64, task_id: i64}`. Local workspaces have negative
 ids. The runner treats it as opaque, stores it in the session's `meta.json` (it
@@ -498,6 +499,8 @@ Cloud runs (cap `signed_context.v1`) may add, all omitted when absent so other b
 `launch.permission_mode` (`ask`, `accept-edits` or `plan`) is optional, omitted when absent, and part of the hash when present.
 
 A bundle may carry `team` `{size, mode}` (cap `team.v1`; `size` 1 to 5, `mode` `eco` or `heavy`, no other fields), omitted when absent so other bundles and their hashes are unchanged. It is a note from the runner side, not owner text: it needs no signature, and `task.md` shows it in a separate block labelled as set by the runner on this machine and not signed.
+
+`runs.create` takes an optional `team` `{role, of}` (cap `team.workers.v1`, no other fields): `role` is `"lead"` or `{"worker": N}` with `N` from 1, `of` is the pickup id (1 to 64 characters of `A-Za-z0-9._-`); the run is created with it and `SessionInfo.team` returns it. It is a label for grouping and display and grants nothing: the sandbox, grants, home and egress of a member are built exactly as for a single run, and an invalid link is `invalid_params`. A bundle may carry `assignment`, a string of at most 16384 bytes, omitted when absent so other bundles and their hashes are unchanged and part of the hash when present. It is unsigned text written by the lead agent: it is outside the cloud signature, the runner refuses it (`invalid_params`) unless the request carries a `team` with role `worker`, and `task.md` shows it after the team block under "Assignment from the lead", inside the same untrusted data markers as other task text (`<<<` is escaped), never among the owner sections.
 
 `author.kind` is `human`, `agent` or `other`; `author.id`, `persona` and
 `launch.model` are optional and are omitted, never `null`. `v` is `1`. Unknown

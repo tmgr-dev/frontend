@@ -76,6 +76,7 @@ impl Fake {
 
 fn info(id: &str, req: &RunCreateReq) -> SessionInfo {
     SessionInfo {
+        team: None,
         id: id.into(),
         name: req.name.clone().unwrap_or_default(),
         argv: vec!["/usr/bin/true".into(), "--secret-flag".into()],
@@ -1561,6 +1562,7 @@ fn a_slow_handshake_and_a_slow_list_still_answer_inside_the_deadline() {
 
 fn local(id: &str, edit: impl FnOnce(&mut SessionInfo)) -> SessionInfo {
     let mut s = SessionInfo {
+        team: None,
         id: id.into(),
         name: "hand-started".into(),
         argv: vec!["/usr/bin/true".into()],

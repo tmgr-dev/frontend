@@ -46,7 +46,8 @@ use tmgr_ipc::api::{
     EventMsg, ExePin, ForkParams, LookupParams, OrchestratorCreateReq, Origin, OriginRevokeParams,
     OriginRevoked, PathParams, PermissionAnswer, PermissionCard, PermissionChoice, RestoredRun,
     ResumeParams, RunCreateReq, RunStatus, SessionInfo, SessionText, Snapshot, State, StateKind,
-    StatusInfo, TaskRef, TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP, CLIENT_WORKER,
+    StatusInfo, TaskRef, TeamLink, TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP,
+    CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -292,6 +293,8 @@ struct Meta {
     checkpoints: Option<u32>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     permission_cards: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    team: Option<TeamLink>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -319,6 +322,7 @@ struct RunExtra {
     fork: Option<ForkSeed>,
     no_sandbox: Option<std::collections::BTreeMap<String, String>>,
     permission_cards: bool,
+    team: Option<TeamLink>,
 }
 
 #[derive(Clone)]
@@ -524,6 +528,7 @@ impl Session {
         let i = lock(&self.inner);
         let m = &i.meta;
         SessionInfo {
+            team: m.team.clone(),
             id: m.id.clone(),
             name: m.name.clone(),
             argv: m.argv.clone(),
@@ -3040,6 +3045,9 @@ impl Runner {
                 };
             }
         }
+        if let Some(t) = &req.team {
+            t.validate().map_err(|m| api(ErrorCode::InvalidParams, m))?;
+        }
         let checked = bundle::check(&req, tmgr_ipc::api::limits::MAX_BUNDLE)
             .map_err(|(code, m)| api(code, m))?;
         let pinned = match &checked {
@@ -3248,6 +3256,7 @@ impl Runner {
             fork,
             no_sandbox: req.no_sandbox.as_ref().map(|n| n.env.clone()),
             permission_cards,
+            team: req.team.clone(),
         };
         if plan.restricted {
             extra.egress = Some(
@@ -3836,6 +3845,7 @@ impl Runner {
             no_sandbox: unsandboxed.is_some(),
             checkpoints: None,
             permission_cards: extra.permission_cards,
+            team: extra.team.clone(),
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);

@@ -211,6 +211,7 @@ fn bundle(
 ) -> Result<RunBundle> {
     let c = &p.candidate;
     let bundle = RunBundle {
+        assignment: None,
         v: 1,
         task: c.task,
         title: c.title.clone(),
@@ -320,6 +321,7 @@ fn create_request(
     let (cols, rows) = l.size;
     let sha = bundle.sha256();
     RunCreateReq {
+        team: None,
         clones: Vec::new(),
         profile: profile.to_string(),
         task: Some(plan.candidate.task),
