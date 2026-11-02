@@ -171,7 +171,7 @@ missing params) and `internal`.
 | `sessions.rename` | `{id, name}` (1 to 64 printable characters, unique among sessions) | `null` | `not_found`, `invalid_params`, `busy` (name taken) | any |
 | `sessions.worklog` | `{id}` | `WorkSummary` | `not_found` | any |
 | `checkpoints.enable` | `{id, keep?}` | `CheckpointList` | `not_found`, `invalid_params` | `cli` |
-| `checkpoints.list` | `{id}` | `CheckpointList` | `not_found` | `cli` |
+| `checkpoints.list` | `{id}` | `CheckpointList` | `not_found`, `invalid_params` when off | `cli` |
 | `checkpoints.diff` | `{id, n, against?}` | `CheckpointDiff` | `not_found`, `invalid_params` | `cli` |
 | `checkpoints.restore` | `{id, n}` | `CheckpointRestored` | `not_found`, `busy`, `forbidden` | `cli` |
 | `layout.get` | none | the stored JSON value or `null` | | any |

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.62
+
+- `tmgr attach`: session checkpoints, off by default. With them on, the runner stores the session's folder after each agent turn, so you can go back. Turn them on for one session with `tmgr run --checkpoints` or the `Rewind` row in the new-session form, or for new sessions with `tmgr config set attach.checkpoints true`. `tmgr config set attach.checkpoints_keep <n>` sets how many are kept per session (default 50, 3 to 1000).
+- In `tmgr attach`, the `↶` control in the pane header or `Ctrl-] C` lists the checkpoints with a diff preview. Restore asks y/n first and stores the current state as a checkpoint before changing anything, so a restore can be undone.
+- `tmgr checkpoints list|diff|restore <session> <n>` does the same from the command line.
+- A checkpoint holds tracked and untracked files and leaves out ignored ones. Your branch, index, stash and history are not touched: checkpoints live on private refs, `refs/tmgr/checkpoints/<session>/<n>`, removed when the session is removed.
+- Restore only overwrites or deletes what the stored current state holds byte for byte. Anything else stays, and restore lists it as left as is. Ignored files stay.
+- A folder that is not a git repository has no checkpoints, and the session says so.
+- Limits: files over the size cap and hard-linked files are not stored and are counted as skipped. Nested repositories and submodules are not covered. Untracked files that are not ignored, secrets included, end up in the local `.git/objects`. `git log --all` shows checkpoint commits, and `git push --mirror` would push the refs. The agent is not told about a restore. Sessions started from the desktop or the queue do not pick up the global setting.
+
 ## 1.0.61
 
 - `tmgr run --agent <profile> --worktree` starts the agent in its own checkout `<repo>-worktrees/<session name>` on a new branch of the same name, made from the current commit, so two agents never write the same files. It is a `git clone --reference` checkout, not a linked worktree: the sandbox must not reach the repository's `.git`. The branch stays in the checkout until you bring it over; the command to do that is printed.
