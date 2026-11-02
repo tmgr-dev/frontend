@@ -125,6 +125,7 @@
 						currentUser().id,
 					);
 					cancelCurrent = cancel;
+					if (cancelRequested) return;
 					await askPersonaOnTask({
 						ctx,
 						router,

@@ -155,3 +155,26 @@ test('a cancelled ask shows no error, a failed one does', async () => {
 	await setup.ask();
 	expect(setup.error.value).toBe('LLM server unreachable');
 });
+
+test('a cancel pressed before the chat exists stops the ask quietly', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: { id: 42, name: 'Bo', email: 'b@example.com' } };
+	mockStore.getters = { isLocalOnly: false };
+	const setup = loadComponent().setup({ taskId: 1 }, { emit: jest.fn() });
+	for (const fn of mounted) await fn();
+	let release!: () => void;
+	mockLocalContext.mockImplementationOnce(
+		(_w: unknown, user: unknown) =>
+			new Promise((resolve) => {
+				release = () => resolve({ user });
+			}),
+	);
+	const asking = setup.ask();
+	await Promise.resolve();
+	setup.cancelAsk();
+	release();
+	await asking;
+	expect(mockAskPersonaOnTask).not.toHaveBeenCalled();
+	expect(setup.error.value).toBeNull();
+	expect(setup.asking.value).toBe(false);
+});
