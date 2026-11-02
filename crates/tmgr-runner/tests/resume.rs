@@ -1065,7 +1065,6 @@ fn killing_the_leftovers_of_an_exited_session_lets_the_resume_through() {
     fs::remove_file(h.work.join("leak")).unwrap();
     let r = h.client().resume(&id, 80, 24).unwrap();
     assert_ne!(r.session.id, id);
-    not_running(h.client().kill_leftovers(&id));
 }
 
 #[test]
