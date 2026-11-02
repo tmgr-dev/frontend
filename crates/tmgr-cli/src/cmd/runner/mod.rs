@@ -284,6 +284,12 @@ pub struct RunArgs {
         conflicts_with_all = ["on", "agent_cmd", "trust"]
     )]
     pub no_sandbox: bool,
+    /// Save the working folder after each turn so `checkpoints restore` can undo the agent's changes (git folders)
+    #[arg(long, conflicts_with_all = ["no_checkpoints", "on", "fetch", "publish", "review"])]
+    pub checkpoints: bool,
+    /// Do not save checkpoints for this session even if `attach.checkpoints` is on
+    #[arg(long, conflicts_with_all = ["on", "fetch", "publish", "review"])]
+    pub no_checkpoints: bool,
     /// Branch or commit the task's clone starts from (default: the repository's current branch)
     #[arg(long, value_name = "BASE", requires = "task", conflicts_with = "on")]
     pub base: Option<String>,
@@ -305,6 +311,16 @@ pub struct RunArgs {
     /// Discard a run held by the leak gate (asks you to type the task key); the run folder stays
     #[arg(long, requires = "review", conflicts_with = "push")]
     pub drop: bool,
+}
+
+impl RunArgs {
+    pub(super) fn checkpoints_flag(&self) -> Option<bool> {
+        match (self.checkpoints, self.no_checkpoints) {
+            (true, _) => Some(true),
+            (_, true) => Some(false),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Args)]

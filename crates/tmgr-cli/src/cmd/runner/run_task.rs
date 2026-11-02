@@ -457,6 +457,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         a.no_sandbox,
     )?;
     let cfg = runner_config()?;
+    super::checkpoints::enable_new(&mut connect(&cfg)?, &info.id, a.checkpoints_flag())?;
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         eprintln!(
             "The agent's commits stay in its clone; bring its branch into your repository with:\n  {fetch}"

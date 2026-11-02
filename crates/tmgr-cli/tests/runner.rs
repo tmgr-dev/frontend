@@ -2004,3 +2004,6 @@ fn rm_accepts_the_path_of_a_checkout_whose_session_is_gone() {
     );
     assert!(env.proj.join("a.txt").exists());
 }
+
+#[path = "runner_checkpoints/mod.rs"]
+mod runner_checkpoints;

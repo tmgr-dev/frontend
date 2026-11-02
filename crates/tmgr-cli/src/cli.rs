@@ -49,6 +49,9 @@ pub enum Command {
     /// Unanswered questions the agents asked in `tmgr attach` sessions
     #[cfg(feature = "runner")]
     Questions(crate::cmd::questions::QuestionsArgs),
+    /// Saved states of an agent session's working folder: list, diff and restore
+    #[cfg(feature = "runner")]
+    Checkpoints(crate::cmd::runner::checkpoints::CheckpointsArgs),
     /// Print version, commit and build target
     Version,
     /// Sign in with a device code

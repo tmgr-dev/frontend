@@ -1383,6 +1383,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     if let Some(note) = tmgr_runner::agentwork::audit_note(Some(mode), a.no_sandbox) {
         set_key(&ws.code, task_id, "audit", Some(json!(note)))?;
     }
+    super::checkpoints::enable_new(&mut rc, &info.id, a.checkpoints_flag())?;
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         return attach::run(&cfg, &info.id);
     }
