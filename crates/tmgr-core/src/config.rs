@@ -341,13 +341,15 @@ impl Config {
                 Ok(v)
             }
             "attach.checkpoints" => {
-                let v = v.parse::<bool>().map_err(|_| {
+                let v = parse_bool(value).ok_or_else(|| {
                     Error::usage("invalid attach.checkpoints").hint("use true or false")
                 })?;
                 self.attach.checkpoints = Some(v);
+                Ok(v.to_string())
             }
             "attach.checkpoints_keep" => {
-                let n = v
+                let n = value
+                    .trim()
                     .parse::<u32>()
                     .ok()
                     .filter(|n| (3..=1000).contains(n))
@@ -356,6 +358,7 @@ impl Config {
                             .hint("a number from 3 to 1000")
                     })?;
                 self.attach.checkpoints_keep = Some(n);
+                Ok(n.to_string())
             }
             "attach.copy.clean" => {
                 let v = parse_bool(value).ok_or_else(|| {
