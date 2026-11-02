@@ -417,7 +417,10 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
     }
     let bin = std::env::current_exe()?;
     follower::apply_scope(paths, &plan, &bin)?;
-    let closed = close_attached(paths, &plan.name, &plan.new)?;
+    let closed = close_attached(paths, &plan.name, &plan.new).map_err(|mut e| {
+        e.message = format!("the scope is saved, but {}", e.message);
+        e
+    })?;
     let unknown = closed.as_ref().map_or(0, |t| t.unknown);
     let unchecked = format!(
         "{unknown} worker record(s) of {} could not be checked, so an attach may still be open until its next check",
@@ -487,9 +490,6 @@ fn full_access_warnings(old: &Scope, new: &Scope) -> Vec<String> {
 }
 
 fn close_attached(paths: &Paths, name: &str, new: &Scope) -> Result<Option<Terminated>> {
-    if new.remote_control && new.include_bypass {
-        return Ok(None);
-    }
     let hint = |e: Error| e.hint(unknown_workers_hint(paths, name));
     if !registry::any_attached(paths, name, &|a| follower::must_close(new, a)).map_err(hint)? {
         return Ok(None);
@@ -760,22 +760,30 @@ fn format_entry(ctx: &Ctx, e: &Value) -> String {
     if let Some(line) = remote_line(e, &when, &link) {
         return line;
     }
-    let rest: Vec<String> = e
-        .as_object()
+    format!(
+        "{when} {} {} {}",
+        audit_field(&text("event")),
+        audit_field(&link),
+        other_fields(e)
+    )
+    .trim_end()
+    .to_string()
+}
+
+fn other_fields(e: &Value) -> String {
+    e.as_object()
         .into_iter()
         .flatten()
         .filter(|(k, _)| !matches!(k.as_str(), "v" | "seq" | "ts" | "prev" | "event" | "link"))
         .map(|(k, v)| {
             format!(
                 "{}={}",
-                sanitize_line(k),
-                sanitize_line(&v.as_str().map_or_else(|| v.to_string(), str::to_string))
+                audit_field(k),
+                audit_field(&v.as_str().map_or_else(|| v.to_string(), str::to_string))
             )
         })
-        .collect();
-    format!("{when} {} {link} {}", text("event"), rest.join(" "))
-        .trim_end()
-        .to_string()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn audit_field(raw: &str) -> String {
@@ -887,6 +895,25 @@ mod tests {
         assert_eq!(request_what(&e), r#""runs.halt accepted" run=s_x"#);
         let plain = json!({"method": "runs.list"});
         assert_eq!(request_what(&plain), "runs.list");
+    }
+
+    #[test]
+    fn request_args_quote_equals_and_backslash_in_values() {
+        assert_eq!(request_args(&json!({"args": {"a": "b=c"}})), r#"a="b=c""#);
+        assert_eq!(request_args(&json!({"args": {"a": "b\\c"}})), r#"a="b\\c""#);
+    }
+
+    #[test]
+    fn fallback_fields_quote_keys_and_values_like_request_fields() {
+        let spaced = json!({"s_x accepted=1": "v", "k": "s_x accepted=1"});
+        let text = other_fields(&spaced);
+        assert!(text.contains(r#""s_x accepted=1"=v"#), "{text}");
+        assert!(text.contains(r#"k="s_x accepted=1""#), "{text}");
+        assert_eq!(other_fields(&json!({"k": "plain"})), "k=plain");
+        assert_eq!(other_fields(&json!({"n": 3})), "n=3");
+        assert_eq!(other_fields(&json!({"a": ["x y"]})), r#"a="[\"x y\"]""#);
+        assert_eq!(other_fields(&json!({"a": "b=c"})), r#"a="b=c""#);
+        assert_eq!(other_fields(&json!({"a": "b\\c"})), r#"a="b\\c""#);
     }
 
     #[test]

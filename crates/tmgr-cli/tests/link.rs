@@ -334,6 +334,7 @@ fn revoke_with_an_unknown_worker_record_exits_1_and_says_so() {
         "{}",
         err_text(&out)
     );
+    assert!(workers.join("laptop.4242.json").exists());
 }
 
 #[test]
@@ -404,7 +405,36 @@ fn an_unknown_worker_record_only_warns_on_an_unrelated_scope_change() {
 }
 
 #[test]
-fn an_unknown_worker_record_does_not_fail_a_scope_change_with_both_flags_on() {
+fn an_unknown_worker_record_is_counted_in_json_on_an_unrelated_scope_change() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            allow_attach_input: true,
+            ..f.scope()
+        },
+    );
+    let workers = f.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&workers).unwrap();
+    std::fs::write(workers.join("laptop.4242.json"), b"not json").unwrap();
+    let out = f
+        .tmgr()
+        .args([
+            "link",
+            "scope",
+            "laptop",
+            "--allow-attach-input",
+            "false",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"]["closed"]["unknown"], 1, "{v}");
+}
+
+fn both_on_fixture(bad_record: bool) -> Fx {
     let f = fx();
     f.trust_leader(
         "laptop",
@@ -415,15 +445,181 @@ fn an_unknown_worker_record_does_not_fail_a_scope_change_with_both_flags_on() {
             ..f.scope()
         },
     );
-    let workers = f.paths.link_dir().join("workers");
-    std::fs::create_dir_all(&workers).unwrap();
-    std::fs::write(workers.join("laptop.4242.json"), b"not json").unwrap();
+    if bad_record {
+        let workers = f.paths.link_dir().join("workers");
+        std::fs::create_dir_all(&workers).unwrap();
+        std::fs::write(workers.join("laptop.4242.json"), b"not json").unwrap();
+    }
+    f
+}
+
+#[test]
+fn an_unknown_worker_record_does_not_fail_a_scope_change_with_both_flags_on() {
+    let f = both_on_fixture(true);
     let out = f
         .tmgr()
         .args(["link", "scope", "laptop", "--allow-attach-input", "false"])
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("could not be checked"), "{text}");
+    assert!(f
+        .paths
+        .link_dir()
+        .join("workers")
+        .join("laptop.4242.json")
+        .exists());
+
+    let f = both_on_fixture(true);
+    let out = f
+        .tmgr()
+        .args([
+            "link",
+            "scope",
+            "laptop",
+            "--allow-attach-input",
+            "false",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"]["closed"]["unknown"], 1, "{v}");
+    assert!(f
+        .paths
+        .link_dir()
+        .join("workers")
+        .join("laptop.4242.json")
+        .exists());
+}
+
+#[test]
+fn both_flags_on_with_no_bad_records_closes_nothing_and_does_not_warn() {
+    let f = both_on_fixture(false);
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--allow-attach-input", "false"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(!text.contains("could not be checked"), "{text}");
+
+    let f = both_on_fixture(false);
+    let out = f
+        .tmgr()
+        .args([
+            "link",
+            "scope",
+            "laptop",
+            "--allow-attach-input",
+            "false",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(v["data"]["closed"].is_null(), "{v}");
+}
+
+fn registry_file_fixture() -> Fx {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            ..f.scope()
+        },
+    );
+    let dir = f.paths.link_dir();
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("workers"), b"").unwrap();
+    f
+}
+
+#[test]
+fn a_registry_error_after_the_scope_is_saved_says_it_is_saved() {
+    let f = registry_file_fixture();
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--remote-control", "off"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    assert!(err_text(&out).contains("saved"), "{}", err_text(&out));
+    assert!(!scope_flags(&f).0);
+
+    let f = registry_file_fixture();
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--allow-attach-input", "false"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    assert!(err_text(&out).contains("saved"), "{}", err_text(&out));
+}
+
+struct RestoreMode(PathBuf);
+
+impl Drop for RestoreMode {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o700));
+    }
+}
+
+fn unreadable_registry_dir() -> Option<(Fx, RestoreMode)> {
+    use std::os::unix::fs::PermissionsExt;
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            ..f.scope()
+        },
+    );
+    let workers = f.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&workers).unwrap();
+    let guard = RestoreMode(workers.clone());
+    std::fs::set_permissions(&workers, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::read_dir(&workers).is_ok() {
+        return None;
+    }
+    Some((f, guard))
+}
+
+#[test]
+fn revoke_with_a_registry_directory_that_cannot_be_read_exits_1_and_says_so() {
+    let Some((f, _guard)) = unreadable_registry_dir() else {
+        return;
+    };
+    let out = f
+        .tmgr()
+        .args(["link", "revoke", "laptop"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    let text = err_text(&out);
+    assert!(text.contains("worker registry"), "{text}");
+    assert!(text.to_lowercase().contains("permission denied"), "{text}");
+    assert!(Store::load(&f.paths).unwrap().leaders.is_empty());
+}
+
+#[test]
+fn scope_with_a_registry_directory_that_cannot_be_read_says_it_is_saved() {
+    let Some((f, _guard)) = unreadable_registry_dir() else {
+        return;
+    };
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--remote-control", "off"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    assert!(err_text(&out).contains("saved"), "{}", err_text(&out));
 }
 
 #[test]
