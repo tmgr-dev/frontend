@@ -537,6 +537,14 @@ mod tests {
     }
 
     fn go(dir: &Path, now: u64, fake: &Rc<Fake>) -> FlushReport {
+        flush_waiting(dir, now, Duration::from_secs(10), &|| {
+            fake.connects.set(fake.connects.get() + 1);
+            Ok(Box::new(fake.clone()) as Box<dyn Server>)
+        })
+        .unwrap()
+    }
+
+    fn go_now(dir: &Path, now: u64, fake: &Rc<Fake>) -> FlushReport {
         flush_with(dir, now, &|| {
             fake.connects.set(fake.connects.get() + 1);
             Ok(Box::new(fake.clone()) as Box<dyn Server>)
@@ -705,7 +713,7 @@ mod tests {
         let d = dir_with(&[recent("a", 1, 5, 0)]);
         let held = Lock::try_acquire(d.path()).unwrap().unwrap();
         let fake = Rc::new(Fake::default());
-        let report = go(d.path(), NOW, &fake);
+        let report = go_now(d.path(), NOW, &fake);
         assert!(report.busy);
         assert_eq!(fake.connects.get(), 0);
         drop(held);

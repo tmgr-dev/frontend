@@ -7,7 +7,7 @@ use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::StateKind;
@@ -16,6 +16,9 @@ use tmgr_runner::client::Client;
 const BIN: &str = env!("CARGO_BIN_EXE_tmgr");
 const WS_ID: i64 = -444_001;
 const COMMAND_LIMIT: Duration = Duration::from_secs(120);
+
+// macOS creates pipes and sets CLOEXEC in two steps: a concurrent spawn inherits the pipe and holds it open
+static SPAWN: Mutex<()> = Mutex::new(());
 
 struct Fx {
     tmp: tempfile::TempDir,
@@ -28,6 +31,7 @@ fn private_dir(path: &Path) {
 }
 
 fn git(dir: &Path, args: &[&str]) -> String {
+    let _spawn = SPAWN.lock().unwrap_or_else(|e| e.into_inner());
     let out = Command::new("git")
         .current_dir(dir)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
@@ -215,11 +219,14 @@ impl Fx {
     }
 
     fn bounded(&self, mut command: Command, args: &[&str]) -> Output {
-        let mut child = command
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
+        let mut child = {
+            let _spawn = SPAWN.lock().unwrap_or_else(|e| e.into_inner());
+            command
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap()
+        };
         let (tx, rx) = mpsc::channel();
         for (i, pipe) in [
             Box::new(child.stdout.take().unwrap()) as Box<dyn Read + Send>,
