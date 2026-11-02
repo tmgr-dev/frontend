@@ -69,6 +69,7 @@ export interface PersonaAgentParams {
 	grantedPermissions: string[];
 	chat: ChatFn;
 	maxToolCalls?: number;
+	onText?: (textSoFar: string) => void;
 }
 
 export interface PersonaAgentResult {
@@ -84,6 +85,7 @@ export const runPersonaAgent = async ({
 	systemPrompt,
 	chat,
 	maxToolCalls = 8,
+	onText,
 }: PersonaAgentParams): Promise<PersonaAgentResult> => {
 	const actor = {
 		kind: 'persona' as const,
@@ -125,8 +127,10 @@ export const runPersonaAgent = async ({
 			const calls: ToolCall[] = [];
 			let textBuffer = '';
 			for await (const event of chat(messages)) {
-				if (event.type === 'text') textBuffer += event.delta;
-				else calls.push(event.call);
+				if (event.type === 'text') {
+					textBuffer += event.delta;
+					onText?.(textBuffer);
+				} else calls.push(event.call);
 			}
 			if (!calls.length) {
 				finalText = textBuffer;

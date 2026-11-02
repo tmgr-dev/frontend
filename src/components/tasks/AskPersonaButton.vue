@@ -21,6 +21,9 @@
 		</button>
 		<template v-else>
 			<span class="text-ink-subtle">Asking…</span>
+			<span v-if="partialText" class="max-w-md truncate text-ink-subtle">{{
+				partialText
+			}}</span>
 			<button
 				type="button"
 				class="rounded-pill border border-line px-3 py-1"
@@ -64,6 +67,7 @@
 			const selected = ref<string | null>(null);
 			const asking = ref(false);
 			const error = ref<string | null>(null);
+			const partialText = ref('');
 			let cancelCurrent: (() => Promise<void>) | null = null;
 
 			// Asking needs agent_work:write to record the run and comments:write to post the answer.
@@ -106,6 +110,7 @@
 				if (!persona) return;
 				asking.value = true;
 				error.value = null;
+				partialText.value = '';
 				try {
 					const ctx = await localContext(workspace, currentUser());
 					const cached = await readPersonaCache(persona.uuid, currentUser().id);
@@ -126,19 +131,32 @@
 						systemPrompt,
 						grantedPermissions,
 						chat,
+						onText: (text) => {
+							partialText.value = text;
+						},
 					});
 					emit('posted');
 				} catch (e) {
 					error.value = e instanceof Error ? e.message : String(e);
 				} finally {
 					asking.value = false;
+					partialText.value = '';
 					cancelCurrent = null;
 				}
 			};
 
 			const cancelAsk = () => cancelCurrent?.();
 
-			return { show, enabledPersonas, selected, asking, error, ask, cancelAsk };
+			return {
+				show,
+				enabledPersonas,
+				selected,
+				asking,
+				error,
+				partialText,
+				ask,
+				cancelAsk,
+			};
 		},
 	});
 </script>

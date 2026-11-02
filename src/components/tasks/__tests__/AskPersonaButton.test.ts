@@ -40,8 +40,12 @@ jest.mock('@/local/personaCache', () => ({
 jest.mock('@/local/llmClient', () => ({
 	createLlmChat: (...args: []) => mockCreateLlmChat(...args),
 }));
+const mockAskPersonaOnTask = jest.fn(async (_params: any) => ({
+	text: '',
+	toolCalls: 0,
+}));
 jest.mock('@/local/personaAgent', () => ({
-	askPersonaOnTask: async () => ({ text: '', toolCalls: 0 }),
+	askPersonaOnTask: (params: any) => mockAskPersonaOnTask(params),
 	personaToolDefinition: () => ({}),
 }));
 
@@ -112,4 +116,23 @@ test('the account mode is read when asking, not when the window opens', async ()
 	await setup.ask();
 	expect(mockReadPersonaCache).toHaveBeenCalledWith('p1', 42);
 	expect(mockCreateLlmChat).toHaveBeenCalledWith(expect.anything(), 42);
+});
+
+test('shows the partial answer while asking and clears it after', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: { id: 42, name: 'Bo', email: 'b@example.com' } };
+	mockStore.getters = { isLocalOnly: false };
+	const setup = loadComponent().setup({ taskId: 1 }, { emit: jest.fn() });
+	for (const fn of mounted) await fn();
+	const shown: string[] = [];
+	mockAskPersonaOnTask.mockImplementationOnce(async (params: any) => {
+		params.onText('Hel');
+		shown.push(setup.partialText.value);
+		params.onText('Hello');
+		shown.push(setup.partialText.value);
+		return { text: 'Hello', toolCalls: 0 };
+	});
+	await setup.ask();
+	expect(shown).toEqual(['Hel', 'Hello']);
+	expect(setup.partialText.value).toBe('');
 });

@@ -258,6 +258,40 @@ describeSqlite('local persona agent loop', () => {
 		});
 	});
 
+	it('reports the text so far to onText as it arrives, restarting each model turn', async () => {
+		let calls = 0;
+		const chat = async function* (): AsyncIterable<ChatStreamEvent> {
+			calls += 1;
+			if (calls === 1) {
+				yield { type: 'text', delta: 'Checking' };
+				yield toolCallEvent(`tasks/${taskId}`);
+			} else {
+				yield { type: 'text', delta: 'All ' };
+				yield { type: 'text', delta: 'good.' };
+			}
+		};
+		const seen: string[] = [];
+		const result = await askPersonaOnTask({
+			ctx,
+			router,
+			persona,
+			taskId,
+			systemPrompt: 'x',
+			grantedPermissions: ['tasks:read', 'comments:write'],
+			chat,
+			onText: (text) => seen.push(text),
+		});
+		expect(seen).toEqual(['Checking', 'All ', 'All good.']);
+		expect(result.text).toBe('All good.');
+		const comments = await dispatchLocal(
+			router,
+			ctx,
+			'GET',
+			`tasks/${taskId}/comments`,
+		);
+		expect(comments!.data.data[0].message).toBe('All good.');
+	});
+
 	it('throws instead of silently dropping the answer when posting the comment is refused', async () => {
 		const chat = async function* (): AsyncIterable<ChatStreamEvent> {
 			yield { type: 'text', delta: 'No blockers found.' };
