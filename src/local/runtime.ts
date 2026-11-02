@@ -1,6 +1,7 @@
 import { desktopWindowLabel } from '@/utils/desktop';
 import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { ensureContextPage } from './pages/service';
+import { isLinkedLocalOwner } from './personaGate';
 import { migrate } from './schema';
 import type {
 	LocalActor,
@@ -73,7 +74,7 @@ export const onActiveLocalWorkspaceChange = (listener: () => void) => {
 const announceActive = () => activeListeners.forEach((listener) => listener());
 
 export const activeLocalWorkspace = (): LocalWorkspace | null =>
-	activeCode ? (workspaces.find((w) => w.code === activeCode) ?? null) : null;
+	activeCode ? workspaces.find((w) => w.code === activeCode) ?? null : null;
 
 export const activeLocalWorkspaceCode = (): string | null => activeCode;
 
@@ -168,6 +169,11 @@ export const localContext = async (
 		files: filesOf(workspace),
 		actor,
 	};
+	if (user.id > 0) {
+		const { default: store } = await import('@/store');
+		const linked = (store.state.localProfile as any)?.linked_user_id;
+		if (isLinkedLocalOwner(user.id, linked)) ctx.localOwnerLinked = true;
+	}
 	if (user.id !== 0 && !contextSeeded.has(workspace.code)) {
 		contextSeeded.add(workspace.code);
 		await ensureContextPage({ ...ctx, actor: undefined }).catch((error) => {

@@ -12,7 +12,11 @@ import { respond } from './install';
 import { withLiveWrites } from './liveUpdates';
 import { handleMcpRequest } from './mcp';
 import { readPersonaCache } from './personaCache';
-import { checkPersonaIdentity, LOCAL_OWNER_ID } from './personaGate';
+import {
+	checkPersonaIdentity,
+	LOCAL_OWNER_ID,
+	mapsLocalIdentity,
+} from './personaGate';
 import { normalizePath } from './router';
 import { listLocalWorkspaces, localContext } from './runtime';
 import {
@@ -171,10 +175,12 @@ const whoamiBody = async (
 			id: ctx.actor!.id,
 			name: persona?.name ?? ctx.actor!.name,
 			description: persona?.description ?? null,
-			owner: {
-				id: persona?.owner_user_id ?? ctx.user.id,
-				name: persona?.owner_name ?? ctx.user.name,
-			},
+			owner: mapsLocalIdentity(ctx, persona?.owner_user_id)
+				? { id: ctx.user.id, name: ctx.user.name }
+				: {
+						id: persona?.owner_user_id ?? ctx.user.id,
+						name: persona?.owner_name ?? ctx.user.name,
+				  },
 			prompt_version: promptVersion,
 			workspace: {
 				id: ctx.workspace.id,
@@ -345,7 +351,8 @@ export const handleLocalAccessRequest = async (
 		} catch (error) {
 			if (axios.isAxiosError(error) && error.response) {
 				const data = error.response.data as
-					{ message?: string; code?: string } | undefined;
+					| { message?: string; code?: string }
+					| undefined;
 				const code = data?.code ?? defaultCodeFor(error.response.status);
 				const extra = data && typeof data === 'object' ? data : {};
 				return {

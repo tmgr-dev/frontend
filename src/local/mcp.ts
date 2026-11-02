@@ -1,5 +1,9 @@
 import { dispatchLocal } from './dispatch';
-import { checkPersonaIdentity, type PersonaPermission } from './personaGate';
+import {
+	checkPersonaIdentity,
+	mapsLocalIdentity,
+	type PersonaPermission,
+} from './personaGate';
 import { normalizePath, type LocalRouter } from './router';
 import type { LocalContext } from './types';
 
@@ -505,10 +509,12 @@ const TOOLS: ToolDef[] = [
 					id: ctx.actor!.id,
 					name: persona?.name ?? ctx.actor!.name,
 					description: persona?.description ?? null,
-					owner: {
-						id: persona?.owner_user_id ?? ctx.user.id,
-						name: persona?.owner_name ?? ctx.user.name,
-					},
+					owner: mapsLocalIdentity(ctx, persona?.owner_user_id)
+						? { id: ctx.user.id, name: ctx.user.name }
+						: {
+								id: persona?.owner_user_id ?? ctx.user.id,
+								name: persona?.owner_name ?? ctx.user.name,
+						  },
 					prompt_version: prompt?.prompt_version ?? null,
 					workspace: {
 						id: ctx.workspace.id,
@@ -1076,8 +1082,8 @@ const toolResultOk = (payload: any, tool: ToolDef) => ({
 			text: tool.raw
 				? payload
 				: tool.literal
-					? JSON.stringify(payload)
-					: JSON.stringify(camelizeDeep(payload)),
+				? JSON.stringify(payload)
+				: JSON.stringify(camelizeDeep(payload)),
 		},
 	],
 });
