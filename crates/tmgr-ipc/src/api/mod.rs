@@ -109,6 +109,8 @@ pub mod method {
     pub const SESSIONS_CREATE: &str = "sessions.create";
     pub const SESSIONS_KILL: &str = "sessions.kill";
     pub const SESSIONS_SEND: &str = "sessions.send";
+    pub const PERMISSIONS_LIST: &str = "permissions.list";
+    pub const PERMISSIONS_ANSWER: &str = "permissions.answer";
     pub const SESSIONS_REMOVE: &str = "sessions.remove";
     pub const SESSIONS_RENAME: &str = "sessions.rename";
     pub const SESSIONS_WORKLOG: &str = "sessions.worklog";

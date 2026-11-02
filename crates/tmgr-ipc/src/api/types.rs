@@ -438,3 +438,49 @@ pub struct PathParams {
 pub struct TrustRemoved {
     pub removed: bool,
 }
+
+/// One agent permission prompt, from `permissions.list` (`client: "cli"` only).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PermissionCard {
+    pub id: String,
+    pub session: String,
+    pub agent: String,
+    pub tool: String,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub danger: Vec<String>,
+    pub can_answer: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why_not: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub always_label: Option<String>,
+    #[serde(default, skip_serializing_if = "is_zero_ms")]
+    pub armed_in_ms: u64,
+}
+
+fn is_zero_ms(v: &u64) -> bool {
+    *v == 0
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionChoice {
+    Yes,
+    Always,
+    No,
+}
+
+/// Params of `permissions.answer` (`client: "cli"` only). The daemon re-checks the live prompt and refuses if it changed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PermissionAnswer {
+    pub session: String,
+    pub card: String,
+    pub choice: PermissionChoice,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub confirmed: bool,
+}

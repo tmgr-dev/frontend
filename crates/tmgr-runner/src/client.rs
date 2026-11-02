@@ -10,7 +10,7 @@ use tmgr_ipc::api::{
     AutopilotLog, AutopilotLogParams, AutopilotStartParams, AutopilotStarted, AutopilotStatus,
     CandidateInfo, CheckpointDiff, CheckpointDiffParams, CheckpointEnableParams, CheckpointList,
     CheckpointRestoreParams, CheckpointRestored, CreateReq, DiffAgainst, EventMsg, ForkParams,
-    IdParams, KillParams, LayoutSetParams, Line, LookupParams, OrchestratorCreateReq, RenameParams,
+    IdParams, KillParams, LayoutSetParams, Line, LookupParams, OrchestratorCreateReq, PermissionAnswer, PermissionCard, RenameParams,
     RestoredRun, ResumeParams, RunCreateReq, RunStatus, ScreenPush, SendParams, SessionInfo,
     SessionText, Snapshot, StatusInfo, TextParams, Welcome, WorkSummary, CLIENT_CLI,
 };
@@ -233,6 +233,15 @@ impl Client {
             text: text.into(),
         };
         self.call(method::SESSIONS_SEND, to_params(&params)?)
+            .map(drop)
+    }
+
+    pub fn permissions(&mut self) -> io::Result<Vec<PermissionCard>> {
+        from_value(self.call(method::PERMISSIONS_LIST, Value::Null)?)
+    }
+
+    pub fn answer_permission(&mut self, answer: &PermissionAnswer) -> io::Result<()> {
+        self.call(method::PERMISSIONS_ANSWER, to_params(answer)?)
             .map(drop)
     }
 
