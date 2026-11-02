@@ -57,15 +57,35 @@ pub struct GitEnv {
     offline: bool,
 }
 
-fn drain<R: Read + Send + 'static>(
+fn drain<R: Read + AsRawFd + Send + 'static>(
     mut src: R,
     cap: usize,
     over: Arc<AtomicBool>,
+    stop: Arc<AtomicBool>,
 ) -> std::thread::JoinHandle<Vec<u8>> {
     std::thread::spawn(move || {
         let mut buf = Vec::new();
         let mut chunk = [0u8; 8192];
         loop {
+            let stopping = stop.load(Ordering::SeqCst);
+            let mut pfd = libc::pollfd {
+                fd: src.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            let ready = unsafe { libc::poll(&mut pfd, 1, 20) };
+            if ready == 0 {
+                if stopping {
+                    break;
+                }
+                continue;
+            }
+            if ready < 0 {
+                if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                    continue;
+                }
+                break;
+            }
             match src.read(&mut chunk) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
@@ -101,14 +121,15 @@ pub(crate) fn run_bounded(
     let mut child = cmd.spawn().map_err(|e| format!("cannot spawn: {e}"))?;
     let pgid = child.id() as libc::pid_t;
     let over = Arc::new(AtomicBool::new(false));
+    let stop = Arc::new(AtomicBool::new(false));
     let out = child
         .stdout
         .take()
-        .map(|s| drain(s, max_stdout, over.clone()));
+        .map(|s| drain(s, max_stdout, over.clone(), stop.clone()));
     let err = child
         .stderr
         .take()
-        .map(|s| drain(s, max_stderr, over.clone()));
+        .map(|s| drain(s, max_stderr, over.clone(), stop.clone()));
     let start = Instant::now();
     let mut failure = None;
     let status = loop {
@@ -135,6 +156,7 @@ pub(crate) fn run_bounded(
         Some(s) => s,
         None => child.wait().map_err(|e| format!("wait failed: {e}"))?,
     };
+    stop.store(true, Ordering::SeqCst);
     let join = |h: Option<std::thread::JoinHandle<Vec<u8>>>| {
         h.map_or_else(Vec::new, |h| h.join().unwrap_or_default())
     };
@@ -879,6 +901,40 @@ mod tests {
         assert_eq!(out.stdout, b"hi\n");
         assert_eq!(out.stderr, b"oops\n");
         assert_eq!(out.status.code(), Some(3));
+    }
+
+    #[test]
+    fn run_bounded_returns_when_an_escaped_process_holds_the_pipes() {
+        let sleep = CString::new("/bin/sleep").unwrap();
+        let five = CString::new("5").unwrap();
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", "echo hi; echo oops >&2"]);
+        c.stdin(Stdio::null());
+        unsafe {
+            c.pre_exec(move || {
+                if libc::fork() == 0 {
+                    libc::setsid();
+                    let argv = [sleep.as_ptr(), five.as_ptr(), std::ptr::null()];
+                    libc::execv(sleep.as_ptr(), argv.as_ptr());
+                    libc::_exit(127);
+                }
+                Ok(())
+            });
+        }
+        let t = Instant::now();
+        let out = run_bounded(c, Duration::from_secs(30), 1024, 1024).unwrap();
+        assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
+        assert_eq!(out.stdout, b"hi\n");
+        assert_eq!(out.stderr, b"oops\n");
+    }
+
+    #[test]
+    fn run_bounded_keeps_all_output_written_before_exit() {
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", "head -c 200000 /dev/zero | tr '\\0' x"]);
+        c.stdin(Stdio::null());
+        let out = run_bounded(c, Duration::from_secs(10), 1 << 20, 1024).unwrap();
+        assert_eq!(out.stdout.len(), 200_000);
     }
 
     fn packs(repo: &Path) -> usize {
