@@ -124,10 +124,20 @@ fn plan_removal_with(
     } else {
         "no new commits, so no branch to keep".to_string()
     };
-    let lost = if ignored > 0 {
-        format!("; {ignored} ignored file(s) are deleted")
-    } else {
+    let lost = if ignored.is_empty() {
         String::new()
+    } else {
+        let shown: Vec<String> = ignored.iter().take(3).map(|p| clean(p)).collect();
+        let more = ignored.len().saturating_sub(3);
+        let tail = if more > 0 {
+            format!(" and {more} more")
+        } else {
+            String::new()
+        };
+        format!(
+            "; ignored files are deleted too: {}{tail}",
+            shown.join(", ")
+        )
     };
     let question = format!(
         "Delete the worktree {} ({keeps}{lost})?",
@@ -142,12 +152,19 @@ fn plan_removal_with(
 }
 
 pub(super) fn delete(ask: &Ask) -> String {
+    delete_with(ask, &probe_use)
+}
+
+fn delete_with(ask: &Ask, probe: &dyn Fn(&Path) -> Option<String>) -> String {
+    if let Some(why) = probe(&ask.path) {
+        return format!("worktree {} kept: {}", ask.name, clean(&why));
+    }
     match sessionwt::remove(&ask.repo, &ask.path) {
         Ok(sessionwt::Verdict::Removable { .. }) => format!("worktree {} deleted", ask.name),
         Ok(sessionwt::Verdict::Kept(why)) => {
             format!("worktree {} kept: {}", ask.name, clean(&why))
         }
-        Err(e) => format!("worktree {} kept: {}", ask.name, clean(&e)),
+        Err(e) => format!("worktree {} was not deleted: {}", ask.name, clean(&e)),
     }
 }
 
@@ -155,8 +172,9 @@ pub(super) fn offer_removal(cwd: &str, others: &[String], tty: bool) -> Option<S
     match plan_removal(cwd, others)? {
         Removal::Note(n) => Some(n),
         Removal::Ask(a) if !tty => Some(format!(
-            "worktree {} is clean and can be deleted; run `tmgr rm` in a terminal to be asked",
-            a.name
+            "worktree {} is clean and can be deleted; run `tmgr rm {}` in a terminal to be asked",
+            a.name,
+            shell_words::quote(&a.path.display().to_string())
         )),
         Removal::Ask(a) => {
             if crate::interact::confirm(&a.question, false, false).is_err() {
@@ -211,7 +229,10 @@ mod tests {
         };
         assert!(ask.question.contains("no new commits"), "{}", ask.question);
         assert!(sc.path.exists());
-        assert_eq!(delete(&ask), "worktree s1 deleted");
+        let busy = |_: &Path| Some("a process is working in it".to_string());
+        assert!(delete_with(&ask, &busy).contains("kept"));
+        assert!(sc.path.exists());
+        assert_eq!(delete_with(&ask, &free), "worktree s1 deleted");
         assert!(!sc.path.exists());
     }
 

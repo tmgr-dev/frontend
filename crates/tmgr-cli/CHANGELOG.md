@@ -4,7 +4,7 @@
 
 - `tmgr run --agent <profile> --worktree` starts the agent in its own checkout `<repo>-worktrees/<session name>` on a new branch of the same name, made from the current commit, so two agents never write the same files. It is a `git clone --reference` checkout, not a linked worktree: the sandbox must not reach the repository's `.git`. The branch stays in the checkout until you bring it over; the command to do that is printed.
 - Off by default. `tmgr config set attach.worktree true` turns it on for every agent session (`--no-worktree` opts out for one run); the `tmgr attach` new-session form has a Worktree row and shows a notice when the setting is on. A folder that is not a git repository is refused.
-- `tmgr rm` (and removing an exited session in `tmgr attach`) asks before deleting the checkout, only when it has no uncommitted or untracked changes, stash, unmerged branches or unmerged commits and nothing uses it. Otherwise it keeps the checkout and says why. It never forces, and the branch is kept in the repository when it has commits.
+- `tmgr rm` (and removing an exited session in `tmgr attach`) asks before deleting the checkout, only when it has no uncommitted or untracked changes, stash, unmerged branches or unmerged commits and nothing uses it. Otherwise it keeps the checkout and says why. It never forces, and the branch is kept in the repository when it has commits. `tmgr rm <path>` does the same for a checkout whose session is already gone.
 
 ## 1.0.60
 

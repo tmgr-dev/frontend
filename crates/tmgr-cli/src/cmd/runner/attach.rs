@@ -2961,7 +2961,13 @@ impl App {
                 self.dirty = true;
             }
             if let Some((ask, prompt)) = self.worktree_offer.take() {
-                if self.view.notice.as_deref() == Some(prompt.as_str()) {
+                let modal = self.view.new_session.is_some()
+                    || self.view.palette.is_some()
+                    || self.view.confirm.is_some()
+                    || self.view.rename.is_some()
+                    || self.view.qmenu.is_some()
+                    || self.view.filter_input();
+                if !modal && self.view.notice.as_deref() == Some(prompt.as_str()) {
                     match &action {
                         Action::Forward(d) => {
                             let yes = matches!(d.as_slice(), [b'y' | b'Y']);
@@ -3762,11 +3768,6 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
             notice_set = view.notice.is_some();
         }
     }
-    if view.worktree_default && view.notice.is_none() {
-        view.notice =
-            Some("worktrees on: new agent sessions get their own checkout (tmgr config set attach.worktree false)".into());
-        notice_set = true;
-    }
     let layouts_seen = attach_layouts::names(&view.layouts);
     if let Some(dir) = attach_templates::dir() {
         let (list, warn) = attach_templates::load(&dir);
@@ -3775,6 +3776,11 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
             view.notice = warn;
             notice_set = view.notice.is_some();
         }
+    }
+    if view.worktree_default && view.notice.is_none() {
+        view.notice =
+            Some("worktrees on: new agent sessions get their own checkout (tmgr config set attach.worktree false)".into());
+        notice_set = true;
     }
     let web_base = {
         let cfg = tmgr_core::config::config_dir()

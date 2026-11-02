@@ -27,7 +27,7 @@ pub enum Verdict {
     Removable {
         branch: String,
         has_commits: bool,
-        ignored: usize,
+        ignored: Vec<String>,
     },
     Kept(String),
 }
@@ -36,12 +36,19 @@ fn base_ref(name: &str) -> String {
     format!("refs/tmgr/sessions/{name}")
 }
 
+fn quote(p: &Path) -> String {
+    let s = p.display().to_string();
+    if s.chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '_' | '-' | '+' | ':'))
+    {
+        s
+    } else {
+        format!("'{}'", s.replace('\'', "'\\''"))
+    }
+}
+
 pub fn import_hint(repo: &Path, path: &Path, name: &str) -> String {
-    format!(
-        "git -C {} fetch {} {name}:{name}",
-        repo.display(),
-        path.display()
-    )
+    format!("git -C {} fetch {} {name}:{name}", quote(repo), quote(path))
 }
 
 pub fn check_name(name: &str) -> Result<(), String> {
@@ -137,6 +144,7 @@ pub fn pick_name(
     let stem: String = prefix
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .skip_while(|c| *c == '-')
         .take(40)
         .collect();
     let stem = if stem.is_empty() {
@@ -158,13 +166,17 @@ fn lock_root(repo: &Path) -> Result<fs::File, String> {
     if fs::symlink_metadata(&root).is_ok_and(|m| m.file_type().is_symlink()) {
         return Err(format!("{} is a symlink", root.display()));
     }
-    if !root.exists() {
-        fs::create_dir(&root).map_err(|e| format!("{}: {e}", root.display()))?;
+    if let Err(e) = fs::create_dir(&root) {
+        if e.kind() != std::io::ErrorKind::AlreadyExists {
+            return Err(format!("{}: {e}", root.display()));
+        }
     }
+    use std::os::unix::fs::OpenOptionsExt;
     let file = fs::OpenOptions::new()
         .create(true)
         .truncate(false)
         .write(true)
+        .custom_flags(libc::O_NOFOLLOW)
         .open(root.join(".tmgr-sessions.lock"))
         .map_err(|e| e.to_string())?;
     if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
@@ -219,6 +231,12 @@ fn session_dir(repo: &Path, path: &Path) -> Result<String, String> {
     if !meta.is_dir() || !git_meta.is_dir() {
         return Err(format!("{} is not a plain git checkout", path.display()));
     }
+    let dot_git = path.join(".git");
+    if dot_git.join("commondir").exists()
+        || fs::read_dir(dot_git.join("worktrees")).is_ok_and(|mut d| d.next().is_some())
+    {
+        return Err(format!("{} is not a plain git checkout", path.display()));
+    }
     path.file_name()
         .and_then(|n| n.to_str())
         .map(String::from)
@@ -239,19 +257,26 @@ struct Facts {
     name: String,
     tip: String,
     has_commits: bool,
-    ignored: usize,
+    ignored: Vec<String>,
 }
+
+const MAX_REFLOG: usize = 200;
 
 fn gather(repo: &Path, path: &Path) -> Result<Result<Facts, String>, String> {
     let name = session_dir(repo, path)?;
-    inspect(repo, path, name)
+    inspect(repo, path, path, name)
 }
 
-fn inspect(repo: &Path, path: &Path, name: String) -> Result<Result<Facts, String>, String> {
+fn inspect(
+    repo: &Path,
+    path: &Path,
+    shown: &Path,
+    name: String,
+) -> Result<Result<Facts, String>, String> {
     let main = GitEnv::open(repo)?;
     let base = main
         .run(&["rev-parse", "--verify", "--quiet", &base_ref(&name)])
-        .map_err(|_| format!("{} was not made by tmgr", path.display()))?;
+        .map_err(|_| format!("{} was not made by tmgr", shown.display()))?;
     let inner = GitEnv::open(path)?;
     let keys = inner.run(&["config", "--local", "--name-only", "--list"])?;
     if keys
@@ -261,6 +286,10 @@ fn inspect(repo: &Path, path: &Path, name: String) -> Result<Result<Facts, Strin
         return Ok(Err("its git config redirects git".into()));
     }
     if path.join(".gitmodules").exists() || path.join(".git/modules").exists() {
+        return Ok(Err("it has submodules, which are not checked".into()));
+    }
+    let staged = inner.run(&["ls-files", "-s"])?;
+    if staged.lines().any(|l| l.starts_with("160000 ")) {
         return Ok(Err("it has submodules, which are not checked".into()));
     }
     if let Some(what) = IN_PROGRESS
@@ -274,8 +303,14 @@ fn inspect(repo: &Path, path: &Path, name: String) -> Result<Result<Facts, Strin
         "--porcelain=v1",
         "--untracked-files=all",
         "--ignored=matching",
+        "--ignore-submodules=all",
     ])?;
-    let ignored = status.lines().filter(|l| l.starts_with("!! ")).count();
+    let ignored: Vec<String> = status
+        .lines()
+        .filter_map(|l| l.strip_prefix("!! "))
+        .take(500)
+        .map(String::from)
+        .collect();
     if status.lines().any(|l| !l.starts_with("!! ")) {
         return Ok(Err("it has uncommitted or untracked changes".into()));
     }
@@ -289,12 +324,6 @@ fn inspect(repo: &Path, path: &Path, name: String) -> Result<Result<Facts, Strin
             l.get(2..).unwrap_or("")
         )));
     }
-    if !inner
-        .run(&["for-each-ref", "--format=%(refname)", "refs/stash"])?
-        .is_empty()
-    {
-        return Ok(Err("a stash exists".into()));
-    }
     let head = inner.run(&["symbolic-ref", "--short", "-q", "HEAD"]).ok();
     if head.as_deref() != Some(name.as_str()) {
         return Ok(Err(format!(
@@ -304,28 +333,61 @@ fn inspect(repo: &Path, path: &Path, name: String) -> Result<Result<Facts, Strin
     }
     let main_head = main.run(&["rev-parse", "--verify", "HEAD^{commit}"])?;
     let own = format!("refs/heads/{name}");
-    let others = inner.run(&[
-        "for-each-ref",
-        "--no-merged",
-        &main_head,
-        "--format=%(refname)",
-    ])?;
-    if let Some(r) = others
-        .lines()
-        .find(|r| *r != own && !r.starts_with("refs/remotes/"))
-    {
-        return Ok(Err(format!("{r} is not merged into the current branch")));
+    let refs = inner.run(&["for-each-ref", "--format=%(objectname) %(refname)"])?;
+    for line in refs.lines() {
+        let Some((oid, refname)) = line.split_once(' ') else {
+            continue;
+        };
+        if refname == own || refname.ends_with("/HEAD") {
+            continue;
+        }
+        let mirrored = match refname.strip_prefix("refs/remotes/origin/") {
+            Some(b) => format!("refs/heads/{b}"),
+            None => refname.to_string(),
+        };
+        let same = main
+            .run(&["rev-parse", "--verify", "--quiet", &mirrored])
+            .is_ok_and(|o| o == oid);
+        let merged = main.succeeds(&["merge-base", "--is-ancestor", oid, &main_head]);
+        if !same && !merged {
+            return Ok(Err(format!(
+                "{refname} is not in the repository or merged into the current branch"
+            )));
+        }
     }
     let tip = inner.run(&["rev-parse", "--verify", "HEAD^{commit}"])?;
     let has_commits = tip != base;
-    if has_commits && !inner.succeeds(&["merge-base", "--is-ancestor", &tip, &main_head]) {
-        let n = inner
-            .run(&["rev-list", "--count", &format!("{base}..{tip}")])
-            .unwrap_or_default();
-        return Ok(Err(format!(
-            "branch {name} has {n} commit(s) that are not merged into the current branch; bring them over with: {}",
-            import_hint(repo, path, &name)
-        )));
+    if has_commits {
+        let imported = main
+            .run(&["rev-parse", "--verify", "--quiet", &own])
+            .is_ok_and(|b| main.succeeds(&["merge-base", "--is-ancestor", &tip, &b]));
+        if !imported && !main.succeeds(&["merge-base", "--is-ancestor", &tip, &main_head]) {
+            let n = inner
+                .run(&["rev-list", "--count", &format!("{base}..{tip}")])
+                .unwrap_or_default();
+            return Ok(Err(format!(
+                "branch {name} has {n} commit(s) that are not merged into the current branch; bring them over with: {}",
+                import_hint(repo, shown, &name)
+            )));
+        }
+    }
+    let reflog = inner
+        .run(&["log", "-g", "--format=%H", "--all"])
+        .unwrap_or_default();
+    let mut shas: Vec<&str> = reflog.lines().collect();
+    shas.sort_unstable();
+    shas.dedup();
+    if shas.len() > MAX_REFLOG {
+        return Ok(Err("its reflog is too long to check".into()));
+    }
+    if !shas.is_empty() {
+        let mut args = vec!["rev-list", "--no-walk"];
+        args.extend(shas);
+        if main.run(&args).is_err() {
+            return Ok(Err(
+                "its reflog has commits that are not in the repository".into()
+            ));
+        }
     }
     Ok(Ok(Facts {
         name,
@@ -371,16 +433,19 @@ pub fn remove(repo: &Path, path: &Path) -> Result<Verdict, String> {
         .map_or(0, |d| d.as_nanos());
     let hidden = root.join(format!(".tmgr-del-{}-{nanos}", std::process::id()));
     fs::rename(path, &hidden).map_err(|e| format!("cannot move the checkout aside: {e}"))?;
-    let restore = |why: String| {
-        let _ = fs::rename(&hidden, path);
-        why
+    let restore = |why: String| match fs::rename(&hidden, path) {
+        Ok(()) => why,
+        Err(e) => format!(
+            "{why}; it could not be moved back ({e}) and is in {}",
+            hidden.display()
+        ),
     };
     if id(&hidden).ok() != Some(before) {
         return Err(restore(
             "the checkout changed while it was being moved".into(),
         ));
     }
-    match inspect(repo, &hidden, facts.name.clone()) {
+    match inspect(repo, &hidden, path, facts.name.clone()) {
         Ok(Ok(_)) => {}
         Ok(Err(why)) => return Ok(Verdict::Kept(restore(why))),
         Err(e) => return Err(restore(e)),
@@ -388,8 +453,12 @@ pub fn remove(repo: &Path, path: &Path) -> Result<Verdict, String> {
     if let Err(e) = main.run(&["update-ref", "-d", &base_ref(&facts.name)]) {
         return Err(restore(e));
     }
-    fs::remove_dir_all(&hidden)
-        .map_err(|e| format!("{e}; what is left is in {}", hidden.display()))?;
+    fs::remove_dir_all(&hidden).map_err(|e| {
+        format!(
+            "deleting stopped part way ({e}); what is left is in {}",
+            hidden.display()
+        )
+    })?;
     Ok(verdict(facts))
 }
 
@@ -450,7 +519,7 @@ mod tests {
         Verdict::Removable {
             branch: branch.into(),
             has_commits,
-            ignored: 0,
+            ignored: Vec::new(),
         }
     }
 
@@ -640,7 +709,7 @@ mod tests {
         let Verdict::Removable { ignored, .. } = assess(&fx.repo, &s.path).unwrap() else {
             panic!("expected removable");
         };
-        assert_eq!(ignored, 1);
+        assert_eq!(ignored, vec!["build/".to_string()]);
     }
 
     #[test]
@@ -689,6 +758,91 @@ mod tests {
         git(&s.path, &["reset", "--hard", "HEAD~1"]);
         let w = kept(assess(&fx.repo, &s.path).unwrap());
         assert!(w.contains("refs/tags/keepme"), "{w}");
+    }
+
+    #[test]
+    fn a_gitlink_without_gitmodules_is_refused_before_git_runs_in_it() {
+        let fx = fixture();
+        let s = make(&fx, "link");
+        let sub = s.path.join("sub");
+        fs::create_dir(&sub).unwrap();
+        git(&sub, &["init", "-q"]);
+        fs::write(sub.join("f"), "f").unwrap();
+        git(&sub, &["add", "f"]);
+        git(&sub, &["commit", "-m", "f"]);
+        git(&s.path, &["add", "sub"]);
+        git(&s.path, &["commit", "-m", "link"]);
+        assert!(kept(assess(&fx.repo, &s.path).unwrap()).contains("submodules"));
+    }
+
+    #[test]
+    fn a_commondir_decoy_is_refused() {
+        let fx = fixture();
+        let s = make(&fx, "decoy");
+        fs::write(s.path.join(".git/commondir"), "../../proj/.git\n").unwrap();
+        assert!(assess(&fx.repo, &s.path).is_err());
+        assert!(s.path.exists());
+    }
+
+    #[test]
+    fn work_dropped_from_every_ref_is_found_in_the_reflog() {
+        let fx = fixture();
+        let s = make(&fx, "lost");
+        commit(&s.path, "gone.txt");
+        git(&s.path, &["reset", "--hard", &s.base]);
+        let w = kept(assess(&fx.repo, &s.path).unwrap());
+        assert!(w.contains("reflog"), "{w}");
+        assert!(s.path.exists());
+    }
+
+    #[test]
+    fn tags_that_main_has_and_a_main_that_moved_on_do_not_block_removal() {
+        let fx = fixture();
+        git(&fx.repo, &["tag", "v1"]);
+        git(&fx.repo, &["checkout", "-q", "-b", "other"]);
+        commit(&fx.repo, "o.txt");
+        git(&fx.repo, &["checkout", "-q", "main"]);
+        let s = make(&fx, "calm");
+        git(&fx.repo, &["checkout", "-q", "other"]);
+        assert!(matches!(
+            assess(&fx.repo, &s.path).unwrap(),
+            Verdict::Removable { .. }
+        ));
+    }
+
+    #[test]
+    fn commits_already_imported_to_the_branch_in_main_allow_removal() {
+        let fx = fixture();
+        let s = make(&fx, "imported");
+        commit(&s.path, "new.txt");
+        git(
+            &fx.repo,
+            &[
+                "fetch",
+                worktree::utf8(&s.path).unwrap(),
+                "imported:imported",
+            ],
+        );
+        let v = assess(&fx.repo, &s.path).unwrap();
+        assert!(
+            matches!(
+                &v,
+                Verdict::Removable {
+                    has_commits: true,
+                    ..
+                }
+            ),
+            "{v:?}"
+        );
+    }
+
+    #[test]
+    fn the_import_hint_quotes_paths_and_odd_profiles_still_get_names() {
+        let hint = import_hint(Path::new("/a b/p"), Path::new("/a b/p-worktrees/n"), "n");
+        assert_eq!(hint, "git -C '/a b/p' fetch '/a b/p-worktrees/n' n:n");
+        let fx = fixture();
+        let s = create(&fx.repo, None, "-weird", &[]).unwrap();
+        assert_eq!(s.name, "weird-1");
     }
 
     #[test]

@@ -1968,3 +1968,35 @@ fn gc_never_lists_a_session_checkout() {
     assert!(!out_text(&gc).contains("delta"), "{}", out_text(&gc));
     assert!(env.tmp.path().join("p-worktrees/delta/.git").is_dir());
 }
+
+#[test]
+fn rm_accepts_the_path_of_a_checkout_whose_session_is_gone() {
+    let env = Env::new();
+    worktree_agent(&env, "sleep 1\n");
+    git_repo(&env.proj);
+    if !sandbox_usable() {
+        return;
+    }
+    let out = wt_run(&env, &["--worktree", "--name", "eps"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    let id = json_of(&out)["data"]["id"].as_str().unwrap().to_string();
+    wait_session_state(&env, &id, "exited");
+    let _ = env.tmgr(&["rm", &id]);
+    let wt = env.tmp.path().join("p-worktrees/eps");
+    let by_path = env.tmgr(&["rm", wt.to_str().unwrap()]);
+    assert!(by_path.status.success(), "{}", out_text(&by_path));
+    assert!(
+        out_text(&by_path).contains("can be deleted"),
+        "{}",
+        out_text(&by_path)
+    );
+    assert!(wt.exists());
+    let other = env.tmgr(&["rm", env.proj.to_str().unwrap()]);
+    assert!(!other.status.success());
+    assert!(
+        out_text(&other).contains("not a checkout made by"),
+        "{}",
+        out_text(&other)
+    );
+    assert!(env.proj.join("a.txt").exists());
+}

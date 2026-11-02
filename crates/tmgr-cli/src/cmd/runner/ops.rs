@@ -1054,7 +1054,33 @@ fn rename(o: &Opts, a: &RenameArgs) -> Result<i32> {
     ))
 }
 
+fn rm_checkout(o: &Opts, path: &str) -> Result<i32> {
+    let real = std::fs::canonicalize(path)
+        .map_err(|e| Error::not_found(format!("{}: {e}", clean(path))))?;
+    let shown = real.display().to_string();
+    let others: Vec<String> = connect(&runner_config()?)
+        .ok()
+        .and_then(|mut c| c.list().ok())
+        .map(|l| l.into_iter().map(|x| x.cwd).collect())
+        .unwrap_or_default();
+    let note = super::session_wt::offer_removal(
+        &shown,
+        &others,
+        !o.json && crate::interact::is_interactive(),
+    )
+    .ok_or_else(|| {
+        Error::usage(format!(
+            "{} is not a checkout made by tmgr run --worktree",
+            clean(&shown)
+        ))
+    })?;
+    Ok(emit(o, json!({"worktree": note}), note.clone()))
+}
+
 fn rm(o: &Opts, a: &RmArgs) -> Result<i32> {
+    if a.session.contains('/') {
+        return rm_checkout(o, &a.session);
+    }
     let (mut c, s) = with_session(&a.session)?;
     c.remove(&s.id).map_err(rerr)?;
     let others: Vec<String> = c
