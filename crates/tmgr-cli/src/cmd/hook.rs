@@ -576,7 +576,50 @@ fn post_tool_use(env: &NotifyEnv, cwd: &Path, input: &Value) {
     }
 }
 
+#[cfg(all(unix, feature = "runner"))]
+fn valid_turn_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+#[cfg(all(unix, feature = "runner"))]
+fn touch_turn_marker(home: &Path, id: &str) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    if !valid_turn_id(id) {
+        return Err(std::io::ErrorKind::InvalidInput.into());
+    }
+    let dir = home.join(".cache").join("tmgr-turn");
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&dir)?;
+    let f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(dir.join(id))?;
+    f.set_modified(std::time::SystemTime::now())
+}
+
+fn mark_turn() {
+    #[cfg(all(unix, feature = "runner"))]
+    if let (Some(id), Some(home)) = (
+        std::env::var("TMGR_SESSION_ID").ok(),
+        std::env::var_os("HOME").map(PathBuf::from),
+    ) {
+        let _ = touch_turn_marker(&home, &id);
+    }
+}
+
 fn claude_work(event: &str, server_override: Option<String>) {
+    if event == "stop" {
+        mark_turn();
+    }
     let Some(input) = read_stdin() else { return };
     let Ok(env) = NotifyEnv::load(server_override, false) else {
         return;
@@ -635,6 +678,7 @@ fn claude_work(event: &str, server_override: Option<String>) {
 }
 
 fn codex_work(raw: Option<String>, server_override: Option<String>) {
+    mark_turn();
     let Some(raw) = raw.filter(|r| r.len() <= MAX_ARG_JSON) else {
         return;
     };
@@ -656,6 +700,47 @@ fn codex_work(raw: Option<String>, server_override: Option<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(all(unix, feature = "runner"))]
+    #[test]
+    fn the_turn_marker_is_touched_with_a_fresh_mtime_in_a_private_dir() {
+        use std::os::unix::fs::PermissionsExt;
+        let home = tempfile::tempdir().unwrap();
+        touch_turn_marker(home.path(), "s_abc1234567").unwrap();
+        let dir = home.path().join(".cache/tmgr-turn");
+        let mark = dir.join("s_abc1234567");
+        assert_eq!(
+            std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        let old = std::time::SystemTime::now() - Duration::from_secs(3600);
+        std::fs::File::options()
+            .write(true)
+            .open(&mark)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        touch_turn_marker(home.path(), "s_abc1234567").unwrap();
+        let fresh = std::fs::metadata(&mark).unwrap().modified().unwrap();
+        assert!(fresh > old + Duration::from_secs(3000));
+    }
+
+    #[cfg(all(unix, feature = "runner"))]
+    #[test]
+    fn the_turn_marker_rejects_bad_ids_and_symlinks() {
+        let home = tempfile::tempdir().unwrap();
+        for bad in ["", "../x", "a/b", "a b", "x\0y", &"a".repeat(65)] {
+            assert!(touch_turn_marker(home.path(), bad).is_err(), "{bad:?}");
+        }
+        assert!(!home.path().join(".cache").exists());
+        let dir = home.path().join(".cache/tmgr-turn");
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = home.path().join("outside");
+        std::fs::write(&target, b"keep").unwrap();
+        std::os::unix::fs::symlink(&target, dir.join("s_abc1234567")).unwrap();
+        assert!(touch_turn_marker(home.path(), "s_abc1234567").is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"keep");
+    }
 
     #[test]
     fn the_testing_budget_is_clamped() {
