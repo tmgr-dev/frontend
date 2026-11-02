@@ -219,3 +219,27 @@ test('a cancel that arrives after the comment was posted still emits posted', as
 	await setup.ask();
 	expect(emit).toHaveBeenCalledWith('posted');
 });
+
+test('the Cancel press reaches the persona agent through isCancelled', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: { id: 42, name: 'Bo', email: 'b@example.com' } };
+	mockStore.getters = { isLocalOnly: false };
+	const setup = loadComponent().setup({ taskId: 1 }, { emit: jest.fn() });
+	for (const fn of mounted) await fn();
+	let release!: () => void;
+	let isCancelled!: () => boolean;
+	mockAskPersonaOnTask.mockImplementationOnce(
+		(params: any) =>
+			new Promise((resolve) => {
+				isCancelled = params.isCancelled;
+				release = () => resolve({ text: '', toolCalls: 0, posted: false });
+			}),
+	);
+	const asking = setup.ask();
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	expect(isCancelled()).toBe(false);
+	setup.cancelAsk();
+	expect(isCancelled()).toBe(true);
+	release();
+	await asking;
+});
