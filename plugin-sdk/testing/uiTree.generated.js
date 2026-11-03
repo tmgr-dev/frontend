@@ -21,6 +21,8 @@ const MAX_ITEMS = 500;
 const MAX_TEXT = 1000;
 const MAX_LONG_TEXT = 20000;
 const MAX_LONG_TEXT_TOTAL = 200000;
+const MAX_MD_INLINE = 4000;
+const MD_TIME_BUDGET_MS = 250;
 const MAX_SPANS = 200;
 const MAX_LANG = 30;
 const MAX_MD_DEPTH = 6;
@@ -96,7 +98,20 @@ const decodeEntities = (value) => value.replace(/&(#x[0-9a-f]{1,6}|#[0-9]{1,7}|a
         ? String.fromCodePoint(code)
         : match;
 });
-const markdownLexer = new marked_1.Marked({ gfm: true, breaks: true });
+const lexMarkdown = (source, deadline) => {
+    const lexer = new marked_1.Lexer({ gfm: true, breaks: true });
+    lexer.blockTokens(source.replace(/\r\n?/g, '\n'), lexer.tokens);
+    for (const { src, tokens } of lexer.inlineQueue) {
+        if (src.length > MAX_MD_INLINE || Date.now() > deadline) {
+            tokens.push({ type: 'text', raw: src, text: src });
+        }
+        else {
+            lexer.inlineTokens(src, tokens);
+        }
+    }
+    lexer.inlineQueue = [];
+    return lexer.tokens;
+};
 const flattenRaw = (tokens) => tokens
     .map((token) => token.raw)
     .join('')
@@ -357,11 +372,18 @@ const findLabel = (nodes) => {
 const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MINOR) => {
     let budget = MAX_NODES;
     let longBudget = MAX_LONG_TEXT_TOTAL;
+    let mdDeadline = null;
+    const longRoom = () => apiMinor >= 7
+        ? MAX_TEXT + Math.min(MAX_LONG_TEXT - MAX_TEXT, longBudget)
+        : MAX_TEXT;
+    const chargeLong = (length) => {
+        longBudget -= Math.max(0, length - MAX_TEXT);
+    };
     const longText = (value) => {
         if (typeof value !== 'string')
             return null;
-        const result = value.slice(0, longBudget > 0 && apiMinor >= 7 ? MAX_LONG_TEXT : MAX_TEXT);
-        longBudget -= result.length;
+        const result = value.slice(0, longRoom());
+        chargeLong(result.length);
         return result;
     };
     const node = (value, depth, cardDepth) => {
@@ -412,7 +434,7 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                     : pick(value.accent, exports.COLORS, 'gray');
                 const grow = value.grow === true ? true : undefined;
                 const onClick = parseCommandArgs(value.onClick);
-                const label = onClick ? findLabel(kids) ?? 'Card' : undefined;
+                const label = onClick ? (findLabel(kids) ?? 'Card') : undefined;
                 return {
                     type: 'card',
                     children: kids,
@@ -501,8 +523,8 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                     for (const span of value.spans.slice(0, MAX_SPANS)) {
                         if (typeof span?.text !== 'string' || span.text === '')
                             continue;
-                        const room = (longBudget > 0 ? MAX_LONG_TEXT : MAX_TEXT) - joined.length;
-                        if (room <= 0)
+                        const room = longRoom() - joined.length;
+                        if (room <= 0 || budget-- <= 0)
                             break;
                         const piece = span.text.slice(0, room);
                         joined += piece;
@@ -514,7 +536,7 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                 }
                 let t;
                 if (spans.length > 0) {
-                    longBudget -= joined.length;
+                    chargeLong(joined.length);
                     t = joined;
                 }
                 else {
@@ -536,9 +558,13 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                 const source = longText(value.text);
                 if (source === null)
                     return null;
+                mdDeadline ?? (mdDeadline = Date.now() + MD_TIME_BUDGET_MS);
+                if (Date.now() > mdDeadline) {
+                    return { type: 'text', text: source, tone: 'default', breaks: true };
+                }
                 let tokens;
                 try {
-                    tokens = markdownLexer.lexer(source);
+                    tokens = lexMarkdown(source, mdDeadline);
                 }
                 catch {
                     return { type: 'text', text: source, tone: 'default', breaks: true };

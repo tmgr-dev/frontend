@@ -74,7 +74,10 @@ versions drop `markdown` and `code` nodes and ignore `spans`. Types: `TmgrNode` 
 Limits:
 
 - A `text`, `code` or `markdown` string can be up to 20000 characters; every other string stays at 1000.
-- All long text in one tree together can use 200000 characters. After that, long strings are cut to 1000.
+- In one tree, the characters past the first 1000 of each long string add up to at most 200000. After that,
+  long strings are cut to 1000.
+- A Markdown paragraph, heading or table cell longer than 4000 characters shows without inline formatting. If
+  one tree has a lot of Markdown, later parts may also show without formatting so the page stays responsive.
 - Up to 200 spans per text, 12 columns and 200 rows per Markdown table, and Markdown lists and quotes nest 6 deep.
   Everything counts toward the 3000 node limit of the whole tree.
 - Newlines in a `text` node show as line breaks.

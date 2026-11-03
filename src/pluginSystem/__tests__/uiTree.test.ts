@@ -927,7 +927,62 @@ describe('text and documents (API 1.7)', () => {
 			}) as any;
 			const lengths = tree.children.map((c: any) => c.text.length);
 			expect(lengths.slice(0, 10).every((n: number) => n === 20000)).toBe(true);
-			expect(lengths.slice(10).every((n: number) => n === 1000)).toBe(true);
+			expect(lengths[10]).toBe(11000);
+			expect(lengths.slice(11).every((n: number) => n === 1000)).toBe(true);
+		});
+
+		it('never lets text past 1000 chars exceed the long-text budget in total', () => {
+			const tree = sanitizeTree({
+				type: 'stack',
+				children: Array.from({ length: 40 }, (_, i) => ({
+					type: i % 2 ? 'code' : 'text',
+					text: 'a'.repeat(20000),
+				})),
+			}) as any;
+			const extra = tree.children.reduce(
+				(sum: number, c: any) => sum + Math.max(0, c.text.length - 1000),
+				0,
+			);
+			expect(extra).toBe(200000);
+		});
+
+		it('charges spans against the node budget', () => {
+			const spans = Array.from({ length: 200 }, () => ({ text: 'x' }));
+			const tree = sanitizeTree({
+				type: 'stack',
+				children: Array.from({ length: 6 }, () => ({
+					type: 'stack',
+					children: Array.from({ length: 500 }, () => ({
+						type: 'text',
+						text: 'x',
+						spans,
+					})),
+				})),
+			}) as any;
+			const count = collect(tree, 'text').reduce(
+				(sum: number, t: any) => sum + 1 + (t.spans?.length ?? 0),
+				0,
+			);
+			expect(count).toBeLessThanOrEqual(3000);
+		});
+
+		it('keeps inline lexing bounded on pathological emphasis', () => {
+			const started = Date.now();
+			const tree = sanitizeTree({
+				type: 'stack',
+				children: Array.from({ length: 12 }, () => ({
+					type: 'markdown',
+					text: '*a '.repeat(7000),
+				})),
+			}) as any;
+			expect(Date.now() - started).toBeLessThan(3000);
+			expect(tree.children).toHaveLength(12);
+		});
+
+		it('shows a very long paragraph as plain text', () => {
+			const tree = md(`**bold** ${'word '.repeat(1000)}`);
+			expect(collect(tree, 'strong')).toHaveLength(0);
+			expect(tree.blocks[0].children[0].text.startsWith('**bold**')).toBe(true);
 		});
 
 		it('caps markdown source at 20000 chars', () => {

@@ -1,4 +1,4 @@
-import { Marked, type Token } from 'marked';
+import { Lexer, type Token } from 'marked';
 import { PLUGIN_API_VERSION } from './manifest';
 
 export type Tone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
@@ -141,6 +141,8 @@ const MAX_ITEMS = 500;
 const MAX_TEXT = 1000;
 const MAX_LONG_TEXT = 20000;
 const MAX_LONG_TEXT_TOTAL = 200000;
+const MAX_MD_INLINE = 4000;
+const MD_TIME_BUDGET_MS = 250;
 const MAX_SPANS = 200;
 const MAX_LANG = 30;
 const MAX_MD_DEPTH = 6;
@@ -231,7 +233,19 @@ const decodeEntities = (value: string): string =>
 		},
 	);
 
-const markdownLexer = new Marked({ gfm: true, breaks: true });
+const lexMarkdown = (source: string, deadline: number): Token[] => {
+	const lexer = new Lexer({ gfm: true, breaks: true });
+	lexer.blockTokens(source.replace(/\r\n?/g, '\n'), lexer.tokens);
+	for (const { src, tokens } of lexer.inlineQueue) {
+		if (src.length > MAX_MD_INLINE || Date.now() > deadline) {
+			tokens.push({ type: 'text', raw: src, text: src });
+		} else {
+			lexer.inlineTokens(src, tokens);
+		}
+	}
+	lexer.inlineQueue = [];
+	return lexer.tokens;
+};
 
 type MdContext = { take: () => boolean; links: LinkContext };
 
@@ -521,13 +535,18 @@ export const sanitizeTree = (
 ): UiNode | null => {
 	let budget = MAX_NODES;
 	let longBudget = MAX_LONG_TEXT_TOTAL;
+	let mdDeadline: number | null = null;
+	const longRoom = () =>
+		apiMinor >= 7
+			? MAX_TEXT + Math.min(MAX_LONG_TEXT - MAX_TEXT, longBudget)
+			: MAX_TEXT;
+	const chargeLong = (length: number) => {
+		longBudget -= Math.max(0, length - MAX_TEXT);
+	};
 	const longText = (value: unknown): string | null => {
 		if (typeof value !== 'string') return null;
-		const result = value.slice(
-			0,
-			longBudget > 0 && apiMinor >= 7 ? MAX_LONG_TEXT : MAX_TEXT,
-		);
-		longBudget -= result.length;
+		const result = value.slice(0, longRoom());
+		chargeLong(result.length);
 		return result;
 	};
 	const node = (
@@ -672,9 +691,8 @@ export const sanitizeTree = (
 				if (Array.isArray(value.spans)) {
 					for (const span of value.spans.slice(0, MAX_SPANS)) {
 						if (typeof span?.text !== 'string' || span.text === '') continue;
-						const room =
-							(longBudget > 0 ? MAX_LONG_TEXT : MAX_TEXT) - joined.length;
-						if (room <= 0) break;
+						const room = longRoom() - joined.length;
+						if (room <= 0 || budget-- <= 0) break;
 						const piece = span.text.slice(0, room);
 						joined += piece;
 						spans.push({
@@ -689,7 +707,7 @@ export const sanitizeTree = (
 				}
 				let t: string | null;
 				if (spans.length > 0) {
-					longBudget -= joined.length;
+					chargeLong(joined.length);
 					t = joined;
 				} else {
 					t = longText(value.text) ?? text(value.text);
@@ -707,9 +725,13 @@ export const sanitizeTree = (
 				if (apiMinor < 7) return null;
 				const source = longText(value.text);
 				if (source === null) return null;
+				mdDeadline ??= Date.now() + MD_TIME_BUDGET_MS;
+				if (Date.now() > mdDeadline) {
+					return { type: 'text', text: source, tone: 'default', breaks: true };
+				}
 				let tokens: Token[];
 				try {
-					tokens = markdownLexer.lexer(source);
+					tokens = lexMarkdown(source, mdDeadline);
 				} catch {
 					return { type: 'text', text: source, tone: 'default', breaks: true };
 				}
