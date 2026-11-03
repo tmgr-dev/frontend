@@ -8,6 +8,11 @@ workflow copies that section into the GitHub release and the in-app update notes
 - Asking a persona: closing or reloading a separate task window now stops a running question. Before, it kept running in the background and using AI tokens.
 - Correction to 0.9.83: "closing the task window stops the question" held only for the task window inside the app, not for a separate task window or a reload.
 
+## 0.9.88 — 2026-11-03
+
+- Plugins: input fields, dropdowns and checkboxes drawn by a plugin now show "Plugin: <name>" under them, so you can tell them from TMGR's own fields. They are also kept out of browser and password manager autofill.
+- Ask persona fixes (TM-801, TM-794).
+
 ## 0.9.87 — 2026-11-03
 
 - Plugins (API 1.10): event timelines, chat-style message feeds, sparkline charts, empty-state placeholders and loading skeletons.
