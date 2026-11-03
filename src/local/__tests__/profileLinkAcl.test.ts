@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 const root = join(__dirname, '../../../src-tauri');
@@ -27,10 +27,26 @@ describe('sign-up migration commands in the desktop ACL', () => {
 
 	it('are for the main window only', () => {
 		expect(capability('local-profile').windows).toEqual(['main']);
-		for (const file of ['default', 'plugin-windows']) {
-			const permissions: string[] = capability(file).permissions;
+		expect(capability('local-profile').remote).toBeUndefined();
+		const entries = readdirSync(join(root, 'capabilities'), {
+			withFileTypes: true,
+		});
+		expect(
+			entries
+				.filter((entry) => !entry.isFile() || !entry.name.endsWith('.json'))
+				.map((entry) => entry.name),
+		).toEqual([]);
+		const others = readdirSync(join(root, 'capabilities'))
+			.filter((file) => file.endsWith('.json'))
+			.map((file) => file.replace(/\.json$/, ''))
+			.filter((name) => name !== 'local-profile');
+		expect(others).toEqual(
+			expect.arrayContaining(['default', 'plugin-windows']),
+		);
+		for (const file of others) {
+			const granted = JSON.stringify(capability(file));
 			for (const [command] of commands)
-				expect(permissions).not.toContain(permission(command));
+				expect(`${file}: ${granted}`).not.toContain(permission(command));
 		}
 	});
 

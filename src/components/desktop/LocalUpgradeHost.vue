@@ -34,11 +34,15 @@
 				data-testid="local-upgrade-warning"
 			>
 				<TriangleAlert class="mt-0.5 size-4 shrink-0" />
-				<span class="min-w-0 flex-1"
-					>Your AI provider key could not be moved yet. You can keep working,
-					and we will try again next time you start the app.</span
-				>
+				<span class="min-w-0 flex-1">{{ failureSentence }}</span>
 				<Button size="sm" variant="outline" @click="retry">Retry</Button>
+				<Button
+					size="sm"
+					variant="ghost"
+					data-testid="local-upgrade-skip"
+					@click="skip"
+					>Skip</Button
+				>
 			</div>
 
 			<DialogFooter>
@@ -71,6 +75,8 @@
 	import {
 		clearUpgradeDialog,
 		retryLocalUpgrade,
+		skipLocalUpgrade,
+		upgradeFailureSentence,
 		upgradeState,
 	} from '@/utils/localUpgrade';
 	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
@@ -140,6 +146,10 @@
 				return '';
 			});
 
+			const failureSentence = computed(() =>
+				upgradeFailureSentence(upgradeState.failed),
+			);
+
 			const close = () => clearUpgradeDialog();
 
 			const openCloud = async () => {
@@ -168,9 +178,11 @@
 				localWorkspaces,
 				cloudWorkspace,
 				keySentence,
+				failureSentence,
 				close,
 				openCloud,
 				retry: () => retryLocalUpgrade(),
+				skip: () => skipLocalUpgrade(),
 			};
 		},
 	});

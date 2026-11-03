@@ -5,6 +5,8 @@ import {
 	markLocalUpgrade,
 	readUpgradeMarker,
 	retryLocalUpgrade,
+	skipLocalUpgrade,
+	upgradeFailureSentence,
 	upgradeState,
 } from '@/utils/localUpgrade';
 
@@ -20,15 +22,26 @@ const memoryStorage = () => {
 const makeStore = (userId?: number) => {
 	const listeners: Array<(m: { type: string; payload?: unknown }) => void> = [];
 	const store = {
-		state: { user: userId ? { id: userId } : null, localProfile: {} } as any,
+		state: {
+			user: userId ? { id: userId } : null,
+			token: userId ? 'token' : null,
+			localProfile: {},
+		} as any,
 		commit: jest.fn(),
 		subscribe: (fn: any) => void listeners.push(fn),
 	};
 	const signIn = (id: number) => {
+		store.state.token = 'token';
+		listeners.forEach((fn) => fn({ type: 'setToken', payload: 'token' }));
 		store.state.user = { id };
 		listeners.forEach((fn) => fn({ type: 'setUser', payload: { id } }));
 	};
-	return { store, signIn };
+	const setToken = (token: string | null) => {
+		store.state.token = token;
+		listeners.forEach((fn) => fn({ type: 'setToken', payload: token }));
+	};
+	const signOut = () => setToken(null);
+	return { store, signIn, signOut, setToken };
 };
 
 const flush = async () => {
@@ -53,6 +66,19 @@ const linkedTo = (id: number | null | undefined) => (args: any) => ({
 });
 
 const commandsOf = (invoke: jest.Mock) => invoke.mock.calls.map((c) => c[0]);
+
+const firstWinsLink = () => {
+	let linkedId: number | null = null;
+	return (args: any) => {
+		linkedId ??= args.userId;
+		return linkedTo(linkedId)(args);
+	};
+};
+
+const migrateIdsOf = (invoke: jest.Mock) =>
+	invoke.mock.calls
+		.filter((c) => c[0].endsWith('migrate_local'))
+		.map((c) => c[1]?.toUserId);
 
 test('success: links, migrates both, clears migrate and keeps the dialog flag', async () => {
 	const storage = memoryStorage();
@@ -192,7 +218,7 @@ test('account B: A linked, B signs in, neither migrate command runs for B', asyn
 		'persona_cache_migrate_local',
 		expect.anything(),
 	);
-	expect(readUpgradeMarker(storage)?.migrate).toBe(false);
+	expect(readUpgradeMarker(storage)?.migrate).toBe(true);
 	expect(upgradeState.key).toBe('other');
 });
 
@@ -212,7 +238,7 @@ test.each([
 	installLocalUpgrade(store, invoke, storage);
 	await flush();
 	expect(commandsOf(invoke)).toEqual(['local_profile_link']);
-	expect(readUpgradeMarker(storage)?.migrate).toBe(false);
+	expect(readUpgradeMarker(storage)?.migrate).toBe(true);
 	expect(upgradeState.key).toBe('other');
 });
 
@@ -278,7 +304,7 @@ test('the installer makes no HTTP calls', async () => {
 });
 
 test.each(['local_profile_link', 'persona_cache_migrate_local'])(
-	'a user change during %s stops the old attempt and re-evaluates for the new user',
+	'a user change during %s keeps the marker for the linked account',
 	async (during) => {
 		const storage = memoryStorage();
 		markLocalUpgrade(storage);
@@ -289,28 +315,365 @@ test.each(['local_profile_link', 'persona_cache_migrate_local'])(
 			switched = true;
 			signIn(8);
 		};
+		const link = firstWinsLink();
 		const invoke = makeInvoke({
 			local_profile_link: (a) => {
+				const profile = link(a);
 				if (during === 'local_profile_link') switchUser();
-				return linkedTo(a.userId)(a);
+				return profile;
 			},
 			persona_cache_migrate_local: () => {
 				if (during === 'persona_cache_migrate_local') switchUser();
 				return { moved: 0, conflicts: 0 };
 			},
-			persona_llm_migrate_local: () => ({ status: 'none' }),
+			persona_llm_migrate_local: () => ({ status: 'moved' }),
 		});
 		installLocalUpgrade(store, invoke, storage);
 		await flush();
-		const migrateIds = invoke.mock.calls
-			.filter((c) => c[0].endsWith('migrate_local'))
-			.map((c) => c[1]?.toUserId);
-		const firstNew = migrateIds.indexOf(8);
-		expect(firstNew).toBeGreaterThanOrEqual(0);
-		expect(migrateIds.slice(firstNew)).not.toContain(7);
-		const staleCalls = migrateIds.slice(0, firstNew).filter((id) => id === 7);
-		expect(staleCalls.length).toBe(during === 'local_profile_link' ? 0 : 1);
-		expect(upgradeState.phase).toBe('done');
+		expect(migrateIdsOf(invoke)).not.toContain(8);
+		expect(invoke).not.toHaveBeenCalledWith('persona_llm_migrate_local', {
+			toUserId: 7,
+		});
+		expect(readUpgradeMarker(storage)?.migrate).toBe(true);
+		expect(upgradeState.phase).not.toBe('running');
+		expect(upgradeState.key).not.toBe('moved');
+
+		invoke.mockClear();
+		signIn(7);
+		await flush();
+		expect(migrateIdsOf(invoke)).toEqual([7, 7]);
 		expect(readUpgradeMarker(storage)?.migrate).toBe(false);
+		expect(upgradeState).toMatchObject({ phase: 'done', key: 'moved' });
 	},
 );
+
+test('a user change during persona_llm_migrate_local settles but shows no key outcome to the new user', async () => {
+	const storage = memoryStorage();
+	markLocalUpgrade(storage);
+	const { store, signIn } = makeStore(7);
+	const invoke = makeInvoke({
+		local_profile_link: firstWinsLink(),
+		persona_cache_migrate_local: () => ({ moved: 1, conflicts: 0 }),
+		persona_llm_migrate_local: () => {
+			signIn(8);
+			return { status: 'moved' };
+		},
+	});
+	installLocalUpgrade(store, invoke, storage);
+	await flush();
+	expect(migrateIdsOf(invoke)).toEqual([7, 7]);
+	expect(readUpgradeMarker(storage)?.migrate).toBe(false);
+	expect(upgradeState.key).toBeNull();
+	expect(upgradeState.phase).not.toBe('running');
+	expect(upgradeState.phase).not.toBe('failed');
+});
+
+test.each(['local_profile_link', 'persona_cache_migrate_local'])(
+	'a logout during %s stops the migration; the next sign-in finishes it',
+	async (during) => {
+		const storage = memoryStorage();
+		markLocalUpgrade(storage);
+		const { store, signIn, signOut } = makeStore(7);
+		let out = false;
+		const firstWins = firstWinsLink();
+		const invoke = makeInvoke({
+			local_profile_link: (a) => {
+				const profile = firstWins(a);
+				if (during === 'local_profile_link' && !out) {
+					out = true;
+					signOut();
+				}
+				return profile;
+			},
+			persona_cache_migrate_local: () => {
+				if (during === 'persona_cache_migrate_local' && !out) {
+					out = true;
+					signOut();
+				}
+				return { moved: 0, conflicts: 0 };
+			},
+			persona_llm_migrate_local: () => ({ status: 'moved' }),
+		});
+		installLocalUpgrade(store, invoke, storage);
+		await flush();
+		expect(invoke).not.toHaveBeenCalledWith(
+			'persona_llm_migrate_local',
+			expect.anything(),
+		);
+		expect(readUpgradeMarker(storage)?.migrate).toBe(true);
+		expect(upgradeState.phase).toBe('idle');
+		expect(upgradeState.key).toBeNull();
+
+		invoke.mockClear();
+		signIn(7);
+		await flush();
+		expect(commandsOf(invoke)).toEqual([
+			'local_profile_link',
+			'persona_cache_migrate_local',
+			'persona_llm_migrate_local',
+		]);
+		expect(readUpgradeMarker(storage)?.migrate).toBe(false);
+		expect(upgradeState).toMatchObject({ phase: 'done', key: 'moved' });
+	},
+);
+
+test('signed out with a user still in the store: no calls', async () => {
+	const storage = memoryStorage();
+	markLocalUpgrade(storage);
+	const { store } = makeStore(7);
+	store.state.token = null;
+	const invoke = makeInvoke({});
+	installLocalUpgrade(store, invoke, storage);
+	await flush();
+	expect(invoke).not.toHaveBeenCalled();
+	expect(readUpgradeMarker(storage)?.migrate).toBe(true);
+});
+
+test.each([
+	['local_profile_link', 'link'],
+	['persona_cache_migrate_local', 'move'],
+	['persona_llm_migrate_local', 'move'],
+])('a failing %s records the %s step', async (failing, step) => {
+	const storage = memoryStorage();
+	markLocalUpgrade(storage);
+	const { store } = makeStore(7);
+	const handlers: Handlers = {
+		local_profile_link: firstWinsLink(),
+		persona_cache_migrate_local: () => ({ moved: 0, conflicts: 0 }),
+		persona_llm_migrate_local: () => ({ status: 'none' }),
+	};
+	handlers[failing] = () => {
+		throw new Error('boom');
+	};
+	const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+	installLocalUpgrade(store, makeInvoke(handlers), storage);
+	await flush();
+	expect(upgradeState).toMatchObject({ phase: 'failed', failed: step });
+	errors.mockRestore();
+});
+
+test('a failure after a user change is not shown to the new user', async () => {
+	const storage = memoryStorage();
+	markLocalUpgrade(storage);
+	const { store, signIn } = makeStore(7);
+	const invoke = makeInvoke({
+		local_profile_link: firstWinsLink(),
+		persona_cache_migrate_local: () => {
+			signIn(8);
+			throw new Error('boom');
+		},
+		persona_llm_migrate_local: () => ({ status: 'moved' }),
+	});
+	const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+	installLocalUpgrade(store, invoke, storage);
+	await flush();
+	expect(upgradeState.phase).not.toBe('failed');
+	expect(upgradeState.failed).toBeNull();
+	expect(readUpgradeMarker(storage)?.migrate).toBe(true);
+	errors.mockRestore();
+});
+
+test('failure copy never claims a key', () => {
+	for (const step of ['link', 'move', null] as const) {
+		expect(upgradeFailureSentence(step)).not.toMatch(/key/i);
+	}
+	expect(upgradeFailureSentence('link')).not.toMatch(/try again next time/);
+});
+
+test('skip clears the marker and the dialog without any command', async () => {
+	const storage = memoryStorage();
+	markLocalUpgrade(storage);
+	const { store } = makeStore(7);
+	const invoke = makeInvoke({
+		local_profile_link: () => {
+			throw new Error('unreadable profile link');
+		},
+	});
+	const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+	installLocalUpgrade(store, invoke, storage);
+	await flush();
+	expect(upgradeState.failed).toBe('link');
+	invoke.mockClear();
+	skipLocalUpgrade(storage);
+	await retryLocalUpgrade();
+	expect(invoke).not.toHaveBeenCalled();
+	expect(storage.getItem(LOCAL_UPGRADE_KEY)).toBeNull();
+	expect(upgradeState).toMatchObject({
+		phase: 'idle',
+		dialog: false,
+		failed: null,
+	});
+	errors.mockRestore();
+});
+
+test('a finished outcome for 7 is not shown after switching to 8', async () => {
+	const storage = memoryStorage();
+	markLocalUpgrade(storage);
+	const { store, signIn } = makeStore(7);
+	const invoke = makeInvoke({
+		local_profile_link: firstWinsLink(),
+		persona_cache_migrate_local: () => ({ moved: 1, conflicts: 0 }),
+		persona_llm_migrate_local: () => ({ status: 'moved' }),
+	});
+	installLocalUpgrade(store, invoke, storage);
+	await flush();
+	expect(upgradeState).toMatchObject({ phase: 'done', key: 'moved' });
+	invoke.mockClear();
+	signIn(8);
+	await flush();
+	expect(invoke).not.toHaveBeenCalled();
+	expect(upgradeState.key).toBeNull();
+	expect(upgradeState.phase).not.toBe('running');
+});
+
+test('a logout during persona_llm_migrate_local settles but shows nothing', async () => {
+	const storage = memoryStorage();
+	markLocalUpgrade(storage);
+	const { store, signOut } = makeStore(7);
+	installLocalUpgrade(
+		store,
+		makeInvoke({
+			local_profile_link: firstWinsLink(),
+			persona_cache_migrate_local: () => ({ moved: 0, conflicts: 0 }),
+			persona_llm_migrate_local: () => {
+				signOut();
+				return { status: 'moved' };
+			},
+		}),
+		storage,
+	);
+	await flush();
+	expect(readUpgradeMarker(storage)?.migrate).toBe(false);
+	expect(upgradeState).toMatchObject({
+		phase: 'idle',
+		key: null,
+		failed: null,
+	});
+});
+
+describe.each([
+	['local_profile_link'],
+	['persona_cache_migrate_local'],
+	['persona_llm_migrate_local'],
+])('a throwing %s after the session changed', (failing) => {
+	const run = async (change: 'switch' | 'logout') => {
+		const storage = memoryStorage();
+		markLocalUpgrade(storage);
+		const { store, signIn, signOut } = makeStore(7);
+		const link = firstWinsLink();
+		const handlers: Handlers = {
+			local_profile_link: link,
+			persona_cache_migrate_local: () => ({ moved: 0, conflicts: 0 }),
+			persona_llm_migrate_local: () => ({ status: 'moved' }),
+		};
+		const pass = handlers[failing];
+		let thrown = false;
+		handlers[failing] = (a) => {
+			if (thrown) return pass(a);
+			thrown = true;
+			if (failing === 'local_profile_link') link(a);
+			if (change === 'switch') signIn(8);
+			else signOut();
+			throw new Error('boom');
+		};
+		const invoke = makeInvoke(handlers);
+		const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+		installLocalUpgrade(store, invoke, storage);
+		await flush();
+		errors.mockRestore();
+		return { storage, invoke };
+	};
+
+	it('a switch to 8 shows no failure and runs no migrate for 8', async () => {
+		const { storage, invoke } = await run('switch');
+		expect(migrateIdsOf(invoke)).not.toContain(8);
+		expect(upgradeState).toMatchObject({ phase: 'done', key: 'other' });
+		expect(upgradeState.failed).toBeNull();
+		expect(readUpgradeMarker(storage)?.migrate).toBe(true);
+	});
+
+	it('a logout leaves phase idle with no failure and keeps the marker', async () => {
+		const { storage } = await run('logout');
+		expect(upgradeState).toMatchObject({
+			phase: 'idle',
+			key: null,
+			failed: null,
+		});
+		expect(readUpgradeMarker(storage)?.migrate).toBe(true);
+	});
+});
+
+test('a switch to 8 during a retry after a link failure: nothing for 8, 7 finishes later', async () => {
+	const storage = memoryStorage();
+	markLocalUpgrade(storage);
+	const { store, signIn } = makeStore(7);
+	const link = firstWinsLink();
+	let calls = 0;
+	const invoke = makeInvoke({
+		local_profile_link: (a) => {
+			calls++;
+			if (calls === 1) throw new Error('unreadable profile link');
+			const profile = link(a);
+			if (calls === 2) signIn(8);
+			return profile;
+		},
+		persona_cache_migrate_local: () => ({ moved: 1, conflicts: 0 }),
+		persona_llm_migrate_local: () => ({ status: 'moved' }),
+	});
+	const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+	installLocalUpgrade(store, invoke, storage);
+	await flush();
+	expect(upgradeState.failed).toBe('link');
+	await retryLocalUpgrade();
+	await flush();
+	expect(migrateIdsOf(invoke)).toEqual([]);
+	expect(upgradeState.phase).not.toBe('running');
+	expect(upgradeState.failed).toBeNull();
+	expect(readUpgradeMarker(storage)?.migrate).toBe(true);
+	signIn(7);
+	await flush();
+	expect(migrateIdsOf(invoke)).toEqual([7, 7]);
+	expect(readUpgradeMarker(storage)?.migrate).toBe(false);
+	errors.mockRestore();
+});
+
+test('a new token without its user yet: nothing runs for the previous user', async () => {
+	const storage = memoryStorage();
+	markLocalUpgrade(storage);
+	const { store, signIn, setToken } = makeStore(7);
+	const invoke = makeInvoke({
+		local_profile_link: linkedTo(7),
+		persona_cache_migrate_local: () => ({ moved: 1, conflicts: 0 }),
+		persona_llm_migrate_local: () => ({ status: 'moved' }),
+	});
+	setToken(null);
+	installLocalUpgrade(store, invoke, storage);
+	setToken('token-8');
+	await flush();
+	await retryLocalUpgrade();
+	expect(invoke).not.toHaveBeenCalled();
+	signIn(8);
+	await flush();
+	expect(migrateIdsOf(invoke)).toEqual([]);
+	expect(readUpgradeMarker(storage)?.migrate).toBe(true);
+	expect(upgradeState.key).toBe('other');
+});
+
+test('a token swap during local_profile_link stops the old attempt before any migration', async () => {
+	const storage = memoryStorage();
+	markLocalUpgrade(storage);
+	const { store, setToken } = makeStore(7);
+	const invoke = makeInvoke({
+		local_profile_link: (a) => {
+			setToken('token-8');
+			return linkedTo(7)(a);
+		},
+		persona_cache_migrate_local: () => ({ moved: 1, conflicts: 0 }),
+		persona_llm_migrate_local: () => ({ status: 'moved' }),
+	});
+	installLocalUpgrade(store, invoke, storage);
+	await flush();
+	expect(commandsOf(invoke)).toEqual(['local_profile_link']);
+	expect(readUpgradeMarker(storage)?.migrate).toBe(true);
+	expect(upgradeState).toMatchObject({ phase: 'idle', key: null });
+});
