@@ -1,11 +1,10 @@
-import type { Gap } from '@/pluginSystem/uiTree';
+import type { ButtonVariant, Gap } from '@/pluginSystem/uiTree';
 
 export type StackAlign = 'start' | 'center' | 'end' | 'stretch';
 export type StackJustify = 'start' | 'between' | 'end';
 export type CardTone = 'default' | 'muted' | 'raised';
 export type CardPadding = 'sm' | 'md' | 'lg';
 export type GridGap = 'sm' | 'md' | 'lg';
-export type ButtonVariant = 'default' | 'primary' | 'ghost';
 export type ButtonSize = 'sm' | 'md';
 
 export const STACK_GAP: Record<Gap, string> = {
@@ -48,11 +47,19 @@ export const GRID_GAP: Record<GridGap, string> = {
 
 export const BUTTON_VARIANT: Record<
 	ButtonVariant,
-	'outline' | 'default' | 'ghost'
+	'outline' | 'default' | 'ghost' | 'destructive'
 > = {
 	default: 'outline',
 	primary: 'default',
 	ghost: 'ghost',
+	danger: 'destructive',
+	success: 'default',
+	outline: 'outline',
+};
+
+export const BUTTON_VARIANT_CLASS: Partial<Record<ButtonVariant, string>> = {
+	success:
+		'bg-emerald-600 text-white hover:bg-emerald-600/90 dark:bg-emerald-500 dark:hover:bg-emerald-500/90',
 };
 
 export const BUTTON_SIZE: Record<ButtonSize, 'sm' | 'default'> = {
@@ -152,6 +159,26 @@ export const gridTemplateStyle = (node: {
 export const buttonVariantProp = (variant: ButtonVariant | undefined) =>
 	BUTTON_VARIANT[variant ?? 'default'];
 
+export const buttonClasses = (
+	variant: ButtonVariant | undefined,
+	size: ButtonSize | undefined,
+	iconOnly: boolean | undefined,
+): (string | undefined)[] => [
+	'w-fit',
+	variant ? BUTTON_VARIANT_CLASS[variant] : undefined,
+	iconOnly ? (size === 'md' ? 'h-9 w-9' : 'h-8 w-8') + ' px-0' : undefined,
+];
+
+export const segmentedArgs = (
+	args: unknown,
+	value: string | boolean,
+): Record<string, unknown> => ({
+	...(args !== null && typeof args === 'object' && !Array.isArray(args)
+		? (args as Record<string, unknown>)
+		: {}),
+	value,
+});
+
 export const buttonSizeProp = (size: ButtonSize | undefined) =>
 	BUTTON_SIZE[size ?? 'sm'];
 
@@ -168,7 +195,14 @@ export interface InteractiveLike {
 
 const isInteractiveNode = (el: InteractiveLike): boolean => {
 	const tag = el.tagName?.toLowerCase();
-	if (tag === 'button' || tag === 'a' || tag === 'input') return true;
+	if (
+		tag === 'button' ||
+		tag === 'a' ||
+		tag === 'input' ||
+		tag === 'select' ||
+		tag === 'label'
+	)
+		return true;
 	const role = el.getAttribute?.('role');
 	return role === 'menuitem' || role === 'button';
 };

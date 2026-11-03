@@ -2,9 +2,45 @@
 // Do not edit by hand: run `node plugin-sdk/testing/sync-prelude.mjs` from the app repo.
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sanitizeTree = exports.isLinkAllowed = exports.NO_LINKS = exports.COLORS = void 0;
+exports.sanitizeTree = exports.clampDebounce = exports.isLinkAllowed = exports.NO_LINKS = exports.DEBOUNCE_DEFAULT = exports.DEBOUNCE_MAX = exports.DEBOUNCE_MIN = exports.MAX_INPUT_VALUE = exports.COLORS = exports.ICON_NAMES = void 0;
 const marked_1 = require("marked");
 const manifest_1 = require("./manifest.generated.js");
+exports.ICON_NAMES = [
+    'check',
+    'x',
+    'plus',
+    'minus',
+    'alert-triangle',
+    'info',
+    'circle-help',
+    'clock',
+    'calendar',
+    'user',
+    'users',
+    'star',
+    'heart',
+    'flag',
+    'tag',
+    'link',
+    'external-link',
+    'copy',
+    'trash',
+    'edit',
+    'pencil',
+    'search',
+    'filter',
+    'settings',
+    'refresh',
+    'play',
+    'pause',
+    'download',
+    'upload',
+    'git-branch',
+    'git-pull-request',
+    'bug',
+    'zap',
+    'lock',
+];
 const TONES = ['default', 'muted', 'success', 'warning', 'danger'];
 exports.COLORS = [
     'gray',
@@ -41,6 +77,34 @@ const MAX_AT_LENGTH = 64;
 const MAX_CARD_DEPTH = 3;
 const MAX_MENU_ITEMS = 20;
 const MAX_LABEL_LENGTH = 200;
+const MAX_TOOLTIP = 200;
+const MAX_TITLE = 200;
+const MAX_TABS = 12;
+const MAX_TAB_ID = 64;
+const MAX_BADGE_TEXT = 40;
+const MAX_BUTTON_GROUP = 12;
+const MAX_SEGMENTED_VALUE = 64;
+const MIN_SEGMENTED = 2;
+exports.MAX_INPUT_VALUE = 500;
+const MAX_INPUT_PLACEHOLDER = 200;
+const MAX_CONTROL_NAME = 64;
+const MAX_SELECT_OPTIONS = 100;
+const MAX_SELECT_VALUE = 200;
+exports.DEBOUNCE_MIN = 150;
+exports.DEBOUNCE_MAX = 2000;
+exports.DEBOUNCE_DEFAULT = 300;
+const CONTROL_NAME = /^[A-Za-z0-9_.-]+$/;
+const MAX_SEGMENTED = 4;
+const MAX_FEED_ITEMS = 200;
+const MAX_AUTHOR = 64;
+const MAX_SPARKLINE_VALUES = 365;
+const MAX_ROW_EXPAND = 50;
+const MAX_SORT_TEXT = 200;
+const MAX_SKELETON_LINES = 12;
+const DEFAULT_SKELETON_LINES = 3;
+const COLUMN_ALIGNS = ['left', 'center', 'right'];
+const COLUMN_WIDTHS = ['xs', 'sm', 'md', 'lg'];
+const SKELETON_VARIANTS = ['text', 'card', 'table'];
 const CURRENT_API_MINOR = Number(manifest_1.PLUGIN_API_VERSION.split('.')[1]);
 const GAPS = ['none', 'sm', 'md', 'lg'];
 const GRID_GAPS = ['sm', 'md', 'lg'];
@@ -57,10 +121,12 @@ const CARD_TONES = [
     'raised',
 ];
 const PADDINGS = ['sm', 'md', 'lg'];
-const BUTTON_VARIANTS = [
-    'default',
-    'primary',
-    'ghost',
+const BUTTON_VARIANTS = ['default', 'primary', 'ghost'];
+const BUTTON_VARIANTS_V8 = [
+    ...BUTTON_VARIANTS,
+    'danger',
+    'success',
+    'outline',
 ];
 const BUTTON_SIZES = ['sm', 'md'];
 exports.NO_LINKS = { allowedDomains: [], linksOpen: false };
@@ -323,6 +389,21 @@ const text = (value) => typeof value === 'string'
     : typeof value === 'number' && Number.isFinite(value)
         ? String(value)
         : null;
+const shortText = (value, max) => {
+    if (typeof value !== 'string')
+        return undefined;
+    const trimmed = value.trim().slice(0, max);
+    return trimmed === '' ? undefined : trimmed;
+};
+const clampDebounce = (value) => typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(exports.DEBOUNCE_MAX, Math.max(exports.DEBOUNCE_MIN, Math.round(value)))
+    : exports.DEBOUNCE_DEFAULT;
+exports.clampDebounce = clampDebounce;
+const controlName = (value) => typeof value === 'string' &&
+    value.length <= MAX_CONTROL_NAME &&
+    CONTROL_NAME.test(value)
+    ? value
+    : null;
 const parseCommandArgs = (value) => {
     const command = typeof value?.command === 'string' ? value.command.slice(0, 120) : null;
     if (!command)
@@ -593,11 +674,15 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                 if (t === null)
                     return null;
                 const cmd = apiMinor >= 3 ? parseCommandArgs(value) : null;
+                const icon = apiMinor >= 8 ? pickOptional(value.icon, exports.ICON_NAMES) : undefined;
+                const tooltip = apiMinor >= 8 ? shortText(value.tooltip, MAX_TOOLTIP) : undefined;
                 return {
                     type: 'badge',
-                    text: t.slice(0, 40),
+                    text: t.slice(0, MAX_BADGE_TEXT),
                     color: pick(value.color, exports.COLORS, 'gray'),
                     ...(cmd ? cmd : {}),
+                    ...(icon !== undefined ? { icon } : {}),
+                    ...(tooltip !== undefined ? { tooltip } : {}),
                 };
             }
             case 'stat': {
@@ -626,8 +711,29 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                 return { type: 'list', items: children(value.items, cardDepth) };
             case 'table': {
                 const columns = (Array.isArray(value.columns) ? value.columns.slice(0, 12) : [])
-                    .map((c) => ({ key: text(c?.key), title: text(c?.title) }))
-                    .filter((c) => c.key !== null && c.title !== null);
+                    .map((c) => {
+                    const key = text(c?.key);
+                    const title = text(c?.title);
+                    if (key === null || title === null)
+                        return null;
+                    const align = apiMinor >= 10
+                        ? pickOptional(c?.align, COLUMN_ALIGNS)
+                        : undefined;
+                    const width = apiMinor >= 10
+                        ? pickOptional(c?.width, COLUMN_WIDTHS)
+                        : undefined;
+                    const sortable = apiMinor >= 10 && c?.sortable === true
+                        ? true
+                        : undefined;
+                    return {
+                        key,
+                        title,
+                        ...(align !== undefined ? { align } : {}),
+                        ...(width !== undefined ? { width } : {}),
+                        ...(sortable !== undefined ? { sortable } : {}),
+                    };
+                })
+                    .filter((c) => c !== null);
                 const rows = (Array.isArray(value.rows) ? value.rows.slice(0, MAX_ITEMS) : [])
                     // Rows count against the same budget as nodes, so nested tables cannot multiply.
                     .filter(() => budget-- > 0)
@@ -638,11 +744,130 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                         if (cell)
                             cells[key] = cell;
                     }
-                    return Number.isSafeInteger(row?.taskId) && row.taskId > 0
-                        ? { taskId: row.taskId, cells }
-                        : { cells };
+                    const out = { cells };
+                    if (Number.isSafeInteger(row?.taskId) && row.taskId > 0) {
+                        out.taskId = row.taskId;
+                    }
+                    if (apiMinor >= 10) {
+                        const color = pickOptional(row?.color, exports.COLORS);
+                        if (color !== undefined)
+                            out.color = color;
+                        const onClick = row?.onClick !== null && typeof row?.onClick === 'object'
+                            ? parseCommandArgs(row.onClick)
+                            : null;
+                        if (onClick)
+                            out.onClick = onClick;
+                        const sort = {};
+                        for (const { key } of columns) {
+                            const v = row?.sort?.[key];
+                            if (typeof v === 'number' && Number.isFinite(v))
+                                sort[key] = v;
+                            else if (typeof v === 'string')
+                                sort[key] = v.slice(0, MAX_SORT_TEXT);
+                        }
+                        if (Object.keys(sort).length > 0)
+                            out.sort = sort;
+                        const expand = (Array.isArray(row?.expand)
+                            ? row.expand.slice(0, MAX_ROW_EXPAND)
+                            : [])
+                            .map((child) => node(child, depth + 1, cardDepth))
+                            .filter((child) => child !== null);
+                        if (expand.length > 0)
+                            out.expand = expand;
+                    }
+                    return out;
                 });
                 return { type: 'table', columns, rows };
+            }
+            case 'timeline': {
+                if (apiMinor < 10)
+                    return null;
+                const items = (Array.isArray(value.items) ? value.items.slice(0, MAX_FEED_ITEMS) : [])
+                    .filter(() => budget-- > 0)
+                    .map((item) => {
+                    const at = shortText(item?.at, MAX_AT_LENGTH);
+                    const t = text(item?.text);
+                    if (at === undefined || t === null)
+                        return null;
+                    const title = shortText(item?.title, MAX_TITLE);
+                    return {
+                        at,
+                        text: t,
+                        tone: pick(item?.tone, exports.COLORS, 'gray'),
+                        ...(title !== undefined ? { title } : {}),
+                    };
+                })
+                    .filter((item) => item !== null);
+                return { type: 'timeline', items };
+            }
+            case 'messages': {
+                if (apiMinor < 10)
+                    return null;
+                const items = (Array.isArray(value.items) ? value.items.slice(0, MAX_FEED_ITEMS) : [])
+                    .filter(() => budget-- > 0)
+                    .map((item) => {
+                    const author = shortText(item?.author, MAX_AUTHOR);
+                    const t = text(item?.text);
+                    if (author === undefined || t === null)
+                        return null;
+                    const at = shortText(item?.at, MAX_AT_LENGTH);
+                    return {
+                        author,
+                        text: t,
+                        side: item?.side === 'right' ? 'right' : 'left',
+                        ...(at !== undefined ? { at } : {}),
+                    };
+                })
+                    .filter((item) => item !== null);
+                return { type: 'messages', items };
+            }
+            case 'sparkline': {
+                if (apiMinor < 10)
+                    return null;
+                const values = [];
+                for (const v of Array.isArray(value.values) ? value.values : []) {
+                    if (values.length >= MAX_SPARKLINE_VALUES)
+                        break;
+                    if (typeof v !== 'number' || !Number.isFinite(v))
+                        continue;
+                    if (budget-- <= 0)
+                        break;
+                    values.push(v);
+                }
+                const label = shortText(value.label, MAX_LABEL_LENGTH);
+                return {
+                    type: 'sparkline',
+                    values,
+                    color: pick(value.color, exports.COLORS, 'blue'),
+                    ...(label !== undefined ? { label } : {}),
+                };
+            }
+            case 'empty': {
+                if (apiMinor < 10)
+                    return null;
+                const title = shortText(value.title, MAX_TITLE);
+                if (title === undefined)
+                    return null;
+                const body = shortText(value.text, MAX_TEXT);
+                const icon = pickOptional(value.icon, exports.ICON_NAMES);
+                return {
+                    type: 'empty',
+                    title,
+                    ...(body !== undefined ? { text: body } : {}),
+                    ...(icon !== undefined ? { icon } : {}),
+                };
+            }
+            case 'skeleton': {
+                if (apiMinor < 10)
+                    return null;
+                const lines = typeof value.lines === 'number' && Number.isFinite(value.lines)
+                    ? Math.min(MAX_SKELETON_LINES, Math.max(1, Math.round(value.lines)))
+                    : DEFAULT_SKELETON_LINES;
+                return {
+                    type: 'skeleton',
+                    variant: pick(value.variant, SKELETON_VARIANTS, 'text'),
+                    lines,
+                };
             }
             case 'button': {
                 const t = text(value.text);
@@ -652,9 +877,15 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                 const confirmText = typeof value.confirm === 'string' ? value.confirm.trim() : '';
                 const confirm = confirmText ? confirmText.slice(0, 200) : undefined;
                 const variant = apiMinor >= 3
-                    ? pickOptional(value.variant, BUTTON_VARIANTS)
+                    ? pickOptional(value.variant, apiMinor >= 8 ? BUTTON_VARIANTS_V8 : BUTTON_VARIANTS)
                     : undefined;
                 const size = apiMinor >= 3 ? pickOptional(value.size, BUTTON_SIZES) : undefined;
+                const icon = apiMinor >= 8 ? pickOptional(value.icon, exports.ICON_NAMES) : undefined;
+                const tooltip = apiMinor >= 8 ? shortText(value.tooltip, MAX_TOOLTIP) : undefined;
+                const flag = (key) => apiMinor >= 8 && value[key] === true ? true : undefined;
+                const iconOnly = icon !== undefined ? flag('iconOnly') : undefined;
+                const disabled = flag('disabled');
+                const loading = flag('loading');
                 return {
                     type: 'button',
                     text: t,
@@ -662,6 +893,188 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                     ...(confirm !== undefined ? { confirm } : {}),
                     ...(variant !== undefined ? { variant } : {}),
                     ...(size !== undefined ? { size } : {}),
+                    ...(icon !== undefined ? { icon } : {}),
+                    ...(iconOnly !== undefined ? { iconOnly } : {}),
+                    ...(disabled !== undefined ? { disabled } : {}),
+                    ...(loading !== undefined ? { loading } : {}),
+                    ...(tooltip !== undefined ? { tooltip } : {}),
+                };
+            }
+            case 'buttonGroup': {
+                if (apiMinor < 8)
+                    return null;
+                const kids = (Array.isArray(value.children) ? value.children : [])
+                    .filter((child) => child?.type === 'button')
+                    .slice(0, MAX_BUTTON_GROUP)
+                    .map((child) => node(child, depth + 1, cardDepth))
+                    .filter((child) => child !== null);
+                return kids.length === 0
+                    ? null
+                    : { type: 'buttonGroup', children: kids };
+            }
+            case 'icon': {
+                if (apiMinor < 8)
+                    return null;
+                const name = pickOptional(value.name, exports.ICON_NAMES);
+                return name === undefined
+                    ? null
+                    : { type: 'icon', name, tone: pick(value.tone, TONES, 'default') };
+            }
+            case 'collapse': {
+                if (apiMinor < 8)
+                    return null;
+                const title = shortText(value.title, MAX_TITLE);
+                const visible = Number.isSafeInteger(value.visible) && value.visible >= 1
+                    ? Math.min(value.visible, MAX_ITEMS)
+                    : undefined;
+                return {
+                    type: 'collapse',
+                    open: value.open === true,
+                    children: children(value.children, cardDepth),
+                    ...(title !== undefined ? { title } : {}),
+                    ...(visible !== undefined ? { visible } : {}),
+                };
+            }
+            case 'tabs': {
+                if (apiMinor < 8)
+                    return null;
+                const seen = new Set();
+                const tabs = (Array.isArray(value.tabs) ? value.tabs : [])
+                    .slice(0, MAX_TABS)
+                    .filter(() => budget-- > 0)
+                    .map((tab) => {
+                    const id = typeof tab?.id === 'string' &&
+                        tab.id !== '' &&
+                        tab.id.length <= MAX_TAB_ID
+                        ? tab.id
+                        : null;
+                    const title = shortText(tab?.title, MAX_TITLE);
+                    if (id === null || title === undefined || seen.has(id))
+                        return null;
+                    seen.add(id);
+                    const badge = shortText(tab.badge, MAX_BADGE_TEXT);
+                    return {
+                        id,
+                        title,
+                        ...(badge !== undefined ? { badge } : {}),
+                        children: children(tab.children, cardDepth),
+                    };
+                })
+                    .filter((tab) => tab !== null);
+                if (tabs.length === 0)
+                    return null;
+                const selected = tabs.some((tab) => tab.id === value.selected)
+                    ? value.selected
+                    : tabs[0].id;
+                return { type: 'tabs', tabs, selected };
+            }
+            case 'segmented': {
+                if (apiMinor < 8)
+                    return null;
+                const rawOptions = Array.isArray(value.options) ? value.options : [];
+                if (rawOptions.length < MIN_SEGMENTED ||
+                    rawOptions.length > MAX_SEGMENTED)
+                    return null;
+                const seen = new Set();
+                const options = rawOptions
+                    .filter(() => budget-- > 0)
+                    .map((option) => {
+                    const v = typeof option?.value === 'string' &&
+                        option.value !== '' &&
+                        option.value.length <= MAX_SEGMENTED_VALUE
+                        ? option.value
+                        : null;
+                    const t = text(option?.text);
+                    if (v === null || t === null || seen.has(v))
+                        return null;
+                    seen.add(v);
+                    return { value: v, text: t };
+                })
+                    .filter((option) => option !== null);
+                const cmd = parseCommandArgs(value);
+                if (options.length < MIN_SEGMENTED || cmd === null)
+                    return null;
+                return {
+                    type: 'segmented',
+                    options,
+                    value: seen.has(value.value) ? value.value : null,
+                    ...cmd,
+                };
+            }
+            case 'input': {
+                if (apiMinor < 9)
+                    return null;
+                const name = controlName(value.name);
+                const cmd = parseCommandArgs(value);
+                if (name === null || cmd === null)
+                    return null;
+                const placeholder = typeof value.placeholder === 'string' && value.placeholder !== ''
+                    ? value.placeholder.slice(0, MAX_INPUT_PLACEHOLDER)
+                    : undefined;
+                return {
+                    type: 'input',
+                    name,
+                    value: typeof value.value === 'string'
+                        ? value.value.slice(0, exports.MAX_INPUT_VALUE)
+                        : '',
+                    mode: value.mode === 'submit' ? 'submit' : 'change',
+                    debounce: (0, exports.clampDebounce)(value.debounce),
+                    ...(placeholder !== undefined ? { placeholder } : {}),
+                    ...cmd,
+                };
+            }
+            case 'select': {
+                if (apiMinor < 9)
+                    return null;
+                const name = controlName(value.name);
+                const cmd = parseCommandArgs(value);
+                if (name === null || cmd === null)
+                    return null;
+                const seen = new Set();
+                const options = (Array.isArray(value.options) ? value.options : [])
+                    .slice(0, MAX_SELECT_OPTIONS)
+                    .filter(() => budget-- > 0)
+                    .map((option) => {
+                    const v = typeof option?.value === 'string' &&
+                        option.value !== '' &&
+                        option.value.length <= MAX_SELECT_VALUE
+                        ? option.value
+                        : null;
+                    const t = text(option?.text);
+                    if (v === null || t === null || seen.has(v))
+                        return null;
+                    seen.add(v);
+                    return { value: v, text: t };
+                })
+                    .filter((option) => option !== null);
+                if (options.length === 0)
+                    return null;
+                const placeholder = typeof value.placeholder === 'string' && value.placeholder !== ''
+                    ? value.placeholder.slice(0, MAX_INPUT_PLACEHOLDER)
+                    : undefined;
+                return {
+                    type: 'select',
+                    name,
+                    options,
+                    value: seen.has(value.value) ? value.value : null,
+                    ...(placeholder !== undefined ? { placeholder } : {}),
+                    ...cmd,
+                };
+            }
+            case 'checkbox': {
+                if (apiMinor < 9)
+                    return null;
+                const name = controlName(value.name);
+                const label = text(value.label);
+                const cmd = parseCommandArgs(value);
+                if (name === null || label === null || cmd === null)
+                    return null;
+                return {
+                    type: 'checkbox',
+                    name,
+                    label,
+                    checked: value.checked === true,
+                    ...cmd,
                 };
             }
             case 'taskLink': {

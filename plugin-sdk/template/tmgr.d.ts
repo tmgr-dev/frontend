@@ -1,5 +1,5 @@
 /**
- * Types for TMGR plugin authors (API 1.7). A plugin's main.js runs in a sandbox where `tmgr` and
+ * Types for TMGR plugin authors (API 1.8). A plugin's main.js runs in a sandbox where `tmgr` and
  * `console` are the only globals: no DOM, no fetch, no timers. Every call returns a Promise and may
  * reject with an Error whose `name` is one of PluginErrorCode.
  */
@@ -344,6 +344,43 @@ type TmgrEvent =
 			taskId?: number;
 	  };
 
+/** API 1.8. The closed set of icon names; any other name is dropped (the text of a button or badge stays). */
+type TmgrIconName =
+	| 'check'
+	| 'x'
+	| 'plus'
+	| 'minus'
+	| 'alert-triangle'
+	| 'info'
+	| 'circle-help'
+	| 'clock'
+	| 'calendar'
+	| 'user'
+	| 'users'
+	| 'star'
+	| 'heart'
+	| 'flag'
+	| 'tag'
+	| 'link'
+	| 'external-link'
+	| 'copy'
+	| 'trash'
+	| 'edit'
+	| 'pencil'
+	| 'search'
+	| 'filter'
+	| 'settings'
+	| 'refresh'
+	| 'play'
+	| 'pause'
+	| 'download'
+	| 'upload'
+	| 'git-branch'
+	| 'git-pull-request'
+	| 'bug'
+	| 'zap'
+	| 'lock';
+
 type TmgrTone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
 type TmgrColor =
 	'gray' | 'green' | 'yellow' | 'red' | 'blue' | 'purple' | 'orange';
@@ -437,7 +474,13 @@ type TmgrNode =
 			/** API 1.3. */
 			command?: string;
 			args?: unknown;
+			/** API 1.8. */
+			icon?: TmgrIconName;
+			/** API 1.8. Plain text, up to 200 chars. */
+			tooltip?: string;
 	  }
+	/** API 1.8. A small inline icon. */
+	| { type: 'icon'; name: TmgrIconName; tone?: TmgrTone }
 	| {
 			type: 'stat';
 			label: string;
@@ -451,8 +494,53 @@ type TmgrNode =
 	| { type: 'list'; items: TmgrNode[] }
 	| {
 			type: 'table';
-			columns: { key: string; title: string }[];
-			rows: { taskId?: number; cells: Record<string, TmgrNode> }[];
+			columns: {
+				key: string;
+				title: string;
+				/** API 1.10. */
+				align?: 'left' | 'center' | 'right';
+				/** API 1.10. 'xs' 4rem, 'sm' 7rem, 'md' 12rem, 'lg' 18rem. */
+				width?: 'xs' | 'sm' | 'md' | 'lg';
+				/** API 1.10. Clicking the header sorts the rows in the app; nothing is sent to the plugin. */
+				sortable?: boolean;
+			}[];
+			rows: {
+				taskId?: number;
+				cells: Record<string, TmgrNode>;
+				/** API 1.10. Sort values by column key; without one the cell text is used. */
+				sort?: Record<string, string | number>;
+				/** API 1.10. Tints the row and adds a colored left edge. */
+				color?: TmgrColor;
+				/** API 1.10. Runs when the row is clicked (not when a control inside it is). */
+				onClick?: { command: string; args?: unknown };
+				/** API 1.10. Nodes shown under the row when the user opens its arrow. */
+				expand?: TmgrNode[];
+			}[];
+	  }
+	/** API 1.10. A vertical list of events, at most 200. `at` is shown as given (at most 64 characters). */
+	| {
+			type: 'timeline';
+			items: { at: string; title?: string; text: string; tone?: TmgrColor }[];
+	  }
+	/** API 1.10. Chat bubbles, at most 200. `text` is plain text; line breaks are kept. */
+	| {
+			type: 'messages';
+			items: {
+				author: string;
+				text: string;
+				at?: string;
+				side?: 'left' | 'right';
+			}[];
+	  }
+	/** API 1.10. A small line chart of up to 365 finite numbers. `label` is read out by screen readers. */
+	| { type: 'sparkline'; values: number[]; color?: TmgrColor; label?: string }
+	/** API 1.10. A placeholder for "nothing here". */
+	| { type: 'empty'; title: string; text?: string; icon?: TmgrIconName }
+	/** API 1.10. A loading placeholder. `lines` is 1 to 12 (default 3). */
+	| {
+			type: 'skeleton';
+			variant?: 'text' | 'card' | 'table';
+			lines?: number;
 	  }
 	/**
 	 * confirm (≤200 chars) asks the user, naming your plugin, before the command runs.
@@ -464,8 +552,88 @@ type TmgrNode =
 			command: string;
 			args?: unknown;
 			confirm?: string;
-			variant?: 'default' | 'primary' | 'ghost';
+			/** 'danger', 'success' and 'outline' need API 1.8. */
+			variant?:
+				'default' | 'primary' | 'ghost' | 'danger' | 'success' | 'outline';
 			size?: 'sm' | 'md';
+			/** API 1.8. */
+			icon?: TmgrIconName;
+			/** API 1.8. Shows only the icon; `text` stays as the accessible label and tooltip. Needs `icon`. */
+			iconOnly?: boolean;
+			/** API 1.8. A disabled or loading button does not run its command. */
+			disabled?: boolean;
+			loading?: boolean;
+			/** API 1.8. Plain text, up to 200 chars. */
+			tooltip?: string;
+	  }
+	/** API 1.8. Buttons side by side (up to 12); other children are dropped. */
+	| { type: 'buttonGroup'; children: Extract<TmgrNode, { type: 'button' }>[] }
+	/**
+	 * API 1.8. With `title` a disclosure header hides the children until opened (`open` sets the start state).
+	 * With `visible` only the first N children show, plus an "N more" / "Show less" button. The state stays in the app.
+	 */
+	| {
+			type: 'collapse';
+			title?: string;
+			open?: boolean;
+			visible?: number;
+			children: TmgrNode[];
+	  }
+	/** API 1.8. Up to 12 tabs with unique string ids (≤64 chars). The selected tab stays in the app; `selected` is the start tab. */
+	| {
+			type: 'tabs';
+			tabs: {
+				id: string;
+				title: string;
+				badge?: string;
+				children: TmgrNode[];
+			}[];
+			selected?: string;
+	  }
+	/**
+	 * API 1.8. A 2 to 4 option switch controlled by the plugin: a click runs `command` with `{ ...args, value }`,
+	 * where `value` is one of the option values. Render the new `value` when the command ends.
+	 */
+	| {
+			type: 'segmented';
+			options: { value: string; text: string }[];
+			value: string;
+			command: string;
+			args?: unknown;
+	  }
+	/**
+	 * API 1.9. A single-line text field. The typed text (at most 500 characters) reaches `command` only as `args.value`,
+	 * after the user types ('change', after `debounce` ms, 150 to 2000, default 300) or presses Enter ('submit').
+	 * `name` is your own identifier (at most 64 characters of A-Z a-z 0-9 _ . -). It is never shown or sent.
+	 */
+	| {
+			type: 'input';
+			name: string;
+			placeholder?: string;
+			value?: string;
+			command: string;
+			args?: unknown;
+			mode?: 'change' | 'submit';
+			debounce?: number;
+	  }
+	/** API 1.9. A drop-down of up to 100 options. Choosing one runs `command` with `{ ...args, value }`, the option's own value. */
+	| {
+			type: 'select';
+			name: string;
+			options: { value: string; text: string }[];
+			value?: string;
+			placeholder?: string;
+			command: string;
+			args?: unknown;
+	  }
+	/** API 1.9. A checkbox. Toggling it runs `command` with `{ ...args, value }`, where `value` is a boolean. */
+	| {
+			type: 'checkbox';
+			name: string;
+			label: string;
+			checked?: boolean;
+			command: string;
+			args?: unknown;
 	  }
 	| { type: 'taskLink'; taskId: number; text: string }
 	| { type: 'divider' }

@@ -15,6 +15,7 @@ import {
 	gridInnerClasses,
 	gridTemplateStyle,
 	isNestedInteractive,
+	segmentedArgs,
 	statClasses,
 	type InteractiveLike,
 } from '../pluginViewClasses';
@@ -85,9 +86,12 @@ describe('class maps', () => {
 	it('BUTTON_VARIANT maps to shadcn Button variant names', () => {
 		expect(BUTTON_VARIANT).toMatchInlineSnapshot(`
 			{
+			  "danger": "destructive",
 			  "default": "outline",
 			  "ghost": "ghost",
+			  "outline": "outline",
 			  "primary": "default",
+			  "success": "default",
 			}
 		`);
 	});
@@ -201,10 +205,20 @@ describe('isNestedInteractive', () => {
 			el('button', {}, card),
 			el('a', {}, card),
 			el('input', {}, card),
+			el('select', {}, card),
+			el('label', {}, card),
 			el('div', { role: 'menuitem' }, card),
 		]) {
 			expect(isNestedInteractive(node, card)).toBe(true);
 		}
+	});
+
+	it('is true for text inside a checkbox label or a select option', () => {
+		const card = el('div', { role: 'button' });
+		const label = el('label', {}, card);
+		expect(isNestedInteractive(el('span', {}, label), card)).toBe(true);
+		const select = el('select', {}, card);
+		expect(isNestedInteractive(el('option', {}, select), card)).toBe(true);
 	});
 
 	it('is true for a nested [role=button] other than the card itself', () => {
@@ -234,5 +248,20 @@ describe('statClasses', () => {
 		expect(statClasses(false)).not.toContain('cursor-pointer');
 		expect(statClasses(true)).toContain('cursor-pointer');
 		expect(statClasses(true)).toContain('hover:bg-accent');
+	});
+});
+
+describe('segmentedArgs', () => {
+	it('merges the node args with the chosen value', () => {
+		expect(segmentedArgs({ view: 'a', value: 'x' }, 'b')).toEqual({
+			view: 'a',
+			value: 'b',
+		});
+	});
+
+	it('ignores args that are not a plain object', () => {
+		expect(segmentedArgs(undefined, 'b')).toEqual({ value: 'b' });
+		expect(segmentedArgs([1, 2], 'b')).toEqual({ value: 'b' });
+		expect(segmentedArgs('s', 'b')).toEqual({ value: 'b' });
 	});
 });

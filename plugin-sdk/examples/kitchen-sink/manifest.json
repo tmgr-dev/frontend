@@ -3,8 +3,8 @@
 	"name": "Kitchen Sink",
 	"version": "1.0.0",
 	"publisher": "tmgr-dev",
-	"description": "Exercises every plugin API v1.7 feature, for manual acceptance testing.",
-	"engines": { "tmgr": "^1.7" },
+	"description": "Exercises every plugin API v1.10 feature, for manual acceptance testing.",
+	"engines": { "tmgr": "^1.10" },
 	"main": "main.js",
 	"permissions": [
 		"tasks:read",
@@ -44,6 +44,22 @@
 			{
 				"id": "tmgr-dev.kitchen-sink.sayHi",
 				"title": "Say hi (from a task section button)"
+			},
+			{
+				"id": "tmgr-dev.kitchen-sink.setMode",
+				"title": "Switch the view mode"
+			},
+			{
+				"id": "tmgr-dev.kitchen-sink.setSearch",
+				"title": "Set the search text"
+			},
+			{
+				"id": "tmgr-dev.kitchen-sink.setColor",
+				"title": "Choose a color"
+			},
+			{
+				"id": "tmgr-dev.kitchen-sink.setNotify",
+				"title": "Toggle notifications"
 			},
 			{
 				"id": "tmgr-dev.kitchen-sink.ping",
