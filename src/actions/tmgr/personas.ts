@@ -55,6 +55,27 @@ export interface PersonaSkill extends PersonaSkillSummary {
 	body: string;
 }
 
+export interface SharedSkillPersonaRef {
+	id: string;
+	name: string;
+}
+
+export interface SharedSkillAttachment extends SharedSkillPersonaRef {
+	overridden: boolean;
+}
+
+export interface SharedSkillSummary extends PersonaSkillSummary {
+	attached_personas: SharedSkillAttachment[];
+}
+
+export interface SharedSkill extends SharedSkillSummary {
+	body: string;
+}
+
+export interface PersonaSharedSkill extends PersonaSkillSummary {
+	overridden: boolean;
+}
+
 export interface PersonaGrant {
 	persona: PersonaGrantSummary;
 	workspace_id: number;
@@ -214,6 +235,18 @@ export const forgetPersonaAvatar = (uuid: string): void => {
 };
 
 const skillsKey = (personaUuid: string) => `personas-${personaUuid}-skills`;
+const sharedSkillsKey = 'shared-skills';
+const personaSharedSkillsKey = (personaUuid: string) =>
+	`personas-${personaUuid}-shared-skills`;
+const invalidateSharedLibrary = () => {
+	requestCache.invalidate(/^shared-skills/);
+	requestCache.invalidate(/^personas-.*-shared-skills$/);
+	requestCache.invalidate(/^ws-\d+-persona-grants$/);
+};
+const invalidateSharedForPersona = (personaUuid: string) => {
+	requestCache.invalidate(personaSharedSkillsKey(personaUuid));
+	requestCache.invalidate(sharedSkillsKey);
+};
 
 export const listPersonaSkills = async (
 	personaUuid: string,
@@ -249,6 +282,7 @@ export const putPersonaSkill = async (
 		data: { data },
 	} = await $axios.put(`/personas/${personaUuid}/skills/${slug}`, { body });
 	requestCache.invalidate(skillsKey(personaUuid));
+	invalidateSharedForPersona(personaUuid);
 	return data;
 };
 
@@ -258,6 +292,83 @@ export const deletePersonaSkill = async (
 ): Promise<void> => {
 	await $axios.delete(`/personas/${personaUuid}/skills/${slug}`);
 	requestCache.invalidate(skillsKey(personaUuid));
+	invalidateSharedForPersona(personaUuid);
+};
+
+export const listSharedSkills = async (
+	useCache = true,
+): Promise<SharedSkillSummary[]> =>
+	requestCache.getOrFetch(
+		sharedSkillsKey,
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get('/shared-skills');
+			return data;
+		},
+		{ ttl: 30000, cache: useCache },
+	);
+
+export const getSharedSkill = async (slug: string): Promise<SharedSkill> => {
+	const {
+		data: { data },
+	} = await $axios.get(`/shared-skills/${slug}`);
+	return data;
+};
+
+export const putSharedSkill = async (
+	slug: string,
+	body: string,
+): Promise<SharedSkill> => {
+	const {
+		data: { data },
+	} = await $axios.put(`/shared-skills/${slug}`, { body });
+	invalidateSharedLibrary();
+	return data;
+};
+
+export const deleteSharedSkill = async (
+	slug: string,
+): Promise<{ detached_personas: SharedSkillPersonaRef[] }> => {
+	const {
+		data: { data },
+	} = await $axios.delete(`/shared-skills/${slug}`);
+	invalidateSharedLibrary();
+	return data;
+};
+
+export const listPersonaSharedSkills = async (
+	personaUuid: string,
+	useCache = true,
+): Promise<PersonaSharedSkill[]> =>
+	requestCache.getOrFetch(
+		personaSharedSkillsKey(personaUuid),
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get(`/personas/${personaUuid}/shared-skills`);
+			return data;
+		},
+		{ ttl: 30000, cache: useCache },
+	);
+
+export const attachSharedSkill = async (
+	personaUuid: string,
+	slug: string,
+): Promise<PersonaSharedSkill> => {
+	const {
+		data: { data },
+	} = await $axios.put(`/personas/${personaUuid}/shared-skills/${slug}`);
+	invalidateSharedForPersona(personaUuid);
+	return data;
+};
+
+export const detachSharedSkill = async (
+	personaUuid: string,
+	slug: string,
+): Promise<void> => {
+	await $axios.delete(`/personas/${personaUuid}/shared-skills/${slug}`);
+	invalidateSharedForPersona(personaUuid);
 };
 
 const tokensKey = (personaUuid: string) => `personas-${personaUuid}-tokens`;

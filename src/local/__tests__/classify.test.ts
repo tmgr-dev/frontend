@@ -28,6 +28,8 @@ describe('classify', () => {
 			'user/alarm-phone/test-call',
 			'persona-tokens',
 			'persona-tokens/3',
+			'shared-skills',
+			'shared-skills/triage',
 			'smart-device/token/generate',
 			'smart-device/token/revoke',
 			'telegram/link/generate',

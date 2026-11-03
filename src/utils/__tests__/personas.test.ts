@@ -1,11 +1,14 @@
 import type { AuthorRef } from '@/types/author';
 import {
+	attachableSharedSkills,
+	ATTACHED_SKILL_LIMIT,
 	authorKindOf,
 	buildMcpUrl,
 	buildPersonaTokenSnippet,
 	byteLength,
 	DEFAULT_GRANT_PERMISSIONS,
 	DEFAULT_TOKEN_EXPIRY_DAYS,
+	detachedSkillsTitle,
 	effectivePermissions,
 	EXPIRY_OPTIONS,
 	extractFieldErrors,
@@ -16,6 +19,8 @@ import {
 	PERSONA_PERMISSIONS,
 	PERSONA_TOKEN_ENV_VAR,
 	resolveAuthor,
+	SHARED_SKILL_LIMIT,
+	sharedSkillDeleteConfirm,
 	sortPersonasNewestFirst,
 	validatePersonaName,
 	validateSkillMarkdown,
@@ -446,5 +451,50 @@ describe('sortPersonasNewestFirst', () => {
 		];
 		sortPersonasNewestFirst(input);
 		expect(input.map((x) => x.id)).toEqual(['a', 'b']);
+	});
+});
+
+describe('shared skill helpers', () => {
+	it('exposes the library and attachment limits', () => {
+		expect(SHARED_SKILL_LIMIT).toBe(100);
+		expect(ATTACHED_SKILL_LIMIT).toBe(20);
+	});
+
+	it('names the attached personas in the delete confirmation', () => {
+		expect(
+			sharedSkillDeleteConfirm('Triage', [
+				{ id: 'a', name: 'Reviewer' },
+				{ id: 'b', name: 'Triage' },
+			]),
+		).toBe(
+			'Delete skill "Triage"?\n\nAttached to Reviewer, Triage. They lose this skill immediately; no copy is kept.',
+		);
+	});
+
+	it('keeps the delete confirmation short when nothing is attached', () => {
+		expect(sharedSkillDeleteConfirm('Triage', [])).toBe(
+			'Delete skill "Triage"?',
+		);
+	});
+
+	it('builds the toast title from the detached personas', () => {
+		expect(detachedSkillsTitle([])).toBe('Skill deleted');
+		expect(detachedSkillsTitle([{ id: 'a', name: 'Reviewer' }])).toBe(
+			'Skill deleted and detached from 1 persona',
+		);
+		expect(
+			detachedSkillsTitle([
+				{ id: 'a', name: 'Reviewer' },
+				{ id: 'b', name: 'Triage' },
+			]),
+		).toBe('Skill deleted and detached from 2 personas');
+	});
+
+	it('offers only library skills that are not attached yet', () => {
+		const library = [{ slug: 'a' }, { slug: 'b' }, { slug: 'c' }];
+		expect(attachableSharedSkills(library, [{ slug: 'b' }])).toEqual([
+			{ slug: 'a' },
+			{ slug: 'c' },
+		]);
 	});
 });
