@@ -117,6 +117,7 @@ pub(crate) fn with_app_webview_handlers<'a, R: Runtime>(
     // Embed addresses are allowed for iframes, but the hook cannot tell frames apart. If the page itself
     // ever lands on one, bring the app back.
     .on_page_load(move |window, payload| {
+      persona_llm::on_page_load(window.label(), payload.event());
       if payload.event() == PageLoadEvent::Started && !is_app_url(payload.url()) {
         log::warn!("[nav] {} left the app for {}; returning", window.label(), payload.url().host_str().unwrap_or(""));
         let _ = window.navigate(home.clone());
@@ -328,6 +329,7 @@ pub fn run() {
     ])
     .on_window_event(|window, event| {
       runner::commands::on_window_event(window, event);
+      persona_llm::on_window_event(window.label(), event);
       if let WindowEvent::Focused(false) = event {
         if window.label() == quick_add::LABEL {
           let _ = window.hide();

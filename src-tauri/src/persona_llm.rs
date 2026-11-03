@@ -721,11 +721,37 @@ pub fn persona_llm_migrate_local<R: Runtime>(app: AppHandle<R>, window: tauri::W
   Ok(LlmMigrateOut { status })
 }
 
-static IN_FLIGHT: LazyLock<Mutex<HashMap<String, tokio::task::AbortHandle>>> =
-  LazyLock::new(|| Mutex::new(HashMap::new()));
+struct InFlight {
+  window: String,
+  token: u64,
+  abort: tokio::task::AbortHandle,
+}
 
-fn emit_event<R: Runtime>(app: &AppHandle<R>, request_id: &str, event: ChatEvent) {
-  let _ = app.emit("llm://chat", serde_json::json!({ "request_id": request_id, "event": event }));
+#[derive(Default)]
+struct InFlightState {
+  entries: HashMap<String, InFlight>,
+  /// Bumped on every window abort and never removed: a missing label reads as 0, so dropping it would let a
+  /// generation captured before the abort match again.
+  generations: HashMap<String, u64>,
+  next_token: u64,
+}
+
+impl InFlightState {
+  fn generation(&self, window: &str) -> u64 {
+    self.generations.get(window).copied().unwrap_or(0)
+  }
+}
+
+type InFlightMap = Mutex<InFlightState>;
+
+static IN_FLIGHT: LazyLock<InFlightMap> = LazyLock::new(Default::default);
+
+fn emit_event<R: Runtime>(app: &AppHandle<R>, window: &str, request_id: &str, event: ChatEvent) {
+  let _ = app.emit_to(
+    tauri::EventTarget::labeled(window),
+    "llm://chat",
+    serde_json::json!({ "request_id": request_id, "event": event }),
+  );
 }
 
 pub fn chat_completions_url(base_url: &str) -> String {
@@ -821,6 +847,7 @@ async fn post_chat(
 
 async fn stream_chat<R: Runtime>(
   app: &AppHandle<R>,
+  window: &str,
   request_id: &str,
   config: &LlmConfigFile,
   api_key: Option<&str>,
@@ -863,11 +890,11 @@ async fn stream_chat<R: Runtime>(
       parse_chat_json_reply(&text, api_key)
     };
     for event in events {
-      emit_event(app, request_id, event);
+      emit_event(app, window, request_id, event);
     }
     return Ok(());
   }
-  pump_stream(&mut response, api_key, |event| emit_event(app, request_id, event)).await
+  pump_stream(&mut response, api_key, |event| emit_event(app, window, request_id, event)).await
 }
 
 async fn pump_stream<F: FnMut(ChatEvent)>(
@@ -914,11 +941,13 @@ async fn pump_stream<F: FnMut(ChatEvent)>(
 #[tauri::command]
 pub async fn llm_chat<R: Runtime>(
   app: AppHandle<R>,
+  window: tauri::Window<R>,
   user_id: i64,
   request_id: String,
   messages: Vec<Value>,
   tools: Option<Value>,
 ) -> Result<(), String> {
+  let generation = window_generation(&IN_FLIGHT, window.label())?;
   let access = slot_access(crate::local_identity::current_id(&app), user_id);
   if access != SlotAccess::Allowed {
     return Err(access.chat_refusal());
@@ -937,36 +966,113 @@ pub async fn llm_chat<R: Runtime>(
     check_key_origin(slot_origin(&config, user_id), &config.base_url)?;
   }
 
-  let task_app = app.clone();
+  let label = window.label().to_string();
+  let task_label = label.clone();
   let task_request_id = request_id.clone();
-  let join = tokio::spawn(async move {
-    if let Err(message) = stream_chat(&task_app, &task_request_id, &config, api_key.as_deref(), messages, tools).await {
-      emit_event(&task_app, &task_request_id, ChatEvent::Error { message });
+  register_in_flight(&IN_FLIGHT, request_id, label, generation, async move {
+    if let Err(message) =
+      stream_chat(&app, &task_label, &task_request_id, &config, api_key.as_deref(), messages, tools).await
+    {
+      emit_event(&app, &task_label, &task_request_id, ChatEvent::Error { message });
     }
-    IN_FLIGHT.lock().ok().map(|mut map| map.remove(&task_request_id));
-  });
-  IN_FLIGHT
-    .lock()
-    .map_err(|_| "lock poisoned".to_string())?
-    .insert(request_id, join.abort_handle());
+  })?;
   Ok(())
 }
 
-fn cancel_in_flight(map: &mut HashMap<String, tokio::task::AbortHandle>, request_id: &str) -> bool {
-  match map.remove(request_id) {
-    Some(handle) => {
-      handle.abort();
-      true
+fn window_generation(map: &InFlightMap, window: &str) -> Result<u64, String> {
+  Ok(map.lock().map_err(|_| "lock poisoned".to_string())?.generation(window))
+}
+
+struct Unregister {
+  map: &'static InFlightMap,
+  request_id: String,
+  token: u64,
+}
+
+impl Drop for Unregister {
+  fn drop(&mut self) {
+    if let Ok(mut state) = self.map.lock() {
+      if state.entries.get(&self.request_id).is_some_and(|entry| entry.token == self.token) {
+        state.entries.remove(&self.request_id);
+      }
     }
-    None => false,
+  }
+}
+
+/// Spawns while holding the lock, so the task's own removal (on finish, abort or panic) can't run before the
+/// insert, and refuses a request whose window was aborted after `generation` was read.
+fn register_in_flight<F: std::future::Future<Output = ()> + Send + 'static>(
+  map: &'static InFlightMap,
+  request_id: String,
+  window: String,
+  generation: u64,
+  work: F,
+) -> Result<tokio::task::JoinHandle<()>, String> {
+  let mut state = map.lock().map_err(|_| "lock poisoned".to_string())?;
+  if state.generation(&window) != generation {
+    return Err("The window was closed or reloaded before the request started".into());
+  }
+  let token = state.next_token;
+  state.next_token += 1;
+  let task_request_id = request_id.clone();
+  let join = tokio::spawn(async move {
+    let _unregister = Unregister { map, request_id: task_request_id, token };
+    work.await;
+  });
+  state.entries.insert(request_id, InFlight { window, token, abort: join.abort_handle() });
+  Ok(join)
+}
+
+fn cancel_in_flight(map: &InFlightMap, request_id: &str) -> Result<Option<String>, String> {
+  let entry = map.lock().map_err(|_| "lock poisoned".to_string())?.entries.remove(request_id);
+  Ok(entry.map(|entry| {
+    entry.abort.abort();
+    entry.window
+  }))
+}
+
+fn abort_window_in(map: &InFlightMap, window: &str) -> usize {
+  let mut aborts = Vec::new();
+  if let Ok(mut state) = map.lock() {
+    *state.generations.entry(window.to_string()).or_default() += 1;
+    state.entries.retain(|_, entry| {
+      let keep = entry.window != window;
+      if !keep {
+        aborts.push(entry.abort.clone());
+      }
+      keep
+    });
+  }
+  aborts.iter().for_each(tokio::task::AbortHandle::abort);
+  aborts.len()
+}
+
+fn window_event_aborts(event: &tauri::WindowEvent) -> bool {
+  matches!(event, tauri::WindowEvent::Destroyed)
+}
+
+fn page_load_aborts(event: tauri::webview::PageLoadEvent) -> bool {
+  event == tauri::webview::PageLoadEvent::Started
+}
+
+/// A destroyed or reloading page never runs its Vue unmount hooks, so its requests are stopped here.
+pub fn on_window_event(label: &str, event: &tauri::WindowEvent) {
+  if window_event_aborts(event) {
+    abort_window_in(&IN_FLIGHT, label);
+  }
+}
+
+pub fn on_page_load(label: &str, event: tauri::webview::PageLoadEvent) {
+  if page_load_aborts(event) {
+    abort_window_in(&IN_FLIGHT, label);
   }
 }
 
 /// Emits an error event too, so a caller blocked reading `llm://chat` unblocks instead of hanging.
 #[tauri::command]
 pub fn llm_cancel<R: Runtime>(app: AppHandle<R>, request_id: String) -> Result<(), String> {
-  if cancel_in_flight(&mut *IN_FLIGHT.lock().map_err(|_| "lock poisoned".to_string())?, &request_id) {
-    emit_event(&app, &request_id, ChatEvent::Error { message: "cancelled".into() });
+  if let Some(window) = cancel_in_flight(&IN_FLIGHT, &request_id)? {
+    emit_event(&app, &window, &request_id, ChatEvent::Error { message: "cancelled".into() });
   }
   Ok(())
 }
@@ -2066,17 +2172,121 @@ mod tests {
     assert_eq!(SseBuffer::default().finish(), None);
   }
 
+  fn test_map() -> &'static InFlightMap {
+    Box::leak(Box::default())
+  }
+
+  fn entry_count(map: &InFlightMap) -> usize {
+    map.lock().unwrap().entries.len()
+  }
+
+  fn register<F: std::future::Future<Output = ()> + Send + 'static>(
+    map: &'static InFlightMap,
+    request_id: &str,
+    window: &str,
+    work: F,
+  ) -> Result<tokio::task::JoinHandle<()>, String> {
+    let generation = window_generation(map, window).unwrap();
+    register_in_flight(map, request_id.into(), window.into(), generation, work)
+  }
+
+  fn sleeper(map: &'static InFlightMap, request_id: &str, window: &str) -> tokio::task::JoinHandle<()> {
+    register(map, request_id, window, tokio::time::sleep(Duration::from_secs(60))).unwrap()
+  }
+
   #[tokio::test]
   async fn cancelling_removes_the_entry_and_aborts_the_task() {
-    let task = tokio::spawn(tokio::time::sleep(Duration::from_secs(60)));
-    let mut map = HashMap::new();
-    map.insert("r1".to_string(), task.abort_handle());
-    assert!(!cancel_in_flight(&mut map, "other"));
-    assert_eq!(map.len(), 1);
-    assert!(cancel_in_flight(&mut map, "r1"));
-    assert!(map.is_empty());
+    let map = test_map();
+    let task = sleeper(map, "r1", "task-1");
+    assert_eq!(cancel_in_flight(map, "other").unwrap(), None);
+    assert_eq!(entry_count(map), 1);
+    assert_eq!(cancel_in_flight(map, "r1").unwrap().as_deref(), Some("task-1"));
+    assert_eq!(entry_count(map), 0);
     assert!(task.await.unwrap_err().is_cancelled());
-    assert!(!cancel_in_flight(&mut map, "r1"));
+    assert_eq!(cancel_in_flight(map, "r1").unwrap(), None);
+  }
+
+  #[tokio::test]
+  async fn a_cancelled_task_does_not_remove_a_newer_entry_with_the_same_id() {
+    let map = test_map();
+    let (started, wait_started) = tokio::sync::oneshot::channel();
+    let old = register(map, "r1", "task-1", async move {
+      let _ = started.send(());
+      tokio::time::sleep(Duration::from_secs(60)).await;
+    })
+    .unwrap();
+    wait_started.await.unwrap();
+    cancel_in_flight(map, "r1").unwrap();
+    let new = sleeper(map, "r1", "task-1");
+    assert!(old.await.unwrap_err().is_cancelled());
+    assert_eq!(entry_count(map), 1);
+    assert!(map.lock().unwrap().entries.get("r1").unwrap().abort.id() == new.id());
+    new.abort();
+  }
+
+  #[test]
+  fn a_task_never_runs_before_its_entry_is_registered() {
+    let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(2).build().unwrap();
+    let map = test_map();
+    let task = {
+      let _entered = runtime.enter();
+      register(map, "r1", "task-1", async move {
+        assert!(map.lock().unwrap().entries.contains_key("r1"));
+      })
+      .unwrap()
+    };
+    runtime.block_on(task).unwrap();
+    assert_eq!(entry_count(map), 0);
+  }
+
+  #[tokio::test]
+  async fn aborting_a_window_stops_only_its_requests() {
+    let map = test_map();
+    let first = sleeper(map, "r1", "task-1");
+    let second = sleeper(map, "r2", "task-1");
+    let other = sleeper(map, "r3", "task-2");
+    assert_eq!(abort_window_in(map, "task-1"), 2);
+    assert!(first.await.unwrap_err().is_cancelled());
+    assert!(second.await.unwrap_err().is_cancelled());
+    assert_eq!(map.lock().unwrap().entries.keys().collect::<Vec<_>>(), ["r3"]);
+    assert!(!other.is_finished());
+    assert_eq!(abort_window_in(map, "task-1"), 0);
+    assert_eq!(abort_window_in(map, "main"), 0);
+    assert_eq!(entry_count(map), 1);
+    other.abort();
+  }
+
+  #[tokio::test]
+  async fn a_window_aborted_while_the_request_was_set_up_refuses_to_start_it() {
+    let map = test_map();
+    let stale = window_generation(map, "task-1").unwrap();
+    let other = window_generation(map, "task-2").unwrap();
+    assert_eq!(abort_window_in(map, "task-1"), 0);
+    let (ran, did_run) = tokio::sync::oneshot::channel::<()>();
+    let refused = register_in_flight(map, "r1".into(), "task-1".into(), stale, async move {
+      let _ = ran.send(());
+    });
+    assert!(refused.is_err());
+    assert!(did_run.await.is_err());
+    assert_eq!(entry_count(map), 0);
+    let fresh = register(map, "r2", "task-1", async {}).unwrap();
+    fresh.await.unwrap();
+    let unaffected =
+      register_in_flight(map, "r3".into(), "task-2".into(), other, tokio::time::sleep(Duration::from_secs(60))).unwrap();
+    assert_eq!(map.lock().unwrap().entries.keys().collect::<Vec<_>>(), ["r3"]);
+    unaffected.abort();
+  }
+
+  #[test]
+  fn only_a_destroyed_window_or_a_started_page_load_aborts() {
+    use tauri::webview::PageLoadEvent;
+    use tauri::WindowEvent;
+    assert!(window_event_aborts(&WindowEvent::Destroyed));
+    assert!(!window_event_aborts(&WindowEvent::Focused(false)));
+    assert!(!window_event_aborts(&WindowEvent::Focused(true)));
+    assert!(!window_event_aborts(&WindowEvent::Resized(tauri::PhysicalSize::new(800, 600))));
+    assert!(page_load_aborts(PageLoadEvent::Started));
+    assert!(!page_load_aborts(PageLoadEvent::Finished));
   }
 
   #[test]

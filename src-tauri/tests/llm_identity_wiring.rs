@@ -92,7 +92,7 @@ fn config_get(f: &Fixture, user_id: i64) -> serde_json::Value {
 }
 
 fn chat(f: &Fixture, user_id: i64) -> Result<(), String> {
-  tauri::async_runtime::block_on(llm_chat(f.app.handle().clone(), user_id, "req".into(), vec![], None))
+  tauri::async_runtime::block_on(llm_chat(f.app.handle().clone(), f.window.clone(), user_id, "req".into(), vec![], None))
 }
 
 #[test]
