@@ -40,6 +40,42 @@ const PAGE_PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number];
 
+export const PERMISSION_GROUPS: Record<string, readonly Permission[]> = {
+	'Reads your data': [
+		'tasks:read',
+		'statuses:read',
+		'categories:read',
+		'time:read',
+		'comments:read',
+		'relations:read',
+		'agent_work:read',
+		'routines:read',
+		'pages:read',
+		'files:attachments',
+	],
+	'Changes your data': [
+		'tasks:write',
+		'statuses:write',
+		'categories:write',
+		'time:write',
+		'comments:write',
+		'relations:write',
+		'agent_work:write',
+		'routines:write',
+		'pages:write',
+		'pages:sections',
+	],
+	'Changes the interface': ['tray', 'views:badge', 'menus:task'],
+	'Reaches outside the app': [
+		'notifications',
+		'alarms',
+		'deeplinks',
+		'links:open',
+		'files:export',
+		'files:pick',
+	],
+};
+
 export interface SettingSchema {
 	type: 'number' | 'string' | 'boolean';
 	title?: string;

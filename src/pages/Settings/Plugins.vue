@@ -507,7 +507,11 @@
 		type PluginSource,
 		type PluginStatus,
 	} from '@/pluginSystem/host';
-	import { PLUGIN_API_VERSION, type Permission } from '@/pluginSystem/manifest';
+	import {
+		PERMISSION_GROUPS,
+		PLUGIN_API_VERSION,
+		type Permission,
+	} from '@/pluginSystem/manifest';
 	import { permissionChanges, type Release } from '@/pluginSystem/market';
 	import {
 		folderPluginErrors,
@@ -838,7 +842,15 @@
 				},
 				permissionText: (permissions: Permission[]) =>
 					permissions.length
-						? permissions.map((p) => PERMISSION_TEXT[p]).join(', ')
+						? Object.entries(PERMISSION_GROUPS)
+								.map(([group, members]) => {
+									const used = members.filter((p) => permissions.includes(p));
+									return used.length
+										? `${group}: ${used.map((p) => PERMISSION_TEXT[p]).join(', ')}`
+										: '';
+								})
+								.filter(Boolean)
+								.join('. ')
 						: 'nothing beyond its own storage',
 				statusLabel: (status: PluginStatus) =>
 					({

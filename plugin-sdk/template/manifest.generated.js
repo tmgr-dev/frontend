@@ -2,7 +2,7 @@
 // Do not edit by hand: run `node plugin-sdk/testing/sync-prelude.mjs` from the app repo.
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.parseManifest = exports.LOCAL_ID = exports.PLUGIN_ID = exports.TASK_MENU_MAX_ITEMS = exports.TASK_MENU_LOCATION = exports.PERMISSIONS = exports.PLUGIN_API_VERSION = void 0;
+exports.parseManifest = exports.LOCAL_ID = exports.PLUGIN_ID = exports.TASK_MENU_MAX_ITEMS = exports.TASK_MENU_LOCATION = exports.PERMISSION_GROUPS = exports.PERMISSIONS = exports.PLUGIN_API_VERSION = void 0;
 exports.PLUGIN_API_VERSION = '1.10';
 exports.PERMISSIONS = [
     'tasks:read',
@@ -40,6 +40,41 @@ const PAGE_PERMISSIONS = [
     'pages:write',
     'pages:sections',
 ];
+exports.PERMISSION_GROUPS = {
+    'Reads your data': [
+        'tasks:read',
+        'statuses:read',
+        'categories:read',
+        'time:read',
+        'comments:read',
+        'relations:read',
+        'agent_work:read',
+        'routines:read',
+        'pages:read',
+        'files:attachments',
+    ],
+    'Changes your data': [
+        'tasks:write',
+        'statuses:write',
+        'categories:write',
+        'time:write',
+        'comments:write',
+        'relations:write',
+        'agent_work:write',
+        'routines:write',
+        'pages:write',
+        'pages:sections',
+    ],
+    'Changes the interface': ['tray', 'views:badge', 'menus:task'],
+    'Reaches outside the app': [
+        'notifications',
+        'alarms',
+        'deeplinks',
+        'links:open',
+        'files:export',
+        'files:pick',
+    ],
+};
 exports.TASK_MENU_LOCATION = 'task/card';
 exports.TASK_MENU_MAX_ITEMS = 3;
 exports.PLUGIN_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;

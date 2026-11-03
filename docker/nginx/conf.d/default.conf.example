@@ -27,6 +27,15 @@ server {
         add_header Cache-Control "no-cache";
     }
 
+    location = /docs/plugins.md {
+        default_type text/markdown;
+        try_files $uri =404;
+    }
+    location ~ ^/docs/plugin-sdk/.+\.d\.ts$ {
+        default_type text/plain;
+        try_files $uri =404;
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }
