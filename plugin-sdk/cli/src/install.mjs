@@ -113,14 +113,14 @@ const writeAtomic = (path, content) => {
   }
 };
 
-const writeAll = (target, id, files, { withMarker }) => {
+const writeAll = (target, id, files, { withMarker, skipManifest = false }) => {
   if (withMarker) writeAtomic(join(target, MARKER), `${id}\n`);
   const hasPages = [...files.keys()].some((name) => name.startsWith('ui/'));
   const targetUi = join(target, 'ui');
   if (hasPages || lstatOrNull(targetUi)) ensureDir(targetUi, 'target ui');
 
   const order = [...files.keys()].filter((name) => name !== 'manifest.json');
-  for (const name of [...order, 'manifest.json']) {
+  for (const name of skipManifest ? order : [...order, 'manifest.json']) {
     writeAtomic(join(target, name), files.get(name));
   }
 
@@ -178,12 +178,13 @@ export const install = (dir, manifest, env = process.env) => {
   } else {
     const stage = mkdtempSync(join(root, `.${id}.stage-`));
     try {
-      writeAll(stage, id, files, { withMarker: true });
+      writeAll(stage, id, files, { withMarker: true, skipManifest: true });
       renameSync(stage, target);
     } catch (error) {
       rmSync(stage, { recursive: true, force: true });
       throw error;
     }
+    writeAtomic(join(target, 'manifest.json'), files.get('manifest.json'));
   }
   return { target, files: [...files.keys()] };
 };

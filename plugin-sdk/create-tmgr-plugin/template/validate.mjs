@@ -111,7 +111,7 @@ export const EVENT_PERMISSIONS = {
 
 export const MAX_FILE_BYTES = 1024 * 1024;
 
-// The app keeps catalog.json, catalog.json.tmp and installed/ in the plugins folder, and skips dot folders.
+// The app keeps catalog.json, catalog.json.tmp and installed/ in the plugins folder.
 export const isReservedId = (id) =>
   id === 'catalog.json' ||
   id === 'installed' ||
