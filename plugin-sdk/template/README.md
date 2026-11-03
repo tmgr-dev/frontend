@@ -25,6 +25,9 @@ Plugins run in the TMGR desktop app, in a sandbox: no DOM, no network except the
 origins you declare, and only the permissions listed in the manifest. They run in local workspaces, and in
 a shared workspace once its creator turns them on for everyone.
 
+AI agents: the working loop (test, validate, check, dev) and the permission rules are in `AGENTS.md` and
+`.claude/skills/tmgr-plugin/SKILL.md`. In the frontend repo they live in `plugin-sdk/skill/`.
+
 ## Task menu items (API 1.6)
 
 A plugin can add up to 3 items to the task "…" menu (board card, task list, task page). It needs
