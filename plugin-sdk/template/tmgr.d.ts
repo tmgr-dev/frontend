@@ -556,6 +556,40 @@ type TmgrNode =
 			command: string;
 			args?: unknown;
 	  }
+	/**
+	 * API 1.9. A single-line text field. The typed text (at most 500 characters) reaches `command` only as `args.value`,
+	 * after the user types ('change', after `debounce` ms, 150 to 2000, default 300) or presses Enter ('submit').
+	 * `name` is your own identifier (at most 64 characters of A-Z a-z 0-9 _ . -). It is never shown or sent.
+	 */
+	| {
+			type: 'input';
+			name: string;
+			placeholder?: string;
+			value?: string;
+			command: string;
+			args?: unknown;
+			mode?: 'change' | 'submit';
+			debounce?: number;
+	  }
+	/** API 1.9. A drop-down of up to 100 options. Choosing one runs `command` with `{ ...args, value }`, the option's own value. */
+	| {
+			type: 'select';
+			name: string;
+			options: { value: string; text: string }[];
+			value?: string;
+			placeholder?: string;
+			command: string;
+			args?: unknown;
+	  }
+	/** API 1.9. A checkbox. Toggling it runs `command` with `{ ...args, value }`, where `value` is a boolean. */
+	| {
+			type: 'checkbox';
+			name: string;
+			label: string;
+			checked?: boolean;
+			command: string;
+			args?: unknown;
+	  }
 	| { type: 'taskLink'; taskId: number; text: string }
 	| { type: 'divider' }
 	/** Monospace text with a copy-to-clipboard button. */

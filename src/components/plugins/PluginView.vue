@@ -275,6 +275,50 @@
 			{{ option.text }}
 		</button>
 	</div>
+	<Input
+		v-else-if="node.type === 'input'"
+		:model-value="inputText"
+		type="text"
+		autocomplete="off"
+		:placeholder="node.placeholder"
+		:maxlength="500"
+		class="h-8 w-full max-w-sm text-xs"
+		@update:model-value="onInputText"
+		@focus="inputFocused = true"
+		@blur="inputFocused = false"
+		@keydown.enter="onInputEnter"
+	/>
+	<select
+		v-else-if="node.type === 'select'"
+		:value="node.value ?? ''"
+		autocomplete="off"
+		class="h-8 w-fit max-w-full rounded-md border border-input bg-background px-2 text-xs text-foreground"
+		@change="onSelectChange"
+	>
+		<option v-if="node.value === null" value="" disabled>
+			{{ node.placeholder ?? 'Select' }}
+		</option>
+		<option
+			v-for="option in node.options"
+			:key="option.value"
+			:value="option.value"
+		>
+			{{ option.text }}
+		</option>
+	</select>
+	<label
+		v-else-if="node.type === 'checkbox'"
+		class="inline-flex w-fit cursor-pointer items-center gap-2 text-sm text-foreground"
+	>
+		<input
+			type="checkbox"
+			autocomplete="off"
+			:checked="node.checked"
+			class="h-4 w-4 rounded border-input accent-primary"
+			@change="onCheckboxChange"
+		/>
+		<span>{{ node.label }}</span>
+	</label>
 	<button
 		v-else-if="node.type === 'stat' && node.command"
 		type="button"
@@ -457,6 +501,7 @@
 	} from '@/components/ui/alert-dialog';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import { Button } from '@/components/ui/button';
+	import { Input } from '@/components/ui/input';
 	import {
 		DropdownMenu,
 		DropdownMenuContent,
@@ -483,9 +528,25 @@
 		Loader2,
 		MoreHorizontal,
 	} from 'lucide-vue-next';
-	import { computed, defineComponent, nextTick, ref, type PropType } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		nextTick,
+		onBeforeUnmount,
+		ref,
+		watch,
+		type PropType,
+	} from 'vue';
 	import PluginMarkdown from './PluginMarkdown.vue';
 	import { PLUGIN_ICONS } from './pluginIcons';
+	import {
+		checkboxArgs,
+		createDebouncer,
+		inputArgs,
+		nextInputText,
+		sameControl,
+		selectArgs,
+	} from './pluginInputs';
 	import {
 		buttonClasses,
 		buttonSizeProp,
@@ -545,6 +606,7 @@
 			Check,
 			ChevronRight,
 			Copy,
+			Input,
 			Loader2,
 			DropdownMenu,
 			DropdownMenuContent,
@@ -595,6 +657,60 @@
 				if (node.type !== 'segmented') return;
 				if (!node.options.some((option) => option.value === value)) return;
 				void runCommand(node.command, segmentedArgs(node.args, value));
+			};
+			const debouncer = createDebouncer();
+			const inputText = ref(
+				props.node.type === 'input' ? props.node.value : '',
+			);
+			const inputFocused = ref(false);
+			watch(
+				() => props.node,
+				(node, previous) => {
+					if (!sameControl(node, previous)) debouncer.cancel();
+					inputText.value = nextInputText(
+						node,
+						previous,
+						inputFocused.value,
+						inputText.value,
+					);
+				},
+			);
+			onBeforeUnmount(() => debouncer.cancel());
+			const sendInput = () => {
+				const node = props.node;
+				if (node.type !== 'input') return;
+				void runCommand(node.command, inputArgs(node.args, inputText.value));
+			};
+			const onInputText = (typed: string | number) => {
+				const node = props.node;
+				if (node.type !== 'input') return;
+				inputText.value = String(typed).slice(0, 500);
+				if (node.mode === 'change') {
+					debouncer.schedule(sendInput, node.debounce);
+				}
+			};
+			const onInputEnter = (event: KeyboardEvent) => {
+				const node = props.node;
+				if (node.type !== 'input' || node.mode !== 'submit') return;
+				if (event.isComposing) return;
+				sendInput();
+			};
+			const onSelectChange = (event: Event) => {
+				const node = props.node;
+				if (node.type !== 'select') return;
+				const args = selectArgs(
+					node,
+					(event.target as HTMLSelectElement).value,
+				);
+				if (args) void runCommand(node.command, args);
+			};
+			const onCheckboxChange = (event: Event) => {
+				const node = props.node;
+				if (node.type !== 'checkbox') return;
+				void runCommand(
+					node.command,
+					checkboxArgs(node.args, (event.target as HTMLInputElement).checked),
+				);
 			};
 			const buttonTooltip = computed(() =>
 				props.node.type === 'button'
@@ -724,6 +840,12 @@
 				confirmOpen,
 				run,
 				runSegmented,
+				inputText,
+				inputFocused,
+				onInputText,
+				onInputEnter,
+				onSelectChange,
+				onCheckboxChange,
 				buttonTooltip,
 				collapseOpen,
 				collapseShowAll,

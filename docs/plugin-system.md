@@ -120,6 +120,33 @@ Icon names (any other name is dropped; a button or badge keeps its text):
 Limits: every new node, every tab and every option counts toward the 3000 node limit of the whole tree, and
 nesting counts toward the depth limit of 8.
 
+## Input controls (API 1.9)
+
+Set `"engines": { "tmgr": "^1.9" }`. Older versions drop these nodes. Types: `TmgrNode` in
+`plugin-sdk/template/tmgr.d.ts`.
+
+- `{ type: 'input', name, placeholder?, value?, command, args?, mode?, debounce? }` is a single-line text field.
+  With `mode: 'change'` (the default) the command runs after the user stops typing for `debounce`
+  milliseconds (default 300, kept between 150 and 2000). With `mode: 'submit'` it runs when the user presses
+  Enter. The text is sent as `args.value`, cut to 500 characters. `placeholder` is cut to 200 characters and
+  the start `value` to 500.
+- `{ type: 'select', name, options: [{ value, text }], value?, placeholder?, command, args? }` is a drop-down
+  of 1 to 100 options (extra options and repeated values are dropped). Choosing one runs `command` with
+  `{ ...args, value }`, where `value` is that option's own value.
+- `{ type: 'checkbox', name, label, checked?, command, args? }` runs `command` with `{ ...args, value }` when
+  toggled, where `value` is `true` or `false`.
+
+Rules for all three:
+
+- `name` identifies the control on your side. It is 1 to 64 characters of letters, digits, `_`, `.` and `-`,
+  and is not shown or sent. A node with a bad name or without a valid `command` is dropped.
+- A control only sends its own value, as `args.value` of its own command, when the user acts on it. Nothing is
+  sent when the control first shows or when you render again, and other controls' values are never included.
+- There is no password field and no `type` option. Fields are not filled in by the browser.
+- While the user is typing in an input, the typed text stays; otherwise the value from your latest render is shown.
+  Render the new `value` when the command ends.
+- Every control counts toward the 3000 node limit; each option counts as well.
+
 ## Task menu items (API 1.6)
 
 A plugin can add items to the task "…" menu. Types: `TaskMenuCommandArgs` in `plugin-sdk/template/tmgr.d.ts`.
@@ -298,5 +325,16 @@ To use the new layout and controls:
 
 1. Set `"engines": { "tmgr": "^1.8" }`.
 2. Use `collapse`, `tabs`, `segmented`, `buttonGroup` and `icon` nodes, and the new `button` and `badge` fields.
+3. Update `tmgr.d.ts` from the SDK template.
+4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.
+
+## Migrating from 1.8 to 1.9
+
+Nothing changes for existing plugins: `^1.0` to `^1.8` keep working.
+
+To use the input controls:
+
+1. Set `"engines": { "tmgr": "^1.9" }`.
+2. Use `input`, `select` and `checkbox` nodes.
 3. Update `tmgr.d.ts` from the SDK template.
 4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.
