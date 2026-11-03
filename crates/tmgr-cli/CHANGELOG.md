@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.65
+
+- Hardening: host `git` and `gh` commands that the runner and `tmgr attach` run in session folders now ignore repository settings that could start other programs. For sandboxed sessions the attach Git panel shows only the branch and says the rest was not read.
+- Checkpoints are paused for sandboxed sessions for now. A sandboxed session started with checkpoints on still starts and says "checkpoints are off for sandboxed sessions for now". Existing checkpoints are kept. Sessions started with `--no-sandbox` keep checkpoints.
+
 ## 1.0.64
 
 - `tmgr attach`: answer an agent's permission prompt from the sidebar, off by default. Turn it on with `tmgr run --permission-cards`, the Approvals row in the new-session form, or `tmgr config set attach.permission_cards true`. The setting is read when a session is created. The status line shows `cards on` and such sessions carry a `◈` marker.
