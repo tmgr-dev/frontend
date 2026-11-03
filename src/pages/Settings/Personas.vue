@@ -146,7 +146,17 @@
 					>
 						Skills
 					</summary>
-					<PersonaSkills :persona="persona" class="mt-3" />
+					<PersonaSkills
+						:persona="persona"
+						class="mt-3"
+						@changed="skillsRevision++"
+					/>
+					<PersonaSharedSkills
+						:persona="persona"
+						:revision="skillsRevision"
+						class="mt-4 border-t border-border pt-3"
+						@changed="skillsRevision++"
+					/>
 				</details>
 
 				<details class="border-t border-border pt-3">
@@ -167,6 +177,14 @@
 				No personas yet.
 			</p>
 		</div>
+
+		<SettingsSection
+			title="Skills library"
+			description="Skills you write once and attach to any of your personas. Editing one updates every persona it is attached to."
+			class="mt-6"
+		>
+			<SkillsLibrary :revision="skillsRevision" @changed="skillsRevision++" />
+		</SettingsSection>
 
 		<SettingsSection
 			v-if="currentWorkspace && sharedPersonas.length"
@@ -241,9 +259,11 @@
 	} from '@/utils/personas';
 	import { computed, defineComponent, onMounted, ref } from 'vue';
 	import PersonaForm, { type PersonaFormModel } from './PersonaForm.vue';
+	import PersonaSharedSkills from './PersonaSharedSkills.vue';
 	import PersonaSkills from './PersonaSkills.vue';
 	import PersonaTokens from './PersonaTokens.vue';
 	import PersonaWorkspaceGrants from './PersonaWorkspaceGrants.vue';
+	import SkillsLibrary from './SkillsLibrary.vue';
 
 	const emptyForm = (): PersonaFormModel => ({
 		name: '',
@@ -261,8 +281,10 @@
 			PageContainer,
 			PageHeader,
 			SettingsSection,
+			SkillsLibrary,
 			PersonaAvatar,
 			PersonaForm,
+			PersonaSharedSkills,
 			PersonaSkills,
 			PersonaTokens,
 			PersonaWorkspaceGrants,
@@ -279,6 +301,7 @@
 			const form = ref<PersonaFormModel>(emptyForm());
 			const formErrors = ref<Record<string, string[]>>({});
 			const saving = ref(false);
+			const skillsRevision = ref(0);
 			const isDesktop = isDesktopApp();
 			const isLocalOnly = isDesktop && !!store.getters.isLocalOnly;
 			const workspaceGrants = ref<PersonaGrant[]>([]);
@@ -444,6 +467,7 @@
 				form,
 				formErrors,
 				saving,
+				skillsRevision,
 				isDesktop,
 				isLocalOnly,
 				currentWorkspace,

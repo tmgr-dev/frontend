@@ -109,7 +109,8 @@
 		props: {
 			persona: { type: Object as PropType<Persona>, required: true },
 		},
-		setup(props) {
+		emits: ['changed'],
+		setup(props, { emit }) {
 			const skills = ref<PersonaSkillSummary[]>([]);
 			const loading = ref(true);
 			const saving = ref(false);
@@ -177,6 +178,7 @@
 					toast({ title: 'Skill saved' });
 					cancelEdit();
 					await load();
+					emit('changed');
 				} catch (error) {
 					const fieldErrors = extractFieldErrors(error);
 					if (fieldErrors) {
@@ -195,6 +197,7 @@
 					await deletePersonaSkill(props.persona.id, skill.slug);
 					if (editingSlug.value === skill.slug) cancelEdit();
 					await load();
+					emit('changed');
 				} catch {
 					toast({ title: 'Could not delete skill', variant: 'destructive' });
 				}
