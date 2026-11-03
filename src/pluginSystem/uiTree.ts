@@ -5,6 +5,8 @@ export type Tone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
 export type Color =
 	'gray' | 'green' | 'yellow' | 'red' | 'blue' | 'purple' | 'orange';
 
+export type ColumnAlign = 'left' | 'center' | 'right';
+export type ColumnWidth = 'xs' | 'sm' | 'md' | 'lg';
 export type Gap = 'none' | 'sm' | 'md' | 'lg';
 export type Command = { command: string; args?: unknown };
 export type MenuItem = {
@@ -148,8 +150,41 @@ export type UiNode =
 	| { type: 'list'; items: UiNode[] }
 	| {
 			type: 'table';
-			columns: { key: string; title: string }[];
-			rows: { taskId?: number; cells: Record<string, UiNode> }[];
+			columns: {
+				key: string;
+				title: string;
+				align?: ColumnAlign;
+				width?: ColumnWidth;
+				sortable?: true;
+			}[];
+			rows: {
+				taskId?: number;
+				cells: Record<string, UiNode>;
+				sort?: Record<string, string | number>;
+				color?: Color;
+				onClick?: Command;
+				expand?: UiNode[];
+			}[];
+	  }
+	| {
+			type: 'timeline';
+			items: { at: string; title?: string; text: string; tone: Color }[];
+	  }
+	| {
+			type: 'messages';
+			items: {
+				author: string;
+				text: string;
+				at?: string;
+				side: 'left' | 'right';
+			}[];
+	  }
+	| { type: 'sparkline'; values: number[]; color: Color; label?: string }
+	| { type: 'empty'; title: string; text?: string; icon?: IconName }
+	| {
+			type: 'skeleton';
+			variant: 'text' | 'card' | 'table';
+			lines: number;
 	  }
 	| {
 			type: 'button';
@@ -221,6 +256,12 @@ export type UiNode =
 	| { type: 'dueTime'; at: string }
 	| { type: 'keyValue'; items: { key: string; value: UiNode }[] };
 
+type UiTable = Extract<UiNode, { type: 'table' }>;
+type UiColumn = UiTable['columns'][number];
+type UiRow = UiTable['rows'][number];
+type UiTimelineItem = Extract<UiNode, { type: 'timeline' }>['items'][number];
+type UiMessage = Extract<UiNode, { type: 'messages' }>['items'][number];
+
 const TONES: Tone[] = ['default', 'muted', 'success', 'warning', 'danger'];
 export const COLORS: Color[] = [
 	'gray',
@@ -275,6 +316,16 @@ export const DEBOUNCE_MAX = 2000;
 export const DEBOUNCE_DEFAULT = 300;
 const CONTROL_NAME = /^[A-Za-z0-9_.-]+$/;
 const MAX_SEGMENTED = 4;
+const MAX_FEED_ITEMS = 200;
+const MAX_AUTHOR = 64;
+const MAX_SPARKLINE_VALUES = 365;
+const MAX_ROW_EXPAND = 50;
+const MAX_SORT_TEXT = 200;
+const MAX_SKELETON_LINES = 12;
+const DEFAULT_SKELETON_LINES = 3;
+const COLUMN_ALIGNS: ColumnAlign[] = ['left', 'center', 'right'];
+const COLUMN_WIDTHS: ColumnWidth[] = ['xs', 'sm', 'md', 'lg'];
+const SKELETON_VARIANTS = ['text', 'card', 'table'] as const;
 const CURRENT_API_MINOR = Number(PLUGIN_API_VERSION.split('.')[1]);
 
 const GAPS: Gap[] = ['none', 'sm', 'md', 'lg'];
@@ -935,11 +986,31 @@ export const sanitizeTree = (
 				const columns = (
 					Array.isArray(value.columns) ? value.columns.slice(0, 12) : []
 				)
-					.map((c: any) => ({ key: text(c?.key), title: text(c?.title) }))
-					.filter(
-						(c: any): c is { key: string; title: string } =>
-							c.key !== null && c.title !== null,
-					);
+					.map((c: any) => {
+						const key = text(c?.key);
+						const title = text(c?.title);
+						if (key === null || title === null) return null;
+						const align =
+							apiMinor >= 10
+								? pickOptional(c?.align, COLUMN_ALIGNS)
+								: undefined;
+						const width =
+							apiMinor >= 10
+								? pickOptional(c?.width, COLUMN_WIDTHS)
+								: undefined;
+						const sortable =
+							apiMinor >= 10 && c?.sortable === true
+								? (true as const)
+								: undefined;
+						return {
+							key,
+							title,
+							...(align !== undefined ? { align } : {}),
+							...(width !== undefined ? { width } : {}),
+							...(sortable !== undefined ? { sortable } : {}),
+						};
+					})
+					.filter((c: any): c is UiColumn => c !== null);
 				const rows = (
 					Array.isArray(value.rows) ? value.rows.slice(0, MAX_ITEMS) : []
 				)
@@ -951,11 +1022,125 @@ export const sanitizeTree = (
 							const cell = node(row?.cells?.[key], depth + 1, cardDepth);
 							if (cell) cells[key] = cell;
 						}
-						return Number.isSafeInteger(row?.taskId) && row.taskId > 0
-							? { taskId: row.taskId, cells }
-							: { cells };
+						const out: UiRow = { cells };
+						if (Number.isSafeInteger(row?.taskId) && row.taskId > 0) {
+							out.taskId = row.taskId;
+						}
+						if (apiMinor >= 10) {
+							const color = pickOptional(row?.color, COLORS);
+							if (color !== undefined) out.color = color;
+							const onClick =
+								row?.onClick !== null && typeof row?.onClick === 'object'
+									? parseCommandArgs(row.onClick)
+									: null;
+							if (onClick) out.onClick = onClick;
+							const sort: Record<string, string | number> = {};
+							for (const { key } of columns) {
+								const v = row?.sort?.[key];
+								if (typeof v === 'number' && Number.isFinite(v)) sort[key] = v;
+								else if (typeof v === 'string')
+									sort[key] = v.slice(0, MAX_SORT_TEXT);
+							}
+							if (Object.keys(sort).length > 0) out.sort = sort;
+							const expand = (
+								Array.isArray(row?.expand)
+									? row.expand.slice(0, MAX_ROW_EXPAND)
+									: []
+							)
+								.map((child: any) => node(child, depth + 1, cardDepth))
+								.filter(
+									(child: UiNode | null): child is UiNode => child !== null,
+								);
+							if (expand.length > 0) out.expand = expand;
+						}
+						return out;
 					});
 				return { type: 'table', columns, rows };
+			}
+			case 'timeline': {
+				if (apiMinor < 10) return null;
+				const items = (
+					Array.isArray(value.items) ? value.items.slice(0, MAX_FEED_ITEMS) : []
+				)
+					.filter(() => budget-- > 0)
+					.map((item: any) => {
+						const at = shortText(item?.at, MAX_AT_LENGTH);
+						const t = text(item?.text);
+						if (at === undefined || t === null) return null;
+						const title = shortText(item?.title, MAX_TITLE);
+						return {
+							at,
+							text: t,
+							tone: pick(item?.tone, COLORS, 'gray'),
+							...(title !== undefined ? { title } : {}),
+						};
+					})
+					.filter((item: any): item is UiTimelineItem => item !== null);
+				return { type: 'timeline', items };
+			}
+			case 'messages': {
+				if (apiMinor < 10) return null;
+				const items = (
+					Array.isArray(value.items) ? value.items.slice(0, MAX_FEED_ITEMS) : []
+				)
+					.filter(() => budget-- > 0)
+					.map((item: any) => {
+						const author = shortText(item?.author, MAX_AUTHOR);
+						const t = text(item?.text);
+						if (author === undefined || t === null) return null;
+						const at = shortText(item?.at, MAX_AT_LENGTH);
+						return {
+							author,
+							text: t,
+							side:
+								item?.side === 'right' ? ('right' as const) : ('left' as const),
+							...(at !== undefined ? { at } : {}),
+						};
+					})
+					.filter((item: any): item is UiMessage => item !== null);
+				return { type: 'messages', items };
+			}
+			case 'sparkline': {
+				if (apiMinor < 10) return null;
+				const values: number[] = [];
+				for (const v of Array.isArray(value.values) ? value.values : []) {
+					if (values.length >= MAX_SPARKLINE_VALUES) break;
+					if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+					if (budget-- <= 0) break;
+					values.push(v);
+				}
+				const label = shortText(value.label, MAX_LABEL_LENGTH);
+				return {
+					type: 'sparkline',
+					values,
+					color: pick(value.color, COLORS, 'blue'),
+					...(label !== undefined ? { label } : {}),
+				};
+			}
+			case 'empty': {
+				if (apiMinor < 10) return null;
+				const title = shortText(value.title, MAX_TITLE);
+				if (title === undefined) return null;
+				const body = shortText(value.text, MAX_TEXT);
+				const icon = pickOptional(value.icon, ICON_NAMES);
+				return {
+					type: 'empty',
+					title,
+					...(body !== undefined ? { text: body } : {}),
+					...(icon !== undefined ? { icon } : {}),
+				};
+			}
+			case 'skeleton': {
+				if (apiMinor < 10) return null;
+				const lines =
+					typeof value.lines === 'number' && Number.isFinite(value.lines)
+						? Math.min(MAX_SKELETON_LINES, Math.max(1, Math.round(value.lines)))
+						: DEFAULT_SKELETON_LINES;
+				return {
+					type: 'skeleton',
+					variant: pick(value.variant, SKELETON_VARIANTS, 'text'),
+					lines,
+				};
 			}
 			case 'button': {
 				const t = text(value.text);
