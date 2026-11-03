@@ -187,16 +187,26 @@ export const runPersonaAgent = async ({
 		throw error;
 	} finally {
 		if (runId !== null) {
-			await dispatchLocal(
-				router,
-				personaCtx,
-				'POST',
-				`agent-work/${runId}/finish`,
-				{
-					status,
-					summary: finalText.slice(0, 2000),
-				},
-			).catch(() => undefined);
+			try {
+				const finished = await dispatchLocal(
+					router,
+					personaCtx,
+					'POST',
+					`agent-work/${runId}/finish`,
+					{
+						status,
+						summary: finalText.slice(0, 2000),
+					},
+				);
+				if (!finished || finished.status >= 400)
+					console.warn(
+						`[persona] could not finish agent-work run ${runId}: ${
+							finished?.status ?? 'no route'
+						}`,
+					);
+			} catch {
+				console.warn(`[persona] could not finish agent-work run ${runId}`);
+			}
 		}
 	}
 	return { text: finalText, toolCalls };

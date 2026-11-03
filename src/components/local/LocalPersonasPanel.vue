@@ -540,7 +540,16 @@
 
 			onMounted(async () => {
 				if (!workspace) return;
-				if (localOnly) await ensureDefaultLocalPersona(await ctxFor());
+				if (localOnly) {
+					try {
+						await ensureDefaultLocalPersona(await ctxFor());
+					} catch (error) {
+						console.error(
+							'[personas] failed to ensure the default agent',
+							error,
+						);
+					}
+				}
 				await Promise.all([
 					refreshPersonas(),
 					refreshLlmConfig(),
