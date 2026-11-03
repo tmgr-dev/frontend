@@ -261,6 +261,22 @@ it('the "Kitchen Sink view" page renders the API 1.9 input controls and they re-
 	host.dispose();
 });
 
+it('the "Kitchen Sink view" page renders the API 1.10 feed and data nodes', async () => {
+	const host = await startHost();
+	const json = JSON.stringify(await host.renderPage('view', null));
+	for (const type of [
+		'timeline',
+		'messages',
+		'sparkline',
+		'empty',
+		'skeleton',
+	]) {
+		expect(json).toContain(`"type":"${type}"`);
+	}
+	expect(json).toContain('"sortable":true');
+	host.dispose();
+});
+
 it('offers two task menu items and both work on a task (API 1.6)', async () => {
 	const host = await startHost();
 	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);

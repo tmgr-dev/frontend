@@ -147,6 +147,41 @@ Rules for all three:
   Render the new `value` when the command ends.
 - Every control counts toward the 3000 node limit; each option counts as well.
 
+## Feeds and data (API 1.10)
+
+Set `"engines": { "tmgr": "^1.10" }`. Older versions drop the new nodes and ignore the new fields. Types:
+`TmgrNode` in `plugin-sdk/template/tmgr.d.ts`.
+
+- `{ type: 'timeline', items: [{ at, title?, text, tone? }] }` is a vertical list of events with a dot and a
+  line. `at` is shown as given (at most 64 characters), `title` is cut to 200 and `text` to 1000. `tone` is a
+  badge color name (default `gray`). At most 200 items.
+- `{ type: 'messages', items: [{ author, text, at?, side? }] }` shows chat bubbles, `side` is `'left'`
+  (default) or `'right'`. `author` is cut to 64 characters, `text` to 1000 and is plain text (line breaks are
+  kept, no Markdown). At most 200 items.
+- `{ type: 'sparkline', values, color?, label? }` is a small line chart. `values` holds up to 365 numbers;
+  anything that is not a finite number is dropped. `color` is a badge color name (default `blue`). `label`
+  (at most 200 characters) is the text screen readers read.
+- `{ type: 'empty', title, text?, icon? }` is a placeholder card. `icon` must be one of the icon names above.
+- `{ type: 'skeleton', variant?, lines? }` is a loading placeholder. `variant` is `'text'` (default),
+  `'card'` or `'table'`; `lines` is 1 to 12 (default 3).
+
+Table additions:
+
+- Column `align`: `'left'`, `'center'` or `'right'`.
+- Column `width`: `'xs'` (4rem), `'sm'` (7rem), `'md'` (12rem) or `'lg'` (18rem). Other values are dropped.
+- Column `sortable: true`: clicking the header sorts the rows in the app, cycling ascending, descending and
+  unsorted. Rows sort by `row.sort[key]` (a string or number) or, without it, by the text of the cell.
+  Numbers sort before text. Sorting never sends anything to your plugin.
+- Row `color`: a badge color name; the row gets a tint and a colored left edge.
+- Row `onClick: { command, args? }`: runs when the row is clicked or activated with Enter or Space. It follows
+  the same rules as a button command; an invalid one is dropped. Clicks on controls inside the row do not
+  trigger it.
+- Row `expand`: an array of nodes (at most 50) shown under the row when the user opens its arrow. Opening
+  and closing happens in the app.
+
+Every item, row, value and expanded node counts toward the 3000 node limit of the whole tree, and nesting
+counts toward the depth limit of 8. Lists over their caps are cut.
+
 ## Task menu items (API 1.6)
 
 A plugin can add items to the task "…" menu. Types: `TaskMenuCommandArgs` in `plugin-sdk/template/tmgr.d.ts`.
@@ -336,5 +371,16 @@ To use the input controls:
 
 1. Set `"engines": { "tmgr": "^1.9" }`.
 2. Use `input`, `select` and `checkbox` nodes.
+3. Update `tmgr.d.ts` from the SDK template.
+4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.
+
+## Migrating from 1.9 to 1.10
+
+Nothing changes for existing plugins: `^1.0` to `^1.9` keep working.
+
+To use the feed and data nodes:
+
+1. Set `"engines": { "tmgr": "^1.10" }`.
+2. Use `timeline`, `messages`, `sparkline`, `empty` and `skeleton` nodes and the new table fields.
 3. Update `tmgr.d.ts` from the SDK template.
 4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.

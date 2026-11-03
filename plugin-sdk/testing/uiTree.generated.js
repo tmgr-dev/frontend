@@ -95,6 +95,16 @@ exports.DEBOUNCE_MAX = 2000;
 exports.DEBOUNCE_DEFAULT = 300;
 const CONTROL_NAME = /^[A-Za-z0-9_.-]+$/;
 const MAX_SEGMENTED = 4;
+const MAX_FEED_ITEMS = 200;
+const MAX_AUTHOR = 64;
+const MAX_SPARKLINE_VALUES = 365;
+const MAX_ROW_EXPAND = 50;
+const MAX_SORT_TEXT = 200;
+const MAX_SKELETON_LINES = 12;
+const DEFAULT_SKELETON_LINES = 3;
+const COLUMN_ALIGNS = ['left', 'center', 'right'];
+const COLUMN_WIDTHS = ['xs', 'sm', 'md', 'lg'];
+const SKELETON_VARIANTS = ['text', 'card', 'table'];
 const CURRENT_API_MINOR = Number(manifest_1.PLUGIN_API_VERSION.split('.')[1]);
 const GAPS = ['none', 'sm', 'md', 'lg'];
 const GRID_GAPS = ['sm', 'md', 'lg'];
@@ -701,8 +711,29 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                 return { type: 'list', items: children(value.items, cardDepth) };
             case 'table': {
                 const columns = (Array.isArray(value.columns) ? value.columns.slice(0, 12) : [])
-                    .map((c) => ({ key: text(c?.key), title: text(c?.title) }))
-                    .filter((c) => c.key !== null && c.title !== null);
+                    .map((c) => {
+                    const key = text(c?.key);
+                    const title = text(c?.title);
+                    if (key === null || title === null)
+                        return null;
+                    const align = apiMinor >= 10
+                        ? pickOptional(c?.align, COLUMN_ALIGNS)
+                        : undefined;
+                    const width = apiMinor >= 10
+                        ? pickOptional(c?.width, COLUMN_WIDTHS)
+                        : undefined;
+                    const sortable = apiMinor >= 10 && c?.sortable === true
+                        ? true
+                        : undefined;
+                    return {
+                        key,
+                        title,
+                        ...(align !== undefined ? { align } : {}),
+                        ...(width !== undefined ? { width } : {}),
+                        ...(sortable !== undefined ? { sortable } : {}),
+                    };
+                })
+                    .filter((c) => c !== null);
                 const rows = (Array.isArray(value.rows) ? value.rows.slice(0, MAX_ITEMS) : [])
                     // Rows count against the same budget as nodes, so nested tables cannot multiply.
                     .filter(() => budget-- > 0)
@@ -713,11 +744,130 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                         if (cell)
                             cells[key] = cell;
                     }
-                    return Number.isSafeInteger(row?.taskId) && row.taskId > 0
-                        ? { taskId: row.taskId, cells }
-                        : { cells };
+                    const out = { cells };
+                    if (Number.isSafeInteger(row?.taskId) && row.taskId > 0) {
+                        out.taskId = row.taskId;
+                    }
+                    if (apiMinor >= 10) {
+                        const color = pickOptional(row?.color, exports.COLORS);
+                        if (color !== undefined)
+                            out.color = color;
+                        const onClick = row?.onClick !== null && typeof row?.onClick === 'object'
+                            ? parseCommandArgs(row.onClick)
+                            : null;
+                        if (onClick)
+                            out.onClick = onClick;
+                        const sort = {};
+                        for (const { key } of columns) {
+                            const v = row?.sort?.[key];
+                            if (typeof v === 'number' && Number.isFinite(v))
+                                sort[key] = v;
+                            else if (typeof v === 'string')
+                                sort[key] = v.slice(0, MAX_SORT_TEXT);
+                        }
+                        if (Object.keys(sort).length > 0)
+                            out.sort = sort;
+                        const expand = (Array.isArray(row?.expand)
+                            ? row.expand.slice(0, MAX_ROW_EXPAND)
+                            : [])
+                            .map((child) => node(child, depth + 1, cardDepth))
+                            .filter((child) => child !== null);
+                        if (expand.length > 0)
+                            out.expand = expand;
+                    }
+                    return out;
                 });
                 return { type: 'table', columns, rows };
+            }
+            case 'timeline': {
+                if (apiMinor < 10)
+                    return null;
+                const items = (Array.isArray(value.items) ? value.items.slice(0, MAX_FEED_ITEMS) : [])
+                    .filter(() => budget-- > 0)
+                    .map((item) => {
+                    const at = shortText(item?.at, MAX_AT_LENGTH);
+                    const t = text(item?.text);
+                    if (at === undefined || t === null)
+                        return null;
+                    const title = shortText(item?.title, MAX_TITLE);
+                    return {
+                        at,
+                        text: t,
+                        tone: pick(item?.tone, exports.COLORS, 'gray'),
+                        ...(title !== undefined ? { title } : {}),
+                    };
+                })
+                    .filter((item) => item !== null);
+                return { type: 'timeline', items };
+            }
+            case 'messages': {
+                if (apiMinor < 10)
+                    return null;
+                const items = (Array.isArray(value.items) ? value.items.slice(0, MAX_FEED_ITEMS) : [])
+                    .filter(() => budget-- > 0)
+                    .map((item) => {
+                    const author = shortText(item?.author, MAX_AUTHOR);
+                    const t = text(item?.text);
+                    if (author === undefined || t === null)
+                        return null;
+                    const at = shortText(item?.at, MAX_AT_LENGTH);
+                    return {
+                        author,
+                        text: t,
+                        side: item?.side === 'right' ? 'right' : 'left',
+                        ...(at !== undefined ? { at } : {}),
+                    };
+                })
+                    .filter((item) => item !== null);
+                return { type: 'messages', items };
+            }
+            case 'sparkline': {
+                if (apiMinor < 10)
+                    return null;
+                const values = [];
+                for (const v of Array.isArray(value.values) ? value.values : []) {
+                    if (values.length >= MAX_SPARKLINE_VALUES)
+                        break;
+                    if (typeof v !== 'number' || !Number.isFinite(v))
+                        continue;
+                    if (budget-- <= 0)
+                        break;
+                    values.push(v);
+                }
+                const label = shortText(value.label, MAX_LABEL_LENGTH);
+                return {
+                    type: 'sparkline',
+                    values,
+                    color: pick(value.color, exports.COLORS, 'blue'),
+                    ...(label !== undefined ? { label } : {}),
+                };
+            }
+            case 'empty': {
+                if (apiMinor < 10)
+                    return null;
+                const title = shortText(value.title, MAX_TITLE);
+                if (title === undefined)
+                    return null;
+                const body = shortText(value.text, MAX_TEXT);
+                const icon = pickOptional(value.icon, exports.ICON_NAMES);
+                return {
+                    type: 'empty',
+                    title,
+                    ...(body !== undefined ? { text: body } : {}),
+                    ...(icon !== undefined ? { icon } : {}),
+                };
+            }
+            case 'skeleton': {
+                if (apiMinor < 10)
+                    return null;
+                const lines = typeof value.lines === 'number' && Number.isFinite(value.lines)
+                    ? Math.min(MAX_SKELETON_LINES, Math.max(1, Math.round(value.lines)))
+                    : DEFAULT_SKELETON_LINES;
+                return {
+                    type: 'skeleton',
+                    variant: pick(value.variant, SKELETON_VARIANTS, 'text'),
+                    lines,
+                };
             }
             case 'button': {
                 const t = text(value.text);

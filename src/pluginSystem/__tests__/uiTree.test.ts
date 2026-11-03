@@ -1591,3 +1591,296 @@ describe('input, select and checkbox (API 1.9)', () => {
 		expect(out.children.length).toBeLessThan(3500);
 	});
 });
+
+describe('feeds and data nodes (API 1.10)', () => {
+	const t10 = (value: unknown, minor = 10) =>
+		sanitizeTree(value, NO_LINKS, minor) as any;
+	const col = { key: 'a', title: 'A' };
+	const table = (
+		extra: object = {},
+		row: object = {},
+		column: object = {},
+	) => ({
+		type: 'table',
+		columns: [{ ...col, ...column }],
+		rows: [{ cells: { a: 'x' }, ...row }],
+		...extra,
+	});
+
+	describe('gating', () => {
+		it.each([
+			{ type: 'timeline', items: [{ at: 'now', text: 't' }] },
+			{ type: 'messages', items: [{ author: 'a', text: 't' }] },
+			{ type: 'sparkline', values: [1, 2] },
+			{ type: 'empty', title: 'x' },
+			{ type: 'skeleton' },
+		])('drops $type at minor 9', (node) => {
+			expect(t10(node, 9)).toBeNull();
+			expect(t10(node)).not.toBeNull();
+		});
+
+		it('ignores the new table fields at minor 9', () => {
+			const out = t10(
+				table(
+					{},
+					{
+						color: 'red',
+						sort: { a: 1 },
+						onClick: { command: 'p.go' },
+						expand: ['x'],
+					},
+					{ align: 'right', width: 'sm', sortable: true },
+				),
+				9,
+			);
+			expect(out.columns[0]).toEqual(col);
+			expect(out.rows[0]).toEqual({ cells: { a: expect.any(Object) } });
+		});
+	});
+
+	describe('timeline', () => {
+		const item = { at: '2026-01-01', title: 'T', text: 'body', tone: 'green' };
+		it('keeps valid items and defaults the tone', () => {
+			const out = t10({
+				type: 'timeline',
+				items: [item, { at: 'x', text: 'y', tone: 'neon' }],
+			});
+			expect(out.items[0]).toEqual(item);
+			expect(out.items[1].tone).toBe('gray');
+		});
+
+		it('drops items without at or text', () => {
+			const out = t10({
+				type: 'timeline',
+				items: [{ text: 'y' }, { at: 'x' }, { at: 5, text: 'y' }, item],
+			});
+			expect(out.items).toHaveLength(1);
+		});
+
+		it('clamps strings and the item count', () => {
+			const out = t10({
+				type: 'timeline',
+				items: Array.from({ length: 300 }, () => ({
+					at: 'a'.repeat(100),
+					title: 't'.repeat(500),
+					text: 'x'.repeat(5000),
+				})),
+			});
+			expect(out.items).toHaveLength(200);
+			expect(out.items[0].at).toHaveLength(64);
+			expect(out.items[0].title).toHaveLength(200);
+			expect(out.items[0].text).toHaveLength(1000);
+		});
+	});
+
+	describe('messages', () => {
+		it('defaults the side and clamps author and text', () => {
+			const out = t10({
+				type: 'messages',
+				items: [
+					{ author: 'a'.repeat(200), text: 'x'.repeat(5000), at: 'now' },
+					{ author: 'b', text: 'y', side: 'right' },
+					{ author: 'c', text: 'z', side: 'middle' },
+				],
+			});
+			expect(out.items[0].author).toHaveLength(64);
+			expect(out.items[0].text).toHaveLength(1000);
+			expect(out.items.map((i: any) => i.side)).toEqual([
+				'left',
+				'right',
+				'left',
+			]);
+			expect(out.items[1].at).toBeUndefined();
+		});
+
+		it('caps at 200 items', () => {
+			expect(
+				t10({ type: 'messages', items: [{ text: 'y' }, { author: 'a' }] })
+					.items,
+			).toEqual([]);
+			const out = t10({
+				type: 'messages',
+				items: [
+					...Array.from({ length: 250 }, () => ({ author: 'a', text: 'b' })),
+				],
+			});
+			expect(out.items).toHaveLength(200);
+		});
+	});
+
+	describe('table extensions', () => {
+		it('keeps valid align, width and sortable and drops unknown values', () => {
+			const ok = t10(
+				table({}, {}, { align: 'center', width: 'lg', sortable: true }),
+			);
+			expect(ok.columns[0]).toMatchObject({
+				align: 'center',
+				width: 'lg',
+				sortable: true,
+			});
+			const bad = t10(
+				table({}, {}, { align: 'top', width: 9999, sortable: 'yes' }),
+			);
+			expect(bad.columns[0]).toEqual(col);
+		});
+
+		it('keeps a row color from the closed list only', () => {
+			expect(t10(table({}, { color: 'red' })).rows[0].color).toBe('red');
+			expect(t10(table({}, { color: 'pink' })).rows[0].color).toBeUndefined();
+		});
+
+		it('validates the row onClick like a button command', () => {
+			expect(
+				t10(table({}, { onClick: { command: 'p.go', args: { id: 1 } } }))
+					.rows[0].onClick,
+			).toEqual({ command: 'p.go', args: { id: 1 } });
+			for (const onClick of [
+				{},
+				{ command: '' },
+				{ command: 5 },
+				'p.go',
+				null,
+				{ command: 'p.go', args: 'x'.repeat(9000) },
+			]) {
+				expect(t10(table({}, { onClick })).rows[0].onClick).toBeUndefined();
+			}
+		});
+
+		it('keeps task rows', () => {
+			expect(t10(table({}, { taskId: 7 })).rows[0].taskId).toBe(7);
+		});
+
+		it('keeps sort values for known columns, finite numbers and clamped strings', () => {
+			const out = t10(table({}, { sort: { a: 5, b: 1, c: 'x'.repeat(500) } }));
+			expect(out.rows[0].sort).toEqual({ a: 5 });
+			expect(
+				t10(table({}, { sort: { a: 'y'.repeat(500) } })).rows[0].sort.a,
+			).toHaveLength(200);
+			expect(
+				t10(table({}, { sort: { a: Infinity } })).rows[0].sort,
+			).toBeUndefined();
+			expect(t10(table({}, { sort: { a: {} } })).rows[0].sort).toBeUndefined();
+		});
+
+		it('sanitizes the expand subtree', () => {
+			const out = t10(
+				table(
+					{},
+					{
+						expand: [
+							{ type: 'text', text: 'hi' },
+							{ type: 'script', src: 'x' },
+							'plain',
+						],
+					},
+				),
+			);
+			expect(out.rows[0].expand.map((n: any) => n.type)).toEqual([
+				'text',
+				'text',
+			]);
+		});
+
+		it('limits the depth of expanded nodes', () => {
+			let deep: any = { type: 'text', text: 'leaf' };
+			for (let i = 0; i < 12; i++) deep = { type: 'stack', children: [deep] };
+			const out = t10(table({}, { expand: [deep] }));
+			let depth = 0;
+			let cur = out.rows[0].expand[0];
+			while (cur?.children?.[0]) {
+				cur = cur.children[0];
+				depth++;
+			}
+			expect(depth).toBeLessThan(8);
+			expect(JSON.stringify(out)).not.toContain('leaf');
+		});
+
+		it('counts rows and expanded nodes against the shared budget', () => {
+			const rows = Array.from({ length: 500 }, () => ({
+				cells: { a: 'x' },
+				expand: Array.from({ length: 20 }, () => 'e'),
+			}));
+			const out = t10({
+				type: 'stack',
+				children: Array.from({ length: 5 }, () => table({ rows })),
+			});
+			const rendered = JSON.stringify(out).match(/"type"/g)!.length;
+			expect(rendered).toBeLessThanOrEqual(3000);
+		});
+	});
+
+	describe('sparkline', () => {
+		it('drops non-finite values and caps at 365', () => {
+			const out = t10({
+				type: 'sparkline',
+				values: [1, NaN, Infinity, 'x', null, 2, ...Array(500).fill(3)],
+			});
+			expect(out.values).toHaveLength(365);
+			expect(out.values.slice(0, 2)).toEqual([1, 2]);
+		});
+
+		it('defaults the color, clamps the label and accepts no values', () => {
+			const out = t10({
+				type: 'sparkline',
+				values: 'nope',
+				color: 'neon',
+				label: 'l'.repeat(500),
+			});
+			expect(out.values).toEqual([]);
+			expect(out.color).toBe('blue');
+			expect(out.label).toHaveLength(200);
+			expect(t10({ type: 'sparkline', values: [1], color: 'red' }).color).toBe(
+				'red',
+			);
+		});
+
+		it('spends the shared budget per value', () => {
+			const out = t10({
+				type: 'stack',
+				children: Array.from({ length: 10 }, () => ({
+					type: 'sparkline',
+					values: Array(365).fill(1),
+				})),
+			});
+			const total = out.children.reduce(
+				(sum: number, c: any) => sum + c.values.length,
+				0,
+			);
+			expect(total).toBeLessThan(3000);
+		});
+	});
+
+	describe('empty', () => {
+		it('needs a title and whitelists the icon', () => {
+			expect(t10({ type: 'empty' })).toBeNull();
+			expect(t10({ type: 'empty', title: '  ' })).toBeNull();
+			const out = t10({
+				type: 'empty',
+				title: 'T'.repeat(500),
+				text: 'x'.repeat(5000),
+				icon: 'info',
+			});
+			expect(out.title).toHaveLength(200);
+			expect(out.text).toHaveLength(1000);
+			expect(out.icon).toBe('info');
+			expect(
+				t10({ type: 'empty', title: 'T', icon: 'nope' }).icon,
+			).toBeUndefined();
+		});
+	});
+
+	describe('skeleton', () => {
+		it('defaults the variant and clamps lines', () => {
+			expect(t10({ type: 'skeleton' })).toEqual({
+				type: 'skeleton',
+				variant: 'text',
+				lines: 3,
+			});
+			expect(t10({ type: 'skeleton', variant: 'x' }).variant).toBe('text');
+			expect(t10({ type: 'skeleton', variant: 'table' }).variant).toBe('table');
+			expect(t10({ type: 'skeleton', lines: 99 }).lines).toBe(12);
+			expect(t10({ type: 'skeleton', lines: 0 }).lines).toBe(1);
+			expect(t10({ type: 'skeleton', lines: NaN }).lines).toBe(3);
+		});
+	});
+});
