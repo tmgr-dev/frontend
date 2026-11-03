@@ -538,7 +538,8 @@ fn integrating(
         }
     }
     let text = integrate_text(&tips, &failed);
-    if !clear_marker(Path::new(&p.bundle.launch.cwd))
+    if !deps.runs.idle(lead_run)
+        || !clear_marker(Path::new(&p.bundle.launch.cwd))
         || deps.runs.send(lead_run, &format!("{text}\r")).is_err()
     {
         return Ok(());

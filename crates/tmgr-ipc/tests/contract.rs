@@ -653,6 +653,15 @@ fn method_params_and_results() {
         &SendParams {
             id: SID.into(),
             text: "hello\r".into(),
+            at_prompt: false,
+        },
+    );
+    golden(
+        "send_params_at_prompt",
+        &SendParams {
+            id: SID.into(),
+            text: "hello\r".into(),
+            at_prompt: true,
         },
     );
     golden("id_params", &IdParams { id: SID.into() });

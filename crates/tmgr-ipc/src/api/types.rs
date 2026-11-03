@@ -402,6 +402,8 @@ pub struct KillParams {
 pub struct SendParams {
     pub id: String,
     pub text: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub at_prompt: bool,
 }
 
 /// Params of `attach.open` and `attach.set`.

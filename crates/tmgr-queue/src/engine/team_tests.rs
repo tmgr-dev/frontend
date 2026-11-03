@@ -452,6 +452,25 @@ fn a_lead_marker_written_before_the_integrate_text_never_ends_the_lead_early() {
 }
 
 #[test]
+fn the_integrate_text_waits_for_the_lead_to_be_idle() {
+    let fx = working_team();
+    for member in &team(&fx).members {
+        marker(&member.cwd);
+    }
+    exit_run(&fx, "mock-2");
+    exit_run(&fx, "mock-3");
+    fx.runs.sent.borrow_mut().clear();
+    fx.runs.idle_runs.borrow_mut().clear();
+    fx.pass().unwrap();
+    assert!(fx.runs.sent.borrow().is_empty());
+    assert_eq!(team(&fx).phase, TeamPhase::Integrating);
+    idle(&fx, "mock-1");
+    fx.pass().unwrap();
+    assert_eq!(fx.runs.sent.borrow().len(), 1);
+    assert_eq!(team(&fx).phase, TeamPhase::Finishing);
+}
+
+#[test]
 fn clearing_the_lead_marker_never_follows_a_link() {
     let fx = team_fx(1);
     let lead_cwd = pickup(&fx).bundle.launch.cwd;

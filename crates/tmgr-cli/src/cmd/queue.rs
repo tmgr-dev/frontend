@@ -1724,7 +1724,7 @@ impl RunsClient for RunnerRuns {
     }
 
     fn send(&self, run_id: &str, text: &str) -> Result<()> {
-        self.with(|c| c.send(run_id, text))
+        self.with(|c| c.send_at_prompt(run_id, text))
             .map_err(|e| Error::new(Kind::Offline, e.to_string()))
     }
 

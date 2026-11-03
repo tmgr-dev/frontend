@@ -168,7 +168,7 @@ missing params) and `internal`.
 | `autopilot.status` | none | `{running, pid?, status}` (`status` is `status.json` or `null`) | `forbidden` | `cli` and `desktop`; cap `autopilot.v1` |
 | `autopilot.control` | `{command}` (`pause`, `resume`, `stop`, `suspend`) | `{seq}` | `forbidden`, `not_running` | `cli` and `desktop`; `suspend` from `cli` only; cap `autopilot.v1` |
 | `autopilot.log` | `{tail}` (1 to 1000) | `{lines}` (the last `tail` JSON lines of `log.jsonl`) | `forbidden`, `invalid_params` | `cli` and `desktop`; cap `autopilot.v1` |
-| `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
+| `sessions.send` | `{id, text, at_prompt?}` (text at most 64 KiB, typed as input; `at_prompt` true refuses with `busy` unless the agent sits at its idle prompt) | `null` | `not_found`, `not_running`, `busy` | any |
 | `permissions.list` | none (`client: "cli"` only) | array of `PermissionCard` | `forbidden` |
 | `permissions.answer` | `{session, card, choice: "yes"\|"always"\|"no", confirmed?}` (`client: "cli"` only) | `null` | `forbidden`, `not_found`, `busy` |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |

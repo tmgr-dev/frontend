@@ -761,6 +761,17 @@ impl Session {
         }
     }
 
+    fn at_prompt(&self) -> bool {
+        let mut i = lock(&self.inner);
+        if self.effective(&i).kind == StateKind::Blocked {
+            return false;
+        }
+        let bottom = i.screen.bottom_text(10);
+        let rows = i.screen.text_lines(None).3;
+        let agent = i.meta.profile.as_deref().and_then(permit::agent_of);
+        prompt_ready(i.matcher.as_ref(), agent, &bottom, &rows)
+    }
+
     fn card_agent(&self) -> Option<permit::Agent> {
         let i = lock(&self.inner);
         i.meta
@@ -2182,6 +2193,10 @@ impl Runner {
                     .ok_or_else(|| api(ErrorCode::InvalidParams, "text is required"))?;
                 if text.len() > MAX_INPUT {
                     return Err(api(ErrorCode::InvalidParams, "text is too large"));
+                }
+                let at_prompt = p.get("at_prompt").and_then(Value::as_bool).unwrap_or(false);
+                if at_prompt && !s.at_prompt() {
+                    return Err(api(ErrorCode::Busy, "the agent is not at its prompt"));
                 }
                 s.note_input_from(&conn.client);
                 if s.input_dropped.swap(false, Ordering::SeqCst) || !s.input(text.as_bytes()) {
@@ -4790,6 +4805,18 @@ fn copy_transcript(from_home: &Path, rel: &Path, to_home: &Path) -> io::Result<(
     Ok(())
 }
 
+fn prompt_ready(
+    matcher: Option<&Matcher>,
+    agent: Option<permit::Agent>,
+    bottom: &[String],
+    rows: &[String],
+) -> bool {
+    matcher
+        .and_then(|m| m.check(bottom))
+        .is_some_and(|(rule, _)| rule.starts_with("idle"))
+        && agent.is_none_or(|a| permit::parse_dialog(a, rows).is_none())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4847,6 +4874,39 @@ mod tests {
                 "{bad}"
             );
         }
+    }
+
+    fn screen_of(text: &str) -> ScreenModel {
+        let mut s = ScreenModel::new(24, 100, 100);
+        s.feed(text.replace('\n', "\r\n").as_bytes());
+        s
+    }
+
+    fn ready(profile: &str, text: &str) -> bool {
+        let (set, _) = ProfileSet::load(None);
+        let matcher = Matcher::new(set.get(profile).unwrap()).unwrap();
+        let mut screen = screen_of(text);
+        let bottom = screen.bottom_text(10);
+        let rows = screen.text_lines(None).3;
+        prompt_ready(Some(&matcher), permit::agent_of(profile), &bottom, &rows)
+    }
+
+    #[test]
+    fn at_prompt_refuses_a_screen_with_an_approval_dialog() {
+        let dialog = include_str!("../profiles/screens/claude-bash-approval.txt");
+        assert!(!ready("claude-code", dialog));
+        assert!(!ready("claude-code", "Do you want to proceed?\n"));
+        assert!(!ready("claude-code", "working\n"));
+    }
+
+    #[test]
+    fn at_prompt_accepts_the_idle_prompt_alone_on_the_bottom_line() {
+        assert!(ready("claude-code", "done\n\n❯\n"));
+    }
+
+    #[test]
+    fn at_prompt_refuses_without_a_profile_matcher() {
+        assert!(!prompt_ready(None, None, &["❯".into()], &[]));
     }
 
     #[test]
