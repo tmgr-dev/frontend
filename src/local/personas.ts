@@ -202,14 +202,16 @@ export const ensureDefaultLocalPersona = async (
 			`SELECT uuid FROM personas WHERE owner_user_id = ? ORDER BY synced_at, uuid LIMIT 1`,
 			[LOCAL_OWNER_ID],
 		);
+	const isEnabled = async (persona: { uuid: string } | undefined) =>
+		!!persona &&
+		(
+			await ctx.db.select<{ persona_uuid: string }>(
+				`SELECT persona_uuid FROM workspace_personas WHERE persona_uuid = ?`,
+				[persona.uuid],
+			)
+		).length > 0;
 	const [existing] = await select();
-	if (existing) {
-		const enabled = await ctx.db.select<{ persona_uuid: string }>(
-			`SELECT persona_uuid FROM workspace_personas WHERE persona_uuid = ?`,
-			[existing.uuid],
-		);
-		if (enabled.length) return existing;
-	}
+	if (await isEnabled(existing)) return existing;
 	const uuid = existing?.uuid ?? crypto.randomUUID();
 	const now = ctx.now().toISOString();
 	const statements: BatchStatement[] = [];
@@ -234,7 +236,15 @@ export const ensureDefaultLocalPersona = async (
 			 WHERE NOT EXISTS (SELECT 1 FROM workspace_personas WHERE persona_uuid = ?)`,
 		params: [uuid, JSON.stringify([...PERSONA_PERMISSIONS]), now, uuid],
 	});
-	await ctx.db.batch(statements);
+	let failure: unknown = null;
+	try {
+		const result = await ctx.db.batch(statements);
+		if (result.failedAt !== null)
+			failure = new Error('Could not create the default local persona');
+	} catch (error) {
+		failure = error;
+	}
 	const [created] = await select();
-	return created;
+	if (await isEnabled(created)) return created;
+	throw failure ?? new Error('Could not enable the default local persona');
 };

@@ -8,10 +8,18 @@ import { createSSRApp, nextTick, reactive } from 'vue';
 const mockInvoke = jest.fn();
 const mockStore = reactive({ state: { user: { id: 7 } as any }, getters: {} });
 const mockResync = jest.fn();
+const mockPersonas = {
+	ensureDefaultLocalPersona: jest.fn(),
+	listLocalPersonas: jest.fn(),
+};
+const mockListTokens = jest.fn();
+let mockMounted: (() => Promise<void>) | undefined;
 
 jest.mock('vue', () => ({
 	...jest.requireActual('vue'),
-	onMounted: () => undefined,
+	onMounted: (fn: () => Promise<void>) => {
+		mockMounted = fn;
+	},
 }));
 jest.mock('vuex', () => ({ useStore: () => mockStore }));
 jest.mock('@tauri-apps/api/core', () => ({
@@ -37,16 +45,18 @@ jest.mock('@/components/ui/input', () => {
 	return { Input: { render: () => h('input') } };
 });
 jest.mock('@/components/ui/switch', () => ({ Switch: { render: () => null } }));
-jest.mock('@/local/localTokens', () => ({}));
+jest.mock('@/local/localTokens', () => ({
+	listLocalTokens: (...args: unknown[]) => mockListTokens(...args),
+}));
 jest.mock('@/local/personaCache', () => ({ tauriPersonaCache: {} }));
 jest.mock('@/local/personaGate', () => ({
 	LOCAL_OWNER_ID: -1,
 	PERSONA_PERMISSIONS: [],
 }));
-jest.mock('@/local/personas', () => ({}));
+jest.mock('@/local/personas', () => mockPersonas);
 jest.mock('@/local/runtime', () => ({
 	activeLocalWorkspace: () => ({ code: 'w' }),
-	localContext: jest.fn(),
+	localContext: async () => ({}),
 }));
 jest.mock('@/utils/cloudIdentity', () => ({
 	resyncCloudIdentity: (...args: unknown[]) => mockResync(...args),
@@ -274,4 +284,29 @@ test('another account slot shows its note and a ready slot shows none', async ()
 	const html = await render();
 	expect(html).not.toContain('belong to another account');
 	expect(html).not.toContain('not available to the desktop app');
+});
+
+test('the lists still load when ensuring the default agent fails', async () => {
+	(mockStore.getters as any).isLocalOnly = true;
+	const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+	mockPersonas.ensureDefaultLocalPersona.mockRejectedValueOnce(
+		new Error('database is locked'),
+	);
+	mockPersonas.listLocalPersonas.mockResolvedValueOnce([
+		{ uuid: 'p-1', name: 'Local agent', permissions: [] },
+	]);
+	mockListTokens.mockResolvedValueOnce([]);
+	try {
+		const { state } = mountLive();
+		await mockMounted!();
+		expect(state.personas.value.map((p: any) => p.uuid)).toEqual(['p-1']);
+		expect(mockInvoke).toHaveBeenCalledWith('llm_config_get', {
+			userId: -1,
+		});
+		expect(mockListTokens).toHaveBeenCalled();
+		expect(error).toHaveBeenCalled();
+	} finally {
+		delete (mockStore.getters as any).isLocalOnly;
+		error.mockRestore();
+	}
 });
