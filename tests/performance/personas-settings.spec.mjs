@@ -338,3 +338,118 @@ test('the shared skills library can create, attach, flag overrides and delete', 
   ).toBeVisible();
   await expect(panel.getByText('No library skills attached.')).toBeVisible();
 });
+
+test('converting an own skill to shared explains a clash and sends only the checked replacements', async ({
+  page,
+}) => {
+  await mockApp(page);
+  await page.route('**/api/personas*', (route) =>
+    route.fulfill({
+      json: {
+        data: [
+          {
+            id: 'uuid-1',
+            name: 'Reviewer',
+            description: null,
+            avatar_url: null,
+            system_prompt: '',
+            prompt_version: 1,
+            archived_at: null,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+            owner: { id: 1, name: 'Test User' },
+            can_edit: true,
+          },
+        ],
+      },
+    }),
+  );
+  let own = [
+    {
+      slug: 'triage',
+      title: 'Triage',
+      when: 'sort it',
+      actions: [],
+      version: 1,
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+    {
+      slug: 'review',
+      title: 'Review',
+      when: 'review it',
+      actions: [],
+      version: 1,
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+  ];
+  const posts = [];
+  await page.route('**/api/personas/uuid-1/skills', (route) =>
+    route.fulfill({ json: { data: own } }),
+  );
+  await page.route('**/api/personas/uuid-1/shared-skills**', (route) =>
+    route.fulfill({ json: { data: [] } }),
+  );
+  await page.route('**/api/shared-skills**', (route) =>
+    route.fulfill({ json: { data: [] } }),
+  );
+  await page.route('**/api/personas/uuid-1/skills/*/convert', (route) => {
+    const request = route.request();
+    const slug = request.url().split('/').slice(-2)[0];
+    if (request.method() === 'POST') {
+      posts.push(request.postDataJSON());
+      own = own.filter((s) => s.slug !== slug);
+      return route.fulfill({
+        json: {
+          data: {
+            skill: { slug },
+            replaced_personas: [{ id: 'uuid-3', name: 'Archivist' }],
+          },
+        },
+      });
+    }
+    return route.fulfill({
+      json: {
+        data: {
+          slug,
+          library_clash: slug === 'triage',
+          other_personas: [
+            { id: 'uuid-2', name: 'Helper', archived: false, same_body: true, version: 2 },
+            { id: 'uuid-3', name: 'Archivist', archived: true, same_body: false, version: 4 },
+          ],
+        },
+      },
+    });
+  });
+
+  await page.goto('/settings/personas');
+  await page.getByText('Skills', { exact: true }).first().click();
+
+  await page.getByTestId('convert-skill-triage').click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByTestId('convert-clash')).toContainText(
+    'Your skills library already has a skill with the slug “triage”. Delete or rename one of them first.',
+  );
+  await expect(dialog.getByTestId('convert-confirm')).toHaveCount(0);
+  await dialog.getByTestId('convert-close').click();
+  await expect(dialog).toHaveCount(0);
+
+  await page.getByTestId('convert-skill-review').click();
+  await expect(dialog).toContainText(
+    'Moves this skill to your skills library and attaches it to Reviewer. Agents keep the same instructions.',
+  );
+  await expect(dialog.getByText('Same text')).toBeVisible();
+  await expect(dialog.getByText('Different text — will be replaced')).toBeVisible();
+  await expect(dialog.getByText('(archived)')).toBeVisible();
+  await expect(dialog.getByTestId('convert-replace-uuid-2')).not.toBeChecked();
+  await expect(dialog.getByTestId('convert-replace-uuid-3')).not.toBeChecked();
+
+  await dialog.getByTestId('convert-replace-uuid-3').check();
+  await dialog.getByTestId('convert-confirm').click();
+
+  await expect.poll(() => posts).toEqual([
+    { replace_personas: [{ id: 'uuid-3', version: 4 }] },
+  ]);
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId('convert-skill-review')).toHaveCount(0);
+  await expect(page.getByText('Converted to a shared skill and replaced on 1 persona')).toBeVisible();
+});

@@ -18,6 +18,15 @@
 					</p>
 				</div>
 				<div class="flex shrink-0 gap-2">
+					<Button
+						v-if="!isLocalOnly"
+						variant="outline"
+						size="sm"
+						:data-testid="`convert-skill-${skill.slug}`"
+						@click="convertSlug = skill.slug"
+					>
+						Convert to shared
+					</Button>
 					<Button variant="outline" size="sm" @click="startEdit(skill)">
 						Edit
 					</Button>
@@ -72,6 +81,16 @@
 				</Button>
 			</div>
 		</div>
+
+		<PersonaConvertSkillDialog
+			v-if="convertSlug"
+			:open="true"
+			:persona-id="persona.id"
+			:persona-name="persona.name"
+			:slug="convertSlug"
+			@update:open="(value) => !value && (convertSlug = null)"
+			@converted="onConverted"
+		/>
 	</div>
 </template>
 
@@ -87,6 +106,8 @@
 	import { Button } from '@/components/ui/button';
 	import { Textarea } from '@/components/ui/textarea';
 	import { toast } from '@/components/ui/toast';
+	import store from '@/store';
+	import { isDesktopApp } from '@/utils/desktop';
 	import {
 		byteLength,
 		extractFieldErrors,
@@ -102,10 +123,11 @@
 		ref,
 		type PropType,
 	} from 'vue';
+	import PersonaConvertSkillDialog from './PersonaConvertSkillDialog.vue';
 
 	export default defineComponent({
 		name: 'PersonaSkills',
-		components: { Button, Textarea },
+		components: { Button, PersonaConvertSkillDialog, Textarea },
 		props: {
 			persona: { type: Object as PropType<Persona>, required: true },
 		},
@@ -117,6 +139,8 @@
 			const editingSlug = ref<string | null>(null);
 			const draft = ref(SKILL_TEMPLATE);
 			const serverErrors = ref<Record<string, string[]> | null>(null);
+			const convertSlug = ref<string | null>(null);
+			const isLocalOnly = isDesktopApp() && !!store.getters.isLocalOnly;
 
 			const load = async () => {
 				loading.value = true;
@@ -203,6 +227,13 @@
 				}
 			};
 
+			const onConverted = async (slug: string) => {
+				if (editingSlug.value === slug) cancelEdit();
+				convertSlug.value = null;
+				await load();
+				emit('changed');
+			};
+
 			onMounted(load);
 
 			return {
@@ -217,6 +248,9 @@
 				cancelEdit,
 				submit,
 				remove,
+				convertSlug,
+				isLocalOnly,
+				onConverted,
 				SKILL_LIMIT,
 				SKILL_BODY_MAX_BYTES,
 			};

@@ -5,7 +5,9 @@ import {
 	authorKindOf,
 	buildMcpUrl,
 	buildPersonaTokenSnippet,
+	buildReplacePersonas,
 	byteLength,
+	convertSuccessTitle,
 	DEFAULT_GRANT_PERMISSIONS,
 	DEFAULT_TOKEN_EXPIRY_DAYS,
 	detachedSkillsTitle,
@@ -496,5 +498,30 @@ describe('shared skill helpers', () => {
 			{ slug: 'a' },
 			{ slug: 'c' },
 		]);
+	});
+});
+
+describe('convert to shared helpers', () => {
+	const others = [
+		{ id: 'a', name: 'A', archived: false, same_body: true, version: 2 },
+		{ id: 'b', name: 'B', archived: true, same_body: false, version: 5 },
+	];
+
+	it('builds the replace list from checked ids only, with the previewed versions', () => {
+		expect(buildReplacePersonas(others, new Set(['b']))).toEqual([
+			{ id: 'b', version: 5 },
+		]);
+		expect(buildReplacePersonas(others, new Set())).toEqual([]);
+		expect(buildReplacePersonas(others, new Set(['zzz']))).toEqual([]);
+	});
+
+	it('words the success toast with the replaced count', () => {
+		expect(convertSuccessTitle(0)).toBe('Converted to a shared skill');
+		expect(convertSuccessTitle(1)).toBe(
+			'Converted to a shared skill and replaced on 1 persona',
+		);
+		expect(convertSuccessTitle(3)).toBe(
+			'Converted to a shared skill and replaced on 3 personas',
+		);
 	});
 });

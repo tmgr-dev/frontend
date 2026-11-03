@@ -415,3 +415,17 @@ export type PersonaScope = 'account' | 'workspace';
 
 export const personaScopeLabel = (workspaceId: number | null | undefined) =>
 	workspaceId ? 'Workspace' : 'Only me';
+
+export const buildReplacePersonas = (
+	others: Array<{ id: string; version: number }>,
+	checked: Set<string>,
+): Array<{ id: string; version: number }> =>
+	others
+		.filter((p) => checked.has(p.id))
+		.map((p) => ({ id: p.id, version: p.version }));
+
+export const convertSuccessTitle = (replaced: number): string => {
+	const base = 'Converted to a shared skill';
+	if (replaced <= 0) return base;
+	return `${base} and replaced on ${replaced} ${replaced === 1 ? 'persona' : 'personas'}`;
+};

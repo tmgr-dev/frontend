@@ -295,6 +295,58 @@ export const deletePersonaSkill = async (
 	invalidateSharedForPersona(personaUuid);
 };
 
+export interface ConvertPreviewPersona {
+	id: string;
+	name: string;
+	archived: boolean;
+	same_body: boolean;
+	version: number;
+}
+
+export interface ConvertPreview {
+	slug: string;
+	library_clash: boolean;
+	other_personas: ConvertPreviewPersona[];
+}
+
+export interface ConvertReplaceEntry {
+	id: string;
+	version: number;
+}
+
+export interface ConvertResult {
+	skill: SharedSkill;
+	replaced_personas: SharedSkillPersonaRef[];
+}
+
+export const previewConvertSkill = async (
+	personaUuid: string,
+	slug: string,
+): Promise<ConvertPreview> => {
+	const {
+		data: { data },
+	} = await $axios.get(`/personas/${personaUuid}/skills/${slug}/convert`);
+	return data;
+};
+
+export const convertSkillToShared = async (
+	personaUuid: string,
+	slug: string,
+	replacePersonas: ConvertReplaceEntry[],
+): Promise<ConvertResult> => {
+	const {
+		data: { data },
+	} = await $axios.post(`/personas/${personaUuid}/skills/${slug}/convert`, {
+		replace_personas: replacePersonas,
+	});
+	invalidateSharedLibrary();
+	requestCache.invalidate(skillsKey(personaUuid));
+	for (const replaced of data.replaced_personas ?? []) {
+		requestCache.invalidate(skillsKey(replaced.id));
+	}
+	return data;
+};
+
 export const listSharedSkills = async (
 	useCache = true,
 ): Promise<SharedSkillSummary[]> =>

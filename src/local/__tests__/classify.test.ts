@@ -20,6 +20,7 @@ describe('classify', () => {
 			'v2/user/settings',
 			'personas',
 			'personas/abc-123',
+			'personas/abc-123/skills/triage/convert',
 			'imports/local-workspace/capabilities',
 			'imports/9f1c/commit',
 			'notify-tokens',

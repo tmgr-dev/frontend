@@ -14,6 +14,7 @@ import {
 	archivePersona,
 	attachSharedSkill,
 	blockWorkspacePersona,
+	convertSkillToShared,
 	createPersona,
 	deletePersonaSkill,
 	deleteSharedSkill,
@@ -31,6 +32,7 @@ import {
 	listSharedSkills,
 	listWorkspacePersonas,
 	personaAvatarObjectUrl,
+	previewConvertSkill,
 	putPersonaSkill,
 	putSharedSkill,
 	removeWorkspaceGrant,
@@ -513,5 +515,75 @@ describe('shared skills library', () => {
 		await deletePersonaSkill('uuid-1', 'triage');
 		expect(requestCache.has('personas-uuid-1-shared-skills')).toBe(false);
 		expect(requestCache.has('shared-skills')).toBe(false);
+	});
+});
+
+describe('convert own skill to shared', () => {
+	const PREVIEW = {
+		slug: 'triage',
+		library_clash: false,
+		other_personas: [
+			{
+				id: 'uuid-2',
+				name: 'Helper',
+				archived: false,
+				same_body: true,
+				version: 3,
+			},
+		],
+	};
+
+	it('previews the conversion without caching it', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: PREVIEW } });
+		const result = await previewConvertSkill('uuid-1', 'triage');
+		expect(axios.get).toHaveBeenCalledWith(
+			'/personas/uuid-1/skills/triage/convert',
+		);
+		expect(result).toEqual(PREVIEW);
+		await previewConvertSkill('uuid-1', 'triage');
+		expect(axios.get).toHaveBeenCalledTimes(2);
+	});
+
+	it('posts the replace list and invalidates library, shared, own skills and grants', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [] } });
+		await listSharedSkills();
+		await listPersonaSharedSkills('uuid-1');
+		await listPersonaSharedSkills('uuid-3');
+		await listPersonaSkills('uuid-1');
+		await listPersonaSkills('uuid-2');
+		await listPersonaSkills('uuid-3');
+		await listWorkspacePersonas(5);
+		const response = {
+			skill: { slug: 'triage' },
+			replaced_personas: [{ id: 'uuid-2', name: 'Helper' }],
+		};
+		(axios.post as jest.Mock).mockResolvedValue({ data: { data: response } });
+
+		const result = await convertSkillToShared('uuid-1', 'triage', [
+			{ id: 'uuid-2', version: 3 },
+		]);
+
+		expect(axios.post).toHaveBeenCalledWith(
+			'/personas/uuid-1/skills/triage/convert',
+			{ replace_personas: [{ id: 'uuid-2', version: 3 }] },
+		);
+		expect(result).toEqual(response);
+		expect(requestCache.has('shared-skills')).toBe(false);
+		expect(requestCache.has('personas-uuid-1-shared-skills')).toBe(false);
+		expect(requestCache.has('personas-uuid-3-shared-skills')).toBe(false);
+		expect(requestCache.has('personas-uuid-1-skills')).toBe(false);
+		expect(requestCache.has('personas-uuid-2-skills')).toBe(false);
+		expect(requestCache.has('personas-uuid-3-skills')).toBe(true);
+		expect(requestCache.has('ws-5-persona-grants')).toBe(false);
+	});
+
+	it('keeps caches when the server rejects the conversion', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [] } });
+		await listSharedSkills();
+		(axios.post as jest.Mock).mockRejectedValue(new Error('409'));
+		await expect(
+			convertSkillToShared('uuid-1', 'triage', []),
+		).rejects.toThrow();
+		expect(requestCache.has('shared-skills')).toBe(true);
 	});
 });
