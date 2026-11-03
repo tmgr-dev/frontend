@@ -197,7 +197,10 @@ pub fn repo_config_is_plain(dir: &Path) -> bool {
     if !out.status.success() {
         return false;
     }
-    let git_dir = String::from_utf8_lossy(&out.stdout).trim_end().to_string();
+    let Ok(git_dir) = std::str::from_utf8(&out.stdout) else {
+        return false;
+    };
+    let git_dir = git_dir.strip_suffix('\n').unwrap_or(git_dir);
     let mut list = fixed_git_command();
     list.args([
         "config",
@@ -211,11 +214,16 @@ pub fn repo_config_is_plain(dir: &Path) -> bool {
     let Ok(out) = output_within(&mut list, GIT_TIMEOUT) else {
         return false;
     };
-    out.status.success()
-        && String::from_utf8_lossy(&out.stdout)
-            .split('\0')
-            .filter(|name| !name.is_empty())
-            .all(plain_config_key)
+    if !out.status.success() {
+        return false;
+    }
+    let Ok(names) = std::str::from_utf8(&out.stdout) else {
+        return false;
+    };
+    names
+        .split('\0')
+        .filter(|name| !name.is_empty())
+        .all(plain_config_key)
 }
 
 pub fn git_bytes(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<Vec<u8>> {
@@ -1062,6 +1070,18 @@ mod tests {
         git(Some(&repo), &["config", "unknown.setting", "1"]).unwrap();
         assert!(!repo_config_is_plain(&repo));
         assert!(!repo_config_is_plain(&repo.join("missing")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_repository_path_that_is_not_utf8_is_never_plain() {
+        use std::os::unix::ffi::OsStrExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join(std::ffi::OsStr::from_bytes(b"repo\xff"));
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        assert!(!repo_config_is_plain(&repo));
     }
 
     #[test]
