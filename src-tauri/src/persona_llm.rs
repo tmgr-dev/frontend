@@ -551,12 +551,13 @@ impl StreamRedactor {
         let mut out = Vec::new();
         let first = !self.args.contains_key(&index);
         let (last_id, carry) = self.args.entry(index).or_default();
-        if id.is_some() && *last_id != id {
+        // Mirrors llmClient.ts: only a different id after a known one starts a new call; a first id keeps the carry.
+        if id.is_some() && last_id.is_some() && *last_id != id && !carry.is_empty() {
           // An id-less event appends to the call already open at this index, so the old tail lands there.
-          if !carry.is_empty() {
-            let tail = self.keys.replace(&std::mem::take(carry));
-            out.push(ChatEvent::ToolCall { index, id: None, name: None, arguments: tail });
-          }
+          let tail = self.keys.replace(&std::mem::take(carry));
+          out.push(ChatEvent::ToolCall { index, id: None, name: None, arguments: tail });
+        }
+        if id.is_some() {
           *last_id = id.clone();
         }
         carry.push_str(&arguments);
@@ -2961,6 +2962,16 @@ mod tests {
     ];
     let out = redact_stream(Some(FAKE), events.clone());
     assert_eq!(assemble_like_ts(&out), assemble_like_ts(&events));
+  }
+
+  #[test]
+  fn a_late_first_id_keeps_the_key_carry_of_the_same_call() {
+    let out = redact_stream(
+      Some(FAKE),
+      vec![args(0, None, "{\"k\":\"sk-test-FA"), args(0, Some("c1"), "KEKEY123\"}"), ChatEvent::Done],
+    );
+    let calls = assemble_like_ts(&out);
+    assert_eq!(calls, vec![("c1".into(), "{\"k\":\"[redacted]\"}".into())]);
   }
 
   #[test]
