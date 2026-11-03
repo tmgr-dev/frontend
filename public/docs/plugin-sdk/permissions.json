@@ -1,5 +1,5 @@
 {
-  "apiVersion": "1.11",
+  "apiVersion": "1.12",
   "groups": {
     "Reads your data": [
       "tasks:read",

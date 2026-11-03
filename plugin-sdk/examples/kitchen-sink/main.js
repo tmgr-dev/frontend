@@ -549,6 +549,51 @@ const kitchenSinkFeedsDemo = () => ({
 	],
 });
 
+const kitchenSinkChartsDemo = () => ({
+	type: 'stack',
+	direction: 'column',
+	gap: 'md',
+	children: [
+		{ type: 'heading', text: 'Charts demo (API 1.12)', level: 2 },
+		{
+			type: 'chart',
+			kind: 'bar',
+			label: 'Impressions and spend over 14 days',
+			labels: Array.from({ length: 14 }, (_, i) =>
+				new Date(Date.UTC(2026, 9, 1 + i)).toISOString().slice(0, 10),
+			),
+			series: [
+				{
+					name: 'Impressions',
+					color: 'blue',
+					values: [
+						820, 910, 760, 1040, 1180, 990, 640, 700, 1210, 1350, 1280, 1100,
+						870, 930,
+					],
+				},
+				{
+					name: 'Spend',
+					color: 'orange',
+					values: [
+						120, 140, 110, 160, 190, 150, 90, 100, 200, 230, 210, 170, 130, 145,
+					],
+				},
+			],
+		},
+		{
+			type: 'chart',
+			kind: 'line',
+			height: 160,
+			label: 'Daily signups with a gap on day 5',
+			labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+			series: [
+				{ name: 'Signups', color: 'green', values: [4, 7, 5, 9, null, 8, 12] },
+				{ name: 'Trials', color: 'purple', values: [2, 3, 3, 5, 4, null, 6] },
+			],
+		},
+	],
+});
+
 const kitchenSinkControlsDemo = () => ({
 	type: 'stack',
 	direction: 'column',
@@ -819,6 +864,7 @@ tmgr.ui.providePage('view', async (props) => ({
 		kitchenSinkTextDemo(),
 		kitchenSinkControlsDemo(),
 		kitchenSinkFeedsDemo(),
+		kitchenSinkChartsDemo(),
 	],
 }));
 

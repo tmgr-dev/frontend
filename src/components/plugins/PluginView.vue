@@ -596,6 +596,7 @@
 			vector-effect="non-scaling-stroke"
 		/>
 	</svg>
+	<PluginChart v-else-if="node.type === 'chart'" :node="node" />
 	<div
 		v-else-if="node.type === 'empty'"
 		class="flex flex-col items-center gap-1 rounded-md border border-dashed border-border px-4 py-6 text-center"
@@ -787,6 +788,7 @@
 		watch,
 		type PropType,
 	} from 'vue';
+	import PluginChart from './PluginChart.vue';
 	import PluginMarkdown from './PluginMarkdown.vue';
 	import {
 		COLUMN_ALIGN_CLASS,
@@ -884,6 +886,7 @@
 	export default defineComponent({
 		name: 'PluginView',
 		components: {
+			PluginChart,
 			AlertDialog,
 			AlertDialogAction,
 			AlertDialogCancel,

@@ -133,7 +133,7 @@ it.each([
 	[{ version: '1.0' }, 'version'],
 	[{ permissions: ['tasks:read', 'shell:exec'] }, 'shell:exec'],
 	[{ engines: { tmgr: '^2.0' } }, 'engines'],
-	[{ engines: { tmgr: '^1.12' } }, 'engines'],
+	[{ engines: { tmgr: '^1.13' } }, 'engines'],
 	[
 		{ permissions: ['menus:task'], engines: { tmgr: '^1.5' } },
 		'menus:task needs engines.tmgr ^1.6',
@@ -182,7 +182,7 @@ it.each([
 	expect(() => parseManifest({ ...valid, ...patch })).toThrow(message);
 });
 
-it('accepts plugins written for 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10 and 1.11', () => {
+it('accepts plugins written for 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11 and 1.12', () => {
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.0' } }).id).toBe(
 		valid.id,
 	);
@@ -216,7 +216,7 @@ it('accepts plugins written for 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.10' } }).id).toBe(
 		valid.id,
 	);
-	expect(parseManifest({ ...valid, engines: { tmgr: '^1.11' } }).id).toBe(
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.12' } }).id).toBe(
 		valid.id,
 	);
 });

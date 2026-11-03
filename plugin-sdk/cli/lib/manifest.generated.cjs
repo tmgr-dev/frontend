@@ -5,7 +5,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseManifest = exports.LOCAL_ID = exports.PLUGIN_ID = exports.TASK_MENU_MAX_ITEMS = exports.TASK_MENU_LOCATION = exports.PERMISSION_GROUPS = exports.PERMISSIONS = exports.PLUGIN_API_VERSION = void 0;
-exports.PLUGIN_API_VERSION = '1.11';
+exports.PLUGIN_API_VERSION = '1.12';
 exports.PERMISSIONS = [
     'tasks:read',
     'tasks:write',

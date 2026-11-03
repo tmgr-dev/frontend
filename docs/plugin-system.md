@@ -218,6 +218,30 @@ Rules for both:
 - Controls inside a clickable table row or card do not trigger the row or card command.
 - Each text area and date picker counts as one node toward the 3000 node limit.
 
+## Charts (API 1.12)
+
+Set `"engines": { "tmgr": "^1.12" }`. Older versions drop the node. Type: `TmgrNode` in
+`plugin-sdk/template/tmgr.d.ts`.
+
+- `{ type: 'chart', kind?, labels?, series, height?, label? }` draws a bar or line chart with axes, gridlines,
+  a legend (with more than one series) and a tooltip on hover or with the arrow keys.
+- `kind` is `'bar'` (default, series are grouped side by side) or `'line'`.
+- `labels` are the x-axis texts: up to 365, numbers are turned into text, each is cut to 64 characters. Anything
+  else (not a string or a finite number) becomes an empty label. Without labels the points are numbered `1`, `2`,
+  and so on.
+- `series` has 1 to 8 entries `{ name, values, color? }`. `name` is required (at most 64 characters); a series with a blank name is dropped. `color` is
+  a badge color name; the default depends on the position. `values` holds up to 365 entries; each is a finite
+  number with an absolute value of at most 1e15, or `null`. Anything else (including larger numbers) becomes
+  `null`, and `null` is a gap (a missing bar, a break in the line).
+  With `labels`, `values` is padded with `null` or cut to the number of labels.
+- `height` is 120 to 400 pixels (default 200). `label` (at most 200 characters) is the text screen readers
+  read; without it a summary is generated.
+- The chart fills the width of its container. Clicking it sends nothing to your plugin.
+
+A chart counts as one node, and every label you give, every series and every value you give counts toward the
+3000 node limit (generated numbers and `null` padding are free). A chart with no series or no points is dropped,
+and so is a chart that does not fit in the remaining node budget (it is never drawn cut short).
+
 ## Task menu items (API 1.6)
 
 A plugin can add items to the task "…" menu. Types: `TaskMenuCommandArgs` in `plugin-sdk/template/tmgr.d.ts`.
@@ -431,3 +455,14 @@ To use the text area and date nodes:
 2. Use `textarea` and `date` nodes. Handle `args.value` being `null` for a cleared date.
 3. Update `tmgr.d.ts` from the SDK template.
 4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.
+
+## Migrating from 1.11 to 1.12
+
+Nothing changes for existing plugins: `^1.0` to `^1.11` keep working.
+
+To use charts:
+
+1. Set `"engines": { "tmgr": "^1.12" }`.
+2. Use the `chart` node.
+3. Update `tmgr.d.ts` from the SDK template.
+4. Copy `plugin-sdk/testing` again so the test host knows the new node.

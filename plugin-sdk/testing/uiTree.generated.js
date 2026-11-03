@@ -2,7 +2,7 @@
 // Do not edit by hand: run `node plugin-sdk/testing/sync-prelude.mjs` from the app repo.
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sanitizeTree = exports.calendarDate = exports.cutCodePoints = exports.clampDebounce = exports.isLinkAllowed = exports.NO_LINKS = exports.DEBOUNCE_DEFAULT = exports.DEBOUNCE_MAX = exports.DEBOUNCE_MIN = exports.MAX_TEXTAREA_VALUE = exports.MAX_INPUT_VALUE = exports.COLORS = exports.ICON_NAMES = void 0;
+exports.sanitizeTree = exports.calendarDate = exports.cutCodePoints = exports.clampDebounce = exports.isLinkAllowed = exports.NO_LINKS = exports.CHART_SERIES_COLORS = exports.CHART_DEFAULT_HEIGHT = exports.CHART_MAX_HEIGHT = exports.CHART_MIN_HEIGHT = exports.DEBOUNCE_DEFAULT = exports.DEBOUNCE_MAX = exports.DEBOUNCE_MIN = exports.MAX_TEXTAREA_VALUE = exports.MAX_INPUT_VALUE = exports.COLORS = exports.ICON_NAMES = void 0;
 const marked_1 = require("marked");
 const manifest_1 = require("./manifest.generated.js");
 exports.ICON_NAMES = [
@@ -104,6 +104,22 @@ const MAX_SEGMENTED = 4;
 const MAX_FEED_ITEMS = 200;
 const MAX_AUTHOR = 64;
 const MAX_SPARKLINE_VALUES = 365;
+const MAX_CHART_POINTS = 365;
+const MAX_CHART_SERIES = 8;
+const MAX_CHART_TEXT = 64;
+const MAX_CHART_VALUE = 1e15;
+exports.CHART_MIN_HEIGHT = 120;
+exports.CHART_MAX_HEIGHT = 400;
+exports.CHART_DEFAULT_HEIGHT = 200;
+exports.CHART_SERIES_COLORS = [
+    'blue',
+    'orange',
+    'green',
+    'purple',
+    'red',
+    'yellow',
+    'gray',
+];
 const MAX_ROW_EXPAND = 50;
 const MAX_SORT_TEXT = 200;
 const MAX_SKELETON_LINES = 12;
@@ -868,6 +884,81 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                     type: 'sparkline',
                     values,
                     color: pick(value.color, exports.COLORS, 'blue'),
+                    ...(label !== undefined ? { label } : {}),
+                };
+            }
+            case 'chart': {
+                if (apiMinor < 12)
+                    return null;
+                let cut = false;
+                const labels = [];
+                for (const raw of Array.isArray(value.labels) ? value.labels : []) {
+                    if (labels.length >= MAX_CHART_POINTS)
+                        break;
+                    if (budget-- <= 0) {
+                        cut = true;
+                        break;
+                    }
+                    labels.push(typeof raw === 'string'
+                        ? raw.slice(0, MAX_CHART_TEXT)
+                        : typeof raw === 'number' && Number.isFinite(raw)
+                            ? String(raw).slice(0, MAX_CHART_TEXT)
+                            : '');
+                }
+                const series = [];
+                for (const entry of Array.isArray(value.series) ? value.series : []) {
+                    if (series.length >= MAX_CHART_SERIES)
+                        break;
+                    const name = shortText(entry?.name, MAX_CHART_TEXT);
+                    if (name === undefined)
+                        continue;
+                    if (budget-- <= 0) {
+                        cut = true;
+                        break;
+                    }
+                    const limit = labels.length > 0 ? labels.length : MAX_CHART_POINTS;
+                    const values = [];
+                    for (const v of Array.isArray(entry.values) ? entry.values : []) {
+                        if (values.length >= limit)
+                            break;
+                        if (budget-- <= 0) {
+                            cut = true;
+                            break;
+                        }
+                        values.push(typeof v === 'number' && Math.abs(v) <= MAX_CHART_VALUE
+                            ? v
+                            : null);
+                    }
+                    series.push({
+                        name,
+                        values,
+                        color: pick(entry.color, exports.COLORS, exports.CHART_SERIES_COLORS[series.length % exports.CHART_SERIES_COLORS.length]),
+                    });
+                }
+                if (cut)
+                    return null;
+                const count = labels.length > 0
+                    ? labels.length
+                    : Math.max(0, ...series.map((s) => s.values.length));
+                if (series.length === 0 || count === 0)
+                    return null;
+                for (const s of series) {
+                    while (s.values.length < count)
+                        s.values.push(null);
+                }
+                const names = labels.length > 0
+                    ? labels
+                    : Array.from({ length: count }, (_, i) => String(i + 1));
+                const height = typeof value.height === 'number' && Number.isFinite(value.height)
+                    ? Math.min(exports.CHART_MAX_HEIGHT, Math.max(exports.CHART_MIN_HEIGHT, Math.round(value.height)))
+                    : exports.CHART_DEFAULT_HEIGHT;
+                const label = shortText(value.label, MAX_LABEL_LENGTH);
+                return {
+                    type: 'chart',
+                    kind: value.kind === 'line' ? 'line' : 'bar',
+                    labels: names,
+                    series,
+                    height,
                     ...(label !== undefined ? { label } : {}),
                 };
             }

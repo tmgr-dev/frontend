@@ -297,6 +297,16 @@ it('the "Kitchen Sink view" page renders the API 1.11 textarea and date and they
 	host.dispose();
 });
 
+it('the "Kitchen Sink view" page renders the API 1.12 charts', async () => {
+	const host = await startHost();
+	const json = JSON.stringify(await host.renderPage('view', null));
+	expect(json).toContain('"type":"chart"');
+	expect(json).toContain('"kind":"bar"');
+	expect(json).toContain('"kind":"line"');
+	expect(json).toContain('null');
+	host.dispose();
+});
+
 it('offers two task menu items and both work on a task (API 1.6)', async () => {
 	const host = await startHost();
 	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);

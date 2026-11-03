@@ -2048,3 +2048,189 @@ describe('textarea and date (API 1.11)', () => {
 		expect(JSON.stringify(t11(nested))).not.toContain('"date"');
 	});
 });
+
+describe('chart node (API 1.12)', () => {
+	const t12 = (value: unknown, minor = 12) =>
+		sanitizeTree(value, NO_LINKS, minor) as any;
+	const chart = (extra: object = {}) => ({
+		type: 'chart',
+		labels: ['a', 'b', 'c'],
+		series: [{ name: 'S', values: [1, 2, 3] }],
+		...extra,
+	});
+
+	it('is dropped before minor 12', () => {
+		expect(t12(chart(), 11)).toBeNull();
+		expect(t12(chart(), 10)).toBeNull();
+		expect(t12(chart())).not.toBeNull();
+	});
+
+	it('applies defaults', () => {
+		expect(t12(chart())).toEqual({
+			type: 'chart',
+			kind: 'bar',
+			labels: ['a', 'b', 'c'],
+			series: [{ name: 'S', values: [1, 2, 3], color: 'blue' }],
+			height: 200,
+		});
+		expect(t12(chart({ kind: 'pie' })).kind).toBe('bar');
+		expect(t12(chart({ kind: 'line' })).kind).toBe('line');
+	});
+
+	it('picks default colors per series and keeps valid ones', () => {
+		const out = t12(
+			chart({
+				series: [
+					{ name: 'A', values: [1] },
+					{ name: 'B', values: [1], color: 'red' },
+					{ name: 'C', values: [1], color: 'neon' },
+				],
+			}),
+		);
+		expect(out.series.map((s: any) => s.color)).toEqual([
+			'blue',
+			'red',
+			'green',
+		]);
+	});
+
+	it('stringifies and caps labels', () => {
+		const out = t12(
+			chart({
+				labels: [1.5, 'x'.repeat(100), null, {}, ...Array(400).fill('l')],
+				series: [{ name: 'S', values: [1] }],
+			}),
+		);
+		expect(out.labels).toHaveLength(365);
+		expect(out.labels.slice(0, 4)).toEqual(['1.5', 'x'.repeat(64), '', '']);
+	});
+
+	it('turns bad values into gaps, pads and cuts to the labels', () => {
+		const out = t12(
+			chart({
+				series: [
+					{ name: 'A', values: [1, NaN, 'x', Infinity, 5] },
+					{ name: 'B', values: [1] },
+				],
+			}),
+		);
+		expect(out.series[0].values).toEqual([1, null, null]);
+		expect(out.series[1].values).toEqual([1, null, null]);
+	});
+
+	it('numbers the labels when none are given', () => {
+		const out = t12({
+			type: 'chart',
+			series: [
+				{ name: 'A', values: [1, 2] },
+				{ name: 'B', values: [1, 2, 3, 4] },
+			],
+		});
+		expect(out.labels).toEqual(['1', '2', '3', '4']);
+		expect(out.series[0].values).toEqual([1, 2, null, null]);
+	});
+
+	it('limits series to 8 and requires a name', () => {
+		const out = t12(
+			chart({
+				series: [
+					{ values: [1] },
+					{ name: '  ', values: [1] },
+					'x',
+					...Array.from({ length: 12 }, (_, i) => ({
+						name: `${i}`.repeat(100),
+						values: [1],
+					})),
+				],
+			}),
+		);
+		expect(out.series).toHaveLength(8);
+		expect(out.series[0].name).toHaveLength(64);
+	});
+
+	it('drops the node without series or points', () => {
+		expect(t12(chart({ series: [] }))).toBeNull();
+		expect(t12(chart({ series: [{ values: [1] }] }))).toBeNull();
+		expect(
+			t12({ type: 'chart', series: [{ name: 'A', values: [] }] }),
+		).toBeNull();
+		expect(
+			t12(chart({ labels: [], series: [{ name: 'A', values: [] }] })),
+		).toBeNull();
+	});
+
+	it('clamps the height and the label', () => {
+		expect(t12(chart({ height: 10 })).height).toBe(120);
+		expect(t12(chart({ height: 9000 })).height).toBe(400);
+		expect(t12(chart({ height: 'tall' })).height).toBe(200);
+		expect(t12(chart({ label: 'l'.repeat(500) })).label).toHaveLength(200);
+	});
+
+	it('turns values beyond 1e15 into gaps', () => {
+		const out = t12(
+			chart({
+				labels: ['a', 'b', 'c', 'd'],
+				series: [{ name: 'S', values: [1e15, 1.1e15, -1e308, -1e15] }],
+			}),
+		);
+		expect(out.series[0].values).toEqual([1e15, null, null, -1e15]);
+	});
+
+	it('drops a chart cut short by the node budget', () => {
+		const big = () =>
+			chart({
+				labels: Array(100).fill('l'),
+				series: Array.from({ length: 8 }, (_, i) => ({
+					name: `s${i}`,
+					values: Array(100).fill(1),
+				})),
+			});
+		const out = t12({
+			type: 'stack',
+			children: Array.from({ length: 4 }, big),
+		});
+		expect(out.children.length).toBe(3);
+		for (const c of out.children) {
+			expect(c.series.every((s: any) => !s.values.includes(null))).toBe(true);
+		}
+		const alone = t12({
+			type: 'stack',
+			children: [
+				{ type: 'text', text: 'x' },
+				...Array.from({ length: 2990 }, () => ({ type: 'divider' })),
+				chart(),
+			],
+		});
+		expect(alone.children.some((n: any) => n.type === 'chart')).toBe(false);
+	});
+
+	it('spends the shared budget on labels, series and values', () => {
+		const big = () =>
+			chart({
+				labels: Array(365).fill('l'),
+				series: Array.from({ length: 8 }, (_, i) => ({
+					name: `s${i}`,
+					values: Array(365).fill(1),
+				})),
+			});
+		const out = t12({
+			type: 'stack',
+			children: Array.from({ length: 3 }, big),
+		});
+		const used = out.children.reduce(
+			(sum: number, c: any) =>
+				sum +
+				1 +
+				c.labels.length +
+				c.series.length +
+				c.series.reduce(
+					(n: number, s: any) =>
+						n + s.values.filter((v: unknown) => v !== null).length,
+					0,
+				),
+			0,
+		);
+		expect(used).toBeLessThanOrEqual(3000);
+		expect(out.children.length).toBeLessThan(3);
+	});
+});

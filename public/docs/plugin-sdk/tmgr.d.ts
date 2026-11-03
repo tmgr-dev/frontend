@@ -534,6 +534,19 @@ type TmgrNode =
 	  }
 	/** API 1.10. A small line chart of up to 365 finite numbers. `label` is read out by screen readers. */
 	| { type: 'sparkline'; values: number[]; color?: TmgrColor; label?: string }
+	/** API 1.12. A bar or line chart. Up to 365 labels, 8 series and 365 values per series; `null` is a gap, as is any value beyond 1e15 in absolute size. Series with a blank name are dropped. `height` is 120 to 400 px (default 200). `label` is read out by screen readers. */
+	| {
+			type: 'chart';
+			kind?: 'bar' | 'line';
+			labels?: Array<string | number>;
+			series: Array<{
+				name: string;
+				values: Array<number | null>;
+				color?: TmgrColor;
+			}>;
+			height?: number;
+			label?: string;
+	  }
 	/** API 1.10. A placeholder for "nothing here". */
 	| { type: 'empty'; title: string; text?: string; icon?: TmgrIconName }
 	/** API 1.10. A loading placeholder. `lines` is 1 to 12 (default 3). */

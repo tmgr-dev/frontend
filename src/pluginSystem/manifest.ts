@@ -1,4 +1,4 @@
-export const PLUGIN_API_VERSION = '1.11';
+export const PLUGIN_API_VERSION = '1.12';
 
 export const PERMISSIONS = [
 	'tasks:read',
