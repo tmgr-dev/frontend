@@ -282,12 +282,16 @@
 			node.type === 'checkbox'
 		"
 		data-testid="plugin-control"
-		class="flex w-fit max-w-full min-w-0 flex-col gap-0.5"
+		:class="[
+			'flex min-w-0 flex-col gap-0.5',
+			node.type === 'input' ? 'w-full max-w-sm' : 'w-fit max-w-full',
+		]"
 	>
 		<Input
 			v-if="node.type === 'input'"
 			:model-value="inputText"
 			v-bind="pluginInputTextAttrs"
+			:aria-describedby="markerId"
 			:placeholder="node.placeholder"
 			:maxlength="500"
 			class="h-8 w-full max-w-sm text-xs"
@@ -300,6 +304,7 @@
 			v-else-if="node.type === 'select'"
 			:value="node.value ?? ''"
 			v-bind="pluginControlAttrs"
+			:aria-describedby="markerId"
 			class="h-8 w-fit max-w-full rounded-md border border-input bg-background px-2 text-xs text-foreground"
 			@change="onSelectChange"
 		>
@@ -321,6 +326,7 @@
 			<input
 				type="checkbox"
 				v-bind="pluginControlAttrs"
+				:aria-describedby="markerId"
 				:checked="node.checked"
 				class="h-4 w-4 rounded border-input accent-primary"
 				@change="onCheckboxChange"
@@ -328,6 +334,7 @@
 			<span>{{ node.label }}</span>
 		</label>
 		<span
+			:id="markerId"
 			data-testid="plugin-control-marker"
 			class="max-w-full truncate rounded-sm bg-muted px-1 text-2xs text-muted-foreground dark:bg-muted/60"
 		>
@@ -739,6 +746,7 @@
 		nextTick,
 		onBeforeUnmount,
 		ref,
+		useId,
 		watch,
 		type PropType,
 	} from 'vue';
@@ -1188,6 +1196,7 @@
 				dueTimeClass,
 				pluginName,
 				controlLabel: computed(() => pluginControlLabel(pluginName.value)),
+				markerId: useId(),
 				pluginControlAttrs,
 				pluginInputTextAttrs,
 				toneClass: (tone: Tone) => TONES[tone],

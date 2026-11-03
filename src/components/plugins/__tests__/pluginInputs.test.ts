@@ -179,6 +179,7 @@ describe('plugin control marker and autofill guards', () => {
 		expect(source).toContain('data-testid="plugin-control-marker"');
 		expect(source).toContain('v-bind="pluginInputTextAttrs"');
 		expect(source.match(/v-bind="pluginControlAttrs"/g)).toHaveLength(2);
-		expect(source).not.toMatch(/<(input|select)[^>]*\s(name|id)=/);
+		expect(source).not.toMatch(/<(input|select)[^>]*\s:?(name|id)=/i);
+		expect(source.match(/:aria-describedby="markerId"/g)).toHaveLength(3);
 	});
 });
