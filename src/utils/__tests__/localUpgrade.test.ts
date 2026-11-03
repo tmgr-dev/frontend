@@ -40,8 +40,12 @@ const makeStore = (userId?: number) => {
 		store.state.token = token;
 		listeners.forEach((fn) => fn({ type: 'setToken', payload: token }));
 	};
+	const setUser = (id: number) => {
+		store.state.user = { id };
+		listeners.forEach((fn) => fn({ type: 'setUser', payload: { id } }));
+	};
 	const signOut = () => setToken(null);
-	return { store, signIn, signOut, setToken };
+	return { store, signIn, signOut, setToken, setUser };
 };
 
 const flush = async () => {
@@ -676,4 +680,125 @@ test('a token swap during local_profile_link stops the old attempt before any mi
 	expect(commandsOf(invoke)).toEqual(['local_profile_link']);
 	expect(readUpgradeMarker(storage)?.migrate).toBe(true);
 	expect(upgradeState).toMatchObject({ phase: 'idle', key: null });
+});
+
+describe.each([['local_profile_link'], ['persona_cache_migrate_local']])(
+	'a token refresh for the same user during %s',
+	(during) => {
+		const run = () => {
+			const storage = memoryStorage();
+			markLocalUpgrade(storage);
+			const { store, setToken, setUser } = makeStore(7);
+			let refreshed = false;
+			const refresh = () => {
+				if (refreshed) return;
+				refreshed = true;
+				setToken('token-refreshed');
+			};
+			const invoke = makeInvoke({
+				local_profile_link: (a) => {
+					const profile = linkedTo(7)(a);
+					if (during === 'local_profile_link') refresh();
+					return profile;
+				},
+				persona_cache_migrate_local: () => {
+					if (during === 'persona_cache_migrate_local') refresh();
+					return { moved: 1, conflicts: 0 };
+				},
+				persona_llm_migrate_local: () => ({ status: 'moved' }),
+			});
+			installLocalUpgrade(store, invoke, storage);
+			return { storage, setUser, invoke };
+		};
+
+		it('stops quietly and keeps the marker', async () => {
+			const { storage, invoke } = run();
+			await flush();
+			expect(invoke).not.toHaveBeenCalledWith(
+				'persona_llm_migrate_local',
+				expect.anything(),
+			);
+			expect(readUpgradeMarker(storage)?.migrate).toBe(true);
+			expect(upgradeState).toMatchObject({
+				phase: 'idle',
+				key: null,
+				failed: null,
+			});
+		});
+
+		it('the next setUser for the same user finishes it', async () => {
+			const { storage, setUser, invoke } = run();
+			await flush();
+			invoke.mockClear();
+			setUser(7);
+			await flush();
+			expect(migrateIdsOf(invoke)).toEqual([7, 7]);
+			expect(readUpgradeMarker(storage)?.migrate).toBe(false);
+			expect(upgradeState).toMatchObject({ phase: 'done', key: 'moved' });
+		});
+
+		it('the next app start finishes it', async () => {
+			const { storage } = run();
+			await flush();
+			const next = makeStore();
+			next.store.state.token = 'token-refreshed';
+			const invoke = makeInvoke({
+				local_profile_link: linkedTo(7),
+				persona_cache_migrate_local: () => ({ moved: 0, conflicts: 0 }),
+				persona_llm_migrate_local: () => ({ status: 'moved' }),
+			});
+			installLocalUpgrade(next.store, invoke, storage);
+			await flush();
+			expect(invoke).not.toHaveBeenCalled();
+			next.setUser(7);
+			await flush();
+			expect(migrateIdsOf(invoke)).toEqual([7, 7]);
+			expect(readUpgradeMarker(storage)?.migrate).toBe(false);
+		});
+	},
+);
+
+test('a token refresh during persona_llm_migrate_local settles without a key line', async () => {
+	const storage = memoryStorage();
+	markLocalUpgrade(storage);
+	const { store, setToken, setUser } = makeStore(7);
+	const invoke = makeInvoke({
+		local_profile_link: linkedTo(7),
+		persona_cache_migrate_local: () => ({ moved: 1, conflicts: 0 }),
+		persona_llm_migrate_local: () => {
+			setToken('token-refreshed');
+			return { status: 'moved' };
+		},
+	});
+	installLocalUpgrade(store, invoke, storage);
+	await flush();
+	expect(readUpgradeMarker(storage)?.migrate).toBe(false);
+	expect(upgradeState).toMatchObject({ phase: 'idle', key: null });
+	invoke.mockClear();
+	setUser(7);
+	await flush();
+	expect(invoke).not.toHaveBeenCalled();
+});
+
+test('boot: a refresh between setUser and the link call runs nothing until the next setUser', async () => {
+	const storage = memoryStorage();
+	markLocalUpgrade(storage);
+	const { store, setToken, setUser } = makeStore();
+	store.state.token = 'token';
+	const invoke = makeInvoke({
+		local_profile_link: linkedTo(7),
+		persona_cache_migrate_local: () => ({ moved: 1, conflicts: 0 }),
+		persona_llm_migrate_local: () => ({ status: 'moved' }),
+	});
+	installLocalUpgrade(store, invoke, storage);
+	await flush();
+	setUser(7);
+	setToken('token-refreshed');
+	await flush();
+	expect(invoke).not.toHaveBeenCalled();
+	expect(readUpgradeMarker(storage)?.migrate).toBe(true);
+	setUser(7);
+	await flush();
+	expect(migrateIdsOf(invoke)).toEqual([7, 7]);
+	expect(upgradeState).toMatchObject({ phase: 'done', key: 'moved' });
 });
