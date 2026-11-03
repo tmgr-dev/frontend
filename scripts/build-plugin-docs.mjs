@@ -2,7 +2,13 @@
 // Builds the public plugin docs agents read at https://tmgr.dev/docs/plugins.md from their sources:
 //   node scripts/build-plugin-docs.mjs          writes public/docs/plugins*
 //   node scripts/build-plugin-docs.mjs --check  fails if the served files are stale (run by a Jest test)
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,7 +36,10 @@ export const outputs = () => {
   return files;
 };
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (
+  process.argv[1] &&
+  realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+) {
   const check = process.argv.includes('--check');
   let stale = false;
   for (const [path, content] of Object.entries(outputs())) {

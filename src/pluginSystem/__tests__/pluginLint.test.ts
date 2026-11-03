@@ -140,6 +140,40 @@ describe('validate.mjs permission lint', () => {
 		]);
 	});
 
+	it('treats page tmgr.notify as the notifications permission', () => {
+		const result = lint(
+			{
+				...base,
+				permissions: [],
+				contributes: { views: [{ id: 'p', title: 'P', ui: 'ui/p.html' }] },
+			},
+			'',
+			{ 'p.html': "<script>tmgr.notify('hi')</script>" },
+		);
+		expect(result.warnings).toEqual([
+			'uses tmgr.notify but does not declare the "notifications" permission',
+		]);
+	});
+
+	it.each([
+		'const api = window.tmgr;',
+		'const { tasks } = tmgr\ntasks.list({});',
+		'run(tmgr);',
+		'const t = tmgr?.tasks;',
+	])('stays quiet about unused permissions for %s', (main) => {
+		const result = lint({ ...base, permissions: ['tasks:read'] }, main);
+		expect(result.warnings).toHaveLength(1);
+		expect(result.warnings[0]).toMatch(/cannot be checked statically/);
+	});
+
+	it('ignores commented-out calls and longer method names', () => {
+		const result = lint(
+			{ ...base, permissions: ['pages:read'] },
+			'// tmgr.tasks.list()\ntmgr.pageData.getMany(1, []);',
+		);
+		expect(result.warnings).toEqual([]);
+	});
+
 	it('exits 1 on warnings only with --strict', () => {
 		const dir = mkdtempSync(join(tmpdir(), 'tmgr-lint-'));
 		writeFileSync(

@@ -230,10 +230,12 @@
 						New in this version:
 						{{
 							[
-								...offer.changes.permissions.map((p) => permissionText([p])),
+								...(offer.changes.permissions.length
+									? [permissionText(offer.changes.permissions)]
+									: []),
 								...offer.changes.origins,
 								...offer.changes.domains,
-							].join(', ')
+							].join('; ')
 						}}
 					</p>
 					<p class="text-xs text-muted-foreground">
@@ -846,11 +848,11 @@
 								.map(([group, members]) => {
 									const used = members.filter((p) => permissions.includes(p));
 									return used.length
-										? `${group}: ${used.map((p) => PERMISSION_TEXT[p]).join(', ')}`
+										? `${group.toLowerCase()}: ${used.map((p) => PERMISSION_TEXT[p]).join(', ')}`
 										: '';
 								})
 								.filter(Boolean)
-								.join('. ')
+								.join('; ')
 						: 'nothing beyond its own storage',
 				statusLabel: (status: PluginStatus) =>
 					({

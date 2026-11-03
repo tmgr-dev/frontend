@@ -154,13 +154,19 @@ export const validate = (folder) => {
     .filter((view) => view.ui)
     .map((view) => readFileSync(join(folder, view.ui), 'utf8'))
     .join('\n');
-  const all = `${code}\n${pagesCode}`;
-  const callArgs = [...all.matchAll(/\bcall\(\s*['"`]([\w.]+)['"`]/g)].map(
-    (match) => `tmgr.${match[1]}`,
-  );
+  const stripped = code
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[\s;{}(,])\/\/[^\n]*/g, '$1');
+  const all = `${stripped}\n${pagesCode}`;
+  const callArgs = [
+    ...all.matchAll(/(?:\btmgr\.|(?<![\w.]))call\(\s*['"`]([\w.]+)['"`]/g),
+  ].map((match) => `tmgr.${match[1]}`);
 
   for (const [call, permission] of Object.entries(CALL_PERMISSIONS)) {
-    if (all.includes(call) || callArgs.includes(call)) {
+    if (
+      new RegExp(`${escapeRegExp(call)}(?!\\w)`).test(all) ||
+      callArgs.includes(call)
+    ) {
       need(
         permission,
         `uses ${call} but does not declare the "${permission}" permission`,
@@ -176,7 +182,16 @@ export const validate = (folder) => {
       );
     }
   }
-  if (/type\s*:\s*['"]link['"]/.test(all)) {
+  if (/\btmgr\.notify\(/.test(all)) {
+    need(
+      'notifications',
+      'uses tmgr.notify but does not declare the "notifications" permission',
+    );
+  }
+  if (
+    /['"]?type['"]?\s*:\s*['"]link['"]/.test(all) ||
+    manifest.links.allowedDomains.length
+  ) {
     need(
       'links:open',
       'seems to render a "link" node but does not declare the "links:open" permission',
@@ -206,9 +221,11 @@ export const validate = (folder) => {
   }
 
   const dynamic =
-    /\btmgr\s*\[|\b(?:const|let|var)\s+\w+\s*=\s*tmgr\s*[;,]|\}\s*=\s*tmgr\s*[;,]/.test(
-      all,
-    ) || /\bcall\(\s*[^'"`\s)]/.test(all);
+    /=\s*(?:window\.)?tmgr\b(?!\s*\.\s*\w+\s*\()/.test(all) ||
+    /\btmgr\s*(?:\[|\?\.)/.test(all) ||
+    /[(,]\s*(?:window\.)?tmgr\s*[,)]/.test(all) ||
+    /(?:\btmgr\.|(?<![\w.]))call\(\s*(?!['"`][\w.]+['"`])/.test(all) ||
+    /call\(\s*`[^`]*\$\{/.test(all);
   if (dynamic) {
     warnings.push(
       'calls tmgr through a variable or a computed name, so permissions cannot be checked statically; declared-but-unused permissions are not reported',

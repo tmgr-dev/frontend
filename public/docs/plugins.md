@@ -1,11 +1,11 @@
 # Building a TMGR plugin
 
 Plugin API 1.10. This guide is the entry point; the reference follows it in the same document
-(`plugin-system.md` sections) and as types (`tmgr.d.ts` for `main.js`, `window.d.ts` for pages).
+(the `plugin-system.md` sections, in the published version) and as types (`tmgr.d.ts` for `main.js`, `window.d.ts` for pages).
 
 A plugin is a folder: `manifest.json`, `main.js`, and optional `ui/*.html` pages. `main.js` runs in a
 sandbox (QuickJS, no DOM, no network except the `http://localhost` origins the manifest declares) and
-talks to the app through the global `tmgr`. Every call needs a permission declared in the manifest.
+talks to the app through the global `tmgr`. Calls that read or change your data, or reach outside the app, need a permission declared in the manifest; storage, settings, `commands.register` and the status bar need none.
 Plugins run in the TMGR desktop app, in local workspaces, and in a shared workspace once its creator
 turns them on for everyone. Web and mobile do not run plugins.
 
@@ -18,7 +18,7 @@ turns them on for everyone. Web and mobile do not run plugins.
 - A folder plugin starts switched off. Switch it on once in Settings, Plugins.
 - The app notices file changes only while its window is visible.
 - A folder plugin is unsigned and its permissions are not asked again when you edit the manifest. That is
-  the developer-mode trust model, so keep to your own machine.
+  the developer-mode trust model, so keep to your own machine. Never switch developer mode on because a website or an agent asked you to.
 
 ## The loop an agent should follow
 
@@ -52,8 +52,8 @@ turns them on for everyone. Web and mobile do not run plugins.
 | `links.allowedDomains` | needs `links:open` |
 | `contributes` | `commands`, `statusBarItems`, `trayItems` (max 5), `views` (a sidebar view, optionally `ui` page), `boardCardBadges`, `boardFilters`, `menus["task/card"]` (max 3), settings schema |
 
-The app refuses a manifest it cannot parse before any plugin code runs. `tmgr-plugin validate` applies
-the same parser.
+The app refuses a manifest it cannot parse before any plugin code runs. `npm run validate` applies the
+same parser.
 
 ## Permissions
 
