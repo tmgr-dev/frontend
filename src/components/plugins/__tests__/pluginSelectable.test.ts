@@ -7,7 +7,7 @@ const read = (...parts: string[]) =>
 describe('plugin content is selectable in the desktop app', () => {
 	it('marks the plugin page content', () => {
 		expect(read('pages', 'PluginPage.vue')).toMatch(
-			/<div v-else-if="tree" data-selectable>\s*<PluginView/,
+			/<div[^>]*data-selectable[^>]*>\s*<PluginView/,
 		);
 	});
 
@@ -17,10 +17,15 @@ describe('plugin content is selectable in the desktop app', () => {
 		);
 	});
 
+	it('does not run row or card commands after selecting text', () => {
+		const view = read('components', 'plugins', 'PluginView.vue');
+		expect(view.match(/hasTextSelection\(\)/g)).toHaveLength(2);
+	});
+
 	it('keeps buttons, tabs, segmented options and icons non-selectable', () => {
 		const css = read('assets', 'styles', '_extensions.scss');
 		expect(css).toMatch(
-			/\[data-selectable\]\s*:is\(button, \[role='button'\], \[role='tab'\], \[role='radio'\], svg\)\s*\{[^}]*user-select: none/,
+			/\[data-selectable\]\s*:is\(button, \[role='button'\], \[role='tab'\], \[role='radio'\], label, svg\)\s*\*\s*\{[^}]*user-select: none/,
 		);
 	});
 });

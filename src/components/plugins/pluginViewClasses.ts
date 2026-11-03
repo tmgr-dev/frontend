@@ -218,3 +218,6 @@ export const isNestedInteractive = (
 	}
 	return false;
 };
+
+export const hasTextSelection = (): boolean =>
+	(globalThis.getSelection?.()?.toString() ?? '') !== '';

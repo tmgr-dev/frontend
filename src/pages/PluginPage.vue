@@ -38,7 +38,7 @@
 		<p v-else-if="error" class="text-sm text-red-600 dark:text-red-400">
 			{{ error }}
 		</p>
-		<div v-else-if="tree" data-selectable>
+		<div v-else-if="tree" data-selectable class="flex min-w-0 flex-1 flex-col">
 			<PluginView
 				:key="`${pluginId}/${viewId}`"
 				:node="tree"

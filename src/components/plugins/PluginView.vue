@@ -782,6 +782,7 @@
 		cardOuterClasses,
 		gridInnerClasses,
 		gridTemplateStyle,
+		hasTextSelection,
 		isNestedInteractive,
 		segmentedArgs,
 		stackClasses,
@@ -1032,7 +1033,7 @@
 				event: MouseEvent,
 				row: { onClick?: { command: string; args?: unknown } },
 			) => {
-				if (!row.onClick) return;
+				if (!row.onClick || hasTextSelection()) return;
 				if (
 					isNestedInteractive(
 						event.target as Element | null,
@@ -1064,6 +1065,7 @@
 			};
 			const handleCardClick = (event: MouseEvent) => {
 				if (props.node.type !== 'card' || !props.node.onClick) return;
+				if (hasTextSelection()) return;
 				if (
 					isNestedInteractive(
 						event.target as Element | null,

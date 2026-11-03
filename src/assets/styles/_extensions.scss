@@ -420,7 +420,11 @@ html.tauri-desktop
 
 html.tauri-desktop
 	[data-selectable]
-	:is(button, [role='button'], [role='tab'], [role='radio'], svg) {
+	:is(button, [role='button'], [role='tab'], [role='radio'], label, svg),
+html.tauri-desktop
+	[data-selectable]
+	:is(button, [role='button'], [role='tab'], [role='radio'], label, svg)
+	* {
 	-webkit-user-select: none;
 	user-select: none;
 }
