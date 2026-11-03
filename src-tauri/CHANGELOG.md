@@ -8,6 +8,10 @@ workflow copies that section into the GitHub release and the in-app update notes
 - Asking a persona: closing or reloading a separate task window now stops a running question. Before, it kept running in the background and using AI tokens.
 - Correction to 0.9.83: "closing the task window stops the question" held only for the task window inside the app, not for a separate task window or a reload.
 
+## 0.9.86 — 2026-11-03
+
+- Plugins (API 1.9): plugins can show a text or search field, a dropdown and a checkbox. A plugin receives only the value you enter into its own control, and only when you change it.
+
 ## 0.9.85 — 2026-11-03
 
 - Plugins (API 1.8): collapsible sections (with a title, or showing the first few items and an "N more" toggle), tabs and a segmented switch.

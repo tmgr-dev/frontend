@@ -1459,3 +1459,135 @@ describe('collapse, tabs, segmented, buttons and icons (API 1.8)', () => {
 		expect(rendered).toBeLessThanOrEqual(3000);
 	});
 });
+
+describe('input, select and checkbox (API 1.9)', () => {
+	const t9 = (value: unknown, minor = 9) =>
+		sanitizeTree(value, NO_LINKS, minor) as any;
+	const input = { type: 'input', name: 'q', command: 'p.go' };
+	const select = {
+		type: 'select',
+		name: 's',
+		command: 'p.go',
+		options: [{ value: 'a', text: 'A' }],
+	};
+	const checkbox = { type: 'checkbox', name: 'c', label: 'L', command: 'p.go' };
+
+	it.each([input, select, checkbox])(
+		'drops %j at 1.8 and keeps it at 1.9',
+		(node) => {
+			expect(t9(node, 8)).toBeNull();
+			expect(t9(node, 9)).not.toBeNull();
+		},
+	);
+
+	it.each([input, select, checkbox])(
+		'rejects bad names, missing commands and bad args for %j',
+		(node) => {
+			for (const name of ['', 'a b', 'x'.repeat(65), 'a<b', 5, undefined]) {
+				expect(t9({ ...node, name })).toBeNull();
+			}
+			expect(t9({ ...node, name: 'A_b.c-1' })).not.toBeNull();
+			expect(t9({ ...node, command: '' })).toBeNull();
+			expect(t9({ ...node, command: undefined })).toBeNull();
+			expect(t9({ ...node, args: { big: 'x'.repeat(9000) } })).toBeNull();
+			expect(t9({ ...node, args: { k: 1 } }).args).toEqual({ k: 1 });
+		},
+	);
+
+	it('does not pass the name or unknown fields to the node', () => {
+		const out = t9({
+			...input,
+			type: 'input',
+			inputType: 'password',
+			autocomplete: 'on',
+			id: 'x',
+			html: '<b>',
+		});
+		expect(Object.keys(out).sort()).toEqual([
+			'command',
+			'debounce',
+			'mode',
+			'name',
+			'type',
+			'value',
+		]);
+		expect(JSON.stringify(t9({ ...input, type: 'password' }))).toBe('null');
+	});
+
+	describe('input', () => {
+		it('clamps value and placeholder', () => {
+			const out = t9({
+				...input,
+				value: 'v'.repeat(900),
+				placeholder: 'p'.repeat(900),
+			});
+			expect(out.value).toHaveLength(500);
+			expect(out.placeholder).toHaveLength(200);
+			expect(t9(input).value).toBe('');
+			expect(t9({ ...input, value: 5 }).value).toBe('');
+		});
+
+		it('defaults the mode and clamps the debounce', () => {
+			expect(t9(input).mode).toBe('change');
+			expect(t9({ ...input, mode: 'weird' }).mode).toBe('change');
+			expect(t9({ ...input, mode: 'submit' }).mode).toBe('submit');
+			expect(t9(input).debounce).toBe(300);
+			expect(t9({ ...input, debounce: 1 }).debounce).toBe(150);
+			expect(t9({ ...input, debounce: 99999 }).debounce).toBe(2000);
+			expect(t9({ ...input, debounce: 500 }).debounce).toBe(500);
+			expect(t9({ ...input, debounce: 'fast' }).debounce).toBe(300);
+			expect(t9({ ...input, debounce: NaN }).debounce).toBe(300);
+		});
+	});
+
+	describe('select', () => {
+		const opts = (n: number) =>
+			Array.from({ length: n }, (_, i) => ({ value: `v${i}`, text: `T${i}` }));
+
+		it('keeps at most 100 options and drops repeated values', () => {
+			expect(t9({ ...select, options: opts(150) }).options).toHaveLength(100);
+			expect(
+				t9({
+					...select,
+					options: [
+						{ value: 'a', text: 'A' },
+						{ value: 'a', text: 'B' },
+						{ value: 'b', text: 'C' },
+					],
+				}).options.map((o: any) => o.value),
+			).toEqual(['a', 'b']);
+		});
+
+		it('is dropped without usable options', () => {
+			expect(t9({ ...select, options: [] })).toBeNull();
+			expect(t9({ ...select, options: 'a' })).toBeNull();
+			expect(t9({ ...select, options: [{ value: 1, text: 'x' }] })).toBeNull();
+		});
+
+		it('only keeps a value that is one of its options', () => {
+			expect(t9({ ...select, value: 'a' }).value).toBe('a');
+			expect(t9({ ...select, value: 'zz' }).value).toBeNull();
+		});
+
+		it('clamps the placeholder', () => {
+			expect(
+				t9({ ...select, placeholder: 'p'.repeat(900) }).placeholder,
+			).toHaveLength(200);
+		});
+	});
+
+	describe('checkbox', () => {
+		it('needs a label and defaults to unchecked', () => {
+			expect(t9({ ...checkbox, label: undefined })).toBeNull();
+			expect(t9(checkbox).checked).toBe(false);
+			expect(t9({ ...checkbox, checked: 'yes' }).checked).toBe(false);
+			expect(t9({ ...checkbox, checked: true }).checked).toBe(true);
+		});
+	});
+
+	it('spends the shared node budget', () => {
+		const many = Array.from({ length: 3500 }, () => input);
+		const out = t9({ type: 'stack', children: many });
+		expect(out.children.length).toBeLessThan(3500);
+	});
+});

@@ -440,12 +440,31 @@ tmgr.commands.register('tmgr-dev.kitchen-sink.setMode', async (args) => {
 	await tmgr.ui.refresh('page', 'view');
 });
 
+let kitchenSinkSearch = '';
+let kitchenSinkColor = 'red';
+let kitchenSinkNotify = false;
+
+tmgr.commands.register('tmgr-dev.kitchen-sink.setSearch', async (args) => {
+	if (typeof args?.value === 'string') kitchenSinkSearch = args.value;
+	await tmgr.ui.refresh('page', 'view');
+});
+
+tmgr.commands.register('tmgr-dev.kitchen-sink.setColor', async (args) => {
+	if (typeof args?.value === 'string') kitchenSinkColor = args.value;
+	await tmgr.ui.refresh('page', 'view');
+});
+
+tmgr.commands.register('tmgr-dev.kitchen-sink.setNotify', async (args) => {
+	if (typeof args?.value === 'boolean') kitchenSinkNotify = args.value;
+	await tmgr.ui.refresh('page', 'view');
+});
+
 const kitchenSinkControlsDemo = () => ({
 	type: 'stack',
 	direction: 'column',
 	gap: 'md',
 	children: [
-		{ type: 'heading', text: 'Layout and controls demo (API 1.8)', level: 2 },
+		{ type: 'heading', text: 'Layout and controls demo (API 1.9)', level: 2 },
 		{
 			type: 'segmented',
 			options: [
@@ -514,6 +533,43 @@ const kitchenSinkControlsDemo = () => ({
 					],
 				},
 			],
+		},
+		{
+			type: 'stack',
+			direction: 'row',
+			align: 'center',
+			children: [
+				{
+					type: 'input',
+					name: 'search',
+					placeholder: 'Search as you type',
+					value: kitchenSinkSearch,
+					command: 'tmgr-dev.kitchen-sink.setSearch',
+				},
+				{
+					type: 'select',
+					name: 'color',
+					options: [
+						{ value: 'red', text: 'Red' },
+						{ value: 'green', text: 'Green' },
+						{ value: 'blue', text: 'Blue' },
+					],
+					value: kitchenSinkColor,
+					command: 'tmgr-dev.kitchen-sink.setColor',
+				},
+				{
+					type: 'checkbox',
+					name: 'notify',
+					label: 'Notify me',
+					checked: kitchenSinkNotify,
+					command: 'tmgr-dev.kitchen-sink.setNotify',
+				},
+			],
+		},
+		{
+			type: 'text',
+			tone: 'muted',
+			text: `Search: ${kitchenSinkSearch || '(empty)'}, color: ${kitchenSinkColor}, notify: ${kitchenSinkNotify}`,
 		},
 		{
 			type: 'collapse',

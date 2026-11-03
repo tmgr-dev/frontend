@@ -2,7 +2,7 @@
 // Do not edit by hand: run `node plugin-sdk/testing/sync-prelude.mjs` from the app repo.
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sanitizeTree = exports.isLinkAllowed = exports.NO_LINKS = exports.COLORS = exports.ICON_NAMES = void 0;
+exports.sanitizeTree = exports.clampDebounce = exports.isLinkAllowed = exports.NO_LINKS = exports.DEBOUNCE_DEFAULT = exports.DEBOUNCE_MAX = exports.DEBOUNCE_MIN = exports.MAX_INPUT_VALUE = exports.COLORS = exports.ICON_NAMES = void 0;
 const marked_1 = require("marked");
 const manifest_1 = require("./manifest.generated.js");
 exports.ICON_NAMES = [
@@ -85,6 +85,15 @@ const MAX_BADGE_TEXT = 40;
 const MAX_BUTTON_GROUP = 12;
 const MAX_SEGMENTED_VALUE = 64;
 const MIN_SEGMENTED = 2;
+exports.MAX_INPUT_VALUE = 500;
+const MAX_INPUT_PLACEHOLDER = 200;
+const MAX_CONTROL_NAME = 64;
+const MAX_SELECT_OPTIONS = 100;
+const MAX_SELECT_VALUE = 200;
+exports.DEBOUNCE_MIN = 150;
+exports.DEBOUNCE_MAX = 2000;
+exports.DEBOUNCE_DEFAULT = 300;
+const CONTROL_NAME = /^[A-Za-z0-9_.-]+$/;
 const MAX_SEGMENTED = 4;
 const CURRENT_API_MINOR = Number(manifest_1.PLUGIN_API_VERSION.split('.')[1]);
 const GAPS = ['none', 'sm', 'md', 'lg'];
@@ -376,6 +385,15 @@ const shortText = (value, max) => {
     const trimmed = value.trim().slice(0, max);
     return trimmed === '' ? undefined : trimmed;
 };
+const clampDebounce = (value) => typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(exports.DEBOUNCE_MAX, Math.max(exports.DEBOUNCE_MIN, Math.round(value)))
+    : exports.DEBOUNCE_DEFAULT;
+exports.clampDebounce = clampDebounce;
+const controlName = (value) => typeof value === 'string' &&
+    value.length <= MAX_CONTROL_NAME &&
+    CONTROL_NAME.test(value)
+    ? value
+    : null;
 const parseCommandArgs = (value) => {
     const command = typeof value?.command === 'string' ? value.command.slice(0, 120) : null;
     if (!command)
@@ -830,6 +848,82 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                     type: 'segmented',
                     options,
                     value: seen.has(value.value) ? value.value : null,
+                    ...cmd,
+                };
+            }
+            case 'input': {
+                if (apiMinor < 9)
+                    return null;
+                const name = controlName(value.name);
+                const cmd = parseCommandArgs(value);
+                if (name === null || cmd === null)
+                    return null;
+                const placeholder = typeof value.placeholder === 'string' && value.placeholder !== ''
+                    ? value.placeholder.slice(0, MAX_INPUT_PLACEHOLDER)
+                    : undefined;
+                return {
+                    type: 'input',
+                    name,
+                    value: typeof value.value === 'string'
+                        ? value.value.slice(0, exports.MAX_INPUT_VALUE)
+                        : '',
+                    mode: value.mode === 'submit' ? 'submit' : 'change',
+                    debounce: (0, exports.clampDebounce)(value.debounce),
+                    ...(placeholder !== undefined ? { placeholder } : {}),
+                    ...cmd,
+                };
+            }
+            case 'select': {
+                if (apiMinor < 9)
+                    return null;
+                const name = controlName(value.name);
+                const cmd = parseCommandArgs(value);
+                if (name === null || cmd === null)
+                    return null;
+                const seen = new Set();
+                const options = (Array.isArray(value.options) ? value.options : [])
+                    .slice(0, MAX_SELECT_OPTIONS)
+                    .filter(() => budget-- > 0)
+                    .map((option) => {
+                    const v = typeof option?.value === 'string' &&
+                        option.value !== '' &&
+                        option.value.length <= MAX_SELECT_VALUE
+                        ? option.value
+                        : null;
+                    const t = text(option?.text);
+                    if (v === null || t === null || seen.has(v))
+                        return null;
+                    seen.add(v);
+                    return { value: v, text: t };
+                })
+                    .filter((option) => option !== null);
+                if (options.length === 0)
+                    return null;
+                const placeholder = typeof value.placeholder === 'string' && value.placeholder !== ''
+                    ? value.placeholder.slice(0, MAX_INPUT_PLACEHOLDER)
+                    : undefined;
+                return {
+                    type: 'select',
+                    name,
+                    options,
+                    value: seen.has(value.value) ? value.value : null,
+                    ...(placeholder !== undefined ? { placeholder } : {}),
+                    ...cmd,
+                };
+            }
+            case 'checkbox': {
+                if (apiMinor < 9)
+                    return null;
+                const name = controlName(value.name);
+                const label = text(value.label);
+                const cmd = parseCommandArgs(value);
+                if (name === null || label === null || cmd === null)
+                    return null;
+                return {
+                    type: 'checkbox',
+                    name,
+                    label,
+                    checked: value.checked === true,
                     ...cmd,
                 };
             }

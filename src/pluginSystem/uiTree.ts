@@ -186,6 +186,33 @@ export type UiNode =
 			command: string;
 			args?: unknown;
 	  }
+	| {
+			type: 'input';
+			name: string;
+			placeholder?: string;
+			value: string;
+			command: string;
+			args?: unknown;
+			mode: 'change' | 'submit';
+			debounce: number;
+	  }
+	| {
+			type: 'select';
+			name: string;
+			options: { value: string; text: string }[];
+			value: string | null;
+			placeholder?: string;
+			command: string;
+			args?: unknown;
+	  }
+	| {
+			type: 'checkbox';
+			name: string;
+			label: string;
+			checked: boolean;
+			command: string;
+			args?: unknown;
+	  }
 	| { type: 'taskLink'; taskId: number; text: string }
 	| { type: 'divider' }
 	| { type: 'copyable'; text: string; label?: string }
@@ -238,6 +265,15 @@ const MAX_BADGE_TEXT = 40;
 const MAX_BUTTON_GROUP = 12;
 const MAX_SEGMENTED_VALUE = 64;
 const MIN_SEGMENTED = 2;
+export const MAX_INPUT_VALUE = 500;
+const MAX_INPUT_PLACEHOLDER = 200;
+const MAX_CONTROL_NAME = 64;
+const MAX_SELECT_OPTIONS = 100;
+const MAX_SELECT_VALUE = 200;
+export const DEBOUNCE_MIN = 150;
+export const DEBOUNCE_MAX = 2000;
+export const DEBOUNCE_DEFAULT = 300;
+const CONTROL_NAME = /^[A-Za-z0-9_.-]+$/;
 const MAX_SEGMENTED = 4;
 const CURRENT_API_MINOR = Number(PLUGIN_API_VERSION.split('.')[1]);
 
@@ -565,6 +601,18 @@ const shortText = (value: unknown, max: number): string | undefined => {
 	const trimmed = value.trim().slice(0, max);
 	return trimmed === '' ? undefined : trimmed;
 };
+
+export const clampDebounce = (value: unknown): number =>
+	typeof value === 'number' && Number.isFinite(value)
+		? Math.min(DEBOUNCE_MAX, Math.max(DEBOUNCE_MIN, Math.round(value)))
+		: DEBOUNCE_DEFAULT;
+
+const controlName = (value: unknown): string | null =>
+	typeof value === 'string' &&
+	value.length <= MAX_CONTROL_NAME &&
+	CONTROL_NAME.test(value)
+		? value
+		: null;
 
 const parseCommandArgs = (
 	value: any,
@@ -1045,6 +1093,81 @@ export const sanitizeTree = (
 					type: 'segmented',
 					options,
 					value: seen.has(value.value) ? value.value : null,
+					...cmd,
+				};
+			}
+			case 'input': {
+				if (apiMinor < 9) return null;
+				const name = controlName(value.name);
+				const cmd = parseCommandArgs(value);
+				if (name === null || cmd === null) return null;
+				const placeholder =
+					typeof value.placeholder === 'string' && value.placeholder !== ''
+						? value.placeholder.slice(0, MAX_INPUT_PLACEHOLDER)
+						: undefined;
+				return {
+					type: 'input',
+					name,
+					value:
+						typeof value.value === 'string'
+							? value.value.slice(0, MAX_INPUT_VALUE)
+							: '',
+					mode: value.mode === 'submit' ? 'submit' : 'change',
+					debounce: clampDebounce(value.debounce),
+					...(placeholder !== undefined ? { placeholder } : {}),
+					...cmd,
+				};
+			}
+			case 'select': {
+				if (apiMinor < 9) return null;
+				const name = controlName(value.name);
+				const cmd = parseCommandArgs(value);
+				if (name === null || cmd === null) return null;
+				const seen = new Set<string>();
+				const options = (Array.isArray(value.options) ? value.options : [])
+					.slice(0, MAX_SELECT_OPTIONS)
+					.filter(() => budget-- > 0)
+					.map((option: any) => {
+						const v =
+							typeof option?.value === 'string' &&
+							option.value !== '' &&
+							option.value.length <= MAX_SELECT_VALUE
+								? option.value
+								: null;
+						const t = text(option?.text);
+						if (v === null || t === null || seen.has(v)) return null;
+						seen.add(v);
+						return { value: v, text: t };
+					})
+					.filter(
+						(option: any): option is { value: string; text: string } =>
+							option !== null,
+					);
+				if (options.length === 0) return null;
+				const placeholder =
+					typeof value.placeholder === 'string' && value.placeholder !== ''
+						? value.placeholder.slice(0, MAX_INPUT_PLACEHOLDER)
+						: undefined;
+				return {
+					type: 'select',
+					name,
+					options,
+					value: seen.has(value.value) ? value.value : null,
+					...(placeholder !== undefined ? { placeholder } : {}),
+					...cmd,
+				};
+			}
+			case 'checkbox': {
+				if (apiMinor < 9) return null;
+				const name = controlName(value.name);
+				const label = text(value.label);
+				const cmd = parseCommandArgs(value);
+				if (name === null || label === null || cmd === null) return null;
+				return {
+					type: 'checkbox',
+					name,
+					label,
+					checked: value.checked === true,
 					...cmd,
 				};
 			}
