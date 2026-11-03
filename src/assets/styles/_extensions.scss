@@ -418,6 +418,13 @@ html.tauri-desktop
 	user-select: text;
 }
 
+html.tauri-desktop
+	[data-selectable]
+	:is(button, [role='button'], [role='tab'], [role='radio'], svg) {
+	-webkit-user-select: none;
+	user-select: none;
+}
+
 html.tauri-desktop img {
 	-webkit-user-drag: none;
 }

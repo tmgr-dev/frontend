@@ -38,12 +38,13 @@
 		<p v-else-if="error" class="text-sm text-red-600 dark:text-red-400">
 			{{ error }}
 		</p>
-		<PluginView
-			v-else-if="tree"
-			:key="`${pluginId}/${viewId}`"
-			:node="tree"
-			:plugin-id="pluginId"
-		/>
+		<div v-else-if="tree" data-selectable>
+			<PluginView
+				:key="`${pluginId}/${viewId}`"
+				:node="tree"
+				:plugin-id="pluginId"
+			/>
+		</div>
 		<p v-else class="text-sm text-muted-foreground">Loading…</p>
 	</PageContainer>
 </template>
