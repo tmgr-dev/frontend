@@ -120,6 +120,68 @@ Icon names (any other name is dropped; a button or badge keeps its text):
 Limits: every new node, every tab and every option counts toward the 3000 node limit of the whole tree, and
 nesting counts toward the depth limit of 8.
 
+## Input controls (API 1.9)
+
+Set `"engines": { "tmgr": "^1.9" }`. Older versions drop these nodes. Types: `TmgrNode` in
+`plugin-sdk/template/tmgr.d.ts`.
+
+- `{ type: 'input', name, placeholder?, value?, command, args?, mode?, debounce? }` is a single-line text field.
+  With `mode: 'change'` (the default) the command runs after the user stops typing for `debounce`
+  milliseconds (default 300, kept between 150 and 2000). With `mode: 'submit'` it runs when the user presses
+  Enter. The text is sent as `args.value`, cut to 500 characters. `placeholder` is cut to 200 characters and
+  the start `value` to 500.
+- `{ type: 'select', name, options: [{ value, text }], value?, placeholder?, command, args? }` is a drop-down
+  of 1 to 100 options (extra options and repeated values are dropped). Choosing one runs `command` with
+  `{ ...args, value }`, where `value` is that option's own value.
+- `{ type: 'checkbox', name, label, checked?, command, args? }` runs `command` with `{ ...args, value }` when
+  toggled, where `value` is `true` or `false`.
+
+Rules for all three:
+
+- `name` identifies the control on your side. It is 1 to 64 characters of letters, digits, `_`, `.` and `-`,
+  and is not shown or sent. A node with a bad name or without a valid `command` is dropped.
+- A control only sends its own value, as `args.value` of its own command, when the user acts on it. Nothing is
+  sent when the control first shows or when you render again, and other controls' values are never included.
+- There is no password field and no `type` option. Fields are not filled in by the browser.
+- While the user is typing in an input, the typed text stays; otherwise the value from your latest render is shown.
+  Render the new `value` when the command ends.
+- Every control counts toward the 3000 node limit; each option counts as well.
+
+## Feeds and data (API 1.10)
+
+Set `"engines": { "tmgr": "^1.10" }`. Older versions drop the new nodes and ignore the new fields. Types:
+`TmgrNode` in `plugin-sdk/template/tmgr.d.ts`.
+
+- `{ type: 'timeline', items: [{ at, title?, text, tone? }] }` is a vertical list of events with a dot and a
+  line. `at` is shown as given (at most 64 characters), `title` is cut to 200 and `text` to 1000. `tone` is a
+  badge color name (default `gray`). At most 200 items.
+- `{ type: 'messages', items: [{ author, text, at?, side? }] }` shows chat bubbles, `side` is `'left'`
+  (default) or `'right'`. `author` is cut to 64 characters, `text` to 1000 and is plain text (line breaks are
+  kept, no Markdown). At most 200 items.
+- `{ type: 'sparkline', values, color?, label? }` is a small line chart. `values` holds up to 365 numbers;
+  anything that is not a finite number is dropped. `color` is a badge color name (default `blue`). `label`
+  (at most 200 characters) is the text screen readers read.
+- `{ type: 'empty', title, text?, icon? }` is a placeholder card. `icon` must be one of the icon names above.
+- `{ type: 'skeleton', variant?, lines? }` is a loading placeholder. `variant` is `'text'` (default),
+  `'card'` or `'table'`; `lines` is 1 to 12 (default 3).
+
+Table additions:
+
+- Column `align`: `'left'`, `'center'` or `'right'`.
+- Column `width`: `'xs'` (4rem), `'sm'` (7rem), `'md'` (12rem) or `'lg'` (18rem). Other values are dropped.
+- Column `sortable: true`: clicking the header sorts the rows in the app, cycling ascending, descending and
+  unsorted. Rows sort by `row.sort[key]` (a string or number) or, without it, by the text of the cell.
+  Numbers sort before text. Sorting never sends anything to your plugin.
+- Row `color`: a badge color name; the row gets a tint and a colored left edge.
+- Row `onClick: { command, args? }`: runs when the row is clicked or activated with Enter or Space. It follows
+  the same rules as a button command; an invalid one is dropped. Clicks on controls inside the row do not
+  trigger it.
+- Row `expand`: an array of nodes (at most 50) shown under the row when the user opens its arrow. Opening
+  and closing happens in the app.
+
+Every item, row, value and expanded node counts toward the 3000 node limit of the whole tree, and nesting
+counts toward the depth limit of 8. Lists over their caps are cut.
+
 ## Task menu items (API 1.6)
 
 A plugin can add items to the task "…" menu. Types: `TaskMenuCommandArgs` in `plugin-sdk/template/tmgr.d.ts`.
@@ -298,5 +360,27 @@ To use the new layout and controls:
 
 1. Set `"engines": { "tmgr": "^1.8" }`.
 2. Use `collapse`, `tabs`, `segmented`, `buttonGroup` and `icon` nodes, and the new `button` and `badge` fields.
+3. Update `tmgr.d.ts` from the SDK template.
+4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.
+
+## Migrating from 1.8 to 1.9
+
+Nothing changes for existing plugins: `^1.0` to `^1.8` keep working.
+
+To use the input controls:
+
+1. Set `"engines": { "tmgr": "^1.9" }`.
+2. Use `input`, `select` and `checkbox` nodes.
+3. Update `tmgr.d.ts` from the SDK template.
+4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.
+
+## Migrating from 1.9 to 1.10
+
+Nothing changes for existing plugins: `^1.0` to `^1.9` keep working.
+
+To use the feed and data nodes:
+
+1. Set `"engines": { "tmgr": "^1.10" }`.
+2. Use `timeline`, `messages`, `sparkline`, `empty` and `skeleton` nodes and the new table fields.
 3. Update `tmgr.d.ts` from the SDK template.
 4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.

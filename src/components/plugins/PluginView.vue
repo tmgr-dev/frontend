@@ -275,6 +275,50 @@
 			{{ option.text }}
 		</button>
 	</div>
+	<Input
+		v-else-if="node.type === 'input'"
+		:model-value="inputText"
+		type="text"
+		autocomplete="off"
+		:placeholder="node.placeholder"
+		:maxlength="500"
+		class="h-8 w-full max-w-sm text-xs"
+		@update:model-value="onInputText"
+		@focus="inputFocused = true"
+		@blur="inputFocused = false"
+		@keydown.enter="onInputEnter"
+	/>
+	<select
+		v-else-if="node.type === 'select'"
+		:value="node.value ?? ''"
+		autocomplete="off"
+		class="h-8 w-fit max-w-full rounded-md border border-input bg-background px-2 text-xs text-foreground"
+		@change="onSelectChange"
+	>
+		<option v-if="node.value === null" value="" disabled>
+			{{ node.placeholder ?? 'Select' }}
+		</option>
+		<option
+			v-for="option in node.options"
+			:key="option.value"
+			:value="option.value"
+		>
+			{{ option.text }}
+		</option>
+	</select>
+	<label
+		v-else-if="node.type === 'checkbox'"
+		class="inline-flex w-fit cursor-pointer items-center gap-2 text-sm text-foreground"
+	>
+		<input
+			type="checkbox"
+			autocomplete="off"
+			:checked="node.checked"
+			class="h-4 w-4 rounded border-input accent-primary"
+			@change="onCheckboxChange"
+		/>
+		<span>{{ node.label }}</span>
+	</label>
 	<button
 		v-else-if="node.type === 'stat' && node.command"
 		type="button"
@@ -319,35 +363,221 @@
 				class="bg-muted/50 text-left text-2xs text-muted-foreground uppercase"
 			>
 				<tr>
+					<th v-if="tableHasExpand" class="w-8 px-2 py-2" />
 					<th
 						v-for="column in node.columns"
 						:key="column.key"
-						class="px-3 py-2 font-medium"
+						:class="[
+							'px-3 py-2 font-medium',
+							column.align ? columnAlignClass[column.align] : '',
+							column.width ? columnWidthClass[column.width] : '',
+						]"
+						:aria-sort="column.sortable ? ariaSort(column.key) : undefined"
 					>
-						{{ column.title }}
+						<button
+							v-if="column.sortable"
+							type="button"
+							class="inline-flex items-center gap-1 uppercase hover:text-foreground"
+							@click="toggleSort(column.key)"
+						>
+							{{ column.title }}
+							<component
+								:is="sortIcon(column.key)"
+								class="h-3 w-3 shrink-0"
+								aria-hidden="true"
+							/>
+						</button>
+						<template v-else>{{ column.title }}</template>
 					</th>
 				</tr>
 			</thead>
 			<tbody>
-				<tr
-					v-for="(row, index) in node.rows"
-					:key="row.taskId ?? index"
-					class="border-t border-border"
+				<template
+					v-for="index in tableOrder"
+					:key="node.rows[index].taskId ?? index"
 				>
-					<td
-						v-for="column in node.columns"
-						:key="column.key"
-						class="px-3 py-2"
+					<tr
+						:class="[
+							'border-t border-border',
+							node.rows[index].color
+								? rowTintClass(node.rows[index].color)
+								: '',
+							node.rows[index].onClick
+								? 'cursor-pointer hover:bg-muted/40 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none'
+								: '',
+						]"
+						:tabindex="node.rows[index].onClick ? 0 : undefined"
+						@click="handleRowClick($event, node.rows[index])"
+						@keydown="handleRowKeydown($event, node.rows[index])"
 					>
-						<PluginView
-							v-if="row.cells[column.key]"
-							:node="row.cells[column.key]"
-							:plugin-id="pluginId"
-						/>
-					</td>
-				</tr>
+						<td v-if="tableHasExpand" class="w-8 px-2 py-2">
+							<button
+								v-if="node.rows[index].expand"
+								type="button"
+								class="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+								:aria-expanded="expandedRows.has(index)"
+								aria-label="Toggle details"
+								@click="toggleRow(index)"
+							>
+								<ChevronRight
+									:class="[
+										'h-3.5 w-3.5 transition-transform',
+										expandedRows.has(index) && 'rotate-90',
+									]"
+									aria-hidden="true"
+								/>
+							</button>
+						</td>
+						<td
+							v-for="column in node.columns"
+							:key="column.key"
+							:class="[
+								'px-3 py-2',
+								column.align ? columnAlignClass[column.align] : '',
+							]"
+						>
+							<PluginView
+								v-if="node.rows[index].cells[column.key]"
+								:node="node.rows[index].cells[column.key]"
+								:plugin-id="pluginId"
+							/>
+						</td>
+					</tr>
+					<tr
+						v-if="node.rows[index].expand && expandedRows.has(index)"
+						class="border-t border-border bg-muted/20"
+					>
+						<td
+							:colspan="node.columns.length + (tableHasExpand ? 1 : 0)"
+							class="px-3 py-2"
+						>
+							<div class="flex flex-col gap-1.5">
+								<PluginView
+									v-for="(child, childIndex) in node.rows[index].expand"
+									:key="childIndex"
+									:node="child"
+									:plugin-id="pluginId"
+								/>
+							</div>
+						</td>
+					</tr>
+				</template>
 			</tbody>
 		</table>
+	</div>
+	<ol v-else-if="node.type === 'timeline'" class="flex flex-col">
+		<li
+			v-for="(item, index) in node.items"
+			:key="index"
+			class="relative flex gap-3 pb-4 last:pb-0"
+		>
+			<span
+				v-if="index < node.items.length - 1"
+				class="absolute top-3 bottom-0 left-[5px] w-px bg-border"
+				aria-hidden="true"
+			/>
+			<span
+				:class="[
+					'relative mt-1 h-[11px] w-[11px] shrink-0 rounded-full ring-2 ring-background',
+					barClass(item.tone),
+				]"
+				aria-hidden="true"
+			/>
+			<div class="min-w-0 flex-1">
+				<div class="text-2xs text-muted-foreground">{{ item.at }}</div>
+				<div v-if="item.title" class="text-sm font-medium break-words">
+					{{ item.title }}
+				</div>
+				<div class="text-sm break-words whitespace-pre-line">
+					{{ item.text }}
+				</div>
+			</div>
+		</li>
+	</ol>
+	<div v-else-if="node.type === 'messages'" class="flex flex-col gap-2">
+		<div
+			v-for="(item, index) in node.items"
+			:key="index"
+			:class="[
+				'flex max-w-[85%] flex-col gap-0.5',
+				item.side === 'right' ? 'items-end self-end' : 'items-start self-start',
+			]"
+		>
+			<div class="text-2xs text-muted-foreground">
+				{{ item.author }}<template v-if="item.at"> · {{ item.at }}</template>
+			</div>
+			<div
+				:class="[
+					'rounded-2xl px-3 py-1.5 text-sm break-words whitespace-pre-line',
+					item.side === 'right'
+						? 'rounded-br-sm bg-primary text-primary-foreground'
+						: 'rounded-bl-sm bg-muted text-foreground',
+				]"
+			>
+				{{ item.text }}
+			</div>
+		</div>
+	</div>
+	<svg
+		v-else-if="node.type === 'sparkline'"
+		:viewBox="`0 0 ${sparklineWidth} ${sparklineHeight}`"
+		preserveAspectRatio="none"
+		:class="['h-6 w-24', strokeClass(node.color)]"
+		role="img"
+		:aria-label="node.label || 'Sparkline'"
+	>
+		<polyline
+			v-if="node.values.length > 0"
+			:points="sparklinePointsText"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="1.5"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			vector-effect="non-scaling-stroke"
+		/>
+	</svg>
+	<div
+		v-else-if="node.type === 'empty'"
+		class="flex flex-col items-center gap-1 rounded-md border border-dashed border-border px-4 py-6 text-center"
+	>
+		<component
+			:is="iconComponent(node.icon)"
+			v-if="node.icon"
+			class="h-6 w-6 text-muted-foreground"
+			aria-hidden="true"
+		/>
+		<div class="text-sm font-medium">{{ node.title }}</div>
+		<div
+			v-if="node.text"
+			class="text-sm break-words whitespace-pre-line text-muted-foreground"
+		>
+			{{ node.text }}
+		</div>
+	</div>
+	<div
+		v-else-if="node.type === 'skeleton'"
+		class="flex flex-col gap-2"
+		role="status"
+		aria-label="Loading"
+	>
+		<template v-if="node.variant === 'card'">
+			<Skeleton class="h-24 w-full" />
+		</template>
+		<template v-else-if="node.variant === 'table'">
+			<Skeleton class="h-6 w-full" />
+			<Skeleton v-for="n in node.lines" :key="n" class="h-8 w-full" />
+		</template>
+		<template v-else>
+			<Skeleton
+				v-for="n in node.lines"
+				:key="n"
+				:class="[
+					'h-4',
+					n === node.lines && node.lines > 1 ? 'w-2/3' : 'w-full',
+				]"
+			/>
+		</template>
 	</div>
 	<AlertDialog v-else-if="node.type === 'button'" v-model:open="confirmOpen">
 		<AppTooltip :content="buttonTooltip">
@@ -457,6 +687,8 @@
 	} from '@/components/ui/alert-dialog';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import { Button } from '@/components/ui/button';
+	import { Input } from '@/components/ui/input';
+	import { Skeleton } from '@/components/ui/skeleton';
 	import {
 		DropdownMenu,
 		DropdownMenuContent,
@@ -477,15 +709,44 @@
 	} from '@/pluginSystem/uiTree';
 	import store from '@/store';
 	import {
+		ArrowDown,
+		ArrowUp,
+		ArrowUpDown,
 		Check,
 		ChevronRight,
 		Copy,
 		Loader2,
 		MoreHorizontal,
 	} from 'lucide-vue-next';
-	import { computed, defineComponent, nextTick, ref, type PropType } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		nextTick,
+		onBeforeUnmount,
+		ref,
+		watch,
+		type PropType,
+	} from 'vue';
 	import PluginMarkdown from './PluginMarkdown.vue';
+	import {
+		COLUMN_ALIGN_CLASS,
+		COLUMN_WIDTH_CLASS,
+		SPARKLINE_HEIGHT,
+		SPARKLINE_WIDTH,
+		nextSort,
+		sortedIndexes,
+		sparklinePoints,
+		type SortState,
+	} from './pluginData';
 	import { PLUGIN_ICONS } from './pluginIcons';
+	import {
+		checkboxArgs,
+		createDebouncer,
+		inputArgs,
+		nextInputText,
+		sameControl,
+		selectArgs,
+	} from './pluginInputs';
 	import {
 		buttonClasses,
 		buttonSizeProp,
@@ -529,6 +790,26 @@
 		orange: 'bg-orange-500',
 	};
 
+	const STROKES: Record<Color, string> = {
+		gray: 'text-muted-foreground',
+		green: 'text-emerald-500',
+		yellow: 'text-amber-500',
+		red: 'text-red-500',
+		blue: 'text-sky-500',
+		purple: 'text-purple-500',
+		orange: 'text-orange-500',
+	};
+
+	const ROW_TINTS: Record<Color, string> = {
+		gray: 'border-l-2 border-l-muted-foreground bg-muted/40',
+		green: 'border-l-2 border-l-emerald-500 bg-emerald-500/10',
+		yellow: 'border-l-2 border-l-amber-500 bg-amber-500/10',
+		red: 'border-l-2 border-l-red-500 bg-red-500/10',
+		blue: 'border-l-2 border-l-sky-500 bg-sky-500/10',
+		purple: 'border-l-2 border-l-purple-500 bg-purple-500/10',
+		orange: 'border-l-2 border-l-orange-500 bg-orange-500/10',
+	};
+
 	export default defineComponent({
 		name: 'PluginView',
 		components: {
@@ -545,6 +826,8 @@
 			Check,
 			ChevronRight,
 			Copy,
+			Input,
+			Skeleton,
 			Loader2,
 			DropdownMenu,
 			DropdownMenuContent,
@@ -596,6 +879,60 @@
 				if (!node.options.some((option) => option.value === value)) return;
 				void runCommand(node.command, segmentedArgs(node.args, value));
 			};
+			const debouncer = createDebouncer();
+			const inputText = ref(
+				props.node.type === 'input' ? props.node.value : '',
+			);
+			const inputFocused = ref(false);
+			watch(
+				() => props.node,
+				(node, previous) => {
+					if (!sameControl(node, previous)) debouncer.cancel();
+					inputText.value = nextInputText(
+						node,
+						previous,
+						inputFocused.value,
+						inputText.value,
+					);
+				},
+			);
+			onBeforeUnmount(() => debouncer.cancel());
+			const sendInput = () => {
+				const node = props.node;
+				if (node.type !== 'input') return;
+				void runCommand(node.command, inputArgs(node.args, inputText.value));
+			};
+			const onInputText = (typed: string | number) => {
+				const node = props.node;
+				if (node.type !== 'input') return;
+				inputText.value = String(typed).slice(0, 500);
+				if (node.mode === 'change') {
+					debouncer.schedule(sendInput, node.debounce);
+				}
+			};
+			const onInputEnter = (event: KeyboardEvent) => {
+				const node = props.node;
+				if (node.type !== 'input' || node.mode !== 'submit') return;
+				if (event.isComposing) return;
+				sendInput();
+			};
+			const onSelectChange = (event: Event) => {
+				const node = props.node;
+				if (node.type !== 'select') return;
+				const args = selectArgs(
+					node,
+					(event.target as HTMLSelectElement).value,
+				);
+				if (args) void runCommand(node.command, args);
+			};
+			const onCheckboxChange = (event: Event) => {
+				const node = props.node;
+				if (node.type !== 'checkbox') return;
+				void runCommand(
+					node.command,
+					checkboxArgs(node.args, (event.target as HTMLInputElement).checked),
+				);
+			};
 			const buttonTooltip = computed(() =>
 				props.node.type === 'button'
 					? (props.node.tooltip ?? (props.node.iconOnly ? props.node.text : ''))
@@ -634,6 +971,66 @@
 					node.tabs.find((tab) => tab.id === activeTabId.value)?.children ?? []
 				);
 			});
+			const tableSort = ref<SortState | null>(null);
+			const expandedRows = ref(new Set<number>());
+			const tableRows = computed(() =>
+				props.node.type === 'table' ? props.node.rows : [],
+			);
+			const tableOrder = computed(() =>
+				sortedIndexes(tableRows.value, tableSort.value),
+			);
+			const tableHasExpand = computed(() =>
+				tableRows.value.some((row) => row.expand !== undefined),
+			);
+			const toggleSort = (key: string) => {
+				tableSort.value = nextSort(tableSort.value, key);
+			};
+			const ariaSort = (key: string) =>
+				tableSort.value?.key !== key
+					? 'none'
+					: tableSort.value.dir === 'asc'
+						? 'ascending'
+						: 'descending';
+			const sortIcon = (key: string) =>
+				tableSort.value?.key !== key
+					? ArrowUpDown
+					: tableSort.value.dir === 'asc'
+						? ArrowUp
+						: ArrowDown;
+			const toggleRow = (index: number) => {
+				const next = new Set(expandedRows.value);
+				if (!next.delete(index)) next.add(index);
+				expandedRows.value = next;
+			};
+			const handleRowClick = (
+				event: MouseEvent,
+				row: { onClick?: { command: string; args?: unknown } },
+			) => {
+				if (!row.onClick) return;
+				if (
+					isNestedInteractive(
+						event.target as Element | null,
+						event.currentTarget as Element | null,
+					)
+				)
+					return;
+				void runCommand(row.onClick.command, row.onClick.args);
+			};
+			const handleRowKeydown = (
+				event: KeyboardEvent,
+				row: { onClick?: { command: string; args?: unknown } },
+			) => {
+				if (!row.onClick || event.target !== event.currentTarget) return;
+				if (event.key === ' ') event.preventDefault();
+				if (cardKeyActivates(event.key, true)) {
+					void runCommand(row.onClick.command, row.onClick.args);
+				}
+			};
+			const sparklinePointsText = computed(() =>
+				props.node.type === 'sparkline'
+					? sparklinePoints(props.node.values)
+					: '',
+			);
 			const runNodeCommand = (node: UiNode) => {
 				if ((node.type === 'badge' || node.type === 'stat') && node.command) {
 					void runCommand(node.command, node.args);
@@ -724,6 +1121,12 @@
 				confirmOpen,
 				run,
 				runSegmented,
+				inputText,
+				inputFocused,
+				onInputText,
+				onInputEnter,
+				onSelectChange,
+				onCheckboxChange,
 				buttonTooltip,
 				collapseOpen,
 				collapseShowAll,
@@ -735,6 +1138,22 @@
 				iconComponent: (name: IconName) => PLUGIN_ICONS[name],
 				buttonClasses,
 				handleButtonClick,
+				tableOrder,
+				tableHasExpand,
+				expandedRows,
+				toggleSort,
+				ariaSort,
+				sortIcon,
+				toggleRow,
+				handleRowClick,
+				handleRowKeydown,
+				sparklinePointsText,
+				sparklineWidth: SPARKLINE_WIDTH,
+				sparklineHeight: SPARKLINE_HEIGHT,
+				columnAlignClass: COLUMN_ALIGN_CLASS,
+				columnWidthClass: COLUMN_WIDTH_CLASS,
+				strokeClass: (color: Color) => STROKES[color],
+				rowTintClass: (color: Color) => ROW_TINTS[color],
 				runNodeCommand,
 				handleCardClick,
 				handleCardKeydown,

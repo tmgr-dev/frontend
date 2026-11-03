@@ -246,6 +246,37 @@ it('the "Kitchen Sink view" page renders the API 1.8 controls and the switch re-
 	host.dispose();
 });
 
+it('the "Kitchen Sink view" page renders the API 1.9 input controls and they re-render', async () => {
+	const host = await startHost();
+	const json = JSON.stringify(await host.renderPage('view', null));
+	for (const type of ['input', 'select', 'checkbox']) {
+		expect(json).toContain(`"type":"${type}"`);
+	}
+	await host.runCommand('tmgr-dev.kitchen-sink.setSearch', { value: 'abc' });
+	await host.runCommand('tmgr-dev.kitchen-sink.setColor', { value: 'blue' });
+	await host.runCommand('tmgr-dev.kitchen-sink.setNotify', { value: true });
+	expect(JSON.stringify(await host.renderPage('view', null))).toContain(
+		'Search: abc, color: blue, notify: true',
+	);
+	host.dispose();
+});
+
+it('the "Kitchen Sink view" page renders the API 1.10 feed and data nodes', async () => {
+	const host = await startHost();
+	const json = JSON.stringify(await host.renderPage('view', null));
+	for (const type of [
+		'timeline',
+		'messages',
+		'sparkline',
+		'empty',
+		'skeleton',
+	]) {
+		expect(json).toContain(`"type":"${type}"`);
+	}
+	expect(json).toContain('"sortable":true');
+	host.dispose();
+});
+
 it('offers two task menu items and both work on a task (API 1.6)', async () => {
 	const host = await startHost();
 	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);

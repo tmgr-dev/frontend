@@ -5,6 +5,8 @@ export type Tone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
 export type Color =
 	'gray' | 'green' | 'yellow' | 'red' | 'blue' | 'purple' | 'orange';
 
+export type ColumnAlign = 'left' | 'center' | 'right';
+export type ColumnWidth = 'xs' | 'sm' | 'md' | 'lg';
 export type Gap = 'none' | 'sm' | 'md' | 'lg';
 export type Command = { command: string; args?: unknown };
 export type MenuItem = {
@@ -148,8 +150,41 @@ export type UiNode =
 	| { type: 'list'; items: UiNode[] }
 	| {
 			type: 'table';
-			columns: { key: string; title: string }[];
-			rows: { taskId?: number; cells: Record<string, UiNode> }[];
+			columns: {
+				key: string;
+				title: string;
+				align?: ColumnAlign;
+				width?: ColumnWidth;
+				sortable?: true;
+			}[];
+			rows: {
+				taskId?: number;
+				cells: Record<string, UiNode>;
+				sort?: Record<string, string | number>;
+				color?: Color;
+				onClick?: Command;
+				expand?: UiNode[];
+			}[];
+	  }
+	| {
+			type: 'timeline';
+			items: { at: string; title?: string; text: string; tone: Color }[];
+	  }
+	| {
+			type: 'messages';
+			items: {
+				author: string;
+				text: string;
+				at?: string;
+				side: 'left' | 'right';
+			}[];
+	  }
+	| { type: 'sparkline'; values: number[]; color: Color; label?: string }
+	| { type: 'empty'; title: string; text?: string; icon?: IconName }
+	| {
+			type: 'skeleton';
+			variant: 'text' | 'card' | 'table';
+			lines: number;
 	  }
 	| {
 			type: 'button';
@@ -186,6 +221,33 @@ export type UiNode =
 			command: string;
 			args?: unknown;
 	  }
+	| {
+			type: 'input';
+			name: string;
+			placeholder?: string;
+			value: string;
+			command: string;
+			args?: unknown;
+			mode: 'change' | 'submit';
+			debounce: number;
+	  }
+	| {
+			type: 'select';
+			name: string;
+			options: { value: string; text: string }[];
+			value: string | null;
+			placeholder?: string;
+			command: string;
+			args?: unknown;
+	  }
+	| {
+			type: 'checkbox';
+			name: string;
+			label: string;
+			checked: boolean;
+			command: string;
+			args?: unknown;
+	  }
 	| { type: 'taskLink'; taskId: number; text: string }
 	| { type: 'divider' }
 	| { type: 'copyable'; text: string; label?: string }
@@ -193,6 +255,12 @@ export type UiNode =
 	| { type: 'timeAgo'; at: string }
 	| { type: 'dueTime'; at: string }
 	| { type: 'keyValue'; items: { key: string; value: UiNode }[] };
+
+type UiTable = Extract<UiNode, { type: 'table' }>;
+type UiColumn = UiTable['columns'][number];
+type UiRow = UiTable['rows'][number];
+type UiTimelineItem = Extract<UiNode, { type: 'timeline' }>['items'][number];
+type UiMessage = Extract<UiNode, { type: 'messages' }>['items'][number];
 
 const TONES: Tone[] = ['default', 'muted', 'success', 'warning', 'danger'];
 export const COLORS: Color[] = [
@@ -238,7 +306,26 @@ const MAX_BADGE_TEXT = 40;
 const MAX_BUTTON_GROUP = 12;
 const MAX_SEGMENTED_VALUE = 64;
 const MIN_SEGMENTED = 2;
+export const MAX_INPUT_VALUE = 500;
+const MAX_INPUT_PLACEHOLDER = 200;
+const MAX_CONTROL_NAME = 64;
+const MAX_SELECT_OPTIONS = 100;
+const MAX_SELECT_VALUE = 200;
+export const DEBOUNCE_MIN = 150;
+export const DEBOUNCE_MAX = 2000;
+export const DEBOUNCE_DEFAULT = 300;
+const CONTROL_NAME = /^[A-Za-z0-9_.-]+$/;
 const MAX_SEGMENTED = 4;
+const MAX_FEED_ITEMS = 200;
+const MAX_AUTHOR = 64;
+const MAX_SPARKLINE_VALUES = 365;
+const MAX_ROW_EXPAND = 50;
+const MAX_SORT_TEXT = 200;
+const MAX_SKELETON_LINES = 12;
+const DEFAULT_SKELETON_LINES = 3;
+const COLUMN_ALIGNS: ColumnAlign[] = ['left', 'center', 'right'];
+const COLUMN_WIDTHS: ColumnWidth[] = ['xs', 'sm', 'md', 'lg'];
+const SKELETON_VARIANTS = ['text', 'card', 'table'] as const;
 const CURRENT_API_MINOR = Number(PLUGIN_API_VERSION.split('.')[1]);
 
 const GAPS: Gap[] = ['none', 'sm', 'md', 'lg'];
@@ -566,6 +653,18 @@ const shortText = (value: unknown, max: number): string | undefined => {
 	return trimmed === '' ? undefined : trimmed;
 };
 
+export const clampDebounce = (value: unknown): number =>
+	typeof value === 'number' && Number.isFinite(value)
+		? Math.min(DEBOUNCE_MAX, Math.max(DEBOUNCE_MIN, Math.round(value)))
+		: DEBOUNCE_DEFAULT;
+
+const controlName = (value: unknown): string | null =>
+	typeof value === 'string' &&
+	value.length <= MAX_CONTROL_NAME &&
+	CONTROL_NAME.test(value)
+		? value
+		: null;
+
 const parseCommandArgs = (
 	value: any,
 ): { command: string; args?: unknown } | null => {
@@ -887,11 +986,31 @@ export const sanitizeTree = (
 				const columns = (
 					Array.isArray(value.columns) ? value.columns.slice(0, 12) : []
 				)
-					.map((c: any) => ({ key: text(c?.key), title: text(c?.title) }))
-					.filter(
-						(c: any): c is { key: string; title: string } =>
-							c.key !== null && c.title !== null,
-					);
+					.map((c: any) => {
+						const key = text(c?.key);
+						const title = text(c?.title);
+						if (key === null || title === null) return null;
+						const align =
+							apiMinor >= 10
+								? pickOptional(c?.align, COLUMN_ALIGNS)
+								: undefined;
+						const width =
+							apiMinor >= 10
+								? pickOptional(c?.width, COLUMN_WIDTHS)
+								: undefined;
+						const sortable =
+							apiMinor >= 10 && c?.sortable === true
+								? (true as const)
+								: undefined;
+						return {
+							key,
+							title,
+							...(align !== undefined ? { align } : {}),
+							...(width !== undefined ? { width } : {}),
+							...(sortable !== undefined ? { sortable } : {}),
+						};
+					})
+					.filter((c: any): c is UiColumn => c !== null);
 				const rows = (
 					Array.isArray(value.rows) ? value.rows.slice(0, MAX_ITEMS) : []
 				)
@@ -903,11 +1022,125 @@ export const sanitizeTree = (
 							const cell = node(row?.cells?.[key], depth + 1, cardDepth);
 							if (cell) cells[key] = cell;
 						}
-						return Number.isSafeInteger(row?.taskId) && row.taskId > 0
-							? { taskId: row.taskId, cells }
-							: { cells };
+						const out: UiRow = { cells };
+						if (Number.isSafeInteger(row?.taskId) && row.taskId > 0) {
+							out.taskId = row.taskId;
+						}
+						if (apiMinor >= 10) {
+							const color = pickOptional(row?.color, COLORS);
+							if (color !== undefined) out.color = color;
+							const onClick =
+								row?.onClick !== null && typeof row?.onClick === 'object'
+									? parseCommandArgs(row.onClick)
+									: null;
+							if (onClick) out.onClick = onClick;
+							const sort: Record<string, string | number> = {};
+							for (const { key } of columns) {
+								const v = row?.sort?.[key];
+								if (typeof v === 'number' && Number.isFinite(v)) sort[key] = v;
+								else if (typeof v === 'string')
+									sort[key] = v.slice(0, MAX_SORT_TEXT);
+							}
+							if (Object.keys(sort).length > 0) out.sort = sort;
+							const expand = (
+								Array.isArray(row?.expand)
+									? row.expand.slice(0, MAX_ROW_EXPAND)
+									: []
+							)
+								.map((child: any) => node(child, depth + 1, cardDepth))
+								.filter(
+									(child: UiNode | null): child is UiNode => child !== null,
+								);
+							if (expand.length > 0) out.expand = expand;
+						}
+						return out;
 					});
 				return { type: 'table', columns, rows };
+			}
+			case 'timeline': {
+				if (apiMinor < 10) return null;
+				const items = (
+					Array.isArray(value.items) ? value.items.slice(0, MAX_FEED_ITEMS) : []
+				)
+					.filter(() => budget-- > 0)
+					.map((item: any) => {
+						const at = shortText(item?.at, MAX_AT_LENGTH);
+						const t = text(item?.text);
+						if (at === undefined || t === null) return null;
+						const title = shortText(item?.title, MAX_TITLE);
+						return {
+							at,
+							text: t,
+							tone: pick(item?.tone, COLORS, 'gray'),
+							...(title !== undefined ? { title } : {}),
+						};
+					})
+					.filter((item: any): item is UiTimelineItem => item !== null);
+				return { type: 'timeline', items };
+			}
+			case 'messages': {
+				if (apiMinor < 10) return null;
+				const items = (
+					Array.isArray(value.items) ? value.items.slice(0, MAX_FEED_ITEMS) : []
+				)
+					.filter(() => budget-- > 0)
+					.map((item: any) => {
+						const author = shortText(item?.author, MAX_AUTHOR);
+						const t = text(item?.text);
+						if (author === undefined || t === null) return null;
+						const at = shortText(item?.at, MAX_AT_LENGTH);
+						return {
+							author,
+							text: t,
+							side:
+								item?.side === 'right' ? ('right' as const) : ('left' as const),
+							...(at !== undefined ? { at } : {}),
+						};
+					})
+					.filter((item: any): item is UiMessage => item !== null);
+				return { type: 'messages', items };
+			}
+			case 'sparkline': {
+				if (apiMinor < 10) return null;
+				const values: number[] = [];
+				for (const v of Array.isArray(value.values) ? value.values : []) {
+					if (values.length >= MAX_SPARKLINE_VALUES) break;
+					if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+					if (budget-- <= 0) break;
+					values.push(v);
+				}
+				const label = shortText(value.label, MAX_LABEL_LENGTH);
+				return {
+					type: 'sparkline',
+					values,
+					color: pick(value.color, COLORS, 'blue'),
+					...(label !== undefined ? { label } : {}),
+				};
+			}
+			case 'empty': {
+				if (apiMinor < 10) return null;
+				const title = shortText(value.title, MAX_TITLE);
+				if (title === undefined) return null;
+				const body = shortText(value.text, MAX_TEXT);
+				const icon = pickOptional(value.icon, ICON_NAMES);
+				return {
+					type: 'empty',
+					title,
+					...(body !== undefined ? { text: body } : {}),
+					...(icon !== undefined ? { icon } : {}),
+				};
+			}
+			case 'skeleton': {
+				if (apiMinor < 10) return null;
+				const lines =
+					typeof value.lines === 'number' && Number.isFinite(value.lines)
+						? Math.min(MAX_SKELETON_LINES, Math.max(1, Math.round(value.lines)))
+						: DEFAULT_SKELETON_LINES;
+				return {
+					type: 'skeleton',
+					variant: pick(value.variant, SKELETON_VARIANTS, 'text'),
+					lines,
+				};
 			}
 			case 'button': {
 				const t = text(value.text);
@@ -1045,6 +1278,81 @@ export const sanitizeTree = (
 					type: 'segmented',
 					options,
 					value: seen.has(value.value) ? value.value : null,
+					...cmd,
+				};
+			}
+			case 'input': {
+				if (apiMinor < 9) return null;
+				const name = controlName(value.name);
+				const cmd = parseCommandArgs(value);
+				if (name === null || cmd === null) return null;
+				const placeholder =
+					typeof value.placeholder === 'string' && value.placeholder !== ''
+						? value.placeholder.slice(0, MAX_INPUT_PLACEHOLDER)
+						: undefined;
+				return {
+					type: 'input',
+					name,
+					value:
+						typeof value.value === 'string'
+							? value.value.slice(0, MAX_INPUT_VALUE)
+							: '',
+					mode: value.mode === 'submit' ? 'submit' : 'change',
+					debounce: clampDebounce(value.debounce),
+					...(placeholder !== undefined ? { placeholder } : {}),
+					...cmd,
+				};
+			}
+			case 'select': {
+				if (apiMinor < 9) return null;
+				const name = controlName(value.name);
+				const cmd = parseCommandArgs(value);
+				if (name === null || cmd === null) return null;
+				const seen = new Set<string>();
+				const options = (Array.isArray(value.options) ? value.options : [])
+					.slice(0, MAX_SELECT_OPTIONS)
+					.filter(() => budget-- > 0)
+					.map((option: any) => {
+						const v =
+							typeof option?.value === 'string' &&
+							option.value !== '' &&
+							option.value.length <= MAX_SELECT_VALUE
+								? option.value
+								: null;
+						const t = text(option?.text);
+						if (v === null || t === null || seen.has(v)) return null;
+						seen.add(v);
+						return { value: v, text: t };
+					})
+					.filter(
+						(option: any): option is { value: string; text: string } =>
+							option !== null,
+					);
+				if (options.length === 0) return null;
+				const placeholder =
+					typeof value.placeholder === 'string' && value.placeholder !== ''
+						? value.placeholder.slice(0, MAX_INPUT_PLACEHOLDER)
+						: undefined;
+				return {
+					type: 'select',
+					name,
+					options,
+					value: seen.has(value.value) ? value.value : null,
+					...(placeholder !== undefined ? { placeholder } : {}),
+					...cmd,
+				};
+			}
+			case 'checkbox': {
+				if (apiMinor < 9) return null;
+				const name = controlName(value.name);
+				const label = text(value.label);
+				const cmd = parseCommandArgs(value);
+				if (name === null || label === null || cmd === null) return null;
+				return {
+					type: 'checkbox',
+					name,
+					label,
+					checked: value.checked === true,
 					...cmd,
 				};
 			}

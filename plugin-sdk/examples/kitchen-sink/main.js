@@ -440,12 +440,104 @@ tmgr.commands.register('tmgr-dev.kitchen-sink.setMode', async (args) => {
 	await tmgr.ui.refresh('page', 'view');
 });
 
+let kitchenSinkSearch = '';
+let kitchenSinkColor = 'red';
+let kitchenSinkNotify = false;
+
+tmgr.commands.register('tmgr-dev.kitchen-sink.setSearch', async (args) => {
+	if (typeof args?.value === 'string') kitchenSinkSearch = args.value;
+	await tmgr.ui.refresh('page', 'view');
+});
+
+tmgr.commands.register('tmgr-dev.kitchen-sink.setColor', async (args) => {
+	if (typeof args?.value === 'string') kitchenSinkColor = args.value;
+	await tmgr.ui.refresh('page', 'view');
+});
+
+tmgr.commands.register('tmgr-dev.kitchen-sink.setNotify', async (args) => {
+	if (typeof args?.value === 'boolean') kitchenSinkNotify = args.value;
+	await tmgr.ui.refresh('page', 'view');
+});
+
+const kitchenSinkFeedsDemo = () => ({
+	type: 'stack',
+	direction: 'column',
+	gap: 'md',
+	children: [
+		{ type: 'heading', text: 'Feeds and data demo (API 1.10)', level: 2 },
+		{
+			type: 'timeline',
+			items: [
+				{ at: '09:00', title: 'Started', text: 'The run began.', tone: 'blue' },
+				{ at: '09:05', text: 'Halfway there.', tone: 'yellow' },
+				{ at: '09:10', title: 'Done', text: 'All finished.', tone: 'green' },
+			],
+		},
+		{
+			type: 'messages',
+			items: [
+				{
+					author: 'Ada',
+					text: 'Is the build green?',
+					at: '09:11',
+					side: 'left',
+				},
+				{ author: 'You', text: 'Yes.\nShipping now.', side: 'right' },
+			],
+		},
+		{
+			type: 'stack',
+			direction: 'row',
+			align: 'center',
+			children: [
+				{ type: 'text', text: 'Last 8 days' },
+				{
+					type: 'sparkline',
+					values: [3, 5, 4, 8, 6, 9, 7, 10],
+					color: 'green',
+					label: 'Last 8 days, rising',
+				},
+			],
+		},
+		{
+			type: 'table',
+			columns: [
+				{ key: 'name', title: 'Name', sortable: true, width: 'md' },
+				{
+					key: 'count',
+					title: 'Count',
+					sortable: true,
+					align: 'right',
+					width: 'xs',
+				},
+			],
+			rows: [
+				{
+					cells: { name: 'Beta', count: '10' },
+					sort: { count: 10 },
+					color: 'red',
+					onClick: { command: 'tmgr-dev.kitchen-sink.ping' },
+					expand: [{ type: 'text', text: 'Details for Beta.' }],
+				},
+				{ cells: { name: 'Alpha', count: '2' }, sort: { count: 2 } },
+			],
+		},
+		{
+			type: 'empty',
+			title: 'Nothing here yet',
+			text: 'Items you add will show up in this place.',
+			icon: 'info',
+		},
+		{ type: 'skeleton', variant: 'text', lines: 3 },
+	],
+});
+
 const kitchenSinkControlsDemo = () => ({
 	type: 'stack',
 	direction: 'column',
 	gap: 'md',
 	children: [
-		{ type: 'heading', text: 'Layout and controls demo (API 1.8)', level: 2 },
+		{ type: 'heading', text: 'Layout and controls demo (API 1.10)', level: 2 },
 		{
 			type: 'segmented',
 			options: [
@@ -514,6 +606,43 @@ const kitchenSinkControlsDemo = () => ({
 					],
 				},
 			],
+		},
+		{
+			type: 'stack',
+			direction: 'row',
+			align: 'center',
+			children: [
+				{
+					type: 'input',
+					name: 'search',
+					placeholder: 'Search as you type',
+					value: kitchenSinkSearch,
+					command: 'tmgr-dev.kitchen-sink.setSearch',
+				},
+				{
+					type: 'select',
+					name: 'color',
+					options: [
+						{ value: 'red', text: 'Red' },
+						{ value: 'green', text: 'Green' },
+						{ value: 'blue', text: 'Blue' },
+					],
+					value: kitchenSinkColor,
+					command: 'tmgr-dev.kitchen-sink.setColor',
+				},
+				{
+					type: 'checkbox',
+					name: 'notify',
+					label: 'Notify me',
+					checked: kitchenSinkNotify,
+					command: 'tmgr-dev.kitchen-sink.setNotify',
+				},
+			],
+		},
+		{
+			type: 'text',
+			tone: 'muted',
+			text: `Search: ${kitchenSinkSearch || '(empty)'}, color: ${kitchenSinkColor}, notify: ${kitchenSinkNotify}`,
 		},
 		{
 			type: 'collapse',
@@ -643,6 +772,7 @@ tmgr.ui.providePage('view', async (props) => ({
 		kitchenSinkGridDemo(),
 		kitchenSinkTextDemo(),
 		kitchenSinkControlsDemo(),
+		kitchenSinkFeedsDemo(),
 	],
 }));
 
