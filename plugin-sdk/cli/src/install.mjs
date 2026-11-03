@@ -1,29 +1,30 @@
+import { randomBytes } from 'node:crypto';
 import {
   existsSync,
   lstatSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
-  readFileSync,
   renameSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
 import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-} from 'node:path';
+  isReservedId,
+  MAX_FILE_BYTES,
+  readSource,
+  resolveInside,
+} from '../lib/validate.mjs';
 
 const { PLUGIN_ID } = createRequire(import.meta.url)(
   '../lib/manifest.generated.cjs',
 );
 
-export const MAX_FILE_BYTES = 1024 * 1024;
+export { MAX_FILE_BYTES };
 export const MAX_PAGES = 10;
 export const MARKER = '.tmgr-dev';
 const PAGE_NAME = /^[a-z0-9][a-z0-9_-]*\.html$/i;
@@ -42,30 +43,9 @@ const lstatOrNull = (path) => {
   }
 };
 
-const readPlainFile = (path, label) => {
-  const stat = lstatOrNull(path);
-  if (!stat) throw new Error(`${label} does not exist`);
-  if (stat.isSymbolicLink()) throw new Error(`${label} is a symlink, refusing`);
-  if (!stat.isFile()) throw new Error(`${label} is not a regular file`);
-  if (stat.size > MAX_FILE_BYTES) {
-    throw new Error(
-      `${label} is ${stat.size} bytes; the app ignores files over ${MAX_FILE_BYTES} bytes`,
-    );
-  }
-  const content = readFileSync(path);
-  if (content.length > MAX_FILE_BYTES) {
-    throw new Error(`${label} grew past ${MAX_FILE_BYTES} bytes while reading`);
-  }
-  return content;
-};
-
 export const collectFiles = (dir, manifest) => {
   const root = resolve(dir);
-  const mainPath = resolve(root, manifest.main);
-  const rel = relative(root, mainPath);
-  if (!rel || rel.startsWith('..') || isAbsolute(rel)) {
-    throw new Error(`main "${manifest.main}" points outside the plugin folder`);
-  }
+  const mainPath = resolveInside(root, manifest.main, 'main');
 
   const pages = new Set(
     manifest.contributes.views.filter((v) => v.ui).map((v) => v.ui),
@@ -89,11 +69,11 @@ export const collectFiles = (dir, manifest) => {
   const files = new Map();
   files.set(
     'manifest.json',
-    readPlainFile(join(root, 'manifest.json'), 'manifest.json'),
+    readSource(join(root, 'manifest.json'), 'manifest.json'),
   );
-  files.set('main.js', readPlainFile(mainPath, manifest.main));
+  files.set('main.js', readSource(mainPath, manifest.main));
   for (const page of [...pages].sort()) {
-    files.set(page, readPlainFile(join(root, page), page));
+    files.set(page, readSource(join(root, page), page));
   }
   return files;
 };
@@ -108,14 +88,66 @@ const ensureDir = (path, label) => {
   if (!stat.isDirectory()) throw new Error(`${label} is not a directory`);
 };
 
+const isTempFor = (name, base) =>
+  name.startsWith(`.${base}.`) && name.endsWith('.tmp');
+
 const writeAtomic = (path, content) => {
   const existing = lstatOrNull(path);
   if (existing && !existing.isFile()) {
     throw new Error(`${path} exists and is not a regular file, refusing`);
   }
-  const temp = join(dirname(path), `.${basename(path)}.${process.pid}.tmp`);
-  writeFileSync(temp, content, { flag: 'w' });
-  renameSync(temp, path);
+  const dir = dirname(path);
+  const base = basename(path);
+  for (const name of readdirSync(dir)) {
+    if (!isTempFor(name, base)) continue;
+    const stale = lstatOrNull(join(dir, name));
+    if (stale && !stale.isDirectory()) unlinkSync(join(dir, name));
+  }
+  const temp = join(dir, `.${base}.${randomBytes(8).toString('hex')}.tmp`);
+  try {
+    writeFileSync(temp, content, { flag: 'wx' });
+    renameSync(temp, path);
+  } catch (error) {
+    rmSync(temp, { force: true });
+    throw error;
+  }
+};
+
+const writeAll = (target, id, files, { withMarker }) => {
+  if (withMarker) writeAtomic(join(target, MARKER), `${id}\n`);
+  const hasPages = [...files.keys()].some((name) => name.startsWith('ui/'));
+  const targetUi = join(target, 'ui');
+  if (hasPages || lstatOrNull(targetUi)) ensureDir(targetUi, 'target ui');
+
+  const order = [...files.keys()].filter((name) => name !== 'manifest.json');
+  for (const name of [...order, 'manifest.json']) {
+    writeAtomic(join(target, name), files.get(name));
+  }
+
+  if (existsSync(targetUi)) {
+    for (const name of readdirSync(targetUi)) {
+      if (!name.endsWith('.html') || files.has(`ui/${name}`)) continue;
+      const entry = lstatOrNull(join(targetUi, name));
+      if (entry && !entry.isDirectory()) unlinkSync(join(targetUi, name));
+    }
+  }
+};
+
+const isOurs = (target, id) => {
+  const markerPath = join(target, MARKER);
+  if (!lstatOrNull(markerPath)) {
+    if (readdirSync(target).length === 0) return false;
+    throw new Error(
+      `${target} exists and was not created by tmgr-plugin dev (no ${MARKER} marker), refusing to overwrite it`,
+    );
+  }
+  const marker = readSource(markerPath, MARKER).toString('utf8').trim();
+  if (marker !== id) {
+    throw new Error(
+      `${target} is marked for plugin "${marker}", not "${id}", refusing to overwrite it`,
+    );
+  }
+  return true;
 };
 
 export const install = (dir, manifest, env = process.env) => {
@@ -123,6 +155,7 @@ export const install = (dir, manifest, env = process.env) => {
   if (typeof id !== 'string' || !PLUGIN_ID.test(id)) {
     throw new Error(`manifest id "${String(id)}" is not a valid plugin id`);
   }
+  if (isReservedId(id)) throw new Error(`id ${id} is reserved`);
   const files = collectFiles(dir, manifest);
 
   const root = pluginsRoot(env);
@@ -140,36 +173,16 @@ export const install = (dir, manifest, env = process.env) => {
     if (!targetStat.isDirectory()) {
       throw new Error(`${target} is not a directory, refusing`);
     }
-    const markerPath = join(target, MARKER);
-    if (!lstatOrNull(markerPath)) {
-      throw new Error(
-        `${target} exists and was not created by tmgr-plugin dev (no ${MARKER} marker), refusing to overwrite it`,
-      );
-    }
-    const marker = readPlainFile(markerPath, MARKER).toString('utf8').trim();
-    if (marker !== id) {
-      throw new Error(
-        `${target} is marked for plugin "${marker}", not "${id}", refusing to overwrite it`,
-      );
-    }
+    const marked = isOurs(target, id);
+    writeAll(target, id, files, { withMarker: !marked });
   } else {
-    mkdirSync(target);
-    writeAtomic(join(target, MARKER), `${id}\n`);
-  }
-
-  const hasPages = [...files.keys()].some((name) => name.startsWith('ui/'));
-  const targetUi = join(target, 'ui');
-  if (hasPages || existsSync(targetUi)) ensureDir(targetUi, 'target ui');
-
-  for (const [name, content] of files) {
-    writeAtomic(join(target, name), content);
-  }
-
-  if (existsSync(targetUi)) {
-    for (const name of readdirSync(targetUi)) {
-      if (name.endsWith('.html') && !files.has(`ui/${name}`)) {
-        unlinkSync(join(targetUi, name));
-      }
+    const stage = mkdtempSync(join(root, `.${id}.stage-`));
+    try {
+      writeAll(stage, id, files, { withMarker: true });
+      renameSync(stage, target);
+    } catch (error) {
+      rmSync(stage, { recursive: true, force: true });
+      throw error;
     }
   }
   return { target, files: [...files.keys()] };

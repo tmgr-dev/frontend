@@ -1,12 +1,7 @@
 // Bundles the plugin into dist/tmgr-plugin.json, the one file a GitHub release needs to carry.
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
-import { validate } from './validate.mjs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { readSource, resolveInside, validate } from './validate.mjs';
 
 const { ok, errors, warnings } = validate(process.cwd());
 warnings.forEach((message) => console.warn(`warning: ${message}`));
@@ -15,16 +10,24 @@ if (!ok) {
   process.exit(1);
 }
 
-const manifest = JSON.parse(readFileSync('manifest.json', 'utf8'));
+const folder = process.cwd();
+const text = (path, label) => readSource(path, label).toString('utf8');
+const manifest = JSON.parse(
+  text(join(folder, 'manifest.json'), 'manifest.json'),
+);
 const pages = {};
 if (existsSync('ui')) {
   for (const entry of readdirSync('ui', { withFileTypes: true })) {
     if (entry.isFile() && entry.name.endsWith('.html')) {
-      pages[`ui/${entry.name}`] = readFileSync(`ui/${entry.name}`, 'utf8');
+      pages[`ui/${entry.name}`] = text(
+        join(folder, 'ui', entry.name),
+        `ui/${entry.name}`,
+      );
     }
   }
 }
-const code = readFileSync(manifest.main ?? 'main.js', 'utf8');
+const main = manifest.main ?? 'main.js';
+const code = text(resolveInside(folder, main, 'main'), main);
 mkdirSync('dist', { recursive: true });
 writeFileSync(
   'dist/tmgr-plugin.json',

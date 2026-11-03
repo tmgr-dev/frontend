@@ -3,8 +3,10 @@
 1. Rename the plugin in `manifest.json`: `id` is `publisher.name`, and command ids start with it.
 2. Write the logic in `main.js` against `tmgr` (types: `tmgr.d.ts`). Pages in `ui/` open in their own
    window and talk to the app through `window.tmgr` (types: `window.d.ts`).
-3. Try it: copy the folder to `~/.tmgr.dev/plugins/<name>/`, turn on developer mode in TMGR
-   (Settings → Plugins), open a local workspace and switch the plugin on.
+3. Try it: turn on developer mode in TMGR (Settings → Plugins), open a local workspace, then run
+   `npm run dev` (watches) or `npm run dev:once` (one install, then exits). Both copy the plugin into
+   `~/.tmgr.dev/plugins/<manifest id>/`; switch the plugin on once in Settings → Plugins. Without the
+   scaffold's `tmgr-plugin` dependency, use `npx tmgr-plugin dev . --once`.
 4. Create your signing key once, outside the repository, and give it to GitHub as a secret:
 
    ```bash

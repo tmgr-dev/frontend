@@ -9,7 +9,8 @@
 	},
 	"files": [
 		"bin",
-		"template"
+		"template",
+		"LICENSE"
 	],
 	"engines": {
 		"node": ">=22.12"

@@ -10,7 +10,8 @@
 		"index.d.ts",
 		"*.generated.js",
 		"pages.js",
-		"README.md"
+		"README.md",
+		"LICENSE"
 	],
 	"keywords": [
 		"tmgr",

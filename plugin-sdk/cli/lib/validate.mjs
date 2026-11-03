@@ -4,9 +4,19 @@
 // Validates a plugin folder with the same rules the app enforces, before you ever load it. Usage:
 //   node validate.mjs [folder] [--json] [--strict]   (folder defaults to the current directory)
 // --json prints one machine-readable report; --strict exits 1 on warnings too.
-import { existsSync, readFileSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  constants as fsConstants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  realpathSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // require(), not a named import: manifest.generated.js is CommonJS (see plugin-sdk/testing/README.md),
@@ -101,6 +111,90 @@ export const EVENT_PERMISSIONS = {
   alarm: 'alarms',
 };
 
+export const MAX_FILE_BYTES = 1024 * 1024;
+
+// The app keeps catalog.json, catalog.json.tmp and installed/ in the plugins folder, and skips dot folders.
+export const isReservedId = (id) =>
+  id === 'catalog.json' ||
+  id === 'installed' ||
+  id.startsWith('.') ||
+  id.endsWith('.tmp');
+
+// Reads at most MAX_FILE_BYTES + 1 bytes from an fd opened without following a final symlink,
+// so a file swapped for a symlink or a device after the check still cannot be read past the cap.
+export const readSource = (path, label = path) => {
+  let stat = null;
+  try {
+    stat = lstatSync(path);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    throw new Error(`${label} does not exist`);
+  }
+  if (stat.isSymbolicLink()) throw new Error(`${label} is a symlink, refusing`);
+  let fd;
+  try {
+    fd = openSync(
+      path,
+      fsConstants.O_RDONLY |
+        (fsConstants.O_NOFOLLOW ?? 0) |
+        (fsConstants.O_NONBLOCK ?? 0),
+    );
+  } catch (error) {
+    if (error.code === 'ELOOP') {
+      throw new Error(`${label} is a symlink, refusing`);
+    }
+    throw error;
+  }
+  try {
+    if (!fstatSync(fd).isFile()) {
+      throw new Error(`${label} is not a regular file`);
+    }
+    const buffer = Buffer.alloc(MAX_FILE_BYTES + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const read = readSync(fd, buffer, length, buffer.length - length, null);
+      if (!read) break;
+      length += read;
+    }
+    if (length > MAX_FILE_BYTES) {
+      throw new Error(
+        `${label} is over the limit: the app ignores files over ${MAX_FILE_BYTES} bytes`,
+      );
+    }
+    return buffer.subarray(0, length);
+  } finally {
+    closeSync(fd);
+  }
+};
+
+// The path of a file named by the manifest, after checking its real location is inside the folder.
+export const resolveInside = (folder, name, label) => {
+  const root = realpathSync(folder);
+  const lexical = resolve(root, name);
+  const outside = () =>
+    new Error(`${label} "${name}" points outside the plugin folder`);
+  const within = (path) => {
+    const rel = relative(root, path);
+    return (
+      rel !== '' &&
+      rel !== '..' &&
+      !rel.startsWith(`..${sep}`) &&
+      !isAbsolute(rel)
+    );
+  };
+  if (!within(lexical)) throw outside();
+  try {
+    if (lstatSync(lexical).isSymbolicLink()) {
+      throw new Error(`${label} "${name}" is a symlink, refusing`);
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    throw new Error(`${label}: ${name} does not exist`);
+  }
+  if (!within(realpathSync(lexical))) throw outside();
+  return lexical;
+};
+
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const validate = (folder) => {
@@ -121,18 +215,41 @@ export const validate = (folder) => {
     return { ok: false, errors, warnings };
   }
 
+  if (isReservedId(manifest.id)) {
+    errors.push(`id ${manifest.id} is reserved`);
+    return { ok: false, errors, warnings, manifest };
+  }
+
   for (const view of manifest.contributes.views) {
     if (view.ui && !existsSync(join(folder, view.ui))) {
       errors.push(`views.${view.id}: ${view.ui} does not exist`);
     }
   }
-  const mainPath = join(folder, manifest.main);
-  if (!existsSync(mainPath)) {
+  if (!existsSync(join(folder, manifest.main))) {
     errors.push(`main: ${manifest.main} does not exist`);
   }
   if (errors.length) return { ok: false, errors, warnings, manifest };
 
-  const code = readFileSync(mainPath, 'utf8');
+  let code;
+  let pagesCode;
+  try {
+    code = readSource(
+      resolveInside(folder, manifest.main, 'main'),
+      manifest.main,
+    ).toString('utf8');
+    pagesCode = manifest.contributes.views
+      .filter((view) => view.ui)
+      .map((view) =>
+        readSource(
+          resolveInside(folder, view.ui, `views.${view.id}`),
+          view.ui,
+        ).toString('utf8'),
+      )
+      .join('\n');
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
+    return { ok: false, errors, warnings, manifest };
+  }
 
   for (const command of manifest.contributes.commands) {
     const pattern = new RegExp(
@@ -152,10 +269,6 @@ export const validate = (folder) => {
     if (!granted.has(permission)) warnings.push(message);
   };
 
-  const pagesCode = manifest.contributes.views
-    .filter((view) => view.ui)
-    .map((view) => readFileSync(join(folder, view.ui), 'utf8'))
-    .join('\n');
   const stripped = code
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[\s;{}(,])\/\/[^\n]*/g, '$1');

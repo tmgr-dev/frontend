@@ -78,6 +78,7 @@ test('the generated package.json uses published ranges, not file paths', () => {
     validate: 'tmgr-plugin validate .',
     check: 'tmgr-plugin check .',
     dev: 'tmgr-plugin dev .',
+    'dev:once': 'tmgr-plugin dev . --once',
     build: 'tmgr-plugin build',
     test: 'node --test main.test.mjs',
   });
@@ -186,4 +187,22 @@ test('creates the target folder when it is missing', () => {
   const dir = join(scratch(), 'nested', 'tools');
   scaffold({ id: 'acme.tools', dir });
   assert.ok(existsSync(join(dir, 'main.js')));
+});
+
+test('refuses ids the app keeps for itself', () => {
+  for (const id of ['catalog.json', 'acme.tmp', 'tools.tmp']) {
+    assert.throws(() => parsePluginId(id), /is reserved/, id);
+  }
+  assert.equal(parsePluginId('acme.tmps').id, 'acme.tmps');
+});
+
+test('the printed cd quotes a directory with spaces', () => {
+  const root = scratch();
+  const result = spawnSync(
+    process.execPath,
+    [bin, 'acme.tools', join(root, "it's here")],
+    { encoding: 'utf8' },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /cd '.*it'\\''s here'/);
 });

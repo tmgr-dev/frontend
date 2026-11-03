@@ -10,11 +10,13 @@
 		"bin",
 		"src",
 		"lib",
-		"README.md"
+		"README.md",
+		"LICENSE"
 	],
 	"engines": {
 		"node": ">=22.12"
 	},
+	"homepage": "https://tmgr.dev/docs/plugins.md",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/tmgr-dev/frontend.git",

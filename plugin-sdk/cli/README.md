@@ -41,9 +41,13 @@ written into the folder, and a folder without that marker, or with another id, i
 
 ## Environment
 
-- `TMGR_PLUGINS_DIR`: plugins root instead of `~/.tmgr.dev/plugins`.
-- `TMGR_LOG_FILE`: app log to tail. Defaults: macOS `~/Library/Logs/dev.tmgr.desktop/TMGR.log`, Linux
-  `~/.local/share/dev.tmgr.desktop/logs/TMGR.log`, Windows `%APPDATA%\dev.tmgr.desktop\logs\TMGR.log`.
+- `TMGR_PLUGINS_DIR`: plugins root instead of `~/.tmgr.dev/plugins`. A test hook: the app only reads `~/.tmgr.dev/plugins`.
+- `TMGR_LOG_FILE`: app log to tail. A test hook. Defaults: macOS `~/Library/Logs/dev.tmgr.desktop/TMGR.log`, Linux
+  `$XDG_DATA_HOME/dev.tmgr.desktop/logs/TMGR.log` (`~/.local/share/...` when unset), Windows
+  `%LOCALAPPDATA%\dev.tmgr.desktop\logs\TMGR.log`.
+
+Ids `catalog.json`, `installed`, anything starting with a dot and anything ending in `.tmp` are reserved:
+the app keeps its own files under those names in the plugins folder.
 
 `lib/` is generated from `plugin-sdk/template` in the app repo (`node plugin-sdk/cli/sync.mjs`), so the
 CLI never drifts from the template's `validate.mjs` and `build.mjs`.

@@ -78,8 +78,29 @@ test('log file location follows the platform and TMGR_LOG_FILE', () => {
       '.local/share/dev.tmgr.desktop/logs/TMGR.log',
     ),
   );
-  const win = logFile({ APPDATA: 'C:\\Users\\u\\AppData\\Roaming' }, 'win32');
-  ok(win.endsWith('TMGR.log') && win.includes('dev.tmgr.desktop'));
+  strictEqual(
+    logFile({ XDG_DATA_HOME: '/xdg' }, 'linux'),
+    join('/xdg', 'dev.tmgr.desktop', 'logs', 'TMGR.log'),
+  );
+  strictEqual(
+    logFile({ LOCALAPPDATA: 'C:\\L' }, 'win32'),
+    join('C:\\L', 'dev.tmgr.desktop', 'logs', 'TMGR.log'),
+  );
+});
+
+test('log tail reads at most 1 MB per poll and catches up on the next', () => {
+  const file = join(tmp(), 'TMGR.log');
+  writeFileSync(file, '');
+  const { tail, lines } = tailFor(file);
+  tail.poll();
+  const line = `x [plugin] ${ID} ${'y'.repeat(1000)}\n`;
+  const count = Math.ceil((2 * 1024 * 1024) / line.length);
+  appendFileSync(file, line.repeat(count));
+  tail.poll();
+  ok(lines.length > 0 && lines.length < count);
+  tail.poll();
+  tail.poll();
+  strictEqual(lines.length, count);
 });
 
 test('dev --once prints preconditions first, installs and exits 0', () => {

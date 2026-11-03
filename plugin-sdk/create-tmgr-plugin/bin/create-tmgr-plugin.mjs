@@ -18,12 +18,19 @@ const TEMPLATE = fileURLToPath(new URL('../template/', import.meta.url));
 const PLACEHOLDER_ID = 'yourname.hello';
 const RENAMED = { _gitignore: '.gitignore', '_package.json': 'package.json' };
 
+export const isReservedId = (id) =>
+  id === 'catalog.json' ||
+  id === 'installed' ||
+  id.startsWith('.') ||
+  id.endsWith('.tmp');
+
 export const parsePluginId = (id) => {
   if (!PLUGIN_ID.test(id)) {
     throw new Error(
       `id "${id}" must look like publisher.name: lowercase letters, digits and dashes, one dot`,
     );
   }
+  if (isReservedId(id)) throw new Error(`id ${id} is reserved`);
   const [publisher, name] = id.split('.');
   return { id, publisher, name };
 };
@@ -45,6 +52,7 @@ const packageJson = (text, { publisher, name }) => {
     validate: 'tmgr-plugin validate .',
     check: 'tmgr-plugin check .',
     dev: 'tmgr-plugin dev .',
+    'dev:once': 'tmgr-plugin dev . --once',
     build: 'tmgr-plugin build',
     test: 'node --test main.test.mjs',
   };
@@ -84,14 +92,22 @@ export const scaffold = ({ id, dir }) => {
   return files.map(([out]) => out).sort();
 };
 
+const quote = (text) =>
+  /^[\w./@:+-]+$/.test(text)
+    ? text
+    : process.platform === 'win32'
+      ? `"${text}"`
+      : `'${text.replaceAll("'", `'\\''`)}'`;
+
 const nextSteps = (dir) =>
   [
     '',
     'Next steps:',
-    `  cd ${dir}`,
+    `  cd ${quote(dir)}`,
     '  npm install',
     '  npm test        # runs main.test.mjs against the in-memory test host',
-    '  npm run dev     # copies the plugin into ~/.tmgr.dev/plugins and watches it',
+    '  npm run dev     # copies the plugin into ~/.tmgr.dev/plugins/<manifest id>/ and watches it',
+    '  npm run dev:once  # the same, once, then exits (use this from scripts and agents)',
     '',
     'Before npm run dev:',
     '  - open a local workspace in the TMGR desktop app (folder plugins do not load in cloud workspaces)',
