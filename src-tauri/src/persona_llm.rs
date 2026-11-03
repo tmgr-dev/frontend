@@ -548,6 +548,7 @@ impl StreamRedactor {
         }
       }
       ChatEvent::ToolCall { index, id, name, arguments } => {
+        let id = id.filter(|id| !id.is_empty());
         let mut out = Vec::new();
         let first = !self.args.contains_key(&index);
         let (last_id, carry) = self.args.entry(index).or_default();
@@ -2962,6 +2963,16 @@ mod tests {
     ];
     let out = redact_stream(Some(FAKE), events.clone());
     assert_eq!(assemble_like_ts(&out), assemble_like_ts(&events));
+  }
+
+  #[test]
+  fn an_empty_id_continues_the_open_call_like_the_ts_client() {
+    let out = redact_stream(
+      Some(FAKE),
+      vec![args(0, Some("c1"), "{\"k\":\"sk-test-"), args(0, Some(""), "FAKEKEY123\"}"), ChatEvent::Done],
+    );
+    let calls = assemble_like_ts(&out);
+    assert_eq!(calls, vec![("c1".into(), "{\"k\":\"[redacted]\"}".into())]);
   }
 
   #[test]
