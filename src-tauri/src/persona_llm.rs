@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
@@ -433,17 +433,160 @@ fn server_message(error: &Value) -> Option<&str> {
 fn present_error(value: &Value) -> Option<&Value> {
   value.get("error").filter(|e| match e {
     Value::Null | Value::Bool(false) => false,
+    Value::Number(n) => n.as_f64().is_some_and(|f| f != 0.0),
+    Value::Array(items) => !items.is_empty(),
     Value::String(text) => !text.trim().is_empty(),
     Value::Object(fields) => !fields.is_empty(),
     _ => true,
   })
 }
 
-fn clean_server_message(message: &str, api_key: Option<&str>) -> Option<String> {
-  let mut message = message.to_string();
-  if let Some(key) = api_key.filter(|k| !k.is_empty()) {
-    message = message.replace(key, "[redacted]");
+const REDACTED: &str = "[redacted]";
+/// Shorter values are placeholders ("ollama", "none"); cutting them out of normal text would garble it (D-002).
+const MIN_REDACTED_KEY_CHARS: usize = 8;
+
+/// The one place a saved key is found in text: trimmed, ASCII case-insensitive, raw or percent-encoded.
+#[derive(Default)]
+struct KeyRedactor {
+  variants: Vec<String>,
+  short: bool,
+}
+
+impl KeyRedactor {
+  fn new(api_key: Option<&str>) -> Self {
+    let Some(key) = api_key.map(str::trim).filter(|k| !k.is_empty()) else {
+      return Self::default();
+    };
+    let mut variants = vec![key.to_ascii_lowercase()];
+    let encoded = url::form_urlencoded::byte_serialize(key.as_bytes()).collect::<String>().to_ascii_lowercase();
+    if !variants.contains(&encoded) {
+      variants.push(encoded);
+    }
+    Self { variants, short: key.chars().count() < MIN_REDACTED_KEY_CHARS }
   }
+
+  fn contains(&self, text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    self.variants.iter().any(|v| lower.contains(v.as_str()))
+  }
+
+  /// ASCII lowercasing keeps byte offsets, so a match in the lowered copy is a valid range in the original.
+  fn replace(&self, text: &str) -> String {
+    let mut text = text.to_string();
+    for variant in &self.variants {
+      let lower = text.to_ascii_lowercase();
+      let mut out = String::with_capacity(text.len());
+      let mut last = 0;
+      for (start, _) in lower.match_indices(variant.as_str()) {
+        out.push_str(&text[last..start]);
+        out.push_str(REDACTED);
+        last = start + variant.len();
+      }
+      out.push_str(&text[last..]);
+      text = out;
+    }
+    text
+  }
+
+  /// `None`: the text shows a short key that can't be cut out cleanly, so the caller shows its generic message.
+  fn error_text(&self, text: &str) -> Option<String> {
+    if self.short {
+      return (!self.contains(text)).then(|| text.to_string());
+    }
+    Some(self.replace(text))
+  }
+
+  fn model_text(&self, text: &str) -> String {
+    if self.short {
+      text.to_string()
+    } else {
+      self.replace(text)
+    }
+  }
+
+  /// Chars a stream must keep back so a key split across chunks is still seen whole.
+  fn hold(&self) -> usize {
+    if self.short {
+      return 0;
+    }
+    self.variants.iter().map(|v| v.chars().count()).max().unwrap_or(0).saturating_sub(1)
+  }
+
+  /// Redacts `carry` and returns all of it but the last `hold()` chars, which stay in `carry`.
+  fn release(&self, carry: &mut String) -> String {
+    let redacted = self.replace(carry);
+    let split = redacted.char_indices().rev().nth(self.hold().saturating_sub(1)).map_or(0, |(i, _)| i);
+    *carry = redacted[split..].to_string();
+    redacted[..split].to_string()
+  }
+}
+
+/// Model text (deltas, tool-call arguments) redacted across chunk borders; a terminal event flushes what was held.
+struct StreamRedactor {
+  keys: KeyRedactor,
+  text: String,
+  args: BTreeMap<u32, (Option<String>, String)>,
+}
+
+impl StreamRedactor {
+  fn new(api_key: Option<&str>) -> Self {
+    Self { keys: KeyRedactor::new(api_key), text: String::new(), args: BTreeMap::new() }
+  }
+
+  fn push(&mut self, event: ChatEvent) -> Vec<ChatEvent> {
+    if self.keys.hold() == 0 {
+      return vec![event];
+    }
+    match event {
+      ChatEvent::Delta { text } => {
+        self.text.push_str(&text);
+        let text = self.keys.release(&mut self.text);
+        if text.is_empty() {
+          Vec::new()
+        } else {
+          vec![ChatEvent::Delta { text }]
+        }
+      }
+      ChatEvent::ToolCall { index, id, name, arguments } => {
+        let mut out = Vec::new();
+        let (last_id, carry) = self.args.entry(index).or_default();
+        if id.is_some() && *last_id != id {
+          // An id-less event appends to the call already open at this index, so the old tail lands there.
+          if !carry.is_empty() {
+            let tail = self.keys.replace(&std::mem::take(carry));
+            out.push(ChatEvent::ToolCall { index, id: None, name: None, arguments: tail });
+          }
+          *last_id = id.clone();
+        }
+        carry.push_str(&arguments);
+        let arguments = self.keys.release(carry);
+        if id.is_some() || name.is_some() || !arguments.is_empty() {
+          out.push(ChatEvent::ToolCall { index, id, name, arguments });
+        }
+        out
+      }
+      terminal => {
+        let mut out = self.finish();
+        out.push(terminal);
+        out
+      }
+    }
+  }
+
+  fn finish(&mut self) -> Vec<ChatEvent> {
+    let mut out = Vec::new();
+    if !self.text.is_empty() {
+      out.push(ChatEvent::Delta { text: self.keys.replace(&std::mem::take(&mut self.text)) });
+    }
+    for (&index, (_, carry)) in self.args.iter_mut().filter(|(_, (_, carry))| !carry.is_empty()) {
+      out.push(ChatEvent::ToolCall { index, id: None, name: None, arguments: self.keys.replace(&std::mem::take(carry)) });
+    }
+    out
+  }
+}
+
+fn clean_server_message(message: &str, api_key: Option<&str>) -> Option<String> {
+  let message = KeyRedactor::new(api_key).error_text(message)?;
   if message.trim_start().starts_with('<') {
     return None;
   }
@@ -467,9 +610,10 @@ pub fn parse_chat_json_reply(body: &str, api_key: Option<&str>) -> Vec<ChatEvent
   let Some(message) = value.get("choices").and_then(|c| c.get(0)).and_then(|c| c.get("message")) else {
     return no_content();
   };
+  let keys = KeyRedactor::new(api_key);
   let mut events = Vec::new();
   if let Some(content) = message.get("content").and_then(Value::as_str).filter(|c| !c.is_empty()) {
-    events.push(ChatEvent::Delta { text: content.to_string() });
+    events.push(ChatEvent::Delta { text: keys.model_text(content) });
   }
   for (index, call) in message.get("tool_calls").and_then(Value::as_array).into_iter().flatten().enumerate() {
     let function = call.get("function");
@@ -477,7 +621,7 @@ pub fn parse_chat_json_reply(body: &str, api_key: Option<&str>) -> Vec<ChatEvent
       index: index as u32,
       id: call.get("id").and_then(Value::as_str).map(str::to_string),
       name: function.and_then(|f| f.get("name")).and_then(Value::as_str).map(str::to_string),
-      arguments: function.and_then(|f| f.get("arguments")).and_then(Value::as_str).unwrap_or("").to_string(),
+      arguments: keys.model_text(function.and_then(|f| f.get("arguments")).and_then(Value::as_str).unwrap_or("")),
     });
   }
   if let Some(message) = finish_reason(&value).and_then(finish_error_message) {
@@ -533,7 +677,8 @@ pub fn parse_sse_text(body: &str, api_key: Option<&str>) -> Vec<ChatEvent> {
   if !terminal {
     events.push(end_of_stream_event(useful, saw_finish));
   }
-  events
+  let mut redactor = StreamRedactor::new(api_key);
+  events.into_iter().flat_map(|event| redactor.push(event)).collect()
 }
 
 pub fn end_of_stream_event(useful: bool, saw_finish: bool) -> ChatEvent {
@@ -765,16 +910,21 @@ async fn read_capped(response: &mut reqwest::Response, cap: usize) -> Result<Vec
   Ok(body)
 }
 
-fn llm_http_client() -> Result<reqwest::Client, String> {
+/// A key may go over plain HTTP to a local/LAN host, so that request must never pass through an env proxy (D-001).
+fn bypasses_env_proxy(base_url: &str) -> bool {
+  matches!(classify_url(base_url), Ok(UrlKind::Local))
+}
+
+fn llm_http_client(base_url: &str) -> Result<reqwest::Client, String> {
   if rustls::crypto::CryptoProvider::get_default().is_none() {
     let _ = rustls::crypto::ring::default_provider().install_default();
   }
   // Only the connect is capped: a local model may legitimately take minutes to finish a turn.
-  reqwest::Client::builder()
+  let builder = reqwest::Client::builder()
     .connect_timeout(Duration::from_secs(5))
-    .redirect(reqwest::redirect::Policy::none())
-    .build()
-    .map_err(|e| e.to_string())
+    .redirect(reqwest::redirect::Policy::none());
+  let builder = if bypasses_env_proxy(base_url) { builder.no_proxy() } else { builder };
+  builder.build().map_err(|e| e.to_string())
 }
 
 fn redirect_target(location: Option<&str>, api_key: Option<&str>) -> String {
@@ -789,11 +939,10 @@ fn redirect_target(location: Option<&str>, api_key: Option<&str>) -> String {
   if let Some(port) = url.port() {
     origin.push_str(&format!(":{port}"));
   }
-  let origin = truncate_chars(&origin, ERROR_MESSAGE_CHARS);
-  match api_key.filter(|k| !k.is_empty()) {
-    Some(key) if origin.to_lowercase().contains(&key.to_lowercase()) => FALLBACK.into(),
-    _ => origin,
+  if KeyRedactor::new(api_key).contains(&origin) {
+    return FALLBACK.into();
   }
+  truncate_chars(&origin, ERROR_MESSAGE_CHARS)
 }
 
 fn redirect_error(location: Option<&str>, api_key: Option<&str>) -> String {
@@ -827,7 +976,7 @@ async fn stream_chat<R: Runtime>(
   messages: Vec<Value>,
   tools: Option<Value>,
 ) -> Result<(), String> {
-  let client = llm_http_client()?;
+  let client = llm_http_client(&config.base_url)?;
   let url = chat_completions_url(&config.base_url);
   // A typed struct here would silently drop fields the agent loop already built (tool_calls, tool_call_id).
   let mut body = serde_json::json!({
@@ -870,7 +1019,19 @@ async fn stream_chat<R: Runtime>(
   pump_stream(&mut response, api_key, |event| emit_event(app, request_id, event)).await
 }
 
+/// Every exit flushes the redactor's held tail: terminal events through `push`, early errors through `finish`.
 async fn pump_stream<F: FnMut(ChatEvent)>(
+  response: &mut reqwest::Response,
+  api_key: Option<&str>,
+  mut emit: F,
+) -> Result<(), String> {
+  let mut redactor = StreamRedactor::new(api_key);
+  let result = pump_events(response, api_key, |event| redactor.push(event).into_iter().for_each(&mut emit)).await;
+  redactor.finish().into_iter().for_each(&mut emit);
+  result
+}
+
+async fn pump_events<F: FnMut(ChatEvent)>(
   response: &mut reqwest::Response,
   api_key: Option<&str>,
   mut emit: F,
@@ -2262,7 +2423,7 @@ mod tests {
       format!("HTTP/1.1 307 Temporary Redirect\r\nlocation: http://localhost:{target_port}/steal?x=1\r\ncontent-length: 0\r\n\r\n"),
       Arc::new(Mutex::new(Vec::new())),
     ));
-    let client = llm_http_client().unwrap();
+    let client = llm_http_client("http://127.0.0.1").unwrap();
     let url = format!("http://127.0.0.1:{origin_port}/v1/chat/completions");
     let result = post_chat(&client, &url, br#"{"secret":"payload"}"#.to_vec(), Some("sk-test")).await;
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -2278,7 +2439,7 @@ mod tests {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     drop(listener);
-    let client = llm_http_client().unwrap();
+    let client = llm_http_client("http://127.0.0.1").unwrap();
     let url = format!("http://127.0.0.1:{port}/v1/chat/completions?key=QUERYSECRET");
     let message = post_chat(&client, &url, b"{}".to_vec(), None).await.err().unwrap();
     assert!(message.starts_with("LLM server unreachable"), "{message}");
@@ -2344,15 +2505,19 @@ mod tests {
   }
 
   async fn pump(reply: String) -> (Result<(), String>, Vec<ChatEvent>) {
+    pump_with_key(reply, None).await
+  }
+
+  async fn pump_with_key(reply: String, key: Option<&str>) -> (Result<(), String>, Vec<ChatEvent>) {
     use std::sync::Arc;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     tokio::spawn(serve_once(listener, reply, Arc::new(Mutex::new(Vec::new()))));
-    let client = llm_http_client().unwrap();
+    let client = llm_http_client("http://127.0.0.1").unwrap();
     let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
     let mut response = post_chat(&client, &url, b"{}".to_vec(), None).await.unwrap();
     let mut events = Vec::new();
-    let result = pump_stream(&mut response, None, |e| events.push(e)).await;
+    let result = pump_stream(&mut response, key, |e| events.push(e)).await;
     (result, events)
   }
 
@@ -2440,5 +2605,423 @@ mod tests {
     buffer.push(b"x");
     assert!(buffer.overflowed());
     assert_eq!(buffer.finish(), None);
+  }
+
+  const FAKE: &str = "sk-test-FAKEKEY123";
+  /// Percent-encodes differently from the raw form, so the encoded variant is really exercised.
+  const FAKE_ENCODABLE: &str = "sk-test/FAKE+KEY=123";
+  const FAKE_ENCODED_LOWER_HEX: &str = "sk-test%2ffake%2bkey%3d123";
+  const GENERIC: &str = "The LLM server returned an error";
+
+  fn redact_stream(key: Option<&str>, events: Vec<ChatEvent>) -> Vec<ChatEvent> {
+    let mut redactor = StreamRedactor::new(key);
+    let mut out = Vec::new();
+    for event in events {
+      out.extend(redactor.push(event));
+    }
+    out.extend(redactor.finish());
+    out
+  }
+
+  fn joined_text(events: &[ChatEvent]) -> String {
+    events.iter().filter_map(|e| if let ChatEvent::Delta { text } = e { Some(text.as_str()) } else { None }).collect()
+  }
+
+  fn joined_args(events: &[ChatEvent], at: u32) -> String {
+    events
+      .iter()
+      .filter_map(|e| match e {
+        ChatEvent::ToolCall { index, arguments, .. } if *index == at => Some(arguments.as_str()),
+        _ => None,
+      })
+      .collect()
+  }
+
+  fn delta(text: &str) -> ChatEvent {
+    ChatEvent::Delta { text: text.into() }
+  }
+
+  fn args(index: u32, id: Option<&str>, arguments: &str) -> ChatEvent {
+    ChatEvent::ToolCall { index, id: id.map(str::to_string), name: id.map(|_| "f".to_string()), arguments: arguments.into() }
+  }
+
+  fn content_chunk(text: &str) -> String {
+    chunk(&serde_json::json!({ "content": text }).to_string(), "null")
+  }
+
+  #[test]
+  fn a_key_straddling_the_redirect_cut_is_never_shown() {
+    let host = format!("{}{}", "a".repeat(190), FAKE.to_ascii_lowercase());
+    let location = format!("https://{host}.example.com/x");
+    let text = redirect_text(Some(&location), Some(FAKE));
+    assert!(text.contains("to another address."), "{text}");
+    assert!(!text.contains("sk-te"), "{text}");
+    let control = redirect_text(Some(&location), None);
+    assert!(control.contains('…') && !control.contains("another address"), "{control}");
+  }
+
+  #[test]
+  fn key_matching_ignores_ascii_case_and_stored_whitespace() {
+    let padded = format!("  {FAKE}\n");
+    for shown in [FAKE.to_uppercase(), FAKE.to_lowercase()] {
+      let body = format!("{{\"error\":{{\"message\":\"bad key {shown} given\"}}}}");
+      assert_eq!(sanitize_error_body("401 Unauthorized", &body, Some(&padded)), "LLM server returned 401 Unauthorized: bad key [redacted] given");
+      let events = parse_chat_events(&format!("{{\"error\":\"bad key {shown}\"}}"), Some(&padded));
+      assert_eq!(error_text(&events), "bad key [redacted]");
+    }
+  }
+
+  #[test]
+  fn a_percent_encoded_key_is_redacted_in_error_bodies_and_server_messages() {
+    let body = format!("{{\"error\":\"GET /v1?key={FAKE_ENCODED_LOWER_HEX} denied, raw {FAKE_ENCODABLE}\"}}");
+    let message = sanitize_error_body("403 Forbidden", &body, Some(FAKE_ENCODABLE));
+    assert_eq!(message, "LLM server returned 403 Forbidden: GET /v1?key=[redacted] denied, raw [redacted]");
+    let events = parse_chat_events(&format!("{{\"error\":{{\"message\":\"key={}\"}}}}", FAKE_ENCODED_LOWER_HEX.to_uppercase()), Some(FAKE_ENCODABLE));
+    assert_eq!(error_text(&events), "key=[redacted]");
+  }
+
+  #[test]
+  fn a_short_key_in_an_error_text_gives_the_generic_message() {
+    let short = "olla1";
+    assert_eq!(error_text(&parse_chat_events("{\"error\":\"bad key OLLA1 here\"}", Some(short))), GENERIC);
+    assert_eq!(sanitize_error_body("401 Unauthorized", "{\"error\":\"bad key olla1\"}", Some(short)), "LLM server returned 401 Unauthorized");
+    assert!(redirect_text(Some("https://olla1.example.com"), Some(short)).contains("to another address."));
+  }
+
+  #[test]
+  fn a_short_key_leaves_other_texts_and_model_text_unchanged() {
+    let short = "olla1";
+    assert_eq!(error_text(&parse_chat_events("{\"error\":\"model not found\"}", Some(short))), "model not found");
+    assert_eq!(sanitize_error_body("404 Not Found", "{\"error\":\"nope\"}", Some(short)), "LLM server returned 404 Not Found: nope");
+    let events = vec![delta("say olla1"), args(0, Some("c1"), "{\"v\":\"olla1\"}"), ChatEvent::Done];
+    assert_eq!(redact_stream(Some(short), events.clone()), events);
+    let reply = "{\"choices\":[{\"message\":{\"content\":\"olla1\"}}]}";
+    assert_eq!(parse_chat_json_reply(reply, Some(short)), vec![delta("olla1"), ChatEvent::Done]);
+  }
+
+  #[test]
+  fn a_key_split_across_two_deltas_is_redacted() {
+    let out = redact_stream(Some(FAKE), vec![delta("hello sk-test-FA"), delta("KEkey123 world"), ChatEvent::Done]);
+    assert_eq!(joined_text(&out), "hello [redacted] world");
+    assert_eq!(out.last(), Some(&ChatEvent::Done));
+  }
+
+  #[test]
+  fn a_key_split_across_two_tool_argument_chunks_is_redacted() {
+    let out = redact_stream(
+      Some(FAKE),
+      vec![args(0, Some("c1"), "{\"k\":\"sk-te"), args(0, None, "st-FAKEKEY123\"}"), args(1, Some("c2"), "{}"), ChatEvent::Done],
+    );
+    assert_eq!(joined_args(&out, 0), "{\"k\":\"[redacted]\"}");
+    assert_eq!(joined_args(&out, 1), "{}");
+    assert_eq!(out[0], args(0, Some("c1"), ""));
+    let flushed = &out[out.len() - 3..];
+    assert!(matches!(flushed[0], ChatEvent::ToolCall { index: 0, id: None, name: None, .. }), "{out:?}");
+    assert!(matches!(flushed[1], ChatEvent::ToolCall { index: 1, id: None, name: None, .. }), "{out:?}");
+    assert_eq!(flushed[2], ChatEvent::Done);
+  }
+
+  #[test]
+  fn a_new_call_at_the_same_index_takes_no_tail_of_the_previous_one() {
+    let out = redact_stream(Some(FAKE), vec![args(0, Some("c1"), "{\"a\":1}"), args(0, Some("c2"), "{\"b\":2}"), ChatEvent::Done]);
+    assert_eq!(
+      out,
+      vec![
+        args(0, Some("c1"), ""),
+        ChatEvent::ToolCall { index: 0, id: None, name: None, arguments: "{\"a\":1}".into() },
+        args(0, Some("c2"), ""),
+        ChatEvent::ToolCall { index: 0, id: None, name: None, arguments: "{\"b\":2}".into() },
+        ChatEvent::Done,
+      ]
+    );
+  }
+
+  #[test]
+  fn a_repeated_id_does_not_flush_the_held_tail() {
+    let out = redact_stream(Some(FAKE), vec![args(0, Some("c1"), "{\"k\":\"sk-test-"), args(0, Some("c1"), "FAKEKEY123\"}"), ChatEvent::Done]);
+    assert_eq!(joined_args(&out, 0), "{\"k\":\"[redacted]\"}");
+  }
+
+  #[test]
+  fn a_normal_stream_comes_out_byte_identical() {
+    let text = "Привет, мир! 你好 🌍 — sk-test-almost but not the key; ".repeat(5);
+    let chars: Vec<char> = text.chars().collect();
+    let mut events: Vec<ChatEvent> = chars.chunks(3).map(|c| delta(&c.iter().collect::<String>())).collect();
+    let arguments = "{\"q\":\"ключ 🗝 sk-test-FAKEKEY12\"}";
+    events.push(args(0, Some("c1"), &arguments[..5]));
+    events.push(args(0, None, &arguments[5..]));
+    events.push(ChatEvent::Done);
+    let out = redact_stream(Some(FAKE), events);
+    assert_eq!(joined_text(&out), text);
+    assert_eq!(joined_args(&out, 0), arguments);
+    assert_eq!(out.last(), Some(&ChatEvent::Done));
+  }
+
+  #[tokio::test]
+  async fn the_held_tail_is_flushed_before_done() {
+    let body = format!("{}{}data: [DONE]\n\n", content_chunk("a sk-test-FAKE"), content_chunk("KEY123 b"));
+    let (result, events) = pump_with_key(sse_reply(&body), Some(FAKE)).await;
+    assert_eq!(result, Ok(()));
+    assert_eq!(joined_text(&events), "a [redacted] b");
+    assert_eq!(events.last(), Some(&ChatEvent::Done));
+  }
+
+  #[tokio::test]
+  async fn the_held_tail_is_flushed_on_a_finish_reason_then_close() {
+    let body = format!("{}{}{}", content_chunk("a sk-"), content_chunk("test-FAKEKEY123 b"), chunk("{}", "\"stop\""));
+    let (result, events) = pump_with_key(sse_reply(&body), Some(FAKE)).await;
+    assert_eq!(result, Ok(()));
+    assert_eq!(joined_text(&events), "a [redacted] b");
+    assert_eq!(events.last(), Some(&ChatEvent::Done));
+  }
+
+  #[tokio::test]
+  async fn the_held_tail_is_flushed_before_a_mid_stream_error() {
+    let body = format!("{}{}data: {{\"error\":\"boom\"}}\n\n", content_chunk("a sk-test-"), content_chunk("FAKEKEY123 b"));
+    let (result, events) = pump_with_key(sse_reply(&body), Some(FAKE)).await;
+    assert_eq!(result, Ok(()));
+    assert_eq!(joined_text(&events), "a [redacted] b");
+    assert_eq!(events.last(), Some(&ChatEvent::Error { message: "boom".into() }));
+  }
+
+  #[tokio::test]
+  async fn the_held_tail_is_flushed_when_the_transport_fails() {
+    let body = content_chunk("Hi there");
+    let reply = format!("HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\n\r\n{body}", body.len() + 100);
+    let (result, events) = pump_with_key(reply, Some(FAKE)).await;
+    assert!(result.is_err());
+    assert_eq!(events, vec![delta("Hi there")]);
+  }
+
+  #[test]
+  fn sse_in_json_redacts_a_key_split_across_deltas() {
+    let body = format!("{}{}data: [DONE]\n\n", content_chunk("a sk-test-FA"), content_chunk("KEKEY123 b"));
+    let events = parse_sse_text(&body, Some(FAKE));
+    assert_eq!(joined_text(&events), "a [redacted] b");
+    assert_eq!(events.last(), Some(&ChatEvent::Done));
+  }
+
+  #[test]
+  fn a_json_reply_redacts_content_and_tool_arguments() {
+    let reply = serde_json::json!({
+      "choices": [{ "message": {
+        "content": format!("key {FAKE}"),
+        "tool_calls": [{ "id": "c1", "function": { "name": "f", "arguments": format!("{{\"k\":\"{}\"}}", FAKE.to_uppercase()) } }]
+      }}]
+    })
+    .to_string();
+    assert_eq!(
+      parse_chat_json_reply(&reply, Some(FAKE)),
+      vec![
+        delta("key [redacted]"),
+        ChatEvent::ToolCall { index: 0, id: Some("c1".into()), name: Some("f".into()), arguments: "{\"k\":\"[redacted]\"}".into() },
+        ChatEvent::Done,
+      ]
+    );
+  }
+
+  #[test]
+  fn present_error_matrix() {
+    for falsy in ["0", "0.0", "[]", "{}", "null", "false", "\"\""] {
+      let value: Value = serde_json::from_str(&format!("{{\"error\":{falsy}}}")).unwrap();
+      assert!(present_error(&value).is_none(), "{falsy}");
+      assert_eq!(
+        parse_chat_events(&format!("{{\"error\":{falsy},\"choices\":[{{\"delta\":{{\"content\":\"Hi\"}}}}]}}"), None),
+        vec![delta("Hi")],
+        "{falsy}"
+      );
+    }
+    for truthy in ["1", "-2", "0.5", "[1]", "[\"x\"]", "\"x\"", "{\"a\":1}", "true"] {
+      let value: Value = serde_json::from_str(&format!("{{\"error\":{truthy}}}")).unwrap();
+      assert!(present_error(&value).is_some(), "{truthy}");
+    }
+  }
+
+  #[test]
+  fn only_local_urls_bypass_env_proxies() {
+    let lan = format!("http://{}.{}.{}.{}:8000", 192, 168, 1, 5);
+    for url in ["http://localhost:11434", "http://127.0.0.1:8000/v1", lan.as_str(), "http://[::1]:8000", "http://box.local"] {
+      assert!(bypasses_env_proxy(url), "{url}");
+    }
+    for url in ["https://api.openai.com/v1", "http://8.8.8.8", "", "not a url"] {
+      assert!(!bypasses_env_proxy(url), "{url}");
+    }
+  }
+
+  #[test]
+  fn no_key_or_an_empty_key_leaves_texts_unchanged() {
+    for key in [None, Some(""), Some("   ")] {
+      assert_eq!(error_text(&parse_chat_events("{\"error\":\"bad key given\"}", key)), "bad key given");
+      assert_eq!(sanitize_error_body("401 Unauthorized", "{\"error\":\"nope\"}", key), "LLM server returned 401 Unauthorized: nope");
+      assert_eq!(error_text(&parse_chat_events("{\"error\":{\"code\":1}}", key)), GENERIC);
+      assert!(redirect_text(Some("https://evil.example"), key).contains("to https://evil.example."));
+      let events = vec![delta("hi"), args(0, Some("c1"), "{}"), ChatEvent::Done];
+      assert_eq!(redact_stream(key, events.clone()), events);
+    }
+  }
+
+  /// Mirrors `src/local/llmClient.ts`: a new buffer per index when a different non-empty id arrives, id-less appends.
+  fn assemble_like_ts(events: &[ChatEvent]) -> Vec<(String, String)> {
+    let mut buffers: Vec<(String, String)> = Vec::new();
+    let mut current: HashMap<u32, usize> = HashMap::new();
+    for event in events {
+      if let ChatEvent::ToolCall { index, id, arguments, .. } = event {
+        let id = id.clone().unwrap_or_default();
+        let open = current.get(index).copied();
+        let at = match open {
+          Some(at) if id.is_empty() || buffers[at].0.is_empty() || buffers[at].0 == id => at,
+          _ => {
+            buffers.push((String::new(), String::new()));
+            current.insert(*index, buffers.len() - 1);
+            buffers.len() - 1
+          }
+        };
+        if !id.is_empty() {
+          buffers[at].0 = id;
+        }
+        buffers[at].1.push_str(arguments);
+      }
+    }
+    buffers
+  }
+
+  fn char_splits(text: &str) -> Vec<(String, String, String)> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = Vec::new();
+    for i in 0..=chars.len() {
+      for j in i..=chars.len() {
+        out.push((chars[..i].iter().collect(), chars[i..j].iter().collect(), chars[j..].iter().collect()));
+      }
+    }
+    out
+  }
+
+  #[test]
+  fn qa_a_key_split_at_every_two_and_three_way_position_never_leaks_from_deltas() {
+    let mixed: String = FAKE.chars().enumerate().map(|(i, c)| if i % 2 == 0 { c.to_ascii_uppercase() } else { c }).collect();
+    let cases = [
+      (FAKE, FAKE.to_string()),
+      (FAKE, FAKE.to_uppercase()),
+      (FAKE, mixed),
+      (FAKE_ENCODABLE, FAKE_ENCODABLE.to_string()),
+      (FAKE_ENCODABLE, FAKE_ENCODED_LOWER_HEX.to_string()),
+      (FAKE_ENCODABLE, FAKE_ENCODED_LOWER_HEX.to_uppercase()),
+    ];
+    for (key, shown) in cases {
+      let text = format!("й{shown}🌍 ок");
+      for (a, b, c) in char_splits(&text) {
+        let out = redact_stream(Some(key), vec![delta(&a), delta(&b), delta(&c), ChatEvent::Done]);
+        assert_eq!(joined_text(&out), "й[redacted]🌍 ок", "{key} {a:?}|{b:?}|{c:?}");
+        assert_eq!(out.last(), Some(&ChatEvent::Done));
+        for event in &out {
+          if let ChatEvent::Delta { text } = event {
+            assert!(!text.to_ascii_lowercase().contains(&shown.to_ascii_lowercase()), "{event:?}");
+          }
+        }
+      }
+    }
+  }
+
+  #[test]
+  fn qa_a_key_split_at_every_position_never_leaks_from_tool_arguments() {
+    for (key, shown) in [(FAKE, FAKE.to_uppercase()), (FAKE_ENCODABLE, FAKE_ENCODED_LOWER_HEX.to_uppercase())] {
+      let arguments = format!("{{\"body\":\"ключ {shown}🗝\"}}");
+      for (a, b, c) in char_splits(&arguments) {
+        let events = vec![
+          args(0, Some("c1"), &a),
+          args(0, None, &b),
+          args(1, Some("c2"), "{}"),
+          args(0, None, &c),
+          ChatEvent::Done,
+        ];
+        let out = redact_stream(Some(key), events);
+        let calls = assemble_like_ts(&out);
+        assert_eq!(
+          calls,
+          vec![("c1".to_string(), "{\"body\":\"ключ [redacted]🗝\"}".to_string()), ("c2".to_string(), "{}".to_string())],
+          "{a:?}|{b:?}|{c:?}"
+        );
+        assert_eq!(out.last(), Some(&ChatEvent::Done));
+      }
+    }
+  }
+
+  #[test]
+  fn qa_redaction_keeps_the_ts_assembly_of_calls_identical_when_no_key_is_present() {
+    let events = vec![
+      args(0, Some("c1"), "{\"method\":\"GET\","),
+      args(0, None, "\"path\":\"tasks/1\"}"),
+      args(1, Some("c2"), "{\"method\":"),
+      args(0, Some("c3"), "{\"method\":\"POST\",\"path\":\"tasks/1/comments\",\"body\":{\"text\":\"Привет sk-test-FAKEKEY12"),
+      args(1, None, "\"GET\",\"path\":\"tasks/2\"}"),
+      args(0, Some("c3"), "\"}}"),
+      ChatEvent::Done,
+    ];
+    let out = redact_stream(Some(FAKE), events.clone());
+    assert_eq!(assemble_like_ts(&out), assemble_like_ts(&events));
+  }
+
+  #[test]
+  fn qa_an_id_change_at_the_same_index_mid_key_puts_no_key_in_either_call() {
+    let out = redact_stream(
+      Some(FAKE),
+      vec![args(0, Some("c1"), "{\"k\":\"sk-test-FA"), args(0, Some("c2"), "KEKEY123\"}"), ChatEvent::Done],
+    );
+    let calls = assemble_like_ts(&out);
+    assert_eq!(calls, vec![("c1".into(), "{\"k\":\"sk-test-FA".into()), ("c2".into(), "KEKEY123\"}".into())]);
+  }
+
+  #[test]
+  fn qa_both_calls_at_one_index_are_redacted_when_each_carries_the_key() {
+    let out = redact_stream(
+      Some(FAKE),
+      vec![args(0, Some("c1"), &format!("{{\"k\":\"{FAKE}")), args(0, Some("c2"), &format!("{FAKE}\"}}")), ChatEvent::Done],
+    );
+    assert_eq!(assemble_like_ts(&out), vec![("c1".into(), "{\"k\":\"[redacted]".into()), ("c2".into(), "[redacted]\"}".into())]);
+  }
+
+  #[tokio::test]
+  async fn qa_a_whole_key_held_when_the_transport_fails_is_flushed_redacted() {
+    let body = content_chunk(&format!("a {FAKE}"));
+    let reply = format!("HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\n\r\n{body}", body.len() + 100);
+    let (result, events) = pump_with_key(reply, Some(FAKE)).await;
+    assert!(result.is_err());
+    assert_eq!(events, vec![delta("a [redacted]")]);
+  }
+
+  #[tokio::test]
+  async fn qa_a_key_in_the_chunk_before_done_and_in_tool_arguments_is_redacted_in_the_pump() {
+    let call = serde_json::json!({ "tool_calls": [{ "index": 0, "id": "c1", "function": { "name": "f", "arguments": format!("{{\"k\":\"{}", &FAKE[..9]) } }] });
+    let tail = serde_json::json!({ "tool_calls": [{ "index": 0, "function": { "arguments": format!("{}\"}}", &FAKE[9..]) } }] });
+    let body = format!(
+      "{}{}{}data: [DONE]\n\n",
+      content_chunk(&format!("x {}", FAKE.to_uppercase())),
+      chunk(&call.to_string(), "null"),
+      chunk(&tail.to_string(), "\"tool_calls\"")
+    );
+    let (result, events) = pump_with_key(sse_reply(&body), Some(FAKE)).await;
+    assert_eq!(result, Ok(()));
+    assert_eq!(joined_text(&events), "x [redacted]");
+    assert_eq!(assemble_like_ts(&events), vec![("c1".into(), "{\"k\":\"[redacted]\"}".into())]);
+    assert_eq!(events.last(), Some(&ChatEvent::Done));
+  }
+
+  #[test]
+  fn qa_sse_in_json_redacts_a_split_key_before_a_mid_stream_error_that_echoes_it() {
+    let body = format!("{}{}data: {{\"error\":\"bad {FAKE}\"}}\n\n", content_chunk("a sk-test-FAKE"), content_chunk("KEY123 b"));
+    let events = parse_sse_text(&body, Some(FAKE));
+    assert_eq!(joined_text(&events), "a [redacted] b");
+    assert_eq!(events.last(), Some(&ChatEvent::Error { message: "bad [redacted]".into() }));
+  }
+
+  #[test]
+  fn qa_the_short_key_threshold_is_eight_characters() {
+    let seven = "abcdefg";
+    assert_eq!(error_text(&parse_chat_events("{\"error\":\"bad ABCDEFG\"}", Some(seven))), GENERIC);
+    assert_eq!(redact_stream(Some(seven), vec![delta("abcdefg"), ChatEvent::Done]), vec![delta("abcdefg"), ChatEvent::Done]);
+    assert_eq!(error_text(&parse_chat_events("{\"error\":\"bad ABCDEFG\"}", Some("  abcdefg  "))), GENERIC);
+    let eight = "abcdefgh";
+    assert_eq!(error_text(&parse_chat_events("{\"error\":\"bad ABCDEFGH\"}", Some(eight))), "bad [redacted]");
+    assert_eq!(joined_text(&redact_stream(Some(eight), vec![delta("x abcd"), delta("EFGH y"), ChatEvent::Done])), "x [redacted] y");
   }
 }
