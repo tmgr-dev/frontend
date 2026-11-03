@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.85 — 2026-11-03
+
+- Plugins (API 1.8): collapsible sections (with a title, or showing the first few items and an "N more" toggle), tabs and a segmented switch.
+- Plugins: buttons can be danger, success or outline, show an icon or only an icon, be disabled or show a loading spinner, and have a tooltip; buttons can be grouped.
+- Plugins: badges can show an icon and a tooltip, and a standalone icon element with a fixed icon set.
+
 ## 0.9.84 — 2026-11-03
 
 - Plugins (API 1.7): plugin pages and task sections can show formatted documents — headings, lists, task lists, tables, quotes and code blocks.
