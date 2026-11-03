@@ -431,6 +431,129 @@ const kitchenSinkTextDemo = () => ({
 	],
 });
 
+let kitchenSinkMode = 'compact';
+
+tmgr.commands.register('tmgr-dev.kitchen-sink.setMode', async (args) => {
+	if (args?.value === 'compact' || args?.value === 'detailed') {
+		kitchenSinkMode = args.value;
+	}
+	await tmgr.ui.refresh('page', 'view');
+});
+
+const kitchenSinkControlsDemo = () => ({
+	type: 'stack',
+	direction: 'column',
+	gap: 'md',
+	children: [
+		{ type: 'heading', text: 'Layout and controls demo (API 1.8)', level: 2 },
+		{
+			type: 'segmented',
+			options: [
+				{ value: 'compact', text: 'Compact' },
+				{ value: 'detailed', text: 'Detailed' },
+			],
+			value: kitchenSinkMode,
+			command: 'tmgr-dev.kitchen-sink.setMode',
+		},
+		{
+			type: 'stack',
+			direction: 'row',
+			align: 'center',
+			children: [
+				{ type: 'icon', name: 'info', tone: 'muted' },
+				{
+					type: 'badge',
+					text: 'Hover me',
+					color: 'blue',
+					icon: 'star',
+					tooltip: 'Badge tooltip: plain text only',
+				},
+				{
+					type: 'buttonGroup',
+					children: [
+						{
+							type: 'button',
+							text: 'Danger',
+							command: 'tmgr-dev.kitchen-sink.ping',
+							variant: 'danger',
+							icon: 'trash',
+						},
+						{
+							type: 'button',
+							text: 'Success',
+							command: 'tmgr-dev.kitchen-sink.ping',
+							variant: 'success',
+							icon: 'check',
+						},
+						{
+							type: 'button',
+							text: 'Outline',
+							command: 'tmgr-dev.kitchen-sink.ping',
+							variant: 'outline',
+						},
+						{
+							type: 'button',
+							text: 'Refresh',
+							command: 'tmgr-dev.kitchen-sink.ping',
+							icon: 'refresh',
+							iconOnly: true,
+							tooltip: 'Icon-only button',
+						},
+						{
+							type: 'button',
+							text: 'Disabled',
+							command: 'tmgr-dev.kitchen-sink.ping',
+							disabled: true,
+						},
+						{
+							type: 'button',
+							text: 'Loading',
+							command: 'tmgr-dev.kitchen-sink.ping',
+							loading: true,
+						},
+					],
+				},
+			],
+		},
+		{
+			type: 'collapse',
+			title: 'Collapsed section',
+			children: [{ type: 'text', text: 'Hidden until opened.' }],
+		},
+		{
+			type: 'collapse',
+			visible: 2,
+			children: ['One', 'Two', 'Three', 'Four'].map((text) => ({
+				type: 'text',
+				text,
+			})),
+		},
+		{
+			type: 'tabs',
+			tabs: [
+				{
+					id: 'overview',
+					title: 'Overview',
+					children: [{ type: 'text', text: `Mode: ${kitchenSinkMode}` }],
+				},
+				{
+					id: 'details',
+					title: 'Details',
+					badge: '2',
+					children: [
+						{ type: 'text', text: 'Second tab.' },
+						{
+							type: 'text',
+							text: 'Selection stays in the app.',
+							tone: 'muted',
+						},
+					],
+				},
+			],
+		},
+	],
+});
+
 tmgr.ui.provideBadges(BADGE_ID, async (tasks) => {
 	const notes = await tmgr.taskData.getMany(
 		tasks.map((t) => t.id),
@@ -519,6 +642,7 @@ tmgr.ui.providePage('view', async (props) => ({
 		},
 		kitchenSinkGridDemo(),
 		kitchenSinkTextDemo(),
+		kitchenSinkControlsDemo(),
 	],
 }));
 

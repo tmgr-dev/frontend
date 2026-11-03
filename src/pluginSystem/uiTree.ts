@@ -40,6 +40,47 @@ export type MdBlock =
 	| { type: 'blockquote'; blocks: MdBlock[] }
 	| { type: 'hr' };
 
+export const ICON_NAMES = [
+	'check',
+	'x',
+	'plus',
+	'minus',
+	'alert-triangle',
+	'info',
+	'circle-help',
+	'clock',
+	'calendar',
+	'user',
+	'users',
+	'star',
+	'heart',
+	'flag',
+	'tag',
+	'link',
+	'external-link',
+	'copy',
+	'trash',
+	'edit',
+	'pencil',
+	'search',
+	'filter',
+	'settings',
+	'refresh',
+	'play',
+	'pause',
+	'download',
+	'upload',
+	'git-branch',
+	'git-pull-request',
+	'bug',
+	'zap',
+	'lock',
+] as const;
+export type IconName = (typeof ICON_NAMES)[number];
+
+export type ButtonVariant =
+	'default' | 'primary' | 'ghost' | 'danger' | 'success' | 'outline';
+
 export type TextSpan = {
 	text: string;
 	bold?: true;
@@ -92,6 +133,8 @@ export type UiNode =
 			color: Color;
 			command?: string;
 			args?: unknown;
+			icon?: IconName;
+			tooltip?: string;
 	  }
 	| {
 			type: 'stat';
@@ -114,8 +157,34 @@ export type UiNode =
 			command: string;
 			args?: unknown;
 			confirm?: string;
-			variant?: 'default' | 'primary' | 'ghost';
+			variant?: ButtonVariant;
 			size?: 'sm' | 'md';
+			icon?: IconName;
+			iconOnly?: true;
+			disabled?: true;
+			loading?: true;
+			tooltip?: string;
+	  }
+	| { type: 'buttonGroup'; children: UiNode[] }
+	| { type: 'icon'; name: IconName; tone: Tone }
+	| {
+			type: 'collapse';
+			title?: string;
+			open: boolean;
+			visible?: number;
+			children: UiNode[];
+	  }
+	| {
+			type: 'tabs';
+			tabs: { id: string; title: string; badge?: string; children: UiNode[] }[];
+			selected: string;
+	  }
+	| {
+			type: 'segmented';
+			options: { value: string; text: string }[];
+			value: string | null;
+			command: string;
+			args?: unknown;
 	  }
 	| { type: 'taskLink'; taskId: number; text: string }
 	| { type: 'divider' }
@@ -161,6 +230,15 @@ const MAX_AT_LENGTH = 64;
 const MAX_CARD_DEPTH = 3;
 const MAX_MENU_ITEMS = 20;
 const MAX_LABEL_LENGTH = 200;
+const MAX_TOOLTIP = 200;
+const MAX_TITLE = 200;
+const MAX_TABS = 12;
+const MAX_TAB_ID = 64;
+const MAX_BADGE_TEXT = 40;
+const MAX_BUTTON_GROUP = 12;
+const MAX_SEGMENTED_VALUE = 64;
+const MIN_SEGMENTED = 2;
+const MAX_SEGMENTED = 4;
 const CURRENT_API_MINOR = Number(PLUGIN_API_VERSION.split('.')[1]);
 
 const GAPS: Gap[] = ['none', 'sm', 'md', 'lg'];
@@ -178,10 +256,12 @@ const CARD_TONES: ('default' | 'muted' | 'raised')[] = [
 	'raised',
 ];
 const PADDINGS: ('sm' | 'md' | 'lg')[] = ['sm', 'md', 'lg'];
-const BUTTON_VARIANTS: ('default' | 'primary' | 'ghost')[] = [
-	'default',
-	'primary',
-	'ghost',
+const BUTTON_VARIANTS: ButtonVariant[] = ['default', 'primary', 'ghost'];
+const BUTTON_VARIANTS_V8: ButtonVariant[] = [
+	...BUTTON_VARIANTS,
+	'danger',
+	'success',
+	'outline',
 ];
 const BUTTON_SIZES: ('sm' | 'md')[] = ['sm', 'md'];
 
@@ -480,6 +560,12 @@ const text = (value: unknown): string | null =>
 			? String(value)
 			: null;
 
+const shortText = (value: unknown, max: number): string | undefined => {
+	if (typeof value !== 'string') return undefined;
+	const trimmed = value.trim().slice(0, max);
+	return trimmed === '' ? undefined : trimmed;
+};
+
 const parseCommandArgs = (
 	value: any,
 ): { command: string; args?: unknown } | null => {
@@ -761,11 +847,17 @@ export const sanitizeTree = (
 				const t = text(value.text);
 				if (t === null) return null;
 				const cmd = apiMinor >= 3 ? parseCommandArgs(value) : null;
+				const icon =
+					apiMinor >= 8 ? pickOptional(value.icon, ICON_NAMES) : undefined;
+				const tooltip =
+					apiMinor >= 8 ? shortText(value.tooltip, MAX_TOOLTIP) : undefined;
 				return {
 					type: 'badge',
-					text: t.slice(0, 40),
+					text: t.slice(0, MAX_BADGE_TEXT),
 					color: pick(value.color, COLORS, 'gray'),
 					...(cmd ? cmd : {}),
+					...(icon !== undefined ? { icon } : {}),
+					...(tooltip !== undefined ? { tooltip } : {}),
 				};
 			}
 			case 'stat': {
@@ -826,10 +918,22 @@ export const sanitizeTree = (
 				const confirm = confirmText ? confirmText.slice(0, 200) : undefined;
 				const variant =
 					apiMinor >= 3
-						? pickOptional(value.variant, BUTTON_VARIANTS)
+						? pickOptional(
+								value.variant,
+								apiMinor >= 8 ? BUTTON_VARIANTS_V8 : BUTTON_VARIANTS,
+							)
 						: undefined;
 				const size =
 					apiMinor >= 3 ? pickOptional(value.size, BUTTON_SIZES) : undefined;
+				const icon =
+					apiMinor >= 8 ? pickOptional(value.icon, ICON_NAMES) : undefined;
+				const tooltip =
+					apiMinor >= 8 ? shortText(value.tooltip, MAX_TOOLTIP) : undefined;
+				const flag = (key: string) =>
+					apiMinor >= 8 && value[key] === true ? (true as const) : undefined;
+				const iconOnly = icon !== undefined ? flag('iconOnly') : undefined;
+				const disabled = flag('disabled');
+				const loading = flag('loading');
 				return {
 					type: 'button',
 					text: t,
@@ -837,6 +941,111 @@ export const sanitizeTree = (
 					...(confirm !== undefined ? { confirm } : {}),
 					...(variant !== undefined ? { variant } : {}),
 					...(size !== undefined ? { size } : {}),
+					...(icon !== undefined ? { icon } : {}),
+					...(iconOnly !== undefined ? { iconOnly } : {}),
+					...(disabled !== undefined ? { disabled } : {}),
+					...(loading !== undefined ? { loading } : {}),
+					...(tooltip !== undefined ? { tooltip } : {}),
+				};
+			}
+			case 'buttonGroup': {
+				if (apiMinor < 8) return null;
+				const kids = (Array.isArray(value.children) ? value.children : [])
+					.filter((child: any) => child?.type === 'button')
+					.slice(0, MAX_BUTTON_GROUP)
+					.map((child: any) => node(child, depth + 1, cardDepth))
+					.filter((child: UiNode | null): child is UiNode => child !== null);
+				return kids.length === 0
+					? null
+					: { type: 'buttonGroup', children: kids };
+			}
+			case 'icon': {
+				if (apiMinor < 8) return null;
+				const name = pickOptional(value.name, ICON_NAMES);
+				return name === undefined
+					? null
+					: { type: 'icon', name, tone: pick(value.tone, TONES, 'default') };
+			}
+			case 'collapse': {
+				if (apiMinor < 8) return null;
+				const title = shortText(value.title, MAX_TITLE);
+				const visible =
+					Number.isSafeInteger(value.visible) && value.visible >= 1
+						? Math.min(value.visible, MAX_ITEMS)
+						: undefined;
+				return {
+					type: 'collapse',
+					open: value.open === true,
+					children: children(value.children, cardDepth),
+					...(title !== undefined ? { title } : {}),
+					...(visible !== undefined ? { visible } : {}),
+				};
+			}
+			case 'tabs': {
+				if (apiMinor < 8) return null;
+				const seen = new Set<string>();
+				const tabs = (Array.isArray(value.tabs) ? value.tabs : [])
+					.slice(0, MAX_TABS)
+					.filter(() => budget-- > 0)
+					.map((tab: any) => {
+						const id =
+							typeof tab?.id === 'string' &&
+							tab.id !== '' &&
+							tab.id.length <= MAX_TAB_ID
+								? tab.id
+								: null;
+						const title = shortText(tab?.title, MAX_TITLE);
+						if (id === null || title === undefined || seen.has(id)) return null;
+						seen.add(id);
+						const badge = shortText(tab.badge, MAX_BADGE_TEXT);
+						return {
+							id,
+							title,
+							...(badge !== undefined ? { badge } : {}),
+							children: children(tab.children, cardDepth),
+						};
+					})
+					.filter((tab: any): tab is NonNullable<typeof tab> => tab !== null);
+				if (tabs.length === 0) return null;
+				const selected = tabs.some((tab: any) => tab.id === value.selected)
+					? (value.selected as string)
+					: tabs[0].id;
+				return { type: 'tabs', tabs, selected };
+			}
+			case 'segmented': {
+				if (apiMinor < 8) return null;
+				const rawOptions = Array.isArray(value.options) ? value.options : [];
+				if (
+					rawOptions.length < MIN_SEGMENTED ||
+					rawOptions.length > MAX_SEGMENTED
+				)
+					return null;
+				const seen = new Set<string>();
+				const options = rawOptions
+					.filter(() => budget-- > 0)
+					.map((option: any) => {
+						const v =
+							typeof option?.value === 'string' &&
+							option.value !== '' &&
+							option.value.length <= MAX_SEGMENTED_VALUE
+								? option.value
+								: null;
+						const t = text(option?.text);
+						if (v === null || t === null || seen.has(v)) return null;
+						seen.add(v);
+						return { value: v, text: t };
+					})
+					.filter(
+						(option: any): option is { value: string; text: string } =>
+							option !== null,
+					);
+				const cmd = parseCommandArgs(value);
+				if (options.length < MIN_SEGMENTED || cmd === null) return null;
+				return {
+					type: 'segmented',
+					options,
+					value: seen.has(value.value) ? value.value : null,
+					...cmd,
 				};
 			}
 			case 'taskLink': {

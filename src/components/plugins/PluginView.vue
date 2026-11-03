@@ -150,19 +150,131 @@
 			]"
 			>{{ node.text }}</pre>
 	</div>
+	<AppTooltip v-else-if="node.type === 'badge'" :content="node.tooltip">
+		<component
+			:is="node.command ? 'button' : 'span'"
+			:type="node.command ? 'button' : undefined"
+			:class="[
+				'inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-semibold tabular-nums',
+				colorClass(node.color),
+				node.command && 'cursor-pointer transition-colors hover:opacity-80',
+			]"
+			@click="node.command ? runNodeCommand(node) : undefined"
+		>
+			<component
+				:is="iconComponent(node.icon)"
+				v-if="node.icon"
+				class="h-3 w-3 shrink-0"
+			/>
+			{{ node.text }}
+		</component>
+	</AppTooltip>
 	<component
-		:is="node.command ? 'button' : 'span'"
-		v-else-if="node.type === 'badge'"
-		:type="node.command ? 'button' : undefined"
-		:class="[
-			'inline-flex w-fit items-center rounded px-1.5 py-0.5 text-2xs font-semibold tabular-nums',
-			colorClass(node.color),
-			node.command && 'cursor-pointer transition-colors hover:opacity-80',
-		]"
-		@click="node.command ? runNodeCommand(node) : undefined"
+		:is="iconComponent(node.name)"
+		v-else-if="node.type === 'icon'"
+		:class="['h-4 w-4 shrink-0', toneClass(node.tone)]"
+		aria-hidden="true"
+	/>
+	<div
+		v-else-if="node.type === 'buttonGroup'"
+		class="inline-flex w-fit flex-wrap items-center gap-1.5"
 	>
-		{{ node.text }}
-	</component>
+		<PluginView
+			v-for="(child, index) in node.children"
+			:key="index"
+			:node="child"
+			:plugin-id="pluginId"
+		/>
+	</div>
+	<div v-else-if="node.type === 'collapse'" class="flex flex-col gap-2">
+		<button
+			v-if="node.title"
+			type="button"
+			class="flex w-fit items-center gap-1 text-sm font-medium text-foreground transition-colors hover:text-primary"
+			:aria-expanded="collapseOpen"
+			@click="collapseOpen = !collapseOpen"
+		>
+			<ChevronRight
+				:class="[
+					'h-4 w-4 shrink-0 transition-transform',
+					collapseOpen && 'rotate-90',
+				]"
+			/>
+			<span>{{ node.title }}</span>
+		</button>
+		<template v-if="!node.title || collapseOpen">
+			<PluginView
+				v-for="(child, index) in collapseChildren"
+				:key="index"
+				:node="child"
+				:plugin-id="pluginId"
+			/>
+			<button
+				v-if="collapseToggleText"
+				type="button"
+				class="w-fit text-xs text-primary hover:underline"
+				@click="collapseShowAll = !collapseShowAll"
+			>
+				{{ collapseToggleText }}
+			</button>
+		</template>
+	</div>
+	<div v-else-if="node.type === 'tabs'" class="flex flex-col gap-3">
+		<div role="tablist" class="flex flex-wrap gap-1 border-b border-border">
+			<button
+				v-for="tab in node.tabs"
+				:key="tab.id"
+				type="button"
+				role="tab"
+				:aria-selected="tab.id === activeTabId"
+				:class="[
+					'-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-sm transition-colors',
+					tab.id === activeTabId
+						? 'border-primary font-medium text-foreground'
+						: 'border-transparent text-muted-foreground hover:text-foreground',
+				]"
+				@click="selectedTabId = tab.id"
+			>
+				{{ tab.title }}
+				<span
+					v-if="tab.badge"
+					class="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground tabular-nums"
+					>{{ tab.badge }}</span
+				>
+			</button>
+		</div>
+		<div role="tabpanel" class="flex flex-col gap-3">
+			<PluginView
+				v-for="(child, index) in activeTabChildren"
+				:key="`${activeTabId}-${index}`"
+				:node="child"
+				:plugin-id="pluginId"
+			/>
+		</div>
+	</div>
+	<div
+		v-else-if="node.type === 'segmented'"
+		role="radiogroup"
+		class="inline-flex w-fit rounded-md bg-muted p-0.5"
+	>
+		<button
+			v-for="option in node.options"
+			:key="option.value"
+			type="button"
+			role="radio"
+			:aria-checked="option.value === node.value"
+			:disabled="running"
+			:class="[
+				'rounded px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50',
+				option.value === node.value
+					? 'bg-background text-foreground shadow-xs'
+					: 'text-muted-foreground hover:text-foreground',
+			]"
+			@click="runSegmented(option.value)"
+		>
+			{{ option.text }}
+		</button>
+	</div>
 	<button
 		v-else-if="node.type === 'stat' && node.command"
 		type="button"
@@ -238,15 +350,21 @@
 		</table>
 	</div>
 	<AlertDialog v-else-if="node.type === 'button'" v-model:open="confirmOpen">
-		<Button
-			:variant="buttonVariantProp(node.variant)"
-			:size="buttonSizeProp(node.size)"
-			class="w-fit"
-			:disabled="running"
-			@click="handleButtonClick"
-		>
-			{{ node.text }}
-		</Button>
+		<AppTooltip :content="buttonTooltip">
+			<Button
+				:variant="buttonVariantProp(node.variant)"
+				:size="node.iconOnly ? 'icon' : buttonSizeProp(node.size)"
+				:class="buttonClasses(node.variant, node.size, node.iconOnly)"
+				:disabled="running || node.disabled || node.loading"
+				:aria-label="node.iconOnly ? node.text : undefined"
+				:aria-busy="node.loading ? 'true' : undefined"
+				@click="handleButtonClick"
+			>
+				<Loader2 v-if="node.loading" class="animate-spin" />
+				<component :is="iconComponent(node.icon)" v-else-if="node.icon" />
+				<template v-if="!node.iconOnly">{{ node.text }}</template>
+			</Button>
+		</AppTooltip>
 		<AlertDialogContent v-if="node.confirm">
 			<AlertDialogHeader>
 				<AlertDialogTitle
@@ -337,6 +455,7 @@
 		AlertDialogHeader,
 		AlertDialogTitle,
 	} from '@/components/ui/alert-dialog';
+	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import { Button } from '@/components/ui/button';
 	import {
 		DropdownMenu,
@@ -349,12 +468,26 @@
 	import { usePluginTicker } from '@/composable/usePluginTicker';
 	import { formatDueTime, formatTimeAgo } from '@/pluginSystem/relativeTime';
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
-	import type { Color, MenuItem, Tone, UiNode } from '@/pluginSystem/uiTree';
+	import type {
+		Color,
+		IconName,
+		MenuItem,
+		Tone,
+		UiNode,
+	} from '@/pluginSystem/uiTree';
 	import store from '@/store';
-	import { Check, Copy, MoreHorizontal } from 'lucide-vue-next';
+	import {
+		Check,
+		ChevronRight,
+		Copy,
+		Loader2,
+		MoreHorizontal,
+	} from 'lucide-vue-next';
 	import { computed, defineComponent, nextTick, ref, type PropType } from 'vue';
 	import PluginMarkdown from './PluginMarkdown.vue';
+	import { PLUGIN_ICONS } from './pluginIcons';
 	import {
+		buttonClasses,
 		buttonSizeProp,
 		buttonVariantProp,
 		cardInnerClasses,
@@ -363,6 +496,7 @@
 		gridInnerClasses,
 		gridTemplateStyle,
 		isNestedInteractive,
+		segmentedArgs,
 		stackClasses,
 		statClasses,
 	} from './pluginViewClasses';
@@ -406,9 +540,12 @@
 			AlertDialogFooter,
 			AlertDialogHeader,
 			AlertDialogTitle,
+			AppTooltip,
 			Button,
 			Check,
+			ChevronRight,
 			Copy,
+			Loader2,
 			DropdownMenu,
 			DropdownMenuContent,
 			DropdownMenuItem,
@@ -449,9 +586,54 @@
 			};
 			const handleButtonClick = () => {
 				if (props.node.type !== 'button') return;
+				if (props.node.disabled || props.node.loading) return;
 				if (props.node.confirm) confirmOpen.value = true;
 				else void run();
 			};
+			const runSegmented = (value: string) => {
+				const node = props.node;
+				if (node.type !== 'segmented') return;
+				if (!node.options.some((option) => option.value === value)) return;
+				void runCommand(node.command, segmentedArgs(node.args, value));
+			};
+			const buttonTooltip = computed(() =>
+				props.node.type === 'button'
+					? (props.node.tooltip ?? (props.node.iconOnly ? props.node.text : ''))
+					: '',
+			);
+			const collapseOpen = ref(
+				props.node.type === 'collapse' ? props.node.open : false,
+			);
+			const collapseShowAll = ref(false);
+			const collapseChildren = computed(() => {
+				const node = props.node;
+				if (node.type !== 'collapse') return [];
+				return node.visible && !collapseShowAll.value
+					? node.children.slice(0, node.visible)
+					: node.children;
+			});
+			const collapseToggleText = computed(() => {
+				const node = props.node;
+				if (node.type !== 'collapse' || !node.visible) return '';
+				const hidden = node.children.length - node.visible;
+				if (hidden <= 0) return '';
+				return collapseShowAll.value ? 'Show less' : `${hidden} more`;
+			});
+			const selectedTabId = ref<string | null>(null);
+			const activeTabId = computed(() => {
+				const node = props.node;
+				if (node.type !== 'tabs') return '';
+				return node.tabs.some((tab) => tab.id === selectedTabId.value)
+					? (selectedTabId.value as string)
+					: node.selected;
+			});
+			const activeTabChildren = computed(() => {
+				const node = props.node;
+				if (node.type !== 'tabs') return [];
+				return (
+					node.tabs.find((tab) => tab.id === activeTabId.value)?.children ?? []
+				);
+			});
 			const runNodeCommand = (node: UiNode) => {
 				if ((node.type === 'badge' || node.type === 'stat') && node.command) {
 					void runCommand(node.command, node.args);
@@ -541,6 +723,17 @@
 				running,
 				confirmOpen,
 				run,
+				runSegmented,
+				buttonTooltip,
+				collapseOpen,
+				collapseShowAll,
+				collapseChildren,
+				collapseToggleText,
+				selectedTabId,
+				activeTabId,
+				activeTabChildren,
+				iconComponent: (name: IconName) => PLUGIN_ICONS[name],
+				buttonClasses,
 				handleButtonClick,
 				runNodeCommand,
 				handleCardClick,

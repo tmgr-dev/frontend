@@ -231,6 +231,21 @@ it('the "Kitchen Sink view" page renders markdown, spans and code (API 1.7)', as
 	host.dispose();
 });
 
+it('the "Kitchen Sink view" page renders the API 1.8 controls and the switch re-renders', async () => {
+	const host = await startHost();
+	const json = JSON.stringify(await host.renderPage('view', null));
+	for (const type of ['segmented', 'tabs', 'collapse', 'buttonGroup', 'icon']) {
+		expect(json).toContain(`"type":"${type}"`);
+	}
+	expect(json).toContain('"variant":"danger"');
+	expect(json).toContain('Mode: compact');
+	await host.runCommand('tmgr-dev.kitchen-sink.setMode', { value: 'detailed' });
+	expect(JSON.stringify(await host.renderPage('view', null))).toContain(
+		'Mode: detailed',
+	);
+	host.dispose();
+});
+
 it('offers two task menu items and both work on a task (API 1.6)', async () => {
 	const host = await startHost();
 	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);

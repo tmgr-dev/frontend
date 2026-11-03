@@ -2,9 +2,45 @@
 // Do not edit by hand: run `node plugin-sdk/testing/sync-prelude.mjs` from the app repo.
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sanitizeTree = exports.isLinkAllowed = exports.NO_LINKS = exports.COLORS = void 0;
+exports.sanitizeTree = exports.isLinkAllowed = exports.NO_LINKS = exports.COLORS = exports.ICON_NAMES = void 0;
 const marked_1 = require("marked");
 const manifest_1 = require("./manifest.generated.js");
+exports.ICON_NAMES = [
+    'check',
+    'x',
+    'plus',
+    'minus',
+    'alert-triangle',
+    'info',
+    'circle-help',
+    'clock',
+    'calendar',
+    'user',
+    'users',
+    'star',
+    'heart',
+    'flag',
+    'tag',
+    'link',
+    'external-link',
+    'copy',
+    'trash',
+    'edit',
+    'pencil',
+    'search',
+    'filter',
+    'settings',
+    'refresh',
+    'play',
+    'pause',
+    'download',
+    'upload',
+    'git-branch',
+    'git-pull-request',
+    'bug',
+    'zap',
+    'lock',
+];
 const TONES = ['default', 'muted', 'success', 'warning', 'danger'];
 exports.COLORS = [
     'gray',
@@ -41,6 +77,15 @@ const MAX_AT_LENGTH = 64;
 const MAX_CARD_DEPTH = 3;
 const MAX_MENU_ITEMS = 20;
 const MAX_LABEL_LENGTH = 200;
+const MAX_TOOLTIP = 200;
+const MAX_TITLE = 200;
+const MAX_TABS = 12;
+const MAX_TAB_ID = 64;
+const MAX_BADGE_TEXT = 40;
+const MAX_BUTTON_GROUP = 12;
+const MAX_SEGMENTED_VALUE = 64;
+const MIN_SEGMENTED = 2;
+const MAX_SEGMENTED = 4;
 const CURRENT_API_MINOR = Number(manifest_1.PLUGIN_API_VERSION.split('.')[1]);
 const GAPS = ['none', 'sm', 'md', 'lg'];
 const GRID_GAPS = ['sm', 'md', 'lg'];
@@ -57,10 +102,12 @@ const CARD_TONES = [
     'raised',
 ];
 const PADDINGS = ['sm', 'md', 'lg'];
-const BUTTON_VARIANTS = [
-    'default',
-    'primary',
-    'ghost',
+const BUTTON_VARIANTS = ['default', 'primary', 'ghost'];
+const BUTTON_VARIANTS_V8 = [
+    ...BUTTON_VARIANTS,
+    'danger',
+    'success',
+    'outline',
 ];
 const BUTTON_SIZES = ['sm', 'md'];
 exports.NO_LINKS = { allowedDomains: [], linksOpen: false };
@@ -323,6 +370,12 @@ const text = (value) => typeof value === 'string'
     : typeof value === 'number' && Number.isFinite(value)
         ? String(value)
         : null;
+const shortText = (value, max) => {
+    if (typeof value !== 'string')
+        return undefined;
+    const trimmed = value.trim().slice(0, max);
+    return trimmed === '' ? undefined : trimmed;
+};
 const parseCommandArgs = (value) => {
     const command = typeof value?.command === 'string' ? value.command.slice(0, 120) : null;
     if (!command)
@@ -593,11 +646,15 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                 if (t === null)
                     return null;
                 const cmd = apiMinor >= 3 ? parseCommandArgs(value) : null;
+                const icon = apiMinor >= 8 ? pickOptional(value.icon, exports.ICON_NAMES) : undefined;
+                const tooltip = apiMinor >= 8 ? shortText(value.tooltip, MAX_TOOLTIP) : undefined;
                 return {
                     type: 'badge',
-                    text: t.slice(0, 40),
+                    text: t.slice(0, MAX_BADGE_TEXT),
                     color: pick(value.color, exports.COLORS, 'gray'),
                     ...(cmd ? cmd : {}),
+                    ...(icon !== undefined ? { icon } : {}),
+                    ...(tooltip !== undefined ? { tooltip } : {}),
                 };
             }
             case 'stat': {
@@ -652,9 +709,15 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                 const confirmText = typeof value.confirm === 'string' ? value.confirm.trim() : '';
                 const confirm = confirmText ? confirmText.slice(0, 200) : undefined;
                 const variant = apiMinor >= 3
-                    ? pickOptional(value.variant, BUTTON_VARIANTS)
+                    ? pickOptional(value.variant, apiMinor >= 8 ? BUTTON_VARIANTS_V8 : BUTTON_VARIANTS)
                     : undefined;
                 const size = apiMinor >= 3 ? pickOptional(value.size, BUTTON_SIZES) : undefined;
+                const icon = apiMinor >= 8 ? pickOptional(value.icon, exports.ICON_NAMES) : undefined;
+                const tooltip = apiMinor >= 8 ? shortText(value.tooltip, MAX_TOOLTIP) : undefined;
+                const flag = (key) => apiMinor >= 8 && value[key] === true ? true : undefined;
+                const iconOnly = icon !== undefined ? flag('iconOnly') : undefined;
+                const disabled = flag('disabled');
+                const loading = flag('loading');
                 return {
                     type: 'button',
                     text: t,
@@ -662,6 +725,112 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                     ...(confirm !== undefined ? { confirm } : {}),
                     ...(variant !== undefined ? { variant } : {}),
                     ...(size !== undefined ? { size } : {}),
+                    ...(icon !== undefined ? { icon } : {}),
+                    ...(iconOnly !== undefined ? { iconOnly } : {}),
+                    ...(disabled !== undefined ? { disabled } : {}),
+                    ...(loading !== undefined ? { loading } : {}),
+                    ...(tooltip !== undefined ? { tooltip } : {}),
+                };
+            }
+            case 'buttonGroup': {
+                if (apiMinor < 8)
+                    return null;
+                const kids = (Array.isArray(value.children) ? value.children : [])
+                    .filter((child) => child?.type === 'button')
+                    .slice(0, MAX_BUTTON_GROUP)
+                    .map((child) => node(child, depth + 1, cardDepth))
+                    .filter((child) => child !== null);
+                return kids.length === 0
+                    ? null
+                    : { type: 'buttonGroup', children: kids };
+            }
+            case 'icon': {
+                if (apiMinor < 8)
+                    return null;
+                const name = pickOptional(value.name, exports.ICON_NAMES);
+                return name === undefined
+                    ? null
+                    : { type: 'icon', name, tone: pick(value.tone, TONES, 'default') };
+            }
+            case 'collapse': {
+                if (apiMinor < 8)
+                    return null;
+                const title = shortText(value.title, MAX_TITLE);
+                const visible = Number.isSafeInteger(value.visible) && value.visible >= 1
+                    ? Math.min(value.visible, MAX_ITEMS)
+                    : undefined;
+                return {
+                    type: 'collapse',
+                    open: value.open === true,
+                    children: children(value.children, cardDepth),
+                    ...(title !== undefined ? { title } : {}),
+                    ...(visible !== undefined ? { visible } : {}),
+                };
+            }
+            case 'tabs': {
+                if (apiMinor < 8)
+                    return null;
+                const seen = new Set();
+                const tabs = (Array.isArray(value.tabs) ? value.tabs : [])
+                    .slice(0, MAX_TABS)
+                    .filter(() => budget-- > 0)
+                    .map((tab) => {
+                    const id = typeof tab?.id === 'string' &&
+                        tab.id !== '' &&
+                        tab.id.length <= MAX_TAB_ID
+                        ? tab.id
+                        : null;
+                    const title = shortText(tab?.title, MAX_TITLE);
+                    if (id === null || title === undefined || seen.has(id))
+                        return null;
+                    seen.add(id);
+                    const badge = shortText(tab.badge, MAX_BADGE_TEXT);
+                    return {
+                        id,
+                        title,
+                        ...(badge !== undefined ? { badge } : {}),
+                        children: children(tab.children, cardDepth),
+                    };
+                })
+                    .filter((tab) => tab !== null);
+                if (tabs.length === 0)
+                    return null;
+                const selected = tabs.some((tab) => tab.id === value.selected)
+                    ? value.selected
+                    : tabs[0].id;
+                return { type: 'tabs', tabs, selected };
+            }
+            case 'segmented': {
+                if (apiMinor < 8)
+                    return null;
+                const rawOptions = Array.isArray(value.options) ? value.options : [];
+                if (rawOptions.length < MIN_SEGMENTED ||
+                    rawOptions.length > MAX_SEGMENTED)
+                    return null;
+                const seen = new Set();
+                const options = rawOptions
+                    .filter(() => budget-- > 0)
+                    .map((option) => {
+                    const v = typeof option?.value === 'string' &&
+                        option.value !== '' &&
+                        option.value.length <= MAX_SEGMENTED_VALUE
+                        ? option.value
+                        : null;
+                    const t = text(option?.text);
+                    if (v === null || t === null || seen.has(v))
+                        return null;
+                    seen.add(v);
+                    return { value: v, text: t };
+                })
+                    .filter((option) => option !== null);
+                const cmd = parseCommandArgs(value);
+                if (options.length < MIN_SEGMENTED || cmd === null)
+                    return null;
+                return {
+                    type: 'segmented',
+                    options,
+                    value: seen.has(value.value) ? value.value : null,
+                    ...cmd,
                 };
             }
             case 'taskLink': {

@@ -1,5 +1,5 @@
 /**
- * Types for TMGR plugin authors (API 1.7). A plugin's main.js runs in a sandbox where `tmgr` and
+ * Types for TMGR plugin authors (API 1.8). A plugin's main.js runs in a sandbox where `tmgr` and
  * `console` are the only globals: no DOM, no fetch, no timers. Every call returns a Promise and may
  * reject with an Error whose `name` is one of PluginErrorCode.
  */
@@ -344,6 +344,43 @@ type TmgrEvent =
 			taskId?: number;
 	  };
 
+/** API 1.8. The closed set of icon names; any other name is dropped (the text of a button or badge stays). */
+type TmgrIconName =
+	| 'check'
+	| 'x'
+	| 'plus'
+	| 'minus'
+	| 'alert-triangle'
+	| 'info'
+	| 'circle-help'
+	| 'clock'
+	| 'calendar'
+	| 'user'
+	| 'users'
+	| 'star'
+	| 'heart'
+	| 'flag'
+	| 'tag'
+	| 'link'
+	| 'external-link'
+	| 'copy'
+	| 'trash'
+	| 'edit'
+	| 'pencil'
+	| 'search'
+	| 'filter'
+	| 'settings'
+	| 'refresh'
+	| 'play'
+	| 'pause'
+	| 'download'
+	| 'upload'
+	| 'git-branch'
+	| 'git-pull-request'
+	| 'bug'
+	| 'zap'
+	| 'lock';
+
 type TmgrTone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
 type TmgrColor =
 	'gray' | 'green' | 'yellow' | 'red' | 'blue' | 'purple' | 'orange';
@@ -437,7 +474,13 @@ type TmgrNode =
 			/** API 1.3. */
 			command?: string;
 			args?: unknown;
+			/** API 1.8. */
+			icon?: TmgrIconName;
+			/** API 1.8. Plain text, up to 200 chars. */
+			tooltip?: string;
 	  }
+	/** API 1.8. A small inline icon. */
+	| { type: 'icon'; name: TmgrIconName; tone?: TmgrTone }
 	| {
 			type: 'stat';
 			label: string;
@@ -464,8 +507,54 @@ type TmgrNode =
 			command: string;
 			args?: unknown;
 			confirm?: string;
-			variant?: 'default' | 'primary' | 'ghost';
+			/** 'danger', 'success' and 'outline' need API 1.8. */
+			variant?:
+				'default' | 'primary' | 'ghost' | 'danger' | 'success' | 'outline';
 			size?: 'sm' | 'md';
+			/** API 1.8. */
+			icon?: TmgrIconName;
+			/** API 1.8. Shows only the icon; `text` stays as the accessible label and tooltip. Needs `icon`. */
+			iconOnly?: boolean;
+			/** API 1.8. A disabled or loading button does not run its command. */
+			disabled?: boolean;
+			loading?: boolean;
+			/** API 1.8. Plain text, up to 200 chars. */
+			tooltip?: string;
+	  }
+	/** API 1.8. Buttons side by side (up to 12); other children are dropped. */
+	| { type: 'buttonGroup'; children: Extract<TmgrNode, { type: 'button' }>[] }
+	/**
+	 * API 1.8. With `title` a disclosure header hides the children until opened (`open` sets the start state).
+	 * With `visible` only the first N children show, plus an "N more" / "Show less" button. The state stays in the app.
+	 */
+	| {
+			type: 'collapse';
+			title?: string;
+			open?: boolean;
+			visible?: number;
+			children: TmgrNode[];
+	  }
+	/** API 1.8. Up to 12 tabs with unique string ids (≤64 chars). The selected tab stays in the app; `selected` is the start tab. */
+	| {
+			type: 'tabs';
+			tabs: {
+				id: string;
+				title: string;
+				badge?: string;
+				children: TmgrNode[];
+			}[];
+			selected?: string;
+	  }
+	/**
+	 * API 1.8. A 2 to 4 option switch controlled by the plugin: a click runs `command` with `{ ...args, value }`,
+	 * where `value` is one of the option values. Render the new `value` when the command ends.
+	 */
+	| {
+			type: 'segmented';
+			options: { value: string; text: string }[];
+			value: string;
+			command: string;
+			args?: unknown;
 	  }
 	| { type: 'taskLink'; taskId: number; text: string }
 	| { type: 'divider' }
