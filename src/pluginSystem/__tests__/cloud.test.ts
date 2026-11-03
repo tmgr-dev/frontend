@@ -77,6 +77,24 @@ it('knows which plugins reach the member’s computer and what can be shared', (
 		),
 	).toBe(true);
 	expect(reachesThisComputer(manifest({ permissions: ['tray'] }))).toBe(true);
+	expect(
+		reachesThisComputer(
+			manifest({
+				engines: { tmgr: '^1.13' },
+				permissions: ['images:remote'],
+				images: { allowedDomains: ['img.example.com'] },
+			}),
+		),
+	).toBe(true);
+	expect(
+		reachesThisComputer(
+			manifest({
+				engines: { tmgr: '^1.13' },
+				permissions: ['links:open'],
+				links: { schemes: ['tg'] },
+			}),
+		),
+	).toBe(true);
 	expect(reachesThisComputer(manifest({ permissions: ['links:open'] }))).toBe(
 		true,
 	);
@@ -125,6 +143,11 @@ it('drops views:badge but keeps routines:read/routines:write in the permissions 
 			'views:badge',
 		],
 	});
+	const withImages = manifest({
+		engines: { tmgr: '^1.13' },
+		permissions: ['tasks:read', 'images:remote'],
+		images: { allowedDomains: ['img.example.com'] },
+	});
 	const entry = {
 		manifest: withRoutines,
 		status: 'stopped' as const,
@@ -148,6 +171,9 @@ it('drops views:badge but keeps routines:read/routines:write in the permissions 
 	).toMatchObject({
 		permissions: ['tasks:read', 'routines:read', 'routines:write'],
 	});
+	expect(
+		pinOf({ ...entry, manifest: withImages, source: 'builtin' }),
+	).toMatchObject({ permissions: ['tasks:read'] });
 });
 
 it('sends pages:read/pages:write/pages:sections to the server, which now accepts them for plugin actors', () => {

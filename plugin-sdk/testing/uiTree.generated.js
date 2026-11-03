@@ -2,7 +2,7 @@
 // Do not edit by hand: run `node plugin-sdk/testing/sync-prelude.mjs` from the app repo.
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sanitizeTree = exports.calendarDate = exports.cutCodePoints = exports.clampDebounce = exports.isLinkAllowed = exports.NO_LINKS = exports.CHART_SERIES_COLORS = exports.CHART_DEFAULT_HEIGHT = exports.CHART_MAX_HEIGHT = exports.CHART_MIN_HEIGHT = exports.DEBOUNCE_DEFAULT = exports.DEBOUNCE_MAX = exports.DEBOUNCE_MIN = exports.MAX_TEXTAREA_VALUE = exports.MAX_INPUT_VALUE = exports.COLORS = exports.ICON_NAMES = void 0;
+exports.sanitizeTree = exports.calendarDate = exports.cutCodePoints = exports.clampDebounce = exports.imageHostAllowed = exports.checkImageData = exports.IMAGE_MIMES = exports.MAX_REMOTE_IMAGE_BYTES = exports.MAX_IMAGE_TREE_BYTES = exports.MAX_IMAGE_DATA_BYTES = exports.NO_IMAGES = exports.isLinkAllowed = exports.isTgLink = exports.NO_LINKS = exports.CHART_SERIES_COLORS = exports.CHART_DEFAULT_HEIGHT = exports.CHART_MAX_HEIGHT = exports.CHART_MIN_HEIGHT = exports.DEBOUNCE_DEFAULT = exports.DEBOUNCE_MAX = exports.DEBOUNCE_MIN = exports.MAX_TEXTAREA_VALUE = exports.MAX_INPUT_VALUE = exports.COLORS = exports.ICON_NAMES = void 0;
 const marked_1 = require("marked");
 const manifest_1 = require("./manifest.generated.js");
 exports.ICON_NAMES = [
@@ -152,10 +152,76 @@ const BUTTON_VARIANTS_V8 = [
 ];
 const BUTTON_SIZES = ['sm', 'md'];
 exports.NO_LINKS = { allowedDomains: [], linksOpen: false };
-/** https only, and only a domain the plugin declared and has permission for. Shared by sanitizeTree and host.openLink. */
+const TG_MAX_LENGTH = 2000;
+const TG_ASCII = /^[\x21-\x7e]+$/;
+const TG_DIGITS = /^\d{1,20}$/;
+const TG_USERNAME = /^[A-Za-z][A-Za-z0-9_]{2,31}$/;
+const TG_INVITE = /^[A-Za-z0-9_-]{8,64}$/;
+const TG_TIMESTAMP = /^\d{1,10}$/;
+const tgValue = (test) => ({ kind: 'value', test });
+const TG_FLAG = { kind: 'flag' };
+const TG_MESSAGE_PARAMS = {
+    post: tgValue(TG_DIGITS),
+    single: TG_FLAG,
+    thread: tgValue(TG_DIGITS),
+    comment: tgValue(TG_DIGITS),
+    t: tgValue(TG_TIMESTAMP),
+};
+/** Telegram deep links that only open a chat or a post; everything that changes state or settings is absent. */
+const TG_ACTIONS = {
+    resolve: {
+        params: {
+            domain: tgValue(TG_USERNAME),
+            profile: TG_FLAG,
+            ...TG_MESSAGE_PARAMS,
+        },
+        required: [['domain']],
+    },
+    privatepost: {
+        params: { channel: tgValue(TG_DIGITS), ...TG_MESSAGE_PARAMS },
+        required: [['channel'], ['post']],
+    },
+    join: {
+        params: { invite: tgValue(TG_INVITE) },
+        required: [['invite']],
+    },
+};
+/** `tg://<action>?<query>` with a known action, known keys, plain values, no userinfo, port, path or fragment. */
+const isTgLink = (url) => {
+    if (url.length > TG_MAX_LENGTH || !TG_ASCII.test(url))
+        return false;
+    const match = url.match(/^tg:\/\/([a-z]+)\?([^?#]*)$/);
+    if (!match)
+        return false;
+    const action = Object.prototype.hasOwnProperty.call(TG_ACTIONS, match[1])
+        ? TG_ACTIONS[match[1]]
+        : null;
+    if (!action)
+        return false;
+    const seen = new Set();
+    for (const pair of match[2].split('&')) {
+        const eq = pair.indexOf('=');
+        const key = eq === -1 ? pair : pair.slice(0, eq);
+        const param = Object.prototype.hasOwnProperty.call(action.params, key)
+            ? action.params[key]
+            : null;
+        if (!param || seen.has(key))
+            return false;
+        seen.add(key);
+        if (param.kind === 'flag' ? eq !== -1 : eq === -1)
+            return false;
+        if (param.kind === 'value' && !param.test.test(pair.slice(eq + 1)))
+            return false;
+    }
+    return action.required.every((keys) => keys.some((key) => seen.has(key)));
+};
+exports.isTgLink = isTgLink;
+/** https to a declared domain, or (API 1.13, declared in links.schemes) a Telegram chat/post link. Shared by sanitizeTree and host.openLink. */
 const isLinkAllowed = (url, context) => {
     if (!context.linksOpen)
         return false;
+    if (url.startsWith('tg:'))
+        return context.schemes?.includes('tg') === true && (0, exports.isTgLink)(url);
     let parsed;
     try {
         parsed = new URL(url);
@@ -167,6 +233,78 @@ const isLinkAllowed = (url, context) => {
         context.allowedDomains.includes(parsed.hostname));
 };
 exports.isLinkAllowed = isLinkAllowed;
+exports.NO_IMAGES = { allowedDomains: [] };
+exports.MAX_IMAGE_DATA_BYTES = 512 * 1024;
+exports.MAX_IMAGE_TREE_BYTES = 2 * 1024 * 1024;
+exports.MAX_REMOTE_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_IMAGE_URL = 2000;
+const MAX_IMAGE_ALT = 200;
+const MIN_IMAGE_WIDTH = 16;
+const MAX_IMAGE_WIDTH = 800;
+const IMAGE_MIN_MINOR = 13;
+exports.IMAGE_MIMES = [
+    'image/png',
+    'image/jpeg',
+    'image/gif',
+    'image/webp',
+];
+const DATA_IMAGE = /^data:(image\/(?:png|jpeg|gif|webp));base64,((?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)$/;
+const magicMatches = (mime, head) => {
+    switch (mime) {
+        case 'image/png':
+            return head.startsWith('\x89PNG');
+        case 'image/jpeg':
+            return head.startsWith('\xff\xd8\xff');
+        case 'image/gif':
+            return head.startsWith('GIF87a') || head.startsWith('GIF89a');
+        case 'image/webp':
+            return head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP';
+    }
+};
+/** A `data:image/(png|jpeg|gif|webp);base64,...` whose bytes really are that type; returns the decoded size. */
+const checkImageData = (src, maxBytes = exports.MAX_IMAGE_DATA_BYTES) => {
+    if (src.length > Math.ceil((maxBytes * 4) / 3) + 64)
+        return null;
+    const match = DATA_IMAGE.exec(src);
+    if (!match)
+        return null;
+    const body = match[2];
+    const bytes = (body.length / 4) * 3 -
+        (body.endsWith('==') ? 2 : body.endsWith('=') ? 1 : 0);
+    if (bytes <= 0 || bytes > maxBytes || body.length < 16)
+        return null;
+    let head;
+    try {
+        head = atob(body.slice(0, 16));
+    }
+    catch {
+        return null;
+    }
+    return magicMatches(match[1], head) ? bytes : null;
+};
+exports.checkImageData = checkImageData;
+/** https, no userinfo or port, host declared by the plugin. Returns the host, or null. Shared by sanitizeTree and host.loadImage. */
+const imageHostAllowed = (src, context) => {
+    if (src.length > MAX_IMAGE_URL || /[\s\u0000-\u001f\u007f]/.test(src))
+        return null;
+    let parsed;
+    try {
+        parsed = new URL(src);
+    }
+    catch {
+        return null;
+    }
+    if (parsed.protocol !== 'https:' ||
+        parsed.username ||
+        parsed.password ||
+        parsed.port ||
+        !(0, manifest_1.isPublicHostName)(parsed.hostname) ||
+        !context.allowedDomains.includes(parsed.hostname))
+        return null;
+    return parsed.hostname;
+};
+exports.imageHostAllowed = imageHostAllowed;
+const linkHost = (url) => url.startsWith('tg:') ? 'Telegram' : new URL(url).hostname;
 const NAMED_ENTITIES = {
     amp: '&',
     lt: '<',
@@ -265,7 +403,7 @@ const convertInline = (tokens, ctx, depth) => {
                 let host = null;
                 if ((0, exports.isLinkAllowed)(href, ctx.links)) {
                     try {
-                        host = new URL(href).hostname;
+                        host = linkHost(href);
                     }
                     catch {
                         host = null;
@@ -495,8 +633,10 @@ const findLabel = (nodes) => {
  * Plugin UI is data, never markup: only these components, only plain strings and numbers, bounded size.
  * Whatever does not fit is dropped rather than rendered.
  */
-const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MINOR) => {
+const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MINOR, images = exports.NO_IMAGES) => {
+    const links = apiMinor >= 13 ? context : { ...context, schemes: [] };
     let budget = MAX_NODES;
+    let imageBytes = exports.MAX_IMAGE_TREE_BYTES;
     let longBudget = MAX_LONG_TEXT_TOTAL;
     let mdDeadline = null;
     const longRoom = () => apiMinor >= 7
@@ -695,7 +835,7 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                 catch {
                     return { type: 'text', text: source, tone: 'default', breaks: true };
                 }
-                const blocks = convertBlocks(tokens, { take: () => budget-- > 0, links: context }, 0);
+                const blocks = convertBlocks(tokens, { take: () => budget-- > 0, links }, 0);
                 return { type: 'markdown', blocks };
             }
             case 'code': {
@@ -1275,17 +1415,42 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                 if (url === null)
                     return null;
                 const label = text(value.text) ?? url;
-                if (!(0, exports.isLinkAllowed)(url, context)) {
+                if (!(0, exports.isLinkAllowed)(url, links)) {
                     return { type: 'text', text: label, tone: 'default' };
                 }
                 let host;
                 try {
-                    host = new URL(url).hostname;
+                    host = linkHost(url);
                 }
                 catch {
                     return null;
                 }
                 return { type: 'link', url, text: label, host };
+            }
+            case 'image': {
+                if (apiMinor < IMAGE_MIN_MINOR)
+                    return null;
+                const alt = shortText(value.alt, MAX_IMAGE_ALT);
+                if (alt === undefined || typeof value.src !== 'string')
+                    return null;
+                if (value.src.startsWith('data:')) {
+                    const size = (0, exports.checkImageData)(value.src);
+                    if (size === null || size > imageBytes)
+                        return null;
+                    imageBytes -= size;
+                }
+                else if ((0, exports.imageHostAllowed)(value.src, images) === null) {
+                    return null;
+                }
+                const width = typeof value.width === 'number' && Number.isFinite(value.width)
+                    ? Math.min(MAX_IMAGE_WIDTH, Math.max(MIN_IMAGE_WIDTH, Math.round(value.width)))
+                    : undefined;
+                return {
+                    type: 'image',
+                    src: value.src,
+                    alt,
+                    ...(width !== undefined ? { width } : {}),
+                };
             }
             case 'timeAgo':
             case 'dueTime': {

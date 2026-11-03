@@ -174,6 +174,34 @@ describe('validate.mjs permission lint', () => {
 		expect(result.warnings).toEqual([]);
 	});
 
+	it('treats images:remote as used when image hosts are declared and refuses it without hosts', () => {
+		const images = {
+			...base,
+			engines: { tmgr: '^1.13' },
+			permissions: ['images:remote'],
+		};
+		const used = lint(
+			{ ...images, images: { allowedDomains: ['a.example.com'] } },
+			'',
+		);
+		expect(used.ok).toBe(true);
+		expect(used.warnings).toEqual([]);
+		const bare = lint(images, '');
+		expect(bare.ok).toBe(false);
+		expect(bare.errors.join()).toContain(
+			'images:remote needs images.allowedDomains',
+		);
+		const missing = lint(
+			{
+				...base,
+				engines: { tmgr: '^1.13' },
+				images: { allowedDomains: ['a.example.com'] },
+			},
+			'',
+		);
+		expect(missing.ok).toBe(false);
+	});
+
 	it('exits 1 on warnings only with --strict', () => {
 		const dir = mkdtempSync(join(tmpdir(), 'tmgr-lint-'));
 		writeFileSync(

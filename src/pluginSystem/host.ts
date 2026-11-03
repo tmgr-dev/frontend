@@ -27,10 +27,15 @@ import {
 import { toRoutine, toRoutineInstance } from './routines';
 import { resolveTaskMenuItems } from './taskMenu';
 import {
+	checkImageData,
 	COLORS,
+	IMAGE_MIMES,
+	imageHostAllowed,
 	isLinkAllowed,
+	MAX_REMOTE_IMAGE_BYTES,
 	sanitizeTree,
 	type Color,
+	type ImageContext,
 	type LinkContext,
 	type UiNode,
 } from './uiTree';
@@ -200,6 +205,8 @@ export interface PluginHostDeps {
 	blocked?: (pluginId: string) => string | null;
 	/** Opens a link a `link` node was allowed to open; desktop only, so the web build has no-op links. */
 	openExternal?: (url: string) => void;
+	/** Fetches a picture for `loadImage`; the app side refuses anything but a public https image. */
+	fetchImage?: (url: string) => Promise<{ mime: string; base64: string }>;
 	/** Asks the host to open the connect flow for tmgr.localAccess.requestConnection; undefined disables it. */
 	requestLocalConnection?: (
 		pluginId: string,
@@ -217,6 +224,9 @@ const FAULT_WINDOW_MS = 5 * 60_000;
 const LOG_LIMIT = 200;
 const MESSAGE_LIMIT = 1000;
 const REFRESH_THROTTLE_MS = 500;
+const IMAGE_LOADS_PER_PLUGIN = 2;
+const IMAGE_CACHE_ENTRIES = 64;
+const IMAGE_CACHE_BYTES = 16 * 1024 * 1024;
 const MAX_BADGES_PER_TASK = 5;
 const BADGE_KEY = /^[a-z0-9_-]{1,40}$/;
 
@@ -499,10 +509,58 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		const manifest = packages.get(pluginId)?.manifest;
 		return {
 			allowedDomains: manifest?.links.allowedDomains ?? [],
+			schemes:
+				manifest && manifest.apiMinor >= 13 ? manifest.links.schemes : [],
 			linksOpen:
 				(manifest?.permissions.includes('links:open') ?? false) &&
 				(running.get(pluginId)?.machine ?? false),
 		};
+	};
+
+	const imageContext = (pluginId: string): ImageContext => {
+		const manifest = packages.get(pluginId)?.manifest;
+		return {
+			allowedDomains: manifest?.permissions.includes('images:remote')
+				? manifest.images.allowedDomains
+				: [],
+		};
+	};
+
+	const imageCache = new Map<string, string>();
+	let imageCacheBytes = 0;
+	const imageLoads = new Map<string, Promise<string>>();
+	const imageSlots = new Map<
+		string,
+		{ active: number; queue: Array<() => void> }
+	>();
+	const acquireImageSlot = async (pluginId: string) => {
+		let slot = imageSlots.get(pluginId);
+		if (!slot) imageSlots.set(pluginId, (slot = { active: 0, queue: [] }));
+		if (slot.active < IMAGE_LOADS_PER_PLUGIN) {
+			slot.active++;
+			return;
+		}
+		await new Promise<void>((resolve) => slot.queue.push(resolve));
+	};
+	const releaseImageSlot = (pluginId: string) => {
+		const slot = imageSlots.get(pluginId);
+		if (!slot) return;
+		const next = slot.queue.shift();
+		if (next) next();
+		else if (--slot.active === 0) imageSlots.delete(pluginId);
+	};
+	const cacheImage = (url: string, dataUrl: string) => {
+		imageCache.set(url, dataUrl);
+		imageCacheBytes += dataUrl.length;
+		for (const [key, value] of imageCache) {
+			if (
+				imageCache.size <= IMAGE_CACHE_ENTRIES &&
+				imageCacheBytes <= IMAGE_CACHE_BYTES
+			)
+				break;
+			imageCache.delete(key);
+			imageCacheBytes -= value.length;
+		}
 	};
 
 	const clearStatusBar = (pluginId: string) => {
@@ -1457,6 +1515,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				await dispatch(pluginId, 'page', viewId, props),
 				linkContext(pluginId),
 				packages.get(pluginId)?.manifest.apiMinor,
+				imageContext(pluginId),
 			);
 		},
 		async renderSection(
@@ -1468,6 +1527,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				await dispatch(pluginId, 'section', sectionId, task),
 				linkContext(pluginId),
 				packages.get(pluginId)?.manifest.apiMinor,
+				imageContext(pluginId),
 			);
 		},
 		/** One call per provider for the whole batch of visible cards, merged in a fixed order and then by priority. */
@@ -1532,6 +1592,63 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			}
 			deps.openExternal?.(url);
 			return true;
+		},
+		/** Re-checks running, API level, this computer and the declared host at load time; resolves to a data: URL. */
+		async loadImage(pluginId: string, url: string): Promise<string> {
+			const checkImage = () => {
+				const plugin = running.get(pluginId);
+				const manifest = packages.get(pluginId)?.manifest;
+				if (
+					!plugin ||
+					!manifest ||
+					state.plugins[pluginId]?.status !== 'running' ||
+					manifest.apiMinor < 13 ||
+					!manifest.permissions.includes('images:remote') ||
+					!plugin.machine ||
+					!deps.fetchImage ||
+					imageHostAllowed(url, imageContext(pluginId)) === null
+				)
+					throw new PluginError(
+						'PERMISSION_DENIED',
+						'this image cannot be loaded',
+					);
+			};
+			checkImage();
+			const cached = imageCache.get(url);
+			if (cached !== undefined) {
+				imageCache.delete(url);
+				imageCache.set(url, cached);
+				return cached;
+			}
+			let load = imageLoads.get(url);
+			if (!load) {
+				const fetchImage = deps.fetchImage;
+				load = (async () => {
+					await acquireImageSlot(pluginId);
+					try {
+						checkImage();
+						return await fetchImage!(url);
+					} finally {
+						releaseImageSlot(pluginId);
+					}
+				})()
+					.then(({ mime, base64 }) => {
+						const dataUrl = `data:${mime};base64,${base64}`;
+						if (
+							!(IMAGE_MIMES as readonly string[]).includes(mime) ||
+							checkImageData(dataUrl, MAX_REMOTE_IMAGE_BYTES) === null
+						)
+							throw new PluginError(
+								'PERMISSION_DENIED',
+								'not a supported image',
+							);
+						cacheImage(url, dataUrl);
+						return dataUrl;
+					})
+					.finally(() => imageLoads.delete(url));
+				imageLoads.set(url, load);
+			}
+			return load;
 		},
 		dispose() {
 			unsubscribe();

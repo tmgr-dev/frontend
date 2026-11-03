@@ -4,8 +4,8 @@
 // Do not edit by hand: run `node plugin-sdk/testing/sync-prelude.mjs` from the app repo.
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.parseManifest = exports.LOCAL_ID = exports.PLUGIN_ID = exports.TASK_MENU_MAX_ITEMS = exports.TASK_MENU_LOCATION = exports.PERMISSION_GROUPS = exports.PERMISSIONS = exports.PLUGIN_API_VERSION = void 0;
-exports.PLUGIN_API_VERSION = '1.12';
+exports.parseManifest = exports.isPublicHostName = exports.LOCAL_ID = exports.PLUGIN_ID = exports.TASK_MENU_MAX_ITEMS = exports.TASK_MENU_LOCATION = exports.PERMISSION_GROUPS = exports.PERMISSIONS = exports.PLUGIN_API_VERSION = void 0;
+exports.PLUGIN_API_VERSION = '1.13';
 exports.PERMISSIONS = [
     'tasks:read',
     'tasks:write',
@@ -29,6 +29,7 @@ exports.PERMISSIONS = [
     'tray',
     'deeplinks',
     'links:open',
+    'images:remote',
     'routines:read',
     'routines:write',
     'views:badge',
@@ -73,6 +74,7 @@ exports.PERMISSION_GROUPS = {
         'alarms',
         'deeplinks',
         'links:open',
+        'images:remote',
         'files:export',
         'files:pick',
     ],
@@ -117,6 +119,24 @@ const DOMAIN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}
 const parseDomain = (value) => typeof value === 'string' && DOMAIN.test(value)
     ? value
     : fail(`links domain ${String(value)} must be a host name like example.com`);
+const parseSchemes = (value) => {
+    if (value === undefined)
+        return [];
+    if (!Array.isArray(value))
+        return fail('links.schemes must be a list');
+    if (value.some((scheme) => scheme !== 'tg'))
+        fail('links.schemes may only contain "tg"');
+    if (new Set(value).size !== value.length)
+        fail('links.schemes must not repeat "tg"');
+    return value;
+};
+const LOCAL_SUFFIX = /\.(localhost|local|internal|localdomain|lan|home)$/;
+/** A multi-label host name that is not an IP literal or a well-known private suffix. */
+const isPublicHostName = (value) => DOMAIN.test(value) && !LOCAL_SUFFIX.test(value);
+exports.isPublicHostName = isPublicHostName;
+const parseImageDomain = (value) => typeof value === 'string' && (0, exports.isPublicHostName)(value)
+    ? value
+    : fail(`images domain ${String(value)} must be a public host name like example.com`);
 const HTTPS_URL = /^https:\/\/.+/;
 const parseCompanion = (value) => {
     if (value === undefined || value === null)
@@ -208,6 +228,26 @@ const parseManifest = (raw) => {
     if (allowedDomains.length && !permissions.includes('links:open'))
         fail('links.allowedDomains needs the links:open permission');
     const apiMinor = engineMinor(raw.engines.tmgr);
+    const schemes = parseSchemes(raw.links?.schemes);
+    if (schemes.length) {
+        if (!permissions.includes('links:open'))
+            fail('links.schemes needs the links:open permission');
+        if (apiMinor < 13)
+            fail('links.schemes needs engines.tmgr ^1.13');
+    }
+    if (raw.images !== undefined && apiMinor < 13)
+        fail('images needs engines.tmgr ^1.13');
+    const imageDomains = [
+        ...new Set(list(raw.images?.allowedDomains, 'images.allowedDomains', parseImageDomain)),
+    ];
+    if (imageDomains.length && !permissions.includes('images:remote'))
+        fail('images.allowedDomains needs the images:remote permission');
+    if (permissions.includes('images:remote')) {
+        if (apiMinor < 13)
+            fail('images:remote needs engines.tmgr ^1.13');
+        if (!imageDomains.length)
+            fail('images:remote needs images.allowedDomains');
+    }
     if (permissions.includes('views:badge') && apiMinor < 4)
         fail('views:badge needs engines.tmgr ^1.4');
     for (const permission of PAGE_PERMISSIONS)
@@ -247,7 +287,8 @@ const parseManifest = (raw) => {
                 ...new Set(list(raw.network?.allowedOrigins, 'network.allowedOrigins', parseOrigin)),
             ],
         },
-        links: { allowedDomains },
+        links: { allowedDomains, schemes },
+        images: { allowedDomains: imageDomains },
         companion: parseCompanion(raw.companion),
         apiMinor,
         contributes: {

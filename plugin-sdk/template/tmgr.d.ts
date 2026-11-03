@@ -681,8 +681,14 @@ type TmgrNode =
 	| { type: 'divider' }
 	/** Monospace text with a copy-to-clipboard button. */
 	| { type: 'copyable'; text: string; label?: string }
-	/** Needs links:open, and the link's host must be in manifest links.allowedDomains; otherwise it renders as plain text. */
+	/** Needs links:open, and the link's host must be in manifest links.allowedDomains; otherwise it renders as plain text. API 1.13: a tg://resolve, privatepost or join URL also opens when manifest links.schemes has "tg". */
 	| { type: 'link'; url: string; text?: string }
+	/**
+	 * API 1.13. `alt` is required (at most 200 characters). `src` is either a `data:image/png|jpeg|gif|webp;base64,...`
+	 * URL (at most 512 KB decoded, 2 MB per tree) or an https URL on a host in manifest `images.allowedDomains`
+	 * (needs the `images:remote` permission and the plugin to run on this computer). `width` is 16 to 800 px. Anything else drops the node.
+	 */
+	| { type: 'image'; src: string; alt: string; width?: number }
 	/** Relative time, e.g. "5 min ago" / "in 2 h"; at is an ISO 8601 timestamp. */
 	| { type: 'timeAgo'; at: string }
 	/** Like timeAgo, but colored: red once past, yellow within 24 h. */

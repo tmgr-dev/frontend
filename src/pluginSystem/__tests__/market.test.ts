@@ -74,21 +74,43 @@ it('lists what an update would newly allow', () => {
 		release({
 			manifest: manifest({
 				version: '1.1.0',
-				permissions: ['tasks:read', 'tasks:write', 'links:open'],
+				permissions: [
+					'tasks:read',
+					'tasks:write',
+					'links:open',
+					'images:remote',
+				],
 				network: { allowedOrigins: ['http://localhost:11434'] },
-				links: { allowedDomains: ['gitlab.com'] },
+				links: { allowedDomains: ['gitlab.com'], schemes: ['tg'] },
+				engines: { tmgr: '^1.13' },
+				images: { allowedDomains: ['img.example.com', 'cdn.a.org'] },
 			}),
 			code: '',
 		}),
 	).manifest;
 	expect(permissionChanges(before, after)).toEqual({
-		permissions: ['tasks:write', 'links:open'],
+		permissions: ['tasks:write', 'links:open', 'images:remote'],
 		origins: ['http://localhost:11434'],
 		domains: ['gitlab.com'],
+		schemes: ['tg'],
+		imageDomains: ['img.example.com', 'cdn.a.org'],
 	});
 	expect(permissionChanges(after, before)).toEqual({
 		permissions: [],
 		origins: [],
 		domains: [],
+		schemes: [],
+		imageDomains: [],
 	});
+	const kept = bundleToPackage(
+		release({
+			manifest: manifest({
+				engines: { tmgr: '^1.13' },
+				permissions: ['images:remote'],
+				images: { allowedDomains: ['img.example.com'] },
+			}),
+			code: '',
+		}),
+	).manifest;
+	expect(permissionChanges(kept, after).imageDomains).toEqual(['cdn.a.org']);
 });

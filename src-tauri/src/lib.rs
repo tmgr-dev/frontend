@@ -23,8 +23,10 @@ pub mod persona_llm;
 mod plugin_dev;
 mod plugin_files;
 mod plugin_market;
+mod plugin_images;
 mod plugin_net;
 mod plugin_notify;
+mod plugin_open_link;
 #[cfg(feature = "isolation-selftest")]
 mod plugin_selftest;
 mod plugin_tick;
@@ -269,7 +271,9 @@ pub fn run() {
       plugin_dev::plugins_dev_reveal,
       plugin_dev::plugins_safe_mode,
       plugin_net::plugin_fetch,
+      plugin_images::plugin_image_fetch,
       plugin_notify::plugin_notify,
+      plugin_open_link::plugin_open_tg_link,
       plugin_catalog::plugin_catalog,
       plugin_catalog::plugin_catalog_refresh,
       plugin_market::plugin_github_release,

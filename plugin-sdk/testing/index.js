@@ -651,6 +651,7 @@ const createTestHost = async (options = {}) => {
 	const trayTitleOwner = options.trayTitleOwner ?? true;
 	const linkContext = {
 		allowedDomains: manifest.links.allowedDomains,
+		schemes: manifest.links.schemes,
 		linksOpen: manifest.permissions.includes('links:open'),
 	};
 
@@ -777,12 +778,14 @@ const createTestHost = async (options = {}) => {
 				await sandbox.dispatch('page', id, props ?? null),
 				linkContext,
 				manifest.apiMinor,
+				manifest.images,
 			),
 		renderSection: async (id, task) =>
 			sanitizeTree(
 				await sandbox.dispatch('section', id, task ?? null),
 				linkContext,
 				manifest.apiMinor,
+				manifest.images,
 			),
 		badges: (tasks) => computeBadges(sandbox, registered.badges, tasks),
 		fireAlarms: (atTime) => {

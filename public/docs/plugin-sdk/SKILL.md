@@ -6,7 +6,7 @@ description: Use when the user asks to make, change, test or debug a TMGR plugin
 # TMGR plugin
 
 A plugin is a folder: `manifest.json`, `main.js`, optional `ui/*.html` pages. It runs in the TMGR desktop app
-sandbox (QuickJS) and talks to the app through the global `tmgr`. Target API 1.12: `engines.tmgr` `^1.12`.
+sandbox (QuickJS) and talks to the app through the global `tmgr`. Target API 1.13: `engines.tmgr` `^1.13`.
 
 References:
 - Guide: https://tmgr.dev/docs/plugins.md
@@ -44,7 +44,7 @@ References:
   - Reads your data: `tasks:read`, `statuses:read`, `categories:read`, `time:read`, `comments:read`, `relations:read`, `agent_work:read`, `routines:read`, `pages:read`, `files:attachments`
   - Changes your data: `tasks:write`, `statuses:write`, `categories:write`, `time:write`, `comments:write`, `relations:write`, `agent_work:write`, `routines:write`, `pages:write`, `pages:sections`
   - Changes the interface: `tray`, `views:badge`, `menus:task`
-  - Reaches outside the app: `notifications`, `alarms`, `deeplinks`, `links:open`, `files:export`, `files:pick`
+  - Reaches outside the app: `notifications`, `alarms`, `deeplinks`, `links:open`, `images:remote`, `files:export`, `files:pick`
 - `pages:write` and `pages:sections` need `pages:read`. Storage, settings, `commands.register` and the status bar need no permission.
 - Explain each permission and let the user approve the set. A signed, installed plugin asks the user again when an update adds a permission; a folder plugin does not. So before you add any permission to a folder plugin, tell the user which one and why, and get their approval.
 - The app rejects unknown permission names.

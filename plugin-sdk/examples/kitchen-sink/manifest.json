@@ -3,8 +3,8 @@
 	"name": "Kitchen Sink",
 	"version": "1.0.0",
 	"publisher": "tmgr-dev",
-	"description": "Exercises every plugin API v1.12 feature, for manual acceptance testing.",
-	"engines": { "tmgr": "^1.12" },
+	"description": "Exercises every plugin API v1.13 feature, for manual acceptance testing.",
+	"engines": { "tmgr": "^1.13" },
 	"main": "main.js",
 	"permissions": [
 		"tasks:read",
@@ -30,7 +30,7 @@
 		"pages:sections",
 		"menus:task"
 	],
-	"links": { "allowedDomains": ["example.com"] },
+	"links": { "allowedDomains": ["example.com"], "schemes": ["tg"] },
 	"contributes": {
 		"boardCardBadges": [{ "id": "ks-badges" }],
 		"statusBarItems": [{ "id": "count" }],

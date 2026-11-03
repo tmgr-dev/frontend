@@ -310,6 +310,17 @@ export const validate = (folder) => {
       'seems to render a "link" node but does not declare the "links:open" permission',
     );
   }
+  if (manifest.images.allowedDomains.length) used.add('images:remote');
+  if (
+    /type\s*:\s*['"]image['"][^}]*src\s*:\s*['"`]https:|src\s*:\s*['"`]https:[^}]*type\s*:\s*['"]image['"]/.test(
+      all,
+    ) &&
+    !manifest.images.allowedDomains.length
+  ) {
+    warnings.push(
+      'seems to render an "image" node from https but does not declare images.allowedDomains',
+    );
+  }
   if (manifest.contributes.commands.some((c) => c.deepLink)) {
     need(
       'deeplinks',

@@ -1,4 +1,4 @@
-export const PLUGIN_API_VERSION = '1.12';
+export const PLUGIN_API_VERSION = '1.13';
 
 export const PERMISSIONS = [
 	'tasks:read',
@@ -23,6 +23,7 @@ export const PERMISSIONS = [
 	'tray',
 	'deeplinks',
 	'links:open',
+	'images:remote',
 	'routines:read',
 	'routines:write',
 	'views:badge',
@@ -71,6 +72,7 @@ export const PERMISSION_GROUPS: Record<string, readonly Permission[]> = {
 		'alarms',
 		'deeplinks',
 		'links:open',
+		'images:remote',
 		'files:export',
 		'files:pick',
 	],
@@ -101,8 +103,10 @@ export interface PluginManifest {
 	permissions: Permission[];
 	/** Only origins on this computer; a plugin never reaches the internet. */
 	network: { allowedOrigins: string[] };
-	/** Hosts a `link` node may open in the system browser (https only); needs links:open. */
-	links: { allowedDomains: string[] };
+	/** Hosts a `link` node may open in the system browser (https only), and extra schemes (API 1.13); needs links:open. */
+	links: { allowedDomains: string[]; schemes: 'tg'[] };
+	/** Hosts an `image` node may load pictures from (https only); needs engines ^1.13. */
+	images: { allowedDomains: string[] };
 	/** Declares an external program the user installs themselves; enables tmgr.localAccess.requestConnection. */
 	companion: { description: string; homepage?: string } | null;
 	contributes: {
@@ -190,6 +194,28 @@ const parseDomain = (value: unknown): string =>
 		? value
 		: fail(
 				`links domain ${String(value)} must be a host name like example.com`,
+			);
+
+const parseSchemes = (value: unknown): 'tg'[] => {
+	if (value === undefined) return [];
+	if (!Array.isArray(value)) return fail('links.schemes must be a list');
+	if (value.some((scheme) => scheme !== 'tg'))
+		fail('links.schemes may only contain "tg"');
+	if (new Set(value).size !== value.length)
+		fail('links.schemes must not repeat "tg"');
+	return value as 'tg'[];
+};
+const LOCAL_SUFFIX = /\.(localhost|local|internal|localdomain|lan|home)$/;
+
+/** A multi-label host name that is not an IP literal or a well-known private suffix. */
+export const isPublicHostName = (value: string): boolean =>
+	DOMAIN.test(value) && !LOCAL_SUFFIX.test(value);
+
+const parseImageDomain = (value: unknown): string =>
+	typeof value === 'string' && isPublicHostName(value)
+		? value
+		: fail(
+				`images domain ${String(value)} must be a public host name like example.com`,
 			);
 
 const HTTPS_URL = /^https:\/\/.+/;
@@ -297,6 +323,29 @@ export const parseManifest = (raw: any): PluginManifest => {
 	if (allowedDomains.length && !permissions.includes('links:open'))
 		fail('links.allowedDomains needs the links:open permission');
 	const apiMinor = engineMinor(raw.engines.tmgr);
+	const schemes = parseSchemes(raw.links?.schemes);
+	if (schemes.length) {
+		if (!permissions.includes('links:open'))
+			fail('links.schemes needs the links:open permission');
+		if (apiMinor < 13) fail('links.schemes needs engines.tmgr ^1.13');
+	}
+	if (raw.images !== undefined && apiMinor < 13)
+		fail('images needs engines.tmgr ^1.13');
+	const imageDomains = [
+		...new Set(
+			list(
+				raw.images?.allowedDomains,
+				'images.allowedDomains',
+				parseImageDomain,
+			),
+		),
+	];
+	if (imageDomains.length && !permissions.includes('images:remote'))
+		fail('images.allowedDomains needs the images:remote permission');
+	if (permissions.includes('images:remote')) {
+		if (apiMinor < 13) fail('images:remote needs engines.tmgr ^1.13');
+		if (!imageDomains.length) fail('images:remote needs images.allowedDomains');
+	}
 	if (permissions.includes('views:badge') && apiMinor < 4)
 		fail('views:badge needs engines.tmgr ^1.4');
 	for (const permission of PAGE_PERMISSIONS)
@@ -347,7 +396,8 @@ export const parseManifest = (raw: any): PluginManifest => {
 				),
 			],
 		},
-		links: { allowedDomains },
+		links: { allowedDomains, schemes },
+		images: { allowedDomains: imageDomains },
 		companion: parseCompanion(raw.companion),
 		apiMinor,
 		contributes: {

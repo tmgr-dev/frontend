@@ -707,6 +707,30 @@
 		<span>{{ node.text }}</span>
 		<span class="text-2xs text-muted-foreground">({{ node.host }})</span>
 	</button>
+	<div v-else-if="node.type === 'image'" class="max-w-full">
+		<img
+			v-if="imageSrc && !imageFailed"
+			:src="imageSrc"
+			:alt="node.alt"
+			:style="node.width ? { width: `${node.width}px` } : undefined"
+			class="block h-auto max-h-[600px] max-w-full rounded-md bg-muted object-contain dark:bg-muted/60"
+			loading="lazy"
+			decoding="async"
+			draggable="false"
+			referrerpolicy="no-referrer"
+			@error="imageFailed = true"
+		/>
+		<div
+			v-else-if="imageFailed"
+			class="w-fit max-w-full rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground dark:bg-muted/60"
+		>
+			{{ node.alt }}
+		</div>
+		<div
+			v-else
+			class="h-16 w-32 max-w-full animate-pulse rounded-md bg-muted dark:bg-muted/60"
+		></div>
+	</div>
 	<span
 		v-else-if="node.type === 'timeAgo'"
 		class="text-2xs text-muted-foreground tabular-nums"
@@ -790,6 +814,7 @@
 	} from 'vue';
 	import PluginChart from './PluginChart.vue';
 	import PluginMarkdown from './PluginMarkdown.vue';
+	import { resolveImageSrc } from './pluginImages';
 	import {
 		COLUMN_ALIGN_CLASS,
 		COLUMN_WIDTH_CLASS,
@@ -1202,6 +1227,29 @@
 					store.commit('setCurrentTaskIdForModal', props.node.taskId);
 				}
 			};
+			const imageSrc = ref<string | null>(null);
+			const imageFailed = ref(false);
+			watch(
+				() => (props.node.type === 'image' ? props.node.src : null),
+				async (src) => {
+					imageSrc.value = null;
+					imageFailed.value = false;
+					if (src === null) return;
+					try {
+						const resolved = await resolveImageSrc(
+							pluginHost(),
+							props.pluginId,
+							src,
+						);
+						if (props.node.type === 'image' && props.node.src === src)
+							imageSrc.value = resolved;
+					} catch {
+						if (props.node.type === 'image' && props.node.src === src)
+							imageFailed.value = true;
+					}
+				},
+				{ immediate: true },
+			);
 			const openLinkNode = () => {
 				if (props.node.type === 'link') {
 					pluginHost()?.openLink(props.pluginId, props.node.url);
@@ -1292,6 +1340,8 @@
 				runMenuConfirm,
 				openTask,
 				openLinkNode,
+				imageSrc,
+				imageFailed,
 				copyText,
 				isCopied,
 				timeAgoText,

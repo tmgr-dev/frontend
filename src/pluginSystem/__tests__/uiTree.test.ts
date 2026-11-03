@@ -2234,3 +2234,120 @@ describe('chart node (API 1.12)', () => {
 		expect(out.children.length).toBeLessThan(3);
 	});
 });
+
+describe('Telegram links (API 1.13)', () => {
+	const TG: LinkContext = {
+		allowedDomains: [],
+		linksOpen: true,
+		schemes: ['tg'],
+	};
+	const link = (url: string, context = TG, minor = 13) =>
+		sanitizeTree({ type: 'link', url, text: 'Open' }, context, minor) as any;
+	const asText = { type: 'text', text: 'Open', tone: 'default' };
+	const GOOD = [
+		'tg://resolve?domain=telegram',
+		'tg://resolve?domain=durov&post=12&single&thread=3&comment=4&t=90',
+		'tg://privatepost?channel=1234567890&post=7',
+		'tg://join?invite=AbCdEfGh12_-',
+	];
+
+	it.each(GOOD)('opens %s on 1.13 with schemes', (url) => {
+		expect(link(url)).toEqual({
+			type: 'link',
+			url,
+			text: 'Open',
+			host: 'Telegram',
+		});
+		expect(isLinkAllowed(url, TG)).toBe(true);
+	});
+
+	it('renders as text on 1.12, without the scheme, or without links:open', () => {
+		const url = GOOD[0];
+		expect(link(url, TG, 12)).toEqual(asText);
+		expect(link(url, { ...TG, schemes: [] })).toEqual(asText);
+		expect(link(url, { allowedDomains: [], linksOpen: true })).toEqual(asText);
+		expect(link(url, { ...TG, linksOpen: false })).toEqual(asText);
+	});
+
+	it.each([
+		'tg://proxy?server=a&port=1&secret=b',
+		'tg://socks?server=a&port=1',
+		'tg://login?code=1',
+		'tg://passport?bot_id=1',
+		'tg://setlanguage?lang=en',
+		'tg://addstickers?set=x',
+		'tg://addtheme?slug=x',
+		'tg://settings',
+		'tg://confirmphone?phone=1&hash=2',
+		'tg://bg?color=ffffff',
+		'tg://msg_url?url=https://a.b',
+		'tg://resolve?domain=bot&startgroup=x&admin=change_info',
+		'tg://resolve?domain=bot&startapp=x',
+		'tg://resolve?domain=bot&start=abc-DEF_1',
+		'tg://resolve?domain=bot&start',
+		'tg://openmessage?user_id=42&message_id=9',
+		'tg://openmessage?chat_id=42',
+		'tg://resolve?domain=bot&phone=123',
+		'tg://resolve?domain=bot&post=1&post=2',
+		'TG://resolve?domain=telegram',
+		'Tg://resolve?domain=telegram',
+		'tg:resolve?domain=telegram',
+		'javascript:alert(1)',
+		'file:///etc/passwd',
+		'data:text/html,x',
+		'http://t.me/telegram',
+		'mailto:a@b.co',
+		'tmgr://resolve?domain=telegram',
+		'tmgrfile://x',
+		'custom://resolve?domain=telegram',
+		'tg://resolve?domain=tele gram',
+		'tg://resolve?domain=telegram\n',
+		'tg://resolve?domain=telegram\u0000',
+		'tg://resolve?domain=telegram#x',
+		'tg://resolve/x?domain=telegram',
+		'tg://user@resolve?domain=telegram',
+		'tg://user:pw@resolve?domain=telegram',
+		'tg://resolve:80?domain=telegram',
+		'tg://resolve?domain=%74elegram',
+		'tg://privatepost?channel=1',
+		'tg://join?invite=short',
+		`tg://resolve?domain=telegram&post=${'1'.repeat(2000)}`,
+	])('renders %j as plain text', (url) => {
+		expect(link(url)).toEqual(asText);
+		expect(isLinkAllowed(url, TG)).toBe(false);
+	});
+
+	it('keeps https behaviour for plugins without schemes', () => {
+		const https: LinkContext = {
+			allowedDomains: ['a.example.com'],
+			linksOpen: true,
+		};
+		expect(link('https://a.example.com/x', https).host).toBe('a.example.com');
+		expect(isLinkAllowed('https://a.example.com/x', TG)).toBe(false);
+	});
+
+	it('makes markdown links clickable only on 1.13', () => {
+		const md = (minor: number) =>
+			sanitizeTree(
+				{ type: 'markdown', text: '[chat](tg://resolve?domain=telegram)' },
+				TG,
+				minor,
+			) as any;
+		const inline = (tree: any) => tree.blocks[0].children;
+		expect(inline(md(13))).toEqual([
+			{
+				type: 'link',
+				url: 'tg://resolve?domain=telegram',
+				host: 'Telegram',
+				children: [{ type: 'text', text: 'chat' }],
+			},
+		]);
+		expect(inline(md(12))).toEqual([{ type: 'text', text: 'chat' }]);
+		const bad = sanitizeTree(
+			{ type: 'markdown', text: '[x](tg://proxy?server=a&port=1&secret=b)' },
+			TG,
+			13,
+		) as any;
+		expect(bad.blocks[0].children).toEqual([{ type: 'text', text: 'x' }]);
+	});
+});

@@ -133,7 +133,7 @@ it.each([
 	[{ version: '1.0' }, 'version'],
 	[{ permissions: ['tasks:read', 'shell:exec'] }, 'shell:exec'],
 	[{ engines: { tmgr: '^2.0' } }, 'engines'],
-	[{ engines: { tmgr: '^1.13' } }, 'engines'],
+	[{ engines: { tmgr: '^1.14' } }, 'engines'],
 	[
 		{ permissions: ['menus:task'], engines: { tmgr: '^1.5' } },
 		'menus:task needs engines.tmgr ^1.6',
@@ -182,7 +182,7 @@ it.each([
 	expect(() => parseManifest({ ...valid, ...patch })).toThrow(message);
 });
 
-it('accepts plugins written for 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11 and 1.12', () => {
+it('accepts plugins written for 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.12 and 1.13', () => {
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.0' } }).id).toBe(
 		valid.id,
 	);
@@ -216,7 +216,7 @@ it('accepts plugins written for 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9
 	expect(parseManifest({ ...valid, engines: { tmgr: '^1.10' } }).id).toBe(
 		valid.id,
 	);
-	expect(parseManifest({ ...valid, engines: { tmgr: '^1.12' } }).id).toBe(
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.13' } }).id).toBe(
 		valid.id,
 	);
 });
@@ -271,7 +271,118 @@ it('keeps link domains of a plugin allowed to open links', () => {
 				allowedDomains: ['gitlab.com', 'gitlab.com', 'jira.example.org'],
 			},
 		}).links,
-	).toEqual({ allowedDomains: ['gitlab.com', 'jira.example.org'] });
+	).toEqual({
+		allowedDomains: ['gitlab.com', 'jira.example.org'],
+		schemes: [],
+	});
+});
+
+describe('images.allowedDomains', () => {
+	const withImages = (images: unknown, minor = '^1.13') => ({
+		...valid,
+		engines: { tmgr: minor },
+		permissions: (images as any)?.allowedDomains?.length
+			? ['images:remote']
+			: [],
+		images,
+	});
+
+	it('defaults to no domains and keeps the declared ones once', () => {
+		expect(parseManifest(valid).images).toEqual({ allowedDomains: [] });
+		expect(
+			parseManifest(
+				withImages({
+					allowedDomains: ['img.example.com', 'img.example.com', 'cdn.a.org'],
+				}),
+			).images,
+		).toEqual({ allowedDomains: ['img.example.com', 'cdn.a.org'] });
+		expect(parseManifest(withImages({})).images).toEqual({
+			allowedDomains: [],
+		});
+	});
+
+	it('needs images:remote, and images:remote needs domains and ^1.13', () => {
+		expect(() =>
+			parseManifest({
+				...withImages({ allowedDomains: ['a.example.com'] }),
+				permissions: [],
+			}),
+		).toThrow('images.allowedDomains needs the images:remote permission');
+		expect(() =>
+			parseManifest({
+				...withImages({}),
+				permissions: ['images:remote'],
+			}),
+		).toThrow('images:remote needs images.allowedDomains');
+		expect(() =>
+			parseManifest({
+				...valid,
+				engines: { tmgr: '^1.13' },
+				permissions: ['images:remote'],
+			}),
+		).toThrow('images:remote needs images.allowedDomains');
+		expect(() =>
+			parseManifest({
+				...valid,
+				engines: { tmgr: '^1.12' },
+				permissions: ['images:remote'],
+			}),
+		).toThrow('images:remote needs engines.tmgr ^1.13');
+		expect(
+			parseManifest({
+				...withImages({ allowedDomains: ['a.example.com'] }),
+				permissions: ['images:remote'],
+			}).permissions,
+		).toEqual(['images:remote']);
+	});
+
+	it('is refused below engines 1.13', () => {
+		for (const minor of ['^1.0', '^1.10', '^1.12']) {
+			expect(() =>
+				parseManifest(withImages({ allowedDomains: [] }, minor)),
+			).toThrow('images needs engines.tmgr ^1.13');
+		}
+	});
+
+	it.each([
+		'localhost',
+		'127.0.0.1',
+		'[::1]',
+		'::1',
+		'intranet',
+		'a.localhost',
+		'printer.local',
+		'db.internal',
+		'*.example.com',
+		'https://a.example.com',
+		'a.example.com/path',
+		'a.example.com:8080',
+		'user@a.example.com',
+		'A.Example.com',
+		'a.example.com.',
+		'',
+		42,
+		null,
+	])('refuses the domain %j', (domain) => {
+		expect(() =>
+			parseManifest(withImages({ allowedDomains: [domain] })),
+		).toThrow('images domain');
+	});
+
+	it('refuses a non-list', () => {
+		expect(() =>
+			parseManifest(withImages({ allowedDomains: 'a.example.com' })),
+		).toThrow('images.allowedDomains must be a list');
+	});
+
+	it('accepts engines ^1.13', () => {
+		expect(
+			parseManifest({ ...valid, engines: { tmgr: '^1.13' } }).apiMinor,
+		).toBe(13);
+		expect(() =>
+			parseManifest({ ...valid, engines: { tmgr: '^1.14' } }),
+		).toThrow('engines.tmgr');
+	});
 });
 
 it('ignores contribution kinds it does not know', () => {
@@ -470,5 +581,36 @@ describe('contributes.menus', () => {
 				),
 			).contributes.menus,
 		).toEqual({ 'task/card': [] });
+	});
+});
+
+describe('links.schemes (API 1.13)', () => {
+	const tg = (patch: Record<string, unknown> = {}) => ({
+		...valid,
+		engines: { tmgr: '^1.13' },
+		permissions: ['links:open'],
+		links: { schemes: ['tg'] },
+		...patch,
+	});
+
+	it('accepts "tg" with links:open on ^1.13 and defaults to none', () => {
+		expect(parseManifest(tg()).links.schemes).toEqual(['tg']);
+		expect(parseManifest(valid).links.schemes).toEqual([]);
+		expect(parseManifest(tg({ links: { schemes: [] } })).links.schemes).toEqual(
+			[],
+		);
+	});
+
+	it.each([
+		[{ links: { schemes: ['tg', 'tg'] } }, 'must not repeat'],
+		[{ links: { schemes: ['http'] } }, 'may only contain "tg"'],
+		[{ links: { schemes: ['TG'] } }, 'may only contain "tg"'],
+		[{ links: { schemes: ['tg', 'javascript'] } }, 'may only contain "tg"'],
+		[{ links: { schemes: 'tg' } }, 'must be a list'],
+		[{ links: { schemes: [1] } }, 'may only contain "tg"'],
+		[{ permissions: [] }, 'links.schemes needs the links:open'],
+		[{ engines: { tmgr: '^1.12' } }, 'links.schemes needs engines.tmgr ^1.13'],
+	])('refuses %j', (patch, message) => {
+		expect(() => parseManifest(tg(patch))).toThrow(message);
 	});
 });

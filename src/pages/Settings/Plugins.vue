@@ -203,6 +203,20 @@
 						{{ offer.pkg.manifest.links.allowedDomains.join(', ') }}
 					</p>
 					<p
+						v-if="offer.pkg.manifest.links.schemes.includes('tg')"
+						class="font-medium text-destructive"
+					>
+						It can open Telegram links (tg://).
+					</p>
+					<p
+						v-if="offer.pkg.manifest.images.allowedDomains.length"
+						class="font-medium text-destructive"
+					>
+						Loads pictures from:
+						{{ offer.pkg.manifest.images.allowedDomains.join(', ') }}. Those
+						sites get a request each time the plugin shows a picture.
+					</p>
+					<p
 						v-if="offer.pkg.manifest.companion"
 						class="font-medium text-amber-600 dark:text-amber-400"
 					>
@@ -223,7 +237,9 @@
 							offer.changes &&
 							(offer.changes.permissions.length ||
 								offer.changes.origins.length ||
-								offer.changes.domains.length)
+								offer.changes.domains.length ||
+								offer.changes.schemes.length ||
+								offer.changes.imageDomains.length)
 						"
 						class="font-medium text-destructive"
 					>
@@ -235,6 +251,8 @@
 									: []),
 								...offer.changes.origins,
 								...offer.changes.domains,
+								...offer.changes.schemes.map((s) => `${s}:// links`),
+								...offer.changes.imageDomains.map((d) => `images from ${d}`),
 							].join('; ')
 						}}
 					</p>
@@ -375,6 +393,27 @@
 					Can connect to:
 					{{ plugin.manifest.network.allowedOrigins.join(', ') }} (this computer
 					only)
+				</div>
+				<div
+					v-if="plugin.manifest.links.allowedDomains.length"
+					class="text-xs font-medium text-destructive"
+				>
+					Can open links to:
+					{{ plugin.manifest.links.allowedDomains.join(', ') }}
+				</div>
+				<div
+					v-if="plugin.manifest.links.schemes.includes('tg')"
+					class="text-xs font-medium text-destructive"
+				>
+					Can open Telegram links (tg://)
+				</div>
+				<div
+					v-if="plugin.manifest.images.allowedDomains.length"
+					class="text-xs font-medium text-destructive"
+				>
+					Loads pictures from:
+					{{ plugin.manifest.images.allowedDomains.join(', ') }}. Those sites
+					get a request each time the plugin shows a picture.
 				</div>
 				<div class="text-xs">
 					<span class="font-medium">Can:</span>{{ ' ' }}
@@ -561,6 +600,7 @@
 		tray: `add items and text to the ${trayName()} icon`,
 		deeplinks: 'be opened from tmgr:// links in other apps',
 		'links:open': 'open web links in your browser',
+		'images:remote': 'load pictures from the sites it declares',
 		'routines:read': 'read your notes and routines (local workspaces only)',
 		'routines:write':
 			'add, rename, complete and convert your notes and routines (local workspaces only)',

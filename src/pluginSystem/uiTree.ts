@@ -1,5 +1,5 @@
 import { Lexer, type Token } from 'marked';
-import { PLUGIN_API_VERSION } from './manifest';
+import { isPublicHostName, PLUGIN_API_VERSION } from './manifest';
 
 export type Tone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
 export type Color =
@@ -279,6 +279,7 @@ export type UiNode =
 	| { type: 'divider' }
 	| { type: 'copyable'; text: string; label?: string }
 	| { type: 'link'; url: string; text: string; host: string }
+	| { type: 'image'; src: string; alt: string; width?: number }
 	| { type: 'timeAgo'; at: string }
 	| { type: 'dueTime'; at: string }
 	| { type: 'keyValue'; items: { key: string; value: UiNode }[] };
@@ -405,13 +406,83 @@ const BUTTON_SIZES: ('sm' | 'md')[] = ['sm', 'md'];
 export interface LinkContext {
 	allowedDomains: string[];
 	linksOpen: boolean;
+	/** Only filled for API 1.13+ plugins that declared links.schemes. */
+	schemes?: readonly 'tg'[];
 }
 
 export const NO_LINKS: LinkContext = { allowedDomains: [], linksOpen: false };
 
-/** https only, and only a domain the plugin declared and has permission for. Shared by sanitizeTree and host.openLink. */
+const TG_MAX_LENGTH = 2000;
+const TG_ASCII = /^[\x21-\x7e]+$/;
+const TG_DIGITS = /^\d{1,20}$/;
+const TG_USERNAME = /^[A-Za-z][A-Za-z0-9_]{2,31}$/;
+const TG_INVITE = /^[A-Za-z0-9_-]{8,64}$/;
+const TG_TIMESTAMP = /^\d{1,10}$/;
+
+type TgParam = { kind: 'value'; test: RegExp } | { kind: 'flag' };
+const tgValue = (test: RegExp): TgParam => ({ kind: 'value', test });
+const TG_FLAG: TgParam = { kind: 'flag' };
+const TG_MESSAGE_PARAMS = {
+	post: tgValue(TG_DIGITS),
+	single: TG_FLAG,
+	thread: tgValue(TG_DIGITS),
+	comment: tgValue(TG_DIGITS),
+	t: tgValue(TG_TIMESTAMP),
+};
+
+/** Telegram deep links that only open a chat or a post; everything that changes state or settings is absent. */
+const TG_ACTIONS: Record<
+	string,
+	{ params: Record<string, TgParam>; required: string[][] }
+> = {
+	resolve: {
+		params: {
+			domain: tgValue(TG_USERNAME),
+			profile: TG_FLAG,
+			...TG_MESSAGE_PARAMS,
+		},
+		required: [['domain']],
+	},
+	privatepost: {
+		params: { channel: tgValue(TG_DIGITS), ...TG_MESSAGE_PARAMS },
+		required: [['channel'], ['post']],
+	},
+	join: {
+		params: { invite: tgValue(TG_INVITE) },
+		required: [['invite']],
+	},
+};
+
+/** `tg://<action>?<query>` with a known action, known keys, plain values, no userinfo, port, path or fragment. */
+export const isTgLink = (url: string): boolean => {
+	if (url.length > TG_MAX_LENGTH || !TG_ASCII.test(url)) return false;
+	const match = url.match(/^tg:\/\/([a-z]+)\?([^?#]*)$/);
+	if (!match) return false;
+	const action = Object.prototype.hasOwnProperty.call(TG_ACTIONS, match[1])
+		? TG_ACTIONS[match[1]]
+		: null;
+	if (!action) return false;
+	const seen = new Set<string>();
+	for (const pair of match[2].split('&')) {
+		const eq = pair.indexOf('=');
+		const key = eq === -1 ? pair : pair.slice(0, eq);
+		const param = Object.prototype.hasOwnProperty.call(action.params, key)
+			? action.params[key]
+			: null;
+		if (!param || seen.has(key)) return false;
+		seen.add(key);
+		if (param.kind === 'flag' ? eq !== -1 : eq === -1) return false;
+		if (param.kind === 'value' && !param.test.test(pair.slice(eq + 1)))
+			return false;
+	}
+	return action.required.every((keys) => keys.some((key) => seen.has(key)));
+};
+
+/** https to a declared domain, or (API 1.13, declared in links.schemes) a Telegram chat/post link. Shared by sanitizeTree and host.openLink. */
 export const isLinkAllowed = (url: string, context: LinkContext): boolean => {
 	if (!context.linksOpen) return false;
+	if (url.startsWith('tg:'))
+		return context.schemes?.includes('tg') === true && isTgLink(url);
 	let parsed: URL;
 	try {
 		parsed = new URL(url);
@@ -423,6 +494,95 @@ export const isLinkAllowed = (url: string, context: LinkContext): boolean => {
 		context.allowedDomains.includes(parsed.hostname)
 	);
 };
+
+/** Hosts a plugin declared in `images.allowedDomains`; remote pictures are fetched by the app, never by the page. */
+export interface ImageContext {
+	allowedDomains: string[];
+}
+
+export const NO_IMAGES: ImageContext = { allowedDomains: [] };
+
+export const MAX_IMAGE_DATA_BYTES = 512 * 1024;
+export const MAX_IMAGE_TREE_BYTES = 2 * 1024 * 1024;
+export const MAX_REMOTE_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_IMAGE_URL = 2000;
+const MAX_IMAGE_ALT = 200;
+const MIN_IMAGE_WIDTH = 16;
+const MAX_IMAGE_WIDTH = 800;
+const IMAGE_MIN_MINOR = 13;
+
+export const IMAGE_MIMES = [
+	'image/png',
+	'image/jpeg',
+	'image/gif',
+	'image/webp',
+] as const;
+export type ImageMime = (typeof IMAGE_MIMES)[number];
+
+const DATA_IMAGE =
+	/^data:(image\/(?:png|jpeg|gif|webp));base64,((?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)$/;
+
+const magicMatches = (mime: ImageMime, head: string): boolean => {
+	switch (mime) {
+		case 'image/png':
+			return head.startsWith('\x89PNG');
+		case 'image/jpeg':
+			return head.startsWith('\xff\xd8\xff');
+		case 'image/gif':
+			return head.startsWith('GIF87a') || head.startsWith('GIF89a');
+		case 'image/webp':
+			return head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP';
+	}
+};
+
+/** A `data:image/(png|jpeg|gif|webp);base64,...` whose bytes really are that type; returns the decoded size. */
+export const checkImageData = (
+	src: string,
+	maxBytes: number = MAX_IMAGE_DATA_BYTES,
+): number | null => {
+	if (src.length > Math.ceil((maxBytes * 4) / 3) + 64) return null;
+	const match = DATA_IMAGE.exec(src);
+	if (!match) return null;
+	const body = match[2];
+	const bytes =
+		(body.length / 4) * 3 -
+		(body.endsWith('==') ? 2 : body.endsWith('=') ? 1 : 0);
+	if (bytes <= 0 || bytes > maxBytes || body.length < 16) return null;
+	let head: string;
+	try {
+		head = atob(body.slice(0, 16));
+	} catch {
+		return null;
+	}
+	return magicMatches(match[1] as ImageMime, head) ? bytes : null;
+};
+
+/** https, no userinfo or port, host declared by the plugin. Returns the host, or null. Shared by sanitizeTree and host.loadImage. */
+export const imageHostAllowed = (
+	src: string,
+	context: ImageContext,
+): string | null => {
+	if (src.length > MAX_IMAGE_URL || /[\s\u0000-\u001f\u007f]/.test(src))
+		return null;
+	let parsed: URL;
+	try {
+		parsed = new URL(src);
+	} catch {
+		return null;
+	}
+	if (
+		parsed.protocol !== 'https:' ||
+		parsed.username ||
+		parsed.password ||
+		parsed.port ||
+		!isPublicHostName(parsed.hostname) ||
+		!context.allowedDomains.includes(parsed.hostname)
+	)
+		return null;
+	return parsed.hostname;
+};
+const linkHost = (url: string): string =>
+	url.startsWith('tg:') ? 'Telegram' : new URL(url).hostname;
 
 const NAMED_ENTITIES: Record<string, string> = {
 	amp: '&',
@@ -528,7 +688,7 @@ const convertInline = (
 				let host: string | null = null;
 				if (isLinkAllowed(href, ctx.links)) {
 					try {
-						host = new URL(href).hostname;
+						host = linkHost(href);
 					} catch {
 						host = null;
 					}
@@ -789,8 +949,12 @@ export const sanitizeTree = (
 	raw: unknown,
 	context: LinkContext = NO_LINKS,
 	apiMinor: number = CURRENT_API_MINOR,
+	images: ImageContext = NO_IMAGES,
 ): UiNode | null => {
+	const links: LinkContext =
+		apiMinor >= 13 ? context : { ...context, schemes: [] };
 	let budget = MAX_NODES;
+	let imageBytes = MAX_IMAGE_TREE_BYTES;
 	let longBudget = MAX_LONG_TEXT_TOTAL;
 	let mdDeadline: number | null = null;
 	const longRoom = () =>
@@ -994,7 +1158,7 @@ export const sanitizeTree = (
 				}
 				const blocks = convertBlocks(
 					tokens,
-					{ take: () => budget-- > 0, links: context },
+					{ take: () => budget-- > 0, links },
 					0,
 				);
 				return { type: 'markdown', blocks };
@@ -1590,16 +1754,41 @@ export const sanitizeTree = (
 					typeof value.url === 'string' ? value.url.slice(0, 2000) : null;
 				if (url === null) return null;
 				const label = text(value.text) ?? url;
-				if (!isLinkAllowed(url, context)) {
+				if (!isLinkAllowed(url, links)) {
 					return { type: 'text', text: label, tone: 'default' };
 				}
 				let host: string;
 				try {
-					host = new URL(url).hostname;
+					host = linkHost(url);
 				} catch {
 					return null;
 				}
 				return { type: 'link', url, text: label, host };
+			}
+			case 'image': {
+				if (apiMinor < IMAGE_MIN_MINOR) return null;
+				const alt = shortText(value.alt, MAX_IMAGE_ALT);
+				if (alt === undefined || typeof value.src !== 'string') return null;
+				if (value.src.startsWith('data:')) {
+					const size = checkImageData(value.src);
+					if (size === null || size > imageBytes) return null;
+					imageBytes -= size;
+				} else if (imageHostAllowed(value.src, images) === null) {
+					return null;
+				}
+				const width =
+					typeof value.width === 'number' && Number.isFinite(value.width)
+						? Math.min(
+								MAX_IMAGE_WIDTH,
+								Math.max(MIN_IMAGE_WIDTH, Math.round(value.width)),
+							)
+						: undefined;
+				return {
+					type: 'image',
+					src: value.src,
+					alt,
+					...(width !== undefined ? { width } : {}),
+				};
 			}
 			case 'timeAgo':
 			case 'dueTime': {

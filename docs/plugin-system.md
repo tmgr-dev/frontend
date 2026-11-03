@@ -242,6 +242,70 @@ A chart counts as one node, and every label you give, every series and every val
 3000 node limit (generated numbers and `null` padding are free). A chart with no series or no points is dropped,
 and so is a chart that does not fit in the remaining node budget (it is never drawn cut short).
 
+## Telegram links (API 1.13)
+
+Set `"engines": { "tmgr": "^1.13" }` and declare the scheme in the manifest. It needs the `links:open`
+permission; the install dialog shows "It can open Telegram links (tg://)".
+
+```json
+"permissions": ["links:open"],
+"links": { "schemes": ["tg"] }
+```
+
+`links.schemes` is optional and `"tg"` is the only accepted value. Anything else, a repeated value or a
+non-list refuses the manifest. The `link` node and Markdown links then accept `tg://` URLs; the rule runs
+again when the link is clicked. Telegram has to be installed on this computer.
+
+Allowed actions (the URL must be exactly lower-case `tg://<action>?<query>`, at most 2000 characters, no
+spaces, no `%` escapes, no user name, port, path or `#fragment`):
+
+| Action        | Query keys                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------------ |
+| `resolve`     | `domain` (required), `post`, `single`, `thread`, `comment`, `t`, `profile`              |
+| `privatepost` | `channel` and `post` (required), `single`, `thread`, `comment`, `t`                              |
+| `join`        | `invite` (required)                                                                              |
+
+Each key may appear once. Everything else renders as plain text and cannot be opened: other actions
+(`openmessage`, `proxy`, `socks`, `login`, `passport`, `setlanguage`, `addstickers`, `addtheme`, `settings`, `confirmphone`,
+`bg`, `msg_url`, ...), other keys (`start`, `startgroup`, `admin`, `startapp`, `phone`, `text`, `videochat`, ...),
+other schemes (`javascript:`, `file:`, `data:`, `http:`, `tmgr:`, `mailto:`, ...), `TG://` in any other case,
+and any `tg://` link from a plugin on API 1.12 or older, without the scheme declared, or without `links:open`.
+
+## Images (API 1.13)
+
+Set `"engines": { "tmgr": "^1.13" }`. Older versions drop the node. Type: `TmgrNode` in
+`plugin-sdk/template/tmgr.d.ts`.
+
+`{ type: 'image', src, alt, width? }` shows a picture. `alt` is required (at most 200 characters); a node
+without it is dropped. `width` is a whole number of pixels, clamped to 16 to 800. The picture never grows
+past its container or 600 px in height. If it cannot be shown, `alt` is shown instead.
+
+`src` is one of:
+
+- `data:image/png;base64,...` (also `jpeg`, `gif`, `webp`). No parameters or spaces; the bytes must really be
+  that type; at most 512 KB decoded. All data images in one tree together may use at most 2 MB; later ones
+  are dropped. SVG and every other type is refused.
+- An `https://` URL (at most 2000 characters) on a host you declare in the manifest:
+
+  ```json
+  "images": { "allowedDomains": ["images.example.com"] }
+  ```
+
+  Domains use the same rules as `links.allowedDomains` and must be public names (no `localhost`, IP
+  addresses or single-word hosts). No user name in the URL, no port. The user sees these domains when
+  installing or updating the plugin. It needs the `images:remote` permission (and at least one domain; the
+  permission alone refuses the manifest). The install dialog says: "Loads pictures from <hosts>. Those
+  sites get a request each time the plugin shows a picture." `data:` images need no permission.
+
+Remote images are not loaded by the page. The app fetches them itself, only while the plugin runs on this
+computer, at most 2 at a time per plugin (more wait their turn), with no cookies, no referrer and no redirects (an answer that redirects fails), within 10 seconds,
+at most 2 MB, and only if the answer is really a png, jpeg, gif or webp. Addresses on private networks or
+this computer are refused. Whoever runs the host can see which URLs are requested, so do not put secrets
+in them.
+
+`http:`, `blob:`, `file:`, relative URLs and Markdown images are not images. Each image counts toward the
+3000 node limit.
+
 ## Task menu items (API 1.6)
 
 A plugin can add items to the task "…" menu. Types: `TaskMenuCommandArgs` in `plugin-sdk/template/tmgr.d.ts`.
@@ -466,3 +530,23 @@ To use charts:
 2. Use the `chart` node.
 3. Update `tmgr.d.ts` from the SDK template.
 4. Copy `plugin-sdk/testing` again so the test host knows the new node.
+## Migrating from 1.12 to 1.13
+
+Nothing changes for existing plugins: `^1.0` to `^1.12` keep working, and `https` links behave as before.
+
+To open Telegram links:
+
+1. Set `"engines": { "tmgr": "^1.13" }`.
+2. Add the `links:open` permission and `"links": { "schemes": ["tg"] }` to the manifest.
+3. Use `tg://resolve`, `tg://privatepost` or `tg://join` URLs in `link` nodes or Markdown.
+
+To show images:
+
+1. Use `image` nodes with a `data:` source (no permission).
+2. For https sources add the `images:remote` permission and list the hosts under `images.allowedDomains`
+   in the manifest.
+
+Either way:
+
+1. Update `tmgr.d.ts` from the SDK template.
+2. Copy `plugin-sdk/testing` again so the test host knows the new nodes.

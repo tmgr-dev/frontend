@@ -1,5 +1,5 @@
 {
-  "apiVersion": "1.12",
+  "apiVersion": "1.13",
   "groups": {
     "Reads your data": [
       "tasks:read",
@@ -35,6 +35,7 @@
       "alarms",
       "deeplinks",
       "links:open",
+      "images:remote",
       "files:export",
       "files:pick"
     ]

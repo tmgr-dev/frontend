@@ -1,7 +1,7 @@
 # TMGR plugin: agent guide
 
 A plugin is a folder: `manifest.json`, `main.js`, optional `ui/*.html` pages. It runs in the TMGR desktop app
-sandbox (QuickJS) through the global `tmgr`. Target API 1.12: `engines.tmgr` `^1.12`.
+sandbox (QuickJS) through the global `tmgr`. Target API 1.13: `engines.tmgr` `^1.13`.
 
 Read first: https://tmgr.dev/docs/plugins.md. Types: https://tmgr.dev/docs/plugin-sdk/tmgr.d.ts (`main.js`) and
 https://tmgr.dev/docs/plugin-sdk/window.d.ts (pages). Index: https://tmgr.dev/llms.txt.
@@ -35,7 +35,7 @@ https://tmgr.dev/docs/plugin-sdk/window.d.ts (pages). Index: https://tmgr.dev/ll
   - Writes: `tasks:write`, `statuses:write`, `categories:write`, `time:write`, `comments:write`,
     `relations:write`, `agent_work:write`, `routines:write`, `pages:write`, `pages:sections`
   - Interface: `tray`, `views:badge`, `menus:task`
-  - Outside the app: `notifications`, `alarms`, `deeplinks`, `links:open`, `files:export`, `files:pick`
+  - Outside the app: `notifications`, `alarms`, `deeplinks`, `links:open`, `images:remote`, `files:export`, `files:pick`
 - `pages:write` and `pages:sections` need `pages:read`.
 - Storage, settings, `commands.register` and the status bar need no permission.
 - A signed, installed plugin asks the user again when an update adds a permission; a folder plugin does not. Before

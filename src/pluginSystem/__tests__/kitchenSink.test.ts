@@ -270,6 +270,7 @@ it('the "Kitchen Sink view" page renders the API 1.10 feed and data nodes', asyn
 		'sparkline',
 		'empty',
 		'skeleton',
+		'image',
 	]) {
 		expect(json).toContain(`"type":"${type}"`);
 	}

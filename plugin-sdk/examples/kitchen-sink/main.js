@@ -594,6 +594,21 @@ const kitchenSinkChartsDemo = () => ({
 	],
 });
 
+const kitchenSinkImagesDemo = () => ({
+	type: 'stack',
+	direction: 'column',
+	gap: 'sm',
+	children: [
+		{ type: 'heading', text: 'Image demo (API 1.13)', level: 2 },
+		{
+			type: 'image',
+			src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAJElEQVR42mOwbvoGR5OP/oUjXOIMg1ADMYqQxQejhtF4GBQaAL7LBB9qwJp+AAAAAElFTkSuQmCC',
+			alt: 'A blue checkerboard',
+			width: 64,
+		},
+	],
+});
+
 const kitchenSinkControlsDemo = () => ({
 	type: 'stack',
 	direction: 'column',
@@ -838,6 +853,11 @@ tmgr.ui.provideTaskSection('ks-section', async (task) => ({
 			text: 'Kitchen Sink docs (example.com)',
 		},
 		{
+			type: 'link',
+			url: 'tg://resolve?domain=telegram',
+			text: 'Telegram (tg://, API 1.13)',
+		},
+		{
 			type: 'button',
 			text: 'Say hi',
 			command: 'tmgr-dev.kitchen-sink.sayHi',
@@ -865,6 +885,7 @@ tmgr.ui.providePage('view', async (props) => ({
 		kitchenSinkControlsDemo(),
 		kitchenSinkFeedsDemo(),
 		kitchenSinkChartsDemo(),
+		kitchenSinkImagesDemo(),
 	],
 }));
 
