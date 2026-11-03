@@ -3,8 +3,8 @@
 	"name": "Kitchen Sink",
 	"version": "1.0.0",
 	"publisher": "tmgr-dev",
-	"description": "Exercises every plugin API v1.6 feature, for manual acceptance testing.",
-	"engines": { "tmgr": "^1.6" },
+	"description": "Exercises every plugin API v1.7 feature, for manual acceptance testing.",
+	"engines": { "tmgr": "^1.7" },
 	"main": "main.js",
 	"permissions": [
 		"tasks:read",

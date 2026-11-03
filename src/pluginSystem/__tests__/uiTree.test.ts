@@ -1,4 +1,9 @@
-import { isLinkAllowed, sanitizeTree, type LinkContext } from '../uiTree';
+import {
+	isLinkAllowed,
+	NO_LINKS,
+	sanitizeTree,
+	type LinkContext,
+} from '../uiTree';
 
 const ALLOWED: LinkContext = {
 	allowedDomains: ['a.example.com'],
@@ -109,7 +114,13 @@ it('caps size and depth', () => {
 	}) as any;
 	expect(wide.items.length).toBeLessThanOrEqual(500);
 	expect(
-		(sanitizeTree({ type: 'text', text: 'x'.repeat(5000) }) as any).text.length,
+		(
+			sanitizeTree(
+				{ type: 'text', text: 'x'.repeat(5000) },
+				undefined,
+				6,
+			) as any
+		).text.length,
 	).toBe(1000);
 });
 
@@ -797,5 +808,376 @@ describe('an older apiMinor downgrades API 1.3 nodes and drops the new optional 
 		expect(sanitizeTree(tree, undefined, 2)).toEqual(
 			sanitizeTree(tree, undefined, 3),
 		);
+	});
+});
+
+describe('text and documents (API 1.7)', () => {
+	const LINKS: LinkContext = {
+		allowedDomains: ['allowed.example'],
+		linksOpen: true,
+	};
+	const md = (text: string, minor = 7, context = LINKS) =>
+		sanitizeTree({ type: 'markdown', text }, context, minor) as any;
+	const collect = (value: unknown, type: string, found: any[] = []): any[] => {
+		if (Array.isArray(value)) value.forEach((v) => collect(v, type, found));
+		else if (value && typeof value === 'object') {
+			if ((value as any).type === type) found.push(value);
+			Object.values(value).forEach((v) => collect(v, type, found));
+		}
+		return found;
+	};
+	const firstInline = (tree: any) => tree.blocks[0].children;
+
+	describe('version gating', () => {
+		it('drops markdown and code below 1.7', () => {
+			expect(md('# hi', 6)).toBeNull();
+			expect(sanitizeTree({ type: 'code', text: 'x' }, LINKS, 6)).toBeNull();
+		});
+
+		it('ignores spans and keeps the 1000 cap below 1.7', () => {
+			const tree = sanitizeTree(
+				{ type: 'text', text: 'a'.repeat(5000), spans: [{ text: 'z' }] },
+				LINKS,
+				6,
+			) as any;
+			expect(tree.text).toHaveLength(1000);
+			expect(tree.spans).toBeUndefined();
+		});
+	});
+
+	describe('text spans', () => {
+		it('joins span texts and keeps only true flags', () => {
+			expect(
+				sanitizeTree({
+					type: 'text',
+					text: 'ignored',
+					spans: [
+						{ text: 'Hello ', bold: true, italic: 'yes', unknown: true },
+						{ text: 'world', code: true, strike: false },
+						{ text: 42 },
+						{ text: '' },
+						null,
+					],
+				}),
+			).toEqual({
+				type: 'text',
+				text: 'Hello world',
+				tone: 'default',
+				spans: [
+					{ text: 'Hello ', bold: true },
+					{ text: 'world', code: true },
+				],
+			});
+		});
+
+		it('caps the number of spans', () => {
+			const tree = sanitizeTree({
+				type: 'text',
+				spans: Array.from({ length: 500 }, () => ({ text: 'a' })),
+			}) as any;
+			expect(tree.spans).toHaveLength(200);
+			expect(tree.text).toHaveLength(200);
+		});
+
+		it('flags newlines in long text', () => {
+			const tree = sanitizeTree({ type: 'text', text: 'a\nb' }) as any;
+			expect(tree.breaks).toBe(true);
+		});
+	});
+
+	describe('code node', () => {
+		it('normalises lang and wrap and caps the text', () => {
+			expect(
+				sanitizeTree({
+					type: 'code',
+					text: 'x'.repeat(30000),
+					lang: 'l'.repeat(50),
+				}),
+			).toEqual({
+				type: 'code',
+				text: 'x'.repeat(20000),
+				lang: 'l'.repeat(30),
+				wrap: true,
+			});
+			expect(
+				(sanitizeTree({ type: 'code', text: 'a', wrap: false }) as any).wrap,
+			).toBe(false);
+			expect(sanitizeTree({ type: 'code', text: 5 })).toBeNull();
+		});
+	});
+
+	describe('limits', () => {
+		it('lets text nodes reach 20000 chars but keeps other strings at 1000', () => {
+			expect(
+				(sanitizeTree({ type: 'text', text: 'a'.repeat(30000) }) as any).text,
+			).toHaveLength(20000);
+			expect(
+				(sanitizeTree({ type: 'heading', text: 'a'.repeat(30000) }) as any)
+					.text,
+			).toHaveLength(1000);
+		});
+
+		it('shares a long-text budget across nodes', () => {
+			const tree = sanitizeTree({
+				type: 'stack',
+				children: Array.from({ length: 15 }, () => ({
+					type: 'text',
+					text: 'a'.repeat(20000),
+				})),
+			}) as any;
+			const lengths = tree.children.map((c: any) => c.text.length);
+			expect(lengths.slice(0, 10).every((n: number) => n === 20000)).toBe(true);
+			expect(lengths[10]).toBe(11000);
+			expect(lengths.slice(11).every((n: number) => n === 1000)).toBe(true);
+		});
+
+		it('never lets text past 1000 chars exceed the long-text budget in total', () => {
+			const tree = sanitizeTree({
+				type: 'stack',
+				children: Array.from({ length: 40 }, (_, i) => ({
+					type: i % 2 ? 'code' : 'text',
+					text: 'a'.repeat(20000),
+				})),
+			}) as any;
+			const extra = tree.children.reduce(
+				(sum: number, c: any) => sum + Math.max(0, c.text.length - 1000),
+				0,
+			);
+			expect(extra).toBe(200000);
+		});
+
+		it('charges spans against the node budget', () => {
+			const spans = Array.from({ length: 200 }, () => ({ text: 'x' }));
+			const tree = sanitizeTree({
+				type: 'stack',
+				children: Array.from({ length: 6 }, () => ({
+					type: 'stack',
+					children: Array.from({ length: 500 }, () => ({
+						type: 'text',
+						text: 'x',
+						spans,
+					})),
+				})),
+			}) as any;
+			const count = collect(tree, 'text').reduce(
+				(sum: number, t: any) => sum + 1 + (t.spans?.length ?? 0),
+				0,
+			);
+			expect(count).toBeLessThanOrEqual(3000);
+		});
+
+		it('keeps inline lexing bounded on pathological emphasis', () => {
+			const started = Date.now();
+			const tree = sanitizeTree({
+				type: 'stack',
+				children: Array.from({ length: 12 }, () => ({
+					type: 'markdown',
+					text: '*a '.repeat(7000),
+				})),
+			}) as any;
+			expect(Date.now() - started).toBeLessThan(3000);
+			expect(tree.children).toHaveLength(12);
+		});
+
+		it('shows a very long paragraph as plain text', () => {
+			const tree = md(`**bold** ${'word '.repeat(1000)}`);
+			expect(collect(tree, 'strong')).toHaveLength(0);
+			expect(tree.blocks[0].children[0].text.startsWith('**bold**')).toBe(true);
+		});
+
+		it('caps markdown source at 20000 chars', () => {
+			const tree = md('a'.repeat(30000));
+			expect(tree.blocks[0].children[0].text).toHaveLength(20000);
+		});
+
+		it('spends the node budget on a huge markdown document', () => {
+			const tree = md('- a\n'.repeat(5000));
+			const count = JSON.stringify(tree).match(/"type"/g)!.length;
+			expect(count).toBeLessThanOrEqual(3000);
+			expect(count).toBeGreaterThan(100);
+		});
+
+		it('does not throw on deeply nested quotes and lists', () => {
+			for (const source of [
+				'>'.repeat(5000),
+				'- '.repeat(5000),
+				'1. '.repeat(5000),
+			]) {
+				const tree = md(source);
+				expect(tree).not.toBeNull();
+				const depth = (value: any): number =>
+					value && typeof value === 'object'
+						? Math.max(0, ...Object.values(value).map(depth)) +
+							(value.type === 'blockquote' || value.type === 'list' ? 1 : 0)
+						: 0;
+				expect(depth(tree)).toBeLessThanOrEqual(8);
+			}
+		});
+
+		it('caps table columns and rows', () => {
+			const cols = 20;
+			const row = (cell: string) => `| ${Array(cols).fill(cell).join(' | ')} |`;
+			const source = [
+				row('h'),
+				`| ${Array(cols).fill('---').join(' | ')} |`,
+				...Array.from({ length: 300 }, () => row('c')),
+			].join('\n');
+			const table = md(source).blocks[0];
+			expect(table.type).toBe('table');
+			expect(table.header).toHaveLength(12);
+			expect(table.align).toHaveLength(12);
+			expect(table.rows).toHaveLength(200);
+			expect(table.rows[0]).toHaveLength(12);
+		});
+	});
+
+	describe('structure', () => {
+		it('converts the whitelisted blocks', () => {
+			const tree = md(
+				[
+					'# One',
+					'#### Four',
+					'',
+					'Para **b** *i* ~~d~~ `c`',
+					'',
+					'- [x] done',
+					'- [ ] todo',
+					'',
+					'3. third',
+					'',
+					'| a | b |',
+					'|:--|--:|',
+					'| 1 | 2 |',
+					'',
+					'```js title',
+					'const a = 1;',
+					'```',
+					'',
+					'> quote',
+					'',
+					'---',
+				].join('\n'),
+			);
+			const types = tree.blocks.map((b: any) => b.type);
+			expect(types).toEqual([
+				'heading',
+				'heading',
+				'paragraph',
+				'list',
+				'list',
+				'table',
+				'code',
+				'blockquote',
+				'hr',
+			]);
+			expect(tree.blocks[1].depth).toBe(3);
+			expect(tree.blocks[3].items.map((i: any) => i.checked)).toEqual([
+				true,
+				false,
+			]);
+			expect(tree.blocks[4]).toMatchObject({ ordered: true, start: 3 });
+			expect(tree.blocks[5].align).toEqual(['left', 'right']);
+			expect(tree.blocks[6]).toEqual({
+				type: 'code',
+				text: 'const a = 1;',
+				lang: 'js',
+			});
+			expect(collect(tree, 'strong')).toHaveLength(1);
+			expect(collect(tree, 'del')).toHaveLength(1);
+		});
+	});
+
+	describe('entities', () => {
+		it('decodes entities in text but not in code', () => {
+			expect(
+				firstInline(
+					md('a &amp; b &lt;c&gt; &#65;&#x42; &#0; &#xD800; &amp;lt;'),
+				)[0].text,
+			).toBe('a & b <c> AB &#0; &#xD800; &lt;');
+			expect(firstInline(md('`a < b & c`'))[0]).toEqual({
+				type: 'codespan',
+				text: 'a < b & c',
+			});
+			expect(md('```\n<div>&amp;</div>\n```').blocks[0].text).toBe(
+				'<div>&amp;</div>',
+			);
+		});
+	});
+
+	describe('untrusted content', () => {
+		const payloads = [
+			'<script>alert(1)</script>',
+			'text <script>alert(1)</script> text',
+			'[x](javascript:alert(1))',
+			'[x](JAVASCRIPT:alert(1))',
+			'<javascript:alert(1)>',
+			'[x](data:text/html,<script>alert(1)</script>)',
+			'[x](http://allowed.example)',
+			'[x](https://undeclared.example)',
+			'![a](https://allowed.example/i.png)',
+			'para <img src=x onerror=alert(1)> end',
+			'| h |\n|---|\n| <img src=x onerror=alert(1)> |',
+			'[<img src=x onerror=alert(1)>](https://allowed.example/p)',
+			'<a href="javascript:alert(1)">x</a>',
+			'<div onclick="alert(1)">\nblock\n</div>',
+		];
+
+		it.each(payloads)('stays inert: %s', (payload) => {
+			const tree = md(payload);
+			expect(tree).not.toBeNull();
+			expect(collect(tree, 'html')).toHaveLength(0);
+			expect(collect(tree, 'image')).toHaveLength(0);
+			const urls = collect(tree, 'link').map((l) => l.url);
+			for (const url of urls) {
+				expect(isLinkAllowed(url, LINKS)).toBe(true);
+			}
+			expect(JSON.stringify(tree).toLowerCase()).not.toMatch(
+				/"url":"javascript:/,
+			);
+		});
+
+		it('keeps raw html as visible text', () => {
+			const tree = md('<script>alert(1)</script>');
+			expect(tree.blocks).toEqual([
+				{
+					type: 'paragraph',
+					children: [{ type: 'text', text: '<script>alert(1)</script>' }],
+				},
+			]);
+			const inline = firstInline(md('a <b>x</b>'));
+			expect(inline.map((n: any) => n.text).join('')).toBe('a <b>x</b>');
+		});
+
+		it('turns only https links to declared domains into links', () => {
+			const link = (source: string) => collect(md(source), 'link');
+			expect(link('[x](https://allowed.example/p)')).toEqual([
+				{
+					type: 'link',
+					url: 'https://allowed.example/p',
+					host: 'allowed.example',
+					children: [{ type: 'text', text: 'x' }],
+				},
+			]);
+			expect(link('https://allowed.example')).toHaveLength(1);
+			expect(link('<https://allowed.example/a>')).toHaveLength(1);
+			expect(link('[x](http://allowed.example)')).toHaveLength(0);
+			expect(link('[x](https://undeclared.example)')).toHaveLength(0);
+			expect(link('[x](javascript:alert(1))')).toHaveLength(0);
+			expect(link('[x](JAVASCRIPT:alert(1))')).toHaveLength(0);
+			expect(link('<javascript:alert(1)>')).toHaveLength(0);
+			expect(link('[x](https://allowed.example/p)')).toHaveLength(1);
+			expect(
+				collect(md('[x](https://allowed.example/p)', 7, NO_LINKS), 'link'),
+			).toHaveLength(0);
+			expect(firstInline(md('[x](https://undeclared.example)'))).toEqual([
+				{ type: 'text', text: 'x' },
+			]);
+		});
+
+		it('shows the alt text of an image', () => {
+			expect(firstInline(md('![a](https://allowed.example/i.png)'))).toEqual([
+				{ type: 'text', text: 'a' },
+			]);
+		});
 	});
 });

@@ -93,10 +93,63 @@
 	</component>
 	<p
 		v-else-if="node.type === 'text'"
-		:class="['text-sm', toneClass(node.tone)]"
+		:class="[
+			'text-sm',
+			toneClass(node.tone),
+			node.breaks && 'break-words whitespace-pre-line',
+		]"
 	>
-		{{ node.text }}
+		<template v-if="node.spans">
+			<span
+				v-for="(span, index) in node.spans"
+				:key="index"
+				:class="[
+					span.bold && 'font-semibold',
+					span.italic && 'italic',
+					span.strike && 'line-through',
+					span.code &&
+						'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em] text-foreground',
+				]"
+				>{{ span.text }}</span
+			>
+		</template>
+		<template v-else>{{ node.text }}</template>
 	</p>
+	<PluginMarkdown
+		v-else-if="node.type === 'markdown'"
+		:blocks="node.blocks"
+		:plugin-id="pluginId"
+	/>
+	<div
+		v-else-if="node.type === 'code'"
+		class="min-w-0 rounded-md border border-border bg-muted"
+	>
+		<div
+			class="flex items-center justify-between gap-2 px-3 pt-1.5 text-2xs text-muted-foreground"
+		>
+			<span>{{ node.lang }}</span>
+			<button
+				type="button"
+				class="transition-colors hover:text-foreground"
+				:title="isCopied ? 'Copied' : 'Copy'"
+				@click="copyText"
+			>
+				<Check
+					v-if="isCopied"
+					class="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
+				/>
+				<Copy v-else class="h-3.5 w-3.5" />
+			</button>
+		</div>
+		<pre
+			:class="[
+				'p-3 font-mono text-xs text-foreground',
+				node.wrap
+					? 'break-words whitespace-pre-wrap'
+					: 'overflow-x-auto whitespace-pre',
+			]"
+			>{{ node.text }}</pre>
+	</div>
 	<component
 		:is="node.command ? 'button' : 'span'"
 		v-else-if="node.type === 'badge'"
@@ -300,6 +353,7 @@
 	import store from '@/store';
 	import { Check, Copy, MoreHorizontal } from 'lucide-vue-next';
 	import { computed, defineComponent, nextTick, ref, type PropType } from 'vue';
+	import PluginMarkdown from './PluginMarkdown.vue';
 	import {
 		buttonSizeProp,
 		buttonVariantProp,
@@ -360,6 +414,7 @@
 			DropdownMenuItem,
 			DropdownMenuTrigger,
 			MoreHorizontal,
+			PluginMarkdown,
 		},
 		props: {
 			node: { type: Object as PropType<UiNode>, required: true },
@@ -451,11 +506,12 @@
 			};
 			const [copy, copiedText] = useCopyToClipboard();
 			const copyText = () => {
-				if (props.node.type === 'copyable') void copy(props.node.text);
+				if (props.node.type === 'copyable' || props.node.type === 'code')
+					void copy(props.node.text);
 			};
 			const isCopied = computed(
 				() =>
-					props.node.type === 'copyable' &&
+					(props.node.type === 'copyable' || props.node.type === 'code') &&
 					copiedText.value === props.node.text,
 			);
 			const tick = usePluginTicker();

@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.84 — 2026-11-03
+
+- Plugins (API 1.7): plugin pages and task sections can show formatted documents — headings, lists, task lists, tables, quotes and code blocks.
+- Plugins: text can mix bold, italic, inline code and strikethrough, keeps its line breaks, and can be up to 20 000 characters long.
+- Plugins: a code block with wrapping and a copy button.
+
 ## 0.9.83 — 2026-11-02
 
 - Asking a persona: an answer that stops at the tool call limit, an empty answer, or one the server cut off now shows a message instead of ending silently, and the run is no longer recorded as a success.

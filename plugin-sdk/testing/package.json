@@ -7,6 +7,7 @@
 	"license": "MIT",
 	"dependencies": {
 		"@jitl/quickjs-wasmfile-release-sync": "^0.32.0",
+		"marked": "^18.0.12",
 		"quickjs-emscripten-core": "^0.32.0"
 	}
 }

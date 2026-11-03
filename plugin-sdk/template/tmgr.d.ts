@@ -1,5 +1,5 @@
 /**
- * Types for TMGR plugin authors (API 1.6). A plugin's main.js runs in a sandbox where `tmgr` and
+ * Types for TMGR plugin authors (API 1.7). A plugin's main.js runs in a sandbox where `tmgr` and
  * `console` are the only globals: no DOM, no fetch, no timers. Every call returns a Promise and may
  * reject with an Error whose `name` is one of PluginErrorCode.
  */
@@ -406,7 +406,30 @@ type TmgrNode =
 			}[];
 	  }
 	| { type: 'heading'; text: string; level?: 1 | 2 | 3 }
-	| { type: 'text'; text: string; tone?: TmgrTone }
+	/**
+	 * API 1.7: text may be up to 20000 chars (other strings stay at 1000) and newlines show as line breaks.
+	 * `spans` (up to 200) mixes styles inside one text; the joined span texts replace `text`.
+	 */
+	| {
+			type: 'text';
+			text: string;
+			tone?: TmgrTone;
+			spans?: {
+				text: string;
+				bold?: boolean;
+				italic?: boolean;
+				code?: boolean;
+				strike?: boolean;
+			}[];
+	  }
+	/**
+	 * API 1.7. Renders Markdown (up to 20000 chars): headings, paragraphs, bold/italic/strikethrough, code,
+	 * lists, task lists, tables, quotes and rules. Raw HTML shows as text and images show their alt text.
+	 * Only https links to manifest links.allowedDomains are clickable (needs links:open); others are plain text.
+	 */
+	| { type: 'markdown'; text: string }
+	/** API 1.7. Monospace block with a copy button (up to 20000 chars). `wrap` defaults to true; false scrolls sideways. */
+	| { type: 'code'; text: string; lang?: string; wrap?: boolean }
 	| {
 			type: 'badge';
 			text: string;
