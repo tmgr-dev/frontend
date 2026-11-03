@@ -3,6 +3,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sanitizeTree = exports.isLinkAllowed = exports.NO_LINKS = exports.COLORS = void 0;
+const marked_1 = require("marked");
 const manifest_1 = require("./manifest.generated.js");
 const TONES = ['default', 'muted', 'success', 'warning', 'danger'];
 exports.COLORS = [
@@ -18,6 +19,19 @@ const MAX_DEPTH = 8;
 const MAX_NODES = 3000;
 const MAX_ITEMS = 500;
 const MAX_TEXT = 1000;
+const MAX_LONG_TEXT = 20000;
+const MAX_LONG_TEXT_TOTAL = 200000;
+const MAX_SPANS = 200;
+const MAX_LANG = 30;
+const MAX_MD_DEPTH = 6;
+const MAX_MD_COLUMNS = 12;
+const MAX_MD_ROWS = 200;
+const SPAN_FLAGS = [
+    ['bold', 'bold'],
+    ['italic', 'italic'],
+    ['code', 'code'],
+    ['strike', 'strike'],
+];
 const MAX_COPYABLE_TEXT = 2000;
 const MAX_KEY_VALUE_ITEMS = 50;
 const MAX_BUTTON_ARGS_BYTES = 8 * 1024;
@@ -63,6 +77,230 @@ const isLinkAllowed = (url, context) => {
         context.allowedDomains.includes(parsed.hostname));
 };
 exports.isLinkAllowed = isLinkAllowed;
+const NAMED_ENTITIES = {
+    amp: '&',
+    lt: '<',
+    gt: '>',
+    quot: '"',
+    apos: "'",
+    nbsp: ' ',
+};
+const decodeEntities = (value) => value.replace(/&(#x[0-9a-f]{1,6}|#[0-9]{1,7}|amp|lt|gt|quot|apos|nbsp);/gi, (match, entity) => {
+    const lower = entity.toLowerCase();
+    if (lower[0] !== '#')
+        return NAMED_ENTITIES[lower];
+    const code = lower[1] === 'x'
+        ? parseInt(lower.slice(2), 16)
+        : parseInt(lower.slice(1), 10);
+    return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff)
+        ? String.fromCodePoint(code)
+        : match;
+});
+const markdownLexer = new marked_1.Marked({ gfm: true, breaks: true });
+const flattenRaw = (tokens) => tokens
+    .map((token) => token.raw)
+    .join('')
+    .slice(0, MAX_TEXT);
+const convertInline = (tokens, ctx, depth) => {
+    if (!tokens)
+        return [];
+    if (depth > MAX_MD_DEPTH) {
+        const plain = flattenRaw(tokens);
+        return plain && ctx.take() ? [{ type: 'text', text: plain }] : [];
+    }
+    const out = [];
+    const push = (node) => {
+        if (!ctx.take())
+            return false;
+        out.push(node);
+        return true;
+    };
+    for (const token of tokens) {
+        const t = token;
+        switch (token.type) {
+            case 'text':
+                if (Array.isArray(t.tokens) && t.tokens.length > 0) {
+                    out.push(...convertInline(t.tokens, ctx, depth + 1));
+                }
+                else if (!push({ type: 'text', text: decodeEntities(t.text ?? '') }))
+                    return out;
+                break;
+            case 'escape':
+                if (!push({ type: 'text', text: String(t.text ?? '') }))
+                    return out;
+                break;
+            case 'html':
+                if (!push({ type: 'text', text: String(t.raw ?? '') }))
+                    return out;
+                break;
+            case 'image':
+                if (!push({ type: 'text', text: decodeEntities(String(t.text ?? '')) }))
+                    return out;
+                break;
+            case 'strong':
+            case 'em':
+            case 'del': {
+                if (!ctx.take())
+                    return out;
+                out.push({
+                    type: token.type,
+                    children: convertInline(t.tokens, ctx, depth + 1),
+                });
+                break;
+            }
+            case 'codespan':
+                if (!push({ type: 'codespan', text: String(t.text ?? '') }))
+                    return out;
+                break;
+            case 'br':
+                if (!push({ type: 'br' }))
+                    return out;
+                break;
+            case 'link': {
+                const href = typeof t.href === 'string' ? t.href.slice(0, 2000) : '';
+                const children = convertInline(t.tokens, ctx, depth + 1);
+                let host = null;
+                if ((0, exports.isLinkAllowed)(href, ctx.links)) {
+                    try {
+                        host = new URL(href).hostname;
+                    }
+                    catch {
+                        host = null;
+                    }
+                }
+                if (host === null) {
+                    out.push(...children);
+                }
+                else if (!push({ type: 'link', url: href, host, children })) {
+                    return out;
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+    return out;
+};
+const convertBlocks = (tokens, ctx, depth) => {
+    const out = [];
+    const push = (block) => {
+        if (!ctx.take())
+            return false;
+        out.push(block);
+        return true;
+    };
+    for (const token of tokens) {
+        const t = token;
+        if (depth > MAX_MD_DEPTH) {
+            if (token.type === 'space' || token.type === 'def')
+                continue;
+            const plain = flattenRaw([token]).trim();
+            if (plain &&
+                !push({ type: 'paragraph', children: [{ type: 'text', text: plain }] }))
+                return out;
+            continue;
+        }
+        switch (token.type) {
+            case 'heading': {
+                const level = Math.min(3, Math.max(1, Number(t.depth) || 1));
+                if (!push({
+                    type: 'heading',
+                    depth: level,
+                    children: convertInline(t.tokens, ctx, 0),
+                }))
+                    return out;
+                break;
+            }
+            case 'paragraph':
+            case 'text':
+                if (!push({
+                    type: 'paragraph',
+                    children: Array.isArray(t.tokens)
+                        ? convertInline(t.tokens, ctx, 0)
+                        : [{ type: 'text', text: decodeEntities(String(t.text ?? '')) }],
+                }))
+                    return out;
+                break;
+            case 'html': {
+                const plain = String(t.raw ?? '')
+                    .trim()
+                    .slice(0, MAX_TEXT);
+                if (plain &&
+                    !push({
+                        type: 'paragraph',
+                        children: [{ type: 'text', text: plain }],
+                    }))
+                    return out;
+                break;
+            }
+            case 'list': {
+                if (!ctx.take())
+                    return out;
+                const items = (Array.isArray(t.items) ? t.items : [])
+                    .slice(0, MAX_ITEMS)
+                    .map((item) => ({
+                    ...(item.task ? { checked: item.checked === true } : {}),
+                    blocks: convertBlocks(item.tokens ?? [], ctx, depth + 1),
+                }));
+                out.push({
+                    type: 'list',
+                    ordered: t.ordered === true,
+                    start: typeof t.start === 'number' && Number.isFinite(t.start)
+                        ? t.start
+                        : 1,
+                    items,
+                });
+                break;
+            }
+            case 'table': {
+                if (!ctx.take())
+                    return out;
+                const header = (t.header ?? [])
+                    .slice(0, MAX_MD_COLUMNS)
+                    .map((cell) => convertInline(cell.tokens, ctx, 0));
+                const align = (t.align ?? [])
+                    .slice(0, header.length)
+                    .map((a) => a === 'left' || a === 'center' || a === 'right' ? a : null);
+                const rows = (t.rows ?? [])
+                    .slice(0, MAX_MD_ROWS)
+                    .map((row) => row
+                    .slice(0, header.length)
+                    .map((cell) => convertInline(cell.tokens, ctx, 0)));
+                out.push({ type: 'table', header, align, rows });
+                break;
+            }
+            case 'code': {
+                const lang = String(t.lang ?? '')
+                    .trim()
+                    .split(/\s+/)[0]
+                    .slice(0, MAX_LANG);
+                if (!push({
+                    type: 'code',
+                    text: String(t.text ?? '').slice(0, MAX_LONG_TEXT),
+                    ...(lang ? { lang } : {}),
+                }))
+                    return out;
+                break;
+            }
+            case 'blockquote':
+                if (!ctx.take())
+                    return out;
+                out.push({
+                    type: 'blockquote',
+                    blocks: convertBlocks(t.tokens ?? [], ctx, depth + 1),
+                });
+                break;
+            case 'hr':
+                if (!push({ type: 'hr' }))
+                    return out;
+                break;
+            default:
+                break;
+        }
+    }
+    return out;
+};
 const pick = (value, allowed, fallback) => allowed.includes(value) ? value : fallback;
 const pickOptional = (value, allowed) => (allowed.includes(value) ? value : undefined);
 const text = (value) => typeof value === 'string'
@@ -118,6 +356,14 @@ const findLabel = (nodes) => {
  */
 const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MINOR) => {
     let budget = MAX_NODES;
+    let longBudget = MAX_LONG_TEXT_TOTAL;
+    const longText = (value) => {
+        if (typeof value !== 'string')
+            return null;
+        const result = value.slice(0, longBudget > 0 && apiMinor >= 7 ? MAX_LONG_TEXT : MAX_TEXT);
+        longBudget -= result.length;
+        return result;
+    };
     const node = (value, depth, cardDepth) => {
         if (depth > MAX_DEPTH || budget-- <= 0)
             return null;
@@ -166,7 +412,7 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                     : pick(value.accent, exports.COLORS, 'gray');
                 const grow = value.grow === true ? true : undefined;
                 const onClick = parseCommandArgs(value.onClick);
-                const label = onClick ? (findLabel(kids) ?? 'Card') : undefined;
+                const label = onClick ? findLabel(kids) ?? 'Card' : undefined;
                 return {
                     type: 'card',
                     children: kids,
@@ -244,10 +490,77 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                     };
             }
             case 'text': {
-                const t = text(value.text);
-                return t === null
-                    ? null
-                    : { type: 'text', text: t, tone: pick(value.tone, TONES, 'default') };
+                const tone = pick(value.tone, TONES, 'default');
+                if (apiMinor < 7) {
+                    const t = text(value.text);
+                    return t === null ? null : { type: 'text', text: t, tone };
+                }
+                const spans = [];
+                let joined = '';
+                if (Array.isArray(value.spans)) {
+                    for (const span of value.spans.slice(0, MAX_SPANS)) {
+                        if (typeof span?.text !== 'string' || span.text === '')
+                            continue;
+                        const room = (longBudget > 0 ? MAX_LONG_TEXT : MAX_TEXT) - joined.length;
+                        if (room <= 0)
+                            break;
+                        const piece = span.text.slice(0, room);
+                        joined += piece;
+                        spans.push({
+                            text: piece,
+                            ...Object.fromEntries(SPAN_FLAGS.filter(([key]) => span[key] === true).map(([key]) => [key, true])),
+                        });
+                    }
+                }
+                let t;
+                if (spans.length > 0) {
+                    longBudget -= joined.length;
+                    t = joined;
+                }
+                else {
+                    t = longText(value.text) ?? text(value.text);
+                    if (t === null)
+                        return null;
+                }
+                return {
+                    type: 'text',
+                    text: t,
+                    tone,
+                    ...(spans.length > 0 ? { spans } : {}),
+                    ...(t.includes('\n') ? { breaks: true } : {}),
+                };
+            }
+            case 'markdown': {
+                if (apiMinor < 7)
+                    return null;
+                const source = longText(value.text);
+                if (source === null)
+                    return null;
+                let tokens;
+                try {
+                    tokens = markdownLexer.lexer(source);
+                }
+                catch {
+                    return { type: 'text', text: source, tone: 'default', breaks: true };
+                }
+                const blocks = convertBlocks(tokens, { take: () => budget-- > 0, links: context }, 0);
+                return { type: 'markdown', blocks };
+            }
+            case 'code': {
+                if (apiMinor < 7)
+                    return null;
+                const t = longText(value.text);
+                if (t === null)
+                    return null;
+                const lang = typeof value.lang === 'string'
+                    ? value.lang.trim().slice(0, MAX_LANG)
+                    : '';
+                return {
+                    type: 'code',
+                    text: t,
+                    ...(lang ? { lang } : {}),
+                    wrap: value.wrap !== false,
+                };
             }
             case 'badge': {
                 const t = text(value.text);

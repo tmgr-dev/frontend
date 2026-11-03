@@ -219,6 +219,18 @@ it('the "Kitchen Sink view" page renders card, grid and menu nodes (API 1.3)', a
 	host.dispose();
 });
 
+it('the "Kitchen Sink view" page renders markdown, spans and code (API 1.7)', async () => {
+	const host = await startHost();
+	const tree = await host.renderPage('view', null);
+	const json = JSON.stringify(tree);
+	expect(json).toContain('"type":"markdown"');
+	expect(json).toContain('"type":"code"');
+	expect(json).toContain('"spans"');
+	expect(json).toContain('"host":"example.com"');
+	expect(json).not.toContain('undeclared.invalid"');
+	host.dispose();
+});
+
 it('offers two task menu items and both work on a task (API 1.6)', async () => {
 	const host = await startHost();
 	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);

@@ -1,3 +1,4 @@
+import { Marked, type Token } from 'marked';
 import { PLUGIN_API_VERSION } from './manifest';
 
 export type Tone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
@@ -11,6 +12,40 @@ export type MenuItem = {
 	command: string;
 	args?: unknown;
 	confirm?: string;
+};
+
+export type MdInline =
+	| { type: 'text'; text: string }
+	| { type: 'strong' | 'em' | 'del'; children: MdInline[] }
+	| { type: 'codespan'; text: string }
+	| { type: 'br' }
+	| { type: 'link'; url: string; host: string; children: MdInline[] };
+
+export type MdBlock =
+	| { type: 'heading'; depth: 1 | 2 | 3; children: MdInline[] }
+	| { type: 'paragraph'; children: MdInline[] }
+	| {
+			type: 'list';
+			ordered: boolean;
+			start: number;
+			items: { checked?: boolean; blocks: MdBlock[] }[];
+	  }
+	| {
+			type: 'table';
+			header: MdInline[][];
+			align: ('left' | 'center' | 'right' | null)[];
+			rows: MdInline[][][];
+	  }
+	| { type: 'code'; text: string; lang?: string }
+	| { type: 'blockquote'; blocks: MdBlock[] }
+	| { type: 'hr' };
+
+export type TextSpan = {
+	text: string;
+	bold?: true;
+	italic?: true;
+	code?: true;
+	strike?: true;
 };
 
 export type UiNode =
@@ -42,7 +77,15 @@ export type UiNode =
 	  }
 	| { type: 'menu'; label?: string; icon: 'more'; items: MenuItem[] }
 	| { type: 'heading'; text: string; level: 1 | 2 | 3 }
-	| { type: 'text'; text: string; tone: Tone }
+	| {
+			type: 'text';
+			text: string;
+			tone: Tone;
+			spans?: TextSpan[];
+			breaks?: true;
+	  }
+	| { type: 'markdown'; blocks: MdBlock[] }
+	| { type: 'code'; text: string; lang?: string; wrap: boolean }
 	| {
 			type: 'badge';
 			text: string;
@@ -96,6 +139,19 @@ const MAX_DEPTH = 8;
 const MAX_NODES = 3000;
 const MAX_ITEMS = 500;
 const MAX_TEXT = 1000;
+const MAX_LONG_TEXT = 20000;
+const MAX_LONG_TEXT_TOTAL = 200000;
+const MAX_SPANS = 200;
+const MAX_LANG = 30;
+const MAX_MD_DEPTH = 6;
+const MAX_MD_COLUMNS = 12;
+const MAX_MD_ROWS = 200;
+const SPAN_FLAGS = [
+	['bold', 'bold'],
+	['italic', 'italic'],
+	['code', 'code'],
+	['strike', 'strike'],
+] as const;
 const MAX_COPYABLE_TEXT = 2000;
 const MAX_KEY_VALUE_ITEMS = 50;
 const MAX_BUTTON_ARGS_BYTES = 8 * 1024;
@@ -148,6 +204,251 @@ export const isLinkAllowed = (url: string, context: LinkContext): boolean => {
 		parsed.protocol === 'https:' &&
 		context.allowedDomains.includes(parsed.hostname)
 	);
+};
+
+const NAMED_ENTITIES: Record<string, string> = {
+	amp: '&',
+	lt: '<',
+	gt: '>',
+	quot: '"',
+	apos: "'",
+	nbsp: ' ',
+};
+
+const decodeEntities = (value: string): string =>
+	value.replace(
+		/&(#x[0-9a-f]{1,6}|#[0-9]{1,7}|amp|lt|gt|quot|apos|nbsp);/gi,
+		(match, entity: string) => {
+			const lower = entity.toLowerCase();
+			if (lower[0] !== '#') return NAMED_ENTITIES[lower];
+			const code =
+				lower[1] === 'x'
+					? parseInt(lower.slice(2), 16)
+					: parseInt(lower.slice(1), 10);
+			return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff)
+				? String.fromCodePoint(code)
+				: match;
+		},
+	);
+
+const markdownLexer = new Marked({ gfm: true, breaks: true });
+
+type MdContext = { take: () => boolean; links: LinkContext };
+
+const flattenRaw = (tokens: Token[]): string =>
+	tokens
+		.map((token) => token.raw)
+		.join('')
+		.slice(0, MAX_TEXT);
+
+const convertInline = (
+	tokens: Token[] | undefined,
+	ctx: MdContext,
+	depth: number,
+): MdInline[] => {
+	if (!tokens) return [];
+	if (depth > MAX_MD_DEPTH) {
+		const plain = flattenRaw(tokens);
+		return plain && ctx.take() ? [{ type: 'text', text: plain }] : [];
+	}
+	const out: MdInline[] = [];
+	const push = (node: MdInline): boolean => {
+		if (!ctx.take()) return false;
+		out.push(node);
+		return true;
+	};
+	for (const token of tokens) {
+		const t = token as any;
+		switch (token.type) {
+			case 'text':
+				if (Array.isArray(t.tokens) && t.tokens.length > 0) {
+					out.push(...convertInline(t.tokens, ctx, depth + 1));
+				} else if (!push({ type: 'text', text: decodeEntities(t.text ?? '') }))
+					return out;
+				break;
+			case 'escape':
+				if (!push({ type: 'text', text: String(t.text ?? '') })) return out;
+				break;
+			case 'html':
+				if (!push({ type: 'text', text: String(t.raw ?? '') })) return out;
+				break;
+			case 'image':
+				if (!push({ type: 'text', text: decodeEntities(String(t.text ?? '')) }))
+					return out;
+				break;
+			case 'strong':
+			case 'em':
+			case 'del': {
+				if (!ctx.take()) return out;
+				out.push({
+					type: token.type,
+					children: convertInline(t.tokens, ctx, depth + 1),
+				});
+				break;
+			}
+			case 'codespan':
+				if (!push({ type: 'codespan', text: String(t.text ?? '') })) return out;
+				break;
+			case 'br':
+				if (!push({ type: 'br' })) return out;
+				break;
+			case 'link': {
+				const href = typeof t.href === 'string' ? t.href.slice(0, 2000) : '';
+				const children = convertInline(t.tokens, ctx, depth + 1);
+				let host: string | null = null;
+				if (isLinkAllowed(href, ctx.links)) {
+					try {
+						host = new URL(href).hostname;
+					} catch {
+						host = null;
+					}
+				}
+				if (host === null) {
+					out.push(...children);
+				} else if (!push({ type: 'link', url: href, host, children })) {
+					return out;
+				}
+				break;
+			}
+			default:
+				break;
+		}
+	}
+	return out;
+};
+
+const convertBlocks = (
+	tokens: Token[],
+	ctx: MdContext,
+	depth: number,
+): MdBlock[] => {
+	const out: MdBlock[] = [];
+	const push = (block: MdBlock): boolean => {
+		if (!ctx.take()) return false;
+		out.push(block);
+		return true;
+	};
+	for (const token of tokens) {
+		const t = token as any;
+		if (depth > MAX_MD_DEPTH) {
+			if (token.type === 'space' || token.type === 'def') continue;
+			const plain = flattenRaw([token]).trim();
+			if (
+				plain &&
+				!push({ type: 'paragraph', children: [{ type: 'text', text: plain }] })
+			)
+				return out;
+			continue;
+		}
+		switch (token.type) {
+			case 'heading': {
+				const level = Math.min(3, Math.max(1, Number(t.depth) || 1)) as
+					1 | 2 | 3;
+				if (
+					!push({
+						type: 'heading',
+						depth: level,
+						children: convertInline(t.tokens, ctx, 0),
+					})
+				)
+					return out;
+				break;
+			}
+			case 'paragraph':
+			case 'text':
+				if (
+					!push({
+						type: 'paragraph',
+						children: Array.isArray(t.tokens)
+							? convertInline(t.tokens, ctx, 0)
+							: [{ type: 'text', text: decodeEntities(String(t.text ?? '')) }],
+					})
+				)
+					return out;
+				break;
+			case 'html': {
+				const plain = String(t.raw ?? '')
+					.trim()
+					.slice(0, MAX_TEXT);
+				if (
+					plain &&
+					!push({
+						type: 'paragraph',
+						children: [{ type: 'text', text: plain }],
+					})
+				)
+					return out;
+				break;
+			}
+			case 'list': {
+				if (!ctx.take()) return out;
+				const items = (Array.isArray(t.items) ? t.items : [])
+					.slice(0, MAX_ITEMS)
+					.map((item: any) => ({
+						...(item.task ? { checked: item.checked === true } : {}),
+						blocks: convertBlocks(item.tokens ?? [], ctx, depth + 1),
+					}));
+				out.push({
+					type: 'list',
+					ordered: t.ordered === true,
+					start:
+						typeof t.start === 'number' && Number.isFinite(t.start)
+							? t.start
+							: 1,
+					items,
+				});
+				break;
+			}
+			case 'table': {
+				if (!ctx.take()) return out;
+				const header = (t.header ?? [])
+					.slice(0, MAX_MD_COLUMNS)
+					.map((cell: any) => convertInline(cell.tokens, ctx, 0));
+				const align = (t.align ?? [])
+					.slice(0, header.length)
+					.map((a: unknown) =>
+						a === 'left' || a === 'center' || a === 'right' ? a : null,
+					);
+				const rows = (t.rows ?? [])
+					.slice(0, MAX_MD_ROWS)
+					.map((row: any[]) =>
+						row
+							.slice(0, header.length)
+							.map((cell: any) => convertInline(cell.tokens, ctx, 0)),
+					);
+				out.push({ type: 'table', header, align, rows });
+				break;
+			}
+			case 'code': {
+				const lang = String(t.lang ?? '')
+					.trim()
+					.split(/\s+/)[0]
+					.slice(0, MAX_LANG);
+				if (
+					!push({
+						type: 'code',
+						text: String(t.text ?? '').slice(0, MAX_LONG_TEXT),
+						...(lang ? { lang } : {}),
+					})
+				)
+					return out;
+				break;
+			}
+			case 'blockquote':
+				if (!ctx.take()) return out;
+				out.push({
+					type: 'blockquote',
+					blocks: convertBlocks(t.tokens ?? [], ctx, depth + 1),
+				});
+				break;
+			case 'hr':
+				if (!push({ type: 'hr' })) return out;
+				break;
+			default:
+				break;
+		}
+	}
+	return out;
 };
 
 const pick = <T>(value: unknown, allowed: readonly T[], fallback: T): T =>
@@ -219,6 +520,16 @@ export const sanitizeTree = (
 	apiMinor: number = CURRENT_API_MINOR,
 ): UiNode | null => {
 	let budget = MAX_NODES;
+	let longBudget = MAX_LONG_TEXT_TOTAL;
+	const longText = (value: unknown): string | null => {
+		if (typeof value !== 'string') return null;
+		const result = value.slice(
+			0,
+			longBudget > 0 && apiMinor >= 7 ? MAX_LONG_TEXT : MAX_TEXT,
+		);
+		longBudget -= result.length;
+		return result;
+	};
 	const node = (
 		value: any,
 		depth: number,
@@ -351,10 +662,78 @@ export const sanitizeTree = (
 						};
 			}
 			case 'text': {
-				const t = text(value.text);
-				return t === null
-					? null
-					: { type: 'text', text: t, tone: pick(value.tone, TONES, 'default') };
+				const tone = pick(value.tone, TONES, 'default');
+				if (apiMinor < 7) {
+					const t = text(value.text);
+					return t === null ? null : { type: 'text', text: t, tone };
+				}
+				const spans: TextSpan[] = [];
+				let joined = '';
+				if (Array.isArray(value.spans)) {
+					for (const span of value.spans.slice(0, MAX_SPANS)) {
+						if (typeof span?.text !== 'string' || span.text === '') continue;
+						const room =
+							(longBudget > 0 ? MAX_LONG_TEXT : MAX_TEXT) - joined.length;
+						if (room <= 0) break;
+						const piece = span.text.slice(0, room);
+						joined += piece;
+						spans.push({
+							text: piece,
+							...Object.fromEntries(
+								SPAN_FLAGS.filter(([key]) => span[key] === true).map(
+									([key]) => [key, true],
+								),
+							),
+						});
+					}
+				}
+				let t: string | null;
+				if (spans.length > 0) {
+					longBudget -= joined.length;
+					t = joined;
+				} else {
+					t = longText(value.text) ?? text(value.text);
+					if (t === null) return null;
+				}
+				return {
+					type: 'text',
+					text: t,
+					tone,
+					...(spans.length > 0 ? { spans } : {}),
+					...(t.includes('\n') ? { breaks: true as const } : {}),
+				};
+			}
+			case 'markdown': {
+				if (apiMinor < 7) return null;
+				const source = longText(value.text);
+				if (source === null) return null;
+				let tokens: Token[];
+				try {
+					tokens = markdownLexer.lexer(source);
+				} catch {
+					return { type: 'text', text: source, tone: 'default', breaks: true };
+				}
+				const blocks = convertBlocks(
+					tokens,
+					{ take: () => budget-- > 0, links: context },
+					0,
+				);
+				return { type: 'markdown', blocks };
+			}
+			case 'code': {
+				if (apiMinor < 7) return null;
+				const t = longText(value.text);
+				if (t === null) return null;
+				const lang =
+					typeof value.lang === 'string'
+						? value.lang.trim().slice(0, MAX_LANG)
+						: '';
+				return {
+					type: 'code',
+					text: t,
+					...(lang ? { lang } : {}),
+					wrap: value.wrap !== false,
+				};
 			}
 			case 'badge': {
 				const t = text(value.text);

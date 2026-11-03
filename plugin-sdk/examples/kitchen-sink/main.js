@@ -362,6 +362,75 @@ const kitchenSinkGridDemo = () => ({
 	],
 });
 
+const KITCHEN_SINK_DOSSIER = [
+	'# Dossier',
+	'',
+	'Status: **ready** for *review*, ~~not blocked~~ any more. Run `npm test` & check the log.',
+	'',
+	'## Checklist',
+	'',
+	'- [x] Write the plan',
+	'- [ ] Review the plan',
+	'- Plain item',
+	'  1. Nested step one',
+	'  2. Nested step two',
+	'',
+	'| Item | Owner | Hours |',
+	'|:-----|:-----:|------:|',
+	'| Plan | Ann | 3 |',
+	'| Build | Bob | 12 |',
+	'',
+	'```js',
+	'const answer = 6 * 7;',
+	'```',
+	'',
+	'> Quoted note',
+	'',
+	'---',
+	'',
+	'Docs: [example.com page](https://example.com/kitchen-sink) or [elsewhere](https://undeclared.invalid/page).',
+	'',
+	'<b>Raw HTML shows as text</b>',
+].join('\n');
+
+const kitchenSinkTextDemo = () => ({
+	type: 'stack',
+	direction: 'column',
+	gap: 'md',
+	children: [
+		{ type: 'heading', text: 'Text and documents demo (API 1.7)', level: 2 },
+		{ type: 'markdown', text: KITCHEN_SINK_DOSSIER },
+		{
+			type: 'text',
+			spans: [
+				{ text: 'Rich text: ' },
+				{ text: 'bold ', bold: true },
+				{ text: 'italic ', italic: true },
+				{ text: 'struck ', strike: true },
+				{ text: 'code', code: true },
+			],
+		},
+		{
+			type: 'code',
+			lang: 'text',
+			text: `A long line that wraps by default: ${'word '.repeat(60)}`,
+		},
+		{
+			type: 'code',
+			lang: 'text',
+			wrap: false,
+			text: `The same line scrolls sideways: ${'word '.repeat(60)}`,
+		},
+		{
+			type: 'text',
+			tone: 'muted',
+			text: `Long text (over 1000 characters):\nSecond line.\n${'Lorem ipsum dolor sit amet. '.repeat(
+				50,
+			)}`,
+		},
+	],
+});
+
 tmgr.ui.provideBadges(BADGE_ID, async (tasks) => {
 	const notes = await tmgr.taskData.getMany(
 		tasks.map((t) => t.id),
@@ -449,6 +518,7 @@ tmgr.ui.providePage('view', async (props) => ({
 			tone: 'muted',
 		},
 		kitchenSinkGridDemo(),
+		kitchenSinkTextDemo(),
 	],
 }));
 

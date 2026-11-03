@@ -59,6 +59,34 @@ payload is `{ type, workspaceId, pageId, slug, title, parentId, version, author:
   report `[]`.
 - A plugin does not receive the events of its own writes; other plugins and the user's writes are delivered.
 
+## Text and documents (API 1.7)
+
+Three additions let a plugin show longer text and documents. Set `"engines": { "tmgr": "^1.7" }`; older
+versions drop `markdown` and `code` nodes and ignore `spans`. Types: `TmgrNode` in `plugin-sdk/template/tmgr.d.ts`.
+
+- `{ type: 'markdown', text }` renders Markdown: headings (levels 4 to 6 show as level 3), paragraphs,
+  bold, italic, strikethrough, inline code, line breaks, lists, task lists, tables, code blocks, quotes and
+  rules.
+- `{ type: 'text', text, spans }` mixes styles in one line of text. Each span is `{ text, bold?, italic?, code?,
+  strike? }`; `text` is replaced by the joined span texts.
+- `{ type: 'code', text, lang?, wrap? }` shows monospace text with a copy button. `wrap` defaults to `true`.
+
+Limits:
+
+- A `text`, `code` or `markdown` string can be up to 20000 characters; every other string stays at 1000.
+- All long text in one tree together can use 200000 characters. After that, long strings are cut to 1000.
+- Up to 200 spans per text, 12 columns and 200 rows per Markdown table, and Markdown lists and quotes nest 6 deep.
+  Everything counts toward the 3000 node limit of the whole tree.
+- Newlines in a `text` node show as line breaks.
+
+What is shown:
+
+- Raw HTML in Markdown shows as plain text.
+- Images are never loaded; the alt text is shown instead.
+- Only `https` links to a domain in `links.allowedDomains` are clickable, and only with the `links:open`
+  permission. `http`, `mailto` and other domains render as plain text. This is the same rule as the `link`
+  node.
+
 ## Task menu items (API 1.6)
 
 A plugin can add items to the task "…" menu. Types: `TaskMenuCommandArgs` in `plugin-sdk/template/tmgr.d.ts`.
@@ -215,3 +243,16 @@ To add task menu items:
 4. Update `tmgr.d.ts` from the SDK template for `TaskMenuCommandArgs`.
 5. Copy `plugin-sdk/testing` again to get `taskMenuItems()` and `clickTaskMenu()` and the new manifest
    validation.
+
+## Migrating from 1.6 to 1.7
+
+Nothing changes for existing plugins: `^1.0` to `^1.6` keep working.
+
+To show longer text and documents:
+
+1. Set `"engines": { "tmgr": "^1.7" }`.
+2. Use `markdown`, `code` nodes and `spans` on `text` nodes. To make links in Markdown clickable, add the
+   `links:open` permission and list the domains under `links.allowedDomains`.
+3. Update `tmgr.d.ts` from the SDK template.
+4. Copy `plugin-sdk/testing` again and run `npm install`: the test host now needs `marked`, and Node 20.19+ or
+   22.12+ (it loads an ES module with `require()`).
