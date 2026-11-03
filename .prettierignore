@@ -33,3 +33,6 @@ nix/source.json
 
 # organize-imports would move `import './utcClock'` (sets TZ) below the modules under test.
 src/local/__tests__/parity.test.ts
+
+# Emitted by plugin-sdk/cli/sync.mjs; a test compares them byte for byte.
+plugin-sdk/cli/lib
