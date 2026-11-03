@@ -142,7 +142,12 @@ Rules for all three:
   and is not shown or sent. A node with a bad name or without a valid `command` is dropped.
 - A control only sends its own value, as `args.value` of its own command, when the user acts on it. Nothing is
   sent when the control first shows or when you render again, and other controls' values are never included.
-- There is no password field and no `type` option. Fields are not filled in by the browser.
+- There is no password field and no `type` option. Controls carry `autocomplete="off"`, have no `name` or `id`, are
+  not inside a form, and are marked to be ignored by common password managers (`data-lpignore`, `data-1p-ignore`,
+  `data-bwignore`, `data-form-type="other"`). Browsers and password managers can still change this behaviour, so
+  never ask the user for a secret in an input.
+- TMGR shows the line "Plugin: <plugin name>" under every input, select and checkbox, so the user can tell them
+  from TMGR's own fields. You cannot hide or change it.
 - While the user is typing in an input, the typed text stays; otherwise the value from your latest render is shown.
   Render the new `value` when the command ends.
 - Every control counts toward the 3000 node limit; each option counts as well.

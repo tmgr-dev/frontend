@@ -71,3 +71,22 @@ export const nextInputText = (
 		: node.type === 'input' && typeof node.value === 'string'
 			? node.value
 			: '';
+
+export const pluginControlAttrs = {
+	autocomplete: 'off',
+	'data-lpignore': 'true',
+	'data-1p-ignore': 'true',
+	'data-bwignore': 'true',
+	'data-form-type': 'other',
+} as const;
+
+export const pluginInputTextAttrs = {
+	...pluginControlAttrs,
+	type: 'text',
+	autocorrect: 'off',
+	autocapitalize: 'off',
+	spellcheck: 'false',
+} as const;
+
+export const pluginControlLabel = (pluginName: string): string =>
+	`Plugin: ${pluginName}`;

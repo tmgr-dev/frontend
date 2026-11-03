@@ -1,10 +1,15 @@
 import { NO_LINKS, sanitizeTree } from '@/pluginSystem/uiTree';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import {
 	checkboxArgs,
 	createDebouncer,
 	debounceDelay,
 	inputArgs,
 	nextInputText,
+	pluginControlAttrs,
+	pluginControlLabel,
+	pluginInputTextAttrs,
 	sameControl,
 	selectArgs,
 } from '../pluginInputs';
@@ -145,5 +150,35 @@ describe('nextInputText', () => {
 				'typed',
 			),
 		).toBe('');
+	});
+});
+
+describe('plugin control marker and autofill guards', () => {
+	it('labels the controls with the plugin name', () => {
+		expect(pluginControlLabel('Estimate')).toBe('Plugin: Estimate');
+	});
+
+	it('keeps controls out of autofill and password managers', () => {
+		for (const attrs of [pluginControlAttrs, pluginInputTextAttrs]) {
+			expect(attrs.autocomplete).toBe('off');
+			expect(attrs['data-lpignore']).toBe('true');
+			expect(attrs['data-1p-ignore']).toBe('true');
+			expect(attrs['data-bwignore']).toBe('true');
+			expect(attrs['data-form-type']).toBe('other');
+		}
+		expect(pluginInputTextAttrs.type).toBe('text');
+		expect(pluginInputTextAttrs).not.toHaveProperty('name');
+		expect(pluginInputTextAttrs).not.toHaveProperty('id');
+	});
+
+	it('wraps every plugin control in the marked group in PluginView', () => {
+		const source = readFileSync(
+			join(__dirname, '..', 'PluginView.vue'),
+			'utf8',
+		);
+		expect(source).toContain('data-testid="plugin-control-marker"');
+		expect(source).toContain('v-bind="pluginInputTextAttrs"');
+		expect(source.match(/v-bind="pluginControlAttrs"/g)).toHaveLength(2);
+		expect(source).not.toMatch(/<(input|select)[^>]*\s(name|id)=/);
 	});
 });

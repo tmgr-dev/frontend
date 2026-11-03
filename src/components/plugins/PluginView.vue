@@ -275,50 +275,65 @@
 			{{ option.text }}
 		</button>
 	</div>
-	<Input
-		v-else-if="node.type === 'input'"
-		:model-value="inputText"
-		type="text"
-		autocomplete="off"
-		:placeholder="node.placeholder"
-		:maxlength="500"
-		class="h-8 w-full max-w-sm text-xs"
-		@update:model-value="onInputText"
-		@focus="inputFocused = true"
-		@blur="inputFocused = false"
-		@keydown.enter="onInputEnter"
-	/>
-	<select
-		v-else-if="node.type === 'select'"
-		:value="node.value ?? ''"
-		autocomplete="off"
-		class="h-8 w-fit max-w-full rounded-md border border-input bg-background px-2 text-xs text-foreground"
-		@change="onSelectChange"
+	<div
+		v-else-if="
+			node.type === 'input' ||
+			node.type === 'select' ||
+			node.type === 'checkbox'
+		"
+		data-testid="plugin-control"
+		class="flex w-fit max-w-full min-w-0 flex-col gap-0.5"
 	>
-		<option v-if="node.value === null" value="" disabled>
-			{{ node.placeholder ?? 'Select' }}
-		</option>
-		<option
-			v-for="option in node.options"
-			:key="option.value"
-			:value="option.value"
-		>
-			{{ option.text }}
-		</option>
-	</select>
-	<label
-		v-else-if="node.type === 'checkbox'"
-		class="inline-flex w-fit cursor-pointer items-center gap-2 text-sm text-foreground"
-	>
-		<input
-			type="checkbox"
-			autocomplete="off"
-			:checked="node.checked"
-			class="h-4 w-4 rounded border-input accent-primary"
-			@change="onCheckboxChange"
+		<Input
+			v-if="node.type === 'input'"
+			:model-value="inputText"
+			v-bind="pluginInputTextAttrs"
+			:placeholder="node.placeholder"
+			:maxlength="500"
+			class="h-8 w-full max-w-sm text-xs"
+			@update:model-value="onInputText"
+			@focus="inputFocused = true"
+			@blur="inputFocused = false"
+			@keydown.enter="onInputEnter"
 		/>
-		<span>{{ node.label }}</span>
-	</label>
+		<select
+			v-else-if="node.type === 'select'"
+			:value="node.value ?? ''"
+			v-bind="pluginControlAttrs"
+			class="h-8 w-fit max-w-full rounded-md border border-input bg-background px-2 text-xs text-foreground"
+			@change="onSelectChange"
+		>
+			<option v-if="node.value === null" value="" disabled>
+				{{ node.placeholder ?? 'Select' }}
+			</option>
+			<option
+				v-for="option in node.options"
+				:key="option.value"
+				:value="option.value"
+			>
+				{{ option.text }}
+			</option>
+		</select>
+		<label
+			v-else
+			class="inline-flex w-fit cursor-pointer items-center gap-2 text-sm text-foreground"
+		>
+			<input
+				type="checkbox"
+				v-bind="pluginControlAttrs"
+				:checked="node.checked"
+				class="h-4 w-4 rounded border-input accent-primary"
+				@change="onCheckboxChange"
+			/>
+			<span>{{ node.label }}</span>
+		</label>
+		<span
+			data-testid="plugin-control-marker"
+			class="max-w-full truncate rounded-sm bg-muted px-1 text-2xs text-muted-foreground dark:bg-muted/60"
+		>
+			{{ controlLabel }}
+		</span>
+	</div>
 	<button
 		v-else-if="node.type === 'stat' && node.command"
 		type="button"
@@ -675,6 +690,7 @@
 </template>
 
 <script lang="ts">
+	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import {
 		AlertDialog,
 		AlertDialogAction,
@@ -685,16 +701,15 @@
 		AlertDialogHeader,
 		AlertDialogTitle,
 	} from '@/components/ui/alert-dialog';
-	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import { Button } from '@/components/ui/button';
-	import { Input } from '@/components/ui/input';
-	import { Skeleton } from '@/components/ui/skeleton';
 	import {
 		DropdownMenu,
 		DropdownMenuContent,
 		DropdownMenuItem,
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
+	import { Input } from '@/components/ui/input';
+	import { Skeleton } from '@/components/ui/skeleton';
 	import { toast } from '@/components/ui/toast';
 	import { useCopyToClipboard } from '@/composable/useCopyToClipboard';
 	import { usePluginTicker } from '@/composable/usePluginTicker';
@@ -744,6 +759,9 @@
 		createDebouncer,
 		inputArgs,
 		nextInputText,
+		pluginControlAttrs,
+		pluginControlLabel,
+		pluginInputTextAttrs,
 		sameControl,
 		selectArgs,
 	} from './pluginInputs';
@@ -1169,6 +1187,9 @@
 				dueTimeText,
 				dueTimeClass,
 				pluginName,
+				controlLabel: computed(() => pluginControlLabel(pluginName.value)),
+				pluginControlAttrs,
+				pluginInputTextAttrs,
 				toneClass: (tone: Tone) => TONES[tone],
 				colorClass: (color: Color) => COLORS[color],
 				barClass: (color: Color) => BARS[color],
