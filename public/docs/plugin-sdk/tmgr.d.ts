@@ -635,6 +635,35 @@ type TmgrNode =
 			command: string;
 			args?: unknown;
 	  }
+	/**
+	 * API 1.11. A multi-line text field with its own Send button. Nothing is sent while the user types: Send, or
+	 * Cmd+Enter / Ctrl+Enter, runs `command` with `{ ...args, value }`, the text cut to 5000 characters.
+	 * Unsent text stays when you render again; after sending, your next `value` is shown. `rows` is 2 to 12 (default 4),
+	 * `submitText` at most 40 characters (default "Send").
+	 */
+	| {
+			type: 'textarea';
+			name: string;
+			value?: string;
+			placeholder?: string;
+			rows?: number;
+			submitText?: string;
+			command: string;
+			args?: unknown;
+	  }
+	/**
+	 * API 1.11. A date picker. Choosing a date in `min`..`max` runs `command` with `{ ...args, value: 'YYYY-MM-DD' }`;
+	 * clearing it sends `value: null`. Dates must be real calendar dates in years 1000 to 9999; invalid ones are dropped.
+	 */
+	| {
+			type: 'date';
+			name: string;
+			value?: string | null;
+			min?: string;
+			max?: string;
+			command: string;
+			args?: unknown;
+	  }
 	| { type: 'taskLink'; taskId: number; text: string }
 	| { type: 'divider' }
 	/** Monospace text with a copy-to-clipboard button. */

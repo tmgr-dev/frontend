@@ -459,6 +459,23 @@ tmgr.commands.register('tmgr-dev.kitchen-sink.setNotify', async (args) => {
 	await tmgr.ui.refresh('page', 'view');
 });
 
+let kitchenSinkNoteLength = null;
+let kitchenSinkDate = null;
+
+tmgr.commands.register('tmgr-dev.kitchen-sink.setNote', async (args) => {
+	if (typeof args?.value === 'string') {
+		kitchenSinkNoteLength = Array.from(args.value).length;
+	}
+	await tmgr.ui.refresh('page', 'view');
+});
+
+tmgr.commands.register('tmgr-dev.kitchen-sink.setDate', async (args) => {
+	if (typeof args?.value === 'string' || args?.value === null) {
+		kitchenSinkDate = args.value;
+	}
+	await tmgr.ui.refresh('page', 'view');
+});
+
 const kitchenSinkFeedsDemo = () => ({
 	type: 'stack',
 	direction: 'column',
@@ -643,6 +660,35 @@ const kitchenSinkControlsDemo = () => ({
 			type: 'text',
 			tone: 'muted',
 			text: `Search: ${kitchenSinkSearch || '(empty)'}, color: ${kitchenSinkColor}, notify: ${kitchenSinkNotify}`,
+		},
+		{
+			type: 'textarea',
+			name: 'note',
+			placeholder: 'Write a note, then press Cmd/Ctrl+Enter',
+			rows: 3,
+			submitText: 'Send note',
+			command: 'tmgr-dev.kitchen-sink.setNote',
+		},
+		{
+			type: 'text',
+			tone: 'muted',
+			text:
+				kitchenSinkNoteLength === null
+					? 'Note: nothing sent yet'
+					: `Note: ${kitchenSinkNoteLength} characters sent`,
+		},
+		{
+			type: 'date',
+			name: 'day',
+			min: '2026-01-01',
+			max: '2026-12-31',
+			value: kitchenSinkDate,
+			command: 'tmgr-dev.kitchen-sink.setDate',
+		},
+		{
+			type: 'text',
+			tone: 'muted',
+			text: `Date: ${kitchenSinkDate ?? '(none)'}`,
 		},
 		{
 			type: 'collapse',

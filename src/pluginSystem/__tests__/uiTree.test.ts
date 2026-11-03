@@ -1,6 +1,9 @@
 import {
+	calendarDate,
+	cutCodePoints,
 	ICON_NAMES,
 	isLinkAllowed,
+	MAX_TEXTAREA_VALUE,
 	NO_LINKS,
 	sanitizeTree,
 	type LinkContext,
@@ -1882,5 +1885,166 @@ describe('feeds and data nodes (API 1.10)', () => {
 			expect(t10({ type: 'skeleton', lines: 0 }).lines).toBe(1);
 			expect(t10({ type: 'skeleton', lines: NaN }).lines).toBe(3);
 		});
+	});
+});
+
+describe('textarea and date (API 1.11)', () => {
+	const t11 = (value: unknown, minor = 11) =>
+		sanitizeTree(value, NO_LINKS, minor) as any;
+	const area = { type: 'textarea', name: 'note', command: 'p.go' };
+	const date = { type: 'date', name: 'due', command: 'p.go' };
+
+	it.each([area, date])('drops %j at 1.10 and keeps it at 1.11', (node) => {
+		expect(t11(node, 10)).toBeNull();
+		expect(t11(node, 11)).not.toBeNull();
+	});
+
+	it.each([area, date])(
+		'rejects bad names, commands and args for %j',
+		(node) => {
+			for (const name of ['', 'a b', 'x'.repeat(65), 5, undefined]) {
+				expect(t11({ ...node, name })).toBeNull();
+			}
+			expect(t11({ ...node, command: '' })).toBeNull();
+			expect(t11({ ...node, args: { big: 'x'.repeat(9000) } })).toBeNull();
+			expect(t11({ ...node, args: { k: 1 } }).args).toEqual({ k: 1 });
+		},
+	);
+
+	it('exports the textarea cap', () => {
+		expect(MAX_TEXTAREA_VALUE).toBe(5000);
+	});
+
+	describe('textarea', () => {
+		it('defaults and drops unknown fields', () => {
+			expect(
+				t11({ ...area, type: 'textarea', html: '<b>', inputType: 'x' }),
+			).toEqual({
+				type: 'textarea',
+				name: 'note',
+				value: '',
+				rows: 4,
+				command: 'p.go',
+			});
+		});
+
+		it('cuts the value to 5000 code points without splitting a pair', () => {
+			const out = t11({ ...area, value: '😀'.repeat(6000) }).value;
+			expect(Array.from(out)).toHaveLength(5000);
+			expect(out).toBe('😀'.repeat(5000));
+			expect(t11({ ...area, value: '漢'.repeat(5000) }).value).toHaveLength(
+				5000,
+			);
+			expect(t11({ ...area, value: 5 }).value).toBe('');
+		});
+
+		it('keeps newlines in the value', () => {
+			expect(t11({ ...area, value: 'a\nb' }).value).toBe('a\nb');
+		});
+
+		it('clamps rows to 2..12', () => {
+			expect(t11({ ...area, rows: 1 }).rows).toBe(2);
+			expect(t11({ ...area, rows: 99 }).rows).toBe(12);
+			expect(t11({ ...area, rows: 7 }).rows).toBe(7);
+			expect(t11({ ...area, rows: 5.4 }).rows).toBe(5);
+			expect(t11({ ...area, rows: '7' }).rows).toBe(4);
+			expect(t11({ ...area, rows: NaN }).rows).toBe(4);
+		});
+
+		it('clamps the placeholder and submit text', () => {
+			expect(
+				Array.from(
+					t11({ ...area, placeholder: '\u{1F600}'.repeat(201) }).placeholder,
+				),
+			).toHaveLength(200);
+			expect(
+				t11({ ...area, submitText: 's'.repeat(90) }).submitText,
+			).toHaveLength(40);
+			expect(t11({ ...area, submitText: '  ' })).not.toHaveProperty(
+				'submitText',
+			);
+			expect(t11({ ...area, submitText: 5 })).not.toHaveProperty('submitText');
+			expect(t11({ ...area, submitText: ' Post ' }).submitText).toBe('Post');
+		});
+	});
+
+	describe('date', () => {
+		it('keeps real calendar dates only', () => {
+			expect(t11({ ...date, value: '2026-02-28' }).value).toBe('2026-02-28');
+			expect(t11({ ...date, value: '2024-02-29' }).value).toBe('2024-02-29');
+			for (const value of [
+				'2026-02-30',
+				'2025-02-29',
+				'2026-13-01',
+				'2026-00-10',
+				'2026-04-31',
+				'0999-12-31',
+				'10000-01-01',
+				'2026-1-5',
+				'2026/01/05',
+				'2026-01-05T00:00',
+				' 2026-01-05',
+				5,
+				null,
+			]) {
+				expect(t11({ ...date, value }).value).toBeNull();
+			}
+			expect(t11({ ...date, value: '1000-01-01' }).value).toBe('1000-01-01');
+			expect(t11({ ...date, value: '9999-12-31' }).value).toBe('9999-12-31');
+		});
+
+		it('defaults to no value and no bounds', () => {
+			expect(t11(date)).toEqual({
+				type: 'date',
+				name: 'due',
+				value: null,
+				command: 'p.go',
+			});
+		});
+
+		it('drops invalid min and max', () => {
+			const out = t11({ ...date, min: '2026-02-30', max: '2026-03-01' });
+			expect(out).not.toHaveProperty('min');
+			expect(out.max).toBe('2026-03-01');
+		});
+
+		it('drops both bounds when min is after max', () => {
+			const out = t11({ ...date, min: '2026-05-01', max: '2026-04-01' });
+			expect(out).not.toHaveProperty('min');
+			expect(out).not.toHaveProperty('max');
+			expect(t11({ ...date, min: '2026-04-01', max: '2026-04-01' }).min).toBe(
+				'2026-04-01',
+			);
+		});
+
+		it('nulls a value outside the bounds', () => {
+			const bounds = { min: '2026-01-10', max: '2026-01-20' };
+			expect(t11({ ...date, ...bounds, value: '2026-01-09' }).value).toBeNull();
+			expect(t11({ ...date, ...bounds, value: '2026-01-21' }).value).toBeNull();
+			expect(t11({ ...date, ...bounds, value: '2026-01-10' }).value).toBe(
+				'2026-01-10',
+			);
+			expect(t11({ ...date, ...bounds, value: '2026-01-20' }).value).toBe(
+				'2026-01-20',
+			);
+		});
+	});
+
+	it('helpers cut and validate directly', () => {
+		expect(cutCodePoints('a😀b', 2)).toBe('a😀');
+		expect(cutCodePoints('a😀b', 1)).toBe('a');
+		expect(cutCodePoints('ab', 5)).toBe('ab');
+		expect(calendarDate('2026-12-31')).toBe('2026-12-31');
+		expect(calendarDate('2026-12-32')).toBeNull();
+	});
+
+	it('spends the shared node budget and depth', () => {
+		const many = Array.from({ length: 3500 }, () => area);
+		expect(t11({ type: 'stack', children: many }).children.length).toBeLessThan(
+			3500,
+		);
+		let nested: any = date;
+		for (let i = 0; i < 9; i++) nested = { type: 'stack', children: [nested] };
+		expect(JSON.stringify(t11(nested))).not.toContain('"date"');
 	});
 });

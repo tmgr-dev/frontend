@@ -1,7 +1,7 @@
 # TMGR plugin: agent guide
 
 A plugin is a folder: `manifest.json`, `main.js`, optional `ui/*.html` pages. It runs in the TMGR desktop app
-sandbox (QuickJS) through the global `tmgr`. Target API 1.10: `engines.tmgr` `^1.10`.
+sandbox (QuickJS) through the global `tmgr`. Target API 1.11: `engines.tmgr` `^1.11`.
 
 Read first: https://tmgr.dev/docs/plugins.md. Types: https://tmgr.dev/docs/plugin-sdk/tmgr.d.ts (`main.js`) and
 https://tmgr.dev/docs/plugin-sdk/window.d.ts (pages). Index: https://tmgr.dev/llms.txt.

@@ -277,6 +277,26 @@ it('the "Kitchen Sink view" page renders the API 1.10 feed and data nodes', asyn
 	host.dispose();
 });
 
+it('the "Kitchen Sink view" page renders the API 1.11 textarea and date and they re-render', async () => {
+	const host = await startHost();
+	const json = JSON.stringify(await host.renderPage('view', null));
+	for (const type of ['textarea', 'date']) {
+		expect(json).toContain(`"type":"${type}"`);
+	}
+	await host.runCommand('tmgr-dev.kitchen-sink.setNote', { value: '😀ab' });
+	await host.runCommand('tmgr-dev.kitchen-sink.setDate', {
+		value: '2026-03-04',
+	});
+	const after = JSON.stringify(await host.renderPage('view', null));
+	expect(after).toContain('Note: 3 characters sent');
+	expect(after).toContain('Date: 2026-03-04');
+	await host.runCommand('tmgr-dev.kitchen-sink.setDate', { value: null });
+	expect(JSON.stringify(await host.renderPage('view', null))).toContain(
+		'Date: (none)',
+	);
+	host.dispose();
+});
+
 it('offers two task menu items and both work on a task (API 1.6)', async () => {
 	const host = await startHost();
 	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);

@@ -6,7 +6,7 @@ description: Use when the user asks to make, change, test or debug a TMGR plugin
 # TMGR plugin
 
 A plugin is a folder: `manifest.json`, `main.js`, optional `ui/*.html` pages. It runs in the TMGR desktop app
-sandbox (QuickJS) and talks to the app through the global `tmgr`. Target API 1.10: `engines.tmgr` `^1.10`.
+sandbox (QuickJS) and talks to the app through the global `tmgr`. Target API 1.11: `engines.tmgr` `^1.11`.
 
 References:
 - Guide: https://tmgr.dev/docs/plugins.md

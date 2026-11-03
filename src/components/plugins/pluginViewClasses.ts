@@ -171,7 +171,7 @@ export const buttonClasses = (
 
 export const segmentedArgs = (
 	args: unknown,
-	value: string | boolean,
+	value: string | boolean | null,
 ): Record<string, unknown> => ({
 	...(args !== null && typeof args === 'object' && !Array.isArray(args)
 		? (args as Record<string, unknown>)
@@ -199,6 +199,7 @@ const isInteractiveNode = (el: InteractiveLike): boolean => {
 		tag === 'button' ||
 		tag === 'a' ||
 		tag === 'input' ||
+		tag === 'textarea' ||
 		tag === 'select' ||
 		tag === 'label'
 	)

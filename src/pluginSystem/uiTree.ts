@@ -248,6 +248,25 @@ export type UiNode =
 			command: string;
 			args?: unknown;
 	  }
+	| {
+			type: 'textarea';
+			name: string;
+			value: string;
+			placeholder?: string;
+			rows: number;
+			submitText?: string;
+			command: string;
+			args?: unknown;
+	  }
+	| {
+			type: 'date';
+			name: string;
+			value: string | null;
+			min?: string;
+			max?: string;
+			command: string;
+			args?: unknown;
+	  }
 	| { type: 'taskLink'; taskId: number; text: string }
 	| { type: 'divider' }
 	| { type: 'copyable'; text: string; label?: string }
@@ -307,6 +326,12 @@ const MAX_BUTTON_GROUP = 12;
 const MAX_SEGMENTED_VALUE = 64;
 const MIN_SEGMENTED = 2;
 export const MAX_INPUT_VALUE = 500;
+export const MAX_TEXTAREA_VALUE = 5000;
+const MIN_TEXTAREA_ROWS = 2;
+const MAX_TEXTAREA_ROWS = 12;
+const DEFAULT_TEXTAREA_ROWS = 4;
+const MAX_SUBMIT_TEXT = 40;
+const MIN_DATE_YEAR = 1000;
 const MAX_INPUT_PLACEHOLDER = 200;
 const MAX_CONTROL_NAME = 64;
 const MAX_SELECT_OPTIONS = 100;
@@ -657,6 +682,29 @@ export const clampDebounce = (value: unknown): number =>
 	typeof value === 'number' && Number.isFinite(value)
 		? Math.min(DEBOUNCE_MAX, Math.max(DEBOUNCE_MIN, Math.round(value)))
 		: DEBOUNCE_DEFAULT;
+
+export const cutCodePoints = (value: string, max: number): string => {
+	let end = 0;
+	for (let count = 0; end < value.length && count < max; count++) {
+		const unit = value.charCodeAt(end);
+		const pair =
+			unit >= 0xd800 &&
+			unit <= 0xdbff &&
+			(value.charCodeAt(end + 1) & 0xfc00) === 0xdc00;
+		end += pair ? 2 : 1;
+	}
+	return value.slice(0, end);
+};
+
+export const calendarDate = (value: unknown): string | null => {
+	if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+		return null;
+	const year = Number(value.slice(0, 4));
+	const month = Number(value.slice(5, 7));
+	const day = Number(value.slice(8, 10));
+	if (year < MIN_DATE_YEAR || month < 1 || month > 12 || day < 1) return null;
+	return day <= new Date(Date.UTC(year, month, 0)).getUTCDate() ? value : null;
+};
 
 const controlName = (value: unknown): string | null =>
 	typeof value === 'string' &&
@@ -1353,6 +1401,61 @@ export const sanitizeTree = (
 					name,
 					label,
 					checked: value.checked === true,
+					...cmd,
+				};
+			}
+			case 'textarea': {
+				if (apiMinor < 11) return null;
+				const name = controlName(value.name);
+				const cmd = parseCommandArgs(value);
+				if (name === null || cmd === null) return null;
+				const placeholder =
+					typeof value.placeholder === 'string' && value.placeholder !== ''
+						? cutCodePoints(value.placeholder, MAX_INPUT_PLACEHOLDER)
+						: undefined;
+				const submitText = shortText(value.submitText, MAX_SUBMIT_TEXT);
+				return {
+					type: 'textarea',
+					name,
+					value:
+						typeof value.value === 'string'
+							? cutCodePoints(value.value, MAX_TEXTAREA_VALUE)
+							: '',
+					rows:
+						typeof value.rows === 'number' && Number.isFinite(value.rows)
+							? Math.min(
+									MAX_TEXTAREA_ROWS,
+									Math.max(MIN_TEXTAREA_ROWS, Math.round(value.rows)),
+								)
+							: DEFAULT_TEXTAREA_ROWS,
+					...(placeholder !== undefined ? { placeholder } : {}),
+					...(submitText !== undefined ? { submitText } : {}),
+					...cmd,
+				};
+			}
+			case 'date': {
+				if (apiMinor < 11) return null;
+				const name = controlName(value.name);
+				const cmd = parseCommandArgs(value);
+				if (name === null || cmd === null) return null;
+				let min = calendarDate(value.min);
+				let max = calendarDate(value.max);
+				if (min !== null && max !== null && min > max) {
+					min = null;
+					max = null;
+				}
+				const picked = calendarDate(value.value);
+				return {
+					type: 'date',
+					name,
+					value:
+						picked !== null &&
+						(min === null || picked >= min) &&
+						(max === null || picked <= max)
+							? picked
+							: null,
+					...(min !== null ? { min } : {}),
+					...(max !== null ? { max } : {}),
 					...cmd,
 				};
 			}

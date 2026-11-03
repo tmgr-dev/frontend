@@ -187,6 +187,37 @@ Table additions:
 Every item, row, value and expanded node counts toward the 3000 node limit of the whole tree, and nesting
 counts toward the depth limit of 8. Lists over their caps are cut.
 
+## Text area and date (API 1.11)
+
+Set `"engines": { "tmgr": "^1.11" }`. Older versions drop these nodes. Types: `TmgrNode` in
+`plugin-sdk/template/tmgr.d.ts`.
+
+- `{ type: 'textarea', name, value?, placeholder?, rows?, submitText?, command, args? }` is a multi-line text
+  field with its own button. Nothing is sent while the user types. Clicking the button, or pressing Cmd+Enter
+  (macOS) or Ctrl+Enter (elsewhere), runs `command` with `{ ...args, value }`. Plain Enter adds a new line.
+  `value` is the text, cut to 5000 characters (never in the middle of an emoji). The start `value` is cut the
+  same way, `placeholder` to 200 and `submitText` (the button label, default "Send") to 40. `rows` is a whole
+  number from 2 to 12 (default 4).
+- `{ type: 'date', name, value?, min?, max?, command, args? }` is a date picker. `value`, `min` and `max` are
+  `YYYY-MM-DD` strings that must be real dates (no `2026-02-30`) in the years 1000 to 9999; anything else is
+  dropped. If `min` is later than `max`, both are dropped. A `value` outside `min`..`max` is shown as empty.
+  Choosing a date inside the range runs `command` with `{ ...args, value: 'YYYY-MM-DD' }`. Clearing the field
+  runs it with `{ ...args, value: null }`. A date outside the range is not sent.
+
+Rules for both:
+
+- `name` and `command` follow the rules of the 1.9 controls. A node with a bad name or without a valid
+  `command` is dropped. Nothing is sent when the control first shows or when you render again, and other
+  controls' values are never included.
+- TMGR shows the line "Plugin: <plugin name>" under every text area and date picker, and you cannot change it.
+  The same warning applies: never ask the user for a secret.
+- Text typed in a text area and not yet sent stays while it is the same control (same `type`, `name`,
+  `command` and `args`), even after the user clicks elsewhere or you render again. After it is sent, or when
+  the control changes, the `value` from your latest render is shown. Render a new `value` (for example an empty
+  one) when the command ends to clear the field.
+- Controls inside a clickable table row or card do not trigger the row or card command.
+- Each text area and date picker counts as one node toward the 3000 node limit.
+
 ## Task menu items (API 1.6)
 
 A plugin can add items to the task "…" menu. Types: `TaskMenuCommandArgs` in `plugin-sdk/template/tmgr.d.ts`.
@@ -387,5 +418,16 @@ To use the feed and data nodes:
 
 1. Set `"engines": { "tmgr": "^1.10" }`.
 2. Use `timeline`, `messages`, `sparkline`, `empty` and `skeleton` nodes and the new table fields.
+3. Update `tmgr.d.ts` from the SDK template.
+4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.
+
+## Migrating from 1.10 to 1.11
+
+Nothing changes for existing plugins: `^1.0` to `^1.10` keep working.
+
+To use the text area and date nodes:
+
+1. Set `"engines": { "tmgr": "^1.11" }`.
+2. Use `textarea` and `date` nodes. Handle `args.value` being `null` for a cleared date.
 3. Update `tmgr.d.ts` from the SDK template.
 4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.

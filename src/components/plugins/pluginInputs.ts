@@ -1,4 +1,10 @@
-import { MAX_INPUT_VALUE, clampDebounce } from '@/pluginSystem/uiTree';
+import {
+	MAX_INPUT_VALUE,
+	MAX_TEXTAREA_VALUE,
+	calendarDate,
+	clampDebounce,
+	cutCodePoints,
+} from '@/pluginSystem/uiTree';
 import { segmentedArgs } from './pluginViewClasses';
 
 export const inputArgs = (args: unknown, typed: string) =>
@@ -15,6 +21,28 @@ export const selectArgs = (
 
 export const checkboxArgs = (args: unknown, checked: unknown) =>
 	segmentedArgs(args, checked === true);
+
+export const cutTextareaValue = (typed: string) =>
+	cutCodePoints(typed, MAX_TEXTAREA_VALUE);
+
+export const unsentAfterSend = (succeeded: boolean, unsentNow: boolean) =>
+	unsentNow || !succeeded;
+
+export const textareaArgs = (args: unknown, typed: string) =>
+	segmentedArgs(args, cutCodePoints(typed, MAX_TEXTAREA_VALUE));
+
+export const dateArgs = (
+	node: { min?: string; max?: string; args?: unknown },
+	raw: unknown,
+) => {
+	if (raw === '') return segmentedArgs(node.args, null);
+	const picked = calendarDate(raw);
+	return picked !== null &&
+		(node.min === undefined || picked >= node.min) &&
+		(node.max === undefined || picked <= node.max)
+		? segmentedArgs(node.args, picked)
+		: null;
+};
 
 export const debounceDelay = clampDebounce;
 
@@ -72,6 +100,42 @@ export const nextInputText = (
 			? node.value
 			: '';
 
+export const nextTextareaText = (
+	node: ControlIdentity & { value?: unknown },
+	previous: ControlIdentity | undefined,
+	unsent: boolean,
+	current: string,
+): string =>
+	sameControl(node, previous) && unsent
+		? current
+		: node.type === 'textarea' && typeof node.value === 'string'
+			? node.value
+			: '';
+
+export const isSendShortcut = (event: {
+	key: string;
+	metaKey: boolean;
+	ctrlKey: boolean;
+	altKey: boolean;
+	shiftKey: boolean;
+	isComposing: boolean;
+}) =>
+	event.key === 'Enter' &&
+	!event.isComposing &&
+	!event.altKey &&
+	!event.shiftKey &&
+	(event.metaKey || event.ctrlKey);
+
+export const sendKeyAction = (
+	event: Parameters<typeof isSendShortcut>[0] & { repeat: boolean },
+	running: boolean,
+): 'ignore' | 'swallow' | 'send' =>
+	!isSendShortcut(event)
+		? 'ignore'
+		: event.repeat || running
+			? 'swallow'
+			: 'send';
+
 export const pluginControlAttrs = {
 	autocomplete: 'off',
 	'data-lpignore': 'true',
@@ -83,6 +147,13 @@ export const pluginControlAttrs = {
 export const pluginInputTextAttrs = {
 	...pluginControlAttrs,
 	type: 'text',
+	autocorrect: 'off',
+	autocapitalize: 'off',
+	spellcheck: 'false',
+} as const;
+
+export const pluginTextareaAttrs = {
+	...pluginControlAttrs,
 	autocorrect: 'off',
 	autocapitalize: 'off',
 	spellcheck: 'false',

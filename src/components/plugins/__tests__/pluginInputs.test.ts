@@ -4,14 +4,22 @@ import { join } from 'path';
 import {
 	checkboxArgs,
 	createDebouncer,
+	cutTextareaValue,
+	dateArgs,
 	debounceDelay,
 	inputArgs,
+	isSendShortcut,
 	nextInputText,
+	nextTextareaText,
 	pluginControlAttrs,
 	pluginControlLabel,
 	pluginInputTextAttrs,
+	pluginTextareaAttrs,
 	sameControl,
 	selectArgs,
+	sendKeyAction,
+	textareaArgs,
+	unsentAfterSend,
 } from '../pluginInputs';
 
 describe('inputArgs', () => {
@@ -178,8 +186,204 @@ describe('plugin control marker and autofill guards', () => {
 		);
 		expect(source).toContain('data-testid="plugin-control-marker"');
 		expect(source).toContain('v-bind="pluginInputTextAttrs"');
-		expect(source.match(/v-bind="pluginControlAttrs"/g)).toHaveLength(2);
-		expect(source).not.toMatch(/<(input|select)[^>]*\s:?(name|id)=/i);
-		expect(source.match(/:aria-describedby="markerId"/g)).toHaveLength(3);
+		expect(source).toContain('v-bind="pluginTextareaAttrs"');
+		expect(source.match(/v-bind="pluginControlAttrs"/g)).toHaveLength(3);
+		expect(source).not.toMatch(/<(input|select|textarea)[^>]*\s:?(name|id)=/i);
+		expect(source.match(/:aria-describedby="markerId"/g)).toHaveLength(5);
+	});
+});
+
+describe('textareaArgs', () => {
+	it('cuts to 5000 code points without splitting a surrogate pair', () => {
+		const typed = '😀'.repeat(5200);
+		const value = textareaArgs({ k: 1 }, typed).value as string;
+		expect(Array.from(value)).toHaveLength(5000);
+		expect(value).toBe('😀'.repeat(5000));
+		expect(textareaArgs(null, '漢'.repeat(5000)).value).toBe('漢'.repeat(5000));
+	});
+
+	it('keeps args and lets the typed text win', () => {
+		expect(textareaArgs({ k: 1, value: 'spoof' }, 'a\nb')).toEqual({
+			k: 1,
+			value: 'a\nb',
+		});
+	});
+});
+
+describe('nextTextareaText', () => {
+	const area = { type: 'textarea', name: 'n', command: 'p.go', value: 'v1' };
+
+	it('keeps unsent edits while the control is the same', () => {
+		expect(
+			nextTextareaText({ ...area, value: 'v2' }, area, true, 'draft'),
+		).toBe('draft');
+	});
+
+	it('shows the plugin value when nothing is unsent', () => {
+		expect(
+			nextTextareaText({ ...area, value: 'v2' }, area, false, 'draft'),
+		).toBe('v2');
+	});
+
+	it('never carries a draft to another control', () => {
+		for (const other of [
+			{ ...area, name: 'm' },
+			{ ...area, command: 'p.other' },
+			{ ...area, args: { id: 2 } },
+		]) {
+			expect(nextTextareaText(other, area, true, 'draft')).toBe('v1');
+		}
+	});
+
+	it('is empty for a non-textarea node or no value', () => {
+		expect(
+			nextTextareaText({ type: 'input', name: 'n' }, area, true, 'draft'),
+		).toBe('');
+		expect(
+			nextTextareaText({ ...area, value: undefined }, undefined, false, 'x'),
+		).toBe('');
+	});
+});
+
+describe('isSendShortcut', () => {
+	const key = (over: object = {}) => ({
+		key: 'Enter',
+		metaKey: false,
+		ctrlKey: false,
+		altKey: false,
+		shiftKey: false,
+		isComposing: false,
+		repeat: false,
+		...over,
+	});
+
+	it('accepts Cmd+Enter and Ctrl+Enter', () => {
+		expect(isSendShortcut(key({ metaKey: true }))).toBe(true);
+		expect(isSendShortcut(key({ ctrlKey: true }))).toBe(true);
+	});
+
+	it('ignores plain Enter, other keys and composition', () => {
+		expect(isSendShortcut(key())).toBe(false);
+		expect(isSendShortcut(key({ key: 'a', metaKey: true }))).toBe(false);
+		expect(isSendShortcut(key({ metaKey: true, isComposing: true }))).toBe(
+			false,
+		);
+	});
+});
+
+describe('isSendShortcut modifiers', () => {
+	const key = (over: object = {}) => ({
+		key: 'Enter',
+		metaKey: true,
+		ctrlKey: false,
+		altKey: false,
+		shiftKey: false,
+		isComposing: false,
+		...over,
+	});
+
+	it('rejects Alt and Shift combinations', () => {
+		expect(isSendShortcut(key({ altKey: true }))).toBe(false);
+		expect(isSendShortcut(key({ shiftKey: true }))).toBe(false);
+	});
+});
+
+describe('sendKeyAction', () => {
+	const key = (over: object = {}) => ({
+		key: 'Enter',
+		metaKey: true,
+		ctrlKey: false,
+		altKey: false,
+		shiftKey: false,
+		isComposing: false,
+		repeat: false,
+		...over,
+	});
+
+	it('sends on a fresh shortcut', () => {
+		expect(sendKeyAction(key(), false)).toBe('send');
+	});
+
+	it('swallows key repeat and presses while running', () => {
+		expect(sendKeyAction(key({ repeat: true }), false)).toBe('swallow');
+		expect(sendKeyAction(key(), true)).toBe('swallow');
+	});
+
+	it('ignores non-shortcuts', () => {
+		expect(sendKeyAction(key({ key: 'a' }), false)).toBe('ignore');
+	});
+});
+
+describe('cutTextareaValue', () => {
+	it('cuts by code points, not UTF-16 units', () => {
+		const emoji = '\u{1F600}'.repeat(5000);
+		expect(cutTextareaValue(emoji)).toBe(emoji);
+		expect(cutTextareaValue(emoji + 'x')).toBe(emoji);
+		expect(cutTextareaValue('a'.repeat(6000))).toHaveLength(5000);
+	});
+});
+
+describe('unsentAfterSend', () => {
+	it('restores the draft flag on failure', () => {
+		expect(unsentAfterSend(false, false)).toBe(true);
+	});
+
+	it('keeps it cleared on success and when the user typed meanwhile', () => {
+		expect(unsentAfterSend(true, false)).toBe(false);
+		expect(unsentAfterSend(false, true)).toBe(true);
+	});
+});
+
+describe('dateArgs', () => {
+	const node = { min: '2026-01-10', max: '2026-01-20', args: { id: 3 } };
+
+	it('sends a valid in-range date with the args', () => {
+		expect(dateArgs(node, '2026-01-15')).toEqual({
+			id: 3,
+			value: '2026-01-15',
+		});
+		expect(dateArgs(node, '2026-01-10')).toEqual({
+			id: 3,
+			value: '2026-01-10',
+		});
+		expect(dateArgs(node, '2026-01-20')?.value).toBe('2026-01-20');
+	});
+
+	it('sends null when the field is cleared', () => {
+		expect(dateArgs(node, '')).toEqual({ id: 3, value: null });
+	});
+
+	it('sends nothing for out-of-range or invalid input', () => {
+		for (const raw of [
+			'2026-01-09',
+			'2026-01-21',
+			'2026-02-30',
+			'26-01-15',
+			'abc',
+			'+012026-01-15',
+			null,
+			undefined,
+			5,
+		]) {
+			expect(dateArgs(node, raw)).toBeNull();
+		}
+	});
+
+	it('works without bounds', () => {
+		expect(dateArgs({}, '1000-01-01')).toEqual({ value: '1000-01-01' });
+		expect(dateArgs({}, '0999-12-31')).toBeNull();
+	});
+});
+
+describe('pluginTextareaAttrs', () => {
+	it('turns off autofill and text assistance without a name or id', () => {
+		expect(pluginTextareaAttrs).toMatchObject({
+			autocomplete: 'off',
+			'data-lpignore': 'true',
+			spellcheck: 'false',
+		});
+		expect(pluginTextareaAttrs).not.toHaveProperty('type');
+		expect(pluginTextareaAttrs).not.toHaveProperty('name');
+		expect(pluginTextareaAttrs).not.toHaveProperty('id');
 	});
 });

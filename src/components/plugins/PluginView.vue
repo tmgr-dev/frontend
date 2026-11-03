@@ -279,12 +279,16 @@
 		v-else-if="
 			node.type === 'input' ||
 			node.type === 'select' ||
-			node.type === 'checkbox'
+			node.type === 'checkbox' ||
+			node.type === 'textarea' ||
+			node.type === 'date'
 		"
 		data-testid="plugin-control"
 		:class="[
 			'flex min-w-0 flex-col gap-0.5',
-			node.type === 'input' ? 'w-full max-w-sm' : 'w-fit max-w-full',
+			node.type === 'input' || node.type === 'textarea'
+				? 'w-full max-w-sm'
+				: 'w-fit max-w-full',
 		]"
 	>
 		<Input
@@ -299,6 +303,39 @@
 			@focus="inputFocused = true"
 			@blur="inputFocused = false"
 			@keydown.enter="onInputEnter"
+		/>
+		<template v-else-if="node.type === 'textarea'">
+			<textarea
+				:value="textareaText"
+				v-bind="pluginTextareaAttrs"
+				:aria-describedby="markerId"
+				:placeholder="node.placeholder"
+				:rows="node.rows"
+				:aria-label="node.placeholder"
+				class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground"
+				@input="onTextareaInput"
+				@keydown="onTextareaKeydown"
+			></textarea>
+			<Button
+				type="button"
+				size="sm"
+				class="w-fit"
+				:disabled="running"
+				@click="sendTextarea"
+			>
+				{{ node.submitText ?? 'Send' }}
+			</Button>
+		</template>
+		<input
+			v-else-if="node.type === 'date'"
+			type="date"
+			:value="node.value ?? ''"
+			:min="node.min"
+			:max="node.max"
+			v-bind="pluginControlAttrs"
+			:aria-describedby="markerId"
+			class="h-8 w-fit max-w-full rounded-md border border-input bg-background px-2 text-xs text-foreground dark:[color-scheme:dark]"
+			@change="onDateChange"
 		/>
 		<select
 			v-else-if="node.type === 'select'"
@@ -765,13 +802,20 @@
 	import {
 		checkboxArgs,
 		createDebouncer,
+		cutTextareaValue,
+		dateArgs,
 		inputArgs,
 		nextInputText,
+		nextTextareaText,
 		pluginControlAttrs,
 		pluginControlLabel,
 		pluginInputTextAttrs,
+		pluginTextareaAttrs,
 		sameControl,
 		selectArgs,
+		sendKeyAction,
+		textareaArgs,
+		unsentAfterSend,
 	} from './pluginInputs';
 	import {
 		buttonClasses,
@@ -870,7 +914,10 @@
 		setup(props) {
 			const running = ref(false);
 			const confirmOpen = ref(false);
-			const runCommand = async (command: string, rawArgs: unknown) => {
+			const runCommand = async (
+				command: string,
+				rawArgs: unknown,
+			): Promise<boolean> => {
 				running.value = true;
 				try {
 					// args can be a reactive proxy by the time it reaches here (the tree lives in a
@@ -878,13 +925,16 @@
 					const args =
 						rawArgs === undefined ? null : JSON.parse(JSON.stringify(rawArgs));
 					await pluginHost()?.runCommand(props.pluginId, command, args);
+					return true;
 				} catch (error) {
-					if (pluginState.plugins[props.pluginId]?.status === 'crashed') return;
+					if (pluginState.plugins[props.pluginId]?.status === 'crashed')
+						return false;
 					toast({
 						title: 'The plugin command failed',
 						description: error instanceof Error ? error.message : String(error),
 						variant: 'destructive',
 					});
+					return false;
 				} finally {
 					running.value = false;
 				}
@@ -911,6 +961,10 @@
 				props.node.type === 'input' ? props.node.value : '',
 			);
 			const inputFocused = ref(false);
+			const textareaText = ref(
+				props.node.type === 'textarea' ? props.node.value : '',
+			);
+			const textareaUnsent = ref(false);
 			watch(
 				() => props.node,
 				(node, previous) => {
@@ -920,6 +974,13 @@
 						previous,
 						inputFocused.value,
 						inputText.value,
+					);
+					if (!sameControl(node, previous)) textareaUnsent.value = false;
+					textareaText.value = nextTextareaText(
+						node,
+						previous,
+						textareaUnsent.value,
+						textareaText.value,
 					);
 				},
 			);
@@ -942,6 +1003,38 @@
 				if (node.type !== 'input' || node.mode !== 'submit') return;
 				if (event.isComposing) return;
 				sendInput();
+			};
+			const onTextareaInput = (event: Event) => {
+				const area = event.target as HTMLTextAreaElement;
+				const cut = cutTextareaValue(area.value);
+				if (cut !== area.value) area.value = cut;
+				textareaText.value = cut;
+				textareaUnsent.value = true;
+			};
+			const sendTextarea = async () => {
+				const node = props.node;
+				if (node.type !== 'textarea') return;
+				textareaUnsent.value = false;
+				const succeeded = await runCommand(
+					node.command,
+					textareaArgs(node.args, textareaText.value),
+				);
+				textareaUnsent.value = unsentAfterSend(succeeded, textareaUnsent.value);
+			};
+			const onTextareaKeydown = (event: KeyboardEvent) => {
+				const action = sendKeyAction(event, running.value);
+				if (action === 'ignore') return;
+				event.preventDefault();
+				event.stopPropagation();
+				if (action === 'send') void sendTextarea();
+			};
+			const onDateChange = (event: Event) => {
+				const node = props.node;
+				if (node.type !== 'date') return;
+				const field = event.target as HTMLInputElement;
+				const args = dateArgs(node, field.value);
+				if (args) void runCommand(node.command, args);
+				else field.value = node.value ?? '';
 			};
 			const onSelectChange = (event: Event) => {
 				const node = props.node;
@@ -1153,6 +1246,11 @@
 				inputFocused,
 				onInputText,
 				onInputEnter,
+				textareaText,
+				onTextareaInput,
+				onTextareaKeydown,
+				sendTextarea,
+				onDateChange,
 				onSelectChange,
 				onCheckboxChange,
 				buttonTooltip,
@@ -1201,6 +1299,7 @@
 				markerId: useId(),
 				pluginControlAttrs,
 				pluginInputTextAttrs,
+				pluginTextareaAttrs,
 				toneClass: (tone: Tone) => TONES[tone],
 				colorClass: (color: Color) => COLORS[color],
 				barClass: (color: Color) => BARS[color],

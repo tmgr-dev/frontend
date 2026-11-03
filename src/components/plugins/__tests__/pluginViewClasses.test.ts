@@ -205,6 +205,7 @@ describe('isNestedInteractive', () => {
 			el('button', {}, card),
 			el('a', {}, card),
 			el('input', {}, card),
+			el('textarea', {}, card),
 			el('select', {}, card),
 			el('label', {}, card),
 			el('div', { role: 'menuitem' }, card),

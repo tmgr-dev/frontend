@@ -2,7 +2,7 @@
 // Do not edit by hand: run `node plugin-sdk/testing/sync-prelude.mjs` from the app repo.
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sanitizeTree = exports.clampDebounce = exports.isLinkAllowed = exports.NO_LINKS = exports.DEBOUNCE_DEFAULT = exports.DEBOUNCE_MAX = exports.DEBOUNCE_MIN = exports.MAX_INPUT_VALUE = exports.COLORS = exports.ICON_NAMES = void 0;
+exports.sanitizeTree = exports.calendarDate = exports.cutCodePoints = exports.clampDebounce = exports.isLinkAllowed = exports.NO_LINKS = exports.DEBOUNCE_DEFAULT = exports.DEBOUNCE_MAX = exports.DEBOUNCE_MIN = exports.MAX_TEXTAREA_VALUE = exports.MAX_INPUT_VALUE = exports.COLORS = exports.ICON_NAMES = void 0;
 const marked_1 = require("marked");
 const manifest_1 = require("./manifest.generated.js");
 exports.ICON_NAMES = [
@@ -86,6 +86,12 @@ const MAX_BUTTON_GROUP = 12;
 const MAX_SEGMENTED_VALUE = 64;
 const MIN_SEGMENTED = 2;
 exports.MAX_INPUT_VALUE = 500;
+exports.MAX_TEXTAREA_VALUE = 5000;
+const MIN_TEXTAREA_ROWS = 2;
+const MAX_TEXTAREA_ROWS = 12;
+const DEFAULT_TEXTAREA_ROWS = 4;
+const MAX_SUBMIT_TEXT = 40;
+const MIN_DATE_YEAR = 1000;
 const MAX_INPUT_PLACEHOLDER = 200;
 const MAX_CONTROL_NAME = 64;
 const MAX_SELECT_OPTIONS = 100;
@@ -399,6 +405,29 @@ const clampDebounce = (value) => typeof value === 'number' && Number.isFinite(va
     ? Math.min(exports.DEBOUNCE_MAX, Math.max(exports.DEBOUNCE_MIN, Math.round(value)))
     : exports.DEBOUNCE_DEFAULT;
 exports.clampDebounce = clampDebounce;
+const cutCodePoints = (value, max) => {
+    let end = 0;
+    for (let count = 0; end < value.length && count < max; count++) {
+        const unit = value.charCodeAt(end);
+        const pair = unit >= 0xd800 &&
+            unit <= 0xdbff &&
+            (value.charCodeAt(end + 1) & 0xfc00) === 0xdc00;
+        end += pair ? 2 : 1;
+    }
+    return value.slice(0, end);
+};
+exports.cutCodePoints = cutCodePoints;
+const calendarDate = (value) => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+        return null;
+    const year = Number(value.slice(0, 4));
+    const month = Number(value.slice(5, 7));
+    const day = Number(value.slice(8, 10));
+    if (year < MIN_DATE_YEAR || month < 1 || month > 12 || day < 1)
+        return null;
+    return day <= new Date(Date.UTC(year, month, 0)).getUTCDate() ? value : null;
+};
+exports.calendarDate = calendarDate;
 const controlName = (value) => typeof value === 'string' &&
     value.length <= MAX_CONTROL_NAME &&
     CONTROL_NAME.test(value)
@@ -1074,6 +1103,58 @@ const sanitizeTree = (raw, context = exports.NO_LINKS, apiMinor = CURRENT_API_MI
                     name,
                     label,
                     checked: value.checked === true,
+                    ...cmd,
+                };
+            }
+            case 'textarea': {
+                if (apiMinor < 11)
+                    return null;
+                const name = controlName(value.name);
+                const cmd = parseCommandArgs(value);
+                if (name === null || cmd === null)
+                    return null;
+                const placeholder = typeof value.placeholder === 'string' && value.placeholder !== ''
+                    ? (0, exports.cutCodePoints)(value.placeholder, MAX_INPUT_PLACEHOLDER)
+                    : undefined;
+                const submitText = shortText(value.submitText, MAX_SUBMIT_TEXT);
+                return {
+                    type: 'textarea',
+                    name,
+                    value: typeof value.value === 'string'
+                        ? (0, exports.cutCodePoints)(value.value, exports.MAX_TEXTAREA_VALUE)
+                        : '',
+                    rows: typeof value.rows === 'number' && Number.isFinite(value.rows)
+                        ? Math.min(MAX_TEXTAREA_ROWS, Math.max(MIN_TEXTAREA_ROWS, Math.round(value.rows)))
+                        : DEFAULT_TEXTAREA_ROWS,
+                    ...(placeholder !== undefined ? { placeholder } : {}),
+                    ...(submitText !== undefined ? { submitText } : {}),
+                    ...cmd,
+                };
+            }
+            case 'date': {
+                if (apiMinor < 11)
+                    return null;
+                const name = controlName(value.name);
+                const cmd = parseCommandArgs(value);
+                if (name === null || cmd === null)
+                    return null;
+                let min = (0, exports.calendarDate)(value.min);
+                let max = (0, exports.calendarDate)(value.max);
+                if (min !== null && max !== null && min > max) {
+                    min = null;
+                    max = null;
+                }
+                const picked = (0, exports.calendarDate)(value.value);
+                return {
+                    type: 'date',
+                    name,
+                    value: picked !== null &&
+                        (min === null || picked >= min) &&
+                        (max === null || picked <= max)
+                        ? picked
+                        : null,
+                    ...(min !== null ? { min } : {}),
+                    ...(max !== null ? { max } : {}),
                     ...cmd,
                 };
             }

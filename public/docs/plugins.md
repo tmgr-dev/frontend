@@ -1,6 +1,6 @@
 # Building a TMGR plugin
 
-Plugin API 1.10. This guide is the entry point; the reference follows it in the same document
+Plugin API 1.11. This guide is the entry point; the reference follows it in the same document
 (the `plugin-system.md` sections, in the published version) and as types (`tmgr.d.ts` for `main.js`, `window.d.ts` for pages).
 
 A plugin is a folder: `manifest.json`, `main.js`, and optional `ui/*.html` pages. `main.js` runs in a
@@ -26,7 +26,7 @@ turns them on for everyone. Web and mobile do not run plugins.
    next to `plugin-sdk/testing` (until `tmgr-plugin-testing` is published on npm, the template depends on
    it by the path `file:../testing`).
 2. Edit `manifest.json` (id `publisher.name`, command ids start with the plugin id, `engines.tmgr`
-   `^1.10` to use the newest nodes) and `main.js`.
+   `^1.11` to use the newest nodes) and `main.js`.
 3. Test without the app: `npm install && npm test` runs `main.test.mjs` against `createTestHost` from
    `tmgr-plugin-testing`. It uses the app's own broker, manifest rules and UI sanitizer over an
    in-memory mock of TMGR data, so permission errors and bad parameters show up exactly as in the app.
@@ -45,7 +45,7 @@ turns them on for everyone. Web and mobile do not run plugins.
 | :-- | :-- |
 | `id` | `publisher.name`, lowercase, dots allowed |
 | `version` | semver |
-| `engines.tmgr` | `^1.0` up to `^1.10`; newer nodes and permissions need a newer minor (`menus:task` 1.6, pages 1.5, `views:badge` 1.4) |
+| `engines.tmgr` | `^1.0` up to `^1.11`; newer nodes and permissions need a newer minor (`menus:task` 1.6, pages 1.5, `views:badge` 1.4) |
 | `main` | defaults to `main.js` |
 | `permissions` | list from the table below; unknown names are rejected |
 | `network.allowedOrigins` | only `http://localhost:<port>` (or 127.0.0.1, [::1]) |
@@ -271,6 +271,37 @@ Table additions:
 Every item, row, value and expanded node counts toward the 3000 node limit of the whole tree, and nesting
 counts toward the depth limit of 8. Lists over their caps are cut.
 
+## Text area and date (API 1.11)
+
+Set `"engines": { "tmgr": "^1.11" }`. Older versions drop these nodes. Types: `TmgrNode` in
+`plugin-sdk/template/tmgr.d.ts`.
+
+- `{ type: 'textarea', name, value?, placeholder?, rows?, submitText?, command, args? }` is a multi-line text
+  field with its own button. Nothing is sent while the user types. Clicking the button, or pressing Cmd+Enter
+  (macOS) or Ctrl+Enter (elsewhere), runs `command` with `{ ...args, value }`. Plain Enter adds a new line.
+  `value` is the text, cut to 5000 characters (never in the middle of an emoji). The start `value` is cut the
+  same way, `placeholder` to 200 and `submitText` (the button label, default "Send") to 40. `rows` is a whole
+  number from 2 to 12 (default 4).
+- `{ type: 'date', name, value?, min?, max?, command, args? }` is a date picker. `value`, `min` and `max` are
+  `YYYY-MM-DD` strings that must be real dates (no `2026-02-30`) in the years 1000 to 9999; anything else is
+  dropped. If `min` is later than `max`, both are dropped. A `value` outside `min`..`max` is shown as empty.
+  Choosing a date inside the range runs `command` with `{ ...args, value: 'YYYY-MM-DD' }`. Clearing the field
+  runs it with `{ ...args, value: null }`. A date outside the range is not sent.
+
+Rules for both:
+
+- `name` and `command` follow the rules of the 1.9 controls. A node with a bad name or without a valid
+  `command` is dropped. Nothing is sent when the control first shows or when you render again, and other
+  controls' values are never included.
+- TMGR shows the line "Plugin: <plugin name>" under every text area and date picker, and you cannot change it.
+  The same warning applies: never ask the user for a secret.
+- Text typed in a text area and not yet sent stays while it is the same control (same `type`, `name`,
+  `command` and `args`), even after the user clicks elsewhere or you render again. After it is sent, or when
+  the control changes, the `value` from your latest render is shown. Render a new `value` (for example an empty
+  one) when the command ends to clear the field.
+- Controls inside a clickable table row or card do not trigger the row or card command.
+- Each text area and date picker counts as one node toward the 3000 node limit.
+
 ## Task menu items (API 1.6)
 
 A plugin can add items to the task "…" menu. Types: `TaskMenuCommandArgs` in `plugin-sdk/template/tmgr.d.ts`.
@@ -471,5 +502,16 @@ To use the feed and data nodes:
 
 1. Set `"engines": { "tmgr": "^1.10" }`.
 2. Use `timeline`, `messages`, `sparkline`, `empty` and `skeleton` nodes and the new table fields.
+3. Update `tmgr.d.ts` from the SDK template.
+4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.
+
+## Migrating from 1.10 to 1.11
+
+Nothing changes for existing plugins: `^1.0` to `^1.10` keep working.
+
+To use the text area and date nodes:
+
+1. Set `"engines": { "tmgr": "^1.11" }`.
+2. Use `textarea` and `date` nodes. Handle `args.value` being `null` for a cleared date.
 3. Update `tmgr.d.ts` from the SDK template.
 4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.
