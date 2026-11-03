@@ -549,6 +549,7 @@ impl StreamRedactor {
       }
       ChatEvent::ToolCall { index, id, name, arguments } => {
         let mut out = Vec::new();
+        let first = !self.args.contains_key(&index);
         let (last_id, carry) = self.args.entry(index).or_default();
         if id.is_some() && *last_id != id {
           // An id-less event appends to the call already open at this index, so the old tail lands there.
@@ -560,7 +561,8 @@ impl StreamRedactor {
         }
         carry.push_str(&arguments);
         let arguments = self.keys.release(carry);
-        if id.is_some() || name.is_some() || !arguments.is_empty() {
+        // The first event of an index always goes out, so TS opens its buffers in the order the server sent them.
+        if first || id.is_some() || name.is_some() || !arguments.is_empty() {
           out.push(ChatEvent::ToolCall { index, id, name, arguments });
         }
         out
@@ -2955,6 +2957,17 @@ mod tests {
       args(0, Some("c3"), "{\"method\":\"POST\",\"path\":\"tasks/1/comments\",\"body\":{\"text\":\"Привет sk-test-FAKEKEY12"),
       args(1, None, "\"GET\",\"path\":\"tasks/2\"}"),
       args(0, Some("c3"), "\"}}"),
+      ChatEvent::Done,
+    ];
+    let out = redact_stream(Some(FAKE), events.clone());
+    assert_eq!(assemble_like_ts(&out), assemble_like_ts(&events));
+  }
+
+  #[test]
+  fn id_less_calls_keep_their_order_when_the_first_chunk_is_held_back() {
+    let events = vec![
+      args(0, None, "{}"),
+      args(1, None, "{\"method\":\"GET\",\"path\":\"tasks/2\"}"),
       ChatEvent::Done,
     ];
     let out = redact_stream(Some(FAKE), events.clone());
