@@ -8,6 +8,11 @@ workflow copies that section into the GitHub release and the in-app update notes
 - Asking a persona: closing or reloading a separate task window now stops a running question. Before, it kept running in the background and using AI tokens.
 - Correction to 0.9.83: "closing the task window stops the question" held only for the task window inside the app, not for a separate task window or a reload.
 
+## 0.9.93 — 2026-11-04
+
+- Plugins (API 1.13): plugins can open Telegram chat links (tg://) when they have the links permission and declare it, and show pictures: built-in ones, or ones from sites the plugin lists, after you allow the new "images:remote" permission.
+- Plugins: a manifest for an older plugin API that already uses the new `images` field or link schemes is now refused at install.
+
 ## 0.9.92 — 2026-11-04
 
 - Plugins (API 1.12): plugins can show bar and line charts with axis labels and a tooltip on hover or with the arrow keys.
