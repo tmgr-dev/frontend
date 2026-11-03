@@ -1,0 +1,42 @@
+{
+  "apiVersion": "1.10",
+  "groups": {
+    "Reads your data": [
+      "tasks:read",
+      "statuses:read",
+      "categories:read",
+      "time:read",
+      "comments:read",
+      "relations:read",
+      "agent_work:read",
+      "routines:read",
+      "pages:read",
+      "files:attachments"
+    ],
+    "Changes your data": [
+      "tasks:write",
+      "statuses:write",
+      "categories:write",
+      "time:write",
+      "comments:write",
+      "relations:write",
+      "agent_work:write",
+      "routines:write",
+      "pages:write",
+      "pages:sections"
+    ],
+    "Changes the interface": [
+      "tray",
+      "views:badge",
+      "menus:task"
+    ],
+    "Reaches outside the app": [
+      "notifications",
+      "alarms",
+      "deeplinks",
+      "links:open",
+      "files:export",
+      "files:pick"
+    ]
+  }
+}
