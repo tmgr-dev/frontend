@@ -7,6 +7,8 @@
 - When a git command fails, the error now includes its exit status.
 - A finished session's background process now exits once its runner folder has been removed.
 - A session's background process no longer stays in the folder its agent was started in, so `tmgr rm` does not report the folder as in use while that process is exiting.
+- `tmgr queue add <task> --team N [--mode eco|heavy]` asks for a team on one task: a lead plus up to N workers, each in its own copy of the repository, and one pull request for the task. The lead plans, the workers do the parts, the lead brings their commits together. `eco` is a Sonnet lead with Haiku workers, `heavy` an Opus lead with Sonnet workers. The confirmation shows `max_concurrent` x team size as the most agents that can run at once.
+- `tmgr attach` shows the lead and the workers of a team run. If the lead stops, its workers are stopped too.
 
 ## 1.0.65
 
