@@ -1333,10 +1333,10 @@ fn start_phase(
 /// enabled rule may approve and start one by itself.
 pub fn needs_runner(paths: &Paths) -> Result<bool> {
     let loaded = rules::load(paths)?;
-    if !loaded.file.enabled {
-        return Ok(false);
-    }
     let st = state::load(paths)?;
+    if !loaded.file.enabled {
+        return Ok(st.pickups.iter().any(|p| p.has_live_team()));
+    }
     let open = st.pickups.iter().any(|p| {
         matches!(
             p.status,
@@ -1345,6 +1345,20 @@ pub fn needs_runner(paths: &Paths) -> Result<bool> {
             || p.has_live_team()
     });
     Ok(open || (!st.paused && loaded.file.rules.iter().any(|r| r.auto)))
+}
+
+fn stop_teams(paths: &Paths, audit: Audit, deps: &Deps) -> Result<()> {
+    let mut pass = Pass {
+        paths,
+        audit,
+        state: state::load(paths)?,
+        report: PassReport::default(),
+        touched: BTreeSet::new(),
+        now: deps.now,
+    };
+    refresh_runs(&mut pass, deps)?;
+    team::team_stop_phase(&mut pass, deps)?;
+    state::save(paths, &mut pass.state)
 }
 
 pub fn run_once(paths: &Paths, deps: &Deps) -> Result<PassReport> {
@@ -1356,10 +1370,12 @@ pub fn run_once(paths: &Paths, deps: &Deps) -> Result<PassReport> {
         ..PassReport::default()
     };
     if !loaded.file.enabled {
+        stop_teams(paths, audit, deps)?;
         return Ok(report);
     }
     if rules::is_tampered(paths, &loaded)? {
         let _ = audit.append("config_tampered", json!({"config_sha256": loaded.sha256}));
+        let _ = stop_teams(paths, Audit::new(paths), deps);
         return Err(Error::new(
             Kind::Forbidden,
             "queue.toml or the audit log changed outside `tmgr queue`",

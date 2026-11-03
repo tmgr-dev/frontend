@@ -311,6 +311,24 @@ pub(super) fn team_phase(pass: &mut Pass, rules: &[Rule], deps: &Deps, starts: b
     Ok(())
 }
 
+pub(super) fn team_stop_phase(pass: &mut Pass, deps: &Deps) -> Result<()> {
+    for i in 0..pass.state.pickups.len() {
+        let p = &pass.state.pickups[i];
+        let lead_runs = p.status == Status::Started && p.run_id.is_some() && !p.run_exited;
+        if !p.has_live_team() || lead_runs {
+            continue;
+        }
+        refresh_members(pass, i, deps)?;
+        kill_workers(
+            pass,
+            i,
+            deps,
+            "the queue is off and the lead of the team is gone",
+        )?;
+    }
+    Ok(())
+}
+
 fn planning(pass: &mut Pass, i: usize, deps: &Deps, lead_run: &str) -> Result<()> {
     if !deps.runs.idle(lead_run) {
         return Ok(());

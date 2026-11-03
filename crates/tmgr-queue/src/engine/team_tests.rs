@@ -818,3 +818,67 @@ fn a_released_pickup_with_live_workers_is_never_pruned_from_the_state() {
     state::save(&fx.paths, &mut st).unwrap();
     assert!(fx.pickups().iter().any(|p| p.id == id));
 }
+
+fn lead_gone_with_live_workers() -> Fx {
+    let fx = working_team();
+    exit_run(&fx, "mock-1");
+    fx
+}
+
+fn turn_queue_off(fx: &Fx) {
+    let mut file = rules::load(&fx.paths).unwrap().file;
+    file.enabled = false;
+    fx.write(file);
+}
+
+fn assert_workers_killed_and_nothing_else(fx: &Fx, created: usize) {
+    let killed = fx.runs.killed.borrow().clone();
+    assert!(killed.contains(&"mock-2".to_string()) && killed.contains(&"mock-3".to_string()));
+    assert_eq!(live_workers(fx), 0);
+    assert_eq!(fx.runs.created.borrow().len(), created);
+    assert!(fx.publisher.calls.borrow().is_empty());
+}
+
+#[test]
+fn a_disabled_queue_still_kills_the_workers_of_a_dead_lead() {
+    let fx = lead_gone_with_live_workers();
+    let created = fx.runs.created.borrow().len();
+    turn_queue_off(&fx);
+    let report = fx.pass().unwrap();
+    assert!(!report.enabled);
+    assert_workers_killed_and_nothing_else(&fx, created);
+}
+
+#[test]
+fn a_disabled_queue_leaves_workers_alone_while_the_lead_runs() {
+    let fx = working_team();
+    turn_queue_off(&fx);
+    fx.pass().unwrap();
+    assert!(fx.runs.killed.borrow().is_empty());
+    assert_eq!(live_workers(&fx), 2);
+}
+
+#[test]
+fn a_tampered_config_still_kills_the_workers_and_returns_forbidden() {
+    let fx = lead_gone_with_live_workers();
+    let created = fx.runs.created.borrow().len();
+    let text = std::fs::read_to_string(fx.paths.rules()).unwrap();
+    std::fs::write(fx.paths.rules(), format!("{text}\n# edited\n")).unwrap();
+    std::fs::set_permissions(
+        fx.paths.rules(),
+        std::os::unix::fs::PermissionsExt::from_mode(0o600),
+    )
+    .unwrap();
+    let e = fx.pass().err().unwrap();
+    assert_eq!(e.exit_code(), 5);
+    assert_workers_killed_and_nothing_else(&fx, created);
+}
+
+#[test]
+fn a_disabled_queue_needs_the_runner_only_while_a_team_is_live() {
+    let fx = lead_gone_with_live_workers();
+    turn_queue_off(&fx);
+    assert!(needs_runner(&fx.paths).unwrap());
+    fx.pass().unwrap();
+    assert!(!needs_runner(&fx.paths).unwrap());
+}
