@@ -1341,8 +1341,8 @@ pub fn needs_runner(paths: &Paths) -> Result<bool> {
         matches!(
             p.status,
             Status::Approved | Status::Starting | Status::UnknownStart
-        ) || (p.status == Status::Started
-            && (!p.run_exited || p.team.as_ref().is_some_and(|t| !t.all_exited())))
+        ) || (p.status == Status::Started && !p.run_exited)
+            || p.has_live_team()
     });
     Ok(open || (!st.paused && loaded.file.rules.iter().any(|r| r.auto)))
 }
@@ -1801,6 +1801,7 @@ mod tests {
         lost: Cell<bool>,
         sent: RefCell<Vec<(String, String)>>,
         killed: RefCell<Vec<String>>,
+        kill_failures: Cell<u32>,
         idle_runs: RefCell<Vec<String>>,
     }
 
@@ -1842,6 +1843,10 @@ mod tests {
         }
 
         fn kill_run(&self, run_id: &str, _reason: &str) -> Result<()> {
+            if self.kill_failures.get() > 0 {
+                self.kill_failures.set(self.kill_failures.get() - 1);
+                return Err(Error::new(Kind::Offline, "the runner did not answer"));
+            }
             self.killed.borrow_mut().push(run_id.to_string());
             Ok(())
         }

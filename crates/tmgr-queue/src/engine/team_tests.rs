@@ -736,3 +736,85 @@ fn a_released_pickup_stays_listed_only_while_its_team_is_live() {
     p.team = None;
     assert!(!p.listed());
 }
+
+fn live_workers(fx: &Fx) -> usize {
+    team(fx)
+        .members
+        .iter()
+        .filter(|m| !m.exited && m.role != TeamRole::Lead)
+        .count()
+}
+
+#[test]
+fn a_failed_kill_is_retried_on_the_next_pass() {
+    let fx = working_team();
+    fx.runs.kill_failures.set(2);
+    exit_run(&fx, "mock-1");
+    fx.pass().unwrap();
+    assert!(fx.runs.killed.borrow().is_empty());
+    assert_eq!(live_workers(&fx), 2);
+    fx.pass().unwrap();
+    let killed = fx.runs.killed.borrow().clone();
+    assert!(killed.contains(&"mock-2".to_string()) && killed.contains(&"mock-3".to_string()));
+    assert_eq!(live_workers(&fx), 0);
+}
+
+#[test]
+fn a_clean_exit_of_the_lead_still_ends_live_workers() {
+    let fx = working_team();
+    let mut st = state::load(&fx.paths).unwrap();
+    let t = st.pickups[0].team.as_mut().unwrap();
+    t.phase = TeamPhase::Finishing;
+    t.lead_exit_sent = true;
+    state::save(&fx.paths, &mut st).unwrap();
+    exit_run(&fx, "mock-1");
+    fx.pass().unwrap();
+    assert_eq!(fx.runs.killed.borrow().len(), 2);
+}
+
+#[test]
+fn workers_are_killed_when_the_pickup_is_in_any_other_status() {
+    for status in [Status::Failed, Status::Expired, Status::UnknownStart] {
+        let fx = working_team();
+        let mut st = state::load(&fx.paths).unwrap();
+        st.pickups[0].status = status;
+        state::save(&fx.paths, &mut st).unwrap();
+        fx.pass().unwrap();
+        let killed = fx.runs.killed.borrow().clone();
+        assert!(
+            killed.contains(&"mock-2".to_string()) && killed.contains(&"mock-3".to_string()),
+            "{status:?}"
+        );
+        assert_eq!(live_workers(&fx), 0);
+    }
+}
+
+#[test]
+fn the_runner_is_needed_for_live_workers_in_any_status() {
+    let fx = working_team();
+    let mut st = state::load(&fx.paths).unwrap();
+    st.paused = true;
+    st.pickups[0].status = Status::Failed;
+    state::save(&fx.paths, &mut st).unwrap();
+    assert!(needs_runner(&fx.paths).unwrap());
+}
+
+#[test]
+fn a_released_pickup_with_live_workers_is_never_pruned_from_the_state() {
+    let fx = working_team();
+    let id = pickup(&fx).id;
+    let mut st = state::load(&fx.paths).unwrap();
+    let mut spare = st.pickups[0].clone();
+    spare.team = None;
+    spare.status = Status::Failed;
+    spare.released = true;
+    st.pickups[0].released = true;
+    st.pickups[0].run_exited = true;
+    for n in 0..(state::KEEP_RELEASED + 2) {
+        let mut extra = spare.clone();
+        extra.id = format!("x{n}");
+        st.pickups.push(extra);
+    }
+    state::save(&fx.paths, &mut st).unwrap();
+    assert!(fx.pickups().iter().any(|p| p.id == id));
+}

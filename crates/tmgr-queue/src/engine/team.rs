@@ -197,12 +197,28 @@ pub(super) fn refuse_start(pass: &mut Pass, i: usize, reason: &str) -> Result<()
     Ok(())
 }
 
-fn kill_workers(deps: &Deps, t: &TeamState, why: &str) {
-    for m in t.members.iter().filter(|m| !m.exited) {
-        if let Some(run) = &m.run_id {
-            let _ = deps.runs.kill_run(run, why);
+fn kill_workers(pass: &mut Pass, i: usize, deps: &Deps, why: &str) -> Result<()> {
+    let id = pass.state.pickups[i].id.clone();
+    let members = pass.state.pickups[i]
+        .team
+        .as_ref()
+        .map(|t| t.members.clone())
+        .unwrap_or_default();
+    for m in members.iter().filter(|m| !m.exited) {
+        let Some(run) = &m.run_id else { continue };
+        if deps.runs.kill_run(run, why).is_err() {
+            continue;
         }
+        if let Some(slot) = member_mut(pass, i, &m.start_key) {
+            slot.exited = true;
+            slot.clean = false;
+        }
+        pass.audit.append(
+            "team_member_killed",
+            json!({"pickup": id, "member": m.start_key}),
+        )?;
     }
+    state::save(pass.paths, &mut pass.state)
 }
 
 fn refresh_members(pass: &mut Pass, i: usize, deps: &Deps) -> Result<()> {
@@ -258,13 +274,17 @@ fn phase_of(pass: &Pass, i: usize) -> TeamPhase {
 pub(super) fn team_phase(pass: &mut Pass, rules: &[Rule], deps: &Deps, starts: bool) -> Result<()> {
     for i in 0..pass.state.pickups.len() {
         let p = &pass.state.pickups[i];
-        if p.team.is_none() || p.status != Status::Started || p.run_id.is_none() {
+        let running = p.status == Status::Started && p.run_id.is_some();
+        if p.team.is_none() || !(running || p.has_live_team()) {
             continue;
         }
         refresh_members(pass, i, deps)?;
         let p = pass.state.pickups[i].clone();
         let t = p.team.clone().expect("team");
-        let lead_run = p.run_id.clone().expect("run");
+        let Some(lead_run) = p.run_id.clone().filter(|_| p.status == Status::Started) else {
+            kill_workers(pass, i, deps, "the pickup of the team is no longer running")?;
+            continue;
+        };
         if p.run_exited {
             let early = !(t.phase == TeamPhase::Finishing && t.lead_exit_sent);
             if early && p.run_clean {
@@ -272,9 +292,7 @@ pub(super) fn team_phase(pass: &mut Pass, rules: &[Rule], deps: &Deps, starts: b
                 pass.audit
                     .append("team_lead_ended_early", json!({"pickup": p.id}))?;
             }
-            if !pass.state.pickups[i].run_clean {
-                kill_workers(deps, &t, "the lead of the team ended");
-            }
+            kill_workers(pass, i, deps, "the lead of the team ended")?;
             continue;
         }
         if phase_of(pass, i) == TeamPhase::Planning {

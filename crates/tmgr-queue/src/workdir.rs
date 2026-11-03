@@ -1210,6 +1210,15 @@ mod tests {
     }
 
     #[test]
+    fn team_member_copies_count_as_queue_run_directories() {
+        let team = Path::new("/w/p-worktrees/queue/q_abc");
+        for dir in [lead_dir(team), worker_dir(team, 1), worker_dir(team, 5)] {
+            assert!(in_queue_run_dir(&dir), "{}", dir.display());
+            assert!(in_queue_run_dir(&dir.join("src")));
+        }
+    }
+
+    #[test]
     fn a_git_file_is_followed_to_the_configuration_it_names() {
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();

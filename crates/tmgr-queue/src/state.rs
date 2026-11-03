@@ -7,7 +7,7 @@ use tmgr_core::config::{ensure_private_dir, write_atomic};
 use tmgr_core::error::{Error, Result};
 use tmgr_ipc::api::{RunBundle, TaskRef, TeamMode, TeamRole};
 
-const KEEP_RELEASED: usize = 200;
+pub(crate) const KEEP_RELEASED: usize = 200;
 pub const MAX_PUBLISH_ATTEMPTS: u32 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -259,6 +259,10 @@ impl Pickup {
         self.status.is_live() && !self.run_exited
     }
 
+    pub fn has_live_team(&self) -> bool {
+        self.team.as_ref().is_some_and(|t| !t.all_exited())
+    }
+
     pub fn listed(&self) -> bool {
         !self.released || (self.team.is_some() && self.status.is_live())
     }
@@ -313,7 +317,7 @@ pub fn save(paths: &Paths, state: &mut State) -> Result<()> {
     if released > KEEP_RELEASED {
         let mut drop = released - KEEP_RELEASED;
         state.pickups.retain(|p| {
-            if drop > 0 && p.released && !p.occupies() {
+            if drop > 0 && p.released && !p.occupies() && !p.has_live_team() {
                 drop -= 1;
                 false
             } else {

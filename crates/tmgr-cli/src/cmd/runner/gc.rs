@@ -746,9 +746,7 @@ fn pickup_in_use(p: &Pickup) -> Option<String> {
             "the queue pickup has not finished starting"
         }
         Status::Started if !p.run_exited => "the queue run is still running",
-        Status::Started if p.team.as_ref().is_some_and(|t| !t.all_exited()) => {
-            "a worker of the queue run is still running"
-        }
+        _ if p.has_live_team() => "a worker of the queue run is still running",
         _ if p.held.is_some() => "the queue run is held by the leak gate",
         _ if p.paused_draft => "the queue run is paused",
         _ if p.awaits_publish() => "the queue run waits to be published",
@@ -1639,6 +1637,10 @@ mod tests {
             .unwrap(),
         );
         assert!(pickup_in_use(&p).is_some());
+        for status in ["failed", "expired"] {
+            p.status = serde_json::from_value(json!(status)).unwrap();
+            assert!(pickup_in_use(&p).is_some(), "{status}");
+        }
     }
 
     #[test]
@@ -1813,5 +1815,75 @@ mod tests {
         std::fs::create_dir(&outside).unwrap();
         std::os::unix::fs::symlink(&outside, team.join("w2")).unwrap();
         assert!(skip(&c).contains("worker w2"));
+    }
+
+    #[test]
+    fn a_worker_copy_with_a_hostile_git_config_runs_nothing_and_an_unknown_key_keeps_it() {
+        use tmgr_queue::workdir::{
+            clone_dir, lead_dir, worker_branch, worker_dir, GitClone, WorkDirs,
+        };
+        for (key, value) in [("core.fsmonitor", "hook"), ("tmgrtest.unknown", "1")] {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = std::fs::canonicalize(tmp.path()).unwrap();
+            let repo = root.join("proj");
+            std::fs::create_dir(&repo).unwrap();
+            sh(&repo, &["init", "-q", "-b", "main"]);
+            sh(&repo, &["commit", "-q", "--allow-empty", "-m", "init"]);
+            let r = repo.to_string_lossy().into_owned();
+            let team = clone_dir(&r, "q_abc").unwrap();
+            let (lead, w1) = (lead_dir(&team), worker_dir(&team, 1));
+            GitClone
+                .prepare_member(&r, "q_abc", &lead.to_string_lossy(), "tmgr/x")
+                .unwrap();
+            GitClone
+                .prepare_member(
+                    &r,
+                    "q_abc",
+                    &w1.to_string_lossy(),
+                    &worker_branch("q_abc", 1),
+                )
+                .unwrap();
+            let base = sh(&w1, &["rev-parse", "HEAD"]);
+            let lead_head = sh(&lead, &["rev-parse", "HEAD"]);
+            let marker = root.join("ran");
+            let hook = root.join("hook");
+            std::fs::write(&hook, format!("#!/bin/sh\ntouch '{}'\n", marker.display())).unwrap();
+            let value = if key == "core.fsmonitor" {
+                hook.to_string_lossy().into_owned()
+            } else {
+                value.to_string()
+            };
+            sh(&w1, &["config", key, &value]);
+            let c = Candidate {
+                origin: Origin::Pickup("q_abc".into()),
+                shown: lead.clone(),
+                folder: team.clone(),
+                levels: 2,
+                branch: "tmgr/x".into(),
+                session: None,
+                multi: false,
+                clones: vec![CloneSpec {
+                    name: String::new(),
+                    dir: lead.clone(),
+                    repo: Err("unused".into()),
+                    identity: None,
+                }],
+                unusable: None,
+                in_use: None,
+                drop_if_gone: false,
+                team_refs: Some((repo.clone(), "q_abc".into())),
+                team_bases: vec![(1, Some(base))],
+            };
+            let prs = [Prs::Listed(vec![pr(1, "MERGED", &lead_head, false)])];
+            let verdict = decide(&gather(&c, &Probe::default(), Some(&prs)));
+            if key != "core.fsmonitor" {
+                match verdict {
+                    Decision::Skip(why) => assert!(why.contains("worker w1"), "{key}: {why}"),
+                    d => panic!("{key}: expected a skip, got {d:?}"),
+                }
+            }
+            assert!(!marker.exists(), "{key}");
+            assert!(w1.exists());
+        }
     }
 }
