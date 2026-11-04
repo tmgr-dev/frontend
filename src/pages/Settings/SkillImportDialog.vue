@@ -47,7 +47,10 @@
 									: 'hover:bg-muted/50',
 							]"
 							:data-testid="`skill-import-row-${row.skill.key}`"
+							role="button"
+							tabindex="0"
 							@click="selectedKey = row.skill.key"
+							@keydown.enter="selectedKey = row.skill.key"
 						>
 							<input
 								type="checkbox"
@@ -452,7 +455,10 @@
 							const next = evaluateRow(row, library.value, index.value);
 							row.converted = next.converted;
 							row.status = next.status;
-							row.ticked = !map[row.skill.key]?.ok && defaultTicked(row.status);
+							row.ticked =
+								row.ticked &&
+								!map[row.skill.key]?.ok &&
+								defaultTicked(row.status);
 						}
 					} catch {
 						toast({ title: 'Could not refresh the library' });

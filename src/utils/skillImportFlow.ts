@@ -32,6 +32,8 @@ export interface RowResult {
 	error?: string;
 }
 
+const bodyHash = (text: string): string => textHash(text.replace(/\s+$/, ''));
+
 const sameMarkdown = (a: string, b: string): boolean =>
 	a.replace(/\s+$/, '') === b.replace(/\s+$/, '');
 
@@ -112,7 +114,7 @@ export const adoptMatches = (
 				sourceHash: row.skill.hash,
 				libraryVersion: inLibrary.version,
 				importedAt: now,
-				contentHash: textHash(row.converted.markdown),
+				contentHash: bodyHash(row.converted.markdown),
 			});
 		}
 	}
@@ -159,12 +161,15 @@ export const runImport = async (
 				row.status === 'changed' &&
 				stored?.contentHash &&
 				deps.getBody &&
-				textHash(await deps.getBody(row.converted.slug)) !== stored.contentHash
+				bodyHash(await deps.getBody(row.converted.slug)) !== stored.contentHash
 			) {
+				const { [key]: _dropped, ...rest } = index;
+				index = rest;
 				results.push({
 					skillKey: key,
 					ok: false,
-					error: 'The library skill was replaced since the last import',
+					error:
+						'The library skill was replaced since the last import. Tick it again to overwrite.',
 				});
 				continue;
 			}
@@ -174,7 +179,7 @@ export const runImport = async (
 				sourceHash: row.skill.hash,
 				libraryVersion: saved.version,
 				importedAt: (deps.now ?? (() => new Date().toISOString()))(),
-				contentHash: textHash(row.converted.markdown),
+				contentHash: bodyHash(row.converted.markdown),
 			});
 			results.push({ skillKey: key, ok: true });
 		} catch (error: any) {

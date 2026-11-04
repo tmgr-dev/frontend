@@ -188,6 +188,31 @@ describe('safety', () => {
 		});
 		expect(put).not.toHaveBeenCalled();
 		expect(out.results[0].ok).toBe(false);
+		expect(out.index['claude:personal:review']).toBeUndefined();
+	});
+
+	it('accepts trailing whitespace differences in the library body', async () => {
+		const first = await buildRows(scanOf(skill()), [], {}, noBody);
+		const done = await runImport(first, {
+			listLibrary: async () => [],
+			put: async () => ({ version: 1 }),
+			index: {},
+		});
+		const rows = await buildRows(
+			scanOf(skill({ hash: 'h2' })),
+			[{ slug: 'review', version: 1 }],
+			done.index,
+			noBody,
+		);
+		const put = jest.fn(async () => ({ version: 2 }));
+		const out = await runImport(rows, {
+			listLibrary: async () => [{ slug: 'review', version: 1 }],
+			put,
+			getBody: async () => first[0].converted.markdown + '\n\n',
+			index: done.index,
+		});
+		expect(put).toHaveBeenCalled();
+		expect(out.results[0].ok).toBe(true);
 	});
 
 	it('adopts an identical library skill into the index', async () => {
