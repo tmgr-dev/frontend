@@ -3719,6 +3719,13 @@ mod tests {
         }
         fs::set_permissions(&idx, fs::Permissions::from_mode(0o644)).unwrap();
         fs::write(&idx, data).unwrap();
+        for e in fs::read_dir(&pack_dir).unwrap() {
+            let p = e.unwrap().path();
+            if p.extension().is_some_and(|x| x == "rev" || x == "bitmap") {
+                fs::set_permissions(&p, fs::Permissions::from_mode(0o644)).unwrap();
+                fs::remove_file(&p).unwrap();
+            }
+        }
     }
 
     fn blob_oid(fx: &Fx, st: &Store, n: u64) -> String {
@@ -3734,6 +3741,7 @@ mod tests {
         fx.pg(&["gc", "-q", "--prune=now"]);
         let (one, two) = (blob_oid(&fx, &st, 1), blob_oid(&fx, &st, 2));
         forge_swap(&fx, &one, &two);
+        assert_eq!(fx.pg(&["cat-file", "-p", &one]), "legacy2");
         snap(&fx, &st);
         assert!(ppi(&fx, &["fsck", "--strict"], b"").0);
         for (n, want) in [(1, "legacy1"), (2, "legacy2")] {
