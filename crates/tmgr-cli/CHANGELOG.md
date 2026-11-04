@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.79
+
+- Runner git hardening.
+
 ## 1.0.78
 
 - Decisions inbox for the TMGR desktop (macOS and Linux): MCP tools `ask_owner`, `get_answer` and `reply_owner`, the `tmgr ask` command, and `tmgr hook decisions <event>` with `tmgr hook install|uninstall decisions`.
