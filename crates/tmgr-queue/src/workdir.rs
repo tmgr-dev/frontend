@@ -598,8 +598,10 @@ impl RemoteScratch {
 
 fn origin_url(repo: &str) -> Result<String> {
     let url = git(Some(Path::new(repo)), &["remote", "get-url", "origin"])?;
-    if url.is_empty() || url.starts_with('-') {
-        return Err(Error::internal("the remote origin has no usable URL"));
+    if !url.starts_with('/') && !crate::publish::is_github_repo_url(&url) {
+        return Err(Error::internal(
+            "the remote origin is not a GitHub repository or a local path",
+        ));
     }
     Ok(url)
 }
@@ -660,7 +662,7 @@ pub fn prepare_continue_clone(repo: &str, dest: &Path, branch: &str, sha: &str) 
                 "--no-tags",
                 "--",
                 &scratch.path().to_string_lossy(),
-                "refs/tmgr/fetched",
+                &format!("+refs/tmgr/fetched:refs/remotes/origin/{branch}"),
             ],
         )?;
         if !have(repo) {
@@ -1889,7 +1891,18 @@ mod tests {
     }
 
     #[test]
-    fn the_remote_lookup_only_speaks_known_transports() {
+    fn network_git_only_speaks_known_transports() {
+        let env = crate::publish::publish_env(std::env::vars());
+        let err = RemoteScratch::new(None, false)
+            .unwrap()
+            .run(&env, &["ls-remote", "tmgrtest::somewhere"])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not allowed"), "{err}");
+    }
+
+    #[test]
+    fn the_remote_lookup_refuses_an_origin_that_is_not_github_or_local() {
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let repo = repo_with_origin(&root, "proj");
@@ -1900,12 +1913,50 @@ mod tests {
         );
         run_git(
             Path::new(&repo),
-            &["remote", "set-url", "origin", "tmgrtest::somewhere"],
+            &["config", "url.https://example.com/.insteadOf", "/"],
         );
-        let err = remote_branch_head(&repo, "tmgr/tm-1-fix")
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("not allowed"), "{err}");
+        assert!(remote_branch_head(&repo, "tmgr/tm-1-fix").is_err());
+        run_git(
+            Path::new(&repo),
+            &[
+                "config",
+                "--unset-all",
+                "url.https://example.com/.insteadOf",
+            ],
+        );
+        for url in [
+            "https://example.com/acme/widgets.git",
+            "tmgrtest::somewhere",
+            "-x",
+            "https://github.com/acme/widgets/extra",
+        ] {
+            run_git(Path::new(&repo), &["config", "remote.origin.url", url]);
+            assert!(remote_branch_head(&repo, "tmgr/tm-1-fix").is_err(), "{url}");
+        }
+    }
+
+    #[test]
+    fn a_continuation_fetches_a_saved_commit_the_repo_does_not_have() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = repo_with_origin(&root, "proj");
+        let bare = root.join("proj-origin.git");
+        run_git(&root, &["clone", "-q", &bare.to_string_lossy(), "other"]);
+        let other = root.join("other").to_string_lossy().into_owned();
+        let wip = push_branch_commit(&other, "tmgr/tm-1-fix", "wip.txt");
+        let commit = format!("{wip}^{{commit}}");
+        assert!(git(Some(Path::new(&repo)), &["cat-file", "-e", &commit]).is_err());
+        let dest = clone_dir(&repo, "q_c9").unwrap();
+        prepare_continue_clone(&repo, &dest, "tmgr/tm-1-fix", &wip).unwrap();
+        assert_eq!(git(Some(&dest), &["rev-parse", "HEAD"]).unwrap(), wip);
+        assert_eq!(
+            git(
+                Some(Path::new(&repo)),
+                &["rev-parse", "refs/remotes/origin/tmgr/tm-1-fix"]
+            )
+            .unwrap(),
+            wip
+        );
     }
 
     #[test]

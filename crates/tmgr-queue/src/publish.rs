@@ -146,6 +146,13 @@ fn github_path(url: &str) -> Option<&str> {
         .or_else(|| url.strip_prefix("git@github.com:"))
 }
 
+pub(crate) fn is_github_repo_url(url: &str) -> bool {
+    github_path(url).is_some_and(|path| {
+        let path = path.strip_suffix('/').unwrap_or(path);
+        valid_full_name(path.strip_suffix(".git").unwrap_or(path)).is_some()
+    })
+}
+
 fn url_matches(url: &str, owner: &str, repo: &str) -> bool {
     let Some(path) = github_path(url) else {
         return false;
@@ -322,9 +329,7 @@ fn run_in(argv: &[String], cwd: &Path, env: &[(String, String)]) -> Result<Strin
         "git" => {
             let args: Vec<&str> = args.iter().map(String::as_str).collect();
             match args.first() {
-                Some(&"push") | Some(&"fetch") => {
-                    workdir::RemoteScratch::new(Some(cwd), false)?.run(env, &args)
-                }
+                Some(&"push") => workdir::RemoteScratch::new(Some(cwd), false)?.run(env, &args),
                 Some(&"ls-remote") => workdir::RemoteScratch::new(None, false)?.run(env, &args),
                 Some(_) => workdir::git_query(cwd, &args),
                 None => Err(Error::internal("empty git command")),
@@ -1247,19 +1252,6 @@ mod tests {
         )
         .unwrap();
         assert!(listed.starts_with(&r.sha), "{listed}");
-        run_in(
-            &strings(&[
-                "git",
-                "fetch",
-                "--no-tags",
-                MAPPED_URL,
-                "refs/heads/topic:refs/tmgr/x",
-            ]),
-            &r.repo,
-            &r.env,
-        )
-        .unwrap();
-        assert!(tgit(&home, &r.repo, &["for-each-ref", "refs/tmgr"]).is_empty());
     }
 
     #[test]
