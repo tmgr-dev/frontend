@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.69
 
 - `tmgr runner gc` reads lead and single-run copies without their git settings, the way it already reads worker copies.
 - `tmgr runner gc` keeps a copy whose commits are only in its reflog.
