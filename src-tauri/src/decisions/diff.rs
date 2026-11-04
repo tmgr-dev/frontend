@@ -3,7 +3,7 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tmgr_ipc::decisions::DiffSpec;
+use tmgr_ipc::decisions::{DiffSpec, PatchIn};
 
 const MAX_BYTES: usize = 2 * 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(10);
@@ -171,39 +171,88 @@ fn header_path(line: &str) -> String {
   unquote(path).to_owned()
 }
 
-fn hunk_starts(header: &str) -> (u32, u32) {
-  let mut nums =
-    header.split_whitespace().skip(1).take(2).map(|part| {
-      part.trim_start_matches(['-', '+']).split(',').next().and_then(|n| n.parse::<u32>().ok()).unwrap_or(1)
-    });
-  (nums.next().unwrap_or(1), nums.next().unwrap_or(1))
+struct HunkRange {
+  old_start: u32,
+  old_len: u32,
+  new_start: u32,
+  new_len: u32,
+}
+
+fn hunk_range(header: &str) -> HunkRange {
+  let mut parts = header.split_whitespace().skip(1).take(2).map(|part| {
+    let mut nums = part.trim_start_matches(['-', '+']).split(',');
+    let start = nums.next().and_then(|n| n.parse::<u32>().ok());
+    let len = match nums.next() {
+      None => start.map(|_| 1),
+      Some(n) => n.parse::<u32>().ok(),
+    };
+    (start.unwrap_or(1), len.unwrap_or(u32::MAX))
+  });
+  let (old_start, old_len) = parts.next().unwrap_or((1, u32::MAX));
+  let (new_start, new_len) = parts.next().unwrap_or((1, u32::MAX));
+  HunkRange { old_start, old_len, new_start, new_len }
+}
+
+fn patch_path(line: &str, prefix: &str) -> Option<String> {
+  let rest = line.strip_prefix(prefix)?;
+  let rest = rest.split('\t').next().unwrap_or(rest).trim();
+  let path = unquote(rest);
+  let path = path.strip_prefix("a/").or_else(|| path.strip_prefix("b/")).unwrap_or(path);
+  (!path.is_empty()).then(|| path.to_owned())
+}
+
+fn headerless_path(old: &str, new: &str) -> String {
+  patch_path(new, "+++ ")
+    .filter(|p| p != "/dev/null")
+    .or_else(|| patch_path(old, "--- ").filter(|p| p != "/dev/null"))
+    .unwrap_or_else(|| "patch".to_owned())
 }
 
 pub fn parse(text: &str) -> Vec<DiffFile> {
+  let lines: Vec<&str> = text.lines().collect();
   let mut files: Vec<DiffFile> = Vec::new();
   let (mut old, mut new) = (0u32, 0u32);
+  let (mut left_old, mut left_new) = (0u32, 0u32);
   let mut in_hunk = false;
-  for line in text.lines() {
+  let mut in_header = false;
+  let mut i = 0;
+  while i < lines.len() {
+    let line = lines[i];
+    i += 1;
     if line.starts_with("diff --git ") {
       files.push(DiffFile { path: header_path(line), added: 0, removed: 0, hunks: Vec::new() });
       in_hunk = false;
+      in_header = true;
       continue;
     }
-    let Some(file) = files.last_mut() else { continue };
     if line.starts_with("@@") {
-      (old, new) = hunk_starts(line);
+      let Some(file) = files.last_mut() else { continue };
+      let range = hunk_range(line);
+      (old, new, left_old, left_new) = (range.old_start, range.new_start, range.old_len, range.new_len);
       file.hunks.push(Hunk { header: line.to_owned(), lines: Vec::new() });
-      in_hunk = true;
+      in_hunk = left_old > 0 || left_new > 0;
+      in_header = false;
       continue;
     }
     if !in_hunk {
-      if let Some(p) = line.strip_prefix("+++ b/") {
-        file.path = unquote(p).to_owned();
-      } else if let Some(p) = line.strip_prefix("--- a/") {
-        file.path = unquote(p).to_owned();
+      if in_header {
+        if let Some(p) = line.strip_prefix("+++ b/") {
+          files.last_mut().unwrap().path = unquote(p).to_owned();
+        } else if let Some(p) = line.strip_prefix("--- a/") {
+          files.last_mut().unwrap().path = unquote(p).to_owned();
+        }
+      } else if line.starts_with("--- ") && lines.get(i).is_some_and(|l| l.starts_with("+++ ")) {
+        files.push(DiffFile {
+          path: headerless_path(line, lines[i]),
+          added: 0,
+          removed: 0,
+          hunks: Vec::new(),
+        });
+        i += 1;
       }
       continue;
     }
+    let file = files.last_mut().unwrap();
     let hunk = file.hunks.last_mut().unwrap();
     let (kind, rest) = match line.chars().next() {
       Some('+') => ("add", &line[1..]),
@@ -217,22 +266,91 @@ pub fn parse(text: &str) -> Vec<DiffFile> {
       "add" => {
         file.added += 1;
         new += 1;
+        left_new = left_new.saturating_sub(1);
         DiffLine { kind, old: None, new: Some(new - 1), text: rest.to_owned() }
       }
       "del" => {
         file.removed += 1;
         old += 1;
+        left_old = left_old.saturating_sub(1);
         DiffLine { kind, old: Some(old - 1), new: None, text: rest.to_owned() }
       }
       _ => {
         old += 1;
         new += 1;
+        left_old = left_old.saturating_sub(1);
+        left_new = left_new.saturating_sub(1);
         DiffLine { kind, old: Some(old - 1), new: Some(new - 1), text: rest.to_owned() }
       }
     };
     hunk.lines.push(entry);
+    in_hunk = left_old > 0 || left_new > 0;
   }
   files
+}
+
+fn repo_label(spec: &DiffSpec) -> String {
+  let trimmed = spec.repo.trim_end_matches('/');
+  let name = trimmed.rsplit('/').next().unwrap_or(trimmed);
+  if name.is_empty() {
+    "repo".to_owned()
+  } else {
+    name.to_owned()
+  }
+}
+
+fn unique_label(base: String, used: &mut Vec<String>) -> String {
+  let mut label = base.clone();
+  let mut n = 2;
+  while used.contains(&label) {
+    label = format!("{base}-{n}");
+    n += 1;
+  }
+  used.push(label.clone());
+  label
+}
+
+fn patch_view(text: &str) -> DiffView {
+  let files = parse(text);
+  if files.is_empty() {
+    return failed("No file changes found in the patch");
+  }
+  DiffView { files, truncated: false, error: None }
+}
+
+pub fn groups(repos: &[DiffSpec], patches: &[PatchIn]) -> DiffGroups {
+  let mut used = Vec::new();
+  let labels: Vec<String> = repos.iter().map(|r| unique_label(repo_label(r), &mut used)).collect();
+  let views: Vec<DiffView> = std::thread::scope(|scope| {
+    let handles: Vec<_> = repos.iter().map(|spec| scope.spawn(move || run_diff(spec))).collect();
+    handles.into_iter().map(|h| h.join().unwrap_or_else(|_| failed("the diff could not be built"))).collect()
+  });
+  let mut groups: Vec<DiffGroup> = repos
+    .iter()
+    .zip(labels)
+    .zip(views)
+    .map(|((spec, label), view)| DiffGroup {
+      key: format!("repo:{label}"),
+      label,
+      kind: "repo".into(),
+      base: spec.base.clone(),
+      head: spec.head.clone(),
+      view,
+    })
+    .collect();
+  for p in patches {
+    let base = if p.label.is_empty() { "patch".to_owned() } else { p.label.clone() };
+    let label = unique_label(base, &mut used);
+    groups.push(DiffGroup {
+      key: format!("patch:{label}"),
+      label,
+      kind: "patch".into(),
+      base: None,
+      head: None,
+      view: patch_view(&p.text),
+    });
+  }
+  DiffGroups { groups }
 }
 
 #[cfg(test)]
@@ -327,5 +445,103 @@ mod tests {
     let notrepo = tempfile::Builder::new().prefix("dn").tempdir_in("/tmp").unwrap();
     let nr = run_diff(&DiffSpec { repo: notrepo.path().to_string_lossy().into_owned(), base: None, head: None });
     assert!(nr.error.is_some(), "{nr:?}");
+  }
+
+  const HEADERLESS: &str = "--- a/one.txt\t2024-01-01 10:00:00\n+++ b/one.txt\t2024-01-01 10:00:01\n@@ -1,2 +1,2 @@\n keep\n-old\n+new\n--- /dev/null\n+++ b/two.txt\n@@ -0,0 +1 @@\n+hello\n--- a/three.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-bye\n";
+
+  #[test]
+  fn parses_patches_without_a_git_header() {
+    let files = parse(HEADERLESS);
+    assert_eq!(files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), ["one.txt", "two.txt", "three.txt"]);
+    assert_eq!(files.iter().map(|f| (f.added, f.removed)).collect::<Vec<_>>(), [(1, 1), (1, 0), (0, 1)]);
+    assert_eq!(files[0].hunks[0].lines.len(), 3);
+    assert_eq!(files[1].hunks[0].lines[0].new, Some(1));
+  }
+
+  #[test]
+  fn git_header_files_keep_their_path_from_the_header_block() {
+    let files = parse("diff --git a/x.rs b/x.rs\nindex 1..2 100644\n--- a/x.rs\n+++ b/x.rs\n@@ -1 +1 @@\n-a\n+b\n");
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].path, "x.rs");
+  }
+
+  #[test]
+  fn removed_lines_that_look_like_file_headers_stay_in_the_hunk() {
+    let body = "@@ -1,3 +1,3 @@\n keep\n--- sql comment\n+++ other comment\n tail\n";
+    let headerless = parse(&format!("--- a/q.sql\n+++ b/q.sql\n{body}--- a/next\n+++ b/next\n@@ -1 +1 @@\n-x\n+y\n"));
+    assert_eq!(headerless.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), ["q.sql", "next"]);
+    let lines = &headerless[0].hunks[0].lines;
+    assert_eq!(lines.len(), 4);
+    assert_eq!((lines[1].kind, lines[1].text.as_str()), ("del", "-- sql comment"));
+    assert_eq!((lines[2].kind, lines[2].text.as_str()), ("add", "++ other comment"));
+    let git = parse(&format!("diff --git a/q.sql b/q.sql\n--- a/q.sql\n+++ b/q.sql\n{body}"));
+    assert_eq!((git.len(), git[0].added, git[0].removed), (1, 1, 1));
+  }
+
+  #[test]
+  fn malformed_patches_do_not_panic() {
+    for text in ["", "garbage\nmore", "@@ -1 +1 @@\n+x\n", "--- a\n", "--- a\n+++ b\n@@ nonsense\n+x\n-y\n z", "+++ only\n--- reversed\n"] {
+      let _ = parse(text);
+    }
+    assert!(parse("garbage").is_empty());
+    let view = patch_view("not a patch");
+    assert!(view.files.is_empty() && view.error.is_some());
+  }
+
+  fn commit_repo(dir: &std::path::Path, text: &str) {
+    std::fs::create_dir_all(dir).unwrap();
+    git(dir, &["init", "-q", "-b", "main"]);
+    std::fs::write(dir.join("f.txt"), "one\n").unwrap();
+    git(dir, &["add", "."]);
+    git(dir, &["commit", "-qm", "init"]);
+    std::fs::write(dir.join("f.txt"), text).unwrap();
+  }
+
+  fn spec_of(dir: &std::path::Path) -> DiffSpec {
+    DiffSpec { repo: dir.to_string_lossy().into_owned(), base: None, head: None }
+  }
+
+  #[test]
+  fn two_repos_and_a_patch_make_three_groups() {
+    let tmp = tempfile::Builder::new().prefix("dg").tempdir_in("/tmp").unwrap();
+    let (a, b) = (tmp.path().join("x/app"), tmp.path().join("y/app"));
+    commit_repo(&a, "one\ntwo\n");
+    commit_repo(&b, "one\ntwo\nthree\n");
+    let patches = [PatchIn { label: String::new(), text: HEADERLESS.into() }];
+    let g = groups(&[spec_of(&a), spec_of(&b)], &patches).groups;
+    assert_eq!(
+      g.iter().map(|g| (g.key.as_str(), g.label.as_str(), g.kind.as_str())).collect::<Vec<_>>(),
+      [("repo:app", "app", "repo"), ("repo:app-2", "app-2", "repo"), ("patch:patch", "patch", "patch")]
+    );
+    assert_eq!(g.iter().map(|g| g.view.files.len()).collect::<Vec<_>>(), [1, 1, 3]);
+    assert_eq!((g[0].view.files[0].added, g[1].view.files[0].added), (1, 2));
+    assert!(g.iter().all(|g| g.view.error.is_none()));
+  }
+
+  #[test]
+  fn one_bad_repo_leaves_the_others_rendering() {
+    let tmp = tempfile::Builder::new().prefix("dg").tempdir_in("/tmp").unwrap();
+    let ok = tmp.path().join("good");
+    commit_repo(&ok, "one\ntwo\n");
+    let missing = DiffSpec { repo: "/nonexistent-dir/bad".into(), base: None, head: None };
+    let evil = DiffSpec { repo: ok.to_string_lossy().into_owned(), base: Some("--output=/tmp/x".into()), head: None };
+    let g = groups(&[missing, spec_of(&ok), evil], &[]).groups;
+    assert_eq!(g.len(), 3);
+    assert!(g[0].view.error.is_some() && g[2].view.error.is_some());
+    assert_eq!((g[1].view.error.clone(), g[1].view.files.len()), (None, 1));
+    assert_eq!((g[1].label.as_str(), g[2].label.as_str()), ("good", "good-2"));
+  }
+
+  #[test]
+  fn patch_labels_dedupe_against_repos_and_each_other() {
+    let p = |l: &str| PatchIn { label: l.into(), text: HEADERLESS.into() };
+    let repo = DiffSpec { repo: "/nonexistent-dir/shared/".into(), base: None, head: None };
+    let g = groups(&[repo], &[p("shared"), p("shared"), p(""), p("")]).groups;
+    assert_eq!(
+      g.iter().map(|g| g.label.as_str()).collect::<Vec<_>>(),
+      ["shared", "shared-2", "shared-3", "patch", "patch-2"]
+    );
+    assert_eq!(g[1].key, "patch:shared-2");
+    assert!(groups(&[], &[]).groups.is_empty());
   }
 }

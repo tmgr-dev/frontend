@@ -90,18 +90,23 @@ fn dispatch(hub: &Hub, op: Op) -> Response {
   match op {
     Op::Ping => Response { ok: true, version: Some(env!("CARGO_PKG_VERSION").into()), ..Default::default() },
     Op::Create { card } => {
-      done(hub.create(*card).map(|id| Response { ok: true, card_id: Some(id), ..Default::default() }))
+      done(hub.create(*card).map(|(id, outcome)| Response {
+        ok: true,
+        card_id: Some(id),
+        outcome: Some(outcome.to_owned()),
+        ..Default::default()
+      }))
     }
     Op::Wait { card_id, since, timeout_ms, final_only } => {
       let timeout = Duration::from_millis(timeout_ms.min(MAX_WAIT_MS));
-      done(hub.wait(&card_id, since, timeout, final_only).map(|event| Response {
+      done(hub.wait(&card_id, since, timeout, final_only).map(|(card_id, event)| Response {
         ok: true,
         card_id: Some(card_id),
         event,
         ..Default::default()
       }))
     }
-    Op::Reply { card_id, text, line_replies } => done(hub.reply(&card_id, text, line_replies).map(|_| Response {
+    Op::Reply { card_id, text, line_replies } => done(hub.reply(&card_id, text, line_replies).map(|card_id| Response {
       ok: true,
       card_id: Some(card_id),
       ..Default::default()
@@ -128,6 +133,7 @@ mod tests {
     dir: PathBuf,
     hub: Arc<Hub>,
     changes: Arc<Mutex<Vec<usize>>>,
+    updates: Arc<Mutex<usize>>,
     _server: Server,
   }
 
@@ -137,15 +143,16 @@ mod tests {
     tmgr_ipc::dirs::ensure_private_dir(&dir).unwrap();
     let changes = Arc::new(Mutex::new(Vec::new()));
     let seen = changes.clone();
-    let sink: crate::decisions::hub::Sink = Box::new(move |c, n| {
-      if matches!(c, Change::Created { .. }) {
-        seen.lock().unwrap().push(n);
-      }
+    let updates = Arc::new(Mutex::new(0));
+    let updated = updates.clone();
+    let sink: crate::decisions::hub::Sink = Box::new(move |c, n| match c {
+      Change::Created { .. } => seen.lock().unwrap().push(n),
+      Change::Updated => *updated.lock().unwrap() += 1,
     });
-    let hub = Arc::new(Hub::new(Store::open(&dir.join("decisions.db")).unwrap(), sink));
+    let hub = Arc::new(Hub::new(Store::open(&dir.join("decisions.db")).unwrap(), sink).with_spool(dir.clone()));
     hub.ingest_spool(&dir);
     let server = Server::start(hub.clone(), &dir).unwrap();
-    Rig { _tmp: tmp, dir, hub, changes, _server: server }
+    Rig { _tmp: tmp, dir, hub, changes, updates, _server: server }
   }
 
   fn card(title: &str) -> CardIn {
@@ -327,5 +334,119 @@ mod tests {
     r.hub.check_liveness(|pid| pid == 111);
     assert!(!r.hub.get(&ida).unwrap().session_gone);
     assert!(r.hub.get(&idb).unwrap().session_gone);
+  }
+
+  fn resend(title: &str, target: &str) -> CardIn {
+    CardIn { replaces: Some(target.into()), ..card(title) }
+  }
+
+  #[test]
+  fn resend_over_the_wire_updates_in_place_without_a_notification() {
+    let r = rig();
+    let c = Client::open_in(&r.dir).unwrap();
+    let (a, outcome) = c.create_outcome(card("first")).unwrap();
+    assert_eq!(outcome.as_deref(), Some("created"));
+    let before = *r.updates.lock().unwrap();
+    let b = tmgr_ipc::decisions::new_card_id();
+    let (canon, outcome) = c.create_outcome(CardIn { id: Some(b.clone()), ..resend("second", &a) }).unwrap();
+    assert_eq!((canon.as_str(), outcome.as_deref()), (a.as_str(), Some("updated")));
+    assert_eq!(r.changes.lock().unwrap().len(), 1);
+    assert_eq!(*r.updates.lock().unwrap(), before + 1);
+    assert_eq!(r.hub.get(&a).unwrap().title, "second");
+    assert_eq!(r.hub.list().unwrap().len(), 1);
+    let (again, _) = c.create_outcome(CardIn { id: Some(b), ..resend("third", &a) }).unwrap();
+    assert_eq!(again, a);
+    assert_eq!(*r.updates.lock().unwrap(), before + 1);
+  }
+
+  #[test]
+  fn waiters_on_the_old_and_the_new_id_both_get_the_answer() {
+    let r = rig();
+    let c = Client::open_in(&r.dir).unwrap();
+    let a = c.create(card("first")).unwrap();
+    let b = tmgr_ipc::decisions::new_card_id();
+    assert_eq!(c.create(CardIn { id: Some(b.clone()), ..resend("second", &a) }).unwrap(), a);
+    let waiters: Vec<_> = [a.clone(), b]
+      .into_iter()
+      .map(|id| {
+        let dir = r.dir.clone();
+        std::thread::spawn(move || Client::open_in(&dir).unwrap().wait(&id, 0, Duration::from_secs(10), true).unwrap())
+      })
+      .collect();
+    std::thread::sleep(Duration::from_millis(150));
+    r.hub.answer(&a, answer_a()).unwrap();
+    for w in waiters {
+      let e = w.join().unwrap().unwrap();
+      assert!(e.is_final());
+      assert_eq!(e.card_id, a);
+    }
+  }
+
+  #[test]
+  fn reply_and_wait_resolve_aliases_to_the_canonical_id() {
+    let r = rig();
+    let c = Client::open_in(&r.dir).unwrap();
+    let a = c.create(card("first")).unwrap();
+    let b = tmgr_ipc::decisions::new_card_id();
+    c.create(CardIn { id: Some(b.clone()), ..resend("second", &a) }).unwrap();
+    let reply = r.hub.reply(&b, Some("hi".into()), vec![]).unwrap();
+    assert_eq!(reply, a);
+    c.reply(&b, Some("again".into()), vec![]).unwrap();
+    assert_eq!(r.hub.get(&a).unwrap().messages.len(), 2);
+    r.hub.message(&b, MessageIn { text: "q".into(), ..Default::default() }).unwrap();
+    let (id, event) = r.hub.wait(&b, 0, Duration::from_millis(50), false).unwrap();
+    assert_eq!((id, event.unwrap().card_id), (a.clone(), a));
+  }
+
+  #[test]
+  fn resend_to_an_answered_card_returns_the_answer_at_once() {
+    let r = rig();
+    let c = Client::open_in(&r.dir).unwrap();
+    let a = c.create(card("first")).unwrap();
+    r.hub.answer(&a, answer_a()).unwrap();
+    let b = tmgr_ipc::decisions::new_card_id();
+    let (canon, outcome) = c.create_outcome(CardIn { id: Some(b.clone()), ..resend("second", &a) }).unwrap();
+    assert_eq!((canon.as_str(), outcome.as_deref()), (a.as_str(), Some("final")));
+    assert_eq!(r.hub.list().unwrap().len(), 1);
+    let e = c.wait(&b, 0, Duration::from_millis(50), true).unwrap().unwrap();
+    assert_eq!((e.card_id.as_str(), e.choice.as_deref()), (a.as_str(), Some("a")));
+  }
+
+  fn stamp(dir: &Path, id: &str, secs: u64) {
+    let file = std::fs::File::options().write(true).open(dir.join("inbox").join(format!("{id}.json"))).unwrap();
+    file.set_modified(std::time::UNIX_EPOCH + Duration::from_secs(secs)).unwrap();
+  }
+
+  #[test]
+  fn spooled_resends_apply_in_order_and_redelivery_is_idempotent() {
+    let r = rig();
+    let a = spool(&r.dir, &card("first")).unwrap();
+    let b_id = tmgr_ipc::decisions::new_card_id();
+    let b_card = CardIn { id: Some(b_id.clone()), ..resend("second", &a) };
+    spool(&r.dir, &b_card).unwrap();
+    stamp(&r.dir, &a, 1_000);
+    stamp(&r.dir, &b_id, 2_000);
+    assert_eq!(r.hub.ingest_spool(&r.dir), 1);
+    assert_eq!(r.hub.list().unwrap().len(), 1);
+    assert_eq!(r.hub.get(&a).unwrap().title, "second");
+    assert_eq!(r.hub.get(&b_id).unwrap().id, a);
+
+    let c = Client::open_in(&r.dir).unwrap();
+    c.create(resend("third", &a)).unwrap();
+    spool(&r.dir, &b_card).unwrap();
+    assert_eq!(r.hub.ingest_spool(&r.dir), 0);
+    assert_eq!(r.hub.get(&a).unwrap().title, "third");
+    assert_eq!(r.changes.lock().unwrap().len(), 0);
+  }
+
+  #[test]
+  fn wait_for_a_spooled_unknown_id_drains_the_spool_first() {
+    let r = rig();
+    let c = Client::open_in(&r.dir).unwrap();
+    assert!(c.wait("c_00000000000000000000000000000000", 0, Duration::ZERO, false).is_err());
+    let id = spool(&r.dir, &card("while away")).unwrap();
+    assert!(c.wait(&id, 0, Duration::from_millis(50), false).unwrap().is_none());
+    assert_eq!(r.hub.get(&id).unwrap().title, "while away");
+    assert_eq!(r.hub.ingest_spool(&r.dir), 0);
   }
 }

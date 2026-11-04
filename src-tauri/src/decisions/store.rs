@@ -4,7 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tmgr_ipc::decisions::{
-  new_card_id, valid_card_id, CardIn, Check, DiffSpec, Event, Fact, LineComment, Links, Opt, Source, ThreadRef,
+  new_card_id, valid_card_id, CardIn, Check, DiffSpec, Event, Fact, LineComment, LinkItem, Links, Opt, PatchIn, Source,
+  ThreadRef, MAX_DIFFS, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES, OUTCOME_CREATED, OUTCOME_FINAL, OUTCOME_UPDATED,
 };
 
 pub const TITLE_MAX: usize = 300;
@@ -13,10 +14,12 @@ const LABEL_MAX: usize = 300;
 const FACT_MAX: usize = 1000;
 const FIELD_MAX: usize = 1024;
 const URL_MAX: usize = 2048;
+const KEY_MAX: usize = 200;
 const MAX_OPTIONS: usize = 9;
 const MAX_ROWS: usize = 50;
 const MAX_LINE_COMMENTS: usize = 200;
 const LIST_FINISHED: i64 = 200;
+const LINK_KINDS: [&str; 5] = ["pr", "commit", "tag", "task", "url"];
 
 pub const KINDS: [&str; 7] = ["decision", "review", "release", "check", "question", "permission", "stopped"];
 const REPLY_VIA: [&str; 3] = ["mcp", "cli", "hook"];
@@ -128,6 +131,8 @@ pub struct PatchInfo {
 pub struct Created {
   pub id: String,
   pub fresh: bool,
+  pub changed: bool,
+  pub outcome: &'static str,
   pub card: CardIn,
 }
 
@@ -184,15 +189,47 @@ fn sanitize(mut c: CardIn) -> Result<CardIn, String> {
     k.state = pick(&k.state, &["ok", "bad", "todo"], "todo");
     k.text = cap(&k.text, FACT_MAX);
   }
-  c.diff = c.diff.take().and_then(|mut d| {
-    d.repo = cap(&d.repo, FIELD_MAX * 4);
-    d.base = cap_opt(d.base, 200);
-    d.head = cap_opt(d.head, 200);
-    (!d.repo.is_empty()).then_some(d)
-  });
+  if usize::from(c.diff.is_some()) + c.diffs.len() > MAX_DIFFS {
+    return Err(format!("a card takes at most {MAX_DIFFS} repositories"));
+  }
+  c.diff = c.diff.take().and_then(clean_diff);
+  c.diffs = std::mem::take(&mut c.diffs).into_iter().filter_map(clean_diff).collect();
+  if c.patches.len() > MAX_PATCHES {
+    return Err(format!("a card takes at most {MAX_PATCHES} patches"));
+  }
+  if c.patches.iter().map(|p| p.text.len()).sum::<usize>() > MAX_PATCH_BYTES {
+    return Err(format!("patches are over {} KiB in total", MAX_PATCH_BYTES / 1024));
+  }
+  for p in &mut c.patches {
+    p.label = cap(&p.label, LABEL_MAX);
+  }
+  if c.links.items.len() > MAX_LINKS {
+    return Err(format!("a card takes at most {MAX_LINKS} links"));
+  }
+  c.links.items = std::mem::take(&mut c.links.items).into_iter().filter_map(clean_link).collect();
   c.links.task = cap_opt(c.links.task.take(), URL_MAX);
   c.links.pr = cap_opt(c.links.pr.take(), URL_MAX);
+  c.replaces = cap_opt(c.replaces.take(), 64);
+  c.key = cap_opt(c.key.take(), KEY_MAX);
   Ok(c)
+}
+
+fn clean_diff(mut d: DiffSpec) -> Option<DiffSpec> {
+  d.repo = cap(&d.repo, FIELD_MAX * 4);
+  d.base = cap_opt(d.base, 200);
+  d.head = cap_opt(d.head, 200);
+  (!d.repo.is_empty()).then_some(d)
+}
+
+fn clean_link(mut l: LinkItem) -> Option<LinkItem> {
+  let url = l.url.trim();
+  if url.len() > URL_MAX || !url::Url::parse(url).is_ok_and(|u| matches!(u.scheme(), "http" | "https")) {
+    return None;
+  }
+  l.url = url.to_owned();
+  l.kind = pick(&l.kind, &LINK_KINDS, "url");
+  l.label = cap_opt(l.label.take(), LABEL_MAX);
+  Some(l)
 }
 
 fn json_err(e: serde_json::Error) -> String {
@@ -203,6 +240,21 @@ fn sql_err(e: rusqlite::Error) -> String {
   e.to_string()
 }
 
+fn is_live(state: &str) -> bool {
+  state == "open" || state == "deferred"
+}
+
+fn insert_patches(tx: &rusqlite::Transaction<'_>, id: &str, patches: &[PatchIn]) -> Result<(), String> {
+  for (i, p) in patches.iter().enumerate() {
+    tx.execute(
+      "INSERT INTO patches(card_id, idx, label, text) VALUES(?1, ?2, ?3, ?4)",
+      params![id, i as i64, p.label, p.text],
+    )
+    .map_err(sql_err)?;
+  }
+  Ok(())
+}
+
 struct Row {
   id: String,
   created_ms: i64,
@@ -211,9 +263,10 @@ struct Row {
   session_gone: bool,
   answer: Option<String>,
   closed_reason: Option<String>,
+  updated_ms: Option<i64>,
 }
 
-const CARD_COLS: &str = "id, created_ms, card, state, session_gone, answer, closed_reason";
+const CARD_COLS: &str = "id, created_ms, card, state, session_gone, answer, closed_reason, updated_ms";
 
 fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
   Ok(Row {
@@ -224,6 +277,7 @@ fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
     session_gone: r.get::<_, i64>(4)? != 0,
     answer: r.get(5)?,
     closed_reason: r.get(6)?,
+    updated_ms: r.get(7)?,
   })
 }
 
@@ -242,9 +296,19 @@ impl Store {
            card_id TEXT NOT NULL, seq INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY(card_id, seq));
          CREATE TABLE IF NOT EXISTS messages(
            card_id TEXT NOT NULL, seq INTEGER NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL,
-           file TEXT, line INTEGER, created_ms INTEGER NOT NULL, PRIMARY KEY(card_id, seq));",
+           file TEXT, line INTEGER, created_ms INTEGER NOT NULL, PRIMARY KEY(card_id, seq));
+         CREATE TABLE IF NOT EXISTS patches(
+           card_id TEXT NOT NULL, idx INTEGER NOT NULL, label TEXT NOT NULL, text TEXT NOT NULL,
+           PRIMARY KEY(card_id, idx));
+         CREATE TABLE IF NOT EXISTS aliases(alias TEXT PRIMARY KEY, card_id TEXT NOT NULL);",
       )
       .map_err(sql_err)?;
+    let has_updated: i64 = conn
+      .query_row("SELECT COUNT(*) FROM pragma_table_info('cards') WHERE name='updated_ms'", [], |r| r.get(0))
+      .map_err(sql_err)?;
+    if has_updated == 0 {
+      conn.execute("ALTER TABLE cards ADD COLUMN updated_ms INTEGER", []).map_err(sql_err)?;
+    }
     Ok(Store { conn })
   }
 
@@ -256,9 +320,38 @@ impl Store {
     let mut card = sanitize(card)?;
     let id = card.id.clone().unwrap_or_else(new_card_id);
     card.id = Some(id.clone());
-    if let Some(existing) = self.raw(&id)? {
+    if let Some(canon) = self.resolve(&id)? {
+      let existing = self.raw(&canon)?.ok_or_else(|| "unknown card".to_owned())?;
+      let outcome = if canon == id {
+        OUTCOME_CREATED
+      } else if is_live(&existing.state) {
+        OUTCOME_UPDATED
+      } else {
+        OUTCOME_FINAL
+      };
       let card = serde_json::from_str(&existing.card).map_err(json_err)?;
-      return Ok(Created { id, fresh: false, card });
+      return Ok(Created { id: canon, fresh: false, changed: false, outcome, card });
+    }
+    let patches = std::mem::take(&mut card.patches);
+    let target = self.resend_target(&card)?.filter(|(t, _)| t.state != "closed");
+    if let Some((target, old)) = target {
+      let tx = self.conn.transaction().map_err(sql_err)?;
+      tx.execute("INSERT INTO aliases(alias, card_id) VALUES(?1, ?2)", params![id, target.id]).map_err(sql_err)?;
+      if !is_live(&target.state) {
+        tx.commit().map_err(sql_err)?;
+        return Ok(Created { id: target.id, fresh: false, changed: false, outcome: OUTCOME_FINAL, card });
+      }
+      card.id = Some(target.id.clone());
+      card.key = card.key.take().or(old.key);
+      tx.execute(
+        "UPDATE cards SET card=?2, session_gone=0, updated_ms=?3 WHERE id=?1",
+        params![target.id, serde_json::to_string(&card).map_err(json_err)?, now_ms()],
+      )
+      .map_err(sql_err)?;
+      tx.execute("DELETE FROM patches WHERE card_id=?1", [&target.id]).map_err(sql_err)?;
+      insert_patches(&tx, &target.id, &patches)?;
+      tx.commit().map_err(sql_err)?;
+      return Ok(Created { id: target.id, fresh: false, changed: true, outcome: OUTCOME_UPDATED, card });
     }
     let tx = self.conn.transaction().map_err(sql_err)?;
     if card.supersede && card.reply_via == "hook" {
@@ -277,8 +370,51 @@ impl Store {
       params![id, now_ms(), serde_json::to_string(&card).map_err(json_err)?],
     )
     .map_err(sql_err)?;
+    insert_patches(&tx, &id, &patches)?;
     tx.commit().map_err(sql_err)?;
-    Ok(Created { id, fresh: true, card })
+    Ok(Created { id, fresh: true, changed: true, outcome: OUTCOME_CREATED, card })
+  }
+
+  fn resolve(&self, id: &str) -> Result<Option<String>, String> {
+    self
+      .conn
+      .query_row(
+        "SELECT id FROM cards WHERE id=?1 UNION ALL SELECT card_id FROM aliases WHERE alias=?1 LIMIT 1",
+        [id],
+        |r| r.get(0),
+      )
+      .optional()
+      .map_err(sql_err)
+  }
+
+  pub fn canon(&self, id: &str) -> Result<String, String> {
+    self.resolve(id)?.ok_or_else(|| "unknown card".to_owned())
+  }
+
+  fn resend_target(&self, card: &CardIn) -> Result<Option<(Row, CardIn)>, String> {
+    if card.reply_via == "hook" {
+      return Ok(None);
+    }
+    let canon = if let Some(r) = &card.replaces {
+      self.resolve(r)?
+    } else if let Some(key) = &card.key {
+      self
+        .conn
+        .query_row(
+          "SELECT id FROM cards WHERE json_extract(card,'$.key')=?1 AND json_extract(card,'$.source.agent')=?2
+             AND json_extract(card,'$.source.cwd') IS ?3 AND COALESCE(json_extract(card,'$.reply_via'),'')!='hook'
+           ORDER BY created_ms DESC, rowid DESC LIMIT 1",
+          params![key, card.source.agent, card.source.cwd],
+          |r| r.get(0),
+        )
+        .optional()
+        .map_err(sql_err)?
+    } else {
+      None
+    };
+    let Some(row) = canon.map(|c| self.raw(&c)).transpose()?.flatten() else { return Ok(None) };
+    let old: CardIn = serde_json::from_str(&row.card).map_err(json_err)?;
+    Ok((old.reply_via != "hook").then_some((row, old)))
   }
 
   fn raw(&self, id: &str) -> Result<Option<Row>, String> {
@@ -288,7 +424,8 @@ impl Store {
   fn view(&self, r: Row) -> Result<CardView, String> {
     let c: CardIn = serde_json::from_str(&r.card).map_err(json_err)?;
     let answer = r.answer.as_deref().map(serde_json::from_str::<Event>).transpose().map_err(json_err)?;
-    let live = r.state == "open" || r.state == "deferred";
+    let live = is_live(&r.state);
+    let patches = self.patch_info(&r.id)?;
     let mut stmt = self
       .conn
       .prepare("SELECT seq, author, text, file, line, created_ms FROM messages WHERE card_id=?1 ORDER BY seq")
@@ -324,8 +461,8 @@ impl Store {
       options: c.options,
       diff: c.diff,
       diffs: c.diffs,
-      patches: Vec::new(),
-      updated_ms: None,
+      patches,
+      updated_ms: r.updated_ms,
       checks: c.checks,
       links: c.links,
       reply_via: c.reply_via,
@@ -334,8 +471,32 @@ impl Store {
     })
   }
 
+  fn patch_info(&self, id: &str) -> Result<Vec<PatchInfo>, String> {
+    self
+      .conn
+      .prepare("SELECT label, length(CAST(text AS BLOB)) FROM patches WHERE card_id=?1 ORDER BY idx")
+      .map_err(sql_err)?
+      .query_map([id], |m| Ok(PatchInfo { label: m.get(0)?, bytes: m.get::<_, i64>(1)? as u64 }))
+      .map_err(sql_err)?
+      .collect::<Result<Vec<_>, _>>()
+      .map_err(sql_err)
+  }
+
+  pub fn patches(&self, id: &str) -> Result<Vec<PatchIn>, String> {
+    let id = self.canon(id)?;
+    self
+      .conn
+      .prepare("SELECT label, text FROM patches WHERE card_id=?1 ORDER BY idx")
+      .map_err(sql_err)?
+      .query_map([&id], |m| Ok(PatchIn { label: m.get(0)?, text: m.get(1)? }))
+      .map_err(sql_err)?
+      .collect::<Result<Vec<_>, _>>()
+      .map_err(sql_err)
+  }
+
   pub fn get(&self, id: &str) -> Result<Option<CardView>, String> {
-    self.raw(id)?.map(|r| self.view(r)).transpose()
+    let Some(id) = self.resolve(id)? else { return Ok(None) };
+    self.raw(&id)?.map(|r| self.view(r)).transpose()
   }
 
   pub fn list(&self) -> Result<Vec<CardView>, String> {
@@ -375,7 +536,7 @@ impl Store {
 
   fn live_card(&self, id: &str) -> Result<(Row, CardIn), String> {
     let r = self.raw(id)?.ok_or_else(|| "unknown card".to_owned())?;
-    if r.state != "open" && r.state != "deferred" {
+    if !is_live(&r.state) {
       return Err("the card is already closed".into());
     }
     let c = serde_json::from_str(&r.card).map_err(json_err)?;
@@ -383,6 +544,7 @@ impl Store {
   }
 
   pub fn answer(&mut self, id: &str, a: AnswerIn) -> Result<(Event, CardIn), String> {
+    let id = &self.canon(id)?;
     let (_, card) = self.live_card(id)?;
     let choice = cap_opt(a.choice, 64);
     let choice_label = match &choice {
@@ -429,6 +591,7 @@ impl Store {
   }
 
   pub fn owner_message(&mut self, id: &str, m: MessageIn) -> Result<Event, String> {
+    let id = &self.canon(id)?;
     self.live_card(id)?;
     let text = cap(&m.text, TEXT_MAX);
     if text.is_empty() {
@@ -463,8 +626,13 @@ impl Store {
     Ok(event)
   }
 
-  pub fn agent_message(&mut self, id: &str, text: Option<String>, lines: Vec<LineComment>) -> Result<(), String> {
-    self.raw(id)?.ok_or_else(|| "unknown card".to_owned())?;
+  pub fn agent_message(
+    &mut self,
+    id: &str,
+    text: Option<String>,
+    lines: Vec<LineComment>,
+  ) -> Result<String, String> {
+    let id = &self.canon(id)?;
     let mut items: Vec<(String, Option<String>, Option<u32>)> = Vec::new();
     if let Some(t) = cap_opt(text, TEXT_MAX) {
       items.push((t, None, None));
@@ -487,7 +655,8 @@ impl Store {
       )
       .map_err(sql_err)?;
     }
-    tx.commit().map_err(sql_err)
+    tx.commit().map_err(sql_err)?;
+    Ok(id.clone())
   }
 
   pub fn close_session(&mut self, agent: &str, session: &str) -> Result<u64, String> {
@@ -504,9 +673,7 @@ impl Store {
   }
 
   pub fn events(&self, id: &str) -> Result<Vec<Event>, String> {
-    if self.raw(id)?.is_none() {
-      return Err("unknown card".into());
-    }
+    let id = &self.canon(id)?;
     let mut stmt = self.conn.prepare("SELECT json FROM events WHERE card_id=?1 ORDER BY seq").map_err(sql_err)?;
     let rows = stmt
       .query_map([id], |r| r.get::<_, String>(0))
@@ -772,5 +939,271 @@ mod tests {
     s.mark_gone(std::slice::from_ref(&with)).unwrap();
     assert!(s.live_pids().unwrap().is_empty());
     assert!(s.get(&with).unwrap().unwrap().session_gone);
+  }
+
+  fn patch(label: &str, text: &str) -> PatchIn {
+    PatchIn { label: label.into(), text: text.into() }
+  }
+
+  fn spec(repo: &str) -> DiffSpec {
+    DiffSpec { repo: repo.into(), base: None, head: None }
+  }
+
+  fn keyed(title: &str, key: &str) -> CardIn {
+    CardIn { key: Some(key.into()), ..card(title) }
+  }
+
+  fn replacing(title: &str, target: &str) -> CardIn {
+    CardIn { replaces: Some(target.into()), ..card(title) }
+  }
+
+  #[test]
+  fn limits_are_refused_not_truncated() {
+    let mut s = mem();
+    let too_many_repos = CardIn { diff: Some(spec("/a")), diffs: (0..MAX_DIFFS).map(|_| spec("/b")).collect(), ..card("x") };
+    assert!(s.create(too_many_repos).is_err());
+    let max_repos = CardIn { diff: Some(spec("/a")), diffs: (1..MAX_DIFFS).map(|_| spec("/b")).collect(), ..card("x") };
+    assert!(s.create(max_repos).is_ok());
+    let many_patches = CardIn { patches: (0..=MAX_PATCHES).map(|i| patch(&i.to_string(), "x")).collect(), ..card("x") };
+    assert!(s.create(many_patches).is_err());
+    let half = "a".repeat(MAX_PATCH_BYTES / 2 + 1);
+    let heavy = CardIn { patches: vec![patch("a", &half), patch("b", &half)], ..card("x") };
+    assert!(s.create(heavy).is_err());
+    let exact = CardIn { patches: vec![patch("a", &"a".repeat(MAX_PATCH_BYTES))], ..card("x") };
+    let id = s.create_id(exact);
+    assert_eq!(s.get(&id).unwrap().unwrap().patches[0].bytes, MAX_PATCH_BYTES as u64);
+    let link = || LinkItem { kind: "url".into(), url: "https://example.com/x".into(), label: None };
+    let links = |n: usize| Links { items: (0..n).map(|_| link()).collect(), ..Default::default() };
+    assert!(s.create(CardIn { links: links(MAX_LINKS + 1), ..card("x") }).is_err());
+    assert!(s.create(CardIn { links: links(MAX_LINKS), ..card("x") }).is_ok());
+  }
+
+  #[test]
+  fn extra_repos_are_validated_like_the_first() {
+    let mut s = mem();
+    let long = DiffSpec { repo: "/r".into(), base: Some("b".repeat(500)), head: None };
+    let id = s.create_id(CardIn { diffs: vec![spec("  "), long, spec("/ok")], ..card("x") });
+    let v = s.get(&id).unwrap().unwrap();
+    assert_eq!(v.diffs.len(), 2);
+    assert_eq!(v.diffs[0].base.as_ref().unwrap().len(), 200);
+  }
+
+  #[test]
+  fn links_keep_only_web_urls_and_known_kinds() {
+    let mut s = mem();
+    let item = |kind: &str, url: &str| LinkItem { kind: kind.into(), url: url.into(), label: Some("l".into()) };
+    let long = format!("https://example.com/{}", "a".repeat(URL_MAX));
+    let links = Links {
+      items: vec![
+        item("pr", "https://github.com/o/r/pull/1"),
+        item("commit", "javascript:alert(1)"),
+        item("tag", "file:///etc/passwd"),
+        item("weird", "http://example.com/x"),
+        item("url", &long),
+        item("url", "not a url"),
+      ],
+      ..Default::default()
+    };
+    let id = s.create_id(CardIn { links, ..card("x") });
+    let items = s.get(&id).unwrap().unwrap().links.items;
+    assert_eq!(items.iter().map(|i| (i.kind.as_str(), i.url.as_str())).collect::<Vec<_>>(), [
+      ("pr", "https://github.com/o/r/pull/1"),
+      ("url", "http://example.com/x")
+    ]);
+  }
+
+  #[test]
+  fn patch_text_stays_out_of_the_card_json_and_the_light_views() {
+    let mut s = mem();
+    let id = s.create_id(CardIn { patches: vec![patch("one", "--- a\n+++ b\n"), patch("", "xy")], ..card("x") });
+    let stored: String = s.conn.query_row("SELECT card FROM cards WHERE id=?1", [&id], |r| r.get(0)).unwrap();
+    assert!(!stored.contains("+++"), "{stored}");
+    for v in [s.get(&id).unwrap().unwrap(), s.list().unwrap().remove(0)] {
+      assert_eq!(v.patches, vec![PatchInfo { label: "one".into(), bytes: 12 }, PatchInfo { label: String::new(), bytes: 2 }]);
+    }
+    assert_eq!(s.patches(&id).unwrap()[0].text, "--- a\n+++ b\n");
+  }
+
+  #[test]
+  fn resend_by_replaces_updates_in_place_and_keeps_the_thread() {
+    let mut s = mem();
+    let a = s.create_id(CardIn { patches: vec![patch("p", "old")], ..card("first") });
+    s.owner_message(&a, MessageIn { text: "why?".into(), ..Default::default() }).unwrap();
+    s.agent_message(&a, Some("because".into()), vec![]).unwrap();
+    s.answer(&a, AnswerIn { deferred: true, ..Default::default() }).unwrap();
+    s.mark_gone(std::slice::from_ref(&a)).unwrap();
+    let before = s.get(&a).unwrap().unwrap();
+    assert_eq!(before.updated_ms, None);
+    let b = new_card_id();
+    let r = s
+      .create(CardIn {
+        id: Some(b.clone()),
+        patches: vec![patch("p2", "new1"), patch("p3", "new2")],
+        ..replacing("second", &a)
+      })
+      .unwrap();
+    assert_eq!((r.id.as_str(), r.fresh, r.changed, r.outcome), (a.as_str(), false, true, "updated"));
+    let after = s.get(&a).unwrap().unwrap();
+    assert_eq!((after.title.as_str(), after.state.as_str()), ("second", "deferred"));
+    assert_eq!((after.id.as_str(), after.created_ms), (a.as_str(), before.created_ms));
+    assert!(!after.session_gone && after.updated_ms.is_some());
+    assert_eq!(after.messages.len(), 2);
+    assert_eq!(s.events(&a).unwrap().len(), 2);
+    assert_eq!(after.patches.len(), 2);
+    assert_eq!(s.patches(&a).unwrap()[0].text, "new1");
+    assert_eq!(s.list().unwrap().len(), 1);
+    assert_eq!(s.get(&b).unwrap().unwrap().id, a);
+    let again = s.create(CardIn { id: Some(b.clone()), ..replacing("third", &a) }).unwrap();
+    assert_eq!((again.id.as_str(), again.changed, again.outcome), (a.as_str(), false, "updated"));
+    assert_eq!(s.get(&a).unwrap().unwrap().title, "second");
+  }
+
+  #[test]
+  fn resend_chain_resolves_every_id_to_the_first_card() {
+    let mut s = mem();
+    let a = s.create_id(card("a"));
+    let b = new_card_id();
+    let c = new_card_id();
+    s.create(CardIn { id: Some(b.clone()), ..replacing("b", &a) }).unwrap();
+    let r = s.create(CardIn { id: Some(c.clone()), ..replacing("c", &b) }).unwrap();
+    assert_eq!(r.id, a);
+    assert_eq!(s.list().unwrap().len(), 1);
+    let (e, _) = s.answer(&c, pick_a()).unwrap();
+    assert_eq!(e.card_id, a);
+    for id in [&a, &b, &c] {
+      assert_eq!(s.get(id).unwrap().unwrap().state, "answered");
+      assert_eq!(s.wait_event(id, 0, true).unwrap().unwrap().seq, 1);
+    }
+  }
+
+  #[test]
+  fn answered_and_dismissed_targets_are_never_reopened() {
+    let mut s = mem();
+    for dismissed in [false, true] {
+      let a = s.create_id(card("a"));
+      s.answer(&a, AnswerIn { choice: Some("a".into()), dismissed, ..Default::default() }).unwrap();
+      let b = new_card_id();
+      let r = s.create(CardIn { id: Some(b.clone()), patches: vec![patch("p", "x")], ..replacing("again", &a) }).unwrap();
+      assert_eq!((r.id.as_str(), r.fresh, r.changed, r.outcome), (a.as_str(), false, false, "final"));
+      let v = s.get(&b).unwrap().unwrap();
+      assert_eq!((v.id.as_str(), v.title.as_str()), (a.as_str(), "a"));
+      assert!(v.patches.is_empty() && v.updated_ms.is_none());
+      assert_eq!(s.wait_event(&b, 0, true).unwrap().unwrap().dismissed, dismissed);
+      let redo = s.create(CardIn { id: Some(b), ..replacing("again", &a) }).unwrap();
+      assert_eq!(redo.outcome, "final");
+    }
+    assert_eq!(s.list().unwrap().len(), 2);
+  }
+
+  #[test]
+  fn closed_and_unknown_targets_create_a_new_card() {
+    let mut s = mem();
+    let h = s.create_id(CardIn { supersede: false, reply_via: "mcp".into(), ..card("old") });
+    s.conn.execute("UPDATE cards SET state='closed', closed_reason='superseded' WHERE id=?1", [&h]).unwrap();
+    let r = s.create(replacing("new", &h)).unwrap();
+    assert!(r.fresh && r.outcome == "created" && r.id != h);
+    let unknown = s.create(replacing("fresh", "c_00000000000000000000000000000000")).unwrap();
+    assert!(unknown.fresh && unknown.outcome == "created");
+    assert_eq!(s.get(&h).unwrap().unwrap().title, "old");
+  }
+
+  #[test]
+  fn replaces_wins_over_key_even_when_unknown() {
+    let mut s = mem();
+    let a = s.create_id(keyed("a", "k"));
+    let r = s.create(CardIn { replaces: Some("c_00000000000000000000000000000000".into()), ..keyed("b", "k") }).unwrap();
+    assert!(r.fresh);
+    assert_eq!(s.get(&a).unwrap().unwrap().title, "a");
+  }
+
+  #[test]
+  fn hook_cards_are_neither_source_nor_target() {
+    let mut s = mem();
+    let hid = s.create_id(CardIn { key: Some("k".into()), ..hook("h", "s1") });
+    assert!(s.create(replacing("x", &hid)).unwrap().fresh);
+    assert!(s.create(keyed("y", "k")).unwrap().fresh);
+    let a = s.create_id(keyed("a", "k2"));
+    let h2 = s.create(CardIn { replaces: Some(a.clone()), key: Some("k2".into()), ..hook("h2", "s1") }).unwrap();
+    assert!(h2.fresh);
+    assert_eq!(s.get(&a).unwrap().unwrap().title, "a");
+  }
+
+  #[test]
+  fn shared_task_link_alone_never_merges() {
+    let mut s = mem();
+    let links = || Links { task: Some("https://tmgr.dev/ws/tasks/1".into()), ..Default::default() };
+    let a = s.create_id(CardIn { links: links(), ..card("a") });
+    let b = s.create_id(CardIn { links: links(), ..card("b") });
+    assert_ne!(a, b);
+    assert_eq!(s.list().unwrap().len(), 2);
+  }
+
+  #[test]
+  fn key_scope_is_agent_and_cwd() {
+    let mut s = mem();
+    let with = |agent: &str, cwd: Option<&str>| {
+      let mut c = keyed("t", "k");
+      c.source.agent = agent.into();
+      c.source.cwd = cwd.map(Into::into);
+      c
+    };
+    let a = s.create_id(with("claude", Some("/p")));
+    assert!(s.create(with("claude", Some("/q"))).unwrap().fresh);
+    assert!(s.create(with("codex", Some("/p"))).unwrap().fresh);
+    assert!(s.create(with("claude", None)).unwrap().fresh);
+    let same = s.create(with("claude", Some("/p"))).unwrap();
+    assert_eq!((same.id.as_str(), same.fresh, same.outcome), (a.as_str(), false, "updated"));
+    let none = s.create_id(with("cursor", None));
+    assert_eq!(s.create(with("cursor", None)).unwrap().id, none);
+    assert_eq!(s.list().unwrap().len(), 5);
+  }
+
+  #[test]
+  fn key_targets_the_newest_card_and_a_final_answer_stays_final() {
+    let mut s = mem();
+    let a = s.create_id(keyed("a", "k"));
+    s.answer(&a, pick_a()).unwrap();
+    let again = s.create(keyed("a2", "k")).unwrap();
+    assert_eq!((again.id.as_str(), again.outcome), (a.as_str(), "final"));
+    assert_eq!(s.list().unwrap().len(), 1);
+  }
+
+  #[test]
+  fn supersede_runs_only_for_new_cards() {
+    let mut s = mem();
+    let old = s.create_id(hook("old", "s1"));
+    let a = s.create_id(CardIn { supersede: true, ..keyed("a", "k") });
+    assert_eq!(s.get(&old).unwrap().unwrap().state, "open");
+    s.create(CardIn { supersede: true, ..keyed("a2", "k") }).unwrap();
+    assert_eq!(s.get(&old).unwrap().unwrap().state, "open");
+    assert_eq!(s.get(&a).unwrap().unwrap().title, "a2");
+  }
+
+  #[test]
+  fn old_shape_rows_and_old_databases_still_open() {
+    let dir = tempfile::Builder::new().prefix("ds").tempdir_in("/tmp").unwrap();
+    let path = dir.path().join("decisions.db");
+    {
+      let c = Connection::open(&path).unwrap();
+      c.execute_batch(
+        "CREATE TABLE cards(id TEXT PRIMARY KEY, created_ms INTEGER NOT NULL, card TEXT NOT NULL, state TEXT NOT NULL,
+           session_gone INTEGER NOT NULL DEFAULT 0, answer TEXT, closed_reason TEXT);
+         CREATE TABLE events(card_id TEXT NOT NULL, seq INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY(card_id, seq));
+         CREATE TABLE messages(card_id TEXT NOT NULL, seq INTEGER NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL,
+           file TEXT, line INTEGER, created_ms INTEGER NOT NULL, PRIMARY KEY(card_id, seq));
+         INSERT INTO cards(id, created_ms, card, state) VALUES('c_11111111111111111111111111111111', 5,
+           '{\"title\":\"Legacy\",\"diff\":{\"repo\":\"/r\"},\"links\":{\"pr\":\"https://x.test/1\"}}', 'open');",
+      )
+      .unwrap();
+    }
+    let mut s = Store::open(&path).unwrap();
+    let id = "c_11111111111111111111111111111111";
+    let v = s.get(id).unwrap().unwrap();
+    assert_eq!((v.title.as_str(), v.created_ms, v.updated_ms), ("Legacy", 5, None));
+    assert!(v.diffs.is_empty() && v.patches.is_empty() && v.diff.is_some());
+    assert_eq!(s.list().unwrap().len(), 1);
+    let r = s.create(CardIn { replaces: Some(id.into()), ..card("Fresh") }).unwrap();
+    assert_eq!((r.id.as_str(), r.outcome), (id, "updated"));
+    assert!(Store::open(&path).unwrap().get(id).unwrap().unwrap().updated_ms.is_some());
   }
 }

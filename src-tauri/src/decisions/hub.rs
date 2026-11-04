@@ -1,8 +1,8 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use tmgr_ipc::decisions::{drain_spool, CardIn, Event, LineComment};
+use tmgr_ipc::decisions::{drain_spool, CardIn, Event, LineComment, PatchIn};
 
 use super::store::{AnswerIn, CardView, MessageIn, Store};
 
@@ -17,6 +17,7 @@ pub struct Hub {
   store: Mutex<Store>,
   cv: Condvar,
   sink: Sink,
+  spool: Option<PathBuf>,
 }
 
 fn body_of(card: &CardIn) -> String {
@@ -25,7 +26,12 @@ fn body_of(card: &CardIn) -> String {
 
 impl Hub {
   pub fn new(store: Store, sink: Sink) -> Hub {
-    Hub { store: Mutex::new(store), cv: Condvar::new(), sink }
+    Hub { store: Mutex::new(store), cv: Condvar::new(), sink, spool: None }
+  }
+
+  pub fn with_spool(mut self, dir: PathBuf) -> Hub {
+    self.spool = Some(dir);
+    self
   }
 
   fn lock(&self) -> MutexGuard<'_, Store> {
@@ -42,16 +48,18 @@ impl Hub {
     self.lock().open_count()
   }
 
-  pub fn create(&self, card: CardIn) -> Result<String, String> {
+  pub fn create(&self, card: CardIn) -> Result<(String, &'static str), String> {
     let created = self.lock().create(card)?;
     if created.fresh {
       self.changed(Change::Created { title: created.card.title.clone(), body: body_of(&created.card) });
+    } else if created.changed {
+      self.changed(Change::Updated);
     }
-    Ok(created.id)
+    Ok((created.id, created.outcome))
   }
 
   pub fn ingest_spool(&self, dir: &Path) -> usize {
-    let mut added = 0;
+    let (mut added, mut changed) = (0, false);
     let _ = drain_spool(dir, |card| {
       if Store::check(&card).is_err() {
         return true;
@@ -59,36 +67,51 @@ impl Hub {
       match self.lock().create(card) {
         Ok(created) => {
           added += usize::from(created.fresh);
+          changed |= created.changed;
           true
         }
         Err(_) => false,
       }
     });
-    if added > 0 {
+    if changed {
       self.changed(Change::Updated);
     }
     added
   }
 
-  pub fn wait(&self, id: &str, since: u64, timeout: Duration, final_only: bool) -> Result<Option<Event>, String> {
+  pub fn wait(
+    &self,
+    id: &str,
+    since: u64,
+    timeout: Duration,
+    final_only: bool,
+  ) -> Result<(String, Option<Event>), String> {
     let deadline = Instant::now() + timeout;
     let mut guard = self.lock();
+    if guard.canon(id).is_err() {
+      if let Some(dir) = &self.spool {
+        drop(guard);
+        self.ingest_spool(dir);
+        guard = self.lock();
+      }
+    }
+    let id = guard.canon(id)?;
     loop {
-      if let Some(e) = guard.wait_event(id, since, final_only)? {
-        return Ok(Some(e));
+      if let Some(e) = guard.wait_event(&id, since, final_only)? {
+        return Ok((id, Some(e)));
       }
       let left = deadline.saturating_duration_since(Instant::now());
       if left.is_zero() {
-        return Ok(None);
+        return Ok((id, None));
       }
       guard = self.cv.wait_timeout(guard, left).unwrap_or_else(|p| p.into_inner()).0;
     }
   }
 
-  pub fn reply(&self, id: &str, text: Option<String>, lines: Vec<LineComment>) -> Result<(), String> {
-    self.lock().agent_message(id, text, lines)?;
+  pub fn reply(&self, id: &str, text: Option<String>, lines: Vec<LineComment>) -> Result<String, String> {
+    let id = self.lock().agent_message(id, text, lines)?;
     self.changed(Change::Updated);
-    Ok(())
+    Ok(id)
   }
 
   pub fn close_session(&self, agent: &str, session: &str) -> Result<u64, String> {
@@ -113,6 +136,13 @@ impl Hub {
 
   pub fn get(&self, id: &str) -> Result<CardView, String> {
     self.lock().get(id)?.ok_or_else(|| "unknown card".to_owned())
+  }
+
+  pub fn get_with_patches(&self, id: &str) -> Result<(CardView, Vec<PatchIn>), String> {
+    let store = self.lock();
+    let view = store.get(id)?.ok_or_else(|| "unknown card".to_owned())?;
+    let patches = store.patches(&view.id)?;
+    Ok((view, patches))
   }
 
   pub fn list(&self) -> Result<Vec<CardView>, String> {
