@@ -67,6 +67,8 @@ const SHIM_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const SHIM_QUEUE: usize = 1024;
 const SHIM_INPUT_CAP: usize = 1 << 20;
 const SHIM_INPUT_FRAMES: usize = 512;
+// A note typed into the agent only shows on screen after its next redraw; wait that long before the next one.
+const SEND_SETTLE: Duration = Duration::from_secs(5);
 const MAX_REPLIES_PER_SEC: u32 = 32;
 const MAX_PENDING: usize = 16;
 const REJECT_LOG_EVERY: Duration = Duration::from_secs(10);
@@ -366,7 +368,7 @@ struct Inner {
     matcher: Option<Matcher>,
     fixed: Option<State>,
     size_owner: Option<u64>,
-    input_sent: bool,
+    input_sent_at: Option<Instant>,
 }
 
 struct ShimLink {
@@ -737,7 +739,6 @@ impl Session {
         let mut replies = Vec::new();
         self.change(|i, now, out| {
             let r = i.screen.feed(bytes);
-            i.input_sent &= bytes.is_empty();
             if live {
                 replies = r.replies;
                 out.extend(i.det.on_output(now));
@@ -908,7 +909,7 @@ impl Session {
         }
     }
 
-    fn input_at_prompt(&self, bytes: &[u8]) -> Result<(), ApiErr> {
+    fn input_at_prompt(&self, bytes: &[u8], now: Instant) -> Result<(), ApiErr> {
         {
             let mut i = lock(&self.inner);
             let bottom = i.screen.bottom_text(10);
@@ -919,7 +920,8 @@ impl Session {
                 .is_some_and(|l| l.queued_frames.load(Ordering::SeqCst) == 0);
             if self.effective(&i).kind == StateKind::Blocked
                 || !prompt_ready(i.matcher.as_ref(), agent, &bottom, &rows)
-                || i.input_sent
+                || i.input_sent_at
+                    .is_some_and(|at| now.saturating_duration_since(at) < SEND_SETTLE)
                 || !idle_queue
             {
                 return Err(api(ErrorCode::Busy, "the agent is not at its prompt"));
@@ -930,7 +932,9 @@ impl Session {
                     "input queue full; the agent is not reading its input",
                 ));
             }
-            i.input_sent = !bytes.is_empty();
+            if !bytes.is_empty() {
+                i.input_sent_at = Some(now);
+            }
         }
         if !bytes.is_empty() {
             self.change(|i, now, out| out.extend(i.det.on_input(now)));
@@ -942,7 +946,9 @@ impl Session {
         let accepted = {
             let mut i = lock(&self.inner);
             let ok = self.shim_input(bytes);
-            i.input_sent |= ok && !bytes.is_empty();
+            if ok && !bytes.is_empty() {
+                i.input_sent_at = Some(Instant::now());
+            }
             ok
         };
         if accepted && !bytes.is_empty() {
@@ -2298,7 +2304,7 @@ impl Runner {
                 }
                 let at_prompt = p.get("at_prompt").and_then(Value::as_bool).unwrap_or(false);
                 if at_prompt {
-                    s.input_at_prompt(text.as_bytes())?;
+                    s.input_at_prompt(text.as_bytes(), Instant::now())?;
                     s.note_input_from(&conn.client);
                     return Ok(Value::Null);
                 }
@@ -4070,7 +4076,7 @@ impl Runner {
                 matcher,
                 fixed: None,
                 size_owner: None,
-                input_sent: false,
+                input_sent_at: None,
             }),
             version: AtomicU64::new(0),
             shim: Mutex::new(None),
@@ -5118,46 +5124,83 @@ mod tests {
         }
     }
 
-    fn send_at_prompt(s: &Session, bytes: &[u8]) -> bool {
-        s.input_at_prompt(bytes).is_ok()
+    fn send_at_prompt(s: &Session, bytes: &[u8], now: Instant) -> bool {
+        s.input_at_prompt(bytes, now).is_ok()
     }
 
     const IDLE: &[u8] = "done\r\n\r\n\u{276f}\r\n".as_bytes();
 
-    #[test]
-    fn two_sends_at_the_prompt_with_no_redraw_between_them_admit_only_the_first() {
-        let (_t, s, rx) = lone_session();
-        s.feed(IDLE, true);
-        assert!(send_at_prompt(&s, b"one\r"));
-        drain(&s, &rx);
-        assert!(!send_at_prompt(&s, b"two\r"));
+    fn settled() -> Instant {
+        Instant::now() + SEND_SETTLE
     }
 
     #[test]
-    fn a_send_at_the_prompt_waits_while_another_clients_input_is_still_queued() {
+    fn a_second_send_right_after_the_first_is_refused_even_after_an_echo() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        assert!(send_at_prompt(&s, b"one\r", Instant::now()));
+        drain(&s, &rx);
+        s.feed(b"\r\nworking\r\n\r\n\xe2\x9d\xaf\r\n", true);
+        assert!(!send_at_prompt(&s, b"two\r", Instant::now()));
+    }
+
+    #[test]
+    fn a_second_send_is_accepted_once_the_settle_time_has_passed_at_a_ready_prompt() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        assert!(send_at_prompt(&s, b"one\r", Instant::now()));
+        drain(&s, &rx);
+        s.feed(b"\r\nworking\r\n\r\n\xe2\x9d\xaf\r\n", true);
+        assert!(send_at_prompt(&s, b"two\r", settled()));
+    }
+
+    #[test]
+    fn a_keystroke_that_prints_nothing_blocks_a_send_only_until_the_settle_time_passes() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        assert!(s.input(b"\x1b[A"));
+        drain(&s, &rx);
+        assert!(!send_at_prompt(&s, b"note\r", Instant::now()));
+        assert!(send_at_prompt(&s, b"note\r", settled()));
+    }
+
+    #[test]
+    fn a_send_at_the_prompt_waits_while_input_is_still_queued_for_the_shim() {
         let (_t, s, rx) = lone_session();
         s.feed(IDLE, true);
         assert!(s.input(b"1"));
-        assert!(!send_at_prompt(&s, b"note\r"));
+        assert!(!send_at_prompt(&s, b"note\r", settled()));
         drain(&s, &rx);
-        assert!(!send_at_prompt(&s, b"note\r"));
+        assert!(send_at_prompt(&s, b"note\r", settled()));
     }
 
     #[test]
-    fn a_redraw_that_shows_the_prompt_again_admits_the_next_send() {
-        let (_t, s, rx) = lone_session();
+    fn a_queued_frame_alone_blocks_a_send_with_no_recent_input() {
+        let (_t, s, _rx) = lone_session();
         s.feed(IDLE, true);
-        assert!(send_at_prompt(&s, b"one\r"));
-        drain(&s, &rx);
-        s.feed(b"\r\nworking\r\n\r\n\xe2\x9d\xaf\r\n", true);
-        assert!(send_at_prompt(&s, b"two\r"));
+        lock(&s.shim)
+            .as_ref()
+            .unwrap()
+            .queued_frames
+            .fetch_add(1, Ordering::SeqCst);
+        assert!(!send_at_prompt(&s, b"note\r", settled()));
     }
 
     #[test]
     fn a_send_at_the_prompt_is_refused_off_the_prompt() {
         let (_t, s, _rx) = lone_session();
         s.feed(b"working\r\n", true);
-        assert!(!send_at_prompt(&s, b"one\r"));
+        assert!(!send_at_prompt(&s, b"one\r", settled()));
+    }
+
+    #[test]
+    fn a_send_at_the_prompt_is_refused_while_a_permission_dialog_is_showing() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(
+            "Do you want to proceed?\r\n\u{276f} 1. Yes\r\n  2. No\r\n".as_bytes(),
+            true,
+        );
+        assert!(!send_at_prompt(&s, b"one\r", settled()));
     }
 
     #[test]
