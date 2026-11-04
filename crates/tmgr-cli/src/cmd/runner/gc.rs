@@ -9,7 +9,7 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::text::{sanitize_line, truncate_chars};
 use tmgr_ipc::api::{StateKind, TeamRole};
 use tmgr_queue::clones::plan_clones;
-use tmgr_queue::state::{self, Pickup, Status};
+use tmgr_queue::state::{self, MemberClone, Pickup, Status};
 use tmgr_queue::workdir;
 use tmgr_runner::client::Client;
 
@@ -600,8 +600,14 @@ struct Candidate {
     unusable: Option<String>,
     in_use: Option<String>,
     drop_if_gone: bool,
-    team_refs: Option<(PathBuf, String)>,
+    team_refs: Option<TeamRefs>,
     team_bases: Vec<(u8, Option<String>)>,
+    team_clones: Vec<(u8, Vec<MemberClone>)>,
+}
+
+struct TeamRefs {
+    id: String,
+    repos: Vec<(String, PathBuf)>,
 }
 
 impl Candidate {
@@ -620,6 +626,7 @@ impl Candidate {
             drop_if_gone: false,
             team_refs: None,
             team_bases: Vec::new(),
+            team_clones: Vec::new(),
         }
     }
 }
@@ -761,6 +768,7 @@ fn record_candidate(file: &Path) -> Candidate {
         drop_if_gone: false,
         team_refs: None,
         team_bases: Vec::new(),
+        team_clones: Vec::new(),
     }
 }
 
@@ -802,8 +810,9 @@ fn pickup_candidate(p: &Pickup) -> Candidate {
         return broken("the recorded branch name is not valid");
     }
     let multi = !claim.repos.is_empty();
-    if p.team.is_some() && (multi || !p.clones.is_empty()) {
-        return broken("a team over several repositories is not collected yet");
+    let mut team_repos = Vec::new();
+    if p.team.is_some() && !multi && !p.clones.is_empty() {
+        return broken("the pickup records clones but lists one repository");
     }
     let (anchor, clones) = if multi {
         let Some(primary) = claim
@@ -819,6 +828,7 @@ fn pickup_candidate(p: &Pickup) -> Candidate {
         let mut specs = Vec::new();
         for plan in &plans {
             let ident = p.clones.iter().find(|c| c.name == plan.name);
+            team_repos.push((plan.name.clone(), PathBuf::from(&plan.path)));
             specs.push(CloneSpec {
                 name: plan.name.clone(),
                 dir: cwd.join(&plan.name),
@@ -845,6 +855,7 @@ fn pickup_candidate(p: &Pickup) -> Candidate {
             repo: github_name(&anchor).map(|n| (anchor.clone(), n)),
             identity: None,
         };
+        team_repos.push((String::new(), anchor.clone()));
         (anchor, vec![spec])
     };
     let Some(expected) = workdir::clone_dir(&anchor.to_string_lossy(), &p.id) else {
@@ -867,10 +878,22 @@ fn pickup_candidate(p: &Pickup) -> Candidate {
             TeamRole::Lead => None,
         })
         .collect();
+    let team_clones = p
+        .team
+        .iter()
+        .flat_map(|t| &t.members)
+        .filter_map(|m| match m.role {
+            TeamRole::Worker(k) => Some((k, m.clones.clone())),
+            TeamRole::Lead => None,
+        })
+        .collect();
     Candidate {
         origin: origin(),
         shown: cwd.clone(),
-        team_refs: team_dir.is_some().then(|| (anchor.clone(), p.id.clone())),
+        team_refs: team_dir.is_some().then(|| TeamRefs {
+            id: p.id.clone(),
+            repos: team_repos,
+        }),
 
         folder: team_dir.unwrap_or(cwd),
         levels: 2,
@@ -882,6 +905,7 @@ fn pickup_candidate(p: &Pickup) -> Candidate {
         in_use: pickup_in_use(p),
         drop_if_gone: p.released,
         team_bases,
+        team_clones,
     }
 }
 
@@ -965,15 +989,62 @@ fn prove(c: &Candidate) -> std::result::Result<(), String> {
         }
     }
     if c.multi {
-        let names: std::collections::BTreeSet<String> = std::fs::read_dir(folder)
-            .map_err(|e| format!("cannot read the run folder: {e}"))?
-            .filter_map(|e| e.ok())
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .collect();
-        let want: std::collections::BTreeSet<String> =
-            c.clones.iter().map(|s| s.name.clone()).collect();
-        if names != want {
-            return Err("the run folder holds something besides its clones".into());
+        let lead = if c.team_refs.is_some() {
+            workdir::lead_dir(folder)
+        } else {
+            folder.clone()
+        };
+        prove_names(&lead, c)?;
+        if c.team_refs.is_some() {
+            for k in 1..=5u8 {
+                prove_worker(c, k)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn prove_names(dir: &Path, c: &Candidate) -> std::result::Result<(), String> {
+    let names: std::collections::BTreeSet<String> = std::fs::read_dir(dir)
+        .map_err(|e| {
+            format!(
+                "cannot read {}: {e}",
+                sanitize_line(&dir.display().to_string())
+            )
+        })?
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    let want: std::collections::BTreeSet<String> =
+        c.clones.iter().map(|s| s.name.clone()).collect();
+    if names != want {
+        return Err("the run folder holds something besides its clones".into());
+    }
+    Ok(())
+}
+
+fn prove_worker(c: &Candidate, k: u8) -> std::result::Result<(), String> {
+    let dir = workdir::worker_dir(&c.folder, k);
+    if !exists(&dir) {
+        return Ok(());
+    }
+    let label = format!("w{k}");
+    if !real_dir(&dir) || exists(&dir.join(".git")) {
+        return Err(format!("{label} is not a folder of clones"));
+    }
+    prove_names(&dir, c)?;
+    let recorded = c.team_clones.iter().find(|(n, _)| *n == k).map(|(_, v)| v);
+    for spec in &c.clones {
+        let clone = dir.join(&spec.name);
+        prove_dir(&clone).map_err(|e| format!("{label}/{}: {e}", spec.name))?;
+        let want = recorded
+            .and_then(|v| v.iter().find(|m| m.name == spec.name))
+            .map(|m| (m.dev, m.ino));
+        if want.is_none() || workdir::clone_identity(&clone) != want {
+            return Err(format!(
+                "{label}/{} is not the folder this run started with",
+                sanitize_line(&spec.name)
+            ));
         }
     }
     Ok(())
@@ -1007,33 +1078,55 @@ fn gather(c: &Candidate, probe: &Probe, prs: Option<&[Prs]>) -> RunFacts {
         }
     }
     let mut workers = Vec::new();
-    if let (false, Some((repo, id))) = (clones.is_empty(), &c.team_refs) {
-        let host = host_facts(repo);
+    if let (false, Some(TeamRefs { id, repos })) = (clones.is_empty(), &c.team_refs) {
         for k in 1..=5u8 {
-            let name = format!("w{k}");
-            let dir = workdir::worker_dir(&c.folder, k);
-            if !exists(&dir) {
+            let wdir = workdir::worker_dir(&c.folder, k);
+            if !exists(&wdir) {
                 continue;
             }
             let branch = workdir::worker_branch(id, k);
-            workers.push(WorkerFacts {
-                name,
-                base: c
+            let parts: Vec<(String, PathBuf, &Path, Option<String>)> = if c.multi {
+                let recorded = c.team_clones.iter().find(|(n, _)| *n == k).map(|(_, v)| v);
+                c.clones
+                    .iter()
+                    .zip(repos)
+                    .map(|(spec, (_, repo))| {
+                        let base = recorded
+                            .and_then(|v| v.iter().find(|m| m.name == spec.name))
+                            .and_then(|m| m.base.clone());
+                        (
+                            format!("w{k}/{}", spec.name),
+                            wdir.join(&spec.name),
+                            repo.as_path(),
+                            base,
+                        )
+                    })
+                    .collect()
+            } else {
+                let base = c
                     .team_bases
                     .iter()
                     .find(|(n, _)| *n == k)
-                    .and_then(|(_, b)| b.clone()),
-                git: if real_dir(&dir) {
-                    prove_dir(&dir).and_then(|()| {
-                        let host = host.as_ref().map_err(String::clone)?;
-                        copy_facts(&dir, &branch, host, FOLDER_BUDGET)
-                    })
-                } else {
-                    Err("the copy is not a real folder".into())
-                },
-                imported: workdir::branch_tip(repo, &branch).map_err(|e| sanitize_line(&e.message)),
-                branch,
-            });
+                    .and_then(|(_, b)| b.clone());
+                vec![(format!("w{k}"), wdir.clone(), repos[0].1.as_path(), base)]
+            };
+            for (name, dir, repo, base) in parts {
+                workers.push(WorkerFacts {
+                    name,
+                    base,
+                    git: if real_dir(&dir) {
+                        prove_dir(&dir).and_then(|()| {
+                            let host = host_facts(repo)?;
+                            copy_facts(&dir, &branch, &host, FOLDER_BUDGET)
+                        })
+                    } else {
+                        Err("the copy is not a real folder".into())
+                    },
+                    imported: workdir::branch_tip(repo, &branch)
+                        .map_err(|e| sanitize_line(&e.message)),
+                    branch: branch.clone(),
+                });
+            }
         }
     }
     RunFacts {
@@ -1090,6 +1183,20 @@ fn remove_folder(folder: &Path, levels: usize) -> std::result::Result<(), String
             sanitize_line(&hidden.display().to_string())
         )
     })
+}
+
+fn remove_run(
+    folder: &Path,
+    levels: usize,
+    refs: Option<&TeamRefs>,
+) -> std::result::Result<(), String> {
+    remove_folder(folder, levels)?;
+    if let Some(t) = refs {
+        for (_, repo) in &t.repos {
+            workdir::remove_team_refs(repo, &t.id);
+        }
+    }
+    Ok(())
 }
 
 struct Item {
@@ -1203,11 +1310,8 @@ fn evaluate(c: &Candidate, probe: &mut Option<Probe>, dry: bool) -> Result<Optio
     if let Decision::Skip(why) = decide(&again) {
         return Ok(Some(changed(why)));
     }
-    match remove_folder(&c.folder, c.levels) {
+    match remove_run(&c.folder, c.levels, c.team_refs.as_ref()) {
         Ok(()) => {
-            if let Some((repo, id)) = &c.team_refs {
-                workdir::remove_team_refs(repo, id);
-            }
             item.reason = after_removal(c);
             item.decision = if item.reason.is_some() {
                 "failed"
@@ -1623,10 +1727,7 @@ mod tests {
         assert_eq!(c.shown, lead);
         assert_eq!(c.clones.len(), 1);
         assert_eq!(c.clones[0].dir, lead);
-        assert_eq!(
-            c.team_refs.as_ref().map(|(_, id)| id.as_str()),
-            Some("q_abc")
-        );
+        assert_eq!(c.team_refs.as_ref().map(|t| t.id.as_str()), Some("q_abc"));
         assert!(prove(&c).is_ok(), "{:?}", prove(&c));
     }
 
@@ -1661,7 +1762,7 @@ mod tests {
     }
 
     #[test]
-    fn a_team_over_several_repositories_is_skipped_and_nothing_is_removed() {
+    fn a_team_with_clones_but_one_repository_is_refused() {
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let (team_dir, lead) = team_tree(&root);
@@ -1669,15 +1770,253 @@ mod tests {
         p.clones =
             vec![serde_json::from_value(json!({"name": "backend", "dev": 1, "ino": 2})).unwrap()];
         let c = pickup_candidate(&p);
-        let why = "a team over several repositories is not collected yet";
-        assert_eq!(c.unusable.as_deref(), Some(why));
+        assert!(c.unusable.is_some());
         assert!(c.team_refs.is_none() && c.clones.is_empty());
         let item = evaluate(&c, &mut None, false).unwrap().unwrap();
         assert_eq!(item.decision, "skipped");
-        assert_eq!(item.reason.as_deref(), Some(why));
         for name in ["lead", "w1", "w2"] {
             assert!(team_dir.join(name).join(".git").is_dir());
         }
+    }
+
+    struct Multi {
+        repos: Vec<PathBuf>,
+        names: Vec<String>,
+        team: PathBuf,
+        pickup: Pickup,
+        prs: Vec<Prs>,
+    }
+
+    impl Multi {
+        fn candidate(&self) -> Candidate {
+            let c = pickup_candidate(&self.pickup);
+            assert!(c.unusable.is_none(), "{:?}", c.unusable);
+            c
+        }
+
+        fn verdict(&self) -> Decision {
+            let c = self.candidate();
+            decide(&gather(&c, &Probe::default(), Some(&self.prs)))
+        }
+
+        fn skip(&self) -> String {
+            match self.verdict() {
+                Decision::Skip(s) => s,
+                d => panic!("expected a skip, got {d:?}"),
+            }
+        }
+
+        fn w1(&self, i: usize) -> PathBuf {
+            workdir::worker_dir(&self.team, 1).join(&self.names[i])
+        }
+    }
+
+    fn multi_team(root: &Path) -> Multi {
+        use tmgr_queue::clones::ClaimRepo;
+        use tmgr_queue::workdir::{
+            clone_dir, lead_dir, worker_branch, worker_dir, GitClone, WorkDirs,
+        };
+        let mut repos = Vec::new();
+        let mut claim = Vec::new();
+        for n in ["back", "front"] {
+            let repo = root.join(n);
+            std::fs::create_dir(&repo).unwrap();
+            sh(&repo, &["init", "-q", "-b", "main"]);
+            sh(&repo, &["commit", "-q", "--allow-empty", "-m", "init"]);
+            let url = format!("https://github.com/o/{n}.git");
+            sh(&repo, &["remote", "add", "origin", &url]);
+            claim.push(ClaimRepo {
+                full_name: format!("o/{n}"),
+                path: repo.to_string_lossy().into_owned(),
+            });
+            repos.push(repo);
+        }
+        let plans = plan_clones(&claim).unwrap();
+        let names: Vec<String> = plans.iter().map(|p| p.name.clone()).collect();
+        let primary = plans[0].path.clone();
+        let pairs: Vec<(String, String)> = plans
+            .iter()
+            .map(|p| (p.name.clone(), p.path.clone()))
+            .collect();
+        let team = clone_dir(&primary, "q_abc").unwrap();
+        let (lead, w1) = (lead_dir(&team), worker_dir(&team, 1));
+        GitClone
+            .prepare_member_multi(
+                &primary,
+                "q_abc",
+                &lead.to_string_lossy(),
+                &pairs,
+                "tmgr/tm-1",
+            )
+            .unwrap();
+        GitClone
+            .prepare_member_multi(
+                &primary,
+                "q_abc",
+                &w1.to_string_lossy(),
+                &pairs,
+                &worker_branch("q_abc", 1),
+            )
+            .unwrap();
+        let mut p = queue_pickup(&lead, true);
+        p.cloud.as_mut().unwrap().repos = claim;
+        p.pr_url = Some("u".into());
+        p.clones = names
+            .iter()
+            .map(|n| {
+                let (dev, ino) = workdir::clone_identity(&lead.join(n)).unwrap();
+                serde_json::from_value(json!({"name": n, "dev": dev, "ino": ino})).unwrap()
+            })
+            .collect();
+        let w_clones: Vec<Value> = names
+            .iter()
+            .map(|n| {
+                let (dev, ino) = workdir::clone_identity(&w1.join(n)).unwrap();
+                let base = sh(&w1.join(n), &["rev-parse", "HEAD"]);
+                json!({"name": n, "dev": dev, "ino": ino, "base": base})
+            })
+            .collect();
+        let member = |role: Value, cwd: &Path, clones: Vec<Value>| {
+            json!({"role": role, "cwd": cwd.to_string_lossy(), "branch": "b", "start_key": "k",
+                "exited": true, "clones": clones})
+        };
+        p.team.as_mut().unwrap().members = vec![
+            serde_json::from_value(member(json!("lead"), &lead, Vec::new())).unwrap(),
+            serde_json::from_value(member(json!({"worker": 1}), &w1, w_clones)).unwrap(),
+        ];
+        let prs = names
+            .iter()
+            .map(|n| {
+                Prs::Listed(vec![pr(
+                    1,
+                    "MERGED",
+                    &sh(&lead.join(n), &["rev-parse", "HEAD"]),
+                    false,
+                )])
+            })
+            .collect();
+        Multi {
+            repos,
+            names,
+            team,
+            pickup: p,
+            prs,
+        }
+    }
+
+    fn import_w1(m: &Multi, i: usize) {
+        let branch = workdir::worker_branch("q_abc", 1);
+        workdir::import_branch(&m.repos[i].to_string_lossy(), &m.w1(i), &branch).unwrap();
+    }
+
+    #[test]
+    fn a_clean_team_over_several_repositories_is_collected_with_its_refs_in_every_repository() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let m = multi_team(&root);
+        for i in 0..2 {
+            sh(
+                &m.repos[i],
+                &["update-ref", "refs/heads/queue-team/q_abc/w1", "HEAD"],
+            );
+            sh(&m.repos[i], &["branch", "keep"]);
+        }
+        let c = m.candidate();
+        assert_eq!(c.team_refs.as_ref().map(|t| t.repos.len()), Some(2));
+        match m.verdict() {
+            Decision::Remove(refs) => assert_eq!(refs.len(), 2),
+            d => panic!("expected removal, got {d:?}"),
+        }
+        remove_run(&c.folder, c.levels, c.team_refs.as_ref()).unwrap();
+        assert!(!m.team.exists());
+        for repo in &m.repos {
+            let heads = sh(repo, &["for-each-ref", "--format=%(refname)", "refs/heads"]);
+            assert!(!heads.contains("queue-team"), "{heads}");
+            assert!(heads.contains("refs/heads/keep") && heads.contains("refs/heads/main"));
+        }
+    }
+
+    #[test]
+    fn a_worker_commit_in_one_repository_not_brought_in_keeps_the_whole_team() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let m = multi_team(&root);
+        sh(&m.w1(1), &["commit", "-q", "--allow-empty", "-m", "work"]);
+        let why = m.skip();
+        assert!(
+            why.contains(&format!("w1/{}", m.names[1])) && why.contains("not brought"),
+            "{why}"
+        );
+        import_w1(&m, 1);
+        assert!(
+            matches!(m.verdict(), Decision::Remove(_)),
+            "{:?}",
+            m.verdict()
+        );
+    }
+
+    #[test]
+    fn changes_in_a_worker_clone_of_the_second_repository_keep_the_team() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let m = multi_team(&root);
+        std::fs::write(m.w1(1).join("n.txt"), "x").unwrap();
+        let why = m.skip();
+        assert!(
+            why.contains(&format!("w1/{}", m.names[1])) && why.contains("n.txt"),
+            "{why}"
+        );
+    }
+
+    #[test]
+    fn a_stray_file_in_a_member_folder_keeps_the_team() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let m = multi_team(&root);
+        assert!(
+            matches!(m.verdict(), Decision::Remove(_)),
+            "{:?}",
+            m.verdict()
+        );
+        for dir in [workdir::worker_dir(&m.team, 1), workdir::lead_dir(&m.team)] {
+            let f = dir.join("notes.txt");
+            std::fs::write(&f, "x").unwrap();
+            assert!(m.skip().contains("besides"), "{}", dir.display());
+            std::fs::remove_file(&f).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_replaced_worker_clone_keeps_the_team() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let m = multi_team(&root);
+        let dir = m.w1(0);
+        let aside = root.join("aside");
+        std::fs::rename(&dir, &aside).unwrap();
+        sh(
+            &root,
+            &[
+                "clone",
+                "-q",
+                &m.repos[0].to_string_lossy(),
+                &dir.to_string_lossy(),
+            ],
+        );
+        sh(&dir, &["checkout", "-q", "-b", "queue-team/q_abc/w1"]);
+        assert!(m.skip().contains("not the folder"), "{}", m.skip());
+    }
+
+    #[test]
+    fn a_worker_clone_made_a_link_keeps_the_team() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let m = multi_team(&root);
+        let w1 = workdir::worker_dir(&m.team, 1);
+        let aside = root.join("aside");
+        std::fs::rename(&w1, &aside).unwrap();
+        std::os::unix::fs::symlink(&aside, &w1).unwrap();
+        assert!(matches!(m.verdict(), Decision::Skip(_)));
     }
 
     #[test]
@@ -1832,8 +2171,12 @@ mod tests {
             unusable: None,
             in_use: None,
             drop_if_gone: false,
-            team_refs: Some((repo.clone(), "q_abc".into())),
+            team_refs: Some(TeamRefs {
+                id: "q_abc".into(),
+                repos: vec![(String::new(), repo.clone())],
+            }),
             team_bases: bases,
+            team_clones: Vec::new(),
         };
         let prs = [Prs::Listed(vec![pr(1, "MERGED", &lead_head, false)])];
         let verdict = |c: &Candidate| decide(&gather(c, &Probe::default(), Some(&prs)));
@@ -2122,6 +2465,7 @@ mod tests {
             drop_if_gone: false,
             team_refs: None,
             team_bases: Vec::new(),
+            team_clones: Vec::new(),
         }
     }
 
