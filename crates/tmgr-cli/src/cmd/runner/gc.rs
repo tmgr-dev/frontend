@@ -539,9 +539,7 @@ fn copy_facts(
 }
 
 fn github_name(repo: &Path) -> std::result::Result<String, String> {
-    let url = |args: &[&str]| workdir::git_query(repo, args).map_err(|e| sanitize_line(&e.message));
-    let fetch = url(&["remote", "get-url", "origin"])?;
-    let push = url(&["remote", "get-url", "--push", "origin"])?;
+    let (fetch, push) = workdir::origin_urls(repo).map_err(|e| sanitize_line(&e.message))?;
     let parse = |u: &str| {
         parse_remote(u)
             .filter(|r| r.host == "github.com" && r.path.split('/').count() == 2)

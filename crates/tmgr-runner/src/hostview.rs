@@ -35,6 +35,7 @@ pub struct HostView {
     limits: Limits,
     offline: bool,
     origin: Option<String>,
+    origin_push: Option<String>,
     keys: Vec<String>,
     sha256: bool,
     deferred: Option<String>,
@@ -207,6 +208,7 @@ struct Snapshot {
     keys: Vec<String>,
     config: String,
     origin: Option<String>,
+    origin_push: Option<String>,
     sha256: bool,
 }
 
@@ -216,6 +218,7 @@ fn snapshot(entries: Vec<(String, Option<String>)>) -> Result<Snapshot, String> 
     let mut ref_storage = None;
     let mut relative = None;
     let mut origin = None;
+    let mut origin_push = None;
     let mut core: Vec<(String, String)> = Vec::new();
     let mut keys = Vec::new();
     for (key, value) in &entries {
@@ -225,6 +228,11 @@ fn snapshot(entries: Vec<(String, Option<String>)>) -> Result<Snapshot, String> 
             "remote.origin.url" => {
                 if origin.is_none() {
                     origin = value.clone();
+                }
+            }
+            "remote.origin.pushurl" => {
+                if origin_push.is_none() {
+                    origin_push = value.clone();
                 }
             }
             "core.repositoryformatversion" => {
@@ -299,6 +307,7 @@ fn snapshot(entries: Vec<(String, Option<String>)>) -> Result<Snapshot, String> 
         keys,
         config,
         origin,
+        origin_push,
         sha256,
     })
 }
@@ -323,7 +332,11 @@ fn base_command(network: bool, path: &OsStr) -> Command {
         let key = k.to_string_lossy();
         if matches!(key.as_ref(), "HOME" | "LANG")
             || key.starts_with("LC_")
-            || (network && key == "SSH_AUTH_SOCK")
+            || (network
+                && (matches!(
+                    key.as_ref(),
+                    "SSH_AUTH_SOCK" | "USER" | "LOGNAME" | "XDG_CONFIG_HOME" | "GITHUB_TOKEN"
+                ) || key.starts_with("GH_")))
         {
             cmd.env(k, v);
         }
@@ -496,9 +509,6 @@ impl HostView {
         let head = read_data(&layout.gitdir.join("HEAD"), MAX_SMALL)?
             .ok_or_else(|| format!("{} has no HEAD", layout.gitdir.display()))?;
         fs::write(dir.join("HEAD"), head).map_err(|e| e.to_string())?;
-        if let Some(shallow) = read_data(&layout.common.join("shallow"), MAX_CONFIG)? {
-            fs::write(dir.join("shallow"), shallow).map_err(|e| e.to_string())?;
-        }
         fs::create_dir(dir.join("info")).map_err(|e| e.to_string())?;
         if let Ok(Some(exclude)) = read_data(&layout.common.join("info/exclude"), MAX_CONFIG) {
             fs::write(dir.join("info/exclude"), exclude).map_err(|e| e.to_string())?;
@@ -525,6 +535,7 @@ impl HostView {
             limits: if facts { FACTS } else { PLUMBING },
             offline: facts,
             origin: snap.origin,
+            origin_push: snap.origin_push,
             keys: snap.keys,
             sha256: snap.sha256,
             deferred: None,
@@ -692,6 +703,10 @@ impl HostView {
 
     pub fn origin_url(&self) -> Option<&str> {
         self.origin.as_deref()
+    }
+
+    pub fn origin_push_url(&self) -> Option<&str> {
+        self.origin_push.as_deref().or(self.origin.as_deref())
     }
 
     pub fn has_config_key(&self, key: &str) -> bool {
@@ -1235,6 +1250,27 @@ mod tests {
         assert!(sent(Access::Network));
         assert!(!sent(Access::Write));
         assert!(!sent(Access::Read));
+    }
+
+    #[test]
+    fn the_origin_urls_of_the_repository_are_snapshotted_as_data() {
+        let fx = fixture();
+        git(
+            &fx.repo,
+            &["remote", "add", "origin", "https://example.com/a.git"],
+        );
+        let view = HostView::open(&fx.repo, Access::Read).unwrap();
+        let cfg = fs::read_to_string(view.private_dir().join("config")).unwrap();
+        assert!(!cfg.contains("example.com"), "{cfg}");
+        assert_eq!(view.origin_url(), Some("https://example.com/a.git"));
+        assert_eq!(view.origin_push_url(), Some("https://example.com/a.git"));
+        git(
+            &fx.repo,
+            &["config", "remote.origin.pushurl", "git@example.com:a.git"],
+        );
+        let view = HostView::open(&fx.repo, Access::Read).unwrap();
+        assert_eq!(view.origin_url(), Some("https://example.com/a.git"));
+        assert_eq!(view.origin_push_url(), Some("git@example.com:a.git"));
     }
 
     #[test]

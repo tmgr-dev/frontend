@@ -307,6 +307,8 @@ pub fn publish_env(vars: impl Iterator<Item = (String, String)>) -> Vec<(String,
     out
 }
 
+const STEP_OUTPUT_CAP: usize = 1 << 20;
+
 fn run(argv: &[String], cwd: &Path) -> Result<String> {
     let (program, args) = argv
         .split_first()
@@ -332,7 +334,7 @@ fn run(argv: &[String], cwd: &Path) -> Result<String> {
             .current_dir(scratch.path())
             .args(args);
     }
-    let out = workdir::output_within(&mut cmd, STEP_TIMEOUT)?;
+    let out = workdir::output_bounded(&mut cmd, STEP_TIMEOUT, STEP_OUTPUT_CAP)?;
     if !out.status.success() {
         let msg = String::from_utf8_lossy(&out.stderr);
         let line = msg.lines().next().unwrap_or("failed");

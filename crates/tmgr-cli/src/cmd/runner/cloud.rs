@@ -4,7 +4,7 @@ use super::{attach, connect, emit, rerr, runner_config, Opts, PermissionMode, Ru
 use crate::cmd::notifyenv::NotifyEnv;
 use crate::cmd::shared::resolve_task;
 use crate::ctx::Ctx;
-use crate::gitx::{parse_remote, Git};
+use crate::gitx::parse_remote;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::json;
@@ -383,11 +383,8 @@ pub fn repo_matches(fetch_url: &str, push_url: &str, full_name: &str) -> bool {
 }
 
 pub(crate) fn verify_repo(repo: &Path, full_name: &str) -> Result<()> {
-    let git = Git::at(repo);
-    let fetch = git.query(&["remote", "get-url", "origin"]);
-    let push = git.query(&["remote", "get-url", "--push", "origin"]);
-    match (fetch, push) {
-        (Some(f), Some(p)) if repo_matches(&f, &p, full_name) => Ok(()),
+    match workdir::origin_urls(repo) {
+        Ok((f, p)) if repo_matches(&f, &p, full_name) => Ok(()),
         _ => Err(Error::new(
             Kind::Forbidden,
             format!(
@@ -1488,6 +1485,7 @@ fn repo_state(repo: &Path, head: &str, server_default: Option<&str>) -> Result<R
     } else {
         format!("refs/heads/{default_branch}")
     };
+    let (fetch_url, push_url) = workdir::origin_urls(repo)?;
     let (descends_from_base, merge_commits) = workdir::history_facts(repo, &base, head)?;
     let count = q(&["rev-list", "--count", &format!("{base}..{head}")])?;
     let diff = if descends_from_base {
@@ -1504,8 +1502,8 @@ fn repo_state(repo: &Path, head: &str, server_default: Option<&str>) -> Result<R
     Ok(RepoState {
         default_branch,
         base,
-        fetch_url: q(&["remote", "get-url", "origin"])?,
-        push_url: q(&["remote", "get-url", "--push", "origin"])?,
+        fetch_url,
+        push_url,
         commit_count: count.trim().parse().unwrap_or(0),
         descends_from_base,
         merge_commits,

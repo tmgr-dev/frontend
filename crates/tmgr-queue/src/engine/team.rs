@@ -16,7 +16,6 @@ use tmgr_ipc::api::{
     BundleTeam, CloneSpec, TaskRef, TeamLink, TeamMode, TeamRole, MAX_ASSIGNMENT_BYTES,
     MAX_TEAM_SIZE,
 };
-use tmgr_runner::hostview::Access;
 
 pub const PLAN_FILE: &str = ".tmgr/team-plan.json";
 pub const DONE_FILE: &str = ".tmgr/done";
@@ -773,6 +772,7 @@ fn import_clones(
     m: &Member,
 ) -> std::result::Result<Vec<(String, String)>, String> {
     let mut found: Vec<(String, String)> = Vec::new();
+    let mut before: Vec<Option<String>> = Vec::new();
     for c in &m.clones {
         let dir = Path::new(&m.cwd).join(&c.name);
         if deps.workdirs.identity(&dir) != Some((c.dev, c.ino)) {
@@ -786,14 +786,24 @@ fn import_clones(
             .iter()
             .find(|plan| plan.name == c.name)
             .ok_or("a clone has no repository")?;
+        let old = match crate::workdir::branch_tip(Path::new(&plan.path), &m.branch) {
+            Ok(old) => old,
+            Err(e) => {
+                undo_imports(plans, &found, &before, &m.branch);
+                return Err(e.message);
+            }
+        };
         match crate::workdir::import_branch(&plan.path, &dir, &m.branch) {
-            Ok(sha) if is_sha(&sha) => found.push((c.name.clone(), sha)),
+            Ok(sha) if is_sha(&sha) => {
+                found.push((c.name.clone(), sha));
+                before.push(old);
+            }
             Ok(_) => {
-                undo_imports(plans, &found, &m.branch);
+                undo_imports(plans, &found, &before, &m.branch);
                 return Err("the import returned no commit".into());
             }
             Err(e) => {
-                undo_imports(plans, &found, &m.branch);
+                undo_imports(plans, &found, &before, &m.branch);
                 return Err(e.message);
             }
         }
@@ -801,13 +811,16 @@ fn import_clones(
     Ok(found)
 }
 
-fn undo_imports(plans: &[ClonePlan], found: &[(String, String)], branch: &str) {
-    for (name, sha) in found {
+fn undo_imports(
+    plans: &[ClonePlan],
+    found: &[(String, String)],
+    before: &[Option<String>],
+    branch: &str,
+) {
+    for ((name, sha), old) in found.iter().zip(before) {
         if let Some(plan) = plans.iter().find(|p| &p.name == name) {
-            let _ = crate::workdir::host_view(Path::new(&plan.path), Access::Write).and_then(|v| {
-                v.run(&["update-ref", "-d", &format!("refs/heads/{branch}"), sha])
-                    .map_err(Error::internal)
-            });
+            let _ =
+                crate::workdir::restore_branch(Path::new(&plan.path), branch, old.as_deref(), sha);
         }
     }
 }

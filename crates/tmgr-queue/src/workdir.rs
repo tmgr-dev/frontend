@@ -547,16 +547,10 @@ fn view_git(repo: &Path, access: Access, args: &[&str]) -> Result<String> {
     host_view(repo, access)?.run(args).map_err(Error::internal)
 }
 
-pub(crate) fn repo_git_bytes(
-    repo: &Path,
-    args: &[&str],
-    input: Option<Vec<u8>>,
-) -> Result<Vec<u8>> {
+fn repo_git(repo: &Path, pre: &[&str], args: &[&str], input: Option<Vec<u8>>) -> Result<Vec<u8>> {
     let view = host_view(repo, Access::Read)?;
-    let mut cmd = view
-        .prepared(&["-c", "core.quotepath=off"], args)
-        .map_err(Error::internal)?;
-    let out = output_within_input(&mut cmd, GIT_TIMEOUT, input)?;
+    let mut cmd = view.prepared(pre, args).map_err(Error::internal)?;
+    let out = output_bounded_input(&mut cmd, GIT_TIMEOUT, TRUSTED_OUTPUT_CAP, input)?;
     if !out.status.success() {
         let msg = String::from_utf8_lossy(&out.stderr);
         let line = msg.lines().next().unwrap_or("git failed");
@@ -566,6 +560,14 @@ pub(crate) fn repo_git_bytes(
         ));
     }
     Ok(out.stdout)
+}
+
+pub(crate) fn repo_git_bytes(
+    repo: &Path,
+    args: &[&str],
+    input: Option<Vec<u8>>,
+) -> Result<Vec<u8>> {
+    repo_git(repo, &["-c", "core.quotepath=off"], args, input)
 }
 
 fn git(dir: Option<&Path>, args: &[&str]) -> Result<String> {
@@ -662,16 +664,34 @@ pub fn output_bounded(
     limit: std::time::Duration,
     cap: usize,
 ) -> Result<std::process::Output> {
-    use std::io::Read;
+    output_bounded_input(cmd, limit, cap, None)
+}
+
+pub(crate) fn output_bounded_input(
+    cmd: &mut Command,
+    limit: std::time::Duration,
+    cap: usize,
+    input: Option<Vec<u8>>,
+) -> Result<std::process::Output> {
+    use std::io::{Read, Write};
     use std::process::Stdio;
     use std::sync::mpsc::{channel, RecvTimeoutError};
     use std::time::{Duration, Instant};
     let mut child = cmd
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| Error::internal(format!("cannot run git: {e}")))?;
+    if let (Some(data), Some(mut stdin)) = (input, child.stdin.take()) {
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(&data);
+        });
+    }
     let (tx, rx) = channel::<(bool, Option<Vec<u8>>)>();
     let pipes: [(bool, Option<Box<dyn Read + Send>>); 2] = [
         (
@@ -1249,7 +1269,23 @@ pub(crate) fn clone_tip(clone: &Path, branch: &str) -> Option<String> {
 /// of the clone's objects and borrows the rest from `repo`, which fetches from it. Returns the
 /// imported commit.
 pub fn git_query(repo: &Path, args: &[&str]) -> Result<String> {
-    view_git(repo, Access::Read, args)
+    let mut at = 0;
+    while args.get(at) == Some(&"-c") && args.get(at + 1).is_some() {
+        at += 2;
+    }
+    let out = repo_git(repo, &args[..at], &args[at..], None)?;
+    Ok(String::from_utf8_lossy(&out).trim().to_string())
+}
+
+/// The fetch and push URL of `origin` as stored in `repo`'s config, read as data and never rewritten.
+pub fn origin_urls(repo: &Path) -> Result<(String, String)> {
+    let view = host_view(repo, Access::Read)?;
+    let fetch = view
+        .origin_url()
+        .filter(|u| !u.is_empty())
+        .ok_or_else(|| Error::internal("the repository has no origin"))?;
+    let push = view.origin_push_url().unwrap_or(fetch);
+    Ok((fetch.to_string(), push.to_string()))
 }
 
 /// The branch a clone's HEAD names, read from `.git/HEAD` as data without running git there.
@@ -1591,12 +1627,12 @@ pub fn restore_branch(
         None => view_git(
             repo,
             Access::Write,
-            &["update-ref", "-d", &reference, imported],
+            &["update-ref", "--no-deref", "-d", &reference, imported],
         )?,
         Some(old) => view_git(
             repo,
             Access::Write,
-            &["update-ref", &reference, old, imported],
+            &["update-ref", "--no-deref", &reference, old, imported],
         )?,
     };
     Ok(())
@@ -1622,18 +1658,75 @@ pub fn import_branch(repo: &str, clone: &Path, branch: &str) -> Result<String> {
         Some(&bare),
         &["update-ref", &format!("refs/heads/{branch}"), &sha],
     )?;
-    view_git(
-        Path::new(repo),
-        Access::Write,
-        &[
-            "fetch",
-            "--no-tags",
-            "--",
-            &b,
-            &format!("refs/heads/{branch}:refs/heads/{branch}"),
-        ],
-    )?;
+    let reference = format!("refs/heads/{branch}");
+    let view = host_view(Path::new(repo), Access::Write)?;
+    if checked_out(view.common_dir(), branch)? {
+        return Err(Error::conflict(format!(
+            "the branch {branch} is checked out in the repository"
+        )));
+    }
+    if view.succeeds(&["symbolic-ref", "-q", &reference]) {
+        return Err(Error::conflict(format!(
+            "the branch {branch} is a symbolic ref"
+        )));
+    }
+    view.run(&["fetch", "--no-tags", "--", &b, &reference])
+        .map_err(Error::internal)?;
+    let old = view
+        .run(&[
+            "rev-parse",
+            "--verify",
+            "-q",
+            &format!("{reference}^{{commit}}"),
+        ])
+        .ok();
+    if let Some(old) = &old {
+        if !view.succeeds(&["merge-base", "--is-ancestor", old, &sha]) {
+            return Err(Error::conflict(format!(
+                "the branch {branch} is not an ancestor of the imported commit"
+            )));
+        }
+    }
+    view.run(&[
+        "update-ref",
+        "--no-deref",
+        &reference,
+        &sha,
+        old.as_deref().unwrap_or(""),
+    ])
+    .map_err(Error::internal)?;
     Ok(sha)
+}
+
+const MAX_WORKTREES: usize = 1024;
+
+fn checked_out(common: &Path, branch: &str) -> Result<bool> {
+    let want = format!("ref: refs/heads/{branch}");
+    let main = read_small(common, "HEAD")
+        .ok_or_else(|| Error::internal("the repository HEAD cannot be read"))?;
+    if main.trim() == want {
+        return Ok(true);
+    }
+    let names = match std::fs::read_dir(common.join("worktrees")) {
+        Ok(entries) => entries
+            .take(MAX_WORKTREES + 1)
+            .collect::<std::io::Result<Vec<_>>>()?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e.into()),
+    };
+    if names.len() > MAX_WORKTREES {
+        return Err(Error::internal("the repository has too many worktrees"));
+    }
+    for entry in names {
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| Error::internal("a worktree name is not valid UTF-8"))?;
+        if read_small(common, &format!("worktrees/{name}/HEAD")).is_some_and(|h| h.trim() == want) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn validate_branch(branch: &str) -> Result<()> {
@@ -1701,7 +1794,7 @@ pub fn remove_team_refs(repo: &Path, pickup_id: &str) {
         .filter_map(|l| l.split_once(' '))
         .filter(|(n, _)| n.starts_with(&prefix))
     {
-        let _ = view.run(&["update-ref", "-d", name, sha]);
+        let _ = view.run(&["update-ref", "--no-deref", "-d", name, sha]);
     }
 }
 
