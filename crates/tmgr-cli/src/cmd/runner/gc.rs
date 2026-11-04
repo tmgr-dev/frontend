@@ -802,6 +802,9 @@ fn pickup_candidate(p: &Pickup) -> Candidate {
         return broken("the recorded branch name is not valid");
     }
     let multi = !claim.repos.is_empty();
+    if p.team.is_some() && (multi || !p.clones.is_empty()) {
+        return broken("a team over several repositories is not collected yet");
+    }
     let (anchor, clones) = if multi {
         let Some(primary) = claim
             .repos
@@ -1655,6 +1658,26 @@ mod tests {
         assert!(solo.unusable.is_none());
         assert_eq!(solo.folder, team_dir);
         assert!(solo.team_refs.is_none());
+    }
+
+    #[test]
+    fn a_team_over_several_repositories_is_skipped_and_nothing_is_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (team_dir, lead) = team_tree(&root);
+        let mut p = queue_pickup(&lead, true);
+        p.clones =
+            vec![serde_json::from_value(json!({"name": "backend", "dev": 1, "ino": 2})).unwrap()];
+        let c = pickup_candidate(&p);
+        let why = "a team over several repositories is not collected yet";
+        assert_eq!(c.unusable.as_deref(), Some(why));
+        assert!(c.team_refs.is_none() && c.clones.is_empty());
+        let item = evaluate(&c, &mut None, false).unwrap().unwrap();
+        assert_eq!(item.decision, "skipped");
+        assert_eq!(item.reason.as_deref(), Some(why));
+        for name in ["lead", "w1", "w2"] {
+            assert!(team_dir.join(name).join(".git").is_dir());
+        }
     }
 
     #[test]

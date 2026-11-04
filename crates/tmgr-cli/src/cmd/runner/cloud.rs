@@ -1561,6 +1561,24 @@ pub struct PublishedAll<'a> {
     pub agent: Option<&'a str>,
     pub branch: &'a str,
     pub audit: Option<&'a str>,
+    pub team: bool,
+}
+
+fn published_all<'a>(
+    t: &'a PublishTarget,
+    task_id: i64,
+    workspace_id: i64,
+    urls: &'a [(String, String)],
+) -> PublishedAll<'a> {
+    PublishedAll {
+        task_id: u64::try_from(task_id).unwrap_or_default(),
+        workspace_id,
+        urls,
+        agent: t.agent.as_deref(),
+        branch: &t.branch,
+        audit: t.audit.as_deref(),
+        team: workdir::is_team_lead_clone(&t.clone_dir),
+    }
 }
 
 pub fn report_published(client: &tmgr_core::api::Client, p: &Published) -> Vec<String> {
@@ -1581,6 +1599,10 @@ pub fn report_published(client: &tmgr_core::api::Client, p: &Published) -> Vec<S
 }
 
 pub fn report_published_all(client: &tmgr_core::api::Client, p: &PublishedAll) -> Vec<String> {
+    report_with(client, &all_report(p))
+}
+
+fn all_report<'a>(p: &PublishedAll<'a>) -> Report<'a> {
     let first = p.urls.first().map_or("", |(_, u)| u.as_str());
     let joined: Vec<&str> = p.urls.iter().map(|(_, u)| u.as_str()).collect();
     let list: Vec<String> = p
@@ -1588,20 +1610,17 @@ pub fn report_published_all(client: &tmgr_core::api::Client, p: &PublishedAll) -
         .iter()
         .map(|(repo, url)| format!("- {repo}: {url}"))
         .collect();
-    report_with(
-        client,
-        &Report {
-            task_id: p.task_id,
-            workspace_id: p.workspace_id,
-            pr_url: first,
-            agent: p.agent,
-            branch: p.branch,
-            summary: format!("Opened {}", joined.join(", ")),
-            comment: format!("The agent finished. Pull requests:\n{}", list.join("\n")),
-            audit: p.audit,
-            team: false,
-        },
-    )
+    Report {
+        task_id: p.task_id,
+        workspace_id: p.workspace_id,
+        pr_url: first,
+        agent: p.agent,
+        branch: p.branch,
+        summary: format!("Opened {}", joined.join(", ")),
+        comment: format!("The agent finished. Pull requests:\n{}", list.join("\n")),
+        audit: p.audit,
+        team: p.team,
+    }
 }
 
 const RESUMED_COMMENT: &str =
@@ -1637,7 +1656,7 @@ pub fn report_resumed(client: &tmgr_core::api::Client, p: &PublishedAll) -> Vec<
             summary: format!("Resumed and updated {}", joined.join(", ")),
             comment: resumed_comment(p.urls),
             audit: p.audit,
-            team: false,
+            team: p.team,
         },
     )
 }
@@ -1911,14 +1930,7 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
             let outcome = finish_multi(t, staged, &title, &body, mode)?;
             match &outcome {
                 Outcome::Published(urls) => {
-                    let published = PublishedAll {
-                        task_id: u64::try_from(task_id).unwrap_or_default(),
-                        workspace_id: ws.id,
-                        urls,
-                        agent: t.agent.as_deref(),
-                        branch: &t.branch,
-                        audit: t.audit.as_deref(),
-                    };
+                    let published = published_all(t, task_id, ws.id, urls);
                     let warnings = if resumed {
                         report_resumed(client, &published)
                     } else {
@@ -2013,14 +2025,7 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
             .resuming(&[(full_name.to_string(), wip.clone())]);
         let plan = if draft { plan.draft() } else { plan };
         let urls = publish_all(&plan)?;
-        let published = PublishedAll {
-            task_id: u64::try_from(task_id).unwrap_or_default(),
-            workspace_id: ws.id,
-            urls: &urls,
-            agent: t.agent.as_deref(),
-            branch: &t.branch,
-            audit: t.audit.as_deref(),
-        };
+        let published = published_all(t, task_id, ws.id, &urls);
         let warnings = if draft {
             report_published_all(client, &published)
         } else {
@@ -3664,6 +3669,31 @@ mod tests {
         let mut plain = target(queue_dir, "q_1", false);
         plain.queue = None;
         assert!(!accepted(plain));
+    }
+
+    #[test]
+    fn a_team_multi_publish_reports_the_lead_run() {
+        let urls = [(
+            "o/r".to_string(),
+            "https://github.com/o/r/pull/1".to_string(),
+        )];
+        let at = |dir: &str| PublishTarget {
+            workspace_code: "tmgrdev".into(),
+            task_id: 1,
+            clone_dir: PathBuf::from(dir),
+            branch: "tmgr/tm-1".into(),
+            session_id: None,
+            agent: Some("claude-code".into()),
+            repo: None,
+            clones: Vec::new(),
+            resume: BTreeMap::new(),
+            audit: None,
+            queue: None,
+        };
+        let team = |dir: &str| all_report(&published_all(&at(dir), 1, 2, &urls)).team;
+        assert!(team("/w/be-worktrees/queue/q_1/lead"));
+        assert!(!team("/w/be-worktrees/queue/q_1"));
+        assert!(!team("/w/be-worktrees/queue/q_1/w1"));
     }
 
     #[test]
