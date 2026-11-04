@@ -62,6 +62,10 @@ Reads open the database read-only; a write takes the desktop's write lock for on
 - `tmgr init <shell> --install|--uninstall` edits the rc file between `# >>> tmgr init >>>` markers after printing a diff and asking; it writes `<file>.tmgr-backup-<timestamp>` first and follows symlinks. Without `--install` nothing is written.
 - Exit code 10 (needs_confirmation): a confirmation was required but there is no terminal.
 
+## Shared skills
+
+`tmgr skills list|show <slug>|put <slug> [--file FILE|-]|delete <slug>|attach <persona> <slug>|detach <persona> <slug>` manage the skill library of your account (`/api/shared-skills`) and which personas use each skill (`/api/personas/{uuid}/shared-skills`). These routes accept only a full-access login (`tmgr login` without `--scopes`), so a restricted token gets exit 5. A skill is a Markdown file with front matter (`slug`, `title`, `when`); `put` reads the file or stdin (up to 64 KiB, the server allows 16 KiB), creates or updates the skill, and the server bumps the version only when the text changed. `delete` asks first (`--yes` skips it) and detaches the skill from every persona. Personas are given by UUID, slugs are 1 to 64 letters, digits, `-` or `_`; both are checked before any request. Local workspaces have no shared skills. A persona's own skill with the same slug wins over the attached one (`overridden`). Importing skills from local files is not part of the CLI yet.
+
 ## Today, log, notes and pages
 
 - `tmgr today` combines `GET /api/workspaces/{id}/time-summary`, the workspace agent work list (`GET /api/workspaces/{id}/agent-work`, runs clipped to the local day) and `GET /api/daily-routines/expand`. `tmgr routine done` never calls the toggling `POST /api/daily-routines/tasks/{id}/complete` for a routine that is already done.

@@ -184,6 +184,7 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         Some(Command::Log(args)) => cmd::log::run(ctx, args),
         Some(Command::Today(args)) => cmd::today::run(ctx, args),
         Some(Command::Routine { command }) => cmd::routine::run(ctx, command),
+        Some(Command::Skills { command }) => cmd::skills::run(ctx, command),
         Some(Command::Note(args)) => cmd::note::run(ctx, args),
         Some(Command::Page { command }) => cmd::page::run(ctx, command),
         Some(Command::Board(args)) => cmd::board::run(ctx, args),

@@ -37,6 +37,7 @@ const GROUPS: &[(&str, &[&str])] = &[
             "log",
             "questions",
             "checkpoints",
+            "skills",
         ],
     ),
     ("Queue", &["queue", "autopilot"]),

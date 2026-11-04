@@ -179,6 +179,67 @@ impl Client {
         .map(|_| ())
     }
 
+    pub fn shared_skills(&self) -> Result<Value> {
+        Ok(unwrap_data(self.request(
+            Method::GET,
+            "/api/shared-skills",
+            &[],
+            None,
+            "*",
+        )?))
+    }
+
+    pub fn shared_skill(&self, slug: &str) -> Result<Value> {
+        Ok(unwrap_data(self.request(
+            Method::GET,
+            &format!("/api/shared-skills/{slug}"),
+            &[],
+            None,
+            "*",
+        )?))
+    }
+
+    pub fn put_shared_skill(&self, slug: &str, body: &str) -> Result<Value> {
+        Ok(unwrap_data(self.request(
+            Method::PUT,
+            &format!("/api/shared-skills/{slug}"),
+            &[],
+            Some(&serde_json::json!({ "body": body })),
+            "*",
+        )?))
+    }
+
+    pub fn delete_shared_skill(&self, slug: &str) -> Result<Value> {
+        Ok(unwrap_data(self.request(
+            Method::DELETE,
+            &format!("/api/shared-skills/{slug}"),
+            &[],
+            None,
+            "*",
+        )?))
+    }
+
+    pub fn attach_shared_skill(&self, persona: &str, slug: &str) -> Result<Value> {
+        Ok(unwrap_data(self.request(
+            Method::PUT,
+            &format!("/api/personas/{persona}/shared-skills/{slug}"),
+            &[],
+            None,
+            "*",
+        )?))
+    }
+
+    pub fn detach_shared_skill(&self, persona: &str, slug: &str) -> Result<()> {
+        self.request(
+            Method::DELETE,
+            &format!("/api/personas/{persona}/shared-skills/{slug}"),
+            &[],
+            None,
+            "*",
+        )
+        .map(|_| ())
+    }
+
     fn in_workspace<T>(&self, workspace_id: i64, call: impl FnOnce() -> Result<T>) -> Result<T> {
         self.set_workspace_header(Some(workspace_id));
         let out = call();

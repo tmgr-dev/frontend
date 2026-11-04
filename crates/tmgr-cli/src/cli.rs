@@ -127,6 +127,11 @@ pub enum Command {
         #[command(subcommand)]
         command: PageCommand,
     },
+    /// Shared skills library and attaching skills to personas
+    Skills {
+        #[command(subcommand)]
+        command: SkillsCommand,
+    },
     /// Agent work runs (start, update, finish)
     Agent {
         #[command(subcommand)]
@@ -478,6 +483,44 @@ pub enum RoutineCommand {
         /// Day of the routine instance, YYYY-MM-DD (default: today)
         #[arg(long, value_name = "DATE")]
         date: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SkillsCommand {
+    /// List the skills of your library and the personas they are attached to
+    List,
+    /// Show one library skill with its Markdown
+    Show {
+        /// Skill slug
+        slug: String,
+    },
+    /// Create or update a library skill from a Markdown file with front matter
+    Put {
+        /// Skill slug (must match `slug:` in the front matter)
+        slug: String,
+        /// Markdown file, or `-` for stdin (default: stdin)
+        #[arg(long, value_name = "FILE", value_parser = crate::paths::PathArg)]
+        file: Option<std::path::PathBuf>,
+    },
+    /// Delete a library skill; it is detached from every persona
+    Delete {
+        /// Skill slug
+        slug: String,
+    },
+    /// Attach a library skill to a persona
+    Attach {
+        /// Persona id (UUID)
+        persona: String,
+        /// Skill slug
+        slug: String,
+    },
+    /// Detach a library skill from a persona
+    Detach {
+        /// Persona id (UUID)
+        persona: String,
+        /// Skill slug
+        slug: String,
     },
 }
 

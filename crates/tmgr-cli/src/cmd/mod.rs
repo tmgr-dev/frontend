@@ -35,6 +35,7 @@ pub mod self_update;
 pub mod shared;
 #[cfg(feature = "runner")]
 pub mod signer;
+pub mod skills;
 pub mod status;
 pub mod task;
 #[cfg(feature = "runner")]
