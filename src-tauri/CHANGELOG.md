@@ -3,10 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
-## Unreleased
+## 0.9.95 — 2026-11-04
 
-- Asking a persona: closing or reloading a separate task window now stops a running question. Before, it kept running in the background and using AI tokens.
-- Correction to 0.9.83: "closing the task window stops the question" held only for the task window inside the app, not for a separate task window or a reload.
+- Moving from local mode to a cloud account: if you switch accounts or sign out while your local data and AI provider key are being moved, the move now waits and continues on the next sign-in or app start. Before, it could stop for good or show the result to the wrong account.
+- If this device can't be linked to your account, the warning now says so and offers Skip. Your data stays on this device, and the key keeps working in local mode.
 
 ## 0.9.94 — 2026-11-04
 
@@ -37,6 +37,8 @@ workflow copies that section into the GitHub release and the in-app update notes
 
 - Plugins: input fields, dropdowns and checkboxes drawn by a plugin now show "Plugin: <name>" under them, so you can tell them from TMGR's own fields. They are also kept out of browser and password manager autofill.
 - Ask persona fixes (TM-801, TM-794).
+- Asking a persona: closing or reloading a separate task window now stops a running question. Before, it kept running in the background and using AI tokens.
+- Correction to 0.9.83: "closing the task window stops the question" held only for the task window inside the app, not for a separate task window or a reload.
 
 ## 0.9.87 — 2026-11-03
 
