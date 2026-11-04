@@ -397,6 +397,20 @@ fn exists(p: &Path) -> bool {
     std::fs::symlink_metadata(p).is_ok()
 }
 
+fn hidden_entry(listed: &[u8]) -> Option<String> {
+    listed.split(|b| *b == 0).find_map(|e| {
+        let tag = *e.first()?;
+        let path = String::from_utf8_lossy(e.get(2..)?).into_owned();
+        if tag.is_ascii_lowercase() {
+            Some(format!("assume-unchanged entry {path}"))
+        } else if tag == b'S' {
+            Some(format!("skip-worktree entry {path}"))
+        } else {
+            None
+        }
+    })
+}
+
 pub(super) fn git_facts(dir: &Path, branch: &str) -> std::result::Result<GitFacts, String> {
     let config = String::from_utf8_lossy(&git_text(
         dir,
@@ -478,17 +492,7 @@ pub(super) fn git_facts(dir: &Path, branch: &str) -> std::result::Result<GitFact
     .find(|(f, _)| exists(&dir.join(".git").join(f)))
     .map(|(_, what)| what.to_string());
     let listed = git_text(dir, &["ls-files", "-v", "-z"])?;
-    let hidden = listed.split(|b| *b == 0).find_map(|e| {
-        let tag = *e.first()?;
-        let path = String::from_utf8_lossy(e.get(2..)?).into_owned();
-        if tag.is_ascii_lowercase() {
-            Some(format!("assume-unchanged entry {path}"))
-        } else if tag == b'S' {
-            Some(format!("skip-worktree entry {path}"))
-        } else {
-            None
-        }
-    });
+    let hidden = hidden_entry(&listed);
     let unmerged = String::from_utf8_lossy(&git_text(
         dir,
         &[
@@ -506,6 +510,60 @@ pub(super) fn git_facts(dir: &Path, branch: &str) -> std::result::Result<GitFact
         on_branch,
         entries,
         stash,
+        in_progress,
+        hidden,
+        unmerged,
+    })
+}
+
+fn worker_facts(dir: &Path, branch: &str) -> std::result::Result<GitFacts, String> {
+    if exists(&dir.join(".gitmodules")) || exists(&dir.join(".git/modules")) {
+        return Err("the copy has submodules, which are not checked".into());
+    }
+    let refs = workdir::copy_refs(dir, branch)?;
+    let in_progress = [
+        ("MERGE_HEAD", "merge"),
+        ("CHERRY_PICK_HEAD", "cherry-pick"),
+        ("REVERT_HEAD", "revert"),
+        ("rebase-merge", "rebase"),
+        ("rebase-apply", "rebase"),
+        ("BISECT_LOG", "bisect"),
+    ]
+    .iter()
+    .find(|(f, _)| exists(&dir.join(".git").join(f)))
+    .map(|(_, what)| what.to_string());
+    let tmp = tempfile::tempdir().map_err(|e| e.to_string())?;
+    workdir::trusted_git_dir(tmp.path(), dir, branch, &refs)?;
+    let git = |args: &[&str]| {
+        workdir::trusted_git_bytes(tmp.path(), dir, args).map_err(|e| sanitize_line(&e))
+    };
+    let staged = git(&["ls-files", "-s", "-z"])?;
+    if staged.split(|b| *b == 0).any(|e| e.starts_with(b"160000 ")) {
+        return Err("the copy has submodules, which are not checked".into());
+    }
+    let entries = parse_status(&git(&[
+        "--no-optional-locks",
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--ignored=matching",
+    ])?);
+    let hidden = hidden_entry(&git(&["ls-files", "-v", "-z"])?);
+    let unmerged = String::from_utf8_lossy(&git(&[
+        "for-each-ref",
+        "--no-merged=HEAD",
+        "--format=%(refname:short)",
+        "refs/heads",
+    ])?)
+    .lines()
+    .map(str::to_string)
+    .collect();
+    Ok(GitFacts {
+        head: refs.head,
+        on_branch: true,
+        entries,
+        stash: refs.stash,
         in_progress,
         hidden,
         unmerged,
@@ -992,7 +1050,7 @@ fn gather(c: &Candidate, probe: &Probe, prs: Option<&[Prs]>) -> RunFacts {
                     .find(|(n, _)| *n == k)
                     .and_then(|(_, b)| b.clone()),
                 git: if real_dir(&dir) {
-                    prove_dir(&dir).and_then(|()| git_facts(&dir, &branch))
+                    prove_dir(&dir).and_then(|()| worker_facts(&dir, &branch))
                 } else {
                     Err("the copy is not a real folder".into())
                 },
@@ -1817,73 +1875,128 @@ mod tests {
         assert!(skip(&c).contains("worker w2"));
     }
 
+    fn plain_copy(root: &Path) -> PathBuf {
+        let dir = root.join("w");
+        std::fs::create_dir(&dir).unwrap();
+        sh(&dir, &["init", "-q", "-b", "tmgr/w1"]);
+        std::fs::write(dir.join("a.txt"), "a").unwrap();
+        sh(&dir, &["add", "a.txt"]);
+        sh(&dir, &["commit", "-q", "-m", "init"]);
+        dir
+    }
+
+    fn tmp_root() -> (tempfile::TempDir, PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        (tmp, root)
+    }
+
     #[test]
-    fn a_worker_copy_with_a_hostile_git_config_runs_nothing_and_an_unknown_key_keeps_it() {
-        use tmgr_queue::workdir::{
-            clone_dir, lead_dir, worker_branch, worker_dir, GitClone, WorkDirs,
-        };
-        for (key, value) in [("core.fsmonitor", "hook"), ("tmgrtest.unknown", "1")] {
-            let tmp = tempfile::tempdir().unwrap();
-            let root = std::fs::canonicalize(tmp.path()).unwrap();
-            let repo = root.join("proj");
-            std::fs::create_dir(&repo).unwrap();
-            sh(&repo, &["init", "-q", "-b", "main"]);
-            sh(&repo, &["commit", "-q", "--allow-empty", "-m", "init"]);
-            let r = repo.to_string_lossy().into_owned();
-            let team = clone_dir(&r, "q_abc").unwrap();
-            let (lead, w1) = (lead_dir(&team), worker_dir(&team, 1));
-            GitClone
-                .prepare_member(&r, "q_abc", &lead.to_string_lossy(), "tmgr/x")
-                .unwrap();
-            GitClone
-                .prepare_member(
-                    &r,
-                    "q_abc",
-                    &w1.to_string_lossy(),
-                    &worker_branch("q_abc", 1),
-                )
-                .unwrap();
-            let base = sh(&w1, &["rev-parse", "HEAD"]);
-            let lead_head = sh(&lead, &["rev-parse", "HEAD"]);
-            let marker = root.join("ran");
-            let hook = root.join("hook");
-            std::fs::write(&hook, format!("#!/bin/sh\ntouch '{}'\n", marker.display())).unwrap();
-            let value = if key == "core.fsmonitor" {
-                hook.to_string_lossy().into_owned()
-            } else {
-                value.to_string()
-            };
-            sh(&w1, &["config", key, &value]);
-            let c = Candidate {
-                origin: Origin::Pickup("q_abc".into()),
-                shown: lead.clone(),
-                folder: team.clone(),
-                levels: 2,
-                branch: "tmgr/x".into(),
-                session: None,
-                multi: false,
-                clones: vec![CloneSpec {
-                    name: String::new(),
-                    dir: lead.clone(),
-                    repo: Err("unused".into()),
-                    identity: None,
-                }],
-                unusable: None,
-                in_use: None,
-                drop_if_gone: false,
-                team_refs: Some((repo.clone(), "q_abc".into())),
-                team_bases: vec![(1, Some(base))],
-            };
-            let prs = [Prs::Listed(vec![pr(1, "MERGED", &lead_head, false)])];
-            let verdict = decide(&gather(&c, &Probe::default(), Some(&prs)));
-            if key != "core.fsmonitor" {
-                match verdict {
-                    Decision::Skip(why) => assert!(why.contains("worker w1"), "{key}: {why}"),
-                    d => panic!("{key}: expected a skip, got {d:?}"),
-                }
-            }
-            assert!(!marker.exists(), "{key}");
-            assert!(w1.exists());
+    fn worker_facts_never_run_what_the_copy_configures() {
+        let (_t, root) = tmp_root();
+        let dir = plain_copy(&root);
+        let marker = root.join("ran");
+        let script = root.join("script");
+        std::fs::write(
+            &script,
+            format!("#!/bin/sh\ntouch '{}'\ncat\n", marker.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        let sc = script.to_string_lossy().into_owned();
+        std::fs::write(dir.join(".gitattributes"), "* filter=x\n").unwrap();
+        sh(&dir, &["add", ".gitattributes"]);
+        sh(&dir, &["commit", "-q", "-m", "attrs"]);
+        for (k, v) in [
+            ("core.fsmonitor", sc.as_str()),
+            ("core.pager", sc.as_str()),
+            ("alias.status", "!touch ran-alias"),
+            ("filter.x.clean", sc.as_str()),
+            ("filter.x.smudge", sc.as_str()),
+            ("core.hooksPath", root.to_str().unwrap()),
+        ] {
+            sh(&dir, &["config", k, v]);
         }
+        std::fs::write(
+            dir.join(".git/hooks/post-index-change"),
+            format!("#!/bin/sh\ntouch '{}'\n", marker.display()),
+        )
+        .unwrap();
+        let facts = worker_facts(&dir, "tmgr/w1").unwrap();
+        assert_eq!(
+            facts.head,
+            sh(&dir, &["-c", "core.fsmonitor=false", "rev-parse", "HEAD"])
+        );
+        assert!(facts.on_branch && !facts.stash && facts.entries.is_empty());
+        assert!(facts.hidden.is_none() && facts.in_progress.is_none());
+        std::fs::write(dir.join("a.txt"), "changed").unwrap();
+        std::fs::write(dir.join("new.txt"), "n").unwrap();
+        let facts = worker_facts(&dir, "tmgr/w1").unwrap();
+        assert!(facts
+            .entries
+            .iter()
+            .any(|e| e.path == "a.txt" && matches!(e.kind, EntryKind::Tracked)));
+        assert!(facts
+            .entries
+            .iter()
+            .any(|e| e.path == "new.txt" && matches!(e.kind, EntryKind::Untracked)));
+        assert!(!marker.exists() && !dir.join("ran-alias").exists());
+    }
+
+    #[test]
+    fn worker_facts_do_not_read_the_copys_git_config() {
+        let (_t, root) = tmp_root();
+        let dir = plain_copy(&root);
+        sh(&dir, &["config", "tmgrtest.unknown", "1"]);
+        sh(&dir, &["config", "include.path", "/nonexistent/config"]);
+        assert!(git_facts(&dir, "tmgr/w1").is_err());
+        assert!(worker_facts(&dir, "tmgr/w1").is_ok());
+    }
+
+    #[test]
+    fn worker_facts_refuse_other_branches_and_report_stash_and_head() {
+        let (_t, root) = tmp_root();
+        let dir = plain_copy(&root);
+        sh(&dir, &["branch", "merged"]);
+        assert!(worker_facts(&dir, "tmgr/w1").unwrap().unmerged.is_empty());
+        sh(&dir, &["checkout", "-q", "-b", "extra"]);
+        sh(&dir, &["commit", "-q", "--allow-empty", "-m", "side"]);
+        sh(&dir, &["checkout", "-q", "tmgr/w1"]);
+        assert_eq!(worker_facts(&dir, "tmgr/w1").unwrap().unmerged, ["extra"]);
+        sh(&dir, &["pack-refs", "--all"]);
+        assert_eq!(worker_facts(&dir, "tmgr/w1").unwrap().unmerged, ["extra"]);
+        sh(&dir, &["branch", "-q", "-D", "extra"]);
+        assert!(!worker_facts(&dir, "tmgr/w1").unwrap().stash);
+        sh(&dir, &["update-ref", "refs/stash", "HEAD"]);
+        assert!(worker_facts(&dir, "tmgr/w1").unwrap().stash);
+        sh(&dir, &["pack-refs", "--all"]);
+        assert!(worker_facts(&dir, "tmgr/w1").unwrap().stash);
+        assert!(worker_facts(&dir, "tmgr/other")
+            .unwrap_err()
+            .contains("not on the branch"));
+        sh(&dir, &["checkout", "-q", "--detach"]);
+        assert!(worker_facts(&dir, "tmgr/w1").is_err());
+    }
+
+    #[test]
+    fn worker_facts_see_hidden_index_entries_and_unfinished_operations() {
+        let (_t, root) = tmp_root();
+        let dir = plain_copy(&root);
+        sh(&dir, &["update-index", "--assume-unchanged", "a.txt"]);
+        assert!(worker_facts(&dir, "tmgr/w1")
+            .unwrap()
+            .hidden
+            .unwrap()
+            .contains("a.txt"));
+        sh(&dir, &["update-index", "--no-assume-unchanged", "a.txt"]);
+        std::fs::write(dir.join(".git/MERGE_HEAD"), "x").unwrap();
+        assert_eq!(
+            worker_facts(&dir, "tmgr/w1")
+                .unwrap()
+                .in_progress
+                .as_deref(),
+            Some("merge")
+        );
     }
 }

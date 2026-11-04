@@ -830,6 +830,168 @@ pub fn clone_head_branch(clone: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
+/// What a team worker's copy says about its refs, read as data without running git there.
+pub struct CopyRefs {
+    pub head: String,
+    pub stash: bool,
+    pub others: Vec<(String, String)>,
+}
+
+fn loose_refs(dir: &std::fs::File, prefix: &str, out: &mut Vec<String>) -> bool {
+    for name in entries(dir) {
+        let full = format!("{prefix}{}", name.to_string_lossy());
+        if let Some(sub) = open_in(dir, &name, libc::O_DIRECTORY) {
+            if !loose_refs(&sub, &format!("{full}/"), out) {
+                return false;
+            }
+        } else if open_in(dir, &name, libc::O_NONBLOCK)
+            .and_then(|f| f.metadata().ok())
+            .is_some_and(|m| m.file_type().is_file())
+        {
+            out.push(full);
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
+/// The branch tip, the stash flag and the other local branches of a worker's copy. HEAD must name
+/// `branch`.
+pub fn copy_refs(copy: &Path, branch: &str) -> std::result::Result<CopyRefs, String> {
+    if clone_head_branch(copy).as_deref() != Some(branch) {
+        return Err(format!("HEAD is not on the branch {branch}"));
+    }
+    let reference = format!("refs/heads/{branch}");
+    let heads = open_beneath(copy, ".git/refs/heads", libc::O_DIRECTORY)
+        .ok_or("the copy's branch list cannot be read")?;
+    let mut loose = Vec::new();
+    if !loose_refs(&heads, "refs/heads/", &mut loose) {
+        return Err("the copy's branch list has entries that are not plain files".into());
+    }
+    let mut others: BTreeMap<String, String> = BTreeMap::new();
+    for name in loose.iter().filter(|r| **r != reference) {
+        let text = read_small(copy, &format!(".git/{name}"))
+            .ok_or("the copy's branch list cannot be read")?;
+        let sha = text.trim();
+        if !is_sha(sha) {
+            return Err("the copy has a branch that is not readable".into());
+        }
+        others.insert(name.clone(), sha.to_string());
+    }
+    let mut packed_tip = None;
+    let mut stash = open_beneath(copy, ".git/refs/stash", libc::O_NONBLOCK).is_some();
+    if std::fs::symlink_metadata(copy.join(".git/packed-refs")).is_ok() {
+        let text =
+            read_small(copy, ".git/packed-refs").ok_or("the copy's packed refs cannot be read")?;
+        for line in text.lines() {
+            if line.starts_with('#') || line.starts_with('^') {
+                continue;
+            }
+            let (sha, name) = line
+                .split_once(' ')
+                .ok_or("the copy's packed refs are malformed")?;
+            if name == "refs/stash" {
+                stash = true;
+            } else if name == reference {
+                packed_tip = is_sha(sha).then(|| sha.to_string());
+            } else if name.starts_with("refs/heads/") {
+                if !is_sha(sha) {
+                    return Err("the copy has a branch that is not readable".into());
+                }
+                others
+                    .entry(name.to_string())
+                    .or_insert_with(|| sha.to_string());
+            }
+        }
+    }
+    let head = match read_small(copy, &format!(".git/{reference}")) {
+        Some(t) => Some(t.trim().to_string()).filter(|s| is_sha(s)),
+        None => packed_tip,
+    };
+    Ok(CopyRefs {
+        head: head.ok_or("the copy's branch has no readable commit")?,
+        stash,
+        others: others.into_iter().collect(),
+    })
+}
+
+const MAX_INDEX: u64 = 64 << 20;
+
+/// Makes `git_dir` (an empty folder of ours) a bare repository that reads a worker's copy as data:
+/// its objects through alternates, its index, and its branches. None of the copy's git
+/// settings are carried over.
+pub fn trusted_git_dir(
+    git_dir: &Path,
+    copy: &Path,
+    branch: &str,
+    refs: &CopyRefs,
+) -> std::result::Result<(), String> {
+    use std::io::Read;
+    let objects = copy.join(".git/objects");
+    let objects = objects
+        .to_str()
+        .filter(|o| !o.contains('\n'))
+        .ok_or("the copy's path is not plain")?;
+    let mut init = fixed_git_command();
+    init.args(["init", "--bare", "-q"])
+        .arg(git_dir)
+        .current_dir(git_dir);
+    let out = output_within(&mut init, GIT_TIMEOUT).map_err(|e| e.message)?;
+    if !out.status.success() {
+        return Err("git init failed".into());
+    }
+    let file = open_beneath(copy, ".git/index", libc::O_NONBLOCK).ok_or("the copy has no index")?;
+    let meta = file.metadata().map_err(|e| e.to_string())?;
+    if !meta.file_type().is_file() || meta.len() > MAX_INDEX {
+        return Err("the copy's index is not a plain file of a sane size".into());
+    }
+    let mut index = Vec::new();
+    file.take(MAX_INDEX)
+        .read_to_end(&mut index)
+        .map_err(|e| e.to_string())?;
+    let write = || -> std::io::Result<()> {
+        std::fs::write(
+            git_dir.join("objects/info/alternates"),
+            format!("{objects}\n"),
+        )?;
+        std::fs::write(git_dir.join("index"), &index)?;
+        std::fs::write(git_dir.join("HEAD"), format!("ref: refs/heads/{branch}\n"))?;
+        let all = std::iter::once((format!("refs/heads/{branch}"), &refs.head))
+            .chain(refs.others.iter().map(|(n, s)| (n.clone(), s)));
+        for (name, sha) in all {
+            let path = git_dir.join(&name);
+            std::fs::create_dir_all(path.parent().unwrap_or(git_dir))?;
+            std::fs::write(path, format!("{sha}\n"))?;
+        }
+        Ok(())
+    };
+    write().map_err(|e| e.to_string())
+}
+
+/// Runs git over a folder from `trusted_git_dir` with `copy` as the work tree.
+pub fn trusted_git_bytes(
+    git_dir: &Path,
+    copy: &Path,
+    args: &[&str],
+) -> std::result::Result<Vec<u8>, String> {
+    let mut cmd = fixed_git_command();
+    cmd.arg("--git-dir")
+        .arg(git_dir)
+        .arg("--work-tree")
+        .arg(copy)
+        .args(["-c", "core.bare=false", "-c", "core.quotepath=off"])
+        .args(args)
+        .current_dir(git_dir);
+    let out = output_within(&mut cmd, GIT_TIMEOUT).map_err(|e| e.message)?;
+    if !out.status.success() {
+        let msg = String::from_utf8_lossy(&out.stderr);
+        let line = msg.lines().next().unwrap_or("failed");
+        return Err(format!("git {}: {line}", args.first().unwrap_or(&"")));
+    }
+    Ok(out.stdout)
+}
+
 /// Whether the new commits `base..head` sit on `base`'s history (no root commit among them, a shared
 /// merge base; `base` may have moved on since), and how many of them are merge commits.
 pub fn history_facts(repo: &Path, base: &str, head: &str) -> Result<(bool, usize)> {
