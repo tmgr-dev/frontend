@@ -21,6 +21,7 @@ struct Listen {
   waiters: usize,
   last: Option<Instant>,
   idle_pending: bool,
+  delivered: u64,
 }
 
 impl Listen {
@@ -80,9 +81,22 @@ impl Hub {
     self.listen.lock().unwrap_or_else(|p| p.into_inner())
   }
 
-  fn mark(&self, mut view: CardView) -> CardView {
-    view.listening = self.lock_listen().get(&view.id).is_some_and(|l| l.active(self.grace));
+  fn mark(&self, store: &Store, mut view: CardView) -> CardView {
+    let (listening, upto) = self.lock_listen().get(&view.id).map_or((false, 0), |l| (l.active(self.grace), l.delivered));
+    view.listening = listening;
+    let seqs = store.message_event_seqs(&view.id);
+    for (k, m) in view.messages.iter_mut().filter(|m| m.author == "owner").enumerate() {
+      m.delivered = seqs.get(k).is_some_and(|s| *s <= upto);
+    }
     view
+  }
+
+  fn deliver(&self, id: &str, seq: u64) -> bool {
+    let mut map = self.lock_listen();
+    let l = map.entry(id.to_owned()).or_default();
+    let rose = seq > l.delivered;
+    l.delivered = l.delivered.max(seq);
+    rose
   }
 
   fn enter<'a>(self: &'a Arc<Self>, id: &str) -> Waiting<'a> {
@@ -126,7 +140,8 @@ impl Hub {
     if !left.is_zero() {
       return Some(left);
     }
-    map.remove(id);
+    l.last = None;
+    l.idle_pending = false;
     drop(map);
     self.changed(Change::Updated);
     None
@@ -194,14 +209,28 @@ impl Hub {
       }
     }
     let id = guard.canon(id)?;
+    let mut rose = !final_only && self.deliver(&id, since);
     if let Some(e) = guard.wait_event(&id, since, final_only)? {
+      rose |= !final_only && !e.is_final() && self.deliver(&id, e.seq);
+      drop(guard);
+      if rose {
+        self.changed(Change::Updated);
+      }
       return Ok((id, Some(e)));
     }
     drop(guard);
-    let _waiting = self.enter(&id);
+    if rose {
+      self.changed(Change::Updated);
+    }
+    let _waiting = (!final_only).then(|| self.enter(&id));
     guard = self.lock();
     loop {
       if let Some(e) = guard.wait_event(&id, since, final_only)? {
+        let rose = !final_only && !e.is_final() && self.deliver(&id, e.seq);
+        drop(guard);
+        if rose {
+          self.changed(Change::Updated);
+        }
         return Ok((id, Some(e)));
       }
       let left = deadline.saturating_duration_since(Instant::now());
@@ -239,19 +268,21 @@ impl Hub {
   }
 
   pub fn get(&self, id: &str) -> Result<CardView, String> {
-    self.lock().get(id)?.map(|v| self.mark(v)).ok_or_else(|| "unknown card".to_owned())
+    let store = self.lock();
+    let view = store.get(id)?.ok_or_else(|| "unknown card".to_owned())?;
+    Ok(self.mark(&store, view))
   }
 
   pub fn get_with_patches(&self, id: &str) -> Result<(CardView, Vec<PatchIn>), String> {
     let store = self.lock();
     let view = store.get(id)?.ok_or_else(|| "unknown card".to_owned())?;
     let patches = store.patches(&view.id)?;
-    drop(store);
-    Ok((self.mark(view), patches))
+    Ok((self.mark(&store, view), patches))
   }
 
   pub fn list(&self) -> Result<Vec<CardView>, String> {
-    Ok(self.lock().list()?.into_iter().map(|v| self.mark(v)).collect())
+    let store = self.lock();
+    Ok(store.list()?.into_iter().map(|v| self.mark(&store, v)).collect())
   }
 
   pub fn check_liveness(&self, alive: impl Fn(u32) -> bool) {
@@ -407,6 +438,98 @@ mod tests {
     let weak = Arc::downgrade(&hub);
     drop(hub);
     assert!(weak.upgrade().is_none());
+  }
+
+  fn say(hub: &Hub, id: &str, text: &str) {
+    hub.message(id, MessageIn { text: text.into(), ..Default::default() }).unwrap();
+  }
+
+  fn delivered(hub: &Hub, id: &str) -> Vec<bool> {
+    hub.get(id).unwrap().messages.iter().filter(|m| m.author == "owner").map(|m| m.delivered).collect()
+  }
+
+  #[test]
+  fn a_returned_message_stays_delivered_after_the_grace() {
+    let (hub, _, id) = rig();
+    say(&hub, &id, "one");
+    assert_eq!(delivered(&hub, &id), [false]);
+    assert_eq!(hub.wait(&id, 0, Duration::ZERO, false).unwrap().1.unwrap().seq, 1);
+    assert_eq!(delivered(&hub, &id), [true]);
+    until("idle", || !listening(&hub, &id));
+    assert_eq!(delivered(&hub, &id), [true]);
+    assert!(hub.list().unwrap()[0].messages[0].delivered);
+    assert!(hub.get_with_patches(&id).unwrap().0.messages[0].delivered);
+  }
+
+  #[test]
+  fn delivery_follows_message_events_not_event_seqs() {
+    let (hub, updates, id) = rig();
+    hub.answer(&id, AnswerIn { deferred: true, ..Default::default() }).unwrap();
+    say(&hub, &id, "one");
+    say(&hub, &id, "two");
+    let first = hub.wait(&id, 0, Duration::ZERO, false).unwrap().1.unwrap();
+    assert_eq!(first.seq, 1);
+    assert_eq!(delivered(&hub, &id), [false, false]);
+    let second = hub.wait(&id, first.seq, Duration::ZERO, false).unwrap().1.unwrap();
+    assert_eq!(second.seq, 2);
+    assert_eq!(delivered(&hub, &id), [true, false]);
+    until("idle", || !listening(&hub, &id));
+    updates.store(0, Ordering::SeqCst);
+    say(&hub, &id, "three");
+    assert_eq!(delivered(&hub, &id), [true, false, false]);
+    hub.wait(&id, second.seq, Duration::ZERO, false).unwrap();
+    assert_eq!(delivered(&hub, &id), [true, true, false]);
+    hub.wait(&id, 3, Duration::ZERO, false).unwrap();
+    assert_eq!(delivered(&hub, &id), [true, true, true]);
+  }
+
+  #[test]
+  fn a_cursor_past_a_message_marks_it_delivered_without_returning_it() {
+    let (hub, updates, id) = rig();
+    say(&hub, &id, "one");
+    updates.store(0, Ordering::SeqCst);
+    assert!(hub.wait(&id, 1, Duration::ZERO, false).unwrap().1.is_none());
+    assert_eq!(delivered(&hub, &id), [true]);
+    assert!(updates.load(Ordering::SeqCst) >= 1);
+  }
+
+  #[test]
+  fn a_final_only_wait_neither_listens_nor_delivers() {
+    let (hub, _, id) = rig();
+    say(&hub, &id, "one");
+    let (h, id2) = (hub.clone(), id.clone());
+    let t = std::thread::spawn(move || h.wait(&id2, 5, Duration::from_millis(300), true).unwrap());
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(!listening(&hub, &id));
+    assert_eq!(delivered(&hub, &id), [false]);
+    assert!(t.join().unwrap().1.is_none());
+    assert!(!listening(&hub, &id));
+    assert_eq!(delivered(&hub, &id), [false]);
+  }
+
+  #[test]
+  fn waits_do_not_deadlock_with_concurrent_reads() {
+    let (hub, _, id) = rig();
+    say(&hub, &id, "one");
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut handles = Vec::new();
+    for final_only in [true, false, true, false] {
+      let (h, id2, tx) = (hub.clone(), id.clone(), tx.clone());
+      handles.push(std::thread::spawn(move || {
+        for _ in 0..20 {
+          h.wait(&id2, 0, Duration::from_millis(5), final_only).unwrap();
+          h.get(&id2).unwrap();
+          h.list().unwrap();
+        }
+        tx.send(()).unwrap();
+      }));
+    }
+    for _ in 0..4 {
+      rx.recv_timeout(Duration::from_secs(10)).expect("deadlock");
+    }
+    for t in handles {
+      t.join().unwrap();
+    }
   }
 
   #[test]

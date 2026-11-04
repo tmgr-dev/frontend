@@ -75,6 +75,7 @@ export interface CardMessage {
 	line?: number;
 	action?: MessageAction;
 	created_ms: number;
+	delivered?: boolean;
 }
 
 export interface LineComment {

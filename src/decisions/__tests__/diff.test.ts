@@ -133,7 +133,9 @@ describe('agentWaitNotice', () => {
 
 	it('shows nothing when there are no messages or the last is the agent', () => {
 		expect(agentWaitNotice([], ctx)).toBeNull();
-		expect(agentWaitNotice([owner, msg({ author: 'agent', seq: 2 })], ctx)).toBeNull();
+		expect(
+			agentWaitNotice([owner, msg({ author: 'agent', seq: 2 })], ctx),
+		).toBeNull();
 	});
 
 	it('shows nothing for a final card or when replies are impossible', () => {
@@ -147,9 +149,23 @@ describe('agentWaitNotice', () => {
 		).toBe('The session ended, so no agent will see this.');
 	});
 
-	it('reports that nobody is listening', () => {
+	it('reports an ended session over a delivered message', () => {
+		const seen = { ...owner, delivered: true };
+		expect(
+			agentWaitNotice([seen], { ...ctx, sessionGone: true, listening: false }),
+		).toBe('The session ended, so no agent will see this.');
+	});
+
+	it('reports that nobody is listening while the message is undelivered', () => {
 		expect(agentWaitNotice([owner], { ...ctx, listening: false })).toBe(
 			"No agent is listening right now; it'll see this when it comes back.",
+		);
+	});
+
+	it('does not claim nobody has the message once it was delivered', () => {
+		const seen = { ...owner, delivered: true };
+		expect(agentWaitNotice([seen], { ...ctx, listening: false })).toBe(
+			'waiting for the agent…',
 		);
 	});
 
@@ -157,8 +173,12 @@ describe('agentWaitNotice', () => {
 		expect(agentWaitNotice([owner], ctx)).toBe('waiting for the agent…');
 		const edge = { ...ctx, now: 10_000 + AGENT_WAIT_MS - 1 };
 		expect(agentWaitNotice([owner], edge)).toBe('waiting for the agent…');
-		expect(agentWaitNotice([owner], { ...ctx, now: 10_000 + AGENT_WAIT_MS })).toBe(
+		const late = { ...ctx, now: 10_000 + AGENT_WAIT_MS };
+		expect(agentWaitNotice([owner], late)).toBe(
 			"The agent hasn't replied yet; it'll see this when it next checks.",
+		);
+		expect(agentWaitNotice([{ ...owner, delivered: true }], late)).toBe(
+			"The agent hasn't replied yet.",
 		);
 	});
 });

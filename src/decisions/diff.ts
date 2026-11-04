@@ -95,11 +95,15 @@ export const agentWaitNotice = (
 		return null;
 	}
 	if (ctx.sessionGone) return 'The session ended, so no agent will see this.';
-	if (!ctx.listening) {
+	const delivered = last.delivered === true;
+	if (!ctx.listening && !delivered) {
 		return "No agent is listening right now; it'll see this when it comes back.";
 	}
-	if (ctx.now - last.created_ms < AGENT_WAIT_MS) return 'waiting for the agent…';
-	return "The agent hasn't replied yet; it'll see this when it next checks.";
+	if (ctx.now - last.created_ms < AGENT_WAIT_MS)
+		return 'waiting for the agent…';
+	return delivered
+		? "The agent hasn't replied yet."
+		: "The agent hasn't replied yet; it'll see this when it next checks.";
 };
 
 export type RequestSeqs = Record<string, number>;

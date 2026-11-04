@@ -92,6 +92,7 @@ pub struct MessageView {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub line: Option<u32>,
   pub created_ms: i64,
+  pub delivered: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -441,6 +442,7 @@ impl Store {
           file: m.get(3)?,
           line: m.get::<_, Option<i64>>(4)?.map(|l| l as u32),
           created_ms: m.get(5)?,
+          delivered: false,
         })
       })
       .map_err(sql_err)?
@@ -733,6 +735,17 @@ impl Store {
       .collect::<Result<Vec<_>, _>>()
       .map_err(sql_err)?;
     rows.iter().map(|j| serde_json::from_str(j).map_err(json_err)).collect()
+  }
+
+  pub fn message_event_seqs(&self, id: &str) -> Vec<u64> {
+    let query = || -> rusqlite::Result<Vec<u64>> {
+      self
+        .conn
+        .prepare("SELECT seq FROM events WHERE card_id=?1 AND json_extract(json,'$.type')='message' ORDER BY seq")?
+        .query_map([id], |r| Ok(r.get::<_, i64>(0)? as u64))?
+        .collect()
+    };
+    query().unwrap_or_default()
   }
 
   pub fn wait_event(&self, id: &str, since: u64, final_only: bool) -> Result<Option<Event>, String> {
