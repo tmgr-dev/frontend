@@ -25,6 +25,7 @@ mod attach_templates;
 mod attach_title;
 mod attach_usage;
 pub(crate) mod bind;
+pub(crate) mod catalog;
 pub(crate) mod checkpoints;
 pub(crate) mod cloud;
 mod gate;
@@ -39,6 +40,7 @@ mod restart;
 mod restore;
 mod run_task;
 mod service;
+mod session_list;
 mod session_wt;
 mod trusted;
 mod watch;
@@ -95,6 +97,27 @@ pub enum SessionCmd {
     Summary(SummaryArgs),
     /// [experimental] Export a Claude session as Markdown (to a file or a TMGR page); only when you ask, after a secret scan
     Export(ExportArgs),
+    /// [experimental] List past sessions: tmgr's own and those of Claude Code and Codex on this machine (nothing leaves it)
+    List(SessionListArgs),
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum SessionAgent {
+    Claude,
+    Codex,
+}
+
+#[derive(Args)]
+pub struct SessionListArgs {
+    /// Only sessions of this agent
+    #[arg(long, value_enum)]
+    pub agent: Option<SessionAgent>,
+    /// Find sessions whose conversation contains these words (builds a local index first)
+    #[arg(long, value_name = "TEXT")]
+    pub search: Option<String>,
+    /// Most rows to show
+    #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(1..=1000))]
+    pub limit: u32,
 }
 
 #[derive(Args)]

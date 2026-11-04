@@ -278,6 +278,15 @@ fn consent(command: Option<ConsentCommand>) -> Result<Output> {
         .store
         .change_log_consent(&change, Utc::now())
         .map_err(fail)?;
+    #[cfg(feature = "runner")]
+    if let Ok(dir) = tmgr_core::config::config_dir() {
+        let granted = c.state == ReadLogs::Granted;
+        crate::cmd::runner::catalog::index::enforce_consent(
+            &crate::cmd::runner::catalog::index::index_path(&dir),
+            granted && c.claude,
+            granted && c.codex,
+        );
+    }
     let tools: Vec<&str> = [(c.claude, "Claude Code"), (c.codex, "Codex")]
         .into_iter()
         .filter_map(|(on, name)| on.then_some(name))

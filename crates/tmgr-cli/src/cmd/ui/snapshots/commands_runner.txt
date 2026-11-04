@@ -35,6 +35,7 @@ resume | Other | session
 rename | Agents | session, name
 session summary | Other | session, plain
 session export | Other | session, md, page, remove_findings
+session list | Other | agent, search, limit
 time | Time | today, since, by
 time sync | Time | state
 time idle | Time | seconds

@@ -127,6 +127,9 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
         RunnerCommands::Session {
             command: super::SessionCmd::Export(a),
         } => super::attach_export_cmd::run(o, a),
+        RunnerCommands::Session {
+            command: super::SessionCmd::List(a),
+        } => super::session_list::run(o, a),
     }
 }
 
@@ -451,7 +454,7 @@ fn paint_badge(o: &Opts, s: &SessionInfo) -> String {
     }
 }
 
-fn short_cwd(cwd: &str) -> String {
+pub(super) fn short_cwd(cwd: &str) -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     if home.is_empty() {
         return cwd.to_string();
