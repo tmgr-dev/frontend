@@ -3,8 +3,5 @@
 	"identifier": "skill-import",
 	"description": "Local skill scanner: main window only.",
 	"windows": ["main"],
-	"permissions": [
-		"allow-skills-scan",
-		"allow-skills-pick-folder"
-	]
+	"permissions": ["allow-skills-scan", "allow-skills-pick-folder"]
 }
