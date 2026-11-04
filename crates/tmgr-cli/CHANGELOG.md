@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.71
 
 - Hardening: before running host `git` in a work folder, the runner and `tmgr attach` check where the folder's `.git` points. Only the folder's own git directory or a worktree that its repository registered for this folder are accepted; anything else hides the attach Git panel.
 
