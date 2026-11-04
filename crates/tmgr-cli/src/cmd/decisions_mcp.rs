@@ -137,12 +137,12 @@ pub fn defs() -> Vec<Value> {
         }),
         json!({
             "name": "reply_owner",
-            "description": "Answer an interim \"message\" event from the owner (a thread comment, chat message or fix request) on a card, then wait for the next event like get_answer. Use text for a general reply and line_replies to answer comments on specific lines of the diff.",
+            "description": "Answer an interim \"message\" event from the owner (a thread comment, chat message or fix request) on a card, then wait for the next event like get_answer. Use line_replies to answer comments on specific lines of the diff. A text-only reply goes to the general chat, unless the owner has no unanswered chat message and exactly one line thread is waiting for you: then it is posted in that thread. If two or more line threads are waiting the call is refused with the list; answer them with line_replies.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "card_id": {"type": "string", "description": "card_id of the card"},
-                    "text": {"type": "string", "maxLength": MAX_REPLY, "description": "Your reply"},
+                    "text": {"type": "string", "maxLength": MAX_REPLY, "description": "Your reply. Goes to the general chat, or to the single line thread waiting for you when the chat has no unanswered owner message; refused when two or more line threads are waiting (use line_replies)"},
                     "line_replies": {"type": "array", "maxItems": 50, "items": {
                         "type": "object",
                         "properties": {"file": {"type": "string"}, "line": {"type": "integer", "minimum": 1}, "text": {"type": "string"}},

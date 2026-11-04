@@ -66,7 +66,7 @@ impl Drop for Server {
   }
 }
 
-fn handle(stream: UnixStream, hub: &Hub, token: &str) {
+fn handle(stream: UnixStream, hub: &Arc<Hub>, token: &str) {
   if accept_check(&stream).is_err() {
     return;
   }
@@ -85,7 +85,7 @@ fn handle(stream: UnixStream, hub: &Hub, token: &str) {
   let _ = write_line(&mut &stream, &resp);
 }
 
-fn dispatch(hub: &Hub, op: Op) -> Response {
+fn dispatch(hub: &Arc<Hub>, op: Op) -> Response {
   let done = |r: Result<Response, String>| r.unwrap_or_else(Response::err);
   match op {
     Op::Ping => Response { ok: true, version: Some(env!("CARGO_PKG_VERSION").into()), ..Default::default() },
@@ -249,6 +249,47 @@ mod tests {
     for since in [0, 1, 9] {
       assert_eq!(c.wait(&id, since, Duration::from_millis(50), true).unwrap().unwrap().seq, 1);
     }
+  }
+
+  fn ask_at(r: &Rig, id: &str, text: &str, thread: Option<(&str, u32)>) {
+    let m = MessageIn {
+      text: text.into(),
+      file: thread.map(|(f, _)| f.into()),
+      line: thread.map(|(_, l)| l),
+      ..Default::default()
+    };
+    r.hub.message(id, m).unwrap();
+  }
+
+  fn last_message(r: &Rig, id: &str) -> (String, Option<String>, Option<u32>) {
+    let m = r.hub.get(id).unwrap().messages.pop().unwrap();
+    (m.text, m.file, m.line)
+  }
+
+  #[test]
+  fn text_replies_route_by_pending_thread_through_the_client() {
+    let r = rig();
+    let c = Client::open_in(&r.dir).unwrap();
+    let id = c.create(card("Review")).unwrap();
+
+    ask_at(&r, &id, "why?", Some(("web:src/a.vue", 7)));
+    c.reply(&id, Some("because".into()), vec![]).unwrap();
+    assert_eq!(last_message(&r, &id), ("because".into(), Some("web:src/a.vue".into()), Some(7)));
+
+    c.reply(&id, Some("hello".into()), vec![]).unwrap();
+    assert_eq!(last_message(&r, &id), ("hello".into(), None, None));
+
+    ask_at(&r, &id, "one", Some(("a.rs", 3)));
+    ask_at(&r, &id, "two", Some(("b.rs", 9)));
+    let before = r.hub.get(&id).unwrap().messages.len();
+    let line = tmgr_ipc::decisions::LineComment { file: "c.rs".into(), line: 1, text: "x".into() };
+    let err = c.reply(&id, Some("hm".into()), vec![line]).unwrap_err().to_string();
+    assert!(err.contains("2 line threads are waiting: a.rs:3, b.rs:9; answer them with line_replies"), "{err}");
+    assert_eq!(r.hub.get(&id).unwrap().messages.len(), before);
+
+    ask_at(&r, &id, "in chat", None);
+    c.reply(&id, Some("chat wins".into()), vec![]).unwrap();
+    assert_eq!(last_message(&r, &id), ("chat wins".into(), None, None));
   }
 
   #[test]

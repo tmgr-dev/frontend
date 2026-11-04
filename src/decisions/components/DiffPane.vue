@@ -95,8 +95,8 @@
 											</button>
 										</div>
 									</div>
-									<div v-if="isTyping(file.qpath, line)" class="cm typing">
-										waiting for the agent…
+									<div v-if="waitNotice(file.qpath, line)" class="cm typing">
+										{{ waitNotice(file.qpath, line) }}
 									</div>
 									<div v-if="canAct(file.qpath, line)" class="cm">
 										<div class="acts">
@@ -178,6 +178,7 @@
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
 	import {
+		agentWaitNotice,
 		awaitsOwner,
 		buildAnchors,
 		fixMessageText,
@@ -214,6 +215,9 @@
 			drafts: { type: Array as PropType<LineComment[]>, required: true },
 			canReply: { type: Boolean, required: true },
 			final: { type: Boolean, required: true },
+			listening: { type: Boolean, required: true },
+			sessionGone: { type: Boolean, required: true },
+			now: { type: Number, required: true },
 		},
 		emits: ['send', 'add-draft', 'remove-draft'],
 		data() {
@@ -300,14 +304,15 @@
 					.map((comment, index) => ({ comment, index }))
 					.filter((d) => threadKey(d.comment.file, d.comment.line) === key);
 			},
-			isTyping(file: string, line: DiffLine): boolean {
-				const thread = this.threadMessages(file, line);
-				const last = thread[thread.length - 1];
-				return Boolean(
-					last &&
-					last.author === 'owner' &&
-					!this.resolved[this.keyOf(file, line)],
-				);
+			waitNotice(file: string, line: DiffLine): string | null {
+				if (this.resolved[this.keyOf(file, line)]) return null;
+				return agentWaitNotice(this.threadMessages(file, line), {
+					listening: this.listening,
+					sessionGone: this.sessionGone,
+					canReply: this.canReply,
+					final: this.final,
+					now: this.now,
+				});
 			},
 			canAct(file: string, line: DiffLine): boolean {
 				const key = this.keyOf(file, line);

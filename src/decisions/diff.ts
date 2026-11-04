@@ -75,3 +75,42 @@ export const fixMessageText = (extra: string): string => {
 	const text = extra.trim();
 	return text === '' ? 'Fix this.' : `Fix: ${text}`;
 };
+
+export const AGENT_WAIT_MS = 3 * 60 * 1000;
+
+export interface WaitContext {
+	listening: boolean;
+	sessionGone: boolean;
+	canReply: boolean;
+	final: boolean;
+	now: number;
+}
+
+export const agentWaitNotice = (
+	messages: CardMessage[],
+	ctx: WaitContext,
+): string | null => {
+	const last = messages[messages.length - 1];
+	if (!last || last.author !== 'owner' || ctx.final || !ctx.canReply) {
+		return null;
+	}
+	if (ctx.sessionGone) return 'The session ended, so no agent will see this.';
+	if (!ctx.listening) {
+		return "No agent is listening right now; it'll see this when it comes back.";
+	}
+	if (ctx.now - last.created_ms < AGENT_WAIT_MS) return 'waiting for the agent…';
+	return "The agent hasn't replied yet; it'll see this when it next checks.";
+};
+
+export type RequestSeqs = Record<string, number>;
+
+export const beginRequest = (seqs: RequestSeqs, id: string): number => {
+	seqs[id] = (seqs[id] ?? 0) + 1;
+	return seqs[id];
+};
+
+export const isLatestRequest = (
+	seqs: RequestSeqs,
+	id: string,
+	ticket: number,
+): boolean => seqs[id] === ticket;

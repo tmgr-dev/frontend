@@ -857,7 +857,8 @@ kbd {
 .cm.owner .who i {
 	background: var(--brand);
 }
-.cm.typing {
+.cm.typing,
+.msg.typing {
 	color: var(--fg-subtle);
 	font-style: italic;
 }

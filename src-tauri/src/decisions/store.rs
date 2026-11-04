@@ -18,6 +18,7 @@ const KEY_MAX: usize = 200;
 const MAX_OPTIONS: usize = 9;
 const MAX_ROWS: usize = 50;
 const MAX_LINE_COMMENTS: usize = 200;
+const THREADS_LISTED: usize = 3;
 const LIST_FINISHED: i64 = 200;
 const LINK_KINDS: [&str; 5] = ["pr", "commit", "tag", "task", "url"];
 
@@ -102,6 +103,7 @@ pub struct CardView {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub closed_reason: Option<String>,
   pub can_reply: bool,
+  pub listening: bool,
   pub source: Source,
   pub kind: String,
   pub blocking: bool,
@@ -450,6 +452,7 @@ impl Store {
       session_gone: r.session_gone,
       closed_reason: r.closed_reason,
       can_reply: live && (c.reply_via == "mcp" || c.reply_via == "cli"),
+      listening: false,
       state: r.state,
       source: c.source,
       kind: c.kind,
@@ -634,14 +637,16 @@ impl Store {
   ) -> Result<String, String> {
     let id = &self.canon(id)?;
     let mut items: Vec<(String, Option<String>, Option<u32>)> = Vec::new();
-    if let Some(t) = cap_opt(text, TEXT_MAX) {
-      items.push((t, None, None));
-    }
     for l in lines.into_iter().take(MAX_LINE_COMMENTS) {
       let t = cap(&l.text, TEXT_MAX);
       if !t.is_empty() {
         items.push((t, Some(cap(&l.file, FIELD_MAX * 4)), Some(l.line)));
       }
+    }
+    if let Some(t) = cap_opt(text, TEXT_MAX) {
+      let thread = self.thread_for_text(id, &items)?;
+      let (file, line) = thread.unzip();
+      items.insert(0, (t, file, line));
     }
     if items.is_empty() {
       return Err("text is required".into());
@@ -657,6 +662,53 @@ impl Store {
     }
     tx.commit().map_err(sql_err)?;
     Ok(id.clone())
+  }
+
+  fn thread_for_text(
+    &self,
+    id: &str,
+    line_replies: &[(String, Option<String>, Option<u32>)],
+  ) -> Result<Option<(String, u32)>, String> {
+    if !is_live(&self.raw(id)?.ok_or_else(|| "unknown card".to_owned())?.state) {
+      return Ok(None);
+    }
+    let mut stmt = self
+      .conn
+      .prepare("SELECT author, file, line FROM messages WHERE card_id=?1 ORDER BY seq")
+      .map_err(sql_err)?;
+    let rows = stmt
+      .query_map([id], |m| Ok((m.get::<_, String>(0)?, m.get::<_, Option<String>>(1)?, m.get::<_, Option<i64>>(2)?)))
+      .map_err(sql_err)?
+      .collect::<Result<Vec<_>, _>>()
+      .map_err(sql_err)?;
+    let mut chat_last_owner = false;
+    let mut threads: Vec<((String, u32), bool)> = Vec::new();
+    let mut note = |key: Option<(String, u32)>, owner: bool| match key {
+      None => chat_last_owner = owner,
+      Some(key) => match threads.iter_mut().find(|(k, _)| *k == key) {
+        Some(t) => t.1 = owner,
+        None => threads.push((key, owner)),
+      },
+    };
+    for (author, file, line) in rows {
+      note(file.zip(line).map(|(f, l)| (f, l as u32)), author == "owner");
+    }
+    for (_, file, line) in line_replies {
+      note(file.clone().zip(*line), false);
+    }
+    if chat_last_owner {
+      return Ok(None);
+    }
+    let pending: Vec<String> = threads.iter().filter(|(_, p)| *p).map(|((f, l), _)| format!("{f}:{l}")).collect();
+    match pending.len() {
+      0 => Ok(None),
+      1 => Ok(threads.into_iter().find(|(_, p)| *p).map(|(k, _)| k)),
+      n => {
+        let shown = pending.iter().take(THREADS_LISTED).cloned().collect::<Vec<_>>().join(", ");
+        let more = if n > THREADS_LISTED { format!(" and {} more", n - THREADS_LISTED) } else { String::new() };
+        Err(format!("{n} line threads are waiting: {shown}{more}; answer them with line_replies"))
+      }
+    }
   }
 
   pub fn close_session(&mut self, agent: &str, session: &str) -> Result<u64, String> {
@@ -892,6 +944,129 @@ mod tests {
     assert!(s.events(&id).unwrap().is_empty());
     assert!(s.agent_message(&id, None, vec![]).is_err());
     assert!(s.agent_message("c_00000000000000000000000000000000", Some("x".into()), vec![]).is_err());
+  }
+
+  fn owner_at(s: &mut Store, id: &str, text: &str, thread: Option<(&str, u32)>) {
+    let m = MessageIn {
+      text: text.into(),
+      file: thread.map(|(f, _)| f.into()),
+      line: thread.map(|(_, l)| l),
+      ..Default::default()
+    };
+    s.owner_message(id, m).unwrap();
+  }
+
+  fn placed(s: &Store, id: &str) -> Vec<(String, String, Option<String>, Option<u32>)> {
+    s.get(id).unwrap().unwrap().messages.into_iter().map(|m| (m.author, m.text, m.file, m.line)).collect()
+  }
+
+  fn lr(file: &str, line: u32, text: &str) -> LineComment {
+    LineComment { file: file.into(), line, text: text.into() }
+  }
+
+  #[test]
+  fn text_reply_with_pending_chat_goes_to_chat_even_with_a_pending_thread() {
+    let mut s = mem();
+    let id = s.create_id(card("Review"));
+    owner_at(&mut s, &id, "in line", Some(("a.rs", 3)));
+    owner_at(&mut s, &id, "in chat", None);
+    s.agent_message(&id, Some("ok".into()), vec![]).unwrap();
+    let last = placed(&s, &id).pop().unwrap();
+    assert_eq!((last.1.as_str(), last.2, last.3), ("ok", None, None));
+  }
+
+  #[test]
+  fn text_reply_goes_to_the_only_pending_thread() {
+    let mut s = mem();
+    let id = s.create_id(card("Review"));
+    owner_at(&mut s, &id, "hello", None);
+    s.agent_message(&id, Some("chat answer".into()), vec![]).unwrap();
+    owner_at(&mut s, &id, "why?", Some(("a.rs", 3)));
+    s.agent_message(&id, Some("because".into()), vec![]).unwrap();
+    let last = placed(&s, &id).pop().unwrap();
+    assert_eq!((last.0.as_str(), last.1.as_str(), last.2.as_deref(), last.3), ("agent", "because", Some("a.rs"), Some(3)));
+  }
+
+  #[test]
+  fn text_reply_with_two_pending_threads_is_refused_and_stores_nothing() {
+    let mut s = mem();
+    let id = s.create_id(card("Review"));
+    owner_at(&mut s, &id, "one", Some(("a.rs", 3)));
+    owner_at(&mut s, &id, "two", Some(("b.rs", 9)));
+    let before = placed(&s, &id).len();
+    let err = s.agent_message(&id, Some("hm".into()), vec![]).unwrap_err();
+    assert_eq!(err, "2 line threads are waiting: a.rs:3, b.rs:9; answer them with line_replies");
+    let err = s.agent_message(&id, Some("hm".into()), vec![lr("c.rs", 1, "x")]).unwrap_err();
+    assert!(err.starts_with("2 line threads are waiting"), "{err}");
+    assert_eq!(placed(&s, &id).len(), before);
+  }
+
+  #[test]
+  fn refusal_lists_at_most_three_threads() {
+    let mut s = mem();
+    let id = s.create_id(card("Review"));
+    for n in 1..=5 {
+      owner_at(&mut s, &id, "q", Some(("a.rs", n)));
+    }
+    let err = s.agent_message(&id, Some("hm".into()), vec![]).unwrap_err();
+    assert_eq!(err, "5 line threads are waiting: a.rs:1, a.rs:2, a.rs:3 and 2 more; answer them with line_replies");
+  }
+
+  #[test]
+  fn text_reply_without_pending_threads_goes_to_chat() {
+    let mut s = mem();
+    let id = s.create_id(card("Review"));
+    s.agent_message(&id, Some("hi".into()), vec![]).unwrap();
+    owner_at(&mut s, &id, "q", Some(("a.rs", 3)));
+    s.agent_message(&id, None, vec![lr("a.rs", 3, "a")]).unwrap();
+    s.agent_message(&id, Some("again".into()), vec![]).unwrap();
+    let last = placed(&s, &id).pop().unwrap();
+    assert_eq!((last.1.as_str(), last.2, last.3), ("again", None, None));
+  }
+
+  #[test]
+  fn text_and_line_replies_in_one_call_answer_the_only_pending_thread_then_chat() {
+    let mut s = mem();
+    let id = s.create_id(card("Review"));
+    owner_at(&mut s, &id, "q", Some(("a.rs", 3)));
+    s.agent_message(&id, Some("summary".into()), vec![lr("a.rs", 3, "fixed")]).unwrap();
+    let all = placed(&s, &id);
+    assert_eq!((all[1].1.as_str(), all[1].2.as_deref()), ("summary", None));
+    assert_eq!((all[2].1.as_str(), all[2].2.as_deref(), all[2].3), ("fixed", Some("a.rs"), Some(3)));
+  }
+
+  #[test]
+  fn line_replies_can_resolve_two_threads_so_text_goes_to_the_third() {
+    let mut s = mem();
+    let id = s.create_id(card("Review"));
+    owner_at(&mut s, &id, "q", Some(("a.rs", 3)));
+    owner_at(&mut s, &id, "q", Some(("b.rs", 9)));
+    s.agent_message(&id, Some("rest".into()), vec![lr("a.rs", 3, "x")]).unwrap();
+    let all = placed(&s, &id);
+    assert_eq!((all[2].1.as_str(), all[2].2.as_deref(), all[2].3), ("rest", Some("b.rs"), Some(9)));
+  }
+
+  #[test]
+  fn answered_cards_keep_routing_text_to_chat() {
+    let mut s = mem();
+    let id = s.create_id(card("Review"));
+    owner_at(&mut s, &id, "q", Some(("a.rs", 3)));
+    s.answer(&id, pick_a()).unwrap();
+    s.agent_message(&id, Some("done".into()), vec![]).unwrap();
+    let last = placed(&s, &id).pop().unwrap();
+    assert_eq!((last.1.as_str(), last.2, last.3), ("done", None, None));
+  }
+
+  #[test]
+  fn qualified_multi_repo_paths_route_and_match() {
+    let mut s = mem();
+    let id = s.create_id(card("Review"));
+    owner_at(&mut s, &id, "q", Some(("web:src/a.vue", 7)));
+    s.agent_message(&id, Some("because".into()), vec![]).unwrap();
+    let last = placed(&s, &id).pop().unwrap();
+    assert_eq!((last.2.as_deref(), last.3), (Some("web:src/a.vue"), Some(7)));
+    s.agent_message(&id, Some("chat".into()), vec![]).unwrap();
+    assert_eq!(placed(&s, &id).pop().unwrap().2, None);
   }
 
   #[test]

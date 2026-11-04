@@ -75,6 +75,9 @@
 							:drafts="currentDrafts"
 							:can-reply="current.can_reply"
 							:final="isFinal(current)"
+							:listening="current.listening"
+							:session-gone="current.session_gone"
+							:now="now"
 							@send="sendMessage"
 							@add-draft="addDraft"
 							@remove-draft="removeDraft"
@@ -86,6 +89,10 @@
 							:key="'c' + current.id"
 							:messages="chatMessages"
 							:can-reply="current.can_reply && !isFinal(current)"
+							:final="isFinal(current)"
+							:listening="current.listening"
+							:session-gone="current.session_gone"
+							:now="now"
 							@send="sendChat"
 						/>
 					</section>
@@ -137,7 +144,13 @@
 		isFinal,
 		type AnswerDraft,
 	} from '../answer';
-	import { hasChanges, splitMessages } from '../diff';
+	import {
+		beginRequest,
+		hasChanges,
+		isLatestRequest,
+		splitMessages,
+		type RequestSeqs,
+	} from '../diff';
 	import { mapKey } from '../keys';
 	import {
 		buildQueue,
@@ -181,6 +194,9 @@
 				tab: 'diff' as Tab,
 				loaded: false,
 				diffs: {} as Record<string, DiffSlot>,
+				diffSeqs: {} as RequestSeqs,
+				now: Date.now(),
+				clock: 0 as number,
 				drafts: {} as Record<string, LineComment[]>,
 				toast: { on: false, error: false, text: '' },
 				toastTimer: 0 as number,
@@ -249,6 +265,9 @@
 		async mounted() {
 			window.addEventListener('keydown', this.onKeydown);
 			document.title = 'Decisions';
+			this.clock = window.setInterval(() => {
+				this.now = Date.now();
+			}, 15000);
 			try {
 				this.unlisten = await onDecisionsChanged(() => void this.refresh());
 			} catch {
@@ -259,6 +278,7 @@
 		beforeUnmount() {
 			window.removeEventListener('keydown', this.onKeydown);
 			window.clearTimeout(this.toastTimer);
+			window.clearInterval(this.clock);
 			this.unlisten?.();
 		},
 		methods: {
@@ -305,10 +325,13 @@
 				if (!force && this.diffs[id]) return;
 				const stamp = this.cards.find((c) => c.id === id)?.updated_ms;
 				if (!this.diffs[id]) this.diffs[id] = { status: 'loading' };
+				const ticket = beginRequest(this.diffSeqs, id);
 				try {
 					const { groups } = await decisionsDiff(id);
+					if (!isLatestRequest(this.diffSeqs, id, ticket)) return;
 					this.diffs[id] = { status: 'ready', groups, stamp };
 				} catch (error) {
+					if (!isLatestRequest(this.diffSeqs, id, ticket)) return;
 					this.diffs[id] = { status: 'error', error: String(error), stamp };
 				}
 			},

@@ -108,6 +108,7 @@ export interface CardView {
 	session_gone: boolean;
 	closed_reason?: string;
 	can_reply: boolean;
+	listening: boolean;
 	answer?: Answer;
 	messages: CardMessage[];
 	source: CardSource;
