@@ -54,7 +54,7 @@ fn forbidden_hint(e: Error) -> Error {
     }
     if e.message.starts_with("this login does not allow that") {
         Error::new(Kind::Forbidden, "this login cannot use shared skills")
-            .hint("these routes need a full-access token; sign in with one through `tmgr login --with-token`")
+            .hint("run `tmgr login` again and approve shared skills access; logins from before this version do not have it. With a custom `--scopes` list add `skills:read,skills:write`")
     } else if e.hint.is_none() {
         e.hint("on a team persona only the workspace owner can attach or detach")
     } else {

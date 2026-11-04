@@ -1205,9 +1205,6 @@ mod tests {
         let stop = stop_for(&refusal(&json!({"error": "agent_usage_sync_disabled"})));
         assert!(stop.hint.unwrap().contains("Settings"));
         let stop = stop_for(&refusal(&json!({"error": "insufficient_scope"})));
-        assert_eq!(
-            stop.hint.unwrap(),
-            "tmgr login --scopes workspaces:read,tasks:read,tasks:write,tasks:create,comments:create,time:read,time:write,agent-usage:write"
-        );
+        assert_eq!(stop.hint.unwrap(), scopes_hint("agent-usage:write"));
     }
 }

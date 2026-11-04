@@ -2952,7 +2952,7 @@ mod usage_sync {
         assert_eq!(out.status.code(), Some(1));
         let shown = text(&out.stdout);
         assert!(
-            shown.contains("tmgr login --scopes workspaces:read,tasks:read,tasks:write,tasks:create,comments:create,time:read,time:write,agent-usage:write"),
+            shown.contains("tmgr login --scopes workspaces:read,tasks:read,tasks:write,tasks:create,comments:create,time:read,time:write,skills:read,skills:write,agent-usage:write"),
             "{shown}"
         );
         assert_eq!(c.puts().await.len(), 1);

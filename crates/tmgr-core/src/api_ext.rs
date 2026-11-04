@@ -185,7 +185,7 @@ impl Client {
             "/api/shared-skills",
             &[],
             None,
-            "*",
+            "skills:write",
         )?))
     }
 
@@ -195,7 +195,7 @@ impl Client {
             &format!("/api/shared-skills/{slug}"),
             &[],
             None,
-            "*",
+            "skills:read",
         )?))
     }
 
@@ -216,7 +216,7 @@ impl Client {
                 )));
             }
         }
-        Err(map_error(status, &value, "*"))
+        Err(map_error(status, &value, "skills:write"))
     }
 
     pub fn delete_shared_skill(&self, slug: &str) -> Result<Value> {
@@ -225,7 +225,7 @@ impl Client {
             &format!("/api/shared-skills/{slug}"),
             &[],
             None,
-            "*",
+            "skills:write",
         )?))
     }
 
@@ -235,7 +235,7 @@ impl Client {
             &format!("/api/personas/{persona}/shared-skills/{slug}"),
             &[],
             None,
-            "*",
+            "skills:write",
         )?))
     }
 
@@ -245,7 +245,7 @@ impl Client {
             &format!("/api/personas/{persona}/shared-skills/{slug}"),
             &[],
             None,
-            "*",
+            "skills:write",
         )
         .map(|_| ())
     }

@@ -281,7 +281,9 @@ async fn http_errors_map_to_exit_codes() {
         .unwrap()
         .to_string();
     assert!(
-        hint.contains("--with-token") && !hint.contains("--scopes"),
+        hint.contains("tmgr login")
+            && hint.contains("skills:read,skills:write")
+            && !hint.contains("--with-token"),
         "{hint}"
     );
 
