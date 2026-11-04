@@ -108,11 +108,21 @@ pub struct CardView {
   pub facts: Vec<Fact>,
   pub options: Vec<Opt>,
   pub diff: Option<DiffSpec>,
+  pub diffs: Vec<DiffSpec>,
+  pub patches: Vec<PatchInfo>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub updated_ms: Option<i64>,
   pub checks: Vec<Check>,
   pub links: Links,
   pub reply_via: String,
   pub answer: Option<Event>,
   pub messages: Vec<MessageView>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct PatchInfo {
+  pub label: String,
+  pub bytes: u64,
 }
 
 pub struct Created {
@@ -313,6 +323,9 @@ impl Store {
       facts: c.facts,
       options: c.options,
       diff: c.diff,
+      diffs: c.diffs,
+      patches: Vec::new(),
+      updated_ms: None,
       checks: c.checks,
       links: c.links,
       reply_via: c.reply_via,

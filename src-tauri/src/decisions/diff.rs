@@ -41,6 +41,23 @@ pub struct DiffView {
   pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct DiffGroup {
+  pub key: String,
+  pub label: String,
+  pub kind: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub base: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub head: Option<String>,
+  pub view: DiffView,
+}
+
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+pub struct DiffGroups {
+  pub groups: Vec<DiffGroup>,
+}
+
 fn failed(msg: impl Into<String>) -> DiffView {
   DiffView { error: Some(msg.into()), ..Default::default() }
 }

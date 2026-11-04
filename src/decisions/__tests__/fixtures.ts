@@ -14,6 +14,8 @@ export const makeCard = (over: Partial<CardView> = {}): CardView => ({
 	facts: [],
 	options: [],
 	checks: [],
+	diffs: [],
+	patches: [],
 	links: {},
 	reply_via: 'mcp',
 	...over,

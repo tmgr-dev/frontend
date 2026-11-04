@@ -393,11 +393,17 @@ impl Client {
     }
 
     pub fn create(&self, card: CardIn) -> io::Result<String> {
-        self.checked(Op::Create {
+        self.create_outcome(card).map(|(id, _)| id)
+    }
+
+    pub fn create_outcome(&self, card: CardIn) -> io::Result<(String, Option<String>)> {
+        let response = self.checked(Op::Create {
             card: Box::new(card),
-        })?
-        .card_id
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "no card id in the answer"))
+        })?;
+        let id = response.card_id.ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "no card id in the answer")
+        })?;
+        Ok((id, response.outcome))
     }
 
     pub fn wait(
@@ -494,9 +500,16 @@ pub fn drain_spool(dir: &Path, mut persist: impl FnMut(CardIn) -> bool) -> io::R
         Err(e) => return Err(e),
     };
     check_private_dir(&inbox)?;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let name = entry.file_name().to_string_lossy().into_owned();
+    let mut entries: Vec<_> = entries
+        .flatten()
+        .map(|e| {
+            let modified = e.metadata().and_then(|m| m.modified()).ok();
+            (modified, e.file_name(), e.path())
+        })
+        .collect();
+    entries.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+    for (_, name, path) in entries {
+        let name = name.to_string_lossy().into_owned();
         let Some(id) = name.strip_suffix(".json") else {
             continue;
         };
@@ -584,6 +597,63 @@ mod tests {
         .unwrap();
         assert_eq!(again, 0);
         assert!(!dir.join(INBOX).join("junk.json").exists());
+    }
+
+    #[test]
+    fn spool_drains_oldest_first() {
+        let t = private_tmp();
+        let dir = t.path().join("d");
+        let older = spool(
+            &dir,
+            &CardIn {
+                title: "older".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let newer = spool(
+            &dir,
+            &CardIn {
+                title: "newer".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let stamp = |id: &str, secs: u64| {
+            let file = fs::File::options()
+                .write(true)
+                .open(dir.join(INBOX).join(format!("{id}.json")))
+                .unwrap();
+            file.set_modified(std::time::UNIX_EPOCH + Duration::from_secs(secs))
+                .unwrap();
+        };
+        stamp(&older, 1_000);
+        stamp(&newer, 2_000);
+        let mut got = Vec::new();
+        drain_spool(&dir, |c| {
+            got.push(c.title);
+            true
+        })
+        .unwrap();
+        assert_eq!(got, ["older", "newer"]);
+    }
+
+    #[test]
+    fn plain_card_wire_format_is_unchanged() {
+        let card: CardIn = serde_json::from_str(r#"{"title":"Ship?","links":{"pr":"u"}}"#).unwrap();
+        assert!(card.diffs.is_empty() && card.patches.is_empty() && card.links.items.is_empty());
+        assert_eq!(card.replaces, None);
+        assert_eq!(card.key, None);
+        let v = serde_json::to_value(&card).unwrap();
+        for field in ["diffs", "patches", "replaces", "key"] {
+            assert!(v.get(field).is_none(), "{field}");
+        }
+        assert!(v["links"].get("items").is_none());
+        let r = Response {
+            ok: true,
+            ..Default::default()
+        };
+        assert!(serde_json::to_value(&r).unwrap().get("outcome").is_none());
     }
 
     #[test]
