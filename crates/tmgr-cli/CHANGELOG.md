@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.75
+
+- Fix: after a git command, a question check or the attach Git panel's git call finished, the runner or `tmgr attach` could send SIGKILL to an unrelated process that had just been given the same process id. They now end the child's process group before the child is reaped.
+
 ## 1.0.74
 
 - `tmgr attach`: the Git panel and the diff pane now run git against a git folder the host builds from the repository's data, not the work folder's own `.git`. The diff pane leaves submodules out.
