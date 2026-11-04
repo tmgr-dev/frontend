@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.76
+
+- `tmgr runner gc` now collects a team run over several repositories: the run folder with the lead's and workers' clones, and the `queue-team/` branches in every repository of the run. If any clone in any repository has uncommitted or untracked changes, a commit that was not brought into its repository, or does not match what the run recorded, the whole team run is kept.
+
 ## 1.0.75
 
 - Fix: after a git command, a question check or the attach Git panel's git call finished, the runner or `tmgr attach` could send SIGKILL to an unrelated process that had just been given the same process id. They now end the child's process group before the child is reaped.
