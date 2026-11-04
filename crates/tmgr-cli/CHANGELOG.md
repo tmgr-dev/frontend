@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `tmgr runner gc` reads lead and single-run copies without their git settings, the way it already reads worker copies.
+- `tmgr runner gc` keeps a copy whose commits are only in its reflog.
+- `tmgr runner gc` gives each copy a few seconds and a bounded amount of git output, and keeps the copy past either.
+
 ## 1.0.68
 
 - The runner refuses to start or resume a session in a queue or `--worktree` checkout made before 1.0.63, because such a checkout shares object files with the source repository. The message names the folder: re-clone it or remove it. The runner does not delete or change the folder, so uncommitted work in it stays. The runner is Unix-only, so Windows is not affected.
