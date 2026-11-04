@@ -2789,4 +2789,445 @@ mod tests {
         assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
         assert!(!copy_alternates_ok(&dir, &allowed));
     }
+
+    fn host_run(repo: &Path, host: &Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .env_clear()
+            .env("PATH", absolute_path())
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_OPTIONAL_LOCKS", "0")
+            .env("GIT_DIR", host)
+            .env("GIT_WORK_TREE", repo)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout).unwrap()
+    }
+
+    fn hostile_config(marker: &Path) -> String {
+        format!(
+            "[filter \"x\"]\n\tclean = touch {0}\n\tsmudge = touch {0}\n[core]\n\tfsmonitor = touch {0}\n\tpager = touch {0}\n[diff \"x\"]\n\ttextconv = touch {0}\n",
+            marker.display()
+        )
+    }
+
+    fn append(path: &Path, text: &str) {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+        std::io::Write::write_all(&mut file, text.as_bytes()).unwrap();
+    }
+
+    fn repo_at(root: &Path, name: &str) -> PathBuf {
+        let repo = root.join(name);
+        std::fs::create_dir_all(&repo).unwrap();
+        init_repo(&repo);
+        repo
+    }
+
+    fn canon_tmp() -> (tempfile::TempDir, PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        (tmp, root)
+    }
+
+    fn prepared(repo: &Path) -> (tempfile::TempDir, PathBuf) {
+        let host = tempfile::tempdir().unwrap();
+        let path = host.path().to_path_buf();
+        assert!(host_git_dir(repo, &path).is_some());
+        (host, path)
+    }
+
+    #[test]
+    fn a_config_rewritten_after_the_private_dir_is_built_never_reaches_git() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let marker = root.join("ran");
+        let (_host, host) = prepared(&repo);
+        append(&repo.join(".git/config"), &hostile_config(&marker));
+        std::fs::write(repo.join(".gitattributes"), "*.md filter=x diff=x\n").unwrap();
+        std::fs::write(repo.join("README.md"), "changed after the check\n").unwrap();
+        let status = host_run(&repo, &host, &["status", "--porcelain"]);
+        assert!(status.contains("README.md"), "{status}");
+        let numstat = host_run(&repo, &host, &["diff", "HEAD", "--numstat"]);
+        assert!(numstat.contains("README.md"), "{numstat}");
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn a_commondir_added_after_the_private_dir_is_built_never_reaches_git() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let other = repo_at(&root, "other");
+        let marker = root.join("ran");
+        append(&other.join(".git/config"), &hostile_config(&marker));
+        let (_host, host) = prepared(&repo);
+        std::fs::write(
+            repo.join(".git/commondir"),
+            format!("{}\n", other.join(".git").display()),
+        )
+        .unwrap();
+        std::fs::write(repo.join(".gitattributes"), "*.md filter=x\n").unwrap();
+        std::fs::write(repo.join("README.md"), "changed\n").unwrap();
+        let status = host_run(&repo, &host, &["status", "--porcelain"]);
+        assert!(status.contains("README.md"), "{status}");
+        host_run(&repo, &host, &["diff", "HEAD", "--numstat"]);
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn a_swapped_dot_git_after_the_private_dir_is_built_never_reaches_git() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let marker = root.join("ran");
+        let (_host, host) = prepared(&repo);
+        std::fs::rename(repo.join(".git"), root.join("real-git")).unwrap();
+        std::fs::create_dir(repo.join(".git")).unwrap();
+        std::os::unix::fs::symlink(root.join("real-git/objects"), repo.join(".git/objects"))
+            .unwrap();
+        std::fs::write(repo.join(".git/config"), hostile_config(&marker)).unwrap();
+        std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(repo.join(".gitattributes"), "*.md filter=x\n").unwrap();
+        std::fs::write(repo.join("README.md"), "changed\n").unwrap();
+        let status = host_run(&repo, &host, &["status", "--porcelain"]);
+        assert!(status.contains("README.md"), "{status}");
+        host_run(&repo, &host, &["diff", "HEAD", "--numstat"]);
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn a_config_that_runs_a_program_is_refused_before_the_private_dir_is_built() {
+        for (key, value) in [
+            ("filter.x.clean", "touch m"),
+            ("filter.x.process", "touch m"),
+            ("include.path", "elsewhere"),
+            ("includeIf.gitdir:/.path", "elsewhere"),
+            ("core.pager", "touch m"),
+            ("core.sshCommand", "touch m"),
+            ("core.editor", "touch m"),
+            ("diff.x.textconv", "touch m"),
+            ("diff.external", "touch m"),
+            ("alias.st", "!touch m"),
+            ("credential.helper", "!touch m"),
+            ("url.x.insteadOf", "y"),
+        ] {
+            let (_tmp, root) = canon_tmp();
+            let repo = repo_at(&root, "repo");
+            git(Some(&repo), &["config", key, value]).unwrap();
+            let host = tempfile::tempdir().unwrap();
+            assert!(host_git_dir(&repo, host.path()).is_none(), "{key}");
+            assert!(!repo_config_is_plain(&repo), "{key}");
+        }
+    }
+
+    #[test]
+    fn a_config_that_is_a_fifo_is_refused_without_blocking() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let config = repo.join(".git/config");
+        std::fs::remove_file(&config).unwrap();
+        assert!(Command::new("mkfifo")
+            .arg(&config)
+            .status()
+            .unwrap()
+            .success());
+        let refused = within(10, move || {
+            let host = tempfile::tempdir().unwrap();
+            host_git_dir(&repo, host.path()).is_none()
+        });
+        assert!(refused);
+    }
+
+    #[test]
+    fn a_config_that_is_a_symlink_is_refused() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let real = root.join("elsewhere.config");
+        std::fs::copy(repo.join(".git/config"), &real).unwrap();
+        std::fs::remove_file(repo.join(".git/config")).unwrap();
+        std::os::unix::fs::symlink(&real, repo.join(".git/config")).unwrap();
+        let host = tempfile::tempdir().unwrap();
+        assert!(host_git_dir(&repo, host.path()).is_none());
+    }
+
+    #[test]
+    fn a_config_value_with_quotes_and_backslashes_round_trips() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let url = r#"https://example.com/a"b\c d"#;
+        git(Some(&repo), &["config", "remote.origin.url", url]).unwrap();
+        let (_host, host) = prepared(&repo);
+        let read = host_run(
+            &repo,
+            &host,
+            &[
+                "config",
+                "--file",
+                host.join("config").to_str().unwrap(),
+                "--get",
+                "remote.origin.url",
+            ],
+        );
+        assert_eq!(read.trim_end_matches('\n'), url);
+    }
+
+    #[test]
+    fn a_config_value_with_a_control_character_is_refused() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        git(Some(&repo), &["config", "remote.origin.url", "a\tb"]).unwrap();
+        let host = tempfile::tempdir().unwrap();
+        assert!(host_git_dir(&repo, host.path()).is_none());
+    }
+
+    #[test]
+    fn only_a_few_inert_settings_are_carried_into_the_private_config() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        for (key, value) in [
+            ("remote.origin.url", "file:///x"),
+            ("branch.main.remote", "origin"),
+            ("branch.main.merge", "refs/heads/main"),
+            ("core.hooksPath", "/tmp/hooks"),
+            ("core.fsmonitor", "true"),
+            ("core.abbrev", "12"),
+            ("extensions.worktreeConfig", "true"),
+            ("user.name", "someone"),
+            ("user.email", "someone@example.com"),
+            ("commit.gpgsign", "true"),
+            ("pull.rebase", "true"),
+        ] {
+            git(Some(&repo), &["config", key, value]).unwrap();
+        }
+        let (_host, host) = prepared(&repo);
+        let text = std::fs::read_to_string(host.join("config")).unwrap();
+        let keys = host_run(
+            &repo,
+            &host,
+            &[
+                "config",
+                "--file",
+                host.join("config").to_str().unwrap(),
+                "--list",
+                "--name-only",
+            ],
+        );
+        for key in keys.lines() {
+            assert!(
+                matches!(
+                    key,
+                    "core.repositoryformatversion"
+                        | "core.bare"
+                        | "core.filemode"
+                        | "core.ignorecase"
+                        | "core.precomposeunicode"
+                        | "remote.origin.url"
+                        | "branch.main.remote"
+                        | "branch.main.merge"
+                ),
+                "{key}\n{text}"
+            );
+        }
+        for banned in [
+            "hookspath",
+            "fsmonitor",
+            "worktreeconfig",
+            "user",
+            "gpgsign",
+        ] {
+            assert!(!text.to_ascii_lowercase().contains(banned), "{banned}");
+        }
+        assert!(keys.lines().any(|k| k == "remote.origin.url"));
+        assert!(keys.lines().any(|k| k == "branch.main.merge"));
+    }
+
+    #[test]
+    fn a_detached_head_works_through_the_private_dir() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        git(Some(&repo), &["checkout", "-q", "--detach"]).unwrap();
+        let sha = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        let (_host, host) = prepared(&repo);
+        assert_eq!(host_run(&repo, &host, &["rev-parse", "HEAD"]).trim(), sha);
+        host_run(&repo, &host, &["status", "--porcelain"]);
+    }
+
+    #[test]
+    fn remote_tracking_refs_symbolic_and_packed_survive_in_the_private_dir() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let sha = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        git(
+            Some(&repo),
+            &["update-ref", "refs/remotes/origin/main", "HEAD"],
+        )
+        .unwrap();
+        git(
+            Some(&repo),
+            &[
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/main",
+            ],
+        )
+        .unwrap();
+        let (_a, loose) = prepared(&repo);
+        assert_eq!(
+            host_run(&repo, &loose, &["symbolic-ref", "refs/remotes/origin/HEAD"]).trim(),
+            "refs/remotes/origin/main"
+        );
+        git(Some(&repo), &["pack-refs", "--all"]).unwrap();
+        let (_b, packed) = prepared(&repo);
+        for name in ["main", "refs/remotes/origin/main", "origin/HEAD"] {
+            assert_eq!(
+                host_run(&repo, &packed, &["rev-parse", name]).trim(),
+                sha,
+                "{name}"
+            );
+        }
+        assert_eq!(
+            host_run(
+                &repo,
+                &packed,
+                &["symbolic-ref", "refs/remotes/origin/HEAD"]
+            )
+            .trim(),
+            "refs/remotes/origin/main"
+        );
+    }
+
+    #[test]
+    fn a_shallow_file_with_anything_but_commit_ids_is_refused() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let sha = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        std::fs::write(repo.join(".git/shallow"), format!("{sha}\n")).unwrap();
+        let host = tempfile::tempdir().unwrap();
+        assert!(host_git_dir(&repo, host.path()).is_some());
+        std::fs::write(
+            repo.join(".git/shallow"),
+            format!("{sha}\n../../etc/passwd\n"),
+        )
+        .unwrap();
+        let host = tempfile::tempdir().unwrap();
+        assert!(host_git_dir(&repo, host.path()).is_none());
+    }
+
+    fn enable_worktree_config(repo: &Path) {
+        git(Some(repo), &["config", "core.repositoryformatversion", "1"]).unwrap();
+        git(Some(repo), &["config", "extensions.worktreeConfig", "true"]).unwrap();
+    }
+
+    fn linked(repo: &Path, root: &Path) -> PathBuf {
+        let wt = root.join("wt");
+        git(
+            Some(repo),
+            &["worktree", "add", "-q", "--detach", wt.to_str().unwrap()],
+        )
+        .unwrap();
+        wt
+    }
+
+    #[test]
+    fn a_repository_with_worktree_config_and_its_linked_worktree_are_plain() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        enable_worktree_config(&repo);
+        assert!(repo_config_is_plain(&repo));
+        let wt = linked(&repo, &root);
+        assert!(repo_config_is_plain(&wt));
+    }
+
+    #[test]
+    fn a_hostile_worktree_config_makes_the_main_and_the_linked_worktree_not_plain() {
+        for hostile in [
+            "[filter \"x\"]\n\tclean = touch m\n",
+            "[core]\n\tpager = touch m\n",
+        ] {
+            let (_tmp, root) = canon_tmp();
+            let repo = repo_at(&root, "repo");
+            enable_worktree_config(&repo);
+            let wt = linked(&repo, &root);
+            assert!(repo_config_is_plain(&repo));
+            assert!(repo_config_is_plain(&wt));
+            std::fs::write(repo.join(".git/config.worktree"), hostile).unwrap();
+            assert!(!repo_config_is_plain(&repo), "{hostile}");
+            assert!(repo_config_is_plain(&wt), "{hostile}");
+            std::fs::write(repo.join(".git/worktrees/wt/config.worktree"), hostile).unwrap();
+            assert!(!repo_config_is_plain(&wt), "{hostile}");
+        }
+    }
+
+    #[test]
+    fn an_allowed_setting_in_the_worktree_config_stays_plain() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        enable_worktree_config(&repo);
+        let wt = linked(&repo, &root);
+        let text = "[user]\n\tname = someone\n";
+        std::fs::write(repo.join(".git/config.worktree"), text).unwrap();
+        std::fs::write(repo.join(".git/worktrees/wt/config.worktree"), text).unwrap();
+        assert!(repo_config_is_plain(&repo));
+        assert!(repo_config_is_plain(&wt));
+    }
+
+    #[test]
+    fn a_worktree_config_fsmonitor_never_runs_through_the_private_dir() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        enable_worktree_config(&repo);
+        let marker = root.join("ran");
+        std::fs::write(
+            repo.join(".git/config.worktree"),
+            format!("[core]\n\tfsmonitor = touch {}\n", marker.display()),
+        )
+        .unwrap();
+        let host = tempfile::tempdir().unwrap();
+        if host_git_dir(&repo, host.path()).is_some() {
+            host_run(&repo, host.path(), &["status", "--porcelain"]);
+            host_run(&repo, host.path(), &["diff", "HEAD", "--numstat"]);
+        }
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn a_worktree_config_is_ignored_while_the_extension_is_off() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let marker = root.join("ran");
+        std::fs::write(repo.join(".git/config.worktree"), hostile_config(&marker)).unwrap();
+        std::fs::write(repo.join(".gitattributes"), "*.md filter=x\n").unwrap();
+        std::fs::write(repo.join("README.md"), "changed\n").unwrap();
+        assert!(repo_config_is_plain(&repo));
+        let (_host, host) = prepared(&repo);
+        let text = std::fs::read_to_string(host.join("config")).unwrap();
+        assert!(
+            !text.contains("worktree") && !text.contains("filter"),
+            "{text}"
+        );
+        host_run(&repo, &host, &["status", "--porcelain"]);
+        host_run(&repo, &host, &["diff", "HEAD", "--numstat"]);
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn relative_worktree_paths_setting_is_plain() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        git(
+            Some(&repo),
+            &["config", "worktree.useRelativePaths", "true"],
+        )
+        .unwrap();
+        assert!(repo_config_is_plain(&repo));
+    }
 }

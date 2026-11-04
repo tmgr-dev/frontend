@@ -742,4 +742,226 @@ mod tests {
             .iter()
             .any(|a| a.starts_with("core.pager=") && !a.contains('\u{1b}')));
     }
+
+    fn hostile(marker: &Path) -> String {
+        format!(
+            "[filter \"x\"]\n\tclean = touch {0}\n[core]\n\tfsmonitor = touch {0}\n\tpager = touch {0}\n",
+            marker.display()
+        )
+    }
+
+    fn append(path: &Path, text: &str) {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+        std::io::Write::write_all(&mut file, text.as_bytes()).unwrap();
+    }
+
+    fn enable_worktree_config(repo: &Path) {
+        sh(repo, &["config", "core.repositoryformatversion", "1"]);
+        sh(repo, &["config", "extensions.worktreeConfig", "true"]);
+    }
+
+    fn clone_with_upstream() -> (tempfile::TempDir, PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = canon(tmp.path());
+        let origin = root.join("origin.git");
+        sh(&root, &["init", "-q", "--bare", "-b", "main", "origin.git"]);
+        let seed = root.join("seed");
+        std::fs::create_dir(&seed).unwrap();
+        sh(&seed, &["init", "-q", "-b", "main"]);
+        sh(
+            &seed,
+            &["remote", "add", "origin", origin.to_str().unwrap()],
+        );
+        std::fs::write(seed.join("a.txt"), "one\n").unwrap();
+        sh(&seed, &["add", "."]);
+        sh(&seed, &["commit", "-q", "-m", "first"]);
+        sh(&seed, &["push", "-q", "origin", "main"]);
+        sh(&root, &["clone", "-q", origin.to_str().unwrap(), "clone"]);
+        let clone = root.join("clone");
+        sh(&clone, &["checkout", "-q", "-b", "feature"]);
+        std::fs::write(clone.join("a.txt"), "one\ntwo\n").unwrap();
+        sh(&clone, &["commit", "-q", "-am", "f1"]);
+        sh(&clone, &["push", "-q", "-u", "origin", "feature"]);
+        sh(&seed, &["fetch", "-q", "origin"]);
+        sh(
+            &seed,
+            &["checkout", "-q", "-b", "feature", "origin/feature"],
+        );
+        std::fs::write(seed.join("s.txt"), "s\n").unwrap();
+        sh(&seed, &["add", "."]);
+        sh(&seed, &["commit", "-q", "-m", "s1"]);
+        sh(&seed, &["push", "-q", "origin", "feature"]);
+        sh(&clone, &["fetch", "-q", "origin"]);
+        std::fs::write(clone.join("c.txt"), "c\n").unwrap();
+        sh(&clone, &["add", "."]);
+        sh(&clone, &["commit", "-q", "-m", "c1"]);
+        std::fs::write(clone.join("a.txt"), "one\ntwo\nthree\n").unwrap();
+        std::fs::write(clone.join("new.txt"), "x\n").unwrap();
+        (tmp, clone)
+    }
+
+    fn assert_clone_info(info: &GitInfo, root: &Path, branch: &str) {
+        assert_eq!(info.root, root.to_string_lossy());
+        assert_eq!(info.branch, branch);
+        assert_eq!((info.changed, info.untracked), (1, 1));
+        assert_eq!((info.added, info.deleted), (1, 0));
+        assert_eq!(info.base.as_deref(), Some("origin/main"));
+        assert_eq!(info.ahead_base, Some(2));
+    }
+
+    #[test]
+    fn a_clone_with_an_upstream_reports_ahead_behind_and_the_origin_head_base() {
+        let (_tmp, clone) = clone_with_upstream();
+        let info = collect(&clone, |_, _, _| PrLookup::NoPr).unwrap();
+        assert_clone_info(&info, &clone, "feature");
+        assert_eq!(info.upstream.as_deref(), Some("origin/feature"));
+        assert_eq!((info.ahead, info.behind), (1, 1));
+    }
+
+    #[test]
+    fn a_clone_with_worktree_config_and_its_linked_worktree_are_inspected() {
+        let (tmp, clone) = clone_with_upstream();
+        enable_worktree_config(&clone);
+        let info = collect(&clone, |_, _, _| PrLookup::NoPr).unwrap();
+        assert_clone_info(&info, &clone, "feature");
+        assert_eq!(info.upstream.as_deref(), Some("origin/feature"));
+        assert_eq!((info.ahead, info.behind), (1, 1));
+
+        let wt = canon(tmp.path()).join("wt");
+        sh(
+            &clone,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "side",
+                wt.to_str().unwrap(),
+                "origin/main",
+            ],
+        );
+        std::fs::write(wt.join("w.txt"), "w\n").unwrap();
+        sh(&wt, &["add", "."]);
+        sh(&wt, &["commit", "-q", "-m", "w1"]);
+        std::fs::write(wt.join("a.txt"), "one\nmore\n").unwrap();
+        std::fs::write(wt.join("u1.txt"), "x\n").unwrap();
+        std::fs::write(wt.join("u2.txt"), "x\n").unwrap();
+        let info = collect(&wt, |_, _, _| PrLookup::NoPr).unwrap();
+        assert_eq!(info.root, wt.to_string_lossy());
+        assert_eq!(info.branch, "side");
+        assert_eq!((info.changed, info.untracked), (1, 2));
+        assert_eq!((info.added, info.deleted), (1, 0));
+        assert_eq!(info.base.as_deref(), Some("origin/main"));
+        assert_eq!(info.ahead_base, Some(1));
+    }
+
+    #[test]
+    fn a_hostile_worktree_config_is_not_inspected_and_runs_nothing() {
+        let (tmp, clone) = clone_with_upstream();
+        enable_worktree_config(&clone);
+        let marker = canon(tmp.path()).join("ran");
+        let wt = canon(tmp.path()).join("wt");
+        sh(
+            &clone,
+            &["worktree", "add", "-q", "--detach", wt.to_str().unwrap()],
+        );
+        std::fs::write(clone.join(".gitattributes"), "*.txt filter=x\n").unwrap();
+        std::fs::write(clone.join(".git/config.worktree"), hostile(&marker)).unwrap();
+        assert!(collect(&clone, |_, _, _| PrLookup::NoPr).is_none());
+        std::fs::write(
+            clone.join(".git/worktrees/wt/config.worktree"),
+            hostile(&marker),
+        )
+        .unwrap();
+        assert!(collect(&wt, |_, _, _| PrLookup::NoPr).is_none());
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn a_config_rewritten_after_the_private_dir_is_built_never_reaches_attach_git() {
+        let dir = repo();
+        let root = canon(dir.path());
+        let marker = root.join("ran");
+        let host = tempfile::tempdir().unwrap();
+        tmgr_queue::workdir::host_git_dir(&root, host.path()).unwrap();
+        append(&root.join(".git/config"), &hostile(&marker));
+        std::fs::write(root.join(".git/commondir"), "/nonexistent\n").unwrap();
+        std::fs::write(root.join(".gitattributes"), "*.txt filter=x\n").unwrap();
+        std::fs::write(root.join("a.txt"), "one\ntwo\nfour\n").unwrap();
+        let status = git(
+            &root,
+            host.path(),
+            &[
+                "status",
+                "--porcelain=v2",
+                "--branch",
+                "--ignore-submodules=all",
+            ],
+        )
+        .unwrap();
+        assert!(status.contains("a.txt"), "{status}");
+        let diff = git(
+            &root,
+            host.path(),
+            &[
+                "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--numstat",
+                "HEAD",
+            ],
+        )
+        .unwrap();
+        assert!(diff.contains("a.txt"), "{diff}");
+        let count = git(&root, host.path(), &["rev-list", "--count", "main..HEAD"]).unwrap();
+        assert_eq!(count.trim(), "1");
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn the_diff_pane_command_names_the_runner_subcommand_and_the_folder() {
+        let exe = Path::new("/opt/tmgr/tmgr");
+        assert_eq!(
+            diff_pane_argv(exe, "/work/r", None),
+            ["/opt/tmgr/tmgr", "runner", "git-diff", "--dir", "/work/r"]
+        );
+        assert_eq!(
+            diff_pane_argv(exe, "/work/r", Some("less -R")),
+            [
+                "/opt/tmgr/tmgr",
+                "runner",
+                "git-diff",
+                "--dir",
+                "/work/r",
+                "--pager",
+                "less -R"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_diff_pane_refuses_a_folder_with_settings_that_run_programs() {
+        let dir = repo();
+        let root = canon(dir.path());
+        let marker = root.join("ran");
+        append(&root.join(".git/config"), &hostile(&marker));
+        std::fs::write(root.join(".gitattributes"), "*.txt filter=x\n").unwrap();
+        assert!(diff_in_pane(root.to_str().unwrap(), Some("cat")).is_err());
+        assert!(diff_in_pane(root.join("missing").to_str().unwrap(), Some("cat")).is_err());
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn the_diff_pane_shows_the_diff_of_a_plain_repo_and_exits_zero() {
+        let dir = repo();
+        let root = canon(dir.path());
+        assert_eq!(
+            diff_in_pane(root.to_str().unwrap(), Some("cat")).unwrap(),
+            0
+        );
+    }
 }
