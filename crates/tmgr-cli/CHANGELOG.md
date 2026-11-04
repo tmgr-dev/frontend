@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Hardening: before running host `git` in a work folder, the runner and `tmgr attach` check where the folder's `.git` points. Only the folder's own git directory or a worktree that its repository registered for this folder are accepted; anything else hides the attach Git panel.
+
 ## 1.0.70
 
 - Team runs: a worker that sits at its prompt for 10 minutes without writing `.tmgr/done` is reported to the lead in one note per idle stretch. The lead ends that worker by creating the empty file `.tmgr/end-wK` in its own folder; the runner never stops an idle worker on its own.

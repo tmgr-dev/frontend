@@ -40,6 +40,7 @@ fn run(program: &str, args: &[String], cwd: &Path, timeout: Duration) -> Option<
         .env("GIT_NO_LAZY_FETCH", "1")
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_CEILING_DIRECTORIES", cwd.parent().unwrap_or(cwd))
         .env("GIT_CONFIG_COUNT", "2")
         .env("GIT_CONFIG_KEY_0", "core.fsmonitor")
         .env("GIT_CONFIG_VALUE_0", "false")
@@ -205,8 +206,11 @@ pub(super) fn collect(
         return None;
     }
     let cwd = std::fs::canonicalize(cwd).ok()?;
-    let root = repo_root(&cwd)?;
-    if !tmgr_queue::workdir::repo_config_is_plain(&root) {
+    let root = cwd
+        .ancestors()
+        .find(|dir| std::fs::symlink_metadata(dir.join(".git")).is_ok())?
+        .to_path_buf();
+    if !tmgr_queue::workdir::repo_config_is_plain(&root) || repo_root(&root)? != root {
         return None;
     }
     if config_runs_programs(&git(
@@ -493,6 +497,30 @@ mod tests {
         assert!(collect(&no_repo, |_, _| PrLookup::NoPr).is_none());
         assert!(collect(Path::new("relative"), |_, _| PrLookup::NoPr).is_none());
         assert!(collect(&no_repo.join("missing"), |_, _| PrLookup::NoPr).is_none());
+    }
+
+    #[test]
+    fn a_git_file_naming_another_repository_is_not_inspected() {
+        let dir = repo();
+        let p = canon(dir.path());
+        let other = tempfile::tempdir().unwrap();
+        let other = canon(other.path());
+        std::fs::create_dir(other.join("sub")).unwrap();
+        std::fs::write(
+            other.join(".git"),
+            format!("gitdir: {}\n", p.join(".git").display()),
+        )
+        .unwrap();
+        assert!(collect(&other.join("sub"), |_, _| PrLookup::NoPr).is_none());
+    }
+
+    #[test]
+    fn a_bogus_git_folder_never_sends_git_to_the_parent_repository() {
+        let dir = repo();
+        let p = canon(dir.path());
+        let inner = p.join("inner");
+        std::fs::create_dir_all(inner.join(".git")).unwrap();
+        assert!(collect(&inner, |_, _| PrLookup::NoPr).is_none());
     }
 
     #[test]

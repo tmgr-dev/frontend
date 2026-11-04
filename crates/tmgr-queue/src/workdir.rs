@@ -217,13 +217,74 @@ fn plain_config_key(name: &str) -> bool {
     }
 }
 
+fn normalized(path: &Path) -> Option<PathBuf> {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::RootDir => out.push("/"),
+            Component::Normal(name) => out.push(name),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    return None;
+                }
+            }
+            Component::Prefix(_) => return None,
+        }
+    }
+    Some(out)
+}
+
+fn named_path(dir: &Path, text: &str, prefix: &str) -> Option<PathBuf> {
+    let target = text.trim_end().strip_prefix(prefix)?;
+    if target.is_empty() || target.chars().any(char::is_control) {
+        return None;
+    }
+    let path = normalized(&dir.join(target))?;
+    (std::fs::canonicalize(&path).ok()? == path).then_some(path)
+}
+
+/// The git directory of the work folder `root` and its common directory, when `.git` is the folder's own
+/// directory, a `gitdir:` file naming a directory inside the folder, or one naming a worktree that a
+/// repository's `.git/worktrees/` registered for this very folder. A git directory inside the folder must
+/// not name a common directory elsewhere.
+pub fn expected_git_dir(root: &Path) -> Option<(PathBuf, PathBuf)> {
+    let root = std::fs::canonicalize(root).ok()?;
+    let dot_git = root.join(".git");
+    let git_dir = if std::fs::symlink_metadata(&dot_git).ok()?.is_dir() {
+        dot_git.clone()
+    } else {
+        named_path(&root, &read_small(&root, ".git")?, "gitdir: ")?
+    };
+    if git_dir.starts_with(&root) {
+        let commondir = std::fs::symlink_metadata(git_dir.join("commondir"));
+        return matches!(commondir, Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+            .then(|| (git_dir.clone(), git_dir));
+    }
+    let worktrees = git_dir.parent()?;
+    let common = worktrees.parent()?;
+    if worktrees.file_name()? != "worktrees"
+        || common.file_name()? != ".git"
+        || !std::fs::symlink_metadata(common).ok()?.is_dir()
+    {
+        return None;
+    }
+    let back = named_path(&git_dir, &read_small(&git_dir, "gitdir")?, "")?;
+    (back == dot_git).then(|| (git_dir.clone(), common.to_path_buf()))
+}
+
 /// Whether the repository's own configuration holds only settings that run nothing once git commands pin core.hooksPath and core.fsmonitor.
 pub fn repo_config_is_plain(dir: &Path) -> bool {
+    let Some((git_dir, expected_common)) = expected_git_dir(dir) else {
+        return false;
+    };
     let mut common = fixed_git_command();
     common
-        .arg("-C")
-        .arg(dir)
-        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+        .arg("--git-dir")
+        .arg(&git_dir)
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .current_dir(&git_dir);
     let Ok(out) = output_within(&mut common, GIT_TIMEOUT) else {
         return false;
     };
@@ -234,6 +295,9 @@ pub fn repo_config_is_plain(dir: &Path) -> bool {
         return false;
     };
     let git_dir = git_dir.strip_suffix('\n').unwrap_or(git_dir);
+    if std::fs::canonicalize(git_dir).ok().as_ref() != Some(&expected_common) {
+        return false;
+    }
     let mut list = fixed_git_command();
     list.args([
         "config",
@@ -243,7 +307,7 @@ pub fn repo_config_is_plain(dir: &Path) -> bool {
         "-z",
         "--file",
     ])
-    .arg(Path::new(&git_dir).join("config"));
+    .arg(expected_common.join("config"));
     let Ok(out) = output_within(&mut list, GIT_TIMEOUT) else {
         return false;
     };
@@ -1606,23 +1670,107 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_git_file_is_followed_to_the_configuration_it_names() {
+    fn worktree_fixture() -> (tempfile::TempDir, PathBuf, PathBuf, PathBuf) {
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let repo = root.join("repo");
-        let other = root.join("other");
         std::fs::create_dir_all(&repo).unwrap();
-        std::fs::create_dir_all(&other).unwrap();
         init_repo(&repo);
-        std::fs::write(
-            other.join(".git"),
-            format!("gitdir: {}\n", repo.join(".git").display()),
+        let wt = root.join("wt");
+        git(
+            Some(&repo),
+            &["worktree", "add", "-q", "--detach", wt.to_str().unwrap()],
         )
         .unwrap();
-        assert!(repo_config_is_plain(&other));
+        (tmp, root, repo, wt)
+    }
+
+    #[test]
+    fn a_git_file_of_a_registered_worktree_is_followed_to_its_repository_configuration() {
+        let (_tmp, _root, repo, wt) = worktree_fixture();
+        assert!(repo_config_is_plain(&wt));
         git(Some(&repo), &["config", "include.path", "elsewhere"]).unwrap();
-        assert!(!repo_config_is_plain(&other));
+        assert!(!repo_config_is_plain(&wt));
+    }
+
+    #[test]
+    fn relative_git_file_and_back_pointer_of_a_worktree_are_accepted() {
+        let (_tmp, _root, repo, wt) = worktree_fixture();
+        let admin = repo.join(".git/worktrees/wt");
+        std::fs::write(wt.join(".git"), "gitdir: ../repo/.git/worktrees/wt\n").unwrap();
+        std::fs::write(admin.join("gitdir"), "../../../../wt/.git\n").unwrap();
+        assert!(repo_config_is_plain(&wt));
+    }
+
+    #[test]
+    fn a_git_dir_inside_the_work_folder_is_accepted_without_a_commondir() {
+        let (_tmp, root, repo, _wt) = worktree_fixture();
+        let own = root.join("own");
+        std::fs::create_dir_all(&own).unwrap();
+        init_repo(&own);
+        assert!(repo_config_is_plain(&own));
+        std::fs::write(
+            own.join(".git/commondir"),
+            format!("{}\n", repo.join(".git").display()),
+        )
+        .unwrap();
+        assert!(!repo_config_is_plain(&own));
+
+        let moved = root.join("moved");
+        std::fs::create_dir_all(&moved).unwrap();
+        init_repo(&moved);
+        std::fs::rename(moved.join(".git"), moved.join("inner")).unwrap();
+        std::fs::write(moved.join(".git"), "gitdir: inner\n").unwrap();
+        assert!(repo_config_is_plain(&moved));
+        std::fs::write(moved.join("inner/commondir"), "../../repo/.git\n").unwrap();
+        assert!(!repo_config_is_plain(&moved));
+    }
+
+    #[test]
+    fn a_git_file_naming_anything_else_is_refused() {
+        let (_tmp, root, repo, wt) = worktree_fixture();
+        let admin = repo.join(".git/worktrees/wt");
+        let refused = |name: &str, text: &str| {
+            let dir = root.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join(".git"), text).unwrap();
+            assert!(!repo_config_is_plain(&dir), "{name}");
+        };
+        refused(
+            "other",
+            &format!("gitdir: {}\n", repo.join(".git").display()),
+        );
+        refused("up", "gitdir: ../repo/.git\n");
+        refused("stranger", &format!("gitdir: {}\n", admin.display()));
+        refused(
+            "dots",
+            &format!(
+                "gitdir: {}/x/../../repo/.git\n",
+                root.join("dots").display()
+            ),
+        );
+        refused("empty", "gitdir: \n");
+        refused("nul", &format!("gitdir: {}\0\n", admin.display()));
+        refused(
+            "two-lines",
+            &format!("gitdir: {}\n{}\n", admin.display(), admin.display()),
+        );
+
+        std::os::unix::fs::symlink(&repo, root.join("link")).unwrap();
+        std::fs::write(
+            wt.join(".git"),
+            format!(
+                "gitdir: {}\n",
+                root.join("link/.git/worktrees/wt").display()
+            ),
+        )
+        .unwrap();
+        assert!(!repo_config_is_plain(&wt));
+
+        let linked = root.join("linked");
+        std::fs::create_dir_all(&linked).unwrap();
+        std::os::unix::fs::symlink(wt.join(".git"), linked.join(".git")).unwrap();
+        assert!(!repo_config_is_plain(&linked));
     }
 
     #[test]
