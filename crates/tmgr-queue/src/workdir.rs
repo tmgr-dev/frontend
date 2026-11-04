@@ -4,6 +4,7 @@ use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tmgr_core::error::{Error, Kind, Result};
+use tmgr_runner::hostview::{Access, HostView};
 
 pub fn clone_dir(repo: &str, pickup_id: &str) -> Option<PathBuf> {
     let repo = Path::new(repo);
@@ -538,6 +539,34 @@ pub fn git_bytes(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<Ve
     Ok(out.stdout)
 }
 
+pub fn host_view(repo: &Path, access: Access) -> Result<HostView> {
+    HostView::open(repo, access).map_err(Error::internal)
+}
+
+fn view_git(repo: &Path, access: Access, args: &[&str]) -> Result<String> {
+    host_view(repo, access)?.run(args).map_err(Error::internal)
+}
+
+pub(crate) fn repo_git_bytes(
+    repo: &Path,
+    args: &[&str],
+    input: Option<Vec<u8>>,
+) -> Result<Vec<u8>> {
+    let view = host_view(repo, Access::Read)?;
+    let mut cmd = view.command();
+    cmd.args(["-c", "core.quotepath=off"]).args(args);
+    let out = output_within_input(&mut cmd, GIT_TIMEOUT, input)?;
+    if !out.status.success() {
+        let msg = String::from_utf8_lossy(&out.stderr);
+        let line = msg.lines().next().unwrap_or("git failed");
+        return Err(Error::new(
+            Kind::Internal,
+            format!("git {}: {line}", args.first().unwrap_or(&"")),
+        ));
+    }
+    Ok(out.stdout)
+}
+
 fn git(dir: Option<&Path>, args: &[&str]) -> Result<String> {
     let mut cmd = git_command(dir);
     let out = output_within(cmd.args(args), GIT_TIMEOUT)?;
@@ -824,8 +853,9 @@ pub fn prepare_clone(repo: &str, dest: &Path, branch: &str, base: Option<&str>) 
         Some(b) => {
             tmgr_core::branch::validate_base(b)?;
             let commit = format!("{b}^{{commit}}");
-            git(
-                Some(Path::new(repo)),
+            view_git(
+                Path::new(repo),
+                Access::Read,
                 &[
                     "rev-parse",
                     "--verify",
@@ -840,11 +870,12 @@ pub fn prepare_clone(repo: &str, dest: &Path, branch: &str, base: Option<&str>) 
                 ))
             })?
         }
-        None => git(
-            Some(Path::new(repo)),
+        None => view_git(
+            Path::new(repo),
+            Access::Read,
             &["symbolic-ref", "--quiet", "--short", "HEAD"],
         )
-        .or_else(|_| git(Some(Path::new(repo)), &["rev-parse", "HEAD"]))?,
+        .or_else(|_| view_git(Path::new(repo), Access::Read, &["rev-parse", "HEAD"]))?,
     };
     make_clone(repo, dest, &|dest| {
         git(
@@ -891,16 +922,22 @@ fn make_clone(repo: &str, dest: &Path, checkout: &dyn Fn(&Path) -> Result<()>) -
 pub fn remote_branch_head(repo: &str, branch: &str) -> Result<Option<String>> {
     validate_branch(branch)?;
     let reference = format!("refs/heads/{branch}");
-    let argv: Vec<String> = ["git", "-C", repo, "ls-remote", "origin", &reference]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    let out = crate::publish::run_hardened(&argv, Path::new(repo))?;
+    let view = host_view(Path::new(repo), Access::Network)?;
+    let url = origin_of(&view)?;
+    let out = view
+        .run(&["ls-remote", "--", url, &reference])
+        .map_err(Error::internal)?;
     Ok(out
         .lines()
         .filter_map(|l| l.split_once('\t'))
         .find(|(_, r)| *r == reference)
         .map(|(sha, _)| sha.to_string()))
+}
+
+fn origin_of(view: &HostView) -> Result<&str> {
+    view.origin_url()
+        .filter(|u| !u.is_empty() && !u.starts_with('-'))
+        .ok_or_else(|| Error::internal("the repository has no usable origin"))
 }
 
 fn moved_remotely(branch: &str) -> Error {
@@ -924,21 +961,21 @@ pub fn prepare_continue_clone(repo: &str, dest: &Path, branch: &str, sha: &str) 
         _ => return Err(moved_remotely(branch)),
     }
     let commit = format!("{sha}^{{commit}}");
-    let have = |r: &str| git(Some(Path::new(r)), &["cat-file", "-e", &commit]).is_ok();
+    let have = |r: &str| {
+        host_view(Path::new(r), Access::Read)
+            .is_ok_and(|v| v.succeeds(&["cat-file", "-e", &commit]))
+    };
     if !have(repo) {
-        let argv: Vec<String> = [
-            "git",
-            "-C",
-            repo,
+        let view = host_view(Path::new(repo), Access::Network)?;
+        let url = origin_of(&view)?;
+        view.run(&[
             "fetch",
             "--no-tags",
-            "origin",
+            "--",
+            url,
             &format!("refs/heads/{branch}"),
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-        crate::publish::run_hardened(&argv, Path::new(repo))?;
+        ])
+        .map_err(Error::internal)?;
         if !have(repo) {
             return Err(moved_remotely(branch));
         }
@@ -1198,7 +1235,7 @@ pub(crate) fn clone_tip(clone: &Path, branch: &str) -> Option<String> {
 /// of the clone's objects and borrows the rest from `repo`, which fetches from it. Returns the
 /// imported commit.
 pub fn git_query(repo: &Path, args: &[&str]) -> Result<String> {
-    git(Some(repo), args)
+    view_git(repo, Access::Read, args)
 }
 
 /// The branch a clone's HEAD names, read from `.git/HEAD` as data without running git there.
@@ -1501,10 +1538,10 @@ pub fn trusted_git_bytes(
 pub fn history_facts(repo: &Path, base: &str, head: &str) -> Result<(bool, usize)> {
     let range = format!("{base}..{head}");
     let count = |extra: &str| -> Result<usize> {
-        let out = git(Some(repo), &["rev-list", extra, "--count", &range])?;
+        let out = view_git(repo, Access::Read, &["rev-list", extra, "--count", &range])?;
         Ok(out.trim().parse().unwrap_or(usize::MAX))
     };
-    let shared = git(Some(repo), &["merge-base", base, head]).is_ok();
+    let shared = view_git(repo, Access::Read, &["merge-base", base, head]).is_ok();
     let roots = count("--max-parents=0")?;
     Ok((shared && roots == 0, count("--merges")?))
 }
@@ -1513,8 +1550,9 @@ pub fn history_facts(repo: &Path, base: &str, head: &str) -> Result<(bool, usize
 pub fn branch_tip(repo: &Path, branch: &str) -> Result<Option<String>> {
     validate_branch(branch)?;
     let reference = format!("refs/heads/{branch}");
-    Ok(git(
-        Some(repo),
+    Ok(view_git(
+        repo,
+        Access::Read,
         &[
             "rev-parse",
             "--verify",
@@ -1536,8 +1574,16 @@ pub fn restore_branch(
     validate_branch(branch)?;
     let reference = format!("refs/heads/{branch}");
     match before {
-        None => git(Some(repo), &["update-ref", "-d", &reference, imported])?,
-        Some(old) => git(Some(repo), &["update-ref", &reference, old, imported])?,
+        None => view_git(
+            repo,
+            Access::Write,
+            &["update-ref", "-d", &reference, imported],
+        )?,
+        Some(old) => view_git(
+            repo,
+            Access::Write,
+            &["update-ref", &reference, old, imported],
+        )?,
     };
     Ok(())
 }
@@ -1562,8 +1608,9 @@ pub fn import_branch(repo: &str, clone: &Path, branch: &str) -> Result<String> {
         Some(&bare),
         &["update-ref", &format!("refs/heads/{branch}"), &sha],
     )?;
-    git(
-        Some(Path::new(repo)),
+    view_git(
+        Path::new(repo),
+        Access::Write,
         &[
             "fetch",
             "--no-tags",
@@ -1628,14 +1675,19 @@ pub fn remove_team_refs(repo: &Path, pickup_id: &str) {
         return;
     }
     let prefix = format!("refs/heads/{TEAM_REF_PREFIX}{pickup_id}/");
-    let Ok(listed) = git(
-        Some(repo),
-        &["for-each-ref", "--format=%(refname)", &prefix],
-    ) else {
+    let Ok(view) = host_view(repo, Access::Write) else {
         return;
     };
-    for name in listed.lines().filter(|l| l.starts_with(&prefix)) {
-        let _ = git(Some(repo), &["update-ref", "-d", name]);
+    let Ok(listed) = view.run(&["for-each-ref", "--format=%(refname) %(objectname)", &prefix])
+    else {
+        return;
+    };
+    for (name, sha) in listed
+        .lines()
+        .filter_map(|l| l.split_once(' '))
+        .filter(|(n, _)| n.starts_with(&prefix))
+    {
+        let _ = view.run(&["update-ref", "-d", name, sha]);
     }
 }
 
@@ -1777,24 +1829,6 @@ pub fn init_repo(dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_hook_added_after_the_listing_does_not_run_on_a_ref_update() {
-        let tmp = tempfile::tempdir().unwrap();
-        let repo = std::fs::canonicalize(tmp.path()).unwrap().join("proj");
-        std::fs::create_dir(&repo).unwrap();
-        init_repo(&repo);
-        let mut cmd = git_command(Some(&repo));
-        let marker = tmp.path().join("ran");
-        git(Some(&repo), &["config", "hook.x.event", "reference-transaction"]).unwrap();
-        git(
-            Some(&repo),
-            &["config", "hook.x.command", &format!("touch {}", marker.display())],
-        )
-        .unwrap();
-        let _ = cmd.args(["update-ref", "refs/heads/t", "HEAD"]).output();
-        assert!(!marker.exists(), "a repository hook ran");
-    }
 
     #[test]
     fn clones_beside_the_repo_on_a_new_branch_without_hooks() {
@@ -3267,5 +3301,204 @@ mod tests {
         let stats = host_run(&repo, &host, &numstat);
         assert!(!marker.exists());
         assert!(stats.contains("1\t0\tREADME.md"), "{stats}");
+    }
+
+    fn raw(dir: &Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    fn plant(repo: &Path, marks: &Path) {
+        std::fs::create_dir_all(marks).unwrap();
+        let touch = |name: &str| format!("touch {}/{name}", marks.display());
+        for (key, value) in [
+            ("hook.x.event", "reference-transaction".to_string()),
+            ("hook.x.command", touch("hook")),
+            ("hook.y.event", "pre-push".to_string()),
+            ("hook.y.command", touch("prepush")),
+            ("core.fsmonitor", touch("fsmonitor")),
+            ("core.sshCommand", touch("ssh")),
+            ("core.pager", touch("pager")),
+            ("filter.x.clean", touch("clean")),
+            ("filter.x.smudge", touch("smudge")),
+            ("diff.x.textconv", touch("textconv")),
+        ] {
+            raw(repo, &["config", key, &value]);
+        }
+        std::fs::write(repo.join(".git/info/attributes"), "* filter=x diff=x\n").unwrap();
+        let hooks = repo.join(".git/hooks");
+        std::fs::create_dir_all(&hooks).unwrap();
+        for name in [
+            "reference-transaction",
+            "pre-push",
+            "post-update",
+            "pre-auto-gc",
+        ] {
+            std::fs::write(hooks.join(name), format!("#!/bin/sh\n{}\n", touch(name))).unwrap();
+            std::fs::set_permissions(
+                hooks.join(name),
+                std::os::unix::fs::PermissionsExt::from_mode(0o755),
+            )
+            .unwrap();
+        }
+    }
+
+    fn assert_quiet(marks: &Path) {
+        let ran: Vec<_> = std::fs::read_dir(marks)
+            .map(|d| d.flatten().map(|e| e.file_name()).collect())
+            .unwrap_or_default();
+        assert!(ran.is_empty(), "repository config or hooks ran: {ran:?}");
+    }
+
+    fn bare_origin(root: &Path, repo: &Path) -> PathBuf {
+        let bare = root.join("origin.git");
+        raw(root, &["init", "-q", "--bare", "-b", "main", "origin.git"]);
+        raw(repo, &["remote", "add", "origin", &bare.to_string_lossy()]);
+        raw(repo, &["push", "-q", "origin", "main"]);
+        bare
+    }
+
+    #[test]
+    fn a_hook_added_after_the_view_is_opened_does_not_run_on_a_ref_update() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let view = host_view(&repo, Access::Write).unwrap();
+        let marks = root.join("marks");
+        plant(&repo, &marks);
+        view.run(&["update-ref", "refs/heads/t", "HEAD"]).unwrap();
+        assert_quiet(&marks);
+        assert_eq!(
+            raw(&repo, &["rev-parse", "refs/heads/t"]),
+            raw(&repo, &["rev-parse", "HEAD"])
+        );
+    }
+
+    #[test]
+    fn restoring_and_removing_branches_ignore_repository_config() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let tip = raw(&repo, &["rev-parse", "HEAD"]);
+        raw(&repo, &["branch", "tm-1-fix"]);
+        raw(&repo, &["branch", "queue-team/p1/w1"]);
+        raw(&repo, &["pack-refs", "--all"]);
+        let marks = root.join("marks");
+        plant(&repo, &marks);
+        assert_eq!(
+            branch_tip(&repo, "tm-1-fix").unwrap().as_deref(),
+            Some(tip.as_str())
+        );
+        restore_branch(&repo, "tm-1-fix", None, &tip).unwrap();
+        assert_eq!(branch_tip(&repo, "tm-1-fix").unwrap(), None);
+        remove_team_refs(&repo, "p1");
+        assert_eq!(branch_tip(&repo, "queue-team/p1/w1").unwrap(), None);
+        assert!(history_facts(&repo, "HEAD", "HEAD").is_ok());
+        assert_eq!(git_query(&repo, &["rev-parse", "HEAD"]).unwrap(), tip);
+        assert_quiet(&marks);
+    }
+
+    #[test]
+    fn importing_ignores_repository_config_and_still_refuses_a_checked_out_branch() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let dest = run_clone_dir(&r, "tm-3-fix").unwrap();
+        prepare_clone(&r, &dest, "tm-3-fix", None).unwrap();
+        std::fs::write(dest.join("work.txt"), "x\n").unwrap();
+        raw(&dest, &["add", "work.txt"]);
+        raw(&dest, &["commit", "-q", "-m", "agent change"]);
+        let marks = root.join("marks");
+        plant(&repo, &marks);
+        let sha = import_branch(&r, &dest, "tm-3-fix").unwrap();
+        assert_eq!(raw(&repo, &["rev-parse", "tm-3-fix"]), sha);
+        assert_quiet(&marks);
+
+        let dest4 = run_clone_dir(&r, "tm-4-fix").unwrap();
+        prepare_clone(&r, &dest4, "tm-4-fix", None).unwrap();
+        std::fs::write(dest4.join("more.txt"), "y\n").unwrap();
+        raw(&dest4, &["add", "more.txt"]);
+        raw(&dest4, &["commit", "-q", "-m", "second change"]);
+        raw(&repo, &["checkout", "-q", "-b", "tm-4-fix"]);
+        let before = raw(&repo, &["rev-parse", "tm-4-fix"]);
+        assert!(import_branch(&r, &dest4, "tm-4-fix").is_err());
+        assert_eq!(raw(&repo, &["rev-parse", "tm-4-fix"]), before);
+    }
+
+    #[test]
+    fn preparing_a_clone_reads_the_base_without_repository_config() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let marks = root.join("marks");
+        plant(&repo, &marks);
+        let dest = run_clone_dir(&r, "tm-5-fix").unwrap();
+        prepare_clone(&r, &dest, "tm-5-fix", Some("main")).unwrap();
+        assert!(dest.join("README.md").is_file());
+        let dest2 = run_clone_dir(&r, "tm-6-fix").unwrap();
+        prepare_clone(&r, &dest2, "tm-6-fix", None).unwrap();
+        assert!(dest2.join("README.md").is_file());
+        assert_quiet(&marks);
+    }
+
+    #[test]
+    fn the_remote_branch_is_read_from_the_origin_url_without_repository_config() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let bare = bare_origin(&root, &repo);
+        let tip = raw(&repo, &["rev-parse", "HEAD"]);
+        let marks = root.join("marks");
+        plant(&repo, &marks);
+        raw(
+            &repo,
+            &[
+                "config",
+                &format!("url.{}/nowhere/.insteadOf", root.display()),
+                &format!("{}/", root.display()),
+            ],
+        );
+        let r = repo.to_string_lossy().into_owned();
+        assert_eq!(
+            remote_branch_head(&r, "main").unwrap().as_deref(),
+            Some(tip.as_str())
+        );
+        assert_eq!(remote_branch_head(&r, "absent").unwrap(), None);
+        assert!(bare.is_dir());
+        assert_quiet(&marks);
+    }
+
+    #[test]
+    fn continuing_fetches_the_saved_commit_from_the_origin_url_without_repository_config() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let bare = bare_origin(&root, &repo);
+        let other = root.join("other");
+        raw(&root, &["clone", "-q", &bare.to_string_lossy(), "other"]);
+        raw(&other, &["checkout", "-q", "-b", "tm-7-fix"]);
+        std::fs::write(other.join("late.txt"), "z\n").unwrap();
+        raw(&other, &["add", "late.txt"]);
+        raw(&other, &["commit", "-q", "-m", "late"]);
+        raw(&other, &["push", "-q", "origin", "tm-7-fix"]);
+        let sha = raw(&other, &["rev-parse", "HEAD"]);
+        let marks = root.join("marks");
+        plant(&repo, &marks);
+        let r = repo.to_string_lossy().into_owned();
+        let dest = run_clone_dir(&r, "tm-7-fix").unwrap();
+        prepare_continue_clone(&r, &dest, "tm-7-fix", &sha).unwrap();
+        assert!(dest.join("late.txt").is_file());
+        assert_eq!(raw(&dest, &["rev-parse", "HEAD"]), sha);
+        assert_quiet(&marks);
     }
 }

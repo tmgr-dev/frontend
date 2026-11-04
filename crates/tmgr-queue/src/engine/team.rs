@@ -16,6 +16,7 @@ use tmgr_ipc::api::{
     BundleTeam, CloneSpec, TaskRef, TeamLink, TeamMode, TeamRole, MAX_ASSIGNMENT_BYTES,
     MAX_TEAM_SIZE,
 };
+use tmgr_runner::hostview::Access;
 
 pub const PLAN_FILE: &str = ".tmgr/team-plan.json";
 pub const DONE_FILE: &str = ".tmgr/done";
@@ -801,11 +802,12 @@ fn import_clones(
 }
 
 fn undo_imports(plans: &[ClonePlan], found: &[(String, String)], branch: &str) {
-    for (name, _) in found {
+    for (name, sha) in found {
         if let Some(plan) = plans.iter().find(|p| &p.name == name) {
-            let _ = crate::workdir::git_command(Some(Path::new(&plan.path)))
-                .args(["update-ref", "-d", &format!("refs/heads/{branch}")])
-                .output();
+            let _ = crate::workdir::host_view(Path::new(&plan.path), Access::Write).and_then(|v| {
+                v.run(&["update-ref", "-d", &format!("refs/heads/{branch}"), sha])
+                    .map_err(Error::internal)
+            });
         }
     }
 }

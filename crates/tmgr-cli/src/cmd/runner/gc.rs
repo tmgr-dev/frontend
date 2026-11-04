@@ -12,6 +12,7 @@ use tmgr_queue::clones::plan_clones;
 use tmgr_queue::state::{self, MemberClone, Pickup, Status};
 use tmgr_queue::workdir;
 use tmgr_runner::client::Client;
+use tmgr_runner::hostview::Access;
 
 const BUILD_DIRS: &[&str] = &[
     "target",
@@ -413,16 +414,17 @@ pub(super) struct Host {
 }
 
 pub(super) fn host_facts(repo: &Path) -> std::result::Result<Host, String> {
-    let q = |args: &[&str]| workdir::git_query(repo, args).map_err(|e| sanitize_line(&e.message));
-    let common = q(&["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
-    let tips = q(&["for-each-ref", "--format=%(objecttype) %(objectname)"])?
+    let view = workdir::host_view(repo, Access::Read).map_err(|e| sanitize_line(&e.message))?;
+    let tips = view
+        .run(&["for-each-ref", "--format=%(objecttype) %(objectname)"])
+        .map_err(|e| sanitize_line(&e))?
         .lines()
         .filter_map(|l| l.split_once(' '))
         .filter(|(kind, _)| matches!(*kind, "commit" | "tag"))
         .map(|(_, sha)| sha.to_string())
         .collect();
     Ok(Host {
-        objects: Path::new(common.trim()).join("objects"),
+        objects: view.common_dir().join("objects"),
         tips,
     })
 }
