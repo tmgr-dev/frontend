@@ -2011,6 +2011,29 @@ mod tests {
         assert!(worker_facts(&dir, "tmgr/w1", &host).is_ok());
     }
 
+    #[test]
+    fn worker_facts_refuse_an_object_store_reached_through_a_link() {
+        let (_t, root) = tmp_root();
+        let other = root.join("other");
+        std::fs::create_dir(&other).unwrap();
+        sh(&other, &["init", "-q"]);
+        for linked in [".git/objects", ".git/objects/pack", ".git/objects/info"] {
+            let dir = plain_copy(&root);
+            let path = dir.join(linked);
+            std::fs::create_dir_all(&path).unwrap();
+            std::fs::rename(&path, root.join("moved")).unwrap();
+            std::os::unix::fs::symlink(other.join(linked), &path).unwrap();
+            assert!(
+                worker_facts(&dir, "tmgr/w1", &no_host())
+                    .unwrap_err()
+                    .contains("borrows objects"),
+                "{linked}"
+            );
+            std::fs::remove_dir_all(&dir).unwrap();
+            std::fs::remove_dir_all(root.join("moved")).unwrap();
+        }
+    }
+
     fn plain_copy(root: &Path) -> PathBuf {
         let dir = root.join("w");
         std::fs::create_dir(&dir).unwrap();

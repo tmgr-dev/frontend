@@ -929,6 +929,16 @@ const MAX_INDEX: u64 = 64 << 20;
 /// Whether the copy's own object alternates are none, or only `allowed` (the repository it was cloned with
 /// `--reference`). Anything else would make git read objects from elsewhere.
 pub fn copy_alternates_ok(copy: &Path, allowed: &Path) -> bool {
+    let real_dir = |rel: &str| std::fs::symlink_metadata(copy.join(rel)).map(|m| m.is_dir());
+    if [".git", ".git/objects"]
+        .iter()
+        .any(|r| !matches!(real_dir(r), Ok(true)))
+        || [".git/objects/info", ".git/objects/pack"]
+            .iter()
+            .any(|r| matches!(real_dir(r), Ok(false)))
+    {
+        return false;
+    }
     let rel = ".git/objects/info/alternates";
     if std::fs::symlink_metadata(copy.join(rel)).is_err() {
         return true;
