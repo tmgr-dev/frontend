@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use tmgr_ipc::decisions::{
   prepare_server_dir, read_line_limited, socket_endpoint, token_ok, write_line, Op, Request, Response, MAX_WAIT_MS,
-  PROTO, SOCK,
+  PROTO, SOCK, UNAUTHORIZED,
 };
 use tmgr_ipc::endpoint;
 use tmgr_ipc::server::accept_check;
@@ -74,7 +74,7 @@ fn handle(stream: UnixStream, hub: &Hub, token: &str) {
   let _ = stream.set_write_timeout(Some(WRITE_TIMEOUT));
   let resp = match read_line_limited(&stream) {
     Ok(Some(line)) => match serde_json::from_slice::<Request>(&line) {
-      Ok(req) if !token_ok(token, &req.token) => Response::err("unauthorized"),
+      Ok(req) if !token_ok(token, &req.token) => Response::err(UNAUTHORIZED),
       Ok(req) if req.v != PROTO => Response::err("unsupported protocol version"),
       Ok(req) => dispatch(hub, req.op),
       Err(_) => Response::err("bad request"),
@@ -123,7 +123,7 @@ mod tests {
   use std::io::Write;
   use std::sync::Mutex;
   use std::time::Instant;
-  use tmgr_ipc::decisions::{spool, CardIn, Client, Opt, Source, TOKEN};
+  use tmgr_ipc::decisions::{spool, CardIn, Client, Opt, PatchIn, Source, TOKEN};
 
   use crate::decisions::hub::Change;
   use crate::decisions::store::{AnswerIn, MessageIn, Store};
@@ -410,6 +410,132 @@ mod tests {
     assert_eq!(r.hub.list().unwrap().len(), 1);
     let e = c.wait(&b, 0, Duration::from_millis(50), true).unwrap().unwrap();
     assert_eq!((e.card_id.as_str(), e.choice.as_deref()), (a.as_str(), Some("a")));
+  }
+
+  fn quiet_hub(dir: &Path) -> Arc<Hub> {
+    let sink: crate::decisions::hub::Sink = Box::new(|_, _| {});
+    Arc::new(Hub::new(Store::open(&dir.join("decisions.db")).unwrap(), sink).with_spool(dir.to_path_buf()))
+  }
+
+  fn private_dir() -> (tempfile::TempDir, PathBuf) {
+    let tmp = tempfile::Builder::new().prefix("dq").tempdir_in("/tmp").unwrap();
+    let dir = tmp.path().join("d");
+    tmgr_ipc::dirs::ensure_private_dir(&dir).unwrap();
+    (tmp, dir)
+  }
+
+  fn is_unauthorized(e: &io::Error) -> bool {
+    e.to_string().contains("unauthorized")
+  }
+
+  #[test]
+  fn a_held_client_survives_a_restart_with_a_rotated_token() {
+    let (_tmp, dir) = private_dir();
+    let hub = quiet_hub(&dir);
+    let first = Server::start(hub.clone(), &dir).unwrap();
+    let held = Client::open_in(&dir).unwrap();
+    held.ping().unwrap();
+    let old = std::fs::read_to_string(dir.join(TOKEN)).unwrap();
+    drop(first);
+    let _second = Server::start(hub, &dir).unwrap();
+    assert_ne!(old, std::fs::read_to_string(dir.join(TOKEN)).unwrap());
+    held.ping().unwrap();
+    held.create(card("after the restart")).unwrap();
+  }
+
+  #[test]
+  fn clients_opened_during_restarts_never_see_unauthorized() {
+    let (_tmp, dir) = private_dir();
+    let hub = quiet_hub(&dir);
+    let mut server = Some(Server::start(hub.clone(), &dir).unwrap());
+    let id = Client::open_in(&dir).unwrap().create(card("stress")).unwrap();
+    let stop = Arc::new(AtomicBool::new(false));
+    let counts = Arc::new([AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0)]);
+    let workers: Vec<_> = (0..6)
+      .map(|n| {
+        let (dir, id, stop, counts) = (dir.clone(), id.clone(), stop.clone(), counts.clone());
+        std::thread::spawn(move || {
+          while !stop.load(Ordering::SeqCst) {
+            let r = Client::open_in(&dir).and_then(|c| {
+              if n % 2 == 0 {
+                c.ping().map(|_| ())
+              } else {
+                c.wait(&id, 0, Duration::from_millis(5), false).map(|_| ())
+              }
+            });
+            let slot = match r {
+              Ok(()) => 0,
+              Err(e) if is_unauthorized(&e) => 1,
+              Err(_) => 2,
+            };
+            counts[slot].fetch_add(1, Ordering::SeqCst);
+          }
+        })
+      })
+      .collect();
+    for i in 0..60u64 {
+      drop(server.take());
+      std::thread::sleep(Duration::from_millis(i % 4));
+      server = Some(Server::start(hub.clone(), &dir).unwrap());
+      std::thread::sleep(Duration::from_millis(3));
+    }
+    stop.store(true, Ordering::SeqCst);
+    for w in workers {
+      w.join().unwrap();
+    }
+    let n = |i: usize| counts[i].load(Ordering::SeqCst);
+    eprintln!("stress: ok={} unauthorized={} other_errors={}", n(0), n(1), n(2));
+    assert_eq!(n(1), 0);
+    assert!(n(0) > 0);
+  }
+
+  #[test]
+  fn cards_aliases_patches_and_answers_survive_a_restart() {
+    let (_tmp, dir) = private_dir();
+    let hub = quiet_hub(&dir);
+    let server = Server::start(hub.clone(), &dir).unwrap();
+    let held = Client::open_in(&dir).unwrap();
+    let patches = vec![PatchIn { label: "one".into(), text: "diff one".into() }, PatchIn { label: "two".into(), text: "diff two".into() }];
+    let a = held.create(CardIn { patches: patches.clone(), ..card("first") }).unwrap();
+    let b = tmgr_ipc::decisions::new_card_id();
+    assert_eq!(held.create(CardIn { id: Some(b.clone()), patches: patches.clone(), ..resend("second", &a) }).unwrap(), a);
+    assert_eq!(hub.get_with_patches(&a).unwrap().1, patches);
+    let answered = held.create(card("answered early")).unwrap();
+    hub.answer(&answered, answer_a()).unwrap();
+    let old_token = std::fs::read_to_string(dir.join(TOKEN)).unwrap();
+
+    drop(server);
+    drop(hub);
+    std::thread::sleep(Duration::from_millis(200));
+    let hub = quiet_hub(&dir);
+    hub.ingest_spool(&dir);
+    let _server = Server::start(hub.clone(), &dir).unwrap();
+    assert_ne!(old_token, std::fs::read_to_string(dir.join(TOKEN)).unwrap());
+
+    assert_eq!(hub.get(&b).unwrap().id, a);
+    let (view, kept) = hub.get_with_patches(&a).unwrap();
+    assert_eq!(view.title, "second");
+    assert_eq!(kept, patches);
+    let early = held.wait(&answered, 0, Duration::from_secs(5), true).unwrap().unwrap();
+    assert!(early.is_final());
+    assert_eq!(early.card_id, answered);
+
+    let waiters: Vec<_> = [a.clone(), b]
+      .into_iter()
+      .map(|id| {
+        let dir = dir.clone();
+        std::thread::spawn(move || Client::open_in(&dir).unwrap().wait(&id, 0, Duration::from_secs(10), true).unwrap())
+      })
+      .collect();
+    std::thread::sleep(Duration::from_millis(150));
+    hub.answer(&a, answer_a()).unwrap();
+    for w in waiters {
+      let e = w.join().unwrap().unwrap();
+      assert!(e.is_final());
+      assert_eq!(e.card_id, a);
+    }
+    let late = held.wait(&a, 0, Duration::from_secs(5), true).unwrap().unwrap();
+    assert!(late.is_final());
   }
 
   fn stamp(dir: &Path, id: &str, secs: u64) {

@@ -2,7 +2,7 @@ mod common;
 use common::{init_repo, path_with, text};
 use serde_json::{json, Value};
 use std::io::Write;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -70,6 +70,31 @@ fn stand() -> Stand {
 
 fn serve(stand: &Stand, handler: Handler) -> Fake {
     let token = prepare_server_dir(stand.dir.path()).unwrap();
+    serve_as(stand, token, handler)
+}
+
+fn serve_stale(stand: &Stand, handler: Handler) -> (Fake, String) {
+    prepare_server_dir(stand.dir.path()).unwrap();
+    let token = tmgr_ipc::secret::generate();
+    (serve_as(stand, token.clone(), handler), token)
+}
+
+fn publish_token(dir: &Path, token: String, after: Duration) -> std::thread::JoinHandle<()> {
+    let file = dir.join("decisions.token");
+    std::thread::spawn(move || {
+        std::thread::sleep(after);
+        std::fs::remove_file(&file).unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&file)
+            .unwrap();
+        f.write_all(token.as_bytes()).unwrap();
+    })
+}
+
+fn serve_as(stand: &Stand, token: String, handler: Handler) -> Fake {
     let listener = match socket_endpoint(stand.dir.path()) {
         tmgr_ipc::endpoint::Endpoint::Path(p) => UnixListener::bind(p).unwrap(),
         #[allow(unreachable_patterns)]
@@ -772,12 +797,6 @@ fn bad_forms_are_usage_errors_and_send_nothing() {
     let fake = serve(&st, silent());
     let id = tmgr_ipc::decisions::new_card_id();
     let cases: Vec<Vec<&str>> = vec![
-        vec!["--pr", "ftp://example.com/x"],
-        vec!["--pr", "javascript:alert(1)"],
-        vec!["--pr", "o/r#x"],
-        vec!["--pr", "o/r#0"],
-        vec!["--pr", "o/r"],
-        vec!["--pr", "o r/r#1"],
         vec!["--commit", "o/r@abc12"],
         vec!["--commit", "o/r@zzzzzzzz"],
         vec!["--commit", "file:///etc/passwd"],
@@ -1154,7 +1173,7 @@ fn ask_owner_refuses_bad_new_fields() {
                 "ask_owner",
                 json!({"title": "T", "patches": [{"text": ""}]}),
             ),
-            ("ask_owner", json!({"title": "T", "prs": ["ftp://x/y"]})),
+            ("ask_owner", json!({"title": "T", "prs": [1]})),
             ("ask_owner", json!({"title": "T", "commits": [1]})),
             ("ask_owner", json!({"title": "T", "tags": "v1"})),
             (
@@ -1391,4 +1410,195 @@ fn a_hung_desktop_cannot_hold_the_hook_past_its_budget() {
     );
     quiet(&out);
     assert!(took < Duration::from_secs(4), "{took:?}");
+}
+
+#[test]
+fn get_answer_follows_a_token_that_changes_mid_call() {
+    let st = stand();
+    let (fake, token) = serve_stale(&st, answering("2"));
+    let id = tmgr_ipc::decisions::new_card_id();
+    let publisher = publish_token(st.dir.path(), token, Duration::from_millis(300));
+    let r = mcp(
+        &st,
+        "5000",
+        "claude-code",
+        &[("get_answer", json!({"card_id": id}))],
+    );
+    publisher.join().unwrap();
+    assert!(!is_error(&r[0]), "{}", r[0]);
+    assert_eq!(payload(&r[0])["choice"], "2");
+    assert_eq!(fake.waits(), [0]);
+}
+
+#[test]
+fn ask_wait_follows_a_token_that_changes_mid_call() {
+    let st = stand();
+    let (fake, token) = serve_stale(&st, answering("1"));
+    let publisher = publish_token(st.dir.path(), token, Duration::from_millis(300));
+    let out = ask(
+        &st,
+        &["--title", "T", "--wait", "--timeout", "20", "--json"],
+    );
+    publisher.join().unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"]["status"], "answered");
+    assert!(!fake.waits().is_empty());
+}
+
+#[test]
+fn a_server_that_never_accepts_the_token_gives_pending_not_an_error() {
+    let st = stand();
+    let (fake, _token) = serve_stale(&st, answering("1"));
+    let id = tmgr_ipc::decisions::new_card_id();
+    let r = mcp(
+        &st,
+        "1500",
+        "claude-code",
+        &[("get_answer", json!({"card_id": id}))],
+    );
+    assert!(!is_error(&r[0]), "{}", r[0]);
+    assert_eq!(payload(&r[0])["status"], "pending");
+    assert_eq!(payload(&r[0])["card_id"], id);
+
+    let out = ask(&st, &["--title", "T", "--wait", "--timeout", "2"]);
+    assert_eq!(out.status.code(), Some(8), "{}", text(&out.stderr));
+    assert!(
+        !text(&out.stderr).contains("error"),
+        "{}",
+        text(&out.stderr)
+    );
+    assert!(fake.ops().is_empty());
+}
+
+#[test]
+fn cards_are_spooled_when_the_token_is_never_accepted() {
+    let st = stand();
+    let (fake, _token) = serve_stale(&st, silent());
+    let out = ask(&st, &["--title", "T", "--json"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"]["status"], "spooled");
+    let r = mcp(
+        &st,
+        "300",
+        "claude-code",
+        &[("ask_owner", json!({"title": "T2"}))],
+    );
+    assert!(!is_error(&r[0]), "{}", r[0]);
+    assert_eq!(payload(&r[0])["status"], "pending");
+    assert_eq!(
+        std::fs::read_dir(st.dir.path().join("inbox"))
+            .unwrap()
+            .count(),
+        2
+    );
+    assert!(fake.ops().is_empty());
+}
+
+#[test]
+fn reply_owner_reports_not_delivered_when_the_token_is_never_accepted() {
+    let st = stand();
+    let (fake, _token) = serve_stale(&st, silent());
+    let id = tmgr_ipc::decisions::new_card_id();
+    let r = mcp(
+        &st,
+        "300",
+        "claude-code",
+        &[("reply_owner", json!({"card_id": id, "text": "hi"}))],
+    );
+    assert!(is_error(&r[0]), "{}", r[0]);
+    let msg = r[0]["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(
+        msg.contains("not delivered") && msg.contains("unauthorized"),
+        "{msg}"
+    );
+    assert!(fake.ops().is_empty());
+}
+
+#[test]
+fn pr_values_that_are_not_urls_or_references_pass_through_to_links_pr() {
+    let st = stand();
+    let fake = serve(&st, silent());
+    for (given, kept) in [
+        ("PR-77", "PR-77"),
+        ("javascript:alert(1)", "javascript:alert(1)"),
+        ("file:///etc/passwd", "file:///etc/passwd"),
+        ("o/r#x", "o/r#x"),
+        ("https://example.com/a b", "https://example.com/a b"),
+    ] {
+        let out = ask(&st, &["--title", "T", "--pr", given]);
+        assert_eq!(out.status.code(), Some(0), "{given}: {}", text(&out.stderr));
+        let c = fake.created().pop().unwrap();
+        assert_eq!(c["links"]["pr"], kept);
+        assert!(c["links"].get("items").is_none(), "{given}: {c}");
+    }
+    let out = ask(
+        &st,
+        &["--title", "T", "--pr", "o/r#5", "--pr", "javascript:x"],
+    );
+    assert_eq!(out.status.code(), Some(0));
+    let c = fake.created().pop().unwrap();
+    assert_eq!(c["links"]["pr"], "https://github.com/o/r/pull/5");
+    assert_eq!(c["links"]["items"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn mcp_pr_and_prs_share_the_same_rules() {
+    let st = stand();
+    let fake = serve(&st, silent());
+    let r = mcp(
+        &st,
+        "100",
+        "claude-code",
+        &[
+            ("ask_owner", json!({"title": "T", "pr": "PR-77"})),
+            (
+                "ask_owner",
+                json!({"title": "T", "pr": "javascript:x", "prs": ["o/r#5"]}),
+            ),
+            ("ask_owner", json!({"title": "T", "prs": ["file:///x"]})),
+        ],
+    );
+    for resp in &r {
+        assert!(!is_error(resp), "{resp}");
+    }
+    let cards = fake.created();
+    assert_eq!(cards[0]["links"]["pr"], "PR-77");
+    assert!(cards[0]["links"].get("items").is_none());
+    assert_eq!(cards[1]["links"]["pr"], "javascript:x");
+    let items = cards[1]["links"]["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["url"], "https://github.com/o/r/pull/5");
+    assert_eq!(cards[2]["links"]["pr"], "file:///x");
+    assert!(cards[2]["links"].get("items").is_none());
+}
+
+#[test]
+fn task_references_that_are_not_urls_stay_accepted() {
+    let st = stand();
+    let fake = serve(&st, silent());
+    let out = ask(&st, &["--title", "T", "--task", "TM-123"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let r = mcp(
+        &st,
+        "100",
+        "claude-code",
+        &[
+            ("ask_owner", json!({"title": "T", "task": "TM-123"})),
+            (
+                "ask_owner",
+                json!({"title": "T", "task": "https://tmgr.example/ws/tasks/1"}),
+            ),
+        ],
+    );
+    for resp in &r {
+        assert!(!is_error(resp), "{resp}");
+    }
+    let cards = fake.created();
+    assert_eq!(cards[0]["links"]["task"], "TM-123");
+    assert!(cards[0]["links"].get("items").is_none());
+    assert_eq!(cards[1]["links"]["task"], "TM-123");
+    assert!(cards[1]["links"].get("items").is_none());
+    assert_eq!(cards[2]["links"]["items"][0]["kind"], "task");
 }

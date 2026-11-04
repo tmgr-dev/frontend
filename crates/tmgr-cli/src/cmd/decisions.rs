@@ -526,8 +526,17 @@ impl Spec {
             return Err(format!("patches may total at most {MAX_PATCH_BYTES} bytes"));
         }
         let mut items = Vec::new();
+        let mut pr = None;
         for s in &self.prs {
-            items.push(parse_pr(s)?);
+            match parse_pr(s) {
+                Ok(i) => {
+                    pr.get_or_insert_with(|| i.url.clone());
+                    items.push(i);
+                }
+                Err(_) => {
+                    pr.get_or_insert_with(|| s.clone());
+                }
+            }
         }
         for s in &self.commits {
             items.push(parse_commit(s)?);
@@ -538,9 +547,8 @@ impl Spec {
         for s in &self.links {
             items.push(parse_link(s)?);
         }
-        let pr = items.iter().find(|i| i.kind == "pr").map(|i| i.url.clone());
-        if let Some(t) = self.task.as_deref().filter(|t| is_http(t)) {
-            items.push(item("task", http_url(t)?, None));
+        if let Some(url) = self.task.as_deref().and_then(|t| http_url(t).ok()) {
+            items.push(item("task", url, None));
         }
         if items.len() > MAX_LINKS {
             return Err(format!("at most {MAX_LINKS} links"));

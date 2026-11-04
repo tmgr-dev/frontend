@@ -343,6 +343,10 @@ fn reply_owner(a: &Value, progress: &mut dyn FnMut(&str)) -> Value {
     match sent {
         Ok(()) => collect(&id, wait, progress),
         Err(e) if decisions::is_refusal(&e) => text_result(format!("error: {e}"), true),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => text_result(
+            "error: the Decisions inbox did not accept the connection (unauthorized); the reply was not delivered, try again".to_string(),
+            true,
+        ),
         Err(_) => text_result(
             format!(
                 "error: {}; the reply was not delivered",

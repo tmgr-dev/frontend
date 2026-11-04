@@ -7,6 +7,7 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Duration;
 
 pub const PROTO: u32 = 1;
@@ -22,9 +23,12 @@ pub const MAX_LINKS: usize = 50;
 pub const OUTCOME_CREATED: &str = "created";
 pub const OUTCOME_UPDATED: &str = "updated";
 pub const OUTCOME_FINAL: &str = "final";
+pub const UNAUTHORIZED: &str = "unauthorized";
 pub const MAX_WAIT_MS: u64 = 3_600_000;
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
 const IO_GRACE: Duration = Duration::from_secs(10);
+const UNAUTHORIZED_ATTEMPTS: u32 = 5;
+const UNAUTHORIZED_PAUSE: Duration = Duration::from_millis(200);
 
 pub fn decisions_dir() -> io::Result<PathBuf> {
     if let Some(p) = std::env::var_os("TMGR_DECISIONS_DIR").filter(|v| !v.is_empty()) {
@@ -336,7 +340,7 @@ pub fn write_line<W: Write, T: Serialize>(w: &mut W, value: &T) -> io::Result<()
 
 pub struct Client {
     dir: PathBuf,
-    token: String,
+    token: Mutex<String>,
 }
 
 impl Client {
@@ -349,11 +353,30 @@ impl Client {
         let token = secret::read_secret(&dir.join(TOKEN))?;
         Ok(Client {
             dir: dir.to_path_buf(),
-            token,
+            token: Mutex::new(token),
         })
     }
 
     pub fn call(&self, op: Op) -> io::Result<Response> {
+        for attempt in 1..=UNAUTHORIZED_ATTEMPTS {
+            let token = self.token.lock().unwrap_or_else(|p| p.into_inner()).clone();
+            let resp = self.send(op.clone(), token)?;
+            if resp.ok || resp.error.as_deref() != Some(UNAUTHORIZED) {
+                return Ok(resp);
+            }
+            if attempt < UNAUTHORIZED_ATTEMPTS {
+                std::thread::sleep(UNAUTHORIZED_PAUSE);
+                let fresh = secret::read_secret(&self.dir.join(TOKEN))?;
+                *self.token.lock().unwrap_or_else(|p| p.into_inner()) = fresh;
+            }
+        }
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            UNAUTHORIZED,
+        ))
+    }
+
+    fn send(&self, op: Op, token: String) -> io::Result<Response> {
         let wait = match &op {
             Op::Wait { timeout_ms, .. } => Duration::from_millis((*timeout_ms).min(MAX_WAIT_MS)),
             _ => Duration::ZERO,
@@ -364,7 +387,7 @@ impl Client {
         stream.set_read_timeout(Some(wait + IO_GRACE))?;
         let req = Request {
             v: PROTO,
-            token: self.token.clone(),
+            token,
             op,
         };
         write_line(&mut stream, &req)?;
@@ -693,5 +716,67 @@ mod tests {
         assert!(Client::open_in(&dir).is_ok());
         let again = prepare_server_dir(&dir).unwrap();
         assert_ne!(tok, again);
+    }
+
+    fn serve(dir: &Path, answer: impl Fn(&Request) -> Response + Send + 'static) {
+        let listener = std::os::unix::net::UnixListener::bind(dir.join(SOCK)).unwrap();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let Ok(Some(line)) = read_line_limited(&stream) else {
+                    continue;
+                };
+                let req: Request = serde_json::from_slice(&line).unwrap();
+                let _ = write_line(&mut stream, &answer(&req));
+            }
+        });
+    }
+
+    #[test]
+    fn a_held_client_follows_a_rotated_token() {
+        let t = private_tmp();
+        let dir = t.path().join("d");
+        let first = prepare_server_dir(&dir).unwrap();
+        let expected = std::sync::Arc::new(Mutex::new(first));
+        let seen = expected.clone();
+        serve(&dir, move |req| {
+            if token_ok(&seen.lock().unwrap(), &req.token) {
+                Response::ok()
+            } else {
+                Response::err(UNAUTHORIZED)
+            }
+        });
+        let client = Client::open_in(&dir).unwrap();
+        client.ping().unwrap();
+        *expected.lock().unwrap() = prepare_server_dir(&dir).unwrap();
+        client.ping().unwrap();
+        client.ping().unwrap();
+    }
+
+    #[test]
+    fn retries_stop_with_a_non_final_error() {
+        let t = private_tmp();
+        let dir = t.path().join("d");
+        prepare_server_dir(&dir).unwrap();
+        serve(&dir, |_| Response::err(UNAUTHORIZED));
+        let client = Client::open_in(&dir).unwrap();
+        let started = std::time::Instant::now();
+        let err = client.ping().unwrap_err();
+        let took = started.elapsed();
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(err.to_string(), UNAUTHORIZED);
+        assert!(took >= Duration::from_millis(700), "{took:?}");
+        assert!(took < Duration::from_secs(5), "{took:?}");
+    }
+
+    #[test]
+    fn a_missing_token_during_retries_is_the_plain_io_error() {
+        let t = private_tmp();
+        let dir = t.path().join("d");
+        prepare_server_dir(&dir).unwrap();
+        serve(&dir, |_| Response::err(UNAUTHORIZED));
+        let client = Client::open_in(&dir).unwrap();
+        fs::remove_file(dir.join(TOKEN)).unwrap();
+        assert_eq!(client.ping().unwrap_err().kind(), io::ErrorKind::NotFound);
     }
 }
