@@ -1704,7 +1704,7 @@ fn checked_out(common: &Path, branch: &str) -> Result<bool> {
     let want = format!("ref: refs/heads/{branch}");
     let main = read_small(common, "HEAD")
         .ok_or_else(|| Error::internal("the repository HEAD cannot be read"))?;
-    if main.trim() == want {
+    if main.trim().eq_ignore_ascii_case(&want) {
         return Ok(true);
     }
     let names = match std::fs::read_dir(common.join("worktrees")) {
@@ -1722,7 +1722,9 @@ fn checked_out(common: &Path, branch: &str) -> Result<bool> {
             .file_name()
             .into_string()
             .map_err(|_| Error::internal("a worktree name is not valid UTF-8"))?;
-        if read_small(common, &format!("worktrees/{name}/HEAD")).is_some_and(|h| h.trim() == want) {
+        if read_small(common, &format!("worktrees/{name}/HEAD"))
+            .is_some_and(|h| h.trim().eq_ignore_ascii_case(&want))
+        {
             return Ok(true);
         }
     }

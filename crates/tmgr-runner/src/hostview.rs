@@ -364,7 +364,11 @@ fn base_command(network: bool, path: &OsStr) -> Command {
 }
 
 fn path_guards(layout: &Layout) -> Vec<&Path> {
-    vec![&layout.root, &layout.common, &layout.gitdir]
+    let mut guards = vec![&*layout.root, &*layout.common, &*layout.gitdir];
+    if layout.common.file_name().is_some_and(|n| n == ".git") {
+        guards.extend(layout.common.parent());
+    }
+    guards
 }
 
 fn clean_path(guards: &[&Path]) -> OsString {
@@ -375,8 +379,7 @@ fn clean_path_in(value: &OsStr, guards: &[&Path]) -> OsString {
     let abs = absolute_path_entries(value);
     let kept: Vec<PathBuf> = std::env::split_paths(&abs)
         .filter(|e| {
-            let real = fs::canonicalize(e).unwrap_or_else(|_| e.clone());
-            !guards.iter().any(|g| real.starts_with(g))
+            fs::canonicalize(e).is_ok_and(|real| !guards.iter().any(|g| real.starts_with(g)))
         })
         .collect();
     match std::env::join_paths(kept) {
@@ -444,8 +447,21 @@ fn remote_ok(url: &str) -> bool {
         return false;
     }
     let host_ok = |authority: &str| {
-        let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
-        !host.is_empty() && !host.starts_with('-')
+        let (user, hostport) = authority.rsplit_once('@').unwrap_or(("", authority));
+        let (host, port) = match hostport.strip_prefix('[') {
+            Some(inner) => match inner.split_once(']') {
+                Some((host, rest)) => (host, rest.strip_prefix(':')),
+                None => return false,
+            },
+            None => match hostport.rsplit_once(':') {
+                Some((host, port)) => (host, Some(port)),
+                None => (hostport, None),
+            },
+        };
+        !host.is_empty()
+            && !user.starts_with('-')
+            && !host.starts_with('-')
+            && !port.is_some_and(|p| p.starts_with('-'))
     };
     if let Some(rest) = url
         .strip_prefix("https://")
@@ -661,18 +677,18 @@ impl HostView {
             let mut remote = None;
             while let Some(a) = rest.next() {
                 if a == "--" {
-                    remote = rest.next();
+                    remote = remote.or(rest.next());
                     break;
                 }
-                if ["--upload-pack", "--receive-pack", "--exec", "--repo"]
-                    .iter()
-                    .any(|o| a.starts_with(o))
+                if a.starts_with("-u")
+                    || ["--u", "--rec", "--ex", "--rep"]
+                        .iter()
+                        .any(|o| a.starts_with(o))
                 {
                     return refused("it would run a program");
                 }
-                if !a.starts_with('-') {
+                if !a.starts_with('-') && remote.is_none() {
                     remote = Some(a);
-                    break;
                 }
             }
             if !remote.is_some_and(remote_ok) {
