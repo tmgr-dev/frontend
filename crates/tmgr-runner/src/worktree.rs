@@ -1276,6 +1276,7 @@ mod tests {
         let control = fx.repo.parent().unwrap().join("control");
         let mut plain = Command::new("git");
         plain
+            .stdin(Stdio::null())
             .current_dir(&fx.repo)
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .args([
@@ -1285,14 +1286,37 @@ mod tests {
                 "--",
                 control.to_str().unwrap(),
             ]);
+        let done = Arc::new(AtomicBool::new(false));
+        let watchdog = {
+            let done = done.clone();
+            std::thread::spawn(move || {
+                for _ in 0..200 {
+                    if done.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                let table = Command::new("ps")
+                    .args(["-axo", "pid,ppid,pgid,stat,etime,command"])
+                    .output()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                    .unwrap_or_default();
+                for line in table.lines().filter(|l| l.contains("post-checkout")) {
+                    eprintln!("stalled hook process: {line}");
+                }
+            })
+        };
         let st =
             run_bounded(plain, Duration::from_secs(60), 1 << 20, 1 << 20).unwrap_or_else(|why| {
+                done.store(true, Ordering::SeqCst);
                 panic!(
                     "plain git worktree add: {why}; marks: {:?}; control exists: {}",
                     marks.iter().map(|m| m.exists()).collect::<Vec<_>>(),
                     control.exists()
                 )
             });
+        done.store(true, Ordering::SeqCst);
+        watchdog.join().unwrap();
         assert!(st.status.success());
         assert!(
             marks[0].exists() && marks[1].exists() && marks[3].exists(),
