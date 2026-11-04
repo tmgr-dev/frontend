@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.80
+
+- New `tmgr skills` commands: `list`, `show`, `put`, `delete`, `attach` and `detach` manage your shared skills library and attach skills to personas.
+- `tmgr login` now also requests `skills:read` and `skills:write`. Logins from before this version do not have them: run `tmgr login` again and approve shared skills access. Until then, `tmgr skills` says so instead of showing a raw 403.
+- `skills:write` can change what your agents are told to do. To leave it out, uncheck it on the approval page or pass your own `--scopes` list.
+
 ## 1.0.79
 
 - Runner git hardening.
