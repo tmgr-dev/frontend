@@ -1,0 +1,534 @@
+use serde_json::Value;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+use tmgr_ipc::decisions::{self, CardIn, Check, Client, DiffSpec, Event, Fact, Links, Opt, Source};
+
+pub const KINDS: [&str; 5] = ["decision", "review", "release", "check", "question"];
+const FACT_STATES: [&str; 3] = ["ok", "bad", "wait"];
+const CHECK_STATES: [&str; 3] = ["ok", "bad", "todo"];
+const WAIT_ENV: &str = "TMGR_DECISIONS_WAIT_MS";
+const DEFAULT_WAIT: Duration = Duration::from_secs(600);
+const CHUNK: Duration = Duration::from_secs(30);
+pub const MAX_TITLE: usize = 300;
+pub const MAX_CONTEXT: usize = 64 * 1024;
+pub const HOOK_CONTEXT: usize = 16 * 1024;
+const MAX_ITEMS: usize = 50;
+const MAX_OPTIONS: usize = 9;
+const MAX_TEXT: usize = 1000;
+pub const PENDING_NOTE: &str = "tmgr desktop is not running; the card will appear when it starts";
+
+pub fn default_wait() -> Duration {
+    std::env::var(WAIT_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map_or(DEFAULT_WAIT, Duration::from_millis)
+}
+
+pub fn agent_name(client: &str) -> &'static str {
+    let lower = client.to_ascii_lowercase();
+    if lower.contains("claude") {
+        "claude-code"
+    } else if lower.contains("codex") {
+        "codex"
+    } else {
+        "other"
+    }
+}
+
+pub fn parent_pid() -> u32 {
+    std::os::unix::process::parent_id()
+}
+
+pub fn runner_session() -> Option<String> {
+    std::env::var("TMGR_SESSION_ID")
+        .ok()
+        .filter(|s| tmgr_ipc::proto::valid_session_id(s))
+}
+
+pub fn source(agent: &str, pid: Option<u32>) -> Source {
+    Source {
+        agent: agent.to_string(),
+        session: None,
+        cwd: std::env::current_dir()
+            .ok()
+            .map(|p| p.display().to_string()),
+        title: None,
+        pid,
+        runner_session: runner_session(),
+    }
+}
+
+pub fn truncate(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_string();
+    }
+    let mut end = max;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    s[..end].to_string()
+}
+
+pub fn is_refusal(e: &io::Error) -> bool {
+    e.kind() == io::ErrorKind::Other
+}
+
+pub enum Sent {
+    Live(String),
+    Spooled(String),
+}
+
+pub fn send_card(mut card: CardIn) -> io::Result<Sent> {
+    let id = card.id.get_or_insert_with(decisions::new_card_id).clone();
+    let dir = decisions::decisions_dir()?;
+    match Client::open_in(&dir).and_then(|c| c.create(card.clone())) {
+        Ok(_) => Ok(Sent::Live(id)),
+        Err(e) if is_refusal(&e) => Err(e),
+        Err(_) => decisions::spool(&dir, &card).map(Sent::Spooled),
+    }
+}
+
+pub enum Waited {
+    Event(Box<Event>),
+    Pending { unreachable: bool },
+    Refused(String),
+}
+
+fn wait_once(card_id: &str, since: u64, timeout: Duration, final_only: bool) -> Waited {
+    let client = decisions::decisions_dir().and_then(|d| Client::open_in(&d));
+    let Ok(client) = client else {
+        return Waited::Pending { unreachable: true };
+    };
+    match client.wait(card_id, since, timeout, final_only) {
+        Ok(Some(e)) => Waited::Event(Box::new(e)),
+        Ok(None) => Waited::Pending { unreachable: false },
+        Err(e) if is_refusal(&e) => Waited::Refused(e.to_string()),
+        Err(_) => Waited::Pending { unreachable: true },
+    }
+}
+
+pub fn wait_loop(
+    card_id: &str,
+    since: u64,
+    total: Duration,
+    final_only: bool,
+    tick: &mut dyn FnMut(),
+) -> Waited {
+    let end = Instant::now() + total;
+    loop {
+        let left = end.saturating_duration_since(Instant::now());
+        match wait_once(card_id, since, left.min(CHUNK), final_only) {
+            Waited::Pending { unreachable: false } if left > CHUNK => tick(),
+            other => return other,
+        }
+    }
+}
+
+pub fn pending_json(card_id: &str, unreachable: bool) -> Value {
+    let mut v = serde_json::json!({"status": "pending", "card_id": card_id});
+    if unreachable {
+        v["note"] = Value::String(PENDING_NOTE.to_string());
+    }
+    v
+}
+
+#[derive(Default)]
+pub struct Spec {
+    pub title: String,
+    pub question: Option<String>,
+    pub context: Option<String>,
+    pub kind: String,
+    pub blocking: bool,
+    pub options: Vec<String>,
+    pub recommended: Option<usize>,
+    pub facts: Vec<Fact>,
+    pub checks: Vec<Check>,
+    pub repo: Option<String>,
+    pub base: Option<String>,
+    pub head: Option<String>,
+    pub task: Option<String>,
+    pub pr: Option<String>,
+}
+
+pub fn split_state<'a>(s: &'a str, allowed: &[&str]) -> Result<(&'a str, &'a str), String> {
+    let (state, text) = s
+        .split_once(':')
+        .ok_or_else(|| format!("{s:?} must look like STATE:TEXT"))?;
+    if !allowed.contains(&state) {
+        return Err(format!("state must be one of {}", allowed.join(", ")));
+    }
+    check_text(text.trim())?;
+    Ok((state, text.trim()))
+}
+
+fn check_text(text: &str) -> Result<(), String> {
+    if text.is_empty() || text.chars().count() > MAX_TEXT {
+        return Err(format!("text must be 1 to {MAX_TEXT} characters"));
+    }
+    Ok(())
+}
+
+pub fn parse_fact(s: &str) -> Result<Fact, String> {
+    let (state, text) = split_state(s, &FACT_STATES)?;
+    Ok(Fact {
+        state: state.into(),
+        text: text.into(),
+        link: None,
+    })
+}
+
+pub fn parse_check(s: &str) -> Result<Check, String> {
+    let (state, text) = split_state(s, &CHECK_STATES)?;
+    Ok(Check {
+        state: state.into(),
+        text: text.into(),
+    })
+}
+
+pub fn fact_checked(f: Fact) -> Result<Fact, String> {
+    if !FACT_STATES.contains(&f.state.as_str()) {
+        return Err(format!(
+            "fact state must be one of {}",
+            FACT_STATES.join(", ")
+        ));
+    }
+    check_text(&f.text)?;
+    Ok(f)
+}
+
+pub fn check_checked(c: Check) -> Result<Check, String> {
+    if !CHECK_STATES.contains(&c.state.as_str()) {
+        return Err(format!(
+            "check state must be one of {}",
+            CHECK_STATES.join(", ")
+        ));
+    }
+    check_text(&c.text)?;
+    Ok(c)
+}
+
+fn absolute(p: &str) -> String {
+    let path = PathBuf::from(p);
+    if path.is_absolute() {
+        return p.to_string();
+    }
+    std::env::current_dir()
+        .map(|d| d.join(path))
+        .unwrap_or_else(|_| PathBuf::from(p))
+        .display()
+        .to_string()
+}
+
+impl Spec {
+    pub fn into_card(self, reply_via: &str, source: Source) -> Result<CardIn, String> {
+        let title = self.title.trim().to_string();
+        if title.is_empty() || title.chars().count() > MAX_TITLE {
+            return Err(format!("title must be 1 to {MAX_TITLE} characters"));
+        }
+        let kind = if self.kind.is_empty() {
+            "decision".to_string()
+        } else {
+            self.kind
+        };
+        if !KINDS.contains(&kind.as_str()) {
+            return Err(format!("kind must be one of {}", KINDS.join(", ")));
+        }
+        if self.context.as_ref().is_some_and(|c| c.len() > MAX_CONTEXT) {
+            return Err(format!("context must be at most {MAX_CONTEXT} bytes"));
+        }
+        if self.options.len() > MAX_OPTIONS {
+            return Err(format!("at most {MAX_OPTIONS} options"));
+        }
+        if self.facts.len() > MAX_ITEMS || self.checks.len() > MAX_ITEMS {
+            return Err(format!("at most {MAX_ITEMS} facts and {MAX_ITEMS} checks"));
+        }
+        if let Some(n) = self.recommended {
+            if n == 0 || n > self.options.len() {
+                return Err("recommended must be the 1-based number of an option".into());
+            }
+        }
+        let mut options = Vec::new();
+        for (i, label) in self.options.iter().enumerate() {
+            let label = label.trim();
+            if label.is_empty() || label.chars().count() > MAX_TITLE {
+                return Err(format!("option labels must be 1 to {MAX_TITLE} characters"));
+            }
+            options.push(Opt {
+                id: (i + 1).to_string(),
+                label: label.to_string(),
+                recommended: self.recommended == Some(i + 1),
+            });
+        }
+        if self.repo.is_none() && (self.base.is_some() || self.head.is_some()) {
+            return Err("base and head need repo".into());
+        }
+        if self.head.is_some() && self.base.is_none() {
+            return Err("head needs base".into());
+        }
+        Ok(CardIn {
+            id: Some(decisions::new_card_id()),
+            source,
+            kind,
+            blocking: self.blocking,
+            title,
+            context: self.context.filter(|c| !c.is_empty()),
+            question: self.question.filter(|q| !q.is_empty()),
+            facts: self.facts,
+            options,
+            diff: self.repo.map(|repo| DiffSpec {
+                repo: absolute(&repo),
+                base: self.base,
+                head: self.head,
+            }),
+            checks: self.checks,
+            links: Links {
+                task: self.task,
+                pr: self.pr,
+            },
+            reply_via: reply_via.to_string(),
+            supersede: false,
+        })
+    }
+}
+
+pub fn event_text(e: &Event) -> String {
+    let mut lines = Vec::new();
+    if e.kind == "message" {
+        lines.push(format!("message: {}", e.text.as_deref().unwrap_or("")));
+        if let Some(t) = &e.thread {
+            lines.push(format!("  on {}:{}", t.file, t.line));
+        }
+        return lines.join("\n");
+    }
+    if e.dismissed {
+        lines.push("dismissed".to_string());
+    }
+    if e.deferred {
+        lines.push("deferred".to_string());
+    }
+    if let Some(label) = e.choice_label.as_deref().or(e.choice.as_deref()) {
+        lines.push(format!("choice: {label}"));
+    }
+    if let Some(n) = &e.note {
+        lines.push(format!("note: {n}"));
+    }
+    if let Some(t) = &e.free_text {
+        lines.push(format!("answer: {t}"));
+    }
+    for c in &e.line_comments {
+        lines.push(format!("{}:{}: {}", c.file, c.line, c.text));
+    }
+    if lines.is_empty() {
+        lines.push("answered".to_string());
+    }
+    lines.join("\n")
+}
+
+fn project_name(cwd: &Path) -> String {
+    cwd.file_name()
+        .and_then(|n| n.to_str())
+        .filter(|n| !n.is_empty())
+        .unwrap_or("session")
+        .to_string()
+}
+
+fn hook_source(cwd: &Path, session: Option<&str>) -> Source {
+    Source {
+        agent: "claude-code".into(),
+        session: session.filter(|s| !s.is_empty()).map(str::to_string),
+        cwd: Some(cwd.display().to_string()),
+        title: None,
+        pid: None,
+        runner_session: runner_session(),
+    }
+}
+
+fn hook_card(kind: &str, title: String, source: Source) -> CardIn {
+    CardIn {
+        id: Some(decisions::new_card_id()),
+        source,
+        kind: kind.into(),
+        title: truncate(&title, MAX_TITLE),
+        reply_via: "hook".into(),
+        supersede: true,
+        ..CardIn::default()
+    }
+}
+
+pub fn stop_card(cwd: &Path, session: Option<&str>, message: Option<&str>, git: bool) -> CardIn {
+    let mut card = hook_card(
+        "stopped",
+        format!("{} finished", project_name(cwd)),
+        hook_source(cwd, session),
+    );
+    card.context = message
+        .filter(|m| !m.trim().is_empty())
+        .map(|m| truncate(m, HOOK_CONTEXT));
+    if git {
+        card.diff = Some(DiffSpec {
+            repo: cwd.display().to_string(),
+            base: Some("HEAD".into()),
+            head: None,
+        });
+    }
+    card
+}
+
+pub fn notification_card(input: &Value, cwd: &Path, session: Option<&str>) -> Option<CardIn> {
+    let (kind, headline) = match input.get("notification_type")?.as_str()? {
+        "permission_prompt" => ("permission", "needs permission"),
+        "idle_prompt" | "agent_needs_input" | "elicitation_dialog" => ("question", "needs input"),
+        _ => return None,
+    };
+    let mut card = hook_card(
+        kind,
+        format!("{}: {headline}", project_name(cwd)),
+        hook_source(cwd, session),
+    );
+    card.question = input
+        .get("message")
+        .and_then(Value::as_str)
+        .filter(|m| !m.trim().is_empty())
+        .map(|m| truncate(m, MAX_TEXT));
+    Some(card)
+}
+
+fn tool_summary(input: &Value) -> Option<String> {
+    let tool_input = input.get("tool_input")?;
+    for key in ["command", "file_path", "path", "url", "pattern", "query"] {
+        if let Some(s) = tool_input.get(key).and_then(Value::as_str) {
+            return Some(truncate(s, 500));
+        }
+    }
+    Some(truncate(&tool_input.to_string(), 500))
+}
+
+pub fn permission_card(input: &Value, cwd: &Path, session: Option<&str>) -> CardIn {
+    let tool = input
+        .get("tool_name")
+        .and_then(Value::as_str)
+        .filter(|t| !t.is_empty())
+        .unwrap_or("a tool");
+    let mut card = hook_card(
+        "permission",
+        format!("{}: permission for {tool}", project_name(cwd)),
+        hook_source(cwd, session),
+    );
+    card.question = tool_summary(input);
+    card
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn spec() -> Spec {
+        Spec {
+            title: "Ship it?".into(),
+            options: vec!["Yes".into(), "No".into()],
+            recommended: Some(1),
+            ..Spec::default()
+        }
+    }
+
+    #[test]
+    fn agents_are_normalized() {
+        assert_eq!(agent_name("claude-code"), "claude-code");
+        assert_eq!(agent_name("Claude Desktop"), "claude-code");
+        assert_eq!(agent_name("codex-mcp-client"), "codex");
+        assert_eq!(agent_name("cursor"), "other");
+        assert_eq!(agent_name(""), "other");
+    }
+
+    #[test]
+    fn a_spec_becomes_a_card_with_numbered_options() {
+        let card = spec().into_card("mcp", Source::default()).unwrap();
+        assert_eq!(card.kind, "decision");
+        assert!(decisions::valid_card_id(card.id.as_deref().unwrap()));
+        assert_eq!(card.options[0].id, "1");
+        assert!(card.options[0].recommended && !card.options[1].recommended);
+        assert_eq!(card.reply_via, "mcp");
+    }
+
+    #[test]
+    fn bad_specs_are_refused() {
+        let mut s = spec();
+        s.recommended = Some(3);
+        assert!(s.into_card("mcp", Source::default()).is_err());
+        let mut s = spec();
+        s.kind = "other".into();
+        assert!(s.into_card("mcp", Source::default()).is_err());
+        let mut s = spec();
+        s.title = " ".into();
+        assert!(s.into_card("mcp", Source::default()).is_err());
+        let mut s = spec();
+        s.base = Some("main".into());
+        assert!(s.into_card("mcp", Source::default()).is_err());
+        let mut s = spec();
+        s.options = (0..10).map(|i| i.to_string()).collect();
+        s.recommended = None;
+        assert!(s.into_card("mcp", Source::default()).is_err());
+    }
+
+    #[test]
+    fn states_are_validated() {
+        assert_eq!(parse_fact("ok:tests pass").unwrap().text, "tests pass");
+        assert!(parse_fact("todo:x").is_err());
+        assert!(parse_check("todo:review").is_ok());
+        assert!(parse_check("wait:x").is_err());
+        assert!(parse_fact("nocolon").is_err());
+    }
+
+    #[test]
+    fn truncation_keeps_char_boundaries() {
+        assert_eq!(truncate("héllo", 2), "h");
+        assert_eq!(truncate("abc", 10), "abc");
+    }
+
+    #[test]
+    fn stop_card_context_and_diff() {
+        let card = stop_card(Path::new("/w/proj"), Some("sess"), Some("done"), true);
+        assert_eq!(card.kind, "stopped");
+        assert_eq!(card.title, "proj finished");
+        assert_eq!(card.context.as_deref(), Some("done"));
+        assert_eq!(card.diff.as_ref().unwrap().base.as_deref(), Some("HEAD"));
+        assert!(card.supersede && card.reply_via == "hook");
+        assert_eq!(card.source.session.as_deref(), Some("sess"));
+        let card = stop_card(Path::new("/w/proj"), None, None, false);
+        assert!(card.context.is_none() && card.diff.is_none());
+        let big = "x".repeat(HOOK_CONTEXT * 2);
+        let card = stop_card(Path::new("/w/proj"), None, Some(&big), false);
+        assert_eq!(card.context.unwrap().len(), HOOK_CONTEXT);
+    }
+
+    #[test]
+    fn notification_types_map_to_kinds() {
+        let n = |t: &str| {
+            notification_card(
+                &json!({"notification_type": t, "message": "m"}),
+                Path::new("/w/p"),
+                None,
+            )
+        };
+        assert_eq!(n("permission_prompt").unwrap().kind, "permission");
+        assert_eq!(n("idle_prompt").unwrap().kind, "question");
+        assert_eq!(n("agent_needs_input").unwrap().kind, "question");
+        assert_eq!(n("elicitation_dialog").unwrap().kind, "question");
+        assert!(n("auth_success").is_none());
+        assert!(notification_card(&json!({"message": "m"}), Path::new("/w"), None).is_none());
+    }
+
+    #[test]
+    fn permission_cards_summarize_the_tool_input() {
+        let card = permission_card(
+            &json!({"tool_name": "Bash", "tool_input": {"command": "rm x"}}),
+            Path::new("/w/p"),
+            None,
+        );
+        assert_eq!(card.kind, "permission");
+        assert_eq!(card.title, "p: permission for Bash");
+        assert_eq!(card.question.as_deref(), Some("rm x"));
+    }
+}

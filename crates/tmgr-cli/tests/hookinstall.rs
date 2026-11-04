@@ -238,3 +238,72 @@ async fn codex_migration_is_planned_as_a_diff_when_printing_uninstall() {
     assert!(v["data"]["diff"].as_str().unwrap().contains("- notify"));
     assert_eq!(std::fs::read_to_string(&cfg).unwrap(), old);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn decisions_hooks_install_beside_claude_hooks_and_revert_alone() {
+    let env = Env::new().await;
+    let repo = init_repo(&env.tmp.path().join("repo"));
+    let settings = repo.join(".claude/settings.json");
+    std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+    std::fs::write(&settings, LEGACY).unwrap();
+    let run = |args: &[&str]| {
+        let mut full = vec!["hook"];
+        full.extend_from_slice(args);
+        env.tmgr_in(&repo, None).args(full).output().unwrap()
+    };
+
+    let printed = run(&["install", "decisions", "--project", "--print", "--json"]);
+    assert!(printed.status.success(), "{}", text(&printed.stderr));
+    assert_eq!(std::fs::read_to_string(&settings).unwrap(), LEGACY);
+
+    let out = run(&["install", "decisions", "--project", "--yes"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let after = read_json(&settings);
+    assert_eq!(after["model"], "opus");
+    for (event, sub) in [
+        ("Stop", "stop"),
+        ("Notification", "notification"),
+        ("PermissionRequest", "permission-request"),
+        ("UserPromptSubmit", "user-prompt-submit"),
+    ] {
+        assert!(
+            commands(&after, event)
+                .iter()
+                .any(|c| c.ends_with(&format!(" hook decisions {sub}"))),
+            "{event}"
+        );
+    }
+    assert!(commands(&after, "Stop").contains(&"echo mine".to_string()));
+    assert!(commands(&after, "Stop")
+        .iter()
+        .any(|c| c.contains("@tmgr/notify")));
+
+    let again = run(&["install", "decisions", "--project", "--yes", "--json"]);
+    assert_eq!(stdout_json(&again)["data"]["changed"], false);
+
+    let out = run(&["install", "claude", "--project", "--yes"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let both = read_json(&settings);
+    assert_eq!(commands(&both, "PermissionRequest").len(), 1);
+    assert!(commands(&both, "Stop")
+        .iter()
+        .any(|c| c.ends_with(" hook claude stop")));
+    assert!(commands(&both, "Stop")
+        .iter()
+        .any(|c| c.ends_with(" hook decisions stop")));
+
+    let out = run(&["uninstall", "decisions", "--project", "--yes"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let left = read_json(&settings);
+    assert!(left["hooks"].get("PermissionRequest").is_none());
+    assert!(commands(&left, "Stop")
+        .iter()
+        .any(|c| c.contains(" hook claude stop")));
+    assert!(commands(&left, "Stop")
+        .iter()
+        .all(|c| !c.contains("hook decisions")));
+    assert!(commands(&left, "Stop").contains(&"echo mine".to_string()));
+    assert!(commands(&left, "PostToolUse")
+        .iter()
+        .any(|c| c.contains(" hook claude post-tool-use")));
+}

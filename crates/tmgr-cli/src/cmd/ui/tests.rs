@@ -517,6 +517,7 @@ fn internal_paths_never_reach_groups() {
         &["ui"],
         &["hook", "claude"],
         &["hook", "codex"],
+        &["hook", "decisions"],
         &["git", "hook"],
     ];
     if cfg!(feature = "runner") {

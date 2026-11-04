@@ -1,11 +1,16 @@
 pub mod add;
 pub mod agent;
 pub mod agent_status;
+pub mod ask;
 pub mod auth;
 #[cfg(feature = "runner")]
 pub mod autopilot;
 pub mod board;
 pub mod config;
+#[cfg(unix)]
+pub mod decisions;
+#[cfg(unix)]
+pub mod decisions_mcp;
 pub mod githook;
 pub mod hook;
 pub mod hookinstall;

@@ -18,11 +18,12 @@ pub const CLI_HELP: &str = "tmgr: command line for TMGR tasks, time and agent wo
 Tasks:   tmgr task show TM-512 | tmgr task list -p TM | tmgr add \"title\" -p TM
 Timer:   tmgr start TM-512 | tmgr stop | tmgr done
 Agent:   tmgr agent start TM-512 --agent NAME | tmgr agent update --commit \"sha subject\" | tmgr agent finish --status succeeded --summary TEXT
+Ask:     tmgr ask --title T --option A --option B [--wait]
 Phone:   tmgr notify \"text\" [--title T] [--priority high] | tmgr alarm \"text\" | tmgr alarm status [ID]
 Add --json for machine-readable output (schema tmgr.v1). `tmgr --help` lists everything.";
 
 fn tool_defs() -> Value {
-    json!([
+    let mut tools = json!([
         {
             "name": "notify_user",
             "description": "Send a phone push notification to the user via TMGR agent notifications.",
@@ -75,10 +76,15 @@ fn tool_defs() -> Value {
             "description": "Short help for the tmgr command line tool: tasks, timer, agent work runs and notifications. Prefer the CLI over many tool calls.",
             "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}
         }
-    ])
+    ]);
+    #[cfg(unix)]
+    if let Some(list) = tools.as_array_mut() {
+        list.extend(crate::cmd::decisions_mcp::defs());
+    }
+    tools
 }
 
-fn text_result(text: impl Into<String>, is_error: bool) -> Value {
+pub(crate) fn text_result(text: impl Into<String>, is_error: bool) -> Value {
     let mut m = Map::new();
     m.insert(
         "content".into(),
@@ -90,11 +96,16 @@ fn text_result(text: impl Into<String>, is_error: bool) -> Value {
     Value::Object(m)
 }
 
-fn arg_err(msg: &str) -> Value {
+pub(crate) fn arg_err(msg: &str) -> Value {
     text_result(format!("Invalid arguments: {msg}"), true)
 }
 
-fn str_arg<'a>(a: &'a Value, key: &str, min: usize, max: usize) -> Result<Option<&'a str>, String> {
+pub(crate) fn str_arg<'a>(
+    a: &'a Value,
+    key: &str,
+    min: usize,
+    max: usize,
+) -> Result<Option<&'a str>, String> {
     match a.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) => {
@@ -109,7 +120,7 @@ fn str_arg<'a>(a: &'a Value, key: &str, min: usize, max: usize) -> Result<Option
     }
 }
 
-fn int_arg(a: &Value, key: &str, min: i64, max: i64) -> Result<Option<i64>, String> {
+pub(crate) fn int_arg(a: &Value, key: &str, min: i64, max: i64) -> Result<Option<i64>, String> {
     match a.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(v) => match v.as_i64() {
@@ -119,7 +130,7 @@ fn int_arg(a: &Value, key: &str, min: i64, max: i64) -> Result<Option<i64>, Stri
     }
 }
 
-fn bool_arg(a: &Value, key: &str) -> Result<Option<bool>, String> {
+pub(crate) fn bool_arg(a: &Value, key: &str) -> Result<Option<bool>, String> {
     match a.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Bool(b)) => Ok(Some(*b)),
@@ -246,6 +257,12 @@ pub fn call_tool(
     if name == "tmgr_cli" {
         return text_result(CLI_HELP, false);
     }
+    #[cfg(unix)]
+    if crate::cmd::decisions_mcp::is_decisions_tool(name) {
+        let empty = json!({});
+        let args = if args.is_object() { args } else { &empty };
+        return crate::cmd::decisions_mcp::call(name, args, progress);
+    }
     if !matches!(name, "notify_user" | "alarm" | "alarm_status") {
         return text_result(
             format!(
@@ -287,15 +304,24 @@ pub fn handle_inline(msg: &Value) -> Option<Value> {
     let id = msg.get("id")?;
     let params = msg.get("params").cloned().unwrap_or(Value::Null);
     Some(match method {
-        "initialize" => ok(
-            id,
-            json!({
-                "protocolVersion": negotiate(params.get("protocolVersion").and_then(Value::as_str)),
-                "capabilities": {"tools": {"listChanged": false}},
-                "serverInfo": {"name": "tmgr", "version": VERSION},
-                "instructions": "Phone notifications for the user (notify_user, alarm, alarm_status) and short tmgr CLI help (tmgr_cli)."
-            }),
-        ),
+        "initialize" => {
+            #[cfg(unix)]
+            crate::cmd::decisions_mcp::note_client(
+                params
+                    .get("clientInfo")
+                    .and_then(|c| c.get("name"))
+                    .and_then(Value::as_str),
+            );
+            ok(
+                id,
+                json!({
+                    "protocolVersion": negotiate(params.get("protocolVersion").and_then(Value::as_str)),
+                    "capabilities": {"tools": {"listChanged": false}},
+                    "serverInfo": {"name": "tmgr", "version": VERSION},
+                    "instructions": "Phone notifications for the user (notify_user, alarm, alarm_status), questions to the owner (ask_owner, get_answer, reply_owner) and short tmgr CLI help (tmgr_cli)."
+                }),
+            )
+        }
         "ping" => ok(id, json!({})),
         "tools/list" => ok(id, json!({"tools": tool_defs()})),
         _ => err(id, -32601, "Method not found"),
@@ -433,7 +459,11 @@ mod tests {
             .iter()
             .map(|t| t["name"].as_str().unwrap().to_string())
             .collect();
-        assert_eq!(names, ["notify_user", "alarm", "alarm_status", "tmgr_cli"]);
+        let mut expected = vec!["notify_user", "alarm", "alarm_status", "tmgr_cli"];
+        if cfg!(unix) {
+            expected.extend(["ask_owner", "get_answer", "reply_owner"]);
+        }
+        assert_eq!(names, expected);
         for t in tool_defs().as_array().unwrap() {
             assert_eq!(t["inputSchema"]["type"], "object");
         }

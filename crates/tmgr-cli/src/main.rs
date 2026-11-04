@@ -72,6 +72,9 @@ fn standalone(cli: &Cli) -> Option<i32> {
             command: HookCmd::Claude { event, .. },
         }) => Some(cmd::hook::claude(event, cli.server.clone())),
         Some(Command::Hook {
+            command: HookCmd::Decisions { event, .. },
+        }) => Some(cmd::hook::decisions(event)),
+        Some(Command::Hook {
             command: HookCmd::Codex { args },
         }) => Some(cmd::hook::codex(args, cli.server.clone())),
         Some(Command::Usage(UsageArgs {
@@ -87,7 +90,10 @@ fn standalone(cli: &Cli) -> Option<i32> {
 fn is_agent_hook_invocation() -> bool {
     let mut args = std::env::args().skip(1).filter(|a| !a.starts_with('-'));
     match args.next().as_deref() {
-        Some("hook") => matches!(args.next().as_deref(), Some("claude" | "codex")),
+        Some("hook") => matches!(
+            args.next().as_deref(),
+            Some("claude" | "codex" | "decisions")
+        ),
         Some("usage") => args.next().as_deref() == Some("statusline-hook"),
         _ => false,
     }
@@ -150,10 +156,11 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         Some(Command::Hook { command }) => match command {
             HookCmd::Install(a) => cmd::hookinstall::run(ctx, a, false),
             HookCmd::Uninstall(a) => cmd::hookinstall::run(ctx, a, true),
-            HookCmd::Claude { .. } | HookCmd::Codex { .. } => {
+            HookCmd::Claude { .. } | HookCmd::Codex { .. } | HookCmd::Decisions { .. } => {
                 Err(Error::internal("handled before the session starts"))
             }
         },
+        Some(Command::Ask(args)) => cmd::ask::run(ctx, args),
         Some(Command::Notify(args)) => cmd::notify::notify(ctx, args),
         Some(Command::Alarm(args)) => cmd::notify::alarm(ctx, args),
         #[cfg(feature = "runner")]

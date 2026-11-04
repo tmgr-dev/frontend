@@ -66,6 +66,18 @@ pub fn claude(event: &str, server_override: Option<String>) -> i32 {
     0
 }
 
+#[cfg(unix)]
+pub fn decisions(event: &str) -> i32 {
+    let event = event.to_string();
+    guarded(move || decisions_work(&event));
+    0
+}
+
+#[cfg(not(unix))]
+pub fn decisions(_event: &str) -> i32 {
+    0
+}
+
 pub fn codex(args: &[String], server_override: Option<String>) -> i32 {
     let raw = args.last().cloned();
     guarded(move || codex_work(raw, server_override));
@@ -674,6 +686,45 @@ fn claude_work(event: &str, server_override: Option<String>) {
             touch_run(&env, &cwd, Touch::Heartbeat);
         }
         _ => {}
+    }
+}
+
+#[cfg(unix)]
+fn decisions_work(event: &str) {
+    use crate::cmd::decisions as cards;
+    use tmgr_ipc::decisions::{decisions_dir, Client};
+    let Some(input) = read_stdin() else { return };
+    let Ok(client) = decisions_dir().and_then(|d| Client::open_in(&d)) else {
+        return;
+    };
+    let cwd = payload_cwd(&input)
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("/"));
+    let session = str_of(&input, "session_id");
+    let card = match event {
+        "user-prompt-submit" => {
+            if let Some(s) = session.filter(|s| !s.is_empty()) {
+                let _ = client.close_session("claude-code", s);
+            }
+            return;
+        }
+        "stop" => {
+            let env = tmgr_usage::paths::Env::from_process();
+            let message = tmgr_usage::consent::granted_read_only(&env, tmgr_usage::Tool::Claude)
+                .then(|| str_of(&input, "last_assistant_message"))
+                .flatten();
+            let git = git_out(&cwd, &["rev-parse", "--is-inside-work-tree"]).is_some();
+            cards::stop_card(&cwd, session, message, git)
+        }
+        "notification" => match cards::notification_card(&input, &cwd, session) {
+            Some(c) => c,
+            None => return,
+        },
+        "permission-request" => cards::permission_card(&input, &cwd, session),
+        _ => return,
+    };
+    if let Err(e) = client.create(card) {
+        debug(&format!("decisions card not sent: {e}"));
     }
 }
 

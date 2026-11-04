@@ -139,12 +139,18 @@ pub enum HookCmd {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
         rest: Vec<String>,
     },
+    /// Decisions inbox hook entry point (stop, notification, permission-request or user-prompt-submit; always exits 0)
+    Decisions {
+        event: String,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+        rest: Vec<String>,
+    },
     /// Codex notify entry point (the event JSON is the last argument, always exits 0)
     Codex {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
-    /// Add the tmgr hooks to the Claude Code or Codex configuration
+    /// Add the tmgr hooks to the Claude Code or Codex configuration, or the Decisions inbox hooks
     Install(HookInstallArgs),
     /// Remove the tmgr hooks from the Claude Code or Codex configuration
     Uninstall(HookInstallArgs),
@@ -154,6 +160,7 @@ pub enum HookCmd {
 pub enum HookTarget {
     Claude,
     Codex,
+    Decisions,
 }
 
 #[derive(Args)]
@@ -235,4 +242,56 @@ pub enum AlarmCommand {
         #[arg(long, value_name = "SECS", default_value_t = 0, value_parser = clap::value_parser!(u8).range(0..=50))]
         wait: u8,
     },
+}
+
+#[derive(Args)]
+pub struct AskArgs {
+    /// Headline of the card
+    #[arg(long, value_name = "TEXT")]
+    pub title: String,
+    /// What you need decided
+    #[arg(long, value_name = "TEXT")]
+    pub question: Option<String>,
+    /// Background in Markdown
+    #[arg(long, value_name = "MD")]
+    pub context: Option<String>,
+    /// A choice (repeatable, at most 9)
+    #[arg(long = "option", value_name = "LABEL")]
+    pub options: Vec<String>,
+    /// Number (from 1) of the recommended option
+    #[arg(long, value_name = "N")]
+    pub recommended: Option<usize>,
+    /// decision, review, release, check or question
+    #[arg(long, default_value = "decision", value_parser = ["decision", "review", "release", "check", "question"], value_name = "KIND")]
+    pub kind: String,
+    /// The work is blocked until answered (implied by --wait)
+    #[arg(long)]
+    pub blocking: bool,
+    /// Git repository to show the diff of
+    #[arg(long, value_name = "DIR")]
+    pub repo: Option<String>,
+    /// Base ref of the diff
+    #[arg(long, value_name = "REF", requires = "repo")]
+    pub base: Option<String>,
+    /// Head ref of the diff (default: the working tree)
+    #[arg(long, value_name = "REF", requires = "base")]
+    pub head: Option<String>,
+    /// A fact (repeatable): ok|bad|wait:TEXT
+    #[arg(long = "fact", value_name = "STATE:TEXT")]
+    pub facts: Vec<String>,
+    /// A check (repeatable): ok|bad|todo:TEXT
+    #[arg(long = "check", value_name = "STATE:TEXT")]
+    pub checks: Vec<String>,
+    /// Task reference or URL
+    #[arg(long, value_name = "REF")]
+    pub task: Option<String>,
+    /// Pull request URL
+    #[arg(long, value_name = "URL")]
+    pub pr: Option<String>,
+    /// Wait for the final answer and print it (exit 8 if none arrives)
+    #[arg(long)]
+    pub wait: bool,
+    /// Longest wait in seconds (default: until answered)
+    #[arg(long, value_name = "SECS", requires = "wait")]
+    pub timeout: Option<u64>,
 }

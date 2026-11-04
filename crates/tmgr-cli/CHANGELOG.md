@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+
+- Decisions inbox for the TMGR desktop (macOS and Linux): MCP tools `ask_owner`, `get_answer` and `reply_owner`, the `tmgr ask` command, and `tmgr hook decisions <event>` with `tmgr hook install|uninstall decisions`.
 ## 1.0.77
 
 - Checkpoint hardening in the runner.

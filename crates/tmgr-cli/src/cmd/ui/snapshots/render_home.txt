@@ -4,7 +4,7 @@ tmgr test
 │/ search commands                     ││  status                 Active task and today's time (wha│
 │                                      ││  task show              Show one task                    │
 │> Tasks     status, task, add, start, ││  task confirm           Let agents run on a local task: s│
-│  Agents    log, agent                ││  task list              List tasks                       │
+│  Agents    log, agent, ask           ││  task list              List tasks                       │
 │  Pages     note, page                ││  add                    Create a task (`-` reads title an│
 │  Time      today, routine            ││  start                  Start a task: branch, status and │
 │  Usage     usage                     ││  stop                   Stop the running timer           │

@@ -80,7 +80,18 @@ async fn handshake_lists_the_tools_and_negotiates_the_version() {
         .iter()
         .map(|t| t["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["notify_user", "alarm", "alarm_status", "tmgr_cli"]);
+    assert_eq!(
+        names,
+        [
+            "notify_user",
+            "alarm",
+            "alarm_status",
+            "tmgr_cli",
+            "ask_owner",
+            "get_answer",
+            "reply_owner"
+        ]
+    );
     assert_eq!(by_id(&all, 3)["result"], json!({}));
     assert_eq!(by_id(&all, 4)["error"]["code"], -32601);
 

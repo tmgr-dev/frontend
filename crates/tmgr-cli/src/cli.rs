@@ -1,4 +1,4 @@
-use crate::cli_agent::{AgentCommand, AlarmArgs, HookCmd, NotifyArgs};
+use crate::cli_agent::{AgentCommand, AlarmArgs, AskArgs, HookCmd, NotifyArgs};
 use crate::cli_link::{LinkCommand, WorkerArgs};
 use crate::cli_usage::UsageArgs;
 use clap::{Args, Parser, Subcommand};
@@ -137,11 +137,13 @@ pub enum Command {
         #[command(subcommand)]
         command: HookCmd,
     },
+    /// Ask the owner a question in the TMGR desktop Decisions inbox
+    Ask(AskArgs),
     /// Send a push notification to your phone
     Notify(NotifyArgs),
     /// Raise a phone alarm (push, then a voice call), or check one
     Alarm(AlarmArgs),
-    /// Run the MCP server over stdio (notify_user, alarm, alarm_status, tmgr_cli)
+    /// Run the MCP server over stdio (notify_user, alarm, alarm_status, ask_owner, get_answer, reply_owner, tmgr_cli)
     Mcp,
     /// Leader and follower links over SSH (experimental)
     #[command(hide = true)]
