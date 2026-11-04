@@ -825,7 +825,7 @@ fn integrating(
             continue;
         }
         let cwd = Path::new(&m.cwd);
-        if let Some(plans) = plans.as_ref().filter(|_| !m.clones.is_empty()) {
+        if let Some(plans) = &plans {
             match import_clones(deps, plans, m) {
                 Ok(found) => tips.extend(found.into_iter().map(|(name, sha)| Tip {
                     worker: k,
