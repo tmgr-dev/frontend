@@ -72,16 +72,11 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        include:
-          - name: macos
-            runner: macos-latest
-            bundles: app,dmg
-          - name: windows
-            runner: windows-latest
-            bundles: nsis,msi
-          - name: linux
-            runner: ubuntu-22.04
-            bundles: deb,rpm,appimage
+        # Dependabot opens many PRs at once; macOS slots are scarce and shared with release work.
+        include: >-
+          ${{ fromJSON(github.event.pull_request.user.login == 'dependabot[bot]'
+          && '[{"name":"windows","runner":"windows-latest","bundles":"nsis,msi"},{"name":"linux","runner":"ubuntu-22.04","bundles":"deb,rpm,appimage"}]'
+          || '[{"name":"macos","runner":"macos-latest","bundles":"app,dmg"},{"name":"windows","runner":"windows-latest","bundles":"nsis,msi"},{"name":"linux","runner":"ubuntu-22.04","bundles":"deb,rpm,appimage"}]') }}
     defaults:
       run:
         shell: bash
@@ -284,6 +279,8 @@ jobs:
   release:
     name: ${{ needs.meta.outputs.dry_run == 'true' && 'assemble (dry run)' || 'publish release' }}
     needs: [meta, build, snap]
+    # latest.json needs the macOS bundle, which Dependabot PRs do not build.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: write
