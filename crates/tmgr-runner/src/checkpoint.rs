@@ -20,7 +20,7 @@ use tmgr_ipc::api::{
 use tmgr_ipc::proto::valid_session_id;
 
 use crate::wire::write_atomic;
-use crate::worktree::{run_bounded, GitEnv};
+use crate::worktree::{exited_unreaped, kill_group_of_unreaped, run_bounded, GitEnv};
 
 pub const DEFAULT_KEEP: u32 = 50;
 
@@ -41,6 +41,8 @@ const PRIVATE: &str = "checkpoints.git";
 const LINK_CAP: usize = 4096;
 const GIT_DEADLINE: Duration = Duration::from_secs(600);
 const SLOW_LIST: Duration = Duration::from_secs(2);
+const SCAN_ENTRIES: usize = 1_000_000;
+const SCAN_DEPTH: usize = 64;
 const MIGRATE_DEADLINE: Duration = Duration::from_secs(60);
 const PACK_CAP: u64 = 4 * 1024 * 1024 * 1024;
 const PACK_LIMIT: usize = 16;
@@ -851,6 +853,138 @@ fn out(g: &GitEnv, args: &[&str], stdin: Option<&Path>, cap: usize) -> Result<Ve
         )));
     }
     Ok(o.stdout)
+}
+
+fn is_fifo_at(dir: BorrowedFd, name: &[u8]) -> bool {
+    stat_at(dir, name).is_ok_and(|st| is_kind(&st, libc::S_IFIFO))
+}
+
+fn linked_git_dir_has_fifo(dir: BorrowedFd, path: &Path) -> bool {
+    use std::os::unix::fs::FileTypeExt;
+    let ReadFile::Data(_, _, data) = read_regular(dir, b".git", 4096) else {
+        return false;
+    };
+    let Some(rest) = data.strip_prefix(b"gitdir:") else {
+        return false;
+    };
+    let line = rest.split(|b| *b == b'\n').next().unwrap_or_default();
+    let target = path.join(std::ffi::OsStr::from_bytes(line.trim_ascii()));
+    ["HEAD", "commondir"]
+        .iter()
+        .any(|n| fs::symlink_metadata(target.join(n)).is_ok_and(|m| m.file_type().is_fifo()))
+}
+
+fn scan_for_fifo(dir: &OwnedFd, path: &Path, depth: usize, budget: &mut usize) -> bool {
+    if is_fifo_at(dir.as_fd(), b".gitignore") {
+        return true;
+    }
+    match stat_at(dir.as_fd(), b".git") {
+        Ok(st) if is_kind(&st, libc::S_IFDIR) => {
+            if let Ok(g) = open_dir_at(dir.as_fd(), b".git") {
+                if is_fifo_at(g.as_fd(), b"HEAD") || is_fifo_at(g.as_fd(), b"commondir") {
+                    return true;
+                }
+            }
+        }
+        Ok(st) if is_kind(&st, libc::S_IFREG) && linked_git_dir_has_fifo(dir.as_fd(), path) => {
+            return true;
+        }
+        _ => {}
+    }
+    if depth >= SCAN_DEPTH {
+        return false;
+    }
+    for name in list_dir(dir) {
+        if name == b".git" {
+            continue;
+        }
+        if *budget == 0 {
+            return false;
+        }
+        *budget -= 1;
+        let Ok(st) = stat_at(dir.as_fd(), &name) else {
+            continue;
+        };
+        if !is_kind(&st, libc::S_IFDIR) {
+            continue;
+        }
+        let Ok(sub) = open_dir_at(dir.as_fd(), &name) else {
+            continue;
+        };
+        let child = path.join(std::ffi::OsStr::from_bytes(&name));
+        if scan_for_fifo(&sub, &child, depth + 1, budget) {
+            return true;
+        }
+    }
+    false
+}
+
+fn work_tree_has_blocking_fifo(top: &Path) -> bool {
+    let Ok(root) = open_nofollow(top) else {
+        return false;
+    };
+    let mut budget = SCAN_ENTRIES;
+    scan_for_fifo(&root, top, 0, &mut budget)
+}
+
+fn list_files(g: &GitEnv, args: &[&str], top: &Path, slow: Duration) -> Result<Vec<u8>, CpError> {
+    let mut cmd = g.command();
+    cmd.args(args);
+    let mut proc = Proc::spawn_within(cmd, GIT_DEADLINE)?;
+    drop(proc.child.stdin.take());
+    let (Some(stdout), Some(stderr)) = (proc.child.stdout.take(), proc.child.stderr.take()) else {
+        return Err(CpError::Failed("git ls-files pipes missing".into()));
+    };
+    let list = thread::spawn(move || {
+        let mut v = Vec::new();
+        let _ = stdout.take(LIST_CAP as u64 + 1).read_to_end(&mut v);
+        v
+    });
+    let err = drain_err(stderr);
+    let pgid = proc.pgid;
+    let mut verdict = None;
+    let mut next_scan = Instant::now() + slow;
+    loop {
+        match exited_unreaped(pgid) {
+            Ok(true) => break,
+            Ok(false) => {}
+            Err(e) => {
+                verdict = Some(failed("git ls-files", e));
+                break;
+            }
+        }
+        if list.is_finished() {
+            break;
+        }
+        if Instant::now() >= next_scan {
+            if work_tree_has_blocking_fifo(top) {
+                verdict = Some(CpError::Failed(
+                    "a special file in the work tree blocks git; remove it to resume checkpoints"
+                        .into(),
+                ));
+                break;
+            }
+            next_scan = Instant::now() + slow;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+    kill_group_of_unreaped(pgid);
+    let status = proc.wait()?;
+    let stdout = list.join().unwrap_or_default();
+    let stderr = err.join().unwrap_or_default();
+    if let Some(v) = verdict {
+        return Err(v);
+    }
+    if stdout.len() > LIST_CAP {
+        return Err(failed("git ls-files", "output exceeded its cap"));
+    }
+    if !status.success() {
+        return Err(CpError::Failed(format!(
+            "git ls-files failed ({status}): {}",
+            String::from_utf8_lossy(&stderr).trim()
+        )));
+    }
+    Ok(stdout)
 }
 
 fn text(g: &GitEnv, args: &[&str]) -> Result<String, CpError> {
@@ -1711,11 +1845,11 @@ impl<'a> Op<'a> {
             .env("GIT_DIR", &self.private().to_string_lossy())
             .env("GIT_WORK_TREE", &f.top.to_string_lossy())
             .env("GIT_INDEX_FILE", &index.to_string_lossy());
-        let o = out(
+        let o = list_files(
             &g,
             &["ls-files", "-c", "-o", "--exclude-standard", "-z"],
-            None,
-            LIST_CAP,
+            &f.top,
+            self.env.slow_list,
         )?;
         Ok(o.split(|b| *b == 0)
             .filter(|p| !p.is_empty() && !p.ends_with(b"/"))
