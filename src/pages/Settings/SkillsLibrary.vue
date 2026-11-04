@@ -63,7 +63,7 @@
 
 		<SharedSkillHistory
 			v-if="historySkill"
-			:key="historySkill.slug"
+			:key="`${historySkill.slug}-${historySkill.version}`"
 			:slug="historySkill.slug"
 			:title="historySkill.title"
 			@close="historySlug = null"

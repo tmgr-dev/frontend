@@ -43,6 +43,7 @@
 							skill.pinned_version ? String(skill.pinned_version) : 'latest'
 						"
 						@update:model-value="(v) => setVersion(skill, String(v))"
+						@update:open="(open) => open && loadVersions(skill)"
 					>
 						<SelectTrigger
 							class="h-8 w-40 text-xs"
@@ -149,18 +150,20 @@
 			const loading = ref(true);
 			const keptVersions = ref<Record<string, number[]>>({});
 
-			const loadVersions = async (skills: PersonaSharedSkill[]) => {
-				const entries = await Promise.all(
-					skills.map(async (s) => {
-						try {
-							const rows = await listSharedSkillVersions(s.slug);
-							return [s.slug, rows.map((r) => r.version)] as const;
-						} catch {
-							return [s.slug, []] as const;
-						}
-					}),
-				);
-				keptVersions.value = Object.fromEntries(entries);
+			const loadVersions = async (skill: PersonaSharedSkill) => {
+				if (keptVersions.value[skill.slug]) return;
+				try {
+					const rows = await listSharedSkillVersions(skill.slug);
+					keptVersions.value = {
+						...keptVersions.value,
+						[skill.slug]: rows.map((r) => r.version),
+					};
+				} catch {
+					toast({
+						title: 'Could not load the versions',
+						variant: 'destructive',
+					});
+				}
 			};
 
 			const versionsFor = (skill: PersonaSharedSkill) => {
@@ -177,7 +180,6 @@
 						listPersonaSharedSkills(props.persona.id),
 						listSharedSkills(),
 					]);
-					await loadVersions(attached.value);
 				} catch {
 					toast({
 						title: 'Could not load library skills',
@@ -239,7 +241,13 @@
 				}
 			};
 
-			watch(() => props.revision, load);
+			watch(
+				() => props.revision,
+				() => {
+					keptVersions.value = {};
+					load();
+				},
+			);
 			onMounted(load);
 
 			return {
@@ -249,6 +257,7 @@
 				attach,
 				detach,
 				setVersion,
+				loadVersions,
 				versionsFor,
 				ATTACHED_SKILL_LIMIT,
 			};
