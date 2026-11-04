@@ -29,6 +29,7 @@ pub struct Checked {
     pub sha256: String,
     pub dir: Dir,
     pub team: Option<TeamLink>,
+    pub multi: bool,
 }
 
 fn refuse<T>(m: impl Into<String>) -> Result<T, Refusal> {
@@ -74,6 +75,7 @@ pub fn check(req: &RunCreateReq, max: usize) -> Result<Option<Checked>, Refusal>
         sha256,
         dir,
         team: req.team.clone(),
+        multi: !req.clones.is_empty(),
     }))
 }
 
@@ -231,7 +233,12 @@ pub fn install(sdir: &Path, checked: &Checked) -> Result<Prior, Refusal> {
     let cwd_fd = checked.dir.file.as_raw_fd();
     let prior = write_context(
         cwd_fd,
-        &render_for(&bundle, &checked.sha256, checked.team.as_ref()),
+        &render_for(
+            &bundle,
+            &checked.sha256,
+            checked.team.as_ref(),
+            checked.multi,
+        ),
     )?;
     exclude_from_git(cwd_fd);
     Ok(prior)
@@ -649,27 +656,42 @@ fn team_notes(b: &RunBundle, link: Option<&TeamLink>) -> String {
     }
 }
 
-fn lead_block(t: &BundleTeam) -> String {
+fn lead_block(t: &BundleTeam, multi: bool) -> String {
     let n = t.size;
+    let copies = if multi {
+        "Each worker gets a separate copy of every repository and works in parallel with the others."
+    } else {
+        "Each worker gets a separate copy of the repository and works in parallel with the others."
+    };
+    let branch = if multi {
+        "This folder holds one clone per repository, each in its own subfolder; commit in each repository you change, on the branch checked out there. "
+    } else {
+        ""
+    };
     format!(
         "## You lead a team\n\nSet by the runner on this machine, not signed by anyone ({} mode, up to {n} workers). \
-         Each worker gets a separate copy of the repository and works in parallel with the others. You cannot start workers \
+         {copies} You cannot start workers \
          yourself and you never touch their copies.\n\n\
          First decide how to split the task. Then write the file .tmgr/team-plan.json in this folder, in exactly this shape: \
          {{\"v\":1,\"workers\":[{{\"brief\":\"what worker 1 does\"}}]}} with at most {n} entries and no other fields. \
          Use an empty list if the task is not worth splitting. Then stop and wait: do not do the workers' parts yourself and do not \
          exit. The runner starts the workers and tells you here when they are done, with the commits to bring in. \
-         Commit on the task branch and never create merge commits; the runner publishes the pull request after you stop. \
+         {branch}Commit on the task branch and never create merge commits; the runner publishes the pull request after you stop. \
          When the runner tells you to, write an empty file .tmgr/done and stop again.\n\n",
         t.mode.as_str()
     )
 }
 
-fn worker_block(k: u8) -> String {
+fn worker_block(k: u8, multi: bool) -> String {
+    let place = if multi {
+        "This folder holds one clone per repository, each in its own subfolder; commit in each repository you change, on the branch checked out there"
+    } else {
+        "You work in your own copy of the repository: commit on the \
+         branch that is checked out in this folder"
+    };
     format!(
         "## Your part of a team\n\nSet by the runner on this machine, not signed by anyone. You are worker {k} of a team. \
-         The lead split the task; your assignment is below. You work in your own copy of the repository: commit on the \
-         branch that is checked out in this folder, do not switch branches and do not push. When you are done, write an \
+         The lead split the task; your assignment is below. {place}, do not switch branches and do not push. When you are done, write an \
          empty file .tmgr/done and stop; the runner collects your commits and ends your session.\n\n"
     )
 }
@@ -722,10 +744,10 @@ fn owner_note(b: &RunBundle) -> Option<String> {
 }
 
 pub fn render(b: &RunBundle, sha256: &str) -> String {
-    render_for(b, sha256, None)
+    render_for(b, sha256, None, false)
 }
 
-pub fn render_for(b: &RunBundle, sha256: &str, link: Option<&TeamLink>) -> String {
+pub fn render_for(b: &RunBundle, sha256: &str, link: Option<&TeamLink>, multi: bool) -> String {
     let owner = owner_persona(b).is_some() || !b.context.is_empty();
     let mut out = if owner {
         String::from(
@@ -766,12 +788,12 @@ pub fn render_for(b: &RunBundle, sha256: &str, link: Option<&TeamLink>) -> Strin
         }
     }
     match (&b.team, link.map(|l| l.role)) {
-        (Some(t), Some(TeamRole::Lead)) => out.push_str(&lead_block(t)),
+        (Some(t), Some(TeamRole::Lead)) => out.push_str(&lead_block(t, multi)),
         (Some(t), _) => out.push_str(&team_block(t)),
         _ => {}
     }
     if let (Some(TeamRole::Worker(k)), Some(_)) = (link.map(|l| l.role), &b.assignment) {
-        out.push_str(&worker_block(k));
+        out.push_str(&worker_block(k, multi));
     }
     if let Some(a) = &b.assignment {
         out.push_str(
@@ -1526,7 +1548,7 @@ mod team_tests {
             size: 3,
             mode: TeamMode::Eco,
         }));
-        let r = render_for(&b, "abc", Some(&link(TeamRole::Lead)));
+        let r = render_for(&b, "abc", Some(&link(TeamRole::Lead)), false);
         assert!(r.contains("## You lead a team"), "{r}");
         assert!(r.contains(".tmgr/team-plan.json"), "{r}");
         assert!(r.contains("at most 3 entries"), "{r}");
@@ -1537,21 +1559,52 @@ mod team_tests {
         let p = prompt_for(&b, Some(&link(TeamRole::Lead)));
         assert!(p.contains("lead of a team of up to 3 workers"), "{p}");
         assert!(!p.contains("eco team of 3"), "{p}");
-        assert_eq!(render_for(&b, "abc", None), render(&b, "abc"));
+        assert_eq!(render_for(&b, "abc", None, false), render(&b, "abc"));
     }
 
     #[test]
     fn a_queue_worker_is_told_to_commit_and_leave_a_marker_before_its_assignment() {
         let mut b = bundle(None);
         b.assignment = Some("do the api".into());
-        let r = render_for(&b, "abc", Some(&link(TeamRole::Worker(2))));
+        let r = render_for(&b, "abc", Some(&link(TeamRole::Worker(2))), false);
         assert!(r.contains("## Your part of a team"), "{r}");
         assert!(r.contains("worker 2"), "{r}");
         assert!(r.contains(".tmgr/done"), "{r}");
         assert!(r.find("## Your part").unwrap() < r.find("## Assignment from the lead").unwrap());
         assert!(!r.contains("team-plan"), "{r}");
         assert!(prompt_for(&b, Some(&link(TeamRole::Worker(2)))).contains("worker 2"));
-        assert!(!render_for(&b, "abc", None).contains("## Your part"));
+        assert!(!render_for(&b, "abc", None, false).contains("## Your part"));
+    }
+
+    #[test]
+    fn a_multi_repo_team_member_is_told_about_one_clone_per_repository() {
+        let b = bundle(Some(BundleTeam {
+            size: 3,
+            mode: TeamMode::Eco,
+        }));
+        let single = render_for(&b, "abc", Some(&link(TeamRole::Lead)), false);
+        let multi = render_for(&b, "abc", Some(&link(TeamRole::Lead)), true);
+        let hint = "one clone per repository, each in its own subfolder; commit in each repository you change, on the branch checked out there";
+        assert!(multi.contains(hint), "{multi}");
+        assert!(!single.contains("one clone per repository"), "{single}");
+        assert!(
+            single.contains("separate copy of the repository"),
+            "{single}"
+        );
+        assert!(
+            !multi.contains("separate copy of the repository"),
+            "{multi}"
+        );
+        let mut w = bundle(None);
+        w.assignment = Some("do the api".into());
+        let single = render_for(&w, "abc", Some(&link(TeamRole::Worker(2))), false);
+        let multi = render_for(&w, "abc", Some(&link(TeamRole::Worker(2))), true);
+        assert!(multi.contains(hint), "{multi}");
+        assert!(
+            !multi.contains("your own copy of the repository"),
+            "{multi}"
+        );
+        assert!(single.contains("your own copy of the repository: commit on the branch that is checked out in this folder, do not switch"), "{single}");
     }
 
     #[test]

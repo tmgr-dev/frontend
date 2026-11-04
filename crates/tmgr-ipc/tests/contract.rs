@@ -905,7 +905,8 @@ fn constants_are_pinned() {
             "no_sandbox.v1",
             "checkpoints.v1",
             "permission_cards.v1",
-            "team.workers.v1"
+            "team.workers.v1",
+            "team.multi.v1"
         ]
     );
     let methods = [
@@ -1001,7 +1002,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 35);
+    assert_eq!(w.caps.len(), 36);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1622,6 +1623,8 @@ fn team_link_wire_form_round_trips_and_is_validated() {
     .is_err());
     assert!(caps::ALL.contains(&caps::TEAM_WORKERS_V1));
     assert_eq!(caps::TEAM_WORKERS_V1, "team.workers.v1");
+    assert!(caps::ALL.contains(&caps::TEAM_MULTI_V1));
+    assert_eq!(caps::TEAM_MULTI_V1, "team.multi.v1");
 }
 
 #[test]

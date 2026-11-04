@@ -56,6 +56,7 @@ pub mod caps {
     pub const SIGNED_CONTEXT_V1: &str = "signed_context.v1";
     pub const TEAM_V1: &str = "team.v1";
     pub const TEAM_WORKERS_V1: &str = "team.workers.v1";
+    pub const TEAM_MULTI_V1: &str = "team.multi.v1";
     pub const ORCHESTRATOR_V1: &str = "orchestrator.v1";
     pub const SESSIONS_RESUME_V1: &str = "sessions_resume.v1";
     pub const HUMAN_TIME_V1: &str = "human_time.v1";
@@ -65,7 +66,7 @@ pub mod caps {
     pub const CHECKPOINTS_V1: &str = "checkpoints.v1";
     pub const PERMISSION_CARDS_V1: &str = "permission_cards.v1";
 
-    pub const ALL: [&str; 35] = [
+    pub const ALL: [&str; 36] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -101,6 +102,7 @@ pub mod caps {
         CHECKPOINTS_V1,
         PERMISSION_CARDS_V1,
         TEAM_WORKERS_V1,
+        TEAM_MULTI_V1,
     ];
 }
 

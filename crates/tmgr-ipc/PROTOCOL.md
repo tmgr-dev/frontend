@@ -116,6 +116,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `signed_context.v1` | `persona.id`, `persona.instructions` and `context` in a bundle; `persona_sha256`, `context_sha256` in `cloud` (section 5, "Run bundles") |
 | `team.v1` | `team` in a run bundle (section 5, "Run bundles") |
 | `team.workers.v1` | `team` on `runs.create` and `SessionInfo`; `assignment` in a run bundle (section 5, "Run bundles") |
+| `team.multi.v1` | `team` together with `clones` on `runs.create`: the run folder is `<primary>-worktrees/queue/<pickup id>/lead` or `.../wK` and holds one clone per repository |
 | `orchestrator.v1` | `orchestrator.create` (section 5, "Orchestrator session") |
 | `session_text.v1` | `sessions.text` (section 5, "Session text") |
 | `trust_cwd.v1` | `trust_cwd` on `runs.create`; `trust` in `WorkSummary` (section 5, "Pre-accepted folder trust") |

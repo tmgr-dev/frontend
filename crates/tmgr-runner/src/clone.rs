@@ -5,7 +5,7 @@ use std::os::fd::AsRawFd;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
-use tmgr_ipc::api::ErrorCode;
+use tmgr_ipc::api::{ErrorCode, TeamLink, TeamRole};
 
 const MAX_ALTERNATES: u64 = 4096;
 
@@ -304,18 +304,34 @@ pub fn check_multi(
     run: &Dir,
     primary: &str,
     clones: &[(String, String)],
+    team: Option<&TeamLink>,
 ) -> Result<Vec<Objects>, Refusal> {
     if run.path.to_str().is_none_or(|p| p.contains(':')) {
         return refuse("the run folder path must be UTF-8 without a colon");
     }
     let first = Repo::open(primary)?;
     let rel = folder_below(run, &first.worktrees())?;
-    match rel.iter().map(String::as_str).collect::<Vec<_>>()[..] {
-        [name] if name != "queue" => {}
-        ["queue", _] => {}
-        _ => return refuse(
-            "the run folder must be <primary>-worktrees/<name> or <primary>-worktrees/queue/<id>",
-        ),
+    let rel: Vec<&str> = rel.iter().map(String::as_str).collect();
+    match (team, &rel[..]) {
+        (None, [name]) if *name != "queue" => {}
+        (None, ["queue", _]) => {}
+        (Some(t), ["queue", id, member])
+            if *id == t.of
+                && *member
+                    == match t.role {
+                        TeamRole::Lead => "lead".to_string(),
+                        TeamRole::Worker(k) => format!("w{k}"),
+                    } => {}
+        (Some(_), _) => {
+            return refuse(
+                "a team member folder must be <primary>-worktrees/queue/<pickup id>/<lead or wK> for its own role",
+            )
+        }
+        _ => {
+            return refuse(
+                "the run folder must be <primary>-worktrees/<name> or <primary>-worktrees/queue/<id>",
+            )
+        }
     }
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
     let found = unsafe {
@@ -493,9 +509,66 @@ mod tests {
             ("fe".to_string(), src.clone()),
             ("be".to_string(), src.clone()),
         ];
-        let (_, msg) = check_multi(&open_path(run.clone()).unwrap(), &src, &clones).unwrap_err();
+        let (_, msg) =
+            check_multi(&open_path(run.clone()).unwrap(), &src, &clones, None).unwrap_err();
         assert!(msg.contains(run.join("be").to_str().unwrap()), "{msg}");
         let fresh = vec![("fe".to_string(), src.clone())];
-        check_multi(&open_path(run).unwrap(), &src, &fresh).unwrap();
+        check_multi(&open_path(run).unwrap(), &src, &fresh, None).unwrap();
+    }
+
+    fn team_of(role: TeamRole, of: &str) -> TeamLink {
+        TeamLink {
+            role,
+            of: of.into(),
+        }
+    }
+
+    fn member_folder(root: &Path, rel: &str) -> (PathBuf, String, Vec<(String, String)>) {
+        let repo = repo_at(root);
+        let run = root.join("repo-worktrees").join(rel);
+        clone_at(&repo, &run.join("fe"), false);
+        let src = repo.to_str().unwrap().to_string();
+        let clones = vec![("fe".to_string(), src.clone())];
+        (run, src, clones)
+    }
+
+    fn multi_with(rel: &str, team: Option<&TeamLink>) -> Result<(), Refusal> {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (run, src, clones) = member_folder(&root, rel);
+        check_multi(&open_path(run).unwrap(), &src, &clones, team).map(|_| ())
+    }
+
+    #[test]
+    fn a_multi_repo_team_member_folder_matches_its_role_and_pickup() {
+        let lead = team_of(TeamRole::Lead, "p_1");
+        multi_with("queue/p_1/lead", Some(&lead)).unwrap();
+        multi_with("queue/p_1/w2", Some(&team_of(TeamRole::Worker(2), "p_1"))).unwrap();
+        multi_with("queue/p_1/w2", Some(&lead)).unwrap_err();
+        multi_with("queue/p_1/lead", Some(&team_of(TeamRole::Worker(1), "p_1"))).unwrap_err();
+        multi_with("queue/p_1/w1", Some(&team_of(TeamRole::Worker(2), "p_1"))).unwrap_err();
+        multi_with("queue/p_2/lead", Some(&lead)).unwrap_err();
+    }
+
+    #[test]
+    fn team_and_single_agent_multi_shapes_do_not_mix() {
+        let lead = team_of(TeamRole::Lead, "p_1");
+        multi_with("queue/p_1/lead", None).unwrap_err();
+        multi_with("queue/p_1", Some(&lead)).unwrap_err();
+        multi_with("task", Some(&lead)).unwrap_err();
+        multi_with("queue/p_1", None).unwrap();
+        multi_with("task", None).unwrap();
+    }
+
+    #[test]
+    fn a_member_folder_with_its_own_git_entry_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (run, src, clones) = member_folder(&root, "queue/p_1/lead");
+        std::fs::create_dir(run.join(".git")).unwrap();
+        let lead = team_of(TeamRole::Lead, "p_1");
+        let (_, msg) =
+            check_multi(&open_path(run).unwrap(), &src, &clones, Some(&lead)).unwrap_err();
+        assert!(msg.contains(".git"), "{msg}");
     }
 }

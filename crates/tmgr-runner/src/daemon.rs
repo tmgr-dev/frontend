@@ -3310,7 +3310,8 @@ impl Runner {
                     .iter()
                     .map(|c| (c.name.clone(), c.clone_of.clone()))
                     .collect();
-                clone::check_multi(dir, &primary, &specs).map_err(|(code, m)| api(code, m))?
+                clone::check_multi(dir, &primary, &specs, req.team.as_ref())
+                    .map_err(|(code, m)| api(code, m))?
             }
             _ => Vec::new(),
         };
