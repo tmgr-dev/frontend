@@ -31,16 +31,26 @@ fn git_args(extra: &[&str]) -> Vec<String> {
     SAFE.iter().chain(extra).map(|s| (*s).to_string()).collect()
 }
 
-fn run(program: &str, args: &[String], cwd: &Path, timeout: Duration) -> Option<(bool, String)> {
+fn run(
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+    git_dir: Option<&Path>,
+    timeout: Duration,
+) -> Option<(bool, String)> {
     use std::os::unix::process::CommandExt;
-    let mut child = Command::new(program)
+    let mut cmd = Command::new(program);
+    match git_dir {
+        Some(dir) => cmd.env("GIT_DIR", dir).env("GIT_WORK_TREE", cwd),
+        None => cmd.env_remove("GIT_DIR").env_remove("GIT_WORK_TREE"),
+    };
+    let mut child = cmd
         .args(args)
         .current_dir(cwd)
         .env("PATH", tmgr_queue::workdir::absolute_path())
         .env("GIT_NO_LAZY_FETCH", "1")
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_CEILING_DIRECTORIES", cwd.parent().unwrap_or(cwd))
         .env("GIT_CONFIG_COUNT", "2")
         .env("GIT_CONFIG_KEY_0", "core.fsmonitor")
         .env("GIT_CONFIG_VALUE_0", "false")
@@ -49,8 +59,6 @@ fn run(program: &str, args: &[String], cwd: &Path, timeout: Duration) -> Option<
         .env("GH_PROMPT_DISABLED", "1")
         .env("GH_NO_UPDATE_NOTIFIER", "1")
         .env("NO_COLOR", "1")
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
         .env_remove("GIT_INDEX_FILE")
         .env_remove("GIT_EXTERNAL_DIFF")
         .stdin(Stdio::null())
@@ -127,8 +135,8 @@ fn run(program: &str, args: &[String], cwd: &Path, timeout: Duration) -> Option<
     ))
 }
 
-fn git(cwd: &Path, extra: &[&str]) -> Option<String> {
-    let (ok, text) = run("git", &git_args(extra), cwd, GIT_TIMEOUT)?;
+fn git(root: &Path, git_dir: &Path, extra: &[&str]) -> Option<String> {
+    let (ok, text) = run("git", &git_args(extra), root, Some(git_dir), GIT_TIMEOUT)?;
     ok.then_some(text)
 }
 
@@ -136,16 +144,16 @@ pub(super) fn real_dir(path: &Path) -> bool {
     path.is_absolute() && std::fs::symlink_metadata(path).is_ok_and(|m| m.is_dir())
 }
 
-fn repo_root(cwd: &Path) -> Option<PathBuf> {
-    let top = git(cwd, &["rev-parse", "--show-toplevel"])?;
-    let root = PathBuf::from(top.trim_end_matches('\n'));
-    (real_dir(&root) && cwd.starts_with(&root)).then_some(root)
+fn work_root(cwd: &Path) -> Option<&Path> {
+    cwd.ancestors()
+        .find(|dir| std::fs::symlink_metadata(dir.join(".git")).is_ok())
 }
 
-fn base_of(root: &Path) -> Option<(String, u32)> {
+fn base_of(root: &Path, git_dir: &Path) -> Option<(String, u32)> {
     let mut candidates: Vec<String> = Vec::new();
     if let Some(head) = git(
         root,
+        git_dir,
         &["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"],
     ) {
         candidates.push(head.trim().to_string());
@@ -156,7 +164,7 @@ fn base_of(root: &Path) -> Option<(String, u32)> {
         .filter(|b| !b.is_empty() && !b.starts_with('-'))
     {
         let range = format!("{base}..HEAD");
-        let Some(n) = git(root, &["rev-list", "--count", &range]) else {
+        let Some(n) = git(root, git_dir, &["rev-list", "--count", &range]) else {
             continue;
         };
         if let Ok(n) = n.trim().parse() {
@@ -167,10 +175,13 @@ fn base_of(root: &Path) -> Option<(String, u32)> {
 }
 
 fn lookup_pr(root: &Path) -> PrLookup {
+    let Some(git_dir) = tmgr_queue::workdir::plain_git_dir(root) else {
+        return PrLookup::Unavailable;
+    };
     let args: Vec<String> = ["pr", "view", "--json", "number,title,url,state"]
         .map(String::from)
         .to_vec();
-    match run("gh", &args, root, GH_TIMEOUT) {
+    match run("gh", &args, root, Some(&git_dir), GH_TIMEOUT) {
         Some((true, text)) => parse_pr(&text).map_or(PrLookup::Unavailable, PrLookup::Found),
         Some((false, err)) if err.contains("no pull requests found") => PrLookup::NoPr,
         _ => PrLookup::Unavailable,
@@ -206,21 +217,18 @@ pub(super) fn collect(
         return None;
     }
     let cwd = std::fs::canonicalize(cwd).ok()?;
-    let root = cwd
-        .ancestors()
-        .find(|dir| std::fs::symlink_metadata(dir.join(".git")).is_ok())?
-        .to_path_buf();
-    if !tmgr_queue::workdir::repo_config_is_plain(&root) || repo_root(&root)? != root {
-        return None;
-    }
+    let root = work_root(&cwd)?.to_path_buf();
+    let git_dir = tmgr_queue::workdir::plain_git_dir(&root)?;
     if config_runs_programs(&git(
         &root,
+        &git_dir,
         &["config", "--list", "--show-scope", "--name-only"],
     )?) {
         return None;
     }
     let status = parse_status(&git(
         &root,
+        &git_dir,
         &[
             "status",
             "--porcelain=v2",
@@ -230,6 +238,7 @@ pub(super) fn collect(
     )?);
     let (added, deleted) = git(
         &root,
+        &git_dir,
         &[
             "diff",
             "--no-ext-diff",
@@ -241,7 +250,7 @@ pub(super) fn collect(
     )
     .map(|t| parse_numstat(&t))
     .unwrap_or_default();
-    let (base, ahead_base) = match base_of(&root) {
+    let (base, ahead_base) = match base_of(&root, &git_dir) {
         Some((b, n)) => (Some(b), Some(n)),
         None => (None, None),
     };
@@ -278,16 +287,6 @@ fn read_small_file(path: &Path) -> Option<String> {
     Some(text)
 }
 
-fn git_dir_of(dir: &Path) -> Option<PathBuf> {
-    let entry = dir.join(".git");
-    let meta = std::fs::symlink_metadata(&entry).ok()?;
-    if meta.is_dir() {
-        return Some(entry);
-    }
-    let text = read_small_file(&entry)?;
-    Some(dir.join(text.strip_prefix("gitdir: ")?.trim_end()))
-}
-
 fn branch_of_head(head: &str) -> String {
     head.trim_end()
         .strip_prefix("ref: refs/heads/")
@@ -305,9 +304,8 @@ pub(super) fn collect_branch_only(cwd: &Path) -> Option<GitInfo> {
         return None;
     }
     let cwd = std::fs::canonicalize(cwd).ok()?;
-    let (root, git_dir) = cwd
-        .ancestors()
-        .find_map(|dir| Some((dir, git_dir_of(dir)?)))?;
+    let root = work_root(&cwd)?;
+    let (git_dir, _) = tmgr_queue::workdir::expected_git_dir(root)?;
     let head = read_small_file(&git_dir.join("HEAD"))?;
     Some(GitInfo {
         root: root.to_string_lossy().into_owned(),
@@ -584,7 +582,7 @@ mod tests {
     fn a_grandchild_holding_the_pipe_cannot_hang_the_call() {
         let start = Instant::now();
         let args = ["-c".to_string(), "sleep 5 & echo hi".to_string()];
-        let out = run("sh", &args, Path::new("/"), Duration::from_secs(3));
+        let out = run("sh", &args, Path::new("/"), None, Duration::from_secs(3));
         assert!(start.elapsed() < Duration::from_secs(4));
         assert!(out.is_none() || out.is_some_and(|(ok, text)| ok && text.contains("hi")));
     }
@@ -596,11 +594,19 @@ mod tests {
             "sleep",
             &["5".to_string()],
             Path::new("/"),
+            None,
             Duration::from_millis(200),
         );
         assert!(out.is_none());
         assert!(start.elapsed() < Duration::from_secs(3));
-        assert!(run("definitely-not-a-program", &[], Path::new("/"), GIT_TIMEOUT).is_none());
+        assert!(run(
+            "definitely-not-a-program",
+            &[],
+            Path::new("/"),
+            None,
+            GIT_TIMEOUT
+        )
+        .is_none());
     }
 
     #[test]
@@ -639,20 +645,28 @@ mod tests {
     }
 
     #[test]
-    fn the_branch_is_read_from_a_git_file_and_from_a_subfolder() {
+    fn the_branch_is_read_from_a_worktree_git_file_and_from_a_subfolder() {
         let dir = repo();
         let p = canon(dir.path());
-        let other = tempfile::tempdir().unwrap();
-        let other = canon(other.path());
-        std::fs::create_dir(other.join("sub")).unwrap();
+        let base = tempfile::tempdir().unwrap();
+        let wt = canon(base.path()).join("wt");
+        sh(
+            &p,
+            &["worktree", "add", "-q", "-b", "side", wt.to_str().unwrap()],
+        );
+        std::fs::create_dir(wt.join("sub")).unwrap();
+        let info = collect_branch_only(&wt.join("sub")).unwrap();
+        assert_eq!(info.branch, "side");
+        assert_eq!(info.root, wt.to_string_lossy());
+
+        let other = canon(base.path()).join("other");
+        std::fs::create_dir(&other).unwrap();
         std::fs::write(
             other.join(".git"),
             format!("gitdir: {}\n", p.join(".git").display()),
         )
         .unwrap();
-        let info = collect_branch_only(&other.join("sub")).unwrap();
-        assert_eq!(info.branch, "feature");
-        assert_eq!(info.root, other.to_string_lossy());
+        assert!(collect_branch_only(&other).is_none());
     }
 
     #[test]

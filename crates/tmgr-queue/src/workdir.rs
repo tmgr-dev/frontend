@@ -213,6 +213,7 @@ fn plain_config_key(name: &str) -> bool {
                 | "rebase.autostash"
                 | "gc.auto"
                 | "maintenance.auto"
+                | "extensions.relativeworktrees"
         ),
     }
 }
@@ -230,19 +231,20 @@ fn normalized(path: &Path) -> Option<PathBuf> {
                     return None;
                 }
             }
-            Component::Prefix(_) => return None,
+            Component::Prefix(_) => {}
         }
     }
     Some(out)
 }
 
 fn named_path(dir: &Path, text: &str, prefix: &str) -> Option<PathBuf> {
-    let target = text.trim_end().strip_prefix(prefix)?;
-    if target.is_empty() || target.chars().any(char::is_control) {
+    let target = text.trim_end_matches(['\n', '\r']).strip_prefix(prefix)?;
+    if target.is_empty() || target.trim() != target || target.chars().any(char::is_control) {
         return None;
     }
-    let path = normalized(&dir.join(target))?;
-    (std::fs::canonicalize(&path).ok()? == path).then_some(path)
+    let joined = dir.join(target);
+    let path = normalized(&joined)?;
+    (std::fs::canonicalize(&joined).ok()? == path).then_some(path)
 }
 
 /// The git directory of the work folder `root` and its common directory, when `.git` is the folder's own
@@ -276,15 +278,23 @@ pub fn expected_git_dir(root: &Path) -> Option<(PathBuf, PathBuf)> {
 
 /// Whether the repository's own configuration holds only settings that run nothing once git commands pin core.hooksPath and core.fsmonitor.
 pub fn repo_config_is_plain(dir: &Path) -> bool {
-    let Some((git_dir, expected_common)) = expected_git_dir(dir) else {
-        return false;
-    };
+    plain_git_dir(dir).is_some()
+}
+
+/// The git directory from `expected_git_dir` of the work folder `dir`, when its configuration is plain
+/// (`repo_config_is_plain`); pass it as `GIT_DIR` so git never looks at `.git` again.
+pub fn plain_git_dir(dir: &Path) -> Option<PathBuf> {
+    let (git_dir, expected_common) = expected_git_dir(dir)?;
+    config_is_plain(&git_dir, &expected_common).then_some(git_dir)
+}
+
+fn config_is_plain(git_dir: &Path, expected_common: &Path) -> bool {
     let mut common = fixed_git_command();
     common
         .arg("--git-dir")
-        .arg(&git_dir)
+        .arg(git_dir)
         .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
-        .current_dir(&git_dir);
+        .current_dir(git_dir);
     let Ok(out) = output_within(&mut common, GIT_TIMEOUT) else {
         return false;
     };
@@ -295,7 +305,7 @@ pub fn repo_config_is_plain(dir: &Path) -> bool {
         return false;
     };
     let git_dir = git_dir.strip_suffix('\n').unwrap_or(git_dir);
-    if std::fs::canonicalize(git_dir).ok().as_ref() != Some(&expected_common) {
+    if std::fs::canonicalize(git_dir).ok().as_deref() != Some(expected_common) {
         return false;
     }
     let mut list = fixed_git_command();
@@ -1699,6 +1709,16 @@ mod tests {
         let admin = repo.join(".git/worktrees/wt");
         std::fs::write(wt.join(".git"), "gitdir: ../repo/.git/worktrees/wt\n").unwrap();
         std::fs::write(admin.join("gitdir"), "../../../../wt/.git\n").unwrap();
+        git(
+            Some(&repo),
+            &["config", "core.repositoryFormatVersion", "1"],
+        )
+        .unwrap();
+        git(
+            Some(&repo),
+            &["config", "extensions.relativeWorktrees", "true"],
+        )
+        .unwrap();
         assert!(repo_config_is_plain(&wt));
     }
 
@@ -1721,6 +1741,15 @@ mod tests {
         init_repo(&moved);
         std::fs::rename(moved.join(".git"), moved.join("inner")).unwrap();
         std::fs::write(moved.join(".git"), "gitdir: inner\n").unwrap();
+        assert!(repo_config_is_plain(&moved));
+        for text in ["gitdir: inner \n", "gitdir: inner\t\n", "gitdir:  inner\n"] {
+            std::fs::write(moved.join(".git"), text).unwrap();
+            assert!(!repo_config_is_plain(&moved), "{text:?}");
+        }
+        std::os::unix::fs::symlink(&root, moved.join("up")).unwrap();
+        std::fs::write(moved.join(".git"), "gitdir: up/../inner\n").unwrap();
+        assert!(!repo_config_is_plain(&moved));
+        std::fs::write(moved.join(".git"), "gitdir: inner\r\n").unwrap();
         assert!(repo_config_is_plain(&moved));
         std::fs::write(moved.join("inner/commondir"), "../../repo/.git\n").unwrap();
         assert!(!repo_config_is_plain(&moved));
