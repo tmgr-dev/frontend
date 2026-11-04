@@ -43,6 +43,7 @@ const GIT_DEADLINE: Duration = Duration::from_secs(600);
 const SLOW_LIST: Duration = Duration::from_secs(2);
 const SCAN_ENTRIES: usize = 1_000_000;
 const SCAN_DEPTH: usize = 64;
+const GITFILE_CAP: u64 = 1024 * 1024;
 const MIGRATE_DEADLINE: Duration = Duration::from_secs(60);
 const PACK_CAP: u64 = 4 * 1024 * 1024 * 1024;
 const PACK_LIMIT: usize = 16;
@@ -864,40 +865,53 @@ fn is_fifo_at(dir: BorrowedFd, name: &[u8]) -> bool {
     stat_at(dir, name).is_ok_and(|st| is_kind(&st, libc::S_IFIFO))
 }
 
-fn linked_git_dir_has_fifo(dir: BorrowedFd, path: &Path) -> bool {
+fn stat_follow_at(dir: BorrowedFd, name: &[u8]) -> io::Result<libc::stat> {
+    let p = cstr(name)?;
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    cvt(unsafe { libc::fstatat(dir.as_raw_fd(), p.as_ptr(), &mut st, 0) })?;
+    Ok(st)
+}
+
+fn git_dir_has_fifo(git_dir: &Path) -> bool {
     use std::os::unix::fs::FileTypeExt;
-    let ReadFile::Data(_, _, data) = read_regular(dir, b".git", 4096) else {
-        return false;
-    };
-    let Some(rest) = data.strip_prefix(b"gitdir:") else {
-        return false;
-    };
-    let line = rest.split(|b| *b == b'\n').next().unwrap_or_default();
-    let target = path.join(std::ffi::OsStr::from_bytes(line.trim_ascii()));
     ["HEAD", "commondir"]
         .iter()
-        .any(|n| fs::symlink_metadata(target.join(n)).is_ok_and(|m| m.file_type().is_fifo()))
+        .any(|n| fs::metadata(git_dir.join(n)).is_ok_and(|m| m.file_type().is_fifo()))
+}
+
+fn gitfile_target(dir: BorrowedFd, path: &Path) -> Option<PathBuf> {
+    let fd = open_at(dir, b".git", libc::O_RDONLY | libc::O_NONBLOCK, 0).ok()?;
+    if !is_kind(&fstat_fd(fd.as_fd()).ok()?, libc::S_IFREG) {
+        return None;
+    }
+    let mut data = Vec::new();
+    File::from(fd)
+        .take(GITFILE_CAP)
+        .read_to_end(&mut data)
+        .ok()?;
+    let rest = data.strip_prefix(b"gitdir: ")?;
+    let end = rest
+        .iter()
+        .rposition(|b| *b != b'\n' && *b != b'\r')
+        .map_or(0, |i| i + 1);
+    Some(path.join(std::ffi::OsStr::from_bytes(&rest[..end])))
 }
 
 fn scan_for_fifo(dir: &OwnedFd, path: &Path, depth: usize, budget: &mut usize) -> bool {
     if is_fifo_at(dir.as_fd(), b".gitignore") {
         return true;
     }
-    match stat_at(dir.as_fd(), b".git") {
-        Ok(st) if is_kind(&st, libc::S_IFDIR) => {
-            if let Ok(g) = open_dir_at(dir.as_fd(), b".git") {
-                if is_fifo_at(g.as_fd(), b"HEAD") || is_fifo_at(g.as_fd(), b"commondir") {
-                    return true;
-                }
-            }
+    match stat_follow_at(dir.as_fd(), b".git") {
+        Ok(st) if is_kind(&st, libc::S_IFDIR) && git_dir_has_fifo(&path.join(".git")) => {
+            return true;
         }
-        Ok(st) if is_kind(&st, libc::S_IFREG) && linked_git_dir_has_fifo(dir.as_fd(), path) => {
+        Ok(st)
+            if is_kind(&st, libc::S_IFREG)
+                && gitfile_target(dir.as_fd(), path).is_some_and(|t| git_dir_has_fifo(&t)) =>
+        {
             return true;
         }
         _ => {}
-    }
-    if depth >= SCAN_DEPTH {
-        return false;
     }
     for name in list_dir(dir) {
         if name == b".git" {
@@ -912,6 +926,9 @@ fn scan_for_fifo(dir: &OwnedFd, path: &Path, depth: usize, budget: &mut usize) -
         };
         if !is_kind(&st, libc::S_IFDIR) {
             continue;
+        }
+        if depth >= SCAN_DEPTH {
+            return true;
         }
         let Ok(sub) = open_dir_at(dir.as_fd(), &name) else {
             continue;
@@ -1167,10 +1184,7 @@ fn session_facts(env: &Env, sdir: &Path, cwd: &Path) -> Result<Facts, CpError> {
         if p.components().any(|c| matches!(c, Component::ParentDir)) {
             return None;
         }
-        [&top, &common]
-            .into_iter()
-            .find(|r| p.starts_with(r))
-            .cloned()
+        p.starts_with(&top).then(|| top.clone())
     };
     let local_choice = repo
         .get("core.excludesfile")
@@ -1507,15 +1521,12 @@ fn filter_packed(data: &[u8], ns: &str) -> Option<Vec<u8>> {
     dropped.then_some(out)
 }
 
-fn lock_packed_refs(root: &OwnedFd, mode: u32) -> Option<()> {
+fn lock_packed_refs(root: &OwnedFd, mode: u32) -> Option<OwnedFd> {
     let end = Instant::now() + PACKED_LOCK_WAIT;
     let flags = libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW;
     loop {
         match open_at(root.as_fd(), PACKED_LOCK, flags, mode) {
-            Ok(fd) => {
-                drop(fd);
-                return Some(());
-            }
+            Ok(fd) => return Some(fd),
             Err(e) if e.raw_os_error() == Some(libc::EEXIST) && Instant::now() < end => {
                 thread::sleep(Duration::from_millis(20));
             }
@@ -1524,7 +1535,7 @@ fn lock_packed_refs(root: &OwnedFd, mode: u32) -> Option<()> {
     }
 }
 
-fn rewrite_packed(root: &OwnedFd, ns: &str) -> bool {
+fn rewrite_packed(root: &OwnedFd, lock: OwnedFd, ns: &str) -> bool {
     let ReadFile::Data(_, _, data) = read_regular(root.as_fd(), PACKED_REFS, PACKED_REFS_MAX)
     else {
         return false;
@@ -1538,11 +1549,7 @@ fn rewrite_packed(root: &OwnedFd, ns: &str) -> bool {
             f();
         }
     });
-    let flags = libc::O_WRONLY | libc::O_NOFOLLOW;
-    let Ok(fd) = open_at(root.as_fd(), PACKED_LOCK, flags, 0) else {
-        return false;
-    };
-    let mut file = File::from(fd);
+    let mut file = File::from(lock);
     if file.write_all(&kept).is_err() || file.sync_all().is_err() {
         return false;
     }
@@ -1561,10 +1568,10 @@ fn delete_packed_refs(common: &Path, ns: &str) {
         Ok(st) if is_kind(&st, libc::S_IFREG) => mode_bits(&st) & 0o777,
         _ => return,
     };
-    if lock_packed_refs(&root, mode).is_none() {
+    let Some(lock) = lock_packed_refs(&root, mode) else {
         return;
-    }
-    if !rewrite_packed(&root, ns) {
+    };
+    if !rewrite_packed(&root, lock, ns) {
         let _ = unlink_at(root.as_fd(), PACKED_LOCK, 0);
     }
 }
@@ -2923,7 +2930,12 @@ mod tests {
         let fifo = fx.root.join("cd-fifo");
         mkfifo(&fifo);
         std::os::unix::fs::symlink(&fifo, g.join("commondir")).unwrap();
-        blocked_until_removed(&fx, &fifo);
+        let start = Instant::now();
+        let r = snap_bounded(&fx, &[&fifo]);
+        assert!(matches!(r, Err(CpError::Failed(_))), "{r:?}");
+        assert!(start.elapsed() < Duration::from_secs(10));
+        fs::remove_file(g.join("commondir")).unwrap();
+        assert!(snap_bounded(&fx, &[]).is_ok());
     }
 
     #[test]
