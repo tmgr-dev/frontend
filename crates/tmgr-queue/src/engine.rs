@@ -2089,6 +2089,24 @@ mod tests {
             )
         }
 
+        fn pass_now(&self, now: DateTime<Utc>) -> Result<PassReport> {
+            run_once(
+                &self.paths,
+                &Deps {
+                    source: &self.source,
+                    cloud: &self.cloud,
+                    publisher: &self.publisher,
+                    runs: &self.runs,
+                    profiles: &self.profiles,
+                    workdirs: &GitClone,
+                    fresh: &self.fresh,
+                    now,
+                    local_minutes: 12 * 60,
+                    policy: StartPolicy::default(),
+                },
+            )
+        }
+
         fn pickups(&self) -> Vec<Pickup> {
             state::load(&self.paths).unwrap().pickups
         }

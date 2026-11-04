@@ -944,3 +944,287 @@ fn a_disabled_queue_needs_the_runner_only_while_a_team_is_live() {
     fx.pass().unwrap();
     assert!(!needs_runner(&fx.paths).unwrap());
 }
+
+fn after(t0: DateTime<Utc>, secs: i64) -> DateTime<Utc> {
+    t0 + chrono::Duration::seconds(secs)
+}
+
+fn busy(fx: &Fx, run: &str) {
+    fx.runs.idle_runs.borrow_mut().retain(|r| r != run);
+}
+
+fn sent_matching(fx: &Fx, run: &str, needle: &str) -> usize {
+    fx.runs
+        .sent
+        .borrow()
+        .iter()
+        .filter(|(r, t)| r == run && t.contains(needle))
+        .count()
+}
+
+fn exits_to(fx: &Fx, run: &str) -> usize {
+    sent_matching(fx, run, "/exit\r")
+}
+
+fn idle_notes(fx: &Fx) -> usize {
+    sent_matching(fx, "mock-1", "waiting at")
+}
+
+fn lead_cwd(fx: &Fx) -> String {
+    pickup(fx).bundle.launch.cwd
+}
+
+fn end_file(fx: &Fx, name: &str) -> std::path::PathBuf {
+    let dir = Path::new(&lead_cwd(fx)).join(".tmgr");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(name);
+    std::fs::write(&path, "").unwrap();
+    path
+}
+
+fn worker_cwd(fx: &Fx, k: usize) -> String {
+    team(fx).members[k - 1].cwd.clone()
+}
+
+#[test]
+fn an_idle_worker_is_reported_once_per_stretch_after_ten_minutes() {
+    let fx = working_team();
+    let t0 = Utc::now();
+    idle(&fx, "mock-2");
+    fx.pass_now(t0).unwrap();
+    fx.pass_now(after(t0, 599)).unwrap();
+    assert_eq!(idle_notes(&fx), 0);
+    fx.pass_now(after(t0, 600)).unwrap();
+    assert_eq!(idle_notes(&fx), 1);
+    let note = fx.runs.sent.borrow().last().cloned().unwrap();
+    assert!(note.1.contains("w1") && note.1.contains(".tmgr/end-w1"), "{}", note.1);
+    assert!(note.1.ends_with('\r') && !note.1[..note.1.len() - 1].contains('\n'));
+    fx.pass_now(after(t0, 700)).unwrap();
+    fx.pass_now(after(t0, 1400)).unwrap();
+    assert_eq!(idle_notes(&fx), 1);
+    assert_eq!(fx.audit_events("team_worker_idle"), 1);
+
+    busy(&fx, "mock-2");
+    fx.pass_now(after(t0, 1500)).unwrap();
+    idle(&fx, "mock-2");
+    fx.pass_now(after(t0, 1600)).unwrap();
+    fx.pass_now(after(t0, 2199)).unwrap();
+    assert_eq!(idle_notes(&fx), 1);
+    fx.pass_now(after(t0, 2200)).unwrap();
+    assert_eq!(idle_notes(&fx), 2);
+}
+
+#[test]
+fn several_idle_workers_share_one_note() {
+    let fx = working_team();
+    let t0 = Utc::now();
+    idle(&fx, "mock-2");
+    idle(&fx, "mock-3");
+    fx.pass_now(t0).unwrap();
+    fx.pass_now(after(t0, 600)).unwrap();
+    assert_eq!(idle_notes(&fx), 1);
+    let note = fx.runs.sent.borrow().last().cloned().unwrap().1;
+    assert!(note.contains("w1") && note.contains("w2"), "{note}");
+    assert_eq!(fx.audit_events("team_worker_idle"), 2);
+}
+
+#[test]
+fn the_idle_note_waits_for_a_lead_that_is_busy() {
+    let fx = working_team();
+    let t0 = Utc::now();
+    idle(&fx, "mock-2");
+    busy(&fx, "mock-1");
+    fx.pass_now(t0).unwrap();
+    fx.pass_now(after(t0, 600)).unwrap();
+    fx.pass_now(after(t0, 630)).unwrap();
+    assert_eq!(idle_notes(&fx), 0);
+    assert!(!team(&fx).members[0].idle_noted);
+    idle(&fx, "mock-1");
+    fx.pass_now(after(t0, 660)).unwrap();
+    assert_eq!(idle_notes(&fx), 1);
+    fx.pass_now(after(t0, 690)).unwrap();
+    assert_eq!(idle_notes(&fx), 1);
+}
+
+#[test]
+fn a_merely_idle_worker_is_never_stopped() {
+    let fx = working_team();
+    let t0 = Utc::now();
+    idle(&fx, "mock-2");
+    for n in 0..10 {
+        fx.pass_now(after(t0, n * 600)).unwrap();
+    }
+    assert_eq!(exits_to(&fx, "mock-2"), 0);
+    assert!(fx.runs.killed.borrow().is_empty());
+}
+
+#[test]
+fn an_end_file_from_the_lead_asks_that_worker_to_exit_and_is_removed() {
+    let fx = working_team();
+    let t0 = Utc::now();
+    let file = end_file(&fx, "end-w1");
+    fx.pass_now(t0).unwrap();
+    assert!(!file.exists());
+    assert_eq!(exits_to(&fx, "mock-2"), 0, "a busy worker is not typed at");
+    assert_eq!(fx.audit_events("team_worker_end_requested"), 1);
+    idle(&fx, "mock-2");
+    fx.pass_now(after(t0, 30)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-2"), 1);
+    assert_eq!(exits_to(&fx, "mock-3"), 0);
+}
+
+#[test]
+fn an_end_file_for_an_unknown_or_finished_worker_is_ignored_and_removed() {
+    let fx = working_team();
+    exit_run(&fx, "mock-3");
+    idle(&fx, "mock-2");
+    idle(&fx, "mock-3");
+    let t0 = Utc::now();
+    fx.pass_now(t0).unwrap();
+    let nine = end_file(&fx, "end-w9");
+    let done = end_file(&fx, "end-w2");
+    fx.pass_now(after(t0, 30)).unwrap();
+    assert!(!nine.exists() && !done.exists());
+    assert_eq!(exits_to(&fx, "mock-2") + exits_to(&fx, "mock-3"), 0);
+    assert_eq!(fx.audit_events("team_worker_end_requested"), 0);
+}
+
+#[test]
+fn an_end_file_that_is_a_symlink_is_not_followed() {
+    let fx = working_team();
+    idle(&fx, "mock-2");
+    let outside = Path::new(&fx.repo).join("outside");
+    std::fs::write(&outside, "").unwrap();
+    let dir = Path::new(&lead_cwd(&fx)).join(".tmgr");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::os::unix::fs::symlink(&outside, dir.join("end-w1")).unwrap();
+    fx.pass_now(Utc::now()).unwrap();
+    assert_eq!(exits_to(&fx, "mock-2"), 0);
+    assert!(outside.exists());
+}
+
+#[test]
+fn exit_is_resent_every_minute_up_to_three_times_and_only_while_the_marker_stays() {
+    let fx = working_team();
+    let t0 = Utc::now();
+    marker(&worker_cwd(&fx, 1));
+    idle(&fx, "mock-2");
+    fx.pass_now(t0).unwrap();
+    fx.pass_now(after(t0, 59)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-2"), 1);
+    fx.pass_now(after(t0, 60)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-2"), 2);
+    fx.pass_now(after(t0, 120)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-2"), 3);
+    fx.pass_now(after(t0, 178)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-2"), 3);
+
+    let fx = working_team();
+    marker(&worker_cwd(&fx, 1));
+    idle(&fx, "mock-2");
+    fx.pass_now(t0).unwrap();
+    std::fs::remove_file(Path::new(&worker_cwd(&fx, 1)).join(".tmgr/done")).unwrap();
+    fx.pass_now(after(t0, 60)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-2"), 1);
+}
+
+#[test]
+fn a_busy_worker_is_not_sent_exit_again() {
+    let fx = working_team();
+    let t0 = Utc::now();
+    marker(&worker_cwd(&fx, 1));
+    idle(&fx, "mock-2");
+    fx.pass_now(t0).unwrap();
+    busy(&fx, "mock-2");
+    fx.pass_now(after(t0, 60)).unwrap();
+    fx.pass_now(after(t0, 90)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-2"), 1);
+    idle(&fx, "mock-2");
+    fx.pass_now(after(t0, 120)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-2"), 2);
+}
+
+#[test]
+fn a_done_worker_that_ignores_exit_is_stopped_and_its_commits_still_integrate() {
+    let fx = working_team();
+    let t0 = Utc::now();
+    let tip = commit_in(Path::new(&worker_cwd(&fx, 1)), "api.txt");
+    marker(&worker_cwd(&fx, 1));
+    idle(&fx, "mock-2");
+    for secs in [0, 60, 120] {
+        fx.pass_now(after(t0, secs)).unwrap();
+    }
+    fx.pass_now(after(t0, 179)).unwrap();
+    assert!(fx.runs.killed.borrow().is_empty());
+    fx.pass_now(after(t0, 180)).unwrap();
+    assert_eq!(fx.runs.killed.borrow().as_slice(), ["mock-2"]);
+    assert_eq!(fx.audit_events("team_worker_exit_unanswered"), 1);
+    fx.pass_now(after(t0, 190)).unwrap();
+    assert_eq!(fx.audit_events("team_worker_exit_unanswered"), 1);
+    assert!(fx.runs.forced.borrow().is_empty());
+    fx.pass_now(after(t0, 215)).unwrap();
+    assert_eq!(fx.runs.forced.borrow().as_slice(), ["mock-2"]);
+    assert_eq!(idle_notes(&fx), 0);
+
+    fx.runs.failed.borrow_mut().push("mock-2".into());
+    exit_run(&fx, "mock-3");
+    fx.pass_now(after(t0, 240)).unwrap();
+    assert_eq!(team(&fx).phase, TeamPhase::Finishing);
+    let told = fx.runs.sent.borrow().last().cloned().unwrap();
+    assert_eq!(told.0, "mock-1");
+    assert!(told.1.contains(&format!("w1 {tip}")), "{}", told.1);
+}
+
+#[test]
+fn a_worker_ended_by_the_lead_that_ignores_exit_is_stopped_too() {
+    let fx = working_team();
+    let t0 = Utc::now();
+    end_file(&fx, "end-w2");
+    idle(&fx, "mock-3");
+    for secs in [0, 60, 120, 180] {
+        fx.pass_now(after(t0, secs)).unwrap();
+    }
+    assert_eq!(exits_to(&fx, "mock-3"), 3);
+    assert_eq!(fx.runs.killed.borrow().as_slice(), ["mock-3"]);
+}
+
+#[test]
+fn the_lead_exit_is_retried_and_never_killed() {
+    let fx = working_team();
+    let mut st = state::load(&fx.paths).unwrap();
+    st.pickups[0].team.as_mut().unwrap().phase = TeamPhase::Finishing;
+    state::save(&fx.paths, &mut st).unwrap();
+    marker(&lead_cwd(&fx));
+    let t0 = Utc::now();
+    fx.pass_now(t0).unwrap();
+    assert!(team(&fx).lead_exit_sent);
+    fx.pass_now(after(t0, 59)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-1"), 1);
+    fx.pass_now(after(t0, 60)).unwrap();
+    fx.pass_now(after(t0, 120)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-1"), 3);
+    assert_eq!(fx.audit_events("team_lead_exit_unanswered"), 0);
+    fx.pass_now(after(t0, 180)).unwrap();
+    fx.pass_now(after(t0, 600)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-1"), 3);
+    assert_eq!(fx.audit_events("team_lead_exit_unanswered"), 1);
+    assert!(!fx.runs.killed.borrow().contains(&"mock-1".to_string()));
+}
+
+#[test]
+fn a_state_saved_with_the_old_exit_flag_is_not_resent_at_once() {
+    let fx = working_team();
+    let t0 = Utc::now();
+    marker(&worker_cwd(&fx, 1));
+    idle(&fx, "mock-2");
+    let mut st = state::load(&fx.paths).unwrap();
+    st.pickups[0].team.as_mut().unwrap().members[0].exit_sent = true;
+    state::save(&fx.paths, &mut st).unwrap();
+    fx.pass_now(t0).unwrap();
+    assert_eq!(exits_to(&fx, "mock-2"), 0);
+    fx.pass_now(after(t0, 60)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-2"), 1);
+
+    let old = r#"{"role":"lead","cwd":"/x","branch":"b","start_key":"k","exit_sent":true}"#;
+    assert!(serde_json::from_str::<state::Member>(old).is_ok());
+}

@@ -118,8 +118,28 @@ pub struct Member {
     pub tip: Option<String>,
     #[serde(default)]
     pub exit_sent: bool,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub exit_attempts: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_sent_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idle_since: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub idle_noted: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub end_requested: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub ended_by_engine: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kill_sent_at: Option<String>,
+}
+
+fn is_zero(n: &u8) -> bool {
+    *n == 0
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -135,6 +155,12 @@ pub struct TeamState {
     pub started_workers: u8,
     #[serde(default)]
     pub lead_exit_sent: bool,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub lead_exit_attempts: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lead_exit_sent_at: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub lead_exit_noted: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rejected: Option<String>,
     #[serde(default)]
@@ -151,6 +177,9 @@ impl TeamState {
             members: Vec::new(),
             started_workers: 0,
             lead_exit_sent: false,
+            lead_exit_attempts: 0,
+            lead_exit_sent_at: None,
+            lead_exit_noted: false,
             rejected: None,
             rejections: 0,
         }

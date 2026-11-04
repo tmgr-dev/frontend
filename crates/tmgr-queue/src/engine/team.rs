@@ -20,6 +20,10 @@ pub const DONE_FILE: &str = ".tmgr/done";
 pub const TEAM_PROFILE: &str = "claude-code";
 const MAX_REJECTIONS: u8 = 3;
 const EXIT_TEXT: &str = "/exit\r";
+const WORKER_IDLE_SECS: i64 = 600;
+const MAX_EXIT_ATTEMPTS: u8 = 3;
+const EXIT_RETRY_SECS: i64 = 60;
+const END_FILE_WORKERS: u8 = 9;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -94,9 +98,38 @@ pub fn read_plan(lead_cwd: &Path, size: u8) -> Plan {
 
 /// Whether the agent left its finish marker. Only its presence counts; the content is never read.
 pub fn marker_present(cwd: &Path) -> bool {
-    open_beneath(cwd, DONE_FILE, libc::O_NONBLOCK)
+    file_present(cwd, DONE_FILE)
+}
+
+fn file_present(cwd: &Path, rel: &str) -> bool {
+    open_beneath(cwd, rel, libc::O_NONBLOCK)
         .and_then(|f| f.metadata().ok())
         .is_some_and(|m| m.file_type().is_file())
+}
+
+fn secs_since(at: Option<&str>, now: DateTime<Utc>) -> i64 {
+    at.and_then(|t| DateTime::parse_from_rfc3339(t).ok())
+        .map_or(i64::MAX, |t| (now - t.with_timezone(&Utc)).num_seconds())
+}
+
+fn retry_due(attempts: u8, sent_at: Option<&str>, now: DateTime<Utc>) -> bool {
+    attempts == 0 || (attempts < MAX_EXIT_ATTEMPTS && secs_since(sent_at, now) >= EXIT_RETRY_SECS)
+}
+
+fn idle_text(idle: &[(u8, i64)]) -> String {
+    let who: Vec<String> = idle
+        .iter()
+        .map(|(k, secs)| format!("w{k} (about {} minutes)", secs / 60))
+        .collect();
+    let files: Vec<String> = idle
+        .iter()
+        .map(|(k, _)| format!(".tmgr/end-w{k}"))
+        .collect();
+    format!(
+        "Workers waiting at their prompt without writing .tmgr/done: {}. If one should stop, create the empty file named for it in your folder ({}): the runner asks it to exit and brings in what it committed. If it should keep going, do nothing. Then stop.",
+        who.join(", "),
+        files.join(", ")
+    )
 }
 
 fn clear_marker(cwd: &Path) -> bool {
@@ -240,7 +273,7 @@ fn refresh_members(pass: &mut Pass, i: usize, deps: &Deps) -> Result<()> {
         let (run_id, exited, clean) = match &m.run_id {
             Some(run) => match deps.runs.status(run) {
                 RunState::Succeeded => (m.run_id.clone(), true, true),
-                RunState::Exited => (m.run_id.clone(), true, false),
+                RunState::Exited => (m.run_id.clone(), true, m.ended_by_engine),
                 _ => continue,
             },
             None => match deps.runs.lookup(&m.start_key) {
@@ -383,17 +416,121 @@ fn planning(pass: &mut Pass, i: usize, deps: &Deps, lead_run: &str) -> Result<()
     state::save(pass.paths, &mut pass.state)
 }
 
+fn migrate_exit_flags(pass: &mut Pass, i: usize, deps: &Deps) {
+    let now = ts(deps.now);
+    let t = team_mut(pass, i);
+    for m in t.members.iter_mut().filter(|m| m.exit_sent) {
+        m.exit_sent = false;
+        if m.exit_attempts == 0 {
+            m.exit_attempts = 1;
+            m.exit_sent_at = Some(now.clone());
+        }
+    }
+}
+
+fn read_end_files(pass: &mut Pass, i: usize) -> Result<()> {
+    let p = pass.state.pickups[i].clone();
+    let lead = Path::new(&p.bundle.launch.cwd);
+    for k in 1..=END_FILE_WORKERS {
+        let rel = format!(".tmgr/end-w{k}");
+        if !file_present(lead, &rel) {
+            continue;
+        }
+        unlink_beneath(lead, &rel);
+        let member = team_mut(pass, i)
+            .members
+            .iter_mut()
+            .find(|m| m.role == TeamRole::Worker(k) && !m.exited && !m.end_requested);
+        if let Some(m) = member {
+            m.end_requested = true;
+            let key = m.start_key.clone();
+            pass.audit.append(
+                "team_worker_end_requested",
+                json!({"pickup": p.id, "member": key}),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn ending(pass: &mut Pass, i: usize, m: &Member, run: &str, deps: &Deps) -> Result<()> {
+    if retry_due(m.exit_attempts, m.exit_sent_at.as_deref(), deps.now) {
+        if deps.runs.idle(run) && deps.runs.send(run, EXIT_TEXT).is_ok() {
+            if let Some(slot) = member_mut(pass, i, &m.start_key) {
+                slot.exit_attempts += 1;
+                slot.exit_sent_at = Some(ts(deps.now));
+            }
+        }
+        return Ok(());
+    }
+    if m.exit_attempts < MAX_EXIT_ATTEMPTS
+        || secs_since(m.exit_sent_at.as_deref(), deps.now) < EXIT_RETRY_SECS
+    {
+        return Ok(());
+    }
+    let force = kill_is_overdue(m.kill_sent_at.as_deref(), deps.now);
+    let why = "the worker did not answer /exit";
+    if deps.runs.kill_run(run, force, why).is_err() || m.kill_sent_at.is_some() {
+        return Ok(());
+    }
+    if let Some(slot) = member_mut(pass, i, &m.start_key) {
+        slot.kill_sent_at = Some(ts(deps.now));
+        slot.ended_by_engine = true;
+    }
+    let id = pass.state.pickups[i].id.clone();
+    pass.audit.append(
+        "team_worker_exit_unanswered",
+        json!({"pickup": id, "member": m.start_key}),
+    )
+}
+
 fn working(pass: &mut Pass, i: usize, rules: &[Rule], deps: &Deps, starts: bool) -> Result<()> {
+    migrate_exit_flags(pass, i, deps);
+    read_end_files(pass, i)?;
     let p = pass.state.pickups[i].clone();
     let t = p.team.clone().expect("team");
-    for m in t.members.iter().filter(|m| !m.exited && !m.exit_sent) {
+    let mut idle: Vec<(u8, String, i64)> = Vec::new();
+    for m in t.members.iter().filter(|m| !m.exited) {
         let Some(run) = &m.run_id else { continue };
-        if marker_present(Path::new(&m.cwd))
-            && deps.runs.idle(run)
-            && deps.runs.send(run, EXIT_TEXT).is_ok()
+        let TeamRole::Worker(k) = m.role else {
+            continue;
+        };
+        let wants_exit = m.end_requested || m.ended_by_engine || marker_present(Path::new(&m.cwd));
+        if wants_exit {
+            ending(pass, i, m, run, deps)?;
+        } else if m.exit_attempts > 0 {
+            continue;
+        } else if deps.runs.idle(run) {
+            let since = m.idle_since.clone().unwrap_or_else(|| ts(deps.now));
+            let waited = secs_since(Some(&since), deps.now);
+            if m.idle_since.is_none() {
+                if let Some(slot) = member_mut(pass, i, &m.start_key) {
+                    slot.idle_since = Some(since);
+                }
+            } else if waited >= WORKER_IDLE_SECS && !m.idle_noted {
+                idle.push((k, m.start_key.clone(), waited));
+            }
+        } else if let Some(slot) = member_mut(pass, i, &m.start_key) {
+            slot.idle_since = None;
+            slot.idle_noted = false;
+        }
+    }
+    if let Some(lead_run) = p.run_id.as_deref().filter(|_| !idle.is_empty()) {
+        let list: Vec<(u8, i64)> = idle.iter().map(|(k, _, w)| (*k, *w)).collect();
+        if deps.runs.idle(lead_run)
+            && deps
+                .runs
+                .send(lead_run, &format!("{}\r", idle_text(&list)))
+                .is_ok()
         {
-            if let Some(slot) = member_mut(pass, i, &m.start_key) {
-                slot.exit_sent = true;
+            for (k, key, waited) in &idle {
+                if let Some(slot) = member_mut(pass, i, key) {
+                    slot.idle_noted = true;
+                }
+                pass.audit.append(
+                    "team_worker_idle",
+                    json!({"pickup": p.id, "member": key, "worker": k, "minutes": waited / 60}),
+                )?;
             }
         }
     }
@@ -436,6 +573,12 @@ fn new_member(p: &Pickup, k: u8) -> Member {
         base: None,
         tip: None,
         exit_sent: false,
+        exit_attempts: 0,
+        exit_sent_at: None,
+        idle_since: None,
+        idle_noted: false,
+        end_requested: false,
+        ended_by_engine: false,
         kill_sent_at: None,
     }
 }
@@ -608,15 +751,37 @@ fn integrating(
 
 fn finishing(pass: &mut Pass, i: usize, deps: &Deps, lead_run: &str) -> Result<()> {
     let p = &pass.state.pickups[i];
-    let t = p.team.as_ref().expect("team");
-    if t.lead_exit_sent
-        || !marker_present(Path::new(&p.bundle.launch.cwd))
-        || !deps.runs.idle(lead_run)
-        || deps.runs.send(lead_run, EXIT_TEXT).is_err()
-    {
+    let mut t = p.team.clone().expect("team");
+    let was = t.clone();
+    if t.lead_exit_sent && t.lead_exit_attempts == 0 {
+        t.lead_exit_attempts = 1;
+        t.lead_exit_sent_at = Some(ts(deps.now));
+    }
+    if marker_present(Path::new(&p.bundle.launch.cwd)) {
+        if retry_due(
+            t.lead_exit_attempts,
+            t.lead_exit_sent_at.as_deref(),
+            deps.now,
+        ) {
+            if deps.runs.idle(lead_run) && deps.runs.send(lead_run, EXIT_TEXT).is_ok() {
+                t.lead_exit_sent = true;
+                t.lead_exit_attempts += 1;
+                t.lead_exit_sent_at = Some(ts(deps.now));
+            }
+        } else if t.lead_exit_attempts >= MAX_EXIT_ATTEMPTS
+            && !t.lead_exit_noted
+            && secs_since(t.lead_exit_sent_at.as_deref(), deps.now) >= EXIT_RETRY_SECS
+        {
+            t.lead_exit_noted = true;
+            let id = p.id.clone();
+            pass.audit
+                .append("team_lead_exit_unanswered", json!({"pickup": id}))?;
+        }
+    }
+    if t == was {
         return Ok(());
     }
-    team_mut(pass, i).lead_exit_sent = true;
+    *team_mut(pass, i) = t;
     state::save(pass.paths, &mut pass.state)
 }
 
