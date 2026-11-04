@@ -32,6 +32,8 @@ pub mod daemon;
 #[cfg(unix)]
 pub mod folders;
 #[cfg(unix)]
+pub mod hostview;
+#[cfg(unix)]
 pub mod humantime;
 #[cfg(unix)]
 pub mod permit_hook;

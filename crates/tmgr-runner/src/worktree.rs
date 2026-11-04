@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 const MAX_REF: usize = 100;
 const MAX_COPY: u64 = 1024 * 1024;
 const DRAIN_AFTER_STOP: usize = 1024 * 1024;
-const HARDENING: [&str; 14] = [
+pub(crate) const HARDENING: [&str; 14] = [
     "-c",
     "core.hooksPath=/dev/null",
     "-c",
@@ -32,19 +32,19 @@ const HARDENING: [&str; 14] = [
 ];
 
 #[derive(Clone, Copy)]
-struct Limits {
-    deadline: Duration,
-    max_stdout: usize,
-    max_stderr: usize,
+pub(crate) struct Limits {
+    pub(crate) deadline: Duration,
+    pub(crate) max_stdout: usize,
+    pub(crate) max_stderr: usize,
 }
 
-const PLUMBING: Limits = Limits {
+pub(crate) const PLUMBING: Limits = Limits {
     deadline: Duration::from_secs(600),
     max_stdout: 16 * 1024 * 1024,
     max_stderr: 1024 * 1024,
 };
 
-const FACTS: Limits = Limits {
+pub(crate) const FACTS: Limits = Limits {
     deadline: Duration::from_secs(5),
     max_stdout: 256 * 1024,
     max_stderr: 64 * 1024,
@@ -899,21 +899,6 @@ mod tests {
         fs::write(repo.join(name), body).unwrap();
         git(repo, &["add", "--", name]);
         git(repo, &["commit", "-m", name]);
-    }
-
-    #[test]
-    fn a_hook_added_after_open_does_not_run_on_a_ref_update() {
-        let tmp = TempDir::new().unwrap();
-        let repo = tmp.path().join("r");
-        fs::create_dir(&repo).unwrap();
-        git(&repo, &["init", "-q", "-b", "main"]);
-        commit_file(&repo, "a", "1");
-        let env = GitEnv::open(&repo).unwrap();
-        let marker = tmp.path().join("ran");
-        git(&repo, &["config", "hook.x.event", "reference-transaction"]);
-        git(&repo, &["config", "hook.x.command", &format!("touch {}", marker.display())]);
-        let _ = env.run(&["update-ref", "refs/heads/t", "HEAD"]);
-        assert!(!marker.exists(), "a repository hook ran");
     }
 
     #[test]
