@@ -111,9 +111,8 @@ fn clip(s: &str, max: usize) -> String {
 }
 
 fn git_facts(cwd: &Path) -> Option<(HostView, Option<String>, Option<String>)> {
-    let git = HostView::discover(cwd, Access::Read)
+    let git = HostView::discover_facts(cwd, Access::Read)
         .ok()?
-        .facts()
         .with_work_tree();
     let branch = git
         .run(&["symbolic-ref", "--short", "-q", "HEAD"])

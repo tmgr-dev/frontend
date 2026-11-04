@@ -985,4 +985,18 @@ mod tests {
         assert!(remove(&fx.repo, &link).is_err());
         assert!(s.path.exists());
     }
+
+    #[test]
+    fn a_git_file_pointing_at_another_repository_is_not_located() {
+        let fx = fixture();
+        let fake = fx.root.join("fake");
+        fs::create_dir(&fake).unwrap();
+        fs::write(
+            fake.join(".git"),
+            format!("gitdir: {}\n", fx.repo.join(".git").display()),
+        )
+        .unwrap();
+        assert!(locate(&fake).is_err());
+        assert!(locate(&fx.repo).is_ok());
+    }
 }

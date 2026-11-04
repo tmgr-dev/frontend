@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 const MAX_REF: usize = 100;
 const MAX_COPY: u64 = 1024 * 1024;
 const DRAIN_AFTER_STOP: usize = 1024 * 1024;
-pub(crate) const HARDENING: [&str; 14] = [
+pub(crate) const HARDENING: [&str; 16] = [
     "-c",
     "core.hooksPath=/dev/null",
     "-c",
@@ -30,6 +30,8 @@ pub(crate) const HARDENING: [&str; 14] = [
     "core.untrackedCache=false",
     "-c",
     "core.askPass=",
+    "-c",
+    "core.alternateRefsCommand=: #",
 ];
 
 #[derive(Clone, Copy)]

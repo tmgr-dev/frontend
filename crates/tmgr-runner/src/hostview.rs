@@ -1,4 +1,5 @@
 use crate::worktree::{absolute_path_entries, run_bounded, Limits, FACTS, HARDENING, PLUMBING};
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::Read;
 use std::os::unix::fs::{symlink, OpenOptionsExt};
@@ -29,11 +30,15 @@ pub struct HostView {
     repo: PathBuf,
     common: PathBuf,
     access: Access,
+    gitdir: PathBuf,
     work_tree: bool,
     limits: Limits,
     offline: bool,
     origin: Option<String>,
     keys: Vec<String>,
+    sha256: bool,
+    deferred: Option<String>,
+    path: OsString,
 }
 
 struct Layout {
@@ -94,20 +99,25 @@ fn linked(root: &Path, dot: &Path) -> Result<Layout, String> {
     if !plain_dir(&gitdir) {
         return Err(format!("{} is not a git folder", gitdir.display()));
     }
-    let common = match read_data(&gitdir.join("commondir"), MAX_SMALL)? {
-        None => gitdir.clone(),
-        Some(raw) => {
-            let rel = String::from_utf8_lossy(&raw).trim().to_string();
-            let common = fs::canonicalize(gitdir.join(&rel)).map_err(|e| format!("{rel}: {e}"))?;
-            if gitdir.parent() != Some(&common.join("worktrees")) {
-                return Err(format!(
-                    "{} is not a linked worktree folder",
-                    gitdir.display()
-                ));
-            }
-            common
-        }
-    };
+    let raw = read_data(&gitdir.join("commondir"), MAX_SMALL)?
+        .ok_or_else(|| format!("{} is not a linked worktree folder", gitdir.display()))?;
+    let rel = String::from_utf8_lossy(&raw).trim().to_string();
+    let common = fs::canonicalize(gitdir.join(&rel)).map_err(|e| format!("{rel}: {e}"))?;
+    if gitdir.parent() != Some(&common.join("worktrees")) {
+        return Err(format!(
+            "{} is not a linked worktree folder",
+            gitdir.display()
+        ));
+    }
+    let back = read_data(&gitdir.join("gitdir"), MAX_SMALL)?
+        .map(|b| String::from_utf8_lossy(&b).trim().to_string())
+        .and_then(|b| fs::canonicalize(gitdir.join(b)).ok());
+    if back.is_none() || back != fs::canonicalize(dot).ok() {
+        return Err(format!(
+            "{} does not belong to this worktree",
+            gitdir.display()
+        ));
+    }
     Ok(Layout {
         root: root.to_path_buf(),
         gitdir,
@@ -212,7 +222,11 @@ fn snapshot(entries: Vec<(String, Option<String>)>) -> Result<Snapshot, String> 
         keys.push(key.clone());
         let v = value.as_deref();
         match key.as_str() {
-            "remote.origin.url" => origin = value.clone(),
+            "remote.origin.url" => {
+                if origin.is_none() {
+                    origin = value.clone();
+                }
+            }
             "core.repositoryformatversion" => {
                 version = v
                     .and_then(|v| v.trim().parse().ok())
@@ -302,7 +316,7 @@ fn parse_list(raw: &[u8]) -> Vec<(String, Option<String>)> {
         .collect()
 }
 
-fn base_command(network: bool) -> Command {
+fn base_command(network: bool, path: &OsStr) -> Command {
     let mut cmd = Command::new("git");
     cmd.env_clear();
     for (k, v) in std::env::vars_os() {
@@ -314,14 +328,11 @@ fn base_command(network: bool) -> Command {
             cmd.env(k, v);
         }
     }
-    cmd.env(
-        "PATH",
-        absolute_path_entries(&std::env::var_os("PATH").unwrap_or_default()),
-    )
-    .env("GIT_TERMINAL_PROMPT", "0")
-    .env("GIT_NO_LAZY_FETCH", "1")
-    .env("GIT_OPTIONAL_LOCKS", "0")
-    .env("GIT_NO_REPLACE_OBJECTS", "1");
+    cmd.env("PATH", path)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_NO_LAZY_FETCH", "1")
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .env("GIT_NO_REPLACE_OBJECTS", "1");
     if !network {
         cmd.env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GIT_CONFIG_GLOBAL", "/dev/null");
@@ -339,15 +350,46 @@ fn base_command(network: bool) -> Command {
     cmd
 }
 
-fn list_config(scratch: &Path, bytes: &[u8]) -> Result<Vec<(String, Option<String>)>, String> {
+fn clean_path(guards: &[&Path]) -> OsString {
+    clean_path_in(&std::env::var_os("PATH").unwrap_or_default(), guards)
+}
+
+fn clean_path_in(value: &OsStr, guards: &[&Path]) -> OsString {
+    let abs = absolute_path_entries(value);
+    let kept: Vec<PathBuf> = std::env::split_paths(&abs)
+        .filter(|e| {
+            let real = fs::canonicalize(e).unwrap_or_else(|_| e.clone());
+            !guards.iter().any(|g| real.starts_with(g))
+        })
+        .collect();
+    match std::env::join_paths(kept) {
+        Ok(joined) if !joined.is_empty() => joined,
+        _ => "/usr/bin:/bin".into(),
+    }
+}
+
+fn config_command(scratch: &Path, copy: &Path, path: &OsStr) -> Command {
+    let mut cmd = base_command(false, path);
+    cmd.current_dir(scratch)
+        .env(
+            "GIT_CEILING_DIRECTORIES",
+            scratch.parent().unwrap_or(scratch),
+        )
+        .args(["config", "--file"])
+        .arg(copy)
+        .args(["--no-includes", "--list", "-z"]);
+    cmd
+}
+
+fn list_config(
+    scratch: &Path,
+    bytes: &[u8],
+    l: Limits,
+    path: &OsStr,
+) -> Result<Vec<(String, Option<String>)>, String> {
     let copy = scratch.join("config.copy");
     fs::write(&copy, bytes).map_err(|e| e.to_string())?;
-    let mut cmd = base_command(false);
-    cmd.current_dir(scratch)
-        .args(["config", "--file"])
-        .arg(&copy)
-        .args(["--no-includes", "--list", "-z"]);
-    let l = CONFIG_LIST;
+    let cmd = config_command(scratch, &copy, path);
     let out = run_bounded(cmd, l.deadline, l.max_stdout, l.max_stderr)
         .map_err(|e| format!("git config failed: {e}"))?;
     let _ = fs::remove_file(&copy);
@@ -358,6 +400,51 @@ fn list_config(scratch: &Path, bytes: &[u8]) -> Result<Vec<(String, Option<Strin
         ));
     }
     Ok(parse_list(&out.stdout))
+}
+
+fn writes(sub: &str, rest: &[&str]) -> bool {
+    match sub {
+        "fetch" | "ls-remote" | "update-ref" | "branch" | "tag" | "pack-refs" | "gc" | "repack"
+        | "prune" | "maintenance" | "commit" | "commit-tree" | "write-tree" | "mktree"
+        | "mktag" | "checkout" | "switch" | "restore" | "reset" | "merge" | "rebase"
+        | "cherry-pick" | "revert" | "am" | "pull" | "stash" | "notes" | "replace" | "worktree"
+        | "clone" | "remote" | "fast-import" | "unpack-objects" | "index-pack" | "fetch-pack"
+        | "receive-pack" | "submodule" | "rm" | "mv" | "add" => true,
+        "reflog" => rest
+            .first()
+            .is_some_and(|a| matches!(*a, "expire" | "delete")),
+        "hash-object" => rest.contains(&"-w"),
+        "symbolic-ref" => {
+            rest.iter().any(|a| matches!(*a, "-d" | "--delete"))
+                || rest.iter().filter(|a| !a.starts_with('-')).count() > 1
+        }
+        _ => false,
+    }
+}
+
+fn remote_ok(url: &str) -> bool {
+    if url.is_empty() || url.starts_with('-') || url.chars().any(char::is_control) {
+        return false;
+    }
+    let host_ok = |authority: &str| {
+        let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+        !host.is_empty() && !host.starts_with('-')
+    };
+    if let Some(rest) = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("ssh://"))
+    {
+        return host_ok(rest.split('/').next().unwrap_or(""));
+    }
+    if url.contains("://") {
+        return false;
+    }
+    match url.split_once(':') {
+        Some((left, path)) if !left.contains('/') && left.contains('@') && !path.is_empty() => {
+            host_ok(left)
+        }
+        _ => false,
+    }
 }
 
 fn find_root(start: &Path) -> Result<PathBuf, String> {
@@ -371,10 +458,14 @@ fn find_root(start: &Path) -> Result<PathBuf, String> {
 
 impl HostView {
     pub fn open(repo: &Path, access: Access) -> Result<HostView, String> {
-        HostView::open_in(repo, access, &std::env::temp_dir())
+        HostView::open_in(repo, access, &std::env::temp_dir(), false)
     }
 
-    fn open_in(repo: &Path, access: Access, base: &Path) -> Result<HostView, String> {
+    pub fn open_facts(repo: &Path, access: Access) -> Result<HostView, String> {
+        HostView::open_in(repo, access, &std::env::temp_dir(), true)
+    }
+
+    fn open_in(repo: &Path, access: Access, base: &Path, facts: bool) -> Result<HostView, String> {
         let repo = fs::canonicalize(repo).map_err(|e| format!("{}: {e}", repo.display()))?;
         let layout = resolve(&repo)?;
         if access != Access::Read && layout.gitdir != layout.common {
@@ -393,27 +484,18 @@ impl HostView {
                 ));
             }
         }
+        let path = clean_path(&[&layout.root, &layout.common, &layout.gitdir]);
         let scratch = dir.join("scratch");
         fs::create_dir(&scratch).map_err(|e| e.to_string())?;
         let raw = read_data(&layout.common.join("config"), MAX_CONFIG)?
             .ok_or_else(|| format!("{} has no config", layout.common.display()))?;
-        let snap = snapshot(list_config(&scratch, &raw)?)?;
+        let list_limits = if facts { FACTS } else { CONFIG_LIST };
+        let snap = snapshot(list_config(&scratch, &raw, list_limits, &path)?)?;
         fs::write(dir.join("config"), &snap.config).map_err(|e| e.to_string())?;
 
         let head = read_data(&layout.gitdir.join("HEAD"), MAX_SMALL)?
             .ok_or_else(|| format!("{} has no HEAD", layout.gitdir.display()))?;
         fs::write(dir.join("HEAD"), head).map_err(|e| e.to_string())?;
-        if let Some(index) = read_data(&layout.gitdir.join("index"), MAX_INDEX)? {
-            let hash = if snap.sha256 { 32 } else { 20 };
-            match index_is_split(&index, hash) {
-                Some(false) => {}
-                Some(true) => {
-                    return Err("the repository uses a split index, which is not supported".into())
-                }
-                None => return Err("the repository index cannot be read".into()),
-            }
-            fs::write(dir.join("index"), index).map_err(|e| e.to_string())?;
-        }
         if let Some(shallow) = read_data(&layout.common.join("shallow"), MAX_CONFIG)? {
             fs::write(dir.join("shallow"), shallow).map_err(|e| e.to_string())?;
         }
@@ -438,11 +520,15 @@ impl HostView {
             repo: layout.root,
             common: layout.common,
             access,
+            gitdir: layout.gitdir,
             work_tree: false,
-            limits: PLUMBING,
-            offline: false,
+            limits: if facts { FACTS } else { PLUMBING },
+            offline: facts,
             origin: snap.origin,
             keys: snap.keys,
+            sha256: snap.sha256,
+            deferred: None,
+            path,
         })
     }
 
@@ -450,20 +536,36 @@ impl HostView {
         HostView::open(&find_root(dir)?, access)
     }
 
+    pub fn discover_facts(dir: &Path, access: Access) -> Result<HostView, String> {
+        HostView::open_facts(&find_root(dir)?, access)
+    }
+
     pub fn with_work_tree(mut self) -> HostView {
         self.work_tree = true;
+        if let Err(e) = self.copy_index() {
+            self.deferred = Some(e);
+        }
         self
     }
 
-    pub fn facts(mut self) -> HostView {
-        self.limits = FACTS;
-        self.offline = true;
-        self
+    fn copy_index(&self) -> Result<(), String> {
+        let Some(index) = read_data(&self.gitdir.join("index"), MAX_INDEX)? else {
+            return Ok(());
+        };
+        let hash = if self.sha256 { 32 } else { 20 };
+        match index_is_split(&index, hash) {
+            Some(false) => {}
+            Some(true) => {
+                return Err("the repository uses a split index, which is not supported".into())
+            }
+            None => return Err("the repository index cannot be read".into()),
+        }
+        fs::write(self.dir.join("index"), index).map_err(|e| e.to_string())
     }
 
-    pub fn command(&self) -> Command {
+    fn command(&self) -> Command {
         let network = self.access == Access::Network;
-        let mut cmd = base_command(network);
+        let mut cmd = base_command(network, &self.path);
         cmd.env("GIT_DIR", &self.dir)
             .env("GIT_OBJECT_DIRECTORY", self.common.join("objects"));
         if self.work_tree {
@@ -482,6 +584,8 @@ impl HostView {
         }
         if self.access != Access::Read {
             cmd.args(["-c", "core.logAllRefUpdates=false"]);
+        } else {
+            cmd.args(["-c", "core.commitGraph=false"]);
         }
         if self.offline {
             cmd.args([
@@ -499,7 +603,7 @@ impl HostView {
                 "-c",
                 "protocol.ssh.allow=always",
                 "-c",
-                "protocol.file.allow=always",
+                "protocol.file.allow=never",
             ]);
         } else {
             cmd.args([
@@ -512,9 +616,59 @@ impl HostView {
         cmd
     }
 
-    pub fn run_raw(&self, args: &[&str]) -> Result<Output, String> {
+    pub fn prepared(&self, pre: &[&str], args: &[&str]) -> Result<Command, String> {
+        if let Some(e) = &self.deferred {
+            return Err(e.clone());
+        }
+        self.check(args)?;
         let mut cmd = self.command();
-        cmd.args(args);
+        cmd.args(pre).arg(args[0]);
+        if self.work_tree && matches!(args[0], "status" | "diff" | "diff-index" | "diff-files") {
+            cmd.arg("--ignore-submodules=all");
+        }
+        cmd.args(&args[1..]);
+        Ok(cmd)
+    }
+
+    fn check(&self, args: &[&str]) -> Result<(), String> {
+        let Some(sub) = args.first().filter(|a| !a.starts_with('-')) else {
+            return Err("git needs a command name first".into());
+        };
+        let refused = |why: &str| Err(format!("git {sub} is not allowed here: {why}"));
+        if matches!(*sub, "push" | "send-pack") && self.access != Access::Network {
+            return refused("pushing needs a network view");
+        }
+        if self.access == Access::Read && writes(sub, &args[1..]) {
+            return refused("a read view cannot change the repository");
+        }
+        if self.access == Access::Network && matches!(*sub, "push" | "fetch" | "ls-remote") {
+            let mut rest = args[1..].iter().copied();
+            let mut remote = None;
+            while let Some(a) = rest.next() {
+                if a == "--" {
+                    remote = rest.next();
+                    break;
+                }
+                if ["--upload-pack", "--receive-pack", "--exec", "--repo"]
+                    .iter()
+                    .any(|o| a.starts_with(o))
+                {
+                    return refused("it would run a program");
+                }
+                if !a.starts_with('-') {
+                    remote = Some(a);
+                    break;
+                }
+            }
+            if !remote.is_some_and(remote_ok) {
+                return refused("the remote must be an https or ssh address");
+            }
+        }
+        Ok(())
+    }
+
+    pub fn run_raw(&self, args: &[&str]) -> Result<Output, String> {
+        let cmd = self.prepared(&[], args)?;
         let l = self.limits;
         run_bounded(cmd, l.deadline, l.max_stdout, l.max_stderr)
             .map_err(|e| format!("git {} failed: {e}", args.first().unwrap_or(&"")))
@@ -762,7 +916,7 @@ mod tests {
         let fx = fixture();
         let src = bare_source(&fx);
         let tip = git(&src, &["rev-parse", "main"]);
-        let view = HostView::open(&fx.repo, Access::Network).unwrap();
+        let view = HostView::open(&fx.repo, Access::Write).unwrap();
         view.run(&[
             "fetch",
             "-q",
@@ -889,7 +1043,12 @@ mod tests {
         git(&sub, &["init", "-q"]);
         fs::write(sub.join(".gitattributes"), "f filter=x\n").unwrap();
         commit(&sub, "f", "1");
-        git(&fx.repo, &["add", "sub"]);
+        fs::write(
+            fx.repo.join(".gitmodules"),
+            "[submodule \"sub\"]\n\tpath = sub\n\turl = ./sub\n\tignore = none\n",
+        )
+        .unwrap();
+        git(&fx.repo, &["add", ".gitmodules", "sub"]);
         git(&fx.repo, &["commit", "-q", "-m", "link"]);
         let marker = fx.tmp.path().join("sub-ran");
         let clean = format!("sh -c 'touch {}; cat'", marker.display());
@@ -903,18 +1062,131 @@ mod tests {
     }
 
     #[test]
-    fn network_views_allow_only_https_ssh_and_file() {
+    fn network_views_allow_only_https_and_ssh_addresses() {
         let fx = fixture();
+        let src = bare_source(&fx);
         let view = HostView::open(&fx.repo, Access::Network).unwrap();
-        for url in ["git://127.0.0.1:1/x", "http://127.0.0.1:1/x", "ext::true"] {
-            let out = view.run_raw(&["ls-remote", url]).unwrap();
-            let err = String::from_utf8_lossy(&out.stderr);
+        let file_url = format!("file://{}", src.display());
+        for url in [
+            "git://127.0.0.1:1/x",
+            "http://127.0.0.1:1/x",
+            "ext::true",
+            "-oProxyCommand=true",
+            "../src.git",
+            src.to_str().unwrap(),
+            file_url.as_str(),
+            "host:path",
+            "u@-host:path",
+            "ssh://-oProxyCommand=true/x",
+        ] {
+            let err = view.run_raw(&["ls-remote", "--", url]).unwrap_err();
             assert!(err.contains("not allowed"), "{url}: {err}");
         }
+        let err = view
+            .run_raw(&["fetch", "--", src.to_str().unwrap()])
+            .unwrap_err();
+        assert!(err.contains("not allowed"), "{err}");
+        let err = view
+            .run_raw(&["push", src.to_str().unwrap(), "HEAD"])
+            .unwrap_err();
+        assert!(err.contains("not allowed"), "{err}");
+        let err = view.run_raw(&["ls-remote"]).unwrap_err();
+        assert!(err.contains("not allowed"), "{err}");
+        let err = view
+            .run_raw(&["ls-remote", "--upload-pack=true", "https://127.0.0.1:1/x"])
+            .unwrap_err();
+        assert!(err.contains("not allowed"), "{err}");
         let out = view
             .run_raw(&["ls-remote", "https://127.0.0.1:1/x"])
             .unwrap();
         assert!(!String::from_utf8_lossy(&out.stderr).contains("not allowed"));
+    }
+
+    #[test]
+    fn https_and_ssh_addresses_are_accepted() {
+        for url in [
+            "https://github.com/o/r.git",
+            "ssh://git@github.com/o/r.git",
+            "ssh://git@github.com:22/o/r.git",
+            "git@github.com:o/r.git",
+        ] {
+            assert!(remote_ok(url), "{url}");
+        }
+        for url in [
+            "",
+            "/x/y.git",
+            "file:///x",
+            "github.com:o/r",
+            "https://",
+            "a/b@c:d",
+        ] {
+            assert!(!remote_ok(url), "{url}");
+        }
+    }
+
+    #[test]
+    fn the_file_transport_is_never_allowed_on_a_network_view() {
+        let fx = fixture();
+        let src = bare_source(&fx);
+        let view = HostView::open(&fx.repo, Access::Network).unwrap();
+        let mut cmd = view.command();
+        cmd.args(["ls-remote", "--", src.to_str().unwrap()]);
+        let out = cmd.output().unwrap();
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("not allowed"),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    #[test]
+    fn push_and_send_pack_are_refused_without_a_network_view() {
+        let fx = fixture();
+        let src = bare_source(&fx);
+        let marker = hostile_hook(&fx, &src, "pushed");
+        for access in [Access::Read, Access::Write] {
+            let view = HostView::open(&fx.repo, access).unwrap();
+            for args in [
+                vec!["push", src.to_str().unwrap(), "HEAD:refs/heads/z"],
+                vec!["send-pack", src.to_str().unwrap(), "HEAD:refs/heads/z"],
+            ] {
+                let err = view.run_raw(&args).unwrap_err();
+                assert!(err.contains("not allowed"), "{args:?}: {err}");
+            }
+        }
+        assert!(!marker.exists());
+        assert!(!git(&src, &["for-each-ref"]).contains("refs/heads/z"));
+    }
+
+    #[test]
+    fn read_views_cannot_change_refs_or_reach_remotes() {
+        let fx = fixture();
+        let src = bare_source(&fx);
+        let sha = git(&fx.repo, &["rev-parse", "HEAD"]);
+        let view = HostView::open(&fx.repo, Access::Read).unwrap();
+        for args in [
+            vec!["update-ref", "refs/heads/z", sha.as_str()],
+            vec!["fetch", src.to_str().unwrap()],
+            vec!["ls-remote", src.to_str().unwrap()],
+            vec!["branch", "z"],
+            vec!["tag", "z"],
+            vec!["symbolic-ref", "HEAD", "refs/heads/z"],
+            vec!["symbolic-ref", "-d", "HEAD"],
+            vec!["reflog", "expire", "--all"],
+            vec!["pack-refs", "--all"],
+            vec!["hash-object", "-w", "a.txt"],
+        ] {
+            let err = view.run_raw(&args).unwrap_err();
+            assert!(err.contains("not allowed"), "{args:?}: {err}");
+        }
+        assert!(view
+            .run_raw(&["symbolic-ref", "--short", "-q", "HEAD"])
+            .is_ok());
+        assert!(view.run_raw(&["for-each-ref"]).is_ok());
+        assert_eq!(
+            git(&fx.repo, &["for-each-ref", "--format=%(refname)"]),
+            "refs/heads/main"
+        );
     }
 
     #[test]
@@ -931,7 +1203,7 @@ mod tests {
     fn a_temp_folder_inside_the_repository_is_refused() {
         let fx = fixture();
         fs::create_dir(fx.repo.join("deep")).unwrap();
-        let err = HostView::open_in(&fx.repo, Access::Read, &fx.repo.join("deep"))
+        let err = HostView::open_in(&fx.repo, Access::Read, &fx.repo.join("deep"), false)
             .err()
             .unwrap();
         assert!(err.contains("inside the repository"), "{err}");
@@ -1004,13 +1276,198 @@ mod tests {
     }
 
     #[test]
+    fn tree_commands_always_ignore_submodules() {
+        let fx = fixture();
+        let view = HostView::open(&fx.repo, Access::Read)
+            .unwrap()
+            .with_work_tree();
+        for sub in ["status", "diff", "diff-index", "diff-files"] {
+            let cmd = view.prepared(&[], &[sub, "--quiet"]).unwrap();
+            let args: Vec<_> = cmd
+                .get_args()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect();
+            let at = args.iter().position(|a| a == sub).unwrap();
+            assert_eq!(args[at + 1], "--ignore-submodules=all", "{sub}");
+        }
+    }
+
+    #[test]
+    fn alternates_are_not_asked_for_refs_during_a_fetch() {
+        let fx = fixture();
+        let src = bare_source(&fx);
+        let alt = fx.tmp.path().join("alt");
+        fs::create_dir(&alt).unwrap();
+        git(&alt, &["init", "-q", "-b", "main"]);
+        commit(&alt, "alt.txt", "x");
+        let marker = fx.tmp.path().join("alt-ran");
+        git(
+            &alt,
+            &[
+                "config",
+                "core.pager",
+                &format!("touch {}", marker.display()),
+            ],
+        );
+        fs::write(
+            fx.repo.join(".git/objects/info/alternates"),
+            format!("{}\n", alt.join(".git/objects").display()),
+        )
+        .unwrap();
+        let trace = fx.tmp.path().join("trace");
+        let view = HostView::open(&fx.repo, Access::Write).unwrap();
+        let mut cmd = view
+            .prepared(
+                &[],
+                &[
+                    "fetch",
+                    "-q",
+                    src.to_str().unwrap(),
+                    "refs/heads/main:refs/heads/imported",
+                ],
+            )
+            .unwrap();
+        let out = cmd.env("GIT_TRACE", &trace).output().unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let log = fs::read_to_string(&trace).unwrap_or_default();
+        assert!(!log.contains("for-each-ref"), "{log}");
+        assert!(!marker.exists());
+        git(&fx.repo, &["rev-parse", "refs/heads/imported"]);
+    }
+
+    #[test]
+    fn a_git_file_pointing_at_another_repository_is_refused() {
+        let fx = fixture();
+        let other = fx.tmp.path().join("other");
+        fs::create_dir(&other).unwrap();
+        git(&other, &["init", "-q", "-b", "main"]);
+        commit(&other, "o.txt", "o");
+        let fake = fx.tmp.path().join("fake");
+        fs::create_dir(&fake).unwrap();
+        fs::write(
+            fake.join(".git"),
+            format!("gitdir: {}\n", other.join(".git").display()),
+        )
+        .unwrap();
+        assert!(HostView::open(&fake, Access::Read).is_err());
+        assert!(HostView::discover(&fake, Access::Read).is_err());
+
+        let lw = fx.tmp.path().join("lw");
+        git(
+            &other,
+            &["worktree", "add", "-q", "-b", "lw", lw.to_str().unwrap()],
+        );
+        fs::copy(lw.join(".git"), fake.join(".git")).unwrap();
+        assert!(HostView::open(&fake, Access::Read).is_err());
+        assert!(HostView::open(&lw, Access::Read).is_ok());
+    }
+
+    #[test]
+    fn programs_in_the_repository_are_not_on_the_path() {
+        let fx = fixture();
+        let bin = fx.repo.join("bin");
+        fs::create_dir(&bin).unwrap();
+        let inside_common = fx.repo.join(".git/hooks");
+        let system = fx.tmp.path().join("system");
+        fs::create_dir(&system).unwrap();
+        let guards = [fx.repo.as_path(), inside_common.as_path()];
+        let joined = std::env::join_paths([
+            bin.clone(),
+            inside_common.clone(),
+            system.clone(),
+            PathBuf::from("relative/bin"),
+        ])
+        .unwrap();
+        let kept: Vec<PathBuf> = std::env::split_paths(&clean_path_in(&joined, &guards)).collect();
+        assert_eq!(kept, vec![system]);
+    }
+
+    #[test]
+    fn the_index_is_copied_only_for_work_tree_views() {
+        let fx = fixture();
+        let view = HostView::open(&fx.repo, Access::Read).unwrap();
+        assert!(!view.private_dir().join("index").exists());
+        let view = view.with_work_tree();
+        assert!(view.private_dir().join("index").exists());
+    }
+
+    #[test]
+    fn read_views_do_not_trust_the_commit_graph() {
+        let fx = fixture();
+        let view = HostView::open(&fx.repo, Access::Read).unwrap();
+        assert_eq!(
+            view.run(&["config", "--get", "core.commitGraph"]).unwrap(),
+            "false"
+        );
+    }
+
+    #[test]
+    fn the_config_listing_is_bounded_by_the_facts_limits() {
+        let fx = fixture();
+        let mut big = String::from("[x]\n");
+        for i in 0..20000 {
+            big.push_str(&format!("\tk{i} = vvvvvvvvvv\n"));
+        }
+        let cfg = fx.repo.join(".git/config");
+        let mut text = fs::read_to_string(&cfg).unwrap();
+        text.push_str(&big);
+        fs::write(&cfg, text).unwrap();
+        assert!(HostView::open(&fx.repo, Access::Read).is_ok());
+        assert!(HostView::open_facts(&fx.repo, Access::Read).is_err());
+    }
+
+    #[test]
+    fn the_config_listing_stops_looking_for_a_repository_at_its_scratch_folder() {
+        let fx = fixture();
+        let scratch = fx.tmp.path().join("p").join("scratch");
+        let cmd = config_command(&scratch, &scratch.join("c"), OsStr::new("/usr/bin"));
+        let ceiling = cmd
+            .get_envs()
+            .find(|(k, _)| *k == "GIT_CEILING_DIRECTORIES")
+            .and_then(|(_, v)| v)
+            .map(PathBuf::from);
+        assert_eq!(ceiling.as_deref(), scratch.parent());
+    }
+
+    #[test]
+    fn the_first_origin_url_is_the_one_git_uses() {
+        let fx = fixture();
+        git(
+            &fx.repo,
+            &[
+                "config",
+                "remote.origin.url",
+                "https://example.com/first.git",
+            ],
+        );
+        git(
+            &fx.repo,
+            &[
+                "config",
+                "--add",
+                "remote.origin.url",
+                "https://example.com/second.git",
+            ],
+        );
+        let view = HostView::open(&fx.repo, Access::Read).unwrap();
+        assert_eq!(view.origin_url(), Some("https://example.com/first.git"));
+    }
+
+    #[test]
     fn a_split_index_is_refused() {
         let fx = fixture();
         commit(&fx.repo, "b.txt", "2");
         git(&fx.repo, &["update-index", "--split-index"]);
         fs::write(fx.repo.join("b.txt"), "3").unwrap();
         git(&fx.repo, &["add", "b.txt"]);
-        let err = HostView::open(&fx.repo, Access::Read).err().unwrap();
+        let view = HostView::open(&fx.repo, Access::Read)
+            .unwrap()
+            .with_work_tree();
+        let err = view.run(&["status", "--porcelain"]).unwrap_err();
         assert!(err.contains("split index"), "{err}");
     }
 
@@ -1023,7 +1480,10 @@ mod tests {
             git(&fx.repo, &["update-index", "--index-version", version]);
             fs::write(fx.repo.join("n.txt"), "n").unwrap();
             git(&fx.repo, &["add", "-N", "n.txt"]);
-            assert!(HostView::open(&fx.repo, Access::Read).is_ok(), "v{version}");
+            let view = HostView::open(&fx.repo, Access::Read)
+                .unwrap()
+                .with_work_tree();
+            assert!(view.run(&["status", "--porcelain"]).is_ok(), "v{version}");
         }
     }
 
