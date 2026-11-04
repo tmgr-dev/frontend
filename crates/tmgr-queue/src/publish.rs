@@ -238,7 +238,7 @@ pub fn publish_plan(input: &PublishInput) -> std::result::Result<PublishSteps, R
             });
         }
     }
-    let repo = abs_clean("the bound repository", &input.repo)?;
+    abs_clean("the bound repository", &input.repo)?;
     abs_clean("the clone", &input.clone_dir)?;
     let title = one_line(&input.pr_title, MAX_TITLE);
     if title.is_empty() {
@@ -250,15 +250,14 @@ pub fn publish_plan(input: &PublishInput) -> std::result::Result<PublishSteps, R
             "the commit to push is not a full object id".into(),
         ));
     }
+    if input.origin_push_url.starts_with('-') {
+        return Err(Refusal::BadInput("the push URL is not a URL".into()));
+    }
     let spec = format!("{}:refs/heads/{branch}", input.sha);
     let push = vec![
         "git".to_string(),
-        "-c".into(),
-        "core.hooksPath=/dev/null".into(),
-        "-C".into(),
-        repo,
         "push".into(),
-        "origin".into(),
+        input.origin_push_url.clone(),
         spec,
     ];
     let pr = vec![
@@ -311,19 +310,47 @@ pub fn publish_env(vars: impl Iterator<Item = (String, String)>) -> Vec<(String,
 }
 
 fn run(argv: &[String], cwd: &Path) -> Result<String> {
+    run_in(argv, cwd, &publish_env(std::env::vars()))
+}
+
+fn run_in(argv: &[String], cwd: &Path, env: &[(String, String)]) -> Result<String> {
     let (program, args) = argv
         .split_first()
         .ok_or_else(|| Error::internal("empty publish command"))?;
-    let mut cmd = Command::new(program);
-    cmd.env_clear()
-        .envs(publish_env(std::env::vars()))
-        .current_dir(cwd)
-        .args(args);
+    match program.as_str() {
+        "gh" => run_gh(args, env),
+        "git" => {
+            let args: Vec<&str> = args.iter().map(String::as_str).collect();
+            match args.first() {
+                Some(&"push") | Some(&"fetch") => {
+                    workdir::RemoteScratch::new(Some(cwd), false)?.run(env, &args)
+                }
+                Some(&"ls-remote") => workdir::RemoteScratch::new(None, false)?.run(env, &args),
+                Some(_) => workdir::git_query(cwd, &args),
+                None => Err(Error::internal("empty git command")),
+            }
+        }
+        other => Err(Error::internal(format!("{other}: not a publish program"))),
+    }
+}
+
+fn run_gh(args: &[String], env: &[(String, String)]) -> Result<String> {
+    let dir = tempfile::Builder::new()
+        .prefix("tmgr-gh")
+        .tempdir()
+        .map_err(|e| Error::internal(format!("temporary directory: {e}")))?;
+    let here = dir.path().canonicalize()?;
+    let mut cmd = Command::new("gh");
+    cmd.env_clear().envs(env.iter().map(|(k, v)| (k, v)));
+    if let Some(parent) = here.parent() {
+        cmd.env("GIT_CEILING_DIRECTORIES", parent);
+    }
+    cmd.current_dir(&here).args(args);
     let out = workdir::output_within(&mut cmd, STEP_TIMEOUT)?;
     if !out.status.success() {
         let msg = String::from_utf8_lossy(&out.stderr);
         let line = msg.lines().next().unwrap_or("failed");
-        return Err(Error::internal(format!("{program}: {line}")));
+        return Err(Error::internal(format!("gh: {line}")));
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
@@ -392,8 +419,6 @@ impl PublishAllPlan {
                 }
                 r.verify = Some(vec![
                     "git".to_string(),
-                    "-C".into(),
-                    r.steps.repo.to_string_lossy().into_owned(),
                     "merge-base".into(),
                     "--is-ancestor".into(),
                     sha.clone(),
@@ -652,12 +677,8 @@ mod tests {
             s.push,
             [
                 "git",
-                "-c",
-                "core.hooksPath=/dev/null",
-                "-C",
-                "/work/repo",
                 "push",
-                "origin",
+                "git@github.com:tmgr-dev/backend.git",
                 "0123456789abcdef0123456789abcdef01234567:refs/heads/tmgr/tm-410-fix-login"
             ]
         );
@@ -739,7 +760,7 @@ mod tests {
                     "{a}"
                 );
             }
-            assert_eq!(s.push.iter().filter(|a| a.contains(':')).count(), 1);
+            assert_eq!(s.push.iter().filter(|a| a.contains(":refs/")).count(), 1);
             let spec = s.push.last().unwrap();
             assert_eq!(spec, &format!("{}:refs/heads/{}", i.sha, i.pinned_branch));
             assert!(!spec.contains("master"));
@@ -933,8 +954,8 @@ mod tests {
     #[test]
     fn only_the_bound_repository_appears_in_the_push_command() {
         let s = publish_plan(&input()).unwrap();
-        let paths: Vec<&String> = s.push.iter().filter(|a| a.starts_with('/')).collect();
-        assert_eq!(paths, ["/work/repo"]);
+        assert_eq!(s.repo, PathBuf::from("/work/repo"));
+        assert!(s.push.iter().all(|a| !a.starts_with('/')));
         assert!(!s.push.iter().chain(&s.pr).any(|a| a.contains("worktrees")));
     }
 
@@ -1087,9 +1108,10 @@ mod tests {
                 &format!("{}:refs/heads/tmgr/tm-410-fix-login", sha.repeat(40))
             );
             assert_eq!(
-                r.steps.push[4],
-                format!("/work/{}", r.full_name.split('/').nth(1).unwrap())
+                r.steps.repo,
+                PathBuf::from(format!("/work/{}", r.full_name.split('/').nth(1).unwrap()))
             );
+            assert_eq!(r.steps.push[..2], ["git", "push"]);
             assert_eq!(
                 r.list,
                 [
@@ -1108,6 +1130,160 @@ mod tests {
             );
             assert_eq!(&r.steps.pr[1..3], ["pr", "create"]);
         }
+    }
+
+    const MAPPED_URL: &str = "https://github.com/acme/widgets.git";
+
+    struct Rig {
+        root: tempfile::TempDir,
+        repo: PathBuf,
+        bare: PathBuf,
+        env: Vec<(String, String)>,
+        sha: String,
+    }
+
+    fn tgit(home: &Path, dir: &Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin")
+            .env("HOME", home)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .current_dir(dir)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{args:?}: {:?}", out);
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    fn rig() -> Rig {
+        let root = tempfile::Builder::new().prefix("pub").tempdir().unwrap();
+        let home = root.path().join("home");
+        let stub = root.path().join("stub");
+        let repo = root.path().join("repo");
+        let bare = root.path().join("remote.git");
+        for d in [&home, &stub, &repo, &bare] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        tgit(&home, &bare, &["init", "-q", "--bare"]);
+        std::fs::write(
+            home.join(".gitconfig"),
+            format!("[url \"{}\"]\n\tinsteadOf = {MAPPED_URL}\n", bare.display()),
+        )
+        .unwrap();
+        tgit(&home, &repo, &["init", "-q"]);
+        tgit(&home, &repo, &["remote", "add", "origin", MAPPED_URL]);
+        std::fs::write(repo.join("a.txt"), "a\n").unwrap();
+        tgit(&home, &repo, &["add", "a.txt"]);
+        tgit(&home, &repo, &["commit", "-q", "-m", "one"]);
+        let sha = tgit(&home, &repo, &["rev-parse", "HEAD"]);
+        let gh = stub.join("gh");
+        std::fs::write(&gh, "#!/bin/sh\npwd -P\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let env = vec![
+            (
+                "PATH".to_string(),
+                format!(
+                    "{}:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+                    stub.display()
+                ),
+            ),
+            ("HOME".to_string(), home.to_string_lossy().into_owned()),
+            ("GIT_TERMINAL_PROMPT".to_string(), "0".to_string()),
+        ];
+        Rig {
+            root,
+            repo,
+            bare,
+            env,
+            sha,
+        }
+    }
+
+    fn strings(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn the_push_names_the_validated_url_not_a_remote() {
+        let s = publish_plan(&input()).unwrap();
+        assert_eq!(s.push[2], input().origin_push_url);
+        assert!(!s.push.iter().any(|a| a == "origin" || a == "-C"));
+    }
+
+    #[test]
+    fn a_url_starting_with_a_dash_is_refused() {
+        for url in ["-oProxyCommand=x", "--upload-pack=x", "-"] {
+            let mut i = input();
+            i.origin_push_url = url.into();
+            assert!(publish_plan(&i).is_err(), "{url}");
+        }
+    }
+
+    #[test]
+    fn network_git_uses_our_own_git_dir() {
+        let r = rig();
+        let home = r.root.path().join("home");
+        let spec = format!("{}:refs/heads/topic", r.sha);
+        run_in(
+            &strings(&["git", "push", MAPPED_URL, &spec]),
+            &r.repo,
+            &r.env,
+        )
+        .unwrap();
+        assert_eq!(
+            tgit(&home, &r.bare, &["rev-parse", "refs/heads/topic"]),
+            r.sha
+        );
+        let listed = run_in(
+            &strings(&["git", "ls-remote", MAPPED_URL, "refs/heads/topic"]),
+            &r.repo,
+            &r.env,
+        )
+        .unwrap();
+        assert!(listed.starts_with(&r.sha), "{listed}");
+        run_in(
+            &strings(&[
+                "git",
+                "fetch",
+                "--no-tags",
+                MAPPED_URL,
+                "refs/heads/topic:refs/tmgr/x",
+            ]),
+            &r.repo,
+            &r.env,
+        )
+        .unwrap();
+        assert!(tgit(&home, &r.repo, &["for-each-ref", "refs/tmgr"]).is_empty());
+    }
+
+    #[test]
+    fn local_git_steps_and_foreign_programs_are_handled_locally() {
+        let r = rig();
+        let ok = strings(&["git", "merge-base", "--is-ancestor", &r.sha, &r.sha]);
+        assert!(run_in(&ok, &r.repo, &r.env).is_ok());
+        let bad = strings(&[
+            "git",
+            "merge-base",
+            "--is-ancestor",
+            &"0".repeat(40),
+            &r.sha,
+        ]);
+        assert!(run_in(&bad, &r.repo, &r.env).is_err());
+        assert!(run_in(&strings(&["sh", "-c", "true"]), &r.repo, &r.env).is_err());
+    }
+
+    #[test]
+    fn gh_runs_outside_the_repository() {
+        let r = rig();
+        let cwd = run_in(&strings(&["gh", "pr", "list"]), &r.repo, &r.env).unwrap();
+        let repo = r.repo.canonicalize().unwrap();
+        assert!(!Path::new(&cwd).starts_with(&repo), "{cwd}");
     }
 
     fn fake<'a>(
@@ -1290,9 +1466,9 @@ mod tests {
             .iter()
             .position(|a| a.contains(&"merge-base".to_string()))
             .unwrap();
-        assert_eq!(log[verify][4], "--is-ancestor");
-        assert_eq!(log[verify][5], wip);
-        assert_eq!(log[verify][6], "a".repeat(40));
+        assert_eq!(log[verify][2], "--is-ancestor");
+        assert_eq!(log[verify][3], wip);
+        assert_eq!(log[verify][4], "a".repeat(40));
         let lease = format!("--force-with-lease=refs/heads/tmgr/tm-410-fix-login:{wip}");
         let pushes: Vec<&Vec<String>> = log
             .iter()

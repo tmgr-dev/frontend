@@ -508,15 +508,103 @@ fn make_clone(repo: &str, dest: &Path, checkout: &dyn Fn(&Path) -> Result<()>) -
     result
 }
 
+/// A bare repository of ours in a private temporary directory, borrowing the objects of a bound repository, in which network git runs so that the bound repository's own configuration is never read.
+pub(crate) struct RemoteScratch {
+    tmp: tempfile::TempDir,
+    bare: PathBuf,
+}
+
+impl RemoteScratch {
+    pub(crate) fn new(repo: Option<&Path>, haves: bool) -> Result<Self> {
+        let tmp = tempfile::Builder::new()
+            .prefix("tmgr-remote")
+            .tempdir()
+            .map_err(|e| Error::internal(format!("temporary directory: {e}")))?;
+        let bare = tmp.path().join("r.git");
+        git(
+            None,
+            &[
+                "init",
+                "-q",
+                "--bare",
+                "--template=",
+                &bare.to_string_lossy(),
+            ],
+        )?;
+        if let Some(repo) = repo {
+            let common = git(
+                Some(repo),
+                &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            )?;
+            std::fs::write(
+                bare.join("objects/info/alternates"),
+                format!("{}\n", Path::new(&common).join("objects").display()),
+            )?;
+            if haves {
+                let tips = git(
+                    Some(repo),
+                    &[
+                        "for-each-ref",
+                        "--format=%(objectname)",
+                        "refs/heads",
+                        "refs/remotes",
+                    ],
+                )?;
+                let input: String = tips
+                    .lines()
+                    .enumerate()
+                    .map(|(n, sha)| format!("create refs/have/{n} {sha}\n"))
+                    .collect();
+                let _ = git_bytes(&bare, &["update-ref", "--stdin"], Some(input.into_bytes()));
+            }
+        }
+        Ok(Self { tmp, bare })
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        &self.bare
+    }
+
+    pub(crate) fn run(&self, env: &[(String, String)], args: &[&str]) -> Result<String> {
+        let mut cmd = Command::new("git");
+        cmd.env_clear()
+            .envs(env.iter().map(|(k, v)| (k, v)))
+            .current_dir(self.tmp.path())
+            .arg(format!("--git-dir={}", self.bare.display()))
+            .args([
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "core.alternateRefsCommand=true",
+                "-c",
+                "protocol.ext.allow=never",
+            ])
+            .args(args);
+        let out = output_within(&mut cmd, GIT_TIMEOUT)?;
+        if !out.status.success() {
+            let msg = String::from_utf8_lossy(&out.stderr);
+            let line = msg.lines().next().unwrap_or("failed");
+            return Err(Error::internal(format!("git: {line}")));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
+}
+
+fn origin_url(repo: &str) -> Result<String> {
+    let url = git(Some(Path::new(repo)), &["remote", "get-url", "origin"])?;
+    if url.is_empty() || url.starts_with('-') {
+        return Err(Error::internal("the remote origin has no usable URL"));
+    }
+    Ok(url)
+}
+
 /// The commit `refs/heads/<branch>` points at on the remote `origin` of `repo`, or `None` when the remote has no such branch.
 pub fn remote_branch_head(repo: &str, branch: &str) -> Result<Option<String>> {
     validate_branch(branch)?;
     let reference = format!("refs/heads/{branch}");
-    let argv: Vec<String> = ["git", "-C", repo, "ls-remote", "origin", &reference]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    let out = crate::publish::run_hardened(&argv, Path::new(repo))?;
+    let url = origin_url(repo)?;
+    let env = crate::publish::publish_env(std::env::vars());
+    let out = RemoteScratch::new(None, false)?.run(&env, &["ls-remote", &url, &reference])?;
     Ok(out
         .lines()
         .filter_map(|l| l.split_once('\t'))
@@ -547,19 +635,28 @@ pub fn prepare_continue_clone(repo: &str, dest: &Path, branch: &str, sha: &str) 
     let commit = format!("{sha}^{{commit}}");
     let have = |r: &str| git(Some(Path::new(r)), &["cat-file", "-e", &commit]).is_ok();
     if !have(repo) {
-        let argv: Vec<String> = [
-            "git",
-            "-C",
-            repo,
-            "fetch",
-            "--no-tags",
-            "origin",
-            &format!("refs/heads/{branch}"),
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-        crate::publish::run_hardened(&argv, Path::new(repo))?;
+        let url = origin_url(repo)?;
+        let env = crate::publish::publish_env(std::env::vars());
+        let scratch = RemoteScratch::new(Some(Path::new(repo)), true)?;
+        scratch.run(
+            &env,
+            &[
+                "fetch",
+                "--no-tags",
+                &url,
+                &format!("refs/heads/{branch}:refs/tmgr/fetched"),
+            ],
+        )?;
+        git(
+            Some(Path::new(repo)),
+            &[
+                "fetch",
+                "--no-tags",
+                "--",
+                &scratch.path().to_string_lossy(),
+                "refs/tmgr/fetched",
+            ],
+        )?;
         if !have(repo) {
             return Err(moved_remotely(branch));
         }
