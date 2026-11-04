@@ -109,7 +109,7 @@ fn drain<R: Read + AsRawFd + Send + 'static>(
     })
 }
 
-pub(crate) fn exited_unreaped(pid: libc::pid_t) -> std::io::Result<bool> {
+pub fn exited_unreaped(pid: libc::pid_t) -> std::io::Result<bool> {
     let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
     let r = unsafe {
         libc::waitid(
@@ -125,7 +125,7 @@ pub(crate) fn exited_unreaped(pid: libc::pid_t) -> std::io::Result<bool> {
     Ok(unsafe { info.si_pid() } == pid)
 }
 
-pub(crate) fn kill_group_of_unreaped(pgid: libc::pid_t) {
+pub fn kill_group_of_unreaped(pgid: libc::pid_t) {
     debug_assert!(
         exited_unreaped(pgid).is_ok(),
         "the group leader was reaped before its group was killed"

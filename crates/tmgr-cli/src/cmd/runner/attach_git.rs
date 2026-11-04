@@ -107,36 +107,31 @@ fn run(
     }
     drop(tx);
     let deadline = Instant::now() + timeout;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(s)) => break Some(s),
-            Ok(None) if Instant::now() < deadline => {
+    let exited = loop {
+        match tmgr_runner::worktree::exited_unreaped(pgid) {
+            Ok(true) => break true,
+            Ok(false) if Instant::now() < deadline => {
                 std::thread::sleep(Duration::from_millis(15));
             }
-            _ => break None,
+            _ => break false,
         }
     };
-    let kill = || unsafe {
-        libc::killpg(pgid, libc::SIGKILL);
-    };
-    let Some(status) = status else {
-        kill();
+    if !exited {
+        unsafe { libc::killpg(pgid, libc::SIGKILL) };
         let _ = child.wait();
         return None;
-    };
+    }
+    tmgr_runner::worktree::kill_group_of_unreaped(pgid);
+    let status = child.wait().ok()?;
     let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
     let end = Instant::now() + Duration::from_secs(1);
     for _ in 0..2 {
         match rx.recv_timeout(end.saturating_duration_since(Instant::now())) {
             Ok((true, buf)) => stdout = buf,
             Ok((false, buf)) => stderr = buf,
-            Err(_) => {
-                kill();
-                return None;
-            }
+            Err(_) => return None,
         }
     }
-    kill();
     let text = if status.success() { stdout } else { stderr };
     Some((
         status.success(),
