@@ -1,0 +1,372 @@
+<template>
+	<div class="pane">
+		<div v-if="!hasDiff" class="placeholder">
+			No changes attached to this card.
+		</div>
+		<div v-else-if="!diff || diff.status === 'loading'" class="placeholder">
+			Loading changes…
+		</div>
+		<div v-else-if="diff.status === 'error'" class="placeholder">
+			Could not load changes: {{ diff.error }}
+		</div>
+		<template v-else-if="diff.view">
+			<div v-if="diff.view.error" class="placeholder">
+				{{ diff.view.error }}
+			</div>
+			<div v-else-if="diff.view.files.length === 0" class="placeholder">
+				No changes.
+			</div>
+			<div v-if="diff.view.truncated" class="placeholder">
+				The diff is too large and was truncated.
+			</div>
+			<div v-for="(file, fi) in diff.view.files" :key="file.path" class="file">
+				<div class="fh">
+					<span class="path">{{ file.path }}</span>
+					<span class="stat"
+						><span class="a">+{{ file.added }}</span>
+						<span class="d"> −{{ file.removed }}</span></span
+					>
+				</div>
+				<div class="dv">
+					<template v-for="(hunk, hi) in file.hunks" :key="hi">
+						<div class="dl hunk">
+							<span class="no"></span><span class="no"></span>
+							<span class="cb" style="visibility: hidden"></span>
+							<span class="code">{{ hunk.header }}</span>
+						</div>
+						<template v-for="(line, li) in hunk.lines" :key="li">
+							<div
+								class="dl"
+								:class="[line.kind, { hascm: hasThread(file.path, line) }]"
+							>
+								<span class="no">{{ line.old ?? '' }}</span>
+								<span class="no">{{ line.new ?? '' }}</span>
+								<button
+									type="button"
+									class="cb"
+									title="Comment on this line"
+									@click="openThread(file.path, line, 'reply')"
+								>
+									+
+								</button>
+								<span class="code">{{ PREFIX[line.kind] }}{{ line.text }}</span>
+							</div>
+							<div
+								v-if="anchored(fi, hi, li, file.path, line)"
+								class="thread"
+								:data-key="keyOf(file.path, line)"
+							>
+								<div
+									v-for="message in threadMessages(file.path, line)"
+									:key="message.seq"
+									class="cm"
+									:class="message.author"
+								>
+									<div class="who">
+										<template v-if="message.author === 'owner'">You</template>
+										<template v-else><i></i>Agent</template>
+									</div>
+									{{ message.text }}
+								</div>
+								<div
+									v-for="(draft, di) in draftsFor(file.path, line)"
+									:key="'d' + di"
+									class="cm owner"
+								>
+									<div class="who">You · will be sent with your answer</div>
+									{{ draft.comment.text }}
+									<div class="acts">
+										<button
+											type="button"
+											@click="$emit('remove-draft', draft.index)"
+										>
+											Remove
+										</button>
+									</div>
+								</div>
+								<div v-if="isTyping(file.path, line)" class="cm typing">
+									waiting for the agent…
+								</div>
+								<div v-if="canAct(file.path, line)" class="cm">
+									<div class="acts">
+										<button
+											type="button"
+											class="pri"
+											@click="fix(file.path, line, '')"
+										>
+											Fix
+										</button>
+										<button
+											type="button"
+											@click="openThread(file.path, line, 'fix')"
+										>
+											Fix + clarify…
+										</button>
+										<button type="button" @click="keep(file.path, line)">
+											Keep
+										</button>
+										<button
+											type="button"
+											@click="openThread(file.path, line, 'reply')"
+										>
+											Reply
+										</button>
+									</div>
+								</div>
+								<div v-if="resolvedLabel(file.path, line)" class="resolved">
+									{{ resolvedLabel(file.path, line) }}
+								</div>
+								<template v-if="isComposing(file.path, line)">
+									<textarea
+										:ref="setComposer"
+										v-model="texts[keyOf(file.path, line)]"
+										data-input="thread"
+										:placeholder="composerPlaceholder(file.path, line)"
+										@keydown="onComposerKey($event, file.path, line)"
+									></textarea>
+									<div class="tf">
+										<span>{{ composerHint }}</span>
+										<span class="btns">
+											<button
+												v-if="canReply && !final"
+												type="button"
+												class="pri"
+												@click="submit(file.path, line, 'send')"
+											>
+												{{
+													modes[keyOf(file.path, line)] === 'fix'
+														? 'Fix'
+														: 'Send'
+												}}
+											</button>
+											<button
+												v-if="!final && modes[keyOf(file.path, line)] !== 'fix'"
+												type="button"
+												@click="submit(file.path, line, 'draft')"
+											>
+												Add to answer
+											</button>
+											<button type="button" @click="close(file.path, line)">
+												Close
+											</button>
+										</span>
+									</div>
+								</template>
+							</div>
+						</template>
+					</template>
+				</div>
+			</div>
+		</template>
+	</div>
+</template>
+
+<script lang="ts">
+	import { defineComponent, type PropType } from 'vue';
+	import {
+		awaitsOwner,
+		buildAnchors,
+		fixMessageText,
+		lineNumber,
+		splitMessages,
+		threadKey,
+		type LineAnchor,
+	} from '../diff';
+	import { isSubmitKey } from '../keys';
+	import type {
+		CardMessage,
+		DiffLine,
+		LineComment,
+		MessageAction,
+		OutgoingMessage,
+	} from '../types';
+
+	interface DiffSlot {
+		status: 'loading' | 'ready' | 'error';
+		view?: import('../types').DiffView;
+		error?: string;
+	}
+
+	type ComposerMode = MessageAction | '';
+
+	export default defineComponent({
+		name: 'DiffPane',
+		props: {
+			diff: { type: Object as PropType<DiffSlot | null>, default: null },
+			hasDiff: { type: Boolean, required: true },
+			messages: { type: Array as PropType<CardMessage[]>, required: true },
+			drafts: { type: Array as PropType<LineComment[]>, required: true },
+			canReply: { type: Boolean, required: true },
+			final: { type: Boolean, required: true },
+		},
+		emits: ['send', 'add-draft', 'remove-draft'],
+		data() {
+			return {
+				PREFIX: { add: '+', del: '-', ctx: ' ' },
+				open: {} as Record<string, boolean>,
+				modes: {} as Record<string, ComposerMode>,
+				texts: {} as Record<string, string>,
+				resolved: {} as Record<string, string>,
+				composer: null as HTMLTextAreaElement | null,
+			};
+		},
+		computed: {
+			anchors(): Map<string, LineAnchor> {
+				return this.diff?.view ? buildAnchors(this.diff.view) : new Map();
+			},
+			threads(): Map<string, CardMessage[]> {
+				return splitMessages(this.messages).threads;
+			},
+			composerHint(): string {
+				return this.canReply && !this.final
+					? 'Enter — send to the agent · Shift+Enter — new line'
+					: 'Enter — add to your answer · Shift+Enter — new line';
+			},
+		},
+		methods: {
+			keyOf(file: string, line: DiffLine): string {
+				return threadKey(file, lineNumber(line) ?? 0);
+			},
+			numberOf(line: DiffLine): number | null {
+				return lineNumber(line);
+			},
+			hasThread(file: string, line: DiffLine): boolean {
+				const key = this.keyOf(file, line);
+				return (
+					this.threads.has(key) ||
+					this.drafts.some((d) => threadKey(d.file, d.line) === key)
+				);
+			},
+			anchored(
+				fi: number,
+				hi: number,
+				li: number,
+				file: string,
+				line: DiffLine,
+			): boolean {
+				if (lineNumber(line) === null) return false;
+				const key = this.keyOf(file, line);
+				const anchor = this.anchors.get(key);
+				if (
+					!anchor ||
+					anchor.fileIndex !== fi ||
+					anchor.hunkIndex !== hi ||
+					anchor.lineIndex !== li
+				) {
+					return false;
+				}
+				return this.hasThread(file, line) || Boolean(this.open[key]);
+			},
+			threadMessages(file: string, line: DiffLine): CardMessage[] {
+				return this.threads.get(this.keyOf(file, line)) ?? [];
+			},
+			draftsFor(file: string, line: DiffLine) {
+				const key = this.keyOf(file, line);
+				return this.drafts
+					.map((comment, index) => ({ comment, index }))
+					.filter((d) => threadKey(d.comment.file, d.comment.line) === key);
+			},
+			isTyping(file: string, line: DiffLine): boolean {
+				const thread = this.threadMessages(file, line);
+				const last = thread[thread.length - 1];
+				return Boolean(
+					last &&
+					last.author === 'owner' &&
+					!this.resolved[this.keyOf(file, line)],
+				);
+			},
+			canAct(file: string, line: DiffLine): boolean {
+				const key = this.keyOf(file, line);
+				return (
+					this.canReply &&
+					!this.final &&
+					!this.resolved[key] &&
+					!this.open[key] &&
+					awaitsOwner(this.threadMessages(file, line))
+				);
+			},
+			isComposing(file: string, line: DiffLine): boolean {
+				return Boolean(this.open[this.keyOf(file, line)]);
+			},
+			resolvedLabel(file: string, line: DiffLine): string {
+				return this.resolved[this.keyOf(file, line)] ?? '';
+			},
+			composerPlaceholder(file: string, line: DiffLine): string {
+				return this.modes[this.keyOf(file, line)] === 'fix'
+					? 'How exactly to fix it… (empty — just “Fix”)'
+					: 'Comment on this line…';
+			},
+			setComposer(el: unknown) {
+				this.composer = (el as HTMLTextAreaElement | null) ?? this.composer;
+			},
+			openThread(file: string, line: DiffLine, mode: MessageAction) {
+				const key = this.keyOf(file, line);
+				this.open[key] = true;
+				this.modes[key] = mode;
+				delete this.resolved[key];
+				void this.$nextTick(() => this.composer?.focus());
+			},
+			close(file: string, line: DiffLine) {
+				const key = this.keyOf(file, line);
+				this.open[key] = false;
+				this.texts[key] = '';
+			},
+			keep(file: string, line: DiffLine) {
+				this.resolved[this.keyOf(file, line)] = 'Kept as is';
+			},
+			fix(file: string, line: DiffLine, extra: string) {
+				const number = lineNumber(line);
+				if (number === null) return;
+				const message: OutgoingMessage = {
+					text: fixMessageText(extra),
+					file,
+					line: number,
+					action: 'fix',
+				};
+				this.$emit('send', message);
+				const key = this.keyOf(file, line);
+				this.resolved[key] = 'Sent to the agent: fix';
+				this.open[key] = false;
+				this.texts[key] = '';
+			},
+			submit(file: string, line: DiffLine, how: 'send' | 'draft') {
+				const key = this.keyOf(file, line);
+				const text = (this.texts[key] ?? '').trim();
+				const number = lineNumber(line);
+				if (number === null) return;
+				if (this.modes[key] === 'fix') {
+					this.fix(file, line, text);
+					return;
+				}
+				if (!text) return;
+				if (how === 'send' && this.canReply && !this.final) {
+					this.$emit('send', {
+						text,
+						file,
+						line: number,
+						action: 'reply',
+					} as OutgoingMessage);
+				} else {
+					this.$emit('add-draft', { file, line: number, text } as LineComment);
+				}
+				this.texts[key] = '';
+				this.open[key] = false;
+			},
+			onComposerKey(event: KeyboardEvent, file: string, line: DiffLine) {
+				const key = this.keyOf(file, line);
+				if (event.key === 'Escape') {
+					this.open[key] = false;
+					return;
+				}
+				if (isSubmitKey(event)) {
+					event.preventDefault();
+					this.submit(
+						file,
+						line,
+						this.canReply && !this.final ? 'send' : 'draft',
+					);
+				}
+			},
+		},
+	});
+</script>
