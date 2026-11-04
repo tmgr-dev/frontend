@@ -62,6 +62,7 @@ export interface SharedSkillPersonaRef {
 
 export interface SharedSkillAttachment extends SharedSkillPersonaRef {
 	overridden: boolean;
+	pinned_version: number | null;
 }
 
 export interface SharedSkillSummary extends PersonaSkillSummary {
@@ -74,6 +75,33 @@ export interface SharedSkill extends SharedSkillSummary {
 
 export interface PersonaSharedSkill extends PersonaSkillSummary {
 	overridden: boolean;
+	pinned_version: number | null;
+	latest_version: number;
+}
+
+export type SharedSkillVersionKind =
+	'baseline' | 'create' | 'edit' | 'restore' | 'convert';
+
+export interface SharedSkillVersionAuthor {
+	id: number;
+	name: string;
+}
+
+export interface SharedSkillVersionRow {
+	version: number;
+	kind: SharedSkillVersionKind;
+	restored_from: number | null;
+	title: string;
+	author: SharedSkillVersionAuthor | null;
+	created_at: string;
+	current: boolean;
+	pinned_personas?: SharedSkillPersonaRef[];
+}
+
+export interface SharedSkillVersion extends SharedSkillVersionRow {
+	when: string;
+	actions: unknown[];
+	body: string;
 }
 
 export interface PersonaGrant {
@@ -248,6 +276,11 @@ const invalidateSharedForPersona = (personaUuid: string) => {
 	requestCache.invalidate(sharedSkillsKey);
 };
 
+const invalidateSharedPin = (personaUuid: string) => {
+	invalidateSharedForPersona(personaUuid);
+	requestCache.invalidate(/^ws-\d+-persona-grants$/);
+};
+
 export const listPersonaSkills = async (
 	personaUuid: string,
 	useCache = true,
@@ -389,6 +422,46 @@ export const deleteSharedSkill = async (
 	return data;
 };
 
+export const listSharedSkillVersions = async (
+	slug: string,
+	useCache = true,
+): Promise<SharedSkillVersionRow[]> =>
+	requestCache.getOrFetch(
+		`shared-skills-${slug}-versions`,
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get(`/shared-skills/${slug}/versions`);
+			return data;
+		},
+		{ ttl: 30000, cache: useCache },
+	);
+
+export const getSharedSkillVersion = async (
+	slug: string,
+	version: number,
+): Promise<SharedSkillVersion> => {
+	const {
+		data: { data },
+	} = await $axios.get(`/shared-skills/${slug}/versions/${version}`);
+	return data;
+};
+
+export const restoreSharedSkill = async (
+	slug: string,
+	version: number,
+	expectedVersion: number,
+): Promise<SharedSkill> => {
+	const {
+		data: { data },
+	} = await $axios.post(`/shared-skills/${slug}/restore`, {
+		version,
+		expected_version: expectedVersion,
+	});
+	invalidateSharedLibrary();
+	return data;
+};
+
 export const listPersonaSharedSkills = async (
 	personaUuid: string,
 	useCache = true,
@@ -421,6 +494,31 @@ export const detachSharedSkill = async (
 ): Promise<void> => {
 	await $axios.delete(`/personas/${personaUuid}/shared-skills/${slug}`);
 	invalidateSharedForPersona(personaUuid);
+};
+
+export const pinSharedSkill = async (
+	personaUuid: string,
+	slug: string,
+	version: number,
+): Promise<PersonaSharedSkill> => {
+	const {
+		data: { data },
+	} = await $axios.put(`/personas/${personaUuid}/shared-skills/${slug}/pin`, {
+		version,
+	});
+	invalidateSharedPin(personaUuid);
+	return data;
+};
+
+export const unpinSharedSkill = async (
+	personaUuid: string,
+	slug: string,
+): Promise<PersonaSharedSkill> => {
+	const {
+		data: { data },
+	} = await $axios.delete(`/personas/${personaUuid}/shared-skills/${slug}/pin`);
+	invalidateSharedPin(personaUuid);
+	return data;
 };
 
 const tokensKey = (personaUuid: string) => `personas-${personaUuid}-tokens`;

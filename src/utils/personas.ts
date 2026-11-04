@@ -194,12 +194,14 @@ export const validateSkillMarkdown = (
 
 export const sharedSkillDeleteConfirm = (
 	title: string,
-	attached: { id: string; name: string }[],
+	attached: { id: string; name: string; pinned_version?: number | null }[],
 ): string => {
 	const question = `Delete skill "${title}"?`;
 	if (attached.length === 0) return question;
 	return `${question}\n\nAttached to ${attached
-		.map((p) => p.name)
+		.map((p) =>
+			p.pinned_version ? `${p.name} (pinned to v${p.pinned_version})` : p.name,
+		)
 		.join(', ')}. They lose this skill immediately; no copy is kept.`;
 };
 

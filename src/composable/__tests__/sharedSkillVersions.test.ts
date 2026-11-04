@@ -76,7 +76,7 @@ describe('useSharedSkillHistory', () => {
 	it('loads versions and selects the current one', async () => {
 		const h = useSharedSkillHistory('triage', jest.fn());
 		await h.load();
-		expect(api.listSharedSkillVersions).toHaveBeenCalledWith('triage');
+		expect(api.listSharedSkillVersions).toHaveBeenCalledWith('triage', false);
 		expect(h.selected.value).toBe(5);
 		expect(h.diff.value).toEqual([
 			{ type: 'del', text: 'body 3' },
