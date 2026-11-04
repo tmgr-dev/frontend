@@ -3656,6 +3656,90 @@ mod tests {
     }
 
     #[test]
+    fn migration_in_one_sessions_root_leaves_another_roots_checkpoints_alone() {
+        let fx = Fx::new();
+        fx.w("a", b"now");
+        let mk = |root: &str, sid: &str| {
+            let sdir = fx.root.join(root).join("sessions").join(sid);
+            fs::create_dir_all(&sdir).unwrap();
+            Store {
+                session: sid.to_string(),
+                sdir,
+                ..fx.store()
+            }
+        };
+        let (a, b) = (mk("runnerA", S1), mk("runnerB", S2));
+        legacy_store(&fx, &a, S1);
+        legacy_store(&fx, &b, S2);
+        snap(&fx, &a);
+        assert_eq!(
+            session_refs(&fx, "refs/tmgr"),
+            [
+                format!("refs/tmgr/checkpoints/{S2}/1"),
+                format!("refs/tmgr/checkpoints/{S2}/2"),
+            ]
+        );
+        drop_unreachable(&fx);
+        b.restore_in(&fx.env(), 1).unwrap();
+        assert_eq!(fx.r("a"), b"legacy1");
+        b.restore_in(&fx.env(), 2).unwrap();
+        assert_eq!(fx.r("a"), b"legacy2");
+    }
+
+    fn packed_fixture(fx: &Fx) -> Store {
+        fx.w("a", b"now");
+        fx.commit_all("c");
+        fx.pg(&["tag", "-a", "v1", "-m", "release"]);
+        let st = fx.store();
+        legacy_entry(fx, "s_otherother", 1, b"o1");
+        legacy_store(fx, &st, S1);
+        fx.pg(&["pack-refs", "--all"]);
+        st
+    }
+
+    #[test]
+    fn packed_legacy_refs_are_removed_and_the_rest_survives() {
+        let fx = Fx::new();
+        let st = packed_fixture(&fx);
+        let packed = fs::read_to_string(fx.repo.join(".git/packed-refs")).unwrap();
+        assert!(packed.contains(&format!("refs/tmgr/checkpoints/{S1}/1")));
+        assert!(packed.lines().any(|l| l.starts_with('^')));
+        snap(&fx, &st);
+        assert_eq!(
+            session_refs(&fx, "refs/tmgr"),
+            ["refs/tmgr/checkpoints/s_otherother/1"]
+        );
+        let packed = fs::read_to_string(fx.repo.join(".git/packed-refs")).unwrap();
+        assert!(packed.starts_with("# pack-refs with:"));
+        assert!(packed.lines().any(|l| l.starts_with('^')));
+        assert!(!fx.repo.join(".git/packed-refs.lock").exists());
+        let head = fx.pg(&["rev-parse", "HEAD"]);
+        assert_eq!(fx.pg(&["rev-parse", "v1^{}"]), head);
+        assert!(fx.pg(&["show-ref"]).contains("refs/tags/v1"));
+        assert!(fx.try_pg(&["fsck", "--no-dangling"]).0);
+        drop_unreachable(&fx);
+        st.restore_in(&fx.env(), 1).unwrap();
+        assert_eq!(fx.r("a"), b"legacy1");
+        st.restore_in(&fx.env(), 2).unwrap();
+        assert_eq!(fx.r("a"), b"legacy2");
+    }
+
+    #[test]
+    fn a_held_packed_refs_lock_leaves_the_file_and_the_lock_alone() {
+        let fx = Fx::new();
+        let st = packed_fixture(&fx);
+        let before = fs::read(fx.repo.join(".git/packed-refs")).unwrap();
+        let lock = fx.repo.join(".git/packed-refs.lock");
+        fs::write(&lock, b"held").unwrap();
+        snap(&fx, &st);
+        assert_eq!(fs::read(fx.repo.join(".git/packed-refs")).unwrap(), before);
+        assert_eq!(fs::read(&lock).unwrap(), b"held");
+        assert!(!st.load().common_dir.is_some());
+        st.restore_in(&fx.env(), 1).unwrap();
+        assert_eq!(fx.r("a"), b"legacy1");
+    }
+
+    #[test]
     fn checkpoints_carried_while_paused_restore_and_their_refs_go() {
         let fx = Fx::new();
         fx.w("a", b"now");
@@ -3861,7 +3945,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unreadable_manifest_keeps_every_orphan_ref() {
+    fn an_unreadable_manifest_elsewhere_does_not_touch_other_refs() {
         let fx = Fx::new();
         fx.w("a", b"now");
         let gone = "s_gonegonego";
@@ -3913,7 +3997,7 @@ mod tests {
     }
 
     #[test]
-    fn refs_of_removed_sessions_are_cleaned_up_but_live_ones_stay() {
+    fn only_the_own_namespace_is_cleaned_up() {
         let fx = Fx::new();
         fx.w("a", b"now");
         let gone = "s_gonegonego";
@@ -3938,6 +4022,8 @@ mod tests {
             [
                 format!("refs/tmgr/checkpoints/{carried}/1"),
                 format!("refs/tmgr/checkpoints/{carried}/2"),
+                format!("refs/tmgr/checkpoints/{gone}/1"),
+                format!("refs/tmgr/checkpoints/{gone}/2"),
                 format!("refs/tmgr/checkpoints/{live}/1"),
             ]
         );
