@@ -13,7 +13,7 @@ pub fn run(ctx: &Ctx, cmd: &SkillsCommand) -> Result<Output> {
     match cmd {
         SkillsCommand::List => list(ctx),
         SkillsCommand::Show { slug } => show(ctx, slug),
-        SkillsCommand::Put { slug, file } => put(ctx, slug, file.as_deref()),
+        SkillsCommand::Put { slug, file } => put(ctx, slug, file),
         SkillsCommand::Delete { slug } => delete(ctx, slug),
         SkillsCommand::Attach { persona, slug } => attach(ctx, persona, slug),
         SkillsCommand::Detach { persona, slug } => detach(ctx, persona, slug),
@@ -21,15 +21,15 @@ pub fn run(ctx: &Ctx, cmd: &SkillsCommand) -> Result<Output> {
 }
 
 fn valid_slug(slug: &str) -> Result<&str> {
-    let ok = (1..=64).contains(&slug.len())
+    let ok = (1..=60).contains(&slug.len())
         && slug
             .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'));
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
     if ok {
         Ok(slug)
     } else {
         Err(Error::usage("invalid skill slug")
-            .hint("a slug is 1 to 64 letters, digits, '-' or '_'; see `tmgr skills list`"))
+            .hint("a slug is 1 to 60 lowercase letters, digits or '-'; see `tmgr skills list`"))
     }
 }
 
@@ -49,8 +49,14 @@ fn valid_persona(persona: &str) -> Result<String> {
 }
 
 fn forbidden_hint(e: Error) -> Error {
-    if e.kind == Kind::Forbidden && e.hint.is_none() {
-        e.hint("shared skills need a full-access login: `tmgr login` without --scopes; on a team persona only the workspace owner can attach or detach")
+    if e.kind != Kind::Forbidden {
+        return e;
+    }
+    if e.message.starts_with("this login does not allow that") {
+        Error::new(Kind::Forbidden, "this login cannot use shared skills")
+            .hint("these routes need a full-access token; sign in with one through `tmgr login --with-token`")
+    } else if e.hint.is_none() {
+        e.hint("on a team persona only the workspace owner can attach or detach")
     } else {
         e
     }
@@ -99,7 +105,10 @@ fn line(ctx: &Ctx, skill: &Value) -> String {
 }
 
 fn list(ctx: &Ctx) -> Result<Output> {
-    let skills = ctx.client()?.shared_skills().map_err(forbidden_hint)?;
+    let skills = ctx
+        .cloud_client()?
+        .shared_skills()
+        .map_err(forbidden_hint)?;
     let items = skills.as_array().cloned().unwrap_or_default();
     let human = if items.is_empty() {
         ctx.style.muted("No shared skills.")
@@ -119,7 +128,10 @@ fn list(ctx: &Ctx) -> Result<Output> {
 
 fn show(ctx: &Ctx, slug: &str) -> Result<Output> {
     let slug = valid_slug(slug)?;
-    let skill = ctx.client()?.shared_skill(slug).map_err(forbidden_hint)?;
+    let skill = ctx
+        .cloud_client()?
+        .shared_skill(slug)
+        .map_err(forbidden_hint)?;
     let body = sanitize(skill.get("body").and_then(Value::as_str).unwrap_or(""));
     let human = if ctx.quiet {
         body
@@ -135,16 +147,15 @@ fn show(ctx: &Ctx, slug: &str) -> Result<Output> {
     Ok(Output::new(json!({ "skill": skill }), human))
 }
 
-fn read_input(file: Option<&std::path::Path>) -> Result<String> {
-    let stdin = file.is_none_or(|p| p.as_os_str() == "-");
+fn read_input(file: &std::path::Path) -> Result<String> {
     let mut buf = Vec::new();
-    let read = if stdin {
+    let read = if file.as_os_str() == "-" {
         std::io::stdin()
             .lock()
             .take(MAX_INPUT + 1)
             .read_to_end(&mut buf)
     } else {
-        std::fs::File::open(file.unwrap_or_else(|| std::path::Path::new("")))
+        std::fs::File::open(file)
             .map_err(|_| Error::usage("cannot open the skill file"))?
             .take(MAX_INPUT + 1)
             .read_to_end(&mut buf)
@@ -160,7 +171,7 @@ fn read_input(file: Option<&std::path::Path>) -> Result<String> {
     Ok(text)
 }
 
-fn put(ctx: &Ctx, slug: &str, file: Option<&std::path::Path>) -> Result<Output> {
+fn put(ctx: &Ctx, slug: &str, file: &std::path::Path) -> Result<Output> {
     let slug = valid_slug(slug)?;
     let body = read_input(file)?;
     let skill = ctx
@@ -177,7 +188,7 @@ fn put(ctx: &Ctx, slug: &str, file: Option<&std::path::Path>) -> Result<Output> 
 
 fn delete(ctx: &Ctx, slug: &str) -> Result<Output> {
     let slug = valid_slug(slug)?;
-    let client = ctx.client()?;
+    let client = ctx.cloud_client()?;
     interact::confirm(
         &format!("Delete shared skill {slug}? It is detached from every persona."),
         true,
@@ -226,7 +237,7 @@ fn attach(ctx: &Ctx, persona: &str, slug: &str) -> Result<Output> {
 fn detach(ctx: &Ctx, persona: &str, slug: &str) -> Result<Output> {
     let persona = valid_persona(persona)?;
     let slug = valid_slug(slug)?;
-    ctx.client()?
+    ctx.cloud_client()?
         .detach_shared_skill(&persona, slug)
         .map_err(forbidden_hint)?;
     Ok(Output::new(
@@ -241,8 +252,18 @@ mod tests {
 
     #[test]
     fn slugs_are_restricted_to_a_safe_charset() {
-        assert!(valid_slug("triage_2-x").is_ok());
-        for bad in ["", "a/b", "../x", "a b", "a?b", &"x".repeat(65), "é"] {
+        assert!(valid_slug("triage-2").is_ok());
+        for bad in [
+            "",
+            "a/b",
+            "../x",
+            "a b",
+            "a?b",
+            "Triage",
+            "a_b",
+            &"x".repeat(61),
+            "é",
+        ] {
             assert!(valid_slug(bad).is_err(), "{bad}");
         }
     }
@@ -263,7 +284,7 @@ mod tests {
 
     #[test]
     fn a_missing_file_is_a_usage_error() {
-        let e = read_input(Some(std::path::Path::new("/nonexistent/skill.md"))).unwrap_err();
+        let e = read_input(std::path::Path::new("/nonexistent/skill.md")).unwrap_err();
         assert_eq!(e.exit_code(), 2);
     }
 }

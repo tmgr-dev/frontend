@@ -499,9 +499,9 @@ pub enum SkillsCommand {
     Put {
         /// Skill slug (must match `slug:` in the front matter)
         slug: String,
-        /// Markdown file, or `-` for stdin (default: stdin)
+        /// Markdown file, or `-` for stdin
         #[arg(long, value_name = "FILE", value_parser = crate::paths::PathArg)]
-        file: Option<std::path::PathBuf>,
+        file: std::path::PathBuf,
     },
     /// Delete a library skill; it is detached from every persona
     Delete {

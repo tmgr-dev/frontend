@@ -200,13 +200,23 @@ impl Client {
     }
 
     pub fn put_shared_skill(&self, slug: &str, body: &str) -> Result<Value> {
-        Ok(unwrap_data(self.request(
+        let (status, value) = self.request_status(
             Method::PUT,
             &format!("/api/shared-skills/{slug}"),
             &[],
-            Some(&serde_json::json!({ "body": body })),
-            "*",
-        )?))
+            Some(&json!({ "body": body })),
+        )?;
+        if (200..300).contains(&status) {
+            return Ok(unwrap_data(value));
+        }
+        if status == 422 {
+            if let Some(detail) = validation_detail(&value) {
+                return Err(crate::error::Error::usage(format!(
+                    "the server rejected the skill: {detail}"
+                )));
+            }
+        }
+        Err(map_error(status, &value, "*"))
     }
 
     pub fn delete_shared_skill(&self, slug: &str) -> Result<Value> {
@@ -444,6 +454,23 @@ impl Client {
         }
         parse_daily_time(body, date).map(Some)
     }
+}
+
+fn validation_detail(body: &Value) -> Option<String> {
+    let errors = body.get("errors")?.as_object()?;
+    let parts: Vec<String> = errors
+        .iter()
+        .flat_map(|(field, msgs)| {
+            msgs.as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(move |m| format!("{field} {m}"))
+        })
+        .map(|m| crate::text::truncate_chars(&crate::text::sanitize_line(&m), 200).0)
+        .take(5)
+        .collect();
+    (!parts.is_empty()).then(|| parts.join("; "))
 }
 
 #[cfg(test)]

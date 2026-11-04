@@ -144,19 +144,19 @@ async fn put_422_is_a_usage_error_with_the_server_message() {
         "PUT",
         "/api/shared-skills/triage",
         422,
-        json!({"message": "The slug does not match."}),
+        json!({"message": "The given data was invalid.", "errors": {"slug": ["must match the URL slug"]}}),
     )
     .await;
     let out = env
         .cmd()
-        .args(["skills", "put", "triage", "--json"])
+        .args(["skills", "put", "triage", "--file", "-", "--json"])
         .write_stdin(SKILL_MD)
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
     assert!(
-        text(&out.stderr).contains("The slug does not match.")
-            || text(&out.stdout).contains("The slug does not match.")
+        text(&out.stderr).contains("slug must match the URL slug")
+            || text(&out.stdout).contains("slug must match the URL slug")
     );
 }
 
@@ -207,7 +207,11 @@ async fn attach_and_detach_use_the_persona_routes() {
         json!({"data": {"slug": "triage", "title": "Triage", "version": 2, "overridden": true}}),
     )
     .await;
-    mount(&env, "DELETE", &route, 204, json!(null)).await;
+    Mock::given(method("DELETE"))
+        .and(path(route.as_str()))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&env.server)
+        .await;
 
     let out = env
         .cmd()
@@ -234,6 +238,8 @@ async fn bad_arguments_fail_before_any_request() {
         vec!["skills", "show", "../etc"],
         vec!["skills", "attach", "Reviewer", "triage"],
         vec!["skills", "detach", PERSONA, "a/b"],
+        vec!["skills", "show", "Triage"],
+        vec!["skills", "put", "triage"],
     ] {
         let out = env.cmd().args(&args).output().unwrap();
         assert_eq!(out.status.code(), Some(2), "{args:?}");
@@ -257,15 +263,27 @@ async fn http_errors_map_to_exit_codes() {
         let out = env.cmd().args(["skills", "show", slug]).output().unwrap();
         assert_eq!(out.status.code(), Some(exit), "{status}");
     }
+    Mock::given(method("GET"))
+        .and(path("/api/shared-skills/scope"))
+        .respond_with(
+            ResponseTemplate::new(403).set_body_json(json!({"error": "insufficient_scope"})),
+        )
+        .mount(&env.server)
+        .await;
     let out = env
         .cmd()
-        .args(["skills", "show", "fb", "--json"])
+        .args(["skills", "show", "scope", "--json"])
         .output()
         .unwrap();
-    assert!(stdout_json(&out)["error"]["hint"]
+    assert_eq!(out.status.code(), Some(5));
+    let hint = stdout_json(&out)["error"]["hint"]
         .as_str()
         .unwrap()
-        .contains("tmgr login"));
+        .to_string();
+    assert!(
+        hint.contains("--with-token") && !hint.contains("--scopes"),
+        "{hint}"
+    );
 
     let env2 = Env::new().await;
     env2.login_seed();
