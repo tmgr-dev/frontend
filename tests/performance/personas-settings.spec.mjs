@@ -515,7 +515,8 @@ test('a shared skill shows its history, restores a version and pins a persona', 
     author: { id: 1, name: 'Test User' },
     created_at: '2026-01-01T00:00:00Z',
     current: version === latest,
-    pinned_personas: pinned === version ? [{ id: 'uuid-1', name: 'Reviewer' }] : [],
+    pinned_personas:
+      pinned === version ? [{ id: 'uuid-1', name: 'Reviewer' }] : [],
   });
   const versionRows = () => {
     const rows = [row(1, 'create'), row(2, 'edit')];
@@ -530,7 +531,12 @@ test('a shared skill shows its history, restores a version and pins a persona', 
     version: latest,
     updated_at: '2026-01-01T00:00:00Z',
     attached_personas: [
-      { id: 'uuid-1', name: 'Reviewer', overridden: false, pinned_version: pinned },
+      {
+        id: 'uuid-1',
+        name: 'Reviewer',
+        overridden: false,
+        pinned_version: pinned,
+      },
     ],
   });
   const attachedEntry = () => ({
@@ -542,9 +548,18 @@ test('a shared skill shows its history, restores a version and pins a persona', 
   });
 
   await page.route('**/api/shared-skills/triage/versions/*', (route) => {
-    const version = Number(new URL(route.request().url()).pathname.split('/').pop());
+    const version = Number(
+      new URL(route.request().url()).pathname.split('/').pop(),
+    );
     return route.fulfill({
-      json: { data: { ...row(version, 'edit'), when: 'w', actions: [], body: bodies[version] ?? '' } },
+      json: {
+        data: {
+          ...row(version, 'edit'),
+          when: 'w',
+          actions: [],
+          body: bodies[version] ?? '',
+        },
+      },
     });
   });
   await page.route('**/api/shared-skills/triage/versions', (route) =>
@@ -559,15 +574,18 @@ test('a shared skill shows its history, restores a version and pins a persona', 
   await page.route('**/api/shared-skills', (route) =>
     route.fulfill({ json: { data: [skill()] } }),
   );
-  await page.route('**/api/personas/uuid-1/shared-skills/triage/pin', (route) => {
-    if (route.request().method() === 'PUT') {
-      pins.push(route.request().postDataJSON());
-      pinned = route.request().postDataJSON().version;
-    } else {
-      pinned = null;
-    }
-    return route.fulfill({ json: { data: attachedEntry() } });
-  });
+  await page.route(
+    '**/api/personas/uuid-1/shared-skills/triage/pin',
+    (route) => {
+      if (route.request().method() === 'PUT') {
+        pins.push(route.request().postDataJSON());
+        pinned = route.request().postDataJSON().version;
+      } else {
+        pinned = null;
+      }
+      return route.fulfill({ json: { data: attachedEntry() } });
+    },
+  );
   await page.route('**/api/personas/uuid-1/shared-skills', (route) =>
     route.fulfill({ json: { data: [attachedEntry()] } }),
   );
@@ -577,12 +595,20 @@ test('a shared skill shows its history, restores a version and pins a persona', 
   const libraryPanel = page.getByTestId('skills-library');
   await libraryPanel.getByRole('button', { name: 'History' }).click();
   const history = page.getByTestId('shared-skill-history');
-  await expect(history.getByTestId('history-version-2')).toContainText('Current');
-  await expect(history.getByTestId('history-diff')).toContainText('+ Run the tests.');
-  await expect(history.getByRole('button', { name: 'Restore this version' })).toHaveCount(0);
+  await expect(history.getByTestId('history-version-2')).toContainText(
+    'Current',
+  );
+  await expect(history.getByTestId('history-diff')).toContainText(
+    '+ Run the tests.',
+  );
+  await expect(
+    history.getByRole('button', { name: 'Restore this version' }),
+  ).toHaveCount(0);
 
   await history.getByTestId('history-version-1').click();
-  await expect(history.getByTestId('history-diff')).toContainText('+ Check the diff.');
+  await expect(history.getByTestId('history-diff')).toContainText(
+    '+ Check the diff.',
+  );
 
   page.once('dialog', (dialog) => {
     expect(dialog.message()).toBe(
@@ -591,8 +617,12 @@ test('a shared skill shows its history, restores a version and pins a persona', 
     dialog.accept();
   });
   await history.getByRole('button', { name: 'Restore this version' }).click();
-  await expect.poll(() => restores).toEqual([{ version: 1, expected_version: 2 }]);
-  await expect(history.getByTestId('history-version-3')).toContainText('Restored from v1');
+  await expect
+    .poll(() => restores)
+    .toEqual([{ version: 1, expected_version: 2 }]);
+  await expect(history.getByTestId('history-version-3')).toContainText(
+    'Restored from v1',
+  );
 
   await page.getByText('Skills', { exact: true }).first().click();
   const panel = page.getByTestId('persona-shared-skills');
