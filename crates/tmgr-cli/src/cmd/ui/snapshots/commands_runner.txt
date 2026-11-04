@@ -81,6 +81,12 @@ note | Pages | title, title_flag, task, parent
 page pull | Pages | dir, tree, all, force
 page push | Pages | files
 page status | Pages | dir
+skills list | Agents | -
+skills show | Agents | slug
+skills put | Agents | slug, file
+skills delete | Agents | slug
+skills attach | Agents | persona, slug
+skills detach | Agents | persona, slug
 agent start | Agents | reference, agent, model, branch
 agent update | Agents | run, branch, commits, pr, tests_passed, tests_failed, tests_cmd, summary, task
 agent finish | Agents | run, status, commits, pr, tests_passed, tests_failed, tests_cmd, summary, task
