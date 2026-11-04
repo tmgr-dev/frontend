@@ -150,14 +150,18 @@
 			const loading = ref(true);
 			const keptVersions = ref<Record<string, number[]>>({});
 
+			const staleSlugs = new Set<string>();
+
 			const loadVersions = async (skill: PersonaSharedSkill) => {
-				if (keptVersions.value[skill.slug]) return;
+				if (keptVersions.value[skill.slug] && !staleSlugs.has(skill.slug))
+					return;
 				try {
-					const rows = await listSharedSkillVersions(skill.slug);
+					const rows = await listSharedSkillVersions(skill.slug, false);
 					keptVersions.value = {
 						...keptVersions.value,
 						[skill.slug]: rows.map((r) => r.version),
 					};
+					staleSlugs.delete(skill.slug);
 				} catch {
 					toast({
 						title: 'Could not load the versions',
@@ -238,6 +242,8 @@
 					emit('changed');
 				} catch (error) {
 					fail(error, 'Could not change the skill version');
+				} finally {
+					staleSlugs.add(skill.slug);
 				}
 			};
 
@@ -245,6 +251,7 @@
 				() => props.revision,
 				() => {
 					keptVersions.value = {};
+					staleSlugs.clear();
 					load();
 				},
 			);

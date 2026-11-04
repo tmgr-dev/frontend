@@ -2,6 +2,7 @@ import * as api from '@/actions/tmgr/personas';
 import { toast } from '@/components/ui/toast';
 import {
 	changePin,
+	metadataChanges,
 	pickDiffPair,
 	useSharedSkillHistory,
 } from '../sharedSkillVersions';
@@ -150,6 +151,49 @@ describe('useSharedSkillHistory', () => {
 		expect(toast).toHaveBeenCalledWith(
 			expect.objectContaining({ title: 'Could not restore this version' }),
 		);
+	});
+});
+
+describe('overlapping refreshes', () => {
+	it('keeps the result of the latest refresh when an older one resolves last', async () => {
+		const h = useSharedSkillHistory('triage', jest.fn());
+		await h.load();
+		await h.select(3);
+		let releaseFirst: () => void = () => {};
+		const gate = new Promise<void>((r) => (releaseFirst = r));
+		(api.getSharedSkillVersion as jest.Mock).mockImplementation(
+			async (_s: string, v: number) => {
+				if (v === 1) await gate;
+				return snapshot(v);
+			},
+		);
+		const first = h.setCompareWithCurrent(true);
+		(api.getSharedSkillVersion as jest.Mock).mockImplementation(
+			async (_s: string, v: number) => snapshot(v),
+		);
+		await h.setCompareWithCurrent(false);
+		releaseFirst();
+		await first;
+		expect(h.compareWithCurrent.value).toBe(false);
+		expect(h.diff.value).toEqual([
+			{ type: 'del', text: 'body 1' },
+			{ type: 'add', text: 'body 3' },
+		]);
+	});
+});
+
+describe('metadataChanges', () => {
+	const base = { title: 'A', when: 'w', actions: [{ a: 1 }] };
+
+	it('is empty without a previous version or changes', () => {
+		expect(metadataChanges(null, base)).toEqual([]);
+		expect(metadataChanges(base, { ...base })).toEqual([]);
+	});
+
+	it('lists title, when and actions changes', () => {
+		expect(
+			metadataChanges(base, { title: 'B', when: 'x', actions: [] }),
+		).toEqual(['Title changed: A → B', 'When changed', 'Actions changed']);
 	});
 });
 

@@ -4,6 +4,7 @@ import {
 	pinSharedSkill,
 	restoreSharedSkill,
 	unpinSharedSkill,
+	type SharedSkillVersion,
 	type SharedSkillVersionRow,
 } from '@/actions/tmgr/personas';
 import { toast } from '@/components/ui/toast';
@@ -23,6 +24,22 @@ export const pickDiffPair = (
 	return { from: versions[index + 1]?.version ?? null, to: selected };
 };
 
+export const metadataChanges = (
+	before: Pick<SharedSkillVersion, 'title' | 'when' | 'actions'> | null,
+	after: Pick<SharedSkillVersion, 'title' | 'when' | 'actions'>,
+): string[] => {
+	if (!before) return [];
+	const changes: string[] = [];
+	if (before.title !== after.title) {
+		changes.push(`Title changed: ${before.title} → ${after.title}`);
+	}
+	if (before.when !== after.when) changes.push('When changed');
+	if (JSON.stringify(before.actions) !== JSON.stringify(after.actions)) {
+		changes.push('Actions changed');
+	}
+	return changes;
+};
+
 export const changePin = (personaUuid: string, slug: string, choice: string) =>
 	choice === 'latest'
 		? unpinSharedSkill(personaUuid, slug)
@@ -33,15 +50,19 @@ export const useSharedSkillHistory = (slug: string, onChanged: () => void) => {
 	const selected = ref<number | null>(null);
 	const compareWithCurrent = ref(false);
 	const diff = ref<DiffLine[]>([]);
+	const metaChanges = ref<string[]>([]);
+	let refreshToken = 0;
 	const loading = ref(false);
 	const restoring = ref(false);
 
-	const bodyOf = async (version: number | null) =>
-		version === null ? '' : (await getSharedSkillVersion(slug, version)).body;
+	const snapshotOf = async (version: number | null) =>
+		version === null ? null : getSharedSkillVersion(slug, version);
 
 	const refreshDiff = async () => {
+		const token = ++refreshToken;
 		if (selected.value === null) {
 			diff.value = [];
+			metaChanges.value = [];
 			return;
 		}
 		const target = selected.value;
@@ -50,8 +71,13 @@ export const useSharedSkillHistory = (slug: string, onChanged: () => void) => {
 			target,
 			compareWithCurrent.value,
 		);
-		const [before, after] = await Promise.all([bodyOf(from), bodyOf(to)]);
-		if (selected.value === target) diff.value = lineDiff(before, after);
+		const [before, after] = await Promise.all([
+			snapshotOf(from),
+			snapshotOf(to),
+		]);
+		if (token !== refreshToken || !after) return;
+		diff.value = lineDiff(before?.body ?? '', after.body);
+		metaChanges.value = metadataChanges(before, after);
 	};
 
 	const select = async (version: number) => {
@@ -121,6 +147,7 @@ export const useSharedSkillHistory = (slug: string, onChanged: () => void) => {
 		selected,
 		compareWithCurrent,
 		diff,
+		metaChanges,
 		loading,
 		restoring,
 		load,

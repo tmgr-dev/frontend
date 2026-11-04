@@ -69,6 +69,13 @@
 						Restore this version
 					</Button>
 				</div>
+				<ul
+					v-if="metaChanges.length"
+					class="flex flex-col gap-1 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200"
+					data-testid="history-meta-changes"
+				>
+					<li v-for="change in metaChanges" :key="change">{{ change }}</li>
+				</ul>
 				<pre
 					class="max-h-80 overflow-auto rounded bg-muted p-2 font-mono text-xs"
 					data-testid="history-diff"
