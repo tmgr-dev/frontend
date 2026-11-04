@@ -413,8 +413,20 @@ test('converting an own skill to shared explains a clash and sends only the chec
           slug,
           library_clash: slug === 'triage',
           other_personas: [
-            { id: 'uuid-2', name: 'Helper', archived: false, same_body: true, version: 2 },
-            { id: 'uuid-3', name: 'Archivist', archived: true, same_body: false, version: 4 },
+            {
+              id: 'uuid-2',
+              name: 'Helper',
+              archived: false,
+              same_body: true,
+              version: 2,
+            },
+            {
+              id: 'uuid-3',
+              name: 'Archivist',
+              archived: true,
+              same_body: false,
+              version: 4,
+            },
           ],
         },
       },
@@ -438,7 +450,9 @@ test('converting an own skill to shared explains a clash and sends only the chec
     'Moves this skill to your skills library and attaches it to Reviewer. Agents keep the same instructions.',
   );
   await expect(dialog.getByText('Same text')).toBeVisible();
-  await expect(dialog.getByText('Different text — will be replaced')).toBeVisible();
+  await expect(
+    dialog.getByText('Different text — will be replaced'),
+  ).toBeVisible();
   await expect(dialog.getByText('(archived)')).toBeVisible();
   await expect(dialog.getByTestId('convert-replace-uuid-2')).not.toBeChecked();
   await expect(dialog.getByTestId('convert-replace-uuid-3')).not.toBeChecked();
@@ -446,10 +460,12 @@ test('converting an own skill to shared explains a clash and sends only the chec
   await dialog.getByTestId('convert-replace-uuid-3').check();
   await dialog.getByTestId('convert-confirm').click();
 
-  await expect.poll(() => posts).toEqual([
-    { replace_personas: [{ id: 'uuid-3', version: 4 }] },
-  ]);
+  await expect
+    .poll(() => posts)
+    .toEqual([{ replace_personas: [{ id: 'uuid-3', version: 4 }] }]);
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId('convert-skill-review')).toHaveCount(0);
-  await expect(page.getByText('Converted to a shared skill and replaced on 1 persona')).toBeVisible();
+  await expect(
+    page.getByText('Converted to a shared skill and replaced on 1 persona'),
+  ).toBeVisible();
 });
