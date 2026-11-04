@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.67
+
+- Hardening: the `tmgr attach` Git panel keeps its sandbox limits for the folder of a sandboxed session after the session has ended. It shows only the branch there, as it does while the session runs.
+- Hardening: checkpoints read git config names strictly. If a name is not valid UTF-8 or the names cannot be read, the checkpoint is skipped and says why, instead of running with hooks it could not turn off.
+
 ## 1.0.66
 
 - Runner sessions no longer keep file descriptors they inherited from the command that started them, so a script or test reading `tmgr` output is not left waiting after `tmgr` exits.
