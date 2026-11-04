@@ -34,6 +34,7 @@ args = ["{prompt}"]
 args = ["resume", "--last"]
 at = "after_command"
 by_id = ["resume", "{resume_id}"]
+fork_by_id = ["fork", "{resume_id}"]
 
 [hooks]
 kind = "config-override"

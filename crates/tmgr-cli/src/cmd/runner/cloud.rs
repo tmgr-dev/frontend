@@ -1069,6 +1069,7 @@ fn run_request(p: &RunPlan) -> RunCreateReq {
         exe_pin: Some(p.exe_pin.clone()),
         argv_sha256: Some(p.argv_sha256.clone()),
         no_sandbox: p.no_sandbox.clone(),
+        external_resume: None,
         permission_cards: false,
     }
 }
@@ -3307,6 +3308,7 @@ mod tests {
                 exe_pin: None,
                 argv_sha256: None,
                 no_sandbox: None,
+                external_resume: None,
                 permission_cards: false,
             };
             r.bundle.as_mut().unwrap().launch.permission_mode = None;

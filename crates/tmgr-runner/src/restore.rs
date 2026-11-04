@@ -432,6 +432,7 @@ pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
         exe_pin: i.exe_pin.clone(),
         argv_sha256: i.argv_sha256.clone(),
         no_sandbox: None,
+        external_resume: None,
         permission_cards: i.permission_cards,
     }
 }

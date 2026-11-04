@@ -155,11 +155,16 @@ impl Client {
     }
 
     pub fn resume(&mut self, id: &str, cols: u16, rows: u16) -> io::Result<RestoredRun> {
-        let params = ResumeParams {
+        self.resume_with(ResumeParams {
             id: id.into(),
             cols,
             rows,
-        };
+            permission_mode: None,
+            no_sandbox: None,
+        })
+    }
+
+    pub fn resume_with(&mut self, params: ResumeParams) -> io::Result<RestoredRun> {
         from_value(self.call(method::SESSIONS_RESUME, to_params(&params)?)?)
     }
 

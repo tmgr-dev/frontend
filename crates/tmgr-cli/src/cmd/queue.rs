@@ -1633,6 +1633,7 @@ fn run_create_req(req: &StartRequest) -> RunCreateReq {
         }),
         argv_sha256: Some(req.argv_sha256.clone()),
         no_sandbox: None,
+        external_resume: None,
         permission_cards: false,
     }
 }

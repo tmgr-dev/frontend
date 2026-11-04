@@ -262,6 +262,7 @@ fn requests_and_responses() {
         exe_pin: None,
         argv_sha256: None,
         no_sandbox: None,
+        external_resume: None,
         permission_cards: false,
     };
     golden("run_create_req", &run);
@@ -903,6 +904,7 @@ fn constants_are_pinned() {
             "sessions_fork.v1",
             "manual_bypass.v1",
             "no_sandbox.v1",
+            "external_resume.v1",
             "checkpoints.v1",
             "permission_cards.v1",
             "team.workers.v1",
@@ -1517,6 +1519,7 @@ fn full_req() -> RunCreateReq {
         unattended: true,
         clones: Vec::new(),
         no_sandbox: None,
+        external_resume: None,
     }
 }
 

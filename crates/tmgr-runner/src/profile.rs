@@ -99,6 +99,8 @@ pub struct ResumeDecl {
     pub at: ResumeAt,
     #[serde(default)]
     pub by_id: Option<Vec<String>>,
+    #[serde(default)]
+    pub fork_by_id: Option<Vec<String>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -328,17 +330,34 @@ impl Profile {
         extra: &[String],
         id: &str,
     ) -> Result<Option<Vec<String>>, String> {
-        let Some((r, by_id)) = self
-            .resume
-            .as_ref()
-            .and_then(|r| r.by_id.as_ref().map(|b| (r, b)))
-        else {
+        let by_id = self.resume.as_ref().and_then(|r| r.by_id.as_deref());
+        self.argv_from_id_template(model, extra, by_id, id)
+    }
+
+    pub fn fork_argv_by_id(
+        &self,
+        model: Option<&str>,
+        extra: &[String],
+        id: &str,
+    ) -> Result<Option<Vec<String>>, String> {
+        let fork = self.resume.as_ref().and_then(|r| r.fork_by_id.as_deref());
+        self.argv_from_id_template(model, extra, fork, id)
+    }
+
+    fn argv_from_id_template(
+        &self,
+        model: Option<&str>,
+        extra: &[String],
+        template: Option<&[String]>,
+        id: &str,
+    ) -> Result<Option<Vec<String>>, String> {
+        let (Some(r), Some(template)) = (&self.resume, template) else {
             return Ok(None);
         };
         if !crate::resume::valid_resume_id(id) {
             return Err("invalid resume id".into());
         }
-        let args = by_id
+        let args = template
             .iter()
             .map(|a| {
                 if a == RESUME_ID {
@@ -412,14 +431,14 @@ fn check_launch(p: &Profile) -> Result<(), String> {
         if r.args.iter().any(|a| a.contains('{')) {
             return Err("resume.args take no placeholders".into());
         }
-        if let Some(b) = &r.by_id {
+        for (field, template) in [("by_id", &r.by_id), ("fork_by_id", &r.fork_by_id)] {
+            let Some(b) = template else { continue };
             let holes = b.iter().filter(|a| *a == RESUME_ID).count();
             let stray = b.iter().any(|a| a != RESUME_ID && a.contains('{'));
             if holes != 1 || stray {
-                return Err(
-                    "resume.by_id must hold \"{resume_id}\" exactly once as a whole argument"
-                        .into(),
-                );
+                return Err(format!(
+                    "resume.{field} must hold \"{{resume_id}}\" exactly once as a whole argument"
+                ));
             }
         }
     }

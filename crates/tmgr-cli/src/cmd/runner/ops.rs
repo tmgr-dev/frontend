@@ -273,6 +273,7 @@ pub(super) fn run_create_run(
         exe_pin: None,
         argv_sha256: None,
         no_sandbox: None,
+        external_resume: None,
         permission_cards: false,
     }
 }

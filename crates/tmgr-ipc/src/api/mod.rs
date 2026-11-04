@@ -63,10 +63,11 @@ pub mod caps {
     pub const SESSIONS_FORK_V1: &str = "sessions_fork.v1";
     pub const MANUAL_BYPASS_V1: &str = "manual_bypass.v1";
     pub const NO_SANDBOX_V1: &str = "no_sandbox.v1";
+    pub const EXTERNAL_RESUME_V1: &str = "external_resume.v1";
     pub const CHECKPOINTS_V1: &str = "checkpoints.v1";
     pub const PERMISSION_CARDS_V1: &str = "permission_cards.v1";
 
-    pub const ALL: [&str; 36] = [
+    pub const ALL: [&str; 37] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -99,6 +100,7 @@ pub mod caps {
         SESSIONS_FORK_V1,
         MANUAL_BYPASS_V1,
         NO_SANDBOX_V1,
+        EXTERNAL_RESUME_V1,
         CHECKPOINTS_V1,
         PERMISSION_CARDS_V1,
         TEAM_WORKERS_V1,

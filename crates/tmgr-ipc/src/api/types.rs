@@ -55,6 +55,14 @@ pub struct CreateReq {
     pub task: Option<TaskRef>,
 }
 
+/// A conversation the agent recorded outside the runner, resumed or forked by its id.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExternalResume {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fork: bool,
+}
+
 /// Params of `runs.create` (the runner resolves argv from the profile).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunCreateReq {
@@ -102,6 +110,8 @@ pub struct RunCreateReq {
     pub clones: Vec<CloneSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub no_sandbox: Option<NoSandbox>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_resume: Option<ExternalResume>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub permission_cards: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -156,6 +166,7 @@ impl OrchestratorCreateReq {
             unattended: true,
             clones: Vec::new(),
             no_sandbox: None,
+            external_resume: None,
             permission_cards: false,
         }
     }
@@ -230,13 +241,17 @@ pub struct RestoredRun {
 }
 
 /// Params of `sessions.resume`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResumeParams {
     pub id: String,
     #[serde(default = "default_cols")]
     pub cols: u16,
     #[serde(default = "default_rows")]
     pub rows: u16,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_sandbox: Option<NoSandbox>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
