@@ -94,12 +94,13 @@ impl Rig {
         std::fs::write(
             root.join(".gitconfig"),
             format!(
-                "[url \"{}\"]\n\tinsteadOf = https://github.com/acme/widgets.git\n",
-                bare.display()
+                "[url \"{}:acme/widgets.git\"]\n\tinsteadOf = https://github.com/acme/widgets.git\n",
+                common::STUB_SSH_HOST
             ),
         )
         .unwrap();
         let stub = root.join("stub");
+        common::write_ssh_stub(&stub, &[("acme/widgets.git", &bare)]);
         write_script(
             &stub,
             "gh",

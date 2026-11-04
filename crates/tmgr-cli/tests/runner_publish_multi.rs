@@ -61,6 +61,7 @@ impl Rig {
         let mut config = String::new();
         let mut repos = Vec::new();
         let mut bares = Vec::new();
+        let mut routes: Vec<(String, PathBuf)> = Vec::new();
         for name in NAMES {
             let short = name.split('/').nth(1).unwrap();
             let repo = init_repo(&root.join("code").join(short));
@@ -78,9 +79,10 @@ impl Rig {
             let bare = root.join(format!("{short}-remote.git"));
             git(&root, &["init", "-q", "--bare", bare.to_str().unwrap()]);
             config.push_str(&format!(
-                "[url \"{}\"]\n\tinsteadOf = {url}\n",
-                bare.display()
+                "[url \"{}:{name}.git\"]\n\tinsteadOf = {url}\n",
+                common::STUB_SSH_HOST
             ));
+            routes.push((format!("{name}.git"), bare.clone()));
             repos.push(repo);
             bares.push(bare);
         }
@@ -101,6 +103,11 @@ impl Rig {
             git(&run.join(name), &["checkout", "-q", "-b", BRANCH]);
         }
         let stub = root.join("stub");
+        let routes: Vec<(&str, &std::path::Path)> = routes
+            .iter()
+            .map(|(n, b)| (n.as_str(), b.as_path()))
+            .collect();
+        common::write_ssh_stub(&stub, &routes);
         write_script(
             &stub,
             "gh",

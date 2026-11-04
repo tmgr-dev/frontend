@@ -334,6 +334,22 @@ pub fn write_script(dir: &std::path::Path, name: &str, body: &str) -> PathBuf {
     p
 }
 
+pub const STUB_SSH_HOST: &str = "git@example.invalid";
+
+pub fn write_ssh_stub(dir: &std::path::Path, routes: &[(&str, &std::path::Path)]) -> PathBuf {
+    let mut arms = String::new();
+    for (path, bare) in routes {
+        arms.push_str(&format!("  \"{path}\") repo=\"{}\" ;;\n", bare.display()));
+    }
+    write_script(
+        dir,
+        "ssh",
+        &format!(
+            "for a in \"$@\"; do cmd=\"$a\"; done\nsvc=${{cmd%% *}}\npath=${{cmd#* }}\npath=${{path#\\'}}\npath=${{path%\\'}}\npath=${{path#/}}\ncase \"$path\" in\n{arms}  *) echo \"unknown repository $path\" >&2; exit 1 ;;\nesac\nunset GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT\ncase \"$svc\" in\n  git-upload-pack) exec git upload-pack \"$repo\" ;;\n  git-receive-pack) exec git receive-pack \"$repo\" ;;\n  *) echo \"unsupported $svc\" >&2; exit 1 ;;\nesac"
+        ),
+    )
+}
+
 pub fn now_s() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
