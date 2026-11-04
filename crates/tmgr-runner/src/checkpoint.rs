@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::{CString, OsString};
+use std::ffi::{CStr, CString, OsString};
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, ExitStatus, Output, Stdio};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::{self, JoinHandle};
@@ -40,6 +40,9 @@ const INDEX_CAP: u64 = 512 * 1024 * 1024;
 const PRIVATE: &str = "checkpoints.git";
 const LINK_CAP: usize = 4096;
 const GIT_DEADLINE: Duration = Duration::from_secs(600);
+const MIGRATE_DEADLINE: Duration = Duration::from_secs(60);
+const PACK_CAP: u64 = 4 * 1024 * 1024 * 1024;
+const PACK_LIMIT: usize = 16;
 const STREAM_DEADLINE: Duration = Duration::from_secs(1800);
 const REF_ROOT: &str = "refs/tmgr/checkpoints";
 const PRIVATE_REFS: &str = "refs/checkpoints";
@@ -99,6 +102,7 @@ struct Env<'a> {
     xdg: Option<OsString>,
     max_file: u64,
     max_total: u64,
+    migrate_deadline: Duration,
     after_before: Option<&'a dyn Fn()>,
     #[cfg(test)]
     after_temp: Option<&'a dyn Fn()>,
@@ -111,6 +115,7 @@ impl Env<'static> {
             xdg: std::env::var_os("XDG_CONFIG_HOME"),
             max_file: MAX_FILE,
             max_total: MAX_TOTAL,
+            migrate_deadline: MIGRATE_DEADLINE,
             after_before: None,
             #[cfg(test)]
             after_temp: None,
@@ -379,6 +384,94 @@ fn walk_dirs(root: BorrowedFd, comps: &[&[u8]]) -> io::Result<OwnedFd> {
     Ok(cur)
 }
 
+fn open_nofollow(path: &Path) -> io::Result<OwnedFd> {
+    let real = path.canonicalize()?;
+    let comps: Vec<&[u8]> = real
+        .components()
+        .filter_map(|c| match c {
+            Component::Normal(n) => Some(n.as_bytes()),
+            _ => None,
+        })
+        .collect();
+    walk_dirs(open_root(Path::new("/"))?.as_fd(), &comps)
+}
+
+fn list_dir(dir: &OwnedFd) -> Vec<Vec<u8>> {
+    let Ok(dup) = dir.try_clone() else {
+        return Vec::new();
+    };
+    let raw = dup.into_raw_fd();
+    let d = unsafe { libc::fdopendir(raw) };
+    if d.is_null() {
+        unsafe { libc::close(raw) };
+        return Vec::new();
+    }
+    let mut names = Vec::new();
+    loop {
+        let e = unsafe { libc::readdir(d) };
+        if e.is_null() {
+            break;
+        }
+        let name = unsafe { CStr::from_ptr((*e).d_name.as_ptr()) }.to_bytes();
+        if name != b"." && name != b".." {
+            names.push(name.to_vec());
+        }
+    }
+    unsafe { libc::closedir(d) };
+    names
+}
+
+fn copy_capped(src: &Path, dst: &Path, cap: u64) -> bool {
+    let copied = (|| {
+        let dir = open_root(src.parent()?).ok()?;
+        let name = src.file_name()?.as_bytes();
+        let fd = open_at(
+            dir.as_fd(),
+            name,
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK,
+            0,
+        )
+        .ok()?;
+        let st = fstat_fd(fd.as_fd()).ok()?;
+        let size = st.st_size as u64;
+        if !is_kind(&st, libc::S_IFREG) || st.st_nlink > 1 || size > cap {
+            return None;
+        }
+        let mut out = File::create(dst).ok()?;
+        let n = io::copy(&mut File::from(fd).take(size), &mut out).ok()?;
+        (n == size).then_some(())
+    })();
+    if copied.is_none() {
+        let _ = fs::remove_file(dst);
+    }
+    copied.is_some()
+}
+
+fn shared_index_id(index: &[u8], hash_len: usize) -> Option<String> {
+    let end = index.len().checked_sub(hash_len)?;
+    (12..end.saturating_sub(8 + hash_len)).find_map(|start| {
+        if &index[start..start + 4] != b"link" {
+            return None;
+        }
+        let mut pos = start;
+        let mut first = true;
+        while pos + 8 <= end {
+            let size = u32::from_be_bytes(index[pos + 4..pos + 8].try_into().ok()?) as usize;
+            if first && (size < hash_len || !index[pos..pos + 4].eq(b"link")) {
+                return None;
+            }
+            first = false;
+            pos = pos.checked_add(8)?.checked_add(size)?;
+        }
+        (pos == end).then(|| {
+            index[start + 8..start + 8 + hash_len]
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect()
+        })
+    })
+}
+
 #[allow(clippy::unnecessary_cast)]
 fn mode_bits(st: &libc::stat) -> u32 {
     st.st_mode as u32
@@ -452,7 +545,11 @@ struct Proc {
 }
 
 impl Proc {
-    fn spawn(mut cmd: Command) -> Result<Proc, CpError> {
+    fn spawn(cmd: Command) -> Result<Proc, CpError> {
+        Proc::spawn_within(cmd, STREAM_DEADLINE)
+    }
+
+    fn spawn_within(mut cmd: Command, limit: Duration) -> Result<Proc, CpError> {
         before_git(&cmd);
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -479,7 +576,7 @@ impl Proc {
                 if *done {
                     return;
                 }
-                if start.elapsed() >= STREAM_DEADLINE {
+                if start.elapsed() >= limit {
                     unsafe { libc::kill(-pgid, libc::SIGKILL) };
                     return;
                 }
@@ -689,6 +786,8 @@ fn base_git(dir: &Path, excludes: &str, more: &[(String, &str)]) -> GitEnv {
         ("core.logAllRefUpdates", "false"),
         ("core.splitIndex", "false"),
         ("gc.auto", "0"),
+        ("repack.writeBitmaps", "false"),
+        ("fastimport.unpackLimit", "0"),
         ("commit.gpgsign", "false"),
         ("core.excludesFile", excludes),
     ];
@@ -708,7 +807,22 @@ fn private_git(sdir: &Path, excludes: &str, more: &[(String, &str)]) -> GitEnv {
     base_git(sdir, excludes, more).env("GIT_DIR", &sdir.join(PRIVATE).to_string_lossy())
 }
 
+fn time_left(end: Instant) -> Option<Duration> {
+    end.checked_duration_since(Instant::now())
+        .filter(|d| !d.is_zero())
+}
+
 fn exec(g: &GitEnv, args: &[&str], stdin: Option<&Path>, cap: usize) -> Result<Output, CpError> {
+    exec_within(g, args, stdin, cap, GIT_DEADLINE)
+}
+
+fn exec_within(
+    g: &GitEnv,
+    args: &[&str],
+    stdin: Option<&Path>,
+    cap: usize,
+    limit: Duration,
+) -> Result<Output, CpError> {
     let mut cmd = g.command();
     cmd.args(args);
     if let Some(p) = stdin {
@@ -716,7 +830,7 @@ fn exec(g: &GitEnv, args: &[&str], stdin: Option<&Path>, cap: usize) -> Result<O
     }
     let name = args.first().copied().unwrap_or("");
     before_git(&cmd);
-    run_bounded(cmd, GIT_DEADLINE, cap, ERR_CAP).map_err(|e| failed(&format!("git {name}"), e))
+    run_bounded(cmd, limit, cap, ERR_CAP).map_err(|e| failed(&format!("git {name}"), e))
 }
 
 fn out(g: &GitEnv, args: &[&str], stdin: Option<&Path>, cap: usize) -> Result<Vec<u8>, CpError> {
@@ -749,7 +863,11 @@ fn read_capped(path: &Path, max: u64) -> Option<Vec<u8>> {
 type Cfg = BTreeMap<String, String>;
 
 fn truthy(v: Option<&String>) -> bool {
-    v.is_some_and(|v| matches!(v.to_ascii_lowercase().as_str(), "true" | "yes" | "on" | "1"))
+    v.is_some_and(|v| {
+        let v = v.trim().to_ascii_lowercase();
+        let digits = v.trim_end_matches(['k', 'm', 'g']);
+        matches!(v.as_str(), "true" | "yes" | "on") || digits.parse::<i64>().is_ok_and(|n| n != 0)
+    })
 }
 
 fn read_config(sdir: &Path, path: &Path) -> Cfg {
@@ -877,7 +995,7 @@ fn session_facts(env: &Env, sdir: &Path, cwd: &Path) -> Result<Facts, CpError> {
         Some(p) if p.is_absolute() => Some(p),
         _ => xdg_config.map(|x| x.join("git/ignore")),
     };
-    let format = match repo.get("extensions.objectformat").map(String::as_str) {
+    let format = match local.get("extensions.objectformat").map(String::as_str) {
         None | Some("sha1") => "sha1",
         Some("sha256") => "sha256",
         Some(other) => {
@@ -1108,6 +1226,11 @@ impl Store {
                 let _ = write_atomic(&to.cache_path(), &bytes);
             }
         } else {
+            let dest = to.sdir.join(PRIVATE);
+            if dest.exists() {
+                fs::remove_dir_all(&dest).map_err(|e| failed("cannot replace checkpoints", e))?;
+            }
+            let _ = fs::remove_file(to.cache_path());
             m.refs_of.get_or_insert_with(|| self.session.clone());
         }
         to.save(&m)?;
@@ -1121,17 +1244,19 @@ impl Store {
         if valid_session_id(own) {
             names.insert(own.to_string());
         }
-        let root = Path::new(common).join(REF_ROOT);
-        let sessions = self.sdir.parent();
-        if let (Ok(list), Some(sessions)) = (fs::read_dir(&root), sessions) {
-            let named = refs_named_under(sessions);
-            for e in list.flatten() {
-                let name = e.file_name().to_string_lossy().into_owned();
-                if valid_session_id(&name)
-                    && !named.contains(&name)
-                    && fs::symlink_metadata(sessions.join(&name)).is_err()
-                {
-                    names.insert(name);
+        let comps: Vec<&[u8]> = REF_ROOT.split('/').map(str::as_bytes).collect();
+        let root = open_nofollow(Path::new(common))
+            .and_then(|c| walk_dirs(c.as_fd(), &comps))
+            .ok();
+        if let (Some(root), Some(sessions)) = (root, self.sdir.parent()) {
+            let orphans: Vec<String> = list_dir(&root)
+                .into_iter()
+                .filter_map(|n| String::from_utf8(n).ok())
+                .filter(|n| valid_session_id(n) && fs::symlink_metadata(sessions.join(n)).is_err())
+                .collect();
+            if !orphans.is_empty() {
+                if let Some(named) = refs_named_under(sessions) {
+                    names.extend(orphans.into_iter().filter(|n| !named.contains(n)));
                 }
             }
         }
@@ -1145,24 +1270,23 @@ fn legacy_dir(m: &Manifest) -> Option<&str> {
     m.common_dir.as_deref().filter(|_| !m.private)
 }
 
-fn refs_named_under(sessions: &Path) -> BTreeSet<String> {
+fn refs_named_under(sessions: &Path) -> Option<BTreeSet<String>> {
     let mut named = BTreeSet::new();
-    let Ok(list) = fs::read_dir(sessions) else {
-        return named;
-    };
-    for e in list.flatten() {
-        let Some(bytes) = read_capped(&e.path().join(MANIFEST), 64 * 1024 * 1024) else {
+    for e in fs::read_dir(sessions).ok()? {
+        let manifest = e.ok()?.path().join(MANIFEST);
+        if fs::symlink_metadata(&manifest).is_err() {
             continue;
-        };
-        if let Ok(other) = serde_json::from_slice::<Manifest>(&bytes) {
-            named.extend(other.refs_of);
         }
+        let bytes = read_capped(&manifest, 64 * 1024 * 1024)?;
+        named.extend(serde_json::from_slice::<Manifest>(&bytes).ok()?.refs_of);
     }
-    named
+    Some(named)
 }
 
 fn delete_loose_refs(common: &Path, ns: &str) {
-    let Ok(root) = open_root(common) else { return };
+    let Ok(root) = open_nofollow(common) else {
+        return;
+    };
     let mut dirs = vec![root];
     for comp in REF_ROOT.split('/').chain([ns]) {
         let Some(last) = dirs.last() else { return };
@@ -1171,14 +1295,10 @@ fn delete_loose_refs(common: &Path, ns: &str) {
         };
         dirs.push(next);
     }
-    let path = common.join(REF_ROOT).join(ns);
-    if let Ok(list) = fs::read_dir(path) {
-        let Some(dir) = dirs.last() else { return };
-        for e in list.flatten() {
-            let name = e.file_name();
-            let name = name.as_bytes();
+    if let Some(dir) = dirs.last() {
+        for name in list_dir(dir) {
             if !name.is_empty() && name.iter().all(u8::is_ascii_digit) {
-                let _ = unlink_at(dir.as_fd(), name, 0);
+                let _ = unlink_at(dir.as_fd(), &name, 0);
             }
         }
     }
@@ -1224,6 +1344,20 @@ impl<'a> Op<'a> {
         Ok(private_git(&self.store.sdir, NO_EXCLUDES, &[]))
     }
 
+    fn repo_for(&self, m: &Manifest) -> Result<Facts, CpError> {
+        let facts = self.repo()?;
+        if m.items.is_empty() {
+            let g = private_git(&self.store.sdir, NO_EXCLUDES, &[]);
+            let have = text(&g, &["rev-parse", "--show-object-format"]).unwrap_or_default();
+            if have != facts.format {
+                fs::remove_dir_all(self.private())
+                    .map_err(|e| failed("cannot recreate checkpoints", e))?;
+                return self.repo();
+            }
+        }
+        Ok(facts)
+    }
+
     fn repo(&self) -> Result<Facts, CpError> {
         fs::create_dir_all(&self.store.sdir)
             .map_err(|e| failed("cannot create session directory", e))?;
@@ -1238,8 +1372,16 @@ impl<'a> Op<'a> {
         Ok(facts)
     }
 
+    fn pack_count(&self) -> usize {
+        fs::read_dir(self.private().join("objects/pack")).map_or(0, |list| {
+            list.flatten()
+                .filter(|e| e.path().extension().is_some_and(|x| x == "pack"))
+                .count()
+        })
+    }
+
     fn repo_or_mark(&self, m: &mut Manifest) -> Result<(), CpError> {
-        let res = self.repo().map(drop);
+        let res = self.repo_for(m).map(drop);
         if let Err(CpError::NotGit(note) | CpError::Refused(note)) = &res {
             if m.note.as_deref() != Some(note) {
                 m.note = Some(note.clone());
@@ -1253,50 +1395,138 @@ impl<'a> Op<'a> {
         let Some(common) = legacy_dir(m).map(str::to_string) else {
             return Ok(());
         };
-        if !Path::new(&common).is_absolute() || common.contains(':') {
-            return Err(CpError::Failed("cannot migrate checkpoints".into()));
+        let usable = Path::new(&common).is_absolute() && !common.contains(':');
+        let kept = if usable {
+            self.pull_legacy(m, &common)
+        } else {
+            Vec::new()
+        };
+        let _ = fs::remove_file(self.store.cache_path());
+        let refs_of = m.refs_of.take();
+        m.items = kept;
+        m.private = true;
+        m.common_dir = None;
+        self.store.save(m)?;
+        if usable {
+            self.store.delete_legacy_refs(refs_of.as_deref(), &common);
         }
+        Ok(())
+    }
+
+    fn pull_legacy(&self, m: &Manifest, common: &str) -> Vec<Entry> {
+        let end = Instant::now() + self.env.migrate_deadline;
+        let cands: Vec<&Entry> = m.items.iter().filter(|e| valid_oid(&e.commit)).collect();
+        let all: Vec<&str> = cands.iter().map(|e| e.commit.as_str()).collect();
+        if all.is_empty() {
+            return Vec::new();
+        }
+        let pulled: Vec<&Entry> = if self.pull_objects(common, &all, end).is_ok() {
+            cands
+        } else {
+            cands
+                .into_iter()
+                .filter(|e| self.pull_objects(common, &[e.commit.as_str()], end).is_ok())
+                .collect()
+        };
+        let plain = private_git(&self.store.sdir, NO_EXCLUDES, &[]);
+        let whole: Vec<Entry> = pulled
+            .into_iter()
+            .filter(|e| {
+                let args = ["rev-list", "--objects", "--quiet", &e.commit];
+                time_left(end)
+                    .and_then(|l| exec_within(&plain, &args, None, ERR_CAP, l).ok())
+                    .is_some_and(|o| o.status.success())
+            })
+            .cloned()
+            .collect();
+        let mut script = String::new();
+        for e in &m.items {
+            let rname = self.store.ref_name(e.item.n);
+            if whole.iter().any(|w| w.item.n == e.item.n) {
+                script.push_str(&format!("update {rname} {}\n", e.commit));
+            } else {
+                script.push_str(&format!("delete {rname}\n"));
+            }
+        }
+        let input = self
+            .store
+            .sdir
+            .join(format!(".checkpoint.info.{}", rand_hex()));
+        let done = fs::write(&input, script).is_ok()
+            && time_left(end)
+                .and_then(|l| {
+                    exec_within(&plain, &["update-ref", "--stdin"], Some(&input), ERR_CAP, l).ok()
+                })
+                .is_some_and(|o| o.status.success());
+        let _ = fs::remove_file(input);
+        if done {
+            whole
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn pull_objects(&self, common: &str, commits: &[&str], end: Instant) -> Result<(), CpError> {
         let off = [
             ("core.commitGraph".to_string(), "false"),
             ("core.multiPackIndex".to_string(), "false"),
             ("pack.useBitmaps".to_string(), "false"),
-            ("repack.writeBitmaps".to_string(), "false"),
         ];
         let sdir = &self.store.sdir;
-        let g = private_git(sdir, NO_EXCLUDES, &off).env(
+        let limit = time_left(end).ok_or_else(|| CpError::Failed("migration timed out".into()))?;
+        let src = private_git(sdir, NO_EXCLUDES, &off).env(
             "GIT_ALTERNATE_OBJECT_DIRECTORIES",
             &format!("{common}/objects"),
         );
-        let mut kept = Vec::new();
-        for e in &m.items {
-            let rname = self.store.ref_name(e.item.n);
-            if valid_oid(&e.commit) && text(&g, &["update-ref", &rname, &e.commit]).is_ok() {
-                kept.push(e.clone());
-            }
+        let mut pack_cmd = src.command();
+        pack_cmd.args(["pack-objects", "--revs", "--stdout", "-q"]);
+        let mut pack = Proc::spawn_within(pack_cmd, limit)?;
+        let mut index_cmd = private_git(sdir, NO_EXCLUDES, &[]).command();
+        index_cmd.args([
+            "index-pack",
+            "--stdin",
+            "--strict",
+            "--fix-thin",
+            &format!("--max-input-size={PACK_CAP}"),
+        ]);
+        let mut index = Proc::spawn_within(index_cmd, limit)?;
+        let (Some(mut pack_in), Some(mut pack_out), Some(pack_err)) = (
+            pack.child.stdin.take(),
+            pack.child.stdout.take(),
+            pack.child.stderr.take(),
+        ) else {
+            return Err(CpError::Failed("pack-objects pipes missing".into()));
+        };
+        let (Some(mut index_in), Some(index_out), Some(index_err)) = (
+            index.child.stdin.take(),
+            index.child.stdout.take(),
+            index.child.stderr.take(),
+        ) else {
+            return Err(CpError::Failed("index-pack pipes missing".into()));
+        };
+        let (pack_err, index_err) = (drain_err(pack_err), drain_err(index_err));
+        let index_out = drain_err(index_out);
+        for c in commits {
+            let _ = writeln!(pack_in, "{c}");
         }
-        text(&g, &["repack", "-a", "-d", "-q"])?;
-        let plain = private_git(sdir, NO_EXCLUDES, &[]);
-        let mut whole = Vec::new();
-        for e in kept {
-            let spec = format!("{}^{{tree}}", e.commit);
-            let present = exec(&plain, &["cat-file", "-e", &spec], None, ERR_CAP)?;
-            if present.status.success() {
-                whole.push(e);
-            } else {
-                let _ = text(
-                    &plain,
-                    &["update-ref", "-d", &self.store.ref_name(e.item.n)],
-                );
-            }
+        drop(pack_in);
+        let copied = io::copy(&mut pack_out, &mut index_in);
+        drop(pack_out);
+        drop(index_in);
+        let (pack_status, index_status) = (pack.wait()?, index.wait()?);
+        let _ = index_out.join();
+        let (pack_err, index_err) = (
+            pack_err.join().unwrap_or_default(),
+            index_err.join().unwrap_or_default(),
+        );
+        if copied.is_ok() && pack_status.success() && index_status.success() {
+            return Ok(());
         }
-        let _ = fs::remove_file(self.store.cache_path());
-        let refs_of = m.refs_of.take();
-        m.items = whole;
-        m.private = true;
-        m.common_dir = None;
-        self.store.save(m)?;
-        self.store.delete_legacy_refs(refs_of.as_deref(), &common);
-        Ok(())
+        Err(CpError::Failed(format!(
+            "cannot copy checkpoint objects: {} {}",
+            String::from_utf8_lossy(&pack_err).trim(),
+            String::from_utf8_lossy(&index_err).trim()
+        )))
     }
 
     fn stage(&self, f: &Facts) -> Result<(String, PathBuf), CpError> {
@@ -1320,7 +1550,17 @@ impl<'a> Op<'a> {
             _ => NO_EXCLUDES.to_string(),
         };
         let index = p.join("tmgr-index");
-        copy(&f.gitdir.join("index"), &index, INDEX_CAP);
+        let hash_len = if f.format == "sha256" { 32 } else { 20 };
+        let shared = match read_capped(&f.gitdir.join("index"), INDEX_CAP) {
+            Some(data) => {
+                let _ = fs::write(&index, &data);
+                shared_index_id(&data, hash_len)
+            }
+            None => {
+                let _ = fs::remove_file(&index);
+                None
+            }
+        };
         if let Ok(list) = fs::read_dir(&p) {
             for e in list.flatten() {
                 if e.file_name().to_string_lossy().starts_with("sharedindex.") {
@@ -1328,15 +1568,11 @@ impl<'a> Op<'a> {
                 }
             }
         }
-        for dir in [&f.gitdir, &f.common] {
-            let Ok(list) = fs::read_dir(dir) else {
-                continue;
-            };
-            for e in list.flatten() {
-                let name = e.file_name();
-                let shared = name.to_string_lossy().starts_with("sharedindex.");
-                if shared && !p.join(&name).exists() {
-                    copy(&e.path(), &p.join(&name), INDEX_CAP);
+        if let Some(id) = shared {
+            let name = format!("sharedindex.{id}");
+            for dir in [&f.gitdir, &f.common] {
+                if copy_capped(&dir.join(&name), &p.join(&name), INDEX_CAP) {
+                    break;
                 }
             }
         }
@@ -1541,8 +1777,10 @@ impl<'a> Op<'a> {
             for d in dropped {
                 let _ = text(&g, &["update-ref", "-d", &self.store.ref_name(d)]);
             }
-            let _ = text(&g, &["repack", "-a", "-d", "-q"]);
-            let _ = text(&g, &["prune", "--expire=now"]);
+            if self.pack_count() > PACK_LIMIT {
+                let _ = text(&g, &["repack", "-a", "-d", "-q"]);
+                let _ = text(&g, &["prune", "--expire=now"]);
+            }
         }
         Ok(item)
     }
@@ -2170,6 +2408,7 @@ mod tests {
                 xdg: Some(self.xdg.clone().into_os_string()),
                 max_file: MAX_FILE,
                 max_total: MAX_TOTAL,
+                migrate_deadline: MIGRATE_DEADLINE,
                 after_before: None,
                 after_temp: None,
             }
@@ -2962,7 +3201,7 @@ mod tests {
         let mut st = fx.store();
         st.keep = 3;
         let mut blobs = Vec::new();
-        for i in 0..6 {
+        for i in 0..=PACK_LIMIT + 3 {
             let data = format!("content {i}");
             let args = ["hash-object", "--stdin"];
             let (_, oid) = pg_in(&fx.repo, &fx.home, &args, data.as_bytes());
@@ -2983,8 +3222,30 @@ mod tests {
         };
         assert!(!has(&blobs[0]));
         assert!(!has(&blobs[2]));
-        assert!(has(&blobs[3]));
-        assert!(has(&blobs[5]));
+        assert!(has(&blobs[PACK_LIMIT + 3]));
+    }
+
+    #[test]
+    fn retention_leaves_a_small_store_alone() {
+        let fx = Fx::new();
+        let mut st = fx.store();
+        st.keep = 3;
+        let mut first = String::new();
+        for i in 0..6 {
+            let data = format!("content {i}");
+            if i == 0 {
+                let (_, oid) = pg_in(
+                    &fx.repo,
+                    &fx.home,
+                    &["hash-object", "--stdin"],
+                    data.as_bytes(),
+                );
+                first = String::from_utf8(oid).unwrap().trim().to_string();
+            }
+            fx.w("a", data.as_bytes());
+            snap(&fx, &st);
+        }
+        assert!(ppi(&fx, &["cat-file", "-e", &first], b"").0);
     }
 
     #[test]
@@ -3426,6 +3687,221 @@ mod tests {
         assert_eq!(ns, [2, 3]);
         st.restore_in(&fx.env(), 2).unwrap();
         assert_eq!(fx.r("a"), b"legacy2");
+    }
+
+    fn unhex(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    fn forge_swap(fx: &Fx, a: &str, b: &str) {
+        let pack_dir = fx.repo.join(".git/objects/pack");
+        let idx = fs::read_dir(&pack_dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .find(|p| p.extension().is_some_and(|x| x == "idx"))
+            .unwrap();
+        let mut data = fs::read(&idx).unwrap();
+        let n = u32::from_be_bytes(data[8 + 255 * 4..8 + 256 * 4].try_into().unwrap()) as usize;
+        let at = |oid: &[u8]| {
+            (0..n)
+                .find(|i| &data[1032 + i * 20..1052 + i * 20] == oid)
+                .unwrap()
+        };
+        let (pa, pb) = (at(&unhex(a)), at(&unhex(b)));
+        let offsets = 1032 + 24 * n;
+        let crcs = 1032 + 20 * n;
+        for k in 0..4 {
+            data.swap(offsets + 4 * pa + k, offsets + 4 * pb + k);
+            data.swap(crcs + 4 * pa + k, crcs + 4 * pb + k);
+        }
+        fs::set_permissions(&idx, fs::Permissions::from_mode(0o644)).unwrap();
+        fs::write(&idx, data).unwrap();
+    }
+
+    fn blob_oid(fx: &Fx, st: &Store, n: u64) -> String {
+        fx.pg(&["rev-parse", &format!("{}:a", commit_of(st, n))])
+    }
+
+    #[test]
+    fn migration_rejects_objects_whose_bytes_do_not_match_their_id() {
+        let fx = Fx::new();
+        fx.w("a", b"now");
+        let st = fx.store();
+        legacy_store(&fx, &st, S1);
+        fx.pg(&["gc", "-q", "--prune=now"]);
+        let (one, two) = (blob_oid(&fx, &st, 1), blob_oid(&fx, &st, 2));
+        forge_swap(&fx, &one, &two);
+        snap(&fx, &st);
+        assert!(ppi(&fx, &["fsck", "--strict"], b"").0);
+        for (n, want) in [(1, "legacy1"), (2, "legacy2")] {
+            if st.list().iter().any(|i| i.n == n) {
+                assert_eq!(blob_at(&fx, &commit_of(&st, n), "a"), want.as_bytes());
+            }
+        }
+        fx.w("a", b"legacy1");
+        snap(&fx, &st);
+        let last = st.list().last().unwrap().n;
+        fx.w("a", b"other");
+        st.restore_in(&fx.env(), last).unwrap();
+        assert_eq!(fx.r("a"), b"legacy1");
+    }
+
+    #[test]
+    fn migration_drops_only_the_items_with_missing_objects() {
+        let fx = Fx::new();
+        fx.w("a", b"now");
+        let st = fx.store();
+        legacy_store(&fx, &st, S1);
+        let blob = blob_oid(&fx, &st, 1);
+        let loose = fx
+            .repo
+            .join(".git/objects")
+            .join(&blob[..2])
+            .join(&blob[2..]);
+        fs::set_permissions(&loose, fs::Permissions::from_mode(0o644)).unwrap();
+        fs::remove_file(loose).unwrap();
+        snap(&fx, &st);
+        let m = st.load();
+        assert!(m.private && m.common_dir.is_none());
+        assert_eq!(st.list().iter().map(|i| i.n).collect::<Vec<_>>(), [2, 3]);
+        assert_eq!(refs_under(&fx, "refs/checkpoints").len(), 2);
+        st.restore_in(&fx.env(), 2).unwrap();
+        assert_eq!(fx.r("a"), b"legacy2");
+        assert!(session_refs(&fx, "refs/tmgr").is_empty());
+    }
+
+    #[test]
+    fn migration_past_its_deadline_drops_items_and_never_retries() {
+        let fx = Fx::new();
+        fx.w("a", b"now");
+        let st = fx.store();
+        legacy_store(&fx, &st, S1);
+        let env = Env {
+            migrate_deadline: Duration::ZERO,
+            ..fx.env()
+        };
+        st.snapshot_in(&env).unwrap().unwrap();
+        let m = st.load();
+        assert!(m.private && m.common_dir.is_none());
+        assert_eq!(st.list().iter().map(|i| i.n).collect::<Vec<_>>(), [3]);
+    }
+
+    #[test]
+    fn migration_of_an_unusable_session_directory_drops_items_and_saves() {
+        let fx = Fx::new();
+        fx.w("a", b"now");
+        let st = fx.store();
+        legacy_store(&fx, &st, S1);
+        let mut m = st.load();
+        m.common_dir = Some("relative/.git".into());
+        st.save(&m).unwrap();
+        snap(&fx, &st);
+        let m = st.load();
+        assert!(m.private && m.common_dir.is_none());
+        assert_eq!(st.list().iter().map(|i| i.n).collect::<Vec<_>>(), [3]);
+    }
+
+    #[test]
+    fn split_index_sessions_snapshot_and_restore_with_only_their_shared_index() {
+        let fx = Fx::new();
+        fx.w("a", b"1");
+        fx.w("b", b"1");
+        fx.commit_all("c");
+        fx.pg(&["update-index", "--split-index"]);
+        fx.w("a", b"2");
+        fx.pg(&["add", "a"]);
+        let stale = fx
+            .repo
+            .join(".git/sharedindex.0123456789012345678901234567890123456789");
+        fs::write(&stale, vec![0u8; 64]).unwrap();
+        let st = fx.store();
+        snap(&fx, &st);
+        let shared: Vec<_> = fs::read_dir(fx.sdir.join(PRIVATE))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with("sharedindex."))
+            .collect();
+        assert_eq!(shared.len(), 1);
+        assert!(!shared[0].ends_with("0123456789"));
+        fx.w("a", b"3");
+        st.restore_in(&fx.env(), 1).unwrap();
+        assert_eq!(fx.r("a"), b"2");
+    }
+
+    #[test]
+    fn transfer_of_legacy_checkpoints_replaces_a_private_store_at_the_destination() {
+        let fx = Fx::new();
+        fx.w("a", b"now");
+        let st = fx.store();
+        legacy_store(&fx, &st, S1);
+        let to = Store {
+            session: S2.to_string(),
+            sdir: fx.root.join("sdir2"),
+            ..fx.store()
+        };
+        fs::create_dir_all(to.sdir.join(PRIVATE)).unwrap();
+        fs::write(to.sdir.join(PRIVATE).join("junk"), b"x").unwrap();
+        fs::write(to.cache_path(), b"{}").unwrap();
+        st.transfer(&to).unwrap();
+        assert!(!to.sdir.join(PRIVATE).exists());
+        assert!(!to.cache_path().exists());
+        to.restore_in(&fx.env(), 1).unwrap();
+        assert_eq!(fx.r("a"), b"legacy1");
+    }
+
+    #[test]
+    fn an_unreadable_manifest_keeps_every_orphan_ref() {
+        let fx = Fx::new();
+        fx.w("a", b"now");
+        let gone = "s_gonegonego";
+        legacy_entry(&fx, gone, 1, b"g1");
+        let broken = fx.root.join("s_brokenbrok");
+        fs::create_dir_all(&broken).unwrap();
+        fs::write(broken.join(MANIFEST), b"{not json").unwrap();
+        let st = fx.store();
+        legacy_store(&fx, &st, S1);
+        snap(&fx, &st);
+        assert_eq!(
+            session_refs(&fx, "refs/tmgr"),
+            [format!("refs/tmgr/checkpoints/{gone}/1")]
+        );
+    }
+
+    #[test]
+    fn an_empty_private_store_in_another_object_format_is_recreated() {
+        let fx = Fx::new();
+        fx.w("a", b"1");
+        fs::create_dir_all(&fx.sdir).unwrap();
+        let wrong = fx.sdir.join(PRIVATE);
+        let (ok, _) = pg_env(
+            &fx.sdir,
+            &fx.home,
+            None,
+            &[
+                "init",
+                "--bare",
+                "-q",
+                "--object-format=sha256",
+                &wrong.to_string_lossy(),
+            ],
+            b"",
+        );
+        assert!(ok);
+        let st = fx.store();
+        snap(&fx, &st);
+        let fmt = pp(&fx.sdir, &fx.home, &["rev-parse", "--show-object-format"]);
+        assert_eq!(String::from_utf8_lossy(&fmt).trim(), "sha1");
+    }
+
+    #[test]
+    fn truthy_follows_git_booleans() {
+        let t = |v: &str| truthy(Some(&v.to_string()));
+        assert!(t("true") && t("Yes") && t("on") && t("1") && t("2") && t("-1") && t("1k"));
+        assert!(!t("false") && !t("0") && !t("") && !t("off") && !t("no"));
+        assert!(!truthy(None));
     }
 
     #[test]
