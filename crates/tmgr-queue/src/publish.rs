@@ -321,16 +321,17 @@ fn run(argv: &[String], cwd: &Path) -> Result<String> {
             Access::Read
         };
         view = workdir::host_view(cwd, access)?;
-        cmd = view.command();
+        let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+        cmd = view.prepared(&[], &argv).map_err(Error::internal)?;
     } else {
         scratch = tempfile::tempdir()
             .map_err(|e| Error::internal(format!("temporary directory: {e}")))?;
         cmd = Command::new(program);
         cmd.env_clear()
             .envs(publish_env(std::env::vars()))
-            .current_dir(scratch.path());
+            .current_dir(scratch.path())
+            .args(args);
     }
-    cmd.args(args);
     let out = workdir::output_within(&mut cmd, STEP_TIMEOUT)?;
     if !out.status.success() {
         let msg = String::from_utf8_lossy(&out.stderr);
@@ -965,7 +966,7 @@ mod tests {
     }
 
     #[test]
-    fn the_push_goes_to_the_planned_url_whatever_the_repository_config_says() {
+    fn a_push_to_a_local_path_is_refused_and_runs_nothing() {
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let repo = root.join("proj");
@@ -1016,13 +1017,11 @@ mod tests {
             std::os::unix::fs::PermissionsExt::from_mode(0o755),
         )
         .unwrap();
-        run(&argv, &repo).unwrap();
-        assert_eq!(
-            raw(&planned, &["rev-parse", "refs/heads/tmgr/tm-1-fix"]),
-            sha
-        );
-        let other_refs = raw(&other, &["for-each-ref"]);
-        assert!(other_refs.is_empty(), "{other_refs}");
+        let err = run(&argv, &repo).unwrap_err();
+        assert!(err.message.contains("not allowed"), "{}", err.message);
+        for bare in [&planned, &other] {
+            assert!(raw(bare, &["for-each-ref"]).is_empty());
+        }
         assert_eq!(std::fs::read_dir(&marks).unwrap().count(), 0);
     }
 

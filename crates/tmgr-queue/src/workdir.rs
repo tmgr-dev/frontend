@@ -553,8 +553,9 @@ pub(crate) fn repo_git_bytes(
     input: Option<Vec<u8>>,
 ) -> Result<Vec<u8>> {
     let view = host_view(repo, Access::Read)?;
-    let mut cmd = view.command();
-    cmd.args(["-c", "core.quotepath=off"]).args(args);
+    let mut cmd = view
+        .prepared(&["-c", "core.quotepath=off"], args)
+        .map_err(Error::internal)?;
     let out = output_within_input(&mut cmd, GIT_TIMEOUT, input)?;
     if !out.status.success() {
         let msg = String::from_utf8_lossy(&out.stderr);
@@ -922,7 +923,7 @@ fn make_clone(repo: &str, dest: &Path, checkout: &dyn Fn(&Path) -> Result<()>) -
 pub fn remote_branch_head(repo: &str, branch: &str) -> Result<Option<String>> {
     validate_branch(branch)?;
     let reference = format!("refs/heads/{branch}");
-    let view = host_view(Path::new(repo), Access::Network)?;
+    let view = host_view(Path::new(repo), remote_access())?;
     let url = origin_of(&view)?;
     let out = view
         .run(&["ls-remote", "--", url, &reference])
@@ -932,6 +933,19 @@ pub fn remote_branch_head(repo: &str, branch: &str) -> Result<Option<String>> {
         .filter_map(|l| l.split_once('\t'))
         .find(|(_, r)| *r == reference)
         .map(|(sha, _)| sha.to_string()))
+}
+
+#[cfg(test)]
+thread_local! {
+    static LOCAL_REMOTES: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn remote_access() -> Access {
+    #[cfg(test)]
+    if LOCAL_REMOTES.with(|c| c.get()) {
+        return Access::Write;
+    }
+    Access::Network
 }
 
 fn origin_of(view: &HostView) -> Result<&str> {
@@ -966,7 +980,7 @@ pub fn prepare_continue_clone(repo: &str, dest: &Path, branch: &str, sha: &str) 
             .is_ok_and(|v| v.succeeds(&["cat-file", "-e", &commit]))
     };
     if !have(repo) {
-        let view = host_view(Path::new(repo), Access::Network)?;
+        let view = host_view(Path::new(repo), remote_access())?;
         let url = origin_of(&view)?;
         view.run(&[
             "fetch",
@@ -2419,6 +2433,10 @@ mod tests {
         repo.to_string_lossy().into_owned()
     }
 
+    fn local_remotes() {
+        LOCAL_REMOTES.with(|c| c.set(true));
+    }
+
     fn push_branch_commit(repo: &str, branch: &str, file: &str) -> String {
         let repo = Path::new(repo);
         run_git(repo, &["checkout", "-q", "-B", branch]);
@@ -2431,6 +2449,7 @@ mod tests {
 
     #[test]
     fn a_continuation_clone_starts_at_the_saved_commit_on_the_task_branch() {
+        local_remotes();
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let repo = repo_with_origin(&root, "proj");
@@ -2457,6 +2476,7 @@ mod tests {
 
     #[test]
     fn a_branch_that_moved_or_vanished_on_the_remote_is_refused_and_leaves_no_clone() {
+        local_remotes();
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let repo = repo_with_origin(&root, "proj");
@@ -2494,6 +2514,7 @@ mod tests {
 
     #[test]
     fn a_multi_repository_continuation_resumes_pushed_repos_and_starts_the_rest_fresh() {
+        local_remotes();
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let a = repo_with_origin(&root, "alpha");
@@ -2540,6 +2561,7 @@ mod tests {
 
     #[test]
     fn a_saved_commit_whose_remote_branch_vanished_is_refused_never_cloned_fresh() {
+        local_remotes();
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let a = repo_with_origin(&root, "alpha");
@@ -3455,6 +3477,7 @@ mod tests {
 
     #[test]
     fn the_remote_branch_is_read_from_the_origin_url_without_repository_config() {
+        local_remotes();
         let (_tmp, root) = canon_tmp();
         let repo = repo_at(&root, "proj");
         let bare = bare_origin(&root, &repo);
@@ -3481,6 +3504,7 @@ mod tests {
 
     #[test]
     fn continuing_fetches_the_saved_commit_from_the_origin_url_without_repository_config() {
+        local_remotes();
         let (_tmp, root) = canon_tmp();
         let repo = repo_at(&root, "proj");
         let bare = bare_origin(&root, &repo);
@@ -3500,5 +3524,20 @@ mod tests {
         assert!(dest.join("late.txt").is_file());
         assert_eq!(raw(&dest, &["rev-parse", "HEAD"]), sha);
         assert_quiet(&marks);
+    }
+
+    #[test]
+    fn a_local_origin_is_not_used_for_the_remote_head_or_a_fetch() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let bare = bare_origin(&root, &repo);
+        let r = repo.to_string_lossy().into_owned();
+        let err = remote_branch_head(&r, "main").unwrap_err();
+        assert!(err.message.contains("not allowed"), "{}", err.message);
+        let dest = run_clone_dir(&r, "tm-8-fix").unwrap();
+        let sha = raw(&repo, &["rev-parse", "HEAD"]);
+        assert!(prepare_continue_clone(&r, &dest, "tm-8-fix", &sha).is_err());
+        assert!(!dest.exists());
+        assert!(bare.is_dir());
     }
 }
