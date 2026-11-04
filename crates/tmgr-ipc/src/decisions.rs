@@ -14,7 +14,14 @@ pub const SOCK: &str = "decisions.sock";
 pub const TOKEN: &str = "decisions.token";
 pub const DB: &str = "decisions.db";
 pub const INBOX: &str = "inbox";
-pub const MAX_LINE: usize = 1 << 20;
+pub const MAX_LINE: usize = 4 << 20;
+pub const MAX_DIFFS: usize = 8;
+pub const MAX_PATCHES: usize = 8;
+pub const MAX_PATCH_BYTES: usize = 1 << 20;
+pub const MAX_LINKS: usize = 50;
+pub const OUTCOME_CREATED: &str = "created";
+pub const OUTCOME_UPDATED: &str = "updated";
+pub const OUTCOME_FINAL: &str = "final";
 pub const MAX_WAIT_MS: u64 = 3_600_000;
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
 const IO_GRACE: Duration = Duration::from_secs(10);
@@ -105,6 +112,23 @@ pub struct Links {
     pub task: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pr: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub items: Vec<LinkItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LinkItem {
+    pub kind: String,
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PatchIn {
+    #[serde(default)]
+    pub label: String,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -128,6 +152,14 @@ pub struct CardIn {
     pub options: Vec<Opt>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diff: Option<DiffSpec>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub diffs: Vec<DiffSpec>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub patches: Vec<PatchIn>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replaces: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub checks: Vec<Check>,
     #[serde(default)]
@@ -238,6 +270,8 @@ pub struct Response {
     pub closed: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<String>,
 }
 
 impl Response {

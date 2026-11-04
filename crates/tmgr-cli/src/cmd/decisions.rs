@@ -285,9 +285,11 @@ impl Spec {
             links: Links {
                 task: self.task,
                 pr: self.pr,
+                ..Default::default()
             },
             reply_via: reply_via.to_string(),
             supersede: false,
+            ..Default::default()
         })
     }
 }
