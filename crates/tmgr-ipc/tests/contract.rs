@@ -138,6 +138,7 @@ fn origin() -> Origin {
 fn session_info() -> SessionInfo {
     SessionInfo {
         team: None,
+        agent_session_id: None,
         id: SID.into(),
         name: "fix login".into(),
         argv: vec![
@@ -459,6 +460,13 @@ fn method_params_and_results() {
         },
     );
     golden(
+        "session_info_agent_session_id",
+        &SessionInfo {
+            agent_session_id: Some("2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b".into()),
+            ..session_info()
+        },
+    );
+    golden(
         "lookup_params",
         &LookupParams {
             start_key: "q_abc-1".into(),
@@ -594,6 +602,7 @@ fn method_params_and_results() {
         "session_info_notask",
         &SessionInfo {
             team: None,
+            agent_session_id: None,
             id: SID.into(),
             name: "sh".into(),
             argv: vec!["/bin/sh".into()],
@@ -1004,7 +1013,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 36);
+    assert_eq!(w.caps.len(), 37);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1526,6 +1535,7 @@ fn full_req() -> RunCreateReq {
 fn full_info() -> SessionInfo {
     SessionInfo {
         team: None,
+        agent_session_id: None,
         permission_cards: false,
         id: "s_abcdefghij".into(),
         name: "n".into(),

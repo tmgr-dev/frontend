@@ -313,6 +313,8 @@ pub struct SessionInfo {
     pub permission_cards: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub team: Option<TeamLink>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_session_id: Option<String>,
 }
 
 /// Params of `runs.lookup`.

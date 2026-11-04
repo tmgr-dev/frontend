@@ -5123,6 +5123,235 @@ fn a_no_sandbox_run_that_fails_to_start_leaves_the_real_home_alone() {
     assert!(fx.h.client().list().unwrap().is_empty());
 }
 
+const EXT_ID: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
+
+struct ExtFx {
+    h: Harness,
+    work: PathBuf,
+}
+
+fn ext_fx(templates: bool) -> ExtFx {
+    let mut fx = bare_fx(Vec::new());
+    let script = fx.h.script("ext.sh", "sleep 30\n");
+    let resume = if templates {
+        "[resume]\nargs = [\"--continue\"]\nby_id = [\"--resume\", \"{resume_id}\"]\n\
+         fork_by_id = [\"--resume\", \"{resume_id}\", \"--fork-session\"]\n"
+    } else {
+        ""
+    };
+    fs::write(
+        fx.h.agents.join("ext.toml"),
+        format!(
+            "id = \"ext\"\nname = \"ext\"\ncommand = [\"/bin/sh\", {script:?}]\n\
+             [permission_modes]\nask = [\"--ask\"]\nbypass = [\"--yolo\"]\n{resume}"
+        ),
+    )
+    .unwrap();
+    fx.h.start(5000);
+    let work = fs::canonicalize(&fx.h.work).unwrap();
+    ExtFx { h: fx.h, work }
+}
+
+impl ExtFx {
+    fn req(&self, fork: bool) -> RunCreateReq {
+        let mut r = self.h.run_req("ext");
+        r.cwd = self.work.display().to_string();
+        r.no_sandbox = Some(tmgr_ipc::api::NoSandbox::default());
+        r.external_resume = Some(tmgr_ipc::api::ExternalResume {
+            id: EXT_ID.into(),
+            fork,
+        });
+        r
+    }
+}
+
+#[test]
+fn external_resume_and_fork_start_from_the_profile_template_in_the_real_home() {
+    if !sessions_available() {
+        return;
+    }
+    for (fork, mode, want) in [
+        (false, None, vec!["--ask", "--resume", EXT_ID]),
+        (false, Some("bypass"), vec!["--yolo", "--resume", EXT_ID]),
+        (
+            true,
+            None,
+            vec!["--ask", "--resume", EXT_ID, "--fork-session"],
+        ),
+        (
+            true,
+            Some("bypass"),
+            vec!["--yolo", "--resume", EXT_ID, "--fork-session"],
+        ),
+    ] {
+        let fx = ext_fx(true);
+        let mut req = fx.req(fork);
+        req.permission_mode = mode.map(str::to_string);
+        let info = fx.h.client().create_run(req).unwrap();
+        assert!(info.no_sandbox);
+        assert_eq!(info.permission_mode.as_deref(), Some(mode.unwrap_or("ask")));
+        let expected = if fork { None } else { Some(EXT_ID) };
+        assert_eq!(info.agent_session_id.as_deref(), expected);
+        assert_eq!(info.argv[2..], want);
+        assert_eq!(info.cwd, fx.work.display().to_string());
+        let raw = fs::read_to_string(
+            fx.h.run
+                .join("sessions")
+                .join(&info.id)
+                .join("worklog.jsonl"),
+        )
+        .unwrap();
+        let created: Value = serde_json::from_str(raw.lines().next().unwrap()).unwrap();
+        assert_eq!(created["mode"], mode.unwrap_or("ask"));
+        assert_eq!(created["sandbox"], "off");
+        let _ = fx.h.client().kill(&info.id, "kill");
+    }
+}
+
+#[test]
+fn external_resume_is_refused_unless_every_condition_holds() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = ext_fx(true);
+    let cloud = tmgr_ipc::api::CloudApproval {
+        repos_sha256: None,
+        persona_sha256: None,
+        context_sha256: None,
+        host: "api.tmgr.dev".into(),
+        user_id: 1,
+        workspace_id: 56,
+        task_id: 9002,
+        category_id: 127,
+        content_sha256: "0".repeat(64),
+        key_id: "k".into(),
+        signed_at: 1,
+        signature: "s".into(),
+        kind: "author".into(),
+    };
+    let mut no_sandbox = fx.req(false);
+    no_sandbox.no_sandbox = None;
+    let mut unattended = fx.req(false);
+    unattended.unattended = true;
+    let mut origin = fx.req(false);
+    origin.origin = Some(Origin {
+        link: "laptop".into(),
+        generation: 1,
+    });
+    let mut keyed = fx.req(false);
+    keyed.start_key = Some("q_ext-1".into());
+    let mut cloned = fx.req(false);
+    cloned.clones = vec![tmgr_ipc::api::CloneSpec {
+        name: "a".into(),
+        clone_of: fx.work.display().to_string(),
+    }];
+    let mut team = fx.req(false);
+    team.team = Some(tmgr_ipc::api::TeamLink {
+        role: tmgr_ipc::api::TeamRole::Lead,
+        of: "t1".into(),
+    });
+    let mut work = fx.req(false);
+    work.agent_work = true;
+    let mut cloudy = fx.req(false);
+    cloudy.cloud = Some(cloud);
+    let mut trusted = fx.req(false);
+    trusted.trust_cwd = Some(true);
+    let mut tasked = fx.req(false);
+    tasked.task = Some(TaskRef {
+        workspace_id: 1,
+        task_id: 2,
+    });
+    for (name, client, req) in [
+        ("no_sandbox", "cli", no_sandbox),
+        ("unattended", "cli", unattended),
+        ("origin", "worker", origin),
+        ("start_key", "cli", keyed),
+        ("clones", "cli", cloned),
+        ("team", "cli", team),
+        ("agent_work", "cli", work),
+        ("cloud", "cli", cloudy),
+        ("trust_cwd", "cli", trusted),
+        ("task", "cli", tasked),
+        ("desktop", "desktop", fx.req(false)),
+        ("worker", "worker", fx.req(false)),
+    ] {
+        let mut c = Client::connect_as(&fx.h.run, client).unwrap();
+        let e = err_text(c.create_run(req));
+        assert!(e.starts_with("forbidden: "), "{name}: {e}");
+    }
+    assert!(fx.h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn external_resume_refusals_name_the_missing_condition() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = ext_fx(true);
+    let mut no_sandbox = fx.req(false);
+    no_sandbox.no_sandbox = None;
+    let e = err_text(fx.h.client().create_run(no_sandbox));
+    assert!(e.contains("external_resume needs no_sandbox"), "{e}");
+    let mut keyed = fx.req(false);
+    keyed.start_key = Some("q_ext-1".into());
+    let e = err_text(fx.h.client().create_run(keyed));
+    assert!(
+        e.contains("external_resume is accepted only for a manual run"),
+        "{e}"
+    );
+    let mut work = fx.req(false);
+    work.agent_work = true;
+    let e = err_text(fx.h.client().create_run(work));
+    assert!(e.contains("not accepted for link, queue, cloud"), "{e}");
+    let mut pinned = fx.req(false);
+    pinned.argv_sha256 = Some("a".repeat(64));
+    let e = err_text(fx.h.client().create_run(pinned));
+    assert!(e.contains("not accepted for link, queue, cloud"), "{e}");
+}
+
+#[test]
+fn external_resume_checks_the_id_the_template_and_the_folder() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = ext_fx(true);
+    for bad in [
+        "--foo",
+        "$(x)",
+        "not-a-uuid",
+        "",
+        "2F0E1C3A-5B7D-4E8F-9A1B-3C4D5E6F7A8B",
+    ] {
+        let mut req = fx.req(false);
+        req.external_resume.as_mut().unwrap().id = bad.into();
+        let e = err_text(fx.h.client().create_run(req));
+        assert!(
+            e.starts_with("invalid_params: ") && e.contains("invalid agent session id"),
+            "{bad:?}: {e}"
+        );
+    }
+    let mut missing = fx.req(false);
+    missing.cwd = fx.work.join("gone").display().to_string();
+    let e = err_text(fx.h.client().create_run(missing));
+    assert!(e.contains("cwd must be an existing directory"), "{e}");
+    let link = fx.work.parent().unwrap().join("via-link");
+    std::os::unix::fs::symlink(&fx.work, &link).unwrap();
+    let mut linked = fx.req(false);
+    linked.cwd = link.display().to_string();
+    let e = err_text(fx.h.client().create_run(linked));
+    assert!(e.contains("cwd must be given as its resolved path"), "{e}");
+    assert!(fx.h.client().list().unwrap().is_empty());
+    let bare = ext_fx(false);
+    for fork in [false, true] {
+        let e = err_text(bare.h.client().create_run(bare.req(fork)));
+        assert!(
+            e.starts_with("forbidden: ") && e.contains("cannot"),
+            "fork={fork}: {e}"
+        );
+    }
+    assert!(bare.h.client().list().unwrap().is_empty());
+}
+
 const MULTI_TASK: TaskRef = TaskRef {
     workspace_id: 56,
     task_id: 9100,

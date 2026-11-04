@@ -994,6 +994,116 @@ idle = ['^> $']
     }
 
     #[test]
+    fn builtin_agents_resume_and_fork_by_id_full_vectors() {
+        let (set, _) = ProfileSet::load(None);
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let claude = set.get("claude-code").unwrap();
+        let codex = set.get("codex").unwrap();
+        let ask = |p: &Profile| p.permission_args("ask").unwrap().to_vec();
+        let bypass = |p: &Profile| p.bypass_args().unwrap().to_vec();
+
+        let argv = |p: &Profile, fork: bool, extra: &[String]| {
+            let made = if fork {
+                p.fork_argv_by_id(None, extra, U)
+            } else {
+                p.resume_argv_by_id(None, extra, U)
+            };
+            made.unwrap().unwrap()
+        };
+
+        assert_eq!(
+            argv(claude, false, &bypass(claude)),
+            v(&[
+                "claude",
+                "--permission-mode",
+                "bypassPermissions",
+                "--resume",
+                U
+            ])
+        );
+        assert_eq!(
+            argv(claude, true, &bypass(claude)),
+            v(&[
+                "claude",
+                "--permission-mode",
+                "bypassPermissions",
+                "--resume",
+                U,
+                "--fork-session"
+            ])
+        );
+        assert_eq!(
+            argv(claude, false, &ask(claude)),
+            v(&["claude", "--permission-mode", "manual", "--resume", U])
+        );
+        assert_eq!(
+            argv(claude, true, &ask(claude)),
+            v(&[
+                "claude",
+                "--permission-mode",
+                "manual",
+                "--resume",
+                U,
+                "--fork-session"
+            ])
+        );
+        assert_eq!(
+            argv(codex, false, &bypass(codex)),
+            v(&[
+                "codex",
+                "resume",
+                U,
+                "--no-daemon",
+                "--dangerously-bypass-approvals-and-sandbox"
+            ])
+        );
+        assert_eq!(
+            argv(codex, true, &bypass(codex)),
+            v(&[
+                "codex",
+                "fork",
+                U,
+                "--no-daemon",
+                "--dangerously-bypass-approvals-and-sandbox"
+            ])
+        );
+        assert_eq!(
+            argv(codex, false, &ask(codex)),
+            v(&[
+                "codex",
+                "resume",
+                U,
+                "--no-daemon",
+                "--ask-for-approval",
+                "on-request"
+            ])
+        );
+        assert_eq!(
+            argv(codex, true, &ask(codex)),
+            v(&[
+                "codex",
+                "fork",
+                U,
+                "--no-daemon",
+                "--ask-for-approval",
+                "on-request"
+            ])
+        );
+        for p in [claude, codex] {
+            for bad in [
+                "--foo",
+                "$(x)",
+                "not-a-uuid",
+                "",
+                "2F0E1C3A-5B7D-4E8F-9A1B-3C4D5E6F7A8B",
+            ] {
+                assert!(p.resume_argv_by_id(None, &[], bad).is_err(), "{bad:?}");
+                assert!(p.fork_argv_by_id(None, &[], bad).is_err(), "{bad:?}");
+            }
+        }
+    }
+
+    #[test]
     fn launch_fields_are_validated() {
         for bad in [
             "[resume]\nargs = []\n",

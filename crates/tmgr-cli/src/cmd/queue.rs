@@ -1942,6 +1942,15 @@ mod run_request_tests {
     }
 
     #[test]
+    fn a_queue_request_never_carries_an_external_resume() {
+        let req = run_create_req(&start_request());
+        assert_eq!(req.external_resume, None);
+        assert_eq!(req.no_sandbox, None);
+        let v = serde_json::to_value(&req).unwrap();
+        assert!(v.get("external_resume").is_none());
+    }
+
+    #[test]
     fn a_multi_request_sends_the_clones_and_no_clone_of() {
         let mut req = start_request();
         req.clones = vec![

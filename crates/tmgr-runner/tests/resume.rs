@@ -8,7 +8,8 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
-    CreateReq, RunCreateReq, SessionInfo, StateKind, CLIENT_CLI, CLIENT_DESKTOP, CLIENT_WORKER,
+    CreateReq, NoSandbox, ResumeParams, RunCreateReq, SessionInfo, StateKind, CLIENT_CLI,
+    CLIENT_DESKTOP, CLIENT_WORKER,
 };
 use tmgr_runner::client::Client;
 use tmgr_runner::restore;
@@ -490,7 +491,7 @@ fn link_bypass_expired_and_unpinned_queue_records_are_refused() {
     let mut h = H::full();
     h.start();
     h.announce(&claude_exit(U1));
-    let cases: [(&str, Edit); 4] = [
+    let cases: [(&str, Edit); 3] = [
         (
             "started over a link",
             Box::new(|i| {
@@ -501,7 +502,6 @@ fn link_bypass_expired_and_unpinned_queue_records_are_refused() {
             }),
         ),
         ("bypass", Box::new(|i| i.bypass = true)),
-        ("older than 7 days", Box::new(|i| i.created_ms = 1)),
         ("queue the task again", Box::new(|i| i.keyed = Some(true))),
     ];
     for (needle, edit) in cases {
@@ -1584,4 +1584,357 @@ fn a_clone_without_shared_object_files_resumes_as_before() {
         fs::read_to_string(c.clone.join("wip.txt")).unwrap(),
         "unsaved"
     );
+}
+
+const FLAGGED: &str =
+    "[resume]\nargs = [\"--resumed\"]\nby_id = [\"--resume-id\", \"{resume_id}\"]\n\
+    [permission_modes]\nask = [\"--ask\"]\nbypass = [\"--yolo\"]\n";
+
+#[derive(Clone, Copy)]
+struct Was {
+    no_sandbox: bool,
+    bypass: bool,
+}
+
+impl H {
+    fn finished(&self, was: Was) -> SessionInfo {
+        let mut req = self.req();
+        req.cwd = fs::canonicalize(&self.work).unwrap().display().to_string();
+        if was.bypass {
+            req.permission_mode = Some("bypass".into());
+        }
+        if was.no_sandbox {
+            req.no_sandbox = Some(NoSandbox::default());
+        }
+        let s = self.client().create_run(req).unwrap();
+        let _ = self.client().kill(&s.id, "term");
+        self.wait_exited(&s.id);
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while restore::group_may_run(s.child_pid, None, None) && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(50));
+        }
+        fs::write(self.sdir(&s.id).join("output.log"), claude_exit(U1)).unwrap();
+        s
+    }
+
+    fn resume_flags(
+        &self,
+        id: &str,
+        mode: Option<&str>,
+        no_sandbox: bool,
+    ) -> std::io::Result<tmgr_ipc::api::RestoredRun> {
+        self.client().resume_with(ResumeParams {
+            id: id.into(),
+            cols: 80,
+            rows: 24,
+            permission_mode: mode.map(str::to_string),
+            no_sandbox: no_sandbox.then(NoSandbox::default),
+        })
+    }
+}
+
+fn flagged_h() -> H {
+    let mut h = H::new(FLAGGED);
+    h.start();
+    h
+}
+
+#[test]
+fn flagged_resume_follows_the_sandbox_and_bypass_rules() {
+    if !sessions_available() {
+        return;
+    }
+    let h = flagged_h();
+    let plain = Was {
+        no_sandbox: false,
+        bypass: false,
+    };
+    let (bypass, ns, ns_bypass) = (
+        Was {
+            bypass: true,
+            ..plain
+        },
+        Was {
+            no_sandbox: true,
+            ..plain
+        },
+        Was {
+            no_sandbox: true,
+            bypass: true,
+        },
+    );
+    let refused: [(&str, Was, Option<&str>, bool, &str); 7] = [
+        (
+            "ns, no flags",
+            ns,
+            None,
+            false,
+            "resume it with --no-sandbox",
+        ),
+        (
+            "ns, mode only",
+            ns,
+            Some("bypass"),
+            false,
+            "resume it with --no-sandbox",
+        ),
+        (
+            "ns bypass, ns only",
+            ns_bypass,
+            None,
+            true,
+            "repeat with --mode bypass",
+        ),
+        ("sandboxed, ns", plain, None, true, "cannot be moved out"),
+        (
+            "sandboxed bypass, ns",
+            bypass,
+            Some("bypass"),
+            true,
+            "cannot be moved out",
+        ),
+        (
+            "bypass, no flags",
+            bypass,
+            None,
+            false,
+            "repeat with --mode bypass",
+        ),
+        (
+            "bypass, other mode",
+            bypass,
+            Some("ask"),
+            false,
+            "repeat with --mode bypass",
+        ),
+    ];
+    for (what, was, mode, no_sandbox, needle) in refused {
+        let s = h.finished(was);
+        let e = h
+            .resume_flags(&s.id, mode, no_sandbox)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.starts_with("forbidden: ") && e.contains(needle),
+            "{what}: {e}"
+        );
+        assert!(h.state_of(&s.id).is_some(), "{what}: session lost");
+        assert!(h.homes.join(&s.id).is_dir(), "{what}: home lost");
+        h.client().remove(&s.id).unwrap();
+    }
+
+    let s = h.finished(ns);
+    let r = h.resume_flags(&s.id, None, true).unwrap();
+    assert_eq!(r.via.as_deref(), Some("id"));
+    assert!(r.session.no_sandbox);
+    assert_eq!(r.session.agent_session_id.as_deref(), Some(U1));
+    assert_eq!(r.session.resumed_from.as_deref(), Some(s.id.as_str()));
+    assert_eq!(r.session.cwd, s.cwd);
+    assert_eq!(r.session.permission_mode.as_deref(), Some("ask"));
+    assert_eq!(r.session.argv[2..], ["--ask", "--resume-id", U1]);
+    h.client().remove(&r.session.id).ok();
+
+    let s = h.finished(ns_bypass);
+    let r = h.resume_flags(&s.id, Some("bypass"), true).unwrap();
+    assert!(r.session.no_sandbox);
+    assert_eq!(r.session.permission_mode.as_deref(), Some("bypass"));
+    assert_eq!(r.session.argv[2..], ["--yolo", "--resume-id", U1]);
+    h.client().remove(&r.session.id).ok();
+
+    let s = h.finished(plain);
+    let r = h.resume_flags(&s.id, Some("bypass"), false).unwrap();
+    assert!(!r.session.no_sandbox);
+    assert_eq!(r.session.agent_session_id, None);
+    assert_eq!(r.session.permission_mode.as_deref(), Some("bypass"));
+    assert_eq!(r.session.resumed_from.as_deref(), Some(s.id.as_str()));
+    assert!(r.session.argv.contains(&"--yolo".to_string()));
+    h.client().remove(&r.session.id).ok();
+
+    let s = h.finished(bypass);
+    let r = h.resume_flags(&s.id, Some("bypass"), false).unwrap();
+    assert_eq!(r.session.permission_mode.as_deref(), Some("bypass"));
+    h.client().remove(&r.session.id).ok();
+}
+
+#[test]
+fn flagged_resume_needs_the_agent_id_and_a_valid_mode() {
+    if !sessions_available() {
+        return;
+    }
+    let h = flagged_h();
+    let s = h.finished(Was {
+        no_sandbox: true,
+        bypass: false,
+    });
+    fs::write(h.sdir(&s.id).join("output.log"), "nothing to see\n").unwrap();
+    let e = h.resume_flags(&s.id, None, true).unwrap_err().to_string();
+    assert!(
+        e.starts_with("not_found: ") && e.contains("conversation id was not found"),
+        "{e}"
+    );
+    let e = h
+        .resume_flags(&s.id, Some("bogus"), true)
+        .unwrap_err()
+        .to_string();
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    assert!(h.state_of(&s.id).is_some());
+}
+
+#[test]
+fn flagged_resume_is_refused_for_link_queue_cloud_and_unattended_sessions() {
+    if !sessions_available() {
+        return;
+    }
+    let h = flagged_h();
+    let plain = Was {
+        no_sandbox: false,
+        bypass: false,
+    };
+    let cases: [(&str, Edit, &str); 5] = [
+        (
+            "origin",
+            Box::new(|i| {
+                i.origin = Some(tmgr_ipc::api::Origin {
+                    link: "laptop".into(),
+                    generation: 1,
+                })
+            }),
+            "started over a link",
+        ),
+        (
+            "agent_work",
+            Box::new(|i| i.agent_work = true),
+            "cannot be resumed with --mode or --no-sandbox",
+        ),
+        (
+            "keyed",
+            Box::new(|i| i.keyed = Some(true)),
+            "queue the task again",
+        ),
+        (
+            "clone_of",
+            Box::new(|i| i.clone_of = Some("/repo".into())),
+            "cannot be resumed with --mode or --no-sandbox",
+        ),
+        (
+            "unpinned queue",
+            Box::new(|i| {
+                i.keyed = Some(true);
+                i.agent_work = true;
+            }),
+            "queue the task again",
+        ),
+    ];
+    for (what, edit, needle) in cases {
+        for (mode, no_sandbox) in [
+            (Some("bypass"), false),
+            (None, true),
+            (Some("bypass"), true),
+        ] {
+            let s = h.finished(plain);
+            rewrite_relaunch(&h, &s.id, &edit);
+            let e = h
+                .resume_flags(&s.id, mode, no_sandbox)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                e.starts_with("forbidden: ") && e.contains(needle),
+                "{what} {mode:?} {no_sandbox}: {e}"
+            );
+            assert!(h.state_of(&s.id).is_some(), "{what}: session lost");
+            h.client().remove(&s.id).unwrap();
+        }
+    }
+}
+
+#[test]
+fn an_expired_session_resumes_only_while_its_home_exists_and_restore_still_refuses() {
+    if !sessions_available() {
+        return;
+    }
+    let h = flagged_h();
+    let plain = Was {
+        no_sandbox: false,
+        bypass: false,
+    };
+    let s = h.finished(plain);
+    rewrite_relaunch(&h, &s.id, |i| i.created_ms = 1);
+    let (mut intent, _) = restore::load_relaunch(&h.sdir(&s.id), &s.id).unwrap();
+    intent.pids.clear();
+    restore::record(&h.store(), &intent, None).unwrap();
+    let e = h.client().restore(&s.id).unwrap_err().to_string();
+    assert!(
+        e.starts_with("forbidden: ") && e.contains("older than 7 days"),
+        "{e}"
+    );
+    assert!(restore::load(&h.store(), &s.id).is_ok());
+    let r = h.client().resume(&s.id, 80, 24).unwrap();
+    assert_eq!(r.via.as_deref(), Some("id"));
+    assert_eq!(r.session.resumed_from.as_deref(), Some(s.id.as_str()));
+    assert!(!r.session.no_sandbox);
+    h.client().remove(&r.session.id).ok();
+
+    let gone = h.finished(plain);
+    rewrite_relaunch(&h, &gone.id, |i| i.created_ms = 1);
+    fs::remove_dir_all(h.homes.join(&gone.id)).unwrap();
+    let e = h.client().resume(&gone.id, 80, 24).unwrap_err().to_string();
+    assert!(
+        e.starts_with("not_found: ") && e.contains("run home of this expired session is gone"),
+        "{e}"
+    );
+    assert!(h.state_of(&gone.id).is_some());
+}
+
+#[test]
+fn restore_keeps_refusing_what_a_flagged_resume_accepts_and_the_result_is_never_restorable() {
+    if !sessions_available() {
+        return;
+    }
+    let h = flagged_h();
+    let was = Was {
+        no_sandbox: true,
+        bypass: true,
+    };
+    let s = h.finished(was);
+    let (mut intent, _) = restore::load_relaunch(&h.sdir(&s.id), &s.id).unwrap();
+    intent.pids.clear();
+    assert!(intent.no_sandbox && intent.bypass);
+    restore::record(&h.store(), &intent, None).unwrap();
+    let e = h.client().restore(&s.id).unwrap_err().to_string();
+    assert!(
+        e.starts_with("forbidden: ") && e.contains("without the sandbox"),
+        "{e}"
+    );
+    assert!(restore::load(&h.store(), &s.id).is_ok());
+    let r = h.resume_flags(&s.id, Some("bypass"), true).unwrap();
+    let (mut next, _) = restore::load_relaunch(&h.sdir(&r.session.id), &r.session.id).unwrap();
+    assert!(next.no_sandbox && next.bypass);
+    next.pids.clear();
+    assert_eq!(
+        restore::status(&next, next.created_ms, false),
+        restore::Status::NoSandbox
+    );
+    h.client().remove(&r.session.id).ok();
+
+    let s = h.finished(Was {
+        no_sandbox: false,
+        bypass: true,
+    });
+    let (mut intent, _) = restore::load_relaunch(&h.sdir(&s.id), &s.id).unwrap();
+    intent.pids.clear();
+    restore::record(&h.store(), &intent, None).unwrap();
+    let e = h.client().restore(&s.id).unwrap_err().to_string();
+    assert!(
+        e.starts_with("forbidden: ") && e.contains("bypass runs are never restored"),
+        "{e}"
+    );
+    let r = h.resume_flags(&s.id, Some("bypass"), false).unwrap();
+    let (mut next, _) = restore::load_relaunch(&h.sdir(&r.session.id), &r.session.id).unwrap();
+    assert!(next.bypass && !next.no_sandbox);
+    next.pids.clear();
+    assert_eq!(
+        restore::status(&next, next.created_ms, false),
+        restore::Status::Bypass
+    );
+    h.client().remove(&r.session.id).ok();
 }
