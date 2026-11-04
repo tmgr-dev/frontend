@@ -577,7 +577,13 @@ impl RemoteScratch {
                 "-c",
                 "core.alternateRefsCommand=true",
                 "-c",
-                "protocol.ext.allow=never",
+                "protocol.allow=never",
+                "-c",
+                "protocol.https.allow=always",
+                "-c",
+                "protocol.ssh.allow=always",
+                "-c",
+                "protocol.file.allow=always",
             ])
             .args(args);
         let out = output_within(&mut cmd, GIT_TIMEOUT)?;
@@ -1880,6 +1886,26 @@ mod tests {
         let sha = git(Some(repo), &["rev-parse", "HEAD"]).unwrap();
         run_git(repo, &["checkout", "-q", "main"]);
         sha
+    }
+
+    #[test]
+    fn the_remote_lookup_only_speaks_known_transports() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = repo_with_origin(&root, "proj");
+        let wip = push_branch_commit(&repo, "tmgr/tm-1-fix", "wip.txt");
+        assert_eq!(
+            remote_branch_head(&repo, "tmgr/tm-1-fix").unwrap(),
+            Some(wip)
+        );
+        run_git(
+            Path::new(&repo),
+            &["remote", "set-url", "origin", "tmgrtest::somewhere"],
+        );
+        let err = remote_branch_head(&repo, "tmgr/tm-1-fix")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not allowed"), "{err}");
     }
 
     #[test]
