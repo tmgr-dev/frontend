@@ -240,25 +240,22 @@ fn restore(ctx: &Ctx, key: &str, n: u64) -> Result<Output> {
     Ok(Output::new(json!({"id": s.id, "restored": r}), human))
 }
 
-pub fn enable_new(client: &mut Client, id: &str, flag: Option<bool>) -> Result<Option<String>> {
+pub fn enable_new(client: &mut Client, id: &str, flag: Option<bool>) -> Result<()> {
     let attach = tmgr_core::config::config_dir()
         .ok()
         .and_then(|d| tmgr_core::config::Config::load(&d).ok())
         .map(|c| c.attach)
         .unwrap_or_default();
     if !flag.or(attach.checkpoints).unwrap_or(false) {
-        return Ok(None);
+        return Ok(());
     }
     match client.checkpoints_enable(id, attach.checkpoints_keep) {
-        Ok(list) => Ok(list
-            .status
-            .note
-            .filter(|n| n == tmgr_runner::checkpoint::PAUSED_NOTE)),
+        Ok(_) => Ok(()),
         Err(e) if flag == Some(true) => Err(Error::usage(format!(
             "the session started, but checkpoints could not be turned on: {e}"
         ))
         .hint("restart the runner so it matches this tmgr version")),
-        Err(_) => Ok(None),
+        Err(_) => Ok(()),
     }
 }
 

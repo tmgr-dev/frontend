@@ -60,7 +60,9 @@ pub(super) fn act(cfg: &RunnerConfig, action: CpAction) -> CpMsg {
 
 pub(super) fn enable(cfg: &RunnerConfig, id: &str, flag: Option<bool>) -> Option<String> {
     let mut client = connect(cfg).ok()?;
-    enable_new(&mut client, id, flag).unwrap_or_else(|e| Some(checkpoints_error(&e.to_string())))
+    enable_new(&mut client, id, flag)
+        .err()
+        .map(|e| checkpoints_error(&e.to_string()))
 }
 
 #[cfg(test)]

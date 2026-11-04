@@ -1,5 +1,4 @@
 use super::*;
-use tmgr_runner::checkpoint::PAUSED_NOTE;
 
 const TURNS: &str = "echo v1 > f.txt; echo ready1; read a\n\
     echo v2 > f.txt; echo ready2; read b\nexit 0\n";
@@ -191,31 +190,18 @@ fn list_of_a_session_without_checkpoints_says_they_are_off() {
 }
 
 #[test]
-fn a_sandboxed_session_with_checkpoints_starts_and_says_they_are_paused() {
+fn a_sandboxed_session_records_checkpoints_outside_its_repository() {
     let e = Env::new();
     e.git_repo();
     fs::write(e.proj.join("f.txt"), "v1\n").unwrap();
     let script = e.script("agent.sh", TURNS);
-    let Some((id, stderr)) = e.run_cp_text(&script, &["--checkpoints"]) else {
+    let Some(id) = e.run_cp(&script, &["--checkpoints"]) else {
         return;
     };
-    assert!(stderr.contains(PAUSED_NOTE), "{stderr}");
     e.wait_waiting(&id);
-    let human = e.cp_out(&["checkpoints", "list", &id]);
-    assert!(human.status.success());
-    assert!(String::from_utf8_lossy(&human.stdout).contains(PAUSED_NOTE));
     let d = e.cp_data(&["checkpoints", "list", &id, "--json"]);
-    assert_eq!(d["status"]["note"], PAUSED_NOTE);
-    assert!(d["items"].as_array().unwrap().is_empty());
-    for args in [
-        vec!["checkpoints", "diff", &id, "1"],
-        vec!["checkpoints", "restore", &id, "1", "--yes"],
-    ] {
-        let out = e.cp_out(&args);
-        assert_eq!(out.status.code(), Some(2), "{args:?}: {}", out_text(&out));
-        assert!(out_text(&out).contains(PAUSED_NOTE), "{args:?}");
-    }
-    assert_eq!(fs::read_to_string(e.proj.join("f.txt")).unwrap(), "v1\n");
+    assert!(d["status"]["note"].is_null(), "{d}");
+    assert!(!d["items"].as_array().unwrap().is_empty(), "{d}");
     let refs = Command::new("git")
         .args(["for-each-ref", "refs/tmgr"])
         .current_dir(&e.proj)
