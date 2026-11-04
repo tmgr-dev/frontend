@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.77
+
+- Checkpoint hardening in the runner.
+
 ## 1.0.76
 
 - `tmgr runner gc` now collects a team run over several repositories: the run folder with the lead's and workers' clones, and the `queue-team/` branches in every repository of the run. If any clone in any repository has uncommitted or untracked changes, a commit that was not brought into its repository, or does not match what the run recorded, the whole team run is kept.
