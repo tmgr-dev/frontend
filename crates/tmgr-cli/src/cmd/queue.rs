@@ -2338,6 +2338,7 @@ mod team_add_tests {
             end_requested: false,
             ended_by_engine: false,
             kill_sent_at: None,
+            clones: Vec::new(),
         };
         let mut t = state::TeamState::new(3, TeamMode::Eco);
         t.members = vec![
