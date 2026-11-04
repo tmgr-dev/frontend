@@ -1577,7 +1577,7 @@ fn published_all<'a>(
         agent: t.agent.as_deref(),
         branch: &t.branch,
         audit: t.audit.as_deref(),
-        team: workdir::is_team_lead_clone(&t.clone_dir),
+        team: t.queue.as_ref().is_some_and(|q| q.team),
     }
 }
 
@@ -2064,10 +2064,12 @@ fn run_folders(primary: &str, t: &PublishTarget) -> Vec<PathBuf> {
         let dir = workdir::clone_dir(primary, &q.pickup_id)?;
         Some(if q.team { workdir::lead_dir(&dir) } else { dir })
     });
-    workdir::run_clone_dir(primary, &t.branch)
-        .into_iter()
-        .chain(queue)
-        .collect()
+    match &t.queue {
+        Some(_) => queue.into_iter().collect(),
+        None => workdir::run_clone_dir(primary, &t.branch)
+            .into_iter()
+            .collect(),
+    }
 }
 
 struct Staged {
@@ -3666,6 +3668,8 @@ mod tests {
             false
         )));
         assert!(!accepted(target(queue_dir.join("lead/x"), "q_1", true)));
+        let run_dir = workdir::run_clone_dir(&be.to_string_lossy(), "tmgr/tm-411").unwrap();
+        assert!(!accepted(target(run_dir, "q_1", false)));
         let mut plain = target(queue_dir, "q_1", false);
         plain.queue = None;
         assert!(!accepted(plain));
@@ -3677,10 +3681,10 @@ mod tests {
             "o/r".to_string(),
             "https://github.com/o/r/pull/1".to_string(),
         )];
-        let at = |dir: &str| PublishTarget {
+        let at = |team: bool| PublishTarget {
             workspace_code: "tmgrdev".into(),
             task_id: 1,
-            clone_dir: PathBuf::from(dir),
+            clone_dir: PathBuf::from("/w/be-worktrees/queue/q_1/lead"),
             branch: "tmgr/tm-1".into(),
             session_id: None,
             agent: Some("claude-code".into()),
@@ -3688,12 +3692,14 @@ mod tests {
             clones: Vec::new(),
             resume: BTreeMap::new(),
             audit: None,
-            queue: None,
+            queue: Some(QueueRun {
+                pickup_id: "q_1".into(),
+                team,
+            }),
         };
-        let team = |dir: &str| all_report(&published_all(&at(dir), 1, 2, &urls)).team;
-        assert!(team("/w/be-worktrees/queue/q_1/lead"));
-        assert!(!team("/w/be-worktrees/queue/q_1"));
-        assert!(!team("/w/be-worktrees/queue/q_1/w1"));
+        let team = |team: bool| all_report(&published_all(&at(team), 1, 2, &urls)).team;
+        assert!(team(true));
+        assert!(!team(false));
     }
 
     #[test]
