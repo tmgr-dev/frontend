@@ -118,6 +118,8 @@ pub struct Member {
     pub tip: Option<String>,
     #[serde(default)]
     pub exit_sent: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kill_sent_at: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

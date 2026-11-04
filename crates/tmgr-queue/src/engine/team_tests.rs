@@ -756,7 +756,61 @@ fn a_failed_kill_is_retried_on_the_next_pass() {
     fx.pass().unwrap();
     let killed = fx.runs.killed.borrow().clone();
     assert!(killed.contains(&"mock-2".to_string()) && killed.contains(&"mock-3".to_string()));
+    assert_eq!(live_workers(&fx), 2);
+}
+
+fn kills_of(fx: &Fx, run: &str) -> usize {
+    fx.runs.killed.borrow().iter().filter(|r| *r == run).count()
+}
+
+#[test]
+fn an_acknowledged_kill_does_not_end_a_worker_that_still_runs() {
+    let fx = working_team();
+    exit_run(&fx, "mock-1");
+    fx.pass().unwrap();
+    assert_eq!(kills_of(&fx, "mock-2"), 1);
+    assert_eq!(live_workers(&fx), 2);
+    assert!(needs_runner(&fx.paths).unwrap());
+    fx.pass().unwrap();
+    assert_eq!(kills_of(&fx, "mock-2"), 2, "the kill is sent again");
+    assert!(fx.runs.forced.borrow().is_empty());
+    assert_eq!(fx.audit_events("team_member_killed"), 2);
+    assert!(fx.publisher.calls.borrow().is_empty());
+}
+
+#[test]
+fn a_worker_that_outlives_the_grace_period_is_killed_by_force() {
+    let fx = working_team();
+    exit_run(&fx, "mock-1");
+    fx.pass().unwrap();
+    let mut st = state::load(&fx.paths).unwrap();
+    let old = (Utc::now() - chrono::Duration::seconds(crate::engine::team::KILL_GRACE_SECS + 5))
+        .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    for m in &mut st.pickups[0].team.as_mut().unwrap().members {
+        if m.kill_sent_at.is_some() {
+            m.kill_sent_at = Some(old.clone());
+        }
+    }
+    state::save(&fx.paths, &mut st).unwrap();
+    fx.pass().unwrap();
+    let forced = fx.runs.forced.borrow().clone();
+    assert!(forced.contains(&"mock-2".to_string()) && forced.contains(&"mock-3".to_string()));
+    exit_run(&fx, "mock-2");
+    exit_run(&fx, "mock-3");
+    fx.pass().unwrap();
     assert_eq!(live_workers(&fx), 0);
+}
+
+#[test]
+fn a_worker_the_runner_no_longer_knows_counts_as_ended() {
+    let fx = working_team();
+    exit_run(&fx, "mock-1");
+    fx.pass().unwrap();
+    fx.runs.failed.borrow_mut().push("mock-2".into());
+    fx.runs.failed.borrow_mut().push("mock-3".into());
+    fx.pass().unwrap();
+    assert_eq!(live_workers(&fx), 0);
+    assert!(team(&fx).members.iter().all(|m| !m.clean || m.role == TeamRole::Lead));
 }
 
 #[test]
@@ -785,7 +839,7 @@ fn workers_are_killed_when_the_pickup_is_in_any_other_status() {
             killed.contains(&"mock-2".to_string()) && killed.contains(&"mock-3".to_string()),
             "{status:?}"
         );
-        assert_eq!(live_workers(&fx), 0);
+        assert_eq!(live_workers(&fx), 2, "{status:?}");
     }
 }
 
@@ -834,6 +888,10 @@ fn turn_queue_off(fx: &Fx) {
 fn assert_workers_killed_and_nothing_else(fx: &Fx, created: usize) {
     let killed = fx.runs.killed.borrow().clone();
     assert!(killed.contains(&"mock-2".to_string()) && killed.contains(&"mock-3".to_string()));
+    assert_eq!(live_workers(fx), 2, "a kill is a request until the runner reports the exit");
+    exit_run(fx, "mock-2");
+    exit_run(fx, "mock-3");
+    let _ = fx.pass();
     assert_eq!(live_workers(fx), 0);
     assert_eq!(fx.runs.created.borrow().len(), created);
     assert!(fx.publisher.calls.borrow().is_empty());
@@ -879,6 +937,10 @@ fn a_disabled_queue_needs_the_runner_only_while_a_team_is_live() {
     let fx = lead_gone_with_live_workers();
     turn_queue_off(&fx);
     assert!(needs_runner(&fx.paths).unwrap());
+    fx.pass().unwrap();
+    assert!(needs_runner(&fx.paths).unwrap(), "workers still run");
+    exit_run(&fx, "mock-2");
+    exit_run(&fx, "mock-3");
     fx.pass().unwrap();
     assert!(!needs_runner(&fx.paths).unwrap());
 }

@@ -56,7 +56,8 @@ pub trait RunsClient {
     fn lookup(&self, start_key: &str) -> Lookup;
     /// Types fixed text into a run. Callers send engine-made text only, never agent-written text.
     fn send(&self, run_id: &str, text: &str) -> Result<()>;
-    fn kill_run(&self, run_id: &str, reason: &str) -> Result<()>;
+    /// Asks the runner to stop a run; `force` kills it outright. Success means the runner took the request, not that the run ended.
+    fn kill_run(&self, run_id: &str, force: bool, reason: &str) -> Result<()>;
     /// Whether the agent of the run is idle and waiting for input.
     fn idle(&self, run_id: &str) -> bool;
 }

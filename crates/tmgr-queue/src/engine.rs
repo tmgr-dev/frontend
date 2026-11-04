@@ -1818,6 +1818,7 @@ mod tests {
         sent: RefCell<Vec<(String, String)>>,
         killed: RefCell<Vec<String>>,
         kill_failures: Cell<u32>,
+        forced: RefCell<Vec<String>>,
         idle_runs: RefCell<Vec<String>>,
     }
 
@@ -1858,12 +1859,15 @@ mod tests {
             Ok(())
         }
 
-        fn kill_run(&self, run_id: &str, _reason: &str) -> Result<()> {
+        fn kill_run(&self, run_id: &str, force: bool, _reason: &str) -> Result<()> {
             if self.kill_failures.get() > 0 {
                 self.kill_failures.set(self.kill_failures.get() - 1);
                 return Err(Error::new(Kind::Offline, "the runner did not answer"));
             }
             self.killed.borrow_mut().push(run_id.to_string());
+            if force {
+                self.forced.borrow_mut().push(run_id.to_string());
+            }
             Ok(())
         }
 

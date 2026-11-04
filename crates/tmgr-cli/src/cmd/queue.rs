@@ -1728,8 +1728,9 @@ impl RunsClient for RunnerRuns {
             .map_err(|e| Error::new(Kind::Offline, e.to_string()))
     }
 
-    fn kill_run(&self, run_id: &str, reason: &str) -> Result<()> {
-        RunnerRuns::kill(self, run_id, "term", reason)
+    fn kill_run(&self, run_id: &str, force: bool, reason: &str) -> Result<()> {
+        let signal = if force { "kill" } else { "term" };
+        RunnerRuns::kill(self, run_id, signal, reason)
             .map_err(|e| Error::new(Kind::Offline, e.to_string()))
     }
 
@@ -2286,6 +2287,7 @@ mod team_add_tests {
             base: None,
             tip: None,
             exit_sent: false,
+            kill_sent_at: None,
         };
         let mut t = state::TeamState::new(3, TeamMode::Eco);
         t.members = vec![

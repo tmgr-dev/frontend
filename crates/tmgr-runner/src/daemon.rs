@@ -451,6 +451,7 @@ struct Session {
     home: PathBuf,
     fg: Mutex<Option<(i32, Instant)>>,
     cards: Mutex<Cards>,
+    team_stop: Mutex<Option<(Instant, Instant)>>,
 }
 
 fn write_meta(dir: &Path, meta: &Meta) {
@@ -1530,6 +1531,23 @@ fn leadless_groups(sessions: &[Member<'_>], absent_lead_counts: bool) -> Vec<Str
     out
 }
 
+const TEAM_STOP_RESEND: Duration = Duration::from_secs(5);
+const TEAM_STOP_GRACE: Duration = Duration::from_secs(10);
+
+fn team_stop_signal(sent: Option<(Instant, Instant)>, now: Instant) -> Option<i32> {
+    let Some((first, last)) = sent else {
+        return Some(libc::SIGTERM);
+    };
+    if now.duration_since(last) < TEAM_STOP_RESEND {
+        return None;
+    }
+    if now.duration_since(first) >= TEAM_STOP_GRACE {
+        Some(libc::SIGKILL)
+    } else {
+        Some(libc::SIGTERM)
+    }
+}
+
 fn signal_number(name: &str) -> Option<i32> {
     match name {
         "term" => Some(libc::SIGTERM),
@@ -2394,19 +2412,32 @@ impl Runner {
             .iter()
             .zip(&teams)
             .map(|(s, t)| {
-                let alive = !s.is_exited() && !s.halted.load(Ordering::SeqCst);
+                let lead = t.as_ref().is_some_and(|t| t.role == TeamRole::Lead);
+                let alive = !s.is_exited() && !(lead && s.halted.load(Ordering::SeqCst));
                 (s.id.as_str(), t.as_ref(), alive)
             })
             .collect();
+        let now = Instant::now();
         for of in leadless_groups(&members, absent_lead_counts) {
             for id in orphaned_workers(&members, &of) {
                 let Some(s) = all.iter().find(|s| s.id == id).filter(|s| s.has_shim()) else {
                     continue;
                 };
+                let mut sent = lock(&s.team_stop);
+                let Some(sig) = team_stop_signal(*sent, now) else {
+                    continue;
+                };
+                *sent = Some((sent.map_or(now, |(first, _)| first), now));
+                drop(sent);
+                let how = if sig == libc::SIGKILL {
+                    "killed"
+                } else {
+                    "stopped"
+                };
                 log(&format!(
-                    "session {id}: stopped, the lead of team {of} is gone"
+                    "session {id}: {how}, the lead of team {of} is gone"
                 ));
-                self.signal_session(s, libc::SIGTERM, Some("team lead exited"));
+                self.signal_session(s, sig, Some("team lead exited"));
             }
         }
     }
@@ -4013,6 +4044,7 @@ impl Runner {
             home,
             fg: Mutex::new(None),
             cards: Mutex::new(Cards::default()),
+            team_stop: Mutex::new(None),
         });
         session.cp_refresh();
         session
@@ -5035,6 +5067,24 @@ mod tests {
         assert!(orphans(&m, "q2").iter().all(|i| i != "o2"));
         assert_eq!(orphans(&m, "q2"), ["o1"]);
         assert!(orphans(&m, "nope").is_empty());
+    }
+
+    #[test]
+    fn an_orphaned_worker_is_signalled_again_and_then_killed() {
+        let t0 = Instant::now();
+        let at = |s: u64| t0 + Duration::from_secs(s);
+        assert_eq!(team_stop_signal(None, t0), Some(libc::SIGTERM));
+        assert_eq!(team_stop_signal(Some((t0, t0)), at(1)), None);
+        assert_eq!(team_stop_signal(Some((t0, t0)), at(5)), Some(libc::SIGTERM));
+        assert_eq!(team_stop_signal(Some((t0, at(5))), at(8)), None);
+        assert_eq!(
+            team_stop_signal(Some((t0, at(5))), at(10)),
+            Some(libc::SIGKILL)
+        );
+        assert_eq!(
+            team_stop_signal(Some((t0, at(10))), at(15)),
+            Some(libc::SIGKILL)
+        );
     }
 
     #[test]

@@ -197,6 +197,14 @@ pub(super) fn refuse_start(pass: &mut Pass, i: usize, reason: &str) -> Result<()
     Ok(())
 }
 
+pub(crate) const KILL_GRACE_SECS: i64 = 30;
+
+fn kill_is_overdue(sent_at: Option<&str>, now: DateTime<Utc>) -> bool {
+    sent_at
+        .and_then(|t| DateTime::parse_from_rfc3339(t).ok())
+        .is_some_and(|t| (now - t.with_timezone(&Utc)).num_seconds() >= KILL_GRACE_SECS)
+}
+
 fn kill_workers(pass: &mut Pass, i: usize, deps: &Deps, why: &str) -> Result<()> {
     let id = pass.state.pickups[i].id.clone();
     let members = pass.state.pickups[i]
@@ -206,12 +214,12 @@ fn kill_workers(pass: &mut Pass, i: usize, deps: &Deps, why: &str) -> Result<()>
         .unwrap_or_default();
     for m in members.iter().filter(|m| !m.exited) {
         let Some(run) = &m.run_id else { continue };
-        if deps.runs.kill_run(run, why).is_err() {
+        let force = kill_is_overdue(m.kill_sent_at.as_deref(), deps.now);
+        if deps.runs.kill_run(run, force, why).is_err() || m.kill_sent_at.is_some() {
             continue;
         }
         if let Some(slot) = member_mut(pass, i, &m.start_key) {
-            slot.exited = true;
-            slot.clean = false;
+            slot.kill_sent_at = Some(ts(deps.now));
         }
         pass.audit.append(
             "team_member_killed",
@@ -350,7 +358,7 @@ fn planning(pass: &mut Pass, i: usize, deps: &Deps, lead_run: &str) -> Result<()
             if rejections == MAX_REJECTIONS {
                 let _ = deps
                     .runs
-                    .kill_run(lead_run, "the team plan was refused repeatedly");
+                    .kill_run(lead_run, false, "the team plan was refused repeatedly");
             } else if rejections < MAX_REJECTIONS {
                 let _ = deps
                     .runs
@@ -428,6 +436,7 @@ fn new_member(p: &Pickup, k: u8) -> Member {
         base: None,
         tip: None,
         exit_sent: false,
+        kill_sent_at: None,
     }
 }
 
