@@ -648,7 +648,7 @@ fn matching_rules<'a>(
         .collect()
 }
 
-fn team_rules_ok(rules: &[&Rule]) -> Result<()> {
+fn team_rules_ok(rules: &[&Rule], runner_caps: Option<&[String]>) -> Result<()> {
     if rules.is_empty() {
         return Err(Error::not_found("no queue rule matches this task").hint(
             "a team only changes how a task is worked; add a rule first: tmgr queue rules add",
@@ -661,10 +661,21 @@ fn team_rules_ok(rules: &[&Rule]) -> Result<()> {
         )));
     }
     if let Some(r) = rules.iter().find(|r| r.repos.len() > 1) {
-        return Err(Error::usage(format!(
-            "rule {} covers several repositories; teams work on one repository",
-            r.name
-        )));
+        let known = runner_caps
+            .is_none_or(|caps| caps.iter().any(|c| c == tmgr_ipc::api::caps::TEAM_MULTI_V1));
+        if !known {
+            return Err(Error::new(
+                Kind::Conflict,
+                format!(
+                    "rule {} covers several repositories and the running runner is older than this tmgr, so it cannot run a team over them",
+                    r.name
+                ),
+            )
+            .hint(format!(
+                "{0} runner stop && {0} runner start",
+                super::runner::bin()
+            )));
+        }
     }
     Ok(())
 }
@@ -730,11 +741,14 @@ fn team_add(ctx: &Ctx, paths: &Paths, a: &TeamAddArgs) -> Result<Output> {
         },
     };
     let matching = matching_rules(&loaded.file, &workspace, project.as_deref());
-    team_rules_ok(&matching)?;
-    match super::runner::runner_config().and_then(|cfg| super::runner::connect(&cfg)) {
-        Ok(c) => team_runner_ok(&c.welcome().caps)?,
-        Err(e) if e.kind == Kind::Offline => {}
+    let caps = match super::runner::runner_config().and_then(|cfg| super::runner::connect(&cfg)) {
+        Ok(c) => Some(c.welcome().caps.clone()),
+        Err(e) if e.kind == Kind::Offline => None,
         Err(e) => return Err(e),
+    };
+    team_rules_ok(&matching, caps.as_deref())?;
+    if let Some(caps) = &caps {
+        team_runner_ok(caps)?;
     }
     let reference = sanitize_line(&a.task);
     eprintln!("{}", team_summary(&matching, &reference, workers, mode));
@@ -1656,6 +1670,11 @@ impl RunsClient for RunnerRuns {
             tmgr_ipc::api::caps::TEAM_WORKERS_V1,
             &caps,
         )?;
+        needs_cap(
+            req.team.is_some() && !req.clones.is_empty(),
+            tmgr_ipc::api::caps::TEAM_MULTI_V1,
+            &caps,
+        )?;
         if tmgr_runner::bundle::has_owner_text(&req.bundle) {
             let supported = self.client.borrow().as_ref().is_some_and(|c| {
                 c.welcome()
@@ -2130,6 +2149,14 @@ mod team_cap_tests {
         assert!(needs_cap(true, caps::TEAM_WORKERS_V1, &new).is_ok());
         assert!(needs_cap(false, caps::TEAM_WORKERS_V1, &old).is_ok());
     }
+
+    #[test]
+    fn a_multi_repo_team_member_needs_the_multi_capability() {
+        let old = vec![caps::TEAM_WORKERS_V1.to_string()];
+        let new = vec![caps::TEAM_MULTI_V1.to_string()];
+        assert!(needs_cap(true, caps::TEAM_MULTI_V1, &old).is_err());
+        assert!(needs_cap(true, caps::TEAM_MULTI_V1, &new).is_ok());
+    }
 }
 
 #[cfg(test)]
@@ -2218,17 +2245,30 @@ mod team_add_tests {
     }
 
     #[test]
-    fn rules_must_exist_use_claude_and_one_repository() {
-        assert_eq!(team_rules_ok(&[]).unwrap_err().kind, Kind::NotFound);
+    fn rules_must_exist_use_claude_and_several_repositories_need_the_multi_cap() {
+        assert_eq!(team_rules_ok(&[], None).unwrap_err().kind, Kind::NotFound);
         let other = rule("o", "codex", &["/r"], 1);
-        let e = team_rules_ok(&[&other]).unwrap_err();
+        let e = team_rules_ok(&[&other], None).unwrap_err();
         assert!(e.message.contains("claude-code profile"), "{}", e.message);
         let many = rule("m", "claude-code", &["/a", "/b"], 1);
-        let e = team_rules_ok(&[&many]).unwrap_err();
+        let old = vec![caps::TEAM_WORKERS_V1.to_string()];
+        let new = vec![
+            caps::TEAM_WORKERS_V1.to_string(),
+            caps::TEAM_MULTI_V1.to_string(),
+        ];
+        let e = team_rules_ok(&[&many], Some(&old)).unwrap_err();
         assert!(e.message.contains("several repositories"), "{}", e.message);
+        assert!(e.message.contains("older"), "{}", e.message);
+        assert!(e
+            .hint
+            .as_deref()
+            .unwrap_or_default()
+            .contains("runner stop"));
+        assert!(team_rules_ok(&[&many], Some(&new)).is_ok());
+        assert!(team_rules_ok(&[&many], None).is_ok());
         let one = rule("c", "claude-code", &["/a"], 1);
-        assert!(team_rules_ok(&[&one]).is_ok());
-        assert!(team_rules_ok(&[&one, &other]).is_err());
+        assert!(team_rules_ok(&[&one], Some(&old)).is_ok());
+        assert!(team_rules_ok(&[&one, &other], None).is_err());
     }
 
     #[test]
