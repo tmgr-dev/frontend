@@ -3123,7 +3123,7 @@ fn worklog_outside_a_git_repo_has_no_branch_or_commits() {
 }
 
 #[test]
-fn worklog_ignores_a_repo_whose_config_would_run_programs() {
+fn worklog_never_runs_programs_from_the_repo_config() {
     if !sessions_available() {
         return;
     }
@@ -3141,7 +3141,7 @@ fn worklog_ignores_a_repo_whose_config_would_run_programs() {
     let info = c.create(h.sh("exit 0\n")).unwrap();
     wait_exited(&mut c, &info.id);
     let s = worklog_of(&mut c, &info.id);
-    assert_eq!(s.branch, None);
+    assert_eq!(s.branch.as_deref(), Some("main"));
     assert!(s.commits.is_empty());
     assert!(!marker.exists());
 }
