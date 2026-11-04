@@ -519,6 +519,10 @@ impl Session {
         }
     }
 
+    fn team(&self) -> Option<TeamLink> {
+        lock(&self.inner).meta.team.clone()
+    }
+
     fn state(&self) -> State {
         let i = lock(&self.inner);
         self.effective(&i)
@@ -1493,6 +1497,39 @@ fn base_env() -> Vec<(String, String)> {
         .collect()
 }
 
+type Member<'a> = (&'a str, Option<&'a TeamLink>, bool);
+
+fn orphaned_workers<'a>(sessions: &[Member<'a>], lead_of: &str) -> Vec<&'a str> {
+    sessions
+        .iter()
+        .filter(|(_, team, alive)| *alive && team.is_some_and(|t| t.is_worker() && t.of == lead_of))
+        .map(|(id, _, _)| *id)
+        .collect()
+}
+
+fn leadless_groups(sessions: &[Member<'_>], absent_lead_counts: bool) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for (_, team, alive) in sessions {
+        let Some(t) = team.filter(|t| t.is_worker() && *alive) else {
+            continue;
+        };
+        if out.contains(&t.of) {
+            continue;
+        }
+        let leads = || {
+            sessions.iter().filter_map(|(_, l, a)| {
+                l.filter(|l| l.role == TeamRole::Lead && l.of == t.of)
+                    .map(|_| *a)
+            })
+        };
+        if leads().any(|a| a) || (!absent_lead_counts && leads().next().is_none()) {
+            continue;
+        }
+        out.push(t.of.clone());
+    }
+    out
+}
+
 fn signal_number(name: &str) -> Option<i32> {
     match name {
         "term" => Some(libc::SIGTERM),
@@ -2133,10 +2170,7 @@ impl Runner {
                     )
                 })?;
                 let reason = kill_reason(p)?;
-                let id = s.sig_seq.fetch_add(1, Ordering::SeqCst) + 1;
-                s.halt(reason.as_deref());
-                s.shim_msg(&ToShim::Signal { sig, id });
-                restore::forget(&self.intents(), &s.id);
+                self.signal_session(&s, sig, reason.as_deref());
                 Ok(Value::Null)
             }
             method::AUTOPILOT_START => {
@@ -2344,6 +2378,37 @@ impl Runner {
             ));
         }
         Ok(Value::Null)
+    }
+
+    fn signal_session(&self, s: &Session, sig: i32, reason: Option<&str>) {
+        let id = s.sig_seq.fetch_add(1, Ordering::SeqCst) + 1;
+        s.halt(reason);
+        s.shim_msg(&ToShim::Signal { sig, id });
+        restore::forget(&self.intents(), &s.id);
+    }
+
+    fn stop_orphaned_workers(&self, absent_lead_counts: bool) {
+        let all = self.all();
+        let teams: Vec<Option<TeamLink>> = all.iter().map(|s| s.team()).collect();
+        let members: Vec<Member> = all
+            .iter()
+            .zip(&teams)
+            .map(|(s, t)| {
+                let alive = !s.is_exited() && !s.halted.load(Ordering::SeqCst);
+                (s.id.as_str(), t.as_ref(), alive)
+            })
+            .collect();
+        for of in leadless_groups(&members, absent_lead_counts) {
+            for id in orphaned_workers(&members, &of) {
+                let Some(s) = all.iter().find(|s| s.id == id).filter(|s| s.has_shim()) else {
+                    continue;
+                };
+                log(&format!(
+                    "session {id}: stopped, the lead of team {of} is gone"
+                ));
+                self.signal_session(s, libc::SIGTERM, Some("team lead exited"));
+            }
+        }
     }
 
     fn live(&self, id: &str) -> Result<Arc<Session>, ApiErr> {
@@ -4518,6 +4583,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         }
     });
     rt.adopt_all();
+    rt.stop_orphaned_workers(true);
     let ep = Endpoint::new_runner(&cfg.dir)?;
     let listener: UnixListener = endpoint::bind(&ep)?;
     listener.set_nonblocking(true)?;
@@ -4546,6 +4612,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
             for s in ticker.all() {
                 s.tick();
             }
+            ticker.stop_orphaned_workers(false);
             ticker.autopilot.tick(&ticker.cfg.self_exe);
         }
     });
@@ -4922,6 +4989,68 @@ mod tests {
         cap_text(&mut small, &mut small_wrapped, 100);
         assert_eq!(small_wrapped, [true]);
         assert_eq!(small, ["a"]);
+    }
+
+    fn member<'a>(
+        id: &'a str,
+        role: Option<TeamRole>,
+        of: &'a str,
+        alive: bool,
+    ) -> (&'a str, Option<TeamLink>, bool) {
+        (
+            id,
+            role.map(|role| TeamLink {
+                role,
+                of: of.into(),
+            }),
+            alive,
+        )
+    }
+
+    fn orphans(m: &[(&str, Option<TeamLink>, bool)], lead_of: &str) -> Vec<String> {
+        let v: Vec<_> = m.iter().map(|(i, t, a)| (*i, t.as_ref(), *a)).collect();
+        orphaned_workers(&v, lead_of)
+            .into_iter()
+            .map(String::from)
+            .collect()
+    }
+
+    fn groups(m: &[(&str, Option<TeamLink>, bool)], absent: bool) -> Vec<String> {
+        let v: Vec<_> = m.iter().map(|(i, t, a)| (*i, t.as_ref(), *a)).collect();
+        leadless_groups(&v, absent)
+    }
+
+    #[test]
+    fn orphaned_workers_are_only_the_live_workers_of_that_team() {
+        let m = [
+            member("lead", Some(TeamRole::Lead), "q1", false),
+            member("w1", Some(TeamRole::Worker(1)), "q1", true),
+            member("w2", Some(TeamRole::Worker(2)), "q1", true),
+            member("w3", Some(TeamRole::Worker(3)), "q1", false),
+            member("o1", Some(TeamRole::Worker(1)), "q2", true),
+            member("o2", Some(TeamRole::Lead), "q2", true),
+            member("plain", None, "", true),
+        ];
+        assert_eq!(orphans(&m, "q1"), ["w1", "w2"]);
+        assert!(orphans(&m, "q2").iter().all(|i| i != "o2"));
+        assert_eq!(orphans(&m, "q2"), ["o1"]);
+        assert!(orphans(&m, "nope").is_empty());
+    }
+
+    #[test]
+    fn leadless_groups_need_a_live_worker_and_no_live_lead() {
+        let m = [
+            member("lead", Some(TeamRole::Lead), "q1", false),
+            member("w1", Some(TeamRole::Worker(1)), "q1", true),
+            member("lead2", Some(TeamRole::Lead), "q2", true),
+            member("w2", Some(TeamRole::Worker(1)), "q2", true),
+            member("w3", Some(TeamRole::Worker(1)), "q3", true),
+            member("w4", Some(TeamRole::Worker(1)), "q4", false),
+            member("lead4", Some(TeamRole::Lead), "q4", false),
+            member("plain", None, "", true),
+        ];
+        assert_eq!(groups(&m, false), ["q1"]);
+        assert_eq!(groups(&m, true), ["q1", "q3"]);
     }
 
     #[test]
