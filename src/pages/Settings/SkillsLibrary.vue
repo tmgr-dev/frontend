@@ -1,5 +1,15 @@
 <template>
 	<div class="flex flex-col gap-3" data-testid="skills-library">
+		<div v-if="canImport" class="flex">
+			<Button
+				variant="outline"
+				size="sm"
+				data-testid="skill-import-open"
+				@click="importOpen = true"
+			>
+				Import from local agents
+			</Button>
+		</div>
 		<p v-if="loading" class="text-xs text-muted-foreground">Loading library…</p>
 
 		<div v-else class="flex flex-col gap-2">
@@ -92,6 +102,12 @@
 				</Button>
 			</div>
 		</div>
+
+		<SkillImportDialog
+			v-if="canImport"
+			v-model:open="importOpen"
+			@imported="onImported"
+		/>
 	</div>
 </template>
 
@@ -106,6 +122,8 @@
 	import { Button } from '@/components/ui/button';
 	import { Textarea } from '@/components/ui/textarea';
 	import { toast } from '@/components/ui/toast';
+	import store from '@/store';
+	import { isDesktopApp } from '@/utils/desktop';
 	import {
 		byteLength,
 		detachedSkillsTitle,
@@ -117,10 +135,11 @@
 		validateSkillMarkdown,
 	} from '@/utils/personas';
 	import { computed, defineComponent, onMounted, ref, watch } from 'vue';
+	import SkillImportDialog from './SkillImportDialog.vue';
 
 	export default defineComponent({
 		name: 'SkillsLibrary',
-		components: { Button, Textarea },
+		components: { Button, SkillImportDialog, Textarea },
 		props: {
 			revision: { type: Number, default: 0 },
 		},
@@ -132,6 +151,8 @@
 			const editingSlug = ref<string | null>(null);
 			const draft = ref(SKILL_TEMPLATE);
 			const serverErrors = ref<Record<string, string[]> | null>(null);
+			const importOpen = ref(false);
+			const canImport = isDesktopApp() && !store.getters.isLocalOnly;
 
 			const load = async () => {
 				loading.value = true;
@@ -231,7 +252,15 @@
 			watch(() => props.revision, load);
 			onMounted(load);
 
+			const onImported = async () => {
+				await load();
+				emit('changed');
+			};
+
 			return {
+				importOpen,
+				canImport,
+				onImported,
 				skills,
 				loading,
 				saving,
