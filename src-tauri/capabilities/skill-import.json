@@ -1,0 +1,10 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "skill-import",
+	"description": "Local skill scanner: main window only.",
+	"windows": ["main"],
+	"permissions": [
+		"allow-skills-scan",
+		"allow-skills-pick-folder"
+	]
+}

@@ -44,6 +44,8 @@ const APP_COMMANDS: &[&str] = &[
   "plugins_dev_reveal",
   "plugins_safe_mode",
   "plugin_pick_file",
+  "skills_scan",
+  "skills_pick_folder",
   "plugin_fetch",
   "plugin_image_fetch",
   "plugin_notify",

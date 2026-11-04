@@ -33,6 +33,7 @@ mod plugin_tick;
 mod plugin_windows;
 mod quick_add;
 mod runner;
+mod skill_scan;
 mod usage;
 mod page_windows;
 mod task_windows;
@@ -205,6 +206,7 @@ pub fn run() {
     .manage(local_move::Moving::default())
     .manage(downloads::PendingDownloads::default())
     .manage(plugin_windows::PluginWindows::default())
+    .manage(skill_scan::PickedFolders::default())
     .register_uri_scheme_protocol(plugin_windows::SCHEME, |ctx, request| {
       plugin_windows::handle(ctx.app_handle(), ctx.webview_label(), request)
     })
@@ -281,6 +283,8 @@ pub fn run() {
       plugin_market::plugins_installed_list,
       plugin_market::plugin_uninstall,
       plugin_files::plugin_pick_file,
+      skill_scan::skills_scan,
+      skill_scan::skills_pick_folder,
       plugin_windows::plugin_page_put,
       plugin_windows::plugin_window_open,
       plugin_windows::plugin_window_call,
