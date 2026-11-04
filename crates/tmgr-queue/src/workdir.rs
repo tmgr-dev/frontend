@@ -454,6 +454,7 @@ pub fn output_bounded(
                 if out.is_none() || err.is_none() {
                     return fail(&mut child, "git output could not be read".into());
                 }
+                std::thread::sleep(wait);
             }
         }
     }
