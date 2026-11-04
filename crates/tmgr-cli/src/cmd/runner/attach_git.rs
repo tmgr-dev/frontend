@@ -31,22 +31,12 @@ fn git_args(extra: &[&str]) -> Vec<String> {
     SAFE.iter().chain(extra).map(|s| (*s).to_string()).collect()
 }
 
-fn run(
-    program: &str,
-    args: &[String],
-    cwd: &Path,
-    git_dir: Option<&Path>,
-    timeout: Duration,
-) -> Option<(bool, String)> {
-    use std::os::unix::process::CommandExt;
-    let mut cmd = Command::new(program);
+fn pin_git_env(cmd: &mut Command, cwd: &Path, git_dir: Option<&Path>) {
     match git_dir {
         Some(dir) => cmd.env("GIT_DIR", dir).env("GIT_WORK_TREE", cwd),
         None => cmd.env_remove("GIT_DIR").env_remove("GIT_WORK_TREE"),
     };
-    let mut child = cmd
-        .args(args)
-        .current_dir(cwd)
+    cmd.current_dir(cwd)
         .env("PATH", tmgr_queue::workdir::absolute_path())
         .env("GIT_NO_LAZY_FETCH", "1")
         .env("GIT_OPTIONAL_LOCKS", "0")
@@ -65,7 +55,21 @@ fn run(
         .env_remove("GIT_CONFIG_PARAMETERS")
         .env_remove("GIT_OBJECT_DIRECTORY")
         .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
-        .env_remove("GIT_NAMESPACE")
+        .env_remove("GIT_NAMESPACE");
+}
+
+fn run(
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+    git_dir: Option<&Path>,
+    timeout: Duration,
+) -> Option<(bool, String)> {
+    use std::os::unix::process::CommandExt;
+    let mut cmd = Command::new(program);
+    pin_git_env(&mut cmd, cwd, git_dir);
+    let mut child = cmd
+        .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -179,61 +183,32 @@ fn base_of(root: &Path, git_dir: &Path) -> Option<(String, u32)> {
     None
 }
 
-fn lookup_pr(root: &Path) -> PrLookup {
-    let Some(git_dir) = tmgr_queue::workdir::plain_git_dir(root) else {
-        return PrLookup::Unavailable;
-    };
+fn lookup_pr(root: &Path, git_dir: &Path) -> PrLookup {
     let args: Vec<String> = ["pr", "view", "--json", "number,title,url,state"]
         .map(String::from)
         .to_vec();
-    match run("gh", &args, root, Some(&git_dir), GH_TIMEOUT) {
+    match run("gh", &args, root, Some(git_dir), GH_TIMEOUT) {
         Some((true, text)) => parse_pr(&text).map_or(PrLookup::Unavailable, PrLookup::Found),
         Some((false, err)) if err.contains("no pull requests found") => PrLookup::NoPr,
         _ => PrLookup::Unavailable,
     }
 }
 
-pub(super) fn config_runs_programs(list: &str) -> bool {
-    list.lines().any(|line| {
-        let Some((scope, key)) = line.split_once('\t') else {
-            return false;
-        };
-        if !matches!(scope, "local" | "worktree" | "command") {
-            return false;
-        }
-        let key = key.to_ascii_lowercase();
-        let parts: Vec<&str> = key.split('.').collect();
-        let last = parts.last().copied().unwrap_or("");
-        key.starts_with("pager.")
-            || key == "core.pager"
-            || matches!(
-                (parts.first().copied(), last),
-                (Some("filter"), "clean" | "smudge" | "process")
-                    | (Some("diff"), "textconv" | "command")
-            )
-    })
-}
-
 pub(super) fn collect(
     cwd: &Path,
-    cached_pr: impl FnOnce(&str, &Path) -> PrLookup,
+    cached_pr: impl FnOnce(&str, &Path, &Path) -> PrLookup,
 ) -> Option<GitInfo> {
     if !real_dir(cwd) {
         return None;
     }
     let cwd = std::fs::canonicalize(cwd).ok()?;
     let root = work_root(&cwd)?.to_path_buf();
-    let git_dir = tmgr_queue::workdir::plain_git_dir(&root)?;
-    if config_runs_programs(&git(
-        &root,
-        &git_dir,
-        &["config", "--list", "--show-scope", "--name-only"],
-    )?) {
-        return None;
-    }
+    let host = tempfile::tempdir().ok()?;
+    tmgr_queue::workdir::host_git_dir(&root, host.path())?;
+    let git_dir = host.path();
     let status = parse_status(&git(
         &root,
-        &git_dir,
+        git_dir,
         &[
             "status",
             "--porcelain=v2",
@@ -243,7 +218,7 @@ pub(super) fn collect(
     )?);
     let (added, deleted) = git(
         &root,
-        &git_dir,
+        git_dir,
         &[
             "diff",
             "--no-ext-diff",
@@ -255,11 +230,11 @@ pub(super) fn collect(
     )
     .map(|t| parse_numstat(&t))
     .unwrap_or_default();
-    let (base, ahead_base) = match base_of(&root, &git_dir) {
+    let (base, ahead_base) = match base_of(&root, git_dir) {
         Some((b, n)) => (Some(b), Some(n)),
         None => (None, None),
     };
-    let pr = cached_pr(&status.branch, &root);
+    let pr = cached_pr(&status.branch, &root, git_dir);
     Some(GitInfo {
         root: root.to_string_lossy().into_owned(),
         branch: status.branch,
@@ -336,7 +311,7 @@ pub(super) fn git_worker(
                 if job.branch_only {
                     return collect_branch_only(cwd);
                 }
-                collect(cwd, |branch, root| match prs.get(&job.id) {
+                collect(cwd, |branch, root, git_dir| match prs.get(&job.id) {
                     Some((b, r, at, pr))
                         if b == branch && root == Path::new(r) && at.elapsed() < PR_EVERY =>
                     {
@@ -346,7 +321,7 @@ pub(super) fn git_worker(
                         let pr = if branch.is_empty() || branch.starts_with('(') {
                             PrLookup::NoPr
                         } else {
-                            lookup_pr(root)
+                            lookup_pr(root, git_dir)
                         };
                         prs.insert(
                             job.id.clone(),
@@ -399,6 +374,49 @@ pub(super) fn diff_argv(pager: Option<&str>) -> Vec<String> {
     );
     argv.extend(["diff", "--no-ext-diff", "--no-textconv", "HEAD"].map(String::from));
     argv
+}
+
+pub(super) fn diff_pane_argv(exe: &Path, root: &str, pager: Option<&str>) -> Vec<String> {
+    let mut argv = vec![
+        exe.display().to_string(),
+        "runner".to_string(),
+        "git-diff".to_string(),
+        "--dir".to_string(),
+        root.to_string(),
+    ];
+    if let Some(pager) = pager {
+        argv.extend(["--pager".to_string(), pager.to_string()]);
+    }
+    argv
+}
+
+pub(super) fn diff_in_pane(dir: &str, pager: Option<&str>) -> tmgr_core::error::Result<i32> {
+    use tmgr_core::error::Error;
+    let root = Path::new(dir);
+    if !real_dir(root) {
+        return Err(Error::usage("the folder to diff does not exist"));
+    }
+    let root = std::fs::canonicalize(root)?;
+    let host = tempfile::tempdir()?;
+    if tmgr_queue::workdir::host_git_dir(&root, host.path()).is_none() {
+        return Err(Error::usage(
+            "this folder's git settings are not plain, so the diff is not shown",
+        ));
+    }
+    let argv = diff_argv(pager);
+    let mut cmd = Command::new(&argv[0]);
+    pin_git_env(&mut cmd, &root, Some(host.path()));
+    match std::env::var_os("NO_COLOR") {
+        Some(v) => cmd.env("NO_COLOR", v),
+        None => cmd.env_remove("NO_COLOR"),
+    };
+    let mut child = cmd.args(&argv[1..]).spawn()?;
+    for sig in [libc::SIGINT, libc::SIGHUP, libc::SIGTERM, libc::SIGQUIT] {
+        unsafe { libc::signal(sig, libc::SIG_IGN) };
+    }
+    let status = child.wait()?;
+    drop(host);
+    Ok(status.code().unwrap_or(1))
 }
 
 fn on_path(program: &str) -> bool {
@@ -456,7 +474,7 @@ mod tests {
     fn a_repo_gives_branch_changes_and_commits_ahead_of_base() {
         let dir = repo();
         let root = canon(dir.path());
-        let info = collect(&root, |_, _| PrLookup::NoPr).unwrap();
+        let info = collect(&root, |_, _, _| PrLookup::NoPr).unwrap();
         assert_eq!(info.branch, "feature");
         assert_eq!(info.root, root.to_string_lossy());
         assert_eq!((info.changed, info.untracked), (1, 1));
@@ -479,7 +497,7 @@ mod tests {
         std::fs::write(sc.path.join("b"), "b").unwrap();
         sh(&sc.path, &["add", "b"]);
         sh(&sc.path, &["commit", "-q", "-m", "b"]);
-        let info = collect(&sc.path, |_, _| PrLookup::NoPr).unwrap();
+        let info = collect(&sc.path, |_, _, _| PrLookup::NoPr).unwrap();
         assert_eq!(info.branch, "agent-1");
         assert_eq!(
             info.base.as_deref().map(|b| b.ends_with("main")),
@@ -493,13 +511,13 @@ mod tests {
         let dir = repo();
         let sub = canon(dir.path()).join("sub");
         std::fs::create_dir(&sub).unwrap();
-        let info = collect(&sub, |_, _| PrLookup::NoPr).unwrap();
+        let info = collect(&sub, |_, _, _| PrLookup::NoPr).unwrap();
         assert_eq!(info.root, canon(dir.path()).to_string_lossy());
         let plain = tempfile::tempdir().unwrap();
         let no_repo = canon(plain.path());
-        assert!(collect(&no_repo, |_, _| PrLookup::NoPr).is_none());
-        assert!(collect(Path::new("relative"), |_, _| PrLookup::NoPr).is_none());
-        assert!(collect(&no_repo.join("missing"), |_, _| PrLookup::NoPr).is_none());
+        assert!(collect(&no_repo, |_, _, _| PrLookup::NoPr).is_none());
+        assert!(collect(Path::new("relative"), |_, _, _| PrLookup::NoPr).is_none());
+        assert!(collect(&no_repo.join("missing"), |_, _, _| PrLookup::NoPr).is_none());
     }
 
     #[test]
@@ -514,7 +532,7 @@ mod tests {
             format!("gitdir: {}\n", p.join(".git").display()),
         )
         .unwrap();
-        assert!(collect(&other.join("sub"), |_, _| PrLookup::NoPr).is_none());
+        assert!(collect(&other.join("sub"), |_, _, _| PrLookup::NoPr).is_none());
     }
 
     #[test]
@@ -523,7 +541,7 @@ mod tests {
         let p = canon(dir.path());
         let inner = p.join("inner");
         std::fs::create_dir_all(inner.join(".git")).unwrap();
-        assert!(collect(&inner, |_, _| PrLookup::NoPr).is_none());
+        assert!(collect(&inner, |_, _, _| PrLookup::NoPr).is_none());
     }
 
     #[test]
@@ -543,7 +561,7 @@ mod tests {
             .unwrap()
             .modified()
             .unwrap();
-        collect(&root, |_, _| PrLookup::NoPr).unwrap();
+        collect(&root, |_, _, _| PrLookup::NoPr).unwrap();
         assert!(!marker.exists());
         assert_eq!(
             std::fs::metadata(root.join(".git/index"))
@@ -552,17 +570,6 @@ mod tests {
                 .unwrap(),
             index
         );
-    }
-
-    #[test]
-    fn config_that_runs_programs_hides_the_panel() {
-        assert!(config_runs_programs("local\tfilter.lfs.clean\n"));
-        assert!(config_runs_programs("local\tdiff.x.textconv\n"));
-        assert!(config_runs_programs("worktree\tpager.diff\n"));
-        assert!(config_runs_programs("local\tcore.pager\n"));
-        assert!(!config_runs_programs(
-            "global\tfilter.lfs.clean\nlocal\tcore.bare\nlocal\tremote.origin.url\n"
-        ));
     }
 
     #[test]
@@ -579,7 +586,7 @@ mod tests {
             ],
         );
         std::fs::write(root.join(".gitattributes"), "*.txt filter=evil\n").unwrap();
-        assert!(collect(&root, |_, _| PrLookup::NoPr).is_none());
+        assert!(collect(&root, |_, _, _| PrLookup::NoPr).is_none());
         assert!(!marker.exists());
     }
 

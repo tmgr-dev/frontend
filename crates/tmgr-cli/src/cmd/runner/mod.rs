@@ -159,6 +159,8 @@ pub enum RunnerCmd {
     Serve,
     #[command(hide = true)]
     Watch(WatchArgs),
+    #[command(hide = true)]
+    GitDiff(GitDiffArgs),
 }
 
 #[derive(Args)]
@@ -166,6 +168,14 @@ pub struct GcArgs {
     /// Check everything and print what would be removed, without changing anything
     #[arg(long)]
     pub dry_run: bool,
+}
+
+#[derive(Args)]
+pub struct GitDiffArgs {
+    #[arg(long)]
+    pub dir: String,
+    #[arg(long)]
+    pub pager: Option<String>,
 }
 
 #[derive(Args)]

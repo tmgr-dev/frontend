@@ -49,6 +49,7 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             RunnerCmd::Gc(a) => super::gc::run(o, a.dry_run),
             RunnerCmd::Serve => serve(),
             RunnerCmd::Watch(a) => super::watch::run(&a.dir, &a.cmd),
+            RunnerCmd::GitDiff(a) => super::attach_git::diff_in_pane(&a.dir, a.pager.as_deref()),
         },
         RunnerCommands::Run(a) => match (&a.on, &a.task) {
             (Some(link), _) => remote::run(o, link, a),

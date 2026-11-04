@@ -3,7 +3,7 @@ use super::attach_chip::{chipper, ChipJob, Opener, SystemOpener};
 use super::attach_clip::{Clipboard, SystemClipboard};
 use super::attach_consent::Reads;
 use super::attach_export;
-use super::attach_git::{diff_argv, git_worker, GitJob};
+use super::attach_git::{diff_pane_argv, git_worker, GitJob};
 use super::attach_goto::{fork_call, fork_name, goto_call, text_call, Found, FORK_PASTE_WAIT};
 use super::attach_layouts;
 use super::attach_links::{split_local, LinkMsg};
@@ -1483,10 +1483,8 @@ impl App {
                 };
                 let pager = std::env::var("PAGER").ok();
                 self.view.git_open = false;
-                self.request_split_cmd(
-                    SplitDir::Down,
-                    Some((diff_argv(pager.as_deref()), root, "diff")),
-                );
+                let argv = diff_pane_argv(&self.cfg.self_exe, &root, pager.as_deref());
+                self.request_split_cmd(SplitDir::Down, Some((argv, root, "diff")));
             }
         }
     }

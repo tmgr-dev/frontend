@@ -214,6 +214,8 @@ fn plain_config_key(name: &str) -> bool {
                 | "gc.auto"
                 | "maintenance.auto"
                 | "extensions.relativeworktrees"
+                | "extensions.worktreeconfig"
+                | "worktree.userelativepaths"
         ),
     }
 }
@@ -278,59 +280,245 @@ pub fn expected_git_dir(root: &Path) -> Option<(PathBuf, PathBuf)> {
 
 /// Whether the repository's own configuration holds only settings that run nothing once git commands pin core.hooksPath and core.fsmonitor.
 pub fn repo_config_is_plain(dir: &Path) -> bool {
-    plain_git_dir(dir).is_some()
+    tempfile::tempdir().is_ok_and(|tmp| host_git_dir(dir, tmp.path()).is_some())
 }
 
-/// The git directory from `expected_git_dir` of the work folder `dir`, when its configuration is plain
-/// (`repo_config_is_plain`); pass it as `GIT_DIR` so git never looks at `.git` again.
-pub fn plain_git_dir(dir: &Path) -> Option<PathBuf> {
-    let (git_dir, expected_common) = expected_git_dir(dir)?;
-    config_is_plain(&git_dir, &expected_common).then_some(git_dir)
+/// Fills `into`, an empty folder only the host writes, with a git directory for the work folder `dir`
+/// (as `expected_git_dir` finds it) to pass as `GIT_DIR` with `dir` as the work tree. Its config is
+/// written here from the plain settings of the repository (`repo_config_is_plain`, including the
+/// worktree's `config.worktree` when extensions.worktreeConfig is on); HEAD, branches, remote-tracking
+/// refs, the index, info/exclude and shallow are copies read once as data, and objects come through an
+/// alternate. Nothing git reads afterwards names a program from the folder.
+pub fn host_git_dir(dir: &Path, into: &Path) -> Option<()> {
+    let (git_dir, common) = expected_git_dir(dir)?;
+    let objects = common.join("objects");
+    let objects = objects.to_str().filter(|o| !o.contains('\n'))?;
+    let mut settings = plain_settings(&common, "config", into)?;
+    let worktree_config = settings
+        .iter()
+        .rev()
+        .find(|(k, _)| k == "extensions.worktreeconfig")
+        .is_some_and(|(_, v)| config_true(v.as_deref()));
+    if worktree_config {
+        settings.extend(plain_settings(&git_dir, "config.worktree", into)?);
+    }
+    let config = host_config(&settings)?;
+    let head = read_small(&git_dir, "HEAD")?;
+    let head = head.strip_suffix('\n').unwrap_or(&head);
+    let head_ok = match head.strip_prefix("ref: ") {
+        Some(name) => name.starts_with("refs/heads/") && plain_ref_name(name),
+        None => is_sha(head),
+    };
+    if !head_ok {
+        return None;
+    }
+    let (direct, symbolic) = host_refs(&common)?;
+    let index = optional_file(&git_dir, "index", MAX_INDEX)?;
+    let shallow = optional_file(&common, "shallow", 1 << 20)?;
+    if let Some(text) = &shallow {
+        let text = std::str::from_utf8(text).ok()?;
+        if !text.lines().all(is_sha) {
+            return None;
+        }
+    }
+    let exclude = optional_file(&common, "info/exclude", 1 << 20).flatten();
+    let write = || -> std::io::Result<()> {
+        std::fs::create_dir_all(into.join("objects/info"))?;
+        std::fs::create_dir_all(into.join("refs"))?;
+        std::fs::write(into.join("objects/info/alternates"), format!("{objects}\n"))?;
+        std::fs::write(into.join("config"), &config)?;
+        std::fs::write(into.join("HEAD"), format!("{head}\n"))?;
+        let packed: String = direct
+            .iter()
+            .map(|(name, sha)| format!("{sha} {name}\n"))
+            .collect();
+        std::fs::write(into.join("packed-refs"), packed)?;
+        for (name, target) in &symbolic {
+            let path = into.join(name);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(path, format!("ref: {target}\n"))?;
+        }
+        if let Some(index) = &index {
+            std::fs::write(into.join("index"), index)?;
+        }
+        if let Some(shallow) = &shallow {
+            std::fs::write(into.join("shallow"), shallow)?;
+        }
+        if let Some(exclude) = &exclude {
+            std::fs::create_dir_all(into.join("info"))?;
+            std::fs::write(into.join("info/exclude"), exclude)?;
+        }
+        Ok(())
+    };
+    write().ok()
 }
 
-fn config_is_plain(git_dir: &Path, expected_common: &Path) -> bool {
-    let mut common = fixed_git_command();
-    common
-        .arg("--git-dir")
-        .arg(git_dir)
-        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
-        .current_dir(git_dir);
-    let Ok(out) = output_within(&mut common, GIT_TIMEOUT) else {
-        return false;
+fn config_true(value: Option<&str>) -> bool {
+    value.is_none_or(|v| {
+        !matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "false" | "no" | "off" | "0" | ""
+        )
+    })
+}
+
+/// The settings of the config file `rel` in `dir`, read once and parsed from our own copy, when every
+/// key is plain. A missing file has none.
+fn plain_settings(dir: &Path, rel: &str, scratch: &Path) -> Option<Vec<(String, Option<String>)>> {
+    let Some(bytes) = optional_file(dir, rel, 1 << 20)? else {
+        return Some(Vec::new());
     };
-    if !out.status.success() {
-        return false;
-    }
-    let Ok(git_dir) = std::str::from_utf8(&out.stdout) else {
-        return false;
-    };
-    let git_dir = git_dir.strip_suffix('\n').unwrap_or(git_dir);
-    if std::fs::canonicalize(git_dir).ok().as_deref() != Some(expected_common) {
-        return false;
-    }
+    let copy = scratch.join("snapshot.config");
+    std::fs::write(&copy, bytes).ok()?;
     let mut list = fixed_git_command();
-    list.args([
-        "config",
-        "--no-includes",
-        "--name-only",
-        "--list",
-        "-z",
-        "--file",
-    ])
-    .arg(expected_common.join("config"));
-    let Ok(out) = output_within(&mut list, GIT_TIMEOUT) else {
-        return false;
-    };
+    list.env("GIT_CEILING_DIRECTORIES", scratch)
+        .args(["config", "--no-includes", "--list", "-z", "--file"])
+        .arg(&copy)
+        .current_dir(scratch);
+    let out = output_bounded(&mut list, std::time::Duration::from_secs(10), 4 << 20);
+    std::fs::remove_file(&copy).ok()?;
+    let out = out.ok()?;
     if !out.status.success() {
-        return false;
+        return None;
     }
-    let Ok(names) = std::str::from_utf8(&out.stdout) else {
-        return false;
-    };
-    names
+    let text = String::from_utf8(out.stdout).ok()?;
+    let settings: Vec<(String, Option<String>)> = text
         .split('\0')
-        .filter(|name| !name.is_empty())
-        .all(plain_config_key)
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| match entry.split_once('\n') {
+            Some((key, value)) => (key.to_string(), Some(value.to_string())),
+            None => (entry.to_string(), None),
+        })
+        .collect();
+    settings
+        .iter()
+        .all(|(key, _)| plain_config_key(key))
+        .then_some(settings)
+}
+
+/// The bytes of the regular file `rel` in `dir` up to `cap`, `Some(None)` when it does not exist, and
+/// `None` when it is anything else or larger.
+fn optional_file(dir: &Path, rel: &str, cap: u64) -> Option<Option<Vec<u8>>> {
+    use std::io::Read;
+    match std::fs::symlink_metadata(dir.join(rel)) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Some(None),
+        _ => {}
+    }
+    let file = open_beneath(dir, rel, libc::O_NONBLOCK)?;
+    let meta = file.metadata().ok()?;
+    if !meta.file_type().is_file() || meta.len() > cap {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    file.take(cap + 1).read_to_end(&mut bytes).ok()?;
+    (bytes.len() as u64 <= cap).then_some(Some(bytes))
+}
+
+fn host_config(settings: &[(String, Option<String>)]) -> Option<String> {
+    let quoted = |s: &str| -> Option<String> {
+        (!s.chars().any(char::is_control))
+            .then(|| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")))
+    };
+    let mut out = String::from("[core]\n\trepositoryformatversion = 0\n\tbare = false\n");
+    for (key, value) in settings {
+        let (section, rest) = key.split_once('.')?;
+        let (sub, var) = match rest.rsplit_once('.') {
+            Some((sub, var)) => (Some(sub), var),
+            None => (None, rest),
+        };
+        let carried = match (section, sub) {
+            ("core", None) => matches!(
+                var,
+                "filemode"
+                    | "ignorecase"
+                    | "precomposeunicode"
+                    | "symlinks"
+                    | "autocrlf"
+                    | "eol"
+                    | "safecrlf"
+            ),
+            ("branch", Some(_)) => matches!(var, "remote" | "pushremote" | "merge" | "rebase"),
+            ("remote", Some(_)) => matches!(var, "url" | "pushurl" | "fetch" | "push"),
+            _ => false,
+        };
+        if !carried {
+            continue;
+        }
+        let header = match sub {
+            Some(sub) => format!("[{section} {}]\n", quoted(sub)?),
+            None => format!("[{section}]\n"),
+        };
+        let value = quoted(value.as_deref().unwrap_or("true"))?;
+        out.push_str(&format!("{header}\t{var} = {value}\n"));
+    }
+    Some(out)
+}
+
+const MAX_HOST_REFS: usize = 100_000;
+
+/// The branches and remote-tracking refs of the common directory `common`, read as data: direct refs
+/// with their objects and symbolic refs with their targets. Loose refs win over packed ones.
+fn host_refs(common: &Path) -> Option<(BTreeMap<String, String>, BTreeMap<String, String>)> {
+    use std::io::Read;
+    let wanted = |name: &str| {
+        (name.starts_with("refs/heads/") || name.starts_with("refs/remotes/"))
+            && plain_ref_name(name)
+    };
+    let mut direct = BTreeMap::new();
+    if let Some(bytes) = optional_file(common, "packed-refs", 64 << 20)? {
+        for line in std::str::from_utf8(&bytes).ok()?.lines() {
+            let Some((sha, name)) = line.split_once(' ') else {
+                continue;
+            };
+            if is_sha(sha) && wanted(name) {
+                direct.insert(name.to_string(), sha.to_string());
+            }
+        }
+    }
+    let mut symbolic = BTreeMap::new();
+    let mut pending = vec!["refs/heads".to_string(), "refs/remotes".to_string()];
+    let mut seen = 0usize;
+    while let Some(rel) = pending.pop() {
+        let Some(dir) = open_beneath(common, &rel, libc::O_DIRECTORY) else {
+            continue;
+        };
+        for name in entries(&dir) {
+            seen += 1;
+            if seen > MAX_HOST_REFS {
+                return None;
+            }
+            let Some(name_text) = name.to_str() else {
+                continue;
+            };
+            let full = format!("{rel}/{name_text}");
+            if open_in(&dir, &name, libc::O_DIRECTORY).is_some() {
+                pending.push(full);
+                continue;
+            }
+            let Some(file) = open_in(&dir, &name, libc::O_NONBLOCK) else {
+                continue;
+            };
+            if !file.metadata().is_ok_and(|m| m.file_type().is_file()) || !wanted(&full) {
+                continue;
+            }
+            let mut text = String::new();
+            if file.take(4096).read_to_string(&mut text).is_err() {
+                continue;
+            }
+            let text = text.trim_end_matches('\n');
+            if let Some(target) = text.strip_prefix("ref: ") {
+                if wanted(target) {
+                    direct.remove(&full);
+                    symbolic.insert(full, target.to_string());
+                }
+            } else if is_sha(text) {
+                direct.insert(full, text.to_string());
+            }
+        }
+    }
+    Some((direct, symbolic))
 }
 
 pub fn git_bytes(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<Vec<u8>> {
