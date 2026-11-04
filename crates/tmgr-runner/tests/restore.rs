@@ -794,3 +794,102 @@ fn restore_rechecks_the_argv_digest_against_the_rebuilt_command_line() {
     assert!(r.resumed);
     assert_eq!(r.session.argv, [exe.as_str(), "--x", "--resumed"]);
 }
+
+fn git_fx(dir: &Path, args: &[&str]) {
+    let out = Command::new("git")
+        .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn a_clone_that_shares_object_files_is_not_restored_and_is_left_alone() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::new(true);
+    let base = fs::canonicalize(h.tmp.path()).unwrap();
+    let repo = base.join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    git_fx(&repo, &["init", "-q", "-b", "main"]);
+    fs::write(repo.join("a.txt"), "a").unwrap();
+    git_fx(&repo, &["add", "a.txt"]);
+    git_fx(&repo, &["commit", "-q", "-m", "one"]);
+    let trees = base.join("repo-worktrees");
+    fs::create_dir_all(&trees).unwrap();
+    let clone = trees.join("old");
+    git_fx(
+        &base,
+        &[
+            "clone",
+            "-q",
+            "--no-local",
+            "--reference",
+            repo.to_str().unwrap(),
+            repo.to_str().unwrap(),
+            clone.to_str().unwrap(),
+        ],
+    );
+    fs::write(clone.join("c.txt"), "c").unwrap();
+    git_fx(&clone, &["add", "c.txt"]);
+    git_fx(&clone, &["commit", "-q", "-m", "two"]);
+    h.start();
+    let mut req = h.req();
+    req.cwd = clone.display().to_string();
+    req.clone_of = Some(repo.display().to_string());
+    let first = h.client().create_run(req).unwrap();
+    let log = clone.join("log");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !fs::read_to_string(&log)
+        .unwrap_or_default()
+        .contains("home:")
+    {
+        assert!(Instant::now() < deadline, "session did not start");
+        thread::sleep(Duration::from_millis(50));
+    }
+    h.reboot(&first, true);
+
+    fs::write(clone.join("wip.txt"), "unsaved").unwrap();
+    let mut todo = vec![clone.join(".git/objects")];
+    let mut object = None;
+    while let Some(dir) = todo.pop() {
+        for e in fs::read_dir(&dir).unwrap().flatten() {
+            let p = e.path();
+            let meta = fs::symlink_metadata(&p).unwrap();
+            if meta.is_dir() {
+                if p.file_name().is_some_and(|n| n != "info") {
+                    todo.push(p);
+                }
+            } else if meta.is_file() {
+                object = Some(p);
+            }
+        }
+    }
+    let object = object.expect("no object file in the clone");
+    let extra = base.join("extra-link");
+    fs::hard_link(&object, &extra).unwrap();
+
+    let err = h.client().restore(&first.id).unwrap_err().to_string();
+    assert!(err.starts_with("invalid_params"), "{err}");
+    assert!(err.contains(clone.to_str().unwrap()), "{err}");
+    assert!(err.contains("re-clone it or remove it"), "{err}");
+    assert!(clone.is_dir());
+    assert_eq!(
+        fs::read_to_string(clone.join("wip.txt")).unwrap(),
+        "unsaved"
+    );
+    assert!(object.is_file());
+    assert!(extra.is_file());
+    assert_eq!(h.entries()[0].status, Status::Restorable);
+    assert!(h.homes.join(&first.id).is_dir());
+    assert!(h.client().list().unwrap().is_empty());
+}
