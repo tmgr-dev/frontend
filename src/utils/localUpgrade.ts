@@ -89,9 +89,13 @@ export const upgradeFailureSentence = (failed: FailedStep | null) =>
 		? 'This device could not be linked to your account, so your local data stays on this device for now. You can keep working, retry, or skip.'
 		: 'Some local data could not be moved to this account yet. You can keep working, and we will try again next time you start the app.';
 
+export const canSkipLocalUpgrade = (failed: FailedStep | null) =>
+	failed === 'link';
+
 export const skipLocalUpgrade = (
 	storage: StorageLike | null = defaultStorage(),
 ) => {
+	if (!canSkipLocalUpgrade(upgradeState.failed)) return;
 	writeUpgradeMarker({}, storage);
 	upgradeState.dialog = false;
 	upgradeState.phase = 'idle';

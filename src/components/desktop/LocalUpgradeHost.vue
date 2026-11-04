@@ -37,6 +37,7 @@
 				<span class="min-w-0 flex-1">{{ failureSentence }}</span>
 				<Button size="sm" variant="outline" @click="retry">Retry</Button>
 				<Button
+					v-if="canSkip"
 					size="sm"
 					variant="ghost"
 					data-testid="local-upgrade-skip"
@@ -74,6 +75,7 @@
 	import type { LocalWorkspace } from '@/local/types';
 	import {
 		clearUpgradeDialog,
+		canSkipLocalUpgrade,
 		retryLocalUpgrade,
 		skipLocalUpgrade,
 		upgradeFailureSentence,
@@ -150,6 +152,8 @@
 				upgradeFailureSentence(upgradeState.failed),
 			);
 
+			const canSkip = computed(() => canSkipLocalUpgrade(upgradeState.failed));
+
 			const close = () => clearUpgradeDialog();
 
 			const openCloud = async () => {
@@ -179,6 +183,7 @@
 				cloudWorkspace,
 				keySentence,
 				failureSentence,
+				canSkip,
 				close,
 				openCloud,
 				retry: () => retryLocalUpgrade(),

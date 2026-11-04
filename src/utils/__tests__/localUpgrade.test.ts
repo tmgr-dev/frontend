@@ -1,4 +1,5 @@
 import {
+	canSkipLocalUpgrade,
 	clearUpgradeDialog,
 	installLocalUpgrade,
 	LOCAL_UPGRADE_KEY,
@@ -9,6 +10,8 @@ import {
 	upgradeFailureSentence,
 	upgradeState,
 } from '@/utils/localUpgrade';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 const memoryStorage = () => {
 	const data = new Map<string, string>();
@@ -801,4 +804,49 @@ test('boot: a refresh between setUser and the link call runs nothing until the n
 	await flush();
 	expect(migrateIdsOf(invoke)).toEqual([7, 7]);
 	expect(upgradeState).toMatchObject({ phase: 'done', key: 'moved' });
+});
+
+test.each(['persona_cache_migrate_local', 'persona_llm_migrate_local'])(
+	'after a failing %s there is no skip and skip keeps the retry marker',
+	async (failing) => {
+		const storage = memoryStorage();
+		markLocalUpgrade(storage);
+		const { store } = makeStore(7);
+		const handlers: Handlers = {
+			local_profile_link: firstWinsLink(),
+			persona_cache_migrate_local: () => ({ moved: 1, conflicts: 0 }),
+			persona_llm_migrate_local: () => ({ status: 'moved' }),
+		};
+		handlers[failing] = () => {
+			throw new Error('boom');
+		};
+		const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+		installLocalUpgrade(store, makeInvoke(handlers), storage);
+		await flush();
+		expect(upgradeState.failed).toBe('move');
+		expect(canSkipLocalUpgrade(upgradeState.failed)).toBe(false);
+		skipLocalUpgrade(storage);
+		expect(readUpgradeMarker(storage)).toEqual({ migrate: true, dialog: true });
+		expect(upgradeState).toMatchObject({ phase: 'failed', failed: 'move' });
+		errors.mockRestore();
+	},
+);
+
+test('skip is offered only for a link failure', () => {
+	expect(canSkipLocalUpgrade('link')).toBe(true);
+	expect(canSkipLocalUpgrade('move')).toBe(false);
+	expect(canSkipLocalUpgrade(null)).toBe(false);
+	const host = readFileSync(
+		join(__dirname, '../../components/desktop/LocalUpgradeHost.vue'),
+		'utf8',
+	);
+	const skipButton = host.slice(
+		host.lastIndexOf(
+			'<Button',
+			host.indexOf('data-testid="local-upgrade-skip"'),
+		),
+		host.indexOf('data-testid="local-upgrade-skip"'),
+	);
+	expect(skipButton).toContain('v-if="canSkip"');
+	expect(host).toContain('canSkipLocalUpgrade(upgradeState.failed)');
 });
