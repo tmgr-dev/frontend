@@ -473,6 +473,9 @@ test('converting an own skill to shared explains a clash and sends only the chec
 test('a shared skill shows its history, restores a version and pins a persona', async ({
   page,
 }) => {
+  await page.addInitScript(() =>
+    sessionStorage.setItem('tmgr:tours:auto', 'true'),
+  );
   await mockApp(page);
   await page.route('**/api/personas*', (route) =>
     route.fulfill({
