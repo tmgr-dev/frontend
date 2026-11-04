@@ -176,6 +176,20 @@ enum Outcome {
     Left,
 }
 
+#[cfg(test)]
+thread_local! {
+    static BEFORE_GIT: std::cell::RefCell<Option<Box<dyn Fn()>>> = const { std::cell::RefCell::new(None) };
+}
+
+fn before_git() {
+    #[cfg(test)]
+    BEFORE_GIT.with(|h| {
+        if let Some(f) = &*h.borrow() {
+            f();
+        }
+    });
+}
+
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -429,6 +443,7 @@ struct Proc {
 
 impl Proc {
     fn spawn(mut cmd: Command) -> Result<Proc, CpError> {
+        before_git();
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -711,6 +726,7 @@ fn exec(g: &GitEnv, args: &[&str], stdin: Option<&Path>, cap: usize) -> Result<O
         cmd.stdin(File::open(p).map_err(|e| failed("cannot open git input", e))?);
     }
     let name = args.first().copied().unwrap_or("");
+    before_git();
     run_bounded(cmd, GIT_DEADLINE, cap, ERR_CAP).map_err(|e| failed(&format!("git {name}"), e))
 }
 
@@ -750,6 +766,7 @@ fn effective_excludes(env: &Env, cwd: &Path) -> String {
     if let Some(x) = &env.xdg {
         cmd.env("XDG_CONFIG_HOME", x);
     }
+    before_git();
     if let Ok(o) = run_bounded(cmd, FACTS_DEADLINE, 64 * 1024, 64 * 1024) {
         let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
         let usable = fs::metadata(&path).map_or(true, |m| m.is_file());
@@ -2792,12 +2809,275 @@ mod tests {
     }
 
     #[test]
-    fn unreadable_git_config_refuses_the_snapshot() {
+    fn garbage_in_the_session_git_config_does_not_block_checkpoints() {
         let fx = Fx::new();
         fx.w("a", b"1");
         append_config(&fx, b"[hook\n");
         let st = fx.store();
-        assert!(matches!(st.snapshot_in(&fx.env()), Err(CpError::Failed(_))));
+        snap(&fx, &st);
+        fx.w("a", b"2");
+        st.restore_in(&fx.env(), 1).unwrap();
+        assert_eq!(fx.r("a"), b"1");
+    }
+
+    fn hostile_hook(out: &Path, name: &str) -> String {
+        format!(
+            "[hook \"{name}\"]\n\tcommand = touch {}/{name}\n\tevent = reference-transaction\n\tevent = post-index-change\n\tevent = pre-auto-gc\n",
+            out.display()
+        )
+    }
+
+    fn arm_hostile_config(fx: &Fx, config: PathBuf) {
+        let out = fx.out.clone();
+        let k = std::cell::Cell::new(0u32);
+        BEFORE_GIT.with(|h| {
+            *h.borrow_mut() = Some(Box::new(move || {
+                k.set(k.get() + 1);
+                let mut f = fs::OpenOptions::new().append(true).open(&config).unwrap();
+                f.write_all(hostile_hook(&out, &format!("late{}", k.get())).as_bytes())
+                    .unwrap();
+            }))
+        });
+    }
+
+    fn disarm() {
+        BEFORE_GIT.with(|h| *h.borrow_mut() = None);
+    }
+
+    fn plant_hostile_repo_config(fx: &Fx, git_dir: &Path) {
+        let out = fx.out.display().to_string();
+        let hooks_dir = fx.root.join("evil-hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+        for h in ["reference-transaction", "post-index-change", "pre-auto-gc"] {
+            script(&hooks_dir.join(h), &format!("touch {out}/dir-{h}"));
+            fs::create_dir_all(git_dir.join("hooks")).unwrap();
+            script(
+                &git_dir.join("hooks").join(h),
+                &format!("touch {out}/own-{h}"),
+            );
+        }
+        let inc = fx.root.join("evil-include.cfg");
+        fs::write(&inc, hostile_hook(&fx.out, "included")).unwrap();
+        let mut cfg = hostile_hook(&fx.out, "early");
+        cfg.push_str(&format!(
+            "[core]\n\thooksPath = {}\n[include]\n\tpath = {}\n",
+            hooks_dir.display(),
+            inc.display()
+        ));
+        fs::OpenOptions::new()
+            .append(true)
+            .open(git_dir.join("config"))
+            .unwrap()
+            .write_all(cfg.as_bytes())
+            .unwrap();
+    }
+
+    fn fired(fx: &Fx) -> Vec<String> {
+        fs::read_dir(&fx.out)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn session_git_config_never_runs_even_when_rewritten_before_every_git_command() {
+        let fx = Fx::new();
+        fx.w("a", b"1");
+        fx.commit_all("c");
+        plant_hostile_repo_config(&fx, &fx.repo.join(".git"));
+        arm_hostile_config(&fx, fx.repo.join(".git/config"));
+        let st = fx.store();
+        snap(&fx, &st);
+        fx.w("a", b"2");
+        fx.w("b", b"new");
+        snap(&fx, &st);
+        st.diff_in(&fx.env(), 2, DiffAgainst::Previous).unwrap();
+        st.diff_in(&fx.env(), 1, DiffAgainst::Current).unwrap();
+        st.restore_in(&fx.env(), 1).unwrap();
+        let to_sdir = fx.root.join("sdir2");
+        fs::create_dir_all(&to_sdir).unwrap();
+        let to = Store {
+            session: S2.to_string(),
+            sdir: to_sdir,
+            ..fx.store()
+        };
+        st.transfer(&to).unwrap();
+        to.restore_in(&fx.env(), 2).unwrap();
+        to.remove_all();
+        disarm();
+        assert_eq!(fx.r("a"), b"2");
+        assert_eq!(fired(&fx), Vec::<String>::new());
+    }
+
+    #[test]
+    fn linked_worktree_config_never_runs() {
+        let fx = Fx::new();
+        fx.w("a", b"1");
+        fx.commit_all("c");
+        let wt = fx.root.join("wt");
+        fx.pg(&["worktree", "add", "-q", wt.to_str().unwrap()]);
+        fx.pg(&["config", "extensions.worktreeConfig", "true"]);
+        let wt_git = fx.repo.join(".git/worktrees/wt");
+        fs::write(
+            wt_git.join("config.worktree"),
+            hostile_hook(&fx.out, "wtcfg"),
+        )
+        .unwrap();
+        plant_hostile_repo_config(&fx, &fx.repo.join(".git"));
+        arm_hostile_config(&fx, wt_git.join("config.worktree"));
+        let st = Store {
+            cwd: wt.clone(),
+            ..fx.store()
+        };
+        fs::write(wt.join("a"), b"wt1").unwrap();
+        snap(&fx, &st);
+        fs::write(wt.join("a"), b"wt2").unwrap();
+        st.restore_in(&fx.env(), 1).unwrap();
+        disarm();
+        assert_eq!(fs::read(wt.join("a")).unwrap(), b"wt1");
+        assert_eq!(fired(&fx), Vec::<String>::new());
+    }
+
+    fn legacy_entry(fx: &Fx, ns: &str, n: u64, content: &[u8]) -> Entry {
+        let (_, blob) = pg_in(
+            &fx.repo,
+            &fx.home,
+            &["hash-object", "-w", "--stdin"],
+            content,
+        );
+        let blob = String::from_utf8(blob).unwrap().trim().to_string();
+        let (_, tree) = pg_in(
+            &fx.repo,
+            &fx.home,
+            &["mktree"],
+            format!("100644 blob {blob}\ta\n").as_bytes(),
+        );
+        let tree = String::from_utf8(tree).unwrap().trim().to_string();
+        let commit = fx.pg(&["commit-tree", "-m", &format!("tmgr checkpoint {n}"), &tree]);
+        fx.pg(&[
+            "update-ref",
+            &format!("refs/tmgr/checkpoints/{ns}/{n}"),
+            &commit,
+        ]);
+        Entry {
+            item: CheckpointItem {
+                n,
+                kind: if n == 1 {
+                    CheckpointKind::Start
+                } else {
+                    CheckpointKind::Turn
+                },
+                turn: n - 1,
+                files: 1,
+                skipped: 0,
+                at_ms: 1,
+                restored_from: None,
+            },
+            commit,
+            tree,
+        }
+    }
+
+    fn legacy_store(fx: &Fx, st: &Store, ns: &str) {
+        let items = vec![
+            legacy_entry(fx, ns, 1, b"legacy1"),
+            legacy_entry(fx, ns, 2, b"legacy2"),
+        ];
+        let m = Manifest {
+            next_n: 3,
+            turn: 1,
+            common_dir: Some(fx.repo.join(".git").display().to_string()),
+            refs_of: (ns != st.session).then(|| ns.to_string()),
+            items,
+            ..Manifest::default()
+        };
+        st.save(&m).unwrap();
+    }
+
+    fn drop_unreachable(fx: &Fx) {
+        fx.pg(&["reflog", "expire", "--expire=now", "--all"]);
+        fx.pg(&["gc", "-q", "--prune=now"]);
+    }
+
+    #[test]
+    fn existing_checkpoints_restore_after_the_repository_forgets_them() {
+        let fx = Fx::new();
+        fx.w("a", b"now");
+        let st = fx.store();
+        legacy_store(&fx, &st, S1);
+        assert_eq!(st.list().len(), 2);
+        snap(&fx, &st);
+        assert!(refs_under(&fx, "refs/tmgr").is_empty());
+        drop_unreachable(&fx);
+        st.restore_in(&fx.env(), 1).unwrap();
+        assert_eq!(fx.r("a"), b"legacy1");
+        st.restore_in(&fx.env(), 2).unwrap();
+        assert_eq!(fx.r("a"), b"legacy2");
+    }
+
+    #[test]
+    fn checkpoints_carried_while_paused_restore_and_their_refs_go() {
+        let fx = Fx::new();
+        fx.w("a", b"now");
+        let sdir2 = fx.root.join("sdir2");
+        fs::create_dir_all(&sdir2).unwrap();
+        let st = Store {
+            session: S2.to_string(),
+            sdir: sdir2,
+            ..fx.store()
+        };
+        legacy_store(&fx, &st, S1);
+        fx.pg(&["update-ref", "refs/heads/keep", &st.load().items[0].commit]);
+        st.restore_in(&fx.env(), 1).unwrap();
+        assert_eq!(fx.r("a"), b"legacy1");
+        assert!(refs_under(&fx, "refs/tmgr").is_empty());
+        assert_eq!(refs_under(&fx, "refs/heads"), ["refs/heads/keep"]);
+    }
+
+    #[test]
+    fn existing_checkpoints_whose_objects_are_gone_are_dropped() {
+        let fx = Fx::new();
+        fx.w("a", b"now");
+        let st = fx.store();
+        legacy_store(&fx, &st, S1);
+        fx.pg(&["update-ref", "-d", &format!("refs/tmgr/checkpoints/{S1}/1")]);
+        drop_unreachable(&fx);
+        snap(&fx, &st);
+        let ns: Vec<u64> = st.list().iter().map(|i| i.n).collect();
+        assert_eq!(ns, [2, 3]);
+        st.restore_in(&fx.env(), 2).unwrap();
+        assert_eq!(fx.r("a"), b"legacy2");
+    }
+
+    #[test]
+    fn refs_of_removed_sessions_are_cleaned_up_but_live_ones_stay() {
+        let fx = Fx::new();
+        fx.w("a", b"now");
+        let gone = "s_gonegonego";
+        let live = "s_livelivel1";
+        let carried = "s_carriedcar";
+        fs::create_dir_all(fx.root.join(live)).unwrap();
+        let other = Store {
+            session: "s_otherother".to_string(),
+            sdir: fx.root.join("s_otherother"),
+            ..fx.store()
+        };
+        fs::create_dir_all(&other.sdir).unwrap();
+        legacy_store(&fx, &other, carried);
+        let st = fx.store();
+        legacy_entry(&fx, gone, 1, b"g1");
+        legacy_entry(&fx, gone, 2, b"g2");
+        legacy_entry(&fx, live, 1, b"l1");
+        legacy_store(&fx, &st, S1);
+        snap(&fx, &st);
+        assert_eq!(
+            refs_under(&fx, "refs/tmgr"),
+            [
+                format!("refs/tmgr/checkpoints/{carried}/1"),
+                format!("refs/tmgr/checkpoints/{carried}/2"),
+                format!("refs/tmgr/checkpoints/{live}/1"),
+            ]
+        );
     }
 
     #[cfg(target_os = "linux")]
