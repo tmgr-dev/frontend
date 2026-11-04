@@ -193,6 +193,11 @@ thread_local! {
     static BEFORE_GIT: std::cell::RefCell<Option<Box<dyn Fn()>>> = const { std::cell::RefCell::new(None) };
 }
 
+#[cfg(test)]
+thread_local! {
+    static AFTER_LOCK: std::cell::RefCell<Option<Box<dyn Fn()>>> = const { std::cell::RefCell::new(None) };
+}
+
 fn before_git(cmd: &Command) {
     #[cfg(test)]
     {
@@ -1527,6 +1532,12 @@ fn rewrite_packed(root: &OwnedFd, ns: &str) -> bool {
     let Some(kept) = filter_packed(&data, ns) else {
         return false;
     };
+    #[cfg(test)]
+    AFTER_LOCK.with(|h| {
+        if let Some(f) = &*h.borrow() {
+            f();
+        }
+    });
     let flags = libc::O_WRONLY | libc::O_NOFOLLOW;
     let Ok(fd) = open_at(root.as_fd(), PACKED_LOCK, flags, 0) else {
         return false;
@@ -2885,6 +2896,68 @@ mod tests {
         blocked_until_removed(&fx, &fifo);
     }
 
+    fn fifo_dirs(base: &Path) {
+        for d in ["objects", "refs"] {
+            fs::create_dir_all(base.join(d)).unwrap();
+        }
+    }
+
+    #[test]
+    fn snapshot_fails_fast_on_a_special_file_in_a_symlinked_git_dir() {
+        let fx = Fx::new();
+        fx.w("n/a", b"1");
+        fifo_dirs(&fx.root.join("real"));
+        std::os::unix::fs::symlink(fx.root.join("real"), fx.repo.join("n/.git")).unwrap();
+        let fifo = fx.root.join("real/HEAD");
+        mkfifo(&fifo);
+        blocked_until_removed(&fx, &fifo);
+    }
+
+    #[test]
+    fn snapshot_fails_fast_on_a_symlinked_commondir_special_file() {
+        let fx = Fx::new();
+        fx.w("n/a", b"1");
+        let g = fx.repo.join("n/.git");
+        fifo_dirs(&g);
+        fs::write(g.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        let fifo = fx.root.join("cd-fifo");
+        mkfifo(&fifo);
+        std::os::unix::fs::symlink(&fifo, g.join("commondir")).unwrap();
+        blocked_until_removed(&fx, &fifo);
+    }
+
+    #[test]
+    fn snapshot_fails_fast_on_a_special_file_behind_a_padded_gitfile() {
+        let fx = Fx::new();
+        fx.w("m/a", b"1");
+        fifo_dirs(&fx.root.join("ext"));
+        fs::write(
+            fx.repo.join("m/.git"),
+            format!(
+                "gitdir: {}{}",
+                fx.root.join("ext").display(),
+                "\n".repeat(5000)
+            ),
+        )
+        .unwrap();
+        let fifo = fx.root.join("ext/HEAD");
+        mkfifo(&fifo);
+        blocked_until_removed(&fx, &fifo);
+    }
+
+    #[test]
+    fn snapshot_fails_fast_on_a_special_file_deeper_than_the_scan_depth() {
+        let fx = Fx::new();
+        let mut rel = String::new();
+        for _ in 0..(SCAN_DEPTH + 6) {
+            rel.push_str("d/");
+        }
+        fx.w(&format!("{rel}a"), b"1");
+        let fifo = fx.repo.join(format!("{rel}.gitignore"));
+        mkfifo(&fifo);
+        blocked_until_removed(&fx, &fifo);
+    }
+
     #[test]
     fn snapshot_ignores_a_special_file_at_a_harmless_place() {
         let fx = Fx::new();
@@ -3215,6 +3288,43 @@ mod tests {
         let st = fx.store();
         snap(&fx, &st);
         assert_eq!(tree_paths(&fx, &commit_of(&st, 1)), ["keep"]);
+    }
+
+    #[test]
+    fn excludes_file_inside_an_agent_chosen_common_dir_is_not_honored() {
+        let fx = Fx::new();
+        fx.w("a", b"1");
+        fx.commit_all("c");
+        let wt = fx.root.join("wt");
+        fx.pg(&["worktree", "add", "-q", wt.to_str().unwrap()]);
+        let common = fx.repo.join(".git");
+        fs::write(common.join("ign"), "a\n").unwrap();
+        fx.pg(&[
+            "config",
+            "core.excludesFile",
+            common.join("ign").to_str().unwrap(),
+        ]);
+        fs::write(
+            common.join("worktrees/wt/commondir"),
+            format!("{}\n", common.display()),
+        )
+        .unwrap();
+        let global = fx.home.join("global-ignore");
+        fs::write(&global, "b\n").unwrap();
+        fs::write(
+            fx.home.join(".gitconfig"),
+            format!("[core]\n\texcludesFile = {}\n", global.display()),
+        )
+        .unwrap();
+        for f in ["a", "b", "keep"] {
+            fs::write(wt.join(f), b"1").unwrap();
+        }
+        let st = Store {
+            cwd: wt.clone(),
+            ..fx.store()
+        };
+        snap(&fx, &st);
+        assert_eq!(tree_paths(&fx, &commit_of(&st, 1)), ["a", "keep"]);
     }
 
     #[test]
@@ -4154,6 +4264,25 @@ mod tests {
         assert!(!st.load().common_dir.is_some());
         st.restore_in(&fx.env(), 1).unwrap();
         assert_eq!(fx.r("a"), b"legacy1");
+    }
+
+    #[test]
+    fn the_packed_refs_lock_is_written_through_the_descriptor_that_created_it() {
+        let fx = Fx::new();
+        let st = packed_fixture(&fx);
+        let victim = fx.out.join("victim");
+        fs::write(&victim, b"victim").unwrap();
+        let lock = fx.repo.join(".git/packed-refs.lock");
+        let v = victim.clone();
+        AFTER_LOCK.with(|h| {
+            *h.borrow_mut() = Some(Box::new(move || {
+                fs::remove_file(&lock).unwrap();
+                fs::hard_link(&v, &lock).unwrap();
+            }))
+        });
+        snap(&fx, &st);
+        AFTER_LOCK.with(|h| *h.borrow_mut() = None);
+        assert_eq!(fs::read(&victim).unwrap(), b"victim");
     }
 
     #[test]
