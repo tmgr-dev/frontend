@@ -30,7 +30,7 @@
 					}}</span>
 					<span v-if="card.state === 'deferred'" class="k">deferred</span>
 					<span
-						v-if="card.blocking && !isDone(card)"
+						v-if="card.blocking && !isDone(card) && !card.session_gone"
 						class="block"
 						title="An agent is waiting"
 					></span>

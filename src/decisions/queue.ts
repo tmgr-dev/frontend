@@ -124,6 +124,10 @@ export const nextCardId = (
 	);
 };
 
+export const initialCardId = (order: CardView[]): string | null =>
+	(order.find((card) => card.state === 'open') ?? order.find(isPending))?.id ??
+	null;
+
 export const stepCardId = (
 	order: CardView[],
 	currentId: string | null,

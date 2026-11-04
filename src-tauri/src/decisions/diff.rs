@@ -129,7 +129,7 @@ pub fn run_diff(spec: &DiffSpec) -> DiffView {
   let bytes = if timed_out { Vec::new() } else { reader.join().unwrap_or_default() };
   let stderr = String::from_utf8_lossy(&stderr.join().unwrap_or_default()).trim().to_owned();
   if timed_out {
-    return failed("git diff timed out");
+    return failed("git diff timed out. If this repo is on another disk, macOS may be waiting for you to allow access: allow it, then press Refresh.");
   }
   let truncated = bytes.len() > MAX_BYTES;
   if !truncated && bytes.is_empty() && status.is_some_and(|s| !s.success()) && !stderr.is_empty() {

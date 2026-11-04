@@ -130,7 +130,7 @@
 		onDecisionsChanged,
 	} from '../api';
 	import {
-		answerSummary,
+		answerToast,
 		buildAnswer,
 		cardMode,
 		isFinal,
@@ -141,6 +141,7 @@
 	import {
 		buildQueue,
 		flattenQueue,
+		initialCardId,
 		nextCardId,
 		queueProgress,
 		stepCardId,
@@ -284,10 +285,7 @@
 			},
 			ensureSelection() {
 				if (this.order.some((card) => card.id === this.selectedId)) return;
-				this.selectedId =
-					this.order.find((card) => card.state === 'open')?.id ??
-					this.order[0]?.id ??
-					null;
+				this.selectedId = initialCardId(this.order);
 			},
 			ensureDiff() {
 				if (this.current?.diff) void this.loadDiff(this.current.id, false);
@@ -339,9 +337,7 @@
 				if (!this.resolvedHere.includes(card.id))
 					this.resolvedHere.push(card.id);
 				delete this.drafts[card.id];
-				const title =
-					card.title.length > 48 ? `${card.title.slice(0, 47)}…` : card.title;
-				this.showToast(`${title}: ${answerSummary(card, answer)}`);
+				this.showToast(answerToast(card, answer));
 				this.selectedId = following;
 				await this.refresh();
 				this.ensureSelection();

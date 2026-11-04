@@ -59,3 +59,13 @@ export const answerSummary = (card: CardView, answer: Answer): string => {
 	const text = option?.label ?? answer.free_text ?? 'answered';
 	return answer.note && option ? `${text} + note` : text;
 };
+
+export const answerToast = (card: CardView, answer: Answer): string => {
+	const title =
+		card.title.length > 48 ? `${card.title.slice(0, 47)}…` : card.title;
+	return `${title}: ${
+		card.session_gone
+			? 'saved, but the session has ended'
+			: answerSummary(card, answer)
+	}`;
+};

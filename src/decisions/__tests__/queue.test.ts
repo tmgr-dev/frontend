@@ -3,6 +3,7 @@ import {
 	flattenQueue,
 	groupKey,
 	groupLabel,
+	initialCardId,
 	nextCardId,
 	queueProgress,
 	stepCardId,
@@ -147,5 +148,20 @@ describe('nextCardId and stepCardId', () => {
 		expect(stepCardId(order, 'a', -1)).toBe('d');
 		expect(stepCardId(order, null, 1)).toBe('a');
 		expect(stepCardId([], 'a', 1)).toBeNull();
+	});
+});
+
+describe('initialCardId', () => {
+	it('prefers an open card, then a deferred one', () => {
+		const deferred = makeCard({ id: 'd', state: 'deferred' });
+		const open = makeCard({ id: 'o', created_ms: 9 });
+		expect(initialCardId([deferred, open])).toBe('o');
+		expect(initialCardId([deferred])).toBe('d');
+	});
+	it('selects nothing when every card is finished', () => {
+		expect(
+			initialCardId([makeCard({ id: 'a', state: 'answered' })]),
+		).toBeNull();
+		expect(initialCardId([])).toBeNull();
 	});
 });

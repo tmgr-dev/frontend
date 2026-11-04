@@ -1,4 +1,10 @@
-import { answerSummary, buildAnswer, cardMode, isEmptyAnswer } from '../answer';
+import {
+	answerSummary,
+	answerToast,
+	buildAnswer,
+	cardMode,
+	isEmptyAnswer,
+} from '../answer';
 import { makeCard } from './fixtures';
 
 describe('buildAnswer', () => {
@@ -82,6 +88,28 @@ describe('answerSummary', () => {
 		);
 		expect(answerSummary(card, buildAnswer({ dismissed: true }))).toBe(
 			'dismissed',
+		);
+	});
+});
+
+describe('answerToast', () => {
+	const options = [{ id: 'o1', label: 'Ship it', recommended: true }];
+	it('shows the summary for a live session', () => {
+		const card = makeCard({ title: 'Deploy', options });
+		expect(answerToast(card, buildAnswer({ choice: 'o1' }))).toBe(
+			'Deploy: Ship it',
+		);
+	});
+	it('says the answer was saved when the session has ended', () => {
+		const card = makeCard({ title: 'Deploy', options, session_gone: true });
+		expect(answerToast(card, buildAnswer({ choice: 'o1' }))).toBe(
+			'Deploy: saved, but the session has ended',
+		);
+	});
+	it('shortens long titles', () => {
+		const card = makeCard({ title: 'x'.repeat(60), options });
+		expect(answerToast(card, buildAnswer({ choice: 'o1' }))).toBe(
+			`${'x'.repeat(47)}…: Ship it`,
 		);
 	});
 });

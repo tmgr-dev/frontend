@@ -6,7 +6,9 @@
 			}}</span>
 			<span class="tag src">{{ sourceLabel(card) }}</span>
 			<span v-if="card.session_gone" class="tag gone">Session ended</span>
-			<span v-if="card.blocking && mode !== 'final'" class="tag blocking"
+			<span
+				v-if="card.blocking && mode !== 'final' && !card.session_gone"
+				class="tag blocking"
 				>Agent is waiting</span
 			>
 			<button
