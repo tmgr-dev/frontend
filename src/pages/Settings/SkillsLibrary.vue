@@ -48,6 +48,9 @@
 					</p>
 				</div>
 				<div class="flex shrink-0 gap-2">
+					<Button variant="outline" size="sm" @click="historySlug = skill.slug">
+						History
+					</Button>
 					<Button variant="outline" size="sm" @click="startEdit(skill)">
 						Edit
 					</Button>
@@ -57,6 +60,15 @@
 				</div>
 			</div>
 		</div>
+
+		<SharedSkillHistory
+			v-if="historySkill"
+			:key="historySkill.slug"
+			:slug="historySkill.slug"
+			:title="historySkill.title"
+			@close="historySlug = null"
+			@changed="$emit('changed')"
+		/>
 
 		<p class="text-2xs text-muted-foreground">
 			{{ skills.length }}/{{ SHARED_SKILL_LIMIT }} used
@@ -120,6 +132,7 @@
 		type SharedSkillSummary,
 	} from '@/actions/tmgr/personas';
 	import { Button } from '@/components/ui/button';
+	import SharedSkillHistory from './SharedSkillHistory.vue';
 	import { Textarea } from '@/components/ui/textarea';
 	import { toast } from '@/components/ui/toast';
 	import store from '@/store';
@@ -139,7 +152,7 @@
 
 	export default defineComponent({
 		name: 'SkillsLibrary',
-		components: { Button, SkillImportDialog, Textarea },
+		components: { Button, SharedSkillHistory, SkillImportDialog, Textarea },
 		props: {
 			revision: { type: Number, default: 0 },
 		},
@@ -150,6 +163,7 @@
 			const saving = ref(false);
 			const editingSlug = ref<string | null>(null);
 			const draft = ref(SKILL_TEMPLATE);
+			const historySlug = ref<string | null>(null);
 			const serverErrors = ref<Record<string, string[]> | null>(null);
 			const importOpen = ref(false);
 			const canImport = isDesktopApp() && !store.getters.isLocalOnly;
@@ -167,6 +181,10 @@
 					loading.value = false;
 				}
 			};
+
+			const historySkill = computed(
+				() => skills.value.find((s) => s.slug === historySlug.value) ?? null,
+			);
 
 			const draftBytes = computed(() => byteLength(draft.value));
 			const draftErrors = computed(
@@ -265,6 +283,8 @@
 				loading,
 				saving,
 				editingSlug,
+				historySlug,
+				historySkill,
 				draft,
 				draftBytes,
 				draftErrors,

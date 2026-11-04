@@ -21,6 +21,15 @@
 						{{ skill.slug }} · v{{ skill.version }} · {{ skill.when }}
 					</p>
 					<span
+						v-if="skill.pinned_version"
+						data-testid="shared-skill-pinned"
+						class="mt-1 mr-1 inline-block rounded bg-blue-100 px-1.5 py-0.5 text-2xs font-semibold text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+					>
+						Pinned to v{{ skill.pinned_version }} · latest v{{
+							skill.latest_version
+						}}
+					</span>
+					<span
 						v-if="skill.overridden"
 						data-testid="shared-skill-overridden"
 						class="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-2xs font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
@@ -28,9 +37,36 @@
 						Overridden by this persona's own skill
 					</span>
 				</div>
-				<Button variant="outline" size="sm" @click="detach(skill)">
-					Detach
-				</Button>
+				<div class="flex shrink-0 items-center gap-2">
+					<Select
+						:model-value="
+							skill.pinned_version ? String(skill.pinned_version) : 'latest'
+						"
+						@update:model-value="(v) => setVersion(skill, String(v))"
+					>
+						<SelectTrigger
+							class="h-8 w-40 text-xs"
+							:aria-label="`Version for ${skill.slug}`"
+						>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="latest">
+								Latest (v{{ skill.latest_version }})
+							</SelectItem>
+							<SelectItem
+								v-for="v in versionsFor(skill)"
+								:key="v"
+								:value="String(v)"
+							>
+								v{{ v }}
+							</SelectItem>
+						</SelectContent>
+					</Select>
+					<Button variant="outline" size="sm" @click="detach(skill)">
+						Detach
+					</Button>
+				</div>
 			</div>
 		</div>
 
@@ -62,6 +98,7 @@
 		attachSharedSkill,
 		detachSharedSkill,
 		listPersonaSharedSkills,
+		listSharedSkillVersions,
 		listSharedSkills,
 		type Persona,
 		type PersonaSharedSkill,
@@ -75,6 +112,7 @@
 		SelectTrigger,
 		SelectValue,
 	} from '@/components/ui/select';
+	import { changePin } from '@/composable/sharedSkillVersions';
 	import { toast } from '@/components/ui/toast';
 	import {
 		ATTACHED_SKILL_LIMIT,
@@ -109,6 +147,28 @@
 			const attached = ref<PersonaSharedSkill[]>([]);
 			const library = ref<SharedSkillSummary[]>([]);
 			const loading = ref(true);
+			const keptVersions = ref<Record<string, number[]>>({});
+
+			const loadVersions = async (skills: PersonaSharedSkill[]) => {
+				const entries = await Promise.all(
+					skills.map(async (s) => {
+						try {
+							const rows = await listSharedSkillVersions(s.slug);
+							return [s.slug, rows.map((r) => r.version)] as const;
+						} catch {
+							return [s.slug, []] as const;
+						}
+					}),
+				);
+				keptVersions.value = Object.fromEntries(entries);
+			};
+
+			const versionsFor = (skill: PersonaSharedSkill) => {
+				const kept = keptVersions.value[skill.slug] ?? [];
+				return skill.pinned_version && !kept.includes(skill.pinned_version)
+					? [skill.pinned_version, ...kept]
+					: kept;
+			};
 
 			const load = async () => {
 				loading.value = true;
@@ -117,6 +177,7 @@
 						listPersonaSharedSkills(props.persona.id),
 						listSharedSkills(),
 					]);
+					await loadVersions(attached.value);
 				} catch {
 					toast({
 						title: 'Could not load library skills',
@@ -164,6 +225,20 @@
 				}
 			};
 
+			const setVersion = async (skill: PersonaSharedSkill, choice: string) => {
+				const current = skill.pinned_version
+					? String(skill.pinned_version)
+					: 'latest';
+				if (choice === current) return;
+				try {
+					await changePin(props.persona.id, skill.slug, choice);
+					await load();
+					emit('changed');
+				} catch (error) {
+					fail(error, 'Could not change the skill version');
+				}
+			};
+
 			watch(() => props.revision, load);
 			onMounted(load);
 
@@ -173,6 +248,8 @@
 				loading,
 				attach,
 				detach,
+				setVersion,
+				versionsFor,
 				ATTACHED_SKILL_LIMIT,
 			};
 		},
