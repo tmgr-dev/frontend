@@ -202,6 +202,18 @@ describe('validate.mjs permission lint', () => {
 		expect(missing.ok).toBe(false);
 	});
 
+	it('counts links.schemes as use of links:open', () => {
+		const result = lint(
+			{
+				...base,
+				permissions: ['links:open'],
+				links: { schemes: ['tg'] },
+			},
+			'',
+		);
+		expect(result.warnings).toEqual([]);
+	});
+
 	it('exits 1 on warnings only with --strict', () => {
 		const dir = mkdtempSync(join(tmpdir(), 'tmgr-lint-'));
 		writeFileSync(

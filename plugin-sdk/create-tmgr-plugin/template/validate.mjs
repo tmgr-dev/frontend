@@ -303,7 +303,8 @@ export const validate = (folder) => {
   }
   if (
     /['"]?type['"]?\s*:\s*['"]link['"]/.test(all) ||
-    manifest.links.allowedDomains.length
+    manifest.links.allowedDomains.length ||
+    manifest.links.schemes.length
   ) {
     need(
       'links:open',
