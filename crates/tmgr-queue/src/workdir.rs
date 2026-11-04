@@ -834,7 +834,15 @@ pub fn clone_head_branch(clone: &Path) -> Option<String> {
 pub struct CopyRefs {
     pub head: String,
     pub stash: bool,
+    /// Every other ref of the copy (branches, tags, remote-tracking refs, notes...) with its object.
     pub others: Vec<(String, String)>,
+}
+
+fn plain_ref_name(name: &str) -> bool {
+    name.starts_with("refs/")
+        && name.split('/').all(|c| {
+            !c.is_empty() && c != "." && c != ".." && !c.bytes().any(|b| b.is_ascii_control())
+        })
 }
 
 fn loose_refs(dir: &std::fs::File, prefix: &str, out: &mut Vec<String>) -> bool {
@@ -856,78 +864,98 @@ fn loose_refs(dir: &std::fs::File, prefix: &str, out: &mut Vec<String>) -> bool 
     true
 }
 
-/// The branch tip, the stash flag and the other local branches of a worker's copy. HEAD must name
-/// `branch`.
+/// The branch tip, the stash flag and every other ref of a worker's copy. HEAD must name `branch`.
+/// Symbolic refs are skipped: they point at refs that are listed themselves.
 pub fn copy_refs(copy: &Path, branch: &str) -> std::result::Result<CopyRefs, String> {
     if clone_head_branch(copy).as_deref() != Some(branch) {
         return Err(format!("HEAD is not on the branch {branch}"));
     }
     let reference = format!("refs/heads/{branch}");
-    let heads = open_beneath(copy, ".git/refs/heads", libc::O_DIRECTORY)
-        .ok_or("the copy's branch list cannot be read")?;
+    let root = open_beneath(copy, ".git/refs", libc::O_DIRECTORY)
+        .ok_or("the copy's refs cannot be read")?;
     let mut loose = Vec::new();
-    if !loose_refs(&heads, "refs/heads/", &mut loose) {
-        return Err("the copy's branch list has entries that are not plain files".into());
+    if !loose_refs(&root, "refs/", &mut loose) {
+        return Err("the copy's refs have entries that are not plain files".into());
     }
-    let mut others: BTreeMap<String, String> = BTreeMap::new();
-    for name in loose.iter().filter(|r| **r != reference) {
-        let text = read_small(copy, &format!(".git/{name}"))
-            .ok_or("the copy's branch list cannot be read")?;
-        let sha = text.trim();
-        if !is_sha(sha) {
-            return Err("the copy has a branch that is not readable".into());
-        }
-        others.insert(name.clone(), sha.to_string());
-    }
-    let mut packed_tip = None;
-    let mut stash = open_beneath(copy, ".git/refs/stash", libc::O_NONBLOCK).is_some();
+    let mut refs: BTreeMap<String, String> = BTreeMap::new();
+    let mut packed: BTreeMap<String, String> = BTreeMap::new();
     if std::fs::symlink_metadata(copy.join(".git/packed-refs")).is_ok() {
         let text =
             read_small(copy, ".git/packed-refs").ok_or("the copy's packed refs cannot be read")?;
         for line in text.lines() {
-            if line.starts_with('#') || line.starts_with('^') {
+            if line.starts_with('#') || line.starts_with('^') || line.is_empty() {
                 continue;
             }
             let (sha, name) = line
                 .split_once(' ')
                 .ok_or("the copy's packed refs are malformed")?;
-            if name == "refs/stash" {
-                stash = true;
-            } else if name == reference {
-                packed_tip = is_sha(sha).then(|| sha.to_string());
-            } else if name.starts_with("refs/heads/") {
-                if !is_sha(sha) {
-                    return Err("the copy has a branch that is not readable".into());
-                }
-                others
-                    .entry(name.to_string())
-                    .or_insert_with(|| sha.to_string());
+            if !plain_ref_name(name) || !is_sha(sha) {
+                return Err("the copy has a ref that is not readable".into());
             }
+            packed.insert(name.to_string(), sha.to_string());
         }
     }
-    let head = match read_small(copy, &format!(".git/{reference}")) {
-        Some(t) => Some(t.trim().to_string()).filter(|s| is_sha(s)),
-        None => packed_tip,
-    };
+    for name in &loose {
+        if !plain_ref_name(name) {
+            return Err("the copy has a ref that is not readable".into());
+        }
+        let text =
+            read_small(copy, &format!(".git/{name}")).ok_or("the copy's refs cannot be read")?;
+        let text = text.trim();
+        if text.starts_with("ref: ") {
+            continue;
+        }
+        if !is_sha(text) {
+            return Err("the copy has a ref that is not readable".into());
+        }
+        refs.insert(name.clone(), text.to_string());
+    }
+    for (name, sha) in packed {
+        refs.entry(name).or_insert(sha);
+    }
+    let stash = refs.remove("refs/stash").is_some();
+    let head = refs
+        .remove(&reference)
+        .ok_or("the copy's branch has no readable commit")?;
     Ok(CopyRefs {
-        head: head.ok_or("the copy's branch has no readable commit")?,
+        head,
         stash,
-        others: others.into_iter().collect(),
+        others: refs.into_iter().collect(),
     })
 }
 
 const MAX_INDEX: u64 = 64 << 20;
 
+/// Whether the copy's own object alternates are none, or only `allowed` (the repository it was cloned with
+/// `--reference`). Anything else would make git read objects from elsewhere.
+pub fn copy_alternates_ok(copy: &Path, allowed: &Path) -> bool {
+    let rel = ".git/objects/info/alternates";
+    if std::fs::symlink_metadata(copy.join(rel)).is_err() {
+        return true;
+    }
+    let Some(text) = read_small(copy, rel) else {
+        return false;
+    };
+    let allowed = std::fs::canonicalize(allowed).ok();
+    text.lines().filter(|l| !l.trim().is_empty()).all(|l| {
+        let p = Path::new(l.trim());
+        p.is_absolute() && allowed.is_some() && std::fs::canonicalize(p).ok() == allowed
+    })
+}
+
 /// Makes `git_dir` (an empty folder of ours) a bare repository that reads a worker's copy as data:
-/// its objects through alternates, its index, and its branches. None of the copy's git
-/// settings are carried over.
+/// its objects through alternates, its index, its branch as `HEAD`, every other ref of the copy as
+/// `refs/copy/<n>` and `trusted` commits as `refs/host/<n>`. None of the copy's git settings or ref
+/// names reach git.
 pub fn trusted_git_dir(
     git_dir: &Path,
     copy: &Path,
     branch: &str,
     refs: &CopyRefs,
+    trusted: &[String],
 ) -> std::result::Result<(), String> {
     use std::io::Read;
+    validate_branch(branch).map_err(|e| e.message)?;
     let objects = copy.join(".git/objects");
     let objects = objects
         .to_str()
@@ -950,6 +978,13 @@ pub fn trusted_git_dir(
     file.take(MAX_INDEX)
         .read_to_end(&mut index)
         .map_err(|e| e.to_string())?;
+    let mut packed = format!("{} refs/heads/{branch}\n", refs.head);
+    for (n, (_, sha)) in refs.others.iter().enumerate() {
+        packed.push_str(&format!("{sha} refs/copy/{n}\n"));
+    }
+    for (n, sha) in trusted.iter().filter(|s| is_sha(s)).enumerate() {
+        packed.push_str(&format!("{sha} refs/host/{n}\n"));
+    }
     let write = || -> std::io::Result<()> {
         std::fs::write(
             git_dir.join("objects/info/alternates"),
@@ -957,14 +992,7 @@ pub fn trusted_git_dir(
         )?;
         std::fs::write(git_dir.join("index"), &index)?;
         std::fs::write(git_dir.join("HEAD"), format!("ref: refs/heads/{branch}\n"))?;
-        let all = std::iter::once((format!("refs/heads/{branch}"), &refs.head))
-            .chain(refs.others.iter().map(|(n, s)| (n.clone(), s)));
-        for (name, sha) in all {
-            let path = git_dir.join(&name);
-            std::fs::create_dir_all(path.parent().unwrap_or(git_dir))?;
-            std::fs::write(path, format!("{sha}\n"))?;
-        }
-        Ok(())
+        std::fs::write(git_dir.join("packed-refs"), packed)
     };
     write().map_err(|e| e.to_string())
 }

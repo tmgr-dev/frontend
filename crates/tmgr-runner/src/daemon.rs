@@ -1531,6 +1531,30 @@ fn leadless_groups(sessions: &[Member<'_>], absent_lead_counts: bool) -> Vec<Str
     out
 }
 
+/// Workers to stop: the live workers of every team without a live lead, and any live worker already being
+/// stopped, so a stop is seen through even once its lead's session is gone.
+fn stop_targets(
+    members: &[Member<'_>],
+    stopping: &[bool],
+    absent_lead_counts: bool,
+) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for of in leadless_groups(members, absent_lead_counts) {
+        for id in orphaned_workers(members, &of) {
+            out.push((id.to_string(), of.clone()));
+        }
+    }
+    for ((id, team, alive), stopping) in members.iter().zip(stopping) {
+        let Some(t) = team.filter(|t| *stopping && *alive && t.is_worker()) else {
+            continue;
+        };
+        if !out.iter().any(|(i, _)| i == id) {
+            out.push((id.to_string(), t.of.clone()));
+        }
+    }
+    out
+}
+
 const TEAM_STOP_RESEND: Duration = Duration::from_secs(5);
 const TEAM_STOP_GRACE: Duration = Duration::from_secs(10);
 
@@ -2417,28 +2441,28 @@ impl Runner {
                 (s.id.as_str(), t.as_ref(), alive)
             })
             .collect();
+        let stopping: Vec<bool> = all.iter().map(|s| lock(&s.team_stop).is_some()).collect();
+        let targets = stop_targets(&members, &stopping, absent_lead_counts);
         let now = Instant::now();
-        for of in leadless_groups(&members, absent_lead_counts) {
-            for id in orphaned_workers(&members, &of) {
-                let Some(s) = all.iter().find(|s| s.id == id).filter(|s| s.has_shim()) else {
-                    continue;
-                };
-                let mut sent = lock(&s.team_stop);
-                let Some(sig) = team_stop_signal(*sent, now) else {
-                    continue;
-                };
-                *sent = Some((sent.map_or(now, |(first, _)| first), now));
-                drop(sent);
-                let how = if sig == libc::SIGKILL {
-                    "killed"
-                } else {
-                    "stopped"
-                };
-                log(&format!(
-                    "session {id}: {how}, the lead of team {of} is gone"
-                ));
-                self.signal_session(s, sig, Some("team lead exited"));
-            }
+        for (id, of) in targets {
+            let Some(s) = all.iter().find(|s| s.id == id).filter(|s| s.has_shim()) else {
+                continue;
+            };
+            let mut sent = lock(&s.team_stop);
+            let Some(sig) = team_stop_signal(*sent, now) else {
+                continue;
+            };
+            *sent = Some((sent.map_or(now, |(first, _)| first), now));
+            drop(sent);
+            let how = if sig == libc::SIGKILL {
+                "killed"
+            } else {
+                "stopped"
+            };
+            log(&format!(
+                "session {id}: {how}, the lead of team {of} is gone"
+            ));
+            self.signal_session(s, sig, Some("team lead exited"));
         }
     }
 
@@ -5084,6 +5108,29 @@ mod tests {
         assert_eq!(
             team_stop_signal(Some((t0, at(10))), at(15)),
             Some(libc::SIGKILL)
+        );
+    }
+
+    #[test]
+    fn a_worker_being_stopped_stays_a_target_after_its_lead_is_removed() {
+        let m = [
+            member("w1", Some(TeamRole::Worker(1)), "q1", true),
+            member("w2", Some(TeamRole::Worker(2)), "q1", false),
+            member("w3", Some(TeamRole::Worker(1)), "q2", true),
+            member("lead3", Some(TeamRole::Lead), "q2", true),
+        ];
+        let v: Vec<_> = m.iter().map(|(i, t, a)| (*i, t.as_ref(), *a)).collect();
+        assert!(stop_targets(&v, &[false, false, false, false], false).is_empty());
+        let ids = |s: &[bool]| -> Vec<String> {
+            stop_targets(&v, s, false)
+                .into_iter()
+                .map(|(i, _)| i)
+                .collect()
+        };
+        assert_eq!(ids(&[true, true, false, false]), ["w1"]);
+        assert_eq!(
+            stop_targets(&v, &[false; 4], true),
+            [("w1".to_string(), "q1".to_string())]
         );
     }
 
