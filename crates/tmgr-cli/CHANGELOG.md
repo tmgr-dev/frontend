@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.74
+
+- `tmgr attach`: the Git panel and the diff pane now run git against a git folder the host builds from the repository's data, not the work folder's own `.git`. The diff pane leaves submodules out.
+- Repositories with `extensions.worktreeConfig` (and `worktree.useRelativePaths`) now show the Git panel; their `config.worktree` is checked like the repository config.
+
 ## 1.0.73
 
 - Session checkpoints keep their git data in a private folder of the runner, so sandboxed sessions get checkpoints again. Existing checkpoints move there on first use.
