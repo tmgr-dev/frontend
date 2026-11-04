@@ -372,7 +372,16 @@ pub(super) fn diff_argv(pager: Option<&str>) -> Vec<String> {
                 format!("pager.diff={pager}"),
             ]),
     );
-    argv.extend(["diff", "--no-ext-diff", "--no-textconv", "HEAD"].map(String::from));
+    argv.extend(
+        [
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--ignore-submodules=all",
+            "HEAD",
+        ]
+        .map(String::from),
+    );
     argv
 }
 
@@ -733,8 +742,14 @@ mod tests {
         assert!(argv.contains(&"core.fsmonitor=false".to_string()));
         assert!(argv.contains(&"core.pager=less -R".to_string()));
         assert_eq!(
-            &argv[argv.len() - 4..],
-            ["diff", "--no-ext-diff", "--no-textconv", "HEAD"]
+            &argv[argv.len() - 5..],
+            [
+                "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--ignore-submodules=all",
+                "HEAD"
+            ]
         );
         assert!(argv.contains(&"pager.diff=less -R".to_string()));
         assert!(!argv.contains(&"--no-pager".to_string()));
@@ -963,5 +978,28 @@ mod tests {
             diff_in_pane(root.to_str().unwrap(), Some("cat")).unwrap(),
             0
         );
+    }
+
+    #[test]
+    fn the_diff_pane_never_runs_a_submodule_filter() {
+        let dir = repo();
+        let root = canon(dir.path());
+        let sub = root.join("sub");
+        std::fs::create_dir(&sub).unwrap();
+        sh(&sub, &["init", "-q", "-b", "main"]);
+        std::fs::write(sub.join("f"), "one\n").unwrap();
+        sh(&sub, &["add", "."]);
+        sh(&sub, &["commit", "-q", "-m", "sub"]);
+        sh(&root, &["add", "sub"]);
+        sh(&root, &["commit", "-q", "-m", "with sub"]);
+        let marker = root.join("ran");
+        append(&sub.join(".git/config"), &hostile(&marker));
+        std::fs::write(sub.join(".gitattributes"), "* filter=x\n").unwrap();
+        std::fs::write(sub.join("f"), "two\n").unwrap();
+        assert_eq!(
+            diff_in_pane(root.to_str().unwrap(), Some("cat")).unwrap(),
+            0
+        );
+        assert!(!marker.exists());
     }
 }

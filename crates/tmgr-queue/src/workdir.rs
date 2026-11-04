@@ -279,6 +279,7 @@ pub fn expected_git_dir(root: &Path) -> Option<(PathBuf, PathBuf)> {
 }
 
 /// Whether the repository's own configuration holds only settings that run nothing once git commands pin core.hooksPath and core.fsmonitor.
+#[cfg(test)]
 pub fn repo_config_is_plain(dir: &Path) -> bool {
     tempfile::tempdir().is_ok_and(|tmp| host_git_dir(dir, tmp.path()).is_some())
 }
@@ -346,8 +347,9 @@ pub fn host_git_dir(dir: &Path, into: &Path) -> Option<()> {
         if let Some(shallow) = &shallow {
             std::fs::write(into.join("shallow"), shallow)?;
         }
+        std::fs::create_dir_all(into.join("info"))?;
+        std::fs::write(into.join("info/attributes"), "* !filter !diff !merge\n")?;
         if let Some(exclude) = &exclude {
-            std::fs::create_dir_all(into.join("info"))?;
             std::fs::write(into.join("info/exclude"), exclude)?;
         }
         Ok(())
@@ -3229,5 +3231,23 @@ mod tests {
         )
         .unwrap();
         assert!(repo_config_is_plain(&repo));
+    }
+
+    #[test]
+    fn agent_attributes_never_route_files_through_a_host_filter_driver() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let marker = root.join("ran");
+        std::fs::write(repo.join(".gitattributes"), "* filter=lfs diff=lfs\n").unwrap();
+        std::fs::write(repo.join("README.md"), "hello\nworld\n").unwrap();
+        let (_host, host) = prepared(&repo);
+        let clean = format!("filter.lfs.clean=touch {}", marker.display());
+        let host_config = ["-c", clean.as_str(), "-c", "filter.lfs.required=true"];
+        let status = [host_config.as_slice(), &["status", "--porcelain"]].concat();
+        host_run(&repo, &host, &status);
+        let numstat = [host_config.as_slice(), &["diff", "HEAD", "--numstat"]].concat();
+        let stats = host_run(&repo, &host, &numstat);
+        assert!(!marker.exists());
+        assert!(stats.contains("1\t0\tREADME.md"), "{stats}");
     }
 }
