@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.68
+
+- Hardening: the runner publishes and looks up remote branches with an explicit remote URL and takes credential settings only from global config. Network git allows only https, ssh and local transports, and `gh` runs outside the repository.
+- Remote lookups for continued runs only follow an `origin` that is a GitHub repository or a local path.
+- Credential and ssh settings kept in a repository's own config, or in global config included only for certain repository folders, no longer apply to these steps. Set them in global config.
+
 ## 1.0.67
 
 - Hardening: the `tmgr attach` Git panel keeps its sandbox limits for the folder of a sandboxed session after the session has ended. It shows only the branch there, as it does while the session runs.
