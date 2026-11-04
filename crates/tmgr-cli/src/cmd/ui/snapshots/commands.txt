@@ -49,7 +49,7 @@ agent status clear | Agents | session_id
 agent status list | Agents | -
 hook install | Account | target, project, print
 hook uninstall | Account | target, project, print
-ask | Agents | title, question, context, options, recommended, kind, blocking, repo, base, head, facts, checks, task, pr, wait, timeout
+ask | Agents | title, question, context, options, recommended, kind, blocking, repo, base, head, facts, checks, task, pr, diffs, patches, commits, tags, links, replaces, key, wait, timeout
 notify | Account | text, title, priority, link
 alarm | Account | text, title, ack_timeout, delivery_timeout, no_call, call_attempts, no_wait, max_wait
 alarm status | Account | id, wait

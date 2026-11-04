@@ -245,6 +245,7 @@ pub enum AlarmCommand {
 }
 
 #[derive(Args)]
+#[command(after_long_help = ASK_HELP)]
 pub struct AskArgs {
     /// Headline of the card
     #[arg(long, value_name = "TEXT")]
@@ -285,13 +286,62 @@ pub struct AskArgs {
     /// Task reference or URL
     #[arg(long, value_name = "REF")]
     pub task: Option<String>,
-    /// Pull request URL
-    #[arg(long, value_name = "URL")]
-    pub pr: Option<String>,
-    /// Wait for the final answer and print it (exit 8 if none arrives)
+    /// Pull request: URL or owner/repo#123 (repeatable)
+    #[arg(long = "pr", value_name = "URL|OWNER/REPO#N")]
+    pub pr: Vec<String>,
+    /// Another repository to show, DIR[=BASE[..HEAD]] (repeatable, at most 8 with --repo)
+    #[arg(long = "diff", value_name = "DIR[=BASE[..HEAD]]")]
+    pub diffs: Vec<String>,
+    /// A patch to show, [LABEL=]FILE or - for stdin (repeatable, 1 MiB in total)
+    #[arg(long = "patch", value_name = "[LABEL=]FILE|-")]
+    pub patches: Vec<String>,
+    /// Commit: URL or owner/repo@SHA (7 to 40 hex digits) (repeatable)
+    #[arg(long = "commit", value_name = "URL|OWNER/REPO@SHA")]
+    pub commits: Vec<String>,
+    /// Release tag: URL or owner/repo@TAG (repeatable)
+    #[arg(long = "tag", value_name = "URL|OWNER/REPO@TAG")]
+    pub tags: Vec<String>,
+    /// Another link, [LABEL=]URL (repeatable, at most 50 links in all)
+    #[arg(long = "link", value_name = "[LABEL=]URL")]
+    pub links: Vec<String>,
+    /// Update this earlier card in place (its id), for a resend from another worktree
+    #[arg(long, value_name = "ID")]
+    pub replaces: Option<String>,
+    /// Name the question: a resend with the same key (same agent and directory) updates the card
+    #[arg(long, value_name = "KEY")]
+    pub key: Option<String>,
+    /// Wait for the final answer and print it; if the desktop is not running, wait for it
+    /// (exit 8 only at --timeout)
     #[arg(long)]
     pub wait: bool,
     /// Longest wait in seconds (default: until answered)
     #[arg(long, value_name = "SECS", requires = "wait")]
     pub timeout: Option<u64>,
 }
+
+pub const ASK_HELP: &str = "Several repositories and patches
+  --repo and each --diff DIR[=BASE[..HEAD]] add one diff group; the first goes first, so keep
+  the order when you resend and the group labels stay stable. A label is the directory name
+  (a second one gets -2). Line comments on a card with 2 or more diff groups arrive as
+  file = \"<label>:<path>\"; with one group the file is the plain path.
+  --patch [LABEL=]FILE or - (stdin, once) shows text you hold, without a repository. Up to 8
+  patches and 1 MiB in all; a bigger card is refused, never cut.
+
+Links
+  --pr, --commit, --tag take a URL or owner/repo#123, owner/repo@SHA, owner/repo@TAG
+  (GitHub). --link takes [LABEL=]URL. Only http and https URLs are accepted; at most 50.
+
+Resending
+  --key KEY names one question for good. Sending again with the same key from the same agent
+  and directory updates the open card in place (same id, queue position and messages). If the
+  owner already answered or dismissed it, nothing is reopened: the output says
+  status already_answered and --wait returns that answer at once. A new round of the question
+  needs a new key.
+  The key is scoped to (agent, directory, key), so a resend from another worktree needs
+  --replaces ID with the card_id printed the first time. --replaces wins over --key.
+  The printed card_id is the card's own id; use it for later calls.
+
+--wait
+  Blocks until the owner answers. If the desktop is not running, the card is queued, a warning
+  is printed and the wait continues until the desktop starts; --timeout SECS ends the wait with
+  exit 8 and the card stays queued.";

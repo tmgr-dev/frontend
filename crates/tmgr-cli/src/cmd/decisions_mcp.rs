@@ -8,7 +8,8 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
-use tmgr_ipc::decisions::{Client, LineComment};
+use tmgr_ipc::decisions::{Client, DiffSpec, LineComment, PatchIn, MAX_PATCH_BYTES};
+use tmgr_ipc::decisions::{MAX_DIFFS, MAX_PATCHES};
 
 static CLIENT: Mutex<String> = Mutex::new(String::new());
 static CURSORS: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
@@ -58,7 +59,7 @@ pub fn defs() -> Vec<Value> {
     vec![
         json!({
             "name": "ask_owner",
-            "description": "Ask the owner a question and wait for the answer in the TMGR desktop Decisions inbox. Call it for decisions, reviews and release gates: anything where you would otherwise guess or stop and wait for the human. Give a short title, the question, and the options when the answer is a choice (set recommended to the option you advise). Add facts, checks, repo/base/head (the owner sees the diff and can comment on lines), task and pr when useful. Returns JSON: an event with type \"answer\" (choice, choice_label, note, free_text, line_comments; deferred=true means the owner postponed the decision: continue other work and call get_answer later; dismissed=true means they declined to answer) or type \"message\" (an interim owner comment, chat message or fix request: address it, then call reply_owner with your reply). If nothing arrives in time it returns {\"status\":\"pending\",\"card_id\":...}: continue other work and call get_answer with that card_id later. The card is queued even when the desktop is not running.",
+            "description": "Ask the owner a question and wait for the answer in the TMGR desktop Decisions inbox. Call it for decisions, reviews and release gates: anything where you would otherwise guess or stop and wait for the human. Give a short title, the question, and the options when the answer is a choice (set recommended to the option you advise). Add facts, checks, repo/base/head or repos (the owner sees the diffs and can comment on lines), patches (diff text you hold, no repository needed), task, prs, commits, tags and links when useful. Line comments on a card with 2 or more diff groups (repos plus patches) arrive as file = \"<label>:<path>\" where the label is the repository folder name (a second one gets -2) or the patch label; with one group the file is the plain path. Keep the repos order when you resend so the labels stay stable. To resend a question instead of piling up cards, pass key or replaces. key names one question for good: the same key from the same agent and working directory updates the still-open card in place (same card_id, queue position and messages), and if the owner already answered or dismissed it nothing is reopened and the existing answer is returned; a new round of the question needs a new key. The key is scoped to (agent, working directory, key), so a resend from another worktree needs replaces (the card_id returned the first time), which wins over key. Always use the card_id the call returns. Returns JSON: an event with type \"answer\" (choice, choice_label, note, free_text, line_comments; deferred=true means the owner postponed the decision: continue other work and call get_answer later; dismissed=true means they declined to answer) or type \"message\" (an interim owner comment, chat message or fix request: address it, then call reply_owner with your reply). If nothing arrives in time it returns {\"status\":\"pending\",\"card_id\":...}: continue other work and call get_answer with that card_id later. The card is queued even when the desktop is not running.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -90,6 +91,31 @@ pub fn defs() -> Vec<Value> {
                     "head": {"type": "string", "description": "Head ref of the diff (default: the working tree)"},
                     "task": {"type": "string", "description": "Task reference or URL"},
                     "pr": {"type": "string", "description": "Pull request URL"},
+                    "repos": {"type": "array", "maxItems": MAX_DIFFS, "items": {
+                        "type": "object",
+                        "properties": {
+                            "repo": {"type": "string", "description": "Local git repository"},
+                            "base": {"type": "string", "description": "Base ref"},
+                            "head": {"type": "string", "description": "Head ref (default: the working tree)"}
+                        },
+                        "required": ["repo"],
+                        "additionalProperties": false
+                    }, "description": "More repositories to show; with repo, the repo field comes first. At most 8 repositories in all. Keep the order when you resend."},
+                    "patches": {"type": "array", "maxItems": MAX_PATCHES, "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": {"type": "string", "description": "Name shown for the patch and used in line comment file names (default patch)"},
+                            "text": {"type": "string", "description": "Unified diff text"}
+                        },
+                        "required": ["text"],
+                        "additionalProperties": false
+                    }, "description": "Diffs given as text. At most 8, 1 MiB in total; a bigger card is refused, never cut."},
+                    "prs": {"type": "array", "items": {"type": "string"}, "description": "Pull requests: URL or owner/repo#123"},
+                    "commits": {"type": "array", "items": {"type": "string"}, "description": "Commits: URL or owner/repo@<7-40 hex sha>"},
+                    "tags": {"type": "array", "items": {"type": "string"}, "description": "Release tags: URL or owner/repo@tag"},
+                    "links": {"type": "array", "items": {"type": "string"}, "description": "Other links: [LABEL=]URL. Only http and https; at most 50 links in all."},
+                    "replaces": {"type": "string", "description": "card_id of an earlier card to update in place (wins over key). Needed to resend from another worktree. If that card is already answered or dismissed the existing answer is returned."},
+                    "key": {"type": "string", "maxLength": 200, "description": "Names one question for good. The same key from the same agent and working directory updates the open card instead of creating another; a new round needs a new key. Scope is (agent, working directory, key)."},
                     "waitSeconds": wait
                 },
                 "required": ["title"],
@@ -159,9 +185,44 @@ fn parse_spec(a: &Value) -> Result<Spec, String> {
         base: str_arg(a, "base", 1, 300)?.map(str::to_string),
         head: str_arg(a, "head", 1, 300)?.map(str::to_string),
         task: str_arg(a, "task", 1, 2000)?.map(str::to_string),
-        pr: str_arg(a, "pr", 1, 2000)?.map(str::to_string),
+        prs: str_arg(a, "pr", 1, 2000)?
+            .map(str::to_string)
+            .into_iter()
+            .collect(),
+        replaces: str_arg(a, "replaces", 1, 64)?.map(str::to_string),
+        key: str_arg(a, "key", 1, 200)?.map(str::to_string),
         ..Spec::default()
     };
+    for r in items(a, "repos")? {
+        spec.diffs.push(DiffSpec {
+            repo: str_arg(r, "repo", 1, 4096)?
+                .ok_or("repos need repo")?
+                .to_string(),
+            base: str_arg(r, "base", 1, 300)?.map(str::to_string),
+            head: str_arg(r, "head", 1, 300)?.map(str::to_string),
+        });
+    }
+    for p in items(a, "patches")? {
+        spec.patches.push(PatchIn {
+            label: str_arg(p, "label", 0, MAX_TITLE)?
+                .unwrap_or_default()
+                .to_string(),
+            text: str_arg(p, "text", 1, MAX_PATCH_BYTES)?
+                .ok_or("patches need text")?
+                .to_string(),
+        });
+    }
+    for (key, list) in [
+        ("prs", &mut spec.prs),
+        ("commits", &mut spec.commits),
+        ("tags", &mut spec.tags),
+        ("links", &mut spec.links),
+    ] {
+        for v in items(a, key)? {
+            let s = v.as_str().ok_or_else(|| format!("{key} must be strings"))?;
+            list.push(s.to_string());
+        }
+    }
     for (i, o) in items(a, "options")?.iter().enumerate() {
         match o {
             Value::String(s) => spec.options.push(s.clone()),
@@ -238,7 +299,7 @@ fn ask_owner(a: &Value, progress: &mut dyn FnMut(&str)) -> Value {
         Err(m) => return arg_err(&m),
     };
     match send_card(card) {
-        Ok(Sent::Live(id)) => collect(&id, wait, progress),
+        Ok(Sent::Live(id, _)) => collect(&id, wait, progress),
         Ok(Sent::Spooled(id)) => text_result(pending_json(&id, true).to_string(), false),
         Err(e) => text_result(format!("error: {e}"), true),
     }

@@ -609,7 +609,7 @@ fn ask_without_the_desktop_spools_and_fails_only_when_it_cannot() {
         .join(format!("{id}.json"))
         .exists());
     assert!(text(&out.stderr).contains("not running"));
-    let waited = ask(&st, &["--title", "T", "--wait"]);
+    let waited = ask(&st, &["--title", "T", "--wait", "--timeout", "1"]);
     assert_eq!(waited.status.code(), Some(8));
 
     let blocker = st.home.path().join("file");
@@ -618,6 +618,580 @@ fn ask_without_the_desktop_spools_and_fails_only_when_it_cannot() {
     cmd.env("TMGR_DECISIONS_DIR", blocker.join("sub"));
     let out = cmd.output().unwrap();
     assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
+}
+
+fn id_of(out: &Output) -> String {
+    text(&out.stdout).trim().to_string()
+}
+
+fn ask_in(stand: &Stand, args: &[&str], stdin: &[u8]) -> Output {
+    let mut full = vec!["ask"];
+    full.extend_from_slice(args);
+    let mut child = base(stand, &full)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(stdin).unwrap();
+    child.wait_with_output().unwrap()
+}
+
+fn waits_on(fake: &Fake) -> Vec<String> {
+    fake.ops()
+        .into_iter()
+        .filter_map(|op| match op {
+            Op::Wait { card_id, .. } => Some(card_id),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn ask_flags_become_cards_with_groups_and_links() {
+    let st = stand();
+    let fake = serve(&st, silent());
+    let patch = st.home.path().join("fix.diff");
+    std::fs::write(&patch, "--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n").unwrap();
+    let eq_patch = st.home.path().join("a=b.diff");
+    std::fs::write(&eq_patch, "--- a/y\n+++ b/y\n").unwrap();
+    let replaces = tmgr_ipc::decisions::new_card_id();
+    let out = ask(
+        &st,
+        &[
+            "--title",
+            "T",
+            "--repo",
+            "/w/r",
+            "--base",
+            "main",
+            "--diff",
+            "/w/a=v1..v2",
+            "--diff",
+            "/w/b=main",
+            "--diff",
+            "/w/c",
+            "--patch",
+            patch.to_str().unwrap(),
+            "--patch",
+            &format!("Named={}", patch.display()),
+            "--patch",
+            eq_patch.to_str().unwrap(),
+            "--pr",
+            "https://github.com/o/r/pull/1",
+            "--pr",
+            "o/r#2",
+            "--commit",
+            "o/r@ABCDEF1234",
+            "--commit",
+            "https://github.com/o/r/commit/0123456789abcdef",
+            "--tag",
+            "o/r@v1.2.0",
+            "--tag",
+            "https://github.com/o/r/releases/tag/v1",
+            "--link",
+            "https://example.com/a?x=y",
+            "--link",
+            "Docs=https://example.com/d",
+            "--task",
+            "https://tracker.example.com/T-1",
+            "--replaces",
+            &replaces,
+            "--key",
+            "round-1",
+        ],
+    );
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let c = &fake.created()[0];
+    assert_eq!(c["diff"]["repo"], "/w/r");
+    assert_eq!(c["diff"]["base"], "main");
+    assert_eq!(c["diffs"][0]["repo"], "/w/a");
+    assert_eq!(c["diffs"][0]["base"], "v1");
+    assert_eq!(c["diffs"][0]["head"], "v2");
+    assert_eq!(c["diffs"][1]["base"], "main");
+    assert!(c["diffs"][1].get("head").is_none());
+    assert_eq!(c["diffs"][2]["repo"], "/w/c");
+    assert_eq!(c["patches"][0]["label"], "fix.diff");
+    assert_eq!(c["patches"][1]["label"], "Named");
+    assert_eq!(c["patches"][2]["label"], "a=b.diff");
+    assert!(c["patches"][0]["text"].as_str().unwrap().contains("+b"));
+    assert_eq!(c["replaces"], replaces);
+    assert_eq!(c["key"], "round-1");
+    assert_eq!(c["links"]["pr"], "https://github.com/o/r/pull/1");
+    assert_eq!(c["links"]["task"], "https://tracker.example.com/T-1");
+    let items = c["links"]["items"].as_array().unwrap();
+    let got: Vec<(&str, &str, Option<&str>)> = items
+        .iter()
+        .map(|i| {
+            (
+                i["kind"].as_str().unwrap(),
+                i["url"].as_str().unwrap(),
+                i["label"].as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("pr", "https://github.com/o/r/pull/1", None),
+            ("pr", "https://github.com/o/r/pull/2", None),
+            (
+                "commit",
+                "https://github.com/o/r/commit/ABCDEF1234",
+                Some("abcdef1")
+            ),
+            (
+                "commit",
+                "https://github.com/o/r/commit/0123456789abcdef",
+                Some("0123456")
+            ),
+            ("tag", "https://github.com/o/r/releases/tag/v1.2.0", None),
+            ("tag", "https://github.com/o/r/releases/tag/v1", None),
+            ("url", "https://example.com/a?x=y", None),
+            ("url", "https://example.com/d", Some("Docs")),
+            ("task", "https://tracker.example.com/T-1", None),
+        ]
+    );
+}
+
+#[test]
+fn a_diff_alone_is_the_first_group() {
+    let st = stand();
+    let fake = serve(&st, silent());
+    let out = ask(&st, &["--title", "T", "--diff", "/w/a=main..HEAD"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let c = &fake.created()[0];
+    assert_eq!(c["diff"]["repo"], "/w/a");
+    assert_eq!(c["diff"]["head"], "HEAD");
+    assert!(c.get("diffs").is_none());
+}
+
+#[test]
+fn bad_forms_are_usage_errors_and_send_nothing() {
+    let st = stand();
+    let fake = serve(&st, silent());
+    let id = tmgr_ipc::decisions::new_card_id();
+    let cases: Vec<Vec<&str>> = vec![
+        vec!["--pr", "ftp://example.com/x"],
+        vec!["--pr", "javascript:alert(1)"],
+        vec!["--pr", "o/r#x"],
+        vec!["--pr", "o/r#0"],
+        vec!["--pr", "o/r"],
+        vec!["--pr", "o r/r#1"],
+        vec!["--commit", "o/r@abc12"],
+        vec!["--commit", "o/r@zzzzzzzz"],
+        vec!["--commit", "file:///etc/passwd"],
+        vec!["--tag", "o/r@"],
+        vec!["--tag", "o/r@a b"],
+        vec!["--tag", "o/r@a..b"],
+        vec!["--tag", "o/r@v1%2F"],
+        vec!["--tag", "o/r@-x"],
+        vec!["--tag", "o@v1"],
+        vec!["--link", "Docs=ftp://x/y"],
+        vec!["--link", "=https://x.example"],
+        vec!["--link", "not a url"],
+        vec!["--link", "ftp://x.example/a=b"],
+        vec!["--diff", ""],
+        vec!["--diff", "=main"],
+        vec!["--diff", "/w/a="],
+        vec!["--diff", "/w/a=a..b..c"],
+        vec!["--diff", "/w/a=..b"],
+        vec!["--diff", "/w/a=a.."],
+        vec!["--patch", "/nonexistent/file.diff"],
+        vec!["--replaces", "nope"],
+        vec!["--key", ""],
+        vec!["--task", "https://ok.example", "--link", "x"],
+    ];
+    for extra in cases {
+        let mut args = vec!["--title", "T"];
+        args.extend(extra.iter());
+        let out = ask(&st, &args);
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "{extra:?}: {}",
+            text(&out.stderr)
+        );
+    }
+    let out = ask(&st, &["--title", "T", "--replaces", &id, "--key", "k"]);
+    assert!(out.status.success());
+    assert_eq!(fake.created().len(), 1);
+}
+
+#[test]
+fn patches_come_from_stdin_once() {
+    let st = stand();
+    let fake = serve(&st, silent());
+    let out = ask_in(
+        &st,
+        &["--title", "T", "--patch", "-"],
+        b"--- a\n+++ b\n\xff\n",
+    );
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let out = ask_in(
+        &st,
+        &["--title", "T", "--patch", "Piped=-"],
+        b"--- a\n+++ b\n",
+    );
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let cards = fake.created();
+    assert_eq!(cards[0]["patches"][0]["label"], "patch");
+    assert!(cards[0]["patches"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains('\u{fffd}'));
+    assert_eq!(cards[1]["patches"][0]["label"], "Piped");
+    let out = ask_in(
+        &st,
+        &["--title", "T", "--patch", "-", "--patch", "B=-"],
+        b"x",
+    );
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out.stderr));
+    assert!(text(&out.stderr).contains("stdin"));
+    assert_eq!(fake.created().len(), 2);
+}
+
+#[test]
+fn limits_are_refused_before_sending() {
+    let st = stand();
+    let fake = serve(&st, silent());
+    let mut many = vec!["--title".to_string(), "T".to_string()];
+    for i in 0..9 {
+        many.push("--diff".into());
+        many.push(format!("/w/r{i}"));
+    }
+    let args: Vec<&str> = many.iter().map(String::as_str).collect();
+    assert_eq!(ask(&st, &args).status.code(), Some(2));
+    let mut ok = args.clone();
+    ok.truncate(2 + 16);
+    assert!(ask(&st, &ok).status.success());
+
+    let small = st.home.path().join("s.diff");
+    std::fs::write(&small, "--- a\n+++ b\n").unwrap();
+    let mut args = vec!["--title", "T"];
+    for _ in 0..9 {
+        args.extend(["--patch", small.to_str().unwrap()]);
+    }
+    assert_eq!(ask(&st, &args).status.code(), Some(2));
+
+    let big = st.home.path().join("big.diff");
+    std::fs::write(&big, vec![b'x'; (1 << 20) + 1]).unwrap();
+    assert_eq!(
+        ask(&st, &["--title", "T", "--patch", big.to_str().unwrap()])
+            .status
+            .code(),
+        Some(2)
+    );
+    let half = st.home.path().join("half.diff");
+    std::fs::write(&half, vec![b'x'; 600 * 1024]).unwrap();
+    let h = half.to_str().unwrap();
+    assert_eq!(
+        ask(&st, &["--title", "T", "--patch", h, "--patch", h])
+            .status
+            .code(),
+        Some(2)
+    );
+
+    let mut links = vec!["--title".to_string(), "T".to_string()];
+    for i in 0..51 {
+        links.push("--link".into());
+        links.push(format!("https://example.com/{i}"));
+    }
+    let args: Vec<&str> = links.iter().map(String::as_str).collect();
+    assert_eq!(ask(&st, &args).status.code(), Some(2));
+
+    let ctl = st.home.path().join("ctl.diff");
+    std::fs::write(&ctl, vec![1u8; 1 << 20]).unwrap();
+    let out = ask(&st, &["--title", "T", "--patch", ctl.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out.stderr));
+    assert!(text(&out.stderr).contains("too large"));
+    assert_eq!(fake.created().len(), 1);
+}
+
+#[test]
+fn old_flags_alone_give_the_same_card() {
+    let st = stand();
+    let fake = serve(&st, silent());
+    let out = ask(
+        &st,
+        &[
+            "--title", "T", "--repo", "/w/r", "--base", "main", "--task", "TM-9",
+        ],
+    );
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let c = &fake.created()[0];
+    for k in ["diffs", "patches", "replaces", "key"] {
+        assert!(c.get(k).is_none(), "{k}");
+    }
+    assert!(c["links"].get("items").is_none());
+    assert!(c["links"].get("pr").is_none());
+    assert_eq!(c["links"]["task"], "TM-9");
+    assert_eq!(c["diff"]["repo"], "/w/r");
+}
+
+fn outcome_handler(outcome: &'static str, canonical: String) -> Handler {
+    Box::new(move |req| match &req.op {
+        Op::Create { .. } => Response {
+            ok: true,
+            card_id: Some(canonical.clone()),
+            outcome: Some(outcome.into()),
+            ..Response::default()
+        },
+        Op::Wait { card_id, .. } => Response {
+            ok: true,
+            event: Some(Event {
+                choice: Some("1".into()),
+                choice_label: Some("Ship".into()),
+                ..event(card_id, "answer", 3)
+            }),
+            ..Response::default()
+        },
+        _ => Response::ok(),
+    })
+}
+
+#[test]
+fn the_outcome_sets_the_status_and_the_canonical_id() {
+    for (outcome, status) in [
+        ("created", "created"),
+        ("updated", "updated"),
+        ("final", "already_answered"),
+    ] {
+        let st = stand();
+        let canon = tmgr_ipc::decisions::new_card_id();
+        let fake = serve(&st, outcome_handler(outcome, canon.clone()));
+        let out = ask(&st, &["--title", "T", "--key", "k", "--json"]);
+        assert!(out.status.success(), "{}", text(&out.stderr));
+        let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(v["data"]["card_id"], canon.as_str());
+        assert_eq!(v["data"]["status"], status);
+        assert_ne!(fake.created()[0]["id"], canon.as_str());
+        let plain = ask(&st, &["--title", "T"]);
+        assert_eq!(id_of(&plain), canon);
+    }
+}
+
+#[test]
+fn a_final_outcome_with_wait_returns_the_existing_answer_at_once() {
+    let st = stand();
+    let canon = tmgr_ipc::decisions::new_card_id();
+    let fake = serve(&st, outcome_handler("final", canon.clone()));
+    let started = Instant::now();
+    let out = ask(&st, &["--title", "T", "--key", "k", "--wait", "--json"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(started.elapsed() < Duration::from_secs(5));
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"]["status"], "answered");
+    assert_eq!(v["data"]["card_id"], canon.as_str());
+    assert_eq!(waits_on(&fake), [canon]);
+}
+
+#[test]
+fn ask_wait_without_the_desktop_waits_until_it_appears() {
+    let st = stand();
+    let mut child = base(&st, &["ask", "--title", "T", "--wait", "--json"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(child.try_wait().unwrap().is_none(), "exited early");
+    let fake = serve(&st, answering("1"));
+    let out = child.wait_with_output().unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    assert!(text(&out.stderr).contains("not running"));
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"]["status"], "answered");
+    let spooled = std::fs::read_dir(st.dir.path().join("inbox"))
+        .unwrap()
+        .count();
+    assert_eq!(spooled, 1);
+    assert_eq!(fake.waits(), [0]);
+}
+
+#[test]
+fn ask_wait_timeout_without_the_desktop_exits_8_at_the_deadline() {
+    let st = stand();
+    let started = Instant::now();
+    let out = ask(&st, &["--title", "T", "--wait", "--timeout", "1"]);
+    let took = started.elapsed();
+    assert_eq!(out.status.code(), Some(8), "{}", text(&out.stderr));
+    assert!(took >= Duration::from_millis(900), "{took:?}");
+    assert!(took < Duration::from_secs(6), "{took:?}");
+    assert!(tmgr_ipc::decisions::valid_card_id(&id_of(&out)));
+    assert!(text(&out.stderr).contains("not running"));
+}
+
+#[test]
+fn an_unknown_card_in_the_spool_window_keeps_waiting() {
+    let st = stand();
+    let child = base(&st, &["ask", "--title", "T", "--wait", "--json"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(800));
+    let seen = Arc::new(Mutex::new(0usize));
+    let counter = seen.clone();
+    let fake = serve(
+        &st,
+        Box::new(move |req| match &req.op {
+            Op::Wait { card_id, .. } => {
+                let mut n = counter.lock().unwrap();
+                *n += 1;
+                if *n < 3 {
+                    Response::err("unknown card")
+                } else {
+                    Response {
+                        ok: true,
+                        event: Some(Event {
+                            choice: Some("1".into()),
+                            ..event(card_id, "answer", 1)
+                        }),
+                        ..Response::default()
+                    }
+                }
+            }
+            _ => Response::ok(),
+        }),
+    );
+    let out = child.wait_with_output().unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    assert_eq!(fake.waits().len(), 3);
+}
+
+#[test]
+fn an_unknown_card_for_a_live_card_is_still_an_error() {
+    let st = stand();
+    let _fake = serve(
+        &st,
+        Box::new(|req| match &req.op {
+            Op::Create { card } => Response {
+                ok: true,
+                card_id: card.id.clone(),
+                ..Response::default()
+            },
+            _ => Response::err("unknown card"),
+        }),
+    );
+    let out = ask(&st, &["--title", "T", "--wait"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
+}
+
+#[test]
+fn ask_owner_takes_the_new_fields() {
+    let st = stand();
+    let canon = tmgr_ipc::decisions::new_card_id();
+    let fake = serve(&st, outcome_handler("updated", canon.clone()));
+    let replaces = tmgr_ipc::decisions::new_card_id();
+    let r = mcp(
+        &st,
+        "3000",
+        "claude-code",
+        &[
+            (
+                "ask_owner",
+                json!({
+                    "title": "T",
+                    "repo": "/w/main", "base": "main",
+                    "repos": [{"repo": "/w/b", "base": "v1", "head": "v2"}, {"repo": "/w/c"}],
+                    "patches": [{"label": "fix", "text": "--- a\n+++ b\n"}, {"text": "--- c\n+++ d\n"}],
+                    "pr": "https://github.com/o/r/pull/9",
+                    "prs": ["o/r#2"],
+                    "commits": ["o/r@abcdef1"],
+                    "tags": ["o/r@v2"],
+                    "links": ["Docs=https://example.com/d"],
+                    "task": "TM-3",
+                    "replaces": replaces,
+                    "key": "k1"
+                }),
+            ),
+            ("get_answer", json!({"card_id": canon, "waitSeconds": 0})),
+        ],
+    );
+    assert_eq!(payload(&r[0])["type"], "answer");
+    let c = &fake.created()[0];
+    assert_eq!(c["diff"]["repo"], "/w/main");
+    assert_eq!(c["diffs"][0]["repo"], "/w/b");
+    assert_eq!(c["diffs"][0]["head"], "v2");
+    assert_eq!(c["diffs"][1]["repo"], "/w/c");
+    assert_eq!(c["patches"][0]["label"], "fix");
+    assert_eq!(c["patches"][1]["label"], "patch");
+    assert_eq!(c["replaces"], replaces);
+    assert_eq!(c["key"], "k1");
+    assert_eq!(c["supersede"], Value::Null);
+    assert_eq!(c["links"]["pr"], "https://github.com/o/r/pull/9");
+    assert_eq!(c["links"]["task"], "TM-3");
+    let kinds: Vec<&str> = c["links"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds, ["pr", "pr", "commit", "tag", "url"]);
+    assert_eq!(waits_on(&fake), [canon.clone(), canon.clone()]);
+    let since: Vec<u64> = fake.waits();
+    assert_eq!(since, [0, 3]);
+}
+
+#[test]
+fn ask_owner_refuses_bad_new_fields() {
+    let st = stand();
+    let fake = serve(&st, silent());
+    let nine: Vec<Value> = (0..9).map(|i| json!({"repo": format!("/w/{i}")})).collect();
+    let r = mcp(
+        &st,
+        "1000",
+        "claude-code",
+        &[
+            ("ask_owner", json!({"title": "T", "repos": nine})),
+            ("ask_owner", json!({"title": "T", "repos": [{"base": "x"}]})),
+            (
+                "ask_owner",
+                json!({"title": "T", "patches": [{"label": "x"}]}),
+            ),
+            (
+                "ask_owner",
+                json!({"title": "T", "patches": [{"text": ""}]}),
+            ),
+            ("ask_owner", json!({"title": "T", "prs": ["ftp://x/y"]})),
+            ("ask_owner", json!({"title": "T", "commits": [1]})),
+            ("ask_owner", json!({"title": "T", "tags": "v1"})),
+            (
+                "ask_owner",
+                json!({"title": "T", "links": ["javascript:x"]}),
+            ),
+            ("ask_owner", json!({"title": "T", "replaces": "nope"})),
+            ("ask_owner", json!({"title": "T", "key": ""})),
+        ],
+    );
+    for (i, resp) in r.iter().enumerate() {
+        assert!(is_error(resp), "{i}: {resp}");
+    }
+    assert!(fake.created().is_empty());
+}
+
+#[test]
+fn ask_owner_without_the_desktop_is_pending_and_the_old_fields_work() {
+    let st = stand();
+    let r = mcp(
+        &st,
+        "1000",
+        "claude-code",
+        &[(
+            "ask_owner",
+            json!({"title": "T", "repo": "/w/r", "pr": "https://example.com/p/1"}),
+        )],
+    );
+    let p = payload(&r[0]);
+    assert_eq!(p["status"], "pending");
+    let id = p["card_id"].as_str().unwrap();
+    let spooled: Value = serde_json::from_slice(
+        &std::fs::read(st.dir.path().join("inbox").join(format!("{id}.json"))).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(spooled["links"]["pr"], "https://example.com/p/1");
+    assert!(spooled.get("diffs").is_none());
 }
 
 fn hook(stand: &Stand, event: &str, stdin: &[u8], extra: &[(&str, &str)]) -> (Output, Duration) {
