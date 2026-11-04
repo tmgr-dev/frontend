@@ -1,4 +1,7 @@
-use crate::worktree::{self, GitEnv};
+use crate::hostview::{Access, HostView};
+use crate::worktree;
+#[cfg(test)]
+use crate::worktree::GitEnv;
 use std::fs;
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -77,15 +80,14 @@ pub fn check_name(name: &str) -> Result<(), String> {
 
 fn locate(cwd: &Path) -> Result<(PathBuf, String), String> {
     let cwd = fs::canonicalize(cwd).map_err(|e| format!("{}: {e}", cwd.display()))?;
-    let git = GitEnv::open(&cwd).map_err(|e| {
+    let git = HostView::discover(&cwd, Access::Read).map_err(|e| {
         if e.starts_with("not a git repository") {
             format!("{} is not inside a git repository", cwd.display())
         } else {
             e
         }
     })?;
-    let common = git.run(&["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
-    let common = fs::canonicalize(common).map_err(|e| e.to_string())?;
+    let common = git.common_dir().to_path_buf();
     let repo = match (common.file_name(), common.parent()) {
         (Some(n), Some(p)) if n == ".git" => p.to_path_buf(),
         _ => return Err("only repositories with a .git folder are supported".to_string()),
@@ -101,7 +103,7 @@ fn locate(cwd: &Path) -> Result<(PathBuf, String), String> {
     Ok((repo, base))
 }
 
-fn free(repo: &Path, git: &GitEnv, name: &str) -> bool {
+fn free(repo: &Path, git: &HostView, name: &str) -> bool {
     let taken_dir = worktree::worktrees_root(repo)
         .ok()
         .and_then(|root| fs::read_dir(root).ok())
@@ -127,7 +129,7 @@ pub fn pick_name(
     prefix: &str,
     taken: &[String],
 ) -> Result<String, String> {
-    let git = GitEnv::open(repo)?;
+    let git = HostView::open(repo, Access::Read)?;
     let taken = |n: &str| taken.iter().any(|t| t == n);
     if let Some(name) = requested {
         check_name(name)?;
@@ -195,7 +197,7 @@ pub fn create(
     let (repo, base) = locate(cwd)?;
     let _lock = lock_root(&repo)?;
     let name = pick_name(&repo, requested, prefix, taken)?;
-    let main = GitEnv::open(&repo)?;
+    let main = HostView::open(&repo, Access::Write)?;
     let plan = worktree::plan(&repo, &name, Some(&base))?;
     main.run(&["update-ref", &base_ref(&name), &base, ""])?;
     let sc = SessionClone {
@@ -219,8 +221,8 @@ pub fn abandon(sc: &SessionClone) {
     {
         let _ = fs::remove_dir_all(&sc.path);
     }
-    if let Ok(main) = GitEnv::open(&sc.repo) {
-        let _ = main.run(&["update-ref", "-d", &base_ref(&sc.name)]);
+    if let Ok(main) = HostView::open(&sc.repo, Access::Write) {
+        let _ = main.run(&["update-ref", "-d", &base_ref(&sc.name), &sc.base]);
     }
 }
 
@@ -243,13 +245,14 @@ pub fn repo_of(path: &Path) -> Option<PathBuf> {
     let stem = parent.file_name()?.to_str()?.strip_suffix("-worktrees")?;
     let repo = parent.parent()?.join(stem);
     let name = session_dir(&repo, path).ok()?;
-    let main = GitEnv::open(&repo).ok()?;
+    let main = HostView::open(&repo, Access::Read).ok()?;
     main.succeeds(&["show-ref", "--verify", "--quiet", &base_ref(&name)])
         .then_some(repo)
 }
 
 struct Facts {
     name: String,
+    base: String,
     tip: String,
     has_commits: bool,
     ignored: Vec<String>,
@@ -262,7 +265,7 @@ fn is_oid(s: &str) -> bool {
     matches!(s.len(), 40 | 64) && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-fn all_in_repo(main: &GitEnv, oids: &[&str]) -> bool {
+fn all_in_repo(main: &HostView, oids: &[&str]) -> bool {
     oids.chunks(CHUNK).all(|c| {
         let mut args = vec!["rev-list", "--no-walk"];
         args.extend_from_slice(c);
@@ -281,7 +284,7 @@ fn inspect(
     shown: &Path,
     name: String,
 ) -> Result<Result<Facts, String>, String> {
-    let main = GitEnv::open(repo)?;
+    let main = HostView::open(repo, Access::Read)?;
     let base = main
         .run(&["rev-parse", "--verify", "--quiet", &base_ref(&name)])
         .map_err(|_| format!("{} was not made by tmgr", shown.display()))?;
@@ -291,12 +294,8 @@ fn inspect(
     {
         return Ok(Err("it is linked to another repository's git folder".into()));
     }
-    let inner = GitEnv::open(path)?;
-    let keys = inner.run(&["config", "--local", "--name-only", "--list"])?;
-    if keys
-        .lines()
-        .any(|k| k.eq_ignore_ascii_case("core.worktree"))
-    {
+    let inner = HostView::open(path, Access::Read)?.with_work_tree();
+    if inner.has_config_key("core.worktree") {
         return Ok(Err("its git config redirects git".into()));
     }
     if path.join(".gitmodules").exists() || path.join(".git/modules").exists() {
@@ -404,6 +403,7 @@ fn inspect(
     };
     Ok(Ok(Facts {
         name,
+        base,
         tip,
         has_commits,
         ignored,
@@ -432,7 +432,7 @@ pub fn remove(repo: &Path, path: &Path) -> Result<Verdict, String> {
         Ok(f) => f,
         Err(why) => return Ok(Verdict::Kept(why)),
     };
-    let main = GitEnv::open(repo)?;
+    let main = HostView::open(repo, Access::Write)?;
     let branch = format!("refs/heads/{}", facts.name);
     if facts.has_commits && !main.succeeds(&["show-ref", "--verify", "--quiet", &branch]) {
         main.run(&["update-ref", &branch, &facts.tip, ""])?;
@@ -465,7 +465,7 @@ pub fn remove(repo: &Path, path: &Path) -> Result<Verdict, String> {
         Ok(Err(why)) => return Ok(Verdict::Kept(restore(why))),
         Err(e) => return Err(restore(e)),
     }
-    if let Err(e) = main.run(&["update-ref", "-d", &base_ref(&facts.name)]) {
+    if let Err(e) = main.run(&["update-ref", "-d", &base_ref(&facts.name), &facts.base]) {
         return Err(restore(e));
     }
     fs::remove_dir_all(&hidden).map_err(|e| {
@@ -946,6 +946,34 @@ mod tests {
         assert_eq!(repo_of(&other), None);
         assert!(remove(&fx.repo, &other).is_err());
         assert_eq!(repo_of(&fx.repo), None);
+    }
+
+    #[test]
+    fn repository_hooks_and_filters_never_run_on_the_session_paths() {
+        let fx = fixture();
+        let marker = fx.root.join("ran");
+        let touch = format!("touch {}", marker.display());
+        let plant = |dir: &Path| {
+            git(dir, &["config", "hook.x.event", "reference-transaction"]);
+            git(dir, &["config", "hook.x.command", &touch]);
+            git(dir, &["config", "core.fsmonitor", &touch]);
+            git(dir, &["config", "filter.x.clean", &touch]);
+        };
+        let s = make(&fx, "plain");
+        commit(&s.path, "new.txt");
+        git(
+            &fx.repo,
+            &["fetch", worktree::utf8(&s.path).unwrap(), "plain:plain"],
+        );
+        plant(&fx.repo);
+        plant(&s.path);
+        assert!(matches!(
+            assess(&fx.repo, &s.path).unwrap(),
+            Verdict::Removable { .. }
+        ));
+        let v = remove(&fx.repo, &s.path).unwrap();
+        assert!(matches!(v, Verdict::Removable { .. }), "{v:?}");
+        assert!(!marker.exists(), "a repository program ran");
     }
 
     #[test]

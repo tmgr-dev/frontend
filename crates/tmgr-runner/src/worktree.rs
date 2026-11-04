@@ -1,3 +1,4 @@
+use crate::hostview::{Access, HostView};
 use std::collections::BTreeSet;
 use std::ffi::CString;
 use std::fs;
@@ -476,11 +477,10 @@ pub struct Status {
 pub fn plan(repo: &Path, branch: &str, base: Option<&str>) -> Result<Plan, String> {
     let repo = fs::canonicalize(repo).map_err(|e| format!("{}: {e}", repo.display()))?;
     utf8(&repo)?;
-    let git = GitEnv::open(&repo)?;
-    let top = git.run(&["rev-parse", "--show-toplevel"])?;
-    if fs::canonicalize(&top).map_err(|e| e.to_string())? != repo {
+    if fs::symlink_metadata(repo.join(".git")).is_err() {
         return Err(format!("{} is not a repository root", repo.display()));
     }
+    let git = HostView::open(&repo, Access::Read)?;
     valid_ref(branch)?;
     let base = match base {
         Some(b) => {
@@ -509,7 +509,7 @@ pub fn plan(repo: &Path, branch: &str, base: Option<&str>) -> Result<Plan, Strin
     })
 }
 
-fn default_base(git: &GitEnv) -> Result<String, String> {
+fn default_base(git: &HostView) -> Result<String, String> {
     if let Ok(head) = git.run(&["symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD"]) {
         if valid_ref(&head).is_ok() && git.succeeds(&["rev-parse", "--verify", "--quiet", &head]) {
             return Ok(head);
@@ -570,12 +570,12 @@ pub fn create(plan: &Plan, fetch: bool) -> Result<Worktree, String> {
 
 pub fn clone_mode(plan: &Plan) -> Result<Worktree, String> {
     prepare_root(plan)?;
-    let src = GitEnv::open(&plan.repo)?;
-    let sha = src.run(&[
+    let sha = HostView::open(&plan.repo, Access::Read)?.run(&[
         "rev-parse",
         "--verify",
         &format!("{}^{{commit}}", plan.base),
     ])?;
+    let src = GitEnv::bare(&worktrees_root(&plan.repo)?);
     let repo = utf8(&plan.repo)?;
     src.run(&[
         "clone",
@@ -1212,7 +1212,7 @@ mod tests {
     }
 
     #[test]
-    fn plan_refuses_exec_and_include_config_keys() {
+    fn plan_does_not_read_exec_and_include_config_keys() {
         for (key, val) in [
             ("include.path", "../x"),
             ("includeIf.gitdir:/x.path", "../x"),
@@ -1228,8 +1228,7 @@ mod tests {
         ] {
             let fx = fixture();
             git(&fx.repo, &["config", key, val]);
-            let err = plan(&fx.repo, "x", None).unwrap_err();
-            assert!(err.contains("refused"), "{key}: {err}");
+            assert!(plan(&fx.repo, "x", None).is_ok(), "{key}");
         }
     }
 

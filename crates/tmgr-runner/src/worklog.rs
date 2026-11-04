@@ -1,6 +1,6 @@
+use crate::hostview::{Access, HostView};
 use crate::sanitize::sanitize_text;
 use crate::wire::now_ms;
-use crate::worktree::GitEnv;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
@@ -110,11 +110,11 @@ fn clip(s: &str, max: usize) -> String {
     sanitize_text(s).chars().take(max).collect()
 }
 
-fn git_facts(cwd: &Path) -> Option<(GitEnv, Option<String>, Option<String>)> {
-    let git = GitEnv::open_facts(cwd).ok()?;
-    if git.run(&["rev-parse", "--is-inside-work-tree"]).ok()? != "true" {
-        return None;
-    }
+fn git_facts(cwd: &Path) -> Option<(HostView, Option<String>, Option<String>)> {
+    let git = HostView::discover(cwd, Access::Read)
+        .ok()?
+        .facts()
+        .with_work_tree();
     let branch = git
         .run(&["symbolic-ref", "--short", "-q", "HEAD"])
         .ok()
@@ -162,7 +162,7 @@ impl Log {
         }
     }
 
-    fn facts(&self) -> Option<(GitEnv, Option<String>, Option<String>)> {
+    fn facts(&self) -> Option<(HostView, Option<String>, Option<String>)> {
         self.facts.then(|| git_facts(&self.cwd)).flatten()
     }
 
@@ -298,7 +298,7 @@ impl Log {
     }
 }
 
-fn commits(git: &GitEnv, range: &str) -> Vec<WorkCommit> {
+fn commits(git: &HostView, range: &str) -> Vec<WorkCommit> {
     let max = format!("--max-count={MAX_COMMITS}");
     let Ok(out) = git.run(&["log", "--reverse", &max, "--format=%H%x1f%s", range]) else {
         return Vec::new();
@@ -404,6 +404,7 @@ pub fn summary_at(dir: &Path, now: u64) -> WorkSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::worktree::GitEnv;
 
     fn write(dir: &Path, lines: &[&str]) {
         std::fs::write(dir.join(FILE), lines.join("\n") + "\n").unwrap();

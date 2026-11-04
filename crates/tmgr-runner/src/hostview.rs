@@ -411,7 +411,7 @@ impl HostView {
             fs::write(dir.join("shallow"), shallow).map_err(|e| e.to_string())?;
         }
         fs::create_dir(dir.join("info")).map_err(|e| e.to_string())?;
-        if let Some(exclude) = read_data(&layout.common.join("info/exclude"), MAX_CONFIG)? {
+        if let Ok(Some(exclude)) = read_data(&layout.common.join("info/exclude"), MAX_CONFIG) {
             fs::write(dir.join("info/exclude"), exclude).map_err(|e| e.to_string())?;
         }
         fs::write(dir.join("info/attributes"), "* !filter !diff !merge\n")
@@ -1016,6 +1016,17 @@ mod tests {
         fs::write(&cfg, vec![b'#'; 2 * 1024 * 1024]).unwrap();
         let err = HostView::open(&fx.repo, Access::Read).err().unwrap();
         assert!(err.contains("larger"), "{err}");
+    }
+
+    #[test]
+    fn an_exclude_file_that_is_not_plain_is_skipped() {
+        let fx = fixture();
+        let exclude = fx.repo.join(".git/info/exclude");
+        fs::create_dir_all(exclude.parent().unwrap()).unwrap();
+        let _ = fs::remove_file(&exclude);
+        symlink("/dev/zero", &exclude).unwrap();
+        let view = HostView::open(&fx.repo, Access::Read).unwrap();
+        assert!(!view.private_dir().join("info/exclude").exists());
     }
 
     #[test]
