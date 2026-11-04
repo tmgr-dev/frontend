@@ -20,7 +20,7 @@ const noFrontendCaller: Record<string, string> = {
 const registered = (() => {
 	const source = read('src/lib.rs');
 	const start = source.indexOf('generate_handler![');
-	const block = source.slice(start, source.indexOf(']', start));
+	const block = source.slice(start, source.indexOf('])', start));
 	return [...block.matchAll(/(?:\w+::)+(\w+)/g)].map((m) => m[1]);
 })();
 
