@@ -109,6 +109,30 @@ fn drain<R: Read + AsRawFd + Send + 'static>(
     })
 }
 
+pub(crate) fn exited_unreaped(pid: libc::pid_t) -> std::io::Result<bool> {
+    let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+    let r = unsafe {
+        libc::waitid(
+            libc::P_PID,
+            pid as libc::id_t,
+            &mut info,
+            libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+        )
+    };
+    if r != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(unsafe { info.si_pid() } == pid)
+}
+
+pub(crate) fn kill_group_of_unreaped(pgid: libc::pid_t) {
+    debug_assert!(
+        exited_unreaped(pgid).is_ok(),
+        "the group leader was reaped before its group was killed"
+    );
+    unsafe { libc::kill(-pgid, libc::SIGKILL) };
+}
+
 pub(crate) fn run_bounded(
     mut cmd: Command,
     deadline: Duration,
@@ -140,30 +164,27 @@ pub(crate) fn run_bounded(
         .map(|s| drain(s, max_stderr, over.clone(), stop.clone()));
     let start = Instant::now();
     let mut failure = None;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break Some(status),
-            Ok(None) => {}
+    loop {
+        match exited_unreaped(pgid) {
+            Ok(true) => break,
+            Ok(false) => {}
             Err(e) => {
                 failure = Some(format!("wait failed: {e}"));
-                break None;
+                break;
             }
         }
         if over.load(Ordering::SeqCst) {
             failure = Some("output exceeded its cap".to_string());
-            break None;
+            break;
         }
         if start.elapsed() >= deadline {
             failure = Some("deadline exceeded".to_string());
-            break None;
+            break;
         }
         std::thread::sleep(Duration::from_millis(5));
-    };
-    unsafe { libc::kill(-pgid, libc::SIGKILL) };
-    let status = match status {
-        Some(s) => s,
-        None => child.wait().map_err(|e| format!("wait failed: {e}"))?,
-    };
+    }
+    kill_group_of_unreaped(pgid);
+    let status = child.wait().map_err(|e| format!("wait failed: {e}"))?;
     stop.store(true, Ordering::SeqCst);
     let join = |h: Option<std::thread::JoinHandle<Vec<u8>>>| {
         h.map_or_else(Vec::new, |h| h.join().unwrap_or_default())
@@ -915,6 +936,31 @@ mod tests {
         }
         let out = out.unwrap();
         assert!(!out.status.success(), "the child still sees the fd");
+    }
+
+    #[test]
+    #[should_panic(expected = "reaped before its group was killed")]
+    fn killing_a_group_after_its_leader_was_reaped_is_refused() {
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", "exit 0"]);
+        let mut child = c.spawn().unwrap();
+        let pgid = child.id() as libc::pid_t;
+        child.wait().unwrap();
+        kill_group_of_unreaped(pgid);
+    }
+
+    #[test]
+    fn a_finished_leader_stays_waitable_until_its_group_is_killed() {
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", "exit 0"]);
+        let mut child = c.spawn().unwrap();
+        let pgid = child.id() as libc::pid_t;
+        while !exited_unreaped(pgid).unwrap() {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(exited_unreaped(pgid).unwrap());
+        kill_group_of_unreaped(pgid);
+        assert!(child.wait().unwrap().success());
     }
 
     #[test]

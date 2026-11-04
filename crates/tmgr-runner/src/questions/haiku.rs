@@ -99,22 +99,26 @@ pub fn complete(
         let _ = out_tx.send(buf);
     });
     let deadline = Instant::now() + timeout;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(st)) => break Some(st),
-            Ok(None) if Instant::now() >= deadline => break None,
-            Ok(None) => std::thread::sleep(Duration::from_millis(40)),
-            Err(_) => break None,
+    let exited = loop {
+        match crate::worktree::exited_unreaped(pgid) {
+            Ok(true) => break true,
+            Ok(false) if Instant::now() >= deadline => break false,
+            Ok(false) => std::thread::sleep(Duration::from_millis(40)),
+            Err(_) => break false,
         }
     };
-    let Some(status) = status else {
+    if !exited {
         unsafe { libc::killpg(pgid, libc::SIGKILL) };
         let _ = child.kill();
         let _ = child.wait();
         let _ = writer.join();
         return Err(Failure::Timeout);
+    }
+    crate::worktree::kill_group_of_unreaped(pgid);
+    let Ok(status) = child.wait() else {
+        let _ = writer.join();
+        return Err(Failure::Exit(None));
     };
-    unsafe { libc::killpg(pgid, libc::SIGKILL) };
     let _ = writer.join();
     let out = out_rx
         .recv_timeout(Duration::from_secs(2))
