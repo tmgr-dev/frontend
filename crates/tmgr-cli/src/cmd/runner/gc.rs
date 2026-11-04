@@ -1,4 +1,3 @@
-use super::attach_git::config_runs_programs;
 use super::cloud::{read_record, record_path};
 use super::{emit, is_down, rerr, runner_config, Opts};
 use crate::gitx::parse_remote;
@@ -34,6 +33,7 @@ const BUILD_DIRS: &[&str] = &[
 ];
 
 const PR_LIMIT: usize = 100;
+const FOLDER_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Pr {
@@ -389,10 +389,6 @@ fn process_paths() -> std::result::Result<Vec<PathBuf>, String> {
         .collect())
 }
 
-fn git_text(dir: &Path, args: &[&str]) -> std::result::Result<Vec<u8>, String> {
-    workdir::git_bytes(dir, args, None).map_err(|e| sanitize_line(&e.message))
-}
-
 fn exists(p: &Path) -> bool {
     std::fs::symlink_metadata(p).is_ok()
 }
@@ -408,111 +404,6 @@ fn hidden_entry(listed: &[u8]) -> Option<String> {
         } else {
             None
         }
-    })
-}
-
-pub(super) fn git_facts(dir: &Path, branch: &str) -> std::result::Result<GitFacts, String> {
-    let config = String::from_utf8_lossy(&git_text(
-        dir,
-        &["config", "--list", "--show-scope", "--name-only"],
-    )?)
-    .lines()
-    .filter(|l| !l.starts_with("command\t"))
-    .collect::<Vec<_>>()
-    .join("\n");
-    if config_runs_programs(&config) {
-        return Err("the copy's local git config runs programs".into());
-    }
-    let redirects = config.lines().any(|l| {
-        let key = l
-            .split_once('\t')
-            .map_or("", |(_, k)| k)
-            .to_ascii_lowercase();
-        key == "core.worktree" || key.starts_with("include")
-    });
-    if redirects {
-        return Err("the copy's local git config redirects git".into());
-    }
-    if !workdir::repo_config_is_plain(dir) {
-        return Err("the copy's local git config has settings that are not checked".into());
-    }
-    if exists(&dir.join(".gitmodules")) || exists(&dir.join(".git/modules")) {
-        return Err("the copy has submodules, which are not checked".into());
-    }
-    if !git_text(
-        dir,
-        &[
-            "rev-list",
-            "--max-count=1",
-            "--exclude=refs/stash",
-            "--all",
-            "--not",
-            "--remotes",
-            "HEAD",
-        ],
-    )?
-    .iter()
-    .all(|b| b.is_ascii_whitespace())
-    {
-        return Err("local commits outside the branch".into());
-    }
-    let staged = git_text(dir, &["ls-files", "-s", "-z"])?;
-    if staged.split(|b| *b == 0).any(|e| e.starts_with(b"160000 ")) {
-        return Err("the copy has submodules, which are not checked".into());
-    }
-    let head = String::from_utf8_lossy(&git_text(dir, &["rev-parse", "--verify", "HEAD"])?)
-        .trim()
-        .to_string();
-    let on_branch = git_text(dir, &["symbolic-ref", "-q", "HEAD"])
-        .map(|b| String::from_utf8_lossy(&b).trim() == format!("refs/heads/{branch}"))
-        .unwrap_or(false);
-    let entries = parse_status(&git_text(
-        dir,
-        &[
-            "--no-optional-locks",
-            "status",
-            "--porcelain=v1",
-            "-z",
-            "--untracked-files=all",
-            "--ignored=matching",
-        ],
-    )?);
-    let stash = !git_text(dir, &["for-each-ref", "--format=%(refname)", "refs/stash"])?
-        .iter()
-        .all(|b| b.is_ascii_whitespace());
-    let in_progress = [
-        ("MERGE_HEAD", "merge"),
-        ("CHERRY_PICK_HEAD", "cherry-pick"),
-        ("REVERT_HEAD", "revert"),
-        ("rebase-merge", "rebase"),
-        ("rebase-apply", "rebase"),
-        ("BISECT_LOG", "bisect"),
-    ]
-    .iter()
-    .find(|(f, _)| exists(&dir.join(".git").join(f)))
-    .map(|(_, what)| what.to_string());
-    let listed = git_text(dir, &["ls-files", "-v", "-z"])?;
-    let hidden = hidden_entry(&listed);
-    let unmerged = String::from_utf8_lossy(&git_text(
-        dir,
-        &[
-            "for-each-ref",
-            "--no-merged=HEAD",
-            "--format=%(refname:short)",
-            "refs/heads",
-        ],
-    )?)
-    .lines()
-    .map(str::to_string)
-    .collect();
-    Ok(GitFacts {
-        head,
-        on_branch,
-        entries,
-        stash,
-        in_progress,
-        hidden,
-        unmerged,
     })
 }
 
@@ -540,7 +431,12 @@ fn short_ref(name: &str) -> String {
     name.strip_prefix("refs/heads/").unwrap_or(name).to_string()
 }
 
-fn worker_facts(dir: &Path, branch: &str, host: &Host) -> std::result::Result<GitFacts, String> {
+fn copy_facts(
+    dir: &Path,
+    branch: &str,
+    host: &Host,
+    budget: std::time::Duration,
+) -> std::result::Result<GitFacts, String> {
     if exists(&dir.join(".gitmodules")) || exists(&dir.join(".git/modules")) {
         return Err("the copy has submodules, which are not checked".into());
     }
@@ -559,10 +455,19 @@ fn worker_facts(dir: &Path, branch: &str, host: &Host) -> std::result::Result<Gi
     .iter()
     .find(|(f, _)| exists(&dir.join(".git").join(f)))
     .map(|(_, what)| what.to_string());
+    let deadline = std::time::Instant::now() + budget;
+    let left = || {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() {
+            Err("git did not finish in time".to_string())
+        } else {
+            Ok(left)
+        }
+    };
     let tmp = tempfile::tempdir().map_err(|e| e.to_string())?;
-    workdir::trusted_git_dir(tmp.path(), dir, branch, &refs, &host.tips)?;
+    workdir::trusted_git_dir(tmp.path(), dir, branch, &refs, &host.tips, left()?)?;
     let git = |args: &[&str]| {
-        workdir::trusted_git_bytes(tmp.path(), dir, args).map_err(|e| sanitize_line(&e))
+        workdir::trusted_git_bytes(tmp.path(), dir, args, left()?).map_err(|e| sanitize_line(&e))
     };
     let staged = git(&["ls-files", "-s", "-z"])?;
     if staged.split(|b| *b == 0).any(|e| e.starts_with(b"160000 ")) {
@@ -600,6 +505,12 @@ fn worker_facts(dir: &Path, branch: &str, host: &Host) -> std::result::Result<Gi
         if unmerged.is_empty() {
             return Err("the copy has commits outside its branch".into());
         }
+    }
+    if !refs.logged.is_empty() && outside("--glob=refs/log")? {
+        return Err("the copy has commits kept only in its reflog".into());
+    }
+    if !workdir::copy_alternates_ok(dir, &host.objects) {
+        return Err("the copy borrows objects from somewhere other than its repository".into());
     }
     Ok(GitFacts {
         head: refs.head,
@@ -1061,7 +972,11 @@ fn gather(c: &Candidate, probe: &Probe, prs: Option<&[Prs]>) -> RunFacts {
     let mut clones = Vec::new();
     if proof.is_ok() && in_use.is_none() {
         for (i, spec) in c.clones.iter().enumerate() {
-            let git = git_facts(&spec.dir, &c.branch);
+            let git = match &spec.repo {
+                Ok((path, _)) => host_facts(path)
+                    .and_then(|host| copy_facts(&spec.dir, &c.branch, &host, FOLDER_BUDGET)),
+                Err(e) => Err(e.clone()),
+            };
             let prs = match (prs.and_then(|p| p.get(i)), &spec.repo) {
                 (Some(p), _) => p.clone(),
                 (None, Ok((path, full))) if git.is_ok() => lookup_prs(full, &c.branch, path),
@@ -1095,7 +1010,7 @@ fn gather(c: &Candidate, probe: &Probe, prs: Option<&[Prs]>) -> RunFacts {
                 git: if real_dir(&dir) {
                     prove_dir(&dir).and_then(|()| {
                         let host = host.as_ref().map_err(String::clone)?;
-                        worker_facts(&dir, &branch, host)
+                        copy_facts(&dir, &branch, host, FOLDER_BUDGET)
                     })
                 } else {
                     Err("the copy is not a real folder".into())
@@ -1875,7 +1790,7 @@ mod tests {
             clones: vec![CloneSpec {
                 name: String::new(),
                 dir: lead.clone(),
-                repo: Err("unused".into()),
+                repo: Ok((repo.clone(), "o/r".into())),
                 identity: None,
             }],
             unusable: None,
@@ -1921,6 +1836,8 @@ mod tests {
         assert!(skip(&c).contains("worker w2"));
     }
 
+    const B: std::time::Duration = std::time::Duration::from_secs(10);
+
     fn no_host() -> Host {
         Host {
             objects: PathBuf::from("/nonexistent/objects"),
@@ -1929,7 +1846,7 @@ mod tests {
     }
 
     #[test]
-    fn worker_facts_never_write_where_a_ref_name_points() {
+    fn copy_facts_never_write_where_a_ref_name_points() {
         let (_t, root) = tmp_root();
         let dir = plain_copy(&root);
         let head = sh(&dir, &["rev-parse", "HEAD"]);
@@ -1941,27 +1858,29 @@ mod tests {
             ),
         )
         .unwrap();
-        assert!(worker_facts(&dir, "tmgr/w1", &no_host()).is_err());
+        assert!(copy_facts(&dir, "tmgr/w1", &no_host(), B).is_err());
         assert!(!root.join("gc-outside").exists());
     }
 
     #[test]
-    fn worker_facts_see_commits_kept_only_under_a_tag_or_any_other_ref() {
+    fn copy_facts_see_commits_kept_only_under_a_tag_or_any_other_ref() {
         let (_t, root) = tmp_root();
         let dir = plain_copy(&root);
         sh(&dir, &["commit", "-q", "--allow-empty", "-m", "hidden"]);
         sh(&dir, &["tag", "hide"]);
         sh(&dir, &["reset", "-q", "--hard", "HEAD~1"]);
+        forget_reflog(&dir);
         assert_eq!(
-            worker_facts(&dir, "tmgr/w1", &no_host()).unwrap().unmerged,
+            copy_facts(&dir, "tmgr/w1", &no_host(), B).unwrap().unmerged,
             ["refs/tags/hide"]
         );
         sh(&dir, &["tag", "-d", "hide"]);
         sh(&dir, &["commit", "-q", "--allow-empty", "-m", "hidden"]);
         sh(&dir, &["update-ref", "refs/remotes/origin/x", "HEAD"]);
         sh(&dir, &["reset", "-q", "--hard", "HEAD~1"]);
+        forget_reflog(&dir);
         assert_eq!(
-            worker_facts(&dir, "tmgr/w1", &no_host()).unwrap().unmerged,
+            copy_facts(&dir, "tmgr/w1", &no_host(), B).unwrap().unmerged,
             ["refs/remotes/origin/x"]
         );
         let kept = sh(&dir, &["rev-parse", "refs/remotes/origin/x"]);
@@ -1969,7 +1888,7 @@ mod tests {
             objects: no_host().objects,
             tips: vec![kept],
         };
-        assert!(worker_facts(&dir, "tmgr/w1", &host)
+        assert!(copy_facts(&dir, "tmgr/w1", &host, B)
             .unwrap()
             .unmerged
             .is_empty());
@@ -1981,14 +1900,14 @@ mod tests {
                 "refs/remotes/origin/x",
             ],
         );
-        assert!(worker_facts(&dir, "tmgr/w1", &host)
+        assert!(copy_facts(&dir, "tmgr/w1", &host, B)
             .unwrap()
             .unmerged
             .is_empty());
     }
 
     #[test]
-    fn worker_facts_refuse_objects_borrowed_from_anywhere_but_the_repository() {
+    fn copy_facts_refuse_objects_borrowed_from_anywhere_but_the_repository() {
         let (_t, root) = tmp_root();
         let dir = plain_copy(&root);
         let other = root.join("other");
@@ -2001,18 +1920,18 @@ mod tests {
             format!("{}\n", other.join(".git/objects").display()),
         )
         .unwrap();
-        assert!(worker_facts(&dir, "tmgr/w1", &no_host())
+        assert!(copy_facts(&dir, "tmgr/w1", &no_host(), B)
             .unwrap_err()
             .contains("borrows objects"));
         let host = Host {
             objects: other.join(".git/objects"),
             tips: Vec::new(),
         };
-        assert!(worker_facts(&dir, "tmgr/w1", &host).is_ok());
+        assert!(copy_facts(&dir, "tmgr/w1", &host, B).is_ok());
     }
 
     #[test]
-    fn worker_facts_refuse_an_object_store_reached_through_a_link() {
+    fn copy_facts_refuse_an_object_store_reached_through_a_link() {
         let (_t, root) = tmp_root();
         let other = root.join("other");
         std::fs::create_dir(&other).unwrap();
@@ -2024,7 +1943,7 @@ mod tests {
             std::fs::rename(&path, root.join("moved")).unwrap();
             std::os::unix::fs::symlink(other.join(linked), &path).unwrap();
             assert!(
-                worker_facts(&dir, "tmgr/w1", &no_host())
+                copy_facts(&dir, "tmgr/w1", &no_host(), B)
                     .unwrap_err()
                     .contains("borrows objects"),
                 "{linked}"
@@ -2051,7 +1970,7 @@ mod tests {
     }
 
     #[test]
-    fn worker_facts_never_run_what_the_copy_configures() {
+    fn copy_facts_never_run_what_the_copy_configures() {
         let (_t, root) = tmp_root();
         let dir = plain_copy(&root);
         let marker = root.join("ran");
@@ -2082,7 +2001,7 @@ mod tests {
             format!("#!/bin/sh\ntouch '{}'\n", marker.display()),
         )
         .unwrap();
-        let facts = worker_facts(&dir, "tmgr/w1", &no_host()).unwrap();
+        let facts = copy_facts(&dir, "tmgr/w1", &no_host(), B).unwrap();
         assert_eq!(
             facts.head,
             sh(&dir, &["-c", "core.fsmonitor=false", "rev-parse", "HEAD"])
@@ -2091,7 +2010,7 @@ mod tests {
         assert!(facts.hidden.is_none() && facts.in_progress.is_none());
         std::fs::write(dir.join("a.txt"), "changed").unwrap();
         std::fs::write(dir.join("new.txt"), "n").unwrap();
-        let facts = worker_facts(&dir, "tmgr/w1", &no_host()).unwrap();
+        let facts = copy_facts(&dir, "tmgr/w1", &no_host(), B).unwrap();
         assert!(facts
             .entries
             .iter()
@@ -2104,55 +2023,278 @@ mod tests {
     }
 
     #[test]
-    fn worker_facts_do_not_read_the_copys_git_config() {
+    fn copy_facts_do_not_read_the_copys_git_config() {
         let (_t, root) = tmp_root();
         let dir = plain_copy(&root);
         sh(&dir, &["config", "tmgrtest.unknown", "1"]);
         sh(&dir, &["config", "include.path", "/nonexistent/config"]);
-        assert!(git_facts(&dir, "tmgr/w1").is_err());
-        assert!(worker_facts(&dir, "tmgr/w1", &no_host()).is_ok());
+        assert!(copy_facts(&dir, "tmgr/w1", &no_host(), B).is_ok());
     }
 
     #[test]
-    fn worker_facts_refuse_other_branches_and_report_stash_and_head() {
+    fn copy_facts_refuse_other_branches_and_report_stash_and_head() {
         let (_t, root) = tmp_root();
         let dir = plain_copy(&root);
         sh(&dir, &["branch", "merged"]);
-        assert!(worker_facts(&dir, "tmgr/w1", &no_host())
+        assert!(copy_facts(&dir, "tmgr/w1", &no_host(), B)
             .unwrap()
             .unmerged
             .is_empty());
         sh(&dir, &["checkout", "-q", "-b", "extra"]);
         sh(&dir, &["commit", "-q", "--allow-empty", "-m", "side"]);
         sh(&dir, &["checkout", "-q", "tmgr/w1"]);
+        forget_reflog(&dir);
         assert_eq!(
-            worker_facts(&dir, "tmgr/w1", &no_host()).unwrap().unmerged,
+            copy_facts(&dir, "tmgr/w1", &no_host(), B).unwrap().unmerged,
             ["extra"]
         );
         sh(&dir, &["pack-refs", "--all"]);
         assert_eq!(
-            worker_facts(&dir, "tmgr/w1", &no_host()).unwrap().unmerged,
+            copy_facts(&dir, "tmgr/w1", &no_host(), B).unwrap().unmerged,
             ["extra"]
         );
         sh(&dir, &["branch", "-q", "-D", "extra"]);
-        assert!(!worker_facts(&dir, "tmgr/w1", &no_host()).unwrap().stash);
+        assert!(!copy_facts(&dir, "tmgr/w1", &no_host(), B).unwrap().stash);
         sh(&dir, &["update-ref", "refs/stash", "HEAD"]);
-        assert!(worker_facts(&dir, "tmgr/w1", &no_host()).unwrap().stash);
+        assert!(copy_facts(&dir, "tmgr/w1", &no_host(), B).unwrap().stash);
         sh(&dir, &["pack-refs", "--all"]);
-        assert!(worker_facts(&dir, "tmgr/w1", &no_host()).unwrap().stash);
-        assert!(worker_facts(&dir, "tmgr/other", &no_host())
+        assert!(copy_facts(&dir, "tmgr/w1", &no_host(), B).unwrap().stash);
+        assert!(copy_facts(&dir, "tmgr/other", &no_host(), B)
             .unwrap_err()
             .contains("not on the branch"));
         sh(&dir, &["checkout", "-q", "--detach"]);
-        assert!(worker_facts(&dir, "tmgr/w1", &no_host()).is_err());
+        assert!(copy_facts(&dir, "tmgr/w1", &no_host(), B).is_err());
+    }
+
+    fn lead_candidate(dir: &Path, repo: &Path) -> Candidate {
+        Candidate {
+            origin: Origin::Pickup("q_lead".into()),
+            shown: dir.to_path_buf(),
+            folder: dir.to_path_buf(),
+            levels: 1,
+            branch: "tmgr/w1".into(),
+            session: None,
+            multi: false,
+            clones: vec![CloneSpec {
+                name: String::new(),
+                dir: dir.to_path_buf(),
+                repo: Ok((repo.to_path_buf(), "o/r".into())),
+                identity: None,
+            }],
+            unusable: None,
+            in_use: None,
+            drop_if_gone: false,
+            team_refs: None,
+            team_bases: Vec::new(),
+        }
+    }
+
+    fn in_worktrees(root: &Path, dir: PathBuf) -> PathBuf {
+        let wt = root.join("proj-worktrees");
+        std::fs::create_dir(&wt).unwrap();
+        let moved = wt.join("w");
+        std::fs::rename(dir, &moved).unwrap();
+        moved
+    }
+
+    fn host_repo(root: &Path) -> PathBuf {
+        let repo = root.join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        sh(&repo, &["init", "-q", "-b", "main"]);
+        repo
+    }
+
+    fn forget_reflog(dir: &Path) {
+        std::fs::remove_dir_all(dir.join(".git/logs")).unwrap();
+    }
+
+    fn within<T: Send + 'static>(secs: u64, f: impl FnOnce() -> T + Send + 'static) -> T {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(secs))
+            .expect("did not return in time")
+    }
+
+    fn unblock(fifo: &Path) {
+        use std::os::unix::fs::OpenOptionsExt;
+        let _ = std::fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(fifo);
+    }
+
+    fn mkfifo(path: &Path) {
+        let c = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
     }
 
     #[test]
-    fn worker_facts_see_hidden_index_entries_and_unfinished_operations() {
+    fn a_lead_copy_is_read_without_its_git_config() {
+        let (_t, root) = tmp_root();
+        let repo = host_repo(&root);
+        let dir = in_worktrees(&root, plain_copy(&root));
+        let fifo = root.join("pipe");
+        mkfifo(&fifo);
+        let marker = root.join("ran");
+        let script = root.join("script");
+        std::fs::write(
+            &script,
+            format!("#!/bin/sh\ntouch '{}'\ncat\n", marker.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        let sc = script.to_string_lossy().into_owned();
+        for (k, v) in [
+            ("core.fsmonitor", sc.as_str()),
+            ("alias.status", "!touch ran-alias"),
+            ("core.hooksPath", root.to_str().unwrap()),
+        ] {
+            sh(&dir, &["config", k, v]);
+        }
+        sh(&dir, &["config", "include.path", fifo.to_str().unwrap()]);
+        let c = lead_candidate(&dir, &repo);
+        let facts = within(5, move || {
+            gather(&c, &Probe::default(), Some(&[Prs::Listed(Vec::new())]))
+        });
+        unblock(&fifo);
+        assert!(facts.clones[0].git.is_ok(), "{:?}", facts.clones[0].git);
+        assert!(!marker.exists() && !dir.join("ran-alias").exists());
+    }
+
+    #[test]
+    fn a_lead_copy_with_no_usable_repository_is_kept() {
+        let (_t, root) = tmp_root();
+        let dir = in_worktrees(&root, plain_copy(&root));
+        let mut c = lead_candidate(&dir, &root);
+        c.clones[0].repo = Err("no repository".into());
+        let facts = gather(&c, &Probe::default(), Some(&[Prs::Listed(Vec::new())]));
+        assert_eq!(facts.clones[0].git.as_ref().unwrap_err(), "no repository");
+    }
+
+    #[test]
+    fn a_fifo_named_gitignore_cannot_hang_the_check() {
+        let (_t, root) = tmp_root();
+        let dir = plain_copy(&root);
+        std::fs::create_dir(dir.join("sub")).unwrap();
+        let fifo = dir.join("sub/.gitignore");
+        mkfifo(&fifo);
+        let started = std::time::Instant::now();
+        let d = dir.clone();
+        let r = within(8, move || {
+            copy_facts(
+                &d,
+                "tmgr/w1",
+                &no_host(),
+                std::time::Duration::from_millis(300),
+            )
+        });
+        unblock(&fifo);
+        assert!(r.is_err() || started.elapsed() < std::time::Duration::from_secs(6));
+    }
+
+    #[test]
+    fn commits_kept_only_in_the_reflog_keep_the_copy() {
+        let (_t, root) = tmp_root();
+        let dir = plain_copy(&root);
+        assert!(copy_facts(&dir, "tmgr/w1", &no_host(), B).is_ok());
+        sh(&dir, &["commit", "-q", "--allow-empty", "-m", "second"]);
+        assert!(copy_facts(&dir, "tmgr/w1", &no_host(), B).is_ok());
+        sh(&dir, &["reset", "-q", "--hard", "HEAD~1"]);
+        assert!(copy_facts(&dir, "tmgr/w1", &no_host(), B)
+            .unwrap_err()
+            .contains("reflog"));
+    }
+
+    #[test]
+    fn links_in_the_object_store_keep_the_copy() {
+        let (_t, root) = tmp_root();
+        let dir = plain_copy(&root);
+        let fan = std::fs::read_dir(dir.join(".git/objects"))
+            .unwrap()
+            .flatten()
+            .find(|e| e.file_name().len() == 2)
+            .unwrap()
+            .path();
+        let moved = root.join("moved");
+        std::fs::rename(&fan, &moved).unwrap();
+        std::os::unix::fs::symlink(&moved, &fan).unwrap();
+        assert!(copy_facts(&dir, "tmgr/w1", &no_host(), B).is_err());
+        std::fs::remove_file(&fan).unwrap();
+        std::fs::rename(&moved, &fan).unwrap();
+        assert!(copy_facts(&dir, "tmgr/w1", &no_host(), B).is_ok());
+        let object = std::fs::read_dir(&fan)
+            .unwrap()
+            .flatten()
+            .next()
+            .unwrap()
+            .path();
+        let kept = root.join("kept");
+        std::fs::rename(&object, &kept).unwrap();
+        std::os::unix::fs::symlink(&kept, &object).unwrap();
+        assert!(copy_facts(&dir, "tmgr/w1", &no_host(), B).is_err());
+    }
+
+    #[test]
+    fn a_split_index_keeps_the_copy_on_purpose() {
+        let (_t, root) = tmp_root();
+        let dir = plain_copy(&root);
+        sh(&dir, &["update-index", "--split-index"]);
+        assert!(copy_facts(&dir, "tmgr/w1", &no_host(), B).is_err());
+    }
+
+    #[test]
+    fn the_copys_exclude_file_turns_untracked_into_ignored() {
+        let (_t, root) = tmp_root();
+        let dir = plain_copy(&root);
+        std::fs::create_dir(dir.join(".tmgr")).unwrap();
+        std::fs::write(dir.join(".tmgr/task.md"), "t").unwrap();
+        let kind = |d: &Path| {
+            copy_facts(d, "tmgr/w1", &no_host(), B)
+                .unwrap()
+                .entries
+                .iter()
+                .find(|e| e.path.starts_with(".tmgr"))
+                .map(|e| e.kind)
+        };
+        assert_eq!(kind(&dir), Some(EntryKind::Untracked));
+        std::fs::write(dir.join(".git/info/exclude"), ".tmgr/\n").unwrap();
+        assert_eq!(kind(&dir), Some(EntryKind::Ignored));
+        let facts = copy_facts(&dir, "tmgr/w1", &no_host(), B).unwrap();
+        assert!(clean_copy("tmgr/w1", &facts).is_err());
+    }
+
+    #[test]
+    fn a_copy_whose_alternates_point_at_another_repository_is_kept() {
+        let (_t, root) = tmp_root();
+        let dir = plain_copy(&root);
+        let a = root.join("a");
+        let b = root.join("b");
+        for r in [&a, &b] {
+            std::fs::create_dir(r).unwrap();
+            sh(r, &["init", "-q"]);
+        }
+        let alt = dir.join(".git/objects/info/alternates");
+        std::fs::create_dir_all(alt.parent().unwrap()).unwrap();
+        std::fs::write(&alt, format!("{}\n", a.join(".git/objects").display())).unwrap();
+        let host = |r: &Path| Host {
+            objects: r.join(".git/objects"),
+            tips: Vec::new(),
+        };
+        assert!(copy_facts(&dir, "tmgr/w1", &host(&a), B).is_ok());
+        assert!(copy_facts(&dir, "tmgr/w1", &host(&b), B)
+            .unwrap_err()
+            .contains("borrows objects"));
+    }
+
+    #[test]
+    fn copy_facts_see_hidden_index_entries_and_unfinished_operations() {
         let (_t, root) = tmp_root();
         let dir = plain_copy(&root);
         sh(&dir, &["update-index", "--assume-unchanged", "a.txt"]);
-        assert!(worker_facts(&dir, "tmgr/w1", &no_host())
+        assert!(copy_facts(&dir, "tmgr/w1", &no_host(), B)
             .unwrap()
             .hidden
             .unwrap()
@@ -2160,7 +2302,7 @@ mod tests {
         sh(&dir, &["update-index", "--no-assume-unchanged", "a.txt"]);
         std::fs::write(dir.join(".git/MERGE_HEAD"), "x").unwrap();
         assert_eq!(
-            worker_facts(&dir, "tmgr/w1", &no_host())
+            copy_facts(&dir, "tmgr/w1", &no_host(), B)
                 .unwrap()
                 .in_progress
                 .as_deref(),

@@ -359,6 +359,106 @@ pub(crate) fn output_within_input(
     })
 }
 
+pub const TRUSTED_OUTPUT_CAP: usize = 64 << 20;
+
+/// Like `output_within`, but the deadline also covers collecting the output (a grandchild keeping a pipe
+/// open cannot hold the caller) and more than `cap` bytes on a pipe is an error, never a truncated result.
+pub fn output_bounded(
+    cmd: &mut Command,
+    limit: std::time::Duration,
+    cap: usize,
+) -> Result<std::process::Output> {
+    use std::io::Read;
+    use std::process::Stdio;
+    use std::sync::mpsc::{channel, RecvTimeoutError};
+    use std::time::{Duration, Instant};
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| Error::internal(format!("cannot run git: {e}")))?;
+    let (tx, rx) = channel::<(bool, Option<Vec<u8>>)>();
+    let pipes: [(bool, Option<Box<dyn Read + Send>>); 2] = [
+        (
+            true,
+            child
+                .stdout
+                .take()
+                .map(|p| Box::new(p) as Box<dyn Read + Send>),
+        ),
+        (
+            false,
+            child
+                .stderr
+                .take()
+                .map(|p| Box::new(p) as Box<dyn Read + Send>),
+        ),
+    ];
+    for (is_out, pipe) in pipes {
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut p) = pipe {
+                let mut chunk = [0u8; 8192];
+                loop {
+                    match p.read(&mut chunk) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            buf.extend_from_slice(&chunk[..n]);
+                            if buf.len() > cap {
+                                let _ = tx.send((is_out, None));
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+            let _ = tx.send((is_out, Some(buf)));
+        });
+    }
+    drop(tx);
+    let fail = |child: &mut std::process::Child, msg: String| {
+        let _ = child.kill();
+        let _ = child.wait();
+        Err(Error::internal(msg))
+    };
+    let deadline = Instant::now() + limit;
+    let mut out: Option<Vec<u8>> = None;
+    let mut err: Option<Vec<u8>> = None;
+    let mut status: Option<std::process::ExitStatus> = None;
+    loop {
+        if status.is_none() {
+            match child.try_wait() {
+                Ok(st) => status = st,
+                Err(e) => return fail(&mut child, format!("cannot wait for git: {e}")),
+            }
+        }
+        if let (Some(st), Some(o), Some(e)) = (status, out.as_ref(), err.as_ref()) {
+            return Ok(std::process::Output {
+                status: st,
+                stdout: o.clone(),
+                stderr: e.clone(),
+            });
+        }
+        let now = Instant::now();
+        if now >= deadline {
+            return fail(&mut child, "git did not finish in time".into());
+        }
+        let wait = (deadline - now).min(Duration::from_millis(10));
+        match rx.recv_timeout(wait) {
+            Ok((is_out, Some(buf))) => *(if is_out { &mut out } else { &mut err }) = Some(buf),
+            Ok((_, None)) => return fail(&mut child, format!("git printed more than {cap} bytes")),
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => {
+                if out.is_none() || err.is_none() {
+                    return fail(&mut child, "git output could not be read".into());
+                }
+            }
+        }
+    }
+}
+
 pub trait WorkDirs {
     fn prepare(&self, repo: &str, pickup_id: &str, cwd: &str) -> Result<()>;
 
@@ -833,6 +933,8 @@ pub fn clone_head_branch(clone: &Path) -> Option<String> {
 /// What a team worker's copy says about its refs, read as data without running git there.
 pub struct CopyRefs {
     pub head: String,
+    /// Every commit the copy's reflogs name.
+    pub logged: Vec<String>,
     pub stash: bool,
     /// Every other ref of the copy (branches, tags, remote-tracking refs, notes...) with its object.
     pub others: Vec<(String, String)>,
@@ -919,12 +1021,71 @@ pub fn copy_refs(copy: &Path, branch: &str) -> std::result::Result<CopyRefs, Str
         .ok_or("the copy's branch has no readable commit")?;
     Ok(CopyRefs {
         head,
+        logged: logged_commits(copy)?,
         stash,
         others: refs.into_iter().collect(),
     })
 }
 
+fn logged_commits(copy: &Path) -> std::result::Result<Vec<String>, String> {
+    let unreadable = || "the copy's reflog cannot be read".to_string();
+    match std::fs::symlink_metadata(copy.join(".git/logs")) {
+        Err(_) => return Ok(Vec::new()),
+        Ok(m) if !m.is_dir() => return Err(unreadable()),
+        Ok(_) => {}
+    }
+    let mut files = Vec::new();
+    if std::fs::symlink_metadata(copy.join(".git/logs/HEAD")).is_ok() {
+        files.push("HEAD".to_string());
+    }
+    if std::fs::symlink_metadata(copy.join(".git/logs/refs")).is_ok() {
+        let root =
+            open_beneath(copy, ".git/logs/refs", libc::O_DIRECTORY).ok_or_else(unreadable)?;
+        let mut names = Vec::new();
+        if !loose_refs(&root, "refs/", &mut names) {
+            return Err(unreadable());
+        }
+        files.extend(names);
+    }
+    let mut shas = std::collections::BTreeSet::new();
+    for file in files {
+        let text = read_small(copy, &format!(".git/logs/{file}")).ok_or_else(unreadable)?;
+        for line in text.lines().filter(|l| !l.trim().is_empty()) {
+            let mut tokens = line.split(' ');
+            for sha in [tokens.next(), tokens.next()] {
+                let sha = sha.filter(|s| is_sha(s)).ok_or_else(unreadable)?;
+                if !sha.bytes().all(|b| b == b'0') {
+                    shas.insert(sha.to_string());
+                }
+            }
+        }
+    }
+    Ok(shas.into_iter().collect())
+}
+
 const MAX_INDEX: u64 = 64 << 20;
+
+fn only_regular_files(dir: &std::fs::File) -> bool {
+    entries(dir).iter().all(|name| {
+        open_in(dir, name, libc::O_NONBLOCK)
+            .and_then(|f| f.metadata().ok())
+            .is_some_and(|m| m.file_type().is_file())
+    })
+}
+
+fn object_store_plain(copy: &Path) -> bool {
+    let Some(objects) = open_beneath(copy, ".git/objects", libc::O_DIRECTORY) else {
+        return false;
+    };
+    entries(&objects).iter().all(|name| {
+        let n = name.to_string_lossy();
+        let fan_out = n.len() == 2 && n.bytes().all(|b| b.is_ascii_hexdigit());
+        if !fan_out && n != "pack" {
+            return true;
+        }
+        open_in(&objects, name, libc::O_DIRECTORY).is_some_and(|d| only_regular_files(&d))
+    })
+}
 
 /// Whether the copy's own object alternates are none, or only `allowed` (the repository it was cloned with
 /// `--reference`). Anything else would make git read objects from elsewhere.
@@ -937,6 +1098,9 @@ pub fn copy_alternates_ok(copy: &Path, allowed: &Path) -> bool {
             .iter()
             .any(|r| matches!(real_dir(r), Ok(false)))
     {
+        return false;
+    }
+    if !object_store_plain(copy) {
         return false;
     }
     let rel = ".git/objects/info/alternates";
@@ -963,6 +1127,7 @@ pub fn trusted_git_dir(
     branch: &str,
     refs: &CopyRefs,
     trusted: &[String],
+    limit: std::time::Duration,
 ) -> std::result::Result<(), String> {
     use std::io::Read;
     validate_branch(branch).map_err(|e| e.message)?;
@@ -975,7 +1140,7 @@ pub fn trusted_git_dir(
     init.args(["init", "--bare", "-q"])
         .arg(git_dir)
         .current_dir(git_dir);
-    let out = output_within(&mut init, GIT_TIMEOUT).map_err(|e| e.message)?;
+    let out = output_bounded(&mut init, limit, TRUSTED_OUTPUT_CAP).map_err(|e| e.message)?;
     if !out.status.success() {
         return Err("git init failed".into());
     }
@@ -995,6 +1160,16 @@ pub fn trusted_git_dir(
     for (n, sha) in trusted.iter().filter(|s| is_sha(s)).enumerate() {
         packed.push_str(&format!("{sha} refs/host/{n}\n"));
     }
+    for (n, sha) in refs.logged.iter().enumerate() {
+        packed.push_str(&format!("{sha} refs/log/{n}\n"));
+    }
+    let exclude = match std::fs::symlink_metadata(copy.join(".git/info/exclude")) {
+        Ok(_) => Some(
+            read_small(copy, ".git/info/exclude")
+                .ok_or("the copy's exclude file cannot be read")?,
+        ),
+        Err(_) => None,
+    };
     let write = || -> std::io::Result<()> {
         std::fs::write(
             git_dir.join("objects/info/alternates"),
@@ -1002,6 +1177,10 @@ pub fn trusted_git_dir(
         )?;
         std::fs::write(git_dir.join("index"), &index)?;
         std::fs::write(git_dir.join("HEAD"), format!("ref: refs/heads/{branch}\n"))?;
+        if let Some(text) = &exclude {
+            std::fs::create_dir_all(git_dir.join("info"))?;
+            std::fs::write(git_dir.join("info/exclude"), text)?;
+        }
         std::fs::write(git_dir.join("packed-refs"), packed)
     };
     write().map_err(|e| e.to_string())
@@ -1012,16 +1191,24 @@ pub fn trusted_git_bytes(
     git_dir: &Path,
     copy: &Path,
     args: &[&str],
+    limit: std::time::Duration,
 ) -> std::result::Result<Vec<u8>, String> {
     let mut cmd = fixed_git_command();
     cmd.arg("--git-dir")
         .arg(git_dir)
         .arg("--work-tree")
         .arg(copy)
-        .args(["-c", "core.bare=false", "-c", "core.quotepath=off"])
+        .args([
+            "-c",
+            "core.bare=false",
+            "-c",
+            "core.quotepath=off",
+            "-c",
+            "core.commitGraph=false",
+        ])
         .args(args)
         .current_dir(git_dir);
-    let out = output_within(&mut cmd, GIT_TIMEOUT).map_err(|e| e.message)?;
+    let out = output_bounded(&mut cmd, limit, TRUSTED_OUTPUT_CAP).map_err(|e| e.message)?;
     if !out.status.success() {
         let msg = String::from_utf8_lossy(&out.stderr);
         let line = msg.lines().next().unwrap_or("failed");
@@ -2044,5 +2231,159 @@ mod tests {
             git(Some(&dest), &["rev-list", "--count", "HEAD"]).unwrap(),
             "2"
         );
+    }
+
+    fn within<T: Send + 'static>(secs: u64, f: impl FnOnce() -> T + Send + 'static) -> T {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(secs))
+            .expect("did not return in time")
+    }
+
+    fn sh_cmd(script: &str) -> Command {
+        let mut c = Command::new("sh");
+        c.args(["-c", script]);
+        c
+    }
+
+    #[test]
+    fn bounded_runner_kills_a_command_that_runs_too_long() {
+        let started = std::time::Instant::now();
+        let r = within(5, || {
+            output_bounded(
+                &mut sh_cmd("sleep 30"),
+                std::time::Duration::from_millis(300),
+                1 << 20,
+            )
+        });
+        assert!(r.is_err());
+        assert!(started.elapsed() < std::time::Duration::from_secs(4));
+    }
+
+    #[test]
+    fn bounded_runner_stops_a_command_that_prints_too_much() {
+        let r = within(5, || {
+            output_bounded(
+                &mut Command::new("yes"),
+                std::time::Duration::from_secs(30),
+                64 << 10,
+            )
+        });
+        assert!(r.unwrap_err().message.contains("more than"));
+    }
+
+    #[test]
+    fn bounded_runner_does_not_wait_for_a_grandchild_holding_the_pipe() {
+        let started = std::time::Instant::now();
+        let _ = within(5, || {
+            output_bounded(
+                &mut sh_cmd("(sleep 30 &) ; echo hi"),
+                std::time::Duration::from_millis(500),
+                1 << 20,
+            )
+        });
+        assert!(started.elapsed() < std::time::Duration::from_secs(4));
+    }
+
+    #[test]
+    fn bounded_runner_returns_the_output_of_a_small_command() {
+        let out = within(5, || {
+            output_bounded(
+                &mut sh_cmd("printf out; printf err >&2"),
+                std::time::Duration::from_secs(5),
+                1 << 20,
+            )
+        })
+        .unwrap();
+        assert!(out.status.success());
+        assert_eq!((out.stdout, out.stderr), (b"out".to_vec(), b"err".to_vec()));
+    }
+
+    fn copy_with_reflog(lines: &str) -> (tempfile::TempDir, PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = std::fs::canonicalize(tmp.path()).unwrap();
+        run_git(&dir, &["init", "-q", "-b", "tmgr/w1"]);
+        run_git(&dir, &["commit", "-q", "--allow-empty", "-m", "init"]);
+        std::fs::remove_dir_all(dir.join(".git/logs")).unwrap();
+        std::fs::create_dir_all(dir.join(".git/logs")).unwrap();
+        std::fs::write(dir.join(".git/logs/HEAD"), lines).unwrap();
+        (tmp, dir)
+    }
+
+    #[test]
+    fn copy_refs_lists_commits_named_in_the_reflog() {
+        let a = "a".repeat(40);
+        let b = "b".repeat(40);
+        let zero = "0".repeat(40);
+        let (_t, dir) = copy_with_reflog(&format!(
+            "{zero} {a} t <t@example.com> 1 +0000\tcommit: x\n\n{a} {b} t <t@example.com> 2 +0000\treset: y\n"
+        ));
+        let refs = copy_refs(&dir, "tmgr/w1").unwrap();
+        assert_eq!(refs.logged, [a, b]);
+    }
+
+    #[test]
+    fn copy_refs_refuse_a_malformed_or_unreadable_reflog() {
+        let a = "a".repeat(40);
+        let (_t, dir) = copy_with_reflog(&format!("{a} zzz t\tx\n"));
+        assert!(copy_refs(&dir, "tmgr/w1").is_err());
+        let (_t, dir) = copy_with_reflog("");
+        std::fs::remove_file(dir.join(".git/logs/HEAD")).unwrap();
+        assert!(copy_refs(&dir, "tmgr/w1").unwrap().logged.is_empty());
+        std::fs::create_dir_all(dir.join(".git/logs/refs/heads")).unwrap();
+        std::os::unix::fs::symlink("/etc/hosts", dir.join(".git/logs/refs/heads/l")).unwrap();
+        assert!(copy_refs(&dir, "tmgr/w1").is_err());
+        std::fs::remove_file(dir.join(".git/logs/refs/heads/l")).unwrap();
+        std::fs::write(
+            dir.join(".git/logs/refs/heads/big"),
+            vec![b'x'; (1 << 20) + 1],
+        )
+        .unwrap();
+        assert!(copy_refs(&dir, "tmgr/w1").is_err());
+    }
+
+    #[test]
+    fn copy_refs_without_a_log_folder_has_no_logged_commits() {
+        let (_t, dir) = copy_with_reflog("");
+        std::fs::remove_dir_all(dir.join(".git/logs")).unwrap();
+        assert!(copy_refs(&dir, "tmgr/w1").unwrap().logged.is_empty());
+    }
+
+    #[test]
+    fn alternates_check_refuses_links_and_odd_files_in_the_object_store() {
+        let (_t, dir) = copy_with_reflog("");
+        let allowed = dir.join("elsewhere");
+        assert!(copy_alternates_ok(&dir, &allowed));
+        let objects = dir.join(".git/objects");
+        let fan = std::fs::read_dir(&objects)
+            .unwrap()
+            .flatten()
+            .find(|e| e.file_name().len() == 2)
+            .unwrap()
+            .path();
+        let moved = dir.join("moved");
+        std::fs::rename(&fan, &moved).unwrap();
+        std::os::unix::fs::symlink(&moved, &fan).unwrap();
+        assert!(!copy_alternates_ok(&dir, &allowed));
+        std::fs::remove_file(&fan).unwrap();
+        std::fs::rename(&moved, &fan).unwrap();
+        assert!(copy_alternates_ok(&dir, &allowed));
+        let object = std::fs::read_dir(&fan)
+            .unwrap()
+            .flatten()
+            .next()
+            .unwrap()
+            .path();
+        let kept = dir.join("kept");
+        std::fs::rename(&object, &kept).unwrap();
+        std::os::unix::fs::symlink(&kept, &object).unwrap();
+        assert!(!copy_alternates_ok(&dir, &allowed));
+        std::fs::remove_file(&object).unwrap();
+        std::fs::rename(&kept, &object).unwrap();
+        let fifo = std::ffi::CString::new(fan.join("ff").to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+        assert!(!copy_alternates_ok(&dir, &allowed));
     }
 }
