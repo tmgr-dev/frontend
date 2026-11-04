@@ -298,6 +298,30 @@ fn session_kind(s: &SessionInfo) -> Option<String> {
     }
 }
 
+fn sandboxed_roots(
+    rows: &[SessionRow],
+    starts: &HashMap<String, (String, u32)>,
+    unsandboxed: &HashSet<String>,
+) -> Vec<PathBuf> {
+    rows.iter()
+        .filter(|r| !unsandboxed.contains(&r.id))
+        .filter_map(|r| starts.get(&r.id))
+        .map(|(start, _)| PathBuf::from(start))
+        .collect()
+}
+
+fn git_branch_only(
+    id: &str,
+    cwds: &[PathBuf],
+    unsandboxed: &HashSet<String>,
+    sandboxed: &[PathBuf],
+) -> bool {
+    !unsandboxed.contains(id)
+        || cwds.iter().any(|c| {
+            tmgr_queue::workdir::in_queue_run_dir(c) || sandboxed.iter().any(|s| c.starts_with(s))
+        })
+}
+
 fn rows(list: &[SessionInfo]) -> Vec<SessionRow> {
     let now = now_ms();
     list.iter()
@@ -1363,14 +1387,7 @@ impl App {
             return;
         }
         self.last_git = Instant::now();
-        let sandboxed: Vec<PathBuf> = self
-            .view
-            .sessions
-            .iter()
-            .filter(|r| !r.exited() && !self.unsandboxed.contains(&r.id))
-            .filter_map(|r| self.starts.get(&r.id))
-            .map(|(start, _)| PathBuf::from(start))
-            .collect();
+        let sandboxed = sandboxed_roots(&self.view.sessions, &self.starts, &self.unsandboxed);
         let jobs: Vec<GitJob> = self
             .view
             .panes()
@@ -1384,11 +1401,7 @@ impl App {
                     .into_iter()
                     .map(PathBuf::from)
                     .collect();
-                let branch_only = !self.unsandboxed.contains(id)
-                    || cwds.iter().any(|c| {
-                        tmgr_queue::workdir::in_queue_run_dir(c)
-                            || sandboxed.iter().any(|s| c.starts_with(s))
-                    });
+                let branch_only = git_branch_only(id, &cwds, &self.unsandboxed, &sandboxed);
                 (!row.exited() || !cwds.is_empty()).then(|| GitJob {
                     id: id.clone(),
                     cwds,
@@ -4611,6 +4624,26 @@ mod tests {
             checkpoints: None,
             permission_cards: false,
         }
+    }
+
+    #[test]
+    fn ended_sandboxed_session_still_limits_git_in_its_folder() {
+        let mut ended = info("s_ended");
+        ended.state.kind = StateKind::Exited;
+        let mut free = info("s_free");
+        free.no_sandbox = true;
+        let mut other = info("s_other");
+        other.no_sandbox = true;
+        let list = [ended, free, other];
+        let unsandboxed: HashSet<String> = ["s_free", "s_other"].map(String::from).into();
+        let starts: HashMap<String, (String, u32)> =
+            HashMap::from([("s_ended".to_string(), ("/w/proj".to_string(), 0))]);
+        let roots = sandboxed_roots(&rows(&list), &starts, &unsandboxed);
+        let inside = [PathBuf::from("/w/proj/sub")];
+        let outside = [PathBuf::from("/w/elsewhere")];
+        assert!(git_branch_only("s_free", &inside, &unsandboxed, &roots));
+        assert!(!git_branch_only("s_other", &outside, &unsandboxed, &roots));
+        assert!(git_branch_only("s_ended", &outside, &unsandboxed, &roots));
     }
 
     #[test]
