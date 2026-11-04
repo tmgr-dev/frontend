@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.73
 
 - Session checkpoints keep their git data in a private folder of the runner, so sandboxed sessions get checkpoints again. Existing checkpoints move there on first use.
 
