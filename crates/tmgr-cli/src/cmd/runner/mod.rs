@@ -31,6 +31,7 @@ pub(crate) mod cloud;
 mod gate;
 mod gc;
 mod local;
+pub(crate) mod menu;
 mod observe;
 mod ops;
 mod privilege;

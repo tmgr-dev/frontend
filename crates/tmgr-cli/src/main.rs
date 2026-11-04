@@ -31,7 +31,15 @@ fn run() -> i32 {
     if let Some(code) = cmd::runner::internal_entry() {
         return code;
     }
-    let cli = match Cli::try_parse() {
+    #[cfg(feature = "runner")]
+    let parsed = match cmd::runner::menu::entry() {
+        cmd::runner::menu::Entry::Skip => Cli::try_parse(),
+        cmd::runner::menu::Entry::Argv(argv) => Cli::try_parse_from(argv),
+        cmd::runner::menu::Entry::Exit(code) => return code,
+    };
+    #[cfg(not(feature = "runner"))]
+    let parsed = Cli::try_parse();
+    let cli = match parsed {
         Ok(cli) => cli,
         Err(e) => return usage_exit(e),
     };

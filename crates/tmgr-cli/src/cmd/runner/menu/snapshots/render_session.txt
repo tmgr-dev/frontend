@@ -1,0 +1,16 @@
+┌ tmgr run · session ──────────────────────────────────────────────────────────────────────────────┐
+│Claude Code sessions                                                                              │
+│Filter: _                                                                                         │
+│  New session                                                                                     │
+│  ext  2h ago   tmgr.dev fix the menu                                                             │
+│▸ tmgr 2h ago   tmgr.dev add sessions list (live)                                                 │
+│  tmgr 2h ago   blog write the post (folder gone)                                                 │
+│  tmgr 2h ago   infra rotate the keys (not readable)                                              │
+│  ext  2h ago   old-site port the css                                                             │
+│Running in another terminal: fork instead                                                         │
+│Reading session logs is off. Press a to allow it (same as: tmgr usage consent allow)              │
+│Up/Down move · type to filter · Enter select · Esc back · Ctrl+C quit                             │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
