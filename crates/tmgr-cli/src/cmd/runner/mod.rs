@@ -38,6 +38,7 @@ mod remote;
 mod remote_attach;
 mod restart;
 mod restore;
+mod resume_any;
 mod run_task;
 mod service;
 mod session_list;
@@ -544,8 +545,20 @@ pub struct RmArgs {
 
 #[derive(Args)]
 pub struct ResumeArgs {
-    /// Session id or name of an exited session
+    /// Session id or name of an exited session, or the id of an agent conversation
     pub session: String,
+    /// Continue as a new session that leaves the original conversation untouched
+    #[arg(long)]
+    pub fork: bool,
+    /// Permission mode to resume with
+    #[arg(long, value_enum, value_name = "MODE")]
+    pub mode: Option<PermissionMode>,
+    /// Resume with your real home folder, with no sandbox
+    #[arg(long)]
+    pub no_sandbox: bool,
+    /// Start the session without opening the live view
+    #[arg(long)]
+    pub no_attach: bool,
 }
 
 pub struct Opts<'a> {

@@ -29,6 +29,8 @@ pub const GUARDED: &[Rule] = &[
     rule(&["run"], Some("review"), None),
     rule(&["run"], Some("push"), None),
     rule(&["run"], Some("drop"), None),
+    rule(&["resume"], Some("mode"), Some("bypass")),
+    rule(&["resume"], Some("no_sandbox"), None),
     rule(&["queue", "enable"], None, None),
     rule(&["queue", "approve"], None, None),
     rule(&["queue", "release"], None, None),

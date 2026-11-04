@@ -124,7 +124,6 @@ pub fn list(env: &Env, f: Filter) -> Listing {
     }
 }
 
-#[allow(dead_code)]
 pub fn find(env: &Env, id: &str) -> Option<Entry> {
     if !valid_resume_id(id) {
         return None;

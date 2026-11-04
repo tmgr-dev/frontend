@@ -74,7 +74,7 @@ impl Row {
             git_branch: None,
             readable: true,
             snippet: None,
-            agent_session: None,
+            agent_session: s.agent_session_id.clone(),
         }
     }
 
@@ -348,5 +348,20 @@ mod tests {
             );
             assert!(!out.contains('\u{7}'), "{out:?}");
         }
+    }
+
+    #[test]
+    fn a_tmgr_row_carries_the_agent_session_so_its_conversation_is_listed_once() {
+        let id = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
+        let info: SessionInfo = serde_json::from_value(json!({
+            "id": "s_aaaaaaaaaa", "name": "w", "argv": ["/bin/sh"], "cwd": "/w",
+            "profile": "claude-code", "state": {"kind": "exited", "since_ms": 1},
+            "created_ms": 1, "cols": 80, "rows": 24, "shim_pid": 1, "child_pid": 2,
+            "agent_session_id": id,
+        }))
+        .unwrap();
+        let rows = vec![Row::runner(&info), row("external", id, None)];
+        let ids: Vec<String> = dedupe(rows).into_iter().map(|r| r.id).collect();
+        assert_eq!(ids, ["s_aaaaaaaaaa"]);
     }
 }
