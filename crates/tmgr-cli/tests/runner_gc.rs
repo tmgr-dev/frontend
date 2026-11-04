@@ -463,7 +463,7 @@ async fn a_tag_on_a_local_commit_keeps_the_copy() {
     git(&rig.copy, &["tag", "-a", "keep-me", "-m", "keep"]);
     git(&rig.copy, &["checkout", "-q", BRANCH]);
     git(&rig.copy, &["branch", "-q", "-D", "side"]);
-    rig.assert_skipped("outside the branch");
+    rig.assert_skipped("keep-me");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -535,7 +535,9 @@ async fn a_local_git_config_that_runs_programs_is_not_executed() {
     .unwrap();
     std::fs::create_dir_all(rig.copy.join(".git/info")).unwrap();
     std::fs::write(rig.copy.join(".git/info/attributes"), "* filter=x diff=y\n").unwrap();
-    rig.assert_skipped("runs programs");
+    let (out, v) = rig.gc(&[]);
+    assert_eq!(out.status.code(), Some(0), "{}", common::text(&out.stderr));
+    assert_eq!(rig.copy_json(&v, 0)["decision"], "removed");
     assert!(!marker.exists(), "the configured program ran");
 }
 

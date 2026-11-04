@@ -506,7 +506,20 @@ fn copy_facts(
             return Err("the copy has commits outside its branch".into());
         }
     }
-    if !refs.logged.is_empty() && outside("--glob=refs/log")? {
+    let only_logged = || {
+        git(&[
+            "rev-list",
+            "-n",
+            "1",
+            "--glob=refs/log",
+            "--not",
+            "HEAD",
+            "--glob=refs/host",
+            "--glob=refs/copy",
+        ])
+        .map(|o| !o.is_empty())
+    };
+    if !refs.logged.is_empty() && !refs.stash && only_logged()? {
         return Err("the copy has commits kept only in its reflog".into());
     }
     if !workdir::copy_alternates_ok(dir, &host.objects) {
