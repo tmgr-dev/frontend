@@ -1460,6 +1460,14 @@ impl CloneRun {
         fs::write(clone.join("c.txt"), "c").unwrap();
         git_fx(&clone, &["add", "c.txt"]);
         git_fx(&clone, &["commit", "-q", "-m", "three"]);
+        let script = clone.join("agent.sh");
+        fs::write(&script, AGENT).unwrap();
+        let toml = h.tmp.path().join("a").join(format!("{}.toml", h.agent_id));
+        let profile = fs::read_to_string(&toml).unwrap().replace(
+            h.work.join("agent.sh").to_str().unwrap(),
+            script.to_str().unwrap(),
+        );
+        fs::write(&toml, profile).unwrap();
         CloneRun { repo, clone }
     }
 
@@ -1518,8 +1526,8 @@ fn a_clone_that_shares_object_files_is_not_resumed_and_is_left_alone() {
         return;
     }
     let mut h = H::full();
-    h.start();
     let c = CloneRun::new(&h);
+    h.start();
     let first = c.started(&h);
     h.stop(&first.id);
     fs::write(c.clone.join("wip.txt"), "unsaved").unwrap();
@@ -1555,8 +1563,8 @@ fn a_clone_without_shared_object_files_resumes_as_before() {
         return;
     }
     let mut h = H::full();
-    h.start();
     let c = CloneRun::new(&h);
+    h.start();
     let first = c.started(&h);
     h.stop(&first.id);
     fs::write(c.clone.join("wip.txt"), "unsaved").unwrap();

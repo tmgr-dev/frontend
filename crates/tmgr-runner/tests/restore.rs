@@ -842,6 +842,14 @@ fn a_clone_that_shares_object_files_is_not_restored_and_is_left_alone() {
     fs::write(clone.join("c.txt"), "c").unwrap();
     git_fx(&clone, &["add", "c.txt"]);
     git_fx(&clone, &["commit", "-q", "-m", "two"]);
+    let script = clone.join("agent.sh");
+    fs::write(&script, AGENT).unwrap();
+    let toml = h.agents.join("fake.toml");
+    let profile = fs::read_to_string(&toml).unwrap().replace(
+        h.work.join("agent.sh").to_str().unwrap(),
+        script.to_str().unwrap(),
+    );
+    fs::write(&toml, profile).unwrap();
     h.start();
     let mut req = h.req();
     req.cwd = clone.display().to_string();
