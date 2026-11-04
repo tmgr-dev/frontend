@@ -902,6 +902,21 @@ mod tests {
     }
 
     #[test]
+    fn a_hook_added_after_open_does_not_run_on_a_ref_update() {
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path().join("r");
+        fs::create_dir(&repo).unwrap();
+        git(&repo, &["init", "-q", "-b", "main"]);
+        commit_file(&repo, "a", "1");
+        let env = GitEnv::open(&repo).unwrap();
+        let marker = tmp.path().join("ran");
+        git(&repo, &["config", "hook.x.event", "reference-transaction"]);
+        git(&repo, &["config", "hook.x.command", &format!("touch {}", marker.display())]);
+        let _ = env.run(&["update-ref", "refs/heads/t", "HEAD"]);
+        assert!(!marker.exists(), "a repository hook ran");
+    }
+
+    #[test]
     fn run_bounded_kills_a_stalled_child() {
         let mut c = Command::new("/bin/sh");
         c.args(["-c", "sleep 30"]);

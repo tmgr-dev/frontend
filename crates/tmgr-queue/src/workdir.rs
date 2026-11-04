@@ -1779,6 +1779,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_hook_added_after_the_listing_does_not_run_on_a_ref_update() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(tmp.path()).unwrap().join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let mut cmd = git_command(Some(&repo));
+        let marker = tmp.path().join("ran");
+        git(Some(&repo), &["config", "hook.x.event", "reference-transaction"]).unwrap();
+        git(
+            Some(&repo),
+            &["config", "hook.x.command", &format!("touch {}", marker.display())],
+        )
+        .unwrap();
+        let _ = cmd.args(["update-ref", "refs/heads/t", "HEAD"]).output();
+        assert!(!marker.exists(), "a repository hook ran");
+    }
+
+    #[test]
     fn clones_beside_the_repo_on_a_new_branch_without_hooks() {
         let tmp = tempfile::tempdir().unwrap();
         let repo = std::fs::canonicalize(tmp.path()).unwrap().join("proj");
