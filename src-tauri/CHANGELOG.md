@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.96 — 2026-11-04
+
+- Skills library: new "Import from local agents" button. It scans your Claude Code, Claude Code plugins, Codex and shared agent skill folders (and any project folder you pick), shows them by source and package with a preview, and imports the ones you tick. Importing again updates the same library skill instead of duplicating it. Nothing is executed, supporting files and anything that looks like a secret are never sent, and skills over 16 KiB are listed but not imported.
+
 ## 0.9.95 — 2026-11-04
 
 - Moving from local mode to a cloud account: if you switch accounts or sign out while your local data and AI provider key are being moved, the move now waits and continues on the next sign-in or app start. Before, it could stop for good or show the result to the wrong account.
