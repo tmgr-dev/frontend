@@ -45,6 +45,10 @@ const PACK_CAP: u64 = 4 * 1024 * 1024 * 1024;
 const PACK_LIMIT: usize = 16;
 const STREAM_DEADLINE: Duration = Duration::from_secs(1800);
 const REF_ROOT: &str = "refs/tmgr/checkpoints";
+const PACKED_REFS: &[u8] = b"packed-refs";
+const PACKED_LOCK: &[u8] = b"packed-refs.lock";
+const PACKED_REFS_MAX: u64 = 256 * 1024 * 1024;
+const PACKED_LOCK_WAIT: Duration = Duration::from_secs(1);
 const PRIVATE_REFS: &str = "refs/checkpoints";
 const MANIFEST: &str = "checkpoints.json";
 const CACHE: &str = "checkpoints.cache.json";
@@ -1240,47 +1244,15 @@ impl Store {
 
     fn delete_legacy_refs(&self, refs_of: Option<&str>, common: &str) {
         let own = refs_of.unwrap_or(&self.session);
-        let mut names = BTreeSet::new();
         if valid_session_id(own) {
-            names.insert(own.to_string());
-        }
-        let comps: Vec<&[u8]> = REF_ROOT.split('/').map(str::as_bytes).collect();
-        let root = open_nofollow(Path::new(common))
-            .and_then(|c| walk_dirs(c.as_fd(), &comps))
-            .ok();
-        if let (Some(root), Some(sessions)) = (root, self.sdir.parent()) {
-            let orphans: Vec<String> = list_dir(&root)
-                .into_iter()
-                .filter_map(|n| String::from_utf8(n).ok())
-                .filter(|n| valid_session_id(n) && fs::symlink_metadata(sessions.join(n)).is_err())
-                .collect();
-            if !orphans.is_empty() {
-                if let Some(named) = refs_named_under(sessions) {
-                    names.extend(orphans.into_iter().filter(|n| !named.contains(n)));
-                }
-            }
-        }
-        for name in names {
-            delete_loose_refs(Path::new(common), &name);
+            delete_loose_refs(Path::new(common), own);
+            delete_packed_refs(Path::new(common), own);
         }
     }
 }
 
 fn legacy_dir(m: &Manifest) -> Option<&str> {
     m.common_dir.as_deref().filter(|_| !m.private)
-}
-
-fn refs_named_under(sessions: &Path) -> Option<BTreeSet<String>> {
-    let mut named = BTreeSet::new();
-    for e in fs::read_dir(sessions).ok()? {
-        let manifest = e.ok()?.path().join(MANIFEST);
-        if fs::symlink_metadata(&manifest).is_err() {
-            continue;
-        }
-        let bytes = read_capped(&manifest, 64 * 1024 * 1024)?;
-        named.extend(serde_json::from_slice::<Manifest>(&bytes).ok()?.refs_of);
-    }
-    Some(named)
 }
 
 fn delete_loose_refs(common: &Path, ns: &str) {
@@ -1307,6 +1279,101 @@ fn delete_loose_refs(common: &Path, ns: &str) {
         if unlink_at(dirs[i].as_fd(), comps[i].as_bytes(), libc::AT_REMOVEDIR).is_err() {
             return;
         }
+    }
+}
+
+fn packed_line_dropped(line: &[u8], ns: &str) -> bool {
+    let Ok(text) = std::str::from_utf8(line) else {
+        return false;
+    };
+    let Some((oid, name)) = text.trim_end_matches('\n').split_once(' ') else {
+        return false;
+    };
+    let Some(rest) = name
+        .strip_prefix(REF_ROOT)
+        .and_then(|r| r.strip_prefix('/'))
+    else {
+        return false;
+    };
+    let Some((owner, n)) = rest.split_once('/') else {
+        return false;
+    };
+    valid_oid(oid) && owner == ns && !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())
+}
+
+fn filter_packed(data: &[u8], ns: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(data.len());
+    let mut dropped = false;
+    let mut after_dropped = false;
+    for line in data.split_inclusive(|&b| b == b'\n') {
+        if packed_line_dropped(line, ns) {
+            dropped = true;
+            after_dropped = true;
+            continue;
+        }
+        if after_dropped && line.first() == Some(&b'^') {
+            after_dropped = false;
+            continue;
+        }
+        after_dropped = false;
+        out.extend_from_slice(line);
+    }
+    dropped.then_some(out)
+}
+
+fn lock_packed_refs(root: &OwnedFd, mode: u32) -> Option<()> {
+    let end = Instant::now() + PACKED_LOCK_WAIT;
+    let flags = libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW;
+    loop {
+        match open_at(root.as_fd(), PACKED_LOCK, flags, mode) {
+            Ok(fd) => {
+                drop(fd);
+                return Some(());
+            }
+            Err(e) if e.raw_os_error() == Some(libc::EEXIST) && Instant::now() < end => {
+                thread::sleep(Duration::from_millis(20));
+            }
+            Err(_) => return None,
+        }
+    }
+}
+
+fn rewrite_packed(root: &OwnedFd, ns: &str) -> bool {
+    let ReadFile::Data(_, _, data) = read_regular(root.as_fd(), PACKED_REFS, PACKED_REFS_MAX)
+    else {
+        return false;
+    };
+    let Some(kept) = filter_packed(&data, ns) else {
+        return false;
+    };
+    let flags = libc::O_WRONLY | libc::O_NOFOLLOW;
+    let Ok(fd) = open_at(root.as_fd(), PACKED_LOCK, flags, 0) else {
+        return false;
+    };
+    let mut file = File::from(fd);
+    if file.write_all(&kept).is_err() || file.sync_all().is_err() {
+        return false;
+    }
+    drop(file);
+    rename_at(root.as_fd(), PACKED_LOCK, PACKED_REFS).is_ok()
+}
+
+fn delete_packed_refs(common: &Path, ns: &str) {
+    let Ok(root) = open_nofollow(common) else {
+        return;
+    };
+    if stat_at(root.as_fd(), b"reftable").is_ok() {
+        return;
+    }
+    let mode = match stat_at(root.as_fd(), PACKED_REFS) {
+        Ok(st) if is_kind(&st, libc::S_IFREG) => mode_bits(&st) & 0o777,
+        _ => return,
+    };
+    if lock_packed_refs(&root, mode).is_none() {
+        return;
+    }
+    if !rewrite_packed(&root, ns) {
+        let _ = unlink_at(root.as_fd(), PACKED_LOCK, 0);
     }
 }
 
