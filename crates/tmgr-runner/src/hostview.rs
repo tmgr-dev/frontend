@@ -371,11 +371,18 @@ fn find_root(start: &Path) -> Result<PathBuf, String> {
 
 impl HostView {
     pub fn open(repo: &Path, access: Access) -> Result<HostView, String> {
+        HostView::open_in(repo, access, &std::env::temp_dir())
+    }
+
+    fn open_in(repo: &Path, access: Access, base: &Path) -> Result<HostView, String> {
         let repo = fs::canonicalize(repo).map_err(|e| format!("{}: {e}", repo.display()))?;
         let layout = resolve(&repo)?;
+        if access != Access::Read && layout.gitdir != layout.common {
+            return Err("only read views are supported on a linked worktree".into());
+        }
         let p = tempfile::Builder::new()
             .prefix("tmgr-hostview-")
-            .tempdir()
+            .tempdir_in(base)
             .map_err(|e| format!("cannot make a private git folder: {e}"))?;
         let dir = fs::canonicalize(p.path()).map_err(|e| e.to_string())?;
         for guarded in [&layout.root, &layout.common, &layout.gitdir] {
@@ -486,9 +493,13 @@ impl HostView {
         } else if network {
             cmd.args([
                 "-c",
-                "protocol.file.allow=always",
+                "protocol.allow=never",
                 "-c",
-                "protocol.ext.allow=never",
+                "protocol.https.allow=always",
+                "-c",
+                "protocol.ssh.allow=always",
+                "-c",
+                "protocol.file.allow=always",
             ]);
         } else {
             cmd.args([
@@ -541,7 +552,8 @@ impl HostView {
         &self.common
     }
 
-    pub fn private_dir(&self) -> &Path {
+    #[cfg(test)]
+    fn private_dir(&self) -> &Path {
         &self.dir
     }
 }
@@ -875,22 +887,67 @@ mod tests {
         let sub = fx.repo.join("sub");
         fs::create_dir(&sub).unwrap();
         git(&sub, &["init", "-q"]);
-        commit(&sub, "f", "f");
+        fs::write(sub.join(".gitattributes"), "f filter=x\n").unwrap();
+        commit(&sub, "f", "1");
         git(&fx.repo, &["add", "sub"]);
         git(&fx.repo, &["commit", "-q", "-m", "link"]);
         let marker = fx.tmp.path().join("sub-ran");
-        let script = fx.tmp.path().join("fsm.sh");
-        fs::write(&script, format!("#!/bin/sh\ntouch {}\n", marker.display())).unwrap();
-        git(
-            &sub,
-            &["config", "core.fsmonitor", script.to_str().unwrap()],
-        );
-        fs::write(sub.join("f"), "dirty").unwrap();
+        let clean = format!("sh -c 'touch {}; cat'", marker.display());
+        git(&sub, &["config", "filter.x.clean", &clean]);
+        fs::write(sub.join("f"), "2").unwrap();
         let view = HostView::open(&fx.repo, Access::Read)
             .unwrap()
             .with_work_tree();
         view.run(&["status", "--porcelain"]).unwrap();
         assert!(!marker.exists(), "a submodule config ran");
+    }
+
+    #[test]
+    fn network_views_allow_only_https_ssh_and_file() {
+        let fx = fixture();
+        let view = HostView::open(&fx.repo, Access::Network).unwrap();
+        for url in ["git://127.0.0.1:1/x", "http://127.0.0.1:1/x", "ext::true"] {
+            let out = view.run_raw(&["ls-remote", url]).unwrap();
+            let err = String::from_utf8_lossy(&out.stderr);
+            assert!(err.contains("not allowed"), "{url}: {err}");
+        }
+        let out = view
+            .run_raw(&["ls-remote", "https://127.0.0.1:1/x"])
+            .unwrap();
+        assert!(!String::from_utf8_lossy(&out.stderr).contains("not allowed"));
+    }
+
+    #[test]
+    fn local_views_refuse_network_protocols() {
+        let fx = fixture();
+        let view = HostView::open(&fx.repo, Access::Write).unwrap();
+        let out = view
+            .run_raw(&["ls-remote", "https://127.0.0.1:1/x"])
+            .unwrap();
+        assert!(String::from_utf8_lossy(&out.stderr).contains("not allowed"));
+    }
+
+    #[test]
+    fn a_temp_folder_inside_the_repository_is_refused() {
+        let fx = fixture();
+        fs::create_dir(fx.repo.join("deep")).unwrap();
+        let err = HostView::open_in(&fx.repo, Access::Read, &fx.repo.join("deep"))
+            .err()
+            .unwrap();
+        assert!(err.contains("inside the repository"), "{err}");
+    }
+
+    #[test]
+    fn write_views_on_a_linked_worktree_are_refused() {
+        let fx = fixture();
+        let lw = fx.tmp.path().join("lw");
+        git(
+            &fx.repo,
+            &["worktree", "add", "-q", "-b", "lw", lw.to_str().unwrap()],
+        );
+        for access in [Access::Write, Access::Network] {
+            assert!(HostView::open(&lw, access).is_err());
+        }
     }
 
     #[test]
