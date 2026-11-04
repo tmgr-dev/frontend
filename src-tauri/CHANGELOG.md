@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.97 — 2026-11-04
+
+- New Decisions window (macOS and Linux). Questions, reviews, release gates and manual checks from your agent sessions pile up in one queue, and each answer goes back to the session that asked. Open it with CmdOrCtrl+Shift+D or from the tray item "Decisions (N)". Agents reach it through the `ask_owner` MCP tool, `tmgr ask` or the Claude Code hooks from `tmgr hook install decisions`, which need tmgr CLI 1.0.78 or later.
+
 ## 0.9.96 — 2026-11-04
 
 - Skills library: new "Import from local agents" button. It scans your Claude Code, Claude Code plugins, Codex and shared agent skill folders (and any project folder you pick), shows them by source and package with a preview, and imports the ones you tick. Importing again updates the same library skill instead of duplicating it. Nothing is executed, supporting files and anything that looks like a secret are never sent, and skills over 16 KiB are listed but not imported.
