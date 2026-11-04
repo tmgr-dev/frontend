@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.72
+
+- Team runs work with rules that cover several repositories. The lead and each worker get their own folder with one clone per repository (`queue/<id>/lead/<name>`, `queue/<id>/wK/<name>`). Each worker's commits are brought into the repository they were made in, and the lead is told which folder each commit belongs to. If one repository of a worker cannot be brought in, none of that worker's commits are, and the branches already made for it are removed. The pull requests are opened per repository, as for a single-agent run. Needs a runner restarted after the update (`team.multi.v1`). Do not downgrade while such a team is running: an older version would publish without the workers' work.
+- A queue run over several repositories can now be published; before, the publish refused its run folder.
+- `tmgr runner gc` skips a team over several repositories and says so; such folders and their `queue-team/` branches are not collected yet.
+
 ## 1.0.71
 
 - Hardening: before running host `git` in a work folder, the runner and `tmgr attach` check where the folder's `.git` points. Only the folder's own git directory or a worktree that its repository registered for this folder are accepted; anything else hides the attach Git panel.
