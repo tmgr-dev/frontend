@@ -9,154 +9,168 @@
 		<div v-else-if="diff.status === 'error'" class="placeholder">
 			Could not load changes: {{ diff.error }}
 		</div>
-		<template v-else-if="diff.view">
-			<div v-if="diff.view.error" class="placeholder">
-				{{ diff.view.error }}
-			</div>
-			<div v-else-if="diff.view.files.length === 0" class="placeholder">
-				No changes.
-			</div>
-			<div v-if="diff.view.truncated" class="placeholder">
-				The diff is too large and was truncated.
-			</div>
-			<div v-for="(file, fi) in diff.view.files" :key="file.path" class="file">
-				<div class="fh">
-					<span class="path">{{ file.path }}</span>
-					<span class="stat"
-						><span class="a">+{{ file.added }}</span>
-						<span class="d"> −{{ file.removed }}</span></span
-					>
+		<template v-else-if="diff.groups">
+			<div v-if="diff.groups.length === 0" class="placeholder">No changes.</div>
+			<section v-for="(group, gi) in panes" :key="group.key" class="dgroup">
+				<div v-if="panes.length > 1" class="gh">
+					<span class="gl">{{ group.label }}</span>
+					<span class="gk">{{ group.kind }}</span>
+					<span v-if="group.base || group.head" class="gr">{{
+						rangeLabel(group.base, group.head)
+					}}</span>
 				</div>
-				<div class="dv">
-					<template v-for="(hunk, hi) in file.hunks" :key="hi">
-						<div class="dl hunk">
-							<span class="no"></span><span class="no"></span>
-							<span class="cb" style="visibility: hidden"></span>
-							<span class="code">{{ hunk.header }}</span>
-						</div>
-						<template v-for="(line, li) in hunk.lines" :key="li">
-							<div
-								class="dl"
-								:class="[line.kind, { hascm: hasThread(file.path, line) }]"
-							>
-								<span class="no">{{ line.old ?? '' }}</span>
-								<span class="no">{{ line.new ?? '' }}</span>
-								<button
-									type="button"
-									class="cb"
-									title="Comment on this line"
-									@click="openThread(file.path, line, 'reply')"
-								>
-									+
-								</button>
-								<span class="code">{{ PREFIX[line.kind] }}{{ line.text }}</span>
+				<div v-if="group.view.error" class="placeholder">
+					{{ group.view.error }}
+				</div>
+				<div v-else-if="group.view.files.length === 0" class="placeholder">
+					No changes.
+				</div>
+				<div v-if="group.view.truncated" class="placeholder">
+					The diff is too large and was truncated.
+				</div>
+				<div v-for="(file, fi) in group.files" :key="file.path" class="file">
+					<div class="fh">
+						<span class="path">{{ file.path }}</span>
+						<span class="stat"
+							><span class="a">+{{ file.added }}</span>
+							<span class="d"> −{{ file.removed }}</span></span
+						>
+					</div>
+					<div class="dv">
+						<template v-for="(hunk, hi) in file.hunks" :key="hi">
+							<div class="dl hunk">
+								<span class="no"></span><span class="no"></span>
+								<span class="cb" style="visibility: hidden"></span>
+								<span class="code">{{ hunk.header }}</span>
 							</div>
-							<div
-								v-if="anchored(fi, hi, li, file.path, line)"
-								class="thread"
-								:data-key="keyOf(file.path, line)"
-							>
+							<template v-for="(line, li) in hunk.lines" :key="li">
 								<div
-									v-for="message in threadMessages(file.path, line)"
-									:key="message.seq"
-									class="cm"
-									:class="message.author"
+									class="dl"
+									:class="[line.kind, { hascm: hasThread(file.qpath, line) }]"
 								>
-									<div class="who">
-										<template v-if="message.author === 'owner'">You</template>
-										<template v-else><i></i>Agent</template>
-									</div>
-									{{ message.text }}
+									<span class="no">{{ line.old ?? '' }}</span>
+									<span class="no">{{ line.new ?? '' }}</span>
+									<button
+										type="button"
+										class="cb"
+										title="Comment on this line"
+										@click="openThread(file.qpath, line, 'reply')"
+									>
+										+
+									</button>
+									<span class="code"
+										>{{ PREFIX[line.kind] }}{{ line.text }}</span
+									>
 								</div>
 								<div
-									v-for="(draft, di) in draftsFor(file.path, line)"
-									:key="'d' + di"
-									class="cm owner"
+									v-if="anchored(gi, fi, hi, li, file.qpath, line)"
+									class="thread"
+									:data-key="keyOf(file.qpath, line)"
 								>
-									<div class="who">You · will be sent with your answer</div>
-									{{ draft.comment.text }}
-									<div class="acts">
-										<button
-											type="button"
-											@click="$emit('remove-draft', draft.index)"
-										>
-											Remove
-										</button>
+									<div
+										v-for="message in threadMessages(file.qpath, line)"
+										:key="message.seq"
+										class="cm"
+										:class="message.author"
+									>
+										<div class="who">
+											<template v-if="message.author === 'owner'">You</template>
+											<template v-else><i></i>Agent</template>
+										</div>
+										{{ message.text }}
 									</div>
-								</div>
-								<div v-if="isTyping(file.path, line)" class="cm typing">
-									waiting for the agent…
-								</div>
-								<div v-if="canAct(file.path, line)" class="cm">
-									<div class="acts">
-										<button
-											type="button"
-											class="pri"
-											@click="fix(file.path, line, '')"
-										>
-											Fix
-										</button>
-										<button
-											type="button"
-											@click="openThread(file.path, line, 'fix')"
-										>
-											Fix + clarify…
-										</button>
-										<button type="button" @click="keep(file.path, line)">
-											Keep
-										</button>
-										<button
-											type="button"
-											@click="openThread(file.path, line, 'reply')"
-										>
-											Reply
-										</button>
-									</div>
-								</div>
-								<div v-if="resolvedLabel(file.path, line)" class="resolved">
-									{{ resolvedLabel(file.path, line) }}
-								</div>
-								<template v-if="isComposing(file.path, line)">
-									<textarea
-										:ref="setComposer"
-										v-model="texts[keyOf(file.path, line)]"
-										data-input="thread"
-										:placeholder="composerPlaceholder(file.path, line)"
-										@keydown="onComposerKey($event, file.path, line)"
-									></textarea>
-									<div class="tf">
-										<span>{{ composerHint }}</span>
-										<span class="btns">
+									<div
+										v-for="(draft, di) in draftsFor(file.qpath, line)"
+										:key="'d' + di"
+										class="cm owner"
+									>
+										<div class="who">You · will be sent with your answer</div>
+										{{ draft.comment.text }}
+										<div class="acts">
 											<button
-												v-if="canReply && !final"
+												type="button"
+												@click="$emit('remove-draft', draft.index)"
+											>
+												Remove
+											</button>
+										</div>
+									</div>
+									<div v-if="isTyping(file.qpath, line)" class="cm typing">
+										waiting for the agent…
+									</div>
+									<div v-if="canAct(file.qpath, line)" class="cm">
+										<div class="acts">
+											<button
 												type="button"
 												class="pri"
-												@click="submit(file.path, line, 'send')"
+												@click="fix(file.qpath, line, '')"
 											>
-												{{
-													modes[keyOf(file.path, line)] === 'fix'
-														? 'Fix'
-														: 'Send'
-												}}
+												Fix
 											</button>
 											<button
-												v-if="!final && modes[keyOf(file.path, line)] !== 'fix'"
 												type="button"
-												@click="submit(file.path, line, 'draft')"
+												@click="openThread(file.qpath, line, 'fix')"
 											>
-												Add to answer
+												Fix + clarify…
 											</button>
-											<button type="button" @click="close(file.path, line)">
-												Close
+											<button type="button" @click="keep(file.qpath, line)">
+												Keep
 											</button>
-										</span>
+											<button
+												type="button"
+												@click="openThread(file.qpath, line, 'reply')"
+											>
+												Reply
+											</button>
+										</div>
 									</div>
-								</template>
-							</div>
+									<div v-if="resolvedLabel(file.qpath, line)" class="resolved">
+										{{ resolvedLabel(file.qpath, line) }}
+									</div>
+									<template v-if="isComposing(file.qpath, line)">
+										<textarea
+											:ref="setComposer"
+											v-model="texts[keyOf(file.qpath, line)]"
+											data-input="thread"
+											:placeholder="composerPlaceholder(file.qpath, line)"
+											@keydown="onComposerKey($event, file.qpath, line)"
+										></textarea>
+										<div class="tf">
+											<span>{{ composerHint }}</span>
+											<span class="btns">
+												<button
+													v-if="canReply && !final"
+													type="button"
+													class="pri"
+													@click="submit(file.qpath, line, 'send')"
+												>
+													{{
+														modes[keyOf(file.qpath, line)] === 'fix'
+															? 'Fix'
+															: 'Send'
+													}}
+												</button>
+												<button
+													v-if="
+														!final && modes[keyOf(file.qpath, line)] !== 'fix'
+													"
+													type="button"
+													@click="submit(file.qpath, line, 'draft')"
+												>
+													Add to answer
+												</button>
+												<button type="button" @click="close(file.qpath, line)">
+													Close
+												</button>
+											</span>
+										</div>
+									</template>
+								</div>
+							</template>
 						</template>
-					</template>
+					</div>
 				</div>
-			</div>
+			</section>
 		</template>
 	</div>
 </template>
@@ -168,6 +182,7 @@
 		buildAnchors,
 		fixMessageText,
 		lineNumber,
+		qualifyFile,
 		splitMessages,
 		threadKey,
 		type LineAnchor,
@@ -175,6 +190,7 @@
 	import { isSubmitKey } from '../keys';
 	import type {
 		CardMessage,
+		DiffGroup,
 		DiffLine,
 		LineComment,
 		MessageAction,
@@ -183,7 +199,7 @@
 
 	interface DiffSlot {
 		status: 'loading' | 'ready' | 'error';
-		view?: import('../types').DiffView;
+		groups?: DiffGroup[];
 		error?: string;
 	}
 
@@ -211,8 +227,22 @@
 			};
 		},
 		computed: {
-			anchors(): Map<string, LineAnchor> {
-				return this.diff?.view ? buildAnchors(this.diff.view) : new Map();
+			panes() {
+				const groups = this.diff?.groups ?? [];
+				return groups.map((group) => ({
+					...group,
+					view: group.view,
+					files: group.view.files.map((file) => ({
+						...file,
+						qpath: qualifyFile(group.label, file.path, groups.length),
+					})),
+				}));
+			},
+			anchors(): Map<string, LineAnchor>[] {
+				const groups = this.diff?.groups ?? [];
+				return groups.map((group) =>
+					buildAnchors(group.view, groups.length > 1 ? group.label : null),
+				);
 			},
 			threads(): Map<string, CardMessage[]> {
 				return splitMessages(this.messages).threads;
@@ -237,7 +267,11 @@
 					this.drafts.some((d) => threadKey(d.file, d.line) === key)
 				);
 			},
+			rangeLabel(base?: string, head?: string): string {
+				return `${base ?? ''}..${head ?? ''}`;
+			},
 			anchored(
+				gi: number,
 				fi: number,
 				hi: number,
 				li: number,
@@ -246,7 +280,7 @@
 			): boolean {
 				if (lineNumber(line) === null) return false;
 				const key = this.keyOf(file, line);
-				const anchor = this.anchors.get(key);
+				const anchor = this.anchors[gi]?.get(key);
 				if (
 					!anchor ||
 					anchor.fileIndex !== fi ||

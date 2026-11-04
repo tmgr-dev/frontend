@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { Answer, CardView, DiffView, OutgoingMessage } from './types';
+import type { Answer, CardView, DiffGroups, OutgoingMessage } from './types';
 
 export const decisionsList = () => invoke<CardView[]>('decisions_list');
 
@@ -14,7 +14,7 @@ export const decisionsMessage = (id: string, message: OutgoingMessage) =>
 	invoke<void>('decisions_message', { id, message });
 
 export const decisionsDiff = (id: string) =>
-	invoke<DiffView>('decisions_diff', { id });
+	invoke<DiffGroups>('decisions_diff', { id });
 
 export const decisionsOpenLink = (url: string) =>
 	invoke<void>('decisions_open_link', { url });

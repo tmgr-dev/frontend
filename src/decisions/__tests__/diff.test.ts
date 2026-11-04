@@ -2,11 +2,14 @@ import {
 	awaitsOwner,
 	buildAnchors,
 	fixMessageText,
+	hasChanges,
 	lineNumber,
+	qualifyFile,
 	splitMessages,
 	threadKey,
 } from '../diff';
 import type { CardMessage, DiffView } from '../types';
+import { makeCard } from './fixtures';
 
 const diff: DiffView = {
 	truncated: false,
@@ -86,5 +89,30 @@ describe('fixMessageText', () => {
 	it('uses a default text and prefixes the clarification', () => {
 		expect(fixMessageText('  ')).toBe('Fix this.');
 		expect(fixMessageText(' rename it ')).toBe('Fix: rename it');
+	});
+});
+
+describe('diff groups', () => {
+	it('qualifies the file only on cards with several groups', () => {
+		expect(qualifyFile('api', 'src/a.rs', 1)).toBe('src/a.rs');
+		expect(qualifyFile('api', 'src/a.rs', 2)).toBe('api:src/a.rs');
+		expect(qualifyFile('ui', 'src/a.rs', 2)).not.toBe(
+			qualifyFile('api', 'src/a.rs', 2),
+		);
+	});
+
+	it('anchors per group under the qualified file', () => {
+		const anchors = buildAnchors(diff, 'api');
+		expect(anchors.has('api:a.rs:2')).toBe(true);
+		expect(anchors.has('a.rs:2')).toBe(false);
+	});
+
+	it('detects a card with changes', () => {
+		expect(hasChanges(makeCard())).toBe(false);
+		expect(hasChanges(makeCard({ diff: { repo: '/r' } }))).toBe(true);
+		expect(hasChanges(makeCard({ diffs: [{ repo: '/r' }] }))).toBe(true);
+		expect(hasChanges(makeCard({ patches: [{ label: 'p', bytes: 3 }] }))).toBe(
+			true,
+		);
 	});
 });

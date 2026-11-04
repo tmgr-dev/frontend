@@ -1,4 +1,4 @@
-import type { CardMessage, DiffLine, DiffView } from './types';
+import type { CardMessage, CardView, DiffLine, DiffView } from './types';
 
 export interface LineAnchor {
 	fileIndex: number;
@@ -12,14 +12,29 @@ export const lineNumber = (line: DiffLine): number | null =>
 export const threadKey = (file: string, line: number): string =>
 	`${file}:${line}`;
 
-export const buildAnchors = (diff: DiffView): Map<string, LineAnchor> => {
+export const qualifyFile = (
+	label: string,
+	path: string,
+	groupCount: number,
+): string => (groupCount > 1 ? `${label}:${path}` : path);
+
+export const hasChanges = (card: CardView): boolean =>
+	Boolean(card.diff) || card.diffs.length > 0 || card.patches.length > 0;
+
+export const buildAnchors = (
+	diff: DiffView,
+	label: string | null = null,
+): Map<string, LineAnchor> => {
 	const anchors = new Map<string, LineAnchor>();
 	diff.files.forEach((file, fileIndex) => {
 		file.hunks.forEach((hunk, hunkIndex) => {
 			hunk.lines.forEach((line, lineIndex) => {
 				const number = lineNumber(line);
 				if (number === null) return;
-				const key = threadKey(file.path, number);
+				const key = threadKey(
+					label === null ? file.path : qualifyFile(label, file.path, 2),
+					number,
+				);
 				if (!anchors.has(key)) {
 					anchors.set(key, { fileIndex, hunkIndex, lineIndex });
 				}

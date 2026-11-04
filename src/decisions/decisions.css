@@ -207,6 +207,42 @@ kbd {
 .item.active {
 	background: var(--bg-active);
 }
+.itemw {
+	position: relative;
+}
+.itemw .close {
+	position: absolute;
+	top: 5px;
+	right: 5px;
+	width: 20px;
+	height: 20px;
+	display: none;
+	align-items: center;
+	justify-content: center;
+	border: 0;
+	border-radius: 6px;
+	background: var(--bg-active);
+	color: var(--fg-muted);
+	font-size: 14px;
+	line-height: 1;
+	cursor: pointer;
+}
+.itemw:hover .close,
+.itemw:focus-within .close {
+	display: flex;
+}
+.itemw .close:hover {
+	color: var(--fg);
+}
+.itemw:hover .block,
+.itemw:focus-within .block {
+	visibility: hidden;
+}
+.item .upd,
+.card .meta .upd {
+	font: 500 10.5px var(--font-mono);
+	color: var(--fg-faint);
+}
 .item.active::before {
 	content: '';
 	position: absolute;
@@ -325,6 +361,25 @@ kbd {
 .card .meta a:hover,
 .chip:hover {
 	color: var(--fg);
+}
+.links {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 16px;
+	margin: 8px 0;
+}
+.links .lg {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+.links .lh {
+	color: var(--fg-faint);
+	font-size: 11px;
+}
+.links span.chip {
+	cursor: default;
 }
 .tag.gone {
 	background: var(--fix-bg);
@@ -655,6 +710,24 @@ kbd {
 	padding: 16px;
 	color: var(--fg-subtle);
 	font-size: 13px;
+}
+.dgroup {
+	display: contents;
+}
+.dgroup .gh {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	margin: 16px 12px 0;
+	font: 12px var(--font-mono);
+	color: var(--fg-muted);
+}
+.dgroup .gh .gl {
+	color: var(--fg);
+	font-weight: 600;
+}
+.dgroup .gh .gk {
+	color: var(--fg-faint);
 }
 .file {
 	margin: 12px 12px 0;
