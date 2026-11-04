@@ -1460,6 +1460,38 @@ mod tests {
         }
     }
 
+    fn origin_repo(url: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let d = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(d.path()).unwrap().join("r");
+        std::fs::create_dir_all(&repo).unwrap();
+        for args in [
+            vec!["init", "-q", "-b", "main"],
+            vec!["remote", "add", "origin", url],
+        ] {
+            let ok = std::process::Command::new("git")
+                .current_dir(&repo)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .args(&args)
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok, "{args:?}");
+        }
+        (d, repo)
+    }
+
+    #[test]
+    fn the_github_name_comes_from_the_stored_origin_urls() {
+        let (_d, repo) = origin_repo("https://github.com/o/r.git");
+        assert_eq!(github_name(&repo).unwrap(), "o/r");
+    }
+
+    #[test]
+    fn the_github_name_is_refused_when_the_origin_is_elsewhere() {
+        let (_d, repo) = origin_repo("https://example.com/o/r.git");
+        assert!(github_name(&repo).is_err());
+    }
+
     fn clean_git() -> GitFacts {
         GitFacts {
             head: HEAD.into(),

@@ -3540,4 +3540,218 @@ mod tests {
         assert!(!dest.exists());
         assert!(bare.is_dir());
     }
+
+    fn symref(repo: &Path, name: &str, target: &str) {
+        raw(
+            repo,
+            &[
+                "symbolic-ref",
+                &format!("refs/heads/{name}"),
+                &format!("refs/heads/{target}"),
+            ],
+        );
+    }
+
+    #[test]
+    fn removing_a_branch_that_is_a_symbolic_ref_keeps_the_branch_it_names() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let tip = raw(&repo, &["rev-parse", "HEAD"]);
+        raw(&repo, &["branch", "keep"]);
+        symref(&repo, "tm-1-fix", "keep");
+        let _ = restore_branch(&repo, "tm-1-fix", None, &tip);
+        assert_eq!(raw(&repo, &["rev-parse", "keep"]), tip);
+    }
+
+    #[test]
+    fn resetting_a_branch_that_is_a_symbolic_ref_keeps_the_branch_it_names() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let first = raw(&repo, &["rev-parse", "HEAD"]);
+        commit_file(&repo, "b.txt");
+        let tip = raw(&repo, &["rev-parse", "HEAD"]);
+        raw(&repo, &["branch", "keep"]);
+        symref(&repo, "tm-1-fix", "keep");
+        let _ = restore_branch(&repo, "tm-1-fix", Some(&first), &tip);
+        assert_eq!(raw(&repo, &["rev-parse", "keep"]), tip);
+    }
+
+    #[test]
+    fn team_refs_that_are_symbolic_refs_keep_the_branches_they_name() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let tip = raw(&repo, &["rev-parse", "HEAD"]);
+        raw(&repo, &["branch", "keep"]);
+        symref(&repo, "queue-team/p1/w1", "keep");
+        remove_team_refs(&repo, "p1");
+        assert_eq!(raw(&repo, &["rev-parse", "keep"]), tip);
+    }
+
+    fn clone_with_commit(r: &str, branch: &str) -> PathBuf {
+        let dest = run_clone_dir(r, branch).unwrap();
+        prepare_clone(r, &dest, branch, None).unwrap();
+        std::fs::write(dest.join("work.txt"), "x\n").unwrap();
+        raw(&dest, &["add", "work.txt"]);
+        raw(&dest, &["commit", "-q", "-m", "agent change"]);
+        dest
+    }
+
+    #[test]
+    fn importing_into_a_branch_that_is_a_symbolic_ref_never_moves_the_branch_it_names() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let dest = clone_with_commit(&r, "tm-6-fix");
+        raw(&repo, &["branch", "keep"]);
+        let keep = raw(&repo, &["rev-parse", "keep"]);
+        symref(&repo, "tm-6-fix", "keep");
+        assert!(import_branch(&r, &dest, "tm-6-fix").is_err());
+        assert_eq!(raw(&repo, &["rev-parse", "keep"]), keep);
+    }
+
+    #[test]
+    fn importing_refuses_a_branch_checked_out_in_a_linked_worktree() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let dest = clone_with_commit(&r, "tm-7-fix");
+        let wt = root.join("wt");
+        raw(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "tm-7-fix",
+                wt.to_str().unwrap(),
+            ],
+        );
+        let before = raw(&repo, &["rev-parse", "tm-7-fix"]);
+        assert!(import_branch(&r, &dest, "tm-7-fix").is_err());
+        assert_eq!(raw(&repo, &["rev-parse", "tm-7-fix"]), before);
+    }
+
+    #[test]
+    fn importing_refuses_a_branch_that_has_moved_to_other_history() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let dest = clone_with_commit(&r, "tm-8-fix");
+        raw(&repo, &["checkout", "-q", "-b", "tm-8-fix"]);
+        commit_file(&repo, "other.txt");
+        raw(&repo, &["checkout", "-q", "main"]);
+        let before = raw(&repo, &["rev-parse", "tm-8-fix"]);
+        assert!(import_branch(&r, &dest, "tm-8-fix").is_err());
+        assert_eq!(raw(&repo, &["rev-parse", "tm-8-fix"]), before);
+    }
+
+    #[test]
+    fn importing_updates_a_branch_that_only_moves_forward() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let dest = clone_with_commit(&r, "tm-9-fix");
+        raw(&repo, &["branch", "tm-9-fix"]);
+        let sha = import_branch(&r, &dest, "tm-9-fix").unwrap();
+        assert_eq!(raw(&repo, &["rev-parse", "tm-9-fix"]), sha);
+    }
+
+    #[test]
+    fn a_restored_branch_is_never_set_to_a_tag_object() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let first = raw(&repo, &["rev-parse", "HEAD"]);
+        commit_file(&repo, "b.txt");
+        let second = raw(&repo, &["rev-parse", "HEAD"]);
+        raw(&repo, &["branch", "tm-1-fix"]);
+        raw(&repo, &["tag", "-a", "-m", "t", "v1", &first]);
+        let tag = raw(&repo, &["rev-parse", "v1"]);
+        assert!(restore_branch(&repo, "tm-1-fix", Some(&tag), &second).is_err());
+        assert_eq!(raw(&repo, &["rev-parse", "tm-1-fix"]), second);
+        assert!(restore_branch(&repo, "tm-1-fix", Some(&first), &tag).is_err());
+        assert_eq!(raw(&repo, &["rev-parse", "tm-1-fix"]), second);
+    }
+
+    #[test]
+    fn a_shallow_file_is_not_carried_into_host_views() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        commit_file(&repo, "b.txt");
+        let mid = raw(&repo, &["rev-parse", "HEAD"]);
+        commit_file(&repo, "c.txt");
+        std::fs::write(repo.join(".git/shallow"), format!("{mid}\n")).unwrap();
+        assert_eq!(
+            git_query(&repo, &["rev-list", "--count", "HEAD"]).unwrap(),
+            "3"
+        );
+    }
+
+    #[test]
+    fn a_shallow_clone_fails_history_queries_instead_of_hiding_commits() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        commit_file(&repo, "b.txt");
+        commit_file(&repo, "c.txt");
+        let shallow = root.join("shallow");
+        let out = Command::new("git")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .args([
+                "-c",
+                "protocol.file.allow=always",
+                "clone",
+                "-q",
+                "--depth",
+                "1",
+            ])
+            .arg(format!("file://{}", repo.display()))
+            .arg(&shallow)
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        assert!(git_query(&shallow, &["rev-list", "--count", "HEAD"]).is_err());
+    }
+
+    #[test]
+    fn a_leading_config_pair_is_a_pre_argument_of_the_view() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        commit_file(&repo, "\u{e9}.txt");
+        let out = git_query(
+            &repo,
+            &[
+                "-c",
+                "core.quotepath=off",
+                "diff",
+                "--name-only",
+                "HEAD~1",
+                "HEAD",
+            ],
+        )
+        .unwrap();
+        assert_eq!(out, "\u{e9}.txt");
+    }
+
+    #[test]
+    fn a_git_output_over_the_cap_is_an_error() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let big = root.join("big.bin");
+        std::fs::write(&big, vec![0u8; TRUSTED_OUTPUT_CAP + (1 << 20)]).unwrap();
+        let sha = raw(&repo, &["hash-object", "-w", big.to_str().unwrap()]);
+        assert!(repo_git_bytes(&repo, &["cat-file", "blob", &sha], None).is_err());
+    }
+
+    #[test]
+    fn a_git_command_still_takes_input_through_the_view() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let out = repo_git_bytes(
+            &repo,
+            &["cat-file", "--batch-check"],
+            Some(b"HEAD\n".to_vec()),
+        )
+        .unwrap();
+        assert!(String::from_utf8_lossy(&out).contains(" commit "));
+    }
 }

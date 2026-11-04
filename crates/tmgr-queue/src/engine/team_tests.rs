@@ -1494,6 +1494,22 @@ fn a_failed_later_import_removes_the_branches_already_imported() {
 }
 
 #[test]
+fn a_failed_later_import_puts_back_a_branch_that_existed_before() {
+    let (fx, second) = working_multi_team();
+    let id = pickup(&fx).id;
+    let w1 = team(&fx).members[0].clone();
+    commit_in(&Path::new(&w1.cwd).join("backend"), "api.txt");
+    commit_in(&Path::new(&w1.cwd).join("frontend"), "ui.txt");
+    git_in(Path::new(&second), &["branch", &format!("queue-team/{id}")]);
+    let branch = format!("queue-team/{id}/w1");
+    git_in(Path::new(&fx.repo), &["branch", &branch]);
+    let old = git_in(Path::new(&fx.repo), &["rev-parse", &branch]);
+    finish_workers(&fx);
+    assert!(has_branch(&fx.repo, &branch));
+    assert_eq!(git_in(Path::new(&fx.repo), &["rev-parse", &branch]), old);
+}
+
+#[test]
 fn a_worker_whose_clones_are_not_the_ones_of_the_run_is_counted_failed() {
     let (fx, _) = working_multi_team();
     let id = pickup(&fx).id;

@@ -1223,6 +1223,21 @@ mod tests {
     }
 
     #[test]
+    fn network_views_pass_the_publish_environment_and_others_do_not() {
+        std::env::set_var("GH_TMGR_VIEW_PROBE", "probe");
+        let fx = fixture();
+        let sent = |access| {
+            let view = HostView::open(&fx.repo, access).unwrap();
+            let cmd = view.prepared(&[], &["rev-parse", "HEAD"]).unwrap();
+            cmd.get_envs()
+                .any(|(k, v)| k == "GH_TMGR_VIEW_PROBE" && v.is_some())
+        };
+        assert!(sent(Access::Network));
+        assert!(!sent(Access::Write));
+        assert!(!sent(Access::Read));
+    }
+
+    #[test]
     fn sha256_repositories_work() {
         let fx = fixture_with(&["--object-format=sha256"]);
         let view = HostView::open(&fx.repo, Access::Write).unwrap();

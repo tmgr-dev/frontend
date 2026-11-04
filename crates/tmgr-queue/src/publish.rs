@@ -1070,6 +1070,22 @@ mod tests {
     }
 
     #[test]
+    fn a_publish_step_that_prints_too_much_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let argv: Vec<String> = ["/bin/sh", "-c", "head -c 3000000 /dev/zero"]
+            .map(String::from)
+            .to_vec();
+        assert!(run(&argv, dir.path()).is_err());
+    }
+
+    #[test]
+    fn a_publish_step_with_small_output_returns_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let argv: Vec<String> = ["/bin/sh", "-c", "echo done"].map(String::from).to_vec();
+        assert_eq!(run(&argv, dir.path()).unwrap(), "done");
+    }
+
+    #[test]
     fn publish_keeps_only_absolute_path_entries() {
         let vars = [("PATH".to_string(), ".:/usr/bin::bin".to_string())];
         let out = publish_env(vars.into_iter());

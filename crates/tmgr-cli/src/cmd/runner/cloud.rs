@@ -3380,6 +3380,77 @@ mod tests {
         }
     }
 
+    fn repo_cmd(dir: &Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("git")
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{args:?}");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    fn committed_repo(dir: &Path, origin: &str) -> String {
+        git_repo(dir, origin);
+        std::fs::write(dir.join("a.txt"), "a").unwrap();
+        repo_cmd(dir, &["add", "a.txt"]);
+        repo_cmd(dir, &["commit", "-q", "-m", "a"]);
+        repo_cmd(dir, &["rev-parse", "HEAD"])
+    }
+
+    #[test]
+    fn the_state_of_a_repository_reads_both_origin_urls() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(d.path()).unwrap().join("r");
+        let head = committed_repo(&repo, "https://github.com/o/r.git");
+        repo_cmd(
+            &repo,
+            &["config", "remote.origin.pushurl", "git@github.com:o/r.git"],
+        );
+        let st = repo_state(&repo, &head, Some("main")).unwrap();
+        assert_eq!(st.fetch_url, "https://github.com/o/r.git");
+        assert_eq!(st.push_url, "git@github.com:o/r.git");
+    }
+
+    #[test]
+    fn the_state_of_a_repository_uses_the_fetch_url_for_pushing_without_a_push_url() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(d.path()).unwrap().join("r");
+        let head = committed_repo(&repo, "https://github.com/o/r.git");
+        let st = repo_state(&repo, &head, Some("main")).unwrap();
+        assert_eq!(st.push_url, "https://github.com/o/r.git");
+    }
+
+    #[test]
+    fn a_repository_is_verified_by_its_stored_urls_not_by_rewritten_ones() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(d.path()).unwrap().join("r");
+        git_repo(&repo, "https://example.com/x.git");
+        repo_cmd(
+            &repo,
+            &[
+                "config",
+                "url.https://github.com/o/r.git.insteadOf",
+                "https://example.com/x.git",
+            ],
+        );
+        assert!(verify_repo(&repo, "o/r").is_err());
+    }
+
+    #[test]
+    fn a_repository_whose_origin_points_at_the_named_repository_is_verified() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(d.path()).unwrap().join("r");
+        git_repo(&repo, "https://github.com/o/r.git");
+        assert!(verify_repo(&repo, "o/r").is_ok());
+        assert!(verify_repo(&repo, "o/other").is_err());
+    }
+
     fn category() -> Category {
         serde_json::from_value(json!({"id": 127, "code": "TM"})).unwrap()
     }
