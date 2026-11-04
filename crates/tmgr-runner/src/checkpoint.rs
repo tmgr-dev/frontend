@@ -40,6 +40,7 @@ const INDEX_CAP: u64 = 512 * 1024 * 1024;
 const PRIVATE: &str = "checkpoints.git";
 const LINK_CAP: usize = 4096;
 const GIT_DEADLINE: Duration = Duration::from_secs(600);
+const SLOW_LIST: Duration = Duration::from_secs(2);
 const MIGRATE_DEADLINE: Duration = Duration::from_secs(60);
 const PACK_CAP: u64 = 4 * 1024 * 1024 * 1024;
 const PACK_LIMIT: usize = 16;
@@ -107,6 +108,7 @@ struct Env<'a> {
     max_file: u64,
     max_total: u64,
     migrate_deadline: Duration,
+    slow_list: Duration,
     after_before: Option<&'a dyn Fn()>,
     #[cfg(test)]
     after_temp: Option<&'a dyn Fn()>,
@@ -120,6 +122,7 @@ impl Env<'static> {
             max_file: MAX_FILE,
             max_total: MAX_TOTAL,
             migrate_deadline: MIGRATE_DEADLINE,
+            slow_list: SLOW_LIST,
             after_before: None,
             #[cfg(test)]
             after_temp: None,
@@ -2525,6 +2528,7 @@ mod tests {
                 max_file: MAX_FILE,
                 max_total: MAX_TOTAL,
                 migrate_deadline: MIGRATE_DEADLINE,
+                slow_list: SLOW_LIST,
                 after_before: None,
                 after_temp: None,
             }
@@ -2658,6 +2662,105 @@ mod tests {
         assert_eq!(tree_paths(&fx, &c), ["tracked.txt", "untracked.txt"]);
         assert_eq!(refs_under(&fx, "refs/checkpoints"), ["refs/checkpoints/1"]);
         assert!(session_refs(&fx, "refs/tmgr").is_empty());
+    }
+
+    fn mkfifo(p: &Path) {
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        let c = CString::new(p.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o644) }, 0);
+    }
+
+    fn snap_bounded(fx: &Fx, fifos: &[&Path]) -> Result<Option<CheckpointItem>, CpError> {
+        use std::os::unix::fs::OpenOptionsExt;
+        let st = fx.store();
+        let (home, xdg) = (fx.home.clone(), fx.xdg.clone());
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let env = Env {
+                home: Some(home.into_os_string()),
+                xdg: Some(xdg.into_os_string()),
+                max_file: MAX_FILE,
+                max_total: MAX_TOTAL,
+                migrate_deadline: MIGRATE_DEADLINE,
+                slow_list: Duration::from_millis(50),
+                after_before: None,
+                after_temp: None,
+            };
+            let _ = tx.send(st.snapshot_in(&env));
+        });
+        if let Ok(r) = rx.recv_timeout(Duration::from_secs(20)) {
+            return r;
+        }
+        let end = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < end {
+            for f in fifos {
+                let _ = fs::OpenOptions::new()
+                    .write(true)
+                    .custom_flags(libc::O_NONBLOCK)
+                    .open(f);
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        panic!("snapshot blocked on a special file");
+    }
+
+    fn blocked_until_removed(fx: &Fx, fifo: &Path) {
+        let start = Instant::now();
+        let r = snap_bounded(fx, &[fifo]);
+        assert!(matches!(r, Err(CpError::Failed(_))), "{r:?}");
+        assert!(start.elapsed() < Duration::from_secs(10));
+        fs::remove_file(fifo).unwrap();
+        assert!(snap_bounded(fx, &[]).is_ok());
+    }
+
+    #[test]
+    fn snapshot_fails_fast_on_a_special_file_named_gitignore() {
+        let fx = Fx::new();
+        fx.w("sub/a", b"1");
+        let fifo = fx.repo.join("sub/.gitignore");
+        mkfifo(&fifo);
+        blocked_until_removed(&fx, &fifo);
+    }
+
+    #[test]
+    fn snapshot_fails_fast_on_a_special_file_in_a_nested_git_dir() {
+        let fx = Fx::new();
+        fx.w("n/a", b"1");
+        for d in ["objects", "refs"] {
+            fs::create_dir_all(fx.repo.join("n/.git").join(d)).unwrap();
+        }
+        let fifo = fx.repo.join("n/.git/HEAD");
+        mkfifo(&fifo);
+        blocked_until_removed(&fx, &fifo);
+    }
+
+    #[test]
+    fn snapshot_fails_fast_on_a_special_file_in_a_linked_git_dir() {
+        let fx = Fx::new();
+        fx.w("m/a", b"1");
+        for d in ["objects", "refs"] {
+            fs::create_dir_all(fx.root.join("ext").join(d)).unwrap();
+        }
+        fs::write(
+            fx.repo.join("m/.git"),
+            format!("gitdir: {}\n", fx.root.join("ext").display()),
+        )
+        .unwrap();
+        let fifo = fx.root.join("ext/HEAD");
+        mkfifo(&fifo);
+        blocked_until_removed(&fx, &fifo);
+    }
+
+    #[test]
+    fn snapshot_ignores_a_special_file_at_a_harmless_place() {
+        let fx = Fx::new();
+        fx.w("d/a", b"1");
+        let fifo = fx.repo.join("d/plain-fifo");
+        mkfifo(&fifo);
+        let item = snap_bounded(&fx, &[&fifo]).unwrap().unwrap();
+        assert_eq!(item.n, 1);
+        let st = fx.store();
+        assert_eq!(tree_paths(&fx, &commit_of(&st, 1)), ["d/a"]);
     }
 
     #[test]
