@@ -450,16 +450,16 @@ pub fn spool(dir: &Path, card: &CardIn) -> io::Result<String> {
     Ok(id)
 }
 
-/// Desktop side: take the spooled cards in (and delete them). Bad files are dropped.
-pub fn drain_spool(dir: &Path) -> io::Result<Vec<CardIn>> {
+/// Desktop side: hand each spooled card to `persist`; the file is deleted only when it returns true.
+/// Bad files are dropped.
+pub fn drain_spool(dir: &Path, mut persist: impl FnMut(CardIn) -> bool) -> io::Result<()> {
     let inbox = dir.join(INBOX);
     let entries = match fs::read_dir(&inbox) {
         Ok(e) => e,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(e),
     };
     check_private_dir(&inbox)?;
-    let mut out = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -474,12 +474,11 @@ pub fn drain_spool(dir: &Path) -> io::Result<Vec<CardIn>> {
             let card: CardIn = serde_json::from_slice(&fs::read(&path).ok()?).ok()?;
             (valid_card_id(id) && card.id.as_deref() == Some(id)).then_some(card)
         })();
-        let _ = fs::remove_file(&path);
-        if let Some(card) = parsed {
-            out.push(card);
+        if parsed.is_none_or(&mut persist) {
+            let _ = fs::remove_file(&path);
         }
     }
-    Ok(out)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -535,10 +534,41 @@ mod tests {
         };
         let id = spool(&dir, &card).unwrap();
         std::fs::write(dir.join(INBOX).join("junk.json"), b"{").unwrap();
-        let got = drain_spool(&dir).unwrap();
+        let mut got = Vec::new();
+        drain_spool(&dir, |c| {
+            got.push(c);
+            true
+        })
+        .unwrap();
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].id.as_deref(), Some(id.as_str()));
-        assert!(drain_spool(&dir).unwrap().is_empty());
+        let mut again = 0;
+        drain_spool(&dir, |_| {
+            again += 1;
+            true
+        })
+        .unwrap();
+        assert_eq!(again, 0);
+        assert!(!dir.join(INBOX).join("junk.json").exists());
+    }
+
+    #[test]
+    fn spool_file_stays_until_persisted() {
+        let t = private_tmp();
+        let dir = t.path().join("d");
+        let id = spool(
+            &dir,
+            &CardIn {
+                title: "Ship?".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let file = dir.join(INBOX).join(format!("{id}.json"));
+        drain_spool(&dir, |_| false).unwrap();
+        assert!(file.exists());
+        drain_spool(&dir, |_| true).unwrap();
+        assert!(!file.exists());
     }
 
     #[test]

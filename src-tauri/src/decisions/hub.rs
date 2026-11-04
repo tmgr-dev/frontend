@@ -51,13 +51,19 @@ impl Hub {
   }
 
   pub fn ingest_spool(&self, dir: &Path) -> usize {
-    let cards = drain_spool(dir).unwrap_or_default();
     let mut added = 0;
-    for card in cards {
-      if self.lock().create(card).is_ok_and(|c| c.fresh) {
-        added += 1;
+    let _ = drain_spool(dir, |card| {
+      if Store::check(&card).is_err() {
+        return true;
       }
-    }
+      match self.lock().create(card) {
+        Ok(created) => {
+          added += usize::from(created.fresh);
+          true
+        }
+        Err(_) => false,
+      }
+    });
     if added > 0 {
       self.changed(Change::Updated);
     }

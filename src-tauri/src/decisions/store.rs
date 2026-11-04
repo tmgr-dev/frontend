@@ -238,6 +238,10 @@ impl Store {
     Ok(Store { conn })
   }
 
+  pub fn check(card: &CardIn) -> Result<(), String> {
+    sanitize(card.clone()).map(|_| ())
+  }
+
   pub fn create(&mut self, card: CardIn) -> Result<Created, String> {
     let mut card = sanitize(card)?;
     let id = card.id.clone().unwrap_or_else(new_card_id);

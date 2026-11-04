@@ -25,8 +25,9 @@ pub struct Server {
 
 impl Server {
   pub fn start(hub: Arc<Hub>, dir: &Path) -> io::Result<Server> {
-    let token = prepare_server_dir(dir)?;
+    tmgr_ipc::dirs::ensure_private_dir(dir)?;
     let listener = endpoint::bind(&socket_endpoint(dir))?;
+    let token = prepare_server_dir(dir)?;
     let stop = Arc::new(AtomicBool::new(false));
     let flag = stop.clone();
     let active = Arc::new(AtomicUsize::new(0));
@@ -194,6 +195,16 @@ mod tests {
   }
 
   #[test]
+  fn second_start_fails_without_locking_clients_out() {
+    let r = rig();
+    let second = Server::start(r.hub.clone(), &r.dir);
+    assert!(second.is_err());
+    let c = Client::open_in(&r.dir).unwrap();
+    let id = c.create(card("Still here")).unwrap();
+    assert_eq!(r.hub.get(&id).unwrap().title, "Still here");
+  }
+
+  #[test]
   fn create_errors_come_back_as_responses() {
     let r = rig();
     let c = Client::open_in(&r.dir).unwrap();
@@ -281,6 +292,27 @@ mod tests {
     assert_eq!(r.hub.ingest_spool(&r.dir), 1);
     assert_eq!(r.hub.get(&id).unwrap().title, "while away");
     assert_eq!(r.hub.ingest_spool(&r.dir), 0);
+  }
+
+  #[test]
+  fn spool_file_survives_a_store_error_and_invalid_cards_are_dropped() {
+    let r = rig();
+    let inbox = r.dir.join("inbox");
+    let id = spool(&r.dir, &card("retry me")).unwrap();
+    let file = inbox.join(format!("{id}.json"));
+    let db = rusqlite::Connection::open(r.dir.join("decisions.db")).unwrap();
+    db.execute_batch("ALTER TABLE cards RENAME TO cards_off").unwrap();
+    assert_eq!(r.hub.ingest_spool(&r.dir), 0);
+    assert!(file.exists());
+    db.execute_batch("ALTER TABLE cards_off RENAME TO cards").unwrap();
+    assert_eq!(r.hub.ingest_spool(&r.dir), 1);
+    assert!(!file.exists());
+    assert_eq!(r.hub.get(&id).unwrap().title, "retry me");
+
+    let bad = spool(&r.dir, &CardIn { title: " ".into(), ..Default::default() }).unwrap();
+    let bad_file = inbox.join(format!("{bad}.json"));
+    assert_eq!(r.hub.ingest_spool(&r.dir), 0);
+    assert!(!bad_file.exists());
   }
 
   #[test]

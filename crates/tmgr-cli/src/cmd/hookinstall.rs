@@ -347,6 +347,13 @@ fn is_empty_group(g: &Value) -> bool {
             .is_some_and(|o| o.keys().all(|k| k == "hooks" || k == "matcher"))
 }
 
+fn matcher_covers(group: Option<&str>, wanted: Option<&str>) -> bool {
+    match group {
+        None | Some("") | Some("*") => true,
+        Some(g) => wanted == Some(g),
+    }
+}
+
 fn install_event(
     arr: &mut Vec<Value>,
     sub: &str,
@@ -356,9 +363,16 @@ fn install_event(
 ) {
     let mut found = false;
     for group in arr.iter_mut() {
+        let covers = matcher_covers(group.get("matcher").and_then(Value::as_str), matcher);
         let Some(inner) = group.get_mut("hooks").and_then(Value::as_array_mut) else {
             continue;
         };
+        if !covers {
+            inner.retain(|h| {
+                h.get("command").and_then(Value::as_str).and_then(classify) != Some(sub)
+            });
+            continue;
+        }
         for h in inner.iter_mut() {
             let is_ours = h.get("command").and_then(Value::as_str).and_then(classify) == Some(sub);
             if is_ours && !found {
@@ -369,6 +383,7 @@ fn install_event(
             }
         }
     }
+    arr.retain(|g| !is_empty_group(g));
     if found {
         strip_duplicates(arr, sub, desired, classify);
     } else {
@@ -884,6 +899,41 @@ mod tests {
         assert_eq!(cmds(&v, "Notification").len(), 2);
         assert_eq!(cmds(&v, "UserPromptSubmit").len(), 2);
         assert_eq!(plan_decisions(&both, EXE, false).unwrap(), both);
+    }
+
+    #[test]
+    fn our_hook_in_a_narrower_matcher_group_is_moved_to_a_proper_group() {
+        let narrow = format!("{EXE} hook claude stop");
+        let old = json!({"hooks": {"Stop": [
+            {"matcher": "Bash", "hooks": [
+                {"type": "command", "command": narrow},
+                {"type": "command", "command": "my-notifier"}
+            ]}
+        ]}})
+        .to_string();
+        let v = parsed(&plan_claude(&old, EXE, false).unwrap());
+        let groups = v["hooks"]["Stop"].as_array().unwrap();
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0]["matcher"], "Bash");
+        assert_eq!(groups[0]["hooks"].as_array().unwrap().len(), 1);
+        assert_eq!(groups[0]["hooks"][0]["command"], "my-notifier");
+        assert!(groups[1].get("matcher").is_none());
+        assert_eq!(groups[1]["hooks"][0]["command"], narrow);
+        assert_eq!(
+            plan_claude(&v.to_string(), EXE, false).unwrap(),
+            v.to_string()
+        );
+    }
+
+    #[test]
+    fn a_group_left_empty_by_the_move_is_dropped() {
+        let old = json!({"hooks": {"Stop": [
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": format!("{EXE} hook claude stop")}]}
+        ]}})
+        .to_string();
+        let v = parsed(&plan_claude(&old, EXE, false).unwrap());
+        assert_eq!(v["hooks"]["Stop"].as_array().unwrap().len(), 1);
+        assert!(v["hooks"]["Stop"][0].get("matcher").is_none());
     }
 
     #[test]

@@ -136,13 +136,9 @@ pub fn delivery_text(event: &Event) -> Option<String> {
   if event.dismissed || event.deferred || event.kind != "answer" {
     return None;
   }
-  let main = event.choice_label.as_deref().or(event.choice.as_deref()).or(event.free_text.as_deref());
   let mut parts: Vec<String> = Vec::new();
-  match (main, event.note.as_deref()) {
-    (Some(m), Some(n)) => parts.push(format!("{m}: {n}")),
-    (Some(t), None) | (None, Some(t)) => parts.push(t.to_owned()),
-    (None, None) => {}
-  }
+  parts.extend(event.free_text.clone());
+  parts.extend(event.note.clone());
   for c in &event.line_comments {
     parts.push(format!("{}:{}: {}", c.file, c.line, c.text));
   }
@@ -237,16 +233,23 @@ mod tests {
   }
 
   #[test]
-  fn delivery_joins_label_note_and_line_comments() {
+  fn delivery_joins_note_and_line_comments() {
     let e = Event {
-      choice_label: Some("Ship it".into()),
       note: Some("after lunch".into()),
       line_comments: vec![LineComment { file: "a.rs".into(), line: 3, text: "rename".into() }],
       ..answer()
     };
-    assert_eq!(delivery_text(&e).unwrap(), "Ship it: after lunch; a.rs:3: rename");
+    assert_eq!(delivery_text(&e).unwrap(), "after lunch; a.rs:3: rename");
     let free = Event { free_text: Some("do X".into()), ..answer() };
     assert_eq!(delivery_text(&free).unwrap(), "do X");
+  }
+
+  #[test]
+  fn delivery_never_types_the_choice() {
+    let e = Event { choice_label: Some("rm -rf x".into()), choice: Some("$(id)".into()), ..answer() };
+    assert!(delivery_text(&e).is_none());
+    let with_note = Event { note: Some("ok".into()), ..e };
+    assert_eq!(delivery_text(&with_note).unwrap(), "ok");
   }
 
   #[test]
