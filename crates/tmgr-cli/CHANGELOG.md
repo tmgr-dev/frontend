@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.70
+
+- Team runs: a worker that sits at its prompt for 10 minutes without writing `.tmgr/done` is reported to the lead in one note per idle stretch. The lead ends that worker by creating the empty file `.tmgr/end-wK` in its own folder; the runner never stops an idle worker on its own.
+- Team runs: `/exit` is sent up to 3 times, a minute apart, while the agent is at its prompt. A worker that said it is done (or that the lead ended) and still ignores `/exit` is then stopped, and its commits are still brought in. The lead is never stopped; its unanswered `/exit` is written to the audit log.
+- The runner checks the prompt and types a note in one step, and waits 5 seconds after any input before typing the next note, so a note can no longer land in a permission dialog that appeared in between.
+
 ## 1.0.69
 
 - `tmgr runner gc` reads lead and single-run copies without their git settings, the way it already reads worker copies.
