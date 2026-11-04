@@ -864,6 +864,33 @@ fn read_capped(path: &Path, max: u64) -> Option<Vec<u8>> {
     }
 }
 
+fn read_within(root: &Path, path: &Path, max: u64) -> Option<Vec<u8>> {
+    let rel = path.strip_prefix(root).ok()?;
+    let comps: Vec<&[u8]> = rel
+        .components()
+        .map(|c| match c {
+            Component::Normal(n) => Some(n.as_bytes()),
+            _ => None,
+        })
+        .collect::<Option<_>>()?;
+    let (name, parents) = comps.split_last()?;
+    let dir = walk_dirs(open_nofollow(root).ok()?.as_fd(), parents).ok()?;
+    match read_regular(dir.as_fd(), name, max) {
+        ReadFile::Data(_, _, data) => Some(data),
+        _ => None,
+    }
+}
+
+fn copy_within(root: &Path, src: &Path, dst: &Path, max: u64) -> bool {
+    match read_within(root, src, max) {
+        Some(data) => fs::write(dst, data).is_ok(),
+        None => {
+            let _ = fs::remove_file(dst);
+            false
+        }
+    }
+}
+
 type Cfg = BTreeMap<String, String>;
 
 fn truthy(v: Option<&String>) -> bool {
@@ -912,7 +939,7 @@ struct Facts {
     common: PathBuf,
     ignorecase: bool,
     precompose: bool,
-    excludes: Option<PathBuf>,
+    excludes: Option<(PathBuf, Option<PathBuf>)>,
     format: String,
 }
 
@@ -973,6 +1000,7 @@ fn session_facts(env: &Env, sdir: &Path, cwd: &Path) -> Result<Facts, CpError> {
     for l in layers {
         repo.extend(l);
     }
+    let global_cfg = cfg.clone();
     cfg.extend(repo.clone());
     if cfg.contains_key("core.worktree") {
         return Err(CpError::NotGit(
@@ -987,18 +1015,34 @@ fn session_facts(env: &Env, sdir: &Path, cwd: &Path) -> Result<Facts, CpError> {
             "checkpoints do not support a sparse index".into(),
         ));
     }
-    let configured = cfg
-        .get("core.excludesfile")
-        .map(|p| match p.strip_prefix("~/") {
-            Some(rest) => home
-                .clone()
-                .map_or_else(|| PathBuf::from(p), |h| h.join(rest)),
-            None => PathBuf::from(p),
-        });
-    let excludes = match configured {
-        Some(p) if p.is_absolute() => Some(p),
-        _ => xdg_config.map(|x| x.join("git/ignore")),
+    let expand = |p: &String| match p.strip_prefix("~/") {
+        Some(rest) => home
+            .clone()
+            .map_or_else(|| PathBuf::from(p), |h| h.join(rest)),
+        None => PathBuf::from(p),
     };
+    let repo_root = |p: &Path| {
+        if p.components().any(|c| matches!(c, Component::ParentDir)) {
+            return None;
+        }
+        [&top, &common]
+            .into_iter()
+            .find(|r| p.starts_with(r))
+            .cloned()
+    };
+    let local_choice = repo
+        .get("core.excludesfile")
+        .map(expand)
+        .filter(|p| p.is_absolute())
+        .and_then(|p| repo_root(&p).map(|r| (p, Some(r))));
+    let global_choice = global_cfg
+        .get("core.excludesfile")
+        .map(expand)
+        .filter(|p| p.is_absolute())
+        .map(|p| (p, None));
+    let excludes = local_choice
+        .or(global_choice)
+        .or_else(|| xdg_config.map(|x| (x.join("git/ignore"), None)));
     let format = match local.get("extensions.objectformat").map(String::as_str) {
         None | Some("sha1") => "sha1",
         Some("sha256") => "sha256",
@@ -1613,7 +1657,12 @@ impl<'a> Op<'a> {
         );
         let global = p.join("tmgr-excludes");
         let excludes = match &f.excludes {
-            Some(src) if copy(src, &global, CONFIG_CAP) => global.to_string_lossy().into_owned(),
+            Some((src, None)) if copy(src, &global, CONFIG_CAP) => {
+                global.to_string_lossy().into_owned()
+            }
+            Some((src, Some(root))) if copy_within(root, src, &global, CONFIG_CAP) => {
+                global.to_string_lossy().into_owned()
+            }
             _ => NO_EXCLUDES.to_string(),
         };
         let index = p.join("tmgr-index");
