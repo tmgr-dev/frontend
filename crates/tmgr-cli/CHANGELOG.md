@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Session checkpoints keep their git data in a private folder of the runner, so sandboxed sessions get checkpoints again. Existing checkpoints move there on first use.
+
 ## 1.0.72
 
 - Team runs work with rules that cover several repositories. The lead and each worker get their own folder with one clone per repository (`queue/<id>/lead/<name>`, `queue/<id>/wK/<name>`). Each worker's commits are brought into the repository they were made in, and the lead is told which folder each commit belongs to. If one repository of a worker cannot be brought in, none of that worker's commits are, and the branches already made for it are removed. The pull requests are opened per repository, as for a single-agent run. Needs a runner restarted after the update (`team.multi.v1`). Do not downgrade while such a team is running: an older version would publish without the workers' work.
