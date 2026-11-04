@@ -1,5 +1,5 @@
 use super::*;
-use crate::checkpoint::{CpError, Store, DEFAULT_KEEP, PAUSED_NOTE};
+use crate::checkpoint::{CpError, Store, DEFAULT_KEEP};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::time::SystemTime;
 use tmgr_ipc::api::{
@@ -63,7 +63,6 @@ impl Session {
             sdir: self.dir.clone(),
             cwd: PathBuf::from(&i.meta.cwd),
             keep: i.meta.checkpoints?,
-            paused: !i.meta.no_sandbox,
         })
     }
 
@@ -71,7 +70,7 @@ impl Session {
         i.meta.checkpoints?;
         Some(lock(&self.cp.status).clone().unwrap_or(CheckpointStatus {
             available: false,
-            note: (!i.meta.no_sandbox).then(|| PAUSED_NOTE.to_string()),
+            note: None,
             count: 0,
         }))
     }

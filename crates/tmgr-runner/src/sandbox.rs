@@ -1648,6 +1648,15 @@ mod tests {
     }
 
     #[test]
+    fn checkpoint_store_in_the_runner_dir_is_denied() {
+        let f = fx();
+        let p = plan(&f.spec).unwrap().paths;
+        let store = p.runner_dir.join("sessions/s_abcdefghij/checkpoints.git");
+        assert!(p.deny.iter().any(|d| store.starts_with(d)));
+        assert!(!p.write.iter().any(|w| store.starts_with(w)));
+    }
+
+    #[test]
     fn plan_lists_deny_and_allow_roots() {
         let f = fx();
         fs::create_dir_all(f.spec.real_home.join(".cargo/registry")).unwrap();

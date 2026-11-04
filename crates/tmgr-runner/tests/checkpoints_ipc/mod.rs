@@ -1,6 +1,5 @@
 use super::*;
 use tmgr_ipc::api::{CheckpointKind, CheckpointList, DiffAgainst};
-use tmgr_runner::checkpoint::PAUSED_NOTE;
 
 const TURNS: &str = "echo v1 > f.txt; echo ready1; read a\n\
     echo v2 > f.txt; echo ready2; read b\nexit 0\n";
@@ -36,6 +35,17 @@ fn start_plain(h: &Harness, c: &mut Client, body: &str, cwd: &Path) -> SessionIn
 
 fn refs(h: &Harness) -> String {
     git_in(&h.work, &["for-each-ref", "refs/tmgr"])
+}
+
+fn private_refs(h: &Harness, id: &str) -> String {
+    let sdir = h.run.join("sessions").join(id);
+    tmgr_runner::worktree::GitEnv::bare(&sdir)
+        .env(
+            "GIT_DIR",
+            &sdir.join("checkpoints.git").display().to_string(),
+        )
+        .run(&["for-each-ref", "refs/checkpoints"])
+        .unwrap()
 }
 
 fn wait_items(c: &mut Client, id: &str, want: usize) -> CheckpointList {
@@ -147,7 +157,8 @@ fn enabling_takes_a_start_checkpoint_and_each_turn_adds_one() {
         .find(|s| s.id == info.id)
         .unwrap();
     assert_eq!(listed.checkpoints.map(|s| s.count), Some(2));
-    assert!(refs(&h).contains("refs/tmgr/checkpoints/"));
+    assert!(private_refs(&h, &info.id).contains("refs/checkpoints/"));
+    assert_eq!(refs(&h), "");
 }
 
 #[test]
@@ -389,14 +400,14 @@ fn removing_a_session_clears_its_refs_and_manifest() {
     c.send(&info.id, "go\r").unwrap();
     c.send(&info.id, "go\r").unwrap();
     wait_exited(&mut c, &info.id);
-    assert!(refs(&h).contains("refs/tmgr/checkpoints/"));
+    assert!(private_refs(&h, &info.id).contains("refs/checkpoints/"));
     c.remove(&info.id).unwrap();
     assert_eq!(refs(&h), "");
     assert!(!h.run.join("sessions").join(&info.id).exists());
 }
 
 #[test]
-fn a_sandboxed_session_starts_with_checkpoints_paused_and_resumes_paused() {
+fn a_sandboxed_session_checkpoints_and_resumes_with_checkpoints() {
     if !sessions_available() {
         return;
     }
@@ -405,16 +416,10 @@ fn a_sandboxed_session_starts_with_checkpoints_paused_and_resumes_paused() {
     let info = c.create(h.sh(TURNS)).unwrap();
     c.checkpoints_enable(&info.id, Some(7)).unwrap();
     wait_waiting(&mut c, &info.id);
-    let l = c.checkpoints_list(&info.id).unwrap();
-    assert!(!l.status.available);
-    assert_eq!(l.status.note.as_deref(), Some(PAUSED_NOTE));
-    assert!(l.items.is_empty());
+    let l = wait_items(&mut c, &info.id, 1);
+    assert!(l.status.available);
+    assert_eq!(l.items.len(), 1);
     assert_eq!(refs(&h), "");
-    let e = err_text(c.checkpoints_restore(&info.id, 1));
-    assert!(
-        e.starts_with("invalid_params") && e.contains(PAUSED_NOTE),
-        "{e}"
-    );
     c.send(&info.id, "go\r").unwrap();
     c.send(&info.id, "go\r").unwrap();
     wait_exited(&mut c, &info.id);
@@ -429,7 +434,8 @@ fn a_sandboxed_session_starts_with_checkpoints_paused_and_resumes_paused() {
         .unwrap();
     assert!(listed.checkpoints.is_some());
     let after = c.checkpoints_list(&new_id).unwrap();
-    assert_eq!(after.status.note.as_deref(), Some(PAUSED_NOTE));
+    assert!(after.status.available);
+    assert!(!after.items.is_empty());
     assert!(err_text(c.checkpoints_list(&info.id)).starts_with("not_found"));
     assert_eq!(refs(&h), "");
 }
@@ -469,7 +475,6 @@ fn outside_a_git_repo_the_session_reports_unavailable() {
     thread::sleep(Duration::from_millis(800));
     let l = c.checkpoints_list(&info.id).unwrap();
     assert!(!l.status.available);
-    assert_ne!(l.status.note.as_deref(), Some(PAUSED_NOTE));
     assert!(l.status.note.is_some());
     assert!(l.items.is_empty());
 }
