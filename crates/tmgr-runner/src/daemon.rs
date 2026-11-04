@@ -366,6 +366,7 @@ struct Inner {
     matcher: Option<Matcher>,
     fixed: Option<State>,
     size_owner: Option<u64>,
+    input_sent: bool,
 }
 
 struct ShimLink {
@@ -736,6 +737,7 @@ impl Session {
         let mut replies = Vec::new();
         self.change(|i, now, out| {
             let r = i.screen.feed(bytes);
+            i.input_sent &= bytes.is_empty();
             if live {
                 replies = r.replies;
                 out.extend(i.det.on_output(now));
@@ -764,17 +766,6 @@ impl Session {
                 let _ = self.shim_input(&reply);
             }
         }
-    }
-
-    fn at_prompt(&self) -> bool {
-        let mut i = lock(&self.inner);
-        if self.effective(&i).kind == StateKind::Blocked {
-            return false;
-        }
-        let bottom = i.screen.bottom_text(10);
-        let rows = i.screen.text_lines(None).3;
-        let agent = i.meta.profile.as_deref().and_then(permit::agent_of);
-        prompt_ready(i.matcher.as_ref(), agent, &bottom, &rows)
     }
 
     fn card_agent(&self) -> Option<permit::Agent> {
@@ -917,8 +908,43 @@ impl Session {
         }
     }
 
+    fn input_at_prompt(&self, bytes: &[u8]) -> Result<(), ApiErr> {
+        {
+            let mut i = lock(&self.inner);
+            let bottom = i.screen.bottom_text(10);
+            let rows = i.screen.text_lines(None).3;
+            let agent = i.meta.profile.as_deref().and_then(permit::agent_of);
+            let idle_queue = lock(&self.shim)
+                .as_ref()
+                .is_some_and(|l| l.queued_frames.load(Ordering::SeqCst) == 0);
+            if self.effective(&i).kind == StateKind::Blocked
+                || !prompt_ready(i.matcher.as_ref(), agent, &bottom, &rows)
+                || i.input_sent
+                || !idle_queue
+            {
+                return Err(api(ErrorCode::Busy, "the agent is not at its prompt"));
+            }
+            if self.input_dropped.swap(false, Ordering::SeqCst) || !self.shim_input(bytes) {
+                return Err(api(
+                    ErrorCode::Busy,
+                    "input queue full; the agent is not reading its input",
+                ));
+            }
+            i.input_sent = !bytes.is_empty();
+        }
+        if !bytes.is_empty() {
+            self.change(|i, now, out| out.extend(i.det.on_input(now)));
+        }
+        Ok(())
+    }
+
     fn input(&self, bytes: &[u8]) -> bool {
-        let accepted = self.shim_input(bytes);
+        let accepted = {
+            let mut i = lock(&self.inner);
+            let ok = self.shim_input(bytes);
+            i.input_sent |= ok && !bytes.is_empty();
+            ok
+        };
         if accepted && !bytes.is_empty() {
             self.change(|i, now, out| out.extend(i.det.on_input(now)));
         }
@@ -2271,8 +2297,10 @@ impl Runner {
                     return Err(api(ErrorCode::InvalidParams, "text is too large"));
                 }
                 let at_prompt = p.get("at_prompt").and_then(Value::as_bool).unwrap_or(false);
-                if at_prompt && !s.at_prompt() {
-                    return Err(api(ErrorCode::Busy, "the agent is not at its prompt"));
+                if at_prompt {
+                    s.input_at_prompt(text.as_bytes())?;
+                    s.note_input_from(&conn.client);
+                    return Ok(Value::Null);
                 }
                 s.note_input_from(&conn.client);
                 if s.input_dropped.swap(false, Ordering::SeqCst) || !s.input(text.as_bytes()) {
@@ -4042,6 +4070,7 @@ impl Runner {
                 matcher,
                 fixed: None,
                 size_owner: None,
+                input_sent: false,
             }),
             version: AtomicU64::new(0),
             shim: Mutex::new(None),
@@ -5030,6 +5059,105 @@ mod tests {
     #[test]
     fn at_prompt_refuses_without_a_profile_matcher() {
         assert!(!prompt_ready(None, None, &["❯".into()], &[]));
+    }
+
+    fn lone_session() -> (tempfile::TempDir, Arc<Session>, mpsc::Receiver<Frame>) {
+        let t = tempfile::tempdir().unwrap();
+        let cfg = RunnerConfig {
+            dir: t.path().join("run"),
+            homes: t.path().join("homes"),
+            self_exe: PathBuf::from("tmgr"),
+            quiet_ms: 1000,
+            version: "test".into(),
+            max_sessions: 4,
+        };
+        let rt = Runner {
+            rename_lock: Mutex::new(()),
+            cfg,
+            secret: String::new(),
+            started: Instant::now(),
+            sessions: Mutex::new(HashMap::new()),
+            hub: Arc::new(Hub::default()),
+            create_lock: Mutex::new(()),
+            key_lock: Mutex::new(()),
+            layout_lock: Mutex::new(()),
+            stop: AtomicBool::new(false),
+            conns: Arc::new(AtomicUsize::new(0)),
+            pending: Arc::new(AtomicUsize::new(0)),
+            rejects: Mutex::new(Rejects::default()),
+            next_conn: AtomicU64::new(1),
+            autopilot: autopilot::Host::default(),
+            clock: Mutex::new(humantime::Clock::new(0)),
+        };
+        let meta: Meta = serde_json::from_value(serde_json::json!({
+            "id": "s1", "name": "n", "argv": ["claude"], "cwd": t.path(),
+            "profile": "claude-code", "created_ms": 0, "cols": 100, "rows": 24,
+            "shim_pid": 1, "child_pid": 2,
+        }))
+        .unwrap();
+        let (set, _) = ProfileSet::load(None);
+        let matcher = Matcher::new(set.get("claude-code").unwrap()).ok();
+        let sdir = t.path().join("s1");
+        fs::create_dir_all(&sdir).unwrap();
+        let s = rt.new_session(meta, matcher, &sdir);
+        let (tx, rx) = mpsc::sync_channel::<Frame>(SHIM_QUEUE);
+        *lock(&s.shim) = Some(ShimLink {
+            tx,
+            queued_bytes: Arc::new(AtomicUsize::new(0)),
+            queued_frames: Arc::new(AtomicUsize::new(0)),
+        });
+        (t, s, rx)
+    }
+
+    fn drain(s: &Session, rx: &mpsc::Receiver<Frame>) {
+        let g = lock(&s.shim);
+        let link = g.as_ref().unwrap();
+        while let Ok(Frame::Bin(b)) = rx.try_recv() {
+            link.queued_bytes.fetch_sub(b.data.len(), Ordering::SeqCst);
+            link.queued_frames.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+
+    fn send_at_prompt(s: &Session, bytes: &[u8]) -> bool {
+        s.input_at_prompt(bytes).is_ok()
+    }
+
+    const IDLE: &[u8] = "done\r\n\r\n\u{276f}\r\n".as_bytes();
+
+    #[test]
+    fn two_sends_at_the_prompt_with_no_redraw_between_them_admit_only_the_first() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        assert!(send_at_prompt(&s, b"one\r"));
+        drain(&s, &rx);
+        assert!(!send_at_prompt(&s, b"two\r"));
+    }
+
+    #[test]
+    fn a_send_at_the_prompt_waits_while_another_clients_input_is_still_queued() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        assert!(s.input(b"1"));
+        assert!(!send_at_prompt(&s, b"note\r"));
+        drain(&s, &rx);
+        assert!(!send_at_prompt(&s, b"note\r"));
+    }
+
+    #[test]
+    fn a_redraw_that_shows_the_prompt_again_admits_the_next_send() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        assert!(send_at_prompt(&s, b"one\r"));
+        drain(&s, &rx);
+        s.feed(b"\r\nworking\r\n\r\n\xe2\x9d\xaf\r\n", true);
+        assert!(send_at_prompt(&s, b"two\r"));
+    }
+
+    #[test]
+    fn a_send_at_the_prompt_is_refused_off_the_prompt() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(b"working\r\n", true);
+        assert!(!send_at_prompt(&s, b"one\r"));
     }
 
     #[test]
