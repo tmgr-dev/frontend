@@ -828,11 +828,19 @@ fn pickup_candidate(p: &Pickup) -> Candidate {
         let mut specs = Vec::new();
         for plan in &plans {
             let ident = p.clones.iter().find(|c| c.name == plan.name);
+            let repo = verified_repo(&plan.full_name, Path::new(&plan.path));
+            if p.team.is_some()
+                && repo
+                    .as_ref()
+                    .is_ok_and(|(r, _)| *r != Path::new(&plan.path))
+            {
+                return broken("a repository of the team is no longer at the path the run used");
+            }
             team_repos.push((plan.name.clone(), PathBuf::from(&plan.path)));
             specs.push(CloneSpec {
                 name: plan.name.clone(),
                 dir: cwd.join(&plan.name),
-                repo: verified_repo(&plan.full_name, Path::new(&plan.path)),
+                repo,
                 identity: ident.map(|c| (c.dev, c.ino)),
             });
         }
@@ -1034,6 +1042,11 @@ fn prove_worker(c: &Candidate, k: u8) -> std::result::Result<(), String> {
     }
     prove_names(&dir, c)?;
     let recorded = c.team_clones.iter().find(|(n, _)| *n == k).map(|(_, v)| v);
+    if recorded.is_none_or(|v| v.is_empty()) {
+        return Err(format!(
+            "{label} has no recorded clones (the worker may not have started)"
+        ));
+    }
     for spec in &c.clones {
         let clone = dir.join(&spec.name);
         prove_dir(&clone).map_err(|e| format!("{label}/{}: {e}", spec.name))?;
@@ -2005,6 +2018,15 @@ mod tests {
         );
         sh(&dir, &["checkout", "-q", "-b", "queue-team/q_abc/w1"]);
         assert!(m.skip().contains("not the folder"), "{}", m.skip());
+    }
+
+    #[test]
+    fn a_worker_folder_without_recorded_clones_keeps_the_team() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let mut m = multi_team(&root);
+        m.pickup.team.as_mut().unwrap().members[1].clones.clear();
+        assert!(m.skip().contains("no recorded clones"), "{}", m.skip());
     }
 
     #[test]
