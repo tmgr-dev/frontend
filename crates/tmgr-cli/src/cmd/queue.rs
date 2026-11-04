@@ -2,7 +2,7 @@ use crate::cli::Cli;
 use crate::cmd::runner::allow::host_of;
 use crate::cmd::runner::cloud::{
     bound_set_paths, cloud_gate, parse_eligibility, publish_outcome, CloneRef, Mode, Outcome,
-    PublishTarget,
+    PublishTarget, QueueRun,
 };
 use crate::cmd::runner::Opts;
 use crate::ctx::Ctx;
@@ -1453,6 +1453,10 @@ pub(crate) fn publish_target(pickup: &state::Pickup) -> Result<PublishTarget> {
             Default::default()
         },
         audit: None,
+        queue: Some(QueueRun {
+            pickup_id: pickup.id.clone(),
+            team: pickup.team.is_some(),
+        }),
     })
 }
 

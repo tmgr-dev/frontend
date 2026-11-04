@@ -1807,6 +1807,13 @@ pub struct PublishTarget {
     pub clones: Vec<CloneRef>,
     pub resume: BTreeMap<String, String>,
     pub audit: Option<String>,
+    pub queue: Option<QueueRun>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueueRun {
+    pub pickup_id: String,
+    pub team: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2047,6 +2054,17 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
     Ok(Outcome::Published(vec![(full_name.to_string(), pr_url)]))
 }
 
+fn run_folders(primary: &str, t: &PublishTarget) -> Vec<PathBuf> {
+    let queue = t.queue.as_ref().and_then(|q| {
+        let dir = workdir::clone_dir(primary, &q.pickup_id)?;
+        Some(if q.team { workdir::lead_dir(&dir) } else { dir })
+    });
+    workdir::run_clone_dir(primary, &t.branch)
+        .into_iter()
+        .chain(queue)
+        .collect()
+}
+
 struct Staged {
     plan: PublishAllPlan,
     touched: Vec<TouchedBranch>,
@@ -2075,10 +2093,11 @@ fn stage_multi(
             "the clones recorded for this run are not the ones of the bound repositories",
         ));
     }
-    let live_folder = plans
+    let allowed = plans
         .first()
-        .and_then(|p| workdir::run_clone_dir(&p.path, &t.branch));
-    if live_folder.as_deref() != Some(t.clone_dir.as_path()) {
+        .map(|p| run_folders(&p.path, t))
+        .unwrap_or_default();
+    if !allowed.contains(&t.clone_dir) {
         return Err(Error::new(
             Kind::Forbidden,
             "the recorded run folder is not the one of the bound primary repository",
@@ -2253,6 +2272,7 @@ fn target_of(ws_code: String, task_id: i64, rec: Record) -> PublishTarget {
             .collect(),
         resume: BTreeMap::new(),
         audit: rec.audit,
+        queue: None,
     }
 }
 
@@ -3538,6 +3558,7 @@ mod tests {
             clones,
             resume: BTreeMap::new(),
             audit: None,
+            queue: None,
         };
         let refs = || {
             ["backend", "frontend"]
@@ -3589,6 +3610,60 @@ mod tests {
         ]))
         .unwrap_err();
         assert!(e.message.contains("not the folder"), "{}", e.message);
+    }
+
+    #[test]
+    fn a_queue_pickup_folder_is_accepted_for_its_own_pickup_only() {
+        let d = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(d.path()).unwrap();
+        let (be, fe) = (root.join("be"), root.join("fe"));
+        git_repo(&be, "https://github.com/tmgr-dev/backend.git");
+        git_repo(&fe, "https://github.com/tmgr-dev/frontend.git");
+        let entry = set_entry(&[("tmgr-dev/backend", &be), ("tmgr-dev/frontend", &fe)]);
+        let list = names(&["tmgr-dev/backend", "tmgr-dev/frontend"]);
+        let queue_dir = root.join("be-worktrees/queue/q_1");
+        let target = |dir: PathBuf, id: &str, team: bool| PublishTarget {
+            workspace_code: "tmgrdev".into(),
+            task_id: 9100,
+            clone_dir: dir,
+            branch: "tmgr/tm-411".into(),
+            session_id: None,
+            agent: None,
+            repo: None,
+            clones: ["backend", "frontend"]
+                .iter()
+                .map(|n| CloneRef {
+                    name: n.to_string(),
+                    identity: None,
+                })
+                .collect(),
+            resume: BTreeMap::new(),
+            audit: None,
+            queue: Some(QueueRun {
+                pickup_id: id.into(),
+                team,
+            }),
+        };
+        let accepted = |t: PublishTarget| {
+            stage_multi(&t, &entry, &category(), &list, "t", "b")
+                .err()
+                .is_none_or(|e| !e.message.contains("bound primary repository"))
+        };
+        assert!(accepted(target(queue_dir.clone(), "q_1", false)));
+        assert!(accepted(target(queue_dir.join("lead"), "q_1", true)));
+        assert!(!accepted(target(queue_dir.clone(), "q_1", true)));
+        assert!(!accepted(target(queue_dir.join("lead"), "q_1", false)));
+        assert!(!accepted(target(queue_dir.clone(), "q_2", false)));
+        assert!(!accepted(target(queue_dir.join("lead"), "q_2", true)));
+        assert!(!accepted(target(
+            root.join("fe-worktrees/queue/q_1"),
+            "q_1",
+            false
+        )));
+        assert!(!accepted(target(queue_dir.join("lead/x"), "q_1", true)));
+        let mut plain = target(queue_dir, "q_1", false);
+        plain.queue = None;
+        assert!(!accepted(plain));
     }
 
     #[test]
