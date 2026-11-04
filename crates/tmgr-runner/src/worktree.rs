@@ -939,6 +939,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     #[should_panic(expected = "reaped before its group was killed")]
     fn killing_a_group_after_its_leader_was_reaped_is_refused() {
         let mut c = Command::new("/bin/sh");
