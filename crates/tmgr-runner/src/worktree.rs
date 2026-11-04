@@ -1274,7 +1274,8 @@ mod tests {
         let fx = fixture();
         let marks = plant_traps(&fx);
         let control = fx.repo.parent().unwrap().join("control");
-        let st = Command::new("git")
+        let mut plain = Command::new("git");
+        plain
             .current_dir(&fx.repo)
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .args([
@@ -1283,9 +1284,15 @@ mod tests {
                 "--detach",
                 "--",
                 control.to_str().unwrap(),
-            ])
-            .output()
-            .unwrap();
+            ]);
+        let st =
+            run_bounded(plain, Duration::from_secs(60), 1 << 20, 1 << 20).unwrap_or_else(|why| {
+                panic!(
+                    "plain git worktree add: {why}; marks: {:?}; control exists: {}",
+                    marks.iter().map(|m| m.exists()).collect::<Vec<_>>(),
+                    control.exists()
+                )
+            });
         assert!(st.status.success());
         assert!(
             marks[0].exists() && marks[1].exists() && marks[3].exists(),
