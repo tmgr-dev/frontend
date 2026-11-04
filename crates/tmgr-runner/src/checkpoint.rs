@@ -675,7 +675,7 @@ fn base_git(dir: &Path, excludes: &str, more: &[(String, &str)]) -> GitEnv {
     g
 }
 
-fn git_without_hooks(dir: &Path, excludes: &str, git_dir: Option<&str>) -> GitEnv {
+fn git_without_hooks(dir: &Path, excludes: &str, git_dir: Option<&str>) -> Result<GitEnv, CpError> {
     let env = |more: &[(String, &str)]| {
         let g = base_git(dir, excludes, more);
         match git_dir {
@@ -688,14 +688,16 @@ fn git_without_hooks(dir: &Path, excludes: &str, git_dir: Option<&str>) -> GitEn
         &["config", "--name-only", "--list", "-z"],
         None,
         HOOK_NAMES_CAP,
-    )
-    .unwrap_or_default();
-    let off: Vec<(String, &str)> = String::from_utf8_lossy(&names)
+    )?;
+    let names = std::str::from_utf8(&names).map_err(|_| {
+        CpError::Refused("checkpoint skipped: a git config name is not valid UTF-8".into())
+    })?;
+    let off: Vec<(String, &str)> = names
         .split('\0')
         .filter_map(|name| name.strip_prefix("hook.")?.rsplit_once('.'))
         .map(|(hook, _)| (format!("hook.{hook}.enabled"), "false"))
         .collect();
-    env(&off)
+    Ok(env(&off))
 }
 
 fn exec(g: &GitEnv, args: &[&str], stdin: Option<&Path>, cap: usize) -> Result<Output, CpError> {
@@ -962,7 +964,7 @@ impl Store {
         if self.paused || to.paused {
             m.refs_of.get_or_insert_with(|| self.session.clone());
         } else {
-            let g = git_without_hooks(&to.sdir, NO_EXCLUDES, Some(&dir));
+            let g = git_without_hooks(&to.sdir, NO_EXCLUDES, Some(&dir))?;
             for e in &m.items {
                 text(&g, &["update-ref", &to.ref_name(e.item.n), &e.commit])?;
             }
@@ -980,7 +982,9 @@ impl Store {
     }
 
     fn delete_refs(&self, common_dir: &str) {
-        let g = git_without_hooks(&self.sdir, NO_EXCLUDES, Some(common_dir));
+        let Ok(g) = git_without_hooks(&self.sdir, NO_EXCLUDES, Some(common_dir)) else {
+            return;
+        };
         let prefix = format!("{REF_ROOT}/{}/", self.session);
         let Ok(list) = text(&g, &["for-each-ref", "--format=%(refname)", &prefix]) else {
             return;
@@ -1029,12 +1033,12 @@ impl<'a> Op<'a> {
         }
     }
 
-    fn git(&self) -> GitEnv {
+    fn git(&self) -> Result<GitEnv, CpError> {
         git_without_hooks(&self.store.cwd, &self.excludes, None)
     }
 
     fn repo(&self) -> Result<Repo, CpError> {
-        let g = self.git();
+        let g = self.git()?;
         let o = exec(&g, &["rev-parse", "--is-inside-work-tree"], None, ERR_CAP)?;
         if !o.status.success() {
             let err = String::from_utf8_lossy(&o.stderr);
@@ -1081,21 +1085,19 @@ impl<'a> Op<'a> {
     }
 
     fn repo_or_mark(&self, m: &mut Manifest) -> Result<Repo, CpError> {
-        match self.repo() {
-            Err(CpError::NotGit(note)) => {
-                if m.note.as_deref() != Some(&note) {
-                    m.note = Some(note.clone());
-                    let _ = self.store.save(m);
-                }
-                Err(CpError::NotGit(note))
+        let res = self.repo();
+        if let Err(CpError::NotGit(note) | CpError::Refused(note)) = &res {
+            if m.note.as_deref() != Some(note) {
+                m.note = Some(note.clone());
+                let _ = self.store.save(m);
             }
-            other => other,
         }
+        res
     }
 
     fn enumerate(&self) -> Result<BTreeSet<Vec<u8>>, CpError> {
         let o = out(
-            &self.git(),
+            &self.git()?,
             &["ls-files", "-c", "-o", "--exclude-standard", "-z"],
             None,
             LIST_CAP,
@@ -1108,7 +1110,7 @@ impl<'a> Op<'a> {
 
     fn ls_tree(&self, treeish: &str) -> Result<Vec<TreeEntry>, CpError> {
         let o = out(
-            &self.git(),
+            &self.git()?,
             &["ls-tree", "-r", "-z", "--full-tree", treeish],
             None,
             LIST_CAP,
@@ -1136,7 +1138,7 @@ impl<'a> Op<'a> {
 
     fn changed(&self, a: &str, b: &str) -> Result<Vec<(u8, Vec<u8>)>, CpError> {
         let o = out(
-            &self.git(),
+            &self.git()?,
             &[
                 "diff-tree",
                 "-r",
@@ -1159,7 +1161,7 @@ impl<'a> Op<'a> {
 
     fn empty_tree(&self) -> Result<String, CpError> {
         let o = out(
-            &self.git(),
+            &self.git()?,
             &["hash-object", "-t", "tree", "--stdin"],
             Some(Path::new("/dev/null")),
             ERR_CAP,
@@ -1176,7 +1178,7 @@ impl<'a> Op<'a> {
                 _ => modified += 1,
             }
         }
-        let g = self.git();
+        let g = self.git()?;
         let flags = [
             "--no-ext-diff",
             "--no-textconv",
@@ -1243,7 +1245,7 @@ impl<'a> Op<'a> {
             msg.push_str(&format!("restored_from: {f}\n"));
         }
         let g = self
-            .git()
+            .git()?
             .env("GIT_AUTHOR_NAME", "tmgr")
             .env("GIT_AUTHOR_EMAIL", "checkpoints@tmgr.invalid")
             .env("GIT_COMMITTER_NAME", "tmgr")
@@ -1313,7 +1315,7 @@ impl<'a> Op<'a> {
         }
         let spec = format!("{}^{{commit}}", self.store.ref_name(n));
         let o = exec(
-            &self.git(),
+            &self.git()?,
             &["rev-parse", "--verify", "-q", &spec],
             None,
             ERR_CAP,
@@ -1395,7 +1397,7 @@ impl Op<'_> {
         let now_s = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_secs() as i64);
-        let g = self.git();
+        let g = self.git()?;
         let mut importer: Option<Importer> = None;
         let mut pending: Vec<(Vec<u8>, u32, Fp, usize)> = Vec::new();
         let mut entries: BTreeMap<Vec<u8>, Meta> = BTreeMap::new();
@@ -1502,7 +1504,7 @@ impl Op<'_> {
             let index_str = index
                 .to_str()
                 .ok_or_else(|| CpError::Failed("session directory is not valid UTF-8".into()))?;
-            let g = self.git().env("GIT_INDEX_FILE", index_str);
+            let g = self.git()?.env("GIT_INDEX_FILE", index_str);
             out(
                 &g,
                 &["update-index", "-z", "--add", "--index-info"],
@@ -1547,7 +1549,7 @@ impl Op<'_> {
         rep: &mut Report,
     ) -> Result<(), CpError> {
         let root = open_root(&self.store.cwd).map_err(|e| failed("cannot open directory", e))?;
-        let mut blobs = Blobs::open(&self.git())?;
+        let mut blobs = Blobs::open(&self.git()?)?;
         let mut blocked = Vec::new();
         for e in target {
             match self.write_one(root.as_fd(), e, before, &mut blobs)? {
@@ -2783,6 +2785,45 @@ mod tests {
         assert!(ns.contains(&res.before_n));
         assert!(ns.contains(&res.after_n));
         assert_eq!(fx.r("a"), b"1");
+    }
+
+    fn append_config(fx: &Fx, bytes: &[u8]) {
+        fs::OpenOptions::new()
+            .append(true)
+            .open(fx.repo.join(".git/config"))
+            .unwrap()
+            .write_all(bytes)
+            .unwrap();
+    }
+
+    #[test]
+    fn unreadable_git_config_refuses_the_snapshot() {
+        let fx = Fx::new();
+        fx.w("a", b"1");
+        append_config(&fx, b"[hook\n");
+        let st = fx.store();
+        assert!(matches!(st.snapshot_in(&fx.env()), Err(CpError::Failed(_))));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_non_utf8_hook_name_refuses_the_snapshot() {
+        let fx = Fx::new();
+        fx.w("a", b"1");
+        let mut cfg = b"[hook \"x\xff\"]\n\tcommand = touch ".to_vec();
+        cfg.extend_from_slice(fx.out.join("hook").as_os_str().as_bytes());
+        cfg.extend_from_slice(b"\n\tevent = reference-transaction\n");
+        append_config(&fx, &cfg);
+        let st = fx.store();
+        assert!(matches!(
+            st.snapshot_in(&fx.env()),
+            Err(CpError::Refused(_))
+        ));
+        assert!(refs_under(&fx, "refs/tmgr").is_empty());
+        assert!(!fx.out.join("hook").exists());
+        let status = st.status();
+        assert!(!status.available);
+        assert!(status.note.unwrap().contains("not valid UTF-8"));
     }
 
     #[test]
