@@ -2287,6 +2287,12 @@ mod team_add_tests {
             base: None,
             tip: None,
             exit_sent: false,
+            exit_attempts: 0,
+            exit_sent_at: None,
+            idle_since: None,
+            idle_noted: false,
+            end_requested: false,
+            ended_by_engine: false,
             kill_sent_at: None,
         };
         let mut t = state::TeamState::new(3, TeamMode::Eco);
