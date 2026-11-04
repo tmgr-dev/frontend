@@ -277,9 +277,10 @@ impl Scan {
     };
     let mut entries = Vec::new();
     plugin_skill_dirs(&root, 0, &mut entries);
-    let prefix = format!("claude-plugin:{name}:");
     let mut skills = Vec::new();
     for entry in entries {
+      let parent = entry.parent().and_then(|p| p.strip_prefix(&root).ok()).map(|p| p.to_string_lossy().replace('\\', "/"));
+      let prefix = format!("claude-plugin:{name}:{}/", parent.unwrap_or_default());
       skills.extend(self.read_skill(&entry, &prefix));
     }
     (!skills.is_empty()).then(|| package(name, name, install.version, skills))
@@ -464,20 +465,26 @@ fn looks_secret(name: &str) -> bool {
 }
 
 fn find_secret(text: &str) -> Option<&'static str> {
-  if text.lines().any(|line| line.contains("-----BEGIN") && line.contains("PRIVATE KEY-----")) {
+  if text.lines().any(|line| line.contains("-----BEGIN") && line.contains("PRIVATE KEY")) {
     return Some("contains a private key block");
   }
   if secret_run(text, "AKIA", 16, |c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
     return Some("contains an AWS access key id");
   }
-  if secret_run(text, "ghp_", 36, |c| c.is_ascii_alphanumeric()) {
+  if ["ghp_", "gho_", "ghu_", "ghs_", "ghr_"].iter().any(|p| secret_run(text, p, 36, |c| c.is_ascii_alphanumeric())) {
     return Some("contains a GitHub token");
   }
   if secret_run(text, "github_pat_", 20, |c| c.is_ascii_alphanumeric() || c == '_') {
     return Some("contains a GitHub token");
   }
-  if ["xoxa-", "xoxb-", "xoxp-"].iter().any(|p| secret_run(text, p, 10, |c| c.is_ascii_alphanumeric() || c == '-')) {
+  if ["xoxa-", "xoxb-", "xoxp-", "xoxs-", "xoxr-", "xapp-"].iter().any(|p| secret_run(text, p, 10, |c| c.is_ascii_alphanumeric() || c == '-')) {
     return Some("contains a Slack token");
+  }
+  if ["sk_live_", "rk_live_"].iter().any(|p| secret_run(text, p, 16, |c| c.is_ascii_alphanumeric()))
+    || secret_run(text, "glpat-", 20, |c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    || secret_run(text, "AIza", 35, |c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+  {
+    return Some("contains an API token");
   }
   if text.match_indices("sk-").any(|(at, _)| {
     text[..at].chars().next_back().is_none_or(|c| !c.is_alphanumeric())
@@ -694,7 +701,7 @@ mod tests {
     assert_eq!(source.packages[0].id, "market/tool");
     assert_eq!(source.packages[0].name, "market/tool");
     assert_eq!(source.packages[0].version.as_deref(), Some("1.2.0"));
-    assert_eq!(keys(&result), ["claude-plugin:market/tool:s1", "claude-plugin:market/tool:s2"]);
+    assert_eq!(keys(&result), ["claude-plugin:market/tool:skills/s1", "claude-plugin:market/tool:nested/skills/s2"]);
     assert_eq!(source.packages[0].skills[0].path, "~/.claude/plugins/cache/market/tool/1.2.0/skills/s1/SKILL.md");
   }
 
@@ -709,12 +716,12 @@ mod tests {
     old.set_modified(SystemTime::now() - Duration::from_secs(86_400)).unwrap();
 
     let missing = scan_roots(Some(home), &HashMap::new(), &[]);
-    assert_eq!(keys(&missing), ["claude-plugin:market/tool:new"]);
+    assert_eq!(keys(&missing), ["claude-plugin:market/tool:skills/new"]);
     assert_eq!(missing.sources[0].packages[0].version.as_deref(), Some("2.0.0"));
 
     write(&home.join(".claude/plugins/installed_plugins.json"), "{ not json");
     let broken = scan_roots(Some(home), &HashMap::new(), &[]);
-    assert_eq!(keys(&broken), ["claude-plugin:market/tool:new"]);
+    assert_eq!(keys(&broken), ["claude-plugin:market/tool:skills/new"]);
   }
 
   #[test]
@@ -725,7 +732,7 @@ mod tests {
     skill(&install, "a/b/c/d/skills/deep", "deep");
     skill(&install, "a/b/c/d/e/skills/too-deep", "too deep");
     let result = scan_roots(Some(home), &HashMap::new(), &[]);
-    assert_eq!(keys(&result), ["claude-plugin:m/p:deep"]);
+    assert_eq!(keys(&result), ["claude-plugin:m/p:a/b/c/d/skills/deep"]);
   }
 
   #[test]
@@ -828,6 +835,12 @@ mod tests {
     let flagged = [
       pem_header("RSA"),
       pem_header("OPENSSH"),
+      pem_header("PGP"),
+      format!("gho_{}", "a".repeat(36)),
+      format!("sk_live_{}", "a".repeat(16)),
+      format!("glpat-{}", "a".repeat(20)),
+      format!("AIza{}", "a".repeat(35)),
+      "xapp-1234567890".to_owned(),
       "key AKIAIOSFODNN7EXAMPLE".to_owned(),
       format!("token ghp_{}", "a".repeat(36)),
       format!("github_pat_{}", "a".repeat(20)),

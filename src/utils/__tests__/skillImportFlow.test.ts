@@ -1,5 +1,5 @@
 import type { ScanResult, ScanSkill } from '@/utils/skillImport';
-import { buildRows, runImport } from '@/utils/skillImportFlow';
+import { adoptMatches, buildRows, runImport } from '@/utils/skillImportFlow';
 
 const skill = (over: Partial<ScanSkill> = {}): ScanSkill => ({
 	key: 'claude:personal:review',
@@ -124,6 +124,7 @@ describe('runImport', () => {
 			sourceHash: 'h1',
 			libraryVersion: 1,
 			importedAt: 'now',
+			contentHash: expect.any(String),
 		});
 	});
 
@@ -143,5 +144,66 @@ describe('runImport', () => {
 		expect(rows[0].status).toBe('blocked');
 		expect(put).not.toHaveBeenCalled();
 		expect(out.results).toEqual([]);
+	});
+});
+
+describe('safety', () => {
+	it('refuses a new row whose slug appeared in the library after the scan', async () => {
+		const rows = await buildRows(scanOf(skill()), [], {}, noBody);
+		const put = jest.fn();
+		const out = await runImport(rows, {
+			listLibrary: async () => [{ slug: 'review', version: 1 }],
+			put,
+			index: {},
+		});
+		expect(put).not.toHaveBeenCalled();
+		expect(out.blocked).toEqual([
+			{
+				skillKey: 'claude:personal:review',
+				reason: 'slug taken in the library since the scan',
+			},
+		]);
+	});
+
+	it('refuses to update when the library skill is no longer what was imported', async () => {
+		const first = await buildRows(scanOf(skill()), [], {}, noBody);
+		const done = await runImport(first, {
+			listLibrary: async () => [],
+			put: async () => ({ version: 1 }),
+			index: {},
+		});
+		const rows = await buildRows(
+			scanOf(skill({ hash: 'h2' })),
+			[{ slug: 'review', version: 1 }],
+			done.index,
+			noBody,
+		);
+		expect(rows[0].status).toBe('changed');
+		const put = jest.fn(async () => ({ version: 2 }));
+		const out = await runImport(rows, {
+			listLibrary: async () => [{ slug: 'review', version: 1 }],
+			put,
+			getBody: async () => 'something typed by hand',
+			index: done.index,
+		});
+		expect(put).not.toHaveBeenCalled();
+		expect(out.results[0].ok).toBe(false);
+	});
+
+	it('adopts an identical library skill into the index', async () => {
+		const first = await buildRows(scanOf(skill()), [], {}, noBody);
+		const library = [{ slug: 'review', version: 4 }];
+		const rows = await buildRows(
+			scanOf(skill()),
+			library,
+			{},
+			async () => first[0].converted.markdown,
+		);
+		const index = adoptMatches(rows, library, {}, 'now');
+		expect(index['claude:personal:review']).toMatchObject({
+			slug: 'review',
+			libraryVersion: 4,
+			sourceHash: 'h1',
+		});
 	});
 });

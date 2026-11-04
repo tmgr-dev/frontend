@@ -37,7 +37,7 @@
 							/>
 							{{ group.label }}
 						</label>
-						<label
+						<div
 							v-for="row in group.rows"
 							:key="row.skill.key"
 							:class="[
@@ -81,7 +81,7 @@
 									{{ resultFor(row)!.ok ? 'Imported' : resultFor(row)!.error }}
 								</span>
 							</span>
-						</label>
+						</div>
 					</div>
 				</div>
 
@@ -204,6 +204,7 @@
 	import { toast } from '@/components/ui/toast';
 	import store from '@/store';
 	import {
+		defaultTicked,
 		importSummary,
 		indexStorageKey,
 		loadIndex,
@@ -214,6 +215,7 @@
 		type ScanResult,
 	} from '@/utils/skillImport';
 	import {
+		adoptMatches,
 		buildRows,
 		clashSuggestion,
 		evaluateRow,
@@ -279,17 +281,24 @@
 			const results = ref<Record<string, RowResult>>({});
 			const folderIds = ref<string[]>([]);
 
+			const userId = () => Number(store.state.user?.id) || 0;
 			const storageKey = () =>
-				indexStorageKey(
-					import.meta.env.VITE_API_BASE_URL ?? '',
-					store.state.user?.id ?? 0,
-				);
+				indexStorageKey(import.meta.env.VITE_API_BASE_URL ?? '', userId());
+			let scanToken = 0;
+			const toRefs = (list: { slug: string; version: number }[]) =>
+				list.map((s) => ({ slug: s.slug, version: s.version }));
 
 			const scan = async () => {
+				const token = ++scanToken;
 				scanning.value = true;
 				scanFailed.value = false;
 				finished.value = false;
 				results.value = {};
+				if (!userId()) {
+					scanFailed.value = true;
+					scanning.value = false;
+					return;
+				}
 				try {
 					const [result, summaries] = await Promise.all([
 						invokeCommand<ScanResult>('skills_scan', {
@@ -297,22 +306,26 @@
 						}),
 						listSharedSkills(false),
 					]);
-					library.value = summaries.map((s) => ({
-						slug: s.slug,
-						version: s.version,
-					}));
-					index.value = loadIndex(localStorage, storageKey());
-					rows.value = await buildRows(
+					const refs = toRefs(summaries);
+					const loaded = loadIndex(localStorage, storageKey());
+					const built = await buildRows(
 						result,
-						library.value,
-						index.value,
+						refs,
+						loaded,
 						async (slug) => (await getSharedSkill(slug)).body,
 					);
+					if (token !== scanToken) return;
+					library.value = refs;
+					index.value = adoptMatches(built, refs, loaded);
+					if (index.value !== loaded) {
+						saveIndex(localStorage, storageKey(), index.value);
+					}
+					rows.value = built;
 					selectedKey.value = rows.value[0]?.skill.key ?? null;
 				} catch {
-					scanFailed.value = true;
+					if (token === scanToken) scanFailed.value = true;
 				} finally {
-					scanning.value = false;
+					if (token === scanToken) scanning.value = false;
 				}
 			};
 
@@ -400,16 +413,20 @@
 				busy.value = true;
 				try {
 					const outcome = await runImport(rows.value, {
-						listLibrary: async () =>
-							(await listSharedSkills(false)).map((s) => ({
-								slug: s.slug,
-								version: s.version,
-							})),
+						listLibrary: async () => toRefs(await listSharedSkills(false)),
 						put: (slug, markdown) => putSharedSkill(slug, markdown),
+						getBody: async (slug) => (await getSharedSkill(slug)).body,
 						index: index.value,
 					});
 					index.value = outcome.index;
-					saveIndex(localStorage, storageKey(), outcome.index);
+					if (!saveIndex(localStorage, storageKey(), outcome.index)) {
+						toast({
+							title: 'Could not remember what was imported',
+							description:
+								'The next import will treat these skills as already in the library.',
+							variant: 'destructive',
+						});
+					}
 					const map: Record<string, RowResult> = {};
 					for (const r of outcome.results) map[r.skillKey] = r;
 					for (const b of outcome.blocked) {
@@ -428,19 +445,18 @@
 						title: importSummary(outcome.results),
 						variant: failed > 0 ? 'destructive' : undefined,
 					});
-					library.value = (await listSharedSkills(false)).map((s) => ({
-						slug: s.slug,
-						version: s.version,
-					}));
-					for (const row of rows.value) {
-						if (map[row.skill.key]?.ok) {
+					emit('imported');
+					try {
+						library.value = toRefs(await listSharedSkills(false));
+						for (const row of rows.value) {
 							const next = evaluateRow(row, library.value, index.value);
 							row.converted = next.converted;
 							row.status = next.status;
-							row.ticked = false;
+							row.ticked = !map[row.skill.key]?.ok && defaultTicked(row.status);
 						}
+					} catch {
+						toast({ title: 'Could not refresh the library' });
 					}
-					emit('imported');
 				} catch {
 					toast({
 						title: 'Could not import the skills',

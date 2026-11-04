@@ -5,6 +5,7 @@ import {
 	recordImport,
 	rowStatus,
 	suggestSlug,
+	textHash,
 	type ConvertedSkill,
 	type ImportIndex,
 	type LibraryEntryRef,
@@ -96,12 +97,35 @@ export const buildRows = async (
 	return rows;
 };
 
+export const adoptMatches = (
+	rows: ImportRow[],
+	library: LibraryEntryRef[],
+	index: ImportIndex,
+	now: string = new Date().toISOString(),
+): ImportIndex => {
+	let next = index;
+	for (const row of rows) {
+		const inLibrary = library.find((item) => item.slug === row.converted.slug);
+		if (row.bodyMatches && inLibrary && !next[row.skill.key]) {
+			next = recordImport(next, row.skill.key, {
+				slug: row.converted.slug,
+				sourceHash: row.skill.hash,
+				libraryVersion: inLibrary.version,
+				importedAt: now,
+				contentHash: textHash(row.converted.markdown),
+			});
+		}
+	}
+	return next;
+};
+
 export const clashSuggestion = (row: ImportRow): string =>
 	suggestSlug(row.packageName, row.converted.slug);
 
 export interface ImportDeps {
 	listLibrary: () => Promise<LibraryEntryRef[]>;
 	put: (slug: string, markdown: string) => Promise<{ version: number }>;
+	getBody?: (slug: string) => Promise<string>;
 	index: ImportIndex;
 	now?: () => string;
 }
@@ -130,12 +154,27 @@ export const runImport = async (
 	for (const key of plan.toImport) {
 		const row = byKey.get(key)!;
 		try {
+			const stored = index[key];
+			if (
+				row.status === 'changed' &&
+				stored?.contentHash &&
+				deps.getBody &&
+				textHash(await deps.getBody(row.converted.slug)) !== stored.contentHash
+			) {
+				results.push({
+					skillKey: key,
+					ok: false,
+					error: 'The library skill was replaced since the last import',
+				});
+				continue;
+			}
 			const saved = await deps.put(row.converted.slug, row.converted.markdown);
 			index = recordImport(index, key, {
 				slug: row.converted.slug,
 				sourceHash: row.skill.hash,
 				libraryVersion: saved.version,
 				importedAt: (deps.now ?? (() => new Date().toISOString()))(),
+				contentHash: textHash(row.converted.markdown),
 			});
 			results.push({ skillKey: key, ok: true });
 		} catch (error: any) {

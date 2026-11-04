@@ -657,10 +657,10 @@ describe('rowStatus', () => {
 		).toBe('changed');
 	});
 
-	it('ticks new, changed and previously-deleted rows only', () => {
+	it('ticks new and changed rows only', () => {
 		expect(defaultTicked('new')).toBe(true);
 		expect(defaultTicked('changed')).toBe(true);
-		expect(defaultTicked('previously-imported-deleted')).toBe(true);
+		expect(defaultTicked('previously-imported-deleted')).toBe(false);
 		expect(defaultTicked('up-to-date')).toBe(false);
 		expect(defaultTicked('edited-in-library')).toBe(false);
 		expect(defaultTicked('slug-taken')).toBe(false);

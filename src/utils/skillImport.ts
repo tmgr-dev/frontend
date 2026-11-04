@@ -62,6 +62,17 @@ const WHEN_PREFIX = 'Use when: ';
 const YAML_MAX_ALIASES = 10;
 const CONSUMED_KEYS: ReadonlySet<string> = new Set(['name', 'description']);
 
+export const textHash = (text: string): string => {
+	let h1 = 0x811c9dc5;
+	let h2 = 0x01000193;
+	for (let i = 0; i < text.length; i++) {
+		const code = text.charCodeAt(i);
+		h1 = Math.imul(h1 ^ code, 0x01000193);
+		h2 = Math.imul(h2 + code, 0x85ebca6b) ^ (h2 >>> 13);
+	}
+	return `${(h1 >>> 0).toString(16)}${(h2 >>> 0).toString(16)}:${text.length}`;
+};
+
 const shortHash = (seed: string): string => {
 	let hash = 0x811c9dc5;
 	for (let i = 0; i < seed.length; i++) {
@@ -269,6 +280,7 @@ export interface IndexEntry {
 	sourceHash: string;
 	libraryVersion: number;
 	importedAt: string;
+	contentHash?: string;
 }
 
 export type ImportIndex = Record<string, IndexEntry>;
@@ -374,7 +386,6 @@ export const rowStatus = ({
 const DEFAULT_TICKED: ReadonlySet<RowStatus> = new Set<RowStatus>([
 	'new',
 	'changed',
-	'previously-imported-deleted',
 ]);
 
 export const defaultTicked = (status: RowStatus): boolean =>
@@ -410,6 +421,16 @@ export const planImport = (
 			blocked.push({
 				skillKey: item.skillKey,
 				reason: 'duplicate slug in selection',
+			});
+			continue;
+		}
+		if (
+			inLibrary.has(item.slug) &&
+			(item.status === 'new' || item.status === 'previously-imported-deleted')
+		) {
+			blocked.push({
+				skillKey: item.skillKey,
+				reason: 'slug taken in the library since the scan',
 			});
 			continue;
 		}
