@@ -11,7 +11,7 @@ macro_rules! probes {
     }
   };
 }
-probes!(idle_supported, runner_enabled, llm_chat, local_access_event);
+probes!(idle_supported, runner_enabled, llm_chat, local_access_event, decisions_list);
 
 fn call(label: &str, cmd: &str) -> Result<(), String> {
   let app = mock_builder().invoke_handler(handler()).build(tauri::generate_context!()).unwrap();
@@ -35,5 +35,9 @@ fn the_acl_decides_per_command_and_window() {
   assert!(call("task-1", "llm_chat").is_ok());
   assert!(call("task-1", "runner_enabled").unwrap_err().contains("not allowed on window"));
   assert!(call("page-1", "llm_chat").unwrap_err().contains("not allowed on window"));
+  assert!(call("decisions", "decisions_list").is_ok());
+  assert!(call("main", "decisions_list").unwrap_err().contains("not allowed on window"));
+  assert!(call("task-1", "decisions_list").unwrap_err().contains("not allowed on window"));
+  assert!(call("decisions", "runner_enabled").unwrap_err().contains("not allowed on window"));
   assert!(call("main", "local_access_event").unwrap_err().contains("Command not found"));
 }

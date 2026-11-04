@@ -235,8 +235,13 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
         .build(app)?,
     );
   }
+  menu = menu.item(&MenuItemBuilder::with_id("open", "Open TMGR").build(app)?);
+  #[cfg(unix)]
+  {
+    let label = format!("Decisions ({})", crate::decisions::open_count());
+    menu = menu.item(&MenuItemBuilder::with_id(crate::decisions::TRAY_ID, label).build(app)?);
+  }
   menu = menu
-    .item(&MenuItemBuilder::with_id("open", "Open TMGR").build(app)?)
     .item(&dnd_menu.build()?)
     .item(&MenuItemBuilder::with_id("shortcuts", "Shortcuts…").build(app)?)
     .item(
@@ -299,6 +304,12 @@ fn refresh<R: Runtime>(app: &AppHandle<R>, state: &TrayState) {
   let _ = tray.set_title(Some(tray_title(state, now_secs()).unwrap_or_default()));
 }
 
+pub fn refresh_current<R: Runtime>(app: &AppHandle<R>) {
+  let Some(store) = app.try_state::<TrayStore>() else { return };
+  let state = store.0.lock().unwrap().clone();
+  refresh(app, &state);
+}
+
 fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
   log::info!("[tray] menu {id}");
   if let Some(task_id) = id.strip_prefix("open:") {
@@ -328,6 +339,8 @@ fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
   }
   match id {
     "open" => show_main(app),
+    #[cfg(unix)]
+    crate::decisions::TRAY_ID => crate::decisions::open_window(app),
     "shortcuts" => {
       show_main(app);
       let _ = app.emit("tray://shortcuts", ());

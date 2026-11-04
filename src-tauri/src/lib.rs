@@ -2,6 +2,8 @@
 mod app_menu;
 mod app_links;
 mod capture;
+#[cfg(unix)]
+mod decisions;
 mod downloads;
 mod embeds;
 mod idle;
@@ -333,7 +335,19 @@ pub fn run() {
       runner::commands::runner_term_resize,
       runner::commands::runner_term_scroll,
       runner::commands::runner_term_detach,
-      runner::commands::runner_term_open_link
+      runner::commands::runner_term_open_link,
+      #[cfg(unix)]
+      decisions::decisions_list,
+      #[cfg(unix)]
+      decisions::decisions_get,
+      #[cfg(unix)]
+      decisions::decisions_answer,
+      #[cfg(unix)]
+      decisions::decisions_message,
+      #[cfg(unix)]
+      decisions::decisions_diff,
+      #[cfg(unix)]
+      decisions::decisions_open_link
     ])
     .on_window_event(|window, event| {
       runner::commands::on_window_event(window, event);
@@ -421,6 +435,10 @@ pub fn run() {
       runner::commands::setup(app.handle());
       if let Err(error) = local_access::setup(app.handle()) {
         log::error!("[local-access] failed to start: {error}");
+      }
+      #[cfg(unix)]
+      if let Err(error) = decisions::setup(app.handle()) {
+        log::error!("[decisions] failed to start: {error}");
       }
       Ok(())
     })

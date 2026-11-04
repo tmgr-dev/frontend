@@ -118,6 +118,12 @@ const APP_COMMANDS: &[&str] = &[
   "usage_overview",
   "usage_tasks",
   "usage_task",
+  "decisions_list",
+  "decisions_get",
+  "decisions_answer",
+  "decisions_message",
+  "decisions_diff",
+  "decisions_open_link",
 ];
 
 fn main() {
