@@ -2869,7 +2869,7 @@ mod tests {
     #[test]
     fn repo_local_excludes_file_is_respected() {
         let fx = Fx::new();
-        let local = fx.root.join("local-ignore");
+        let local = fx.repo.join(".git/local-ignore");
         fs::write(&local, "secret.local\n").unwrap();
         fx.pg(&["config", "core.excludesFile", local.to_str().unwrap()]);
         fx.w("a", b"1");
@@ -2881,6 +2881,70 @@ mod tests {
         assert_eq!(tree_paths(&fx, &commit_of(&st, 2)), ["a"]);
         st.restore_in(&fx.env(), 1).unwrap();
         assert_eq!(fx.r("secret.local"), b"s");
+    }
+
+    #[test]
+    fn repo_local_excludes_file_outside_work_tree_is_ignored() {
+        let fx = Fx::new();
+        let local = fx.root.join("local-ignore");
+        fs::write(&local, "a\n").unwrap();
+        fx.pg(&["config", "core.excludesFile", local.to_str().unwrap()]);
+        fx.w("a", b"1");
+        fx.w("keep", b"1");
+        let st = fx.store();
+        snap(&fx, &st);
+        assert_eq!(tree_paths(&fx, &commit_of(&st, 1)), ["a", "keep"]);
+    }
+
+    #[test]
+    fn repo_local_excludes_file_outside_falls_back_to_global() {
+        let fx = Fx::new();
+        let local = fx.root.join("local-ignore");
+        fs::write(&local, "a\n").unwrap();
+        fx.pg(&["config", "core.excludesFile", local.to_str().unwrap()]);
+        let global = fx.home.join("global-ignore");
+        fs::write(&global, "b\n").unwrap();
+        fs::write(
+            fx.home.join(".gitconfig"),
+            format!("[core]\n\texcludesFile = {}\n", global.display()),
+        )
+        .unwrap();
+        for f in ["a", "b", "keep"] {
+            fx.w(f, b"1");
+        }
+        let st = fx.store();
+        snap(&fx, &st);
+        assert_eq!(tree_paths(&fx, &commit_of(&st, 1)), ["a", "keep"]);
+    }
+
+    #[test]
+    fn repo_local_excludes_file_inside_git_dir_is_honored() {
+        let fx = Fx::new();
+        fs::create_dir_all(fx.repo.join(".git/info")).unwrap();
+        let local = fx.repo.join(".git/info/local-ignore");
+        fs::write(&local, "a\n").unwrap();
+        fx.pg(&["config", "core.excludesFile", local.to_str().unwrap()]);
+        fx.w("a", b"1");
+        fx.w("keep", b"1");
+        let st = fx.store();
+        snap(&fx, &st);
+        assert_eq!(tree_paths(&fx, &commit_of(&st, 1)), ["keep"]);
+    }
+
+    #[test]
+    fn repo_local_excludes_file_through_symlinked_dir_is_ignored() {
+        let fx = Fx::new();
+        let outdir = fx.root.join("outdir");
+        fs::create_dir_all(&outdir).unwrap();
+        fs::write(outdir.join("ign"), "a\n").unwrap();
+        std::os::unix::fs::symlink(&outdir, fx.repo.join("lnk")).unwrap();
+        let local = fx.repo.join("lnk/ign");
+        fx.pg(&["config", "core.excludesFile", local.to_str().unwrap()]);
+        fx.w("a", b"1");
+        fx.w("keep", b"1");
+        let st = fx.store();
+        snap(&fx, &st);
+        assert_eq!(tree_paths(&fx, &commit_of(&st, 1)), ["a", "keep", "lnk"]);
     }
 
     #[test]
