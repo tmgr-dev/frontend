@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.66
 
 - Runner sessions no longer keep file descriptors they inherited from the command that started them, so a script or test reading `tmgr` output is not left waiting after `tmgr` exits.
 - A git command that leaves a stray background process behind no longer blocks the runner after the command itself finishes.
