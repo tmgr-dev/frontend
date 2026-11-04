@@ -1442,3 +1442,68 @@ fn a_member_state_without_clones_still_loads_and_serializes_without_them() {
     let back: state::Member = serde_json::from_str(&text).unwrap();
     assert_eq!(back, m);
 }
+
+#[test]
+fn an_old_member_json_without_clones_deserializes() {
+    let fx = working_team();
+    let m = team(&fx).members[0].clone();
+    let mut v = serde_json::to_value(&m).unwrap();
+    v.as_object_mut().unwrap().remove("clones");
+    let back: state::Member = serde_json::from_str(&v.to_string()).unwrap();
+    assert_eq!(back, m);
+}
+
+#[test]
+fn a_single_repo_integration_note_is_exact() {
+    let fx = working_team();
+    let tip = commit_in(Path::new(&worker_cwd(&fx, 1)), "api.txt");
+    finish_workers(&fx);
+    let told = fx.runs.sent.borrow().last().cloned().unwrap();
+    assert_eq!(
+        told.1,
+        format!("All workers have finished. Their work is saved as these commits: w1 {tip}. For each one run `git merge --squash <sha>` and commit the result as one normal commit; resolve conflicts yourself and never create merge commits. When everything is committed on your branch, write the file .tmgr/done and stop.\r")
+    );
+}
+
+#[test]
+fn a_multi_repo_worker_without_commits_is_not_failed() {
+    let (fx, _) = working_multi_team();
+    finish_workers(&fx);
+    assert_eq!(team(&fx).phase, TeamPhase::Finishing);
+    let told = fx.runs.sent.borrow().last().cloned().unwrap();
+    assert!(told.1.starts_with("No worker left commits"), "{}", told.1);
+    assert!(!told.1.contains("did not finish cleanly"), "{}", told.1);
+    assert!(team(&fx).members.iter().all(|m| m.tip.is_none()));
+}
+
+#[test]
+fn a_failed_later_import_removes_the_branches_already_imported() {
+    let (fx, second) = working_multi_team();
+    let id = pickup(&fx).id;
+    let w1 = team(&fx).members[0].clone();
+    commit_in(&Path::new(&w1.cwd).join("backend"), "api.txt");
+    commit_in(&Path::new(&w1.cwd).join("frontend"), "ui.txt");
+    git_in(Path::new(&second), &["branch", &format!("queue-team/{id}")]);
+    finish_workers(&fx);
+    let branch = format!("queue-team/{id}/w1");
+    assert!(!has_branch(&fx.repo, &branch));
+    assert!(!has_branch(&second, &branch));
+    assert_eq!(fx.audit_events("team_import_failed"), 1);
+    let told = fx.runs.sent.borrow().last().cloned().unwrap();
+    assert!(told.1.contains("w1 did not finish cleanly"), "{}", told.1);
+}
+
+#[test]
+fn a_worker_whose_clones_are_not_the_ones_of_the_run_is_counted_failed() {
+    let (fx, _) = working_multi_team();
+    let id = pickup(&fx).id;
+    let w1 = team(&fx).members[0].clone();
+    commit_in(&Path::new(&w1.cwd).join("backend"), "api.txt");
+    let mut st = state::load(&fx.paths).unwrap();
+    st.pickups[0].team.as_mut().unwrap().members[0].clones.clear();
+    state::save(&fx.paths, &mut st).unwrap();
+    finish_workers(&fx);
+    assert!(!has_branch(&fx.repo, &format!("queue-team/{id}/w1")));
+    let told = fx.runs.sent.borrow().last().cloned().unwrap();
+    assert!(told.1.contains("w1 did not finish cleanly"), "{}", told.1);
+}

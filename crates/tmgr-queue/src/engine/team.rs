@@ -771,7 +771,7 @@ fn import_clones(
     plans: &[ClonePlan],
     m: &Member,
 ) -> std::result::Result<Vec<(String, String)>, String> {
-    let mut found = Vec::new();
+    let mut found: Vec<(String, String)> = Vec::new();
     for c in &m.clones {
         let dir = Path::new(&m.cwd).join(&c.name);
         if deps.workdirs.identity(&dir) != Some((c.dev, c.ino)) {
@@ -787,11 +787,27 @@ fn import_clones(
             .ok_or("a clone has no repository")?;
         match crate::workdir::import_branch(&plan.path, &dir, &m.branch) {
             Ok(sha) if is_sha(&sha) => found.push((c.name.clone(), sha)),
-            Ok(_) => return Err("the import returned no commit".into()),
-            Err(e) => return Err(e.message),
+            Ok(_) => {
+                undo_imports(plans, &found, &m.branch);
+                return Err("the import returned no commit".into());
+            }
+            Err(e) => {
+                undo_imports(plans, &found, &m.branch);
+                return Err(e.message);
+            }
         }
     }
     Ok(found)
+}
+
+fn undo_imports(plans: &[ClonePlan], found: &[(String, String)], branch: &str) {
+    for (name, _) in found {
+        if let Some(plan) = plans.iter().find(|p| &p.name == name) {
+            let _ = crate::workdir::git_command(Some(Path::new(&plan.path)))
+                .args(["update-ref", "-d", &format!("refs/heads/{branch}")])
+                .output();
+        }
+    }
 }
 
 fn integrating(
@@ -809,11 +825,21 @@ fn integrating(
     if !deps.runs.idle(lead_run) {
         return Ok(());
     }
-    let plans = p
-        .cloud
-        .as_ref()
-        .filter(|c| !c.repos.is_empty())
-        .map(|c| plan_clones(&c.repos).unwrap_or_default());
+    let mut plan_error: Option<String> = None;
+    let plans = match p.cloud.as_ref().filter(|c| !c.repos.is_empty()) {
+        Some(c) => match plan_clones(&c.repos) {
+            Ok(plans) => Some(plans),
+            Err(e) => {
+                pass.audit.append(
+                    "team_import_failed",
+                    json!({"pickup": p.id, "error": e.message}),
+                )?;
+                plan_error = Some(e.message);
+                Some(Vec::new())
+            }
+        },
+        None => None,
+    };
     let mut tips: Vec<Tip> = Vec::new();
     let mut failed: Vec<u8> = Vec::new();
     for m in &t.members {
@@ -826,6 +852,20 @@ fn integrating(
         }
         let cwd = Path::new(&m.cwd);
         if let Some(plans) = &plans {
+            let mut have: Vec<&str> = m.clones.iter().map(|c| c.name.as_str()).collect();
+            let mut want: Vec<&str> = plans.iter().map(|c| c.name.as_str()).collect();
+            have.sort_unstable();
+            want.sort_unstable();
+            if plan_error.is_some() || have != want {
+                if plan_error.is_none() {
+                    pass.audit.append(
+                        "team_import_failed",
+                        json!({"pickup": p.id, "worker": k, "error": "the clones of the worker are not the ones of the run"}),
+                    )?;
+                }
+                failed.push(k);
+                continue;
+            }
             match import_clones(deps, plans, m) {
                 Ok(found) => tips.extend(found.into_iter().map(|(name, sha)| Tip {
                     worker: k,
