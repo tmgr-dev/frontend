@@ -98,6 +98,8 @@ struct Env<'a> {
     max_file: u64,
     max_total: u64,
     after_before: Option<&'a dyn Fn()>,
+    #[cfg(test)]
+    after_temp: Option<&'a dyn Fn()>,
 }
 
 impl Env<'static> {
@@ -108,6 +110,8 @@ impl Env<'static> {
             max_file: MAX_FILE,
             max_total: MAX_TOTAL,
             after_before: None,
+            #[cfg(test)]
+            after_temp: None,
         }
     }
 }
@@ -1656,6 +1660,10 @@ impl Op<'_> {
         let made = made.inspect_err(|_| {
             let _ = unlink_at(dir, &tmp, 0);
         })?;
+        #[cfg(test)]
+        if let Some(hook) = self.env.after_temp {
+            hook();
+        }
         let unchanged = match stat_at(dir, name) {
             Ok(st) => present == Some(fp_of(&st)),
             Err(err) => present.is_none() && err.raw_os_error() == Some(libc::ENOENT),
@@ -1884,6 +1892,7 @@ mod tests {
                 max_file: MAX_FILE,
                 max_total: MAX_TOTAL,
                 after_before: None,
+                after_temp: None,
             }
         }
 
@@ -2402,38 +2411,20 @@ mod tests {
         assert_eq!(res.deleted, 2);
     }
 
-    fn write_once_the_restore_temp_file_appears(
-        fx: &Fx,
-        path: &str,
-    ) -> std::thread::JoinHandle<()> {
-        let repo = fx.repo.clone();
-        let target = repo.join(path);
-        std::thread::spawn(move || {
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
-            while std::time::Instant::now() < deadline {
-                let started = fs::read_dir(&repo)
-                    .unwrap()
-                    .flatten()
-                    .any(|e| e.file_name().as_bytes().starts_with(b".tmgr-restore-"));
-                if started {
-                    fs::write(&target, b"written during restore").unwrap();
-                    return;
-                }
-            }
-            panic!("restore never made a temp file");
-        })
-    }
-
     #[test]
     fn a_write_while_the_restored_file_is_being_prepared_is_kept() {
         let fx = Fx::new();
-        fx.w("big", &vec![7u8; 48 * 1024 * 1024]);
+        fx.w("big", &vec![7u8; 1024]);
         let st = fx.store();
         snap(&fx, &st);
         fx.w("big", b"current");
-        let writer = write_once_the_restore_temp_file_appears(&fx, "big");
-        let res = st.restore_in(&fx.env(), 1).unwrap();
-        writer.join().unwrap();
+        let target = fx.repo.join("big");
+        let hook = move || fs::write(&target, b"written during restore").unwrap();
+        let env = Env {
+            after_temp: Some(&hook),
+            ..fx.env()
+        };
+        let res = st.restore_in(&env, 1).unwrap();
         assert_eq!(fx.r("big"), b"written during restore");
         assert!(res.left_as_is.iter().any(|p| p == "big"));
     }
@@ -2441,13 +2432,17 @@ mod tests {
     #[test]
     fn a_file_created_while_the_restored_file_is_being_prepared_is_kept() {
         let fx = Fx::new();
-        fx.w("big", &vec![7u8; 48 * 1024 * 1024]);
+        fx.w("big", &vec![7u8; 1024]);
         let st = fx.store();
         snap(&fx, &st);
         fs::remove_file(fx.repo.join("big")).unwrap();
-        let writer = write_once_the_restore_temp_file_appears(&fx, "big");
-        let res = st.restore_in(&fx.env(), 1).unwrap();
-        writer.join().unwrap();
+        let target = fx.repo.join("big");
+        let hook = move || fs::write(&target, b"written during restore").unwrap();
+        let env = Env {
+            after_temp: Some(&hook),
+            ..fx.env()
+        };
+        let res = st.restore_in(&env, 1).unwrap();
         assert_eq!(fx.r("big"), b"written during restore");
         assert!(res.left_as_is.iter().any(|p| p == "big"));
     }
