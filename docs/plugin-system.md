@@ -120,6 +120,192 @@ Icon names (any other name is dropped; a button or badge keeps its text):
 Limits: every new node, every tab and every option counts toward the 3000 node limit of the whole tree, and
 nesting counts toward the depth limit of 8.
 
+## Input controls (API 1.9)
+
+Set `"engines": { "tmgr": "^1.9" }`. Older versions drop these nodes. Types: `TmgrNode` in
+`plugin-sdk/template/tmgr.d.ts`.
+
+- `{ type: 'input', name, placeholder?, value?, command, args?, mode?, debounce? }` is a single-line text field.
+  With `mode: 'change'` (the default) the command runs after the user stops typing for `debounce`
+  milliseconds (default 300, kept between 150 and 2000). With `mode: 'submit'` it runs when the user presses
+  Enter. The text is sent as `args.value`, cut to 500 characters. `placeholder` is cut to 200 characters and
+  the start `value` to 500.
+- `{ type: 'select', name, options: [{ value, text }], value?, placeholder?, command, args? }` is a drop-down
+  of 1 to 100 options (extra options and repeated values are dropped). Choosing one runs `command` with
+  `{ ...args, value }`, where `value` is that option's own value.
+- `{ type: 'checkbox', name, label, checked?, command, args? }` runs `command` with `{ ...args, value }` when
+  toggled, where `value` is `true` or `false`.
+
+Rules for all three:
+
+- `name` identifies the control on your side. It is 1 to 64 characters of letters, digits, `_`, `.` and `-`,
+  and is not shown or sent. A node with a bad name or without a valid `command` is dropped.
+- A control only sends its own value, as `args.value` of its own command, when the user acts on it. Nothing is
+  sent when the control first shows or when you render again, and other controls' values are never included.
+- There is no password field and no `type` option. Controls carry `autocomplete="off"`, have no `name` or `id`, are
+  not inside a form, and are marked to be ignored by common password managers (`data-lpignore`, `data-1p-ignore`,
+  `data-bwignore`, `data-form-type="other"`). Browsers and password managers can still change this behaviour, so
+  never ask the user for a secret in an input.
+- TMGR shows the line "Plugin: <plugin name>" under every input, select and checkbox, so the user can tell them
+  from TMGR's own fields. You cannot hide or change it.
+- While the user is typing in an input, the typed text stays; otherwise the value from your latest render is shown.
+  Render the new `value` when the command ends.
+- Every control counts toward the 3000 node limit; each option counts as well.
+
+## Feeds and data (API 1.10)
+
+Set `"engines": { "tmgr": "^1.10" }`. Older versions drop the new nodes and ignore the new fields. Types:
+`TmgrNode` in `plugin-sdk/template/tmgr.d.ts`.
+
+- `{ type: 'timeline', items: [{ at, title?, text, tone? }] }` is a vertical list of events with a dot and a
+  line. `at` is shown as given (at most 64 characters), `title` is cut to 200 and `text` to 1000. `tone` is a
+  badge color name (default `gray`). At most 200 items.
+- `{ type: 'messages', items: [{ author, text, at?, side? }] }` shows chat bubbles, `side` is `'left'`
+  (default) or `'right'`. `author` is cut to 64 characters, `text` to 1000 and is plain text (line breaks are
+  kept, no Markdown). At most 200 items.
+- `{ type: 'sparkline', values, color?, label? }` is a small line chart. `values` holds up to 365 numbers;
+  anything that is not a finite number is dropped. `color` is a badge color name (default `blue`). `label`
+  (at most 200 characters) is the text screen readers read.
+- `{ type: 'empty', title, text?, icon? }` is a placeholder card. `icon` must be one of the icon names above.
+- `{ type: 'skeleton', variant?, lines? }` is a loading placeholder. `variant` is `'text'` (default),
+  `'card'` or `'table'`; `lines` is 1 to 12 (default 3).
+
+Table additions:
+
+- Column `align`: `'left'`, `'center'` or `'right'`.
+- Column `width`: `'xs'` (4rem), `'sm'` (7rem), `'md'` (12rem) or `'lg'` (18rem). Other values are dropped.
+- Column `sortable: true`: clicking the header sorts the rows in the app, cycling ascending, descending and
+  unsorted. Rows sort by `row.sort[key]` (a string or number) or, without it, by the text of the cell.
+  Numbers sort before text. Sorting never sends anything to your plugin.
+- Row `color`: a badge color name; the row gets a tint and a colored left edge.
+- Row `onClick: { command, args? }`: runs when the row is clicked or activated with Enter or Space. It follows
+  the same rules as a button command; an invalid one is dropped. Clicks on controls inside the row do not
+  trigger it.
+- Row `expand`: an array of nodes (at most 50) shown under the row when the user opens its arrow. Opening
+  and closing happens in the app.
+
+Every item, row, value and expanded node counts toward the 3000 node limit of the whole tree, and nesting
+counts toward the depth limit of 8. Lists over their caps are cut.
+
+## Text area and date (API 1.11)
+
+Set `"engines": { "tmgr": "^1.11" }`. Older versions drop these nodes. Types: `TmgrNode` in
+`plugin-sdk/template/tmgr.d.ts`.
+
+- `{ type: 'textarea', name, value?, placeholder?, rows?, submitText?, command, args? }` is a multi-line text
+  field with its own button. Nothing is sent while the user types. Clicking the button, or pressing Cmd+Enter
+  (macOS) or Ctrl+Enter (elsewhere), runs `command` with `{ ...args, value }`. Plain Enter adds a new line.
+  `value` is the text, cut to 5000 characters (never in the middle of an emoji). The start `value` is cut the
+  same way, `placeholder` to 200 and `submitText` (the button label, default "Send") to 40. `rows` is a whole
+  number from 2 to 12 (default 4).
+- `{ type: 'date', name, value?, min?, max?, command, args? }` is a date picker. `value`, `min` and `max` are
+  `YYYY-MM-DD` strings that must be real dates (no `2026-02-30`) in the years 1000 to 9999; anything else is
+  dropped. If `min` is later than `max`, both are dropped. A `value` outside `min`..`max` is shown as empty.
+  Choosing a date inside the range runs `command` with `{ ...args, value: 'YYYY-MM-DD' }`. Clearing the field
+  runs it with `{ ...args, value: null }`. A date outside the range is not sent.
+
+Rules for both:
+
+- `name` and `command` follow the rules of the 1.9 controls. A node with a bad name or without a valid
+  `command` is dropped. Nothing is sent when the control first shows or when you render again, and other
+  controls' values are never included.
+- TMGR shows the line "Plugin: <plugin name>" under every text area and date picker, and you cannot change it.
+  The same warning applies: never ask the user for a secret.
+- Text typed in a text area and not yet sent stays while it is the same control (same `type`, `name`,
+  `command` and `args`), even after the user clicks elsewhere or you render again. After it is sent, or when
+  the control changes, the `value` from your latest render is shown. Render a new `value` (for example an empty
+  one) when the command ends to clear the field.
+- Controls inside a clickable table row or card do not trigger the row or card command.
+- Each text area and date picker counts as one node toward the 3000 node limit.
+
+## Charts (API 1.12)
+
+Set `"engines": { "tmgr": "^1.12" }`. Older versions drop the node. Type: `TmgrNode` in
+`plugin-sdk/template/tmgr.d.ts`.
+
+- `{ type: 'chart', kind?, labels?, series, height?, label? }` draws a bar or line chart with axes, gridlines,
+  a legend (with more than one series) and a tooltip on hover or with the arrow keys.
+- `kind` is `'bar'` (default, series are grouped side by side) or `'line'`.
+- `labels` are the x-axis texts: up to 365, numbers are turned into text, each is cut to 64 characters. Anything
+  else (not a string or a finite number) becomes an empty label. Without labels the points are numbered `1`, `2`,
+  and so on.
+- `series` has 1 to 8 entries `{ name, values, color? }`. `name` is required (at most 64 characters); a series with a blank name is dropped. `color` is
+  a badge color name; the default depends on the position. `values` holds up to 365 entries; each is a finite
+  number with an absolute value of at most 1e15, or `null`. Anything else (including larger numbers) becomes
+  `null`, and `null` is a gap (a missing bar, a break in the line).
+  With `labels`, `values` is padded with `null` or cut to the number of labels.
+- `height` is 120 to 400 pixels (default 200). `label` (at most 200 characters) is the text screen readers
+  read; without it a summary is generated.
+- The chart fills the width of its container. Clicking it sends nothing to your plugin.
+
+A chart counts as one node, and every label you give, every series and every value you give counts toward the
+3000 node limit (generated numbers and `null` padding are free). A chart with no series or no points is dropped,
+and so is a chart that does not fit in the remaining node budget (it is never drawn cut short).
+
+## Telegram links (API 1.13)
+
+Set `"engines": { "tmgr": "^1.13" }` and declare the scheme in the manifest. It needs the `links:open`
+permission; the install dialog shows "It can open Telegram links (tg://)".
+
+```json
+"permissions": ["links:open"],
+"links": { "schemes": ["tg"] }
+```
+
+`links.schemes` is optional and `"tg"` is the only accepted value. Anything else, a repeated value or a
+non-list refuses the manifest. The `link` node and Markdown links then accept `tg://` URLs; the rule runs
+again when the link is clicked. Telegram has to be installed on this computer.
+
+Allowed actions (the URL must be exactly lower-case `tg://<action>?<query>`, at most 2000 characters, no
+spaces, no `%` escapes, no user name, port, path or `#fragment`):
+
+| Action        | Query keys                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------------ |
+| `resolve`     | `domain` (required), `post`, `single`, `thread`, `comment`, `t`, `profile`              |
+| `privatepost` | `channel` and `post` (required), `single`, `thread`, `comment`, `t`                              |
+| `join`        | `invite` (required)                                                                              |
+
+Each key may appear once. Everything else renders as plain text and cannot be opened: other actions
+(`openmessage`, `proxy`, `socks`, `login`, `passport`, `setlanguage`, `addstickers`, `addtheme`, `settings`, `confirmphone`,
+`bg`, `msg_url`, ...), other keys (`start`, `startgroup`, `admin`, `startapp`, `phone`, `text`, `videochat`, ...),
+other schemes (`javascript:`, `file:`, `data:`, `http:`, `tmgr:`, `mailto:`, ...), `TG://` in any other case,
+and any `tg://` link from a plugin on API 1.12 or older, without the scheme declared, or without `links:open`.
+
+## Images (API 1.13)
+
+Set `"engines": { "tmgr": "^1.13" }`. Older versions drop the node. Type: `TmgrNode` in
+`plugin-sdk/template/tmgr.d.ts`.
+
+`{ type: 'image', src, alt, width? }` shows a picture. `alt` is required (at most 200 characters); a node
+without it is dropped. `width` is a whole number of pixels, clamped to 16 to 800. The picture never grows
+past its container or 600 px in height. If it cannot be shown, `alt` is shown instead.
+
+`src` is one of:
+
+- `data:image/png;base64,...` (also `jpeg`, `gif`, `webp`). No parameters or spaces; the bytes must really be
+  that type; at most 512 KB decoded. All data images in one tree together may use at most 2 MB; later ones
+  are dropped. SVG and every other type is refused.
+- An `https://` URL (at most 2000 characters) on a host you declare in the manifest:
+
+  ```json
+  "images": { "allowedDomains": ["images.example.com"] }
+  ```
+
+  Domains use the same rules as `links.allowedDomains` and must be public names (no `localhost`, IP
+  addresses or single-word hosts). No user name in the URL, no port. The user sees these domains when
+  installing or updating the plugin. It needs the `images:remote` permission (and at least one domain; the
+  permission alone refuses the manifest). The install dialog says: "Loads pictures from <hosts>. Those
+  sites get a request each time the plugin shows a picture." `data:` images need no permission.
+
+Remote images are not loaded by the page. The app fetches them itself, only while the plugin runs on this
+computer, at most 2 at a time per plugin (more wait their turn), with no cookies, no referrer and no redirects (an answer that redirects fails), within 10 seconds,
+at most 2 MB, and only if the answer is really a png, jpeg, gif or webp. Addresses on private networks or
+this computer are refused. Whoever runs the host can see which URLs are requested, so do not put secrets
+in them.
+
+`http:`, `blob:`, `file:`, relative URLs and Markdown images are not images. Each image counts toward the
+3000 node limit.
+
 ## Task menu items (API 1.6)
 
 A plugin can add items to the task "…" menu. Types: `TaskMenuCommandArgs` in `plugin-sdk/template/tmgr.d.ts`.
@@ -300,3 +486,67 @@ To use the new layout and controls:
 2. Use `collapse`, `tabs`, `segmented`, `buttonGroup` and `icon` nodes, and the new `button` and `badge` fields.
 3. Update `tmgr.d.ts` from the SDK template.
 4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.
+
+## Migrating from 1.8 to 1.9
+
+Nothing changes for existing plugins: `^1.0` to `^1.8` keep working.
+
+To use the input controls:
+
+1. Set `"engines": { "tmgr": "^1.9" }`.
+2. Use `input`, `select` and `checkbox` nodes.
+3. Update `tmgr.d.ts` from the SDK template.
+4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.
+
+## Migrating from 1.9 to 1.10
+
+Nothing changes for existing plugins: `^1.0` to `^1.9` keep working.
+
+To use the feed and data nodes:
+
+1. Set `"engines": { "tmgr": "^1.10" }`.
+2. Use `timeline`, `messages`, `sparkline`, `empty` and `skeleton` nodes and the new table fields.
+3. Update `tmgr.d.ts` from the SDK template.
+4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.
+
+## Migrating from 1.10 to 1.11
+
+Nothing changes for existing plugins: `^1.0` to `^1.10` keep working.
+
+To use the text area and date nodes:
+
+1. Set `"engines": { "tmgr": "^1.11" }`.
+2. Use `textarea` and `date` nodes. Handle `args.value` being `null` for a cleared date.
+3. Update `tmgr.d.ts` from the SDK template.
+4. Copy `plugin-sdk/testing` again so the test host knows the new nodes.
+
+## Migrating from 1.11 to 1.12
+
+Nothing changes for existing plugins: `^1.0` to `^1.11` keep working.
+
+To use charts:
+
+1. Set `"engines": { "tmgr": "^1.12" }`.
+2. Use the `chart` node.
+3. Update `tmgr.d.ts` from the SDK template.
+4. Copy `plugin-sdk/testing` again so the test host knows the new node.
+## Migrating from 1.12 to 1.13
+
+Nothing changes for existing plugins: `^1.0` to `^1.12` keep working, and `https` links behave as before.
+
+To open Telegram links:
+
+1. Set `"engines": { "tmgr": "^1.13" }`.
+2. Add the `links:open` permission and `"links": { "schemes": ["tg"] }` to the manifest.
+3. Use `tg://resolve`, `tg://privatepost` or `tg://join` URLs in `link` nodes or Markdown.
+
+To show images:
+
+1. Use `image` nodes with a `data:` source (no permission).
+2. For https sources add the `images:remote` permission and list the hosts under `images.allowedDomains`
+   in the manifest.
+
+Either way:
+
+1. Update `tmgr.d.ts` from the SDK template.
+2. Copy `plugin-sdk/testing` again so the test host knows the new nodes.

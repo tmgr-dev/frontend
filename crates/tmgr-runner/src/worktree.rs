@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 const MAX_REF: usize = 100;
 const MAX_COPY: u64 = 1024 * 1024;
+const DRAIN_AFTER_STOP: usize = 1024 * 1024;
 const HARDENING: [&str; 14] = [
     "-c",
     "core.hooksPath=/dev/null",
@@ -57,18 +58,45 @@ pub struct GitEnv {
     offline: bool,
 }
 
-fn drain<R: Read + Send + 'static>(
+fn drain<R: Read + AsRawFd + Send + 'static>(
     mut src: R,
     cap: usize,
     over: Arc<AtomicBool>,
+    stop: Arc<AtomicBool>,
 ) -> std::thread::JoinHandle<Vec<u8>> {
     std::thread::spawn(move || {
         let mut buf = Vec::new();
         let mut chunk = [0u8; 8192];
+        let mut after_stop = 0;
         loop {
+            let stopping = stop.load(Ordering::SeqCst);
+            if stopping && after_stop >= DRAIN_AFTER_STOP {
+                break;
+            }
+            let mut pfd = libc::pollfd {
+                fd: src.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            let ready = unsafe { libc::poll(&mut pfd, 1, if stopping { 0 } else { 20 }) };
+            if ready == 0 {
+                if stopping {
+                    break;
+                }
+                continue;
+            }
+            if ready < 0 {
+                if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                    continue;
+                }
+                break;
+            }
             match src.read(&mut chunk) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
+                    if stopping {
+                        after_stop += n;
+                    }
                     if buf.len() + n > cap {
                         over.store(true, Ordering::SeqCst);
                         break;
@@ -88,8 +116,10 @@ pub(crate) fn run_bounded(
     max_stderr: usize,
 ) -> Result<Output, String> {
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let fd_limit = crate::wire::inherited_fd_limit();
     unsafe {
-        cmd.pre_exec(|| {
+        cmd.pre_exec(move || {
+            crate::wire::cloexec_from(3, fd_limit);
             if libc::setpgid(0, 0) < 0 {
                 return Err(std::io::Error::last_os_error());
             }
@@ -99,14 +129,15 @@ pub(crate) fn run_bounded(
     let mut child = cmd.spawn().map_err(|e| format!("cannot spawn: {e}"))?;
     let pgid = child.id() as libc::pid_t;
     let over = Arc::new(AtomicBool::new(false));
+    let stop = Arc::new(AtomicBool::new(false));
     let out = child
         .stdout
         .take()
-        .map(|s| drain(s, max_stdout, over.clone()));
+        .map(|s| drain(s, max_stdout, over.clone(), stop.clone()));
     let err = child
         .stderr
         .take()
-        .map(|s| drain(s, max_stderr, over.clone()));
+        .map(|s| drain(s, max_stderr, over.clone(), stop.clone()));
     let start = Instant::now();
     let mut failure = None;
     let status = loop {
@@ -133,6 +164,7 @@ pub(crate) fn run_bounded(
         Some(s) => s,
         None => child.wait().map_err(|e| format!("wait failed: {e}"))?,
     };
+    stop.store(true, Ordering::SeqCst);
     let join = |h: Option<std::thread::JoinHandle<Vec<u8>>>| {
         h.map_or_else(Vec::new, |h| h.join().unwrap_or_default())
     };
@@ -149,6 +181,16 @@ pub(crate) fn run_bounded(
         stdout,
         stderr,
     })
+}
+
+pub(crate) fn absolute_path_entries(value: &std::ffi::OsStr) -> std::ffi::OsString {
+    let kept: Vec<PathBuf> = std::env::split_paths(value)
+        .filter(|entry| entry.is_absolute())
+        .collect();
+    match std::env::join_paths(kept) {
+        Ok(joined) if !joined.is_empty() => joined,
+        _ => "/usr/bin:/bin".into(),
+    }
 }
 
 impl GitEnv {
@@ -187,8 +229,10 @@ impl GitEnv {
         if !raw.status.success() {
             return Err(format!("not a git repository: {}", dir.display()));
         }
+        let names = std::str::from_utf8(&raw.stdout)
+            .map_err(|_| "repository config has a key that is not valid text".to_string())?;
         let mut filters = BTreeSet::new();
-        for name in String::from_utf8_lossy(&raw.stdout).split('\0') {
+        for name in names.split('\0') {
             if name.is_empty() {
                 continue;
             }
@@ -213,15 +257,19 @@ impl GitEnv {
         cmd.env_clear();
         for (k, v) in std::env::vars_os() {
             let key = k.to_string_lossy();
-            if matches!(key.as_ref(), "PATH" | "HOME" | "LANG") || key.starts_with("LC_") {
+            if matches!(key.as_ref(), "HOME" | "LANG") || key.starts_with("LC_") {
                 cmd.env(k, v);
             }
         }
-        cmd.env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .env("GIT_NO_LAZY_FETCH", "1")
-            .env("GIT_OPTIONAL_LOCKS", "0");
+        cmd.env(
+            "PATH",
+            absolute_path_entries(&std::env::var_os("PATH").unwrap_or_default()),
+        )
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_NO_LAZY_FETCH", "1")
+        .env("GIT_OPTIONAL_LOCKS", "0");
         for (k, v) in &self.extra {
             cmd.env(k, v);
         }
@@ -278,6 +326,9 @@ fn forbidden(name: &str) -> Option<&'static str> {
     let last = n.rsplit('.').next().unwrap_or("");
     if n.starts_with("include.") || n.starts_with("includeif.") {
         return Some("config includes");
+    }
+    if n.starts_with("hook.") || n == "gc.recentobjectshook" {
+        return Some("runs an external program");
     }
     if n.starts_with("credential.") || n.starts_with("uploadpack.") || n.starts_with("protocol.") {
         return Some("runs or widens external programs");
@@ -851,6 +902,22 @@ mod tests {
     }
 
     #[test]
+    fn run_bounded_children_do_not_inherit_fds() {
+        let mut fds = [0 as libc::c_int; 2];
+        assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+        unsafe { libc::fcntl(fds[1], libc::F_SETFD, 0) };
+        let mut c = Command::new("/bin/sh");
+        c.arg("-c").arg(format!("test -e /dev/fd/{}", fds[1]));
+        let out = run_bounded(c, Duration::from_secs(5), 1024, 1024);
+        unsafe {
+            libc::close(fds[0]);
+            libc::close(fds[1]);
+        }
+        let out = out.unwrap();
+        assert!(!out.status.success(), "the child still sees the fd");
+    }
+
+    #[test]
     fn run_bounded_returns_output_within_limits() {
         let mut c = Command::new("/bin/sh");
         c.args(["-c", "echo hi; echo oops >&2; exit 3"]);
@@ -858,6 +925,74 @@ mod tests {
         assert_eq!(out.stdout, b"hi\n");
         assert_eq!(out.stderr, b"oops\n");
         assert_eq!(out.status.code(), Some(3));
+    }
+
+    #[test]
+    fn run_bounded_returns_when_an_escaped_process_holds_the_pipes() {
+        let sleep = CString::new("/bin/sleep").unwrap();
+        let five = CString::new("5").unwrap();
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", "echo hi; echo oops >&2"]);
+        c.stdin(Stdio::null());
+        unsafe {
+            c.pre_exec(move || {
+                if libc::fork() == 0 {
+                    libc::setsid();
+                    let argv = [sleep.as_ptr(), five.as_ptr(), std::ptr::null()];
+                    libc::execv(sleep.as_ptr(), argv.as_ptr());
+                    libc::_exit(127);
+                }
+                Ok(())
+            });
+        }
+        let t = Instant::now();
+        let out = run_bounded(c, Duration::from_secs(30), 1024, 1024).unwrap();
+        assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
+        assert_eq!(out.stdout, b"hi\n");
+        assert_eq!(out.stderr, b"oops\n");
+    }
+
+    #[test]
+    fn run_bounded_returns_when_an_escaped_process_keeps_writing() {
+        let sh = CString::new("/bin/sh").unwrap();
+        let dash_c = CString::new("-c").unwrap();
+        let script = CString::new("while :; do echo 0123456789abcdef; done").unwrap();
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", "exit 0"]);
+        c.stdin(Stdio::null());
+        unsafe {
+            c.pre_exec(move || {
+                if libc::fork() == 0 {
+                    libc::setsid();
+                    let argv = [
+                        sh.as_ptr(),
+                        dash_c.as_ptr(),
+                        script.as_ptr(),
+                        std::ptr::null(),
+                    ];
+                    libc::execv(sh.as_ptr(), argv.as_ptr());
+                    libc::_exit(127);
+                }
+                Ok(())
+            });
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(run_bounded(c, Duration::from_secs(30), 1 << 30, 1024));
+        });
+        let out = rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("run_bounded hung");
+        assert!(out.is_ok(), "{out:?}");
+    }
+
+    #[test]
+    fn run_bounded_keeps_all_output_written_before_exit() {
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", "head -c 200000 /dev/zero | tr '\\0' x"]);
+        c.stdin(Stdio::null());
+        let out = run_bounded(c, Duration::from_secs(10), 1 << 20, 1024).unwrap();
+        assert_eq!(out.stdout.len(), 200_000);
     }
 
     fn packs(repo: &Path) -> usize {
@@ -1018,10 +1153,24 @@ mod tests {
     }
 
     #[test]
+    fn git_runs_with_absolute_path_entries_only() {
+        assert_eq!(
+            absolute_path_entries(":.:/usr/bin:bin".as_ref()),
+            std::ffi::OsString::from("/usr/bin")
+        );
+        assert_eq!(
+            absolute_path_entries("".as_ref()),
+            std::ffi::OsString::from("/usr/bin:/bin")
+        );
+    }
+
+    #[test]
     fn plan_refuses_exec_and_include_config_keys() {
         for (key, val) in [
             ("include.path", "../x"),
             ("includeIf.gitdir:/x.path", "../x"),
+            ("hook.x.command", "touch /nope"),
+            ("gc.recentObjectsHook", "touch /nope"),
             ("core.fsmonitor", "true"),
             ("core.sshCommand", "touch /nope"),
             ("extensions.worktreeConfig", "true"),

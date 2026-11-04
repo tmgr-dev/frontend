@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.0.68
+
+- The runner refuses to start or resume a session in a queue or `--worktree` checkout made before 1.0.63, because such a checkout shares object files with the source repository. The message names the folder: re-clone it or remove it. The runner does not delete or change the folder, so uncommitted work in it stays. The runner is Unix-only, so Windows is not affected.
+
+## 1.0.67
+
+- Hardening: the `tmgr attach` Git panel keeps its sandbox limits for the folder of a sandboxed session after the session has ended. It shows only the branch there, as it does while the session runs.
+- Hardening: checkpoints read git config names strictly. If a name is not valid UTF-8 or the names cannot be read, the checkpoint is skipped and says why, instead of running with hooks it could not turn off.
+
+## 1.0.66
+
+- Runner sessions no longer keep file descriptors they inherited from the command that started them, so a script or test reading `tmgr` output is not left waiting after `tmgr` exits.
+- A git command that leaves a stray background process behind no longer blocks the runner after the command itself finishes.
+- When a git command fails, the error now includes its exit status.
+- A finished session's background process now exits once its runner folder has been removed.
+- A session's background process no longer stays in the folder its agent was started in, so `tmgr rm` does not report the folder as in use while that process is exiting.
+- `tmgr queue add <task> --team N [--mode eco|heavy]` asks for a team on one task: a lead plus up to N workers, each in its own copy of the repository, and one pull request for the task. The lead plans, the workers do the parts, the lead brings their commits together. `eco` is a Sonnet lead with Haiku workers, `heavy` an Opus lead with Sonnet workers. The confirmation shows `max_concurrent` x team size as the most agents that can run at once.
+- `tmgr attach` shows the lead and the workers of a team run. If the lead stops, its workers are stopped too.
+
+## 1.0.65
+
+- Hardening: host `git` and `gh` commands that the runner and `tmgr attach` run in session folders now ignore repository settings that could start other programs. For sandboxed sessions the attach Git panel shows only the branch and says the rest was not read.
+- Checkpoints are paused for sandboxed sessions for now. A sandboxed session started with checkpoints on still starts and says "checkpoints are off for sandboxed sessions for now". Existing checkpoints are kept. Sessions started with `--no-sandbox` keep checkpoints.
+
 ## 1.0.64
 
 - `tmgr attach`: answer an agent's permission prompt from the sidebar, off by default. Turn it on with `tmgr run --permission-cards`, the Approvals row in the new-session form, or `tmgr config set attach.permission_cards true`. The setting is read when a session is created. The status line shows `cards on` and such sessions carry a `◈` marker.

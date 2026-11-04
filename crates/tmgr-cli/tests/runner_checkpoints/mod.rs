@@ -1,4 +1,5 @@
 use super::*;
+use tmgr_runner::checkpoint::PAUSED_NOTE;
 
 const TURNS: &str = "echo v1 > f.txt; echo ready1; read a\n\
     echo v2 > f.txt; echo ready2; read b\nexit 0\n";
@@ -65,6 +66,10 @@ impl Env {
     }
 
     fn run_cp(&self, script: &str, extra: &[&str]) -> Option<String> {
+        self.run_cp_text(script, extra).map(|(id, _)| id)
+    }
+
+    fn run_cp_text(&self, script: &str, extra: &[&str]) -> Option<(String, String)> {
         if !sandbox_usable() {
             return None;
         }
@@ -91,19 +96,8 @@ impl Env {
             String::from_utf8_lossy(&out.stderr)
         );
         let v: Value = serde_json::from_str(&text).unwrap();
-        Some(v["data"]["id"].as_str().unwrap().to_string())
-    }
-
-    fn items(&self, id: &str, want: usize) -> Vec<Value> {
-        let deadline = Instant::now() + Duration::from_secs(25);
-        loop {
-            let d = self.cp_data(&["checkpoints", "list", id, "--json"]);
-            let items = d["items"].as_array().cloned().unwrap_or_default();
-            if items.len() >= want || Instant::now() >= deadline {
-                return items;
-            }
-            thread::sleep(Duration::from_millis(150));
-        }
+        let id = v["data"]["id"].as_str().unwrap().to_string();
+        Some((id, String::from_utf8_lossy(&out.stderr).into_owned()))
     }
 
     fn wait_waiting(&self, id: &str) {
@@ -197,70 +191,37 @@ fn list_of_a_session_without_checkpoints_says_they_are_off() {
 }
 
 #[test]
-fn restore_goes_ahead_while_a_worktree_session_of_the_same_repo_runs() {
+fn a_sandboxed_session_with_checkpoints_starts_and_says_they_are_paused() {
     let e = Env::new();
     e.git_repo();
     fs::write(e.proj.join("f.txt"), "v1\n").unwrap();
     let script = e.script("agent.sh", TURNS);
-    let Some(id) = e.run_cp(&script, &["--checkpoints"]) else {
+    let Some((id, stderr)) = e.run_cp_text(&script, &["--checkpoints"]) else {
         return;
     };
+    assert!(stderr.contains(PAUSED_NOTE), "{stderr}");
     e.wait_waiting(&id);
-    let start = e.items(&id, 1)[0]["n"].as_u64().unwrap().to_string();
-    worktree_agent(&e, "sleep 30\n");
-    let cwd = e.proj.display().to_string();
-    let wt = e.cp_out(&[
-        "run",
-        "--agent",
-        "wt",
-        "--cwd",
-        &cwd,
-        "--worktree",
-        "--no-attach",
-        "--json",
-    ]);
-    assert!(wt.status.success(), "{}", out_text(&wt));
-    e.cp_data(&["checkpoints", "restore", &id, &start, "--yes", "--json"]);
-}
-
-#[test]
-fn list_diff_and_restore_work_end_to_end_with_json() {
-    let e = Env::new();
-    e.git_repo();
-    fs::write(e.proj.join("f.txt"), "v1\n").unwrap();
-    let script = e.script("agent.sh", TURNS);
-    let Some(id) = e.run_cp(&script, &["--checkpoints"]) else {
-        return;
-    };
-    e.wait_waiting(&id);
-    let first = e.items(&id, 1);
-    assert_eq!(first[0]["kind"], "start");
-    let start = first[0]["n"].as_u64().unwrap().to_string();
     let human = e.cp_out(&["checkpoints", "list", &id]);
-    let text = String::from_utf8_lossy(&human.stdout);
-    assert!(text.contains(&format!("#{start}  session start")), "{text}");
-    let mut c = Client::connect(&e.run).unwrap();
-    c.send(&id, "go\r").unwrap();
-    let items = e.items(&id, 2);
-    assert_eq!(items[1]["kind"], "turn");
-    e.wait_waiting(&id);
-    let text =
-        String::from_utf8_lossy(&e.cp_out(&["checkpoints", "list", &id]).stdout).into_owned();
-    assert!(text.contains("after turn 1"), "{text}");
-    assert_eq!(fs::read_to_string(e.proj.join("f.txt")).unwrap(), "v2\n");
-    let d = e.cp_data(&["checkpoints", "diff", &id, &start, "--current", "--json"]);
-    assert!(d["diff"]["modified"].as_u64().unwrap() >= 1);
-    let r = e.cp_data(&["checkpoints", "restore", &id, &start, "--yes", "--json"]);
-    assert!(r["restored"]["left_as_is"].as_array().unwrap().is_empty());
+    assert!(human.status.success());
+    assert!(String::from_utf8_lossy(&human.stdout).contains(PAUSED_NOTE));
+    let d = e.cp_data(&["checkpoints", "list", &id, "--json"]);
+    assert_eq!(d["status"]["note"], PAUSED_NOTE);
+    assert!(d["items"].as_array().unwrap().is_empty());
+    for args in [
+        vec!["checkpoints", "diff", &id, "1"],
+        vec!["checkpoints", "restore", &id, "1", "--yes"],
+    ] {
+        let out = e.cp_out(&args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}: {}", out_text(&out));
+        assert!(out_text(&out).contains(PAUSED_NOTE), "{args:?}");
+    }
     assert_eq!(fs::read_to_string(e.proj.join("f.txt")).unwrap(), "v1\n");
-    let before = r["restored"]["before_n"].as_u64().unwrap().to_string();
-    let human = e.cp_out(&["checkpoints", "restore", &id, &before, "--yes"]);
-    let text = String::from_utf8_lossy(&human.stdout);
-    assert!(
-        text.contains("To undo:") && text.contains("checkpoints restore"),
-        "{text}"
-    );
-    assert_eq!(fs::read_to_string(e.proj.join("f.txt")).unwrap(), "v2\n");
+    let refs = Command::new("git")
+        .args(["for-each-ref", "refs/tmgr"])
+        .current_dir(&e.proj)
+        .output()
+        .unwrap();
+    assert!(refs.stdout.is_empty());
 }
 
 #[test]

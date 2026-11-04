@@ -515,6 +515,7 @@ fn create(
         return deny(conn, method, args, id, r.code, &r.reason);
     }
     let mut req = RunCreateReq {
+        team: None,
         clones: Vec::new(),
         profile: agent.to_string(),
         task: Some(task),

@@ -825,10 +825,22 @@ mod tests {
 
     #[test]
     fn unreachable_upstream_is_502() {
-        let dead = {
+        let mut last = String::new();
+        let mut found = None;
+        for _ in 0..20 {
             let l = TcpListener::bind("127.0.0.1:0").unwrap();
-            l.local_addr().unwrap()
-        };
+            let addr = l.local_addr().unwrap();
+            drop(l);
+            match TcpStream::connect_timeout(&addr, Duration::from_secs(1)) {
+                Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
+                    found = Some(addr);
+                    break;
+                }
+                other => last = format!("{addr}: {other:?}"),
+            }
+        }
+        let dead =
+            found.unwrap_or_else(|| panic!("no refused port after 20 attempts; last probe {last}"));
         let (resolver, _) = counted(dead);
         let proxy = Proxy::start_with(pats(&["files.example.com"]), resolver).unwrap();
         assert_eq!(

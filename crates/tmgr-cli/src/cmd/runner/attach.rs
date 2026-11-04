@@ -298,6 +298,30 @@ fn session_kind(s: &SessionInfo) -> Option<String> {
     }
 }
 
+fn sandboxed_roots(
+    rows: &[SessionRow],
+    starts: &HashMap<String, (String, u32)>,
+    unsandboxed: &HashSet<String>,
+) -> Vec<PathBuf> {
+    rows.iter()
+        .filter(|r| !unsandboxed.contains(&r.id))
+        .filter_map(|r| starts.get(&r.id))
+        .map(|(start, _)| PathBuf::from(start))
+        .collect()
+}
+
+fn git_branch_only(
+    id: &str,
+    cwds: &[PathBuf],
+    unsandboxed: &HashSet<String>,
+    sandboxed: &[PathBuf],
+) -> bool {
+    !unsandboxed.contains(id)
+        || cwds.iter().any(|c| {
+            tmgr_queue::workdir::in_queue_run_dir(c) || sandboxed.iter().any(|s| c.starts_with(s))
+        })
+}
+
 fn rows(list: &[SessionInfo]) -> Vec<SessionRow> {
     let now = now_ms();
     list.iter()
@@ -333,6 +357,7 @@ struct App {
     cfg: RunnerConfig,
     tx: SyncSender<Msg>,
     starts: HashMap<String, (String, u32)>,
+    unsandboxed: HashSet<String>,
     pending: HashMap<String, Instant>,
     creating: HashMap<String, String>,
     new_flow: NewFlow,
@@ -656,6 +681,14 @@ impl App {
             self.view.leaders = leaders;
             self.dirty = true;
         }
+        let teams = list
+            .iter()
+            .filter_map(|s| {
+                let t = s.team.as_ref().filter(|t| t.validate().is_ok())?;
+                Some((s.id.clone(), t.clone()))
+            })
+            .collect();
+        self.dirty |= self.view.set_teams(self.area(), teams);
         let new = merge_pending(
             rows(list),
             &local_rows(&self.view.sessions),
@@ -666,6 +699,11 @@ impl App {
         self.dirty |= meta;
         self.starts
             .retain(|id, _| list.iter().any(|s| &s.id == id) || self.pending.contains_key(id));
+        self.unsandboxed = list
+            .iter()
+            .filter(|s| s.no_sandbox)
+            .map(|s| s.id.clone())
+            .collect();
         for s in list {
             self.starts
                 .insert(s.id.clone(), (s.cwd.clone(), s.child_pid));
@@ -1349,6 +1387,7 @@ impl App {
             return;
         }
         self.last_git = Instant::now();
+        let sandboxed = sandboxed_roots(&self.view.sessions, &self.starts, &self.unsandboxed);
         let jobs: Vec<GitJob> = self
             .view
             .panes()
@@ -1362,9 +1401,11 @@ impl App {
                     .into_iter()
                     .map(PathBuf::from)
                     .collect();
+                let branch_only = git_branch_only(id, &cwds, &self.unsandboxed, &sandboxed);
                 (!row.exited() || !cwds.is_empty()).then(|| GitJob {
                     id: id.clone(),
                     cwds,
+                    branch_only,
                 })
             })
             .collect();
@@ -4177,6 +4218,11 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
             .filter(|s| is_shell_session(&s.argv, &s.name))
             .map(|s| s.id.clone())
             .collect(),
+        unsandboxed: list
+            .iter()
+            .filter(|s| s.no_sandbox)
+            .map(|s| s.id.clone())
+            .collect(),
         starts: list
             .iter()
             .map(|s| (s.id.clone(), (s.cwd.clone(), s.child_pid)))
@@ -4551,6 +4597,7 @@ mod tests {
 
     fn info(id: &str) -> SessionInfo {
         SessionInfo {
+            team: None,
             id: id.into(),
             name: id.into(),
             argv: Vec::new(),
@@ -4577,6 +4624,26 @@ mod tests {
             checkpoints: None,
             permission_cards: false,
         }
+    }
+
+    #[test]
+    fn ended_sandboxed_session_still_limits_git_in_its_folder() {
+        let mut ended = info("s_ended");
+        ended.state.kind = StateKind::Exited;
+        let mut free = info("s_free");
+        free.no_sandbox = true;
+        let mut other = info("s_other");
+        other.no_sandbox = true;
+        let list = [ended, free, other];
+        let unsandboxed: HashSet<String> = ["s_free", "s_other"].map(String::from).into();
+        let starts: HashMap<String, (String, u32)> =
+            HashMap::from([("s_ended".to_string(), ("/w/proj".to_string(), 0))]);
+        let roots = sandboxed_roots(&rows(&list), &starts, &unsandboxed);
+        let inside = [PathBuf::from("/w/proj/sub")];
+        let outside = [PathBuf::from("/w/elsewhere")];
+        assert!(git_branch_only("s_free", &inside, &unsandboxed, &roots));
+        assert!(!git_branch_only("s_other", &outside, &unsandboxed, &roots));
+        assert!(git_branch_only("s_ended", &outside, &unsandboxed, &roots));
     }
 
     #[test]

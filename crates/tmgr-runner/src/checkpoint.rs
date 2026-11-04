@@ -23,6 +23,7 @@ use crate::wire::write_atomic;
 use crate::worktree::{run_bounded, GitEnv};
 
 pub const DEFAULT_KEEP: u32 = 50;
+pub const PAUSED_NOTE: &str = "checkpoints are off for sandboxed sessions for now";
 
 const KEEP_MIN: u32 = 3;
 const KEEP_MAX: u32 = 1000;
@@ -35,6 +36,7 @@ const DIFF_TEXT_CAP: usize = 1024 * 1024;
 const DIFF_RAW_CAP: usize = 16 * 1024 * 1024;
 const LIST_CAP: usize = 256 * 1024 * 1024;
 const ERR_CAP: usize = 1024 * 1024;
+const HOOK_NAMES_CAP: usize = 16 * 1024 * 1024;
 const LINK_CAP: usize = 4096;
 const GIT_DEADLINE: Duration = Duration::from_secs(600);
 const FACTS_DEADLINE: Duration = Duration::from_secs(5);
@@ -53,6 +55,7 @@ pub struct Store {
     pub sdir: PathBuf,
     pub cwd: PathBuf,
     pub keep: u32,
+    pub paused: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,6 +86,8 @@ struct Manifest {
     note: Option<String>,
     #[serde(default)]
     common_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    refs_of: Option<String>,
     #[serde(default)]
     items: Vec<Entry>,
 }
@@ -423,8 +428,10 @@ impl Proc {
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        let fd_limit = crate::wire::inherited_fd_limit();
         unsafe {
-            cmd.pre_exec(|| {
+            cmd.pre_exec(move || {
+                crate::wire::cloexec_from(3, fd_limit);
                 if libc::setpgid(0, 0) < 0 {
                     return Err(io::Error::last_os_error());
                 }
@@ -647,8 +654,8 @@ impl Blobs {
     }
 }
 
-fn base_git(dir: &Path, excludes: &str) -> GitEnv {
-    let cfg = [
+fn base_git(dir: &Path, excludes: &str, more: &[(String, &str)]) -> GitEnv {
+    let mut cfg = vec![
         ("protocol.allow", "never"),
         ("core.logAllRefUpdates", "false"),
         ("core.splitIndex", "false"),
@@ -656,6 +663,7 @@ fn base_git(dir: &Path, excludes: &str) -> GitEnv {
         ("commit.gpgsign", "false"),
         ("core.excludesFile", excludes),
     ];
+    cfg.extend(more.iter().map(|(k, v)| (k.as_str(), *v)));
     let mut g = GitEnv::bare(dir)
         .env("GIT_NO_REPLACE_OBJECTS", "1")
         .env("GIT_CONFIG_COUNT", &cfg.len().to_string());
@@ -665,6 +673,31 @@ fn base_git(dir: &Path, excludes: &str) -> GitEnv {
             .env(&format!("GIT_CONFIG_VALUE_{i}"), v);
     }
     g
+}
+
+fn git_without_hooks(dir: &Path, excludes: &str, git_dir: Option<&str>) -> Result<GitEnv, CpError> {
+    let env = |more: &[(String, &str)]| {
+        let g = base_git(dir, excludes, more);
+        match git_dir {
+            Some(d) => g.env("GIT_DIR", d),
+            None => g,
+        }
+    };
+    let names = out(
+        &env(&[]),
+        &["config", "--name-only", "--list", "-z"],
+        None,
+        HOOK_NAMES_CAP,
+    )?;
+    let names = std::str::from_utf8(&names).map_err(|_| {
+        CpError::Refused("checkpoint skipped: a git config name is not valid UTF-8".into())
+    })?;
+    let off: Vec<(String, &str)> = names
+        .split('\0')
+        .filter_map(|name| name.strip_prefix("hook.")?.rsplit_once('.'))
+        .map(|(hook, _)| (format!("hook.{hook}.enabled"), "false"))
+        .collect();
+    Ok(env(&off))
 }
 
 fn exec(g: &GitEnv, args: &[&str], stdin: Option<&Path>, cap: usize) -> Result<Output, CpError> {
@@ -681,8 +714,9 @@ fn out(g: &GitEnv, args: &[&str], stdin: Option<&Path>, cap: usize) -> Result<Ve
     let o = exec(g, args, stdin, cap)?;
     if !o.status.success() {
         return Err(CpError::Failed(format!(
-            "git {} failed: {}",
+            "git {} failed ({}): {}",
             args.first().copied().unwrap_or(""),
+            o.status,
             String::from_utf8_lossy(&o.stderr).trim()
         )));
     }
@@ -702,9 +736,10 @@ fn effective_excludes(env: &Env, cwd: &Path) -> String {
         .current_dir(cwd)
         .stdin(Stdio::null())
         .args(["config", "--path", "--get", "core.excludesFile"]);
-    if let Some(p) = std::env::var_os("PATH") {
-        cmd.env("PATH", p);
-    }
+    cmd.env(
+        "PATH",
+        crate::worktree::absolute_path_entries(&std::env::var_os("PATH").unwrap_or_default()),
+    );
     if let Some(h) = &env.home {
         cmd.env("HOME", h);
     }
@@ -765,6 +800,9 @@ impl Store {
 
     fn snapshot_in(&self, env: &Env) -> Result<Option<CheckpointItem>, CpError> {
         self.check_session()?;
+        if self.paused {
+            return Ok(None);
+        }
         let op = Op::new(self, env);
         let mut m = self.load();
         let repo = op.repo_or_mark(&mut m)?;
@@ -785,6 +823,9 @@ impl Store {
 
     fn restore_in(&self, env: &Env, n: u64) -> Result<CheckpointRestored, CpError> {
         self.check_session()?;
+        if self.paused {
+            return Err(CpError::Refused(PAUSED_NOTE.into()));
+        }
         let op = Op::new(self, env);
         let mut m = self.load();
         let Some(entry) = m.items.iter().find(|e| e.item.n == n).cloned() else {
@@ -832,6 +873,9 @@ impl Store {
 
     fn diff_in(&self, env: &Env, n: u64, against: DiffAgainst) -> Result<CheckpointDiff, CpError> {
         self.check_session()?;
+        if self.paused {
+            return Err(CpError::Refused(PAUSED_NOTE.into()));
+        }
         let m = self.load();
         let Some(pos) = m.items.iter().position(|e| e.item.n == n) else {
             return Err(CpError::Refused("no such checkpoint".into()));
@@ -861,9 +905,14 @@ impl Store {
 
     pub fn status(&self) -> CheckpointStatus {
         let m = self.load();
+        let note = if self.paused {
+            Some(PAUSED_NOTE.to_string())
+        } else {
+            m.note
+        };
         CheckpointStatus {
-            available: m.note.is_none(),
-            note: m.note,
+            available: note.is_none(),
+            note,
             count: m.items.len() as u32,
         }
     }
@@ -877,11 +926,15 @@ impl Store {
     }
 
     pub fn remove_all(&self) {
-        if self.check_session().is_ok() {
+        if !self.paused && self.check_session().is_ok() {
             if let Some(dir) = self.load().common_dir {
                 self.delete_refs(&dir);
             }
         }
+        self.remove_local();
+    }
+
+    fn remove_local(&self) {
         for name in [MANIFEST, CACHE] {
             let _ = fs::remove_file(self.sdir.join(name));
         }
@@ -903,25 +956,35 @@ impl Store {
     pub fn transfer(&self, to: &Store) -> Result<(), CpError> {
         self.check_session()?;
         to.check_session()?;
-        let m = self.load();
+        let mut m = self.load();
         let Some(dir) = m.common_dir.clone() else {
             return Ok(());
         };
         fs::create_dir_all(&to.sdir).map_err(|e| failed("cannot create session directory", e))?;
-        let g = base_git(&to.sdir, NO_EXCLUDES).env("GIT_DIR", &dir);
-        for e in &m.items {
-            text(&g, &["update-ref", &to.ref_name(e.item.n), &e.commit])?;
+        if self.paused || to.paused {
+            m.refs_of.get_or_insert_with(|| self.session.clone());
+        } else {
+            let g = git_without_hooks(&to.sdir, NO_EXCLUDES, Some(&dir))?;
+            for e in &m.items {
+                text(&g, &["update-ref", &to.ref_name(e.item.n), &e.commit])?;
+            }
         }
         to.save(&m)?;
         if let Ok(bytes) = fs::read(self.cache_path()) {
             let _ = write_atomic(&to.cache_path(), &bytes);
         }
-        self.remove_all();
+        if self.paused || to.paused {
+            self.remove_local();
+        } else {
+            self.remove_all();
+        }
         Ok(())
     }
 
     fn delete_refs(&self, common_dir: &str) {
-        let g = base_git(&self.sdir, NO_EXCLUDES).env("GIT_DIR", common_dir);
+        let Ok(g) = git_without_hooks(&self.sdir, NO_EXCLUDES, Some(common_dir)) else {
+            return;
+        };
         let prefix = format!("{REF_ROOT}/{}/", self.session);
         let Ok(list) = text(&g, &["for-each-ref", "--format=%(refname)", &prefix]) else {
             return;
@@ -970,12 +1033,12 @@ impl<'a> Op<'a> {
         }
     }
 
-    fn git(&self) -> GitEnv {
-        base_git(&self.store.cwd, &self.excludes)
+    fn git(&self) -> Result<GitEnv, CpError> {
+        git_without_hooks(&self.store.cwd, &self.excludes, None)
     }
 
     fn repo(&self) -> Result<Repo, CpError> {
-        let g = self.git();
+        let g = self.git()?;
         let o = exec(&g, &["rev-parse", "--is-inside-work-tree"], None, ERR_CAP)?;
         if !o.status.success() {
             let err = String::from_utf8_lossy(&o.stderr);
@@ -1022,21 +1085,19 @@ impl<'a> Op<'a> {
     }
 
     fn repo_or_mark(&self, m: &mut Manifest) -> Result<Repo, CpError> {
-        match self.repo() {
-            Err(CpError::NotGit(note)) => {
-                if m.note.as_deref() != Some(&note) {
-                    m.note = Some(note.clone());
-                    let _ = self.store.save(m);
-                }
-                Err(CpError::NotGit(note))
+        let res = self.repo();
+        if let Err(CpError::NotGit(note) | CpError::Refused(note)) = &res {
+            if m.note.as_deref() != Some(note) {
+                m.note = Some(note.clone());
+                let _ = self.store.save(m);
             }
-            other => other,
         }
+        res
     }
 
     fn enumerate(&self) -> Result<BTreeSet<Vec<u8>>, CpError> {
         let o = out(
-            &self.git(),
+            &self.git()?,
             &["ls-files", "-c", "-o", "--exclude-standard", "-z"],
             None,
             LIST_CAP,
@@ -1049,7 +1110,7 @@ impl<'a> Op<'a> {
 
     fn ls_tree(&self, treeish: &str) -> Result<Vec<TreeEntry>, CpError> {
         let o = out(
-            &self.git(),
+            &self.git()?,
             &["ls-tree", "-r", "-z", "--full-tree", treeish],
             None,
             LIST_CAP,
@@ -1077,7 +1138,7 @@ impl<'a> Op<'a> {
 
     fn changed(&self, a: &str, b: &str) -> Result<Vec<(u8, Vec<u8>)>, CpError> {
         let o = out(
-            &self.git(),
+            &self.git()?,
             &[
                 "diff-tree",
                 "-r",
@@ -1100,7 +1161,7 @@ impl<'a> Op<'a> {
 
     fn empty_tree(&self) -> Result<String, CpError> {
         let o = out(
-            &self.git(),
+            &self.git()?,
             &["hash-object", "-t", "tree", "--stdin"],
             Some(Path::new("/dev/null")),
             ERR_CAP,
@@ -1117,7 +1178,7 @@ impl<'a> Op<'a> {
                 _ => modified += 1,
             }
         }
-        let g = self.git();
+        let g = self.git()?;
         let flags = [
             "--no-ext-diff",
             "--no-textconv",
@@ -1184,7 +1245,7 @@ impl<'a> Op<'a> {
             msg.push_str(&format!("restored_from: {f}\n"));
         }
         let g = self
-            .git()
+            .git()?
             .env("GIT_AUTHOR_NAME", "tmgr")
             .env("GIT_AUTHOR_EMAIL", "checkpoints@tmgr.invalid")
             .env("GIT_COMMITTER_NAME", "tmgr")
@@ -1254,7 +1315,7 @@ impl<'a> Op<'a> {
         }
         let spec = format!("{}^{{commit}}", self.store.ref_name(n));
         let o = exec(
-            &self.git(),
+            &self.git()?,
             &["rev-parse", "--verify", "-q", &spec],
             None,
             ERR_CAP,
@@ -1336,7 +1397,7 @@ impl Op<'_> {
         let now_s = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_secs() as i64);
-        let g = self.git();
+        let g = self.git()?;
         let mut importer: Option<Importer> = None;
         let mut pending: Vec<(Vec<u8>, u32, Fp, usize)> = Vec::new();
         let mut entries: BTreeMap<Vec<u8>, Meta> = BTreeMap::new();
@@ -1443,7 +1504,7 @@ impl Op<'_> {
             let index_str = index
                 .to_str()
                 .ok_or_else(|| CpError::Failed("session directory is not valid UTF-8".into()))?;
-            let g = self.git().env("GIT_INDEX_FILE", index_str);
+            let g = self.git()?.env("GIT_INDEX_FILE", index_str);
             out(
                 &g,
                 &["update-index", "-z", "--add", "--index-info"],
@@ -1488,7 +1549,7 @@ impl Op<'_> {
         rep: &mut Report,
     ) -> Result<(), CpError> {
         let root = open_root(&self.store.cwd).map_err(|e| failed("cannot open directory", e))?;
-        let mut blobs = Blobs::open(&self.git())?;
+        let mut blobs = Blobs::open(&self.git()?)?;
         let mut blocked = Vec::new();
         for e in target {
             match self.write_one(root.as_fd(), e, before, &mut blobs)? {
@@ -1812,6 +1873,7 @@ mod tests {
                 sdir: self.sdir.clone(),
                 cwd: self.repo.clone(),
                 keep: 50,
+                paused: false,
             }
         }
 
@@ -2725,6 +2787,45 @@ mod tests {
         assert_eq!(fx.r("a"), b"1");
     }
 
+    fn append_config(fx: &Fx, bytes: &[u8]) {
+        fs::OpenOptions::new()
+            .append(true)
+            .open(fx.repo.join(".git/config"))
+            .unwrap()
+            .write_all(bytes)
+            .unwrap();
+    }
+
+    #[test]
+    fn unreadable_git_config_refuses_the_snapshot() {
+        let fx = Fx::new();
+        fx.w("a", b"1");
+        append_config(&fx, b"[hook\n");
+        let st = fx.store();
+        assert!(matches!(st.snapshot_in(&fx.env()), Err(CpError::Failed(_))));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_non_utf8_hook_name_refuses_the_snapshot() {
+        let fx = Fx::new();
+        fx.w("a", b"1");
+        let mut cfg = b"[hook \"x\xff\"]\n\tcommand = touch ".to_vec();
+        cfg.extend_from_slice(fx.out.join("hook").as_os_str().as_bytes());
+        cfg.extend_from_slice(b"\n\tevent = reference-transaction\n");
+        append_config(&fx, &cfg);
+        let st = fx.store();
+        assert!(matches!(
+            st.snapshot_in(&fx.env()),
+            Err(CpError::Refused(_))
+        ));
+        assert!(refs_under(&fx, "refs/tmgr").is_empty());
+        assert!(!fx.out.join("hook").exists());
+        let status = st.status();
+        assert!(!status.available);
+        assert!(status.note.unwrap().contains("not valid UTF-8"));
+    }
+
     #[test]
     fn hooks_filters_fsmonitor_and_signing_never_run() {
         let fx = Fx::new();
@@ -2777,6 +2878,48 @@ mod tests {
         st.diff_in(&fx.env(), 1, DiffAgainst::Current).unwrap();
         st.restore_in(&fx.env(), 1).unwrap();
         assert_eq!(fs::read_dir(&fx.out).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn a_paused_store_runs_no_git_and_keeps_what_exists() {
+        let fx = Fx::new();
+        let st = fx.store();
+        fx.w("a", b"1");
+        snap(&fx, &st);
+        fx.w("a", b"2");
+        snap(&fx, &st);
+        let refs = refs_under(&fx, "refs/tmgr");
+        fx.w("a", b"3");
+        let paused = Store { paused: true, ..st };
+        assert!(paused.snapshot_in(&fx.env()).unwrap().is_none());
+        let off = CpError::Refused(PAUSED_NOTE.to_string());
+        assert_eq!(paused.restore_in(&fx.env(), 1).unwrap_err(), off);
+        assert_eq!(
+            paused
+                .diff_in(&fx.env(), 2, DiffAgainst::Previous)
+                .map(|_| ())
+                .unwrap_err(),
+            off
+        );
+        let status = paused.status();
+        assert!(!status.available);
+        assert_eq!(status.note.as_deref(), Some(PAUSED_NOTE));
+        assert_eq!(status.count, 2);
+        assert_eq!(paused.list().len(), 2);
+
+        let to_sdir = fx.root.join("sdir2");
+        fs::create_dir_all(&to_sdir).unwrap();
+        let to = Store {
+            session: S2.to_string(),
+            sdir: to_sdir,
+            ..paused.clone()
+        };
+        paused.transfer(&to).unwrap();
+        assert_eq!(to.list().len(), 2);
+        assert!(paused.list().is_empty());
+        to.remove_all();
+        assert_eq!(refs_under(&fx, "refs/tmgr"), refs);
+        assert_eq!(fx.r("a"), b"3");
     }
 
     #[test]
@@ -3078,6 +3221,7 @@ mod tests {
             sdir: to_sdir,
             cwd: fx.repo.clone(),
             keep: 50,
+            paused: false,
         };
         let items = st.list();
         st.transfer(&to).unwrap();

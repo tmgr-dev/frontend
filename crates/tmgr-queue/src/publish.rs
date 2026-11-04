@@ -297,6 +297,14 @@ pub fn publish_env(vars: impl Iterator<Item = (String, String)>) -> Vec<(String,
                     | "GITHUB_TOKEN"
             ) || k.starts_with("GH_")
         })
+        .map(|(k, v)| {
+            if k == "PATH" {
+                let kept = crate::workdir::absolute_path_entries(v.as_ref());
+                (k, kept.to_string_lossy().into_owned())
+            } else {
+                (k, v)
+            }
+        })
         .collect();
     out.push(("GIT_TERMINAL_PROMPT".into(), "0".into()));
     out
@@ -972,6 +980,13 @@ mod tests {
                 "GIT_TERMINAL_PROMPT"
             ]
         );
+    }
+
+    #[test]
+    fn publish_keeps_only_absolute_path_entries() {
+        let vars = [("PATH".to_string(), ".:/usr/bin::bin".to_string())];
+        let out = publish_env(vars.into_iter());
+        assert_eq!(out[0], ("PATH".to_string(), "/usr/bin".to_string()));
     }
 
     #[test]

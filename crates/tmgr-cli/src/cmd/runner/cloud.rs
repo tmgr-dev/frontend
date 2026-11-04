@@ -1048,6 +1048,7 @@ struct RunPlan<'a> {
 
 fn run_request(p: &RunPlan) -> RunCreateReq {
     RunCreateReq {
+        team: None,
         clones: p.clones.clone(),
         profile: p.profile.to_string(),
         task: Some(p.task),
@@ -1285,6 +1286,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         task_id,
     };
     let bundle = RunBundle {
+        assignment: None,
         v: 1,
         task: task_ref,
         title: ok.title.clone(),
@@ -1384,7 +1386,9 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     if let Some(note) = tmgr_runner::agentwork::audit_note(Some(mode), a.no_sandbox) {
         set_key(&ws.code, task_id, "audit", Some(json!(note)))?;
     }
-    super::checkpoints::enable_new(&mut rc, &info.id, a.checkpoints_flag())?;
+    if let Some(note) = super::checkpoints::enable_new(&mut rc, &info.id, a.checkpoints_flag())? {
+        eprintln!("{note}");
+    }
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         return attach::run(&cfg, &info.id);
     }
@@ -1515,6 +1519,13 @@ fn repo_state(repo: &Path, head: &str, server_default: Option<&str>) -> Result<R
     })
 }
 
+fn any_live(sessions: &[tmgr_ipc::api::SessionInfo], task: TaskRef, session: Option<&str>) -> bool {
+    sessions.iter().any(|s| {
+        s.state.kind != tmgr_ipc::api::StateKind::Exited
+            && (session == Some(s.id.as_str()) || s.task == Some(task))
+    })
+}
+
 fn ensure_not_live(task: TaskRef, session: Option<&str>) -> Result<()> {
     let cfg = runner_config()?;
     let mut rc = tmgr_runner::client::Client::connect(&cfg.dir).map_err(|_| {
@@ -1524,11 +1535,7 @@ fn ensure_not_live(task: TaskRef, session: Option<&str>) -> Result<()> {
         )
         .hint(format!("{} runner start", super::bin()))
     })?;
-    let live = rc.list().map_err(rerr)?.into_iter().any(|s| {
-        s.state.kind != tmgr_ipc::api::StateKind::Exited
-            && (session == Some(s.id.as_str()) || s.task == Some(task))
-    });
-    if live {
+    if any_live(&rc.list().map_err(rerr)?, task, session) {
         return Err(
             Error::new(Kind::Conflict, "the run of this task is still live")
                 .hint("wait for the agent to finish or stop it, then publish again"),
@@ -1544,6 +1551,7 @@ pub struct Published<'a> {
     pub agent: Option<&'a str>,
     pub branch: &'a str,
     pub audit: Option<&'a str>,
+    pub team: bool,
 }
 
 pub struct PublishedAll<'a> {
@@ -1567,6 +1575,7 @@ pub fn report_published(client: &tmgr_core::api::Client, p: &Published) -> Vec<S
             summary: format!("Opened {}", p.pr_url),
             comment: format!("The agent finished. Pull request: {}", p.pr_url),
             audit: p.audit,
+            team: p.team,
         },
     )
 }
@@ -1590,6 +1599,7 @@ pub fn report_published_all(client: &tmgr_core::api::Client, p: &PublishedAll) -
             summary: format!("Opened {}", joined.join(", ")),
             comment: format!("The agent finished. Pull requests:\n{}", list.join("\n")),
             audit: p.audit,
+            team: false,
         },
     )
 }
@@ -1627,6 +1637,7 @@ pub fn report_resumed(client: &tmgr_core::api::Client, p: &PublishedAll) -> Vec<
             summary: format!("Resumed and updated {}", joined.join(", ")),
             comment: resumed_comment(p.urls),
             audit: p.audit,
+            team: false,
         },
     )
 }
@@ -1651,6 +1662,7 @@ struct Report<'a> {
     summary: String,
     comment: String,
     audit: Option<&'a str>,
+    team: bool,
 }
 
 fn running_run(
@@ -1658,6 +1670,7 @@ fn running_run(
     task_id: u64,
     agent: Option<&str>,
     branch: &str,
+    team: bool,
 ) -> Option<tmgr_core::agentwork::RunView> {
     use tmgr_core::agentwork;
     client
@@ -1667,11 +1680,21 @@ fn running_run(
         .unwrap_or_default()
         .into_iter()
         .filter_map(|r| agentwork::parse_run(r).ok())
-        .find(|r| {
-            r.status == "running"
-                && agent.is_none_or(|a| r.agent.as_deref() == Some(a))
-                && r.branch.as_deref().is_none_or(|b| b == branch)
-        })
+        .find(|r| run_matches(r, agent, branch, team))
+}
+
+fn run_matches(
+    r: &tmgr_core::agentwork::RunView,
+    agent: Option<&str>,
+    branch: &str,
+    team: bool,
+) -> bool {
+    r.status == "running"
+        && agent.is_none_or(|a| r.agent.as_deref() == Some(a))
+        && match r.branch.as_deref() {
+            Some(b) => b == branch,
+            None => !team,
+        }
 }
 
 fn already_held(t: &PublishTarget, held: &Held) -> bool {
@@ -1702,7 +1725,13 @@ fn report_held(
 ) {
     use tmgr_core::agentwork;
     let task_id = u64::try_from(t.task_id).unwrap_or_default();
-    if let Some(run) = running_run(client, task_id, t.agent.as_deref(), &t.branch) {
+    if let Some(run) = running_run(
+        client,
+        task_id,
+        t.agent.as_deref(),
+        &t.branch,
+        workdir::is_team_lead_clone(&t.clone_dir),
+    ) {
         let progress = agentwork::Progress {
             summary: Some(format!(
                 "Held before publish by the leak gate: {}. Nothing was pushed.",
@@ -1732,7 +1761,7 @@ fn report_with(client: &tmgr_core::api::Client, p: &Report) -> Vec<String> {
     use tmgr_core::agentwork;
     let mut warnings = Vec::new();
     let note = |what: &str, e: &Error| format!("{what}: {}", sanitize_line(&e.message));
-    let running = running_run(client, p.task_id, p.agent, p.branch);
+    let running = running_run(client, p.task_id, p.agent, p.branch, p.team);
     match running {
         Some(run) => {
             let progress = agentwork::Progress {
@@ -2010,6 +2039,7 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
             agent: t.agent.as_deref(),
             branch: &t.branch,
             audit: t.audit.as_deref(),
+            team: workdir::is_team_lead_clone(&t.clone_dir),
         },
     ) {
         eprintln!("warning: {w}");
@@ -2391,6 +2421,80 @@ pub fn publish_cmd(o: &Opts, reference: &str) -> Result<i32> {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    fn run_view(branch: Option<&str>, status: &str) -> tmgr_core::agentwork::RunView {
+        tmgr_core::agentwork::RunView {
+            id: 1,
+            status: status.into(),
+            agent: Some("claude-code".into()),
+            branch: branch.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_publish_matches_the_lead_run_and_never_a_worker_run() {
+        let task = "queue/q_abc";
+        let team = |r| run_matches(&r, Some("claude-code"), task, true);
+        assert!(team(run_view(Some(task), "running")));
+        assert!(
+            !team(run_view(None, "running")),
+            "a worker run without a branch"
+        );
+        assert!(!team(run_view(Some("queue-team/q_abc/w1"), "running")));
+        assert!(!team(run_view(Some(task), "succeeded")));
+        let solo = |r| run_matches(&r, Some("claude-code"), task, false);
+        assert!(solo(run_view(Some(task), "running")));
+        assert!(solo(run_view(None, "running")));
+        assert!(!solo(run_view(Some("other"), "running")));
+        assert!(run_matches(
+            &run_view(Some("other"), "running"),
+            None,
+            "other",
+            false
+        ));
+    }
+
+    fn session(
+        id: &str,
+        state: &str,
+        task: i64,
+        team: Option<serde_json::Value>,
+    ) -> tmgr_ipc::api::SessionInfo {
+        let mut v = serde_json::json!({
+            "id": id, "name": "n", "argv": ["claude"], "cwd": "/w", "cols": 80, "rows": 24,
+            "created_ms": 1, "shim_pid": 1, "child_pid": 2,
+            "task": {"workspace_id": 5, "task_id": task},
+            "state": {"kind": state, "since_ms": 1}
+        });
+        if let Some(t) = team {
+            v["team"] = t;
+        }
+        serde_json::from_value(v).unwrap()
+    }
+
+    #[test]
+    fn publishing_waits_for_every_member_of_a_team_and_passes_once_all_have_exited() {
+        let task = TaskRef {
+            workspace_id: 5,
+            task_id: 1,
+        };
+        let link = |role: serde_json::Value| Some(serde_json::json!({"role": role, "of": "q_abc"}));
+        let live = [
+            session("s_lead", "exited", 1, link(serde_json::json!("lead"))),
+            session("s_w1", "exited", 1, link(serde_json::json!({"worker": 1}))),
+            session("s_w2", "waiting", 1, link(serde_json::json!({"worker": 2}))),
+        ];
+        assert!(any_live(&live, task, Some("s_lead")));
+        let done = [
+            session("s_lead", "exited", 1, link(serde_json::json!("lead"))),
+            session("s_w1", "exited", 1, link(serde_json::json!({"worker": 1}))),
+            session("s_w2", "exited", 1, link(serde_json::json!({"worker": 2}))),
+            session("s_other", "working", 2, None),
+        ];
+        assert!(!any_live(&done, task, Some("s_lead")));
+    }
+
     use serde_json::{json, Value};
     use std::collections::BTreeMap;
     use tmgr_core::approval::PinnedKey;
@@ -3156,6 +3260,7 @@ mod tests {
         let request = |c: &Candidate| {
             let bundle = bundle_of(&rule, c, "/tmp/clone", &Default::default());
             let mut r = RunCreateReq {
+                team: None,
                 clones: Vec::new(),
                 profile: "claude-code".into(),
                 task: Some(task),

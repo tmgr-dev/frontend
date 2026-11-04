@@ -1,0 +1,32 @@
+{
+	"name": "tmgr-plugin",
+	"version": "1.0.0",
+	"description": "Validate, build, check and live-install TMGR desktop plugins.",
+	"license": "MIT",
+	"bin": {
+		"tmgr-plugin": "bin/tmgr-plugin.mjs"
+	},
+	"files": [
+		"bin",
+		"src",
+		"lib",
+		"README.md",
+		"LICENSE"
+	],
+	"engines": {
+		"node": ">=22.12"
+	},
+	"homepage": "https://tmgr.dev/docs/plugins.md",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tmgr-dev/frontend.git",
+		"directory": "plugin-sdk/cli"
+	},
+	"keywords": [
+		"tmgr",
+		"plugin"
+	],
+	"dependencies": {
+		"tmgr-plugin-testing": "^1.0.0"
+	}
+}

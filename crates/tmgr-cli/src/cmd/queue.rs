@@ -65,6 +65,8 @@ pub enum QueueCommand {
         #[command(subcommand)]
         command: RulesCmd,
     },
+    /// Ask for a team on one task: a lead and N workers (needs a terminal and a typed confirmation)
+    Add(TeamAddArgs),
     /// Approve one pending pickup exactly as shown (needs a terminal)
     Approve {
         /// Pickup id from `tmgr queue status`
@@ -86,6 +88,18 @@ pub enum RulesCmd {
     Add(Box<RuleArgs>),
     /// Remove a rule
     Rm { name: String },
+}
+
+#[derive(Args)]
+pub struct TeamAddArgs {
+    /// Task key (TM-12) or id
+    pub task: String,
+    /// Workers next to the lead, 1 to 5; agents per task = 1 + N
+    #[arg(long, value_name = "N")]
+    pub team: Option<u32>,
+    /// Team mode: eco (Sonnet lead, Haiku workers) or heavy (Opus lead, Sonnet workers). Not the permission mode of `queue rules add --mode`
+    #[arg(long, value_name = "eco|heavy", default_value = "eco", value_parser = ["eco", "heavy"])]
+    pub mode: String,
 }
 
 #[derive(Args)]
@@ -124,7 +138,7 @@ pub struct RuleArgs {
     /// Start without asking for each task (human authors only)
     #[arg(long)]
     pub auto: bool,
-    /// Permission mode of a cloud rule: ask, accept-edits, plan or bypass (the runner decides in the end)
+    /// Permission mode of a cloud rule: ask, accept-edits, plan or bypass (the runner decides in the end). Not the team mode of `queue add --mode`
     #[arg(long, value_name = "MODE")]
     pub mode: Option<String>,
 }
@@ -276,6 +290,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, cmd: &QueueCommand) -> Result<Output> {
             RulesCmd::Add(a) => add(ctx, &paths, a),
             RulesCmd::Rm { name } => remove(&paths, name),
         },
+        QueueCommand::Add(a) => team_add(ctx, &paths, a),
         QueueCommand::Approve { pickup } => approve(&paths, pickup),
         QueueCommand::Release { pickup } => {
             privileged::guard()?;
@@ -321,11 +336,15 @@ fn status(paths: &Paths) -> Result<Output> {
     let pickups: Vec<Value> = st
         .pickups
         .iter()
-        .filter(|p| !p.released)
+        .filter(|p| p.listed())
         .map(|p| {
-            json!({"id": p.id, "rule": p.rule, "task": p.key, "status": shown_status(p),
+            let mut v = json!({"id": p.id, "rule": p.rule, "task": p.key, "status": shown_status(p),
                 "bundle_sha256": p.bundle_sha256, "tainted": p.context_tainted,
-                "run": p.run_id, "reason": p.reason, "held": p.held})
+                "run": p.run_id, "reason": p.reason, "held": p.held});
+            if let Some(t) = &p.team {
+                v["team"] = team_json(p, t);
+            }
+            v
         })
         .collect();
     let mut lines = vec![format!(
@@ -348,7 +367,7 @@ fn status(paths: &Paths) -> Result<Output> {
     let rows: Vec<Vec<String>> = st
         .pickups
         .iter()
-        .filter(|p| !p.released)
+        .filter(|p| p.listed())
         .map(|p| {
             vec![
                 p.id.clone(),
@@ -364,12 +383,85 @@ fn status(paths: &Paths) -> Result<Output> {
     } else {
         lines.push(table(&rows));
     }
-    Ok(Output::new(
-        json!({"enabled": loaded.file.enabled, "paused": st.paused, "tampered": tampered,
-            "audit": audit, "rules": loaded.file.rules, "pickups": pickups,
-            "background": background}),
-        lines.join("\n"),
-    ))
+    lines.extend(team_lines(&st));
+    let mut json = json!({"enabled": loaded.file.enabled, "paused": st.paused, "tampered": tampered,
+        "audit": audit, "rules": loaded.file.rules, "pickups": pickups,
+        "background": background});
+    if !st.team_requests.is_empty() {
+        json["team_requests"] = json!(st
+            .team_requests
+            .iter()
+            .map(|r| json!({
+            "workspace_id": r.task.workspace_id, "task_id": r.task.task_id,
+            "workers": r.size, "mode": r.mode.as_str(), "at": r.at}))
+            .collect::<Vec<_>>());
+    }
+    Ok(Output::new(json, lines.join("\n")))
+}
+
+fn member_name(role: tmgr_ipc::api::TeamRole) -> String {
+    match role {
+        tmgr_ipc::api::TeamRole::Lead => "lead".into(),
+        tmgr_ipc::api::TeamRole::Worker(n) => format!("w{n}"),
+    }
+}
+
+fn run_state(started: bool, exited: bool, clean: bool) -> &'static str {
+    match (started, exited, clean) {
+        (false, ..) => "not started",
+        (true, false, _) => "running",
+        (true, true, true) => "done",
+        (true, true, false) => "failed",
+    }
+}
+
+fn members_of(p: &state::Pickup, t: &state::TeamState) -> Vec<(String, &'static str)> {
+    let lead = run_state(p.run_id.is_some(), p.run_exited, p.run_clean);
+    std::iter::once(("lead".to_string(), lead))
+        .chain(t.members.iter().map(|m| {
+            (
+                member_name(m.role),
+                run_state(m.run_id.is_some(), m.exited, m.clean),
+            )
+        }))
+        .collect()
+}
+
+fn team_json(p: &state::Pickup, t: &state::TeamState) -> Value {
+    json!({"phase": t.phase.name(), "members": members_of(p, t).iter()
+        .map(|(role, state)| json!({"role": role, "state": state})).collect::<Vec<_>>()})
+}
+
+fn team_block(id: &str, phase: state::TeamPhase, members: &[(String, &str)]) -> Vec<String> {
+    let mut out = vec![format!("Team of {id}: {}", phase.name())];
+    for (role, state) in members {
+        out.push(format!("  {role:<5} {state}"));
+    }
+    out
+}
+
+fn team_lines(st: &state::State) -> Vec<String> {
+    let mut out = Vec::new();
+    if !st.team_requests.is_empty() {
+        out.push("Team requests:".into());
+        for r in &st.team_requests {
+            out.push(format!(
+                "  task {} (workspace {}): {} worker{}, {} mode, asked {}",
+                r.task.task_id,
+                r.task.workspace_id,
+                r.size,
+                if r.size == 1 { "" } else { "s" },
+                r.mode.as_str(),
+                sanitize_line(&r.at)
+            ));
+        }
+    }
+    for p in st.pickups.iter().filter(|p| p.listed()) {
+        if let Some(t) = &p.team {
+            out.extend(team_block(&p.id, t.phase, &members_of(p, t)));
+        }
+    }
+    out
 }
 
 fn set_paused(paths: &Paths, paused: bool) -> Result<Output> {
@@ -520,6 +612,150 @@ fn add(ctx: &Ctx, paths: &Paths, a: &RuleArgs) -> Result<Output> {
     Ok(Output::new(
         json!({"rule": rule}),
         format!("Rule {} added.", rule.name),
+    ))
+}
+
+const TEAM_PROFILE: &str = "claude-code";
+
+fn worst_case_agents(max_concurrent: u32, workers: u8) -> u32 {
+    max_concurrent * (1 + u32::from(workers))
+}
+
+fn team_size(raw: Option<u32>) -> Result<u8> {
+    let n = raw.ok_or_else(|| {
+        Error::usage("`tmgr queue add` records a team and needs --team N")
+            .hint("tmgr queue add TM-12 --team 2")
+    })?;
+    u8::try_from(n)
+        .ok()
+        .filter(|n| (1..=tmgr_ipc::api::MAX_TEAM_SIZE).contains(n))
+        .ok_or_else(|| Error::usage(format!("--team is 1 to {}", tmgr_ipc::api::MAX_TEAM_SIZE)))
+}
+
+fn matching_rules<'a>(
+    file: &'a QueueFile,
+    workspace: &tmgr_core::models::Workspace,
+    project: Option<&str>,
+) -> Vec<&'a Rule> {
+    file.rules
+        .iter()
+        .filter(|r| r.workspace.eq_ignore_ascii_case(&workspace.code))
+        .filter(|r| {
+            r.project
+                .as_deref()
+                .is_none_or(|p| project.is_some_and(|q| p.eq_ignore_ascii_case(q)))
+        })
+        .collect()
+}
+
+fn team_rules_ok(rules: &[&Rule]) -> Result<()> {
+    if rules.is_empty() {
+        return Err(Error::not_found("no queue rule matches this task").hint(
+            "a team only changes how a task is worked; add a rule first: tmgr queue rules add",
+        ));
+    }
+    if let Some(r) = rules.iter().find(|r| r.profile != TEAM_PROFILE) {
+        return Err(Error::usage(format!(
+            "rule {} uses profile {}; teams need the {TEAM_PROFILE} profile",
+            r.name, r.profile
+        )));
+    }
+    if let Some(r) = rules.iter().find(|r| r.repos.len() > 1) {
+        return Err(Error::usage(format!(
+            "rule {} covers several repositories; teams work on one repository",
+            r.name
+        )));
+    }
+    Ok(())
+}
+
+fn team_runner_ok(caps: &[String]) -> Result<()> {
+    if caps
+        .iter()
+        .any(|c| c == tmgr_ipc::api::caps::TEAM_WORKERS_V1)
+    {
+        return Ok(());
+    }
+    Err(Error::new(
+        Kind::Conflict,
+        "the running runner is older than this tmgr and cannot run teams",
+    )
+    .hint(format!(
+        "{0} runner stop && {0} runner start",
+        super::runner::bin()
+    )))
+}
+
+fn team_summary(rules: &[&Rule], task: &str, workers: u8, mode: tmgr_ipc::api::TeamMode) -> String {
+    let (lead, worker) = state::team_models(mode);
+    let most = rules.iter().map(|r| r.max_concurrent).max().unwrap_or(1);
+    let names: Vec<&str> = rules.iter().map(|r| r.name.as_str()).collect();
+    format!(
+        "Team for {task}: 1 lead and {workers} worker{} ({} mode)\n\
+         Rule: {}\n\
+         Agents at once, worst case: max_concurrent {most} x (1 + {workers}) = {}\n\
+         Models: lead {lead}, workers {worker}\n\
+         Sandbox, permission mode and network come from the rule; the team changes none of them.",
+        if workers == 1 { "" } else { "s" },
+        mode.as_str(),
+        names.join(", "),
+        worst_case_agents(most, workers)
+    )
+}
+
+fn team_add(ctx: &Ctx, paths: &Paths, a: &TeamAddArgs) -> Result<Output> {
+    let workers = team_size(a.team)?;
+    let mode = if a.mode == "heavy" {
+        tmgr_ipc::api::TeamMode::Heavy
+    } else {
+        tmgr_ipc::api::TeamMode::Eco
+    };
+    privileged::guard()?;
+    let client = ctx.client()?;
+    let task = super::shared::resolve_task(ctx, client, &a.task)?;
+    let workspace = ctx.workspace(client)?;
+    let loaded = rules::load(paths)?;
+    if rules::is_tampered(paths, &loaded)? {
+        return Err(tamper_error());
+    }
+    let project = match task.category.as_ref().and_then(|c| c.code.clone()) {
+        Some(code) => Some(code),
+        None => match task.project_category_id {
+            Some(id) => client
+                .categories(workspace.id)?
+                .into_iter()
+                .find(|c| c.id == id)
+                .and_then(|c| c.code),
+            None => None,
+        },
+    };
+    let matching = matching_rules(&loaded.file, &workspace, project.as_deref());
+    team_rules_ok(&matching)?;
+    match super::runner::runner_config().and_then(|cfg| super::runner::connect(&cfg)) {
+        Ok(c) => team_runner_ok(&c.welcome().caps)?,
+        Err(e) if e.kind == Kind::Offline => {}
+        Err(e) => return Err(e),
+    }
+    let reference = sanitize_line(&a.task);
+    eprintln!("{}", team_summary(&matching, &reference, workers, mode));
+    privileged::confirm_typed_stdio("TEAM", "\nType TEAM to continue:")?;
+    let task_ref = tmgr_ipc::api::TaskRef {
+        workspace_id: workspace.id,
+        task_id: i64::try_from(task.id).map_err(|_| Error::usage("invalid task id"))?,
+    };
+    if rules::load(paths)?.sha256 != loaded.sha256 {
+        return Err(Error::conflict(
+            "queue.toml changed while you were reading it; no team was requested",
+        )
+        .hint("run the command again"));
+    }
+    tmgr_queue::engine::request_team(paths, task_ref, workers, mode, Utc::now())?;
+    Ok(Output::new(
+        json!({"task_id": task_ref.task_id, "workers": workers, "mode": mode.as_str()}),
+        format!(
+            "Team of {} requested for {reference}. The rule's gates still apply when it starts.",
+            1 + u32::from(workers)
+        ),
     ))
 }
 
@@ -1352,6 +1588,7 @@ impl RunnerRuns {
 
 fn run_create_req(req: &StartRequest) -> RunCreateReq {
     RunCreateReq {
+        team: req.team.clone(),
         clones: req.clones.clone(),
         profile: req.profile.clone(),
         task: Some(req.task),
@@ -1383,7 +1620,11 @@ fn run_create_req(req: &StartRequest) -> RunCreateReq {
 }
 
 fn team_supported(bundle: &tmgr_ipc::api::RunBundle, caps: &[String]) -> Result<()> {
-    if bundle.team.is_some() && !caps.iter().any(|c| c == tmgr_ipc::api::caps::TEAM_V1) {
+    needs_cap(bundle.team.is_some(), tmgr_ipc::api::caps::TEAM_V1, caps)
+}
+
+fn needs_cap(needed: bool, cap: &str, caps: &[String]) -> Result<()> {
+    if needed && !caps.iter().any(|c| c == cap) {
         return Err(Error::new(
             Kind::Conflict,
             "the runner is too old for team runs; restart it after the update",
@@ -1406,6 +1647,11 @@ impl RunsClient for RunnerRuns {
             .map(|c| c.welcome().caps.clone())
             .unwrap_or_default();
         team_supported(&req.bundle, &caps)?;
+        needs_cap(
+            req.team.is_some(),
+            tmgr_ipc::api::caps::TEAM_WORKERS_V1,
+            &caps,
+        )?;
         if tmgr_runner::bundle::has_owner_text(&req.bundle) {
             let supported = self.client.borrow().as_ref().is_some_and(|c| {
                 c.welcome()
@@ -1475,6 +1721,22 @@ impl RunsClient for RunnerRuns {
             Err(e) if answered_not_found(&e) => Lookup::NotFound,
             Err(_) => Lookup::Unsupported,
         }
+    }
+
+    fn send(&self, run_id: &str, text: &str) -> Result<()> {
+        self.with(|c| c.send_at_prompt(run_id, text))
+            .map_err(|e| Error::new(Kind::Offline, e.to_string()))
+    }
+
+    fn kill_run(&self, run_id: &str, force: bool, reason: &str) -> Result<()> {
+        let signal = if force { "kill" } else { "term" };
+        RunnerRuns::kill(self, run_id, signal, reason)
+            .map_err(|e| Error::new(Kind::Offline, e.to_string()))
+    }
+
+    fn idle(&self, run_id: &str) -> bool {
+        self.with(|c| c.run_status(run_id))
+            .is_ok_and(|s| s.alive && s.state == StateKind::Waiting)
     }
 }
 
@@ -1635,6 +1897,7 @@ mod run_request_tests {
             .unwrap(),
             unattended: true,
             clones: Vec::new(),
+            team: None,
         }
     }
 
@@ -1854,6 +2117,15 @@ mod team_cap_tests {
         assert!(team_supported(&bundle(team()), &new).is_ok());
         assert!(team_supported(&bundle(None), &old).is_ok());
     }
+
+    #[test]
+    fn a_team_member_needs_the_workers_capability() {
+        let old = vec![caps::TEAM_V1.to_string()];
+        let new = vec![caps::TEAM_WORKERS_V1.to_string()];
+        assert!(needs_cap(true, caps::TEAM_WORKERS_V1, &old).is_err());
+        assert!(needs_cap(true, caps::TEAM_WORKERS_V1, &new).is_ok());
+        assert!(needs_cap(false, caps::TEAM_WORKERS_V1, &old).is_ok());
+    }
 }
 
 #[cfg(test)]
@@ -1872,5 +2144,185 @@ mod card_key_tests {
         assert_eq!(k("Fix: TM-1", "TM", Some(5), 9), "TM-5");
         assert_eq!(k("plain", "TM", None, 9), "T9");
         assert_eq!(k("plain", "", Some(3), 9), "T9");
+    }
+}
+
+#[cfg(test)]
+mod team_add_tests {
+    use super::*;
+    use tmgr_ipc::api::{caps, TeamMode, TeamRole};
+
+    fn rule(name: &str, profile: &str, repos: &[&str], max: u32) -> Rule {
+        Rule {
+            name: name.into(),
+            workspace: "local:personal".into(),
+            project: Some("WK".into()),
+            status_type: "backlog".into(),
+            persona: "builder".into(),
+            profile: profile.into(),
+            model: None,
+            repos: repos.iter().map(|r| r.to_string()).collect(),
+            max_concurrent: max,
+            hours: None,
+            trusted_authors: vec!["human".into()],
+            auto: false,
+            mode: None,
+        }
+    }
+
+    fn workspace(local: bool, code: &str) -> tmgr_core::models::Workspace {
+        tmgr_core::models::Workspace {
+            id: -1,
+            name: String::new(),
+            code: code.into(),
+            is_default: false,
+            local,
+        }
+    }
+
+    #[test]
+    fn the_team_size_is_one_to_five_and_required() {
+        assert!(team_size(None).unwrap_err().message.contains("--team N"));
+        for bad in [0, 6, 256, 300, u32::MAX] {
+            let e = team_size(Some(bad)).unwrap_err();
+            assert_eq!(e.message, "--team is 1 to 5", "{bad}");
+        }
+        for ok in 1..=5 {
+            assert_eq!(team_size(Some(ok)).unwrap(), ok as u8);
+        }
+    }
+
+    #[test]
+    fn three_concurrent_tasks_with_five_workers_can_mean_eighteen_agents() {
+        assert_eq!(worst_case_agents(3, 5), 18);
+        assert_eq!(worst_case_agents(1, 1), 2);
+        let r = rule("a", "claude-code", &["/r"], 3);
+        let text = team_summary(&[&r], "TM-1", 5, TeamMode::Eco);
+        assert!(text.contains("max_concurrent 3 x (1 + 5) = 18"), "{text}");
+        assert!(text.contains("lead sonnet, workers haiku"), "{text}");
+        let heavy = team_summary(&[&r], "TM-1", 5, TeamMode::Heavy);
+        assert!(heavy.contains("lead opus, workers sonnet"), "{heavy}");
+        assert!(heavy.contains("come from the rule"), "{heavy}");
+    }
+
+    #[test]
+    fn the_worst_case_uses_the_largest_matching_rule() {
+        let a = rule("a", "claude-code", &["/r"], 1);
+        let b = rule("b", "claude-code", &["/r"], 2);
+        let text = team_summary(&[&a, &b], "TM-1", 2, TeamMode::Eco);
+        assert!(text.contains("max_concurrent 2 x (1 + 2) = 6"), "{text}");
+    }
+
+    #[test]
+    fn rules_must_exist_use_claude_and_one_repository() {
+        assert_eq!(team_rules_ok(&[]).unwrap_err().kind, Kind::NotFound);
+        let other = rule("o", "codex", &["/r"], 1);
+        let e = team_rules_ok(&[&other]).unwrap_err();
+        assert!(e.message.contains("claude-code profile"), "{}", e.message);
+        let many = rule("m", "claude-code", &["/a", "/b"], 1);
+        let e = team_rules_ok(&[&many]).unwrap_err();
+        assert!(e.message.contains("several repositories"), "{}", e.message);
+        let one = rule("c", "claude-code", &["/a"], 1);
+        assert!(team_rules_ok(&[&one]).is_ok());
+        assert!(team_rules_ok(&[&one, &other]).is_err());
+    }
+
+    #[test]
+    fn rules_match_by_workspace_and_project() {
+        let local = |c: &str| workspace(true, &format!("local:{c}"));
+        let file: QueueFile = QueueFile {
+            rules: vec![rule("a", "claude-code", &["/r"], 1), {
+                let mut r = rule("b", "claude-code", &["/r"], 1);
+                r.workspace = "tmgrdev".into();
+                r.project = None;
+                r
+            }],
+            ..QueueFile::default()
+        };
+        let names = |w, p| {
+            matching_rules(&file, &w, p)
+                .iter()
+                .map(|r| r.name.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(local("personal"), Some("WK")), ["a"]);
+        assert!(names(local("personal"), Some("OTHER")).is_empty());
+        assert!(names(local("personal"), None).is_empty());
+        assert!(names(workspace(false, "personal"), Some("WK")).is_empty());
+        assert_eq!(names(workspace(false, "TMGRDEV"), None), ["b"]);
+    }
+
+    #[test]
+    fn a_runner_without_the_team_cap_is_refused() {
+        let old = vec![caps::TEAM_V1.to_string()];
+        let e = team_runner_ok(&old).unwrap_err();
+        assert!(e.message.contains("cannot run teams"), "{}", e.message);
+        assert!(team_runner_ok(&[caps::TEAM_WORKERS_V1.to_string()]).is_ok());
+    }
+
+    #[test]
+    fn status_lines_show_requests_and_members_and_nothing_without_a_team() {
+        let mut st = state::State::default();
+        assert!(team_lines(&st).is_empty());
+        st.team_requests.push(state::TeamRequest {
+            task: tmgr_ipc::api::TaskRef {
+                workspace_id: -1,
+                task_id: 7,
+            },
+            size: 2,
+            mode: TeamMode::Heavy,
+            at: "2026-11-02T10:00:00+00:00".into(),
+        });
+        let lines = team_lines(&st);
+        assert_eq!(lines[0], "Team requests:");
+        assert!(lines[1].contains("task 7") && lines[1].contains("2 workers, heavy mode"));
+        let member = |role, run: Option<&str>, exited, clean| state::Member {
+            role,
+            cwd: String::new(),
+            branch: String::new(),
+            start_key: String::new(),
+            run_id: run.map(str::to_string),
+            exited,
+            clean,
+            base: None,
+            tip: None,
+            exit_sent: false,
+            kill_sent_at: None,
+        };
+        let mut t = state::TeamState::new(3, TeamMode::Eco);
+        t.members = vec![
+            member(TeamRole::Worker(1), Some("r2"), true, true),
+            member(TeamRole::Worker(2), Some("r3"), true, false),
+            member(TeamRole::Worker(3), None, false, false),
+        ];
+        t.phase = state::TeamPhase::Working;
+        let bundle: Value = serde_json::from_str(include_str!(
+            "../../../tmgr-ipc/tests/fixtures/run_bundle.json"
+        ))
+        .unwrap();
+        let pickup = |id: &str, team: Option<state::TeamState>| -> state::Pickup {
+            let mut p: state::Pickup = serde_json::from_value(json!({
+                "id": id, "rule": "r", "task": {"workspace_id": -1, "task_id": 7}, "key": "WK-7",
+                "status": "started", "bundle": bundle, "bundle_sha256": "0".repeat(64),
+                "context_tainted": false, "created_at": "x", "updated_at": "x", "run_id": "r1"
+            }))
+            .unwrap();
+            p.team = team;
+            p
+        };
+        let lead = pickup("q_1", Some(t.clone()));
+        st.pickups = vec![pickup("q_0", None), lead.clone()];
+        assert_eq!(
+            team_lines(&st)[2..],
+            [
+                "Team of q_1: working",
+                "  lead  running",
+                "  w1    done",
+                "  w2    failed",
+                "  w3    not started"
+            ]
+        );
+        assert_eq!(team_json(&lead, &t)["members"][1]["role"], "w1");
+        assert_eq!(team_json(&lead, &t)["phase"], "working");
     }
 }

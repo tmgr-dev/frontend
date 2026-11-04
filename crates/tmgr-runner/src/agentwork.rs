@@ -35,6 +35,8 @@ pub struct State {
     pub hold_success: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
 }
 
 pub fn audit_note(mode: Option<&str>, no_sandbox: bool) -> Option<String> {
@@ -54,6 +56,7 @@ pub struct Intent {
     pub model: Option<String>,
     pub hold_success: bool,
     pub audit: Option<String>,
+    pub role: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -93,7 +96,19 @@ pub fn begin(
     agent: &str,
     model: Option<&str>,
     session: &str,
+    flags: (bool, Option<String>),
+) -> io::Result<()> {
+    begin_as(dir, task, agent, model, session, flags, None)
+}
+
+pub fn begin_as(
+    dir: &Path,
+    task: TaskRef,
+    agent: &str,
+    model: Option<&str>,
+    session: &str,
     (hold_success, audit): (bool, Option<String>),
+    role: Option<String>,
 ) -> io::Result<()> {
     save(
         dir,
@@ -108,6 +123,7 @@ pub fn begin(
             last_update_ms: 0,
             hold_success,
             audit,
+            role,
         },
     )
 }
@@ -226,18 +242,19 @@ pub fn step(
     }
     let summary = worklog::summary(dir);
     let Some(run_id) = s.run_id else {
-        let reply = call(
-            helper,
-            &json!({
-                "op": "start",
-                "workspace": s.workspace,
-                "task_id": s.task_id,
-                "agent": s.agent,
-                "model": s.model,
-                "branch": summary.branch,
-                "session_id": s.session,
-            }),
-        )?;
+        let mut request = json!({
+            "op": "start",
+            "workspace": s.workspace,
+            "task_id": s.task_id,
+            "agent": s.agent,
+            "model": s.model,
+            "branch": summary.branch,
+            "session_id": s.session,
+        });
+        if let Some(role) = &s.role {
+            request["role"] = json!(role);
+        }
+        let reply = call(helper, &request)?;
         let id = reply["run_id"]
             .as_i64()
             .filter(|id| *id > 0)
@@ -400,6 +417,43 @@ mod tests {
             })
             .collect();
         assert_eq!(ops, ["start", "update", "finish"]);
+    }
+
+    #[test]
+    fn a_team_member_starts_with_its_role_and_a_plain_run_sends_none() {
+        use std::os::unix::fs::PermissionsExt;
+        let task = TaskRef {
+            workspace_id: -2,
+            task_id: 7,
+        };
+        let sent = |role: Option<&str>| -> Value {
+            let tmp = tempfile::tempdir().unwrap();
+            let calls = tmp.path().join("calls");
+            let helper = tmp.path().join("helper.sh");
+            std::fs::write(
+                &helper,
+                format!("#!/bin/sh\ncat >> {calls:?}\necho '{{\"run_id\":5}}'\n"),
+            )
+            .unwrap();
+            std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let dir = tmp.path().join("s");
+            std::fs::create_dir(&dir).unwrap();
+            begin_as(
+                &dir,
+                task,
+                "claude-code",
+                None,
+                "s_abc",
+                (false, None),
+                role.map(str::to_string),
+            )
+            .unwrap();
+            assert_eq!(step(&helper, &dir, 1_000_000, None).unwrap(), Some("start"));
+            serde_json::from_str(&std::fs::read_to_string(&calls).unwrap()).unwrap()
+        };
+        assert_eq!(sent(Some("worker-2"))["role"], "worker-2");
+        assert_eq!(sent(Some("lead"))["role"], "lead");
+        assert!(sent(None).get("role").is_none());
     }
 
     #[test]

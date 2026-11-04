@@ -55,6 +55,7 @@ fn req() -> RunCreateReq {
     let f = fx();
     let c = &f["cases"][2];
     let bundle = RunBundle {
+        assignment: None,
         v: 1,
         task: TASK,
         title: c["title"].as_str().unwrap().into(),
@@ -76,6 +77,7 @@ fn req() -> RunCreateReq {
         },
     };
     RunCreateReq {
+        team: None,
         clones: Vec::new(),
         profile: "claude-code".into(),
         task: Some(TASK),

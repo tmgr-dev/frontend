@@ -203,6 +203,20 @@
 						{{ offer.pkg.manifest.links.allowedDomains.join(', ') }}
 					</p>
 					<p
+						v-if="offer.pkg.manifest.links.schemes.includes('tg')"
+						class="font-medium text-destructive"
+					>
+						It can open Telegram links (tg://).
+					</p>
+					<p
+						v-if="offer.pkg.manifest.images.allowedDomains.length"
+						class="font-medium text-destructive"
+					>
+						Loads pictures from:
+						{{ offer.pkg.manifest.images.allowedDomains.join(', ') }}. Those
+						sites get a request each time the plugin shows a picture.
+					</p>
+					<p
 						v-if="offer.pkg.manifest.companion"
 						class="font-medium text-amber-600 dark:text-amber-400"
 					>
@@ -223,17 +237,23 @@
 							offer.changes &&
 							(offer.changes.permissions.length ||
 								offer.changes.origins.length ||
-								offer.changes.domains.length)
+								offer.changes.domains.length ||
+								offer.changes.schemes.length ||
+								offer.changes.imageDomains.length)
 						"
 						class="font-medium text-destructive"
 					>
 						New in this version:
 						{{
 							[
-								...offer.changes.permissions.map((p) => permissionText([p])),
+								...(offer.changes.permissions.length
+									? [permissionText(offer.changes.permissions)]
+									: []),
 								...offer.changes.origins,
 								...offer.changes.domains,
-							].join(', ')
+								...offer.changes.schemes.map((s) => `${s}:// links`),
+								...offer.changes.imageDomains.map((d) => `images from ${d}`),
+							].join('; ')
 						}}
 					</p>
 					<p class="text-xs text-muted-foreground">
@@ -374,6 +394,27 @@
 					{{ plugin.manifest.network.allowedOrigins.join(', ') }} (this computer
 					only)
 				</div>
+				<div
+					v-if="plugin.manifest.links.allowedDomains.length"
+					class="text-xs font-medium text-destructive"
+				>
+					Can open links to:
+					{{ plugin.manifest.links.allowedDomains.join(', ') }}
+				</div>
+				<div
+					v-if="plugin.manifest.links.schemes.includes('tg')"
+					class="text-xs font-medium text-destructive"
+				>
+					Can open Telegram links (tg://)
+				</div>
+				<div
+					v-if="plugin.manifest.images.allowedDomains.length"
+					class="text-xs font-medium text-destructive"
+				>
+					Loads pictures from:
+					{{ plugin.manifest.images.allowedDomains.join(', ') }}. Those sites
+					get a request each time the plugin shows a picture.
+				</div>
 				<div class="text-xs">
 					<span class="font-medium">Can:</span>{{ ' ' }}
 					<span class="text-muted-foreground">
@@ -507,7 +548,11 @@
 		type PluginSource,
 		type PluginStatus,
 	} from '@/pluginSystem/host';
-	import { PLUGIN_API_VERSION, type Permission } from '@/pluginSystem/manifest';
+	import {
+		PERMISSION_GROUPS,
+		PLUGIN_API_VERSION,
+		type Permission,
+	} from '@/pluginSystem/manifest';
 	import { permissionChanges, type Release } from '@/pluginSystem/market';
 	import {
 		folderPluginErrors,
@@ -555,6 +600,7 @@
 		tray: `add items and text to the ${trayName()} icon`,
 		deeplinks: 'be opened from tmgr:// links in other apps',
 		'links:open': 'open web links in your browser',
+		'images:remote': 'load pictures from the sites it declares',
 		'routines:read': 'read your notes and routines (local workspaces only)',
 		'routines:write':
 			'add, rename, complete and convert your notes and routines (local workspaces only)',
@@ -838,7 +884,15 @@
 				},
 				permissionText: (permissions: Permission[]) =>
 					permissions.length
-						? permissions.map((p) => PERMISSION_TEXT[p]).join(', ')
+						? Object.entries(PERMISSION_GROUPS)
+								.map(([group, members]) => {
+									const used = members.filter((p) => permissions.includes(p));
+									return used.length
+										? `${group.toLowerCase()}: ${used.map((p) => PERMISSION_TEXT[p]).join(', ')}`
+										: '';
+								})
+								.filter(Boolean)
+								.join('; ')
 						: 'nothing beyond its own storage',
 				statusLabel: (status: PluginStatus) =>
 					({

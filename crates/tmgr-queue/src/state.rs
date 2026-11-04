@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tmgr_core::config::{ensure_private_dir, write_atomic};
 use tmgr_core::error::{Error, Result};
-use tmgr_ipc::api::{RunBundle, TaskRef};
+use tmgr_ipc::api::{RunBundle, TaskRef, TeamMode, TeamRole};
 
-const KEEP_RELEASED: usize = 200;
+pub(crate) const KEEP_RELEASED: usize = 200;
 pub const MAX_PUBLISH_ATTEMPTS: u32 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,6 +71,108 @@ pub fn is_held(e: &Error) -> bool {
     e.message.starts_with(HELD_PREFIX)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamRequest {
+    pub task: TaskRef,
+    pub size: u8,
+    pub mode: TeamMode,
+    pub at: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamPhase {
+    Planning,
+    Working,
+    Integrating,
+    Finishing,
+}
+
+impl TeamPhase {
+    pub fn name(self) -> &'static str {
+        match self {
+            TeamPhase::Planning => "planning",
+            TeamPhase::Working => "working",
+            TeamPhase::Integrating => "integrating",
+            TeamPhase::Finishing => "finishing",
+        }
+    }
+}
+
+/// One worker of a team run. The lead is the pickup itself.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Member {
+    pub role: TeamRole,
+    pub cwd: String,
+    pub branch: String,
+    pub start_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default)]
+    pub exited: bool,
+    #[serde(default)]
+    pub clean: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tip: Option<String>,
+    #[serde(default)]
+    pub exit_sent: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kill_sent_at: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamState {
+    pub size: u8,
+    pub mode: TeamMode,
+    pub phase: TeamPhase,
+    #[serde(default)]
+    pub briefs: Vec<String>,
+    #[serde(default)]
+    pub members: Vec<Member>,
+    #[serde(default)]
+    pub started_workers: u8,
+    #[serde(default)]
+    pub lead_exit_sent: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rejected: Option<String>,
+    #[serde(default)]
+    pub rejections: u8,
+}
+
+impl TeamState {
+    pub fn new(size: u8, mode: TeamMode) -> TeamState {
+        TeamState {
+            size,
+            mode,
+            phase: TeamPhase::Planning,
+            briefs: Vec::new(),
+            members: Vec::new(),
+            started_workers: 0,
+            lead_exit_sent: false,
+            rejected: None,
+            rejections: 0,
+        }
+    }
+
+    pub fn all_exited(&self) -> bool {
+        self.members.iter().all(|m| m.exited)
+    }
+
+    pub fn ready_to_publish(&self) -> bool {
+        self.phase == TeamPhase::Finishing && self.lead_exit_sent && self.all_exited()
+    }
+}
+
+/// The models of a team: `(lead, worker)`. Aliases the claude profile and `queue.toml` accept.
+pub fn team_models(mode: TeamMode) -> (&'static str, &'static str) {
+    match mode {
+        TeamMode::Eco => ("sonnet", "haiku"),
+        TeamMode::Heavy => ("opus", "sonnet"),
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Pickup {
     pub id: String,
@@ -121,6 +223,8 @@ pub struct Pickup {
     pub continues: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub continued_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team: Option<TeamState>,
 }
 
 fn one() -> u32 {
@@ -141,6 +245,7 @@ impl Pickup {
             && self.publish_attempts < MAX_PUBLISH_ATTEMPTS
             && self.held.is_none()
             && !self.paused_draft
+            && self.team.as_ref().is_none_or(TeamState::ready_to_publish)
     }
 
     pub fn resumable(&self) -> bool {
@@ -154,6 +259,14 @@ impl Pickup {
 
     pub fn occupies(&self) -> bool {
         self.status.is_live() && !self.run_exited
+    }
+
+    pub fn has_live_team(&self) -> bool {
+        self.team.as_ref().is_some_and(|t| !t.all_exited())
+    }
+
+    pub fn listed(&self) -> bool {
+        !self.released || (self.team.is_some() && self.status.is_live())
     }
 }
 
@@ -169,6 +282,8 @@ pub struct State {
     pub skips: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub taken_notes: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub team_requests: Vec<TeamRequest>,
 }
 
 pub fn paused_resumable(state: &State) -> Vec<String> {
@@ -204,7 +319,7 @@ pub fn save(paths: &Paths, state: &mut State) -> Result<()> {
     if released > KEEP_RELEASED {
         let mut drop = released - KEEP_RELEASED;
         state.pickups.retain(|p| {
-            if drop > 0 && p.released && !p.occupies() {
+            if drop > 0 && p.released && !p.occupies() && !p.has_live_team() {
                 drop -= 1;
                 false
             } else {

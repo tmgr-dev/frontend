@@ -43,6 +43,15 @@ pub fn session(id: &str, state: Value) -> Value {
   })
 }
 
+pub fn team_sessions(of: &str) -> Vec<Value> {
+  let member = |id: &str, role: Value| {
+    let mut s = session(id, json!({"kind": "working", "since_ms": 1}));
+    s["team"] = json!({"role": role, "of": of});
+    s
+  };
+  vec![member("s_bcdfghjkmn", json!({"worker": 1})), member("s_pqrstvwxyz", json!("lead")), member("s_bcdfghjkmp", json!({"worker": 2}))]
+}
+
 fn handshake(s: &mut UnixStream, mock: &Mock) -> Option<Value> {
   if mock.standard() {
     let hello = server::handshake_server(s, &mock.secret, "0.1.0").ok()?;

@@ -1,6 +1,9 @@
 import {
+	calendarDate,
+	cutCodePoints,
 	ICON_NAMES,
 	isLinkAllowed,
+	MAX_TEXTAREA_VALUE,
 	NO_LINKS,
 	sanitizeTree,
 	type LinkContext,
@@ -1457,5 +1460,894 @@ describe('collapse, tabs, segmented, buttons and icons (API 1.8)', () => {
 		const tree = t8({ type: 'stack', children: wide(5) });
 		const rendered = JSON.stringify(tree).match(/"type"/g)!.length;
 		expect(rendered).toBeLessThanOrEqual(3000);
+	});
+});
+
+describe('input, select and checkbox (API 1.9)', () => {
+	const t9 = (value: unknown, minor = 9) =>
+		sanitizeTree(value, NO_LINKS, minor) as any;
+	const input = { type: 'input', name: 'q', command: 'p.go' };
+	const select = {
+		type: 'select',
+		name: 's',
+		command: 'p.go',
+		options: [{ value: 'a', text: 'A' }],
+	};
+	const checkbox = { type: 'checkbox', name: 'c', label: 'L', command: 'p.go' };
+
+	it.each([input, select, checkbox])(
+		'drops %j at 1.8 and keeps it at 1.9',
+		(node) => {
+			expect(t9(node, 8)).toBeNull();
+			expect(t9(node, 9)).not.toBeNull();
+		},
+	);
+
+	it.each([input, select, checkbox])(
+		'rejects bad names, missing commands and bad args for %j',
+		(node) => {
+			for (const name of ['', 'a b', 'x'.repeat(65), 'a<b', 5, undefined]) {
+				expect(t9({ ...node, name })).toBeNull();
+			}
+			expect(t9({ ...node, name: 'A_b.c-1' })).not.toBeNull();
+			expect(t9({ ...node, command: '' })).toBeNull();
+			expect(t9({ ...node, command: undefined })).toBeNull();
+			expect(t9({ ...node, args: { big: 'x'.repeat(9000) } })).toBeNull();
+			expect(t9({ ...node, args: { k: 1 } }).args).toEqual({ k: 1 });
+		},
+	);
+
+	it('does not pass the name or unknown fields to the node', () => {
+		const out = t9({
+			...input,
+			type: 'input',
+			inputType: 'password',
+			autocomplete: 'on',
+			id: 'x',
+			html: '<b>',
+		});
+		expect(Object.keys(out).sort()).toEqual([
+			'command',
+			'debounce',
+			'mode',
+			'name',
+			'type',
+			'value',
+		]);
+		expect(JSON.stringify(t9({ ...input, type: 'password' }))).toBe('null');
+	});
+
+	describe('input', () => {
+		it('clamps value and placeholder', () => {
+			const out = t9({
+				...input,
+				value: 'v'.repeat(900),
+				placeholder: 'p'.repeat(900),
+			});
+			expect(out.value).toHaveLength(500);
+			expect(out.placeholder).toHaveLength(200);
+			expect(t9(input).value).toBe('');
+			expect(t9({ ...input, value: 5 }).value).toBe('');
+		});
+
+		it('defaults the mode and clamps the debounce', () => {
+			expect(t9(input).mode).toBe('change');
+			expect(t9({ ...input, mode: 'weird' }).mode).toBe('change');
+			expect(t9({ ...input, mode: 'submit' }).mode).toBe('submit');
+			expect(t9(input).debounce).toBe(300);
+			expect(t9({ ...input, debounce: 1 }).debounce).toBe(150);
+			expect(t9({ ...input, debounce: 99999 }).debounce).toBe(2000);
+			expect(t9({ ...input, debounce: 500 }).debounce).toBe(500);
+			expect(t9({ ...input, debounce: 'fast' }).debounce).toBe(300);
+			expect(t9({ ...input, debounce: NaN }).debounce).toBe(300);
+		});
+	});
+
+	describe('select', () => {
+		const opts = (n: number) =>
+			Array.from({ length: n }, (_, i) => ({ value: `v${i}`, text: `T${i}` }));
+
+		it('keeps at most 100 options and drops repeated values', () => {
+			expect(t9({ ...select, options: opts(150) }).options).toHaveLength(100);
+			expect(
+				t9({
+					...select,
+					options: [
+						{ value: 'a', text: 'A' },
+						{ value: 'a', text: 'B' },
+						{ value: 'b', text: 'C' },
+					],
+				}).options.map((o: any) => o.value),
+			).toEqual(['a', 'b']);
+		});
+
+		it('is dropped without usable options', () => {
+			expect(t9({ ...select, options: [] })).toBeNull();
+			expect(t9({ ...select, options: 'a' })).toBeNull();
+			expect(t9({ ...select, options: [{ value: 1, text: 'x' }] })).toBeNull();
+		});
+
+		it('only keeps a value that is one of its options', () => {
+			expect(t9({ ...select, value: 'a' }).value).toBe('a');
+			expect(t9({ ...select, value: 'zz' }).value).toBeNull();
+		});
+
+		it('clamps the placeholder', () => {
+			expect(
+				t9({ ...select, placeholder: 'p'.repeat(900) }).placeholder,
+			).toHaveLength(200);
+		});
+	});
+
+	describe('checkbox', () => {
+		it('needs a label and defaults to unchecked', () => {
+			expect(t9({ ...checkbox, label: undefined })).toBeNull();
+			expect(t9(checkbox).checked).toBe(false);
+			expect(t9({ ...checkbox, checked: 'yes' }).checked).toBe(false);
+			expect(t9({ ...checkbox, checked: true }).checked).toBe(true);
+		});
+	});
+
+	it('spends the shared node budget', () => {
+		const many = Array.from({ length: 3500 }, () => input);
+		const out = t9({ type: 'stack', children: many });
+		expect(out.children.length).toBeLessThan(3500);
+	});
+});
+
+describe('feeds and data nodes (API 1.10)', () => {
+	const t10 = (value: unknown, minor = 10) =>
+		sanitizeTree(value, NO_LINKS, minor) as any;
+	const col = { key: 'a', title: 'A' };
+	const table = (
+		extra: object = {},
+		row: object = {},
+		column: object = {},
+	) => ({
+		type: 'table',
+		columns: [{ ...col, ...column }],
+		rows: [{ cells: { a: 'x' }, ...row }],
+		...extra,
+	});
+
+	describe('gating', () => {
+		it.each([
+			{ type: 'timeline', items: [{ at: 'now', text: 't' }] },
+			{ type: 'messages', items: [{ author: 'a', text: 't' }] },
+			{ type: 'sparkline', values: [1, 2] },
+			{ type: 'empty', title: 'x' },
+			{ type: 'skeleton' },
+		])('drops $type at minor 9', (node) => {
+			expect(t10(node, 9)).toBeNull();
+			expect(t10(node)).not.toBeNull();
+		});
+
+		it('ignores the new table fields at minor 9', () => {
+			const out = t10(
+				table(
+					{},
+					{
+						color: 'red',
+						sort: { a: 1 },
+						onClick: { command: 'p.go' },
+						expand: ['x'],
+					},
+					{ align: 'right', width: 'sm', sortable: true },
+				),
+				9,
+			);
+			expect(out.columns[0]).toEqual(col);
+			expect(out.rows[0]).toEqual({ cells: { a: expect.any(Object) } });
+		});
+	});
+
+	describe('timeline', () => {
+		const item = { at: '2026-01-01', title: 'T', text: 'body', tone: 'green' };
+		it('keeps valid items and defaults the tone', () => {
+			const out = t10({
+				type: 'timeline',
+				items: [item, { at: 'x', text: 'y', tone: 'neon' }],
+			});
+			expect(out.items[0]).toEqual(item);
+			expect(out.items[1].tone).toBe('gray');
+		});
+
+		it('drops items without at or text', () => {
+			const out = t10({
+				type: 'timeline',
+				items: [{ text: 'y' }, { at: 'x' }, { at: 5, text: 'y' }, item],
+			});
+			expect(out.items).toHaveLength(1);
+		});
+
+		it('clamps strings and the item count', () => {
+			const out = t10({
+				type: 'timeline',
+				items: Array.from({ length: 300 }, () => ({
+					at: 'a'.repeat(100),
+					title: 't'.repeat(500),
+					text: 'x'.repeat(5000),
+				})),
+			});
+			expect(out.items).toHaveLength(200);
+			expect(out.items[0].at).toHaveLength(64);
+			expect(out.items[0].title).toHaveLength(200);
+			expect(out.items[0].text).toHaveLength(1000);
+		});
+	});
+
+	describe('messages', () => {
+		it('defaults the side and clamps author and text', () => {
+			const out = t10({
+				type: 'messages',
+				items: [
+					{ author: 'a'.repeat(200), text: 'x'.repeat(5000), at: 'now' },
+					{ author: 'b', text: 'y', side: 'right' },
+					{ author: 'c', text: 'z', side: 'middle' },
+				],
+			});
+			expect(out.items[0].author).toHaveLength(64);
+			expect(out.items[0].text).toHaveLength(1000);
+			expect(out.items.map((i: any) => i.side)).toEqual([
+				'left',
+				'right',
+				'left',
+			]);
+			expect(out.items[1].at).toBeUndefined();
+		});
+
+		it('caps at 200 items', () => {
+			expect(
+				t10({ type: 'messages', items: [{ text: 'y' }, { author: 'a' }] })
+					.items,
+			).toEqual([]);
+			const out = t10({
+				type: 'messages',
+				items: [
+					...Array.from({ length: 250 }, () => ({ author: 'a', text: 'b' })),
+				],
+			});
+			expect(out.items).toHaveLength(200);
+		});
+	});
+
+	describe('table extensions', () => {
+		it('keeps valid align, width and sortable and drops unknown values', () => {
+			const ok = t10(
+				table({}, {}, { align: 'center', width: 'lg', sortable: true }),
+			);
+			expect(ok.columns[0]).toMatchObject({
+				align: 'center',
+				width: 'lg',
+				sortable: true,
+			});
+			const bad = t10(
+				table({}, {}, { align: 'top', width: 9999, sortable: 'yes' }),
+			);
+			expect(bad.columns[0]).toEqual(col);
+		});
+
+		it('keeps a row color from the closed list only', () => {
+			expect(t10(table({}, { color: 'red' })).rows[0].color).toBe('red');
+			expect(t10(table({}, { color: 'pink' })).rows[0].color).toBeUndefined();
+		});
+
+		it('validates the row onClick like a button command', () => {
+			expect(
+				t10(table({}, { onClick: { command: 'p.go', args: { id: 1 } } }))
+					.rows[0].onClick,
+			).toEqual({ command: 'p.go', args: { id: 1 } });
+			for (const onClick of [
+				{},
+				{ command: '' },
+				{ command: 5 },
+				'p.go',
+				null,
+				{ command: 'p.go', args: 'x'.repeat(9000) },
+			]) {
+				expect(t10(table({}, { onClick })).rows[0].onClick).toBeUndefined();
+			}
+		});
+
+		it('keeps task rows', () => {
+			expect(t10(table({}, { taskId: 7 })).rows[0].taskId).toBe(7);
+		});
+
+		it('keeps sort values for known columns, finite numbers and clamped strings', () => {
+			const out = t10(table({}, { sort: { a: 5, b: 1, c: 'x'.repeat(500) } }));
+			expect(out.rows[0].sort).toEqual({ a: 5 });
+			expect(
+				t10(table({}, { sort: { a: 'y'.repeat(500) } })).rows[0].sort.a,
+			).toHaveLength(200);
+			expect(
+				t10(table({}, { sort: { a: Infinity } })).rows[0].sort,
+			).toBeUndefined();
+			expect(t10(table({}, { sort: { a: {} } })).rows[0].sort).toBeUndefined();
+		});
+
+		it('sanitizes the expand subtree', () => {
+			const out = t10(
+				table(
+					{},
+					{
+						expand: [
+							{ type: 'text', text: 'hi' },
+							{ type: 'script', src: 'x' },
+							'plain',
+						],
+					},
+				),
+			);
+			expect(out.rows[0].expand.map((n: any) => n.type)).toEqual([
+				'text',
+				'text',
+			]);
+		});
+
+		it('limits the depth of expanded nodes', () => {
+			let deep: any = { type: 'text', text: 'leaf' };
+			for (let i = 0; i < 12; i++) deep = { type: 'stack', children: [deep] };
+			const out = t10(table({}, { expand: [deep] }));
+			let depth = 0;
+			let cur = out.rows[0].expand[0];
+			while (cur?.children?.[0]) {
+				cur = cur.children[0];
+				depth++;
+			}
+			expect(depth).toBeLessThan(8);
+			expect(JSON.stringify(out)).not.toContain('leaf');
+		});
+
+		it('counts rows and expanded nodes against the shared budget', () => {
+			const rows = Array.from({ length: 500 }, () => ({
+				cells: { a: 'x' },
+				expand: Array.from({ length: 20 }, () => 'e'),
+			}));
+			const out = t10({
+				type: 'stack',
+				children: Array.from({ length: 5 }, () => table({ rows })),
+			});
+			const rendered = JSON.stringify(out).match(/"type"/g)!.length;
+			expect(rendered).toBeLessThanOrEqual(3000);
+		});
+	});
+
+	describe('sparkline', () => {
+		it('drops non-finite values and caps at 365', () => {
+			const out = t10({
+				type: 'sparkline',
+				values: [1, NaN, Infinity, 'x', null, 2, ...Array(500).fill(3)],
+			});
+			expect(out.values).toHaveLength(365);
+			expect(out.values.slice(0, 2)).toEqual([1, 2]);
+		});
+
+		it('defaults the color, clamps the label and accepts no values', () => {
+			const out = t10({
+				type: 'sparkline',
+				values: 'nope',
+				color: 'neon',
+				label: 'l'.repeat(500),
+			});
+			expect(out.values).toEqual([]);
+			expect(out.color).toBe('blue');
+			expect(out.label).toHaveLength(200);
+			expect(t10({ type: 'sparkline', values: [1], color: 'red' }).color).toBe(
+				'red',
+			);
+		});
+
+		it('spends the shared budget per value', () => {
+			const out = t10({
+				type: 'stack',
+				children: Array.from({ length: 10 }, () => ({
+					type: 'sparkline',
+					values: Array(365).fill(1),
+				})),
+			});
+			const total = out.children.reduce(
+				(sum: number, c: any) => sum + c.values.length,
+				0,
+			);
+			expect(total).toBeLessThan(3000);
+		});
+	});
+
+	describe('empty', () => {
+		it('needs a title and whitelists the icon', () => {
+			expect(t10({ type: 'empty' })).toBeNull();
+			expect(t10({ type: 'empty', title: '  ' })).toBeNull();
+			const out = t10({
+				type: 'empty',
+				title: 'T'.repeat(500),
+				text: 'x'.repeat(5000),
+				icon: 'info',
+			});
+			expect(out.title).toHaveLength(200);
+			expect(out.text).toHaveLength(1000);
+			expect(out.icon).toBe('info');
+			expect(
+				t10({ type: 'empty', title: 'T', icon: 'nope' }).icon,
+			).toBeUndefined();
+		});
+	});
+
+	describe('skeleton', () => {
+		it('defaults the variant and clamps lines', () => {
+			expect(t10({ type: 'skeleton' })).toEqual({
+				type: 'skeleton',
+				variant: 'text',
+				lines: 3,
+			});
+			expect(t10({ type: 'skeleton', variant: 'x' }).variant).toBe('text');
+			expect(t10({ type: 'skeleton', variant: 'table' }).variant).toBe('table');
+			expect(t10({ type: 'skeleton', lines: 99 }).lines).toBe(12);
+			expect(t10({ type: 'skeleton', lines: 0 }).lines).toBe(1);
+			expect(t10({ type: 'skeleton', lines: NaN }).lines).toBe(3);
+		});
+	});
+});
+
+describe('textarea and date (API 1.11)', () => {
+	const t11 = (value: unknown, minor = 11) =>
+		sanitizeTree(value, NO_LINKS, minor) as any;
+	const area = { type: 'textarea', name: 'note', command: 'p.go' };
+	const date = { type: 'date', name: 'due', command: 'p.go' };
+
+	it.each([area, date])('drops %j at 1.10 and keeps it at 1.11', (node) => {
+		expect(t11(node, 10)).toBeNull();
+		expect(t11(node, 11)).not.toBeNull();
+	});
+
+	it.each([area, date])(
+		'rejects bad names, commands and args for %j',
+		(node) => {
+			for (const name of ['', 'a b', 'x'.repeat(65), 5, undefined]) {
+				expect(t11({ ...node, name })).toBeNull();
+			}
+			expect(t11({ ...node, command: '' })).toBeNull();
+			expect(t11({ ...node, args: { big: 'x'.repeat(9000) } })).toBeNull();
+			expect(t11({ ...node, args: { k: 1 } }).args).toEqual({ k: 1 });
+		},
+	);
+
+	it('exports the textarea cap', () => {
+		expect(MAX_TEXTAREA_VALUE).toBe(5000);
+	});
+
+	describe('textarea', () => {
+		it('defaults and drops unknown fields', () => {
+			expect(
+				t11({ ...area, type: 'textarea', html: '<b>', inputType: 'x' }),
+			).toEqual({
+				type: 'textarea',
+				name: 'note',
+				value: '',
+				rows: 4,
+				command: 'p.go',
+			});
+		});
+
+		it('cuts the value to 5000 code points without splitting a pair', () => {
+			const out = t11({ ...area, value: '😀'.repeat(6000) }).value;
+			expect(Array.from(out)).toHaveLength(5000);
+			expect(out).toBe('😀'.repeat(5000));
+			expect(t11({ ...area, value: '漢'.repeat(5000) }).value).toHaveLength(
+				5000,
+			);
+			expect(t11({ ...area, value: 5 }).value).toBe('');
+		});
+
+		it('keeps newlines in the value', () => {
+			expect(t11({ ...area, value: 'a\nb' }).value).toBe('a\nb');
+		});
+
+		it('clamps rows to 2..12', () => {
+			expect(t11({ ...area, rows: 1 }).rows).toBe(2);
+			expect(t11({ ...area, rows: 99 }).rows).toBe(12);
+			expect(t11({ ...area, rows: 7 }).rows).toBe(7);
+			expect(t11({ ...area, rows: 5.4 }).rows).toBe(5);
+			expect(t11({ ...area, rows: '7' }).rows).toBe(4);
+			expect(t11({ ...area, rows: NaN }).rows).toBe(4);
+		});
+
+		it('clamps the placeholder and submit text', () => {
+			expect(
+				Array.from(
+					t11({ ...area, placeholder: '\u{1F600}'.repeat(201) }).placeholder,
+				),
+			).toHaveLength(200);
+			expect(
+				t11({ ...area, submitText: 's'.repeat(90) }).submitText,
+			).toHaveLength(40);
+			expect(t11({ ...area, submitText: '  ' })).not.toHaveProperty(
+				'submitText',
+			);
+			expect(t11({ ...area, submitText: 5 })).not.toHaveProperty('submitText');
+			expect(t11({ ...area, submitText: ' Post ' }).submitText).toBe('Post');
+		});
+	});
+
+	describe('date', () => {
+		it('keeps real calendar dates only', () => {
+			expect(t11({ ...date, value: '2026-02-28' }).value).toBe('2026-02-28');
+			expect(t11({ ...date, value: '2024-02-29' }).value).toBe('2024-02-29');
+			for (const value of [
+				'2026-02-30',
+				'2025-02-29',
+				'2026-13-01',
+				'2026-00-10',
+				'2026-04-31',
+				'0999-12-31',
+				'10000-01-01',
+				'2026-1-5',
+				'2026/01/05',
+				'2026-01-05T00:00',
+				' 2026-01-05',
+				5,
+				null,
+			]) {
+				expect(t11({ ...date, value }).value).toBeNull();
+			}
+			expect(t11({ ...date, value: '1000-01-01' }).value).toBe('1000-01-01');
+			expect(t11({ ...date, value: '9999-12-31' }).value).toBe('9999-12-31');
+		});
+
+		it('defaults to no value and no bounds', () => {
+			expect(t11(date)).toEqual({
+				type: 'date',
+				name: 'due',
+				value: null,
+				command: 'p.go',
+			});
+		});
+
+		it('drops invalid min and max', () => {
+			const out = t11({ ...date, min: '2026-02-30', max: '2026-03-01' });
+			expect(out).not.toHaveProperty('min');
+			expect(out.max).toBe('2026-03-01');
+		});
+
+		it('drops both bounds when min is after max', () => {
+			const out = t11({ ...date, min: '2026-05-01', max: '2026-04-01' });
+			expect(out).not.toHaveProperty('min');
+			expect(out).not.toHaveProperty('max');
+			expect(t11({ ...date, min: '2026-04-01', max: '2026-04-01' }).min).toBe(
+				'2026-04-01',
+			);
+		});
+
+		it('nulls a value outside the bounds', () => {
+			const bounds = { min: '2026-01-10', max: '2026-01-20' };
+			expect(t11({ ...date, ...bounds, value: '2026-01-09' }).value).toBeNull();
+			expect(t11({ ...date, ...bounds, value: '2026-01-21' }).value).toBeNull();
+			expect(t11({ ...date, ...bounds, value: '2026-01-10' }).value).toBe(
+				'2026-01-10',
+			);
+			expect(t11({ ...date, ...bounds, value: '2026-01-20' }).value).toBe(
+				'2026-01-20',
+			);
+		});
+	});
+
+	it('helpers cut and validate directly', () => {
+		expect(cutCodePoints('a😀b', 2)).toBe('a😀');
+		expect(cutCodePoints('a😀b', 1)).toBe('a');
+		expect(cutCodePoints('ab', 5)).toBe('ab');
+		expect(calendarDate('2026-12-31')).toBe('2026-12-31');
+		expect(calendarDate('2026-12-32')).toBeNull();
+	});
+
+	it('spends the shared node budget and depth', () => {
+		const many = Array.from({ length: 3500 }, () => area);
+		expect(t11({ type: 'stack', children: many }).children.length).toBeLessThan(
+			3500,
+		);
+		let nested: any = date;
+		for (let i = 0; i < 9; i++) nested = { type: 'stack', children: [nested] };
+		expect(JSON.stringify(t11(nested))).not.toContain('"date"');
+	});
+});
+
+describe('chart node (API 1.12)', () => {
+	const t12 = (value: unknown, minor = 12) =>
+		sanitizeTree(value, NO_LINKS, minor) as any;
+	const chart = (extra: object = {}) => ({
+		type: 'chart',
+		labels: ['a', 'b', 'c'],
+		series: [{ name: 'S', values: [1, 2, 3] }],
+		...extra,
+	});
+
+	it('is dropped before minor 12', () => {
+		expect(t12(chart(), 11)).toBeNull();
+		expect(t12(chart(), 10)).toBeNull();
+		expect(t12(chart())).not.toBeNull();
+	});
+
+	it('applies defaults', () => {
+		expect(t12(chart())).toEqual({
+			type: 'chart',
+			kind: 'bar',
+			labels: ['a', 'b', 'c'],
+			series: [{ name: 'S', values: [1, 2, 3], color: 'blue' }],
+			height: 200,
+		});
+		expect(t12(chart({ kind: 'pie' })).kind).toBe('bar');
+		expect(t12(chart({ kind: 'line' })).kind).toBe('line');
+	});
+
+	it('picks default colors per series and keeps valid ones', () => {
+		const out = t12(
+			chart({
+				series: [
+					{ name: 'A', values: [1] },
+					{ name: 'B', values: [1], color: 'red' },
+					{ name: 'C', values: [1], color: 'neon' },
+				],
+			}),
+		);
+		expect(out.series.map((s: any) => s.color)).toEqual([
+			'blue',
+			'red',
+			'green',
+		]);
+	});
+
+	it('stringifies and caps labels', () => {
+		const out = t12(
+			chart({
+				labels: [1.5, 'x'.repeat(100), null, {}, ...Array(400).fill('l')],
+				series: [{ name: 'S', values: [1] }],
+			}),
+		);
+		expect(out.labels).toHaveLength(365);
+		expect(out.labels.slice(0, 4)).toEqual(['1.5', 'x'.repeat(64), '', '']);
+	});
+
+	it('turns bad values into gaps, pads and cuts to the labels', () => {
+		const out = t12(
+			chart({
+				series: [
+					{ name: 'A', values: [1, NaN, 'x', Infinity, 5] },
+					{ name: 'B', values: [1] },
+				],
+			}),
+		);
+		expect(out.series[0].values).toEqual([1, null, null]);
+		expect(out.series[1].values).toEqual([1, null, null]);
+	});
+
+	it('numbers the labels when none are given', () => {
+		const out = t12({
+			type: 'chart',
+			series: [
+				{ name: 'A', values: [1, 2] },
+				{ name: 'B', values: [1, 2, 3, 4] },
+			],
+		});
+		expect(out.labels).toEqual(['1', '2', '3', '4']);
+		expect(out.series[0].values).toEqual([1, 2, null, null]);
+	});
+
+	it('limits series to 8 and requires a name', () => {
+		const out = t12(
+			chart({
+				series: [
+					{ values: [1] },
+					{ name: '  ', values: [1] },
+					'x',
+					...Array.from({ length: 12 }, (_, i) => ({
+						name: `${i}`.repeat(100),
+						values: [1],
+					})),
+				],
+			}),
+		);
+		expect(out.series).toHaveLength(8);
+		expect(out.series[0].name).toHaveLength(64);
+	});
+
+	it('drops the node without series or points', () => {
+		expect(t12(chart({ series: [] }))).toBeNull();
+		expect(t12(chart({ series: [{ values: [1] }] }))).toBeNull();
+		expect(
+			t12({ type: 'chart', series: [{ name: 'A', values: [] }] }),
+		).toBeNull();
+		expect(
+			t12(chart({ labels: [], series: [{ name: 'A', values: [] }] })),
+		).toBeNull();
+	});
+
+	it('clamps the height and the label', () => {
+		expect(t12(chart({ height: 10 })).height).toBe(120);
+		expect(t12(chart({ height: 9000 })).height).toBe(400);
+		expect(t12(chart({ height: 'tall' })).height).toBe(200);
+		expect(t12(chart({ label: 'l'.repeat(500) })).label).toHaveLength(200);
+	});
+
+	it('turns values beyond 1e15 into gaps', () => {
+		const out = t12(
+			chart({
+				labels: ['a', 'b', 'c', 'd'],
+				series: [{ name: 'S', values: [1e15, 1.1e15, -1e308, -1e15] }],
+			}),
+		);
+		expect(out.series[0].values).toEqual([1e15, null, null, -1e15]);
+	});
+
+	it('drops a chart cut short by the node budget', () => {
+		const big = () =>
+			chart({
+				labels: Array(100).fill('l'),
+				series: Array.from({ length: 8 }, (_, i) => ({
+					name: `s${i}`,
+					values: Array(100).fill(1),
+				})),
+			});
+		const out = t12({
+			type: 'stack',
+			children: Array.from({ length: 4 }, big),
+		});
+		expect(out.children.length).toBe(3);
+		for (const c of out.children) {
+			expect(c.series.every((s: any) => !s.values.includes(null))).toBe(true);
+		}
+		const alone = t12({
+			type: 'stack',
+			children: [
+				{ type: 'text', text: 'x' },
+				...Array.from({ length: 2990 }, () => ({ type: 'divider' })),
+				chart(),
+			],
+		});
+		expect(alone.children.some((n: any) => n.type === 'chart')).toBe(false);
+	});
+
+	it('spends the shared budget on labels, series and values', () => {
+		const big = () =>
+			chart({
+				labels: Array(365).fill('l'),
+				series: Array.from({ length: 8 }, (_, i) => ({
+					name: `s${i}`,
+					values: Array(365).fill(1),
+				})),
+			});
+		const out = t12({
+			type: 'stack',
+			children: Array.from({ length: 3 }, big),
+		});
+		const used = out.children.reduce(
+			(sum: number, c: any) =>
+				sum +
+				1 +
+				c.labels.length +
+				c.series.length +
+				c.series.reduce(
+					(n: number, s: any) =>
+						n + s.values.filter((v: unknown) => v !== null).length,
+					0,
+				),
+			0,
+		);
+		expect(used).toBeLessThanOrEqual(3000);
+		expect(out.children.length).toBeLessThan(3);
+	});
+});
+
+describe('Telegram links (API 1.13)', () => {
+	const TG: LinkContext = {
+		allowedDomains: [],
+		linksOpen: true,
+		schemes: ['tg'],
+	};
+	const link = (url: string, context = TG, minor = 13) =>
+		sanitizeTree({ type: 'link', url, text: 'Open' }, context, minor) as any;
+	const asText = { type: 'text', text: 'Open', tone: 'default' };
+	const GOOD = [
+		'tg://resolve?domain=telegram',
+		'tg://resolve?domain=durov&post=12&single&thread=3&comment=4&t=90',
+		'tg://privatepost?channel=1234567890&post=7',
+		'tg://join?invite=AbCdEfGh12_-',
+	];
+
+	it.each(GOOD)('opens %s on 1.13 with schemes', (url) => {
+		expect(link(url)).toEqual({
+			type: 'link',
+			url,
+			text: 'Open',
+			host: 'Telegram',
+		});
+		expect(isLinkAllowed(url, TG)).toBe(true);
+	});
+
+	it('renders as text on 1.12, without the scheme, or without links:open', () => {
+		const url = GOOD[0];
+		expect(link(url, TG, 12)).toEqual(asText);
+		expect(link(url, { ...TG, schemes: [] })).toEqual(asText);
+		expect(link(url, { allowedDomains: [], linksOpen: true })).toEqual(asText);
+		expect(link(url, { ...TG, linksOpen: false })).toEqual(asText);
+	});
+
+	it.each([
+		'tg://proxy?server=a&port=1&secret=b',
+		'tg://socks?server=a&port=1',
+		'tg://login?code=1',
+		'tg://passport?bot_id=1',
+		'tg://setlanguage?lang=en',
+		'tg://addstickers?set=x',
+		'tg://addtheme?slug=x',
+		'tg://settings',
+		'tg://confirmphone?phone=1&hash=2',
+		'tg://bg?color=ffffff',
+		'tg://msg_url?url=https://a.b',
+		'tg://resolve?domain=bot&startgroup=x&admin=change_info',
+		'tg://resolve?domain=bot&startapp=x',
+		'tg://resolve?domain=bot&start=abc-DEF_1',
+		'tg://resolve?domain=bot&start',
+		'tg://openmessage?user_id=42&message_id=9',
+		'tg://openmessage?chat_id=42',
+		'tg://resolve?domain=bot&phone=123',
+		'tg://resolve?domain=bot&post=1&post=2',
+		'TG://resolve?domain=telegram',
+		'Tg://resolve?domain=telegram',
+		'tg:resolve?domain=telegram',
+		'javascript:alert(1)',
+		'file:///etc/passwd',
+		'data:text/html,x',
+		'http://t.me/telegram',
+		'mailto:a@b.co',
+		'tmgr://resolve?domain=telegram',
+		'tmgrfile://x',
+		'custom://resolve?domain=telegram',
+		'tg://resolve?domain=tele gram',
+		'tg://resolve?domain=telegram\n',
+		'tg://resolve?domain=telegram\u0000',
+		'tg://resolve?domain=telegram#x',
+		'tg://resolve/x?domain=telegram',
+		'tg://user@resolve?domain=telegram',
+		'tg://user:pw@resolve?domain=telegram',
+		'tg://resolve:80?domain=telegram',
+		'tg://resolve?domain=%74elegram',
+		'tg://privatepost?channel=1',
+		'tg://join?invite=short',
+		`tg://resolve?domain=telegram&post=${'1'.repeat(2000)}`,
+	])('renders %j as plain text', (url) => {
+		expect(link(url)).toEqual(asText);
+		expect(isLinkAllowed(url, TG)).toBe(false);
+	});
+
+	it('keeps https behaviour for plugins without schemes', () => {
+		const https: LinkContext = {
+			allowedDomains: ['a.example.com'],
+			linksOpen: true,
+		};
+		expect(link('https://a.example.com/x', https).host).toBe('a.example.com');
+		expect(isLinkAllowed('https://a.example.com/x', TG)).toBe(false);
+	});
+
+	it('makes markdown links clickable only on 1.13', () => {
+		const md = (minor: number) =>
+			sanitizeTree(
+				{ type: 'markdown', text: '[chat](tg://resolve?domain=telegram)' },
+				TG,
+				minor,
+			) as any;
+		const inline = (tree: any) => tree.blocks[0].children;
+		expect(inline(md(13))).toEqual([
+			{
+				type: 'link',
+				url: 'tg://resolve?domain=telegram',
+				host: 'Telegram',
+				children: [{ type: 'text', text: 'chat' }],
+			},
+		]);
+		expect(inline(md(12))).toEqual([{ type: 'text', text: 'chat' }]);
+		const bad = sanitizeTree(
+			{ type: 'markdown', text: '[x](tg://proxy?server=a&port=1&secret=b)' },
+			TG,
+			13,
+		) as any;
+		expect(bad.blocks[0].children).toEqual([{ type: 'text', text: 'x' }]);
 	});
 });

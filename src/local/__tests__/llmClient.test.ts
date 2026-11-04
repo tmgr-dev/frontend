@@ -3,18 +3,23 @@ import { createLlmChat } from '../llmClient';
 type Handler = (e: { payload: { request_id: string; event: any } }) => void;
 
 let handler: Handler | null = null;
+let mockListenOptions: unknown = null;
 const mockInvoke = jest.fn();
 
 jest.mock('@tauri-apps/api/core', () => ({
 	invoke: (...args: unknown[]) => mockInvoke(...args),
 }));
 jest.mock('@tauri-apps/api/event', () => ({
-	listen: async (_name: string, fn: Handler) => {
+	listen: async (_name: string, fn: Handler, options?: unknown) => {
 		handler = fn;
+		mockListenOptions = options;
 		return () => {
 			handler = null;
 		};
 	},
+}));
+jest.mock('@tauri-apps/api/webviewWindow', () => ({
+	getCurrentWebviewWindow: () => ({ label: 'task-42' }),
 }));
 
 const order: string[] = [];
@@ -37,9 +42,21 @@ const drain = async (iterable: AsyncIterable<any>) => {
 beforeEach(() => {
 	mockInvoke.mockReset();
 	handler = null;
+	mockListenOptions = null;
 	mockResync = async () => {
 		order.push('resync');
 	};
+});
+
+describe('createLlmChat event routing', () => {
+	it('listens only to events sent to the current window', async () => {
+		mockInvoke.mockImplementation(async (command: string, args: any) => {
+			if (command === 'llm_chat') emit(args.requestId, { type: 'done' });
+		});
+		const { chat } = createLlmChat([], 1);
+		await drain(chat([]));
+		expect(mockListenOptions).toEqual({ target: 'task-42' });
+	});
 });
 
 describe('createLlmChat cancel', () => {

@@ -2,6 +2,7 @@ use crate::bundle::{open_at, open_root, Dir, Refusal};
 use std::fs::File;
 use std::io::Read;
 use std::os::fd::AsRawFd;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
 use tmgr_ipc::api::ErrorCode;
@@ -122,7 +123,7 @@ impl Repo {
         }
     }
 
-    fn check_clone(&self, dir: i32) -> Result<bool, Refusal> {
+    fn check_clone(&self, dir: i32, shown: &Path) -> Result<bool, Refusal> {
         let clone_git = open_at(dir, ".git", DIR).map_err(|_| {
             (
                 ErrorCode::InvalidParams,
@@ -130,6 +131,22 @@ impl Repo {
                     .to_string(),
             )
         })?;
+        match walk(&clone_git, &["objects"]).and_then(|o| shares_files(o, 0)) {
+            Ok(false) => {}
+            Ok(true) => {
+                return refuse(format!(
+                    "{} shares object files with another repository (it was cloned by tmgr before 1.0.63); \
+                     re-clone it or remove it. tmgr leaves the folder as it is",
+                    shown.display()
+                ))
+            }
+            Err(_) => {
+                return refuse(format!(
+                    "the object files of {} cannot be checked",
+                    shown.display()
+                ))
+            }
+        }
         let want = self.path.join(".git/objects");
         let want = want.to_str().unwrap_or("");
         let info = walk(&clone_git, &["objects", "info"]);
@@ -170,6 +187,72 @@ impl Repo {
     }
 }
 
+const MAX_DEPTH: u32 = 8;
+
+fn clear_errno() {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    unsafe {
+        *libc::__errno_location() = 0
+    };
+    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+    unsafe {
+        *libc::__error() = 0
+    };
+}
+
+fn shares_files(dir: File, depth: u32) -> std::io::Result<bool> {
+    if depth > MAX_DEPTH {
+        return Err(std::io::Error::other("too deep"));
+    }
+    let fd = dir.as_raw_fd();
+    let dup = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
+    if dup < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let stream = unsafe { libc::fdopendir(dup) };
+    if stream.is_null() {
+        let e = std::io::Error::last_os_error();
+        unsafe { libc::close(dup) };
+        return Err(e);
+    }
+    let mut names = Vec::new();
+    loop {
+        clear_errno();
+        let ent = unsafe { libc::readdir(stream) };
+        if ent.is_null() {
+            let e = std::io::Error::last_os_error();
+            if e.raw_os_error().is_some_and(|n| n != 0) {
+                unsafe { libc::closedir(stream) };
+                return Err(e);
+            }
+            break;
+        }
+        let name = unsafe { std::ffi::CStr::from_ptr((*ent).d_name.as_ptr()) };
+        if name != c"." && name != c".." {
+            names.push(name.to_owned());
+        }
+    }
+    unsafe { libc::closedir(stream) };
+    for name in names {
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstatat(fd, name.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        match st.st_mode & libc::S_IFMT {
+            libc::S_IFDIR => {
+                let sub = open_at(fd, std::ffi::OsStr::from_bytes(name.to_bytes()), DIR)?;
+                if shares_files(sub, depth + 1)? {
+                    return Ok(true);
+                }
+            }
+            libc::S_IFLNK => {}
+            _ if st.st_nlink > 1 => return Ok(true),
+            _ => {}
+        }
+    }
+    Ok(false)
+}
+
 fn folder_below(cwd: &Dir, root: &Path) -> Result<Vec<String>, Refusal> {
     let root_fd = open_root(root).map_err(|_| {
         (
@@ -201,7 +284,7 @@ fn folder_below(cwd: &Dir, root: &Path) -> Result<Vec<String>, Refusal> {
 pub fn check(cwd: &Dir, clone_of: &str) -> Result<Objects, Refusal> {
     let repo = Repo::open(clone_of)?;
     let rel = folder_below(cwd, &repo.worktrees())?;
-    let referenced = repo.check_clone(cwd.raw_fd())?;
+    let referenced = repo.check_clone(cwd.raw_fd(), &cwd.path)?;
     Ok(repo.objects(referenced && rel.len() == 1 && rel[0] != "queue"))
 }
 
@@ -259,8 +342,160 @@ pub fn check_multi(
                 format!("clone_of: {name} is not a real directory inside the run folder"),
             )
         })?;
-        let referenced = repo.check_clone(dir.as_raw_fd())?;
+        let referenced = repo.check_clone(dir.as_raw_fd(), &run.path.join(name))?;
         out.push(repo.objects(referenced && task_folder));
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bundle::open_path;
+    use std::process::Command;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let out = Command::new("git")
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{args:?}: {out:?}");
+    }
+
+    #[test]
+    fn a_team_member_clone_below_queue_pickup_is_accepted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        git(&repo, &["init", "-q", "-b", "main"]);
+        git(&repo, &["commit", "-q", "--allow-empty", "-m", "initial"]);
+        let pickup = root.join("repo-worktrees/queue/p_1");
+        std::fs::create_dir_all(&pickup).unwrap();
+        let src = repo.to_str().unwrap();
+        for member in ["lead", "w1"] {
+            let dest = pickup.join(member);
+            git(
+                &pickup,
+                &[
+                    "clone",
+                    "-q",
+                    "--no-local",
+                    "--reference",
+                    src,
+                    src,
+                    dest.to_str().unwrap(),
+                ],
+            );
+            let objects = check(&open_path(dest).unwrap(), src).unwrap();
+            assert!(!objects.task_clone);
+            assert_eq!(objects.path, repo.join(".git/objects"));
+        }
+    }
+
+    fn repo_at(root: &Path) -> PathBuf {
+        let repo = root.join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        git(&repo, &["init", "-q", "-b", "main"]);
+        std::fs::write(repo.join("a.txt"), "a\n").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-q", "-m", "a"]);
+        git(&repo, &["gc", "-q"]);
+        std::fs::write(repo.join("b.txt"), "b\n").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-q", "-m", "b"]);
+        repo
+    }
+
+    fn clone_at(repo: &Path, dest: &Path, hardlinked: bool) {
+        std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        let src = repo.to_str().unwrap();
+        let mut args = vec!["clone", "-q"];
+        if !hardlinked {
+            args.push("--no-local");
+        }
+        args.extend(["--reference", src, src, dest.to_str().unwrap()]);
+        git(dest.parent().unwrap(), &args);
+    }
+
+    fn linked_files(dir: &Path) -> usize {
+        let mut n = 0;
+        let mut todo = vec![dir.join(".git/objects")];
+        while let Some(d) = todo.pop() {
+            for e in std::fs::read_dir(&d).unwrap() {
+                let p = e.unwrap().path();
+                let m = std::fs::symlink_metadata(&p).unwrap();
+                if m.is_dir() {
+                    todo.push(p);
+                } else if m.nlink() > 1 {
+                    n += 1;
+                }
+            }
+        }
+        n
+    }
+
+    #[test]
+    fn a_clone_that_shares_object_files_with_its_source_is_refused_and_kept() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = repo_at(&root);
+        let dest = root.join("repo-worktrees/old");
+        clone_at(&repo, &dest, true);
+        std::fs::write(dest.join("wip.txt"), "uncommitted\n").unwrap();
+        assert!(linked_files(&dest) > 0);
+        let (code, msg) =
+            check(&open_path(dest.clone()).unwrap(), repo.to_str().unwrap()).unwrap_err();
+        assert_eq!(code, ErrorCode::InvalidParams);
+        assert!(msg.contains(dest.to_str().unwrap()), "{msg}");
+        assert!(msg.contains("re-clone it or remove it"), "{msg}");
+        assert!(dest.join("wip.txt").is_file());
+        assert!(linked_files(&dest) > 0);
+    }
+
+    #[test]
+    fn one_shared_object_file_is_enough_to_refuse() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = repo_at(&root);
+        let dest = root.join("repo-worktrees/fresh");
+        clone_at(&repo, &dest, false);
+        let src = repo.to_str().unwrap();
+        assert_eq!(linked_files(&dest), 0);
+        check(&open_path(dest.clone()).unwrap(), src).unwrap();
+        std::fs::write(dest.join("c.txt"), "c\n").unwrap();
+        git(&dest, &["add", "."]);
+        git(&dest, &["commit", "-q", "-m", "c"]);
+        git(&dest, &["commit-graph", "write", "--reachable"]);
+        let graph = dest.join(".git/objects/info/commit-graph");
+        assert!(graph.is_file());
+        std::fs::hard_link(&graph, root.join("graph-copy")).unwrap();
+        let (_, msg) = check(&open_path(dest.clone()).unwrap(), src).unwrap_err();
+        assert!(msg.contains(dest.to_str().unwrap()), "{msg}");
+        std::fs::remove_file(root.join("graph-copy")).unwrap();
+        check(&open_path(dest).unwrap(), src).unwrap();
+    }
+
+    #[test]
+    fn a_run_folder_with_one_shared_clone_is_refused_naming_that_clone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = repo_at(&root);
+        let run = root.join("repo-worktrees/task");
+        clone_at(&repo, &run.join("fe"), false);
+        clone_at(&repo, &run.join("be"), true);
+        let src = repo.to_str().unwrap().to_string();
+        let clones = vec![
+            ("fe".to_string(), src.clone()),
+            ("be".to_string(), src.clone()),
+        ];
+        let (_, msg) = check_multi(&open_path(run.clone()).unwrap(), &src, &clones).unwrap_err();
+        assert!(msg.contains(run.join("be").to_str().unwrap()), "{msg}");
+        let fresh = vec![("fe".to_string(), src.clone())];
+        check_multi(&open_path(run).unwrap(), &src, &fresh).unwrap();
+    }
 }

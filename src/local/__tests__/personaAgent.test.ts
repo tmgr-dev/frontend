@@ -1,4 +1,5 @@
 import { createLocalApi } from '../api';
+import * as dispatchModule from '../dispatch';
 import { dispatchLocal } from '../dispatch';
 import type { ChatMessage, ChatStreamEvent } from '../personaAgent';
 import {
@@ -699,5 +700,102 @@ describeSqlite('local persona agent loop', () => {
 				chat,
 			}),
 		).rejects.toThrow('agent-work run');
+	});
+	describe('when the finish call fails', () => {
+		const realDispatch = dispatchModule.dispatchLocal;
+		let warn: jest.SpyInstance;
+
+		const failFinishWith = (outcome: () => ReturnType<typeof realDispatch>) =>
+			jest
+				.spyOn(dispatchModule, 'dispatchLocal')
+				.mockImplementation((r, c, method, path, body) =>
+					/^agent-work\/\d+\/finish$/.test(path)
+						? outcome()
+						: realDispatch(r, c, method, path, body),
+				);
+
+		beforeEach(() => {
+			warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+		});
+
+		afterEach(() => {
+			jest.restoreAllMocks();
+		});
+
+		const outcomes: [string, () => ReturnType<typeof realDispatch>][] = [
+			[
+				'a 4xx',
+				async () => ({ status: 409, data: { message: 'secret body' } }) as any,
+			],
+			['no route', async () => undefined],
+			['a throw', () => Promise.reject(new Error('ipc down'))],
+		];
+
+		it.each(outcomes)(
+			'keeps the posted answer on %s and warns',
+			async (_name, outcome) => {
+				failFinishWith(outcome);
+				const chat = async function* (): AsyncIterable<ChatStreamEvent> {
+					yield { type: 'text', delta: 'Answer.' };
+				};
+				const result = await askPersonaOnTask({
+					ctx,
+					router,
+					persona,
+					taskId,
+					systemPrompt: 'x',
+					grantedPermissions: ['comments:write'],
+					chat,
+				});
+				expect(result).toMatchObject({ text: 'Answer.', posted: true });
+				const comments = await realDispatch(
+					router,
+					ctx,
+					'GET',
+					`tasks/${taskId}/comments`,
+				);
+				expect(comments!.data.data).toHaveLength(1);
+				expect(warn).toHaveBeenCalledTimes(1);
+				expect(String(warn.mock.calls[0][0])).not.toContain('secret body');
+			},
+		);
+
+		it.each(outcomes)(
+			'still throws the original error on %s',
+			async (_name, outcome) => {
+				failFinishWith(outcome);
+				const chat = async function* (): AsyncIterable<ChatStreamEvent> {
+					throw new Error('model exploded');
+				};
+				await expect(
+					runPersonaAgent({
+						ctx,
+						router,
+						persona,
+						taskId,
+						systemPrompt: 'x',
+						grantedPermissions: [],
+						chat,
+					}),
+				).rejects.toThrow('model exploded');
+				expect(warn).toHaveBeenCalledTimes(1);
+			},
+		);
+
+		it('does not warn when finish succeeds', async () => {
+			const chat = async function* (): AsyncIterable<ChatStreamEvent> {
+				yield { type: 'text', delta: 'Fine.' };
+			};
+			await runPersonaAgent({
+				ctx,
+				router,
+				persona,
+				taskId,
+				systemPrompt: 'x',
+				grantedPermissions: [],
+				chat,
+			});
+			expect(warn).not.toHaveBeenCalled();
+		});
 	});
 });

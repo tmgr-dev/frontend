@@ -229,9 +229,18 @@ impl Client {
     }
 
     pub fn send(&mut self, id: &str, text: &str) -> io::Result<()> {
+        self.send_with(id, text, false)
+    }
+
+    pub fn send_at_prompt(&mut self, id: &str, text: &str) -> io::Result<()> {
+        self.send_with(id, text, true)
+    }
+
+    fn send_with(&mut self, id: &str, text: &str, at_prompt: bool) -> io::Result<()> {
         let params = SendParams {
             id: id.into(),
             text: text.into(),
+            at_prompt,
         };
         self.call(method::SESSIONS_SEND, to_params(&params)?)
             .map(drop)

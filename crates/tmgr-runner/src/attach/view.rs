@@ -23,7 +23,7 @@ use crate::questions::Entry;
 use ratatui::layout::{Margin, Rect};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use tmgr_ipc::api::{MouseMode, State, StateKind};
+use tmgr_ipc::api::{MouseMode, State, StateKind, TeamLink, TeamRole};
 
 pub const SIDEBAR_WIDTH: u16 = 24;
 pub const MIN_SIDEBAR_WIDTH: u16 = 16;
@@ -196,6 +196,7 @@ pub struct ViewState {
     pub machines: Vec<Machine>,
     pub remote: HashMap<String, String>,
     pub leaders: HashMap<String, String>,
+    pub teams: HashMap<String, TeamLink>,
     collapsed_machines: HashSet<String>,
     group_order: Vec<String>,
     tabs: Vec<Tab>,
@@ -482,6 +483,7 @@ impl ViewState {
             machines: Vec::new(),
             remote: HashMap::new(),
             leaders: HashMap::new(),
+            teams: HashMap::new(),
             collapsed_machines: HashSet::new(),
             group_order: Vec::new(),
             tabs: Vec::new(),
@@ -929,7 +931,28 @@ impl ViewState {
         SidebarLayout { lines, new_row }
     }
 
+    pub fn team_label(&self, id: &str) -> Option<String> {
+        Some(match self.teams.get(id)?.role {
+            TeamRole::Lead => "lead".to_string(),
+            TeamRole::Worker(n) => format!("w{n}"),
+        })
+    }
+
+    pub fn set_teams(&mut self, area: Rect, teams: HashMap<String, TeamLink>) -> bool {
+        if self.teams == teams {
+            return false;
+        }
+        let before = self.sidebar_items(area);
+        self.teams = teams;
+        self.refresh_groups();
+        self.keep_sidebar_focus(area, &before);
+        true
+    }
+
     fn group_key(&self, id: &str) -> String {
+        if let Some(t) = self.teams.get(id) {
+            return format!("\0team:{}", t.of);
+        }
         self.locs
             .get(id)
             .map_or_else(|| format!("\0{id}"), |l| l.root.clone())
@@ -949,6 +972,14 @@ impl ViewState {
             }
         }
         out.retain(|(_, m)| !m.is_empty());
+        for (_, m) in out.iter_mut().filter(|(k, _)| k.starts_with("\0team:")) {
+            m.sort_by_key(|r| {
+                self.teams.get(&r.id).map_or(0, |t| match t.role {
+                    TeamRole::Lead => 0,
+                    TeamRole::Worker(n) => n,
+                })
+            });
+        }
         out
     }
 
@@ -1105,6 +1136,9 @@ impl ViewState {
     }
 
     pub fn group_title(&self, key: &str) -> Option<(String, Option<String>)> {
+        if let Some(of) = key.strip_prefix("\0team:") {
+            return Some((format!("team {of}"), None));
+        }
         let first = self
             .sessions
             .iter()

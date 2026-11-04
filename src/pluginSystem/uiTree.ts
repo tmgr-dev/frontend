@@ -1,10 +1,12 @@
 import { Lexer, type Token } from 'marked';
-import { PLUGIN_API_VERSION } from './manifest';
+import { isPublicHostName, PLUGIN_API_VERSION } from './manifest';
 
 export type Tone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
 export type Color =
 	'gray' | 'green' | 'yellow' | 'red' | 'blue' | 'purple' | 'orange';
 
+export type ColumnAlign = 'left' | 'center' | 'right';
+export type ColumnWidth = 'xs' | 'sm' | 'md' | 'lg';
 export type Gap = 'none' | 'sm' | 'md' | 'lg';
 export type Command = { command: string; args?: unknown };
 export type MenuItem = {
@@ -148,8 +150,49 @@ export type UiNode =
 	| { type: 'list'; items: UiNode[] }
 	| {
 			type: 'table';
-			columns: { key: string; title: string }[];
-			rows: { taskId?: number; cells: Record<string, UiNode> }[];
+			columns: {
+				key: string;
+				title: string;
+				align?: ColumnAlign;
+				width?: ColumnWidth;
+				sortable?: true;
+			}[];
+			rows: {
+				taskId?: number;
+				cells: Record<string, UiNode>;
+				sort?: Record<string, string | number>;
+				color?: Color;
+				onClick?: Command;
+				expand?: UiNode[];
+			}[];
+	  }
+	| {
+			type: 'timeline';
+			items: { at: string; title?: string; text: string; tone: Color }[];
+	  }
+	| {
+			type: 'messages';
+			items: {
+				author: string;
+				text: string;
+				at?: string;
+				side: 'left' | 'right';
+			}[];
+	  }
+	| { type: 'sparkline'; values: number[]; color: Color; label?: string }
+	| {
+			type: 'chart';
+			kind: 'bar' | 'line';
+			labels: string[];
+			series: { name: string; values: (number | null)[]; color: Color }[];
+			height: number;
+			label?: string;
+	  }
+	| { type: 'empty'; title: string; text?: string; icon?: IconName }
+	| {
+			type: 'skeleton';
+			variant: 'text' | 'card' | 'table';
+			lines: number;
 	  }
 	| {
 			type: 'button';
@@ -186,13 +229,66 @@ export type UiNode =
 			command: string;
 			args?: unknown;
 	  }
+	| {
+			type: 'input';
+			name: string;
+			placeholder?: string;
+			value: string;
+			command: string;
+			args?: unknown;
+			mode: 'change' | 'submit';
+			debounce: number;
+	  }
+	| {
+			type: 'select';
+			name: string;
+			options: { value: string; text: string }[];
+			value: string | null;
+			placeholder?: string;
+			command: string;
+			args?: unknown;
+	  }
+	| {
+			type: 'checkbox';
+			name: string;
+			label: string;
+			checked: boolean;
+			command: string;
+			args?: unknown;
+	  }
+	| {
+			type: 'textarea';
+			name: string;
+			value: string;
+			placeholder?: string;
+			rows: number;
+			submitText?: string;
+			command: string;
+			args?: unknown;
+	  }
+	| {
+			type: 'date';
+			name: string;
+			value: string | null;
+			min?: string;
+			max?: string;
+			command: string;
+			args?: unknown;
+	  }
 	| { type: 'taskLink'; taskId: number; text: string }
 	| { type: 'divider' }
 	| { type: 'copyable'; text: string; label?: string }
 	| { type: 'link'; url: string; text: string; host: string }
+	| { type: 'image'; src: string; alt: string; width?: number }
 	| { type: 'timeAgo'; at: string }
 	| { type: 'dueTime'; at: string }
 	| { type: 'keyValue'; items: { key: string; value: UiNode }[] };
+
+type UiTable = Extract<UiNode, { type: 'table' }>;
+type UiColumn = UiTable['columns'][number];
+type UiRow = UiTable['rows'][number];
+type UiTimelineItem = Extract<UiNode, { type: 'timeline' }>['items'][number];
+type UiMessage = Extract<UiNode, { type: 'messages' }>['items'][number];
 
 const TONES: Tone[] = ['default', 'muted', 'success', 'warning', 'danger'];
 export const COLORS: Color[] = [
@@ -238,7 +334,48 @@ const MAX_BADGE_TEXT = 40;
 const MAX_BUTTON_GROUP = 12;
 const MAX_SEGMENTED_VALUE = 64;
 const MIN_SEGMENTED = 2;
+export const MAX_INPUT_VALUE = 500;
+export const MAX_TEXTAREA_VALUE = 5000;
+const MIN_TEXTAREA_ROWS = 2;
+const MAX_TEXTAREA_ROWS = 12;
+const DEFAULT_TEXTAREA_ROWS = 4;
+const MAX_SUBMIT_TEXT = 40;
+const MIN_DATE_YEAR = 1000;
+const MAX_INPUT_PLACEHOLDER = 200;
+const MAX_CONTROL_NAME = 64;
+const MAX_SELECT_OPTIONS = 100;
+const MAX_SELECT_VALUE = 200;
+export const DEBOUNCE_MIN = 150;
+export const DEBOUNCE_MAX = 2000;
+export const DEBOUNCE_DEFAULT = 300;
+const CONTROL_NAME = /^[A-Za-z0-9_.-]+$/;
 const MAX_SEGMENTED = 4;
+const MAX_FEED_ITEMS = 200;
+const MAX_AUTHOR = 64;
+const MAX_SPARKLINE_VALUES = 365;
+const MAX_CHART_POINTS = 365;
+const MAX_CHART_SERIES = 8;
+const MAX_CHART_TEXT = 64;
+const MAX_CHART_VALUE = 1e15;
+export const CHART_MIN_HEIGHT = 120;
+export const CHART_MAX_HEIGHT = 400;
+export const CHART_DEFAULT_HEIGHT = 200;
+export const CHART_SERIES_COLORS: Color[] = [
+	'blue',
+	'orange',
+	'green',
+	'purple',
+	'red',
+	'yellow',
+	'gray',
+];
+const MAX_ROW_EXPAND = 50;
+const MAX_SORT_TEXT = 200;
+const MAX_SKELETON_LINES = 12;
+const DEFAULT_SKELETON_LINES = 3;
+const COLUMN_ALIGNS: ColumnAlign[] = ['left', 'center', 'right'];
+const COLUMN_WIDTHS: ColumnWidth[] = ['xs', 'sm', 'md', 'lg'];
+const SKELETON_VARIANTS = ['text', 'card', 'table'] as const;
 const CURRENT_API_MINOR = Number(PLUGIN_API_VERSION.split('.')[1]);
 
 const GAPS: Gap[] = ['none', 'sm', 'md', 'lg'];
@@ -269,13 +406,83 @@ const BUTTON_SIZES: ('sm' | 'md')[] = ['sm', 'md'];
 export interface LinkContext {
 	allowedDomains: string[];
 	linksOpen: boolean;
+	/** Only filled for API 1.13+ plugins that declared links.schemes. */
+	schemes?: readonly 'tg'[];
 }
 
 export const NO_LINKS: LinkContext = { allowedDomains: [], linksOpen: false };
 
-/** https only, and only a domain the plugin declared and has permission for. Shared by sanitizeTree and host.openLink. */
+const TG_MAX_LENGTH = 2000;
+const TG_ASCII = /^[\x21-\x7e]+$/;
+const TG_DIGITS = /^\d{1,20}$/;
+const TG_USERNAME = /^[A-Za-z][A-Za-z0-9_]{2,31}$/;
+const TG_INVITE = /^[A-Za-z0-9_-]{8,64}$/;
+const TG_TIMESTAMP = /^\d{1,10}$/;
+
+type TgParam = { kind: 'value'; test: RegExp } | { kind: 'flag' };
+const tgValue = (test: RegExp): TgParam => ({ kind: 'value', test });
+const TG_FLAG: TgParam = { kind: 'flag' };
+const TG_MESSAGE_PARAMS = {
+	post: tgValue(TG_DIGITS),
+	single: TG_FLAG,
+	thread: tgValue(TG_DIGITS),
+	comment: tgValue(TG_DIGITS),
+	t: tgValue(TG_TIMESTAMP),
+};
+
+/** Telegram deep links that only open a chat or a post; everything that changes state or settings is absent. */
+const TG_ACTIONS: Record<
+	string,
+	{ params: Record<string, TgParam>; required: string[][] }
+> = {
+	resolve: {
+		params: {
+			domain: tgValue(TG_USERNAME),
+			profile: TG_FLAG,
+			...TG_MESSAGE_PARAMS,
+		},
+		required: [['domain']],
+	},
+	privatepost: {
+		params: { channel: tgValue(TG_DIGITS), ...TG_MESSAGE_PARAMS },
+		required: [['channel'], ['post']],
+	},
+	join: {
+		params: { invite: tgValue(TG_INVITE) },
+		required: [['invite']],
+	},
+};
+
+/** `tg://<action>?<query>` with a known action, known keys, plain values, no userinfo, port, path or fragment. */
+export const isTgLink = (url: string): boolean => {
+	if (url.length > TG_MAX_LENGTH || !TG_ASCII.test(url)) return false;
+	const match = url.match(/^tg:\/\/([a-z]+)\?([^?#]*)$/);
+	if (!match) return false;
+	const action = Object.prototype.hasOwnProperty.call(TG_ACTIONS, match[1])
+		? TG_ACTIONS[match[1]]
+		: null;
+	if (!action) return false;
+	const seen = new Set<string>();
+	for (const pair of match[2].split('&')) {
+		const eq = pair.indexOf('=');
+		const key = eq === -1 ? pair : pair.slice(0, eq);
+		const param = Object.prototype.hasOwnProperty.call(action.params, key)
+			? action.params[key]
+			: null;
+		if (!param || seen.has(key)) return false;
+		seen.add(key);
+		if (param.kind === 'flag' ? eq !== -1 : eq === -1) return false;
+		if (param.kind === 'value' && !param.test.test(pair.slice(eq + 1)))
+			return false;
+	}
+	return action.required.every((keys) => keys.some((key) => seen.has(key)));
+};
+
+/** https to a declared domain, or (API 1.13, declared in links.schemes) a Telegram chat/post link. Shared by sanitizeTree and host.openLink. */
 export const isLinkAllowed = (url: string, context: LinkContext): boolean => {
 	if (!context.linksOpen) return false;
+	if (url.startsWith('tg:'))
+		return context.schemes?.includes('tg') === true && isTgLink(url);
 	let parsed: URL;
 	try {
 		parsed = new URL(url);
@@ -287,6 +494,95 @@ export const isLinkAllowed = (url: string, context: LinkContext): boolean => {
 		context.allowedDomains.includes(parsed.hostname)
 	);
 };
+
+/** Hosts a plugin declared in `images.allowedDomains`; remote pictures are fetched by the app, never by the page. */
+export interface ImageContext {
+	allowedDomains: string[];
+}
+
+export const NO_IMAGES: ImageContext = { allowedDomains: [] };
+
+export const MAX_IMAGE_DATA_BYTES = 512 * 1024;
+export const MAX_IMAGE_TREE_BYTES = 2 * 1024 * 1024;
+export const MAX_REMOTE_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_IMAGE_URL = 2000;
+const MAX_IMAGE_ALT = 200;
+const MIN_IMAGE_WIDTH = 16;
+const MAX_IMAGE_WIDTH = 800;
+const IMAGE_MIN_MINOR = 13;
+
+export const IMAGE_MIMES = [
+	'image/png',
+	'image/jpeg',
+	'image/gif',
+	'image/webp',
+] as const;
+export type ImageMime = (typeof IMAGE_MIMES)[number];
+
+const DATA_IMAGE =
+	/^data:(image\/(?:png|jpeg|gif|webp));base64,((?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)$/;
+
+const magicMatches = (mime: ImageMime, head: string): boolean => {
+	switch (mime) {
+		case 'image/png':
+			return head.startsWith('\x89PNG');
+		case 'image/jpeg':
+			return head.startsWith('\xff\xd8\xff');
+		case 'image/gif':
+			return head.startsWith('GIF87a') || head.startsWith('GIF89a');
+		case 'image/webp':
+			return head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP';
+	}
+};
+
+/** A `data:image/(png|jpeg|gif|webp);base64,...` whose bytes really are that type; returns the decoded size. */
+export const checkImageData = (
+	src: string,
+	maxBytes: number = MAX_IMAGE_DATA_BYTES,
+): number | null => {
+	if (src.length > Math.ceil((maxBytes * 4) / 3) + 64) return null;
+	const match = DATA_IMAGE.exec(src);
+	if (!match) return null;
+	const body = match[2];
+	const bytes =
+		(body.length / 4) * 3 -
+		(body.endsWith('==') ? 2 : body.endsWith('=') ? 1 : 0);
+	if (bytes <= 0 || bytes > maxBytes || body.length < 16) return null;
+	let head: string;
+	try {
+		head = atob(body.slice(0, 16));
+	} catch {
+		return null;
+	}
+	return magicMatches(match[1] as ImageMime, head) ? bytes : null;
+};
+
+/** https, no userinfo or port, host declared by the plugin. Returns the host, or null. Shared by sanitizeTree and host.loadImage. */
+export const imageHostAllowed = (
+	src: string,
+	context: ImageContext,
+): string | null => {
+	if (src.length > MAX_IMAGE_URL || /[\s\u0000-\u001f\u007f]/.test(src))
+		return null;
+	let parsed: URL;
+	try {
+		parsed = new URL(src);
+	} catch {
+		return null;
+	}
+	if (
+		parsed.protocol !== 'https:' ||
+		parsed.username ||
+		parsed.password ||
+		parsed.port ||
+		!isPublicHostName(parsed.hostname) ||
+		!context.allowedDomains.includes(parsed.hostname)
+	)
+		return null;
+	return parsed.hostname;
+};
+const linkHost = (url: string): string =>
+	url.startsWith('tg:') ? 'Telegram' : new URL(url).hostname;
 
 const NAMED_ENTITIES: Record<string, string> = {
 	amp: '&',
@@ -392,7 +688,7 @@ const convertInline = (
 				let host: string | null = null;
 				if (isLinkAllowed(href, ctx.links)) {
 					try {
-						host = new URL(href).hostname;
+						host = linkHost(href);
 					} catch {
 						host = null;
 					}
@@ -566,6 +862,41 @@ const shortText = (value: unknown, max: number): string | undefined => {
 	return trimmed === '' ? undefined : trimmed;
 };
 
+export const clampDebounce = (value: unknown): number =>
+	typeof value === 'number' && Number.isFinite(value)
+		? Math.min(DEBOUNCE_MAX, Math.max(DEBOUNCE_MIN, Math.round(value)))
+		: DEBOUNCE_DEFAULT;
+
+export const cutCodePoints = (value: string, max: number): string => {
+	let end = 0;
+	for (let count = 0; end < value.length && count < max; count++) {
+		const unit = value.charCodeAt(end);
+		const pair =
+			unit >= 0xd800 &&
+			unit <= 0xdbff &&
+			(value.charCodeAt(end + 1) & 0xfc00) === 0xdc00;
+		end += pair ? 2 : 1;
+	}
+	return value.slice(0, end);
+};
+
+export const calendarDate = (value: unknown): string | null => {
+	if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+		return null;
+	const year = Number(value.slice(0, 4));
+	const month = Number(value.slice(5, 7));
+	const day = Number(value.slice(8, 10));
+	if (year < MIN_DATE_YEAR || month < 1 || month > 12 || day < 1) return null;
+	return day <= new Date(Date.UTC(year, month, 0)).getUTCDate() ? value : null;
+};
+
+const controlName = (value: unknown): string | null =>
+	typeof value === 'string' &&
+	value.length <= MAX_CONTROL_NAME &&
+	CONTROL_NAME.test(value)
+		? value
+		: null;
+
 const parseCommandArgs = (
 	value: any,
 ): { command: string; args?: unknown } | null => {
@@ -618,8 +949,12 @@ export const sanitizeTree = (
 	raw: unknown,
 	context: LinkContext = NO_LINKS,
 	apiMinor: number = CURRENT_API_MINOR,
+	images: ImageContext = NO_IMAGES,
 ): UiNode | null => {
+	const links: LinkContext =
+		apiMinor >= 13 ? context : { ...context, schemes: [] };
 	let budget = MAX_NODES;
+	let imageBytes = MAX_IMAGE_TREE_BYTES;
 	let longBudget = MAX_LONG_TEXT_TOTAL;
 	let mdDeadline: number | null = null;
 	const longRoom = () =>
@@ -823,7 +1158,7 @@ export const sanitizeTree = (
 				}
 				const blocks = convertBlocks(
 					tokens,
-					{ take: () => budget-- > 0, links: context },
+					{ take: () => budget-- > 0, links },
 					0,
 				);
 				return { type: 'markdown', blocks };
@@ -887,11 +1222,31 @@ export const sanitizeTree = (
 				const columns = (
 					Array.isArray(value.columns) ? value.columns.slice(0, 12) : []
 				)
-					.map((c: any) => ({ key: text(c?.key), title: text(c?.title) }))
-					.filter(
-						(c: any): c is { key: string; title: string } =>
-							c.key !== null && c.title !== null,
-					);
+					.map((c: any) => {
+						const key = text(c?.key);
+						const title = text(c?.title);
+						if (key === null || title === null) return null;
+						const align =
+							apiMinor >= 10
+								? pickOptional(c?.align, COLUMN_ALIGNS)
+								: undefined;
+						const width =
+							apiMinor >= 10
+								? pickOptional(c?.width, COLUMN_WIDTHS)
+								: undefined;
+						const sortable =
+							apiMinor >= 10 && c?.sortable === true
+								? (true as const)
+								: undefined;
+						return {
+							key,
+							title,
+							...(align !== undefined ? { align } : {}),
+							...(width !== undefined ? { width } : {}),
+							...(sortable !== undefined ? { sortable } : {}),
+						};
+					})
+					.filter((c: any): c is UiColumn => c !== null);
 				const rows = (
 					Array.isArray(value.rows) ? value.rows.slice(0, MAX_ITEMS) : []
 				)
@@ -903,11 +1258,206 @@ export const sanitizeTree = (
 							const cell = node(row?.cells?.[key], depth + 1, cardDepth);
 							if (cell) cells[key] = cell;
 						}
-						return Number.isSafeInteger(row?.taskId) && row.taskId > 0
-							? { taskId: row.taskId, cells }
-							: { cells };
+						const out: UiRow = { cells };
+						if (Number.isSafeInteger(row?.taskId) && row.taskId > 0) {
+							out.taskId = row.taskId;
+						}
+						if (apiMinor >= 10) {
+							const color = pickOptional(row?.color, COLORS);
+							if (color !== undefined) out.color = color;
+							const onClick =
+								row?.onClick !== null && typeof row?.onClick === 'object'
+									? parseCommandArgs(row.onClick)
+									: null;
+							if (onClick) out.onClick = onClick;
+							const sort: Record<string, string | number> = {};
+							for (const { key } of columns) {
+								const v = row?.sort?.[key];
+								if (typeof v === 'number' && Number.isFinite(v)) sort[key] = v;
+								else if (typeof v === 'string')
+									sort[key] = v.slice(0, MAX_SORT_TEXT);
+							}
+							if (Object.keys(sort).length > 0) out.sort = sort;
+							const expand = (
+								Array.isArray(row?.expand)
+									? row.expand.slice(0, MAX_ROW_EXPAND)
+									: []
+							)
+								.map((child: any) => node(child, depth + 1, cardDepth))
+								.filter(
+									(child: UiNode | null): child is UiNode => child !== null,
+								);
+							if (expand.length > 0) out.expand = expand;
+						}
+						return out;
 					});
 				return { type: 'table', columns, rows };
+			}
+			case 'timeline': {
+				if (apiMinor < 10) return null;
+				const items = (
+					Array.isArray(value.items) ? value.items.slice(0, MAX_FEED_ITEMS) : []
+				)
+					.filter(() => budget-- > 0)
+					.map((item: any) => {
+						const at = shortText(item?.at, MAX_AT_LENGTH);
+						const t = text(item?.text);
+						if (at === undefined || t === null) return null;
+						const title = shortText(item?.title, MAX_TITLE);
+						return {
+							at,
+							text: t,
+							tone: pick(item?.tone, COLORS, 'gray'),
+							...(title !== undefined ? { title } : {}),
+						};
+					})
+					.filter((item: any): item is UiTimelineItem => item !== null);
+				return { type: 'timeline', items };
+			}
+			case 'messages': {
+				if (apiMinor < 10) return null;
+				const items = (
+					Array.isArray(value.items) ? value.items.slice(0, MAX_FEED_ITEMS) : []
+				)
+					.filter(() => budget-- > 0)
+					.map((item: any) => {
+						const author = shortText(item?.author, MAX_AUTHOR);
+						const t = text(item?.text);
+						if (author === undefined || t === null) return null;
+						const at = shortText(item?.at, MAX_AT_LENGTH);
+						return {
+							author,
+							text: t,
+							side:
+								item?.side === 'right' ? ('right' as const) : ('left' as const),
+							...(at !== undefined ? { at } : {}),
+						};
+					})
+					.filter((item: any): item is UiMessage => item !== null);
+				return { type: 'messages', items };
+			}
+			case 'sparkline': {
+				if (apiMinor < 10) return null;
+				const values: number[] = [];
+				for (const v of Array.isArray(value.values) ? value.values : []) {
+					if (values.length >= MAX_SPARKLINE_VALUES) break;
+					if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+					if (budget-- <= 0) break;
+					values.push(v);
+				}
+				const label = shortText(value.label, MAX_LABEL_LENGTH);
+				return {
+					type: 'sparkline',
+					values,
+					color: pick(value.color, COLORS, 'blue'),
+					...(label !== undefined ? { label } : {}),
+				};
+			}
+			case 'chart': {
+				if (apiMinor < 12) return null;
+				let cut = false;
+				const labels: string[] = [];
+				for (const raw of Array.isArray(value.labels) ? value.labels : []) {
+					if (labels.length >= MAX_CHART_POINTS) break;
+					if (budget-- <= 0) {
+						cut = true;
+						break;
+					}
+					labels.push(
+						typeof raw === 'string'
+							? raw.slice(0, MAX_CHART_TEXT)
+							: typeof raw === 'number' && Number.isFinite(raw)
+								? String(raw).slice(0, MAX_CHART_TEXT)
+								: '',
+					);
+				}
+				const series: Extract<UiNode, { type: 'chart' }>['series'] = [];
+				for (const entry of Array.isArray(value.series) ? value.series : []) {
+					if (series.length >= MAX_CHART_SERIES) break;
+					const name = shortText(entry?.name, MAX_CHART_TEXT);
+					if (name === undefined) continue;
+					if (budget-- <= 0) {
+						cut = true;
+						break;
+					}
+					const limit = labels.length > 0 ? labels.length : MAX_CHART_POINTS;
+					const values: (number | null)[] = [];
+					for (const v of Array.isArray(entry.values) ? entry.values : []) {
+						if (values.length >= limit) break;
+						if (budget-- <= 0) {
+							cut = true;
+							break;
+						}
+						values.push(
+							typeof v === 'number' && Math.abs(v) <= MAX_CHART_VALUE
+								? v
+								: null,
+						);
+					}
+					series.push({
+						name,
+						values,
+						color: pick(
+							entry.color,
+							COLORS,
+							CHART_SERIES_COLORS[series.length % CHART_SERIES_COLORS.length],
+						),
+					});
+				}
+				if (cut) return null;
+				const count =
+					labels.length > 0
+						? labels.length
+						: Math.max(0, ...series.map((s) => s.values.length));
+				if (series.length === 0 || count === 0) return null;
+				for (const s of series) {
+					while (s.values.length < count) s.values.push(null);
+				}
+				const names =
+					labels.length > 0
+						? labels
+						: Array.from({ length: count }, (_, i) => String(i + 1));
+				const height =
+					typeof value.height === 'number' && Number.isFinite(value.height)
+						? Math.min(
+								CHART_MAX_HEIGHT,
+								Math.max(CHART_MIN_HEIGHT, Math.round(value.height)),
+							)
+						: CHART_DEFAULT_HEIGHT;
+				const label = shortText(value.label, MAX_LABEL_LENGTH);
+				return {
+					type: 'chart',
+					kind: value.kind === 'line' ? 'line' : 'bar',
+					labels: names,
+					series,
+					height,
+					...(label !== undefined ? { label } : {}),
+				};
+			}
+			case 'empty': {
+				if (apiMinor < 10) return null;
+				const title = shortText(value.title, MAX_TITLE);
+				if (title === undefined) return null;
+				const body = shortText(value.text, MAX_TEXT);
+				const icon = pickOptional(value.icon, ICON_NAMES);
+				return {
+					type: 'empty',
+					title,
+					...(body !== undefined ? { text: body } : {}),
+					...(icon !== undefined ? { icon } : {}),
+				};
+			}
+			case 'skeleton': {
+				if (apiMinor < 10) return null;
+				const lines =
+					typeof value.lines === 'number' && Number.isFinite(value.lines)
+						? Math.min(MAX_SKELETON_LINES, Math.max(1, Math.round(value.lines)))
+						: DEFAULT_SKELETON_LINES;
+				return {
+					type: 'skeleton',
+					variant: pick(value.variant, SKELETON_VARIANTS, 'text'),
+					lines,
+				};
 			}
 			case 'button': {
 				const t = text(value.text);
@@ -1048,6 +1598,136 @@ export const sanitizeTree = (
 					...cmd,
 				};
 			}
+			case 'input': {
+				if (apiMinor < 9) return null;
+				const name = controlName(value.name);
+				const cmd = parseCommandArgs(value);
+				if (name === null || cmd === null) return null;
+				const placeholder =
+					typeof value.placeholder === 'string' && value.placeholder !== ''
+						? value.placeholder.slice(0, MAX_INPUT_PLACEHOLDER)
+						: undefined;
+				return {
+					type: 'input',
+					name,
+					value:
+						typeof value.value === 'string'
+							? value.value.slice(0, MAX_INPUT_VALUE)
+							: '',
+					mode: value.mode === 'submit' ? 'submit' : 'change',
+					debounce: clampDebounce(value.debounce),
+					...(placeholder !== undefined ? { placeholder } : {}),
+					...cmd,
+				};
+			}
+			case 'select': {
+				if (apiMinor < 9) return null;
+				const name = controlName(value.name);
+				const cmd = parseCommandArgs(value);
+				if (name === null || cmd === null) return null;
+				const seen = new Set<string>();
+				const options = (Array.isArray(value.options) ? value.options : [])
+					.slice(0, MAX_SELECT_OPTIONS)
+					.filter(() => budget-- > 0)
+					.map((option: any) => {
+						const v =
+							typeof option?.value === 'string' &&
+							option.value !== '' &&
+							option.value.length <= MAX_SELECT_VALUE
+								? option.value
+								: null;
+						const t = text(option?.text);
+						if (v === null || t === null || seen.has(v)) return null;
+						seen.add(v);
+						return { value: v, text: t };
+					})
+					.filter(
+						(option: any): option is { value: string; text: string } =>
+							option !== null,
+					);
+				if (options.length === 0) return null;
+				const placeholder =
+					typeof value.placeholder === 'string' && value.placeholder !== ''
+						? value.placeholder.slice(0, MAX_INPUT_PLACEHOLDER)
+						: undefined;
+				return {
+					type: 'select',
+					name,
+					options,
+					value: seen.has(value.value) ? value.value : null,
+					...(placeholder !== undefined ? { placeholder } : {}),
+					...cmd,
+				};
+			}
+			case 'checkbox': {
+				if (apiMinor < 9) return null;
+				const name = controlName(value.name);
+				const label = text(value.label);
+				const cmd = parseCommandArgs(value);
+				if (name === null || label === null || cmd === null) return null;
+				return {
+					type: 'checkbox',
+					name,
+					label,
+					checked: value.checked === true,
+					...cmd,
+				};
+			}
+			case 'textarea': {
+				if (apiMinor < 11) return null;
+				const name = controlName(value.name);
+				const cmd = parseCommandArgs(value);
+				if (name === null || cmd === null) return null;
+				const placeholder =
+					typeof value.placeholder === 'string' && value.placeholder !== ''
+						? cutCodePoints(value.placeholder, MAX_INPUT_PLACEHOLDER)
+						: undefined;
+				const submitText = shortText(value.submitText, MAX_SUBMIT_TEXT);
+				return {
+					type: 'textarea',
+					name,
+					value:
+						typeof value.value === 'string'
+							? cutCodePoints(value.value, MAX_TEXTAREA_VALUE)
+							: '',
+					rows:
+						typeof value.rows === 'number' && Number.isFinite(value.rows)
+							? Math.min(
+									MAX_TEXTAREA_ROWS,
+									Math.max(MIN_TEXTAREA_ROWS, Math.round(value.rows)),
+								)
+							: DEFAULT_TEXTAREA_ROWS,
+					...(placeholder !== undefined ? { placeholder } : {}),
+					...(submitText !== undefined ? { submitText } : {}),
+					...cmd,
+				};
+			}
+			case 'date': {
+				if (apiMinor < 11) return null;
+				const name = controlName(value.name);
+				const cmd = parseCommandArgs(value);
+				if (name === null || cmd === null) return null;
+				let min = calendarDate(value.min);
+				let max = calendarDate(value.max);
+				if (min !== null && max !== null && min > max) {
+					min = null;
+					max = null;
+				}
+				const picked = calendarDate(value.value);
+				return {
+					type: 'date',
+					name,
+					value:
+						picked !== null &&
+						(min === null || picked >= min) &&
+						(max === null || picked <= max)
+							? picked
+							: null,
+					...(min !== null ? { min } : {}),
+					...(max !== null ? { max } : {}),
+					...cmd,
+				};
+			}
 			case 'taskLink': {
 				const t = text(value.text);
 				return Number.isSafeInteger(value.taskId) &&
@@ -1074,16 +1754,41 @@ export const sanitizeTree = (
 					typeof value.url === 'string' ? value.url.slice(0, 2000) : null;
 				if (url === null) return null;
 				const label = text(value.text) ?? url;
-				if (!isLinkAllowed(url, context)) {
+				if (!isLinkAllowed(url, links)) {
 					return { type: 'text', text: label, tone: 'default' };
 				}
 				let host: string;
 				try {
-					host = new URL(url).hostname;
+					host = linkHost(url);
 				} catch {
 					return null;
 				}
 				return { type: 'link', url, text: label, host };
+			}
+			case 'image': {
+				if (apiMinor < IMAGE_MIN_MINOR) return null;
+				const alt = shortText(value.alt, MAX_IMAGE_ALT);
+				if (alt === undefined || typeof value.src !== 'string') return null;
+				if (value.src.startsWith('data:')) {
+					const size = checkImageData(value.src);
+					if (size === null || size > imageBytes) return null;
+					imageBytes -= size;
+				} else if (imageHostAllowed(value.src, images) === null) {
+					return null;
+				}
+				const width =
+					typeof value.width === 'number' && Number.isFinite(value.width)
+						? Math.min(
+								MAX_IMAGE_WIDTH,
+								Math.max(MIN_IMAGE_WIDTH, Math.round(value.width)),
+							)
+						: undefined;
+				return {
+					type: 'image',
+					src: value.src,
+					alt,
+					...(width !== undefined ? { width } : {}),
+				};
 			}
 			case 'timeAgo':
 			case 'dueTime': {

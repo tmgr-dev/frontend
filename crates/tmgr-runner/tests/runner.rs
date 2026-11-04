@@ -195,6 +195,7 @@ impl Harness {
 
     fn run_req(&self, profile: &str) -> RunCreateReq {
         RunCreateReq {
+            team: None,
             clones: Vec::new(),
             profile: profile.into(),
             task: None,
@@ -1159,6 +1160,7 @@ impl Harness {
     fn bundled_at(&self, profile: &str, dir: &Path) -> RunCreateReq {
         let cwd = fs::canonicalize(dir).unwrap().display().to_string();
         let bundle = RunBundle {
+            assignment: None,
             v: 1,
             task: BUNDLE_TASK,
             title: "Fix login".into(),
@@ -2049,6 +2051,66 @@ fn only_the_worker_may_name_an_origin_and_the_worker_must() {
     let e = err_text(fx.worker().create(fx.h.req(&["/bin/true"])));
     assert!(e.starts_with("forbidden: "), "{e}");
     assert!(fx.h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn the_workers_of_a_team_are_stopped_when_the_lead_exits_even_if_they_ignore_sigterm() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    let lead = h.script("lead.sh", "echo ready\nwhile true; do sleep 0.2; done\n");
+    let stubborn = h.script(
+        "worker.sh",
+        "trap '' TERM\necho ready\nwhile true; do sleep 0.2; done\n",
+    );
+    h.profile("lead", &["/bin/sh", &lead]);
+    h.profile("stubborn", &["/bin/sh", &stubborn]);
+    h.start(5000);
+    let mut c = Client::connect_as(&h.run, "desktop").unwrap();
+    let link = |role| tmgr_ipc::api::TeamLink {
+        role,
+        of: "q_team".into(),
+    };
+    let mut req = h.run_req("lead");
+    req.team = Some(link(tmgr_ipc::api::TeamRole::Lead));
+    let l = c.create_run(req).unwrap();
+    let mut req = h.run_req("stubborn");
+    req.team = Some(link(tmgr_ipc::api::TeamRole::Worker(1)));
+    let w = c.create_run(req).unwrap();
+    thread::sleep(Duration::from_secs(3));
+    let now = wait_state(&mut c, &w.id, 0, |_| true);
+    assert_ne!(
+        now.state.kind,
+        StateKind::Exited,
+        "a worker of a live lead keeps running"
+    );
+    c.kill(&l.id, "term").unwrap();
+    wait_state(&mut c, &l.id, 5, |s| s.kind == StateKind::Exited);
+    let done = wait_state(&mut c, &w.id, 30, |s| s.kind == StateKind::Exited);
+    assert_eq!(done.state.exit_code, Some(137));
+}
+
+#[test]
+fn a_run_for_a_link_cannot_carry_a_team_label() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    fx.trust_one(3, &["fake"], &[], 2);
+    fx.h.start(5000);
+    let mut r = fx.req("laptop", 3);
+    r.team = Some(tmgr_ipc::api::TeamLink {
+        role: tmgr_ipc::api::TeamRole::Worker(1),
+        of: "q_team".into(),
+    });
+    let e = err_text(fx.worker().create_run(r));
+    assert!(
+        e.starts_with("invalid_params: ") && e.contains("team"),
+        "{e}"
+    );
+    assert!(fx.h.client().list().unwrap().is_empty());
+    assert!(fx.worker().create_run(fx.req("laptop", 3)).is_ok());
 }
 
 #[test]
@@ -3437,6 +3499,7 @@ impl CloneFx {
             &[
                 "clone",
                 "-q",
+                "--no-local",
                 "--reference",
                 self.repo.to_str().unwrap(),
                 self.repo.to_str().unwrap(),
@@ -4025,7 +4088,7 @@ fn clone_into(repo: &Path, dest: &Path, reference: bool) -> PathBuf {
     let parent = dest.parent().unwrap();
     fs::create_dir_all(parent).unwrap();
     let r = repo.to_str().unwrap();
-    let mut args = vec!["clone", "-q"];
+    let mut args = vec!["clone", "-q", "--no-local"];
     if reference {
         args.extend(["--reference", r]);
     }
@@ -4721,6 +4784,7 @@ impl CloudFx {
         let c = &f["cases"][2];
         let cwd = self.clone.display().to_string();
         let bundle = RunBundle {
+            assignment: None,
             v: 1,
             task: CLOUD_TASK,
             title: c["title"].as_str().unwrap().into(),
@@ -5176,6 +5240,7 @@ impl MultiFx {
         let c = &f["cases_v2"][0];
         let cwd = dir.display().to_string();
         let bundle = RunBundle {
+            assignment: None,
             v: 1,
             task: MULTI_TASK,
             title: c["title"].as_str().unwrap().into(),

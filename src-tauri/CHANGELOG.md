@@ -3,6 +3,50 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## Unreleased
+
+- Asking a persona: closing or reloading a separate task window now stops a running question. Before, it kept running in the background and using AI tokens.
+- Correction to 0.9.83: "closing the task window stops the question" held only for the task window inside the app, not for a separate task window or a reload.
+
+## 0.9.94 — 2026-11-04
+
+- Runner: the agent sessions panel shows a team run together, lead first, then its workers labelled w1, w2 and so on. Team runs are started with `tmgr queue add <task> --team N`, from tmgr CLI 1.0.66.
+
+## 0.9.93 — 2026-11-04
+
+- Plugins (API 1.13): plugins can open Telegram chat links (tg://) when they have the links permission and declare it, and show pictures: built-in ones, or ones from sites the plugin lists, after you allow the new "images:remote" permission.
+- Plugins: a manifest for an older plugin API that already uses the new `images` field or link schemes is now refused at install.
+
+## 0.9.92 — 2026-11-04
+
+- Plugins (API 1.12): plugins can show bar and line charts with axis labels and a tooltip on hover or with the arrow keys.
+
+## 0.9.91 — 2026-11-04
+
+- Plugins (API 1.11): plugins can show a multi-line text area, sent with a button or Cmd+Enter, and a date picker.
+
+## 0.9.90 — 2026-11-03
+
+- Plugins: selecting text in a plugin table row or card no longer runs its action, and the text inside plugin buttons, tabs and cards is not selected when you click them.
+
+## 0.9.89 — 2026-11-03
+
+- Plugins: text on plugin pages and in plugin sections of a task can be selected and copied again.
+
+## 0.9.88 — 2026-11-03
+
+- Plugins: input fields, dropdowns and checkboxes drawn by a plugin now show "Plugin: <name>" under them, so you can tell them from TMGR's own fields. They are also kept out of browser and password manager autofill.
+- Ask persona fixes (TM-801, TM-794).
+
+## 0.9.87 — 2026-11-03
+
+- Plugins (API 1.10): event timelines, chat-style message feeds, sparkline charts, empty-state placeholders and loading skeletons.
+- Plugins: tables can align and size columns, sort by a column, color rows, run an action when a row is clicked and expand a row to show details.
+
+## 0.9.86 — 2026-11-03
+
+- Plugins (API 1.9): plugins can show a text or search field, a dropdown and a checkbox. A plugin receives only the value you enter into its own control, and only when you change it.
+
 ## 0.9.85 — 2026-11-03
 
 - Plugins (API 1.8): collapsible sections (with a title, or showing the first few items and an "N more" toggle), tabs and a segmented switch.

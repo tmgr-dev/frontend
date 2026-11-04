@@ -1793,6 +1793,47 @@ fn worktree_agent(env: &Env, body: &str) {
     .unwrap();
 }
 
+fn processes_in(folder: &Path) -> String {
+    let folder = fs::canonicalize(folder).unwrap();
+    let mut found = Vec::new();
+    #[cfg(target_os = "macos")]
+    {
+        let out = Command::new("/usr/sbin/lsof")
+            .args(["-w", "-d", "cwd,txt", "-Fpcn"])
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        let (mut pid, mut name) = ("", "");
+        for line in text.lines() {
+            if let Some(p) = line.strip_prefix('p') {
+                pid = p;
+            } else if let Some(c) = line.strip_prefix('c') {
+                name = c;
+            } else if line
+                .strip_prefix('n')
+                .is_some_and(|n| Path::new(n).starts_with(&folder))
+            {
+                found.push(format!("{pid} {name}"));
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    for e in fs::read_dir("/proc").unwrap().flatten() {
+        let holds = ["cwd", "exe"]
+            .iter()
+            .any(|l| fs::read_link(e.path().join(l)).is_ok_and(|p| p.starts_with(&folder)));
+        if holds {
+            let args = fs::read(e.path().join("cmdline")).unwrap_or_default();
+            found.push(format!(
+                "{} {}",
+                e.file_name().to_string_lossy(),
+                String::from_utf8_lossy(&args).replace('\0', " ")
+            ));
+        }
+    }
+    found.join("; ")
+}
+
 fn git_repo(dir: &Path) {
     git_cli(dir, &["init", "-q", "-b", "main"]);
     fs::write(dir.join("a.txt"), "a").unwrap();
@@ -1875,8 +1916,9 @@ fn worktree_run_gets_its_own_checkout_and_rm_never_deletes_without_a_terminal() 
     assert!(rm.status.success(), "{}", out_text(&rm));
     assert!(
         out_text(&rm).contains("kept: it has uncommitted"),
-        "{}",
-        out_text(&rm)
+        "{}\nin the folder: {}",
+        out_text(&rm),
+        processes_in(&wt)
     );
     assert!(wt.join("scratch").exists());
 }
@@ -1894,12 +1936,14 @@ fn worktree_rm_of_a_clean_checkout_only_tells_how_to_delete_it() {
     let id = json_of(&out)["data"]["id"].as_str().unwrap().to_string();
     wait_session_state(&env, &id, "exited");
     let rm = env.tmgr(&["rm", &id]);
+    let wt = env.tmp.path().join("p-worktrees/beta");
     assert!(
         out_text(&rm).contains("can be deleted"),
-        "{}",
-        out_text(&rm)
+        "{}\nin the folder: {}",
+        out_text(&rm),
+        processes_in(&wt)
     );
-    assert!(env.tmp.path().join("p-worktrees/beta").exists());
+    assert!(wt.exists());
 }
 
 #[test]

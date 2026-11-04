@@ -438,6 +438,15 @@ fn draw_session_row(
                 " ◉".to_string()
             };
             put(buf, drawn, y, &shown, Style::new().fg(colors().warn), room);
+        } else if let Some(label) = st.team_label(&row.id) {
+            let room = age_x.saturating_sub(drawn + 1);
+            let full = format!(" [{label}]");
+            let shown = if full.width() <= usize::from(room) {
+                full
+            } else {
+                format!(" {}", if label == "lead" { "L" } else { &label })
+            };
+            put(buf, drawn, y, &shown, dim(), room);
         }
         if st.cards_on(&row.id) && !st.leaders.contains_key(&row.id) {
             let room = age_x.saturating_sub(drawn + 1);

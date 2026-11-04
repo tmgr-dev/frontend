@@ -1,0 +1,20 @@
+# TMGR
+
+> TMGR is a task manager with a desktop app, a web app, an iOS app and an MCP server for AI agents.
+> This file points agents at the machine-readable docs.
+
+## Build a plugin for TMGR
+
+Plugins add commands, sidebar views, status bar and tray items, board badges and task menu items to the
+TMGR desktop app. They run in a sandbox and can only use the permissions their manifest declares.
+Start with the guide; it ends with the full API reference.
+
+- [Plugin guide and API reference (Markdown)](https://tmgr.dev/docs/plugins.md): the whole authoring loop, the manifest, permissions, every UI node
+- [tmgr.d.ts](https://tmgr.dev/docs/plugin-sdk/tmgr.d.ts): TypeScript types of the global `tmgr` available to a plugin's main.js
+- [window.d.ts](https://tmgr.dev/docs/plugin-sdk/window.d.ts): types of `window.tmgr` inside a plugin page
+- [permissions.json](https://tmgr.dev/docs/plugin-sdk/permissions.json): every permission, grouped as the app shows it
+- [Plugin template and examples](https://github.com/tmgr-dev/frontend/tree/master/plugin-sdk): template, test harness, kitchen-sink example
+
+## Connect an agent to TMGR
+
+- [Agents setup guide](https://tmgr.dev/docs/agents): MCP server, tokens, notifications

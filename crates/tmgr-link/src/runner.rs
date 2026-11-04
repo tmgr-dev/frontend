@@ -307,6 +307,7 @@ impl Backend for RunnerClient {
         let p = SendParams {
             id: id.into(),
             text: text.into(),
+            at_prompt: false,
         };
         self.call(method::SESSIONS_SEND, params(&p)?).map(drop)
     }

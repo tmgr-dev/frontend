@@ -7,14 +7,20 @@ use crate::runs::{mode_name, Lookup, RunState, RunsClient, StartRequest, PERMISS
 use crate::source::{Candidate, TaskSource};
 use crate::state::{self, Pickup, PickupClone, State, Status};
 use crate::taken::FreshTask;
-use crate::workdir::{clone_dir, WorkDirs};
+use crate::workdir::{branch_name, clone_dir, WorkDirs};
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use tmgr_core::error::{Error, Kind, Result};
-use tmgr_ipc::api::{BundleLaunch, BundlePersona, BundleTeam, CloneSpec, RunBundle};
+use tmgr_ipc::api::{
+    BundleLaunch, BundlePersona, BundleTeam, CloneSpec, RunBundle, TeamLink, TeamRole,
+};
+
+mod team;
+pub use crate::state::team_models;
+pub use team::request_team;
 
 const APPROVAL_TTL_HOURS: i64 = 24;
 pub const MAX_BUNDLE: usize = 64 * 1024;
@@ -99,6 +105,10 @@ impl StartPolicy {
     pub fn persona_optional(&self, rule: &str, task_id: i64) -> bool {
         self.persona_optional_rule.as_deref() == Some(rule)
             && self.only.as_ref().is_some_and(|o| o.contains(&task_id))
+    }
+
+    fn is_autopilot(&self) -> bool {
+        self.only.is_some() || self.plan.is_some()
     }
 
     fn selects(&self, task_id: i64) -> bool {
@@ -192,6 +202,7 @@ pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str, policy: &StartPolicy) ->
         ),
     };
     RunBundle {
+        assignment: None,
         v: 1,
         task: c.task,
         title: c.title.clone(),
@@ -405,6 +416,9 @@ pub fn release(paths: &Paths, id: &str, now: DateTime<Utc>) -> Result<()> {
         .iter_mut()
         .find(|p| p.id == id && p.status == Status::UnknownStart)
         .ok_or_else(|| Error::not_found(format!("no pickup {id} with an unknown start")))?;
+    if p.team.as_ref().is_some_and(|t| !t.all_exited()) {
+        return Err(Error::conflict("the team still has running workers"));
+    }
     p.status = Status::Failed;
     p.reason = Some("released by the user".into());
     p.updated_at = ts(now);
@@ -867,6 +881,7 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                     wip_heads: BTreeMap::new(),
                     continues: None,
                     continued_by: None,
+                    team: None,
                 });
                 pass.audit.append(
                     "candidate",
@@ -974,7 +989,11 @@ fn start_phase(
         if deps.policy.group_busy(&pass.state, task_id) {
             continue;
         }
-        let cwd = pass.state.pickups[i].bundle.launch.cwd.clone();
+        let request = team::request_of(&pass.state, pass.state.pickups[i].task);
+        if request.is_some() && deps.policy.is_autopilot() {
+            continue;
+        }
+        let mut cwd = pass.state.pickups[i].bundle.launch.cwd.clone();
         if run_dir(rule, pass.state.pickups[i].cloud.as_ref(), &id)
             .is_none_or(|d| d.to_string_lossy() != cwd)
         {
@@ -1087,6 +1106,27 @@ fn start_phase(
                 }
             }
         }
+        let request = request.filter(|_| !continuing);
+        let (pin, lead_model) = match &request {
+            None => (pin, None),
+            Some(req) => {
+                if let Some(reason) = team::refusal_for(rule, &pass.state.pickups[i]) {
+                    team::refuse_start(pass, i, reason)?;
+                    continue;
+                }
+                let (lead_model, _) = state::team_models(req.mode);
+                match team::member_pin(rule, is_cloud, deps, lead_model, &pin) {
+                    Ok(team_pin) => (team_pin, Some(team::commit_team(pass, i, req))),
+                    Err(e) => {
+                        team::refuse_start(pass, i, &e)?;
+                        continue;
+                    }
+                }
+            }
+        };
+        if lead_model.is_some() {
+            cwd.clone_from(&pass.state.pickups[i].bundle.launch.cwd);
+        }
         let p = pass.state.pickups[i].clone();
         pass.set(i, Status::Starting, None);
         state::save(pass.paths, &mut pass.state)?;
@@ -1101,6 +1141,14 @@ fn start_phase(
             .map(|c| plan_clones(&c.repos).map_err(|e| e.message));
         let prepared = match (&p.cloud, &plans) {
             (_, Some(Err(m))) => Err(Error::new(Kind::Forbidden, m.clone())),
+            (Some(c), None) if lead_model.is_some() => {
+                deps.workdirs
+                    .prepare_member(&rule.repos[0], &id, &cwd, &c.branch)
+            }
+            (None, _) if lead_model.is_some() => {
+                deps.workdirs
+                    .prepare_member(&rule.repos[0], &id, &cwd, &branch_name(&id))
+            }
             (Some(c), Some(Ok(plans))) if continuing => deps.workdirs.prepare_continue(
                 &plans[0].path,
                 &id,
@@ -1147,7 +1195,11 @@ fn start_phase(
             pass.event(&p, "failed");
             continue;
         }
-        if pin_of(rule, p.cloud.is_some(), deps).ok() != Some(pin.clone()) {
+        let pin_now = match lead_model {
+            Some(model) => team::member_pin(rule, p.cloud.is_some(), deps, model, &pin).ok(),
+            None => pin_of(rule, p.cloud.is_some(), deps).ok(),
+        };
+        if pin_now != Some(pin.clone()) {
             deps.workdirs.discard(&id, &cwd);
             pass.set(
                 i,
@@ -1211,7 +1263,9 @@ fn start_phase(
             rule: rule_name.clone(),
             trigger: format!("rule:{rule_name}"),
             profile: rule.profile.clone(),
-            model: rule.model.clone(),
+            model: lead_model
+                .map(str::to_string)
+                .or_else(|| rule.model.clone()),
             cwd,
             clone_of: match &plans {
                 Some(Ok(plans)) => plans[0].path.clone(),
@@ -1227,6 +1281,10 @@ fn start_phase(
             bundle_sha256: p.bundle_sha256.clone(),
             cloud: p.cloud.as_ref().map(|c| c.claim.clone()),
             unattended: p.cloud.is_some(),
+            team: lead_model.map(|_| TeamLink {
+                role: TeamRole::Lead,
+                of: id.clone(),
+            }),
         };
         match deps.runs.create(&req) {
             Ok(run_id) => {
@@ -1275,17 +1333,32 @@ fn start_phase(
 /// enabled rule may approve and start one by itself.
 pub fn needs_runner(paths: &Paths) -> Result<bool> {
     let loaded = rules::load(paths)?;
-    if !loaded.file.enabled {
-        return Ok(false);
-    }
     let st = state::load(paths)?;
+    if !loaded.file.enabled {
+        return Ok(st.pickups.iter().any(|p| p.has_live_team()));
+    }
     let open = st.pickups.iter().any(|p| {
         matches!(
             p.status,
             Status::Approved | Status::Starting | Status::UnknownStart
         ) || (p.status == Status::Started && !p.run_exited)
+            || p.has_live_team()
     });
     Ok(open || (!st.paused && loaded.file.rules.iter().any(|r| r.auto)))
+}
+
+fn stop_teams(paths: &Paths, audit: Audit, deps: &Deps) -> Result<()> {
+    let mut pass = Pass {
+        paths,
+        audit,
+        state: state::load(paths)?,
+        report: PassReport::default(),
+        touched: BTreeSet::new(),
+        now: deps.now,
+    };
+    refresh_runs(&mut pass, deps)?;
+    team::team_stop_phase(&mut pass, deps)?;
+    state::save(paths, &mut pass.state)
 }
 
 pub fn run_once(paths: &Paths, deps: &Deps) -> Result<PassReport> {
@@ -1297,10 +1370,12 @@ pub fn run_once(paths: &Paths, deps: &Deps) -> Result<PassReport> {
         ..PassReport::default()
     };
     if !loaded.file.enabled {
+        stop_teams(paths, audit, deps)?;
         return Ok(report);
     }
     if rules::is_tampered(paths, &loaded)? {
         let _ = audit.append("config_tampered", json!({"config_sha256": loaded.sha256}));
+        let _ = stop_teams(paths, Audit::new(paths), deps);
         return Err(Error::new(
             Kind::Forbidden,
             "queue.toml or the audit log changed outside `tmgr queue`",
@@ -1318,6 +1393,8 @@ pub fn run_once(paths: &Paths, deps: &Deps) -> Result<PassReport> {
     };
     recover(&mut pass, deps)?;
     refresh_runs(&mut pass, deps)?;
+    let starts = !pass.state.paused && deps.policy.starts_allowed;
+    team::team_phase(&mut pass, &loaded.file.rules, deps, starts)?;
     if pass.state.paused {
         pass.report.paused = true;
         state::save(paths, &mut pass.state)?;
@@ -1406,6 +1483,9 @@ pub fn pause_to_draft(
         .ok_or_else(|| Error::conflict("only cloud pickups are published"))?;
     if p.status != Status::Started || !p.run_exited {
         return Err(Error::conflict("the run has not exited"));
+    }
+    if p.team.as_ref().is_some_and(|t| !t.all_exited()) {
+        return Err(Error::conflict("the team still has running workers"));
     }
     if p.pr_url.is_some() || p.held.is_some() || p.paused_draft {
         return Err(Error::conflict(
@@ -1553,6 +1633,9 @@ pub fn requeue_paused(
         .position(|p| p.id == pickup_id)
         .ok_or_else(|| Error::not_found(format!("no pickup {pickup_id}")))?;
     let p = st.pickups[i].clone();
+    if p.team.is_some() {
+        return Err(Error::conflict("a team run cannot be continued"));
+    }
     if let Some(next) = &p.continued_by {
         return Err(Error::conflict(format!("already continued as {next}")));
     }
@@ -1622,6 +1705,7 @@ pub fn requeue_paused(
         wip_heads: p.wip_heads.clone(),
         continues: Some(p.id.clone()),
         continued_by: None,
+        team: None,
     });
     st.pickups[i].continued_by = Some(id.clone());
     st.pickups[i].released = true;
@@ -1731,6 +1815,11 @@ mod tests {
         cwds: RefCell<Vec<String>>,
         requests: RefCell<Vec<StartRequest>>,
         lost: Cell<bool>,
+        sent: RefCell<Vec<(String, String)>>,
+        killed: RefCell<Vec<String>>,
+        kill_failures: Cell<u32>,
+        forced: RefCell<Vec<String>>,
+        idle_runs: RefCell<Vec<String>>,
     }
 
     impl RunsClient for Runs {
@@ -1761,6 +1850,29 @@ mod tests {
                 1 => Lookup::NotFound,
                 _ => Lookup::Found(format!("found-{key}")),
             }
+        }
+
+        fn send(&self, run_id: &str, text: &str) -> Result<()> {
+            self.sent
+                .borrow_mut()
+                .push((run_id.to_string(), text.to_string()));
+            Ok(())
+        }
+
+        fn kill_run(&self, run_id: &str, force: bool, _reason: &str) -> Result<()> {
+            if self.kill_failures.get() > 0 {
+                self.kill_failures.set(self.kill_failures.get() - 1);
+                return Err(Error::new(Kind::Offline, "the runner did not answer"));
+            }
+            self.killed.borrow_mut().push(run_id.to_string());
+            if force {
+                self.forced.borrow_mut().push(run_id.to_string());
+            }
+            Ok(())
+        }
+
+        fn idle(&self, run_id: &str) -> bool {
+            self.idle_runs.borrow().iter().any(|r| r == run_id)
         }
 
         fn status(&self, run_id: &str) -> RunState {
@@ -2679,6 +2791,7 @@ mod tests {
         bundle.title = case["title"].as_str().unwrap().into();
         bundle.body = case["description"].as_str().unwrap().into();
         RunCreateReq {
+            team: None,
             clones: Vec::new(),
             profile: start.profile.clone(),
             task: Some(task),
@@ -4240,5 +4353,10 @@ mod tests {
         }
         assert!(dirs.calls.borrow().is_empty() && fx.runs.requests.borrow().len() == 1);
         assert_eq!(fx.pickups().len(), 1);
+    }
+
+    mod team {
+        use super::*;
+        include!("engine/team_tests.rs");
     }
 }

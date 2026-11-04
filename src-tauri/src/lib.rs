@@ -23,8 +23,10 @@ pub mod persona_llm;
 mod plugin_dev;
 mod plugin_files;
 mod plugin_market;
+mod plugin_images;
 mod plugin_net;
 mod plugin_notify;
+mod plugin_open_link;
 #[cfg(feature = "isolation-selftest")]
 mod plugin_selftest;
 mod plugin_tick;
@@ -117,6 +119,7 @@ pub(crate) fn with_app_webview_handlers<'a, R: Runtime>(
     // Embed addresses are allowed for iframes, but the hook cannot tell frames apart. If the page itself
     // ever lands on one, bring the app back.
     .on_page_load(move |window, payload| {
+      persona_llm::on_page_load(window.label(), payload.event());
       if payload.event() == PageLoadEvent::Started && !is_app_url(payload.url()) {
         log::warn!("[nav] {} left the app for {}; returning", window.label(), payload.url().host_str().unwrap_or(""));
         let _ = window.navigate(home.clone());
@@ -268,7 +271,9 @@ pub fn run() {
       plugin_dev::plugins_dev_reveal,
       plugin_dev::plugins_safe_mode,
       plugin_net::plugin_fetch,
+      plugin_images::plugin_image_fetch,
       plugin_notify::plugin_notify,
+      plugin_open_link::plugin_open_tg_link,
       plugin_catalog::plugin_catalog,
       plugin_catalog::plugin_catalog_refresh,
       plugin_market::plugin_github_release,
@@ -328,6 +333,7 @@ pub fn run() {
     ])
     .on_window_event(|window, event| {
       runner::commands::on_window_event(window, event);
+      persona_llm::on_window_event(window.label(), event);
       if let WindowEvent::Focused(false) = event {
         if window.label() == quick_add::LABEL {
           let _ = window.hide();

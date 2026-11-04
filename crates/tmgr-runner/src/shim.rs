@@ -532,6 +532,7 @@ fn run(dir: &Path, id: &str) -> io::Result<()> {
     }
     cmd.cwd(".");
     let child = pair.slave.spawn_command(cmd).map_err(io::Error::other)?;
+    std::env::set_current_dir("/")?;
     drop(pair.slave);
     let child_pid = child
         .process_id()
@@ -663,9 +664,11 @@ fn spawn_reaper(shim: &Arc<Shim>) {
     let shim = shim.clone();
     thread::spawn(move || loop {
         thread::sleep(Duration::from_secs(1));
-        let expired = lock(&shim.st)
-            .exited_at
-            .is_some_and(|t| t.elapsed() >= REAP_AFTER);
+        let expired = lock(&shim.st).exited_at.is_some_and(|t| {
+            t.elapsed() >= REAP_AFTER
+                || fs::symlink_metadata(&shim.dir)
+                    .is_err_and(|e| e.kind() == io::ErrorKind::NotFound)
+        });
         if expired {
             shim.cleanup();
             std::process::exit(0);

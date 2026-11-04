@@ -205,10 +205,21 @@ describe('isNestedInteractive', () => {
 			el('button', {}, card),
 			el('a', {}, card),
 			el('input', {}, card),
+			el('textarea', {}, card),
+			el('select', {}, card),
+			el('label', {}, card),
 			el('div', { role: 'menuitem' }, card),
 		]) {
 			expect(isNestedInteractive(node, card)).toBe(true);
 		}
+	});
+
+	it('is true for text inside a checkbox label or a select option', () => {
+		const card = el('div', { role: 'button' });
+		const label = el('label', {}, card);
+		expect(isNestedInteractive(el('span', {}, label), card)).toBe(true);
+		const select = el('select', {}, card);
+		expect(isNestedInteractive(el('option', {}, select), card)).toBe(true);
 	});
 
 	it('is true for a nested [role=button] other than the card itself', () => {

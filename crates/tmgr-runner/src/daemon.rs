@@ -46,7 +46,8 @@ use tmgr_ipc::api::{
     EventMsg, ExePin, ForkParams, LookupParams, OrchestratorCreateReq, Origin, OriginRevokeParams,
     OriginRevoked, PathParams, PermissionAnswer, PermissionCard, PermissionChoice, RestoredRun,
     ResumeParams, RunCreateReq, RunStatus, SessionInfo, SessionText, Snapshot, State, StateKind,
-    StatusInfo, TaskRef, TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP, CLIENT_WORKER,
+    StatusInfo, TaskRef, TeamLink, TeamRole, TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP,
+    CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -292,6 +293,8 @@ struct Meta {
     checkpoints: Option<u32>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     permission_cards: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    team: Option<TeamLink>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -319,6 +322,7 @@ struct RunExtra {
     fork: Option<ForkSeed>,
     no_sandbox: Option<std::collections::BTreeMap<String, String>>,
     permission_cards: bool,
+    team: Option<TeamLink>,
 }
 
 #[derive(Clone)]
@@ -447,6 +451,7 @@ struct Session {
     home: PathBuf,
     fg: Mutex<Option<(i32, Instant)>>,
     cards: Mutex<Cards>,
+    team_stop: Mutex<Option<(Instant, Instant)>>,
 }
 
 fn write_meta(dir: &Path, meta: &Meta) {
@@ -515,6 +520,10 @@ impl Session {
         }
     }
 
+    fn team(&self) -> Option<TeamLink> {
+        lock(&self.inner).meta.team.clone()
+    }
+
     fn state(&self) -> State {
         let i = lock(&self.inner);
         self.effective(&i)
@@ -524,6 +533,7 @@ impl Session {
         let i = lock(&self.inner);
         let m = &i.meta;
         SessionInfo {
+            team: m.team.clone(),
             id: m.id.clone(),
             name: m.name.clone(),
             argv: m.argv.clone(),
@@ -754,6 +764,17 @@ impl Session {
                 let _ = self.shim_input(&reply);
             }
         }
+    }
+
+    fn at_prompt(&self) -> bool {
+        let mut i = lock(&self.inner);
+        if self.effective(&i).kind == StateKind::Blocked {
+            return false;
+        }
+        let bottom = i.screen.bottom_text(10);
+        let rows = i.screen.text_lines(None).3;
+        let agent = i.meta.profile.as_deref().and_then(permit::agent_of);
+        prompt_ready(i.matcher.as_ref(), agent, &bottom, &rows)
     }
 
     fn card_agent(&self) -> Option<permit::Agent> {
@@ -1011,13 +1032,14 @@ impl Session {
         let Some(intent) = pending.as_ref() else {
             return;
         };
-        match agentwork::begin(
+        match agentwork::begin_as(
             &self.dir,
             intent.task,
             &intent.agent,
             intent.model.as_deref(),
             &self.id,
             (intent.hold_success, intent.audit.clone()),
+            intent.role.clone(),
         ) {
             Ok(()) => *pending = None,
             Err(e) => {
@@ -1476,6 +1498,80 @@ fn base_env() -> Vec<(String, String)> {
         .collect()
 }
 
+type Member<'a> = (&'a str, Option<&'a TeamLink>, bool);
+
+fn orphaned_workers<'a>(sessions: &[Member<'a>], lead_of: &str) -> Vec<&'a str> {
+    sessions
+        .iter()
+        .filter(|(_, team, alive)| *alive && team.is_some_and(|t| t.is_worker() && t.of == lead_of))
+        .map(|(id, _, _)| *id)
+        .collect()
+}
+
+fn leadless_groups(sessions: &[Member<'_>], absent_lead_counts: bool) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for (_, team, alive) in sessions {
+        let Some(t) = team.filter(|t| t.is_worker() && *alive) else {
+            continue;
+        };
+        if out.contains(&t.of) {
+            continue;
+        }
+        let leads = || {
+            sessions.iter().filter_map(|(_, l, a)| {
+                l.filter(|l| l.role == TeamRole::Lead && l.of == t.of)
+                    .map(|_| *a)
+            })
+        };
+        if leads().any(|a| a) || (!absent_lead_counts && leads().next().is_none()) {
+            continue;
+        }
+        out.push(t.of.clone());
+    }
+    out
+}
+
+/// Workers to stop: the live workers of every team without a live lead, and any live worker already being
+/// stopped, so a stop is seen through even once its lead's session is gone.
+fn stop_targets(
+    members: &[Member<'_>],
+    stopping: &[bool],
+    absent_lead_counts: bool,
+) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for of in leadless_groups(members, absent_lead_counts) {
+        for id in orphaned_workers(members, &of) {
+            out.push((id.to_string(), of.clone()));
+        }
+    }
+    for ((id, team, alive), stopping) in members.iter().zip(stopping) {
+        let Some(t) = team.filter(|t| *stopping && *alive && t.is_worker()) else {
+            continue;
+        };
+        if !out.iter().any(|(i, _)| i == id) {
+            out.push((id.to_string(), t.of.clone()));
+        }
+    }
+    out
+}
+
+const TEAM_STOP_RESEND: Duration = Duration::from_secs(5);
+const TEAM_STOP_GRACE: Duration = Duration::from_secs(10);
+
+fn team_stop_signal(sent: Option<(Instant, Instant)>, now: Instant) -> Option<i32> {
+    let Some((first, last)) = sent else {
+        return Some(libc::SIGTERM);
+    };
+    if now.duration_since(last) < TEAM_STOP_RESEND {
+        return None;
+    }
+    if now.duration_since(first) >= TEAM_STOP_GRACE {
+        Some(libc::SIGKILL)
+    } else {
+        Some(libc::SIGTERM)
+    }
+}
+
 fn signal_number(name: &str) -> Option<i32> {
     match name {
         "term" => Some(libc::SIGTERM),
@@ -1797,6 +1893,10 @@ fn plan_mode(
     })
 }
 
+fn holds_success(cloud_run: bool, team: Option<&TeamLink>) -> bool {
+    cloud_run && !team.is_some_and(TeamLink::is_worker)
+}
+
 fn check_multi_request(req: &RunCreateReq) -> Result<(), ApiErr> {
     if !req.agent_work {
         return Err(api(
@@ -2112,10 +2212,7 @@ impl Runner {
                     )
                 })?;
                 let reason = kill_reason(p)?;
-                let id = s.sig_seq.fetch_add(1, Ordering::SeqCst) + 1;
-                s.halt(reason.as_deref());
-                s.shim_msg(&ToShim::Signal { sig, id });
-                restore::forget(&self.intents(), &s.id);
+                self.signal_session(&s, sig, reason.as_deref());
                 Ok(Value::Null)
             }
             method::AUTOPILOT_START => {
@@ -2172,6 +2269,10 @@ impl Runner {
                     .ok_or_else(|| api(ErrorCode::InvalidParams, "text is required"))?;
                 if text.len() > MAX_INPUT {
                     return Err(api(ErrorCode::InvalidParams, "text is too large"));
+                }
+                let at_prompt = p.get("at_prompt").and_then(Value::as_bool).unwrap_or(false);
+                if at_prompt && !s.at_prompt() {
+                    return Err(api(ErrorCode::Busy, "the agent is not at its prompt"));
                 }
                 s.note_input_from(&conn.client);
                 if s.input_dropped.swap(false, Ordering::SeqCst) || !s.input(text.as_bytes()) {
@@ -2319,6 +2420,50 @@ impl Runner {
             ));
         }
         Ok(Value::Null)
+    }
+
+    fn signal_session(&self, s: &Session, sig: i32, reason: Option<&str>) {
+        let id = s.sig_seq.fetch_add(1, Ordering::SeqCst) + 1;
+        s.halt(reason);
+        s.shim_msg(&ToShim::Signal { sig, id });
+        restore::forget(&self.intents(), &s.id);
+    }
+
+    fn stop_orphaned_workers(&self, absent_lead_counts: bool) {
+        let all = self.all();
+        let teams: Vec<Option<TeamLink>> = all.iter().map(|s| s.team()).collect();
+        let members: Vec<Member> = all
+            .iter()
+            .zip(&teams)
+            .map(|(s, t)| {
+                let lead = t.as_ref().is_some_and(|t| t.role == TeamRole::Lead);
+                let alive = !s.is_exited() && !(lead && s.halted.load(Ordering::SeqCst));
+                (s.id.as_str(), t.as_ref(), alive)
+            })
+            .collect();
+        let stopping: Vec<bool> = all.iter().map(|s| lock(&s.team_stop).is_some()).collect();
+        let targets = stop_targets(&members, &stopping, absent_lead_counts);
+        let now = Instant::now();
+        for (id, of) in targets {
+            let Some(s) = all.iter().find(|s| s.id == id).filter(|s| s.has_shim()) else {
+                continue;
+            };
+            let mut sent = lock(&s.team_stop);
+            let Some(sig) = team_stop_signal(*sent, now) else {
+                continue;
+            };
+            *sent = Some((sent.map_or(now, |(first, _)| first), now));
+            drop(sent);
+            let how = if sig == libc::SIGKILL {
+                "killed"
+            } else {
+                "stopped"
+            };
+            log(&format!(
+                "session {id}: {how}, the lead of team {of} is gone"
+            ));
+            self.signal_session(s, sig, Some("team lead exited"));
+        }
     }
 
     fn live(&self, id: &str) -> Result<Arc<Session>, ApiErr> {
@@ -3040,6 +3185,15 @@ impl Runner {
                 };
             }
         }
+        if let Some(t) = &req.team {
+            t.validate().map_err(|m| api(ErrorCode::InvalidParams, m))?;
+            if req.origin.is_some() {
+                return Err(api(
+                    ErrorCode::InvalidParams,
+                    "a team label cannot be combined with origin",
+                ));
+            }
+        }
         let checked = bundle::check(&req, tmgr_ipc::api::limits::MAX_BUNDLE)
             .map_err(|(code, m)| api(code, m))?;
         let pinned = match &checked {
@@ -3248,6 +3402,7 @@ impl Runner {
             fork,
             no_sandbox: req.no_sandbox.as_ref().map(|n| n.env.clone()),
             permission_cards,
+            team: req.team.clone(),
         };
         if plan.restricted {
             extra.egress = Some(
@@ -3284,7 +3439,7 @@ impl Runner {
             argv.push(permit_hook::claude_settings(&self.cfg.self_exe));
         }
         if let (false, Some(_), Some(b)) = (resumed, &checked, &req.bundle) {
-            let args = prof.prompt_args(&bundle::prompt(b));
+            let args = prof.prompt_args(&bundle::prompt_for(b, req.team.as_ref()));
             extra.prompt_at = prof
                 .prompt
                 .args
@@ -3386,8 +3541,12 @@ impl Runner {
                 task,
                 agent: info.profile.clone().unwrap_or_default(),
                 model: info_model,
-                hold_success: cloud_run,
+                hold_success: holds_success(cloud_run, req.team.as_ref()),
                 audit,
+                role: req.team.as_ref().map(|t| match t.role {
+                    TeamRole::Lead => "lead".to_string(),
+                    TeamRole::Worker(k) => format!("worker-{k}"),
+                }),
             });
             s.prepare_agent_work();
         }
@@ -3756,11 +3915,13 @@ impl Runner {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(log_file);
+        let fd_limit = crate::wire::inherited_fd_limit();
         unsafe {
             shim_cmd.pre_exec(move || {
                 if libc::dup2(src, SHIM_CWD_FD) < 0 {
                     return Err(io::Error::last_os_error());
                 }
+                crate::wire::cloexec_from(SHIM_CWD_FD + 1, fd_limit);
                 Ok(())
             })
         };
@@ -3834,6 +3995,7 @@ impl Runner {
             no_sandbox: unsandboxed.is_some(),
             checkpoints: None,
             permission_cards: extra.permission_cards,
+            team: extra.team.clone(),
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
@@ -3906,6 +4068,7 @@ impl Runner {
             home,
             fg: Mutex::new(None),
             cards: Mutex::new(Cards::default()),
+            team_stop: Mutex::new(None),
         });
         session.cp_refresh();
         session
@@ -4476,6 +4639,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         }
     });
     rt.adopt_all();
+    rt.stop_orphaned_workers(true);
     let ep = Endpoint::new_runner(&cfg.dir)?;
     let listener: UnixListener = endpoint::bind(&ep)?;
     listener.set_nonblocking(true)?;
@@ -4504,6 +4668,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
             for s in ticker.all() {
                 s.tick();
             }
+            ticker.stop_orphaned_workers(false);
             ticker.autopilot.tick(&ticker.cfg.self_exe);
         }
     });
@@ -4643,8 +4808,10 @@ pub fn start_background(cfg: &RunnerConfig) -> io::Result<u32> {
         .stdin(Stdio::null())
         .stdout(log_file.try_clone()?)
         .stderr(log_file);
+    let fd_limit = crate::wire::inherited_fd_limit();
     unsafe {
-        cmd.pre_exec(|| {
+        cmd.pre_exec(move || {
+            crate::wire::cloexec_from(3, fd_limit);
             match libc::fork() {
                 -1 => return Err(io::Error::last_os_error()),
                 0 => {}
@@ -4761,6 +4928,18 @@ fn copy_transcript(from_home: &Path, rel: &Path, to_home: &Path) -> io::Result<(
     Ok(())
 }
 
+fn prompt_ready(
+    matcher: Option<&Matcher>,
+    agent: Option<permit::Agent>,
+    bottom: &[String],
+    rows: &[String],
+) -> bool {
+    matcher
+        .and_then(|m| m.check(bottom))
+        .is_some_and(|(rule, _)| rule.starts_with("idle"))
+        && agent.is_none_or(|a| permit::parse_dialog(a, rows).is_none())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4820,6 +4999,39 @@ mod tests {
         }
     }
 
+    fn screen_of(text: &str) -> ScreenModel {
+        let mut s = ScreenModel::new(24, 100, 100);
+        s.feed(text.replace('\n', "\r\n").as_bytes());
+        s
+    }
+
+    fn ready(profile: &str, text: &str) -> bool {
+        let (set, _) = ProfileSet::load(None);
+        let matcher = Matcher::new(set.get(profile).unwrap()).unwrap();
+        let mut screen = screen_of(text);
+        let bottom = screen.bottom_text(10);
+        let rows = screen.text_lines(None).3;
+        prompt_ready(Some(&matcher), permit::agent_of(profile), &bottom, &rows)
+    }
+
+    #[test]
+    fn at_prompt_refuses_a_screen_with_an_approval_dialog() {
+        let dialog = include_str!("../profiles/screens/claude-bash-approval.txt");
+        assert!(!ready("claude-code", dialog));
+        assert!(!ready("claude-code", "Do you want to proceed?\n"));
+        assert!(!ready("claude-code", "working\n"));
+    }
+
+    #[test]
+    fn at_prompt_accepts_the_idle_prompt_alone_on_the_bottom_line() {
+        assert!(ready("claude-code", "done\n\n❯\n"));
+    }
+
+    #[test]
+    fn at_prompt_refuses_without_a_profile_matcher() {
+        assert!(!prompt_ready(None, None, &["❯".into()], &[]));
+    }
+
     #[test]
     fn session_text_drops_the_oldest_lines_to_fit_one_frame() {
         let mut lines: Vec<String> = (0..10).map(|i| format!("{i}{}", "x".repeat(99))).collect();
@@ -4833,6 +5045,122 @@ mod tests {
         cap_text(&mut small, &mut small_wrapped, 100);
         assert_eq!(small_wrapped, [true]);
         assert_eq!(small, ["a"]);
+    }
+
+    fn member<'a>(
+        id: &'a str,
+        role: Option<TeamRole>,
+        of: &'a str,
+        alive: bool,
+    ) -> (&'a str, Option<TeamLink>, bool) {
+        (
+            id,
+            role.map(|role| TeamLink {
+                role,
+                of: of.into(),
+            }),
+            alive,
+        )
+    }
+
+    fn orphans(m: &[(&str, Option<TeamLink>, bool)], lead_of: &str) -> Vec<String> {
+        let v: Vec<_> = m.iter().map(|(i, t, a)| (*i, t.as_ref(), *a)).collect();
+        orphaned_workers(&v, lead_of)
+            .into_iter()
+            .map(String::from)
+            .collect()
+    }
+
+    fn groups(m: &[(&str, Option<TeamLink>, bool)], absent: bool) -> Vec<String> {
+        let v: Vec<_> = m.iter().map(|(i, t, a)| (*i, t.as_ref(), *a)).collect();
+        leadless_groups(&v, absent)
+    }
+
+    #[test]
+    fn orphaned_workers_are_only_the_live_workers_of_that_team() {
+        let m = [
+            member("lead", Some(TeamRole::Lead), "q1", false),
+            member("w1", Some(TeamRole::Worker(1)), "q1", true),
+            member("w2", Some(TeamRole::Worker(2)), "q1", true),
+            member("w3", Some(TeamRole::Worker(3)), "q1", false),
+            member("o1", Some(TeamRole::Worker(1)), "q2", true),
+            member("o2", Some(TeamRole::Lead), "q2", true),
+            member("plain", None, "", true),
+        ];
+        assert_eq!(orphans(&m, "q1"), ["w1", "w2"]);
+        assert!(orphans(&m, "q2").iter().all(|i| i != "o2"));
+        assert_eq!(orphans(&m, "q2"), ["o1"]);
+        assert!(orphans(&m, "nope").is_empty());
+    }
+
+    #[test]
+    fn an_orphaned_worker_is_signalled_again_and_then_killed() {
+        let t0 = Instant::now();
+        let at = |s: u64| t0 + Duration::from_secs(s);
+        assert_eq!(team_stop_signal(None, t0), Some(libc::SIGTERM));
+        assert_eq!(team_stop_signal(Some((t0, t0)), at(1)), None);
+        assert_eq!(team_stop_signal(Some((t0, t0)), at(5)), Some(libc::SIGTERM));
+        assert_eq!(team_stop_signal(Some((t0, at(5))), at(8)), None);
+        assert_eq!(
+            team_stop_signal(Some((t0, at(5))), at(10)),
+            Some(libc::SIGKILL)
+        );
+        assert_eq!(
+            team_stop_signal(Some((t0, at(10))), at(15)),
+            Some(libc::SIGKILL)
+        );
+    }
+
+    #[test]
+    fn a_worker_being_stopped_stays_a_target_after_its_lead_is_removed() {
+        let m = [
+            member("w1", Some(TeamRole::Worker(1)), "q1", true),
+            member("w2", Some(TeamRole::Worker(2)), "q1", false),
+            member("w3", Some(TeamRole::Worker(1)), "q2", true),
+            member("lead3", Some(TeamRole::Lead), "q2", true),
+        ];
+        let v: Vec<_> = m.iter().map(|(i, t, a)| (*i, t.as_ref(), *a)).collect();
+        assert!(stop_targets(&v, &[false, false, false, false], false).is_empty());
+        let ids = |s: &[bool]| -> Vec<String> {
+            stop_targets(&v, s, false)
+                .into_iter()
+                .map(|(i, _)| i)
+                .collect()
+        };
+        assert_eq!(ids(&[true, true, false, false]), ["w1"]);
+        assert_eq!(
+            stop_targets(&v, &[false; 4], true),
+            [("w1".to_string(), "q1".to_string())]
+        );
+    }
+
+    #[test]
+    fn leadless_groups_need_a_live_worker_and_no_live_lead() {
+        let m = [
+            member("lead", Some(TeamRole::Lead), "q1", false),
+            member("w1", Some(TeamRole::Worker(1)), "q1", true),
+            member("lead2", Some(TeamRole::Lead), "q2", true),
+            member("w2", Some(TeamRole::Worker(1)), "q2", true),
+            member("w3", Some(TeamRole::Worker(1)), "q3", true),
+            member("w4", Some(TeamRole::Worker(1)), "q4", false),
+            member("lead4", Some(TeamRole::Lead), "q4", false),
+            member("plain", None, "", true),
+        ];
+        assert_eq!(groups(&m, false), ["q1"]);
+        assert_eq!(groups(&m, true), ["q1", "q3"]);
+    }
+
+    #[test]
+    fn only_a_worker_run_closes_its_agent_work_on_a_clean_exit() {
+        let team = |role| TeamLink {
+            role,
+            of: "q_team".into(),
+        };
+        assert!(holds_success(true, None));
+        assert!(holds_success(true, Some(&team(TeamRole::Lead))));
+        assert!(!holds_success(true, Some(&team(TeamRole::Worker(1)))));
+        assert!(!holds_success(false, None));
+        assert!(!holds_success(false, Some(&team(TeamRole::Lead))));
     }
 
     fn plan_req(mode: &str, unattended: bool) -> RunCreateReq {

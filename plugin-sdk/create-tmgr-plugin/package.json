@@ -1,0 +1,34 @@
+{
+	"name": "create-tmgr-plugin",
+	"version": "1.0.0",
+	"description": "Scaffolds a TMGR plugin: npm create tmgr-plugin@latest publisher.name [dir]",
+	"license": "MIT",
+	"type": "module",
+	"bin": {
+		"create-tmgr-plugin": "bin/create-tmgr-plugin.mjs"
+	},
+	"files": [
+		"bin",
+		"template",
+		"LICENSE"
+	],
+	"engines": {
+		"node": ">=22.12"
+	},
+	"scripts": {
+		"test": "node --test \"test/**/*.test.mjs\""
+	},
+	"keywords": [
+		"tmgr",
+		"tmgr-plugin",
+		"plugin",
+		"scaffold",
+		"create"
+	],
+	"homepage": "https://tmgr.dev/docs/plugins.md",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tmgr-dev/frontend.git",
+		"directory": "plugin-sdk/create-tmgr-plugin"
+	}
+}

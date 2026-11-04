@@ -1,4 +1,4 @@
-use super::bundle::RunBundle;
+use super::bundle::{RunBundle, TeamLink};
 use super::screen::{Line, Modes, Snapshot};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -104,6 +104,8 @@ pub struct RunCreateReq {
     pub no_sandbox: Option<NoSandbox>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub permission_cards: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team: Option<TeamLink>,
 }
 
 /// A manual run outside the OS sandbox (`client: "cli"` only): the agent gets the real home and the caller's environment.
@@ -130,6 +132,7 @@ pub struct OrchestratorCreateReq {
 impl OrchestratorCreateReq {
     pub fn as_run(&self) -> RunCreateReq {
         RunCreateReq {
+            team: None,
             profile: self.profile.clone(),
             task: None,
             cwd: self.cwd.clone(),
@@ -293,6 +296,8 @@ pub struct SessionInfo {
     pub checkpoints: Option<super::checkpoints::CheckpointStatus>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub permission_cards: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team: Option<TeamLink>,
 }
 
 /// Params of `runs.lookup`.
@@ -397,6 +402,8 @@ pub struct KillParams {
 pub struct SendParams {
     pub id: String,
     pub text: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub at_prompt: bool,
 }
 
 /// Params of `attach.open` and `attach.set`.

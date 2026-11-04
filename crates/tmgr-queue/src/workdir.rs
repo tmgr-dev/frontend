@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::ffi::OsString;
+use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tmgr_core::error::{Error, Kind, Result};
@@ -14,22 +16,75 @@ pub fn clone_dir(repo: &str, pickup_id: &str) -> Option<PathBuf> {
     )
 }
 
+/// Whether `path` lies in a run directory made by `clone_dir`, where a queue agent may be writing.
+pub fn in_queue_run_dir(path: &Path) -> bool {
+    let names: Vec<_> = path.components().map(|c| c.as_os_str()).collect();
+    names
+        .windows(3)
+        .any(|w| w[1] == "queue" && w[0].to_str().is_some_and(|n| n.ends_with("-worktrees")))
+}
+
 pub fn branch_name(pickup_id: &str) -> String {
     format!("queue/{pickup_id}")
 }
 
-pub(crate) fn git_command(dir: Option<&Path>) -> Command {
+pub const LEAD_DIR: &str = "lead";
+
+pub fn lead_dir(team_dir: &Path) -> PathBuf {
+    team_dir.join(LEAD_DIR)
+}
+
+pub fn is_team_lead_clone(dir: &Path) -> bool {
+    fn name(p: Option<&Path>) -> Option<&str> {
+        p.and_then(|p| p.file_name()).and_then(|n| n.to_str())
+    }
+    let queue = dir.parent().and_then(Path::parent);
+    name(Some(dir)) == Some(LEAD_DIR)
+        && name(queue) == Some("queue")
+        && name(queue.and_then(Path::parent)).is_some_and(|n| n.ends_with("-worktrees"))
+}
+
+pub fn worker_dir(team_dir: &Path, k: u8) -> PathBuf {
+    team_dir.join(format!("w{k}"))
+}
+
+pub fn worker_branch(pickup_id: &str, k: u8) -> String {
+    format!("{TEAM_REF_PREFIX}{pickup_id}/w{k}")
+}
+
+const TEAM_REF_PREFIX: &str = "queue-team/";
+
+fn member_dir_name(name: &str) -> bool {
+    name == LEAD_DIR
+        || name
+            .strip_prefix('w')
+            .is_some_and(|k| matches!(k, "1" | "2" | "3" | "4" | "5"))
+}
+
+pub fn absolute_path_entries(value: &std::ffi::OsStr) -> std::ffi::OsString {
+    let kept: Vec<PathBuf> = std::env::split_paths(value)
+        .filter(|entry| entry.is_absolute())
+        .collect();
+    match std::env::join_paths(kept) {
+        Ok(joined) if !joined.is_empty() => joined,
+        _ => "/usr/bin:/bin".into(),
+    }
+}
+
+pub fn absolute_path() -> std::ffi::OsString {
+    absolute_path_entries(&std::env::var_os("PATH").unwrap_or_default())
+}
+
+fn fixed_git_command() -> Command {
     let mut cmd = Command::new("git");
     cmd.env_clear()
-        .env(
-            "PATH",
-            std::env::var_os("PATH").unwrap_or_else(|| "/usr/bin:/bin".into()),
-        )
+        .env("PATH", absolute_path())
         .env("HOME", "/nonexistent")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_ALLOW_PROTOCOL", "file")
+        .env("GIT_NO_LAZY_FETCH", "1")
         .args([
             "-c",
             "core.hooksPath=/dev/null",
@@ -45,11 +100,163 @@ pub(crate) fn git_command(dir: Option<&Path>) -> Command {
             "diff.external=",
             "-c",
             "core.pager=cat",
+            "-c",
+            "core.alternateRefsCommand=",
+            "-c",
+            "gc.auto=0",
+            "-c",
+            "maintenance.auto=false",
+            "-c",
+            "submodule.recurse=false",
+            "-c",
+            "fetch.recurseSubmodules=false",
         ]);
+    cmd
+}
+
+fn named_program_overrides(names: &[u8]) -> Vec<(OsString, &'static str)> {
+    let key = |section: &str, sub: &[u8], var: &str| {
+        let mut k = format!("{section}.").into_bytes();
+        k.extend_from_slice(sub);
+        k.push(b'.');
+        k.extend_from_slice(var.as_bytes());
+        OsString::from_vec(k)
+    };
+    let mut out = Vec::new();
+    for name in names.split(|b| *b == 0) {
+        let Some(dot) = name.iter().position(|b| *b == b'.') else {
+            continue;
+        };
+        let (section, rest) = (&name[..dot], &name[dot + 1..]);
+        let Some(last) = rest.iter().rposition(|b| *b == b'.') else {
+            continue;
+        };
+        let sub = &rest[..last];
+        match section {
+            b"hook" => out.push((key("hook", sub, "enabled"), "false")),
+            b"filter" => {
+                for var in ["clean", "smudge", "process"] {
+                    out.push((key("filter", sub, var), ""));
+                }
+                out.push((key("filter", sub, "required"), "false"));
+            }
+            _ => {}
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+pub(crate) fn git_command(dir: Option<&Path>) -> Command {
+    let mut cmd = fixed_git_command();
     if let Some(d) = dir {
+        let mut list = fixed_git_command();
+        list.arg("-C")
+            .arg(d)
+            .args(["config", "--name-only", "--list", "-z"]);
+        let names = output_within(&mut list, GIT_TIMEOUT)
+            .map(|o| o.stdout)
+            .unwrap_or_default();
+        let overrides = named_program_overrides(&names);
+        cmd.env("GIT_CONFIG_COUNT", overrides.len().to_string());
+        for (i, (key, value)) in overrides.iter().enumerate() {
+            cmd.env(format!("GIT_CONFIG_KEY_{i}"), key)
+                .env(format!("GIT_CONFIG_VALUE_{i}"), value);
+        }
         cmd.arg("-C").arg(d);
     }
     cmd
+}
+
+fn plain_config_key(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    let Some((section, rest)) = n.split_once('.') else {
+        return false;
+    };
+    let var = rest.rsplit('.').next().unwrap_or("");
+    match section {
+        "branch" | "user" => true,
+        "remote" => matches!(
+            var,
+            "url" | "pushurl" | "fetch" | "push" | "tagopt" | "prune" | "mirror"
+        ),
+        "core" => matches!(
+            rest,
+            "repositoryformatversion"
+                | "filemode"
+                | "bare"
+                | "logallrefupdates"
+                | "ignorecase"
+                | "precomposeunicode"
+                | "symlinks"
+                | "autocrlf"
+                | "eol"
+                | "safecrlf"
+                | "abbrev"
+                | "quotepath"
+                | "untrackedcache"
+                | "hookspath"
+                | "fsmonitor"
+        ),
+        "lfs" => matches!(var, "locksverify" | "repositoryformatversion"),
+        _ => matches!(
+            n.as_str(),
+            "commit.gpgsign"
+                | "tag.gpgsign"
+                | "pull.rebase"
+                | "pull.ff"
+                | "push.default"
+                | "push.autosetupremote"
+                | "fetch.prune"
+                | "init.defaultbranch"
+                | "rebase.autostash"
+                | "gc.auto"
+                | "maintenance.auto"
+        ),
+    }
+}
+
+/// Whether the repository's own configuration holds only settings that run nothing once git commands pin core.hooksPath and core.fsmonitor.
+pub fn repo_config_is_plain(dir: &Path) -> bool {
+    let mut common = fixed_git_command();
+    common
+        .arg("-C")
+        .arg(dir)
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    let Ok(out) = output_within(&mut common, GIT_TIMEOUT) else {
+        return false;
+    };
+    if !out.status.success() {
+        return false;
+    }
+    let Ok(git_dir) = std::str::from_utf8(&out.stdout) else {
+        return false;
+    };
+    let git_dir = git_dir.strip_suffix('\n').unwrap_or(git_dir);
+    let mut list = fixed_git_command();
+    list.args([
+        "config",
+        "--no-includes",
+        "--name-only",
+        "--list",
+        "-z",
+        "--file",
+    ])
+    .arg(Path::new(&git_dir).join("config"));
+    let Ok(out) = output_within(&mut list, GIT_TIMEOUT) else {
+        return false;
+    };
+    if !out.status.success() {
+        return false;
+    }
+    let Ok(names) = std::str::from_utf8(&out.stdout) else {
+        return false;
+    };
+    names
+        .split('\0')
+        .filter(|name| !name.is_empty())
+        .all(plain_config_key)
 }
 
 pub fn git_bytes(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<Vec<u8>> {
@@ -164,6 +371,19 @@ pub trait WorkDirs {
     ) -> Result<()> {
         Err(Error::internal(
             "this work directory provider cannot pin a branch",
+        ))
+    }
+
+    /// One clone of a team run (`<run folder>/lead` or `<run folder>/wK`) on a new `branch`.
+    fn prepare_member(
+        &self,
+        _repo: &str,
+        _pickup_id: &str,
+        _cwd: &str,
+        _branch: &str,
+    ) -> Result<()> {
+        Err(Error::internal(
+            "this work directory provider cannot make team clones",
         ))
     }
 
@@ -442,6 +662,20 @@ pub(crate) fn open_beneath(
     at(dir.as_raw_fd(), last.as_bytes(), last_flags)
 }
 
+pub(crate) fn unlink_beneath(root: &Path, rel: &str) -> bool {
+    use std::os::fd::AsRawFd;
+    let Some((parent, name)) = rel.rsplit_once('/') else {
+        return false;
+    };
+    let Some(dir) = open_beneath(root, parent, libc::O_DIRECTORY) else {
+        return false;
+    };
+    let Ok(name) = std::ffi::CString::new(name) else {
+        return false;
+    };
+    unsafe { libc::unlinkat(dir.as_raw_fd(), name.as_ptr(), 0) == 0 }
+}
+
 pub(crate) fn open_in(
     dir: &std::fs::File,
     name: &std::ffi::OsStr,
@@ -596,6 +830,206 @@ pub fn clone_head_branch(clone: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
+/// What a team worker's copy says about its refs, read as data without running git there.
+pub struct CopyRefs {
+    pub head: String,
+    pub stash: bool,
+    /// Every other ref of the copy (branches, tags, remote-tracking refs, notes...) with its object.
+    pub others: Vec<(String, String)>,
+}
+
+fn plain_ref_name(name: &str) -> bool {
+    name.starts_with("refs/")
+        && name.split('/').all(|c| {
+            !c.is_empty() && c != "." && c != ".." && !c.bytes().any(|b| b.is_ascii_control())
+        })
+}
+
+fn loose_refs(dir: &std::fs::File, prefix: &str, out: &mut Vec<String>) -> bool {
+    for name in entries(dir) {
+        let full = format!("{prefix}{}", name.to_string_lossy());
+        if let Some(sub) = open_in(dir, &name, libc::O_DIRECTORY) {
+            if !loose_refs(&sub, &format!("{full}/"), out) {
+                return false;
+            }
+        } else if open_in(dir, &name, libc::O_NONBLOCK)
+            .and_then(|f| f.metadata().ok())
+            .is_some_and(|m| m.file_type().is_file())
+        {
+            out.push(full);
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
+/// The branch tip, the stash flag and every other ref of a worker's copy. HEAD must name `branch`.
+/// Symbolic refs are skipped: they point at refs that are listed themselves.
+pub fn copy_refs(copy: &Path, branch: &str) -> std::result::Result<CopyRefs, String> {
+    if clone_head_branch(copy).as_deref() != Some(branch) {
+        return Err(format!("HEAD is not on the branch {branch}"));
+    }
+    let reference = format!("refs/heads/{branch}");
+    let root = open_beneath(copy, ".git/refs", libc::O_DIRECTORY)
+        .ok_or("the copy's refs cannot be read")?;
+    let mut loose = Vec::new();
+    if !loose_refs(&root, "refs/", &mut loose) {
+        return Err("the copy's refs have entries that are not plain files".into());
+    }
+    let mut refs: BTreeMap<String, String> = BTreeMap::new();
+    let mut packed: BTreeMap<String, String> = BTreeMap::new();
+    if std::fs::symlink_metadata(copy.join(".git/packed-refs")).is_ok() {
+        let text =
+            read_small(copy, ".git/packed-refs").ok_or("the copy's packed refs cannot be read")?;
+        for line in text.lines() {
+            if line.starts_with('#') || line.starts_with('^') || line.is_empty() {
+                continue;
+            }
+            let (sha, name) = line
+                .split_once(' ')
+                .ok_or("the copy's packed refs are malformed")?;
+            if !plain_ref_name(name) || !is_sha(sha) {
+                return Err("the copy has a ref that is not readable".into());
+            }
+            packed.insert(name.to_string(), sha.to_string());
+        }
+    }
+    for name in &loose {
+        if !plain_ref_name(name) {
+            return Err("the copy has a ref that is not readable".into());
+        }
+        let text =
+            read_small(copy, &format!(".git/{name}")).ok_or("the copy's refs cannot be read")?;
+        let text = text.trim();
+        if text.starts_with("ref: ") {
+            continue;
+        }
+        if !is_sha(text) {
+            return Err("the copy has a ref that is not readable".into());
+        }
+        refs.insert(name.clone(), text.to_string());
+    }
+    for (name, sha) in packed {
+        refs.entry(name).or_insert(sha);
+    }
+    let stash = refs.remove("refs/stash").is_some();
+    let head = refs
+        .remove(&reference)
+        .ok_or("the copy's branch has no readable commit")?;
+    Ok(CopyRefs {
+        head,
+        stash,
+        others: refs.into_iter().collect(),
+    })
+}
+
+const MAX_INDEX: u64 = 64 << 20;
+
+/// Whether the copy's own object alternates are none, or only `allowed` (the repository it was cloned with
+/// `--reference`). Anything else would make git read objects from elsewhere.
+pub fn copy_alternates_ok(copy: &Path, allowed: &Path) -> bool {
+    let real_dir = |rel: &str| std::fs::symlink_metadata(copy.join(rel)).map(|m| m.is_dir());
+    if [".git", ".git/objects"]
+        .iter()
+        .any(|r| !matches!(real_dir(r), Ok(true)))
+        || [".git/objects/info", ".git/objects/pack"]
+            .iter()
+            .any(|r| matches!(real_dir(r), Ok(false)))
+    {
+        return false;
+    }
+    let rel = ".git/objects/info/alternates";
+    if std::fs::symlink_metadata(copy.join(rel)).is_err() {
+        return true;
+    }
+    let Some(text) = read_small(copy, rel) else {
+        return false;
+    };
+    let allowed = std::fs::canonicalize(allowed).ok();
+    text.lines().filter(|l| !l.trim().is_empty()).all(|l| {
+        let p = Path::new(l.trim());
+        p.is_absolute() && allowed.is_some() && std::fs::canonicalize(p).ok() == allowed
+    })
+}
+
+/// Makes `git_dir` (an empty folder of ours) a bare repository that reads a worker's copy as data:
+/// its objects through alternates, its index, its branch as `HEAD`, every other ref of the copy as
+/// `refs/copy/<n>` and `trusted` commits as `refs/host/<n>`. None of the copy's git settings or ref
+/// names reach git.
+pub fn trusted_git_dir(
+    git_dir: &Path,
+    copy: &Path,
+    branch: &str,
+    refs: &CopyRefs,
+    trusted: &[String],
+) -> std::result::Result<(), String> {
+    use std::io::Read;
+    validate_branch(branch).map_err(|e| e.message)?;
+    let objects = copy.join(".git/objects");
+    let objects = objects
+        .to_str()
+        .filter(|o| !o.contains('\n'))
+        .ok_or("the copy's path is not plain")?;
+    let mut init = fixed_git_command();
+    init.args(["init", "--bare", "-q"])
+        .arg(git_dir)
+        .current_dir(git_dir);
+    let out = output_within(&mut init, GIT_TIMEOUT).map_err(|e| e.message)?;
+    if !out.status.success() {
+        return Err("git init failed".into());
+    }
+    let file = open_beneath(copy, ".git/index", libc::O_NONBLOCK).ok_or("the copy has no index")?;
+    let meta = file.metadata().map_err(|e| e.to_string())?;
+    if !meta.file_type().is_file() || meta.len() > MAX_INDEX {
+        return Err("the copy's index is not a plain file of a sane size".into());
+    }
+    let mut index = Vec::new();
+    file.take(MAX_INDEX)
+        .read_to_end(&mut index)
+        .map_err(|e| e.to_string())?;
+    let mut packed = format!("{} refs/heads/{branch}\n", refs.head);
+    for (n, (_, sha)) in refs.others.iter().enumerate() {
+        packed.push_str(&format!("{sha} refs/copy/{n}\n"));
+    }
+    for (n, sha) in trusted.iter().filter(|s| is_sha(s)).enumerate() {
+        packed.push_str(&format!("{sha} refs/host/{n}\n"));
+    }
+    let write = || -> std::io::Result<()> {
+        std::fs::write(
+            git_dir.join("objects/info/alternates"),
+            format!("{objects}\n"),
+        )?;
+        std::fs::write(git_dir.join("index"), &index)?;
+        std::fs::write(git_dir.join("HEAD"), format!("ref: refs/heads/{branch}\n"))?;
+        std::fs::write(git_dir.join("packed-refs"), packed)
+    };
+    write().map_err(|e| e.to_string())
+}
+
+/// Runs git over a folder from `trusted_git_dir` with `copy` as the work tree.
+pub fn trusted_git_bytes(
+    git_dir: &Path,
+    copy: &Path,
+    args: &[&str],
+) -> std::result::Result<Vec<u8>, String> {
+    let mut cmd = fixed_git_command();
+    cmd.arg("--git-dir")
+        .arg(git_dir)
+        .arg("--work-tree")
+        .arg(copy)
+        .args(["-c", "core.bare=false", "-c", "core.quotepath=off"])
+        .args(args)
+        .current_dir(git_dir);
+    let out = output_within(&mut cmd, GIT_TIMEOUT).map_err(|e| e.message)?;
+    if !out.status.success() {
+        let msg = String::from_utf8_lossy(&out.stderr);
+        let line = msg.lines().next().unwrap_or("failed");
+        return Err(format!("git {}: {line}", args.first().unwrap_or(&"")));
+    }
+    Ok(out.stdout)
+}
+
 /// Whether the new commits `base..head` sit on `base`'s history (no root commit among them, a shared
 /// merge base; `base` may have moved on since), and how many of them are merge commits.
 pub fn history_facts(repo: &Path, base: &str, head: &str) -> Result<(bool, usize)> {
@@ -682,12 +1116,16 @@ fn validate_branch(branch: &str) -> Result<()> {
 pub struct GitClone;
 
 pub fn discard_run_dir(pickup_id: &str, cwd: &str) {
-    let dir = Path::new(cwd);
+    let mut dir = Path::new(cwd);
     let named = |p: Option<&Path>, want: &dyn Fn(&str) -> bool| {
         p.and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
             .is_some_and(want)
     };
+    let team = named(Some(dir), &|n| n == LEAD_DIR) && named(dir.parent(), &|n| n == pickup_id);
+    if team {
+        dir = dir.parent().unwrap_or(dir);
+    }
     let ours = named(Some(dir), &|n| n == pickup_id)
         && named(dir.parent(), &|n| n == "queue")
         && named(dir.parent().and_then(Path::parent), &|n| {
@@ -696,6 +1134,42 @@ pub fn discard_run_dir(pickup_id: &str, cwd: &str) {
     let real = std::fs::symlink_metadata(dir).is_ok_and(|m| m.is_dir());
     if ours && real {
         let _ = std::fs::remove_dir_all(dir);
+        if team {
+            if let Some(repo) = repo_of_run_dir(dir) {
+                remove_team_refs(&repo, pickup_id);
+            }
+        }
+    }
+}
+
+/// `<parent>/<repo>` for a run folder `<parent>/<repo>-worktrees/queue/<id>`.
+pub fn repo_of_run_dir(run_dir: &Path) -> Option<PathBuf> {
+    let worktrees = run_dir.parent()?.parent()?;
+    let stem = worktrees
+        .file_name()?
+        .to_str()?
+        .strip_suffix("-worktrees")?;
+    Some(worktrees.parent()?.join(stem))
+}
+
+/// Deletes the temporary `queue-team/<pickup>/*` branches of a finished team run from the repository.
+pub fn remove_team_refs(repo: &Path, pickup_id: &str) {
+    let plain = !pickup_id.is_empty()
+        && pickup_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    if !plain {
+        return;
+    }
+    let prefix = format!("refs/heads/{TEAM_REF_PREFIX}{pickup_id}/");
+    let Ok(listed) = git(
+        Some(repo),
+        &["for-each-ref", "--format=%(refname)", &prefix],
+    ) else {
+        return;
+    };
+    for name in listed.lines().filter(|l| l.starts_with(&prefix)) {
+        let _ = git(Some(repo), &["update-ref", "-d", name]);
     }
 }
 
@@ -724,6 +1198,22 @@ impl WorkDirs for GitClone {
             ));
         }
         prepare_clone(repo, &dest, branch, None)
+    }
+
+    fn prepare_member(&self, repo: &str, pickup_id: &str, cwd: &str, branch: &str) -> Result<()> {
+        let team_dir = clone_dir(repo, pickup_id)
+            .ok_or_else(|| Error::internal("the repository path has no parent directory"))?;
+        let dest = Path::new(cwd);
+        let named = dest
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(member_dir_name);
+        if dest.parent() != Some(team_dir.as_path()) || !named {
+            return Err(Error::internal(
+                "the run directory does not belong to this pickup",
+            ));
+        }
+        prepare_clone(repo, dest, branch, None)
     }
 
     fn prepare_multi(
@@ -873,6 +1363,97 @@ mod tests {
     }
 
     #[test]
+    fn host_git_commands_keep_only_absolute_path_entries() {
+        assert_eq!(
+            absolute_path_entries(":.:/usr/bin:bin:/bin".as_ref()),
+            std::ffi::OsString::from("/usr/bin:/bin")
+        );
+        assert_eq!(
+            absolute_path_entries("relative".as_ref()),
+            std::ffi::OsString::from("/usr/bin:/bin")
+        );
+    }
+
+    #[test]
+    fn only_settings_known_to_run_nothing_count_as_plain() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(tmp.path()).unwrap();
+        init_repo(&repo);
+        assert!(repo_config_is_plain(&repo));
+        git(Some(&repo), &["config", "remote.origin.url", "file:///x"]).unwrap();
+        git(Some(&repo), &["config", "branch.main.remote", "origin"]).unwrap();
+        assert!(repo_config_is_plain(&repo));
+        git(Some(&repo), &["config", "unknown.setting", "1"]).unwrap();
+        assert!(!repo_config_is_plain(&repo));
+        assert!(!repo_config_is_plain(&repo.join("missing")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_repository_path_that_is_not_utf8_is_never_plain() {
+        use std::os::unix::ffi::OsStrExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join(std::ffi::OsStr::from_bytes(b"repo\xff"));
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        assert!(!repo_config_is_plain(&repo));
+    }
+
+    #[test]
+    fn only_queue_run_directories_count_as_queue_run_directories() {
+        assert!(in_queue_run_dir(Path::new("/w/p-worktrees/queue/id")));
+        assert!(in_queue_run_dir(Path::new("/w/p-worktrees/queue/id/src")));
+        assert!(!in_queue_run_dir(Path::new("/w/p-worktrees/queue")));
+        assert!(!in_queue_run_dir(Path::new("/w/p-worktrees/feature")));
+        assert!(!in_queue_run_dir(Path::new("/w/queue/id/src")));
+    }
+
+    #[test]
+    fn team_member_copies_count_as_queue_run_directories() {
+        let team = Path::new("/w/p-worktrees/queue/q_abc");
+        for dir in [lead_dir(team), worker_dir(team, 1), worker_dir(team, 5)] {
+            assert!(in_queue_run_dir(&dir), "{}", dir.display());
+            assert!(in_queue_run_dir(&dir.join("src")));
+        }
+    }
+
+    #[test]
+    fn a_git_file_is_followed_to_the_configuration_it_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("repo");
+        let other = root.join("other");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        init_repo(&repo);
+        std::fs::write(
+            other.join(".git"),
+            format!("gitdir: {}\n", repo.join(".git").display()),
+        )
+        .unwrap();
+        assert!(repo_config_is_plain(&other));
+        git(Some(&repo), &["config", "include.path", "elsewhere"]).unwrap();
+        assert!(!repo_config_is_plain(&other));
+    }
+
+    #[test]
+    fn a_repository_with_a_large_file_filter_still_answers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(tmp.path()).unwrap();
+        init_repo(&repo);
+        git(
+            Some(&repo),
+            &["config", "filter.lfs.clean", "git-lfs clean -- %f"],
+        )
+        .unwrap();
+        git(Some(&repo), &["config", "filter.lfs.required", "true"]).unwrap();
+        let head = git_query(&repo, &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(head.len(), 40);
+        assert_eq!(branch_tip(&repo, "main").unwrap().as_deref(), Some(&*head));
+    }
+
+    #[test]
     fn importing_a_branch_never_runs_the_clones_own_configuration() {
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
@@ -979,6 +1560,64 @@ mod tests {
         std::fs::rename(&objects, root.join("moved-objects")).unwrap();
         std::os::unix::fs::symlink(root.join("moved-objects"), &objects).unwrap();
         assert!(import_branch(&r, &dest, "tm-2-fix").is_err());
+    }
+
+    #[test]
+    fn a_lead_squashes_imported_worker_commits_through_alternates_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let r = repo.to_string_lossy().into_owned();
+        let base = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        let team = clone_dir(&r, "q_team").unwrap();
+        let lead = lead_dir(&team);
+        let mut tips = Vec::new();
+        for k in 1..=2u8 {
+            let w = worker_dir(&team, k);
+            let branch = worker_branch("q_team", k);
+            GitClone
+                .prepare_member(&r, "q_team", &w.to_string_lossy(), &branch)
+                .unwrap();
+            commit_file(&w, &format!("w{k}.txt"));
+            commit_file(&w, &format!("w{k}b.txt"));
+            tips.push(import_branch(&r, &w, &branch).unwrap());
+        }
+        GitClone
+            .prepare_member(&r, "q_team", &lead.to_string_lossy(), "queue/q_team")
+            .unwrap();
+        for (k, tip) in tips.iter().enumerate() {
+            run_git(&lead, &["merge", "--squash", tip]);
+            run_git(&lead, &["commit", "-q", "-m", &format!("worker {}", k + 1)]);
+        }
+        for f in ["w1.txt", "w1b.txt", "w2.txt", "w2b.txt"] {
+            assert!(lead.join(f).is_file(), "{f}");
+        }
+        let head = git(Some(&lead), &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(history_facts(&lead, &base, &head).unwrap(), (true, 0));
+        let count = git(
+            Some(&lead),
+            &["rev-list", "--count", &format!("{base}..{head}")],
+        )
+        .unwrap();
+        assert_eq!(count, "2");
+    }
+
+    #[test]
+    fn only_the_lead_folder_of_a_queue_run_is_a_team_lead_clone() {
+        assert!(is_team_lead_clone(Path::new(
+            "/w/proj-worktrees/queue/q_1/lead"
+        )));
+        for other in [
+            "/w/proj-worktrees/queue/q_1/w1",
+            "/w/proj-worktrees/queue/q_1",
+            "/w/proj-worktrees/lead",
+            "/w/proj/queue/q_1/lead",
+            "/w/proj-worktrees/other/q_1/lead",
+        ] {
+            assert!(!is_team_lead_clone(Path::new(other)), "{other}");
+        }
     }
 
     #[test]

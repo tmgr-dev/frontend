@@ -494,8 +494,66 @@ type TmgrNode =
 	| { type: 'list'; items: TmgrNode[] }
 	| {
 			type: 'table';
-			columns: { key: string; title: string }[];
-			rows: { taskId?: number; cells: Record<string, TmgrNode> }[];
+			columns: {
+				key: string;
+				title: string;
+				/** API 1.10. */
+				align?: 'left' | 'center' | 'right';
+				/** API 1.10. 'xs' 4rem, 'sm' 7rem, 'md' 12rem, 'lg' 18rem. */
+				width?: 'xs' | 'sm' | 'md' | 'lg';
+				/** API 1.10. Clicking the header sorts the rows in the app; nothing is sent to the plugin. */
+				sortable?: boolean;
+			}[];
+			rows: {
+				taskId?: number;
+				cells: Record<string, TmgrNode>;
+				/** API 1.10. Sort values by column key; without one the cell text is used. */
+				sort?: Record<string, string | number>;
+				/** API 1.10. Tints the row and adds a colored left edge. */
+				color?: TmgrColor;
+				/** API 1.10. Runs when the row is clicked (not when a control inside it is). */
+				onClick?: { command: string; args?: unknown };
+				/** API 1.10. Nodes shown under the row when the user opens its arrow. */
+				expand?: TmgrNode[];
+			}[];
+	  }
+	/** API 1.10. A vertical list of events, at most 200. `at` is shown as given (at most 64 characters). */
+	| {
+			type: 'timeline';
+			items: { at: string; title?: string; text: string; tone?: TmgrColor }[];
+	  }
+	/** API 1.10. Chat bubbles, at most 200. `text` is plain text; line breaks are kept. */
+	| {
+			type: 'messages';
+			items: {
+				author: string;
+				text: string;
+				at?: string;
+				side?: 'left' | 'right';
+			}[];
+	  }
+	/** API 1.10. A small line chart of up to 365 finite numbers. `label` is read out by screen readers. */
+	| { type: 'sparkline'; values: number[]; color?: TmgrColor; label?: string }
+	/** API 1.12. A bar or line chart. Up to 365 labels, 8 series and 365 values per series; `null` is a gap, as is any value beyond 1e15 in absolute size. Series with a blank name are dropped. `height` is 120 to 400 px (default 200). `label` is read out by screen readers. */
+	| {
+			type: 'chart';
+			kind?: 'bar' | 'line';
+			labels?: Array<string | number>;
+			series: Array<{
+				name: string;
+				values: Array<number | null>;
+				color?: TmgrColor;
+			}>;
+			height?: number;
+			label?: string;
+	  }
+	/** API 1.10. A placeholder for "nothing here". */
+	| { type: 'empty'; title: string; text?: string; icon?: TmgrIconName }
+	/** API 1.10. A loading placeholder. `lines` is 1 to 12 (default 3). */
+	| {
+			type: 'skeleton';
+			variant?: 'text' | 'card' | 'table';
+			lines?: number;
 	  }
 	/**
 	 * confirm (≤200 chars) asks the user, naming your plugin, before the command runs.
@@ -556,12 +614,81 @@ type TmgrNode =
 			command: string;
 			args?: unknown;
 	  }
+	/**
+	 * API 1.9. A single-line text field. The typed text (at most 500 characters) reaches `command` only as `args.value`,
+	 * after the user types ('change', after `debounce` ms, 150 to 2000, default 300) or presses Enter ('submit').
+	 * `name` is your own identifier (at most 64 characters of A-Z a-z 0-9 _ . -). It is never shown or sent.
+	 */
+	| {
+			type: 'input';
+			name: string;
+			placeholder?: string;
+			value?: string;
+			command: string;
+			args?: unknown;
+			mode?: 'change' | 'submit';
+			debounce?: number;
+	  }
+	/** API 1.9. A drop-down of up to 100 options. Choosing one runs `command` with `{ ...args, value }`, the option's own value. */
+	| {
+			type: 'select';
+			name: string;
+			options: { value: string; text: string }[];
+			value?: string;
+			placeholder?: string;
+			command: string;
+			args?: unknown;
+	  }
+	/** API 1.9. A checkbox. Toggling it runs `command` with `{ ...args, value }`, where `value` is a boolean. */
+	| {
+			type: 'checkbox';
+			name: string;
+			label: string;
+			checked?: boolean;
+			command: string;
+			args?: unknown;
+	  }
+	/**
+	 * API 1.11. A multi-line text field with its own Send button. Nothing is sent while the user types: Send, or
+	 * Cmd+Enter / Ctrl+Enter, runs `command` with `{ ...args, value }`, the text cut to 5000 characters.
+	 * Unsent text stays when you render again; after sending, your next `value` is shown. `rows` is 2 to 12 (default 4),
+	 * `submitText` at most 40 characters (default "Send").
+	 */
+	| {
+			type: 'textarea';
+			name: string;
+			value?: string;
+			placeholder?: string;
+			rows?: number;
+			submitText?: string;
+			command: string;
+			args?: unknown;
+	  }
+	/**
+	 * API 1.11. A date picker. Choosing a date in `min`..`max` runs `command` with `{ ...args, value: 'YYYY-MM-DD' }`;
+	 * clearing it sends `value: null`. Dates must be real calendar dates in years 1000 to 9999; invalid ones are dropped.
+	 */
+	| {
+			type: 'date';
+			name: string;
+			value?: string | null;
+			min?: string;
+			max?: string;
+			command: string;
+			args?: unknown;
+	  }
 	| { type: 'taskLink'; taskId: number; text: string }
 	| { type: 'divider' }
 	/** Monospace text with a copy-to-clipboard button. */
 	| { type: 'copyable'; text: string; label?: string }
-	/** Needs links:open, and the link's host must be in manifest links.allowedDomains; otherwise it renders as plain text. */
+	/** Needs links:open, and the link's host must be in manifest links.allowedDomains; otherwise it renders as plain text. API 1.13: a tg://resolve, privatepost or join URL also opens when manifest links.schemes has "tg". */
 	| { type: 'link'; url: string; text?: string }
+	/**
+	 * API 1.13. `alt` is required (at most 200 characters). `src` is either a `data:image/png|jpeg|gif|webp;base64,...`
+	 * URL (at most 512 KB decoded, 2 MB per tree) or an https URL on a host in manifest `images.allowedDomains`
+	 * (needs the `images:remote` permission and the plugin to run on this computer). `width` is 16 to 800 px. Anything else drops the node.
+	 */
+	| { type: 'image'; src: string; alt: string; width?: number }
 	/** Relative time, e.g. "5 min ago" / "in 2 h"; at is an ISO 8601 timestamp. */
 	| { type: 'timeAgo'; at: string }
 	/** Like timeAgo, but colored: red once past, yellow within 24 h. */

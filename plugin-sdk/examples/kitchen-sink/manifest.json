@@ -3,8 +3,8 @@
 	"name": "Kitchen Sink",
 	"version": "1.0.0",
 	"publisher": "tmgr-dev",
-	"description": "Exercises every plugin API v1.8 feature, for manual acceptance testing.",
-	"engines": { "tmgr": "^1.8" },
+	"description": "Exercises every plugin API v1.13 feature, for manual acceptance testing.",
+	"engines": { "tmgr": "^1.13" },
 	"main": "main.js",
 	"permissions": [
 		"tasks:read",
@@ -30,7 +30,7 @@
 		"pages:sections",
 		"menus:task"
 	],
-	"links": { "allowedDomains": ["example.com"] },
+	"links": { "allowedDomains": ["example.com"], "schemes": ["tg"] },
 	"contributes": {
 		"boardCardBadges": [{ "id": "ks-badges" }],
 		"statusBarItems": [{ "id": "count" }],
@@ -48,6 +48,26 @@
 			{
 				"id": "tmgr-dev.kitchen-sink.setMode",
 				"title": "Switch the view mode"
+			},
+			{
+				"id": "tmgr-dev.kitchen-sink.setSearch",
+				"title": "Set the search text"
+			},
+			{
+				"id": "tmgr-dev.kitchen-sink.setColor",
+				"title": "Choose a color"
+			},
+			{
+				"id": "tmgr-dev.kitchen-sink.setNotify",
+				"title": "Toggle notifications"
+			},
+			{
+				"id": "tmgr-dev.kitchen-sink.setNote",
+				"title": "Send a note"
+			},
+			{
+				"id": "tmgr-dev.kitchen-sink.setDate",
+				"title": "Choose a date"
 			},
 			{
 				"id": "tmgr-dev.kitchen-sink.ping",

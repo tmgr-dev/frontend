@@ -34,6 +34,8 @@ export const createLlmChat = (
 		const requestId = crypto.randomUUID();
 		activeRequestId = requestId;
 		const { listen } = await import('@tauri-apps/api/event');
+		const { getCurrentWebviewWindow } =
+			await import('@tauri-apps/api/webviewWindow');
 		const queue: RustChatEvent[] = [];
 		let wake: (() => void) | null = null;
 		const unlisten = await listen<{ request_id: string; event: RustChatEvent }>(
@@ -43,6 +45,7 @@ export const createLlmChat = (
 				queue.push(e.payload.event);
 				wake?.();
 			},
+			{ target: getCurrentWebviewWindow().label },
 		);
 		try {
 			await resyncCloudIdentity();

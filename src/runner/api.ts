@@ -14,6 +14,12 @@ export interface RunnerState {
 	exitCode?: number | null;
 }
 
+export interface RunnerTeam {
+	of: string;
+	role: 'lead' | 'worker';
+	worker?: number;
+}
+
 export interface RunnerSession {
 	id: string;
 	name: string;
@@ -21,6 +27,7 @@ export interface RunnerSession {
 	task?: { workspaceId: number; taskId: number } | null;
 	state: RunnerState;
 	createdMs: number;
+	team?: RunnerTeam | null;
 }
 
 export type RunnerStatusState =

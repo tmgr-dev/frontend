@@ -171,7 +171,7 @@ export const buttonClasses = (
 
 export const segmentedArgs = (
 	args: unknown,
-	value: string,
+	value: string | boolean | null,
 ): Record<string, unknown> => ({
 	...(args !== null && typeof args === 'object' && !Array.isArray(args)
 		? (args as Record<string, unknown>)
@@ -195,7 +195,15 @@ export interface InteractiveLike {
 
 const isInteractiveNode = (el: InteractiveLike): boolean => {
 	const tag = el.tagName?.toLowerCase();
-	if (tag === 'button' || tag === 'a' || tag === 'input') return true;
+	if (
+		tag === 'button' ||
+		tag === 'a' ||
+		tag === 'input' ||
+		tag === 'textarea' ||
+		tag === 'select' ||
+		tag === 'label'
+	)
+		return true;
 	const role = el.getAttribute?.('role');
 	return role === 'menuitem' || role === 'button';
 };
@@ -211,3 +219,6 @@ export const isNestedInteractive = (
 	}
 	return false;
 };
+
+export const hasTextSelection = (): boolean =>
+	(globalThis.getSelection?.()?.toString() ?? '') !== '';

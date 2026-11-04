@@ -248,6 +248,7 @@ pub(super) fn run_create_run(
     trust: bool,
 ) -> RunCreateReq {
     RunCreateReq {
+        team: None,
         clones: Vec::new(),
         profile,
         task: None,
@@ -384,7 +385,10 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
         }
     }
     .map_err(rerr)?;
-    super::checkpoints::enable_new(&mut client, &info.id, a.checkpoints_flag())?;
+    if let Some(note) = super::checkpoints::enable_new(&mut client, &info.id, a.checkpoints_flag())?
+    {
+        eprintln!("{note}");
+    }
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         return attach::run(&cfg, &info.id);
     }

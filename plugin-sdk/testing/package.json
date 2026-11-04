@@ -5,6 +5,27 @@
 	"main": "index.js",
 	"types": "index.d.ts",
 	"license": "MIT",
+	"files": [
+		"index.js",
+		"index.d.ts",
+		"*.generated.js",
+		"pages.js",
+		"README.md",
+		"LICENSE"
+	],
+	"keywords": [
+		"tmgr",
+		"tmgr-plugin",
+		"plugin",
+		"testing",
+		"quickjs"
+	],
+	"homepage": "https://tmgr.dev/docs/plugins.md",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tmgr-dev/frontend.git",
+		"directory": "plugin-sdk/testing"
+	},
 	"dependencies": {
 		"@jitl/quickjs-wasmfile-release-sync": "^0.32.0",
 		"marked": "^18.0.12",

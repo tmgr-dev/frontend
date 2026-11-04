@@ -359,3 +359,15 @@ fn a_session_cannot_reach_the_default_keychains_the_tmgr_token_or_the_runner_soc
     let o = f.run(&format!("perl -e '{CONNECT}' {s}"));
     assert_eq!(o.stdout.trim(), "errno=1", "{} {}", o.stdout, o.stderr);
 }
+
+#[test]
+fn git_commands_work_in_the_work_folder() {
+    let f = fx();
+    let o = f.run("git init -q . && git config tmgr.probe 1");
+    assert!(o.ok(), "{}", o.stderr);
+    let o = f.run("printf '[tmgr]\\n\\tdirect = 1\\n' >> .git/config");
+    assert!(o.ok(), "{}", o.stderr);
+    let config = fs::read_to_string(f.cwd.join(".git/config")).unwrap();
+    assert!(config.contains("probe"));
+    assert!(config.contains("direct = 1"));
+}
