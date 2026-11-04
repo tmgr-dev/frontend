@@ -515,19 +515,10 @@ fn a_marker_never_skips_a_failing_publish_gate() {
 }
 
 #[test]
-fn a_multi_repo_or_non_claude_team_is_refused_with_a_reason_and_consumed() {
-    let fx = cloud_fx();
+fn a_team_over_an_inconsistent_local_rule_or_a_non_claude_team_is_refused() {
+    let (fx, _) = multi_fx();
+    fx.cloud.claim_repos.replace(vec![]);
     fx.cloud.tasks.replace(vec![signed(1, "do it")]);
-    fx.cloud.claim_repos.replace(vec![
-        crate::clones::ClaimRepo {
-            full_name: "o/a".into(),
-            path: fx.repo.clone(),
-        },
-        crate::clones::ClaimRepo {
-            full_name: "o/b".into(),
-            path: fx.repo.clone(),
-        },
-    ]);
     request(&fx, 2);
     fx.pass().unwrap();
     let p = pickup(&fx);
@@ -1314,4 +1305,140 @@ fn a_lead_exit_timestamp_in_the_future_restarts_the_wait() {
     assert_eq!(exits_to(&fx, "mock-1"), 1);
     fx.pass_now(after(t0, -940)).unwrap();
     assert_eq!(exits_to(&fx, "mock-1"), 2);
+}
+
+fn team_multi_fx(size: u8) -> (Fx, String) {
+    let (fx, second) = multi_fx();
+    fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+    request(&fx, size);
+    fx.pass().unwrap();
+    (fx, second)
+}
+
+fn has_branch(repo: &str, branch: &str) -> bool {
+    Command::new("git")
+        .args(["-C", repo, "rev-parse", "--verify", "-q"])
+        .arg(format!("refs/heads/{branch}"))
+        .output()
+        .unwrap()
+        .status
+        .success()
+}
+
+fn branch_of(dir: &Path) -> String {
+    git_in(dir, &["rev-parse", "--abbrev-ref", "HEAD"])
+}
+
+fn working_multi_team() -> (Fx, String) {
+    let (fx, second) = team_multi_fx(2);
+    plan(&fx, two_briefs());
+    idle(&fx, "mock-1");
+    fx.pass().unwrap();
+    (fx, second)
+}
+
+#[test]
+fn a_multi_repo_team_start_makes_a_lead_folder_with_one_clone_per_repository() {
+    let (fx, second) = team_multi_fx(2);
+    let p = pickup(&fx);
+    assert_eq!(p.status, Status::Started);
+    let lead = fx.runs.requests.borrow()[0].clone();
+    assert_eq!(lead.team.as_ref().unwrap().role, TeamRole::Lead);
+    assert_eq!(lead.cwd, p.bundle.launch.cwd);
+    assert!(lead.cwd.ends_with(&format!("/queue/{}/lead", p.id)));
+    assert_eq!(lead.clone_of, fx.repo);
+    let names: Vec<_> = lead.clones.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["backend", "frontend"]);
+    assert_eq!(lead.clones[1].clone_of, second);
+    let branch = p.cloud.as_ref().unwrap().branch.clone();
+    assert!(!Path::new(&lead.cwd).join(".git").exists());
+    for name in names {
+        assert_eq!(branch_of(&Path::new(&lead.cwd).join(name)), branch);
+    }
+    assert_eq!(p.clones.len(), 2);
+}
+
+#[test]
+fn multi_repo_workers_get_a_clone_per_repository_on_their_own_branch() {
+    let (fx, _) = working_multi_team();
+    let id = pickup(&fx).id;
+    let reqs = fx.runs.requests.borrow().clone();
+    assert_eq!(reqs.len(), 3);
+    for (n, req) in reqs[1..].iter().enumerate() {
+        let k = n + 1;
+        assert!(req.cwd.ends_with(&format!("/queue/{id}/w{k}")));
+        assert_eq!(req.clone_of, fx.repo);
+        let names: Vec<_> = req.clones.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["backend", "frontend"]);
+        assert!(!Path::new(&req.cwd).join(".git").exists());
+        for name in names {
+            assert_eq!(
+                branch_of(&Path::new(&req.cwd).join(name)),
+                format!("queue-team/{id}/w{k}")
+            );
+        }
+    }
+    let members = team(&fx).members;
+    assert_eq!(members[0].clones.len(), 2);
+    assert!(members[0].clones.iter().all(|c| c.base.is_some()));
+}
+
+fn finish_workers(fx: &Fx) {
+    for member in &team(fx).members {
+        marker(&member.cwd);
+    }
+    idle(fx, "mock-2");
+    idle(fx, "mock-3");
+    fx.pass().unwrap();
+    exit_run(fx, "mock-2");
+    exit_run(fx, "mock-3");
+    fx.pass().unwrap();
+}
+
+#[test]
+fn a_worker_that_changed_one_repository_is_imported_into_that_repository_only() {
+    let (fx, second) = working_multi_team();
+    let id = pickup(&fx).id;
+    let w1 = team(&fx).members[0].clone();
+    let tip = commit_in(&Path::new(&w1.cwd).join("frontend"), "ui.txt");
+    finish_workers(&fx);
+    assert_eq!(team(&fx).phase, TeamPhase::Finishing);
+    let branch = format!("queue-team/{id}/w1");
+    assert!(has_branch(&second, &branch));
+    assert!(!has_branch(&fx.repo, &branch));
+    assert_eq!(git_in(Path::new(&second), &["rev-parse", &branch]), tip);
+    let told = fx.runs.sent.borrow().last().cloned().unwrap();
+    assert!(told.1.contains(&format!("w1 in frontend: {tip}")), "{}", told.1);
+    assert!(told.1.contains("inside the folder"), "{}", told.1);
+    assert!(!told.1.contains("backend"), "{}", told.1);
+}
+
+#[test]
+fn a_worker_whose_clone_folder_was_replaced_is_counted_failed() {
+    let (fx, second) = working_multi_team();
+    let id = pickup(&fx).id;
+    let w1 = team(&fx).members[0].clone();
+    let dir = Path::new(&w1.cwd);
+    std::fs::rename(dir.join("frontend"), dir.join("frontend.old")).unwrap();
+    git_in(dir, &["clone", "-q", &second, "frontend"]);
+    let fresh = dir.join("frontend");
+    git_in(&fresh, &["checkout", "-q", "-b", &w1.branch]);
+    commit_in(&fresh, "ui.txt");
+    finish_workers(&fx);
+    assert_eq!(team(&fx).phase, TeamPhase::Finishing);
+    assert!(!has_branch(&second, &format!("queue-team/{id}/w1")));
+    let told = fx.runs.sent.borrow().last().cloned().unwrap();
+    assert!(told.1.contains("w1 did not finish cleanly"), "{}", told.1);
+    assert!(told.1.starts_with("No worker left commits"), "{}", told.1);
+}
+
+#[test]
+fn a_member_state_without_clones_still_loads_and_serializes_without_them() {
+    let fx = working_team();
+    let m = team(&fx).members[0].clone();
+    assert!(m.clones.is_empty());
+    let text = serde_json::to_string(&m).unwrap();
+    assert!(!text.contains("clones"));
+    let back: state::Member = serde_json::from_str(&text).unwrap();
+    assert_eq!(back, m);
 }

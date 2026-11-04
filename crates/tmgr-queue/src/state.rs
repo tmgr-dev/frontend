@@ -132,6 +132,17 @@ pub struct Member {
     pub ended_by_engine: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kill_sent_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clones: Vec<MemberClone>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberClone {
+    pub name: String,
+    pub dev: u64,
+    pub ino: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
 }
 
 fn is_zero(n: &u8) -> bool {

@@ -562,6 +562,20 @@ pub trait WorkDirs {
         ))
     }
 
+    /// A team member folder (`<run folder>/lead` or `wK`) holding one clone per `(name, repository)`.
+    fn prepare_member_multi(
+        &self,
+        _primary: &str,
+        _pickup_id: &str,
+        _cwd: &str,
+        _clones: &[(String, String)],
+        _branch: &str,
+    ) -> Result<()> {
+        Err(Error::internal(
+            "this work directory provider cannot make several team clones",
+        ))
+    }
+
     fn identity(&self, dir: &Path) -> Option<(u64, u64)> {
         clone_identity(dir)
     }
@@ -1476,6 +1490,29 @@ impl WorkDirs for GitClone {
             ));
         }
         prepare_clone(repo, dest, branch, None)
+    }
+
+    fn prepare_member_multi(
+        &self,
+        primary: &str,
+        pickup_id: &str,
+        cwd: &str,
+        clones: &[(String, String)],
+        branch: &str,
+    ) -> Result<()> {
+        let team_dir = clone_dir(primary, pickup_id)
+            .ok_or_else(|| Error::internal("the repository path has no parent directory"))?;
+        let dest = Path::new(cwd);
+        let named = dest
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(member_dir_name);
+        if dest.parent() != Some(team_dir.as_path()) || !named {
+            return Err(Error::internal(
+                "the run directory does not belong to this pickup",
+            ));
+        }
+        prepare_run_folder(dest, clones, branch)
     }
 
     fn prepare_multi(

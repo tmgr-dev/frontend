@@ -1149,6 +1149,18 @@ fn start_phase(
                 deps.workdirs
                     .prepare_member(&rule.repos[0], &id, &cwd, &branch_name(&id))
             }
+            (Some(c), Some(Ok(plans))) if lead_model.is_some() => {
+                deps.workdirs.prepare_member_multi(
+                    &plans[0].path,
+                    &id,
+                    &cwd,
+                    &plans
+                        .iter()
+                        .map(|c| (c.name.clone(), c.path.clone()))
+                        .collect::<Vec<_>>(),
+                    &c.branch,
+                )
+            }
             (Some(c), Some(Ok(plans))) if continuing => deps.workdirs.prepare_continue(
                 &plans[0].path,
                 &id,

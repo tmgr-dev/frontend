@@ -1,9 +1,10 @@
 use super::{check_rule, pin_of, ts, Deps, Pass};
 use crate::audit::{sha256_hex, Audit};
+use crate::clones::{plan_clones, ClonePlan};
 use crate::paths::Paths;
 use crate::rules::{ProfilePin, Rule};
 use crate::runs::{mode_name, Lookup, RunState, StartRequest, PERMISSION_MODE};
-use crate::state::{self, Member, Pickup, Status, TeamPhase, TeamRequest, TeamState};
+use crate::state::{self, Member, MemberClone, Pickup, Status, TeamPhase, TeamRequest, TeamState};
 use crate::workdir::{clone_tip, is_sha, open_beneath, unlink_beneath, worker_branch, worker_dir};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
@@ -12,7 +13,8 @@ use std::io::Read;
 use std::path::Path;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{
-    BundleTeam, TaskRef, TeamLink, TeamMode, TeamRole, MAX_ASSIGNMENT_BYTES, MAX_TEAM_SIZE,
+    BundleTeam, CloneSpec, TaskRef, TeamLink, TeamMode, TeamRole, MAX_ASSIGNMENT_BYTES,
+    MAX_TEAM_SIZE,
 };
 
 pub const PLAN_FILE: &str = ".tmgr/team-plan.json";
@@ -148,12 +150,33 @@ fn refused_text(size: u8) -> String {
     )
 }
 
-fn integrate_text(tips: &[(u8, String)], failed: &[u8]) -> String {
+struct Tip {
+    worker: u8,
+    name: Option<String>,
+    sha: String,
+}
+
+fn integrate_text(tips: &[Tip], failed: &[u8]) -> String {
     let mut text = String::new();
     if tips.is_empty() {
         text.push_str("No worker left commits to bring in. ");
+    } else if tips.iter().any(|t| t.name.is_some()) {
+        let list: Vec<String> = tips
+            .iter()
+            .map(|t| match &t.name {
+                Some(name) => format!("w{} in {name}: {}", t.worker, t.sha),
+                None => format!("w{} {}", t.worker, t.sha),
+            })
+            .collect();
+        text.push_str(&format!(
+            "All workers have finished. Their work is saved as these commits, each in the repository folder named in its entry: {}. For each one go into the folder named in its entry, run `git merge --squash <sha>` inside the folder and commit the result there as one normal commit; resolve conflicts yourself and never create merge commits. ",
+            list.join(", ")
+        ));
     } else {
-        let list: Vec<String> = tips.iter().map(|(k, sha)| format!("w{k} {sha}")).collect();
+        let list: Vec<String> = tips
+            .iter()
+            .map(|t| format!("w{} {}", t.worker, t.sha))
+            .collect();
         text.push_str(&format!(
             "All workers have finished. Their work is saved as these commits: {}. For each one run `git merge --squash <sha>` and commit the result as one normal commit; resolve conflicts yourself and never create merge commits. ",
             list.join(", ")
@@ -173,7 +196,7 @@ pub(super) fn refusal_for(rule: &Rule, p: &Pickup) -> Option<&'static str> {
     if rule.profile != TEAM_PROFILE {
         return Some("a team needs the claude-code profile");
     }
-    if rule.repos.len() != 1 || p.cloud.as_ref().is_some_and(|c| !c.repos.is_empty()) {
+    if rule.repos.len() != 1 && p.cloud.as_ref().is_none_or(|c| c.repos.is_empty()) {
         return Some("a team works in one repository");
     }
     None
@@ -594,6 +617,7 @@ fn new_member(p: &Pickup, k: u8) -> Member {
         end_requested: false,
         ended_by_engine: false,
         kill_sent_at: None,
+        clones: Vec::new(),
     }
 }
 
@@ -638,13 +662,55 @@ fn start_worker(pass: &mut Pass, i: usize, k: u8, rule: &Rule, deps: &Deps) -> R
         Ok(pin) => pin,
         Err(e) => return fail_member(pass, i, &m, "pin", &e),
     };
-    let repo = &rule.repos[0];
-    if let Err(e) = deps.workdirs.prepare_member(repo, &p.id, &m.cwd, &m.branch) {
-        return fail_member(pass, i, &m, "clone", &e.message);
-    }
-    m.base = clone_tip(Path::new(&m.cwd), &m.branch);
-    if let Some(slot) = member_mut(pass, i, &m.start_key) {
-        slot.base = m.base.clone();
+    let plans = match p.cloud.as_ref().filter(|c| !c.repos.is_empty()) {
+        Some(c) => match plan_clones(&c.repos) {
+            Ok(plans) => Some(plans),
+            Err(e) => return fail_member(pass, i, &m, "clone", &e.message),
+        },
+        None => None,
+    };
+    let repo = plans
+        .as_ref()
+        .map_or(&rule.repos[0], |plans| &plans[0].path);
+    let mut clone_specs = Vec::new();
+    if let Some(plans) = &plans {
+        let pairs: Vec<(String, String)> = plans
+            .iter()
+            .map(|c| (c.name.clone(), c.path.clone()))
+            .collect();
+        if let Err(e) = deps
+            .workdirs
+            .prepare_member_multi(repo, &p.id, &m.cwd, &pairs, &m.branch)
+        {
+            return fail_member(pass, i, &m, "clone", &e.message);
+        }
+        for plan in plans {
+            let dir = Path::new(&m.cwd).join(&plan.name);
+            let Some((dev, ino)) = deps.workdirs.identity(&dir) else {
+                return fail_member(pass, i, &m, "clone", "a clone of the member is missing");
+            };
+            m.clones.push(MemberClone {
+                name: plan.name.clone(),
+                dev,
+                ino,
+                base: clone_tip(&dir, &m.branch),
+            });
+            clone_specs.push(CloneSpec {
+                name: plan.name.clone(),
+                clone_of: plan.path.clone(),
+            });
+        }
+        if let Some(slot) = member_mut(pass, i, &m.start_key) {
+            slot.clones.clone_from(&m.clones);
+        }
+    } else {
+        if let Err(e) = deps.workdirs.prepare_member(repo, &p.id, &m.cwd, &m.branch) {
+            return fail_member(pass, i, &m, "clone", &e.message);
+        }
+        m.base = clone_tip(Path::new(&m.cwd), &m.branch);
+        if let Some(slot) = member_mut(pass, i, &m.start_key) {
+            slot.base = m.base.clone();
+        }
     }
     let mut bundle = p.bundle.clone();
     bundle.launch.cwd = m.cwd.clone();
@@ -676,7 +742,7 @@ fn start_worker(pass: &mut Pass, i: usize, k: u8, rule: &Rule, deps: &Deps) -> R
         bundle,
         cloud: p.cloud.as_ref().map(|c| c.claim.clone()),
         unattended: cloud,
-        clones: Vec::new(),
+        clones: clone_specs,
         team: Some(TeamLink {
             role: TeamRole::Worker(k),
             of: p.id.clone(),
@@ -700,6 +766,34 @@ fn start_worker(pass: &mut Pass, i: usize, k: u8, rule: &Rule, deps: &Deps) -> R
     }
 }
 
+fn import_clones(
+    deps: &Deps,
+    plans: &[ClonePlan],
+    m: &Member,
+) -> std::result::Result<Vec<(String, String)>, String> {
+    let mut found = Vec::new();
+    for c in &m.clones {
+        let dir = Path::new(&m.cwd).join(&c.name);
+        if deps.workdirs.identity(&dir) != Some((c.dev, c.ino)) {
+            return Err("a clone folder was replaced".into());
+        }
+        let tip = clone_tip(&dir, &m.branch);
+        if tip.is_none() || tip == c.base {
+            continue;
+        }
+        let plan = plans
+            .iter()
+            .find(|plan| plan.name == c.name)
+            .ok_or("a clone has no repository")?;
+        match crate::workdir::import_branch(&plan.path, &dir, &m.branch) {
+            Ok(sha) if is_sha(&sha) => found.push((c.name.clone(), sha)),
+            Ok(_) => return Err("the import returned no commit".into()),
+            Err(e) => return Err(e.message),
+        }
+    }
+    Ok(found)
+}
+
 fn integrating(
     pass: &mut Pass,
     i: usize,
@@ -712,7 +806,15 @@ fn integrating(
     let Some(rule) = rules.iter().find(|r| r.name == p.rule) else {
         return Ok(());
     };
-    let mut tips: Vec<(u8, String)> = Vec::new();
+    if !deps.runs.idle(lead_run) {
+        return Ok(());
+    }
+    let plans = p
+        .cloud
+        .as_ref()
+        .filter(|c| !c.repos.is_empty())
+        .map(|c| plan_clones(&c.repos).unwrap_or_default());
+    let mut tips: Vec<Tip> = Vec::new();
     let mut failed: Vec<u8> = Vec::new();
     for m in &t.members {
         let TeamRole::Worker(k) = m.role else {
@@ -723,12 +825,33 @@ fn integrating(
             continue;
         }
         let cwd = Path::new(&m.cwd);
+        if let Some(plans) = plans.as_ref().filter(|_| !m.clones.is_empty()) {
+            match import_clones(deps, plans, m) {
+                Ok(found) => tips.extend(found.into_iter().map(|(name, sha)| Tip {
+                    worker: k,
+                    name: Some(name),
+                    sha,
+                })),
+                Err(e) => {
+                    pass.audit.append(
+                        "team_import_failed",
+                        json!({"pickup": p.id, "worker": k, "error": e}),
+                    )?;
+                    failed.push(k);
+                }
+            }
+            continue;
+        }
         let tip = clone_tip(cwd, &m.branch);
         if tip.is_none() || tip == m.base {
             continue;
         }
         match crate::workdir::import_branch(&rule.repos[0], cwd, &m.branch) {
-            Ok(sha) if is_sha(&sha) => tips.push((k, sha)),
+            Ok(sha) if is_sha(&sha) => tips.push(Tip {
+                worker: k,
+                name: None,
+                sha,
+            }),
             Ok(_) => failed.push(k),
             Err(e) => {
                 pass.audit.append(
@@ -740,19 +863,21 @@ fn integrating(
         }
     }
     let text = integrate_text(&tips, &failed);
-    if !deps.runs.idle(lead_run)
-        || !clear_marker(Path::new(&p.bundle.launch.cwd))
+    if !clear_marker(Path::new(&p.bundle.launch.cwd))
         || deps.runs.send(lead_run, &format!("{text}\r")).is_err()
     {
         return Ok(());
     }
-    for (k, sha) in &tips {
+    for t in &tips {
+        if t.name.is_some() {
+            continue;
+        }
         if let Some(x) = team_mut(pass, i)
             .members
             .iter_mut()
-            .find(|x| x.role == TeamRole::Worker(*k))
+            .find(|x| x.role == TeamRole::Worker(t.worker))
         {
-            x.tip = Some(sha.clone());
+            x.tip = Some(t.sha.clone());
         }
     }
     team_mut(pass, i).phase = TeamPhase::Finishing;
