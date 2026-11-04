@@ -24,24 +24,29 @@ import {
 	getPersonaPolicy,
 	getPersonaSkill,
 	getSharedSkill,
+	getSharedSkillVersion,
 	issuePersonaToken,
 	listPersonas,
 	listPersonaSharedSkills,
 	listPersonaSkills,
 	listPersonaTokens,
 	listSharedSkills,
+	listSharedSkillVersions,
 	listWorkspacePersonas,
 	personaAvatarObjectUrl,
+	pinSharedSkill,
 	previewConvertSkill,
 	putPersonaSkill,
 	putSharedSkill,
 	removeWorkspaceGrant,
 	restorePersona,
+	restoreSharedSkill,
 	revokeAllMyPersonaTokens,
 	revokeAllPersonaTokens,
 	revokePersonaToken,
 	setPersonaPolicy,
 	unblockWorkspacePersona,
+	unpinSharedSkill,
 	updatePersona,
 	uploadPersonaAvatar,
 	upsertWorkspaceGrant,
@@ -585,5 +590,98 @@ describe('convert own skill to shared', () => {
 			convertSkillToShared('uuid-1', 'triage', []),
 		).rejects.toThrow();
 		expect(requestCache.has('shared-skills')).toBe(true);
+	});
+});
+
+describe('shared skill versions', () => {
+	const warm = async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [] } });
+		await listSharedSkills();
+		await listSharedSkillVersions('triage');
+		await listSharedSkillVersions('review');
+		await listPersonaSharedSkills('uuid-1');
+		await listPersonaSharedSkills('uuid-2');
+		await listWorkspacePersonas(5);
+	};
+
+	it('lists versions and caches them per slug', async () => {
+		const rows = [{ version: 2 }];
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: rows } });
+		const result = await listSharedSkillVersions('triage');
+		expect(axios.get).toHaveBeenCalledWith('/shared-skills/triage/versions');
+		expect(result).toEqual(rows);
+		expect(requestCache.has('shared-skills-triage-versions')).toBe(true);
+	});
+
+	it('reads one version', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({
+			data: { data: { version: 2, body: 'b' } },
+		});
+		const result = await getSharedSkillVersion('triage', 2);
+		expect(axios.get).toHaveBeenCalledWith('/shared-skills/triage/versions/2');
+		expect(result).toEqual({ version: 2, body: 'b' });
+	});
+
+	it('restores with expected_version and invalidates the library', async () => {
+		await warm();
+		(axios.post as jest.Mock).mockResolvedValue({
+			data: { data: { version: 4 } },
+		});
+		const result = await restoreSharedSkill('triage', 2, 3);
+		expect(axios.post).toHaveBeenCalledWith('/shared-skills/triage/restore', {
+			version: 2,
+			expected_version: 3,
+		});
+		expect(result).toEqual({ version: 4 });
+		expect(requestCache.has('shared-skills')).toBe(false);
+		expect(requestCache.has('shared-skills-triage-versions')).toBe(false);
+		expect(requestCache.has('personas-uuid-1-shared-skills')).toBe(false);
+		expect(requestCache.has('ws-5-persona-grants')).toBe(false);
+	});
+
+	it('keeps caches when restore is rejected', async () => {
+		await warm();
+		(axios.post as jest.Mock).mockRejectedValue(new Error('409'));
+		await expect(restoreSharedSkill('triage', 2, 3)).rejects.toThrow();
+		expect(requestCache.has('shared-skills-triage-versions')).toBe(true);
+	});
+
+	it('editing a skill drops its versions cache', async () => {
+		await warm();
+		(axios.put as jest.Mock).mockResolvedValue({ data: { data: {} } });
+		await putSharedSkill('triage', 'b');
+		expect(requestCache.has('shared-skills-triage-versions')).toBe(false);
+	});
+
+	it('pins a version and invalidates that persona only', async () => {
+		await warm();
+		(axios.put as jest.Mock).mockResolvedValue({
+			data: { data: { pinned_version: 2 } },
+		});
+		const result = await pinSharedSkill('uuid-1', 'triage', 2);
+		expect(axios.put).toHaveBeenCalledWith(
+			'/personas/uuid-1/shared-skills/triage/pin',
+			{ version: 2 },
+		);
+		expect(result).toEqual({ pinned_version: 2 });
+		expect(requestCache.has('personas-uuid-1-shared-skills')).toBe(false);
+		expect(requestCache.has('personas-uuid-2-shared-skills')).toBe(true);
+		expect(requestCache.has('shared-skills')).toBe(false);
+		expect(requestCache.has('ws-5-persona-grants')).toBe(false);
+	});
+
+	it('unpins and invalidates', async () => {
+		await warm();
+		(axios.delete as jest.Mock).mockResolvedValue({
+			data: { data: { pinned_version: null } },
+		});
+		const result = await unpinSharedSkill('uuid-1', 'triage');
+		expect(axios.delete).toHaveBeenCalledWith(
+			'/personas/uuid-1/shared-skills/triage/pin',
+		);
+		expect(result).toEqual({ pinned_version: null });
+		expect(requestCache.has('personas-uuid-1-shared-skills')).toBe(false);
+		expect(requestCache.has('shared-skills')).toBe(false);
+		expect(requestCache.has('ws-5-persona-grants')).toBe(false);
 	});
 });

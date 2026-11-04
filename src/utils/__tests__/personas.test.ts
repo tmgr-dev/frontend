@@ -473,6 +473,15 @@ describe('shared skill helpers', () => {
 		);
 	});
 
+	it('marks pinned personas in the delete confirmation', () => {
+		expect(
+			sharedSkillDeleteConfirm('Triage', [
+				{ id: 'a', name: 'Reviewer', pinned_version: 3 },
+				{ id: 'b', name: 'Triage', pinned_version: null },
+			]),
+		).toContain('Attached to Reviewer (pinned to v3), Triage.');
+	});
+
 	it('keeps the delete confirmation short when nothing is attached', () => {
 		expect(sharedSkillDeleteConfirm('Triage', [])).toBe(
 			'Delete skill "Triage"?',
