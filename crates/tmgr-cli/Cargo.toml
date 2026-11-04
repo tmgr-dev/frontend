@@ -13,7 +13,7 @@ name = "tmgr"
 path = "src/main.rs"
 
 [features]
-runner = ["dep:tmgr-runner", "dep:tmgr-ipc", "dep:tmgr-queue", "dep:shell-words", "dep:libc", "dep:tmgr-local", "dep:rusqlite"]
+runner = ["dep:tmgr-runner", "dep:tmgr-queue", "dep:shell-words", "dep:libc", "dep:tmgr-local", "dep:rusqlite"]
 
 [dependencies]
 clap.workspace = true
@@ -36,7 +36,7 @@ base64.workspace = true
 getrandom.workspace = true
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "sha256", "std"] }
 tmgr-runner = { workspace = true, optional = true }
-tmgr-ipc = { workspace = true, optional = true }
+tmgr-ipc = { workspace = true }
 tmgr-queue = { workspace = true, optional = true }
 shell-words = { workspace = true, optional = true }
 libc = { workspace = true, optional = true }
