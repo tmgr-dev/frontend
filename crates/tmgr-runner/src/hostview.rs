@@ -363,6 +363,10 @@ fn base_command(network: bool, path: &OsStr) -> Command {
     cmd
 }
 
+fn path_guards(layout: &Layout) -> Vec<&Path> {
+    vec![&layout.root, &layout.common, &layout.gitdir]
+}
+
 fn clean_path(guards: &[&Path]) -> OsString {
     clean_path_in(&std::env::var_os("PATH").unwrap_or_default(), guards)
 }
@@ -497,7 +501,7 @@ impl HostView {
                 ));
             }
         }
-        let path = clean_path(&[&layout.root, &layout.common, &layout.gitdir]);
+        let path = clean_path(&path_guards(&layout));
         let scratch = dir.join("scratch");
         fs::create_dir(&scratch).map_err(|e| e.to_string())?;
         let raw = read_data(&layout.common.join("config"), MAX_CONFIG)?
@@ -1093,6 +1097,10 @@ mod tests {
             "host:path",
             "u@-host:path",
             "ssh://-oProxyCommand=true/x",
+            "ssh://[-oProxyCommand=x]/p",
+            "ssh://-oX@host/p",
+            "ssh://git@host:-1/p",
+            "https://[-oX]/p",
         ] {
             let err = view.run_raw(&["ls-remote", "--", url]).unwrap_err();
             assert!(err.contains("not allowed"), "{url}: {err}");
@@ -1115,6 +1123,90 @@ mod tests {
             .run_raw(&["ls-remote", "https://127.0.0.1:1/x"])
             .unwrap();
         assert!(!String::from_utf8_lossy(&out.stderr).contains("not allowed"));
+    }
+
+    #[test]
+    fn network_views_refuse_program_options_and_their_abbreviations() {
+        let fx = fixture();
+        let view = HostView::open(&fx.repo, Access::Network).unwrap();
+        for opt in [
+            "-u",
+            "-utrue",
+            "--upload=true",
+            "--upload-pack=true",
+            "--rece=true",
+            "--ex=true",
+            "--rep=x",
+        ] {
+            for sub in ["ls-remote", "fetch", "push"] {
+                let err = view
+                    .run_raw(&[sub, opt, "https://127.0.0.1:1/x"])
+                    .unwrap_err();
+                assert!(err.contains("not allowed"), "{sub} {opt}: {err}");
+            }
+        }
+        let err = view
+            .run_raw(&["ls-remote", "https://127.0.0.1:1/x", "--upload=true"])
+            .unwrap_err();
+        assert!(err.contains("not allowed"), "{err}");
+        for opt in ["--refs", "--heads", "--no-tags", "--quiet"] {
+            let out = view
+                .run_raw(&["ls-remote", opt, "https://127.0.0.1:1/x"])
+                .unwrap();
+            assert!(
+                !String::from_utf8_lossy(&out.stderr).contains("not allowed"),
+                "{opt}"
+            );
+        }
+    }
+
+    #[test]
+    fn ssh_addresses_with_brackets_and_ports_are_accepted() {
+        for url in [
+            "ssh://git@[::1]:22/p",
+            "ssh://git@host:22/p",
+            "ssh://host/p",
+        ] {
+            assert!(remote_ok(url), "{url}");
+        }
+    }
+
+    #[test]
+    fn the_main_work_tree_is_not_on_the_path_of_a_linked_worktree_view() {
+        let fx = fixture();
+        let lw = fx.tmp.path().join("lw");
+        git(
+            &fx.repo,
+            &["worktree", "add", "-q", "-b", "lw", lw.to_str().unwrap()],
+        );
+        let lw = fs::canonicalize(&lw).unwrap();
+        let layout = resolve(&lw).unwrap();
+        let bin = fx.repo.join("bin");
+        fs::create_dir(&bin).unwrap();
+        let system = fx.tmp.path().join("system");
+        fs::create_dir(&system).unwrap();
+        let joined = std::env::join_paths([bin, system.clone()]).unwrap();
+        let kept: Vec<PathBuf> =
+            std::env::split_paths(&clean_path_in(&joined, &path_guards(&layout))).collect();
+        assert_eq!(kept, vec![system]);
+    }
+
+    #[test]
+    fn a_missing_path_entry_under_a_symlinked_repository_is_dropped() {
+        let fx = fixture();
+        let link = fx.tmp.path().join("link");
+        std::os::unix::fs::symlink(&fx.repo, &link).unwrap();
+        let system = fx.tmp.path().join("system");
+        fs::create_dir(&system).unwrap();
+        let joined = std::env::join_paths([
+            link.join("later-bin"),
+            PathBuf::from("/nonexistent-x"),
+            system.clone(),
+        ])
+        .unwrap();
+        let guards = [fx.repo.as_path()];
+        let kept: Vec<PathBuf> = std::env::split_paths(&clean_path_in(&joined, &guards)).collect();
+        assert_eq!(kept, vec![system]);
     }
 
     #[test]

@@ -3726,6 +3726,19 @@ mod tests {
     }
 
     #[test]
+    fn a_checked_out_branch_is_matched_regardless_of_letter_case() {
+        let (_tmp, root) = canon_tmp();
+        let common = root.join("common");
+        std::fs::create_dir_all(common.join("worktrees/w")).unwrap();
+        std::fs::write(common.join("HEAD"), "ref: refs/heads/Feature\n").unwrap();
+        assert!(checked_out(&common, "feature").unwrap());
+        std::fs::write(common.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(common.join("worktrees/w/HEAD"), "ref: refs/heads/Topic\n").unwrap();
+        assert!(checked_out(&common, "topic").unwrap());
+        assert!(!checked_out(&common, "other").unwrap());
+    }
+
+    #[test]
     fn importing_refuses_a_branch_that_has_moved_to_other_history() {
         let (_tmp, root) = canon_tmp();
         let repo = repo_at(&root, "proj");
