@@ -1228,3 +1228,90 @@ fn a_state_saved_with_the_old_exit_flag_is_not_resent_at_once() {
     let old = r#"{"role":"lead","cwd":"/x","branch":"b","start_key":"k","exit_sent":true}"#;
     assert!(serde_json::from_str::<state::Member>(old).is_ok());
 }
+
+#[test]
+fn a_worker_that_removes_its_marker_after_exit_is_reported_idle_again() {
+    let fx = working_team();
+    let t0 = Utc::now();
+    marker(&worker_cwd(&fx, 1));
+    idle(&fx, "mock-2");
+    fx.pass_now(t0).unwrap();
+    assert_eq!(exits_to(&fx, "mock-2"), 1);
+    std::fs::remove_file(Path::new(&worker_cwd(&fx, 1)).join(".tmgr/done")).unwrap();
+    fx.pass_now(after(t0, 10)).unwrap();
+    fx.pass_now(after(t0, 609)).unwrap();
+    assert_eq!(idle_notes(&fx), 0);
+    fx.pass_now(after(t0, 610)).unwrap();
+    assert_eq!(idle_notes(&fx), 1);
+}
+
+#[test]
+fn a_worker_with_a_legacy_exit_flag_and_no_marker_is_reported_idle() {
+    let fx = working_team();
+    let t0 = Utc::now();
+    idle(&fx, "mock-2");
+    let mut st = state::load(&fx.paths).unwrap();
+    st.pickups[0].team.as_mut().unwrap().members[0].exit_sent = true;
+    state::save(&fx.paths, &mut st).unwrap();
+    fx.pass_now(t0).unwrap();
+    fx.pass_now(after(t0, 600)).unwrap();
+    assert_eq!(idle_notes(&fx), 1);
+}
+
+#[test]
+fn an_idle_stretch_starts_after_the_marker_is_removed() {
+    let fx = working_team();
+    let t0 = Utc::now();
+    idle(&fx, "mock-2");
+    fx.pass_now(t0).unwrap();
+    busy(&fx, "mock-2");
+    marker(&worker_cwd(&fx, 1));
+    fx.pass_now(after(t0, 500)).unwrap();
+    std::fs::remove_file(Path::new(&worker_cwd(&fx, 1)).join(".tmgr/done")).unwrap();
+    idle(&fx, "mock-2");
+    fx.pass_now(after(t0, 700)).unwrap();
+    assert_eq!(idle_notes(&fx), 0);
+    fx.pass_now(after(t0, 1299)).unwrap();
+    assert_eq!(idle_notes(&fx), 0);
+    fx.pass_now(after(t0, 1300)).unwrap();
+    assert_eq!(idle_notes(&fx), 1);
+}
+
+#[test]
+fn a_timestamp_in_the_future_restarts_the_wait() {
+    let fx = working_team();
+    let t0 = Utc::now();
+    idle(&fx, "mock-2");
+    fx.pass_now(t0).unwrap();
+    fx.pass_now(after(t0, -1000)).unwrap();
+    fx.pass_now(after(t0, -401)).unwrap();
+    assert_eq!(idle_notes(&fx), 0);
+    fx.pass_now(after(t0, -400)).unwrap();
+    assert_eq!(idle_notes(&fx), 1);
+
+    let fx = working_team();
+    marker(&worker_cwd(&fx, 1));
+    idle(&fx, "mock-2");
+    fx.pass_now(t0).unwrap();
+    fx.pass_now(after(t0, -1000)).unwrap();
+    fx.pass_now(after(t0, -941)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-2"), 1);
+    fx.pass_now(after(t0, -940)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-2"), 2);
+}
+
+#[test]
+fn a_lead_exit_timestamp_in_the_future_restarts_the_wait() {
+    let fx = working_team();
+    let mut st = state::load(&fx.paths).unwrap();
+    st.pickups[0].team.as_mut().unwrap().phase = TeamPhase::Finishing;
+    state::save(&fx.paths, &mut st).unwrap();
+    marker(&lead_cwd(&fx));
+    let t0 = Utc::now();
+    fx.pass_now(t0).unwrap();
+    fx.pass_now(after(t0, -1000)).unwrap();
+    fx.pass_now(after(t0, -941)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-1"), 1);
+    fx.pass_now(after(t0, -940)).unwrap();
+    assert_eq!(exits_to(&fx, "mock-1"), 2);
+}

@@ -112,6 +112,12 @@ fn secs_since(at: Option<&str>, now: DateTime<Utc>) -> i64 {
         .map_or(i64::MAX, |t| (now - t.with_timezone(&Utc)).num_seconds())
 }
 
+fn restart_if_future(at: &mut Option<String>, now: DateTime<Utc>) {
+    if secs_since(at.as_deref(), now) < 0 {
+        *at = Some(ts(now));
+    }
+}
+
 fn retry_due(attempts: u8, sent_at: Option<&str>, now: DateTime<Utc>) -> bool {
     attempts == 0 || (attempts < MAX_EXIT_ATTEMPTS && secs_since(sent_at, now) >= EXIT_RETRY_SECS)
 }
@@ -487,6 +493,10 @@ fn ending(pass: &mut Pass, i: usize, m: &Member, run: &str, deps: &Deps) -> Resu
 fn working(pass: &mut Pass, i: usize, rules: &[Rule], deps: &Deps, starts: bool) -> Result<()> {
     migrate_exit_flags(pass, i, deps);
     read_end_files(pass, i)?;
+    for m in &mut team_mut(pass, i).members {
+        restart_if_future(&mut m.idle_since, deps.now);
+        restart_if_future(&mut m.exit_sent_at, deps.now);
+    }
     let p = pass.state.pickups[i].clone();
     let t = p.team.clone().expect("team");
     let mut idle: Vec<(u8, String, i64)> = Vec::new();
@@ -497,9 +507,13 @@ fn working(pass: &mut Pass, i: usize, rules: &[Rule], deps: &Deps, starts: bool)
         };
         let wants_exit = m.end_requested || m.ended_by_engine || marker_present(Path::new(&m.cwd));
         if wants_exit {
+            if m.idle_since.is_some() || m.idle_noted {
+                if let Some(slot) = member_mut(pass, i, &m.start_key) {
+                    slot.idle_since = None;
+                    slot.idle_noted = false;
+                }
+            }
             ending(pass, i, m, run, deps)?;
-        } else if m.exit_attempts > 0 {
-            continue;
         } else if deps.runs.idle(run) {
             let since = m.idle_since.clone().unwrap_or_else(|| ts(deps.now));
             let waited = secs_since(Some(&since), deps.now);
@@ -753,6 +767,7 @@ fn finishing(pass: &mut Pass, i: usize, deps: &Deps, lead_run: &str) -> Result<(
     let p = &pass.state.pickups[i];
     let mut t = p.team.clone().expect("team");
     let was = t.clone();
+    restart_if_future(&mut t.lead_exit_sent_at, deps.now);
     if t.lead_exit_sent && t.lead_exit_attempts == 0 {
         t.lead_exit_attempts = 1;
         t.lead_exit_sent_at = Some(ts(deps.now));
