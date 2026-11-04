@@ -2,6 +2,7 @@ use crate::bundle::{open_at, open_root, Dir, Refusal};
 use std::fs::File;
 use std::io::Read;
 use std::os::fd::AsRawFd;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
 use tmgr_ipc::api::ErrorCode;
@@ -122,7 +123,7 @@ impl Repo {
         }
     }
 
-    fn check_clone(&self, dir: i32) -> Result<bool, Refusal> {
+    fn check_clone(&self, dir: i32, shown: &Path) -> Result<bool, Refusal> {
         let clone_git = open_at(dir, ".git", DIR).map_err(|_| {
             (
                 ErrorCode::InvalidParams,
@@ -130,6 +131,22 @@ impl Repo {
                     .to_string(),
             )
         })?;
+        match walk(&clone_git, &["objects"]).and_then(|o| shares_files(o, 0)) {
+            Ok(false) => {}
+            Ok(true) => {
+                return refuse(format!(
+                    "{} shares object files with another repository (it was cloned by tmgr before 1.0.63); \
+                     re-clone it or remove it. tmgr leaves the folder as it is",
+                    shown.display()
+                ))
+            }
+            Err(_) => {
+                return refuse(format!(
+                    "the object files of {} cannot be checked",
+                    shown.display()
+                ))
+            }
+        }
         let want = self.path.join(".git/objects");
         let want = want.to_str().unwrap_or("");
         let info = walk(&clone_git, &["objects", "info"]);
@@ -170,6 +187,72 @@ impl Repo {
     }
 }
 
+const MAX_DEPTH: u32 = 8;
+
+fn clear_errno() {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    unsafe {
+        *libc::__errno_location() = 0
+    };
+    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+    unsafe {
+        *libc::__error() = 0
+    };
+}
+
+fn shares_files(dir: File, depth: u32) -> std::io::Result<bool> {
+    if depth > MAX_DEPTH {
+        return Err(std::io::Error::other("too deep"));
+    }
+    let fd = dir.as_raw_fd();
+    let dup = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
+    if dup < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let stream = unsafe { libc::fdopendir(dup) };
+    if stream.is_null() {
+        let e = std::io::Error::last_os_error();
+        unsafe { libc::close(dup) };
+        return Err(e);
+    }
+    let mut names = Vec::new();
+    loop {
+        clear_errno();
+        let ent = unsafe { libc::readdir(stream) };
+        if ent.is_null() {
+            let e = std::io::Error::last_os_error();
+            if e.raw_os_error().is_some_and(|n| n != 0) {
+                unsafe { libc::closedir(stream) };
+                return Err(e);
+            }
+            break;
+        }
+        let name = unsafe { std::ffi::CStr::from_ptr((*ent).d_name.as_ptr()) };
+        if name != c"." && name != c".." {
+            names.push(name.to_owned());
+        }
+    }
+    unsafe { libc::closedir(stream) };
+    for name in names {
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstatat(fd, name.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        match st.st_mode & libc::S_IFMT {
+            libc::S_IFDIR => {
+                let sub = open_at(fd, std::ffi::OsStr::from_bytes(name.to_bytes()), DIR)?;
+                if shares_files(sub, depth + 1)? {
+                    return Ok(true);
+                }
+            }
+            libc::S_IFLNK => {}
+            _ if st.st_nlink > 1 => return Ok(true),
+            _ => {}
+        }
+    }
+    Ok(false)
+}
+
 fn folder_below(cwd: &Dir, root: &Path) -> Result<Vec<String>, Refusal> {
     let root_fd = open_root(root).map_err(|_| {
         (
@@ -201,7 +284,7 @@ fn folder_below(cwd: &Dir, root: &Path) -> Result<Vec<String>, Refusal> {
 pub fn check(cwd: &Dir, clone_of: &str) -> Result<Objects, Refusal> {
     let repo = Repo::open(clone_of)?;
     let rel = folder_below(cwd, &repo.worktrees())?;
-    let referenced = repo.check_clone(cwd.raw_fd())?;
+    let referenced = repo.check_clone(cwd.raw_fd(), &cwd.path)?;
     Ok(repo.objects(referenced && rel.len() == 1 && rel[0] != "queue"))
 }
 
@@ -259,7 +342,7 @@ pub fn check_multi(
                 format!("clone_of: {name} is not a real directory inside the run folder"),
             )
         })?;
-        let referenced = repo.check_clone(dir.as_raw_fd())?;
+        let referenced = repo.check_clone(dir.as_raw_fd(), &run.path.join(name))?;
         out.push(repo.objects(referenced && task_folder));
     }
     Ok(out)
