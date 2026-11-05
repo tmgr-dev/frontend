@@ -59,6 +59,7 @@ fn run_with_a_flag_is_not_intercepted() {
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(!err.contains("required arguments"), "{err}");
     assert!(err.contains("nope-agent"), "{err}");
+    cmd(&home, &["runner", "stop"], &[]).output().unwrap();
 }
 
 #[test]
@@ -78,4 +79,5 @@ fn the_attach_flag_of_resume_is_accepted_and_hidden_from_help() {
     assert!(!err.contains("unexpected argument"), "{err}");
     let help = cmd(&home, &["resume", "--help"], &[]).output().unwrap();
     assert!(!String::from_utf8_lossy(&help.stdout).contains("--attach"));
+    cmd(&home, &["runner", "stop"], &[]).output().unwrap();
 }

@@ -35,6 +35,16 @@ struct Fx {
     tmp: TempDir,
 }
 
+impl Drop for Fx {
+    fn drop(&mut self) {
+        let _ = std::process::Command::new(BIN)
+            .args(["runner", "stop"])
+            .env_clear()
+            .envs(self.envs())
+            .output();
+    }
+}
+
 impl Fx {
     fn new() -> Fx {
         let fx = Fx {
