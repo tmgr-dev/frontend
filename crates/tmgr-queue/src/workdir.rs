@@ -2027,6 +2027,42 @@ pub fn restore_branch(
     Ok(())
 }
 
+/// Puts the objects of `base..tip` from `source` into the object store of the clone `lead`, writing only
+/// through directory handles opened without following links; no git runs inside the lead.
+pub fn deliver_commits(source: &Path, lead: &Path, base: &str, tip: &str) -> Result<()> {
+    if !is_sha(base) || !is_sha(tip) {
+        return Err(Error::usage("the commits to deliver are not commit ids"));
+    }
+    let view = host_view(source, Access::Read)?;
+    let mut cmd = view
+        .prepared(&[], &["pack-objects", "--revs", "--stdout", "-q"])
+        .map_err(Error::internal)?;
+    let input = format!("{tip}\n^{base}\n").into_bytes();
+    let out = output_bounded_input(&mut cmd, GIT_TIMEOUT, MAX_IMPORT as usize, Some(input))?;
+    if !out.status.success() {
+        return Err(Error::internal("git pack-objects failed"));
+    }
+    let tmp = tempfile::Builder::new()
+        .prefix("tmgr-deliver")
+        .tempdir()
+        .map_err(|e| Error::internal(format!("temporary directory: {e}")))?;
+    let bare = tmp.path().join("b.git");
+    git(
+        None,
+        &[
+            "init",
+            "-q",
+            "--bare",
+            "--template=",
+            &bare.to_string_lossy(),
+        ],
+    )?;
+    git_bytes(&bare, &["unpack-objects", "-q"], Some(out.stdout))?;
+    let git_dir = open_beneath(lead, ".git", libc::O_DIRECTORY)
+        .ok_or_else(|| Error::usage("the lead clone has no .git folder of its own"))?;
+    crate::wip::copy_new_objects(&bare, &git_dir)
+}
+
 pub fn import_branch(repo: &str, clone: &Path, branch: &str) -> Result<String> {
     crate::workdir::validate_branch(branch)?;
     let sha = clone_tip(clone, branch)
@@ -2714,7 +2750,7 @@ mod tests {
     }
 
     #[test]
-    fn a_lead_squashes_imported_worker_commits_through_alternates_alone() {
+    fn a_lead_prepared_before_the_workers_commit_squashes_their_imported_commits() {
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let repo = root.join("proj");
@@ -2724,6 +2760,9 @@ mod tests {
         let base = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
         let team = clone_dir(&r, "q_team").unwrap();
         let lead = lead_dir(&team);
+        GitClone
+            .prepare_member(&r, "q_team", &lead.to_string_lossy(), "queue/q_team")
+            .unwrap();
         let mut tips = Vec::new();
         for k in 1..=2u8 {
             let w = worker_dir(&team, k);
@@ -2733,11 +2772,11 @@ mod tests {
                 .unwrap();
             commit_file(&w, &format!("w{k}.txt"));
             commit_file(&w, &format!("w{k}b.txt"));
-            tips.push(import_branch(&r, &w, &branch).unwrap());
+            let tip = import_branch(&r, &w, &branch).unwrap();
+            deliver_commits(&repo, &lead, &base, &tip).unwrap();
+            deliver_commits(&repo, &lead, &base, &tip).unwrap();
+            tips.push(tip);
         }
-        GitClone
-            .prepare_member(&r, "q_team", &lead.to_string_lossy(), "queue/q_team")
-            .unwrap();
         for (k, tip) in tips.iter().enumerate() {
             run_git(&lead, &["merge", "--squash", tip]);
             run_git(&lead, &["commit", "-q", "-m", &format!("worker {}", k + 1)]);
@@ -2753,6 +2792,45 @@ mod tests {
         )
         .unwrap();
         assert_eq!(count, "2");
+        run_git(&lead, &["fsck", "--full", "--strict"]);
+    }
+
+    #[test]
+    fn a_linked_object_folder_in_the_lead_is_never_written_through() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let r = repo.to_string_lossy().into_owned();
+        let base = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        let team = clone_dir(&r, "q_team").unwrap();
+        let (lead, w) = (lead_dir(&team), worker_dir(&team, 1));
+        let branch = worker_branch("q_team", 1);
+        for (dir, b) in [(&lead, "queue/q_team"), (&w, branch.as_str())] {
+            GitClone
+                .prepare_member(&r, "q_team", &dir.to_string_lossy(), b)
+                .unwrap();
+        }
+        commit_file(&w, "w1.txt");
+        let tip = import_branch(&r, &w, &branch).unwrap();
+        let outside = root.join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        let objects = lead.join(".git/objects");
+        for fan in 0..256 {
+            let dir = objects.join(format!("{fan:02x}"));
+            let _ = std::fs::remove_dir(&dir);
+            std::os::unix::fs::symlink(&outside, &dir).unwrap();
+        }
+        assert!(deliver_commits(&repo, &lead, &base, &tip).is_err());
+        assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 0);
+        for fan in 0..256 {
+            std::fs::remove_file(objects.join(format!("{fan:02x}"))).unwrap();
+        }
+        std::fs::rename(&objects, lead.join(".git/objects.real")).unwrap();
+        std::os::unix::fs::symlink(&outside, &objects).unwrap();
+        assert!(deliver_commits(&repo, &lead, &base, &tip).is_err());
+        assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 0);
     }
 
     #[test]

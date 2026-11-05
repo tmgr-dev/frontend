@@ -766,10 +766,21 @@ fn start_worker(pass: &mut Pass, i: usize, k: u8, rule: &Rule, deps: &Deps) -> R
     }
 }
 
+fn deliver(
+    source: &str,
+    lead: &Path,
+    base: Option<&str>,
+    sha: &str,
+) -> std::result::Result<(), String> {
+    let base = base.ok_or("the worker has no recorded base")?;
+    crate::workdir::deliver_commits(Path::new(source), lead, base, sha).map_err(|e| e.message)
+}
+
 fn import_clones(
     deps: &Deps,
     plans: &[ClonePlan],
     m: &Member,
+    lead: &Path,
 ) -> std::result::Result<Vec<(String, String)>, String> {
     let mut found: Vec<(String, String)> = Vec::new();
     let mut before: Vec<Option<String>> = Vec::new();
@@ -795,8 +806,13 @@ fn import_clones(
         };
         match crate::workdir::import_branch(&plan.path, &dir, &m.branch) {
             Ok(sha) if is_sha(&sha) => {
+                let delivered = deliver(&plan.path, &lead.join(&c.name), c.base.as_deref(), &sha);
                 found.push((c.name.clone(), sha));
                 before.push(old);
+                if let Err(e) = delivered {
+                    undo_imports(plans, &found, &before, &m.branch);
+                    return Err(e);
+                }
             }
             Ok(_) => {
                 undo_imports(plans, &found, &before, &m.branch);
@@ -881,7 +897,7 @@ fn integrating(
                 failed.push(k);
                 continue;
             }
-            match import_clones(deps, plans, m) {
+            match import_clones(deps, plans, m, Path::new(&p.bundle.launch.cwd)) {
                 Ok(found) => tips.extend(found.into_iter().map(|(name, sha)| Tip {
                     worker: k,
                     name: Some(name),
@@ -902,11 +918,27 @@ fn integrating(
             continue;
         }
         match crate::workdir::import_branch(&rule.repos[0], cwd, &m.branch) {
-            Ok(sha) if is_sha(&sha) => tips.push(Tip {
-                worker: k,
-                name: None,
-                sha,
-            }),
+            Ok(sha) if is_sha(&sha) => {
+                match deliver(
+                    &rule.repos[0],
+                    Path::new(&p.bundle.launch.cwd),
+                    m.base.as_deref(),
+                    &sha,
+                ) {
+                    Ok(()) => tips.push(Tip {
+                        worker: k,
+                        name: None,
+                        sha,
+                    }),
+                    Err(e) => {
+                        pass.audit.append(
+                            "team_import_failed",
+                            json!({"pickup": p.id, "worker": k, "error": e}),
+                        )?;
+                        failed.push(k);
+                    }
+                }
+            }
             Ok(_) => failed.push(k),
             Err(e) => {
                 pass.audit.append(

@@ -381,7 +381,7 @@ fn write_in_git(
     Ok(())
 }
 
-fn copy_new_objects(from: &Path, git: &std::fs::File) -> Result<()> {
+pub(crate) fn copy_new_objects(from: &Path, git: &std::fs::File) -> Result<()> {
     for fan in std::fs::read_dir(from.join("objects"))? {
         let fan = fan?;
         let name = fan.file_name().to_string_lossy().into_owned();

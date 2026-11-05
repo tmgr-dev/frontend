@@ -1523,3 +1523,100 @@ fn a_worker_whose_clones_are_not_the_ones_of_the_run_is_counted_failed() {
     let told = fx.runs.sent.borrow().last().cloned().unwrap();
     assert!(told.1.contains("w1 did not finish cleanly"), "{}", told.1);
 }
+
+fn squash_into(lead: &Path, tip: &str) {
+    git_in(lead, &["merge", "--squash", tip]);
+    git_in(lead, &["commit", "-q", "-m", "worker"]);
+}
+
+fn plant_object_store_link(lead: &Path, outside: &Path) {
+    let git = lead.join(".git");
+    std::fs::rename(git.join("objects"), git.join("objects.real")).unwrap();
+    std::os::unix::fs::symlink(outside, git.join("objects")).unwrap();
+}
+
+#[test]
+fn a_lead_cloned_before_the_workers_committed_squashes_their_commits() {
+    let fx = working_team();
+    let t1 = commit_in(Path::new(&worker_cwd(&fx, 1)), "api.txt");
+    let t2 = commit_in(Path::new(&worker_cwd(&fx, 2)), "ui.txt");
+    finish_workers(&fx);
+    let lead = lead_cwd(&fx);
+    let lead = Path::new(&lead);
+    squash_into(lead, &t1);
+    squash_into(lead, &t2);
+    assert!(lead.join("api.txt").is_file() && lead.join("ui.txt").is_file());
+    git_in(lead, &["fsck", "--full", "--strict"]);
+    assert_eq!(fx.audit_events("team_import_failed"), 0);
+}
+
+#[test]
+fn delivered_commits_stay_in_the_lead_after_the_source_prunes_them() {
+    let fx = working_team();
+    let id = pickup(&fx).id;
+    let t1 = commit_in(Path::new(&worker_cwd(&fx, 1)), "api.txt");
+    finish_workers(&fx);
+    let repo = Path::new(&fx.repo);
+    git_in(repo, &["branch", "-D", &format!("queue-team/{id}/w1")]);
+    git_in(repo, &["reflog", "expire", "--expire=now", "--all"]);
+    git_in(repo, &["gc", "-q", "--prune=now"]);
+    let lead = lead_cwd(&fx);
+    squash_into(Path::new(&lead), &t1);
+    assert!(Path::new(&lead).join("api.txt").is_file());
+    git_in(Path::new(&lead), &["fsck", "--full", "--strict"]);
+}
+
+#[test]
+fn a_lead_whose_object_store_is_a_link_gets_nothing_written_and_the_worker_counts_failed() {
+    let fx = working_team();
+    commit_in(Path::new(&worker_cwd(&fx, 1)), "api.txt");
+    let outside = tempfile::tempdir().unwrap();
+    plant_object_store_link(Path::new(&lead_cwd(&fx)), outside.path());
+    finish_workers(&fx);
+    assert_eq!(std::fs::read_dir(outside.path()).unwrap().count(), 0);
+    assert_eq!(fx.audit_events("team_import_failed"), 1);
+    let told = fx.runs.sent.borrow().last().cloned().unwrap();
+    assert!(told.1.contains("w1 did not finish cleanly"), "{}", told.1);
+}
+
+#[test]
+fn a_multi_repo_lead_cloned_before_the_workers_committed_squashes_their_commits() {
+    let (fx, _) = working_multi_team();
+    let (w1, w2) = (worker_cwd(&fx, 1), worker_cwd(&fx, 2));
+    let b1 = commit_in(&Path::new(&w1).join("backend"), "api1.txt");
+    let f1 = commit_in(&Path::new(&w1).join("frontend"), "ui1.txt");
+    let b2 = commit_in(&Path::new(&w2).join("backend"), "api2.txt");
+    finish_workers(&fx);
+    assert_eq!(fx.audit_events("team_import_failed"), 0);
+    let lead = lead_cwd(&fx);
+    let (back, front) = (
+        Path::new(&lead).join("backend"),
+        Path::new(&lead).join("frontend"),
+    );
+    squash_into(&back, &b1);
+    squash_into(&back, &b2);
+    squash_into(&front, &f1);
+    assert!(back.join("api1.txt").is_file() && back.join("api2.txt").is_file());
+    assert!(front.join("ui1.txt").is_file());
+    git_in(&back, &["fsck", "--full", "--strict"]);
+    git_in(&front, &["fsck", "--full", "--strict"]);
+}
+
+#[test]
+fn a_failed_delivery_in_a_later_repository_removes_the_branches_already_imported() {
+    let (fx, second) = working_multi_team();
+    let id = pickup(&fx).id;
+    let w1 = worker_cwd(&fx, 1);
+    commit_in(&Path::new(&w1).join("backend"), "api.txt");
+    commit_in(&Path::new(&w1).join("frontend"), "ui.txt");
+    let outside = tempfile::tempdir().unwrap();
+    plant_object_store_link(&Path::new(&lead_cwd(&fx)).join("frontend"), outside.path());
+    finish_workers(&fx);
+    let branch = format!("queue-team/{id}/w1");
+    assert!(!has_branch(&fx.repo, &branch));
+    assert!(!has_branch(&second, &branch));
+    assert_eq!(std::fs::read_dir(outside.path()).unwrap().count(), 0);
+    assert_eq!(fx.audit_events("team_import_failed"), 1);
+    let told = fx.runs.sent.borrow().last().cloned().unwrap();
+    assert!(told.1.contains("w1 did not finish cleanly"), "{}", told.1);
+}
