@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.92
+
+- Forking a Codex conversation now checks `codex --version` first and refuses a Codex older than 0.156.0, or one whose version cannot be read, with a message that names the minimum. Resuming by id is unchanged.
+- U+061C (Arabic letter mark) is removed or replaced like the other bidirectional controls in the remaining text cleaners (task bundles, permission and question prompts, copied terminal text, the desktop runner view).
+
 ## 1.0.91
 
 - `tmgr send` is refused with "input queue full" before the shim would drop input, so an agent that stopped reading its terminal no longer loses text that was reported as sent. A retry stays refused until the agent drains, and sending works again as soon as it does. A send into a session whose queue was already full when the runner restarted is refused too.
