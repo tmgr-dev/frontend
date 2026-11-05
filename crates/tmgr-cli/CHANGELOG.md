@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.85
+
+- Smart search in the `tmgr run` session list: press Ctrl+A and ask a question. The local index picks candidate sessions, only their fragments go to Claude Code, and it answers with the best sessions and a one-line reason each. It runs only on that key press and uses your own Claude Code login and limits.
+- The key is hidden when Claude Code is not installed or not logged in; typing to filter keeps working. Codex is not used for this.
+- Sending fragments of a Codex session to Claude Code asks for a typed `send` first. To be asked again, delete `smart-search.toml` from your tmgr config folder.
+- The search call runs without tools and does not add a session to your history.
+
 ## 1.0.84
 
 - `tmgr resume <session> --fork` and the fork action now work for a runner session that runs Codex: the fork continues from the conversation of that session, and `tmgr` names the new conversation.
