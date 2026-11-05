@@ -15,16 +15,21 @@ struct Fake {
     ranked: Option<Vec<String>>,
     allowed: Rc<Cell<u32>>,
     refuse: bool,
+    pending: RefCell<Option<(Vec<Row>, Hints)>>,
 }
 
 impl Source for Fake {
-    fn rows(&self, _profile: &str) -> (Vec<Row>, Hints) {
-        (
+    fn load(&self, _profile: &str) {
+        *self.pending.borrow_mut() = Some((
             self.rows.borrow().clone(),
             Hints {
                 reading_off: self.hints.get(),
             },
-        )
+        ));
+    }
+
+    fn poll(&self) -> Option<(Vec<Row>, Hints)> {
+        self.pending.borrow_mut().take()
     }
 
     fn search(&self, _query: &str) -> Option<Vec<String>> {
@@ -98,6 +103,7 @@ fn fake(rows: Vec<Row>) -> Fake {
         ranked: None,
         allowed: Rc::new(Cell::new(0)),
         refuse: false,
+        pending: RefCell::new(None),
     }
 }
 
@@ -289,7 +295,7 @@ fn sandboxed_tmgr_rows_lock_no_sandbox_off() {
     open_row(&mut s, 2, 'r');
     assert_eq!(s.no_sandbox_lock(), Some((false, SANDBOX_LOCKED_OFF)));
     assert!(!s.no_sandbox());
-    assert_eq!(words(&s.argv()), "tmgr resume tm-2");
+    assert_eq!(words(&s.argv()), "tmgr resume tm-2 --attach");
     s.on_key(Key::Down);
     s.on_key(Key::Char(' '));
     s.on_key(Key::Down);
@@ -302,7 +308,7 @@ fn unsandboxed_tmgr_rows_lock_no_sandbox_on_with_a_reason() {
     let mut s = state(sample_rows());
     open_row(&mut s, 3, 'r');
     assert_eq!(s.no_sandbox_lock(), Some((true, SANDBOX_REQUIRED)));
-    assert_eq!(words(&s.argv()), "tmgr resume tm-3 --no-sandbox");
+    assert_eq!(words(&s.argv()), "tmgr resume tm-3 --attach --no-sandbox");
     s.on_key(Key::Down);
     s.on_key(Key::Char(' '));
     assert!(s.no_sandbox());
@@ -310,7 +316,7 @@ fn unsandboxed_tmgr_rows_lock_no_sandbox_on_with_a_reason() {
     s.on_key(Key::Char(' '));
     assert_eq!(
         words(&s.argv()),
-        "tmgr resume tm-3 --mode bypass --no-sandbox"
+        "tmgr resume tm-3 --attach --mode bypass --no-sandbox"
     );
     assert!(render(&s, 100, 20).contains("ran without the sandbox"));
 }
@@ -323,7 +329,7 @@ fn a_tmgr_row_that_ran_in_bypass_locks_bypass_on_with_a_reason() {
     open_row(&mut s, 2, 'r');
     assert_eq!(s.bypass_lock(), Some((true, BYPASS_REQUIRED)));
     assert!(s.bypass());
-    assert_eq!(words(&s.argv()), "tmgr resume tm-2 --mode bypass");
+    assert_eq!(words(&s.argv()), "tmgr resume tm-2 --attach --mode bypass");
     s.on_key(Key::Char(' '));
     assert!(s.bypass());
     assert!(render(&s, 100, 20).contains("ran in bypass mode"));
@@ -421,7 +427,10 @@ fn a_grants_reading_and_reloads_the_rows() {
     let mut s = state_with(src, &Memory::default());
     to_session(&mut s);
     assert!(s.reading_hint());
-    s.on_key(Key::Char('a'));
+    s.on_key(Key::Tab);
+    assert_eq!(allowed.get(), 0);
+    assert_eq!(s.notice.as_deref(), Some(ALLOW_CONFIRM));
+    s.on_key(Key::Tab);
     assert_eq!(allowed.get(), 1);
     assert!(!s.reading_hint());
     assert!(s.rows.iter().all(|r| r.readable));
@@ -435,29 +444,25 @@ fn a_reports_a_refusal_and_keeps_the_hint() {
     src.refuse = true;
     let mut s = state_with(src, &Memory::default());
     to_session(&mut s);
-    s.on_key(Key::Char('a'));
+    press(&mut s, &[Key::Tab, Key::Tab]);
     assert_eq!(s.notice.as_deref(), Some("could not turn reading on"));
     assert!(s.reading_hint());
 }
 
 #[test]
-fn a_is_a_filter_letter_when_nothing_is_off_or_a_filter_exists() {
-    let src = fake(sample_rows());
-    let allowed = src.allowed.clone();
-    let mut s = state_with(src, &Memory::default());
-    to_session(&mut s);
-    s.on_key(Key::Char('a'));
-    assert_eq!(s.filter, "a");
-    assert_eq!(allowed.get(), 0);
-
+fn typing_a_letter_never_grants_reading_and_a_stray_key_cancels_the_confirmation() {
     let src = fake(sample_rows());
     src.hints.set(true);
     let allowed = src.allowed.clone();
     let mut s = state_with(src, &Memory::default());
     to_session(&mut s);
-    typed(&mut s, "ba");
-    assert_eq!(s.filter, "ba");
+    typed(&mut s, "a");
+    assert_eq!(s.filter, "a");
     assert_eq!(allowed.get(), 0);
+    press(&mut s, &[Key::Tab, Key::Char('x'), Key::Tab]);
+    assert_eq!(allowed.get(), 0);
+    press(&mut s, &[Key::Tab]);
+    assert_eq!(allowed.get(), 1);
 }
 
 #[test]
@@ -817,7 +822,7 @@ fn a_bypass_resume_of_a_tmgr_row_is_not_affected_by_fork_rules() {
     let mut s = state(sample_rows());
     open_row(&mut s, 2, 'r');
     press(&mut s, &[Key::Char(' ')]);
-    assert_eq!(words(&s.argv()), "tmgr resume tm-2 --mode bypass");
+    assert_eq!(words(&s.argv()), "tmgr resume tm-2 --attach --mode bypass");
 }
 
 #[test]
@@ -900,7 +905,7 @@ fn unreadable_rows_are_not_resumable_and_the_consent_key_is_shown() {
     s.on_key(Key::Enter);
     assert_eq!(s.choice, None);
     assert!(s.reading_hint());
-    assert!(render(&s, 120, 20).contains("Press a to allow it"));
+    assert!(render(&s, 120, 20).contains("Press Tab to allow it"));
 }
 
 #[test]
@@ -913,4 +918,65 @@ fn folder_gone_rows_show_the_reason_and_offer_nothing() {
     assert_eq!(s.reason(), Some(GONE_REASON));
     s.on_key(Key::Enter);
     assert_eq!(s.choice, None);
+}
+
+#[test]
+fn the_row_that_starts_is_the_one_that_was_picked_even_if_the_results_change() {
+    let mut src = fake(sample_rows());
+    src.ranked = Some(vec!["ext-1".into(), "tm-2".into()]);
+    let mut s = state_with(src, &Memory::default());
+    to_session(&mut s);
+    typed(&mut s, "x");
+    press(&mut s, &[Key::Down, Key::Enter]);
+    assert_eq!(s.choice, Some(Kind::Resume));
+    s.rows.swap(0, 1);
+    s.filter.clear();
+    s.on_key(Key::Char('r'));
+    assert_eq!(s.screen, Screen::Flags);
+    assert_eq!(words(&s.argv()), "tmgr resume ext-1 --no-sandbox");
+}
+
+#[test]
+fn rows_arrive_later_without_blocking_and_the_new_session_stays_available() {
+    struct Slow(Rc<Cell<bool>>);
+    impl Source for Slow {
+        fn load(&self, _: &str) {}
+        fn poll(&self) -> Option<(Vec<Row>, Hints)> {
+            self.0.get().then(|| (sample_rows(), Hints::default()))
+        }
+        fn search(&self, _: &str) -> Option<Vec<String>> {
+            None
+        }
+        fn allow_reading(&self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    let ready = Rc::new(Cell::new(false));
+    let mut s = State::new(
+        agents([true, true]),
+        "/work/app".into(),
+        &Memory::default(),
+        Box::new(Slow(ready.clone())),
+    );
+    to_session(&mut s);
+    assert!(s.loading);
+    assert!(render(&s, 100, 12).contains("loading"));
+    assert!(s.rows.is_empty());
+    ready.set(true);
+    s.pump();
+    assert!(!s.loading);
+    assert_eq!(s.rows.len(), 3);
+}
+
+#[test]
+fn an_unprintable_current_folder_is_left_out_of_the_command() {
+    let mut s = State::new(
+        agents([true, true]),
+        String::new(),
+        &Memory::default(),
+        Box::new(fake(vec![])),
+    );
+    press(&mut s, &[Key::Enter, Key::Enter]);
+    assert_eq!(words(&s.argv()), "tmgr run --agent claude-code");
+    assert!(render(&s, 100, 12).contains("(current folder)"));
 }

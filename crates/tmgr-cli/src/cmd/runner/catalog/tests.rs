@@ -595,6 +595,33 @@ mod idx {
     }
 
     #[test]
+    fn an_entry_the_caller_no_longer_allows_is_not_indexed() {
+        let fx = Fx::new();
+        fx.grant();
+        seed_both(&fx);
+        let ix = open(&fx);
+        let entries = scan(&fx.env, None);
+        let out = ix
+            .update_while(&entries, |_, _| {}, |e| e.agent == Agent::Claude)
+            .unwrap();
+        assert_eq!(out.indexed, 1);
+        assert_eq!(sids(&ix, "secret"), vec![uid(1)]);
+    }
+
+    #[test]
+    fn a_read_only_open_never_creates_the_index() {
+        let fx = Fx::new();
+        let path = fx.tmp.path().join("cfg/sessions-index.sqlite");
+        assert!(Index::open_read_only(&path).is_err());
+        assert!(!path.exists());
+        fx.grant();
+        seed_both(&fx);
+        sync(&fx, &open(&fx));
+        let ro = Index::open_read_only(&path).unwrap();
+        assert_eq!(sids(&ro, "claude"), vec![uid(1)]);
+    }
+
+    #[test]
     fn user_assistant_and_capped_tool_text_are_searchable() {
         let fx = Fx::new();
         fx.grant();

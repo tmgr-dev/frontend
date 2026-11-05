@@ -42,7 +42,7 @@ pub(super) struct Row {
 
 impl Row {
     fn external(e: Entry, snippet: Option<&str>) -> Row {
-        let folder_gone = e.readable && !e.cwd.as_deref().is_some_and(is_dir);
+        let folder_gone = e.readable && !e.cwd.as_deref().is_some_and(resolves_in_place);
         Row {
             source: "external",
             agent: e.agent.profile().to_string(),
@@ -112,6 +112,11 @@ impl Row {
 
 fn is_dir(path: &str) -> bool {
     std::path::Path::new(path).is_dir()
+}
+
+fn resolves_in_place(path: &str) -> bool {
+    std::fs::canonicalize(path)
+        .is_ok_and(|real| real.is_dir() && real == std::path::Path::new(path))
 }
 
 pub(super) fn dedupe(rows: Vec<Row>) -> Vec<Row> {
@@ -219,7 +224,7 @@ pub(super) fn recent(
     env: &Env,
     agent: Option<Agent>,
     limit: usize,
-    notes: &mut Vec<String>,
+    runner: Vec<Row>,
 ) -> (Vec<Row>, Vec<String>) {
     let listing = catalog::list(
         env,
@@ -234,7 +239,7 @@ pub(super) fn recent(
         .into_iter()
         .map(|e| Row::external(e, None))
         .collect();
-    rows.extend(runner_rows(agent, notes));
+    rows.extend(runner);
     let mut rows = dedupe(rows);
     rows.sort_by_key(|r| std::cmp::Reverse(r.when_ms));
     rows.truncate(limit);
@@ -274,7 +279,8 @@ pub(super) fn run(o: &Opts, a: &SessionListArgs) -> Result<i32> {
             search_rows(&env, q, agent, limit, &mut notes)?
         }
         None => {
-            let (rows, listed) = recent(&env, agent, limit, &mut notes);
+            let runner = runner_rows(agent, &mut notes);
+            let (rows, listed) = recent(&env, agent, limit, runner);
             hints = listed;
             rows
         }
@@ -396,5 +402,20 @@ mod tests {
         let rows = vec![Row::runner(&info), row("external", id, None)];
         let ids: Vec<String> = dedupe(rows).into_iter().map(|r| r.id).collect();
         assert_eq!(ids, ["s_aaaaaaaaaa"]);
+    }
+
+    #[test]
+    fn a_recorded_folder_that_resolves_elsewhere_counts_as_gone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let real = std::fs::canonicalize(tmp.path()).unwrap();
+        let link = real.join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let mut e = catalog::testkit::entry(Agent::Claude);
+        e.cwd = Some(real.display().to_string());
+        assert!(!Row::external(e.clone(), None).folder_gone);
+        e.cwd = Some(link.display().to_string());
+        assert!(Row::external(e.clone(), None).folder_gone);
+        e.cwd = Some(real.join("missing").display().to_string());
+        assert!(Row::external(e, None).folder_gone);
     }
 }

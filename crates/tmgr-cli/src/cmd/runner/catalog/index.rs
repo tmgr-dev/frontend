@@ -154,19 +154,28 @@ impl Index {
         Ok(Index { conn })
     }
 
+    pub fn open_read_only(path: &Path) -> Result<Index, IndexError> {
+        let conn = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        conn.busy_timeout(Duration::from_millis(20))?;
+        Ok(Index { conn })
+    }
+
     pub fn update(
         &self,
         entries: &[Entry],
         progress: impl FnMut(usize, usize),
     ) -> Result<Outcome, IndexError> {
-        self.update_while(entries, progress, || true)
+        self.update_while(entries, progress, |_| true)
     }
 
     pub fn update_while(
         &self,
         entries: &[Entry],
         mut progress: impl FnMut(usize, usize),
-        keep_going: impl Fn() -> bool,
+        may_index: impl Fn(&Entry) -> bool,
     ) -> Result<Outcome, IndexError> {
         let todo: Vec<&Entry> = entries.iter().filter(|e| e.readable).collect();
         let mut out = Outcome::default();
@@ -180,8 +189,10 @@ impl Index {
         }
         let total = todo.len();
         for (i, e) in todo.iter().enumerate() {
-            if !keep_going() {
-                break;
+            if !may_index(e) {
+                out.skipped += 1;
+                progress(i + 1, total);
+                continue;
             }
             match self.index_file(e) {
                 Ok(true) => out.indexed += 1,

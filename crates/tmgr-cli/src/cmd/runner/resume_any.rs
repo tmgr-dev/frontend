@@ -26,7 +26,11 @@ pub(super) struct Plan {
 
 pub(super) fn is_tmgr_session(key: &str) -> Result<bool> {
     let cfg = runner_config()?;
-    Ok(resolve(&list_or_empty(&cfg)?, key).is_ok())
+    Ok(names_tmgr_session(&list_or_empty(&cfg)?, key))
+}
+
+fn names_tmgr_session(sessions: &[SessionInfo], key: &str) -> bool {
+    !valid_resume_id(key) && resolve(sessions, key).is_ok()
 }
 
 fn check_readable(e: &Entry, denial: Option<&str>) -> Result<()> {
@@ -479,6 +483,7 @@ mod tests {
             mode,
             no_sandbox,
             no_attach: false,
+            attach: false,
         }
     }
 
@@ -543,5 +548,13 @@ mod tests {
         assert!(check_live(&e, true).unwrap().is_empty());
         e.live = Live::Recent;
         assert!(check_live(&e, false).unwrap()[0].contains("cannot be told"));
+    }
+
+    #[test]
+    fn a_tmgr_session_named_like_a_conversation_id_never_captures_it() {
+        let mut named = session("claude-code", false, None);
+        named.name = uid(1);
+        assert!(!names_tmgr_session(std::slice::from_ref(&named), &uid(1)));
+        assert!(names_tmgr_session(&[named], "s_aaaaaaaaaa"));
     }
 }

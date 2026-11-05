@@ -1194,7 +1194,7 @@ fn resume(o: &Opts, a: &ResumeArgs) -> Result<i32> {
         c.resume(&s.id, s.cols, s.rows)
     }
     .map_err(rerr)?;
-    if flagged && !a.no_attach && !o.json && std::io::stdout().is_terminal() {
+    if (flagged || a.attach) && !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         return attach::run(&runner_config()?, &r.session.id);
     }
     let r = super::resume_any::clean_run(&r);

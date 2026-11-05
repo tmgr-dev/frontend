@@ -1,5 +1,6 @@
 mod indexer;
 mod memory;
+mod signal;
 mod state;
 mod view;
 
@@ -12,7 +13,7 @@ use super::ops::span;
 use super::session_list;
 use crate::cmd::board::theme::ColorLevel;
 use crate::cmd::ui::{enter_screen, leave_screen, Restore};
-use indexer::Indexer;
+use indexer::{Indexer, Searcher};
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Terminal;
@@ -21,6 +22,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::{stdin, stdout, IsTerminal};
+use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::Duration;
 use tmgr_runner::profile::{self, ProfileSet};
 use tmgr_usage::paths::Env;
@@ -40,17 +42,20 @@ pub fn entry() -> Entry {
     let source = Box::new(Live::start());
     let memory_path = memory::default_path();
     let remembered = memory_path.as_deref().map(memory::load).unwrap_or_default();
-    let folder = std::env::current_dir()
-        .map(|p| {
-            p.to_string_lossy()
-                .chars()
-                .filter(|c| !c.is_control())
-                .collect()
-        })
-        .unwrap_or_default();
-    let mut state = State::new(agents(), folder, &remembered, source);
+    let mut state = State::new(agents(), current_folder(), &remembered, source);
     let step = drive(&mut state);
-    settle(&state, step, memory_path.as_deref())
+    match signal::pending() {
+        0 => settle(&state, step, memory_path.as_deref()),
+        sig => Entry::Exit(128 + sig),
+    }
+}
+
+fn current_folder() -> String {
+    std::env::current_dir()
+        .ok()
+        .and_then(|p| p.to_str().map(str::to_string))
+        .filter(|p| !p.chars().any(char::is_control))
+        .unwrap_or_default()
 }
 
 fn settle(state: &State, step: Option<Step>, memory_path: Option<&std::path::Path>) -> Entry {
@@ -70,18 +75,19 @@ fn wanted(args: &[OsString], tty: bool, in_agent: bool) -> bool {
     args == ["run"] && tty && !in_agent
 }
 
-type Cached = (String, (u8, usize), Option<Vec<String>>);
+type Loaded = (Vec<Row>, Hints, HashMap<String, String>);
 
 const ROW_LIMIT: usize = 1000;
 const HIT_LIMIT: usize = 500;
+const RUNNER_WAIT: Duration = Duration::from_secs(2);
 
 #[derive(Default)]
 struct Live {
     indexer: RefCell<Option<Indexer>>,
-    connection: RefCell<Option<index::Index>>,
+    searcher: RefCell<Option<Searcher>>,
+    loading: RefCell<Option<Receiver<Loaded>>>,
     tmgr: RefCell<Vec<(String, String)>>,
     owners: RefCell<HashMap<String, String>>,
-    cache: RefCell<Option<Cached>>,
 }
 
 impl Live {
@@ -125,8 +131,23 @@ impl Live {
 }
 
 impl Source for Live {
-    fn rows(&self, profile: &str) -> (Vec<Row>, Hints) {
-        let (rows, hints, owners) = load_rows(profile);
+    fn load(&self, profile: &str) {
+        let (tx, rx) = mpsc::channel();
+        let profile = profile.to_string();
+        std::thread::spawn(move || {
+            let _ = tx.send(load_rows(&profile));
+        });
+        *self.loading.borrow_mut() = Some(rx);
+    }
+
+    fn poll(&self) -> Option<(Vec<Row>, Hints)> {
+        let received = self.loading.borrow().as_ref()?.try_recv();
+        let (rows, hints, owners) = match received {
+            Ok(loaded) => loaded,
+            Err(TryRecvError::Empty) => return None,
+            Err(TryRecvError::Disconnected) => Default::default(),
+        };
+        *self.loading.borrow_mut() = None;
         *self.tmgr.borrow_mut() = rows
             .iter()
             .filter(|r| r.kind == RowKind::Tmgr)
@@ -138,31 +159,26 @@ impl Source for Live {
             })
             .collect();
         *self.owners.borrow_mut() = owners;
-        *self.cache.borrow_mut() = None;
-        (rows, hints)
+        Some((rows, hints))
     }
 
     fn search(&self, query: &str) -> Option<Vec<String>> {
         let guard = self.indexer.borrow();
         let indexer = guard.as_ref().filter(|i| i.ready())?;
         let stamp = indexer.stamp();
-        if let Some((q, s, ids)) = self.cache.borrow().as_ref() {
-            if q == query && *s == stamp {
-                return ids.clone();
-            }
-        }
-        let mut connection = self.connection.borrow_mut();
-        if connection.is_none() {
-            *connection = index::Index::open(indexer.path()).ok();
-        }
-        let ids = search_ids(connection.as_ref()?, query, indexer.complete())
-            .map(|ids| self.translate(ids, query));
-        *self.cache.borrow_mut() = Some((query.to_string(), stamp, ids.clone()));
-        ids
+        let mut slot = self.searcher.borrow_mut();
+        let searcher = slot.get_or_insert_with(|| {
+            Searcher::start(indexer.path().to_path_buf(), Env::from_process())
+        });
+        searcher.ask(query, stamp, indexer.complete());
+        let answer = searcher.latest().filter(|a| a.query == query)?;
+        answer.ids.map(|ids| self.translate(ids, query))
     }
 
     fn allow_reading(&self) -> Result<(), String> {
         allow_log_reading()?;
+        self.indexer.borrow_mut().take();
+        self.searcher.borrow_mut().take();
         self.ensure_indexer();
         Ok(())
     }
@@ -172,14 +188,22 @@ impl Source for Live {
     }
 }
 
-pub fn load_rows(profile: &str) -> (Vec<Row>, Hints, HashMap<String, String>) {
+fn runner_rows_within(agent: Agent) -> Vec<session_list::Row> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(session_list::runner_rows(Some(agent), &mut Vec::new()));
+    });
+    rx.recv_timeout(RUNNER_WAIT).unwrap_or_default()
+}
+
+pub fn load_rows(profile: &str) -> Loaded {
     let agent = match profile {
         "claude-code" => Agent::Claude,
         "codex" => Agent::Codex,
         _ => return Default::default(),
     };
-    let (listed, notes) = (Env::from_process(), &mut Vec::new());
-    let (rows, hints) = session_list::recent(&listed, Some(agent), ROW_LIMIT, notes);
+    let runner = runner_rows_within(agent);
+    let (rows, hints) = session_list::recent(&Env::from_process(), Some(agent), ROW_LIMIT, runner);
     let owners = rows
         .iter()
         .filter(|r| r.source == "tmgr")
@@ -290,18 +314,24 @@ fn look() -> view::Look {
 
 fn drive(state: &mut State) -> Option<Step> {
     let look = look();
-    let previous = std::panic::take_hook();
+    let previous = std::sync::Arc::new(std::panic::take_hook());
+    let chained = previous.clone();
     std::panic::set_hook(Box::new(move |info| {
         leave_screen();
-        previous(info);
+        chained(info);
     }));
+    let signals = signal::Guard::install();
     let outcome = {
         let _restore = Restore;
         enter_screen().ok().and_then(|()| {
             let mut term = Terminal::new(CrosstermBackend::new(stdout())).ok()?;
             loop {
+                state.pump();
                 let _ = term.draw(|f| view::draw(f, state, look));
-                if !event::poll(Duration::from_millis(200)).ok()? {
+                if signal::pending() != 0 {
+                    return Some(Step::Quit);
+                }
+                if !event::poll(Duration::from_millis(200)).unwrap_or(false) {
                     continue;
                 }
                 match event::read().ok()? {
@@ -319,6 +349,7 @@ fn drive(state: &mut State) -> Option<Step> {
             }
         })
     };
-    let _ = std::panic::take_hook();
+    drop(signals);
+    std::panic::set_hook(Box::new(move |info| previous(info)));
     outcome
 }

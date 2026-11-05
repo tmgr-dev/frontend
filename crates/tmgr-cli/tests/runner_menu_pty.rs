@@ -469,7 +469,7 @@ fn a_folder_gone_session_cannot_be_chosen() {
     pty.send("gamma");
     pty.wait_until("gamma only", |t| !t.contains("alpha title"));
     pty.send(DOWN);
-    pty.wait_for("The session's folder no longer exists");
+    pty.wait_for("The session's folder is missing or resolves elsewhere");
     pty.send(ENTER);
     thread::sleep(Duration::from_millis(300));
     assert!(!pty.text().contains("r Resume"));
@@ -540,4 +540,109 @@ fn run_with_a_flag_on_a_terminal_does_not_open_the_menu() {
     let code = pty.exit_code();
     assert_ne!(code, 0);
     assert!(!pty.text().contains("Which agent?"));
+}
+
+fn wait_for_index(fx: &Fx) {
+    let end = Instant::now() + WAIT;
+    while !fx.index_file().exists() {
+        assert!(Instant::now() < end, "index was never created");
+        thread::sleep(Duration::from_millis(10));
+    }
+    thread::sleep(Duration::from_millis(700));
+}
+
+#[test]
+fn a_deny_while_the_menu_is_open_removes_the_index_and_it_is_not_recreated() {
+    let fx = Fx::new();
+    fx.seed();
+    let mut pty = fx.pty(&["run"]);
+    pty.wait_for("Which agent?");
+    pty.send(ENTER);
+    pty.wait_for("alpha title");
+    wait_for_index(&fx);
+    let deny = std::process::Command::new(BIN)
+        .args(["usage", "consent", "deny"])
+        .env_clear()
+        .envs(fx.envs())
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(deny.status.success());
+    pty.send("zanzibarquux");
+    thread::sleep(Duration::from_millis(800));
+    assert!(!pty.text().contains("alpha title"));
+    assert!(!fx.index_file().exists());
+    pty.send("\x03");
+    assert_eq!(pty.exit_code(), 0);
+    assert!(!fx.index_file().exists());
+}
+
+#[test]
+fn typing_stays_responsive_while_the_index_is_write_locked() {
+    let fx = Fx::new();
+    fx.seed();
+    let mut pty = fx.pty(&["run"]);
+    pty.wait_for("Which agent?");
+    pty.send(ENTER);
+    pty.wait_for("alpha title");
+    wait_for_index(&fx);
+    let holder = rusqlite::Connection::open(fx.index_file()).unwrap();
+    holder.execute_batch("BEGIN IMMEDIATE").unwrap();
+    narrow_to(&mut pty, "zanzibarquux", "alpha title", "beta title");
+    pty.send("\x1b");
+    pty.wait_for("Which agent?");
+    pty.send("q");
+    assert_eq!(pty.exit_code(), 0);
+    drop(holder);
+}
+
+#[test]
+fn a_typed_a_filters_and_does_not_turn_reading_on() {
+    let fx = Fx::new();
+    fx.seed();
+    let off = std::process::Command::new(BIN)
+        .args(["usage", "consent", "deny"])
+        .env_clear()
+        .envs(fx.envs())
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(off.status.success());
+    let mut pty = fx.pty(&["run"]);
+    pty.wait_for("Which agent?");
+    pty.send(ENTER);
+    pty.wait_for("Reading session logs is off");
+    pty.send("a");
+    pty.wait_for("Filter: a_");
+    pty.send("\x7f\t");
+    pty.wait_for("Press Tab again to allow reading session logs");
+    pty.send("x");
+    thread::sleep(Duration::from_millis(300));
+    assert!(!pty.text().contains("Reading session logs is on."));
+    pty.send("\x03");
+    assert_eq!(pty.exit_code(), 0);
+    let status = std::process::Command::new(BIN)
+        .args(["usage", "consent", "status"])
+        .env_clear()
+        .envs(fx.envs())
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&status.stdout).contains("off"));
+}
+
+#[test]
+fn sigterm_restores_the_terminal() {
+    let fx = Fx::new();
+    let mut pty = fx.pty(&["run"]);
+    pty.wait_for("Which agent?");
+    assert!(pty.alternate());
+    let pid = pty.child.process_id().unwrap();
+    unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+    assert_eq!(pty.exit_code(), 128 + libc::SIGTERM as u32);
+    let end = Instant::now() + WAIT;
+    while pty.alternate() {
+        assert!(Instant::now() < end, "alternate screen was not left");
+        thread::sleep(Duration::from_millis(20));
+    }
 }

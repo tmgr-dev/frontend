@@ -133,7 +133,15 @@ fn agent_lines(s: &State, look: Look, width: usize) -> Vec<Line<'static>> {
 
 fn session_lines(s: &State, look: Look, width: usize, height: usize) -> Vec<Line<'static>> {
     let mut head = vec![
-        line(&format!("{} sessions", s.agent().name), width, Style::new()),
+        line(
+            &format!(
+                "{} sessions{}",
+                s.agent().name,
+                if s.loading { " (loading...)" } else { "" }
+            ),
+            width,
+            Style::new(),
+        ),
         line(&format!("Filter: {}_", s.filter), width, look.accent()),
     ];
     let mut foot = Vec::new();
@@ -208,7 +216,7 @@ fn session_lines(s: &State, look: Look, width: usize, height: usize) -> Vec<Line
 
 fn choice_line(kind: Kind, s: &State, look: Look, width: usize) -> Line<'static> {
     let live = s
-        .selected_row()
+        .focus_row()
         .is_some_and(|r| State::availability(r) == Availability::Live);
     let mark = |k: Kind, label: &str| {
         if k == kind {
@@ -222,7 +230,7 @@ fn choice_line(kind: Kind, s: &State, look: Look, width: usize) -> Line<'static>
     } else {
         mark(Kind::Resume, "r Resume")
     };
-    let fork = match s.selected_row().and_then(|r| s.fork_blocked(r)) {
+    let fork = match s.focus_row().and_then(|r| s.fork_blocked(r)) {
         Some(_) => "(fork unavailable)".to_string(),
         None => mark(Kind::Fork, "f Fork"),
     };
@@ -259,7 +267,15 @@ fn flags_lines(s: &State, look: Look, width: usize) -> Vec<Line<'static>> {
     for (i, field) in s.fields().into_iter().enumerate() {
         let on = i == s.flag_cursor;
         let text = match field {
-            Field::Folder => format!("{}Folder: {}", marker(on), s.folder),
+            Field::Folder => format!(
+                "{}Folder: {}",
+                marker(on),
+                if s.folder.is_empty() {
+                    "(current folder)"
+                } else {
+                    &s.folder
+                }
+            ),
             Field::Bypass => format!(
                 "{}{} Bypass permissions{}",
                 marker(on),

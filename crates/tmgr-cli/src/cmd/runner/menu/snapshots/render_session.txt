@@ -8,7 +8,7 @@
 │  tmgr 2h ago   infra rotate the keys (not readable)                                              │
 │  ext  2h ago   old-site port the css                                                             │
 │Running in another terminal: fork instead                                                         │
-│Reading session logs is off. Press a to allow it (same as: tmgr usage consent allow)              │
+│Reading session logs is off. Press Tab to allow it (same as: tmgr usage consent allow)            │
 │Up/Down move · type to filter · Enter select · Esc back · Ctrl+C quit                             │
 │                                                                                                  │
 │                                                                                                  │

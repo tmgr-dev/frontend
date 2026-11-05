@@ -67,3 +67,15 @@ fn bare_run_with_json_without_a_tty_keeps_the_usage_error() {
     let out = cmd(&home, &["--json", "run"], &[]).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
 }
+
+#[test]
+fn the_attach_flag_of_resume_is_accepted_and_hidden_from_help() {
+    let home = tempfile::tempdir().unwrap();
+    let out = cmd(&home, &["resume", "s_aaaaaaaaaa", "--attach"], &[])
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!err.contains("unexpected argument"), "{err}");
+    let help = cmd(&home, &["resume", "--help"], &[]).output().unwrap();
+    assert!(!String::from_utf8_lossy(&help.stdout).contains("--attach"));
+}

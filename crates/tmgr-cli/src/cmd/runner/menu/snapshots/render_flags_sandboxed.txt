@@ -6,7 +6,7 @@
 │    This session was recorded inside the sandbox home.                                            │
 │                                                                                                  │
 │Command                                                                                           │
-│tmgr resume tm-2                                                                                  │
+│tmgr resume tm-2 --attach                                                                         │
 │                                                                                                  │
 │Up/Down move · Space toggle · Enter start · Esc back · Ctrl+C quit                                │
 │                                                                                                  │

@@ -53,7 +53,8 @@ pub struct Hints {
 }
 
 pub trait Source {
-    fn rows(&self, profile: &str) -> (Vec<Row>, Hints);
+    fn load(&self, profile: &str);
+    fn poll(&self) -> Option<(Vec<Row>, Hints)>;
     fn search(&self, query: &str) -> Option<Vec<String>>;
     fn allow_reading(&self) -> Result<(), String>;
     fn status(&self) -> Option<String> {
@@ -105,9 +106,12 @@ pub const FORK_UNSANDBOXED: &str =
     "A session started without the sandbox cannot be forked by its tmgr id.";
 pub const CONFIRM_NEXT: &str = "You will be asked to type a confirmation next.";
 pub const LIVE_REASON: &str = "Running in another terminal: fork instead";
-pub const GONE_REASON: &str = "The session's folder no longer exists, so it cannot be started.";
+pub const GONE_REASON: &str =
+    "The session's folder is missing or resolves elsewhere, so it cannot be started.";
 pub const READING_OFF: &str =
-    "Reading session logs is off. Press a to allow it (same as: tmgr usage consent allow)";
+    "Reading session logs is off. Press Tab to allow it (same as: tmgr usage consent allow)";
+pub const ALLOW_CONFIRM: &str =
+    "Press Tab again to allow reading session logs (same as: tmgr usage consent allow). Any other key cancels.";
 
 pub struct State {
     source: Box<dyn Source>,
@@ -127,6 +131,10 @@ pub struct State {
     pref_kind: Kind,
     pub flag_cursor: usize,
     pub notice: Option<String>,
+    pub loading: bool,
+    allow_pending: bool,
+    chosen: Option<String>,
+    frozen: Vec<usize>,
 }
 
 fn clean_char(c: char) -> bool {
@@ -163,6 +171,10 @@ impl State {
             pref_kind: memory.kind,
             flag_cursor: 0,
             notice: None,
+            loading: false,
+            allow_pending: false,
+            chosen: None,
+            frozen: Vec::new(),
         }
     }
 
@@ -171,6 +183,9 @@ impl State {
     }
 
     pub fn visible(&self) -> Vec<usize> {
+        if self.choice.is_some() {
+            return self.frozen.clone();
+        }
         let q = self.filter.trim();
         if q.is_empty() {
             return (0..self.rows.len()).collect();
@@ -205,6 +220,31 @@ impl State {
         }
     }
 
+    pub fn focus_row(&self) -> Option<&Row> {
+        match (&self.choice, &self.chosen) {
+            (Some(_), Some(id)) => self.rows.iter().find(|r| &r.id == id),
+            _ => self.selected_row(),
+        }
+    }
+
+    fn begin_load(&mut self) {
+        self.source.load(&self.agents[self.agent].id);
+        self.loading = true;
+        self.pump();
+    }
+
+    pub fn pump(&mut self) {
+        if !self.loading || self.choice.is_some() {
+            return;
+        }
+        if let Some((rows, hints)) = self.source.poll() {
+            self.rows = rows;
+            self.hints = hints;
+            self.loading = false;
+            self.cursor = 0;
+        }
+    }
+
     pub fn selected_row(&self) -> Option<&Row> {
         let i = *self.visible().get(self.cursor.checked_sub(1)?)?;
         self.rows.get(i)
@@ -219,7 +259,7 @@ impl State {
     }
 
     pub fn reason(&self) -> Option<&'static str> {
-        let row = self.selected_row()?;
+        let row = self.focus_row()?;
         match Self::availability(row) {
             Availability::Live => Some(self.fork_blocked(row).unwrap_or(LIVE_REASON)),
             Availability::FolderGone => Some(GONE_REASON),
@@ -311,6 +351,8 @@ impl State {
                 v.extend(["resume".into(), row.id.clone()]);
                 if self.kind() == Kind::Fork {
                     v.push("--fork".into());
+                } else if row.kind == RowKind::Tmgr {
+                    v.push("--attach".into());
                 }
             }
         }
@@ -354,6 +396,9 @@ impl State {
             return Step::Quit;
         }
         self.notice = None;
+        if key != Key::Tab {
+            self.allow_pending = false;
+        }
         match self.screen {
             Screen::Agent => self.agent_key(key),
             Screen::Session => self.session_key(key),
@@ -368,13 +413,13 @@ impl State {
             Key::Down => self.step_agent(1),
             Key::Enter if self.agents[self.agent_cursor].installed => {
                 self.agent = self.agent_cursor;
-                let (rows, hints) = self.source.rows(&self.agents[self.agent].id);
-                self.rows = rows;
-                self.hints = hints;
+                self.rows.clear();
+                self.hints = Hints::default();
                 self.filter.clear();
                 self.cursor = 0;
                 self.choice = None;
                 self.screen = Screen::Session;
+                self.begin_load();
             }
             _ => {}
         }
@@ -401,6 +446,7 @@ impl State {
         match key {
             Key::Esc => {
                 self.screen = Screen::Agent;
+                self.loading = false;
                 self.rows.clear();
                 self.filter.clear();
             }
@@ -411,7 +457,15 @@ impl State {
                 self.filter.pop();
                 self.cursor = 0;
             }
-            Key::Char('a') if self.filter.is_empty() && self.reading_hint() => self.allow(),
+            Key::Tab if self.reading_hint() => {
+                if self.allow_pending {
+                    self.allow_pending = false;
+                    self.allow();
+                } else {
+                    self.allow_pending = true;
+                    self.notice = Some(ALLOW_CONFIRM.into());
+                }
+            }
             Key::Char(c) if clean_char(c) => {
                 self.filter.push(c);
                 self.cursor = 0;
@@ -424,10 +478,8 @@ impl State {
     fn allow(&mut self) {
         match self.source.allow_reading() {
             Ok(()) => {
-                let (rows, hints) = self.source.rows(&self.agents[self.agent].id);
-                self.rows = rows;
-                self.hints = hints;
                 self.cursor = 0;
+                self.begin_load();
                 self.notice = Some("Reading session logs is on.".into());
             }
             Err(e) => self.notice = Some(e),
@@ -443,24 +495,33 @@ impl State {
         let Some(row) = self.selected_row() else {
             return;
         };
-        match Self::availability(row) {
+        let id = row.id.clone();
+        let choice = match Self::availability(row) {
             Availability::Ok => {
                 let fork = self.pref_kind == Kind::Fork && self.fork_blocked(row).is_none();
-                self.choice = Some(if fork { Kind::Fork } else { Kind::Resume });
+                Some(if fork { Kind::Fork } else { Kind::Resume })
             }
             Availability::Live => match self.fork_blocked(row) {
-                None => self.choice = Some(Kind::Fork),
-                Some(why) => self.notice = Some(why.into()),
+                None => Some(Kind::Fork),
+                Some(why) => {
+                    self.notice = Some(why.into());
+                    None
+                }
             },
-            _ => {}
+            _ => None,
+        };
+        if choice.is_some() {
+            self.frozen = self.visible();
+            self.chosen = Some(id);
+            self.choice = choice;
         }
     }
 
     fn choice_key(&mut self, key: Key) -> Step {
         let live = self
-            .selected_row()
+            .focus_row()
             .is_some_and(|r| Self::availability(r) == Availability::Live);
-        let fork_blocked = self.selected_row().and_then(|r| self.fork_blocked(r));
+        let fork_blocked = self.focus_row().and_then(|r| self.fork_blocked(r));
         match key {
             Key::Esc => self.choice = None,
             Key::Tab if !live && fork_blocked.is_none() => {
@@ -486,7 +547,12 @@ impl State {
     }
 
     fn choose(&mut self, kind: Kind) {
-        let Some(i) = self.visible().get(self.cursor.saturating_sub(1)).copied() else {
+        let Some(i) = self
+            .chosen
+            .as_ref()
+            .and_then(|id| self.rows.iter().position(|r| &r.id == id))
+        else {
+            self.choice = None;
             return;
         };
         self.target = Target::Existing(i, kind);

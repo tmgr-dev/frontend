@@ -560,6 +560,8 @@ pub struct ResumeArgs {
     /// Start the session without opening the live view
     #[arg(long)]
     pub no_attach: bool,
+    #[arg(long, hide = true)]
+    pub attach: bool,
 }
 
 pub struct Opts<'a> {
