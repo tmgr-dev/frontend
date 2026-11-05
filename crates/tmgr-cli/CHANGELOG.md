@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.93
+
+- A decisions call (`get_answer`, `ask --wait`, MCP tools) no longer ends as pending when the desktop is replacing its token file at that moment: the client keeps retrying with the token it had, and the desktop now swaps the file in atomically.
+
 ## 1.0.92
 
 - Forking a Codex conversation now checks `codex --version` first and refuses a Codex older than 0.156.0, or one whose version cannot be read, with a message that names the minimum. Resuming by id is unchanged.
