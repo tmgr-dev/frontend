@@ -193,6 +193,7 @@ impl Hub {
     added
   }
 
+  #[cfg(test)]
   pub fn wait(
     self: &Arc<Self>,
     id: &str,
