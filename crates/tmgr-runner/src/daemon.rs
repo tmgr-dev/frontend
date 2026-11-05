@@ -736,7 +736,10 @@ impl Session {
         let Some(link) = g.as_ref() else { return false };
         let mut book = link.credit.as_ref().map(|c| lock(&c.0));
         let full = match &book {
-            Some(b) => !b.has_room(bytes.len()),
+            Some(b) => {
+                !b.has_room(bytes.len())
+                    || link.queued_frames.load(Ordering::SeqCst) >= SHIM_INPUT_FRAMES
+            }
             None => {
                 link.queued_bytes.load(Ordering::SeqCst) + bytes.len() > SHIM_INPUT_CAP
                     || link.queued_frames.load(Ordering::SeqCst) >= SHIM_INPUT_FRAMES
@@ -5561,11 +5564,15 @@ mod tests {
         (t, s, rx, book)
     }
 
-    fn report(book: &Book, c: InputCredit) {
-        let mut b = lock(&book.0);
-        b.last = c;
-        b.stalled = false;
-        book.1.notify_all();
+    fn from_shim(s: &Session, book: Option<&Book>, msg: &FromShim) {
+        let (mut shim, daemon) = UnixStream::pair().unwrap();
+        write_json(&mut shim, msg).unwrap();
+        drop(shim);
+        s.read_shim(&daemon, false, book.cloned());
+    }
+
+    fn report(s: &Session, book: &Book, c: InputCredit) {
+        from_shim(s, Some(book), &FromShim::InputCredit(c));
     }
 
     #[test]
@@ -5609,7 +5616,7 @@ mod tests {
         drain(&s, &rx);
         assert!(!s.shim_input(b"x"));
         assert_eq!(lock(&book.0).outstanding().0, SHIM_INPUT_CAP as u64);
-        report(&book, credit(SHIM_INPUT_CAP as u64, 4, 0, 0));
+        report(&s, &book, credit(SHIM_INPUT_CAP as u64, 4, 0, 0));
         assert!(s.shim_input(b"x"));
     }
 
@@ -5618,10 +5625,14 @@ mod tests {
         let (_t, s, rx, book) = credit_session();
         for _ in 0..SHIM_CREDIT_FRAMES {
             assert!(s.shim_input(b"k"));
+            drain(&s, &rx);
         }
         assert!(!s.shim_input(b"k"));
-        drain(&s, &rx);
-        report(&book, credit(SHIM_CREDIT_FRAMES, SHIM_CREDIT_FRAMES, 0, 0));
+        report(
+            &s,
+            &book,
+            credit(SHIM_CREDIT_FRAMES, SHIM_CREDIT_FRAMES, 0, 0),
+        );
         assert!(s.shim_input(b"k"));
     }
 
@@ -5632,16 +5643,34 @@ mod tests {
         assert!(s.shim_input(b"1"));
         drain(&s, &rx);
         assert!(!send_at_prompt(&s, b"note\r", settled()));
-        report(&book, credit(1, 1, 0, 0));
+        report(&s, &book, credit(1, 1, 0, 0));
         assert!(send_at_prompt(&s, b"note\r", settled()));
     }
 
     #[test]
     fn a_dropped_report_does_not_poison_a_credit_link() {
         let (_t, s, _rx, book) = credit_session();
-        s.input_dropped.store(false, Ordering::SeqCst);
-        assert!(lock(&book.0).has_room(1));
+        from_shim(&s, Some(&book), &FromShim::InputDropped { bytes: 1 });
+        assert!(!s.input_dropped.load(Ordering::SeqCst));
         assert!(s.input(b"a"));
+    }
+
+    #[test]
+    fn a_dropped_report_still_sets_the_flag_on_a_legacy_link() {
+        let (_t, s, _rx) = lone_session();
+        from_shim(&s, None, &FromShim::InputDropped { bytes: 1 });
+        assert!(s.input_dropped.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn a_credit_link_keeps_channel_room_for_control_frames() {
+        let (_t, s, _rx, _book) = credit_session();
+        lock(&s.shim)
+            .as_ref()
+            .unwrap()
+            .queued_frames
+            .store(SHIM_INPUT_FRAMES, Ordering::SeqCst);
+        assert!(!s.shim_input(b"x"));
     }
 
     #[test]
@@ -5650,7 +5679,7 @@ mod tests {
         let t0 = Instant::now();
         s.wait_input_room(1);
         assert!(t0.elapsed() < Duration::from_millis(500));
-        report(&book, credit(0, 0, SHIM_INPUT_CAP as u64, 1));
+        report(&s, &book, credit(0, 0, SHIM_INPUT_CAP as u64, 1));
         let t0 = Instant::now();
         s.wait_input_room(1);
         assert!(t0.elapsed() >= ATTACH_INPUT_WAIT);
@@ -5658,18 +5687,18 @@ mod tests {
         let t0 = Instant::now();
         s.wait_input_room(1);
         assert!(t0.elapsed() < Duration::from_millis(500));
-        report(&book, credit(0, 0, 0, 0));
+        report(&s, &book, credit(0, 0, 0, 0));
         assert!(!lock(&book.0).stalled);
     }
 
     #[test]
     fn the_attach_wait_wakes_when_a_credit_makes_room() {
         let (_t, s, _rx, book) = credit_session();
-        report(&book, credit(0, 0, SHIM_INPUT_CAP as u64, 1));
-        let b2 = book.clone();
+        report(&s, &book, credit(0, 0, SHIM_INPUT_CAP as u64, 1));
+        let (s2, b2) = (s.clone(), book.clone());
         let h = thread::spawn(move || {
             thread::sleep(Duration::from_millis(200));
-            report(&b2, credit(0, 0, 0, 0));
+            report(&s2, &b2, credit(0, 0, 0, 0));
         });
         let t0 = Instant::now();
         s.wait_input_room(1);

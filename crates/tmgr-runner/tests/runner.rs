@@ -1155,9 +1155,13 @@ fn a_frozen_1_0_88_daemon_adopts_a_new_shim_and_its_input_arrives() {
         old.input(chunk(i).as_bytes());
     }
     assert_file_is(&out_of(&h, "old"), &numbered(8));
-    eprintln!(
-        "unparsed shim messages: {}",
-        old.unparsed.load(Ordering::SeqCst)
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while old.unparsed.load(Ordering::SeqCst) == 0 && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert!(
+        old.unparsed.load(Ordering::SeqCst) > 0,
+        "the shim never sent the old daemon a message it does not know"
     );
 }
 
@@ -1183,10 +1187,6 @@ fn a_frozen_1_0_88_daemon_still_gets_input_dropped_when_it_overflows_a_new_shim(
     assert!(
         old.drops.load(Ordering::SeqCst) > 0,
         "no input_dropped after 1.25 MiB to a stalled agent"
-    );
-    eprintln!(
-        "unparsed shim messages: {}",
-        old.unparsed.load(Ordering::SeqCst)
     );
 }
 
