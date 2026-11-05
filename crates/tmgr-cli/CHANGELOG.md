@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.87
+
+- `tmgr runner gc` keeps a team run when a worker's imported commits are not in the lead clone, or when that cannot be confirmed. The check compares the lead's HEAD tree with a trial merge of the worker branch, so squash merges and cherry-picks count as merged. The skip reason names the worker.
+
 ## 1.0.86
 
 - `tmgr ask` and `ask_owner`: several repositories on one card (`--diff`, `repos`), ready patches from a file or stdin (`--patch`, `patches`), and links to PRs, commits, tags and other URLs (`--commit`, `--tag`, `--link`, repeated `--pr`).

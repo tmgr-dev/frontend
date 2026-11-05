@@ -88,6 +88,7 @@ pub(super) struct WorkerFacts {
     pub base: Option<String>,
     pub git: std::result::Result<GitFacts, String>,
     pub imported: std::result::Result<Option<String>, String>,
+    pub lead_has: Option<std::result::Result<bool, String>>,
 }
 
 #[derive(Clone, Debug)]
@@ -213,13 +214,23 @@ fn clean_worker(w: &WorkerFacts) -> std::result::Result<(), String> {
         Some(sha) => *sha == g.head,
         None => w.base.as_deref() == Some(g.head.as_str()),
     };
-    if kept {
-        Ok(())
-    } else {
-        Err(format!(
+    if !kept {
+        return Err(format!(
             "HEAD {} was not brought into the repository by the team run",
             short(&g.head)
-        ))
+        ));
+    }
+    match imported {
+        Some(sha) if w.base.as_deref() != Some(sha.as_str()) => match &w.lead_has {
+            Some(Ok(true)) => Ok(()),
+            Some(Ok(false)) => Err(format!(
+                "HEAD {} has changes that are not in the lead clone (the lead did not merge this worker's work)",
+                short(sha)
+            )),
+            Some(Err(e)) => Err(format!("could not confirm the lead merged this worker's work: {e}")),
+            None => Err("could not confirm the lead merged this worker's work".into()),
+        },
+        _ => Ok(()),
     }
 }
 
@@ -1063,6 +1074,49 @@ fn prove_worker(c: &Candidate, k: u8) -> std::result::Result<(), String> {
     Ok(())
 }
 
+fn lead_contains(
+    lead: &Path,
+    branch: &str,
+    repo: &Path,
+    sha: &str,
+    checked_head: &str,
+) -> std::result::Result<bool, String> {
+    if !matches!(sha.len(), 40 | 64) || !sha.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("the worker branch tip is not a commit id".into());
+    }
+    let host = host_facts(repo)?;
+    if !workdir::copy_alternates_ok(lead, &host.objects) {
+        return Err("the copy borrows objects from somewhere other than its repository".into());
+    }
+    let refs = workdir::copy_refs(lead, branch)?;
+    if refs.head != checked_head {
+        return Err("the lead clone changed while it was checked".into());
+    }
+    let deadline = std::time::Instant::now() + FOLDER_BUDGET;
+    let left = || {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() {
+            Err("git did not finish in time".to_string())
+        } else {
+            Ok(left)
+        }
+    };
+    let tmp = tempfile::tempdir().map_err(|e| e.to_string())?;
+    workdir::trusted_git_dir(tmp.path(), lead, branch, &refs, &[], left()?)?;
+    let git = |args: &[&str]| {
+        workdir::trusted_git_bytes(tmp.path(), lead, args, left()?).map_err(|e| sanitize_line(&e))
+    };
+    let merged = git(&["merge-tree", "--write-tree", "--no-messages", "HEAD", sha])?;
+    let merged = String::from_utf8_lossy(&merged);
+    let tree = merged.lines().next().unwrap_or("").trim().to_string();
+    let head = git(&["rev-parse", "--verify", "HEAD^{tree}"])?;
+    let head = String::from_utf8_lossy(&head);
+    if tree.is_empty() {
+        return Err("git merge-tree gave no tree".into());
+    }
+    Ok(tree == head.trim())
+}
+
 fn gather(c: &Candidate, probe: &Probe, prs: Option<&[Prs]>) -> RunFacts {
     let proof = prove(c);
     let in_use = c
@@ -1094,16 +1148,15 @@ fn gather(c: &Candidate, probe: &Probe, prs: Option<&[Prs]>) -> RunFacts {
     if let (false, Some(TeamRefs { id, repos })) = (clones.is_empty(), &c.team_refs) {
         for k in 1..=5u8 {
             let wdir = workdir::worker_dir(&c.folder, k);
-            if !exists(&wdir) {
-                continue;
-            }
+            let gone = !exists(&wdir);
             let branch = workdir::worker_branch(id, k);
-            let parts: Vec<(String, PathBuf, &Path, Option<String>)> = if c.multi {
+            let parts: Vec<(String, PathBuf, &Path, usize, Option<String>)> = if c.multi {
                 let recorded = c.team_clones.iter().find(|(n, _)| *n == k).map(|(_, v)| v);
                 c.clones
                     .iter()
                     .zip(repos)
-                    .map(|(spec, (_, repo))| {
+                    .enumerate()
+                    .map(|(i, (spec, (_, repo)))| {
                         let base = recorded
                             .and_then(|v| v.iter().find(|m| m.name == spec.name))
                             .and_then(|m| m.base.clone());
@@ -1111,6 +1164,7 @@ fn gather(c: &Candidate, probe: &Probe, prs: Option<&[Prs]>) -> RunFacts {
                             format!("w{k}/{}", spec.name),
                             wdir.join(&spec.name),
                             repo.as_path(),
+                            i,
                             base,
                         )
                     })
@@ -1121,22 +1175,52 @@ fn gather(c: &Candidate, probe: &Probe, prs: Option<&[Prs]>) -> RunFacts {
                     .iter()
                     .find(|(n, _)| *n == k)
                     .and_then(|(_, b)| b.clone());
-                vec![(format!("w{k}"), wdir.clone(), repos[0].1.as_path(), base)]
+                vec![(format!("w{k}"), wdir.clone(), repos[0].1.as_path(), 0, base)]
             };
-            for (name, dir, repo, base) in parts {
+            for (name, dir, repo, lead, base) in parts {
+                let imported =
+                    workdir::branch_tip(repo, &branch).map_err(|e| sanitize_line(&e.message));
+                let work = match &imported {
+                    Ok(Some(sha)) => base.as_deref() != Some(sha.as_str()),
+                    _ => false,
+                };
+                if gone && !work && imported.is_ok() {
+                    continue;
+                }
+                let lead_has = match (&imported, &clones[lead].git) {
+                    (Ok(Some(sha)), Ok(lg)) if work => Some(lead_contains(
+                        &c.clones[lead].dir,
+                        &c.branch,
+                        repo,
+                        sha,
+                        &lg.head,
+                    )),
+                    (Ok(Some(_)), Err(e)) if work => Some(Err(e.clone())),
+                    _ => None,
+                };
+                let git = if gone {
+                    match &imported {
+                        Ok(Some(sha)) => Ok(GitFacts {
+                            head: sha.clone(),
+                            on_branch: true,
+                            ..GitFacts::default()
+                        }),
+                        _ => Err("the worker folder is gone".into()),
+                    }
+                } else if real_dir(&dir) {
+                    prove_dir(&dir).and_then(|()| {
+                        let host = host_facts(repo)?;
+                        copy_facts(&dir, &branch, &host, FOLDER_BUDGET)
+                    })
+                } else {
+                    Err("the copy is not a real folder".into())
+                };
                 workers.push(WorkerFacts {
                     name,
                     base,
-                    git: if real_dir(&dir) {
-                        prove_dir(&dir).and_then(|()| {
-                            let host = host_facts(repo)?;
-                            copy_facts(&dir, &branch, &host, FOLDER_BUDGET)
-                        })
-                    } else {
-                        Err("the copy is not a real folder".into())
-                    },
-                    imported: workdir::branch_tip(repo, &branch)
-                        .map_err(|e| sanitize_line(&e.message)),
+                    git,
+                    imported,
+                    lead_has,
                     branch: branch.clone(),
                 });
             }
@@ -1985,14 +2069,110 @@ mod tests {
     fn a_worker_commit_in_one_repository_not_brought_in_keeps_the_whole_team() {
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
-        let m = multi_team(&root);
-        sh(&m.w1(1), &["commit", "-q", "--allow-empty", "-m", "work"]);
+        let mut m = multi_team(&root);
+        work_in_w1(&m, 1);
         let why = m.skip();
         assert!(
             why.contains(&format!("w1/{}", m.names[1])) && why.contains("not brought"),
             "{why}"
         );
         import_w1(&m, 1);
+        let why = m.skip();
+        assert!(why.contains("not in the lead clone"), "{why}");
+        merge_w1_into_lead(&mut m, 1);
+        assert!(
+            matches!(m.verdict(), Decision::Remove(_)),
+            "{:?}",
+            m.verdict()
+        );
+    }
+
+    fn work_in_w1(m: &Multi, i: usize) {
+        std::fs::write(m.w1(i).join("work.txt"), "x").unwrap();
+        sh(&m.w1(i), &["add", "work.txt"]);
+        sh(&m.w1(i), &["commit", "-q", "-m", "work"]);
+    }
+
+    fn merge_w1_into_lead(m: &mut Multi, i: usize) {
+        let lead = workdir::lead_dir(&m.team).join(&m.names[i]);
+        let tip = sh(
+            &m.repos[i],
+            &["rev-parse", "refs/heads/queue-team/q_abc/w1"],
+        );
+        sh(&lead, &["merge", "--squash", "-q", &tip]);
+        sh(&lead, &["commit", "-q", "-m", "squashed"]);
+        let head = sh(&lead, &["rev-parse", "HEAD"]);
+        m.prs[i] = Prs::Listed(vec![pr(1, "MERGED", &head, false)]);
+    }
+
+    #[test]
+    fn a_worker_folder_that_is_gone_does_not_free_its_unmerged_branch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let mut m = multi_team(&root);
+        for i in 0..2 {
+            work_in_w1(&m, i);
+            import_w1(&m, i);
+        }
+        std::fs::remove_dir_all(workdir::worker_dir(&m.team, 1)).unwrap();
+        let why = m.skip();
+        assert!(
+            why.contains("w1/") && why.contains("not in the lead clone"),
+            "{why}"
+        );
+        merge_w1_into_lead(&mut m, 0);
+        merge_w1_into_lead(&mut m, 1);
+        assert!(
+            matches!(m.verdict(), Decision::Remove(_)),
+            "{:?}",
+            m.verdict()
+        );
+    }
+
+    #[test]
+    fn a_lead_that_resolved_the_workers_changes_its_own_way_keeps_the_team() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let mut m = multi_team(&root);
+        for i in 0..2 {
+            work_in_w1(&m, i);
+            import_w1(&m, i);
+        }
+        merge_w1_into_lead(&mut m, 0);
+        let lead = workdir::lead_dir(&m.team).join(&m.names[1]);
+        std::fs::write(lead.join("work.txt"), "y").unwrap();
+        sh(&lead, &["add", "work.txt"]);
+        sh(&lead, &["commit", "-q", "-m", "own way"]);
+        let head = sh(&lead, &["rev-parse", "HEAD"]);
+        m.prs[1] = Prs::Listed(vec![pr(1, "MERGED", &head, false)]);
+        let why = m.skip();
+        assert!(
+            why.contains(&format!("w1/{}", m.names[1])) && why.contains("could not confirm"),
+            "{why}"
+        );
+    }
+
+    #[test]
+    fn an_imported_worker_commit_the_lead_did_not_merge_keeps_the_whole_team() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let mut m = multi_team(&root);
+        for i in 0..2 {
+            work_in_w1(&m, i);
+            import_w1(&m, i);
+        }
+        let why = m.skip();
+        assert!(
+            why.contains("w1/") && why.contains("not in the lead clone"),
+            "{why}"
+        );
+        merge_w1_into_lead(&mut m, 0);
+        let why = m.skip();
+        assert!(
+            why.contains(&format!("w1/{}", m.names[1])) && why.contains("not in the lead clone"),
+            "{why}"
+        );
+        merge_w1_into_lead(&mut m, 1);
         assert!(
             matches!(m.verdict(), Decision::Remove(_)),
             "{:?}",
@@ -2113,6 +2293,7 @@ mod tests {
             base: base.map(str::to_string),
             git: Ok(git),
             imported: Ok(imported.map(str::to_string)),
+            lead_has: Some(Ok(true)),
         }
     }
 
@@ -2160,6 +2341,34 @@ mod tests {
         assert!(matches!(decide(&f), Decision::Remove(_)));
         assert!(matches!(
             decide(&facts(clean_git(), merged())),
+            Decision::Remove(_)
+        ));
+    }
+
+    #[test]
+    fn an_imported_worker_commit_the_lead_did_not_merge_keeps_the_team_folder() {
+        for (lead_has, want) in [
+            (Some(Ok(false)), "not in the lead clone"),
+            (
+                Some(Err("git merge-tree: conflict".to_string())),
+                "could not confirm",
+            ),
+            (None, "could not confirm"),
+        ] {
+            let mut w = worker(clean_git(), Some(HEAD), None);
+            w.lead_has = lead_has;
+            let got = skip_of(&with_workers(vec![w]));
+            assert!(got.contains("worker w1") && got.contains(want), "{got}");
+        }
+        let w = worker(clean_git(), Some(HEAD), None);
+        assert!(matches!(
+            decide(&with_workers(vec![w])),
+            Decision::Remove(_)
+        ));
+        let mut w = worker(clean_git(), Some(HEAD), Some(HEAD));
+        w.lead_has = Some(Ok(false));
+        assert!(matches!(
+            decide(&with_workers(vec![w])),
             Decision::Remove(_)
         ));
     }
@@ -2254,7 +2463,7 @@ mod tests {
         let c = candidate(vec![(1, Some(base.clone()))]);
         assert!(skip(&c).contains("not brought"));
         import_branch(&r, &w1, &branch).unwrap();
-        assert!(matches!(verdict(&c), Decision::Remove(_)));
+        assert!(skip(&c).contains("not in the lead clone"));
 
         std::fs::write(w1.join("later.txt"), "x").unwrap();
         assert!(skip(&c).contains("later.txt"));
@@ -2263,10 +2472,24 @@ mod tests {
         assert!(skip(&c).contains("not brought"));
         import_branch(&r, &w1, &branch).unwrap();
 
+        assert!(skip(&c).contains("not in the lead clone"));
+        sh(
+            &lead,
+            &["merge", "--squash", "-q", &sh(&w1, &["rev-parse", "HEAD"])],
+        );
+        sh(&lead, &["commit", "-q", "-m", "squashed"]);
+        let merged_head = sh(&lead, &["rev-parse", "HEAD"]);
+        let prs = [Prs::Listed(vec![pr(1, "MERGED", &merged_head, false)])];
+        let verdict = |c: &Candidate| decide(&gather(c, &Probe::default(), Some(&prs)));
+        assert!(matches!(verdict(&c), Decision::Remove(_)));
+
         let outside = root.join("outside");
         std::fs::create_dir(&outside).unwrap();
         std::os::unix::fs::symlink(&outside, team.join("w2")).unwrap();
-        assert!(skip(&c).contains("worker w2"));
+        match verdict(&c) {
+            Decision::Skip(s) => assert!(s.contains("worker w2"), "{s}"),
+            d => panic!("expected a skip, got {d:?}"),
+        }
     }
 
     const B: std::time::Duration = std::time::Duration::from_secs(10);
