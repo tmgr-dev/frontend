@@ -357,6 +357,8 @@ kbd {
 	border-radius: 6px;
 	border: 0;
 	cursor: pointer;
+	max-width: 100%;
+	overflow-wrap: anywhere;
 }
 .card .meta a:hover,
 .chip:hover {
@@ -532,6 +534,7 @@ kbd {
 	padding: 7px 0;
 	border-bottom: 1px solid var(--line);
 	font-size: 13.5px;
+	overflow-wrap: anywhere;
 }
 .fact:last-child {
 	border: 0;
@@ -564,13 +567,14 @@ kbd {
 }
 .fact .chip {
 	margin-left: auto;
-	flex-shrink: 0;
+	min-width: 0;
 }
 .q {
 	font-weight: 600;
 	font-size: 15px;
 	margin: 0 0 10px;
 	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 }
 .opt {
 	display: flex;
@@ -701,6 +705,7 @@ kbd {
 	color: var(--fg-muted);
 	font-size: 13.5px;
 	margin-bottom: 12px;
+	overflow-wrap: anywhere;
 }
 .btn {
 	border: 0;
