@@ -121,11 +121,15 @@ fn script(dir: &Path, name: &str, body: &str) -> PathBuf {
     p
 }
 
+fn start(bin: PathBuf, limit: Duration) -> Job {
+    spawn(bin, limit, || Ok(("q".to_string(), HashSet::new()))).unwrap()
+}
+
 fn wait_for(job: &Job) -> Result<String, String> {
     let end = Instant::now() + Duration::from_secs(10);
     loop {
         if let Some(r) = job.poll() {
-            return r;
+            return r.map(|(out, _)| out);
         }
         assert!(Instant::now() < end, "job never finished");
         std::thread::sleep(Duration::from_millis(10));
@@ -163,7 +167,7 @@ fn a_slow_agent_is_killed_at_the_timeout() {
         "claude",
         &format!("echo $$ > {}\nexec sleep 30", pid.display()),
     );
-    let job = spawn(bin, "q".into(), Duration::from_millis(400));
+    let job = start(bin, Duration::from_millis(400));
     let err = wait_for(&job).unwrap_err();
     assert!(err.contains("did not answer"), "{err}");
     let pid = std::fs::read_to_string(pid).unwrap();
@@ -183,7 +187,7 @@ fn dropping_the_job_kills_the_agent() {
         "claude",
         &format!("echo $$ > {}\nexec sleep 30", pid.display()),
     );
-    let job = spawn(bin, "q".into(), TIMEOUT);
+    let job = start(bin, TIMEOUT);
     let end = Instant::now() + Duration::from_secs(5);
     while std::fs::read_to_string(&pid)
         .unwrap_or_default()
@@ -207,12 +211,9 @@ fn dropping_the_job_kills_the_agent() {
 fn oversized_output_and_nonzero_exit_are_errors() {
     let tmp = tempfile::tempdir().unwrap();
     let big = script(tmp.path(), "big", "head -c 200000 /dev/zero | tr '\\0' x");
-    assert_eq!(
-        wait_for(&spawn(big, "q".into(), TIMEOUT)),
-        Err(UNREADABLE.to_string())
-    );
+    assert_eq!(wait_for(&start(big, TIMEOUT)), Err(UNREADABLE.to_string()));
     let bad = script(tmp.path(), "bad", "echo 'Not logged in' >&2; exit 2");
-    let err = wait_for(&spawn(bad, "q".into(), TIMEOUT)).unwrap_err();
+    let err = wait_for(&start(bad, TIMEOUT)).unwrap_err();
     assert!(err.contains("Not logged in"), "{err}");
 }
 
@@ -276,6 +277,7 @@ impl Source for Smarty {
             1 => Consent::Ask {
                 from: "Codex",
                 to: "Claude Code",
+                reset: "/cfg/smart-search.toml".into(),
             },
             _ => Consent::Declined,
         }
@@ -422,29 +424,50 @@ fn errors_and_empty_answers_become_notices() {
     assert_eq!(s.visible().len(), 3);
 }
 
+fn type_word(s: &mut State, word: &str) {
+    for c in word.chars() {
+        s.on_key(Key::Char(c));
+    }
+}
+
+fn settle() {
+    std::thread::sleep(Duration::from_millis(350));
+}
+
 #[test]
-fn cross_provider_asks_first_and_remembers_the_answer() {
+fn cross_provider_needs_the_typed_word_and_remembers_the_answer() {
     let (mut s, src) = session(smarty(true, 1));
     type_question(&mut s, "q");
-    assert!(matches!(s.smart, Smart::Confirm(_)));
+    assert!(matches!(s.smart, Smart::Confirm { .. }));
     assert!(src.started.borrow().is_empty());
-    assert!(s
-        .confirm_text()
-        .unwrap()
-        .contains("Codex sessions will be sent to Claude Code"));
-    s.on_key(Key::Char('y'));
+    settle();
+    let lines = s.confirm_lines().join("\n");
+    assert!(lines.contains("Fragments of your Codex sessions will be sent to Claude Code"));
+    assert!(lines.contains("delete /cfg/smart-search.toml"));
+    for key in [Key::Char('y'), Key::Enter, Key::Tab, Key::Backspace] {
+        s.on_key(key);
+    }
+    assert!(src.started.borrow().is_empty() && src.remembered.borrow().is_empty());
+    s.on_paste("send\n");
+    s.on_key(Key::Enter);
+    assert!(src.started.borrow().is_empty());
+    type_word(&mut s, "send");
+    s.on_key(Key::Enter);
     assert_eq!(*src.remembered.borrow(), vec![true]);
     assert_eq!(src.started.borrow().len(), 1);
 
     let (mut s, src) = session(smarty(true, 1));
     type_question(&mut s, "q");
-    s.on_key(Key::Char('n'));
+    settle();
+    type_word(&mut s, "no");
+    s.on_key(Key::Enter);
     assert_eq!(*src.remembered.borrow(), vec![false]);
     assert_eq!(s.notice.as_deref(), Some(NOT_SENT));
     assert!(src.started.borrow().is_empty());
 
     let (mut s, src) = session(smarty(true, 1));
     type_question(&mut s, "q");
+    settle();
     s.on_key(Key::Esc);
     assert!(src.remembered.borrow().is_empty() && src.started.borrow().is_empty());
 
@@ -452,4 +475,215 @@ fn cross_provider_asks_first_and_remembers_the_answer() {
     type_question(&mut s, "q");
     assert_eq!(s.notice.as_deref(), Some(NOT_SENT));
     assert!(src.started.borrow().is_empty());
+}
+
+#[test]
+fn input_queued_before_the_prompt_settles_is_dropped() {
+    let (mut s, src) = session(smarty(true, 1));
+    type_question(&mut s, "q");
+    type_word(&mut s, "send");
+    s.on_key(Key::Enter);
+    assert!(src.started.borrow().is_empty() && src.remembered.borrow().is_empty());
+    settle();
+    s.on_key(Key::Enter);
+    assert!(src.started.borrow().is_empty());
+    assert!(matches!(s.smart, Smart::Confirm { .. }));
+}
+
+#[test]
+fn the_agent_gets_only_an_allowlisted_environment_with_absolute_path_entries() {
+    let vars = [
+        ("HOME", "/h"),
+        ("PATH", "/usr/bin:rel/bin::/bin"),
+        ("USER", "u"),
+        ("LANG", "C"),
+        ("LC_ALL", "C"),
+        ("TMPDIR", "/t"),
+        ("CLAUDE_CONFIG_DIR", "/c"),
+        ("TMGR_TOKEN", "secret"),
+        ("ANTHROPIC_API_KEY", "k"),
+        ("AWS_SECRET_ACCESS_KEY", "k"),
+        ("HTTPS_PROXY", "p"),
+    ]
+    .map(|(k, v)| (k.into(), v.into()));
+    let mut got: Vec<(String, String)> = isolated_env(vars.into_iter())
+        .into_iter()
+        .map(|(k, v)| (k.to_string_lossy().into(), v.to_string_lossy().into()))
+        .collect();
+    got.sort();
+    let want = [
+        ("CLAUDE_CODE_DISABLE_CLAUDE_MDS", "1"),
+        ("CLAUDE_CONFIG_DIR", "/c"),
+        ("HOME", "/h"),
+        ("LANG", "C"),
+        ("LC_ALL", "C"),
+        ("PATH", "/usr/bin:/bin"),
+        ("TMPDIR", "/t"),
+        ("USER", "u"),
+    ]
+    .map(|(k, v)| (k.to_string(), v.to_string()));
+    assert_eq!(got, want);
+}
+
+#[test]
+fn detect_ignores_relative_and_empty_path_entries() {
+    let tmp = tempfile::tempdir().unwrap();
+    script(tmp.path(), "claude", "exit 0");
+    let cwd = std::env::current_dir().unwrap();
+    let up = "../".repeat(cwd.components().count());
+    let rel = format!("{up}{}", tmp.path().strip_prefix("/").unwrap().display());
+    assert!(Path::new(&rel).join("claude").exists());
+    assert_eq!(detect(Some(rel.into())), None);
+    assert_eq!(detect(Some(":".into())), None);
+}
+
+#[test]
+fn the_auth_check_runs_in_an_empty_scratch_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let rec = tmp.path().join("rec");
+    let bin = tempfile::tempdir().unwrap();
+    script(
+        bin.path(),
+        "claude",
+        &format!(
+            "pwd -P > {r}.cwd\nls -A > {r}.ls\nexit 0",
+            r = rec.display()
+        ),
+    );
+    assert!(detect(Some(bin.path().as_os_str().to_owned())).is_some());
+    let cwd = std::fs::read_to_string(tmp.path().join("rec.cwd")).unwrap();
+    assert!(!cwd.trim().is_empty());
+    assert!(!cwd.starts_with(&std::env::current_dir().unwrap().display().to_string()));
+    assert_eq!(
+        std::fs::read_to_string(tmp.path().join("rec.ls")).unwrap(),
+        ""
+    );
+}
+
+#[test]
+fn a_grandchild_holding_the_pipe_cannot_outlive_the_deadline() {
+    let tmp = tempfile::tempdir().unwrap();
+    let pid = tmp.path().join("gpid");
+    let bin = script(
+        tmp.path(),
+        "claude",
+        &format!(
+            "perl -MPOSIX -e 'POSIX::setsid(); open(F, \">{}\"); print F $$; close F; sleep 30' &\nsleep 1\nexit 0",
+            pid.display()
+        ),
+    );
+    let started = Instant::now();
+    let job = start(bin, Duration::from_millis(600));
+    let _ = wait_for(&job);
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+    if let Ok(p) = std::fs::read_to_string(&pid) {
+        unsafe { libc::kill(p.trim().parse().unwrap(), libc::SIGKILL) };
+    }
+}
+
+#[test]
+fn a_hanging_agent_with_a_grandchild_is_killed_as_a_group_at_the_deadline() {
+    let tmp = tempfile::tempdir().unwrap();
+    let pid = tmp.path().join("gpid");
+    let bin = script(
+        tmp.path(),
+        "claude",
+        &format!("sleep 30 &\necho $! > {}\nwait", pid.display()),
+    );
+    let started = Instant::now();
+    let err = wait_for(&start(bin, Duration::from_millis(500))).unwrap_err();
+    assert!(err.contains("did not answer"), "{err}");
+    assert!(started.elapsed() < Duration::from_secs(5));
+    let pid = std::fs::read_to_string(pid).unwrap();
+    let end = Instant::now() + Duration::from_secs(5);
+    while pid_alive(&pid) && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(!pid_alive(&pid));
+}
+
+mod prepared {
+    use super::super::{prepare, Recent};
+    use crate::cmd::runner::catalog::{index::Index, scan, testkit::*};
+    use tmgr_usage::consent::ReadLogs;
+
+    fn fx_with_both() -> (Fx, std::path::PathBuf) {
+        let fx = Fx::new();
+        fx.grant();
+        fx.claude(
+            "-w",
+            &uid(1),
+            &[
+                claude_user("/w", "zanzibar plan"),
+                claude_assistant("zanzibar"),
+            ],
+        );
+        fx.codex(
+            &uid(2),
+            &[
+                codex_meta(&uid(2), "/w", serde_json::json!("cli")),
+                codex_user("zanzibar on codex"),
+            ],
+        );
+        let path = fx.tmp.path().join("cfg/sessions-index.sqlite");
+        Index::open(&path)
+            .unwrap()
+            .update(&scan(&fx.env, None), |_, _| {})
+            .unwrap();
+        (fx, path)
+    }
+
+    fn recent(ids: &[String]) -> Vec<Recent> {
+        ids.iter()
+            .map(|id| Recent {
+                row_id: id.clone(),
+                index_id: id.clone(),
+                label: format!("proj - {id}"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn only_the_browsed_agents_sessions_are_candidates() {
+        let (fx, path) = fx_with_both();
+        let (_, ids) = prepare(
+            &fx.env,
+            &path,
+            "claude-code",
+            "zanzibar",
+            &recent(&[uid(1)]),
+        )
+        .unwrap();
+        assert!(ids.contains(&uid(1)) && !ids.contains(&uid(2)));
+        let swapped = recent(&[uid(2)]);
+        let (prompt, ids) = prepare(&fx.env, &path, "claude-code", "zanzibar", &swapped).unwrap();
+        assert!(!ids.contains(&uid(2)) || !prompt.contains("zanzibar on codex"));
+        let (prompt, ids) = prepare(&fx.env, &path, "codex", "zanzibar", &swapped).unwrap();
+        assert!(ids.contains(&uid(2)) && !prompt.contains("zanzibar plan"));
+    }
+
+    #[test]
+    fn revoked_consent_stops_the_send_for_that_agent_only() {
+        let (fx, path) = fx_with_both();
+        let recent = recent(&[uid(1), uid(2)]);
+        fx.consent(Some(ReadLogs::Granted), Some(false), Some(true));
+        let err = prepare(&fx.env, &path, "claude-code", "zanzibar", &recent).unwrap_err();
+        assert!(err.contains("Reading session logs is off"), "{err}");
+        assert!(prepare(&fx.env, &path, "codex", "zanzibar", &recent).is_ok());
+        fx.consent(Some(ReadLogs::Denied), None, None);
+        assert!(prepare(&fx.env, &path, "codex", "zanzibar", &recent).is_err());
+    }
+
+    #[test]
+    fn a_missing_index_is_never_created() {
+        let (fx, _) = fx_with_both();
+        let recent = recent(&[uid(1)]);
+        let missing = fx.tmp.path().join("cfg/none.sqlite");
+        assert!(prepare(&fx.env, &missing, "claude-code", "zanzibar", &recent).is_err());
+        assert!(!missing.exists());
+    }
 }

@@ -763,7 +763,7 @@ impl Fx {
         std::fs::write(rec.join("reply"), reply).unwrap();
         std::fs::write(rec.join("mode"), mode).unwrap();
         let body = format!(
-            "#!/bin/sh\nR={rec}\nif [ \"$1\" = auth ]; then [ \"$(cat $R/mode)\" = loggedout ] && exit 1; exit 0; fi\n\
+            "#!/bin/sh\nR={rec}\nif [ \"$1\" = auth ]; then pwd -P > $R/auth_cwd; ls -A > $R/auth_ls; env | sort > $R/auth_env; [ \"$(cat $R/mode)\" = loggedout ] && exit 1; exit 0; fi\n\
             printf '%s\\n' \"$@\" > $R/argv\npwd -P > $R/cwd\nls -A > $R/ls\nenv | sort > $R/env\ncat > $R/stdin\n\
             case \" $* \" in *\" --no-session-persistence \"*) ;; *) mkdir -p $HOME/.claude/projects/-leak; \
             echo '{{}}' > $HOME/.claude/projects/-leak/33333333-0000-4000-8000-000000000001.jsonl;; esac\n\
@@ -892,10 +892,25 @@ fn smart_search_runs_claude_with_no_tools_from_an_empty_dir_and_shows_sanitized_
     assert!(stdin.contains("where did we talk about zanzibarquux"));
     assert!(stdin.contains("the secret word is zanzibarquux"));
     assert!(stdin.contains(C1) && !stdin.contains(X1));
-    let env = read(&fx, "env");
-    assert!(env.lines().any(|l| l.starts_with("HOME=")));
-    assert!(env.lines().any(|l| l.starts_with("PATH=")));
-    assert!(!env.lines().any(|l| l.starts_with("TMGR_")), "{env}");
+    for name in ["env", "auth_env"] {
+        let env = read(&fx, name);
+        let mut keys: Vec<&str> = env
+            .lines()
+            .filter_map(|l| l.split('=').next())
+            .filter(|k| !["PWD", "SHLVL", "_", "OLDPWD"].contains(k))
+            .collect();
+        keys.sort();
+        assert_eq!(
+            keys,
+            ["CLAUDE_CODE_DISABLE_CLAUDE_MDS", "HOME", "PATH", "TERM"],
+            "{name}\n{env}"
+        );
+        assert!(env.contains("CLAUDE_CODE_DISABLE_CLAUDE_MDS=1"));
+        assert!(env.contains(&format!("HOME={}", fx.path("home"))));
+    }
+    let auth_cwd = read(&fx, "auth_cwd");
+    assert!(!auth_cwd.trim().is_empty() && !auth_cwd.starts_with(&fx.work().display().to_string()));
+    assert_eq!(read(&fx, "auth_ls"), "");
     pty.send(ENTER);
     pty.wait_for("r Resume");
     pty.send("\x03");
@@ -948,9 +963,16 @@ fn codex_sessions_go_to_claude_only_after_the_remembered_cross_provider_answer()
     to_sessions(&mut pty, 1, "Codex sessions");
     ask(&mut pty, "gadgetron");
     pty.wait_for("Fragments of your Codex sessions will be sent to Claude Code");
-    thread::sleep(Duration::from_millis(300));
+    pty.wait_for("delete ");
+    thread::sleep(Duration::from_millis(500));
     assert!(!fx.rec().join("argv").exists());
     pty.send("y");
+    pty.send(ENTER);
+    thread::sleep(Duration::from_millis(300));
+    assert!(!fx.rec().join("argv").exists());
+    pty.send("\x7f");
+    pty.send("send");
+    pty.send(ENTER);
     pty.wait_for("Smart search: gadgetron");
     pty.wait_for("the gadgetron answer");
     let stdin = read(&fx, "stdin");
@@ -983,7 +1005,9 @@ fn a_declined_direction_sends_nothing_and_says_so_now_and_next_time() {
     to_sessions(&mut pty, 1, "Codex sessions");
     ask(&mut pty, "gadgetron");
     pty.wait_for("will be sent to Claude Code");
-    pty.send("n");
+    thread::sleep(Duration::from_millis(500));
+    pty.send("no");
+    pty.send(ENTER);
     pty.wait_for("were not sent to the other provider");
     pty.send("\x03");
     assert_eq!(pty.exit_code(), 0);
@@ -1036,8 +1060,29 @@ fn unusable_answers_and_failures_show_a_clear_message_and_keep_the_list() {
 }
 
 #[test]
+fn deny_between_opening_the_menu_and_asking_launches_no_agent() {
+    let fx = Fx::new();
+    fx.seed();
+    fx.fake_claude(&picks(&[(C1, "x")]), "ok");
+    let mut pty = fx.pty(&["run"]);
+    to_sessions(&mut pty, 0, "Claude Code sessions");
+    pty.wait_for(ASK_HINT);
+    let off = std::process::Command::new(BIN)
+        .args(["usage", "consent", "deny"])
+        .env_clear()
+        .envs(fx.envs())
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(off.status.success());
+    ask(&mut pty, "zanzibar");
+    pty.wait_for("Reading session logs is off for this agent, so nothing was sent.");
+    assert!(!fx.rec().join("argv").exists());
+}
+
+#[test]
 fn escape_cancels_a_running_search_and_quitting_kills_the_agent() {
-    for quit in [false, true] {
+    for quit in ["esc", "ctrl-c", "sigterm"] {
         let fx = Fx::new();
         fx.seed();
         fx.fake_claude("[]", "hang");
@@ -1052,14 +1097,27 @@ fn escape_cancels_a_running_search_and_quitting_kills_the_agent() {
         }
         let pid = read(&fx, "pid");
         assert!(alive(&pid));
-        if quit {
-            pty.send("\x03");
-            assert_eq!(pty.exit_code(), 0);
-        } else {
-            pty.send(ESC);
-            pty.wait_for("Smart search cancelled.");
-            assert!(pty.text().contains("alpha title"));
+        match quit {
+            "ctrl-c" => {
+                pty.send("\x03");
+                assert_eq!(pty.exit_code(), 0);
+            }
+            "sigterm" => {
+                unsafe { libc::kill(pty.child.process_id().unwrap() as i32, libc::SIGTERM) };
+                assert_eq!(pty.exit_code(), 128 + libc::SIGTERM as u32);
+            }
+            _ => {
+                pty.send(ESC);
+                pty.wait_for("Smart search cancelled.");
+                assert!(pty.text().contains("alpha title"));
+            }
         }
         gone(&pid);
+        let cwd = read(&fx, "cwd");
+        let end = Instant::now() + WAIT;
+        while Path::new(cwd.trim()).exists() && quit != "esc" {
+            assert!(Instant::now() < end, "scratch dir {cwd} was not removed");
+            thread::sleep(Duration::from_millis(20));
+        }
     }
 }

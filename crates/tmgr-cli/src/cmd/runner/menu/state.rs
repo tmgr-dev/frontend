@@ -2,6 +2,7 @@ use super::memory::{Kind, Memory};
 use std::time::{Duration, Instant};
 
 const ALLOW_DELAY: Duration = Duration::from_millis(300);
+const CONFIRM_DELAY: Duration = Duration::from_millis(300);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
@@ -62,6 +63,7 @@ pub enum Consent {
     Ask {
         from: &'static str,
         to: &'static str,
+        reset: String,
     },
 }
 
@@ -70,7 +72,11 @@ pub type Picks = Vec<(String, String)>;
 pub enum Smart {
     Off,
     Asking(String),
-    Confirm(String),
+    Confirm {
+        question: String,
+        typed: String,
+        since: Instant,
+    },
     Running(String),
 }
 
@@ -607,19 +613,44 @@ impl State {
                 }
                 _ => self.smart = Smart::Asking(q),
             },
-            Smart::Confirm(q) => {
+            Smart::Confirm {
+                question,
+                mut typed,
+                since,
+            } => {
                 let id = self.agent().id.clone();
+                if since.elapsed() < CONFIRM_DELAY {
+                    self.smart = Smart::Confirm {
+                        question,
+                        typed,
+                        since,
+                    };
+                    return;
+                }
                 match key {
-                    Key::Char('y') => {
+                    Key::Esc => {}
+                    Key::Enter if typed == "send" => {
                         self.source.smart_remember(&id, true);
-                        self.launch(&q);
+                        self.launch(&question);
                     }
-                    Key::Char('n') => {
+                    Key::Enter if typed == "no" => {
                         self.source.smart_remember(&id, false);
                         self.notice = Some(NOT_SENT.into());
                     }
-                    Key::Esc => {}
-                    _ => self.smart = Smart::Confirm(q),
+                    other => {
+                        match other {
+                            Key::Backspace => {
+                                typed.pop();
+                            }
+                            Key::Char(c) if clean_char(c) && typed.len() < 8 => typed.push(c),
+                            _ => {}
+                        }
+                        self.smart = Smart::Confirm {
+                            question,
+                            typed,
+                            since,
+                        };
+                    }
                 }
             }
             Smart::Running(q) => {
@@ -638,7 +669,13 @@ impl State {
         match self.source.smart_consent(&self.agent().id) {
             Consent::Allowed => self.launch(&question),
             Consent::Declined => self.notice = Some(NOT_SENT.into()),
-            Consent::Ask { .. } => self.smart = Smart::Confirm(question),
+            Consent::Ask { .. } => {
+                self.smart = Smart::Confirm {
+                    question,
+                    typed: String::new(),
+                    since: Instant::now(),
+                }
+            }
         }
     }
 
@@ -649,12 +686,17 @@ impl State {
         }
     }
 
-    pub fn confirm_text(&self) -> Option<String> {
+    pub fn confirm_lines(&self) -> Vec<String> {
+        let Smart::Confirm { typed, .. } = &self.smart else {
+            return Vec::new();
+        };
         match self.source.smart_consent(&self.agent().id) {
-            Consent::Ask { from, to } => Some(format!(
-                "Fragments of your {from} sessions will be sent to {to}. Allow this? y yes (remember) \u{b7} n no (remember) \u{b7} Esc cancel"
-            )),
-            _ => None,
+            Consent::Ask { from, to, reset } => vec![
+                format!("Fragments of your {from} sessions will be sent to {to}."),
+                format!("Type send and press Enter to allow (remembered), or no to refuse (remembered). Esc cancels: {typed}_"),
+                format!("To reset the answer, delete {reset}"),
+            ],
+            _ => Vec::new(),
         }
     }
 

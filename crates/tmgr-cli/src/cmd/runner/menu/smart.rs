@@ -151,20 +151,58 @@ pub fn parse(output: &str, allowed: &HashSet<String>) -> Result<Vec<Pick>, Strin
     Ok(picks)
 }
 
-fn command(bin: &Path) -> Command {
-    let mut cmd = Command::new(bin);
-    for (k, _) in std::env::vars_os() {
-        if k.to_string_lossy().starts_with("TMGR_") {
-            cmd.env_remove(k);
+const PASS: &[&str] = &[
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "TERM",
+    "LANG",
+    "TMPDIR",
+    "CLAUDE_CONFIG_DIR",
+];
+const DRAIN: Duration = Duration::from_secs(2);
+
+pub static RUNNING: AtomicI32 = AtomicI32::new(0);
+
+pub type Prepared = (String, HashSet<String>);
+pub type Answer = (String, HashSet<String>);
+
+fn absolute_path(path: Option<OsString>) -> Option<OsString> {
+    let kept: Vec<PathBuf> = std::env::split_paths(&path?)
+        .filter(|d| d.is_absolute())
+        .collect();
+    std::env::join_paths(kept).ok()
+}
+
+pub fn isolated_env(vars: impl Iterator<Item = (OsString, OsString)>) -> Vec<(OsString, OsString)> {
+    let mut out: Vec<(OsString, OsString)> = Vec::new();
+    for (k, v) in vars {
+        let name = k.to_string_lossy();
+        if k == "PATH" {
+            if let Some(p) = absolute_path(Some(v)) {
+                out.push((k, p));
+            }
+        } else if PASS.contains(&name.as_ref()) || name.starts_with("LC_") {
+            out.push((k, v));
         }
     }
-    cmd.process_group(0);
+    out.push(("CLAUDE_CODE_DISABLE_CLAUDE_MDS".into(), "1".into()));
+    out
+}
+
+fn command(bin: &Path, cwd: &Path) -> Command {
+    let mut cmd = Command::new(bin);
+    cmd.env_clear()
+        .envs(isolated_env(std::env::vars_os()))
+        .current_dir(cwd)
+        .process_group(0);
     cmd
 }
 
 fn find_in(path: Option<OsString>, program: &str) -> Option<PathBuf> {
     use std::os::unix::fs::PermissionsExt;
     std::env::split_paths(&path?)
+        .filter(|d| d.is_absolute())
         .map(|d| d.join(program))
         .find(|p| {
             std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
@@ -177,6 +215,10 @@ fn kill_group(pid: i32) {
             libc::kill(-pid, libc::SIGKILL);
         }
     }
+}
+
+pub fn kill_running() {
+    kill_group(RUNNING.load(Ordering::SeqCst));
 }
 
 fn wait(child: &mut Child, limit: Duration, stop: &AtomicBool) -> Option<ExitStatus> {
@@ -196,7 +238,8 @@ fn wait(child: &mut Child, limit: Duration, stop: &AtomicBool) -> Option<ExitSta
 
 pub fn detect(path: Option<OsString>) -> Option<PathBuf> {
     let bin = find_in(path, "claude")?;
-    let mut child = command(&bin)
+    let dir = tempfile::tempdir().ok()?;
+    let mut child = command(&bin, dir.path())
         .args(["auth", "status"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -208,13 +251,14 @@ pub fn detect(path: Option<OsString>) -> Option<PathBuf> {
 }
 
 pub struct Job {
-    rx: mpsc::Receiver<Result<String, String>>,
+    rx: mpsc::Receiver<Result<Answer, String>>,
     stop: Arc<AtomicBool>,
     pid: Arc<AtomicI32>,
+    _dir: tempfile::TempDir,
 }
 
 impl Job {
-    pub fn poll(&self) -> Option<Result<String, String>> {
+    pub fn poll(&self) -> Option<Result<Answer, String>> {
         match self.rx.try_recv() {
             Ok(r) => Some(r),
             Err(mpsc::TryRecvError::Empty) => None,
@@ -230,17 +274,16 @@ impl Drop for Job {
     }
 }
 
-fn capped(
-    mut r: impl Read + Send + 'static,
-    cap: usize,
-) -> std::thread::JoinHandle<(Vec<u8>, bool)> {
+fn capped(mut r: impl Read + Send + 'static, cap: usize) -> mpsc::Receiver<(Vec<u8>, bool)> {
+    let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let mut buf = Vec::new();
         let _ = (&mut r).take(cap as u64 + 1).read_to_end(&mut buf);
         let over = buf.len() > cap;
         buf.truncate(cap);
-        (buf, over)
-    })
+        let _ = tx.send((buf, over));
+    });
+    rx
 }
 
 fn note(bytes: &[u8]) -> String {
@@ -253,21 +296,25 @@ fn note(bytes: &[u8]) -> String {
 
 fn run(
     bin: &Path,
+    dir: &Path,
     prompt: String,
     limit: Duration,
     stop: &AtomicBool,
     pid: &AtomicI32,
 ) -> Result<String, String> {
-    let dir = tempfile::tempdir().map_err(|_| "Could not prepare a scratch folder.".to_string())?;
-    let mut child = command(bin)
+    let mut child = command(bin, dir)
         .args(claude_argv())
-        .current_dir(dir.path())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|_| "Could not start the agent.".to_string())?;
-    pid.store(child.id() as i32, Ordering::SeqCst);
+    let id = child.id() as i32;
+    pid.store(id, Ordering::SeqCst);
+    RUNNING.store(id, Ordering::SeqCst);
+    if stop.load(Ordering::SeqCst) {
+        kill_group(id);
+    }
     let mut stdin = child.stdin.take();
     std::thread::spawn(move || {
         if let Some(mut s) = stdin.take() {
@@ -277,17 +324,23 @@ fn run(
     let out = child.stdout.take().map(|s| capped(s, OUTPUT_CAP));
     let err = child.stderr.take().map(|s| capped(s, NOTE_CAP));
     let status = wait(&mut child, limit, stop);
+    kill_group(id);
     pid.store(0, Ordering::SeqCst);
-    let (out, over) = out.and_then(|h| h.join().ok()).unwrap_or_default();
-    let (err, _) = err.and_then(|h| h.join().ok()).unwrap_or_default();
+    let _ = RUNNING.compare_exchange(id, 0, Ordering::SeqCst, Ordering::SeqCst);
+    let drain = limit.min(DRAIN);
+    let out = out.and_then(|rx| rx.recv_timeout(drain).ok());
+    let err = err.and_then(|rx| rx.recv_timeout(drain).ok());
     match status {
         None if stop.load(Ordering::SeqCst) => Err(CANCELLED.into()),
         None => Err(format!(
             "The agent did not answer within {} s.",
-            limit.as_secs()
+            limit.as_secs_f32().round().max(1.0) as u64
         )),
-        Some(_) if over => Err(UNREADABLE.into()),
+        Some(_) if out.is_none() => Err(UNREADABLE.into()),
+        Some(_) if out.as_ref().is_some_and(|(_, over)| *over) => Err(UNREADABLE.into()),
         Some(s) if !s.success() => {
+            let (out, _) = out.unwrap_or_default();
+            let (err, _) = err.unwrap_or_default();
             let why = if err.is_empty() {
                 note(&out)
             } else {
@@ -295,17 +348,33 @@ fn run(
             };
             Err(format!("The agent failed ({s}): {why}"))
         }
-        Some(_) => Ok(String::from_utf8_lossy(&out).into_owned()),
+        Some(_) => Ok(String::from_utf8_lossy(&out.unwrap_or_default().0).into_owned()),
     }
 }
 
-pub fn spawn(bin: PathBuf, prompt: String, limit: Duration) -> Job {
+pub fn spawn(
+    bin: PathBuf,
+    limit: Duration,
+    prepare: impl FnOnce() -> Result<Prepared, String> + Send + 'static,
+) -> Result<Job, String> {
+    let dir = tempfile::tempdir().map_err(|_| "Could not prepare a scratch folder.".to_string())?;
     let (tx, rx) = mpsc::channel();
     let stop = Arc::new(AtomicBool::new(false));
     let pid = Arc::new(AtomicI32::new(0));
-    let (s, p) = (stop.clone(), pid.clone());
+    let (s, p, cwd) = (stop.clone(), pid.clone(), dir.path().to_path_buf());
     std::thread::spawn(move || {
-        let _ = tx.send(run(&bin, prompt, limit, &s, &p));
+        let result = prepare().and_then(|(prompt, ids)| {
+            if s.load(Ordering::SeqCst) {
+                return Err(CANCELLED.to_string());
+            }
+            run(&bin, &cwd, prompt, limit, &s, &p).map(|out| (out, ids))
+        });
+        let _ = tx.send(result);
     });
-    Job { rx, stop, pid }
+    Ok(Job {
+        rx,
+        stop,
+        pid,
+        _dir: dir,
+    })
 }

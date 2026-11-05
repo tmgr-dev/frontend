@@ -86,6 +86,7 @@ const ROW_LIMIT: usize = 1000;
 const HIT_LIMIT: usize = 500;
 const RUNNER_WAIT: Duration = Duration::from_secs(2);
 
+#[derive(Clone)]
 struct Recent {
     row_id: String,
     index_id: String,
@@ -98,8 +99,6 @@ struct Live {
     reads: Cell<Reads>,
     recent: RefCell<Vec<Recent>>,
     job: RefCell<Option<smart::Job>>,
-    allowed: RefCell<std::collections::HashSet<String>>,
-    connection: RefCell<Option<index::Index>>,
     indexer: RefCell<Option<Indexer>>,
     searcher: RefCell<Option<Searcher>>,
     loading: RefCell<Option<Receiver<Loaded>>>,
@@ -244,6 +243,9 @@ impl Source for Live {
             None => Consent::Ask {
                 from,
                 to: "Claude Code",
+                reset: memory::sends_path()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default(),
             },
         }
     }
@@ -263,65 +265,32 @@ impl Source for Live {
             .cloned()
             .flatten()
             .ok_or("No agent is available for smart search.")?;
-        let guard = self.indexer.borrow();
-        let indexer = guard
-            .as_ref()
-            .filter(|i| i.ready())
-            .ok_or("The search index is not ready yet. Try again in a moment.")?;
-        let mut connection = self.connection.borrow_mut();
-        if connection.is_none() {
-            *connection = index::Index::open(indexer.path()).ok();
-        }
-        let ix = connection
-            .as_ref()
-            .ok_or("The search index is unavailable.")?;
-        let recent = self.recent.borrow();
-        let find = |index_id: &str| recent.iter().find(|r| r.index_id == index_id);
-        let found = ix
-            .fragments(
-                browsed,
-                &smart::keywords(question),
-                smart::CANDIDATES,
-                smart::PER_SESSION,
-                smart::FRAGMENT_CHARS,
-            )
-            .unwrap_or_default();
-        let mut candidates: Vec<smart::Candidate> = found
-            .into_iter()
-            .filter_map(|(id, fragments)| {
-                let label = find(&id)?.label.clone();
-                Some(smart::Candidate {
-                    id,
-                    label,
-                    fragments,
-                })
-            })
-            .collect();
-        for r in recent.iter() {
-            if candidates.len() >= smart::FLOOR {
-                break;
-            }
-            if !candidates.iter().any(|c| c.id == r.index_id) {
-                candidates.push(smart::Candidate {
-                    id: r.index_id.clone(),
-                    label: r.label.clone(),
-                    fragments: Vec::new(),
-                });
-            }
-        }
-        if candidates.is_empty() {
-            return Err("There are no sessions to search.".into());
-        }
-        let (prompt, ids) = smart::build_prompt(question, &candidates, &smart::nonce());
-        *self.allowed.borrow_mut() = ids;
-        *self.job.borrow_mut() = Some(smart::spawn(bin, prompt, smart::TIMEOUT));
+        let path = {
+            let guard = self.indexer.borrow();
+            let indexer = guard
+                .as_ref()
+                .filter(|i| i.ready())
+                .ok_or("The search index is not ready yet. Try again in a moment.")?;
+            indexer.path().to_path_buf()
+        };
+        let (browsed, question) = (browsed.to_string(), question.to_string());
+        let recent = self.recent.borrow().clone();
+        self.job.borrow_mut().take();
+        let job = smart::spawn(bin, smart::TIMEOUT, move || {
+            prepare(&Env::from_process(), &path, &browsed, &question, &recent)
+        })?;
+        *self.job.borrow_mut() = Some(job);
         Ok(())
     }
 
     fn smart_poll(&self) -> Option<Result<Picks, String>> {
         let done = self.job.borrow().as_ref()?.poll()?;
         *self.job.borrow_mut() = None;
-        let picks = match done.and_then(|out| smart::parse(&out, &self.allowed.borrow())) {
+        let (out, allowed) = match done {
+            Ok(a) => a,
+            Err(e) => return Some(Err(e)),
+        };
+        let picks = match smart::parse(&out, &allowed) {
             Ok(p) => p,
             Err(e) => return Some(Err(e)),
         };
@@ -389,6 +358,68 @@ pub fn load_rows(profile: &str) -> Loaded {
         },
         owners,
     )
+}
+
+const CONSENT_OFF: &str = "Reading session logs is off for this agent, so nothing was sent.";
+
+fn reads_on(env: &Env, browsed: &str) -> Result<(), String> {
+    let reads = Reads::of(env);
+    let on = match browsed {
+        "claude-code" => reads.claude,
+        "codex" => reads.codex,
+        _ => false,
+    };
+    on.then_some(()).ok_or_else(|| CONSENT_OFF.to_string())
+}
+
+fn prepare(
+    env: &Env,
+    path: &std::path::Path,
+    browsed: &str,
+    question: &str,
+    recent: &[Recent],
+) -> Result<smart::Prepared, String> {
+    reads_on(env, browsed)?;
+    let ix = index::Index::open_read_only(path)
+        .map_err(|_| "The search index is unavailable.".to_string())?;
+    let found = ix
+        .fragments(
+            browsed,
+            &smart::keywords(question),
+            smart::CANDIDATES,
+            smart::PER_SESSION,
+            smart::FRAGMENT_CHARS,
+        )
+        .unwrap_or_default();
+    let mut candidates: Vec<smart::Candidate> = found
+        .into_iter()
+        .filter_map(|(id, fragments)| {
+            let label = recent.iter().find(|r| r.index_id == id)?.label.clone();
+            Some(smart::Candidate {
+                id,
+                label,
+                fragments,
+            })
+        })
+        .collect();
+    for r in recent {
+        if candidates.len() >= smart::FLOOR {
+            break;
+        }
+        if !candidates.iter().any(|c| c.id == r.index_id) {
+            candidates.push(smart::Candidate {
+                id: r.index_id.clone(),
+                label: r.label.clone(),
+                fragments: Vec::new(),
+            });
+        }
+    }
+    if candidates.is_empty() {
+        return Err("There are no sessions to search.".into());
+    }
+    let prepared = smart::build_prompt(question, &candidates, &smart::nonce());
+    reads_on(env, browsed)?;
+    Ok(prepared)
 }
 
 pub fn search_ids(ix: &index::Index, query: &str, complete: bool) -> Option<Vec<String>> {
@@ -486,6 +517,7 @@ fn drive(state: &mut State) -> Option<Step> {
     let previous = std::sync::Arc::new(std::panic::take_hook());
     let chained = previous.clone();
     std::panic::set_hook(Box::new(move |info| {
+        smart::kill_running();
         leave_screen();
         chained(info);
     }));

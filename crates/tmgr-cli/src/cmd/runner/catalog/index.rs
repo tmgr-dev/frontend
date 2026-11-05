@@ -403,7 +403,7 @@ impl Index {
             .join(" OR ");
         let mut stmt = self.conn.prepare_cached(
             "SELECT session_id, snippet(chunks, 2, '', '', '…', 48) FROM chunks
-             WHERE chunks MATCH ?1 AND session_id IN (SELECT session_id FROM files WHERE agent=?2)
+             WHERE chunks MATCH ?1 AND path IN (SELECT path FROM files WHERE agent=?2)
              ORDER BY bm25(chunks) LIMIT ?3",
         )?;
         let limit = (sessions * per_session * 10 + 100) as i64;

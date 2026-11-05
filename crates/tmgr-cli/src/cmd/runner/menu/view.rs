@@ -164,10 +164,7 @@ fn session_lines(s: &State, look: Look, width: usize, height: usize) -> Vec<Line
     if let Some(reason) = s.reason() {
         foot.push(line(reason, width, look.warn()));
     }
-    if let Some(text) = matches!(s.smart, Smart::Confirm(_))
-        .then(|| s.confirm_text())
-        .flatten()
-    {
+    for text in s.confirm_lines() {
         foot.push(line(&text, width, look.warn()));
     }
     if s.reading_hint() {

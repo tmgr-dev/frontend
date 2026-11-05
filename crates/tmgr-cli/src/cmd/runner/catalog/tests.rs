@@ -665,6 +665,41 @@ mod idx {
     }
 
     #[test]
+    fn fragments_never_mix_agents_that_share_a_session_id() {
+        let fx = Fx::new();
+        fx.grant();
+        fx.claude(
+            "-w",
+            &uid(7),
+            &[
+                claude_user("/w", "claudeside plan"),
+                claude_assistant("claudeside"),
+            ],
+        );
+        fx.codex(
+            &uid(7),
+            &[
+                codex_meta(&uid(7), "/w", json!("cli")),
+                codex_user("codexside plan"),
+            ],
+        );
+        let ix = open(&fx);
+        sync(&fx, &ix);
+        let words = vec!["plan".to_string()];
+        let text = |agent: &str| -> String {
+            ix.fragments(agent, &words, 5, 5, 400)
+                .unwrap()
+                .into_iter()
+                .flat_map(|(_, f)| f)
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        let (claude, codex) = (text("claude-code"), text("codex"));
+        assert!(claude.contains("claudeside") && !claude.contains("codexside"));
+        assert!(codex.contains("codexside") && !codex.contains("claudeside"));
+    }
+
+    #[test]
     fn user_assistant_and_capped_tool_text_are_searchable() {
         let fx = Fx::new();
         fx.grant();

@@ -9,6 +9,7 @@ const GRACE: Duration = Duration::from_secs(2);
 
 extern "C" fn on_signal(sig: libc::c_int) {
     PENDING.store(sig, Ordering::SeqCst);
+    super::smart::kill_running();
 }
 
 pub fn pending() -> i32 {
