@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.103 — 2026-11-05
+
+- Linux: the desktop app is now built for ARM64 (aarch64) as well: deb, rpm and AppImage, with in-app updates.
+- Linux: the Snap package is published to the stable channel (and edge), for amd64 and arm64.
+- Nix: the package supports aarch64-linux.
+
 ## 0.9.102 — 2026-11-05
 
 - Decisions: long facts, questions and chips wrap inside the card instead of overflowing it.
