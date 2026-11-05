@@ -893,6 +893,37 @@ fn a_full_queue_drains_into_a_slow_agent_without_loss_and_sends_work_again() {
 }
 
 #[test]
+fn a_send_after_a_stalled_agent_recovered_is_accepted_on_the_first_try() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let go = h.work.join("rec.go");
+    let tail = format!(
+        "while [ ! -e {} ]; do sleep 0.05; done\nexec cat > \"$OUT\"",
+        go.display()
+    );
+    let info = c.create(raw_agent(&h, "rec", &tail)).unwrap();
+    wait_ready(&h, "rec");
+    for i in 0..16 {
+        c.send(&info.id, &chunk(i)).unwrap();
+    }
+    let _ = c.send(&info.id, &chunk(16));
+    thread::sleep(Duration::from_millis(1200));
+    fs::write(&go, b"").unwrap();
+    let out = out_of(&h, "rec");
+    let drained = 16 * 65536;
+    assert_eq!(wait_len(&out, drained, STALL), drained);
+    thread::sleep(Duration::from_millis(1200));
+    if let Err(e) = c.send(&info.id, &chunk(16)) {
+        panic!("first send after the agent drained its queue was refused: {e}");
+    }
+    assert_file_is(&out, &numbered(17));
+}
+
+#[test]
 fn paced_sends_of_three_mib_are_never_refused_and_arrive_intact() {
     if !sessions_available() {
         return;

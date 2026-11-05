@@ -68,6 +68,7 @@ const SHIM_QUEUE: usize = 1024;
 const SHIM_INPUT_CAP: usize = 1 << 20;
 const SHIM_INPUT_FRAMES: usize = 512;
 const SHIM_CREDIT_FRAMES: u64 = 1024;
+const SHIM_LINK_SILENT: Duration = Duration::from_secs(5);
 const ATTACH_INPUT_WAIT: Duration = Duration::from_secs(2);
 // A note typed into the agent only shows on screen after its next redraw; wait that long before the next one.
 const SEND_SETTLE: Duration = Duration::from_secs(5);
@@ -383,9 +384,15 @@ struct InputBook {
     sent_frames: u64,
     last: InputCredit,
     stalled: bool,
+    heard: Option<Instant>,
 }
 
 impl InputBook {
+    // A shim that failed a write stops reporting but keeps delivering input.
+    fn link_silent(&self) -> bool {
+        self.heard.is_some_and(|h| h.elapsed() > SHIM_LINK_SILENT)
+    }
+
     fn outstanding(&self) -> (u64, u64) {
         (
             self.sent_bytes.saturating_sub(self.last.received_bytes) + self.last.queued_bytes,
@@ -736,11 +743,11 @@ impl Session {
         let Some(link) = g.as_ref() else { return false };
         let mut book = link.credit.as_ref().map(|c| lock(&c.0));
         let full = match &book {
-            Some(b) => {
+            Some(b) if !b.link_silent() => {
                 !b.has_room(bytes.len())
                     || link.queued_frames.load(Ordering::SeqCst) >= SHIM_INPUT_FRAMES
             }
-            None => {
+            _ => {
                 link.queued_bytes.load(Ordering::SeqCst) + bytes.len() > SHIM_INPUT_CAP
                     || link.queued_frames.load(Ordering::SeqCst) >= SHIM_INPUT_FRAMES
             }
@@ -773,7 +780,7 @@ impl Session {
         };
         let deadline = Instant::now() + ATTACH_INPUT_WAIT;
         let mut b = lock(&book.0);
-        while !b.stalled && !b.has_room(len) {
+        while !b.stalled && !b.link_silent() && !b.has_room(len) {
             let left = deadline.saturating_duration_since(Instant::now());
             if left.is_zero() {
                 b.stalled = true;
@@ -985,9 +992,12 @@ impl Session {
             let bottom = i.screen.bottom_text(10);
             let rows = i.screen.text_lines(None).3;
             let agent = i.meta.profile.as_deref().and_then(permit::agent_of);
-            let idle_queue = lock(&self.shim).as_ref().is_some_and(|l| match &l.credit {
-                Some(c) => lock(&c.0).outstanding().1 == 0,
-                None => l.queued_frames.load(Ordering::SeqCst) == 0,
+            let idle_queue = lock(&self.shim).as_ref().is_some_and(|l| {
+                let book = l.credit.as_ref().map(|c| lock(&c.0));
+                match &book {
+                    Some(b) if !b.link_silent() => b.outstanding().1 == 0,
+                    _ => l.queued_frames.load(Ordering::SeqCst) == 0,
+                }
             });
             if self.effective(&i).kind == StateKind::Blocked
                 || !prompt_ready(i.matcher.as_ref(), agent, &bottom, &rows)
@@ -1254,6 +1264,7 @@ impl Session {
             Arc::new((
                 Mutex::new(InputBook {
                     last,
+                    heard: Some(Instant::now()),
                     ..InputBook::default()
                 }),
                 Condvar::new(),
@@ -1277,6 +1288,9 @@ impl Session {
 
     fn read_shim(&self, stream: &UnixStream, answer_replay: bool, book: Option<Book>) {
         while let Ok(Some(frame)) = read_frame(&mut &*stream) {
+            if let Some(book) = &book {
+                lock(&book.0).heard = Some(Instant::now());
+            }
             match frame {
                 Frame::Bin(b) => self.feed(&b.data, answer_replay || b.tag != TAG_REPLAY),
                 Frame::Json(v) => match serde_json::from_value::<FromShim>(v) {
@@ -5660,6 +5674,20 @@ mod tests {
         let (_t, s, _rx) = lone_session();
         from_shim(&s, None, &FromShim::InputDropped { bytes: 1 });
         assert!(s.input_dropped.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn a_silent_credit_link_falls_back_to_the_socket_counters_until_the_shim_is_heard() {
+        let (_t, s, rx, book) = credit_session();
+        s.feed(IDLE, true);
+        report(&s, &book, credit(0, 0, SHIM_INPUT_CAP as u64, 1));
+        assert!(!s.shim_input(b"x"));
+        lock(&book.0).heard = Some(Instant::now() - SHIM_LINK_SILENT - Duration::from_secs(1));
+        assert!(s.shim_input(b"x"));
+        drain(&s, &rx);
+        assert!(send_at_prompt(&s, b"note\r", settled()));
+        report(&s, &book, credit(0, 0, SHIM_INPUT_CAP as u64, 1));
+        assert!(!s.shim_input(b"x"));
     }
 
     #[test]
