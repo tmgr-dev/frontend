@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.91
+
+- `tmgr send` is refused with "input queue full" before the shim would drop input, so an agent that stopped reading its terminal no longer loses text that was reported as sent. A retry stays refused until the agent drains, and sending works again as soon as it does. A send into a session whose queue was already full when the runner restarted is refused too.
+- A paste above 1 MiB through attach waits up to 2 seconds for room each time the queue fills, so a slow reader gets all of it. If the agent makes no progress for that long, the rest of the paste is still dropped.
+- Sessions started by an older version keep the previous behaviour until they end, and an older runner can adopt sessions started by this one.
+
 ## 1.0.90
 
 - `tmgr ask` and the MCP `ask_owner` tool validate link schemes: `--pr`, `--task` and fact links accept web URLs and plain references such as `TM-9` or `owner/repo#12`, and refuse other URL schemes with a clear error.
