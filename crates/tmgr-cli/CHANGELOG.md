@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.94
+
+- `tmgr attach`: the New session dialog (`Ctrl-] c`) remembers the agent and the Worktree, Approvals, Bypass, No sandbox and Rewind choices from the last session you started there. When bypass or no sandbox is remembered, both show as On and a line under the options says so before you start. This memory applies only to that dialog: the queue, task runs and `tmgr run` are not affected.
+- `tmgr attach`: `Ctrl-] H`, or Ctrl+R inside the New session dialog, opens the `tmgr run` session list over the panes. A tmgr, Claude Code or Codex session can be resumed or forked from there with the same bypass and no-sandbox choices, warnings and typed confirmation as `tmgr run`. The key is `H` because `R` already resumes the focused session.
+- The session search in `tmgr run` and in attach puts chat-name matches first: exact name, then names that start with the text, then names that contain it, then matches in the conversation, folder and other fields.
+
 ## 1.0.93
 
 - A decisions call (`get_answer`, `ask --wait`, MCP tools) no longer ends as pending when the desktop is replacing its token file at that moment: the client keeps retrying with the token it had, and the desktop now swaps the file in atomically.
