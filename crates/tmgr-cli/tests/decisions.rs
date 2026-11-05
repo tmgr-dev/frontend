@@ -1337,7 +1337,7 @@ fn notifications_become_cards_by_type() {
     let kinds: Vec<&str> = cards.iter().map(|c| c["kind"].as_str().unwrap()).collect();
     assert_eq!(kinds, ["permission", "question", "question"]);
     assert_eq!(cards[0]["question"], "Claude needs you");
-    assert_eq!(cards[0]["supersede"], true);
+    assert_eq!(cards[0]["supersede"], Value::Null);
 }
 
 #[test]

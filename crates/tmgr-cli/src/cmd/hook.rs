@@ -709,7 +709,11 @@ fn decisions_work(event: &str) {
             let message = tmgr_usage::consent::granted_read_only(&env, tmgr_usage::Tool::Claude)
                 .then_some(last)
                 .flatten();
-            let git = crate::gitx::Git::at(&cwd).is_dirty().unwrap_or(false);
+            let git = if has_text {
+                git_out(&cwd, &["rev-parse", "--is-inside-work-tree"]).is_some()
+            } else {
+                crate::gitx::Git::at(&cwd).is_dirty().unwrap_or(false)
+            };
             match cards::stop_card(&cwd, session, message, has_text, git) {
                 Some(c) => c,
                 None => return,

@@ -725,16 +725,16 @@ pub fn stop_card(
     Some(card)
 }
 
-const STOCK_PHRASES: [&str; 4] = [
+const STOCK_PHRASES: [&str; 3] = [
     "claude is waiting for your input",
-    "claude needs your permission",
     "claude needs your attention",
     "claude needs your input",
 ];
 
 fn is_stock_text(message: &str) -> bool {
     let lower = message.trim().to_lowercase();
-    STOCK_PHRASES.iter().any(|p| lower.starts_with(p))
+    let lower = lower.trim_end_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace());
+    STOCK_PHRASES.contains(&lower) || lower.starts_with("claude needs your permission to use ")
 }
 
 pub fn notification_card(input: &Value, cwd: &Path, session: Option<&str>) -> Option<CardIn> {
@@ -752,6 +752,7 @@ pub fn notification_card(input: &Value, cwd: &Path, session: Option<&str>) -> Op
         format!("{}: {headline}", project_name(cwd)),
         hook_source(cwd, session),
     );
+    card.supersede = kind != "permission";
     card.question = message
         .filter(|m| !m.trim().is_empty())
         .map(|m| truncate(m, MAX_TEXT));
@@ -924,6 +925,7 @@ mod tests {
                 json!("Claude is waiting for your input"),
                 json!("claude is waiting for your input."),
                 json!("Claude needs your permission to use Bash"),
+                json!("Claude needs your input!"),
             ] {
                 let n = json!({"notification_type": t, "message": m});
                 assert!(
@@ -931,6 +933,8 @@ mod tests {
                     "{t} {m}"
                 );
             }
+            let n = json!({"notification_type": t, "message": "Claude needs your input: Postgres or SQLite?"});
+            assert!(notification_card(&n, Path::new("/w/p"), None).is_some());
             let n = json!({"notification_type": t, "message": "Pick a database"});
             let card = notification_card(&n, Path::new("/w/p"), None).unwrap();
             assert_eq!(card.question.as_deref(), Some("Pick a database"));
