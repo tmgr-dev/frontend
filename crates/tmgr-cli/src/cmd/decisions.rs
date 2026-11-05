@@ -596,12 +596,25 @@ impl Spec {
     }
 }
 
+fn side_note(side: Option<&str>) -> &'static str {
+    if side == Some("old") {
+        " (deleted)"
+    } else {
+        ""
+    }
+}
+
 pub fn event_text(e: &Event) -> String {
     let mut lines = Vec::new();
     if e.kind == "message" {
         lines.push(format!("message: {}", e.text.as_deref().unwrap_or("")));
         if let Some(t) = &e.thread {
-            lines.push(format!("  on {}:{}", t.file, t.line));
+            lines.push(format!(
+                "  on {}:{}{}",
+                t.file,
+                t.line,
+                side_note(t.side.as_deref())
+            ));
         }
         return lines.join("\n");
     }
@@ -621,7 +634,13 @@ pub fn event_text(e: &Event) -> String {
         lines.push(format!("answer: {t}"));
     }
     for c in &e.line_comments {
-        lines.push(format!("{}:{}: {}", c.file, c.line, c.text));
+        lines.push(format!(
+            "{}:{}{}: {}",
+            c.file,
+            c.line,
+            side_note(c.side.as_deref()),
+            c.text
+        ));
     }
     if lines.is_empty() {
         lines.push("answered".to_string());
@@ -727,6 +746,37 @@ pub fn permission_card(input: &Value, cwd: &Path, session: Option<&str>) -> Card
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn event_text_marks_only_deleted_lines() {
+        let at = |side: Option<&str>| Event {
+            kind: "message".into(),
+            text: Some("t".into()),
+            thread: Some(decisions::ThreadRef {
+                file: "a.rs".into(),
+                line: 3,
+                side: side.map(Into::into),
+            }),
+            ..Event::default()
+        };
+        assert_eq!(
+            event_text(&at(Some("old"))),
+            "message: t\n  on a.rs:3 (deleted)"
+        );
+        assert_eq!(event_text(&at(Some("new"))), "message: t\n  on a.rs:3");
+        assert_eq!(event_text(&at(None)), "message: t\n  on a.rs:3");
+        let answer = Event {
+            kind: "answer".into(),
+            line_comments: vec![decisions::LineComment {
+                file: "a.rs".into(),
+                line: 3,
+                side: Some("old".into()),
+                text: "gone".into(),
+            }],
+            ..Event::default()
+        };
+        assert_eq!(event_text(&answer), "a.rs:3 (deleted): gone");
+    }
 
     fn spec() -> Spec {
         Spec {

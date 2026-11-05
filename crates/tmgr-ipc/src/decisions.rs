@@ -190,6 +190,8 @@ pub struct CardIn {
 pub struct LineComment {
     pub file: String,
     pub line: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side: Option<String>,
     pub text: String,
 }
 
@@ -197,6 +199,8 @@ pub struct LineComment {
 pub struct ThreadRef {
     pub file: String,
     pub line: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side: Option<String>,
 }
 
 /// What the agent receives. `type` is `answer` (final unless `deferred`) or `message` (interim).
@@ -596,6 +600,23 @@ pub fn drain_spool(dir: &Path, mut persist: impl FnMut(CardIn) -> bool) -> io::R
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn side_is_optional_on_the_wire_both_ways() {
+        let legacy: LineComment =
+            serde_json::from_str(r#"{"file":"a.rs","line":3,"text":"x"}"#).unwrap();
+        assert_eq!(legacy.side, None);
+        let t: ThreadRef = serde_json::from_str(r#"{"file":"a.rs","line":3}"#).unwrap();
+        assert_eq!(t.side, None);
+        assert!(!serde_json::to_string(&legacy).unwrap().contains("side"));
+        let old = LineComment {
+            side: Some("old".into()),
+            ..legacy
+        };
+        assert!(serde_json::to_string(&old)
+            .unwrap()
+            .contains(r#""side":"old""#));
+    }
 
     fn private_tmp() -> tempfile::TempDir {
         let t = tempfile::Builder::new()

@@ -145,7 +145,7 @@ pub fn defs() -> Vec<Value> {
                     "text": {"type": "string", "maxLength": MAX_REPLY, "description": "Your reply. Goes to the general chat, or to the single line thread waiting for you when the chat has no unanswered owner message; refused when two or more line threads are waiting (use line_replies)"},
                     "line_replies": {"type": "array", "maxItems": 50, "items": {
                         "type": "object",
-                        "properties": {"file": {"type": "string"}, "line": {"type": "integer", "minimum": 1}, "text": {"type": "string"}},
+                        "properties": {"file": {"type": "string"}, "line": {"type": "integer", "minimum": 1}, "side": {"type": "string", "enum": ["old", "new"], "description": "old = the deleted line, new = the added or unchanged line; omit to join the thread already on that line"}, "text": {"type": "string"}},
                         "required": ["file", "line", "text"],
                         "additionalProperties": false
                     }},
@@ -322,9 +322,15 @@ fn reply_owner(a: &Value, progress: &mut dyn FnMut(&str)) -> Value {
             let file = str_arg(r, "file", 1, 4096)?.ok_or("line_replies need file")?;
             let line = int_arg(r, "line", 1, u32::MAX as i64)?.ok_or("line_replies need line")?;
             let text = str_arg(r, "text", 1, MAX_REPLY)?.ok_or("line_replies need text")?;
+            let side = match str_arg(r, "side", 1, 3)? {
+                None => None,
+                Some(s @ ("old" | "new")) => Some(s.to_string()),
+                Some(_) => return Err("line_replies side must be old or new".to_string()),
+            };
             lines.push(LineComment {
                 file: file.to_string(),
                 line: line as u32,
+                side,
                 text: text.to_string(),
             });
         }

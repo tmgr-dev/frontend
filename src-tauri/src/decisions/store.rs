@@ -79,6 +79,8 @@ pub struct MessageIn {
   #[serde(default)]
   pub line: Option<u32>,
   #[serde(default)]
+  pub side: Option<String>,
+  #[serde(default)]
   pub action: Option<String>,
 }
 
@@ -91,6 +93,8 @@ pub struct MessageView {
   pub file: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub line: Option<u32>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub side: Option<String>,
   pub created_ms: i64,
   pub delivered: bool,
 }
@@ -284,6 +288,35 @@ fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
   })
 }
 
+type Thread = (String, u32, Option<String>);
+type Item = (String, Option<String>, Option<u32>, Option<String>);
+
+struct ThreadRow {
+  owner: bool,
+  thread: Option<Thread>,
+}
+
+fn resolve_side(rows: &[ThreadRow], file: &str, line: u32, given: Option<String>) -> Option<String> {
+  if given.is_some() {
+    return given;
+  }
+  let mut threads: Vec<(&Option<String>, bool)> = Vec::new();
+  for row in rows {
+    if let Some((f, l, side)) = &row.thread {
+      if f == file && *l == line {
+        match threads.iter_mut().find(|(s, _)| *s == side) {
+          Some(t) => t.1 = row.owner,
+          None => threads.push((side, row.owner)),
+        }
+      }
+    }
+  }
+  match threads.iter().find(|(_, pending)| *pending).or(threads.last()) {
+    Some((side, _)) => (*side).clone(),
+    None => Some("new".into()),
+  }
+}
+
 impl Store {
   pub fn open(path: &Path) -> Result<Store, String> {
     let conn = Connection::open(path).map_err(sql_err)?;
@@ -311,6 +344,12 @@ impl Store {
       .map_err(sql_err)?;
     if has_updated == 0 {
       conn.execute("ALTER TABLE cards ADD COLUMN updated_ms INTEGER", []).map_err(sql_err)?;
+    }
+    let has_side: i64 = conn
+      .query_row("SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='side'", [], |r| r.get(0))
+      .map_err(sql_err)?;
+    if has_side == 0 {
+      conn.execute("ALTER TABLE messages ADD COLUMN side TEXT", []).map_err(sql_err)?;
     }
     Ok(Store { conn })
   }
@@ -431,7 +470,7 @@ impl Store {
     let patches = self.patch_info(&r.id)?;
     let mut stmt = self
       .conn
-      .prepare("SELECT seq, author, text, file, line, created_ms FROM messages WHERE card_id=?1 ORDER BY seq")
+      .prepare("SELECT seq, author, text, file, line, side, created_ms FROM messages WHERE card_id=?1 ORDER BY seq")
       .map_err(sql_err)?;
     let messages = stmt
       .query_map([&r.id], |m| {
@@ -441,7 +480,8 @@ impl Store {
           text: m.get(2)?,
           file: m.get(3)?,
           line: m.get::<_, Option<i64>>(4)?.map(|l| l as u32),
-          created_ms: m.get(5)?,
+          side: m.get(5)?,
+          created_ms: m.get(6)?,
           delivered: false,
         })
       })
@@ -604,6 +644,7 @@ impl Store {
     }
     let file = cap_opt(m.file, FIELD_MAX * 4);
     let line = file.as_ref().and(m.line);
+    let side = line.and(m.side).filter(|s| s == "old" || s == "new");
     let action = pick(m.action.as_deref().unwrap_or("reply"), &["reply", "fix"], "reply");
     let seq = self.next_seq(id)?;
     let event = Event {
@@ -611,7 +652,7 @@ impl Store {
       kind: "message".into(),
       seq,
       text: Some(text.clone()),
-      thread: file.clone().zip(line).map(|(file, line)| ThreadRef { file, line }),
+      thread: file.clone().zip(line).map(|(file, line)| ThreadRef { file, line, side: side.clone() }),
       action: Some(action),
       ..Default::default()
     };
@@ -623,8 +664,8 @@ impl Store {
     )
     .map_err(sql_err)?;
     tx.execute(
-      "INSERT INTO messages(card_id, seq, author, text, file, line, created_ms) VALUES(?1, ?2, 'owner', ?3, ?4, ?5, ?6)",
-      params![id, mseq, text, file, line.map(i64::from), now_ms()],
+      "INSERT INTO messages(card_id, seq, author, text, file, line, side, created_ms) VALUES(?1, ?2, 'owner', ?3, ?4, ?5, ?6, ?7)",
+      params![id, mseq, text, file, line.map(i64::from), side, now_ms()],
     )
     .map_err(sql_err)?;
     tx.commit().map_err(sql_err)?;
@@ -638,27 +679,33 @@ impl Store {
     lines: Vec<LineComment>,
   ) -> Result<String, String> {
     let id = &self.canon(id)?;
-    let mut items: Vec<(String, Option<String>, Option<u32>)> = Vec::new();
+    let rows = self.thread_rows(id)?;
+    let mut items: Vec<Item> = Vec::new();
     for l in lines.into_iter().take(MAX_LINE_COMMENTS) {
       let t = cap(&l.text, TEXT_MAX);
       if !t.is_empty() {
-        items.push((t, Some(cap(&l.file, FIELD_MAX * 4)), Some(l.line)));
+        let file = cap(&l.file, FIELD_MAX * 4);
+        let side = resolve_side(&rows, &file, l.line, l.side.filter(|s| s == "old" || s == "new"));
+        items.push((t, Some(file), Some(l.line), side));
       }
     }
     if let Some(t) = cap_opt(text, TEXT_MAX) {
-      let thread = self.thread_for_text(id, &items)?;
-      let (file, line) = thread.unzip();
-      items.insert(0, (t, file, line));
+      let thread = self.thread_for_text(id, &rows, &items)?;
+      let (file, line, side) = match thread {
+        Some((f, l, s)) => (Some(f), Some(l), s),
+        None => (None, None, None),
+      };
+      items.insert(0, (t, file, line, side));
     }
     if items.is_empty() {
       return Err("text is required".into());
     }
     let first = self.next_message_seq(id)?;
     let tx = self.conn.transaction().map_err(sql_err)?;
-    for (seq, (text, file, line)) in (first..).zip(items) {
+    for (seq, (text, file, line, side)) in (first..).zip(items) {
       tx.execute(
-        "INSERT INTO messages(card_id, seq, author, text, file, line, created_ms) VALUES(?1, ?2, 'agent', ?3, ?4, ?5, ?6)",
-        params![id, seq, text, file, line.map(i64::from), now_ms()],
+        "INSERT INTO messages(card_id, seq, author, text, file, line, side, created_ms) VALUES(?1, ?2, 'agent', ?3, ?4, ?5, ?6, ?7)",
+        params![id, seq, text, file, line.map(i64::from), side, now_ms()],
       )
       .map_err(sql_err)?;
     }
@@ -666,42 +713,57 @@ impl Store {
     Ok(id.clone())
   }
 
-  fn thread_for_text(
-    &self,
-    id: &str,
-    line_replies: &[(String, Option<String>, Option<u32>)],
-  ) -> Result<Option<(String, u32)>, String> {
-    if !is_live(&self.raw(id)?.ok_or_else(|| "unknown card".to_owned())?.state) {
-      return Ok(None);
-    }
+  fn thread_rows(&self, id: &str) -> Result<Vec<ThreadRow>, String> {
     let mut stmt = self
       .conn
-      .prepare("SELECT author, file, line FROM messages WHERE card_id=?1 ORDER BY seq")
+      .prepare("SELECT author, file, line, side FROM messages WHERE card_id=?1 ORDER BY seq")
       .map_err(sql_err)?;
     let rows = stmt
-      .query_map([id], |m| Ok((m.get::<_, String>(0)?, m.get::<_, Option<String>>(1)?, m.get::<_, Option<i64>>(2)?)))
+      .query_map([id], |m| {
+        let owner = m.get::<_, String>(0)? == "owner";
+        let file = m.get::<_, Option<String>>(1)?;
+        let line = m.get::<_, Option<i64>>(2)?;
+        let side = m.get::<_, Option<String>>(3)?;
+        Ok(ThreadRow { owner, thread: file.zip(line).map(|(f, l)| (f, l as u32, side)) })
+      })
       .map_err(sql_err)?
       .collect::<Result<Vec<_>, _>>()
       .map_err(sql_err)?;
+    Ok(rows)
+  }
+
+  fn thread_for_text(
+    &self,
+    id: &str,
+    rows: &[ThreadRow],
+    line_replies: &[Item],
+  ) -> Result<Option<Thread>, String> {
+    if !is_live(&self.raw(id)?.ok_or_else(|| "unknown card".to_owned())?.state) {
+      return Ok(None);
+    }
     let mut chat_last_owner = false;
-    let mut threads: Vec<((String, u32), bool)> = Vec::new();
-    let mut note = |key: Option<(String, u32)>, owner: bool| match key {
+    let mut threads: Vec<(Thread, bool)> = Vec::new();
+    let mut note = |key: Option<Thread>, owner: bool| match key {
       None => chat_last_owner = owner,
       Some(key) => match threads.iter_mut().find(|(k, _)| *k == key) {
         Some(t) => t.1 = owner,
         None => threads.push((key, owner)),
       },
     };
-    for (author, file, line) in rows {
-      note(file.zip(line).map(|(f, l)| (f, l as u32)), author == "owner");
+    for row in rows {
+      note(row.thread.clone(), row.owner);
     }
-    for (_, file, line) in line_replies {
-      note(file.clone().zip(*line), false);
+    for (_, file, line, side) in line_replies {
+      note(file.clone().zip(*line).map(|(f, l)| (f, l, side.clone())), false);
     }
     if chat_last_owner {
       return Ok(None);
     }
-    let pending: Vec<String> = threads.iter().filter(|(_, p)| *p).map(|((f, l), _)| format!("{f}:{l}")).collect();
+    let label = |(f, l, side): &Thread| match side.as_deref() {
+      Some("old") => format!("{f}:{l} (deleted)"),
+      _ => format!("{f}:{l}"),
+    };
+    let pending: Vec<String> = threads.iter().filter(|(_, p)| *p).map(|(k, _)| label(k)).collect();
     match pending.len() {
       0 => Ok(None),
       1 => Ok(threads.into_iter().find(|(_, p)| *p).map(|(k, _)| k)),
@@ -930,7 +992,7 @@ mod tests {
     let mut s = mem();
     let id = s.create_id(card("Review"));
     let other = s.create_id(card("Other"));
-    let m = MessageIn { text: "why?".into(), file: Some("a.rs".into()), line: Some(4), action: Some("fix".into()) };
+    let m = MessageIn { text: "why?".into(), file: Some("a.rs".into()), line: Some(4), side: None, action: Some("fix".into()) };
     let e = s.owner_message(&id, m).unwrap();
     assert_eq!((e.seq, e.kind.as_str(), e.action.as_deref()), (1, "message", Some("fix")));
     assert_eq!(e.thread.unwrap().line, 4);
@@ -949,7 +1011,7 @@ mod tests {
   fn agent_replies_are_chat_not_events() {
     let mut s = mem();
     let id = s.create_id(card("Review"));
-    let l = LineComment { file: "a.rs".into(), line: 3, text: "fixed".into() };
+    let l = LineComment { file: "a.rs".into(), line: 3, side: None, text: "fixed".into() };
     s.agent_message(&id, Some("done".into()), vec![l]).unwrap();
     let v = s.get(&id).unwrap().unwrap();
     assert_eq!(v.messages.iter().map(|m| m.author.as_str()).collect::<Vec<_>>(), ["agent", "agent"]);
@@ -974,7 +1036,7 @@ mod tests {
   }
 
   fn lr(file: &str, line: u32, text: &str) -> LineComment {
-    LineComment { file: file.into(), line, text: text.into() }
+    LineComment { file: file.into(), line, side: None, text: text.into() }
   }
 
   #[test]
@@ -1365,6 +1427,112 @@ mod tests {
     s.create(CardIn { supersede: true, ..keyed("a2", "k") }).unwrap();
     assert_eq!(s.get(&old).unwrap().unwrap().state, "open");
     assert_eq!(s.get(&a).unwrap().unwrap().title, "a2");
+  }
+
+  fn owner_side(s: &mut Store, id: &str, text: &str, line: u32, side: &str) -> Event {
+    let m = MessageIn {
+      text: text.into(),
+      file: Some("a.rs".into()),
+      line: Some(line),
+      side: Some(side.into()),
+      ..Default::default()
+    };
+    s.owner_message(id, m).unwrap()
+  }
+
+  fn sides(s: &Store, id: &str) -> Vec<(String, String, Option<String>)> {
+    s.get(id).unwrap().unwrap().messages.into_iter().map(|m| (m.author, m.text, m.side)).collect()
+  }
+
+  #[test]
+  fn owner_sides_are_stored_and_reach_the_agent_event() {
+    let mut s = mem();
+    let id = s.create_id(card("Review"));
+    let e = owner_side(&mut s, &id, "gone?", 10, "old");
+    assert_eq!(e.thread.unwrap().side.as_deref(), Some("old"));
+    owner_side(&mut s, &id, "added?", 10, "new");
+    let bogus = MessageIn { text: "x".into(), file: Some("a.rs".into()), line: Some(10), side: Some("up".into()), ..Default::default() };
+    s.owner_message(&id, bogus).unwrap();
+    let got: Vec<_> = sides(&s, &id).into_iter().map(|m| m.2).collect();
+    assert_eq!(got, [Some("old".into()), Some("new".into()), None]);
+  }
+
+  #[test]
+  fn sideless_reply_joins_the_existing_thread_on_that_line() {
+    let mut s = mem();
+    let id = s.create_id(card("Review"));
+    owner_side(&mut s, &id, "gone?", 10, "old");
+    s.agent_message(&id, None, vec![lr("a.rs", 10, "yes")]).unwrap();
+    assert_eq!(sides(&s, &id).pop().unwrap(), ("agent".into(), "yes".into(), Some("old".into())));
+  }
+
+  #[test]
+  fn sideless_reply_prefers_the_thread_waiting_for_the_agent() {
+    let mut s = mem();
+    let id = s.create_id(card("Review"));
+    owner_side(&mut s, &id, "gone?", 10, "old");
+    s.agent_message(&id, None, vec![lr("a.rs", 10, "yes")]).unwrap();
+    owner_side(&mut s, &id, "added?", 10, "new");
+    s.agent_message(&id, None, vec![lr("a.rs", 10, "also")]).unwrap();
+    assert_eq!(sides(&s, &id).pop().unwrap().2.as_deref(), Some("new"));
+  }
+
+  #[test]
+  fn sideless_reply_on_a_fresh_line_goes_to_the_new_side() {
+    let mut s = mem();
+    let id = s.create_id(card("Review"));
+    s.agent_message(&id, None, vec![lr("a.rs", 4, "note")]).unwrap();
+    assert_eq!(sides(&s, &id).pop().unwrap().2.as_deref(), Some("new"));
+    let l = LineComment { side: Some("old".into()), ..lr("a.rs", 5, "was") };
+    s.agent_message(&id, None, vec![l]).unwrap();
+    assert_eq!(sides(&s, &id).pop().unwrap().2.as_deref(), Some("old"));
+  }
+
+  #[test]
+  fn text_reply_lands_in_the_pending_sided_thread() {
+    let mut s = mem();
+    let id = s.create_id(card("Review"));
+    owner_side(&mut s, &id, "gone?", 10, "old");
+    s.agent_message(&id, Some("yes".into()), vec![]).unwrap();
+    let last = s.get(&id).unwrap().unwrap().messages.pop().unwrap();
+    assert_eq!((last.line, last.side.as_deref()), (Some(10), Some("old")));
+  }
+
+  #[test]
+  fn two_sides_of_one_line_count_as_two_waiting_threads() {
+    let mut s = mem();
+    let id = s.create_id(card("Review"));
+    owner_side(&mut s, &id, "a", 10, "old");
+    owner_side(&mut s, &id, "b", 10, "new");
+    let err = s.agent_message(&id, Some("hm".into()), vec![]).unwrap_err();
+    assert_eq!(err, "2 line threads are waiting: a.rs:10 (deleted), a.rs:10; answer them with line_replies");
+  }
+
+  #[test]
+  fn legacy_rows_without_a_side_keep_their_anchor_and_replies_stay_sideless() {
+    let dir = tempfile::Builder::new().prefix("ds").tempdir_in("/tmp").unwrap();
+    let path = dir.path().join("decisions.db");
+    let id = "c_11111111111111111111111111111111";
+    {
+      let c = Connection::open(&path).unwrap();
+      c.execute_batch(
+        "CREATE TABLE cards(id TEXT PRIMARY KEY, created_ms INTEGER NOT NULL, card TEXT NOT NULL, state TEXT NOT NULL,
+           session_gone INTEGER NOT NULL DEFAULT 0, answer TEXT, closed_reason TEXT);
+         CREATE TABLE messages(card_id TEXT NOT NULL, seq INTEGER NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL,
+           file TEXT, line INTEGER, created_ms INTEGER NOT NULL, PRIMARY KEY(card_id, seq));
+         INSERT INTO cards(id, created_ms, card, state) VALUES('c_11111111111111111111111111111111', 5,
+           '{\"title\":\"Legacy\"}', 'open');
+         INSERT INTO messages(card_id, seq, author, text, file, line, created_ms)
+           VALUES('c_11111111111111111111111111111111', 1, 'owner', 'old row', 'a.rs', 10, 6);",
+      )
+      .unwrap();
+    }
+    let mut s = Store::open(&path).unwrap();
+    assert_eq!(sides(&s, id), [("owner".to_owned(), "old row".to_owned(), None)]);
+    s.agent_message(id, None, vec![lr("a.rs", 10, "reply")]).unwrap();
+    assert_eq!(sides(&s, id).pop().unwrap(), ("agent".into(), "reply".into(), None));
+    owner_side(&mut s, id, "new thread", 10, "new");
+    assert_eq!(sides(&s, id).pop().unwrap().2.as_deref(), Some("new"));
   }
 
   #[test]

@@ -239,7 +239,7 @@ mod tests {
   fn delivery_joins_note_and_line_comments() {
     let e = Event {
       note: Some("after lunch".into()),
-      line_comments: vec![LineComment { file: "a.rs".into(), line: 3, text: "rename".into() }],
+      line_comments: vec![LineComment { file: "a.rs".into(), line: 3, side: None, text: "rename".into() }],
       ..answer()
     };
     assert_eq!(delivery_text(&e).unwrap(), "after lunch; a.rs:3: rename");

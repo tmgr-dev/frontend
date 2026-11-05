@@ -332,7 +332,7 @@ mod tests {
     ask_at(&r, &id, "one", Some(("a.rs", 3)));
     ask_at(&r, &id, "two", Some(("b.rs", 9)));
     let before = r.hub.get(&id).unwrap().messages.len();
-    let line = tmgr_ipc::decisions::LineComment { file: "c.rs".into(), line: 1, text: "x".into() };
+    let line = tmgr_ipc::decisions::LineComment { file: "c.rs".into(), line: 1, side: None, text: "x".into() };
     let err = c.reply(&id, Some("hm".into()), vec![line]).unwrap_err().to_string();
     assert!(err.contains("2 line threads are waiting: a.rs:3, b.rs:9; answer them with line_replies"), "{err}");
     assert_eq!(r.hub.get(&id).unwrap().messages.len(), before);
