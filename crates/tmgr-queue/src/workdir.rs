@@ -2042,7 +2042,12 @@ pub fn deliver_commits(source: &Path, lead: &Path, base: &str, tip: &str) -> Res
     let mut cmd = view
         .prepared(&[], &["pack-objects", "--revs", "--stdout", "-q"])
         .map_err(Error::internal)?;
-    let input = format!("{tip}\n^{base}\n").into_bytes();
+    let input = if view.succeeds(&["cat-file", "-e", &format!("{base}^{{commit}}")]) {
+        format!("{tip}\n^{base}\n")
+    } else {
+        format!("{tip}\n")
+    }
+    .into_bytes();
     let out = output_bounded_input(&mut cmd, GIT_TIMEOUT, MAX_IMPORT as usize, Some(input))?;
     if !out.status.success() {
         return Err(Error::internal("git pack-objects failed"));
@@ -2798,6 +2803,35 @@ mod tests {
         .unwrap();
         assert_eq!(count, "2");
         run_git(&lead, &["fsck", "--full", "--strict"]);
+    }
+
+    #[test]
+    fn delivering_without_a_base_the_source_no_longer_has_sends_the_whole_history_of_the_tip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let r = repo.to_string_lossy().into_owned();
+        let team = clone_dir(&r, "q_gone").unwrap();
+        let lead = lead_dir(&team);
+        GitClone
+            .prepare_member(&r, "q_gone", &lead.to_string_lossy(), "queue/q_gone")
+            .unwrap();
+        let init = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        commit_file(&repo, "b.txt");
+        let base = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        run_git(&repo, &["checkout", "-q", "-b", "worker", &init]);
+        commit_file(&repo, "w.txt");
+        let tip = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        run_git(&repo, &["checkout", "-q", "main"]);
+        run_git(&repo, &["reset", "-q", "--hard", &init]);
+        run_git(&repo, &["reflog", "expire", "--expire=now", "--all"]);
+        run_git(&repo, &["gc", "-q", "--prune=now"]);
+        assert!(git(Some(&repo), &["cat-file", "-e", &format!("{base}^{{commit}}")]).is_err());
+        deliver_commits(&repo, &lead, &base, &tip).unwrap();
+        run_git(&lead, &["cat-file", "-e", &format!("{tip}^{{commit}}")]);
+        run_git(&lead, &["rev-list", "--objects", "--quiet", &tip]);
     }
 
     #[test]
