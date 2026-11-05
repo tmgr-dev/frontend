@@ -36,7 +36,7 @@ pub struct HostView {
     offline: bool,
     origin: Option<String>,
     origin_push: Option<String>,
-    keys: Vec<String>,
+    entries: Vec<(String, Option<String>)>,
     sha256: bool,
     deferred: Option<String>,
     path: OsString,
@@ -205,7 +205,6 @@ fn index_is_split(idx: &[u8], hash: usize) -> Option<bool> {
 }
 
 struct Snapshot {
-    keys: Vec<String>,
     config: String,
     origin: Option<String>,
     origin_push: Option<String>,
@@ -220,9 +219,7 @@ fn snapshot(entries: Vec<(String, Option<String>)>) -> Result<Snapshot, String> 
     let mut origin = None;
     let mut origin_push = None;
     let mut core: Vec<(String, String)> = Vec::new();
-    let mut keys = Vec::new();
     for (key, value) in &entries {
-        keys.push(key.clone());
         let v = value.as_deref();
         match key.as_str() {
             "remote.origin.url" => {
@@ -304,7 +301,6 @@ fn snapshot(entries: Vec<(String, Option<String>)>) -> Result<Snapshot, String> 
         }
     }
     Ok(Snapshot {
-        keys,
         config,
         origin,
         origin_push,
@@ -491,14 +487,20 @@ fn find_root(start: &Path) -> Result<PathBuf, String> {
 
 impl HostView {
     pub fn open(repo: &Path, access: Access) -> Result<HostView, String> {
-        HostView::open_in(repo, access, &std::env::temp_dir(), false)
+        HostView::open_in(repo, access, &std::env::temp_dir(), false, None)
     }
 
     pub fn open_facts(repo: &Path, access: Access) -> Result<HostView, String> {
-        HostView::open_in(repo, access, &std::env::temp_dir(), true)
+        HostView::open_in(repo, access, &std::env::temp_dir(), true, None)
     }
 
-    fn open_in(repo: &Path, access: Access, base: &Path, facts: bool) -> Result<HostView, String> {
+    fn open_in(
+        repo: &Path,
+        access: Access,
+        base: &Path,
+        facts: bool,
+        deadline: Option<Duration>,
+    ) -> Result<HostView, String> {
         let repo = fs::canonicalize(repo).map_err(|e| format!("{}: {e}", repo.display()))?;
         let layout = resolve(&repo)?;
         if access != Access::Read && layout.gitdir != layout.common {
@@ -522,8 +524,14 @@ impl HostView {
         fs::create_dir(&scratch).map_err(|e| e.to_string())?;
         let raw = read_data(&layout.common.join("config"), MAX_CONFIG)?
             .ok_or_else(|| format!("{} has no config", layout.common.display()))?;
-        let list_limits = if facts { FACTS } else { CONFIG_LIST };
-        let snap = snapshot(list_config(&scratch, &raw, list_limits, &path)?)?;
+        let mut list_limits = if facts { FACTS } else { CONFIG_LIST };
+        let mut limits = if facts { FACTS } else { PLUMBING };
+        if let Some(d) = deadline {
+            list_limits.deadline = list_limits.deadline.min(d);
+            limits.deadline = limits.deadline.min(d);
+        }
+        let entries = list_config(&scratch, &raw, list_limits, &path)?;
+        let snap = snapshot(entries.clone())?;
         fs::write(dir.join("config"), &snap.config).map_err(|e| e.to_string())?;
 
         let head = read_data(&layout.gitdir.join("HEAD"), MAX_SMALL)?
@@ -552,11 +560,11 @@ impl HostView {
             access,
             gitdir: layout.gitdir,
             work_tree: false,
-            limits: if facts { FACTS } else { PLUMBING },
+            limits,
             offline: facts,
             origin: snap.origin,
             origin_push: snap.origin_push,
-            keys: snap.keys,
+            entries,
             sha256: snap.sha256,
             deferred: None,
             path,
@@ -569,6 +577,24 @@ impl HostView {
 
     pub fn discover_facts(dir: &Path, access: Access) -> Result<HostView, String> {
         HostView::open_facts(&find_root(dir)?, access)
+    }
+
+    pub fn discover_within(
+        dir: &Path,
+        access: Access,
+        deadline: Duration,
+    ) -> Result<HostView, String> {
+        let root = find_root(dir)?;
+        HostView::open_in(&root, access, &std::env::temp_dir(), false, Some(deadline))
+    }
+
+    pub fn discover_facts_within(
+        dir: &Path,
+        access: Access,
+        deadline: Duration,
+    ) -> Result<HostView, String> {
+        let root = find_root(dir)?;
+        HostView::open_in(&root, access, &std::env::temp_dir(), true, Some(deadline))
     }
 
     pub fn with_work_tree(mut self) -> HostView {
@@ -730,7 +756,28 @@ impl HostView {
     }
 
     pub fn has_config_key(&self, key: &str) -> bool {
-        self.keys.iter().any(|k| k.eq_ignore_ascii_case(key))
+        self.entries
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case(key))
+    }
+
+    pub fn config_value(&self, key: &str) -> Option<&str> {
+        self.entries
+            .iter()
+            .rev()
+            .find(|(k, _)| k.eq_ignore_ascii_case(key))
+            .and_then(|(_, v)| v.as_deref())
+    }
+
+    pub fn config_entries(&self) -> &[(String, Option<String>)] {
+        &self.entries
+    }
+
+    pub fn worktree_config_entries(&self) -> Result<Vec<(String, Option<String>)>, String> {
+        match read_data(&self.gitdir.join("config.worktree"), MAX_CONFIG)? {
+            Some(raw) => list_config(&self.dir.join("scratch"), &raw, self.limits, &self.path),
+            None => Ok(Vec::new()),
+        }
     }
 
     pub fn repo(&self) -> &Path {
@@ -1326,7 +1373,7 @@ mod tests {
     fn a_temp_folder_inside_the_repository_is_refused() {
         let fx = fixture();
         fs::create_dir(fx.repo.join("deep")).unwrap();
-        let err = HostView::open_in(&fx.repo, Access::Read, &fx.repo.join("deep"), false)
+        let err = HostView::open_in(&fx.repo, Access::Read, &fx.repo.join("deep"), false, None)
             .err()
             .unwrap();
         assert!(err.contains("inside the repository"), "{err}");
@@ -1379,6 +1426,55 @@ mod tests {
         let view = HostView::open(&fx.repo, Access::Read).unwrap();
         assert_eq!(view.origin_url(), Some("https://example.com/a.git"));
         assert_eq!(view.origin_push_url(), Some("git@example.com:a.git"));
+    }
+
+    #[test]
+    fn config_entries_are_exposed_as_data_with_the_last_value_winning() {
+        let fx = fixture();
+        git(&fx.repo, &["config", "user.email", "a@example.com"]);
+        git(
+            &fx.repo,
+            &["config", "--add", "user.email", "b@example.com"],
+        );
+        git(&fx.repo, &["config", "filter.x.clean", "true"]);
+        let view = HostView::open(&fx.repo, Access::Read).unwrap();
+        assert_eq!(view.config_value("USER.email"), Some("b@example.com"));
+        assert!(view
+            .config_entries()
+            .iter()
+            .any(|(k, _)| k == "filter.x.clean"));
+        assert!(view.worktree_config_entries().unwrap().is_empty());
+    }
+
+    #[test]
+    fn worktree_config_entries_are_listed_without_following_includes() {
+        let fx = fixture();
+        fs::write(
+            fx.repo.join(".git/config.worktree"),
+            "[include]\n\tpath = other\n[filter \"x\"]\n\tclean = true\n",
+        )
+        .unwrap();
+        let view = HostView::open(&fx.repo, Access::Read).unwrap();
+        let keys: Vec<String> = view
+            .worktree_config_entries()
+            .unwrap()
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect();
+        assert_eq!(keys, ["include.path", "filter.x.clean"]);
+    }
+
+    #[test]
+    fn a_caller_deadline_can_only_shorten_the_limit() {
+        let fx = fixture();
+        let short = Duration::from_millis(400);
+        let view = HostView::discover_facts_within(&fx.repo, Access::Read, short).unwrap();
+        assert_eq!(view.limits.deadline, short);
+        let view = HostView::discover_facts_within(&fx.repo, Access::Read, Duration::from_secs(60))
+            .unwrap();
+        assert_eq!(view.limits.deadline, FACTS.deadline);
+        let view = HostView::discover_within(&fx.repo, Access::Read, short).unwrap();
+        assert_eq!(view.limits.deadline, short);
     }
 
     #[test]

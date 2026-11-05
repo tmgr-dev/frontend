@@ -499,26 +499,43 @@ fn clean_pr_url(raw: &str) -> Option<String> {
     ok.then(|| url.to_string())
 }
 
+fn gh_repo(remote: &gitx::Remote) -> Option<String> {
+    if remote.host == "github.com" {
+        Some(remote.path.clone())
+    } else if remote.host.starts_with("github.") {
+        Some(format!("{}/{}", remote.host, remote.path))
+    } else {
+        None
+    }
+}
+
 fn find_pr(git: &Git) -> (Option<String>, Option<&'static str>) {
-    if let Ok(out) = gitx::run_capture(
-        "gh",
-        Some(git.dir()),
-        &["pr", "view", "--json", "url"],
-        GH_TIMEOUT,
+    let remote = git.origin_url().and_then(|u| gitx::parse_remote(&u));
+    let branch = git.current_branch();
+    if let (Some(repo), Some(branch), Ok(neutral)) = (
+        remote.as_ref().and_then(gh_repo),
+        branch
+            .as_deref()
+            .filter(|b| !b.chars().all(|c| c.is_ascii_digit())),
+        gitx::Neutral::new(),
     ) {
-        if out.ok {
-            if let Some(url) = serde_json::from_str::<Value>(&out.stdout)
-                .ok()
-                .and_then(|v| v.get("url").and_then(Value::as_str).and_then(clean_pr_url))
-            {
-                return (Some(url), Some("gh"));
+        if let Ok(out) = neutral.program(
+            "gh",
+            &["pr", "view", branch, "--repo", &repo, "--json", "url"],
+            GH_TIMEOUT,
+        ) {
+            if out.ok {
+                if let Some(url) = serde_json::from_str::<Value>(&out.stdout)
+                    .ok()
+                    .and_then(|v| v.get("url").and_then(Value::as_str).and_then(clean_pr_url))
+                {
+                    return (Some(url), Some("gh"));
+                }
             }
         }
     }
-    let compare = git
-        .origin_url()
-        .and_then(|u| gitx::parse_remote(&u))
-        .zip(git.current_branch())
+    let compare = remote
+        .zip(branch)
         .filter(|(_, b)| !TRUNKS.contains(&b.as_str()))
         .and_then(|(remote, b)| gitx::compare_url(&remote, &b));
     match compare {

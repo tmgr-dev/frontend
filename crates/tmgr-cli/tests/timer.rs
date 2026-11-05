@@ -515,7 +515,7 @@ fn stub_gh(dir: &Path, url: &str) {
         dir,
         "gh",
         &format!(
-            "printf '%s\\n' \"$@\" > '{}'\necho '{{\"url\":\"{url}\"}}'",
+            "printf '%s\\n' \"$PWD\" \"$@\" > '{}'\necho '{{\"url\":\"{url}\"}}'",
             log.display()
         ),
     );
@@ -528,6 +528,10 @@ async fn done_stops_the_timer_moves_to_review_and_comments_the_pr() {
     mock_flow(&env, 11, now_s() - 5220).await;
     let repo = init_repo(&env.tmp.path().join("repo"));
     git(&repo, &["switch", "-c", "tm-512-checkout-apple-pay-button"]);
+    git(
+        &repo,
+        &["remote", "add", "origin", "git@github.com:acme/site.git"],
+    );
     let stubs = env.tmp.path().join("stubs");
     stub_gh(&stubs, "https://github.com/acme/site/pull/214");
     env.seed_active(active_json(&repo, Some(now_s() - 5220)));
@@ -555,9 +559,19 @@ async fn done_stops_the_timer_moves_to_review_and_comments_the_pr() {
     assert_eq!(body["message"], "PR: https://github.com/acme/site/pull/214");
     assert!(env.read_active().is_none());
     let args = std::fs::read_to_string(stubs.join("gh.args")).unwrap();
+    let lines = args.lines().collect::<Vec<_>>();
+    assert!(!Path::new(lines[0]).starts_with(&repo));
     assert_eq!(
-        args.lines().collect::<Vec<_>>(),
-        ["pr", "view", "--json", "url"]
+        &lines[1..],
+        [
+            "pr",
+            "view",
+            "tm-512-checkout-apple-pay-button",
+            "--repo",
+            "acme/site",
+            "--json",
+            "url"
+        ]
     );
 }
 

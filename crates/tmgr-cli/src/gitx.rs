@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Result};
+#[cfg(all(unix, feature = "runner"))]
+use tmgr_runner::hostview::{Access, HostView};
 
 const MAX_OUTPUT: u64 = 1024 * 1024;
 const GIT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -28,11 +30,13 @@ fn spawn_retrying_busy(cmd: &mut Command) -> std::io::Result<std::process::Child
     }
 }
 
-pub fn run_capture(
+pub fn run_capture_with(
     program: &str,
     dir: Option<&Path>,
     args: &[&str],
     timeout: Duration,
+    env: &[(&str, &Path)],
+    env_remove: &[&str],
 ) -> std::io::Result<Captured> {
     let mut cmd = Command::new(program);
     cmd.args(args)
@@ -42,6 +46,12 @@ pub fn run_capture(
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GH_PROMPT_DISABLED", "1")
         .env("LC_ALL", "C");
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    for k in env_remove {
+        cmd.env_remove(k);
+    }
     if let Some(d) = dir {
         cmd.current_dir(d);
     }
@@ -81,6 +91,233 @@ pub fn run_capture(
     })
 }
 
+pub fn git_program() -> &'static str {
+    let no_path = std::env::var_os("PATH").is_none_or(|p| p.is_empty());
+    if no_path && Path::new("/usr/bin/git").exists() {
+        "/usr/bin/git"
+    } else {
+        "git"
+    }
+}
+
+const SCRUBBED_ENV: [&str; 12] = [
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT",
+    "GIT_EXTERNAL_DIFF",
+    "GIT_PAGER",
+    "GIT_EDITOR",
+    "GIT_SEQUENCE_EDITOR",
+];
+
+const MUTATION_PINS: [&str; 14] = [
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "submodule.recurse=false",
+    "-c",
+    "gc.auto=0",
+    "-c",
+    "maintenance.auto=false",
+    "-c",
+    "core.untrackedCache=false",
+    "-c",
+    "core.alternateRefsCommand=: #",
+];
+
+fn git_error(e: std::io::Error) -> Error {
+    match e.kind() {
+        std::io::ErrorKind::NotFound => {
+            Error::internal("git was not found in PATH").hint("install git")
+        }
+        std::io::ErrorKind::TimedOut => Error::internal("git took too long and was stopped"),
+        _ => Error::internal("could not run git"),
+    }
+}
+
+pub fn config_read(dir: &Path, args: &[&str], timeout: Duration) -> Option<String> {
+    let mut full = vec!["-c", "core.fsmonitor=false", "config"];
+    full.extend_from_slice(args);
+    let out =
+        run_capture_with(git_program(), Some(dir), &full, timeout, &[], &SCRUBBED_ENV).ok()?;
+    let text = out.stdout.trim().to_string();
+    (out.ok && !text.is_empty()).then_some(text)
+}
+
+pub struct Reader {
+    #[cfg(all(unix, feature = "runner"))]
+    view: std::result::Result<HostView, String>,
+    #[cfg(not(all(unix, feature = "runner")))]
+    dir: PathBuf,
+    #[cfg(not(all(unix, feature = "runner")))]
+    timeout: Duration,
+}
+
+#[cfg(all(unix, feature = "runner"))]
+impl Reader {
+    pub fn open(dir: &Path, timeout: Duration, facts: bool) -> Reader {
+        let view = if facts {
+            HostView::discover_facts_within(dir, Access::Read, timeout)
+        } else {
+            HostView::discover_within(dir, Access::Read, timeout)
+        };
+        Reader { view }
+    }
+
+    pub fn repo(&self) -> Option<PathBuf> {
+        self.view.as_ref().ok().map(|v| v.repo().to_path_buf())
+    }
+
+    pub fn hooks_dir(&self) -> Option<PathBuf> {
+        self.view
+            .as_ref()
+            .ok()
+            .map(|v| v.common_dir().join("hooks"))
+    }
+
+    pub fn run(&self, args: &[&str]) -> std::result::Result<String, String> {
+        let view = self.view.as_ref().map_err(Clone::clone)?;
+        match args {
+            ["rev-parse", "--show-toplevel"] => Ok(view.repo().display().to_string()),
+            ["rev-parse", "--is-inside-work-tree"] => Ok("true".into()),
+            ["remote", "get-url", "origin"] => view
+                .origin_url()
+                .map(str::to_string)
+                .ok_or_else(|| "origin is not set".to_string()),
+            ["config", key] => config_read(view.repo(), &["--get", key], Duration::from_secs(5))
+                .ok_or_else(|| format!("{key} is not set")),
+            _ => view.run(args),
+        }
+    }
+}
+
+#[cfg(not(all(unix, feature = "runner")))]
+impl Reader {
+    pub fn open(dir: &Path, timeout: Duration, _facts: bool) -> Reader {
+        Reader {
+            dir: dir.to_path_buf(),
+            timeout,
+        }
+    }
+
+    pub fn repo(&self) -> Option<PathBuf> {
+        self.run(&["rev-parse", "--show-toplevel"])
+            .ok()
+            .filter(|t| !t.is_empty())
+            .map(PathBuf::from)
+    }
+
+    pub fn hooks_dir(&self) -> Option<PathBuf> {
+        let path = self
+            .run(&["rev-parse", "--git-path", "hooks"])
+            .ok()
+            .filter(|t| !t.is_empty())?;
+        let path = PathBuf::from(path);
+        Some(if path.is_absolute() {
+            path
+        } else {
+            self.dir.join(path)
+        })
+    }
+
+    pub fn run(&self, args: &[&str]) -> std::result::Result<String, String> {
+        let mut full = vec!["-c", "core.fsmonitor=false"];
+        full.extend_from_slice(args);
+        let out = run_capture_with(
+            git_program(),
+            Some(&self.dir),
+            &full,
+            self.timeout,
+            &[],
+            &[],
+        )
+        .map_err(|e| e.to_string())?;
+        if out.ok {
+            Ok(out.stdout.trim().to_string())
+        } else {
+            Err(format!("git {} failed", args.first().unwrap_or(&"")))
+        }
+    }
+}
+
+impl Reader {
+    pub fn query(&self, args: &[&str]) -> Option<String> {
+        self.run(args).ok().filter(|t| !t.is_empty())
+    }
+}
+
+#[cfg(all(unix, feature = "runner"))]
+fn config_key_allowed(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    let Some((section, rest)) = key.split_once('.') else {
+        return false;
+    };
+    let name = rest.rsplit('.').next().unwrap_or(rest);
+    match section {
+        "core" => !matches!(
+            name,
+            "sshcommand"
+                | "gitproxy"
+                | "pager"
+                | "editor"
+                | "askpass"
+                | "worktree"
+                | "fsmonitor"
+                | "alternaterefscommand"
+        ),
+        "lfs" => !rest.contains("customtransfer") && !rest.starts_with("standalonetransferagent"),
+        "remote" => !matches!(
+            name,
+            "vcs" | "uploadpack" | "receivepack" | "proxy" | "proxyauthmethod"
+        ),
+        "user" | "branch" | "pull" | "push" | "fetch" | "init" | "color" | "advice" | "status"
+        | "tag" | "alias" | "safe" | "extensions" | "url" | "gc" | "maintenance" | "feature"
+        | "checkout" | "stash" | "rerere" | "apply" | "column" | "help" | "index" | "pack"
+        | "repack" | "commit" | "submodule" | "http" | "format" | "protocol" | "transfer"
+        | "fsck" => true,
+        _ => false,
+    }
+}
+
+#[cfg(not(all(unix, feature = "runner")))]
+pub fn preflight(_dir: &Path) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(all(unix, feature = "runner"))]
+pub fn preflight(dir: &Path) -> Result<()> {
+    let refuse =
+        |why: String| Error::conflict(why).hint("remove the setting from the repository config");
+    let view = HostView::discover_within(dir, Access::Read, GIT_TIMEOUT).map_err(|e| {
+        refuse(format!(
+            "the repository cannot be checked before changing it: {}",
+            tmgr_core::text::sanitize_line(&e)
+        ))
+    })?;
+    let worktree = view.worktree_config_entries().map_err(|e| {
+        refuse(format!(
+            "the repository cannot be checked before changing it: {}",
+            tmgr_core::text::sanitize_line(&e)
+        ))
+    })?;
+    for (key, _) in view.config_entries().iter().chain(worktree.iter()) {
+        if !config_key_allowed(key) {
+            return Err(refuse(format!(
+                "the repository config sets {}, which can run programs",
+                tmgr_core::text::sanitize_line(key)
+            )));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 pub struct Git {
     dir: PathBuf,
@@ -95,20 +332,27 @@ impl Git {
         &self.dir
     }
 
-    pub fn run(&self, args: &[&str]) -> Result<Captured> {
-        let mut full = vec!["-c", "core.fsmonitor=false"];
-        full.extend_from_slice(args);
-        run_capture("git", Some(&self.dir), &full, GIT_TIMEOUT).map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => {
-                Error::internal("git was not found in PATH").hint("install git")
-            }
-            std::io::ErrorKind::TimedOut => Error::internal("git took too long and was stopped"),
-            _ => Error::internal("could not run git"),
-        })
+    fn reader(&self) -> Reader {
+        Reader::open(&self.dir, GIT_TIMEOUT, false)
     }
 
-    pub fn run_ok(&self, args: &[&str], what: &str) -> Result<String> {
-        let out = self.run(args)?;
+    pub fn preflight(&self) -> Result<()> {
+        preflight(&self.dir)
+    }
+
+    fn mutate(&self, args: &[&str], what: &str) -> Result<String> {
+        self.preflight()?;
+        let mut full: Vec<&str> = MUTATION_PINS.to_vec();
+        full.extend_from_slice(args);
+        let out = run_capture_with(
+            git_program(),
+            Some(&self.dir),
+            &full,
+            GIT_TIMEOUT,
+            &[],
+            &SCRUBBED_ENV,
+        )
+        .map_err(git_error)?;
         if out.ok {
             Ok(out.stdout)
         } else {
@@ -117,14 +361,19 @@ impl Git {
     }
 
     pub fn query(&self, args: &[&str]) -> Option<String> {
-        let out = self.run(args).ok()?;
-        let text = out.stdout.trim().to_string();
-        (out.ok && !text.is_empty()).then_some(text)
+        self.reader().query(args)
     }
 
     pub fn toplevel(&self) -> Option<PathBuf> {
-        self.query(&["rev-parse", "--show-toplevel"])
-            .map(PathBuf::from)
+        self.reader().repo()
+    }
+
+    pub fn hooks_dir(&self) -> Option<PathBuf> {
+        self.reader().hooks_dir()
+    }
+
+    pub fn config(&self, args: &[&str]) -> Option<String> {
+        config_read(&self.dir, args, GIT_TIMEOUT)
     }
 
     pub fn current_branch(&self) -> Option<String> {
@@ -132,40 +381,40 @@ impl Git {
     }
 
     pub fn is_dirty(&self) -> Result<bool> {
-        let out = self.run_ok(&["status", "--porcelain", "-z"], "status")?;
+        let out = self.mutate(&["status", "--porcelain", "-z"], "status")?;
         Ok(!out.is_empty())
     }
 
     pub fn branch_exists(&self, name: &str) -> bool {
-        self.run(&[
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            &format!("refs/heads/{name}"),
-        ])
-        .map(|o| o.ok)
-        .unwrap_or(false)
+        self.reader()
+            .run(&[
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                &format!("refs/heads/{name}"),
+            ])
+            .is_ok()
     }
 
     pub fn commit_exists(&self, base: &str) -> bool {
-        self.run(&[
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            &format!("{base}^{{commit}}"),
-        ])
-        .map(|o| o.ok)
-        .unwrap_or(false)
+        self.reader()
+            .run(&[
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                &format!("{base}^{{commit}}"),
+            ])
+            .is_ok()
     }
 
     pub fn valid_branch_ref(&self, name: &str) -> bool {
-        self.run(&["check-ref-format", "--branch", name])
-            .map(|o| o.ok)
-            .unwrap_or(false)
+        self.reader()
+            .run(&["check-ref-format", "--branch", name])
+            .is_ok()
     }
 
     pub fn stash(&self, message: &str) -> Result<()> {
-        self.run_ok(&["stash", "push", "-u", "-m", message], "stash")
+        self.mutate(&["stash", "push", "-u", "-m", message], "stash")
             .map(|_| ())
     }
 
@@ -174,16 +423,60 @@ impl Git {
         if let Some(b) = base {
             args.push(b);
         }
-        self.run_ok(&args, "branch")?;
+        self.mutate(&args, "branch")?;
         self.switch(name)
     }
 
     pub fn switch(&self, name: &str) -> Result<()> {
-        self.run_ok(&["switch", "--", name], "switch").map(|_| ())
+        self.mutate(&["switch", "--", name], "switch").map(|_| ())
     }
 
     pub fn origin_url(&self) -> Option<String> {
         self.query(&["remote", "get-url", "origin"])
+    }
+}
+
+pub struct Neutral {
+    dir: tempfile::TempDir,
+}
+
+impl Neutral {
+    pub fn new() -> Result<Neutral> {
+        tempfile::tempdir()
+            .map(|dir| Neutral { dir })
+            .map_err(|_| Error::internal("could not make a temporary folder"))
+    }
+
+    pub fn git(&self, args: &[&str]) -> Result<Captured> {
+        self.program(git_program(), args, GIT_TIMEOUT)
+    }
+
+    pub fn program(&self, program: &str, args: &[&str], timeout: Duration) -> Result<Captured> {
+        let ceiling = self.dir.path().parent().unwrap_or(self.dir.path());
+        run_capture_with(
+            program,
+            Some(self.dir.path()),
+            args,
+            timeout,
+            &[("GIT_CEILING_DIRECTORIES", ceiling)],
+            &SCRUBBED_ENV,
+        )
+        .map_err(git_error)
+    }
+
+    pub fn query(&self, args: &[&str]) -> Option<String> {
+        let out = self.git(args).ok()?;
+        let text = out.stdout.trim().to_string();
+        (out.ok && !text.is_empty()).then_some(text)
+    }
+
+    pub fn run_ok(&self, args: &[&str], what: &str) -> Result<String> {
+        let out = self.git(args)?;
+        if out.ok {
+            Ok(out.stdout)
+        } else {
+            Err(Error::internal(format!("git failed: {what}")))
+        }
     }
 }
 
@@ -360,12 +653,35 @@ mod tests {
 
     #[test]
     fn capture_times_out_and_reports_exit_status() {
-        let ok = run_capture("sh", None, &["-c", "echo hi"], Duration::from_secs(5)).unwrap();
+        let ok = run_capture_with(
+            "sh",
+            None,
+            &["-c", "echo hi"],
+            Duration::from_secs(5),
+            &[],
+            &[],
+        )
+        .unwrap();
         assert!(ok.ok);
         assert_eq!(ok.stdout.trim(), "hi");
-        let bad = run_capture("sh", None, &["-c", "exit 3"], Duration::from_secs(5)).unwrap();
+        let bad = run_capture_with(
+            "sh",
+            None,
+            &["-c", "exit 3"],
+            Duration::from_secs(5),
+            &[],
+            &[],
+        )
+        .unwrap();
         assert!(!bad.ok);
-        let slow = run_capture("sh", None, &["-c", "sleep 5"], Duration::from_millis(100));
+        let slow = run_capture_with(
+            "sh",
+            None,
+            &["-c", "sleep 5"],
+            Duration::from_millis(100),
+            &[],
+            &[],
+        );
         assert_eq!(slow.err().unwrap().kind(), std::io::ErrorKind::TimedOut);
     }
 }

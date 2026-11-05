@@ -302,7 +302,8 @@ fn after_finish(ctx: &Ctx, client: &tmgr_core::api::Client, view: &RunView, know
     let ended = view.ended_at.unwrap_or_else(now_s);
     let mut listed = view.commits.clone();
     listed.extend(known.map(|r| r.commits.clone()).unwrap_or_default());
-    let query = |args: &[&str]| git.query(args);
+    let reader = gitx::Reader::open(git.dir(), std::time::Duration::from_secs(60), false);
+    let query = |args: &[&str]| reader.query(args);
     let branch = view
         .branch
         .clone()

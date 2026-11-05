@@ -1,6 +1,6 @@
 use crate::cmd::notifyenv::NotifyEnv;
 use crate::ctx::Ctx;
-use crate::gitx::run_capture;
+use crate::gitx::Reader;
 use crate::runfinish;
 use serde_json::Value;
 use std::io::{IsTerminal, Read, Seek, SeekFrom};
@@ -37,15 +37,6 @@ fn parse_budget(raw: Option<&str>) -> Duration {
 fn debug(msg: &str) {
     if std::env::var_os("TMGR_HOOK_DEBUG").is_some() {
         eprintln!("tmgr hook: {}", tmgr_core::text::sanitize_line(msg));
-    }
-}
-
-fn git_program() -> &'static str {
-    let no_path = std::env::var_os("PATH").is_none_or(|p| p.is_empty());
-    if no_path && Path::new("/usr/bin/git").exists() {
-        "/usr/bin/git"
-    } else {
-        "git"
     }
 }
 
@@ -224,21 +215,27 @@ fn send_push(env: &NotifyEnv, payload: &PushPayload) {
     let _ = http.push(payload, push_timeout());
 }
 
-fn git_out(cwd: &Path, args: &[&str]) -> Option<String> {
-    let mut full = vec!["-c", "core.fsmonitor=false"];
-    full.extend_from_slice(args);
-    let out = match run_capture(git_program(), Some(cwd), &full, git_timeout()) {
-        Ok(o) => o,
-        Err(e) => {
-            debug(&format!("git {args:?} could not run: {e}"));
-            return None;
+fn git_reader(cwd: &Path) -> Reader {
+    Reader::open(cwd, git_timeout(), true)
+}
+
+fn reader_out(reader: &Reader, args: &[&str]) -> Option<String> {
+    match reader.run(args) {
+        Ok(text) => {
+            if text.is_empty() {
+                debug(&format!("git {args:?} output empty"));
+            }
+            (!text.is_empty()).then_some(text)
         }
-    };
-    let text = out.stdout.trim().to_string();
-    if !out.ok || text.is_empty() {
-        debug(&format!("git {args:?} ok={} output={text:?}", out.ok));
+        Err(e) => {
+            debug(&format!("git {args:?} failed: {e}"));
+            None
+        }
     }
-    (out.ok && !text.is_empty()).then_some(text)
+}
+
+fn git_out(cwd: &Path, args: &[&str]) -> Option<String> {
+    reader_out(&git_reader(cwd), args)
 }
 
 fn commits_since(cwd: &Path, start_sha: &str) -> Vec<String> {
@@ -281,13 +278,9 @@ fn cloud_client(env: &NotifyEnv) -> Option<Client> {
 }
 
 fn locate_run(state: &runstate::Runs, cwd: &Path, now: i64, mode: Touch) -> Option<runstate::Run> {
-    let out = git_out(
-        cwd,
-        &["rev-parse", "--show-toplevel", "--abbrev-ref", "HEAD"],
-    )?;
-    let mut lines = out.lines();
-    let repo = lines.next()?.to_string();
-    let branch_name = lines.next()?.to_string();
+    let reader = git_reader(cwd);
+    let repo = reader.repo()?.display().to_string();
+    let branch_name = reader_out(&reader, &["rev-parse", "--abbrev-ref", "HEAD"])?;
     if branch_name == "HEAD" {
         return None;
     }
@@ -544,7 +537,8 @@ fn post_git_commits(client: &Client, view: &agentwork::RunView, cwd: &Path) {
         return;
     };
     let ended = view.ended_at.unwrap_or_else(now_s);
-    let git = |args: &[&str]| git_out(cwd, args);
+    let reader = git_reader(cwd);
+    let git = |args: &[&str]| reader_out(&reader, args);
     let commits = runfinish::collect(&git, view.branch.as_deref(), started, ended, &view.commits);
     if commits.is_empty() {
         return;
