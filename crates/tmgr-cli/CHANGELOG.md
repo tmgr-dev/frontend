@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.81
+
+- New `tmgr session list`: past sessions from the runner, Claude Code and Codex, with agent, project, time and the start of the conversation. `--agent`, `--search`, `--limit` and `--json` are supported.
+- `--search` uses a full-text index kept on this machine in your tmgr config folder, private to your user. It is built only with log-read consent (`tmgr usage consent`), and denying consent deletes it. Session files are only read.
+- `tmgr resume` now also accepts a Claude Code or Codex conversation id, plus `--fork`, `--mode bypass`, `--no-sandbox` and `--no-attach`. Bypass and no-sandbox ask for a typed confirmation, as `tmgr run` does, and stay unavailable to queue, autopilot and link starts.
+- Ordinary sessions live in your real home folder, so resuming one by conversation id needs `--no-sandbox`. A conversation running in another terminal cannot be resumed, only forked. A session whose folder is gone or moved is refused.
+- Runner: restart it to use these (`external_resume.v1`).
+
 ## 1.0.80
 
 - New `tmgr skills` commands: `list`, `show`, `put`, `delete`, `attach` and `detach` manage your shared skills library and attach skills to personas.
