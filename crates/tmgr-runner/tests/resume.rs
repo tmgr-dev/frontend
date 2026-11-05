@@ -1732,14 +1732,14 @@ fn flagged_resume_follows_the_sandbox_and_bypass_rules() {
     assert_eq!(r.session.cwd, s.cwd);
     assert_eq!(r.session.permission_mode.as_deref(), Some("ask"));
     assert_eq!(r.session.argv[2..], ["--ask", "--resume-id", U1]);
-    h.client().remove(&r.session.id).ok();
+    h.stop_and_remove(&r.session.id);
 
     let s = h.finished(ns_bypass);
     let r = h.resume_flags(&s.id, Some("bypass"), true).unwrap();
     assert!(r.session.no_sandbox);
     assert_eq!(r.session.permission_mode.as_deref(), Some("bypass"));
     assert_eq!(r.session.argv[2..], ["--yolo", "--resume-id", U1]);
-    h.client().remove(&r.session.id).ok();
+    h.stop_and_remove(&r.session.id);
 
     let s = h.finished(plain);
     let r = h.resume_flags(&s.id, Some("bypass"), false).unwrap();
@@ -1748,12 +1748,12 @@ fn flagged_resume_follows_the_sandbox_and_bypass_rules() {
     assert_eq!(r.session.permission_mode.as_deref(), Some("bypass"));
     assert_eq!(r.session.resumed_from.as_deref(), Some(s.id.as_str()));
     assert!(r.session.argv.contains(&"--yolo".to_string()));
-    h.client().remove(&r.session.id).ok();
+    h.stop_and_remove(&r.session.id);
 
     let s = h.finished(bypass);
     let r = h.resume_flags(&s.id, Some("bypass"), false).unwrap();
     assert_eq!(r.session.permission_mode.as_deref(), Some("bypass"));
-    h.client().remove(&r.session.id).ok();
+    h.stop_and_remove(&r.session.id);
 }
 
 #[test]
@@ -1940,6 +1940,12 @@ fn restore_keeps_refusing_what_a_flagged_resume_accepts_and_the_result_is_never_
 }
 
 impl H {
+    fn stop_and_remove(&self, id: &str) {
+        let _ = self.client().kill(id, "term");
+        self.wait_exited(id);
+        self.client().remove(id).ok();
+    }
+
     fn finished_external(&self, id: &str) -> SessionInfo {
         let mut req = self.req();
         req.cwd = fs::canonicalize(&self.work).unwrap().display().to_string();
@@ -1971,7 +1977,7 @@ fn flagged_resume_prefers_the_recorded_conversation_over_the_output_tail() {
         let r = h.resume_flags(&s.id, None, true).unwrap();
         assert_eq!(r.session.agent_session_id.as_deref(), Some(U1));
         assert_eq!(r.session.argv[2..], ["--ask", "--resume-id", U1]);
-        h.client().remove(&r.session.id).ok();
+        h.stop_and_remove(&r.session.id);
     }
 }
 
