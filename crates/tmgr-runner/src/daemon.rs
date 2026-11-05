@@ -3886,7 +3886,7 @@ impl Runner {
                 &opened
             }
         };
-        if extra.no_sandbox.is_none() && extra.objects.is_empty() {
+        if extra.no_sandbox.is_none() {
             clone::check_stores(dir).map_err(|(code, m)| api(code, m))?;
         }
         let _g = lock(&self.create_lock);

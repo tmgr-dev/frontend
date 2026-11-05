@@ -3731,7 +3731,7 @@ fn session_refused_when_object_store_shares_files() {
 }
 
 #[test]
-fn hint_clears_shared_object_files() {
+fn reclone_clears_shared_object_files() {
     if !sessions_available() {
         return;
     }
@@ -3739,25 +3739,51 @@ fn hint_clears_shared_object_files() {
     let mut desktop = Client::connect_as(&fx.h.run, "desktop").unwrap();
     let mut req = fx.h.run_req("fake");
     req.cwd = fx.folder.display().to_string();
-    assert!(err_text(desktop.create_run(req.clone())).contains("git repack -a -d"));
-    for args in [
-        &["repack", "-a", "-d", "-q"][..],
-        &["commit-graph", "write", "--reachable"][..],
-    ] {
-        let out = Command::new("git")
-            .args(args)
-            .current_dir(&fx.folder)
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .output()
-            .unwrap();
-        assert!(out.status.success(), "git {args:?}");
-    }
-    let _ = fs::remove_file(fx.folder.join(".git/objects/info/packs"));
-    assert_eq!(shared_files(&fx.folder), 0);
+    assert!(err_text(desktop.create_run(req.clone())).contains("git clone --no-local"));
+    let fresh = fx.folder.parent().unwrap().join("fresh");
+    git_in(
+        fx.folder.parent().unwrap(),
+        &[
+            "clone",
+            "-q",
+            "--no-local",
+            fx.folder.to_str().unwrap(),
+            fresh.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(shared_files(&fresh), 0);
+    req.cwd = fresh.display().to_string();
     let info = desktop.create_run(req).unwrap();
-    wait_for("agent started", || fx.folder.join("started").exists());
+    wait_for("agent started", || fresh.join("started").exists());
     fx.h.stop(&mut desktop, &info.id);
+}
+
+#[test]
+fn a_clone_run_with_a_shared_store_inside_the_folder_is_refused() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = clone_fx();
+    let dest = fx.clone_to("q_nested");
+    let nested = dest.join("nested");
+    git_in(
+        &dest,
+        &[
+            "clone",
+            "-q",
+            "--bare",
+            fx.repo.to_str().unwrap(),
+            nested.to_str().unwrap(),
+        ],
+    );
+    let mut c = Client::connect_as(&fx.h.run, "desktop").unwrap();
+    let e = err_text(c.create_run(fx.req(&dest)));
+    assert!(
+        e.starts_with("invalid_params: ") && e.contains("object files"),
+        "{e}"
+    );
+    assert!(e.contains("nested"), "{e}");
+    assert!(c.list().unwrap().is_empty());
 }
 
 #[test]
