@@ -1,7 +1,8 @@
 use super::memory;
+use super::shared::{Cell, RefCell};
+use super::smart::Pick;
 use super::smart::*;
 use super::state::*;
-use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -355,9 +356,9 @@ fn smarty(available: bool, consent: u8) -> Smarty {
     }
 }
 
-fn session(source: Smarty) -> (State, std::rc::Rc<Smarty>) {
-    let shared = std::rc::Rc::new(source);
-    struct Shim(std::rc::Rc<Smarty>);
+fn session(source: Smarty) -> (State, std::sync::Arc<Smarty>) {
+    let shared = std::sync::Arc::new(source);
+    struct Shim(std::sync::Arc<Smarty>);
     impl Source for Shim {
         fn load(&self, p: &str) {
             self.0.load(p)
@@ -703,4 +704,25 @@ mod prepared {
         assert!(prepare(&fx.env, &missing, "claude-code", "zanzibar", &recent).is_err());
         assert!(!missing.exists());
     }
+}
+
+#[test]
+fn a_batch_of_bytes_while_confirming_the_send_consent_does_nothing() {
+    let (mut s, src) = session(smarty(true, 1));
+    type_question(&mut s, "q");
+    s.mark_drawn();
+    settle();
+    assert!(matches!(
+        super::feed_keys(&mut s, b"send\r"),
+        super::Fed::Stay
+    ));
+    assert!(matches!(s.smart, Smart::Confirm { ref typed, .. } if typed.is_empty()));
+    assert!(src.started.borrow().is_empty() && src.remembered.borrow().is_empty());
+    for b in b"send" {
+        super::feed_keys(&mut s, &[*b]);
+    }
+    assert!(matches!(s.smart, Smart::Confirm { ref typed, .. } if typed == "send"));
+    super::feed_keys(&mut s, b"\r");
+    assert_eq!(*src.remembered.borrow(), vec![true]);
+    assert_eq!(src.started.borrow().len(), 1);
 }

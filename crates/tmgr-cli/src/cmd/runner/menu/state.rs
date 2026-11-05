@@ -24,6 +24,15 @@ pub enum Step {
     Start(Vec<String>),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Pick {
+    pub id: String,
+    pub fork: bool,
+    pub tmgr: bool,
+    pub bypass: bool,
+    pub no_sandbox: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Screen {
     Agent,
@@ -81,7 +90,7 @@ pub enum Smart {
     Running(String),
 }
 
-pub trait Source {
+pub trait Source: Send {
     fn load(&self, profile: &str);
     fn poll(&self) -> Option<(Vec<Row>, Hints)>;
     fn search(&self, query: &str) -> Option<Vec<String>>;
@@ -467,6 +476,17 @@ impl State {
         v
     }
 
+    pub fn pick(&self) -> Option<Pick> {
+        let row = self.target_row()?;
+        Some(Pick {
+            id: row.id.clone(),
+            fork: self.kind() == Kind::Fork,
+            tmgr: row.kind == RowKind::Tmgr,
+            bypass: self.bypass(),
+            no_sandbox: self.no_sandbox(),
+        })
+    }
+
     pub fn command(&self) -> String {
         shell_words::join(self.argv())
     }
@@ -571,7 +591,7 @@ impl State {
             }
             Key::Up => self.cursor = (self.cursor + count - 1) % count,
             Key::Down => self.cursor = (self.cursor + 1) % count,
-            Key::Enter => self.pick(),
+            Key::Enter => self.select_row(),
             Key::Backspace => {
                 self.filter.pop();
                 self.cursor = 0;
@@ -713,7 +733,7 @@ impl State {
         }
     }
 
-    fn pick(&mut self) {
+    fn select_row(&mut self) {
         if self.cursor == 0 {
             self.target = Target::New;
             self.enter_flags();

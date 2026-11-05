@@ -7,6 +7,8 @@ mod state;
 mod view;
 
 #[cfg(test)]
+mod shared;
+#[cfg(test)]
 mod smart_tests;
 #[cfg(test)]
 mod tests;
@@ -22,7 +24,8 @@ pub(crate) use memory::{dialog_path, load_dialog, save_dialog, DialogMemory};
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Terminal;
-use state::{AgentOpt, Consent, Hints, Key, Picks, Row, RowKind, Source, State, Step};
+use state::{AgentOpt, Consent, Hints, Picks, Row, RowKind, Source};
+pub(super) use state::{Key, Pick, State, Step};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -484,6 +487,133 @@ fn key_of(code: KeyCode, mods: KeyModifiers) -> Option<Key> {
         KeyCode::Backspace => Key::Backspace,
         _ => return None,
     })
+}
+
+pub(super) enum Fed {
+    Stay,
+    Close,
+    Pick(Option<Pick>),
+}
+
+fn overlay(
+    agents: Vec<AgentOpt>,
+    folder: String,
+    kind: Option<&str>,
+    source: Box<dyn Source>,
+) -> State {
+    let remembered = memory::Memory {
+        agent: kind.unwrap_or_default().to_string(),
+        ..memory::Memory::default()
+    };
+    let mut state = State::new(agents, folder, &remembered, source);
+    state.on_key(Key::Enter);
+    state
+}
+
+pub(super) fn open_in_attach(kind: Option<&str>) -> State {
+    overlay(agents(), current_folder(), kind, Box::new(Live::start()))
+}
+
+fn utf8_len(lead: u8) -> usize {
+    match lead {
+        0xc2..=0xdf => 2,
+        0xe0..=0xef => 3,
+        0xf0..=0xf4 => 4,
+        _ => 1,
+    }
+}
+
+fn escape_key(data: &[u8]) -> (Option<Key>, usize) {
+    match data.get(1) {
+        None | Some(0x1b) => (Some(Key::Esc), 1),
+        Some(b'[') => {
+            let mut i = 2;
+            while data.get(i).is_some_and(|b| (0x30..=0x3f).contains(b)) {
+                i += 1;
+            }
+            while data.get(i).is_some_and(|b| (0x20..=0x2f).contains(b)) {
+                i += 1;
+            }
+            match data.get(i) {
+                Some(b'A') => (Some(Key::Up), i + 1),
+                Some(b'B') => (Some(Key::Down), i + 1),
+                Some(b) if (0x40..=0x7e).contains(b) => (None, i + 1),
+                _ => (None, data.len()),
+            }
+        }
+        Some(b'O') => match data.get(2) {
+            Some(b'A') => (Some(Key::Up), 3),
+            Some(b'B') => (Some(Key::Down), 3),
+            _ => (None, data.len().min(3)),
+        },
+        Some(b']' | b'P' | b'_' | b'^' | b'X') => {
+            let end = (2..data.len()).find_map(|i| match data[i] {
+                0x07 => Some(i + 1),
+                0x1b if data.get(i + 1) == Some(&b'\\') => Some(i + 2),
+                _ => None,
+            });
+            (None, end.unwrap_or(data.len()))
+        }
+        Some(_) => (None, 2),
+    }
+}
+
+pub(super) fn keys_from_bytes(data: &[u8]) -> Vec<Key> {
+    let mut keys = Vec::new();
+    let mut i = 0;
+    while i < data.len() {
+        let rest = &data[i..];
+        let (key, used) = match rest[0] {
+            0x1b => escape_key(rest),
+            b'\r' | b'\n' => (Some(Key::Enter), 1),
+            b'\t' => (Some(Key::Tab), 1),
+            0x7f | 0x08 => (Some(Key::Backspace), 1),
+            0x03 => (Some(Key::CtrlC), 1),
+            0x01 => (Some(Key::CtrlA), 1),
+            b if b < 0x20 => (None, 1),
+            b => {
+                let n = utf8_len(b).min(rest.len());
+                match std::str::from_utf8(&rest[..n])
+                    .ok()
+                    .and_then(|t| t.chars().next())
+                {
+                    Some(c) if !c.is_control() => (Some(Key::Char(c)), n),
+                    Some(_) => (None, n),
+                    None => (None, 1),
+                }
+            }
+        };
+        keys.extend(key);
+        i += used;
+    }
+    keys
+}
+
+pub(super) fn feed_keys(state: &mut State, data: &[u8]) -> Fed {
+    let keys = keys_from_bytes(data);
+    if state.confirming() && keys.len() > 1 {
+        return Fed::Stay;
+    }
+    for key in keys {
+        match state.on_key(key) {
+            Step::Stay => {}
+            Step::Quit => return Fed::Close,
+            Step::Start(_) => return Fed::Pick(state.pick()),
+        }
+    }
+    Fed::Stay
+}
+
+pub(super) fn feed_paste(state: &mut State, data: &[u8]) {
+    let text = String::from_utf8_lossy(data)
+        .replace("\x1b[200~", "")
+        .replace("\x1b[201~", "");
+    state.on_paste(&text);
+}
+
+pub(super) fn draw_overlay(f: &mut ratatui::Frame, s: &State) {
+    let area = view::overlay_rect(f.area());
+    view::draw_in(f, area, s, look(), view::ATTACH);
 }
 
 fn look() -> view::Look {

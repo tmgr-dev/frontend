@@ -4,9 +4,10 @@ use super::state::{
     LIVE_REASON, READING_OFF,
 };
 use crate::cmd::board::theme::ColorLevel;
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use ratatui::Frame;
 use tmgr_runner::sanitize::sanitize_text;
 use unicode_width::UnicodeWidthStr;
@@ -77,13 +78,48 @@ fn keys(look: Look, text: &str, width: usize) -> Line<'static> {
     line(text, width, look.dim())
 }
 
+#[derive(Clone, Copy)]
+pub struct Host {
+    pub name: &'static str,
+    pub quit_agent: &'static str,
+    pub quit_ctrl: &'static str,
+}
+
+pub const RUN: Host = Host {
+    name: "tmgr run",
+    quit_agent: "q quit",
+    quit_ctrl: "Ctrl+C quit",
+};
+
+pub const ATTACH: Host = Host {
+    name: "tmgr attach",
+    quit_agent: "q or Esc close",
+    quit_ctrl: "Ctrl+C close",
+};
+
 pub fn draw(f: &mut Frame, s: &State, look: Look) {
-    let area = f.area();
+    draw_in(f, f.area(), s, look, RUN);
+}
+
+pub fn overlay_rect(area: Rect) -> Rect {
+    let w = area.width.saturating_sub(6).clamp(area.width.min(40), 120);
+    let h = area.height.saturating_sub(4).clamp(area.height.min(12), 32);
+    Rect::new(
+        area.x + (area.width - w) / 2,
+        area.y + (area.height - h) / 2,
+        w,
+        h,
+    )
+}
+
+pub fn draw_in(f: &mut Frame, area: Rect, s: &State, look: Look, host: Host) {
+    let name = host.name;
     let title = match s.screen {
-        Screen::Agent => " tmgr run \u{b7} agent ",
-        Screen::Session => " tmgr run \u{b7} session ",
-        Screen::Flags => " tmgr run \u{b7} start ",
+        Screen::Agent => format!(" {name} \u{b7} agent "),
+        Screen::Session => format!(" {name} \u{b7} session "),
+        Screen::Flags => format!(" {name} \u{b7} start "),
     };
+    f.render_widget(Clear, area);
     let block = Block::default()
         .borders(Borders::ALL)
         .title(Span::styled(title, look.accent()));
@@ -92,15 +128,15 @@ pub fn draw(f: &mut Frame, s: &State, look: Look) {
     let width = inner.width as usize;
     let height = inner.height as usize;
     let mut lines = match s.screen {
-        Screen::Agent => agent_lines(s, look, width),
-        Screen::Session => session_lines(s, look, width, height),
-        Screen::Flags => flags_lines(s, look, width),
+        Screen::Agent => agent_lines(s, look, width, host),
+        Screen::Session => session_lines(s, look, (width, height), host),
+        Screen::Flags => flags_lines(s, look, width, host),
     };
     lines.truncate(height);
     f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
-fn agent_lines(s: &State, look: Look, width: usize) -> Vec<Line<'static>> {
+fn agent_lines(s: &State, look: Look, width: usize, host: Host) -> Vec<Line<'static>> {
     let mut lines = vec![line("Which agent?", width, Style::new()), Line::raw("")];
     for (i, a) in s.agents.iter().enumerate() {
         let on = i == s.agent_cursor && a.installed;
@@ -125,13 +161,21 @@ fn agent_lines(s: &State, look: Look, width: usize) -> Vec<Line<'static>> {
     lines.push(Line::raw(""));
     lines.push(keys(
         look,
-        "Up/Down move \u{b7} Enter select \u{b7} q quit",
+        &format!(
+            "Up/Down move \u{b7} Enter select \u{b7} {}",
+            host.quit_agent
+        ),
         width,
     ));
     lines
 }
 
-fn session_lines(s: &State, look: Look, width: usize, height: usize) -> Vec<Line<'static>> {
+fn session_lines(
+    s: &State,
+    look: Look,
+    (width, height): (usize, usize),
+    host: Host,
+) -> Vec<Line<'static>> {
     let mut head = vec![
         line(
             &format!(
@@ -181,8 +225,9 @@ fn session_lines(s: &State, look: Look, width: usize, height: usize) -> Vec<Line
         None => keys(
             look,
             &format!(
-                "Up/Down move \u{b7} type to filter \u{b7} {}Enter select \u{b7} Esc back \u{b7} Ctrl+C quit",
-                if s.smart_agent().is_some() { "Ctrl+A ask the agent \u{b7} " } else { "" }
+                "Up/Down move \u{b7} type to filter \u{b7} {}Enter select \u{b7} Esc back \u{b7} {}",
+                if s.smart_agent().is_some() { "Ctrl+A ask the agent \u{b7} " } else { "" },
+                host.quit_ctrl
             ),
             width,
         ),
@@ -271,7 +316,7 @@ fn toggle(on: bool) -> &'static str {
     }
 }
 
-fn flags_lines(s: &State, look: Look, width: usize) -> Vec<Line<'static>> {
+fn flags_lines(s: &State, look: Look, width: usize, host: Host) -> Vec<Line<'static>> {
     let what = match s.kind() {
         Kind::New => "New session".to_string(),
         Kind::Resume => "Resume".to_string(),
@@ -344,7 +389,10 @@ fn flags_lines(s: &State, look: Look, width: usize) -> Vec<Line<'static>> {
     lines.push(Line::raw(""));
     lines.push(keys(
         look,
-        "Up/Down move \u{b7} Space toggle \u{b7} Enter start \u{b7} Esc back \u{b7} Ctrl+C quit",
+        &format!(
+            "Up/Down move \u{b7} Space toggle \u{b7} Enter start \u{b7} Esc back \u{b7} {}",
+            host.quit_ctrl
+        ),
         width,
     ));
     lines

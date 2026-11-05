@@ -1,19 +1,18 @@
 use super::memory::{self, DialogMemory, Kind, Memory};
+use super::shared::{Cell, RefCell};
 use super::state::*;
 use super::view;
 use super::{settle, wanted, Entry, Failures, MAX_POLL_ERRORS};
 use crate::cmd::board::theme::ColorLevel;
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
-use std::cell::{Cell, RefCell};
 use std::ffi::OsString;
-use std::rc::Rc;
 
 struct Fake {
-    rows: Rc<RefCell<Vec<Row>>>,
-    hints: Rc<Cell<bool>>,
+    rows: RefCell<Vec<Row>>,
+    hints: Cell<bool>,
     ranked: Option<Vec<String>>,
-    allowed: Rc<Cell<u32>>,
+    allowed: Cell<u32>,
     refuse: bool,
     pending: RefCell<Option<(Vec<Row>, Hints)>>,
 }
@@ -99,10 +98,10 @@ fn agents(installed: [bool; 2]) -> Vec<AgentOpt> {
 
 fn fake(rows: Vec<Row>) -> Fake {
     Fake {
-        rows: Rc::new(RefCell::new(rows)),
-        hints: Rc::new(Cell::new(false)),
+        rows: RefCell::new(rows),
+        hints: Cell::new(false),
         ranked: None,
-        allowed: Rc::new(Cell::new(0)),
+        allowed: Cell::new(0),
         refuse: false,
         pending: RefCell::new(None),
     }
@@ -1118,7 +1117,7 @@ fn the_row_that_starts_is_the_one_that_was_picked_even_if_the_results_change() {
 
 #[test]
 fn rows_arrive_later_without_blocking_and_the_new_session_stays_available() {
-    struct Slow(Rc<Cell<bool>>);
+    struct Slow(Cell<bool>);
     impl Source for Slow {
         fn load(&self, _: &str) {}
         fn poll(&self) -> Option<(Vec<Row>, Hints)> {
@@ -1131,7 +1130,7 @@ fn rows_arrive_later_without_blocking_and_the_new_session_stays_available() {
             Ok(())
         }
     }
-    let ready = Rc::new(Cell::new(false));
+    let ready = Cell::new(false);
     let mut s = State::new(
         agents([true, true]),
         "/work/app".into(),
@@ -1190,7 +1189,7 @@ fn a_second_tab_right_after_the_first_does_not_grant_reading() {
 
 #[test]
 fn rows_replaced_before_the_flags_cannot_change_which_session_starts() {
-    struct Reorder(Rc<Cell<bool>>);
+    struct Reorder(Cell<bool>);
     impl Source for Reorder {
         fn load(&self, _: &str) {}
         fn poll(&self) -> Option<(Vec<Row>, Hints)> {
@@ -1208,7 +1207,7 @@ fn rows_replaced_before_the_flags_cannot_change_which_session_starts() {
             Ok(())
         }
     }
-    let changed = Rc::new(Cell::new(false));
+    let changed = Cell::new(false);
     let mut s = State::new(
         agents([true, true]),
         "/work/app".into(),
@@ -1236,4 +1235,387 @@ fn rows_replaced_before_the_flags_keep_the_same_session_when_it_is_still_listed(
     s.rows.reverse();
     s.rows.retain(|r| r.id != "ext-1");
     assert_eq!(words(&s.argv()), "tmgr resume tm-3 --attach --no-sandbox");
+}
+
+use super::{feed_keys, feed_paste, keys_from_bytes, overlay, Fed};
+
+#[test]
+fn raw_bytes_map_to_menu_keys() {
+    let keys = |b: &[u8]| keys_from_bytes(b);
+    assert_eq!(keys(b"\x1b[A"), [Key::Up]);
+    assert_eq!(keys(b"\x1bOA"), [Key::Up]);
+    assert_eq!(keys(b"\x1b[B"), [Key::Down]);
+    assert_eq!(keys(b"\x1bOB"), [Key::Down]);
+    assert_eq!(keys(b"\x1b[1;2A"), [Key::Up]);
+    assert_eq!(keys(b"\r"), [Key::Enter]);
+    assert_eq!(keys(b"\n"), [Key::Enter]);
+    assert_eq!(keys(b"\x1b"), [Key::Esc]);
+    assert_eq!(keys(b"\t"), [Key::Tab]);
+    assert_eq!(keys(b"\x7f"), [Key::Backspace]);
+    assert_eq!(keys(b"\x08"), [Key::Backspace]);
+    assert_eq!(keys(b"\x03"), [Key::CtrlC]);
+    assert_eq!(keys(b"\x01"), [Key::CtrlA]);
+    assert_eq!(
+        keys("a\u{e9}\u{4e2d}".as_bytes()),
+        [Key::Char('a'), Key::Char('\u{e9}'), Key::Char('\u{4e2d}')]
+    );
+    assert_eq!(
+        keys(b"ab\x1b[Bc"),
+        [Key::Char('a'), Key::Char('b'), Key::Down, Key::Char('c')]
+    );
+}
+
+#[test]
+fn unknown_sequences_and_control_bytes_are_dropped_not_typed() {
+    let keys = |b: &[u8]| keys_from_bytes(b);
+    for raw in [
+        &b"\x1b[C"[..],
+        b"\x1b[D",
+        b"\x1b[3~",
+        b"\x1b[H",
+        b"\x1bOH",
+        b"\x1b[1;5C",
+        b"\x1b[200~",
+        b"\x1b[",
+        b"\x1bx",
+        b"\x1b]0;title\x07",
+        b"\x02",
+        b"\x12",
+        b"\x00",
+        b"\xff",
+        b"\xc3",
+        "\u{85}".as_bytes(),
+    ] {
+        assert_eq!(keys(raw), [], "{raw:?}");
+    }
+    assert_eq!(keys(b"\x1b[Cq"), [Key::Char('q')]);
+    assert_eq!(keys(b"\xffq"), [Key::Char('q')]);
+}
+
+#[test]
+fn a_double_escape_is_two_escapes() {
+    assert_eq!(keys_from_bytes(b"\x1b\x1b"), [Key::Esc, Key::Esc]);
+}
+
+fn toggled(s: &mut State, bypass: bool, no_sandbox: bool) {
+    let fields = s.fields();
+    for (i, f) in fields.iter().enumerate() {
+        let want = match f {
+            Field::Bypass => bypass,
+            Field::NoSandbox => no_sandbox,
+            Field::Folder => false,
+        };
+        if want {
+            s.flag_cursor = i;
+            s.on_key(Key::Char(' '));
+        }
+    }
+}
+
+#[test]
+fn pick_agrees_with_argv_for_every_row_kind_and_toggle_combination() {
+    for index in 1..=3 {
+        for kind in ['r', 'f'] {
+            for (bypass, no_sandbox) in [(false, false), (true, false), (false, true), (true, true)]
+            {
+                let mut s = state(sample_rows());
+                to_session(&mut s);
+                for _ in 0..index {
+                    s.on_key(Key::Down);
+                }
+                s.on_key(Key::Enter);
+                s.on_key(Key::Char(kind));
+                if s.screen != Screen::Flags {
+                    continue;
+                }
+                toggled(&mut s, bypass, no_sandbox);
+                let argv = s.argv();
+                let pick = s.pick().expect("an existing row");
+                let ctx = format!("{index} {kind} {bypass} {no_sandbox}: {argv:?}");
+                assert_eq!(pick.id, argv[2], "{ctx}");
+                assert_eq!(pick.fork, argv.contains(&"--fork".to_string()), "{ctx}");
+                assert_eq!(
+                    pick.no_sandbox,
+                    argv.contains(&"--no-sandbox".to_string()),
+                    "{ctx}"
+                );
+                assert_eq!(
+                    pick.bypass,
+                    argv.windows(2)
+                        .any(|w| w[0] == "--mode" && w[1] == "bypass"),
+                    "{ctx}"
+                );
+                assert_eq!(
+                    pick.tmgr,
+                    s.rows.iter().find(|r| r.id == pick.id).unwrap().kind == RowKind::Tmgr,
+                    "{ctx}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn the_new_row_has_no_pick() {
+    let mut s = state(sample_rows());
+    to_session(&mut s);
+    s.on_key(Key::Enter);
+    assert_eq!(s.screen, Screen::Flags);
+    assert_eq!(s.pick(), None);
+}
+
+#[test]
+fn a_bypass_pick_of_a_tmgr_row_carries_the_lock_not_the_preference() {
+    let mut s = state(sample_rows());
+    open_row(&mut s, 3, 'r');
+    let pick = s.pick().unwrap();
+    assert!(pick.tmgr && !pick.fork && pick.no_sandbox && !pick.bypass);
+}
+
+fn only(installed: [bool; 2]) -> State {
+    overlay(
+        agents(installed),
+        "/work/app".into(),
+        None,
+        Box::new(fake(sample_rows())),
+    )
+}
+
+#[test]
+fn the_overlay_starts_on_the_session_screen_with_every_flag_off() {
+    let mut s = overlay(
+        agents([true, true]),
+        "/work/app".into(),
+        Some("codex"),
+        Box::new(fake(sample_rows())),
+    );
+    assert_eq!(s.screen, Screen::Session);
+    assert_eq!(s.agent().id, "codex");
+    assert!(s.loading || !s.rows.is_empty());
+    s.pump();
+    assert_eq!(s.rows.len(), 3);
+    s.on_key(Key::Down);
+    s.on_key(Key::Down);
+    s.on_key(Key::Enter);
+    s.on_key(Key::Char('r'));
+    assert!(!s.bypass());
+    assert_eq!(s.memory().bypass, false);
+    assert!(!s.memory().no_sandbox);
+    assert_eq!(s.memory().kind, Kind::Resume);
+}
+
+#[test]
+fn the_overlay_falls_back_to_the_first_installed_agent_for_an_unknown_kind() {
+    for kind in [None, Some(""), Some("shell"), Some("claude")] {
+        let s = overlay(
+            agents([true, true]),
+            String::new(),
+            kind,
+            Box::new(fake(vec![])),
+        );
+        assert_eq!(s.agent().id, "claude-code", "{kind:?}");
+        assert_eq!(s.screen, Screen::Session);
+    }
+    let s = overlay(
+        agents([false, true]),
+        String::new(),
+        Some("claude-code"),
+        Box::new(fake(vec![])),
+    );
+    assert_eq!(s.agent().id, "codex");
+    assert_eq!(only([false, false]).screen, Screen::Agent);
+}
+
+#[test]
+fn escape_on_the_session_screen_goes_back_to_the_agent_screen_and_escape_there_closes() {
+    let mut s = only([true, true]);
+    assert!(matches!(feed_keys(&mut s, b"\x1b"), Fed::Stay));
+    assert_eq!(s.screen, Screen::Agent);
+    assert!(matches!(feed_keys(&mut s, b"\x1b"), Fed::Close));
+}
+
+#[test]
+fn ctrl_c_closes_from_every_screen() {
+    let mut s = only([true, true]);
+    assert!(matches!(feed_keys(&mut s, b"\x03"), Fed::Close));
+    let mut s = only([true, true]);
+    s.pump();
+    feed_keys(&mut s, b"\r");
+    assert_eq!(s.screen, Screen::Flags);
+    assert!(matches!(feed_keys(&mut s, b"\x03"), Fed::Close));
+}
+
+#[test]
+fn enter_on_the_new_row_picks_nothing_and_enter_on_a_row_picks_it_after_the_flags() {
+    let mut s = only([true, true]);
+    s.pump();
+    assert!(matches!(feed_keys(&mut s, b"\r\r"), Fed::Pick(None)));
+    let mut s = only([true, true]);
+    s.pump();
+    assert!(matches!(feed_keys(&mut s, b"\x1b[B\x1b[B\rr"), Fed::Stay));
+    let Fed::Pick(Some(p)) = feed_keys(&mut s, b"\r") else {
+        panic!("expected a pick");
+    };
+    assert_eq!(p.id, "tm-2");
+    assert!(p.tmgr && !p.fork && !p.bypass && !p.no_sandbox);
+}
+
+#[test]
+fn input_after_a_closing_key_is_not_applied() {
+    let mut s = only([true, true]);
+    s.pump();
+    assert!(matches!(feed_keys(&mut s, b"\x03abc"), Fed::Close));
+    assert!(s.filter.is_empty());
+}
+
+#[test]
+fn a_paste_goes_to_the_filter_without_its_markers_or_control_bytes() {
+    let mut s = only([true, true]);
+    s.pump();
+    feed_paste(&mut s, b"\x1b[200~fix\nthe menu\x1b[201~");
+    assert_eq!(s.filter, "fixthe menu");
+}
+
+#[test]
+fn rows_arriving_later_do_not_block_the_overlay() {
+    struct Slow(Cell<bool>);
+    impl Source for Slow {
+        fn load(&self, _: &str) {}
+        fn poll(&self) -> Option<(Vec<Row>, Hints)> {
+            self.0.get().then(|| (sample_rows(), Hints::default()))
+        }
+        fn search(&self, _: &str) -> Option<Vec<String>> {
+            None
+        }
+        fn allow_reading(&self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    let ready = Cell::new(false);
+    let mut s = overlay(
+        agents([true, true]),
+        String::new(),
+        None,
+        Box::new(Slow(ready.clone())),
+    );
+    assert!(s.loading);
+    assert!(render(&s, 100, 12).contains("loading"));
+    assert!(matches!(feed_keys(&mut s, b"\x1b[B\x1b[A"), Fed::Stay));
+    ready.set(true);
+    s.pump();
+    assert_eq!(s.rows.len(), 3);
+    assert!(matches!(feed_keys(&mut s, b"\r"), Fed::Stay));
+    assert_eq!(s.screen, Screen::Flags);
+    assert_eq!(s.pick(), None);
+}
+
+fn render_in(
+    s: &State,
+    host: view::Host,
+    width: u16,
+    height: u16,
+    area: ratatui::layout::Rect,
+) -> String {
+    let mut term = Terminal::new(TestBackend::new(width, height)).unwrap();
+    let look = view::Look {
+        level: ColorLevel::None,
+    };
+    term.draw(|f| view::draw_in(f, area, s, look, host))
+        .unwrap();
+    let buf = term.backend().buffer();
+    buf.content
+        .chunks(buf.area.width as usize)
+        .map(|row| {
+            row.iter()
+                .map(|c| c.symbol())
+                .collect::<String>()
+                .trim_end()
+                .to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn the_attach_host_names_attach_and_says_close_not_quit() {
+    let mut s = only([true, true]);
+    let area = ratatui::layout::Rect::new(0, 0, 100, 14);
+    s.pump();
+    let session = render_in(&s, view::ATTACH, 100, 14, area);
+    assert!(
+        session.contains(" tmgr attach \u{b7} session "),
+        "{session}"
+    );
+    assert!(
+        session.contains("Ctrl+C close") && !session.contains("quit"),
+        "{session}"
+    );
+    feed_keys(&mut s, b"\r");
+    let flags = render_in(&s, view::ATTACH, 100, 14, area);
+    assert!(flags.contains(" tmgr attach \u{b7} start "), "{flags}");
+    assert!(
+        flags.contains("Ctrl+C close") && !flags.contains("quit"),
+        "{flags}"
+    );
+    feed_keys(&mut s, b"\x1b\x1b");
+    let agent = render_in(&s, view::ATTACH, 100, 14, area);
+    assert!(agent.contains(" tmgr attach \u{b7} agent "), "{agent}");
+    assert!(
+        agent.contains("q or Esc close") && !agent.contains("quit"),
+        "{agent}"
+    );
+}
+
+#[test]
+fn the_run_host_through_draw_in_matches_draw_byte_for_byte() {
+    let mut s = state(sample_rows());
+    for step in 0..3 {
+        let full = ratatui::layout::Rect::new(0, 0, 100, 14);
+        assert_eq!(
+            render(&s, 100, 14).trim_end(),
+            render_in(&s, view::RUN, 100, 14, full).trim_end()
+        );
+        assert!(render(&s, 100, 14).contains("tmgr run"));
+        if step == 0 {
+            to_session(&mut s);
+        } else {
+            s.on_key(Key::Enter);
+        }
+    }
+}
+
+#[test]
+fn the_overlay_is_centred_capped_and_clears_what_is_behind_it() {
+    let area = ratatui::layout::Rect::new(0, 0, 200, 60);
+    let r = view::overlay_rect(area);
+    assert!(r.width <= 120 && r.height <= 32 && r.width >= 40 && r.height >= 12);
+    assert_eq!(r.x, (area.width - r.width) / 2);
+    assert_eq!(r.y, (area.height - r.height) / 2);
+    let small = ratatui::layout::Rect::new(0, 0, 30, 8);
+    let r = view::overlay_rect(small);
+    assert!(r.right() <= small.right() && r.bottom() <= small.bottom() && !r.is_empty());
+    let s = only([true, true]);
+    let mut term = Terminal::new(TestBackend::new(200, 60)).unwrap();
+    let look = view::Look {
+        level: ColorLevel::None,
+    };
+    term.draw(|f| {
+        for y in 0..60 {
+            f.render_widget(
+                ratatui::widgets::Paragraph::new("x".repeat(200)),
+                ratatui::layout::Rect::new(0, y, 200, 1),
+            );
+        }
+        view::draw_in(f, view::overlay_rect(f.area()), &s, look, view::ATTACH);
+    })
+    .unwrap();
+    let buf = term.backend().buffer();
+    let inside = buf[(r_mid(area).0, r_mid(area).1)].symbol().to_string();
+    assert_ne!(inside, "x");
+    assert_eq!(buf[(0, 0)].symbol(), "x");
+}
+
+fn r_mid(area: ratatui::layout::Rect) -> (u16, u16) {
+    let r = view::overlay_rect(area);
+    (r.x + r.width - 3, r.y + r.height - 2)
 }
