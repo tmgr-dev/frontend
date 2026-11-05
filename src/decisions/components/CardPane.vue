@@ -50,7 +50,7 @@
 				<span class="ic">{{ FACT_GLYPH[fact.state] }}</span>
 				<span>{{ fact.text }}</span>
 				<button
-					v-if="fact.link"
+					v-if="fact.link && isHttpUrl(fact.link)"
 					type="button"
 					class="chip"
 					:title="fact.link"
@@ -58,6 +58,9 @@
 				>
 					{{ linkLabel(fact.link) }}
 				</button>
+				<span v-else-if="fact.link" class="chip">{{
+					linkLabel(fact.link)
+				}}</span>
 			</div>
 		</div>
 

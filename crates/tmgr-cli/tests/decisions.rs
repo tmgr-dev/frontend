@@ -1522,8 +1522,7 @@ fn pr_values_that_are_not_urls_or_references_pass_through_to_links_pr() {
     let fake = serve(&st, silent());
     for (given, kept) in [
         ("PR-77", "PR-77"),
-        ("javascript:alert(1)", "javascript:alert(1)"),
-        ("file:///etc/passwd", "file:///etc/passwd"),
+        ("TM-9", "TM-9"),
         ("o/r#x", "o/r#x"),
         ("https://example.com/a b", "https://example.com/a b"),
     ] {
@@ -1533,14 +1532,75 @@ fn pr_values_that_are_not_urls_or_references_pass_through_to_links_pr() {
         assert_eq!(c["links"]["pr"], kept);
         assert!(c["links"].get("items").is_none(), "{given}: {c}");
     }
-    let out = ask(
-        &st,
-        &["--title", "T", "--pr", "o/r#5", "--pr", "javascript:x"],
-    );
+    let out = ask(&st, &["--title", "T", "--pr", "o/r#5", "--pr", "PR-77"]);
     assert_eq!(out.status.code(), Some(0));
     let c = fake.created().pop().unwrap();
     assert_eq!(c["links"]["pr"], "https://github.com/o/r/pull/5");
     assert_eq!(c["links"]["items"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn values_with_a_foreign_scheme_are_refused_on_pr_and_task() {
+    let st = stand();
+    let fake = serve(&st, silent());
+    for bad in [
+        "javascript:alert(1)",
+        "JAVASCRIPT:alert(1)",
+        "java\tscript:alert(1)",
+        "data:text/html,x",
+        "file:///etc/passwd",
+        "vbscript:x",
+    ] {
+        for flag in ["--pr", "--task"] {
+            let out = ask(&st, &["--title", "T", flag, bad]);
+            assert_ne!(out.status.code(), Some(0), "{flag} {bad:?}");
+            assert!(
+                text(&out.stderr).contains("http"),
+                "{flag} {bad:?}: {}",
+                text(&out.stderr)
+            );
+        }
+    }
+    let out = ask(
+        &st,
+        &["--title", "T", "--pr", "o/r#5", "--pr", "javascript:x"],
+    );
+    assert_ne!(out.status.code(), Some(0));
+    assert!(fake.created().is_empty());
+}
+
+#[test]
+fn mcp_refuses_foreign_schemes_on_pr_prs_task_and_fact_links() {
+    let st = stand();
+    let fake = serve(&st, silent());
+    let r = mcp(
+        &st,
+        "100",
+        "claude-code",
+        &[
+            ("ask_owner", json!({"title": "T", "pr": "javascript:x"})),
+            (
+                "ask_owner",
+                json!({"title": "T", "prs": ["data:text/html,x"]}),
+            ),
+            ("ask_owner", json!({"title": "T", "task": "file:///x"})),
+            (
+                "ask_owner",
+                json!({"title": "T", "facts": [{"state": "ok", "text": "t", "link": "javascript:x"}]}),
+            ),
+            (
+                "ask_owner",
+                json!({"title": "T", "facts": [{"state": "ok", "text": "t", "link": "TM-9"}], "task": "TM-9", "pr": "PR-77"}),
+            ),
+        ],
+    );
+    for resp in &r[..4] {
+        assert!(is_error(resp), "{resp}");
+    }
+    assert!(!is_error(&r[4]), "{}", r[4]);
+    let cards = fake.created();
+    assert_eq!(cards.len(), 1);
+    assert_eq!(cards[0]["facts"][0]["link"], "TM-9");
 }
 
 #[test]
@@ -1555,9 +1615,9 @@ fn mcp_pr_and_prs_share_the_same_rules() {
             ("ask_owner", json!({"title": "T", "pr": "PR-77"})),
             (
                 "ask_owner",
-                json!({"title": "T", "pr": "javascript:x", "prs": ["o/r#5"]}),
+                json!({"title": "T", "pr": "PR-78", "prs": ["o/r#5"]}),
             ),
-            ("ask_owner", json!({"title": "T", "prs": ["file:///x"]})),
+            ("ask_owner", json!({"title": "T", "prs": ["o/r#x"]})),
         ],
     );
     for resp in &r {
@@ -1566,11 +1626,11 @@ fn mcp_pr_and_prs_share_the_same_rules() {
     let cards = fake.created();
     assert_eq!(cards[0]["links"]["pr"], "PR-77");
     assert!(cards[0]["links"].get("items").is_none());
-    assert_eq!(cards[1]["links"]["pr"], "javascript:x");
+    assert_eq!(cards[1]["links"]["pr"], "PR-78");
     let items = cards[1]["links"]["items"].as_array().unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(items[0]["url"], "https://github.com/o/r/pull/5");
-    assert_eq!(cards[2]["links"]["pr"], "file:///x");
+    assert_eq!(cards[2]["links"]["pr"], "o/r#x");
     assert!(cards[2]["links"].get("items").is_none());
 }
 

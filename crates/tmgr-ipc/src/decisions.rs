@@ -73,6 +73,35 @@ pub fn valid_card_id(s: &str) -> bool {
         .is_some_and(|r| r.len() == 32 && r.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f')))
 }
 
+pub fn has_foreign_scheme(s: &str) -> bool {
+    let s: String = s
+        .trim_start_matches(|c: char| c <= ' ')
+        .chars()
+        .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
+        .collect();
+    let Some((scheme, rest)) = s.split_once(':') else {
+        return false;
+    };
+    let mut chars = scheme.chars();
+    let valid = chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+    if !valid {
+        return false;
+    }
+    let scheme = scheme.to_ascii_lowercase();
+    if matches!(scheme.as_str(), "http" | "https") {
+        return false;
+    }
+    let dangerous = matches!(
+        scheme.as_str(),
+        "javascript" | "data" | "vbscript" | "file" | "blob"
+    );
+    let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+    let port_like =
+        (1..=5).contains(&digits) && matches!(rest.as_bytes().get(digits), None | Some(b'/'));
+    dangerous || !port_like
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Source {
     #[serde(default)]
@@ -756,6 +785,41 @@ mod tests {
         })
         .unwrap();
         assert_eq!(got, ["older", "newer"]);
+    }
+
+    #[test]
+    fn foreign_schemes_are_detected_the_way_a_browser_reads_them() {
+        for bad in [
+            "javascript:alert(1)",
+            "JAVASCRIPT:alert(1)",
+            "java\tscript:alert(1)",
+            "java\nscript:alert(1)",
+            "\u{1}\u{2} javascript:alert(1)",
+            "  data:text/html,x",
+            "file:///etc/passwd",
+            "vbscript:x",
+            "javascript:1/alert(1)",
+            "ftp://example.com/a",
+            "mailto:a@b.c",
+        ] {
+            assert!(has_foreign_scheme(bad), "{bad:?}");
+        }
+        for ok in [
+            "https://example.com/a",
+            "HTTP://example.com/a",
+            "http://example.com/a b",
+            "PR-77",
+            "TM-9",
+            "o/r#5",
+            "o/r#x",
+            "#8974",
+            "localhost:3000",
+            "example.com:8080/path",
+            "PR 77: fix",
+            "",
+        ] {
+            assert!(!has_foreign_scheme(ok), "{ok:?}");
+        }
     }
 
     #[test]

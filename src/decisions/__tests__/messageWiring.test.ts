@@ -44,3 +44,15 @@ describe('App.vue', () => {
 		expect(source).toMatch(/<ChatPane[\s\S]*?@open-link="openLink"[\s\S]*?\/>/);
 	});
 });
+
+describe('CardPane.vue fact links', () => {
+	it('opens only http(s) fact links and shows anything else as plain text', () => {
+		const source = template('CardPane.vue');
+		expect(source).toMatch(
+			/<button[^>]*v-if="fact\.link && isHttpUrl\(fact\.link\)"[\s\S]*?@click="openLink\(fact\.link\)"/,
+		);
+		expect(source).toMatch(
+			/<span v-else-if="fact\.link" class="chip">\{\{\s*linkLabel\(fact\.link\)\s*\}\}<\/span>/,
+		);
+	});
+});

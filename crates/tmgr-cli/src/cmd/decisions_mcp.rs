@@ -80,7 +80,7 @@ pub fn defs() -> Vec<Value> {
                     "recommended": {"type": "integer", "minimum": 1, "maximum": 9, "description": "1-based number of the recommended option"},
                     "facts": {"type": "array", "maxItems": 50, "items": {"anyOf": [
                         {"type": "string", "description": "STATE:TEXT with STATE ok, bad or wait"},
-                        {"type": "object", "properties": {"state": {"type": "string", "enum": ["ok", "bad", "wait"]}, "text": {"type": "string"}, "link": {"type": "string"}}, "required": ["state", "text"], "additionalProperties": false}
+                        {"type": "object", "properties": {"state": {"type": "string", "enum": ["ok", "bad", "wait"]}, "text": {"type": "string"}, "link": {"type": "string", "description": "http(s) URL"}}, "required": ["state", "text"], "additionalProperties": false}
                     ]}},
                     "checks": {"type": "array", "maxItems": 50, "items": {"anyOf": [
                         {"type": "string", "description": "STATE:TEXT with STATE ok, bad or todo"},
@@ -89,8 +89,8 @@ pub fn defs() -> Vec<Value> {
                     "repo": {"type": "string", "description": "Local git repository to show the diff of"},
                     "base": {"type": "string", "description": "Base ref of the diff (with repo)"},
                     "head": {"type": "string", "description": "Head ref of the diff (default: the working tree)"},
-                    "task": {"type": "string", "description": "Task reference or URL"},
-                    "pr": {"type": "string", "description": "Pull request URL"},
+                    "task": {"type": "string", "description": "Task reference or http(s) URL"},
+                    "pr": {"type": "string", "description": "Pull request http(s) URL or reference"},
                     "repos": {"type": "array", "maxItems": MAX_DIFFS, "items": {
                         "type": "object",
                         "properties": {
@@ -110,7 +110,7 @@ pub fn defs() -> Vec<Value> {
                         "required": ["text"],
                         "additionalProperties": false
                     }, "description": "Diffs given as text. At most 8, 1 MiB in total; a bigger card is refused, never cut."},
-                    "prs": {"type": "array", "items": {"type": "string"}, "description": "Pull requests: URL or owner/repo#123"},
+                    "prs": {"type": "array", "items": {"type": "string"}, "description": "Pull requests: http(s) URL or owner/repo#123"},
                     "commits": {"type": "array", "items": {"type": "string"}, "description": "Commits: URL or owner/repo@<7-40 hex sha>"},
                     "tags": {"type": "array", "items": {"type": "string"}, "description": "Release tags: URL or owner/repo@tag"},
                     "links": {"type": "array", "items": {"type": "string"}, "description": "Other links: [LABEL=]URL. Only http and https; at most 50 links in all."},

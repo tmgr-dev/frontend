@@ -226,6 +226,15 @@ fn reject_scheme(s: &str, what: &str, form: &str) -> String {
     }
 }
 
+fn refuse_foreign_scheme(s: &str, what: &str) -> Result<(), String> {
+    if decisions::has_foreign_scheme(s) {
+        return Err(format!(
+            "{s:?}: only http and https URLs are allowed for a {what}"
+        ));
+    }
+    Ok(())
+}
+
 pub fn parse_pr(s: &str) -> Result<LinkItem, String> {
     let s = s.trim();
     if is_http(s) {
@@ -525,6 +534,14 @@ impl Spec {
         if patch_bytes > MAX_PATCH_BYTES {
             return Err(format!("patches may total at most {MAX_PATCH_BYTES} bytes"));
         }
+        if let Some(t) = &self.task {
+            refuse_foreign_scheme(t, "task")?;
+        }
+        for f in &self.facts {
+            if let Some(l) = &f.link {
+                refuse_foreign_scheme(l, "fact link")?;
+            }
+        }
         let mut items = Vec::new();
         let mut pr = None;
         for s in &self.prs {
@@ -534,6 +551,7 @@ impl Spec {
                     items.push(i);
                 }
                 Err(_) => {
+                    refuse_foreign_scheme(s, "pull request")?;
                     pr.get_or_insert_with(|| s.clone());
                 }
             }

@@ -189,7 +189,7 @@ fn sanitize(mut c: CardIn) -> Result<CardIn, String> {
   for f in &mut c.facts {
     f.state = pick(&f.state, &["ok", "bad", "wait"], "wait");
     f.text = cap(&f.text, FACT_MAX);
-    f.link = cap_opt(f.link.take(), URL_MAX);
+    f.link = safe_ref(f.link.take());
   }
   c.checks.truncate(MAX_ROWS);
   for k in &mut c.checks {
@@ -214,11 +214,15 @@ fn sanitize(mut c: CardIn) -> Result<CardIn, String> {
     return Err(format!("a card takes at most {MAX_LINKS} links"));
   }
   c.links.items = std::mem::take(&mut c.links.items).into_iter().filter_map(clean_link).collect();
-  c.links.task = cap_opt(c.links.task.take(), URL_MAX);
-  c.links.pr = cap_opt(c.links.pr.take(), URL_MAX);
+  c.links.task = safe_ref(c.links.task.take());
+  c.links.pr = safe_ref(c.links.pr.take());
   c.replaces = cap_opt(c.replaces.take(), 64);
   c.key = cap_opt(c.key.take(), KEY_MAX);
   Ok(c)
+}
+
+fn safe_ref(v: Option<String>) -> Option<String> {
+  cap_opt(v, URL_MAX).filter(|s| !tmgr_ipc::decisions::has_foreign_scheme(s))
 }
 
 fn clean_diff(mut d: DiffSpec) -> Option<DiffSpec> {
@@ -1260,6 +1264,31 @@ mod tests {
       ("pr", "https://github.com/o/r/pull/1"),
       ("url", "http://example.com/x")
     ]);
+  }
+
+  #[test]
+  fn foreign_schemes_on_task_pr_and_fact_links_are_dropped_without_an_error() {
+    let mut s = mem();
+    let fact = |link: &str| Fact { state: "ok".into(), text: "t".into(), link: Some(link.into()) };
+    let c = CardIn {
+      links: Links { task: Some("java\tscript:alert(1)".into()), pr: Some("JAVASCRIPT:alert(1)".into()), ..Default::default() },
+      facts: vec![fact("data:text/html,x"), fact("https://example.com/a"), fact("TM-9")],
+      ..card("x")
+    };
+    assert!(Store::check(&c).is_ok());
+    let id = s.create_id(c);
+    let v = s.get(&id).unwrap().unwrap();
+    assert_eq!((v.links.task, v.links.pr), (None, None));
+    assert_eq!(v.facts.iter().map(|f| f.link.as_deref()).collect::<Vec<_>>(), [None, Some("https://example.com/a"), Some("TM-9")]);
+  }
+
+  #[test]
+  fn bare_references_on_task_and_pr_are_kept() {
+    let mut s = mem();
+    let links = Links { task: Some("TM-9".into()), pr: Some("PR-77".into()), ..Default::default() };
+    let id = s.create_id(CardIn { links, ..card("x") });
+    let v = s.get(&id).unwrap().unwrap();
+    assert_eq!((v.links.task.as_deref(), v.links.pr.as_deref()), (Some("TM-9"), Some("PR-77")));
   }
 
   #[test]

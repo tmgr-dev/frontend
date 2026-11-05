@@ -393,6 +393,20 @@ mod tests {
   }
 
   #[test]
+  fn a_spooled_legacy_card_with_a_foreign_scheme_is_kept_without_the_link() {
+    let r = rig();
+    let legacy = CardIn {
+      links: tmgr_ipc::decisions::Links { pr: Some("javascript:alert(1)".into()), task: Some("TM-9".into()), ..Default::default() },
+      ..card("legacy")
+    };
+    let id = spool(&r.dir, &legacy).unwrap();
+    assert_eq!(r.hub.ingest_spool(&r.dir), 1);
+    assert!(!r.dir.join("inbox").join(format!("{id}.json")).exists());
+    let v = r.hub.get(&id).unwrap();
+    assert_eq!((v.title.as_str(), v.links.pr, v.links.task.as_deref()), ("legacy", None, Some("TM-9")));
+  }
+
+  #[test]
   fn spool_file_survives_a_store_error_and_invalid_cards_are_dropped() {
     let r = rig();
     let inbox = r.dir.join("inbox");
