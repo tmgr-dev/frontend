@@ -440,3 +440,30 @@ fn read_only_grant_denies_metadata_changes() {
     assert_eq!(after.mode(), before.mode());
     assert_eq!(after.mtime(), before.mtime());
 }
+
+#[test]
+fn read_only_grant_denies_links_into_the_folder() {
+    use std::os::unix::fs::MetadataExt;
+
+    let f = fx();
+    let objects = f.root.join("source/.git/objects");
+    fs::create_dir_all(objects.join("ab")).unwrap();
+    let object = objects.join("ab/cdef");
+    fs::write(&object, "data\n").unwrap();
+    fs::create_dir_all(f.cwd.join(".git/objects/info")).unwrap();
+    fs::write(
+        f.cwd.join(".git/objects/info/alternates"),
+        format!("{}\n", objects.display()),
+    )
+    .unwrap();
+    let o = f.run_with_objects(&objects, "cat .git/objects/info/alternates >/dev/null");
+    assert!(o.ok(), "{} {}", o.stdout, o.stderr);
+    let alt = "$(head -n1 .git/objects/info/alternates)/ab/cdef";
+    let o = f.run_with_objects(
+        &objects,
+        &format!("ln \"{alt}\" ./x 2>/dev/null; echo ln=$?"),
+    );
+    assert!(!o.stdout.contains("ln=0"), "{} {}", o.stdout, o.stderr);
+    assert!(!f.cwd.join("x").exists());
+    assert_eq!(object.metadata().unwrap().nlink(), 1);
+}

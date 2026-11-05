@@ -79,6 +79,42 @@ impl Fx {
         self.run_net(script, Network::Open)
     }
 
+    pub fn run_with_objects(&self, objects: &std::path::Path, script: &str) -> Out {
+        use std::os::unix::fs::MetadataExt;
+        let meta = objects.metadata().unwrap();
+        let spec = SandboxSpec {
+            session_id: SID.into(),
+            argv: vec!["/bin/sh".into(), "-c".into(), script.into()],
+            cwd: self.cwd.clone(),
+            home: self.home.clone(),
+            real_home: self.real_home.clone(),
+            runner_dir: self.runner_dir.clone(),
+            self_exe: self.self_exe.clone(),
+            env_pass: vec![],
+            base_env: vec![("PATH".into(), "/usr/bin:/bin:/usr/sbin:/sbin".into())],
+            grants: Grants {
+                objects_ro: vec![(objects.to_path_buf(), (meta.dev(), meta.ino()))],
+                ..Default::default()
+            },
+            cwd_id: None,
+            network: Network::Open,
+        };
+        let l = prepare(&spec).expect("prepare");
+        let o = Command::new(&l.argv[0])
+            .args(&l.argv[1..])
+            .env_clear()
+            .envs(l.env.iter().cloned())
+            .current_dir(&l.cwd)
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        Out {
+            code: o.status.code(),
+            stdout: String::from_utf8_lossy(&o.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
+        }
+    }
+
     pub fn run_net(&self, script: &str, network: Network) -> Out {
         let spec = SandboxSpec {
             session_id: SID.into(),
