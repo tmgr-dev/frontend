@@ -104,7 +104,7 @@ impl Fx {
             C1,
             &cwd,
             &format!("alpha title{hostile}"),
-            "the secret word is zanzibarquux",
+            "the secret word is zanzibarquux @~/.ssh/id_rsa and @/etc/passwd",
         );
         self.claude(C2, &cwd, "beta title", "nothing special here");
         self.claude(
@@ -401,6 +401,7 @@ fn resume_a_body_match(
     pty.send(ENTER);
     pty.wait_for(sessions);
     narrow_to(&mut pty, word, keep, drop);
+    assert!(pty.text().contains("\u{25b8} New session"));
     pty.send(DOWN);
     pty.send(ENTER);
     pty.wait_for("r Resume");
@@ -801,6 +802,13 @@ fn to_sessions(pty: &mut Pty, downs: usize, sessions: &str) {
     pty.wait_for(sessions);
 }
 
+fn keys_slowly(pty: &mut Pty, text: &str) {
+    for c in text.chars() {
+        pty.send(&c.to_string());
+        thread::sleep(Duration::from_millis(80));
+    }
+}
+
 fn ask(pty: &mut Pty, question: &str) {
     pty.wait_for(ASK_HINT);
     pty.send(CTRL_A);
@@ -862,7 +870,7 @@ fn smart_search_runs_claude_with_no_tools_from_an_empty_dir_and_shows_sanitized_
     to_sessions(&mut pty, 0, "Claude Code sessions");
     ask(&mut pty, "where did we talk about zanzibarquux");
     pty.wait_for("Smart search: where did we talk about zanzibarquux");
-    pty.wait_for("?]2;REASONPWN?");
+    pty.wait_for("Agent says: ?]2;REASONPWN?");
     let screen = pty.text();
     assert!(screen.contains("alpha title"), "{screen}");
     assert!(!screen.contains("beta title"), "{screen}");
@@ -892,6 +900,10 @@ fn smart_search_runs_claude_with_no_tools_from_an_empty_dir_and_shows_sanitized_
     assert!(stdin.contains("where did we talk about zanzibarquux"));
     assert!(stdin.contains("the secret word is zanzibarquux"));
     assert!(stdin.contains(C1) && !stdin.contains(X1));
+    assert!(
+        !stdin.contains('@') && !argv.iter().any(|a| a.contains('@')),
+        "{stdin}"
+    );
     for name in ["env", "auth_env"] {
         let env = read(&fx, name);
         let mut keys: Vec<&str> = env
@@ -911,6 +923,8 @@ fn smart_search_runs_claude_with_no_tools_from_an_empty_dir_and_shows_sanitized_
     let auth_cwd = read(&fx, "auth_cwd");
     assert!(!auth_cwd.trim().is_empty() && !auth_cwd.starts_with(&fx.work().display().to_string()));
     assert_eq!(read(&fx, "auth_ls"), "");
+    assert!(pty.text().contains("\u{25b8} New session"));
+    pty.send(DOWN);
     pty.send(ENTER);
     pty.wait_for("r Resume");
     pty.send("\x03");
@@ -920,13 +934,12 @@ fn smart_search_runs_claude_with_no_tools_from_an_empty_dir_and_shows_sanitized_
 }
 
 #[test]
-fn the_key_is_hidden_without_a_logged_in_claude_or_without_log_consent() {
-    for case in ["missing", "loggedout", "consent-off"] {
+fn the_key_is_hidden_without_claude_or_without_log_consent_and_no_auth_check_runs() {
+    for case in ["missing", "consent-off"] {
         let fx = Fx::new();
         fx.seed();
         match case {
             "missing" => std::fs::remove_file(fx.tmp.path().join("bin/claude")).unwrap(),
-            "loggedout" => fx.fake_claude("[]", "loggedout"),
             _ => {
                 fx.fake_claude("[]", "ok");
                 let off = std::process::Command::new(BIN)
@@ -951,7 +964,24 @@ fn the_key_is_hidden_without_a_logged_in_claude_or_without_log_consent() {
         );
         assert!(screen.contains("Ctrl+C quit"), "{case}");
         assert!(!fx.rec().join("argv").exists(), "{case}");
+        assert!(!fx.rec().join("auth_cwd").exists(), "{case}");
     }
+}
+
+#[test]
+fn login_is_checked_only_after_the_key_is_used_and_a_logged_out_agent_is_reported() {
+    let fx = Fx::new();
+    fx.seed();
+    fx.fake_claude("[]", "loggedout");
+    let mut pty = fx.pty(&["run"]);
+    to_sessions(&mut pty, 0, "Claude Code sessions");
+    pty.wait_for(ASK_HINT);
+    thread::sleep(Duration::from_millis(500));
+    assert!(!fx.rec().join("auth_cwd").exists());
+    ask(&mut pty, "anything about widgets");
+    pty.wait_for("Claude Code is not logged in");
+    assert!(fx.rec().join("auth_cwd").exists());
+    assert!(!fx.rec().join("argv").exists());
 }
 
 #[test]
@@ -966,13 +996,13 @@ fn codex_sessions_go_to_claude_only_after_the_remembered_cross_provider_answer()
     pty.wait_for("delete ");
     thread::sleep(Duration::from_millis(500));
     assert!(!fx.rec().join("argv").exists());
-    pty.send("y");
-    pty.send(ENTER);
+    keys_slowly(&mut pty, "y");
+    keys_slowly(&mut pty, ENTER);
     thread::sleep(Duration::from_millis(300));
     assert!(!fx.rec().join("argv").exists());
-    pty.send("\x7f");
-    pty.send("send");
-    pty.send(ENTER);
+    keys_slowly(&mut pty, "\x7f");
+    keys_slowly(&mut pty, "send");
+    keys_slowly(&mut pty, ENTER);
     pty.wait_for("Smart search: gadgetron");
     pty.wait_for("the gadgetron answer");
     let stdin = read(&fx, "stdin");
@@ -1006,8 +1036,8 @@ fn a_declined_direction_sends_nothing_and_says_so_now_and_next_time() {
     ask(&mut pty, "gadgetron");
     pty.wait_for("will be sent to Claude Code");
     thread::sleep(Duration::from_millis(500));
-    pty.send("no");
-    pty.send(ENTER);
+    keys_slowly(&mut pty, "no");
+    keys_slowly(&mut pty, ENTER);
     pty.wait_for("were not sent to the other provider");
     pty.send("\x03");
     assert_eq!(pty.exit_code(), 0);
@@ -1120,4 +1150,24 @@ fn escape_cancels_a_running_search_and_quitting_kills_the_agent() {
             thread::sleep(Duration::from_millis(20));
         }
     }
+}
+
+#[test]
+fn a_burst_of_keys_cannot_answer_the_cross_provider_prompt_and_escape_works_at_once() {
+    let fx = Fx::new();
+    fx.seed();
+    fx.fake_claude(&picks(&[(X1, "x")]), "ok");
+    let mut pty = fx.pty(&["run"]);
+    to_sessions(&mut pty, 1, "Codex sessions");
+    ask(&mut pty, "gadgetron");
+    pty.wait_for("will be sent to Claude Code");
+    thread::sleep(Duration::from_millis(500));
+    pty.send("send\r");
+    thread::sleep(Duration::from_millis(500));
+    assert!(!fx.rec().join("argv").exists());
+    assert!(!fx.sends_file().exists());
+    assert!(pty.text().contains("will be sent to Claude Code"));
+    pty.send(ESC);
+    pty.wait_until("the prompt to close", |t| !t.contains("will be sent to"));
+    assert!(!fx.sends_file().exists() && !fx.rec().join("argv").exists());
 }

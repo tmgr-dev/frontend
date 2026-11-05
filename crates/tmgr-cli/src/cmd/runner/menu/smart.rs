@@ -87,6 +87,10 @@ pub fn nonce() -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+fn flat(s: &str, max: usize) -> String {
+    clean_line(s, max).replace('@', "(at)")
+}
+
 pub fn build_prompt(
     question: &str,
     candidates: &[Candidate],
@@ -97,14 +101,14 @@ pub fn build_prompt(
     for c in candidates {
         let head = format!(
             "id: {}\ntitle: {}\n",
-            clean_line(&c.id, 80),
-            clean_line(&c.label, LABEL_CHARS)
+            flat(&c.id, 80),
+            flat(&c.label, LABEL_CHARS)
         );
         let mut block = head.clone();
         for f in &c.fragments {
             block.push_str(&format!(
                 "excerpt: {}\n",
-                clean_line(f, FRAGMENT_CHARS).replace(nonce, "")
+                flat(f, FRAGMENT_CHARS).replace(nonce, "")
             ));
         }
         if body.len() + block.len() > TOTAL_CHARS {
@@ -119,7 +123,7 @@ pub fn build_prompt(
     }
     let prompt = format!(
         "Question: {}\n\nCandidate sessions are between the markers.\n<<<DATA {nonce}>>>\n{body}<<<END {nonce}>>>\n",
-        clean_line(question, QUESTION_CHARS)
+        flat(question, QUESTION_CHARS)
     );
     (prompt, ids)
 }
@@ -236,18 +240,31 @@ fn wait(child: &mut Child, limit: Duration, stop: &AtomicBool) -> Option<ExitSta
     }
 }
 
-pub fn detect(path: Option<OsString>) -> Option<PathBuf> {
-    let bin = find_in(path, "claude")?;
-    let dir = tempfile::tempdir().ok()?;
-    let mut child = command(&bin, dir.path())
+pub fn find_claude(path: Option<OsString>) -> Option<PathBuf> {
+    find_in(path, "claude")
+}
+
+pub const NOT_LOGGED_IN: &str =
+    "Claude Code is not logged in. Run claude, sign in, then try again.";
+
+pub fn logged_in(bin: &Path, dir: &Path, stop: &AtomicBool, pid: &AtomicI32) -> bool {
+    let Ok(mut child) = command(bin, dir)
         .args(["auth", "status"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .ok()?;
-    let status = wait(&mut child, STATUS_TIMEOUT, &AtomicBool::new(false))?;
-    status.success().then_some(bin)
+    else {
+        return false;
+    };
+    let id = child.id() as i32;
+    pid.store(id, Ordering::SeqCst);
+    RUNNING.store(id, Ordering::SeqCst);
+    let status = wait(&mut child, STATUS_TIMEOUT, stop);
+    kill_group(id);
+    pid.store(0, Ordering::SeqCst);
+    let _ = RUNNING.compare_exchange(id, 0, Ordering::SeqCst, Ordering::SeqCst);
+    status.is_some_and(|s| s.success())
 }
 
 pub struct Job {
@@ -355,6 +372,7 @@ fn run(
 pub fn spawn(
     bin: PathBuf,
     limit: Duration,
+    check_login: bool,
     prepare: impl FnOnce() -> Result<Prepared, String> + Send + 'static,
 ) -> Result<Job, String> {
     let dir = tempfile::tempdir().map_err(|_| "Could not prepare a scratch folder.".to_string())?;
@@ -366,6 +384,13 @@ pub fn spawn(
         let result = prepare().and_then(|(prompt, ids)| {
             if s.load(Ordering::SeqCst) {
                 return Err(CANCELLED.to_string());
+            }
+            if check_login && !logged_in(&bin, &cwd, &s, &p) {
+                return Err(if s.load(Ordering::SeqCst) {
+                    CANCELLED.to_string()
+                } else {
+                    NOT_LOGGED_IN.to_string()
+                });
             }
             run(&bin, &cwd, prompt, limit, &s, &p).map(|out| (out, ids))
         });

@@ -223,7 +223,7 @@ fn session_lines(s: &State, look: Look, width: usize, height: usize) -> Vec<Line
             _ => {}
         }
         if let Some(why) = s.reason_for(&row.id) {
-            text.push_str(&format!(" \u{2014} {why}"));
+            text.push_str(&format!(" \u{2014} Agent says: {why}"));
         }
         let style = if on {
             look.selected()

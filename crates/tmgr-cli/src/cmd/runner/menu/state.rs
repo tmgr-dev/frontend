@@ -75,7 +75,7 @@ pub enum Smart {
     Confirm {
         question: String,
         typed: String,
-        since: Instant,
+        since: Option<Instant>,
     },
     Running(String),
 }
@@ -236,6 +236,16 @@ impl State {
         picks.iter().find(|(i, _)| i == id).map(|(_, r)| r.as_str())
     }
 
+    pub fn confirming(&self) -> bool {
+        matches!(self.smart, Smart::Confirm { .. })
+    }
+
+    pub fn mark_drawn(&mut self) {
+        if let Smart::Confirm { since, .. } = &mut self.smart {
+            since.get_or_insert_with(Instant::now);
+        }
+    }
+
     pub fn tick(&mut self) {
         if !matches!(self.smart, Smart::Running(_)) {
             return;
@@ -252,7 +262,7 @@ impl State {
             }
             Ok(picks) => {
                 self.found = Some((question, picks));
-                self.cursor = 1;
+                self.cursor = 0;
             }
             Err(e) => self.notice = Some(e),
         }
@@ -619,7 +629,10 @@ impl State {
                 since,
             } => {
                 let id = self.agent().id.clone();
-                if since.elapsed() < CONFIRM_DELAY {
+                if key == Key::Esc {
+                    return;
+                }
+                if since.is_none_or(|at| at.elapsed() < CONFIRM_DELAY) {
                     self.smart = Smart::Confirm {
                         question,
                         typed,
@@ -673,7 +686,7 @@ impl State {
                 self.smart = Smart::Confirm {
                     question,
                     typed: String::new(),
-                    since: Instant::now(),
+                    since: None,
                 }
             }
         }

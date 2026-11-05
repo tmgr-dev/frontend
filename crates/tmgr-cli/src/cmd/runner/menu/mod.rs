@@ -27,7 +27,6 @@ use std::ffi::OsString;
 use std::io::{stdin, stdout, IsTerminal};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
-use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tmgr_runner::profile::{self, ProfileSet};
 use tmgr_usage::paths::Env;
@@ -95,7 +94,7 @@ struct Recent {
 
 #[derive(Default)]
 struct Live {
-    runner: Arc<OnceLock<Option<PathBuf>>>,
+    runner: Option<PathBuf>,
     reads: Cell<Reads>,
     recent: RefCell<Vec<Recent>>,
     job: RefCell<Option<smart::Job>>,
@@ -108,12 +107,11 @@ struct Live {
 
 impl Live {
     fn start() -> Live {
-        let live = Live::default();
+        let live = Live {
+            runner: smart::find_claude(std::env::var_os("PATH")),
+            ..Live::default()
+        };
         live.ensure_indexer();
-        let slot = live.runner.clone();
-        std::thread::spawn(move || {
-            let _ = slot.set(smart::detect(std::env::var_os("PATH")));
-        });
         live
     }
 
@@ -221,7 +219,7 @@ impl Source for Live {
     }
 
     fn smart_agent(&self, browsed: &str) -> Option<String> {
-        self.runner.get()?.as_ref()?;
+        self.runner.as_ref()?;
         let reads = self.reads.get();
         let allowed = match browsed {
             "claude-code" => reads.claude,
@@ -261,9 +259,7 @@ impl Source for Live {
     fn smart_start(&self, browsed: &str, question: &str) -> Result<(), String> {
         let bin = self
             .runner
-            .get()
-            .cloned()
-            .flatten()
+            .clone()
             .ok_or("No agent is available for smart search.")?;
         let path = {
             let guard = self.indexer.borrow();
@@ -276,7 +272,7 @@ impl Source for Live {
         let (browsed, question) = (browsed.to_string(), question.to_string());
         let recent = self.recent.borrow().clone();
         self.job.borrow_mut().take();
-        let job = smart::spawn(bin, smart::TIMEOUT, move || {
+        let job = smart::spawn(bin, smart::TIMEOUT, true, move || {
             prepare(&Env::from_process(), &path, &browsed, &question, &recent)
         })?;
         *self.job.borrow_mut() = Some(job);
@@ -531,6 +527,7 @@ fn drive(state: &mut State) -> Option<Step> {
                 state.pump();
                 state.tick();
                 let _ = term.draw(|f| view::draw(f, state, look));
+                state.mark_drawn();
                 if signal::pending() != 0 {
                     return Some(Step::Quit);
                 }
@@ -551,6 +548,12 @@ fn drive(state: &mut State) -> Option<Step> {
                 };
                 match ev {
                     Event::Key(k) if k.kind == KeyEventKind::Press => {
+                        if state.confirming() && event::poll(Duration::ZERO).unwrap_or(false) {
+                            while event::poll(Duration::ZERO).unwrap_or(false) {
+                                let _ = event::read();
+                            }
+                            continue;
+                        }
                         if let Some(key) = key_of(k.code, k.modifiers) {
                             match state.on_key(key) {
                                 Step::Stay => {}
