@@ -12,6 +12,7 @@ mod attach_layouts;
 mod attach_links;
 mod attach_new;
 mod attach_notes;
+mod attach_past;
 mod attach_prompts;
 mod attach_push;
 mod attach_questions;

@@ -11,9 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_core::config::{self, Config};
 use tmgr_core::error::{Error, Kind, Result};
-use tmgr_ipc::api::{
-    CandidateInfo, CreateReq, RestoredRun, ResumeParams, RunCreateReq, SessionInfo, StateKind,
-};
+use tmgr_ipc::api::{CandidateInfo, CreateReq, RestoredRun, RunCreateReq, SessionInfo, StateKind};
 use tmgr_runner::client::Client;
 use tmgr_runner::daemon::{self, RunnerConfig};
 use tmgr_runner::exe;
@@ -1149,51 +1147,23 @@ fn resume(o: &Opts, a: &ResumeArgs) -> Result<i32> {
     if a.fork {
         return super::resume_any::fork_tmgr(o, a, &s);
     }
-    if s.state.kind != StateKind::Exited {
-        return Err(Error::new(
-            Kind::Conflict,
-            format!("{} is still running", clean(&s.name)),
-        ));
-    }
     let flagged = a.mode.is_some() || a.no_sandbox;
-    let known = s
-        .agent_session_id
-        .clone()
-        .filter(|id| a.no_sandbox && valid_resume_id(id));
-    if let Some(id) = &known {
-        for w in super::resume_any::check_known(id, false)? {
-            eprintln!("{w}");
-        }
+    let (warnings, known) = super::resume_any::tmgr_resume_checks(&s, a.no_sandbox)?;
+    for w in &warnings {
+        eprintln!("{w}");
     }
     eprintln!(
-        "Resume this session?\n  session  {}\n  name     {}\n  folder   {}",
-        clean(&s.id),
-        clean(&s.name),
-        clean(&s.cwd)
+        "{}",
+        super::resume_any::tmgr_resume_header(&s, a.no_sandbox).join("\n")
     );
-    if a.no_sandbox {
-        eprintln!("{}", super::resume_any::conversation_line(&s));
-    }
     let r = if flagged {
         let bypass = a.mode == Some(super::PermissionMode::Bypass);
         super::privilege::confirm(bypass, a.no_sandbox, false, false)?;
-        if let Some(id) = &known {
-            super::resume_any::check_known(id, false)?;
-        }
-        super::privilege::check_caps(&c.welcome().caps, bypass, a.no_sandbox)?;
-        super::privilege::check_external_cap(&c.welcome().caps)?;
-        c.resume_with(ResumeParams {
-            id: s.id.clone(),
-            cols: s.cols,
-            rows: s.rows,
-            permission_mode: a.mode.map(|m| m.as_str().to_string()),
-            no_sandbox: super::privilege::request(a.no_sandbox),
-        })
+        super::resume_any::resume_flagged(&mut c, &s, known.as_deref(), a.mode, a.no_sandbox)?
     } else {
         crate::interact::confirm("Start it again?", false, false)?;
-        c.resume(&s.id, s.cols, s.rows)
-    }
-    .map_err(rerr)?;
+        c.resume(&s.id, s.cols, s.rows).map_err(rerr)?
+    };
     if (flagged || a.attach) && !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         return attach::run(&runner_config()?, &r.session.id);
     }

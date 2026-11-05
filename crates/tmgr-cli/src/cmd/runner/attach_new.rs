@@ -434,7 +434,7 @@ pub(super) fn in_agent() -> bool {
         || tmgr_core::local::agent_session_detected()
 }
 
-fn task_err(e: Error) -> SpawnErr {
+pub(super) fn task_err(e: Error) -> SpawnErr {
     SpawnErr {
         message: clean(&e.message),
         hint: e.hint.as_deref().map(clean),
