@@ -32,6 +32,8 @@ export const linkLabel = (value: string): string => {
 	if (pull) return `PR #${pull[1]}`;
 	const issue = /\/issues\/(\d+)/.exec(url.pathname);
 	if (issue) return `#${issue[1]}`;
+	const tag = /\/releases\/tag\/([^/]+)/.exec(url.pathname);
+	if (tag) return tag[1];
 	const text = `${url.host}${url.pathname}`.replace(/\/$/, '');
 	return text.length > 30 ? `${text.slice(0, 29)}…` : text;
 };

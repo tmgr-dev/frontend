@@ -20,6 +20,9 @@ describe('format', () => {
 		expect(linkLabel('https://github.com/o/r/issues/9')).toBe('#9');
 		expect(linkLabel('https://example.com/a/b')).toBe('example.com/a/b');
 		expect(linkLabel('TM-780')).toBe('TM-780');
+		expect(linkLabel('https://github.com/o/r/releases/tag/v1.4.2')).toBe(
+			'v1.4.2',
+		);
 		expect(linkLabel(`https://example.com/${'x'.repeat(60)}`)).toHaveLength(30);
 	});
 
