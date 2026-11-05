@@ -15,6 +15,7 @@ pub enum Change {
 pub type Sink = Box<dyn Fn(&Change, usize) + Send + Sync>;
 
 const LISTEN_GRACE: Duration = Duration::from_secs(5);
+const ALIVE_STEP: Duration = Duration::from_secs(1);
 
 #[derive(Default)]
 struct Listen {
@@ -199,6 +200,17 @@ impl Hub {
     timeout: Duration,
     final_only: bool,
   ) -> Result<(String, Option<Event>), String> {
+    self.wait_while(id, since, timeout, final_only, &|| true)
+  }
+
+  pub fn wait_while(
+    self: &Arc<Self>,
+    id: &str,
+    since: u64,
+    timeout: Duration,
+    final_only: bool,
+    alive: &dyn Fn() -> bool,
+  ) -> Result<(String, Option<Event>), String> {
     let deadline = Instant::now() + timeout;
     let mut guard = self.lock();
     if guard.canon(id).is_err() {
@@ -209,6 +221,9 @@ impl Hub {
       }
     }
     let id = guard.canon(id)?;
+    if !alive() {
+      return Ok((id, None));
+    }
     let mut rose = !final_only && self.deliver(&id, since);
     if let Some(e) = guard.wait_event(&id, since, final_only)? {
       rose |= !final_only && !e.is_final() && self.deliver(&id, e.seq);
@@ -226,6 +241,9 @@ impl Hub {
     guard = self.lock();
     loop {
       if let Some(e) = guard.wait_event(&id, since, final_only)? {
+        if !alive() {
+          return Ok((id, None));
+        }
         let rose = !final_only && !e.is_final() && self.deliver(&id, e.seq);
         drop(guard);
         if rose {
@@ -234,10 +252,10 @@ impl Hub {
         return Ok((id, Some(e)));
       }
       let left = deadline.saturating_duration_since(Instant::now());
-      if left.is_zero() {
+      if left.is_zero() || !alive() {
         return Ok((id, None));
       }
-      guard = self.cv.wait_timeout(guard, left).unwrap_or_else(|p| p.into_inner()).0;
+      guard = self.cv.wait_timeout(guard, left.min(ALIVE_STEP)).unwrap_or_else(|p| p.into_inner()).0;
     }
   }
 

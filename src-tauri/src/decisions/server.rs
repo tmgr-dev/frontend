@@ -1,4 +1,5 @@
 use std::io;
+use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -76,7 +77,7 @@ fn handle(stream: UnixStream, hub: &Arc<Hub>, token: &str) {
     Ok(Some(line)) => match serde_json::from_slice::<Request>(&line) {
       Ok(req) if !token_ok(token, &req.token) => Response::err(UNAUTHORIZED),
       Ok(req) if req.v != PROTO => Response::err("unsupported protocol version"),
-      Ok(req) => dispatch(hub, req.op),
+      Ok(req) => dispatch(hub, req.op, &stream),
       Err(_) => Response::err("bad request"),
     },
     Ok(None) => return,
@@ -85,7 +86,15 @@ fn handle(stream: UnixStream, hub: &Arc<Hub>, token: &str) {
   let _ = write_line(&mut &stream, &resp);
 }
 
-fn dispatch(hub: &Arc<Hub>, op: Op) -> Response {
+fn peer_alive(stream: &UnixStream) -> bool {
+  let mut byte = 0u8;
+  let n = unsafe {
+    libc::recv(stream.as_raw_fd(), (&mut byte as *mut u8).cast(), 1, libc::MSG_PEEK | libc::MSG_DONTWAIT)
+  };
+  n != 0 && (n > 0 || io::Error::last_os_error().kind() == io::ErrorKind::WouldBlock)
+}
+
+fn dispatch(hub: &Arc<Hub>, op: Op, stream: &UnixStream) -> Response {
   let done = |r: Result<Response, String>| r.unwrap_or_else(Response::err);
   match op {
     Op::Ping => Response { ok: true, version: Some(env!("CARGO_PKG_VERSION").into()), ..Default::default() },
@@ -99,7 +108,7 @@ fn dispatch(hub: &Arc<Hub>, op: Op) -> Response {
     }
     Op::Wait { card_id, since, timeout_ms, final_only } => {
       let timeout = Duration::from_millis(timeout_ms.min(MAX_WAIT_MS));
-      done(hub.wait(&card_id, since, timeout, final_only).map(|(card_id, event)| Response {
+      done(hub.wait_while(&card_id, since, timeout, final_only, &|| peer_alive(stream)).map(|(card_id, event)| Response {
         ok: true,
         card_id: Some(card_id),
         event,
@@ -228,6 +237,32 @@ mod tests {
     assert!(c.wait(&id, 0, Duration::from_millis(150), false).unwrap().is_none());
     assert!(t.elapsed() >= Duration::from_millis(140));
     assert!(c.wait("c_00000000000000000000000000000000", 0, Duration::ZERO, false).is_err());
+  }
+
+  #[test]
+  fn a_dropped_client_releases_its_wait_long_before_the_timeout() {
+    let r = rig();
+    let c = Client::open_in(&r.dir).unwrap();
+    let id = c.create(card("Ship?")).unwrap();
+    let tok = std::fs::read_to_string(r.dir.join(TOKEN)).unwrap();
+    let line = format!(
+      r#"{{"v":1,"token":"{}","op":"wait","card_id":"{id}","since":0,"timeout_ms":30000,"final_only":false}}"#,
+      tok.trim()
+    );
+    let mut s = UnixStream::connect(r.dir.join(SOCK)).unwrap();
+    s.write_all(line.as_bytes()).unwrap();
+    s.write_all(b"\n").unwrap();
+    let t = Instant::now();
+    while !r.hub.get(&id).unwrap().listening {
+      assert!(t.elapsed() < Duration::from_secs(5), "never listening");
+      std::thread::sleep(Duration::from_millis(10));
+    }
+    drop(s);
+    let t = Instant::now();
+    while r.hub.get(&id).unwrap().listening {
+      assert!(t.elapsed() < Duration::from_secs(10), "still listening after the client left");
+      std::thread::sleep(Duration::from_millis(50));
+    }
   }
 
   #[test]
