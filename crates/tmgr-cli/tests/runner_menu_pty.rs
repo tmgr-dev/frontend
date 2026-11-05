@@ -646,3 +646,104 @@ fn sigterm_restores_the_terminal() {
         thread::sleep(Duration::from_millis(20));
     }
 }
+
+fn drain(master: i32, how_long: Duration) {
+    let end = Instant::now() + how_long;
+    let mut buf = [0u8; 4096];
+    while Instant::now() < end {
+        let mut pfd = libc::pollfd {
+            fd: master,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        if unsafe { libc::poll(&mut pfd, 1, 50) } > 0 {
+            unsafe { libc::read(master, buf.as_mut_ptr().cast(), buf.len()) };
+        }
+    }
+}
+
+#[test]
+fn closing_the_terminal_ends_the_menu() {
+    let fx = Fx::new();
+    let pair = native_pty_system()
+        .openpty(PtySize {
+            rows: 30,
+            cols: 120,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .unwrap();
+    let mut cmd = CommandBuilder::new(BIN);
+    cmd.arg("run");
+    cmd.env_clear();
+    cmd.cwd(fx.path("work"));
+    for (k, v) in fx.envs() {
+        cmd.env(k, v);
+    }
+    let mut child = pair.slave.spawn_command(cmd).unwrap();
+    drop(pair.slave);
+    drain(
+        pair.master.as_raw_fd().unwrap(),
+        Duration::from_millis(1500),
+    );
+    assert!(child.try_wait().unwrap().is_none());
+    drop(pair.master);
+    let end = Instant::now() + WAIT;
+    while child.try_wait().unwrap().is_none() {
+        if Instant::now() >= end {
+            let _ = child.kill();
+            panic!("the menu outlived its terminal");
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn a_signal_ends_a_menu_stuck_writing_to_its_terminal() {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    let fx = Fx::new();
+    let (mut master, mut slave) = (-1, -1);
+    let opened = unsafe {
+        libc::openpty(
+            &mut master,
+            &mut slave,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(opened, 0);
+    let (master, slave) = unsafe { (OwnedFd::from_raw_fd(master), OwnedFd::from_raw_fd(slave)) };
+    unsafe {
+        let flags = libc::fcntl(slave.as_raw_fd(), libc::F_GETFL);
+        libc::fcntl(slave.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK);
+        let block = [b'x'; 256];
+        while libc::write(slave.as_raw_fd(), block.as_ptr().cast(), block.len()) > 0 {}
+        libc::fcntl(slave.as_raw_fd(), libc::F_SETFL, flags);
+    }
+    let mut cmd = std::process::Command::new(BIN);
+    cmd.arg("run")
+        .env_clear()
+        .current_dir(fx.path("work"))
+        .envs(fx.envs())
+        .stdin(slave.try_clone().unwrap())
+        .stdout(slave.try_clone().unwrap())
+        .stderr(slave.try_clone().unwrap());
+    let mut child = cmd.spawn().unwrap();
+    thread::sleep(Duration::from_millis(1500));
+    assert!(child.try_wait().unwrap().is_none());
+    unsafe { libc::kill(child.id() as i32, libc::SIGTERM) };
+    let end = Instant::now() + WAIT;
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if Instant::now() >= end {
+            let _ = child.kill();
+            panic!("the menu ignored the signal");
+        }
+        thread::sleep(Duration::from_millis(50));
+    };
+    assert_eq!(status.code(), Some(128 + libc::SIGTERM));
+    drop(master);
+}
