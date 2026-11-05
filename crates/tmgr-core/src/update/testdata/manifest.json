@@ -1,0 +1,15 @@
+{
+  "product": "tmgr-cli",
+  "version": "1.0.95",
+  "channel": "stable",
+  "key_epoch": 1,
+  "expires_at": "2031-01-01T00:00:00Z",
+  "artifacts": [
+    {
+      "target": "x86_64-unknown-linux-musl",
+      "name": "tmgr-1.0.95-x86_64-unknown-linux-musl.tar.gz",
+      "sha256": "00",
+      "size": 1
+    }
+  ]
+}

@@ -3,6 +3,7 @@
 ## 1.0.95
 
 - Typing or pasting fast into an attached session no longer loses keystrokes when the machine is busy: the runner now waits for room on its link to the agent instead of dropping the input.
+- self-update: releases are now signed; install this version manually once.
 
 ## 1.0.94
 

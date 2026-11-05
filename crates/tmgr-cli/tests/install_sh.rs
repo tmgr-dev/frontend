@@ -13,6 +13,7 @@ const TARGETS: [&str; 4] = [
 ];
 const TEST_KEY: &str = "RWTESTONLYKEY";
 const PLACEHOLDER: &str = "TMGR-UPDATE-KEY-PLACEHOLDER";
+const RELEASE_KEY: &str = "RWRxvPqSANPrF8zhqP5ghFpWUIneuqN8KF97BwEcyYweZCT7tkkYRo9F";
 
 fn script() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../public/install.sh")
@@ -138,19 +139,25 @@ impl Stand {
         self.tmp.path().join("bin")
     }
 
-    fn keyed_script(&self) -> PathBuf {
+    fn script_with_key(&self, name: &str, key: &str) -> PathBuf {
         let body = std::fs::read_to_string(script()).unwrap();
-        let out = self.tmp.path().join("install-keyed.sh");
+        let shipped = format!("MINISIGN_PUBKEY=\"{RELEASE_KEY}\"");
+        assert!(body.contains(&shipped));
+        let out = self.tmp.path().join(name);
         std::fs::write(
             &out,
-            body.replacen(
-                &format!("MINISIGN_PUBKEY=\"{PLACEHOLDER}\""),
-                &format!("MINISIGN_PUBKEY=\"{TEST_KEY}\""),
-                1,
-            ),
+            body.replacen(&shipped, &format!("MINISIGN_PUBKEY=\"{key}\""), 1),
         )
         .unwrap();
         out
+    }
+
+    fn keyed_script(&self) -> PathBuf {
+        self.script_with_key("install-keyed.sh", TEST_KEY)
+    }
+
+    fn unkeyed_script(&self) -> PathBuf {
+        self.script_with_key("install-unkeyed.sh", PLACEHOLDER)
     }
 
     fn shim_dir(&self) -> PathBuf {
@@ -198,6 +205,10 @@ impl Stand {
     }
 
     fn run(&self, env: &[(&str, &str)]) -> Output {
+        self.run_script(&self.unkeyed_script(), env, false)
+    }
+
+    fn run_shipped(&self, env: &[(&str, &str)]) -> Output {
         self.run_script(&script(), env, false)
     }
 
@@ -221,6 +232,20 @@ impl Stand {
 
 fn stderr(o: &Output) -> String {
     String::from_utf8_lossy(&o.stderr).into_owned()
+}
+
+#[test]
+fn shipped_script_verifies_with_the_release_key() {
+    let s = Stand::new(Spec::default());
+    s.with_minisign();
+    let o = s.run_shipped(&[]);
+    assert!(!o.status.success());
+    assert!(
+        stderr(&o).contains("signature verification FAILED"),
+        "{}",
+        stderr(&o)
+    );
+    assert!(s.installed_version().is_none());
 }
 
 #[test]

@@ -76,11 +76,29 @@ fn v(s: &str) -> Version {
 }
 
 #[test]
-fn placeholder_key_fails_closed() {
-    let err = embedded_key().expect_err("placeholder must not load");
-    assert_eq!(err.kind, Kind::Forbidden);
-    assert_eq!(err.exit_code(), 5);
-    assert!(err.message.contains("no update key"));
+fn embedded_key_is_the_release_key() {
+    assert!(!EMBEDDED_KEY.contains(PLACEHOLDER_MARK));
+    assert!(EMBEDDED_KEY.contains("RWRxvPqSANPrF8zhqP5ghFpWUIneuqN8KF97BwEcyYweZCT7tkkYRo9F"));
+    embedded_key().expect("the embedded key must load");
+}
+
+#[test]
+fn a_signature_made_by_the_minisign_cli_with_an_encrypted_key_verifies() {
+    let key = key_from_text(include_str!("testdata/cli.pub")).unwrap();
+    let m = verify_manifest(
+        include_bytes!("testdata/manifest.json"),
+        include_str!("testdata/manifest.json.minisig"),
+        &key,
+    )
+    .unwrap();
+    assert_eq!(m.version, "1.0.95");
+    let other = keys();
+    assert!(verify_manifest(
+        include_bytes!("testdata/manifest.json"),
+        include_str!("testdata/manifest.json.minisig"),
+        &other.pk,
+    )
+    .is_err());
 }
 
 #[test]
