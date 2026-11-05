@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.82
+
+- Bare `tmgr run` on a terminal now opens a menu: pick the agent, then a new session or one to resume or fork, then the flags, with the final command shown before it starts. The menu remembers your last choice as a preselection and never skips the typed confirmation for bypass or no-sandbox.
+- Typing in the session list filters it through the local search index. Rows of a conversation running elsewhere, or whose folder is gone, say so up front.
+- The menu does not appear when flags are given, without a terminal, or inside an agent session: `tmgr run` behaves as before in those cases.
+
 ## 1.0.81
 
 - New `tmgr session list`: past sessions from the runner, Claude Code and Codex, with agent, project, time and the start of the conversation. `--agent`, `--search`, `--limit` and `--json` are supported.
