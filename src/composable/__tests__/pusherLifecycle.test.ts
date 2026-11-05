@@ -150,10 +150,17 @@ test('workspace cleanup and logout/login do not revive old subscriptions', () =>
 	api.setRealtimeUser(3);
 	pusher.subscribeToWorkspace(9, { onTaskUpdated: current });
 	expect(pusher.getConnectionInfo().subscriptions).toEqual([
-		'App.Workspace.9',
+		'App.Workspace.8',
 		'App.User.3',
+		'App.Workspace.9',
 	]);
 	expect(instances).toHaveLength(2);
+	instances[1].channels.get('App.User.3').callbacks['.task.updated']({
+		task: { id: 1 },
+		action: 'updated',
+		workspace_id: 7,
+	});
+	expect(old).not.toHaveBeenCalled();
 });
 
 test('legacy Vuex setup stays lazy and its getter shares the composable transport', () => {
@@ -558,6 +565,97 @@ describe('workspace events on the member channel', () => {
 			workspace_id: 7,
 		});
 		expect(board).toHaveBeenCalledTimes(1);
+	});
+
+	describe('handlers of views that stay mounted across a disconnect', () => {
+		const fire = (instance: any, userId: number, workspaceId: number) =>
+			instance.channels.get(`App.User.${userId}`).callbacks['.task.updated']({
+				task: { id: 1 },
+				action: 'updated',
+				workspace_id: workspaceId,
+			});
+
+		test('the same user logging back in gets workspace and user handlers back', () => {
+			const { api, instances, pusher } = setup();
+			const board = jest.fn();
+			const notified = jest.fn();
+			pusher.subscribeToWorkspace(7, { onTaskUpdated: board });
+			pusher.subscribeToUser(3, { onNotificationCreated: notified });
+			api.disconnectRealtime();
+			api.setRealtimeUser(null);
+			api.setRealtimeUser(3);
+			expect(instances).toHaveLength(2);
+			fire(instances[1], 3, 7);
+			instances[1].channels
+				.get('App.User.3')
+				.callbacks['.notification.created']({ notification: { id: 1 } });
+			expect(board).toHaveBeenCalledTimes(1);
+			expect(notified).toHaveBeenCalledTimes(1);
+		});
+
+		test('another user logging in inherits nothing from the previous one', () => {
+			const { api, instances, pusher } = setup();
+			const board = jest.fn();
+			const notified = jest.fn();
+			pusher.subscribeToWorkspace(7, { onTaskUpdated: board });
+			pusher.subscribeToUser(3, { onNotificationCreated: notified });
+			api.disconnectRealtime();
+			api.setRealtimeUser(null);
+			api.setRealtimeUser(4);
+			pusher.subscribeToWorkspace(8, {});
+			expect(pusher.getConnectionInfo().subscriptions).toEqual([
+				'App.Workspace.8',
+				'App.User.4',
+			]);
+			fire(instances[1], 4, 7);
+			expect(board).not.toHaveBeenCalled();
+			api.setRealtimeUser(null);
+			api.setRealtimeUser(3);
+			expect(pusher.getConnectionInfo().subscriptions).not.toContain(
+				'App.Workspace.7',
+			);
+		});
+
+		test('a direct switch to another user drops the previous handlers too', () => {
+			const { api, instances, pusher } = setup();
+			const board = jest.fn();
+			pusher.subscribeToWorkspace(7, { onTaskUpdated: board });
+			api.disconnectRealtime();
+			api.setRealtimeUser(4);
+			expect(pusher.getConnectionInfo().subscriptions).toEqual([]);
+			expect(instances).toHaveLength(1);
+		});
+
+		test('a view unmounted while signed out is not resurrected', () => {
+			const { api, instances, pusher } = setup();
+			const board = jest.fn();
+			const id = pusher.subscribeToWorkspace(7, { onTaskUpdated: board });
+			api.disconnectRealtime();
+			pusher.unsubscribeHandlerFromWorkspace(7, id);
+			api.setRealtimeUser(3);
+			expect(pusher.getConnectionInfo().subscriptions).toEqual([]);
+			expect(instances[instances.length - 1].channels.size).toBe(0);
+		});
+
+		test('a second disconnect keeps what the first one remembered', () => {
+			const { api, instances, pusher } = setup();
+			const board = jest.fn();
+			pusher.subscribeToWorkspace(7, { onTaskUpdated: board });
+			api.disconnectRealtime();
+			api.disconnectRealtime();
+			api.setRealtimeUser(3);
+			fire(instances[1], 3, 7);
+			expect(board).toHaveBeenCalledTimes(1);
+		});
+
+		test('a handler keeps its subscription id after coming back', () => {
+			const { api, pusher } = setup();
+			const id = pusher.subscribeToWorkspace(7, {});
+			api.disconnectRealtime();
+			api.setRealtimeUser(3);
+			pusher.unsubscribeHandlerFromWorkspace(7, id);
+			expect(pusher.getConnectionInfo().subscriptions).toEqual([]);
+		});
 	});
 
 	test('a user handler registered without a token keeps its id when the channel is joined', () => {

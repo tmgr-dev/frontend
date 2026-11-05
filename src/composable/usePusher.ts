@@ -83,6 +83,10 @@ let echoInstance: Echo | null = null;
 const subscriptions = new Map<string, ChannelSubscription>();
 let realtimeUserId: number | null = null;
 let workspaceFeed: { userId: number; id: string } | null = null;
+let dormant: {
+	userId: number;
+	channels: Map<string, Map<string, EventHandlers>>;
+} | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 const cancelReconnect = (): void => {
 	if (reconnectTimer !== null) clearTimeout(reconnectTimer);
@@ -174,7 +178,10 @@ export function deliverToUser(
 
 export function setRealtimeUser(userId: number | null | undefined): void {
 	realtimeUserId = Number(userId) > 0 ? Number(userId) : null;
-	if (workspaceFeed || hasCloudWorkspaceSubscribers()) usePusher();
+	if (dormant && realtimeUserId !== null && realtimeUserId !== dormant.userId) {
+		dormant = null;
+	}
+	if (workspaceFeed || dormant || hasCloudWorkspaceSubscribers()) usePusher();
 }
 
 export function disconnectRealtime(): void {
@@ -392,11 +399,15 @@ export function usePusher(): UsePusherReturn {
 	};
 
 	// Subscribe to a channel with event handlers - returns subscription ID for unsubscribing
-	const subscribe = (channelName: string, events: EventHandlers): string => {
+	const subscribe = (
+		channelName: string,
+		events: EventHandlers,
+		reuseId?: string,
+	): string => {
 		// Workspace channels are logical: their events arrive on the member's own user channel. Neither
 		// has a session without a cloud token.
 		if (channelName.startsWith('App.Workspace.') || !getAuthToken()) {
-			const subscriptionId = generateSubscriptionId();
+			const subscriptionId = reuseId ?? generateSubscriptionId();
 			const existing = subscriptions.get(channelName);
 			if (existing) {
 				existing.handlers.set(subscriptionId, events);
@@ -419,7 +430,7 @@ export function usePusher(): UsePusherReturn {
 			return '';
 		}
 
-		const subscriptionId = generateSubscriptionId();
+		const subscriptionId = reuseId ?? generateSubscriptionId();
 
 		try {
 			// Check if we already have a subscription to this channel
@@ -673,6 +684,7 @@ export function usePusher(): UsePusherReturn {
 		channelName: string,
 		subscriptionId: string,
 	): void => {
+		dormant?.channels.get(channelName)?.delete(subscriptionId);
 		const subscription = subscriptions.get(channelName);
 
 		if (subscription) {
@@ -698,6 +710,7 @@ export function usePusher(): UsePusherReturn {
 
 	// Unsubscribe from a channel entirely (removes all handlers)
 	const unsubscribe = (channelName: string): void => {
+		dormant?.channels.delete(channelName);
 		const subscription = subscriptions.get(channelName);
 
 		if (subscription && !subscription.channel) {
@@ -752,16 +765,42 @@ export function usePusher(): UsePusherReturn {
 		restartConnection();
 	};
 
+	// Views that outlive a disconnect get their handlers back for the same user only.
+	const rememberHandlers = (): typeof dormant => {
+		if (realtimeUserId === null) return dormant;
+		const own = userChannelName(realtimeUserId);
+		const channels = new Map<string, Map<string, EventHandlers>>();
+		for (const [name, sub] of subscriptions) {
+			if (name !== own && !CLOUD_WORKSPACE_CHANNEL.test(name)) continue;
+			const kept = new Map(sub.handlers);
+			if (name === own && workspaceFeed) kept.delete(workspaceFeed.id);
+			if (kept.size > 0) channels.set(name, kept);
+		}
+		return { userId: realtimeUserId, channels };
+	};
+
+	const restoreHandlers = (): void => {
+		if (!dormant || dormant.userId !== realtimeUserId) return;
+		if (!getAuthToken()) return;
+		const { channels } = dormant;
+		dormant = null;
+		for (const [name, handlers] of channels) {
+			for (const [id, events] of handlers) subscribe(name, events, id);
+		}
+	};
+
 	// Disconnect from Pusher
 	const disconnect = (): void => {
 		cancelReconnect();
 		reconnectConfig.currentAttempt = 0;
+		const remembered = echoInstance ? rememberHandlers() : null;
 		realtimeUserId = null;
 		workspaceFeed = null;
 		if (echoInstance) {
 			try {
 				// Unsubscribe from all channels
 				unsubscribeAll();
+				dormant = remembered;
 
 				// Disconnect Echo
 				const previousEcho = echoInstance;
@@ -841,6 +880,7 @@ export function usePusher(): UsePusherReturn {
 	if (!echoInstance) {
 		initializeEcho();
 	}
+	restoreHandlers();
 	syncWorkspaceFeed();
 
 	return {
