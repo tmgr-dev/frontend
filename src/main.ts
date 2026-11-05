@@ -279,7 +279,11 @@ const start = async () => {
 	}
 	app.use(router);
 	app.use(store);
-	watch(() => store.state.user?.id, setRealtimeUser, { immediate: true });
+	watch(
+		() => (store.state.token ? store.state.user?.id : null),
+		setRealtimeUser,
+		{ immediate: true },
+	);
 	installTours($axios, store, router);
 	installTourTelemetry();
 	installOnboardingFlow(store, router);

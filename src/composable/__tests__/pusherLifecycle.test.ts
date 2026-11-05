@@ -542,6 +542,56 @@ describe('workspace events on the member channel', () => {
 		expect(instances[0].channels.size).toBe(0);
 	});
 
+	test('the same user logging back in gets a live feed on the new connection', () => {
+		const { api, instances, pusher } = setup();
+		pusher.subscribeToWorkspace(7, {});
+		api.disconnectRealtime();
+		api.setRealtimeUser(3);
+		const board = jest.fn();
+		pusher.subscribeToWorkspace(7, { onTaskUpdated: board });
+		expect(instances).toHaveLength(2);
+		const channel = instances[1].channels.get('App.User.3');
+		expect(channel).toBeDefined();
+		channel.callbacks['.task.updated']({
+			task: { id: 1 },
+			action: 'updated',
+			workspace_id: 7,
+		});
+		expect(board).toHaveBeenCalledTimes(1);
+	});
+
+	test('a user handler registered without a token keeps its id when the channel is joined', () => {
+		Object.defineProperty(globalThis, 'localStorage', {
+			configurable: true,
+			value: { getItem: () => null },
+		});
+		const { api, instances } = loadPusher();
+		const pusher = api.usePusher();
+		const notified = jest.fn();
+		const board = jest.fn();
+		const userId = pusher.subscribeToUser(3, {
+			onNotificationCreated: notified,
+		});
+		pusher.subscribeToWorkspace(7, { onTaskUpdated: board });
+		Object.defineProperty(globalThis, 'localStorage', {
+			configurable: true,
+			value: { getItem: () => JSON.stringify({ token: 'test-token' }) },
+		});
+		api.setRealtimeUser(3);
+		const channel = instances[0].channels.get('App.User.3');
+		expect(channel).toBeDefined();
+		channel.callbacks['.notification.created']({ notification: { id: 1 } });
+		channel.callbacks['.task.updated']({
+			task: { id: 1 },
+			action: 'updated',
+			workspace_id: 7,
+		});
+		expect(notified).toHaveBeenCalledTimes(1);
+		expect(board).toHaveBeenCalledTimes(1);
+		pusher.unsubscribeHandler('App.User.3', userId);
+		expect(instances[0].leave).not.toHaveBeenCalled();
+	});
+
 	test('local workspaces never open the user channel', () => {
 		const { instances, pusher } = setup();
 		pusher.subscribeToWorkspace(-3, {});

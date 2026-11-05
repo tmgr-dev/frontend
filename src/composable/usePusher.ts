@@ -425,7 +425,7 @@ export function usePusher(): UsePusherReturn {
 			// Check if we already have a subscription to this channel
 			const existingSubscription = subscriptions.get(channelName);
 
-			if (existingSubscription) {
+			if (existingSubscription?.channel) {
 				// Add new handler to existing channel subscription
 				existingSubscription.handlers.set(subscriptionId, events);
 
@@ -444,7 +444,8 @@ export function usePusher(): UsePusherReturn {
 				: echoInstance.channel(channelName);
 
 			// Create handlers map and add the first handler
-			const handlers = new Map<string, EventHandlers>();
+			const handlers =
+				existingSubscription?.handlers ?? new Map<string, EventHandlers>();
 			handlers.set(subscriptionId, events);
 
 			// Set up event listeners that dispatch to ALL handlers
