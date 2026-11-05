@@ -15,6 +15,7 @@ use tmgr_usage::consent;
 use tmgr_usage::paths::{self, Env};
 
 const REASK: Duration = Duration::from_millis(500);
+const IDLE: Duration = Duration::from_secs(2);
 
 const STARTING: u8 = 0;
 const READY: u8 = 1;
@@ -179,7 +180,15 @@ impl Searcher {
         let out = answer.clone();
         std::thread::spawn(move || {
             let mut open: Option<(Index, u64)> = None;
-            while let Ok(mut req) = inbox.recv() {
+            loop {
+                let mut req = match inbox.recv_timeout(IDLE) {
+                    Ok(req) => req,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        drop_if_stale(&mut open, &path, &env);
+                        continue;
+                    }
+                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                };
                 while let Ok(next) = inbox.try_recv() {
                     req = next;
                 }
@@ -226,6 +235,14 @@ impl Searcher {
     }
 }
 
+fn drop_if_stale(open: &mut Option<(Index, u64)>, path: &Path, env: &Env) {
+    let inode = std::fs::metadata(path).ok().map(|m| m.ino());
+    let moved = open.as_ref().is_some_and(|(_, i)| Some(*i) != inode);
+    if open.is_some() && (moved || !Reads::of(env).any()) {
+        *open = None;
+    }
+}
+
 fn lookup(
     open: &mut Option<(Index, u64)>,
     path: &Path,
@@ -242,4 +259,32 @@ fn lookup(
     }
     let (ix, _) = open.as_ref()?;
     super::search_ids(ix, &req.query, req.complete)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::os::unix::fs::MetadataExt;
+
+    #[test]
+    fn an_open_connection_is_dropped_once_its_file_is_gone_or_reading_is_off() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("ix.sqlite");
+        Index::open(&path).unwrap();
+        let env = Env {
+            home: None,
+            vars: HashMap::from([(
+                "TMGR_USAGE_DIR".to_string(),
+                tmp.path().join("usage").display().to_string(),
+            )]),
+        };
+        let inode = std::fs::metadata(&path).unwrap().ino();
+        let mut open = Some((Index::open_read_only(&path).unwrap(), inode));
+        drop_if_stale(&mut open, &path, &env);
+        assert!(open.is_none(), "no consent means no connection");
+        let mut open = Some((Index::open_read_only(&path).unwrap(), inode + 1));
+        drop_if_stale(&mut open, &path, &env);
+        assert!(open.is_none(), "a replaced file means no connection");
+    }
 }

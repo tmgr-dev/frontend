@@ -312,6 +312,22 @@ fn look() -> view::Look {
     }
 }
 
+const MAX_POLL_ERRORS: u32 = 5;
+
+#[derive(Default)]
+struct Failures(u32);
+
+impl Failures {
+    fn reset(&mut self) {
+        self.0 = 0;
+    }
+
+    fn exhausted(&mut self) -> bool {
+        self.0 += 1;
+        self.0 >= MAX_POLL_ERRORS
+    }
+}
+
 fn drive(state: &mut State) -> Option<Step> {
     let look = look();
     let previous = std::sync::Arc::new(std::panic::take_hook());
@@ -325,16 +341,29 @@ fn drive(state: &mut State) -> Option<Step> {
         let _restore = Restore;
         enter_screen().ok().and_then(|()| {
             let mut term = Terminal::new(CrosstermBackend::new(stdout())).ok()?;
+            let mut failures = Failures::default();
             loop {
                 state.pump();
                 let _ = term.draw(|f| view::draw(f, state, look));
                 if signal::pending() != 0 {
                     return Some(Step::Quit);
                 }
-                if !event::poll(Duration::from_millis(200)).unwrap_or(false) {
-                    continue;
+                match event::poll(Duration::from_millis(200)) {
+                    Ok(false) => {
+                        failures.reset();
+                        continue;
+                    }
+                    Ok(true) => failures.reset(),
+                    Err(_) if failures.exhausted() => return Some(Step::Quit),
+                    Err(_) => {
+                        std::thread::sleep(Duration::from_millis(50));
+                        continue;
+                    }
                 }
-                match event::read().ok()? {
+                let Ok(ev) = event::read() else {
+                    return Some(Step::Quit);
+                };
+                match ev {
                     Event::Key(k) if k.kind == KeyEventKind::Press => {
                         if let Some(key) = key_of(k.code, k.modifiers) {
                             match state.on_key(key) {

@@ -18,6 +18,7 @@ use tmgr_usage::paths::db_path;
 use tmgr_usage::Store;
 
 const HOST: &str = env!("CARGO_BIN_EXE_tmgr-runner-host");
+const OLD_GROUP_BUSY: &str = "busy: background processes of the old session are still running; wait a moment and try again, or stop them with halt --kill";
 const U1: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
 const U2: &str = "0199a213-81c0-7800-8aa1-bbab2a035a53";
 
@@ -1633,10 +1634,7 @@ impl H {
                 no_sandbox: no_sandbox.then(NoSandbox::default),
             });
             match r {
-                Err(e)
-                    if e.to_string().contains("background processes")
-                        && Instant::now() < deadline =>
-                {
+                Err(e) if e.to_string() == OLD_GROUP_BUSY && Instant::now() < deadline => {
                     thread::sleep(Duration::from_millis(50));
                 }
                 other => return other,

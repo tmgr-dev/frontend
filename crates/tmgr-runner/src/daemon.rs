@@ -2960,7 +2960,7 @@ impl Runner {
         ) {
             return Err(api(
                 ErrorCode::Busy,
-                "background processes of the old session are still running; stop them with halt --kill",
+                "background processes of the old session are still running; wait a moment and try again, or stop them with halt --kill",
             ));
         }
         let prior = s.prior_text();

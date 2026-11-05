@@ -1,7 +1,7 @@
 use super::memory::{self, Kind, Memory};
 use super::state::*;
 use super::view;
-use super::{settle, wanted, Entry};
+use super::{settle, wanted, Entry, Failures, MAX_POLL_ERRORS};
 use crate::cmd::board::theme::ColorLevel;
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
@@ -147,6 +147,10 @@ fn open_row(s: &mut State, index: usize, kind: char) {
     s.on_key(Key::Enter);
     s.on_key(Key::Char(kind));
     assert_eq!(s.screen, Screen::Flags);
+}
+
+fn after_delay() {
+    std::thread::sleep(std::time::Duration::from_millis(350));
 }
 
 fn words(v: &[String]) -> String {
@@ -430,6 +434,7 @@ fn a_grants_reading_and_reloads_the_rows() {
     s.on_key(Key::Tab);
     assert_eq!(allowed.get(), 0);
     assert_eq!(s.notice.as_deref(), Some(ALLOW_CONFIRM));
+    after_delay();
     s.on_key(Key::Tab);
     assert_eq!(allowed.get(), 1);
     assert!(!s.reading_hint());
@@ -444,7 +449,9 @@ fn a_reports_a_refusal_and_keeps_the_hint() {
     src.refuse = true;
     let mut s = state_with(src, &Memory::default());
     to_session(&mut s);
-    press(&mut s, &[Key::Tab, Key::Tab]);
+    s.on_key(Key::Tab);
+    after_delay();
+    s.on_key(Key::Tab);
     assert_eq!(s.notice.as_deref(), Some("could not turn reading on"));
     assert!(s.reading_hint());
 }
@@ -459,9 +466,12 @@ fn typing_a_letter_never_grants_reading_and_a_stray_key_cancels_the_confirmation
     typed(&mut s, "a");
     assert_eq!(s.filter, "a");
     assert_eq!(allowed.get(), 0);
-    press(&mut s, &[Key::Tab, Key::Char('x'), Key::Tab]);
+    s.on_key(Key::Tab);
+    after_delay();
+    press(&mut s, &[Key::Char('x'), Key::Tab]);
     assert_eq!(allowed.get(), 0);
-    press(&mut s, &[Key::Tab]);
+    after_delay();
+    s.on_key(Key::Tab);
     assert_eq!(allowed.get(), 1);
 }
 
@@ -979,4 +989,81 @@ fn an_unprintable_current_folder_is_left_out_of_the_command() {
     press(&mut s, &[Key::Enter, Key::Enter]);
     assert_eq!(words(&s.argv()), "tmgr run --agent claude-code");
     assert!(render(&s, 100, 12).contains("(current folder)"));
+}
+
+#[test]
+fn a_tty_that_keeps_failing_ends_the_menu_after_a_few_errors_and_a_success_resets_it() {
+    let mut f = Failures::default();
+    for _ in 0..MAX_POLL_ERRORS - 1 {
+        assert!(!f.exhausted());
+    }
+    f.reset();
+    for _ in 0..MAX_POLL_ERRORS - 1 {
+        assert!(!f.exhausted());
+    }
+    assert!(f.exhausted());
+}
+
+#[test]
+fn a_second_tab_right_after_the_first_does_not_grant_reading() {
+    let src = fake(sample_rows());
+    src.hints.set(true);
+    let allowed = src.allowed.clone();
+    let mut s = state_with(src, &Memory::default());
+    to_session(&mut s);
+    press(&mut s, &[Key::Tab, Key::Tab, Key::Tab]);
+    assert_eq!(allowed.get(), 0);
+    after_delay();
+    s.on_key(Key::Tab);
+    assert_eq!(allowed.get(), 1);
+}
+
+#[test]
+fn rows_replaced_before_the_flags_cannot_change_which_session_starts() {
+    struct Reorder(Rc<Cell<bool>>);
+    impl Source for Reorder {
+        fn load(&self, _: &str) {}
+        fn poll(&self) -> Option<(Vec<Row>, Hints)> {
+            let mut rows = sample_rows();
+            if self.0.get() {
+                rows.reverse();
+                rows.retain(|r| r.id != "tm-3");
+            }
+            Some((rows, Hints::default()))
+        }
+        fn search(&self, _: &str) -> Option<Vec<String>> {
+            None
+        }
+        fn allow_reading(&self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    let changed = Rc::new(Cell::new(false));
+    let mut s = State::new(
+        agents([true, true]),
+        "/work/app".into(),
+        &Memory::default(),
+        Box::new(Reorder(changed.clone())),
+    );
+    to_session(&mut s);
+    press(
+        &mut s,
+        &[Key::Down, Key::Down, Key::Down, Key::Enter, Key::Char('r')],
+    );
+    assert_eq!(s.screen, Screen::Flags);
+    assert_eq!(words(&s.argv()), "tmgr resume tm-3 --attach --no-sandbox");
+    changed.set(true);
+    s.loading = true;
+    s.pump();
+    assert_eq!(s.screen, Screen::Session);
+    assert_eq!(s.notice.as_deref(), Some(GONE_FROM_LIST));
+}
+
+#[test]
+fn rows_replaced_before_the_flags_keep_the_same_session_when_it_is_still_listed() {
+    let mut s = state(sample_rows());
+    open_row(&mut s, 3, 'r');
+    s.rows.reverse();
+    s.rows.retain(|r| r.id != "ext-1");
+    assert_eq!(words(&s.argv()), "tmgr resume tm-3 --attach --no-sandbox");
 }

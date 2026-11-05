@@ -1,4 +1,7 @@
 use super::memory::{Kind, Memory};
+use std::time::{Duration, Instant};
+
+const ALLOW_DELAY: Duration = Duration::from_millis(300);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
@@ -86,10 +89,10 @@ pub enum Field {
     NoSandbox,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum Target {
     New,
-    Existing(usize, Kind),
+    Existing(String, Kind),
 }
 
 pub const SANDBOX_LOCKED_ON: &str =
@@ -104,6 +107,7 @@ pub const FORK_KEEPS_SETTINGS: &str = "A fork keeps the settings the session was
 pub const FORK_CODEX: &str = "Forking a Codex session of tmgr is not supported yet.";
 pub const FORK_UNSANDBOXED: &str =
     "A session started without the sandbox cannot be forked by its tmgr id.";
+pub const GONE_FROM_LIST: &str = "That session is no longer in the list.";
 pub const CONFIRM_NEXT: &str = "You will be asked to type a confirmation next.";
 pub const LIVE_REASON: &str = "Running in another terminal: fork instead";
 pub const GONE_REASON: &str =
@@ -132,7 +136,7 @@ pub struct State {
     pub flag_cursor: usize,
     pub notice: Option<String>,
     pub loading: bool,
-    allow_pending: bool,
+    allow_shown: Option<Instant>,
     chosen: Option<String>,
     frozen: Vec<usize>,
 }
@@ -172,7 +176,7 @@ impl State {
             flag_cursor: 0,
             notice: None,
             loading: false,
-            allow_pending: false,
+            allow_shown: None,
             chosen: None,
             frozen: Vec::new(),
         }
@@ -242,6 +246,12 @@ impl State {
             self.hints = hints;
             self.loading = false;
             self.cursor = 0;
+            if self.screen == Screen::Flags {
+                if self.target_gone() {
+                    self.leave_gone_target();
+                }
+                self.flag_cursor = self.flag_cursor.min(self.fields().len().saturating_sub(1));
+            }
         }
     }
 
@@ -287,10 +297,10 @@ impl State {
     }
 
     pub fn fields(&self) -> Vec<Field> {
-        match self.target {
+        match &self.target {
             Target::New => vec![Field::Folder, Field::Bypass, Field::NoSandbox],
-            Target::Existing(i, Kind::Fork)
-                if self.rows.get(i).is_some_and(|r| r.kind == RowKind::Tmgr) =>
+            Target::Existing(_, Kind::Fork)
+                if self.target_row().is_some_and(|r| r.kind == RowKind::Tmgr) =>
             {
                 Vec::new()
             }
@@ -299,10 +309,21 @@ impl State {
     }
 
     fn target_row(&self) -> Option<&Row> {
-        match self.target {
+        match &self.target {
             Target::New => None,
-            Target::Existing(i, _) => self.rows.get(i),
+            Target::Existing(id, _) => self.rows.iter().find(|r| &r.id == id),
         }
+    }
+
+    fn target_gone(&self) -> bool {
+        matches!(self.target, Target::Existing(..)) && self.target_row().is_none()
+    }
+
+    fn leave_gone_target(&mut self) {
+        self.screen = Screen::Session;
+        self.choice = None;
+        self.cursor = 0;
+        self.notice = Some(GONE_FROM_LIST.into());
     }
 
     pub fn no_sandbox_lock(&self) -> Option<(bool, &'static str)> {
@@ -332,9 +353,9 @@ impl State {
     }
 
     pub fn kind(&self) -> Kind {
-        match self.target {
+        match &self.target {
             Target::New => Kind::New,
-            Target::Existing(_, k) => k,
+            Target::Existing(_, k) => *k,
         }
     }
 
@@ -397,7 +418,7 @@ impl State {
         }
         self.notice = None;
         if key != Key::Tab {
-            self.allow_pending = false;
+            self.allow_shown = None;
         }
         match self.screen {
             Screen::Agent => self.agent_key(key),
@@ -457,15 +478,17 @@ impl State {
                 self.filter.pop();
                 self.cursor = 0;
             }
-            Key::Tab if self.reading_hint() => {
-                if self.allow_pending {
-                    self.allow_pending = false;
+            Key::Tab if self.reading_hint() => match self.allow_shown {
+                Some(at) if at.elapsed() >= ALLOW_DELAY => {
+                    self.allow_shown = None;
                     self.allow();
-                } else {
-                    self.allow_pending = true;
+                }
+                Some(_) => self.notice = Some(ALLOW_CONFIRM.into()),
+                None => {
+                    self.allow_shown = Some(Instant::now());
                     self.notice = Some(ALLOW_CONFIRM.into());
                 }
-            }
+            },
             Key::Char(c) if clean_char(c) => {
                 self.filter.push(c);
                 self.cursor = 0;
@@ -547,15 +570,15 @@ impl State {
     }
 
     fn choose(&mut self, kind: Kind) {
-        let Some(i) = self
+        let Some(id) = self
             .chosen
-            .as_ref()
-            .and_then(|id| self.rows.iter().position(|r| &r.id == id))
+            .clone()
+            .filter(|id| self.rows.iter().any(|r| &r.id == id))
         else {
             self.choice = None;
             return;
         };
-        self.target = Target::Existing(i, kind);
+        self.target = Target::Existing(id, kind);
         self.choice = None;
         self.enter_flags();
     }
@@ -579,6 +602,7 @@ impl State {
             Key::Up | Key::Down | Key::Tab if n == 0 => {}
             Key::Up => self.flag_cursor = (self.flag_cursor + n - 1) % n,
             Key::Down | Key::Tab => self.flag_cursor = (self.flag_cursor + 1) % n,
+            Key::Enter if self.target_gone() => self.leave_gone_target(),
             Key::Enter => return Step::Start(self.argv()),
             Key::Backspace if self.current_field() == Some(Field::Folder) => {
                 self.folder.pop();
