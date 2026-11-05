@@ -11,6 +11,7 @@ import { DESKTOP_BAR_DISMISS_KEY } from '@/utils/openDesktopLink';
 import { requestCache } from '@/utils/requestCache';
 import { isInSecondaryWindow } from '@/utils/taskWindow';
 import { browserTimeZone, isValidTimeZone } from '@/utils/timezone';
+import { tokenSubject } from '@/utils/tokenSync';
 import {
 	isKnownWorkspaceId,
 	overlayCurrentWorkspace,
@@ -54,6 +55,19 @@ const invalidateWorkspaceScopedCache = () => {
 	requestCache.invalidate('workspace-statuses');
 	requestCache.invalidate(/^tasks-status-/);
 	requestCache.clearInFlight();
+};
+
+const forgetCloudUser = (state, { bump = true } = {}) => {
+	if (!(state.user?.id > 0)) return;
+	if (bump) state.sessionGeneration++;
+	state.user = {};
+	state.userSettingsMap = {};
+	state.defaultWorkspaceId = null;
+	state.clientWorkspaceId = null;
+	requestCache.setContext('guest');
+	requestCache.clear();
+	if (state.dailyRoutines)
+		dailyRoutinesModule.mutations.reset(state.dailyRoutines);
 };
 
 const state = {
@@ -215,9 +229,19 @@ const mutations = {
 		state.localProfile = profile ?? null;
 	},
 	setToken(state, token) {
-		if ((state.token == null) !== (token == null)) {
+		const flipped = (state.token == null) !== (token == null);
+		if (flipped) {
 			state.sessionGeneration++;
 			localStorageSafe()?.removeItem(DESKTOP_BAR_DISMISS_KEY);
+		}
+		if (state.token != null && token == null) {
+			forgetCloudUser(state, { bump: false });
+		} else if (token != null) {
+			const subject = tokenSubject(token);
+			if (subject != null && state.user?.id > 0 && state.user.id !== subject) {
+				forgetCloudUser(state, { bump: !flipped });
+				disconnectRealtime();
+			}
 		}
 		if (token == null) {
 			disconnectRealtime();
@@ -233,6 +257,8 @@ const mutations = {
 		state.token = token;
 	},
 	setUser(state, user) {
+		const subject = tokenSubject(state.token);
+		if (subject != null && user?.id > 0 && user.id !== subject) return;
 		if (state.user?.id !== user?.id) {
 			state.sessionGeneration++;
 			requestCache.clear();

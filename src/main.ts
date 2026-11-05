@@ -1,11 +1,12 @@
+import { getUser } from '@/actions/tmgr/user';
 import alertPlugin from '@/alert';
-import { setRealtimeUser } from '@/composable/usePusher';
+import { disconnectRealtime, setRealtimeUser } from '@/composable/usePusher';
 import components from '@/globalComponents.ts';
 import { installLocalWorkspaces } from '@/local/install';
 import { activeLocalWorkspace } from '@/local/runtime';
 import { installOnboardingFlow } from '@/onboarding/boot';
 import { mask, VueTheMask } from '@/plugins/VueTheMask';
-import $axios from '@/plugins/axios';
+import $axios, { hardLogout } from '@/plugins/axios';
 import Selectable from '@/plugins/directives/selectable';
 import { startPrivacy } from '@/privacy/boot';
 import router from '@/router';
@@ -30,9 +31,9 @@ import { findInjectedScripts } from '@/utils/injectedScripts';
 import { installLocalUpgrade, markLocalUpgrade } from '@/utils/localUpgrade';
 import { requestCache } from '@/utils/requestCache';
 import { installRoutineSnapshotInvalidation } from '@/utils/routineSnapshotInvalidation';
+import { syncSessionFromStorage } from '@/utils/sessionSync';
 import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { setTimeZoneSource } from '@/utils/timezone';
-import { tokenFromStorageEvent } from '@/utils/tokenSync';
 import {
 	applyRelayedEvent,
 	installWindowEventRelay,
@@ -245,13 +246,19 @@ window
 	});
 
 // Another tab rotated the token (or logged out): adopt it here so this tab
-// never replays a retired refresh token. setToken re-persists the same value,
-// which fires no storage event in this tab and a no-op one in the others.
+// never replays a retired refresh token, and follow an account change or a
+// sign-out. setToken re-persists the same value, which fires no storage event
+// in this tab and a no-op one in the others.
 window.addEventListener('storage', (event) => {
-	const result = tokenFromStorageEvent(event, store.state.token);
-	if (result.changed) {
-		store.commit('setToken', result.token);
-	}
+	void syncSessionFromStorage(event, {
+		getToken: () => store.state.token,
+		getUserId: () => store.state.user?.id,
+		commitToken: (token) => store.commit('setToken', token),
+		signOut: () => hardLogout({ expired: false }),
+		clearInFlight: () => requestCache.clearInFlight(),
+		getUser,
+		disconnectRealtime,
+	});
 });
 
 const app = createApp(App);

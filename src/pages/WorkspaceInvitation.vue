@@ -113,8 +113,9 @@
 		},
 
 		methods: {
-			loginWithCorrectEmail() {
-				this.$store.dispatch('logout');
+			async loginWithCorrectEmail() {
+				await this.$store.dispatch('logout');
+				this.$router.push({ name: 'Login' });
 			},
 			async goToWorkspace() {
 				requestCache.invalidate('workspaces');

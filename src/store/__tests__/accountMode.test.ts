@@ -1,4 +1,5 @@
 import * as firstRun from '@/onboarding/localFirstRun';
+import * as tokenSync from '@/utils/tokenSync';
 import * as workspaceContext from '@/utils/workspaceContext';
 import { readFileSync } from 'fs';
 import { ModuleKind, transpileModule } from 'typescript';
@@ -64,6 +65,7 @@ function fixture(desktop = true) {
 					invalidate: jest.fn(),
 				},
 			},
+			'@/utils/tokenSync': tokenSync,
 			'@/utils/workspaceContext': workspaceContext,
 			'@/composable/usePusher': { disconnectRealtime: jest.fn() },
 			'@/utils/desktop': { isDesktopApp: () => desktop },

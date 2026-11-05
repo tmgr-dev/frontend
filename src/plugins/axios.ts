@@ -90,7 +90,7 @@ const refreshAuthToken = createTokenRefresher({
 	onSuccess: (envelope) => store.commit('setToken', envelope),
 });
 
-const hardLogout = async () => {
+const hardLogout = async ({ expired = true } = {}) => {
 	if (store.getters.isLocalOnly) {
 		return;
 	}
@@ -106,7 +106,7 @@ const hardLogout = async () => {
 		await getCurrentWindow().close();
 		return;
 	}
-	if (store.state.token) {
+	if (expired && store.state.token) {
 		markSessionExpired();
 	}
 	await store.dispatch('logout');
@@ -219,4 +219,5 @@ $axios.interceptors.response.use(
 	},
 );
 
+export { hardLogout };
 export default $axios;

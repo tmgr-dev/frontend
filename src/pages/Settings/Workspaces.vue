@@ -237,13 +237,13 @@
 			isOpenInvitation.value = route.query.hasOwnProperty('invite');
 			isLoading.value = false;
 			workspaces.value = loadedWorkspaces;
-			activeWorkspace.value = store.state.user.settings.find(
+			activeWorkspace.value = store.state.user?.settings?.find(
 				(settingInStore) => settingInStore.key === 'current_workspace',
 			);
 			defaultWorkspaceSelection.value = store.state.defaultWorkspaceId;
 
 			const mappedSettingWithUserSettings = loadedSettings.map((setting) => {
-				const settingFromStoreWithValue = store.state.user.settings.find(
+				const settingFromStoreWithValue = store.state.user?.settings?.find(
 					(settingInStore) => settingInStore.id === setting.id,
 				);
 				return settingFromStoreWithValue
@@ -462,7 +462,7 @@
 				store.commit('updateUserWorkspaceSetting', {
 					workspaceId: workspace.id,
 				});
-				activeWorkspace.value = store.state.user.settings.find(
+				activeWorkspace.value = store.state.user?.settings?.find(
 					(settingInStore) => settingInStore.key === 'current_workspace',
 				);
 				store
