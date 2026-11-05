@@ -39,6 +39,16 @@ cargo run -p tmgr-cli -- version --json
 
 Tag `cli-vX.Y.Z` (must equal the `tmgr-cli` version and have a `## X.Y.Z` section in `tmgr-cli/CHANGELOG.md`) runs `.github/workflows/cli-release.yml`: musl Linux and macOS archives, `SHA256SUMS`, `manifest.json` (product, version, channel, key epoch, expiry, per-target sha256 and size), minisign signatures of all three, build provenance attestation, macOS codesign and notarization. When a signing secret is missing the release is published as a prerelease and says what was skipped. `workflow_dispatch` is a dry run that publishes nothing.
 
+## Verify a download
+
+Release assets of the CLI (`cli-v*`) and the desktop app (`desktop-v*`) carry a GitHub build provenance attestation. With the GitHub CLI:
+
+```bash
+gh attestation verify <downloaded-file> -R tmgr-dev/frontend
+```
+
+It checks that the file was built by this repository's release workflow and prints the workflow and the commit.
+
 ## Configuration and credentials
 
 - Config: `$XDG_CONFIG_HOME/tmgr/config.toml` (`~/.config/tmgr` when unset, also on macOS). Keys: `server` (default `https://api.tmgr.dev`), `default_workspace`, `web_url` (derived from `server` when unset), `branch_template` (default `{key_lower}-{slug}`; placeholders `key`, `key_lower`, `code_lower`, `seq`, `slug`), `review_status` (default `Review`). `tmgr config list|get|set|path` edits only these keys; `[projects]` (project code to repository path) is written by `tmgr project map`.

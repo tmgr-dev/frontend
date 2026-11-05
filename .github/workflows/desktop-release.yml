@@ -284,6 +284,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     env:
       APP_VERSION: ${{ needs.meta.outputs.version }}
       DRY_RUN: ${{ needs.meta.outputs.dry_run }}
@@ -336,6 +338,11 @@ jobs:
         with:
           name: latest-json-dry-run
           path: release/latest.json
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: env.DRY_RUN == 'false'
+        with:
+          subject-path: release/*
 
       - name: publish GitHub release
         if: env.DRY_RUN == 'false'
