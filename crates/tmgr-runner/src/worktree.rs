@@ -1303,11 +1303,18 @@ mod tests {
                     .unwrap_or_default();
                 for line in table.lines().filter(|l| l.contains("post-checkout")) {
                     eprintln!("stalled hook process: {line}");
+                    #[cfg(target_os = "macos")]
+                    if let Some(pid) = line.split_whitespace().next() {
+                        let sampled = Command::new("sample").args([pid, "1"]).output();
+                        if let Ok(o) = sampled {
+                            eprintln!("{}", String::from_utf8_lossy(&o.stdout));
+                        }
+                    }
                 }
             })
         };
         let st =
-            run_bounded(plain, Duration::from_secs(60), 1 << 20, 1 << 20).unwrap_or_else(|why| {
+            run_bounded(plain, Duration::from_secs(30), 1 << 20, 1 << 20).unwrap_or_else(|why| {
                 done.store(true, Ordering::SeqCst);
                 panic!(
                     "plain git worktree add: {why}; marks: {:?}; control exists: {}",

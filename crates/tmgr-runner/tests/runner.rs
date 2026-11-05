@@ -702,13 +702,18 @@ fn send_reports_a_full_input_queue() {
     let info = c.create(h.req(&["/bin/sleep", "30"])).unwrap();
     let chunk = "xxxxxxx\n".repeat(8 * 1024);
     let mut refused = None;
-    for _ in 0..200 {
+    let mut sent = 0;
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_secs(10) {
         if let Err(e) = c.send(&info.id, &chunk) {
             refused = Some(e.to_string());
             break;
         }
+        sent += 1;
     }
-    let e = refused.expect("a stalled agent must make sessions.send fail");
+    let e = refused.unwrap_or_else(|| {
+        panic!("a stalled agent must make sessions.send fail; {sent} sends of 64 KB were accepted")
+    });
     assert!(e.contains("busy") && e.contains("input queue full"), "{e}");
 }
 
