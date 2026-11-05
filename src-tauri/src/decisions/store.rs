@@ -317,7 +317,7 @@ fn resolve_side(rows: &[ThreadRow], file: &str, line: u32, given: Option<String>
   }
   match threads.iter().find(|(_, pending)| *pending).or(threads.last()) {
     Some((side, _)) => (*side).clone(),
-    None => Some("new".into()),
+    None => None,
   }
 }
 
@@ -1507,11 +1507,11 @@ mod tests {
   }
 
   #[test]
-  fn sideless_reply_on_a_fresh_line_goes_to_the_new_side() {
+  fn sideless_reply_on_a_fresh_line_stays_sideless() {
     let mut s = mem();
     let id = s.create_id(card("Review"));
     s.agent_message(&id, None, vec![lr("a.rs", 4, "note")]).unwrap();
-    assert_eq!(sides(&s, &id).pop().unwrap().2.as_deref(), Some("new"));
+    assert_eq!(sides(&s, &id).pop().unwrap().2, None);
     let l = LineComment { side: Some("old".into()), ..lr("a.rs", 5, "was") };
     s.agent_message(&id, None, vec![l]).unwrap();
     assert_eq!(sides(&s, &id).pop().unwrap().2.as_deref(), Some("old"));

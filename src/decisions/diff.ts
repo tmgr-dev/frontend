@@ -88,8 +88,10 @@ export const remapLegacyThreads = (
 ): Map<string, CardMessage[]> => {
 	const out = new Map<string, CardMessage[]>();
 	for (const [key, list] of threads) {
-		const target =
-			anchors.map((a) => a.get(key)).find((a) => a !== undefined)?.key ?? key;
+		const plain = key.replace(/:(old|new)$/, '');
+		const found = (k: string) =>
+			anchors.map((a) => a.get(k)).find((a) => a !== undefined);
+		const target = (found(key) ?? found(plain))?.key ?? key;
 		const merged = [...(out.get(target) ?? []), ...list];
 		out.set(
 			target,

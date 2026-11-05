@@ -101,6 +101,52 @@ describe('remapLegacyThreads', () => {
 	});
 });
 
+describe('remapLegacyThreads without a matching side', () => {
+	const tail: DiffView = {
+		truncated: false,
+		files: [
+			{
+				path: 'a.rs',
+				added: 0,
+				removed: 1,
+				hunks: [
+					{
+						header: '@@ -1,2 +1,1 @@',
+						lines: [
+							{ kind: 'ctx', old: 1, new: 1, text: 'x' },
+							{ kind: 'del', old: 2, text: 'gone' },
+						],
+					},
+				],
+			},
+		],
+	};
+
+	it('shows a new-side thread on a line that exists only as a deleted line', () => {
+		const { threads } = splitMessages([
+			msg({ seq: 1, file: 'a.rs', line: 2, side: 'new' }),
+		]);
+		const out = remapLegacyThreads(threads, [buildAnchors(tail)]);
+		expect(out.get('a.rs:2:old')?.map((m) => m.seq)).toEqual([1]);
+	});
+
+	it('shows an old-side thread on a line that was not deleted', () => {
+		const { threads } = splitMessages([
+			msg({ seq: 1, file: 'a.rs', line: 1, side: 'old' }),
+		]);
+		const out = remapLegacyThreads(threads, [buildAnchors(tail)]);
+		expect(out.get('a.rs:1:new')?.map((m) => m.seq)).toEqual([1]);
+	});
+
+	it('keeps an explicit side when that side has an anchor', () => {
+		const { threads } = splitMessages([
+			msg({ seq: 1, file: 'a.rs', line: 2, side: 'old' }),
+		]);
+		const out = remapLegacyThreads(threads, [buildAnchors(tail)]);
+		expect(out.get('a.rs:2:old')?.map((m) => m.seq)).toEqual([1]);
+	});
+});
+
 describe('splitMessages', () => {
 	it('separates line threads from card chat, ordered by seq', () => {
 		const { threads, chat } = splitMessages([
