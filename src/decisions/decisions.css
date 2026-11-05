@@ -768,6 +768,28 @@ kbd {
 	font-size: 10.5px;
 	padding: 0 6px;
 }
+.tabs .totals {
+	margin-left: auto;
+	align-self: center;
+	font: 12px var(--font-mono);
+	white-space: nowrap;
+	display: inline-flex;
+	gap: 6px;
+}
+.tabs .totals .a {
+	color: var(--done);
+}
+.tabs .totals .d {
+	color: var(--fix);
+}
+.tabs .totals .partial {
+	color: var(--fg-subtle);
+	font-family: var(--font-sans);
+	font-size: 11px;
+}
+.tabs .totals + .refresh {
+	margin-left: 8px;
+}
 .tabs .refresh {
 	margin-left: auto;
 }

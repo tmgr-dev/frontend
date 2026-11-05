@@ -6,6 +6,7 @@ workflow copies that section into the GitHub release and the in-app update notes
 ## 0.9.101 — 2026-11-05
 
 - Decisions: agent replies in the card chat and in diff line comments now show as formatted text: headings, lists, code, tables and links. Your own messages stay exactly as you typed them.
+- Decisions: the Changes view shows the total lines added and removed across the whole card in its header, marked partial when a file could not be counted.
 
 ## 0.9.100 — 2026-11-05
 

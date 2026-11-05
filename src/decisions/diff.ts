@@ -1,4 +1,10 @@
-import type { CardMessage, CardView, DiffLine, DiffView } from './types';
+import type {
+	CardMessage,
+	CardView,
+	DiffGroup,
+	DiffLine,
+	DiffView,
+} from './types';
 
 export interface LineAnchor {
 	fileIndex: number;
@@ -118,3 +124,22 @@ export const isLatestRequest = (
 	id: string,
 	ticket: number,
 ): boolean => seqs[id] === ticket;
+
+export interface DiffTotals {
+	added: number;
+	removed: number;
+	exact: boolean;
+}
+
+export const diffTotals = (groups: DiffGroup[]): DiffTotals => {
+	const totals: DiffTotals = { added: 0, removed: 0, exact: true };
+	for (const { view } of groups) {
+		if (view.truncated || view.error) totals.exact = false;
+		for (const file of view.files) {
+			totals.added += file.added;
+			totals.removed += file.removed;
+			if (file.hunks.length === 0) totals.exact = false;
+		}
+	}
+	return totals;
+};

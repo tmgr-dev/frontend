@@ -4,6 +4,7 @@ import {
 	awaitsOwner,
 	beginRequest,
 	buildAnchors,
+	diffTotals,
 	fixMessageText,
 	hasChanges,
 	isLatestRequest,
@@ -192,5 +193,55 @@ describe('request gate', () => {
 		expect(isLatestRequest(seqs, 'a', first)).toBe(false);
 		expect(isLatestRequest(seqs, 'a', second)).toBe(true);
 		expect(isLatestRequest(seqs, 'b', other)).toBe(true);
+	});
+});
+
+describe('diffTotals', () => {
+	const file = (added: number, removed: number, hunks = 1) => ({
+		path: 'f',
+		added,
+		removed,
+		hunks: Array.from({ length: hunks }, () => ({ header: '@@', lines: [] })),
+	});
+	const group = (
+		files: ReturnType<typeof file>[],
+		view: { truncated?: boolean; error?: string } = {},
+	) => ({
+		key: 'k',
+		label: 'l',
+		kind: 'repo' as const,
+		view: { files, truncated: false, ...view },
+	});
+
+	it('sums added and removed lines across all files and groups', () => {
+		expect(
+			diffTotals([group([file(100, 30), file(5, 1)]), group([file(15, 3)])]),
+		).toEqual({ added: 120, removed: 34, exact: true });
+	});
+
+	it('is exact and zero for no groups', () => {
+		expect(diffTotals([])).toEqual({ added: 0, removed: 0, exact: true });
+	});
+
+	it('is not exact when a group is truncated', () => {
+		expect(diffTotals([group([file(2, 1)], { truncated: true })])).toEqual({
+			added: 2,
+			removed: 1,
+			exact: false,
+		});
+	});
+
+	it('is not exact when a group failed to load', () => {
+		expect(
+			diffTotals([group([file(2, 1)]), group([], { error: 'boom' })]).exact,
+		).toBe(false);
+	});
+
+	it('is not exact when a file has no countable lines', () => {
+		expect(diffTotals([group([file(0, 0, 0), file(3, 0)])])).toEqual({
+			added: 3,
+			removed: 0,
+			exact: false,
+		});
 	});
 });

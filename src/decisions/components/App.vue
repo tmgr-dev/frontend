@@ -57,6 +57,19 @@
 							>
 								Chat <kbd>C</kbd>
 							</button>
+							<span
+								v-if="tab === 'diff' && totals"
+								class="totals"
+								data-totals
+								:title="
+									totals.exact
+										? 'Total lines changed in this card'
+										: 'Some files could not be counted, so the total is partial'
+								"
+								><span class="a">+{{ totals.added }}</span>
+								<span class="d">−{{ totals.removed }}</span
+								><span v-if="!totals.exact" class="partial">partial</span></span
+							>
 							<button
 								v-if="tab === 'diff' && currentHasChanges"
 								type="button"
@@ -148,9 +161,11 @@
 	} from '../answer';
 	import {
 		beginRequest,
+		diffTotals,
 		hasChanges,
 		isLatestRequest,
 		splitMessages,
+		type DiffTotals,
 		type RequestSeqs,
 	} from '../diff';
 	import { mapKey } from '../keys';
@@ -229,6 +244,10 @@
 			},
 			currentHasChanges(): boolean {
 				return this.current ? hasChanges(this.current) : false;
+			},
+			totals(): DiffTotals | null {
+				const groups = this.currentDiff?.groups;
+				return groups ? diffTotals(groups) : null;
 			},
 			currentDiff(): DiffSlot | null {
 				return this.current ? (this.diffs[this.current.id] ?? null) : null;

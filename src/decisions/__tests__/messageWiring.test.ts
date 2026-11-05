@@ -32,6 +32,12 @@ describe.each(['ChatPane.vue', 'DiffPane.vue'])('%s', (name) => {
 });
 
 describe('App.vue', () => {
+	it('shows the diff totals in the tab header', () => {
+		expect(template('App.vue')).toMatch(
+			/<span[^>]*v-if="tab === 'diff' && totals"[\s\S]*?\+\{\{ totals\.added \}\}[\s\S]*?−\{\{ totals\.removed \}\}/,
+		);
+	});
+
 	it('opens links from the chat and the diff thread', () => {
 		const source = template('App.vue');
 		expect(source).toMatch(/<DiffPane[\s\S]*?@open-link="openLink"[\s\S]*?\/>/);
