@@ -352,6 +352,14 @@ pub fn run() {
     .on_window_event(|window, event| {
       runner::commands::on_window_event(window, event);
       persona_llm::on_window_event(window.label(), event);
+      #[cfg(unix)]
+      if window.label() == decisions::LABEL {
+        match event {
+          WindowEvent::CloseRequested { .. } => log::info!("[decisions] window close requested"),
+          WindowEvent::Destroyed => log::info!("[decisions] window destroyed"),
+          _ => {}
+        }
+      }
       if let WindowEvent::Focused(false) = event {
         if window.label() == quick_add::LABEL {
           let _ = window.hide();
