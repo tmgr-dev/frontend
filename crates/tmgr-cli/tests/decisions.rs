@@ -1555,7 +1555,7 @@ fn values_with_a_foreign_scheme_are_refused_on_pr_and_task() {
             let out = ask(&st, &["--title", "T", flag, bad]);
             assert_ne!(out.status.code(), Some(0), "{flag} {bad:?}");
             assert!(
-                text(&out.stderr).contains("http"),
+                text(&out.stderr).contains("only http and https"),
                 "{flag} {bad:?}: {}",
                 text(&out.stderr)
             );

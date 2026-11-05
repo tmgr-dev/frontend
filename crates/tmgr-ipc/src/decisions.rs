@@ -96,10 +96,24 @@ pub fn has_foreign_scheme(s: &str) -> bool {
         scheme.as_str(),
         "javascript" | "data" | "vbscript" | "file" | "blob"
     );
-    let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
-    let port_like =
-        (1..=5).contains(&digits) && matches!(rest.as_bytes().get(digits), None | Some(b'/'));
-    dangerous || !port_like
+    let known = matches!(
+        scheme.as_str(),
+        "ftp"
+            | "mailto"
+            | "tel"
+            | "sms"
+            | "vscode"
+            | "tauri"
+            | "filesystem"
+            | "ms-msdt"
+            | "ssh"
+            | "git"
+            | "ws"
+            | "wss"
+            | "intent"
+            | "itms"
+    );
+    dangerous || known || rest.starts_with("//")
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -801,6 +815,11 @@ mod tests {
             "javascript:1/alert(1)",
             "ftp://example.com/a",
             "mailto:a@b.c",
+            "vscode:1/x",
+            "ms-msdt:1/x",
+            "tauri:1/x",
+            "filesystem:1/x",
+            "tel:12345",
         ] {
             assert!(has_foreign_scheme(bad), "{bad:?}");
         }
@@ -816,6 +835,12 @@ mod tests {
             "localhost:3000",
             "example.com:8080/path",
             "PR 77: fix",
+            "TM-9: fix login",
+            "PR-77: title",
+            "TM-839:x",
+            "Task: TM-9",
+            "localhost:3000?x=1",
+            "example.com:8080#a",
             "",
         ] {
             assert!(!has_foreign_scheme(ok), "{ok:?}");
