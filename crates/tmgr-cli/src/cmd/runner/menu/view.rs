@@ -1,6 +1,7 @@
 use super::memory::Kind;
 use super::state::{
-    Availability, Field, RowKind, Screen, State, CONFIRM_NEXT, LIVE_REASON, READING_OFF,
+    Availability, Field, RowKind, Screen, State, CONFIRM_NEXT, FORK_KEEPS_SETTINGS, LIVE_REASON,
+    READING_OFF,
 };
 use crate::cmd::board::theme::ColorLevel;
 use ratatui::style::{Color, Modifier, Style};
@@ -145,6 +146,9 @@ fn session_lines(s: &State, look: Look, width: usize, height: usize) -> Vec<Line
     if let Some(n) = &s.notice {
         foot.push(line(n, width, look.warn()));
     }
+    if let Some(status) = s.status() {
+        foot.push(line(&status, width, look.dim()));
+    }
     foot.push(match s.choice {
         Some(kind) => choice_line(kind, s, look, width),
         None => keys(
@@ -183,6 +187,7 @@ fn session_lines(s: &State, look: Look, width: usize, height: usize) -> Vec<Line
         );
         match avail {
             Availability::Live => text.push_str(" (live)"),
+            Availability::Ok if row.maybe_live => text.push_str(" (may still be running)"),
             Availability::FolderGone => text.push_str(" (folder gone)"),
             Availability::Unreadable => text.push_str(" (not readable)"),
             _ => {}
@@ -217,10 +222,11 @@ fn choice_line(kind: Kind, s: &State, look: Look, width: usize) -> Line<'static>
     } else {
         mark(Kind::Resume, "r Resume")
     };
-    let text = format!(
-        "{resume}  {}   Tab switch \u{b7} Enter confirm \u{b7} Esc cancel",
-        mark(Kind::Fork, "f Fork")
-    );
+    let fork = match s.selected_row().and_then(|r| s.fork_blocked(r)) {
+        Some(_) => "(fork unavailable)".to_string(),
+        None => mark(Kind::Fork, "f Fork"),
+    };
+    let text = format!("{resume}  {fork}   Tab switch \u{b7} Enter confirm \u{b7} Esc cancel");
     line(&text, width, look.accent())
 }
 
@@ -247,11 +253,23 @@ fn flags_lines(s: &State, look: Look, width: usize) -> Vec<Line<'static>> {
         Line::raw(""),
     ];
     let lock = s.no_sandbox_lock();
+    if s.fields().is_empty() {
+        lines.push(line(FORK_KEEPS_SETTINGS, width, look.warn()));
+    }
     for (i, field) in s.fields().into_iter().enumerate() {
         let on = i == s.flag_cursor;
         let text = match field {
             Field::Folder => format!("{}Folder: {}", marker(on), s.folder),
-            Field::Bypass => format!("{}{} Bypass permissions", marker(on), toggle(s.bypass())),
+            Field::Bypass => format!(
+                "{}{} Bypass permissions{}",
+                marker(on),
+                toggle(s.bypass()),
+                if s.bypass_lock().is_some() {
+                    " (locked)"
+                } else {
+                    ""
+                }
+            ),
             Field::NoSandbox => format!(
                 "{}{} No sandbox{}",
                 marker(on),
@@ -261,6 +279,11 @@ fn flags_lines(s: &State, look: Look, width: usize) -> Vec<Line<'static>> {
         };
         let style = if on { look.selected() } else { Style::new() };
         lines.push(line(&text, width, style));
+        if field == Field::Bypass {
+            if let Some((_, why)) = s.bypass_lock() {
+                lines.push(line(&format!("    {why}"), width, look.warn()));
+            }
+        }
         if field == Field::NoSandbox {
             if let Some((_, why)) = lock {
                 lines.push(line(&format!("    {why}"), width, look.warn()));

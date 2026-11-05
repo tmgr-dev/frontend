@@ -26,7 +26,6 @@ pub enum Screen {
     Flags,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RowKind {
     Tmgr,
@@ -44,6 +43,8 @@ pub struct Row {
     pub live: bool,
     pub readable: bool,
     pub folder_gone: bool,
+    pub bypassed: bool,
+    pub maybe_live: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -55,6 +56,9 @@ pub trait Source {
     fn rows(&self, profile: &str) -> (Vec<Row>, Hints);
     fn search(&self, query: &str) -> Option<Vec<String>>;
     fn allow_reading(&self) -> Result<(), String>;
+    fn status(&self) -> Option<String> {
+        None
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,6 +66,7 @@ pub struct AgentOpt {
     pub id: String,
     pub name: String,
     pub installed: bool,
+    pub bypass: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -89,6 +94,15 @@ enum Target {
 pub const SANDBOX_LOCKED_ON: &str =
     "Ordinary sessions live in your real home, a sandboxed session cannot see them.";
 pub const SANDBOX_LOCKED_OFF: &str = "This session was recorded inside the sandbox home.";
+pub const SANDBOX_REQUIRED: &str =
+    "This session ran without the sandbox, so resuming it needs No sandbox.";
+pub const BYPASS_REQUIRED: &str =
+    "This session ran in bypass mode, so resuming it needs Bypass permissions.";
+pub const BYPASS_UNAVAILABLE: &str = "This agent has no bypass mode.";
+pub const FORK_KEEPS_SETTINGS: &str = "A fork keeps the settings the session was started with.";
+pub const FORK_CODEX: &str = "Forking a Codex session of tmgr is not supported yet.";
+pub const FORK_UNSANDBOXED: &str =
+    "A session started without the sandbox cannot be forked by its tmgr id.";
 pub const CONFIRM_NEXT: &str = "You will be asked to type a confirmation next.";
 pub const LIVE_REASON: &str = "Running in another terminal: fork instead";
 pub const GONE_REASON: &str = "The session's folder no longer exists, so it cannot be started.";
@@ -196,21 +210,50 @@ impl State {
         self.rows.get(i)
     }
 
+    pub fn status(&self) -> Option<String> {
+        self.source.status()
+    }
+
     pub fn reading_hint(&self) -> bool {
         self.hints.reading_off || self.rows.iter().any(|r| !r.readable)
     }
 
     pub fn reason(&self) -> Option<&'static str> {
-        match Self::availability(self.selected_row()?) {
-            Availability::Live => Some(LIVE_REASON),
+        let row = self.selected_row()?;
+        match Self::availability(row) {
+            Availability::Live => Some(self.fork_blocked(row).unwrap_or(LIVE_REASON)),
             Availability::FolderGone => Some(GONE_REASON),
             _ => None,
         }
     }
 
+    pub fn fork_blocked(&self, row: &Row) -> Option<&'static str> {
+        match (row.kind, row.sandboxed) {
+            (RowKind::External, _) => None,
+            (RowKind::Tmgr, _) if self.agent().id != "claude-code" => Some(FORK_CODEX),
+            (RowKind::Tmgr, false) => Some(FORK_UNSANDBOXED),
+            (RowKind::Tmgr, true) => None,
+        }
+    }
+
+    pub fn bypass_lock(&self) -> Option<(bool, &'static str)> {
+        if self
+            .target_row()
+            .is_some_and(|r| r.kind == RowKind::Tmgr && r.bypassed)
+        {
+            return Some((true, BYPASS_REQUIRED));
+        }
+        (!self.agent().bypass).then_some((false, BYPASS_UNAVAILABLE))
+    }
+
     pub fn fields(&self) -> Vec<Field> {
         match self.target {
             Target::New => vec![Field::Folder, Field::Bypass, Field::NoSandbox],
+            Target::Existing(i, Kind::Fork)
+                if self.rows.get(i).is_some_and(|r| r.kind == RowKind::Tmgr) =>
+            {
+                Vec::new()
+            }
             Target::Existing(..) => vec![Field::Bypass, Field::NoSandbox],
         }
     }
@@ -227,15 +270,19 @@ impl State {
         match (row.kind, row.sandboxed) {
             (RowKind::External, _) => Some((true, SANDBOX_LOCKED_ON)),
             (RowKind::Tmgr, true) => Some((false, SANDBOX_LOCKED_OFF)),
-            (RowKind::Tmgr, false) => None,
+            (RowKind::Tmgr, false) => Some((true, SANDBOX_REQUIRED)),
         }
     }
 
     pub fn bypass(&self) -> bool {
-        self.pref_bypass
+        self.fields().contains(&Field::Bypass)
+            && self.bypass_lock().map_or(self.pref_bypass, |(on, _)| on)
     }
 
     pub fn no_sandbox(&self) -> bool {
+        if !self.fields().contains(&Field::NoSandbox) {
+            return false;
+        }
         self.no_sandbox_lock()
             .map_or(self.pref_no_sandbox, |(on, _)| on)
     }
@@ -398,13 +445,13 @@ impl State {
         };
         match Self::availability(row) {
             Availability::Ok => {
-                self.choice = Some(if self.pref_kind == Kind::Fork {
-                    Kind::Fork
-                } else {
-                    Kind::Resume
-                });
+                let fork = self.pref_kind == Kind::Fork && self.fork_blocked(row).is_none();
+                self.choice = Some(if fork { Kind::Fork } else { Kind::Resume });
             }
-            Availability::Live => self.choice = Some(Kind::Fork),
+            Availability::Live => match self.fork_blocked(row) {
+                None => self.choice = Some(Kind::Fork),
+                Some(why) => self.notice = Some(why.into()),
+            },
             _ => {}
         }
     }
@@ -413,9 +460,10 @@ impl State {
         let live = self
             .selected_row()
             .is_some_and(|r| Self::availability(r) == Availability::Live);
+        let fork_blocked = self.selected_row().and_then(|r| self.fork_blocked(r));
         match key {
             Key::Esc => self.choice = None,
-            Key::Tab if !live => {
+            Key::Tab if !live && fork_blocked.is_none() => {
                 self.choice = Some(match self.choice {
                     Some(Kind::Resume) => Kind::Fork,
                     _ => Kind::Resume,
@@ -423,6 +471,9 @@ impl State {
             }
             Key::Char('r') if live => self.notice = Some(LIVE_REASON.into()),
             Key::Char('r') => self.choose(Kind::Resume),
+            Key::Char('f') if fork_blocked.is_some() => {
+                self.notice = fork_blocked.map(Into::into);
+            }
             Key::Char('f') => self.choose(Kind::Fork),
             Key::Enter => {
                 if let Some(kind) = self.choice {
@@ -459,6 +510,7 @@ impl State {
                 self.screen = Screen::Session;
                 self.choice = None;
             }
+            Key::Up | Key::Down | Key::Tab if n == 0 => {}
             Key::Up => self.flag_cursor = (self.flag_cursor + n - 1) % n,
             Key::Down | Key::Tab => self.flag_cursor = (self.flag_cursor + 1) % n,
             Key::Enter => return Step::Start(self.argv()),
@@ -467,7 +519,9 @@ impl State {
             }
             Key::Char(c) => match self.current_field() {
                 Some(Field::Folder) if clean_char(c) => self.folder.push(c),
-                Some(Field::Bypass) if c == ' ' => self.pref_bypass = !self.pref_bypass,
+                Some(Field::Bypass) if c == ' ' && self.bypass_lock().is_none() => {
+                    self.pref_bypass = !self.pref_bypass;
+                }
                 Some(Field::NoSandbox) if c == ' ' && self.no_sandbox_lock().is_none() => {
                     self.pref_no_sandbox = !self.pref_no_sandbox;
                 }

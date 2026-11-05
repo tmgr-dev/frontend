@@ -18,24 +18,31 @@ const PROJECT_MAX: usize = 40;
 
 #[derive(Debug, Serialize)]
 pub(super) struct Row {
-    source: &'static str,
+    pub(super) source: &'static str,
     agent: String,
-    id: String,
+    pub(super) id: String,
     cwd: Option<String>,
     project: Option<String>,
-    when_ms: u64,
-    live: Live,
+    pub(super) when_ms: u64,
+    pub(super) live: Live,
     title: Option<String>,
     first_message: Option<String>,
     git_branch: Option<String>,
-    readable: bool,
+    pub(super) readable: bool,
     snippet: Option<String>,
     #[serde(skip)]
-    agent_session: Option<String>,
+    pub(super) agent_session: Option<String>,
+    #[serde(skip)]
+    pub(super) sandboxed: bool,
+    #[serde(skip)]
+    pub(super) folder_gone: bool,
+    #[serde(skip)]
+    pub(super) bypassed: bool,
 }
 
 impl Row {
     fn external(e: Entry, snippet: Option<&str>) -> Row {
+        let folder_gone = e.readable && !e.cwd.as_deref().is_some_and(is_dir);
         Row {
             source: "external",
             agent: e.agent.profile().to_string(),
@@ -50,6 +57,9 @@ impl Row {
             readable: e.readable,
             snippet: snippet.map(|s| clean_line(s, 200)),
             agent_session: None,
+            sandboxed: false,
+            folder_gone,
+            bypassed: false,
         }
     }
 
@@ -75,10 +85,13 @@ impl Row {
             readable: true,
             snippet: None,
             agent_session: s.agent_session_id.clone(),
+            sandboxed: !s.no_sandbox,
+            folder_gone: !is_dir(&s.cwd),
+            bypassed: s.permission_mode.as_deref() == Some("bypass"),
         }
     }
 
-    fn text(&self) -> String {
+    pub(super) fn text(&self) -> String {
         let t = self
             .snippet
             .as_ref()
@@ -87,7 +100,7 @@ impl Row {
         clean_line(t.map_or("-", String::as_str), TEXT_MAX)
     }
 
-    fn project_label(&self) -> String {
+    pub(super) fn project_label(&self) -> String {
         let p = match (&self.cwd, &self.project) {
             (Some(c), _) => short_cwd(c),
             (None, Some(p)) => p.clone(),
@@ -95,6 +108,10 @@ impl Row {
         };
         clean_line(&p, PROJECT_MAX)
     }
+}
+
+fn is_dir(path: &str) -> bool {
+    std::path::Path::new(path).is_dir()
 }
 
 pub(super) fn dedupe(rows: Vec<Row>) -> Vec<Row> {
@@ -116,11 +133,11 @@ fn refuse_in_agent() -> Result<()> {
     privileged::check(in_agent, true)
 }
 
-fn index_file() -> Option<PathBuf> {
+pub(super) fn index_file() -> Option<PathBuf> {
     tmgr_usage::paths::sessions_index(&Env::from_process())
 }
 
-fn runner_rows(agent: Option<Agent>, notes: &mut Vec<String>) -> Vec<Row> {
+pub(super) fn runner_rows(agent: Option<Agent>, notes: &mut Vec<String>) -> Vec<Row> {
     let listed =
         runner_config().and_then(|cfg| match tmgr_runner::client::Client::connect(&cfg.dir) {
             Ok(mut c) => c.list().map_err(rerr),
@@ -198,6 +215,32 @@ fn search_rows(
     Ok(rows)
 }
 
+pub(super) fn recent(
+    env: &Env,
+    agent: Option<Agent>,
+    limit: usize,
+    notes: &mut Vec<String>,
+) -> (Vec<Row>, Vec<String>) {
+    let listing = catalog::list(
+        env,
+        Filter {
+            agent,
+            limit: Some(limit),
+            ids: None,
+        },
+    );
+    let mut rows: Vec<Row> = listing
+        .entries
+        .into_iter()
+        .map(|e| Row::external(e, None))
+        .collect();
+    rows.extend(runner_rows(agent, notes));
+    let mut rows = dedupe(rows);
+    rows.sort_by_key(|r| std::cmp::Reverse(r.when_ms));
+    rows.truncate(limit);
+    (rows, listing.hints)
+}
+
 pub(super) fn run(o: &Opts, a: &SessionListArgs) -> Result<i32> {
     refuse_in_agent()?;
     let env = Env::from_process();
@@ -216,7 +259,7 @@ pub(super) fn run(o: &Opts, a: &SessionListArgs) -> Result<i32> {
     });
     let limit = a.limit as usize;
     let mut notes = Vec::new();
-    let mut hints = Vec::new();
+    let hints;
     let rows = match &a.search {
         Some(q) => {
             let listing = catalog::list(
@@ -231,24 +274,8 @@ pub(super) fn run(o: &Opts, a: &SessionListArgs) -> Result<i32> {
             search_rows(&env, q, agent, limit, &mut notes)?
         }
         None => {
-            let listing = catalog::list(
-                &env,
-                Filter {
-                    agent,
-                    limit: Some(limit),
-                    ids: None,
-                },
-            );
-            hints = listing.hints.into_iter().chain(hints).collect();
-            let mut rows: Vec<Row> = listing
-                .entries
-                .into_iter()
-                .map(|e| Row::external(e, None))
-                .collect();
-            rows.extend(runner_rows(agent, &mut notes));
-            let mut rows = dedupe(rows);
-            rows.sort_by_key(|r| std::cmp::Reverse(r.when_ms));
-            rows.truncate(limit);
+            let (rows, listed) = recent(&env, agent, limit, &mut notes);
+            hints = listed;
             rows
         }
     };
@@ -314,6 +341,9 @@ mod tests {
             readable: true,
             snippet: None,
             agent_session: agent_session.map(Into::into),
+            sandboxed: false,
+            folder_gone: false,
+            bypassed: false,
         }
     }
 

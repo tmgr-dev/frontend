@@ -55,6 +55,8 @@ fn row(id: &str, kind: RowKind, sandboxed: bool, project: &str, text: &str) -> R
         live: false,
         readable: true,
         folder_gone: false,
+        bypassed: false,
+        maybe_live: false,
     }
 }
 
@@ -78,11 +80,13 @@ fn agents(installed: [bool; 2]) -> Vec<AgentOpt> {
             id: "claude-code".into(),
             name: "Claude Code".into(),
             installed: installed[0],
+            bypass: true,
         },
         AgentOpt {
             id: "codex".into(),
             name: "Codex".into(),
             installed: installed[1],
+            bypass: true,
         },
     ]
 }
@@ -294,20 +298,46 @@ fn sandboxed_tmgr_rows_lock_no_sandbox_off() {
 }
 
 #[test]
-fn unsandboxed_tmgr_rows_have_both_toggles_free() {
+fn unsandboxed_tmgr_rows_lock_no_sandbox_on_with_a_reason() {
     let mut s = state(sample_rows());
-    open_row(&mut s, 3, 'f');
-    assert_eq!(s.no_sandbox_lock(), None);
-    s.on_key(Key::Char(' '));
+    open_row(&mut s, 3, 'r');
+    assert_eq!(s.no_sandbox_lock(), Some((true, SANDBOX_REQUIRED)));
+    assert_eq!(words(&s.argv()), "tmgr resume tm-3 --no-sandbox");
     s.on_key(Key::Down);
     s.on_key(Key::Char(' '));
-    let Step::Start(argv) = s.on_key(Key::Enter) else {
-        panic!("no start");
-    };
+    assert!(s.no_sandbox());
+    s.on_key(Key::Up);
+    s.on_key(Key::Char(' '));
     assert_eq!(
-        words(&argv),
-        "tmgr resume tm-3 --fork --mode bypass --no-sandbox"
+        words(&s.argv()),
+        "tmgr resume tm-3 --mode bypass --no-sandbox"
     );
+    assert!(render(&s, 100, 20).contains("ran without the sandbox"));
+}
+
+#[test]
+fn a_tmgr_row_that_ran_in_bypass_locks_bypass_on_with_a_reason() {
+    let mut rows = sample_rows();
+    rows[1].bypassed = true;
+    let mut s = state(rows);
+    open_row(&mut s, 2, 'r');
+    assert_eq!(s.bypass_lock(), Some((true, BYPASS_REQUIRED)));
+    assert!(s.bypass());
+    assert_eq!(words(&s.argv()), "tmgr resume tm-2 --mode bypass");
+    s.on_key(Key::Char(' '));
+    assert!(s.bypass());
+    assert!(render(&s, 100, 20).contains("ran in bypass mode"));
+}
+
+#[test]
+fn a_possibly_running_row_says_it_may_still_be_running_and_stays_resumable() {
+    let mut rows = sample_rows();
+    rows[0].maybe_live = true;
+    let mut s = state(rows);
+    to_session(&mut s);
+    assert!(render(&s, 120, 12).contains("(may still be running)"));
+    press(&mut s, &[Key::Down, Key::Enter]);
+    assert_eq!(s.choice, Some(Kind::Resume));
 }
 
 #[test]
@@ -478,12 +508,12 @@ fn memory_preselects_agent_toggles_and_choice() {
     assert_eq!(s.agent_cursor, 1);
     to_session(&mut s);
     assert_eq!(s.screen, Screen::Session);
-    press(&mut s, &[Key::Down, Key::Down, Key::Enter]);
+    press(&mut s, &[Key::Down, Key::Enter]);
     assert_eq!(s.choice, Some(Kind::Fork));
     s.on_key(Key::Enter);
     assert_eq!(s.screen, Screen::Flags);
     assert!(s.bypass());
-    assert!(!s.no_sandbox());
+    assert!(s.no_sandbox());
     assert!(s.needs_confirmation());
 }
 
@@ -700,7 +730,7 @@ fn flags_screen_snapshots_for_each_lock_case() {
     );
 
     let mut s = state(sample_rows());
-    open_row(&mut s, 3, 'f');
+    open_row(&mut s, 1, 'f');
     s.on_key(Key::Down);
     s.on_key(Key::Char(' '));
     check_snapshot(
@@ -769,4 +799,118 @@ fn fit_truncates_by_display_width() {
         "\u{4e16}\u{754c}\u{2026}"
     );
     assert_eq!(view::fit("a\u{1b}b", 5), "a?b");
+}
+
+#[test]
+fn forking_a_sandboxed_claude_tmgr_row_offers_no_flags() {
+    let mut s = state(sample_rows());
+    open_row(&mut s, 2, 'f');
+    assert!(s.fields().is_empty());
+    assert_eq!(words(&s.argv()), "tmgr resume tm-2 --fork");
+    press(&mut s, &[Key::Down, Key::Tab, Key::Up, Key::Char(' ')]);
+    assert_eq!(words(&s.argv()), "tmgr resume tm-2 --fork");
+    assert_eq!(s.on_key(Key::Enter), Step::Start(s.argv()));
+}
+
+#[test]
+fn a_bypass_resume_of_a_tmgr_row_is_not_affected_by_fork_rules() {
+    let mut s = state(sample_rows());
+    open_row(&mut s, 2, 'r');
+    press(&mut s, &[Key::Char(' ')]);
+    assert_eq!(words(&s.argv()), "tmgr resume tm-2 --mode bypass");
+}
+
+#[test]
+fn forking_a_codex_tmgr_row_is_not_offered() {
+    let mut s = state(sample_rows());
+    s.agent_cursor = 1;
+    to_session(&mut s);
+    press(&mut s, &[Key::Down, Key::Down, Key::Enter]);
+    assert_eq!(s.choice, Some(Kind::Resume));
+    s.on_key(Key::Tab);
+    assert_eq!(s.choice, Some(Kind::Resume));
+    s.on_key(Key::Char('f'));
+    assert_eq!(s.screen, Screen::Session);
+    assert_eq!(s.notice.as_deref(), Some(FORK_CODEX));
+}
+
+#[test]
+fn a_live_codex_tmgr_row_offers_neither_resume_nor_fork() {
+    let mut rows = sample_rows();
+    rows[1].live = true;
+    let mut s = state(rows);
+    s.agent_cursor = 1;
+    to_session(&mut s);
+    press(&mut s, &[Key::Down, Key::Down]);
+    assert_eq!(s.reason(), Some(FORK_CODEX));
+    s.on_key(Key::Enter);
+    assert_eq!(s.choice, None);
+    assert_eq!(s.screen, Screen::Session);
+    assert_eq!(s.notice.as_deref(), Some(FORK_CODEX));
+}
+
+#[test]
+fn an_unsandboxed_tmgr_row_cannot_be_forked_by_its_tmgr_id() {
+    let mut s = state(sample_rows());
+    to_session(&mut s);
+    press(&mut s, &[Key::Down, Key::Down, Key::Down, Key::Enter]);
+    s.on_key(Key::Char('f'));
+    assert_eq!(s.screen, Screen::Session);
+    assert_eq!(s.notice.as_deref(), Some(FORK_UNSANDBOXED));
+}
+
+#[test]
+fn external_rows_can_always_be_forked_even_for_codex() {
+    let mut s = state(sample_rows());
+    s.agent_cursor = 1;
+    open_row(&mut s, 1, 'f');
+    assert_eq!(words(&s.argv()), "tmgr resume ext-1 --fork --no-sandbox");
+}
+
+#[test]
+fn bypass_is_locked_off_for_an_agent_without_a_bypass_mode() {
+    let mut s = State::new(
+        vec![AgentOpt {
+            id: "codex".into(),
+            name: "Codex".into(),
+            installed: true,
+            bypass: false,
+        }],
+        "/work/app".into(),
+        &Memory {
+            bypass: true,
+            ..Memory::default()
+        },
+        Box::new(fake(sample_rows())),
+    );
+    assert_eq!(s.bypass_lock(), Some((false, BYPASS_UNAVAILABLE)));
+    press(&mut s, &[Key::Enter, Key::Enter, Key::Down, Key::Char(' ')]);
+    assert!(!s.bypass());
+    assert_eq!(words(&s.argv()), "tmgr run --agent codex --cwd /work/app");
+    assert!(render(&s, 100, 20).contains("This agent has no bypass mode."));
+}
+
+#[test]
+fn unreadable_rows_are_not_resumable_and_the_consent_key_is_shown() {
+    let mut rows = sample_rows();
+    rows[0].readable = false;
+    let mut s = state(rows);
+    to_session(&mut s);
+    s.on_key(Key::Down);
+    s.on_key(Key::Enter);
+    assert_eq!(s.choice, None);
+    assert!(s.reading_hint());
+    assert!(render(&s, 120, 20).contains("Press a to allow it"));
+}
+
+#[test]
+fn folder_gone_rows_show_the_reason_and_offer_nothing() {
+    let mut rows = sample_rows();
+    rows[1].folder_gone = true;
+    let mut s = state(rows);
+    to_session(&mut s);
+    press(&mut s, &[Key::Down, Key::Down]);
+    assert_eq!(s.reason(), Some(GONE_REASON));
+    s.on_key(Key::Enter);
+    assert_eq!(s.choice, None);
 }

@@ -157,7 +157,16 @@ impl Index {
     pub fn update(
         &self,
         entries: &[Entry],
+        progress: impl FnMut(usize, usize),
+    ) -> Result<Outcome, IndexError> {
+        self.update_while(entries, progress, || true)
+    }
+
+    pub fn update_while(
+        &self,
+        entries: &[Entry],
         mut progress: impl FnMut(usize, usize),
+        keep_going: impl Fn() -> bool,
     ) -> Result<Outcome, IndexError> {
         let todo: Vec<&Entry> = entries.iter().filter(|e| e.readable).collect();
         let mut out = Outcome::default();
@@ -171,6 +180,9 @@ impl Index {
         }
         let total = todo.len();
         for (i, e) in todo.iter().enumerate() {
+            if !keep_going() {
+                break;
+            }
             match self.index_file(e) {
                 Ok(true) => out.indexed += 1,
                 Ok(false) => out.skipped += 1,
