@@ -51,25 +51,45 @@ pub(super) fn scan(root: &Path, readable: bool) -> Vec<Entry> {
     out
 }
 
-pub(super) fn live_sessions(root: &Path) -> HashMap<String, Option<String>> {
-    let mut out = HashMap::new();
+#[derive(Default)]
+pub(super) struct Running {
+    pub by_id: HashMap<String, (Option<String>, Option<String>)>,
+    pub unknown: bool,
+}
+
+pub(super) fn live_sessions(root: &Path) -> Running {
+    let mut out = Running::default();
     for (path, meta) in subdirs_and_files(&root.join("sessions")) {
         if !meta.is_file() || path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
+        let stem_alive = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .and_then(|s| s.parse::<i64>().ok())
+            .is_some_and(pid_alive);
         let mut buf = Vec::new();
-        let Ok(f) = open_regular(&path) else { continue };
-        if f.take(SESSION_FILE_CAP).read_to_end(&mut buf).is_err() {
-            continue;
-        }
-        let Ok(v) = serde_json::from_slice::<Value>(&buf) else {
-            continue;
-        };
-        let (Some(pid), Some(sid)) = (v["pid"].as_i64(), v["sessionId"].as_str()) else {
+        let read = open_regular(&path).and_then(|f| f.take(SESSION_FILE_CAP).read_to_end(&mut buf));
+        let parsed = read
+            .ok()
+            .and_then(|_| serde_json::from_slice::<Value>(&buf).ok());
+        let Some(v) = parsed else {
+            out.unknown |= stem_alive;
             continue;
         };
-        if valid_resume_id(sid) && pid_alive(pid) {
-            out.insert(sid.to_string(), v["name"].as_str().and_then(clean_text));
+        let alive = v["pid"].as_i64().is_some_and(pid_alive);
+        match v["sessionId"].as_str().filter(|s| valid_resume_id(s)) {
+            Some(sid) if alive => {
+                out.by_id.insert(
+                    sid.to_string(),
+                    (
+                        v["name"].as_str().and_then(clean_text),
+                        v["cwd"].as_str().filter(|c| !c.is_empty()).map(Into::into),
+                    ),
+                );
+            }
+            Some(_) => {}
+            None => out.unknown |= alive || stem_alive,
         }
     }
     out
@@ -87,7 +107,7 @@ fn pid_alive(pid: i64) -> bool {
     ok || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
-pub(super) fn fill(e: &mut Entry, live: &HashMap<String, Option<String>>) -> bool {
+pub(super) fn fill(e: &mut Entry, live: &Running, orphan_cwds: &[String]) -> bool {
     let Ok(head) = read_head(&e.path, HEAD_CAP) else {
         e.readable = false;
         return true;
@@ -115,9 +135,15 @@ pub(super) fn fill(e: &mut Entry, live: &HashMap<String, Option<String>>) -> boo
             break;
         }
     }
-    if let Some(name) = live.get(&e.id) {
+    if let Some((name, _)) = live.by_id.get(&e.id) {
         e.live = Live::Yes;
         e.title = name.clone();
+    } else if live.unknown
+        || e.cwd
+            .as_deref()
+            .is_some_and(|c| orphan_cwds.iter().any(|o| o == c))
+    {
+        e.live = Live::Recent;
     }
     true
 }

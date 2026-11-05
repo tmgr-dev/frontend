@@ -1938,3 +1938,62 @@ fn restore_keeps_refusing_what_a_flagged_resume_accepts_and_the_result_is_never_
     );
     h.client().remove(&r.session.id).ok();
 }
+
+impl H {
+    fn finished_external(&self, id: &str) -> SessionInfo {
+        let mut req = self.req();
+        req.cwd = fs::canonicalize(&self.work).unwrap().display().to_string();
+        req.no_sandbox = Some(NoSandbox::default());
+        req.external_resume = Some(tmgr_ipc::api::ExternalResume {
+            id: id.into(),
+            fork: false,
+        });
+        let s = self.client().create_run(req).unwrap();
+        let _ = self.client().kill(&s.id, "term");
+        self.wait_exited(&s.id);
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while restore::group_may_run(s.child_pid, None, None) && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(50));
+        }
+        s
+    }
+}
+
+#[test]
+fn flagged_resume_prefers_the_recorded_conversation_over_the_output_tail() {
+    if !sessions_available() {
+        return;
+    }
+    let h = flagged_h();
+    for log in [claude_exit(U2), "nothing to see\n".to_string()] {
+        let s = h.finished_external(U1);
+        fs::write(h.sdir(&s.id).join("output.log"), log).unwrap();
+        let r = h.resume_flags(&s.id, None, true).unwrap();
+        assert_eq!(r.session.agent_session_id.as_deref(), Some(U1));
+        assert_eq!(r.session.argv[2..], ["--ask", "--resume-id", U1]);
+        h.client().remove(&r.session.id).ok();
+    }
+}
+
+#[test]
+fn a_raw_session_cannot_be_resumed_with_flags() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    h.start();
+    let first = h
+        .client()
+        .create(h.raw_req(&["/bin/sh", &h.work.join("raw.sh").display().to_string()]))
+        .unwrap();
+    let _ = h.client().kill(&first.id, "term");
+    h.wait_exited(&first.id);
+    for (mode, ns) in [(Some("bypass"), false), (None, true)] {
+        let e = h.resume_flags(&first.id, mode, ns).unwrap_err().to_string();
+        assert!(
+            e.starts_with("forbidden: ") && e.contains("without an agent profile"),
+            "{e}"
+        );
+    }
+    assert!(h.state_of(&first.id).is_some());
+}

@@ -15,6 +15,7 @@ impl Env {
         let vars = [
             "TMGR_USAGE_DIR",
             "XDG_DATA_HOME",
+            "XDG_CONFIG_HOME",
             "CLAUDE_CONFIG_DIR",
             "CODEX_HOME",
         ]
@@ -56,6 +57,19 @@ pub fn data_dir(env: &Env) -> Result<PathBuf> {
         .join("share")
         .join("tmgr")
         .join("usage"))
+}
+
+pub fn sessions_index(env: &Env) -> Option<PathBuf> {
+    let base = match env.get("XDG_CONFIG_HOME").map(PathBuf::from) {
+        Some(x) if x.is_absolute() => x.join("tmgr"),
+        _ => env
+            .home
+            .clone()
+            .filter(|h| h.is_absolute())?
+            .join(".config")
+            .join("tmgr"),
+    };
+    Some(base.join("sessions-index.sqlite"))
 }
 
 pub fn ensure_data_dir(env: &Env) -> Result<PathBuf> {

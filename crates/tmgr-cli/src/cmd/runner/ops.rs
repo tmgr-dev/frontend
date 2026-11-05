@@ -1131,7 +1131,13 @@ fn resume_report(r: &RestoredRun, bin: &str) -> String {
         None if r.resumed => "resumed",
         None => "started fresh",
     };
-    format!("{how} {name} ({id}); attach with: {bin} attach {id}")
+    let conversation = r
+        .session
+        .agent_session_id
+        .as_deref()
+        .map(|c| format!(" conversation {}", line(c)))
+        .unwrap_or_default();
+    format!("{how} {name} ({id}){conversation}; attach with: {bin} attach {id}")
 }
 
 fn resume(o: &Opts, a: &ResumeArgs) -> Result<i32> {
@@ -1149,17 +1155,33 @@ fn resume(o: &Opts, a: &ResumeArgs) -> Result<i32> {
             format!("{} is still running", clean(&s.name)),
         ));
     }
+    let flagged = a.mode.is_some() || a.no_sandbox;
+    let known = s
+        .agent_session_id
+        .clone()
+        .filter(|id| a.no_sandbox && valid_resume_id(id));
+    if let Some(id) = &known {
+        for w in super::resume_any::check_known(id, false)? {
+            eprintln!("{w}");
+        }
+    }
     eprintln!(
         "Resume this session?\n  session  {}\n  name     {}\n  folder   {}",
         clean(&s.id),
         clean(&s.name),
         clean(&s.cwd)
     );
-    let flagged = a.mode.is_some() || a.no_sandbox;
+    if a.no_sandbox {
+        eprintln!("{}", super::resume_any::conversation_line(&s));
+    }
     let r = if flagged {
         let bypass = a.mode == Some(super::PermissionMode::Bypass);
         super::privilege::confirm(bypass, a.no_sandbox, false, false)?;
+        if let Some(id) = &known {
+            super::resume_any::check_known(id, false)?;
+        }
         super::privilege::check_caps(&c.welcome().caps, bypass, a.no_sandbox)?;
+        super::privilege::check_external_cap(&c.welcome().caps)?;
         c.resume_with(ResumeParams {
             id: s.id.clone(),
             cols: s.cols,
@@ -1175,6 +1197,7 @@ fn resume(o: &Opts, a: &ResumeArgs) -> Result<i32> {
     if flagged && !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         return attach::run(&runner_config()?, &r.session.id);
     }
+    let r = super::resume_any::clean_run(&r);
     Ok(emit(o, &r, resume_report(&r, &super::bin())))
 }
 
@@ -1206,6 +1229,25 @@ mod tests {
         assert_eq!(say(Some("fresh"), false), format!("started fresh {tail}"));
         assert_eq!(say(None, true), format!("resumed {tail}"));
         assert_eq!(say(None, false), format!("started fresh {tail}"));
+    }
+
+    #[test]
+    fn resume_report_names_the_conversation_that_was_resumed() {
+        let mut r = restored(Some("id"), true);
+        r.session.agent_session_id = Some("2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b".into());
+        let text = resume_report(&r, "tmgr");
+        assert!(
+            text.contains("(s_bbbbbbbbbb) conversation 2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b;"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn runner_errors_lose_c1_and_bidi_characters() {
+        let e = rerr(std::io::Error::other(
+            "invalid_params: cwd must be given as its resolved path (/a\u{9b}b\u{202e})",
+        ));
+        assert_eq!(e.message, "cwd must be given as its resolved path (/a?b?)");
     }
 
     #[test]

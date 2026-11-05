@@ -117,9 +117,7 @@ fn refuse_in_agent() -> Result<()> {
 }
 
 fn index_file() -> Option<PathBuf> {
-    tmgr_core::config::config_dir()
-        .ok()
-        .map(|d| index::index_path(&d))
+    tmgr_usage::paths::sessions_index(&Env::from_process())
 }
 
 fn runner_rows(agent: Option<Agent>, notes: &mut Vec<String>) -> Vec<Row> {
@@ -205,7 +203,12 @@ pub(super) fn run(o: &Opts, a: &SessionListArgs) -> Result<i32> {
     let env = Env::from_process();
     let reads = Reads::of(&env);
     if let Some(p) = index_file() {
-        index::enforce_consent(&p, reads.claude, reads.codex);
+        index::enforce_consent(&p, reads.claude, reads.codex).map_err(|e| {
+            Error::internal(format!(
+                "could not remove the search index: {}",
+                clean_line(&e.to_string(), 200)
+            ))
+        })?;
     }
     let agent = a.agent.map(|x| match x {
         SessionAgent::Claude => Agent::Claude,

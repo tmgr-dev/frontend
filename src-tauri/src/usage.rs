@@ -2,7 +2,7 @@ use chrono::{DateTime, Duration, Local, NaiveDate, NaiveDateTime, SecondsFormat,
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tmgr_usage::consent::{forget, ConsentChange, ReadLogs, FORGET_WAIT};
+use tmgr_usage::consent::{delete_sessions_index, forget, ConsentChange, ReadLogs, FORGET_WAIT};
 use tmgr_usage::error::UsageError;
 use tmgr_usage::limits::LimitWindow;
 use tmgr_usage::pricing::PriceEntry;
@@ -179,7 +179,11 @@ fn consent_set_inner(
     Some(_) => return Err("Unknown choice.".into()),
   };
   let (dir, store) = open(env)?;
-  store.change_log_consent(&ConsentChange { state, claude, codex }, now).map_err(user_error)?;
+  let change = ConsentChange { state, claude, codex };
+  store.change_log_consent(&change, now).map_err(user_error)?;
+  if change.denies() {
+    delete_sessions_index(env).map_err(|_| NOT_DELETED.to_string())?;
+  }
   consent_out(env, &dir, &store)
 }
 
@@ -198,12 +202,14 @@ fn forget_inner(
   let Some(_guard) = ScanGuard::acquire(flag) else {
     let deny = ConsentChange { state: Some(ReadLogs::Denied), ..ConsentChange::default() };
     store.change_log_consent(&deny, now).map_err(user_error)?;
+    delete_sessions_index(env).map_err(|_| NOT_DELETED.to_string())?;
     return Err(BUSY.into());
   };
   forget(&mut store, &dir, now, wait).map_err(|e| match e {
     UsageError::Busy => BUSY.to_string(),
     _ => NOT_DELETED.to_string(),
   })?;
+  delete_sessions_index(env).map_err(|_| NOT_DELETED.to_string())?;
   #[cfg(unix)]
   if let Some(runner_dir) = runner_dir {
     match tmgr_ipc::dirs::clear_questions(runner_dir, wait) {
@@ -844,6 +850,39 @@ mod tests {
     assert_eq!(events(&env), 0);
     assert_eq!(consent_set_inner(&env, now, Some("unset"), None, None).unwrap_err(), "Unknown choice.");
     assert_eq!(consent_inner(&env).unwrap().state, "denied");
+  }
+
+  fn index_files(env: &Env) -> Vec<std::path::PathBuf> {
+    let p = paths::sessions_index(env).unwrap();
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    ["", "-wal", "-shm"]
+      .iter()
+      .map(|suffix| {
+        let mut f = p.as_os_str().to_owned();
+        f.push(suffix);
+        let f = std::path::PathBuf::from(f);
+        std::fs::write(&f, b"x").unwrap();
+        f
+      })
+      .collect()
+  }
+
+  #[test]
+  fn denying_a_tool_or_forgetting_deletes_the_session_search_index() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = granted(tmp.path());
+    let now = local_noon();
+    let files = index_files(&env);
+    consent_set_inner(&env, now, Some("granted"), Some(true), Some(true)).unwrap();
+    assert!(files.iter().all(|f| f.exists()));
+    consent_set_inner(&env, now, None, None, Some(false)).unwrap();
+    assert!(files.iter().all(|f| !f.exists()));
+    let files = index_files(&env);
+    consent_set_inner(&env, now, Some("denied"), None, None).unwrap();
+    assert!(files.iter().all(|f| !f.exists()));
+    let files = index_files(&env);
+    forget_inner(&AtomicBool::new(false), &env, now, FORGET_WAIT, Some(&tmp.path().join("run"))).unwrap();
+    assert!(files.iter().all(|f| !f.exists()));
   }
 
   #[test]

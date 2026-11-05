@@ -1489,6 +1489,7 @@ struct Runner {
     hub: Arc<Hub>,
     create_lock: Mutex<()>,
     key_lock: Mutex<()>,
+    external_lock: Mutex<()>,
     layout_lock: Mutex<()>,
     stop: AtomicBool,
     conns: Arc<AtomicUsize>,
@@ -2826,6 +2827,20 @@ impl Runner {
         serde_json::from_slice::<Meta>(&bytes).ok()?.trust_file
     }
 
+    fn refuse_held(&self, agent_id: &str) -> Result<(), ApiErr> {
+        let held = self.all().into_iter().any(|s| {
+            s.state().kind != StateKind::Exited
+                && lock(&s.inner).meta.agent_session_id.as_deref() == Some(agent_id)
+        });
+        if held {
+            return Err(api(
+                ErrorCode::Busy,
+                "this conversation is already running in another tmgr session; fork it instead",
+            ));
+        }
+        Ok(())
+    }
+
     fn by_key(&self, key: &str) -> Option<Arc<Session>> {
         self.all()
             .into_iter()
@@ -2951,7 +2966,10 @@ impl Runner {
         let prior = s.prior_text();
         let (info, resumed, via) = match &meta.profile {
             Some(profile) => {
-                let resume_id = resume::id_from_log(&self.sdir(old).join("output.log"), profile);
+                let resume_id = meta
+                    .agent_session_id
+                    .clone()
+                    .or_else(|| resume::id_from_log(&self.sdir(old).join("output.log"), profile));
                 self.resume_agent(
                     (&meta, profile.as_str()),
                     (cols, rows),
@@ -2961,6 +2979,10 @@ impl Runner {
                     q,
                 )?
             }
+            None if q.permission_mode.is_some() || q.no_sandbox.is_some() => return Err(api(
+                ErrorCode::Forbidden,
+                "a session without an agent profile cannot be resumed with --mode or --no-sandbox",
+            )),
             None => self.resume_raw(&meta, old, (cols, rows), prior)?,
         };
         restore::forget(&self.intents(), old);
@@ -3362,6 +3384,14 @@ impl Runner {
             ));
         }
         let external = req.external_resume.clone();
+        let _external = external
+            .as_ref()
+            .filter(|e| !e.fork)
+            .map(|e| {
+                let guard = lock(&self.external_lock);
+                self.refuse_held(&e.id).map(|()| guard)
+            })
+            .transpose()?;
         let start = match &req.start_key {
             Some(k) if !valid_start_key(k) => {
                 return Err(api(
@@ -4838,6 +4868,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         hub: Arc::new(Hub::default()),
         create_lock: Mutex::new(()),
         key_lock: Mutex::new(()),
+        external_lock: Mutex::new(()),
         layout_lock: Mutex::new(()),
         stop: AtomicBool::new(false),
         conns: Arc::new(AtomicUsize::new(0)),
@@ -5272,6 +5303,7 @@ mod tests {
             hub: Arc::new(Hub::default()),
             create_lock: Mutex::new(()),
             key_lock: Mutex::new(()),
+            external_lock: Mutex::new(()),
             layout_lock: Mutex::new(()),
             stop: AtomicBool::new(false),
             conns: Arc::new(AtomicUsize::new(0)),

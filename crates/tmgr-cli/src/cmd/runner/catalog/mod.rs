@@ -103,7 +103,7 @@ pub fn list(env: &Env, f: Filter) -> Listing {
     if let Some(ids) = &f.ids {
         light.retain(|e| ids.contains(&e.id));
     }
-    let ctx = Hydrate::new(env);
+    let ctx = Hydrate::new(env, &light);
     let limit = f.limit.unwrap_or(usize::MAX);
     let mut entries = Vec::new();
     for mut e in light {
@@ -166,20 +166,29 @@ pub(crate) fn codex_home(env: &Env) -> Option<PathBuf> {
 
 struct Hydrate {
     codex_root: Option<PathBuf>,
-    claude_live: std::collections::HashMap<String, Option<String>>,
+    claude_live: claude::Running,
+    claude_orphans: Vec<String>,
     codex_titles: std::cell::OnceCell<std::collections::HashMap<String, String>>,
     now: u64,
 }
 
 impl Hydrate {
-    fn new(env: &Env) -> Hydrate {
+    fn new(env: &Env, scanned: &[Entry]) -> Hydrate {
         let reads = Reads::of(env);
         let claude_root = tmgr_usage::paths::claude_config_dir(env);
+        let claude_live = match (&claude_root, reads.claude) {
+            (Some(r), true) => claude::live_sessions(r),
+            _ => Default::default(),
+        };
+        let claude_orphans = claude_live
+            .by_id
+            .iter()
+            .filter(|(id, _)| !scanned.iter().any(|e| &e.id == *id))
+            .filter_map(|(_, (_, cwd))| cwd.clone())
+            .collect();
         Hydrate {
-            claude_live: match (&claude_root, reads.claude) {
-                (Some(r), true) => claude::live_sessions(r),
-                _ => Default::default(),
-            },
+            claude_live,
+            claude_orphans,
             codex_root: codex_home(env),
             codex_titles: std::cell::OnceCell::new(),
             now: now_ms(),
@@ -189,7 +198,7 @@ impl Hydrate {
     fn fill(&self, e: &mut Entry) -> bool {
         if e.readable {
             let keep = match e.agent {
-                Agent::Claude => claude::fill(e, &self.claude_live),
+                Agent::Claude => claude::fill(e, &self.claude_live, &self.claude_orphans),
                 Agent::Codex => {
                     let titles = self.codex_titles.get_or_init(|| {
                         self.codex_root
@@ -259,7 +268,7 @@ pub(crate) fn parse_ts(v: &Value) -> Option<u64> {
 pub(crate) fn open_regular(path: &Path) -> io::Result<File> {
     let f = OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NOFOLLOW)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)?;
     if !f.metadata()?.is_file() {
         return Err(io::Error::new(

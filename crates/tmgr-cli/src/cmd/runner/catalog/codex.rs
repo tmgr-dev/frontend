@@ -100,10 +100,9 @@ pub(super) fn fill(e: &mut Entry, titles: &HashMap<String, String>, root: &Path)
         }
         let p = &first["payload"];
         if let Some(id) = p["id"].as_str() {
-            if !valid_resume_id(id) {
+            if id != e.id {
                 return false;
             }
-            e.id = id.to_string();
         }
         e.started_at = parse_ts(&p["timestamp"]);
         e.cwd = p["cwd"].as_str().filter(|c| !c.is_empty()).map(Into::into);
@@ -120,8 +119,10 @@ pub(super) fn fill(e: &mut Entry, titles: &HashMap<String, String>, root: &Path)
         }
     }
     e.title = titles.get(&e.id).cloned();
-    if lock_held(root, &e.id) {
-        e.live = Live::Yes;
+    match lock_state(root, &e.id) {
+        Lock::Held => e.live = Live::Yes,
+        Lock::Unknown => e.live = Live::Recent,
+        Lock::Free => {}
     }
     true
 }
@@ -131,19 +132,31 @@ fn is_preamble(t: &str) -> bool {
     t.is_empty() || PREAMBLES.iter().any(|p| t.starts_with(p))
 }
 
-fn lock_held(root: &Path, id: &str) -> bool {
-    let Ok(f) = open_regular(&root.join("thread-writer-locks").join(format!("{id}.lock"))) else {
-        return false;
+enum Lock {
+    Held,
+    Free,
+    Unknown,
+}
+
+fn lock_state(root: &Path, id: &str) -> Lock {
+    let f = match open_regular(&root.join("thread-writer-locks").join(format!("{id}.lock"))) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Lock::Free,
+        Err(_) => return Lock::Unknown,
     };
     let fd = f.as_raw_fd();
     // SAFETY: fd belongs to `f`, which outlives both calls.
     unsafe {
         if libc::flock(fd, libc::LOCK_SH | libc::LOCK_NB) == 0 {
             libc::flock(fd, libc::LOCK_UN);
-            return false;
+            return Lock::Free;
         }
     }
-    std::io::Error::last_os_error().raw_os_error() == Some(libc::EWOULDBLOCK)
+    if std::io::Error::last_os_error().raw_os_error() == Some(libc::EWOULDBLOCK) {
+        Lock::Held
+    } else {
+        Lock::Unknown
+    }
 }
 
 pub(super) fn pieces(v: &Value, out: &mut Vec<Piece>) {

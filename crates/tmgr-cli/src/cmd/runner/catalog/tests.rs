@@ -286,6 +286,124 @@ fn codex_live_is_decided_by_the_lock_not_by_the_file() {
     );
 }
 
+fn mkfifo(p: &Path) {
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    let c = std::ffi::CString::new(p.as_os_str().as_encoded_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+}
+
+fn within<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(f());
+    });
+    rx.recv_timeout(Duration::from_secs(10))
+        .expect("blocked on a named pipe")
+}
+
+#[test]
+fn named_pipes_never_block_a_listing_a_lookup_or_the_index() {
+    let fx = Fx::new();
+    fx.grant();
+    mkfifo(
+        &fx.claude_root()
+            .join(format!("projects/-w/{}.jsonl", uid(1))),
+    );
+    fx.claude("-w", &uid(2), &[claude_user("/w", "real one")]);
+    mkfifo(&fx.claude_root().join("sessions/77.json"));
+    let rollout = |id: &str| {
+        fx.codex_root().join(format!(
+            "sessions/2026/11/05/rollout-2026-11-05T10-00-00-{id}.jsonl"
+        ))
+    };
+    mkfifo(&rollout(&uid(3)));
+    let held = uid(4);
+    let p = fx.codex(&held, &[codex_meta(&held, "/w", json!("cli"))]);
+    age(&p, 3600);
+    mkfifo(
+        &fx.codex_root()
+            .join(format!("thread-writer-locks/{held}.lock")),
+    );
+    mkfifo(&fx.codex_root().join("session_index.jsonl"));
+    let env = fx.env.clone();
+    let l = within(move || list(&env, Filter::default()));
+    assert!(l.entries.iter().any(|e| e.id == uid(2)));
+    assert!(l.entries.iter().all(|e| e.id != uid(1) || !e.readable));
+    let locked = l.entries.iter().find(|e| e.id == held).unwrap();
+    assert_eq!(locked.live, Live::Recent);
+    let env = fx.env.clone();
+    assert!(within(move || find(&env, &uid(3))).is_none_or(|e| !e.readable));
+    let all = scan(&fx.env, None);
+    let path = fx.tmp.path().join("cfg/sessions-index.sqlite");
+    within(move || {
+        let ix = Index::open(&path).unwrap();
+        ix.update(&all, |_, _| {}).unwrap();
+    });
+}
+
+#[test]
+fn a_live_claude_process_with_an_unreadable_session_file_makes_resuming_uncertain() {
+    let fx = Fx::new();
+    fx.grant();
+    let p = fx.claude("-w", &uid(1), &[claude_user("/w", "hi")]);
+    age(&p, 3600);
+    let me = std::process::id();
+    let sessions = fx.claude_root().join("sessions");
+    assert_eq!(all(&fx).entries[0].live, Live::No);
+    fx.write(&sessions.join(format!("{me}.json")), "{not json");
+    assert_eq!(all(&fx).entries[0].live, Live::Recent);
+    fx.write(
+        &sessions.join(format!("{me}.json")),
+        &json!({"pid": me, "sessionId": "not-an-id"}).to_string(),
+    );
+    assert_eq!(all(&fx).entries[0].live, Live::Recent);
+    fx.write(&sessions.join("2147483000.json"), "{not json");
+    std::fs::remove_file(sessions.join(format!("{me}.json"))).unwrap();
+    assert_eq!(all(&fx).entries[0].live, Live::No);
+}
+
+#[test]
+fn a_live_claude_session_without_a_transcript_marks_conversations_of_its_folder() {
+    let fx = Fx::new();
+    fx.grant();
+    for (n, cwd) in [(1, "/w/same"), (2, "/w/other")] {
+        let p = fx.claude("-w", &uid(n), &[claude_user(cwd, "hi")]);
+        age(&p, 3600);
+    }
+    let me = std::process::id();
+    fx.write(
+        &fx.claude_root().join(format!("sessions/{me}.json")),
+        &json!({"pid": me, "sessionId": uid(9), "cwd": "/w/same"}).to_string(),
+    );
+    let l = all(&fx);
+    let by = |n: u64| l.entries.iter().find(|e| e.id == uid(n)).unwrap().live;
+    assert_eq!(by(1), Live::Recent);
+    assert_eq!(by(2), Live::No);
+}
+
+#[test]
+fn a_rollout_whose_filename_and_session_meta_disagree_is_not_listed() {
+    let fx = Fx::new();
+    fx.grant();
+    fx.codex(
+        &uid(1),
+        &[
+            codex_meta(&uid(2), "/w", json!("cli")),
+            codex_user("mismatchword"),
+        ],
+    );
+    fx.codex(
+        &uid(3),
+        &[
+            codex_meta(&uid(3), "/w", json!("cli")),
+            codex_user("goodword"),
+        ],
+    );
+    assert_eq!(ids(&all(&fx)), [uid(3)]);
+    assert!(find(&fx.env, &uid(1)).is_none());
+    assert!(find(&fx.env, &uid(2)).is_none());
+}
+
 fn seed_both(fx: &Fx) {
     fx.claude(
         "-w-a",
@@ -694,6 +812,30 @@ mod idx {
     }
 
     #[test]
+    fn a_rollout_whose_filename_and_session_meta_disagree_is_not_indexed() {
+        let fx = Fx::new();
+        fx.grant();
+        fx.codex(
+            &uid(1),
+            &[
+                codex_meta(&uid(2), "/w", json!("cli")),
+                codex_user("mismatchword"),
+            ],
+        );
+        fx.codex(
+            &uid(3),
+            &[
+                codex_meta(&uid(3), "/w", json!("cli")),
+                codex_user("goodword"),
+            ],
+        );
+        let ix = open(&fx);
+        sync(&fx, &ix);
+        assert!(sids(&ix, "mismatchword").is_empty());
+        assert_eq!(sids(&ix, "goodword"), [uid(3)]);
+    }
+
+    #[test]
     fn vanished_files_are_removed_with_their_text() {
         let fx = Fx::new();
         fx.grant();
@@ -719,12 +861,94 @@ mod idx {
         fx.consent(None, None, Some(true));
         sync(&fx, &ix);
         assert_eq!(sids(&ix, "secret").len(), 2);
-        ix.drop_agent(Agent::Codex).unwrap();
+    }
+
+    #[test]
+    fn revoking_one_tool_deletes_the_whole_index_and_a_rebuild_keeps_the_granted_one() {
+        let fx = Fx::new();
+        fx.grant();
+        seed_both(&fx);
+        let path = fx.tmp.path().join("cfg/sessions-index.sqlite");
+        let ix = Index::open(&path).unwrap();
+        sync(&fx, &ix);
+        assert_eq!(sids(&ix, "secret").len(), 2);
+        drop(ix);
+        index::enforce_consent(&path, true, true).unwrap();
+        assert!(path.exists());
+        index::enforce_consent(&path, true, false).unwrap();
+        assert!(!path.exists());
+        fx.consent(None, None, Some(false));
+        let ix = Index::open(&path).unwrap();
+        sync(&fx, &ix);
         assert_eq!(sids(&ix, "secret"), [uid(1)]);
-        assert_eq!(
-            count(&ix, "SELECT count(*) FROM files WHERE agent='codex'"),
-            0
-        );
+        drop(ix);
+        index::enforce_consent(&path, true, false).unwrap();
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn a_failed_index_deletion_is_reported() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("sessions-index.sqlite");
+        std::fs::create_dir(&path).unwrap();
+        assert!(index::enforce_consent(&path, false, false).is_err());
+    }
+
+    #[test]
+    fn deleted_text_does_not_remain_in_the_database_file() {
+        let fx = Fx::new();
+        fx.grant();
+        let path = fx.tmp.path().join("cfg/sessions-index.sqlite");
+        let gone = fx.claude("-w", &uid(1), &[claude_user("/w", "zqxjkvunique bytes")]);
+        fx.claude("-w", &uid(2), &[claude_user("/w", "other text stays")]);
+        let ix = Index::open(&path).unwrap();
+        sync(&fx, &ix);
+        std::fs::remove_file(gone).unwrap();
+        assert_eq!(sync(&fx, &ix).removed, 1);
+        ix.conn
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))
+            .unwrap();
+        drop(ix);
+        let bytes = std::fs::read(&path).unwrap();
+        let has =
+            |hay: &[u8], needle: &str| hay.windows(needle.len()).any(|w| w == needle.as_bytes());
+        assert!(!has(&bytes, "zqxjkvunique"));
+        assert!(has(&bytes, "stays"));
+    }
+
+    #[test]
+    fn two_files_with_one_session_id_keep_their_own_text() {
+        let fx = Fx::new();
+        fx.grant();
+        let a = fx.claude("-a", &uid(1), &[claude_user("/w", "alphaword")]);
+        fx.claude("-b", &uid(1), &[claude_user("/w", "betaword")]);
+        let ix = open(&fx);
+        sync(&fx, &ix);
+        assert_eq!(sids(&ix, "alphaword"), [uid(1)]);
+        assert_eq!(sids(&ix, "betaword"), [uid(1)]);
+        std::fs::remove_file(a).unwrap();
+        sync(&fx, &ix);
+        assert!(sids(&ix, "alphaword").is_empty());
+        assert_eq!(sids(&ix, "betaword"), [uid(1)]);
+    }
+
+    #[test]
+    fn an_index_of_an_older_layout_is_rebuilt() {
+        let fx = Fx::new();
+        fx.grant();
+        let path = fx.tmp.path().join("cfg/sessions-index.sqlite");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let old = rusqlite::Connection::open(&path).unwrap();
+        old.execute_batch(
+            "CREATE TABLE files(path TEXT PRIMARY KEY, session_id TEXT);
+             CREATE VIRTUAL TABLE chunks USING fts5(session_id UNINDEXED, text);",
+        )
+        .unwrap();
+        drop(old);
+        fx.claude("-w", &uid(1), &[claude_user("/w", "fresh content")]);
+        let ix = Index::open(&path).unwrap();
+        sync(&fx, &ix);
+        assert_eq!(sids(&ix, "fresh"), [uid(1)]);
     }
 
     #[test]
@@ -736,17 +960,17 @@ mod idx {
         let ix = Index::open(&path).unwrap();
         sync(&fx, &ix);
         assert!(path.exists());
-        index::enforce_consent(&path, true, true);
+        index::enforce_consent(&path, true, true).unwrap();
         assert!(path.exists());
         drop(ix);
-        index::enforce_consent(&path, false, false);
+        index::enforce_consent(&path, false, false).unwrap();
         for s in ["", "-wal", "-shm"] {
             assert!(
                 !PathBuf::from(format!("{}{s}", path.display())).exists(),
                 "{s}"
             );
         }
-        index::enforce_consent(&path, false, false);
+        index::enforce_consent(&path, false, false).unwrap();
     }
 
     #[test]
@@ -772,7 +996,11 @@ mod idx {
     fn the_index_file_sits_in_a_sandbox_denied_directory() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().canonicalize().unwrap();
-        let path = index::index_path(&home.join(".config/tmgr"));
+        let env = Env {
+            home: Some(home.clone()),
+            vars: std::collections::HashMap::new(),
+        };
+        let path = tmgr_usage::paths::sessions_index(&env).unwrap();
         let deny = tmgr_runner::sandbox::home_deny_paths(&home);
         assert!(deny.iter().any(|d| path.starts_with(d)), "{deny:?}");
     }

@@ -405,3 +405,100 @@ fn resuming_a_conversation_is_refused_inside_an_agent_session() {
         assert!(stderr(&out).contains("agent session"));
     }
 }
+
+fn wait_exited(rig: &Rig, id: &str) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    loop {
+        let sessions = tmgr_runner::client::Client::connect(rig.run.path())
+            .and_then(|mut c| c.list())
+            .unwrap_or_default();
+        if sessions
+            .iter()
+            .any(|s| s.id == id && s.state.kind == tmgr_ipc::api::StateKind::Exited)
+        {
+            return;
+        }
+        assert!(std::time::Instant::now() < deadline, "{id} did not exit");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn a_flagged_resume_of_a_tmgr_session_uses_its_recorded_conversation_not_the_output_tail() {
+    let rig = Rig::new();
+    rig.claude_file(C1, &rig.work.display().to_string(), "t");
+    let other = "33333333-0000-4000-8000-000000000003";
+    let (code, out) = rig.pty(
+        &["--json", "resume", C1, "--no-sandbox", "--no-attach"],
+        CONSENT,
+    );
+    assert_eq!(code, 0, "{out}");
+    let first = json_line(&out)["data"]["id"].as_str().unwrap().to_string();
+    wait_exited(&rig, &first);
+    fs::write(
+        rig.run
+            .path()
+            .join("sessions")
+            .join(&first)
+            .join("output.log"),
+        format!("claude --resume {other}\n"),
+    )
+    .unwrap();
+    let (code, out) = rig.pty(
+        &["--json", "resume", &first, "--no-sandbox", "--no-attach"],
+        CONSENT,
+    );
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains(&format!("conversation  {C1}")), "{out}");
+    let v = json_line(&out);
+    assert_eq!(v["data"]["session"]["agent_session_id"], C1);
+    assert_eq!(v["data"]["session"]["resumed_from"], first.as_str());
+    let argv = v["data"]["session"]["argv"].to_string();
+    assert!(argv.contains(C1) && !argv.contains(other), "{argv}");
+    let (code, out) = rig.pty(&["resume", &first, "--no-sandbox", "--no-attach"], CONSENT);
+    assert_ne!(code, 0, "{out}");
+}
+
+#[test]
+fn a_flagged_resume_without_a_recorded_conversation_says_where_the_id_comes_from() {
+    let rig = Rig::new();
+    let (code, out) = rig.pty(
+        &[
+            "--json",
+            "run",
+            "--agent",
+            "codex",
+            "--cwd",
+            &rig.work.display().to_string(),
+            "--no-sandbox",
+            "--no-attach",
+        ],
+        CONSENT,
+    );
+    assert_eq!(code, 0, "{out}");
+    let first = json_line(&out)["data"]["id"].as_str().unwrap().to_string();
+    wait_exited(&rig, &first);
+    let (_, out) = rig.pty(&["resume", &first, "--no-sandbox", "--no-attach"], CONSENT);
+    assert!(out.contains("taken from its recorded output"), "{out}");
+}
+
+#[test]
+fn json_output_carries_no_control_or_bidi_characters_from_the_folder_name() {
+    let rig = Rig::new();
+    let odd = rig.work.parent().unwrap().join("w\u{9b}x\u{202e}y");
+    fs::create_dir_all(&odd).unwrap();
+    rig.claude_file(C1, &odd.display().to_string(), "t");
+    let (code, out) = rig.pty(
+        &["--json", "resume", C1, "--no-sandbox", "--no-attach"],
+        CONSENT,
+    );
+    assert_eq!(code, 0, "{out:?}");
+    assert!(
+        !out.contains('\u{9b}') && !out.contains('\u{202e}'),
+        "{out:?}"
+    );
+    assert!(json_line(&out)["data"]["cwd"]
+        .as_str()
+        .unwrap()
+        .contains("w?x?y"));
+}

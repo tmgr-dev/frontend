@@ -6,10 +6,12 @@ use super::catalog::{self, Entry, Live};
 use super::ops::{clean, elevated, list_or_empty, resolve, run_create_run, terminal_size};
 use super::{attach, connect, emit, rerr, runner_config, Opts, PermissionMode, ResumeArgs};
 use std::io::IsTerminal;
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use tmgr_core::error::{Error, Kind, Result};
-use tmgr_ipc::api::{ExternalResume, RunCreateReq, SessionInfo, StateKind};
+use tmgr_ipc::api::{CwdPin, ExternalResume, RestoredRun, RunCreateReq, SessionInfo, StateKind};
 use tmgr_runner::daemon::{self, RunnerConfig};
+use tmgr_runner::resume::valid_resume_id;
 use tmgr_usage::paths::Env;
 
 #[derive(Debug)]
@@ -17,6 +19,7 @@ pub(super) struct Plan {
     pub profile: &'static str,
     pub id: String,
     pub cwd: String,
+    pub pin: CwdPin,
     pub fork: bool,
     pub warnings: Vec<String>,
 }
@@ -26,24 +29,19 @@ pub(super) fn is_tmgr_session(key: &str) -> Result<bool> {
     Ok(resolve(&list_or_empty(&cfg)?, key).is_ok())
 }
 
-pub(super) fn plan(e: &Entry, fork: bool, no_sandbox: bool, denial: Option<&str>) -> Result<Plan> {
+fn check_readable(e: &Entry, denial: Option<&str>) -> Result<()> {
+    if e.readable {
+        return Ok(());
+    }
+    Err(Error::new(
+        Kind::Forbidden,
+        "session files of this agent are not readable",
+    )
+    .hint(denial.unwrap_or("run tmgr usage consent allow")))
+}
+
+fn check_live(e: &Entry, fork: bool) -> Result<Vec<String>> {
     let bin = super::bin();
-    if !e.readable {
-        return Err(Error::new(
-            Kind::Forbidden,
-            "session files of this agent are not readable",
-        )
-        .hint(denial.unwrap_or("run tmgr usage consent allow")));
-    }
-    if !no_sandbox {
-        return Err(Error::usage(
-            "an ordinary session lives in your real home folder, which the sandbox cannot see",
-        )
-        .hint(format!(
-            "repeat with --no-sandbox: {bin} resume {} --no-sandbox",
-            e.id
-        )));
-    }
     let mut warnings = Vec::new();
     match e.live {
         Live::Yes if !fork => {
@@ -57,10 +55,45 @@ pub(super) fn plan(e: &Entry, fork: bool, no_sandbox: bool, denial: Option<&str>
             )))
         }
         Live::Recent if !fork => warnings.push(
-            "warning: this session was active a moment ago and may still be running; resuming it can interleave two writers".to_string(),
+            "warning: this session was active a moment ago or its state cannot be told, so it may still be running; resuming it can interleave two writers".to_string(),
         ),
         _ => {}
     }
+    Ok(warnings)
+}
+
+pub(super) fn check_known(id: &str, fork: bool) -> Result<Vec<String>> {
+    let env = Env::from_process();
+    let e = catalog::find(&env, id).ok_or_else(|| {
+        Error::not_found(format!(
+            "the conversation of this session was not found: {}",
+            clean(id)
+        ))
+    })?;
+    check_readable(&e, Reads::of(&env).hint())?;
+    check_live(&e, fork)
+}
+
+pub(super) fn conversation_line(s: &SessionInfo) -> String {
+    match s.agent_session_id.as_deref().filter(|i| valid_resume_id(i)) {
+        Some(id) => format!("  conversation  {id}"),
+        None => "  conversation  taken from its recorded output".to_string(),
+    }
+}
+
+pub(super) fn plan(e: &Entry, fork: bool, no_sandbox: bool, denial: Option<&str>) -> Result<Plan> {
+    let bin = super::bin();
+    check_readable(e, denial)?;
+    if !no_sandbox {
+        return Err(Error::usage(
+            "an ordinary session lives in your real home folder, which the sandbox cannot see",
+        )
+        .hint(format!(
+            "repeat with --no-sandbox: {bin} resume {} --no-sandbox",
+            e.id
+        )));
+    }
+    let warnings = check_live(e, fork)?;
     let recorded = e.cwd.as_deref().ok_or_else(|| {
         Error::not_found("the folder of this session was not recorded, so it cannot be started")
     })?;
@@ -90,10 +123,15 @@ pub(super) fn plan(e: &Entry, fork: bool, no_sandbox: bool, denial: Option<&str>
         .to_str()
         .ok_or_else(|| Error::usage("the folder of this session is not valid text"))?
         .to_string();
+    let meta = std::fs::metadata(&real).map_err(|_| gone())?;
     Ok(Plan {
         profile: e.agent.profile(),
         id: e.id.clone(),
         cwd,
+        pin: CwdPin {
+            dev: meta.dev(),
+            ino: meta.ino(),
+        },
         fork,
         warnings,
     })
@@ -108,6 +146,7 @@ pub(super) fn request(p: &Plan, mode: Option<PermissionMode>, size: (u16, u16)) 
         size,
         false,
     );
+    req.cwd_pin = Some(p.pin);
     req.external_resume = Some(ExternalResume {
         id: p.id.clone(),
         fork: p.fork,
@@ -115,15 +154,52 @@ pub(super) fn request(p: &Plan, mode: Option<PermissionMode>, size: (u16, u16)) 
     elevated(req, mode, true)
 }
 
+fn scrub(s: &mut String) {
+    *s = clean(s);
+}
+
+pub(super) fn clean_info(info: &SessionInfo) -> SessionInfo {
+    let mut i = info.clone();
+    for s in [&mut i.id, &mut i.name, &mut i.cwd] {
+        scrub(s);
+    }
+    i.argv.iter_mut().for_each(scrub);
+    for s in [
+        &mut i.profile,
+        &mut i.permission_mode,
+        &mut i.resumed_from,
+        &mut i.agent_session_id,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        scrub(s);
+    }
+    i
+}
+
+pub(super) fn clean_run(r: &RestoredRun) -> RestoredRun {
+    let mut r = r.clone();
+    r.session = clean_info(&r.session);
+    if let Some(v) = r.via.as_mut() {
+        scrub(v);
+    }
+    r
+}
+
 fn report(o: &Opts, info: &SessionInfo, verb: &str) -> i32 {
     let bin = super::bin();
+    let info = clean_info(info);
+    let conversation = info
+        .agent_session_id
+        .as_deref()
+        .map(|id| format!(" conversation {id}"))
+        .unwrap_or_default();
     let human = format!(
-        "{verb} {} ({}); attach with: {bin} attach {}",
-        clean(&info.name),
-        clean(&info.id),
-        clean(&info.id)
+        "{verb} {} ({}){conversation}; attach with: {bin} attach {}",
+        info.name, info.id, info.id
     );
-    emit(o, info, human)
+    emit(o, &info, human)
 }
 
 fn attach_or_report(
@@ -162,6 +238,11 @@ pub(super) fn external(o: &Opts, a: &ResumeArgs) -> Result<i32> {
     );
     let bypass = a.mode == Some(PermissionMode::Bypass);
     super::privilege::confirm(bypass, true, false, false)?;
+    let again = catalog::find(&env, &a.session).ok_or_else(|| {
+        Error::not_found("the conversation disappeared while waiting for confirmation")
+    })?;
+    check_readable(&again, Reads::of(&env).hint())?;
+    check_live(&again, a.fork)?;
     let cfg = runner_config()?;
     daemon::start_background(&cfg).map_err(rerr)?;
     let mut client = connect(&cfg)?;
@@ -423,5 +504,44 @@ mod tests {
         )
         .unwrap();
         assert!(e.hint.is_none());
+    }
+
+    #[test]
+    fn the_request_pins_the_folder_the_plan_inspected() {
+        use std::os::unix::fs::MetadataExt;
+        let (tmp, e) = fixture();
+        let p = plan(&e, false, true, None).unwrap();
+        let meta = std::fs::metadata(tmp.path()).unwrap();
+        assert_eq!(
+            request(&p, None, (80, 24)).cwd_pin,
+            Some(CwdPin {
+                dev: meta.dev(),
+                ino: meta.ino()
+            })
+        );
+    }
+
+    #[test]
+    fn printed_session_data_loses_c1_and_bidi_characters() {
+        let mut info = session("claude-code", true, Some("x\u{9b}y"));
+        info.name = "a\u{9b}b\u{202e}c".into();
+        info.cwd = "/w\u{2066}".into();
+        info.argv = vec!["a\u{9b}".into()];
+        let c = clean_info(&info);
+        let text = serde_json::to_string(&c).unwrap();
+        for bad in ['\u{9b}', '\u{202e}', '\u{2066}'] {
+            assert!(!text.contains(bad), "{text}");
+        }
+        assert_eq!(c.name, "a?b?c");
+    }
+
+    #[test]
+    fn a_live_or_unknown_state_is_refused_or_warned_for_a_known_conversation() {
+        let (_t, mut e) = fixture();
+        e.live = Live::Yes;
+        assert!(check_live(&e, false).is_err());
+        assert!(check_live(&e, true).unwrap().is_empty());
+        e.live = Live::Recent;
+        assert!(check_live(&e, false).unwrap()[0].contains("cannot be told"));
     }
 }

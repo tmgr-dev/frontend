@@ -633,7 +633,7 @@ pub fn rerr(e: io::Error) -> Error {
     ) {
         return Error::new(Kind::Offline, "lost the connection to the runner");
     }
-    let msg = e.to_string();
+    let msg = tmgr_runner::sanitize::sanitize_text(&e.to_string()).into_owned();
     if msg.starts_with("unknown_method: ") {
         return Error::new(Kind::Conflict, "the running runner is older than this tmgr")
             .hint(format!("{0} runner restart", bin()));

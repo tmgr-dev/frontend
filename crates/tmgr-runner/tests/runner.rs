@@ -5330,6 +5330,10 @@ fn external_resume_checks_the_id_the_template_and_the_folder() {
             "{bad:?}: {e}"
         );
     }
+    let mut swapped = fx.req(false);
+    swapped.cwd_pin = Some(CwdPin { dev: 1, ino: 1 });
+    let e = err_text(fx.h.client().create_run(swapped));
+    assert!(e.contains("approved folder changed"), "{e}");
     let mut missing = fx.req(false);
     missing.cwd = fx.work.join("gone").display().to_string();
     let e = err_text(fx.h.client().create_run(missing));
@@ -5350,6 +5354,40 @@ fn external_resume_checks_the_id_the_template_and_the_folder() {
         );
     }
     assert!(bare.h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn two_external_resumes_of_one_conversation_cannot_both_run() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = ext_fx(true);
+    let results: Vec<_> = std::thread::scope(|sc| {
+        let jobs: Vec<_> = (0..2)
+            .map(|_| sc.spawn(|| fx.h.client().create_run(fx.req(false))))
+            .collect();
+        jobs.into_iter().map(|j| j.join().unwrap()).collect()
+    });
+    let (ok, failed): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
+    thread::sleep(Duration::from_millis(300));
+    if fx
+        .h
+        .client()
+        .list()
+        .unwrap()
+        .iter()
+        .any(|s| s.state.kind == StateKind::Exited)
+    {
+        return;
+    }
+    assert_eq!((ok.len(), failed.len()), (1, 1));
+    let e = err_text(failed.into_iter().next().unwrap());
+    assert!(e.contains("already running in another tmgr session"), "{e}");
+    let forked = fx.h.client().create_run(fx.req(true)).unwrap();
+    assert_eq!(forked.agent_session_id, None);
+    for s in fx.h.client().list().unwrap() {
+        let _ = fx.h.client().kill(&s.id, "kill");
+    }
 }
 
 const MULTI_TASK: TaskRef = TaskRef {

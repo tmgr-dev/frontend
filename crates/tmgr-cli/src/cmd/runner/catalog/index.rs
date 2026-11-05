@@ -7,7 +7,7 @@ use std::fmt;
 use std::fs::{DirBuilder, OpenOptions};
 use std::io::{self, BufRead, BufReader, Seek, SeekFrom};
 use std::os::unix::fs::{DirBuilderExt, FileExt, OpenOptionsExt, PermissionsExt};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 const SESSION_CAP: usize = 1024 * 1024;
@@ -18,16 +18,10 @@ const ANCHOR_LEN: u64 = 4096;
 const BLOB_WORD: usize = 200;
 const BUSY_MS: u64 = 2000;
 
-pub fn index_path(config_dir: &Path) -> PathBuf {
-    config_dir.join("sessions-index.sqlite")
-}
+const SCHEMA: i64 = 2;
 
-pub fn drop_index(path: &Path) {
-    for suffix in ["", "-wal", "-shm"] {
-        let mut p = path.as_os_str().to_owned();
-        p.push(suffix);
-        let _ = std::fs::remove_file(PathBuf::from(p));
-    }
+pub fn drop_index(path: &Path) -> io::Result<()> {
+    tmgr_usage::consent::remove_index_files(path)
 }
 
 #[derive(Debug)]
@@ -138,14 +132,25 @@ impl Index {
         conn.pragma_update(None, "secure_delete", "ON")?;
         conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(()))?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if version != SCHEMA {
+            conn.execute_batch("DROP TABLE IF EXISTS chunks; DROP TABLE IF EXISTS files;")?;
+        }
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS files(
                 path TEXT PRIMARY KEY, agent TEXT NOT NULL, session_id TEXT NOT NULL,
                 size INTEGER NOT NULL, mtime_ms INTEGER NOT NULL, indexed_bytes INTEGER NOT NULL,
                 truncated INTEGER NOT NULL, anchor BLOB NOT NULL, text_bytes INTEGER NOT NULL);
              CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
-                session_id UNINDEXED, text, tokenize='unicode61');",
+                session_id UNINDEXED, path UNINDEXED, text, tokenize='unicode61');",
         )?;
+        if version != SCHEMA {
+            conn.execute(
+                "INSERT INTO chunks(chunks, rank) VALUES('secure-delete', 1)",
+                [],
+            )?;
+            conn.pragma_update(None, "user_version", SCHEMA)?;
+        }
         Ok(Index { conn })
     }
 
@@ -186,28 +191,21 @@ impl Index {
             .iter()
             .map(|e| e.path.to_string_lossy().into_owned())
             .collect();
-        let mut stmt = self.conn.prepare("SELECT path, session_id FROM files")?;
-        let gone: Vec<(String, String)> = stmt
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        let mut stmt = self.conn.prepare("SELECT path FROM files")?;
+        let gone: Vec<String> = stmt
+            .query_map([], |r| r.get(0))?
             .filter_map(Result::ok)
-            .filter(|(p, _)| !keep.contains(p))
+            .filter(|p| !keep.contains(p))
             .collect();
         drop(stmt);
         if gone.is_empty() {
             return Ok(0);
         }
         let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
-        tx.execute_batch(
-            "CREATE TEMP TABLE IF NOT EXISTS gone(session_id TEXT PRIMARY KEY); DELETE FROM gone;",
-        )?;
-        for (path, sid) in &gone {
-            tx.execute("INSERT OR IGNORE INTO gone VALUES(?1)", [sid])?;
+        for path in &gone {
+            tx.execute("DELETE FROM chunks WHERE path=?1", [path])?;
             tx.execute("DELETE FROM files WHERE path=?1", [path])?;
         }
-        tx.execute(
-            "DELETE FROM chunks WHERE session_id IN (SELECT session_id FROM gone)",
-            [],
-        )?;
         tx.commit()?;
         Ok(gone.len())
     }
@@ -248,7 +246,7 @@ impl Index {
             _ => false,
         };
         let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
-        let (start, mut text_bytes, mut truncated, mut session_id) = match (&prev, appending) {
+        let (start, mut text_bytes, mut truncated, session_id) = match (&prev, appending) {
             (Some(r), true) => (
                 r.indexed_bytes,
                 r.text_bytes,
@@ -256,8 +254,8 @@ impl Index {
                 r.session_id.clone(),
             ),
             _ => {
-                if let Some(r) = &prev {
-                    tx.execute("DELETE FROM chunks WHERE session_id=?1", [&r.session_id])?;
+                if prev.is_some() {
+                    tx.execute("DELETE FROM chunks WHERE path=?1", [&path])?;
                 }
                 (0, 0, false, e.id.clone())
             }
@@ -267,7 +265,7 @@ impl Index {
             f.seek(SeekFrom::Start(start))?;
             let mut reader = BufReader::with_capacity(64 * 1024, &f);
             let mut insert =
-                tx.prepare_cached("INSERT INTO chunks(session_id, text) VALUES(?1, ?2)")?;
+                tx.prepare_cached("INSERT INTO chunks(session_id, path, text) VALUES(?1, ?2, ?3)")?;
             let mut first = start == 0;
             let mut line = Vec::new();
             'lines: while let Some((n, complete)) = read_line(&mut reader, &mut line)? {
@@ -284,11 +282,9 @@ impl Index {
                         truncated = true;
                         break;
                     }
-                    if let Some(id) = v["payload"]["id"]
-                        .as_str()
-                        .filter(|i| tmgr_runner::resume::valid_resume_id(i))
-                    {
-                        session_id = id.to_string();
+                    if v["payload"]["id"].as_str().is_some_and(|i| i != e.id) {
+                        truncated = true;
+                        break;
                     }
                 }
                 first = false;
@@ -307,7 +303,7 @@ impl Index {
                         truncated = true;
                     }
                     if !text.trim().is_empty() {
-                        insert.execute(params![session_id, text])?;
+                        insert.execute(params![session_id, path, text])?;
                         text_bytes += text.len();
                     }
                     if truncated {
@@ -343,7 +339,7 @@ impl Index {
             return Ok(Vec::new());
         };
         let mut stmt = self.conn.prepare_cached(
-            "SELECT session_id, snippet(chunks, 1, '', '', '…', 16), bm25(chunks) FROM chunks
+            "SELECT session_id, snippet(chunks, 2, '', '', '…', 16), bm25(chunks) FROM chunks
              WHERE chunks MATCH ?1 ORDER BY bm25(chunks) LIMIT ?2",
         )?;
         let rows = stmt.query_map(params![m, (limit * 20 + 100) as i64], |r| {
@@ -363,36 +359,36 @@ impl Index {
         }
         Ok(out)
     }
-
-    pub fn drop_agent(&self, agent: Agent) -> Result<(), IndexError> {
-        let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
-        tx.execute(
-            "DELETE FROM chunks WHERE session_id IN (SELECT session_id FROM files WHERE agent=?1)",
-            [agent.profile()],
-        )?;
-        tx.execute("DELETE FROM files WHERE agent=?1", [agent.profile()])?;
-        tx.commit()?;
-        self.conn
-            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
-        Ok(())
-    }
 }
 
-pub fn enforce_consent(path: &Path, claude: bool, codex: bool) {
+pub fn enforce_consent(path: &Path, claude: bool, codex: bool) -> io::Result<()> {
     if !path.exists() {
-        return;
+        return Ok(());
     }
     if !claude && !codex {
-        drop_index(path);
-        return;
+        return drop_index(path);
     }
-    if let Ok(ix) = Index::open(path) {
-        for (on, agent) in [(claude, Agent::Claude), (codex, Agent::Codex)] {
-            if !on {
-                let _ = ix.drop_agent(agent);
-            }
-        }
+    let holds_denied = match Index::open(path) {
+        Ok(ix) => ix
+            .conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM files WHERE (agent=?1 AND ?2=0) OR (agent=?3 AND ?4=0))",
+                params![
+                    Agent::Claude.profile(),
+                    i64::from(claude),
+                    Agent::Codex.profile(),
+                    i64::from(codex)
+                ],
+                |r| r.get::<_, i64>(0),
+            )
+            .map(|n| n != 0)
+            .unwrap_or(true),
+        Err(_) => true,
+    };
+    if holds_denied {
+        drop_index(path)?;
     }
+    Ok(())
 }
 
 pub fn match_query(q: &str) -> Option<String> {
