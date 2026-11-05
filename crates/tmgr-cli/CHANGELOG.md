@@ -4,6 +4,7 @@
 
 - Typing or pasting fast into an attached session no longer loses keystrokes when the machine is busy: the runner now waits for room on its link to the agent instead of dropping the input.
 - self-update: releases are now signed; install this version manually once.
+- The installer (`install.sh`) verifies the release signature with minisign when it is installed; without minisign it checks the archive against the SHA-256 in the release manifest fetched over HTTPS, warns, and installs. A wrong checksum or a bad signature always stops the install.
 
 ## 1.0.94
 

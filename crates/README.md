@@ -18,7 +18,7 @@ cargo install --locked --features runner --git https://github.com/tmgr-dev/front
 brew install tmgr-dev/tap/tmgr                               # once the tap exists, see below
 ```
 
-Windows: use WSL2 and the Linux installer inside it. The installer needs `curl`, downloads the signed `manifest.json`, requires `minisign` to verify it, then checks channel, expiry, that the installed tmgr is not newer (`TMGR_ALLOW_DOWNGRADE=1` overrides) and the archive sha256 from the manifest. It refuses an install directory you do not own or that is group- or world-writable. While the release signing key is not set up, or when `minisign` is missing, it refuses unless `TMGR_ALLOW_UNSIGNED=1` (loud warning).
+Windows: use WSL2 and the Linux installer inside it. The installer needs `curl`, downloads the signed `manifest.json` and verifies it with `minisign` when that is installed (without `minisign` it warns and relies on the archive sha256 from the manifest fetched over HTTPS), then checks channel, expiry, that the installed tmgr is not newer (`TMGR_ALLOW_DOWNGRADE=1` overrides) and the archive sha256 from the manifest. It refuses an install directory you do not own or that is group- or world-writable. A bad signature or a wrong checksum always stops it. A release without a signature, or an installer without the signing key, is refused unless `TMGR_ALLOW_UNSIGNED=1` (loud warning).
 
 The desktop app also installs a `tmgr` executable, so `tmgr-cli` and the desktop Nix package conflict in one profile.
 

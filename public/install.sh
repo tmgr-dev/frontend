@@ -9,7 +9,7 @@
 #   TMGR_ALLOW_DOWNGRADE=1   allow replacing a newer installed tmgr
 #   TMGR_ALLOW_UNSIGNED=1    install without verifying the release signature
 #
-# The release manifest is verified with minisign (required), then the archive
+# The release manifest is verified with minisign when it is installed, then the archive
 # is checked against the sha256 listed in the signed manifest.
 
 set -eu
@@ -212,9 +212,7 @@ verify_signature() {
     return 0
   fi
   if ! have minisign; then
-    [ "$allow" = "1" ] ||
-      die "minisign is required to verify the release signature (install it, or set TMGR_ALLOW_UNSIGNED=1 to skip verification)."
-    warn "WARNING: minisign not found; installing WITHOUT signature verification (TMGR_ALLOW_UNSIGNED=1)."
+    warn "WARNING: minisign not found: verified by SHA-256 over HTTPS only; install minisign for signature verification."
     return 0
   fi
   if ! fetch "$DL/$1/manifest.json.minisig" "$TMP/manifest.json.minisig" "$MAX_MANIFEST" 2>/dev/null; then

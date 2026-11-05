@@ -288,15 +288,27 @@ fn signed_release_installs_with_a_verifier() {
 }
 
 #[test]
-fn real_key_without_minisign_fails_closed() {
+fn without_minisign_a_good_checksum_installs_with_a_warning() {
     let s = Stand::new(Spec::default());
     let o = s.run_script(&s.keyed_script(), &[], true);
-    assert!(!o.status.success());
-    assert!(stderr(&o).contains("minisign is required"));
-    assert!(s.installed_version().is_none());
-    let o = s.run_script(&s.keyed_script(), &[("TMGR_ALLOW_UNSIGNED", "1")], true);
     assert!(o.status.success(), "{}", stderr(&o));
-    assert!(stderr(&o).contains("WITHOUT signature verification"));
+    assert!(stderr(&o).contains(
+        "minisign not found: verified by SHA-256 over HTTPS only; install minisign for signature verification"
+    ));
+    assert!(!String::from_utf8_lossy(&o.stdout).contains("signature verified"));
+    assert_eq!(s.installed_version().as_deref(), Some("tmgr 0.4.0"));
+}
+
+#[test]
+fn without_minisign_a_bad_checksum_installs_nothing() {
+    let s = Stand::new(Spec {
+        tamper_archive: true,
+        ..Spec::default()
+    });
+    let o = s.run_script(&s.keyed_script(), &[], true);
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("checksum mismatch"));
+    assert!(s.installed_version().is_none());
 }
 
 #[test]
