@@ -76,7 +76,7 @@ jobs:
         include: >-
           ${{ fromJSON(github.event.pull_request.user.login == 'dependabot[bot]'
           && '[{"name":"windows","runner":"windows-latest","bundles":"nsis,msi"},{"name":"linux","runner":"ubuntu-22.04","bundles":"deb,rpm,appimage"}]'
-          || '[{"name":"macos","runner":"macos-latest","bundles":"app,dmg"},{"name":"windows","runner":"windows-latest","bundles":"nsis,msi"},{"name":"linux","runner":"ubuntu-22.04","bundles":"deb,rpm,appimage"}]') }}
+          || '[{"name":"macos","runner":"macos-latest","bundles":"app,dmg"},{"name":"windows","runner":"windows-latest","bundles":"nsis,msi"},{"name":"linux","runner":"ubuntu-22.04","bundles":"deb,rpm,appimage"},{"name":"linux-arm","runner":"ubuntu-22.04-arm","bundles":"deb,rpm,appimage"}]') }}
     defaults:
       run:
         shell: bash
@@ -87,7 +87,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: linux system packages
-        if: matrix.name == 'linux'
+        if: startsWith(matrix.name, 'linux')
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
@@ -165,14 +165,19 @@ jobs:
               stage "$BUNDLE/deb/*.deb" "TMGR_${APP_VERSION}_amd64.deb"
               stage "$BUNDLE/rpm/*.rpm" "TMGR-${APP_VERSION}-1.x86_64.rpm"
               ;;
+            linux-arm)
+              stage "$BUNDLE/appimage/*.AppImage" "TMGR_${APP_VERSION}_aarch64.AppImage"
+              stage "$BUNDLE/deb/*.deb" "TMGR_${APP_VERSION}_arm64.deb"
+              stage "$BUNDLE/rpm/*.rpm" "TMGR-${APP_VERSION}-1.aarch64.rpm"
+              ;;
           esac
           find src-tauri/target/release/bundle -type f \( -name '*.sig' -o -name '*.deb' -o -name '*.rpm' -o -name '*.msi' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.dmg' -o -name '*.tar.gz' \)
           ls -l "$OUT"
 
       - name: smoke linux
-        if: matrix.name == 'linux'
+        if: startsWith(matrix.name, 'linux')
         run: |
-          DEB="$PWD/staging/TMGR_${APP_VERSION}_amd64.deb"
+          DEB=$(ls "$PWD"/staging/TMGR_${APP_VERSION}_*.deb)
           sudo apt-get install -y "$DEB"
           BIN=$(dpkg -L "$(dpkg-deb -f "$DEB" Package)" | grep '^/usr/bin/' | head -n 1)
           echo "binary: $BIN"
@@ -227,9 +232,22 @@ jobs:
           if-no-files-found: error
 
   snap:
-    name: build snap
+    name: build snap ${{ matrix.arch }}
     needs: [meta, build]
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.arch == 'arm64' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+            bundles: linux
+            triplet: x86_64-linux-gnu
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+            bundles: linux-arm
+            triplet: aarch64-linux-gnu
     env:
       APP_VERSION: ${{ needs.meta.outputs.version }}
     steps:
@@ -237,13 +255,13 @@ jobs:
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: bundles-linux
+          name: bundles-${{ matrix.bundles }}
           path: linux
 
       - name: prepare snap sources
         run: |
           mkdir snap-src
-          cp "linux/TMGR_${APP_VERSION}_amd64.deb" snap-src/
+          cp linux/TMGR_${APP_VERSION}_${{ matrix.arch }}.deb snap-src/
           sed -i "s/^version: .*/version: '$APP_VERSION'/" snap/snapcraft.yaml
 
       - uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1.3.0
@@ -252,12 +270,12 @@ jobs:
       - name: stage snap
         run: |
           mkdir -p staging
-          cp "${{ steps.build.outputs.snap }}" "staging/TMGR_${APP_VERSION}_amd64.snap"
+          cp "${{ steps.build.outputs.snap }}" "staging/TMGR_${APP_VERSION}_${{ matrix.arch }}.snap"
           ls -l staging
 
       - name: inspect snap
         run: |
-          unsquashfs -q -d "$RUNNER_TEMP/snapfs" "staging/TMGR_${APP_VERSION}_amd64.snap"
+          unsquashfs -q -d "$RUNNER_TEMP/snapfs" "staging/TMGR_${APP_VERSION}_${{ matrix.arch }}.snap"
           cd "$RUNNER_TEMP/snapfs"
           cat meta/snap.yaml
           BIN=$(readlink -f bin/tmgr-launch)
@@ -267,12 +285,12 @@ jobs:
           ICON=$(sed -n 's/^Icon=\${SNAP}\///p' "$DESKTOP")
           test -f "$ICON"
           grep -q 'x-scheme-handler/tmgr' "$DESKTOP" || echo "::warning::desktop file has no tmgr scheme handler"
-          ls usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess
+          ls usr/lib/${{ matrix.triplet }}/webkit2gtk-4.1/WebKitWebProcess
           grep -q 'TMGR_DISABLE_UPDATER' meta/snap.yaml
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: bundles-snap
+          name: bundles-snap-${{ matrix.arch }}
           path: staging/*
           if-no-files-found: error
 
@@ -323,6 +341,9 @@ jobs:
           add "linux-x86_64 linux-x86_64-appimage" "TMGR_${APP_VERSION}_amd64.AppImage"
           add "linux-x86_64-deb" "TMGR_${APP_VERSION}_amd64.deb"
           add "linux-x86_64-rpm" "TMGR-${APP_VERSION}-1.x86_64.rpm"
+          add "linux-aarch64 linux-aarch64-appimage" "TMGR_${APP_VERSION}_aarch64.AppImage"
+          add "linux-aarch64-deb" "TMGR_${APP_VERSION}_arm64.deb"
+          add "linux-aarch64-rpm" "TMGR-${APP_VERSION}-1.aarch64.rpm"
           jq -n \
             --arg version "$APP_VERSION" \
             --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -356,7 +377,7 @@ jobs:
             --latest
 
   snap-publish:
-    name: publish snap to edge
+    name: publish snap to stable and edge
     needs: [meta, release]
     if: needs.meta.outputs.dry_run == 'false'
     runs-on: ubuntu-latest
@@ -366,11 +387,26 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
         with:
-          name: bundles-snap
+          pattern: bundles-snap-*
           path: snap
+          merge-multiple: true
 
       - uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40 # v1.2.0
         if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
         with:
           snap: snap/TMGR_${{ needs.meta.outputs.version }}_amd64.snap
-          release: edge
+          release: stable,edge
+
+      - name: find arm64 snap
+        id: arm
+        if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
+        run: |
+          if [ -f "snap/TMGR_${{ needs.meta.outputs.version }}_arm64.snap" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40 # v1.2.0
+        if: steps.arm.outputs.found == 'true'
+        with:
+          snap: snap/TMGR_${{ needs.meta.outputs.version }}_arm64.snap
+          release: stable,edge

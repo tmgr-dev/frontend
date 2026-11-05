@@ -1,4 +1,6 @@
 {
   "version": "0.9.102",
-  "hash": "sha256-np5Txr6MlJNwKrt+R+7PotBA1sGpxsYswek3BiMPhyw="
+  "hashes": {
+    "x86_64-linux": "sha256-np5Txr6MlJNwKrt+R+7PotBA1sGpxsYswek3BiMPhyw="
+  }
 }
