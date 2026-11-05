@@ -27,6 +27,7 @@ fn terminal_gone(fd: libc::c_int) -> bool {
 }
 
 fn exit_now(sig: libc::c_int) -> ! {
+    super::smart::kill_running();
     unsafe { libc::_exit(128 + sig) }
 }
 
