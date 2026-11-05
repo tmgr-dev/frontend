@@ -40,7 +40,7 @@
       apps = nixpkgs.lib.genAttrs desktopSystems (s: {
         default = {
           type = "app";
-          program = "${desktopFor s}/bin/tmgr";
+          program = "${self.packages.${s}.tmgr}/bin/tmgr";
         };
       });
 

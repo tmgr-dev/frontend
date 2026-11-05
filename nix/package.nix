@@ -31,7 +31,9 @@ stdenv.mkDerivation {
 
   src = fetchurl {
     url = "https://github.com/tmgr-dev/frontend/releases/download/desktop-v${source.version}/TMGR_${source.version}_${debArch}.deb";
-    hash = source.hashes.${stdenv.hostPlatform.system};
+    hash =
+      source.hashes.${stdenv.hostPlatform.system}
+        or (throw "tmgr: nix/source.json has no hash for ${stdenv.hostPlatform.system}");
   };
 
   nativeBuildInputs = [

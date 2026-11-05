@@ -407,6 +407,7 @@ jobs:
 
       - uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40 # v1.2.0
         if: steps.arm.outputs.found == 'true'
+        continue-on-error: true
         with:
           snap: snap/TMGR_${{ needs.meta.outputs.version }}_arm64.snap
           release: stable,edge
