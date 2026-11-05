@@ -7,7 +7,6 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -55,16 +54,15 @@ pub fn decisions_dir() -> io::Result<PathBuf> {
 }
 
 pub fn new_card_id() -> String {
-    static LAST_MS: AtomicU64 = AtomicU64::new(0);
+    static LAST_MS: Mutex<u64> = Mutex::new(0);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as u64);
-    let ms = LAST_MS
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |last| {
-            Some(now.max(last + 1))
-        })
-        .map_or(now, |last| now.max(last + 1))
-        & 0xffff_ffff_ffff;
+    let ms = {
+        let mut last = LAST_MS.lock().unwrap_or_else(|p| p.into_inner());
+        *last = now.max(*last + 1);
+        *last & 0xffff_ffff_ffff
+    };
     let mut r = [0u8; 10];
     getrandom::fill(&mut r).expect("system random source");
     format!("c_{ms:012x}{}", secret::hex(&r))
