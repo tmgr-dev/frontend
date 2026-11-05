@@ -10,6 +10,7 @@
                   │ New shell to the right, same folder               Ctrl-] | v │                 │
                   │ New shell below, same folder                      Ctrl-] - h │                 │
                   │ New session (claude, codex, shell, ...)             Ctrl-] c │                 │
+                  │ Resume a past session (tmgr, Claude Code, Codex)    Ctrl-] H │                 │
                   │ Focus next pane                                   Ctrl-] Tab │                 │
                   │ Focus previous pane                         Ctrl-] Shift-Tab │                 │
                   │ Zoom the pane                                       Ctrl-] z │                 │
@@ -19,6 +20,5 @@
                   │ Group the sidebar by tab or by repo                 Ctrl-] g │                 │
                   │ Rename the focused session                          Ctrl-] r │                 │
                   │ Rename the tab                                      Ctrl-] , │                 │
-                  │ Close the tab (sessions keep running)               Ctrl-] & │                 │
- + New session    │ Resume the focused session                  Ctrl-] Enter / R │─────────────────╯
+ + New session    │ Close the tab (sessions keep running)               Ctrl-] & │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯es  Ctrl-] ? help

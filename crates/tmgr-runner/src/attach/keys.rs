@@ -37,6 +37,7 @@ pub enum Cmd {
     Resume,
     Palette,
     NewSession,
+    ResumePast,
     NextTab,
     PrevTab,
     RenameTab,

@@ -60,6 +60,13 @@ pub const ACTIONS: &[ActionDef] = &[
         "New session (claude, codex, shell, ...)",
         true,
     ),
+    def(
+        Cmd::ResumePast,
+        b"H",
+        "H",
+        "Resume a past session (tmgr, Claude Code, Codex)",
+        true,
+    ),
     def(Cmd::FocusOther, b"\t", "Tab", "Focus next pane", true),
     def(
         Cmd::FocusPrev,

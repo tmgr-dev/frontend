@@ -78,12 +78,97 @@ pub struct Remembered {
 }
 
 #[derive(Clone, Debug)]
-struct PrivPrompt {
-    req: NewRequest,
+pub struct TypedPrompt {
+    before: Vec<String>,
     ask: PrivAsk,
     typed: String,
     cleared: bool,
     seen: Cell<Option<Instant>>,
+}
+
+#[derive(Clone, Debug)]
+struct PrivPrompt {
+    req: NewRequest,
+    prompt: TypedPrompt,
+}
+
+impl std::ops::Deref for PrivPrompt {
+    type Target = TypedPrompt;
+
+    fn deref(&self) -> &TypedPrompt {
+        &self.prompt
+    }
+}
+
+impl std::ops::DerefMut for PrivPrompt {
+    fn deref_mut(&mut self) -> &mut TypedPrompt {
+        &mut self.prompt
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PromptKey {
+    Editing,
+    Cancel,
+    Enter(bool),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PastEdit {
+    Editing,
+    Cancel,
+    Confirmed,
+    Mismatch,
+}
+
+impl TypedPrompt {
+    pub fn new(before: Vec<String>, ask: PrivAsk) -> TypedPrompt {
+        TypedPrompt {
+            before: before
+                .iter()
+                .map(|l| strip_control(&sanitize_text(l)))
+                .collect(),
+            ask,
+            typed: String::new(),
+            cleared: false,
+            seen: Cell::new(None),
+        }
+    }
+
+    fn refuse_batch(&mut self) {
+        self.typed.clear();
+        self.cleared = true;
+    }
+
+    fn edit(&mut self, data: &[u8]) -> PromptKey {
+        if !data.is_empty() && data.iter().all(|&b| b == 0x1b) {
+            return PromptKey::Cancel;
+        }
+        if !self.seen.get().is_some_and(|t| t.elapsed() >= PROMPT_DELAY) {
+            return PromptKey::Editing;
+        }
+        let (c, used) = next_char(data);
+        if data.is_empty() || used != data.len() {
+            self.refuse_batch();
+            return PromptKey::Editing;
+        }
+        self.cleared = false;
+        match data[0] {
+            b'\r' | b'\n' => return PromptKey::Enter(self.typed == self.ask.word),
+            0x7f | 0x08 => {
+                self.typed.pop();
+            }
+            0x15 => self.typed.clear(),
+            _ => {
+                if let Some(c) = c.filter(|c| !c.is_control()) {
+                    if self.typed.chars().count() < MAX_TYPED {
+                        self.typed.push(c);
+                    }
+                }
+            }
+        }
+        PromptKey::Editing
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -91,6 +176,7 @@ pub enum NewEdit {
     Editing,
     Submit(NewRequest),
     Approve,
+    ResumePast,
     Cancel,
 }
 
@@ -504,10 +590,7 @@ impl NewSession {
                 self.error_hint = None;
                 self.priv_prompt = Some(PrivPrompt {
                     req,
-                    ask,
-                    typed: String::new(),
-                    cleared: false,
-                    seen: Cell::new(None),
+                    prompt: TypedPrompt::new(Vec::new(), ask),
                 });
             }
             Err((msg, hint)) => {
@@ -681,15 +764,20 @@ fn notes(ns: &NewSession, area_width: u16) -> Notes {
     }
 }
 
-fn prompt_lines(p: &PrivPrompt, area_width: u16) -> Vec<String> {
+fn prompt_lines(p: &TypedPrompt, area_width: u16) -> Vec<String> {
     let width = usize::from(MAX_WIDTH.min(area_width))
         .saturating_sub(4)
         .max(1);
     let mut out: Vec<String> = p
-        .ask
-        .warnings
+        .before
         .iter()
-        .flat_map(|w| wrap(w, width, usize::MAX))
+        .flat_map(|l| wrap(l, width, 3))
+        .chain(
+            p.ask
+                .warnings
+                .iter()
+                .flat_map(|w| wrap(w, width, usize::MAX)),
+        )
         .collect();
     out.push(String::new());
     out.extend(wrap(&p.ask.prompt, width, 3));
@@ -705,13 +793,17 @@ fn review_wrapped(lines: &[String], width: u16) -> Vec<String> {
 }
 
 pub(crate) fn new_session_rect(area: Rect, ns: &NewSession) -> Rect {
-    let w = MAX_WIDTH.min(area.width);
     let n = notes(ns, area.width);
     let body = match (&ns.review, &ns.priv_prompt) {
         (Some(lines), _) => review_wrapped(lines, area.width).len() + 4,
         (None, Some(p)) => prompt_lines(p, area.width).len() + 4,
         (None, None) => ns.fields().len() + n.remembered.len() + n.error_h() + n.hint_h() + 6,
     };
+    dialog_rect(area, body)
+}
+
+fn dialog_rect(area: Rect, body: usize) -> Rect {
+    let w = MAX_WIDTH.min(area.width);
     let h = u16::try_from(body).unwrap_or(u16::MAX).min(area.height);
     Rect::new(
         area.x + (area.width - w) / 2,
@@ -895,40 +987,7 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
         return;
     }
     if let Some(p) = &ns.priv_prompt {
-        if p.seen.get().is_none() {
-            p.seen.set(Some(Instant::now()));
-        }
-        let lines = prompt_lines(p, area.width);
-        for (i, text) in lines.iter().enumerate() {
-            let y = inner.y.saturating_add(u16::try_from(i).unwrap_or(u16::MAX));
-            if y < inner.bottom() {
-                put(buf, inner.x, y, text, Style::new(), inner.width);
-            }
-        }
-        let y = inner
-            .y
-            .saturating_add(u16::try_from(lines.len()).unwrap_or(u16::MAX));
-        if y < inner.bottom() {
-            put(
-                buf,
-                inner.x,
-                y,
-                &format!("> {}", strip_control(&p.typed)),
-                Style::new(),
-                inner.width,
-            );
-        }
-        if y.saturating_add(1) < inner.bottom() {
-            let (text, style) = if p.cleared {
-                (
-                    "Type one key at a time; input was cleared.",
-                    Style::new().fg(colors().bad),
-                )
-            } else {
-                ("Enter confirms, Esc goes back", dim())
-            };
-            put(buf, inner.x, y + 1, text, style, inner.width);
-        }
+        draw_typed(buf, inner, p, area.width, "Enter confirms, Esc goes back");
         return;
     }
     let rows = field_rows(ns, inner);
@@ -1073,7 +1132,7 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
             inner.x,
             line(help_at),
             if ns.task.trim().is_empty() {
-                "Enter starts, Esc cancels"
+                "Enter starts, Ctrl+R resumes a past session, Esc cancels"
             } else {
                 "Enter shows the run to confirm, Esc cancels"
             },
@@ -1083,6 +1142,82 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
     }
 }
 
+fn draw_typed(buf: &mut Buffer, inner: Rect, p: &TypedPrompt, area_width: u16, hint: &str) {
+    if p.seen.get().is_none() {
+        p.seen.set(Some(Instant::now()));
+    }
+    let lines = prompt_lines(p, area_width);
+    for (i, text) in lines.iter().enumerate() {
+        let y = inner.y.saturating_add(u16::try_from(i).unwrap_or(u16::MAX));
+        if y < inner.bottom() {
+            put(buf, inner.x, y, text, Style::new(), inner.width);
+        }
+    }
+    let y = inner
+        .y
+        .saturating_add(u16::try_from(lines.len()).unwrap_or(u16::MAX));
+    if y < inner.bottom() {
+        put(
+            buf,
+            inner.x,
+            y,
+            &format!("> {}", strip_control(&p.typed)),
+            Style::new(),
+            inner.width,
+        );
+    }
+    if y.saturating_add(1) < inner.bottom() {
+        let (text, style) = if p.cleared {
+            (
+                "Type one key at a time; input was cleared.",
+                Style::new().fg(colors().bad),
+            )
+        } else {
+            (hint, dim())
+        };
+        put(buf, inner.x, y + 1, text, style, inner.width);
+    }
+}
+
+fn typed_cursor(p: &TypedPrompt, inner: Rect, area_width: u16) -> (u16, u16) {
+    let y = inner
+        .y
+        .saturating_add(u16::try_from(prompt_lines(p, area_width).len()).unwrap_or(u16::MAX));
+    let x = inner.x.saturating_add(2 + p.typed.width() as u16);
+    (
+        x.min(inner.right().saturating_sub(1)),
+        y.min(inner.bottom().saturating_sub(1)),
+    )
+}
+
+pub(crate) fn draw_past_prompt(buf: &mut Buffer, area: Rect, st: &ViewState) {
+    let Some(p) = &st.past_prompt else {
+        return;
+    };
+    let rect = past_prompt_rect(area, p);
+    if rect.is_empty() {
+        return;
+    }
+    Clear.render(rect, buf);
+    Block::bordered()
+        .border_type(BorderType::Rounded)
+        .title(" Confirm ")
+        .render(rect, buf);
+    let inner = inner(rect);
+    if !inner.is_empty() {
+        draw_typed(buf, inner, p, area.width, "Enter confirms, Esc cancels");
+    }
+}
+
+pub(crate) fn past_prompt_cursor(p: &TypedPrompt, area: Rect) -> Option<(u16, u16)> {
+    let inner = inner(past_prompt_rect(area, p));
+    (!inner.is_empty()).then(|| typed_cursor(p, inner, area.width))
+}
+
+fn past_prompt_rect(area: Rect, p: &TypedPrompt) -> Rect {
+    dialog_rect(area, prompt_lines(p, area.width).len() + 4)
+}
+
 pub(crate) fn new_session_cursor(ns: &NewSession, area: Rect) -> Option<(u16, u16)> {
     let rect = new_session_rect(area, ns);
     let inner = inner(rect);
@@ -1090,14 +1225,7 @@ pub(crate) fn new_session_cursor(ns: &NewSession, area: Rect) -> Option<(u16, u1
         return None;
     }
     if let Some(p) = &ns.priv_prompt {
-        let y = inner
-            .y
-            .saturating_add(u16::try_from(prompt_lines(p, area.width).len()).unwrap_or(u16::MAX));
-        let x = inner.x.saturating_add(2 + p.typed.width() as u16);
-        return Some((
-            x.min(inner.right().saturating_sub(1)),
-            y.min(inner.bottom().saturating_sub(1)),
-        ));
+        return Some(typed_cursor(p, inner, area.width));
     }
     let (_, row) = field_rows(ns, inner)
         .into_iter()
@@ -1251,13 +1379,13 @@ impl ViewState {
         let Some(p) = self
             .new_session
             .as_mut()
-            .and_then(|n| n.priv_prompt.as_mut())
+            .and_then(|n| n.priv_prompt.as_mut().map(|p| &mut p.prompt))
+            .or(self.past_prompt.as_mut())
             .filter(|_| forwards > 1)
         else {
             return false;
         };
-        p.typed.clear();
-        p.cleared = true;
+        p.refuse_batch();
         true
     }
 
@@ -1352,6 +1480,7 @@ impl ViewState {
                         ns.clear_error();
                     }
                 }
+                0x12 => return NewEdit::ResumePast,
                 _ => {
                     let (c, used) = next_char(&data[i..]);
                     i += used;
@@ -1375,26 +1504,14 @@ impl ViewState {
         let Some(p) = ns.priv_prompt.as_mut() else {
             return NewEdit::Editing;
         };
-        if !data.is_empty() && data.iter().all(|&b| b == 0x1b) {
-            ns.priv_prompt = None;
-            return NewEdit::Editing;
-        }
-        if !p.seen.get().is_some_and(|t| t.elapsed() >= PROMPT_DELAY) {
-            return NewEdit::Editing;
-        }
-        let (c, used) = next_char(data);
-        if data.is_empty() || used != data.len() {
-            p.typed.clear();
-            p.cleared = true;
-            return NewEdit::Editing;
-        }
-        p.cleared = false;
-        match data[0] {
-            b'\r' | b'\n' => {
+        match p.edit(data) {
+            PromptKey::Editing => {}
+            PromptKey::Cancel => ns.priv_prompt = None,
+            PromptKey::Enter(matched) => {
                 let Some(p) = ns.priv_prompt.take() else {
                     return NewEdit::Editing;
                 };
-                if p.typed == p.ask.word {
+                if matched {
                     self.new_session = None;
                     return NewEdit::Submit(p.req);
                 }
@@ -1403,19 +1520,43 @@ impl ViewState {
                 ns.error = Some("confirmation did not match, nothing was started".into());
                 ns.error_hint = None;
             }
-            0x7f | 0x08 => {
-                p.typed.pop();
+        }
+        NewEdit::Editing
+    }
+
+    pub fn open_past_prompt(&mut self, p: TypedPrompt) {
+        self.past_prompt = Some(p);
+    }
+
+    pub fn past_prompt_open(&self) -> bool {
+        self.past_prompt.is_some()
+    }
+
+    pub fn past_prompt_fits(&self, area: Rect) -> bool {
+        self.past_prompt
+            .as_ref()
+            .is_some_and(|p| prompt_lines(p, area.width).len() + 4 <= usize::from(area.height))
+    }
+
+    pub fn edit_past_prompt(&mut self, data: &[u8]) -> PastEdit {
+        let Some(p) = self.past_prompt.as_mut() else {
+            return PastEdit::Cancel;
+        };
+        match p.edit(data) {
+            PromptKey::Editing => PastEdit::Editing,
+            PromptKey::Cancel => {
+                self.past_prompt = None;
+                PastEdit::Cancel
             }
-            0x15 => p.typed.clear(),
-            _ => {
-                if let Some(c) = c.filter(|c| !c.is_control()) {
-                    if p.typed.chars().count() < MAX_TYPED {
-                        p.typed.push(c);
-                    }
+            PromptKey::Enter(matched) => {
+                self.past_prompt = None;
+                if matched {
+                    PastEdit::Confirmed
+                } else {
+                    PastEdit::Mismatch
                 }
             }
         }
-        NewEdit::Editing
     }
 
     pub fn insert_new_session_text(&mut self, data: &[u8]) {
@@ -2095,7 +2236,7 @@ mod tests {
             "Where",
             "Right",
             "[ Start ]",
-            "Enter starts, Esc cancels",
+            "Enter starts, Ctrl+R resumes a past session, Esc cancels",
         ] {
             assert!(s.contains(want), "missing {want}\n{s}");
         }
@@ -2157,7 +2298,7 @@ mod tests {
         assert!(n.hint.len() >= 2 && n.hint.len() <= 3);
         assert_eq!(n.hint.join(" "), long_hint());
         let s = draw(&v, 100, 30);
-        assert!(s.contains("Enter starts, Esc cancels"));
+        assert!(s.contains("Enter starts, Ctrl+R resumes a past session, Esc cancels"));
         for l in &n.hint {
             assert!(s.contains(l.as_str()), "missing {l}\n{s}");
         }
@@ -3013,7 +3154,7 @@ mod tests {
         let shown = draw(&v, 100, 30);
         assert!(shown.contains("Bypass is on, remembered from your last session"));
         assert!(shown.contains("folder is required"));
-        assert!(shown.contains("Enter starts, Esc cancels"));
+        assert!(shown.contains("Enter starts, Ctrl+R resumes a past session, Esc cancels"));
     }
 
     #[test]
@@ -3173,5 +3314,183 @@ mod tests {
         v.reopen_new_session(saved);
         assert!(!ns(&mut v).bypass && !ns(&mut v).no_sandbox);
         assert!(!draw(&v, 100, 30).contains("remembered from your last session"));
+    }
+
+    #[test]
+    fn ctrl_r_in_the_form_asks_to_resume_a_past_session_and_keeps_the_form() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        assert_eq!(v.edit_new_session(b"\x12"), NewEdit::ResumePast);
+        assert!(v.new_session.is_some());
+        let mut v = open("/", h.path());
+        ns(&mut v).focus = NewField::Name;
+        assert_eq!(v.edit_new_session(b"ab\x12"), NewEdit::ResumePast);
+        assert_eq!(ns(&mut v).name, "ab");
+    }
+
+    #[test]
+    fn ctrl_r_is_ignored_during_the_review_and_the_typed_prompt() {
+        let h = tmp();
+        let mut v = prompt_view(h.path(), 0, true);
+        assert_eq!(v.edit_new_session(b"\x12"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+        ready(&v);
+        assert_eq!(v.edit_new_session(b"\x12"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+        let mut v = open("/", h.path());
+        let dialog = ns(&mut v).clone();
+        v.review_new_session(dialog, vec!["x".into()]);
+        assert_eq!(v.edit_new_session(b"\x12"), NewEdit::Editing);
+    }
+
+    #[test]
+    fn the_form_footer_names_ctrl_r() {
+        let h = tmp();
+        let v = open("/", h.path());
+        let shown = draw(&v, 100, 30);
+        assert!(
+            shown.contains("Enter starts, Ctrl+R resumes a past session, Esc cancels"),
+            "{shown}"
+        );
+    }
+
+    fn past_draw(v: &ViewState, w: u16, h: u16) -> String {
+        let mut t = Terminal::new(TestBackend::new(w, h)).unwrap();
+        t.draw(|f| {
+            let area = f.area();
+            draw_past_prompt(f.buffer_mut(), area, v)
+        })
+        .unwrap();
+        let buf = t.backend().buffer().clone();
+        (0..h)
+            .map(|y| {
+                (0..w)
+                    .map(|x| buf[(x, y)].symbol().to_string())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn past_ask() -> PrivAsk {
+        test_gate(false, true).unwrap()
+    }
+
+    fn past_view(before: Vec<String>) -> ViewState {
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.open_past_prompt(TypedPrompt::new(before, past_ask()));
+        v
+    }
+
+    fn past_ready(v: &ViewState) {
+        if let Some(p) = &v.past_prompt {
+            p.seen
+                .set(Instant::now().checked_sub(Duration::from_secs(1)));
+        }
+    }
+
+    fn past_keys(v: &mut ViewState, text: &str) -> PastEdit {
+        past_ready(v);
+        let mut last = PastEdit::Editing;
+        for c in text.chars() {
+            let mut b = [0u8; 4];
+            last = v.edit_past_prompt(c.encode_utf8(&mut b).as_bytes());
+            if last != PastEdit::Editing {
+                return last;
+            }
+        }
+        last
+    }
+
+    #[test]
+    fn the_past_prompt_confirms_only_the_exact_word() {
+        let mut v = past_view(Vec::new());
+        assert_eq!(past_keys(&mut v, "no-sandbox\r"), PastEdit::Confirmed);
+        assert!(!v.past_prompt_open());
+        for typed in ["No-sandbox\r", "no-sandbox \r", "no-sandbo\r", "\r"] {
+            let mut v = past_view(Vec::new());
+            assert_eq!(past_keys(&mut v, typed), PastEdit::Mismatch, "{typed:?}");
+            assert!(!v.past_prompt_open());
+        }
+    }
+
+    #[test]
+    fn escape_cancels_the_past_prompt() {
+        let mut v = past_view(Vec::new());
+        assert_eq!(v.edit_past_prompt(b"\x1b"), PastEdit::Cancel);
+        assert!(!v.past_prompt_open());
+    }
+
+    #[test]
+    fn nothing_typed_before_the_past_prompt_was_shown_for_a_moment_counts() {
+        let mut v = past_view(Vec::new());
+        for c in "no-sandbox".chars() {
+            let mut b = [0u8; 4];
+            assert_eq!(
+                v.edit_past_prompt(c.encode_utf8(&mut b).as_bytes()),
+                PastEdit::Editing
+            );
+        }
+        assert_eq!(v.edit_past_prompt(b"\r"), PastEdit::Editing);
+        assert!(v.past_prompt_open());
+    }
+
+    #[test]
+    fn a_whole_word_in_one_chunk_never_confirms_the_past_prompt() {
+        for raw in ["no-sandbox\r", "\x1b[201~no-sandbox\r", "no-sandbox\n"] {
+            let mut v = past_view(Vec::new());
+            past_ready(&v);
+            assert_eq!(v.edit_past_prompt(raw.as_bytes()), PastEdit::Editing);
+            assert!(v.past_prompt_open());
+            assert_eq!(v.edit_past_prompt(b"\r"), PastEdit::Mismatch);
+        }
+    }
+
+    #[test]
+    fn a_batch_of_forwards_clears_the_past_prompt_line() {
+        let mut v = past_view(Vec::new());
+        past_keys(&mut v, "no-san");
+        assert!(!v.refuse_priv_batch(1));
+        assert!(v.refuse_priv_batch(2));
+        assert_eq!(past_keys(&mut v, "\r"), PastEdit::Mismatch);
+        let mut v = past_view(Vec::new());
+        past_keys(&mut v, "no-");
+        v.refuse_priv_batch(3);
+        assert!(past_draw(&v, 80, 20).contains("input was cleared"));
+    }
+
+    #[test]
+    fn the_past_prompt_shows_the_details_the_warnings_and_the_word_in_order() {
+        let before = vec![
+            "warning: it may still be running".to_string(),
+            "Resume this conversation?".to_string(),
+            "  folder   /work/\x1b[2Jx".to_string(),
+        ];
+        let v = past_view(before);
+        let shown = past_draw(&v, 100, 30);
+        assert!(!shown.contains('\x1b'));
+        let at = |needle: &str| {
+            shown
+                .find(needle)
+                .unwrap_or_else(|| panic!("{needle}\n{shown}"))
+        };
+        assert!(at("may still be running") < at("Resume this conversation?"));
+        assert!(at("Resume this conversation?") < at("/work/"));
+        assert!(at("/work/") < at("warning: no sandbox"));
+        assert!(at("warning: no sandbox") < at("Type no-sandbox"));
+        assert!(shown.contains("Esc cancels"));
+    }
+
+    #[test]
+    fn the_past_prompt_needs_room_and_its_cursor_follows_the_line() {
+        let mut v = past_view(vec!["Resume this conversation?".into()]);
+        assert!(v.past_prompt_fits(Rect::new(0, 0, 80, 30)));
+        assert!(!v.past_prompt_fits(Rect::new(0, 0, 30, 5)));
+        let area = Rect::new(0, 0, 80, 30);
+        let before = super::past_prompt_cursor(v.past_prompt.as_ref().unwrap(), area).unwrap();
+        past_keys(&mut v, "no");
+        let after = super::past_prompt_cursor(v.past_prompt.as_ref().unwrap(), area).unwrap();
+        assert_eq!(after.1, before.1);
+        assert_eq!(after.0, before.0 + 2);
     }
 }

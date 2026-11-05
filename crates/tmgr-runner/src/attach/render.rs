@@ -1,6 +1,8 @@
 use super::actions::find;
 use super::keys::Cmd;
-use super::newsession::{draw_new_session, new_session_cursor};
+use super::newsession::{
+    draw_new_session, draw_past_prompt, new_session_cursor, past_prompt_cursor,
+};
 use super::palette::PaletteMode;
 use super::palette::{
     palette_inner, palette_list, palette_rect, palette_top, query_avail, query_tail, RowView,
@@ -189,6 +191,7 @@ fn render_all(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
         draw_peek(buf, area, peek);
     }
     draw_new_session(buf, area, st);
+    draw_past_prompt(buf, area, st);
 }
 
 fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
@@ -1084,6 +1087,10 @@ fn draw_snapshot(buf: &mut Buffer, inner: Rect, snap: &Snapshot, mark: Option<&G
 }
 
 pub fn cursor(st: &ViewState, lay: &Layout, screens: &dyn ScreenSource) -> Option<(u16, u16)> {
+    if let Some(p) = &st.past_prompt {
+        let area = Rect::new(lay.status.x, 0, lay.status.width, lay.status.bottom());
+        return past_prompt_cursor(p, area);
+    }
     if let Some(ns) = &st.new_session {
         let area = Rect::new(lay.status.x, 0, lay.status.width, lay.status.bottom());
         return new_session_cursor(ns, area);
@@ -1327,6 +1334,10 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
             Cmd::Notes,
         ]),
         "new / prompts / layouts / templates / notes",
+    ),
+    (
+        HelpKey::Cmds(&[Cmd::ResumePast]),
+        "resume or fork a past session",
     ),
     (
         HelpKey::Cmds(&[Cmd::FocusOther]),

@@ -80,6 +80,7 @@ fn aliases(cmd: Cmd) -> &'static str {
         Cmd::SplitRight => "split vertical",
         Cmd::SplitDown => "split horizontal",
         Cmd::NewSession => "create start chat agent",
+        Cmd::ResumePast => "history continue fork old previous conversation codex claude",
         Cmd::Questions => "asked pocket answer ignore reply",
         Cmd::OpenTask => "ticket issue browser desktop chip",
         Cmd::Search => "find grep history scrollback",

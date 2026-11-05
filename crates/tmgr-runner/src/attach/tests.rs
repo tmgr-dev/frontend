@@ -2236,10 +2236,10 @@ fn wide_right_split_still_resizes_on_the_horizontal_axis() {
 }
 
 #[test]
-fn help_shows_the_mouse_section_at_34_rows() {
+fn help_shows_the_mouse_section_at_35_rows() {
     let mut v = two_pane(140);
     v.help = true;
-    let text = draw(&v, &screens(), 140, 34);
+    let text = draw(&v, &screens(), 140, 35);
     assert!(text.contains("pick a tab, a session or a pane"));
     assert!(text.contains("select + copy"));
     assert!(text.contains("? again closes this box"));
@@ -9607,4 +9607,23 @@ fn a_panel_with_only_a_branch_says_the_rest_was_not_read() {
     let text = draw(&v, &screens(), 140, 22);
     assert!(text.contains("not read for a sandboxed session"));
     assert!(!text.contains("origin/main"));
+}
+
+#[test]
+fn ctrl_bracket_h_resumes_a_past_session_and_the_palette_and_help_list_it() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(&[0x1d, b'H']), vec![Action::Cmd(Cmd::ResumePast)]);
+    let def = ACTIONS.iter().find(|d| d.cmd == Cmd::ResumePast).unwrap();
+    assert!(def.palette);
+    assert_eq!(
+        def.label,
+        "Resume a past session (tmgr, Claude Code, Codex)"
+    );
+    let mut v = ViewState::new(four(), "");
+    query(&mut v, "resume a past");
+    assert_eq!(first(&v), PaletteEntry::Cmd(Cmd::ResumePast));
+    v.palette = None;
+    v.help = true;
+    let help = draw(&v, &screens(), 140, 40);
+    assert!(help.contains("resume or fork a past session"), "{help}");
 }

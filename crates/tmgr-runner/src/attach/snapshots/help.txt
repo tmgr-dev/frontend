@@ -8,6 +8,7 @@
                         │             │ s             two panes, or collapse to one                  │                                     │
                         │             │ | v / - h     split right / split down                       │                                     │
                         │             │ c / i / L / T new / prompts / layouts / templates / notes    │                                     │
+                        │             │ H             resume or fork a past session                  │                                     │
                         │             │ Tab           focus next pane (Shift-Tab previous)           │                                     │
                         │             │ arrows        move focus (Shift+arrows: resize)              │                                     │
                         │             │ Left at edge  focus the sidebar (Up/Down, Enter, Esc)        │                                     │
@@ -24,7 +25,6 @@
                         │             │ Ctrl-]        send a literal Ctrl-] to the session           │                                     │
                         │             │                                                              │                                     │
                         │             │ ? again closes this box                                      │                                     │
-                        │             │                                                              │                                     │
                         │             │                                                              │                                     │
                         │             │                                                              │                                     │
  + New session     tmpl ╰─────────────│                                                              │─────────────────────────────────────╯

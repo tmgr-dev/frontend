@@ -7,7 +7,7 @@ use super::keys::{Cmd, ScrollKey};
 use super::layouts::{LayoutOffer, LayoutRestore, SavedLayout};
 use super::mouse::{encode, wants, Kind, MouseEvent};
 use super::msel::{has_modifiers, strip_modifiers, Click, MouseSel};
-use super::newsession::{NewEdit, NewSession, Place, TaskOpt};
+use super::newsession::{NewEdit, NewSession, Place, TaskOpt, TypedPrompt};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::place::Loc;
 use super::prompts::Prompt;
@@ -159,6 +159,7 @@ pub struct ViewState {
     pub(crate) layout_gen: u64,
     pub filter: Option<Filter>,
     pub new_session: Option<NewSession>,
+    pub past_prompt: Option<TypedPrompt>,
     pub new_kind: Option<String>,
     pub new_place: Option<Place>,
     pub worktree_default: bool,
@@ -448,6 +449,7 @@ impl ViewState {
             layout_gen: 0,
             filter: None,
             new_session: None,
+            past_prompt: None,
             new_kind: None,
             new_place: None,
             worktree_default: false,
@@ -1546,6 +1548,7 @@ impl ViewState {
             | Cmd::Picker
             | Cmd::Resume
             | Cmd::NewSession
+            | Cmd::ResumePast
             | Cmd::OpenTask
             | Cmd::Search
             | Cmd::CopyMode
@@ -1962,6 +1965,7 @@ impl ViewState {
         }
         if kind == Kind::Move
             || self.new_session.is_some()
+            || self.past_prompt.is_some()
             || self.palette.is_some()
             || self.git_open
             || self.cp.is_open()
@@ -1978,6 +1982,9 @@ impl ViewState {
             if self.msel.as_ref().is_some_and(|m| m.held) {
                 self.msel = None;
             }
+        }
+        if self.past_prompt.is_some() {
+            return out;
         }
         if self.new_session.is_some() {
             return self.new_session_mouse(area, ev, out);
