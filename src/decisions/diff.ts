@@ -4,19 +4,27 @@ import type {
 	DiffGroup,
 	DiffLine,
 	DiffView,
+	ThreadSide,
 } from './types';
 
 export interface LineAnchor {
 	fileIndex: number;
 	hunkIndex: number;
 	lineIndex: number;
+	key: string;
 }
 
 export const lineNumber = (line: DiffLine): number | null =>
 	line.new ?? line.old ?? null;
 
-export const threadKey = (file: string, line: number): string =>
-	`${file}:${line}`;
+export const sideOf = (line: DiffLine): ThreadSide =>
+	line.kind === 'del' ? 'old' : 'new';
+
+export const threadKey = (
+	file: string,
+	line: number,
+	side?: ThreadSide,
+): string => (side ? `${file}:${line}:${side}` : `${file}:${line}`);
 
 export const qualifyFile = (
 	label: string,
@@ -37,13 +45,13 @@ export const buildAnchors = (
 			hunk.lines.forEach((line, lineIndex) => {
 				const number = lineNumber(line);
 				if (number === null) return;
-				const key = threadKey(
-					label === null ? file.path : qualifyFile(label, file.path, 2),
-					number,
-				);
-				if (!anchors.has(key)) {
-					anchors.set(key, { fileIndex, hunkIndex, lineIndex });
-				}
+				const path =
+					label === null ? file.path : qualifyFile(label, file.path, 2);
+				const sided = threadKey(path, number, sideOf(line));
+				const anchor = { fileIndex, hunkIndex, lineIndex, key: sided };
+				if (!anchors.has(sided)) anchors.set(sided, anchor);
+				const plain = threadKey(path, number);
+				if (!anchors.has(plain)) anchors.set(plain, anchor);
 			});
 		});
 	});
@@ -52,7 +60,7 @@ export const buildAnchors = (
 
 export const messageThreadKey = (message: CardMessage): string | null =>
 	message.file !== undefined && message.line !== undefined
-		? threadKey(message.file, message.line)
+		? threadKey(message.file, message.line, message.side)
 		: null;
 
 export const splitMessages = (
@@ -72,6 +80,23 @@ export const splitMessages = (
 		else threads.set(key, [message]);
 	}
 	return { threads, chat };
+};
+
+export const remapLegacyThreads = (
+	threads: Map<string, CardMessage[]>,
+	anchors: Map<string, LineAnchor>[],
+): Map<string, CardMessage[]> => {
+	const out = new Map<string, CardMessage[]>();
+	for (const [key, list] of threads) {
+		const target =
+			anchors.map((a) => a.get(key)).find((a) => a !== undefined)?.key ?? key;
+		const merged = [...(out.get(target) ?? []), ...list];
+		out.set(
+			target,
+			merged.sort((a, b) => a.seq - b.seq),
+		);
+	}
+	return out;
 };
 
 export const awaitsOwner = (thread: CardMessage[]): boolean =>

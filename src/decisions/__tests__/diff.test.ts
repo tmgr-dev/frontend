@@ -10,6 +10,8 @@ import {
 	isLatestRequest,
 	lineNumber,
 	qualifyFile,
+	remapLegacyThreads,
+	sideOf,
 	splitMessages,
 	threadKey,
 } from '../diff';
@@ -52,19 +54,50 @@ describe('diff thread keys', () => {
 		expect(threadKey('a.rs', 2)).toBe('a.rs:2');
 	});
 
-	it('anchors a thread on the first line with that number', () => {
+	it('anchors each side of a line number separately', () => {
+		const anchors = buildAnchors(diff);
+		expect(anchors.get('a.rs:2:old')).toMatchObject({ lineIndex: 1 });
+		expect(anchors.get('a.rs:2:new')).toMatchObject({ lineIndex: 2 });
+		expect(anchors.get('a.rs:1:new')).toMatchObject({ lineIndex: 0 });
+	});
+
+	it('anchors a thread without a side on the first line with that number', () => {
 		const anchors = buildAnchors(diff);
 		expect(anchors.get('a.rs:2')).toEqual({
 			fileIndex: 0,
 			hunkIndex: 0,
 			lineIndex: 1,
+			key: 'a.rs:2:old',
 		});
-		expect(anchors.get('a.rs:1')).toEqual({
-			fileIndex: 0,
-			hunkIndex: 0,
-			lineIndex: 0,
-		});
-		expect(anchors.size).toBe(2);
+		expect(anchors.get('a.rs:1')).toMatchObject({ key: 'a.rs:1:new' });
+	});
+
+	it('keys a thread by side and keeps the plain key without one', () => {
+		expect(threadKey('a.rs', 2, 'old')).toBe('a.rs:2:old');
+		expect(threadKey('a.rs', 2, 'new')).toBe('a.rs:2:new');
+		expect(threadKey('a.rs', 2)).toBe('a.rs:2');
+	});
+
+	it('sides a line by its kind', () => {
+		const [ctx, del, add] = diff.files[0].hunks[0].lines;
+		expect([sideOf(ctx), sideOf(del), sideOf(add)]).toEqual([
+			'new',
+			'old',
+			'new',
+		]);
+	});
+});
+
+describe('remapLegacyThreads', () => {
+	it('moves a sideless thread onto the side key of its anchor line', () => {
+		const anchors = [buildAnchors(diff)];
+		const { threads } = splitMessages([
+			msg({ seq: 1, file: 'a.rs', line: 2 }),
+			msg({ seq: 2, file: 'a.rs', line: 2, side: 'new' }),
+		]);
+		const out = remapLegacyThreads(threads, anchors);
+		expect(out.get('a.rs:2:old')?.map((m) => m.seq)).toEqual([1]);
+		expect(out.get('a.rs:2:new')?.map((m) => m.seq)).toEqual([2]);
 	});
 });
 
@@ -77,6 +110,15 @@ describe('splitMessages', () => {
 		]);
 		expect(chat.map((m) => m.text)).toEqual(['hello']);
 		expect(threads.get('a.rs:2')?.map((m) => m.seq)).toEqual([1, 3]);
+	});
+
+	it('keeps comments on the deleted and added line of one number apart', () => {
+		const { threads } = splitMessages([
+			msg({ seq: 1, file: 'a.rs', line: 2, side: 'old' }),
+			msg({ seq: 2, file: 'a.rs', line: 2, side: 'new' }),
+		]);
+		expect(threads.get('a.rs:2:old')?.map((m) => m.seq)).toEqual([1]);
+		expect(threads.get('a.rs:2:new')?.map((m) => m.seq)).toEqual([2]);
 	});
 
 	it('treats a message with only a file as chat', () => {

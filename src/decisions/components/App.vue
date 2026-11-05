@@ -165,6 +165,7 @@
 		hasChanges,
 		isLatestRequest,
 		splitMessages,
+		threadKey,
 		type DiffTotals,
 		type RequestSeqs,
 	} from '../diff';
@@ -265,7 +266,7 @@
 					splitMessages(this.current.messages).threads.keys(),
 				);
 				for (const draft of this.currentDrafts) {
-					keys.add(`${draft.file}:${draft.line}`);
+					keys.add(threadKey(draft.file, draft.line, draft.side));
 				}
 				return keys.size;
 			},

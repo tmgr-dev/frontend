@@ -73,14 +73,18 @@ export interface CardMessage {
 	text: string;
 	file?: string;
 	line?: number;
+	side?: ThreadSide;
 	action?: MessageAction;
 	created_ms: number;
 	delivered?: boolean;
 }
 
+export type ThreadSide = 'old' | 'new';
+
 export interface LineComment {
 	file: string;
 	line: number;
+	side?: ThreadSide;
 	text: string;
 }
 
@@ -99,6 +103,7 @@ export interface OutgoingMessage {
 	text: string;
 	file?: string;
 	line?: number;
+	side?: ThreadSide;
 	action: MessageAction;
 }
 

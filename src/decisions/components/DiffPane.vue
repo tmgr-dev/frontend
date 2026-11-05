@@ -190,6 +190,8 @@
 		fixMessageText,
 		lineNumber,
 		qualifyFile,
+		remapLegacyThreads,
+		sideOf,
 		splitMessages,
 		threadKey,
 		type LineAnchor,
@@ -256,7 +258,10 @@
 				);
 			},
 			threads(): Map<string, CardMessage[]> {
-				return splitMessages(this.messages).threads;
+				return remapLegacyThreads(
+					splitMessages(this.messages).threads,
+					this.anchors,
+				);
 			},
 			composerHint(): string {
 				return this.canReply && !this.final
@@ -272,7 +277,7 @@
 				if (href) this.$emit('open-link', href);
 			},
 			keyOf(file: string, line: DiffLine): string {
-				return threadKey(file, lineNumber(line) ?? 0);
+				return threadKey(file, lineNumber(line) ?? 0, sideOf(line));
 			},
 			numberOf(line: DiffLine): number | null {
 				return lineNumber(line);
@@ -281,7 +286,7 @@
 				const key = this.keyOf(file, line);
 				return (
 					this.threads.has(key) ||
-					this.drafts.some((d) => threadKey(d.file, d.line) === key)
+					this.drafts.some((d) => threadKey(d.file, d.line, d.side) === key)
 				);
 			},
 			rangeLabel(base?: string, head?: string): string {
@@ -315,7 +320,10 @@
 				const key = this.keyOf(file, line);
 				return this.drafts
 					.map((comment, index) => ({ comment, index }))
-					.filter((d) => threadKey(d.comment.file, d.comment.line) === key);
+					.filter(
+						(d) =>
+							threadKey(d.comment.file, d.comment.line, d.comment.side) === key,
+					);
 			},
 			waitNotice(file: string, line: DiffLine): string | null {
 				if (this.resolved[this.keyOf(file, line)]) return null;
@@ -373,6 +381,7 @@
 					text: fixMessageText(extra),
 					file,
 					line: number,
+					side: sideOf(line),
 					action: 'fix',
 				};
 				this.$emit('send', message);
@@ -396,10 +405,16 @@
 						text,
 						file,
 						line: number,
+						side: sideOf(line),
 						action: 'reply',
 					} as OutgoingMessage);
 				} else {
-					this.$emit('add-draft', { file, line: number, text } as LineComment);
+					this.$emit('add-draft', {
+						file,
+						line: number,
+						side: sideOf(line),
+						text,
+					} as LineComment);
 				}
 				this.texts[key] = '';
 				this.open[key] = false;
