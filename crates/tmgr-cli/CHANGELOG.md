@@ -2,7 +2,7 @@
 
 ## 1.0.96
 
-- The Decisions inbox no longer fills with empty cards from Claude Code notifications: `idle_prompt` makes no card, `agent_needs_input` and `elicitation_dialog` make one only when the message has real text (the stock "Claude is waiting for your input" does not count), and a finished-turn card needs the assistant's last message or uncommitted changes. Permission prompts, `tmgr ask` and `ask_owner` cards are unchanged.
+- The Decisions inbox no longer fills with empty cards from Claude Code notifications: `idle_prompt` makes no card, `agent_needs_input` and `elicitation_dialog` make one only when the message has real text (stock text such as "Claude is waiting for your input" does not count), and a finished-turn card needs the assistant's last message or uncommitted changes. A `permission_prompt` notification with only stock text makes no card, since the `permission-request` card already names the tool and command. `tmgr ask` and `ask_owner` cards are unchanged.
 
 ## 1.0.95
 

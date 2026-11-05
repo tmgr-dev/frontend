@@ -744,7 +744,7 @@ pub fn notification_card(input: &Value, cwd: &Path, session: Option<&str>) -> Op
         _ => return None,
     };
     let message = input.get("message").and_then(Value::as_str);
-    if kind == "question" && message.is_none_or(|m| m.trim().is_empty() || is_stock_text(m)) {
+    if message.is_none_or(|m| m.trim().is_empty() || is_stock_text(m)) {
         return None;
     }
     let mut card = hook_card(
@@ -913,6 +913,28 @@ mod tests {
         assert!(notification_card(&n, Path::new("/w/p"), None).is_none());
         let n = json!({"notification_type": "idle_prompt", "message": "Which one?"});
         assert!(notification_card(&n, Path::new("/w/p"), None).is_none());
+    }
+
+    #[test]
+    fn permission_notification_with_stock_text_makes_no_card() {
+        for m in [
+            "Claude needs your permission to use Bash",
+            "Claude needs your permission to use Edit.",
+            "Claude is waiting for your input",
+            "  ",
+            "",
+        ] {
+            let n = json!({"notification_type": "permission_prompt", "message": m});
+            assert!(
+                notification_card(&n, Path::new("/w/p"), None).is_none(),
+                "{m}"
+            );
+        }
+        let n = json!({"notification_type": "permission_prompt", "message": "Allow rm -rf build?"});
+        assert_eq!(
+            notification_card(&n, Path::new("/w/p"), None).unwrap().kind,
+            "permission"
+        );
     }
 
     #[test]
