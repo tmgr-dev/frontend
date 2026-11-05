@@ -3,9 +3,12 @@
 use serde_json::{json, Value};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
@@ -13,7 +16,9 @@ use tmgr_ipc::api::{
     CreateReq, CwdPin, ExePin, OrchestratorCreateReq, Origin, OriginRevokeParams, OriginRevoked,
     RunBundle, RunCreateReq, SessionInfo, State, StateKind, TaskRef,
 };
-use tmgr_ipc::proto::ServerMsg;
+use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};
+use tmgr_ipc::proto::{ExitInfo, ServerMsg, Stat, ToShim};
+use tmgr_ipc::{auth, endpoint, endpoint::Endpoint, secret, server};
 use tmgr_runner::client::{parse_event, AttachWriter, Client, ScreenCache};
 
 const HOST: &str = env!("CARGO_BIN_EXE_tmgr-runner-host");
@@ -715,6 +720,526 @@ fn send_reports_a_full_input_queue() {
         panic!("a stalled agent must make sessions.send fail; {sent} sends of 64 KB were accepted")
     });
     assert!(e.contains("busy") && e.contains("input queue full"), "{e}");
+}
+
+fn chunk(i: usize) -> String {
+    (0..8192)
+        .map(|n| format!("{:07}\n", i * 8192 + n))
+        .collect()
+}
+
+fn out_of(h: &Harness, name: &str) -> PathBuf {
+    h.work.join(format!("{name}.out"))
+}
+
+fn raw_agent(h: &Harness, name: &str, tail: &str) -> CreateReq {
+    let ready = h.work.join(format!("{name}.ready"));
+    let body = format!(
+        "OUT={}\nstty raw -echo\n: > {}\n{tail}\n",
+        out_of(h, name).display(),
+        ready.display()
+    );
+    let path = h.script(&format!("{name}.sh"), &body);
+    h.req(&["/bin/sh", &path])
+}
+
+fn wait_ready(h: &Harness, name: &str) {
+    let ready = h.work.join(format!("{name}.ready"));
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !ready.exists() {
+        assert!(Instant::now() < deadline, "agent {name} never became ready");
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn file_len(p: &Path) -> u64 {
+    fs::metadata(p).map(|m| m.len()).unwrap_or(0)
+}
+
+fn wait_len(p: &Path, want: u64, stall: Duration) -> u64 {
+    let mut last = file_len(p);
+    let mut since = Instant::now();
+    while last < want && since.elapsed() < stall {
+        thread::sleep(Duration::from_millis(50));
+        let now = file_len(p);
+        if now != last {
+            last = now;
+            since = Instant::now();
+        }
+    }
+    last
+}
+
+const STALL: Duration = Duration::from_secs(15);
+
+fn numbered(chunks: usize) -> Vec<u8> {
+    (0..chunks).flat_map(|i| chunk(i).into_bytes()).collect()
+}
+
+fn assert_file_is(p: &Path, want: &[u8]) {
+    let got = wait_len(p, want.len() as u64, STALL);
+    assert_eq!(
+        got,
+        want.len() as u64,
+        "agent received {got} of {} bytes",
+        want.len()
+    );
+    assert!(
+        fs::read(p).unwrap() == want,
+        "bytes differ or are reordered"
+    );
+}
+
+fn flood(c: &mut Client, id: &str, secs: u64) -> (usize, Option<String>) {
+    let chunk = chunk(0);
+    let started = Instant::now();
+    let mut sent = 0;
+    while started.elapsed() < Duration::from_secs(secs) {
+        if let Err(e) = c.send(id, &chunk) {
+            return (sent, Some(e.to_string()));
+        }
+        sent += 1;
+    }
+    (sent, None)
+}
+
+fn send_retrying(c: &mut Client, id: &str, text: &str, secs: u64) {
+    let deadline = Instant::now() + Duration::from_secs(secs);
+    loop {
+        match c.send(id, text) {
+            Ok(()) => return,
+            Err(e) => {
+                assert!(
+                    e.to_string().contains("busy") && Instant::now() < deadline,
+                    "send still refused: {e}"
+                );
+                thread::sleep(Duration::from_millis(50));
+            }
+        }
+    }
+}
+
+#[test]
+fn send_refuses_at_the_input_cap_without_waiting_and_nothing_is_dropped() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c.create(raw_agent(&h, "stall", "exec sleep 60")).unwrap();
+    wait_ready(&h, "stall");
+    let (accepted, refusal) = flood(&mut c, &info.id, 10);
+    let e = refusal.unwrap_or_else(|| panic!("no refusal after {accepted} sends of 64 KiB"));
+    assert_eq!(
+        accepted, 16,
+        "accepted {accepted} sends of 64 KiB before: {e}"
+    );
+    assert!(e.contains("busy") && e.contains("input queue full"), "{e}");
+    thread::sleep(Duration::from_millis(1500));
+    let log = fs::read_to_string(h.tmp.path().join("runner.err")).unwrap();
+    let dropped: Vec<&str> = log
+        .lines()
+        .filter(|l| l.contains("dropped") && l.contains(&info.id))
+        .collect();
+    assert!(dropped.is_empty(), "{dropped:?}");
+}
+
+#[test]
+fn send_stays_busy_on_immediate_retries_after_a_refusal() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c.create(raw_agent(&h, "stall", "exec sleep 60")).unwrap();
+    wait_ready(&h, "stall");
+    let (accepted, refusal) = flood(&mut c, &info.id, 10);
+    assert!(refusal.is_some(), "no refusal after {accepted} sends");
+    let chunk = chunk(0);
+    for retry in 1..=5 {
+        let r = c.send(&info.id, &chunk);
+        let e = r.expect_err(&format!(
+            "retry {retry} right after the refusal was accepted"
+        ));
+        assert!(e.to_string().contains("busy"), "retry {retry}: {e}");
+    }
+}
+
+#[test]
+fn a_full_queue_drains_into_a_slow_agent_without_loss_and_sends_work_again() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c
+        .create(raw_agent(&h, "slow", "sleep 2\nexec cat > \"$OUT\""))
+        .unwrap();
+    wait_ready(&h, "slow");
+    let (accepted, refusal) = flood(&mut c, &info.id, 10);
+    assert!(refusal.is_some(), "no refusal after {accepted} sends");
+    let want = (accepted * 65536) as u64;
+    let out = out_of(&h, "slow");
+    let got = wait_len(&out, want, STALL);
+    assert_eq!(
+        got, want,
+        "{accepted} sends were accepted, the agent got {got} bytes"
+    );
+    send_retrying(&mut c, &info.id, &chunk(0), 10);
+    assert_eq!(wait_len(&out, want + 65536, STALL), want + 65536);
+}
+
+#[test]
+fn paced_sends_of_three_mib_are_never_refused_and_arrive_intact() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c
+        .create(raw_agent(&h, "paced", "exec cat > \"$OUT\""))
+        .unwrap();
+    wait_ready(&h, "paced");
+    for i in 0..48 {
+        if let Err(e) = c.send(&info.id, &chunk(i)) {
+            panic!("send {i} of 48 was refused: {e}");
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert_file_is(&out_of(&h, "paced"), &numbered(48));
+}
+
+#[test]
+fn sends_retried_on_busy_into_a_throttled_reader_all_arrive() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let tail =
+        "while dd bs=65536 count=1 iflag=fullblock >> \"$OUT\" 2>/dev/null; do sleep 0.2; done";
+    let info = c.create(raw_agent(&h, "throttled", tail)).unwrap();
+    wait_ready(&h, "throttled");
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let mut i = 0;
+    while i < 48 {
+        match c.send(&info.id, &chunk(i)) {
+            Ok(()) => i += 1,
+            Err(e) => {
+                assert!(e.to_string().contains("busy"), "send {i}: {e}");
+                assert!(Instant::now() < deadline, "only {i} of 48 sends accepted");
+                thread::sleep(Duration::from_millis(50));
+            }
+        }
+    }
+    assert_file_is(&out_of(&h, "throttled"), &numbered(48));
+}
+
+#[test]
+fn a_two_mib_paste_through_attach_arrives_byte_exact() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c
+        .create(raw_agent(&h, "paste", "exec cat > \"$OUT\""))
+        .unwrap();
+    wait_ready(&h, "paste");
+    let w = Watch::new(h.client(), &[&info.id]);
+    w.writer.input(&info.id, &numbered(32)).unwrap();
+    assert_file_is(&out_of(&h, "paste"), &numbered(32));
+}
+
+#[test]
+fn a_two_mib_paste_into_an_agent_that_prints_it_back_arrives_byte_exact() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c
+        .create(raw_agent(&h, "echoed", "exec tee \"$OUT\""))
+        .unwrap();
+    wait_ready(&h, "echoed");
+    let w = Watch::new(h.client(), &[&info.id]);
+    w.writer.input(&info.id, &numbered(32)).unwrap();
+    assert_file_is(&out_of(&h, "echoed"), &numbered(32));
+}
+
+#[test]
+fn nine_hundred_one_byte_attach_frames_into_a_slow_reader_all_arrive() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c
+        .create(raw_agent(&h, "small", "sleep 2\nexec cat > \"$OUT\""))
+        .unwrap();
+    wait_ready(&h, "small");
+    let w = Watch::new(h.client(), &[&info.id]);
+    let want: Vec<u8> = (0..900).map(|i| b'a' + (i % 26) as u8).collect();
+    for b in &want {
+        w.writer.input(&info.id, &[*b]).unwrap();
+    }
+    assert_file_is(&out_of(&h, "small"), &want);
+}
+
+#[test]
+fn a_shim_without_input_credit_delivers_input_and_reports_a_stalled_agent() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.env
+        .push(("TMGR_TEST_SHIM_NO_INPUT_CREDIT".into(), "1".into()));
+    h.start(5000);
+    let mut c = h.client();
+    let reader = c
+        .create(raw_agent(&h, "reader", "exec cat > \"$OUT\""))
+        .unwrap();
+    wait_ready(&h, "reader");
+    for i in 0..4 {
+        c.send(&reader.id, &chunk(i)).unwrap();
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert_file_is(&out_of(&h, "reader"), &numbered(4));
+    let stalled = c.create(h.req(&["/bin/sleep", "30"])).unwrap();
+    let (accepted, refusal) = flood(&mut c, &stalled.id, 10);
+    let e = refusal.unwrap_or_else(|| panic!("no refusal after {accepted} sends"));
+    assert!(e.contains("busy") && e.contains("input queue full"), "{e}");
+}
+
+// Frozen at 1.0.88: do not follow tmgr_ipc::proto.
+#[allow(dead_code)]
+#[derive(serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum OldFromShim {
+    AdoptChallenge {
+        nonce_sh: String,
+        proof_sh: String,
+    },
+    Hello(OldShimHello),
+    Stat(Stat),
+    Exited(ExitInfo),
+    InputDropped {
+        bytes: u64,
+    },
+    SignalAck {
+        sig: i32,
+        delivered: bool,
+        #[serde(default)]
+        id: u64,
+    },
+}
+
+#[allow(dead_code)]
+#[derive(serde::Deserialize)]
+struct OldShimHello {
+    pid: u32,
+    child_pid: u32,
+    started_at_ms: u64,
+    #[serde(default)]
+    exit: Option<ExitInfo>,
+    #[serde(default)]
+    cwd_dev: Option<u64>,
+    #[serde(default)]
+    cwd_ino: Option<u64>,
+}
+
+struct OldDaemon {
+    id: String,
+    stream: UnixStream,
+    drops: Arc<AtomicUsize>,
+    unparsed: Arc<AtomicUsize>,
+}
+
+impl OldDaemon {
+    fn adopt(h: &Harness, id: &str) -> OldDaemon {
+        let secret = secret::read(&h.run.join("sessions").join(id).join("adopt.secret")).unwrap();
+        let stream = endpoint::connect_within(
+            &Endpoint::load_session(&h.run, id).unwrap(),
+            server::HANDSHAKE_TIMEOUT,
+        )
+        .unwrap();
+        server::accept_check(&stream).unwrap();
+        let deadline = Instant::now() + server::HANDSHAKE_TIMEOUT;
+        let nonce_r = auth::nonce();
+        write_json(
+            &mut &stream,
+            &ToShim::Adopt {
+                nonce_r: nonce_r.clone(),
+            },
+        )
+        .unwrap();
+        let next = || match server::read_frame_by(&stream, deadline).unwrap() {
+            Some(Frame::Json(v)) => serde_json::from_value::<OldFromShim>(v)
+                .unwrap_or_else(|e| panic!("old daemon cannot parse the shim message: {e}")),
+            other => panic!("unexpected frame {other:?}"),
+        };
+        let OldFromShim::AdoptChallenge { nonce_sh, proof_sh } = next() else {
+            panic!("expected a challenge");
+        };
+        assert!(auth::verify(
+            &secret,
+            auth::SHIM,
+            &nonce_r,
+            &nonce_sh,
+            &proof_sh
+        ));
+        let proof_r = auth::proof(&secret, auth::RUNNER_ADOPT, &nonce_sh, &nonce_r);
+        write_json(&mut &stream, &ToShim::AdoptAuth { proof_r }).unwrap();
+        assert!(matches!(next(), OldFromShim::Hello(_)), "expected a hello");
+        let drops = Arc::new(AtomicUsize::new(0));
+        let unparsed = Arc::new(AtomicUsize::new(0));
+        let reader = stream.try_clone().unwrap();
+        let (d, u) = (drops.clone(), unparsed.clone());
+        thread::spawn(move || {
+            while let Ok(Some(frame)) = read_frame(&mut &reader) {
+                if let Frame::Json(v) = frame {
+                    match serde_json::from_value::<OldFromShim>(v) {
+                        Ok(OldFromShim::InputDropped { .. }) => {
+                            d.fetch_add(1, Ordering::SeqCst);
+                        }
+                        Ok(_) => {}
+                        Err(_) => {
+                            u.fetch_add(1, Ordering::SeqCst);
+                        }
+                    }
+                }
+            }
+        });
+        OldDaemon {
+            id: id.into(),
+            stream,
+            drops,
+            unparsed,
+        }
+    }
+
+    fn input(&self, data: &[u8]) {
+        let frame = Frame::Bin(BinFrame {
+            tag: TAG_INPUT,
+            session: self.id.clone(),
+            data: data.to_vec(),
+        });
+        write_frame(&mut &self.stream, &frame).unwrap();
+    }
+}
+
+#[test]
+fn a_frozen_1_0_88_daemon_adopts_a_new_shim_and_its_input_arrives() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c
+        .create(raw_agent(&h, "old", "exec cat > \"$OUT\""))
+        .unwrap();
+    wait_ready(&h, "old");
+    drop(c);
+    h.kill_runner();
+    let old = OldDaemon::adopt(&h, &info.id);
+    for i in 0..8 {
+        old.input(chunk(i).as_bytes());
+    }
+    assert_file_is(&out_of(&h, "old"), &numbered(8));
+    eprintln!(
+        "unparsed shim messages: {}",
+        old.unparsed.load(Ordering::SeqCst)
+    );
+}
+
+#[test]
+fn a_frozen_1_0_88_daemon_still_gets_input_dropped_when_it_overflows_a_new_shim() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c.create(h.req(&["/bin/sleep", "30"])).unwrap();
+    drop(c);
+    h.kill_runner();
+    let old = OldDaemon::adopt(&h, &info.id);
+    for i in 0..20 {
+        old.input(chunk(i).as_bytes());
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while old.drops.load(Ordering::SeqCst) == 0 && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert!(
+        old.drops.load(Ordering::SeqCst) > 0,
+        "no input_dropped after 1.25 MiB to a stalled agent"
+    );
+    eprintln!(
+        "unparsed shim messages: {}",
+        old.unparsed.load(Ordering::SeqCst)
+    );
+}
+
+#[test]
+fn a_restarted_daemon_refuses_at_once_when_the_shim_queue_is_full_and_recovers_after_drain() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let go = h.work.join("full.go");
+    let tail = format!(
+        "while [ ! -e {} ]; do sleep 0.05; done\nexec cat > \"$OUT\"",
+        go.display()
+    );
+    let info = c.create(raw_agent(&h, "full", &tail)).unwrap();
+    wait_ready(&h, "full");
+    let accepted = 16;
+    for i in 0..accepted {
+        if let Err(e) = c.send(&info.id, &chunk(i)) {
+            panic!("send {i} of {accepted} was refused: {e}");
+        }
+    }
+    drop(c);
+    h.kill_runner();
+    h.start(5000);
+    let mut c = h.client();
+    wait_state(&mut c, &info.id, 10, |_| true);
+    let e = c.send(&info.id, &chunk(accepted)).expect_err(&format!(
+        "send after the restart was accepted with {accepted} chunks already queued"
+    ));
+    assert!(
+        e.to_string().contains("busy") && e.to_string().contains("input queue full"),
+        "{e}"
+    );
+    fs::write(&go, b"").unwrap();
+    let queued = (accepted * 65536) as u64;
+    let out = out_of(&h, "full");
+    let got = wait_len(&out, queued, Duration::from_secs(30));
+    assert_eq!(
+        got, queued,
+        "{accepted} sends accepted, the agent got {got} bytes"
+    );
+    send_retrying(&mut c, &info.id, &chunk(accepted), 10);
+    assert_file_is(&out, &numbered(accepted + 1));
+    let live = c
+        .list()
+        .unwrap()
+        .into_iter()
+        .find(|s| s.id == info.id)
+        .unwrap();
+    assert_ne!(live.state.kind, StateKind::Exited);
 }
 
 fn env_of(pid: u32) -> String {

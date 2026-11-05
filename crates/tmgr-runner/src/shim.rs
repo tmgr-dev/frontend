@@ -14,7 +14,7 @@ use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{
     read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT, TAG_OUTPUT, TAG_REPLAY,
 };
-use tmgr_ipc::proto::{valid_session_id, ExitInfo, FromShim, ShimHello, Stat, ToShim};
+use tmgr_ipc::proto::{valid_session_id, ExitInfo, FromShim, InputCredit, ShimHello, Stat, ToShim};
 use tmgr_ipc::{auth, secret, server};
 
 const RING_CAP: usize = 2 << 20;
@@ -26,31 +26,62 @@ const INPUT_CAP: usize = 1 << 20;
 const INPUT_FRAMES: usize = 1024;
 
 #[derive(Default)]
+struct InputState {
+    frames: VecDeque<Vec<u8>>,
+    bytes: usize,
+    writing: usize,
+    conn: u64,
+    received_bytes: u64,
+    received_frames: u64,
+    credit_gen: u64,
+}
+
+impl InputState {
+    fn credit(&self) -> InputCredit {
+        InputCredit {
+            received_bytes: self.received_bytes,
+            received_frames: self.received_frames,
+            queued_bytes: self.bytes as u64,
+            queued_frames: (self.frames.len() + self.writing) as u64,
+        }
+    }
+}
+
+#[derive(Default)]
 struct InputQueue {
-    q: Mutex<(VecDeque<Vec<u8>>, usize)>,
+    q: Mutex<InputState>,
     ready: Condvar,
+    consumed: Condvar,
     dropped: AtomicU64,
 }
 
 impl InputQueue {
-    fn push(&self, data: Vec<u8>) {
+    fn push(&self, conn_id: u64, data: Vec<u8>) {
         if data.is_empty() {
             return;
         }
         let mut g = lock(&self.q);
-        if g.1 + data.len() > INPUT_CAP || g.0.len() >= INPUT_FRAMES {
+        if g.conn == conn_id {
+            g.received_bytes += data.len() as u64;
+            g.received_frames += 1;
+        } else {
+            g.credit_gen += 1;
+            self.consumed.notify_one();
+        }
+        if g.bytes + data.len() > INPUT_CAP || g.frames.len() >= INPUT_FRAMES {
             self.dropped.fetch_add(data.len() as u64, Ordering::SeqCst);
             return;
         }
-        g.1 += data.len();
-        g.0.push_back(data);
+        g.bytes += data.len();
+        g.frames.push_back(data);
         self.ready.notify_one();
     }
 
     fn pop(&self) -> Vec<u8> {
         let mut g = lock(&self.q);
         loop {
-            if let Some(d) = g.0.pop_front() {
+            if let Some(d) = g.frames.pop_front() {
+                g.writing += 1;
                 return d;
             }
             g = self.ready.wait(g).unwrap_or_else(|e| e.into_inner());
@@ -58,7 +89,31 @@ impl InputQueue {
     }
 
     fn done(&self, n: usize) {
-        lock(&self.q).1 -= n;
+        let mut g = lock(&self.q);
+        g.bytes -= n;
+        g.writing = g.writing.saturating_sub(1);
+        g.credit_gen += 1;
+        self.consumed.notify_one();
+    }
+
+    fn begin_conn(&self, id: u64) -> InputCredit {
+        let mut g = lock(&self.q);
+        g.conn = id;
+        g.received_bytes = 0;
+        g.received_frames = 0;
+        g.credit()
+    }
+
+    fn snapshot(&self) -> InputCredit {
+        lock(&self.q).credit()
+    }
+
+    fn wait_credit_change(&self, seen: u64) -> u64 {
+        let mut g = lock(&self.q);
+        while g.credit_gen == seen {
+            g = self.consumed.wait(g).unwrap_or_else(|e| e.into_inner());
+        }
+        g.credit_gen
     }
 }
 
@@ -363,6 +418,7 @@ impl Shim {
             }
             st.next_conn += 1;
             let id = st.next_conn;
+            let credit = self.input.begin_conn(id);
             let mut out = out;
             let hello = FromShim::Hello(ShimHello {
                 pid: std::process::id(),
@@ -371,6 +427,7 @@ impl Shim {
                 exit: st.exit.clone(),
                 cwd_dev: report_cwd_id().then_some(self.cwd_id.0),
                 cwd_ino: report_cwd_id().then_some(self.cwd_id.1),
+                input: credit_enabled().then_some(credit),
             });
             let replay = Frame::Bin(BinFrame {
                 tag: TAG_REPLAY,
@@ -383,7 +440,7 @@ impl Shim {
             st.conn = Some(Conn { id, out });
             id
         };
-        self.serve_conn(&stream);
+        self.serve_conn(&stream, conn_id);
         let mut st = lock(&self.st);
         if st.conn.as_ref().is_some_and(|c| c.id == conn_id) {
             st.conn = None;
@@ -419,11 +476,11 @@ impl Shim {
         )
     }
 
-    fn serve_conn(self: &Arc<Self>, stream: &UnixStream) {
+    fn serve_conn(self: &Arc<Self>, stream: &UnixStream, conn_id: u64) {
         loop {
             match read_frame(&mut &*stream) {
                 Ok(Some(Frame::Bin(b))) if b.tag == TAG_INPUT => {
-                    self.input.push(b.data);
+                    self.input.push(conn_id, b.data);
                 }
                 Ok(Some(Frame::Json(v))) => match serde_json::from_value::<ToShim>(v) {
                     Ok(ToShim::Resize { cols, rows }) => {
@@ -486,6 +543,16 @@ fn report_cwd_id() -> bool {
 
 #[cfg(not(debug_assertions))]
 fn report_cwd_id() -> bool {
+    true
+}
+
+#[cfg(debug_assertions)]
+fn credit_enabled() -> bool {
+    std::env::var_os("TMGR_TEST_SHIM_NO_INPUT_CREDIT").is_none()
+}
+
+#[cfg(not(debug_assertions))]
+fn credit_enabled() -> bool {
     true
 }
 
@@ -570,6 +637,9 @@ fn run(dir: &Path, id: &str) -> io::Result<()> {
     });
 
     spawn_input_writer(input, writer);
+    if credit_enabled() {
+        spawn_input_credit(&shim);
+    }
     spawn_reader(&shim, reader);
     spawn_waiter(&shim, child);
     spawn_stat(&shim);
@@ -596,6 +666,19 @@ fn spawn_input_writer(queue: Arc<InputQueue>, mut pty: Box<dyn Write + Send>) {
         let data = queue.pop();
         let _ = pty.write_all(&data).and_then(|()| pty.flush());
         queue.done(data.len());
+    });
+}
+
+fn spawn_input_credit(shim: &Arc<Shim>) {
+    let shim = shim.clone();
+    thread::spawn(move || {
+        let mut seen = 0;
+        loop {
+            seen = shim.input.wait_credit_change(seen);
+            let mut st = lock(&shim.st);
+            let credit = shim.input.snapshot();
+            shim.send(&mut st, &FromShim::InputCredit(credit));
+        }
     });
 }
 
@@ -798,7 +881,7 @@ mod proc {
 #[cfg(test)]
 #[allow(clippy::zombie_processes)]
 mod tests {
-    use super::{proc, ChildGuard, InputQueue, INPUT_CAP, INPUT_FRAMES};
+    use super::{proc, ChildGuard, InputCredit, InputQueue, INPUT_CAP, INPUT_FRAMES};
     use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
     use std::sync::atomic::Ordering;
@@ -1057,12 +1140,12 @@ mod tests {
     #[test]
     fn input_queue_drops_past_the_cap_and_counts_it() {
         let q = InputQueue::default();
-        q.push(vec![0; INPUT_CAP]);
-        q.push(vec![0; 10]);
+        q.push(0, vec![0; INPUT_CAP]);
+        q.push(0, vec![0; 10]);
         assert_eq!(q.dropped.load(Ordering::SeqCst), 10);
         let d = q.pop();
         q.done(d.len());
-        q.push(vec![0; 10]);
+        q.push(0, vec![0; 10]);
         assert_eq!(q.dropped.load(Ordering::SeqCst), 10);
     }
 
@@ -1070,14 +1153,85 @@ mod tests {
     fn input_queue_ignores_empty_frames_and_caps_the_count() {
         let q = InputQueue::default();
         for _ in 0..INPUT_FRAMES * 2 {
-            q.push(Vec::new());
+            q.push(0, Vec::new());
         }
-        assert_eq!(q.q.lock().unwrap().0.len(), 0);
+        assert_eq!(q.q.lock().unwrap().frames.len(), 0);
         for _ in 0..INPUT_FRAMES + 5 {
-            q.push(vec![1]);
+            q.push(0, vec![1]);
         }
-        assert_eq!(q.q.lock().unwrap().0.len(), INPUT_FRAMES);
+        assert_eq!(q.q.lock().unwrap().frames.len(), INPUT_FRAMES);
         assert_eq!(q.dropped.load(Ordering::SeqCst), 5);
+    }
+
+    #[test]
+    fn input_credit_counts_received_and_queued_including_the_frame_being_written() {
+        let q = InputQueue::default();
+        assert_eq!(q.begin_conn(1), InputCredit::default());
+        q.push(1, vec![0; 4]);
+        q.push(1, vec![0; 6]);
+        assert_eq!(
+            q.snapshot(),
+            InputCredit {
+                received_bytes: 10,
+                received_frames: 2,
+                queued_bytes: 10,
+                queued_frames: 2
+            }
+        );
+        let d = q.pop();
+        assert_eq!(q.snapshot().queued_frames, 2);
+        assert_eq!(q.snapshot().queued_bytes, 10);
+        q.done(d.len());
+        let c = q.snapshot();
+        assert_eq!((c.queued_bytes, c.queued_frames), (6, 1));
+        assert_eq!((c.received_bytes, c.received_frames), (10, 2));
+    }
+
+    #[test]
+    fn input_credit_counts_a_dropped_frame_as_received_but_not_queued() {
+        let q = InputQueue::default();
+        q.begin_conn(1);
+        q.push(1, vec![0; INPUT_CAP]);
+        q.push(1, vec![0; 10]);
+        let c = q.snapshot();
+        assert_eq!(
+            (c.received_bytes, c.received_frames),
+            (INPUT_CAP as u64 + 10, 2)
+        );
+        assert_eq!((c.queued_bytes, c.queued_frames), (INPUT_CAP as u64, 1));
+        assert_eq!(q.dropped.load(Ordering::SeqCst), 10);
+    }
+
+    #[test]
+    fn input_credit_resets_received_on_a_new_connection_and_keeps_the_leftovers() {
+        let q = InputQueue::default();
+        q.begin_conn(1);
+        q.push(1, vec![0; 7]);
+        let c = q.begin_conn(2);
+        assert_eq!((c.received_bytes, c.received_frames), (0, 0));
+        assert_eq!((c.queued_bytes, c.queued_frames), (7, 1));
+        let seen = q.q.lock().unwrap().credit_gen;
+        q.push(1, vec![0; 3]);
+        assert_ne!(q.q.lock().unwrap().credit_gen, seen);
+        let c = q.snapshot();
+        assert_eq!((c.received_bytes, c.received_frames), (0, 0));
+        assert_eq!((c.queued_bytes, c.queued_frames), (10, 2));
+        q.push(2, vec![0; 5]);
+        let c = q.snapshot();
+        assert_eq!((c.received_bytes, c.received_frames), (5, 1));
+        assert_eq!((c.queued_bytes, c.queued_frames), (15, 3));
+    }
+
+    #[test]
+    fn input_credit_ignores_empty_frames_and_wakes_on_done() {
+        let q = InputQueue::default();
+        q.begin_conn(1);
+        q.push(1, Vec::new());
+        assert_eq!(q.snapshot(), InputCredit::default());
+        q.push(1, vec![1]);
+        let d = q.pop();
+        q.done(d.len());
+        assert_eq!(q.wait_credit_change(0), 1);
     }
 
     #[test]

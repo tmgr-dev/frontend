@@ -37,7 +37,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
@@ -55,8 +55,8 @@ use tmgr_ipc::frame::{
     read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT, TAG_REPLAY,
 };
 use tmgr_ipc::proto::{
-    new_session_id, valid_session_id, ClientMsg, ErrorBody, ExitInfo, FromShim, Request, Response,
-    ServerMsg, ShimHello, ToShim, PROTO_VERSION,
+    new_session_id, valid_session_id, ClientMsg, ErrorBody, ExitInfo, FromShim, InputCredit,
+    Request, Response, ServerMsg, ShimHello, ToShim, PROTO_VERSION,
 };
 use tmgr_ipc::{auth, secret, server};
 
@@ -67,6 +67,8 @@ const SHIM_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const SHIM_QUEUE: usize = 1024;
 const SHIM_INPUT_CAP: usize = 1 << 20;
 const SHIM_INPUT_FRAMES: usize = 512;
+const SHIM_CREDIT_FRAMES: u64 = 1024;
+const ATTACH_INPUT_WAIT: Duration = Duration::from_secs(2);
 // A note typed into the agent only shows on screen after its next redraw; wait that long before the next one.
 const SEND_SETTLE: Duration = Duration::from_secs(5);
 const MAX_REPLIES_PER_SEC: u32 = 32;
@@ -375,14 +377,39 @@ struct Inner {
     input_sent_at: Option<Instant>,
 }
 
+#[derive(Default)]
+struct InputBook {
+    sent_bytes: u64,
+    sent_frames: u64,
+    last: InputCredit,
+    stalled: bool,
+}
+
+impl InputBook {
+    fn outstanding(&self) -> (u64, u64) {
+        (
+            self.sent_bytes.saturating_sub(self.last.received_bytes) + self.last.queued_bytes,
+            self.sent_frames.saturating_sub(self.last.received_frames) + self.last.queued_frames,
+        )
+    }
+
+    fn has_room(&self, len: usize) -> bool {
+        let (bytes, frames) = self.outstanding();
+        bytes + len as u64 <= SHIM_INPUT_CAP as u64 && frames < SHIM_CREDIT_FRAMES
+    }
+}
+
+type Book = Arc<(Mutex<InputBook>, Condvar)>;
+
 struct ShimLink {
     tx: SyncSender<Frame>,
     queued_bytes: Arc<AtomicUsize>,
     queued_frames: Arc<AtomicUsize>,
+    credit: Option<Book>,
 }
 
 impl ShimLink {
-    fn spawn(stream: &UnixStream) -> io::Result<ShimLink> {
+    fn spawn(stream: &UnixStream, credit: Option<Book>) -> io::Result<ShimLink> {
         let mut out = stream.try_clone()?;
         out.set_write_timeout(Some(SHIM_WRITE_TIMEOUT))?;
         let (tx, rx) = mpsc::sync_channel::<Frame>(SHIM_QUEUE);
@@ -410,6 +437,7 @@ impl ShimLink {
             tx,
             queued_bytes,
             queued_frames,
+            credit,
         })
     }
 }
@@ -706,9 +734,15 @@ impl Session {
         }
         let g = lock(&self.shim);
         let Some(link) = g.as_ref() else { return false };
-        if link.queued_bytes.load(Ordering::SeqCst) + bytes.len() > SHIM_INPUT_CAP
-            || link.queued_frames.load(Ordering::SeqCst) >= SHIM_INPUT_FRAMES
-        {
+        let mut book = link.credit.as_ref().map(|c| lock(&c.0));
+        let full = match &book {
+            Some(b) => !b.has_room(bytes.len()),
+            None => {
+                link.queued_bytes.load(Ordering::SeqCst) + bytes.len() > SHIM_INPUT_CAP
+                    || link.queued_frames.load(Ordering::SeqCst) >= SHIM_INPUT_FRAMES
+            }
+        };
+        if full {
             return false;
         }
         link.queued_bytes.fetch_add(bytes.len(), Ordering::SeqCst);
@@ -723,7 +757,35 @@ impl Session {
             link.queued_frames.fetch_sub(1, Ordering::SeqCst);
             return false;
         }
+        if let Some(b) = &mut book {
+            b.sent_bytes += bytes.len() as u64;
+            b.sent_frames += 1;
+        }
         true
+    }
+
+    fn wait_input_room(&self, len: usize) {
+        let Some(book) = lock(&self.shim).as_ref().and_then(|l| l.credit.clone()) else {
+            return;
+        };
+        let deadline = Instant::now() + ATTACH_INPUT_WAIT;
+        let mut b = lock(&book.0);
+        while !b.stalled && !b.has_room(len) {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                b.stalled = true;
+                log(&format!(
+                    "session {} input is stalled; dropping attach input",
+                    self.id
+                ));
+                return;
+            }
+            b = book
+                .1
+                .wait_timeout(b, left)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
+        }
     }
 
     fn reply_allowed(&self) -> bool {
@@ -920,9 +982,10 @@ impl Session {
             let bottom = i.screen.bottom_text(10);
             let rows = i.screen.text_lines(None).3;
             let agent = i.meta.profile.as_deref().and_then(permit::agent_of);
-            let idle_queue = lock(&self.shim)
-                .as_ref()
-                .is_some_and(|l| l.queued_frames.load(Ordering::SeqCst) == 0);
+            let idle_queue = lock(&self.shim).as_ref().is_some_and(|l| match &l.credit {
+                Some(c) => lock(&c.0).outstanding().1 == 0,
+                None => l.queued_frames.load(Ordering::SeqCst) == 0,
+            });
             if self.effective(&i).kind == StateKind::Blocked
                 || !prompt_ready(i.matcher.as_ref(), agent, &bottom, &rows)
                 || i.input_sent_at
@@ -1184,7 +1247,16 @@ impl Session {
     }
 
     fn attach_shim(self: &Arc<Self>, stream: UnixStream, hello: ShimHello, fresh: bool) {
-        if let Ok(link) = ShimLink::spawn(&stream) {
+        let book: Option<Book> = hello.input.map(|last| {
+            Arc::new((
+                Mutex::new(InputBook {
+                    last,
+                    ..InputBook::default()
+                }),
+                Condvar::new(),
+            ))
+        });
+        if let Ok(link) = ShimLink::spawn(&stream, book.clone()) {
             *lock(&self.shim) = Some(link);
         }
         if let Some(e) = &hello.exit {
@@ -1192,7 +1264,7 @@ impl Session {
         }
         let me = self.clone();
         thread::spawn(move || {
-            me.read_shim(&stream, fresh);
+            me.read_shim(&stream, fresh, book);
             *lock(&me.shim) = None;
             if !me.revoking.load(Ordering::SeqCst) {
                 me.interrupt();
@@ -1200,7 +1272,7 @@ impl Session {
         });
     }
 
-    fn read_shim(&self, stream: &UnixStream, answer_replay: bool) {
+    fn read_shim(&self, stream: &UnixStream, answer_replay: bool, book: Option<Book>) {
         while let Ok(Some(frame)) = read_frame(&mut &*stream) {
             match frame {
                 Frame::Bin(b) => self.feed(&b.data, answer_replay || b.tag != TAG_REPLAY),
@@ -1217,8 +1289,18 @@ impl Session {
                         }
                         acks.insert(id, delivered);
                     }
+                    Ok(FromShim::InputCredit(c)) => {
+                        if let Some(book) = &book {
+                            let mut b = lock(&book.0);
+                            b.last = c;
+                            b.stalled = false;
+                            book.1.notify_all();
+                        }
+                    }
                     Ok(FromShim::InputDropped { bytes }) => {
-                        self.input_dropped.store(true, Ordering::SeqCst);
+                        if book.is_none() {
+                            self.input_dropped.store(true, Ordering::SeqCst);
+                        }
                         if !self.drop_logged.swap(true, Ordering::SeqCst) {
                             log(&format!(
                                 "session {} dropped {bytes} bytes of input",
@@ -4695,6 +4777,7 @@ impl Runner {
             }
         }
         s.note_input_from(&conn.client);
+        s.wait_input_room(data.len());
         let _ = s.input(data);
     }
 
@@ -5079,6 +5162,7 @@ pub fn daemon_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
         "TMGR_RUNNER_WRITE_TIMEOUT_MS",
         "TMGR_TEST_HOLD_BEFORE_SPAWN",
         "TMGR_TEST_SHIM_NO_CWD_ID",
+        "TMGR_TEST_SHIM_NO_INPUT_CREDIT",
         ENV_CLEAN,
     ];
     std::env::vars_os()
@@ -5397,6 +5481,7 @@ mod tests {
             tx,
             queued_bytes: Arc::new(AtomicUsize::new(0)),
             queued_frames: Arc::new(AtomicUsize::new(0)),
+            credit: None,
         });
         (t, s, rx)
     }
@@ -5458,6 +5543,147 @@ mod tests {
         assert!(!send_at_prompt(&s, b"note\r", settled()));
         drain(&s, &rx);
         assert!(send_at_prompt(&s, b"note\r", settled()));
+    }
+
+    fn credit(rb: u64, rf: u64, qb: u64, qf: u64) -> InputCredit {
+        InputCredit {
+            received_bytes: rb,
+            received_frames: rf,
+            queued_bytes: qb,
+            queued_frames: qf,
+        }
+    }
+
+    fn credit_session() -> (tempfile::TempDir, Arc<Session>, mpsc::Receiver<Frame>, Book) {
+        let (t, s, rx) = lone_session();
+        let book: Book = Arc::new((Mutex::new(InputBook::default()), Condvar::new()));
+        lock(&s.shim).as_mut().unwrap().credit = Some(book.clone());
+        (t, s, rx, book)
+    }
+
+    fn report(book: &Book, c: InputCredit) {
+        let mut b = lock(&book.0);
+        b.last = c;
+        b.stalled = false;
+        book.1.notify_all();
+    }
+
+    #[test]
+    fn the_book_counts_absolute_state_and_never_underflows() {
+        let mut b = InputBook::default();
+        assert_eq!(b.outstanding(), (0, 0));
+        b.sent_bytes = 10;
+        b.sent_frames = 2;
+        assert_eq!(b.outstanding(), (10, 2));
+        b.last = credit(4, 1, 6, 1);
+        assert_eq!(b.outstanding(), (12, 2));
+        b.last = credit(10, 2, 0, 0);
+        assert_eq!(b.outstanding(), (0, 0));
+        b.last = credit(99, 9, 0, 0);
+        assert_eq!(b.outstanding(), (0, 0));
+        b.last = credit(0, 0, 7, 3);
+        assert_eq!(b.outstanding(), (17, 5));
+    }
+
+    #[test]
+    fn the_book_has_room_up_to_the_byte_and_frame_caps() {
+        let mut b = InputBook::default();
+        assert!(b.has_room(SHIM_INPUT_CAP));
+        assert!(!b.has_room(SHIM_INPUT_CAP + 1));
+        b.last = credit(0, 0, SHIM_INPUT_CAP as u64 - 1, 1);
+        assert!(b.has_room(1));
+        assert!(!b.has_room(2));
+        b.last = credit(0, 0, 0, SHIM_CREDIT_FRAMES - 1);
+        assert!(b.has_room(1));
+        b.last = credit(0, 0, 0, SHIM_CREDIT_FRAMES);
+        assert!(!b.has_room(1));
+    }
+
+    #[test]
+    fn a_credit_link_refuses_when_the_shim_queue_is_full_even_if_the_socket_drained() {
+        let (_t, s, rx, book) = credit_session();
+        let chunk = vec![0u8; SHIM_INPUT_CAP / 4];
+        for _ in 0..4 {
+            assert!(s.shim_input(&chunk));
+        }
+        drain(&s, &rx);
+        assert!(!s.shim_input(b"x"));
+        assert_eq!(lock(&book.0).outstanding().0, SHIM_INPUT_CAP as u64);
+        report(&book, credit(SHIM_INPUT_CAP as u64, 4, 0, 0));
+        assert!(s.shim_input(b"x"));
+    }
+
+    #[test]
+    fn a_credit_link_allows_more_small_frames_than_the_legacy_cap() {
+        let (_t, s, rx, book) = credit_session();
+        for _ in 0..SHIM_CREDIT_FRAMES {
+            assert!(s.shim_input(b"k"));
+        }
+        assert!(!s.shim_input(b"k"));
+        drain(&s, &rx);
+        report(&book, credit(SHIM_CREDIT_FRAMES, SHIM_CREDIT_FRAMES, 0, 0));
+        assert!(s.shim_input(b"k"));
+    }
+
+    #[test]
+    fn a_credit_link_idle_check_follows_the_shim_queue_not_the_socket() {
+        let (_t, s, rx, book) = credit_session();
+        s.feed(IDLE, true);
+        assert!(s.shim_input(b"1"));
+        drain(&s, &rx);
+        assert!(!send_at_prompt(&s, b"note\r", settled()));
+        report(&book, credit(1, 1, 0, 0));
+        assert!(send_at_prompt(&s, b"note\r", settled()));
+    }
+
+    #[test]
+    fn a_dropped_report_does_not_poison_a_credit_link() {
+        let (_t, s, _rx, book) = credit_session();
+        s.input_dropped.store(false, Ordering::SeqCst);
+        assert!(lock(&book.0).has_room(1));
+        assert!(s.input(b"a"));
+    }
+
+    #[test]
+    fn the_attach_wait_returns_at_once_with_room_and_marks_a_stall_on_timeout() {
+        let (_t, s, _rx, book) = credit_session();
+        let t0 = Instant::now();
+        s.wait_input_room(1);
+        assert!(t0.elapsed() < Duration::from_millis(500));
+        report(&book, credit(0, 0, SHIM_INPUT_CAP as u64, 1));
+        let t0 = Instant::now();
+        s.wait_input_room(1);
+        assert!(t0.elapsed() >= ATTACH_INPUT_WAIT);
+        assert!(lock(&book.0).stalled);
+        let t0 = Instant::now();
+        s.wait_input_room(1);
+        assert!(t0.elapsed() < Duration::from_millis(500));
+        report(&book, credit(0, 0, 0, 0));
+        assert!(!lock(&book.0).stalled);
+    }
+
+    #[test]
+    fn the_attach_wait_wakes_when_a_credit_makes_room() {
+        let (_t, s, _rx, book) = credit_session();
+        report(&book, credit(0, 0, SHIM_INPUT_CAP as u64, 1));
+        let b2 = book.clone();
+        let h = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(200));
+            report(&b2, credit(0, 0, 0, 0));
+        });
+        let t0 = Instant::now();
+        s.wait_input_room(1);
+        h.join().unwrap();
+        assert!(t0.elapsed() < ATTACH_INPUT_WAIT);
+        assert!(!lock(&book.0).stalled);
+    }
+
+    #[test]
+    fn a_legacy_link_never_waits() {
+        let (_t, s, _rx) = lone_session();
+        let t0 = Instant::now();
+        s.wait_input_room(1);
+        assert!(t0.elapsed() < Duration::from_millis(100));
     }
 
     #[test]
@@ -5857,6 +6083,7 @@ mod tests {
                         exit: None,
                         cwd_dev: None,
                         cwd_ino: None,
+                        input: None,
                     });
                     write_json(&mut s, &hello).unwrap();
                     return b"ok".to_vec();
