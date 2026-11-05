@@ -1,7 +1,7 @@
 use super::memory::Kind;
 use super::state::{
-    Availability, Field, RowKind, Screen, State, CONFIRM_NEXT, FORK_KEEPS_SETTINGS, LIVE_REASON,
-    READING_OFF,
+    Availability, Field, RowKind, Screen, Smart, State, CONFIRM_NEXT, FORK_KEEPS_SETTINGS,
+    LIVE_REASON, READING_OFF,
 };
 use crate::cmd::board::theme::ColorLevel;
 use ratatui::style::{Color, Modifier, Style};
@@ -142,11 +142,33 @@ fn session_lines(s: &State, look: Look, width: usize, height: usize) -> Vec<Line
             width,
             Style::new(),
         ),
-        line(&format!("Filter: {}_", s.filter), width, look.accent()),
+        match (&s.smart, &s.found) {
+            (Smart::Asking(q), _) => line(&format!("Ask: {q}_"), width, look.accent()),
+            (Smart::Running(q), _) => line(
+                &format!(
+                    "Asking {} about: {q} (Esc cancels)",
+                    s.smart_agent().unwrap_or_default()
+                ),
+                width,
+                look.accent(),
+            ),
+            (_, Some((q, _))) => line(
+                &format!("Smart search: {q} (Esc clears)"),
+                width,
+                look.accent(),
+            ),
+            _ => line(&format!("Filter: {}_", s.filter), width, look.accent()),
+        },
     ];
     let mut foot = Vec::new();
     if let Some(reason) = s.reason() {
         foot.push(line(reason, width, look.warn()));
+    }
+    if let Some(text) = matches!(s.smart, Smart::Confirm(_))
+        .then(|| s.confirm_text())
+        .flatten()
+    {
+        foot.push(line(&text, width, look.warn()));
     }
     if s.reading_hint() {
         foot.push(line(READING_OFF, width, look.warn()));
@@ -161,7 +183,10 @@ fn session_lines(s: &State, look: Look, width: usize, height: usize) -> Vec<Line
         Some(kind) => choice_line(kind, s, look, width),
         None => keys(
             look,
-            "Up/Down move \u{b7} type to filter \u{b7} Enter select \u{b7} Esc back \u{b7} Ctrl+C quit",
+            &format!(
+                "Up/Down move \u{b7} type to filter \u{b7} {}Enter select \u{b7} Esc back \u{b7} Ctrl+C quit",
+                if s.smart_agent().is_some() { "Ctrl+A ask the agent \u{b7} " } else { "" }
+            ),
             width,
         ),
     });
@@ -199,6 +224,9 @@ fn session_lines(s: &State, look: Look, width: usize, height: usize) -> Vec<Line
             Availability::FolderGone => text.push_str(" (folder gone)"),
             Availability::Unreadable => text.push_str(" (not readable)"),
             _ => {}
+        }
+        if let Some(why) = s.reason_for(&row.id) {
+            text.push_str(&format!(" \u{2014} {why}"));
         }
         let style = if on {
             look.selected()

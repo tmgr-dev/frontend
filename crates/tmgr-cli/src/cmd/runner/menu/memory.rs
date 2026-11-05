@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use toml_edit::{value, DocumentMut};
 
 const FILE: &str = "run-menu.toml";
+const SENDS: &str = "smart-search.toml";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Kind {
@@ -63,13 +64,8 @@ pub fn load(path: &Path) -> Memory {
     }
 }
 
-pub fn save(path: &Path, m: &Memory) -> std::io::Result<()> {
+fn write_doc(path: &Path, doc: &DocumentMut) -> std::io::Result<()> {
     use std::io::Write;
-    let mut doc = DocumentMut::new();
-    doc["agent"] = value(m.agent.as_str());
-    doc["kind"] = value(m.kind.as_str());
-    doc["bypass"] = value(m.bypass);
-    doc["no_sandbox"] = value(m.no_sandbox);
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     let _ = tmgr_core::config::ensure_private_dir(dir);
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
@@ -77,4 +73,35 @@ pub fn save(path: &Path, m: &Memory) -> std::io::Result<()> {
     tmp.as_file().sync_all()?;
     tmp.persist(path).map_err(|e| e.error)?;
     Ok(())
+}
+
+pub fn save(path: &Path, m: &Memory) -> std::io::Result<()> {
+    let mut doc = DocumentMut::new();
+    doc["agent"] = value(m.agent.as_str());
+    doc["kind"] = value(m.kind.as_str());
+    doc["bypass"] = value(m.bypass);
+    doc["no_sandbox"] = value(m.no_sandbox);
+    write_doc(path, &doc)
+}
+
+pub fn sends_path() -> Option<PathBuf> {
+    tmgr_core::config::config_dir().ok().map(|d| d.join(SENDS))
+}
+
+pub fn load_send(path: &Path, direction: &str) -> Option<bool> {
+    std::fs::read_to_string(path)
+        .ok()?
+        .parse::<DocumentMut>()
+        .ok()?
+        .get(direction)?
+        .as_bool()
+}
+
+pub fn save_send(path: &Path, direction: &str, allow: bool) -> std::io::Result<()> {
+    let mut doc = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| s.parse::<DocumentMut>().ok())
+        .unwrap_or_default();
+    doc[direction] = value(allow);
+    write_doc(path, &doc)
 }

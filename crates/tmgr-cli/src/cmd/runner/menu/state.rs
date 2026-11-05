@@ -13,6 +13,7 @@ pub enum Key {
     Backspace,
     Char(char),
     CtrlC,
+    CtrlA,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -55,6 +56,24 @@ pub struct Hints {
     pub reading_off: bool,
 }
 
+pub enum Consent {
+    Allowed,
+    Declined,
+    Ask {
+        from: &'static str,
+        to: &'static str,
+    },
+}
+
+pub type Picks = Vec<(String, String)>;
+
+pub enum Smart {
+    Off,
+    Asking(String),
+    Confirm(String),
+    Running(String),
+}
+
 pub trait Source {
     fn load(&self, profile: &str);
     fn poll(&self) -> Option<(Vec<Row>, Hints)>;
@@ -63,6 +82,20 @@ pub trait Source {
     fn status(&self) -> Option<String> {
         None
     }
+    fn smart_agent(&self, _browsed: &str) -> Option<String> {
+        None
+    }
+    fn smart_consent(&self, _browsed: &str) -> Consent {
+        Consent::Allowed
+    }
+    fn smart_remember(&self, _browsed: &str, _allow: bool) {}
+    fn smart_start(&self, _browsed: &str, _question: &str) -> Result<(), String> {
+        Err("Smart search is not available.".into())
+    }
+    fn smart_poll(&self) -> Option<Result<Picks, String>> {
+        None
+    }
+    fn smart_cancel(&self) {}
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -112,6 +145,8 @@ pub const CONFIRM_NEXT: &str = "You will be asked to type a confirmation next.";
 pub const LIVE_REASON: &str = "Running in another terminal: fork instead";
 pub const GONE_REASON: &str =
     "The session's folder is missing or resolves elsewhere, so it cannot be started.";
+pub const NOT_SENT: &str =
+    "Those sessions were not sent to the other provider, so nothing was searched.";
 pub const READING_OFF: &str =
     "Reading session logs is off. Press Tab to allow it (same as: tmgr usage consent allow)";
 pub const ALLOW_CONFIRM: &str =
@@ -139,6 +174,8 @@ pub struct State {
     allow_shown: Option<Instant>,
     chosen: Option<String>,
     frozen: Vec<usize>,
+    pub smart: Smart,
+    pub found: Option<(String, Picks)>,
 }
 
 fn clean_char(c: char) -> bool {
@@ -179,6 +216,39 @@ impl State {
             allow_shown: None,
             chosen: None,
             frozen: Vec::new(),
+            smart: Smart::Off,
+            found: None,
+        }
+    }
+
+    pub fn smart_agent(&self) -> Option<String> {
+        self.source.smart_agent(&self.agent().id)
+    }
+
+    pub fn reason_for(&self, id: &str) -> Option<&str> {
+        let (_, picks) = self.found.as_ref()?;
+        picks.iter().find(|(i, _)| i == id).map(|(_, r)| r.as_str())
+    }
+
+    pub fn tick(&mut self) {
+        if !matches!(self.smart, Smart::Running(_)) {
+            return;
+        }
+        let Some(done) = self.source.smart_poll() else {
+            return;
+        };
+        let Smart::Running(question) = std::mem::replace(&mut self.smart, Smart::Off) else {
+            return;
+        };
+        match done {
+            Ok(picks) if picks.is_empty() => {
+                self.notice = Some("No matching sessions found.".into())
+            }
+            Ok(picks) => {
+                self.found = Some((question, picks));
+                self.cursor = 1;
+            }
+            Err(e) => self.notice = Some(e),
         }
     }
 
@@ -189,6 +259,12 @@ impl State {
     pub fn visible(&self) -> Vec<usize> {
         if self.choice.is_some() {
             return self.frozen.clone();
+        }
+        if let Some((_, picks)) = &self.found {
+            return picks
+                .iter()
+                .filter_map(|(id, _)| self.rows.iter().position(|r| &r.id == id))
+                .collect();
         }
         let q = self.filter.trim();
         if q.is_empty() {
@@ -401,10 +477,15 @@ impl State {
 
     pub fn on_paste(&mut self, text: &str) {
         match self.screen {
-            Screen::Session if self.choice.is_none() => {
-                self.filter.extend(text.chars().filter(|c| clean_char(*c)));
-                self.cursor = 0;
-            }
+            Screen::Session if self.choice.is_none() => match &mut self.smart {
+                Smart::Asking(q) => q.extend(text.chars().filter(|c| clean_char(*c))),
+                Smart::Off => {
+                    self.found = None;
+                    self.filter.extend(text.chars().filter(|c| clean_char(*c)));
+                    self.cursor = 0;
+                }
+                _ => {}
+            },
             Screen::Flags if self.current_field() == Some(Field::Folder) => {
                 self.folder.extend(text.chars().filter(|c| clean_char(*c)));
             }
@@ -463,8 +544,20 @@ impl State {
         if self.choice.is_some() {
             return self.choice_key(key);
         }
+        if !matches!(self.smart, Smart::Off) {
+            self.smart_key(key);
+            return Step::Stay;
+        }
         let count = self.visible().len() + 1;
         match key {
+            Key::CtrlA if self.smart_agent().is_some() => {
+                self.found = None;
+                self.smart = Smart::Asking(String::new());
+            }
+            Key::Esc if self.found.is_some() => {
+                self.found = None;
+                self.cursor = 0;
+            }
             Key::Esc => {
                 self.screen = Screen::Agent;
                 self.loading = false;
@@ -490,12 +583,79 @@ impl State {
                 }
             },
             Key::Char(c) if clean_char(c) => {
+                self.found = None;
                 self.filter.push(c);
                 self.cursor = 0;
             }
             _ => {}
         }
         Step::Stay
+    }
+
+    fn smart_key(&mut self, key: Key) {
+        match std::mem::replace(&mut self.smart, Smart::Off) {
+            Smart::Asking(mut q) => match key {
+                Key::Esc => {}
+                Key::Enter if !q.trim().is_empty() => self.ask(q),
+                Key::Backspace => {
+                    q.pop();
+                    self.smart = Smart::Asking(q);
+                }
+                Key::Char(c) if clean_char(c) => {
+                    q.push(c);
+                    self.smart = Smart::Asking(q);
+                }
+                _ => self.smart = Smart::Asking(q),
+            },
+            Smart::Confirm(q) => {
+                let id = self.agent().id.clone();
+                match key {
+                    Key::Char('y') => {
+                        self.source.smart_remember(&id, true);
+                        self.launch(&q);
+                    }
+                    Key::Char('n') => {
+                        self.source.smart_remember(&id, false);
+                        self.notice = Some(NOT_SENT.into());
+                    }
+                    Key::Esc => {}
+                    _ => self.smart = Smart::Confirm(q),
+                }
+            }
+            Smart::Running(q) => {
+                if key == Key::Esc {
+                    self.source.smart_cancel();
+                    self.notice = Some("Smart search cancelled.".into());
+                } else {
+                    self.smart = Smart::Running(q);
+                }
+            }
+            Smart::Off => {}
+        }
+    }
+
+    fn ask(&mut self, question: String) {
+        match self.source.smart_consent(&self.agent().id) {
+            Consent::Allowed => self.launch(&question),
+            Consent::Declined => self.notice = Some(NOT_SENT.into()),
+            Consent::Ask { .. } => self.smart = Smart::Confirm(question),
+        }
+    }
+
+    fn launch(&mut self, question: &str) {
+        match self.source.smart_start(&self.agent().id.clone(), question) {
+            Ok(()) => self.smart = Smart::Running(question.to_string()),
+            Err(e) => self.notice = Some(e),
+        }
+    }
+
+    pub fn confirm_text(&self) -> Option<String> {
+        match self.source.smart_consent(&self.agent().id) {
+            Consent::Ask { from, to } => Some(format!(
+                "Fragments of your {from} sessions will be sent to {to}. Allow this? y yes (remember) \u{b7} n no (remember) \u{b7} Esc cancel"
+            )),
+            _ => None,
+        }
     }
 
     fn allow(&mut self) {

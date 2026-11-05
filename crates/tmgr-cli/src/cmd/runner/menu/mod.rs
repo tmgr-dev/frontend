@@ -1,9 +1,12 @@
 mod indexer;
 mod memory;
 mod signal;
+mod smart;
 mod state;
 mod view;
 
+#[cfg(test)]
+mod smart_tests;
 #[cfg(test)]
 mod tests;
 
@@ -17,12 +20,14 @@ use indexer::{Indexer, Searcher};
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Terminal;
-use state::{AgentOpt, Hints, Key, Row, RowKind, Source, State, Step};
-use std::cell::RefCell;
+use state::{AgentOpt, Consent, Hints, Key, Picks, Row, RowKind, Source, State, Step};
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::{stdin, stdout, IsTerminal};
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tmgr_runner::profile::{self, ProfileSet};
 use tmgr_usage::paths::Env;
@@ -81,8 +86,20 @@ const ROW_LIMIT: usize = 1000;
 const HIT_LIMIT: usize = 500;
 const RUNNER_WAIT: Duration = Duration::from_secs(2);
 
+struct Recent {
+    row_id: String,
+    index_id: String,
+    label: String,
+}
+
 #[derive(Default)]
 struct Live {
+    runner: Arc<OnceLock<Option<PathBuf>>>,
+    reads: Cell<Reads>,
+    recent: RefCell<Vec<Recent>>,
+    job: RefCell<Option<smart::Job>>,
+    allowed: RefCell<std::collections::HashSet<String>>,
+    connection: RefCell<Option<index::Index>>,
     indexer: RefCell<Option<Indexer>>,
     searcher: RefCell<Option<Searcher>>,
     loading: RefCell<Option<Receiver<Loaded>>>,
@@ -94,6 +111,10 @@ impl Live {
     fn start() -> Live {
         let live = Live::default();
         live.ensure_indexer();
+        let slot = live.runner.clone();
+        std::thread::spawn(move || {
+            let _ = slot.set(smart::detect(std::env::var_os("PATH")));
+        });
         live
     }
 
@@ -158,6 +179,19 @@ impl Source for Live {
                 )
             })
             .collect();
+        *self.recent.borrow_mut() = rows
+            .iter()
+            .filter(|r| r.readable)
+            .map(|r| Recent {
+                row_id: r.id.clone(),
+                index_id: owners
+                    .iter()
+                    .find(|(_, row)| **row == r.id)
+                    .map_or_else(|| r.id.clone(), |(session, _)| session.clone()),
+                label: format!("{} - {}", r.project, r.text),
+            })
+            .collect();
+        self.reads.set(Reads::of(&Env::from_process()));
         *self.owners.borrow_mut() = owners;
         Some((rows, hints))
     }
@@ -185,6 +219,124 @@ impl Source for Live {
 
     fn status(&self) -> Option<String> {
         self.indexer.borrow().as_ref()?.status()
+    }
+
+    fn smart_agent(&self, browsed: &str) -> Option<String> {
+        self.runner.get()?.as_ref()?;
+        let reads = self.reads.get();
+        let allowed = match browsed {
+            "claude-code" => reads.claude,
+            "codex" => reads.codex,
+            _ => false,
+        };
+        allowed.then(|| "Claude Code".to_string())
+    }
+
+    fn smart_consent(&self, browsed: &str) -> Consent {
+        let from = match browsed {
+            "claude-code" => return Consent::Allowed,
+            "codex" => "Codex",
+            _ => return Consent::Declined,
+        };
+        match memory::sends_path().and_then(|p| memory::load_send(&p, "codex_to_claude")) {
+            Some(true) => Consent::Allowed,
+            Some(false) => Consent::Declined,
+            None => Consent::Ask {
+                from,
+                to: "Claude Code",
+            },
+        }
+    }
+
+    fn smart_remember(&self, browsed: &str, allow: bool) {
+        if browsed == "codex" {
+            if let Some(path) = memory::sends_path() {
+                let _ = memory::save_send(&path, "codex_to_claude", allow);
+            }
+        }
+    }
+
+    fn smart_start(&self, browsed: &str, question: &str) -> Result<(), String> {
+        let bin = self
+            .runner
+            .get()
+            .cloned()
+            .flatten()
+            .ok_or("No agent is available for smart search.")?;
+        let guard = self.indexer.borrow();
+        let indexer = guard
+            .as_ref()
+            .filter(|i| i.ready())
+            .ok_or("The search index is not ready yet. Try again in a moment.")?;
+        let mut connection = self.connection.borrow_mut();
+        if connection.is_none() {
+            *connection = index::Index::open(indexer.path()).ok();
+        }
+        let ix = connection
+            .as_ref()
+            .ok_or("The search index is unavailable.")?;
+        let recent = self.recent.borrow();
+        let find = |index_id: &str| recent.iter().find(|r| r.index_id == index_id);
+        let found = ix
+            .fragments(
+                browsed,
+                &smart::keywords(question),
+                smart::CANDIDATES,
+                smart::PER_SESSION,
+                smart::FRAGMENT_CHARS,
+            )
+            .unwrap_or_default();
+        let mut candidates: Vec<smart::Candidate> = found
+            .into_iter()
+            .filter_map(|(id, fragments)| {
+                let label = find(&id)?.label.clone();
+                Some(smart::Candidate {
+                    id,
+                    label,
+                    fragments,
+                })
+            })
+            .collect();
+        for r in recent.iter() {
+            if candidates.len() >= smart::FLOOR {
+                break;
+            }
+            if !candidates.iter().any(|c| c.id == r.index_id) {
+                candidates.push(smart::Candidate {
+                    id: r.index_id.clone(),
+                    label: r.label.clone(),
+                    fragments: Vec::new(),
+                });
+            }
+        }
+        if candidates.is_empty() {
+            return Err("There are no sessions to search.".into());
+        }
+        let (prompt, ids) = smart::build_prompt(question, &candidates, &smart::nonce());
+        *self.allowed.borrow_mut() = ids;
+        *self.job.borrow_mut() = Some(smart::spawn(bin, prompt, smart::TIMEOUT));
+        Ok(())
+    }
+
+    fn smart_poll(&self) -> Option<Result<Picks, String>> {
+        let done = self.job.borrow().as_ref()?.poll()?;
+        *self.job.borrow_mut() = None;
+        let picks = match done.and_then(|out| smart::parse(&out, &self.allowed.borrow())) {
+            Ok(p) => p,
+            Err(e) => return Some(Err(e)),
+        };
+        let recent = self.recent.borrow();
+        Some(Ok(picks
+            .into_iter()
+            .filter_map(|p| {
+                let row = recent.iter().find(|r| r.index_id == p.id)?;
+                Some((row.row_id.clone(), p.reason))
+            })
+            .collect()))
+    }
+
+    fn smart_cancel(&self) {
+        *self.job.borrow_mut() = None;
     }
 }
 
@@ -291,6 +443,7 @@ fn key_of(code: KeyCode, mods: KeyModifiers) -> Option<Key> {
     let ctrl = mods.contains(KeyModifiers::CONTROL);
     Some(match code {
         KeyCode::Char('c') if ctrl => Key::CtrlC,
+        KeyCode::Char('a') if ctrl => Key::CtrlA,
         KeyCode::Char(_) if ctrl => return None,
         KeyCode::Char(c) => Key::Char(c),
         KeyCode::Up => Key::Up,
@@ -344,6 +497,7 @@ fn drive(state: &mut State) -> Option<Step> {
             let mut failures = Failures::default();
             loop {
                 state.pump();
+                state.tick();
                 let _ = term.draw(|f| view::draw(f, state, look));
                 if signal::pending() != 0 {
                     return Some(Step::Quit);

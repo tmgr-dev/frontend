@@ -384,6 +384,47 @@ impl Index {
     }
 }
 
+impl Index {
+    pub fn fragments(
+        &self,
+        agent: &str,
+        words: &[String],
+        sessions: usize,
+        per_session: usize,
+        chars: usize,
+    ) -> Result<Vec<(String, Vec<String>)>, IndexError> {
+        if words.is_empty() {
+            return Ok(Vec::new());
+        }
+        let m = words
+            .iter()
+            .map(|w| format!("\"{}\"", w.replace('"', "\"\"")))
+            .collect::<Vec<_>>()
+            .join(" OR ");
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT session_id, snippet(chunks, 2, '', '', '…', 48) FROM chunks
+             WHERE chunks MATCH ?1 AND session_id IN (SELECT session_id FROM files WHERE agent=?2)
+             ORDER BY bm25(chunks) LIMIT ?3",
+        )?;
+        let limit = (sessions * per_session * 10 + 100) as i64;
+        let rows = stmt.query_map(params![m, agent, limit], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        let mut out: Vec<(String, Vec<String>)> = Vec::new();
+        for row in rows {
+            let (id, mut text) = row?;
+            cut(&mut text, chars);
+            match out.iter().position(|(i, _)| *i == id) {
+                Some(n) if out[n].1.len() < per_session => out[n].1.push(text),
+                Some(_) => {}
+                None if out.len() < sessions => out.push((id, vec![text])),
+                None => {}
+            }
+        }
+        Ok(out)
+    }
+}
+
 pub fn enforce_consent(path: &Path, claude: bool, codex: bool) -> io::Result<()> {
     if !path.exists() {
         return Ok(());

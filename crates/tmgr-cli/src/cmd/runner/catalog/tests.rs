@@ -622,6 +622,49 @@ mod idx {
     }
 
     #[test]
+    fn fragments_are_per_agent_ranked_and_capped() {
+        let fx = Fx::new();
+        fx.grant();
+        fx.claude(
+            "-w",
+            &uid(1),
+            &[
+                claude_user("/w", "talking about zanzibar and quux"),
+                claude_assistant("zanzibar again, more zanzibar"),
+            ],
+        );
+        fx.claude(
+            "-w",
+            &uid(3),
+            &[
+                claude_user("/w", "only quux here"),
+                claude_assistant("nothing"),
+            ],
+        );
+        fx.codex(
+            &uid(2),
+            &[
+                codex_meta(&uid(2), "/w", json!("cli")),
+                codex_user("zanzibar on the codex side"),
+            ],
+        );
+        let ix = open(&fx);
+        sync(&fx, &ix);
+        let words = vec!["zanzibar".to_string(), "quux".to_string()];
+        let got = ix.fragments("claude-code", &words, 5, 1, 400).unwrap();
+        let ids: Vec<&str> = got.iter().map(|(i, _)| i.as_str()).collect();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&uid(1).as_str()) && ids.contains(&uid(3).as_str()));
+        assert!(got.iter().all(|(_, f)| f.len() == 1 && f[0].len() <= 400));
+        let one = ix.fragments("claude-code", &words, 1, 3, 400).unwrap();
+        assert_eq!(one.len(), 1);
+        let codex = ix.fragments("codex", &words, 5, 3, 400).unwrap();
+        assert_eq!(codex.len(), 1);
+        assert_eq!(codex[0].0, uid(2));
+        assert!(ix.fragments("codex", &[], 5, 3, 400).unwrap().is_empty());
+    }
+
+    #[test]
     fn user_assistant_and_capped_tool_text_are_searchable() {
         let fx = Fx::new();
         fx.grant();
