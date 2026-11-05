@@ -7513,3 +7513,39 @@ fn a_later_client_cannot_shrink_the_config_dirs_an_earlier_one_reported() {
         assert!(e.to_string().contains("protected"), "{e}");
     }
 }
+
+#[test]
+fn a_config_dir_reported_before_a_restart_still_refuses_an_overlapping_cwd() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = cli_config_dir_fx(false);
+    h.start(5000);
+    let cli_dir = h.work.join("tmgr");
+    fs::create_dir(&cli_dir).unwrap();
+    drop(Client::connect_with_config_dir(&h.run, "cli", Some(&cli_dir)).unwrap());
+    wait_for("config dirs were not saved", || {
+        fs::read_to_string(h.run.join("client-config-dirs.json"))
+            .is_ok_and(|t| t.contains(cli_dir.to_str().unwrap()))
+    });
+    h.kill_runner();
+    h.start(5000);
+    let mut c = Client::connect_with_config_dir(&h.run, "cli", None).unwrap();
+    let e = c.create(h.req(&["/bin/sh", "-c", "sleep 5"])).unwrap_err();
+    assert!(e.to_string().contains("protected"), "{e}");
+}
+
+#[test]
+fn a_symlinked_cli_config_dir_refuses_a_cwd_inside_its_target() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = cli_config_dir_fx(false);
+    h.start(5000);
+    let link = h.tmp.path().join("cli").join("tmgr");
+    fs::create_dir_all(link.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(&h.work, &link).unwrap();
+    let mut c = Client::connect_with_config_dir(&h.run, "cli", Some(&link)).unwrap();
+    let e = c.create(h.req(&["/bin/sh", "-c", "sleep 5"])).unwrap_err();
+    assert!(e.to_string().contains("protected"), "{e}");
+}

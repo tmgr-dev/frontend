@@ -115,7 +115,8 @@ fn client_config_dir(raw: &str, forbidden: &[PathBuf]) -> Result<PathBuf, &'stat
     if dir.file_name() != Some(std::ffi::OsStr::new("tmgr")) {
         return Err("is not named tmgr");
     }
-    let forms = sandbox::protected_forms(&dir);
+    let mut forms = sandbox::protected_forms(&dir);
+    forms.extend(login::path_chain(&dir).map_err(|_| "cannot be resolved")?);
     if forbidden
         .iter()
         .any(|f| forms.iter().any(|d| f.starts_with(d)))
@@ -125,14 +126,93 @@ fn client_config_dir(raw: &str, forbidden: &[PathBuf]) -> Result<PathBuf, &'stat
     Ok(dir)
 }
 
-fn add_client_config_dir(dirs: &mut Vec<PathBuf>, d: PathBuf) -> Result<(), &'static str> {
-    if dirs.contains(&d) {
-        return Ok(());
+const CLIENT_CONFIG_DIRS_FILE: &str = "client-config-dirs.json";
+
+fn add_client_config_dir(dirs: &mut Vec<PathBuf>, d: PathBuf) -> Result<bool, &'static str> {
+    let canon = sandbox::canon_lossy(&d);
+    if dirs
+        .iter()
+        .any(|e| *e == d || sandbox::canon_lossy(e) == canon)
+    {
+        return Ok(false);
     }
     if dirs.len() >= MAX_CLIENT_CONFIG_DIRS {
         return Err("exceeds the limit of reported directories");
     }
     dirs.push(d);
+    Ok(true)
+}
+
+fn config_dir_forbidden(cfg: &RunnerConfig) -> Vec<PathBuf> {
+    let canon = |p: &Path| sandbox::canon_lossy(p);
+    let mut forbidden = vec![
+        cfg.dir.clone(),
+        canon(&cfg.dir),
+        cfg.homes.clone(),
+        canon(&cfg.homes),
+    ];
+    if let Some(h) = std::env::var_os("HOME").map(PathBuf::from) {
+        forbidden.push(canon(&h));
+        forbidden.push(h);
+    }
+    forbidden
+}
+
+fn client_deny_paths(dirs: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    let mut out = Vec::new();
+    for d in dirs {
+        let chain = login::path_chain(d).map_err(|e| format!("{}: {e}", d.display()))?;
+        for p in chain.into_iter().chain(sandbox::protected_forms(d)) {
+            if !out.contains(&p) {
+                out.push(p);
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn load_client_config_dirs(dir: &Path, forbidden: &[PathBuf]) -> Vec<PathBuf> {
+    let path = dir.join(CLIENT_CONFIG_DIRS_FILE);
+    let bytes = match fs::read(&path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Vec::new(),
+        Err(e) => {
+            log(&format!(
+                "client config dirs: cannot read {CLIENT_CONFIG_DIRS_FILE}: {e}"
+            ));
+            return Vec::new();
+        }
+    };
+    let Ok(raw) = serde_json::from_slice::<Vec<String>>(&bytes) else {
+        log(&format!(
+            "client config dirs: {CLIENT_CONFIG_DIRS_FILE} is damaged, starting empty"
+        ));
+        return Vec::new();
+    };
+    let mut dirs = Vec::new();
+    for r in raw {
+        let verdict =
+            client_config_dir(&r, forbidden).and_then(|d| add_client_config_dir(&mut dirs, d));
+        if let Err(why) = verdict {
+            log(&format!(
+                "client config dirs: skipped a saved entry: it {why}"
+            ));
+        }
+    }
+    dirs
+}
+
+fn save_client_config_dirs(dir: &Path, dirs: &[PathBuf]) -> io::Result<()> {
+    let names: Vec<&str> = dirs.iter().filter_map(|d| d.to_str()).collect();
+    let mut tmp = tempfile::Builder::new()
+        .prefix(".client-config-dirs")
+        .tempfile_in(dir)?;
+    io::Write::write_all(
+        &mut tmp,
+        &serde_json::to_vec(&names).map_err(io::Error::other)?,
+    )?;
+    tmp.persist(dir.join(CLIENT_CONFIG_DIRS_FILE))
+        .map_err(|e| e.error)?;
     Ok(())
 }
 
@@ -2867,39 +2947,40 @@ impl Runner {
 
     fn note_client_config_dir(&self, raw: Option<&str>) {
         let Some(raw) = raw else { return };
-        let canon = |p: &Path| sandbox::canon_lossy(p);
-        let mut forbidden = vec![
-            self.cfg.dir.clone(),
-            canon(&self.cfg.dir),
-            self.cfg.homes.clone(),
-            canon(&self.cfg.homes),
-        ];
-        if let Some(h) = std::env::var_os("HOME").map(PathBuf::from) {
-            forbidden.push(canon(&h));
-            forbidden.push(h);
-        }
-        let verdict = client_config_dir(raw, &forbidden)
-            .and_then(|d| add_client_config_dir(&mut lock(&self.client_config_dirs), d));
+        let forbidden = config_dir_forbidden(&self.cfg);
+        let verdict = client_config_dir(raw, &forbidden).and_then(|d| {
+            let mut dirs = lock(&self.client_config_dirs);
+            let added = add_client_config_dir(&mut dirs, d)?;
+            if added {
+                if let Err(e) = save_client_config_dirs(&self.cfg.dir, &dirs) {
+                    log(&format!("client config dirs: cannot save: {e}"));
+                }
+            }
+            Ok(())
+        });
         if let Err(why) = verdict {
-            if !self.config_dir_warned.swap(true, Ordering::SeqCst) {
-                log(&format!("ignored a client config dir: it {why}"));
+            let over_cap = why.starts_with("exceeds");
+            if over_cap || !self.config_dir_warned.swap(true, Ordering::SeqCst) {
+                log(&format!("ignored a client config dir ({raw:?}): it {why}"));
             }
         }
     }
 
-    fn client_config_dirs(&self) -> Vec<PathBuf> {
-        lock(&self.client_config_dirs).clone()
+    fn client_deny_paths(&self) -> Result<Vec<PathBuf>, ApiErr> {
+        let dirs = lock(&self.client_config_dirs).clone();
+        client_deny_paths(&dirs).map_err(|e| {
+            api(
+                ErrorCode::Sandbox,
+                format!("cannot establish the protected CLI config paths, no session starts: {e}"),
+            )
+        })
     }
 
     fn protected_overlap(&self, cwd: &Path) -> Result<bool, ApiErr> {
         let canon = |p: &Path| fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
         let mut denied = vec![canon(&self.cfg.dir), canon(&self.cfg.homes)];
         denied.extend(profile_protected_paths()?);
-        denied.extend(
-            self.client_config_dirs()
-                .iter()
-                .flat_map(|d| sandbox::protected_forms(d)),
-        );
+        denied.extend(self.client_deny_paths()?);
         let mut home = None;
         if let Some(h) = std::env::var_os("HOME").map(PathBuf::from) {
             let h = canon(&h);
@@ -4264,7 +4345,7 @@ impl Runner {
         }
         let mut base = base_env();
         let profile_protected = profile_protected_paths()?;
-        let client_dirs = self.client_config_dirs();
+        let client_dirs = self.client_deny_paths()?;
         let mut grants = sandbox::Grants::default();
         let mut seeds = Vec::new();
         let mut secret_files = Vec::new();
@@ -5114,6 +5195,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     }
     let mut clock = humantime::Clock::new(humantime::Settings::load(&cfg.dir).idle_s);
     clock.load_totals(&humantime::read_records(&cfg.dir));
+    let saved_config_dirs = load_client_config_dirs(&cfg.dir, &config_dir_forbidden(&cfg));
     let rt = Arc::new(Runner {
         rename_lock: Mutex::new(()),
         cfg: cfg.clone(),
@@ -5129,7 +5211,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         conns: Arc::new(AtomicUsize::new(0)),
         pending: Arc::new(AtomicUsize::new(0)),
         rejects: Mutex::new(Rejects::default()),
-        client_config_dirs: Mutex::new(Vec::new()),
+        client_config_dirs: Mutex::new(saved_config_dirs),
         config_dir_warned: AtomicBool::new(false),
         next_conn: AtomicU64::new(1),
         autopilot: autopilot::Host::default(),
@@ -5598,6 +5680,66 @@ mod tests {
         assert!(client_config_dir("/run/tmgr/homes/tmgr", &f).is_ok());
         let f = vec![PathBuf::from("/a/tmgr/b")];
         assert!(client_config_dir("/a/tmgr", &f).is_err());
+    }
+
+    fn linked_config_dir() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let t = tempfile::tempdir().unwrap();
+        let target = fs::canonicalize(t.path()).unwrap().join("elsewhere");
+        fs::create_dir(&target).unwrap();
+        let link = t.path().join("tmgr");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        (t, link, target)
+    }
+
+    #[test]
+    fn a_client_config_dir_linking_to_home_or_the_runner_dir_is_ignored() {
+        let (t, link, target) = linked_config_dir();
+        assert!(client_config_dir(link.to_str().unwrap(), std::slice::from_ref(&target)).is_err());
+        assert!(client_config_dir(link.to_str().unwrap(), &[target.join("run")]).is_err());
+        assert!(client_config_dir(link.to_str().unwrap(), &[t.path().join("other")]).is_ok());
+        let (_t2, link2, _) = linked_config_dir();
+        std::fs::remove_file(&link2).unwrap();
+        std::os::unix::fs::symlink("/", &link2).unwrap();
+        assert!(client_config_dir(link2.to_str().unwrap(), &[PathBuf::from("/home/u")]).is_err());
+    }
+
+    #[test]
+    fn a_symlinked_client_config_dir_denies_its_target_too() {
+        let (_t, link, target) = linked_config_dir();
+        let deny = client_deny_paths(std::slice::from_ref(&link)).unwrap();
+        assert!(deny.contains(&link));
+        assert!(deny.contains(&target));
+        assert!(deny.contains(&fs::canonicalize(&target).unwrap()));
+    }
+
+    #[test]
+    fn aliases_of_one_client_config_dir_take_one_slot() {
+        let (_t, link, target) = linked_config_dir();
+        let mut dirs = Vec::new();
+        assert_eq!(add_client_config_dir(&mut dirs, link), Ok(true));
+        assert_eq!(add_client_config_dir(&mut dirs, target), Ok(false));
+        assert_eq!(dirs.len(), 1);
+    }
+
+    #[test]
+    fn saved_client_config_dirs_round_trip_and_invalid_entries_are_skipped() {
+        let t = tempfile::tempdir().unwrap();
+        let good = t.path().join("x").join("tmgr");
+        save_client_config_dirs(t.path(), std::slice::from_ref(&good)).unwrap();
+        assert_eq!(load_client_config_dirs(t.path(), &[]), vec![good.clone()]);
+        let text = serde_json::to_string(&[
+            good.to_str().unwrap(),
+            "relative/tmgr",
+            "/a/../b/tmgr",
+            "/a/other",
+        ])
+        .unwrap();
+        fs::write(t.path().join(CLIENT_CONFIG_DIRS_FILE), text).unwrap();
+        assert_eq!(load_client_config_dirs(t.path(), &[]), vec![good]);
+        fs::write(t.path().join(CLIENT_CONFIG_DIRS_FILE), "not json").unwrap();
+        assert!(load_client_config_dirs(t.path(), &[]).is_empty());
+        let empty = tempfile::tempdir().unwrap();
+        assert!(load_client_config_dirs(empty.path(), &[]).is_empty());
     }
 
     #[test]

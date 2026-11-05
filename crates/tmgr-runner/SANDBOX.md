@@ -161,7 +161,7 @@ Library/Application Support/Firefox Library/Safari .mozilla .config/google-chrom
 .local/share/keyrings .config/gh .git-credentials .config/git/credentials`; the runner directory; the homes directory (other sessions' homes), with only this session's
 home re-allowed. The config directory each CLI reports on connect (`hello.config_dir`, validated: absolute, named
 `tmgr`, never the home, runner or homes directory, at most 16) is added to this list for every later session, in
-literal and resolved form; the set only grows while the runner lives. On macOS these are explicit deny rules placed
+literal and resolved form (every symlink hop and the final target); the set only grows and is kept in `client-config-dirs.json` in the runner directory, so it survives a runner restart. On macOS these are explicit deny rules placed
 after the allow rules; on Linux they are simply never granted.
 
 ## No-sandbox mode
