@@ -1623,13 +1623,25 @@ impl H {
         mode: Option<&str>,
         no_sandbox: bool,
     ) -> std::io::Result<tmgr_ipc::api::RestoredRun> {
-        self.client().resume_with(ResumeParams {
-            id: id.into(),
-            cols: 80,
-            rows: 24,
-            permission_mode: mode.map(str::to_string),
-            no_sandbox: no_sandbox.then(NoSandbox::default),
-        })
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            let r = self.client().resume_with(ResumeParams {
+                id: id.into(),
+                cols: 80,
+                rows: 24,
+                permission_mode: mode.map(str::to_string),
+                no_sandbox: no_sandbox.then(NoSandbox::default),
+            });
+            match r {
+                Err(e)
+                    if e.to_string().contains("background processes")
+                        && Instant::now() < deadline =>
+                {
+                    thread::sleep(Duration::from_millis(50));
+                }
+                other => return other,
+            }
+        }
     }
 }
 
