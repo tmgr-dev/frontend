@@ -81,6 +81,7 @@ fn handle(stream: UnixStream, hub: &Arc<Hub>, token: &str) {
       Err(_) => Response::err("bad request"),
     },
     Ok(None) => return,
+    Err(e) if e.kind() == io::ErrorKind::FileTooLarge => Response::err(e.to_string()),
     Err(_) => Response::err("bad request"),
   };
   let _ = write_line(&mut &stream, &resp);
@@ -208,6 +209,20 @@ mod tests {
     let version = raw(&r.dir, &format!(r#"{{"v":9,"token":"{}","op":"ping"}}"#, tok.trim()));
     assert!(version.contains("unsupported"));
     assert!(r.hub.list().unwrap().len() == 1);
+  }
+
+  #[test]
+  fn an_oversized_request_gets_a_clear_reply_not_a_broken_pipe() {
+    let r = rig();
+    let mut s = UnixStream::connect(r.dir.join(SOCK)).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    s.set_write_timeout(Some(Duration::from_secs(10))).unwrap();
+    let big = vec![b'a'; (tmgr_ipc::decisions::MAX_LINE) + 1_000_000];
+    s.write_all(&big).unwrap();
+    s.write_all(b"\n").unwrap();
+    let reply = String::from_utf8(read_line_limited(&s).unwrap().unwrap_or_default()).unwrap();
+    assert!(reply.contains("request too large"), "{reply}");
+    assert!(!reply.contains("bad request"));
   }
 
   #[test]

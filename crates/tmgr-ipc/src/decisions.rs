@@ -17,6 +17,7 @@ pub const TOKEN: &str = "decisions.token";
 pub const DB: &str = "decisions.db";
 pub const INBOX: &str = "inbox";
 pub const MAX_LINE: usize = 4 << 20;
+const DRAIN_MAX: usize = 64 << 20;
 pub const MAX_DIFFS: usize = 8;
 pub const MAX_PATCHES: usize = 8;
 pub const MAX_PATCH_BYTES: usize = 1 << 20;
@@ -332,18 +333,48 @@ pub fn read_line_limited<R: Read>(r: R) -> io::Result<Option<Vec<u8>>> {
     if buf.is_empty() {
         return Ok(None);
     }
-    if buf.len() > MAX_LINE || buf.last() != Some(&b'\n') {
+    if buf.len() > MAX_LINE {
+        if buf.last() != Some(&b'\n') {
+            drain_line(reader.into_inner().into_inner());
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::FileTooLarge,
+            format!("request too large (limit {MAX_LINE} bytes)"),
+        ));
+    }
+    if buf.last() != Some(&b'\n') {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "request line is too long or truncated",
+            "request line is truncated",
         ));
     }
     buf.pop();
     Ok(Some(buf))
 }
 
+fn drain_line<R: Read>(mut r: R) {
+    let mut left = DRAIN_MAX;
+    let mut chunk = [0u8; 64 * 1024];
+    while left > 0 {
+        match r.read(&mut chunk) {
+            Ok(n) if n > 0 => {
+                if chunk[..n].contains(&b'\n') {
+                    return;
+                }
+                left = left.saturating_sub(n);
+            }
+            _ => return,
+        }
+    }
+}
+
 pub fn write_line<W: Write, T: Serialize>(w: &mut W, value: &T) -> io::Result<()> {
     let mut bytes = serde_json::to_vec(value).map_err(io::Error::other)?;
+    if bytes.len() >= MAX_LINE {
+        return Err(io::Error::other(format!(
+            "request too large (limit {MAX_LINE} bytes)"
+        )));
+    }
     bytes.push(b'\n');
     w.write_all(&bytes)?;
     w.flush()
@@ -751,6 +782,30 @@ mod tests {
         assert!(read_line_limited(&big[..]).is_err());
         assert_eq!(read_line_limited(&b"{}\n"[..]).unwrap().unwrap(), b"{}");
         assert!(read_line_limited(&b"{}"[..]).is_err());
+    }
+
+    #[test]
+    fn too_long_is_told_apart_from_truncated() {
+        let big = vec![b'a'; MAX_LINE + 2];
+        let e = read_line_limited(&big[..]).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::FileTooLarge);
+        assert!(e.to_string().contains("request too large"), "{e}");
+        let e = read_line_limited(&b"{}"[..]).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn an_oversized_request_is_refused_on_the_client_side() {
+        let card = CardIn {
+            title: "x".into(),
+            context: Some("a".repeat(MAX_LINE)),
+            ..Default::default()
+        };
+        let mut sink = Vec::new();
+        let e = write_line(&mut sink, &card).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::Other);
+        assert!(e.to_string().contains("too large"), "{e}");
+        assert!(sink.is_empty());
     }
 
     #[test]
