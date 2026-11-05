@@ -58,7 +58,7 @@
 								Chat <kbd>C</kbd>
 							</button>
 							<span
-								v-if="tab === 'diff' && totals"
+								v-if="tab === 'diff' && currentHasChanges && totals"
 								class="totals"
 								data-totals
 								:title="
@@ -247,7 +247,8 @@
 			},
 			totals(): DiffTotals | null {
 				const groups = this.currentDiff?.groups;
-				return groups ? diffTotals(groups) : null;
+				if (!groups?.some((g) => g.view.files.length > 0)) return null;
+				return diffTotals(groups);
 			},
 			currentDiff(): DiffSlot | null {
 				return this.current ? (this.diffs[this.current.id] ?? null) : null;

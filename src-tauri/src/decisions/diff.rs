@@ -30,6 +30,7 @@ pub struct DiffFile {
   pub path: String,
   pub added: u32,
   pub removed: u32,
+  pub binary: bool,
   pub hunks: Vec<Hunk>,
 }
 
@@ -220,7 +221,7 @@ pub fn parse(text: &str) -> Vec<DiffFile> {
     let line = lines[i];
     i += 1;
     if line.starts_with("diff --git ") {
-      files.push(DiffFile { path: header_path(line), added: 0, removed: 0, hunks: Vec::new() });
+      files.push(DiffFile { path: header_path(line), added: 0, removed: 0, binary: false, hunks: Vec::new() });
       in_hunk = false;
       in_header = true;
       continue;
@@ -236,7 +237,9 @@ pub fn parse(text: &str) -> Vec<DiffFile> {
     }
     if !in_hunk {
       if in_header {
-        if let Some(p) = line.strip_prefix("+++ b/") {
+        if line.starts_with("Binary files ") || line == "GIT binary patch" {
+          files.last_mut().unwrap().binary = true;
+        } else if let Some(p) = line.strip_prefix("+++ b/") {
           files.last_mut().unwrap().path = unquote(p).to_owned();
         } else if let Some(p) = line.strip_prefix("--- a/") {
           files.last_mut().unwrap().path = unquote(p).to_owned();
@@ -246,6 +249,7 @@ pub fn parse(text: &str) -> Vec<DiffFile> {
           path: headerless_path(line, lines[i]),
           added: 0,
           removed: 0,
+          binary: false,
           hunks: Vec::new(),
         });
         i += 1;
@@ -398,6 +402,8 @@ mod tests {
     assert_eq!((lines[3].old, lines[3].new), (None, Some(3)));
     assert_eq!((lines[4].old, lines[4].new), (Some(3), Some(4)));
     assert!(files[1].hunks.is_empty());
+    assert!(files[1].binary);
+    assert!(!files[0].binary && !files[2].binary);
     assert_eq!(files[2].hunks[0].lines[0].text, "--- not a header");
     assert_eq!(files[2].added, 1);
   }

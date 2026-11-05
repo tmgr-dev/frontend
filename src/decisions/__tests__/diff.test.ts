@@ -197,10 +197,11 @@ describe('request gate', () => {
 });
 
 describe('diffTotals', () => {
-	const file = (added: number, removed: number, hunks = 1) => ({
+	const file = (added: number, removed: number, hunks = 1, binary = false) => ({
 		path: 'f',
 		added,
 		removed,
+		binary,
 		hunks: Array.from({ length: hunks }, () => ({ header: '@@', lines: [] })),
 	});
 	const group = (
@@ -237,11 +238,15 @@ describe('diffTotals', () => {
 		).toBe(false);
 	});
 
-	it('is not exact when a file has no countable lines', () => {
-		expect(diffTotals([group([file(0, 0, 0), file(3, 0)])])).toEqual({
+	it('is not exact when a file is binary', () => {
+		expect(diffTotals([group([file(0, 0, 0, true), file(3, 0)])])).toEqual({
 			added: 3,
 			removed: 0,
 			exact: false,
 		});
+	});
+
+	it('stays exact for a file with no hunks that is not binary', () => {
+		expect(diffTotals([group([file(0, 0, 0)])]).exact).toBe(true);
 	});
 });

@@ -147,6 +147,7 @@ export interface DiffFile {
 	path: string;
 	added: number;
 	removed: number;
+	binary?: boolean;
 	hunks: DiffHunk[];
 }
 

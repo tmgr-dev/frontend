@@ -34,7 +34,7 @@ describe.each(['ChatPane.vue', 'DiffPane.vue'])('%s', (name) => {
 describe('App.vue', () => {
 	it('shows the diff totals in the tab header', () => {
 		expect(template('App.vue')).toMatch(
-			/<span[^>]*v-if="tab === 'diff' && totals"[\s\S]*?\+\{\{ totals\.added \}\}[\s\S]*?−\{\{ totals\.removed \}\}/,
+			/<span[^>]*v-if="tab === 'diff' && currentHasChanges && totals"[\s\S]*?\+\{\{ totals\.added \}\}[\s\S]*?−\{\{ totals\.removed \}\}/,
 		);
 	});
 

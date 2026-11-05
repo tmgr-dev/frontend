@@ -138,7 +138,7 @@ export const diffTotals = (groups: DiffGroup[]): DiffTotals => {
 		for (const file of view.files) {
 			totals.added += file.added;
 			totals.removed += file.removed;
-			if (file.hunks.length === 0) totals.exact = false;
+			if (file.binary) totals.exact = false;
 		}
 	}
 	return totals;
