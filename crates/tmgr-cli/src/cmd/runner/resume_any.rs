@@ -1,5 +1,5 @@
 use super::attach_consent::Reads;
-use super::attach_goto::{fork_call, fork_name};
+use super::attach_goto::{can_fork, fork_call, fork_name};
 use super::attach_questions::QuestionJob;
 use super::attach_title::agent_src;
 use super::catalog::{self, Entry, Live};
@@ -266,10 +266,10 @@ fn tmgr_fork_refusal(s: &SessionInfo, a: &ResumeArgs) -> Option<Error> {
                 .hint("repeat without --mode and --no-sandbox"),
         );
     }
-    if s.profile.as_deref() != Some("claude-code") {
+    if !s.profile.as_deref().is_some_and(can_fork) {
         return Some(Error::new(
             Kind::Forbidden,
-            "only Claude Code sessions can be forked from a tmgr session; forking a Codex session is not supported yet",
+            "only Claude Code and Codex sessions can be forked from a tmgr session",
         ));
     }
     if s.no_sandbox {
@@ -488,15 +488,33 @@ mod tests {
     }
 
     #[test]
-    fn forking_a_tmgr_session_refuses_flags_codex_and_unsandboxed_sessions() {
+    fn forking_a_tmgr_session_refuses_flags_other_agents_and_unsandboxed_sessions() {
         let claude = session("claude-code", false, None);
         assert!(tmgr_fork_refusal(&claude, &args(None, false)).is_none());
         for a in [args(Some(PermissionMode::Bypass), false), args(None, true)] {
             let e = tmgr_fork_refusal(&claude, &a).unwrap();
             assert!(e.message.contains("keeps the settings"), "{}", e.message);
         }
-        let e = tmgr_fork_refusal(&session("codex", false, None), &args(None, false)).unwrap();
-        assert!(e.message.contains("Codex"), "{}", e.message);
+        assert!(tmgr_fork_refusal(&session("codex", false, None), &args(None, false)).is_none());
+        let e = tmgr_fork_refusal(&session("codex", false, None), &args(None, true)).unwrap();
+        assert!(e.message.contains("keeps the settings"), "{}", e.message);
+        for other in ["gemini", "claude", "Codex"] {
+            let e = tmgr_fork_refusal(&session(other, false, None), &args(None, false)).unwrap();
+            assert!(
+                e.message.contains("only Claude Code and Codex"),
+                "{}",
+                e.message
+            );
+        }
+        let e = tmgr_fork_refusal(&session("codex", true, None), &args(None, false)).unwrap();
+        assert!(e.message.contains("--no-sandbox") && e.hint.is_none());
+        let id = uid(4);
+        let e = tmgr_fork_refusal(&session("codex", true, Some(&id)), &args(None, false)).unwrap();
+        let hint = e.hint.unwrap();
+        assert!(
+            hint.contains(&id) && hint.contains("--fork --no-sandbox"),
+            "{hint}"
+        );
         let e = tmgr_fork_refusal(&session("claude-code", true, None), &args(None, false)).unwrap();
         assert!(e.message.contains("--no-sandbox") && e.hint.is_none());
         let id = uid(3);

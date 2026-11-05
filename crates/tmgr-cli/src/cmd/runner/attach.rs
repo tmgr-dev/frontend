@@ -4,7 +4,9 @@ use super::attach_clip::{Clipboard, SystemClipboard};
 use super::attach_consent::Reads;
 use super::attach_export;
 use super::attach_git::{diff_pane_argv, git_worker, GitJob};
-use super::attach_goto::{fork_call, fork_name, goto_call, text_call, Found, FORK_PASTE_WAIT};
+use super::attach_goto::{
+    can_fork, fork_call, fork_name, goto_call, text_call, Found, FORK_PASTE_WAIT,
+};
 use super::attach_layouts;
 use super::attach_links::{split_local, LinkMsg};
 use super::attach_new::{
@@ -1670,8 +1672,8 @@ impl App {
         else {
             return self.notify("this session is not ready to fork yet");
         };
-        if src.profile != "claude-code" {
-            return self.notify("fork works for Claude Code sessions only");
+        if !can_fork(&src.profile) {
+            return self.notify("fork works for Claude Code and Codex sessions only");
         }
         if !self.forking.insert(session.clone()) {
             return;
@@ -3643,7 +3645,7 @@ impl App {
         self.view.forkable = self
             .agents
             .iter()
-            .filter(|(_, s)| s.profile == "claude-code")
+            .filter(|(_, s)| can_fork(&s.profile))
             .map(|(id, _)| id.clone())
             .collect();
         if self.view.scroll.is_none() {

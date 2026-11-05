@@ -254,7 +254,10 @@ itself, only in the old session's run home (`.claude/projects/*/<agent_id>.jsonl
 links, at most 512 MiB) and copies that one file into the new run home before the agent starts. The launch
 is rebuilt exactly like a resume of that session (launch record or `meta.json`, same folder identity check,
 same refusals for link, bypass, no-sandbox, expired and unpinned queue runs); the profile must declare `[resume] by_id`.
-Any other profile is `forbidden`. The runner also answers `forbidden` unless reading Claude Code logs is allowed on this device.
+A `codex` session is forked the same way with `codex fork <agent_id>`: the rollout
+(`.codex/sessions/YYYY/MM/DD/rollout-*-<agent_id>.jsonl`, whose first line must be the session metadata of
+`agent_id`) is copied to the same relative path, and the profile must declare `[resume] fork_by_id`.
+Any other profile is `forbidden`. The runner also answers `forbidden` unless reading the agent's logs (Claude Code or Codex) is allowed on this device.
 
 ### Resuming an exited session
 

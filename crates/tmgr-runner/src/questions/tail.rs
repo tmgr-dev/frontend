@@ -12,6 +12,7 @@ pub const REPLY_CAP: usize = 8000;
 const DIR_CAP: usize = 512;
 const ROLLOUT_CHECK: usize = 24;
 const WALK_BUDGET: usize = 4096;
+const META_CAP: u64 = 1 << 20;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Turn {
@@ -346,6 +347,24 @@ pub fn locate_codex_rollout(home: &Path, id: Option<&str>, cwd: &str) -> Option<
             .take(ROLLOUT_CHECK)
             .find(|p| rollout_cwd(&root, p).is_some_and(|c| c == cwd)),
     }
+}
+
+pub fn locate_codex_rollout_of(home: &Path, id: &str) -> Option<PathBuf> {
+    let path = locate_codex_rollout(home, Some(id), "")?;
+    let root = home.join(".codex").join("sessions");
+    (rollout_meta_id(&root, &path).as_deref() == Some(id)).then_some(path)
+}
+
+fn rollout_meta_id(root: &Path, path: &Path) -> Option<String> {
+    let (file, _) = open_under(root, path)?;
+    let mut buf = Vec::new();
+    file.take(META_CAP).read_to_end(&mut buf).ok()?;
+    let first = buf.split(|b| *b == b'\n').next()?;
+    let v: Value = serde_json::from_slice(first).ok()?;
+    if v.get("type")?.as_str()? != "session_meta" {
+        return None;
+    }
+    Some(v.get("payload")?.get("id")?.as_str()?.to_string())
 }
 
 fn collect(dir: &Path, depth: usize, out: &mut Vec<PathBuf>, budget: &mut usize) {

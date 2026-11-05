@@ -23,6 +23,8 @@ pub struct ResumeRec {
     pub at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub by_id: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fork_by_id: Option<Vec<String>>,
 }
 
 impl Intent {

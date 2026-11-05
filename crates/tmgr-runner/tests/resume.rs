@@ -1292,6 +1292,105 @@ fn fork_is_refused_for_agents_other_than_claude_code() {
     assert!(e.to_string().starts_with("forbidden"), "{e}");
 }
 
+const CODEX_RESUME: &str = "[resume]\nargs = [\"--resumed\"]\nby_id = [\"resume\", \"{resume_id}\"]\nfork_by_id = [\"fork\", \"{resume_id}\"]\n";
+
+fn rollout_rel(id: &str) -> String {
+    format!(".codex/sessions/2026/11/05/rollout-2026-11-05T10-00-00-{id}.jsonl")
+}
+
+fn rollout_body(id: &str) -> Vec<u8> {
+    format!("{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"cwd\":\"/w\"}}}}\n{{\"type\":\"event_msg\"}}\n")
+        .into_bytes()
+}
+
+fn put_rollout(home: &Path, name_id: &str, body: &[u8]) -> PathBuf {
+    let path = home.join(rollout_rel(name_id));
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, body).unwrap();
+    path
+}
+
+fn codex_copies(h: &H, id: &str) -> usize {
+    fs::read_dir(&h.homes)
+        .unwrap()
+        .flatten()
+        .filter(|d| d.path().join(rollout_rel(id)).exists())
+        .count()
+}
+
+#[test]
+fn a_codex_fork_copies_the_rollout_and_starts_codex_fork_with_the_id() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::agent("codex", CODEX_RESUME);
+    h.allow_forks();
+    h.start();
+    let first = h.client().create_run(h.req()).unwrap();
+    let body = rollout_body(U1);
+    let source = put_rollout(&h.homes.join(&first.id), U1, &body);
+
+    let r = h
+        .client()
+        .fork(&first.id, U1, Some("fake-run-fork-1"), (90, 20))
+        .unwrap();
+    assert_ne!(r.session.id, first.id);
+    assert_eq!(r.via.as_deref(), Some("fork"));
+    assert_eq!(r.session.argv[2..], ["fork", U1]);
+    assert_eq!(
+        fs::read(h.homes.join(&r.session.id).join(rollout_rel(U1))).unwrap(),
+        body
+    );
+    assert_eq!(fs::read(source).unwrap(), body);
+    assert_eq!(h.client().list().unwrap().len(), 2);
+}
+
+#[test]
+fn a_codex_fork_never_copies_another_conversations_rollout_or_a_linked_one() {
+    use std::os::unix::fs::symlink;
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::agent("codex", CODEX_RESUME);
+    h.allow_forks();
+    h.start();
+    let first = h.client().create_run(h.req()).unwrap();
+    let home = h.homes.join(&first.id);
+    let none = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
+    assert!(none.to_string().starts_with("not_found"), "{none}");
+
+    put_rollout(&home, U1, &rollout_body(U2));
+    let other = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
+    assert!(other.to_string().starts_with("not_found"), "{other}");
+
+    fs::remove_file(home.join(rollout_rel(U1))).unwrap();
+    let outside = h.tmp.path().join("outside.jsonl");
+    fs::write(&outside, rollout_body(U1)).unwrap();
+    symlink(&outside, home.join(rollout_rel(U1))).unwrap();
+    let linked = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
+    assert!(linked.to_string().starts_with("not_found"), "{linked}");
+
+    assert_eq!(codex_copies(&h, U1), 1);
+    assert_eq!(h.client().list().unwrap().len(), 1);
+}
+
+#[test]
+fn a_codex_fork_is_refused_when_only_claude_may_be_read() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::agent("codex", CODEX_RESUME);
+    h.start();
+    let first = h.client().create_run(h.req()).unwrap();
+    put_rollout(&h.homes.join(&first.id), U1, &rollout_body(U1));
+    h.consent(Some(ReadLogs::Granted), Some(true), Some(false));
+    let e = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
+    assert!(e.to_string().starts_with("forbidden"), "{e}");
+    assert!(e.to_string().contains("cannot be forked"), "{e}");
+    assert_eq!(codex_copies(&h, U1), 1);
+    assert_eq!(h.client().list().unwrap().len(), 1);
+}
+
 fn refused_fork_leaves_nothing(h: &H, first: &SessionInfo) {
     let e = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
     assert!(e.to_string().starts_with("forbidden"), "{e}");

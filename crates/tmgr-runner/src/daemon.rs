@@ -346,6 +346,7 @@ struct ResumeCtx {
 struct ForkSeed {
     from_home: PathBuf,
     rel: PathBuf,
+    codex: bool,
 }
 
 struct Resuming<'a>(&'a AtomicBool);
@@ -1762,7 +1763,12 @@ fn resume_rec(r: &crate::profile::ResumeDecl) -> restore::ResumeRec {
         }
         .into(),
         by_id: r.by_id.clone(),
+        fork_by_id: r.fork_by_id.clone(),
     }
+}
+
+fn fork_approved(pinned: Option<&Option<restore::ResumeRec>>) -> bool {
+    pinned.is_none_or(|w| w.as_ref().is_some_and(|w| w.fork_by_id.is_some()))
 }
 
 fn check_resume_pin(
@@ -1774,8 +1780,12 @@ fn check_resume_pin(
     };
     let approved = want.as_ref().is_some_and(|w| w.by_id.is_some());
     let comparable = match declared {
-        Some(d) if !approved => Some(restore::ResumeRec { by_id: None, ..d }),
-        d => d,
+        Some(d) => Some(restore::ResumeRec {
+            by_id: d.by_id.filter(|_| approved),
+            fork_by_id: d.fork_by_id.filter(|_| fork_approved(pinned)),
+            ..d
+        }),
+        None => None,
     };
     if comparable == *want {
         Ok(approved)
@@ -3044,26 +3054,32 @@ impl Runner {
             ));
         }
         let meta = lock(&s.inner).meta.clone();
-        let profile = match meta.profile.as_deref() {
-            Some(p @ "claude-code") => p.to_string(),
+        let (profile, codex) = match meta.profile.as_deref() {
+            Some(p @ "claude-code") => (p.to_string(), false),
+            Some(p @ "codex") => (p.to_string(), true),
             _ => {
                 return Err(api(
                     ErrorCode::Forbidden,
-                    "only a Claude Code session can be forked",
+                    "only a Claude Code or Codex session can be forked",
                 ))
             }
         };
-        fork_consent()?;
+        fork_consent(codex)?;
         let from_home = self.cfg.homes.join(&q.id);
-        let found = crate::attach::locate(&crate::attach::Source {
-            home: &from_home,
-            format: crate::attach::Format::Claude,
-            cwd: &meta.cwd,
-            pid: 0,
-            log_id: Some(&q.agent_id),
-        });
+        let found = if codex {
+            crate::questions::tail::locate_codex_rollout_of(&from_home, &q.agent_id)
+        } else {
+            crate::attach::locate(&crate::attach::Source {
+                home: &from_home,
+                format: crate::attach::Format::Claude,
+                cwd: &meta.cwd,
+                pid: 0,
+                log_id: Some(&q.agent_id),
+            })
+            .map(|(path, _)| path)
+        };
         let rel = found
-            .and_then(|(path, _)| path.strip_prefix(&from_home).ok().map(Path::to_path_buf))
+            .and_then(|path| path.strip_prefix(&from_home).ok().map(Path::to_path_buf))
             .ok_or_else(|| api(ErrorCode::NotFound, "the conversation file was not found"))?;
         let (mut intent, bundle) = self.load_launch(&meta, &profile)?;
         let CwdPin { dev, ino } = intent.cwd_pin;
@@ -3106,7 +3122,11 @@ impl Runner {
             Some(ResumeCtx {
                 id: Some(q.agent_id),
                 text: String::new(),
-                fork: Some(ForkSeed { from_home, rel }),
+                fork: Some(ForkSeed {
+                    from_home,
+                    rel,
+                    codex,
+                }),
             }),
         )?;
         log(&format!("session {} forked from {} ({via})", info.id, q.id));
@@ -3520,6 +3540,13 @@ impl Runner {
         let fork = resume_ctx.as_ref().and_then(|c| c.fork.clone());
         let home_kept = restore_from.is_some_and(|old| self.cfg.homes.join(old).is_dir());
         let by_id = match resume_ctx.as_ref().and_then(|c| c.id.as_deref()) {
+            Some(id) if fork.as_ref().is_some_and(|f| f.codex) => {
+                if id_approved && fork_approved(pinned_resume) {
+                    prof.fork_argv_by_id(req.model.as_deref(), &perm_args, id)
+                } else {
+                    Ok(None)
+                }
+            }
             Some(id) if (home_kept || fork.is_some()) && id_approved => {
                 prof.resume_argv_by_id(req.model.as_deref(), &perm_args, id)
             }
@@ -3560,7 +3587,7 @@ impl Runner {
         };
         let mut argv = match resume {
             Some(mut argv) => {
-                if fork.is_some() {
+                if fork.as_ref().is_some_and(|f| !f.codex) {
                     argv.push("--fork-session".to_string());
                 }
                 argv
@@ -3994,7 +4021,7 @@ impl Runner {
         ensure_private_dir(sdir).map_err(internal)?;
         ensure_private_leaf(home).map_err(internal)?;
         if let Some(f) = &extra.fork {
-            fork_consent()?;
+            fork_consent(f.codex)?;
             copy_transcript(&f.from_home, &f.rel, home).map_err(|e| {
                 api(
                     ErrorCode::Internal,
@@ -4993,14 +5020,19 @@ fn test_passthrough(_: &str) -> bool {
     false
 }
 
-fn fork_consent() -> Result<(), ApiErr> {
+fn fork_consent(codex: bool) -> Result<(), ApiErr> {
     let env = tmgr_usage::paths::Env::from_process();
-    if tmgr_usage::consent::granted_read_only(&env, tmgr_usage::Tool::Claude) {
+    let (tool, name) = if codex {
+        (tmgr_usage::Tool::Codex, "Codex")
+    } else {
+        (tmgr_usage::Tool::Claude, "Claude Code")
+    };
+    if tmgr_usage::consent::granted_read_only(&env, tool) {
         return Ok(());
     }
     Err(api(
         ErrorCode::Forbidden,
-        "reading Claude Code transcripts is off on this device, so this session cannot be forked: run tmgr usage consent allow, or turn it on in TMGR desktop (AI Usage)",
+        format!("reading {name} transcripts is off on this device, so this session cannot be forked: run tmgr usage consent allow, or turn it on in TMGR desktop (AI Usage)"),
     ))
 }
 
@@ -5216,6 +5248,24 @@ mod tests {
         assert_eq!(fs::read(to.join(rel)).unwrap(), b"line\n");
         assert!(!to.join(".claude/projects/p/other.jsonl").exists());
         assert!(copy_transcript(&from, rel, &to).is_err());
+    }
+
+    #[test]
+    fn copy_transcript_keeps_a_codex_rollout_at_its_relative_path() {
+        let (_t, from, to) = fork_dirs();
+        let rel = Path::new(".codex/sessions/2026/11/05/rollout-2026-11-05T10-00-00-a.jsonl");
+        fs::create_dir_all(from.join(rel).parent().unwrap()).unwrap();
+        fs::write(from.join(rel), b"{\"type\":\"session_meta\"}\n").unwrap();
+        fs::create_dir_all(to.join(".codex")).unwrap();
+        copy_transcript(&from, rel, &to).unwrap();
+        assert_eq!(
+            fs::read(to.join(rel)).unwrap(),
+            b"{\"type\":\"session_meta\"}\n"
+        );
+        assert_eq!(
+            fs::read(from.join(rel)).unwrap(),
+            b"{\"type\":\"session_meta\"}\n"
+        );
     }
 
     #[test]
@@ -5697,6 +5747,7 @@ mod tests {
             args: vec!["--continue".into()],
             at: "end".into(),
             by_id: by_id.map(|b| b.iter().map(|s| s.to_string()).collect()),
+            fork_by_id: None,
         }
     }
 
@@ -5722,6 +5773,28 @@ mod tests {
         let mut at = now.clone();
         at.at = "after_command".into();
         assert!(check_resume_pin(Some(at), Some(&Some(now))).is_err());
+    }
+
+    fn fork_rec(by_id: bool, fork: Option<&[&str]>) -> restore::ResumeRec {
+        restore::ResumeRec {
+            fork_by_id: fork.map(|f| f.iter().map(|s| s.to_string()).collect()),
+            ..rec(by_id.then_some(&["resume", "{resume_id}"]))
+        }
+    }
+
+    #[test]
+    fn a_pinned_fork_template_is_part_of_the_approval_and_never_gained() {
+        let fork = ["fork", "{resume_id}"];
+        let now = fork_rec(true, Some(&fork));
+        assert!(fork_approved(None));
+        assert!(fork_approved(Some(&Some(now.clone()))));
+        assert!(!fork_approved(Some(&Some(fork_rec(true, None)))));
+        assert!(!fork_approved(Some(&None)));
+        assert!(check_resume_pin(Some(now.clone()), Some(&Some(now.clone()))).unwrap());
+        assert!(check_resume_pin(Some(now.clone()), Some(&Some(fork_rec(true, None)))).unwrap());
+        let other = fork_rec(true, Some(&["fork", "--other", "{resume_id}"]));
+        assert!(check_resume_pin(Some(other), Some(&Some(now.clone()))).is_err());
+        assert!(check_resume_pin(Some(fork_rec(true, None)), Some(&Some(now))).is_err());
     }
 
     #[test]
