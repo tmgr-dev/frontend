@@ -934,7 +934,15 @@ fn make_clone(repo: &str, dest: &Path, checkout: &dyn Fn(&Path) -> Result<()>) -
         )?;
         git(Some(dest), &["config", "core.hooksPath", "/dev/null"])?;
         git(Some(dest), &["config", "core.fsmonitor", "false"])?;
-        checkout(dest)
+        checkout(dest)?;
+        git(Some(dest), &["repack", "-a", "-d", "-q"])?;
+        match std::fs::remove_file(dest.join(".git/objects/info/alternates")) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+            _ => {}
+        }
+        git(Some(dest), &["rev-list", "--objects", "--quiet", "HEAD"])
+            .map(|_| ())
+            .map_err(|e| Error::internal(format!("the clone is incomplete: {e}")))
     })();
     if result.is_err() {
         let _ = std::fs::remove_dir_all(dest);
@@ -1210,6 +1218,27 @@ pub(crate) fn entries(dir: &std::fs::File) -> Vec<std::ffi::OsString> {
 
 const MAX_IMPORT: u64 = 2 << 30;
 
+fn regular_files_size(root: &Path) -> u64 {
+    let mut total = 0u64;
+    let mut todo = vec![root.to_path_buf()];
+    while let Some(dir) = todo.pop() {
+        let Ok(read) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in read.flatten() {
+            let Ok(meta) = std::fs::symlink_metadata(entry.path()) else {
+                continue;
+            };
+            if meta.is_dir() {
+                todo.push(entry.path());
+            } else if meta.is_file() {
+                total = total.saturating_add(meta.len());
+            }
+        }
+    }
+    total
+}
+
 fn copy_regular(
     dir: &std::fs::File,
     name: &std::ffi::OsStr,
@@ -1225,7 +1254,9 @@ fn copy_regular(
         return Ok(());
     }
     *budget = budget.checked_sub(meta.len()).ok_or_else(|| {
-        Error::usage("the clone's objects are larger than 2 GiB, too large to import")
+        Error::usage(
+            "the clone's objects exceed the repository's own by more than 2 GiB, too large to import",
+        )
     })?;
     let mut out = std::fs::OpenOptions::new()
         .write(true)
@@ -1237,10 +1268,10 @@ fn copy_regular(
 
 /// Copies the clone's loose objects and packs, regular files only, never following a symlink and
 /// ignoring the clone's own alternates.
-fn copy_objects(clone: &Path, into: &Path) -> Result<()> {
+fn copy_objects(clone: &Path, into: &Path, allowance: u64) -> Result<()> {
     let objects = open_beneath(clone, ".git/objects", libc::O_DIRECTORY)
         .ok_or_else(|| Error::usage("the clone has no object store of its own"))?;
-    let mut budget = MAX_IMPORT;
+    let mut budget = allowance;
     for name in entries(&objects) {
         let text = name.to_string_lossy();
         let fanout = text.len() == 2 && text.bytes().all(|b| b.is_ascii_hexdigit());
@@ -2003,7 +2034,9 @@ pub fn import_branch(repo: &str, clone: &Path, branch: &str) -> Result<String> {
     let bare = tmp.path().join("b.git");
     let b = bare.to_string_lossy().into_owned();
     git(None, &["init", "-q", "--bare", "--template=", &b])?;
-    copy_objects(clone, &bare.join("objects"))?;
+    let allowance =
+        MAX_IMPORT.saturating_add(regular_files_size(&Path::new(repo).join(".git/objects")));
+    copy_objects(clone, &bare.join("objects"), allowance)?;
     std::fs::write(
         bare.join("objects/info/alternates"),
         format!("{}\n", Path::new(repo).join(".git/objects").display()),
@@ -2335,7 +2368,7 @@ mod tests {
         assert!(!dest.join(".git/hooks/post-checkout").exists());
         let branch = git(Some(&dest), &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap();
         assert_eq!(branch, "queue/q_abc");
-        assert!(dest.join(".git/objects/info/alternates").is_file());
+        assert_standalone(&dest);
         assert_eq!(
             git(Some(&dest), &["config", "core.hooksPath"]).unwrap(),
             "/dev/null"
@@ -2668,7 +2701,8 @@ mod tests {
         std::fs::write(heads.join("tm-2-fix"), format!("{tip}\n")).unwrap();
         assert!(import_branch(&r, &dest, "tm-2-fix").is_ok());
         let huge = std::fs::File::create(objects.join("pack/pack-big.pack")).unwrap();
-        huge.set_len(MAX_IMPORT + 1).unwrap();
+        huge.set_len(MAX_IMPORT + regular_files_size(&repo.join(".git/objects")) + 1)
+            .unwrap();
         let err = import_branch(&r, &dest, "tm-2-fix").unwrap_err();
         assert!(err.to_string().contains("too large"), "{err}");
         std::fs::remove_file(objects.join("pack/pack-big.pack")).unwrap();
@@ -3125,7 +3159,7 @@ mod tests {
         GitClone
             .prepare(&r, "q_nl", &dest.to_string_lossy())
             .unwrap();
-        assert!(dest.join(".git/objects/info/alternates").is_file());
+        assert_standalone(&dest);
         assert_eq!(shared_objects(&dest), Vec::<PathBuf>::new());
         assert_eq!(shared_objects(&repo), Vec::<PathBuf>::new());
         let log = git(Some(&dest), &["log", "--format=%s", "-n", "5"]).unwrap();
@@ -4296,5 +4330,128 @@ mod tests {
         )
         .unwrap();
         assert!(String::from_utf8_lossy(&out).contains(" commit "));
+    }
+
+    #[test]
+    fn a_clone_as_large_as_a_big_source_plus_a_small_commit_imports() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let dest = run_clone_dir(&r, "tm-13-fix").unwrap();
+        prepare_clone(&r, &dest, "tm-13-fix", None).unwrap();
+        let size = MAX_IMPORT + (1 << 20);
+        for objects in [repo.join(".git/objects"), dest.join(".git/objects")] {
+            let pad = std::fs::File::create(objects.join("pack/pack-pad.pack")).unwrap();
+            pad.set_len(size).unwrap();
+        }
+        assert_agent_commit_imports(&repo, &dest, "tm-13-fix");
+    }
+
+    fn prune_source(repo: &Path) {
+        raw(repo, &["reflog", "expire", "--expire=now", "--all"]);
+        raw(repo, &["gc", "-q", "--prune=now"]);
+    }
+
+    fn assert_standalone(dest: &Path) {
+        assert!(!dest.join(".git/objects/info/alternates").exists());
+        let fsck = Command::new("git")
+            .current_dir(dest)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .args(["fsck", "--full", "--strict"])
+            .output()
+            .unwrap();
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&fsck.stdout),
+            String::from_utf8_lossy(&fsck.stderr)
+        );
+        assert!(fsck.status.success() && !text.contains("missing"), "{text}");
+        raw(dest, &["log", "--format=%H"]);
+        raw(dest, &["gc", "-q"]);
+        raw(dest, &["fetch", "-q", "origin"]);
+    }
+
+    fn assert_agent_commit_imports(repo: &Path, dest: &Path, branch: &str) {
+        let r = repo.to_string_lossy().into_owned();
+        std::fs::write(dest.join("agent.txt"), "agent\n").unwrap();
+        raw(dest, &["add", "agent.txt"]);
+        raw(dest, &["commit", "-q", "-m", "agent change"]);
+        let sha = import_branch(&r, dest, branch).unwrap();
+        raw(repo, &["cat-file", "-e", &format!("{sha}^{{commit}}")]);
+        assert_eq!(raw(repo, &["rev-parse", branch]), sha);
+    }
+
+    #[test]
+    fn a_clone_survives_the_source_branch_being_rewound_and_pruned() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let first = raw(&repo, &["rev-parse", "HEAD"]);
+        commit_file(&repo, "b.txt");
+        let r = repo.to_string_lossy().into_owned();
+        let dest = run_clone_dir(&r, "tm-9-fix").unwrap();
+        prepare_clone(&r, &dest, "tm-9-fix", None).unwrap();
+        raw(&repo, &["reset", "-q", "--hard", &first]);
+        prune_source(&repo);
+        assert_standalone(&dest);
+        assert_agent_commit_imports(&repo, &dest, "tm-9-fix");
+    }
+
+    #[test]
+    fn a_clone_survives_its_base_branch_being_deleted_and_pruned() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        raw(&repo, &["checkout", "-q", "-b", "side"]);
+        commit_file(&repo, "side.txt");
+        raw(&repo, &["checkout", "-q", "main"]);
+        let r = repo.to_string_lossy().into_owned();
+        let dest = run_clone_dir(&r, "tm-10-fix").unwrap();
+        prepare_clone(&r, &dest, "tm-10-fix", Some("side")).unwrap();
+        raw(&repo, &["branch", "-q", "-D", "side"]);
+        prune_source(&repo);
+        assert!(dest.join("side.txt").is_file());
+        assert_standalone(&dest);
+        assert_agent_commit_imports(&repo, &dest, "tm-10-fix");
+    }
+
+    #[test]
+    fn a_continued_clone_is_self_contained_when_the_commit_came_through_fetch_head() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let bare = bare_origin(&root, &repo);
+        let other = root.join("other");
+        raw(&root, &["clone", "-q", &bare.to_string_lossy(), "other"]);
+        raw(&other, &["checkout", "-q", "-b", "tm-11-fix"]);
+        commit_file(&other, "late.txt");
+        raw(&other, &["push", "-q", "origin", "tm-11-fix"]);
+        let sha = raw(&other, &["rev-parse", "HEAD"]);
+        let r = repo.to_string_lossy().into_owned();
+        let dest = run_clone_dir(&r, "tm-11-fix").unwrap();
+        prepare_continue_clone(&r, "acme/proj", &dest, "tm-11-fix", &sha).unwrap();
+        prune_source(&repo);
+        assert!(dest.join("late.txt").is_file());
+        assert_eq!(raw(&dest, &["rev-parse", "HEAD"]), sha);
+        assert_standalone(&dest);
+    }
+
+    #[test]
+    fn a_failed_repack_leaves_no_clone_and_says_why() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let dest = run_clone_dir(&r, "tm-12-fix").unwrap();
+        let err = make_clone(&r, &dest, &|d| {
+            git(
+                Some(d),
+                &["checkout", "-q", "-b", "tm-12-fix", "origin/main"],
+            )?;
+            std::fs::write(
+                d.join(".git/refs/heads/broken"),
+                "0123456789012345678901234567890123456789\n",
+            )?;
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(err.to_string().contains("repack"), "{err}");
+        assert!(!dest.exists());
     }
 }

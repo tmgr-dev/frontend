@@ -615,6 +615,11 @@ mod tests {
     fn a_session_checkout_cannot_be_the_source_of_another() {
         let fx = fixture();
         let s = make(&fx, "first");
+        fs::write(
+            s.path.join(".git/objects/info/alternates"),
+            format!("{}\n", fx.repo.join(".git/objects").display()),
+        )
+        .unwrap();
         let err = create(&s.path, Some("second"), "c", &[]).unwrap_err();
         assert!(err.contains("original repository"), "{err}");
         assert!(!fx.root.join("proj-worktrees/second").exists());

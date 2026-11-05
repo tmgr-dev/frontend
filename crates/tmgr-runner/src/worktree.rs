@@ -579,18 +579,37 @@ pub fn clone_mode(plan: &Plan) -> Result<Worktree, String> {
     ])?;
     let src = GitEnv::bare(&worktrees_root(&plan.repo)?);
     let repo = utf8(&plan.repo)?;
-    src.run(&[
-        "clone",
-        "--no-checkout",
-        "--no-local",
-        "--reference",
-        repo,
-        "--",
-        repo,
-        utf8(&plan.path)?,
-    ])?;
-    let git = GitEnv::open(&plan.path)?;
-    git.run(&["checkout", "--no-track", "-b", &plan.branch, &sha])?;
+    let built = (|| -> Result<GitEnv, String> {
+        src.run(&[
+            "clone",
+            "--no-checkout",
+            "--no-local",
+            "--reference",
+            repo,
+            "--",
+            repo,
+            utf8(&plan.path)?,
+        ])?;
+        let git = GitEnv::open(&plan.path)?;
+        git.run(&["checkout", "--no-track", "-b", &plan.branch, &sha])?;
+        git.run(&["repack", "-a", "-d", "-q"])?;
+        match fs::remove_file(plan.path.join(".git/objects/info/alternates")) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                return Err(format!("cannot detach the clone from its source: {e}"))
+            }
+            _ => {}
+        }
+        git.run(&["rev-list", "--objects", "--quiet", "HEAD"])
+            .map_err(|e| format!("the clone is incomplete: {e}"))?;
+        Ok(git)
+    })();
+    let git = match built {
+        Ok(git) => git,
+        Err(e) => {
+            let _ = fs::remove_dir_all(&plan.path);
+            return Err(e);
+        }
+    };
     soft_exclude(&git, &plan.path, &plan.path);
     Ok(Worktree {
         repo: plan.repo.clone(),
@@ -1580,8 +1599,7 @@ mod tests {
         let wt = clone_mode(&p).unwrap();
         assert!(wt.clone && wt.path.join("a.txt").exists());
         assert_eq!(git(&wt.path, &["branch", "--show-current"]), "untrusted");
-        let alt = fs::read_to_string(wt.path.join(".git/objects/info/alternates")).unwrap();
-        assert!(alt.contains(fx.repo.to_str().unwrap()));
+        assert_standalone(&wt.path);
         assert!(status(&wt).unwrap().clean);
         assert!(remove(&wt, true).is_err());
         for n in ["hook", "smudge", "clean", "process"] {
@@ -1623,7 +1641,7 @@ mod tests {
         commit_file(&fx.repo, "later.txt", "later");
         assert!(packs(&fx.repo) > 0 && loose_objects(&fx.repo) > 0);
         let wt = clone_mode(&plan(&fx.repo, "feat/nl", None).unwrap()).unwrap();
-        assert!(wt.path.join(".git/objects/info/alternates").is_file());
+        assert_standalone(&wt.path);
         assert_eq!(shared_objects(&wt.path), Vec::<PathBuf>::new());
         assert_eq!(shared_objects(&fx.repo), Vec::<PathBuf>::new());
         assert_eq!(
@@ -1664,5 +1682,56 @@ mod tests {
         assert_eq!(git(&wt.path, &["rev-list", "--count", "HEAD"]), "1");
         commit_file(&wt.path, "n.txt", "n");
         assert_eq!(git(&wt.path, &["rev-list", "--count", "HEAD"]), "2");
+    }
+
+    fn prune_source(repo: &Path) {
+        git(repo, &["reflog", "expire", "--expire=now", "--all"]);
+        git(repo, &["gc", "-q", "--prune=now"]);
+    }
+
+    fn assert_standalone(dir: &Path) {
+        assert!(!dir.join(".git/objects/info/alternates").exists());
+        let out = author(GitEnv::bare(dir))
+            .run(&["fsck", "--full", "--strict"])
+            .unwrap();
+        assert!(!out.contains("missing"), "{out}");
+        git(dir, &["log", "--format=%H"]);
+        git(dir, &["gc", "-q"]);
+        git(dir, &["fetch", "-q", "origin"]);
+    }
+
+    #[test]
+    fn clone_mode_survives_the_source_branch_being_rewound_and_pruned() {
+        let fx = fixture();
+        let first = git(&fx.repo, &["rev-parse", "HEAD"]);
+        commit_file(&fx.repo, "b.txt", "b");
+        let wt = clone_mode(&plan(&fx.repo, "feat/rw", None).unwrap()).unwrap();
+        git(&fx.repo, &["reset", "-q", "--hard", &first]);
+        prune_source(&fx.repo);
+        assert!(wt.path.join("b.txt").is_file());
+        assert_standalone(&wt.path);
+    }
+
+    #[test]
+    fn clone_mode_survives_its_base_branch_being_deleted_and_pruned() {
+        let fx = fixture();
+        git(&fx.repo, &["checkout", "-q", "-b", "side"]);
+        commit_file(&fx.repo, "side.txt", "s");
+        git(&fx.repo, &["checkout", "-q", "main"]);
+        let wt = clone_mode(&plan(&fx.repo, "feat/del", Some("side")).unwrap()).unwrap();
+        git(&fx.repo, &["branch", "-q", "-D", "side"]);
+        prune_source(&fx.repo);
+        assert!(wt.path.join("side.txt").is_file());
+        assert_standalone(&wt.path);
+    }
+
+    #[test]
+    fn a_failed_clone_mode_leaves_no_folder() {
+        let fx = fixture();
+        let mut p = plan(&fx.repo, "feat/ok", None).unwrap();
+        p.branch = "bad..name".to_string();
+        let err = clone_mode(&p).unwrap_err();
+        assert!(err.contains("checkout"), "{err}");
+        assert!(fs::symlink_metadata(&p.path).is_err());
     }
 }

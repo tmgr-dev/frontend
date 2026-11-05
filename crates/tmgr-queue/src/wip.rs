@@ -774,7 +774,7 @@ mod tests {
         let other = f.root.join("other/.git/objects");
         std::fs::create_dir_all(&other).unwrap();
         let alternates = f.clone.join(".git/objects/info/alternates");
-        let original = std::fs::read_to_string(&alternates).unwrap();
+        let original = std::fs::read_to_string(&alternates).unwrap_or_default();
         std::fs::write(&alternates, format!("{original}{}\n", other.display())).unwrap();
         assert!(wip_commit(&f.clone, "tm-1-fix", "x", &f.sources()).is_err());
         std::fs::write(&alternates, original).unwrap();
