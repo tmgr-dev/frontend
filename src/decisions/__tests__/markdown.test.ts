@@ -70,6 +70,15 @@ describe('renderMarkdown', () => {
 		expect(root.textContent).toContain('<button>Approve</button>');
 	});
 
+	it('shows img markup as visible text in messages and context, without a live image', () => {
+		for (const text of ['<img src=x>', '&lt;img src=x&gt;']) {
+			const root = parse(renderMarkdown(text));
+			expect(root.querySelector('img')).toBeNull();
+			expect(root.textContent).toContain('<img src=x>');
+			expect(root.textContent).not.toContain('&lt;');
+		}
+	});
+
 	it('keeps code spans and fences literal', () => {
 		const root = parse(renderMarkdown('`<b>x</b>`\n\n```\n<i>y</i>\n```'));
 		expect(root.querySelector('b, i')).toBeNull();
