@@ -902,3 +902,57 @@ fn a_clone_that_shares_object_files_is_not_restored_and_is_left_alone() {
     assert!(h.homes.join(&first.id).is_dir());
     assert!(h.client().list().unwrap().is_empty());
 }
+
+#[test]
+fn a_folder_with_shared_object_files_is_not_restored_and_is_left_alone() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::new(true);
+    let work = fs::canonicalize(&h.work).unwrap();
+    git_fx(&work, &["init", "-q", "-b", "main"]);
+    fs::write(work.join("a.txt"), "a").unwrap();
+    git_fx(&work, &["add", "a.txt"]);
+    git_fx(&work, &["commit", "-q", "-m", "one"]);
+    h.start();
+    let mut req = h.req();
+    req.cwd = work.display().to_string();
+    let first = h.client().create_run(req).unwrap();
+    let log = work.join("log");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !fs::read_to_string(&log)
+        .unwrap_or_default()
+        .contains("home:")
+    {
+        assert!(Instant::now() < deadline, "session did not start");
+        thread::sleep(Duration::from_millis(50));
+    }
+    h.reboot(&first, true);
+
+    let mut todo = vec![work.join(".git/objects")];
+    let mut object = None;
+    while let Some(dir) = todo.pop() {
+        for e in fs::read_dir(&dir).unwrap().flatten() {
+            let p = e.path();
+            let meta = fs::symlink_metadata(&p).unwrap();
+            if meta.is_dir() {
+                todo.push(p);
+            } else if meta.is_file() {
+                object = Some(p);
+            }
+        }
+    }
+    let object = object.expect("no object file in the folder");
+    let extra = fs::canonicalize(h.tmp.path()).unwrap().join("extra-link");
+    fs::hard_link(&object, &extra).unwrap();
+
+    let err = h.client().restore(&first.id).unwrap_err().to_string();
+    assert!(err.starts_with("invalid_params"), "{err}");
+    assert!(err.contains("object files"), "{err}");
+    assert!(err.contains(work.to_str().unwrap()), "{err}");
+    assert!(object.is_file());
+    assert!(extra.is_file());
+    assert_eq!(h.entries()[0].status, Status::Restorable);
+    assert!(h.homes.join(&first.id).is_dir());
+    assert!(h.client().list().unwrap().is_empty());
+}

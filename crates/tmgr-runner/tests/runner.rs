@@ -3655,6 +3655,111 @@ fn a_fifo_as_alternates_is_refused_without_blocking() {
     );
 }
 
+struct SharedStore {
+    h: Harness,
+    folder: PathBuf,
+}
+
+fn shared_store_fx() -> SharedStore {
+    let mut h = Harness::new();
+    h.profile(
+        "fake",
+        &["/bin/sh", "-c", "echo started > started; sleep 30"],
+    );
+    h.start(5000);
+    let base = fs::canonicalize(h.tmp.path()).unwrap().join("stores");
+    let source = base.join("source");
+    fs::create_dir_all(&source).unwrap();
+    init_repo(&source);
+    git_in(&source, &["gc", "-q"]);
+    git_in(
+        &source,
+        &["commit-graph", "write", "--split", "--reachable"],
+    );
+    let folder = base.join("copy");
+    git_in(
+        &base,
+        &[
+            "clone",
+            "-q",
+            source.to_str().unwrap(),
+            folder.to_str().unwrap(),
+        ],
+    );
+    SharedStore { h, folder }
+}
+
+fn shared_files(folder: &Path) -> usize {
+    let mut n = 0;
+    let mut todo = vec![folder.join(".git/objects")];
+    while let Some(d) = todo.pop() {
+        for e in fs::read_dir(&d).unwrap().flatten() {
+            let m = fs::symlink_metadata(e.path()).unwrap();
+            if m.is_dir() {
+                todo.push(e.path());
+            } else if std::os::unix::fs::MetadataExt::nlink(&m) > 1 {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+#[test]
+fn session_refused_when_object_store_shares_files() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = shared_store_fx();
+    assert!(shared_files(&fx.folder) > 0);
+    let mut desktop = Client::connect_as(&fx.h.run, "desktop").unwrap();
+    let mut req = fx.h.run_req("fake");
+    req.cwd = fx.folder.display().to_string();
+    let e = err_text(desktop.create_run(req));
+    assert!(
+        e.starts_with("invalid_params: ") && e.contains("object files"),
+        "{e}"
+    );
+    assert!(e.contains(fx.folder.to_str().unwrap()), "{e}");
+    let mut raw = fx.h.sh("echo started > started\n");
+    raw.cwd = fx.folder.display().to_string();
+    let e = err_text(fx.h.client().create(raw));
+    assert!(e.contains("object files"), "{e}");
+    assert!(fx.h.client().list().unwrap().is_empty());
+    assert!(!fx.folder.join("started").exists());
+    assert!(shared_files(&fx.folder) > 0);
+}
+
+#[test]
+fn hint_clears_shared_object_files() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = shared_store_fx();
+    let mut desktop = Client::connect_as(&fx.h.run, "desktop").unwrap();
+    let mut req = fx.h.run_req("fake");
+    req.cwd = fx.folder.display().to_string();
+    assert!(err_text(desktop.create_run(req.clone())).contains("git repack -a -d"));
+    for args in [
+        &["repack", "-a", "-d", "-q"][..],
+        &["commit-graph", "write", "--reachable"][..],
+    ] {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(&fx.folder)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "git {args:?}");
+    }
+    let _ = fs::remove_file(fx.folder.join(".git/objects/info/packs"));
+    assert_eq!(shared_files(&fx.folder), 0);
+    let info = desktop.create_run(req).unwrap();
+    wait_for("agent started", || fx.folder.join("started").exists());
+    fx.h.stop(&mut desktop, &info.id);
+}
+
 #[test]
 fn an_object_directory_swapped_before_launch_refuses_the_run() {
     if !sessions_available() {

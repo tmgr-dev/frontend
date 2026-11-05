@@ -1683,6 +1683,45 @@ fn a_clone_that_shares_object_files_is_not_resumed_and_is_left_alone() {
 }
 
 #[test]
+fn a_folder_with_shared_object_files_is_not_resumed_and_is_left_alone() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    let c = CloneRun::new(&h);
+    h.start();
+    fs::write(c.clone.join("announce"), claude_exit(U1)).unwrap();
+    let mut req = c.req(&h);
+    req.clone_of = None;
+    let first = h.client().create_run(req).unwrap();
+    c.wait_log("home:", 1);
+    h.stop(&first.id);
+    fs::write(c.clone.join("wip.txt"), "unsaved").unwrap();
+    let object = c.object_file();
+    let extra = fs::canonicalize(h.tmp.path()).unwrap().join("extra-link");
+    fs::hard_link(&object, &extra).unwrap();
+
+    let err = h
+        .client()
+        .resume(&first.id, 80, 24)
+        .unwrap_err()
+        .to_string();
+    assert!(err.starts_with("invalid_params"), "{err}");
+    assert!(err.contains("object files"), "{err}");
+    assert!(err.contains(c.clone.to_str().unwrap()), "{err}");
+    assert_eq!(
+        fs::read_to_string(c.clone.join("wip.txt")).unwrap(),
+        "unsaved"
+    );
+    assert!(object.is_file());
+    assert!(extra.is_file());
+    assert_eq!(c.log().matches("home:").count(), 1, "{}", c.log());
+    let list = h.client().list().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].state.kind, StateKind::Exited);
+}
+
+#[test]
 fn a_clone_without_shared_object_files_resumes_as_before() {
     if !sessions_available() {
         return;

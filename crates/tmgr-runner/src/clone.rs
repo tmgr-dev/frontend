@@ -200,10 +200,7 @@ fn clear_errno() {
     };
 }
 
-fn shares_files(dir: File, depth: u32) -> std::io::Result<bool> {
-    if depth > MAX_DEPTH {
-        return Err(std::io::Error::other("too deep"));
-    }
+fn entry_names(dir: &File) -> std::io::Result<Vec<std::ffi::CString>> {
     let fd = dir.as_raw_fd();
     let dup = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
     if dup < 0 {
@@ -233,6 +230,15 @@ fn shares_files(dir: File, depth: u32) -> std::io::Result<bool> {
         }
     }
     unsafe { libc::closedir(stream) };
+    Ok(names)
+}
+
+fn shares_files(dir: File, depth: u32) -> std::io::Result<bool> {
+    if depth > MAX_DEPTH {
+        return Err(std::io::Error::other("too deep"));
+    }
+    let fd = dir.as_raw_fd();
+    let names = entry_names(&dir)?;
     for name in names {
         let mut st: libc::stat = unsafe { std::mem::zeroed() };
         if unsafe { libc::fstatat(fd, name.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) } != 0 {
@@ -251,6 +257,69 @@ fn shares_files(dir: File, depth: u32) -> std::io::Result<bool> {
         }
     }
     Ok(false)
+}
+
+fn not_a_store(e: &std::io::Error) -> bool {
+    e.kind() == std::io::ErrorKind::NotFound
+        || matches!(e.raw_os_error(), Some(n) if n == libc::ELOOP || n == libc::ENOTDIR)
+}
+
+fn store_shared(repo: i32) -> std::io::Result<bool> {
+    let Ok(git) = open_at(repo, ".git", DIR) else {
+        return Ok(false);
+    };
+    for part in ["objects", "modules"] {
+        match walk(&git, &[part]) {
+            Ok(dir) => {
+                if shares_files(dir, 0)? {
+                    return Ok(true);
+                }
+            }
+            Err(e) if not_a_store(&e) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(false)
+}
+
+/// Refuses a folder whose git object files are also linked from elsewhere: a sandboxed session could change them there.
+pub fn check_stores(cwd: &Dir) -> Result<(), Refusal> {
+    let unchecked = |p: &Path| {
+        (
+            ErrorCode::InvalidParams,
+            format!("the object files of {} cannot be checked", p.display()),
+        )
+    };
+    let shared = |p: &Path| {
+        (
+            ErrorCode::InvalidParams,
+            format!(
+                "{} has object files that are also linked from another place, so a sandboxed session could change them there; \
+                 run `git repack -a -d`, `git commit-graph write --reachable` and `rm -f .git/objects/info/packs` in it, or re-clone it with `git clone --no-local`. \
+                 tmgr leaves the folder as it is",
+                p.display()
+            ),
+        )
+    };
+    match store_shared(cwd.raw_fd()) {
+        Ok(false) => {}
+        Ok(true) => return Err(shared(&cwd.path)),
+        Err(_) => return Err(unchecked(&cwd.path)),
+    }
+    let own = open_at(cwd.raw_fd(), ".", DIR).map_err(|_| unchecked(&cwd.path))?;
+    for name in entry_names(&own).map_err(|_| unchecked(&cwd.path))? {
+        let name = std::ffi::OsStr::from_bytes(name.to_bytes());
+        let Ok(child) = open_at(cwd.raw_fd(), name, DIR) else {
+            continue;
+        };
+        let path = cwd.path.join(name);
+        match store_shared(child.as_raw_fd()) {
+            Ok(false) => {}
+            Ok(true) => return Err(shared(&path)),
+            Err(_) => return Err(unchecked(&path)),
+        }
+    }
+    Ok(())
 }
 
 fn folder_below(cwd: &Dir, root: &Path) -> Result<Vec<String>, Refusal> {
@@ -570,5 +639,108 @@ mod tests {
         let (_, msg) =
             check_multi(&open_path(run).unwrap(), &src, &clones, Some(&lead)).unwrap_err();
         assert!(msg.contains(".git"), "{msg}");
+    }
+    fn plain_clone(repo: &Path, dest: &Path) {
+        git(
+            dest.parent().unwrap(),
+            &[
+                "clone",
+                "-q",
+                repo.to_str().unwrap(),
+                dest.to_str().unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn session_folder_refused_when_object_store_shares_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = repo_at(&root);
+        let dest = root.join("copy");
+        plain_clone(&repo, &dest);
+        assert!(linked_files(&dest) > 0);
+        let (code, msg) = check_stores(&open_path(dest.clone()).unwrap()).unwrap_err();
+        assert_eq!(code, ErrorCode::InvalidParams);
+        assert!(msg.contains(dest.to_str().unwrap()), "{msg}");
+        assert!(msg.contains("git repack -a -d"), "{msg}");
+        assert!(linked_files(&dest) > 0);
+    }
+
+    #[test]
+    fn hint_clears_shared_object_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = repo_at(&root);
+        git(&repo, &["commit-graph", "write", "--split", "--reachable"]);
+        let dest = root.join("copy");
+        plain_clone(&repo, &dest);
+        check_stores(&open_path(dest.clone()).unwrap()).unwrap_err();
+        git(&dest, &["repack", "-a", "-d", "-q"]);
+        git(&dest, &["commit-graph", "write", "--reachable"]);
+        let _ = std::fs::remove_file(dest.join(".git/objects/info/packs"));
+        assert_eq!(linked_files(&dest), 0);
+        check_stores(&open_path(dest.clone()).unwrap()).unwrap();
+        git(&dest, &["fsck"]);
+    }
+
+    #[test]
+    fn folders_without_a_shared_object_store_are_accepted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let plain = root.join("plain");
+        std::fs::create_dir(&plain).unwrap();
+        check_stores(&open_path(plain.clone()).unwrap()).unwrap();
+        let repo = repo_at(&root);
+        check_stores(&open_path(repo.clone()).unwrap()).unwrap();
+        let fresh = root.join("fresh");
+        clone_at(&repo, &fresh, false);
+        check_stores(&open_path(fresh).unwrap()).unwrap();
+        let tree = root.join("work");
+        std::fs::create_dir_all(tree.join("node_modules/.pnpm/pkg")).unwrap();
+        std::fs::write(tree.join("node_modules/.pnpm/pkg/index.js"), "x\n").unwrap();
+        std::fs::create_dir_all(tree.join("node_modules/dep")).unwrap();
+        std::fs::hard_link(
+            tree.join("node_modules/.pnpm/pkg/index.js"),
+            tree.join("node_modules/dep/index.js"),
+        )
+        .unwrap();
+        git(&tree, &["init", "-q", "-b", "main"]);
+        check_stores(&open_path(tree).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn linked_worktree_folder_has_no_store_to_check() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = repo_at(&root);
+        let wt = root.join("wt");
+        git(&repo, &["worktree", "add", "-q", wt.to_str().unwrap()]);
+        assert!(wt.join(".git").is_file());
+        check_stores(&open_path(wt).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn child_repository_and_submodule_stores_are_checked() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = repo_at(&root);
+        let folder = root.join("folder");
+        std::fs::create_dir(&folder).unwrap();
+        plain_clone(&repo, &folder.join("child"));
+        let (_, msg) = check_stores(&open_path(folder.clone()).unwrap()).unwrap_err();
+        assert!(
+            msg.contains(folder.join("child").to_str().unwrap()),
+            "{msg}"
+        );
+
+        let host = root.join("host");
+        clone_at(&repo, &host, false);
+        check_stores(&open_path(host.clone()).unwrap()).unwrap();
+        let module = host.join(".git/modules/sub");
+        std::fs::create_dir_all(module.join("objects/ab")).unwrap();
+        let object = repo.join(".git/HEAD");
+        std::fs::hard_link(&object, module.join("objects/ab/cdef")).unwrap();
+        check_stores(&open_path(host).unwrap()).unwrap_err();
     }
 }

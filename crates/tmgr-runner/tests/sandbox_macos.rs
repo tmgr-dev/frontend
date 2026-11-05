@@ -371,3 +371,72 @@ fn git_commands_work_in_the_work_folder() {
     assert!(config.contains("probe"));
     assert!(config.contains("direct = 1"));
 }
+
+#[test]
+fn read_only_grant_denies_metadata_changes() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    use std::process::Stdio;
+    use tmgr_runner::sandbox::{prepare, Grants, Network, SandboxSpec};
+
+    let f = fx();
+    let objects = f.root.join("source/.git/objects");
+    fs::create_dir_all(objects.join("ab")).unwrap();
+    let object = objects.join("ab/cdef");
+    fs::write(&object, "data\n").unwrap();
+    fs::set_permissions(&object, fs::Permissions::from_mode(0o444)).unwrap();
+    let old = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+    fs::File::open(&object).unwrap().set_modified(old).ok();
+    let before = fs::metadata(&object).unwrap();
+
+    fs::create_dir_all(f.cwd.join(".git/objects/info")).unwrap();
+    fs::write(
+        f.cwd.join(".git/objects/info/alternates"),
+        format!("{}\n", objects.display()),
+    )
+    .unwrap();
+    let alt = format!("{}/ab/cdef", objects.display());
+    let run = |script: &str| {
+        let meta = objects.metadata().unwrap();
+        let spec = SandboxSpec {
+            session_id: SID.into(),
+            argv: vec!["/bin/sh".into(), "-c".into(), script.into()],
+            cwd: f.cwd.clone(),
+            home: f.home.clone(),
+            real_home: f.real_home.clone(),
+            runner_dir: f.runner_dir.clone(),
+            self_exe: f.self_exe.clone(),
+            env_pass: vec![],
+            base_env: vec![("PATH".into(), "/usr/bin:/bin:/usr/sbin:/sbin".into())],
+            grants: Grants {
+                objects_ro: vec![(objects.clone(), (meta.dev(), meta.ino()))],
+                ..Default::default()
+            },
+            cwd_id: None,
+            network: Network::Open,
+        };
+        let l = prepare(&spec).expect("prepare");
+        let o = Command::new(&l.argv[0])
+            .args(&l.argv[1..])
+            .env_clear()
+            .envs(l.env.iter().cloned())
+            .current_dir(&l.cwd)
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        (
+            o.status.code(),
+            String::from_utf8_lossy(&o.stdout).into_owned(),
+        )
+    };
+
+    let (code, out) = run(&format!("cat '{alt}'"));
+    assert_eq!((code, out.as_str()), (Some(0), "data\n"));
+    let (_, out) = run(&format!(
+        "chmod 600 '{alt}' 2>/dev/null; echo chmod=$?; touch '{alt}' 2>/dev/null; echo touch=$?"
+    ));
+    assert!(out.contains("chmod=1"), "{out}");
+    assert!(out.contains("touch=1"), "{out}");
+    let after = fs::metadata(&object).unwrap();
+    assert_eq!(after.mode(), before.mode());
+    assert_eq!(after.mtime(), before.mtime());
+}
