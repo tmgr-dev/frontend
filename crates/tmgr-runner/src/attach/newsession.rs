@@ -689,9 +689,14 @@ struct Notes {
     remembered: Vec<String>,
     error: Vec<String>,
     hint: Vec<String>,
+    help: Vec<String>,
 }
 
 impl Notes {
+    fn help_h(&self) -> usize {
+        self.help.len().max(1)
+    }
+
     fn error_h(&self) -> usize {
         self.error.len().max(1)
     }
@@ -745,6 +750,14 @@ fn wrap(text: &str, width: usize, max_lines: usize) -> Vec<String> {
     lines
 }
 
+fn footer(ns: &NewSession) -> &'static str {
+    if ns.task.trim().is_empty() {
+        "Enter starts, Ctrl+R resumes a past session, Esc cancels"
+    } else {
+        "Enter shows the run to confirm, Esc cancels"
+    }
+}
+
 fn notes(ns: &NewSession, area_width: u16) -> Notes {
     let width = usize::from(MAX_WIDTH.min(area_width))
         .saturating_sub(4)
@@ -761,6 +774,7 @@ fn notes(ns: &NewSession, area_width: u16) -> Notes {
             .unwrap_or_default(),
         error: clean(&ns.error, 2),
         hint: clean(&ns.error_hint, 3),
+        help: wrap(footer(ns), width, 3),
     }
 }
 
@@ -797,7 +811,9 @@ pub(crate) fn new_session_rect(area: Rect, ns: &NewSession) -> Rect {
     let body = match (&ns.review, &ns.priv_prompt) {
         (Some(lines), _) => review_wrapped(lines, area.width).len() + 4,
         (None, Some(p)) => prompt_lines(p, area.width).len() + 4,
-        (None, None) => ns.fields().len() + n.remembered.len() + n.error_h() + n.hint_h() + 6,
+        (None, None) => {
+            ns.fields().len() + n.remembered.len() + n.error_h() + n.hint_h() + n.help_h() + 5
+        }
     };
     dialog_rect(area, body)
 }
@@ -1126,19 +1142,10 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
         }
     }
     let help_at = hint_at + n.hint_h();
-    if line(help_at) < bottom {
-        put(
-            buf,
-            inner.x,
-            line(help_at),
-            if ns.task.trim().is_empty() {
-                "Enter starts, Ctrl+R resumes a past session, Esc cancels"
-            } else {
-                "Enter shows the run to confirm, Esc cancels"
-            },
-            dim(),
-            inner.width,
-        );
+    for (i, text) in n.help.iter().enumerate() {
+        if line(help_at + i) < bottom {
+            put(buf, inner.x, line(help_at + i), text, dim(), inner.width);
+        }
     }
 }
 
@@ -3492,5 +3499,21 @@ mod tests {
         let after = super::past_prompt_cursor(v.past_prompt.as_ref().unwrap(), area).unwrap();
         assert_eq!(after.1, before.1);
         assert_eq!(after.0, before.0 + 2);
+    }
+
+    #[test]
+    fn the_footer_wraps_at_narrow_widths_and_the_dialog_height_follows() {
+        let h = tmp();
+        let v = open("/", h.path());
+        let ns = v.new_session.as_ref().unwrap();
+        let height = |w| new_session_rect(Rect::new(0, 0, w, 40), ns).height;
+        let wide = height(100);
+        assert!(draw(&v, 100, 40).contains("Ctrl+R resumes a past session, Esc cancels"));
+        for w in [50, 40] {
+            assert_eq!(height(w), wide + 1, "{w}");
+            let shown = draw(&v, w, 40);
+            assert!(shown.contains("Enter starts,"), "{w}\n{shown}");
+            assert!(shown.contains("cancels"), "{w}\n{shown}");
+        }
     }
 }

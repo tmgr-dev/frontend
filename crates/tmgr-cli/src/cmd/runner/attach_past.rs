@@ -12,6 +12,7 @@ use tmgr_ipc::api::{RestoredRun, SessionInfo};
 use tmgr_link::privileged;
 use tmgr_runner::attach::PrivAsk;
 use tmgr_runner::daemon::RunnerConfig;
+use tmgr_runner::resume::valid_resume_id;
 use tmgr_usage::paths::Env;
 
 use super::attach_consent::Reads;
@@ -83,6 +84,11 @@ fn external_ready(
     ask: &dyn Fn(bool, bool) -> Asked,
 ) -> std::result::Result<Ready, SpawnErr> {
     let (entry, denial) = found;
+    if !valid_resume_id(&pick.id) {
+        return Err(task_err(Error::usage(
+            "this session is not a recorded conversation id",
+        )));
+    }
     let entry = entry.ok_or_else(|| {
         task_err(Error::not_found(
             "no recorded conversation matches this session",
@@ -349,6 +355,21 @@ mod tests {
             if denial.is_some() {
                 assert_eq!(err.hint.as_deref(), denial);
             }
+        }
+        assert!(calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn an_external_pick_whose_id_is_not_a_conversation_id_is_refused_before_the_prompt() {
+        let tmp = tempfile::tempdir().unwrap();
+        let calls = RefCell::new(Vec::new());
+        for bad in ["s_aaaaaaaaaa", "x\u{1b}[2J", "", "../../etc"] {
+            let mut p = pick(false, false, false, true);
+            p.id = bad.into();
+            let err = external_ready((Some(at(tmp.path())), None), &p, &ask_ok(&calls))
+                .err()
+                .unwrap();
+            assert!(err.message.contains("not a recorded conversation id"));
         }
         assert!(calls.borrow().is_empty());
     }

@@ -4920,7 +4920,6 @@ fn drain_creates(
                 }
             }
             Ok(Msg::TaskPrepared { .. } | Msg::PastPrepared { .. }) => *spawning = false,
-            Ok(Msg::Resumed { .. } | Msg::Forked { .. }) => *spawning = false,
             Ok(Msg::PastStarted { result, .. }) => {
                 *spawning = false;
                 if let Ok(info) = result {
@@ -5418,10 +5417,6 @@ mod tests {
                     hint: None,
                 }),
                 size: (80, 24),
-            },
-            Msg::Resumed {
-                old: "a".into(),
-                result: Err("no".into()),
             },
         ] {
             let (tx, rx) = mpsc::sync_channel(8);
