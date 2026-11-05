@@ -68,9 +68,11 @@ function loadPusher(localWorkspaceActive = false) {
 					? {}
 					: name === '@/local/runtime'
 						? { hasActiveLocalWorkspace: () => localWorkspaceActive }
-						: name === '@/utils/pusherChannelAuthorizer'
-							? require('../../utils/pusherChannelAuthorizer')
-							: require(name),
+						: name === '@/utils/tokenSync'
+							? require('../../utils/tokenSync')
+							: name === '@/utils/pusherChannelAuthorizer'
+								? require('../../utils/pusherChannelAuthorizer')
+								: require(name),
 		result,
 		result.exports,
 	);
@@ -635,6 +637,38 @@ describe('workspace events on the member channel', () => {
 			api.setRealtimeUser(3);
 			expect(pusher.getConnectionInfo().subscriptions).toEqual([]);
 			expect(instances[instances.length - 1].channels.size).toBe(0);
+		});
+
+		test('a token that belongs to another account never restores them', () => {
+			const { api, pusher } = setup();
+			const board = jest.fn();
+			pusher.subscribeToWorkspace(7, { onTaskUpdated: board });
+			api.disconnectRealtime();
+			const jwt = (sub: number) =>
+				[
+					'h',
+					Buffer.from(JSON.stringify({ sub })).toString('base64url'),
+					's',
+				].join('.');
+			Object.defineProperty(globalThis, 'localStorage', {
+				configurable: true,
+				value: { getItem: () => JSON.stringify({ token: jwt(4) }) },
+			});
+			api.setRealtimeUser(3);
+			expect(pusher.getConnectionInfo().subscriptions).toEqual([]);
+			expect(board).not.toHaveBeenCalled();
+		});
+
+		test('a handler subscribed while signed out survives a repeated disconnect', () => {
+			const { api, pusher } = setup();
+			pusher.subscribeToWorkspace(7, {});
+			api.disconnectRealtime();
+			pusher.subscribeToWorkspace(7, {});
+			api.disconnectRealtime();
+			api.setRealtimeUser(3);
+			expect(pusher.getConnectionInfo().subscriptions).toContain(
+				'App.Workspace.7',
+			);
 		});
 
 		test('a second disconnect keeps what the first one remembered', () => {

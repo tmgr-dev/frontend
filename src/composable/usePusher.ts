@@ -20,6 +20,7 @@ import type { AgentSession } from '@/utils/agentStatus';
 import type { CommentReactionsUpdatedEvent } from '@/utils/commentReactions';
 import type { ChannelAuthorizationHandler } from '@/utils/pusherChannelAuthorizer';
 import { createChannelAuthorizer } from '@/utils/pusherChannelAuthorizer';
+import { tokenSubject } from '@/utils/tokenSync';
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 import type { Ref } from 'vue';
@@ -767,7 +768,7 @@ export function usePusher(): UsePusherReturn {
 
 	// Views that outlive a disconnect get their handlers back for the same user only.
 	const rememberHandlers = (): typeof dormant => {
-		if (realtimeUserId === null) return dormant;
+		if (realtimeUserId === null) return null;
 		const own = userChannelName(realtimeUserId);
 		const channels = new Map<string, Map<string, EventHandlers>>();
 		for (const [name, sub] of subscriptions) {
@@ -781,7 +782,13 @@ export function usePusher(): UsePusherReturn {
 
 	const restoreHandlers = (): void => {
 		if (!dormant || dormant.userId !== realtimeUserId) return;
-		if (!getAuthToken()) return;
+		const token = getAuthToken();
+		if (!token) return;
+		const owner = tokenSubject({ token });
+		if (owner !== null && owner !== dormant.userId) {
+			dormant = null;
+			return;
+		}
 		const { channels } = dormant;
 		dormant = null;
 		for (const [name, handlers] of channels) {
@@ -794,13 +801,15 @@ export function usePusher(): UsePusherReturn {
 		cancelReconnect();
 		reconnectConfig.currentAttempt = 0;
 		const remembered = echoInstance ? rememberHandlers() : null;
+		const kept = dormant;
+		dormant = null;
 		realtimeUserId = null;
 		workspaceFeed = null;
 		if (echoInstance) {
 			try {
 				// Unsubscribe from all channels
 				unsubscribeAll();
-				dormant = remembered;
+				dormant = remembered ?? kept;
 
 				// Disconnect Echo
 				const previousEcho = echoInstance;
