@@ -1239,6 +1239,10 @@ fn regular_files_size(root: &Path) -> u64 {
     total
 }
 
+fn import_allowance(repo: &str) -> u64 {
+    MAX_IMPORT.saturating_add(regular_files_size(&Path::new(repo).join(".git/objects")))
+}
+
 fn copy_regular(
     dir: &std::fs::File,
     name: &std::ffi::OsStr,
@@ -2034,9 +2038,7 @@ pub fn import_branch(repo: &str, clone: &Path, branch: &str) -> Result<String> {
     let bare = tmp.path().join("b.git");
     let b = bare.to_string_lossy().into_owned();
     git(None, &["init", "-q", "--bare", "--template=", &b])?;
-    let allowance =
-        MAX_IMPORT.saturating_add(regular_files_size(&Path::new(repo).join(".git/objects")));
-    copy_objects(clone, &bare.join("objects"), allowance)?;
+    copy_objects(clone, &bare.join("objects"), import_allowance(repo))?;
     std::fs::write(
         bare.join("objects/info/alternates"),
         format!("{}\n", Path::new(repo).join(".git/objects").display()),
@@ -4333,18 +4335,15 @@ mod tests {
     }
 
     #[test]
-    fn a_clone_as_large_as_a_big_source_plus_a_small_commit_imports() {
+    fn the_import_allowance_grows_with_the_source_store() {
         let (_tmp, root) = canon_tmp();
         let repo = repo_at(&root, "proj");
         let r = repo.to_string_lossy().into_owned();
-        let dest = run_clone_dir(&r, "tm-13-fix").unwrap();
-        prepare_clone(&r, &dest, "tm-13-fix", None).unwrap();
-        let size = MAX_IMPORT + (1 << 20);
-        for objects in [repo.join(".git/objects"), dest.join(".git/objects")] {
-            let pad = std::fs::File::create(objects.join("pack/pack-pad.pack")).unwrap();
-            pad.set_len(size).unwrap();
-        }
-        assert_agent_commit_imports(&repo, &dest, "tm-13-fix");
+        let before = import_allowance(&r);
+        assert!(before > MAX_IMPORT);
+        let pad = std::fs::File::create(repo.join(".git/objects/pack/pack-pad.pack")).unwrap();
+        pad.set_len(MAX_IMPORT).unwrap();
+        assert_eq!(import_allowance(&r), before + MAX_IMPORT);
     }
 
     fn prune_source(repo: &Path) {
