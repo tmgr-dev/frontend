@@ -1399,7 +1399,7 @@ fn the_overlay_starts_on_the_session_screen_with_every_flag_off() {
     s.on_key(Key::Enter);
     s.on_key(Key::Char('r'));
     assert!(!s.bypass());
-    assert_eq!(s.memory().bypass, false);
+    assert!(!s.memory().bypass);
     assert!(!s.memory().no_sandbox);
     assert_eq!(s.memory().kind, Kind::Resume);
 }
@@ -1618,4 +1618,36 @@ fn the_overlay_is_centred_capped_and_clears_what_is_behind_it() {
 fn r_mid(area: ratatui::layout::Rect) -> (u16, u16) {
     let r = view::overlay_rect(area);
     (r.x + r.width - 3, r.y + r.height - 2)
+}
+
+#[test]
+fn dropping_the_overlay_state_drops_its_source() {
+    struct Watched(Cell<bool>);
+    impl Drop for Watched {
+        fn drop(&mut self) {
+            self.0.set(true);
+        }
+    }
+    impl Source for Watched {
+        fn load(&self, _: &str) {}
+        fn poll(&self) -> Option<(Vec<Row>, Hints)> {
+            None
+        }
+        fn search(&self, _: &str) -> Option<Vec<String>> {
+            None
+        }
+        fn allow_reading(&self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    let dropped = Cell::new(false);
+    let s = overlay(
+        agents([true, true]),
+        String::new(),
+        None,
+        Box::new(Watched(dropped.clone())),
+    );
+    assert!(!dropped.get());
+    drop(s);
+    assert!(dropped.get());
 }

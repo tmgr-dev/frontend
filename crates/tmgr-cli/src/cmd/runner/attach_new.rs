@@ -32,6 +32,7 @@ pub(super) enum Plan {
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Route {
     Dialog,
+    PastPrompt,
     Git,
     Checkpoints,
     Summary,
@@ -57,7 +58,9 @@ pub(super) fn route(view: &ViewState, action: &Action) -> Route {
     {
         return Route::Other;
     }
-    if view.export.is_some() {
+    if view.past_prompt.is_some() {
+        Route::PastPrompt
+    } else if view.export.is_some() {
         Route::Export
     } else if view.summary.is_some() {
         Route::Summary

@@ -771,7 +771,7 @@ mod tests {
         let (warnings, got) = tmgr_resume_checks_with(&s, true, &known).unwrap();
         assert_eq!(warnings, ["warning: x"]);
         assert_eq!(got.as_deref(), Some(id.as_str()));
-        assert_eq!(*called.borrow(), [id.clone()]);
+        assert_eq!(*called.borrow(), std::slice::from_ref(&id));
         let (warnings, got) = tmgr_resume_checks_with(&s, false, &known).unwrap();
         assert!(warnings.is_empty() && got.is_none());
         let bad = session("claude-code", true, Some("x\u{1b}[2J"));

@@ -19,6 +19,7 @@ use super::attach_consent::Reads;
 pub(super) const START_WAIT: Duration = Duration::from_secs(30);
 
 type Asked = std::result::Result<PrivAsk, (String, Option<String>)>;
+type Found = (Option<Entry>, Option<&'static str>);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Shape {
@@ -59,7 +60,7 @@ pub(super) struct Ready {
 
 pub(super) struct Deps<'a> {
     pub guard: &'a dyn Fn() -> Result<()>,
-    pub entry: &'a dyn Fn(&str) -> (Option<Entry>, Option<&'static str>),
+    pub entry: &'a dyn Fn(&str) -> Found,
     pub session: &'a dyn Fn(&str) -> Result<SessionInfo>,
     pub known: &'a dyn Fn(&str) -> Result<Vec<String>>,
     pub ask: &'a dyn Fn(bool, bool) -> Asked,
@@ -77,7 +78,7 @@ fn mode_of(bypass: bool) -> Option<PermissionMode> {
 }
 
 fn external_ready(
-    found: (Option<Entry>, Option<&'static str>),
+    found: Found,
     pick: &Pick,
     ask: &dyn Fn(bool, bool) -> Asked,
 ) -> std::result::Result<Ready, SpawnErr> {

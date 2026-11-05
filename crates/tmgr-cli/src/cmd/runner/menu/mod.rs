@@ -611,6 +611,10 @@ pub(super) fn feed_paste(state: &mut State, data: &[u8]) {
     state.on_paste(&text);
 }
 
+pub(super) fn kill_smart() {
+    smart::kill_running();
+}
+
 pub(super) fn draw_overlay(f: &mut ratatui::Frame, s: &State) {
     let area = view::overlay_rect(f.area());
     view::draw_in(f, area, s, look(), view::ATTACH);

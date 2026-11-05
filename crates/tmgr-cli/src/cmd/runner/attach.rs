@@ -10,11 +10,12 @@ use super::attach_goto::{
 use super::attach_layouts;
 use super::attach_links::{split_local, LinkMsg};
 use super::attach_new::{
-    default_folder, dialog_for, execute_task, in_agent, installed_kinds, kind_label, place_session,
-    prepare_task, registers_shell, route, spawn_size, start_session, NewFlow, Route, SpawnErr,
-    TaskReview,
+    self, default_folder, dialog_for, execute_task, in_agent, installed_kinds, kind_label,
+    place_session, prepare_task, registers_shell, route, spawn_size, start_session, NewFlow, Route,
+    SpawnErr, TaskReview,
 };
 use super::attach_notes;
+use super::attach_past::{self, Go, Shape};
 use super::attach_prompts;
 use super::attach_push;
 use super::attach_questions::{claude_binary, questioner, QuestionJob};
@@ -33,7 +34,7 @@ use super::attach_tasks;
 use super::attach_templates;
 use super::attach_title::{agent_src, title_real_home, titler, AgentSrc, TitleJob};
 use super::attach_usage::{usage_source, usage_worker};
-use super::menu::{dialog_path, load_dialog, save_dialog, DialogMemory};
+use super::menu::{self, dialog_path, load_dialog, save_dialog, DialogMemory};
 use super::run_task::Prepared;
 use super::session_wt::{delete, plan_removal, Ask, Removal};
 use super::watch as watcher;
@@ -66,10 +67,11 @@ use tmgr_runner::attach::{
     mode_changes, open_urls, parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes,
     valid_pr_url, Action, AgentTitle, AttentionTracker, Cmd, Confirm, Control, CpAction, CpMsg,
     GitAction, GitInfo, Hit, InputSplitter, KindOpt, LayoutPrefs, Loc, NewEdit, NewRequest,
-    NewSession, Notifier, PaletteEdit, PaletteEntry, PaletteMode, PaneInfo, Place, PostTarget,
-    PrLookup, QEdit, Remembered, RenameEdit, ScreenSource, ScrollKey, ScrollState, ScrollText,
-    SearchEdit, SessionRow, SessionStatus, SidebarEdit, SignalSettings, SignalTracker, SplitDir,
-    SummaryAction, SummaryDraft, TaskChip, TaskOpt, ThemeKind, UsageBar, ViewState, OSC11_QUERY,
+    NewSession, Notifier, PaletteEdit, PaletteEntry, PaletteMode, PaneInfo, PastEdit, Place,
+    PostTarget, PrLookup, QEdit, Remembered, RenameEdit, ScreenSource, ScrollKey, ScrollState,
+    ScrollText, SearchEdit, SessionRow, SessionStatus, SidebarEdit, SignalSettings, SignalTracker,
+    SplitDir, SummaryAction, SummaryDraft, TaskChip, TaskOpt, ThemeKind, TypedPrompt, UsageBar,
+    ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -131,6 +133,7 @@ impl Guard {
         io::stdout().flush()?;
         let previous = panic::take_hook();
         panic::set_hook(Box::new(move |info| {
+            menu::kill_smart();
             restore();
             previous(info);
         }));
@@ -206,6 +209,14 @@ enum Msg {
         old: String,
         result: std::result::Result<RestoredRun, String>,
     },
+    PastPrepared {
+        result: std::result::Result<attach_past::Ready, SpawnErr>,
+        size: (u16, u16),
+    },
+    PastStarted {
+        result: std::result::Result<SessionInfo, String>,
+        fork: bool,
+    },
     TemplateStarted {
         result: std::result::Result<SessionInfo, SpawnErr>,
         req: NewRequest,
@@ -263,6 +274,7 @@ fn short_age(now: u64, since: u64) -> String {
 fn attention_target(view: &ViewState) -> Option<&str> {
     if view.sidebar_focus.is_some()
         || view.new_session.is_some()
+        || view.past_prompt.is_some()
         || view.palette.is_some()
         || view.qmenu.is_some()
         || view.perm_overlay_open()
@@ -448,6 +460,49 @@ struct App {
     fork_paste: HashMap<String, (String, Instant)>,
     template_ids: HashMap<String, bool>,
     remote: Remote,
+    past: Option<menu::State>,
+    past_busy: bool,
+    past_hold: Option<PastHold>,
+    past_resumes: HashSet<String>,
+    past_forks: HashSet<String>,
+}
+
+struct PastHold {
+    go: Go,
+    size: (u16, u16),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PastRoute {
+    Overlay,
+    Swallow,
+    Close,
+    Pass,
+}
+
+fn past_route(open: bool, confirm: bool, action: &Action) -> PastRoute {
+    if !open || confirm {
+        return PastRoute::Pass;
+    }
+    match action {
+        Action::Forward(_) | Action::Paste { .. } | Action::Drop(_) => PastRoute::Overlay,
+        Action::Mouse(_) | Action::Scroll(_) => PastRoute::Swallow,
+        Action::Cmd(Cmd::ResumePast) => PastRoute::Pass,
+        Action::Cmd(_) => PastRoute::Close,
+        Action::FocusIn | Action::FocusOut => PastRoute::Pass,
+    }
+}
+
+fn menu_agent(kind_id: &str) -> Option<&'static str> {
+    match kind_id {
+        "claude" => Some("claude-code"),
+        "codex" => Some("codex"),
+        _ => None,
+    }
+}
+
+fn dialog_agent(d: &NewSession) -> Option<&'static str> {
+    d.kinds.get(d.kind).and_then(|k| menu_agent(&k.id))
 }
 
 type ProbeJob = (String, u32, String);
@@ -636,6 +691,8 @@ impl App {
             } => self.on_spawned(id, result, &req, &target),
             Msg::Worktree(removal) => self.on_worktree(removal),
             Msg::Resumed { old, result } => self.on_resumed(&old, result),
+            Msg::PastPrepared { result, size } => self.on_past_prepared(result, size),
+            Msg::PastStarted { result, fork } => self.on_past_started(result, fork),
             Msg::TemplateStarted {
                 result,
                 req,
@@ -1771,6 +1828,10 @@ impl App {
         result: std::result::Result<RestoredRun, String>,
     ) {
         self.forking.remove(source);
+        let from_past = self.past_forks.remove(source);
+        if from_past {
+            self.past_busy = false;
+        }
         self.dirty = true;
         let info = match result {
             Ok(run) => run.session,
@@ -1782,9 +1843,17 @@ impl App {
         self.pending.insert(info.id.clone(), Instant::now());
         self.starts
             .insert(info.id.clone(), (info.cwd.clone(), info.child_pid));
-        let split = place_session(&mut self.view, source, Place::Right, &info.id);
-        self.fork_paste
-            .insert(info.id.clone(), (prefill, Instant::now()));
+        let target = match self.view.focused_session() {
+            Some(focused) if from_past && !self.view.panes().iter().any(|p| p == source) => {
+                focused.to_string()
+            }
+            _ => source.to_string(),
+        };
+        let split = place_session(&mut self.view, &target, Place::Right, &info.id);
+        if !prefill.is_empty() {
+            self.fork_paste
+                .insert(info.id.clone(), (prefill, Instant::now()));
+        }
         let name = sanitize_text(&info.name).into_owned();
         if split {
             self.notify(&format!("forked into {name} (conversation {conversation})"));
@@ -2218,10 +2287,15 @@ impl App {
                 match self.view.edit_new_session(&data) {
                     NewEdit::Submit(req) => self.begin_spawn(before, req),
                     NewEdit::Approve => self.approve_task(),
+                    NewEdit::ResumePast => {
+                        let kind = before.as_ref().and_then(dialog_agent);
+                        self.open_past(kind);
+                    }
                     _ => {}
                 }
                 self.sync_review();
             }
+            (Route::PastPrompt, Action::Forward(data)) => self.past_prompt_input(&data),
             (Route::Dialog, Action::Drop(data) | Action::Paste { data, .. }) => {
                 self.view.insert_new_session_text(&data);
             }
@@ -2385,6 +2459,10 @@ impl App {
 
     fn on_resumed(&mut self, old: &str, result: std::result::Result<RestoredRun, String>) {
         self.resuming.remove(old);
+        let from_past = self.past_resumes.remove(old);
+        if from_past {
+            self.past_busy = false;
+        }
         self.dirty = true;
         let run = match result {
             Ok(run) => run,
@@ -2404,7 +2482,11 @@ impl App {
         self.starts.remove(old);
         self.starts
             .insert(new.clone(), (info.cwd.clone(), info.child_pid));
+        let was_pane = self.view.panes().iter().any(|p| p == old);
         self.view.replace_session(old, &new);
+        if from_past && !was_pane {
+            self.show_past(&new);
+        }
         self.cache.remove(old);
         if let Some(size) = self.sent_sizes.remove(old) {
             self.sent_sizes.insert(new.clone(), size);
@@ -2412,6 +2494,281 @@ impl App {
         self.stopped.remove(old);
         self.watched = None;
         self.notify(&resumed_notice(&info.name, run.via.as_deref()));
+    }
+
+    fn past_size(&self, place: Place) -> (u16, u16) {
+        let target = self
+            .view
+            .focused_session()
+            .map(str::to_string)
+            .unwrap_or_default();
+        let content = layout(self.area(), &self.view)
+            .panes
+            .iter()
+            .find(|p| p.session == target)
+            .map(|p| p.content())
+            .unwrap_or_default();
+        spawn_size(content, place)
+    }
+
+    fn past_in_flight(&self) -> bool {
+        self.past_busy || self.past_hold.is_some()
+    }
+
+    fn open_past(&mut self, kind: Option<&str>) {
+        self.dirty = true;
+        if in_agent() {
+            return self.notify("not available inside an agent session");
+        }
+        if self.past_in_flight() {
+            return self.notify("a session is still starting");
+        }
+        self.leave_overlays();
+        self.view.confirm = None;
+        self.view.rename = None;
+        self.past = Some(menu::open_in_attach(kind));
+    }
+
+    fn past_input(&mut self, action: Action) {
+        self.dirty = true;
+        let Some(state) = self.past.as_mut() else {
+            return;
+        };
+        let fed = match action {
+            Action::Forward(data) => menu::feed_keys(state, &data),
+            Action::Paste { data, .. } | Action::Drop(data) => {
+                menu::feed_paste(state, &data);
+                menu::Fed::Stay
+            }
+            _ => return,
+        };
+        match fed {
+            menu::Fed::Stay => {}
+            menu::Fed::Close => self.past = None,
+            menu::Fed::Pick(pick) => {
+                self.past = None;
+                self.start_past(pick);
+            }
+        }
+    }
+
+    fn start_past(&mut self, pick: Option<menu::Pick>) {
+        self.dirty = true;
+        let Some(pick) = pick else {
+            return self.open_new_session();
+        };
+        if self.past_in_flight() {
+            return self.notify("a session is still starting");
+        }
+        match attach_past::shape(&pick) {
+            Shape::Resume => self.resume_past(&pick.id),
+            Shape::Fork => self.fork_past(pick.id),
+            Shape::External | Shape::ResumeFlagged => self.prepare_past(pick),
+        }
+    }
+
+    fn resume_past(&mut self, id: &str) {
+        if let Err(e) = tmgr_link::privileged::guard() {
+            return self.notify(&attach_past::spawn_notice(&attach_new::task_err(e)));
+        }
+        if !valid_session_id(id) {
+            return self.notify("not available for linked sessions");
+        }
+        let row = self.view.sessions.iter().find(|r| r.id == id);
+        match (resume_step(row, &self.resuming), row.is_some()) {
+            (ResumeStep::Start, _) => {
+                self.past_busy = true;
+                self.past_resumes.insert(id.to_string());
+                self.request_resume(id);
+            }
+            (ResumeStep::Notice(text), _) => self.notify(text),
+            (ResumeStep::Ignore, true) => self.notify("a session is still starting"),
+            (ResumeStep::Ignore, false) => self.notify("that session is no longer in the list"),
+        }
+    }
+
+    fn fork_past(&mut self, id: String) {
+        if !self.forking.insert(id.clone()) {
+            return self.notify("a session is still starting");
+        }
+        let size = self.past_size(Place::Right);
+        self.past_busy = true;
+        self.past_forks.insert(id.clone());
+        self.notify("forking…");
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let (result, conversation) = match attach_past::run_fork(&cfg, &id, size) {
+                Ok((run, conversation)) => (Ok(run), conversation),
+                Err(e) => (Err(attach_past::spawn_notice(&e)), String::new()),
+            };
+            let sent = tx.send(Msg::Forked {
+                source: id,
+                prefill: String::new(),
+                conversation,
+                result,
+            });
+            if let Err(mpsc::SendError(Msg::Forked {
+                result: Ok(run), ..
+            })) = sent
+            {
+                run_ladder(&cfg, &run.session.id, true, KILL_ONLY);
+            }
+        });
+    }
+
+    fn prepare_past(&mut self, pick: menu::Pick) {
+        let size = self.past_size(self.view.new_place.unwrap_or_default());
+        self.past_busy = true;
+        self.notify("checking the session…");
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let result = attach_past::prepare(&cfg, &pick);
+            let _ = tx.send(Msg::PastPrepared { result, size });
+        });
+    }
+
+    fn on_past_prepared(
+        &mut self,
+        result: std::result::Result<attach_past::Ready, SpawnErr>,
+        size: (u16, u16),
+    ) {
+        self.past_busy = false;
+        self.dirty = true;
+        match result {
+            Err(e) => self.notify(&attach_past::spawn_notice(&e)),
+            Ok(ready) => {
+                self.leave_overlays();
+                self.view.confirm = None;
+                self.view.rename = None;
+                self.past_hold = Some(PastHold { go: ready.go, size });
+                self.view
+                    .open_past_prompt(TypedPrompt::new(ready.lines, ready.ask));
+            }
+        }
+    }
+
+    fn past_prompt_input(&mut self, data: &[u8]) {
+        self.dirty = true;
+        let esc = !data.is_empty() && data.iter().all(|&b| b == 0x1b);
+        if !esc && !self.view.past_prompt_fits(self.area()) {
+            return self.notify("enlarge the terminal to read the whole warning");
+        }
+        match self.view.edit_past_prompt(data) {
+            PastEdit::Editing => {}
+            PastEdit::Cancel => {
+                self.past_hold = None;
+                self.notify("cancelled, nothing was started");
+            }
+            PastEdit::Mismatch => {
+                self.past_hold = None;
+                self.notify("confirmation did not match, nothing was started");
+            }
+            PastEdit::Confirmed => self.execute_past(),
+        }
+    }
+
+    fn cancel_past_prompt(&mut self) {
+        if self.view.past_prompt.take().is_some() {
+            self.past_hold = None;
+            self.notify("cancelled, nothing was started");
+        }
+    }
+
+    fn execute_past(&mut self) {
+        let Some(PastHold { go, size }) = self.past_hold.take() else {
+            return;
+        };
+        self.past_busy = true;
+        self.notify("starting…");
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        match go {
+            Go::External { query, plan, mode } => {
+                thread::spawn(move || {
+                    let fork = plan.fork;
+                    let result = attach_past::run_external(&cfg, &query, &plan, mode, size)
+                        .map_err(|e| attach_past::spawn_notice(&e));
+                    let sent = tx.send(Msg::PastStarted { result, fork });
+                    if let Err(mpsc::SendError(Msg::PastStarted {
+                        result: Ok(info), ..
+                    })) = sent
+                    {
+                        run_ladder(&cfg, &info.id, true, KILL_ONLY);
+                    }
+                });
+            }
+            Go::Tmgr {
+                session,
+                known,
+                mode,
+                no_sandbox,
+            } => {
+                let old = session.id.clone();
+                self.past_resumes.insert(old.clone());
+                self.resuming.insert(old.clone(), Instant::now());
+                thread::spawn(move || {
+                    let result = attach_past::run_tmgr_resume(
+                        &cfg,
+                        &session,
+                        known.as_deref(),
+                        mode,
+                        no_sandbox,
+                    )
+                    .map_err(|e| attach_past::spawn_notice(&e));
+                    let sent = tx.send(Msg::Resumed { old, result });
+                    if let Err(mpsc::SendError(Msg::Resumed {
+                        result: Ok(run), ..
+                    })) = sent
+                    {
+                        run_ladder(&cfg, &run.session.id, true, KILL_ONLY);
+                    }
+                });
+            }
+        }
+    }
+
+    fn show_past(&mut self, id: &str) {
+        if self.view.in_tab(id) {
+            return self.view.open(id);
+        }
+        let place = self.view.new_place.unwrap_or_default();
+        let target = self
+            .view
+            .focused_session()
+            .map(str::to_string)
+            .unwrap_or_default();
+        place_session(&mut self.view, &target, place, id);
+    }
+
+    fn on_past_started(&mut self, result: std::result::Result<SessionInfo, String>, fork: bool) {
+        self.past_busy = false;
+        self.dirty = true;
+        let info = match result {
+            Ok(info) => info,
+            Err(e) => return self.notify(&e),
+        };
+        if !self.view.sessions.iter().any(|r| r.id == info.id) {
+            self.view.sessions.extend(rows(std::slice::from_ref(&info)));
+        }
+        self.pending.insert(info.id.clone(), Instant::now());
+        self.starts
+            .insert(info.id.clone(), (info.cwd.clone(), info.child_pid));
+        let place = self.view.new_place.unwrap_or_default();
+        let target = self
+            .view
+            .focused_session()
+            .map(str::to_string)
+            .unwrap_or_default();
+        let split = place_session(&mut self.view, &target, place, &info.id);
+        let verb = if fork { "forked" } else { "resumed" };
+        let name = sanitize_text(&info.name).into_owned();
+        if place != Place::Replace && !split {
+            self.notify(&format!("{verb} {name}, no room for another pane"));
+        } else {
+            self.notify(&format!("{verb} {name}"));
+        }
     }
 
     fn begin_find(&mut self) -> Option<String> {
@@ -2550,6 +2907,7 @@ impl App {
         self.view.help = false;
         self.view.palette = None;
         self.view.new_session = None;
+        self.past = None;
         self.view.sidebar_focus = None;
         if self.view.scroll.take().is_some() {
             self.scroll_mode = false;
@@ -3206,7 +3564,8 @@ impl App {
             .iter()
             .filter(|a| matches!(a, Action::Forward(_)))
             .count();
-        let actions = if self.view.refuse_priv_batch(forwards) {
+        let confirming = self.past.as_ref().is_some_and(menu::State::confirming);
+        let actions = if self.view.refuse_priv_batch(forwards) || (confirming && forwards > 1) {
             self.dirty = true;
             actions
                 .into_iter()
@@ -3227,6 +3586,7 @@ impl App {
             if let Some((ask, prompt)) = self.worktree_offer.take() {
                 let shown = self.view.notice.as_deref() == Some(prompt.as_str());
                 let blocked = route(&self.view, &action) != Route::Other
+                    || self.past.is_some()
                     || self.view.new_session.is_some()
                     || self.view.palette.is_some()
                     || self.view.confirm.is_some()
@@ -3270,6 +3630,15 @@ impl App {
                     self.view.layout_offer = None;
                     self.view.layout_restore = None;
                 }
+            }
+            match past_route(self.past.is_some(), self.view.confirm.is_some(), &action) {
+                PastRoute::Overlay => {
+                    self.past_input(action);
+                    continue;
+                }
+                PastRoute::Swallow => continue,
+                PastRoute::Close => self.past = None,
+                PastRoute::Pass => {}
             }
             let routed = route(&self.view, &action);
             if routed != Route::Other {
@@ -3524,8 +3893,17 @@ impl App {
                 }
                 Action::Cmd(Cmd::NewSession) => {
                     self.view.pointer = None;
+                    self.cancel_past_prompt();
                     if self.view.new_session.take().is_none() {
                         self.open_new_session();
+                    }
+                }
+                Action::Cmd(Cmd::ResumePast) => {
+                    self.view.pointer = None;
+                    self.cancel_past_prompt();
+                    if self.past.take().is_none() {
+                        let kind = self.view.new_kind.as_deref().and_then(menu_agent);
+                        self.open_past(kind);
                     }
                 }
                 Action::Cmd(cmd) => {
@@ -3537,6 +3915,7 @@ impl App {
                     self.view.confirm = None;
                     self.view.rename = None;
                     self.view.new_session = None;
+                    self.cancel_past_prompt();
                     if cmd != Cmd::Notes {
                         if let Some(n) = self.view.notes.take() {
                             if n.unsaved {
@@ -3667,6 +4046,11 @@ impl App {
             }
         }
         self.report_attention(false);
+        if let Some(past) = self.past.as_mut() {
+            past.pump();
+            past.tick();
+            self.dirty = true;
+        }
         self.view.perm_clock(now_ms());
         if self.view.perm_tick() {
             self.dirty = true;
@@ -3830,11 +4214,18 @@ impl App {
             terminal.draw(|f| {
                 let screens = Screens(&self.cache);
                 render(f, &self.view, &screens);
+                if let Some(past) = &self.past {
+                    menu::draw_overlay(f, past);
+                    return;
+                }
                 let lay = layout(f.area(), &self.view);
                 if let Some(pos) = cursor(&self.view, &lay, &screens) {
                     f.set_cursor_position(pos);
                 }
             })?;
+            if let Some(past) = self.past.as_mut() {
+                past.mark_drawn();
+            }
             self.dirty = false;
             *last_draw = Instant::now();
         }
@@ -4434,13 +4825,18 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         fork_paste: HashMap::new(),
         template_ids: HashMap::new(),
         remote,
+        past: None,
+        past_busy: false,
+        past_hold: None,
+        past_resumes: HashSet::new(),
+        past_forks: HashSet::new(),
     };
     let flusher = crate::cmd::time::send::Background::start(cfg.dir.clone());
     let exit = event_loop(&mut app, &rx, &mut terminal);
     app.save_prefs();
     app.remote.shutdown();
     let cfg_now = app.cfg.clone();
-    let mut spawning = app.new_flow.is_spawning();
+    let mut spawning = app.new_flow.is_spawning() || app.past_busy;
     drain_creates(&mut app.creating, &mut spawning, &rx, CREATE_WAIT, |info| {
         run_ladder(&cfg_now, &info.id, true, KILL_ONLY)
     });
@@ -4523,7 +4919,14 @@ fn drain_creates(
                     discard(info);
                 }
             }
-            Ok(Msg::TaskPrepared { .. }) => *spawning = false,
+            Ok(Msg::TaskPrepared { .. } | Msg::PastPrepared { .. }) => *spawning = false,
+            Ok(Msg::Resumed { .. } | Msg::Forked { .. }) => *spawning = false,
+            Ok(Msg::PastStarted { result, .. }) => {
+                *spawning = false;
+                if let Ok(info) = result {
+                    discard(info);
+                }
+            }
             Ok(Msg::Spawned { result, req, .. }) => {
                 *spawning = false;
                 if let (Ok(info), true) = (result, registers_shell(&req)) {
@@ -4979,6 +5382,119 @@ mod tests {
         );
         assert!(start.elapsed() < Duration::from_secs(1));
         assert!(spawning);
+    }
+
+    #[test]
+    fn drain_kills_a_session_started_from_a_past_pick_and_stops_waiting() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        let mut spawning = true;
+        tx.send(Msg::PastStarted {
+            result: Ok(info("s1")),
+            fork: false,
+        })
+        .unwrap();
+        let mut killed = Vec::new();
+        drain_creates(
+            &mut HashMap::new(),
+            &mut spawning,
+            &rx,
+            Duration::from_secs(1),
+            |i| killed.push(i.id),
+        );
+        assert!(!spawning);
+        assert_eq!(killed, vec!["s1"]);
+    }
+
+    #[test]
+    fn drain_stops_waiting_for_a_failed_past_start_and_a_finished_prepare() {
+        for msg in [
+            Msg::PastStarted {
+                result: Err("no".into()),
+                fork: true,
+            },
+            Msg::PastPrepared {
+                result: Err(SpawnErr {
+                    message: "no".into(),
+                    hint: None,
+                }),
+                size: (80, 24),
+            },
+            Msg::Resumed {
+                old: "a".into(),
+                result: Err("no".into()),
+            },
+        ] {
+            let (tx, rx) = mpsc::sync_channel(8);
+            tx.send(msg).unwrap();
+            let mut spawning = true;
+            let mut killed = Vec::new();
+            drain_creates(
+                &mut HashMap::new(),
+                &mut spawning,
+                &rx,
+                Duration::from_secs(1),
+                |i| killed.push(i.id),
+            );
+            assert!(!spawning && killed.is_empty());
+        }
+    }
+
+    #[test]
+    fn the_overlay_takes_keys_pastes_and_drops_and_swallows_the_mouse() {
+        let key = Action::Forward(b"a".to_vec());
+        let paste = Action::Paste {
+            data: b"x".to_vec(),
+            start: true,
+            end: true,
+        };
+        for a in [key.clone(), paste, Action::Drop(b"/x".to_vec())] {
+            assert_eq!(past_route(true, false, &a), PastRoute::Overlay);
+            assert_eq!(past_route(false, false, &a), PastRoute::Pass);
+            assert_eq!(past_route(true, true, &a), PastRoute::Pass);
+        }
+        assert_eq!(
+            past_route(true, false, &Action::Scroll(ScrollKey::Up)),
+            PastRoute::Swallow
+        );
+        assert_eq!(past_route(true, false, &Action::FocusOut), PastRoute::Pass);
+    }
+
+    #[test]
+    fn any_command_but_the_toggle_closes_the_overlay() {
+        for cmd in [
+            Cmd::NewSession,
+            Cmd::Detach,
+            Cmd::Help,
+            Cmd::Palette,
+            Cmd::Stop,
+        ] {
+            assert_eq!(
+                past_route(true, false, &Action::Cmd(cmd)),
+                PastRoute::Close,
+                "{cmd:?}"
+            );
+            assert_eq!(past_route(false, false, &Action::Cmd(cmd)), PastRoute::Pass);
+        }
+        assert_eq!(
+            past_route(true, false, &Action::Cmd(Cmd::ResumePast)),
+            PastRoute::Pass
+        );
+    }
+
+    #[test]
+    fn dialog_kinds_map_to_the_menu_agents() {
+        assert_eq!(menu_agent("claude"), Some("claude-code"));
+        assert_eq!(menu_agent("codex"), Some("codex"));
+        for other in ["shell", "custom", "agent:foo", ""] {
+            assert_eq!(menu_agent(other), None);
+        }
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.open_new_session("/".into(), installed_kinds(), "/".into());
+        let mut d = v.new_session.clone().unwrap();
+        d.kind = d.kinds.iter().position(|k| k.id == "codex").unwrap();
+        assert_eq!(dialog_agent(&d), Some("codex"));
+        d.kind = d.kinds.iter().position(|k| k.id == "shell").unwrap();
+        assert_eq!(dialog_agent(&d), None);
     }
 
     #[test]
