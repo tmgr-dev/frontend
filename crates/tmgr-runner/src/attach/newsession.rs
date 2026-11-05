@@ -72,6 +72,7 @@ struct PrivPrompt {
     req: NewRequest,
     ask: PrivAsk,
     typed: String,
+    cleared: bool,
     seen: Cell<Option<Instant>>,
 }
 
@@ -477,6 +478,7 @@ impl NewSession {
                     req,
                     ask,
                     typed: String::new(),
+                    cleared: false,
                     seen: Cell::new(None),
                 });
             }
@@ -884,14 +886,15 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
             );
         }
         if y.saturating_add(1) < inner.bottom() {
-            put(
-                buf,
-                inner.x,
-                y + 1,
-                "Enter confirms, Esc goes back",
-                dim(),
-                inner.width,
-            );
+            let (text, style) = if p.cleared {
+                (
+                    "Type one key at a time; input was cleared.",
+                    Style::new().fg(colors().bad),
+                )
+            } else {
+                ("Enter confirms, Esc goes back", dim())
+            };
+            put(buf, inner.x, y + 1, text, style, inner.width);
         }
         return;
     }
@@ -1115,6 +1118,20 @@ impl ViewState {
             })
     }
 
+    pub fn refuse_priv_batch(&mut self, forwards: usize) -> bool {
+        let Some(p) = self
+            .new_session
+            .as_mut()
+            .and_then(|n| n.priv_prompt.as_mut())
+            .filter(|_| forwards > 1)
+        else {
+            return false;
+        };
+        p.typed.clear();
+        p.cleared = true;
+        true
+    }
+
     pub fn priv_prompt_fits(&self, area: Rect) -> bool {
         self.new_session
             .as_ref()
@@ -1239,8 +1256,10 @@ impl ViewState {
         let (c, used) = next_char(data);
         if data.is_empty() || used != data.len() {
             p.typed.clear();
+            p.cleared = true;
             return NewEdit::Editing;
         }
+        p.cleared = false;
         match data[0] {
             b'\r' | b'\n' => {
                 let Some(p) = ns.priv_prompt.take() else {
@@ -2534,7 +2553,15 @@ mod tests {
         let mut split = crate::attach::InputSplitter::new();
         let mut out = Vec::new();
         for read in reads {
-            for action in split.feed(read) {
+            let actions = split.feed(read);
+            let forwards = actions
+                .iter()
+                .filter(|a| matches!(a, crate::attach::Action::Forward(_)))
+                .count();
+            if v.refuse_priv_batch(forwards) {
+                continue;
+            }
+            for action in actions {
                 if let crate::attach::Action::Forward(d) = action {
                     if v.new_session.is_some() {
                         out.push(v.edit_new_session(&d));
@@ -2543,6 +2570,34 @@ mod tests {
             }
         }
         out
+    }
+
+    #[test]
+    fn after_the_delay_one_read_split_by_events_is_refused_and_says_so() {
+        let h = tmp();
+        let one_read: &[u8] =
+            b"n\x1b[Io\x1b[I-\x1b[Is\x1b[Ia\x1b[In\x1b[Id\x1b[Ib\x1b[Io\x1b[Ix\x1b[I\r";
+        let mut v = prompt_view(h.path(), 0, true);
+        ready(&v);
+        let out = replay(&mut v, &[b"n", one_read]);
+        assert!(out.iter().all(|e| !matches!(e, NewEdit::Submit(_))));
+        assert!(ns(&mut v).priv_prompt_open());
+        let shown = draw(&v, 76, 14);
+        assert!(shown.contains("input was cleared"));
+        assert!(!shown.contains("> n"));
+        let out = replay(&mut v, &[b"x"]);
+        assert!(out.iter().all(|e| !matches!(e, NewEdit::Submit(_))));
+        assert!(!draw(&v, 76, 14).contains("input was cleared"));
+    }
+
+    #[test]
+    fn a_coalesced_chunk_clears_the_line_with_a_visible_note() {
+        let h = tmp();
+        let mut v = prompt_view(h.path(), 0, false);
+        keys(&mut v, "byp");
+        assert_eq!(v.edit_new_session(b"s\r"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open() && ns(&mut v).bypass);
+        assert!(draw(&v, 76, 14).contains("Type one key at a time; input was cleared."));
     }
 
     #[test]

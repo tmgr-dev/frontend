@@ -3132,6 +3132,19 @@ impl App {
     }
 
     fn handle(&mut self, actions: Vec<Action>) -> io::Result<Option<Exit>> {
+        let forwards = actions
+            .iter()
+            .filter(|a| matches!(a, Action::Forward(_)))
+            .count();
+        let actions = if self.view.refuse_priv_batch(forwards) {
+            self.dirty = true;
+            actions
+                .into_iter()
+                .filter(|a| !matches!(a, Action::Forward(_)))
+                .collect()
+        } else {
+            actions
+        };
         self.view.perm_clock(now_ms());
         let user_action = actions.iter().any(|a| is_user_action(&self.view, a));
         if user_action {
