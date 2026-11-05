@@ -2,6 +2,7 @@ import { isSubmitKey, mapKey, type KeyContext } from '../keys';
 
 const ctx = (over: Partial<KeyContext> = {}): KeyContext => ({
 	typing: false,
+	nativeEnter: false,
 	optionCount: 3,
 	hasRecommended: true,
 	canAnswer: true,
@@ -20,6 +21,17 @@ describe('mapKey', () => {
 			withNote: true,
 		});
 		expect(mapKey({ key: 'Enter' }, ctx({ hasRecommended: false }))).toBeNull();
+	});
+
+	it('Enter on a focused link or button never answers, with or without Shift', () => {
+		const native = ctx({ nativeEnter: true });
+		expect(mapKey({ key: 'Enter' }, native)).toBeNull();
+		expect(mapKey({ key: 'Enter', shiftKey: true }, native)).toBeNull();
+		expect(mapKey({ key: '2', code: 'Digit2' }, native)).toEqual({
+			type: 'pick',
+			index: 1,
+			withNote: false,
+		});
 	});
 
 	it('digits pick an option within range; Shift opens the note', () => {

@@ -20,6 +20,7 @@ export interface KeyInput {
 
 export interface KeyContext {
 	typing: boolean;
+	nativeEnter: boolean;
 	optionCount: number;
 	hasRecommended: boolean;
 	canAnswer: boolean;
@@ -40,6 +41,7 @@ export const mapKey = (
 	if (event.metaKey || event.ctrlKey || event.altKey) return null;
 	const shift = Boolean(event.shiftKey);
 	if (event.key === 'Enter') {
+		if (context.nativeEnter) return null;
 		return context.canAnswer && context.hasRecommended
 			? { type: 'accept', withNote: shift }
 			: null;
@@ -73,4 +75,26 @@ export const mapKey = (
 			return context.canDismiss ? { type: 'dismiss' } : null;
 	}
 	return null;
+};
+
+const NATIVE_ENTER = 'a[href], button, [role="button"], summary, select';
+
+export interface KeyEventLike extends KeyInput {
+	target: EventTarget | null;
+	defaultPrevented: boolean;
+}
+
+export const resolveKey = (
+	event: KeyEventLike,
+	context: Omit<KeyContext, 'typing' | 'nativeEnter'>,
+): KeyAction | null => {
+	if (event.defaultPrevented) return null;
+	const el = event.target as HTMLElement | null;
+	const typing =
+		!!el &&
+		(el.tagName === 'TEXTAREA' ||
+			el.tagName === 'INPUT' ||
+			el.isContentEditable);
+	const nativeEnter = !!el?.closest?.(NATIVE_ENTER);
+	return mapKey(event, { ...context, typing, nativeEnter });
 };

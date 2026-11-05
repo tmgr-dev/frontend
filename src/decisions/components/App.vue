@@ -169,7 +169,7 @@
 		type DiffTotals,
 		type RequestSeqs,
 	} from '../diff';
-	import { mapKey } from '../keys';
+	import { resolveKey } from '../keys';
 	import {
 		buildQueue,
 		flattenQueue,
@@ -448,15 +448,9 @@
 			},
 			onKeydown(event: KeyboardEvent) {
 				const target = document.activeElement as HTMLElement | null;
-				const typing =
-					!!target &&
-					(target.tagName === 'TEXTAREA' ||
-						target.tagName === 'INPUT' ||
-						target.isContentEditable);
 				const card = this.current;
 				const mode = card ? cardMode(card) : 'final';
-				const action = mapKey(event, {
-					typing,
+				const action = resolveKey(event, {
 					optionCount: card?.options.length ?? 0,
 					hasRecommended: card ? recommendedOption(card) !== null : false,
 					canAnswer: mode === 'answer',
