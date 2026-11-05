@@ -176,6 +176,8 @@ pub struct TeamState {
     pub rejected: Option<String>,
     #[serde(default)]
     pub rejections: u8,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub lead_bases: BTreeMap<String, String>,
 }
 
 impl TeamState {
@@ -193,6 +195,7 @@ impl TeamState {
             lead_exit_noted: false,
             rejected: None,
             rejections: 0,
+            lead_bases: BTreeMap::new(),
         }
     }
 

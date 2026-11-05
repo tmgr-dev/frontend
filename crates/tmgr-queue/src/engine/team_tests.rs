@@ -1620,3 +1620,62 @@ fn a_failed_delivery_in_a_later_repository_removes_the_branches_already_imported
     let told = fx.runs.sent.borrow().last().cloned().unwrap();
     assert!(told.1.contains("w1 did not finish cleanly"), "{}", told.1);
 }
+
+fn move_source_on(repo: &str) {
+    let dir = Path::new(repo);
+    commit_in(dir, "moved.txt");
+}
+
+#[test]
+fn a_source_that_moved_after_the_lead_was_cloned_still_delivers_to_the_lead() {
+    let fx = team_fx(2);
+    move_source_on(&fx.repo);
+    plan(&fx, two_briefs());
+    idle(&fx, "mock-1");
+    fx.pass().unwrap();
+    let t1 = commit_in(Path::new(&worker_cwd(&fx, 1)), "api.txt");
+    let t2 = commit_in(Path::new(&worker_cwd(&fx, 2)), "ui.txt");
+    finish_workers(&fx);
+    assert_eq!(fx.audit_events("team_import_failed"), 0);
+    let lead = lead_cwd(&fx);
+    let lead = Path::new(&lead);
+    squash_into(lead, &t1);
+    squash_into(lead, &t2);
+    git_in(lead, &["fsck", "--full", "--strict"]);
+}
+
+#[test]
+fn a_multi_repo_source_that_moved_after_the_lead_was_cloned_still_delivers_to_the_lead() {
+    let (fx, second) = team_multi_fx(2);
+    move_source_on(&fx.repo);
+    move_source_on(&second);
+    plan(&fx, two_briefs());
+    idle(&fx, "mock-1");
+    fx.pass().unwrap();
+    let (w1, w2) = (worker_cwd(&fx, 1), worker_cwd(&fx, 2));
+    let b1 = commit_in(&Path::new(&w1).join("backend"), "api1.txt");
+    let f2 = commit_in(&Path::new(&w2).join("frontend"), "ui2.txt");
+    finish_workers(&fx);
+    assert_eq!(fx.audit_events("team_import_failed"), 0);
+    let lead = lead_cwd(&fx);
+    let (back, front) = (
+        Path::new(&lead).join("backend"),
+        Path::new(&lead).join("frontend"),
+    );
+    squash_into(&back, &b1);
+    squash_into(&front, &f2);
+    git_in(&back, &["fsck", "--full", "--strict"]);
+    git_in(&front, &["fsck", "--full", "--strict"]);
+}
+
+#[test]
+fn a_team_state_without_lead_bases_loads_and_serializes_without_them() {
+    let fx = working_team();
+    let t = team(&fx);
+    assert!(!t.lead_bases.is_empty());
+    let mut v = serde_json::to_value(&t).unwrap();
+    assert!(v.as_object_mut().unwrap().remove("lead_bases").is_some());
+    let back: state::TeamState = serde_json::from_value(v).unwrap();
+    assert!(back.lead_bases.is_empty());
+    assert!(!serde_json::to_string(&back).unwrap().contains("lead_bases"));
+}

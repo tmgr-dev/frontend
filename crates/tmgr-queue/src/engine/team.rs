@@ -781,6 +781,7 @@ fn import_clones(
     plans: &[ClonePlan],
     m: &Member,
     lead: &Path,
+    lead_bases: &std::collections::BTreeMap<String, String>,
 ) -> std::result::Result<Vec<(String, String)>, String> {
     let mut found: Vec<(String, String)> = Vec::new();
     let mut before: Vec<Option<String>> = Vec::new();
@@ -806,7 +807,13 @@ fn import_clones(
         };
         match crate::workdir::import_branch(&plan.path, &dir, &m.branch) {
             Ok(sha) if is_sha(&sha) => {
-                let delivered = deliver(&plan.path, &lead.join(&c.name), c.base.as_deref(), &sha);
+                let base = lead_bases.get(&c.name).or(c.base.as_ref());
+                let delivered = deliver(
+                    &plan.path,
+                    &lead.join(&c.name),
+                    base.map(String::as_str),
+                    &sha,
+                );
                 found.push((c.name.clone(), sha));
                 before.push(old);
                 if let Err(e) = delivered {
@@ -897,7 +904,13 @@ fn integrating(
                 failed.push(k);
                 continue;
             }
-            match import_clones(deps, plans, m, Path::new(&p.bundle.launch.cwd)) {
+            match import_clones(
+                deps,
+                plans,
+                m,
+                Path::new(&p.bundle.launch.cwd),
+                &t.lead_bases,
+            ) {
                 Ok(found) => tips.extend(found.into_iter().map(|(name, sha)| Tip {
                     worker: k,
                     name: Some(name),
@@ -922,7 +935,7 @@ fn integrating(
                 match deliver(
                     &rule.repos[0],
                     Path::new(&p.bundle.launch.cwd),
-                    m.base.as_deref(),
+                    t.lead_bases.get("").or(m.base.as_ref()).map(String::as_str),
                     &sha,
                 ) {
                     Ok(()) => tips.push(Tip {

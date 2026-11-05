@@ -1224,6 +1224,29 @@ fn start_phase(
             pass.event(&p, "failed");
             continue;
         }
+        if lead_model.is_some() {
+            let branch = p
+                .cloud
+                .as_ref()
+                .map_or_else(|| branch_name(&id), |c| c.branch.clone());
+            let dir = std::path::Path::new(&cwd);
+            let bases: std::collections::BTreeMap<String, String> = match &plans {
+                Some(Ok(plans)) => plans
+                    .iter()
+                    .filter_map(|c| {
+                        crate::workdir::clone_tip(&dir.join(&c.name), &branch)
+                            .map(|sha| (c.name.clone(), sha))
+                    })
+                    .collect(),
+                _ => crate::workdir::clone_tip(dir, &branch)
+                    .map(|sha| (String::new(), sha))
+                    .into_iter()
+                    .collect(),
+            };
+            if let Some(t) = pass.state.pickups[i].team.as_mut() {
+                t.lead_bases = bases;
+            }
+        }
         let pin_now = match lead_model {
             Some(model) => team::member_pin(rule, p.cloud.is_some(), deps, model, &pin).ok(),
             None => pin_of(rule, p.cloud.is_some(), deps).ok(),
