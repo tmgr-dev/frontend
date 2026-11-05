@@ -1081,7 +1081,7 @@ fn the_queue_runs_in_a_clone_not_in_the_repository() {
     fx.run(&["queue", "run-once"]);
     let clone = fx.tmp.path().join("repo-worktrees/queue").join(&id);
     assert!(clone.join("README.md").is_file());
-    assert!(clone.join(".git/objects/info/alternates").is_file());
+    assert!(!clone.join(".git/objects/info/alternates").exists());
 }
 
 #[test]
@@ -2091,10 +2091,10 @@ fn a_team_plans_works_integrates_and_ends_with_every_member_exited() {
             .unwrap_or_else(|| panic!("no session for {dir}"));
         assert_eq!(s.team.as_ref().unwrap().of, id);
         assert_eq!(std::path::Path::new(&s.cwd), team_dir.join(dir));
-        assert!(team_dir
+        assert!(!team_dir
             .join(dir)
             .join(".git/objects/info/alternates")
-            .is_file());
+            .exists());
         seen.push(s.cwd.clone());
     }
     seen.sort();

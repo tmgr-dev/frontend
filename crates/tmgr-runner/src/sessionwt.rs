@@ -100,10 +100,10 @@ fn locate(cwd: &Path) -> Result<(PathBuf, String), String> {
         ));
     }
     if repo
-        .parent()
-        .and_then(Path::file_name)
-        .and_then(|n| n.to_str())
-        .is_some_and(|n| n.ends_with("-worktrees"))
+        .ancestors()
+        .skip(1)
+        .filter_map(Path::file_name)
+        .any(|n| n.to_string_lossy().ends_with("-worktrees"))
     {
         return Err(format!(
             "{} is itself a task clone; start the session from the original repository",
@@ -644,6 +644,25 @@ mod tests {
         let err = create(&s.path, Some("second"), "c", &[]).unwrap_err();
         assert!(err.contains("task clone"), "{err}");
         assert!(!fx.root.join("proj-worktrees/second").exists());
+    }
+
+    #[test]
+    fn a_queue_clone_deep_under_the_worktrees_folder_cannot_be_a_source() {
+        let fx = fixture();
+        let queue = fx.root.join("proj-worktrees/queue");
+        fs::create_dir_all(&queue).unwrap();
+        let clone = queue.join("q1");
+        git(
+            &fx.root,
+            &[
+                "clone",
+                "-q",
+                fx.repo.to_str().unwrap(),
+                clone.to_str().unwrap(),
+            ],
+        );
+        let err = create(&clone, Some("fromqueue"), "c", &[]).unwrap_err();
+        assert!(err.contains("task clone"), "{err}");
     }
 
     #[test]

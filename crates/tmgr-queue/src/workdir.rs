@@ -2828,7 +2828,11 @@ mod tests {
         run_git(&repo, &["reset", "-q", "--hard", &init]);
         run_git(&repo, &["reflog", "expire", "--expire=now", "--all"]);
         run_git(&repo, &["gc", "-q", "--prune=now"]);
-        assert!(git(Some(&repo), &["cat-file", "-e", &format!("{base}^{{commit}}")]).is_err());
+        assert!(git(
+            Some(&repo),
+            &["cat-file", "-e", &format!("{base}^{{commit}}")]
+        )
+        .is_err());
         deliver_commits(&repo, &lead, &base, &tip).unwrap();
         run_git(&lead, &["cat-file", "-e", &format!("{tip}^{{commit}}")]);
         run_git(&lead, &["rev-list", "--objects", "--quiet", &tip]);
