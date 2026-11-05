@@ -1261,6 +1261,7 @@ fn stop_builds_a_stopped_card_without_the_message_when_consent_is_off() {
     let st = stand();
     let fake = serve(&st, silent());
     let repo = init_repo(&st.home.path().join("proj"));
+    std::fs::write(repo.join("README.md"), "changed\n").unwrap();
     let (out, took) = hook(&st, "stop", &stop_input(&repo, "SECRET SUMMARY"), &[]);
     quiet(&out);
     assert!(took < Duration::from_secs(3), "{took:?}");
@@ -1334,9 +1335,42 @@ fn notifications_become_cards_by_type() {
     }
     let cards = fake.created();
     let kinds: Vec<&str> = cards.iter().map(|c| c["kind"].as_str().unwrap()).collect();
-    assert_eq!(kinds, ["permission", "question", "question", "question"]);
+    assert_eq!(kinds, ["permission", "question", "question"]);
     assert_eq!(cards[0]["question"], "Claude needs you");
     assert_eq!(cards[0]["supersede"], true);
+}
+
+#[test]
+fn stock_and_idle_notifications_make_no_card() {
+    let st = stand();
+    let fake = serve(&st, silent());
+    let cwd = project_dir(&st, "p");
+    for (t, m) in [
+        ("idle_prompt", "Claude is waiting for your input"),
+        ("agent_needs_input", "Claude is waiting for your input"),
+        ("elicitation_dialog", ""),
+    ] {
+        let input = json!({"session_id": "s", "cwd": cwd, "hook_event_name": "Notification", "notification_type": t, "message": m});
+        quiet(&hook(&st, "notification", input.to_string().as_bytes(), &[]).0);
+    }
+    assert!(fake.created().is_empty());
+}
+
+#[test]
+fn stop_without_text_makes_a_card_only_when_the_tree_is_dirty() {
+    let st = stand();
+    let fake = serve(&st, silent());
+    let plain = project_dir(&st, "plain");
+    quiet(&hook(&st, "stop", &stop_input(&plain, ""), &[]).0);
+    let repo = init_repo(&st.home.path().join("proj"));
+    quiet(&hook(&st, "stop", &stop_input(&repo, "  "), &[]).0);
+    assert!(fake.created().is_empty());
+    std::fs::write(repo.join("new.txt"), "x").unwrap();
+    quiet(&hook(&st, "stop", &stop_input(&repo, ""), &[]).0);
+    let cards = fake.created();
+    assert_eq!(cards.len(), 1);
+    assert_eq!(cards[0]["kind"], "stopped");
+    assert_eq!(cards[0]["diff"]["repo"], repo.display().to_string());
 }
 
 #[test]

@@ -697,7 +697,16 @@ fn hook_card(kind: &str, title: String, source: Source) -> CardIn {
     }
 }
 
-pub fn stop_card(cwd: &Path, session: Option<&str>, message: Option<&str>, git: bool) -> CardIn {
+pub fn stop_card(
+    cwd: &Path,
+    session: Option<&str>,
+    message: Option<&str>,
+    has_text: bool,
+    git: bool,
+) -> Option<CardIn> {
+    if !has_text && !git {
+        return None;
+    }
     let mut card = hook_card(
         "stopped",
         format!("{} finished", project_name(cwd)),
@@ -713,23 +722,37 @@ pub fn stop_card(cwd: &Path, session: Option<&str>, message: Option<&str>, git: 
             head: None,
         });
     }
-    card
+    Some(card)
+}
+
+const STOCK_PHRASES: [&str; 4] = [
+    "claude is waiting for your input",
+    "claude needs your permission",
+    "claude needs your attention",
+    "claude needs your input",
+];
+
+fn is_stock_text(message: &str) -> bool {
+    let lower = message.trim().to_lowercase();
+    STOCK_PHRASES.iter().any(|p| lower.starts_with(p))
 }
 
 pub fn notification_card(input: &Value, cwd: &Path, session: Option<&str>) -> Option<CardIn> {
     let (kind, headline) = match input.get("notification_type")?.as_str()? {
         "permission_prompt" => ("permission", "needs permission"),
-        "idle_prompt" | "agent_needs_input" | "elicitation_dialog" => ("question", "needs input"),
+        "agent_needs_input" | "elicitation_dialog" => ("question", "needs input"),
         _ => return None,
     };
+    let message = input.get("message").and_then(Value::as_str);
+    if kind == "question" && message.is_none_or(|m| m.trim().is_empty() || is_stock_text(m)) {
+        return None;
+    }
     let mut card = hook_card(
         kind,
         format!("{}: {headline}", project_name(cwd)),
         hook_source(cwd, session),
     );
-    card.question = input
-        .get("message")
-        .and_then(Value::as_str)
+    card.question = message
         .filter(|m| !m.trim().is_empty())
         .map(|m| truncate(m, MAX_TEXT));
     Some(card)
@@ -861,18 +884,57 @@ mod tests {
 
     #[test]
     fn stop_card_context_and_diff() {
-        let card = stop_card(Path::new("/w/proj"), Some("sess"), Some("done"), true);
+        let card = stop_card(Path::new("/w/proj"), Some("sess"), Some("done"), true, true).unwrap();
         assert_eq!(card.kind, "stopped");
         assert_eq!(card.title, "proj finished");
         assert_eq!(card.context.as_deref(), Some("done"));
         assert_eq!(card.diff.as_ref().unwrap().base.as_deref(), Some("HEAD"));
         assert!(card.supersede && card.reply_via == "hook");
         assert_eq!(card.source.session.as_deref(), Some("sess"));
-        let card = stop_card(Path::new("/w/proj"), None, None, false);
+        let card = stop_card(Path::new("/w/proj"), None, None, true, false).unwrap();
         assert!(card.context.is_none() && card.diff.is_none());
         let big = "x".repeat(HOOK_CONTEXT * 2);
-        let card = stop_card(Path::new("/w/proj"), None, Some(&big), false);
+        let card = stop_card(Path::new("/w/proj"), None, Some(&big), true, false).unwrap();
         assert_eq!(card.context.unwrap().len(), HOOK_CONTEXT);
+    }
+
+    #[test]
+    fn stop_without_text_and_changes_makes_no_card() {
+        let p = Path::new("/w/proj");
+        assert!(stop_card(p, None, None, false, false).is_none());
+        assert!(stop_card(p, None, None, true, false).is_some());
+        assert!(stop_card(p, None, None, false, true).is_some());
+    }
+
+    #[test]
+    fn idle_prompt_makes_no_card() {
+        let n = json!({"notification_type": "idle_prompt", "message": "Claude is waiting for your input"});
+        assert!(notification_card(&n, Path::new("/w/p"), None).is_none());
+        let n = json!({"notification_type": "idle_prompt", "message": "Which one?"});
+        assert!(notification_card(&n, Path::new("/w/p"), None).is_none());
+    }
+
+    #[test]
+    fn question_notifications_need_real_text() {
+        for t in ["agent_needs_input", "elicitation_dialog"] {
+            for m in [
+                json!(null),
+                json!(""),
+                json!("  "),
+                json!("Claude is waiting for your input"),
+                json!("claude is waiting for your input."),
+                json!("Claude needs your permission to use Bash"),
+            ] {
+                let n = json!({"notification_type": t, "message": m});
+                assert!(
+                    notification_card(&n, Path::new("/w/p"), None).is_none(),
+                    "{t} {m}"
+                );
+            }
+            let n = json!({"notification_type": t, "message": "Pick a database"});
+            let card = notification_card(&n, Path::new("/w/p"), None).unwrap();
+            assert_eq!(card.question.as_deref(), Some("Pick a database"));
+        }
     }
 
     #[test]
@@ -885,7 +947,7 @@ mod tests {
             )
         };
         assert_eq!(n("permission_prompt").unwrap().kind, "permission");
-        assert_eq!(n("idle_prompt").unwrap().kind, "question");
+        assert!(n("idle_prompt").is_none());
         assert_eq!(n("agent_needs_input").unwrap().kind, "question");
         assert_eq!(n("elicitation_dialog").unwrap().kind, "question");
         assert!(n("auth_success").is_none());

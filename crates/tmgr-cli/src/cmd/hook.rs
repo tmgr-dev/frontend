@@ -704,11 +704,16 @@ fn decisions_work(event: &str) {
         }
         "stop" => {
             let env = tmgr_usage::paths::Env::from_process();
+            let last = str_of(&input, "last_assistant_message");
+            let has_text = last.is_some_and(|m| !m.trim().is_empty());
             let message = tmgr_usage::consent::granted_read_only(&env, tmgr_usage::Tool::Claude)
-                .then(|| str_of(&input, "last_assistant_message"))
+                .then_some(last)
                 .flatten();
-            let git = git_out(&cwd, &["rev-parse", "--is-inside-work-tree"]).is_some();
-            cards::stop_card(&cwd, session, message, git)
+            let git = crate::gitx::Git::at(&cwd).is_dirty().unwrap_or(false);
+            match cards::stop_card(&cwd, session, message, has_text, git) {
+                Some(c) => c,
+                None => return,
+            }
         }
         "notification" => match cards::notification_card(&input, &cwd, session) {
             Some(c) => c,
