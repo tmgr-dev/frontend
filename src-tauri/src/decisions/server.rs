@@ -92,7 +92,11 @@ fn peer_alive(stream: &UnixStream) -> bool {
   let n = unsafe {
     libc::recv(stream.as_raw_fd(), (&mut byte as *mut u8).cast(), 1, libc::MSG_PEEK | libc::MSG_DONTWAIT)
   };
-  n != 0 && (n > 0 || io::Error::last_os_error().kind() == io::ErrorKind::WouldBlock)
+  recv_alive(n, io::Error::last_os_error().raw_os_error().unwrap_or(0))
+}
+
+fn recv_alive(n: isize, errno: i32) -> bool {
+  n != 0 && (n > 0 || !matches!(errno, libc::ECONNRESET | libc::ECONNABORTED | libc::EPIPE | libc::ENOTCONN))
 }
 
 fn dispatch(hub: &Arc<Hub>, op: Op, stream: &UnixStream) -> Response {
@@ -278,6 +282,41 @@ mod tests {
       assert!(t.elapsed() < Duration::from_secs(10), "still listening after the client left");
       std::thread::sleep(Duration::from_millis(50));
     }
+  }
+
+  #[test]
+  fn only_eof_and_connection_errors_count_as_a_dead_peer() {
+    assert!(recv_alive(1, 0));
+    assert!(recv_alive(-1, libc::EAGAIN));
+    assert!(recv_alive(-1, libc::EINTR));
+    assert!(recv_alive(-1, libc::ENOMEM));
+    assert!(!recv_alive(0, 0));
+    for errno in [libc::ECONNRESET, libc::ECONNABORTED, libc::EPIPE, libc::ENOTCONN] {
+      assert!(!recv_alive(-1, errno), "{errno}");
+    }
+  }
+
+  #[test]
+  fn a_live_idle_client_keeps_listening_past_several_alive_steps() {
+    let r = rig();
+    let c = Client::open_in(&r.dir).unwrap();
+    let id = c.create(card("Ship?")).unwrap();
+    let tok = std::fs::read_to_string(r.dir.join(TOKEN)).unwrap();
+    let line = format!(
+      r#"{{"v":1,"token":"{}","op":"wait","card_id":"{id}","since":0,"timeout_ms":30000,"final_only":false}}"#,
+      tok.trim()
+    );
+    let mut s = UnixStream::connect(r.dir.join(SOCK)).unwrap();
+    s.write_all(line.as_bytes()).unwrap();
+    s.write_all(b"\n").unwrap();
+    let t = Instant::now();
+    while !r.hub.get(&id).unwrap().listening {
+      assert!(t.elapsed() < Duration::from_secs(5), "never listening");
+      std::thread::sleep(Duration::from_millis(10));
+    }
+    std::thread::sleep(Duration::from_millis(2500));
+    assert!(r.hub.get(&id).unwrap().listening);
+    drop(s);
   }
 
   #[test]
