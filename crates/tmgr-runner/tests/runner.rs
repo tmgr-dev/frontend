@@ -3739,7 +3739,7 @@ fn reclone_clears_shared_object_files() {
     let mut desktop = Client::connect_as(&fx.h.run, "desktop").unwrap();
     let mut req = fx.h.run_req("fake");
     req.cwd = fx.folder.display().to_string();
-    assert!(err_text(desktop.create_run(req.clone())).contains("git clone --no-local"));
+    assert!(err_text(desktop.create_run(req.clone())).contains("git gc --prune=now"));
     let fresh = fx.folder.parent().unwrap().join("fresh");
     git_in(
         fx.folder.parent().unwrap(),

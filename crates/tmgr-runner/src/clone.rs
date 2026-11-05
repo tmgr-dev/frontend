@@ -352,8 +352,9 @@ fn check_stores_within(cwd: &Dir, budget: usize) -> Result<(), Refusal> {
         Ok(()) => Ok(()),
         Err(Stop::Shared(p)) => Err(refused(format!(
             "{} has object files that are also linked from another place, so a sandboxed session could change them there; \
-             re-clone the repository with `git clone --no-local <repository> <new folder>` (uncommitted changes and stashes are not carried over) \
-             or start the session in another folder. tmgr leaves the folder as it is",
+             run `git gc --prune=now` and then `git commit-graph write --reachable` in it (this does not clear a pack marked with a .keep file); \
+             if it is still refused, re-clone the repository with `git clone --no-local <repository> <new folder>` (uncommitted changes and stashes are not carried over). \
+             tmgr leaves the folder as it is",
             p.display()
         ))),
         Err(Stop::Unchecked(p)) => Err(refused(format!(
@@ -726,6 +727,70 @@ mod tests {
         assert!(msg.contains(dest.to_str().unwrap()), "{msg}");
         assert!(msg.contains("git clone --no-local"), "{msg}");
         assert!(linked_files(&dest) > 0);
+    }
+
+    #[test]
+    fn in_place_steps_clear_shared_object_files_in_every_state() {
+        type State = (&'static str, fn(&Path));
+        let states: [State; 4] = [
+            ("amend", |d| {
+                git(d, &["commit", "-q", "--amend", "-m", "again"]);
+            }),
+            ("stash", |d| {
+                std::fs::write(d.join("a.txt"), "changed\n").unwrap();
+                git(d, &["stash", "-q"]);
+            }),
+            ("dangling", |d| {
+                std::fs::write(d.join("blob"), "dangling\n").unwrap();
+                git(d, &["hash-object", "-w", "blob"]);
+            }),
+            ("plain", |_| {}),
+        ];
+        for (name, state) in states {
+            let (_t, root, repo) = fixture();
+            git(&repo, &["commit-graph", "write", "--split", "--reachable"]);
+            let dest = root.join(name);
+            plain_clone(&repo, &dest);
+            state(&dest);
+            refusal_of(&dest);
+            git(&dest, &["gc", "-q", "--prune=now"]);
+            git(&dest, &["commit-graph", "write", "--reachable"]);
+            assert_eq!(linked_files(&dest), 0, "{name}");
+            accepted(&dest);
+            git(&dest, &["fsck"]);
+        }
+    }
+
+    #[test]
+    fn a_shared_commit_graph_chain_alone_is_cleared_in_place() {
+        let (_t, root, repo) = fixture();
+        git(&repo, &["commit-graph", "write", "--split", "--reachable"]);
+        let dest = root.join("copy");
+        git(
+            &root,
+            &[
+                "clone",
+                "-q",
+                "--no-local",
+                repo.to_str().unwrap(),
+                dest.to_str().unwrap(),
+            ],
+        );
+        accepted(&dest);
+        let graphs = dest.join(".git/objects/info/commit-graphs");
+        std::fs::create_dir_all(&graphs).unwrap();
+        for e in std::fs::read_dir(repo.join(".git/objects/info/commit-graphs"))
+            .unwrap()
+            .flatten()
+        {
+            std::fs::hard_link(e.path(), graphs.join(e.file_name())).unwrap();
+        }
+        assert!(linked_files(&dest) > 0);
+        refusal_of(&dest);
+        git(&dest, &["gc", "-q", "--prune=now"]);
+        git(&dest, &["commit-graph", "write", "--reachable"]);
+        assert_eq!(linked_files(&dest), 0);
+        accepted(&dest);
     }
 
     #[test]

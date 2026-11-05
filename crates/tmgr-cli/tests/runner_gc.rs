@@ -279,6 +279,7 @@ fn clone_with_commit(root: &Path, repo: &Path, copy: &Path, branch: &str) -> Str
         &[
             "clone",
             "-q",
+            "--no-local",
             repo.to_str().unwrap(),
             copy.to_str().unwrap(),
         ],
