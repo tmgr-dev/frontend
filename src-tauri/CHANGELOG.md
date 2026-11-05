@@ -3,6 +3,14 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.102 — 2026-11-05
+
+- Decisions: long facts, questions and chips wrap inside the card instead of overflowing it.
+- Decisions: a comment on an added line stays on that line instead of appearing under the deleted line with the same number.
+- Decisions: Enter on a focused link or button follows it and never answers the card.
+- Decisions: card links with schemes other than http and https are shown as plain text or dropped.
+- Decisions: cards sent together keep their order; a closed client stops listening within seconds; tag chips show the tag name.
+
 ## 0.9.101 — 2026-11-05
 
 - Decisions: agent replies in the card chat and in diff line comments now show as formatted text: headings, lists, code, tables and links. Your own messages stay exactly as you typed them.
