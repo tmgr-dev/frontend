@@ -1,4 +1,4 @@
-use crate::workdir::repo_git_bytes;
+use crate::workdir::{object_id, repo_git_bytes, unverified};
 use base64::Engine;
 use regex::{Regex, RegexBuilder};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -1105,7 +1105,11 @@ fn fetch_blobs(repo: &Path, oids: &[String]) -> Result<HashMap<String, Vec<u8>>>
         if pos + size > raw.len() {
             return Err(Error::internal("truncated git cat-file output"));
         }
-        out.insert(f[0].to_string(), raw[pos..pos + size].to_vec());
+        let body = &raw[pos..pos + size];
+        if object_id("blob", body, f[0].len()) != f[0] {
+            return Err(unverified(f[0]));
+        }
+        out.insert(f[0].to_string(), body.to_vec());
         pos += size + 1;
     }
     Ok(out)

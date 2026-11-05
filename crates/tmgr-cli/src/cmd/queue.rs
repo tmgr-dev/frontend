@@ -1183,6 +1183,7 @@ impl CliCloud<'_> {
             body: ok.body,
             claim: ok.claim,
             repos: claim_repos,
+            full_name: category.github_full_name.clone(),
             persona: ok.persona,
             context: ok.context,
         })))

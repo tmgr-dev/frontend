@@ -443,6 +443,27 @@ fn load_private_dedupes_revs_and_skips_binary_and_large() {
 }
 
 #[test]
+fn a_blob_that_does_not_match_its_name_is_not_loaded() {
+    use std::os::unix::fs::PermissionsExt;
+    let d = repo();
+    write(d.path(), "a.txt", b"one\n");
+    write(d.path(), "b.txt", b"two\n");
+    let head = commit(d.path(), "both");
+    let loose = |oid: &str| {
+        d.path()
+            .join(".git/objects")
+            .join(&oid[..2])
+            .join(&oid[2..])
+    };
+    let a = git_env(d.path(), &["rev-parse", "HEAD:a.txt"]);
+    let b = git_env(d.path(), &["rev-parse", "HEAD:b.txt"]);
+    std::fs::set_permissions(loose(&a), std::fs::Permissions::from_mode(0o644)).unwrap();
+    std::fs::copy(loose(&b), loose(&a)).unwrap();
+    let err = load_private(d.path(), "acme/backend", &[head]).unwrap_err();
+    assert!(err.to_string().contains("does not match its name"), "{err}");
+}
+
+#[test]
 fn loading_ignores_repository_config_and_attributes() {
     let d = repo();
     let marks = tempfile::tempdir().unwrap();

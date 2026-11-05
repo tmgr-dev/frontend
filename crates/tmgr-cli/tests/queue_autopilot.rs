@@ -470,6 +470,7 @@ impl Cloud {
         );
         let bare = root.join("remote.git");
         git(&root, &["init", "-q", "--bare", bare.to_str().unwrap()]);
+        common::seed_remote(&repo, &bare);
         std::fs::write(
             root.join(".gitconfig"),
             format!(
@@ -1165,7 +1166,7 @@ async fn a_usage_jump_over_the_hard_limit_kills_the_agent_and_pauses_the_task_as
     let argv = cloud.gh_argv();
     assert_eq!(&argv[..2], ["pr", "create"], "{argv:?}");
     assert!(argv.iter().any(|a| a == "--draft"), "{argv:?}");
-    let branches = git(&cloud.bare, &["branch", "--list"]);
+    let branches = git(&cloud.bare, &["branch", "--list", "tmgr/*"]);
     assert!(branches.contains("tmgr/tm-410"), "{branches}");
     let branch = branches.trim().trim_start_matches("* ").to_string();
     let readme = git(&cloud.bare, &["show", &format!("{branch}:README.md")]);

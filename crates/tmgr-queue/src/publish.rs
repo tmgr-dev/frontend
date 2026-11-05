@@ -201,6 +201,24 @@ fn clean_body(body: &str) -> String {
     body.chars().filter(|c| *c != '\0').take(MAX_BODY).collect()
 }
 
+pub fn check_remote(
+    full_name: &str,
+    fetch_url: &str,
+    push_url: &str,
+) -> std::result::Result<(), Refusal> {
+    let (owner, repo_name) = valid_full_name(full_name)
+        .ok_or_else(|| Refusal::BadInput("the repository name is not owner/name".into()))?;
+    for (which, url) in [("fetch", fetch_url), ("push", push_url)] {
+        if !url_matches(url, &owner, &repo_name) {
+            return Err(Refusal::RemoteMismatch {
+                which,
+                url: one_line(url, 120),
+            });
+        }
+    }
+    Ok(())
+}
+
 pub fn publish_plan(input: &PublishInput) -> std::result::Result<PublishSteps, Refusal> {
     let branch = input.pinned_branch.as_str();
     if !branch_shape_ok(branch) {
@@ -226,19 +244,11 @@ pub fn publish_plan(input: &PublishInput) -> std::result::Result<PublishSteps, R
     if let Some(p) = input.changed_paths.iter().find(|p| under_dot_github(p)) {
         return Err(Refusal::WorkflowChange(p.clone()));
     }
-    let (owner, repo_name) = valid_full_name(&input.github_full_name)
-        .ok_or_else(|| Refusal::BadInput("the repository name is not owner/name".into()))?;
-    for (which, url) in [
-        ("fetch", &input.origin_fetch_url),
-        ("push", &input.origin_push_url),
-    ] {
-        if !url_matches(url, &owner, &repo_name) {
-            return Err(Refusal::RemoteMismatch {
-                which,
-                url: one_line(url, 120),
-            });
-        }
-    }
+    check_remote(
+        &input.github_full_name,
+        &input.origin_fetch_url,
+        &input.origin_push_url,
+    )?;
     abs_clean("the bound repository", &input.repo)?;
     abs_clean("the clone", &input.clone_dir)?;
     let title = one_line(&input.pr_title, MAX_TITLE);

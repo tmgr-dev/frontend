@@ -1466,40 +1466,62 @@ struct RepoState {
     changed_paths: Vec<String>,
 }
 
-fn repo_state(repo: &Path, head: &str, server_default: Option<&str>) -> Result<RepoState> {
+fn repo_state(
+    repo: &Path,
+    head: &str,
+    full_name: &str,
+    server_default: Option<&str>,
+) -> Result<RepoState> {
     let q = |args: &[&str]| workdir::git_query(repo, args);
-    let default_branch = q(&["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
-        .ok()
-        .and_then(|b| b.strip_prefix("origin/").map(str::to_string))
-        .or_else(|| server_default.map(str::to_string))
-        .ok_or_else(|| {
-            Error::new(
-                Kind::Forbidden,
-                "cannot tell the default branch of the repository",
-            )
-            .hint("run git remote set-head origin --auto in it")
-        })?;
-    tmgr_core::branch::validate_branch_name(&default_branch)?;
-    let remote_ref = format!("refs/remotes/origin/{default_branch}");
-    let base = if q(&["rev-parse", "--verify", "-q", &remote_ref]).is_ok() {
-        remote_ref
-    } else {
-        format!("refs/heads/{default_branch}")
-    };
-    let (fetch_url, push_url) = workdir::origin_urls(repo)?;
+    let remote = workdir::remote_base(repo, full_name, server_default)?;
+    let workdir::RemoteBase {
+        default_branch,
+        sha: base,
+        fetch_url,
+        push_url,
+    } = remote;
     let (descends_from_base, merge_commits) = workdir::history_facts(repo, &base, head)?;
+    if descends_from_base && merge_commits == 0 {
+        workdir::verify_new_objects(repo, &base, head)?;
+    }
     let count = q(&["rev-list", "--count", &format!("{base}..{head}")])?;
-    let diff = if descends_from_base {
-        q(&[
+    let paths = |args: &[&str]| -> Result<Vec<String>> {
+        Ok(q(args)?
+            .split('\0')
+            .map(|p| p.trim_matches('\n'))
+            .filter(|p| !p.is_empty())
+            .map(str::to_string)
+            .collect())
+    };
+    let mut changed_paths = Vec::new();
+    if descends_from_base {
+        let range = format!("{base}..{head}");
+        changed_paths.extend(paths(&[
             "diff",
             "--name-only",
             "-z",
             "--no-renames",
             &format!("{base}...{head}"),
-        ])?
-    } else {
-        String::new()
-    };
+        ])?);
+        changed_paths.extend(paths(&[
+            "log",
+            "--name-only",
+            "--format=",
+            "-z",
+            "--no-renames",
+            &range,
+        ])?);
+        changed_paths.extend(paths(&[
+            "diff",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            &base,
+            head,
+            "--",
+            ":(icase).github",
+        ])?);
+    }
     Ok(RepoState {
         default_branch,
         base,
@@ -1508,11 +1530,7 @@ fn repo_state(repo: &Path, head: &str, server_default: Option<&str>) -> Result<R
         commit_count: count.trim().parse().unwrap_or(0),
         descends_from_base,
         merge_commits,
-        changed_paths: diff
-            .split('\0')
-            .filter(|p| !p.is_empty())
-            .map(str::to_string)
-            .collect(),
+        changed_paths,
     })
 }
 
@@ -1992,7 +2010,7 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
         .to_str()
         .ok_or_else(|| Error::usage("the repository path is not valid UTF-8"))?;
     let sha = workdir::import_branch(repo_str, &t.clone_dir, &t.branch)?;
-    let state = repo_state(&repo, &sha, category.default_branch.as_deref())?;
+    let state = repo_state(&repo, &sha, full_name, category.default_branch.as_deref())?;
     let task_key = verified.task_key.clone();
     let input = PublishInput {
         sha,
@@ -2231,7 +2249,7 @@ fn import_and_plan(
             base: String::new(),
             commits: 0,
         });
-        let state = repo_state(&repo, &sha, None)?;
+        let state = repo_state(&repo, &sha, &plan.full_name, None)?;
         if let Some(last) = touched.last_mut() {
             last.base = state.base.clone();
             last.commits = state.commit_count;
@@ -3407,23 +3425,23 @@ mod tests {
     fn the_state_of_a_repository_reads_both_origin_urls() {
         let d = tempfile::tempdir().unwrap();
         let repo = std::fs::canonicalize(d.path()).unwrap().join("r");
-        let head = committed_repo(&repo, "https://github.com/o/r.git");
+        committed_repo(&repo, "https://github.com/o/r.git");
         repo_cmd(
             &repo,
             &["config", "remote.origin.pushurl", "git@github.com:o/r.git"],
         );
-        let st = repo_state(&repo, &head, Some("main")).unwrap();
-        assert_eq!(st.fetch_url, "https://github.com/o/r.git");
-        assert_eq!(st.push_url, "git@github.com:o/r.git");
+        let (fetch, push) = workdir::origin_urls(&repo).unwrap();
+        assert_eq!(fetch, "https://github.com/o/r.git");
+        assert_eq!(push, "git@github.com:o/r.git");
     }
 
     #[test]
     fn the_state_of_a_repository_uses_the_fetch_url_for_pushing_without_a_push_url() {
         let d = tempfile::tempdir().unwrap();
         let repo = std::fs::canonicalize(d.path()).unwrap().join("r");
-        let head = committed_repo(&repo, "https://github.com/o/r.git");
-        let st = repo_state(&repo, &head, Some("main")).unwrap();
-        assert_eq!(st.push_url, "https://github.com/o/r.git");
+        committed_repo(&repo, "https://github.com/o/r.git");
+        let (_, push) = workdir::origin_urls(&repo).unwrap();
+        assert_eq!(push, "https://github.com/o/r.git");
     }
 
     #[test]

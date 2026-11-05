@@ -836,7 +836,9 @@ pub trait WorkDirs {
     }
 
     /// Continues a paused run: a clone (`clones` empty: one clone of `primary`, saved under `""`) whose task branch
-    /// starts at the commit saved in `heads`. Refuses unless the remote branch is still there.
+    /// starts at the commit saved in `heads`. `full_names` names the repository each clone (keyed like `heads`) must
+    /// come from. Refuses unless the remote branch is still there.
+    #[allow(clippy::too_many_arguments)]
     fn prepare_continue(
         &self,
         _primary: &str,
@@ -845,6 +847,7 @@ pub trait WorkDirs {
         _clones: &[(String, String)],
         _branch: &str,
         _heads: &BTreeMap<String, String>,
+        _full_names: &BTreeMap<String, String>,
     ) -> Result<()> {
         Err(Error::internal(
             "this work directory provider cannot continue a paused run",
@@ -940,13 +943,14 @@ fn make_clone(repo: &str, dest: &Path, checkout: &dyn Fn(&Path) -> Result<()>) -
 }
 
 /// The commit `refs/heads/<branch>` points at on the remote `origin` of `repo`, or `None` when the remote has no such branch.
-pub fn remote_branch_head(repo: &str, branch: &str) -> Result<Option<String>> {
+/// Refuses unless both URLs of `origin` are the repository `full_name`.
+pub fn remote_branch_head(repo: &str, full_name: &str, branch: &str) -> Result<Option<String>> {
     validate_branch(branch)?;
     let reference = format!("refs/heads/{branch}");
     let view = host_view(Path::new(repo), remote_access())?;
-    let url = origin_of(&view)?;
+    let url = checked_origin(&view, full_name)?;
     let out = view
-        .run(&["ls-remote", "--", url, &reference])
+        .run(&["ls-remote", "--", &remote_target(&url), &reference])
         .map_err(Error::internal)?;
     Ok(out
         .lines()
@@ -957,21 +961,35 @@ pub fn remote_branch_head(repo: &str, branch: &str) -> Result<Option<String>> {
 
 #[cfg(test)]
 thread_local! {
-    static LOCAL_REMOTES: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static LOCAL_REMOTES: std::cell::RefCell<BTreeMap<String, String>> =
+        const { std::cell::RefCell::new(BTreeMap::new()) };
 }
 
 fn remote_access() -> Access {
     #[cfg(test)]
-    if LOCAL_REMOTES.with(|c| c.get()) {
+    if LOCAL_REMOTES.with(|c| !c.borrow().is_empty()) {
         return Access::Write;
     }
     Access::Network
 }
 
-fn origin_of(view: &HostView) -> Result<&str> {
-    view.origin_url()
+fn remote_target(url: &str) -> String {
+    #[cfg(test)]
+    if let Some(local) = LOCAL_REMOTES.with(|c| c.borrow().get(url).cloned()) {
+        return local;
+    }
+    url.to_string()
+}
+
+fn checked_origin(view: &HostView, full_name: &str) -> Result<String> {
+    let url = view
+        .origin_url()
         .filter(|u| !u.is_empty() && !u.starts_with('-'))
-        .ok_or_else(|| Error::internal("the repository has no usable origin"))
+        .ok_or_else(|| Error::internal("the repository has no usable origin"))?;
+    let push = view.origin_push_url().unwrap_or(url);
+    crate::publish::check_remote(full_name, url, push)
+        .map_err(|r| Error::new(Kind::Forbidden, r.to_string()))?;
+    Ok(url.to_string())
 }
 
 fn moved_remotely(branch: &str) -> Error {
@@ -982,7 +1000,13 @@ fn moved_remotely(branch: &str) -> Error {
 
 /// A hardened clone of `repo` at `dest` whose `branch` starts at `sha`, the commit the paused run pushed. Refuses
 /// unless the remote branch is still at `sha`.
-pub fn prepare_continue_clone(repo: &str, dest: &Path, branch: &str, sha: &str) -> Result<()> {
+pub fn prepare_continue_clone(
+    repo: &str,
+    full_name: &str,
+    dest: &Path,
+    branch: &str,
+    sha: &str,
+) -> Result<()> {
     validate_branch(branch)?;
     if dest.exists() {
         return Err(Error::conflict("the run directory already exists"));
@@ -990,7 +1014,7 @@ pub fn prepare_continue_clone(repo: &str, dest: &Path, branch: &str, sha: &str) 
     if !is_sha(sha) {
         return Err(Error::internal("the saved commit is not a full object id"));
     }
-    match remote_branch_head(repo, branch)? {
+    match remote_branch_head(repo, full_name, branch)? {
         Some(head) if head.eq_ignore_ascii_case(sha) => {}
         _ => return Err(moved_remotely(branch)),
     }
@@ -1001,12 +1025,12 @@ pub fn prepare_continue_clone(repo: &str, dest: &Path, branch: &str, sha: &str) 
     };
     if !have(repo) {
         let view = host_view(Path::new(repo), remote_access())?;
-        let url = origin_of(&view)?;
+        let url = checked_origin(&view, full_name)?;
         view.run(&[
             "fetch",
             "--no-tags",
             "--",
-            url,
+            &remote_target(&url),
             &format!("refs/heads/{branch}"),
         ])
         .map_err(Error::internal)?;
@@ -1019,11 +1043,21 @@ pub fn prepare_continue_clone(repo: &str, dest: &Path, branch: &str, sha: &str) 
     })
 }
 
+fn expected_name<'a>(full_names: &'a BTreeMap<String, String>, key: &str) -> Result<&'a str> {
+    full_names.get(key).map(String::as_str).ok_or_else(|| {
+        Error::new(
+            Kind::Forbidden,
+            "the repository this run belongs to is not known, so it cannot be continued",
+        )
+    })
+}
+
 fn prepare_continue_folder(
     run_dir: &Path,
     clones: &[(String, String)],
     branch: &str,
     heads: &BTreeMap<String, String>,
+    full_names: &BTreeMap<String, String>,
 ) -> Result<()> {
     if run_dir.exists() {
         return Err(Error::conflict("the run directory already exists"));
@@ -1031,12 +1065,13 @@ fn prepare_continue_folder(
     std::fs::create_dir_all(run_dir)?;
     let result = clones.iter().try_for_each(|(name, repo)| {
         let dest = run_dir.join(name);
+        let full_name = expected_name(full_names, name)?;
         match heads.get(name) {
-            Some(sha) => match remote_branch_head(repo, branch)? {
+            Some(sha) => match remote_branch_head(repo, full_name, branch)? {
                 None => Err(moved_remotely(branch)),
-                Some(_) => prepare_continue_clone(repo, &dest, branch, sha),
+                Some(_) => prepare_continue_clone(repo, full_name, &dest, branch, sha),
             },
-            None => match remote_branch_head(repo, branch)? {
+            None => match remote_branch_head(repo, full_name, branch)? {
                 None => prepare_clone(repo, &dest, branch, None),
                 Some(_) => Err(moved_remotely(branch)),
             },
@@ -1596,6 +1631,325 @@ pub fn history_facts(repo: &Path, base: &str, head: &str) -> Result<(bool, usize
     Ok((shared && roots == 0, count("--merges")?))
 }
 
+pub struct RemoteBase {
+    pub default_branch: String,
+    pub sha: String,
+    pub fetch_url: String,
+    pub push_url: String,
+}
+
+fn no_remote_base(why: impl std::fmt::Display) -> Error {
+    Error::new(
+        Kind::Forbidden,
+        format!("cannot read the default branch of the remote repository: {why}"),
+    )
+}
+
+/// The default branch of the repository `full_name` as the remote reports it, and the commit it points at, made
+/// available (and verified) in `repo`. Nothing is taken from refs stored in `repo`.
+pub fn remote_base(
+    repo: &Path,
+    full_name: &str,
+    server_default: Option<&str>,
+) -> Result<RemoteBase> {
+    let view = host_view(repo, Access::Network)?;
+    let fetch_url = view
+        .origin_url()
+        .filter(|u| !u.is_empty())
+        .ok_or_else(|| Error::internal("the repository has no origin"))?
+        .to_string();
+    let push_url = view.origin_push_url().unwrap_or(&fetch_url).to_string();
+    crate::publish::check_remote(full_name, &fetch_url, &push_url)
+        .map_err(|r| Error::new(Kind::Forbidden, r.to_string()))?;
+    if let Some(d) = server_default {
+        validate_branch(d)?;
+    }
+    let wanted = server_default.map(|d| format!("refs/heads/{d}"));
+    let mut args = vec!["ls-remote", "--symref", "--", fetch_url.as_str(), "HEAD"];
+    args.extend(wanted.as_deref());
+    let listing = view
+        .run(&args)
+        .map_err(|e| no_remote_base(tmgr_core::text::sanitize_line(&e)))?;
+    let mut shas: BTreeMap<&str, &str> = BTreeMap::new();
+    let mut head_target = None;
+    for line in listing.lines() {
+        let Some((left, name)) = line.split_once('\t') else {
+            continue;
+        };
+        match left.strip_prefix("ref: ") {
+            Some(target) if name == "HEAD" => head_target = Some(target),
+            Some(_) => {}
+            None if is_sha(left) => {
+                shas.insert(name, left);
+            }
+            None => {}
+        }
+    }
+    let by_server = server_default.and_then(|d| {
+        let sha = shas.get(format!("refs/heads/{d}").as_str())?;
+        Some((d.to_string(), (*sha).to_string()))
+    });
+    let (default_branch, sha) = match by_server {
+        Some(found) => found,
+        None => {
+            let branch = head_target
+                .and_then(|t| t.strip_prefix("refs/heads/"))
+                .ok_or_else(|| no_remote_base("the remote does not name its default branch"))?;
+            validate_branch(branch)?;
+            let sha = shas
+                .get("HEAD")
+                .ok_or_else(|| no_remote_base("the remote does not list its default branch"))?;
+            (branch.to_string(), (*sha).to_string())
+        }
+    };
+    let commit = format!("{sha}^{{commit}}");
+    if !view.succeeds(&["cat-file", "-e", &commit]) {
+        view.run(&["fetch", "--no-tags", "--", &fetch_url, &sha])
+            .map_err(|e| no_remote_base(tmgr_core::text::sanitize_line(&e)))?;
+        if !view.succeeds(&["cat-file", "-e", &commit]) {
+            verify_base_objects(repo, &sha)?;
+            return Err(no_remote_base("the commit is not available after fetching"));
+        }
+    }
+    verify_base_objects(repo, &sha)?;
+    Ok(RemoteBase {
+        default_branch,
+        sha,
+        fetch_url,
+        push_url,
+    })
+}
+
+enum Hasher {
+    Sha1(sha1::Sha1),
+    Sha256(sha2::Sha256),
+}
+
+impl Hasher {
+    fn new(width: usize, kind: &str, size: u64) -> Hasher {
+        use sha2::Digest;
+        let header = format!("{kind} {size}\0");
+        if width == 64 {
+            let mut d = sha2::Sha256::new();
+            d.update(header.as_bytes());
+            Hasher::Sha256(d)
+        } else {
+            let mut d = sha1::Sha1::new();
+            d.update(header.as_bytes());
+            Hasher::Sha1(d)
+        }
+    }
+
+    fn update(&mut self, bytes: &[u8]) {
+        use sha2::Digest;
+        match self {
+            Hasher::Sha1(d) => d.update(bytes),
+            Hasher::Sha256(d) => d.update(bytes),
+        }
+    }
+
+    fn finish(self) -> String {
+        use sha2::Digest;
+        let raw = match self {
+            Hasher::Sha1(d) => d.finalize().to_vec(),
+            Hasher::Sha256(d) => d.finalize().to_vec(),
+        };
+        raw.iter().map(|b| format!("{b:02x}")).collect()
+    }
+}
+
+pub(crate) fn object_id(kind: &str, body: &[u8], width: usize) -> String {
+    let mut h = Hasher::new(width, kind, body.len() as u64);
+    h.update(body);
+    h.finish()
+}
+
+fn unreadable_objects() -> Error {
+    Error::new(
+        Kind::Forbidden,
+        "the objects of the repository cannot be read",
+    )
+}
+
+pub(crate) fn unverified(oid: &str) -> Error {
+    Error::new(
+        Kind::Forbidden,
+        format!("the object {oid} of the repository does not match its name"),
+    )
+}
+
+const MAX_STRUCTURE: u64 = 64 << 20;
+
+/// Streams `oids` through `cat-file --batch`, hashing every object as the store returns it. A blob is hashed and
+/// dropped; a commit or tree is handed to `each` after it matched its name.
+fn hash_objects(
+    repo: &Path,
+    oids: &[String],
+    width: usize,
+    mut each: impl FnMut(&str, &str, Vec<u8>) -> Result<()>,
+) -> Result<()> {
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::process::Stdio;
+    let view = host_view(repo, Access::Read)?;
+    let mut cmd = view
+        .prepared(&[], &["cat-file", "--batch"])
+        .map_err(Error::internal)?;
+    let mut child = cmd
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| Error::internal(format!("cannot run git: {e}")))?;
+    let mut feed = Vec::new();
+    for oid in oids {
+        feed.extend_from_slice(oid.as_bytes());
+        feed.push(b'\n');
+    }
+    let mut stdin = child.stdin.take().ok_or_else(unreadable_objects)?;
+    std::thread::spawn(move || {
+        let _ = stdin.write_all(&feed);
+    });
+    let pid = child.id() as i32;
+    let (done, finished) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        if finished.recv_timeout(GIT_TIMEOUT).is_err() {
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+        }
+    });
+    let mut out = BufReader::new(child.stdout.take().ok_or_else(unreadable_objects)?);
+    let result = (|| -> Result<()> {
+        let mut header = String::new();
+        let mut chunk = vec![0u8; 64 << 10];
+        for want in oids {
+            header.clear();
+            if out
+                .read_line(&mut header)
+                .map_err(|_| unreadable_objects())?
+                == 0
+            {
+                return Err(unreadable_objects());
+            }
+            let mut f = header.trim_end_matches('\n').split(' ');
+            let (Some(oid), Some(kind), Some(size)) = (f.next(), f.next(), f.next()) else {
+                return Err(unreadable_objects());
+            };
+            let size: u64 = size.parse().map_err(|_| unreadable_objects())?;
+            let keep = kind != "blob";
+            if oid != want || (keep && size > MAX_STRUCTURE) {
+                return Err(unreadable_objects());
+            }
+            let mut hasher = Hasher::new(width, kind, size);
+            let mut body = Vec::new();
+            let mut left = size;
+            while left > 0 {
+                let take = chunk.len().min(left as usize);
+                let n = out
+                    .read(&mut chunk[..take])
+                    .map_err(|_| unreadable_objects())?;
+                if n == 0 {
+                    return Err(unreadable_objects());
+                }
+                hasher.update(&chunk[..n]);
+                if keep {
+                    body.extend_from_slice(&chunk[..n]);
+                }
+                left -= n as u64;
+            }
+            let mut newline = [0u8; 1];
+            out.read_exact(&mut newline)
+                .map_err(|_| unreadable_objects())?;
+            if hasher.finish() != *want {
+                return Err(unverified(want));
+            }
+            each(want, kind, body)?;
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+    let _ = done.send(());
+    result
+}
+
+fn subtrees(body: &[u8], width: usize) -> Option<Vec<String>> {
+    let raw = width / 2;
+    let mut out = Vec::new();
+    let mut at = 0;
+    while at < body.len() {
+        let nul = body[at..].iter().position(|b| *b == 0)? + at;
+        let mode = body[at..nul].split(|b| *b == b' ').next()?;
+        let id = body.get(nul + 1..nul + 1 + raw)?;
+        if mode.iter().skip_while(|b| **b == b'0').eq(b"40000".iter()) {
+            out.push(id.iter().map(|b| format!("{b:02x}")).collect());
+        }
+        at = nul + 1 + raw;
+    }
+    Some(out)
+}
+
+const VERIFY_BATCH: usize = 1000;
+
+/// Each object must hash to its name.
+fn verify_base_objects(repo: &Path, commit: &str) -> Result<()> {
+    let width = commit.len();
+    let mut tree = None;
+    hash_objects(repo, &[commit.to_string()], width, |oid, kind, body| {
+        if kind != "commit" {
+            return Err(unverified(oid));
+        }
+        tree = std::str::from_utf8(&body)
+            .ok()
+            .and_then(|t| t.strip_prefix("tree "))
+            .and_then(|t| t.get(..width))
+            .filter(|t| is_sha(t))
+            .map(str::to_string);
+        Ok(())
+    })?;
+    let tree = tree.ok_or_else(unreadable_objects)?;
+    let mut seen = std::collections::HashSet::from([tree.clone()]);
+    let mut level = vec![tree];
+    while !level.is_empty() {
+        let mut next = Vec::new();
+        for chunk in level.chunks(VERIFY_BATCH) {
+            hash_objects(repo, chunk, width, |oid, kind, body| {
+                if kind != "tree" {
+                    return Err(unverified(oid));
+                }
+                for child in subtrees(&body, width).ok_or_else(unreadable_objects)? {
+                    if seen.insert(child.clone()) {
+                        next.push(child);
+                    }
+                }
+                Ok(())
+            })?;
+        }
+        level = next;
+    }
+    Ok(())
+}
+
+/// Every commit, tree and blob of `base..head` must hash to its name.
+pub fn verify_new_objects(repo: &Path, base: &str, head: &str) -> Result<()> {
+    let listing = repo_git_bytes(
+        repo,
+        &[
+            "rev-list",
+            "--objects",
+            "--no-object-names",
+            &format!("{base}..{head}"),
+        ],
+        None,
+    )?;
+    let oids: Vec<String> = String::from_utf8_lossy(&listing)
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect();
+    hash_objects(repo, &oids, head.len(), |_, _, _| Ok(()))
+}
+
 /// The commit `refs/heads/<branch>` points at in `repo`, or `None` when the branch does not exist.
 pub fn branch_tip(repo: &Path, branch: &str) -> Result<Option<String>> {
     validate_branch(branch)?;
@@ -1884,6 +2238,7 @@ impl WorkDirs for GitClone {
         prepare_run_folder(&dest, clones, branch)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn prepare_continue(
         &self,
         primary: &str,
@@ -1892,6 +2247,7 @@ impl WorkDirs for GitClone {
         clones: &[(String, String)],
         branch: &str,
         heads: &BTreeMap<String, String>,
+        full_names: &BTreeMap<String, String>,
     ) -> Result<()> {
         let dest = clone_dir(primary, pickup_id)
             .ok_or_else(|| Error::internal("the repository path has no parent directory"))?;
@@ -1904,9 +2260,15 @@ impl WorkDirs for GitClone {
             let sha = heads
                 .get("")
                 .ok_or_else(|| Error::internal("no commit was saved for this run"))?;
-            return prepare_continue_clone(primary, &dest, branch, sha);
+            return prepare_continue_clone(
+                primary,
+                expected_name(full_names, "")?,
+                &dest,
+                branch,
+                sha,
+            );
         }
-        prepare_continue_folder(&dest, clones, branch, heads)
+        prepare_continue_folder(&dest, clones, branch, heads, full_names)
     }
 }
 
@@ -2523,20 +2885,32 @@ mod tests {
         init_repo(&repo);
         let bare = root.join(format!("{name}-origin.git"));
         run_git(root, &["init", "-q", "--bare", &bare.to_string_lossy()]);
-        run_git(&repo, &["remote", "add", "origin", &bare.to_string_lossy()]);
-        run_git(&repo, &["push", "-q", "origin", "main"]);
+        run_git(&repo, &["push", "-q", &bare.to_string_lossy(), "main"]);
+        local_origin(&repo, name, &bare);
         repo.to_string_lossy().into_owned()
     }
 
-    fn local_remotes() {
-        LOCAL_REMOTES.with(|c| c.set(true));
+    fn names(list: &[(&str, &str)]) -> BTreeMap<String, String> {
+        list.iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    fn local_origin(repo: &Path, name: &str, bare: &Path) {
+        let url = format!("https://github.com/acme/{name}.git");
+        run_git(repo, &["remote", "add", "origin", &url]);
+        LOCAL_REMOTES.with(|c| {
+            c.borrow_mut()
+                .insert(url, bare.to_string_lossy().into_owned())
+        });
     }
 
     fn push_branch_commit(repo: &str, branch: &str, file: &str) -> String {
         let repo = Path::new(repo);
         run_git(repo, &["checkout", "-q", "-B", branch]);
         commit_file(repo, file);
-        run_git(repo, &["push", "-q", "-f", "origin", branch]);
+        let bare = format!("{}-origin.git", repo.display());
+        run_git(repo, &["push", "-q", "-f", &bare, branch]);
         let sha = git(Some(repo), &["rev-parse", "HEAD"]).unwrap();
         run_git(repo, &["checkout", "-q", "main"]);
         sha
@@ -2544,7 +2918,6 @@ mod tests {
 
     #[test]
     fn a_continuation_clone_starts_at_the_saved_commit_on_the_task_branch() {
-        local_remotes();
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let repo = repo_with_origin(&root, "proj");
@@ -2559,6 +2932,7 @@ mod tests {
                 &[],
                 "tmgr/tm-1-fix",
                 &heads,
+                &names(&[("", "acme/proj")]),
             )
             .unwrap();
         assert_eq!(git(Some(&dest), &["rev-parse", "HEAD"]).unwrap(), wip);
@@ -2571,7 +2945,6 @@ mod tests {
 
     #[test]
     fn a_branch_that_moved_or_vanished_on_the_remote_is_refused_and_leaves_no_clone() {
-        local_remotes();
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let repo = repo_with_origin(&root, "proj");
@@ -2588,6 +2961,7 @@ mod tests {
                 &[],
                 "tmgr/tm-1-fix",
                 &heads,
+                &names(&[("", "acme/proj")]),
             )
             .unwrap_err();
         assert!(err.message.contains("not at the commit"), "{}", err.message);
@@ -2602,6 +2976,7 @@ mod tests {
                 &[],
                 "tmgr/tm-2-none",
                 &gone,
+                &names(&[("", "acme/proj")]),
             )
             .is_err());
         assert!(!dest.exists());
@@ -2609,7 +2984,6 @@ mod tests {
 
     #[test]
     fn a_multi_repository_continuation_resumes_pushed_repos_and_starts_the_rest_fresh() {
-        local_remotes();
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let a = repo_with_origin(&root, "alpha");
@@ -2626,6 +3000,7 @@ mod tests {
                 &clones,
                 "tmgr/tm-3-x",
                 &heads,
+                &names(&[("alpha", "acme/alpha"), ("beta", "acme/beta")]),
             )
             .unwrap();
         assert_eq!(
@@ -2649,6 +3024,7 @@ mod tests {
                 &clones,
                 "tmgr/tm-3-x",
                 &heads,
+                &names(&[("alpha", "acme/alpha"), ("beta", "acme/beta")]),
             )
             .is_err());
         assert!(!dest.exists());
@@ -2656,7 +3032,6 @@ mod tests {
 
     #[test]
     fn a_saved_commit_whose_remote_branch_vanished_is_refused_never_cloned_fresh() {
-        local_remotes();
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let a = repo_with_origin(&root, "alpha");
@@ -2665,7 +3040,13 @@ mod tests {
         let wip_b = push_branch_commit(&b, "tmgr/tm-6-x", "wip.txt");
         run_git(
             Path::new(&b),
-            &["push", "-q", "origin", "--delete", "tmgr/tm-6-x"],
+            &[
+                "push",
+                "-q",
+                &format!("{b}-origin.git"),
+                "--delete",
+                "tmgr/tm-6-x",
+            ],
         );
         let clones = vec![("alpha".to_string(), a.clone()), ("beta".to_string(), b)];
         let heads = BTreeMap::from([("alpha".to_string(), wip_a), ("beta".to_string(), wip_b)]);
@@ -2678,6 +3059,7 @@ mod tests {
                 &clones,
                 "tmgr/tm-6-x",
                 &heads,
+                &names(&[("alpha", "acme/alpha"), ("beta", "acme/beta")]),
             )
             .unwrap_err();
         assert!(err.message.contains("not at the commit"), "{}", err.message);
@@ -3484,8 +3866,8 @@ mod tests {
     fn bare_origin(root: &Path, repo: &Path) -> PathBuf {
         let bare = root.join("origin.git");
         raw(root, &["init", "-q", "--bare", "-b", "main", "origin.git"]);
-        raw(repo, &["remote", "add", "origin", &bare.to_string_lossy()]);
-        raw(repo, &["push", "-q", "origin", "main"]);
+        raw(repo, &["push", "-q", &bare.to_string_lossy(), "main"]);
+        local_origin(repo, "proj", &bare);
         bare
     }
 
@@ -3572,7 +3954,6 @@ mod tests {
 
     #[test]
     fn the_remote_branch_is_read_from_the_origin_url_without_repository_config() {
-        local_remotes();
         let (_tmp, root) = canon_tmp();
         let repo = repo_at(&root, "proj");
         let bare = bare_origin(&root, &repo);
@@ -3589,17 +3970,18 @@ mod tests {
         );
         let r = repo.to_string_lossy().into_owned();
         assert_eq!(
-            remote_branch_head(&r, "main").unwrap().as_deref(),
+            remote_branch_head(&r, "acme/proj", "main")
+                .unwrap()
+                .as_deref(),
             Some(tip.as_str())
         );
-        assert_eq!(remote_branch_head(&r, "absent").unwrap(), None);
+        assert_eq!(remote_branch_head(&r, "acme/proj", "absent").unwrap(), None);
         assert!(bare.is_dir());
         assert_quiet(&marks);
     }
 
     #[test]
     fn continuing_fetches_the_saved_commit_from_the_origin_url_without_repository_config() {
-        local_remotes();
         let (_tmp, root) = canon_tmp();
         let repo = repo_at(&root, "proj");
         let bare = bare_origin(&root, &repo);
@@ -3615,7 +3997,7 @@ mod tests {
         plant(&repo, &marks);
         let r = repo.to_string_lossy().into_owned();
         let dest = run_clone_dir(&r, "tm-7-fix").unwrap();
-        prepare_continue_clone(&r, &dest, "tm-7-fix", &sha).unwrap();
+        prepare_continue_clone(&r, "acme/proj", &dest, "tm-7-fix", &sha).unwrap();
         assert!(dest.join("late.txt").is_file());
         assert_eq!(raw(&dest, &["rev-parse", "HEAD"]), sha);
         assert_quiet(&marks);
@@ -3625,13 +4007,20 @@ mod tests {
     fn a_local_origin_is_not_used_for_the_remote_head_or_a_fetch() {
         let (_tmp, root) = canon_tmp();
         let repo = repo_at(&root, "proj");
-        let bare = bare_origin(&root, &repo);
+        let bare = root.join("origin.git");
+        raw(&root, &["init", "-q", "--bare", "-b", "main", "origin.git"]);
+        raw(&repo, &["remote", "add", "origin", &bare.to_string_lossy()]);
+        raw(&repo, &["push", "-q", "origin", "main"]);
         let r = repo.to_string_lossy().into_owned();
-        let err = remote_branch_head(&r, "main").unwrap_err();
-        assert!(err.message.contains("not allowed"), "{}", err.message);
+        let err = remote_branch_head(&r, "acme/proj", "main").unwrap_err();
+        assert!(
+            err.message.contains("not the repository linked"),
+            "{}",
+            err.message
+        );
         let dest = run_clone_dir(&r, "tm-8-fix").unwrap();
         let sha = raw(&repo, &["rev-parse", "HEAD"]);
-        assert!(prepare_continue_clone(&r, &dest, "tm-8-fix", &sha).is_err());
+        assert!(prepare_continue_clone(&r, "acme/proj", &dest, "tm-8-fix", &sha).is_err());
         assert!(!dest.exists());
         assert!(bare.is_dir());
     }
@@ -3848,6 +4237,52 @@ mod tests {
         std::fs::write(&big, vec![0u8; TRUSTED_OUTPUT_CAP + (1 << 20)]).unwrap();
         let sha = raw(&repo, &["hash-object", "-w", big.to_str().unwrap()]);
         assert!(repo_git_bytes(&repo, &["cat-file", "blob", &sha], None).is_err());
+    }
+
+    #[test]
+    fn subtrees_accept_a_zero_padded_directory_mode() {
+        let id = [7u8; 20];
+        let mut body = Vec::new();
+        for mode in ["40000", "040000", "100644"] {
+            body.extend_from_slice(format!("{mode} n\0").as_bytes());
+            body.extend_from_slice(&id);
+        }
+        let found = subtrees(&body, 40).unwrap();
+        assert_eq!(found, vec!["07".repeat(20); 2]);
+    }
+
+    #[test]
+    fn new_objects_are_verified_without_holding_a_large_blob() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let base = raw(&repo, &["rev-parse", "HEAD"]);
+        std::fs::write(
+            repo.join("big.bin"),
+            vec![1u8; TRUSTED_OUTPUT_CAP + (1 << 20)],
+        )
+        .unwrap();
+        raw(&repo, &["add", "big.bin"]);
+        raw(&repo, &["commit", "-q", "-m", "big"]);
+        let head = raw(&repo, &["rev-parse", "HEAD"]);
+        verify_new_objects(&repo, &base, &head).unwrap();
+    }
+
+    #[test]
+    fn a_new_object_that_does_not_match_its_name_is_refused() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let base = raw(&repo, &["rev-parse", "HEAD"]);
+        commit_file(&repo, "a.txt");
+        commit_file(&repo, "b.txt");
+        let head = raw(&repo, &["rev-parse", "HEAD"]);
+        let loose = |oid: &str| repo.join(".git/objects").join(&oid[..2]).join(&oid[2..]);
+        let a = raw(&repo, &["rev-parse", "HEAD~1:a.txt"]);
+        let b = raw(&repo, &["rev-parse", "HEAD:b.txt"]);
+        std::fs::set_permissions(loose(&a), std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::copy(loose(&b), loose(&a)).unwrap();
+        let err = verify_new_objects(&repo, &base, &head).unwrap_err();
+        assert!(err.message.contains("does not match its name"), "{err}");
     }
 
     #[test]

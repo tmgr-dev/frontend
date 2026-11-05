@@ -33,6 +33,7 @@ pub struct CloudTask {
     pub body: String,
     pub claim: CloudApproval,
     pub repos: Vec<ClaimRepo>,
+    pub full_name: Option<String>,
     pub persona: Option<BundlePersona>,
     pub context: Vec<BundlePage>,
 }

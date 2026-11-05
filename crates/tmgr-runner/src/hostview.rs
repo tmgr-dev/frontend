@@ -671,13 +671,13 @@ impl HostView {
             "diff.ignoreSubmodules=all",
             "fetch.recurseSubmodules=false",
             "push.recurseSubmodules=no",
+            "core.commitGraph=false",
+            "pack.useBitmaps=false",
         ] {
             cmd.args(["-c", pin]);
         }
         if self.access != Access::Read {
             cmd.args(["-c", "core.logAllRefUpdates=false"]);
-        } else {
-            cmd.args(["-c", "core.commitGraph=false"]);
         }
         if self.offline {
             cmd.args([
@@ -1719,6 +1719,21 @@ mod tests {
             view.run(&["config", "--get", "core.commitGraph"]).unwrap(),
             "false"
         );
+    }
+
+    #[test]
+    fn every_view_ignores_stored_object_lookup_shortcuts() {
+        let fx = fixture();
+        for access in [Access::Read, Access::Write, Access::Network] {
+            let view = HostView::open(&fx.repo, access).unwrap();
+            for key in ["core.commitGraph", "pack.useBitmaps"] {
+                assert_eq!(
+                    view.run(&["config", "--get", key]).unwrap(),
+                    "false",
+                    "{access:?} {key}"
+                );
+            }
+        }
     }
 
     #[test]

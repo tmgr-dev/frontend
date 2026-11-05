@@ -543,30 +543,38 @@ fn taken(
     Ok(())
 }
 
+enum Continuation {
+    Refused(String),
+    Allowed { full_name: Option<String> },
+}
+
 fn continuation_refusal(
     deps: &Deps,
     rule: &Rule,
     p: &Pickup,
     now: DateTime<Utc>,
-) -> Result<Option<String>> {
+) -> Result<Continuation> {
+    use Continuation::{Allowed, Refused};
     let Some(stored) = p.cloud.as_ref() else {
-        return Ok(Some("only a cloud run can be continued".into()));
+        return Ok(Refused("only a cloud run can be continued".into()));
     };
     if stored.claim.signed_at < (now - Duration::hours(APPROVAL_TTL_HOURS)).timestamp() {
-        return Ok(Some(format!(
+        return Ok(Refused(format!(
             "the approval was signed more than {APPROVAL_TTL_HOURS} hours ago; confirm the task again"
         )));
     }
     let ws = match deps.cloud.allow(&rule.workspace, now) {
         Ok(ws) => ws,
-        Err(m) => return Ok(Some(m)),
+        Err(m) => return Ok(Refused(m)),
     };
     match deps.cloud.gate(rule, &ws, p.task.task_id)? {
-        Gated::Ready(t) if t.claim == stored.claim => Ok(None),
-        Gated::Ready(_) => Ok(Some(
+        Gated::Ready(t) if t.claim == stored.claim => Ok(Allowed {
+            full_name: t.full_name,
+        }),
+        Gated::Ready(_) => Ok(Refused(
             "the approval of the task changed since the run paused".into(),
         )),
-        Gated::Refused { reason, .. } => Ok(Some(reason)),
+        Gated::Refused { reason, .. } => Ok(Refused(reason)),
     }
 }
 
@@ -1082,10 +1090,11 @@ fn start_phase(
                 continue;
             }
         }
+        let mut single_name = None;
         if continuing {
             match continuation_refusal(deps, rule, &pass.state.pickups[i], pass.now) {
-                Ok(None) => {}
-                Ok(Some(reason)) => {
+                Ok(Continuation::Allowed { full_name }) => single_name = full_name,
+                Ok(Continuation::Refused(reason)) => {
                     pass.set(
                         i,
                         Status::Expired,
@@ -1171,6 +1180,10 @@ fn start_phase(
                     .collect::<Vec<_>>(),
                 &c.branch,
                 &p.wip_heads,
+                &plans
+                    .iter()
+                    .map(|c| (c.name.clone(), c.full_name.clone()))
+                    .collect(),
             ),
             (Some(c), None) if continuing => deps.workdirs.prepare_continue(
                 &rule.repos[0],
@@ -1179,6 +1192,10 @@ fn start_phase(
                 &[],
                 &c.branch,
                 &p.wip_heads,
+                &single_name
+                    .map(|n| (String::new(), n))
+                    .into_iter()
+                    .collect(),
             ),
             (None, _) if continuing => Err(Error::internal("only a cloud run can be continued")),
             (Some(c), Some(Ok(plans))) => deps.workdirs.prepare_multi(
@@ -2240,6 +2257,7 @@ mod tests {
                     kind: "confirm".into(),
                 },
                 repos: self.claim_repos.borrow().clone(),
+                full_name: Some("acme/widgets".into()),
                 persona: self.signed.borrow().0.clone(),
                 context: self.signed.borrow().1.clone(),
             })))
@@ -4005,6 +4023,7 @@ mod tests {
     #[derive(Default)]
     struct Continuing {
         calls: RefCell<Vec<ContinueCall>>,
+        names: RefCell<Vec<BTreeMap<String, String>>>,
         refuse: Cell<bool>,
     }
 
@@ -4013,6 +4032,7 @@ mod tests {
             GitClone.prepare(repo, pickup_id, cwd)
         }
 
+        #[allow(clippy::too_many_arguments)]
         fn prepare_continue(
             &self,
             primary: &str,
@@ -4021,7 +4041,9 @@ mod tests {
             clones: &[(String, String)],
             branch: &str,
             heads: &BTreeMap<String, String>,
+            full_names: &BTreeMap<String, String>,
         ) -> Result<()> {
+            self.names.borrow_mut().push(full_names.clone());
             self.calls.borrow_mut().push((
                 pickup_id.to_string(),
                 cwd.to_string(),
@@ -4275,6 +4297,13 @@ mod tests {
         let calls = dirs.calls.borrow();
         assert_eq!(calls.len(), 1);
         assert_eq!((calls[0].3, &calls[0].4), (2, &old.wip_heads));
+        assert_eq!(
+            dirs.names.borrow()[0],
+            BTreeMap::from([
+                ("backend".to_string(), "tmgr-dev/backend".to_string()),
+                ("frontend".to_string(), "tmgr-dev/frontend".to_string()),
+            ])
+        );
         let p = fx.pickups().remove(1);
         assert_eq!(p.status, Status::Started);
         assert_eq!(p.clones.len(), 2);
@@ -4296,6 +4325,10 @@ mod tests {
         fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
         assert_eq!(fx.cloud.gate_calls.get(), before + 1);
         assert_eq!(fx.pickups()[1].status, Status::Started);
+        assert_eq!(
+            dirs.names.borrow()[0],
+            BTreeMap::from([(String::new(), "acme/widgets".to_string())])
+        );
     }
 
     #[test]

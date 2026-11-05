@@ -334,6 +334,14 @@ pub fn write_script(dir: &std::path::Path, name: &str, body: &str) -> PathBuf {
     p
 }
 
+pub fn seed_remote(repo: &std::path::Path, bare: &std::path::Path) {
+    git(bare, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+    git(
+        repo,
+        &["push", "-q", bare.to_str().unwrap(), "main:refs/heads/main"],
+    );
+}
+
 pub const STUB_SSH_HOST: &str = "git@example.invalid";
 
 pub fn write_ssh_stub(dir: &std::path::Path, routes: &[(&str, &std::path::Path)]) -> PathBuf {

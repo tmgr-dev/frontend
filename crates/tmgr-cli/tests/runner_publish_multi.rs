@@ -78,6 +78,7 @@ impl Rig {
             );
             let bare = root.join(format!("{short}-remote.git"));
             git(&root, &["init", "-q", "--bare", bare.to_str().unwrap()]);
+            common::seed_remote(&repo, &bare);
             config.push_str(&format!(
                 "[url \"{}:{name}.git\"]\n\tinsteadOf = {url}\n",
                 common::STUB_SSH_HOST
@@ -308,7 +309,7 @@ impl Rig {
     }
 
     fn pushed(&self, i: usize) -> bool {
-        !git(&self.bares[i], &["branch", "--list"]).is_empty()
+        !git(&self.bares[i], &["branch", "--list", BRANCH]).is_empty()
     }
 
     async fn calls(&self) -> Vec<(String, String, String)> {
