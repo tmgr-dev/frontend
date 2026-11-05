@@ -811,7 +811,7 @@ impl Session {
         while !b.stalled && !input_room(&queued_bytes, &queued_frames, Some(&b), len) {
             let left = deadline.saturating_duration_since(Instant::now());
             if left.is_zero() {
-                b.stalled = true;
+                b.stalled = !b.link_silent() && !b.has_room(len);
                 log(&format!(
                     "session {} input is stalled; dropping attach input",
                     self.id
@@ -5760,6 +5760,18 @@ mod tests {
         assert!(s.input(b"x"));
         assert!(waited >= Duration::from_millis(100), "{waited:?}");
         assert!(waited < ATTACH_INPUT_WAIT, "{waited:?}");
+        assert!(!lock(&book.0).stalled);
+    }
+
+    #[test]
+    fn a_lagging_link_channel_does_not_latch_a_stall() {
+        let (_t, s, _rx, book) = credit_session();
+        for _ in 0..SHIM_INPUT_FRAMES {
+            assert!(s.shim_input(b"k"));
+        }
+        let t0 = Instant::now();
+        s.wait_input_room(1);
+        assert!(t0.elapsed() >= ATTACH_INPUT_WAIT);
         assert!(!lock(&book.0).stalled);
     }
 
