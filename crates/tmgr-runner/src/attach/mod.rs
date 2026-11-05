@@ -65,8 +65,8 @@ pub use modes::{enter_mouse, focus_on, mode_changes, reset_modes};
 pub use mouse::{encode, wants, Kind, MouseEvent};
 pub use msel::{click_count, Click, Finish, Gran, MouseSel};
 pub use newsession::{
-    KindOpt, NewEdit, NewField, NewRequest, NewSession, Place, PrivAsk, PrivGate, SpawnKind,
-    TaskOpt,
+    KindOpt, NewEdit, NewField, NewRequest, NewSession, Place, PrivAsk, PrivGate, Remembered,
+    SpawnKind, TaskOpt,
 };
 pub use notes::{NotesAction, NotesState, NotesTask};
 pub use palette::{Palette, PaletteEdit, PaletteEntry, PaletteMode, RowView};

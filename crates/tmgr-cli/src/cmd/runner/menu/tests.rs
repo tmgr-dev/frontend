@@ -1,4 +1,4 @@
-use super::memory::{self, Kind, Memory};
+use super::memory::{self, DialogMemory, Kind, Memory};
 use super::state::*;
 use super::view;
 use super::{settle, wanted, Entry, Failures, MAX_POLL_ERRORS};
@@ -685,6 +685,89 @@ fn missing_or_corrupt_memory_means_defaults() {
         std::fs::write(&path, junk).unwrap();
         assert_eq!(memory::load(&path), Memory::default(), "{junk}");
     }
+}
+
+#[test]
+fn dialog_memory_round_trips_and_omits_unset_options() {
+    let home = tempfile::tempdir().unwrap();
+    let path = home.path().join("cfg").join("attach-new.toml");
+    assert_eq!(memory::load_dialog(&path), DialogMemory::default());
+    let m = DialogMemory {
+        agent: "claude-code".into(),
+        bypass: true,
+        no_sandbox: true,
+        worktree: Some(true),
+        permission_cards: Some(false),
+        checkpoints: None,
+    };
+    memory::save_dialog(&path, &m).unwrap();
+    assert_eq!(memory::load_dialog(&path), m);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(!text.contains("checkpoints"));
+    let bare = DialogMemory {
+        agent: "codex".into(),
+        ..DialogMemory::default()
+    };
+    memory::save_dialog(&path, &bare).unwrap();
+    assert_eq!(memory::load_dialog(&path), bare);
+}
+
+#[test]
+fn missing_corrupt_or_wrong_typed_dialog_memory_means_defaults() {
+    let home = tempfile::tempdir().unwrap();
+    let path = home.path().join("attach-new.toml");
+    assert_eq!(memory::load_dialog(&path), DialogMemory::default());
+    for junk in ["\u{0}\u{1}garbage", "agent = ["] {
+        std::fs::write(&path, junk).unwrap();
+        assert_eq!(
+            memory::load_dialog(&path),
+            DialogMemory::default(),
+            "{junk}"
+        );
+    }
+    std::fs::write(
+        &path,
+        "agent = 5\nbypass = \"yes\"\nno_sandbox = 1\nworktree = \"on\"\npermission_cards = []\ncheckpoints = 2\n",
+    )
+    .unwrap();
+    assert_eq!(memory::load_dialog(&path), DialogMemory::default());
+    std::fs::write(
+        &path,
+        "agent = \"codex\"\nbypass = true\nworktree = \"on\"\n",
+    )
+    .unwrap();
+    let m = memory::load_dialog(&path);
+    assert_eq!(
+        (m.agent.as_str(), m.bypass, m.worktree),
+        ("codex", true, None)
+    );
+}
+
+#[test]
+fn the_dialog_file_and_the_run_menu_file_never_touch_each_other() {
+    let home = tempfile::tempdir().unwrap();
+    let menu_path = home.path().join("run-menu.toml");
+    let dialog_path = home.path().join("attach-new.toml");
+    let menu = Memory {
+        agent: "codex".into(),
+        kind: Kind::Fork,
+        bypass: true,
+        no_sandbox: false,
+    };
+    memory::save(&menu_path, &menu).unwrap();
+    let before = std::fs::read(&menu_path).unwrap();
+    let dialog = DialogMemory {
+        agent: "claude-code".into(),
+        no_sandbox: true,
+        ..DialogMemory::default()
+    };
+    memory::save_dialog(&dialog_path, &dialog).unwrap();
+    assert_eq!(std::fs::read(&menu_path).unwrap(), before);
+    let dialog_before = std::fs::read(&dialog_path).unwrap();
+    memory::save(&menu_path, &Memory::default()).unwrap();
+    assert_eq!(std::fs::read(&dialog_path).unwrap(), dialog_before);
+    assert_eq!(memory::load_dialog(&dialog_path), dialog);
+    assert_eq!(memory::load(&menu_path), Memory::default());
 }
 
 #[test]

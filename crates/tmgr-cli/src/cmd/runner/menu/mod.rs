@@ -18,6 +18,7 @@ use super::session_list;
 use crate::cmd::board::theme::ColorLevel;
 use crate::cmd::ui::{enter_screen, leave_screen, Restore};
 use indexer::{Indexer, Searcher};
+pub(crate) use memory::{dialog_path, load_dialog, save_dialog, DialogMemory};
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Terminal;

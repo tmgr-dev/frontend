@@ -3,6 +3,7 @@ use toml_edit::{value, DocumentMut};
 
 const FILE: &str = "run-menu.toml";
 const SENDS: &str = "smart-search.toml";
+const DIALOG: &str = "attach-new.toml";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Kind {
@@ -103,5 +104,58 @@ pub fn save_send(path: &Path, direction: &str, allow: bool) -> std::io::Result<(
         .and_then(|s| s.parse::<DocumentMut>().ok())
         .unwrap_or_default();
     doc[direction] = value(allow);
+    write_doc(path, &doc)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct DialogMemory {
+    pub agent: String,
+    pub bypass: bool,
+    pub no_sandbox: bool,
+    pub worktree: Option<bool>,
+    pub permission_cards: Option<bool>,
+    pub checkpoints: Option<bool>,
+}
+
+pub fn dialog_path() -> Option<PathBuf> {
+    tmgr_core::config::config_dir().ok().map(|d| d.join(DIALOG))
+}
+
+pub fn load_dialog(path: &Path) -> DialogMemory {
+    let Some(doc) = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| s.parse::<DocumentMut>().ok())
+    else {
+        return DialogMemory::default();
+    };
+    let flag = |key: &str| doc.get(key).and_then(|v| v.as_bool());
+    DialogMemory {
+        agent: doc
+            .get("agent")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        bypass: flag("bypass").unwrap_or(false),
+        no_sandbox: flag("no_sandbox").unwrap_or(false),
+        worktree: flag("worktree"),
+        permission_cards: flag("permission_cards"),
+        checkpoints: flag("checkpoints"),
+    }
+}
+
+pub fn save_dialog(path: &Path, m: &DialogMemory) -> std::io::Result<()> {
+    let mut doc = DocumentMut::new();
+    doc["agent"] = value(m.agent.as_str());
+    doc["bypass"] = value(m.bypass);
+    doc["no_sandbox"] = value(m.no_sandbox);
+    for (key, v) in [
+        ("worktree", m.worktree),
+        ("permission_cards", m.permission_cards),
+        ("checkpoints", m.checkpoints),
+    ] {
+        if let Some(v) = v {
+            doc[key] = value(v);
+        }
+    }
     write_doc(path, &doc)
 }

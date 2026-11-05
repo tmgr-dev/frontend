@@ -67,6 +67,16 @@ pub struct PrivAsk {
 
 pub type PrivGate = fn(bool, bool) -> Result<PrivAsk, (String, Option<String>)>;
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Remembered {
+    pub agent: String,
+    pub bypass: bool,
+    pub no_sandbox: bool,
+    pub worktree: Option<bool>,
+    pub permission_cards: Option<bool>,
+    pub checkpoints: Option<bool>,
+}
+
 #[derive(Clone, Debug)]
 struct PrivPrompt {
     req: NewRequest,
@@ -137,6 +147,7 @@ pub struct NewSession {
     pub permission_cards: bool,
     pub bypass: bool,
     pub no_sandbox: bool,
+    remembered: bool,
     pub priv_gate: Option<PrivGate>,
     pub priv_lock: Option<String>,
     priv_prompt: Option<PrivPrompt>,
@@ -252,9 +263,23 @@ impl NewSession {
         (f == NewField::Bypass && !self.kind_bypass()).then(|| "no bypass mode".into())
     }
 
+    fn remembered_line(&self) -> Option<String> {
+        if !self.remembered {
+            return None;
+        }
+        let what = match (self.bypass, self.no_sandbox) {
+            (true, true) => "Bypass and no sandbox are",
+            (true, false) => "Bypass is",
+            (false, true) => "No sandbox is",
+            (false, false) => return None,
+        };
+        Some(format!("{what} on, remembered from your last session"))
+    }
+
     pub fn clear_privileges(&mut self) {
         self.bypass = false;
         self.no_sandbox = false;
+        self.remembered = false;
         self.priv_prompt = None;
     }
 
@@ -363,6 +388,7 @@ impl NewSession {
                     };
                     self.bypass = false;
                     self.no_sandbox = false;
+                    self.remembered = false;
                     self.clear_error();
                 }
             }
@@ -392,10 +418,12 @@ impl NewSession {
             }
             NewField::Bypass if self.lock_of(NewField::Bypass).is_none() => {
                 self.bypass = !self.bypass;
+                self.remembered = false;
                 self.clear_error();
             }
             NewField::NoSandbox if self.lock_of(NewField::NoSandbox).is_none() => {
                 self.no_sandbox = !self.no_sandbox;
+                self.remembered = false;
                 self.clear_error();
             }
             NewField::Where => {
@@ -575,6 +603,7 @@ impl NewSession {
 }
 
 struct Notes {
+    remembered: Vec<String>,
     error: Vec<String>,
     hint: Vec<String>,
 }
@@ -643,6 +672,10 @@ fn notes(ns: &NewSession, area_width: u16) -> Notes {
             .unwrap_or_default()
     };
     Notes {
+        remembered: ns
+            .remembered_line()
+            .map(|t| wrap(&t, width, 2))
+            .unwrap_or_default(),
         error: clean(&ns.error, 2),
         hint: clean(&ns.error_hint, 3),
     }
@@ -677,7 +710,7 @@ pub(crate) fn new_session_rect(area: Rect, ns: &NewSession) -> Rect {
     let body = match (&ns.review, &ns.priv_prompt) {
         (Some(lines), _) => review_wrapped(lines, area.width).len() + 4,
         (None, Some(p)) => prompt_lines(p, area.width).len() + 4,
-        (None, None) => ns.fields().len() + n.error_h() + n.hint_h() + 6,
+        (None, None) => ns.fields().len() + n.remembered.len() + n.error_h() + n.hint_h() + 6,
     };
     let h = u16::try_from(body).unwrap_or(u16::MAX).min(area.height);
     Rect::new(
@@ -940,7 +973,12 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
                 let (labels, sel) = option_labels(ns, *f);
                 for (i, off, w) in option_spans(&labels, sel, avail) {
                     let style = if i == sel {
-                        Style::new().add_modifier(Modifier::REVERSED)
+                        let on = Style::new().add_modifier(Modifier::REVERSED);
+                        if sel == 1 && matches!(f, NewField::Bypass | NewField::NoSandbox) {
+                            on.fg(colors().bad)
+                        } else {
+                            on
+                        }
                     } else {
                         Style::new()
                     };
@@ -997,7 +1035,7 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
     };
     let bottom = inner.bottom();
     let n = notes(ns, area.width);
-    for (i, text) in n.error.iter().enumerate() {
+    for (i, text) in n.remembered.iter().enumerate() {
         if line(1 + i) < bottom {
             put(
                 buf,
@@ -1009,7 +1047,20 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
             );
         }
     }
-    let hint_at = 1 + n.error_h();
+    let error_at = 1 + n.remembered.len();
+    for (i, text) in n.error.iter().enumerate() {
+        if line(error_at + i) < bottom {
+            put(
+                buf,
+                inner.x,
+                line(error_at + i),
+                text,
+                Style::new().fg(colors().bad),
+                inner.width,
+            );
+        }
+    }
+    let hint_at = error_at + n.error_h();
     for (i, text) in n.hint.iter().enumerate() {
         if line(hint_at + i) < bottom {
             put(buf, inner.x, line(hint_at + i), text, dim(), inner.width);
@@ -1081,6 +1132,7 @@ impl ViewState {
             permission_cards: self.permission_cards_default,
             bypass: false,
             no_sandbox: false,
+            remembered: false,
             priv_gate: self.priv_gate,
             priv_lock: self.privileged_lock.clone(),
             priv_prompt: None,
@@ -1097,6 +1149,83 @@ impl ViewState {
             home,
             list_dir: list_dirs,
         });
+    }
+
+    pub fn apply_remembered(&mut self, r: &Remembered) {
+        let Some(ns) = self.new_session.as_mut() else {
+            return;
+        };
+        if let Some(v) = r.worktree {
+            ns.worktree = v;
+        }
+        if let Some(v) = r.permission_cards {
+            ns.permission_cards = v;
+        }
+        if let Some(v) = r.checkpoints {
+            ns.checkpoints = v;
+        }
+        if !r.bypass && !r.no_sandbox {
+            return;
+        }
+        let clean = |t: &str| strip_control(&sanitize_text(t));
+        let agent = clean(&r.agent);
+        let selected = ns
+            .kinds
+            .get(ns.kind)
+            .filter(|_| ns.is_agent())
+            .map(|k| k.id.as_str());
+        let mut off = Vec::new();
+        let mut reason = String::new();
+        let wrong_agent = selected != Some(r.agent.as_str());
+        if wrong_agent {
+            off.extend([
+                r.bypass.then_some("bypass"),
+                r.no_sandbox.then_some("no sandbox"),
+            ]);
+        } else {
+            for (wanted, field, name) in [
+                (r.bypass, NewField::Bypass, "bypass"),
+                (r.no_sandbox, NewField::NoSandbox, "no sandbox"),
+            ] {
+                if !wanted {
+                    continue;
+                }
+                match ns.lock_of(field) {
+                    None => {
+                        if field == NewField::Bypass {
+                            ns.bypass = true;
+                        } else {
+                            ns.no_sandbox = true;
+                        }
+                        ns.remembered = true;
+                    }
+                    Some(lock) => {
+                        off.push(Some(name));
+                        reason = if lock == "no bypass mode" {
+                            "this agent has no bypass mode".into()
+                        } else {
+                            format!("locked: {}", clean(&lock))
+                        };
+                    }
+                }
+            }
+        }
+        let off: Vec<&str> = off.into_iter().flatten().collect();
+        if off.is_empty() {
+            return;
+        }
+        let (names, verb, pronoun) = match off.as_slice() {
+            [one] => (one.to_string(), "is", "it was"),
+            _ => (off.join(" and "), "are", "they were"),
+        };
+        if wrong_agent {
+            reason = if agent.is_empty() {
+                format!("{pronoun} set for a different agent")
+            } else {
+                format!("{pronoun} set for {agent}")
+            };
+        }
+        ns.error_hint = Some(format!("Remembered {names} {verb} off: {reason}"));
     }
 
     pub fn set_new_tasks(&mut self, mut tasks: Vec<TaskOpt>, note: Option<String>) {
@@ -1353,9 +1482,12 @@ impl ViewState {
                         ns.kind = i;
                         ns.bypass = false;
                         ns.no_sandbox = false;
+                        ns.remembered = false;
                     } else if field == NewField::Bypass {
+                        ns.remembered = false;
                         ns.bypass = i == 1 && ns.lock_of(field).is_none();
                     } else if field == NewField::NoSandbox {
+                        ns.remembered = false;
                         ns.no_sandbox = i == 1 && ns.lock_of(field).is_none();
                     } else if field == NewField::Worktree {
                         ns.worktree = i == 1;
@@ -2802,5 +2934,244 @@ mod tests {
         ns(&mut v).kind = 1;
         v.new_session.as_mut().unwrap().priv_lock = None;
         snapshot("new_session_locked_narrow", &draw(&v, 40, 16));
+    }
+
+    fn rem(agent: &str, bypass: bool, no_sandbox: bool) -> Remembered {
+        Remembered {
+            agent: agent.into(),
+            bypass,
+            no_sandbox,
+            ..Remembered::default()
+        }
+    }
+
+    fn open_remembered(kind: &str, r: &Remembered, h: &Path) -> ViewState {
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.priv_gate = Some(test_gate);
+        v.new_kind = Some(kind.into());
+        v.open_new_session("/".into(), kinds(), h.to_path_buf());
+        v.apply_remembered(r);
+        v
+    }
+
+    fn hint(v: &ViewState) -> String {
+        v.new_session
+            .as_ref()
+            .unwrap()
+            .error_hint
+            .clone()
+            .unwrap_or_default()
+    }
+
+    fn on_cells_in_alert(v: &ViewState, f: NewField) -> bool {
+        let ns = v.new_session.as_ref().unwrap();
+        let rect = new_session_rect(AREA, ns);
+        let row = field_rows(ns, inner(rect))
+            .into_iter()
+            .find(|(g, _)| *g == f)
+            .unwrap()
+            .1;
+        let mut t = Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
+        t.draw(|fr| {
+            let area = fr.area();
+            draw_new_session(fr.buffer_mut(), area, v)
+        })
+        .unwrap();
+        let buf = t.backend().buffer();
+        (row.x..row.right()).any(|x| {
+            buf[(x, row.y)].symbol() == "O"
+                && buf[(x + 1, row.y)].symbol() == "n"
+                && buf[(x, row.y)].fg == colors().bad
+        })
+    }
+
+    #[test]
+    fn remembered_flags_for_the_selected_agent_are_on_visible_and_still_ask() {
+        let h = tmp();
+        let mut v = open_remembered("claude", &rem("claude", true, true), h.path());
+        assert!(ns(&mut v).bypass && ns(&mut v).no_sandbox);
+        assert_eq!(hint(&v), "");
+        let shown = draw(&v, 100, 30);
+        assert!(shown.contains("Bypass and no sandbox are on, remembered from your last session"));
+        assert!(on_cells_in_alert(&v, NewField::Bypass));
+        assert!(on_cells_in_alert(&v, NewField::NoSandbox));
+        assert!(!on_cells_in_alert(&v, NewField::Worktree));
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+    }
+
+    #[test]
+    fn the_remembered_line_counts_in_the_dialog_height_and_keeps_errors_visible() {
+        let h = tmp();
+        let plain = open("/", h.path());
+        let v = open_remembered("claude", &rem("claude", true, false), h.path());
+        let a = new_session_rect(AREA, plain.new_session.as_ref().unwrap());
+        let b = new_session_rect(AREA, v.new_session.as_ref().unwrap());
+        assert_eq!(b.height, a.height + 1);
+        let mut v = v;
+        ns(&mut v).error = Some("folder is required".into());
+        let shown = draw(&v, 100, 30);
+        assert!(shown.contains("Bypass is on, remembered from your last session"));
+        assert!(shown.contains("folder is required"));
+        assert!(shown.contains("Enter starts, Esc cancels"));
+    }
+
+    #[test]
+    fn remembered_flags_for_another_agent_stay_off_with_a_note() {
+        let h = tmp();
+        let mut v = open_remembered("codex", &rem("claude", true, true), h.path());
+        assert!(!ns(&mut v).bypass && !ns(&mut v).no_sandbox);
+        assert_eq!(
+            hint(&v),
+            "Remembered bypass and no sandbox are off: they were set for claude"
+        );
+        let shown = draw(&v, 100, 30);
+        assert!(shown.contains("were set for claude"));
+        assert!(!shown.contains("remembered from your last session"));
+        let mut v = open_remembered("codex", &rem("claude", false, true), h.path());
+        assert!(!ns(&mut v).no_sandbox);
+        assert_eq!(
+            hint(&v),
+            "Remembered no sandbox is off: it was set for claude"
+        );
+    }
+
+    #[test]
+    fn a_kind_without_a_bypass_mode_drops_only_the_bypass() {
+        let h = tmp();
+        let mut v = open_remembered("codex", &rem("codex", true, true), h.path());
+        assert!(!ns(&mut v).bypass && ns(&mut v).no_sandbox);
+        assert_eq!(
+            hint(&v),
+            "Remembered bypass is off: this agent has no bypass mode"
+        );
+        let shown = draw(&v, 100, 30);
+        assert!(shown.contains("No sandbox is on, remembered from your last session"));
+        assert!(on_cells_in_alert(&v, NewField::NoSandbox));
+    }
+
+    #[test]
+    fn a_caller_lock_or_a_missing_gate_keeps_both_off_with_a_note() {
+        let h = tmp();
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.priv_gate = Some(test_gate);
+        v.privileged_lock = Some("agent session".into());
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        v.apply_remembered(&rem("claude", true, true));
+        assert!(!ns(&mut v).bypass && !ns(&mut v).no_sandbox);
+        assert_eq!(
+            hint(&v),
+            "Remembered bypass and no sandbox are off: locked: agent session"
+        );
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        v.apply_remembered(&rem("claude", true, false));
+        assert!(!ns(&mut v).bypass);
+        assert_eq!(hint(&v), "Remembered bypass is off: locked: unavailable");
+    }
+
+    #[test]
+    fn nothing_remembered_means_no_note() {
+        let h = tmp();
+        for r in [rem("", false, false), rem("gone", false, false)] {
+            let mut v = open_remembered("claude", &r, h.path());
+            assert_eq!(hint(&v), "");
+            assert!(!ns(&mut v).bypass && !ns(&mut v).no_sandbox);
+            assert!(!draw(&v, 100, 30).contains("emembered"));
+        }
+    }
+
+    #[test]
+    fn changing_the_kind_or_a_toggle_clears_the_flags_and_the_remembered_line() {
+        let h = tmp();
+        let line = "remembered from your last session";
+        let mut v = open_remembered("claude", &rem("claude", true, true), h.path());
+        ns(&mut v).focus = NewField::Kind;
+        v.edit_new_session(b"\x1b[C");
+        assert!(!ns(&mut v).bypass && !ns(&mut v).no_sandbox);
+        assert!(!draw(&v, 100, 30).contains(line));
+        v.edit_new_session(b"\x1b[D");
+        assert!(!draw(&v, 100, 30).contains(line));
+        flip(&mut v, NewField::Bypass);
+        assert!(!draw(&v, 100, 30).contains(line));
+
+        let mut v = open_remembered("claude", &rem("claude", true, true), h.path());
+        flip(&mut v, NewField::Bypass);
+        assert!(!ns(&mut v).bypass && ns(&mut v).no_sandbox);
+        assert!(!draw(&v, 100, 30).contains(line));
+        assert!(!on_cells_in_alert(&v, NewField::NoSandbox) || ns(&mut v).no_sandbox);
+
+        let mut v = open_remembered("claude", &rem("claude", true, true), h.path());
+        let row = row_of(&mut v, NewField::Kind);
+        click(&mut v, row.x + LABEL_W + 2, row.y);
+        assert!(!ns(&mut v).bypass && !draw(&v, 100, 30).contains(line));
+
+        let mut v = open_remembered("claude", &rem("claude", true, false), h.path());
+        let row = row_of(&mut v, NewField::Bypass);
+        click(&mut v, row.x + LABEL_W + 2, row.y);
+        assert!(!ns(&mut v).bypass && !draw(&v, 100, 30).contains(line));
+    }
+
+    #[test]
+    fn the_note_goes_away_with_the_next_edit() {
+        let h = tmp();
+        let mut v = open_remembered("codex", &rem("claude", true, false), h.path());
+        assert!(!hint(&v).is_empty());
+        flip(&mut v, NewField::Worktree);
+        assert_eq!(hint(&v), "");
+    }
+
+    #[test]
+    fn remembered_worktree_cards_and_rewind_are_applied_only_when_set() {
+        let h = tmp();
+        let r = Remembered {
+            worktree: Some(true),
+            permission_cards: Some(true),
+            checkpoints: Some(false),
+            ..Remembered::default()
+        };
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.priv_gate = Some(test_gate);
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        v.apply_remembered(&r);
+        assert!(ns(&mut v).worktree && ns(&mut v).permission_cards && !ns(&mut v).checkpoints);
+
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.worktree_default = true;
+        v.permission_cards_default = true;
+        v.cp.form_default = true;
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        v.apply_remembered(&Remembered::default());
+        assert!(ns(&mut v).worktree && ns(&mut v).permission_cards && ns(&mut v).checkpoints);
+        v.apply_remembered(&Remembered {
+            worktree: Some(false),
+            permission_cards: Some(false),
+            checkpoints: Some(false),
+            ..Remembered::default()
+        });
+        assert!(!ns(&mut v).worktree && !ns(&mut v).permission_cards && !ns(&mut v).checkpoints);
+    }
+
+    #[test]
+    fn a_hostile_agent_id_in_the_note_is_cleaned() {
+        let h = tmp();
+        let v = open_remembered("codex", &rem("cla\x1b[31mude\u{7}", true, false), h.path());
+        let note = hint(&v);
+        assert!(!note.chars().any(|c| c.is_control()), "{note:?}");
+        assert!(note.starts_with("Remembered bypass is off: it was set for"));
+        let shown = draw(&v, 100, 30);
+        assert!(!shown.contains('\x1b'));
+    }
+
+    #[test]
+    fn a_failed_start_reopens_with_the_flags_off_and_no_remembered_line() {
+        let h = tmp();
+        let v = open_remembered("claude", &rem("claude", true, true), h.path());
+        let mut saved = v.new_session.clone().unwrap();
+        saved.clear_privileges();
+        let mut v = v;
+        v.reopen_new_session(saved);
+        assert!(!ns(&mut v).bypass && !ns(&mut v).no_sandbox);
+        assert!(!draw(&v, 100, 30).contains("remembered from your last session"));
     }
 }

@@ -33,6 +33,7 @@ use super::attach_tasks;
 use super::attach_templates;
 use super::attach_title::{agent_src, title_real_home, titler, AgentSrc, TitleJob};
 use super::attach_usage::{usage_source, usage_worker};
+use super::menu::{dialog_path, load_dialog, save_dialog, DialogMemory};
 use super::run_task::Prepared;
 use super::session_wt::{delete, plan_removal, Ask, Removal};
 use super::watch as watcher;
@@ -64,11 +65,11 @@ use tmgr_runner::attach::{
     clean_selection, cursor, deliver, enter_mouse, focus_on, kind_for_background, layout,
     mode_changes, open_urls, parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes,
     valid_pr_url, Action, AgentTitle, AttentionTracker, Cmd, Confirm, Control, CpAction, CpMsg,
-    GitAction, GitInfo, Hit, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession,
-    Notifier, PaletteEdit, PaletteEntry, PaletteMode, PaneInfo, Place, PostTarget, PrLookup, QEdit,
-    RenameEdit, ScreenSource, ScrollKey, ScrollState, ScrollText, SearchEdit, SessionRow,
-    SessionStatus, SidebarEdit, SignalSettings, SignalTracker, SplitDir, SummaryAction,
-    SummaryDraft, TaskChip, TaskOpt, ThemeKind, UsageBar, ViewState, OSC11_QUERY,
+    GitAction, GitInfo, Hit, InputSplitter, KindOpt, LayoutPrefs, Loc, NewEdit, NewRequest,
+    NewSession, Notifier, PaletteEdit, PaletteEntry, PaletteMode, PaneInfo, Place, PostTarget,
+    PrLookup, QEdit, Remembered, RenameEdit, ScreenSource, ScrollKey, ScrollState, ScrollText,
+    SearchEdit, SessionRow, SessionStatus, SidebarEdit, SignalSettings, SignalTracker, SplitDir,
+    SummaryAction, SummaryDraft, TaskChip, TaskOpt, ThemeKind, UsageBar, ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -366,6 +367,7 @@ struct App {
     pending: HashMap<String, Instant>,
     creating: HashMap<String, String>,
     new_flow: NewFlow,
+    new_memory: Option<PathBuf>,
     typed: Option<(String, Vec<u8>)>,
     removing: HashSet<String>,
     stopped: HashSet<String>,
@@ -449,6 +451,53 @@ struct App {
 }
 
 type ProbeJob = (String, u32, String);
+
+fn open_with_memory(
+    view: &mut ViewState,
+    folder: String,
+    kinds: Vec<KindOpt>,
+    home: PathBuf,
+    path: Option<&Path>,
+) {
+    view.open_new_session(folder, kinds, home);
+    let m = path.map(load_dialog).unwrap_or_default();
+    view.apply_remembered(&Remembered {
+        agent: m.agent,
+        bypass: m.bypass,
+        no_sandbox: m.no_sandbox,
+        worktree: m.worktree,
+        permission_cards: m.permission_cards,
+        checkpoints: m.checkpoints,
+    });
+}
+
+fn save_dialog_memory(
+    path: Option<&Path>,
+    dialog: Option<&NewSession>,
+    started: bool,
+    req: &NewRequest,
+) {
+    let (Some(path), Some(dialog), true) = (path, dialog, started) else {
+        return;
+    };
+    if req.task.is_some() || !matches!(req.kind, tmgr_runner::attach::SpawnKind::Agent { .. }) {
+        return;
+    }
+    let Some(kind) = dialog.kinds.get(dialog.kind) else {
+        return;
+    };
+    let _ = save_dialog(
+        path,
+        &DialogMemory {
+            agent: kind.id.clone(),
+            bypass: req.bypass,
+            no_sandbox: req.no_sandbox,
+            worktree: Some(req.worktree),
+            permission_cards: Some(req.permission_cards),
+            checkpoints: req.checkpoints,
+        },
+    );
+}
 
 impl App {
     fn on_msg(&mut self, msg: Msg) -> io::Result<Option<Exit>> {
@@ -1992,7 +2041,13 @@ impl App {
         };
         let folder = default_folder(process_cwd(pid), start, std::env::current_dir().ok(), &home);
         self.new_flow.drop_review();
-        self.view.open_new_session(folder, installed_kinds(), home);
+        open_with_memory(
+            &mut self.view,
+            folder,
+            installed_kinds(),
+            home,
+            self.new_memory.as_deref(),
+        );
         let tx = self.tx.clone();
         let agent = in_agent();
         thread::spawn(move || {
@@ -2238,6 +2293,12 @@ impl App {
     ) {
         self.dirty = true;
         let dialog = self.new_flow.finish(id);
+        save_dialog_memory(
+            self.new_memory.as_deref(),
+            dialog.as_ref(),
+            result.is_ok(),
+            req,
+        );
         let info = match result {
             Ok(info) => info,
             Err(e) => {
@@ -4291,6 +4352,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         pending: HashMap::new(),
         creating: HashMap::new(),
         new_flow: NewFlow::default(),
+        new_memory: dialog_path(),
         typed: None,
         removing: HashSet::new(),
         stopped: HashSet::new(),
@@ -5047,5 +5109,165 @@ mod tests {
         assert!(is_user_action(&v, &Action::Scroll(ScrollKey::PageUp)));
         v.help = true;
         assert!(is_user_action(&v, &typed()));
+    }
+
+    fn dialog_kinds() -> Vec<KindOpt> {
+        let k = |id: &str, spawn, bypass| KindOpt {
+            id: id.into(),
+            label: id.into(),
+            spawn,
+            bypass,
+        };
+        vec![
+            k(
+                "claude-code",
+                SpawnKind::Agent {
+                    profile: "claude-code".into(),
+                },
+                true,
+            ),
+            k(
+                "codex",
+                SpawnKind::Agent {
+                    profile: "codex".into(),
+                },
+                false,
+            ),
+            k("shell", SpawnKind::Shell, false),
+        ]
+    }
+
+    fn gate(
+        _: bool,
+        _: bool,
+    ) -> std::result::Result<tmgr_runner::attach::PrivAsk, (String, Option<String>)> {
+        Err(("unused".into(), None))
+    }
+
+    fn dialog_view(path: Option<&Path>) -> ViewState {
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.priv_gate = Some(gate);
+        open_with_memory(&mut v, "/".into(), dialog_kinds(), "/".into(), path);
+        v
+    }
+
+    fn started(kind: SpawnKind, task: Option<&str>) -> NewRequest {
+        NewRequest {
+            kind,
+            folder: "/".into(),
+            name: None,
+            place: Place::Right,
+            task: task.map(str::to_string),
+            worktree: true,
+            checkpoints: Some(true),
+            permission_cards: true,
+            bypass: true,
+            no_sandbox: true,
+        }
+    }
+
+    fn claude() -> SpawnKind {
+        SpawnKind::Agent {
+            profile: "claude-code".into(),
+        }
+    }
+
+    #[test]
+    fn a_started_dialog_agent_is_saved() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("attach-new.toml");
+        let v = dialog_view(Some(&path));
+        save_dialog_memory(
+            Some(&path),
+            v.new_session.as_ref(),
+            true,
+            &started(claude(), None),
+        );
+        assert_eq!(
+            load_dialog(&path),
+            DialogMemory {
+                agent: "claude-code".into(),
+                bypass: true,
+                no_sandbox: true,
+                worktree: Some(true),
+                permission_cards: Some(true),
+                checkpoints: Some(true),
+            }
+        );
+    }
+
+    #[test]
+    fn task_shell_failed_and_non_dialog_starts_leave_the_file_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("attach-new.toml");
+        let v = dialog_view(Some(&path));
+        let dialog = v.new_session.as_ref();
+        save_dialog_memory(Some(&path), dialog, true, &started(claude(), Some("TM-1")));
+        save_dialog_memory(Some(&path), dialog, true, &started(SpawnKind::Shell, None));
+        save_dialog_memory(Some(&path), dialog, false, &started(claude(), None));
+        save_dialog_memory(Some(&path), None, true, &started(claude(), None));
+        save_dialog_memory(None, dialog, true, &started(claude(), None));
+        assert!(!path.exists());
+        save_dialog_memory(Some(&path), dialog, true, &started(claude(), None));
+        let before = std::fs::read(&path).unwrap();
+        save_dialog_memory(Some(&path), dialog, true, &started(SpawnKind::Shell, None));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn the_next_dialog_shows_what_the_last_start_used() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("attach-new.toml");
+        let mut v = dialog_view(Some(&path));
+        {
+            let ns = v.new_session.as_ref().unwrap();
+            assert!(!ns.bypass && !ns.worktree && !ns.permission_cards);
+        }
+        save_dialog_memory(
+            Some(&path),
+            v.new_session.as_ref(),
+            true,
+            &started(claude(), None),
+        );
+        v.new_session = None;
+        open_with_memory(&mut v, "/".into(), dialog_kinds(), "/".into(), Some(&path));
+        let ns = v.new_session.as_ref().unwrap();
+        assert!(ns.bypass && ns.no_sandbox);
+        assert!(ns.worktree && ns.permission_cards && ns.checkpoints);
+    }
+
+    #[test]
+    fn a_failed_start_reopens_with_the_privileges_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("attach-new.toml");
+        save_dialog(
+            &path,
+            &DialogMemory {
+                agent: "claude-code".into(),
+                bypass: true,
+                no_sandbox: true,
+                ..DialogMemory::default()
+            },
+        )
+        .unwrap();
+        let v = dialog_view(Some(&path));
+        let base = v.new_session.clone().unwrap();
+        assert!(base.bypass && base.no_sandbox);
+        let again = dialog_for(&base, &started(claude(), None));
+        assert!(!again.bypass && !again.no_sandbox);
+    }
+
+    #[test]
+    fn a_missing_or_unreadable_file_changes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("attach-new.toml");
+        let v = dialog_view(Some(&path));
+        let ns = v.new_session.as_ref().unwrap();
+        assert!(!ns.bypass && !ns.no_sandbox && ns.error_hint.is_none());
+        std::fs::write(&path, "agent = [").unwrap();
+        let v = dialog_view(Some(&path));
+        assert!(v.new_session.as_ref().unwrap().error_hint.is_none());
+        let v = dialog_view(None);
+        assert!(v.new_session.as_ref().unwrap().error_hint.is_none());
     }
 }
