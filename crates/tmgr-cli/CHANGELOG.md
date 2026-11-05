@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.84
+
+- `tmgr resume <session> --fork` and the fork action now work for a runner session that runs Codex: the fork continues from the conversation of that session, and `tmgr` names the new conversation.
+- Runner: restart it to use this.
+
 ## 1.0.83
 
 - The new-session form in `tmgr attach` has Bypass and No sandbox toggles. Turning one on asks you to type the same confirmation as `tmgr run`, right in the form; pasted or queued input is refused. Neither toggle is available inside an agent session.
