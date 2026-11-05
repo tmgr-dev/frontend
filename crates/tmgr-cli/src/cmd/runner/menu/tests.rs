@@ -1440,7 +1440,7 @@ fn ctrl_c_closes_from_every_screen() {
     assert!(matches!(feed_keys(&mut s, b"\x03"), Fed::Close));
     let mut s = only([true, true]);
     s.pump();
-    feed_keys(&mut s, b"\r");
+    feed_keys(&mut s, b"\x1b[B\rr");
     assert_eq!(s.screen, Screen::Flags);
     assert!(matches!(feed_keys(&mut s, b"\x03"), Fed::Close));
 }
@@ -1504,8 +1504,7 @@ fn rows_arriving_later_do_not_block_the_overlay() {
     ready.set(true);
     s.pump();
     assert_eq!(s.rows.len(), 3);
-    assert!(matches!(feed_keys(&mut s, b"\r"), Fed::Stay));
-    assert_eq!(s.screen, Screen::Flags);
+    assert!(matches!(feed_keys(&mut s, b"\r"), Fed::Pick(None)));
     assert_eq!(s.pick(), None);
 }
 
@@ -1550,7 +1549,7 @@ fn the_attach_host_names_attach_and_says_close_not_quit() {
         session.contains("Ctrl+C close") && !session.contains("quit"),
         "{session}"
     );
-    feed_keys(&mut s, b"\r");
+    feed_keys(&mut s, b"\x1b[B\rr");
     let flags = render_in(&s, view::ATTACH, 100, 14, area);
     assert!(flags.contains(" tmgr attach \u{b7} start "), "{flags}");
     assert!(
@@ -1650,4 +1649,43 @@ fn dropping_the_overlay_state_drops_its_source() {
     assert!(!dropped.get());
     drop(s);
     assert!(dropped.get());
+}
+
+#[test]
+fn a_whitespace_query_adds_no_name_tiers_and_keeps_the_hits() {
+    let rows = vec![
+        named("a", RowKind::External, "alpha", "x"),
+        named("b", RowKind::External, "beta", "x"),
+    ];
+    let hits = vec!["b".to_string()];
+    assert_eq!(super::rank::rank(&rows, "  ", Some(&hits)), vec![1]);
+    assert_eq!(super::rank::rank(&rows, "  ", None), vec![0, 1]);
+}
+
+#[test]
+fn enter_on_the_new_row_in_the_overlay_skips_the_flags_screen() {
+    let mut s = only([true, true]);
+    s.pump();
+    assert!(matches!(feed_keys(&mut s, b"\r"), Fed::Pick(None)));
+    assert_eq!(s.screen, Screen::Session);
+}
+
+#[test]
+fn the_run_menu_still_shows_the_flags_for_the_new_row() {
+    let mut s = state(sample_rows());
+    to_session(&mut s);
+    s.on_key(Key::Enter);
+    assert_eq!(s.screen, Screen::Flags);
+}
+
+#[test]
+fn the_overlay_redraws_only_while_something_is_changing() {
+    let mut s = only([true, true]);
+    assert!(!super::refresh(&mut s));
+    s.loading = true;
+    assert!(super::refresh(&mut s));
+    s.loading = false;
+    assert!(!super::refresh(&mut s));
+    s.smart = Smart::Running("q".into());
+    assert!(super::refresh(&mut s));
 }

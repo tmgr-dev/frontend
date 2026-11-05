@@ -20,8 +20,10 @@ pub(super) fn rank(rows: &[Row], query: &str, hits: Option<&[String]>) -> Vec<us
         })
     };
     let mut out: Vec<usize> = Vec::new();
-    for t in 0..3 {
-        out.extend((0..rows.len()).filter(|&i| tier(i) == Some(t)));
+    if !needle.is_empty() {
+        for t in 0..3 {
+            out.extend((0..rows.len()).filter(|&i| tier(i) == Some(t)));
+        }
     }
     let rest: Vec<usize> = match hits {
         Some(ids) => ids
@@ -36,8 +38,13 @@ pub(super) fn rank(rows: &[Row], query: &str, hits: Option<&[String]>) -> Vec<us
             })
             .collect(),
     };
+    let mut seen = vec![false; rows.len()];
+    for &i in &out {
+        seen[i] = true;
+    }
     for i in rest {
-        if !out.contains(&i) {
+        if !seen[i] {
+            seen[i] = true;
             out.push(i);
         }
     }

@@ -135,6 +135,9 @@ fn tmgr_ready(
 pub(super) fn prepare_with(pick: &Pick, deps: &Deps) -> std::result::Result<Ready, SpawnErr> {
     (deps.guard)().map_err(task_err)?;
     match shape(pick) {
+        Shape::External if !valid_resume_id(&pick.id) => {
+            external_ready((None, None), pick, deps.ask)
+        }
         Shape::External => external_ready((deps.entry)(&pick.id), pick, deps.ask),
         Shape::ResumeFlagged => {
             let session = (deps.session)(&pick.id).map_err(task_err)?;
@@ -372,6 +375,31 @@ mod tests {
             assert!(err.message.contains("not a recorded conversation id"));
         }
         assert!(calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn prepare_refuses_a_bad_external_id_before_looking_it_up() {
+        let looked = Cell::new(0);
+        let entry_of = |_: &str| {
+            looked.set(looked.get() + 1);
+            (None, None)
+        };
+        let guard = || Ok(());
+        let session = |_: &str| Err(Error::not_found("x"));
+        let known = |_: &str| Ok(Vec::new());
+        let ask = |_: bool, _: bool| -> Asked { Err(("x".into(), None)) };
+        let deps = Deps {
+            guard: &guard,
+            entry: &entry_of,
+            session: &session,
+            known: &known,
+            ask: &ask,
+        };
+        let mut p = pick(false, false, false, false);
+        p.id = "../../etc".into();
+        let err = prepare_with(&p, &deps).err().unwrap();
+        assert!(err.message.contains("not a recorded conversation id"));
+        assert_eq!(looked.get(), 0);
     }
 
     #[test]

@@ -256,15 +256,15 @@ impl State {
         }
     }
 
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self) -> bool {
         if !matches!(self.smart, Smart::Running(_)) {
-            return;
+            return false;
         }
         let Some(done) = self.source.smart_poll() else {
-            return;
+            return false;
         };
         let Smart::Running(question) = std::mem::replace(&mut self.smart, Smart::Off) else {
-            return;
+            return false;
         };
         match done {
             Ok(picks) if picks.is_empty() => {
@@ -276,6 +276,7 @@ impl State {
             }
             Err(e) => self.notice = Some(e),
         }
+        true
     }
 
     pub fn agent(&self) -> &AgentOpt {
@@ -327,9 +328,9 @@ impl State {
         self.pump();
     }
 
-    pub fn pump(&mut self) {
+    pub fn pump(&mut self) -> bool {
         if !self.loading || self.choice.is_some() {
-            return;
+            return false;
         }
         if let Some((rows, hints)) = self.source.poll() {
             self.rows = rows;
@@ -342,7 +343,23 @@ impl State {
                 }
                 self.flag_cursor = self.flag_cursor.min(self.fields().len().saturating_sub(1));
             }
+            return true;
         }
+        false
+    }
+
+    pub fn on_new_row(&self) -> bool {
+        self.screen == Screen::Session
+            && self.choice.is_none()
+            && matches!(self.smart, Smart::Off)
+            && self.cursor == 0
+    }
+
+    pub fn live(&self) -> bool {
+        self.loading
+            || !matches!(self.smart, Smart::Off)
+            || self.allow_shown.is_some()
+            || self.status().is_some()
     }
 
     pub fn selected_row(&self) -> Option<&Row> {

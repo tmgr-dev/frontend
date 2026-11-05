@@ -141,15 +141,15 @@ pub(super) fn fill(e: &mut Entry, live: &Running, orphan_cwds: &[String]) -> boo
     );
     if let Some((name, _)) = live.by_id.get(&e.id) {
         e.live = Live::Yes;
-        e.title = name.clone().or(log_title.clone());
-    } else if live.unknown
-        || e.cwd
-            .as_deref()
-            .is_some_and(|c| orphan_cwds.iter().any(|o| o == c))
-    {
-        e.live = Live::Recent;
-    }
-    if e.live != Live::Yes {
+        e.title = name.clone().or(log_title);
+    } else {
+        if live.unknown
+            || e.cwd
+                .as_deref()
+                .is_some_and(|c| orphan_cwds.iter().any(|o| o == c))
+        {
+            e.live = Live::Recent;
+        }
         e.title = log_title;
     }
     true

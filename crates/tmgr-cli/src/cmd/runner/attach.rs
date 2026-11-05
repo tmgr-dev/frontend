@@ -1850,7 +1850,7 @@ impl App {
             _ => source.to_string(),
         };
         let split = place_session(&mut self.view, &target, Place::Right, &info.id);
-        if !prefill.is_empty() {
+        if keeps_fork_paste(from_past, &prefill) {
             self.fork_paste
                 .insert(info.id.clone(), (prefill, Instant::now()));
         }
@@ -4047,9 +4047,9 @@ impl App {
         }
         self.report_attention(false);
         if let Some(past) = self.past.as_mut() {
-            past.pump();
-            past.tick();
-            self.dirty = true;
+            if menu::refresh(past) {
+                self.dirty = true;
+            }
         }
         self.view.perm_clock(now_ms());
         if self.view.perm_tick() {
@@ -4836,10 +4836,20 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     app.save_prefs();
     app.remote.shutdown();
     let cfg_now = app.cfg.clone();
-    let mut spawning = app.new_flow.is_spawning() || app.past_busy;
-    drain_creates(&mut app.creating, &mut spawning, &rx, CREATE_WAIT, |info| {
-        run_ladder(&cfg_now, &info.id, true, KILL_ONLY)
-    });
+    let mut spawning = app.new_flow.is_spawning();
+    let mut past = PastFlight {
+        busy: app.past_busy,
+        resumes: std::mem::take(&mut app.past_resumes),
+        forks: std::mem::take(&mut app.past_forks),
+    };
+    drain_creates(
+        &mut app.creating,
+        &mut spawning,
+        &mut past,
+        &rx,
+        CREATE_WAIT,
+        |info| run_ladder(&cfg_now, &info.id, true, KILL_ONLY),
+    );
     let target = app
         .view
         .focused_row()
@@ -4899,15 +4909,27 @@ fn run_ladder(cfg: &RunnerConfig, id: &str, remove: bool, ladder: Ladder) {
     }
 }
 
+fn keeps_fork_paste(from_past: bool, prefill: &str) -> bool {
+    !from_past || !prefill.is_empty()
+}
+
+#[derive(Default)]
+struct PastFlight {
+    busy: bool,
+    resumes: HashSet<String>,
+    forks: HashSet<String>,
+}
+
 fn drain_creates(
     creating: &mut HashMap<String, String>,
     spawning: &mut bool,
+    past: &mut PastFlight,
     rx: &mpsc::Receiver<Msg>,
     wait: Duration,
     mut discard: impl FnMut(SessionInfo),
 ) {
     let end = Instant::now() + wait;
-    while !creating.is_empty() || *spawning {
+    while !creating.is_empty() || *spawning || past.busy {
         let left = end.saturating_duration_since(Instant::now());
         if left.is_zero() {
             return;
@@ -4919,13 +4941,21 @@ fn drain_creates(
                     discard(info);
                 }
             }
-            Ok(Msg::TaskPrepared { .. } | Msg::PastPrepared { .. }) => *spawning = false,
+            Ok(Msg::TaskPrepared { .. }) => *spawning = false,
+            Ok(Msg::PastPrepared { .. }) => past.busy = false,
             Ok(Msg::PastStarted { result, .. }) => {
-                *spawning = false;
+                past.busy = false;
                 if let Ok(info) = result {
                     discard(info);
                 }
             }
+            Ok(Msg::Forked { source, result, .. }) if past.forks.remove(&source) => {
+                past.busy = false;
+                if let Ok(run) = result {
+                    discard(run.session);
+                }
+            }
+            Ok(Msg::Resumed { old, .. }) if past.resumes.remove(&old) => past.busy = false,
             Ok(Msg::Spawned { result, req, .. }) => {
                 *spawning = false;
                 if let (Ok(info), true) = (result, registers_shell(&req)) {
@@ -5324,6 +5354,7 @@ mod tests {
         drain_creates(
             &mut creating,
             &mut false,
+            &mut PastFlight::default(),
             &rx,
             Duration::from_secs(1),
             |i| killed.push(i.id),
@@ -5359,6 +5390,7 @@ mod tests {
         drain_creates(
             &mut creating,
             &mut spawning,
+            &mut PastFlight::default(),
             &rx,
             Duration::from_secs(1),
             |i| killed.push(i.id),
@@ -5375,6 +5407,7 @@ mod tests {
         drain_creates(
             &mut HashMap::new(),
             &mut spawning,
+            &mut PastFlight::default(),
             &rx,
             Duration::from_millis(100),
             |_| {},
@@ -5386,7 +5419,10 @@ mod tests {
     #[test]
     fn drain_kills_a_session_started_from_a_past_pick_and_stops_waiting() {
         let (tx, rx) = mpsc::sync_channel(8);
-        let mut spawning = true;
+        let mut past = PastFlight {
+            busy: true,
+            ..PastFlight::default()
+        };
         tx.send(Msg::PastStarted {
             result: Ok(info("s1")),
             fork: false,
@@ -5395,12 +5431,13 @@ mod tests {
         let mut killed = Vec::new();
         drain_creates(
             &mut HashMap::new(),
-            &mut spawning,
+            &mut false,
+            &mut past,
             &rx,
             Duration::from_secs(1),
             |i| killed.push(i.id),
         );
-        assert!(!spawning);
+        assert!(!past.busy);
         assert_eq!(killed, vec!["s1"]);
     }
 
@@ -5421,17 +5458,161 @@ mod tests {
         ] {
             let (tx, rx) = mpsc::sync_channel(8);
             tx.send(msg).unwrap();
-            let mut spawning = true;
+            let mut past = PastFlight {
+                busy: true,
+                ..PastFlight::default()
+            };
             let mut killed = Vec::new();
             drain_creates(
                 &mut HashMap::new(),
-                &mut spawning,
+                &mut false,
+                &mut past,
                 &rx,
                 Duration::from_secs(1),
                 |i| killed.push(i.id),
             );
-            assert!(!spawning && killed.is_empty());
+            assert!(!past.busy && killed.is_empty());
         }
+    }
+
+    #[test]
+    fn an_existing_fork_always_registers_its_paste_and_an_overlay_fork_only_with_a_prefill() {
+        assert!(keeps_fork_paste(false, "q"));
+        assert!(keeps_fork_paste(false, ""));
+        assert!(keeps_fork_paste(true, "q"));
+        assert!(!keeps_fork_paste(true, ""));
+    }
+
+    #[test]
+    fn drain_kills_a_fork_started_from_the_overlay_and_stops_waiting() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        let mut past = PastFlight {
+            busy: true,
+            forks: HashSet::from(["src".to_string()]),
+            ..PastFlight::default()
+        };
+        tx.send(Msg::Forked {
+            source: "src".into(),
+            prefill: String::new(),
+            conversation: "c".into(),
+            result: Ok(RestoredRun {
+                session: info("f1"),
+                resumed: false,
+                via: None,
+            }),
+        })
+        .unwrap();
+        let mut killed = Vec::new();
+        let start = Instant::now();
+        drain_creates(
+            &mut HashMap::new(),
+            &mut false,
+            &mut past,
+            &rx,
+            Duration::from_secs(5),
+            |i| killed.push(i.id),
+        );
+        assert!(start.elapsed() < Duration::from_secs(2));
+        assert_eq!(killed, vec!["f1"]);
+        assert!(!past.busy && past.forks.is_empty());
+    }
+
+    #[test]
+    fn drain_stops_waiting_for_an_overlay_resume_and_keeps_the_resumed_session() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        let mut past = PastFlight {
+            busy: true,
+            resumes: HashSet::from(["old".to_string()]),
+            ..PastFlight::default()
+        };
+        tx.send(Msg::Resumed {
+            old: "old".into(),
+            result: Ok(RestoredRun {
+                session: info("new"),
+                resumed: false,
+                via: None,
+            }),
+        })
+        .unwrap();
+        let mut killed = Vec::new();
+        let start = Instant::now();
+        drain_creates(
+            &mut HashMap::new(),
+            &mut false,
+            &mut past,
+            &rx,
+            Duration::from_secs(5),
+            |i| killed.push(i.id),
+        );
+        assert!(start.elapsed() < Duration::from_secs(2));
+        assert!(killed.is_empty());
+        assert!(!past.busy && past.resumes.is_empty());
+    }
+
+    #[test]
+    fn a_finished_past_prepare_does_not_end_the_wait_for_a_dialog_spawn() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        tx.send(Msg::PastPrepared {
+            result: Err(SpawnErr {
+                message: "no".into(),
+                hint: None,
+            }),
+            size: (80, 24),
+        })
+        .unwrap();
+        let mut spawning = true;
+        let mut past = PastFlight {
+            busy: true,
+            ..PastFlight::default()
+        };
+        drain_creates(
+            &mut HashMap::new(),
+            &mut spawning,
+            &mut past,
+            &rx,
+            Duration::from_millis(300),
+            |_| {},
+        );
+        assert!(spawning);
+        assert!(!past.busy);
+    }
+
+    #[test]
+    fn a_dialog_spawn_does_not_end_the_wait_for_a_past_start() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        tx.send(Msg::Spawned {
+            id: 1,
+            result: Ok(info("s1")),
+            req: NewRequest {
+                kind: SpawnKind::Custom { line: "x".into() },
+                folder: "/".into(),
+                name: None,
+                place: Place::Right,
+                task: None,
+                worktree: false,
+                checkpoints: None,
+                permission_cards: false,
+                bypass: false,
+                no_sandbox: false,
+            },
+            target: "a".into(),
+        })
+        .unwrap();
+        let mut spawning = true;
+        let mut past = PastFlight {
+            busy: true,
+            ..PastFlight::default()
+        };
+        drain_creates(
+            &mut HashMap::new(),
+            &mut spawning,
+            &mut past,
+            &rx,
+            Duration::from_millis(300),
+            |_| {},
+        );
+        assert!(!spawning);
+        assert!(past.busy);
     }
 
     #[test]
@@ -5500,6 +5681,7 @@ mod tests {
         drain_creates(
             &mut creating,
             &mut false,
+            &mut PastFlight::default(),
             &rx,
             Duration::from_secs(2),
             |_| {},
@@ -5515,6 +5697,7 @@ mod tests {
         drain_creates(
             &mut creating,
             &mut false,
+            &mut PastFlight::default(),
             &rx,
             Duration::from_millis(100),
             |_| {},
@@ -5561,6 +5744,7 @@ mod tests {
             drain_creates(
                 &mut HashMap::new(),
                 &mut spawning,
+                &mut PastFlight::default(),
                 &rx,
                 Duration::from_secs(1),
                 |i| killed.push(i.id),

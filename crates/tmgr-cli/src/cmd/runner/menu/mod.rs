@@ -589,12 +589,21 @@ pub(super) fn keys_from_bytes(data: &[u8]) -> Vec<Key> {
     keys
 }
 
+pub(super) fn refresh(state: &mut State) -> bool {
+    let loaded = state.pump();
+    let answered = state.tick();
+    loaded || answered || state.live()
+}
+
 pub(super) fn feed_keys(state: &mut State, data: &[u8]) -> Fed {
     let keys = keys_from_bytes(data);
     if state.confirming() && keys.len() > 1 {
         return Fed::Stay;
     }
     for key in keys {
+        if key == Key::Enter && state.on_new_row() {
+            return Fed::Pick(None);
+        }
         match state.on_key(key) {
             Step::Stay => {}
             Step::Quit => return Fed::Close,
