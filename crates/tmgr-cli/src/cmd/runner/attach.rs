@@ -187,6 +187,7 @@ enum Msg {
     Forked {
         source: String,
         prefill: String,
+        conversation: String,
         result: std::result::Result<RestoredRun, String>,
     },
     Created {
@@ -570,8 +571,9 @@ impl App {
             Msg::Forked {
                 source,
                 prefill,
+                conversation,
                 result,
-            } => self.on_forked(&source, prefill, result),
+            } => self.on_forked(&source, (prefill, &conversation), result),
             Msg::Created {
                 result,
                 dir,
@@ -1693,10 +1695,15 @@ impl App {
         let cfg = self.cfg.clone();
         let tx = self.tx.clone();
         thread::spawn(move || {
-            let result = fork_call(&cfg, &job, &name, size, Reads::current());
+            let (result, conversation) =
+                match fork_call(&cfg, &job, &name, size, (Reads::current(), None)) {
+                    Ok((run, id)) => (Ok(run), id),
+                    Err(e) => (Err(e), String::new()),
+                };
             let sent = tx.send(Msg::Forked {
                 source: job.id,
                 prefill,
+                conversation,
                 result,
             });
             if let Err(mpsc::SendError(Msg::Forked {
@@ -1711,7 +1718,7 @@ impl App {
     fn on_forked(
         &mut self,
         source: &str,
-        prefill: String,
+        (prefill, conversation): (String, &str),
         result: std::result::Result<RestoredRun, String>,
     ) {
         self.forking.remove(source);
@@ -1731,7 +1738,7 @@ impl App {
             .insert(info.id.clone(), (prefill, Instant::now()));
         let name = sanitize_text(&info.name).into_owned();
         if split {
-            self.notify(&format!("forked into {name}"));
+            self.notify(&format!("forked into {name} (conversation {conversation})"));
         } else {
             self.notify(&format!("forked into {name}, no room for another pane"));
         }

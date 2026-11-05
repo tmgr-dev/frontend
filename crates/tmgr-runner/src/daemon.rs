@@ -3067,7 +3067,18 @@ impl Runner {
         fork_consent(codex)?;
         let from_home = self.cfg.homes.join(&q.id);
         let found = if codex {
-            crate::questions::tail::locate_codex_rollout_of(&from_home, &q.agent_id)
+            let (path, cwd) =
+                crate::questions::tail::locate_codex_rollout_of(&from_home, &q.agent_id)
+                    .ok_or_else(|| {
+                        api(ErrorCode::NotFound, "the conversation file was not found")
+                    })?;
+            if !cwd.is_some_and(|c| same_path(&c, &meta.cwd)) {
+                return Err(api(
+                    ErrorCode::Forbidden,
+                    "the conversation was recorded in another folder than this session's",
+                ));
+            }
+            Some(path)
         } else {
             crate::attach::locate(&crate::attach::Source {
                 home: &from_home,
@@ -5018,6 +5029,10 @@ fn test_passthrough(key: &str) -> bool {
 #[cfg(not(debug_assertions))]
 fn test_passthrough(_: &str) -> bool {
     false
+}
+
+fn same_path(a: &str, b: &str) -> bool {
+    a == b || matches!((fs::canonicalize(a), fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
 }
 
 fn fork_consent(codex: bool) -> Result<(), ApiErr> {

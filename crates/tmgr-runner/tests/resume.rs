@@ -1298,9 +1298,12 @@ fn rollout_rel(id: &str) -> String {
     format!(".codex/sessions/2026/11/05/rollout-2026-11-05T10-00-00-{id}.jsonl")
 }
 
-fn rollout_body(id: &str) -> Vec<u8> {
-    format!("{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"cwd\":\"/w\"}}}}\n{{\"type\":\"event_msg\"}}\n")
-        .into_bytes()
+fn rollout_body(id: &str, cwd: &Path) -> Vec<u8> {
+    format!(
+        "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"cwd\":{:?}}}}}\n{{\"type\":\"event_msg\"}}\n",
+        cwd.display().to_string()
+    )
+    .into_bytes()
 }
 
 fn put_rollout(home: &Path, name_id: &str, body: &[u8]) -> PathBuf {
@@ -1327,7 +1330,7 @@ fn a_codex_fork_copies_the_rollout_and_starts_codex_fork_with_the_id() {
     h.allow_forks();
     h.start();
     let first = h.client().create_run(h.req()).unwrap();
-    let body = rollout_body(U1);
+    let body = rollout_body(U1, &h.work);
     let source = put_rollout(&h.homes.join(&first.id), U1, &body);
 
     let r = h
@@ -1359,17 +1362,38 @@ fn a_codex_fork_never_copies_another_conversations_rollout_or_a_linked_one() {
     let none = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
     assert!(none.to_string().starts_with("not_found"), "{none}");
 
-    put_rollout(&home, U1, &rollout_body(U2));
+    put_rollout(&home, U1, &rollout_body(U2, &h.work));
     let other = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
     assert!(other.to_string().starts_with("not_found"), "{other}");
 
     fs::remove_file(home.join(rollout_rel(U1))).unwrap();
     let outside = h.tmp.path().join("outside.jsonl");
-    fs::write(&outside, rollout_body(U1)).unwrap();
+    fs::write(&outside, rollout_body(U1, &h.work)).unwrap();
     symlink(&outside, home.join(rollout_rel(U1))).unwrap();
     let linked = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
     assert!(linked.to_string().starts_with("not_found"), "{linked}");
 
+    assert_eq!(codex_copies(&h, U1), 1);
+    assert_eq!(h.client().list().unwrap().len(), 1);
+}
+
+#[test]
+fn a_codex_fork_is_refused_when_the_rollout_belongs_to_another_folder() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::agent("codex", CODEX_RESUME);
+    h.allow_forks();
+    h.start();
+    let first = h.client().create_run(h.req()).unwrap();
+    put_rollout(
+        &h.homes.join(&first.id),
+        U1,
+        &rollout_body(U1, Path::new("/elsewhere")),
+    );
+    let e = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
+    assert!(e.to_string().starts_with("forbidden"), "{e}");
+    assert!(e.to_string().contains("another folder"), "{e}");
     assert_eq!(codex_copies(&h, U1), 1);
     assert_eq!(h.client().list().unwrap().len(), 1);
 }
@@ -1382,7 +1406,7 @@ fn a_codex_fork_is_refused_when_only_claude_may_be_read() {
     let mut h = H::agent("codex", CODEX_RESUME);
     h.start();
     let first = h.client().create_run(h.req()).unwrap();
-    put_rollout(&h.homes.join(&first.id), U1, &rollout_body(U1));
+    put_rollout(&h.homes.join(&first.id), U1, &rollout_body(U1, &h.work));
     h.consent(Some(ReadLogs::Granted), Some(true), Some(false));
     let e = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
     assert!(e.to_string().starts_with("forbidden"), "{e}");

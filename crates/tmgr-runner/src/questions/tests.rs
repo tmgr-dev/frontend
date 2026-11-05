@@ -254,7 +254,10 @@ fn a_fork_source_rollout_must_name_the_asked_conversation_inside() {
     std::fs::create_dir_all(&day).unwrap();
     let other = "0199a213-81c0-7800-8aa1-bbab2a035a53";
     let good = rollout_with(&day, &format!("rollout-2026-10-20T10-00-00-{U}.jsonl"), U);
-    assert_eq!(tail::locate_codex_rollout_of(d.path(), U), Some(good));
+    assert_eq!(
+        tail::locate_codex_rollout_of(d.path(), U),
+        Some((good, Some("/work/a".into())))
+    );
     rollout_with(
         &day,
         &format!("rollout-2026-10-20T11-00-00-{other}.jsonl"),
@@ -269,6 +272,37 @@ fn a_fork_source_rollout_must_name_the_asked_conversation_inside() {
         &[serde_json::json!({"type":"event_msg","payload":{"id":other}}).to_string()],
     );
     assert_eq!(tail::locate_codex_rollout_of(d.path(), other), None);
+}
+
+#[test]
+fn subagent_rollouts_are_never_picked_by_folder_or_forked_by_id() {
+    let d = private_tmp();
+    let day = d.path().join(".codex/sessions/2026/10/20");
+    std::fs::create_dir_all(&day).unwrap();
+    let sub = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+    let main = rollout_with(&day, &format!("rollout-2026-10-20T10-00-00-{U}.jsonl"), U);
+    append(
+        &day.join(format!("rollout-2026-10-20T11-00-00-{sub}.jsonl")),
+        &[serde_json::json!({"type":"session_meta","payload":{"id":sub,"cwd":"/work/a","source":{"subagent":{"thread_spawn":{}}}}}).to_string()],
+    );
+    assert_eq!(
+        tail::locate_codex_rollout(d.path(), None, "/work/a"),
+        Some(main)
+    );
+    assert_eq!(tail::locate_codex_rollout_of(d.path(), sub), None);
+}
+
+#[test]
+fn a_fork_source_rollout_reports_its_folder() {
+    let d = private_tmp();
+    let day = d.path().join(".codex/sessions/2026/10/20");
+    std::fs::create_dir_all(&day).unwrap();
+    let p = day.join(format!("rollout-2026-10-20T10-00-00-{U}.jsonl"));
+    append(
+        &p,
+        &[serde_json::json!({"type":"session_meta","payload":{"id":U}}).to_string()],
+    );
+    assert_eq!(tail::locate_codex_rollout_of(d.path(), U), Some((p, None)));
 }
 
 #[test]

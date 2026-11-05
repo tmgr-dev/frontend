@@ -313,8 +313,18 @@ pub(super) fn fork_tmgr(o: &Opts, a: &ResumeArgs, s: &SessionInfo) -> Result<i32
     let sessions = connect(&cfg)?.list().map_err(rerr)?;
     let names: Vec<&str> = sessions.iter().map(|x| x.name.as_str()).collect();
     let name = fork_name(&names, &s.name);
-    let run = fork_call(&cfg, &job, &name, terminal_size(), Reads::current())
-        .map_err(|e| Error::new(Kind::Conflict, e))?;
+    let recorded = s.agent_session_id.as_deref();
+    let (run, conversation) = fork_call(
+        &cfg,
+        &job,
+        &name,
+        terminal_size(),
+        (Reads::current(), recorded),
+    )
+    .map_err(|e| Error::new(Kind::Conflict, e))?;
+    if !o.json && !o.quiet {
+        eprintln!("Forked conversation {conversation}");
+    }
     attach_or_report(o, &cfg, a, &run.session)
 }
 
