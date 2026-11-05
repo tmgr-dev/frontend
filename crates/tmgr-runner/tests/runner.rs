@@ -1230,9 +1230,11 @@ fn a_restarted_daemon_refuses_at_once_when_the_shim_queue_is_full_and_recovers_a
     h.start(5000);
     let mut c = h.client();
     let go = h.work.join("full.go");
+    let size = h.work.join("full.size");
     let tail = format!(
-        "while [ ! -e {} ]; do sleep 0.05; done\nexec cat > \"$OUT\"",
-        go.display()
+        "while [ ! -e {} ]; do stty size > {}; sleep 0.05; done\nexec cat > \"$OUT\"",
+        go.display(),
+        size.display()
     );
     let info = c.create(raw_agent(&h, "full", &tail)).unwrap();
     wait_ready(&h, "full");
@@ -1242,6 +1244,15 @@ fn a_restarted_daemon_refuses_at_once_when_the_shim_queue_is_full_and_recovers_a
             panic!("send {i} of {accepted} was refused: {e}");
         }
     }
+    // A resize follows the sends down the same link, so once the agent sees it the shim holds them all.
+    let w = Watch::new(h.client(), &[&info.id]);
+    w.writer.resize(&info.id, 100, 30).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !fs::read_to_string(&size).is_ok_and(|s| s.contains("30 100")) {
+        assert!(Instant::now() < deadline, "the agent never saw the resize");
+        thread::sleep(Duration::from_millis(20));
+    }
+    drop(w);
     drop(c);
     h.kill_runner();
     h.start(5000);
