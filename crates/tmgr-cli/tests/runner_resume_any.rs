@@ -406,7 +406,11 @@ fn resuming_a_conversation_is_refused_inside_an_agent_session() {
     }
 }
 
-fn wait_exited(rig: &Rig, id: &str) {
+fn stop_and_wait(rig: &Rig, id: &str) {
+    tmgr_runner::client::Client::connect(rig.run.path())
+        .unwrap()
+        .kill(id, "term")
+        .ok();
     let deadline = std::time::Instant::now() + Duration::from_secs(15);
     loop {
         let sessions = tmgr_runner::client::Client::connect(rig.run.path())
@@ -434,7 +438,7 @@ fn a_flagged_resume_of_a_tmgr_session_uses_its_recorded_conversation_not_the_out
     );
     assert_eq!(code, 0, "{out}");
     let first = json_line(&out)["data"]["id"].as_str().unwrap().to_string();
-    wait_exited(&rig, &first);
+    stop_and_wait(&rig, &first);
     fs::write(
         rig.run
             .path()
@@ -477,7 +481,7 @@ fn a_flagged_resume_without_a_recorded_conversation_says_where_the_id_comes_from
     );
     assert_eq!(code, 0, "{out}");
     let first = json_line(&out)["data"]["id"].as_str().unwrap().to_string();
-    wait_exited(&rig, &first);
+    stop_and_wait(&rig, &first);
     let (_, out) = rig.pty(&["resume", &first, "--no-sandbox", "--no-attach"], CONSENT);
     assert!(out.contains("taken from its recorded output"), "{out}");
 }
