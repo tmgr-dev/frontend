@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.86
+
+- `tmgr ask` and `ask_owner`: several repositories on one card (`--diff`, `repos`), ready patches from a file or stdin (`--patch`, `patches`), and links to PRs, commits, tags and other URLs (`--commit`, `--tag`, `--link`, repeated `--pr`).
+- Resend updates the open card in place with `--key` or `--replaces`. A waiter on the old id gets the answer, and an answered card is never reopened.
+- `tmgr ask --wait` waits while the desktop is down instead of exiting 8 at once. Exit 8 now comes only at `--timeout`.
+- A long-running `tmgr mcp` no longer gets `error: unauthorized` after the desktop restarts. Restart `tmgr mcp` to pick this up.
+- A text-only `reply_owner` lands in the one line thread waiting for the agent. With two or more waiting threads it is refused and names them.
+
 ## 1.0.85
 
 - Smart search in the `tmgr run` session list: press Ctrl+A and ask a question. The local index picks candidate sessions, only their fragments go to Claude Code, and it answers with the best sessions and a one-line reason each. It runs only on that key press and uses your own Claude Code login and limits.
