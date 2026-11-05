@@ -23,6 +23,7 @@ const U1: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
 const U2: &str = "0199a213-81c0-7800-8aa1-bbab2a035a53";
 
 const AGENT: &str = r#"#!/bin/sh
+if [ "$1" = "--version" ]; then echo "codex-cli $(cat "$(dirname "$0")/codex-version" 2>/dev/null || echo 0.164.0)"; exit 0; fi
 trap 'kill $! 2>/dev/null; sleep 0.1; kill $! 2>/dev/null; sleep 0.2; kill $! 2>/dev/null; exit 0' HUP TERM
 echo "args:$*" >> ./log
 if [ -f ./leak ]; then (trap '' TERM HUP; exec sleep 600) & echo $! > ./leakpid; fi
@@ -1413,6 +1414,58 @@ fn a_codex_fork_is_refused_when_only_claude_may_be_read() {
     assert!(e.to_string().contains("cannot be forked"), "{e}");
     assert_eq!(codex_copies(&h, U1), 1);
     assert_eq!(h.client().list().unwrap().len(), 1);
+}
+
+fn fork_refused_for_version(version: &str, expect: &str) {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::agent("codex", CODEX_RESUME);
+    h.allow_forks();
+    fs::write(h.work.join("codex-version"), version).unwrap();
+    h.start();
+    let first = h.client().create_run(h.req()).unwrap();
+    put_rollout(&h.homes.join(&first.id), U1, &rollout_body(U1, &h.work));
+    let e = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
+    assert!(e.to_string().starts_with("forbidden"), "{e}");
+    assert!(e.to_string().contains(expect), "{e}");
+    assert_eq!(codex_copies(&h, U1), 1);
+    assert_eq!(h.client().list().unwrap().len(), 1);
+}
+
+#[test]
+fn an_external_codex_fork_is_refused_when_codex_is_too_old() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::agent("codex", CODEX_RESUME);
+    h.allow_forks();
+    fs::write(h.work.join("codex-version"), "0.155.1").unwrap();
+    h.start();
+    let mut req = h.req();
+    req.cwd = fs::canonicalize(&h.work).unwrap().display().to_string();
+    req.no_sandbox = Some(NoSandbox::default());
+    req.external_resume = Some(tmgr_ipc::api::ExternalResume {
+        id: U1.into(),
+        fork: true,
+    });
+    let e = h.client().create_run(req).unwrap_err();
+    assert!(e.to_string().starts_with("forbidden"), "{e}");
+    assert!(
+        e.to_string().contains("update to Codex 0.156.0 or newer"),
+        "{e}"
+    );
+    assert_eq!(h.client().list().unwrap().len(), 0);
+}
+
+#[test]
+fn a_codex_fork_is_refused_when_codex_is_too_old() {
+    fork_refused_for_version("0.155.1", "update to Codex 0.156.0 or newer");
+}
+
+#[test]
+fn a_codex_fork_is_refused_when_the_codex_version_cannot_be_read() {
+    fork_refused_for_version("garbage", "cannot tell which Codex version");
 }
 
 fn refused_fork_leaves_nothing(h: &H, first: &SessionInfo) {

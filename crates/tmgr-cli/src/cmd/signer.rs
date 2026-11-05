@@ -1201,7 +1201,9 @@ mod tests {
         let f = fake.clone();
         let err = on_thread(move || {
             let c = client_for(&uri);
-            let s = Signer::with_keychain(&c, &uri, 1, Box::new(f), false).unwrap();
+            let s = Signer::with_keychain(&c, &uri, 1, Box::new(f), false)
+                .unwrap()
+                .with_guard(|| privileged::check(false, false));
             s.sign_tasks(&[task(1, "a")]).unwrap_err()
         })
         .await;

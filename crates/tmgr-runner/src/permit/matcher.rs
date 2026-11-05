@@ -46,7 +46,7 @@ pub fn verdict(d: &Dialog, h: Option<&HookEvent>) -> Verdict {
 
 fn hidden(c: char) -> bool {
     (c.is_control() && c != '\n')
-        || matches!(c, '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{2069}' | '\u{feff}')
+        || matches!(c, '\u{61c}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{2069}' | '\u{feff}')
 }
 
 fn clean(s: &str) -> bool {
@@ -179,4 +179,12 @@ pub(super) fn normalize_path(base: Option<&str>, p: &str) -> Option<String> {
         }
     }
     Some(format!("/{}", stack.join("/")))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_arabic_letter_mark_is_hidden() {
+        assert!(super::hidden('\u{61c}'));
+    }
 }

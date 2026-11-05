@@ -48,7 +48,11 @@ impl Rig {
         let agents = tmp.path().join("agents");
         fs::create_dir_all(&agents).unwrap();
         let script = tmp.path().join("agent.sh");
-        fs::write(&script, "sleep 60\n").unwrap();
+        fs::write(
+            &script,
+            "[ \"$1\" = --version ] && echo \"codex-cli 0.164.0\" && exit 0\nsleep 60\n",
+        )
+        .unwrap();
         for (name, body) in [
             ("claude-code.toml", CLAUDE_AGENT),
             ("codex.toml", CODEX_AGENT),

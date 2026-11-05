@@ -534,7 +534,7 @@ fn clean(text: &str) -> String {
         .chars()
         .filter(|c| {
             (!c.is_control() || *c == '\n' || *c == '\t')
-                && !matches!(c, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+                && !matches!(c, '\u{61c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
         })
         .collect()
 }
@@ -832,6 +832,11 @@ mod tests {
     use super::*;
     use std::fs::OpenOptions;
     use tmgr_ipc::api::*;
+
+    #[test]
+    fn clean_drops_the_arabic_letter_mark() {
+        assert_eq!(clean("a\u{61c}b\u{202e}c"), "abc");
+    }
 
     fn req(dir: &Path) -> RunCreateReq {
         let task = TaskRef {

@@ -13,7 +13,7 @@ pub fn empty_line() -> Line {
 }
 
 fn allowed(c: char) -> bool {
-  !c.is_control() && !matches!(c, '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+  !c.is_control() && !matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
 }
 
 pub fn cap_line(l: &Line) -> Line {
@@ -284,8 +284,8 @@ mod tests {
 
   #[test]
   fn bidi_controls_are_stripped() {
-    let out = render_full(&snap(vec![vec![span("a\u{202e}b\u{200f}c\u{2066}d\u{2069}e\u{200e}f\u{202a}g")]]));
-    assert!(out.contains("abcdefg"), "{out:?}");
+    let out = render_full(&snap(vec![vec![span("a\u{202e}b\u{200f}c\u{2066}d\u{2069}e\u{200e}f\u{202a}g\u{061c}h")]]));
+    assert!(out.contains("abcdefgh"), "{out:?}");
   }
 
   #[test]

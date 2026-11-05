@@ -431,7 +431,7 @@ mod tests {
             for span in &line.spans {
                 for c in span.t.chars() {
                     assert!(
-                        !matches!(c, '\u{0}'..='\u{1f}' | '\u{7f}'..='\u{9f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{200e}' | '\u{200f}' | '\u{feff}'),
+                        !matches!(c, '\u{0}'..='\u{1f}' | '\u{7f}'..='\u{9f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{61c}' | '\u{200e}' | '\u{200f}' | '\u{feff}'),
                         "unsafe char {:?} in {:?}",
                         c,
                         span.t
@@ -703,10 +703,10 @@ mod tests {
     #[test]
     fn bottom_text_trims_and_sanitizes() {
         let mut m = model();
-        m.feed("a   \r\n\r\nb\u{202e}c  \r\nlast".as_bytes());
+        m.feed("a   \r\n\r\nb\u{202e}c\u{61c}d  \r\nlast".as_bytes());
         assert_eq!(
             m.bottom_text(2),
-            vec!["b?c".to_string(), "last".to_string()]
+            vec!["b?c?d".to_string(), "last".to_string()]
         );
         assert_eq!(m.bottom_text(100).len(), 4);
     }

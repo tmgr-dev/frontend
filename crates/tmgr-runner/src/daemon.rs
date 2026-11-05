@@ -3764,6 +3764,7 @@ impl Runner {
         let permission_cards = req.permission_cards
             && prof.source == profile::Source::Builtin
             && permit_hook::supported_profile(&prof.id);
+        let forking = fork.is_some() || external.as_ref().is_some_and(|e| e.fork);
         let mut extra = RunExtra {
             trust,
             trust_note,
@@ -3819,6 +3820,12 @@ impl Runner {
                     "the agent command line differs from the approved one",
                 ));
             }
+        }
+        if forking && prof.id == "codex" {
+            let mut probe = prof.command.clone();
+            probe[0].clone_from(&argv[0]);
+            crate::exe::codex_fork_supported(&crate::exe::version_output(&probe))
+                .map_err(|m| api(ErrorCode::Forbidden, m))?;
         }
         if permission_cards && prof.id == "claude-code" {
             argv.push("--settings".to_string());

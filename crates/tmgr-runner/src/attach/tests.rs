@@ -657,7 +657,7 @@ fn blocked_pane_gets_accent_border_and_sidebar_lists_it_first() {
 
 #[test]
 fn adversarial_snapshot_text_never_reaches_the_buffer() {
-    let evil = "\x1b]52;c;AAAA\x07\u{9b}31m\u{202e}rtl \x01\u{301}x \u{2066}\u{feff}";
+    let evil = "\x1b]52;c;AAAA\x07\u{9b}31m\u{202e}rtl \x01\u{301}x \u{2066}\u{feff}\u{61c}";
     let mut s = Screens::default();
     for id in ["a", "b"] {
         s.0.insert(
@@ -685,7 +685,7 @@ fn adversarial_snapshot_text_never_reaches_the_buffer() {
                     assert!(
                         c != '\u{1b}'
                             && !('\u{80}'..='\u{9f}').contains(&c)
-                            && !matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{200e}' | '\u{200f}' | '\u{feff}')
+                            && !matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{61c}' | '\u{200e}' | '\u{200f}' | '\u{feff}')
                             && !c.is_control(),
                         "bad char {c:?} in {:?}",
                         cell.symbol()

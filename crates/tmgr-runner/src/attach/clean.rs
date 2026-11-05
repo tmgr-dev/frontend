@@ -250,7 +250,7 @@ fn is_art(c: char) -> bool {
 fn is_zero_width(c: char) -> bool {
     matches!(
         c,
-        '\u{200b}'..='\u{200d}' | '\u{feff}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+        '\u{61c}' | '\u{200b}'..='\u{200d}' | '\u{feff}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
     )
 }
 
@@ -427,6 +427,7 @@ mod tests {
     #[test]
     fn removes_zero_width_characters() {
         assert_eq!(clean_copy("a\u{200b}b\u{200c}c\u{200d}d\u{feff}"), "abcd");
+        assert_eq!(clean_copy("a\u{61c}b"), "ab");
     }
 
     #[test]
