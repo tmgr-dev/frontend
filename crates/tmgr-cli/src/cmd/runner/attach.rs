@@ -124,6 +124,8 @@ impl Guard {
         ACTIVE.store(true, Ordering::SeqCst);
         let guard = Guard;
         execute!(io::stdout(), EnterAlternateScreen, Hide)?;
+        io::stdout().write_all(b"\x1b[?2004h")?;
+        io::stdout().flush()?;
         let previous = panic::take_hook();
         panic::set_hook(Box::new(move |info| {
             restore();

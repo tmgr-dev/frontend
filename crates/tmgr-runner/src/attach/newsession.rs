@@ -9,7 +9,9 @@ use ratatui::layout::{Margin, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Clear, Widget};
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,6 +72,7 @@ struct PrivPrompt {
     req: NewRequest,
     ask: PrivAsk,
     typed: String,
+    seen: Cell<Option<Instant>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -89,6 +92,7 @@ const MAX_ENTRIES: usize = 500;
 const MAX_WIDTH: u16 = 72;
 const LABEL_W: u16 = 12;
 const MAX_TYPED: usize = 32;
+const PROMPT_DELAY: Duration = Duration::from_millis(300);
 const START_LABEL: &str = "[ Start ]";
 
 impl Place {
@@ -473,6 +477,7 @@ impl NewSession {
                     req,
                     ask,
                     typed: String::new(),
+                    seen: Cell::new(None),
                 });
             }
             Err((msg, hint)) => {
@@ -855,6 +860,9 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
         return;
     }
     if let Some(p) = &ns.priv_prompt {
+        if p.seen.get().is_none() {
+            p.seen.set(Some(Instant::now()));
+        }
         let lines = prompt_lines(p, area.width);
         for (i, text) in lines.iter().enumerate() {
             let y = inner.y.saturating_add(u16::try_from(i).unwrap_or(u16::MAX));
@@ -1215,51 +1223,46 @@ impl ViewState {
     }
 
     fn edit_priv_prompt(&mut self, data: &[u8]) -> NewEdit {
+        let Some(ns) = self.new_session.as_mut() else {
+            return NewEdit::Cancel;
+        };
+        let Some(p) = ns.priv_prompt.as_mut() else {
+            return NewEdit::Editing;
+        };
         if !data.is_empty() && data.iter().all(|&b| b == 0x1b) {
-            if let Some(ns) = self.new_session.as_mut() {
-                ns.priv_prompt = None;
-            }
+            ns.priv_prompt = None;
             return NewEdit::Editing;
         }
-        let mut i = 0;
-        while i < data.len() {
-            let Some(ns) = self.new_session.as_mut() else {
-                break;
-            };
-            let Some(p) = ns.priv_prompt.as_mut() else {
-                break;
-            };
-            match data[i] {
-                0x1b => i += esc_key(&data[i..]).1,
-                b'\r' | b'\n' => {
-                    let Some(p) = ns.priv_prompt.take() else {
-                        break;
-                    };
-                    if p.typed == p.ask.word {
-                        self.new_session = None;
-                        return NewEdit::Submit(p.req);
-                    }
-                    ns.bypass = false;
-                    ns.no_sandbox = false;
-                    ns.error = Some("confirmation did not match, nothing was started".into());
-                    ns.error_hint = None;
+        if !p.seen.get().is_some_and(|t| t.elapsed() >= PROMPT_DELAY) {
+            return NewEdit::Editing;
+        }
+        let (c, used) = next_char(data);
+        if data.is_empty() || used != data.len() {
+            p.typed.clear();
+            return NewEdit::Editing;
+        }
+        match data[0] {
+            b'\r' | b'\n' => {
+                let Some(p) = ns.priv_prompt.take() else {
                     return NewEdit::Editing;
+                };
+                if p.typed == p.ask.word {
+                    self.new_session = None;
+                    return NewEdit::Submit(p.req);
                 }
-                0x7f | 0x08 => {
-                    i += 1;
-                    p.typed.pop();
-                }
-                0x15 => {
-                    i += 1;
-                    p.typed.clear();
-                }
-                _ => {
-                    let (c, used) = next_char(&data[i..]);
-                    i += used;
-                    if let Some(c) = c.filter(|c| !c.is_control()) {
-                        if p.typed.chars().count() < MAX_TYPED {
-                            p.typed.push(c);
-                        }
+                ns.bypass = false;
+                ns.no_sandbox = false;
+                ns.error = Some("confirmation did not match, nothing was started".into());
+                ns.error_hint = None;
+            }
+            0x7f | 0x08 => {
+                p.typed.pop();
+            }
+            0x15 => p.typed.clear(),
+            _ => {
+                if let Some(c) = c.filter(|c| !c.is_control()) {
+                    if p.typed.chars().count() < MAX_TYPED {
+                        p.typed.push(c);
                     }
                 }
             }
@@ -2329,6 +2332,26 @@ mod tests {
         assert!(shown.matches('z').count() >= 120);
     }
 
+    fn ready(v: &ViewState) {
+        if let Some(p) = v.new_session.as_ref().and_then(|n| n.priv_prompt.as_ref()) {
+            p.seen
+                .set(Instant::now().checked_sub(Duration::from_secs(1)));
+        }
+    }
+
+    fn keys(v: &mut ViewState, text: &str) -> NewEdit {
+        ready(v);
+        let mut last = NewEdit::Editing;
+        for c in text.chars() {
+            let mut b = [0u8; 4];
+            last = v.edit_new_session(c.encode_utf8(&mut b).as_bytes());
+            if last != NewEdit::Editing {
+                return last;
+            }
+        }
+        last
+    }
+
     fn flip(v: &mut ViewState, f: NewField) {
         ns(v).focus = f;
         v.edit_new_session(b"\x1b[C");
@@ -2375,8 +2398,8 @@ mod tests {
         assert!(ns(&mut v).bypass);
         assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
         assert!(ns(&mut v).priv_prompt_open());
-        assert_eq!(v.edit_new_session(b"bypas"), NewEdit::Editing);
-        let NewEdit::Submit(req) = v.edit_new_session(b"s\r") else {
+        assert_eq!(keys(&mut v, "bypas"), NewEdit::Editing);
+        let NewEdit::Submit(req) = keys(&mut v, "s\r") else {
             panic!("expected submit");
         };
         assert!(req.bypass && !req.no_sandbox);
@@ -2389,11 +2412,11 @@ mod tests {
         let mut v = open("/", h.path());
         privileged(&mut v, true, true);
         assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
-        assert_eq!(v.edit_new_session(b"bypass\r"), NewEdit::Editing);
+        assert_eq!(keys(&mut v, "bypass\r"), NewEdit::Editing);
         assert!(v.new_session.is_some() && !ns(&mut v).priv_prompt_open());
         privileged(&mut v, true, true);
         v.edit_new_session(b"\r");
-        let NewEdit::Submit(req) = v.edit_new_session(b"no-sandbox\r") else {
+        let NewEdit::Submit(req) = keys(&mut v, "no-sandbox\r") else {
             panic!("expected submit");
         };
         assert!(req.bypass && req.no_sandbox);
@@ -2405,7 +2428,7 @@ mod tests {
         let mut v = open("/", h.path());
         privileged(&mut v, true, true);
         v.edit_new_session(b"\r");
-        assert_eq!(v.edit_new_session(b"yes\r"), NewEdit::Editing);
+        assert_eq!(keys(&mut v, "yes\r"), NewEdit::Editing);
         let n = ns(&mut v);
         assert!(!n.priv_prompt_open() && !n.bypass && !n.no_sandbox);
         assert!(n.error.as_deref().unwrap().contains("nothing was started"));
@@ -2418,11 +2441,7 @@ mod tests {
             let mut v = open("/", h.path());
             privileged(&mut v, true, false);
             v.edit_new_session(b"\r");
-            assert_eq!(
-                v.edit_new_session(typed.as_bytes()),
-                NewEdit::Editing,
-                "{typed:?}"
-            );
+            assert_eq!(keys(&mut v, typed), NewEdit::Editing, "{typed:?}");
             assert!(v.new_session.is_some());
         }
     }
@@ -2443,6 +2462,7 @@ mod tests {
         let mut v = open("/", h.path());
         privileged(&mut v, true, false);
         v.edit_new_session(b"\r");
+        ready(&v);
         v.insert_new_session_text(b"bypass");
         assert_eq!(v.edit_new_session(b"\x1b[A\x1b[C"), NewEdit::Editing);
         assert!(ns(&mut v).priv_prompt_open());
@@ -2457,6 +2477,106 @@ mod tests {
         privileged(&mut v, true, false);
         assert_eq!(v.edit_new_session(b"\rbypass\r"), NewEdit::Editing);
         assert!(ns(&mut v).priv_prompt_open());
+        ready(&v);
+        assert_eq!(v.edit_new_session(b"bypass\r"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+    }
+
+    #[test]
+    fn a_whole_word_with_enter_in_one_chunk_never_confirms_and_clears_the_line() {
+        let h = tmp();
+        for raw in ["no-sandbox\r", "\x1b[201~no-sandbox\r", "no-sandbox\n"] {
+            let mut v = prompt_view(h.path(), 0, true);
+            ready(&v);
+            assert_eq!(v.edit_new_session(b"no-"), NewEdit::Editing);
+            assert_eq!(
+                v.edit_new_session(raw.as_bytes()),
+                NewEdit::Editing,
+                "{raw:?}"
+            );
+            assert!(v.new_session.is_some() && ns(&mut v).priv_prompt_open());
+            assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+            assert!(!ns(&mut v).priv_prompt_open() && v.new_session.is_some());
+        }
+    }
+
+    #[test]
+    fn utf8_characters_and_backspace_still_edit_the_line() {
+        let h = tmp();
+        let mut v = prompt_view(h.path(), 0, true);
+        keys(&mut v, "\u{e9}x");
+        v.edit_new_session(b"\x7f");
+        assert!(draw(&v, 76, 14).contains("> \u{e9}"));
+        assert!(!draw(&v, 76, 14).contains("> \u{e9}x"));
+    }
+
+    #[test]
+    fn nothing_typed_before_the_prompt_was_shown_for_a_moment_counts() {
+        let h = tmp();
+        let mut v = prompt_view(h.path(), 0, true);
+        for c in "no-sandbox".chars() {
+            let mut b = [0u8; 4];
+            v.edit_new_session(c.encode_utf8(&mut b).as_bytes());
+        }
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+        let mut v = prompt_view(h.path(), 0, true);
+        draw(&v, 76, 14);
+        for c in "no-sandbox".chars() {
+            let mut b = [0u8; 4];
+            v.edit_new_session(c.encode_utf8(&mut b).as_bytes());
+        }
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+    }
+
+    fn replay(v: &mut ViewState, reads: &[&[u8]]) -> Vec<NewEdit> {
+        let mut split = crate::attach::InputSplitter::new();
+        let mut out = Vec::new();
+        for read in reads {
+            for action in split.feed(read) {
+                if let crate::attach::Action::Forward(d) = action {
+                    if v.new_session.is_some() {
+                        out.push(v.edit_new_session(&d));
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn queued_input_split_by_events_or_reads_cannot_confirm() {
+        let h = tmp();
+        let cases: [&[&[u8]]; 5] = [
+            &[b"\r\x1b[Ibypass\r"],
+            &[b"\r\x1b[<35;5;5Mbypass\r"],
+            &[b"\r", b"bypass\r"],
+            &[b"\r\x1b[Ib\x1b[Iy\x1b[Ip\x1b[Ia\x1b[Is\x1b[Is\x1b[I\r"],
+            &[b"\r\x1b[Ib", b"y", b"p", b"a", b"s", b"s", b"\r"],
+        ];
+        for reads in cases {
+            let mut v = open("/", h.path());
+            privileged(&mut v, true, false);
+            let out = replay(&mut v, reads);
+            assert!(
+                out.iter().all(|e| !matches!(e, NewEdit::Submit(_))),
+                "{reads:?}"
+            );
+            assert!(v.new_session.is_some());
+        }
+    }
+
+    #[test]
+    fn a_click_on_start_followed_by_queued_bytes_cannot_confirm() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        privileged(&mut v, false, true);
+        let row = row_of(&mut v, NewField::Start);
+        click(&mut v, row.x + LABEL_W + 2, row.y);
+        assert!(ns(&mut v).priv_prompt_open());
+        let out = replay(&mut v, &[b"n", b"o", b"-", b"\r"]);
+        assert!(out.iter().all(|e| !matches!(e, NewEdit::Submit(_))));
     }
 
     #[test]
@@ -2592,7 +2712,7 @@ mod tests {
         }
         assert!(v.priv_prompt_fits(Rect::new(0, 0, 30, 40)));
         assert!(!v.priv_prompt_fits(Rect::new(0, 0, 30, 6)));
-        v.edit_new_session(b"no-sa");
+        keys(&mut v, "no-sa");
         assert!(draw(&v, 30, 40).contains("> no-sa"));
     }
 
@@ -2600,7 +2720,7 @@ mod tests {
     fn hostile_bytes_in_the_prompt_cannot_reach_the_screen() {
         let h = tmp();
         let mut v = prompt_view(h.path(), 0, false);
-        v.edit_new_session(b"a\x07b\x1b]0;x\x07c");
+        keys(&mut v, "a\x07b\x1b]0;x\x07c");
         let shown = draw(&v, 60, 20);
         assert!(!shown.chars().any(|c| c.is_control() && c != '\n'));
     }
@@ -2609,7 +2729,7 @@ mod tests {
     fn snapshot_privilege_prompt() {
         let h = tmp();
         let mut v = prompt_view(h.path(), 0, true);
-        v.edit_new_session(b"no-s");
+        keys(&mut v, "no-s");
         snapshot("new_session_privileged", &draw(&v, 76, 14));
     }
 

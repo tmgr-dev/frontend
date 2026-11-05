@@ -5,6 +5,7 @@ pub(crate) fn is_unsafe(c: char) -> bool {
         '\u{0}'..='\u{1f}'
         | '\u{7f}'
         | '\u{80}'..='\u{9f}'
+        | '\u{61c}'
         | '\u{200e}' | '\u{200f}'
         | '\u{202a}'..='\u{202e}'
         | '\u{2066}'..='\u{2069}'
@@ -35,6 +36,11 @@ mod tests {
     fn replaces_controls_c1_bidi_bom() {
         let input = "a\u{1b}b\u{7f}c\u{9b}d\u{202e}e\u{2066}f\u{feff}g\u{200f}h\0";
         assert_eq!(sanitize_text(input), "a?b?c?d?e?f?g?h?");
+    }
+
+    #[test]
+    fn replaces_the_arabic_letter_mark() {
+        assert_eq!(sanitize_text("a\u{61c}b"), "a?b");
     }
 
     #[test]
