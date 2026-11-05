@@ -482,7 +482,10 @@ impl Git {
     }
 
     pub fn is_dirty(&self) -> Result<bool> {
-        let out = self.mutate(&["status", "--porcelain", "-z"], "status")?;
+        let out = self.mutate(
+            &["status", "--porcelain", "-z", "--ignore-submodules=all"],
+            "status",
+        )?;
         Ok(!out.is_empty())
     }
 
@@ -514,7 +517,21 @@ impl Git {
             .is_ok()
     }
 
+    fn tracks_nested_repository(&self) -> Result<bool> {
+        for args in [&["ls-files", "--stage"][..], &["ls-tree", "-r", "HEAD"][..]] {
+            let listing = self.mutate(args, "list tracked files")?;
+            if listing.lines().any(|line| line.starts_with("160000 ")) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     pub fn stash(&self, message: &str) -> Result<()> {
+        if self.tracks_nested_repository()? {
+            return Err(Error::conflict("cannot stash a repository with submodules")
+                .hint("commit or stash the changes yourself, then run this again"));
+        }
         self.mutate(&["stash", "push", "-u", "-m", message], "stash")
             .map(|_| ())
     }
@@ -529,7 +546,8 @@ impl Git {
     }
 
     pub fn switch(&self, name: &str) -> Result<()> {
-        self.mutate(&["switch", "--", name], "switch").map(|_| ())
+        self.mutate(&["switch", "--quiet", "--", name], "switch")
+            .map(|_| ())
     }
 
     pub fn origin_url(&self) -> Option<String> {

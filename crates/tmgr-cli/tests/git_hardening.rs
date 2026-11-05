@@ -906,6 +906,97 @@ async fn start_does_not_inspect_nested_repositories() {
     );
 }
 
+const SUBMODULE_NOT_IGNORED: &str = "[submodule \"inner\"]\n\tpath = inner\n\tIgnore = none\n";
+
+async fn start_with_a_nested_filter() -> (Env, PathBuf, PathBuf) {
+    let (env, repo) = start_env().await;
+    let (script, marker) = marker_script(&env.tmp.path().join("bin"), "clean");
+    let inner = init_repo(&repo.join("inner"));
+    git(
+        &inner,
+        &["config", "filter.x.clean", script.to_str().unwrap()],
+    );
+    std::fs::write(inner.join(".git/info/attributes"), "README.md filter=x\n").unwrap();
+    git(&repo, &["add", "inner"]);
+    git(&repo, &["commit", "-q", "-m", "add inner"]);
+    std::fs::write(inner.join("README.md"), "jello\n").unwrap();
+    (env, repo, marker)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn start_stash_refuses_a_repository_that_tracks_a_nested_repository() {
+    for place in ["head", "index"] {
+        let (env, repo, marker) = start_with_a_nested_filter().await;
+        if place == "index" {
+            git(&repo, &["reset", "-q", "--soft", "HEAD~1"]);
+        }
+        std::fs::write(repo.join("README.md"), "dirty\n").unwrap();
+        let _ = std::fs::remove_file(&marker);
+        let out = start_stash_in(&env, &repo).await;
+        assert!(!marker.exists(), "{place}: a nested program ran");
+        assert_eq!(out.status.code(), Some(6), "{place}");
+        assert_eq!(git(&repo, &["stash", "list"]), "", "{place}");
+        assert_eq!(git(&repo, &["branch", "--show-current"]), "main", "{place}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn start_stash_goes_on_past_an_untracked_nested_repository() {
+    let (env, repo) = start_env().await;
+    let (script, marker) = marker_script(&env.tmp.path().join("bin"), "clean");
+    let inner = init_repo(&repo.join("inner"));
+    git(
+        &inner,
+        &["config", "filter.x.clean", script.to_str().unwrap()],
+    );
+    std::fs::write(inner.join(".git/info/attributes"), "README.md filter=x\n").unwrap();
+    std::fs::write(inner.join("README.md"), "jello\n").unwrap();
+    std::fs::write(repo.join("README.md"), "dirty\n").unwrap();
+    let _ = start_stash_in(&env, &repo).await;
+    assert!(!marker.exists(), "a nested program ran");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn start_dirty_check_skips_nested_repositories_despite_gitmodules() {
+    let (env, repo, marker) = start_with_a_nested_filter().await;
+    std::fs::write(repo.join(".gitmodules"), SUBMODULE_NOT_IGNORED).unwrap();
+    git(&repo, &["add", ".gitmodules"]);
+    git(&repo, &["commit", "-q", "-m", "modules"]);
+    let _ = std::fs::remove_file(&marker);
+    let out = env
+        .tmgr_in(&repo, None)
+        .args(["start", "TM-512", "--json"])
+        .output()
+        .unwrap();
+    assert!(!marker.exists(), "a nested program ran");
+    assert!(out.status.success(), "{}", text(&out.stderr));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn start_switch_skips_nested_repositories_despite_the_target_gitmodules() {
+    let (env, repo, marker) = start_with_a_nested_filter().await;
+    git(
+        &repo,
+        &["switch", "-q", "-c", "tm-512-checkout-apple-pay-button"],
+    );
+    std::fs::write(repo.join(".gitmodules"), SUBMODULE_NOT_IGNORED).unwrap();
+    git(&repo, &["add", ".gitmodules"]);
+    git(&repo, &["commit", "-q", "-m", "modules"]);
+    git(&repo, &["switch", "-q", "main"]);
+    let _ = std::fs::remove_file(&marker);
+    let out = env
+        .tmgr_in(&repo, None)
+        .args(["start", "TM-512", "--json"])
+        .output()
+        .unwrap();
+    assert!(!marker.exists(), "a nested program ran");
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        git(&repo, &["branch", "--show-current"]),
+        "tm-512-checkout-apple-pay-button"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn start_refuses_a_repository_that_declares_a_promisor_remote() {
     let (env, repo) = start_env().await;
