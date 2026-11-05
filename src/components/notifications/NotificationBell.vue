@@ -98,7 +98,7 @@
 	import { useNotifications } from '@/composable/useNotifications';
 	import { notificationTarget } from '@/utils/notificationTypes';
 	import { Bell } from 'lucide-vue-next';
-	import { computed, defineComponent, onMounted, onUnmounted, ref } from 'vue';
+	import { computed, defineComponent, ref } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import { useStore } from 'vuex';
 	import NotificationItem from './NotificationItem.vue';
@@ -122,15 +122,14 @@
 				unreadCount,
 				loading,
 				hasNewNotification,
-				loadNotifications,
-				refreshUnreadCount,
 				markNotificationAsRead,
 				markAllNotificationsAsRead,
 				removeNotification,
-				subscribeToRealtime,
-				unsubscribeFromRealtime,
 				clearNewNotificationIndicator,
+				followUser,
 			} = useNotifications();
+
+			followUser(() => (store.state.token ? store.state.user?.id : null));
 
 			const open = ref(false);
 
@@ -209,23 +208,6 @@
 					clearNewNotificationIndicator();
 				}
 			};
-
-			onMounted(async () => {
-				await loadNotifications();
-				await refreshUnreadCount();
-
-				const user = store.getters['user/getUser'];
-				if (user?.id) {
-					subscribeToRealtime(user.id);
-				}
-			});
-
-			onUnmounted(() => {
-				const user = store.getters['user/getUser'];
-				if (user?.id) {
-					unsubscribeFromRealtime(user.id);
-				}
-			});
 
 			return {
 				open,
