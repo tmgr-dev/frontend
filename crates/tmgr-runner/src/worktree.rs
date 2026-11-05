@@ -1301,13 +1301,23 @@ mod tests {
                     .output()
                     .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
                     .unwrap_or_default();
-                for line in table.lines().filter(|l| l.contains("post-checkout")) {
-                    eprintln!("stalled hook process: {line}");
+                let leader = table
+                    .lines()
+                    .find(|l| l.contains("worktree add") && l.contains("control"))
+                    .and_then(|l| l.split_whitespace().next());
+                for line in table.lines().filter(|l| {
+                    l.contains("post-checkout")
+                        || leader.is_some_and(|p| l.split_whitespace().nth(2) == Some(p))
+                }) {
+                    eprintln!("stalled process: {line}");
                     #[cfg(target_os = "macos")]
                     if let Some(pid) = line.split_whitespace().next() {
-                        let sampled = Command::new("sample").args([pid, "1"]).output();
-                        if let Ok(o) = sampled {
-                            eprintln!("{}", String::from_utf8_lossy(&o.stdout));
+                        if let Ok(o) = Command::new("sample").args([pid, "1"]).output() {
+                            eprintln!(
+                                "{}{}",
+                                String::from_utf8_lossy(&o.stdout),
+                                String::from_utf8_lossy(&o.stderr)
+                            );
                         }
                     }
                 }
