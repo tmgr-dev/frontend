@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.96
+
+- The Decisions inbox no longer fills with empty cards from Claude Code notifications: `idle_prompt` makes no card, `agent_needs_input` and `elicitation_dialog` make one only when the message has real text (the stock "Claude is waiting for your input" does not count), and a finished-turn card needs the assistant's last message or uncommitted changes. Permission prompts, `tmgr ask` and `ask_owner` cards are unchanged.
+
 ## 1.0.95
 
 - Typing or pasting fast into an attached session no longer loses keystrokes when the machine is busy: the runner now waits for room on its link to the agent instead of dropping the input.
