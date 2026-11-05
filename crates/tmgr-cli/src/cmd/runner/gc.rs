@@ -2107,6 +2107,8 @@ mod tests {
             &m.repos[i],
             &["rev-parse", "refs/heads/queue-team/q_abc/w1"],
         );
+        let base = sh(&lead, &["rev-parse", "HEAD"]);
+        workdir::deliver_commits(&m.repos[i], &lead, &base, &tip).unwrap();
         sh(&lead, &["merge", "--squash", "-q", &tip]);
         sh(&lead, &["commit", "-q", "-m", "squashed"]);
         let head = sh(&lead, &["rev-parse", "HEAD"]);
@@ -2481,10 +2483,9 @@ mod tests {
         import_branch(&r, &w1, &branch).unwrap();
 
         assert!(skip(&c).contains("not in the lead clone"));
-        sh(
-            &lead,
-            &["merge", "--squash", "-q", &sh(&w1, &["rev-parse", "HEAD"])],
-        );
+        let tip = sh(&w1, &["rev-parse", "HEAD"]);
+        workdir::deliver_commits(&repo, &lead, &base, &tip).unwrap();
+        sh(&lead, &["merge", "--squash", "-q", &tip]);
         sh(&lead, &["commit", "-q", "-m", "squashed"]);
         let merged_head = sh(&lead, &["rev-parse", "HEAD"]);
         let prs = [Prs::Listed(vec![pr(1, "MERGED", &merged_head, false)])];
