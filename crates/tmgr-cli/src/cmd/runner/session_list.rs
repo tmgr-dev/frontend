@@ -91,6 +91,10 @@ impl Row {
         }
     }
 
+    pub(super) fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
     pub(super) fn text(&self) -> String {
         let t = self
             .snippet

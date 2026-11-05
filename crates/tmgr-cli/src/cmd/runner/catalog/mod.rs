@@ -6,7 +6,7 @@ use super::attach_consent::Reads;
 use serde::Serialize;
 use serde_json::Value;
 use std::fs::{File, Metadata, OpenOptions};
-use std::io::{self, Read};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -282,6 +282,26 @@ pub(crate) fn open_regular(path: &Path) -> io::Result<File> {
 pub(crate) fn read_head(path: &Path, cap: u64) -> io::Result<Vec<u8>> {
     let mut buf = Vec::new();
     open_regular(path)?.take(cap).read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
+pub(crate) fn read_tail(path: &Path, cap: u64) -> io::Result<Vec<u8>> {
+    let mut f = open_regular(path)?;
+    let len = f.metadata()?.len();
+    if len <= cap {
+        return Ok(Vec::new());
+    }
+    f.seek(SeekFrom::Start(len - cap - 1))?;
+    let mut buf = Vec::new();
+    f.take(cap + 1).read_to_end(&mut buf)?;
+    let skip = if buf.first() == Some(&b'\n') {
+        1
+    } else {
+        buf.iter()
+            .position(|b| *b == b'\n')
+            .map_or(buf.len(), |i| i + 1)
+    };
+    buf.drain(..skip);
     Ok(buf)
 }
 

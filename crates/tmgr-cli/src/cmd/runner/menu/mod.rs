@@ -1,5 +1,6 @@
 mod indexer;
 mod memory;
+mod rank;
 mod signal;
 mod smart;
 mod state;
@@ -339,6 +340,7 @@ pub fn load_rows(profile: &str) -> Loaded {
             sandboxed: r.sandboxed,
             project: r.project_label(),
             when: span(now.saturating_sub(r.when_ms) / 1000),
+            name: r.title().map(str::to_string),
             text: r.text(),
             live: r.live == Liveness::Yes,
             readable: r.readable,

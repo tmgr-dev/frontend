@@ -113,6 +113,161 @@ fn claude_head_is_capped_and_later_content_is_ignored() {
     assert_eq!(e.cwd, None);
 }
 
+fn title_rec(kind: &str, value: &str) -> String {
+    let key = if kind == "custom-title" {
+        "customTitle"
+    } else {
+        "aiTitle"
+    };
+    json!({"type":kind, key:value,"sessionId":"x"}).to_string()
+}
+
+fn filler(n: usize) -> Vec<String> {
+    let f = json!({"type":"system","content":"x".repeat(1000)}).to_string();
+    (0..n).map(|_| f.clone()).collect()
+}
+
+fn claude_title(fx: &Fx, lines: &[String]) -> Option<String> {
+    fx.claude("-w", &uid(1), lines);
+    all(fx).entries[0].title.clone()
+}
+
+#[test]
+fn claude_custom_title_past_the_head_is_found_in_the_tail() {
+    let fx = Fx::new();
+    fx.grant();
+    let mut lines = vec![claude_user("/w", "hi")];
+    lines.extend(filler(800));
+    lines.push(title_rec("custom-title", "Billing fix"));
+    lines.extend(filler(3));
+    let p = fx.claude("-w", &uid(1), &lines);
+    assert!(std::fs::metadata(&p).unwrap().len() > 2 * HEAD_CAP);
+    assert_eq!(all(&fx).entries[0].title.as_deref(), Some("Billing fix"));
+}
+
+#[test]
+fn claude_custom_title_in_the_head_is_found_even_after_the_early_break() {
+    let fx = Fx::new();
+    fx.grant();
+    let lines = vec![
+        claude_user("/w", "hi"),
+        title_rec("custom-title", "Early name"),
+        claude_assistant("ok"),
+    ];
+    assert_eq!(claude_title(&fx, &lines).as_deref(), Some("Early name"));
+}
+
+#[test]
+fn claude_last_custom_title_wins() {
+    let fx = Fx::new();
+    fx.grant();
+    let lines = vec![
+        claude_user("/w", "hi"),
+        title_rec("custom-title", "first"),
+        title_rec("custom-title", "second"),
+        title_rec("custom-title", "third"),
+    ];
+    assert_eq!(claude_title(&fx, &lines).as_deref(), Some("third"));
+}
+
+#[test]
+fn claude_tail_custom_title_outranks_a_head_one() {
+    let fx = Fx::new();
+    fx.grant();
+    let mut lines = vec![claude_user("/w", "hi"), title_rec("custom-title", "old")];
+    lines.extend(filler(400));
+    lines.push(title_rec("custom-title", "new"));
+    assert_eq!(claude_title(&fx, &lines).as_deref(), Some("new"));
+}
+
+#[test]
+fn claude_custom_title_beats_a_later_ai_title() {
+    let fx = Fx::new();
+    fx.grant();
+    let lines = vec![
+        claude_user("/w", "hi"),
+        title_rec("custom-title", "mine"),
+        title_rec("ai-title", "generated"),
+    ];
+    assert_eq!(claude_title(&fx, &lines).as_deref(), Some("mine"));
+}
+
+#[test]
+fn claude_ai_title_is_the_fallback_and_the_last_one_wins() {
+    let fx = Fx::new();
+    fx.grant();
+    let lines = vec![
+        claude_user("/w", "hi"),
+        title_rec("ai-title", "one"),
+        title_rec("ai-title", "two"),
+    ];
+    assert_eq!(claude_title(&fx, &lines).as_deref(), Some("two"));
+}
+
+#[test]
+fn claude_empty_or_invalid_titles_count_as_absent() {
+    let fx = Fx::new();
+    fx.grant();
+    let lines = vec![
+        claude_user("/w", "hi"),
+        title_rec("ai-title", "kept"),
+        title_rec("custom-title", "  "),
+        json!({"type":"custom-title","customTitle":7}).to_string(),
+    ];
+    assert_eq!(claude_title(&fx, &lines).as_deref(), Some("kept"));
+}
+
+#[test]
+fn claude_live_name_beats_log_titles() {
+    let fx = Fx::new();
+    fx.grant();
+    let id = uid(1);
+    fx.claude(
+        "-w",
+        &id,
+        &[
+            claude_user("/w", "hi"),
+            title_rec("custom-title", "from log"),
+        ],
+    );
+    let me = std::process::id();
+    fx.write(
+        &fx.claude_root().join("sessions").join(format!("{me}.json")),
+        &json!({"pid":me,"sessionId":id,"cwd":"/w","startedAt":1,"name":"live name"}).to_string(),
+    );
+    assert_eq!(all(&fx).entries[0].title.as_deref(), Some("live name"));
+}
+
+#[test]
+fn claude_partial_first_tail_line_is_ignored() {
+    let fx = Fx::new();
+    fx.grant();
+    let mut head = vec![claude_user("/w", "hi")];
+    head.extend(filler(300));
+    let head_len: usize = head.iter().map(|l| l.len() + 1).sum();
+    assert!(head_len as u64 > HEAD_CAP);
+    let ghost = format!(
+        "{}{}\n",
+        "j".repeat(2000),
+        title_rec("custom-title", "ghost")
+    );
+    let real = format!("{}\n", title_rec("ai-title", "real"));
+    let pad_line = |k: usize| format!("{}\n", json!({"type":"system","content":"x".repeat(k)}));
+    let k = HEAD_CAP as usize + 500 - real.len() - ghost.len() - pad_line(0).len();
+    let mut body: String = head.iter().map(|l| format!("{l}\n")).collect();
+    body.push_str(&ghost);
+    body.push_str(&pad_line(k));
+    body.push_str(&real);
+    assert_eq!(body.len() - HEAD_CAP as usize, head_len + 500);
+    fx.write(
+        &fx.claude_root()
+            .join("projects/-w")
+            .join(format!("{}.jsonl", uid(1))),
+        &body,
+    );
+    assert_eq!(all(&fx).entries[0].title.as_deref(), Some("real"));
+}
+
 #[test]
 fn claude_live_needs_an_alive_pid_and_a_matching_session() {
     let fx = Fx::new();

@@ -296,6 +296,7 @@ impl Source for Smarty {
             sandboxed: false,
             project: "proj".into(),
             when: "1h".into(),
+            name: None,
             text: text.into(),
             live: false,
             readable: true,

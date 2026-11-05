@@ -56,6 +56,7 @@ fn row(id: &str, kind: RowKind, sandboxed: bool, project: &str, text: &str) -> R
         sandboxed,
         project: project.into(),
         when: "2h ago".into(),
+        name: None,
         text: text.into(),
         live: false,
         readable: true,
@@ -499,6 +500,92 @@ fn a_wired_search_decides_the_order_and_the_set() {
     to_session(&mut s);
     typed(&mut s, "anything");
     assert_eq!(s.visible(), vec![2, 0]);
+}
+
+fn named(id: &str, kind: RowKind, name: &str, text: &str) -> Row {
+    Row {
+        name: Some(name.into()),
+        ..row(id, kind, false, "proj", text)
+    }
+}
+
+fn search_state(rows: Vec<Row>, ranked: Option<Vec<&str>>, query: &str) -> State {
+    let mut src = fake(rows);
+    src.ranked = ranked.map(|v| v.into_iter().map(String::from).collect());
+    let mut s = state_with(src, &Memory::default());
+    to_session(&mut s);
+    typed(&mut s, query);
+    s
+}
+
+#[test]
+fn a_name_only_row_missing_from_the_hits_still_shows_first() {
+    let rows = vec![
+        row("a", RowKind::External, false, "p", "content about deploy"),
+        named("b", RowKind::External, "deploy notes", "x"),
+    ];
+    let s = search_state(rows, Some(vec!["a"]), "deploy");
+    assert_eq!(s.visible(), vec![1, 0]);
+}
+
+#[test]
+fn a_name_match_ranks_first_when_the_index_is_silent() {
+    let rows = vec![
+        row("a", RowKind::External, false, "p", "content about deploy"),
+        named("b", RowKind::External, "deploy notes", "x"),
+    ];
+    let s = search_state(rows, None, "deploy");
+    assert_eq!(s.visible(), vec![1, 0]);
+}
+
+#[test]
+fn exact_name_beats_prefix_beats_substring_and_each_tier_keeps_row_order() {
+    let rows = vec![
+        named("sub1", RowKind::External, "my deploy", "x"),
+        named("pre1", RowKind::External, "deploy now", "x"),
+        named("exact", RowKind::External, "deploy", "x"),
+        named("sub2", RowKind::External, "redeploy", "x"),
+        named("pre2", RowKind::External, "deployment", "x"),
+    ];
+    let s = search_state(rows, Some(vec![]), "deploy");
+    assert_eq!(s.visible(), vec![2, 1, 4, 0, 3]);
+}
+
+#[test]
+fn a_tmgr_row_matched_by_name_beats_a_content_hit() {
+    let rows = vec![
+        row("hit", RowKind::External, false, "p", "talks about billing"),
+        named("tm-9", RowKind::Tmgr, "Billing", "x"),
+    ];
+    let s = search_state(rows, Some(vec!["hit"]), "billing");
+    assert_eq!(s.visible(), vec![1, 0]);
+}
+
+#[test]
+fn name_matching_ignores_case_and_surrounding_spaces() {
+    let rows = vec![
+        row("a", RowKind::External, false, "p", "x"),
+        named("b", RowKind::External, "Release Plan", "x"),
+    ];
+    let s = search_state(rows, Some(vec![]), "  RELEASE plan ");
+    assert_eq!(s.visible(), vec![1]);
+}
+
+#[test]
+fn a_row_that_is_both_a_name_match_and_a_hit_appears_once() {
+    let rows = vec![
+        row("a", RowKind::External, false, "p", "x"),
+        named("b", RowKind::External, "deploy", "x"),
+    ];
+    let s = search_state(rows, Some(vec!["b", "a", "b"]), "deploy");
+    assert_eq!(s.visible(), vec![1, 0]);
+}
+
+#[test]
+fn rows_without_a_name_are_never_name_matches() {
+    let rows = vec![row("a", RowKind::External, false, "p", "x")];
+    let s = search_state(rows, Some(vec![]), "a");
+    assert_eq!(s.visible(), Vec::<usize>::new());
 }
 
 #[test]

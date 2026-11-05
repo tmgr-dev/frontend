@@ -44,6 +44,7 @@ pub struct Row {
     pub sandboxed: bool,
     pub project: String,
     pub when: String,
+    pub name: Option<String>,
     pub text: String,
     pub live: bool,
     pub readable: bool,
@@ -286,20 +287,8 @@ impl State {
         if q.is_empty() {
             return (0..self.rows.len()).collect();
         }
-        if let Some(ids) = self.source.search(q) {
-            return ids
-                .iter()
-                .filter_map(|id| self.rows.iter().position(|r| &r.id == id))
-                .collect();
-        }
-        let needle = q.to_lowercase();
-        (0..self.rows.len())
-            .filter(|&i| {
-                let r = &self.rows[i];
-                r.project.to_lowercase().contains(&needle)
-                    || r.text.to_lowercase().contains(&needle)
-            })
-            .collect()
+        let hits = self.source.search(q);
+        super::rank::rank(&self.rows, q, hits.as_deref())
     }
 
     pub fn availability(row: &Row) -> Availability {

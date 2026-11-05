@@ -1,7 +1,7 @@
 use super::index::Piece;
 use super::{
-    clean_text, json_lines, open_regular, parse_ts, read_head, subdirs_and_files, Agent, Entry,
-    Live, HEAD_CAP,
+    clean_text, json_lines, open_regular, parse_ts, read_head, read_tail, subdirs_and_files, Agent,
+    Entry, Live, HEAD_CAP,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -135,9 +135,13 @@ pub(super) fn fill(e: &mut Entry, live: &Running, orphan_cwds: &[String]) -> boo
             break;
         }
     }
+    let log_title = log_title(
+        &head,
+        read_tail(&e.path, HEAD_CAP).unwrap_or_default().as_slice(),
+    );
     if let Some((name, _)) = live.by_id.get(&e.id) {
         e.live = Live::Yes;
-        e.title = name.clone();
+        e.title = name.clone().or(log_title.clone());
     } else if live.unknown
         || e.cwd
             .as_deref()
@@ -145,7 +149,42 @@ pub(super) fn fill(e: &mut Entry, live: &Running, orphan_cwds: &[String]) -> boo
     {
         e.live = Live::Recent;
     }
+    if e.live != Live::Yes {
+        e.title = log_title;
+    }
     true
+}
+
+#[derive(Default)]
+struct Titles {
+    custom: Option<String>,
+    ai: Option<String>,
+}
+
+fn titles(buf: &[u8]) -> Titles {
+    let mut t = Titles::default();
+    let lines = buf
+        .split(|b| *b == b'\n')
+        .filter(|l| l.windows(7).any(|w| w == b"-title\""));
+    for l in lines {
+        let Ok(v) = serde_json::from_slice::<Value>(l) else {
+            continue;
+        };
+        let (slot, key) = match v["type"].as_str() {
+            Some("custom-title") => (&mut t.custom, "customTitle"),
+            Some("ai-title") => (&mut t.ai, "aiTitle"),
+            _ => continue,
+        };
+        if let Some(name) = v[key].as_str().and_then(clean_text) {
+            *slot = Some(name);
+        }
+    }
+    t
+}
+
+fn log_title(head: &[u8], tail: &[u8]) -> Option<String> {
+    let (h, t) = (titles(head), titles(tail));
+    t.custom.or(h.custom).or(t.ai).or(h.ai)
 }
 
 fn flag(v: &Value, key: &str) -> bool {
