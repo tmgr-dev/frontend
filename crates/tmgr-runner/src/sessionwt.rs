@@ -99,6 +99,17 @@ fn locate(cwd: &Path) -> Result<(PathBuf, String), String> {
             repo.display()
         ));
     }
+    if repo
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.ends_with("-worktrees"))
+    {
+        return Err(format!(
+            "{} is itself a task clone; start the session from the original repository",
+            repo.display()
+        ));
+    }
     let base = git.run(&["rev-parse", "--verify", "HEAD^{commit}"])?;
     Ok((repo, base))
 }
@@ -623,6 +634,30 @@ mod tests {
         let err = create(&s.path, Some("second"), "c", &[]).unwrap_err();
         assert!(err.contains("original repository"), "{err}");
         assert!(!fx.root.join("proj-worktrees/second").exists());
+    }
+
+    #[test]
+    fn a_self_contained_session_clone_cannot_be_the_source_of_another() {
+        let fx = fixture();
+        let s = make(&fx, "first");
+        assert!(!s.path.join(".git/objects/info/alternates").exists());
+        let err = create(&s.path, Some("second"), "c", &[]).unwrap_err();
+        assert!(err.contains("task clone"), "{err}");
+        assert!(!fx.root.join("proj-worktrees/second").exists());
+    }
+
+    #[test]
+    fn a_linked_worktree_under_a_worktrees_folder_of_a_normal_repository_is_accepted() {
+        let fx = fixture();
+        let folder = fx.root.join("x-worktrees");
+        fs::create_dir(&folder).unwrap();
+        let linked = folder.join("lw");
+        git(
+            &fx.repo,
+            &["worktree", "add", "-b", "lw", linked.to_str().unwrap()],
+        );
+        let s = create(&linked, Some("fromlinked"), "c", &[]).unwrap();
+        assert_eq!(s.repo, fx.repo);
     }
 
     #[test]
