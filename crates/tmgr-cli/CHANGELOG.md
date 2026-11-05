@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.95
+
+- Typing or pasting fast into an attached session no longer loses keystrokes when the machine is busy: the runner now waits for room on its link to the agent instead of dropping the input.
+
 ## 1.0.94
 
 - `tmgr attach`: the New session dialog (`Ctrl-] c`) remembers the agent and the Worktree, Approvals, Bypass, No sandbox and Rewind choices from the last session you started there. When bypass or no sandbox is remembered, both show as On and a line under the options says so before you start. This memory applies only to that dialog: the queue, task runs and `tmgr run` are not affected.
