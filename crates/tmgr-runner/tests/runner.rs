@@ -4300,6 +4300,31 @@ fn a_task_clone_of_a_trusted_repository_skips_the_trust_question() {
 }
 
 #[test]
+fn a_self_contained_task_clone_inherits_trust_only_with_its_marker() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = repo_trust_fx();
+    fx.trust(&fx.repo);
+    let self_contained = |branch: &str| {
+        let plan = tmgr_runner::worktree::plan(&fx.repo, branch, None).unwrap();
+        tmgr_runner::worktree::clone_mode(&plan).unwrap().path
+    };
+    let bare = self_contained("tm-10-bare");
+    assert!(!bare.join(".git/objects/info/alternates").exists());
+    assert!(!fx.started_trusted(fx.req(&bare)));
+    let marked = self_contained("tm-11-marked");
+    tmgr_runner::clone::mark_task_clone(fx.fx.h.homes.path(), &marked, &fx.repo).unwrap();
+    assert!(fx.started_trusted(fx.req(&marked)));
+    let queued = self_contained("tm-12-queued");
+    let moved = fx.trees.join("queue/q_2");
+    fs::create_dir_all(moved.parent().unwrap()).unwrap();
+    fs::rename(&queued, &moved).unwrap();
+    tmgr_runner::clone::mark_task_clone(fx.fx.h.homes.path(), &moved, &fx.repo).unwrap();
+    assert!(!fx.started_trusted(fx.req(&moved)));
+}
+
+#[test]
 fn trust_via_repo_never_covers_queue_nested_unreferenced_or_redirected_clones() {
     if !sessions_available() {
         return;

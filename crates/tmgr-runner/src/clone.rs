@@ -8,6 +8,75 @@ use std::path::{Component, Path, PathBuf};
 use tmgr_ipc::api::{ErrorCode, TeamLink, TeamRole};
 
 const MAX_ALTERNATES: u64 = 4096;
+const MARKERS: &str = ".task-clones";
+const MAX_MARKER: u64 = 4096;
+const MAX_SWEPT: usize = 256;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Marker {
+    repo: (u64, u64),
+    path: String,
+}
+
+fn marker_file(homes: &Path, id: (u64, u64)) -> PathBuf {
+    homes.join(MARKERS).join(format!("{}-{}", id.0, id.1))
+}
+
+fn read_marker(file: &Path) -> Option<Marker> {
+    serde_json::from_slice(&crate::folders::read_capped(file, MAX_MARKER)?).ok()
+}
+
+fn marked(homes: &Path, id: (u64, u64), path: &Path, repo_id: (u64, u64)) -> bool {
+    read_marker(&marker_file(homes, id))
+        .is_some_and(|m| m.repo == repo_id && Path::new(&m.path) == path)
+}
+
+fn sweep_markers(dir: &Path) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in rd.flatten().take(MAX_SWEPT) {
+        let name = entry.file_name();
+        let Some(id) = name
+            .to_str()
+            .and_then(|n| n.split_once('-'))
+            .and_then(|(d, i)| Some((d.parse::<u64>().ok()?, i.parse::<u64>().ok()?)))
+        else {
+            continue;
+        };
+        let Some(marker) = read_marker(&entry.path()) else {
+            continue;
+        };
+        let alive = std::fs::metadata(&marker.path).is_ok_and(|m| (m.dev(), m.ino()) == id);
+        if !alive {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// Records that `clone` is a task clone of `repo` so its folder trust can follow the repository's; the
+/// marker lives in `homes`, outside what a sandbox may write.
+pub fn mark_task_clone(homes: &Path, clone: &Path, repo: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    let clone = std::fs::canonicalize(clone)?;
+    let id = std::fs::metadata(&clone)?;
+    let repo = std::fs::metadata(repo)?;
+    let text = clone
+        .to_str()
+        .ok_or_else(|| std::io::Error::other("the clone path is not UTF-8"))?;
+    let dir = homes.join(MARKERS);
+    match std::fs::DirBuilder::new().mode(0o700).create(&dir) {
+        Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => return Err(e),
+        _ => {}
+    }
+    sweep_markers(&dir);
+    let bytes = serde_json::to_vec(&Marker {
+        repo: (repo.dev(), repo.ino()),
+        path: text.to_string(),
+    })
+    .map_err(std::io::Error::other)?;
+    crate::wire::write_atomic(&marker_file(homes, (id.dev(), id.ino())), &bytes)
+}
 
 #[derive(Clone, Debug)]
 pub struct Objects {
@@ -15,8 +84,10 @@ pub struct Objects {
     pub id: (u64, u64),
     pub repo_id: (u64, u64),
     /// True for a clone directly in `<repository>-worktrees` (not `queue`) that borrows the
-    /// repository's objects, the shape `tmgr run` creates for a task.
+    /// repository's objects or carries a host marker, the shapes `tmgr run` creates for a task.
     pub task_clone: bool,
+    /// True when the clone's alternates name the repository, so the sandbox must read its objects.
+    pub borrows: bool,
 }
 
 impl Objects {
@@ -114,12 +185,13 @@ impl Repo {
             .join(format!("{name}-worktrees"))
     }
 
-    fn objects(&self, task_clone: bool) -> Objects {
+    fn objects(&self, borrows: bool, task_clone: bool) -> Objects {
         Objects {
             path: self.path.join(".git/objects"),
             id: self.objects_id,
             repo_id: self.id,
             task_clone,
+            borrows,
         }
     }
 
@@ -396,11 +468,12 @@ fn folder_below(cwd: &Dir, root: &Path) -> Result<Vec<String>, Refusal> {
 }
 
 /// Verifies a queue clone made with `git clone --reference` and returns the object directory it may read.
-pub fn check(cwd: &Dir, clone_of: &str) -> Result<Objects, Refusal> {
+pub fn check(cwd: &Dir, clone_of: &str, homes: &Path) -> Result<Objects, Refusal> {
     let repo = Repo::open(clone_of)?;
     let rel = folder_below(cwd, &repo.worktrees())?;
     let referenced = repo.check_clone(cwd.raw_fd(), &cwd.path)?;
-    Ok(repo.objects(referenced && rel.len() == 1 && rel[0] != "queue"))
+    let owned = referenced || marked(homes, cwd.id(), &cwd.path, repo.id);
+    Ok(repo.objects(referenced, owned && rel.len() == 1 && rel[0] != "queue"))
 }
 
 fn valid_clone_name(name: &str) -> bool {
@@ -420,6 +493,7 @@ pub fn check_multi(
     primary: &str,
     clones: &[(String, String)],
     team: Option<&TeamLink>,
+    homes: &Path,
 ) -> Result<Vec<Objects>, Refusal> {
     if run.path.to_str().is_none_or(|p| p.contains(':')) {
         return refuse("the run folder path must be UTF-8 without a colon");
@@ -473,8 +547,13 @@ pub fn check_multi(
                 format!("clone_of: {name} is not a real directory inside the run folder"),
             )
         })?;
-        let referenced = repo.check_clone(dir.as_raw_fd(), &run.path.join(name))?;
-        out.push(repo.objects(referenced && task_folder));
+        let shown = run.path.join(name);
+        let referenced = repo.check_clone(dir.as_raw_fd(), &shown)?;
+        let owned = referenced
+            || dir
+                .metadata()
+                .is_ok_and(|m| marked(homes, (m.dev(), m.ino()), &shown, repo.id));
+        out.push(repo.objects(referenced, owned && task_folder));
     }
     Ok(out)
 }
@@ -522,7 +601,7 @@ mod tests {
                     dest.to_str().unwrap(),
                 ],
             );
-            let objects = check(&open_path(dest).unwrap(), src).unwrap();
+            let objects = check(&open_path(dest).unwrap(), src, Path::new("/nonexistent")).unwrap();
             assert!(!objects.task_clone);
             assert_eq!(objects.path, repo.join(".git/objects"));
         }
@@ -579,8 +658,12 @@ mod tests {
         clone_at(&repo, &dest, true);
         std::fs::write(dest.join("wip.txt"), "uncommitted\n").unwrap();
         assert!(linked_files(&dest) > 0);
-        let (code, msg) =
-            check(&open_path(dest.clone()).unwrap(), repo.to_str().unwrap()).unwrap_err();
+        let (code, msg) = check(
+            &open_path(dest.clone()).unwrap(),
+            repo.to_str().unwrap(),
+            Path::new("/nonexistent"),
+        )
+        .unwrap_err();
         assert_eq!(code, ErrorCode::InvalidParams);
         assert!(msg.contains(dest.to_str().unwrap()), "{msg}");
         assert!(msg.contains("re-clone it or remove it"), "{msg}");
@@ -597,7 +680,12 @@ mod tests {
         clone_at(&repo, &dest, false);
         let src = repo.to_str().unwrap();
         assert_eq!(linked_files(&dest), 0);
-        check(&open_path(dest.clone()).unwrap(), src).unwrap();
+        check(
+            &open_path(dest.clone()).unwrap(),
+            src,
+            Path::new("/nonexistent"),
+        )
+        .unwrap();
         std::fs::write(dest.join("c.txt"), "c\n").unwrap();
         git(&dest, &["add", "."]);
         git(&dest, &["commit", "-q", "-m", "c"]);
@@ -605,10 +693,15 @@ mod tests {
         let graph = dest.join(".git/objects/info/commit-graph");
         assert!(graph.is_file());
         std::fs::hard_link(&graph, root.join("graph-copy")).unwrap();
-        let (_, msg) = check(&open_path(dest.clone()).unwrap(), src).unwrap_err();
+        let (_, msg) = check(
+            &open_path(dest.clone()).unwrap(),
+            src,
+            Path::new("/nonexistent"),
+        )
+        .unwrap_err();
         assert!(msg.contains(dest.to_str().unwrap()), "{msg}");
         std::fs::remove_file(root.join("graph-copy")).unwrap();
-        check(&open_path(dest).unwrap(), src).unwrap();
+        check(&open_path(dest).unwrap(), src, Path::new("/nonexistent")).unwrap();
     }
 
     #[test]
@@ -624,11 +717,189 @@ mod tests {
             ("fe".to_string(), src.clone()),
             ("be".to_string(), src.clone()),
         ];
-        let (_, msg) =
-            check_multi(&open_path(run.clone()).unwrap(), &src, &clones, None).unwrap_err();
+        let (_, msg) = check_multi(
+            &open_path(run.clone()).unwrap(),
+            &src,
+            &clones,
+            None,
+            Path::new("/nonexistent"),
+        )
+        .unwrap_err();
         assert!(msg.contains(run.join("be").to_str().unwrap()), "{msg}");
         let fresh = vec![("fe".to_string(), src.clone())];
-        check_multi(&open_path(run).unwrap(), &src, &fresh, None).unwrap();
+        check_multi(
+            &open_path(run).unwrap(),
+            &src,
+            &fresh,
+            None,
+            Path::new("/nonexistent"),
+        )
+        .unwrap();
+    }
+
+    fn self_contained(root: &Path) -> (PathBuf, PathBuf, PathBuf) {
+        let repo = repo_at(root);
+        let plan = crate::worktree::plan(&repo, "task", None).unwrap();
+        let wt = crate::worktree::clone_mode(&plan).unwrap();
+        let homes = root.join("homes");
+        std::fs::create_dir(&homes).unwrap();
+        (repo, wt.path, homes)
+    }
+
+    fn checked(repo: &Path, dest: &Path, homes: &Path) -> Objects {
+        check(
+            &open_path(dest.to_path_buf()).unwrap(),
+            repo.to_str().unwrap(),
+            homes,
+        )
+        .unwrap()
+    }
+
+    fn marker_of(homes: &Path, dest: &Path) -> PathBuf {
+        let m = std::fs::metadata(dest).unwrap();
+        marker_file(homes, (m.dev(), m.ino()))
+    }
+
+    #[test]
+    fn a_self_contained_clone_without_a_marker_is_not_a_task_clone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (repo, dest, homes) = self_contained(&root);
+        let objects = checked(&repo, &dest, &homes);
+        assert!(!objects.borrows);
+        assert!(!objects.task_clone);
+    }
+
+    #[test]
+    fn a_marked_self_contained_clone_is_a_task_clone_that_borrows_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (repo, dest, homes) = self_contained(&root);
+        mark_task_clone(&homes, &dest, &repo).unwrap();
+        let objects = checked(&repo, &dest, &homes);
+        assert!(objects.task_clone);
+        assert!(!objects.borrows);
+    }
+
+    #[test]
+    fn a_marker_for_another_repository_or_path_does_not_count() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (repo, dest, homes) = self_contained(&root);
+        let other = root.join("other");
+        std::fs::create_dir(&other).unwrap();
+        mark_task_clone(&homes, &dest, &other).unwrap();
+        assert!(!checked(&repo, &dest, &homes).task_clone);
+        let id = std::fs::metadata(&repo).unwrap();
+        let wrong_path = Marker {
+            repo: (id.dev(), id.ino()),
+            path: other.display().to_string(),
+        };
+        std::fs::write(
+            marker_of(&homes, &dest),
+            serde_json::to_vec(&wrong_path).unwrap(),
+        )
+        .unwrap();
+        assert!(!checked(&repo, &dest, &homes).task_clone);
+    }
+
+    #[test]
+    fn a_symlinked_oversized_or_garbled_marker_does_not_count() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (repo, dest, homes) = self_contained(&root);
+        mark_task_clone(&homes, &dest, &repo).unwrap();
+        let file = marker_of(&homes, &dest);
+        let text = std::fs::read(&file).unwrap();
+        assert!(checked(&repo, &dest, &homes).task_clone);
+
+        let real = root.join("real-marker");
+        std::fs::rename(&file, &real).unwrap();
+        std::os::unix::fs::symlink(&real, &file).unwrap();
+        assert!(!checked(&repo, &dest, &homes).task_clone);
+        std::fs::remove_file(&file).unwrap();
+
+        let mut big = text.clone();
+        big.extend(std::iter::repeat_n(b' ', MAX_MARKER as usize));
+        std::fs::write(&file, big).unwrap();
+        assert!(!checked(&repo, &dest, &homes).task_clone);
+
+        std::fs::write(&file, b"not json").unwrap();
+        assert!(!checked(&repo, &dest, &homes).task_clone);
+
+        std::fs::write(&file, text).unwrap();
+        assert!(checked(&repo, &dest, &homes).task_clone);
+    }
+
+    #[test]
+    fn a_marker_does_not_follow_a_replaced_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (repo, dest, homes) = self_contained(&root);
+        mark_task_clone(&homes, &dest, &repo).unwrap();
+        let moved = root.join("moved");
+        std::fs::rename(&dest, &moved).unwrap();
+        let again = crate::worktree::plan(&repo, "again", None).unwrap();
+        crate::worktree::clone_mode(&again).unwrap();
+        std::fs::rename(&again.path, &dest).unwrap();
+        assert!(!checked(&repo, &dest, &homes).task_clone);
+    }
+
+    #[test]
+    fn a_marker_never_makes_a_queue_clone_a_task_clone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (repo, _, homes) = self_contained(&root);
+        let queued = root.join("repo-worktrees/queue/p_1");
+        std::fs::create_dir_all(queued.parent().unwrap()).unwrap();
+        std::fs::rename(root.join("repo-worktrees/task"), &queued).unwrap();
+        mark_task_clone(&homes, &queued, &repo).unwrap();
+        assert!(!checked(&repo, &queued, &homes).task_clone);
+    }
+
+    #[test]
+    fn a_clone_with_alternates_borrows_and_is_a_task_clone_without_a_marker() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = repo_at(&root);
+        let dest = root.join("repo-worktrees/old");
+        clone_at(&repo, &dest, false);
+        let objects = checked(&repo, &dest, &root.join("homes"));
+        assert!(objects.borrows);
+        assert!(objects.task_clone);
+    }
+
+    #[test]
+    fn marked_self_contained_clones_of_a_run_folder_are_task_clones() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (repo, dest, homes) = self_contained(&root);
+        let run = root.join("repo-worktrees/run");
+        std::fs::create_dir(&run).unwrap();
+        std::fs::rename(&dest, run.join("fe")).unwrap();
+        let src = repo.to_str().unwrap().to_string();
+        let clones = vec![("fe".to_string(), src.clone())];
+        let open = || open_path(run.clone()).unwrap();
+        let before = check_multi(&open(), &src, &clones, None, &homes).unwrap();
+        assert!(!before[0].task_clone && !before[0].borrows);
+        mark_task_clone(&homes, &run.join("fe"), &repo).unwrap();
+        let after = check_multi(&open(), &src, &clones, None, &homes).unwrap();
+        assert!(after[0].task_clone && !after[0].borrows);
+    }
+
+    #[test]
+    fn marking_sweeps_markers_of_folders_that_are_gone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (repo, dest, homes) = self_contained(&root);
+        mark_task_clone(&homes, &dest, &repo).unwrap();
+        let stale = marker_of(&homes, &dest);
+        std::fs::remove_dir_all(&dest).unwrap();
+        let second = root.join("second");
+        std::fs::create_dir(&second).unwrap();
+        mark_task_clone(&homes, &second, &repo).unwrap();
+        assert!(!stale.exists());
+        assert!(marker_of(&homes, &second).exists());
     }
 
     fn team_of(role: TeamRole, of: &str) -> TeamLink {
@@ -651,7 +922,14 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let (run, src, clones) = member_folder(&root, rel);
-        check_multi(&open_path(run).unwrap(), &src, &clones, team).map(|_| ())
+        check_multi(
+            &open_path(run).unwrap(),
+            &src,
+            &clones,
+            team,
+            Path::new("/nonexistent"),
+        )
+        .map(|_| ())
     }
 
     #[test]
@@ -682,8 +960,14 @@ mod tests {
         let (run, src, clones) = member_folder(&root, "queue/p_1/lead");
         std::fs::create_dir(run.join(".git")).unwrap();
         let lead = team_of(TeamRole::Lead, "p_1");
-        let (_, msg) =
-            check_multi(&open_path(run).unwrap(), &src, &clones, Some(&lead)).unwrap_err();
+        let (_, msg) = check_multi(
+            &open_path(run).unwrap(),
+            &src,
+            &clones,
+            Some(&lead),
+            Path::new("/nonexistent"),
+        )
+        .unwrap_err();
         assert!(msg.contains(".git"), "{msg}");
     }
     fn plain_clone(repo: &Path, dest: &Path) {

@@ -904,6 +904,56 @@ fn a_clone_that_shares_object_files_is_not_restored_and_is_left_alone() {
 }
 
 #[test]
+fn a_self_contained_clone_is_restored() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::new(true);
+    let base = fs::canonicalize(h.tmp.path()).unwrap();
+    let repo = base.join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    git_fx(&repo, &["init", "-q", "-b", "main"]);
+    fs::write(repo.join("a.txt"), "a").unwrap();
+    git_fx(&repo, &["add", "a.txt"]);
+    git_fx(&repo, &["commit", "-q", "-m", "one"]);
+    let plan = tmgr_runner::worktree::plan(&repo, "task", None).unwrap();
+    let clone = tmgr_runner::worktree::clone_mode(&plan).unwrap().path;
+    assert!(!clone.join(".git/objects/info/alternates").exists());
+    let script = clone.join("agent.sh");
+    fs::write(&script, AGENT).unwrap();
+    let toml = h.agents.join("fake.toml");
+    let profile = fs::read_to_string(&toml).unwrap().replace(
+        h.work.join("agent.sh").to_str().unwrap(),
+        script.to_str().unwrap(),
+    );
+    fs::write(&toml, profile).unwrap();
+    h.start();
+    let mut req = h.req();
+    req.cwd = clone.display().to_string();
+    req.clone_of = Some(repo.display().to_string());
+    let first = h.client().create_run(req).unwrap();
+    let log = clone.join("log");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !fs::read_to_string(&log)
+        .unwrap_or_default()
+        .contains("home:")
+    {
+        assert!(Instant::now() < deadline, "session did not start");
+        thread::sleep(Duration::from_millis(50));
+    }
+    h.reboot(&first, true);
+    fs::write(clone.join("wip.txt"), "unsaved").unwrap();
+
+    let r = h.client().restore(&first.id).unwrap();
+    assert!(r.resumed);
+    assert_ne!(r.session.id, first.id);
+    assert_eq!(
+        fs::read_to_string(clone.join("wip.txt")).unwrap(),
+        "unsaved"
+    );
+}
+
+#[test]
 fn a_folder_with_shared_object_files_is_not_restored_and_is_left_alone() {
     if !sessions_available() {
         return;

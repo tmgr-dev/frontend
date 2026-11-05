@@ -75,6 +75,31 @@ pub fn fixture(self_exe: &str) -> Fx {
 }
 
 impl Fx {
+    pub fn self_contained_clone(&self) {
+        let repo = self.root.join("origin");
+        fs::create_dir(&repo).unwrap();
+        let git = |args: &[&str]| {
+            let o = Command::new("git")
+                .current_dir(&repo)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(o.status.success(), "{args:?}: {o:?}");
+        };
+        git(&["init", "-q", "-b", "main"]);
+        fs::write(repo.join("a.txt"), "a\n").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-q", "-m", "a"]);
+        let plan = tmgr_runner::worktree::plan(&repo, "task", None).unwrap();
+        let clone = tmgr_runner::worktree::clone_mode(&plan).unwrap();
+        fs::remove_dir(&self.cwd).unwrap();
+        fs::rename(&clone.path, &self.cwd).unwrap();
+        assert!(!self.cwd.join(".git/objects/info/alternates").exists());
+    }
+
     pub fn run(&self, script: &str) -> Out {
         self.run_net(script, Network::Open)
     }

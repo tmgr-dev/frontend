@@ -3518,7 +3518,7 @@ impl Runner {
                 ))
             }
             (Some(repo), Some(d)) => {
-                vec![clone::check(d, repo).map_err(|(code, m)| api(code, m))?]
+                vec![clone::check(d, repo, &self.cfg.homes).map_err(|(code, m)| api(code, m))?]
             }
             _ if multi => {
                 let task = req
@@ -3543,7 +3543,7 @@ impl Runner {
                     .iter()
                     .map(|c| (c.name.clone(), c.clone_of.clone()))
                     .collect();
-                clone::check_multi(dir, &primary, &specs, req.team.as_ref())
+                clone::check_multi(dir, &primary, &specs, req.team.as_ref(), &self.cfg.homes)
                     .map_err(|(code, m)| api(code, m))?
             }
             _ => Vec::new(),
@@ -4087,7 +4087,7 @@ impl Runner {
         }
         grants.deny = profile_protected;
         grants.run_id = extra.run_id_env;
-        for o in &extra.objects {
+        for o in extra.objects.iter().filter(|o| o.borrows) {
             o.reverify().map_err(|e| api(ErrorCode::Sandbox, e))?;
             grants.objects_ro.push((o.path.clone(), o.id));
         }
@@ -4180,7 +4180,7 @@ impl Runner {
             *installed = Some(bundle::install(sdir, b).map_err(|(code, m)| api(code, m))?);
         }
         hold_before_spawn();
-        for o in &extra.objects {
+        for o in extra.objects.iter().filter(|o| o.borrows) {
             o.reverify().map_err(|e| api(ErrorCode::Sandbox, e))?;
         }
         let log_file = OpenOptions::new()

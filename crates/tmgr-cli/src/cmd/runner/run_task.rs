@@ -354,6 +354,12 @@ fn create_request(
     }
 }
 
+pub(super) fn mark_task_clone(clone: &std::path::Path, repo: &str) {
+    if let Ok(homes) = tmgr_ipc::dirs::homes_dir() {
+        let _ = tmgr_runner::clone::mark_task_clone(&homes, clone, std::path::Path::new(repo));
+    }
+}
+
 pub(super) fn execute(p: &Prepared, l: &Launch) -> Result<Started> {
     execute_with(p, l, false)
 }
@@ -385,6 +391,7 @@ fn execute_with(p: &Prepared, l: &Launch, no_sandbox: bool) -> Result<Started> {
     }
     remember(plan)?;
     workdir::prepare_clone(&plan.repo, &plan.clone, &plan.branch, l.base)?;
+    mark_task_clone(&plan.clone, &plan.repo);
     let cwd = std::fs::canonicalize(&plan.clone)
         .map_err(|e| Error::internal(format!("clone {}: {e}", plan.clone.display())))?
         .to_string_lossy()

@@ -38,6 +38,7 @@ pub(super) fn start(
         &req.profile,
         taken,
     )?;
+    super::run_task::mark_task_clone(&sc.path, &sc.repo.display().to_string());
     req.cwd = sc.path.display().to_string();
     req.name = Some(sc.name.clone());
     req.clone_of = Some(sc.repo.display().to_string());

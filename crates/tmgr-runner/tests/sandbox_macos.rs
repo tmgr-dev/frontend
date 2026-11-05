@@ -467,3 +467,13 @@ fn read_only_grant_denies_links_into_the_folder() {
     assert!(!f.cwd.join("x").exists());
     assert_eq!(object.metadata().unwrap().nlink(), 1);
 }
+
+#[test]
+fn a_self_contained_clone_works_without_an_objects_grant() {
+    let f = fx();
+    f.self_contained_clone();
+    let o = f.run(
+        "git -c user.name=t -c user.email=t@example.com log --oneline >/dev/null && git fsck --no-progress && echo b > b.txt && git add b.txt && git -c user.name=t -c user.email=t@example.com commit -q -m b && git gc -q && git fsck --no-progress",
+    );
+    assert!(o.ok(), "{} {}", o.stdout, o.stderr);
+}
