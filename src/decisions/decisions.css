@@ -444,6 +444,62 @@ kbd {
 	border: 1px solid var(--line);
 	padding: 3px 8px;
 }
+.msg .md,
+.cm .md {
+	margin: 0;
+	max-height: none;
+	overflow: visible;
+	font-size: inherit;
+	color: inherit;
+	white-space: normal;
+}
+.msg .md > *,
+.cm .md > * {
+	margin: 0 0 6px;
+}
+.msg .md > :last-child,
+.cm .md > :last-child {
+	margin-bottom: 0;
+}
+.msg .md h1,
+.msg .md h2,
+.msg .md h3,
+.msg .md h4,
+.cm .md h1,
+.cm .md h2,
+.cm .md h3,
+.cm .md h4 {
+	font-size: 1em;
+	font-weight: 600;
+	line-height: 1.4;
+}
+.msg .md ul,
+.msg .md ol,
+.cm .md ul,
+.cm .md ol {
+	padding-left: 20px;
+}
+.msg .md blockquote,
+.cm .md blockquote {
+	padding-left: 10px;
+	border-left: 3px solid var(--line-strong);
+	color: var(--fg-muted);
+}
+.msg .md pre,
+.cm .md pre {
+	max-width: 100%;
+	white-space: pre;
+}
+.msg .md table,
+.cm .md table {
+	display: block;
+	max-width: 100%;
+	overflow-x: auto;
+}
+.msg .md img,
+.cm .md img {
+	max-width: 100%;
+}
 .facts {
 	background: var(--bg-raised);
 	border-radius: 12px;

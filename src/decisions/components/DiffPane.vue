@@ -77,7 +77,13 @@
 											<template v-if="message.author === 'owner'">You</template>
 											<template v-else><i></i>Agent</template>
 										</div>
-										{{ message.text }}
+										<div
+											v-if="isAgent(message)"
+											class="md"
+											@click="onMarkdownClick"
+											v-html="render(message.text)"
+										></div>
+										<template v-else>{{ message.text }}</template>
 									</div>
 									<div
 										v-for="(draft, di) in draftsFor(file.qpath, line)"
@@ -189,6 +195,7 @@
 		type LineAnchor,
 	} from '../diff';
 	import { isSubmitKey } from '../keys';
+	import { clickedHttpLink, isAgentMessage, renderMarkdown } from '../markdown';
 	import type {
 		CardMessage,
 		DiffGroup,
@@ -219,7 +226,7 @@
 			sessionGone: { type: Boolean, required: true },
 			now: { type: Number, required: true },
 		},
-		emits: ['send', 'add-draft', 'remove-draft'],
+		emits: ['send', 'add-draft', 'remove-draft', 'open-link'],
 		data() {
 			return {
 				PREFIX: { add: '+', del: '-', ctx: ' ' },
@@ -258,6 +265,12 @@
 			},
 		},
 		methods: {
+			isAgent: isAgentMessage,
+			render: renderMarkdown,
+			onMarkdownClick(event: MouseEvent) {
+				const href = clickedHttpLink(event);
+				if (href) this.$emit('open-link', href);
+			},
 			keyOf(file: string, line: DiffLine): string {
 				return threadKey(file, lineNumber(line) ?? 0);
 			},

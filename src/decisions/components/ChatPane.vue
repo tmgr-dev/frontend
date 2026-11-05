@@ -14,7 +14,13 @@
 					<template v-if="message.author === 'owner'">You</template>
 					<template v-else><i></i>Agent</template>
 				</div>
-				{{ message.text }}
+				<div
+					v-if="isAgent(message)"
+					class="md"
+					@click="onMarkdownClick"
+					v-html="render(message.text)"
+				></div>
+				<template v-else>{{ message.text }}</template>
 			</div>
 			<div v-if="notice" class="msg typing">{{ notice }}</div>
 		</div>
@@ -40,6 +46,7 @@
 	import { defineComponent, type PropType } from 'vue';
 	import { agentWaitNotice } from '../diff';
 	import { isSubmitKey } from '../keys';
+	import { clickedHttpLink, isAgentMessage, renderMarkdown } from '../markdown';
 	import type { CardMessage } from '../types';
 
 	export default defineComponent({
@@ -52,7 +59,7 @@
 			sessionGone: { type: Boolean, required: true },
 			now: { type: Number, required: true },
 		},
-		emits: ['send'],
+		emits: ['send', 'open-link'],
 		data() {
 			return { text: '' };
 		},
@@ -76,6 +83,12 @@
 			},
 		},
 		methods: {
+			isAgent: isAgentMessage,
+			render: renderMarkdown,
+			onMarkdownClick(event: MouseEvent) {
+				const href = clickedHttpLink(event);
+				if (href) this.$emit('open-link', href);
+			},
 			focus() {
 				(this.$refs.input as HTMLInputElement | undefined)?.focus();
 			},

@@ -173,8 +173,7 @@
 	} from '../format';
 	import { isSubmitKey } from '../keys';
 	import type { CardView } from '../types';
-	import { markdownToHtml } from '@/utils/markdown';
-	import sanitizeHtml from '@/utils/sanitizeHtml';
+	import { clickedHttpLink, renderMarkdown } from '../markdown';
 
 	const PICK_DELAY_MS = 180;
 
@@ -215,10 +214,7 @@
 				);
 			},
 			contextHtml(): string {
-				const text = this.card.context;
-				return text
-					? sanitizeHtml(markdownToHtml(text), { remoteMedia: false })
-					: '';
+				return renderMarkdown(this.card.context ?? '');
 			},
 			finalTitle(): string {
 				const { state, answer } = this.card;
@@ -249,11 +245,8 @@
 				this.$emit('open-link', url);
 			},
 			onContextClick(event: MouseEvent) {
-				const anchor = (event.target as HTMLElement).closest('a');
-				if (!anchor) return;
-				event.preventDefault();
-				const href = anchor.getAttribute('href') ?? '';
-				if (isHttpUrl(href)) this.openLink(href);
+				const href = clickedHttpLink(event);
+				if (href) this.openLink(href);
 			},
 			acceptRecommended(withNote: boolean) {
 				const index = this.card.options.findIndex((o) => o.recommended);

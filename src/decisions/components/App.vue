@@ -81,6 +81,7 @@
 							@send="sendMessage"
 							@add-draft="addDraft"
 							@remove-draft="removeDraft"
+							@open-link="openLink"
 						/>
 						<ChecksPane v-else-if="tab === 'checks'" :checks="current.checks" />
 						<ChatPane
@@ -94,6 +95,7 @@
 							:session-gone="current.session_gone"
 							:now="now"
 							@send="sendChat"
+							@open-link="openLink"
 						/>
 					</section>
 				</template>
