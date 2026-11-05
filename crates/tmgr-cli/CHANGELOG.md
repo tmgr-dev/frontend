@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.88
+
+- Harden git invocations in CLI commands and hooks. `tmgr start` refuses a repository with config it does not recognize and names the key; other repositories work as before.
+- `tmgr start --stash` refuses a repository with submodules. Commit or stash the changes yourself first.
+- `tmgr` publish reads the default branch and base from the remote, so it needs network access, and refuses a remote of another repository. Continuing a run checks its origin too.
+- A branch that differs from the default branch under `.github`, in any commit or in its tip, is not published. Rebase it on the default branch.
+- A sandboxed session refuses a folder whose object store shares files with another repository. The message says how to clear them, usually `git gc --prune=now` and `git commit-graph write --reachable`.
+
 ## 1.0.87
 
 - `tmgr runner gc` keeps a team run when a worker's imported commits are not in the lead clone, or when that cannot be confirmed. The check compares the lead's HEAD tree with a trial merge of the worker branch, so squash merges and cherry-picks count as merged. The skip reason names the worker.
