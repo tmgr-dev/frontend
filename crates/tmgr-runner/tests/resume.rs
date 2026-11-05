@@ -1873,7 +1873,7 @@ fn a_self_contained_clone_forks() {
 
     let r = h.client().fork(&first.id, U1, None, (90, 20)).unwrap();
     assert_ne!(r.session.id, first.id);
-    c.wait_log("home:new", 1);
+    c.wait_log("home:new", 2);
     assert!(
         c.log()
             .contains(&format!("args:--resume-id {U1} --fork-session\n")),
