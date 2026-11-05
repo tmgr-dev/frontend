@@ -64,6 +64,10 @@ const forgetCloudUser = (state, { bump = true } = {}) => {
 	state.userSettingsMap = {};
 	state.defaultWorkspaceId = null;
 	state.clientWorkspaceId = null;
+	state.workspaces = [];
+	state.workspacesById = {};
+	writeWorkspaceId(sessionStorageSafe(), WORKSPACE_SESSION_KEY, null);
+	writeWorkspaceId(localStorageSafe(), WORKSPACE_LOCAL_KEY, null);
 	requestCache.setContext('guest');
 	requestCache.clear();
 	if (state.dailyRoutines)

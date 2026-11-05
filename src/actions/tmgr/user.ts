@@ -24,6 +24,7 @@ export interface User {
 }
 
 export const getUser = async () => {
+	const sessionGeneration = store.state.sessionGeneration;
 	// Coalesced but never cached: callers after a save expect fresh data, while the bootstrap fires
 	// this from several places at once and used to send the same request two or three times.
 	const data = await requestCache.getOrFetch<User>(
@@ -42,6 +43,8 @@ export const getUser = async () => {
 		},
 		{ cache: false },
 	);
+
+	if (store.state.sessionGeneration !== sessionGeneration) return data;
 
 	store.commit('setUser', data);
 

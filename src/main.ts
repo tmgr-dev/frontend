@@ -256,7 +256,10 @@ window.addEventListener('storage', (event) => {
 		commitToken: (token) => store.commit('setToken', token),
 		signOut: () => hardLogout({ expired: false }),
 		clearInFlight: () => requestCache.clearInFlight(),
-		getUser,
+		getUser: async () => {
+			await getUser();
+			await store.dispatch('loadWorkspaces');
+		},
 		disconnectRealtime,
 	});
 });

@@ -86,6 +86,16 @@ describe('setToken forgets the cloud user', () => {
 		expect(state.token).toEqual(tokenFor('5'));
 	});
 
+	it("drops the previous account's workspaces", () => {
+		const { state, mutations } = signedIn(2, tokenFor('2'), {
+			workspaces: [{ id: 3 }],
+			workspacesById: { 3: { id: 3 } },
+		});
+		mutations.setToken(state, tokenFor('5'));
+		expect(state.workspaces).toEqual([]);
+		expect(state.workspacesById).toEqual({});
+	});
+
 	it('keeps the user on a same-subject rotation', () => {
 		const { state, mutations, disconnectRealtime } = signedIn(2, tokenFor('2'));
 		mutations.setToken(state, { token: fakeJwt('2') + 'x' });

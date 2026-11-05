@@ -124,3 +124,8 @@ describe('main.ts wiring', () => {
 		expect(main).toMatch(/hardLogout\(\{ expired: false \}\)/);
 	});
 });
+
+test('main.ts reloads workspaces after adopting another account', () => {
+	const source = readFileSync(join(__dirname, '..', '..', 'main.ts'), 'utf8');
+	expect(source).toContain("store.dispatch('loadWorkspaces')");
+});
