@@ -98,3 +98,43 @@ test('a long unbroken final detail wraps inside the card', async ({ page }) => {
   expect(m.scrollWidth).toBeLessThanOrEqual(m.clientWidth);
   expect(m.right).toBeLessThanOrEqual(m.contentRight + 0.5);
 });
+
+test('a long fact keeps its link chip on one line and wraps the text instead', async ({
+  page,
+}) => {
+  await openDecisions(page, [
+    card({
+      facts: [
+        {
+          state: 'ok',
+          text: `${LONG} ${LONG}`,
+          link: 'https://github.com/acme/widgets/pull/123',
+        },
+      ],
+    }),
+  ]);
+
+  const m = await page.evaluate(() => {
+    const chip = document.querySelector('.fact .chip');
+    const text = document.querySelector('.fact > span:nth-child(2)');
+    const probe = document.createElement('span');
+    probe.style.cssText = `position:absolute;white-space:nowrap;font:${getComputedStyle(chip).font}`;
+    probe.textContent = chip.textContent.trim();
+    document.body.append(probe);
+    const label = probe.getBoundingClientRect().width;
+    const lineHeight = probe.getBoundingClientRect().height;
+    probe.remove();
+    return {
+      chipWidth: chip.getBoundingClientRect().width,
+      chipHeight: chip.getBoundingClientRect().height,
+      label,
+      lineHeight,
+      textHeight: text.getBoundingClientRect().height,
+    };
+  });
+  expect(m.chipWidth).toBeGreaterThanOrEqual(m.label);
+  expect(m.chipHeight).toBeLessThan(m.lineHeight * 2);
+  expect(m.textHeight).toBeGreaterThan(m.lineHeight * 3);
+  const o = await measure(page);
+  expect(o.scrollWidth).toBeLessThanOrEqual(o.clientWidth);
+});

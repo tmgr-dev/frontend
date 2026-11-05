@@ -565,9 +565,14 @@ kbd {
 	background: var(--prog-bg);
 	color: var(--prog);
 }
+.fact > span:not(.ic):not(.chip) {
+	flex: 1 1 0;
+	min-width: 0;
+}
 .fact .chip {
 	margin-left: auto;
-	min-width: 0;
+	flex: 0 1 auto;
+	max-width: 50%;
 }
 .q {
 	font-weight: 600;
