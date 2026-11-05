@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.83
+
+- The new-session form in `tmgr attach` has Bypass and No sandbox toggles. Turning one on asks you to type the same confirmation as `tmgr run`, right in the form; pasted or queued input is refused. Neither toggle is available inside an agent session.
+
 ## 1.0.82
 
 - Bare `tmgr run` on a terminal now opens a menu: pick the agent, then a new session or one to resume or fork, then the flags, with the final command shown before it starts. The menu remembers your last choice as a preselection and never skips the typed confirmation for bypass or no-sandbox.
