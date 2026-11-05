@@ -39,6 +39,18 @@ fn attach_params(ids: &[String]) -> AttachParams {
     }
 }
 
+fn env_config_dir() -> Option<std::path::PathBuf> {
+    let abs = |k: &str| {
+        std::env::var_os(k)
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.is_absolute())
+    };
+    match abs("XDG_CONFIG_HOME") {
+        Some(x) => Some(x.join("tmgr")),
+        None => abs("HOME").map(|h| h.join(".config").join("tmgr")),
+    }
+}
+
 pub struct Client {
     stream: UnixStream,
     next_id: u64,
@@ -60,9 +72,28 @@ impl Client {
     }
 
     pub fn connect_with_as(dir: &Path, secret: &str, client: &str) -> io::Result<Client> {
+        Client::connect_handshaking(dir, secret, client, env_config_dir().as_deref())
+    }
+
+    pub fn connect_with_config_dir(
+        dir: &Path,
+        client: &str,
+        config_dir: Option<&Path>,
+    ) -> io::Result<Client> {
+        let secret = secret::read(&dir.join("client.secret"))?;
+        Client::connect_handshaking(dir, &secret, client, config_dir)
+    }
+
+    fn connect_handshaking(
+        dir: &Path,
+        secret: &str,
+        client: &str,
+        config_dir: Option<&Path>,
+    ) -> io::Result<Client> {
         let ep = Endpoint::load_runner(dir)?;
         let stream = endpoint::connect(&ep)?;
-        let welcome = server::handshake_client(&stream, client, secret)?;
+        let config_dir = config_dir.and_then(Path::to_str);
+        let welcome = server::handshake_client_with(&stream, client, secret, config_dir)?;
         Ok(Client {
             stream,
             next_id: 1,

@@ -204,6 +204,7 @@ fn handshake_messages() {
             version: "0.3.0".into(),
             pid: 4242,
             nonce_c: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff".into(),
+            config_dir: None,
         }),
     );
     golden(
