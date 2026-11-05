@@ -7,6 +7,7 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -53,9 +54,19 @@ pub fn decisions_dir() -> io::Result<PathBuf> {
 }
 
 pub fn new_card_id() -> String {
-    let mut b = [0u8; 16];
-    getrandom::fill(&mut b).expect("system random source");
-    format!("c_{}", secret::hex(&b))
+    static LAST_MS: AtomicU64 = AtomicU64::new(0);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64);
+    let ms = LAST_MS
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |last| {
+            Some(now.max(last + 1))
+        })
+        .map_or(now, |last| now.max(last + 1))
+        & 0xffff_ffff_ffff;
+    let mut r = [0u8; 10];
+    getrandom::fill(&mut r).expect("system random source");
+    format!("c_{ms:012x}{}", secret::hex(&r))
 }
 
 pub fn valid_card_id(s: &str) -> bool {
@@ -592,6 +603,42 @@ mod tests {
         assert_eq!(v["op"], "wait");
         assert_eq!(v["card_id"], "c_1");
         assert_eq!(serde_json::from_value::<Request>(v).unwrap(), r);
+    }
+
+    #[test]
+    fn card_ids_strictly_increase() {
+        let ids: Vec<String> = (0..2000).map(|_| new_card_id()).collect();
+        assert!(ids.iter().all(|i| valid_card_id(i)));
+        assert!(ids.windows(2).all(|w| w[0] < w[1]));
+    }
+
+    #[test]
+    fn drain_follows_creation_order_when_mtimes_tie() {
+        let t = private_tmp();
+        let dir = t.path().join("d");
+        let mut made = Vec::new();
+        for n in 0..20 {
+            let card = CardIn {
+                title: format!("card {n}"),
+                ..Default::default()
+            };
+            made.push(spool(&dir, &card).unwrap());
+        }
+        let same = std::time::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        for id in &made {
+            let f = fs::File::options()
+                .write(true)
+                .open(dir.join(INBOX).join(format!("{id}.json")))
+                .unwrap();
+            f.set_modified(same).unwrap();
+        }
+        let mut got = Vec::new();
+        drain_spool(&dir, |c| {
+            got.push(c.id.unwrap());
+            true
+        })
+        .unwrap();
+        assert_eq!(got, made);
     }
 
     #[test]
