@@ -1,4 +1,5 @@
 import alertPlugin from '@/alert';
+import { setRealtimeUser } from '@/composable/usePusher';
 import components from '@/globalComponents.ts';
 import { installLocalWorkspaces } from '@/local/install';
 import { activeLocalWorkspace } from '@/local/runtime';
@@ -278,6 +279,7 @@ const start = async () => {
 	}
 	app.use(router);
 	app.use(store);
+	watch(() => store.state.user?.id, setRealtimeUser, { immediate: true });
 	installTours($axios, store, router);
 	installTourTelemetry();
 	installOnboardingFlow(store, router);

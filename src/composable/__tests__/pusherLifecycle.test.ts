@@ -94,6 +94,7 @@ afterEach(() => {
 
 test('reconnect preserves both subscriber IDs and removing one leaves the other live', () => {
 	const { api, instances } = loadPusher();
+	api.setRealtimeUser(3);
 	const pusher = api.usePusher();
 	const first = jest.fn();
 	const second = jest.fn();
@@ -101,10 +102,13 @@ test('reconnect preserves both subscriber IDs and removing one leaves the other 
 	pusher.subscribeToWorkspace(7, { onTaskUpdated: second });
 	pusher.reconnect();
 	pusher.unsubscribeHandlerFromWorkspace(7, firstId);
-	const channel =
-		instances[instances.length - 1].channels.get('App.Workspace.7');
+	const channel = instances[instances.length - 1].channels.get('App.User.3');
 	expect(channel).toBeDefined();
-	channel.callbacks['.task.updated']({ task: { id: 1 }, action: 'updated' });
+	channel.callbacks['.task.updated']({
+		task: { id: 1 },
+		action: 'updated',
+		workspace_id: 7,
+	});
 	expect(first).not.toHaveBeenCalled();
 	expect(second).toHaveBeenCalledTimes(1);
 	expect(instances).toHaveLength(1);
@@ -130,16 +134,25 @@ test('repeated errors schedule one reconnect, canceled by success and logout', (
 
 test('workspace cleanup and logout/login do not revive old subscriptions', () => {
 	const { api, instances } = loadPusher();
+	api.setRealtimeUser(3);
 	const pusher = api.usePusher();
 	const old = jest.fn();
 	const current = jest.fn();
 	const id = pusher.subscribeToWorkspace(7, { onTaskUpdated: old });
 	pusher.unsubscribeHandlerFromWorkspace(7, id);
 	pusher.subscribeToWorkspace(8, { onTaskUpdated: current });
-	expect(pusher.getConnectionInfo().subscriptions).toEqual(['App.Workspace.8']);
+	expect(pusher.getConnectionInfo().subscriptions).toEqual([
+		'App.Workspace.8',
+		'App.User.3',
+	]);
 	pusher.disconnect();
+	expect(pusher.getConnectionInfo().subscriptions).toEqual([]);
+	api.setRealtimeUser(3);
 	pusher.subscribeToWorkspace(9, { onTaskUpdated: current });
-	expect(pusher.getConnectionInfo().subscriptions).toEqual(['App.Workspace.9']);
+	expect(pusher.getConnectionInfo().subscriptions).toEqual([
+		'App.Workspace.9',
+		'App.User.3',
+	]);
 	expect(instances).toHaveLength(2);
 });
 
@@ -216,10 +229,11 @@ test('a local workspace keeps its handlers without a realtime channel and receiv
 
 test('task.assigned and task.unassigned reach onTaskAssignmentChanged with their type', () => {
 	const { api, instances } = loadPusher();
+	api.setRealtimeUser(3);
 	const pusher = api.usePusher();
 	const onTaskAssignmentChanged = jest.fn();
 	pusher.subscribeToWorkspace(7, { onTaskAssignmentChanged });
-	const channel = instances[0].channels.get('App.Workspace.7');
+	const channel = instances[0].channels.get('App.User.3');
 	const payload = {
 		task_id: 4,
 		workspace_id: 7,
@@ -238,13 +252,17 @@ test('task.assigned and task.unassigned reach onTaskAssignmentChanged with their
 	});
 });
 
-test('page events on the workspace channel reach onPageEvent with their type', () => {
+test('page events on the user channel reach onPageEvent with their type', () => {
 	const { api, instances } = loadPusher();
+	api.setRealtimeUser(3);
 	const pusher = api.usePusher();
 	const onPageEvent = jest.fn();
 	pusher.subscribeToWorkspace(7, { onPageEvent });
-	const channel = instances[0].channels.get('App.Workspace.7');
-	const payload = { page: { id: 3, slug: 'plan', version: 4 } };
+	const channel = instances[0].channels.get('App.User.3');
+	const payload = {
+		workspace_id: 7,
+		page: { id: 3, slug: 'plan', version: 4 },
+	};
 	for (const type of [
 		'page.created',
 		'page.updated',
@@ -304,4 +322,229 @@ test('without a cloud token no socket is opened but local deliveries still reach
 
 	expect(instances).toHaveLength(0);
 	expect(started).toHaveBeenCalledWith({ id: 1 });
+});
+
+describe('workspace events on the member channel', () => {
+	const setup = (userId: number | null = 3) => {
+		const loaded = loadPusher();
+		if (userId !== null) loaded.api.setRealtimeUser(userId);
+		return { ...loaded, pusher: loaded.api.usePusher() };
+	};
+	const joined = (instances: any[]) => Array.from(instances[0].channels.keys());
+
+	test('events are dispatched to the subscribers of their workspace only', () => {
+		const { instances, pusher } = setup();
+		const a = jest.fn();
+		const b = jest.fn();
+		pusher.subscribeToWorkspace(7, { onTaskUpdated: a });
+		pusher.subscribeToWorkspace(8, { onTaskUpdated: b });
+		const channel = instances[0].channels.get('App.User.3');
+		channel.callbacks['.task.updated']({
+			task: { id: 1 },
+			action: 'updated',
+			workspace_id: 7,
+		});
+		expect(a).toHaveBeenCalledTimes(1);
+		expect(b).not.toHaveBeenCalled();
+	});
+
+	test('numeric and string workspace ids select the same subscribers', () => {
+		const { instances, pusher } = setup();
+		const a = jest.fn();
+		pusher.subscribeToWorkspace(7, { onCommentAdded: a });
+		const channel = instances[0].channels.get('App.User.3');
+		channel.callbacks['.comment-added']({
+			comment: { id: 1 },
+			workspace_id: 7,
+		});
+		channel.callbacks['.comment-added']({
+			comment: { id: 2 },
+			workspace_id: '7',
+		});
+		channel.callbacks['.comment-added']({
+			comment: { id: 3 },
+			workspace_id: 'x',
+		});
+		expect(a).toHaveBeenCalledTimes(2);
+	});
+
+	test('an event without a workspace id reaches user handlers only', () => {
+		const { instances, pusher } = setup();
+		const workspace = jest.fn();
+		const user = jest.fn();
+		pusher.subscribeToWorkspace(7, { onNotificationCreated: workspace });
+		pusher.subscribeToUser(3, { onNotificationCreated: user });
+		const channel = instances[0].channels.get('App.User.3');
+		channel.callbacks['.notification.created']({ notification: { id: 1 } });
+		expect(user).toHaveBeenCalledTimes(1);
+		expect(workspace).not.toHaveBeenCalled();
+	});
+
+	test('an event with a workspace id still reaches user handlers that bind it', () => {
+		const { instances, pusher } = setup();
+		const workspace = jest.fn();
+		const user = jest.fn();
+		pusher.subscribeToWorkspace(7, { onActivityCreated: workspace });
+		pusher.subscribeToUser(3, { onActivityCreated: user });
+		const channel = instances[0].channels.get('App.User.3');
+		channel.callbacks['.activity.created']({
+			activity: { id: 5 },
+			workspace_id: 7,
+		});
+		expect(user).toHaveBeenCalledWith({ id: 5 });
+		expect(workspace).toHaveBeenCalledWith({ id: 5 });
+	});
+
+	test('no workspace channel is ever joined', () => {
+		const { instances, pusher } = setup();
+		pusher.subscribeToWorkspace(7, {});
+		pusher.subscribeToWorkspace(8, {});
+		pusher.subscribeToUser(3, {});
+		expect(joined(instances)).toEqual(['App.User.3']);
+		expect(pusher.getConnectionInfo().subscriptions).toEqual([
+			'App.Workspace.7',
+			'App.User.3',
+			'App.Workspace.8',
+		]);
+	});
+
+	test('subscribed and error reach workspace subscribers once per event', () => {
+		const { instances, pusher } = setup();
+		const onReconnect = jest.fn();
+		const onError = jest.fn();
+		const other = jest.fn();
+		const userReconnect = jest.fn();
+		pusher.subscribeToWorkspace(7, { onReconnect, onError });
+		pusher.subscribeToWorkspace(8, { onReconnect: other });
+		pusher.subscribeToUser(3, { onReconnect: userReconnect });
+		const channel = instances[0].channels.get('App.User.3');
+		channel.subscribed.mock.calls[0][0]();
+		channel.error.mock.calls[0][0]({ message: 'boom' });
+		expect(onReconnect).toHaveBeenCalledTimes(1);
+		expect(other).toHaveBeenCalledTimes(1);
+		expect(userReconnect).toHaveBeenCalledTimes(1);
+		expect(onError).toHaveBeenCalledTimes(1);
+	});
+
+	test('a workspace subscriber added to a live channel gets no reconnect callback', () => {
+		const { instances, pusher } = setup();
+		pusher.subscribeToWorkspace(7, {});
+		const channel = instances[0].channels.get('App.User.3');
+		channel.subscribed.mock.calls[0][0]();
+		const late = jest.fn();
+		pusher.subscribeToWorkspace(8, { onReconnect: late });
+		expect(late).not.toHaveBeenCalled();
+		expect(channel.subscribed).toHaveBeenCalledTimes(1);
+	});
+
+	test('the user channel stays joined for workspace subscribers after the last user handler leaves', () => {
+		const { instances, pusher } = setup();
+		const board = jest.fn();
+		pusher.subscribeToWorkspace(7, { onTaskUpdated: board });
+		const id = pusher.subscribeToUser(3, {});
+		pusher.unsubscribeHandler('App.User.3', id);
+		expect(instances[0].leave).not.toHaveBeenCalled();
+		instances[0].channels.get('App.User.3').callbacks['.task.updated']({
+			task: { id: 1 },
+			action: 'updated',
+			workspace_id: 7,
+		});
+		expect(board).toHaveBeenCalledTimes(1);
+		pusher.subscribeToUser(3, {});
+		pusher.unsubscribeFromUser(3);
+		expect(instances[0].leave).not.toHaveBeenCalled();
+		instances[0].channels.get('App.User.3').callbacks['.task.updated']({
+			task: { id: 2 },
+			action: 'updated',
+			workspace_id: 7,
+		});
+		expect(board).toHaveBeenCalledTimes(2);
+	});
+
+	test('the user channel stays joined for user handlers after the last workspace subscriber leaves', () => {
+		const { instances, pusher } = setup();
+		const notified = jest.fn();
+		const id = pusher.subscribeToWorkspace(7, {});
+		pusher.subscribeToUser(3, { onNotificationCreated: notified });
+		pusher.unsubscribeHandlerFromWorkspace(7, id);
+		expect(instances[0].leave).not.toHaveBeenCalled();
+		instances[0].channels.get('App.User.3').callbacks['.notification.created']({
+			notification: { id: 1 },
+		});
+		expect(notified).toHaveBeenCalledTimes(1);
+	});
+
+	test('the user channel is left once neither user handlers nor workspace subscribers remain', () => {
+		const { instances, pusher } = setup();
+		const wsId = pusher.subscribeToWorkspace(7, {});
+		const userId = pusher.subscribeToUser(3, {});
+		pusher.unsubscribeHandlerFromWorkspace(7, wsId);
+		pusher.unsubscribeHandler('App.User.3', userId);
+		expect(instances[0].leave).toHaveBeenCalledWith('App.User.3');
+		expect(pusher.getConnectionInfo().subscriptions).toEqual([]);
+	});
+
+	test('unsubscribing a whole workspace releases the user channel when nothing else uses it', () => {
+		const { instances, pusher } = setup();
+		pusher.subscribeToWorkspace(7, {});
+		pusher.unsubscribeFromWorkspace(7);
+		expect(instances[0].leave).toHaveBeenCalledWith('App.User.3');
+		expect(pusher.getConnectionInfo().subscriptions).toEqual([]);
+	});
+
+	test('workspace subscribers registered before the user is known attach when it arrives', () => {
+		const { api, instances, pusher } = setup(null);
+		const board = jest.fn();
+		pusher.subscribeToWorkspace(7, { onTaskUpdated: board });
+		expect(joined(instances)).toEqual([]);
+		api.setRealtimeUser(3);
+		const channel = instances[0].channels.get('App.User.3');
+		expect(channel).toBeDefined();
+		channel.callbacks['.task.updated']({
+			task: { id: 1 },
+			action: 'updated',
+			workspace_id: 7,
+		});
+		expect(board).toHaveBeenCalledTimes(1);
+	});
+
+	test('a user switch moves workspace subscribers to the new user channel', () => {
+		const { api, instances, pusher } = setup();
+		const board = jest.fn();
+		pusher.subscribeToWorkspace(7, { onTaskUpdated: board });
+		api.setRealtimeUser(4);
+		expect(instances[0].leave).toHaveBeenCalledWith('App.User.3');
+		expect(joined(instances)).toEqual(['App.User.4']);
+		instances[0].channels.get('App.User.4').callbacks['.task.updated']({
+			task: { id: 1 },
+			action: 'updated',
+			workspace_id: 7,
+		});
+		expect(board).toHaveBeenCalledTimes(1);
+	});
+
+	test('a user switch keeps the old channel while it still has user handlers', () => {
+		const { api, instances, pusher } = setup();
+		pusher.subscribeToWorkspace(7, {});
+		pusher.subscribeToUser(3, {});
+		api.setRealtimeUser(4);
+		expect(instances[0].leave).not.toHaveBeenCalled();
+		expect(joined(instances)).toEqual(['App.User.3', 'App.User.4']);
+	});
+
+	test('disconnecting resets the user and every subscriber', () => {
+		const { api, instances, pusher } = setup();
+		pusher.subscribeToWorkspace(7, {});
+		api.disconnectRealtime();
+		expect(pusher.getConnectionInfo().subscriptions).toEqual([]);
+		pusher.subscribeToWorkspace(8, {});
+		expect(instances).toHaveLength(1);
+		expect(instances[0].channels.size).toBe(0);
+	});
+
+	test('local workspaces never open the user channel', () => {
+		const { instances, pusher } = setup();
+		pusher.subscribeToWorkspace(-3, {});
+		expect(joined(instances)).toEqual([]);
+	});
 });
