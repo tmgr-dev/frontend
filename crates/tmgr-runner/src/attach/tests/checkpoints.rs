@@ -361,6 +361,7 @@ mod form {
             id: "shell".into(),
             label: "shell".into(),
             spawn: SpawnKind::Shell,
+            bypass: false,
         }];
         v.open_new_session("/".into(), kinds, "/".into());
         v

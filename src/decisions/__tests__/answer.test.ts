@@ -113,3 +113,13 @@ describe('answerToast', () => {
 		);
 	});
 });
+
+describe('closing a card from the list', () => {
+	it('builds the same answer as Dismiss', () => {
+		expect(buildAnswer({ dismissed: true })).toEqual({
+			dismissed: true,
+			line_comments: [],
+			deferred: false,
+		});
+	});
+});

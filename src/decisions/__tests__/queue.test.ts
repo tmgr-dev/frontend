@@ -4,6 +4,7 @@ import {
 	groupKey,
 	groupLabel,
 	initialCardId,
+	isPending,
 	nextCardId,
 	queueProgress,
 	stepCardId,
@@ -163,5 +164,20 @@ describe('initialCardId', () => {
 			initialCardId([makeCard({ id: 'a', state: 'answered' })]),
 		).toBeNull();
 		expect(initialCardId([])).toBeNull();
+	});
+});
+
+describe('closable cards', () => {
+	it('offers the cross on open and deferred cards only', () => {
+		expect(isPending(makeCard({ state: 'open' }))).toBe(true);
+		expect(isPending(makeCard({ state: 'deferred' }))).toBe(true);
+		expect(isPending(makeCard({ state: 'answered' }))).toBe(false);
+		expect(isPending(makeCard({ state: 'closed' }))).toBe(false);
+		expect(isPending(makeCard({ state: 'dismissed' }))).toBe(false);
+	});
+
+	it('moves to the next card when the closed one was current', () => {
+		const order = [makeCard({ id: 'a' }), makeCard({ id: 'b' })];
+		expect(nextCardId(order, 'a')).toBe('b');
 	});
 });

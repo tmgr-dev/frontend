@@ -138,6 +138,7 @@ fn origin() -> Origin {
 fn session_info() -> SessionInfo {
     SessionInfo {
         team: None,
+        agent_session_id: None,
         id: SID.into(),
         name: "fix login".into(),
         argv: vec![
@@ -262,6 +263,7 @@ fn requests_and_responses() {
         exe_pin: None,
         argv_sha256: None,
         no_sandbox: None,
+        external_resume: None,
         permission_cards: false,
     };
     golden("run_create_req", &run);
@@ -458,6 +460,13 @@ fn method_params_and_results() {
         },
     );
     golden(
+        "session_info_agent_session_id",
+        &SessionInfo {
+            agent_session_id: Some("2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b".into()),
+            ..session_info()
+        },
+    );
+    golden(
         "lookup_params",
         &LookupParams {
             start_key: "q_abc-1".into(),
@@ -593,6 +602,7 @@ fn method_params_and_results() {
         "session_info_notask",
         &SessionInfo {
             team: None,
+            agent_session_id: None,
             id: SID.into(),
             name: "sh".into(),
             argv: vec!["/bin/sh".into()],
@@ -903,6 +913,7 @@ fn constants_are_pinned() {
             "sessions_fork.v1",
             "manual_bypass.v1",
             "no_sandbox.v1",
+            "external_resume.v1",
             "checkpoints.v1",
             "permission_cards.v1",
             "team.workers.v1",
@@ -1002,7 +1013,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 36);
+    assert_eq!(w.caps.len(), 37);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1517,12 +1528,14 @@ fn full_req() -> RunCreateReq {
         unattended: true,
         clones: Vec::new(),
         no_sandbox: None,
+        external_resume: None,
     }
 }
 
 fn full_info() -> SessionInfo {
     SessionInfo {
         team: None,
+        agent_session_id: None,
         permission_cards: false,
         id: "s_abcdefghij".into(),
         name: "n".into(),

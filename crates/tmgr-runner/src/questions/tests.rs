@@ -235,6 +235,106 @@ fn codex_rollouts_are_found_by_id_or_folder() {
     );
 }
 
+fn rollout_with(day: &Path, name: &str, meta_id: &str) -> std::path::PathBuf {
+    let p = day.join(name);
+    append(
+        &p,
+        &[
+            serde_json::json!({"type":"session_meta","payload":{"id":meta_id,"cwd":"/work/a"}})
+                .to_string(),
+        ],
+    );
+    p
+}
+
+#[test]
+fn a_fork_source_rollout_must_name_the_asked_conversation_inside() {
+    let d = private_tmp();
+    let day = d.path().join(".codex/sessions/2026/10/20");
+    std::fs::create_dir_all(&day).unwrap();
+    let other = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+    let good = rollout_with(&day, &format!("rollout-2026-10-20T10-00-00-{U}.jsonl"), U);
+    assert_eq!(
+        tail::locate_codex_rollout_of(d.path(), U),
+        Some((good, Some("/work/a".into())))
+    );
+    rollout_with(
+        &day,
+        &format!("rollout-2026-10-20T11-00-00-{other}.jsonl"),
+        U,
+    );
+    assert_eq!(tail::locate_codex_rollout_of(d.path(), other), None);
+    let day2 = d.path().join(".codex/sessions/2026/10/21");
+    std::fs::create_dir_all(&day2).unwrap();
+    let p = day2.join(format!("rollout-2026-10-21T10-00-00-{other}.jsonl"));
+    append(
+        &p,
+        &[serde_json::json!({"type":"event_msg","payload":{"id":other}}).to_string()],
+    );
+    assert_eq!(tail::locate_codex_rollout_of(d.path(), other), None);
+}
+
+#[test]
+fn subagent_rollouts_are_never_picked_by_folder_or_forked_by_id() {
+    let d = private_tmp();
+    let day = d.path().join(".codex/sessions/2026/10/20");
+    std::fs::create_dir_all(&day).unwrap();
+    let sub = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+    let main = rollout_with(&day, &format!("rollout-2026-10-20T10-00-00-{U}.jsonl"), U);
+    append(
+        &day.join(format!("rollout-2026-10-20T11-00-00-{sub}.jsonl")),
+        &[serde_json::json!({"type":"session_meta","payload":{"id":sub,"cwd":"/work/a","source":{"subagent":{"thread_spawn":{}}}}}).to_string()],
+    );
+    assert_eq!(
+        tail::locate_codex_rollout(d.path(), None, "/work/a"),
+        Some(main)
+    );
+    assert_eq!(tail::locate_codex_rollout_of(d.path(), sub), None);
+}
+
+#[test]
+fn a_fork_source_rollout_reports_its_folder() {
+    let d = private_tmp();
+    let day = d.path().join(".codex/sessions/2026/10/20");
+    std::fs::create_dir_all(&day).unwrap();
+    let p = day.join(format!("rollout-2026-10-20T10-00-00-{U}.jsonl"));
+    append(
+        &p,
+        &[serde_json::json!({"type":"session_meta","payload":{"id":U}}).to_string()],
+    );
+    assert_eq!(tail::locate_codex_rollout_of(d.path(), U), Some((p, None)));
+}
+
+#[test]
+fn a_fork_source_rollout_is_never_found_through_a_link() {
+    use std::os::unix::fs::symlink;
+    let d = private_tmp();
+    let day = d.path().join(".codex/sessions/2026/10/20");
+    std::fs::create_dir_all(&day).unwrap();
+    let outside = d.path().join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    let real = rollout_with(&outside, &format!("rollout-x-{U}.jsonl"), U);
+    symlink(
+        &real,
+        day.join(format!("rollout-2026-10-20T10-00-00-{U}.jsonl")),
+    )
+    .unwrap();
+    assert_eq!(tail::locate_codex_rollout_of(d.path(), U), None);
+
+    let e = private_tmp();
+    let codex = e.path().join(".codex");
+    std::fs::create_dir_all(&codex).unwrap();
+    let real_sessions = e.path().join("elsewhere/2026/10/20");
+    std::fs::create_dir_all(&real_sessions).unwrap();
+    rollout_with(
+        &real_sessions,
+        &format!("rollout-2026-10-20T10-00-00-{U}.jsonl"),
+        U,
+    );
+    symlink(e.path().join("elsewhere"), codex.join("sessions")).unwrap();
+    assert_eq!(tail::locate_codex_rollout_of(e.path(), U), None);
+}
+
 #[test]
 fn store_round_trip_marks_and_prefixes() {
     let d = private_tmp();

@@ -4,7 +4,9 @@ use super::attach_clip::{Clipboard, SystemClipboard};
 use super::attach_consent::Reads;
 use super::attach_export;
 use super::attach_git::{diff_pane_argv, git_worker, GitJob};
-use super::attach_goto::{fork_call, fork_name, goto_call, text_call, Found, FORK_PASTE_WAIT};
+use super::attach_goto::{
+    can_fork, fork_call, fork_name, goto_call, text_call, Found, FORK_PASTE_WAIT,
+};
 use super::attach_layouts;
 use super::attach_links::{split_local, LinkMsg};
 use super::attach_new::{
@@ -124,6 +126,8 @@ impl Guard {
         ACTIVE.store(true, Ordering::SeqCst);
         let guard = Guard;
         execute!(io::stdout(), EnterAlternateScreen, Hide)?;
+        io::stdout().write_all(b"\x1b[?2004h")?;
+        io::stdout().flush()?;
         let previous = panic::take_hook();
         panic::set_hook(Box::new(move |info| {
             restore();
@@ -183,6 +187,7 @@ enum Msg {
     Forked {
         source: String,
         prefill: String,
+        conversation: String,
         result: std::result::Result<RestoredRun, String>,
     },
     Created {
@@ -566,8 +571,9 @@ impl App {
             Msg::Forked {
                 source,
                 prefill,
+                conversation,
                 result,
-            } => self.on_forked(&source, prefill, result),
+            } => self.on_forked(&source, (prefill, &conversation), result),
             Msg::Created {
                 result,
                 dir,
@@ -1668,8 +1674,8 @@ impl App {
         else {
             return self.notify("this session is not ready to fork yet");
         };
-        if src.profile != "claude-code" {
-            return self.notify("fork works for Claude Code sessions only");
+        if !can_fork(&src.profile) {
+            return self.notify("fork works for Claude Code and Codex sessions only");
         }
         if !self.forking.insert(session.clone()) {
             return;
@@ -1689,10 +1695,15 @@ impl App {
         let cfg = self.cfg.clone();
         let tx = self.tx.clone();
         thread::spawn(move || {
-            let result = fork_call(&cfg, &job, &name, size, Reads::current());
+            let (result, conversation) =
+                match fork_call(&cfg, &job, &name, size, (Reads::current(), None)) {
+                    Ok((run, id)) => (Ok(run), id),
+                    Err(e) => (Err(e), String::new()),
+                };
             let sent = tx.send(Msg::Forked {
                 source: job.id,
                 prefill,
+                conversation,
                 result,
             });
             if let Err(mpsc::SendError(Msg::Forked {
@@ -1707,7 +1718,7 @@ impl App {
     fn on_forked(
         &mut self,
         source: &str,
-        prefill: String,
+        (prefill, conversation): (String, &str),
         result: std::result::Result<RestoredRun, String>,
     ) {
         self.forking.remove(source);
@@ -1727,7 +1738,7 @@ impl App {
             .insert(info.id.clone(), (prefill, Instant::now()));
         let name = sanitize_text(&info.name).into_owned();
         if split {
-            self.notify(&format!("forked into {name}"));
+            self.notify(&format!("forked into {name} (conversation {conversation})"));
         } else {
             self.notify(&format!("forked into {name}, no room for another pane"));
         }
@@ -2118,6 +2129,21 @@ impl App {
         });
     }
 
+    fn dialog_prompt_cramped(&mut self, data: &[u8]) -> bool {
+        let open = self
+            .view
+            .new_session
+            .as_ref()
+            .is_some_and(|n| n.priv_prompt_open());
+        let esc = !data.is_empty() && data.iter().all(|&b| b == 0x1b);
+        if !open || esc || self.view.priv_prompt_fits(self.area()) {
+            return false;
+        }
+        self.dirty = true;
+        self.notify("enlarge the terminal to read the whole warning");
+        true
+    }
+
     fn sync_review(&mut self) {
         let shown = self
             .view
@@ -2130,6 +2156,9 @@ impl App {
     fn modal_input(&mut self, route: Route, action: Action) {
         match (route, action) {
             (Route::Dialog, Action::Forward(data)) => {
+                if self.dialog_prompt_cramped(&data) {
+                    return;
+                }
                 let before = self.view.new_session.clone();
                 match self.view.edit_new_session(&data) {
                     NewEdit::Submit(req) => self.begin_spawn(before, req),
@@ -2777,6 +2806,8 @@ impl App {
             worktree: false,
             checkpoints: None,
             permission_cards: false,
+            bypass: false,
+            no_sandbox: false,
         };
         let (cols, rows) = spawn_size(content, req.place);
         self.notify(&format!("starting {}...", sanitize_text(&t.name)));
@@ -2990,6 +3021,8 @@ impl App {
                 worktree: false,
                 checkpoints: None,
                 permission_cards: false,
+                bypass: false,
+                no_sandbox: false,
             };
             let mut run_req = req.clone();
             if registers_shell(&req) {
@@ -3108,6 +3141,19 @@ impl App {
     }
 
     fn handle(&mut self, actions: Vec<Action>) -> io::Result<Option<Exit>> {
+        let forwards = actions
+            .iter()
+            .filter(|a| matches!(a, Action::Forward(_)))
+            .count();
+        let actions = if self.view.refuse_priv_batch(forwards) {
+            self.dirty = true;
+            actions
+                .into_iter()
+                .filter(|a| !matches!(a, Action::Forward(_)))
+                .collect()
+        } else {
+            actions
+        };
         self.view.perm_clock(now_ms());
         let user_action = actions.iter().any(|a| is_user_action(&self.view, a));
         if user_action {
@@ -3606,7 +3652,7 @@ impl App {
         self.view.forkable = self
             .agents
             .iter()
-            .filter(|(_, s)| s.profile == "claude-code")
+            .filter(|(_, s)| can_fork(&s.profile))
             .map(|(id, _)| id.clone())
             .collect();
         if self.view.scroll.is_none() {
@@ -3986,6 +4032,8 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     view.sidebar_default = attach_cfg.sidebar_width.unwrap_or(view.sidebar_default);
     view.worktree_default = attach_cfg.worktree.unwrap_or(false);
     view.permission_cards_default = attach_cfg.permission_cards.unwrap_or(false);
+    view.priv_gate = Some(super::attach_new::privileged_ask);
+    view.privileged_lock = super::attach_new::in_agent().then(|| "agent session".to_string());
     let layouts_dir = attach_layouts::dir();
     let prompts_dir = attach_prompts::dir();
     let mut notice_set = false;
@@ -4595,6 +4643,7 @@ mod tests {
 
     fn info(id: &str) -> SessionInfo {
         SessionInfo {
+            agent_session_id: None,
             team: None,
             id: id.into(),
             name: id.into(),
@@ -4836,6 +4885,8 @@ mod tests {
                 worktree: false,
                 checkpoints: None,
                 permission_cards: false,
+                bypass: false,
+                no_sandbox: false,
             },
             target: "a".into(),
         })
@@ -4914,6 +4965,8 @@ mod tests {
                 worktree: false,
                 checkpoints: None,
                 permission_cards: false,
+                bypass: false,
+                no_sandbox: false,
             },
             target: "a".into(),
         };

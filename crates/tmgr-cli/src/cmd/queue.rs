@@ -1633,6 +1633,7 @@ fn run_create_req(req: &StartRequest) -> RunCreateReq {
         }),
         argv_sha256: Some(req.argv_sha256.clone()),
         no_sandbox: None,
+        external_resume: None,
         permission_cards: false,
     }
 }
@@ -1938,6 +1939,15 @@ mod run_request_tests {
         let v = serde_json::to_value(run_create_req(&start_request())).unwrap();
         assert!(v.get("no_sandbox").is_none());
         assert_ne!(v["permission_mode"], json!("bypass"));
+    }
+
+    #[test]
+    fn a_queue_request_never_carries_an_external_resume() {
+        let req = run_create_req(&start_request());
+        assert_eq!(req.external_resume, None);
+        assert_eq!(req.no_sandbox, None);
+        let v = serde_json::to_value(&req).unwrap();
+        assert!(v.get("external_resume").is_none());
     }
 
     #[test]

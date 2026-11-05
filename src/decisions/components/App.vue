@@ -17,6 +17,7 @@
 				:selected-id="selectedId"
 				:progress="progress"
 				@select="select"
+				@dismiss="closeCard"
 			/>
 			<main class="canvas">
 				<template v-if="current">
@@ -57,7 +58,7 @@
 								Chat <kbd>C</kbd>
 							</button>
 							<button
-								v-if="tab === 'diff' && current.diff"
+								v-if="tab === 'diff' && currentHasChanges"
 								type="button"
 								class="refresh"
 								@click="loadDiff(current.id, true)"
@@ -69,11 +70,14 @@
 							v-if="tab === 'diff'"
 							:key="'d' + current.id"
 							:diff="currentDiff"
-							:has-diff="Boolean(current.diff)"
+							:has-diff="currentHasChanges"
 							:messages="current.messages"
 							:drafts="currentDrafts"
 							:can-reply="current.can_reply"
 							:final="isFinal(current)"
+							:listening="current.listening"
+							:session-gone="current.session_gone"
+							:now="now"
 							@send="sendMessage"
 							@add-draft="addDraft"
 							@remove-draft="removeDraft"
@@ -85,6 +89,10 @@
 							:key="'c' + current.id"
 							:messages="chatMessages"
 							:can-reply="current.can_reply && !isFinal(current)"
+							:final="isFinal(current)"
+							:listening="current.listening"
+							:session-gone="current.session_gone"
+							:now="now"
 							@send="sendChat"
 						/>
 					</section>
@@ -136,7 +144,13 @@
 		isFinal,
 		type AnswerDraft,
 	} from '../answer';
-	import { splitMessages } from '../diff';
+	import {
+		beginRequest,
+		hasChanges,
+		isLatestRequest,
+		splitMessages,
+		type RequestSeqs,
+	} from '../diff';
 	import { mapKey } from '../keys';
 	import {
 		buildQueue,
@@ -149,7 +163,7 @@
 	} from '../queue';
 	import type {
 		CardView,
-		DiffView,
+		DiffGroup,
 		LineComment,
 		OutgoingMessage,
 	} from '../types';
@@ -162,8 +176,9 @@
 
 	interface DiffSlot {
 		status: 'loading' | 'ready' | 'error';
-		view?: DiffView;
+		groups?: DiffGroup[];
 		error?: string;
+		stamp?: number;
 	}
 
 	type Tab = 'diff' | 'checks' | 'chat';
@@ -179,6 +194,9 @@
 				tab: 'diff' as Tab,
 				loaded: false,
 				diffs: {} as Record<string, DiffSlot>,
+				diffSeqs: {} as RequestSeqs,
+				now: Date.now(),
+				clock: 0 as number,
 				drafts: {} as Record<string, LineComment[]>,
 				toast: { on: false, error: false, text: '' },
 				toastTimer: 0 as number,
@@ -207,6 +225,9 @@
 			position(): number {
 				return this.order.findIndex((card) => card.id === this.selectedId) + 1;
 			},
+			currentHasChanges(): boolean {
+				return this.current ? hasChanges(this.current) : false;
+			},
 			currentDiff(): DiffSlot | null {
 				return this.current ? (this.diffs[this.current.id] ?? null) : null;
 			},
@@ -234,13 +255,19 @@
 			selectedId() {
 				this.ensureDiff();
 			},
-			'current.diff'() {
+			currentHasChanges() {
+				this.ensureDiff();
+			},
+			'current.updated_ms'() {
 				this.ensureDiff();
 			},
 		},
 		async mounted() {
 			window.addEventListener('keydown', this.onKeydown);
 			document.title = 'Decisions';
+			this.clock = window.setInterval(() => {
+				this.now = Date.now();
+			}, 15000);
 			try {
 				this.unlisten = await onDecisionsChanged(() => void this.refresh());
 			} catch {
@@ -251,6 +278,7 @@
 		beforeUnmount() {
 			window.removeEventListener('keydown', this.onKeydown);
 			window.clearTimeout(this.toastTimer);
+			window.clearInterval(this.clock);
 			this.unlisten?.();
 		},
 		methods: {
@@ -288,15 +316,23 @@
 				this.selectedId = initialCardId(this.order);
 			},
 			ensureDiff() {
-				if (this.current?.diff) void this.loadDiff(this.current.id, false);
+				const card = this.current;
+				if (!card || !hasChanges(card)) return;
+				const slot = this.diffs[card.id];
+				void this.loadDiff(card.id, !!slot && slot.stamp !== card.updated_ms);
 			},
 			async loadDiff(id: string, force: boolean) {
 				if (!force && this.diffs[id]) return;
-				this.diffs[id] = { status: 'loading' };
+				const stamp = this.cards.find((c) => c.id === id)?.updated_ms;
+				if (!this.diffs[id]) this.diffs[id] = { status: 'loading' };
+				const ticket = beginRequest(this.diffSeqs, id);
 				try {
-					this.diffs[id] = { status: 'ready', view: await decisionsDiff(id) };
+					const { groups } = await decisionsDiff(id);
+					if (!isLatestRequest(this.diffSeqs, id, ticket)) return;
+					this.diffs[id] = { status: 'ready', groups, stamp };
 				} catch (error) {
-					this.diffs[id] = { status: 'error', error: String(error) };
+					if (!isLatestRequest(this.diffSeqs, id, ticket)) return;
+					this.diffs[id] = { status: 'error', error: String(error), stamp };
 				}
 			},
 			select(id: string) {
@@ -339,6 +375,24 @@
 				delete this.drafts[card.id];
 				this.showToast(answerToast(card, answer));
 				this.selectedId = following;
+				await this.refresh();
+				this.ensureSelection();
+			},
+			async closeCard(id: string) {
+				const card = this.cards.find((c) => c.id === id);
+				if (!card) return;
+				const answer = buildAnswer({ dismissed: true });
+				try {
+					await decisionsAnswer(id, answer);
+				} catch (error) {
+					this.showToast(`Could not send the answer: ${String(error)}`, true);
+					return;
+				}
+				const following = nextCardId(this.order, id);
+				if (!this.resolvedHere.includes(id)) this.resolvedHere.push(id);
+				delete this.drafts[id];
+				this.showToast(answerToast(card, answer));
+				if (this.selectedId === id) this.selectedId = following;
 				await this.refresh();
 				this.ensureSelection();
 			},

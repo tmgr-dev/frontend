@@ -23,6 +23,8 @@ pub struct ResumeRec {
     pub at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub by_id: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fork_by_id: Option<Vec<String>>,
 }
 
 impl Intent {
@@ -432,6 +434,7 @@ pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
         exe_pin: i.exe_pin.clone(),
         argv_sha256: i.argv_sha256.clone(),
         no_sandbox: None,
+        external_resume: None,
         permission_cards: i.permission_cards,
     }
 }

@@ -12,6 +12,7 @@ pub const REPLY_CAP: usize = 8000;
 const DIR_CAP: usize = 512;
 const ROLLOUT_CHECK: usize = 24;
 const WALK_BUDGET: usize = 4096;
+const META_CAP: u64 = 1 << 20;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Turn {
@@ -348,6 +349,37 @@ pub fn locate_codex_rollout(home: &Path, id: Option<&str>, cwd: &str) -> Option<
     }
 }
 
+pub fn locate_codex_rollout_of(home: &Path, id: &str) -> Option<(PathBuf, Option<String>)> {
+    let path = locate_codex_rollout(home, Some(id), "")?;
+    let root = home.join(".codex").join("sessions");
+    let meta = rollout_meta(&root, &path, META_CAP)?;
+    let payload = meta.get("payload")?;
+    if payload.get("id")?.as_str()? != id || is_subagent(payload) {
+        return None;
+    }
+    let cwd = payload
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    Some((path, cwd))
+}
+
+fn is_subagent(payload: &Value) -> bool {
+    payload
+        .get("source")
+        .and_then(Value::as_object)
+        .is_some_and(|o| o.contains_key("subagent"))
+}
+
+fn rollout_meta(root: &Path, path: &Path, cap: u64) -> Option<Value> {
+    let (file, _) = open_under(root, path)?;
+    let mut buf = Vec::new();
+    file.take(cap).read_to_end(&mut buf).ok()?;
+    let first = buf.split(|b| *b == b'\n').next()?;
+    let v: Value = serde_json::from_slice(first).ok()?;
+    (v.get("type")?.as_str()? == "session_meta").then_some(v)
+}
+
 fn collect(dir: &Path, depth: usize, out: &mut Vec<PathBuf>, budget: &mut usize) {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return;
@@ -375,10 +407,10 @@ fn collect(dir: &Path, depth: usize, out: &mut Vec<PathBuf>, budget: &mut usize)
 }
 
 fn rollout_cwd(root: &Path, path: &Path) -> Option<String> {
-    let (file, _) = open_under(root, path)?;
-    let mut buf = Vec::new();
-    file.take(64 * 1024).read_to_end(&mut buf).ok()?;
-    let first = buf.split(|b| *b == b'\n').next()?;
-    let v: Value = serde_json::from_slice(first).ok()?;
-    Some(v.get("payload")?.get("cwd")?.as_str()?.to_string())
+    let v = rollout_meta(root, path, 64 * 1024)?;
+    let payload = v.get("payload")?;
+    if is_subagent(payload) {
+        return None;
+    }
+    Some(payload.get("cwd")?.as_str()?.to_string())
 }

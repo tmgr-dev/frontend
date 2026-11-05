@@ -14,7 +14,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
 use tmgr_ipc::decisions::{decisions_dir, CardIn, Event, DB};
 
-use diff::DiffView;
+use diff::DiffGroups;
 use hub::{pid_alive, Change, Hub};
 use server::Server;
 use store::{AnswerIn, CardView, MessageIn, Store};
@@ -101,7 +101,9 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
   tmgr_ipc::dirs::ensure_private_dir(&dir).map_err(|e| e.to_string())?;
   let store = Store::open(&dir.join(DB))?;
   let handle = app.clone();
-  let hub = Arc::new(Hub::new(store, Box::new(move |change, count| on_change(&handle, change, count))));
+  let hub = Arc::new(
+    Hub::new(store, Box::new(move |change, count| on_change(&handle, change, count))).with_spool(dir.clone()),
+  );
   OPEN.store(hub.open_count(), Ordering::SeqCst);
   hub.ingest_spool(&dir);
   let server = match Server::start(hub.clone(), &dir) {
@@ -205,11 +207,12 @@ pub async fn decisions_message<R: Runtime>(
 }
 
 #[tauri::command]
-pub async fn decisions_diff<R: Runtime>(app: AppHandle<R>, id: String) -> Result<DiffView, String> {
+pub async fn decisions_diff<R: Runtime>(app: AppHandle<R>, id: String) -> Result<DiffGroups, String> {
   let hub = hub_of(&app)?;
   blocking(move || {
-    let spec = hub.get(&id)?.diff.ok_or_else(|| "the card has no diff".to_owned())?;
-    Ok(diff::run_diff(&spec))
+    let (card, patches) = hub.get_with_patches(&id)?;
+    let repos: Vec<_> = card.diff.iter().chain(&card.diffs).cloned().collect();
+    Ok(diff::groups(&repos, &patches))
   })
   .await
 }

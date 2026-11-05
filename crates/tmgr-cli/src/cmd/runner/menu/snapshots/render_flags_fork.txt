@@ -1,0 +1,16 @@
+┌ tmgr run · start ────────────────────────────────────────────────────────────────────────────────┐
+│Claude Code · Fork                                                                                │
+│                                                                                                  │
+│  [ ] Bypass permissions                                                                          │
+│▸ [x] No sandbox (locked)                                                                         │
+│    Ordinary sessions live in your real home, a sandboxed session cannot see them.                │
+│                                                                                                  │
+│You will be asked to type a confirmation next.                                                    │
+│                                                                                                  │
+│Command                                                                                           │
+│tmgr resume ext-1 --fork --no-sandbox                                                             │
+│                                                                                                  │
+│Up/Down move · Space toggle · Enter start · Esc back · Ctrl+C quit                                │
+│                                                                                                  │
+│                                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘

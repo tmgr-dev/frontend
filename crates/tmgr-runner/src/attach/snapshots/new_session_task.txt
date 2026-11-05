@@ -1,14 +1,14 @@
     ╭ New session ─────────────────────────────────────────────────────────╮    
-    │   Kind      claude   codex   shell   custom                          │    
-    │   Folder   ~/code                                                    │    
-    │ > Task     login  -> TM-30 Login page copy (1/2)                     │    
+    │   Kind       claude   codex   shell   custom                         │    
+    │   Folder    ~/code                                                   │    
+    │ > Task      login  -> TM-30 Login page copy (1/2)                    │    
     │   Name                                                               │    
-    │   Worktree  Off   On                                                 │    
-    │   Approvals Off   On                                                 │    
-    │   Where     New tab   Right   Below   Replace                        │    
-    │   Rewind    Off   On                                                 │    
-    │            [ Start ]                                                 │    
-    │                                                                      │    
-    │                                                                      │    
+    │   Worktree   Off   On                                                │    
+    │   Approvals  Off   On                                                │    
+    │   Bypass     Off   On                                                │    
+    │   No sandbox Off   On                                                │    
+    │   Where      New tab   Right   Below   Replace                       │    
+    │   Rewind     Off   On                                                │    
+    │             [ Start ]                                                │    
     │                                                                      │    
     ╰──────────────────────────────────────────────────────────────────────╯    

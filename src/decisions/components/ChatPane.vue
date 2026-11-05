@@ -16,6 +16,7 @@
 				</div>
 				{{ message.text }}
 			</div>
+			<div v-if="notice" class="msg typing">{{ notice }}</div>
 		</div>
 		<div class="chatbox">
 			<input
@@ -37,6 +38,7 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
+	import { agentWaitNotice } from '../diff';
 	import { isSubmitKey } from '../keys';
 	import type { CardMessage } from '../types';
 
@@ -45,10 +47,25 @@
 		props: {
 			messages: { type: Array as PropType<CardMessage[]>, required: true },
 			canReply: { type: Boolean, required: true },
+			final: { type: Boolean, required: true },
+			listening: { type: Boolean, required: true },
+			sessionGone: { type: Boolean, required: true },
+			now: { type: Number, required: true },
 		},
 		emits: ['send'],
 		data() {
 			return { text: '' };
+		},
+		computed: {
+			notice(): string | null {
+				return agentWaitNotice(this.messages, {
+					listening: this.listening,
+					sessionGone: this.sessionGone,
+					canReply: this.canReply,
+					final: this.final,
+					now: this.now,
+				});
+			},
 		},
 		watch: {
 			messages() {

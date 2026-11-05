@@ -92,4 +92,33 @@ mod tests {
             assert!(!runner_supports_queue(&some), "{missing}");
         }
     }
+
+    #[test]
+    fn a_queue_start_has_no_room_for_external_resume_or_no_sandbox() {
+        fn fields(r: StartRequest) {
+            let StartRequest {
+                start_key: _,
+                permission_mode: _,
+                rule: _,
+                trigger: _,
+                profile: _,
+                model: _,
+                cwd: _,
+                clone_of: _,
+                exe_path: _,
+                exe_sha256: _,
+                argv_sha256: _,
+                name: _,
+                task: _,
+                bundle: _,
+                bundle_sha256: _,
+                cloud: _,
+                unattended: _,
+                clones: _,
+                team: _,
+            } = r;
+        }
+        let _ = fields;
+        assert!(!REQUIRED_CAPS.contains(&caps::EXTERNAL_RESUME_V1));
+    }
 }

@@ -131,6 +131,7 @@ mod tests {
             id: id.into(),
             label: id.into(),
             spawn,
+            bypass: false,
         };
         vec![
             k(

@@ -31,10 +31,11 @@ send | Agents | session, text, no_enter, wait, timeout
 peek | Agents | session, lines
 halt | Agents | session, kill
 rm | Agents | session
-resume | Other | session
+resume | Other | session, fork, mode, no_sandbox, no_attach
 rename | Agents | session, name
 session summary | Other | session, plain
 session export | Other | session, md, page, remove_findings
+session list | Other | agent, search, limit
 time | Time | today, since, by
 time sync | Time | state
 time idle | Time | seconds
@@ -95,7 +96,7 @@ agent status clear | Agents | session_id
 agent status list | Agents | -
 hook install | Account | target, project, print
 hook uninstall | Account | target, project, print
-ask | Agents | title, question, context, options, recommended, kind, blocking, repo, base, head, facts, checks, task, pr, wait, timeout
+ask | Agents | title, question, context, options, recommended, kind, blocking, repo, base, head, facts, checks, task, pr, diffs, patches, commits, tags, links, replaces, key, wait, timeout
 notify | Account | text, title, priority, link
 alarm | Account | text, title, ack_timeout, delivery_timeout, no_call, call_attempts, no_wait, max_wait
 alarm status | Account | id, wait

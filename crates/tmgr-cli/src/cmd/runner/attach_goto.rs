@@ -69,8 +69,27 @@ pub(super) fn fork_name(names: &[&str], base: &str) -> String {
         .unwrap_or_else(|| format!("{root}-fork"))
 }
 
-pub(super) fn conversation_id(job: &QuestionJob) -> Option<String> {
-    let log_id = id_from_log(&job.log, &job.src.profile);
+pub(super) fn can_fork(profile: &str) -> bool {
+    matches!(profile, "claude-code" | "codex")
+}
+
+fn codex_rollout_id(home: &std::path::Path, cwd: &str) -> Option<String> {
+    let path = tmgr_runner::questions::tail::locate_codex_rollout(home, None, cwd)?;
+    let stem = path.file_stem()?.to_str()?;
+    let id = stem.get(stem.len().checked_sub(36)?..)?;
+    valid_resume_id(id).then(|| id.to_string())
+}
+
+pub(super) fn conversation_id(job: &QuestionJob, recorded: Option<&str>) -> Option<String> {
+    let log_id = || id_from_log(&job.log, &job.src.profile);
+    if job.src.format == Format::Codex {
+        return recorded
+            .filter(|i| valid_resume_id(i))
+            .map(str::to_string)
+            .or_else(|| codex_rollout_id(&job.sandbox_home, &job.src.cwd))
+            .or_else(log_id);
+    }
+    let log_id = log_id();
     let (path, id) = locate(&Source {
         home: &job.sandbox_home,
         format: Format::Claude,
@@ -89,13 +108,13 @@ pub(super) fn fork_call(
     job: &QuestionJob,
     name: &str,
     (cols, rows): (u16, u16),
-    reads: Reads,
-) -> Result<RestoredRun, String> {
+    (reads, recorded): (Reads, Option<&str>),
+) -> Result<(RestoredRun, String), String> {
     if let Some(hint) = reads.denial(job.src.format) {
         return Err(hint.to_string());
     }
     let clean = |s: String| sanitize_text(&s).into_owned();
-    let agent_id = conversation_id(job)
+    let agent_id = conversation_id(job, recorded)
         .ok_or_else(|| "cannot tell which conversation this session has".to_string())?;
     let mut client = connect(cfg).map_err(|e| clean(e.to_string()))?;
     if !client
@@ -109,6 +128,7 @@ pub(super) fn fork_call(
     let _ = client.set_timeouts(FORK_WAIT);
     client
         .fork(&job.id, &agent_id, Some(name), (cols, rows))
+        .map(|run| (run, agent_id))
         .map_err(|e| clean(rerr(e).to_string()))
 }
 
@@ -153,25 +173,109 @@ mod tests {
             exited: true,
             settled: true,
         };
-        let err = fork_call(&cfg, &job, "x", (80, 24), Reads::default()).unwrap_err();
+        let err = fork_call(&cfg, &job, "x", (80, 24), (Reads::default(), None)).unwrap_err();
         assert_eq!(err, Reads::default().hint().unwrap());
         let off = Reads {
             claude: false,
             codex: true,
         };
-        let err = fork_call(&cfg, &job, "x", (80, 24), off).unwrap_err();
+        let err = fork_call(&cfg, &job, "x", (80, 24), (off, None)).unwrap_err();
         assert!(err.starts_with("Claude Code titles"), "{err}");
         let err = fork_call(
             &cfg,
             &job,
             "x",
             (80, 24),
-            Reads {
-                claude: true,
-                codex: false,
-            },
+            (
+                Reads {
+                    claude: true,
+                    codex: false,
+                },
+                None,
+            ),
         )
         .unwrap_err();
         assert_eq!(err, "cannot tell which conversation this session has");
+    }
+    const X1: &str = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+    const X2: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
+
+    fn codex_job(dir: &std::path::Path) -> QuestionJob {
+        QuestionJob {
+            id: "s_abcdefghjk".into(),
+            src: super::super::attach_title::AgentSrc {
+                profile: "codex".into(),
+                format: Format::Codex,
+                cwd: "/work/x".into(),
+                pid: 0,
+                default_name: "codex".into(),
+                no_sandbox: false,
+                created_ms: 0,
+            },
+            pid: 0,
+            sandbox_home: dir.join("home"),
+            log: dir.join("output.log"),
+            exited: false,
+            settled: true,
+        }
+    }
+
+    fn rollout(home: &std::path::Path, ts: &str, id: &str, cwd: &str) {
+        let day = home.join(".codex/sessions/2026/11/05");
+        std::fs::create_dir_all(&day).unwrap();
+        let meta = serde_json::json!({"type":"session_meta","payload":{"id":id,"cwd":cwd}});
+        std::fs::write(
+            day.join(format!("rollout-{ts}-{id}.jsonl")),
+            format!("{meta}\n"),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn only_claude_code_and_codex_sessions_can_be_forked() {
+        assert!(can_fork("claude-code") && can_fork("codex"));
+        for p in ["", "claude", "Codex", "gemini", "codex "] {
+            assert!(!can_fork(p), "{p:?}");
+        }
+    }
+
+    #[test]
+    fn a_codex_conversation_is_the_exit_screen_id_or_the_newest_rollout_of_the_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let job = codex_job(dir.path());
+        assert_eq!(conversation_id(&job, None), None);
+        rollout(&job.sandbox_home, "2026-11-05T09-00-00", X2, "/work/other");
+        assert_eq!(conversation_id(&job, None), None);
+        rollout(&job.sandbox_home, "2026-11-05T10-00-00", X1, "/work/x");
+        assert_eq!(conversation_id(&job, None).as_deref(), Some(X1));
+        std::fs::write(
+            &job.log,
+            format!("To continue this session, run codex resume {X2}\r\n"),
+        )
+        .unwrap();
+        assert_eq!(conversation_id(&job, None).as_deref(), Some(X1));
+        assert_eq!(conversation_id(&job, Some(X2)).as_deref(), Some(X2));
+        assert_eq!(conversation_id(&job, Some("x; rm")).as_deref(), Some(X1));
+    }
+
+    #[test]
+    fn a_codex_subagent_or_log_line_never_decides_which_conversation_is_forked() {
+        let dir = tempfile::tempdir().unwrap();
+        let job = codex_job(dir.path());
+        rollout(&job.sandbox_home, "2026-11-05T10-00-00", X1, "/work/x");
+        let day = job.sandbox_home.join(".codex/sessions/2026/11/05");
+        let sub = serde_json::json!({"type":"session_meta","payload":{"id":X2,"cwd":"/work/x","source":{"subagent":{"thread_spawn":{}}}}});
+        std::fs::write(
+            day.join(format!("rollout-2026-11-05T12-00-00-{X2}.jsonl")),
+            format!("{sub}\n"),
+        )
+        .unwrap();
+        assert_eq!(conversation_id(&job, None).as_deref(), Some(X1));
+        std::fs::write(
+            &job.log,
+            "To continue this session, run codex resume 11111111-1111-4111-8111-111111111111\r\n",
+        )
+        .unwrap();
+        assert_eq!(conversation_id(&job, None).as_deref(), Some(X1));
     }
 }

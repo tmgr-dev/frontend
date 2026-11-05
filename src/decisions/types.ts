@@ -48,9 +48,23 @@ export interface CardDiffRef {
 	head?: string;
 }
 
+export type CardLinkKind = 'pr' | 'commit' | 'tag' | 'task' | 'url';
+
+export interface CardLinkItem {
+	kind: CardLinkKind;
+	url: string;
+	label?: string;
+}
+
+export interface CardPatchInfo {
+	label: string;
+	bytes: number;
+}
+
 export interface CardLinks {
 	task?: string;
 	pr?: string;
+	items?: CardLinkItem[];
 }
 
 export interface CardMessage {
@@ -61,6 +75,7 @@ export interface CardMessage {
 	line?: number;
 	action?: MessageAction;
 	created_ms: number;
+	delivered?: boolean;
 }
 
 export interface LineComment {
@@ -94,6 +109,7 @@ export interface CardView {
 	session_gone: boolean;
 	closed_reason?: string;
 	can_reply: boolean;
+	listening: boolean;
 	answer?: Answer;
 	messages: CardMessage[];
 	source: CardSource;
@@ -105,6 +121,9 @@ export interface CardView {
 	facts: CardFact[];
 	options: CardOption[];
 	diff?: CardDiffRef;
+	diffs: CardDiffRef[];
+	patches: CardPatchInfo[];
+	updated_ms?: number;
 	checks: CardCheck[];
 	links: CardLinks;
 	reply_via: ReplyVia;
@@ -135,4 +154,17 @@ export interface DiffView {
 	files: DiffFile[];
 	truncated: boolean;
 	error?: string;
+}
+
+export interface DiffGroup {
+	key: string;
+	label: string;
+	kind: 'repo' | 'patch';
+	base?: string;
+	head?: string;
+	view: DiffView;
+}
+
+export interface DiffGroups {
+	groups: DiffGroup[];
 }

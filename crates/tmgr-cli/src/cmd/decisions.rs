@@ -2,7 +2,10 @@ use serde_json::Value;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use tmgr_ipc::decisions::{self, CardIn, Check, Client, DiffSpec, Event, Fact, Links, Opt, Source};
+use tmgr_ipc::decisions::{
+    self, CardIn, Check, Client, DiffSpec, Event, Fact, LinkItem, Links, Opt, PatchIn, Source,
+    MAX_DIFFS, MAX_LINE, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES,
+};
 
 pub const KINDS: [&str; 5] = ["decision", "review", "release", "check", "question"];
 const FACT_STATES: [&str; 3] = ["ok", "bad", "wait"];
@@ -75,15 +78,15 @@ pub fn is_refusal(e: &io::Error) -> bool {
 }
 
 pub enum Sent {
-    Live(String),
+    Live(String, Option<String>),
     Spooled(String),
 }
 
 pub fn send_card(mut card: CardIn) -> io::Result<Sent> {
-    let id = card.id.get_or_insert_with(decisions::new_card_id).clone();
+    card.id.get_or_insert_with(decisions::new_card_id);
     let dir = decisions::decisions_dir()?;
-    match Client::open_in(&dir).and_then(|c| c.create(card.clone())) {
-        Ok(_) => Ok(Sent::Live(id)),
+    match Client::open_in(&dir).and_then(|c| c.create_outcome(card.clone())) {
+        Ok((canonical, outcome)) => Ok(Sent::Live(canonical, outcome)),
         Err(e) if is_refusal(&e) => Err(e),
         Err(_) => decisions::spool(&dir, &card).map(Sent::Spooled),
     }
@@ -148,7 +151,214 @@ pub struct Spec {
     pub base: Option<String>,
     pub head: Option<String>,
     pub task: Option<String>,
-    pub pr: Option<String>,
+    pub diffs: Vec<DiffSpec>,
+    pub patches: Vec<PatchIn>,
+    pub prs: Vec<String>,
+    pub commits: Vec<String>,
+    pub tags: Vec<String>,
+    pub links: Vec<String>,
+    pub replaces: Option<String>,
+    pub key: Option<String>,
+}
+
+const MAX_URL: usize = 2000;
+const MAX_KEY: usize = 200;
+const DEFAULT_PATCH_LABEL: &str = "patch";
+
+fn is_http(s: &str) -> bool {
+    let lower = s.to_ascii_lowercase();
+    lower.starts_with("https://") || lower.starts_with("http://")
+}
+
+fn http_url(s: &str) -> Result<String, String> {
+    let s = s.trim();
+    if !is_http(s) {
+        return Err(format!("{s:?} is not an http or https URL"));
+    }
+    if s.chars().any(|c| c.is_whitespace() || c.is_control()) || s.chars().count() > MAX_URL {
+        return Err(format!(
+            "{s:?} is not a usable URL (at most {MAX_URL} characters)"
+        ));
+    }
+    Ok(s.to_string())
+}
+
+fn github_ref(s: &str, sep: char) -> Option<(&str, &str, &str)> {
+    let (head, tail) = s.split_once(sep)?;
+    let (owner, repo) = head.split_once('/')?;
+    let owner_ok = !owner.is_empty()
+        && owner.len() <= 39
+        && owner.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    let repo_ok = !repo.is_empty()
+        && repo.len() <= 100
+        && repo != "."
+        && repo != ".."
+        && repo
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    (owner_ok && repo_ok && !tail.is_empty()).then_some((owner, repo, tail))
+}
+
+fn valid_tag(t: &str) -> bool {
+    !t.is_empty()
+        && t.len() <= 100
+        && !t.starts_with(['-', '/', '.'])
+        && !t.ends_with(['/', '.'])
+        && !t.contains("..")
+        && !t.contains("//")
+        && t.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+' | '/'))
+}
+
+fn item(kind: &str, url: String, label: Option<String>) -> LinkItem {
+    LinkItem {
+        kind: kind.into(),
+        url,
+        label,
+    }
+}
+
+fn reject_scheme(s: &str, what: &str, form: &str) -> String {
+    if s.contains("://") {
+        format!("{s:?}: only http and https URLs are allowed for {what}")
+    } else {
+        format!("{s:?} must be a {what} URL or {form}")
+    }
+}
+
+pub fn parse_pr(s: &str) -> Result<LinkItem, String> {
+    let s = s.trim();
+    if is_http(s) {
+        return Ok(item("pr", http_url(s)?, None));
+    }
+    match github_ref(s, '#') {
+        Some((o, r, n)) if n.len() <= 9 && n.bytes().all(|b| b.is_ascii_digit()) && n != "0" => Ok(
+            item("pr", format!("https://github.com/{o}/{r}/pull/{n}"), None),
+        ),
+        _ => Err(reject_scheme(s, "pull request", "owner/repo#123")),
+    }
+}
+
+fn short_sha(sha: &str) -> String {
+    sha.chars().take(7).collect::<String>().to_ascii_lowercase()
+}
+
+pub fn parse_commit(s: &str) -> Result<LinkItem, String> {
+    let s = s.trim();
+    if is_http(s) {
+        let label = s.split_once("/commit/").and_then(|(_, rest)| {
+            let sha: String = rest.chars().take_while(char::is_ascii_hexdigit).collect();
+            (sha.len() >= 7).then(|| short_sha(&sha))
+        });
+        return Ok(item("commit", http_url(s)?, label));
+    }
+    match github_ref(s, '@') {
+        Some((o, r, sha))
+            if (7..=40).contains(&sha.len()) && sha.chars().all(|c| c.is_ascii_hexdigit()) =>
+        {
+            Ok(item(
+                "commit",
+                format!("https://github.com/{o}/{r}/commit/{sha}"),
+                Some(short_sha(sha)),
+            ))
+        }
+        _ => Err(reject_scheme(s, "commit", "owner/repo@<7-40 hex sha>")),
+    }
+}
+
+pub fn parse_tag(s: &str) -> Result<LinkItem, String> {
+    let s = s.trim();
+    if is_http(s) {
+        return Ok(item("tag", http_url(s)?, None));
+    }
+    match github_ref(s, '@') {
+        Some((o, r, tag)) if valid_tag(tag) => Ok(item(
+            "tag",
+            format!("https://github.com/{o}/{r}/releases/tag/{tag}"),
+            None,
+        )),
+        _ => Err(reject_scheme(s, "tag", "owner/repo@tag")),
+    }
+}
+
+pub fn parse_link(s: &str) -> Result<LinkItem, String> {
+    let (label, url) = match s.split_once('=') {
+        Some((l, u)) if !l.contains("://") => (Some(l.trim()), u),
+        _ => (None, s),
+    };
+    if let Some(l) = label {
+        if l.is_empty() || l.chars().count() > MAX_TITLE {
+            return Err(format!("link labels must be 1 to {MAX_TITLE} characters"));
+        }
+    }
+    Ok(item("url", http_url(url)?, label.map(str::to_string)))
+}
+
+pub fn parse_diff(s: &str) -> Result<DiffSpec, String> {
+    let (dir, refs) = match s.rsplit_once('=') {
+        Some((d, r)) => (d, Some(r)),
+        None => (s, None),
+    };
+    if dir.is_empty() {
+        return Err(format!("{s:?}: --diff needs a directory"));
+    }
+    let (base, head) = match refs {
+        None => (None, None),
+        Some(r) => match r.split_once("..") {
+            None => (Some(r), None),
+            Some((b, h)) => (Some(b), Some(h)),
+        },
+    };
+    for r in [base, head].into_iter().flatten() {
+        if r.is_empty() || r.contains("..") {
+            return Err(format!("{s:?}: use --diff DIR[=BASE[..HEAD]]"));
+        }
+    }
+    Ok(DiffSpec {
+        repo: dir.to_string(),
+        base: base.map(str::to_string),
+        head: head.map(str::to_string),
+    })
+}
+
+pub fn read_patch(arg: &str, stdin_used: &mut bool) -> Result<PatchIn, String> {
+    use std::io::Read;
+    let (label, source) = if arg == "-" || Path::new(arg).is_file() {
+        (None, arg)
+    } else {
+        match arg.split_once('=') {
+            Some((l, f)) if !l.trim().is_empty() => (Some(l.trim().to_string()), f),
+            _ => (None, arg),
+        }
+    };
+    let cap = MAX_PATCH_BYTES as u64 + 1;
+    let mut bytes = Vec::new();
+    let default = if source == "-" {
+        if std::mem::replace(stdin_used, true) {
+            return Err("stdin can be used for only one --patch".into());
+        }
+        io::stdin()
+            .lock()
+            .take(cap)
+            .read_to_end(&mut bytes)
+            .map_err(|e| format!("cannot read the patch from stdin: {e}"))?;
+        DEFAULT_PATCH_LABEL.to_string()
+    } else {
+        std::fs::File::open(source)
+            .and_then(|f| f.take(cap).read_to_end(&mut bytes))
+            .map_err(|e| format!("cannot read the patch file {source:?}: {e}"))?;
+        Path::new(source).file_name().map_or_else(
+            || DEFAULT_PATCH_LABEL.to_string(),
+            |n| n.to_string_lossy().into(),
+        )
+    };
+    if bytes.len() > MAX_PATCH_BYTES {
+        return Err(format!("patches may total at most {MAX_PATCH_BYTES} bytes"));
+    }
+    Ok(PatchIn {
+        label: label.unwrap_or(default),
+        text: String::from_utf8_lossy(&bytes).into_owned(),
+    })
 }
 
 pub fn split_state<'a>(s: &'a str, allowed: &[&str]) -> Result<(&'a str, &'a str), String> {
@@ -263,10 +473,98 @@ impl Spec {
         if self.repo.is_none() && (self.base.is_some() || self.head.is_some()) {
             return Err("base and head need repo".into());
         }
-        if self.head.is_some() && self.base.is_none() {
-            return Err("head needs base".into());
+        let mut repos: Vec<DiffSpec> = Vec::new();
+        if let Some(repo) = self.repo {
+            repos.push(DiffSpec {
+                repo,
+                base: self.base,
+                head: self.head,
+            });
         }
-        Ok(CardIn {
+        repos.extend(self.diffs);
+        if repos.len() > MAX_DIFFS {
+            return Err(format!("at most {MAX_DIFFS} repositories"));
+        }
+        for d in &mut repos {
+            if d.repo.is_empty() {
+                return Err("repo must not be empty".into());
+            }
+            if d.head.is_some() && d.base.is_none() {
+                return Err("head needs base".into());
+            }
+            d.repo = absolute(&d.repo);
+        }
+        let mut repos = repos.into_iter();
+        let diff = repos.next();
+        let diffs: Vec<DiffSpec> = repos.collect();
+        if self.patches.len() > MAX_PATCHES {
+            return Err(format!("at most {MAX_PATCHES} patches"));
+        }
+        let mut patch_bytes = 0;
+        let mut patches = Vec::new();
+        for p in self.patches {
+            let label = p.label.trim();
+            if label.chars().count() > MAX_TITLE {
+                return Err(format!(
+                    "patch labels must be at most {MAX_TITLE} characters"
+                ));
+            }
+            if p.text.trim().is_empty() {
+                return Err("patches must not be empty".into());
+            }
+            patch_bytes += p.text.len();
+            patches.push(PatchIn {
+                label: if label.is_empty() {
+                    DEFAULT_PATCH_LABEL.into()
+                } else {
+                    label.into()
+                },
+                text: p.text,
+            });
+        }
+        if patch_bytes > MAX_PATCH_BYTES {
+            return Err(format!("patches may total at most {MAX_PATCH_BYTES} bytes"));
+        }
+        let mut items = Vec::new();
+        let mut pr = None;
+        for s in &self.prs {
+            match parse_pr(s) {
+                Ok(i) => {
+                    pr.get_or_insert_with(|| i.url.clone());
+                    items.push(i);
+                }
+                Err(_) => {
+                    pr.get_or_insert_with(|| s.clone());
+                }
+            }
+        }
+        for s in &self.commits {
+            items.push(parse_commit(s)?);
+        }
+        for s in &self.tags {
+            items.push(parse_tag(s)?);
+        }
+        for s in &self.links {
+            items.push(parse_link(s)?);
+        }
+        if let Some(url) = self.task.as_deref().and_then(|t| http_url(t).ok()) {
+            items.push(item("task", url, None));
+        }
+        if items.len() > MAX_LINKS {
+            return Err(format!("at most {MAX_LINKS} links"));
+        }
+        if let Some(id) = &self.replaces {
+            if !decisions::valid_card_id(id) {
+                return Err("replaces must be a card id".into());
+            }
+        }
+        if let Some(k) = &self.key {
+            if k.trim().is_empty() || k.chars().count() > MAX_KEY || k.chars().any(char::is_control)
+            {
+                return Err(format!("key must be 1 to {MAX_KEY} printable characters"));
+            }
+        }
+        let card = CardIn {
             id: Some(decisions::new_card_id()),
             source,
             kind,
@@ -276,19 +574,25 @@ impl Spec {
             question: self.question.filter(|q| !q.is_empty()),
             facts: self.facts,
             options,
-            diff: self.repo.map(|repo| DiffSpec {
-                repo: absolute(&repo),
-                base: self.base,
-                head: self.head,
-            }),
+            diff,
+            diffs,
+            patches,
+            replaces: self.replaces,
+            key: self.key.map(|k| k.trim().to_string()),
             checks: self.checks,
             links: Links {
                 task: self.task,
-                pr: self.pr,
+                pr,
+                items,
             },
             reply_via: reply_via.to_string(),
             supersede: false,
-        })
+        };
+        let line = serde_json::to_vec(&card).map_or(0, |v| v.len());
+        if line + 4096 > MAX_LINE {
+            return Err(format!("the card is too large (limit {MAX_LINE} bytes)"));
+        }
+        Ok(card)
     }
 }
 

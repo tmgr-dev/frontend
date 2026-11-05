@@ -1,12 +1,19 @@
 import {
+	AGENT_WAIT_MS,
+	agentWaitNotice,
 	awaitsOwner,
+	beginRequest,
 	buildAnchors,
 	fixMessageText,
+	hasChanges,
+	isLatestRequest,
 	lineNumber,
+	qualifyFile,
 	splitMessages,
 	threadKey,
 } from '../diff';
 import type { CardMessage, DiffView } from '../types';
+import { makeCard } from './fixtures';
 
 const diff: DiffView = {
 	truncated: false,
@@ -86,5 +93,104 @@ describe('fixMessageText', () => {
 	it('uses a default text and prefixes the clarification', () => {
 		expect(fixMessageText('  ')).toBe('Fix this.');
 		expect(fixMessageText(' rename it ')).toBe('Fix: rename it');
+	});
+});
+
+describe('diff groups', () => {
+	it('qualifies the file only on cards with several groups', () => {
+		expect(qualifyFile('api', 'src/a.rs', 1)).toBe('src/a.rs');
+		expect(qualifyFile('api', 'src/a.rs', 2)).toBe('api:src/a.rs');
+		expect(qualifyFile('ui', 'src/a.rs', 2)).not.toBe(
+			qualifyFile('api', 'src/a.rs', 2),
+		);
+	});
+
+	it('anchors per group under the qualified file', () => {
+		const anchors = buildAnchors(diff, 'api');
+		expect(anchors.has('api:a.rs:2')).toBe(true);
+		expect(anchors.has('a.rs:2')).toBe(false);
+	});
+
+	it('detects a card with changes', () => {
+		expect(hasChanges(makeCard())).toBe(false);
+		expect(hasChanges(makeCard({ diff: { repo: '/r' } }))).toBe(true);
+		expect(hasChanges(makeCard({ diffs: [{ repo: '/r' }] }))).toBe(true);
+		expect(hasChanges(makeCard({ patches: [{ label: 'p', bytes: 3 }] }))).toBe(
+			true,
+		);
+	});
+});
+
+describe('agentWaitNotice', () => {
+	const ctx = {
+		listening: true,
+		sessionGone: false,
+		canReply: true,
+		final: false,
+		now: 10_000,
+	};
+	const owner = msg({ author: 'owner', created_ms: 10_000 });
+
+	it('shows nothing when there are no messages or the last is the agent', () => {
+		expect(agentWaitNotice([], ctx)).toBeNull();
+		expect(
+			agentWaitNotice([owner, msg({ author: 'agent', seq: 2 })], ctx),
+		).toBeNull();
+	});
+
+	it('shows nothing for a final card or when replies are impossible', () => {
+		expect(agentWaitNotice([owner], { ...ctx, final: true })).toBeNull();
+		expect(agentWaitNotice([owner], { ...ctx, canReply: false })).toBeNull();
+	});
+
+	it('reports an ended session before anything else', () => {
+		expect(
+			agentWaitNotice([owner], { ...ctx, sessionGone: true, listening: false }),
+		).toBe('The session ended, so no agent will see this.');
+	});
+
+	it('reports an ended session over a delivered message', () => {
+		const seen = { ...owner, delivered: true };
+		expect(
+			agentWaitNotice([seen], { ...ctx, sessionGone: true, listening: false }),
+		).toBe('The session ended, so no agent will see this.');
+	});
+
+	it('reports that nobody is listening while the message is undelivered', () => {
+		expect(agentWaitNotice([owner], { ...ctx, listening: false })).toBe(
+			"No agent is listening right now; it'll see this when it comes back.",
+		);
+	});
+
+	it('does not claim nobody has the message once it was delivered', () => {
+		const seen = { ...owner, delivered: true };
+		expect(agentWaitNotice([seen], { ...ctx, listening: false })).toBe(
+			'waiting for the agent…',
+		);
+	});
+
+	it('waits for a fresh message and times out at exactly three minutes', () => {
+		expect(agentWaitNotice([owner], ctx)).toBe('waiting for the agent…');
+		const edge = { ...ctx, now: 10_000 + AGENT_WAIT_MS - 1 };
+		expect(agentWaitNotice([owner], edge)).toBe('waiting for the agent…');
+		const late = { ...ctx, now: 10_000 + AGENT_WAIT_MS };
+		expect(agentWaitNotice([owner], late)).toBe(
+			"The agent hasn't replied yet; it'll see this when it next checks.",
+		);
+		expect(agentWaitNotice([{ ...owner, delivered: true }], late)).toBe(
+			"The agent hasn't replied yet.",
+		);
+	});
+});
+
+describe('request gate', () => {
+	it('lets only the latest request per id write', () => {
+		const seqs = {};
+		const first = beginRequest(seqs, 'a');
+		const second = beginRequest(seqs, 'a');
+		const other = beginRequest(seqs, 'b');
+		expect(isLatestRequest(seqs, 'a', first)).toBe(false);
+		expect(isLatestRequest(seqs, 'a', second)).toBe(true);
+		expect(isLatestRequest(seqs, 'b', other)).toBe(true);
 	});
 });

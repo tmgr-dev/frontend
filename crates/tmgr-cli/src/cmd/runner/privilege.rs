@@ -52,6 +52,10 @@ pub fn warnings(bypass: bool, no_sandbox: bool) -> Vec<&'static str> {
     v
 }
 
+pub fn prompt(word: &str) -> String {
+    format!("Type {word} to continue:")
+}
+
 pub fn confirm(bypass: bool, no_sandbox: bool, net_enforced: bool, yes: bool) -> Result<bool> {
     let in_agent = privileged::RUN_ENV
         .iter()
@@ -64,7 +68,7 @@ pub fn confirm(bypass: bool, no_sandbox: bool, net_enforced: bool, yes: bool) ->
             for line in warnings(bypass, no_sandbox) {
                 eprintln!("{line}");
             }
-            privileged::confirm_typed_stdio(word, &format!("Type {word} to continue:"))?;
+            privileged::confirm_typed_stdio(word, &prompt(word))?;
             Ok(true)
         }
     }
@@ -87,6 +91,17 @@ pub fn check_cards_cap(have: &[String], permission_cards: bool) -> Result<()> {
         return Err(Error::new(
             Kind::Conflict,
             "the running runner is older than this tmgr and cannot start a run with permission cards",
+        )
+        .hint(format!("{0} runner restart", super::bin())));
+    }
+    Ok(())
+}
+
+pub fn check_external_cap(have: &[String]) -> Result<()> {
+    if !have.iter().any(|h| h == caps::EXTERNAL_RESUME_V1) {
+        return Err(Error::new(
+            Kind::Conflict,
+            "the running runner is older than this tmgr and cannot resume a conversation by id",
         )
         .hint(format!("{0} runner restart", super::bin())));
     }
@@ -306,5 +321,12 @@ mod tests {
             assert!(parse(&["run", "TM-1", "--agent", "x", "--on", "l", "--no-sandbox"]).is_err());
             assert!(parse(&["run", "--agent", "x", "--no-sandbox", "--trust"]).is_err());
         }
+    }
+
+    #[test]
+    fn a_runner_without_external_resume_gets_a_restart_hint() {
+        let e = check_external_cap(&[]).unwrap_err();
+        assert!(e.hint.unwrap().ends_with("runner restart"));
+        assert!(check_external_cap(&[caps::EXTERNAL_RESUME_V1.to_string()]).is_ok());
     }
 }

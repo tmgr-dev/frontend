@@ -886,6 +886,7 @@ mod tests {
             bundle_sha256: Some(bundle.sha256()),
             bundle: Some(bundle),
             no_sandbox: None,
+            external_resume: None,
             permission_cards: false,
         }
     }

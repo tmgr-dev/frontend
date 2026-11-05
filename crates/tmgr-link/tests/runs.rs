@@ -77,6 +77,7 @@ impl Fake {
 fn info(id: &str, req: &RunCreateReq) -> SessionInfo {
     SessionInfo {
         team: None,
+        agent_session_id: None,
         id: id.into(),
         name: req.name.clone().unwrap_or_default(),
         argv: vec!["/usr/bin/true".into(), "--secret-flag".into()],
@@ -1563,6 +1564,7 @@ fn a_slow_handshake_and_a_slow_list_still_answer_inside_the_deadline() {
 fn local(id: &str, edit: impl FnOnce(&mut SessionInfo)) -> SessionInfo {
     let mut s = SessionInfo {
         team: None,
+        agent_session_id: None,
         id: id.into(),
         name: "hand-started".into(),
         argv: vec!["/usr/bin/true".into()],
@@ -1873,6 +1875,35 @@ fn create_with_both_flags_still_rejects_bypass_and_sends_no_modes() {
     let st = fake.0.lock().unwrap();
     assert_eq!(st.creates.len(), 1);
     assert_eq!(st.creates[0].permission_mode, None);
+    assert_eq!(st.creates[0].no_sandbox, None);
+}
+
+#[test]
+fn a_remote_cannot_ask_for_external_resume_or_no_sandbox() {
+    let w = world();
+    control(&w, true, true, true);
+    let fake = Fake::default();
+    let items: Vec<_> = [
+        (
+            "external_resume",
+            json!({"id": "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b"}),
+        ),
+        ("resume", json!("2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b")),
+        ("fork", json!(true)),
+        ("no_sandbox", json!({})),
+        ("no_sandbox", json!(true)),
+    ]
+    .into_iter()
+    .map(|(key, value)| create(&w, json!({ key: value })))
+    .collect();
+    let r = session(&w, "laptop", E1, &fake, &items);
+    assert!(r.iter().all(|x| x["error"] == "bad_params"), "{r:?}");
+    assert_eq!(fake.called("runs.create"), 0);
+    let r = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    assert!(r[0]["result"].is_object(), "{r:?}");
+    let st = fake.0.lock().unwrap();
+    assert_eq!(st.creates.len(), 1);
+    assert_eq!(st.creates[0].external_resume, None);
     assert_eq!(st.creates[0].no_sandbox, None);
 }
 

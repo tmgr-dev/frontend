@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.0.86
+
+- `tmgr ask` and `ask_owner`: several repositories on one card (`--diff`, `repos`), ready patches from a file or stdin (`--patch`, `patches`), and links to PRs, commits, tags and other URLs (`--commit`, `--tag`, `--link`, repeated `--pr`).
+- Resend updates the open card in place with `--key` or `--replaces`. A waiter on the old id gets the answer, and an answered card is never reopened.
+- `tmgr ask --wait` waits while the desktop is down instead of exiting 8 at once. Exit 8 now comes only at `--timeout`.
+- A long-running `tmgr mcp` no longer gets `error: unauthorized` after the desktop restarts. Restart `tmgr mcp` to pick this up.
+- A text-only `reply_owner` lands in the one line thread waiting for the agent. With two or more waiting threads it is refused and names them.
+
+## 1.0.85
+
+- Smart search in the `tmgr run` session list: press Ctrl+A and ask a question. The local index picks candidate sessions, only their fragments go to Claude Code, and it answers with the best sessions and a one-line reason each. It runs only on that key press and uses your own Claude Code login and limits.
+- The key is hidden when Claude Code is not installed or not logged in; typing to filter keeps working. Codex is not used for this.
+- Sending fragments of a Codex session to Claude Code asks for a typed `send` first. To be asked again, delete `smart-search.toml` from your tmgr config folder.
+- The search call runs without tools and does not add a session to your history.
+
+## 1.0.84
+
+- `tmgr resume <session> --fork` and the fork action now work for a runner session that runs Codex: the fork continues from the conversation of that session, and `tmgr` names the new conversation.
+- Runner: restart it to use this.
+
+## 1.0.83
+
+- The new-session form in `tmgr attach` has Bypass and No sandbox toggles. Turning one on asks you to type the same confirmation as `tmgr run`, right in the form; pasted or queued input is refused. Neither toggle is available inside an agent session.
+
+## 1.0.82
+
+- Bare `tmgr run` on a terminal now opens a menu: pick the agent, then a new session or one to resume or fork, then the flags, with the final command shown before it starts. The menu remembers your last choice as a preselection and never skips the typed confirmation for bypass or no-sandbox.
+- Typing in the session list filters it through the local search index. Rows of a conversation running elsewhere, or whose folder is gone, say so up front.
+- The menu does not appear when flags are given, without a terminal, or inside an agent session: `tmgr run` behaves as before in those cases.
+
+## 1.0.81
+
+- New `tmgr session list`: past sessions from the runner, Claude Code and Codex, with agent, project, time and the start of the conversation. `--agent`, `--search`, `--limit` and `--json` are supported.
+- `--search` uses a full-text index kept on this machine in your tmgr config folder, private to your user. It is built only with log-read consent (`tmgr usage consent`), and denying consent deletes it. Session files are only read.
+- `tmgr resume` now also accepts a Claude Code or Codex conversation id, plus `--fork`, `--mode bypass`, `--no-sandbox` and `--no-attach`. Bypass and no-sandbox ask for a typed confirmation, as `tmgr run` does, and stay unavailable to queue, autopilot and link starts.
+- Ordinary sessions live in your real home folder, so resuming one by conversation id needs `--no-sandbox`. A conversation running in another terminal cannot be resumed, only forked. A session whose folder is gone or moved is refused.
+- Runner: restart it to use these (`external_resume.v1`).
+
 ## 1.0.80
 
 - New `tmgr skills` commands: `list`, `show`, `put`, `delete`, `attach` and `detach` manage your shared skills library and attach skills to personas.

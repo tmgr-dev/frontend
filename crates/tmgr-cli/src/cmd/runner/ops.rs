@@ -11,13 +11,16 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_core::config::{self, Config};
 use tmgr_core::error::{Error, Kind, Result};
-use tmgr_ipc::api::{CandidateInfo, CreateReq, RestoredRun, RunCreateReq, SessionInfo, StateKind};
+use tmgr_ipc::api::{
+    CandidateInfo, CreateReq, RestoredRun, ResumeParams, RunCreateReq, SessionInfo, StateKind,
+};
 use tmgr_runner::client::Client;
 use tmgr_runner::daemon::{self, RunnerConfig};
 use tmgr_runner::exe;
 use tmgr_runner::login;
 use tmgr_runner::profile::{self, ProfileSet};
 use tmgr_runner::restore;
+use tmgr_runner::resume::valid_resume_id;
 use tmgr_runner::sanitize::sanitize_text;
 use tmgr_runner::seedguard;
 use tmgr_runner::wire::now_ms;
@@ -127,10 +130,13 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
         RunnerCommands::Session {
             command: super::SessionCmd::Export(a),
         } => super::attach_export_cmd::run(o, a),
+        RunnerCommands::Session {
+            command: super::SessionCmd::List(a),
+        } => super::session_list::run(o, a),
     }
 }
 
-fn clean(s: &str) -> String {
+pub(super) fn clean(s: &str) -> String {
     sanitize_text(s).into_owned()
 }
 
@@ -273,11 +279,12 @@ pub(super) fn run_create_run(
         exe_pin: None,
         argv_sha256: None,
         no_sandbox: None,
+        external_resume: None,
         permission_cards: false,
     }
 }
 
-fn elevated(
+pub(super) fn elevated(
     mut req: RunCreateReq,
     mode: Option<super::PermissionMode>,
     no_sandbox: bool,
@@ -400,7 +407,7 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
     Ok(emit(o, &info, human))
 }
 
-fn list_or_empty(cfg: &RunnerConfig) -> Result<Vec<SessionInfo>> {
+pub(super) fn list_or_empty(cfg: &RunnerConfig) -> Result<Vec<SessionInfo>> {
     match Client::connect(&cfg.dir) {
         Ok(mut c) => c.list().map_err(rerr),
         Err(e) if is_down(&e) => Ok(Vec::new()),
@@ -450,7 +457,7 @@ fn paint_badge(o: &Opts, s: &SessionInfo) -> String {
     }
 }
 
-fn short_cwd(cwd: &str) -> String {
+pub(super) fn short_cwd(cwd: &str) -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     if home.is_empty() {
         return cwd.to_string();
@@ -1124,17 +1131,39 @@ fn resume_report(r: &RestoredRun, bin: &str) -> String {
         None if r.resumed => "resumed",
         None => "started fresh",
     };
-    format!("{how} {name} ({id}); attach with: {bin} attach {id}")
+    let conversation = r
+        .session
+        .agent_session_id
+        .as_deref()
+        .map(|c| format!(" conversation {}", line(c)))
+        .unwrap_or_default();
+    format!("{how} {name} ({id}){conversation}; attach with: {bin} attach {id}")
 }
 
 fn resume(o: &Opts, a: &ResumeArgs) -> Result<i32> {
     tmgr_link::privileged::guard()?;
+    if valid_resume_id(&a.session) && !super::resume_any::is_tmgr_session(&a.session)? {
+        return super::resume_any::external(o, a);
+    }
     let (mut c, s) = with_session(&a.session)?;
+    if a.fork {
+        return super::resume_any::fork_tmgr(o, a, &s);
+    }
     if s.state.kind != StateKind::Exited {
         return Err(Error::new(
             Kind::Conflict,
             format!("{} is still running", clean(&s.name)),
         ));
+    }
+    let flagged = a.mode.is_some() || a.no_sandbox;
+    let known = s
+        .agent_session_id
+        .clone()
+        .filter(|id| a.no_sandbox && valid_resume_id(id));
+    if let Some(id) = &known {
+        for w in super::resume_any::check_known(id, false)? {
+            eprintln!("{w}");
+        }
     }
     eprintln!(
         "Resume this session?\n  session  {}\n  name     {}\n  folder   {}",
@@ -1142,8 +1171,33 @@ fn resume(o: &Opts, a: &ResumeArgs) -> Result<i32> {
         clean(&s.name),
         clean(&s.cwd)
     );
-    crate::interact::confirm("Start it again?", false, false)?;
-    let r = c.resume(&s.id, s.cols, s.rows).map_err(rerr)?;
+    if a.no_sandbox {
+        eprintln!("{}", super::resume_any::conversation_line(&s));
+    }
+    let r = if flagged {
+        let bypass = a.mode == Some(super::PermissionMode::Bypass);
+        super::privilege::confirm(bypass, a.no_sandbox, false, false)?;
+        if let Some(id) = &known {
+            super::resume_any::check_known(id, false)?;
+        }
+        super::privilege::check_caps(&c.welcome().caps, bypass, a.no_sandbox)?;
+        super::privilege::check_external_cap(&c.welcome().caps)?;
+        c.resume_with(ResumeParams {
+            id: s.id.clone(),
+            cols: s.cols,
+            rows: s.rows,
+            permission_mode: a.mode.map(|m| m.as_str().to_string()),
+            no_sandbox: super::privilege::request(a.no_sandbox),
+        })
+    } else {
+        crate::interact::confirm("Start it again?", false, false)?;
+        c.resume(&s.id, s.cols, s.rows)
+    }
+    .map_err(rerr)?;
+    if (flagged || a.attach) && !a.no_attach && !o.json && std::io::stdout().is_terminal() {
+        return attach::run(&runner_config()?, &r.session.id);
+    }
+    let r = super::resume_any::clean_run(&r);
     Ok(emit(o, &r, resume_report(&r, &super::bin())))
 }
 
@@ -1175,6 +1229,25 @@ mod tests {
         assert_eq!(say(Some("fresh"), false), format!("started fresh {tail}"));
         assert_eq!(say(None, true), format!("resumed {tail}"));
         assert_eq!(say(None, false), format!("started fresh {tail}"));
+    }
+
+    #[test]
+    fn resume_report_names_the_conversation_that_was_resumed() {
+        let mut r = restored(Some("id"), true);
+        r.session.agent_session_id = Some("2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b".into());
+        let text = resume_report(&r, "tmgr");
+        assert!(
+            text.contains("(s_bbbbbbbbbb) conversation 2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b;"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn runner_errors_lose_c1_and_bidi_characters() {
+        let e = rerr(std::io::Error::other(
+            "invalid_params: cwd must be given as its resolved path (/a\u{9b}b\u{202e})",
+        ));
+        assert_eq!(e.message, "cwd must be given as its resolved path (/a?b?)");
     }
 
     #[test]

@@ -3,6 +3,15 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.99 — 2026-11-05
+
+- Decisions: a card can show several repositories and ready patches, grouped in the diff view.
+- Decisions: PRs, commits, tags, the task and other links sit next to the card and open in the browser.
+- Decisions: a resent question updates the open card in place and keeps its thread.
+- Decisions: close a card from the list with the cross, without opening it. A waiting sender sees it as dismissed.
+- Decisions: an agent's plain reply to a line comment now lands in that line's thread.
+- Decisions: the waiting note now says what is true: no agent listening, session ended, or the agent has the message and has not replied yet.
+
 ## 0.9.98 — 2026-11-04
 
 - Decisions: a diff that times out now says macOS may be waiting for access to the disk, and to press Refresh after allowing it. Cards whose session ended no longer show "Agent is waiting", and answering one says it was saved but the session has ended. The window now shows "All clear" after the last pending card; finished cards stay in the queue.

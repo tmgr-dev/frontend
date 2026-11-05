@@ -16,27 +16,38 @@
 			<div class="group" :title="group.agent">
 				{{ group.label }} · {{ group.agent }}
 			</div>
-			<button
-				v-for="card in group.cards"
-				:key="card.id"
-				type="button"
-				class="item"
-				:class="{ active: card.id === selectedId, done: isDone(card) }"
-				@click="$emit('select', card.id)"
-			>
-				<div class="row">
-					<span class="tag" :class="'t-' + card.kind">{{
-						KIND_LABELS[card.kind]
-					}}</span>
-					<span v-if="card.state === 'deferred'" class="k">deferred</span>
-					<span
-						v-if="card.blocking && !isDone(card) && !card.session_gone"
-						class="block"
-						title="An agent is waiting"
-					></span>
-				</div>
-				<span class="t">{{ card.title }}</span>
-			</button>
+			<div v-for="card in group.cards" :key="card.id" class="itemw">
+				<button
+					type="button"
+					class="item"
+					:class="{ active: card.id === selectedId, done: isDone(card) }"
+					@click="$emit('select', card.id)"
+				>
+					<div class="row">
+						<span class="tag" :class="'t-' + card.kind">{{
+							KIND_LABELS[card.kind]
+						}}</span>
+						<span v-if="card.state === 'deferred'" class="k">deferred</span>
+						<span v-if="card.updated_ms" class="upd">updated</span>
+						<span
+							v-if="card.blocking && !isDone(card) && !card.session_gone"
+							class="block"
+							title="An agent is waiting"
+						></span>
+					</div>
+					<span class="t">{{ card.title }}</span>
+				</button>
+				<button
+					v-if="!isDone(card)"
+					type="button"
+					class="close"
+					aria-label="Close card"
+					title="Close card"
+					@click.stop="$emit('dismiss', card.id)"
+				>
+					×
+				</button>
+			</div>
 		</template>
 	</nav>
 </template>
@@ -54,7 +65,7 @@
 			selectedId: { type: String as PropType<string | null>, default: null },
 			progress: { type: Object as PropType<QueueProgress>, required: true },
 		},
-		emits: ['select'],
+		emits: ['select', 'dismiss'],
 		data() {
 			return { KIND_LABELS };
 		},

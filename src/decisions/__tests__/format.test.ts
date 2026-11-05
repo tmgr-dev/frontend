@@ -1,6 +1,7 @@
 import {
 	isHttpUrl,
 	linkLabel,
+	linkSections,
 	recommendedOption,
 	sourceLabel,
 } from '../format';
@@ -33,5 +34,49 @@ describe('format', () => {
 		expect(recommendedOption(card)?.id).toBe('b');
 		expect(recommendedOption(makeCard())).toBeNull();
 		expect(sourceLabel(card)).toBe('codex · Review');
+	});
+});
+
+describe('link sections', () => {
+	it('shows old cards with only task and pr', () => {
+		const sections = linkSections({
+			task: 'https://tmgr.dev/ws/tasks/5',
+			pr: 'https://github.com/o/r/pull/7',
+		});
+		expect(sections.map((s) => s.title)).toEqual(['PRs', 'Task']);
+		expect(sections[0].entries[0].label).toBe('PR #7');
+	});
+
+	it('merges items, groups them and dedups by url', () => {
+		const sections = linkSections({
+			pr: 'https://github.com/o/r/pull/7',
+			items: [
+				{ kind: 'pr', url: 'https://github.com/o/r/pull/7', label: 'Main PR' },
+				{ kind: 'commit', url: 'https://github.com/o/r/commit/abcdef1' },
+				{ kind: 'tag', url: 'https://github.com/o/r/releases/tag/v1' },
+				{ kind: 'url', url: 'https://example.com/doc' },
+			],
+		});
+		expect(sections.map((s) => s.title)).toEqual([
+			'PRs',
+			'Commits',
+			'Tags',
+			'Other',
+		]);
+		expect(sections[0].entries).toHaveLength(1);
+		expect(sections[0].entries[0].label).toBe('Main PR');
+		expect(sections[3].entries[0].label).toBe('example.com/doc');
+	});
+
+	it('keeps a non-url task as text', () => {
+		const [section] = linkSections({ task: 'TM-780' });
+		expect(section.entries[0]).toMatchObject({
+			label: 'TM-780',
+			url: 'TM-780',
+		});
+	});
+
+	it('is empty without links', () => {
+		expect(linkSections({})).toEqual([]);
 	});
 });

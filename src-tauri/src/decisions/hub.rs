@@ -1,8 +1,9 @@
-use std::path::Path;
-use std::sync::{Condvar, Mutex, MutexGuard};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
-use tmgr_ipc::decisions::{drain_spool, CardIn, Event, LineComment};
+use tmgr_ipc::decisions::{drain_spool, CardIn, Event, LineComment, PatchIn};
 
 use super::store::{AnswerIn, CardView, MessageIn, Store};
 
@@ -13,10 +14,40 @@ pub enum Change {
 
 pub type Sink = Box<dyn Fn(&Change, usize) + Send + Sync>;
 
+const LISTEN_GRACE: Duration = Duration::from_secs(5);
+
+#[derive(Default)]
+struct Listen {
+  waiters: usize,
+  last: Option<Instant>,
+  idle_pending: bool,
+  delivered: u64,
+}
+
+impl Listen {
+  fn active(&self, grace: Duration) -> bool {
+    self.waiters > 0 || self.last.is_some_and(|t| t.elapsed() < grace)
+  }
+}
+
 pub struct Hub {
   store: Mutex<Store>,
   cv: Condvar,
   sink: Sink,
+  spool: Option<PathBuf>,
+  listen: Mutex<HashMap<String, Listen>>,
+  grace: Duration,
+}
+
+struct Waiting<'a> {
+  hub: &'a Arc<Hub>,
+  id: String,
+}
+
+impl Drop for Waiting<'_> {
+  fn drop(&mut self) {
+    self.hub.leave(&self.id);
+  }
 }
 
 fn body_of(card: &CardIn) -> String {
@@ -25,7 +56,95 @@ fn body_of(card: &CardIn) -> String {
 
 impl Hub {
   pub fn new(store: Store, sink: Sink) -> Hub {
-    Hub { store: Mutex::new(store), cv: Condvar::new(), sink }
+    Hub {
+      store: Mutex::new(store),
+      cv: Condvar::new(),
+      sink,
+      spool: None,
+      listen: Mutex::new(HashMap::new()),
+      grace: LISTEN_GRACE,
+    }
+  }
+
+  pub fn with_spool(mut self, dir: PathBuf) -> Hub {
+    self.spool = Some(dir);
+    self
+  }
+
+  #[cfg(test)]
+  fn with_grace(mut self, grace: Duration) -> Hub {
+    self.grace = grace;
+    self
+  }
+
+  fn lock_listen(&self) -> MutexGuard<'_, HashMap<String, Listen>> {
+    self.listen.lock().unwrap_or_else(|p| p.into_inner())
+  }
+
+  fn mark(&self, store: &Store, mut view: CardView) -> CardView {
+    let (listening, upto) = self.lock_listen().get(&view.id).map_or((false, 0), |l| (l.active(self.grace), l.delivered));
+    view.listening = listening;
+    let seqs = store.message_event_seqs(&view.id);
+    for (k, m) in view.messages.iter_mut().filter(|m| m.author == "owner").enumerate() {
+      m.delivered = seqs.get(k).is_some_and(|s| *s <= upto);
+    }
+    view
+  }
+
+  fn deliver(&self, id: &str, seq: u64) -> bool {
+    let mut map = self.lock_listen();
+    let l = map.entry(id.to_owned()).or_default();
+    let rose = seq > l.delivered;
+    l.delivered = l.delivered.max(seq);
+    rose
+  }
+
+  fn enter<'a>(self: &'a Arc<Self>, id: &str) -> Waiting<'a> {
+    let was = {
+      let mut map = self.lock_listen();
+      let l = map.entry(id.to_owned()).or_default();
+      let was = l.active(self.grace);
+      l.waiters += 1;
+      was
+    };
+    if !was {
+      self.changed(Change::Updated);
+    }
+    Waiting { hub: self, id: id.to_owned() }
+  }
+
+  fn leave(self: &Arc<Self>, id: &str) {
+    let spawn = {
+      let mut map = self.lock_listen();
+      let Some(l) = map.get_mut(id) else { return };
+      l.waiters = l.waiters.saturating_sub(1);
+      l.last = Some(Instant::now());
+      let spawn = l.waiters == 0 && !l.idle_pending;
+      l.idle_pending |= spawn;
+      spawn
+    };
+    if spawn {
+      let (weak, id, grace) = (Arc::downgrade(self), id.to_owned(), self.grace);
+      std::thread::spawn(move || announce_idle(weak, id, grace));
+    }
+  }
+
+  fn settle(&self, id: &str) -> Option<Duration> {
+    let mut map = self.lock_listen();
+    let l = map.get_mut(id)?;
+    if l.waiters > 0 {
+      l.idle_pending = false;
+      return None;
+    }
+    let left = l.last.map_or(Duration::ZERO, |t| self.grace.saturating_sub(t.elapsed()));
+    if !left.is_zero() {
+      return Some(left);
+    }
+    l.last = None;
+    l.idle_pending = false;
+    drop(map);
+    self.changed(Change::Updated);
+    None
   }
 
   fn lock(&self) -> MutexGuard<'_, Store> {
@@ -42,16 +161,18 @@ impl Hub {
     self.lock().open_count()
   }
 
-  pub fn create(&self, card: CardIn) -> Result<String, String> {
+  pub fn create(&self, card: CardIn) -> Result<(String, &'static str), String> {
     let created = self.lock().create(card)?;
     if created.fresh {
       self.changed(Change::Created { title: created.card.title.clone(), body: body_of(&created.card) });
+    } else if created.changed {
+      self.changed(Change::Updated);
     }
-    Ok(created.id)
+    Ok((created.id, created.outcome))
   }
 
   pub fn ingest_spool(&self, dir: &Path) -> usize {
-    let mut added = 0;
+    let (mut added, mut changed) = (0, false);
     let _ = drain_spool(dir, |card| {
       if Store::check(&card).is_err() {
         return true;
@@ -59,36 +180,71 @@ impl Hub {
       match self.lock().create(card) {
         Ok(created) => {
           added += usize::from(created.fresh);
+          changed |= created.changed;
           true
         }
         Err(_) => false,
       }
     });
-    if added > 0 {
+    if changed {
       self.changed(Change::Updated);
     }
     added
   }
 
-  pub fn wait(&self, id: &str, since: u64, timeout: Duration, final_only: bool) -> Result<Option<Event>, String> {
+  pub fn wait(
+    self: &Arc<Self>,
+    id: &str,
+    since: u64,
+    timeout: Duration,
+    final_only: bool,
+  ) -> Result<(String, Option<Event>), String> {
     let deadline = Instant::now() + timeout;
     let mut guard = self.lock();
+    if guard.canon(id).is_err() {
+      if let Some(dir) = &self.spool {
+        drop(guard);
+        self.ingest_spool(dir);
+        guard = self.lock();
+      }
+    }
+    let id = guard.canon(id)?;
+    let mut rose = !final_only && self.deliver(&id, since);
+    if let Some(e) = guard.wait_event(&id, since, final_only)? {
+      rose |= !final_only && !e.is_final() && self.deliver(&id, e.seq);
+      drop(guard);
+      if rose {
+        self.changed(Change::Updated);
+      }
+      return Ok((id, Some(e)));
+    }
+    drop(guard);
+    if rose {
+      self.changed(Change::Updated);
+    }
+    let _waiting = (!final_only).then(|| self.enter(&id));
+    guard = self.lock();
     loop {
-      if let Some(e) = guard.wait_event(id, since, final_only)? {
-        return Ok(Some(e));
+      if let Some(e) = guard.wait_event(&id, since, final_only)? {
+        let rose = !final_only && !e.is_final() && self.deliver(&id, e.seq);
+        drop(guard);
+        if rose {
+          self.changed(Change::Updated);
+        }
+        return Ok((id, Some(e)));
       }
       let left = deadline.saturating_duration_since(Instant::now());
       if left.is_zero() {
-        return Ok(None);
+        return Ok((id, None));
       }
       guard = self.cv.wait_timeout(guard, left).unwrap_or_else(|p| p.into_inner()).0;
     }
   }
 
-  pub fn reply(&self, id: &str, text: Option<String>, lines: Vec<LineComment>) -> Result<(), String> {
-    self.lock().agent_message(id, text, lines)?;
+  pub fn reply(&self, id: &str, text: Option<String>, lines: Vec<LineComment>) -> Result<String, String> {
+    let id = self.lock().agent_message(id, text, lines)?;
     self.changed(Change::Updated);
-    Ok(())
+    Ok(id)
   }
 
   pub fn close_session(&self, agent: &str, session: &str) -> Result<u64, String> {
@@ -112,11 +268,21 @@ impl Hub {
   }
 
   pub fn get(&self, id: &str) -> Result<CardView, String> {
-    self.lock().get(id)?.ok_or_else(|| "unknown card".to_owned())
+    let store = self.lock();
+    let view = store.get(id)?.ok_or_else(|| "unknown card".to_owned())?;
+    Ok(self.mark(&store, view))
+  }
+
+  pub fn get_with_patches(&self, id: &str) -> Result<(CardView, Vec<PatchIn>), String> {
+    let store = self.lock();
+    let view = store.get(id)?.ok_or_else(|| "unknown card".to_owned())?;
+    let patches = store.patches(&view.id)?;
+    Ok((self.mark(&store, view), patches))
   }
 
   pub fn list(&self) -> Result<Vec<CardView>, String> {
-    self.lock().list()
+    let store = self.lock();
+    Ok(store.list()?.into_iter().map(|v| self.mark(&store, v)).collect())
   }
 
   pub fn check_liveness(&self, alive: impl Fn(u32) -> bool) {
@@ -132,6 +298,17 @@ impl Hub {
   }
 }
 
+fn announce_idle(hub: Weak<Hub>, id: String, mut delay: Duration) {
+  loop {
+    std::thread::sleep(delay);
+    let Some(hub) = hub.upgrade() else { return };
+    match hub.settle(&id) {
+      Some(left) => delay = left,
+      None => return,
+    }
+  }
+}
+
 pub fn pid_alive(pid: u32) -> bool {
   let Ok(pid) = i32::try_from(pid) else { return true };
   if pid <= 0 {
@@ -144,6 +321,216 @@ pub fn pid_alive(pid: u32) -> bool {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::sync::atomic::{AtomicUsize, Ordering};
+  use tmgr_ipc::decisions::Source;
+
+  const GRACE: Duration = Duration::from_millis(300);
+
+  fn rig() -> (Arc<Hub>, Arc<AtomicUsize>, String) {
+    let updates = Arc::new(AtomicUsize::new(0));
+    let seen = updates.clone();
+    let sink: Sink = Box::new(move |c, _| {
+      if matches!(c, Change::Updated) {
+        seen.fetch_add(1, Ordering::SeqCst);
+      }
+    });
+    let store = Store::open(Path::new(":memory:")).unwrap();
+    let hub = Arc::new(Hub::new(store, sink).with_grace(GRACE));
+    let card = CardIn {
+      title: "Q".into(),
+      source: Source { agent: "claude".into(), ..Default::default() },
+      ..Default::default()
+    };
+    let (id, _) = hub.create(card).unwrap();
+    updates.store(0, Ordering::SeqCst);
+    (hub, updates, id)
+  }
+
+  fn listening(hub: &Hub, id: &str) -> bool {
+    hub.get(id).unwrap().listening
+  }
+
+  fn until(what: &str, f: impl Fn() -> bool) {
+    let t = Instant::now();
+    while !f() {
+      assert!(t.elapsed() < Duration::from_secs(5), "timed out: {what}");
+      std::thread::sleep(Duration::from_millis(10));
+    }
+  }
+
+  #[test]
+  fn listening_is_true_during_a_wait_and_for_the_grace_after_it() {
+    let (hub, updates, id) = rig();
+    assert!(!listening(&hub, &id));
+    let h = hub.clone();
+    let id2 = id.clone();
+    let t = std::thread::spawn(move || h.wait(&id2, 0, Duration::from_millis(400), false).unwrap());
+    until("listening", || listening(&hub, &id));
+    assert_eq!(updates.load(Ordering::SeqCst), 1);
+    assert!(hub.list().unwrap()[0].listening);
+    assert!(hub.get_with_patches(&id).unwrap().0.listening);
+    t.join().unwrap();
+    assert!(listening(&hub, &id));
+    until("idle", || !listening(&hub, &id));
+    until("idle emit", || updates.load(Ordering::SeqCst) == 2);
+  }
+
+  #[test]
+  fn a_reconnect_inside_the_grace_period_does_not_flicker() {
+    let (hub, updates, id) = rig();
+    hub.wait(&id, 0, Duration::ZERO, false).unwrap();
+    std::thread::sleep(GRACE / 3);
+    assert!(listening(&hub, &id));
+    hub.wait(&id, 0, Duration::ZERO, false).unwrap();
+    std::thread::sleep(GRACE / 3 * 2);
+    assert!(listening(&hub, &id));
+    assert_eq!(updates.load(Ordering::SeqCst), 1);
+    until("idle", || !listening(&hub, &id));
+    until("idle emit", || updates.load(Ordering::SeqCst) == 2);
+    std::thread::sleep(GRACE);
+    assert_eq!(updates.load(Ordering::SeqCst), 2);
+  }
+
+  #[test]
+  fn an_alias_waiter_marks_the_canonical_card() {
+    let (hub, _, id) = rig();
+    let card = CardIn {
+      title: "Q".into(),
+      replaces: Some(id.clone()),
+      source: Source { agent: "claude".into(), ..Default::default() },
+      ..Default::default()
+    };
+    let (new_id, _) = hub.create(card).unwrap();
+    let canon = hub.get(&new_id).unwrap().id;
+    hub.wait(&new_id, 0, Duration::ZERO, false).unwrap();
+    assert!(listening(&hub, &new_id));
+    assert!(listening(&hub, &canon));
+    assert!(listening(&hub, &id));
+  }
+
+  #[test]
+  fn the_waiter_is_released_on_answer_and_on_error() {
+    let (hub, _, id) = rig();
+    let (h, id2) = (hub.clone(), id.clone());
+    let t = std::thread::spawn(move || h.wait(&id2, 0, Duration::from_secs(10), false).unwrap());
+    until("listening", || listening(&hub, &id));
+    hub.answer(&id, AnswerIn { dismissed: true, ..Default::default() }).unwrap();
+    assert!(t.join().unwrap().1.is_some());
+    until("idle", || !listening(&hub, &id));
+    assert_eq!(hub.lock_listen().get(&id).map(|l| l.waiters).unwrap_or(0), 0);
+    assert!(hub.wait("c_00000000000000000000000000000000", 0, Duration::ZERO, false).is_err());
+  }
+
+  #[test]
+  fn finished_cards_are_not_marked_by_a_repeated_wait() {
+    let (hub, updates, id) = rig();
+    hub.answer(&id, AnswerIn { dismissed: true, ..Default::default() }).unwrap();
+    updates.store(0, Ordering::SeqCst);
+    assert!(hub.wait(&id, 0, Duration::ZERO, false).unwrap().1.is_some());
+    assert!(!listening(&hub, &id));
+    assert_eq!(updates.load(Ordering::SeqCst), 0);
+  }
+
+  #[test]
+  fn dropping_the_hub_does_not_wait_for_the_idle_thread() {
+    let (hub, _, id) = rig();
+    hub.wait(&id, 0, Duration::ZERO, false).unwrap();
+    let weak = Arc::downgrade(&hub);
+    drop(hub);
+    assert!(weak.upgrade().is_none());
+  }
+
+  fn say(hub: &Hub, id: &str, text: &str) {
+    hub.message(id, MessageIn { text: text.into(), ..Default::default() }).unwrap();
+  }
+
+  fn delivered(hub: &Hub, id: &str) -> Vec<bool> {
+    hub.get(id).unwrap().messages.iter().filter(|m| m.author == "owner").map(|m| m.delivered).collect()
+  }
+
+  #[test]
+  fn a_returned_message_stays_delivered_after_the_grace() {
+    let (hub, _, id) = rig();
+    say(&hub, &id, "one");
+    assert_eq!(delivered(&hub, &id), [false]);
+    assert_eq!(hub.wait(&id, 0, Duration::ZERO, false).unwrap().1.unwrap().seq, 1);
+    assert_eq!(delivered(&hub, &id), [true]);
+    until("idle", || !listening(&hub, &id));
+    assert_eq!(delivered(&hub, &id), [true]);
+    assert!(hub.list().unwrap()[0].messages[0].delivered);
+    assert!(hub.get_with_patches(&id).unwrap().0.messages[0].delivered);
+  }
+
+  #[test]
+  fn delivery_follows_message_events_not_event_seqs() {
+    let (hub, updates, id) = rig();
+    hub.answer(&id, AnswerIn { deferred: true, ..Default::default() }).unwrap();
+    say(&hub, &id, "one");
+    say(&hub, &id, "two");
+    let first = hub.wait(&id, 0, Duration::ZERO, false).unwrap().1.unwrap();
+    assert_eq!(first.seq, 1);
+    assert_eq!(delivered(&hub, &id), [false, false]);
+    let second = hub.wait(&id, first.seq, Duration::ZERO, false).unwrap().1.unwrap();
+    assert_eq!(second.seq, 2);
+    assert_eq!(delivered(&hub, &id), [true, false]);
+    until("idle", || !listening(&hub, &id));
+    updates.store(0, Ordering::SeqCst);
+    say(&hub, &id, "three");
+    assert_eq!(delivered(&hub, &id), [true, false, false]);
+    hub.wait(&id, second.seq, Duration::ZERO, false).unwrap();
+    assert_eq!(delivered(&hub, &id), [true, true, false]);
+    hub.wait(&id, 3, Duration::ZERO, false).unwrap();
+    assert_eq!(delivered(&hub, &id), [true, true, true]);
+  }
+
+  #[test]
+  fn a_cursor_past_a_message_marks_it_delivered_without_returning_it() {
+    let (hub, updates, id) = rig();
+    say(&hub, &id, "one");
+    updates.store(0, Ordering::SeqCst);
+    assert!(hub.wait(&id, 1, Duration::ZERO, false).unwrap().1.is_none());
+    assert_eq!(delivered(&hub, &id), [true]);
+    assert!(updates.load(Ordering::SeqCst) >= 1);
+  }
+
+  #[test]
+  fn a_final_only_wait_neither_listens_nor_delivers() {
+    let (hub, _, id) = rig();
+    say(&hub, &id, "one");
+    let (h, id2) = (hub.clone(), id.clone());
+    let t = std::thread::spawn(move || h.wait(&id2, 5, Duration::from_millis(300), true).unwrap());
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(!listening(&hub, &id));
+    assert_eq!(delivered(&hub, &id), [false]);
+    assert!(t.join().unwrap().1.is_none());
+    assert!(!listening(&hub, &id));
+    assert_eq!(delivered(&hub, &id), [false]);
+  }
+
+  #[test]
+  fn waits_do_not_deadlock_with_concurrent_reads() {
+    let (hub, _, id) = rig();
+    say(&hub, &id, "one");
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut handles = Vec::new();
+    for final_only in [true, false, true, false] {
+      let (h, id2, tx) = (hub.clone(), id.clone(), tx.clone());
+      handles.push(std::thread::spawn(move || {
+        for _ in 0..20 {
+          h.wait(&id2, 0, Duration::from_millis(5), final_only).unwrap();
+          h.get(&id2).unwrap();
+          h.list().unwrap();
+        }
+        tx.send(()).unwrap();
+      }));
+    }
+    for _ in 0..4 {
+      rx.recv_timeout(Duration::from_secs(10)).expect("deadlock");
+    }
+    for t in handles {
+      t.join().unwrap();
+    }
+  }
 
   #[test]
   fn pid_probe() {

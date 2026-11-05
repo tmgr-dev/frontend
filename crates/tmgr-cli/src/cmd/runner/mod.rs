@@ -25,11 +25,13 @@ mod attach_templates;
 mod attach_title;
 mod attach_usage;
 pub(crate) mod bind;
+pub(crate) mod catalog;
 pub(crate) mod checkpoints;
 pub(crate) mod cloud;
 mod gate;
 mod gc;
 mod local;
+pub(crate) mod menu;
 mod observe;
 mod ops;
 mod privilege;
@@ -37,8 +39,10 @@ mod remote;
 mod remote_attach;
 mod restart;
 mod restore;
+mod resume_any;
 mod run_task;
 mod service;
+mod session_list;
 mod session_wt;
 mod trusted;
 mod watch;
@@ -95,6 +99,27 @@ pub enum SessionCmd {
     Summary(SummaryArgs),
     /// [experimental] Export a Claude session as Markdown (to a file or a TMGR page); only when you ask, after a secret scan
     Export(ExportArgs),
+    /// [experimental] List past sessions: tmgr's own and those of Claude Code and Codex on this machine (nothing leaves it)
+    List(SessionListArgs),
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum SessionAgent {
+    Claude,
+    Codex,
+}
+
+#[derive(Args)]
+pub struct SessionListArgs {
+    /// Only sessions of this agent
+    #[arg(long, value_enum)]
+    pub agent: Option<SessionAgent>,
+    /// Find sessions whose conversation contains these words (builds a local index first)
+    #[arg(long, value_name = "TEXT")]
+    pub search: Option<String>,
+    /// Most rows to show
+    #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(1..=1000))]
+    pub limit: u32,
 }
 
 #[derive(Args)]
@@ -521,8 +546,22 @@ pub struct RmArgs {
 
 #[derive(Args)]
 pub struct ResumeArgs {
-    /// Session id or name of an exited session
+    /// Session id or name of an exited session, or the id of an agent conversation
     pub session: String,
+    /// Continue as a new session that leaves the original conversation untouched
+    #[arg(long)]
+    pub fork: bool,
+    /// Permission mode to resume with
+    #[arg(long, value_enum, value_name = "MODE")]
+    pub mode: Option<PermissionMode>,
+    /// Resume with your real home folder, with no sandbox
+    #[arg(long)]
+    pub no_sandbox: bool,
+    /// Start the session without opening the live view
+    #[arg(long)]
+    pub no_attach: bool,
+    #[arg(long, hide = true)]
+    pub attach: bool,
 }
 
 pub struct Opts<'a> {
@@ -597,7 +636,7 @@ pub fn rerr(e: io::Error) -> Error {
     ) {
         return Error::new(Kind::Offline, "lost the connection to the runner");
     }
-    let msg = e.to_string();
+    let msg = tmgr_runner::sanitize::sanitize_text(&e.to_string()).into_owned();
     if msg.starts_with("unknown_method: ") {
         return Error::new(Kind::Conflict, "the running runner is older than this tmgr")
             .hint(format!("{0} runner restart", bin()));

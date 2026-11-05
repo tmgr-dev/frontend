@@ -278,6 +278,16 @@ fn consent(command: Option<ConsentCommand>) -> Result<Output> {
         .store
         .change_log_consent(&change, Utc::now())
         .map_err(fail)?;
+    #[cfg(feature = "runner")]
+    if let Some(path) = tmgr_usage::paths::sessions_index(&tmgr_usage::paths::Env::from_process()) {
+        let granted = c.state == ReadLogs::Granted;
+        crate::cmd::runner::catalog::index::enforce_consent(
+            &path,
+            granted && c.claude,
+            granted && c.codex,
+        )
+        .map_err(|e| Error::internal(format!("could not remove the search index: {e}")))?;
+    }
     let tools: Vec<&str> = [(c.claude, "Claude Code"), (c.codex, "Codex")]
         .into_iter()
         .filter_map(|(on, name)| on.then_some(name))
@@ -314,6 +324,8 @@ fn reset(ctx: &Ctx) -> Result<Output> {
     let _lock = tmgr_usage::consent::exclusive_lock(&u.dir, tmgr_usage::consent::FORGET_WAIT)
         .map_err(fail)?;
     tmgr_usage::consent::wipe(&mut u.store, &u.dir).map_err(fail)?;
+    tmgr_usage::consent::delete_sessions_index(&tmgr_usage::paths::Env::from_process())
+        .map_err(|e| Error::internal(format!("could not remove the search index: {e}")))?;
     #[cfg(feature = "runner")]
     let questions = {
         let runner_dir = tmgr_ipc::dirs::runner_dir()

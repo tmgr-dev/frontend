@@ -11,22 +11,9 @@
 				class="tag blocking"
 				>Agent is waiting</span
 			>
-			<button
-				v-if="card.links.task"
-				type="button"
-				class="chip"
-				@click="openLink(card.links.task)"
+			<span v-if="card.updated_ms" class="upd"
+				>updated {{ updatedLabel(card.updated_ms) }}</span
 			>
-				{{ linkLabel(card.links.task) }}
-			</button>
-			<button
-				v-if="card.links.pr"
-				type="button"
-				class="chip"
-				@click="openLink(card.links.pr)"
-			>
-				{{ linkLabel(card.links.pr) }}
-			</button>
 			<span>· {{ position }} of {{ total }}</span>
 		</div>
 		<h1>{{ card.title }}</h1>
@@ -36,6 +23,23 @@
 			@click="onContextClick"
 			v-html="contextHtml"
 		></div>
+		<div v-if="sections.length" class="links">
+			<div v-for="section in sections" :key="section.title" class="lg">
+				<span class="lh">{{ section.title }}</span>
+				<template v-for="entry in section.entries" :key="entry.url">
+					<button
+						v-if="isHttpUrl(entry.url)"
+						type="button"
+						class="chip"
+						:title="entry.url"
+						@click="openLink(entry.url)"
+					>
+						{{ entry.label }}
+					</button>
+					<span v-else class="chip">{{ entry.label }}</span>
+				</template>
+			</div>
+		</div>
 		<div v-if="card.facts.length" class="facts">
 			<div
 				v-for="(fact, index) in card.facts"
@@ -162,8 +166,10 @@
 		KIND_LABELS,
 		isHttpUrl,
 		linkLabel,
+		linkSections,
 		recommendedOption,
 		sourceLabel,
+		updatedLabel,
 	} from '../format';
 	import { isSubmitKey } from '../keys';
 	import type { CardView } from '../types';
@@ -193,6 +199,9 @@
 			};
 		},
 		computed: {
+			sections() {
+				return linkSections(this.card.links);
+			},
 			mode(): CardMode {
 				return cardMode(this.card);
 			},
@@ -234,6 +243,8 @@
 		methods: {
 			sourceLabel,
 			linkLabel,
+			isHttpUrl,
+			updatedLabel,
 			openLink(url: string) {
 				this.$emit('open-link', url);
 			},

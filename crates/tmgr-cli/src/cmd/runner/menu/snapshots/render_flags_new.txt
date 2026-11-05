@@ -1,0 +1,16 @@
+┌ tmgr run · start ────────────────────────────────────────────────────────────────────────────────┐
+│Claude Code · New session                                                                         │
+│                                                                                                  │
+│  Folder: /work/app                                                                               │
+│▸ [x] Bypass permissions                                                                          │
+│  [ ] No sandbox                                                                                  │
+│                                                                                                  │
+│You will be asked to type a confirmation next.                                                    │
+│                                                                                                  │
+│Command                                                                                           │
+│tmgr run --agent claude-code --cwd /work/app --mode bypass                                        │
+│                                                                                                  │
+│Up/Down move · Space toggle · Enter start · Esc back · Ctrl+C quit                                │
+│                                                                                                  │
+│                                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘

@@ -297,6 +297,8 @@ struct Meta {
     permission_cards: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     team: Option<TeamLink>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    agent_session_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -325,6 +327,7 @@ struct RunExtra {
     no_sandbox: Option<std::collections::BTreeMap<String, String>>,
     permission_cards: bool,
     team: Option<TeamLink>,
+    agent_session_id: Option<String>,
 }
 
 #[derive(Clone)]
@@ -343,6 +346,7 @@ struct ResumeCtx {
 struct ForkSeed {
     from_home: PathBuf,
     rel: PathBuf,
+    codex: bool,
 }
 
 struct Resuming<'a>(&'a AtomicBool);
@@ -537,6 +541,7 @@ impl Session {
         let m = &i.meta;
         SessionInfo {
             team: m.team.clone(),
+            agent_session_id: m.agent_session_id.clone(),
             id: m.id.clone(),
             name: m.name.clone(),
             argv: m.argv.clone(),
@@ -1485,6 +1490,7 @@ struct Runner {
     hub: Arc<Hub>,
     create_lock: Mutex<()>,
     key_lock: Mutex<()>,
+    external_lock: Mutex<()>,
     layout_lock: Mutex<()>,
     stop: AtomicBool,
     conns: Arc<AtomicUsize>,
@@ -1757,7 +1763,12 @@ fn resume_rec(r: &crate::profile::ResumeDecl) -> restore::ResumeRec {
         }
         .into(),
         by_id: r.by_id.clone(),
+        fork_by_id: r.fork_by_id.clone(),
     }
+}
+
+fn fork_approved(pinned: Option<&Option<restore::ResumeRec>>) -> bool {
+    pinned.is_none_or(|w| w.as_ref().is_some_and(|w| w.fork_by_id.is_some()))
 }
 
 fn check_resume_pin(
@@ -1769,8 +1780,12 @@ fn check_resume_pin(
     };
     let approved = want.as_ref().is_some_and(|w| w.by_id.is_some());
     let comparable = match declared {
-        Some(d) if !approved => Some(restore::ResumeRec { by_id: None, ..d }),
-        d => d,
+        Some(d) => Some(restore::ResumeRec {
+            by_id: d.by_id.filter(|_| approved),
+            fork_by_id: d.fork_by_id.filter(|_| fork_approved(pinned)),
+            ..d
+        }),
+        None => None,
     };
     if comparable == *want {
         Ok(approved)
@@ -1927,6 +1942,113 @@ fn plan_mode(
 
 fn holds_success(cloud_run: bool, team: Option<&TeamLink>) -> bool {
     cloud_run && !team.is_some_and(TeamLink::is_worker)
+}
+
+fn needs_no_sandbox() -> ApiErr {
+    api(
+        ErrorCode::Forbidden,
+        "this session ran without the sandbox, so its conversation is in the real home; resume it with --no-sandbox",
+    )
+}
+
+fn needs_bypass_flag() -> ApiErr {
+    api(
+        ErrorCode::Forbidden,
+        "this session ran in bypass mode; repeat with --mode bypass to resume it",
+    )
+}
+
+fn is_manual_run(client: &str, req: &RunCreateReq) -> bool {
+    client == CLIENT_CLI
+        && req.origin.is_none()
+        && req.start_key.is_none()
+        && !req.unattended
+        && req.clones.is_empty()
+}
+
+fn check_external_resume(
+    req: &RunCreateReq,
+    manual: bool,
+    restore_from: Option<&str>,
+    ctx: Option<&ResumeCtx>,
+) -> Result<(), ApiErr> {
+    let Some(e) = &req.external_resume else {
+        return Ok(());
+    };
+    if !resume::valid_resume_id(&e.id) {
+        return Err(api(ErrorCode::InvalidParams, "invalid agent session id"));
+    }
+    let refuse = |m: &str| Err(api(ErrorCode::Forbidden, m));
+    if !manual {
+        return refuse("external_resume is accepted only for a manual run from the tmgr CLI");
+    }
+    if req.no_sandbox.is_none() {
+        return refuse("external_resume needs no_sandbox: the conversation lives in the real home");
+    }
+    if req.unattended
+        || req.origin.is_some()
+        || req.start_key.is_some()
+        || !req.clones.is_empty()
+        || req.team.is_some()
+        || req.agent_work
+        || req.cloud.is_some()
+        || req.clone_of.is_some()
+        || req.trust_cwd.is_some()
+        || req.trust_via_repo.is_some()
+        || req.bundle.is_some()
+        || req.bundle_sha256.is_some()
+        || (restore_from.is_none()
+            && (req.task.is_some() || req.exe_pin.is_some() || req.argv_sha256.is_some()))
+    {
+        return refuse(
+            "external_resume is not accepted for link, queue, cloud, team, agent work or task runs",
+        );
+    }
+    let seeded = ctx.is_some_and(|c| c.id.is_some() || c.fork.is_some());
+    if seeded || restore_from.is_some() != ctx.is_some() {
+        return refuse("external_resume cannot be combined with a restore or a fork");
+    }
+    Ok(())
+}
+
+fn external_argv(
+    prof: &Profile,
+    (model, perm_args): (Option<&str>, &[String]),
+    e: &tmgr_ipc::api::ExternalResume,
+    id_approved: bool,
+    (sent, opened): (&str, &Path),
+) -> Result<(Vec<String>, &'static str), ApiErr> {
+    if !id_approved {
+        return Err(api(
+            ErrorCode::Forbidden,
+            "the approved launch of this session does not allow resume by id",
+        ));
+    }
+    if opened != Path::new(sent) {
+        return Err(api(
+            ErrorCode::InvalidParams,
+            format!(
+                "cwd must be given as its resolved path ({}); the agent finds its conversations by folder",
+                opened.display()
+            ),
+        ));
+    }
+    let (argv, via) = if e.fork {
+        (prof.fork_argv_by_id(model, perm_args, &e.id), "fork")
+    } else {
+        (prof.resume_argv_by_id(model, perm_args, &e.id), "id")
+    };
+    match argv.map_err(|m| api(ErrorCode::InvalidParams, m))? {
+        Some(argv) => Ok((argv, via)),
+        None => Err(api(
+            ErrorCode::Forbidden,
+            format!(
+                "the {} agent cannot {} a conversation by id",
+                prof.id,
+                if e.fork { "fork" } else { "resume" }
+            ),
+        )),
+    }
 }
 
 fn check_multi_request(req: &RunCreateReq) -> Result<(), ApiErr> {
@@ -2128,11 +2250,7 @@ impl Runner {
                         ));
                     }
                 }
-                let manual = conn.client == CLIENT_CLI
-                    && req.origin.is_none()
-                    && req.start_key.is_none()
-                    && !req.unattended
-                    && req.clones.is_empty();
+                let manual = is_manual_run(&conn.client, &req);
                 if req.permission_cards && !manual {
                     return Err(api(
                         ErrorCode::Forbidden,
@@ -2208,8 +2326,7 @@ impl Runner {
                 if !valid_session_id(&q.id) {
                     return Err(api(ErrorCode::InvalidParams, "invalid session id"));
                 }
-                self.resume_session(&q.id, q.cols, q.rows)
-                    .map(|r| to_json(&r))
+                self.resume_session(&q).map(|r| to_json(&r))
             }
             method::SESSIONS_FORK => {
                 if conn.client != CLIENT_CLI {
@@ -2720,6 +2837,20 @@ impl Runner {
         serde_json::from_slice::<Meta>(&bytes).ok()?.trust_file
     }
 
+    fn refuse_held(&self, agent_id: &str) -> Result<(), ApiErr> {
+        let held = self.all().into_iter().any(|s| {
+            s.state().kind != StateKind::Exited
+                && lock(&s.inner).meta.agent_session_id.as_deref() == Some(agent_id)
+        });
+        if held {
+            return Err(api(
+                ErrorCode::Busy,
+                "this conversation is already running in another tmgr session; fork it instead",
+            ));
+        }
+        Ok(())
+    }
+
     fn by_key(&self, key: &str) -> Option<Arc<Session>> {
         self.all()
             .into_iter()
@@ -2796,12 +2927,8 @@ impl Runner {
         }
     }
 
-    fn resume_session(
-        self: &Arc<Self>,
-        old: &str,
-        cols: u16,
-        rows: u16,
-    ) -> Result<RestoredRun, ApiErr> {
+    fn resume_session(self: &Arc<Self>, q: &ResumeParams) -> Result<RestoredRun, ApiErr> {
+        let (old, cols, rows) = (q.id.as_str(), q.cols, q.rows);
         let s = self
             .session(old)
             .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
@@ -2843,21 +2970,29 @@ impl Runner {
         ) {
             return Err(api(
                 ErrorCode::Busy,
-                "background processes of the old session are still running; stop them with halt --kill",
+                "background processes of the old session are still running; wait a moment and try again, or stop them with halt --kill",
             ));
         }
         let prior = s.prior_text();
         let (info, resumed, via) = match &meta.profile {
             Some(profile) => {
-                let resume_id = resume::id_from_log(&self.sdir(old).join("output.log"), profile);
+                let resume_id = meta
+                    .agent_session_id
+                    .clone()
+                    .or_else(|| resume::id_from_log(&self.sdir(old).join("output.log"), profile));
                 self.resume_agent(
                     (&meta, profile.as_str()),
                     (cols, rows),
                     interrupted,
                     resume_id,
                     prior,
+                    q,
                 )?
             }
+            None if q.permission_mode.is_some() || q.no_sandbox.is_some() => return Err(api(
+                ErrorCode::Forbidden,
+                "a session without an agent profile cannot be resumed with --mode or --no-sandbox",
+            )),
             None => self.resume_raw(&meta, old, (cols, rows), prior)?,
         };
         restore::forget(&self.intents(), old);
@@ -2919,26 +3054,43 @@ impl Runner {
             ));
         }
         let meta = lock(&s.inner).meta.clone();
-        let profile = match meta.profile.as_deref() {
-            Some(p @ "claude-code") => p.to_string(),
+        let (profile, codex) = match meta.profile.as_deref() {
+            Some(p @ "claude-code") => (p.to_string(), false),
+            Some(p @ "codex") => (p.to_string(), true),
             _ => {
                 return Err(api(
                     ErrorCode::Forbidden,
-                    "only a Claude Code session can be forked",
+                    "only a Claude Code or Codex session can be forked",
                 ))
             }
         };
-        fork_consent()?;
+        fork_consent(codex)?;
         let from_home = self.cfg.homes.join(&q.id);
-        let found = crate::attach::locate(&crate::attach::Source {
-            home: &from_home,
-            format: crate::attach::Format::Claude,
-            cwd: &meta.cwd,
-            pid: 0,
-            log_id: Some(&q.agent_id),
-        });
+        let found = if codex {
+            let (path, cwd) =
+                crate::questions::tail::locate_codex_rollout_of(&from_home, &q.agent_id)
+                    .ok_or_else(|| {
+                        api(ErrorCode::NotFound, "the conversation file was not found")
+                    })?;
+            if !cwd.is_some_and(|c| same_path(&c, &meta.cwd)) {
+                return Err(api(
+                    ErrorCode::Forbidden,
+                    "the conversation was recorded in another folder than this session's",
+                ));
+            }
+            Some(path)
+        } else {
+            crate::attach::locate(&crate::attach::Source {
+                home: &from_home,
+                format: crate::attach::Format::Claude,
+                cwd: &meta.cwd,
+                pid: 0,
+                log_id: Some(&q.agent_id),
+            })
+            .map(|(path, _)| path)
+        };
         let rel = found
-            .and_then(|(path, _)| path.strip_prefix(&from_home).ok().map(Path::to_path_buf))
+            .and_then(|path| path.strip_prefix(&from_home).ok().map(Path::to_path_buf))
             .ok_or_else(|| api(ErrorCode::NotFound, "the conversation file was not found"))?;
         let (mut intent, bundle) = self.load_launch(&meta, &profile)?;
         let CwdPin { dev, ino } = intent.cwd_pin;
@@ -2981,7 +3133,11 @@ impl Runner {
             Some(ResumeCtx {
                 id: Some(q.agent_id),
                 text: String::new(),
-                fork: Some(ForkSeed { from_home, rel }),
+                fork: Some(ForkSeed {
+                    from_home,
+                    rel,
+                    codex,
+                }),
             }),
         )?;
         log(&format!("session {} forked from {} ({via})", info.id, q.id));
@@ -2997,8 +3153,9 @@ impl Runner {
         (meta, profile): (&Meta, &str),
         (cols, rows): (u16, u16),
         interrupted: bool,
-        id: Option<String>,
+        mut id: Option<String>,
         prior: String,
+        flags: &ResumeParams,
     ) -> Result<(SessionInfo, bool, &'static str), ApiErr> {
         let (old, name) = (meta.id.as_str(), meta.name.clone());
         let (mut intent, bundle) = self.load_launch(meta, profile)?;
@@ -3007,7 +3164,10 @@ impl Runner {
         if !interrupted {
             intent.pids.clear();
         }
-        match restore::status(&intent, now_ms(), false) {
+        let status = restore::status(&intent, now_ms(), false);
+        let flagged = flags.permission_mode.is_some() || flags.no_sandbox.is_some();
+        let relaxed = flagged || status == restore::Status::Expired;
+        match status {
             restore::Status::Restorable if intent.needs_queue_pin() => return Err(api(
                 ErrorCode::Forbidden,
                 "this queue run was recorded without an approved executable; queue the task again",
@@ -3016,16 +3176,79 @@ impl Runner {
             restore::Status::Running | restore::Status::Restoring => {
                 return Err(api(ErrorCode::Busy, "the session may still be running"))
             }
-            st => return Err(api(ErrorCode::Forbidden, st.reason())),
+            restore::Status::NoSandbox if !relaxed => return Err(needs_no_sandbox()),
+            restore::Status::Bypass if !relaxed => return Err(needs_bypass_flag()),
+            restore::Status::Link => return Err(api(ErrorCode::Forbidden, status.reason())),
+            _ => {}
         }
         let mut req = restore::request(&intent, bundle);
         req.cols = cols;
         req.rows = rows;
         req.name = Some(name);
+        let mut manual = false;
+        if relaxed {
+            if intent.needs_queue_pin()
+                || intent.agent_work
+                || intent.keyed == Some(true)
+                || intent.clone_of.is_some()
+                || meta.start_key.is_some()
+                || meta.clone_of.is_some()
+                || meta.multi
+                || meta.team.is_some()
+                || req.bundle.is_some()
+            {
+                return Err(api(
+                    ErrorCode::Forbidden,
+                    "a session started by the queue, a cloud approval, a team or agent work cannot be resumed with --mode or --no-sandbox, or after it expired",
+                ));
+            }
+            let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+            let prof = known_profile(&set, profile)?;
+            let want_bypass = flags.permission_mode.as_deref() == Some("bypass");
+            if let Some(m) = flags.permission_mode.as_deref().filter(|_| !want_bypass) {
+                resolve_mode(prof, Some(m))?;
+            }
+            let old_bypass = intent.bypass;
+            if intent.no_sandbox && flags.no_sandbox.is_none() {
+                return Err(needs_no_sandbox());
+            }
+            if !intent.no_sandbox && flags.no_sandbox.is_some() {
+                return Err(api(
+                    ErrorCode::Forbidden,
+                    "this session was recorded inside the sandbox home and cannot be moved out; start from it with fork or a new session",
+                ));
+            }
+            if old_bypass && !want_bypass {
+                return Err(needs_bypass_flag());
+            }
+            if let Some(m) = &flags.permission_mode {
+                req.permission_mode = Some(m.clone());
+            }
+            if status == restore::Status::Expired && !self.cfg.homes.join(old).is_dir() {
+                return Err(api(
+                    ErrorCode::NotFound,
+                    "the run home of this expired session is gone, so its conversation cannot be resumed; start it again with tmgr run",
+                ));
+            }
+            manual = true;
+            if let Some(ns) = &flags.no_sandbox {
+                let agent_id = id.take().ok_or_else(|| {
+                    api(
+                        ErrorCode::NotFound,
+                        "the agent's conversation id was not found in the session log, so it cannot be resumed",
+                    )
+                })?;
+                req.no_sandbox = Some(ns.clone());
+                req.external_resume = Some(tmgr_ipc::api::ExternalResume {
+                    id: agent_id,
+                    fork: false,
+                });
+            }
+        }
         let pinned_resume = intent.argv_sha256.is_some().then_some(&intent.resume_decl);
         let (info, resumed, _, via) = self.create_run_as(
             req,
-            false,
+            manual,
             Some(old),
             pinned_resume,
             Some(ResumeCtx {
@@ -3184,12 +3407,22 @@ impl Runner {
         pinned_resume: Option<&Option<restore::ResumeRec>>,
         resume_ctx: Option<ResumeCtx>,
     ) -> Result<(SessionInfo, bool, bool, &'static str), ApiErr> {
+        check_external_resume(&req, manual, restore_from, resume_ctx.as_ref())?;
         if req.no_sandbox.is_some() && !manual {
             return Err(api(
                 ErrorCode::Forbidden,
                 "no_sandbox is accepted only for a manual run from the tmgr CLI",
             ));
         }
+        let external = req.external_resume.clone();
+        let _external = external
+            .as_ref()
+            .filter(|e| !e.fork)
+            .map(|e| {
+                let guard = lock(&self.external_lock);
+                self.refuse_held(&e.id).map(|()| guard)
+            })
+            .transpose()?;
         let start = match &req.start_key {
             Some(k) if !valid_start_key(k) => {
                 return Err(api(
@@ -3318,6 +3551,13 @@ impl Runner {
         let fork = resume_ctx.as_ref().and_then(|c| c.fork.clone());
         let home_kept = restore_from.is_some_and(|old| self.cfg.homes.join(old).is_dir());
         let by_id = match resume_ctx.as_ref().and_then(|c| c.id.as_deref()) {
+            Some(id) if fork.as_ref().is_some_and(|f| f.codex) => {
+                if id_approved && fork_approved(pinned_resume) {
+                    prof.fork_argv_by_id(req.model.as_deref(), &perm_args, id)
+                } else {
+                    Ok(None)
+                }
+            }
             Some(id) if (home_kept || fork.is_some()) && id_approved => {
                 prof.resume_argv_by_id(req.model.as_deref(), &perm_args, id)
             }
@@ -3330,14 +3570,25 @@ impl Runner {
                 "this agent cannot be forked: its profile has no resume by id",
             ));
         }
-        let (resume, via) = match by_id {
-            Some(argv) => (Some(argv), "id"),
-            None if home_kept => (
+        let external_argv = match (&external, dir) {
+            (Some(e), Some(d)) => Some(external_argv(
+                prof,
+                (req.model.as_deref(), &perm_args),
+                e,
+                id_approved,
+                (&req.cwd, &d.path),
+            )?),
+            _ => None,
+        };
+        let (resume, via) = match (external_argv, by_id) {
+            (Some((argv, via)), _) => (Some(argv), via),
+            (None, Some(argv)) => (Some(argv), "id"),
+            (None, None) if home_kept => (
                 prof.resume_argv_with(req.model.as_deref(), &perm_args)
                     .map_err(|e| api(ErrorCode::InvalidParams, e))?,
                 "continue",
             ),
-            None => (None, "fresh"),
+            (None, None) => (None, "fresh"),
         };
         let resumed = resume.is_some();
         let via = match (resumed, fork.is_some()) {
@@ -3347,7 +3598,7 @@ impl Runner {
         };
         let mut argv = match resume {
             Some(mut argv) => {
-                if fork.is_some() {
+                if fork.as_ref().is_some_and(|f| !f.codex) {
                     argv.push("--fork-session".to_string());
                 }
                 argv
@@ -3438,6 +3689,7 @@ impl Runner {
             no_sandbox: req.no_sandbox.as_ref().map(|n| n.env.clone()),
             permission_cards,
             team: req.team.clone(),
+            agent_session_id: external.as_ref().filter(|e| !e.fork).map(|e| e.id.clone()),
         };
         if plan.restricted {
             extra.egress = Some(
@@ -3780,7 +4032,7 @@ impl Runner {
         ensure_private_dir(sdir).map_err(internal)?;
         ensure_private_leaf(home).map_err(internal)?;
         if let Some(f) = &extra.fork {
-            fork_consent()?;
+            fork_consent(f.codex)?;
             copy_transcript(&f.from_home, &f.rel, home).map_err(|e| {
                 api(
                     ErrorCode::Internal,
@@ -4031,6 +4283,7 @@ impl Runner {
             checkpoints: None,
             permission_cards: extra.permission_cards,
             team: extra.team.clone(),
+            agent_session_id: extra.agent_session_id.clone(),
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
@@ -4653,6 +4906,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         hub: Arc::new(Hub::default()),
         create_lock: Mutex::new(()),
         key_lock: Mutex::new(()),
+        external_lock: Mutex::new(()),
         layout_lock: Mutex::new(()),
         stop: AtomicBool::new(false),
         conns: Arc::new(AtomicUsize::new(0)),
@@ -4777,14 +5031,23 @@ fn test_passthrough(_: &str) -> bool {
     false
 }
 
-fn fork_consent() -> Result<(), ApiErr> {
+fn same_path(a: &str, b: &str) -> bool {
+    a == b || matches!((fs::canonicalize(a), fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
+}
+
+fn fork_consent(codex: bool) -> Result<(), ApiErr> {
     let env = tmgr_usage::paths::Env::from_process();
-    if tmgr_usage::consent::granted_read_only(&env, tmgr_usage::Tool::Claude) {
+    let (tool, name) = if codex {
+        (tmgr_usage::Tool::Codex, "Codex")
+    } else {
+        (tmgr_usage::Tool::Claude, "Claude Code")
+    };
+    if tmgr_usage::consent::granted_read_only(&env, tool) {
         return Ok(());
     }
     Err(api(
         ErrorCode::Forbidden,
-        "reading Claude Code transcripts is off on this device, so this session cannot be forked: run tmgr usage consent allow, or turn it on in TMGR desktop (AI Usage)",
+        format!("reading {name} transcripts is off on this device, so this session cannot be forked: run tmgr usage consent allow, or turn it on in TMGR desktop (AI Usage)"),
     ))
 }
 
@@ -5003,6 +5266,24 @@ mod tests {
     }
 
     #[test]
+    fn copy_transcript_keeps_a_codex_rollout_at_its_relative_path() {
+        let (_t, from, to) = fork_dirs();
+        let rel = Path::new(".codex/sessions/2026/11/05/rollout-2026-11-05T10-00-00-a.jsonl");
+        fs::create_dir_all(from.join(rel).parent().unwrap()).unwrap();
+        fs::write(from.join(rel), b"{\"type\":\"session_meta\"}\n").unwrap();
+        fs::create_dir_all(to.join(".codex")).unwrap();
+        copy_transcript(&from, rel, &to).unwrap();
+        assert_eq!(
+            fs::read(to.join(rel)).unwrap(),
+            b"{\"type\":\"session_meta\"}\n"
+        );
+        assert_eq!(
+            fs::read(from.join(rel)).unwrap(),
+            b"{\"type\":\"session_meta\"}\n"
+        );
+    }
+
+    #[test]
     fn copy_transcript_refuses_symlinks_links_pipes_and_odd_paths() {
         use std::os::unix::fs::symlink;
         let (_t, from, to) = fork_dirs();
@@ -5087,6 +5368,7 @@ mod tests {
             hub: Arc::new(Hub::default()),
             create_lock: Mutex::new(()),
             key_lock: Mutex::new(()),
+            external_lock: Mutex::new(()),
             layout_lock: Mutex::new(()),
             stop: AtomicBool::new(false),
             conns: Arc::new(AtomicUsize::new(0)),
@@ -5480,6 +5762,7 @@ mod tests {
             args: vec!["--continue".into()],
             at: "end".into(),
             by_id: by_id.map(|b| b.iter().map(|s| s.to_string()).collect()),
+            fork_by_id: None,
         }
     }
 
@@ -5505,6 +5788,28 @@ mod tests {
         let mut at = now.clone();
         at.at = "after_command".into();
         assert!(check_resume_pin(Some(at), Some(&Some(now))).is_err());
+    }
+
+    fn fork_rec(by_id: bool, fork: Option<&[&str]>) -> restore::ResumeRec {
+        restore::ResumeRec {
+            fork_by_id: fork.map(|f| f.iter().map(|s| s.to_string()).collect()),
+            ..rec(by_id.then_some(&["resume", "{resume_id}"]))
+        }
+    }
+
+    #[test]
+    fn a_pinned_fork_template_is_part_of_the_approval_and_never_gained() {
+        let fork = ["fork", "{resume_id}"];
+        let now = fork_rec(true, Some(&fork));
+        assert!(fork_approved(None));
+        assert!(fork_approved(Some(&Some(now.clone()))));
+        assert!(!fork_approved(Some(&Some(fork_rec(true, None)))));
+        assert!(!fork_approved(Some(&None)));
+        assert!(check_resume_pin(Some(now.clone()), Some(&Some(now.clone()))).unwrap());
+        assert!(check_resume_pin(Some(now.clone()), Some(&Some(fork_rec(true, None)))).unwrap());
+        let other = fork_rec(true, Some(&["fork", "--other", "{resume_id}"]));
+        assert!(check_resume_pin(Some(other), Some(&Some(now.clone()))).is_err());
+        assert!(check_resume_pin(Some(fork_rec(true, None)), Some(&Some(now))).is_err());
     }
 
     #[test]

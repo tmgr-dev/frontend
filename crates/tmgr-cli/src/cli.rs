@@ -143,7 +143,7 @@ pub enum Command {
         command: HookCmd,
     },
     /// Ask the owner a question in the TMGR desktop Decisions inbox
-    Ask(AskArgs),
+    Ask(Box<AskArgs>),
     /// Send a push notification to your phone
     Notify(NotifyArgs),
     /// Raise a phone alarm (push, then a voice call), or check one
