@@ -1614,6 +1614,8 @@ impl H {
         while restore::group_may_run(s.child_pid, None, None) && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(50));
         }
+        // A clean exit forgets the record after TMGR_RESTORE_FORGET_MS; callers record it again afterwards.
+        thread::sleep(Duration::from_secs(2));
         fs::write(self.sdir(&s.id).join("output.log"), claude_exit(U1)).unwrap();
         s
     }
