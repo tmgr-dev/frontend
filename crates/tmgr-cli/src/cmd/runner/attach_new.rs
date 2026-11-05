@@ -1,5 +1,5 @@
 use super::attach_shell::{can_split, shell_argv, size_hint};
-use super::ops::{login_preflight, run_create_req, run_create_run};
+use super::ops::{elevated, login_preflight, run_create_req, run_create_run};
 use super::run_task::{self, Launch, Prepared};
 use super::{bin, connect, rerr, PermissionMode};
 use ratatui::layout::Rect;
@@ -10,7 +10,7 @@ use tmgr_core::redact::redact_secrets;
 use tmgr_core::refs::parse_task_ref;
 use tmgr_ipc::api::{CreateReq, RunCreateReq, SessionInfo};
 use tmgr_runner::attach::{
-    Action, KindOpt, NewRequest, NewSession, Place, SpawnKind, SplitDir, ViewState,
+    Action, KindOpt, NewRequest, NewSession, Place, PrivAsk, SpawnKind, SplitDir, ViewState,
 };
 use tmgr_runner::daemon::RunnerConfig;
 use tmgr_runner::exe;
@@ -82,24 +82,31 @@ pub(super) fn route(view: &ViewState, action: &Action) -> Route {
     }
 }
 
-fn builtin(id: &str, label: &str, spawn: SpawnKind) -> KindOpt {
+fn builtin(id: &str, label: &str, spawn: SpawnKind, bypass: bool) -> KindOpt {
     KindOpt {
         id: id.into(),
         label: label.into(),
         spawn,
+        bypass,
     }
 }
 
-pub(super) fn kind_options(profiles: &[(String, String)]) -> Vec<KindOpt> {
+pub(super) fn kind_options(profiles: &[(String, String, bool)]) -> Vec<KindOpt> {
     let agent = |profile: &str| SpawnKind::Agent {
         profile: profile.into(),
     };
+    let bypass = |id: &str| profiles.iter().any(|(p, _, b)| p == id && *b);
     let mut kinds = vec![
-        builtin("claude", "claude", agent("claude-code")),
-        builtin("codex", "codex", agent("codex")),
-        builtin("shell", "shell", SpawnKind::Shell),
+        builtin(
+            "claude",
+            "claude",
+            agent("claude-code"),
+            bypass("claude-code"),
+        ),
+        builtin("codex", "codex", agent("codex"), bypass("codex")),
+        builtin("shell", "shell", SpawnKind::Shell, false),
     ];
-    for (id, name) in profiles {
+    for (id, name, can_bypass) in profiles {
         if id == "claude-code" || id == "codex" {
             continue;
         }
@@ -108,6 +115,7 @@ pub(super) fn kind_options(profiles: &[(String, String)]) -> Vec<KindOpt> {
             id: format!("agent:{id}"),
             label,
             spawn: agent(id),
+            bypass: *can_bypass,
         });
     }
     kinds.push(builtin(
@@ -116,16 +124,21 @@ pub(super) fn kind_options(profiles: &[(String, String)]) -> Vec<KindOpt> {
         SpawnKind::Custom {
             line: String::new(),
         },
+        false,
     ));
     kinds
 }
 
 pub(super) fn installed_kinds() -> Vec<KindOpt> {
     let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
-    let profiles: Vec<(String, String)> = set
+    kinds_for(&set)
+}
+
+fn kinds_for(set: &ProfileSet) -> Vec<KindOpt> {
+    let profiles: Vec<(String, String, bool)> = set
         .list()
         .iter()
-        .map(|p| (p.id.clone(), p.name.clone()))
+        .map(|p| (p.id.clone(), p.name.clone(), p.bypass_args().is_some()))
         .collect();
     kind_options(&profiles)
 }
@@ -175,6 +188,7 @@ pub(super) fn dialog_for(base: &NewSession, req: &NewRequest) -> NewSession {
     ns.place = req.place;
     ns.worktree = req.worktree;
     ns.permission_cards = req.permission_cards;
+    ns.clear_privileges();
     if let SpawnKind::Custom { line } = &req.kind {
         ns.command = line.clone();
     }
@@ -237,6 +251,12 @@ pub(super) fn run_hint(bin: &str, req: &NewRequest) -> Option<String> {
         SpawnKind::Custom { line } => format!("{bin} run --agent-cmd {}", q(line)),
         SpawnKind::Shell => return None,
     };
+    if req.bypass {
+        cmd.push_str(" --mode bypass");
+    }
+    if req.no_sandbox {
+        cmd.push_str(" --no-sandbox");
+    }
     cmd.push_str(&format!(" --cwd {}", q(&req.folder)));
     if let Some(name) = &req.name {
         cmd.push_str(&format!(" --name {}", q(name)));
@@ -261,6 +281,10 @@ pub(super) fn plan(
                 false,
             );
             run.permission_cards = req.permission_cards;
+            if req.bypass || req.no_sandbox {
+                let mode = req.bypass.then_some(PermissionMode::Bypass);
+                run = elevated(run, mode, req.no_sandbox);
+            }
             Ok(Plan::CreateRun(Box::new(run)))
         }
         SpawnKind::Shell => Ok(Plan::Create(run_create_req(
@@ -421,6 +445,48 @@ fn guard(in_agent: bool) -> std::result::Result<(), SpawnErr> {
     tmgr_link::privileged::check(in_agent, true).map_err(task_err)
 }
 
+pub(super) fn privileged_ask(
+    bypass: bool,
+    no_sandbox: bool,
+) -> std::result::Result<PrivAsk, (String, Option<String>)> {
+    ask_for(bypass, no_sandbox, in_agent())
+}
+
+fn ask_for(
+    bypass: bool,
+    no_sandbox: bool,
+    in_agent: bool,
+) -> std::result::Result<PrivAsk, (String, Option<String>)> {
+    use super::privilege::{gate, prompt, warnings, Gate};
+    match gate(bypass, no_sandbox, false, false, in_agent, true) {
+        Ok(Gate::Typed(word)) => Ok(PrivAsk {
+            word,
+            prompt: prompt(word),
+            warnings: warnings(bypass, no_sandbox),
+        }),
+        Ok(Gate::Open) => Err(("nothing to confirm".into(), None)),
+        Err(e) => Err((clean(&e.message), e.hint.as_deref().map(clean))),
+    }
+}
+
+fn privilege_guard(req: &NewRequest, in_agent: bool) -> std::result::Result<(), SpawnErr> {
+    if !req.bypass && !req.no_sandbox {
+        return Ok(());
+    }
+    guard(in_agent)?;
+    if !matches!(req.kind, SpawnKind::Agent { .. }) || req.task.is_some() {
+        return Err(SpawnErr {
+            message: "bypass and no sandbox apply to a plain agent session only".into(),
+            hint: None,
+        });
+    }
+    Ok(())
+}
+
+fn caps_guard(have: &[String], req: &NewRequest) -> std::result::Result<(), SpawnErr> {
+    super::privilege::check_caps(have, req.bypass, req.no_sandbox).map_err(task_err)
+}
+
 fn task_profile(req: &NewRequest) -> std::result::Result<(&str, &str), SpawnErr> {
     let (SpawnKind::Agent { profile }, Some(task)) = (&req.kind, req.task.as_deref()) else {
         return Err(SpawnErr {
@@ -437,6 +503,12 @@ pub(super) fn prepare_task(
     in_agent: bool,
 ) -> std::result::Result<Prepared, SpawnErr> {
     guard(in_agent)?;
+    if req.bypass || req.no_sandbox {
+        return Err(SpawnErr {
+            message: "a task start cannot use bypass or no sandbox".into(),
+            hint: None,
+        });
+    }
     let (profile, task) = task_profile(req)?;
     run_task::prepare(None, None, task, profile, PermissionMode::Ask).map_err(task_err)
 }
@@ -470,14 +542,20 @@ pub(super) fn start_session(
         message: clean(message),
         hint: hint.clone(),
     };
+    privilege_guard(req, in_agent())?;
     if let SpawnKind::Agent { profile } = &req.kind {
-        login_preflight(profile).map_err(|e| fail(&e.message))?;
+        if !req.no_sandbox {
+            login_preflight(profile).map_err(|e| fail(&e.message))?;
+        }
     }
     let plan = plan(req, cols, rows, &|name| {
         resolve_in_folder(name, &req.folder)
     })
     .map_err(|e| fail(&e))?;
     let mut client = connect(cfg).map_err(|e| fail(&e.message))?;
+    if req.bypass || req.no_sandbox {
+        caps_guard(&client.welcome().caps, req)?;
+    }
     match plan {
         Plan::Create(r) => client.create(r),
         Plan::CreateRun(mut r) => {
@@ -520,6 +598,8 @@ mod tests {
             worktree: false,
             checkpoints: None,
             permission_cards: false,
+            bypass: false,
+            no_sandbox: false,
         }
     }
 
@@ -633,9 +713,9 @@ mod tests {
     #[test]
     fn kinds_put_builtins_first_and_skip_duplicates() {
         let kinds = kind_options(&[
-            ("claude-code".into(), "Claude Code".into()),
-            ("codex".into(), "Codex".into()),
-            ("aider".into(), "Aider\x1b[31m".into()),
+            ("claude-code".into(), "Claude Code".into(), true),
+            ("codex".into(), "Codex".into(), false),
+            ("aider".into(), "Aider\x1b[31m".into(), false),
         ]);
         let ids: Vec<&str> = kinds.iter().map(|k| k.id.as_str()).collect();
         assert_eq!(ids, ["claude", "codex", "shell", "agent:aider", "custom"]);
@@ -1014,5 +1094,224 @@ mod tests {
     fn executing_a_held_task_is_refused_inside_an_agent_session() {
         let e = execute_task(&held(), true).unwrap_err();
         assert!(e.message.contains("agent session"), "{}", e.message);
+    }
+
+    fn privileged_req(kind: SpawnKind, bypass: bool, no_sandbox: bool) -> NewRequest {
+        let mut r = req(kind);
+        r.bypass = bypass;
+        r.no_sandbox = no_sandbox;
+        r
+    }
+
+    fn without_env(mut r: RunCreateReq) -> RunCreateReq {
+        if let Some(ns) = r.no_sandbox.as_mut() {
+            assert!(ns.env.keys().all(|k| !k.starts_with("TMGR_")));
+            ns.env.clear();
+        }
+        r
+    }
+
+    fn planned_run(r: &NewRequest) -> RunCreateReq {
+        let Ok(Plan::CreateRun(got)) = plan(r, 100, 30, &ident) else {
+            panic!("expected a run request");
+        };
+        *got
+    }
+
+    fn cli_run(mode: Option<PermissionMode>, no_sandbox: bool) -> RunCreateReq {
+        elevated(
+            run_create_run(
+                "claude-code".into(),
+                "/work/my project".into(),
+                None,
+                None,
+                (100, 30),
+                false,
+            ),
+            mode,
+            no_sandbox,
+        )
+    }
+
+    #[test]
+    fn the_privileged_plan_is_the_request_tmgr_run_sends() {
+        for (bypass, no_sandbox) in [(true, true), (true, false), (false, true)] {
+            let got = planned_run(&privileged_req(agent("claude-code"), bypass, no_sandbox));
+            let mode = bypass.then_some(PermissionMode::Bypass);
+            assert_eq!(
+                without_env(got.clone()),
+                without_env(cli_run(mode, no_sandbox)),
+                "{bypass} {no_sandbox}"
+            );
+            assert_eq!(got.permission_mode.as_deref(), bypass.then_some("bypass"));
+            assert_eq!(got.no_sandbox.is_some(), no_sandbox);
+        }
+    }
+
+    #[test]
+    fn the_privileged_plan_keeps_every_condition_of_a_manual_run() {
+        let got = planned_run(&privileged_req(agent("claude-code"), true, true));
+        assert!(got.origin.is_none() && got.start_key.is_none() && got.clones.is_empty());
+        assert!(!got.unattended && !got.agent_work && got.cloud.is_none());
+        assert!(got.trust_cwd.is_none() && got.trust_via_repo.is_none() && got.bundle.is_none());
+    }
+
+    #[test]
+    fn the_audit_note_of_a_privileged_plan_names_mode_and_sandbox() {
+        let note = |bypass, no_sandbox| {
+            let got = planned_run(&privileged_req(agent("claude-code"), bypass, no_sandbox));
+            tmgr_runner::agentwork::audit_note(
+                got.permission_mode.as_deref(),
+                got.no_sandbox.is_some(),
+            )
+        };
+        assert_eq!(
+            note(true, true).as_deref(),
+            Some("mode: bypass, sandbox: off")
+        );
+        assert_eq!(
+            note(true, false).as_deref(),
+            Some("mode: bypass, sandbox: on")
+        );
+        assert_eq!(note(false, true).as_deref(), Some("mode: -, sandbox: off"));
+        assert_eq!(note(false, false), None);
+    }
+
+    #[test]
+    fn a_plain_plan_carries_no_mode_and_no_sandbox_request() {
+        let got = planned_run(&req(agent("claude-code")));
+        assert!(got.permission_mode.is_none() && got.no_sandbox.is_none());
+    }
+
+    #[test]
+    fn privileged_hints_repeat_the_flags_a_terminal_would_confirm() {
+        let both = privileged_req(agent("claude-code"), true, true);
+        assert_eq!(
+            run_hint("tmgr", &both).as_deref(),
+            Some(
+                "tmgr run --agent claude-code --mode bypass --no-sandbox --cwd '/work/my project'"
+            )
+        );
+        let one = privileged_req(agent("codex"), false, true);
+        assert_eq!(
+            run_hint("tmgr", &one).as_deref(),
+            Some("tmgr run --agent codex --no-sandbox --cwd '/work/my project'")
+        );
+    }
+
+    #[test]
+    fn the_guard_refuses_privileges_inside_an_agent_session_and_leaves_plain_starts_alone() {
+        let both = privileged_req(agent("claude-code"), true, true);
+        for r in [
+            privileged_req(agent("claude-code"), true, false),
+            privileged_req(agent("claude-code"), false, true),
+            both,
+        ] {
+            let e = privilege_guard(&r, true).unwrap_err();
+            assert!(e.message.contains("refused inside an agent session"));
+            assert!(privilege_guard(&r, false).is_ok());
+        }
+        assert!(privilege_guard(&req(agent("claude-code")), true).is_ok());
+        assert!(privilege_guard(&req(SpawnKind::Shell), true).is_ok());
+    }
+
+    #[test]
+    fn the_guard_refuses_privileges_for_shells_custom_commands_and_tasks() {
+        for kind in [
+            SpawnKind::Shell,
+            SpawnKind::Custom {
+                line: "tool".into(),
+            },
+        ] {
+            assert!(privilege_guard(&privileged_req(kind, true, false), false).is_err());
+        }
+        let mut with_task = privileged_req(agent("claude-code"), false, true);
+        with_task.task = Some("TM-1".into());
+        assert!(privilege_guard(&with_task, false).is_err());
+        assert!(prepare_task(&with_task, false).is_err());
+    }
+
+    #[test]
+    fn the_gate_asks_for_the_same_word_prompt_and_warnings_as_the_terminal() {
+        use super::super::privilege::{prompt, warnings};
+        for (bypass, no_sandbox, word) in [
+            (true, false, "bypass"),
+            (false, true, "no-sandbox"),
+            (true, true, "no-sandbox"),
+        ] {
+            let ask = ask_for(bypass, no_sandbox, false).unwrap();
+            assert_eq!(ask.word, word);
+            assert_eq!(ask.prompt, prompt(word));
+            assert_eq!(ask.warnings, warnings(bypass, no_sandbox));
+        }
+    }
+
+    #[test]
+    fn the_gate_refuses_inside_an_agent_session() {
+        let (msg, hint) = ask_for(true, false, true).unwrap_err();
+        assert!(msg.contains("refused inside an agent session"));
+        assert!(hint.is_some());
+        assert!(ask_for(false, true, true).is_err());
+    }
+
+    #[test]
+    fn a_runner_without_the_capabilities_gets_the_restart_hint() {
+        use tmgr_ipc::api::caps;
+        let r = privileged_req(agent("claude-code"), true, true);
+        let e = caps_guard(&[], &r).unwrap_err();
+        assert!(e.hint.unwrap().ends_with("runner restart"));
+        assert!(caps_guard(&[caps::MANUAL_BYPASS_V1.to_string()], &r).is_err());
+        let both = vec![
+            caps::MANUAL_BYPASS_V1.to_string(),
+            caps::NO_SANDBOX_V1.to_string(),
+        ];
+        assert!(caps_guard(&both, &r).is_ok());
+        assert!(caps_guard(&[], &req(agent("claude-code"))).is_ok());
+    }
+
+    #[test]
+    fn a_reopened_dialog_never_keeps_the_privileges() {
+        let mut base = base_dialog();
+        base.bypass = true;
+        base.no_sandbox = true;
+        let r = privileged_req(agent("claude-code"), true, true);
+        let reopened = dialog_for(&base, &r);
+        assert!(!reopened.bypass && !reopened.no_sandbox && !reopened.priv_prompt_open());
+    }
+
+    #[test]
+    fn bypass_follows_the_profile_declaration() {
+        let kinds = kind_options(&[
+            ("claude-code".into(), "Claude Code".into(), true),
+            ("codex".into(), "Codex".into(), false),
+            ("aider".into(), "Aider".into(), true),
+        ]);
+        let flags: Vec<(&str, bool)> = kinds.iter().map(|k| (k.id.as_str(), k.bypass)).collect();
+        assert_eq!(
+            flags,
+            [
+                ("claude", true),
+                ("codex", false),
+                ("shell", false),
+                ("agent:aider", true),
+                ("custom", false)
+            ]
+        );
+        assert!(kind_options(&[]).iter().all(|k| !k.bypass));
+    }
+
+    #[test]
+    fn the_built_in_profiles_offer_bypass_only_where_they_declare_it() {
+        let (set, _) = ProfileSet::load(None);
+        for k in kinds_for(&set) {
+            let declared = match &k.spawn {
+                SpawnKind::Agent { profile } => {
+                    set.get(profile).is_some_and(|p| p.bypass_args().is_some())
+                }
+                _ => false,
+            };
+            assert_eq!(k.bypass, declared, "{}", k.id);
+        }
+        assert!(kinds_for(&set).iter().any(|k| k.id == "claude" && k.bypass));
     }
 }

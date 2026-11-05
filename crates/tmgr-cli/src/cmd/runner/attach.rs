@@ -2118,6 +2118,21 @@ impl App {
         });
     }
 
+    fn dialog_prompt_cramped(&mut self, data: &[u8]) -> bool {
+        let open = self
+            .view
+            .new_session
+            .as_ref()
+            .is_some_and(|n| n.priv_prompt_open());
+        let esc = !data.is_empty() && data.iter().all(|&b| b == 0x1b);
+        if !open || esc || self.view.priv_prompt_fits(self.area()) {
+            return false;
+        }
+        self.dirty = true;
+        self.notify("enlarge the terminal to read the whole warning");
+        true
+    }
+
     fn sync_review(&mut self) {
         let shown = self
             .view
@@ -2130,6 +2145,9 @@ impl App {
     fn modal_input(&mut self, route: Route, action: Action) {
         match (route, action) {
             (Route::Dialog, Action::Forward(data)) => {
+                if self.dialog_prompt_cramped(&data) {
+                    return;
+                }
                 let before = self.view.new_session.clone();
                 match self.view.edit_new_session(&data) {
                     NewEdit::Submit(req) => self.begin_spawn(before, req),
@@ -2777,6 +2795,8 @@ impl App {
             worktree: false,
             checkpoints: None,
             permission_cards: false,
+            bypass: false,
+            no_sandbox: false,
         };
         let (cols, rows) = spawn_size(content, req.place);
         self.notify(&format!("starting {}...", sanitize_text(&t.name)));
@@ -2990,6 +3010,8 @@ impl App {
                 worktree: false,
                 checkpoints: None,
                 permission_cards: false,
+                bypass: false,
+                no_sandbox: false,
             };
             let mut run_req = req.clone();
             if registers_shell(&req) {
@@ -3986,6 +4008,8 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     view.sidebar_default = attach_cfg.sidebar_width.unwrap_or(view.sidebar_default);
     view.worktree_default = attach_cfg.worktree.unwrap_or(false);
     view.permission_cards_default = attach_cfg.permission_cards.unwrap_or(false);
+    view.priv_gate = Some(super::attach_new::privileged_ask);
+    view.privileged_lock = super::attach_new::in_agent().then(|| "agent session".to_string());
     let layouts_dir = attach_layouts::dir();
     let prompts_dir = attach_prompts::dir();
     let mut notice_set = false;
@@ -4837,6 +4861,8 @@ mod tests {
                 worktree: false,
                 checkpoints: None,
                 permission_cards: false,
+                bypass: false,
+                no_sandbox: false,
             },
             target: "a".into(),
         })
@@ -4915,6 +4941,8 @@ mod tests {
                 worktree: false,
                 checkpoints: None,
                 permission_cards: false,
+                bypass: false,
+                no_sandbox: false,
             },
             target: "a".into(),
         };

@@ -52,6 +52,10 @@ pub fn warnings(bypass: bool, no_sandbox: bool) -> Vec<&'static str> {
     v
 }
 
+pub fn prompt(word: &str) -> String {
+    format!("Type {word} to continue:")
+}
+
 pub fn confirm(bypass: bool, no_sandbox: bool, net_enforced: bool, yes: bool) -> Result<bool> {
     let in_agent = privileged::RUN_ENV
         .iter()
@@ -64,7 +68,7 @@ pub fn confirm(bypass: bool, no_sandbox: bool, net_enforced: bool, yes: bool) ->
             for line in warnings(bypass, no_sandbox) {
                 eprintln!("{line}");
             }
-            privileged::confirm_typed_stdio(word, &format!("Type {word} to continue:"))?;
+            privileged::confirm_typed_stdio(word, &prompt(word))?;
             Ok(true)
         }
     }
