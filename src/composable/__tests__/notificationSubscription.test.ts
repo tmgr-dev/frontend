@@ -156,5 +156,68 @@ test('NotificationBell follows the store user instead of the dead user/getUser g
 	);
 	expect(src).not.toContain('user/getUser');
 	expect(src).toContain('followUser(');
-	expect(src).toContain('store.state.token');
+	expect(src).toContain(
+		'followUser(() => (store.state.token ? store.state.user?.id : null))',
+	);
+});
+
+test('remounting for the same user keeps the shared unread count', async () => {
+	(getUnreadCount as jest.Mock).mockResolvedValue(4);
+	const mount = () => {
+		const scope = effectScope();
+		const n = scope.run(() => {
+			const r = useNotifications();
+			r.followUser(() => 31);
+			return r;
+		})!;
+		return { scope, n };
+	};
+	const first = mount();
+	await flush();
+	expect(first.n.unreadCount.value).toBe(4);
+	first.scope.stop();
+	const second = mount();
+	expect(second.n.unreadCount.value).toBe(4);
+	second.scope.stop();
+});
+
+test('an unmounted instance does not write the shared unread count', async () => {
+	let resolveCount!: (v: unknown) => void;
+	(getUnreadCount as jest.Mock).mockImplementationOnce(
+		() => new Promise((r) => (resolveCount = r)),
+	);
+	const scope = effectScope();
+	const n = scope.run(() => {
+		const r = useNotifications();
+		r.followUser(() => 41);
+		return r;
+	})!;
+	scope.stop();
+	resolveCount(99);
+	await flush();
+	expect(n.unreadCount.value).toBe(0);
+});
+
+test('a stale load that settles last does not clear loading of the current load', async () => {
+	let resolveOld!: (v: unknown) => void;
+	let resolveNew!: (v: unknown) => void;
+	(getNotifications as jest.Mock)
+		.mockImplementationOnce(() => new Promise((r) => (resolveOld = r)))
+		.mockImplementationOnce(() => new Promise((r) => (resolveNew = r)));
+	const id = ref<number | null>(51);
+	const scope = effectScope();
+	const n = scope.run(() => {
+		const r = useNotifications();
+		r.followUser(() => id.value);
+		return r;
+	})!;
+	id.value = 52;
+	await nextTick();
+	resolveOld(page([1]));
+	await flush();
+	expect(n.loading.value).toBe(true);
+	resolveNew(page([2]));
+	await flush();
+	expect(n.loading.value).toBe(false);
+	scope.stop();
 });

@@ -34,6 +34,7 @@ interface UseNotificationsReturn {
 }
 
 const unreadCount = ref<number>(0);
+let unreadCountOwner: number | null = null;
 
 export function useNotifications(): UseNotificationsReturn {
 	const notifications = ref<Notification[]>([]);
@@ -230,7 +231,11 @@ export function useNotifications(): UseNotificationsReturn {
 				currentPage.value = 1;
 				totalPages.value = 1;
 				loading.value = false;
-				unreadCount.value = 0;
+				const owner = userId || null;
+				if (owner !== unreadCountOwner) {
+					unreadCount.value = 0;
+					unreadCountOwner = owner;
+				}
 				clearNewNotificationIndicator();
 				if (userId) {
 					subscribeToRealtime(userId);
@@ -244,7 +249,11 @@ export function useNotifications(): UseNotificationsReturn {
 		);
 	};
 
-	if (getCurrentScope()) onScopeDispose(unsubscribeFromRealtime);
+	if (getCurrentScope())
+		onScopeDispose(() => {
+			generation++;
+			unsubscribeFromRealtime();
+		});
 
 	return {
 		notifications,
