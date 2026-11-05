@@ -32,6 +32,8 @@ pub struct Hello {
     pub pid: u32,
     #[serde(default)]
     pub nonce_c: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -248,6 +250,17 @@ pub enum FromShim {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn hello_config_dir_is_optional_in_both_directions() {
+        let old: Hello = serde_json::from_value(json!({"proto": 1, "nonce_c": "n"})).unwrap();
+        assert_eq!(old.config_dir, None);
+        let v = serde_json::to_value(&old).unwrap();
+        assert!(v.get("config_dir").is_none());
+        let new: Hello =
+            serde_json::from_value(json!({"proto": 1, "config_dir": "/x/tmgr"})).unwrap();
+        assert_eq!(new.config_dir.as_deref(), Some("/x/tmgr"));
+    }
 
     #[test]
     fn generated_ids_are_valid_and_distinct() {

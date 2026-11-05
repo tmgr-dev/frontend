@@ -49,6 +49,10 @@ random bytes as 64 lowercase hex characters.
 
 1. C to S `hello`: `{"type":"hello","proto":1,"client":"desktop","version":"0.3.0","pid":4242,"nonce_c":"<hex>"}`.
    `client` is `cli`, `desktop`, `worker` or `hook` (self-declared, see 6).
+   `hello` may carry an optional `"config_dir"`: the absolute path of the client's tmgr config directory. The runner
+   validates it (absolute, no `.`/`..`, named `tmgr`, not the home, runner or homes directory, at most 16 distinct)
+   and adds it to the sandbox deny list of every later session; the set is add-only and an invalid value is ignored,
+   never a handshake error. Older runners ignore the field.
 2. S checks `proto`. Different major: S sends `error` with `proto_mismatch` and
    closes. S replies `challenge`:
    `{"type":"challenge","nonce_s":"<hex>","proof_s":"<hex>"}` where

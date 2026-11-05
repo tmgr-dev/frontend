@@ -94,6 +94,48 @@ const PROTECTED_IN_HOME: [&str; 10] = [
     "Library/Application Support/Firefox",
 ];
 
+const MAX_CLIENT_CONFIG_DIRS: usize = 16;
+
+fn client_config_dir(raw: &str, forbidden: &[PathBuf]) -> Result<PathBuf, &'static str> {
+    use std::path::Component;
+    if raw.chars().any(char::is_control) {
+        return Err("contains a control character");
+    }
+    let dir = PathBuf::from(raw);
+    if !dir.is_absolute() {
+        return Err("is not absolute");
+    }
+    if raw.split('/').any(|s| s == "." || s == "..")
+        || !dir
+            .components()
+            .all(|c| matches!(c, Component::RootDir | Component::Normal(_)))
+    {
+        return Err("contains . or .. components");
+    }
+    if dir.file_name() != Some(std::ffi::OsStr::new("tmgr")) {
+        return Err("is not named tmgr");
+    }
+    let forms = sandbox::protected_forms(&dir);
+    if forbidden
+        .iter()
+        .any(|f| forms.iter().any(|d| f.starts_with(d)))
+    {
+        return Err("contains the home, runner or session directories");
+    }
+    Ok(dir)
+}
+
+fn add_client_config_dir(dirs: &mut Vec<PathBuf>, d: PathBuf) -> Result<(), &'static str> {
+    if dirs.contains(&d) {
+        return Ok(());
+    }
+    if dirs.len() >= MAX_CLIENT_CONFIG_DIRS {
+        return Err("exceeds the limit of reported directories");
+    }
+    dirs.push(d);
+    Ok(())
+}
+
 fn profile_protected_paths() -> Result<Vec<PathBuf>, ApiErr> {
     let dir = profile::user_dir();
     let decls = profile::secrets_declarations(dir.as_deref()).map_err(|e| {
@@ -1623,6 +1665,8 @@ struct Runner {
     conns: Arc<AtomicUsize>,
     pending: Arc<AtomicUsize>,
     rejects: Mutex<Rejects>,
+    client_config_dirs: Mutex<Vec<PathBuf>>,
+    config_dir_warned: AtomicBool,
     next_conn: AtomicU64,
     autopilot: autopilot::Host,
     clock: Mutex<humantime::Clock>,
@@ -2821,10 +2865,41 @@ impl Runner {
         Ok(cwd)
     }
 
+    fn note_client_config_dir(&self, raw: Option<&str>) {
+        let Some(raw) = raw else { return };
+        let canon = |p: &Path| sandbox::canon_lossy(p);
+        let mut forbidden = vec![
+            self.cfg.dir.clone(),
+            canon(&self.cfg.dir),
+            self.cfg.homes.clone(),
+            canon(&self.cfg.homes),
+        ];
+        if let Some(h) = std::env::var_os("HOME").map(PathBuf::from) {
+            forbidden.push(canon(&h));
+            forbidden.push(h);
+        }
+        let verdict = client_config_dir(raw, &forbidden)
+            .and_then(|d| add_client_config_dir(&mut lock(&self.client_config_dirs), d));
+        if let Err(why) = verdict {
+            if !self.config_dir_warned.swap(true, Ordering::SeqCst) {
+                log(&format!("ignored a client config dir: it {why}"));
+            }
+        }
+    }
+
+    fn client_config_dirs(&self) -> Vec<PathBuf> {
+        lock(&self.client_config_dirs).clone()
+    }
+
     fn protected_overlap(&self, cwd: &Path) -> Result<bool, ApiErr> {
         let canon = |p: &Path| fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
         let mut denied = vec![canon(&self.cfg.dir), canon(&self.cfg.homes)];
         denied.extend(profile_protected_paths()?);
+        denied.extend(
+            self.client_config_dirs()
+                .iter()
+                .flat_map(|d| sandbox::protected_forms(d)),
+        );
         let mut home = None;
         if let Some(h) = std::env::var_os("HOME").map(PathBuf::from) {
             let h = canon(&h);
@@ -4189,6 +4264,7 @@ impl Runner {
         }
         let mut base = base_env();
         let profile_protected = profile_protected_paths()?;
+        let client_dirs = self.client_config_dirs();
         let mut grants = sandbox::Grants::default();
         let mut seeds = Vec::new();
         let mut secret_files = Vec::new();
@@ -4200,6 +4276,7 @@ impl Runner {
                     home.parent().unwrap_or(home).to_path_buf(),
                 ];
                 protected.extend(profile_protected.iter().cloned());
+                protected.extend(client_dirs.iter().cloned());
                 let prep = login::prepare(p, &real_home, &protected, |_| None)
                     .map_err(|e| api(ErrorCode::Sandbox, e))?;
                 for w in &prep.warnings {
@@ -4220,6 +4297,7 @@ impl Runner {
             }
         }
         grants.deny = profile_protected;
+        grants.deny.extend(client_dirs);
         grants.run_id = extra.run_id_env;
         for o in extra.objects.iter().filter(|o| o.borrows) {
             o.reverify().map_err(|e| api(ErrorCode::Sandbox, e))?;
@@ -4866,6 +4944,7 @@ impl Runner {
             }
         };
         drop(pending);
+        self.note_client_config_dir(hello.config_dir.as_deref());
         let _ = stream.set_write_timeout(Some(write_timeout()));
         let Ok(w) = stream.try_clone() else { return };
         let conn = Arc::new(Conn {
@@ -5050,6 +5129,8 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         conns: Arc::new(AtomicUsize::new(0)),
         pending: Arc::new(AtomicUsize::new(0)),
         rejects: Mutex::new(Rejects::default()),
+        client_config_dirs: Mutex::new(Vec::new()),
+        config_dir_warned: AtomicBool::new(false),
         next_conn: AtomicU64::new(1),
         autopilot: autopilot::Host::default(),
         clock: Mutex::new(clock),
@@ -5470,6 +5551,67 @@ mod tests {
         prompt_ready(Some(&matcher), permit::agent_of(profile), &bottom, &rows)
     }
 
+    fn forbidden() -> Vec<PathBuf> {
+        vec![
+            PathBuf::from("/home/u"),
+            PathBuf::from("/run/tmgr-runner"),
+            PathBuf::from("/run/tmgr-runner/homes"),
+        ]
+    }
+
+    #[test]
+    fn a_client_config_dir_must_be_a_plain_absolute_tmgr_path() {
+        let f = forbidden();
+        assert_eq!(
+            client_config_dir("/tmp/x/tmgr", &f),
+            Ok(PathBuf::from("/tmp/x/tmgr"))
+        );
+        for bad in [
+            "tmgr",
+            "x/tmgr",
+            "/tmp/../etc/tmgr",
+            "/tmp/./x/tmgr",
+            "/tmp/x/other",
+            "/tmp/x/tmgr/sub",
+            "/tmp/x\n/tmgr",
+            "/tmp/x\0/tmgr",
+            "/tmp/x\r/tmgr",
+            "",
+            "/",
+        ] {
+            assert!(client_config_dir(bad, &f).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_client_config_dir_cannot_cover_home_the_runner_dir_or_the_session_homes() {
+        let f = forbidden();
+        assert!(client_config_dir("/home/u/tmgr", &f).is_ok());
+        assert!(client_config_dir("/run/tmgr-runner/tmgr", &f).is_ok());
+        let f = vec![
+            PathBuf::from("/tmgr"),
+            PathBuf::from("/run/tmgr"),
+            PathBuf::from("/run/tmgr/homes"),
+        ];
+        assert!(client_config_dir("/tmgr", &f).is_err());
+        assert!(client_config_dir("/run/tmgr", &f).is_err());
+        assert!(client_config_dir("/run/tmgr/homes/tmgr", &f).is_ok());
+        let f = vec![PathBuf::from("/a/tmgr/b")];
+        assert!(client_config_dir("/a/tmgr", &f).is_err());
+    }
+
+    #[test]
+    fn the_set_of_client_config_dirs_dedupes_and_stops_at_the_cap() {
+        let mut dirs = Vec::new();
+        for i in 0..MAX_CLIENT_CONFIG_DIRS {
+            add_client_config_dir(&mut dirs, PathBuf::from(format!("/t/{i}/tmgr"))).unwrap();
+        }
+        add_client_config_dir(&mut dirs, PathBuf::from("/t/0/tmgr")).unwrap();
+        assert_eq!(dirs.len(), MAX_CLIENT_CONFIG_DIRS);
+        assert!(add_client_config_dir(&mut dirs, PathBuf::from("/t/new/tmgr")).is_err());
+        assert_eq!(dirs.len(), MAX_CLIENT_CONFIG_DIRS);
+    }
+
     #[test]
     fn at_prompt_refuses_a_screen_with_an_approval_dialog() {
         let dialog = include_str!("../profiles/screens/claude-bash-approval.txt");
@@ -5513,6 +5655,8 @@ mod tests {
             conns: Arc::new(AtomicUsize::new(0)),
             pending: Arc::new(AtomicUsize::new(0)),
             rejects: Mutex::new(Rejects::default()),
+            client_config_dirs: Mutex::new(Vec::new()),
+            config_dir_warned: AtomicBool::new(false),
             next_conn: AtomicU64::new(1),
             autopilot: autopilot::Host::default(),
             clock: Mutex::new(humantime::Clock::new(0)),

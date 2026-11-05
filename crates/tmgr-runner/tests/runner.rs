@@ -65,6 +65,7 @@ struct Harness {
     agents: PathBuf,
     cfg: PathBuf,
     real_home: Option<PathBuf>,
+    drop_xdg: bool,
     env: Vec<(String, String)>,
     runner: Option<Child>,
 }
@@ -110,6 +111,7 @@ impl Harness {
             agents,
             cfg,
             real_home: None,
+            drop_xdg: false,
             env: Vec::new(),
             runner: None,
         }
@@ -128,8 +130,11 @@ impl Harness {
             .env("TMGR_AGENTS_DIR", &self.agents)
             .env("XDG_CONFIG_HOME", &self.cfg)
             .env("TMGR_T0_QUIET_MS", quiet_ms.to_string())
-            .env("TMGR_RUNNER_WRITE_TIMEOUT_MS", "1500")
-            .stdin(Stdio::null())
+            .env("TMGR_RUNNER_WRITE_TIMEOUT_MS", "1500");
+        if self.drop_xdg {
+            cmd.env_remove("XDG_CONFIG_HOME");
+        }
+        cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(err)
             .spawn()
@@ -7432,3 +7437,79 @@ fn orchestrator_create_checks_the_executable_pin() {
 
 #[path = "checkpoints_ipc/mod.rs"]
 mod checkpoints_ipc;
+
+fn cli_config_dir_fx(drop_xdg: bool) -> Harness {
+    let mut h = Harness::new();
+    let home = h.tmp.path().join("home");
+    fs::create_dir(&home).unwrap();
+    fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+    h.real_home = Some(home);
+    h.drop_xdg = drop_xdg;
+    h
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_config_dir_the_cli_reports_outside_home_is_unreadable_to_a_sandboxed_agent() {
+    let mut h = cli_config_dir_fx(true);
+    let outside = tempfile::Builder::new()
+        .prefix("tx")
+        .tempdir_in("/tmp")
+        .unwrap();
+    let cli_dir = outside.path().join("tmgr");
+    fs::create_dir(&cli_dir).unwrap();
+    fs::write(cli_dir.join("secret.txt"), "cli-token-value").unwrap();
+    let script = h.script(
+        "peek.sh",
+        &format!(
+            "cat {}/secret.txt > \"$HOME/r_secret\" 2>&1\n\
+             echo $? > \"$HOME/r_rc\"\n\
+             echo done > \"$HOME/done\"\n\
+             while true; do sleep 0.2; done\n",
+            cli_dir.display()
+        ),
+    );
+    h.profile("fake", &["/bin/sh", &script]);
+    h.start(5000);
+    let mut c = Client::connect_with_config_dir(&h.run, "desktop", Some(&cli_dir)).unwrap();
+    let info = c.create_run(h.run_req("fake")).unwrap();
+    let rhome = h.homes.path().join(&info.id);
+    wait_for("agent script did not finish", || {
+        rhome.join("done").exists()
+    });
+    let out = fs::read_to_string(rhome.join("r_secret")).unwrap();
+    assert!(!out.contains("cli-token-value"), "{out}");
+    assert_ne!(fs::read_to_string(rhome.join("r_rc")).unwrap().trim(), "0");
+}
+
+#[test]
+fn a_cli_config_dir_inside_the_cwd_refuses_the_session() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = cli_config_dir_fx(false);
+    h.start(5000);
+    let cli_dir = h.work.join("tmgr");
+    fs::create_dir(&cli_dir).unwrap();
+    let mut c = Client::connect_with_config_dir(&h.run, "cli", Some(&cli_dir)).unwrap();
+    let e = c.create(h.req(&["/bin/sh", "-c", "sleep 5"])).unwrap_err();
+    assert!(e.to_string().contains("protected"), "{e}");
+}
+
+#[test]
+fn a_later_client_cannot_shrink_the_config_dirs_an_earlier_one_reported() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = cli_config_dir_fx(false);
+    h.start(5000);
+    let cli_dir = h.work.join("tmgr");
+    fs::create_dir(&cli_dir).unwrap();
+    drop(Client::connect_with_config_dir(&h.run, "cli", Some(&cli_dir)).unwrap());
+    let other = h.tmp.path().join("elsewhere").join("tmgr");
+    for dir in [None, Some(other.as_path())] {
+        let mut c = Client::connect_with_config_dir(&h.run, "cli", dir).unwrap();
+        let e = c.create(h.req(&["/bin/sh", "-c", "sleep 5"])).unwrap_err();
+        assert!(e.to_string().contains("protected"), "{e}");
+    }
+}

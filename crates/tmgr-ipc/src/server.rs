@@ -120,6 +120,15 @@ pub fn handshake_server(
 }
 
 pub fn handshake_client(stream: &UnixStream, client: &str, secret: &str) -> io::Result<Welcome> {
+    handshake_client_with(stream, client, secret, None)
+}
+
+pub fn handshake_client_with(
+    stream: &UnixStream,
+    client: &str,
+    secret: &str,
+    config_dir: Option<&str>,
+) -> io::Result<Welcome> {
     let deadline = Instant::now() + HANDSHAKE_TIMEOUT;
     let _ = stream.set_write_timeout(Some(HANDSHAKE_TIMEOUT));
     let nonce_c = auth::nonce();
@@ -129,6 +138,7 @@ pub fn handshake_client(stream: &UnixStream, client: &str, secret: &str) -> io::
         version: env!("CARGO_PKG_VERSION").into(),
         pid: std::process::id(),
         nonce_c: nonce_c.clone(),
+        config_dir: config_dir.map(str::to_owned),
     };
     write_json(&mut &*stream, &Handshake::Hello(hello))?;
     let remote_error = |e: ErrorBody| {
