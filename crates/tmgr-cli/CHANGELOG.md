@@ -6,7 +6,7 @@
 - A team lead clone receives each worker's commits when they are imported, so `git merge --squash <sha>` keeps working.
 - The clones `tmgr run` makes keep skipping the folder-trust question in a trusted repository. The runner recognises new clones from a record kept outside the clone. Needs a runner restart after upgrading.
 - Importing a branch is refused when the clone's objects exceed the repository's own by more than 2 GiB.
-- A new clone counts as an ordinary repository, so a `--worktree` session can start from inside it.
+- A `--worktree` session is refused inside a clone kept in a `<repo>-worktrees` folder. Start it from the original repository.
 
 ## 1.0.88
 
