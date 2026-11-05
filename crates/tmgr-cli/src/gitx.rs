@@ -1,4 +1,7 @@
+use std::ffi::OsString;
 use std::io::Read;
+#[cfg(all(unix, feature = "runner"))]
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -46,15 +49,28 @@ pub fn run_capture_with(
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GH_PROMPT_DISABLED", "1")
         .env("LC_ALL", "C");
+    for k in env_remove {
+        match k.strip_suffix('*') {
+            Some(prefix) => {
+                for (name, _) in std::env::vars_os() {
+                    if name.to_string_lossy().starts_with(prefix) {
+                        cmd.env_remove(name);
+                    }
+                }
+            }
+            None => {
+                cmd.env_remove(k);
+            }
+        }
+    }
     for (k, v) in env {
         cmd.env(k, v);
-    }
-    for k in env_remove {
-        cmd.env_remove(k);
     }
     if let Some(d) = dir {
         cmd.current_dir(d);
     }
+    #[cfg(all(unix, feature = "runner"))]
+    cmd.process_group(0);
     let mut child = spawn_retrying_busy(&mut cmd)?;
     let drain = |mut r: Box<dyn Read + Send>| {
         std::thread::spawn(move || {
@@ -72,6 +88,10 @@ pub fn run_capture_with(
             break s;
         }
         if Instant::now() >= deadline {
+            #[cfg(all(unix, feature = "runner"))]
+            unsafe {
+                libc::killpg(child.id() as libc::pid_t, libc::SIGKILL);
+            }
             let _ = child.kill();
             let _ = child.wait();
             let _ = out_t.join();
@@ -100,7 +120,7 @@ pub fn git_program() -> &'static str {
     }
 }
 
-const SCRUBBED_ENV: [&str; 12] = [
+const SCRUBBED_ENV: [&str; 19] = [
     "GIT_DIR",
     "GIT_WORK_TREE",
     "GIT_INDEX_FILE",
@@ -109,13 +129,20 @@ const SCRUBBED_ENV: [&str; 12] = [
     "GIT_COMMON_DIR",
     "GIT_CONFIG_PARAMETERS",
     "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_KEY_*",
+    "GIT_CONFIG_VALUE_*",
+    "GIT_SSH_COMMAND",
+    "GIT_SSH",
+    "GIT_ASKPASS",
+    "SSH_ASKPASS",
+    "GIT_ATTR_SOURCE",
     "GIT_EXTERNAL_DIFF",
     "GIT_PAGER",
     "GIT_EDITOR",
     "GIT_SEQUENCE_EDITOR",
 ];
 
-const MUTATION_PINS: [&str; 14] = [
+const MUTATION_PINS: [&str; 16] = [
     "-c",
     "core.hooksPath=/dev/null",
     "-c",
@@ -130,6 +157,8 @@ const MUTATION_PINS: [&str; 14] = [
     "core.untrackedCache=false",
     "-c",
     "core.alternateRefsCommand=: #",
+    "-c",
+    "diff.ignoreSubmodules=all",
 ];
 
 fn git_error(e: std::io::Error) -> Error {
@@ -142,11 +171,33 @@ fn git_error(e: std::io::Error) -> Error {
     }
 }
 
+#[cfg(all(unix, feature = "runner"))]
+fn safe_path(dir: &Path) -> Option<OsString> {
+    Some(tmgr_runner::hostview::path_outside(dir))
+}
+
+#[cfg(not(all(unix, feature = "runner")))]
+fn safe_path(_dir: &Path) -> Option<OsString> {
+    None
+}
+
 pub fn config_read(dir: &Path, args: &[&str], timeout: Duration) -> Option<String> {
     let mut full = vec!["-c", "core.fsmonitor=false", "config"];
+    if !args.contains(&"--show-scope") {
+        full.push("--no-includes");
+    }
     full.extend_from_slice(args);
-    let out =
-        run_capture_with(git_program(), Some(dir), &full, timeout, &[], &SCRUBBED_ENV).ok()?;
+    let path = safe_path(dir);
+    let env: Vec<(&str, &Path)> = path.iter().map(|p| ("PATH", Path::new(p))).collect();
+    let out = run_capture_with(
+        git_program(),
+        Some(dir),
+        &full,
+        timeout,
+        &env,
+        &SCRUBBED_ENV,
+    )
+    .ok()?;
     let text = out.stdout.trim().to_string();
     (out.ok && !text.is_empty()).then_some(text)
 }
@@ -154,6 +205,8 @@ pub fn config_read(dir: &Path, args: &[&str], timeout: Duration) -> Option<Strin
 pub struct Reader {
     #[cfg(all(unix, feature = "runner"))]
     view: std::result::Result<HostView, String>,
+    #[cfg(all(unix, feature = "runner"))]
+    timeout: Duration,
     #[cfg(not(all(unix, feature = "runner")))]
     dir: PathBuf,
     #[cfg(not(all(unix, feature = "runner")))]
@@ -168,7 +221,7 @@ impl Reader {
         } else {
             HostView::discover_within(dir, Access::Read, timeout)
         };
-        Reader { view }
+        Reader { view, timeout }
     }
 
     pub fn repo(&self) -> Option<PathBuf> {
@@ -191,7 +244,7 @@ impl Reader {
                 .origin_url()
                 .map(str::to_string)
                 .ok_or_else(|| "origin is not set".to_string()),
-            ["config", key] => config_read(view.repo(), &["--get", key], Duration::from_secs(5))
+            ["config", key] => config_read(view.repo(), &["--get", key], self.timeout)
                 .ok_or_else(|| format!("{key} is not set")),
             _ => view.run(args),
         }
@@ -255,44 +308,78 @@ impl Reader {
 
 #[cfg(all(unix, feature = "runner"))]
 fn config_key_allowed(key: &str) -> bool {
-    let key = key.to_ascii_lowercase();
     let Some((section, rest)) = key.split_once('.') else {
         return false;
     };
-    let name = rest.rsplit('.').next().unwrap_or(rest);
-    match section {
-        "core" => !matches!(
-            name,
-            "sshcommand"
-                | "gitproxy"
-                | "pager"
-                | "editor"
-                | "askpass"
-                | "worktree"
-                | "fsmonitor"
-                | "alternaterefscommand"
+    let (sub, var) = match rest.rsplit_once('.') {
+        Some((sub, var)) => (Some(sub), var),
+        None => (None, rest),
+    };
+    let section = section.to_ascii_lowercase();
+    let var = var.to_ascii_lowercase();
+    let var = var.as_str();
+    match (section.as_str(), sub) {
+        ("user" | "author" | "committer" | "gui" | "color" | "column", _) => true,
+        ("core", None) => matches!(
+            var,
+            "repositoryformatversion"
+                | "filemode"
+                | "bare"
+                | "logallrefupdates"
+                | "ignorecase"
+                | "precomposeunicode"
+                | "symlinks"
+                | "hookspath"
+                | "autocrlf"
+                | "eol"
+                | "safecrlf"
+                | "longpaths"
+                | "sparsecheckout"
+                | "sharedrepository"
+                | "abbrev"
+                | "compression"
+                | "untrackedcache"
+                | "commentchar"
+                | "quotepath"
         ),
-        "lfs" => !rest.contains("customtransfer") && !rest.starts_with("standalonetransferagent"),
-        "remote" => !matches!(
-            name,
-            "vcs" | "uploadpack" | "receivepack" | "proxy" | "proxyauthmethod"
+        ("pull", None) => !matches!(var, "twohead" | "octopus"),
+        ("push", None) => matches!(var, "default" | "autosetupremote" | "followtags"),
+        ("fetch", None) => matches!(var, "prune" | "prunetags"),
+        ("init", None) => var == "defaultbranch",
+        ("merge", None) => matches!(var, "ff" | "conflictstyle"),
+        ("rebase", None) => matches!(var, "autostash" | "autosquash" | "updaterefs"),
+        ("rerere", None) => var == "enabled",
+        ("commit", None) => matches!(var, "verbose" | "cleanup" | "gpgsign"),
+        ("tag", None) => matches!(var, "gpgsign" | "sort"),
+        ("maintenance", None) => matches!(var, "auto" | "strategy"),
+        ("extensions", None) => matches!(
+            var,
+            "worktreeconfig" | "objectformat" | "refstorage" | "relativeworktrees"
         ),
-        "user" | "branch" | "pull" | "push" | "fetch" | "init" | "color" | "advice" | "status"
-        | "tag" | "alias" | "safe" | "extensions" | "url" | "gc" | "maintenance" | "feature"
-        | "checkout" | "stash" | "rerere" | "apply" | "column" | "help" | "index" | "pack"
-        | "repack" | "commit" | "submodule" | "http" | "format" | "protocol" | "transfer"
-        | "fsck" => true,
+        ("lfs", None) => matches!(var, "url" | "repositoryformatversion" | "locksverify"),
+        ("lfs", Some(_)) => matches!(var, "access" | "locksverify"),
+        ("branch", Some(_)) => matches!(
+            var,
+            "remote" | "merge" | "rebase" | "pushremote" | "description" | "vscode-merge-base"
+        ),
+        ("remote", Some(_)) => matches!(
+            var,
+            "url"
+                | "pushurl"
+                | "fetch"
+                | "tagopt"
+                | "prune"
+                | "mirror"
+                | "skipfetchall"
+                | "gh-resolved"
+        ),
+        ("submodule", Some(_)) => matches!(var, "url" | "active"),
         _ => false,
     }
 }
 
-#[cfg(not(all(unix, feature = "runner")))]
-pub fn preflight(_dir: &Path) -> Result<()> {
-    Ok(())
-}
-
 #[cfg(all(unix, feature = "runner"))]
-pub fn preflight(dir: &Path) -> Result<()> {
+fn checked_view(dir: &Path) -> Result<HostView> {
     let refuse =
         |why: String| Error::conflict(why).hint("remove the setting from the repository config");
     let view = HostView::discover_within(dir, Access::Read, GIT_TIMEOUT).map_err(|e| {
@@ -315,7 +402,7 @@ pub fn preflight(dir: &Path) -> Result<()> {
             )));
         }
     }
-    Ok(())
+    Ok(view)
 }
 
 #[derive(Clone)]
@@ -336,12 +423,26 @@ impl Git {
         Reader::open(&self.dir, GIT_TIMEOUT, false)
     }
 
-    pub fn preflight(&self) -> Result<()> {
-        preflight(&self.dir)
+    #[cfg(all(unix, feature = "runner"))]
+    fn pinned_env(&self) -> Result<Vec<(&'static str, PathBuf)>> {
+        let view = checked_view(&self.dir)?;
+        Ok(vec![
+            ("GIT_DIR", view.git_dir().to_path_buf()),
+            ("GIT_COMMON_DIR", view.common_dir().to_path_buf()),
+            ("GIT_WORK_TREE", view.repo().to_path_buf()),
+            ("PATH", PathBuf::from(view.tool_path())),
+        ])
+    }
+
+    #[cfg(not(all(unix, feature = "runner")))]
+    fn pinned_env(&self) -> Result<Vec<(&'static str, PathBuf)>> {
+        Ok(Vec::new())
     }
 
     fn mutate(&self, args: &[&str], what: &str) -> Result<String> {
-        self.preflight()?;
+        let mut pinned = self.pinned_env()?;
+        pinned.push(("GIT_NO_LAZY_FETCH", PathBuf::from("1")));
+        let env: Vec<(&str, &Path)> = pinned.iter().map(|(k, v)| (*k, v.as_path())).collect();
         let mut full: Vec<&str> = MUTATION_PINS.to_vec();
         full.extend_from_slice(args);
         let out = run_capture_with(
@@ -349,7 +450,7 @@ impl Git {
             Some(&self.dir),
             &full,
             GIT_TIMEOUT,
-            &[],
+            &env,
             &SCRUBBED_ENV,
         )
         .map_err(git_error)?;
@@ -438,13 +539,20 @@ impl Git {
 
 pub struct Neutral {
     dir: tempfile::TempDir,
+    path: Option<OsString>,
 }
 
 impl Neutral {
     pub fn new() -> Result<Neutral> {
         tempfile::tempdir()
-            .map(|dir| Neutral { dir })
+            .map(|dir| Neutral { dir, path: None })
             .map_err(|_| Error::internal("could not make a temporary folder"))
+    }
+
+    pub fn outside(repo: &Path) -> Result<Neutral> {
+        let mut neutral = Neutral::new()?;
+        neutral.path = safe_path(repo);
+        Ok(neutral)
     }
 
     pub fn git(&self, args: &[&str]) -> Result<Captured> {
@@ -453,12 +561,16 @@ impl Neutral {
 
     pub fn program(&self, program: &str, args: &[&str], timeout: Duration) -> Result<Captured> {
         let ceiling = self.dir.path().parent().unwrap_or(self.dir.path());
+        let mut env = vec![("GIT_CEILING_DIRECTORIES", ceiling)];
+        if let Some(path) = &self.path {
+            env.push(("PATH", Path::new(path)));
+        }
         run_capture_with(
             program,
             Some(self.dir.path()),
             args,
             timeout,
-            &[("GIT_CEILING_DIRECTORIES", ceiling)],
+            &env,
             &SCRUBBED_ENV,
         )
         .map_err(git_error)
@@ -649,6 +761,89 @@ mod tests {
             compare_url(&gh, "x y#z").unwrap(),
             "https://github.com/a/b/compare/x%20y%23z?expand=1"
         );
+    }
+
+    #[test]
+    fn scrubbed_variables_are_removed_by_name_and_by_prefix() {
+        std::env::set_var("TMGR_SCRUB_TEST_A", "1");
+        let out = run_capture_with(
+            "sh",
+            None,
+            &["-c", "env"],
+            Duration::from_secs(5),
+            &[],
+            &["TMGR_SCRUB_TEST_*"],
+        )
+        .unwrap();
+        assert!(!out.stdout.contains("TMGR_SCRUB_TEST_A"));
+        for name in [
+            "GIT_SSH_COMMAND",
+            "GIT_SSH",
+            "GIT_ASKPASS",
+            "SSH_ASKPASS",
+            "GIT_ATTR_SOURCE",
+            "GIT_CONFIG_COUNT",
+            "GIT_CONFIG_KEY_*",
+            "GIT_CONFIG_VALUE_*",
+            "GIT_EXTERNAL_DIFF",
+            "GIT_PAGER",
+            "GIT_EDITOR",
+        ] {
+            assert!(SCRUBBED_ENV.contains(&name), "{name}");
+        }
+    }
+
+    #[cfg(all(unix, feature = "runner"))]
+    #[test]
+    fn a_timeout_stops_a_grandchild_that_holds_the_pipe() {
+        let began = Instant::now();
+        let slow = run_capture_with(
+            "sh",
+            None,
+            &["-c", "sleep 30 & sleep 30"],
+            Duration::from_millis(200),
+            &[],
+            &[],
+        );
+        assert_eq!(slow.err().unwrap().kind(), std::io::ErrorKind::TimedOut);
+        assert!(began.elapsed() < Duration::from_secs(10));
+    }
+
+    #[cfg(all(unix, feature = "runner"))]
+    #[test]
+    fn only_inert_config_keys_are_allowed() {
+        for ok in [
+            "core.hooksPath",
+            "CORE.FileMode",
+            "user.name",
+            "branch.feat/x.remote",
+            "remote.origin.URL",
+            "remote.origin.gh-resolved",
+            "lfs.repositoryformatversion",
+            "lfs.https://example.com/a/b/info/lfs.access",
+            "submodule.lib.active",
+            "extensions.worktreeConfig",
+        ] {
+            assert!(config_key_allowed(ok), "{ok}");
+        }
+        for bad in [
+            "lfs.extension.x.clean",
+            "lfs.customtransfer.x.path",
+            "remote.x.promisor",
+            "remote.origin.proxy",
+            "extensions.partialclone",
+            "protocol.ext.allow",
+            "url.x.insteadof",
+            "filter.x.clean",
+            "core.sshCommand",
+            "core.worktree",
+            "include.path",
+            "pull.twohead",
+            "branch.autosetupmerge",
+            "nodots",
+        ] {
+            assert!(!config_key_allowed(bad), "{bad}");
+        }
     }
 
     #[test]

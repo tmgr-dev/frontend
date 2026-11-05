@@ -14,7 +14,7 @@ Rust workspace of the `tmgr` command line tool. It is a separate Cargo workspace
 curl -fsSL https://tmgr.dev/install.sh | sh                 # Linux and macOS, into ~/.local/bin, no sudo
 curl -fsSL https://tmgr.dev/install.sh | TMGR_CHANNEL=beta sh   # also prereleases
 nix profile install github:tmgr-dev/frontend#tmgr-cli        # Nix (built from source)
-cargo install --locked --git https://github.com/tmgr-dev/frontend tmgr-cli
+cargo install --locked --features runner --git https://github.com/tmgr-dev/frontend tmgr-cli
 brew install tmgr-dev/tap/tmgr                               # once the tap exists, see below
 ```
 

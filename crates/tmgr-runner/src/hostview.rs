@@ -126,20 +126,40 @@ fn linked(root: &Path, dot: &Path) -> Result<Layout, String> {
     })
 }
 
+fn is_git_dir(path: &Path) -> bool {
+    path.join("HEAD").exists() && path.join("objects").is_dir() && path.join("refs").is_dir()
+}
+
+fn has_commondir(gitdir: &Path) -> bool {
+    fs::symlink_metadata(gitdir.join("commondir")).is_ok()
+}
+
 fn resolve(repo: &Path) -> Result<Layout, String> {
     let dot = repo.join(".git");
     match fs::symlink_metadata(&dot) {
-        Ok(m) if m.is_dir() => Ok(Layout {
-            root: repo.to_path_buf(),
-            gitdir: dot.clone(),
-            common: dot,
-        }),
+        Ok(m) if m.is_dir() => {
+            if !is_git_dir(&dot) {
+                return Err(format!("not a git repository: {}", repo.display()));
+            }
+            if has_commondir(&dot) {
+                return Err(format!(
+                    "{} names another common folder",
+                    dot.join("commondir").display()
+                ));
+            }
+            Ok(Layout {
+                root: repo.to_path_buf(),
+                gitdir: dot.clone(),
+                common: dot,
+            })
+        }
         Ok(m) if m.is_file() => linked(repo, &dot),
         Ok(_) => Err(format!("{} is neither a folder nor a file", dot.display())),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             if repo.join("HEAD").is_file()
                 && plain_dir(&repo.join("objects"))
                 && plain_dir(&repo.join("refs"))
+                && !has_commondir(repo)
             {
                 Ok(Layout {
                     root: repo.to_path_buf(),
@@ -367,6 +387,17 @@ fn path_guards(layout: &Layout) -> Vec<&Path> {
     guards
 }
 
+pub fn path_outside(dir: &Path) -> OsString {
+    let layout = find_root(dir).ok().and_then(|root| resolve(&root).ok());
+    match layout {
+        Some(layout) => clean_path(&path_guards(&layout)),
+        None => {
+            let dir = fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+            clean_path(&[dir.as_path()])
+        }
+    }
+}
+
 fn clean_path(guards: &[&Path]) -> OsString {
     clean_path_in(&std::env::var_os("PATH").unwrap_or_default(), guards)
 }
@@ -480,7 +511,11 @@ fn find_root(start: &Path) -> Result<PathBuf, String> {
     let start = fs::canonicalize(start).map_err(|e| format!("{}: {e}", start.display()))?;
     start
         .ancestors()
-        .find(|d| fs::symlink_metadata(d.join(".git")).is_ok())
+        .find(|d| match fs::symlink_metadata(d.join(".git")) {
+            Ok(m) if m.is_dir() => is_git_dir(&d.join(".git")),
+            Ok(_) => true,
+            Err(_) => false,
+        })
         .map(Path::to_path_buf)
         .ok_or_else(|| format!("not a git repository: {}", start.display()))
 }
@@ -788,6 +823,14 @@ impl HostView {
         &self.common
     }
 
+    pub fn git_dir(&self) -> &Path {
+        &self.gitdir
+    }
+
+    pub fn tool_path(&self) -> &OsStr {
+        &self.path
+    }
+
     #[cfg(test)]
     fn private_dir(&self) -> &Path {
         &self.dir
@@ -835,6 +878,24 @@ mod tests {
 
     fn fixture() -> Fx {
         fixture_with(&[])
+    }
+
+    #[test]
+    fn a_commondir_file_inside_a_plain_git_folder_is_refused() {
+        let fx = fixture();
+        fs::write(fx.repo.join(".git/commondir"), "../elsewhere").unwrap();
+        let err = HostView::open(&fx.repo, Access::Read).err().unwrap();
+        assert!(err.contains("common folder"), "{err}");
+    }
+
+    #[test]
+    fn an_incomplete_nested_git_folder_is_walked_past() {
+        let fx = fixture();
+        let sub = fx.repo.join("sub");
+        fs::create_dir_all(sub.join(".git")).unwrap();
+        fs::write(sub.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        fs::write(sub.join(".git/config"), "").unwrap();
+        assert_eq!(find_root(&sub).unwrap(), fx.repo);
     }
 
     fn hostile_hook(fx: &Fx, repo_dir: &Path, name: &str) -> PathBuf {

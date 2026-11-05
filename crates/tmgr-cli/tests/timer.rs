@@ -566,11 +566,12 @@ async fn done_stops_the_timer_moves_to_review_and_comments_the_pr() {
         [
             "pr",
             "view",
-            "tm-512-checkout-apple-pay-button",
             "--repo",
             "acme/site",
             "--json",
-            "url"
+            "url",
+            "--",
+            "tm-512-checkout-apple-pay-button"
         ]
     );
 }

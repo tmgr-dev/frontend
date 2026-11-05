@@ -444,9 +444,12 @@ async fn agent_start_records_the_repository_root_despite_a_work_tree_setting() {
     )
     .await;
     let repo = init_repo(&env.tmp.path().join("repo"));
-    let decoy = env.tmp.path().join("decoy");
-    std::fs::create_dir_all(&decoy).unwrap();
-    git(&repo, &["config", "core.worktree", decoy.to_str().unwrap()]);
+    let elsewhere = env.tmp.path().join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    git(
+        &repo,
+        &["config", "core.worktree", elsewhere.to_str().unwrap()],
+    );
     let out = env
         .tmgr_in(&repo, None)
         .args([
@@ -470,16 +473,19 @@ async fn agent_start_records_the_repository_root_despite_a_work_tree_setting() {
 async fn project_hook_install_uses_the_repository_root_despite_a_work_tree_setting() {
     let env = Env::new().await;
     let repo = init_repo(&env.tmp.path().join("repo"));
-    let decoy = env.tmp.path().join("decoy");
-    std::fs::create_dir_all(&decoy).unwrap();
-    git(&repo, &["config", "core.worktree", decoy.to_str().unwrap()]);
+    let elsewhere = env.tmp.path().join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    git(
+        &repo,
+        &["config", "core.worktree", elsewhere.to_str().unwrap()],
+    );
     let out = env
         .tmgr_in(&repo, None)
         .args(["hook", "install", "claude", "--project", "--yes", "--json"])
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", text(&out.stderr));
-    assert!(!decoy.join(".claude").exists());
+    assert!(!elsewhere.join(".claude").exists());
     assert!(repo.join(".claude/settings.json").exists());
 }
 
@@ -806,4 +812,265 @@ async fn start_in_a_linked_worktree_refuses_filters_from_the_common_config() {
     assert_eq!(git(&root, &["branch", "--show-current"]), "tm-512-x");
     assert_eq!(git(&root, &["stash", "list"]), "");
     server_untouched(&env).await;
+}
+
+fn real_git() -> String {
+    let out = Command::new("sh")
+        .args(["-c", "command -v git"])
+        .output()
+        .unwrap();
+    text(&out.stdout).trim().to_string()
+}
+
+async fn start_stash_in(env: &Env, cwd: &Path) -> std::process::Output {
+    env.tmgr_in(cwd, None)
+        .args(["start", "TM-512", "--stash", "--json"])
+        .output()
+        .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn start_ignores_a_commondir_file_inside_a_plain_git_directory() {
+    let (env, repo) = start_env().await;
+    let (script, marker) = marker_script(&env.tmp.path().join("bin"), "clean");
+    let shared = env.tmp.path().join("shared.git");
+    let copied = Command::new("cp")
+        .arg("-R")
+        .arg(repo.join(".git"))
+        .arg(&shared)
+        .status()
+        .unwrap();
+    assert!(copied.success());
+    git(
+        &shared,
+        &["config", "filter.x.clean", script.to_str().unwrap()],
+    );
+    std::fs::write(shared.join("info/attributes"), "README.md filter=x\n").unwrap();
+    std::fs::write(repo.join(".git/commondir"), shared.display().to_string()).unwrap();
+    std::fs::write(repo.join("README.md"), "changed\n").unwrap();
+    let out = start_stash_in(&env, &repo).await;
+    assert!(!marker.exists(), "a program from the repository config ran");
+    assert!(
+        matches!(out.status.code(), Some(0) | Some(6)),
+        "{}",
+        text(&out.stderr)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn start_walks_past_a_nested_folder_that_is_not_a_complete_git_directory() {
+    let (env, repo) = start_env().await;
+    let (script, marker) = marker_script(&env.tmp.path().join("bin"), "clean");
+    git(
+        &repo,
+        &["config", "filter.x.clean", script.to_str().unwrap()],
+    );
+    std::fs::write(repo.join(".git/info/attributes"), "README.md filter=x\n").unwrap();
+    let sub = repo.join("sub");
+    std::fs::create_dir_all(sub.join(".git")).unwrap();
+    std::fs::write(sub.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+    std::fs::write(
+        sub.join(".git/config"),
+        "[core]\n\trepositoryformatversion = 0\n",
+    )
+    .unwrap();
+    std::fs::write(repo.join("README.md"), "changed\n").unwrap();
+    let out = start_stash_in(&env, &sub).await;
+    assert!(!marker.exists(), "a program from the repository config ran");
+    assert_eq!(out.status.code(), Some(6), "{}", text(&out.stderr));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn start_does_not_inspect_nested_repositories() {
+    let (env, repo) = start_env().await;
+    let (script, marker) = marker_script(&env.tmp.path().join("bin"), "clean");
+    let inner = init_repo(&repo.join("inner"));
+    git(
+        &inner,
+        &["config", "filter.x.clean", script.to_str().unwrap()],
+    );
+    std::fs::write(inner.join(".git/info/attributes"), "README.md filter=x\n").unwrap();
+    git(&repo, &["add", "inner"]);
+    git(&repo, &["commit", "-q", "-m", "add inner"]);
+    std::fs::write(inner.join("README.md"), "jello\n").unwrap();
+    let out = env
+        .tmgr_in(&repo, None)
+        .args(["start", "TM-512", "--json"])
+        .output()
+        .unwrap();
+    assert!(!marker.exists(), "a program from a nested repository ran");
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        git(&repo, &["branch", "--show-current"]),
+        "tm-512-checkout-apple-pay-button"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn start_refuses_a_repository_that_declares_a_promisor_remote() {
+    let (env, repo) = start_env().await;
+    let marker = env.tmp.path().join("transport.ran");
+    let script = write_script(
+        &env.tmp.path().join("bin"),
+        "transport",
+        &format!("touch '{}'\nexit 1", marker.display()),
+    );
+    git(
+        &repo,
+        &["switch", "-q", "-c", "tm-512-checkout-apple-pay-button"],
+    );
+    std::fs::write(repo.join("extra.txt"), "only on the branch\n").unwrap();
+    git(&repo, &["add", "extra.txt"]);
+    git(&repo, &["commit", "-q", "-m", "extra"]);
+    let blob = git(&repo, &["rev-parse", "HEAD:extra.txt"]);
+    git(&repo, &["switch", "-q", "main"]);
+    std::fs::remove_file(repo.join(".git/objects").join(&blob[..2]).join(&blob[2..])).unwrap();
+    git(&repo, &["config", "remote.x.promisor", "true"]);
+    git(
+        &repo,
+        &[
+            "config",
+            "remote.x.url",
+            &format!("ext::{}", script.display()),
+        ],
+    );
+    git(&repo, &["config", "protocol.ext.allow", "always"]);
+    let out = env
+        .tmgr_in(&repo, None)
+        .args(["start", "TM-512", "--json"])
+        .output()
+        .unwrap();
+    assert!(!marker.exists(), "a program from the repository config ran");
+    assert_eq!(out.status.code(), Some(6), "{}", text(&out.stderr));
+    server_untouched(&env).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn start_refuses_a_repository_that_configures_an_lfs_extension() {
+    let (env, repo) = start_env().await;
+    git(&repo, &["config", "lfs.extension.x.clean", "/bin/true"]);
+    std::fs::write(repo.join("README.md"), "changed\n").unwrap();
+    let out = start_stash_in(&env, &repo).await;
+    assert_eq!(out.status.code(), Some(6), "{}", text(&out.stderr));
+    nothing_changed(&repo);
+    server_untouched(&env).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn start_accepts_a_repository_with_common_settings() {
+    let (env, repo) = start_env().await;
+    for (k, v) in [
+        ("core.hooksPath", ".husky"),
+        ("core.autocrlf", "input"),
+        ("user.name", "Test"),
+        ("user.email", "test@example.com"),
+        ("branch.main.remote", "origin"),
+        ("branch.main.merge", "refs/heads/main"),
+        ("branch.main.vscode-merge-base", "origin/main"),
+        ("remote.origin.url", "https://example.com/acme/site.git"),
+        ("remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"),
+        ("remote.origin.gh-resolved", "base"),
+        ("lfs.repositoryformatversion", "0"),
+        (
+            "lfs.https://example.com/acme/site.git/info/lfs.access",
+            "basic",
+        ),
+        ("pull.rebase", "true"),
+        ("push.default", "current"),
+        ("fetch.prune", "true"),
+        ("init.defaultBranch", "main"),
+        ("color.ui", "auto"),
+        ("gui.encoding", "utf-8"),
+        ("maintenance.auto", "false"),
+        ("extensions.worktreeConfig", "true"),
+    ] {
+        git(&repo, &["config", k, v]);
+    }
+    std::fs::write(repo.join("README.md"), "changed\n").unwrap();
+    let out = start_stash_in(&env, &repo).await;
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        git(&repo, &["branch", "--show-current"]),
+        "tm-512-checkout-apple-pay-button"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn start_does_not_run_programs_found_through_a_relative_path_entry() {
+    let (env, repo) = start_env().await;
+    let tools = repo.join("tools");
+    let marker = env.tmp.path().join("git.ran");
+    write_script(
+        &tools,
+        "git",
+        &format!("touch '{}'\nexec '{}' \"$@\"", marker.display(), real_git()),
+    );
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(repo.join(".git/info/exclude"))
+        .unwrap()
+        .write_all(b"tools/\n")
+        .unwrap();
+    std::fs::write(repo.join("README.md"), "changed\n").unwrap();
+    let out = env
+        .tmgr_in(&repo, None)
+        .env("PATH", format!("tools:{}", path_with(None)))
+        .args(["start", "TM-512", "--stash", "--json"])
+        .output()
+        .unwrap();
+    assert!(!marker.exists(), "a program from the repository ran");
+    assert!(out.status.success(), "{}", text(&out.stderr));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_finish_does_not_wait_on_an_included_config_file() {
+    let env = Env::new().await;
+    env.login_seed();
+    let started = chrono::DateTime::from_timestamp(T0, 0)
+        .unwrap()
+        .to_rfc3339();
+    let ended = chrono::DateTime::from_timestamp(T0 + 600, 0)
+        .unwrap()
+        .to_rfc3339();
+    mock_post(
+        &env,
+        "POST",
+        "/api/agent-work/41/finish",
+        run_view(json!({"status": "succeeded", "started_at": started, "ended_at": ended})),
+    )
+    .await;
+    mock_post(
+        &env,
+        "POST",
+        "/api/agent-work/41/commits",
+        run_view(json!({})),
+    )
+    .await;
+    let repo = init_repo(&env.tmp.path().join("repo"));
+    git(&repo, &["config", "user.email", ME]);
+    signed_looking_commit(&repo, T0 + 60, ME);
+    let pipe = env.tmp.path().join("pipe");
+    assert!(Command::new("mkfifo")
+        .arg(&pipe)
+        .status()
+        .unwrap()
+        .success());
+    git(&repo, &["config", "include.path", pipe.to_str().unwrap()]);
+    let began = std::time::Instant::now();
+    let out = env
+        .tmgr_in(&repo, None)
+        .args([
+            "agent",
+            "finish",
+            "--run",
+            "41",
+            "--status",
+            "succeeded",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(began.elapsed() < std::time::Duration::from_secs(3));
+    assert_eq!(env.requests_to("/api/agent-work/41/commits").await.len(), 1);
 }

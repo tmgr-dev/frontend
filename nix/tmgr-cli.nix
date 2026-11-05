@@ -18,6 +18,8 @@ rustPlatform.buildRustPackage {
   cargoBuildFlags = [
     "-p"
     "tmgr-cli"
+    "--features"
+    "runner"
   ];
   doCheck = false;
 

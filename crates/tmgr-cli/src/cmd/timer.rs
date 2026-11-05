@@ -500,13 +500,7 @@ fn clean_pr_url(raw: &str) -> Option<String> {
 }
 
 fn gh_repo(remote: &gitx::Remote) -> Option<String> {
-    if remote.host == "github.com" {
-        Some(remote.path.clone())
-    } else if remote.host.starts_with("github.") {
-        Some(format!("{}/{}", remote.host, remote.path))
-    } else {
-        None
-    }
+    (remote.host == "github.com").then(|| remote.path.clone())
 }
 
 fn find_pr(git: &Git) -> (Option<String>, Option<&'static str>) {
@@ -516,12 +510,12 @@ fn find_pr(git: &Git) -> (Option<String>, Option<&'static str>) {
         remote.as_ref().and_then(gh_repo),
         branch
             .as_deref()
-            .filter(|b| !b.chars().all(|c| c.is_ascii_digit())),
-        gitx::Neutral::new(),
+            .filter(|b| !b.chars().all(|c| c.is_ascii_digit()) && !b.starts_with('#')),
+        gitx::Neutral::outside(git.dir()),
     ) {
         if let Ok(out) = neutral.program(
             "gh",
-            &["pr", "view", branch, "--repo", &repo, "--json", "url"],
+            &["pr", "view", "--repo", &repo, "--json", "url", "--", branch],
             GH_TIMEOUT,
         ) {
             if out.ok {
