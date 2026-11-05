@@ -23,7 +23,7 @@ const U1: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
 const U2: &str = "0199a213-81c0-7800-8aa1-bbab2a035a53";
 
 const AGENT: &str = r#"#!/bin/sh
-trap 'kill $! 2>/dev/null; exit 0' HUP TERM
+trap 'kill $! 2>/dev/null; sleep 0.1; kill $! 2>/dev/null; sleep 0.2; kill $! 2>/dev/null; exit 0' HUP TERM
 echo "args:$*" >> ./log
 if [ -f ./leak ]; then (trap '' TERM HUP; exec sleep 600) & echo $! > ./leakpid; fi
 if [ -f ./announce ]; then cat ./announce; rm -f ./announce; fi
@@ -35,7 +35,7 @@ wait
 "#;
 
 const RAW: &str = r#"#!/bin/sh
-trap 'kill $! 2>/dev/null; exit 0' HUP TERM
+trap 'kill $! 2>/dev/null; sleep 0.1; kill $! 2>/dev/null; sleep 0.2; kill $! 2>/dev/null; exit 0' HUP TERM
 echo "raw:$LC_RAWTEST:$*" >> ./log
 sleep 600 &
 wait

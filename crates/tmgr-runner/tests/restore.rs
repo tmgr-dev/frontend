@@ -16,7 +16,7 @@ use tmgr_runner::wire::now_ms;
 const HOST: &str = env!("CARGO_BIN_EXE_tmgr-runner-host");
 
 const AGENT: &str = r#"#!/bin/sh
-trap 'kill $! 2>/dev/null; exit 0' HUP TERM
+trap 'kill $! 2>/dev/null; sleep 0.1; kill $! 2>/dev/null; sleep 0.2; kill $! 2>/dev/null; exit 0' HUP TERM
 echo "args:$*" >> ./log
 if [ -f "$HOME/marker" ]; then kept=1; else kept=; fi
 if [ -f ./change-seed ] && [ -z "$kept" ]; then echo '{"a":2}' > "$HOME/.fake/auth.json"; fi
