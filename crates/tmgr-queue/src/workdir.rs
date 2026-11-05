@@ -1563,6 +1563,7 @@ pub fn trusted_git_dir(
     branch: &str,
     refs: &CopyRefs,
     trusted: &[String],
+    source_objects: &Path,
     limit: std::time::Duration,
 ) -> std::result::Result<(), String> {
     use std::io::Read;
@@ -1572,6 +1573,10 @@ pub fn trusted_git_dir(
         .to_str()
         .filter(|o| !o.contains('\n'))
         .ok_or("the copy's path is not plain")?;
+    let source_objects = source_objects
+        .to_str()
+        .filter(|o| !o.contains('\n'))
+        .ok_or("the repository's path is not plain")?;
     let mut init = fixed_git_command();
     init.args(["init", "--bare", "-q"])
         .arg(git_dir)
@@ -1609,7 +1614,7 @@ pub fn trusted_git_dir(
     let write = || -> std::io::Result<()> {
         std::fs::write(
             git_dir.join("objects/info/alternates"),
-            format!("{objects}\n"),
+            format!("{objects}\n{source_objects}\n"),
         )?;
         std::fs::write(git_dir.join("index"), &index)?;
         std::fs::write(git_dir.join("HEAD"), format!("ref: refs/heads/{branch}\n"))?;

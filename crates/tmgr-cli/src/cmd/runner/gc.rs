@@ -478,7 +478,15 @@ fn copy_facts(
         }
     };
     let tmp = tempfile::tempdir().map_err(|e| e.to_string())?;
-    workdir::trusted_git_dir(tmp.path(), dir, branch, &refs, &host.tips, left()?)?;
+    workdir::trusted_git_dir(
+        tmp.path(),
+        dir,
+        branch,
+        &refs,
+        &host.tips,
+        &host.objects,
+        left()?,
+    )?;
     let git = |args: &[&str]| {
         workdir::trusted_git_bytes(tmp.path(), dir, args, left()?).map_err(|e| sanitize_line(&e))
     };
@@ -1102,7 +1110,7 @@ fn lead_contains(
         }
     };
     let tmp = tempfile::tempdir().map_err(|e| e.to_string())?;
-    workdir::trusted_git_dir(tmp.path(), lead, branch, &refs, &[], left()?)?;
+    workdir::trusted_git_dir(tmp.path(), lead, branch, &refs, &[], &host.objects, left()?)?;
     let git = |args: &[&str]| {
         workdir::trusted_git_bytes(tmp.path(), lead, args, left()?).map_err(|e| sanitize_line(&e))
     };
