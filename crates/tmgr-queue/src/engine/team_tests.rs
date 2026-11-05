@@ -1580,6 +1580,18 @@ fn a_lead_whose_object_store_is_a_link_gets_nothing_written_and_the_worker_count
 }
 
 #[test]
+fn a_failed_delivery_removes_the_branch_it_imported_into_the_repository() {
+    let fx = working_team();
+    let id = pickup(&fx).id;
+    commit_in(Path::new(&worker_cwd(&fx, 1)), "api.txt");
+    let outside = tempfile::tempdir().unwrap();
+    plant_object_store_link(Path::new(&lead_cwd(&fx)), outside.path());
+    finish_workers(&fx);
+    assert!(!has_branch(&fx.repo, &format!("queue-team/{id}/w1")));
+    assert_eq!(fx.audit_events("team_import_failed"), 1);
+}
+
+#[test]
 fn a_multi_repo_lead_cloned_before_the_workers_committed_squashes_their_commits() {
     let (fx, _) = working_multi_team();
     let (w1, w2) = (worker_cwd(&fx, 1), worker_cwd(&fx, 2));

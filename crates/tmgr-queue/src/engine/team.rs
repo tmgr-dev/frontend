@@ -930,6 +930,17 @@ fn integrating(
         if tip.is_none() || tip == m.base {
             continue;
         }
+        let before = match crate::workdir::branch_tip(Path::new(&rule.repos[0]), &m.branch) {
+            Ok(before) => before,
+            Err(e) => {
+                pass.audit.append(
+                    "team_import_failed",
+                    json!({"pickup": p.id, "worker": k, "error": e.message}),
+                )?;
+                failed.push(k);
+                continue;
+            }
+        };
         match crate::workdir::import_branch(&rule.repos[0], cwd, &m.branch) {
             Ok(sha) if is_sha(&sha) => {
                 match deliver(
@@ -944,6 +955,12 @@ fn integrating(
                         sha,
                     }),
                     Err(e) => {
+                        let _ = crate::workdir::restore_branch(
+                            Path::new(&rule.repos[0]),
+                            &m.branch,
+                            before.as_deref(),
+                            &sha,
+                        );
                         pass.audit.append(
                             "team_import_failed",
                             json!({"pickup": p.id, "worker": k, "error": e}),
