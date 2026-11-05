@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.100 — 2026-11-05
+
+- Live updates: workspace activity, task changes and page edits now arrive through your own account channel. Nothing changes on screen.
+
 ## 0.9.99 — 2026-11-05
 
 - Decisions: a card can show several repositories and ready patches, grouped in the diff view.
