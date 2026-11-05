@@ -4,7 +4,11 @@ import { isHttpUrl } from './format';
 import type { CardMessage } from './types';
 
 export const renderMarkdown = (text: string): string =>
-	text ? sanitizeHtml(markdownToHtml(text), { remoteMedia: false }) : '';
+	text
+		? sanitizeHtml(markdownToHtml(text, { escapeHtml: true }), {
+				remoteMedia: false,
+			})
+		: '';
 
 export const isAgentMessage = (message: Pick<CardMessage, 'author'>): boolean =>
 	message.author !== 'owner';

@@ -465,10 +465,14 @@ kbd {
 .msg .md h2,
 .msg .md h3,
 .msg .md h4,
+.msg .md h5,
+.msg .md h6,
 .cm .md h1,
 .cm .md h2,
 .cm .md h3,
-.cm .md h4 {
+.cm .md h4,
+.cm .md h5,
+.cm .md h6 {
 	font-size: 1em;
 	font-weight: 600;
 	line-height: 1.4;
@@ -495,6 +499,18 @@ kbd {
 	display: block;
 	max-width: 100%;
 	overflow-x: auto;
+}
+.msg .md li > p,
+.msg .md blockquote > p,
+.cm .md li > p,
+.cm .md blockquote > p {
+	margin: 0;
+}
+.msg .md th,
+.msg .md td,
+.cm .md th,
+.cm .md td {
+	overflow-wrap: normal;
 }
 .msg .md img,
 .cm .md img {

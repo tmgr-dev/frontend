@@ -4,6 +4,8 @@ import { parseTmgrUrl } from './pages/tmgrLinks';
 export interface MarkdownOptions {
 	/** Key prefixes used by this workspace's categories, e.g. ["TM", "TMBE"]. */
 	taskKeyPrefixes?: string[];
+	/** Show embedded HTML as literal text instead of passing it through. */
+	escapeHtml?: boolean;
 }
 
 interface TaskKeyToken extends Tokens.Generic {
@@ -60,6 +62,14 @@ const linkRenderer = {
 };
 
 const plain = new Marked({ ...baseOptions, renderer: linkRenderer });
+
+const escaping = new Marked({
+	...baseOptions,
+	renderer: {
+		...linkRenderer,
+		html: ({ text }: Tokens.HTML | Tokens.Tag): string => escapeAttribute(text),
+	},
+});
 
 /**
  * A task key ("TM-129") written in a comment is how people point at a task, so
@@ -154,5 +164,10 @@ export const markdownToHtml = (
 	options: MarkdownOptions = {},
 ): string =>
 	text
-		? wrapTables(rendererFor(options.taskKeyPrefixes).parse(text) as string)
+		? wrapTables(
+				(options.escapeHtml
+					? escaping
+					: rendererFor(options.taskKeyPrefixes)
+				).parse(text) as string,
+			)
 		: '';

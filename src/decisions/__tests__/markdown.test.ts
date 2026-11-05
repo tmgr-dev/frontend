@@ -1,6 +1,12 @@
 /** @jest-environment jsdom */
 import { clickedHttpLink, isAgentMessage, renderMarkdown } from '../markdown';
 
+const parse = (html: string): HTMLElement => {
+	const root = document.createElement('div');
+	root.innerHTML = html;
+	return root;
+};
+
 const clickOn = (html: string): MouseEvent => {
 	const root = document.createElement('div');
 	root.innerHTML = html;
@@ -46,14 +52,38 @@ describe('renderMarkdown', () => {
 		const html = renderMarkdown(
 			'<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>\n\n[x](javascript:alert(1))',
 		);
-		expect(html).not.toContain('<script');
-		expect(html).not.toContain('onerror');
-		expect(html).not.toContain('javascript:');
+		const root = parse(html);
+		expect(root.querySelector('script')).toBeNull();
+		expect(root.querySelector('[onerror]')).toBeNull();
+		expect(root.querySelector('[href^="javascript:"]')).toBeNull();
+	});
+
+	it('shows raw HTML as literal text instead of dropping or running it', () => {
+		const root = parse(
+			renderMarkdown(
+				'Use Array<string> and the <template> tag\n\n<form action="https://evil.example"><button>Approve</button></form>',
+			),
+		);
+		expect(root.textContent).toContain('Array<string>');
+		expect(root.textContent).toContain('<template> tag');
+		expect(root.querySelector('form, button, textarea, template')).toBeNull();
+		expect(root.textContent).toContain('<button>Approve</button>');
+	});
+
+	it('keeps code spans and fences literal', () => {
+		const root = parse(renderMarkdown('`<b>x</b>`\n\n```\n<i>y</i>\n```'));
+		expect(root.querySelector('b, i')).toBeNull();
+		expect(root.textContent).toContain('<b>x</b>');
+		expect(root.textContent).toContain('<i>y</i>');
 	});
 
 	it('blocks remote images', () => {
 		const html = renderMarkdown('![pic](https://evil.example/p.png)');
-		expect(html).not.toContain('<img');
+		const root = parse(html);
+		expect(root.querySelector('img')).toBeNull();
+		expect(root.querySelector('a')?.getAttribute('href')).toBe(
+			'https://evil.example/p.png',
+		);
 	});
 
 	it('returns empty string for empty text', () => {
@@ -79,6 +109,16 @@ describe('clickedHttpLink', () => {
 		const event = clickOn('<a href="javascript:alert(1)">x</a>');
 		expect(clickedHttpLink(event)).toBeNull();
 		expect(event.defaultPrevented).toBe(true);
+	});
+
+	it('resolves a link when its child element is clicked', () => {
+		const root = document.createElement('div');
+		root.innerHTML = '<a href="https://example.com/y"><code>y</code></a>';
+		const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+		Object.defineProperty(event, 'target', {
+			value: root.querySelector('code'),
+		});
+		expect(clickedHttpLink(event)).toBe('https://example.com/y');
 	});
 
 	it('ignores clicks outside links', () => {
