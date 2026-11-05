@@ -408,6 +408,36 @@ impl InputBook {
 
 type Book = Arc<(Mutex<InputBook>, Condvar)>;
 
+fn input_room(
+    queued_bytes: &AtomicUsize,
+    queued_frames: &AtomicUsize,
+    book: Option<&InputBook>,
+    len: usize,
+) -> bool {
+    let frames = queued_frames.load(Ordering::SeqCst);
+    match book {
+        Some(b) if !b.link_silent() => b.has_room(len) && frames < SHIM_INPUT_FRAMES,
+        _ => {
+            queued_bytes.load(Ordering::SeqCst) + len <= SHIM_INPUT_CAP
+                && frames < SHIM_INPUT_FRAMES
+        }
+    }
+}
+
+fn input_left_link(
+    queued_bytes: &AtomicUsize,
+    queued_frames: &AtomicUsize,
+    credit: Option<&Book>,
+    len: usize,
+) {
+    queued_bytes.fetch_sub(len, Ordering::SeqCst);
+    queued_frames.fetch_sub(1, Ordering::SeqCst);
+    if let Some(book) = credit {
+        let _held = lock(&book.0);
+        book.1.notify_all();
+    }
+}
+
 struct ShimLink {
     tx: SyncSender<Frame>,
     queued_bytes: Arc<AtomicUsize>,
@@ -422,7 +452,7 @@ impl ShimLink {
         let (tx, rx) = mpsc::sync_channel::<Frame>(SHIM_QUEUE);
         let queued_bytes = Arc::new(AtomicUsize::new(0));
         let queued_frames = Arc::new(AtomicUsize::new(0));
-        let (b, f) = (queued_bytes.clone(), queued_frames.clone());
+        let (b, f, book) = (queued_bytes.clone(), queued_frames.clone(), credit.clone());
         thread::spawn(move || {
             while let Ok(frame) = rx.recv() {
                 let input_len = match &frame {
@@ -431,8 +461,7 @@ impl ShimLink {
                 };
                 let res = write_frame(&mut out, &frame);
                 if let Some(n) = input_len {
-                    b.fetch_sub(n, Ordering::SeqCst);
-                    f.fetch_sub(1, Ordering::SeqCst);
+                    input_left_link(&b, &f, book.as_ref(), n);
                 }
                 if res.is_err() {
                     let _ = out.shutdown(std::net::Shutdown::Both);
@@ -742,17 +771,12 @@ impl Session {
         let g = lock(&self.shim);
         let Some(link) = g.as_ref() else { return false };
         let mut book = link.credit.as_ref().map(|c| lock(&c.0));
-        let full = match &book {
-            Some(b) if !b.link_silent() => {
-                !b.has_room(bytes.len())
-                    || link.queued_frames.load(Ordering::SeqCst) >= SHIM_INPUT_FRAMES
-            }
-            _ => {
-                link.queued_bytes.load(Ordering::SeqCst) + bytes.len() > SHIM_INPUT_CAP
-                    || link.queued_frames.load(Ordering::SeqCst) >= SHIM_INPUT_FRAMES
-            }
-        };
-        if full {
+        if !input_room(
+            &link.queued_bytes,
+            &link.queued_frames,
+            book.as_deref(),
+            bytes.len(),
+        ) {
             return false;
         }
         link.queued_bytes.fetch_add(bytes.len(), Ordering::SeqCst);
@@ -775,12 +799,16 @@ impl Session {
     }
 
     fn wait_input_room(&self, len: usize) {
-        let Some(book) = lock(&self.shim).as_ref().and_then(|l| l.credit.clone()) else {
+        let Some((book, queued_bytes, queued_frames)) = lock(&self.shim).as_ref().and_then(|l| {
+            l.credit
+                .clone()
+                .map(|c| (c, l.queued_bytes.clone(), l.queued_frames.clone()))
+        }) else {
             return;
         };
         let deadline = Instant::now() + ATTACH_INPUT_WAIT;
         let mut b = lock(&book.0);
-        while !b.stalled && !b.link_silent() && !b.has_room(len) {
+        while !b.stalled && !input_room(&queued_bytes, &queued_frames, Some(&b), len) {
             let left = deadline.saturating_duration_since(Instant::now());
             if left.is_zero() {
                 b.stalled = true;
@@ -5514,8 +5542,12 @@ mod tests {
         let g = lock(&s.shim);
         let link = g.as_ref().unwrap();
         while let Ok(Frame::Bin(b)) = rx.try_recv() {
-            link.queued_bytes.fetch_sub(b.data.len(), Ordering::SeqCst);
-            link.queued_frames.fetch_sub(1, Ordering::SeqCst);
+            input_left_link(
+                &link.queued_bytes,
+                &link.queued_frames,
+                link.credit.as_ref(),
+                b.data.len(),
+            );
         }
     }
 
@@ -5706,6 +5738,29 @@ mod tests {
             .queued_frames
             .store(SHIM_INPUT_FRAMES, Ordering::SeqCst);
         assert!(!s.shim_input(b"x"));
+    }
+
+    #[test]
+    fn the_attach_wait_holds_input_until_the_link_channel_has_room() {
+        let (_t, s, rx, book) = credit_session();
+        for _ in 0..SHIM_INPUT_FRAMES {
+            assert!(s.shim_input(b"k"));
+        }
+        assert!(lock(&book.0).has_room(1));
+        let s2 = s.clone();
+        let h = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(200));
+            drain(&s2, &rx);
+            rx
+        });
+        let t0 = Instant::now();
+        s.wait_input_room(1);
+        let waited = t0.elapsed();
+        let _rx = h.join().unwrap();
+        assert!(s.input(b"x"));
+        assert!(waited >= Duration::from_millis(100), "{waited:?}");
+        assert!(waited < ATTACH_INPUT_WAIT, "{waited:?}");
+        assert!(!lock(&book.0).stalled);
     }
 
     #[test]
