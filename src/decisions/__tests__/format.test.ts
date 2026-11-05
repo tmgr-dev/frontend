@@ -23,6 +23,9 @@ describe('format', () => {
 		expect(linkLabel('https://github.com/o/r/releases/tag/v1.4.2')).toBe(
 			'v1.4.2',
 		);
+		expect(
+			linkLabel('https://github.com/o/r/releases/tag/release/1.0?x=1#a'),
+		).toBe('release/1.0');
 		expect(linkLabel(`https://example.com/${'x'.repeat(60)}`)).toHaveLength(30);
 	});
 
