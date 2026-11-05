@@ -1,0 +1,28 @@
+name: tm851-q
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/tm851-q.yml'
+jobs:
+  loop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: tm851q
+      - run: cargo test -p tmgr-runner --test runner --locked --no-run
+      - name: alone x30
+        run: |
+          f=0
+          for i in $(seq 1 30); do cargo test -p tmgr-runner --test runner --locked send_reports_a_full_input_queue -- --exact || f=$((f+1)); done
+          echo "alone failed: $f"
+      - name: full file x8
+        run: |
+          f=0
+          for i in $(seq 1 8); do cargo test -p tmgr-runner --test runner --locked 2>&1 | grep -E "FAILED|panicked|test result" ; done
+          true
