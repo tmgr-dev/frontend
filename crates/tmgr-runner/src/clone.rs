@@ -906,6 +906,27 @@ mod tests {
         assert!(marker_of(&homes, &second).exists());
     }
 
+    #[test]
+    fn a_marker_of_a_gone_folder_is_swept_even_when_a_live_folder_has_its_identity() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (repo, dest, homes) = self_contained(&root);
+        let reused = root.join("reused");
+        std::fs::create_dir(&reused).unwrap();
+        let gone = root.join("gone");
+        let bytes = serde_json::to_vec(&Marker {
+            repo: (0, 0),
+            path: gone.to_str().unwrap().to_string(),
+        })
+        .unwrap();
+        std::fs::create_dir_all(homes.join(MARKERS)).unwrap();
+        let stale = marker_of(&homes, &reused);
+        std::fs::write(&stale, bytes).unwrap();
+        mark_task_clone(&homes, &dest, &repo).unwrap();
+        assert!(!stale.exists());
+        assert!(marker_of(&homes, &dest).exists());
+    }
+
     fn team_of(role: TeamRole, of: &str) -> TeamLink {
         TeamLink {
             role,
