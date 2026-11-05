@@ -81,6 +81,7 @@ impl Drop for Guard {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
 
     #[test]
     fn a_terminal_counts_as_gone_only_after_its_other_end_closes() {
@@ -95,8 +96,17 @@ mod tests {
             )
         };
         assert_eq!(opened, 0);
+        unsafe {
+            libc::fcntl(master, libc::F_SETFD, libc::FD_CLOEXEC);
+            libc::fcntl(slave, libc::F_SETFD, libc::FD_CLOEXEC);
+        }
         assert!(!terminal_gone(slave));
         unsafe { libc::close(master) };
+        // A child forked by a parallel test keeps the master open until it execs.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !terminal_gone(slave) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
         assert!(terminal_gone(slave));
         unsafe { libc::close(slave) };
     }
