@@ -893,12 +893,16 @@ mod tests {
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let (repo, dest, homes) = self_contained(&root);
         mark_task_clone(&homes, &dest, &repo).unwrap();
-        let stale = marker_of(&homes, &dest);
         std::fs::remove_dir_all(&dest).unwrap();
         let second = root.join("second");
         std::fs::create_dir(&second).unwrap();
         mark_task_clone(&homes, &second, &repo).unwrap();
-        assert!(!stale.exists());
+        let swept = std::fs::read_dir(homes.join(MARKERS))
+            .unwrap()
+            .flatten()
+            .filter_map(|e| read_marker(&e.path()))
+            .all(|m| Path::new(&m.path) != dest);
+        assert!(swept);
         assert!(marker_of(&homes, &second).exists());
     }
 

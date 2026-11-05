@@ -18,6 +18,7 @@ type Handler = Box<dyn Fn(&Request) -> Response + Send + Sync>;
 
 struct Fake {
     requests: Arc<Mutex<Vec<Request>>>,
+    rejected: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl Fake {
@@ -101,7 +102,9 @@ fn serve_as(stand: &Stand, token: String, handler: Handler) -> Fake {
         _ => unreachable!(),
     };
     let requests = Arc::new(Mutex::new(Vec::new()));
+    let rejected = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let log = requests.clone();
+    let refusals = rejected.clone();
     let handler = Arc::new(handler);
     std::thread::spawn(move || {
         for stream in listener.incoming() {
@@ -109,12 +112,14 @@ fn serve_as(stand: &Stand, token: String, handler: Handler) -> Fake {
             let log = log.clone();
             let handler = handler.clone();
             let token = token.clone();
+            let refusals = refusals.clone();
             std::thread::spawn(move || {
                 let Ok(Some(line)) = read_line_limited(&stream) else {
                     return;
                 };
                 let req: Request = serde_json::from_slice(&line).unwrap();
                 if !token_ok(&token, &req.token) {
+                    refusals.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     let _ = write_line(&mut stream, &Response::err("unauthorized"));
                     return;
                 }
@@ -123,7 +128,7 @@ fn serve_as(stand: &Stand, token: String, handler: Handler) -> Fake {
             });
         }
     });
-    Fake { requests }
+    Fake { requests, rejected }
 }
 
 fn event(card_id: &str, kind: &str, seq: u64) -> Event {
@@ -1428,6 +1433,38 @@ fn get_answer_follows_a_token_that_changes_mid_call() {
     assert!(!is_error(&r[0]), "{}", r[0]);
     assert_eq!(payload(&r[0])["choice"], "2");
     assert_eq!(fake.waits(), [0]);
+}
+
+#[test]
+fn get_answer_rides_out_a_token_file_that_is_briefly_missing() {
+    let st = stand();
+    let (fake, token) = serve_stale(&st, answering("2"));
+    let id = tmgr_ipc::decisions::new_card_id();
+    let file = st.dir.path().join("decisions.token");
+    let rejected = fake.rejected.clone();
+    let publisher = std::thread::spawn(move || {
+        let end = std::time::Instant::now() + Duration::from_secs(5);
+        while rejected.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+            assert!(
+                std::time::Instant::now() < end,
+                "the token was never refused"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        std::fs::remove_file(&file).unwrap();
+        std::thread::sleep(Duration::from_millis(350));
+        std::fs::write(&file, token).unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    });
+    let r = mcp(
+        &st,
+        "5000",
+        "claude-code",
+        &[("get_answer", json!({"card_id": id}))],
+    );
+    publisher.join().unwrap();
+    assert!(!is_error(&r[0]), "{}", r[0]);
+    assert_eq!(payload(&r[0])["choice"], "2");
 }
 
 #[test]

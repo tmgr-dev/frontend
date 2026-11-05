@@ -360,11 +360,14 @@ pub fn socket_endpoint(dir: &Path) -> Endpoint {
 pub fn prepare_server_dir(dir: &Path) -> io::Result<String> {
     ensure_private_dir(dir)?;
     let path = dir.join(TOKEN);
-    match fs::remove_file(&path) {
+    let staged = dir.join(format!("{TOKEN}.new"));
+    match fs::remove_file(&staged) {
         Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
         _ => {}
     }
-    secret::write_new(&path)
+    let token = secret::write_new(&staged)?;
+    fs::rename(&staged, &path)?;
+    Ok(token)
 }
 
 pub fn token_ok(expected: &str, given: &str) -> bool {
@@ -445,6 +448,7 @@ impl Client {
     }
 
     pub fn call(&self, op: Op) -> io::Result<Response> {
+        let mut unreadable = None;
         for attempt in 1..=UNAUTHORIZED_ATTEMPTS {
             let token = self.token.lock().unwrap_or_else(|p| p.into_inner()).clone();
             let resp = self.send(op.clone(), token)?;
@@ -453,14 +457,17 @@ impl Client {
             }
             if attempt < UNAUTHORIZED_ATTEMPTS {
                 std::thread::sleep(UNAUTHORIZED_PAUSE);
-                let fresh = secret::read_secret(&self.dir.join(TOKEN))?;
-                *self.token.lock().unwrap_or_else(|p| p.into_inner()) = fresh;
+                match secret::read_secret(&self.dir.join(TOKEN)) {
+                    Ok(fresh) => {
+                        *self.token.lock().unwrap_or_else(|p| p.into_inner()) = fresh;
+                        unreadable = None;
+                    }
+                    Err(e) => unreadable = Some(e),
+                }
             }
         }
-        Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            UNAUTHORIZED,
-        ))
+        Err(unreadable
+            .unwrap_or_else(|| io::Error::new(io::ErrorKind::PermissionDenied, UNAUTHORIZED)))
     }
 
     fn send(&self, op: Op, token: String) -> io::Result<Response> {
