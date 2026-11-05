@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.90
+
+- `tmgr ask` and the MCP `ask_owner` tool validate link schemes: `--pr`, `--task` and fact links accept web URLs and plain references such as `TM-9` or `owner/repo#12`, and refuse other URL schemes with a clear error.
+- Cards sent in quick succession reach the Decisions inbox in the order they were sent.
+- A request larger than the Decisions limit is refused with a "too large" message instead of a broken connection.
+- Line comments on a diff carry the side they were made on (`file:line (deleted)` for removed lines), and `reply_owner` line replies accept an optional `side`.
+
 ## 1.0.89
 
 - Queue, `tmgr run` and `--worktree` clones now hold their own copy of the repository's objects, so rewinding or deleting a branch and pruning in the source repository no longer damages them. Each new clone takes a little longer to make and uses disk space for a pack of the repository. Existing clones keep working as they are, and they still rely on the source repository's objects.
