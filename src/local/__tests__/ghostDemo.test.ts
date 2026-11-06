@@ -142,6 +142,44 @@ describeDb('recoverDemo', () => {
 		).toBe('running');
 	});
 
+	it('keeps a timer the user started on another card', async () => {
+		const ctx = await seeded();
+		const card = (await resetDemoCard(ctx))!;
+		const [other] = await ctx.db.select<{ id: number }>(
+			`SELECT id FROM tasks WHERE id <> ? LIMIT 1`,
+			[card.taskId],
+		);
+		await call(ctx, 'POST', `tasks/${other.id}/countdown`);
+		await call(ctx, 'POST', `tasks/${card.taskId}/countdown`);
+		await recoverDemo(ctx);
+		const rows = await ctx.db.select<{ id: number; start_time: number }>(
+			`SELECT id, start_time FROM tasks WHERE id IN (?, ?)`,
+			[card.taskId, other.id],
+		);
+		const byId = Object.fromEntries(rows.map((r) => [r.id, r.start_time]));
+		expect(byId[card.taskId]).toBe(0);
+		expect(byId[other.id]).toBeGreaterThan(0);
+	});
+
+	it('clears the time an interrupted timer stop left on the card', async () => {
+		const ctx = await seeded();
+		const card = (await resetDemoCard(ctx))!;
+		await ctx.db.execute(
+			`UPDATE tasks SET start_time = 100, common_time = 75 WHERE id = ?`,
+			[card.taskId],
+		);
+		await recoverDemo(ctx);
+		const row = await one(
+			ctx.db,
+			`SELECT start_time, common_time FROM tasks WHERE id = ?`,
+			[card.taskId],
+		);
+		expect(row).toEqual({ start_time: 0, common_time: 0 });
+		expect(
+			(await computeFacts(ctx, ['has_timer_minute'])).has_timer_minute,
+		).toBe(false);
+	});
+
 	it('touches nothing outside the demo', async () => {
 		const ctx = await seeded(false);
 		expect(await recoverDemo(ctx)).toEqual([]);

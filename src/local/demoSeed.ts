@@ -132,7 +132,8 @@ export const recoverDemo = async (ctx: LocalContext): Promise<number[]> => {
 	if (!(await isDemoDb(ctx.db))) return [];
 	const now = ctx.now().toISOString();
 	const timed = await ctx.db.select<{ id: number }>(
-		`SELECT id FROM tasks WHERE start_time > 0`,
+		`SELECT id FROM tasks WHERE start_time > 0 AND title = ?`,
+		[GHOST_CARD],
 	);
 	const dangling = await ctx.db.select<{ task_id: number }>(
 		`SELECT DISTINCT task_id FROM agent_work_runs WHERE status = 'running' AND agent = ?`,
@@ -140,8 +141,8 @@ export const recoverDemo = async (ctx: LocalContext): Promise<number[]> => {
 	);
 	if (timed.length)
 		await ctx.db.execute(
-			`UPDATE tasks SET start_time = 0, updated_at = ? WHERE start_time > 0`,
-			[now],
+			`UPDATE tasks SET start_time = 0, updated_at = ? WHERE start_time > 0 AND title = ?`,
+			[now, GHOST_CARD],
 		);
 	if (dangling.length)
 		await ctx.db.execute(
@@ -151,7 +152,13 @@ export const recoverDemo = async (ctx: LocalContext): Promise<number[]> => {
 			 WHERE status = 'running' AND agent = ?`,
 			[now, DEMO_AGENT],
 		);
-	return [
+	const touched = [
 		...new Set([...timed.map((t) => t.id), ...dangling.map((r) => r.task_id)]),
 	];
+	if (touched.length)
+		await ctx.db.execute(
+			`UPDATE tasks SET common_time = 0 WHERE title = ? AND common_time > 0`,
+			[GHOST_CARD],
+		);
+	return touched;
 };

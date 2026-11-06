@@ -76,6 +76,7 @@
 			let player: ReturnType<typeof createGhostPlayer> | null = null;
 			let playingCode: string | null = null;
 			let skipRequested = false;
+			let disposed = false;
 
 			const refreshTask = async (workspaceId: number, taskId: number) => {
 				requestCache.invalidate(`task-${taskId}`);
@@ -120,11 +121,16 @@
 				try {
 					await ready;
 					await wait(PRE_ROLL_MS);
-					if (activeLocalWorkspace()?.code !== workspace.code) return;
+					if (disposed || activeLocalWorkspace()?.code !== workspace.code)
+						return;
 					const ctx = await localContext(workspace, NO_USER);
 					const card = await resetDemoCard(ctx);
 					if (!card) return;
 					await refreshTask(workspace.id, card.taskId);
+					if (disposed || activeLocalWorkspace()?.code !== workspace.code) {
+						await recover(workspace);
+						return;
+					}
 					const env = createAxiosGhostEnv($axios, {
 						workspaceId: workspace.id,
 						taskChanged: (taskId) =>
@@ -205,6 +211,7 @@
 			});
 
 			onBeforeUnmount(() => {
+				disposed = true;
 				offRequest();
 				offEscape();
 				player?.abort();

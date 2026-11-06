@@ -208,6 +208,14 @@ describeSqlite('installLocalWorkspaces', () => {
 			expect(sent).toEqual([]);
 		});
 
+		it('are refused when they do not name the workspace they were meant for', async () => {
+			active = { ...LOCAL, demo: true };
+			await expect(
+				client.post('tasks', { title: 'Unscoped' }, ghost),
+			).rejects.toMatchObject({ response: { status: 409 } });
+			expect(sent).toEqual([]);
+		});
+
 		it('write into the demo without telling plugins', async () => {
 			active = { ...LOCAL, demo: true };
 			const seen: DomainEvent[] = [];

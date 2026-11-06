@@ -273,6 +273,14 @@ export const installLocalWorkspaces = (
 				message: 'The local workspace is gone; pick another workspace',
 			});
 		}
+		if (
+			isGhostRequest(config) &&
+			(!workspace.demo || config.params?.workspace_id !== workspace.id)
+		)
+			return respond(config, 409, {
+				message:
+					'This change belongs to another workspace and was not saved; reopen the task',
+			});
 		const ctx = await localContext(workspace, localUser());
 		if (isAccountless()) ctx.accountless = true;
 		if (isGhostRequest(config)) ctx.ghost = true;
