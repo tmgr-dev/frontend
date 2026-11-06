@@ -399,6 +399,10 @@ impl Cancel {
     }
 }
 
+fn busy() -> io::Error {
+    io::Error::new(io::ErrorKind::ResourceBusy, "the decisions inbox is busy")
+}
+
 fn cancelled() -> io::Error {
     io::Error::new(io::ErrorKind::Interrupted, "cancelled")
 }
@@ -576,8 +580,16 @@ impl Client {
         };
         let mut stream: UnixStream =
             endpoint::connect_within(&socket_endpoint(&self.dir), CONNECT_TIMEOUT)?;
-        stream.set_write_timeout(Some(IO_GRACE))?;
-        stream.set_read_timeout(Some(wait + IO_GRACE))?;
+        let timeouts = stream
+            .set_write_timeout(Some(IO_GRACE))
+            .and_then(|()| stream.set_read_timeout(Some(wait + IO_GRACE)));
+        if let Err(e) = timeouts {
+            let _ = stream.set_nonblocking(true);
+            return match read_line_limited(&stream) {
+                Ok(Some(line)) if is_busy(&line) => Err(busy()),
+                _ => Err(e),
+            };
+        }
         if let Some(c) = cancel {
             c.attach(&stream)?;
         }
@@ -587,10 +599,7 @@ impl Client {
         }
         let line = read?;
         if is_busy(&line) {
-            return Err(io::Error::new(
-                io::ErrorKind::ResourceBusy,
-                "the decisions inbox is busy",
-            ));
+            return Err(busy());
         }
         serde_json::from_slice(&line).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
