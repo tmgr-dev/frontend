@@ -53,13 +53,11 @@
 					(workspace) => !workspace.demo,
 				);
 				retryOffer();
-				const pending = workspaces.value.filter(
-					(workspace) => {
-						const state = loadPersisted(browserStorage, workspace.code);
-						const skills = state.published?.skills;
-						return !!state.job || (!!skills && skills.state !== 'done');
-					},
-				);
+				const pending = workspaces.value.filter((workspace) => {
+					const state = loadPersisted(browserStorage, workspace.code);
+					const skills = state.published?.skills;
+					return !!state.job || (!!skills && skills.state !== 'done');
+				});
 				if (!pending.length) return;
 				const account = await waitForUser(
 					userSnapshot,

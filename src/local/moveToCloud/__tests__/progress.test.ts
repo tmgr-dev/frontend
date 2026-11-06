@@ -54,7 +54,7 @@ describe('progress', () => {
 					canPublishAnyway: false,
 					failedOnServer: false,
 					accountMismatch: false,
-		publishedAccountMismatch: false,
+					publishedAccountMismatch: false,
 					legacy: false,
 				}).rows.map((r) => [r.id, r.state]),
 			);
@@ -125,7 +125,7 @@ describe('progress', () => {
 			canPublishAnyway: false,
 			failedOnServer: false,
 			accountMismatch: false,
-		publishedAccountMismatch: false,
+			publishedAccountMismatch: false,
 			legacy: false,
 		});
 		const states = summary.rows.map((r) => r.state);
@@ -158,7 +158,7 @@ describe('progress', () => {
 			canPublishAnyway: false,
 			failedOnServer: false,
 			accountMismatch: false,
-		publishedAccountMismatch: false,
+			publishedAccountMismatch: false,
 			legacy: false,
 		});
 		expect(summary.percent).toBe(100);

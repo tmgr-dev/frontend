@@ -32,7 +32,7 @@ const SKILL_REASONS: Record<string, string> = {
 };
 
 const skillReason = (reason: string | null) =>
-	reason ? SKILL_REASONS[reason] ?? reason.replace(/_/g, ' ') : '';
+	reason ? (SKILL_REASONS[reason] ?? reason.replace(/_/g, ' ')) : '';
 
 const name = (o: SkillOutcome) => o.slug ?? o.cloud_slug ?? 'a skill';
 

@@ -99,7 +99,9 @@
 			);
 
 			const counts = computed(() => dry.value?.inventory.counts);
-			const skillsLine = computed(() => dryRunSkillsLine(dry.value?.skills ?? 0));
+			const skillsLine = computed(() =>
+				dryRunSkillsLine(dry.value?.skills ?? 0),
+			);
 			const sizeLabel = computed(() =>
 				dry.value ? formatBytes(dry.value.movedFileBytes) : '',
 			);

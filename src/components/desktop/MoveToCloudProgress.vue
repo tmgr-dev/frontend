@@ -166,7 +166,9 @@
 					Copying skills...
 				</p>
 				<p
-					v-else-if="skills?.state === 'pending' && view.publishedAccountMismatch"
+					v-else-if="
+						skills?.state === 'pending' && view.publishedAccountMismatch
+					"
 					class="text-sm text-ink-subtle"
 				>
 					Sign in as the account that made the move to copy skills
@@ -191,7 +193,11 @@
 					class="flex flex-col items-start gap-2 text-sm text-destructive"
 				>
 					<p class="break-words">Skills were not copied: {{ skills.error }}</p>
-					<Button size="sm" variant="outline" :disabled="view.busy" @click="retrySkills"
+					<Button
+						size="sm"
+						variant="outline"
+						:disabled="view.busy"
+						@click="retrySkills"
 						>Retry skills</Button
 					>
 				</div>
