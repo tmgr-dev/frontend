@@ -132,6 +132,14 @@ export interface ImportDeps {
 	now?: () => string;
 }
 
+export interface ImportTarget {
+	listLibrary: () => Promise<LibraryEntryRef[]>;
+	put: (slug: string, markdown: string) => Promise<{ version: number }>;
+	getBody: (slug: string) => Promise<string>;
+	loadIndex: () => ImportIndex | Promise<ImportIndex>;
+	saveIndex: (index: ImportIndex) => boolean | Promise<boolean>;
+}
+
 export const runImport = async (
 	rows: ImportRow[],
 	deps: ImportDeps,

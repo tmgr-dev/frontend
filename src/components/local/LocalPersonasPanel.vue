@@ -218,6 +218,59 @@
 				</div>
 
 				<div
+					v-if="
+						skillLibrary &&
+						(skillLibrary.skills.length || attachedSkills(persona).length)
+					"
+					class="flex flex-col gap-2 border-t border-border pt-2"
+				>
+					<p class="text-xs font-medium">Library skills</p>
+					<div
+						v-for="skill in attachedSkills(persona)"
+						:key="skill.slug"
+						class="flex items-center justify-between gap-3 text-xs"
+					>
+						<span class="truncate">{{ skill.title }} ({{ skill.slug }})</span>
+						<Button
+							size="sm"
+							variant="outline"
+							@click="detachSkill(persona, skill.slug)"
+						>
+							Detach
+						</Button>
+					</div>
+					<p v-if="skillError" class="text-xs text-red-600 dark:text-red-400">
+						{{ skillError }}
+					</p>
+					<select
+						v-if="unattachedSkills(persona).length"
+						class="w-fit rounded border border-border bg-background px-2 py-1 text-xs"
+						:disabled="attachedSkills(persona).length >= attachedLimit"
+						@change="
+							(e) => {
+								attachSkill(persona, (e.target as HTMLSelectElement).value);
+								(e.target as HTMLSelectElement).value = '';
+							}
+						"
+					>
+						<option value="">
+							{{
+								attachedSkills(persona).length >= attachedLimit
+									? `Limit of ${attachedLimit} skills reached`
+									: 'Attach a library skill…'
+							}}
+						</option>
+						<option
+							v-for="skill in unattachedSkills(persona)"
+							:key="skill.slug"
+							:value="skill.slug"
+						>
+							{{ skill.title }} ({{ skill.slug }})
+						</option>
+					</select>
+				</div>
+
+				<div
 					v-if="canConnect(persona) && localAccessAvailable"
 					class="flex flex-col gap-2 border-t border-border pt-2"
 				>
@@ -360,11 +413,22 @@
 	} from '@/local/personas';
 	import { activeLocalWorkspace, localContext } from '@/local/runtime';
 	import {
+		attach,
+		detach,
+		type LibraryFile,
+		type LibrarySkill,
+	} from '@/local/skillLibrary';
+	import {
+		readSkillLibrary,
+		updateSkillLibrary,
+	} from '@/local/tauriSkillLibrary';
+	import {
 		localAccessConnect,
 		resolveLocalAccessConnect,
 	} from '@/pluginSystem/state';
 	import { resyncCloudIdentity } from '@/utils/cloudIdentity';
 	import { supportsLocalAccess } from '@/utils/desktop';
+	import { ATTACHED_SKILL_LIMIT } from '@/utils/personas';
 	import {
 		computed,
 		defineComponent,
@@ -475,8 +539,62 @@
 				}
 			};
 
+			const skillLibrary = ref<LibraryFile | null>(null);
+			const skillError = ref<string | null>(null);
+
+			const refreshSkillLibrary = async () => {
+				const id = currentUser().id;
+				if (!id) return;
+				try {
+					skillLibrary.value = await readSkillLibrary(id);
+				} catch {
+					skillLibrary.value = null;
+				}
+			};
+
+			const attachedSkills = (persona: WorkspacePersonaRow): LibrarySkill[] =>
+				(skillLibrary.value?.attachments ?? [])
+					.filter((a) => a.persona_uuid === persona.uuid)
+					.flatMap((a) => {
+						const skill = skillLibrary.value?.skills.find(
+							(item) => item.slug === a.slug,
+						);
+						return skill ? [skill] : [];
+					});
+
+			const unattachedSkills = (persona: WorkspacePersonaRow) => {
+				const taken = new Set(attachedSkills(persona).map((s) => s.slug));
+				return (skillLibrary.value?.skills ?? []).filter(
+					(s) => !taken.has(s.slug),
+				);
+			};
+
+			const changeAttachment = async (
+				change: (lib: LibraryFile) => LibraryFile,
+			) => {
+				skillError.value = null;
+				try {
+					await updateSkillLibrary(currentUser().id, (lib) => ({
+						library: change(lib),
+						result: null,
+					}));
+				} catch (error) {
+					skillError.value =
+						error instanceof Error ? error.message : String(error);
+				}
+				await refreshSkillLibrary();
+			};
+
+			const attachSkill = (persona: WorkspacePersonaRow, slug: string) =>
+				slug
+					? changeAttachment((lib) => attach(lib, persona.uuid, slug))
+					: undefined;
+			const detachSkill = (persona: WorkspacePersonaRow, slug: string) =>
+				changeAttachment((lib) => detach(lib, persona.uuid, slug));
+
 			const refreshPersonas = async () => {
 				if (!workspace) return;
+				refreshSkillLibrary();
 				const ctx = await ctxFor();
 				personas.value = await listLocalPersonas(ctx);
 				for (const persona of personas.value)
@@ -722,6 +840,13 @@
 			return {
 				workspace,
 				localOnly,
+				skillLibrary,
+				skillError,
+				attachedLimit: ATTACHED_SKILL_LIMIT,
+				attachedSkills,
+				unattachedSkills,
+				attachSkill,
+				detachSkill,
 				showAddForm,
 				adding,
 				addError,

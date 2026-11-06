@@ -6,6 +6,7 @@
 			</template>
 		</PageHeader>
 		<LocalPersonasPanel />
+		<LocalSkillsLibrary class="mt-6" />
 	</PageContainer>
 	<PageContainer v-else width="narrow">
 		<PageHeader title="Personas">
@@ -223,6 +224,7 @@
 		</SettingsSection>
 
 		<LocalPersonasPanel v-if="isDesktop" class="mt-6" />
+		<LocalSkillsLibrary v-if="isDesktop" class="mt-6" />
 	</PageContainer>
 </template>
 
@@ -245,6 +247,7 @@
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import LocalPersonasPanel from '@/components/local/LocalPersonasPanel.vue';
+	import LocalSkillsLibrary from '@/components/local/LocalSkillsLibrary.vue';
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
 	import { toast } from '@/components/ui/toast';
@@ -289,6 +292,7 @@
 			PersonaTokens,
 			PersonaWorkspaceGrants,
 			LocalPersonasPanel,
+			LocalSkillsLibrary,
 		},
 		setup() {
 			setDocumentTitle('Personas');

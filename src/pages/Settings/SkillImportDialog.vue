@@ -224,9 +224,10 @@
 		evaluateRow,
 		runImport,
 		type ImportRow,
+		type ImportTarget,
 		type RowResult,
 	} from '@/utils/skillImportFlow';
-	import { computed, defineComponent, ref, watch } from 'vue';
+	import { computed, defineComponent, ref, watch, type PropType } from 'vue';
 
 	const STATUS_LABELS: Record<RowStatus, string> = {
 		new: 'New',
@@ -270,6 +271,7 @@
 		},
 		props: {
 			open: { type: Boolean, required: true },
+			target: { type: Object as PropType<ImportTarget>, default: undefined },
 		},
 		emits: ['update:open', 'imported'],
 		setup(props, { emit }) {
@@ -290,6 +292,14 @@
 			let scanToken = 0;
 			const toRefs = (list: { slug: string; version: number }[]) =>
 				list.map((s) => ({ slug: s.slug, version: s.version }));
+			const cloudTarget: ImportTarget = {
+				listLibrary: async () => toRefs(await listSharedSkills(false)),
+				put: (slug, markdown) => putSharedSkill(slug, markdown),
+				getBody: async (slug) => (await getSharedSkill(slug)).body,
+				loadIndex: () => loadIndex(localStorage, storageKey()),
+				saveIndex: (next) => saveIndex(localStorage, storageKey(), next),
+			};
+			const active = () => props.target ?? cloudTarget;
 
 			const scan = async () => {
 				const token = ++scanToken;
@@ -297,31 +307,26 @@
 				scanFailed.value = false;
 				finished.value = false;
 				results.value = {};
-				if (!userId()) {
+				if (!props.target && !userId()) {
 					scanFailed.value = true;
 					scanning.value = false;
 					return;
 				}
 				try {
-					const [result, summaries] = await Promise.all([
+					const target = active();
+					const [result, refs] = await Promise.all([
 						invokeCommand<ScanResult>('skills_scan', {
 							folderIds: folderIds.value,
 						}),
-						listSharedSkills(false),
+						target.listLibrary(),
 					]);
-					const refs = toRefs(summaries);
-					const loaded = loadIndex(localStorage, storageKey());
-					const built = await buildRows(
-						result,
-						refs,
-						loaded,
-						async (slug) => (await getSharedSkill(slug)).body,
-					);
+					const loaded = await target.loadIndex();
+					const built = await buildRows(result, refs, loaded, target.getBody);
 					if (token !== scanToken) return;
 					library.value = refs;
 					index.value = adoptMatches(built, refs, loaded);
 					if (index.value !== loaded) {
-						saveIndex(localStorage, storageKey(), index.value);
+						await target.saveIndex(index.value);
 					}
 					rows.value = built;
 					selectedKey.value = rows.value[0]?.skill.key ?? null;
@@ -415,14 +420,15 @@
 				if (busy.value) return;
 				busy.value = true;
 				try {
+					const target = active();
 					const outcome = await runImport(rows.value, {
-						listLibrary: async () => toRefs(await listSharedSkills(false)),
-						put: (slug, markdown) => putSharedSkill(slug, markdown),
-						getBody: async (slug) => (await getSharedSkill(slug)).body,
+						listLibrary: target.listLibrary,
+						put: target.put,
+						getBody: target.getBody,
 						index: index.value,
 					});
 					index.value = outcome.index;
-					if (!saveIndex(localStorage, storageKey(), outcome.index)) {
+					if (!(await target.saveIndex(outcome.index))) {
 						toast({
 							title: 'Could not remember what was imported',
 							description:
@@ -450,7 +456,7 @@
 					});
 					emit('imported');
 					try {
-						library.value = toRefs(await listSharedSkills(false));
+						library.value = await target.listLibrary();
 						for (const row of rows.value) {
 							const next = evaluateRow(row, library.value, index.value);
 							row.converted = next.converted;
