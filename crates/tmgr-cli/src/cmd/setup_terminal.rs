@@ -21,6 +21,7 @@ pub struct Env {
     pub xdg: PathBuf,
     pub app_roots: Vec<PathBuf>,
     pub path_dirs: Vec<PathBuf>,
+    pub kitty_dir: Option<PathBuf>,
     pub iterm_domain: String,
 }
 
@@ -35,7 +36,9 @@ impl Env {
             .filter(|p| p.is_absolute())
             .unwrap_or_else(|| home.join(".config"));
         let app_roots = match std::env::var_os(APP_ROOTS_ENV) {
-            Some(v) => std::env::split_paths(&v).collect(),
+            Some(v) => std::env::split_paths(&v)
+                .filter(|p| !p.as_os_str().is_empty())
+                .collect(),
             None => vec![PathBuf::from("/Applications"), home.join("Applications")],
         };
         let path_dirs = std::env::var_os("PATH")
@@ -43,11 +46,15 @@ impl Env {
             .unwrap_or_default();
         let iterm_domain =
             std::env::var(ITERM_DOMAIN_ENV).unwrap_or_else(|_| ITERM_DOMAIN.to_string());
+        let kitty_dir = std::env::var_os("KITTY_CONFIG_DIRECTORY")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute());
         Ok(Env {
             home,
             xdg,
             app_roots,
             path_dirs,
+            kitty_dir,
             iterm_domain,
         })
     }
@@ -81,6 +88,7 @@ enum Action {
 
 struct Edit {
     shown: String,
+    replaces: Option<String>,
     restart: String,
     action: Action,
 }
@@ -113,6 +121,7 @@ struct AppReport {
 #[derive(Serialize)]
 struct Report {
     remote: bool,
+    failed: bool,
     apps: Vec<AppReport>,
 }
 
@@ -214,6 +223,7 @@ fn warp(env: &Env, app: &'static str, dir: &str, bundle: &str) -> Option<Finding
         Ok(_) => match toml_set(&path, "terminal", key, "write_only") {
             Err(e) => Outcome::Skip(e),
             Ok((content, existed)) => Outcome::Edit(Edit {
+                replaces: None,
                 shown: format!("[terminal]\n{key} = \"write_only\""),
                 restart: format!("Restart {app}"),
                 action: Action::File {
@@ -244,6 +254,7 @@ fn ghostty(env: &Env) -> Option<Finding> {
         Some((path, idx, v, body)) if v == "deny" || v == "ask" => {
             let line = "clipboard-write = allow";
             Outcome::Edit(Edit {
+                replaces: body.lines().nth(idx).map(|l| l.trim().to_string()),
                 shown: line.into(),
                 restart: "Restart Ghostty (or reload its config)".into(),
                 action: Action::File {
@@ -253,7 +264,10 @@ fn ghostty(env: &Env) -> Option<Finding> {
                 },
             })
         }
-        Some((_, _, v, _)) => Outcome::Ok(format!("clipboard-write is already \"{v}\"")),
+        Some((_, _, v, _)) if !v.is_empty() => {
+            Outcome::Ok(format!("clipboard-write is already \"{v}\""))
+        }
+        Some(_) => Outcome::Ok("clipboard-write is reset to its default (allow)".into()),
         None => Outcome::Ok("clipboard-write defaults to allow".into()),
     };
     Some(Finding {
@@ -263,14 +277,18 @@ fn ghostty(env: &Env) -> Option<Finding> {
 }
 
 fn kitty(env: &Env) -> Option<Finding> {
-    let files: Vec<PathBuf> = [
-        env.home.join("Library/Preferences/kitty/kitty.conf"),
-        env.xdg.join("kitty/kitty.conf"),
-    ]
-    .into_iter()
-    .filter(|f| f.exists())
-    .take(1)
-    .collect();
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(d) = &env.kitty_dir {
+        candidates.push(d.join("kitty.conf"));
+    }
+    candidates.push(env.xdg.join("kitty/kitty.conf"));
+    candidates.push(env.home.join(".config/kitty/kitty.conf"));
+    candidates.push(env.home.join("Library/Preferences/kitty/kitty.conf"));
+    let files: Vec<PathBuf> = candidates
+        .into_iter()
+        .filter(|f| f.exists())
+        .take(1)
+        .collect();
     if files.is_empty() && !env.has_app("kitty.app") {
         return None;
     }
@@ -288,6 +306,7 @@ fn kitty(env: &Env) -> Option<Finding> {
                     .collect::<Vec<_>>()
                     .join(" ");
                 Outcome::Edit(Edit {
+                    replaces: body.lines().nth(idx).map(|l| l.trim().to_string()),
                     shown: line.clone(),
                     restart: "Restart kitty (or reload its config with ctrl+shift+f5)".into(),
                     action: Action::File {
@@ -321,17 +340,17 @@ fn alacritty(env: &Env) -> Option<Finding> {
         None => Outcome::Ok("osc52 defaults to OnlyCopy".into()),
         Some(path) => match toml_get(&path, "terminal", "osc52") {
             Err(e) => Outcome::Skip(e),
-            Ok(Some(v)) if v == "Disabled" || v == "OnlyPaste" => {
-                let new = if v == "OnlyPaste" {
-                    "CopyPaste"
-                } else {
-                    "OnlyCopy"
-                };
+            Ok(Some(v)) if v == "OnlyPaste" => Outcome::Skip(
+                "osc52 is \"OnlyPaste\": set it to \"OnlyCopy\" or \"CopyPaste\" yourself".into(),
+            ),
+            Ok(Some(v)) if v == "Disabled" => {
+                let new = "OnlyCopy";
                 match toml_set(&path, "terminal", "osc52", new) {
                     Err(e) => Outcome::Skip(e),
                     Ok((content, existed)) => Outcome::Edit(Edit {
+                        replaces: Some("osc52 = \"Disabled\"".into()),
                         shown: format!("[terminal]\nosc52 = \"{new}\""),
-                        restart: "Restart Alacritty (it reloads the config by itself)".into(),
+                        restart: "Alacritty reloads its config by itself, no restart needed".into(),
                         action: Action::File {
                             path,
                             content,
@@ -388,6 +407,7 @@ fn tmux(env: &Env) -> Option<Finding> {
                 None => (env.home.join(".tmux.conf"), String::new(), false),
             };
             Outcome::Edit(Edit {
+                replaces: None,
                 shown: line.into(),
                 restart: format!("Reload tmux with `tmux source-file {}`", env.short(&path)),
                 action: Action::File {
@@ -404,7 +424,6 @@ fn tmux(env: &Env) -> Option<Finding> {
     })
 }
 
-#[cfg(target_os = "macos")]
 fn iterm_plist(env: &Env) -> PathBuf {
     let d = &env.iterm_domain;
     if d.starts_with('/') {
@@ -419,7 +438,6 @@ fn iterm_plist(env: &Env) -> PathBuf {
     }
 }
 
-#[cfg(target_os = "macos")]
 fn defaults(args: &[&str]) -> Option<String> {
     let out = std::process::Command::new("/usr/bin/defaults")
         .args(args)
@@ -430,8 +448,10 @@ fn defaults(args: &[&str]) -> Option<String> {
         .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-#[cfg(target_os = "macos")]
 fn iterm(env: &Env) -> Option<Finding> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
     if !iterm_plist(env).exists() && !env.has_app("iTerm.app") {
         return None;
     }
@@ -441,6 +461,7 @@ fn iterm(env: &Env) -> Option<Finding> {
         Outcome::Ok("Applications in terminal may access clipboard is already on".into())
     } else {
         Outcome::Edit(Edit {
+            replaces: None,
             shown: format!(
                 "defaults write {} AllowClipboardAccess -bool true",
                 env.iterm_domain
@@ -456,11 +477,6 @@ fn iterm(env: &Env) -> Option<Finding> {
         app: "iTerm2",
         outcome,
     })
-}
-
-#[cfg(not(target_os = "macos"))]
-fn iterm(_env: &Env) -> Option<Finding> {
-    None
 }
 
 fn detect(env: &Env) -> Vec<Finding> {
@@ -483,31 +499,64 @@ fn stamp() -> String {
     chrono::Utc::now().format("%Y%m%d%H%M%S").to_string()
 }
 
-fn apply(env: &Env, edit: &Edit) -> Result<Option<String>> {
+fn backup_name(path: &Path) -> PathBuf {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let base = format!("{name}.tmgr-backup-{}", stamp());
+    let mut candidate = path.with_file_name(&base);
+    let mut n = 1;
+    while candidate.exists() {
+        candidate = path.with_file_name(format!("{base}-{n}"));
+        n += 1;
+    }
+    candidate
+}
+
+fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
+    let target = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    if let Some(dir) = target.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let tmp = target.with_file_name(format!(
+        ".{}.tmgr-tmp",
+        target
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default()
+    ));
+    std::fs::write(&tmp, content)?;
+    if let Ok(meta) = std::fs::metadata(&target) {
+        let _ = std::fs::set_permissions(&tmp, meta.permissions());
+    }
+    std::fs::rename(&tmp, &target).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
+}
+
+fn apply(env: &Env, edit: &Edit, snapshot: &Option<String>) -> Result<Option<String>> {
     match &edit.action {
         Action::File {
             path,
             content,
             existed,
         } => {
+            if read(path) != *snapshot {
+                return Err(Error::internal(format!(
+                    "{} changed while waiting, run the command again",
+                    env.short(path)
+                )));
+            }
             let backup = if *existed {
-                let name = path.file_name().map(|n| n.to_string_lossy().to_string());
-                let b = path.with_file_name(format!(
-                    "{}.tmgr-backup-{}",
-                    name.unwrap_or_default(),
-                    stamp()
-                ));
+                let b = backup_name(path);
                 std::fs::copy(path, &b)
                     .map_err(|e| Error::internal(format!("cannot back up the file: {e}")))?;
                 Some(b)
             } else {
                 None
             };
-            if let Some(dir) = path.parent() {
-                std::fs::create_dir_all(dir)
-                    .map_err(|e| Error::internal(format!("cannot create the folder: {e}")))?;
-            }
-            std::fs::write(path, content)
+            write_atomic(path, content)
                 .map_err(|e| Error::internal(format!("cannot write {}: {e}", path.display())))?;
             Ok(backup.map(|b| env.short(&b)))
         }
@@ -515,14 +564,9 @@ fn apply(env: &Env, edit: &Edit) -> Result<Option<String>> {
     }
 }
 
-#[cfg(target_os = "macos")]
 fn apply_defaults(env: &Env, domain: &str) -> Result<Option<String>> {
     let plist = iterm_plist(env);
-    let backup = plist.with_file_name(format!(
-        "{}.tmgr-backup-{}",
-        plist.file_name().unwrap_or_default().to_string_lossy(),
-        stamp()
-    ));
+    let backup = backup_name(&plist);
     let saved = plist.exists()
         && std::process::Command::new("/usr/bin/defaults")
             .args(["export", domain])
@@ -535,11 +579,6 @@ fn apply_defaults(env: &Env, domain: &str) -> Result<Option<String>> {
     defaults(&["write", domain, "AllowClipboardAccess", "-bool", "true"])
         .ok_or_else(|| Error::internal("defaults could not write the iTerm2 setting"))?;
     Ok(saved.then(|| env.short(&backup)))
-}
-
-#[cfg(not(target_os = "macos"))]
-fn apply_defaults(_env: &Env, _domain: &str) -> Result<Option<String>> {
-    Err(Error::internal("iTerm2 settings need macOS"))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -559,7 +598,19 @@ fn file_of(env: &Env, edit: &Edit) -> Option<String> {
 
 fn run_with(env: &Env, mode: Mode, ask: &mut dyn FnMut(&str, &Edit) -> bool) -> Result<Report> {
     let mut apps = Vec::new();
-    for f in detect(env) {
+    let findings = detect(env);
+    let snapshots: Vec<Option<String>> = findings
+        .iter()
+        .map(|f| match &f.outcome {
+            Outcome::Edit(Edit {
+                action: Action::File { path, .. },
+                ..
+            }) => read(path),
+            _ => None,
+        })
+        .collect();
+    let mut failed = false;
+    for (f, snap) in findings.into_iter().zip(snapshots) {
         let rep = match f.outcome {
             Outcome::Ok(note) => AppReport {
                 app: f.app.into(),
@@ -586,8 +637,16 @@ fn run_with(env: &Env, mode: Mode, ask: &mut dyn FnMut(&str, &Edit) -> bool) -> 
                     Mode::Ask => ask(f.app, &edit),
                     Mode::Check | Mode::Report => false,
                 };
+                let mut note = edit.restart.clone();
                 let (status, backup) = if go {
-                    ("changed", apply(env, &edit)?)
+                    match apply(env, &edit, &snap) {
+                        Ok(b) => ("changed", b),
+                        Err(e) => {
+                            failed = true;
+                            note = e.to_string();
+                            ("failed", None)
+                        }
+                    }
                 } else if mode == Mode::Ask {
                     ("declined", None)
                 } else {
@@ -597,10 +656,13 @@ fn run_with(env: &Env, mode: Mode, ask: &mut dyn FnMut(&str, &Edit) -> bool) -> 
                     app: f.app.into(),
                     status,
                     file,
-                    line: Some(edit.shown),
+                    line: Some(match &edit.replaces {
+                        Some(old) => format!("{old}  ->  {}", edit.shown),
+                        None => edit.shown,
+                    }),
                     backup,
-                    restart: go,
-                    note: edit.restart,
+                    restart: status == "changed",
+                    note,
                 }
             }
         };
@@ -608,6 +670,7 @@ fn run_with(env: &Env, mode: Mode, ask: &mut dyn FnMut(&str, &Edit) -> bool) -> 
     }
     Ok(Report {
         remote: remote_session(),
+        failed,
         apps,
     })
 }
@@ -619,8 +682,13 @@ fn prompt(env: &Env, app: &str, edit: &Edit) -> bool {
     if let Some(f) = file_of(env, edit) {
         eprintln!("  file: {f}");
     }
-    for l in edit.shown.lines() {
-        eprintln!("  add: {l}");
+    if let Some(old) = &edit.replaces {
+        eprintln!("  change: {old}");
+        eprintln!("  to:     {}", edit.shown);
+    } else {
+        for l in edit.shown.lines() {
+            eprintln!("  add: {l}");
+        }
     }
     eprint!("Apply this change? [y/N] ");
     let _ = std::io::stderr().flush();
@@ -635,7 +703,7 @@ fn human(report: &Report) -> String {
     let mut out = String::new();
     if report.remote {
         out.push_str(
-            "This looks like a remote session. The OSC 52 setting belongs to the terminal on your own computer: run `tmgr setup terminal` there.\n\n",
+            "This looks like a remote session. The OSC 52 setting belongs to the terminal on your own computer: run `tmgr setup terminal` there. Only the tmux entry below applies to this host, if you run tmux here.\n\n",
         );
     }
     if report.apps.is_empty() {
@@ -649,11 +717,12 @@ fn human(report: &Report) -> String {
             "skipped" => format!("{}: skipped ({})", a.app, a.note),
             "changed" => format!("{}: changed", a.app),
             "declined" => format!("{}: not changed (declined)", a.app),
+            "failed" => format!("{}: FAILED ({})", a.app, a.note),
             _ => format!("{}: needs a change (not applied)", a.app),
         };
         out.push_str(&head);
         out.push('\n');
-        if matches!(a.status, "changed" | "declined" | "would_change") {
+        if matches!(a.status, "changed" | "declined" | "would_change" | "failed") {
             if let Some(f) = &a.file {
                 out.push_str(&format!("  file: {f}\n"));
             }
@@ -693,7 +762,9 @@ pub fn run(ctx: &Ctx, args: &SetupTerminalArgs) -> Result<Output> {
     };
     let report = run_with(&env, mode, &mut |app, edit| prompt(&env, app, edit))?;
     let text = human(&report);
-    Ok(Output::new(report, text))
+    let failed = report.failed;
+    let out = Output::new(report, text);
+    Ok(if failed { out.exit(1) } else { out })
 }
 
 #[cfg(test)]
@@ -706,6 +777,7 @@ mod tests {
             xdg: tmp.join("xdg"),
             app_roots: vec![tmp.join("apps")],
             path_dirs: vec![],
+            kitty_dir: None,
             iterm_domain: tmp.join("iterm/domain").display().to_string(),
         }
     }
@@ -752,5 +824,71 @@ mod tests {
         let r = run_with(&env(tmp.path()), Mode::Apply, &mut |_, _| true).unwrap();
         assert_eq!(r.apps[0].status, "skipped");
         assert_eq!(std::fs::read_to_string(&f).unwrap(), "[terminal\n");
+    }
+
+    #[test]
+    fn a_file_changed_while_waiting_is_not_overwritten_and_other_apps_still_run() {
+        let tmp = tempfile::tempdir().unwrap();
+        let warp = tmp.path().join(".warp/settings.toml");
+        std::fs::create_dir_all(warp.parent().unwrap()).unwrap();
+        std::fs::write(&warp, "[terminal]\n").unwrap();
+        let tmux = tmp.path().join(".tmux.conf");
+        std::fs::write(&tmux, "").unwrap();
+        let w = warp.clone();
+        let r = run_with(&env(tmp.path()), Mode::Ask, &mut |app, _| {
+            if app == "Warp" {
+                std::fs::write(&w, "[terminal]\ncopy_on_select = false\n").unwrap();
+            }
+            true
+        })
+        .unwrap();
+        assert!(r.failed);
+        assert_eq!(r.apps[0].status, "failed");
+        assert_eq!(r.apps[1].status, "changed");
+        assert_eq!(
+            std::fs::read_to_string(&warp).unwrap(),
+            "[terminal]\ncopy_on_select = false\n"
+        );
+    }
+
+    #[test]
+    fn kitty_follows_its_own_search_order_and_never_edits_a_file_it_ignores() {
+        let tmp = tempfile::tempdir().unwrap();
+        let xdg = tmp.path().join("xdg/kitty/kitty.conf");
+        let mac = tmp.path().join("Library/Preferences/kitty/kitty.conf");
+        for f in [&xdg, &mac] {
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(f, "clipboard_control no-append\n").unwrap();
+        }
+        run_with(&env(tmp.path()), Mode::Apply, &mut |_, _| true).unwrap();
+        assert!(std::fs::read_to_string(&xdg)
+            .unwrap()
+            .contains("write-clipboard"));
+        assert_eq!(
+            std::fs::read_to_string(&mac).unwrap(),
+            "clipboard_control no-append\n"
+        );
+    }
+
+    #[test]
+    fn alacritty_only_paste_is_reported_not_rewritten() {
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("xdg/alacritty/alacritty.toml");
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        std::fs::write(&f, "[terminal]\nosc52 = \"OnlyPaste\"\n").unwrap();
+        let r = run_with(&env(tmp.path()), Mode::Apply, &mut |_, _| true).unwrap();
+        assert_eq!(r.apps[0].status, "skipped");
+        assert!(std::fs::read_to_string(&f).unwrap().contains("OnlyPaste"));
+    }
+
+    #[test]
+    fn two_backups_in_the_same_second_never_overwrite_each_other() {
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("conf");
+        std::fs::write(&f, "x").unwrap();
+        let a = backup_name(&f);
+        std::fs::write(&a, "first").unwrap();
+        let b = backup_name(&f);
+        assert_ne!(a, b);
     }
 }
