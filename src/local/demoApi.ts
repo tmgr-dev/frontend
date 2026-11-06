@@ -24,7 +24,9 @@ export const findDemoWorkspace = async (
 ): Promise<LocalWorkspace | null> =>
 	(await listLocalWorkspaces(refresh)).find((w) => w.demo) ?? null;
 
-export const createDemoWorkspace = async (): Promise<LocalWorkspace> => {
+let creating: Promise<LocalWorkspace> | null = null;
+
+const createOnce = async (): Promise<LocalWorkspace> => {
 	const existing = await findDemoWorkspace();
 	if (existing) return existing;
 	await invoke('local_workspace_create_demo', { name: DEMO_WORKSPACE_NAME });
@@ -34,6 +36,11 @@ export const createDemoWorkspace = async (): Promise<LocalWorkspace> => {
 	await seedDemo(ctx);
 	return created;
 };
+
+export const createDemoWorkspace = (): Promise<LocalWorkspace> =>
+	(creating ??= createOnce().finally(() => {
+		creating = null;
+	}));
 
 const reloadWorkspaces = async () => {
 	const [{ requestCache }, { default: store }] = await Promise.all([

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Runtime, State};
 
 use crate::local_access::LocalAccessState;
-use crate::local_db::LocalDbs;
+use crate::local_db::{live_connection, LocalDbs};
 use crate::local_move::{begin_operation, Moving};
 use crate::local_workspaces::{self, LocalWorkspace};
 
@@ -32,12 +32,7 @@ pub fn refuse_workspace(workspace: &LocalWorkspace) -> Result<(), String> {
 }
 
 pub fn create_demo_in(root: &Path, name: &str, now: &str) -> Result<LocalWorkspace, String> {
-  let created = local_workspaces::create_in(root, name, now)?;
-  fs::write(Path::new(&created.path).join(SENTINEL), b"").map_err(|e| e.to_string())?;
-  local_workspaces::list_in(root)
-    .into_iter()
-    .find(|w| w.manifest.code == created.manifest.code)
-    .ok_or_else(|| "workspace was not written".to_owned())
+  local_workspaces::create_with(root, name, now, |dir| fs::write(dir.join(SENTINEL), b"").map_err(|e| e.to_string()))
 }
 
 #[tauri::command]
@@ -84,8 +79,25 @@ pub async fn local_workspace_delete_demo<R: Runtime>(
   code: String,
 ) -> Result<(), String> {
   let root = local_workspaces::root(&app)?;
+  if !is_demo_dir(&root.join(&code)) {
+    return Err("Only the demo workspace can be deleted this way".to_owned());
+  }
   let _operation = begin_operation(&moving, &code, false).await?;
+  let connection = live_connection(&app, &dbs, &code)?;
+  let connection = {
+    let (root, code) = (root.clone(), code.clone());
+    tauri::async_runtime::spawn_blocking(move || {
+      if !is_demo_dir(&root.join(&code)) {
+        return Err("Only the demo workspace can be deleted this way".to_owned());
+      }
+      drop(connection.lock().map_err(|e| e.to_string())?);
+      Ok::<_, String>(connection)
+    })
+    .await
+    .map_err(|e| e.to_string())??
+  };
   dbs.forget(&code);
+  drop(connection);
   let tokens = access.token_store.clone();
   let now = crate::tray::now_secs();
   let removed = {

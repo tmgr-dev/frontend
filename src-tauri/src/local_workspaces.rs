@@ -104,6 +104,10 @@ pub fn list_in(root: &Path) -> Vec<LocalWorkspace> {
 }
 
 pub fn create_in(root: &Path, name: &str, now: &str) -> Result<LocalWorkspace, String> {
+  create_with(root, name, now, |_| Ok(()))
+}
+
+pub fn create_with(root: &Path, name: &str, now: &str, mark: impl FnOnce(&Path) -> Result<(), String>) -> Result<LocalWorkspace, String> {
   let name = name.trim();
   if name.is_empty() {
     return Err("name is required".into());
@@ -120,7 +124,10 @@ pub fn create_in(root: &Path, name: &str, now: &str) -> Result<LocalWorkspace, S
     schema_version: 0,
     created_at: now.to_string(),
   };
-  write_manifest(&dir, &manifest)?;
+  if let Err(error) = mark(&dir).and_then(|_| write_manifest(&dir, &manifest)) {
+    let _ = fs::remove_dir_all(&dir);
+    return Err(error);
+  }
   read_workspace(&dir).ok_or_else(|| "workspace was not written".into())
 }
 
