@@ -139,7 +139,11 @@
 					if (cancelled(workspace)) return;
 					const ctx = await localContext(workspace, NO_USER);
 					const card = await resetDemoCard(ctx);
-					if (!card) return;
+					if (!card) {
+						advanceToWheel();
+						tourBus.emit('ghost.finished');
+						return;
+					}
 					await refreshTask(workspace.id, card.taskId);
 					if (cancelled(workspace)) {
 						await recover(workspace);

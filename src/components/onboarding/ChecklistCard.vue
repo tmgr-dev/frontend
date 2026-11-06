@@ -129,7 +129,7 @@
 			const menuOpen = ref(false);
 			const root = ref<HTMLElement | null>(null);
 
-			const { isDemo } = useDemoWorkspace();
+			const { isDemo, code: workspaceCode } = useDemoWorkspace();
 			const visible = computed(() => {
 				if (store.getters.isLocalOnly)
 					return ghostStage.value !== null && !isDemo.value;
@@ -188,7 +188,7 @@
 				}
 			};
 			onMounted(refreshLocalFacts);
-			watch(isDemo, refreshLocalFacts);
+			watch(workspaceCode, refreshLocalFacts);
 			const progressWidth = computed(() =>
 				checklist.value.total
 					? `${Math.round(

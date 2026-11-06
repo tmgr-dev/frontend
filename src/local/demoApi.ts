@@ -95,10 +95,10 @@ export const completeDemoEntry = async (
 	const mine =
 		firstRealWorkspace(list) ??
 		(await createLocalWorkspace(FIRST_WORKSPACE_NAME));
-	await stopGhost();
-	setActiveLocalWorkspace(mine);
 	const engine = toursEngine();
 	await engine.api.setIntent('human', { seed: true, workspace: mine.code });
+	await stopGhost();
+	setActiveLocalWorkspace(mine);
 	setGhostStage('finished');
 	if (options.deleteDemo && demo) await deleteDemo(demo.code);
 	await openWorkspace(mine);

@@ -160,7 +160,7 @@ describe('completeDemoEntry', () => {
 		await completeDemoEntry();
 		off();
 
-		expect(order).toEqual(['stopped', 'seeded']);
+		expect(order).toEqual(['seeded', 'stopped']);
 		expect(runtime.setActiveLocalWorkspace).toHaveBeenCalledWith(REAL);
 		expect(engine.api.setIntent).toHaveBeenCalledWith('human', {
 			seed: true,
@@ -183,6 +183,7 @@ describe('completeDemoEntry', () => {
 
 		expect(ghostStage.value).toBe('wheel');
 		expect(router.push).not.toHaveBeenCalled();
+		expect(runtime.setActiveLocalWorkspace).not.toHaveBeenCalled();
 	});
 
 	it('can also send the demo to the Trash', async () => {
