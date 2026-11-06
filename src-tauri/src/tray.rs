@@ -383,6 +383,7 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let mut last: Option<String> = None;
     loop {
       std::thread::sleep(Duration::from_millis(1000));
+      crate::widget_state::flush_pending_reload();
       let state = ticker.state::<TrayStore>().0.lock().unwrap().clone();
       let title = tray_title(&state, now_secs());
       if title != last {

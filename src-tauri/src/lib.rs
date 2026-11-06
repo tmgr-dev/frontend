@@ -44,6 +44,7 @@ mod page_windows;
 mod task_windows;
 mod tray;
 mod update_relaunch;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code, unused_imports))]
 mod widget_state;
 
 use std::path::{Path, PathBuf};

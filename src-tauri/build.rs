@@ -137,12 +137,14 @@ const APP_COMMANDS: &[&str] = &[
   "decisions_open_link",
 ];
 
-#[cfg(target_os = "macos")]
 fn build_widget_reload() {
   use std::path::PathBuf;
   use std::process::Command;
 
   println!("cargo:rerun-if-changed=widget-reload/TMGRWidgetReload.swift");
+  println!("cargo:rerun-if-env-changed=DEVELOPER_DIR");
+  println!("cargo:rerun-if-env-changed=MACOSX_DEPLOYMENT_TARGET");
+  let min = std::env::var("MACOSX_DEPLOYMENT_TARGET").unwrap_or_else(|_| "13.3".into());
   let arch = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
     Ok("aarch64") => "arm64",
     _ => "x86_64",
@@ -151,7 +153,7 @@ fn build_widget_reload() {
   let lib = out.join("libtmgr_widget_reload.a");
   let status = Command::new("xcrun")
     .args(["swiftc", "-emit-library", "-static", "-parse-as-library", "-module-name", "TMGRWidgetReload"])
-    .args(["-target", &format!("{arch}-apple-macos13.3")])
+    .args(["-target", &format!("{arch}-apple-macos{min}")])
     .args(["-Xfrontend", "-disable-autolink-framework", "-Xfrontend", "WidgetKit"])
     .arg("widget-reload/TMGRWidgetReload.swift")
     .arg("-o")
@@ -169,7 +171,6 @@ fn build_widget_reload() {
 }
 
 fn main() {
-  #[cfg(target_os = "macos")]
   if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
     build_widget_reload();
   }

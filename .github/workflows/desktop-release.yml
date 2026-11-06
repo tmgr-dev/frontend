@@ -124,6 +124,10 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ env.DRY_RUN == 'false' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
           APPLE_SIGNING_IDENTITY: ${{ env.DRY_RUN == 'false' && secrets.APPLE_SIGNING_IDENTITY || '' }}
         run: |
+          if [ "$DRY_RUN" = "false" ] && { [ -z "$APPLE_CERTIFICATE" ] || [ -z "$APPLE_SIGNING_IDENTITY" ]; }; then
+            echo "::error::APPLE_CERTIFICATE and APPLE_SIGNING_IDENTITY secrets are required for the widget"
+            exit 1
+          fi
           if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
             KEYCHAIN_PATH="$RUNNER_TEMP/widget-signing.keychain-db"
             KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
@@ -138,7 +142,9 @@ jobs:
             security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
             security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
             export WIDGET_SIGN_IDENTITY="$APPLE_SIGNING_IDENTITY"
+            export WIDGET_KEYCHAIN="$KEYCHAIN_PATH"
           fi
+          unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD
           bash scripts/build-widget.sh
 
       - name: remove widget signing keychain
@@ -149,7 +155,7 @@ jobs:
           fi
           rm -f "$RUNNER_TEMP/widget-cert.p12"
 
-      # The only step that sees signing secrets, and only on tag pushes. Tauri treats a set-but-empty
+      # The widget step and this step see signing secrets, and only on tag pushes. Tauri treats a set-but-empty
       # APPLE_* variable as configured, so empty ones are dropped before the build.
       - name: build and sign
         env:
@@ -181,6 +187,14 @@ jobs:
           test -d "$APPEX"
           if [ "$DRY_RUN" = "false" ]; then
             codesign --verify --deep --strict --verbose=2 "$APP"
+          fi
+          codesign -dv "$APP"
+          codesign -dv --verbose=4 "$APPEX" 2> "$RUNNER_TEMP/appex-sig.txt"
+          cat "$RUNNER_TEMP/appex-sig.txt"
+          if [ "$DRY_RUN" = "false" ]; then
+            grep -q 'Authority=Developer ID Application' "$RUNNER_TEMP/appex-sig.txt"
+            grep -Eq 'flags=0x[0-9a-f]+\(.*runtime' "$RUNNER_TEMP/appex-sig.txt"
+            grep -q '^Timestamp=' "$RUNNER_TEMP/appex-sig.txt"
           fi
           codesign -d --entitlements - "$APPEX" 2>&1 | tee "$RUNNER_TEMP/appex-entitlements.txt"
           grep -q 'com.apple.security.app-sandbox' "$RUNNER_TEMP/appex-entitlements.txt"

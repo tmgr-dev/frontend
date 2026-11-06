@@ -51,6 +51,7 @@ pub fn build_payload(state: &TrayState, now: i64) -> WidgetPayload {
 struct Publisher {
   last: Option<WidgetPayload>,
   last_reload: Option<Instant>,
+  pending_reload: bool,
 }
 
 impl Publisher {
@@ -61,11 +62,26 @@ impl Publisher {
     }
     write_atomic(dir, &payload)?;
     self.last = Some(payload);
-    let due = self.last_reload.is_none_or(|t| at.duration_since(t) >= RELOAD_INTERVAL);
+    let due = self.reload_due(at);
+    self.pending_reload = !due;
     if due {
       self.last_reload = Some(at);
     }
     Ok(due)
+  }
+
+  fn reload_due(&self, at: Instant) -> bool {
+    self.last_reload.is_none_or(|t| at.duration_since(t) >= RELOAD_INTERVAL)
+  }
+
+  /// Returns true once when a reload skipped by the throttle can go out now.
+  fn flush_pending(&mut self, at: Instant) -> bool {
+    if !self.pending_reload || !self.reload_due(at) {
+      return false;
+    }
+    self.pending_reload = false;
+    self.last_reload = Some(at);
+    true
   }
 }
 
@@ -81,7 +97,6 @@ fn write_atomic(dir: &Path, payload: &WidgetPayload) -> io::Result<()> {
   std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
   let mut file = options.open(&tmp)?;
   file.write_all(&json)?;
-  file.sync_all()?;
   drop(file);
   std::fs::rename(&tmp, dir.join("timer.json"))
 }
@@ -91,10 +106,21 @@ extern "C" {
   fn tmgr_widget_reload();
 }
 
+static PUBLISHER: Mutex<Option<Publisher>> = Mutex::new(None);
+
+#[cfg(target_os = "macos")]
+pub fn flush_pending_reload() {
+  let mut guard = PUBLISHER.lock().unwrap_or_else(|e| e.into_inner());
+  if guard.as_mut().is_some_and(|p| p.flush_pending(Instant::now())) {
+    unsafe { tmgr_widget_reload() }
+  }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn flush_pending_reload() {}
+
 #[cfg(target_os = "macos")]
 pub fn publish<R: Runtime>(app: &AppHandle<R>, state: &TrayState) {
-  static PUBLISHER: Mutex<Option<Publisher>> = Mutex::new(None);
-
   let dir = match app.path().app_data_dir() {
     Ok(dir) => dir.join("widget"),
     Err(err) => return log::warn!("[widget] no data dir: {err}"),
@@ -109,9 +135,7 @@ pub fn publish<R: Runtime>(app: &AppHandle<R>, state: &TrayState) {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn publish<R: Runtime>(_app: &AppHandle<R>, _state: &TrayState) {
-  let _ = (&Mutex::new(Publisher::default()), now_secs);
-}
+pub fn publish<R: Runtime>(_app: &AppHandle<R>, _state: &TrayState) {}
 
 #[cfg(test)]
 mod tests {
@@ -179,8 +203,13 @@ mod tests {
     let t0 = Instant::now();
     assert!(publisher.publish(dir.path(), build_payload(&state(vec![task(1, "A", 0, 900)]), 1000), t0).unwrap());
     assert!(!publisher.publish(dir.path(), build_payload(&state(vec![]), 1001), t0 + Duration::from_secs(1)).unwrap());
+    assert!(publisher.pending_reload);
+    assert!(!publisher.flush_pending(t0 + Duration::from_secs(1)));
+    assert!(publisher.flush_pending(t0 + Duration::from_secs(2)));
+    assert!(!publisher.pending_reload);
+    assert!(!publisher.flush_pending(t0 + Duration::from_secs(3)));
     assert!(publisher
-      .publish(dir.path(), build_payload(&state(vec![task(2, "B", 0, 900)]), 1002), t0 + Duration::from_secs(3))
+      .publish(dir.path(), build_payload(&state(vec![task(2, "B", 0, 900)]), 1002), t0 + Duration::from_secs(5))
       .unwrap());
     let written: serde_json::Value =
       serde_json::from_slice(&std::fs::read(dir.path().join("timer.json")).unwrap()).unwrap();
