@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.105 — 2026-11-06
+
+- Skills library for local workspaces: local personas can use skills stored on this device. Create, edit and attach skills in Settings > Personas, and the local MCP `get_persona` and `get_persona_skill` return them with the same shape as the cloud.
+- Import skills from local agents into the device library, see "Update available" when a source file changed, and export or import the library as a file to move it between machines.
+
 ## 0.9.104 — 2026-11-06
 
 - Signing out now deletes that account's AI model key from the Keychain and its cached persona prompts, so the next account on this Mac starts clean. The key of the local profile (no account) is never touched.
