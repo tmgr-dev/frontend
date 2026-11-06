@@ -117,6 +117,38 @@ jobs:
           npx tauri signer generate --ci -w "$RUNNER_TEMP/dry-run.key" -p ''
           echo "DRY_RUN_KEY=$RUNNER_TEMP/dry-run.key" >> "$GITHUB_ENV"
 
+      - name: build widget extension
+        if: matrix.name == 'macos'
+        env:
+          APPLE_CERTIFICATE: ${{ env.DRY_RUN == 'false' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ env.DRY_RUN == 'false' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ env.DRY_RUN == 'false' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            KEYCHAIN_PATH="$RUNNER_TEMP/widget-signing.keychain-db"
+            KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
+            echo "::add-mask::$KEYCHAIN_PASSWORD"
+            echo "WIDGET_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+            printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/widget-cert.p12"
+            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security set-keychain-settings -lut 3600 "$KEYCHAIN_PATH"
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security import "$RUNNER_TEMP/widget-cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+            rm -f "$RUNNER_TEMP/widget-cert.p12"
+            security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
+            security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+            export WIDGET_SIGN_IDENTITY="$APPLE_SIGNING_IDENTITY"
+          fi
+          bash scripts/build-widget.sh
+
+      - name: remove widget signing keychain
+        if: always() && matrix.name == 'macos'
+        run: |
+          if [ -n "${WIDGET_KEYCHAIN:-}" ]; then
+            security delete-keychain "$WIDGET_KEYCHAIN" || true
+          fi
+          rm -f "$RUNNER_TEMP/widget-cert.p12"
+
       # The only step that sees signing secrets, and only on tag pushes. Tauri treats a set-but-empty
       # APPLE_* variable as configured, so empty ones are dropped before the build.
       - name: build and sign
@@ -140,6 +172,18 @@ jobs:
           done
           if [ "$DRY_RUN" = "true" ]; then export TAURI_SIGNING_PRIVATE_KEY="$DRY_RUN_KEY"; fi
           npx tauri build --bundles ${{ matrix.bundles }}
+
+      - name: verify widget in the macOS bundle
+        if: matrix.name == 'macos'
+        run: |
+          APP=src-tauri/target/release/bundle/macos/TMGR.app
+          APPEX="$APP/Contents/PlugIns/TMGRWidget.appex"
+          test -d "$APPEX"
+          if [ "$DRY_RUN" = "false" ]; then
+            codesign --verify --deep --strict --verbose=2 "$APP"
+          fi
+          codesign -d --entitlements - "$APPEX" 2>&1 | tee "$RUNNER_TEMP/appex-entitlements.txt"
+          grep -q 'com.apple.security.app-sandbox' "$RUNNER_TEMP/appex-entitlements.txt"
 
       - name: stage bundles
         run: |

@@ -1,0 +1,9 @@
+{
+	"bundle": {
+		"macOS": {
+			"files": {
+				"PlugIns/TMGRWidget.appex": "widget/build/TMGRWidget.appex"
+			}
+		}
+	}
+}
