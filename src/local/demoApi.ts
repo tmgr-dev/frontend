@@ -1,3 +1,4 @@
+import { requestGhostPlay } from '@/onboarding/ghost';
 import { FIRST_WORKSPACE_NAME } from './accountless';
 import { DEMO_WORKSPACE_NAME, seedDemo } from './demoSeed';
 import {
@@ -9,7 +10,7 @@ import {
 	localContext,
 	setActiveLocalWorkspace,
 } from './runtime';
-import type { LocalWorkspace } from './types';
+import { LOCAL_CODE_PREFIX, type LocalWorkspace } from './types';
 
 const invoke = async <T>(
 	command: string,
@@ -55,12 +56,13 @@ const openWorkspace = async (workspace: LocalWorkspace) => {
 	setActiveLocalWorkspace(workspace);
 	await reloadWorkspaces();
 	const { default: router } = await import('@/router');
-	await router.push(`/${workspace.code}/board`);
+	await router.push(`/${LOCAL_CODE_PREFIX}${workspace.code}/board`);
 };
 
 export const watchDemo = async (): Promise<LocalWorkspace> => {
 	const demo = await createDemoWorkspace();
 	await openWorkspace(demo);
+	requestGhostPlay();
 	return demo;
 };
 

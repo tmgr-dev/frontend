@@ -86,7 +86,7 @@ describe('deleteDemo', () => {
 		expect(runtime.forgetLocalWorkspace).toHaveBeenCalledWith('demo');
 		expect(runtime.setActiveLocalWorkspace).toHaveBeenCalledWith(REAL);
 		expect(runtime.createLocalWorkspace).not.toHaveBeenCalled();
-		expect(router.push).toHaveBeenCalledWith('/personal/board');
+		expect(router.push).toHaveBeenCalledWith('/local-personal/board');
 		expect(requestCache.invalidate).toHaveBeenCalledWith('workspaces');
 		expect(store.dispatch).toHaveBeenCalledWith('loadWorkspaces');
 	});
@@ -103,6 +103,6 @@ describe('deleteDemo', () => {
 
 		expect(runtime.createLocalWorkspace).toHaveBeenCalledWith('My workspace');
 		expect(runtime.setActiveLocalWorkspace).toHaveBeenCalledWith(REAL);
-		expect(router.push).toHaveBeenCalledWith('/personal/board');
+		expect(router.push).toHaveBeenCalledWith('/local-personal/board');
 	});
 });
