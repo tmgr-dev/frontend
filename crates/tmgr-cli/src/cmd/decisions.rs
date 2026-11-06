@@ -1,11 +1,11 @@
 use serde_json::Value;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use tmgr_ipc::decisions::{
-    self, CardIn, Check, Client, DiffSpec, Event, Fact, LinkItem, Links, Opt, PatchIn, Source,
-    MAX_DIFFS, MAX_LINE, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES,
+    self, Cancel, CardIn, Check, Client, DiffSpec, Event, Fact, LinkItem, Links, Opt, PatchIn,
+    Source, WaitCard, MAX_DIFFS, MAX_LINE, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES,
 };
 
 pub const KINDS: [&str; 5] = ["decision", "review", "release", "check", "question"];
@@ -16,6 +16,7 @@ const DEFAULT_WAIT: Duration = Duration::from_secs(600);
 const CHUNK: Duration = Duration::from_secs(30);
 const RETRY_MIN: Duration = Duration::from_millis(250);
 const RETRY_MAX: Duration = Duration::from_secs(5);
+const SLICE: Duration = Duration::from_secs(1);
 pub const MAX_TITLE: usize = 300;
 pub const MAX_CONTEXT: usize = 64 * 1024;
 pub const HOOK_CONTEXT: usize = 16 * 1024;
@@ -99,16 +100,71 @@ pub enum Waited {
     Event(Box<Event>),
     Pending { unreachable: bool },
     Refused(String),
+    Cancelled,
 }
 
-fn wait_once(card_id: &str, since: u64, timeout: Duration, final_only: bool) -> Waited {
+static NO_WAIT_ANY: AtomicBool = AtomicBool::new(false);
+
+fn wait_rotating(
+    client: &Client,
+    cards: &[WaitCard],
+    timeout: Duration,
+    final_only: bool,
+    cancel: Option<&Cancel>,
+) -> io::Result<Option<Event>> {
+    let end = Instant::now() + timeout;
+    loop {
+        for c in cards {
+            let left = end.saturating_duration_since(Instant::now());
+            let slice = left.min(SLICE);
+            if let Some(e) =
+                client.wait_cancellable(&c.card_id, c.since, slice, final_only, cancel)?
+            {
+                return Ok(Some(e));
+            }
+            if end <= Instant::now() {
+                return Ok(None);
+            }
+        }
+    }
+}
+
+fn wait_cards_once(
+    client: &Client,
+    cards: &[WaitCard],
+    timeout: Duration,
+    final_only: bool,
+    cancel: Option<&Cancel>,
+) -> io::Result<Option<Event>> {
+    if let [c] = cards {
+        return client.wait_cancellable(&c.card_id, c.since, timeout, final_only, cancel);
+    }
+    if !NO_WAIT_ANY.load(Ordering::Relaxed) {
+        match client.wait_any(cards, timeout, final_only, cancel) {
+            Err(e) if e.kind() == io::ErrorKind::Unsupported => {
+                NO_WAIT_ANY.store(true, Ordering::Relaxed)
+            }
+            r => return r,
+        }
+    }
+    wait_rotating(client, cards, timeout, final_only, cancel)
+}
+
+fn wait_once(
+    cards: &[WaitCard],
+    timeout: Duration,
+    final_only: bool,
+    cancel: Option<&Cancel>,
+) -> Waited {
     let client = decisions::decisions_dir().and_then(|d| Client::open_in(&d));
     let Ok(client) = client else {
         return Waited::Pending { unreachable: true };
     };
-    match client.wait(card_id, since, timeout, final_only) {
+    match wait_cards_once(&client, cards, timeout, final_only, cancel) {
         Ok(Some(e)) => Waited::Event(Box::new(e)),
         Ok(None) => Waited::Pending { unreachable: false },
+        Err(e) if e.kind() == io::ErrorKind::Interrupted => Waited::Cancelled,
+        Err(e) if e.kind() == io::ErrorKind::ResourceBusy => Waited::Pending { unreachable: true },
         Err(e) if is_refusal(&e) => Waited::Refused(e.to_string()),
         Err(_) => Waited::Pending { unreachable: true },
     }
@@ -140,16 +196,34 @@ pub fn wait_loop(
     since: u64,
     total: Duration,
     final_only: bool,
+    cancel: Option<&Cancel>,
+    tick: &mut dyn FnMut(),
+) -> Waited {
+    let card = WaitCard {
+        card_id: card_id.to_string(),
+        since,
+    };
+    wait_cards(&[card], total, final_only, cancel, tick)
+}
+
+pub fn wait_cards(
+    cards: &[WaitCard],
+    total: Duration,
+    final_only: bool,
+    cancel: Option<&Cancel>,
     tick: &mut dyn FnMut(),
 ) -> Waited {
     let end = Instant::now() + total;
     let mut pause = RETRY_MIN;
     let mut ticked = Instant::now();
     loop {
+        if cancel.is_some_and(Cancel::is_cancelled) {
+            return Waited::Cancelled;
+        }
         let left = end.saturating_duration_since(Instant::now());
         let waited = {
             let _parked = Parked::enter();
-            wait_once(card_id, since, left.min(CHUNK), final_only)
+            wait_once(cards, left.min(CHUNK), final_only, cancel)
         };
         match waited {
             Waited::Pending { unreachable: false } if left > CHUNK => {
@@ -163,7 +237,15 @@ pub fn wait_loop(
                     return waited;
                 }
                 let _parked = Parked::enter();
-                std::thread::sleep(pause.min(left));
+                let nap = pause.min(left);
+                match cancel {
+                    Some(c) => {
+                        if c.sleep(nap) {
+                            return Waited::Cancelled;
+                        }
+                    }
+                    None => std::thread::sleep(nap),
+                }
                 pause = (pause * 2).min(RETRY_MAX);
                 if ticked.elapsed() >= CHUNK {
                     ticked = Instant::now();
@@ -835,6 +917,23 @@ pub fn permission_card(input: &Value, cwd: &Path, session: Option<&str>) -> Card
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_cancelled_wait_loop_returns_at_once() {
+        let cancel = Cancel::default();
+        cancel.cancel();
+        let started = Instant::now();
+        let w = wait_loop(
+            "c_00000000000000000000000000000000",
+            0,
+            Duration::from_secs(600),
+            false,
+            Some(&cancel),
+            &mut || {},
+        );
+        assert!(matches!(w, Waited::Cancelled));
+        assert!(started.elapsed() < Duration::from_millis(500));
+    }
 
     #[test]
     fn event_text_marks_only_deleted_lines() {

@@ -1,14 +1,16 @@
 use crate::cmd::decisions::{
     self, agent_name, check_checked, default_wait, event_text, fact_checked, parent_pid,
-    parse_check, parse_fact, pending_json, send_card, source, wait_loop, Sent, Spec, Waited, KINDS,
-    MAX_CONTEXT, MAX_TITLE,
+    parse_check, parse_fact, pending_json, send_card, source, wait_cards, Sent, Spec, Waited,
+    KINDS, MAX_CONTEXT, MAX_TITLE,
 };
 use crate::cmd::mcp::{arg_err, bool_arg, int_arg, str_arg, text_result};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
-use tmgr_ipc::decisions::{Client, DiffSpec, LineComment, PatchIn, MAX_PATCH_BYTES};
+use tmgr_ipc::decisions::{
+    Cancel, Client, DiffSpec, LineComment, PatchIn, WaitCard, MAX_PATCH_BYTES, MAX_WAIT_CARDS,
+};
 use tmgr_ipc::decisions::{MAX_DIFFS, MAX_PATCHES};
 
 static CLIENT: Mutex<String> = Mutex::new(String::new());
@@ -124,14 +126,14 @@ pub fn defs() -> Vec<Value> {
         }),
         json!({
             "name": "get_answer",
-            "description": "Collect the owner's answer to a card created by ask_owner that came back pending (or was deferred). Waits up to waitSeconds for the next event after the ones already returned in this session: an \"answer\" (final unless deferred=true) or a \"message\" (an interim owner comment: address it, then call reply_owner). Returns {\"status\":\"pending\",\"card_id\":...} when nothing new arrived.",
+            "description": "Collect the owner's answer to a card created by ask_owner that came back pending (or was deferred). Waits up to waitSeconds for the next event after the ones already returned in this session: an \"answer\" (final unless deferred=true) or a \"message\" (an interim owner comment: address it, then call reply_owner). Pass card_ids (up to 64) to cover several cards with one wait: it returns the first event from any of them, and the event JSON includes its card_id. Returns {\"status\":\"pending\",\"card_id\":...} when nothing new arrived (with card_ids: {\"status\":\"pending\",\"card_ids\":[...]}).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "card_id": {"type": "string", "description": "card_id from ask_owner"},
+                    "card_ids": {"type": "array", "minItems": 1, "maxItems": MAX_WAIT_CARDS, "items": {"type": "string"}, "description": "Several card_ids to wait on at once; merged with card_id. Either card_id or card_ids is required."},
                     "waitSeconds": wait
                 },
-                "required": ["card_id"],
                 "additionalProperties": false
             }
         }),
@@ -265,30 +267,86 @@ fn card_id_arg(a: &Value) -> Result<String, String> {
     Ok(id.to_string())
 }
 
-fn event_result(card_id: &str, waited: Waited) -> Value {
+fn card_ids_arg(a: &Value) -> Result<Vec<String>, String> {
+    let mut ids: Vec<String> = Vec::new();
+    let mut add = |id: &str| {
+        if !tmgr_ipc::decisions::valid_card_id(id) {
+            return Err("card_id is not a card id".to_string());
+        }
+        if !ids.iter().any(|i| i == id) {
+            ids.push(id.to_string());
+        }
+        Ok(())
+    };
+    if let Some(id) = str_arg(a, "card_id", 1, 64)? {
+        add(id)?;
+    }
+    match a.get("card_ids") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(list)) => {
+            for v in list {
+                let id = v.as_str().ok_or("card_ids must be strings")?;
+                add(id)?;
+            }
+        }
+        Some(_) => return Err("card_ids must be an array".into()),
+    }
+    if ids.is_empty() {
+        return Err("card_id or card_ids is required".into());
+    }
+    if ids.len() > MAX_WAIT_CARDS {
+        return Err(format!("at most {MAX_WAIT_CARDS} cards can be waited on"));
+    }
+    Ok(ids)
+}
+
+fn event_result(card_ids: &[String], waited: Waited) -> Value {
     match waited {
         Waited::Event(e) => {
-            advance(card_id, e.seq);
+            advance(&e.card_id, e.seq);
             text_result(
                 serde_json::to_string(&*e).unwrap_or_else(|_| event_text(&e)),
                 false,
             )
         }
         Waited::Pending { unreachable } => {
-            text_result(pending_json(card_id, unreachable).to_string(), false)
+            let v = match card_ids {
+                [id] => pending_json(id, unreachable),
+                _ => {
+                    let mut v = json!({"status": "pending", "card_ids": card_ids});
+                    if unreachable {
+                        v["note"] = Value::String(decisions::PENDING_NOTE.to_string());
+                    }
+                    v
+                }
+            };
+            text_result(v.to_string(), false)
         }
         Waited::Refused(m) => text_result(format!("error: {m}"), true),
+        Waited::Cancelled => text_result("error: cancelled", true),
     }
 }
 
-fn collect(card_id: &str, total: Duration, progress: &mut dyn FnMut(&str)) -> Value {
-    let waited = wait_loop(card_id, cursor(card_id), total, false, &mut || {
+fn collect(
+    card_ids: &[String],
+    total: Duration,
+    cancel: Option<&Cancel>,
+    progress: &mut dyn FnMut(&str),
+) -> Value {
+    let cards: Vec<WaitCard> = card_ids
+        .iter()
+        .map(|id| WaitCard {
+            card_id: id.clone(),
+            since: cursor(id),
+        })
+        .collect();
+    let waited = wait_cards(&cards, total, false, cancel, &mut || {
         progress("waiting for the owner")
     });
-    event_result(card_id, waited)
+    event_result(card_ids, waited)
 }
 
-fn ask_owner(a: &Value, progress: &mut dyn FnMut(&str)) -> Value {
+fn ask_owner(a: &Value, cancel: Option<&Cancel>, progress: &mut dyn FnMut(&str)) -> Value {
     let parsed = parse_spec(a).and_then(|s| {
         let wait = wait_arg(a)?;
         let card = s.into_card("mcp", source(client_agent(), Some(parent_pid())))?;
@@ -299,21 +357,21 @@ fn ask_owner(a: &Value, progress: &mut dyn FnMut(&str)) -> Value {
         Err(m) => return arg_err(&m),
     };
     match send_card(card) {
-        Ok(Sent::Live(id, _)) => collect(&id, wait, progress),
+        Ok(Sent::Live(id, _)) => collect(&[id], wait, cancel, progress),
         Ok(Sent::Spooled(id)) => text_result(pending_json(&id, true).to_string(), false),
         Err(e) => text_result(format!("error: {e}"), true),
     }
 }
 
-fn get_answer(a: &Value, progress: &mut dyn FnMut(&str)) -> Value {
-    let parsed = card_id_arg(a).and_then(|id| Ok((id, wait_arg(a)?)));
+fn get_answer(a: &Value, cancel: Option<&Cancel>, progress: &mut dyn FnMut(&str)) -> Value {
+    let parsed = card_ids_arg(a).and_then(|ids| Ok((ids, wait_arg(a)?)));
     match parsed {
-        Ok((id, wait)) => collect(&id, wait, progress),
+        Ok((ids, wait)) => collect(&ids, wait, cancel, progress),
         Err(m) => arg_err(&m),
     }
 }
 
-fn reply_owner(a: &Value, progress: &mut dyn FnMut(&str)) -> Value {
+fn reply_owner(a: &Value, cancel: Option<&Cancel>, progress: &mut dyn FnMut(&str)) -> Value {
     let parsed = (|| {
         let id = card_id_arg(a)?;
         let text = str_arg(a, "text", 1, MAX_REPLY)?.map(str::to_string);
@@ -347,7 +405,7 @@ fn reply_owner(a: &Value, progress: &mut dyn FnMut(&str)) -> Value {
         .and_then(|d| Client::open_in(&d))
         .and_then(|c| c.reply(&id, text, lines));
     match sent {
-        Ok(()) => collect(&id, wait, progress),
+        Ok(()) => collect(&[id], wait, cancel, progress),
         Err(e) if decisions::is_refusal(&e) => text_result(format!("error: {e}"), true),
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => text_result(
             "error: the Decisions inbox did not accept the connection (unauthorized); the reply was not delivered, try again".to_string(),
@@ -363,10 +421,58 @@ fn reply_owner(a: &Value, progress: &mut dyn FnMut(&str)) -> Value {
     }
 }
 
-pub fn call(name: &str, args: &Value, progress: &mut dyn FnMut(&str)) -> Value {
+pub fn call(
+    name: &str,
+    args: &Value,
+    cancel: Option<&Cancel>,
+    progress: &mut dyn FnMut(&str),
+) -> Value {
     match name {
-        "ask_owner" => ask_owner(args, progress),
-        "get_answer" => get_answer(args, progress),
-        _ => reply_owner(args, progress),
+        "ask_owner" => ask_owner(args, cancel, progress),
+        "get_answer" => get_answer(args, cancel, progress),
+        _ => reply_owner(args, cancel, progress),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const A: &str = "c_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const B: &str = "c_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    #[test]
+    fn a_card_is_required() {
+        assert_eq!(
+            card_ids_arg(&json!({})).unwrap_err(),
+            "card_id or card_ids is required"
+        );
+        assert!(card_ids_arg(&json!({"card_ids": []})).is_err());
+    }
+
+    #[test]
+    fn card_id_and_card_ids_are_merged_and_deduped() {
+        let ids = card_ids_arg(&json!({"card_id": B, "card_ids": [A, B, A]})).unwrap();
+        assert_eq!(ids, [B, A]);
+        assert_eq!(card_ids_arg(&json!({"card_id": A})).unwrap(), [A]);
+    }
+
+    #[test]
+    fn at_most_64_cards_after_the_merge() {
+        let id = |i: usize| format!("c_{i:032x}");
+        let many: Vec<String> = (0..64).map(id).collect();
+        assert_eq!(card_ids_arg(&json!({"card_ids": many})).unwrap().len(), 64);
+        let mut over = many.clone();
+        over.push(id(64));
+        assert!(card_ids_arg(&json!({"card_ids": over})).is_err());
+        assert!(card_ids_arg(&json!({"card_id": id(64), "card_ids": many})).is_err());
+    }
+
+    #[test]
+    fn bad_ids_are_refused() {
+        assert!(card_ids_arg(&json!({"card_ids": [A, "nope"]})).is_err());
+        assert!(card_ids_arg(&json!({"card_id": "nope"})).is_err());
+        assert!(card_ids_arg(&json!({"card_ids": [1]})).is_err());
+        assert!(card_ids_arg(&json!({"card_ids": "c_x"})).is_err());
     }
 }

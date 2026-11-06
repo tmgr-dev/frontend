@@ -1,6 +1,7 @@
 use crate::cli::VERSION;
 use crate::cmd::notifyenv::{Failure, NotifyEnv};
 use serde_json::{json, Map, Value};
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -8,6 +9,23 @@ use tmgr_core::notify::{
     build_push, format_alarm, format_failure, valid_alarm_id, AlarmRequest, Fail, WaitOptions,
 };
 use tmgr_core::Url;
+#[cfg(unix)]
+use tmgr_ipc::decisions::Cancel;
+
+#[cfg(not(unix))]
+#[derive(Default)]
+pub struct Cancel;
+
+#[cfg(not(unix))]
+impl Cancel {
+    fn cancel(&self) {}
+
+    fn is_cancelled(&self) -> bool {
+        false
+    }
+}
+
+type Pending = Arc<Mutex<HashMap<String, Arc<Cancel>>>>;
 
 const SUPPORTED: [&str; 4] = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 const MAX_LINE: u64 = 1024 * 1024;
@@ -252,8 +270,11 @@ pub fn call_tool(
     env: Option<&NotifyEnv>,
     name: &str,
     args: &Value,
+    cancel: Option<&Cancel>,
     progress: &mut dyn FnMut(&str),
 ) -> Value {
+    #[cfg(not(unix))]
+    let _ = cancel;
     if name == "tmgr_cli" {
         return text_result(CLI_HELP, false);
     }
@@ -261,7 +282,7 @@ pub fn call_tool(
     if crate::cmd::decisions_mcp::is_decisions_tool(name) {
         let empty = json!({});
         let args = if args.is_object() { args } else { &empty };
-        return crate::cmd::decisions_mcp::call(name, args, progress);
+        return crate::cmd::decisions_mcp::call(name, args, cancel, progress);
     }
     if !matches!(name, "notify_user" | "alarm" | "alarm_status") {
         return text_result(
@@ -375,6 +396,7 @@ pub fn run(server_override: Option<String>, verbose: bool) -> i32 {
     let mut reader = BufReader::new(std::io::stdin());
     let mut buf = Vec::new();
     let mut workers: Vec<std::thread::JoinHandle<()>> = Vec::new();
+    let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
     while let Some(complete) = read_line(&mut reader, &mut buf) {
         workers.retain(|w| !w.is_finished());
         if !complete {
@@ -393,14 +415,30 @@ pub fn run(server_override: Option<String>, verbose: bool) -> i32 {
             send(&out, &err(&Value::Null, -32600, "Invalid Request"));
             continue;
         }
-        if msg.get("method").and_then(Value::as_str) == Some("tools/call")
-            && msg.get("id").is_some()
-        {
-            let out = out.clone();
-            let env = env.clone();
-            workers.push(std::thread::spawn(move || {
-                tools_call(&out, env.as_deref(), &msg)
-            }));
+        let method = msg.get("method").and_then(Value::as_str);
+        if method == Some("tools/call") {
+            if let Some(key) = msg.get("id").map(Value::to_string) {
+                let cancel = Arc::new(Cancel::default());
+                lock(&pending).insert(key.clone(), cancel.clone());
+                let out = out.clone();
+                let env = env.clone();
+                let pending = pending.clone();
+                workers.push(std::thread::spawn(move || {
+                    tools_call(&out, env.as_deref(), &msg, &cancel);
+                    lock(&pending).remove(&key);
+                }));
+                continue;
+            }
+        }
+        if method == Some("notifications/cancelled") && msg.get("id").is_none() {
+            let key = msg
+                .get("params")
+                .and_then(|p| p.get("requestId"))
+                .map(Value::to_string);
+            let target = key.and_then(|k| lock(&pending).get(&k).cloned());
+            if let Some(c) = target {
+                c.cancel();
+            }
             continue;
         }
         if let Some(resp) = handle_inline(&msg) {
@@ -426,7 +464,11 @@ fn parked_waits() -> usize {
     0
 }
 
-fn tools_call(out: &Out, env: Option<&NotifyEnv>, msg: &Value) {
+fn lock(pending: &Pending) -> std::sync::MutexGuard<'_, HashMap<String, Arc<Cancel>>> {
+    pending.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+fn tools_call(out: &Out, env: Option<&NotifyEnv>, msg: &Value, cancel: &Cancel) {
     let id = msg.get("id").cloned().unwrap_or(Value::Null);
     let params = msg.get("params").cloned().unwrap_or(Value::Null);
     let Some(name) = params.get("name").and_then(Value::as_str) else {
@@ -441,14 +483,19 @@ fn tools_call(out: &Out, env: Option<&NotifyEnv>, msg: &Value) {
     let mut step = 0u64;
     let mut progress = |message: &str| {
         let Some(t) = &token else { return };
+        if cancel.is_cancelled() {
+            return;
+        }
         step += 1;
         send(
             out,
             &json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": {"progressToken": t, "progress": step, "message": message}}),
         );
     };
-    let result = call_tool(env, name, &args, &mut progress);
-    send(out, &ok(&id, result));
+    let result = call_tool(env, name, &args, Some(cancel), &mut progress);
+    if !cancel.is_cancelled() {
+        send(out, &ok(&id, result));
+    }
 }
 
 #[cfg(test)]
@@ -495,15 +542,15 @@ mod tests {
 
     #[test]
     fn help_needs_no_configuration_and_bad_arguments_are_tool_errors() {
-        let r = call_tool(None, "tmgr_cli", &json!({}), &mut |_| {});
+        let r = call_tool(None, "tmgr_cli", &json!({}), None, &mut |_| {});
         assert!(r["content"][0]["text"]
             .as_str()
             .unwrap()
             .contains("tmgr agent start"));
         assert!(r.get("isError").is_none());
-        let r = call_tool(None, "other", &json!({}), &mut |_| {});
+        let r = call_tool(None, "other", &json!({}), None, &mut |_| {});
         assert_eq!(r["isError"], true);
-        let r = call_tool(None, "notify_user", &json!({}), &mut |_| {});
+        let r = call_tool(None, "notify_user", &json!({}), None, &mut |_| {});
         assert_eq!(r["isError"], true);
     }
 }

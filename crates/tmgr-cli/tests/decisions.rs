@@ -1842,3 +1842,276 @@ fn closing_stdin_cancels_a_pending_get_answer() {
         closed.elapsed()
     );
 }
+
+fn listener_in(stand: &Stand) -> UnixListener {
+    prepare_server_dir(stand.dir.path()).unwrap();
+    match socket_endpoint(stand.dir.path()) {
+        tmgr_ipc::endpoint::Endpoint::Path(p) => UnixListener::bind(p).unwrap(),
+        #[allow(unreachable_patterns)]
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn get_answer_keeps_backing_off_while_the_inbox_is_busy() {
+    let st = stand();
+    let listener = listener_in(&st);
+    let accepts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = accepts.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let _ = tmgr_ipc::decisions::write_busy(&mut stream);
+        }
+    });
+    let id = tmgr_ipc::decisions::new_card_id();
+    let r = mcp(
+        &st,
+        "600000",
+        "claude-code",
+        &[("get_answer", json!({"card_id": id, "waitSeconds": 3}))],
+    );
+    assert_eq!(payload(&r[0])["status"], "pending");
+    let n = accepts.load(std::sync::atomic::Ordering::SeqCst);
+    assert!((2..=10).contains(&n), "{n} connections");
+}
+
+struct Holding {
+    held: Arc<std::sync::atomic::AtomicUsize>,
+    closed: Arc<Mutex<Option<Instant>>>,
+}
+
+fn holding(stand: &Stand) -> Holding {
+    let listener = listener_in(stand);
+    let held = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let closed = Arc::new(Mutex::new(None));
+    let (h, c) = (held.clone(), closed.clone());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(stream) = stream else { continue };
+            let (h, c) = (h.clone(), c.clone());
+            std::thread::spawn(move || {
+                let _ = read_line_limited(&stream);
+                h.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let mut buf = [0u8; 64];
+                while std::io::Read::read(&mut &stream, &mut buf).is_ok_and(|n| n > 0) {}
+                *c.lock().unwrap() = Some(Instant::now());
+            });
+        }
+    });
+    Holding { held, closed }
+}
+
+fn spawn_mcp(
+    stand: &Stand,
+) -> (
+    std::process::Child,
+    std::process::ChildStdin,
+    Arc<Mutex<Vec<Value>>>,
+) {
+    let mut child = base(stand, &["mcp"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let stdin = child.stdin.take().unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let lines = Arc::new(Mutex::new(Vec::new()));
+    let sink = lines.clone();
+    std::thread::spawn(move || {
+        for line in std::io::BufRead::lines(std::io::BufReader::new(stdout)) {
+            let Ok(line) = line else { break };
+            sink.lock()
+                .unwrap()
+                .push(serde_json::from_str(&line).unwrap());
+        }
+    });
+    (child, stdin, lines)
+}
+
+fn until(what: &str, limit: Duration, mut done: impl FnMut() -> bool) {
+    let started = Instant::now();
+    while !done() {
+        assert!(started.elapsed() < limit, "timed out: {what}");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn a_cancelled_get_answer_drops_its_connection_and_sends_no_response() {
+    let st = stand();
+    let server = holding(&st);
+    let (mut child, mut stdin, lines) = spawn_mcp(&st);
+    let id = tmgr_ipc::decisions::new_card_id();
+    writeln!(
+        stdin,
+        "{}",
+        json!({"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "get_answer", "arguments": {"card_id": id, "waitSeconds": 600}}})
+    )
+    .unwrap();
+    until(
+        "the wait reaches the server",
+        Duration::from_secs(5),
+        || server.held.load(std::sync::atomic::Ordering::SeqCst) == 1,
+    );
+    let cancelled_at = Instant::now();
+    writeln!(
+        stdin,
+        "{}",
+        json!({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 7, "reason": "test"}})
+    )
+    .unwrap();
+    until("the connection closes", Duration::from_secs(1), || {
+        server.closed.lock().unwrap().is_some()
+    });
+    assert!(cancelled_at.elapsed() < Duration::from_secs(1));
+    writeln!(
+        stdin,
+        "{}",
+        json!({"jsonrpc": "2.0", "id": 8, "method": "ping"})
+    )
+    .unwrap();
+    until("the ping reply", Duration::from_secs(2), || {
+        lines.lock().unwrap().iter().any(|r| r["id"] == 8)
+    });
+    let closing = Instant::now();
+    drop(stdin);
+    until("the process exits", Duration::from_secs(5), || {
+        child.try_wait().unwrap().is_some()
+    });
+    assert!(closing.elapsed() < Duration::from_secs(5));
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(lines.lock().unwrap().iter().all(|r| r["id"] != 7));
+    assert_eq!(server.held.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+fn card(n: u8) -> String {
+    format!("c_{:032x}", n)
+}
+
+#[test]
+fn get_answer_with_card_ids_returns_the_first_event_from_any_card() {
+    let st = stand();
+    let (c1, c2, c3) = (card(1), card(2), card(3));
+    let second = c2.clone();
+    let fake = serve(
+        &st,
+        Box::new(move |req| match &req.op {
+            Op::WaitAny { cards, .. } => Response {
+                ok: true,
+                event: Some(Event {
+                    choice: Some("b".into()),
+                    ..event(&cards[1].card_id, "answer", 4)
+                }),
+                ..Response::default()
+            },
+            _ => Response::err("bad request"),
+        }),
+    );
+    let r = mcp(
+        &st,
+        "600000",
+        "claude-code",
+        &[(
+            "get_answer",
+            json!({"card_ids": [c1, c2, c3], "waitSeconds": 5}),
+        )],
+    );
+    let v = payload(&r[0]);
+    assert_eq!(v["card_id"], second);
+    assert_eq!(v["type"], "answer");
+    assert_eq!(v["choice"], "b");
+    let any: Vec<_> = fake
+        .ops()
+        .into_iter()
+        .filter(|op| matches!(op, Op::WaitAny { cards, .. } if cards.len() == 3))
+        .collect();
+    assert_eq!(any.len(), 1);
+}
+
+#[test]
+fn get_answer_with_card_ids_falls_back_on_an_old_desktop() {
+    let st = stand();
+    let (c1, c2, c3) = (card(1), card(2), card(3));
+    let wanted = c2.clone();
+    let fake = serve(
+        &st,
+        Box::new(move |req| match &req.op {
+            Op::Wait { card_id, .. } if *card_id == wanted => Response {
+                ok: true,
+                event: Some(event(card_id, "answer", 1)),
+                ..Response::default()
+            },
+            Op::Wait { .. } => Response::ok(),
+            _ => Response::err("bad request"),
+        }),
+    );
+    let r = mcp(
+        &st,
+        "600000",
+        "claude-code",
+        &[
+            (
+                "get_answer",
+                json!({"card_ids": [c1, c2.clone(), c3], "waitSeconds": 5}),
+            ),
+            ("get_answer", json!({"card_id": c2, "waitSeconds": 5})),
+        ],
+    );
+    assert_eq!(payload(&r[0])["card_id"], c2);
+    assert_eq!(payload(&r[0])["type"], "answer");
+    assert_eq!(payload(&r[1])["card_id"], c2);
+    let probes = fake
+        .ops()
+        .into_iter()
+        .filter(|op| matches!(op, Op::WaitAny { .. }))
+        .count();
+    assert_eq!(probes, 1);
+}
+
+#[test]
+fn get_answer_needs_a_card_id_or_card_ids() {
+    let st = stand();
+    let r = mcp(
+        &st,
+        "600000",
+        "claude-code",
+        &[("get_answer", json!({"waitSeconds": 0}))],
+    );
+    assert!(is_error(&r[0]));
+    assert!(r[0]["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("card_id or card_ids is required"));
+}
+
+#[test]
+fn cancel_ends_a_get_answer_that_is_backing_off() {
+    let st = stand();
+    let accepts = dropping(&st);
+    let (mut child, mut stdin, lines) = spawn_mcp(&st);
+    let id = tmgr_ipc::decisions::new_card_id();
+    writeln!(
+        stdin,
+        "{}",
+        json!({"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "get_answer", "arguments": {"card_id": id, "waitSeconds": 600}}})
+    )
+    .unwrap();
+    until("the first attempt", Duration::from_secs(5), || {
+        accepts.load(std::sync::atomic::Ordering::SeqCst) >= 2
+    });
+    writeln!(
+        stdin,
+        "{}",
+        json!({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 7}})
+    )
+    .unwrap();
+    let cancelled_at = Instant::now();
+    drop(stdin);
+    until("the process exits", Duration::from_secs(5), || {
+        child.try_wait().unwrap().is_some()
+    });
+    assert!(cancelled_at.elapsed() < Duration::from_secs(2));
+    assert!(lines.lock().unwrap().iter().all(|r| r["id"] != 7));
+}

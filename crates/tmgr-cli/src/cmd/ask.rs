@@ -130,7 +130,7 @@ pub fn run(ctx: &Ctx, args: &AskArgs) -> Result<Output> {
     let mut since = 0;
     loop {
         let left = deadline.saturating_duration_since(Instant::now());
-        let unreachable = match wait_loop(&id, since, left, false, &mut || {}) {
+        let unreachable = match wait_loop(&id, since, left, false, None, &mut || {}) {
             Waited::Event(e) => {
                 since = e.seq;
                 if e.is_final() {
@@ -147,6 +147,7 @@ pub fn run(ctx: &Ctx, args: &AskArgs) -> Result<Output> {
             Waited::Pending { unreachable } => unreachable,
             Waited::Refused(m) if spooled && is_unknown_card(&m) => true,
             Waited::Refused(m) => return Err(Error::internal(format!("the Decisions inbox: {m}"))),
+            Waited::Cancelled => unreachable!("no cancel handle is passed"),
         };
         let left = deadline.saturating_duration_since(Instant::now());
         if left.is_zero() {
