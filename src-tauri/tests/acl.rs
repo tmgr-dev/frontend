@@ -11,7 +11,15 @@ macro_rules! probes {
     }
   };
 }
-probes!(idle_supported, runner_enabled, llm_chat, local_access_event, decisions_list);
+probes!(
+  idle_supported,
+  runner_enabled,
+  llm_chat,
+  local_access_event,
+  decisions_list,
+  persona_cache_clear_for_user,
+  persona_llm_clear_for_user
+);
 
 fn call(label: &str, cmd: &str) -> Result<(), String> {
   let app = mock_builder().invoke_handler(handler()).build(tauri::generate_context!()).unwrap();
@@ -40,4 +48,14 @@ fn the_acl_decides_per_command_and_window() {
   assert!(call("task-1", "decisions_list").unwrap_err().contains("not allowed on window"));
   assert!(call("decisions", "runner_enabled").unwrap_err().contains("not allowed on window"));
   assert!(call("main", "local_access_event").unwrap_err().contains("Command not found"));
+}
+
+#[test]
+fn sign_out_cleanup_is_allowed_for_the_main_window_only() {
+  for cmd in ["persona_cache_clear_for_user", "persona_llm_clear_for_user"] {
+    assert!(call("main", cmd).is_ok(), "{cmd} on main");
+    for label in ["task-1", "page-1", "decisions", "quick-add"] {
+      assert!(call(label, cmd).unwrap_err().contains("not allowed on window"), "{cmd} on {label}");
+    }
+  }
 }

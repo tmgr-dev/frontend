@@ -6,8 +6,6 @@ const srcRoot = join(__dirname, '../..');
 const read = (file: string) => readFileSync(join(tauriRoot, file), 'utf8');
 
 const pendingOwnerDecision: Record<string, string> = {
-	persona_llm_clear_for_user: 'TM-760',
-	persona_cache_clear_for_user: 'TM-760',
 	local_access_event: 'needs owner decision',
 };
 

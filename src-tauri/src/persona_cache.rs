@@ -55,14 +55,26 @@ pub fn persona_cache_get<R: Runtime>(app: AppHandle<R>, user_id: i64, uuid: Stri
   serde_json::from_slice(&bytes).map(Some).map_err(|e| e.to_string())
 }
 
-/// Best-effort logout cleanup: this user's cache dir, plus any pre-namespacing flat `<uuid>.json` files.
+/// Logout cleanup: this user's cache dir, plus any pre-namespacing flat `<uuid>.json` files.
 #[tauri::command]
-pub fn persona_cache_clear_for_user<R: Runtime>(app: AppHandle<R>, user_id: i64) -> Result<(), String> {
-  let dir = cache_dir(&app, user_id)?;
+pub fn persona_cache_clear_for_user<R: Runtime>(
+  app: AppHandle<R>,
+  window: tauri::Window<R>,
+  user_id: i64,
+) -> Result<(), String> {
+  if window.label() != "main" {
+    return Err("persona_cache_clear_for_user may only be called from the main window".into());
+  }
+  clear_for_user(&cache_root(&app)?, user_id)
+}
+
+fn clear_for_user(root: &Path, user_id: i64) -> Result<(), String> {
+  let user_id = crate::local_access::tokens::validate_user_id(user_id)?;
+  let dir = root.join(user_id.to_string());
   if dir.exists() {
     fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
   }
-  if let Ok(entries) = fs::read_dir(cache_root(&app)?) {
+  if let Ok(entries) = fs::read_dir(root) {
     for entry in entries.flatten() {
       if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
         let _ = fs::remove_file(entry.path());
@@ -118,6 +130,35 @@ pub fn persona_cache_migrate_local<R: Runtime>(
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn clear_for_user_refuses_the_local_identity_and_keeps_its_cache() {
+    let root = tempfile::tempdir().unwrap();
+    let local = root.path().join("-1");
+    fs::create_dir_all(&local).unwrap();
+    fs::write(local.join("p-1.json"), b"{}").unwrap();
+
+    assert!(clear_for_user(root.path(), -1).is_err());
+    assert!(clear_for_user(root.path(), 0).is_err());
+    assert!(local.join("p-1.json").exists());
+  }
+
+  #[test]
+  fn clear_for_user_removes_only_that_account_and_flat_legacy_files() {
+    let root = tempfile::tempdir().unwrap();
+    for id in ["-1", "42", "43"] {
+      fs::create_dir_all(root.path().join(id)).unwrap();
+      fs::write(root.path().join(id).join("p-1.json"), b"{}").unwrap();
+    }
+    fs::write(root.path().join("legacy.json"), b"{}").unwrap();
+
+    clear_for_user(root.path(), 42).unwrap();
+
+    assert!(!root.path().join("42").exists());
+    assert!(!root.path().join("legacy.json").exists());
+    assert!(root.path().join("-1/p-1.json").exists());
+    assert!(root.path().join("43/p-1.json").exists());
+  }
 
   #[test]
   fn safe_uuid_filename_accepts_a_plain_uuid() {

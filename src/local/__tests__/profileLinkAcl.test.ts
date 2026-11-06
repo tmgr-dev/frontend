@@ -50,12 +50,11 @@ describe('sign-up migration commands in the desktop ACL', () => {
 		}
 	});
 
-	it('the clear commands are not exposed', () => {
+	it('the clear commands are not granted with the profile commands', () => {
 		for (const command of [
 			'persona_llm_clear_for_user',
 			'persona_cache_clear_for_user',
 		]) {
-			expect(read('build.rs')).not.toContain(`"${command}"`);
 			expect(JSON.stringify(capability('local-profile'))).not.toContain(
 				permission(command),
 			);

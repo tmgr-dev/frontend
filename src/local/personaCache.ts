@@ -22,12 +22,23 @@ export const readPersonaCache = (
 	prompt_version?: number | null;
 } | null> => invoke('persona_cache_get', { userId, uuid });
 
-/** Best-effort: called on logout so the next account signed into this machine starts clean. */
+/** Called on logout so the next account signed into this machine starts clean. Both run; any failure rejects. */
 export const clearPersonaLlmForLogout = async (
 	userId: number,
 ): Promise<void> => {
-	await Promise.allSettled([
-		invoke('persona_cache_clear_for_user', { userId }),
-		invoke('persona_llm_clear_for_user', { userId }),
-	]);
+	const commands = [
+		'persona_cache_clear_for_user',
+		'persona_llm_clear_for_user',
+	];
+	const results = await Promise.allSettled(
+		commands.map((command) => invoke(command, { userId })),
+	);
+	const failed = results.flatMap((result, i) =>
+		result.status === 'rejected'
+			? [`${commands[i]}: ${result.reason?.message ?? result.reason}`]
+			: [],
+	);
+	if (failed.length) {
+		throw new Error(failed.join('; '));
+	}
 };

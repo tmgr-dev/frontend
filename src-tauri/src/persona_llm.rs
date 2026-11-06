@@ -817,9 +817,17 @@ pub fn llm_config_get<R: Runtime>(app: AppHandle<R>, window: tauri::Window<R>, u
   Ok(LlmConfigOut { base_url: file.base_url, model: file.model, has_api_key, is_local, slot_state: slot_access(identity, user_id).state() })
 }
 
-/// Best-effort logout cleanup: this user's saved key, plus the pre-namespacing global key if one is still around.
+/// Logout cleanup: this user's saved key, plus the pre-namespacing global key if one is still around.
 #[tauri::command]
-pub fn persona_llm_clear_for_user(user_id: i64) -> Result<(), String> {
+pub fn persona_llm_clear_for_user<R: Runtime>(window: tauri::Window<R>, user_id: i64) -> Result<(), String> {
+  if window.label() != "main" {
+    return Err("persona_llm_clear_for_user may only be called from the main window".into());
+  }
+  clear_keys_for_user(user_id)
+}
+
+fn clear_keys_for_user(user_id: i64) -> Result<(), String> {
+  let user_id = validate_user_id(user_id)?;
   match keyring_entry(user_id)?.delete_credential() {
     Ok(()) | Err(keyring::Error::NoEntry) => {}
     Err(e) => return Err(e.to_string()),
@@ -1245,6 +1253,12 @@ pub fn llm_cancel<R: Runtime>(app: AppHandle<R>, request_id: String) -> Result<(
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn clear_keys_for_user_refuses_the_local_identity_before_touching_the_keychain() {
+    assert_eq!(clear_keys_for_user(-1), Err("invalid user id".to_string()));
+    assert_eq!(clear_keys_for_user(0), Err("invalid user id".to_string()));
+  }
 
   #[test]
   fn classifies_localhost_and_loopback_as_local() {
