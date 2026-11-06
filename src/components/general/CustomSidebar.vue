@@ -80,6 +80,7 @@
 	} from '@/components/ui/sidebar';
 	import AddTaskModalTrigger from '@/components/ui/sidebar/AddTaskModalTrigger.vue';
 	import SidebarMobileCloser from '@/components/ui/sidebar/SidebarMobileCloser.vue';
+	import { useDemoWorkspace } from '@/composable/useDemoWorkspace';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { useNavHistory } from '@/composable/useNavHistory';
@@ -154,6 +155,7 @@
 	const navHistory = useNavHistory();
 	const { canBack, canForward } = navHistory;
 	const isLocalOnly = computed(() => store.getters.isLocalOnly === true);
+	const { isDemo } = useDemoWorkspace();
 	const isMobile = useMediaQuery('(max-width: 768px)');
 	const showAskAi = computed(
 		() => !isDesktop && !isLocalOnly.value && isFeatureEnabled('ai.assistant'),
@@ -595,6 +597,13 @@
 														data-tour="local.badge"
 														>Local</span
 													>
+													<span
+														v-if="isDemo"
+														class="shrink-0 rounded bg-violet-500/15 px-1.5 py-0.5 text-2xs font-semibold text-violet-600 uppercase dark:text-violet-400"
+														data-testid="demo-badge"
+														data-tour="ghost.badge"
+														>DEMO</span
+													>
 												</span>
 												<span class="truncate text-xs">{{
 													activeWorkspace?.is_local
@@ -704,7 +713,7 @@
 											</div>
 										</DropdownMenuItem>
 										<DropdownMenuItem
-											v-if="!isLocalOnly"
+											v-if="!isLocalOnly && !isDemo"
 											class="cursor-pointer gap-2 p-2"
 											data-testid="move-to-cloud-menu-item"
 											@click="moveToCloud"

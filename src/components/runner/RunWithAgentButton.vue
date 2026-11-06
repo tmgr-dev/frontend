@@ -1,5 +1,5 @@
 <template>
-	<template v-if="model.visible">
+	<template v-if="model.visible && !isDemo">
 		<Button
 			v-if="model.mode === 'open'"
 			variant="outline"
@@ -98,6 +98,7 @@
 		PopoverContent,
 		PopoverTrigger,
 	} from '@/components/ui/popover';
+	import { useDemoWorkspace } from '@/composable/useDemoWorkspace';
 	import {
 		isRunnerSupported,
 		runnerOpenTerminal,
@@ -132,6 +133,7 @@
 		},
 		setup(props) {
 			const runner = useRunner();
+			const { isDemo } = useDemoWorkspace();
 			const open = ref(false);
 			const profiles = ref<RunnerProfile[]>([]);
 			const profile = ref('');
@@ -226,6 +228,7 @@
 
 			return {
 				model,
+				isDemo,
 				open,
 				profiles,
 				profile,

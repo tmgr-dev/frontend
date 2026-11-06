@@ -57,6 +57,7 @@ jest.mock('@/local/personas', () => mockPersonas);
 jest.mock('@/local/runtime', () => ({
 	activeLocalWorkspace: () => ({ code: 'w' }),
 	localContext: async () => ({}),
+	onActiveLocalWorkspaceChange: () => () => undefined,
 }));
 jest.mock('@/utils/cloudIdentity', () => ({
 	resyncCloudIdentity: (...args: unknown[]) => mockResync(...args),

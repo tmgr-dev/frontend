@@ -276,6 +276,7 @@
 				>
 					<div class="flex items-center justify-between">
 						<Button
+							v-if="!isDemo"
 							size="sm"
 							variant="outline"
 							data-tour="local-personas.connect"
@@ -283,6 +284,9 @@
 						>
 							Connect an agent
 						</Button>
+						<span v-else class="text-xs text-ink-subtle">
+							Not available in the demo
+						</span>
 						<Button
 							v-if="tokensFor(persona).some((t) => !t.revokedAt)"
 							size="sm"
@@ -396,6 +400,7 @@
 		type LocalAccessStatus,
 		type TokenInfo,
 	} from '@/local/localTokens';
+	import { useDemoWorkspace } from '@/composable/useDemoWorkspace';
 	import { tauriPersonaCache } from '@/local/personaCache';
 	import {
 		LOCAL_OWNER_ID,
@@ -484,6 +489,7 @@
 			const llmError = ref<string | null>(null);
 			const tokens = ref<TokenInfo[]>([]);
 			const connectPersona = ref<WorkspacePersonaRow | null>(null);
+			const { isDemo } = useDemoWorkspace();
 			const accessStatus = reactive<LocalAccessStatus>({
 				enabled: false,
 				listening: false,
@@ -875,6 +881,7 @@
 				removeApiKey,
 				tokens,
 				connectPersona,
+				isDemo,
 				localAccessAvailable,
 				accessStatus,
 				accessToggling,
