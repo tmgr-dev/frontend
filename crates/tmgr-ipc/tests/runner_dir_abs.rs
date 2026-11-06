@@ -8,3 +8,10 @@ fn relative_overrides_resolve_against_cwd() {
     assert_eq!(dirs::runner_dir().unwrap(), cwd.join("rel-run"));
     assert_eq!(dirs::homes_dir().unwrap(), cwd.join("rel-homes"));
 }
+
+#[test]
+fn parent_components_are_folded() {
+    std::env::set_var("TMGR_RUNNER_DIR", "a/../b/./run");
+    let cwd = std::env::current_dir().unwrap();
+    assert_eq!(dirs::runner_dir().unwrap(), cwd.join("b/run"));
+}
