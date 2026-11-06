@@ -42,7 +42,13 @@ export const listLocalWorkspaces = (
 ): Promise<LocalWorkspace[]> => {
 	if (!listed || refresh) {
 		listed = invoke<LocalWorkspace[]>('local_workspaces_list')
-			.then((list) => (workspaces = Array.isArray(list) ? list : []))
+			.then((list) => {
+				const before = activeLocalWorkspace()?.demo === true;
+				workspaces = Array.isArray(list) ? list : [];
+				if ((activeLocalWorkspace()?.demo === true) !== before)
+					announceActive();
+				return workspaces;
+			})
 			.catch((error) => {
 				listed = null;
 				console.error('Failed to list local workspaces', error);
