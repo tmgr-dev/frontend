@@ -3,6 +3,14 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.110 — 2026-11-06
+
+- New "Connect your agent" screen for local workspaces (Settings → Personas → Local agent access → Connect your agent). It finds Claude Code and Codex on your Mac and shows the exact commands before running them. Install adds the TMGR server to the agent with its own CLI, turns on local agent access and the Personas and Agent work modules. Remove takes it out again.
+- Your token stays in the macOS Keychain and is never part of the command. Cursor gets a ready config to copy.
+- Install is unavailable when TMGR runs from its download location instead of Applications, and in plugin safe mode.
+- The "Connect a local agent" tour now opens this screen and is offered without enabling modules first.
+- The Claude Code command in the agent connect dialog now uses `--scope user`, so it works from any folder.
+
 ## 0.9.109 — 2026-11-06
 
 - New first launch: on a fresh install TMGR skips the Welcome screen and opens a demo workspace where a simulated agent works for about 20 seconds. Then it is your turn: move a card, start a timer or add a task, and press "Create my workspace" to get your own workspace with starter tasks. Sign in is one click away in the demo banner.
