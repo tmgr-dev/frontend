@@ -73,6 +73,7 @@
 		</div>
 
 		<DesktopWhatsNew v-if="isDesktop && isMainWindow" />
+		<DemoOfferHost v-if="isDesktop && isMainWindow" />
 		<PagesImportDialog
 			v-if="pagesImport.open"
 			:key="pagesImport.key"
@@ -109,6 +110,7 @@
 	import DesktopHotkeys from '@/components/desktop/DesktopHotkeys.vue';
 	import DesktopTray from '@/components/desktop/DesktopTray.vue';
 	import DesktopUpdateCheck from '@/components/desktop/DesktopUpdateCheck.vue';
+	import DemoOfferHost from '@/components/desktop/DemoOfferHost.vue';
 	import DesktopWhatsNew from '@/components/desktop/DesktopWhatsNew.vue';
 	import StatusBar from '@/components/desktop/StatusBar.vue';
 	import WindowControls from '@/components/desktop/WindowControls.vue';
@@ -183,6 +185,7 @@
 			DesktopTray,
 			DesktopUpdateCheck,
 			DesktopWhatsNew,
+			DemoOfferHost,
 			Modal,
 			TaskSidePanel,
 			Alert,

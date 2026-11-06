@@ -20,6 +20,15 @@
 				Getting started
 			</DropdownMenuItem>
 			<DropdownMenuItem
+				v-if="isDesktop"
+				class="cursor-pointer"
+				data-testid="watch-demo"
+				@click="watchDemoClick"
+			>
+				<Play />
+				Watch the demo
+			</DropdownMenuItem>
+			<DropdownMenuItem
 				v-if="canRestart"
 				class="cursor-pointer"
 				@click="restart"
@@ -47,9 +56,11 @@
 	} from '@/components/ui/dropdown-menu';
 	import { tourForRoute } from '@/tours/hubModel';
 	import { useTours } from '@/tours/useTours';
+	import { isDesktopApp } from '@/utils/desktop';
 	import {
 		CircleQuestionMark,
 		LifeBuoy,
+		Play,
 		RotateCcw,
 		SlidersHorizontal,
 	} from 'lucide-vue-next';
@@ -66,6 +77,7 @@
 			DropdownMenuTrigger,
 			CircleQuestionMark,
 			LifeBuoy,
+			Play,
 			RotateCcw,
 			SlidersHorizontal,
 		},
@@ -85,7 +97,18 @@
 				() => !!pageTour.value && tours.hostReady.value,
 			);
 
+			const watchDemoClick = async () => {
+				try {
+					const { watchDemo } = await import('@/local/demoApi');
+					await watchDemo();
+				} catch (error) {
+					console.error('Could not open the demo workspace', error);
+				}
+			};
+
 			return {
+				isDesktop: isDesktopApp(),
+				watchDemoClick,
 				workspaceCode,
 				pageTour,
 				canRestart,
