@@ -208,12 +208,8 @@ fn mcp(stand: &Stand, wait_ms: &str, client: &str, calls: &[(&str, Value)]) -> V
         .unwrap();
         std::thread::sleep(Duration::from_millis(400));
     }
-    drop(stdin);
-    let out = child.wait_with_output().unwrap();
-    let all: Vec<Value> = text(&out.stdout)
-        .lines()
-        .map(|l| serde_json::from_str(l).unwrap())
-        .collect();
+    let ids: Vec<u64> = (0..calls.len() as u64).map(|i| i + 10).collect();
+    let all = responses(&mut child, stdin, &ids);
     (0..calls.len())
         .map(|i| {
             all.iter()
@@ -222,6 +218,42 @@ fn mcp(stand: &Stand, wait_ms: &str, client: &str, calls: &[(&str, Value)]) -> V
                 .clone()
         })
         .collect()
+}
+
+fn responses(
+    child: &mut std::process::Child,
+    stdin: std::process::ChildStdin,
+    ids: &[u64],
+) -> Vec<Value> {
+    let stdout = child.stdout.take().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in std::io::BufRead::lines(std::io::BufReader::new(stdout)) {
+            let Ok(line) = line else { break };
+            if tx
+                .send(serde_json::from_str::<Value>(&line).unwrap())
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
+    let mut all = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !ids
+        .iter()
+        .all(|i| all.iter().any(|r: &Value| r["id"] == *i))
+    {
+        let left = deadline.saturating_duration_since(Instant::now());
+        match rx.recv_timeout(left) {
+            Ok(v) => all.push(v),
+            Err(_) => panic!("missing responses {ids:?}: {all:?}"),
+        }
+    }
+    drop(stdin);
+    child.wait().unwrap();
+    all.extend(rx.try_iter());
+    all
 }
 
 fn payload(resp: &Value) -> Value {
@@ -459,12 +491,7 @@ fn replies_are_sent_and_then_the_next_event_is_awaited() {
         json!({"card_id": id, "text": "because", "line_replies": [{"file": "a.rs", "line": 3, "text": "done"}]}),
     );
     send(3, "get_answer", json!({"card_id": id}));
-    drop(stdin);
-    let out = child.wait_with_output().unwrap();
-    let all: Vec<Value> = text(&out.stdout)
-        .lines()
-        .map(|l| serde_json::from_str(l).unwrap())
-        .collect();
+    let all = responses(&mut child, stdin, &[1, 2, 3]);
     let by = |i: u64| payload(all.iter().find(|r| r["id"] == i).unwrap());
     assert_eq!(by(1)["seq"], 1);
     assert_eq!(by(2)["seq"], 2);
@@ -1732,4 +1759,86 @@ fn task_references_that_are_not_urls_stay_accepted() {
     assert_eq!(cards[1]["links"]["task"], "TM-123");
     assert!(cards[1]["links"].get("items").is_none());
     assert_eq!(cards[2]["links"]["items"][0]["kind"], "task");
+}
+
+fn dropping(stand: &Stand) -> Arc<std::sync::atomic::AtomicUsize> {
+    prepare_server_dir(stand.dir.path()).unwrap();
+    let listener = match socket_endpoint(stand.dir.path()) {
+        tmgr_ipc::endpoint::Endpoint::Path(p) => UnixListener::bind(p).unwrap(),
+        #[allow(unreachable_patterns)]
+        _ => unreachable!(),
+    };
+    let accepts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = accepts.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            drop(stream);
+        }
+    });
+    accepts
+}
+
+#[test]
+fn get_answer_backs_off_while_the_inbox_drops_connections() {
+    let st = stand();
+    let accepts = dropping(&st);
+    let id = tmgr_ipc::decisions::new_card_id();
+    let started = Instant::now();
+    let r = mcp(
+        &st,
+        "600000",
+        "claude-code",
+        &[("get_answer", json!({"card_id": id, "waitSeconds": 3}))],
+    );
+    let took = started.elapsed();
+    let v = payload(&r[0]);
+    assert_eq!(v["status"], "pending");
+    assert!(v["note"].as_str().unwrap().contains("not running"));
+    assert!(took >= Duration::from_millis(2900), "{took:?}");
+    let n = accepts.load(std::sync::atomic::Ordering::SeqCst);
+    assert!((2..=10).contains(&n), "{n} connections");
+}
+
+#[test]
+fn closing_stdin_cancels_a_pending_get_answer() {
+    let st = stand();
+    let fake = serve(
+        &st,
+        Box::new(|req| {
+            if matches!(req.op, Op::Wait { .. }) {
+                std::thread::sleep(Duration::from_secs(20));
+            }
+            Response::ok()
+        }),
+    );
+    let mut child = base(&st, &["mcp"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let id = tmgr_ipc::decisions::new_card_id();
+    writeln!(
+        stdin,
+        "{}",
+        json!({"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "get_answer", "arguments": {"card_id": id, "waitSeconds": 3600}}})
+    )
+    .unwrap();
+    let started = Instant::now();
+    while fake.waits().is_empty() {
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "no wait arrived"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let closed = Instant::now();
+    drop(stdin);
+    child.wait().unwrap();
+    assert!(
+        closed.elapsed() < Duration::from_secs(1),
+        "{:?}",
+        closed.elapsed()
+    );
 }

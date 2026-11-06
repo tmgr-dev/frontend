@@ -408,9 +408,21 @@ pub fn run(server_override: Option<String>, verbose: bool) -> i32 {
         }
     }
     let deadline = std::time::Instant::now() + DRAIN_AFTER_EOF;
-    while workers.iter().any(|w| !w.is_finished()) && std::time::Instant::now() < deadline {
+    while workers.iter().filter(|w| !w.is_finished()).count() > parked_waits()
+        && std::time::Instant::now() < deadline
+    {
         std::thread::sleep(Duration::from_millis(20));
     }
+    0
+}
+
+#[cfg(unix)]
+fn parked_waits() -> usize {
+    crate::cmd::decisions::parked()
+}
+
+#[cfg(not(unix))]
+fn parked_waits() -> usize {
     0
 }
 

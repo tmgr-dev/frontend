@@ -1,6 +1,7 @@
 use serde_json::Value;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use tmgr_ipc::decisions::{
     self, CardIn, Check, Client, DiffSpec, Event, Fact, LinkItem, Links, Opt, PatchIn, Source,
@@ -13,6 +14,8 @@ const CHECK_STATES: [&str; 3] = ["ok", "bad", "todo"];
 const WAIT_ENV: &str = "TMGR_DECISIONS_WAIT_MS";
 const DEFAULT_WAIT: Duration = Duration::from_secs(600);
 const CHUNK: Duration = Duration::from_secs(30);
+const RETRY_MIN: Duration = Duration::from_millis(250);
+const RETRY_MAX: Duration = Duration::from_secs(5);
 pub const MAX_TITLE: usize = 300;
 pub const MAX_CONTEXT: usize = 64 * 1024;
 pub const HOOK_CONTEXT: usize = 16 * 1024;
@@ -111,6 +114,27 @@ fn wait_once(card_id: &str, since: u64, timeout: Duration, final_only: bool) -> 
     }
 }
 
+static PARKED: AtomicUsize = AtomicUsize::new(0);
+
+struct Parked;
+
+impl Parked {
+    fn enter() -> Parked {
+        PARKED.fetch_add(1, Ordering::SeqCst);
+        Parked
+    }
+}
+
+impl Drop for Parked {
+    fn drop(&mut self) {
+        PARKED.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+pub fn parked() -> usize {
+    PARKED.load(Ordering::SeqCst)
+}
+
 pub fn wait_loop(
     card_id: &str,
     since: u64,
@@ -119,10 +143,33 @@ pub fn wait_loop(
     tick: &mut dyn FnMut(),
 ) -> Waited {
     let end = Instant::now() + total;
+    let mut pause = RETRY_MIN;
+    let mut ticked = Instant::now();
     loop {
         let left = end.saturating_duration_since(Instant::now());
-        match wait_once(card_id, since, left.min(CHUNK), final_only) {
-            Waited::Pending { unreachable: false } if left > CHUNK => tick(),
+        let waited = {
+            let _parked = Parked::enter();
+            wait_once(card_id, since, left.min(CHUNK), final_only)
+        };
+        match waited {
+            Waited::Pending { unreachable: false } if left > CHUNK => {
+                pause = RETRY_MIN;
+                ticked = Instant::now();
+                tick();
+            }
+            Waited::Pending { unreachable: true } => {
+                let left = end.saturating_duration_since(Instant::now());
+                if left.is_zero() {
+                    return waited;
+                }
+                let _parked = Parked::enter();
+                std::thread::sleep(pause.min(left));
+                pause = (pause * 2).min(RETRY_MAX);
+                if ticked.elapsed() >= CHUNK {
+                    ticked = Instant::now();
+                    tick();
+                }
+            }
             other => return other,
         }
     }
