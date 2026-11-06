@@ -84,6 +84,12 @@ fn row_of(data: &FolderData, path: &str) -> PickRow {
 }
 
 pub fn recent_rows(data: &FolderData, now_ms: u64) -> Vec<PickRow> {
+    let mut out = ranked_rows(data, now_ms);
+    out.truncate(MAX_ROWS);
+    out
+}
+
+fn ranked_rows(data: &FolderData, now_ms: u64) -> Vec<PickRow> {
     let mut out: Vec<PickRow> = data.pins.iter().map(|p| row_of(data, p)).collect();
     let mut rest: Vec<&RecentDir> = data
         .recents
@@ -103,7 +109,6 @@ pub fn recent_rows(data: &FolderData, now_ms: u64) -> Vec<PickRow> {
         seen.push(&r.path);
         out.push(row_of(data, &r.path));
     }
-    out.truncate(MAX_ROWS);
     out
 }
 
@@ -152,7 +157,7 @@ pub fn search_rows(data: &FolderData, query: &str, now_ms: u64) -> Vec<PickRow> 
     if query.is_empty() {
         return recent_rows(data, now_ms);
     }
-    let mut scored: Vec<(f64, PickRow)> = recent_rows(data, now_ms)
+    let mut scored: Vec<(f64, PickRow)> = ranked_rows(data, now_ms)
         .into_iter()
         .filter_map(|row| {
             let fz = fuzzy_score(query, &row.path)?;
@@ -403,11 +408,14 @@ impl Picker {
                 Mode::Browse => self.up(e),
                 Mode::Path => {}
             },
-            PKey::Clear => {
-                if self.mode == Mode::Search {
-                    self.reset(Mode::Recent);
+            PKey::Clear => match self.mode {
+                Mode::Search => self.reset(Mode::Recent),
+                Mode::Recent | Mode::Browse => {
+                    self.start_path_edit(e.folder, None);
+                    e.folder.clear();
                 }
-            }
+                Mode::Path => {}
+            },
             PKey::Esc => match self.mode {
                 Mode::Recent => return Act::Cancel,
                 Mode::Path => {
