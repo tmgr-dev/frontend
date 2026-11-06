@@ -749,7 +749,7 @@ fn spawn_reaper(shim: &Arc<Shim>) {
         thread::sleep(Duration::from_secs(1));
         let expired = lock(&shim.st).exited_at.is_some_and(|t| {
             t.elapsed() >= REAP_AFTER
-                || fs::symlink_metadata(&shim.dir)
+                || fs::symlink_metadata(shim.dir.join("sessions").join(&shim.id))
                     .is_err_and(|e| e.kind() == io::ErrorKind::NotFound)
         });
         if expired {
