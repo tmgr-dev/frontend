@@ -1,5 +1,5 @@
-import { seedDemo } from '../../demoSeed';
 import { memoryDb, nodeSqliteAvailable } from '../../__tests__/nodeDb';
+import { seedDemo } from '../../demoSeed';
 import { migrate } from '../../schema';
 import type { LocalContext } from '../../types';
 import { createMover, DEMO_MOVE_MESSAGE } from '../flow';

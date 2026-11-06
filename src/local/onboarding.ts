@@ -4,6 +4,7 @@ import type {
 	TourState,
 	TourStatus,
 } from '@/tours/types';
+import { isDemoDb } from './demoSeed';
 import {
 	FACT_KEYS,
 	computeFacts,
@@ -11,7 +12,6 @@ import {
 	seedStarters,
 	type TokenLike,
 } from './onboardingFacts';
-import { isDemoDb } from './demoSeed';
 import type { LocalContext } from './types';
 
 export const ONBOARDING_KEY = 'tmgr:onboarding:v1';
