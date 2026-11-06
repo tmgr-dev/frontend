@@ -77,6 +77,7 @@ function fixture(desktop = true) {
 				listLocalWorkspaces: mocks.listLocalWorkspaces,
 				createLocalWorkspace: mocks.createLocalWorkspace,
 				setActiveLocalWorkspace: mocks.setActiveLocalWorkspace,
+				firstRealWorkspace: (list: any[]) => list.find((w) => !w.demo),
 			},
 			'@tauri-apps/api/core': { invoke: mocks.invoke },
 			'@/router': { default: { push: mocks.push } },

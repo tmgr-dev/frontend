@@ -91,7 +91,7 @@ pub async fn local_workspace_delete_demo<R: Runtime>(
   let removed = {
     let (root, code) = (root.clone(), code.clone());
     tauri::async_runtime::spawn_blocking(move || {
-      let dir = delete_demo_in(&root, &code, |dir| trash_dir(dir))?;
+      let dir = delete_demo_in(&root, &code, trash_dir)?;
       if let Err(error) = tokens.revoke_all(None, None, Some(&code), now) {
         log::error!("[local] could not revoke local access tokens of {code}: {error}");
       }
