@@ -1,5 +1,5 @@
 <template>
-	<div>
+	<div :class="{ 'doom-mode': doomMode }">
 		<div
 			class="titlebar"
 			:class="{ 'no-lights': !isMac }"
@@ -7,7 +7,7 @@
 		>
 			<div class="lights" data-tauri-drag-region></div>
 			<div class="wtitle" data-tauri-drag-region>
-				tmgr · Decisions <span>— tmgr.dev</span>
+				tmgr · Decisions · Doom Solving <span>— tmgr.dev</span>
 			</div>
 			<div class="balance" data-tauri-drag-region></div>
 		</div>
@@ -17,6 +17,7 @@
 				:selected-id="selectedId"
 				:progress="progress"
 				:query="query"
+				:subtitle="subtitle"
 				@update:query="query = $event"
 				@select="select"
 				@dismiss="closeCard"
@@ -114,11 +115,20 @@
 						/>
 					</section>
 				</template>
-				<div v-else class="empty">
+				<div
+					v-else-if="loaded && progress.pending === 0"
+					class="empty doom-done"
+				>
 					<div class="big">✓</div>
-					{{ loaded ? 'All clear' : 'Loading…' }}
-					<small v-if="loaded">Nothing is waiting for your decision.</small>
+					Doom solving complete. Go touch grass.
+					<small>Nothing is waiting for your decision.</small>
+					<span class="grass" aria-hidden="true">🌱</span>
 				</div>
+				<div v-else-if="loaded" class="empty">
+					No matches
+					<small>Clear the search to see the queue.</small>
+				</div>
+				<div v-else class="empty">Loading…</div>
 			</main>
 		</div>
 		<footer class="statusbar">
@@ -140,11 +150,26 @@
 		<div class="toast" :class="{ on: toast.on, error: toast.error }">
 			<span>{{ toast.text }}</span>
 		</div>
+		<div
+			class="doom-toast"
+			:class="{ on: doomToast.on }"
+			role="status"
+			aria-live="polite"
+		>
+			{{ doomToast.text }}
+		</div>
 	</div>
 </template>
 
 <script lang="ts">
 	import { defineComponent } from 'vue';
+	import {
+		answerToast,
+		buildAnswer,
+		cardMode,
+		isFinal,
+		type AnswerDraft,
+	} from '../answer';
 	import {
 		decisionsAnswer,
 		decisionsDiff,
@@ -155,13 +180,6 @@
 		onDecisionsChanged,
 	} from '../api';
 	import {
-		answerToast,
-		buildAnswer,
-		cardMode,
-		isFinal,
-		type AnswerDraft,
-	} from '../answer';
-	import {
 		beginRequest,
 		diffTotals,
 		hasChanges,
@@ -171,14 +189,31 @@
 		type DiffTotals,
 		type RequestSeqs,
 	} from '../diff';
+	import {
+		advanceKonami,
+		advanceStreak,
+		doomAwaits,
+		inboxZeroToday,
+		isNightOwl,
+		isSpeedrun,
+		lifetimeMilestone,
+		loadEggState,
+		pickSubtitle,
+		saveEggState,
+		speedrunReady,
+		streakMessage,
+		streakMilestone,
+	} from '../eggs';
+	import { isHttpUrl, recommendedOption } from '../format';
+	import { burst, flyOut } from '../fx';
 	import { resolveKey } from '../keys';
 	import {
 		buildQueue,
 		filterCards,
 		flattenQueue,
-		selectionAfterFilter,
 		nextCardId,
 		queueProgress,
+		selectionAfterFilter,
 		stepCardId,
 		visibleCards,
 	} from '../queue';
@@ -188,7 +223,6 @@
 		LineComment,
 		OutgoingMessage,
 	} from '../types';
-	import { isHttpUrl, recommendedOption } from '../format';
 	import CardPane from './CardPane.vue';
 	import ChatPane from './ChatPane.vue';
 	import ChecksPane from './ChecksPane.vue';
@@ -226,6 +260,17 @@
 				refreshing: false,
 				refreshAgain: false,
 				isMac: /Mac/i.test(navigator.userAgent),
+				subtitle: pickSubtitle(),
+				eggs: loadEggState(),
+				doomToast: { on: false, text: '' },
+				doomQueue: [] as string[],
+				doomTimer: 0 as number,
+				doomMode: false,
+				doomModeTimer: 0 as number,
+				konami: 0,
+				openedAt: 0,
+				lastSpeedrunAt: 0,
+				awaitsShown: false,
 			};
 		},
 		computed: {
@@ -256,10 +301,10 @@
 				return diffTotals(groups);
 			},
 			currentDiff(): DiffSlot | null {
-				return this.current ? (this.diffs[this.current.id] ?? null) : null;
+				return this.current ? this.diffs[this.current.id] ?? null : null;
 			},
 			currentDrafts(): LineComment[] {
-				return this.current ? (this.drafts[this.current.id] ?? []) : [];
+				return this.current ? this.drafts[this.current.id] ?? [] : [];
 			},
 			chatMessages() {
 				return this.current ? splitMessages(this.current.messages).chat : [];
@@ -280,6 +325,7 @@
 				this.ensureSelection();
 			},
 			selectedId() {
+				this.openedAt = Date.now();
 				this.ensureDiff();
 			},
 			currentHasChanges() {
@@ -291,7 +337,8 @@
 		},
 		async mounted() {
 			window.addEventListener('keydown', this.onKeydown);
-			document.title = 'Decisions';
+			document.title = 'Decisions · Doom Solving';
+			this.openedAt = Date.now();
 			this.clock = window.setInterval(() => {
 				this.now = Date.now();
 			}, 15000);
@@ -305,6 +352,8 @@
 		beforeUnmount() {
 			window.removeEventListener('keydown', this.onKeydown);
 			window.clearTimeout(this.toastTimer);
+			window.clearTimeout(this.doomTimer);
+			window.clearTimeout(this.doomModeTimer);
 			window.clearInterval(this.clock);
 			this.unlisten?.();
 		},
@@ -323,6 +372,10 @@
 				} finally {
 					this.loaded = true;
 					this.refreshing = false;
+				}
+				if (!this.awaitsShown && doomAwaits(this.progress.pending)) {
+					this.awaitsShown = true;
+					this.doomNotify('Your doom awaits');
 				}
 				if (this.refreshAgain) {
 					this.refreshAgain = false;
@@ -372,6 +425,74 @@
 					this.toast.on = false;
 				}, 1800);
 			},
+			doomNotify(text: string) {
+				this.doomQueue.push(text);
+				if (!this.doomToast.on) this.doomNext();
+			},
+			doomNext() {
+				const text = this.doomQueue.shift();
+				if (text === undefined) {
+					this.doomToast.on = false;
+					return;
+				}
+				this.doomToast = { on: true, text };
+				this.doomTimer = window.setTimeout(() => this.doomNext(), 2600);
+			},
+			onSolved() {
+				const now = Date.now();
+				const notes: string[] = [];
+				this.eggs = advanceStreak(this.eggs, now);
+				const streak = streakMilestone(this.eggs.streak);
+				if (streak) {
+					notes.push(streakMessage(streak));
+					burst();
+				}
+				const lifetime = lifetimeMilestone(this.eggs.total);
+				if (lifetime === 1) notes.push('First decision. The doom begins.');
+				else if (lifetime) notes.push(`${lifetime} decisions solved`);
+				if (
+					isSpeedrun(this.openedAt, now) &&
+					speedrunReady(this.lastSpeedrunAt, now)
+				) {
+					this.lastSpeedrunAt = now;
+					notes.push('Speedrun any%');
+				}
+				if (isNightOwl(new Date(now))) notes.push('Night owl: still solving');
+				saveEggState(this.eggs);
+				if (notes.length) this.doomNotify(notes.join(' · '));
+			},
+			checkInboxZero() {
+				if (this.progress.pending > 0) return;
+				const result = inboxZeroToday(this.eggs.inboxZeroDay, new Date());
+				if (!result.fire) return;
+				this.eggs = { ...this.eggs, inboxZeroDay: result.day };
+				saveEggState(this.eggs);
+				burst();
+				this.doomNotify('Inbox zero. Doom solved for today.');
+			},
+			feedKonami(event: KeyboardEvent) {
+				if (event.repeat || event.isComposing) return;
+				if (event.metaKey || event.ctrlKey || event.altKey) return;
+				const target = event.target as HTMLElement | null;
+				if (
+					target &&
+					(target.tagName === 'INPUT' ||
+						target.tagName === 'TEXTAREA' ||
+						target.isContentEditable)
+				) {
+					this.konami = 0;
+					return;
+				}
+				const step = advanceKonami(this.konami, event.key);
+				this.konami = step.position;
+				if (!step.done) return;
+				this.doomMode = true;
+				window.clearTimeout(this.doomModeTimer);
+				this.doomModeTimer = window.setTimeout(() => {
+					this.doomMode = false;
+				}, 5000);
+				this.doomNotify('DOOM mode: engaged');
+			},
 			openLink(url: string) {
 				if (isHttpUrl(url)) void decisionsOpenLink(url).catch(() => undefined);
 			},
@@ -396,6 +517,13 @@
 					this.showToast(`Could not send the answer: ${String(error)}`, true);
 					return;
 				}
+				const solved = !draft.deferred;
+				if (solved) {
+					flyOut(
+						(this.$refs.cardPane as { $el?: Element } | undefined)?.$el ?? null,
+					);
+					this.onSolved();
+				}
 				const following = nextCardId(this.order, card.id);
 				if (!this.resolvedHere.includes(card.id))
 					this.resolvedHere.push(card.id);
@@ -404,6 +532,7 @@
 				this.selectedId = following;
 				await this.refresh();
 				this.ensureSelection();
+				if (solved) this.checkInboxZero();
 			},
 			async closeCard(id: string) {
 				const card = this.cards.find((c) => c.id === id);
@@ -451,6 +580,7 @@
 				);
 			},
 			onKeydown(event: KeyboardEvent) {
+				this.feedKonami(event);
 				const target = document.activeElement as HTMLElement | null;
 				const card = this.current;
 				const mode = card ? cardMode(card) : 'final';

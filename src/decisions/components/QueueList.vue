@@ -2,7 +2,10 @@
 	<nav class="sidebar">
 		<div class="ws">
 			<div class="logo">⚡</div>
-			<b>Decisions</b>
+			<div class="ws-name">
+				<b>Decisions</b>
+				<small class="doom-sub">{{ subtitle }}</small>
+			</div>
 			<span v-if="progress.pending" class="badge">{{ progress.pending }}</span>
 		</div>
 		<div class="sect">
@@ -79,6 +82,7 @@
 			selectedId: { type: String as PropType<string | null>, default: null },
 			progress: { type: Object as PropType<QueueProgress>, required: true },
 			query: { type: String, default: '' },
+			subtitle: { type: String, default: 'doom solving' },
 		},
 		emits: ['select', 'dismiss', 'update:query'],
 		data() {

@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.114 — 2026-11-06
+
+- Decisions is now "Decisions · Doom Solving": it is doom scrolling, only you solve things. The window gets a small "doom solving" subtitle, a fun empty-queue message, a card that flies out when you answer it, and a handful of quiet easter eggs (streaks, speedrun, night owl, inbox zero and a few more). Everything is local, never blocks the keyboard, and turns into text only with reduced motion.
+
 ## 0.9.113 — 2026-11-06
 
 - Decisions: new "Search queue" box above the queue. It filters cards as you type by title, description and task key; Esc clears it, and "No matches" shows when nothing fits. Hotkeys stay off while you type, and the selection moves to the first match when the current card is filtered out.

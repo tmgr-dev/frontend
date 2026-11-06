@@ -1192,3 +1192,158 @@ kbd {
 	color: var(--fg-subtle);
 	font-size: 13px;
 }
+
+.ws-name {
+	display: flex;
+	flex-direction: column;
+	line-height: 1.15;
+	min-width: 0;
+}
+.doom-sub {
+	font-size: 10px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--fg-subtle);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.doom-done .grass {
+	font-size: 28px;
+	margin-top: 6px;
+	display: inline-block;
+	transform-origin: 50% 100%;
+	animation: doom-sway 2.4s ease-in-out infinite;
+}
+.doom-done .big {
+	animation: doom-pop 0.6s var(--ease) both;
+}
+.doom-toast {
+	position: fixed;
+	top: 44px;
+	left: calc(50% + 136px);
+	transform: translateX(-50%) translateY(-6px);
+	background: var(--bg-raised);
+	box-shadow:
+		0 16px 48px -12px rgba(0, 0, 0, 0.6),
+		0 0 0 1px var(--brand);
+	color: var(--fg);
+	padding: 8px 14px;
+	border-radius: 10px;
+	font-size: 13px;
+	font-weight: 600;
+	opacity: 0;
+	pointer-events: none;
+	transition: all 0.22s var(--ease);
+	max-width: 70vw;
+	z-index: 60;
+}
+.doom-toast.on {
+	opacity: 1;
+	transform: translateX(-50%);
+}
+.doom-ghost {
+	position: fixed;
+	margin: 0;
+	z-index: 50;
+	pointer-events: none;
+	background: var(--bg);
+	border-radius: 12px;
+	box-shadow: 0 0 0 1px var(--line-strong);
+	overflow: hidden;
+	animation: doom-fly 0.45s cubic-bezier(0.5, 0, 0.9, 0.4) forwards;
+}
+.doom-burst {
+	position: fixed;
+	left: calc(50% + 136px);
+	top: 40%;
+	width: 0;
+	height: 0;
+	pointer-events: none;
+	z-index: 70;
+}
+.doom-burst i {
+	position: absolute;
+	width: 8px;
+	height: 8px;
+	border-radius: 2px;
+	animation: doom-spark 0.85s cubic-bezier(0.1, 0.7, 0.3, 1) forwards;
+}
+.doom-mode::after {
+	content: 'DOOM';
+	position: fixed;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	font-size: 22vw;
+	font-weight: 800;
+	letter-spacing: 0.05em;
+	color: rgba(239, 68, 68, 0.16);
+	background: radial-gradient(
+		circle,
+		rgba(239, 68, 68, 0.12),
+		rgba(34, 197, 94, 0.06) 70%,
+		transparent
+	);
+	pointer-events: none;
+	z-index: 40;
+	animation: doom-flash 5s ease-out forwards;
+}
+@keyframes doom-fly {
+	to {
+		transform: translate(60%, -30%) rotate(8deg) scale(0.6);
+		opacity: 0;
+	}
+}
+@keyframes doom-spark {
+	from {
+		transform: translate(0, 0) scale(1);
+		opacity: 1;
+	}
+	to {
+		transform: translate(var(--dx), var(--dy)) scale(0.2) rotate(240deg);
+		opacity: 0;
+	}
+}
+@keyframes doom-sway {
+	0%,
+	100% {
+		transform: rotate(-6deg);
+	}
+	50% {
+		transform: rotate(6deg);
+	}
+}
+@keyframes doom-pop {
+	from {
+		transform: scale(0.4);
+		opacity: 0;
+	}
+	to {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+@keyframes doom-flash {
+	0%,
+	70% {
+		opacity: 1;
+	}
+	100% {
+		opacity: 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.doom-ghost,
+	.doom-burst,
+	.doom-mode::after {
+		display: none;
+	}
+	.doom-done .grass,
+	.doom-done .big {
+		animation: none;
+	}
+	.doom-toast {
+		transition: none;
+	}
+}

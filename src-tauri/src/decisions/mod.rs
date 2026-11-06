@@ -53,7 +53,7 @@ pub fn open_window<R: Runtime>(app: &AppHandle<R>) {
     return;
   }
   let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("decisions.html".into()))
-    .title("Decisions")
+    .title("Decisions · Doom Solving")
     .inner_size(1280.0, 820.0)
     .min_inner_size(980.0, 640.0)
     .resizable(true)
