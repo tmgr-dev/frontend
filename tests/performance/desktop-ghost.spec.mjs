@@ -80,3 +80,28 @@ test('reduced motion shows the finished board and writes nothing until Replay', 
   await expect(page.getByTestId('ghost-replay')).toBeVisible();
   expect((await cardStatus(shell))[0].status).toBe('Review');
 });
+
+test('the hub tour opens the demo, plays it and completes when it ends', async ({
+  page,
+}) => {
+  const shell = await openDemo(page);
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('ghost-replay')).toBeVisible();
+  await page.goto('/local-my-workspace/getting-started');
+  await page.getByTestId('hub-start-desktop.ghost-watch').click();
+  const popover = page.locator('[role="dialog"][aria-labelledby^="tour-"]');
+  await expect(popover).toContainText('A demo agent at work');
+  await popover
+    .getByRole('button', { name: /next|continue|start/i })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/local-demo-launch-week\//);
+  await expect(page.getByTestId('ghost-panel')).toBeVisible();
+  await expect(popover).toContainText('Watch the board');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('ghost-replay')).toBeVisible({ timeout: 8000 });
+  await expect
+    .poll(async () => (await cardStatus(shell))[0]?.status)
+    .toBe('Review');
+  await expect(popover).toHaveCount(0);
+});

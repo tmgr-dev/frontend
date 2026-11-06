@@ -60,6 +60,7 @@
 	import { useStore } from 'vuex';
 
 	const PRE_ROLL_MS = 900;
+	const TOUR_DIALOG = '[role="dialog"][aria-labelledby^="tour-"]';
 	const NO_USER = { id: 0, name: '', email: '' };
 
 	const wait = (ms: number) =>
@@ -163,14 +164,21 @@
 			const replay = () => void play();
 
 			const offRequest = onGhostPlayRequested(() => {
-				if (!prefersReducedMotion()) void play();
+				if (prefersReducedMotion()) tourBus.emit('ghost.finished');
+				else void play();
 			});
+
+			const escapeAllowed = () =>
+				playing.value && !isInputBusy(document, TOUR_DIALOG);
 
 			const offEscape = onEscape(
 				() => {
-					if (playing.value && !isInputBusy()) skip();
+					if (escapeAllowed()) skip();
 				},
-				{ swallow: () => playing.value && !isInputBusy() },
+				{
+					swallow: escapeAllowed,
+					ownDialog: () => document.querySelector(TOUR_DIALOG),
+				},
 			);
 
 			watch(code, (next) => {

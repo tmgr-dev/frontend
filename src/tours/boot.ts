@@ -48,7 +48,10 @@ const safeStorage = (kind: 'localStorage' | 'sessionStorage') => {
 	}
 };
 
-export function isInputBusy(doc: Document = document): boolean {
+export function isInputBusy(
+	doc: Document = document,
+	ignoreDialog?: string,
+): boolean {
 	const el = doc.activeElement as HTMLElement | null;
 	if (el && el !== doc.body) {
 		const tag = el.tagName;
@@ -60,8 +63,9 @@ export function isInputBusy(doc: Document = document): boolean {
 		)
 			return true;
 	}
-	return !!doc.querySelector(
-		'[role="dialog"][data-state="open"], .sortable-chosen',
+	if (doc.querySelector('.sortable-chosen')) return true;
+	return [...doc.querySelectorAll('[role="dialog"][data-state="open"]')].some(
+		(dialog) => !ignoreDialog || !dialog.matches(ignoreDialog),
 	);
 }
 
