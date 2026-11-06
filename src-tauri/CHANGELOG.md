@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.117 — 2026-11-06
+
+- Decisions: above 256 open connections the inbox now answers "busy" instead of closing new connections silently, so `tmgr mcp` keeps backing off quietly instead of treating the app as not running.
+- Decisions: one wait can now cover a set of cards (`get_answer` with `card_ids` in `tmgr mcp` 1.0.104), so an agent watching several cards holds one connection instead of one per card.
+
 ## 0.9.116 — 2026-11-06
 
 - New macOS widget: add "TMGR" from the widget gallery (right-click the desktop or open Notification Center, then Edit Widgets) to see the running timer with a live elapsed time, or "No timer running". It is read-only for now. The widget reads one small file with the running task titles and has no network access.
