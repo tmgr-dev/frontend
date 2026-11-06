@@ -168,6 +168,23 @@ async fn a_finished_session_shim_exits_once_the_run_dir_is_removed() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_finished_session_shim_exits_once_its_session_folder_is_removed() {
+    let fx = Fx::start("/usr/bin/true").await;
+    fx.stop();
+    let sdir = find_shim_pid(&fx.runner)
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    std::fs::remove_dir_all(&sdir).unwrap();
+    assert!(
+        wait_until(Duration::from_secs(10), || !alive(fx.shim)),
+        "the shim of a finished session outlived its removed session folder"
+    );
+    assert!(fx.runner.exists(), "the run dir was removed too");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_shim_does_not_stay_in_the_folder_it_launched_the_agent_in() {
     let fx = Fx::start("/bin/sleep 5").await;
     let cwd = cwd_of(fx.shim);

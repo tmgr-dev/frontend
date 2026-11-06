@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A finished session's background process now exits once its session folder is removed, not only when the whole runner folder is, so it no longer waits 24 hours when the folder was removed by hand or the runner never told it to stop.
+
 ## 1.0.97
 
 - Hardening: sandboxed agents can no longer read the tmgr CLI's config folder when the CLI and the runner use different config locations (for example a different `XDG_CONFIG_HOME`). The CLI now tells the runner where its config lives; the runner adds that folder to every session's deny list, remembers it across restarts, and refuses to start a session whose working folder contains it. The default protections cannot be removed this way.
