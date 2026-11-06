@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.108 — 2026-11-06
+
+- Move to cloud now carries your skills library: skills on this device that are attached to the moved workspace's personas go into your account's shared skills library and are attached to the cloud personas. A skill already in your library with the same content is reused; a different skill with the same name is added as `name-2`.
+- After the move, one line reports what happened: added, already in your library, renamed. If copying skills fails, "Retry skills" tries again without repeating the move.
+- Remove local copy waits until the skills are copied.
+
 ## 0.9.107 — 2026-11-06
 
 - The demo plays itself: a simulated agent moves a card across the board, runs a timer and fills in an agent run in about 20 seconds. Esc skips to the end, Replay plays it again, and with reduced motion enabled it shows the finished board without playing. Nothing real runs and nothing counts toward your own progress.
