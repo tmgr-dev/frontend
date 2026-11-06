@@ -89,6 +89,8 @@ const APP_COMMANDS: &[&str] = &[
   "llm_config_get",
   "llm_chat",
   "llm_cancel",
+  "agents_detect",
+  "agent_connect_run",
   "local_token_issue",
   "local_token_list",
   "local_token_revoke",

@@ -312,6 +312,15 @@ impl TokenStore {
     Ok(out)
   }
 
+  /// The token with this id when it is not revoked, not expired and not a plugin token.
+  pub fn find_live(&self, id: &str, now_epoch: i64) -> Result<Option<TokenInfo>, String> {
+    let tokens = self.tokens.lock().map_err(|e| e.to_string())?;
+    Ok(tokens
+      .iter()
+      .find(|t| t.id == id && t.revoked_at.is_none() && t.expires_at_epoch > now_epoch && t.plugin_id.is_none())
+      .map(TokenInfo::from))
+  }
+
   pub fn issue(&self, params: IssueParams, now_epoch: i64) -> Result<(TokenInfo, String), IssueError> {
     if params.label.is_empty() || params.label.chars().count() > 60 {
       return Err(IssueError::BadLabel);
@@ -522,6 +531,23 @@ mod tests {
       expires_in_days: 90,
       plugin_id: None,
     }
+  }
+
+  #[test]
+  fn find_live_skips_revoked_expired_plugin_and_unknown_tokens() {
+    let store = store("find-live");
+    let now = 1_000_000;
+    let (live, _) = store.issue(issue_params("ws"), now).unwrap();
+    let (revoked, _) = store.issue(issue_params("ws"), now).unwrap();
+    store.revoke(&revoked.id, now).unwrap();
+    let mut plugin_params = issue_params("ws");
+    plugin_params.plugin_id = Some("plug".into());
+    let (plugin, _) = store.issue(plugin_params, now).unwrap();
+    assert!(store.find_live(&live.id, now + 10).unwrap().is_some());
+    assert!(store.find_live(&revoked.id, now + 10).unwrap().is_none());
+    assert!(store.find_live(&plugin.id, now + 10).unwrap().is_none());
+    assert!(store.find_live("lt_unknown000000000", now).unwrap().is_none());
+    assert!(store.find_live(&live.id, now + 91 * 86_400).unwrap().is_none());
   }
 
   #[test]

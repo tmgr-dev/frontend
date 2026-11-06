@@ -1,4 +1,5 @@
 #[cfg(target_os = "macos")]
+mod agent_connect;
 mod app_menu;
 mod app_links;
 mod capture;
@@ -313,6 +314,8 @@ pub fn run() {
       persona_llm::llm_cancel,
       persona_llm::persona_llm_clear_for_user,
       persona_llm::persona_llm_migrate_local,
+      agent_connect::agents_detect,
+      agent_connect::agent_connect_run,
       local_access::local_token_issue,
       local_access::local_token_list,
       local_access::local_token_revoke,
