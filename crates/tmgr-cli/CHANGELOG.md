@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.100
+
+- `tmgr attach`: in the New session form, Tab and Shift+Tab now always move to the next and previous field while the folder picker is open; before, Tab kept completing the selected folder path and the fields below Folder were hard to reach. Tab completion stays in the plain path field (type `/`, `~` or `.`). The footer now says `Tab/Shift+Tab next/prev field`.
+- A relative `TMGR_RUNNER_DIR` or `TMGR_RUNNER_HOMES` is now made absolute (and `..` folded) when it is read. Before, a session's background process, which moves to `/` after start, could not find its session folder and ended about a second after the agent exited.
+
 ## 1.0.99
 
 - `tmgr attach`: the New session folder field now opens a folder picker. Recent shows pinned folders first, then folders of past and live sessions ranked by use and recency; typing searches them; Right opens a folder in a file-style browser (Left goes up, `.` shows hidden folders, `~` jumps home) with the git branch, dirty, merged and live markers; typing `/`, `~` or `.` still gives the plain path field with Tab completion. Ctrl+P pins or unpins a folder (kept in `folder-pins.toml` in the CLI config folder). Enter still starts, with the same checks and prompts as before.
