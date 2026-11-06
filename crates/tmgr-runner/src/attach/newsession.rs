@@ -1,3 +1,4 @@
+use super::folder_pick::{self, Act, DrawCtx, Env, FolderData, FolderMark, PKey, Picker, PICK_H};
 use super::mouse::MouseEvent;
 use super::palette::{esc_key, next_char, query_tail, Key};
 use super::render::{dim, put};
@@ -10,6 +11,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Clear, Widget};
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -177,6 +179,7 @@ pub enum NewEdit {
     Submit(NewRequest),
     Approve,
     ResumePast,
+    Pins(Vec<String>),
     Cancel,
 }
 
@@ -249,6 +252,18 @@ pub struct NewSession {
     pub review: Option<Vec<String>>,
     pub home: PathBuf,
     pub list_dir: fn(&Path) -> Vec<String>,
+    pub browse_dir: fn(&Path) -> Vec<String>,
+    pub folders: Option<FolderData>,
+    picker: Option<Picker>,
+    pick_fits: Cell<bool>,
+    marks: HashMap<String, Option<FolderMark>>,
+    mark_reqs: Vec<String>,
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
 }
 
 fn strip_control(s: &str) -> String {
@@ -429,6 +444,65 @@ impl NewSession {
         f
     }
 
+    fn sync_picker(&mut self) {
+        if self.focus != NewField::Folder {
+            self.picker = None;
+        } else if self.picker.is_none() && self.folders.is_some() {
+            self.picker = Some(Picker::new());
+        }
+    }
+
+    fn picker_live(&self) -> bool {
+        self.pick_fits.get()
+            && self.focus == NewField::Folder
+            && self.picker.as_ref().is_some_and(Picker::live)
+    }
+
+    fn pick_h(&self) -> usize {
+        if self.pick_fits.get() && self.picker_live() {
+            usize::from(PICK_H)
+        } else {
+            0
+        }
+    }
+
+    fn pick(&mut self, k: PKey, pins: &mut Option<Vec<String>>) {
+        match self.pick_key(k) {
+            Act::Fall => self.step(k == PKey::Down),
+            Act::Pins(p) => *pins = Some(p),
+            _ => {}
+        }
+    }
+
+    fn pick_key(&mut self, k: PKey) -> Act {
+        let (Some(mut p), Some(mut data)) = (self.picker.take(), self.folders.take()) else {
+            return Act::Done;
+        };
+        let home = self.home.clone();
+        let act = p.key(
+            k,
+            &mut Env {
+                folder: &mut self.folder,
+                data: &mut data,
+                home: &home,
+                list: self.browse_dir,
+                now: now_ms(),
+            },
+        );
+        for path in std::mem::take(&mut p.want_marks) {
+            if !self.marks.contains_key(&path) {
+                self.marks.insert(path.clone(), None);
+                self.mark_reqs.push(path);
+            }
+        }
+        self.picker = Some(p);
+        self.folders = Some(data);
+        if !matches!(act, Act::Fall | Act::Cancel) {
+            self.clear_error();
+        }
+        act
+    }
+
     fn clear_error(&mut self) {
         self.task_at = 0;
         self.error = None;
@@ -460,6 +534,7 @@ impl NewSession {
         let n = fields.len();
         let next = if down { (at + 1) % n } else { (at + n - 1) % n };
         self.focus = fields[next];
+        self.sync_picker();
     }
 
     fn cycle(&mut self, forward: bool) {
@@ -568,6 +643,13 @@ impl NewSession {
             Ok(req) => Ok(req),
             Err((field, msg)) => {
                 self.focus = field;
+                self.sync_picker();
+                if field == NewField::Folder {
+                    if let Some(p) = self.picker.as_mut() {
+                        p.saved = self.folder.clone();
+                        p.mode = folder_pick::Mode::Path;
+                    }
+                }
                 self.error = Some(msg.to_string());
                 self.error_hint = None;
                 Err(())
@@ -808,11 +890,20 @@ fn review_wrapped(lines: &[String], width: u16) -> Vec<String> {
 
 pub(crate) fn new_session_rect(area: Rect, ns: &NewSession) -> Rect {
     let n = notes(ns, area.width);
+    let plain = ns.fields().len() + n.remembered.len() + n.error_h() + n.hint_h() + n.help_h() + 5;
+    ns.pick_fits
+        .set(plain + usize::from(PICK_H) <= usize::from(area.height) && area.width >= 30);
     let body = match (&ns.review, &ns.priv_prompt) {
         (Some(lines), _) => review_wrapped(lines, area.width).len() + 4,
         (None, Some(p)) => prompt_lines(p, area.width).len() + 4,
         (None, None) => {
-            ns.fields().len() + n.remembered.len() + n.error_h() + n.hint_h() + n.help_h() + 5
+            ns.fields().len()
+                + ns.pick_h()
+                + n.remembered.len()
+                + n.error_h()
+                + n.hint_h()
+                + n.help_h()
+                + 5
         }
     };
     dialog_rect(area, body)
@@ -841,9 +932,12 @@ fn field_rows(ns: &NewSession, inner: Rect) -> Vec<(NewField, Rect)> {
         .into_iter()
         .zip(0u16..)
         .map(|(f, k)| {
+            let after =
+                ns.fields().iter().position(|x| *x == NewField::Folder) < Some(usize::from(k));
+            let shift = if after { ns.pick_h() as u16 } else { 0 };
             (
                 f,
-                Rect::new(inner.x, inner.y.saturating_add(k), inner.width, 1),
+                Rect::new(inner.x, inner.y.saturating_add(k + shift), inner.width, 1),
             )
         })
         .filter(|(_, r)| r.y < inner.bottom())
@@ -1007,6 +1101,24 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
         return;
     }
     let rows = field_rows(ns, inner);
+    if let (true, Some(p), Some(data)) = (ns.picker_live(), ns.picker.as_ref(), ns.folders.as_ref())
+    {
+        if let Some((_, frow)) = rows.iter().find(|(f, _)| *f == NewField::Folder) {
+            let area = Rect::new(frow.x + 2, frow.y + 1, frow.width.saturating_sub(2), PICK_H);
+            let area = area.intersection(inner);
+            folder_pick::draw(
+                buf,
+                area,
+                p,
+                &DrawCtx {
+                    data,
+                    marks: &ns.marks,
+                    home: &ns.home,
+                    now: now_ms(),
+                },
+            );
+        }
+    }
     for (f, row) in &rows {
         let focused = *f == ns.focus;
         let marker = if focused { "> " } else { "  " };
@@ -1101,7 +1213,7 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
             }
         }
     }
-    let base = u16::try_from(ns.fields().len()).unwrap_or(u16::MAX);
+    let base = u16::try_from(ns.fields().len() + ns.pick_h()).unwrap_or(u16::MAX);
     let line = |k: usize| {
         inner
             .y
@@ -1237,6 +1349,14 @@ pub(crate) fn new_session_cursor(ns: &NewSession, area: Rect) -> Option<(u16, u1
     let (_, row) = field_rows(ns, inner)
         .into_iter()
         .find(|(f, _)| *f == ns.focus)?;
+    if let Some(p) = ns
+        .picker
+        .as_ref()
+        .filter(|p| ns.picker_live() && p.mode == folder_pick::Mode::Search)
+    {
+        let x = row.x + 2 + 8 + strip_control(&p.query).width() as u16;
+        return Some((x.min(row.right().saturating_sub(1)), row.y + 1));
+    }
     let text = strip_control(field_text(ns, ns.focus)?);
     let avail = value_avail(row);
     let w = query_tail(&text, avail.saturating_sub(1)).width();
@@ -1283,6 +1403,12 @@ impl ViewState {
             review: None,
             home,
             list_dir: list_dirs,
+            browse_dir: folder_pick::browse_dirs,
+            folders: self.new_folders.clone(),
+            picker: None,
+            pick_fits: Cell::new(true),
+            marks: HashMap::new(),
+            mark_reqs: Vec::new(),
         });
     }
 
@@ -1404,12 +1530,38 @@ impl ViewState {
     }
 
     pub fn review_new_session(&mut self, mut ns: NewSession, lines: Vec<String>) {
+        ns.picker = None;
         ns.review = Some(lines);
         self.new_session = Some(ns);
     }
 
-    pub fn reopen_new_session(&mut self, ns: NewSession) {
+    pub fn reopen_new_session(&mut self, mut ns: NewSession) {
+        ns.picker = None;
         self.new_session = Some(ns);
+    }
+
+    pub fn set_new_folders(&mut self, data: FolderData) {
+        let mut data = data.cleaned();
+        if let Some(old) = &self.new_folders {
+            data.pins = old.pins.clone();
+        }
+        self.new_folders = Some(data.clone());
+        if let Some(ns) = self.new_session.as_mut() {
+            ns.folders = Some(data);
+        }
+    }
+
+    pub fn take_folder_mark_requests(&mut self) -> Vec<String> {
+        self.new_session
+            .as_mut()
+            .map(|ns| std::mem::take(&mut ns.mark_reqs))
+            .unwrap_or_default()
+    }
+
+    pub fn set_folder_mark(&mut self, path: String, mark: Option<FolderMark>) {
+        if let Some(ns) = self.new_session.as_mut() {
+            ns.marks.insert(path, mark);
+        }
     }
 
     pub fn remember_new_session(&mut self, req: &NewRequest, kind_id: &str) {
@@ -1433,9 +1585,18 @@ impl ViewState {
             return self.edit_priv_prompt(data);
         }
         if !data.is_empty() && data.iter().all(|&b| b == 0x1b) {
+            if ns
+                .picker
+                .as_ref()
+                .is_some_and(|p| p.mode != folder_pick::Mode::Recent)
+            {
+                ns.pick_key(PKey::Esc);
+                return NewEdit::Editing;
+            }
             self.new_session = None;
             return NewEdit::Cancel;
         }
+        let mut pins: Option<Vec<String>> = None;
         let mut i = 0;
         while i < data.len() {
             let Some(ns) = self.new_session.as_mut() else {
@@ -1447,9 +1608,25 @@ impl ViewState {
                     let seq = &data[i..i + used];
                     i += used;
                     match key {
+                        Key::Up if ns.picker_live() => ns.pick(PKey::Up, &mut pins),
+                        Key::Down if ns.picker_live() => ns.pick(PKey::Down, &mut pins),
                         Key::Up => ns.step(false),
                         Key::Down => ns.step(true),
                         Key::Other => match seq {
+                            b"\x1b[C" | b"\x1bOC" if ns.picker_live() => {
+                                ns.pick(PKey::Right, &mut pins)
+                            }
+                            b"\x1b[D" | b"\x1bOD" if ns.picker_live() => {
+                                ns.pick(PKey::Left, &mut pins)
+                            }
+                            b"\x1b"
+                                if ns
+                                    .picker
+                                    .as_ref()
+                                    .is_some_and(|p| p.mode != folder_pick::Mode::Recent) =>
+                            {
+                                ns.pick(PKey::Esc, &mut pins)
+                            }
                             b"\x1b[C" | b"\x1bOC" => ns.cycle(true),
                             b"\x1b[D" | b"\x1bOD" => ns.cycle(false),
                             b"\x1b[Z" => ns.step(false),
@@ -1459,12 +1636,20 @@ impl ViewState {
                 }
                 b'\t' => {
                     i += 1;
-                    if ns.focus != NewField::Folder || !ns.complete_folder() {
+                    let browsing = ns.picker_live()
+                        && ns
+                            .picker
+                            .as_ref()
+                            .is_some_and(|p| p.mode != folder_pick::Mode::Recent);
+                    if ns.focus != NewField::Folder || browsing || !ns.complete_folder() {
                         ns.step(true);
                     }
                 }
                 b'\r' | b'\n' => {
                     i += 1;
+                    if ns.picker_live() && ns.pick_key(PKey::Enter) != Act::Submit {
+                        continue;
+                    }
                     if let Some(req) = ns.try_submit() {
                         self.new_session = None;
                         return NewEdit::Submit(req);
@@ -1475,14 +1660,24 @@ impl ViewState {
                 }
                 0x7f | 0x08 => {
                     i += 1;
-                    if let Some((s, _)) = ns.text_field() {
+                    if ns.picker_live() {
+                        ns.pick(PKey::Back, &mut pins);
+                    } else if let Some((s, _)) = ns.text_field() {
                         s.pop();
                         ns.clear_error();
                     }
                 }
+                0x10 => {
+                    i += 1;
+                    if ns.picker_live() {
+                        ns.pick(PKey::Pin, &mut pins);
+                    }
+                }
                 0x15 => {
                     i += 1;
-                    if let Some((s, _)) = ns.text_field() {
+                    if ns.picker_live() {
+                        ns.pick(PKey::Clear, &mut pins);
+                    } else if let Some((s, _)) = ns.text_field() {
                         s.clear();
                         ns.clear_error();
                     }
@@ -1492,12 +1687,22 @@ impl ViewState {
                     let (c, used) = next_char(&data[i..]);
                     i += used;
                     if let Some(c) = c.filter(|c| !c.is_control()) {
-                        ns.push_char(c);
+                        if ns.picker_live() {
+                            ns.pick(PKey::Char(c), &mut pins);
+                        } else {
+                            ns.push_char(c);
+                        }
                     }
                 }
             }
         }
         if self.new_session.is_some() {
+            if let Some(p) = pins {
+                if let Some(d) = self.new_folders.as_mut() {
+                    d.pins = p.clone();
+                }
+                return NewEdit::Pins(p);
+            }
             NewEdit::Editing
         } else {
             NewEdit::Cancel
@@ -1577,8 +1782,19 @@ impl ViewState {
         let text = String::from_utf8_lossy(data)
             .replace("\x1b[200~", "")
             .replace("\x1b[201~", "");
+        if ns.picker_live() && text.starts_with(['/', '~']) {
+            if let Some(p) = ns.picker.as_mut() {
+                p.saved = ns.folder.clone();
+                p.mode = folder_pick::Mode::Path;
+                ns.folder.clear();
+            }
+        }
         for c in text.chars().filter(|c| !c.is_control()) {
-            ns.push_char(c);
+            if ns.picker_live() {
+                ns.pick_key(PKey::Char(c));
+            } else {
+                ns.push_char(c);
+            }
         }
     }
 
@@ -1611,6 +1827,7 @@ impl ViewState {
             return out;
         };
         ns.focus = field;
+        ns.sync_picker();
         let x = value_x(row);
         let avail = value_avail(row);
         match field {
@@ -3515,5 +3732,278 @@ mod tests {
             assert!(shown.contains("Enter starts,"), "{w}\n{shown}");
             assert!(shown.contains("cancels"), "{w}\n{shown}");
         }
+    }
+
+    fn fake_browse(_: &Path) -> Vec<String> {
+        vec!["api".into(), ".cache".into(), "web".into()]
+    }
+
+    fn rec(path: &str, count: u32, live: bool) -> folder_pick::RecentDir {
+        folder_pick::RecentDir {
+            path: path.into(),
+            last_ms: 0,
+            count,
+            live,
+        }
+    }
+
+    fn at(h: &Path, name: &str) -> String {
+        h.join(name).to_string_lossy().into_owned()
+    }
+
+    fn picking(h: &Path) -> ViewState {
+        for n in ["alpha", "beta", "gamma"] {
+            std::fs::create_dir(h.join(n)).unwrap();
+        }
+        let mut v = open(&h.to_string_lossy(), h);
+        ns(&mut v).browse_dir = fake_browse;
+        v.set_new_folders(FolderData {
+            recents: vec![
+                rec(&at(h, "beta"), 5, false),
+                rec(&at(h, "alpha"), 1, false),
+                rec(&at(h, "gamma"), 1, false),
+            ],
+            pins: Vec::new(),
+        });
+        v.edit_new_session(b"\t");
+        v
+    }
+
+    fn picker_of(v: &ViewState) -> &Picker {
+        ns_of(v).picker.as_ref().unwrap()
+    }
+
+    fn picker_rows(v: &ViewState) -> Vec<folder_pick::PickRow> {
+        let n = ns_of(v);
+        picker_of(v).rows(n.folders.as_ref().unwrap(), 0)
+    }
+
+    #[test]
+    fn tab_into_the_folder_field_opens_the_picker_on_recent() {
+        let h = tmp();
+        let v = picking(h.path());
+        assert!(ns_of(&v).picker_live());
+        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Recent);
+        assert_eq!(ns_of(&v).focus, NewField::Folder);
+    }
+
+    #[test]
+    fn down_enter_starts_in_the_second_recent_folder() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        assert_eq!(v.edit_new_session(b"\x1b[B"), NewEdit::Editing);
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert_eq!(req.folder, at(h.path(), "alpha"));
+    }
+
+    #[test]
+    fn enter_without_moving_keeps_the_default_folder() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert_eq!(req.folder, h.path().to_string_lossy());
+    }
+
+    #[test]
+    fn typing_letters_searches_and_enter_starts_at_the_top_match() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        assert_eq!(v.edit_new_session(b"g"), NewEdit::Editing);
+        assert_eq!(v.edit_new_session(b"am"), NewEdit::Editing);
+        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Search);
+        assert_eq!(picker_of(&v).query, "gam");
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert_eq!(req.folder, at(h.path(), "gamma"));
+    }
+
+    #[test]
+    fn slash_enters_path_mode_where_tab_completes_and_esc_restores_the_folder() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        ns(&mut v).list_dir = fake_dirs;
+        let before = ns_of(&v).folder.clone();
+        v.edit_new_session(b"/");
+        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Path);
+        assert_eq!(ns_of(&v).folder, "/");
+        v.edit_new_session(b"r/b");
+        assert_eq!(ns_of(&v).folder, "/r/b");
+        v.edit_new_session(b"\t");
+        assert_eq!(ns_of(&v).folder, "/r/beta/");
+        assert_eq!(ns_of(&v).focus, NewField::Folder);
+        v.edit_new_session(b"\x1b");
+        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Recent);
+        assert_eq!(ns_of(&v).folder, before);
+    }
+
+    #[test]
+    fn esc_in_recent_cancels_the_dialog() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        assert_eq!(v.edit_new_session(b"\x1b"), NewEdit::Cancel);
+        assert!(v.new_session.is_none());
+    }
+
+    #[test]
+    fn right_browses_left_goes_up_and_dot_shows_hidden_entries() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        v.edit_new_session(b"\x1b[B");
+        v.edit_new_session(b"\x1b[C");
+        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Browse);
+        assert_eq!(picker_of(&v).dir, at(h.path(), "alpha"));
+        assert_eq!(picker_rows(&v).len(), 3);
+        v.edit_new_session(b".");
+        assert!(picker_of(&v).hidden);
+        assert_eq!(picker_rows(&v).len(), 4);
+        v.edit_new_session(b"\x1b[D");
+        assert_eq!(picker_of(&v).dir, h.path().to_string_lossy());
+    }
+
+    #[test]
+    fn down_at_the_bottom_moves_focus_to_the_next_field() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        v.edit_new_session(b"\x1b[B\x1b[B");
+        assert_eq!(ns_of(&v).focus, NewField::Folder);
+        v.edit_new_session(b"\x1b[B");
+        assert_eq!(ns_of(&v).focus, NewField::Task);
+        assert!(ns_of(&v).picker.is_none());
+    }
+
+    #[test]
+    fn ctrl_p_pins_the_highlighted_folder_and_returns_the_list() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        v.edit_new_session(b"\x1b[B");
+        let pins = vec![at(h.path(), "alpha")];
+        assert_eq!(v.edit_new_session(b"\x10"), NewEdit::Pins(pins.clone()));
+        assert_eq!(v.new_folders.as_ref().unwrap().pins, pins);
+        assert_eq!(picker_rows(&v)[0].path, pins[0]);
+        assert!(picker_rows(&v)[0].pinned);
+    }
+
+    #[test]
+    fn reopen_clears_the_picker_so_typing_edits_the_folder_text() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        let before = ns_of(&v).folder.clone();
+        let dialog = v.new_session.take().unwrap();
+        v.reopen_new_session(dialog);
+        assert!(ns_of(&v).picker.is_none());
+        v.edit_new_session(b"x");
+        assert_eq!(ns_of(&v).folder, format!("{before}x"));
+    }
+
+    #[test]
+    fn a_bypass_request_from_the_picker_still_asks_for_the_word() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        flip(&mut v, NewField::Bypass);
+        v.edit_new_session(&b"\x1b[Z".repeat(5));
+        assert_eq!(ns_of(&v).focus, NewField::Folder);
+        v.edit_new_session(b"\x1b[B");
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+        let NewEdit::Submit(req) = keys(&mut v, "bypass\r") else {
+            panic!("expected submit");
+        };
+        assert!(req.bypass);
+        assert_eq!(req.folder, at(h.path(), "alpha"));
+    }
+
+    #[test]
+    fn paste_into_the_picker_searches_and_enter_starts_at_the_match() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        v.insert_new_session_text(b"gam");
+        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Search);
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert_eq!(req.folder, at(h.path(), "gamma"));
+    }
+
+    #[test]
+    fn browsing_requests_child_marks_and_set_folder_mark_renders_them() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        v.edit_new_session(b"\x1b[B\x1b[C");
+        assert_eq!(
+            v.take_folder_mark_requests(),
+            vec![
+                at(&h.path().join("alpha"), "api"),
+                at(&h.path().join("alpha"), "web")
+            ]
+        );
+        assert!(v.take_folder_mark_requests().is_empty());
+        v.set_folder_mark(
+            at(&h.path().join("alpha"), "api"),
+            Some(FolderMark {
+                branch: "feat/x".into(),
+                dirty: true,
+                merged: false,
+            }),
+        );
+        let shown = draw(&v, AREA.width, AREA.height);
+        assert!(shown.contains("git:feat/x ●dirty"), "{shown}");
+    }
+
+    fn picker_view(folder: &str) -> ViewState {
+        let mut v = open(folder, Path::new("/work/home"));
+        ns(&mut v).browse_dir = fake_browse;
+        v.set_new_folders(FolderData {
+            recents: vec![
+                rec("/work/app", 9, false),
+                rec("/work/app/web", 2, true),
+                rec("/work/home/notes", 2, false),
+                rec("/work/api", 3, false),
+            ],
+            pins: vec!["/work/infra".into()],
+        });
+        v.edit_new_session(b"\t");
+        v
+    }
+
+    #[test]
+    fn snapshot_picker_recent() {
+        let v = picker_view("/work/app");
+        snapshot(
+            "new_session_picker_recent",
+            &draw(&v, AREA.width, AREA.height),
+        );
+    }
+
+    #[test]
+    fn snapshot_picker_browse() {
+        let mut v = picker_view("/work/app");
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[C");
+        v.set_folder_mark(
+            "/work/app/api".into(),
+            Some(FolderMark {
+                branch: "feat/x".into(),
+                dirty: true,
+                merged: false,
+            }),
+        );
+        snapshot(
+            "new_session_picker_browse",
+            &draw(&v, AREA.width, AREA.height),
+        );
+    }
+
+    #[test]
+    fn snapshot_picker_search() {
+        let mut v = picker_view("/work/app");
+        v.edit_new_session(b"ap");
+        snapshot(
+            "new_session_picker_search",
+            &draw(&v, AREA.width, AREA.height),
+        );
     }
 }

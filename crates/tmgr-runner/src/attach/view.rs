@@ -3,6 +3,7 @@ use super::chip::TaskChip;
 use super::clean::CopyContext;
 use super::filter::Filter;
 use super::find::{CopyState, ScrollText, SearchState};
+use super::folder_pick::FolderData;
 use super::keys::{Cmd, ScrollKey};
 use super::layouts::{LayoutOffer, LayoutRestore, SavedLayout};
 use super::mouse::{encode, wants, Kind, MouseEvent};
@@ -176,6 +177,7 @@ pub struct ViewState {
     pub(crate) last_click: Option<Click>,
     pub new_tasks: Vec<TaskOpt>,
     pub new_tasks_note: Option<String>,
+    pub new_folders: Option<FolderData>,
     pub sidebar_focus: Option<SidebarItem>,
     pub allow_new: bool,
     pub locs: HashMap<String, Loc>,
@@ -466,6 +468,7 @@ impl ViewState {
             last_click: None,
             new_tasks: Vec::new(),
             new_tasks_note: None,
+            new_folders: None,
             sidebar_focus: None,
             allow_new: true,
             locs: HashMap::new(),

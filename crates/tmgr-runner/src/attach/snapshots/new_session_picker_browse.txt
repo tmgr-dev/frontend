@@ -1,0 +1,30 @@
+                                                                                                    
+                                                                                                    
+              ╭ New session ─────────────────────────────────────────────────────────╮              
+              │   Kind       claude   codex   shell   custom                         │              
+              │ > Folder    /work/app                                                │              
+              │   /work/app/                                                         │              
+              │   ▸   ..  (up)                                                       │              
+              │       api/                                         git:feat/x ●dirty │              
+              │       web/                                                      live │              
+              │                                                                      │              
+              │                                                                      │              
+              │   ←→ up/into  Enter start  . hidden  ~ home  / search  ^P pin        │              
+              │   Task      optional, type a key or words                            │              
+              │   Name                                                               │              
+              │   Worktree   Off   On                                                │              
+              │   Approvals  Off   On                                                │              
+              │   Bypass     Off   On                                                │              
+              │   No sandbox Off   On                                                │              
+              │   Where      New tab   Right   Below   Replace                       │              
+              │   Rewind     Off   On                                                │              
+              │             [ Start ]                                                │              
+              │                                                                      │              
+              │                                                                      │              
+              │                                                                      │              
+              │ Enter starts, Ctrl+R resumes a past session, Esc cancels             │              
+              │                                                                      │              
+              │                                                                      │              
+              ╰──────────────────────────────────────────────────────────────────────╯              
+                                                                                                    
+                                                                                                    

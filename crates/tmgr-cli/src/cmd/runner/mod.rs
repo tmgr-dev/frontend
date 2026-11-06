@@ -6,6 +6,7 @@ mod attach_clip;
 pub(crate) mod attach_consent;
 mod attach_export;
 mod attach_export_cmd;
+mod attach_folders;
 mod attach_git;
 mod attach_goto;
 mod attach_layouts;

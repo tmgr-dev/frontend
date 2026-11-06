@@ -169,6 +169,8 @@ enum Msg {
     Status(HashMap<String, SessionStatus>),
     Usage(UsageBar),
     Git(HashMap<String, GitInfo>),
+    Folders(tmgr_runner::attach::FolderData),
+    FolderMark(String, Option<tmgr_runner::attach::FolderMark>),
     Checkpoints(CpMsg),
     CheckpointsNote(String),
     Summary(Generated),
@@ -444,6 +446,7 @@ struct App {
     last_status: Instant,
     usage_tx: SyncSender<Vec<QuestionJob>>,
     git_tx: SyncSender<Vec<GitJob>>,
+    marks_tx: mpsc::Sender<Vec<String>>,
     git_pending: bool,
     last_git: Instant,
     usage_pending: bool,
@@ -747,6 +750,14 @@ impl App {
                         self.notify(&e);
                     }
                 }
+            }
+            Msg::Folders(data) => {
+                self.view.set_new_folders(data);
+                self.dirty = true;
+            }
+            Msg::FolderMark(path, mark) => {
+                self.view.set_folder_mark(path, mark);
+                self.dirty = true;
             }
             Msg::Tasks(result) => {
                 match result {
@@ -2122,6 +2133,11 @@ impl App {
         thread::spawn(move || {
             let _ = tx.send(Msg::Tasks(attach_tasks::load(agent)));
         });
+        let live_cwds: Vec<String> = self.starts.values().map(|(cwd, _)| cwd.clone()).collect();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let _ = tx.send(Msg::Folders(super::attach_folders::load(&live_cwds)));
+        });
     }
 
     fn begin_spawn(&mut self, before: Option<NewSession>, req: NewRequest) {
@@ -2268,6 +2284,20 @@ impl App {
         true
     }
 
+    fn save_pins(&mut self, pins: &[String]) {
+        if let Some(path) = super::attach_folders::pins_path() {
+            let _ = super::attach_folders::save_pins(&path, pins);
+        }
+        self.dirty = true;
+    }
+
+    fn feed_folder_marks(&mut self) {
+        let paths = self.view.take_folder_mark_requests();
+        if !paths.is_empty() {
+            let _ = self.marks_tx.send(paths);
+        }
+    }
+
     fn sync_review(&mut self) {
         let shown = self
             .view
@@ -2287,6 +2317,7 @@ impl App {
                 match self.view.edit_new_session(&data) {
                     NewEdit::Submit(req) => self.begin_spawn(before, req),
                     NewEdit::Approve => self.approve_task(),
+                    NewEdit::Pins(pins) => self.save_pins(&pins),
                     NewEdit::ResumePast => {
                         let kind = before.as_ref().and_then(dialog_agent);
                         self.open_past(kind);
@@ -2294,10 +2325,12 @@ impl App {
                     _ => {}
                 }
                 self.sync_review();
+                self.feed_folder_marks();
             }
             (Route::PastPrompt, Action::Forward(data)) => self.past_prompt_input(&data),
             (Route::Dialog, Action::Drop(data) | Action::Paste { data, .. }) => {
                 self.view.insert_new_session_text(&data);
+                self.feed_folder_marks();
             }
             (Route::Git, Action::Forward(data)) => {
                 if let Some(action) = self.view.edit_git(&data) {
@@ -3849,10 +3882,13 @@ impl App {
                             return Ok(Some(exit));
                         }
                     }
-                    if let Some(NewEdit::Submit(req)) = out.new_edit {
-                        self.begin_spawn(before, req);
+                    match out.new_edit {
+                        Some(NewEdit::Submit(req)) => self.begin_spawn(before, req),
+                        Some(NewEdit::Pins(pins)) => self.save_pins(&pins),
+                        _ => {}
                     }
                     self.sync_review();
+                    self.feed_folder_marks();
                     if let Some(edit) = out.question {
                         self.question_edit(edit);
                     }
@@ -4684,6 +4720,13 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     let (git_tx, git_rx) = mpsc::sync_channel(1);
     let git_out = tx.clone();
     thread::spawn(move || git_worker(git_rx, move |found| git_out.send(Msg::Git(found)).is_ok()));
+    let (marks_tx, marks_rx) = mpsc::channel();
+    let marks_out = tx.clone();
+    thread::spawn(move || {
+        super::attach_folders::marks_worker(marks_rx, move |path, mark| {
+            marks_out.send(Msg::FolderMark(path, mark)).is_ok()
+        })
+    });
     let (usage_tx, usage_rx) = mpsc::sync_channel(1);
     let usage_out = tx.clone();
     thread::spawn(move || {
@@ -4807,6 +4850,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         status_tx,
         usage_tx,
         git_tx,
+        marks_tx,
         git_pending: false,
         last_git: Instant::now() - GIT_EVERY,
         usage_pending: false,
