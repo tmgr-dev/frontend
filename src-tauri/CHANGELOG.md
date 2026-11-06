@@ -3,6 +3,13 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.107 — 2026-11-06
+
+- The demo plays itself: a simulated agent moves a card across the board, runs a timer and fills in an agent run in about 20 seconds. Esc skips to the end, Replay plays it again, and with reduced motion enabled it shows the finished board without playing. Nothing real runs and nothing counts toward your own progress.
+- Help hub: "Watch an agent work" starts the demo from the Getting started page.
+- Fixed: Watch the demo opened the demo workspace under the wrong address, so the sidebar and columns still showed your other workspace while the demo data was loaded. It now switches to the demo properly.
+- Deleting the demo while it plays stops the simulated agent first.
+
 ## 0.9.106 — 2026-11-06
 
 - Demo workspace: Help menu -> Watch the demo creates a separate workspace with a ready board and a sample agent run. It is marked DEMO, stays on this Mac, and can be deleted from its banner (it goes to the Trash).
