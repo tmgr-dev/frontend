@@ -282,13 +282,14 @@
 							Send Follow-up Instruction
 						</label>
 						<div class="flex gap-2">
-							<input
+							<textarea
 								v-model="followUpPrompt"
-								type="text"
+								rows="1"
+								data-follow-up
 								placeholder="Type additional instructions..."
-								class="flex-1 rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong"
-								@keyup.enter="sendFollowUpToAgent(agent.id)"
-							/>
+								class="max-h-40 flex-1 resize-none rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong"
+								@keydown.enter="onFollowUpEnter($event, agent.id)"
+							></textarea>
 							<button
 								@click="sendFollowUpToAgent(agent.id)"
 								:disabled="!followUpPrompt || sendingFollowUp"
@@ -321,6 +322,7 @@
 		stopCursorAgent,
 	} from '@/actions/tmgr/cursor';
 	import { apiErrorText } from '@/utils/apiErrorText';
+	import { autosizeTextarea, isEnterSend } from '@/utils/commentComposer';
 	import { createCursorConversationSync } from '@/utils/cursorConversationSync';
 	import { createPollingLoop } from '@/utils/pollingLoop';
 	import { defineComponent } from 'vue';
@@ -364,6 +366,13 @@
 			},
 		},
 		watch: {
+			followUpPrompt() {
+				this.$nextTick(() =>
+					this.$el
+						.querySelectorAll('textarea[data-follow-up]')
+						.forEach((el) => autosizeTextarea(el)),
+				);
+			},
 			agents: {
 				handler(newAgents) {
 					this.syncConversations(newAgents);
@@ -397,6 +406,11 @@
 			this.disposed = true;
 		},
 		methods: {
+			onFollowUpEnter(event, agentId) {
+				if (!isEnterSend(event)) return;
+				event.preventDefault();
+				this.sendFollowUpToAgent(agentId);
+			},
 			loadAgents() {
 				if (this.agentsRequest) return this.agentsRequest;
 				this.agentsRequest = this.fetchAgents().finally(() => {

@@ -1051,7 +1051,7 @@ kbd {
 	gap: 6px;
 }
 .chatbox textarea {
-	flex: 1;
+	flex: none;
 	resize: none;
 	max-height: 160px;
 	line-height: 1.4;

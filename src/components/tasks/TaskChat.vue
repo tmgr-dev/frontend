@@ -395,7 +395,7 @@
 				</Button>
 			</div>
 
-			<div class="flex gap-2">
+			<div class="flex items-end gap-2">
 				<Textarea
 					ref="chatInput"
 					v-model="newMessage"
