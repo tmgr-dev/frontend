@@ -1005,7 +1005,7 @@ impl App {
                 .join("output.log"),
             exited: row.exited(),
             settled: !matches!(row.state.kind, StateKind::Working | StateKind::Starting),
-            real_home: title_real_home(src, attach_export::home_dir()),
+            real_home: None,
         }
     }
 
@@ -1646,7 +1646,9 @@ impl App {
             if row.exited() && !self.question_exited.insert(row.id.clone()) {
                 continue;
             }
-            jobs.push(self.question_job(row, src));
+            let mut job = self.question_job(row, src);
+            job.real_home = title_real_home(src, attach_export::home_dir());
+            jobs.push(job);
         }
         self.question_pending = self.question_tx.try_send(jobs).is_ok();
     }

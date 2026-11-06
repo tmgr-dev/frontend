@@ -2,7 +2,7 @@
 
 ## 1.0.103
 
-- `tmgr attach`: the questions pocket (`?N`, Go to, Context, Answer, Ignore, Fork) now works for Claude Code sessions started without the sandbox. Their conversation lives in the real `~/.claude`, which the pocket never looked at, so it found nothing. It now reads only the session id in `sessions/<pid>.json` and that session's transcript in the project folder of its working folder, the same narrow lookup as the session titles. Sandboxed Claude sessions and Codex are unchanged. The status line, usage and export previews of such sessions use the same lookup.
+- `tmgr attach`: the questions pocket (`?N`, Go to, Context, Answer, Ignore, Fork) now works for Claude Code sessions started without the sandbox. Their conversation lives in the real `~/.claude`, which the pocket never looked at, so it found nothing. It now reads only the session id in `sessions/<pid>.json` and that session's transcript in the project folder of its working folder, the same narrow lookup as the session titles. Sandboxed Claude sessions and Codex are unchanged.
 
 ## 1.0.102
 
