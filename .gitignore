@@ -46,3 +46,6 @@ docs/
 # Local Chrome profiles (kept outside Playwright cleanup)
 performance-results/
 /target/
+
+# macOS widget build output
+/src-tauri/widget/build/
