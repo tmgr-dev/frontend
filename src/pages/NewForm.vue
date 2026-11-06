@@ -1497,6 +1497,9 @@
 			const result = await getCursorAgents(id);
 			if (formDisposed || form.value.id !== id) return;
 			cursorAgents.value = result;
+			if (result.some((a: any) => a.status === 'FINISHED')) {
+				void taskCommentsRef.value?.loadComments?.();
+			}
 		} catch (e) {
 			console.error('[Cursor] Failed to load agents:', e);
 			cursorAgents.value = [];

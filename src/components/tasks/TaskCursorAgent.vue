@@ -100,7 +100,7 @@
 						</div>
 
 						<button
-							@click="launchAgent"
+							@click="launchAgent('implement')"
 							:disabled="launching || !selectedBranch"
 							class="flex w-full items-center justify-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-on-accent transition hover:bg-brand-hover disabled:opacity-50"
 						>
@@ -123,6 +123,16 @@
 								class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
 							></div>
 							{{ launching ? 'Launching...' : 'Launch Cursor Agent' }}
+						</button>
+
+						<button
+							@click="launchAgent('research')"
+							:disabled="launching || !selectedBranch"
+							title="The agent investigates the task and posts a report as a comment. It does not change code."
+							data-testid="cursor-research-button"
+							class="flex w-full items-center justify-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink transition hover:bg-surface-hover disabled:opacity-50"
+						>
+							Research
 						</button>
 					</div>
 
@@ -461,13 +471,14 @@
 					this.loadBranchesFromGitHub(this.branchSearch || undefined);
 				}, 300);
 			},
-			async launchAgent() {
+			async launchAgent(mode = 'implement') {
 				try {
 					this.launching = true;
 					this.error = null;
 					const agent = await launchCursorAgent(
 						this.taskId,
 						this.selectedBranch,
+						mode,
 					);
 					this.agents.unshift(agent);
 					this.showLaunchForm = false;

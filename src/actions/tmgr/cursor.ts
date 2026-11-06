@@ -9,9 +9,11 @@ import type {
 export async function launchCursorAgent(
 	taskId: number,
 	sourceBranch?: string,
+	mode: 'implement' | 'research' = 'implement',
 ): Promise<CursorAgent> {
 	const response = await $axios.post(`/tasks/${taskId}/cursor-agent`, {
 		source_branch: sourceBranch,
+		mode,
 	});
 	return response.data.agent;
 }
