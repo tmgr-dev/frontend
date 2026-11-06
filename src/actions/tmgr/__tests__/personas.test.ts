@@ -21,11 +21,13 @@ import {
 	detachSharedSkill,
 	forgetPersonaAvatar,
 	getAssignablePersonas,
+	getDeletedSharedSkillVersion,
 	getPersonaPolicy,
 	getPersonaSkill,
 	getSharedSkill,
 	getSharedSkillVersion,
 	issuePersonaToken,
+	listDeletedSharedSkills,
 	listPersonas,
 	listPersonaSharedSkills,
 	listPersonaSkills,
@@ -39,6 +41,7 @@ import {
 	putPersonaSkill,
 	putSharedSkill,
 	removeWorkspaceGrant,
+	restoreDeletedSharedSkill,
 	restorePersona,
 	restoreSharedSkill,
 	revokeAllMyPersonaTokens,
@@ -685,5 +688,64 @@ describe('shared skill versions', () => {
 		expect(requestCache.has('shared-skills')).toBe(false);
 		expect(requestCache.has('shared-skills-triage-versions')).toBe(false);
 		expect(requestCache.has('ws-5-persona-grants')).toBe(false);
+	});
+});
+
+describe('recently deleted shared skills', () => {
+	const warm = async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [] } });
+		await listSharedSkills();
+		await listDeletedSharedSkills();
+	};
+
+	it('lists deleted skills and caches them', async () => {
+		const rows = [{ slug: 'triage', versions: [] }];
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: rows } });
+		const result = await listDeletedSharedSkills();
+		expect(axios.get).toHaveBeenCalledWith('/shared-skills/deleted');
+		expect(result).toEqual(rows);
+		expect(requestCache.has('shared-skills-deleted')).toBe(true);
+	});
+
+	it('reads one deleted version', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({
+			data: { data: { version: 2, body: 'b' } },
+		});
+		const result = await getDeletedSharedSkillVersion('triage', 2);
+		expect(axios.get).toHaveBeenCalledWith(
+			'/shared-skills/deleted/triage/versions/2',
+		);
+		expect(result).toEqual({ version: 2, body: 'b' });
+	});
+
+	it('restores a deleted skill and invalidates library and deleted list', async () => {
+		await warm();
+		(axios.post as jest.Mock).mockResolvedValue({
+			data: { data: { slug: 'triage', version: 4 } },
+		});
+		const result = await restoreDeletedSharedSkill('triage', 2);
+		expect(axios.post).toHaveBeenCalledWith(
+			'/shared-skills/deleted/triage/restore',
+			{ version: 2 },
+		);
+		expect(result).toEqual({ slug: 'triage', version: 4 });
+		expect(requestCache.has('shared-skills')).toBe(false);
+		expect(requestCache.has('shared-skills-deleted')).toBe(false);
+	});
+
+	it('keeps caches when restore is rejected', async () => {
+		await warm();
+		(axios.post as jest.Mock).mockRejectedValue(new Error('409'));
+		await expect(restoreDeletedSharedSkill('triage', 2)).rejects.toThrow();
+		expect(requestCache.has('shared-skills-deleted')).toBe(true);
+	});
+
+	it('deleting a skill drops the deleted list cache', async () => {
+		await warm();
+		(axios.delete as jest.Mock).mockResolvedValue({
+			data: { data: { detached_personas: [] } },
+		});
+		await deleteSharedSkill('triage');
+		expect(requestCache.has('shared-skills-deleted')).toBe(false);
 	});
 });

@@ -104,6 +104,30 @@ export interface SharedSkillVersion extends SharedSkillVersionRow {
 	body: string;
 }
 
+export interface DeletedSharedSkillVersionRow {
+	version: number;
+	title: string;
+	kind: SharedSkillVersionKind;
+	restored_from: number | null;
+	author_name: string | null;
+	created_at: string;
+}
+
+export interface DeletedSharedSkill {
+	slug: string;
+	title: string;
+	deleted_at: string;
+	purge_at: string;
+	latest_version: number;
+	versions: DeletedSharedSkillVersionRow[];
+}
+
+export interface DeletedSharedSkillVersion extends DeletedSharedSkillVersionRow {
+	when: string;
+	actions: unknown[];
+	body: string;
+}
+
 export interface PersonaGrant {
 	persona: PersonaGrantSummary;
 	workspace_id: number;
@@ -459,6 +483,41 @@ export const restoreSharedSkill = async (
 		version,
 		expected_version: expectedVersion,
 	});
+	invalidateSharedLibrary();
+	return data;
+};
+
+export const listDeletedSharedSkills = async (
+	useCache = true,
+): Promise<DeletedSharedSkill[]> =>
+	requestCache.getOrFetch(
+		'shared-skills-deleted',
+		async () => {
+			const {
+				data: { data },
+			} = await $axios.get('/shared-skills/deleted');
+			return data;
+		},
+		{ ttl: 30000, cache: useCache },
+	);
+
+export const getDeletedSharedSkillVersion = async (
+	slug: string,
+	version: number,
+): Promise<DeletedSharedSkillVersion> => {
+	const {
+		data: { data },
+	} = await $axios.get(`/shared-skills/deleted/${slug}/versions/${version}`);
+	return data;
+};
+
+export const restoreDeletedSharedSkill = async (
+	slug: string,
+	version: number,
+): Promise<SharedSkill> => {
+	const {
+		data: { data },
+	} = await $axios.post(`/shared-skills/deleted/${slug}/restore`, { version });
 	invalidateSharedLibrary();
 	return data;
 };

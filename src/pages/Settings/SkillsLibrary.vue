@@ -75,6 +75,8 @@
 			@changed="$emit('changed')"
 		/>
 
+		<DeletedSkills :reload-token="deletedToken" @changed="onRestored" />
+
 		<p class="text-2xs text-muted-foreground">
 			{{ skills.length }}/{{ SHARED_SKILL_LIMIT }} used
 		</p>
@@ -137,6 +139,7 @@
 		type SharedSkillSummary,
 	} from '@/actions/tmgr/personas';
 	import { Button } from '@/components/ui/button';
+	import DeletedSkills from './DeletedSkills.vue';
 	import SharedSkillHistory from './SharedSkillHistory.vue';
 	import { Textarea } from '@/components/ui/textarea';
 	import { toast } from '@/components/ui/toast';
@@ -157,7 +160,13 @@
 
 	export default defineComponent({
 		name: 'SkillsLibrary',
-		components: { Button, SharedSkillHistory, SkillImportDialog, Textarea },
+		components: {
+			Button,
+			DeletedSkills,
+			SharedSkillHistory,
+			SkillImportDialog,
+			Textarea,
+		},
 		props: {
 			revision: { type: Number, default: 0 },
 		},
@@ -171,6 +180,7 @@
 			const historySlug = ref<string | null>(null);
 			const serverErrors = ref<Record<string, string[]> | null>(null);
 			const importOpen = ref(false);
+			const deletedToken = ref(0);
 			const canImport = isDesktopApp() && !store.getters.isLocalOnly;
 
 			const load = async () => {
@@ -265,6 +275,7 @@
 					const { detached_personas } = await deleteSharedSkill(skill.slug);
 					toast({ title: detachedSkillsTitle(detached_personas ?? []) });
 					if (editingSlug.value === skill.slug) cancelEdit();
+					deletedToken.value++;
 					await load();
 					emit('changed');
 				} catch {
@@ -280,7 +291,14 @@
 				emit('changed');
 			};
 
+			const onRestored = async () => {
+				await load();
+				emit('changed');
+			};
+
 			return {
+				deletedToken,
+				onRestored,
 				importOpen,
 				canImport,
 				onImported,
