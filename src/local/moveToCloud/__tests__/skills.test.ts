@@ -96,6 +96,28 @@ describe('skillsReportLines', () => {
 		]);
 	});
 
+	it('falls back when the slug is missing', () => {
+		expect(
+			skillsReportLines([
+				outcome({
+					slug: null,
+					cloud_slug: 'z',
+					status: 'skipped',
+					reason: 'invalid',
+				}),
+				outcome({
+					slug: null,
+					cloud_slug: null,
+					status: 'skipped',
+					reason: 'invalid',
+				}),
+			]),
+		).toEqual([
+			'z: not copied, not a valid skill',
+			'a skill: not copied, not a valid skill',
+		]);
+	});
+
 	it('is empty for an empty report', () => {
 		expect(skillsReportLines([])).toEqual([]);
 		expect(skillsReportLines(null)).toEqual([]);

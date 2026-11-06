@@ -40,7 +40,10 @@ const move = async (h: ReturnType<typeof harness>) => {
 	const dry = await mover.dryRun(CODE, 'Local');
 	await mover.start(CODE, 'Local', dry, {
 		cloudName: 'Cloud copy',
-		personas: [{ local_uuid: 'p-local', action: 'create' }],
+		personas: [
+			{ local_uuid: 'p-local', action: 'create' },
+			{ local_uuid: 'p-cloud', action: 'map', cloud_uuid: 'p-cloud' },
+		],
 	});
 	return mover;
 };
@@ -63,7 +66,7 @@ describe('skills step after publish', () => {
 				},
 			],
 		});
-		expect(skillsOf(h)).toEqual({ state: 'done', report: REPORT, error: null });
+		expect(skillsOf(h)).toMatchObject({ state: 'done', report: REPORT });
 	});
 
 	it('also runs after a verified job is published by the server', async () => {
@@ -78,7 +81,11 @@ describe('skills step after publish', () => {
 		const h = harness({ statuses: [publishedStatus()] });
 		await move(h);
 		expect(h.api.importSkills).not.toHaveBeenCalled();
-		expect(skillsOf(h)).toEqual({ state: 'done', report: [], error: null });
+		expect(skillsOf(h)).toMatchObject({
+			state: 'done',
+			report: [],
+			error: null,
+		});
 	});
 
 	it('fails with the message and retry runs only the skills step', async () => {
@@ -86,11 +93,7 @@ describe('skills step after publish', () => {
 		h.library.value = LIBRARY;
 		h.api.importSkills.mockRejectedValueOnce(new Error('boom'));
 		const mover = await move(h);
-		expect(skillsOf(h)).toEqual({
-			state: 'failed',
-			report: null,
-			error: 'boom',
-		});
+		expect(skillsOf(h)).toMatchObject({ state: 'failed', error: 'boom' });
 		const calls = h.calls.length;
 		h.api.importSkills.mockResolvedValueOnce(REPORT);
 		await mover.retrySkills(CODE);
@@ -168,5 +171,80 @@ describe('dry run skills count', () => {
 		expect((await createMover(failing.deps).dryRun(CODE, 'Local')).skills).toBe(
 			0,
 		);
+	});
+});
+
+describe('skills step robustness', () => {
+	it('stores the moved personas and uses them after the local data is gone', async () => {
+		const h = harness({ statuses: [publishedStatus()] });
+		h.library.value = LIBRARY;
+		h.api.importSkills.mockRejectedValueOnce(new Error('boom'));
+		const mover = await move(h);
+		expect(skillsOf(h)?.personaUuids).toEqual(['p-local', 'p-cloud']);
+		h.deps.inventory = async () => {
+			throw new Error('local db gone');
+		};
+		h.api.importSkills.mockResolvedValueOnce(REPORT);
+		await mover.retrySkills(CODE);
+		expect(skillsOf(h)?.state).toBe('done');
+		expect(h.api.importSkills).toHaveBeenLastCalledWith('job-1', {
+			skills: [
+				{
+					markdown: LIBRARY.skills[0].markdown,
+					attach_to: ['p-local', 'p-cloud'],
+				},
+			],
+		});
+	});
+
+	it('falls back to the inventory for steps without stored personas', async () => {
+		const h = harness({ statuses: [publishedStatus()] });
+		h.library.value = LIBRARY;
+		const mover = await move(h);
+		const state = loadPersisted(h.storage, CODE);
+		state.published!.skills = { state: 'pending', report: null, error: null };
+		savePersisted(h.storage, CODE, state);
+		await mover.retrySkills(CODE);
+		expect(h.api.importSkills).toHaveBeenLastCalledWith('job-1', {
+			skills: [
+				{
+					markdown: LIBRARY.skills[0].markdown,
+					attach_to: ['p-local', 'p-cloud'],
+				},
+			],
+		});
+	});
+
+	it('retries a pending step and exposes an account mismatch in the view', async () => {
+		const h = harness({ statuses: [publishedStatus()] });
+		h.library.value = LIBRARY;
+		const mover = await move(h);
+		const state = loadPersisted(h.storage, CODE);
+		state.published!.skills = { state: 'pending', report: null, error: null };
+		savePersisted(h.storage, CODE, state);
+		expect(mover.view(CODE).publishedAccountMismatch).toBe(false);
+		h.user.id = 8;
+		expect(mover.view(CODE).publishedAccountMismatch).toBe(true);
+		h.user.id = 7;
+		await mover.retrySkills(CODE);
+		expect(skillsOf(h)?.state).toBe('done');
+	});
+
+	it('refreshPublished keeps a skills result written during the status call', async () => {
+		const h = harness({ statuses: [publishedStatus()] });
+		h.library.value = LIBRARY;
+		const mover = await move(h);
+		h.api.status.mockImplementationOnce(async () => {
+			const state = loadPersisted(h.storage, CODE);
+			state.published!.skills = {
+				state: 'failed',
+				report: null,
+				error: 'late',
+			};
+			savePersisted(h.storage, CODE, state);
+			return publishedStatus();
+		});
+		await mover.refreshPublished(CODE);
+		expect(skillsOf(h)).toMatchObject({ state: 'failed', error: 'late' });
 	});
 });

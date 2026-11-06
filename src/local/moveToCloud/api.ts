@@ -95,7 +95,7 @@ export interface SkillsPayload {
 }
 
 export interface SkillOutcome {
-	slug: string;
+	slug: string | null;
 	cloud_slug: string | null;
 	status: 'created' | 'renamed' | 'reused' | 'skipped';
 	reason: string | null;

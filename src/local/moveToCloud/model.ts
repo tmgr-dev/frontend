@@ -85,6 +85,7 @@ export interface SkillsStep {
 	state: 'pending' | 'done' | 'failed';
 	report: SkillsReport | null;
 	error: string | null;
+	personaUuids?: string[];
 }
 
 export interface PublishedMove {

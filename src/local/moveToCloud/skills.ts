@@ -34,6 +34,8 @@ const SKILL_REASONS: Record<string, string> = {
 const skillReason = (reason: string | null) =>
 	reason ? SKILL_REASONS[reason] ?? reason.replace(/_/g, ' ') : '';
 
+const name = (o: SkillOutcome) => o.slug ?? o.cloud_slug ?? 'a skill';
+
 export const skillsReportLines = (
 	report: SkillsReport | null | undefined,
 ): string[] => {
@@ -48,20 +50,22 @@ export const skillsReportLines = (
 	if (renamed.length)
 		parts.push(
 			`${renamed.length} renamed (${renamed
-				.map((o) => `${o.slug} → ${o.cloud_slug}`)
+				.map((o) => `${name(o)} → ${o.cloud_slug}`)
 				.join(', ')})`,
 		);
 	const lines = parts.length ? [`Skills: ${parts.join(', ')}`] : [];
 	for (const outcome of report) {
 		if (outcome.status === 'skipped') {
-			lines.push(`${outcome.slug}: not copied, ${skillReason(outcome.reason)}`);
+			lines.push(
+				`${name(outcome)}: not copied, ${skillReason(outcome.reason)}`,
+			);
 		}
 		const reasons = new Map<string, number>();
 		for (const { reason } of outcome.skipped_attachments ?? [])
 			reasons.set(reason, (reasons.get(reason) ?? 0) + 1);
 		for (const [reason, n] of reasons) {
 			lines.push(
-				`${outcome.slug}: not attached to ${n} ${
+				`${name(outcome)}: not attached to ${n} ${
 					n === 1 ? 'persona' : 'personas'
 				}, ${skillReason(reason)}`,
 			);

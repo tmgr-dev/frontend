@@ -159,9 +159,27 @@
 
 			<div v-if="done" class="flex flex-col items-start gap-3">
 				<p class="text-sm">Done. Open the cloud workspace.</p>
-				<p v-if="skills?.state === 'pending'" class="text-sm text-ink-subtle">
+				<p
+					v-if="skills?.state === 'pending' && view.busy"
+					class="text-sm text-ink-subtle"
+				>
 					Copying skills...
 				</p>
+				<p
+					v-else-if="skills?.state === 'pending' && view.publishedAccountMismatch"
+					class="text-sm text-ink-subtle"
+				>
+					Sign in as the account that made the move to copy skills
+				</p>
+				<div
+					v-else-if="skills?.state === 'pending'"
+					class="flex flex-col items-start gap-2 text-sm"
+				>
+					<p>Skills have not been copied yet.</p>
+					<Button size="sm" variant="outline" @click="retrySkills"
+						>Retry skills</Button
+					>
+				</div>
 				<ul v-else-if="skillLines.length" class="flex flex-col gap-1 text-sm">
 					<li v-for="line in skillLines" :key="line" class="break-words">
 						{{ line }}

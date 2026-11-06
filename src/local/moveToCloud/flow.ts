@@ -110,6 +110,7 @@ export interface MoveView {
 	canPublishAnyway: boolean;
 	failedOnServer: boolean;
 	accountMismatch: boolean;
+	publishedAccountMismatch: boolean;
 	legacy: boolean;
 }
 
@@ -190,6 +191,10 @@ export const createMover = (deps: MoveDeps) => {
 			busy: running.has(code),
 			failedOnServer: status?.status === 'failed',
 			accountMismatch: accountMismatch(job),
+			publishedAccountMismatch:
+				!!state.published &&
+				state.published.userId != null &&
+				deps.userId() !== state.published.userId,
 			legacy: legacy(job),
 			canPublishAnyway:
 				status?.status === 'failed' &&
@@ -491,7 +496,12 @@ export const createMover = (deps: MoveDeps) => {
 			archive: null,
 			dir: job?.dir ?? null,
 			userId: job?.userId ?? deps.userId(),
-			skills: { state: 'pending', report: null, error: null },
+			skills: {
+				state: 'pending',
+				report: null,
+				error: null,
+				personaUuids: job?.input.personas.map((p) => p.local_uuid),
+			},
 		};
 		state.job = null;
 		statuses.delete(code);
@@ -513,17 +523,24 @@ export const createMover = (deps: MoveDeps) => {
 			emit(code);
 		};
 		try {
-			const inventory = await deps.inventory(code);
+			const personaUuids =
+				published.skills.personaUuids ??
+				(await deps.inventory(code)).personas.map((p) => p.uuid);
 			const { skills } = buildSkillsPayload(
 				await deps.skillLibrary(userId),
-				inventory.personas.map((p) => p.uuid),
+				personaUuids,
 			);
 			const report = skills.length
 				? await api.importSkills(published.jobId, { skills })
 				: [];
-			settle({ state: 'done', report, error: null });
+			settle({ state: 'done', report, error: null, personaUuids });
 		} catch (error) {
-			settle({ state: 'failed', report: null, error: apiErrorMessage(error) });
+			settle({
+				state: 'failed',
+				report: null,
+				error: apiErrorMessage(error),
+				personaUuids: published.skills.personaUuids,
+			});
 		}
 	};
 
@@ -656,7 +673,7 @@ export const createMover = (deps: MoveDeps) => {
 	const retrySkills = (code: string) =>
 		guarded(code, async () => {
 			const skills = load(code).published?.skills;
-			if (skills?.state !== 'failed') return;
+			if (!skills || skills.state === 'done') return;
 			await carrySkills(code);
 		});
 
@@ -724,12 +741,14 @@ export const createMover = (deps: MoveDeps) => {
 		if (!published || state.job) return;
 		if (published.userId != null && deps.userId() !== published.userId) return;
 		const status = await api.status(published.jobId);
-		published.verified =
+		const latest = load(code);
+		if (latest.published?.jobId !== published.jobId) return;
+		latest.published.verified =
 			status.status === 'published' &&
 			status.verified === true &&
 			(status.source_revision === undefined ||
 				status.source_revision === published.revision);
-		save(code, state);
+		save(code, latest);
 		emit(code);
 	};
 
