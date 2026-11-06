@@ -58,6 +58,24 @@ export const visibleCards = (
 ): CardView[] =>
 	cards.filter((card) => isPending(card) || resolvedHere.has(card.id));
 
+const searchText = (card: CardView): string =>
+	[
+		card.title,
+		card.context,
+		card.question,
+		card.links.task,
+		...(card.links.items ?? []).flatMap((item) => [item.label, item.url]),
+	]
+		.filter(Boolean)
+		.join('\n')
+		.toLowerCase();
+
+export const filterCards = (cards: CardView[], query: string): CardView[] => {
+	const needle = query.trim().toLowerCase();
+	if (!needle) return cards;
+	return cards.filter((card) => searchText(card).includes(needle));
+};
+
 export const buildQueue = (cards: CardView[]): QueueGroup[] => {
 	const map = new Map<string, QueueGroup>();
 	for (const card of cards) {

@@ -1,5 +1,6 @@
 import {
 	buildQueue,
+	filterCards,
 	flattenQueue,
 	groupKey,
 	groupLabel,
@@ -179,5 +180,47 @@ describe('closable cards', () => {
 	it('moves to the next card when the closed one was current', () => {
 		const order = [makeCard({ id: 'a' }), makeCard({ id: 'b' })];
 		expect(nextCardId(order, 'a')).toBe('b');
+	});
+});
+
+describe('filterCards', () => {
+	const cards = [
+		makeCard({
+			id: 'a',
+			title: 'Deploy the Frontend',
+			context: 'prod rollout',
+		}),
+		makeCard({ id: 'b', title: 'Pick a name', question: 'Which LIBRARY?' }),
+		makeCard({
+			id: 'c',
+			title: 'Other',
+			links: {
+				task: 'https://tmgr.dev/tmgrdev/tasks/10599',
+				items: [{ kind: 'task', url: 'https://x.test/1', label: 'TM-882' }],
+			},
+		}),
+	];
+
+	it('returns every card for an empty or blank query', () => {
+		expect(filterCards(cards, '')).toEqual(cards);
+		expect(filterCards(cards, '   ')).toEqual(cards);
+	});
+
+	it('matches title case-insensitively', () => {
+		expect(filterCards(cards, 'frontend').map((c) => c.id)).toEqual(['a']);
+	});
+
+	it('matches description fields', () => {
+		expect(filterCards(cards, 'rollout').map((c) => c.id)).toEqual(['a']);
+		expect(filterCards(cards, 'library').map((c) => c.id)).toEqual(['b']);
+	});
+
+	it('matches the task key and task link', () => {
+		expect(filterCards(cards, 'tm-882').map((c) => c.id)).toEqual(['c']);
+		expect(filterCards(cards, '10599').map((c) => c.id)).toEqual(['c']);
+	});
+
+	it('returns nothing when nothing matches', () => {
+		expect(filterCards(cards, 'zzz')).toEqual([]);
 	});
 });

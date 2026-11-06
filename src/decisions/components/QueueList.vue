@@ -9,8 +9,18 @@
 			Queue<span>{{ progress.pending }} of {{ progress.total }}</span>
 		</div>
 		<div class="prog"><i :style="{ width: progress.percent + '%' }"></i></div>
+		<input
+			type="text"
+			autocomplete="off"
+			class="queue-search"
+			placeholder="Search queue"
+			aria-label="Search queue"
+			:value="query"
+			@input="onInput"
+			@keydown.esc="clearQuery"
+		/>
 		<div v-if="groups.length === 0" class="empty-queue">
-			Nothing in the queue.
+			{{ query.trim() ? 'No matches' : 'Nothing in the queue.' }}
 		</div>
 		<template v-for="group in groups" :key="group.key">
 			<div class="group" :title="group.agent">
@@ -64,12 +74,21 @@
 			groups: { type: Array as PropType<QueueGroup[]>, required: true },
 			selectedId: { type: String as PropType<string | null>, default: null },
 			progress: { type: Object as PropType<QueueProgress>, required: true },
+			query: { type: String, default: '' },
 		},
-		emits: ['select', 'dismiss'],
+		emits: ['select', 'dismiss', 'update:query'],
 		data() {
 			return { KIND_LABELS };
 		},
 		methods: {
+			onInput(event: Event) {
+				this.$emit('update:query', (event.target as HTMLInputElement).value);
+			},
+			clearQuery(event: KeyboardEvent) {
+				if (!this.query) return;
+				event.preventDefault();
+				this.$emit('update:query', '');
+			},
 			isDone(card: CardView): boolean {
 				return !isPending(card);
 			},

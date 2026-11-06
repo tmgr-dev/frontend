@@ -311,6 +311,22 @@ kbd {
 	background: var(--fix-bg);
 	color: var(--fix-fg);
 }
+.queue-search {
+	box-sizing: border-box;
+	width: 100%;
+	margin: 6px 0 4px;
+	padding: 6px 8px;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-size: 12.5px;
+}
+.queue-search:focus {
+	outline: none;
+	border-color: var(--brand);
+}
 .empty-queue {
 	padding: 16px 8px;
 	color: var(--fg-subtle);

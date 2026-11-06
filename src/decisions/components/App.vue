@@ -16,6 +16,8 @@
 				:groups="groups"
 				:selected-id="selectedId"
 				:progress="progress"
+				:query="query"
+				@update:query="query = $event"
 				@select="select"
 				@dismiss="closeCard"
 			/>
@@ -172,6 +174,7 @@
 	import { resolveKey } from '../keys';
 	import {
 		buildQueue,
+		filterCards,
 		flattenQueue,
 		initialCardId,
 		nextCardId,
@@ -209,6 +212,7 @@
 				cards: [] as CardView[],
 				resolvedHere: [] as string[],
 				selectedId: null as string | null,
+				query: '',
 				tab: 'diff' as Tab,
 				loaded: false,
 				diffs: {} as Record<string, DiffSlot>,
@@ -229,7 +233,7 @@
 				return visibleCards(this.cards, new Set(this.resolvedHere));
 			},
 			groups() {
-				return buildQueue(this.visible);
+				return buildQueue(filterCards(this.visible, this.query));
 			},
 			order(): CardView[] {
 				return flattenQueue(this.groups);
