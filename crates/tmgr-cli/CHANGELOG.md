@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.104
+
+- `tmgr mcp`: when the desktop app answers that the Decisions inbox is busy (more than 256 open connections, desktop 0.9.117 and later), the wait keeps its 250 ms to 5 s backoff instead of failing. Older desktop apps that close the connection silently are handled as before.
+- `tmgr mcp` now handles `notifications/cancelled`: a cancelled `get_answer`, `ask_owner` or `reply_owner` drops its wait within a second, frees its worker and sends no response, so abandoned waits no longer pile up.
+- `get_answer` accepts `card_ids` (up to 64, merged with `card_id`): one wait covers all of them and returns the first event from any card, with its `card_id`; when nothing arrives it returns `{"status":"pending","card_ids":[...]}`. With a desktop app older than 0.9.117 it falls back to waiting on the cards in turn.
+
 ## 1.0.103
 
 - `tmgr attach`: the questions pocket (`?N`, Go to, Context, Answer, Ignore, Fork) now works for Claude Code sessions started without the sandbox. Their conversation lives in the real `~/.claude`, which the pocket never looked at, so it found nothing. It now reads only the session id in `sessions/<pid>.json` and that session's transcript in the project folder of its working folder, the same narrow lookup as the session titles. Sandboxed Claude sessions and Codex are unchanged.
