@@ -40,7 +40,9 @@ export const mapKey = (
 	context: KeyContext,
 ): KeyAction | null => {
 	if (context.typing) {
-		return event.key === 'Escape' ? { type: 'blur' } : null;
+		return event.key === 'Escape' && !event.isComposing && event.keyCode !== 229
+			? { type: 'blur' }
+			: null;
 	}
 	if (event.metaKey || event.ctrlKey || event.altKey) return null;
 	const shift = Boolean(event.shiftKey);

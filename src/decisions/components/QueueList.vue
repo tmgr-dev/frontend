@@ -20,7 +20,11 @@
 			@keydown.esc="clearQuery"
 		/>
 		<div v-if="groups.length === 0" class="empty-queue">
-			{{ query.trim() ? 'No matches' : 'Nothing in the queue.' }}
+			{{
+				query.trim() && progress.total > 0
+					? 'No matches'
+					: 'Nothing in the queue.'
+			}}
 		</div>
 		<template v-for="group in groups" :key="group.key">
 			<div class="group" :title="group.agent">

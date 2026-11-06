@@ -63,10 +63,9 @@ const searchText = (card: CardView): string =>
 		card.title,
 		card.context,
 		card.question,
-		card.links.task,
 		...(card.links.items ?? [])
 			.filter((item) => item.kind === 'task')
-			.flatMap((item) => [item.label, item.url]),
+			.map((item) => item.label),
 	]
 		.filter(Boolean)
 		.join('\n')
@@ -143,6 +142,12 @@ export const nextCardId = (
 			?.id ?? null
 	);
 };
+
+export const selectionAfterFilter = (
+	order: CardView[],
+	query: string,
+): string | null =>
+	query.trim() ? (order[0]?.id ?? null) : initialCardId(order);
 
 export const initialCardId = (order: CardView[]): string | null =>
 	(order.find((card) => card.state === 'open') ?? order.find(isPending))?.id ??

@@ -176,7 +176,7 @@
 		buildQueue,
 		filterCards,
 		flattenQueue,
-		initialCardId,
+		selectionAfterFilter,
 		nextCardId,
 		queueProgress,
 		stepCardId,
@@ -340,7 +340,7 @@
 			},
 			ensureSelection() {
 				if (this.order.some((card) => card.id === this.selectedId)) return;
-				this.selectedId = initialCardId(this.order);
+				this.selectedId = selectionAfterFilter(this.order, this.query);
 			},
 			ensureDiff() {
 				const card = this.current;

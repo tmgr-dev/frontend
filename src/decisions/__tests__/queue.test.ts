@@ -8,6 +8,7 @@ import {
 	isPending,
 	nextCardId,
 	queueProgress,
+	selectionAfterFilter,
 	stepCardId,
 	visibleCards,
 } from '../queue';
@@ -218,9 +219,9 @@ describe('filterCards', () => {
 		expect(filterCards(cards, 'library').map((c) => c.id)).toEqual(['b']);
 	});
 
-	it('matches the task key and task link', () => {
+	it('matches the task key but not link urls', () => {
 		expect(filterCards(cards, 'tm-882').map((c) => c.id)).toEqual(['c']);
-		expect(filterCards(cards, '10599').map((c) => c.id)).toEqual(['c']);
+		expect(filterCards(cards, '10599')).toEqual([]);
 	});
 
 	it('ignores non-task link urls', () => {
@@ -229,5 +230,24 @@ describe('filterCards', () => {
 
 	it('returns nothing when nothing matches', () => {
 		expect(filterCards(cards, 'zzz')).toEqual([]);
+	});
+});
+
+describe('selectionAfterFilter', () => {
+	const deferred = makeCard({ id: 'd', state: 'deferred' });
+	const open = makeCard({ id: 'o' });
+	const answered = makeCard({ id: 'x', state: 'answered' });
+
+	it('selects the first match while a query is active', () => {
+		expect(selectionAfterFilter([deferred, open], 'abc')).toBe('d');
+		expect(selectionAfterFilter([answered], 'abc')).toBe('x');
+	});
+
+	it('returns null when nothing matches', () => {
+		expect(selectionAfterFilter([], 'abc')).toBeNull();
+	});
+
+	it('falls back to the initial card without a query', () => {
+		expect(selectionAfterFilter([deferred, open], '  ')).toBe('o');
 	});
 });
