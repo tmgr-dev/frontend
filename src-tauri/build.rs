@@ -137,7 +137,42 @@ const APP_COMMANDS: &[&str] = &[
   "decisions_open_link",
 ];
 
+#[cfg(target_os = "macos")]
+fn build_widget_reload() {
+  use std::path::PathBuf;
+  use std::process::Command;
+
+  println!("cargo:rerun-if-changed=widget-reload/TMGRWidgetReload.swift");
+  let arch = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
+    Ok("aarch64") => "arm64",
+    _ => "x86_64",
+  };
+  let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+  let lib = out.join("libtmgr_widget_reload.a");
+  let status = Command::new("xcrun")
+    .args(["swiftc", "-emit-library", "-static", "-parse-as-library", "-module-name", "TMGRWidgetReload"])
+    .args(["-target", &format!("{arch}-apple-macos13.3")])
+    .args(["-Xfrontend", "-disable-autolink-framework", "-Xfrontend", "WidgetKit"])
+    .arg("widget-reload/TMGRWidgetReload.swift")
+    .arg("-o")
+    .arg(&lib)
+    .status()
+    .expect("failed to run swiftc");
+  assert!(status.success(), "swiftc failed");
+  let sdk = Command::new("xcrun").args(["--show-sdk-path"]).output().expect("xcrun failed");
+  let sdk = String::from_utf8(sdk.stdout).unwrap();
+  println!("cargo:rustc-link-search=native={}", out.display());
+  println!("cargo:rustc-link-search=native={}/usr/lib/swift", sdk.trim());
+  println!("cargo:rustc-link-lib=static=tmgr_widget_reload");
+  println!("cargo:rustc-link-arg=-Wl,-weak_framework,WidgetKit");
+  println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
+}
+
 fn main() {
+  #[cfg(target_os = "macos")]
+  if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+    build_widget_reload();
+  }
   tauri_build::try_build(
     tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(APP_COMMANDS)),
   )

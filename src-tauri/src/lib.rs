@@ -44,6 +44,7 @@ mod page_windows;
 mod task_windows;
 mod tray;
 mod update_relaunch;
+mod widget_state;
 
 use std::path::{Path, PathBuf};
 

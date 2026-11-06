@@ -111,7 +111,7 @@ pub fn ticket_code(title: &str) -> Option<&str> {
   valid.then_some(code)
 }
 
-fn truncate(text: &str, max: usize) -> String {
+pub(crate) fn truncate(text: &str, max: usize) -> String {
   if text.chars().count() <= max {
     return text.to_owned();
   }
@@ -168,7 +168,7 @@ fn is_format_control(c: char) -> bool {
 }
 
 /// Maps newlines to a space, drops control/Cf characters, collapses whitespace, trims, and truncates.
-fn sanitize_plugin_text(text: &str, max: usize) -> Option<String> {
+pub(crate) fn sanitize_plugin_text(text: &str, max: usize) -> Option<String> {
   let mapped: String = text
     .chars()
     .map(|c| if matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}') { ' ' } else { c })
@@ -410,6 +410,7 @@ pub fn tray_update<R: Runtime>(app: AppHandle<R>, store: State<'_, TrayStore>, s
   *current = state.clone();
   drop(current);
   refresh(&app, &state);
+  crate::widget_state::publish(&app, &state);
 }
 
 pub fn normalize_dnd_option(option: &str) -> &str {
