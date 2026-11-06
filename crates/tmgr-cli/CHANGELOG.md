@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.101
+
+- New `tmgr setup terminal [--check]`: run it on the computer where your terminal runs, so copying in `tmgr attach` over SSH reaches the clipboard. It finds Warp, WarpOss, iTerm2, Ghostty, kitty, Alacritty, WezTerm and tmux, and for each one that blocks OSC 52 clipboard writes it shows the exact line, asks, backs the file up as `<file>.tmgr-backup-<timestamp>` and writes it. Write access only, never clipboard read. Apps that already allow it are reported as already OK, and the apps that need a restart are named. `--yes` applies without asking, `--check` only reports, and without a terminal nothing is changed.
+- Over SSH the copy notice now ends with a pointer to `tmgr setup terminal`.
+
 ## 1.0.100
 
 - `tmgr attach`: in the New session form, Tab and Shift+Tab now always move to the next and previous field while the folder picker is open; before, Tab kept completing the selected folder path and the fields below Folder were hard to reach. Tab completion stays in the plain path field (type `/`, `~` or `.`). The footer now says `Tab/Shift+Tab next/prev field`.
