@@ -17,6 +17,8 @@ export function createCursorConversationSync(
 			.then(() => true)
 			.catch((e) => {
 				console.error('Failed to sync Cursor conversation:', e);
+				const status = seen.get(agentId);
+				if (status && !isActiveCursorAgent({ status })) seen.delete(agentId);
 				return false;
 			})
 			.finally(() => inFlight.delete(agentId));

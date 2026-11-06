@@ -2,7 +2,7 @@ import type { CursorAgent } from '../../types/cursor';
 import { createCursorConversationSync } from '../cursorConversationSync';
 
 const agent = (id: number, status: CursorAgent['status']) =>
-	({ id, status } as CursorAgent);
+	({ id, status }) as CursorAgent;
 
 describe('createCursorConversationSync', () => {
 	let fetchConversation: jest.Mock;
@@ -79,5 +79,14 @@ describe('createCursorConversationSync', () => {
 
 		await expect(sync.update([agent(1, 'FINISHED')])).resolves.toBe(false);
 		expect(errorSpy).toHaveBeenCalled();
+	});
+
+	it('retries a failed sync of a finished agent on the next update', async () => {
+		fetchConversation.mockRejectedValueOnce(new Error('boom'));
+		const sync = createCursorConversationSync(5, fetchConversation);
+
+		await sync.update([agent(1, 'FINISHED')]);
+		expect(await sync.update([agent(1, 'FINISHED')])).toBe(true);
+		expect(fetchConversation).toHaveBeenCalledTimes(2);
 	});
 });

@@ -317,6 +317,7 @@
 
 	export default defineComponent({
 		name: 'TaskCursorAgent',
+		emits: ['launched', 'stopped', 'followup-sent', 'conversation-synced'],
 		props: {
 			taskId: {
 				type: Number,
