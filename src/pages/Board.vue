@@ -1190,6 +1190,7 @@
 					this.columns,
 					updatedTask,
 					this.pendingMoveIds,
+					this.dirtyStatusIds,
 				);
 				this.scheduleTotalsRefresh();
 				if (patch === 'reload') {

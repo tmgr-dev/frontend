@@ -340,6 +340,7 @@ export function mergeRealtimeTask(
 	columns: PagedColumn[],
 	incoming: PagedTask,
 	pending: ReadonlySet<number> = new Set(),
+	dirty?: Set<number>,
 ): ColumnPatch | 'reload' {
 	if (!columns.some((c) => c.paging))
 		return upsertTaskInColumns(columns, incoming);
@@ -351,6 +352,8 @@ export function mergeRealtimeTask(
 	const target = findColumn(columns, task.status_id);
 	const holder = columns.find((c) => c.tasks.some((t) => t.id === task.id));
 	if (pending.has(task.id)) {
+		for (const id of [target?.status.id, holder?.status.id])
+			if (id != null) dirty?.add(Number(id));
 		const local = holder?.tasks.find((t) => t.id === task.id);
 		if (!local) return 'ignored';
 		Object.assign(local, task, {

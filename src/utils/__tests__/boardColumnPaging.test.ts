@@ -775,6 +775,19 @@ describe('realtime merge in paged columns', () => {
 		});
 	});
 
+	it('a foreign move of a card with a pending own move marks both columns dirty', () => {
+		const col = column([1, 2, 3]);
+		const columns = [col, other()];
+		const dirty = new Set<number>();
+		mergeRealtimeTask(
+			columns,
+			{ id: 2, status_id: 2, order: 1, title: 'x' },
+			new Set([2]),
+			dirty,
+		);
+		expect([...dirty].sort()).toEqual([1, 2]);
+	});
+
 	it('legacy columns without paging keep the old upsert', () => {
 		const columns: PagedColumn[] = [
 			{ status: { id: 1 }, tasks: [{ id: 1, status_id: 1 }] },
