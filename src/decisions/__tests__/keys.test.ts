@@ -93,5 +93,10 @@ describe('isSubmitKey', () => {
 		);
 		expect(isSubmitKey({ key: 'Enter', shiftKey: true })).toBe(false);
 		expect(isSubmitKey({ key: 'a' })).toBe(false);
+		expect(isSubmitKey({ key: 'Enter', isComposing: true })).toBe(false);
+		expect(isSubmitKey({ key: 'Enter', keyCode: 229 })).toBe(false);
+		expect(
+			isSubmitKey({ key: 'Enter', metaKey: true, isComposing: true }),
+		).toBe(false);
 	});
 });

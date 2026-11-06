@@ -1050,8 +1050,11 @@ kbd {
 	flex-direction: column;
 	gap: 6px;
 }
-.chatbox input {
+.chatbox textarea {
 	flex: 1;
+	resize: none;
+	max-height: 160px;
+	line-height: 1.4;
 	background: var(--bg-sunken);
 	border: 0;
 	box-shadow: 0 0 0 1px var(--line-strong);
@@ -1061,12 +1064,12 @@ kbd {
 	font: inherit;
 	outline: none;
 }
-.chatbox input:focus {
+.chatbox textarea:focus {
 	box-shadow:
 		0 0 0 1.5px var(--brand),
 		0 0 0 4px var(--ring);
 }
-.chatbox input:disabled {
+.chatbox textarea:disabled {
 	opacity: 0.5;
 }
 .chatbox .hint {

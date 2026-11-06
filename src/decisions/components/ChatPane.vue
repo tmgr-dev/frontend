@@ -25,9 +25,10 @@
 			<div v-if="notice" class="msg typing">{{ notice }}</div>
 		</div>
 		<div class="chatbox">
-			<input
+			<textarea
 				ref="input"
 				v-model="text"
+				rows="1"
 				data-input="chat"
 				:disabled="!canReply"
 				:placeholder="
@@ -36,7 +37,7 @@
 						: 'Chat is unavailable'
 				"
 				@keydown="onKey"
-			/>
+			></textarea>
 			<div v-if="!canReply" class="hint">Answer in the agent session.</div>
 		</div>
 	</div>
@@ -45,6 +46,7 @@
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
 	import { agentWaitNotice } from '../diff';
+	import { autosizeTextarea } from '@/utils/commentComposer';
 	import { isSubmitKey } from '../keys';
 	import { clickedHttpLink, isAgentMessage, renderMarkdown } from '../markdown';
 	import type { CardMessage } from '../types';
@@ -75,6 +77,11 @@
 			},
 		},
 		watch: {
+			text() {
+				void this.$nextTick(() =>
+					autosizeTextarea(this.$refs.input as HTMLTextAreaElement | undefined),
+				);
+			},
 			messages() {
 				void this.$nextTick(() => {
 					const log = this.$refs.log as HTMLElement | undefined;
@@ -90,7 +97,7 @@
 				if (href) this.$emit('open-link', href);
 			},
 			focus() {
-				(this.$refs.input as HTMLInputElement | undefined)?.focus();
+				(this.$refs.input as HTMLTextAreaElement | undefined)?.focus();
 			},
 			onKey(event: KeyboardEvent) {
 				if (event.key === 'Escape') return;

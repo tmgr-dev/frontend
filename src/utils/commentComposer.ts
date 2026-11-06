@@ -6,3 +6,17 @@ type EnterKey = Pick<KeyboardEvent, 'shiftKey' | 'isComposing' | 'keyCode'>;
  */
 export const isSendEnter = (e: EnterKey): boolean =>
 	!e.shiftKey && !e.isComposing && e.keyCode !== 229;
+
+export const isEnterSend = (
+	e: EnterKey & Pick<KeyboardEvent, 'key'>,
+): boolean => e.key === 'Enter' && isSendEnter(e);
+
+export const autosizeTextarea = (
+	el: HTMLTextAreaElement | null | undefined,
+	maxHeight = 160,
+): void => {
+	if (!el || !el.scrollHeight) return;
+	el.style.height = 'auto';
+	el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+	el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+};

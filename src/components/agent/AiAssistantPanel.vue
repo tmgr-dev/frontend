@@ -17,6 +17,7 @@
 		pinTextFromMessage,
 	} from '@/utils/agentPins';
 	import { flashQuote, selectedQuote } from '@/utils/agentQuoteDom';
+	import { autosizeTextarea, isEnterSend } from '@/utils/commentComposer';
 	import { draftChip } from '@/utils/agentQuotes';
 	import {
 		fillScenarios,
@@ -84,7 +85,7 @@
 
 	const draft = ref('');
 	const scroller = ref<HTMLDivElement | null>(null);
-	const input = ref<HTMLInputElement | null>(null);
+	const input = ref<HTMLTextAreaElement | null>(null);
 	const mic = ref<InstanceType<typeof MicButton> | null>(null);
 	const attachments = ref<InstanceType<typeof AgentComposerAttachments> | null>(
 		null,
@@ -117,6 +118,14 @@
 	// TM-222: the field is disabled while a run is in flight, which makes the browser blur it.
 	// Take the cursor back as soon as it is usable again so a follow-up can just be typed.
 	const focusInput = () => nextTick(() => focusField(input.value));
+
+	watch(draft, () => nextTick(() => autosizeTextarea(input.value)));
+
+	const onEnter = (event: KeyboardEvent) => {
+		if (!isEnterSend(event)) return;
+		event.preventDefault();
+		void submit();
+	};
 
 	const pinsOpen = ref(false);
 	const pinDraft = ref('');
@@ -720,23 +729,24 @@
 				</li>
 			</ul>
 			<div
-				class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pr-1.5 pl-4 focus-within:border-line-focus"
+				class="flex items-center gap-2 rounded-2xl border border-line bg-surface-sunken py-1 pr-1.5 pl-4 focus-within:border-line-focus"
 				:class="
 					dragging
 						? 'ring-2 ring-brand ring-offset-1 ring-offset-surface dark:ring-offset-gray-900'
 						: ''
 				"
 			>
-				<input
+				<textarea
 					ref="input"
 					v-model="draft"
+					rows="1"
 					data-tour="ai.input"
-					class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-hidden placeholder:text-ink-subtle"
+					class="max-h-40 min-w-0 flex-1 resize-none bg-transparent py-1 text-sm leading-5 text-ink outline-hidden placeholder:text-ink-subtle"
 					placeholder="Ask about this workspace…"
 					:disabled="busy || loading"
-					@keydown.enter.prevent="submit"
+					@keydown.enter="onEnter"
 					@paste="onPaste"
-				/>
+				></textarea>
 				<MicButton
 					ref="mic"
 					v-model="draft"

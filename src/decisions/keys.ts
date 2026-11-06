@@ -16,6 +16,8 @@ export interface KeyInput {
 	metaKey?: boolean;
 	ctrlKey?: boolean;
 	altKey?: boolean;
+	isComposing?: boolean;
+	keyCode?: number;
 }
 
 export interface KeyContext {
@@ -29,6 +31,8 @@ export interface KeyContext {
 
 export const isSubmitKey = (event: KeyInput): boolean =>
 	event.key === 'Enter' &&
+	!event.isComposing &&
+	event.keyCode !== 229 &&
 	(Boolean(event.metaKey || event.ctrlKey) || !event.shiftKey);
 
 export const mapKey = (
