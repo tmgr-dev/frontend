@@ -153,6 +153,7 @@ export const parseSkillFrontMatter = (
 export const validateSkillMarkdown = (
 	markdown: string,
 	expectedSlug: string,
+	isNew = false,
 ): Record<string, string[]> | null => {
 	const errors: Record<string, string[]> = {};
 
@@ -175,6 +176,8 @@ export const validateSkillMarkdown = (
 		errors.slug = [
 			"must be lowercase letters, digits or '-', up to 60 characters",
 		];
+	} else if (isNew && parsed.slug === 'deleted') {
+		errors.slug = ['This name is reserved'];
 	} else if (expectedSlug && parsed.slug !== expectedSlug) {
 		errors.slug = ['must match the URL slug'];
 	}

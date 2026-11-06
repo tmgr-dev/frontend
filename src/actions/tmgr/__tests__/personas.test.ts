@@ -695,16 +695,31 @@ describe('recently deleted shared skills', () => {
 	const warm = async () => {
 		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [] } });
 		await listSharedSkills();
-		await listDeletedSharedSkills();
 	};
 
-	it('lists deleted skills and caches them', async () => {
+	it('lists deleted skills without caching', async () => {
 		const rows = [{ slug: 'triage', versions: [] }];
 		(axios.get as jest.Mock).mockResolvedValue({ data: { data: rows } });
 		const result = await listDeletedSharedSkills();
+		await listDeletedSharedSkills();
+		expect(axios.get).toHaveBeenCalledTimes(2);
 		expect(axios.get).toHaveBeenCalledWith('/shared-skills/deleted');
 		expect(result).toEqual(rows);
-		expect(requestCache.has('shared-skills-deleted')).toBe(true);
+		expect(requestCache.has('shared-skills-deleted')).toBe(false);
+	});
+
+	it('encodes the slug in version and restore URLs', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: {} } });
+		(axios.post as jest.Mock).mockResolvedValue({ data: { data: {} } });
+		await getDeletedSharedSkillVersion('a/b', 1);
+		await restoreDeletedSharedSkill('a/b', 1);
+		expect(axios.get).toHaveBeenCalledWith(
+			'/shared-skills/deleted/a%2Fb/versions/1',
+		);
+		expect(axios.post).toHaveBeenCalledWith(
+			'/shared-skills/deleted/a%2Fb/restore',
+			{ version: 1 },
+		);
 	});
 
 	it('reads one deleted version', async () => {
@@ -730,22 +745,12 @@ describe('recently deleted shared skills', () => {
 		);
 		expect(result).toEqual({ slug: 'triage', version: 4 });
 		expect(requestCache.has('shared-skills')).toBe(false);
-		expect(requestCache.has('shared-skills-deleted')).toBe(false);
 	});
 
 	it('keeps caches when restore is rejected', async () => {
 		await warm();
 		(axios.post as jest.Mock).mockRejectedValue(new Error('409'));
 		await expect(restoreDeletedSharedSkill('triage', 2)).rejects.toThrow();
-		expect(requestCache.has('shared-skills-deleted')).toBe(true);
-	});
-
-	it('deleting a skill drops the deleted list cache', async () => {
-		await warm();
-		(axios.delete as jest.Mock).mockResolvedValue({
-			data: { data: { detached_personas: [] } },
-		});
-		await deleteSharedSkill('triage');
-		expect(requestCache.has('shared-skills-deleted')).toBe(false);
+		expect(requestCache.has('shared-skills')).toBe(true);
 	});
 });

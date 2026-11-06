@@ -118,6 +118,11 @@ describe('useDeletedSkills', () => {
 		],
 		[404, undefined, 'This skill is gone for good and cannot be restored.'],
 		[422, 'Library is full', 'Library is full'],
+		[
+			422,
+			undefined,
+			'Your library is full. Delete a skill first, then restore.',
+		],
 	])('maps %i to a clear message', async (status, message, expected) => {
 		(api.restoreDeletedSharedSkill as jest.Mock).mockRejectedValue(
 			httpError(status, message),
@@ -149,5 +154,100 @@ describe('useDeletedSkills', () => {
 			title: 'Could not restore this skill',
 			variant: 'destructive',
 		});
+	});
+});
+
+const deferred = <T>() => {
+	let resolve!: (value: T) => void;
+	let reject!: (reason: unknown) => void;
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
+	return { promise, resolve, reject };
+};
+
+describe('useDeletedSkills races', () => {
+	it('ignores an earlier preview that resolves after a later one', async () => {
+		const first = deferred<ReturnType<typeof snapshot>>();
+		const second = deferred<ReturnType<typeof snapshot>>();
+		(api.getDeletedSharedSkillVersion as jest.Mock)
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise);
+		const d = useDeletedSkills(jest.fn());
+		await d.load();
+		d.toggle('triage');
+		const a = d.selectVersion(3);
+		const b = d.selectVersion(2);
+		second.resolve(snapshot(2));
+		await b;
+		first.resolve(snapshot(3));
+		await a;
+		expect(d.preview.value?.version).toBe(2);
+	});
+
+	it('only the latest load() writes items', async () => {
+		const first = deferred<unknown[]>();
+		const second = deferred<unknown[]>();
+		(api.listDeletedSharedSkills as jest.Mock)
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise);
+		const d = useDeletedSkills(jest.fn());
+		const a = d.load();
+		const b = d.load();
+		second.resolve([ITEM]);
+		await b;
+		first.resolve([]);
+		await a;
+		expect(d.items.value).toEqual([ITEM]);
+		expect(d.loading.value).toBe(false);
+	});
+
+	it('restores the original slug and version when another skill is expanded meanwhile', async () => {
+		const other = { ...ITEM, slug: 'other', title: 'Other' };
+		(api.listDeletedSharedSkills as jest.Mock).mockResolvedValue([ITEM, other]);
+		const pending = deferred<unknown>();
+		(api.restoreDeletedSharedSkill as jest.Mock).mockReturnValue(
+			pending.promise,
+		);
+		const d = useDeletedSkills(jest.fn());
+		await d.load();
+		d.toggle('triage');
+		await d.selectVersion(2);
+		const run = d.restore();
+		d.toggle('other');
+		pending.resolve({});
+		await run;
+		expect(api.restoreDeletedSharedSkill).toHaveBeenCalledWith('triage', 2);
+		expect(toast).toHaveBeenCalledWith({ title: 'Triage restored' });
+	});
+
+	it('reloads the list after a 404 restore', async () => {
+		(api.restoreDeletedSharedSkill as jest.Mock).mockRejectedValue(
+			httpError(404),
+		);
+		const d = useDeletedSkills(jest.fn());
+		await d.load();
+		d.toggle('triage');
+		await d.selectVersion(2);
+		(api.listDeletedSharedSkills as jest.Mock).mockResolvedValue([]);
+		await d.restore();
+		expect(d.items.value).toEqual([]);
+	});
+
+	it('does not send a second restore while one is in flight', async () => {
+		const pending = deferred<unknown>();
+		(api.restoreDeletedSharedSkill as jest.Mock).mockReturnValue(
+			pending.promise,
+		);
+		const d = useDeletedSkills(jest.fn());
+		await d.load();
+		d.toggle('triage');
+		await d.selectVersion(2);
+		const first = d.restore();
+		await d.restore();
+		pending.resolve({});
+		await first;
+		expect(api.restoreDeletedSharedSkill).toHaveBeenCalledTimes(1);
 	});
 });

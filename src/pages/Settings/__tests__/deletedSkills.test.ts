@@ -30,6 +30,12 @@ describe('DeletedSkills section', () => {
 		expect(source).toMatch(/watch\(\s*\(\) => props\.reloadToken/);
 	});
 
+	it('disables Retry while loading', () => {
+		expect(source.replace(/\s+/g, ' ')).toMatch(
+			/data-testid="deleted-skills-retry"[^>]*:disabled="loading"|:disabled="loading"[^>]*data-testid="deleted-skills-retry"/,
+		);
+	});
+
 	it('uses design tokens and no hard-coded colours', () => {
 		expect(source).not.toMatch(/#[0-9a-fA-F]{3,6}\b/);
 	});

@@ -487,19 +487,14 @@ export const restoreSharedSkill = async (
 	return data;
 };
 
-export const listDeletedSharedSkills = async (
-	useCache = true,
-): Promise<DeletedSharedSkill[]> =>
-	requestCache.getOrFetch(
-		'shared-skills-deleted',
-		async () => {
-			const {
-				data: { data },
-			} = await $axios.get('/shared-skills/deleted');
-			return data;
-		},
-		{ ttl: 30000, cache: useCache },
-	);
+export const listDeletedSharedSkills = async (): Promise<
+	DeletedSharedSkill[]
+> => {
+	const {
+		data: { data },
+	} = await $axios.get('/shared-skills/deleted');
+	return data;
+};
 
 export const getDeletedSharedSkillVersion = async (
 	slug: string,
@@ -507,7 +502,9 @@ export const getDeletedSharedSkillVersion = async (
 ): Promise<DeletedSharedSkillVersion> => {
 	const {
 		data: { data },
-	} = await $axios.get(`/shared-skills/deleted/${slug}/versions/${version}`);
+	} = await $axios.get(
+		`/shared-skills/deleted/${encodeURIComponent(slug)}/versions/${version}`,
+	);
 	return data;
 };
 
@@ -517,7 +514,10 @@ export const restoreDeletedSharedSkill = async (
 ): Promise<SharedSkill> => {
 	const {
 		data: { data },
-	} = await $axios.post(`/shared-skills/deleted/${slug}/restore`, { version });
+	} = await $axios.post(
+		`/shared-skills/deleted/${encodeURIComponent(slug)}/restore`,
+		{ version },
+	);
 	invalidateSharedLibrary();
 	return data;
 };

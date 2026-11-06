@@ -18,8 +18,11 @@ const restoreErrorMessage = (error: unknown): string => {
 	if (response?.status === 404) {
 		return 'This skill is gone for good and cannot be restored.';
 	}
-	if (response?.status === 422 && response.data?.message) {
-		return response.data.message;
+	if (response?.status === 422) {
+		return (
+			response.data?.message ??
+			'Your library is full. Delete a skill first, then restore.'
+		);
 	}
 	return 'Could not restore this skill';
 };
@@ -34,6 +37,7 @@ export const useDeletedSkills = (onChanged: () => void) => {
 	const previewError = ref(false);
 	const restoring = ref(false);
 	let previewToken = 0;
+	let loadToken = 0;
 
 	const current = computed(
 		() => items.value.find((i) => i.slug === expanded.value) ?? null,
@@ -47,18 +51,21 @@ export const useDeletedSkills = (onChanged: () => void) => {
 	};
 
 	const load = async () => {
+		const token = ++loadToken;
 		loading.value = true;
 		error.value = false;
 		try {
-			items.value = await listDeletedSharedSkills(false);
+			const result = await listDeletedSharedSkills();
+			if (token !== loadToken) return;
+			items.value = result;
 			if (expanded.value && !current.value) {
 				expanded.value = null;
 				resetSelection();
 			}
 		} catch {
-			error.value = true;
+			if (token === loadToken) error.value = true;
 		} finally {
-			loading.value = false;
+			if (token === loadToken) loading.value = false;
 		}
 	};
 
@@ -84,17 +91,24 @@ export const useDeletedSkills = (onChanged: () => void) => {
 
 	const restore = async () => {
 		const skill = current.value;
-		if (!skill || selected.value === null) return;
+		const version = selected.value;
+		if (restoring.value || !skill || version === null) return;
+		const { slug, title } = skill;
 		restoring.value = true;
 		try {
-			await restoreDeletedSharedSkill(skill.slug, selected.value);
-			toast({ title: `${skill.title} restored` });
-			expanded.value = null;
-			resetSelection();
+			await restoreDeletedSharedSkill(slug, version);
+			toast({ title: `${title} restored` });
+			if (expanded.value === slug) {
+				expanded.value = null;
+				resetSelection();
+			}
 			await load();
 			onChanged();
 		} catch (e) {
 			toast({ title: restoreErrorMessage(e), variant: 'destructive' });
+			if ((e as { response?: { status?: number } })?.response?.status === 404) {
+				await load();
+			}
 		} finally {
 			restoring.value = false;
 		}

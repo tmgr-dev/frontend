@@ -15,6 +15,7 @@
 			<Button
 				variant="outline"
 				size="sm"
+				:disabled="loading"
 				data-testid="deleted-skills-retry"
 				@click="load"
 			>
@@ -154,7 +155,12 @@
 				...deleted,
 				kindLabel,
 				relative: (iso: string) => formatRelativeTime(iso),
-				date: (iso: string) => new Date(iso).toLocaleDateString(),
+				date: (iso: string) =>
+					new Date(iso).toLocaleDateString('en-US', {
+						year: 'numeric',
+						month: 'short',
+						day: 'numeric',
+					}),
 			};
 		},
 	});

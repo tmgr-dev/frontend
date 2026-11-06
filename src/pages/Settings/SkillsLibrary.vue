@@ -204,8 +204,11 @@
 			const draftBytes = computed(() => byteLength(draft.value));
 			const draftErrors = computed(
 				() =>
-					validateSkillMarkdown(draft.value, editingSlug.value ?? '') ??
-					serverErrors.value,
+					validateSkillMarkdown(
+						draft.value,
+						editingSlug.value ?? '',
+						!editingSlug.value,
+					) ?? serverErrors.value,
 			);
 
 			const startEdit = async (skill: SharedSkillSummary) => {
@@ -231,7 +234,11 @@
 						.exec(draft.value.replace(/\r\n/g, '\n'))?.[1]
 						?.trim() ?? '';
 				const targetSlug = editingSlug.value ?? slugFromDraft;
-				const clientErrors = validateSkillMarkdown(draft.value, targetSlug);
+				const clientErrors = validateSkillMarkdown(
+					draft.value,
+					targetSlug,
+					!editingSlug.value,
+				);
 				if (clientErrors) {
 					serverErrors.value = clientErrors;
 					return;

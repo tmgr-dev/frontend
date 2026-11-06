@@ -168,6 +168,14 @@ describe('validateSkillMarkdown', () => {
 		expect(errors?.slug).toBeDefined();
 	});
 
+	it('reserves the slug "deleted" for new skills only', () => {
+		const markdown = '---\nslug: deleted\ntitle: T\nwhen: w\n---\nbody\n';
+		expect(validateSkillMarkdown(markdown, '', true)?.slug).toEqual([
+			'This name is reserved',
+		]);
+		expect(validateSkillMarkdown(markdown, 'deleted')).toBeNull();
+	});
+
 	it('rejects a bad slug pattern', () => {
 		const markdown = '---\nslug: Bad_Slug!\ntitle: T\nwhen: w\n---\nbody\n';
 		expect(validateSkillMarkdown(markdown, 'Bad_Slug!')?.slug).toBeDefined();
