@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.102
+
+- `tmgr mcp`: `get_answer`, `ask_owner` and `reply_owner` no longer return `pending` ("not running") at once when the desktop app cannot be reached or drops the connection. The wait now retries with a pause of 250 ms growing to 5 s until `waitSeconds` runs out, so a listener that asks again on `pending` no longer spins the CPU. With many waits open at once (above about 256 in total) the desktop drops new connections, and before this each dropped wait came back instantly.
+- `tmgr mcp` now exits within a second when stdin closes while a decisions wait is still open, instead of up to 15 seconds later.
+
 ## 1.0.101
 
 - New `tmgr setup terminal [--check]`: run it on the computer where your terminal runs, so copying in `tmgr attach` over SSH reaches the clipboard. It finds Warp, WarpOss, iTerm2, Ghostty, kitty, Alacritty, WezTerm and tmux, and for each one that blocks OSC 52 clipboard writes it shows the exact line, asks, backs the file up as `<file>.tmgr-backup-<timestamp>` and writes it. Write access only, never clipboard read. Apps that already allow it are reported as already OK, and the apps that need a restart are named. `--yes` applies without asking, `--check` only reports, and without a terminal nothing is changed.
