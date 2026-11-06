@@ -22,6 +22,7 @@ server {
     # Entry points the PWA / browser must always revalidate.
     location = /index.html { add_header Cache-Control "no-cache"; }
     location = /sw.js { add_header Cache-Control "no-cache"; }
+    location = /install.sh { add_header Cache-Control "no-cache"; }
     location = /manifest.webmanifest {
         default_type application/manifest+json;
         add_header Cache-Control "no-cache";
