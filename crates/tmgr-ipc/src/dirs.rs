@@ -12,7 +12,19 @@ fn env_path(name: &str) -> Option<PathBuf> {
 }
 
 fn env_dir(name: &str) -> io::Result<Option<PathBuf>> {
-    env_path(name).map(std::path::absolute).transpose()
+    let Some(p) = env_path(name) else {
+        return Ok(None);
+    };
+    let mut out = PathBuf::new();
+    for c in std::path::absolute(p)?.components() {
+        match c {
+            Component::ParentDir => {
+                out.pop();
+            }
+            c => out.push(c),
+        }
+    }
+    Ok(Some(out))
 }
 
 fn home() -> io::Result<PathBuf> {
