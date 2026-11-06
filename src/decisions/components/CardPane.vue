@@ -136,6 +136,7 @@
 					ref="free"
 					v-model="freeText"
 					class="free"
+					rows="1"
 					data-input="free"
 					:placeholder="
 						card.options.length
@@ -174,11 +175,13 @@
 		sourceLabel,
 		updatedLabel,
 	} from '../format';
+	import { autosizeTextarea } from '@/utils/commentComposer';
 	import { isSubmitKey } from '../keys';
 	import type { CardView } from '../types';
 	import { clickedHttpLink, renderMarkdown } from '../markdown';
 
 	const PICK_DELAY_MS = 180;
+	const FREE_MAX_HEIGHT = 240;
 
 	export default defineComponent({
 		name: 'CardPane',
@@ -236,6 +239,14 @@
 					.join(' — ');
 			},
 		},
+		watch: {
+			freeText() {
+				void this.$nextTick(() => this.sizeFree());
+			},
+		},
+		mounted() {
+			this.sizeFree();
+		},
 		beforeUnmount() {
 			window.clearTimeout(this.pickTimer);
 		},
@@ -279,6 +290,12 @@
 			},
 			focusFree() {
 				(this.$refs.free as HTMLTextAreaElement | undefined)?.focus();
+			},
+			sizeFree() {
+				autosizeTextarea(
+					this.$refs.free as HTMLTextAreaElement | undefined,
+					FREE_MAX_HEIGHT,
+				);
 			},
 			onNoteKey(event: KeyboardEvent, optionId: string) {
 				if (event.key === 'Escape') {

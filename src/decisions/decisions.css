@@ -343,7 +343,7 @@ kbd {
 	background-size: 20px 20px;
 	box-shadow: 0 0 0 1px var(--line-strong);
 	display: grid;
-	grid-template-columns: minmax(420px, 1fr) minmax(420px, 1fr);
+	grid-template-columns: minmax(360px, 3fr) minmax(320px, 2fr);
 	overflow: hidden;
 }
 .card {
@@ -422,7 +422,7 @@ kbd {
 }
 .md {
 	margin: 0 0 18px;
-	max-height: 240px;
+	max-height: 50vh;
 	overflow: auto;
 	font-size: 13.5px;
 	color: var(--fg-muted);
@@ -701,7 +701,8 @@ kbd {
 	padding: 11px 14px;
 	font: inherit;
 	resize: none;
-	height: 44px;
+	min-height: 44px;
+	max-height: 240px;
 	outline: none;
 }
 .free:focus {
