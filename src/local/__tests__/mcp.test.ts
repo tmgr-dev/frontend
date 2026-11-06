@@ -3,10 +3,51 @@ import { dispatchLocal } from '../dispatch';
 import { handleMcpRequest } from '../mcp';
 import { disableLocalPersona, enableLocalPersona } from '../personas';
 import { migrate } from '../schema';
+import {
+	attach,
+	emptyLibrary,
+	putSkill,
+	type LibraryFile,
+} from '../skillLibrary';
 import type { LocalContext } from '../types';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
 
 const describeSqlite = nodeSqliteAvailable ? describe : describe.skip;
+
+const skillMarkdown = (slug: string) =>
+	`---\nslug: ${slug}\ntitle: Title ${slug}\nwhen: Use when ${slug}\nactions: []\n---\nBody of ${slug}`;
+
+const sharedLibrary = (): LibraryFile => {
+	let lib = emptyLibrary();
+	for (const slug of ['zeta', 'alpha', 'unattached']) {
+		lib = putSkill(
+			lib,
+			slug,
+			skillMarkdown(slug),
+			'2026-11-06T10:00:00Z',
+		).library;
+	}
+	lib = attach(lib, 'p-1', 'zeta');
+	lib = attach(lib, 'p-1', 'alpha');
+	return attach(lib, 'p-2', 'unattached');
+};
+
+const skillIndex = [
+	{
+		slug: 'alpha',
+		title: 'Title alpha',
+		when: 'Use when alpha',
+		version: 1,
+		source: 'shared',
+	},
+	{
+		slug: 'zeta',
+		title: 'Title zeta',
+		when: 'Use when zeta',
+		version: 1,
+		source: 'shared',
+	},
+];
 
 describeSqlite('local MCP handler for personas', () => {
 	let ctx: LocalContext;
@@ -19,6 +60,7 @@ describeSqlite('local MCP handler for personas', () => {
 			uuid === 'p-1'
 				? { system_prompt: 'Be a careful reviewer.', prompt_version: 2 }
 				: null,
+		skillLibrary: async () => sharedLibrary(),
 	};
 
 	const rpc = (body: unknown) =>
@@ -258,8 +300,21 @@ describeSqlite('local MCP handler for personas', () => {
 					code: 'local-personal',
 					permissions: ['tasks:read'],
 				},
-				skills: [],
+				skills: skillIndex,
 			},
+		});
+	});
+
+	it('answers get_persona with the acting persona prompt and its attached skills index', async () => {
+		await enableLocalPersona(ctx, 'p-1', []);
+		const res = JSON.parse((await call('get_persona')).body).result;
+		expect(JSON.parse(res.content[0].text)).toEqual({
+			id: 'p-1',
+			name: 'Reviewer',
+			description: 'Reviews PRs',
+			system_prompt: 'Be a careful reviewer.',
+			prompt_version: 2,
+			skills: skillIndex,
 		});
 	});
 
@@ -336,12 +391,28 @@ describeSqlite('local MCP handler for personas', () => {
 		expect(statuses[0]).toHaveProperty('name');
 	});
 
-	it('answers get_persona_skill with a tool error since local workspaces have no skills yet', async () => {
+	it('answers get_persona_skill with the body, version and source of an attached skill', async () => {
 		await enableLocalPersona(ctx, 'p-1', []);
 		const res = JSON.parse(
-			(await call('get_persona_skill', { slug: 'anything' })).body,
+			(await call('get_persona_skill', { slug: 'alpha' })).body,
 		).result;
-		expect(res.isError).toBe(true);
-		expect(res.content[0].text).toBe('No skills in local workspaces yet');
+		expect(res.isError).toBeUndefined();
+		expect(JSON.parse(res.content[0].text)).toEqual({
+			slug: 'alpha',
+			body: skillMarkdown('alpha'),
+			version: 1,
+			source: 'shared',
+		});
+	});
+
+	it('answers get_persona_skill with the cloud not-found error for an unknown or unattached slug', async () => {
+		await enableLocalPersona(ctx, 'p-1', []);
+		for (const slug of ['missing', 'unattached']) {
+			const res = JSON.parse(
+				(await call('get_persona_skill', { slug })).body,
+			).result;
+			expect(res.isError).toBe(true);
+			expect(res.content[0].text).toBe('Skill not found');
+		}
 	});
 });

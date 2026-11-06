@@ -5,6 +5,12 @@ import {
 	type PersonaPermission,
 } from './personaGate';
 import { normalizePath, type LocalRouter } from './router';
+import {
+	emptyLibrary,
+	personaSkillBody,
+	personaSkillIndex,
+	type LibraryFile,
+} from './skillLibrary';
 import type { LocalContext } from './types';
 
 export interface McpDeps {
@@ -12,7 +18,11 @@ export interface McpDeps {
 		system_prompt?: string | null;
 		prompt_version?: number | null;
 	} | null>;
+	skillLibrary?: () => Promise<LibraryFile>;
 }
+
+const libraryFor = (deps: McpDeps): Promise<LibraryFile> =>
+	deps.skillLibrary ? deps.skillLibrary() : Promise.resolve(emptyLibrary());
 
 class ToolError extends Error {}
 
@@ -503,6 +513,7 @@ const TOOLS: ToolDef[] = [
 			const persona = await personaRow(ctx);
 			const permissions = await personaGrantPermissions(ctx);
 			const prompt = await deps.personaPrompt(ctx.actor!.id);
+			const skills = personaSkillIndex(await libraryFor(deps), ctx.actor!.id);
 			return {
 				user_id: ctx.user.id,
 				persona: {
@@ -521,7 +532,7 @@ const TOOLS: ToolDef[] = [
 						code: ctx.workspace.code,
 						permissions,
 					},
-					skills: [],
+					skills,
 				},
 			};
 		},
@@ -535,13 +546,14 @@ const TOOLS: ToolDef[] = [
 		async handler(_args, ctx, _router, deps) {
 			const persona = await personaRow(ctx);
 			const prompt = await deps.personaPrompt(ctx.actor!.id);
+			const skills = personaSkillIndex(await libraryFor(deps), ctx.actor!.id);
 			return {
 				id: ctx.actor!.id,
 				name: persona?.name ?? ctx.actor!.name,
 				description: persona?.description ?? null,
 				system_prompt: prompt?.system_prompt ?? null,
 				prompt_version: prompt?.prompt_version ?? null,
-				skills: [],
+				skills,
 			};
 		},
 	},
@@ -554,8 +566,15 @@ const TOOLS: ToolDef[] = [
 			properties: { slug: { type: 'string' } },
 			required: ['slug'],
 		},
-		async handler() {
-			throw new ToolError('No skills in local workspaces yet');
+		async handler(args, ctx, _router, deps) {
+			const slug = String(requireArg(args, 'slug'));
+			const skill = personaSkillBody(
+				await libraryFor(deps),
+				ctx.actor!.id,
+				slug,
+			);
+			if (!skill) throw new ToolError('Skill not found');
+			return skill;
 		},
 	},
 	{
