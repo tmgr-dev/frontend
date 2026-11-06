@@ -17,6 +17,7 @@ export const autosizeTextarea = (
 ): void => {
 	if (!el || !el.scrollHeight) return;
 	el.style.height = 'auto';
-	el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+	const border = el.offsetHeight - el.clientHeight || 0;
+	el.style.height = `${Math.min(el.scrollHeight + border, maxHeight)}px`;
 	el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
 };
