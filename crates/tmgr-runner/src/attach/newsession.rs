@@ -3731,9 +3731,9 @@ mod tests {
         let height = |w| new_session_rect(Rect::new(0, 0, w, 40), ns).height;
         let wide = height(100);
         assert!(draw(&v, 100, 40).contains("Ctrl+R resumes a past session, Esc cancels"));
-        assert!(height(40) > wide);
+        assert_eq!(height(50), wide);
+        assert_eq!(height(40), wide + 1);
         for w in [50, 40] {
-            assert!(height(w) >= wide, "{w}");
             let shown = draw(&v, w, 40);
             assert!(shown.contains("Enter starts,"), "{w}\n{shown}");
             assert!(shown.contains("cancels"), "{w}\n{shown}");
