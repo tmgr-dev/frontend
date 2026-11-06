@@ -87,6 +87,26 @@ test('logout clears persona LLM data on the desktop app, using the user id captu
 	expect(clearPersonaLlmForLogout).toHaveBeenCalledWith(42);
 });
 
+test('a failed persona LLM cleanup on logout is written to the desktop log', async () => {
+	const clearPersonaLlmForLogout = jest
+		.fn()
+		.mockRejectedValue(new Error('persona_llm_clear_for_user: denied'));
+	const log = { error: jest.fn().mockResolvedValue(undefined) };
+	const consoleError = jest.spyOn(console, 'error').mockImplementation();
+	const { config } = fixture({
+		'@/local/personaCache': { clearPersonaLlmForLogout },
+		'@/utils/desktop': { isDesktopApp: () => true },
+		'@tauri-apps/plugin-log': log,
+	});
+	const state = { user: { id: 42 }, token: { token: 'x' } };
+	config.actions.logout({ commit: jest.fn(), state });
+	await new Promise((done) => setTimeout(done, 0));
+	consoleError.mockRestore();
+	expect(log.error).toHaveBeenCalledWith(
+		expect.stringContaining('persona_llm_clear_for_user: denied'),
+	);
+});
+
 test('logout leaves persona LLM data alone outside the desktop app', () => {
 	const clearPersonaLlmForLogout = jest.fn();
 	const isDesktopApp = jest.fn().mockReturnValue(false);

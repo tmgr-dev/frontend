@@ -500,11 +500,19 @@ const actions = {
 		// the next account on a shared browser.
 		const userId = state.user?.id;
 		if (isDesktopApp() && userId > 0) {
-			clearPersonaLlmForLogout(userId).catch((error) => {
+			clearPersonaLlmForLogout(userId).catch(async (error) => {
 				console.error(
 					'[auth] failed to clear persona LLM data on logout',
 					error,
 				);
+				try {
+					const log = await import('@tauri-apps/plugin-log');
+					await log.error(
+						`[auth] failed to clear persona LLM data on logout: ${error?.message ?? error}`,
+					);
+				} catch {
+					/* logging must never break logout */
+				}
 			});
 		}
 		disconnectRealtime();
