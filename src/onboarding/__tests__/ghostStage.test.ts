@@ -51,4 +51,22 @@ describe('ghost stage', () => {
 		await handler('PUT', 'onboarding/preferences', { hub_hidden: true });
 		expect(readGhostStage(storage)).toBe('wheel');
 	});
+
+	it('keeps a stage written while the intent route is still seeding', async () => {
+		const { createOnboardingHandler } = await import('@/local/onboarding');
+		const storage = memory();
+		writeGhostStage(storage, 'watch');
+		const ctxFor = jest.fn(async () => {
+			writeGhostStage(storage, 'wheel');
+			return null;
+		});
+		const handler = createOnboardingHandler(storage, {
+			ctxFor,
+			tokens: async () => [],
+		});
+		await handler('POST', 'onboarding/intent', { intent: 'human', seed: true });
+		expect(ctxFor).toHaveBeenCalled();
+		expect(readGhostStage(storage)).toBe('wheel');
+		expect(JSON.parse(storage.map.get(ONBOARDING_KEY)!).intent).toBe('human');
+	});
 });

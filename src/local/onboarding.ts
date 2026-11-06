@@ -198,7 +198,13 @@ export const createOnboardingHandler = (
 								: undefined,
 						)
 					: 0;
-			save(state);
+			const latest: LocalOnboardingState = load(storage);
+			latest.intent = state.intent;
+			if (state.starter_seeded_at) {
+				latest.starter_seeded_at = state.starter_seeded_at;
+				latest.starter_workspace = state.starter_workspace;
+			}
+			save(latest);
 			return {
 				status: 200,
 				data: {

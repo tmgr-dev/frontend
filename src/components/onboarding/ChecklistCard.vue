@@ -179,14 +179,16 @@
 				'has_routine',
 				'has_page',
 			];
-			onMounted(async () => {
+			const refreshLocalFacts = async () => {
 				if (!store.getters.isLocalOnly) return;
 				try {
 					tours.patchFacts(await onboardingApi().fetchFacts(LOCAL_FACTS));
 				} catch (error) {
 					console.error('local checklist facts failed', error);
 				}
-			});
+			};
+			onMounted(refreshLocalFacts);
+			watch(isDemo, refreshLocalFacts);
 			const progressWidth = computed(() =>
 				checklist.value.total
 					? `${Math.round(

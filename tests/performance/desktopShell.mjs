@@ -389,17 +389,12 @@ export const desktopPage = async (
 ) => {
   const shell = await fakeShell(shellOptions);
   const {
+    freshInstall = false,
     appVersion = '0.9.8',
-    lastSeenVersion = appVersion,
+    lastSeenVersion = freshInstall ? null : appVersion,
     windowLabel = 'main',
     platform = null,
-    freshInstall = false,
   } = shellOptions;
-  if (!freshInstall) {
-    await page.addInitScript(() => {
-      localStorage.setItem('tmgr:cloud-seen', '1');
-    });
-  }
   if (platform) {
     await page.addInitScript((spoof) => {
       Object.defineProperty(navigator, 'platform', {

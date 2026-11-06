@@ -126,7 +126,7 @@
 		revealBackups,
 		type BackupStatus,
 	} from '@/local/backups';
-	import { deleteDemo } from '@/local/demoApi';
+	import { completeDemoEntry, deleteDemo } from '@/local/demoApi';
 	import { ghostStage } from '@/onboarding/ghostStage';
 	import { activeLocalWorkspace } from '@/local/runtime';
 	import { desktopOfferEnv, offerBackups } from '@/tours/desktopOffers';
@@ -252,7 +252,9 @@
 				deleting.value = true;
 				deleteError.value = '';
 				try {
-					await deleteDemo(demoCode.value);
+					if (ghostStage.value === 'watch' || ghostStage.value === 'wheel')
+						await completeDemoEntry({ deleteDemo: true });
+					else await deleteDemo(demoCode.value);
 				} catch (e) {
 					deleteError.value = e instanceof Error ? e.message : String(e);
 					confirmingDelete.value = false;

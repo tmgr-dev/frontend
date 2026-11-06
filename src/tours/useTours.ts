@@ -56,7 +56,10 @@ export interface ToursApi {
 		trigger: string,
 		options?: { retryMs?: number },
 	): Promise<boolean>;
-	setIntent(intent: string, options?: { seed?: boolean }): Promise<void>;
+	setIntent(
+		intent: string,
+		options?: { seed?: boolean; workspace?: string },
+	): Promise<void>;
 	setChecklistHidden(hidden: boolean): Promise<void>;
 	resetAll(): Promise<void>;
 	takeMeThere(): void;

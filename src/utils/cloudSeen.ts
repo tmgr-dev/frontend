@@ -15,3 +15,13 @@ export const hasCloudSeen = (storage: Pick<Storage, 'getItem'>): boolean => {
 		return true;
 	}
 };
+
+const RAN_BEFORE_KEY = 'desktop.whatsNew.lastSeenVersion';
+
+export const hasRunBefore = (storage: Pick<Storage, 'getItem'>): boolean => {
+	try {
+		return storage.getItem(RAN_BEFORE_KEY) !== null;
+	} catch {
+		return true;
+	}
+};

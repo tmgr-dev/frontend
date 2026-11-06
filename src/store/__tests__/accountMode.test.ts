@@ -329,6 +329,11 @@ describe('startFreshInstall', () => {
 			(fx: ReturnType<typeof fixture>) => fx.data.set('tmgr:cloud-seen', '1'),
 		],
 		[
+			'a device that ran a previous version',
+			(fx: ReturnType<typeof fixture>) =>
+				fx.data.set('desktop.whatsNew.lastSeenVersion', '0.9.107'),
+		],
+		[
 			'a profile in the app state',
 			(fx: ReturnType<typeof fixture>) =>
 				(fx.config.state.localProfile = PROFILE),
@@ -360,6 +365,20 @@ describe('startFreshInstall', () => {
 		expect(fx.mocks.createDemoWorkspace).not.toHaveBeenCalled();
 		expect(fx.mocks.setGhostStage).not.toHaveBeenCalled();
 		expect(fx.mocks.push).not.toHaveBeenCalled();
+	});
+
+	it('falls back to the old first run in My workspace when the demo cannot be created', async () => {
+		const fx = fixture();
+		fx.mocks.createDemoWorkspace.mockRejectedValue(new Error('disk'));
+		const { started } = await start(fx);
+		expect(started).toBe(true);
+		expect(fx.mocks.setActiveLocalWorkspace).toHaveBeenCalledWith(
+			expect.objectContaining({ code: 'my-workspace' }),
+		);
+		expect(fx.mocks.setGhostStage).not.toHaveBeenCalled();
+		const marker = JSON.parse(fx.data.get(MARKER)!);
+		expect(marker.code).toBe('my-workspace');
+		expect(marker.entry).toBeUndefined();
 	});
 
 	it('remembers a cloud session when a token is set', () => {

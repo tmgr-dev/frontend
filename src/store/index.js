@@ -606,8 +606,9 @@ const actions = {
 	async startFreshInstall({ commit, state }) {
 		const storage = localStorageSafe();
 		const firstRun = await import('@/onboarding/localFirstRun');
-		const { hasCloudSeen } = await import('@/utils/cloudSeen');
-		if (!storage || hasCloudSeen(storage)) return false;
+		const { hasCloudSeen, hasRunBefore } = await import('@/utils/cloudSeen');
+		if (!storage || hasCloudSeen(storage) || hasRunBefore(storage))
+			return false;
 		if (!(await detectFreshInstall(state, storage, firstRun))) return false;
 		const { createLocalProfile } = await import('@/utils/localProfile');
 		const runtime = await import('@/local/runtime');
@@ -615,13 +616,25 @@ const actions = {
 		const { rememberDemoOfferAnswer } = await import('@/local/demoOffer');
 		const { setGhostStage } = await import('@/onboarding/ghostStage');
 		const profile = await createLocalProfile();
-		if (!runtime.firstRealWorkspace(await runtime.listLocalWorkspaces(true)))
-			await runtime.createLocalWorkspace('My workspace');
-		const demo = await createDemoWorkspace();
-		runtime.setActiveLocalWorkspace(demo);
-		firstRun.writeFreshMarker(storage, demo.code, new Date(), 'demo');
-		setGhostStage('watch');
-		rememberDemoOfferAnswer(storage, 'watched');
+		let mine = runtime.firstRealWorkspace(
+			await runtime.listLocalWorkspaces(true),
+		);
+		if (!mine) mine = await runtime.createLocalWorkspace('My workspace');
+		let demo = null;
+		try {
+			demo = await createDemoWorkspace();
+		} catch (error) {
+			console.error('demo workspace failed, starting without it', error);
+		}
+		if (demo) {
+			runtime.setActiveLocalWorkspace(demo);
+			firstRun.writeFreshMarker(storage, demo.code, new Date(), 'demo');
+			setGhostStage('watch');
+			rememberDemoOfferAnswer(storage, 'watched');
+		} else {
+			runtime.setActiveLocalWorkspace(mine);
+			firstRun.writeFreshMarker(storage, mine.code, new Date());
+		}
 		commit('setLocalProfile', profile);
 		const { default: router } = await import('@/router');
 		await router.push('/app');

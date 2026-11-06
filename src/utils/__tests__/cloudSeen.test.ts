@@ -1,4 +1,4 @@
-import { CLOUD_SEEN_KEY, hasCloudSeen } from '../cloudSeen';
+import { CLOUD_SEEN_KEY, hasCloudSeen, hasRunBefore } from '../cloudSeen';
 
 describe('hasCloudSeen', () => {
 	it('is false on a storage without the marker and true with it', () => {
@@ -17,5 +17,15 @@ describe('hasCloudSeen', () => {
 				},
 			}),
 		).toBe(true);
+	});
+});
+
+describe('hasRunBefore', () => {
+	it('is true once the app has recorded a seen version', () => {
+		const map = new Map<string, string>();
+		const storage = { getItem: (key: string) => map.get(key) ?? null };
+		expect(hasRunBefore(storage)).toBe(false);
+		map.set('desktop.whatsNew.lastSeenVersion', '0.9.107');
+		expect(hasRunBefore(storage)).toBe(true);
 	});
 });
