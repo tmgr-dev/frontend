@@ -295,7 +295,7 @@ export const indexStorageKey = (
 	userId: number | string,
 ): string => `tmgr.skillImport.v1:${apiBase}:${userId}`;
 
-const isIndexEntry = (value: unknown): value is IndexEntry => {
+export const isIndexEntry = (value: unknown): value is IndexEntry => {
 	if (!value || typeof value !== 'object') return false;
 	const entry = value as Record<string, unknown>;
 	return (
