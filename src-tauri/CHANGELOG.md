@@ -3,6 +3,13 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.109 — 2026-11-06
+
+- New first launch: on a fresh install TMGR skips the Welcome screen and opens a demo workspace where a simulated agent works for about 20 seconds. Then it is your turn: move a card, start a timer or add a task, and press "Create my workspace" to get your own workspace with starter tasks. Sign in is one click away in the demo banner.
+- The Getting started checklist now shows in local mode for fresh installs (never in the demo itself).
+- Existing users and signed-out accounts still see the Welcome screen and are not moved into the demo.
+- Demo fixes: quitting during the simulated run resets the card instead of leaving it half-moved, time you track on the demo card is no longer wiped on relaunch, and with reduced motion the demo shows the finished board immediately.
+
 ## 0.9.108 — 2026-11-06
 
 - Move to cloud now carries your skills library: skills on this device that are attached to the moved workspace's personas go into your account's shared skills library and are attached to the cloud personas. A skill already in your library with the same content is reused; a different skill with the same name is added as `name-2`.
