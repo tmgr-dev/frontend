@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.113 — 2026-11-06
+
+- Decisions: new "Search queue" box above the queue. It filters cards as you type by title, description and task key; Esc clears it, and "No matches" shows when nothing fits. Hotkeys stay off while you type, and the selection moves to the first match when the current card is filtered out.
+
 ## 0.9.112 — 2026-11-06
 
 - Shift+Enter now adds a new line in every chat box: the AI assistant, the Decisions chat, the task chat and the agent follow-up box. Enter still sends, and the Enter that confirms an input-method composition no longer sends by mistake. The boxes grow with the text and scroll past a maximum height.
