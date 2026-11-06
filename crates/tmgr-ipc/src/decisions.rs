@@ -4,10 +4,11 @@ use crate::secret;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read, Write};
+use std::net::Shutdown;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
 pub const PROTO: u32 = 1;
@@ -25,7 +26,10 @@ pub const OUTCOME_CREATED: &str = "created";
 pub const OUTCOME_UPDATED: &str = "updated";
 pub const OUTCOME_FINAL: &str = "final";
 pub const UNAUTHORIZED: &str = "unauthorized";
+pub const BAD_REQUEST: &str = "bad request";
 pub const MAX_WAIT_MS: u64 = 3_600_000;
+pub const MAX_WAIT_CARDS: usize = 64;
+pub const BUSY_LINE: &str = r#"{"busy":true,"error":"busy: too many connections"}"#;
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
 const IO_GRACE: Duration = Duration::from_secs(10);
 const UNAUTHORIZED_ATTEMPTS: u32 = 5;
@@ -308,6 +312,95 @@ pub enum Op {
         agent: String,
         session: String,
     },
+    /// Like `Wait`, over several cards at once: the first card with an event wins.
+    WaitAny {
+        cards: Vec<WaitCard>,
+        timeout_ms: u64,
+        #[serde(default)]
+        final_only: bool,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WaitCard {
+    pub card_id: String,
+    #[serde(default)]
+    pub since: u64,
+}
+
+pub fn write_busy<W: Write>(w: &mut W) -> io::Result<()> {
+    w.write_all(format!("{BUSY_LINE}\n").as_bytes())?;
+    w.flush()
+}
+
+/// `BUSY_LINE` has no `ok`, so clients older than it fail to parse it and treat it like a closed connection.
+pub fn is_busy(line: &[u8]) -> bool {
+    #[derive(Deserialize)]
+    struct Busy {
+        busy: bool,
+    }
+    serde_json::from_slice::<Busy>(line).is_ok_and(|b| b.busy)
+}
+
+#[derive(Default)]
+struct CancelState {
+    cancelled: bool,
+    stream: Option<UnixStream>,
+}
+
+/// Ends a blocked `Client` call from another thread: the call returns `ErrorKind::Interrupted`.
+#[derive(Default)]
+pub struct Cancel {
+    state: Mutex<CancelState>,
+    cv: Condvar,
+}
+
+impl Cancel {
+    fn lock(&self) -> std::sync::MutexGuard<'_, CancelState> {
+        self.state.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    pub fn cancel(&self) {
+        let mut s = self.lock();
+        s.cancelled = true;
+        if let Some(stream) = s.stream.take() {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+        self.cv.notify_all();
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.lock().cancelled
+    }
+
+    /// Sleeps up to `d`; true when cancelled.
+    pub fn sleep(&self, d: Duration) -> bool {
+        let s = self.lock();
+        let (s, _) = self
+            .cv
+            .wait_timeout_while(s, d, |s| !s.cancelled)
+            .unwrap_or_else(|p| p.into_inner());
+        s.cancelled
+    }
+
+    fn attach(&self, stream: &UnixStream) -> io::Result<()> {
+        let mut s = self.lock();
+        if s.cancelled {
+            return Err(cancelled());
+        }
+        s.stream = Some(stream.try_clone()?);
+        Ok(())
+    }
+
+    fn detach(&self) -> bool {
+        let mut s = self.lock();
+        s.stream = None;
+        s.cancelled
+    }
+}
+
+fn cancelled() -> io::Error {
+    io::Error::new(io::ErrorKind::Interrupted, "cancelled")
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -448,10 +541,14 @@ impl Client {
     }
 
     pub fn call(&self, op: Op) -> io::Result<Response> {
+        self.call_with(op, None)
+    }
+
+    fn call_with(&self, op: Op, cancel: Option<&Cancel>) -> io::Result<Response> {
         let mut unreadable = None;
         for attempt in 1..=UNAUTHORIZED_ATTEMPTS {
             let token = self.token.lock().unwrap_or_else(|p| p.into_inner()).clone();
-            let resp = self.send(op.clone(), token)?;
+            let resp = self.send(op.clone(), token, cancel)?;
             if resp.ok || resp.error.as_deref() != Some(UNAUTHORIZED) {
                 return Ok(resp);
             }
@@ -470,32 +567,60 @@ impl Client {
             .unwrap_or_else(|| io::Error::new(io::ErrorKind::PermissionDenied, UNAUTHORIZED)))
     }
 
-    fn send(&self, op: Op, token: String) -> io::Result<Response> {
+    fn send(&self, op: Op, token: String, cancel: Option<&Cancel>) -> io::Result<Response> {
         let wait = match &op {
-            Op::Wait { timeout_ms, .. } => Duration::from_millis((*timeout_ms).min(MAX_WAIT_MS)),
+            Op::Wait { timeout_ms, .. } | Op::WaitAny { timeout_ms, .. } => {
+                Duration::from_millis((*timeout_ms).min(MAX_WAIT_MS))
+            }
             _ => Duration::ZERO,
         };
         let mut stream: UnixStream =
             endpoint::connect_within(&socket_endpoint(&self.dir), CONNECT_TIMEOUT)?;
         stream.set_write_timeout(Some(IO_GRACE))?;
         stream.set_read_timeout(Some(wait + IO_GRACE))?;
+        if let Some(c) = cancel {
+            c.attach(&stream)?;
+        }
+        let read = self.exchange(&mut stream, op, token);
+        if cancel.is_some_and(Cancel::detach) {
+            return Err(cancelled());
+        }
+        let line = read?;
+        if is_busy(&line) {
+            return Err(io::Error::new(
+                io::ErrorKind::ResourceBusy,
+                "the decisions inbox is busy",
+            ));
+        }
+        serde_json::from_slice(&line).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    }
+
+    fn exchange(&self, stream: &mut UnixStream, op: Op, token: String) -> io::Result<Vec<u8>> {
         let req = Request {
             v: PROTO,
             token,
             op,
         };
-        write_line(&mut stream, &req)?;
-        let line = read_line_limited(&stream)?.ok_or_else(|| {
+        if let Err(e) = write_line(stream, &req) {
+            return match read_line_limited(&*stream) {
+                Ok(Some(line)) if is_busy(&line) => Ok(line),
+                _ => Err(e),
+            };
+        }
+        read_line_limited(&*stream)?.ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "the decisions inbox closed the connection",
             )
-        })?;
-        serde_json::from_slice(&line).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        })
     }
 
     fn checked(&self, op: Op) -> io::Result<Response> {
-        let r = self.call(op)?;
+        self.checked_with(op, None)
+    }
+
+    fn checked_with(&self, op: Op, cancel: Option<&Cancel>) -> io::Result<Response> {
+        let r = self.call_with(op, cancel)?;
         if r.ok {
             Ok(r)
         } else {
@@ -530,14 +655,53 @@ impl Client {
         timeout: Duration,
         final_only: bool,
     ) -> io::Result<Option<Event>> {
+        self.wait_cancellable(card_id, since, timeout, final_only, None)
+    }
+
+    pub fn wait_cancellable(
+        &self,
+        card_id: &str,
+        since: u64,
+        timeout: Duration,
+        final_only: bool,
+        cancel: Option<&Cancel>,
+    ) -> io::Result<Option<Event>> {
         Ok(self
-            .checked(Op::Wait {
-                card_id: card_id.to_string(),
-                since,
-                timeout_ms: timeout.as_millis().min(MAX_WAIT_MS as u128) as u64,
-                final_only,
-            })?
+            .checked_with(
+                Op::Wait {
+                    card_id: card_id.to_string(),
+                    since,
+                    timeout_ms: timeout_ms(timeout),
+                    final_only,
+                },
+                cancel,
+            )?
             .event)
+    }
+
+    /// The first event over `cards` (the event carries its `card_id`). A desktop without
+    /// `wait_any` answers `ErrorKind::Unsupported`.
+    pub fn wait_any(
+        &self,
+        cards: &[WaitCard],
+        timeout: Duration,
+        final_only: bool,
+        cancel: Option<&Cancel>,
+    ) -> io::Result<Option<Event>> {
+        let op = Op::WaitAny {
+            cards: cards.to_vec(),
+            timeout_ms: timeout_ms(timeout),
+            final_only,
+        };
+        let r = self.call_with(op, cancel)?;
+        if r.ok {
+            return Ok(r.event);
+        }
+        let msg = r.error.unwrap_or_else(|| "refused".into());
+        if msg == BAD_REQUEST {
+            return Err(io::Error::new(io::ErrorKind::Unsupported, msg));
+        }
+        Err(io::Error::other(msg))
     }
 
     pub fn reply(
@@ -563,6 +727,10 @@ impl Client {
             .closed
             .unwrap_or(0))
     }
+}
+
+fn timeout_ms(timeout: Duration) -> u64 {
+    timeout.as_millis().min(MAX_WAIT_MS as u128) as u64
 }
 
 /// Queue a card while the desktop is not running; the desktop takes it in on its next start.
@@ -995,5 +1163,164 @@ mod tests {
         let client = Client::open_in(&dir).unwrap();
         fs::remove_file(dir.join(TOKEN)).unwrap();
         assert_eq!(client.ping().unwrap_err().kind(), io::ErrorKind::NotFound);
+    }
+
+    fn waiting_card() -> Op {
+        Op::Wait {
+            card_id: "c_1".into(),
+            since: 0,
+            timeout_ms: 1,
+            final_only: false,
+        }
+    }
+
+    #[test]
+    fn busy_is_its_own_line_that_old_clients_cannot_parse() {
+        assert!(is_busy(BUSY_LINE.as_bytes()));
+        let ok = serde_json::to_vec(&Response::ok()).unwrap();
+        assert!(!is_busy(&ok));
+        assert!(!is_busy(
+            &serde_json::to_vec(&Response::err("busy")).unwrap()
+        ));
+        assert!(serde_json::from_str::<Response>(BUSY_LINE).is_err());
+        let mut out = Vec::new();
+        write_busy(&mut out).unwrap();
+        assert_eq!(
+            read_line_limited(&out[..]).unwrap().unwrap(),
+            BUSY_LINE.as_bytes()
+        );
+    }
+
+    #[test]
+    fn a_busy_reply_is_resource_busy_even_before_the_request_is_read() {
+        let t = private_tmp();
+        let dir = t.path().join("d");
+        prepare_server_dir(&dir).unwrap();
+        let listener = std::os::unix::net::UnixListener::bind(dir.join(SOCK)).unwrap();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let _ = write_busy(&mut stream);
+            }
+        });
+        let client = Client::open_in(&dir).unwrap();
+        for _ in 0..20 {
+            let err = client.call(waiting_card()).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::ResourceBusy, "{err}");
+        }
+    }
+
+    #[test]
+    fn cancel_ends_a_blocked_wait_at_once() {
+        let t = private_tmp();
+        let dir = t.path().join("d");
+        prepare_server_dir(&dir).unwrap();
+        let listener = std::os::unix::net::UnixListener::bind(dir.join(SOCK)).unwrap();
+        let (held_tx, held_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(stream) = stream else { continue };
+                let _ = read_line_limited(&stream);
+                let _ = held_tx.send(stream);
+            }
+        });
+        let client = Client::open_in(&dir).unwrap();
+        let cancel = std::sync::Arc::new(Cancel::default());
+        let c = cancel.clone();
+        let waiter = std::thread::spawn(move || {
+            let started = std::time::Instant::now();
+            let r = client.wait_cancellable("c_1", 0, Duration::from_secs(60), false, Some(&c));
+            (r, started.elapsed())
+        });
+        let held = held_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+        let fired = std::time::Instant::now();
+        cancel.cancel();
+        let (r, _) = waiter.join().unwrap();
+        assert!(
+            fired.elapsed() < Duration::from_millis(500),
+            "{:?}",
+            fired.elapsed()
+        );
+        assert_eq!(r.unwrap_err().kind(), io::ErrorKind::Interrupted);
+        let mut byte = [0u8; 1];
+        assert_eq!((&held).read(&mut byte).unwrap(), 0);
+        assert!(cancel.sleep(Duration::from_secs(5)));
+        assert_eq!(
+            Client::open_in(&dir)
+                .unwrap()
+                .wait_cancellable("c_1", 0, Duration::from_secs(1), false, Some(&cancel))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::Interrupted
+        );
+    }
+
+    #[test]
+    fn an_uncancelled_sleep_runs_its_time() {
+        let c = Cancel::default();
+        let started = std::time::Instant::now();
+        assert!(!c.sleep(Duration::from_millis(60)));
+        assert!(started.elapsed() >= Duration::from_millis(55));
+    }
+
+    #[test]
+    fn wait_any_on_a_desktop_without_it_is_unsupported() {
+        let t = private_tmp();
+        let dir = t.path().join("d");
+        prepare_server_dir(&dir).unwrap();
+        let listener = std::os::unix::net::UnixListener::bind(dir.join(SOCK)).unwrap();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let Ok(Some(line)) = read_line_limited(&stream) else {
+                    continue;
+                };
+                #[derive(Deserialize)]
+                #[serde(tag = "op", rename_all = "snake_case")]
+                enum OldOp {
+                    Wait {},
+                }
+                let resp = match serde_json::from_slice::<OldOp>(&line) {
+                    Ok(_) => Response::ok(),
+                    Err(_) => Response::err(BAD_REQUEST),
+                };
+                let _ = write_line(&mut stream, &resp);
+            }
+        });
+        let client = Client::open_in(&dir).unwrap();
+        let cards = [WaitCard {
+            card_id: "c_1".into(),
+            since: 0,
+        }];
+        let err = client
+            .wait_any(&cards, Duration::from_millis(10), false, None)
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::Unsupported);
+        assert!(client
+            .wait("c_1", 0, Duration::from_millis(10), false)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn wait_any_wire_shape() {
+        let r = Request {
+            v: PROTO,
+            token: "t".into(),
+            op: Op::WaitAny {
+                cards: vec![WaitCard {
+                    card_id: "c_1".into(),
+                    since: 3,
+                }],
+                timeout_ms: 5,
+                final_only: false,
+            },
+        };
+        let v: serde_json::Value = serde_json::to_value(&r).unwrap();
+        assert_eq!(v["op"], "wait_any");
+        assert_eq!(v["cards"][0]["card_id"], "c_1");
+        assert_eq!(v["cards"][0]["since"], 3);
+        assert_eq!(serde_json::from_value::<Request>(v).unwrap(), r);
     }
 }
