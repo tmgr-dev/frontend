@@ -12,6 +12,7 @@ import {
 	putSkill,
 	SkillLibraryError,
 	validateLibrary,
+	validateLibraryReport,
 } from '../skillLibrary';
 
 const NOW = '2026-11-06T10:00:00.000Z';
@@ -92,37 +93,55 @@ describe('validateLibrary', () => {
 		);
 	});
 
-	it('rejects a skill with an invalid slug or front matter', () => {
+	it('skips a bad skill with its links and attachments and keeps the rest', () => {
 		const good = withSkills('alpha').skills[0];
-		expect(() =>
-			validateLibrary({
-				version: 1,
-				skills: [{ ...good, slug: 'Bad Slug' }],
-			}),
-		).toThrow(SkillLibraryError);
-		expect(() =>
-			validateLibrary({
-				version: 1,
-				skills: [{ ...good, markdown: 'no front matter' }],
-			}),
-		).toThrow(SkillLibraryError);
+		const link = {
+			slug: 'bad',
+			sourceHash: 'h',
+			libraryVersion: 1,
+			importedAt: NOW,
+		};
+		const { library, skipped } = validateLibraryReport({
+			version: 1,
+			skills: [
+				good,
+				{ ...good, slug: 'bad', markdown: 'no front matter' },
+				{ ...good, slug: 'zero', version: 0 },
+				{ ...good, slug: 'Bad Slug' },
+				{ ...good },
+			],
+			links: { k: link },
+			attachments: [
+				{ persona_uuid: PERSONA, slug: 'bad' },
+				{ persona_uuid: PERSONA, slug: 'alpha' },
+			],
+		});
+		expect(library.skills.map((s) => s.slug)).toEqual(['alpha']);
+		expect(skipped.map((s) => s.slug)).toEqual([
+			'bad',
+			'zero',
+			'Bad Slug',
+			'alpha',
+		]);
+		expect(library.links).toEqual({});
+		expect(library.attachments).toEqual([
+			{ persona_uuid: PERSONA, slug: 'alpha' },
+		]);
+		expect(
+			validateLibrary({ version: 1, skills: [{ ...good, version: 1.5 }] })
+				.skills,
+		).toEqual([]);
 	});
 
-	it('rejects a skill whose version is not a positive integer', () => {
-		const good = withSkills('alpha').skills[0];
-		expect(() =>
-			validateLibrary({ version: 1, skills: [{ ...good, version: 0 }] }),
-		).toThrow(SkillLibraryError);
-		expect(() =>
-			validateLibrary({ version: 1, skills: [{ ...good, version: 1.5 }] }),
-		).toThrow(SkillLibraryError);
-	});
-
-	it('rejects duplicate skill slugs', () => {
-		const good = withSkills('alpha').skills[0];
-		expect(() =>
-			validateLibrary({ version: 1, skills: [good, { ...good }] }),
-		).toThrow(/unique/);
+	it('keeps unknown top-level and per-skill fields through a write', () => {
+		const good = { ...withSkills('alpha').skills[0], future: { a: 1 } };
+		const lib = validateLibrary({ version: 1, skills: [good], theme: 'x' });
+		expect(lib.theme).toBe('x');
+		expect(lib.skills[0].future).toEqual({ a: 1 });
+		const next = putSkill(lib, 'alpha', md('alpha', 'New'), LATER).library;
+		expect(next.theme).toBe('x');
+		expect(next.skills[0].future).toEqual({ a: 1 });
+		expect(attach(next, PERSONA, 'alpha').theme).toBe('x');
 	});
 
 	it('rejects malformed links', () => {

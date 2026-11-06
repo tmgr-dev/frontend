@@ -6,7 +6,12 @@
 			</DialogHeader>
 			<p class="text-xs text-muted-foreground">
 				Read-only scan of skill folders on this computer. Nothing is executed;
-				only the skills you tick are sent to your skills library.
+				only the skills you tick are
+				{{
+					target
+						? 'saved to the skills library on this device'
+						: 'sent to your skills library'
+				}}.
 			</p>
 
 			<p v-if="scanning" class="text-sm text-muted-foreground">Scanning…</p>

@@ -191,7 +191,18 @@ export const installLocalUpgrade = (
 		let status: string | undefined;
 		try {
 			await invoke('persona_cache_migrate_local', { toUserId: userId });
-			await invoke('skill_library_migrate_local', { toUserId: userId });
+			try {
+				const moved = (await invoke('skill_library_migrate_local', {
+					toUserId: userId,
+				})) as { conflicts?: number } | null;
+				if (moved && Number(moved.conflicts) > 0) {
+					console.error(
+						'[upgrade] the account already has a skills library; the local one was left in place',
+					);
+				}
+			} catch {
+				console.error('[upgrade] could not move the local skills library');
+			}
 			if (stale()) return abandon();
 			const llm = (await invoke('persona_llm_migrate_local', {
 				toUserId: userId,

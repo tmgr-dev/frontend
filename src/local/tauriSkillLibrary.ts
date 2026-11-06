@@ -1,9 +1,11 @@
 import {
 	emptyLibrary,
-	validateLibrary,
+	validateLibraryReport,
 	type LibraryFile,
+	type LibraryReport,
 	type LibrarySkill,
 } from './skillLibrary';
+import { bumpSkillLibraryRevision } from './skillLibraryRevision';
 
 const invoke = async <T>(
 	command: string,
@@ -13,12 +15,17 @@ const invoke = async <T>(
 	return core.invoke<T>(command, args);
 };
 
-export const readSkillLibrary = async (
+export const readSkillLibraryReport = async (
 	userId: number,
-): Promise<LibraryFile> => {
+): Promise<LibraryReport> => {
 	const raw = await invoke<unknown>('skill_library_read', { userId });
-	return raw == null ? emptyLibrary() : validateLibrary(raw);
+	return raw == null
+		? { library: emptyLibrary(), skipped: [] }
+		: validateLibraryReport(raw);
 };
+
+export const readSkillLibrary = async (userId: number): Promise<LibraryFile> =>
+	(await readSkillLibraryReport(userId)).library;
 
 export const writeSkillLibrary = (
 	userId: number,
@@ -35,6 +42,7 @@ export const updateSkillLibrary = <T>(
 	const run = queue.then(async () => {
 		const { library, result } = change(await readSkillLibrary(userId));
 		await writeSkillLibrary(userId, library);
+		bumpSkillLibraryRevision();
 		return result;
 	});
 	queue = run.catch(() => undefined);

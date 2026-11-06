@@ -46,6 +46,9 @@
 			</Button>
 		</div>
 
+		<p v-if="skippedNote" class="text-xs text-amber-800 dark:text-amber-300">
+			{{ skippedNote }}
+		</p>
 		<p v-if="loadError" class="text-sm text-red-600 dark:text-red-400">
 			{{ loadError }}
 		</p>
@@ -161,10 +164,11 @@
 		linkedUpdateStatuses,
 		type SkillUpdateStatus,
 	} from '@/local/skillUpdateStatus';
+	import { skillLibraryRevision } from '@/local/skillLibraryRevision';
 	import {
 		exportSkillLibrary,
 		pickSkillLibraryImport,
-		readSkillLibrary,
+		readSkillLibraryReport,
 		updateSkillLibrary,
 	} from '@/local/tauriSkillLibrary';
 	import SkillImportDialog from '@/pages/Settings/SkillImportDialog.vue';
@@ -174,7 +178,7 @@
 		validateSkillMarkdown,
 	} from '@/utils/personas';
 	import type { ScanResult } from '@/utils/skillImport';
-	import { computed, defineComponent, onMounted, ref } from 'vue';
+	import { computed, defineComponent, onMounted, ref, watch } from 'vue';
 	import { useStore } from 'vuex';
 
 	export default defineComponent({
@@ -193,6 +197,7 @@
 
 			const library = ref<LibraryFile | null>(null);
 			const loadError = ref<string | null>(null);
+			const skippedNote = ref<string | null>(null);
 			const personaNames = ref<Record<string, string>>({});
 			const statuses = ref<Record<string, SkillUpdateStatus>>({});
 			const checking = ref(false);
@@ -225,7 +230,14 @@
 			const reload = async () => {
 				if (!ready.value) return;
 				try {
-					library.value = await readSkillLibrary(userId());
+					const report = await readSkillLibraryReport(userId());
+					library.value = report.library;
+					skippedNote.value = report.skipped.length
+						? `Skipped ${report.skipped.length} unreadable skill(s): ${report.skipped
+								.map((s) => s.slug || 'entry')
+								.join(', ')}`
+						: null;
+					statuses.value = {};
 					loadError.value = null;
 				} catch (error) {
 					loadError.value =
@@ -254,6 +266,11 @@
 				reload();
 				loadPersonaNames();
 			});
+			watch(userId, () => {
+				reload();
+				loadPersonaNames();
+			});
+			watch(skillLibraryRevision, reload);
 
 			const attachedNames = (slug: string) => {
 				const names = (library.value?.attachments ?? [])
@@ -406,6 +423,7 @@
 				ready,
 				target,
 				loadError,
+				skippedNote,
 				skills,
 				hasLinks,
 				statuses,

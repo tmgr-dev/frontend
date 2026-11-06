@@ -418,6 +418,7 @@
 		type LibraryFile,
 		type LibrarySkill,
 	} from '@/local/skillLibrary';
+	import { skillLibraryRevision } from '@/local/skillLibraryRevision';
 	import {
 		readSkillLibrary,
 		updateSkillLibrary,
@@ -551,6 +552,9 @@
 					skillLibrary.value = null;
 				}
 			};
+
+			watch(skillLibraryRevision, refreshSkillLibrary);
+			watch(() => currentUser().id, refreshSkillLibrary);
 
 			const attachedSkills = (persona: WorkspacePersonaRow): LibrarySkill[] =>
 				(skillLibrary.value?.attachments ?? [])

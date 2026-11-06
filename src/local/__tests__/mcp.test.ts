@@ -415,4 +415,39 @@ describeSqlite('local MCP handler for personas', () => {
 			expect(res.content[0].text).toBe('Skill not found');
 		}
 	});
+
+	it('keeps whoami and get_persona working and hides skills when the library cannot be read', async () => {
+		await enableLocalPersona(ctx, 'p-1', []);
+		const broken = {
+			...deps,
+			skillLibrary: async (): Promise<LibraryFile> => {
+				throw new Error('unreadable');
+			},
+		};
+		const via = async (name: string, args: Record<string, unknown> = {}) =>
+			JSON.parse(
+				(
+					await handleMcpRequest(
+						router,
+						ctx,
+						JSON.stringify({
+							jsonrpc: '2.0',
+							id: 1,
+							method: 'tools/call',
+							params: { name, arguments: args },
+						}),
+						broken,
+					)
+				).body,
+			).result;
+		const who = await via('whoami');
+		expect(who.isError).toBeUndefined();
+		expect(JSON.parse(who.content[0].text).persona.skills).toEqual([]);
+		const got = await via('get_persona');
+		expect(got.isError).toBeUndefined();
+		expect(JSON.parse(got.content[0].text).skills).toEqual([]);
+		const skill = await via('get_persona_skill', { slug: 'alpha' });
+		expect(skill.isError).toBe(true);
+		expect(skill.content[0].text).toBe('Skill not found');
+	});
 });

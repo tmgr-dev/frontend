@@ -1,12 +1,14 @@
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_dialog::DialogExt;
 
+static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 const MAX_FILE_BYTES: u64 = 2_500_000;
 const MAX_SKILLS: usize = 100;
 const MAX_MARKDOWN_BYTES: usize = 16_384;
@@ -117,9 +119,10 @@ fn validate_library(data: &Value) -> Result<(), String> {
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
   let dir = path.parent().ok_or("invalid path")?;
   fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-  let tmp = path.with_extension("json.tmp");
+  let name = path.file_name().and_then(|n| n.to_str()).ok_or("invalid path")?;
+  let tmp = dir.join(format!(".{name}.{}.{}.tmp", std::process::id(), TMP_COUNTER.fetch_add(1, Ordering::Relaxed)));
   let result = (|| -> std::io::Result<()> {
-    let mut file = fs::File::create(&tmp)?;
+    let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
     file.write_all(bytes)?;
     file.sync_all()?;
     fs::rename(&tmp, path)
@@ -131,15 +134,20 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
 }
 
 fn read_capped(path: &Path) -> Result<Option<Vec<u8>>, String> {
-  let meta = match fs::metadata(path) {
-    Ok(m) => m,
+  let file = match fs::File::open(path) {
+    Ok(f) => f,
     Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
     Err(e) => return Err(e.to_string()),
   };
-  if meta.len() > MAX_FILE_BYTES {
+  if !file.metadata().map_err(|e| e.to_string())?.is_file() {
+    return Err("not a regular file".into());
+  }
+  let mut bytes = Vec::new();
+  file.take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+  if bytes.len() as u64 > MAX_FILE_BYTES {
     return Err("file is too large".into());
   }
-  fs::read(path).map(Some).map_err(|e| e.to_string())
+  Ok(Some(bytes))
 }
 
 fn read_library(path: &Path) -> Result<Option<Value>, String> {
@@ -187,24 +195,26 @@ fn require_main<R: Runtime>(window: &tauri::Window<R>, command: &str) -> Result<
 }
 
 #[tauri::command]
-pub fn skill_library_read<R: Runtime>(
+pub async fn skill_library_read<R: Runtime>(
   app: AppHandle<R>,
   window: tauri::Window<R>,
   user_id: i64,
 ) -> Result<Option<Value>, String> {
   require_main(&window, "skill_library_read")?;
-  read_library(&library_path(&app, user_id)?)
+  let path = library_path(&app, user_id)?;
+  tauri::async_runtime::spawn_blocking(move || read_library(&path)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn skill_library_write<R: Runtime>(
+pub async fn skill_library_write<R: Runtime>(
   app: AppHandle<R>,
   window: tauri::Window<R>,
   user_id: i64,
   data: Value,
 ) -> Result<(), String> {
   require_main(&window, "skill_library_write")?;
-  write_library(&library_path(&app, user_id)?, &data)
+  let path = library_path(&app, user_id)?;
+  tauri::async_runtime::spawn_blocking(move || write_library(&path, &data)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -413,7 +423,24 @@ mod tests {
     atomic_write(&path, b"one").unwrap();
     atomic_write(&path, b"two").unwrap();
     assert_eq!(fs::read_to_string(&path).unwrap(), "two");
-    assert!(!tmp.path().join("a.json.tmp").exists());
+    let names: Vec<_> = fs::read_dir(tmp.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+    assert_eq!(names, vec![std::ffi::OsString::from("a.json")]);
+  }
+
+  #[test]
+  fn atomic_write_does_not_touch_a_user_file_named_like_the_old_temp() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("skills.json");
+    let user = tmp.path().join("skills.json.tmp");
+    fs::write(&user, "mine").unwrap();
+    atomic_write(&path, b"x").unwrap();
+    assert_eq!(fs::read_to_string(&user).unwrap(), "mine");
+  }
+
+  #[test]
+  fn read_refuses_a_directory() {
+    let tmp = tempfile::tempdir().unwrap();
+    assert!(read_capped(tmp.path()).is_err());
   }
 
   #[test]

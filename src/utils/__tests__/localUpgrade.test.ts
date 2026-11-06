@@ -129,6 +129,35 @@ test('success: links, migrates both, clears migrate and keeps the dialog flag', 
 	expect(storage.getItem(LOCAL_UPGRADE_KEY)).toBeNull();
 });
 
+test('a failing or conflicting skills library move never blocks the LLM move', async () => {
+	const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+	for (const skills of [
+		() => {
+			throw new Error('disk');
+		},
+		() => ({ moved: 0, conflicts: 1 }),
+	]) {
+		const storage = memoryStorage();
+		markLocalUpgrade(storage);
+		const { store } = makeStore(7);
+		const invoke = makeInvoke({
+			local_profile_link: linkedTo(7),
+			persona_llm_migrate_local: () => ({ status: 'moved' }),
+			persona_cache_migrate_local: () => ({ moved: 1, conflicts: 0 }),
+			skill_library_migrate_local: skills,
+		});
+		installLocalUpgrade(store, invoke, storage);
+		await flush();
+		expect(invoke).toHaveBeenCalledWith('persona_llm_migrate_local', {
+			toUserId: 7,
+		});
+		expect(upgradeState).toMatchObject({ phase: 'done', key: 'moved' });
+		expect(errors).toHaveBeenCalled();
+		errors.mockClear();
+	}
+	errors.mockRestore();
+});
+
 test('conflict counts as done', async () => {
 	const storage = memoryStorage();
 	markLocalUpgrade(storage);

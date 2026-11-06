@@ -24,6 +24,14 @@ export interface McpDeps {
 const libraryFor = (deps: McpDeps): Promise<LibraryFile> =>
 	deps.skillLibrary ? deps.skillLibrary() : Promise.resolve(emptyLibrary());
 
+const skillIndexFor = async (deps: McpDeps, personaUuid: string) => {
+	try {
+		return personaSkillIndex(await libraryFor(deps), personaUuid);
+	} catch {
+		return [];
+	}
+};
+
 class ToolError extends Error {}
 
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
@@ -513,7 +521,7 @@ const TOOLS: ToolDef[] = [
 			const persona = await personaRow(ctx);
 			const permissions = await personaGrantPermissions(ctx);
 			const prompt = await deps.personaPrompt(ctx.actor!.id);
-			const skills = personaSkillIndex(await libraryFor(deps), ctx.actor!.id);
+			const skills = await skillIndexFor(deps, ctx.actor!.id);
 			return {
 				user_id: ctx.user.id,
 				persona: {
@@ -546,7 +554,7 @@ const TOOLS: ToolDef[] = [
 		async handler(_args, ctx, _router, deps) {
 			const persona = await personaRow(ctx);
 			const prompt = await deps.personaPrompt(ctx.actor!.id);
-			const skills = personaSkillIndex(await libraryFor(deps), ctx.actor!.id);
+			const skills = await skillIndexFor(deps, ctx.actor!.id);
 			return {
 				id: ctx.actor!.id,
 				name: persona?.name ?? ctx.actor!.name,
@@ -568,11 +576,12 @@ const TOOLS: ToolDef[] = [
 		},
 		async handler(args, ctx, _router, deps) {
 			const slug = String(requireArg(args, 'slug'));
-			const skill = personaSkillBody(
-				await libraryFor(deps),
-				ctx.actor!.id,
-				slug,
-			);
+			let skill: ReturnType<typeof personaSkillBody> = null;
+			try {
+				skill = personaSkillBody(await libraryFor(deps), ctx.actor!.id, slug);
+			} catch {
+				skill = null;
+			}
 			if (!skill) throw new ToolError('Skill not found');
 			return skill;
 		},

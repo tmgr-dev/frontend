@@ -14,6 +14,7 @@ export interface LibrarySkill {
 	markdown: string;
 	version: number;
 	updated_at: string;
+	[extra: string]: unknown;
 }
 
 export interface LibraryAttachment {
@@ -26,6 +27,7 @@ export interface LibraryFile {
 	skills: LibrarySkill[];
 	links: Record<string, IndexEntry>;
 	attachments: LibraryAttachment[];
+	[extra: string]: unknown;
 }
 
 export interface SkillRef {
@@ -103,7 +105,12 @@ export const emptyLibrary = (): LibraryFile => ({
 	attachments: [],
 });
 
-export const validateLibrary = (input: unknown): LibraryFile => {
+export interface LibraryReport {
+	library: LibraryFile;
+	skipped: SkillImportSkipped[];
+}
+
+export const validateLibraryReport = (input: unknown): LibraryReport => {
 	if (!isRecord(input) || input.version !== 1) {
 		throw new SkillLibraryError('library must have version 1');
 	}
@@ -116,9 +123,14 @@ export const validateLibrary = (input: unknown): LibraryFile => {
 		);
 	}
 
-	const skills = input.skills.map((value): LibrarySkill => {
-		if (!isRecord(value))
-			throw new SkillLibraryError('skill must be an object');
+	const skipped: SkillImportSkipped[] = [];
+	const skills: LibrarySkill[] = [];
+	const seen = new Set<string>();
+	for (const value of input.skills) {
+		if (!isRecord(value)) {
+			skipped.push({ slug: '', reason: 'skill must be an object' });
+			continue;
+		}
 		const { slug, markdown, version, updated_at: updatedAt } = value;
 		if (
 			typeof slug !== 'string' ||
@@ -127,25 +139,35 @@ export const validateLibrary = (input: unknown): LibraryFile => {
 			!Number.isInteger(version) ||
 			(version as number) < 1
 		) {
-			throw new SkillLibraryError(`skill ${String(slug)} is malformed`);
+			skipped.push({
+				slug: typeof slug === 'string' ? slug : '',
+				reason: 'skill is malformed',
+			});
+			continue;
 		}
 		const checked = checkSkill(slug, markdown);
 		if (!checked.ok) {
-			throw new SkillLibraryError(`skill ${slug}: ${checked.reason}`);
+			skipped.push({ slug, reason: checked.reason });
+			continue;
 		}
-		return {
+		if (seen.has(slug)) {
+			skipped.push({ slug, reason: 'duplicate slug' });
+			continue;
+		}
+		seen.add(slug);
+		skills.push({
+			...value,
 			slug,
 			title: checked.title,
 			when: checked.when,
 			markdown,
 			version: version as number,
 			updated_at: updatedAt,
-		};
-	});
-	const slugs = new Set(skills.map((skill) => skill.slug));
-	if (slugs.size !== skills.length) {
-		throw new SkillLibraryError('skill slugs must be unique');
+		});
 	}
+	const dropped = new Set(
+		skipped.map((item) => item.slug).filter((slug) => !seen.has(slug)),
+	);
 
 	const linksInput = input.links ?? {};
 	if (!isRecord(linksInput)) {
@@ -156,14 +178,15 @@ export const validateLibrary = (input: unknown): LibraryFile => {
 		if (!isIndexEntry(entry)) {
 			throw new SkillLibraryError(`link ${key} is malformed`);
 		}
-		links[key] = entry;
+		if (!dropped.has(entry.slug)) links[key] = entry;
 	}
 
 	const attachmentsInput = input.attachments ?? [];
 	if (!Array.isArray(attachmentsInput)) {
 		throw new SkillLibraryError('attachments must be an array');
 	}
-	const attachments = attachmentsInput.map((value): LibraryAttachment => {
+	const attachments: LibraryAttachment[] = [];
+	for (const value of attachmentsInput) {
 		if (
 			!isRecord(value) ||
 			typeof value.persona_uuid !== 'string' ||
@@ -171,8 +194,13 @@ export const validateLibrary = (input: unknown): LibraryFile => {
 		) {
 			throw new SkillLibraryError('attachment is malformed');
 		}
-		return { persona_uuid: value.persona_uuid, slug: value.slug };
-	});
+		if (dropped.has(value.slug)) continue;
+		attachments.push({
+			...value,
+			persona_uuid: value.persona_uuid,
+			slug: value.slug,
+		});
+	}
 	const perPersona = new Map<string, number>();
 	for (const attachment of attachments) {
 		const count = (perPersona.get(attachment.persona_uuid) ?? 0) + 1;
@@ -184,8 +212,14 @@ export const validateLibrary = (input: unknown): LibraryFile => {
 		perPersona.set(attachment.persona_uuid, count);
 	}
 
-	return { version: 1, skills, links, attachments };
+	return {
+		library: { ...input, version: 1, skills, links, attachments },
+		skipped,
+	};
 };
+
+export const validateLibrary = (input: unknown): LibraryFile =>
+	validateLibraryReport(input).library;
 
 export const putSkill = (
 	lib: LibraryFile,
@@ -207,6 +241,7 @@ export const putSkill = (
 	}
 
 	const skill: LibrarySkill = {
+		...existing,
 		slug,
 		title: checked.title,
 		when: checked.when,
