@@ -506,7 +506,7 @@ export function usePusher(): UsePusherReturn {
 			channel.listen(
 				'.tasks.reordered',
 				(data: { status_id: number; source_instance_id?: string }) => {
-					const sub = subscriptions.get(channelName);
+					const sub = routed(channelName, data);
 					if (sub) {
 						sub.handlers.forEach((h) =>
 							h.onTasksReordered?.(data.status_id, data.source_instance_id),

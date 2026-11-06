@@ -357,6 +357,21 @@ describe('workspace events on the member channel', () => {
 		expect(b).not.toHaveBeenCalled();
 	});
 
+	test('a reordered column reaches the board of its workspace only', () => {
+		const { instances, pusher } = setup();
+		const a = jest.fn();
+		const b = jest.fn();
+		pusher.subscribeToWorkspace(7, { onTasksReordered: a });
+		pusher.subscribeToWorkspace(8, { onTasksReordered: b });
+		instances[0].channels.get('App.User.3').callbacks['.tasks.reordered']({
+			status_id: 12,
+			source_instance_id: 'client-3',
+			workspace_id: 7,
+		});
+		expect(a).toHaveBeenCalledWith(12, 'client-3');
+		expect(b).not.toHaveBeenCalled();
+	});
+
 	test('numeric and string workspace ids select the same subscribers', () => {
 		const { instances, pusher } = setup();
 		const a = jest.fn();
