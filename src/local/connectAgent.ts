@@ -96,7 +96,7 @@ export const runAgentConnect = (
 	action: ConnectAction,
 	tokenId?: string,
 ): Promise<RunOutcome> =>
-	invoke('agent_connect_run', { request: { agent, action, tokenId } });
+	invoke('agent_connect_run', { agent, action, tokenId });
 
 export const DEMO_REFUSAL =
 	'Create your own workspace first, then connect your agent.';

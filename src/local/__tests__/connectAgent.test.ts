@@ -131,10 +131,12 @@ describe('wrappers', () => {
 		expect(invoke).toHaveBeenCalledWith('agents_detect', undefined);
 	});
 
-	it('runAgentConnect passes the request object', async () => {
+	it('runAgentConnect passes agent, action and token id', async () => {
 		await runAgentConnect('codex', 'install', 'lt_x');
 		expect(invoke).toHaveBeenCalledWith('agent_connect_run', {
-			request: { agent: 'codex', action: 'install', tokenId: 'lt_x' },
+			agent: 'codex',
+			action: 'install',
+			tokenId: 'lt_x',
 		});
 	});
 });
@@ -161,11 +163,9 @@ describe('installAgent', () => {
 			expiresInDays: 90,
 		});
 		expect(invoke).toHaveBeenLastCalledWith('agent_connect_run', {
-			request: {
-				agent: 'claude-code',
-				action: 'install',
-				tokenId: 'lt_newnewnewnewnewn',
-			},
+			agent: 'claude-code',
+			action: 'install',
+			tokenId: 'lt_newnewnewnewnewn',
 		});
 		expect(result).toMatchObject({ status: 'ok', modulesChanged: true });
 	});
@@ -291,7 +291,9 @@ describe('removeAgent', () => {
 		]);
 		const result = await removeAgent({ agent: 'claude-code' });
 		expect(invoke).toHaveBeenCalledWith('agent_connect_run', {
-			request: { agent: 'claude-code', action: 'remove', tokenId: undefined },
+			agent: 'claude-code',
+			action: 'remove',
+			tokenId: undefined,
 		});
 		expect(result.status).toBe('ok');
 		expect(calls.filter((c) => c.startsWith('revoke:')).sort()).toEqual([
