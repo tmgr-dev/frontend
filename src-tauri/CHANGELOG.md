@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.116 — 2026-11-06
+
+- New macOS widget: add "TMGR" from the widget gallery (right-click the desktop or open Notification Center, then Edit Widgets) to see the running timer with a live elapsed time, or "No timer running". It is read-only for now. The widget reads one small file with the running task titles and has no network access.
+
 ## 0.9.115 — 2026-11-06
 
 - Decisions: the answer box grows with what you type (up to a limit, then it scrolls), and the card column is wider, with the description allowed to grow to half the window height instead of a small 240 px box.
