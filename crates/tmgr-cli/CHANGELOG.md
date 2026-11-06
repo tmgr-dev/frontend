@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.99
+
+- `tmgr attach`: the New session folder field now opens a folder picker. Recent shows pinned folders first, then folders of past and live sessions ranked by use and recency; typing searches them; Right opens a folder in a file-style browser (Left goes up, `.` shows hidden folders, `~` jumps home) with the git branch, dirty, merged and live markers; typing `/`, `~` or `.` still gives the plain path field with Tab completion. Ctrl+P pins or unpins a folder (kept in `folder-pins.toml` in the CLI config folder). Enter still starts, with the same checks and prompts as before.
+
 ## 1.0.98
 
 - A finished session's background process now exits once its session folder is removed, not only when the whole runner folder is, so it no longer waits 24 hours when the folder was removed by hand or the runner never told it to stop.
