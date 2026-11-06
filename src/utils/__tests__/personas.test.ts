@@ -16,6 +16,7 @@ import {
 	extractFieldErrors,
 	isMachineAuthored,
 	isReadPermission,
+	isReservedSkillSlug,
 	matchesAuthorFilter,
 	parseSkillFrontMatter,
 	PERSONA_PERMISSIONS,
@@ -148,6 +149,13 @@ describe('parseSkillFrontMatter', () => {
 
 	it('returns null when there is no closing delimiter', () => {
 		expect(parseSkillFrontMatter('---\nslug: triage\nbody')).toBeNull();
+	});
+});
+
+describe('isReservedSkillSlug', () => {
+	it('flags only the deleted slug', () => {
+		expect(isReservedSkillSlug('deleted')).toBe(true);
+		expect(isReservedSkillSlug('triage')).toBe(false);
 	});
 });
 

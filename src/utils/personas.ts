@@ -101,6 +101,11 @@ export const ATTACHED_SKILL_LIMIT = 20;
 export const SKILL_BODY_MAX_BYTES = 16384;
 export const SKILL_TITLE_MAX_LENGTH = 120;
 export const SKILL_SLUG_PATTERN = /^[a-z0-9-]{1,60}$/;
+export const RESERVED_SKILL_SLUG = 'deleted';
+export const isReservedSkillSlug = (slug: string) =>
+	slug === RESERVED_SKILL_SLUG;
+export const RESERVED_SKILL_MESSAGE =
+	'This skill uses a reserved name. Rename it with the tmgr CLI, or delete it.';
 export const SKILL_TEMPLATE =
 	'---\nslug: \ntitle: \nwhen: \nactions: []\n---\n';
 
@@ -176,7 +181,7 @@ export const validateSkillMarkdown = (
 		errors.slug = [
 			"must be lowercase letters, digits or '-', up to 60 characters",
 		];
-	} else if (isNew && parsed.slug === 'deleted') {
+	} else if (isNew && isReservedSkillSlug(parsed.slug)) {
 		errors.slug = ['This name is reserved'];
 	} else if (expectedSlug && parsed.slug !== expectedSlug) {
 		errors.slug = ['must match the URL slug'];

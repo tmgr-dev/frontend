@@ -235,6 +235,19 @@ describe('useDeletedSkills races', () => {
 		expect(d.items.value).toEqual([]);
 	});
 
+	it('reloads the list after a 409 restore', async () => {
+		(api.restoreDeletedSharedSkill as jest.Mock).mockRejectedValue(
+			httpError(409),
+		);
+		const d = useDeletedSkills(jest.fn());
+		await d.load();
+		d.toggle('triage');
+		await d.selectVersion(2);
+		(api.listDeletedSharedSkills as jest.Mock).mockResolvedValue([]);
+		await d.restore();
+		expect(d.items.value).toEqual([]);
+	});
+
 	it('does not send a second restore while one is in flight', async () => {
 		const pending = deferred<unknown>();
 		(api.restoreDeletedSharedSkill as jest.Mock).mockReturnValue(

@@ -52,7 +52,7 @@
 						variant="outline"
 						size="sm"
 						:aria-label="`History of ${skill.title}`"
-						@click="historySlug = skill.slug"
+						@click="openHistory(skill)"
 					>
 						History
 					</Button>
@@ -149,6 +149,8 @@
 		byteLength,
 		detachedSkillsTitle,
 		extractFieldErrors,
+		isReservedSkillSlug,
+		RESERVED_SKILL_MESSAGE,
 		SHARED_SKILL_LIMIT,
 		SKILL_BODY_MAX_BYTES,
 		SKILL_TEMPLATE,
@@ -211,7 +213,19 @@
 					) ?? serverErrors.value,
 			);
 
+			const guardReserved = (skill: SharedSkillSummary) => {
+				if (!isReservedSkillSlug(skill.slug)) return false;
+				toast({ title: RESERVED_SKILL_MESSAGE, variant: 'destructive' });
+				return true;
+			};
+
+			const openHistory = (skill: SharedSkillSummary) => {
+				if (guardReserved(skill)) return;
+				historySlug.value = skill.slug;
+			};
+
 			const startEdit = async (skill: SharedSkillSummary) => {
+				if (guardReserved(skill)) return;
 				try {
 					const full = await getSharedSkill(skill.slug);
 					editingSlug.value = skill.slug;
@@ -319,6 +333,7 @@
 				draftBytes,
 				draftErrors,
 				startEdit,
+				openHistory,
 				cancelEdit,
 				submit,
 				remove,

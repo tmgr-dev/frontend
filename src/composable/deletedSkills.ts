@@ -106,7 +106,9 @@ export const useDeletedSkills = (onChanged: () => void) => {
 			onChanged();
 		} catch (e) {
 			toast({ title: restoreErrorMessage(e), variant: 'destructive' });
-			if ((e as { response?: { status?: number } })?.response?.status === 404) {
+			const status = (e as { response?: { status?: number } })?.response
+				?.status;
+			if (status === 404 || status === 409) {
 				await load();
 			}
 		} finally {
