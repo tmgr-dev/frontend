@@ -76,7 +76,16 @@
 				>
 					<li v-for="change in metaChanges" :key="change">{{ change }}</li>
 				</ul>
+				<p
+					v-if="error"
+					class="text-xs text-destructive"
+					data-testid="history-error"
+					role="alert"
+				>
+					Couldn't load this version. Try again.
+				</p>
 				<pre
+					v-else
 					class="max-h-80 overflow-auto rounded bg-muted p-2 font-mono text-xs"
 					data-testid="history-diff"
 				><span

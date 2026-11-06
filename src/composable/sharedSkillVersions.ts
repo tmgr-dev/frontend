@@ -52,6 +52,7 @@ export const useSharedSkillHistory = (slug: string, onChanged: () => void) => {
 	const diff = ref<DiffLine[]>([]);
 	const metaChanges = ref<string[]>([]);
 	let refreshToken = 0;
+	const error = ref(false);
 	const loading = ref(false);
 	const restoring = ref(false);
 
@@ -60,42 +61,36 @@ export const useSharedSkillHistory = (slug: string, onChanged: () => void) => {
 
 	const refreshDiff = async () => {
 		const token = ++refreshToken;
-		if (selected.value === null) {
-			diff.value = [];
-			metaChanges.value = [];
-			return;
-		}
-		const target = selected.value;
+		diff.value = [];
+		metaChanges.value = [];
+		error.value = false;
+		if (selected.value === null) return;
 		const { from, to } = pickDiffPair(
 			versions.value,
-			target,
+			selected.value,
 			compareWithCurrent.value,
 		);
-		const [before, after] = await Promise.all([
-			snapshotOf(from),
-			snapshotOf(to),
-		]);
-		if (token !== refreshToken || !after) return;
-		diff.value = lineDiff(before?.body ?? '', after.body);
-		metaChanges.value = metadataChanges(before, after);
+		try {
+			const [before, after] = await Promise.all([
+				snapshotOf(from),
+				snapshotOf(to),
+			]);
+			if (token !== refreshToken || !after) return;
+			diff.value = lineDiff(before?.body ?? '', after.body);
+			metaChanges.value = metadataChanges(before, after);
+		} catch {
+			if (token === refreshToken) error.value = true;
+		}
 	};
 
 	const select = async (version: number) => {
 		selected.value = version;
-		try {
-			await refreshDiff();
-		} catch {
-			toast({ title: 'Could not load this version', variant: 'destructive' });
-		}
+		await refreshDiff();
 	};
 
 	const setCompareWithCurrent = async (value: boolean) => {
 		compareWithCurrent.value = value;
-		try {
-			await refreshDiff();
-		} catch {
-			toast({ title: 'Could not load this version', variant: 'destructive' });
-		}
+		await refreshDiff();
 	};
 
 	const load = async () => {
@@ -148,6 +143,7 @@ export const useSharedSkillHistory = (slug: string, onChanged: () => void) => {
 		compareWithCurrent,
 		diff,
 		metaChanges,
+		error,
 		loading,
 		restoring,
 		load,

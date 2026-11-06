@@ -48,7 +48,12 @@
 					</p>
 				</div>
 				<div class="flex shrink-0 gap-2">
-					<Button variant="outline" size="sm" @click="historySlug = skill.slug">
+					<Button
+						variant="outline"
+						size="sm"
+						:aria-label="`History of ${skill.title}`"
+						@click="historySlug = skill.slug"
+					>
 						History
 					</Button>
 					<Button variant="outline" size="sm" @click="startEdit(skill)">
@@ -63,7 +68,7 @@
 
 		<SharedSkillHistory
 			v-if="historySkill"
-			:key="`${historySkill.slug}-${historySkill.version}`"
+			:key="`${historySkill.slug}-${historySkill.version}-${revision}`"
 			:slug="historySkill.slug"
 			:title="historySkill.title"
 			@close="historySlug = null"

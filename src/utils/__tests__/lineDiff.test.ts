@@ -35,12 +35,18 @@ describe('lineDiff', () => {
 		]);
 	});
 
-	it('ignores a single trailing newline', () => {
-		expect(lineDiff('a\n', 'a')).toEqual([{ type: 'same', text: 'a' }]);
-		expect(lineDiff('a\nb\n', 'a\nb\nc\n')).toEqual([
+	it('shows a trailing newline difference', () => {
+		expect(lineDiff('a', 'a\n')).toEqual([
 			{ type: 'same', text: 'a' },
-			{ type: 'same', text: 'b' },
-			{ type: 'add', text: 'c' },
+			{ type: 'add', text: '' },
+		]);
+		expect(lineDiff('a\n', 'a')).toEqual([
+			{ type: 'same', text: 'a' },
+			{ type: 'del', text: '' },
+		]);
+		expect(lineDiff('a\n', 'a\n')).toEqual([
+			{ type: 'same', text: 'a' },
+			{ type: 'same', text: '' },
 		]);
 	});
 
@@ -57,5 +63,38 @@ describe('lineDiff', () => {
 			{ type: 'same', text: 'b' },
 			{ type: 'del', text: 'c' },
 		]);
+	});
+
+	it('diffs large inputs quickly with a single change', () => {
+		const lines = Array.from({ length: 8000 }, (_, i) => `l${i}`);
+		const changed = [...lines];
+		changed[4000] = 'x';
+		const started = Date.now();
+		const out = lineDiff(lines.join('\n'), changed.join('\n'));
+		expect(Date.now() - started).toBeLessThan(1000);
+		expect(out.filter((l) => l.type === 'del')).toEqual([
+			{ type: 'del', text: 'l4000' },
+		]);
+		expect(out.filter((l) => l.type === 'add')).toEqual([
+			{ type: 'add', text: 'x' },
+		]);
+		expect(out).toHaveLength(8001);
+	});
+
+	it('falls back to delete-all then add-all when the middle is too large', () => {
+		const a = Array.from({ length: 8000 }, (_, i) => `a${i}`);
+		const b = Array.from({ length: 8000 }, (_, i) => `b${i}`);
+		a.unshift('head');
+		b.unshift('head');
+		a.push('tail');
+		b.push('tail');
+		const started = Date.now();
+		const out = lineDiff(a.join('\n'), b.join('\n'));
+		expect(Date.now() - started).toBeLessThan(1000);
+		expect(out[0]).toEqual({ type: 'same', text: 'head' });
+		expect(out[out.length - 1]).toEqual({ type: 'same', text: 'tail' });
+		expect(out.slice(1, 8001).every((l) => l.type === 'del')).toBe(true);
+		expect(out.slice(8001, 16001).every((l) => l.type === 'add')).toBe(true);
+		expect(out).toHaveLength(16002);
 	});
 });

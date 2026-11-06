@@ -182,6 +182,71 @@ describe('overlapping refreshes', () => {
 	});
 });
 
+describe('selection state', () => {
+	it('clears the previous diff while the new snapshot loads', async () => {
+		const h = useSharedSkillHistory('triage', jest.fn());
+		await h.load();
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => (release = r));
+		(api.getSharedSkillVersion as jest.Mock).mockImplementation(
+			async (_s: string, v: number) => {
+				await gate;
+				return snapshot(v);
+			},
+		);
+		const pending = h.select(3);
+		expect(h.selected.value).toBe(3);
+		expect(h.diff.value).toEqual([]);
+		expect(h.metaChanges.value).toEqual([]);
+		release();
+		await pending;
+		expect(h.diff.value.length).toBeGreaterThan(0);
+	});
+
+	it('exposes an error and no stale diff when the snapshot fails', async () => {
+		const h = useSharedSkillHistory('triage', jest.fn());
+		await h.load();
+		expect(h.diff.value.length).toBeGreaterThan(0);
+		(api.getSharedSkillVersion as jest.Mock).mockRejectedValue(new Error('x'));
+		await h.select(3);
+		expect(h.error.value).toBe(true);
+		expect(h.diff.value).toEqual([]);
+		(api.getSharedSkillVersion as jest.Mock).mockImplementation(
+			async (_s: string, v: number) => snapshot(v),
+		);
+		await h.select(3);
+		expect(h.error.value).toBe(false);
+		expect(h.diff.value.length).toBeGreaterThan(0);
+	});
+
+	it('ignores a slow response of a superseded selection, including failures', async () => {
+		const h = useSharedSkillHistory('triage', jest.fn());
+		await h.load();
+		let fail: () => void = () => {};
+		const gate = new Promise<void>(
+			(_, rej) => (fail = () => rej(new Error('x'))),
+		);
+		(api.getSharedSkillVersion as jest.Mock).mockImplementation(
+			async (_s: string, v: number) => {
+				if (v === 3) await gate;
+				return snapshot(v);
+			},
+		);
+		const first = h.select(5);
+		const slow = h.select(3);
+		(api.getSharedSkillVersion as jest.Mock).mockImplementation(
+			async (_s: string, v: number) => snapshot(v),
+		);
+		await h.select(1);
+		fail();
+		await slow;
+		await first;
+		expect(h.selected.value).toBe(1);
+		expect(h.error.value).toBe(false);
+		expect(h.diff.value).toEqual([{ type: 'add', text: 'body 1' }]);
+	});
+});
+
 describe('metadataChanges', () => {
 	const base = { title: 'A', when: 'w', actions: [{ a: 1 }] };
 
