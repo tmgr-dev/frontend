@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.97
+
+- Hardening: sandboxed agents can no longer read the tmgr CLI's config folder when the CLI and the runner use different config locations (for example a different `XDG_CONFIG_HOME`). The CLI now tells the runner where its config lives; the runner adds that folder to every session's deny list, remembers it across restarts, and refuses to start a session whose working folder contains it. The default protections cannot be removed this way.
+
 ## 1.0.96
 
 - The Decisions inbox no longer fills with empty cards from Claude Code notifications: `idle_prompt` makes no card, `agent_needs_input` and `elicitation_dialog` make one only when the message has real text (stock text such as "Claude is waiting for your input" does not count), and a finished-turn card needs the assistant's last message or uncommitted changes. A `permission_prompt` notification with only stock text makes no card, since the `permission-request` card already names the tool and command. `tmgr ask` and `ask_owner` cards are unchanged.
