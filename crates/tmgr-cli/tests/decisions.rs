@@ -2031,6 +2031,52 @@ fn get_answer_with_card_ids_returns_the_first_event_from_any_card() {
 }
 
 #[test]
+fn get_answer_on_an_alias_moves_past_the_event_it_returned() {
+    let st = stand();
+    let (alias, canon) = (card(1), card(9));
+    let fake = serve(
+        &st,
+        Box::new(move |req| match &req.op {
+            Op::Wait { since: 0, .. } => Response {
+                ok: true,
+                event: Some(event(&canon, "message", 3)),
+                ..Response::default()
+            },
+            Op::Wait { .. } => Response::ok(),
+            _ => Response::err("bad request"),
+        }),
+    );
+    let (mut child, mut stdin, lines) = spawn_mcp(&st);
+    for id in [10, 11] {
+        writeln!(
+            stdin,
+            "{}",
+            json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": {"name": "get_answer", "arguments": {"card_id": alias, "waitSeconds": 1}}})
+        )
+        .unwrap();
+        until("the get_answer reply", Duration::from_secs(10), || {
+            lines.lock().unwrap().iter().any(|r| r["id"] == id)
+        });
+    }
+    drop(stdin);
+    let _ = child.wait();
+    let got = lines.lock().unwrap().clone();
+    let reply = |id: u64| payload(got.iter().find(|r| r["id"] == id).unwrap());
+    assert_eq!(reply(10)["type"], "message");
+    assert_eq!(reply(11)["status"], "pending");
+    let sinces: Vec<u64> = fake
+        .ops()
+        .into_iter()
+        .filter_map(|op| match op {
+            Op::Wait { since, .. } => Some(since),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sinces.first(), Some(&0));
+    assert!(sinces[1..].iter().all(|s| *s == 3), "{sinces:?}");
+}
+
+#[test]
 fn get_answer_with_card_ids_falls_back_on_an_old_desktop() {
     let st = stand();
     let (c1, c2, c3) = (card(1), card(2), card(3));

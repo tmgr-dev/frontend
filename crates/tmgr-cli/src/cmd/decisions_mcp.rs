@@ -302,8 +302,8 @@ fn card_ids_arg(a: &Value) -> Result<Vec<String>, String> {
 
 fn event_result(card_ids: &[String], waited: Waited) -> Value {
     match waited {
-        Waited::Event(e) => {
-            advance(&e.card_id, e.seq);
+        Waited::Event(key, e) => {
+            advance(&key, e.seq);
             text_result(
                 serde_json::to_string(&*e).unwrap_or_else(|_| event_text(&e)),
                 false,

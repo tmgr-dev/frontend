@@ -131,7 +131,7 @@ pub fn run(ctx: &Ctx, args: &AskArgs) -> Result<Output> {
     loop {
         let left = deadline.saturating_duration_since(Instant::now());
         let unreachable = match wait_loop(&id, since, left, false, None, &mut || {}) {
-            Waited::Event(e) => {
+            Waited::Event(_, e) => {
                 since = e.seq;
                 if e.is_final() {
                     return Ok(Output::new(

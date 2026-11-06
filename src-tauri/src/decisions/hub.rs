@@ -225,8 +225,8 @@ impl Hub {
     final_only: bool,
     alive: &dyn Fn() -> bool,
   ) -> Result<Option<(String, Event)>, String> {
-    let (ids, hit) = self.wait_set(cards, timeout, final_only, alive)?;
-    Ok(hit.map(|(i, e)| (ids[i].clone(), e)))
+    let (_, hit) = self.wait_set(cards, timeout, final_only, alive)?;
+    Ok(hit.map(|(i, e)| (cards[i].0.clone(), e)))
   }
 
   fn wait_set(

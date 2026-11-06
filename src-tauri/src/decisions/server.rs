@@ -824,7 +824,7 @@ mod tests {
     let waiter = std::thread::spawn(move || {
       let c = Client::open_in(&dir).unwrap();
       let t = Instant::now();
-      let e = c.wait_any(&cards, Duration::from_secs(20), false, None).unwrap().unwrap();
+      let (_, e) = c.wait_any(&cards, Duration::from_secs(20), false, None).unwrap().unwrap();
       (e, t.elapsed())
     });
     let t = Instant::now();
@@ -849,11 +849,24 @@ mod tests {
     assert!(t.elapsed() >= Duration::from_millis(140));
     r.hub.answer(&ids[2], answer_a()).unwrap();
     let t = Instant::now();
-    let e = c.wait_any(&cards, Duration::from_secs(20), false, None).unwrap().unwrap();
+    let (_, e) = c.wait_any(&cards, Duration::from_secs(20), false, None).unwrap().unwrap();
     assert_eq!(e.card_id, ids[2]);
     assert!(t.elapsed() < Duration::from_secs(2));
     let past = [wc(&ids[0], 0), wc(&ids[2], e.seq + 5)];
-    assert_eq!(c.wait_any(&past, Duration::from_millis(50), true, None).unwrap().unwrap().card_id, ids[2]);
+    assert_eq!(c.wait_any(&past, Duration::from_millis(50), true, None).unwrap().unwrap().1.card_id, ids[2]);
+  }
+
+  #[test]
+  fn wait_any_keys_the_event_by_the_alias_it_was_given() {
+    let r = rig();
+    let c = Client::open_in(&r.dir).unwrap();
+    let a = c.create(card("first")).unwrap();
+    let other = c.create(card("other")).unwrap();
+    let b = tmgr_ipc::decisions::new_card_id();
+    c.create(CardIn { id: Some(b.clone()), ..resend("second", &a) }).unwrap();
+    r.hub.answer(&a, answer_a()).unwrap();
+    let (key, e) = c.wait_any(&[wc(&other, 0), wc(&b, 0)], Duration::from_secs(5), false, None).unwrap().unwrap();
+    assert_eq!((key, e.card_id), (b, a));
   }
 
   #[test]

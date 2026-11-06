@@ -688,15 +688,15 @@ impl Client {
             .event)
     }
 
-    /// The first event over `cards` (the event carries its `card_id`). A desktop without
-    /// `wait_any` answers `ErrorKind::Unsupported`.
+    /// The first event over `cards`, keyed by the card id as given (the event carries the
+    /// canonical one). A desktop without `wait_any` answers `ErrorKind::Unsupported`.
     pub fn wait_any(
         &self,
         cards: &[WaitCard],
         timeout: Duration,
         final_only: bool,
         cancel: Option<&Cancel>,
-    ) -> io::Result<Option<Event>> {
+    ) -> io::Result<Option<(String, Event)>> {
         let op = Op::WaitAny {
             cards: cards.to_vec(),
             timeout_ms: timeout_ms(timeout),
@@ -704,7 +704,9 @@ impl Client {
         };
         let r = self.call_with(op, cancel)?;
         if r.ok {
-            return Ok(r.event);
+            return Ok(r
+                .event
+                .map(|e| (r.card_id.unwrap_or_else(|| e.card_id.clone()), e)));
         }
         let msg = r.error.unwrap_or_else(|| "refused".into());
         if msg == BAD_REQUEST {

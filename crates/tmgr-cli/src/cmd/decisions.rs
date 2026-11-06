@@ -97,7 +97,7 @@ pub fn send_card(mut card: CardIn) -> io::Result<Sent> {
 }
 
 pub enum Waited {
-    Event(Box<Event>),
+    Event(String, Box<Event>),
     Pending { unreachable: bool },
     Refused(String),
     Cancelled,
@@ -111,7 +111,7 @@ fn wait_rotating(
     timeout: Duration,
     final_only: bool,
     cancel: Option<&Cancel>,
-) -> io::Result<Option<Event>> {
+) -> io::Result<Option<(String, Event)>> {
     let end = Instant::now() + timeout;
     loop {
         for c in cards {
@@ -120,7 +120,7 @@ fn wait_rotating(
             if let Some(e) =
                 client.wait_cancellable(&c.card_id, c.since, slice, final_only, cancel)?
             {
-                return Ok(Some(e));
+                return Ok(Some((c.card_id.clone(), e)));
             }
             if end <= Instant::now() {
                 return Ok(None);
@@ -135,9 +135,11 @@ fn wait_cards_once(
     timeout: Duration,
     final_only: bool,
     cancel: Option<&Cancel>,
-) -> io::Result<Option<Event>> {
+) -> io::Result<Option<(String, Event)>> {
     if let [c] = cards {
-        return client.wait_cancellable(&c.card_id, c.since, timeout, final_only, cancel);
+        return Ok(client
+            .wait_cancellable(&c.card_id, c.since, timeout, final_only, cancel)?
+            .map(|e| (c.card_id.clone(), e)));
     }
     if !NO_WAIT_ANY.load(Ordering::Relaxed) {
         match client.wait_any(cards, timeout, final_only, cancel) {
@@ -161,7 +163,7 @@ fn wait_once(
         return Waited::Pending { unreachable: true };
     };
     match wait_cards_once(&client, cards, timeout, final_only, cancel) {
-        Ok(Some(e)) => Waited::Event(Box::new(e)),
+        Ok(Some((key, e))) => Waited::Event(key, Box::new(e)),
         Ok(None) => Waited::Pending { unreachable: false },
         Err(e) if e.kind() == io::ErrorKind::Interrupted => Waited::Cancelled,
         Err(e) if e.kind() == io::ErrorKind::ResourceBusy => Waited::Pending { unreachable: true },
