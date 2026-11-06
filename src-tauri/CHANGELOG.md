@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.115 — 2026-11-06
+
+- Decisions: the answer box grows with what you type (up to a limit, then it scrolls), and the card column is wider, with the description allowed to grow to half the window height instead of a small 240 px box.
+- Plugins in shared workspaces: a response that carries a task or project category from another workspace is now rejected instead of being passed to the plugin.
+
 ## 0.9.114 — 2026-11-06
 
 - Decisions is now "Decisions · Doom Solving": it is doom scrolling, only you solve things. The window gets a small "doom solving" subtitle, a fun empty-queue message, a card that flies out when you answer it, and a handful of quiet easter eggs (streaks, speedrun, night owl, inbox zero and a few more). Everything is local, never blocks the keyboard, and turns into text only with reduced motion.
