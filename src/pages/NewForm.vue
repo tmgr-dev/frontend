@@ -3668,6 +3668,7 @@
 					@launched="loadCursorAgents"
 					@stopped="loadCursorAgents"
 					@followup-sent="taskCommentsRef?.loadComments()"
+					@conversation-synced="taskCommentsRef?.loadComments()"
 				/>
 			</DialogContent>
 		</Dialog>

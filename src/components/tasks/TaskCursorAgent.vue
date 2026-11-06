@@ -304,12 +304,14 @@
 <script>
 	import {
 		getCursorAgents,
+		getCursorConversation,
 		getGitHubBranches,
 		launchCursorAgent,
 		sendFollowUp,
 		stopCursorAgent,
 	} from '@/actions/tmgr/cursor';
 	import { apiErrorText } from '@/utils/apiErrorText';
+	import { createCursorConversationSync } from '@/utils/cursorConversationSync';
 	import { createPollingLoop } from '@/utils/pollingLoop';
 	import { defineComponent } from 'vue';
 
@@ -339,6 +341,7 @@
 				pollingInterval: null,
 				disposed: false,
 				agentsRequest: null,
+				conversationSync: null,
 				showLaunchForm: false,
 			};
 		},
@@ -352,6 +355,7 @@
 		watch: {
 			agents: {
 				handler(newAgents) {
+					this.syncConversations(newAgents);
 					const hasActive = newAgents.some(
 						(agent) =>
 							agent.status === 'CREATING' || agent.status === 'RUNNING',
@@ -388,6 +392,19 @@
 					this.agentsRequest = null;
 				});
 				return this.agentsRequest;
+			},
+			async syncConversations(agents) {
+				if (!this.conversationSync) {
+					this.conversationSync = createCursorConversationSync(
+						this.taskId,
+						getCursorConversation,
+					);
+				}
+				const taskId = this.taskId;
+				const changed = await this.conversationSync.update(agents);
+				if (changed && !this.disposed && taskId === this.taskId) {
+					this.$emit('conversation-synced');
+				}
 			},
 			async fetchAgents() {
 				try {
