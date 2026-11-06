@@ -33,7 +33,7 @@ describe('isEnterSend', () => {
 			isComposing: false,
 			keyCode: 13,
 			...init,
-		} as KeyboardEvent);
+		}) as KeyboardEvent;
 
 	it('sends on plain Enter only', () => {
 		expect(isEnterSend(key())).toBe(true);
@@ -52,7 +52,7 @@ describe('autosizeTextarea', () => {
 		({
 			scrollHeight,
 			style: {} as Record<string, string>,
-		} as unknown as HTMLTextAreaElement);
+		}) as unknown as HTMLTextAreaElement;
 
 	it('grows with content up to the max height, then scrolls', () => {
 		const small = el(40);
