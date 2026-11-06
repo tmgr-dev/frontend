@@ -22,6 +22,13 @@
 			@input="onInput"
 			@keydown.esc="clearQuery"
 		/>
+		<div
+			v-if="progress.total > 0 && progress.pending === 0"
+			class="doom-complete"
+		>
+			<span class="grass" aria-hidden="true">🌱</span>
+			Doom solving complete. Go touch grass.
+		</div>
 		<div v-if="groups.length === 0" class="empty-queue">
 			{{
 				query.trim() && progress.total > 0
