@@ -255,6 +255,7 @@ pub struct NewSession {
     pub browse_dir: fn(&Path) -> Vec<String>,
     pub folders: Option<FolderData>,
     picker: Option<Picker>,
+    pick_fits: Cell<bool>,
     marks: HashMap<String, Option<FolderMark>>,
     mark_reqs: Vec<String>,
 }
@@ -452,11 +453,13 @@ impl NewSession {
     }
 
     fn picker_live(&self) -> bool {
-        self.focus == NewField::Folder && self.picker.as_ref().is_some_and(Picker::live)
+        self.pick_fits.get()
+            && self.focus == NewField::Folder
+            && self.picker.as_ref().is_some_and(Picker::live)
     }
 
     fn pick_h(&self) -> usize {
-        if self.picker_live() {
+        if self.pick_fits.get() && self.picker_live() {
             usize::from(PICK_H)
         } else {
             0
@@ -887,6 +890,9 @@ fn review_wrapped(lines: &[String], width: u16) -> Vec<String> {
 
 pub(crate) fn new_session_rect(area: Rect, ns: &NewSession) -> Rect {
     let n = notes(ns, area.width);
+    let plain = ns.fields().len() + n.remembered.len() + n.error_h() + n.hint_h() + n.help_h() + 5;
+    ns.pick_fits
+        .set(plain + usize::from(PICK_H) <= usize::from(area.height) && area.width >= 30);
     let body = match (&ns.review, &ns.priv_prompt) {
         (Some(lines), _) => review_wrapped(lines, area.width).len() + 4,
         (None, Some(p)) => prompt_lines(p, area.width).len() + 4,
@@ -1207,7 +1213,7 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
             }
         }
     }
-    let base = u16::try_from(ns.fields().len()).unwrap_or(u16::MAX);
+    let base = u16::try_from(ns.fields().len() + ns.pick_h()).unwrap_or(u16::MAX);
     let line = |k: usize| {
         inner
             .y
@@ -1400,6 +1406,7 @@ impl ViewState {
             browse_dir: folder_pick::browse_dirs,
             folders: self.new_folders.clone(),
             picker: None,
+            pick_fits: Cell::new(true),
             marks: HashMap::new(),
             mark_reqs: Vec::new(),
         });
@@ -1534,7 +1541,10 @@ impl ViewState {
     }
 
     pub fn set_new_folders(&mut self, data: FolderData) {
-        let data = data.cleaned();
+        let mut data = data.cleaned();
+        if let Some(old) = &self.new_folders {
+            data.pins = old.pins.clone();
+        }
         self.new_folders = Some(data.clone());
         if let Some(ns) = self.new_session.as_mut() {
             ns.folders = Some(data);
@@ -1637,8 +1647,8 @@ impl ViewState {
                 }
                 b'\r' | b'\n' => {
                     i += 1;
-                    if ns.picker_live() {
-                        ns.pick_key(PKey::Enter);
+                    if ns.picker_live() && ns.pick_key(PKey::Enter) != Act::Submit {
+                        continue;
                     }
                     if let Some(req) = ns.try_submit() {
                         self.new_session = None;
@@ -1772,6 +1782,13 @@ impl ViewState {
         let text = String::from_utf8_lossy(data)
             .replace("\x1b[200~", "")
             .replace("\x1b[201~", "");
+        if ns.picker_live() && text.starts_with(['/', '~']) {
+            if let Some(p) = ns.picker.as_mut() {
+                p.saved = ns.folder.clone();
+                p.mode = folder_pick::Mode::Path;
+                ns.folder.clear();
+            }
+        }
         for c in text.chars().filter(|c| !c.is_control()) {
             if ns.picker_live() {
                 ns.pick_key(PKey::Char(c));
