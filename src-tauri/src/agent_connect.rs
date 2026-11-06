@@ -18,7 +18,7 @@ mod imp {
   pub const SERVER_NAME: &str = "tmgr-local";
   pub const PLACEHOLDER_TOKEN: &str = "<new token id>";
   pub const STEP_TIMEOUT: Duration = Duration::from_secs(30);
-  const LOGIN_TIMEOUT: Duration = Duration::from_secs(3);
+  const LOGIN_TIMEOUT: Duration = Duration::from_secs(6);
   const OUTPUT_CAP: usize = 16 * 1024;
   const LOGIN_CAP: usize = 64 * 1024;
   const PIPE_GRACE: Duration = Duration::from_millis(500);
@@ -215,15 +215,56 @@ mod imp {
       for root in &self.roots {
         out = out.replace(root.as_str(), "~");
       }
-      if let Some(user) = &self.user {
-        out = out.replace(user.as_str(), "~");
+      match &self.user {
+        Some(user) => replace_segment(&out, user),
+        None => out,
       }
-      out
     }
   }
 
+  fn replace_segment(text: &str, user: &str) -> String {
+    let name_char = |c: char| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-');
+    let mut out = String::with_capacity(text.len());
+    let mut last = 0;
+    for (at, _) in text.match_indices(user) {
+      let end = at + user.len();
+      let before_ok = text[..at].ends_with('/');
+      let after_ok = text[end..].chars().next().is_none_or(|c| !name_char(c));
+      if at >= last && before_ok && after_ok {
+        out.push_str(&text[last..at]);
+        out.push('~');
+        last = end;
+      }
+    }
+    out.push_str(&text[last..]);
+    out
+  }
+
   fn trusted(md: &std::fs::Metadata, uid: u32) -> bool {
-    (md.uid() == uid || md.uid() == 0) && md.mode() & 0o022 == 0
+    let mode = md.mode();
+    mode & 0o002 == 0 && (md.uid() == uid || (md.uid() == 0 && mode & 0o020 == 0))
+  }
+
+  fn dir_chain_trusted(dir: &Path, uid: u32) -> bool {
+    dir.is_absolute()
+      && dir.ancestors().enumerate().all(|(depth, ancestor)| {
+        let Ok(md) = std::fs::metadata(ancestor) else { return false };
+        let sticky_root = depth > 0 && md.uid() == 0 && md.mode() & 0o1000 != 0;
+        md.is_dir() && (trusted(&md, uid) || sticky_root)
+      })
+  }
+
+  fn file_trusted(candidate: &Path, uid: u32) -> bool {
+    let Ok(real) = candidate.canonicalize() else { return false };
+    let Ok(md) = std::fs::metadata(&real) else { return false };
+    md.is_file()
+      && md.mode() & 0o100 != 0
+      && trusted(&md, uid)
+      && real.parent().is_some_and(|parent| dir_chain_trusted(parent, uid))
+  }
+
+  pub fn still_trusted(cli: &Path, uid: u32) -> bool {
+    cli.parent().is_some_and(|dir| dir_chain_trusted(dir, uid)) && file_trusted(cli, uid)
   }
 
   pub fn resolve_cli(name: CliName, dirs: &[PathBuf], uid: u32) -> Option<PathBuf> {
@@ -231,13 +272,11 @@ mod imp {
       if !dir.is_absolute() {
         continue;
       }
-      let Ok(dir_md) = std::fs::metadata(dir) else { continue };
-      if !dir_md.is_dir() || !trusted(&dir_md, uid) {
+      if !dir_chain_trusted(dir, uid) {
         continue;
       }
       let candidate = dir.join(name.file_name());
-      let Ok(md) = std::fs::metadata(&candidate) else { continue };
-      if md.is_file() && md.mode() & 0o100 != 0 && trusted(&md, uid) {
+      if file_trusted(&candidate, uid) {
         return Some(candidate);
       }
     }
@@ -269,12 +308,15 @@ mod imp {
     Some(env)
   }
 
-  pub fn shell_allowed(shell: &Path) -> bool {
-    shell.is_absolute() && matches!(shell.file_name().and_then(OsStr::to_str), Some("zsh" | "bash" | "sh"))
+  pub fn shell_allowed(shell: &Path, shells_file: &str, uid: u32) -> bool {
+    shell.is_absolute()
+      && matches!(shell.file_name().and_then(OsStr::to_str), Some("zsh" | "bash" | "sh"))
+      && shells_file.lines().any(|l| Path::new(l.trim()) == shell)
+      && file_trusted(shell, uid)
   }
 
-  pub fn login_env(shell: &Path, timeout: Duration) -> Option<LoginEnv> {
-    if !shell_allowed(shell) {
+  pub fn login_env(shell: &Path, shells_file: &str, uid: u32, timeout: Duration) -> Option<LoginEnv> {
+    if !shell_allowed(shell, shells_file, uid) {
       return None;
     }
     let mut cmd = Command::new(shell);
@@ -342,6 +384,7 @@ mod imp {
   }
 
   pub struct Resolved {
+    pub uid: u32,
     pub home: PathBuf,
     pub user: Option<String>,
     pub search: Vec<PathBuf>,
@@ -367,6 +410,7 @@ mod imp {
       let login = login.unwrap_or_default();
       let search = search_path(login.path.as_deref(), home, process_path);
       Self {
+        uid,
         home: home.to_path_buf(),
         user: user.map(str::to_owned),
         claude: resolve_cli(CliName::Claude, &search, uid),
@@ -376,6 +420,10 @@ mod imp {
         claude_config_dir: absolute_only(login.claude_config_dir),
         redactor: Redactor::new(home, user),
       }
+    }
+
+    pub fn needs_refresh(&self) -> bool {
+      self.claude.is_none() && self.codex.is_none()
     }
 
     pub fn cli(&self, agent: AgentId) -> Option<&Path> {
@@ -397,7 +445,8 @@ mod imp {
           vars.push((key, v));
         }
       }
-      let joined = std::env::join_paths(&self.search).unwrap_or_default();
+      let trusted_dirs: Vec<&PathBuf> = self.search.iter().filter(|d| dir_chain_trusted(d, self.uid)).collect();
+      let joined = std::env::join_paths(trusted_dirs).unwrap_or_default();
       vars.push(("PATH", joined));
       if let Some(v) = &self.codex_home {
         vars.push(("CODEX_HOME", v.into()));
@@ -414,23 +463,39 @@ mod imp {
     pub home: PathBuf,
   }
 
-  pub fn resolved() -> &'static Resolved {
-    static CELL: std::sync::OnceLock<Resolved> = std::sync::OnceLock::new();
-    CELL.get_or_init(|| {
-      let uid = unsafe { libc::getuid() };
-      let pw = passwd(uid);
-      let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .filter(|h| h.is_absolute())
-        .or_else(|| pw.as_ref().map(|p| PathBuf::from(&p.dir)))
-        .unwrap_or_else(|| PathBuf::from("/"));
-      let shell = pw.as_ref().map(|p| p.shell.clone()).filter(|s| !s.is_empty()).or_else(|| std::env::var("SHELL").ok());
-      let mut login = shell.and_then(|s| login_env(Path::new(&s), LOGIN_TIMEOUT)).unwrap_or_default();
-      login.codex_home = login.codex_home.take().or_else(|| std::env::var("CODEX_HOME").ok());
-      login.claude_config_dir = login.claude_config_dir.take().or_else(|| std::env::var("CLAUDE_CONFIG_DIR").ok());
-      let process_path = std::env::var_os("PATH");
-      Resolved::build(&home, uid, pw.as_ref().map(|p| p.name.as_str()), Some(login), process_path.as_deref())
-    })
+  fn resolve_now() -> Resolved {
+    let uid = unsafe { libc::getuid() };
+    let pw = passwd(uid);
+    let home = std::env::var_os("HOME")
+      .map(PathBuf::from)
+      .filter(|h| h.is_absolute())
+      .or_else(|| pw.as_ref().map(|p| PathBuf::from(&p.dir)))
+      .unwrap_or_else(|| PathBuf::from("/"));
+    let shells_file = std::fs::read_to_string("/etc/shells").unwrap_or_default();
+    let candidates = [pw.as_ref().map(|p| p.shell.clone()), std::env::var("SHELL").ok()];
+    let shell = candidates
+      .into_iter()
+      .flatten()
+      .map(PathBuf::from)
+      .find(|s| shell_allowed(s, &shells_file, uid));
+    let mut login = shell.and_then(|s| login_env(&s, &shells_file, uid, LOGIN_TIMEOUT)).unwrap_or_default();
+    login.codex_home = login.codex_home.take().or_else(|| std::env::var("CODEX_HOME").ok());
+    login.claude_config_dir = login.claude_config_dir.take().or_else(|| std::env::var("CLAUDE_CONFIG_DIR").ok());
+    let process_path = std::env::var_os("PATH");
+    Resolved::build(&home, uid, pw.as_ref().map(|p| p.name.as_str()), Some(login), process_path.as_deref())
+  }
+
+  pub fn resolved(refresh_if_empty: bool) -> std::sync::Arc<Resolved> {
+    static CELL: std::sync::Mutex<Option<std::sync::Arc<Resolved>>> = std::sync::Mutex::new(None);
+    let mut guard = CELL.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(cached) = guard.as_ref() {
+      if !(refresh_if_empty && cached.needs_refresh()) {
+        return cached.clone();
+      }
+    }
+    let fresh = std::sync::Arc::new(resolve_now());
+    *guard = Some(fresh.clone());
+    fresh
   }
 
   pub struct Captured {
@@ -733,12 +798,24 @@ mod imp {
       let h = home.path().to_string_lossy().into_owned();
       let redactor = Redactor::new(home.path(), Some("alice"));
       let cli = home.path().join(".local/bin/claude");
-      let bridge = home.path().join("alice-apps/tmgr");
+      let bridge = home.path().join("alice-apps/alice/tmgr");
       let shown = display_plan(AgentId::ClaudeCode, ConnectAction::Install, &cli, &bridge, &redactor);
       assert_eq!(shown[0][0], "~/.local/bin/claude");
       assert_eq!(shown[1].last().unwrap(), "<new token id>");
-      assert!(shown[1].contains(&"~/~-apps/tmgr".to_string()));
-      assert!(shown.iter().flatten().all(|a| !a.contains(&h) && !a.contains("alice")));
+      assert!(shown[1].contains(&"~/alice-apps/~/tmgr".to_string()));
+      assert!(shown.iter().flatten().all(|a| !a.contains(&h)));
+    }
+
+    #[test]
+    fn redactor_replaces_the_user_only_as_a_whole_path_segment() {
+      let r = Redactor::new(Path::new("/nonexistent-home/x"), Some("user"));
+      assert_eq!(r.redact("--scope user"), "--scope user");
+      assert_eq!(r.redact("/Volumes/x/user/bin"), "/Volumes/x/~/bin");
+      assert_eq!(r.redact("/Volumes/x/user"), "/Volumes/x/~");
+      assert_eq!(r.redact("/Volumes/x/user-name/bin"), "/Volumes/x/user-name/bin");
+      assert_eq!(r.redact("/Volumes/x/users/bin"), "/Volumes/x/users/bin");
+      assert_eq!(r.redact("/Volumes/x/user: not found"), "/Volumes/x/~: not found");
+      assert_eq!(r.redact("/a/user/b/user"), "/a/~/b/~");
     }
 
     #[test]
@@ -830,20 +907,51 @@ mod imp {
       mode(&open, 0o777);
       assert_eq!(resolve_cli(CliName::Claude, &dirs, uid()), None);
       mode(&open, 0o775);
-      assert_eq!(resolve_cli(CliName::Claude, &dirs, uid()), None);
+      assert!(resolve_cli(CliName::Claude, &dirs, uid()).is_some());
       mode(&open, 0o755);
       assert!(resolve_cli(CliName::Claude, &dirs, uid()).is_some());
 
       mode(&open.join("claude"), 0o757);
       assert_eq!(resolve_cli(CliName::Claude, &dirs, uid()), None);
       mode(&open.join("claude"), 0o775);
-      assert_eq!(resolve_cli(CliName::Claude, &dirs, uid()), None);
+      assert!(resolve_cli(CliName::Claude, &dirs, uid()).is_some());
 
       mode(&open.join("claude"), 0o755);
       if uid() != 0 {
         assert_eq!(resolve_cli(CliName::Claude, &dirs, uid().wrapping_add(4242)), None);
       }
       assert_eq!(resolve_cli(CliName::Claude, &[PathBuf::from("relative")], uid()), None);
+    }
+
+    #[test]
+    fn resolve_cli_checks_the_whole_chain_and_the_symlink_target() {
+      let root = tmp();
+      let outer = root.path().join("outer");
+      let bin = outer.join("bin");
+      fs::create_dir_all(&bin).unwrap();
+      mode(&outer, 0o755);
+      mode(&bin, 0o755);
+      script(&bin, "claude", "exit 0");
+      let dirs = vec![bin.clone()];
+      assert!(resolve_cli(CliName::Claude, &dirs, uid()).is_some());
+      mode(&outer, 0o777);
+      assert_eq!(resolve_cli(CliName::Claude, &dirs, uid()), None);
+      assert!(!still_trusted(&bin.join("claude"), uid()));
+      mode(&outer, 0o755);
+      assert!(still_trusted(&bin.join("claude"), uid()));
+
+      let evil = root.path().join("evil");
+      fs::create_dir(&evil).unwrap();
+      let target = script(&evil, "real", "exit 0");
+      fs::remove_file(bin.join("claude")).unwrap();
+      std::os::unix::fs::symlink(&target, bin.join("claude")).unwrap();
+      mode(&evil, 0o777);
+      assert_eq!(resolve_cli(CliName::Claude, &dirs, uid()), None);
+      assert!(!still_trusted(&bin.join("claude"), uid()));
+      mode(&evil, 0o755);
+      assert!(resolve_cli(CliName::Claude, &dirs, uid()).is_some());
+      mode(&target, 0o757);
+      assert_eq!(resolve_cli(CliName::Claude, &dirs, uid()), None);
     }
 
     #[test]
@@ -858,17 +966,36 @@ mod imp {
       assert_eq!(parse_marked(&format!("{BEGIN}\nPATH=/x\n")), None);
     }
 
+    fn shells_for(paths: &[&Path]) -> String {
+      let mut text = String::from("# list of shells\n");
+      for p in paths {
+        text.push_str(&format!("{}\n", p.display()));
+      }
+      text
+    }
+
     #[test]
     fn shell_allowlist() {
-      assert!(shell_allowed(Path::new("/bin/zsh")));
-      assert!(shell_allowed(Path::new("/usr/local/bin/bash")));
-      assert!(shell_allowed(Path::new("/bin/sh")));
-      assert!(!shell_allowed(Path::new("/opt/homebrew/bin/fish")));
-      assert!(!shell_allowed(Path::new("zsh")));
-      assert!(!shell_allowed(Path::new("/tmp/zsh-evil")));
       let root = tmp();
-      let evil = script(root.path(), "fish", "touch ran");
-      assert_eq!(login_env(&evil, Duration::from_secs(2)), None);
+      let dir = root.path().join("sh");
+      fs::create_dir(&dir).unwrap();
+      let zsh = script(&dir, "zsh", "exit 0");
+      let fish = script(&dir, "fish", "touch ran");
+      let sh = script(&dir, "sh", "exit 0");
+      let listed = shells_for(&[&zsh, &fish]);
+      assert!(shell_allowed(&zsh, &listed, uid()));
+      assert!(!shell_allowed(&sh, &listed, uid()));
+      assert!(!shell_allowed(&fish, &listed, uid()));
+      assert!(!shell_allowed(Path::new("zsh"), "zsh\n", uid()));
+      assert!(!shell_allowed(&zsh, "", uid()));
+      assert!(!shell_allowed(&zsh, &format!("# {}\n", zsh.display()), uid()));
+      mode(&zsh, 0o757);
+      assert!(!shell_allowed(&zsh, &listed, uid()));
+      mode(&zsh, 0o755);
+      mode(&dir, 0o777);
+      assert!(!shell_allowed(&zsh, &listed, uid()));
+      mode(&dir, 0o755);
+      assert_eq!(login_env(&fish, &listed, uid(), Duration::from_secs(2)), None);
       assert!(!root.path().join("ran").exists());
     }
 
@@ -878,14 +1005,16 @@ mod imp {
       let dir = root.path().join("sh");
       fs::create_dir(&dir).unwrap();
       let ok = script(&dir, "zsh", &format!("echo noise; echo {BEGIN}; echo PATH=/q:/r; echo {END}"));
-      let env = login_env(&ok, Duration::from_secs(5)).unwrap();
-      assert_eq!(env.path.as_deref(), Some("/q:/r"));
       let slow_dir = root.path().join("slow");
       fs::create_dir(&slow_dir).unwrap();
       let slow = script(&slow_dir, "bash", "sleep 30");
+      let listed = shells_for(&[&ok, &slow]);
+      let env = login_env(&ok, &listed, uid(), Duration::from_secs(5)).unwrap();
+      assert_eq!(env.path.as_deref(), Some("/q:/r"));
       let started = Instant::now();
-      assert_eq!(login_env(&slow, Duration::from_millis(300)), None);
+      assert_eq!(login_env(&slow, &listed, uid(), Duration::from_millis(300)), None);
       assert!(started.elapsed() < Duration::from_secs(5));
+      assert_eq!(login_env(&ok, "", uid(), Duration::from_secs(5)), None);
     }
 
     #[test]
@@ -1060,6 +1189,36 @@ mod imp {
     }
 
     #[test]
+    fn child_env_path_keeps_only_trusted_dirs() {
+      let root = tmp();
+      let good = root.path().join("good");
+      let open = root.path().join("open");
+      fs::create_dir(&good).unwrap();
+      fs::create_dir(&open).unwrap();
+      mode(&good, 0o755);
+      mode(&open, 0o777);
+      let joined = std::env::join_paths([&open, &good]).unwrap().to_string_lossy().into_owned();
+      let login = LoginEnv { path: Some(joined), ..Default::default() };
+      let r = Resolved::build(root.path(), uid(), None, Some(login), None);
+      let env = r.child_env(&|_| None);
+      let path = env.vars.iter().find(|(k, _)| *k == "PATH").unwrap().1.to_string_lossy().into_owned();
+      let dirs: Vec<PathBuf> = std::env::split_paths(&path).collect();
+      assert!(dirs.contains(&good));
+      assert!(!dirs.contains(&open));
+    }
+
+    #[test]
+    fn resolution_is_refreshed_only_when_no_cli_was_found() {
+      let rig = rig();
+      let empty = Resolved::build(&rig.home, uid(), None, Some(LoginEnv::default()), None);
+      assert!(empty.needs_refresh());
+      script(&rig.bin, "codex", "exit 0");
+      let login = LoginEnv { path: Some(rig.bin.to_string_lossy().into_owned()), ..Default::default() };
+      let found = Resolved::build(&rig.home, uid(), None, Some(login), None);
+      assert!(!found.needs_refresh());
+    }
+
+    #[test]
     fn detect_reports_cli_previews_and_bridge() {
       let rig = rig();
       script(&rig.bin, "claude", "exit 0");
@@ -1117,7 +1276,7 @@ fn current_bridge() -> Result<std::path::PathBuf, imp::BridgeReason> {
 pub async fn agents_detect<R: Runtime>(window: tauri::Window<R>) -> Result<imp::DetectOut, String> {
   ensure_main(&window)?;
   tauri::async_runtime::spawn_blocking(|| {
-    imp::detect(imp::resolved(), current_bridge(), cfg!(target_os = "macos"), crate::plugin_dev::plugins_safe_mode())
+    imp::detect(&imp::resolved(true), current_bridge(), cfg!(target_os = "macos"), crate::plugin_dev::plugins_safe_mode())
   })
   .await
   .map_err(|e| e.to_string())
@@ -1142,9 +1301,15 @@ pub async fn agent_connect_run<R: Runtime>(
   let app = window.app_handle().clone();
   let store = state.token_store.clone();
   tauri::async_runtime::spawn_blocking(move || {
-    let bridge = current_bridge().map_err(|r| r.message().to_owned())?;
-    let resolved = imp::resolved();
+    let bridge = match action {
+      imp::ConnectAction::Install => current_bridge().map_err(|r| r.message().to_owned())?,
+      imp::ConnectAction::Remove => std::path::PathBuf::new(),
+    };
+    let resolved = imp::resolved(false);
     let cli = resolved.cli(agent).ok_or_else(|| "The agent CLI was not found".to_owned())?;
+    if !imp::still_trusted(cli, resolved.uid) {
+      return Err("The agent CLI is not trusted".to_owned());
+    }
     let token = match (action, token_id) {
       (imp::ConnectAction::Install, None) => return Err("A token is required to install".to_owned()),
       (imp::ConnectAction::Remove, Some(_)) => return Err("Remove does not take a token".to_owned()),

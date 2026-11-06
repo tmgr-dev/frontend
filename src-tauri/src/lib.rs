@@ -1,5 +1,5 @@
-#[cfg(target_os = "macos")]
 mod agent_connect;
+#[cfg(target_os = "macos")]
 mod app_menu;
 mod app_links;
 mod capture;
