@@ -62,7 +62,7 @@ describe('streak', () => {
 			null,
 		]);
 		expect([1, 2, 100, 500].map(lifetimeMilestone)).toEqual([
-			1,
+			null,
 			null,
 			100,
 			500,

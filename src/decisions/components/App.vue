@@ -116,7 +116,7 @@
 					</section>
 				</template>
 				<div
-					v-else-if="loaded && progress.pending === 0"
+					v-else-if="loaded && !loadFailed && progress.pending === 0"
 					class="empty doom-done"
 				>
 					<div class="big">✓</div>
@@ -124,6 +124,7 @@
 					<small>Nothing is waiting for your decision.</small>
 					<span class="grass" aria-hidden="true">🌱</span>
 				</div>
+				<div v-else-if="loadFailed" class="empty">Could not load decisions</div>
 				<div v-else-if="loaded" class="empty">
 					No matches
 					<small>Clear the search to see the queue.</small>
@@ -271,6 +272,8 @@
 				openedAt: 0,
 				lastSpeedrunAt: 0,
 				awaitsShown: false,
+				zeroCheck: false,
+				loadFailed: false,
 			};
 		},
 		computed: {
@@ -301,10 +304,10 @@
 				return diffTotals(groups);
 			},
 			currentDiff(): DiffSlot | null {
-				return this.current ? this.diffs[this.current.id] ?? null : null;
+				return this.current ? (this.diffs[this.current.id] ?? null) : null;
 			},
 			currentDrafts(): LineComment[] {
-				return this.current ? this.drafts[this.current.id] ?? [] : [];
+				return this.current ? (this.drafts[this.current.id] ?? []) : [];
 			},
 			chatMessages() {
 				return this.current ? splitMessages(this.current.messages).chat : [];
@@ -323,6 +326,12 @@
 		watch: {
 			order() {
 				this.ensureSelection();
+			},
+			'progress.pending'(pending: number) {
+				if (pending === 0 && this.zeroCheck) {
+					this.zeroCheck = false;
+					this.checkInboxZero();
+				}
 			},
 			selectedId() {
 				this.openedAt = Date.now();
@@ -367,7 +376,9 @@
 				this.refreshing = true;
 				try {
 					this.cards = await decisionsList();
+					this.loadFailed = false;
 				} catch (error) {
+					this.loadFailed = true;
 					this.showToast(`Could not load decisions: ${String(error)}`, true);
 				} finally {
 					this.loaded = true;
@@ -448,8 +459,7 @@
 					burst();
 				}
 				const lifetime = lifetimeMilestone(this.eggs.total);
-				if (lifetime === 1) notes.push('First decision. The doom begins.');
-				else if (lifetime) notes.push(`${lifetime} decisions solved`);
+				if (lifetime) notes.push(`${lifetime} decisions solved`);
 				if (
 					isSpeedrun(this.openedAt, now) &&
 					speedrunReady(this.lastSpeedrunAt, now)
@@ -457,7 +467,15 @@
 					this.lastSpeedrunAt = now;
 					notes.push('Speedrun any%');
 				}
-				if (isNightOwl(new Date(now))) notes.push('Night owl: still solving');
+				const when = new Date(now);
+				if (isNightOwl(when)) {
+					const night = inboxZeroToday(this.eggs.nightOwlDay, when);
+					if (night.fire) {
+						this.eggs = { ...this.eggs, nightOwlDay: night.day };
+						notes.push('Night owl: still solving');
+					}
+				}
+				this.zeroCheck = true;
 				saveEggState(this.eggs);
 				if (notes.length) this.doomNotify(notes.join(' · '));
 			},
@@ -511,17 +529,20 @@
 					...draft,
 					lineComments: this.drafts[card.id] ?? [],
 				});
+				const pane =
+					(this.$refs.cardPane as { $el?: Element } | undefined)?.$el ?? null;
+				const solved =
+					!draft.deferred &&
+					!draft.dismissed &&
+					!this.resolvedHere.includes(card.id);
 				try {
 					await decisionsAnswer(card.id, answer);
 				} catch (error) {
 					this.showToast(`Could not send the answer: ${String(error)}`, true);
 					return;
 				}
-				const solved = !draft.deferred;
 				if (solved) {
-					flyOut(
-						(this.$refs.cardPane as { $el?: Element } | undefined)?.$el ?? null,
-					);
+					if (pane?.isConnected) flyOut(pane);
 					this.onSolved();
 				}
 				const following = nextCardId(this.order, card.id);
@@ -532,7 +553,6 @@
 				this.selectedId = following;
 				await this.refresh();
 				this.ensureSelection();
-				if (solved) this.checkInboxZero();
 			},
 			async closeCard(id: string) {
 				const card = this.cards.find((c) => c.id === id);

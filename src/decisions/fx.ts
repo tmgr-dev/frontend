@@ -20,6 +20,7 @@ export const flyOut = (source: Element | null): void => {
 	const ghost = source.cloneNode(true) as HTMLElement;
 	ghost.removeAttribute('id');
 	ghost.setAttribute('aria-hidden', 'true');
+	ghost.inert = true;
 	ghost.classList.add('doom-ghost');
 	Object.assign(ghost.style, {
 		top: `${rect.top}px`,

@@ -6,7 +6,7 @@ export const NIGHT_OWL_FROM = 2;
 export const NIGHT_OWL_TO = 5;
 export const DOOM_AWAITS_AT = 10;
 export const RARE_ODDS = 50;
-export const LIFETIME_MILESTONES = [1, 100, 500, 1000] as const;
+export const LIFETIME_MILESTONES = [100, 500, 1000] as const;
 export const KONAMI = [
 	'ArrowUp',
 	'ArrowUp',
@@ -36,6 +36,7 @@ export interface EggState {
 	lastAnswerAt: number;
 	total: number;
 	inboxZeroDay: string;
+	nightOwlDay: string;
 	best: number;
 }
 
@@ -44,6 +45,7 @@ export const emptyEggState = (): EggState => ({
 	lastAnswerAt: 0,
 	total: 0,
 	inboxZeroDay: '',
+	nightOwlDay: '',
 	best: 0,
 });
 
@@ -177,6 +179,7 @@ export const loadEggState = (
 			best: num(data.best),
 			inboxZeroDay:
 				typeof data.inboxZeroDay === 'string' ? data.inboxZeroDay : '',
+			nightOwlDay: typeof data.nightOwlDay === 'string' ? data.nightOwlDay : '',
 		};
 	} catch {
 		return base;
