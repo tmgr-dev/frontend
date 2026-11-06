@@ -191,6 +191,7 @@ export const installLocalUpgrade = (
 		let status: string | undefined;
 		try {
 			await invoke('persona_cache_migrate_local', { toUserId: userId });
+			await invoke('skill_library_migrate_local', { toUserId: userId });
 			if (stale()) return abandon();
 			const llm = (await invoke('persona_llm_migrate_local', {
 				toUserId: userId,

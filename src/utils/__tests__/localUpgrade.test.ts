@@ -58,7 +58,11 @@ const flush = async () => {
 type Handlers = Record<string, (args: any) => unknown>;
 const makeInvoke = (handlers: Handlers) =>
 	jest.fn(async (command: string, args?: Record<string, unknown>) => {
-		const handler = handlers[command];
+		const handler =
+			handlers[command] ??
+			(command === 'skill_library_migrate_local'
+				? () => ({ moved: 0, conflicts: 0 })
+				: undefined);
 		if (!handler) throw new Error(`unexpected ${command}`);
 		return handler(args);
 	});
@@ -72,7 +76,10 @@ const linkedTo = (id: number | null | undefined) => (args: any) => ({
 	...(args ? {} : {}),
 });
 
-const commandsOf = (invoke: jest.Mock) => invoke.mock.calls.map((c) => c[0]);
+const commandsOf = (invoke: jest.Mock) =>
+	invoke.mock.calls
+		.map((c) => c[0])
+		.filter((name) => name !== 'skill_library_migrate_local');
 
 const firstWinsLink = () => {
 	let linkedId: number | null = null;
@@ -84,7 +91,11 @@ const firstWinsLink = () => {
 
 const migrateIdsOf = (invoke: jest.Mock) =>
 	invoke.mock.calls
-		.filter((c) => c[0].endsWith('migrate_local'))
+		.filter(
+			(c) =>
+				c[0].endsWith('migrate_local') &&
+				c[0] !== 'skill_library_migrate_local',
+		)
 		.map((c) => c[1]?.toUserId);
 
 test('success: links, migrates both, clears migrate and keeps the dialog flag', async () => {
@@ -103,6 +114,9 @@ test('success: links, migrates both, clears migrate and keeps the dialog flag', 
 		toUserId: 7,
 	});
 	expect(invoke).toHaveBeenCalledWith('persona_cache_migrate_local', {
+		toUserId: 7,
+	});
+	expect(invoke).toHaveBeenCalledWith('skill_library_migrate_local', {
 		toUserId: 7,
 	});
 	expect(store.commit).toHaveBeenCalledWith(
