@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.112 — 2026-11-06
+
+- Shift+Enter now adds a new line in every chat box: the AI assistant, the Decisions chat, the task chat and the agent follow-up box. Enter still sends, and the Enter that confirms an input-method composition no longer sends by mistake. The boxes grow with the text and scroll past a maximum height.
+- 0.9.111 was tagged without release notes and never published.
+
 ## 0.9.110 — 2026-11-06
 
 - New "Connect your agent" screen for local workspaces (Settings → Personas → Local agent access → Connect your agent). It finds Claude Code and Codex on your Mac and shows the exact commands before running them. Install adds the TMGR server to the agent with its own CLI, turns on local agent access and the Personas and Agent work modules. Remove takes it out again.
