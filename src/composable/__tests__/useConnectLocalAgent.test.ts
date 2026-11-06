@@ -90,6 +90,22 @@ describe('rows', () => {
 		);
 	});
 
+	it('is copy-only with no checkbox when install is blocked', async () => {
+		for (const over of [
+			{ safeMode: true },
+			{ bridge: { ok: false, reason: 'translocated' } },
+			{ bridge: { ok: false, reason: 'invalid' } },
+		]) {
+			const { state } = await make(over);
+			const claude = state.rows.value.find((r) => r.info.id === 'claude-code')!;
+			expect(claude.found).toBe(true);
+			expect(claude.selectable).toBe(false);
+			expect(claude.copyOnly).toBe(true);
+			state.toggle('claude-code', true);
+			expect(state.canPreview.value).toBe(false);
+		}
+	});
+
 	it('survives a failing detect', async () => {
 		detectAgents.mockRejectedValue('nope');
 		const state = useConnectLocalAgent({
@@ -252,6 +268,22 @@ describe('install', () => {
 		expect(CLAUDE_FAILURE_NOTE).toBe(
 			'The earlier TMGR entry in Claude Code was already removed.',
 		);
+	});
+
+	it('omits the Claude note when no command ran', async () => {
+		for (const outcome of [null, { ok: false, timedOut: false, steps: [] }]) {
+			installAgent.mockResolvedValue({
+				status: 'failed',
+				modulesChanged: false,
+				outcome,
+				error: 'The agent CLI is not trusted',
+			});
+			const { state } = await ready();
+			await state.install();
+			const result = state.results['claude-code'];
+			expect(result.status).toBe('failed');
+			expect(result.note).toBeUndefined();
+		}
 	});
 
 	it('explains a timeout', async () => {

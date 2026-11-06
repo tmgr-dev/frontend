@@ -12,10 +12,22 @@ describe('ConnectLocalAgent.vue', () => {
 		expect(src).toContain('data-tour="connect-local.agents"');
 		expect(src).toContain('data-tour="connect-local.install"');
 		expect(src).toContain(
-			'Agent connection on this screen works for local workspaces in the desktop app.',
+			'Switch to a local workspace in the desktop app to connect your agent.',
 		);
 		expect(src).toContain(
 			'Create your own workspace first, then connect your agent.',
+		);
+	});
+
+	it('anchors the tour in the unavailable view too', () => {
+		expect(src).toMatch(
+			/<p v-else-if="view === 'unavailable'"[^>]*data-tour="connect-local.agents"/,
+		);
+	});
+
+	it('disables Remove in safe mode', () => {
+		expect(src).toMatch(
+			/connect\.running\.value \|\| !!connect\.busyRemove\.value \|\| connect\.detect\.value\?\.safeMode/,
 		);
 	});
 

@@ -246,6 +246,31 @@ describe('installAgent', () => {
 		expect(revokeLocalToken).toHaveBeenCalledWith('lt_newnewnewnewnewn');
 	});
 
+	it('keeps the new token and reports ok when revoking old tokens fails', async () => {
+		const spy = jest
+			.spyOn(console, 'error')
+			.mockImplementation(() => undefined);
+		listLocalTokens.mockRejectedValueOnce(new Error('keychain locked'));
+		const result = await installAgent(base);
+		expect(result.status).toBe('ok');
+		expect(revokeLocalToken).not.toHaveBeenCalled();
+		spy.mockRestore();
+	});
+
+	it('does not revoke the new token when the old-token cleanup throws after a successful run', async () => {
+		const spy = jest
+			.spyOn(console, 'error')
+			.mockImplementation(() => undefined);
+		listLocalTokens.mockResolvedValue([
+			tokenRow({ id: 'lt_old1old1old1old1' }),
+		]);
+		revokeLocalToken.mockRejectedValueOnce(new Error('boom'));
+		const result = await installAgent(base);
+		expect(result.status).toBe('ok');
+		expect(revokeLocalToken).not.toHaveBeenCalledWith('lt_newnewnewnewnewn');
+		spy.mockRestore();
+	});
+
 	it('keeps the token on timeout', async () => {
 		invoke.mockResolvedValueOnce({ ok: false, timedOut: true, steps: [] });
 		const result = await installAgent(base);
@@ -313,7 +338,15 @@ describe('removeAgent', () => {
 describe('configSnippet', () => {
 	it('builds the Claude command with --scope user', () => {
 		expect(configSnippet('claude-code', '/App/tmgr', 'lt_x')).toBe(
-			'claude mcp add --scope user tmgr-local -- "/App/tmgr" mcp --token-id lt_x',
+			"claude mcp add --scope user tmgr-local -- '/App/tmgr' mcp --token-id lt_x",
+		);
+	});
+
+	it('single-quotes the Claude bridge path and escapes single quotes', () => {
+		expect(
+			configSnippet('claude-code', `/A $b \`c\` "d" 'e'/tmgr`, 'lt_x'),
+		).toBe(
+			`claude mcp add --scope user tmgr-local -- '/A $b \`c\` "d" '\\''e'\\''/tmgr' mcp --token-id lt_x`,
 		);
 	});
 
@@ -328,6 +361,12 @@ describe('configSnippet', () => {
 		const nasty = '/A "b"/c\\d/tmgr';
 		const toml = configSnippet('codex', nasty, 'lt_x');
 		expect(toml).toContain('command = "/A \\"b\\"/c\\\\d/tmgr"');
+	});
+
+	it('escapes control characters in the Codex TOML string', () => {
+		const toml = configSnippet('codex', '/A\nB\tC\u0001D\u001fE/tmgr', 'lt_x');
+		expect(toml).toContain('command = "/A\\nB\\tC\\u0001D\\u001fE/tmgr"');
+		expect(toml.split('\n')).toHaveLength(3);
 	});
 
 	it('builds Cursor JSON that round-trips awkward paths', () => {

@@ -12,9 +12,9 @@
 			<p
 				v-else-if="view === 'unavailable'"
 				class="mt-3 text-sm text-ink-subtle"
+				data-tour="connect-local.agents"
 			>
-				Agent connection on this screen works for local workspaces in the
-				desktop app.
+				Switch to a local workspace in the desktop app to connect your agent.
 			</p>
 			<p v-else-if="view === 'demo'" class="mt-3 text-sm text-ink-subtle">
 				Create your own workspace first, then connect your agent.
@@ -93,7 +93,9 @@
 									size="sm"
 									variant="outline"
 									:disabled="
-										connect.running.value || !!connect.busyRemove.value
+										connect.running.value ||
+										!!connect.busyRemove.value ||
+										connect.detect.value?.safeMode
 									"
 									@click="askRemove(row.info.id)"
 								>

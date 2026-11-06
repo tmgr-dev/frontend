@@ -100,19 +100,6 @@ export function useConnectLocalAgent(deps: {
 		detect.value?.agents.find((a) => a.id === id);
 	const supported = computed(() => detect.value?.platformSupported === true);
 
-	const rows = computed(() =>
-		CONNECT_AGENTS.map((info) => {
-			const found = !!detected(info.id)?.found;
-			const selectable = info.canInstall && found && supported.value;
-			return {
-				info,
-				found,
-				selectable,
-				copyOnly: !selectable,
-			};
-		}),
-	);
-
 	const installBlock = computed<string | null>(() => {
 		const d = detect.value;
 		if (!d) return null;
@@ -122,6 +109,20 @@ export function useConnectLocalAgent(deps: {
 		if (!d.bridge.ok) return BRIDGE_TEXT;
 		return null;
 	});
+
+	const rows = computed(() =>
+		CONNECT_AGENTS.map((info) => {
+			const found = !!detected(info.id)?.found;
+			const selectable =
+				info.canInstall && found && supported.value && !installBlock.value;
+			return {
+				info,
+				found,
+				selectable,
+				copyOnly: !selectable || !!installBlock.value,
+			};
+		}),
+	);
 
 	const selectedAgents = computed(() =>
 		rows.value.filter((r) => r.selectable && selected[r.info.id]),
@@ -178,7 +179,11 @@ export function useConnectLocalAgent(deps: {
 					`Restart ${row.info.title} so it picks up TMGR. Then ask it to list your TMGR tasks.`,
 					`Could not connect ${row.info.title}.`,
 				);
-				if (result.status !== 'ok' && agent === 'claude-code')
+				if (
+					result.status !== 'ok' &&
+					agent === 'claude-code' &&
+					(result.outcome?.steps.length ?? 0) > 0
+				)
 					view.note = CLAUDE_FAILURE_NOTE;
 				results[agent] = view;
 				if (result.modulesChanged) await refreshModules();

@@ -190,20 +190,26 @@ export const installAgent = async (args: {
 	const info = agentInfo(agent);
 	let modulesChanged = false;
 	let tokenId: string | null = null;
+	let ran = false;
 	try {
 		const issued = await issueFor(info, workspace, user);
 		modulesChanged = issued.modulesChanged;
 		tokenId = issued.token.id;
 		const outcome = await runAgentConnect(agent, 'install', tokenId);
+		ran = true;
 		if (outcome.timedOut) return { status: 'timeout', outcome, modulesChanged };
 		if (!outcome.ok) {
-			await revokeLocalToken(tokenId);
+			await revokeLocalToken(tokenId).catch(() => undefined);
 			return { status: 'failed', outcome, modulesChanged };
 		}
-		await revokeLabelled(info.tokenLabel, tokenId);
+		try {
+			await revokeLabelled(info.tokenLabel, tokenId);
+		} catch (error) {
+			console.error('Failed to revoke old agent tokens', error);
+		}
 		return { status: 'ok', outcome, modulesChanged };
 	} catch (error) {
-		if (tokenId) await revokeLocalToken(tokenId).catch(() => undefined);
+		if (tokenId && !ran) await revokeLocalToken(tokenId).catch(() => undefined);
 		return {
 			status: 'failed',
 			outcome: null,
@@ -235,10 +241,17 @@ export const removeAgent = async (args: {
 };
 
 const escapeToml = (value: string) =>
-	value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+	value
+		.replace(/\\/g, '\\\\')
+		.replace(/"/g, '\\"')
+		.replace(/\n/g, '\\n')
+		.replace(/\t/g, '\\t')
+		.replace(
+			/[\u0000-\u001f]/g,
+			(c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
+		);
 
-const escapeShellDouble = (value: string) =>
-	value.replace(/([\\"$`])/g, '\\$1');
+const quoteShell = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
 
 export const configSnippet = (
 	agent: ConnectAgentId,
@@ -264,7 +277,7 @@ export const configSnippet = (
 			null,
 			2,
 		);
-	return `claude mcp add --scope user tmgr-local -- "${escapeShellDouble(bridgeCommand)}" mcp --token-id ${tokenId}`;
+	return `claude mcp add --scope user tmgr-local -- ${quoteShell(bridgeCommand)} mcp --token-id ${tokenId}`;
 };
 
 export const copyConfigToken = async (args: {
