@@ -578,7 +578,9 @@ const actions = {
 			);
 		if (!fresh && storage) firstRun.clearFreshMarker(storage);
 		const profile = await createLocalProfile(name);
-		let [first] = await runtime.listLocalWorkspaces(true);
+		let first = runtime.firstRealWorkspace(
+			await runtime.listLocalWorkspaces(true),
+		);
 		if (!first) first = await runtime.createLocalWorkspace('My workspace');
 		runtime.setActiveLocalWorkspace(first);
 		if (fresh) firstRun.writeFreshMarker(storage, first.code, new Date());

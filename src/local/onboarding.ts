@@ -11,6 +11,7 @@ import {
 	seedStarters,
 	type TokenLike,
 } from './onboardingFacts';
+import { isDemoDb } from './demoSeed';
 import type { LocalContext } from './types';
 
 export const ONBOARDING_KEY = 'tmgr:onboarding:v1';
@@ -145,6 +146,21 @@ export const createOnboardingHandler = (
 
 		if (path === 'onboarding' && verb === 'GET')
 			return ok({ ...state, facts: await factsFor(FACT_KEYS) });
+
+		if (path === 'onboarding/demo' && verb === 'GET') {
+			let demo = false;
+			let code: string | null = null;
+			try {
+				const ctx = deps ? await deps.ctxFor() : null;
+				if (ctx) {
+					code = ctx.workspace.code;
+					demo = await isDemoDb(ctx.db);
+				}
+			} catch (error) {
+				console.error('local demo check failed', error);
+			}
+			return { status: 200, data: { data: { is_demo: demo, code } } };
+		}
 
 		if (path === 'onboarding/facts' && verb === 'GET') {
 			const keys = String(params?.keys ?? '')

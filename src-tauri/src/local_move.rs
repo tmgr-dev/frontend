@@ -1500,7 +1500,7 @@ pub struct Frozen {
   pub token: String,
 }
 
-async fn begin_operation(moving: &Moving, code: &str, freeze: bool) -> Result<Operation, String> {
+pub(crate) async fn begin_operation(moving: &Moving, code: &str, freeze: bool) -> Result<Operation, String> {
   let moving = moving.clone();
   let code = code.to_string();
   tauri::async_runtime::spawn_blocking(move || if freeze { moving.begin_freeze(&code) } else { moving.begin(&code) })
@@ -1515,6 +1515,7 @@ pub async fn local_move_freeze<R: Runtime>(
   moving: State<'_, Moving>,
   code: String,
 ) -> Result<Frozen, String> {
+  crate::local_demo::refuse_if_demo(&local_workspaces::root(&app)?, &code)?;
   let operation = begin_operation(&moving, &code, true).await?;
   let now = crate::tray::now_secs();
   let stopped = with_connection(app, &dbs, code.clone(), move |conn| stop_timers(conn, now)).await?;

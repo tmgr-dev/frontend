@@ -33,6 +33,7 @@ export const CAPS = {
 
 export const INVENTORY: LocalInventory = {
 	schemaVersion: 12,
+	demo: false,
 	counts: {
 		tasks: 3,
 		comments: 2,

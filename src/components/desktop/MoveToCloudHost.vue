@@ -49,7 +49,9 @@
 
 			onMounted(async () => {
 				if (store.getters.isLocalOnly) return;
-				workspaces.value = await listLocalWorkspaces();
+				workspaces.value = (await listLocalWorkspaces()).filter(
+					(workspace) => !workspace.demo,
+				);
 				retryOffer();
 				const pending = workspaces.value.filter(
 					(workspace) => loadPersisted(browserStorage, workspace.code).job,
@@ -68,7 +70,9 @@
 			watch(
 				() => [moveUi.dialogCode, moveUi.progressCode],
 				async () => {
-					workspaces.value = await listLocalWorkspaces();
+					workspaces.value = (await listLocalWorkspaces()).filter(
+						(workspace) => !workspace.demo,
+					);
 				},
 			);
 

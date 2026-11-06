@@ -34,6 +34,7 @@ import { normalizePath } from './router';
 import {
 	activeLocalWorkspace,
 	createLocalWorkspace,
+	firstRealWorkspace,
 	hasActiveLocalWorkspace,
 	listLocalWorkspaces,
 	localContext,
@@ -320,7 +321,7 @@ export const installLocalWorkspaces = (
 		const current = activeLocalWorkspace();
 		if (current) return current;
 		const first =
-			list[0] ??
+			firstRealWorkspace(list) ??
 			(await (creatingFirst ??= createLocalWorkspace(
 				FIRST_WORKSPACE_NAME,
 			).finally(() => {

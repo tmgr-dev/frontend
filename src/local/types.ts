@@ -35,6 +35,7 @@ export interface LocalWorkspace {
 	created_at: string;
 	path: string;
 	database: string;
+	demo?: boolean;
 }
 
 export interface LocalUser {

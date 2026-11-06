@@ -408,6 +408,7 @@ pub async fn local_token_issue<R: Runtime>(
   plugin_id: Option<String>,
 ) -> Result<TokenInfo, String> {
   let workspace = crate::local_workspaces::find(&app, &workspace_code)?;
+  crate::local_demo::refuse_workspace(&workspace)?;
   let (info, _secret) = state
     .token_store
     .issue(

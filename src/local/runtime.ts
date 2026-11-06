@@ -52,6 +52,15 @@ export const listLocalWorkspaces = (
 	return listed;
 };
 
+export const firstRealWorkspace = <T extends { demo?: boolean }>(
+	list: T[],
+): T | undefined => list.find((workspace) => !workspace.demo);
+
+export const forgetLocalWorkspace = (code: string) => {
+	databases.delete(code);
+	contextSeeded.delete(code);
+};
+
 export const createLocalWorkspace = async (
 	name: string,
 ): Promise<LocalWorkspace> => {

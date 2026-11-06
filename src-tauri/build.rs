@@ -31,6 +31,8 @@ const APP_COMMANDS: &[&str] = &[
   "local_move_put",
   "local_move_archive",
   "local_workspace_remove",
+  "local_workspace_create_demo",
+  "local_workspace_delete_demo",
   "local_move_export_file",
   "local_move_pick_export_target",
   "local_move_accept_lost",

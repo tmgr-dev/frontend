@@ -17,6 +17,7 @@ mod local_move;
 pub mod local_identity;
 mod local_profile;
 mod local_watch;
+mod local_demo;
 mod local_workspaces;
 mod plugin_catalog;
 mod persona_cache;
@@ -265,6 +266,8 @@ pub fn run() {
       local_move::local_move_put,
       local_move::local_move_archive,
       local_move::local_workspace_remove,
+      local_demo::local_workspace_create_demo,
+      local_demo::local_workspace_delete_demo,
       local_move::local_move_export_file,
       local_move::local_move_pick_export_target,
       local_move::local_move_accept_lost,

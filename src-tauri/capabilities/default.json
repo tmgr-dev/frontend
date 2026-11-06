@@ -46,6 +46,8 @@
 		"allow-local-move-put",
 		"allow-local-move-archive",
 		"allow-local-workspace-remove",
+		"allow-local-workspace-create-demo",
+		"allow-local-workspace-delete-demo",
 		"allow-local-move-export-file",
 		"allow-local-move-pick-export-target",
 		"allow-local-move-accept-lost",

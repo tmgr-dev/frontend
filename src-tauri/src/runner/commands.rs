@@ -90,12 +90,15 @@ fn local_workspace_code<R: Runtime>(app: &AppHandle<R>, workspace_id: i64) -> Re
   if workspace_id >= 0 {
     return Err("Agent runs are available only for local workspaces".to_owned());
   }
-  let root = crate::local_workspaces::root(app)?;
-  crate::local_workspaces::list_in(&root)
-    .into_iter()
-    .find(|w| w.manifest.id == workspace_id)
-    .map(|w| w.manifest.code)
-    .ok_or_else(|| "workspace not found".to_owned())
+  workspace_code_in(&crate::local_workspaces::root(app)?, workspace_id)
+}
+
+fn workspace_code_in(root: &std::path::Path, workspace_id: i64) -> Result<String, String> {
+  let found = crate::local_workspaces::list_in(root).into_iter().find(|w| w.manifest.id == workspace_id).ok_or_else(|| "workspace not found".to_owned())?;
+  if found.demo {
+    return Err("Agent runs are not available in the demo workspace".to_owned());
+  }
+  Ok(found.manifest.code)
 }
 
 async fn stored_folder<R: Runtime>(app: &AppHandle<R>, runner: &Runner, code: String) -> Option<String> {
@@ -369,9 +372,20 @@ pub async fn runner_term_open_link<R: Runtime>(window: WebviewWindow<R>, app: Ap
 
 #[cfg(test)]
 mod tests {
-  use super::{autopilot_stop_message, is_terminal_url, parse_autopilot_command, validate_link};
+  use super::{autopilot_stop_message, is_terminal_url, parse_autopilot_command, validate_link, workspace_code_in};
   use serde_json::json;
   use tmgr_ipc::api::AutopilotCommand;
+  #[test]
+  fn the_runner_refuses_the_demo_workspace() {
+    let root = std::env::temp_dir().join(format!("tmgr-runner-demo-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let real = crate::local_workspaces::create_in(&root, "Mine", "now").unwrap();
+    let demo = crate::local_demo::create_demo_in(&root, "Demo", "now").unwrap();
+    assert_eq!(workspace_code_in(&root, real.manifest.id).unwrap(), "mine");
+    assert!(workspace_code_in(&root, demo.manifest.id).is_err());
+    let _ = std::fs::remove_dir_all(&root);
+  }
+
   #[test]
   fn terminal_window_stays_on_its_page() {
     for ok in ["tauri://localhost/runner-terminal.html", "http://tauri.localhost/runner-terminal.html", "https://tauri.localhost/runner-terminal.html"] {

@@ -47,6 +47,7 @@ unicode-width = "0.2"
 zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 tmgr-ipc = { path = "../crates/tmgr-ipc" }
 tmgr-usage = { path = "../crates/tmgr-usage" }
+trash = "5"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

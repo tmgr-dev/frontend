@@ -37,6 +37,8 @@ export const LEGACY_MOVE_MESSAGE =
 	'This move was started by an older version. Discard it and start again.';
 export const SIGN_IN_TO_MOVE_MESSAGE =
 	'Sign in to move this workspace to the cloud.';
+export const DEMO_MOVE_MESSAGE =
+	'The demo workspace stays on this Mac and cannot be moved to the cloud';
 export const CANCELLED_MESSAGE = 'Move cancelled';
 
 export interface MoveNative {
@@ -216,9 +218,10 @@ export const createMover = (deps: MoveDeps) => {
 			mime_allowlist: capabilities.mime_allowlist,
 			bundle_schema: BUNDLE_SCHEMA,
 		};
-		const blocker =
-			!capabilities.bundle_schemas.includes(BUNDLE_SCHEMA) ||
-			!capabilities.local_schemas.includes(inventory.schemaVersion)
+		const blocker = inventory.demo
+			? DEMO_MOVE_MESSAGE
+			: !capabilities.bundle_schemas.includes(BUNDLE_SCHEMA) ||
+				  !capabilities.local_schemas.includes(inventory.schemaVersion)
 				? UNSUPPORTED_SCHEMA_MESSAGE
 				: null;
 		const names = new Map<number, string>(

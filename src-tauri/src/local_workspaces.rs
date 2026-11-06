@@ -25,6 +25,7 @@ pub struct LocalWorkspace {
   pub manifest: Manifest,
   pub path: String,
   pub database: String,
+  pub demo: bool,
 }
 
 pub(crate) fn root<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
@@ -75,6 +76,7 @@ fn read_workspace(dir: &Path) -> Option<LocalWorkspace> {
   manifest.id = local_id(&code);
   manifest.code = code;
   Some(LocalWorkspace {
+    demo: crate::local_demo::is_demo_dir(dir),
     path: dir.to_string_lossy().into_owned(),
     database: dir.join(DATABASE).to_string_lossy().into_owned(),
     manifest,

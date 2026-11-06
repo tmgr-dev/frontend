@@ -126,7 +126,9 @@
 				async (value) => {
 					if (!value || checked.value) return;
 					checked.value = true;
-					localWorkspaces.value = await listLocalWorkspaces();
+					localWorkspaces.value = (await listLocalWorkspaces()).filter(
+						(workspace) => !workspace.demo,
+					);
 					if (!localWorkspaces.value.length) clearUpgradeDialog();
 				},
 				{ immediate: true },

@@ -373,7 +373,7 @@ async fn backup_due<R: Runtime>(app: &AppHandle<R>) {
     return;
   };
   for workspace in local_workspaces::list_in(&root) {
-    if !Path::new(&workspace.database).exists() || !is_due(&backups_dir(&workspace), crate::tray::now_secs()) {
+    if workspace.demo || !Path::new(&workspace.database).exists() || !is_due(&backups_dir(&workspace), crate::tray::now_secs()) {
       continue;
     }
     let _ = run_backup(app, &workspace.manifest.code, "auto").await;
