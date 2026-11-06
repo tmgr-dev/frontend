@@ -1,0 +1,30 @@
+                                                                                                    
+                                                                                                    
+              ╭ New session ─────────────────────────────────────────────────────────╮              
+              │   Kind       claude   codex   shell   custom                         │              
+              │ > Folder    /work/app                                                │              
+              │   Search: ap                                                         │              
+              │   ▸   /work/app                                                      │              
+              │       /work/api                                                      │              
+              │       /work/app/web                                             live │              
+              │                                                                      │              
+              │                                                                      │              
+              │   ↑↓ pick  Enter start  → open  Esc back  ^P pin                     │              
+              │   Task      optional, type a key or words                            │              
+              │   Name                                                               │              
+              │   Worktree   Off   On                                                │              
+              │   Approvals  Off   On                                                │              
+              │   Bypass     Off   On                                                │              
+              │ Enter starts, Ctrl+R resumes a past session, Esc cancels             │              
+              │   Where      New tab   Right   Below   Replace                       │              
+              │   Rewind     Off   On                                                │              
+              │             [ Start ]                                                │              
+              │                                                                      │              
+              │                                                                      │              
+              │                                                                      │              
+              │                                                                      │              
+              │                                                                      │              
+              │                                                                      │              
+              ╰──────────────────────────────────────────────────────────────────────╯              
+                                                                                                    
+                                                                                                    

@@ -291,6 +291,38 @@ pub(super) fn collect_branch_only(cwd: &Path) -> Option<GitInfo> {
     })
 }
 
+pub(super) fn collect_mark(dir: &Path) -> Option<tmgr_runner::attach::FolderMark> {
+    if !real_dir(dir) {
+        return None;
+    }
+    let dir = std::fs::canonicalize(dir).ok()?;
+    std::fs::symlink_metadata(dir.join(".git")).ok()?;
+    if work_root(&dir)? != dir {
+        return None;
+    }
+    let branch = branch_of_head(&read_small_file(
+        &tmgr_queue::workdir::expected_git_dir(&dir)?.0.join("HEAD"),
+    )?);
+    let host = tempfile::tempdir().ok()?;
+    tmgr_queue::workdir::host_git_dir(&dir, host.path())?;
+    let git_dir = host.path();
+    let status = git(
+        &dir,
+        git_dir,
+        &["status", "--porcelain=v2", "--ignore-submodules=all"],
+    )?;
+    let dirty = status.lines().any(|l| !l.is_empty() && !l.starts_with('#'));
+    let merged = branch != "(detached)"
+        && base_of(&dir, git_dir).is_some_and(|(base, ahead)| {
+            ahead == 0 && base.strip_prefix("origin/").unwrap_or(&base) != branch
+        });
+    Some(tmgr_runner::attach::FolderMark {
+        branch,
+        dirty,
+        merged,
+    })
+}
+
 pub(super) fn git_worker(
     jobs: Receiver<Vec<GitJob>>,
     mut send: impl FnMut(HashMap<String, GitInfo>) -> bool,
@@ -592,6 +624,93 @@ mod tests {
         std::fs::write(root.join(".gitattributes"), "*.txt filter=evil\n").unwrap();
         assert!(collect(&root, |_, _, _| PrLookup::NoPr).is_none());
         assert!(!marker.exists());
+    }
+
+    #[test]
+    fn a_mark_reports_branch_dirty_and_merged_only_for_a_repo_root() {
+        let dir = repo();
+        let root = canon(dir.path());
+        let mark = collect_mark(&root).unwrap();
+        assert_eq!(
+            (mark.branch.as_str(), mark.dirty, mark.merged),
+            ("feature", true, false)
+        );
+        sh(&root, &["add", "."]);
+        sh(&root, &["commit", "-q", "-m", "third"]);
+        assert!(!collect_mark(&root).unwrap().dirty);
+        sh(&root, &["checkout", "-q", "main"]);
+        sh(&root, &["merge", "-q", "--ff-only", "feature"]);
+        assert!(!collect_mark(&root).unwrap().merged);
+        sh(&root, &["checkout", "-q", "feature"]);
+        let mark = collect_mark(&root).unwrap();
+        assert_eq!((mark.branch.as_str(), mark.merged), ("feature", true));
+        let sub = root.join("sub");
+        std::fs::create_dir(&sub).unwrap();
+        assert!(collect_mark(&sub).is_none());
+        sh(&root, &["checkout", "-q", "--detach"]);
+        assert!(!collect_mark(&root).unwrap().merged);
+    }
+
+    #[test]
+    fn a_mark_is_none_for_plain_missing_relative_and_bogus_folders() {
+        let dir = repo();
+        let p = canon(dir.path());
+        let inner = p.join("inner");
+        std::fs::create_dir_all(inner.join(".git")).unwrap();
+        assert!(collect_mark(&inner).is_none());
+        let plain = tempfile::tempdir().unwrap();
+        assert!(collect_mark(&canon(plain.path())).is_none());
+        assert!(collect_mark(&p.join("missing")).is_none());
+        assert!(collect_mark(Path::new("relative")).is_none());
+    }
+
+    #[test]
+    fn a_mark_never_runs_a_repo_fsmonitor() {
+        let dir = repo();
+        let root = canon(dir.path());
+        let marker = root.join("ran");
+        sh(
+            &root,
+            &[
+                "config",
+                "core.fsmonitor",
+                &format!("touch {}", marker.display()),
+            ],
+        );
+        collect_mark(&root).unwrap();
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn a_mark_refuses_a_repo_with_a_filter_driver_and_a_hostile_config() {
+        let dir = repo();
+        let root = canon(dir.path());
+        let marker = root.join("ran");
+        sh(
+            &root,
+            &[
+                "config",
+                "filter.evil.clean",
+                &format!("touch {}", marker.display()),
+            ],
+        );
+        std::fs::write(root.join(".gitattributes"), "*.txt filter=evil\n").unwrap();
+        assert!(collect_mark(&root).is_none());
+        assert!(!marker.exists());
+        let (tmp, clone) = clone_with_upstream();
+        let marker = canon(tmp.path()).join("ran2");
+        append(&clone.join(".git/config"), &hostile(&marker));
+        assert!(collect_mark(&clone).is_none());
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn a_mark_of_a_clone_uses_the_origin_head_base() {
+        let (_tmp, clone) = clone_with_upstream();
+        let mark = collect_mark(&clone).unwrap();
+        assert_eq!((mark.branch.as_str(), mark.merged), ("feature", false));
+        sh(&clone, &["checkout", "-q", "-f", "main"]);
+        assert!(!collect_mark(&clone).unwrap().merged);
     }
 
     #[test]

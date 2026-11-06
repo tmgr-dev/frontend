@@ -41,7 +41,7 @@ pub(super) struct Row {
 }
 
 impl Row {
-    fn external(e: Entry, snippet: Option<&str>) -> Row {
+    pub(super) fn external(e: Entry, snippet: Option<&str>) -> Row {
         let folder_gone = e.readable && !e.cwd.as_deref().is_some_and(resolves_in_place);
         Row {
             source: "external",
@@ -89,6 +89,10 @@ impl Row {
             folder_gone: !is_dir(&s.cwd),
             bypassed: s.permission_mode.as_deref() == Some("bypass"),
         }
+    }
+
+    pub(super) fn cwd(&self) -> Option<&str> {
+        self.cwd.as_deref()
     }
 
     pub(super) fn title(&self) -> Option<&str> {
