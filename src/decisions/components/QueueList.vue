@@ -85,7 +85,7 @@
 				this.$emit('update:query', (event.target as HTMLInputElement).value);
 			},
 			clearQuery(event: KeyboardEvent) {
-				if (!this.query) return;
+				if (!this.query || event.isComposing) return;
 				event.preventDefault();
 				this.$emit('update:query', '');
 			},

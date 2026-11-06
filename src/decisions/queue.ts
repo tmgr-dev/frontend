@@ -64,7 +64,9 @@ const searchText = (card: CardView): string =>
 		card.context,
 		card.question,
 		card.links.task,
-		...(card.links.items ?? []).flatMap((item) => [item.label, item.url]),
+		...(card.links.items ?? [])
+			.filter((item) => item.kind === 'task')
+			.flatMap((item) => [item.label, item.url]),
 	]
 		.filter(Boolean)
 		.join('\n')

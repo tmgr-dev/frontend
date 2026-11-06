@@ -196,7 +196,10 @@ describe('filterCards', () => {
 			title: 'Other',
 			links: {
 				task: 'https://tmgr.dev/tmgrdev/tasks/10599',
-				items: [{ kind: 'task', url: 'https://x.test/1', label: 'TM-882' }],
+				items: [
+					{ kind: 'pr', url: 'https://github.com/o/r/pull/1' },
+					{ kind: 'task', url: 'https://x.test/1', label: 'TM-882' },
+				],
 			},
 		}),
 	];
@@ -218,6 +221,10 @@ describe('filterCards', () => {
 	it('matches the task key and task link', () => {
 		expect(filterCards(cards, 'tm-882').map((c) => c.id)).toEqual(['c']);
 		expect(filterCards(cards, '10599').map((c) => c.id)).toEqual(['c']);
+	});
+
+	it('ignores non-task link urls', () => {
+		expect(filterCards(cards, 'github')).toEqual([]);
 	});
 
 	it('returns nothing when nothing matches', () => {
