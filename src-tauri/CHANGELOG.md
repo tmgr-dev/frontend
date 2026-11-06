@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.106 — 2026-11-06
+
+- Demo workspace: Help menu -> Watch the demo creates a separate workspace with a ready board and a sample agent run. It is marked DEMO, stays on this Mac, and can be deleted from its banner (it goes to the Trash).
+- The demo never mixes with your data: it is excluded from Move to cloud, agent runs, agent tokens, routines and backups, and is never picked as your first workspace.
+- Existing local users get a one-time offer to watch the demo; declining is remembered.
+
 ## 0.9.105 — 2026-11-06
 
 - Skills library for local workspaces: local personas can use skills stored on this device. Create, edit and attach skills in Settings > Personas, and the local MCP `get_persona` and `get_persona_skill` return them with the same shape as the cloud.
