@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.103
+
+- `tmgr attach`: the questions pocket (`?N`, Go to, Context, Answer, Ignore, Fork) now works for Claude Code sessions started without the sandbox. Their conversation lives in the real `~/.claude`, which the pocket never looked at, so it found nothing. It now reads only the session id in `sessions/<pid>.json` and that session's transcript in the project folder of its working folder, the same narrow lookup as the session titles. Sandboxed Claude sessions and Codex are unchanged. The status line, usage and export previews of such sessions use the same lookup.
+
 ## 1.0.102
 
 - `tmgr mcp`: `get_answer`, `ask_owner` and `reply_owner` no longer return `pending` ("not running") at once when the desktop app cannot be reached or drops the connection. The wait now retries with a pause of 250 ms growing to 5 s until `waitSeconds` runs out, so a listener that asks again on `pending` no longer spins the CPU. With many waits open at once (above about 256 in total) the desktop drops new connections, and before this each dropped wait came back instantly.

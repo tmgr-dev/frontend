@@ -8,7 +8,7 @@ pub use store::{
     MAX_PER_SESSION,
 };
 
-use crate::attach::{locate, Format, Source};
+use crate::attach::{locate, locate_unsandboxed_claude, Format, Source};
 use rules::{clip_head, clip_tail, collapse, groups, groups_for_spans, Group};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -27,6 +27,7 @@ pub struct SessionSrc {
     pub pid: u32,
     pub log_id: Option<String>,
     pub settled: bool,
+    pub unsandboxed_ms: Option<u64>,
 }
 
 pub struct Scanner {
@@ -217,6 +218,10 @@ impl Scanner {
 
 pub fn transcript_path(src: &SessionSrc) -> Option<PathBuf> {
     match src.format {
+        Format::Claude if src.unsandboxed_ms.is_some() => {
+            locate_unsandboxed_claude(&src.home, &src.cwd, src.pid, src.unsandboxed_ms?)
+                .map(|(p, _)| p)
+        }
         Format::Claude => {
             let source = Source {
                 home: &src.home,

@@ -417,6 +417,7 @@ pub(super) fn fork_job(cfg: &RunnerConfig, s: &SessionInfo, src: AgentSrc) -> Qu
         log: cfg.dir.join("sessions").join(&s.id).join("output.log"),
         exited: s.state.kind == StateKind::Exited,
         settled: !matches!(s.state.kind, StateKind::Working | StateKind::Starting),
+        real_home: None,
     }
 }
 

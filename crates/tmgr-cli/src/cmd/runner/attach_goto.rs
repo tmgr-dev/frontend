@@ -172,6 +172,7 @@ mod tests {
             log: dir.path().join("output.log"),
             exited: true,
             settled: true,
+            real_home: None,
         };
         let err = fork_call(&cfg, &job, "x", (80, 24), (Reads::default(), None)).unwrap_err();
         assert_eq!(err, Reads::default().hint().unwrap());
@@ -217,6 +218,7 @@ mod tests {
             log: dir.join("output.log"),
             exited: false,
             settled: true,
+            real_home: None,
         }
     }
 

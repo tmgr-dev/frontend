@@ -18,22 +18,25 @@ pub(super) struct QuestionJob {
     pub log: PathBuf,
     pub exited: bool,
     pub settled: bool,
+    pub real_home: Option<PathBuf>,
 }
 
 pub(super) fn session_src(job: &QuestionJob) -> Option<SessionSrc> {
-    if !std::fs::symlink_metadata(&job.sandbox_home).is_ok_and(|m| m.is_dir()) {
+    let home = job.real_home.as_ref().unwrap_or(&job.sandbox_home);
+    if !std::fs::symlink_metadata(home).is_ok_and(|m| m.is_dir()) {
         return None;
     }
     let mut src = SessionSrc {
         id: job.id.clone(),
         format: job.src.format,
-        home: job.sandbox_home.clone(),
+        home: home.clone(),
         cwd: job.src.cwd.clone(),
         pid: if job.exited { 0 } else { job.pid },
         log_id: None,
         settled: job.settled,
+        unsandboxed_ms: job.real_home.as_ref().map(|_| job.src.created_ms),
     };
-    if job.exited || transcript_path(&src).is_none() {
+    if job.real_home.is_none() && (job.exited || transcript_path(&src).is_none()) {
         src.log_id = id_from_log(&job.log, &job.src.profile);
     }
     Some(src)
@@ -112,6 +115,7 @@ mod tests {
             log: dir.join("output.log"),
             exited: true,
             settled,
+            real_home: None,
         }
     }
 
@@ -159,6 +163,64 @@ mod tests {
         assert_eq!(found[0].q.session, "s_abcdefghjk");
         tx.send(Vec::new()).unwrap();
         assert_eq!(out_rx.recv().unwrap().len(), 1);
+        drop(tx);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn a_no_sandbox_claude_session_is_scanned_in_the_real_home() {
+        let runner = tempfile::tempdir().unwrap();
+        private(runner.path());
+        let sandbox = tempfile::tempdir().unwrap();
+        let real = tempfile::tempdir().unwrap();
+        let sessions = real.path().join(".claude/sessions");
+        std::fs::create_dir_all(&sessions).unwrap();
+        std::fs::write(
+            sessions.join("4242.json"),
+            format!(r#"{{"pid":4242,"sessionId":"{U}","cwd":"/work/x"}}"#),
+        )
+        .unwrap();
+        let proj = real.path().join(".claude/projects/-work-x");
+        std::fs::create_dir_all(&proj).unwrap();
+        let mut f = std::fs::File::create(proj.join(format!("{U}.jsonl"))).unwrap();
+        for line in [
+            r#"{"type":"user","message":{"role":"user","content":"go"}}"#,
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"hm"}]}}"#,
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Done. Should I also update the docs?"}]}}"#,
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01","name":"AskUserQuestion","input":{"questions":[{"question":"Which database should the report use?","header":"DB","options":[{"label":"A","description":"a"},{"label":"B","description":"b"}],"multiSelect":false}]}}]}}"#,
+        ] {
+            writeln!(f, "{line}").unwrap();
+        }
+        let mut j = job(sandbox.path(), runner.path(), true);
+        j.src.no_sandbox = true;
+        j.src.pid = 4242;
+        j.pid = 4242;
+        j.exited = false;
+        j.real_home = Some(real.path().to_path_buf());
+
+        let (tx, rx) = mpsc::sync_channel(1);
+        let (out_tx, out_rx) = mpsc::channel();
+        let dir = runner.path().to_path_buf();
+        let handle = std::thread::spawn(move || {
+            questioner(
+                rx,
+                dir,
+                None,
+                || ALL,
+                move |found, _| out_tx.send(found).is_ok(),
+            )
+        });
+        tx.send(vec![j]).unwrap();
+        let found = out_rx.recv().unwrap();
+        let mut texts: Vec<String> = found.iter().map(|e| e.q.text.clone()).collect();
+        texts.sort();
+        assert_eq!(
+            texts,
+            vec![
+                "Should I also update the docs?".to_string(),
+                "Which database should the report use?".to_string()
+            ]
+        );
         drop(tx);
         handle.join().unwrap();
     }

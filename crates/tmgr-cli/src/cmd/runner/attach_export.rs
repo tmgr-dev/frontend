@@ -250,6 +250,7 @@ pub(super) fn new_job(
         log: cfg.dir.join("sessions").join(id).join("output.log"),
         exited,
         settled: true,
+        real_home: None,
     }
 }
 

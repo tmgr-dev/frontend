@@ -1005,6 +1005,7 @@ impl App {
                 .join("output.log"),
             exited: row.exited(),
             settled: !matches!(row.state.kind, StateKind::Working | StateKind::Starting),
+            real_home: title_real_home(src, attach_export::home_dir()),
         }
     }
 

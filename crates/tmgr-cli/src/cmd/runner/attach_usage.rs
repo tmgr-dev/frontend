@@ -172,6 +172,7 @@ mod tests {
             log: dir.join("output.log"),
             exited: true,
             settled: false,
+            real_home: None,
         }
     }
 

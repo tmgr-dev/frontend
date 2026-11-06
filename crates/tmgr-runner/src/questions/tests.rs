@@ -520,6 +520,7 @@ impl Rig {
             pid: 0,
             log_id: Some(U.into()),
             settled,
+            unsandboxed_ms: None,
         }
     }
 
