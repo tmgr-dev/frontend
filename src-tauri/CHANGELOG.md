@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.104 — 2026-11-06
+
+- Signing out now deletes that account's AI model key from the Keychain and its cached persona prompts, so the next account on this Mac starts clean. The key of the local profile (no account) is never touched.
+- If that cleanup fails, the reason is written to the app log instead of being silently ignored.
+
 ## 0.9.103 — 2026-11-06
 
 - Linux: the desktop app is now built for ARM64 (aarch64) as well: deb, rpm and AppImage, with in-app updates.
