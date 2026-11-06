@@ -155,10 +155,13 @@ export function landPage<T extends PagedTask>(
 	epoch: number,
 	response: PageResponse<T>,
 	pending: ReadonlySet<number> = new Set(),
+	requestCursor?: string | null,
 ): LandResult {
 	const column = findColumn(columns, statusId);
 	const paging = column?.paging;
 	if (!column || !paging || paging.epoch !== epoch) return 'dropped';
+	if (requestCursor !== undefined && paging.cursor !== requestCursor)
+		return 'dropped';
 	if (response.meta?.reset) return 'reset';
 	const seen = idsOutside(columns as PagedColumn[], column);
 	for (const task of column.tasks) seen.add(task.id);
@@ -198,6 +201,7 @@ export async function loadNextPage<T extends PagedTask>(
 				epoch,
 				response,
 				options.pending,
+				cursor,
 			);
 			if (result === 'applied') break;
 			if (result === 'reset') {
@@ -232,45 +236,55 @@ export async function reloadWindow<T extends PagedTask>(
 	const size = Math.max(column.tasks.length, options.limit ?? BOARD_PAGE_SIZE);
 	const id = nextEpoch();
 	paging.reload = id;
-	for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-		const epoch = nextEpoch();
-		paging.epoch = epoch;
-		const incoming: T[] = [];
-		let cursor: string | null = null;
-		let meta: PageMeta | undefined;
-		let restart = false;
-		for (;;) {
-			const response: PageResponse<T> = await fetchPage(
-				Number(statusId),
-				cursor,
-				pageLimit(size - incoming.length),
-			);
-			const current = findColumn(getColumns(), statusId)?.paging;
-			if (current !== paging || paging.reload !== id) return;
-			if (paging.epoch !== epoch || response.meta?.reset) {
-				restart = true;
-				break;
+	paging.loading = true;
+	try {
+		await reloadAttempts();
+	} finally {
+		if (paging.reload === id) paging.loading = false;
+	}
+
+	async function reloadAttempts() {
+		for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+			const epoch = nextEpoch();
+			paging.epoch = epoch;
+			const incoming: T[] = [];
+			let cursor: string | null = null;
+			let meta: PageMeta | undefined;
+			let restart = false;
+			for (;;) {
+				const response: PageResponse<T> = await fetchPage(
+					Number(statusId),
+					cursor,
+					pageLimit(size - incoming.length),
+				);
+				const current = findColumn(getColumns(), statusId)?.paging;
+				if (current !== paging || paging.reload !== id) return;
+				if (paging.epoch !== epoch || response.meta?.reset) {
+					restart = true;
+					break;
+				}
+				incoming.push(...response.data);
+				cursor = response.meta?.next_cursor ?? null;
+				meta ??= response.meta;
+				if (cursor === null || incoming.length >= size) break;
 			}
-			incoming.push(...response.data);
-			cursor = response.meta?.next_cursor ?? null;
-			meta ??= response.meta;
-			if (cursor === null || incoming.length >= size) break;
+			if (restart) continue;
+			const target = findColumn(getColumns(), statusId)!;
+			const seen = idsOutside(getColumns() as PagedColumn[], target);
+			const next: T[] = [];
+			for (const task of incoming) {
+				if (seen.has(task.id)) continue;
+				seen.add(task.id);
+				next.push(task);
+			}
+			target.tasks.splice(0, target.tasks.length, ...next);
+			paging.cursor = cursor;
+			paging.complete = cursor === null;
+			paging.settled++;
+			paging.epoch = nextEpoch();
+			applyTotals(paging, meta);
+			return;
 		}
-		if (restart) continue;
-		const target = findColumn(getColumns(), statusId)!;
-		const seen = idsOutside(getColumns() as PagedColumn[], target);
-		const next: T[] = [];
-		for (const task of incoming) {
-			if (seen.has(task.id)) continue;
-			seen.add(task.id);
-			next.push(task);
-		}
-		target.tasks.splice(0, target.tasks.length, ...next);
-		paging.cursor = cursor;
-		paging.complete = cursor === null;
-		paging.settled++;
-		applyTotals(paging, meta);
-		return;
 	}
 }
 

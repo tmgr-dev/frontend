@@ -610,6 +610,42 @@ describe('server resets', () => {
 			expect(calls).toEqual([null, 'c1', null, 'c1']);
 		});
 
+		it('a next page requested during a reload cannot land after the reload', async () => {
+			const columns = [column(make(3))];
+			const waiting: Array<{
+				cursor: string | null;
+				resolve: (page: PageResponse<Row>) => void;
+			}> = [];
+			const fetchPage = (_status: number, cursor: string | null) =>
+				new Promise<PageResponse<Row>>((resolve) => {
+					waiting.push({ cursor, resolve });
+				});
+			const answer = async (cursor: string | null, page: PageResponse<Row>) => {
+				waiting.find((w) => w.cursor === cursor)?.resolve(page);
+				await new Promise((resolve) => setTimeout(resolve, 0));
+			};
+			const reload = reloadWindow(() => columns, 1, fetchPage, { limit: 3 });
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			const next = loadNextPage(() => columns, 1, fetchPage, { limit: 3 });
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			await answer(null, {
+				data: [
+					{ id: 10, status_id: 1, order: 0 },
+					{ id: 1, status_id: 1, order: 1 },
+					{ id: 2, status_id: 1, order: 2 },
+				],
+				meta: { next_cursor: 'fresh' },
+			});
+			await reload;
+			await answer('old', {
+				data: [{ id: 4, status_id: 1, order: 4 }],
+				meta: { next_cursor: null },
+			});
+			await next;
+			expect(columns[0].tasks.map((t) => t.id)).toEqual([10, 1, 2]);
+			expect(columns[0].paging!.cursor).toBe('fresh');
+		});
+
 		it('keeps the current cards and leaves the column incomplete after too many resets', async () => {
 			const original = make(201);
 			const columns = [column(original.slice())];
