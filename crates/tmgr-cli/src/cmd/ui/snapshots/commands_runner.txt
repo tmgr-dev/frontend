@@ -155,3 +155,4 @@ usage reset | Usage | -
 usage statusline install | Usage | account, install
 usage statusline uninstall | Usage | account
 self-update | Account | check, channel, allow_downgrade
+setup terminal | Account | check

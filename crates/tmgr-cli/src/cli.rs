@@ -184,6 +184,24 @@ pub enum Command {
     /// Update tmgr to the newest signed release
     #[command(name = "self-update")]
     SelfUpdate(SelfUpdateArgs),
+    /// Set up this computer for tmgr
+    Setup {
+        #[command(subcommand)]
+        command: SetupCommand,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SetupCommand {
+    /// Let programs in your terminal write to the clipboard (OSC 52), so copying in `tmgr attach` over SSH works
+    Terminal(SetupTerminalArgs),
+}
+
+#[derive(Args)]
+pub struct SetupTerminalArgs {
+    /// Only report what would change
+    #[arg(long)]
+    pub check: bool,
 }
 
 #[derive(Args)]

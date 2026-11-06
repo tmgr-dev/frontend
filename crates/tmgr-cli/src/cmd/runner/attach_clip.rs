@@ -44,10 +44,6 @@ fn pbcopy(text: String) {
     });
 }
 
-fn remote_session() -> bool {
-    std::env::var_os("SSH_CONNECTION").is_some() || std::env::var_os("SSH_TTY").is_some()
-}
-
 impl Clipboard for SystemClipboard {
     fn copy(&mut self, text: &str) -> String {
         let clean = plain(text);
@@ -58,7 +54,7 @@ impl Clipboard for SystemClipboard {
             let _ = out.write_all(&osc52(&clean));
             let _ = out.flush();
         }
-        let local = !remote_session() && cfg!(target_os = "macos");
+        let local = !crate::cmd::setup_terminal::remote_session() && cfg!(target_os = "macos");
         if local {
             pbcopy(clean);
         }
@@ -71,7 +67,9 @@ fn copy_notice(n: usize, osc: bool, local: bool) -> String {
     if local {
         format!("copied {chars}")
     } else if osc {
-        format!("sent {chars} to the terminal clipboard")
+        format!(
+            "sent {chars} to the terminal clipboard (empty? run `tmgr setup terminal` on your computer)"
+        )
     } else {
         format!("{chars} too long for the terminal clipboard")
     }
@@ -87,7 +85,7 @@ mod tests {
         assert_eq!(copy_notice(5, false, true), "copied 5 characters");
         assert_eq!(
             copy_notice(1, true, false),
-            "sent 1 character to the terminal clipboard"
+            "sent 1 character to the terminal clipboard (empty? run `tmgr setup terminal` on your computer)"
         );
         assert_eq!(
             copy_notice(200_000, false, false),

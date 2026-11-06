@@ -32,6 +32,7 @@ pub mod routine;
 #[cfg(feature = "runner")]
 pub mod runner;
 pub mod self_update;
+pub mod setup_terminal;
 pub mod shared;
 #[cfg(feature = "runner")]
 pub mod signer;

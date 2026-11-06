@@ -44,6 +44,7 @@ pub const GUARDED: &[Rule] = &[
     rule(&["git", "install-hooks"], Some("global"), None),
     rule(&["init"], Some("install"), None),
     rule(&["hook", "install"], None, None),
+    rule(&["setup", "terminal"], None, None),
 ];
 
 pub fn is_guarded(node: &Node, values: &Values) -> bool {

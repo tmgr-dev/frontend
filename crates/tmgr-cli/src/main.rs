@@ -199,6 +199,9 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         Some(Command::Ui) => Err(Error::internal("handled before the session starts")),
         Some(Command::Usage(args)) => cmd::usage::run(ctx, args),
         Some(Command::SelfUpdate(args)) => cmd::self_update::run(ctx, args),
+        Some(Command::Setup { command }) => match command {
+            cli::SetupCommand::Terminal(args) => cmd::setup_terminal::run(ctx, args),
+        },
         Some(Command::Refs) => Ok(Output::new(
             json!({"help": "refs"}),
             cli::REFS_HELP.to_string(),

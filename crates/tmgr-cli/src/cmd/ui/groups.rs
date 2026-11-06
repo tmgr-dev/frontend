@@ -61,6 +61,7 @@ const GROUPS: &[(&str, &[&str])] = &[
             "notify",
             "alarm",
             "self-update",
+            "setup",
         ],
     ),
 ];
