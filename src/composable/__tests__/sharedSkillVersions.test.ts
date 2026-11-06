@@ -125,7 +125,7 @@ describe('useSharedSkillHistory', () => {
 		expect(api.listSharedSkillVersions).toHaveBeenCalledTimes(2);
 	});
 
-	it('toasts and reloads on 409 without notifying', async () => {
+	it('toasts and reloads and notifies on 409', async () => {
 		(api.restoreSharedSkill as jest.Mock).mockRejectedValue({
 			response: { status: 409 },
 		});
@@ -139,7 +139,7 @@ describe('useSharedSkillHistory', () => {
 				variant: 'destructive',
 			}),
 		);
-		expect(changed).not.toHaveBeenCalled();
+		expect(changed).toHaveBeenCalled();
 		expect(api.listSharedSkillVersions).toHaveBeenCalledTimes(2);
 	});
 

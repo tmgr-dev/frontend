@@ -126,6 +126,7 @@ export const useSharedSkillHistory = (slug: string, onChanged: () => void) => {
 					variant: 'destructive',
 				});
 				await load();
+				onChanged();
 			} else {
 				toast({
 					title: 'Could not restore this version',

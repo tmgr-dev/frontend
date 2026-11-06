@@ -276,8 +276,9 @@ const invalidateSharedForPersona = (personaUuid: string) => {
 	requestCache.invalidate(sharedSkillsKey);
 };
 
-const invalidateSharedPin = (personaUuid: string) => {
+const invalidateSharedPin = (personaUuid: string, slug: string) => {
 	invalidateSharedForPersona(personaUuid);
+	requestCache.invalidate(`shared-skills-${slug}-versions`);
 	requestCache.invalidate(/^ws-\d+-persona-grants$/);
 };
 
@@ -506,7 +507,7 @@ export const pinSharedSkill = async (
 	} = await $axios.put(`/personas/${personaUuid}/shared-skills/${slug}/pin`, {
 		version,
 	});
-	invalidateSharedPin(personaUuid);
+	invalidateSharedPin(personaUuid, slug);
 	return data;
 };
 
@@ -517,7 +518,7 @@ export const unpinSharedSkill = async (
 	const {
 		data: { data },
 	} = await $axios.delete(`/personas/${personaUuid}/shared-skills/${slug}/pin`);
-	invalidateSharedPin(personaUuid);
+	invalidateSharedPin(personaUuid, slug);
 	return data;
 };
 

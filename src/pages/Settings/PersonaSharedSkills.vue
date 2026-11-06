@@ -42,6 +42,7 @@
 						:model-value="
 							skill.pinned_version ? String(skill.pinned_version) : 'latest'
 						"
+						:disabled="pendingSlugs.has(skill.slug)"
 						@update:model-value="(v) => setVersion(skill, String(v))"
 						@update:open="(open) => open && loadVersions(skill)"
 					>
@@ -151,18 +152,24 @@
 			const keptVersions = ref<Record<string, number[]>>({});
 
 			const staleSlugs = new Set<string>();
+			const pendingSlugs = ref<Set<string>>(new Set());
+			const versionRequests = new Map<string, number>();
 
 			const loadVersions = async (skill: PersonaSharedSkill) => {
 				if (keptVersions.value[skill.slug] && !staleSlugs.has(skill.slug))
 					return;
+				const requestId = (versionRequests.get(skill.slug) ?? 0) + 1;
+				versionRequests.set(skill.slug, requestId);
 				try {
 					const rows = await listSharedSkillVersions(skill.slug, false);
+					if (versionRequests.get(skill.slug) !== requestId) return;
 					keptVersions.value = {
 						...keptVersions.value,
 						[skill.slug]: rows.map((r) => r.version),
 					};
 					staleSlugs.delete(skill.slug);
 				} catch {
+					if (versionRequests.get(skill.slug) !== requestId) return;
 					toast({
 						title: 'Could not load the versions',
 						variant: 'destructive',
@@ -235,7 +242,8 @@
 				const current = skill.pinned_version
 					? String(skill.pinned_version)
 					: 'latest';
-				if (choice === current) return;
+				if (choice === current || pendingSlugs.value.has(skill.slug)) return;
+				pendingSlugs.value = new Set(pendingSlugs.value).add(skill.slug);
 				try {
 					await changePin(props.persona.id, skill.slug, choice);
 					await load();
@@ -244,6 +252,9 @@
 					fail(error, 'Could not change the skill version');
 				} finally {
 					staleSlugs.add(skill.slug);
+					const next = new Set(pendingSlugs.value);
+					next.delete(skill.slug);
+					pendingSlugs.value = next;
 				}
 			};
 
@@ -252,6 +263,9 @@
 				() => {
 					keptVersions.value = {};
 					staleSlugs.clear();
+					versionRequests.forEach((id, slug) =>
+						versionRequests.set(slug, id + 1),
+					);
 					load();
 				},
 			);
@@ -264,6 +278,7 @@
 				attach,
 				detach,
 				setVersion,
+				pendingSlugs,
 				loadVersions,
 				versionsFor,
 				ATTACHED_SKILL_LIMIT,

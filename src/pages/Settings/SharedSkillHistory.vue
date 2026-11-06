@@ -21,6 +21,7 @@
 					<button
 						type="button"
 						:data-testid="`history-version-${v.version}`"
+						:aria-current="v.version === selected ? 'true' : undefined"
 						:class="[
 							'w-full rounded border p-2 text-left text-xs',
 							v.version === selected

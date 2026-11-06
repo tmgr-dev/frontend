@@ -667,6 +667,7 @@ describe('shared skill versions', () => {
 		expect(requestCache.has('personas-uuid-1-shared-skills')).toBe(false);
 		expect(requestCache.has('personas-uuid-2-shared-skills')).toBe(true);
 		expect(requestCache.has('shared-skills')).toBe(false);
+		expect(requestCache.has('shared-skills-triage-versions')).toBe(false);
 		expect(requestCache.has('ws-5-persona-grants')).toBe(false);
 	});
 
@@ -682,6 +683,7 @@ describe('shared skill versions', () => {
 		expect(result).toEqual({ pinned_version: null });
 		expect(requestCache.has('personas-uuid-1-shared-skills')).toBe(false);
 		expect(requestCache.has('shared-skills')).toBe(false);
+		expect(requestCache.has('shared-skills-triage-versions')).toBe(false);
 		expect(requestCache.has('ws-5-persona-grants')).toBe(false);
 	});
 });
