@@ -87,6 +87,16 @@ const fakeShell = async ({
         workspaces.push(workspace);
         return workspace;
       }
+      case 'local_workspace_delete_demo': {
+        const index = workspaces.findIndex(
+          (workspace) => workspace.code === args.code && workspace.demo,
+        );
+        if (index < 0)
+          throw new Error('Only the demo workspace can be deleted');
+        workspaces.splice(index, 1);
+        dbs.delete(args.code);
+        return null;
+      }
       case 'local_db_select':
         return db(args.code)
           .prepare(args.sql)

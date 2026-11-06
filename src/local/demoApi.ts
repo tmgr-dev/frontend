@@ -1,4 +1,4 @@
-import { requestGhostPlay } from '@/onboarding/ghost';
+import { requestGhostPlay, stopGhost } from '@/onboarding/ghost';
 import { FIRST_WORKSPACE_NAME } from './accountless';
 import { DEMO_WORKSPACE_NAME, seedDemo } from './demoSeed';
 import {
@@ -71,6 +71,7 @@ export const deleteDemo = async (code: string): Promise<void> => {
 	if (!list.find((w) => w.code === code)?.demo)
 		throw new Error('Only the demo workspace can be deleted this way');
 	const wasActive = activeLocalWorkspaceCode() === code;
+	await stopGhost();
 	await invoke('local_workspace_delete_demo', { code });
 	forgetLocalWorkspace(code);
 	const rest = await listLocalWorkspaces(true);

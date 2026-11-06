@@ -49,6 +49,7 @@
 		createAxiosGhostEnv,
 		createGhostPlayer,
 		onGhostPlayRequested,
+		registerGhostStop,
 	} from '@/onboarding/ghost';
 	import $axios from '@/plugins/axios';
 	import { onEscape, prefersReducedMotion } from '@/tours/a11y';
@@ -77,6 +78,8 @@
 			let playingCode: string | null = null;
 			let skipRequested = false;
 			let disposed = false;
+			let stopping = false;
+			let current: Promise<void> | null = null;
 
 			const refreshTask = async (workspaceId: number, taskId: number) => {
 				requestCache.invalidate(`task-${taskId}`);
@@ -92,6 +95,8 @@
 			const reloadTimers = () => store.commit('incrementReloadActiveTasksKey');
 
 			const recover = async (workspace: LocalWorkspace) => {
+				const known = await listLocalWorkspaces();
+				if (!known.some((w) => w.code === workspace.code)) return;
 				const ctx = await localContext(workspace, NO_USER);
 				const touched = await recoverDemo(ctx);
 				if (!touched.length) return;
@@ -111,7 +116,10 @@
 
 			let ready: Promise<void> = Promise.resolve();
 
-			const play = async () => {
+			const cancelled = (workspace: LocalWorkspace) =>
+				disposed || stopping || activeLocalWorkspace()?.code !== workspace.code;
+
+			const run = async () => {
 				if (playing.value) return;
 				const workspace = activeLocalWorkspace();
 				if (!workspace?.demo) return;
@@ -121,13 +129,12 @@
 				try {
 					await ready;
 					await wait(PRE_ROLL_MS);
-					if (disposed || activeLocalWorkspace()?.code !== workspace.code)
-						return;
+					if (cancelled(workspace)) return;
 					const ctx = await localContext(workspace, NO_USER);
 					const card = await resetDemoCard(ctx);
 					if (!card) return;
 					await refreshTask(workspace.id, card.taskId);
-					if (disposed || activeLocalWorkspace()?.code !== workspace.code) {
+					if (cancelled(workspace)) {
 						await recover(workspace);
 						return;
 					}
@@ -159,6 +166,24 @@
 					player = null;
 					playingCode = null;
 					playing.value = false;
+				}
+			};
+
+			const play = () => {
+				if (!current)
+					current = run().finally(() => {
+						current = null;
+					});
+				return current;
+			};
+
+			const stop = async () => {
+				stopping = true;
+				try {
+					player?.abort();
+					await current;
+				} finally {
+					stopping = false;
 				}
 			};
 
@@ -208,10 +233,14 @@
 
 			onMounted(() => {
 				ready = recoverAll();
+				unregisterStop = registerGhostStop(stop);
 			});
+
+			let unregisterStop = () => {};
 
 			onBeforeUnmount(() => {
 				disposed = true;
+				unregisterStop();
 				offRequest();
 				offEscape();
 				player?.abort();

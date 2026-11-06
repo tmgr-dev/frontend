@@ -220,3 +220,18 @@ export const onGhostPlayRequested = (listener: PlayListener): (() => void) => {
 	playListeners.add(listener);
 	return () => playListeners.delete(listener);
 };
+
+let stopHandler: (() => Promise<void>) | null = null;
+
+export const registerGhostStop = (
+	handler: () => Promise<void>,
+): (() => void) => {
+	stopHandler = handler;
+	return () => {
+		if (stopHandler === handler) stopHandler = null;
+	};
+};
+
+export const stopGhost = async (): Promise<void> => {
+	await stopHandler?.();
+};

@@ -4,6 +4,7 @@ import router from '@/router';
 import store from '@/store';
 import { requestCache } from '@/utils/requestCache';
 
+import { registerGhostStop } from '@/onboarding/ghost';
 import { deleteDemo } from '../demoApi';
 import * as runtime from '../runtime';
 import type { LocalWorkspace } from '../types';
@@ -89,6 +90,27 @@ describe('deleteDemo', () => {
 		expect(router.push).toHaveBeenCalledWith('/local-personal/board');
 		expect(requestCache.invalidate).toHaveBeenCalledWith('workspaces');
 		expect(store.dispatch).toHaveBeenCalledWith('loadWorkspaces');
+	});
+
+	it('waits for the ghost to stop before the folder goes to the Trash', async () => {
+		jest
+			.mocked(runtime.listLocalWorkspaces)
+			.mockResolvedValueOnce([DEMO, REAL])
+			.mockResolvedValueOnce([REAL]);
+		jest.mocked(runtime.activeLocalWorkspaceCode).mockReturnValue('demo');
+		const order: string[] = [];
+		jest.mocked(invoke).mockImplementation(async () => {
+			order.push('invoke');
+		});
+		const off = registerGhostStop(async () => {
+			await Promise.resolve();
+			order.push('stopped');
+		});
+
+		await deleteDemo('demo');
+		off();
+
+		expect(order).toEqual(['stopped', 'invoke']);
 	});
 
 	it('creates My workspace when no real workspace is left', async () => {

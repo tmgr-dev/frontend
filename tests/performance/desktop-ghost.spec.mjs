@@ -105,3 +105,21 @@ test('the hub tour opens the demo, plays it and completes when it ends', async (
     .toBe('Review');
   await expect(popover).toHaveCount(0);
 });
+
+test('deleting the demo while it plays stops the ghost and leaves nothing behind', async ({
+  page,
+}) => {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const shell = await openDemo(page);
+  await expect
+    .poll(async () => (await cardStatus(shell))[0]?.status, { timeout: 15000 })
+    .toBe('In progress');
+  await page.getByTestId('demo-delete').click();
+  await page.getByTestId('demo-delete-confirm').click();
+  await expect(page).toHaveURL(/\/local-my-workspace\//);
+  await expect(page.getByTestId('ghost-panel')).toHaveCount(0);
+  await page.waitForTimeout(2500);
+  expect(await shell('local_workspaces_list')).toHaveLength(1);
+  expect(errors).toEqual([]);
+});
