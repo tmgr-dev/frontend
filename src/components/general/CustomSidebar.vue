@@ -101,6 +101,7 @@
 		ArrowRight,
 		BadgeCheck,
 		BarChart3,
+		Brain,
 		ChevronsUpDown,
 		ClipboardListIcon,
 		CloudUpload,
@@ -917,6 +918,19 @@
 									>
 										<PaperclipIcon />
 										<span>Files</span>
+									</router-link>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+							<SidebarMenuItem
+								v-if="activeWorkspace?.code && pagesEnabled && !isLocalOnly"
+							>
+								<SidebarMenuButton as-child>
+									<router-link
+										:to="`/${activeWorkspace.code}/memory`"
+										:class="NAV_ACTIVE"
+									>
+										<Brain />
+										<span>Memory</span>
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>

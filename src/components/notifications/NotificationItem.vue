@@ -40,6 +40,16 @@
 				{{ notification.message }}
 			</div>
 			<div class="text-xs text-ink-subtle">{{ formattedTime }}</div>
+			<button
+				v-if="canUndoMemory"
+				type="button"
+				class="mt-2 rounded-md border border-line px-2 py-1 text-xs font-medium text-ink hover:bg-surface-hover disabled:opacity-50"
+				:disabled="undoing"
+				data-testid="memory-undo"
+				@click.stop="undoMemory"
+			>
+				Undo
+			</button>
 		</div>
 
 		<button
@@ -53,6 +63,8 @@
 </template>
 
 <script>
+	import { undoAddedToMemory } from '@/actions/tmgr/memory';
+	import { useToast } from '@/components/ui/toast';
 	import {
 		normalizeNotificationType,
 		notificationTitle,
@@ -60,6 +72,7 @@
 	import { formatDistanceToNow } from 'date-fns';
 	import {
 		AlertCircle,
+		Brain,
 		CheckCircle,
 		Edit,
 		FileText,
@@ -70,11 +83,12 @@
 		UserPlus,
 		X,
 	} from 'lucide-vue-next';
-	import { computed, defineComponent } from 'vue';
+	import { computed, defineComponent, ref } from 'vue';
 
 	export default defineComponent({
 		name: 'NotificationItem',
 		components: {
+			Brain,
 			CheckCircle,
 			Edit,
 			Trash2,
@@ -120,6 +134,7 @@
 					page_created: FileText,
 					page_updated: Edit,
 					page_mentioned: MessageCircle,
+					memory_added: Brain,
 				};
 
 				return iconMap[type] || AlertCircle;
@@ -137,7 +152,43 @@
 				}
 			});
 
+			const { toast } = useToast();
+			const undoing = ref(false);
+			const undone = ref(false);
+
+			const canUndoMemory = computed(
+				() =>
+					!undone.value &&
+					normalizeNotificationType(props.notification.type) ===
+						'memory_added' &&
+					!!props.notification.data?.proposal_id &&
+					!!props.notification.data?.workspace_id,
+			);
+
+			const undoMemory = async () => {
+				const { proposal_id, workspace_id } = props.notification.data;
+				undoing.value = true;
+				try {
+					const title = await undoAddedToMemory(
+						Number(workspace_id),
+						Number(proposal_id),
+					);
+					undone.value = true;
+					toast({ title });
+				} catch {
+					toast({
+						title: 'Could not undo. Try again.',
+						variant: 'destructive',
+					});
+				} finally {
+					undoing.value = false;
+				}
+			};
+
 			return {
+				canUndoMemory,
+				undoMemory,
+				undoing,
 				icon,
 				title,
 				formattedTime,

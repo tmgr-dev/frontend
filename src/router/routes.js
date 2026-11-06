@@ -833,6 +833,16 @@ const routes = [
 		],
 	},
 	{
+		path: '/:workspace_code/memory',
+		component: () => import('@/pages/WorkspaceMemory.vue'),
+		meta: {
+			title: 'Memory',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+		},
+		name: 'WorkspaceMemory',
+	},
+	{
 		path: '/:workspace_code/:category_code',
 		component: CategoryPage,
 		meta: {

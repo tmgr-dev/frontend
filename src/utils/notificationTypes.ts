@@ -27,6 +27,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
 	page_created: 'New page',
 	page_updated: 'Page updated',
 	page_mentioned: 'You were mentioned on a page',
+	memory_added: 'Added to memory',
 };
 
 export const normalizeNotificationType = (type: string): string =>
