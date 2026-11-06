@@ -3,6 +3,7 @@ import {
 	compareTaskKeys,
 	completeOwnMove,
 	createColumnPaging,
+	createRealtimeBuffer,
 	landPage,
 	loadAllPages,
 	loadNextPage,
@@ -10,6 +11,7 @@ import {
 	placementAt,
 	reloadWindow,
 	removeRealtimeTask,
+	resyncPagedColumns,
 	type PagedColumn,
 	type PagedTask,
 	type PageResponse,
@@ -814,5 +816,77 @@ describe('keys and placement', () => {
 		expect(placementAt(tasks, 2)).toEqual({ after_id: 2 });
 		expect(placementAt(tasks, 0)).toEqual({ before_id: 2 });
 		expect(placementAt([{ id: 1 }], 0)).toEqual({ position: 'top' });
+	});
+});
+
+describe('realtime during a full board load', () => {
+	const snapshot = (): Col[] => [
+		{
+			status: { id: 1 },
+			tasks: [
+				{ id: 5, status_id: 1, order: 1000, title: 'x' },
+				{ id: 6, status_id: 1, order: 2000, title: 'y' },
+			],
+			paging: createColumnPaging({ next_cursor: null }),
+		},
+		{
+			status: { id: 2 },
+			tasks: [],
+			paging: createColumnPaging({ next_cursor: null }),
+		},
+	];
+
+	it('replays a move that arrived while the columns were being fetched', () => {
+		const buffer = createRealtimeBuffer();
+		buffer.begin();
+		expect(
+			buffer.record({
+				kind: 'update',
+				task: { id: 5, status_id: 2, order: 1000, title: 'x' },
+			}),
+		).toBe(true);
+		const columns = snapshot();
+		for (const event of buffer.take())
+			if (event.kind === 'update') mergeRealtimeTask(columns, event.task);
+		expect(columns.map((c) => c.tasks.map((t) => t.id))).toEqual([[6], [5]]);
+	});
+
+	it('records nothing outside a load and drops events once taken', () => {
+		const buffer = createRealtimeBuffer();
+		expect(buffer.record({ kind: 'remove', id: 1 })).toBe(false);
+		buffer.begin();
+		buffer.record({ kind: 'remove', id: 1 });
+		expect(buffer.take()).toEqual([{ kind: 'remove', id: 1 }]);
+		expect(buffer.record({ kind: 'remove', id: 2 })).toBe(false);
+		expect(buffer.take()).toEqual([]);
+	});
+
+	it('a new load starts with an empty log', () => {
+		const buffer = createRealtimeBuffer();
+		buffer.begin();
+		buffer.record({ kind: 'remove', id: 1 });
+		buffer.begin();
+		expect(buffer.take()).toEqual([]);
+	});
+});
+
+describe('resync after a reconnect', () => {
+	it('invalidates in-flight pages and lists the paged columns to reload', () => {
+		const columns: PagedColumn<Row>[] = [
+			{
+				status: { id: 1 },
+				tasks: [],
+				paging: createColumnPaging({ next_cursor: 'c' }),
+			},
+			{ status: { id: 2 }, tasks: [] },
+		];
+		const epoch = columns[0].paging!.epoch;
+		expect(resyncPagedColumns(columns)).toEqual([1]);
+		expect(
+			landPage(columns, 1, epoch, {
+				data: [{ id: 9, status_id: 1, order: 1 }],
+				meta: { next_cursor: null },
+			}),
+		).toBe('dropped');
 	});
 });

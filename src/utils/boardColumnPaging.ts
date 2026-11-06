@@ -386,6 +386,40 @@ export function mergeRealtimeTask(
 	return holder === target ? 'updated' : 'moved';
 }
 
+export type BufferedEvent =
+	| { kind: 'update'; task: PagedTask }
+	| { kind: 'remove'; id: number }
+	| { kind: 'reload'; statusId: number | string }
+	| { kind: 'resync' };
+
+export function createRealtimeBuffer() {
+	let events: BufferedEvent[] | null = null;
+	return {
+		begin() {
+			events = [];
+		},
+		record(event: BufferedEvent): boolean {
+			if (!events) return false;
+			events.push(event);
+			return true;
+		},
+		take(): BufferedEvent[] {
+			const taken = events ?? [];
+			events = null;
+			return taken;
+		},
+	};
+}
+
+export function resyncPagedColumns(
+	columns: PagedColumn[],
+): Array<number | string> {
+	bumpAll(columns);
+	return columns
+		.filter((column) => column.paging)
+		.map((column) => column.status.id as number | string);
+}
+
 export function removeRealtimeTask(
 	columns: PagedColumn[],
 	taskId: number,

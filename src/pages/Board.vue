@@ -856,6 +856,7 @@
 		bumpColumnEpochs,
 		completeOwnMove,
 		createColumnPaging,
+		createRealtimeBuffer,
 		dedupeFirstPages,
 		isKeysetResponse,
 		loadAllPages,
@@ -864,6 +865,7 @@
 		placementAt,
 		reloadWindow,
 		removeRealtimeTask,
+		resyncPagedColumns,
 	} from '@/utils/boardColumnPaging';
 	import { boardTaskCounts } from '@/utils/boardSummary';
 	import { hexToHsl, hslToHex } from '@/utils/colors';
@@ -999,6 +1001,7 @@
 			dragSaveQueue: Promise.resolve(),
 			pendingMoveIds: markRaw(new Set()),
 			dirtyStatusIds: markRaw(new Set()),
+			realtimeBuffer: markRaw(createRealtimeBuffer()),
 			boardInstanceId: `board-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 			totalsTimer: null,
 			boardInitializing: false,
@@ -1231,6 +1234,18 @@
 				else if (filter.selectedPersona)
 					params.persona = filter.selectedPersona;
 				return getTasksByStatusPage(statusId, params);
+			},
+			replayBufferedEvents() {
+				for (const event of this.realtimeBuffer.take()) {
+					if (event.kind === 'update') this.updateSingleTaskInBoard(event.task);
+					else if (event.kind === 'remove') this.removeTaskFromBoard(event.id);
+					else if (event.kind === 'reload') this.reloadOrMark(event.statusId);
+					else this.resyncColumns();
+				}
+			},
+			resyncColumns() {
+				for (const statusId of resyncPagedColumns(this.columns))
+					this.reloadOrMark(statusId);
 			},
 			invalidateColumnLoads() {
 				bumpColumnEpochs(
@@ -1927,6 +1942,7 @@
 				return this.boardLoader?.run();
 			},
 			async fetchBoardTasks() {
+				this.realtimeBuffer.begin();
 				const columns = this.columns;
 				const filter = {
 					...this.$store.state.filter,
@@ -2111,6 +2127,11 @@
 							{
 								onTaskUpdated: (task, action, _userId, sourceInstanceId) => {
 									if (sourceInstanceId === this.boardInstanceId) return;
+									this.realtimeBuffer.record(
+										action === 'deleted'
+											? { kind: 'remove', id: task.id }
+											: { kind: 'update', task },
+									);
 									if (action === 'deleted') {
 										this.removeTaskFromBoard(task.id);
 									} else {
@@ -2119,7 +2140,13 @@
 								},
 								onTasksReordered: (statusId, sourceInstanceId) => {
 									if (sourceInstanceId === this.boardInstanceId) return;
+									if (this.realtimeBuffer.record({ kind: 'reload', statusId }))
+										return;
 									this.reloadOrMark(statusId);
+								},
+								onReconnect: () => {
+									if (this.realtimeBuffer.record({ kind: 'resync' })) return;
+									this.resyncColumns();
 								},
 								onTaskAssignmentChanged: ({ task_id }) => {
 									const onBoard = this.columns.some((column) =>
@@ -2257,11 +2284,13 @@
 				},
 				(columns) => {
 					this.columns = columns;
+					this.replayBufferedEvents();
 					this.refreshColumnSummaries();
 					this.tasksLoaded = true;
 					this.updateScrollContainers();
 				},
 				() => {
+					this.realtimeBuffer.take();
 					this.boardError = 'Could not refresh tasks.';
 				},
 				(loading) => {
