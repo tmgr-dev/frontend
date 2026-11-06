@@ -37,7 +37,7 @@
 	import { getTask } from '@/actions/tmgr/tasks';
 	import { useDemoWorkspace } from '@/composable/useDemoWorkspace';
 	import { deliverToWorkspace } from '@/composable/usePusher';
-	import { recoverDemo, resetDemoCard } from '@/local/demoSeed';
+	import { finishGhostRun, recoverDemo, resetDemoCard } from '@/local/demoSeed';
 	import {
 		activeLocalWorkspace,
 		listLocalWorkspaces,
@@ -48,9 +48,15 @@
 		buildScenario,
 		createAxiosGhostEnv,
 		createGhostPlayer,
+		ghostPlaying,
 		onGhostPlayRequested,
 		registerGhostStop,
 	} from '@/onboarding/ghost';
+	import {
+		isFreshMarkerExpired,
+		readFreshMarker,
+	} from '@/onboarding/localFirstRun';
+	import { advanceToWheel, ghostStage } from '@/onboarding/ghostStage';
 	import $axios from '@/plugins/axios';
 	import { onEscape, prefersReducedMotion } from '@/tours/a11y';
 	import { isInputBusy } from '@/tours/boot';
@@ -119,13 +125,14 @@
 			const cancelled = (workspace: LocalWorkspace) =>
 				disposed || stopping || activeLocalWorkspace()?.code !== workspace.code;
 
-			const run = async () => {
+			const run = async (instant = false) => {
 				if (playing.value) return;
 				const workspace = activeLocalWorkspace();
 				if (!workspace?.demo) return;
 				playing.value = true;
+				ghostPlaying.value = true;
 				playingCode = workspace.code;
-				skipRequested = false;
+				skipRequested = instant;
 				try {
 					await ready;
 					await wait(PRE_ROLL_MS);
@@ -158,7 +165,11 @@
 					const outcome = await running;
 					if (outcome === 'aborted' || outcome === 'failed')
 						await recover(workspace);
-					else tourBus.emit('ghost.finished');
+					else {
+						await finishGhostRun(ctx);
+						advanceToWheel();
+						tourBus.emit('ghost.finished');
+					}
 				} catch (error) {
 					console.error('[ghost] playback failed', error);
 					await recover(workspace).catch(() => {});
@@ -166,12 +177,13 @@
 					player = null;
 					playingCode = null;
 					playing.value = false;
+					ghostPlaying.value = false;
 				}
 			};
 
-			const play = () => {
+			const play = (instant = false) => {
 				if (!current)
-					current = run().finally(() => {
+					current = run(instant).finally(() => {
 						current = null;
 					});
 				return current;
@@ -194,10 +206,9 @@
 
 			const replay = () => void play();
 
-			const offRequest = onGhostPlayRequested(() => {
-				if (prefersReducedMotion()) tourBus.emit('ghost.finished');
-				else void play();
-			});
+			const offRequest = onGhostPlayRequested(
+				() => void play(prefersReducedMotion()),
+			);
 
 			const escapeAllowed = () =>
 				playing.value && !isInputBusy(document, TOUR_DIALOG);
@@ -231,8 +242,28 @@
 				},
 			);
 
+			let resumed = false;
+			const maybeResume = () => {
+				if (resumed || !isDemo.value || ghostStage.value !== 'watch') return;
+				const marker = readFreshMarker(localStorage);
+				if (marker && !isFreshMarkerExpired(marker, new Date())) return;
+				resumed = true;
+				void play(prefersReducedMotion());
+			};
+
+			watch(isDemo, maybeResume);
+
+			watch(
+				() => tours.active.value?.tour.id,
+				(now, before) => {
+					if (before === 'desktop.ghost-watch' && now !== before)
+						advanceToWheel();
+				},
+			);
+
 			onMounted(() => {
 				ready = recoverAll();
+				maybeResume();
 				unregisterStop = registerGhostStop(stop);
 			});
 

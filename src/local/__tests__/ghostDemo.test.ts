@@ -1,5 +1,11 @@
 import { createLocalApi } from '../api';
-import { DEMO_AGENT, recoverDemo, resetDemoCard, seedDemo } from '../demoSeed';
+import {
+	DEMO_AGENT,
+	finishGhostRun,
+	recoverDemo,
+	resetDemoCard,
+	seedDemo,
+} from '../demoSeed';
 import { dispatchLocal } from '../dispatch';
 import { computeFacts } from '../onboardingFacts';
 import { migrate } from '../schema';
@@ -109,7 +115,7 @@ describeDb('resetDemoCard', () => {
 });
 
 describeDb('recoverDemo', () => {
-	it('stops a running timer and abandons a dangling demo-agent run', async () => {
+	it('stops a running timer, drops a dangling demo-agent run and puts the card back in Todo', async () => {
 		const ctx = await seeded();
 		const card = (await resetDemoCard(ctx))!;
 		await call(ctx, 'POST', `tasks/${card.taskId}/countdown`);
@@ -126,8 +132,50 @@ describeDb('recoverDemo', () => {
 			).start_time,
 		).toBe(0);
 		expect(
-			(await one(ctx.db, `SELECT status FROM agent_work_runs`)).status,
-		).toBe('abandoned');
+			(await one(ctx.db, `SELECT COUNT(*) AS n FROM agent_work_runs`)).n,
+		).toBe(0);
+		expect(
+			(
+				await one(
+					ctx.db,
+					`SELECT s.name AS status FROM tasks t JOIN statuses s ON s.id = t.status_id WHERE t.id = ?`,
+					[card.taskId],
+				)
+			).status,
+		).toBe('Todo');
+	});
+
+	it('leaves a timer and time the user tracked on the card alone when no ghost run was in progress', async () => {
+		const ctx = await seeded();
+		const card = (await resetDemoCard(ctx))!;
+		await finishGhostRun(ctx);
+		await ctx.db.execute(
+			`UPDATE tasks SET start_time = 100, common_time = 75 WHERE id = ?`,
+			[card.taskId],
+		);
+		expect(await recoverDemo(ctx)).toEqual([]);
+		expect(
+			await one(
+				ctx.db,
+				`SELECT start_time, common_time FROM tasks WHERE id = ?`,
+				[card.taskId],
+			),
+		).toEqual({ start_time: 100, common_time: 75 });
+	});
+
+	it('does nothing on a demo that was never played', async () => {
+		const ctx = await seeded();
+		expect(await recoverDemo(ctx)).toEqual([]);
+		expect(
+			(await one(ctx.db, `SELECT COUNT(*) AS n FROM agent_work_runs`)).n,
+		).toBe(1);
+	});
+
+	it('recovers only once', async () => {
+		const ctx = await seeded();
+		const card = (await resetDemoCard(ctx))!;
+		expect(await recoverDemo(ctx)).toEqual([card.taskId]);
+		expect(await recoverDemo(ctx)).toEqual([]);
 	});
 
 	it('leaves other agents and finished runs alone', async () => {

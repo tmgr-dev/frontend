@@ -2,6 +2,7 @@ import { memoryDb, nodeSqliteAvailable } from '@/local/__tests__/nodeDb';
 import { createLocalApi } from '@/local/api';
 import {
 	DEMO_AGENT,
+	finishGhostRun,
 	recoverDemo,
 	resetDemoCard,
 	seedDemo,
@@ -217,6 +218,7 @@ describeDb('the scenario against a real demo database', () => {
 		const { ctx, env } = await setup();
 		const card = (await resetDemoCard(ctx))!;
 		for (const step of buildScenario(card)) await step.run(env);
+		await finishGhostRun(ctx);
 		const facts = await computeFacts(ctx, [
 			'has_board_move',
 			'has_timer_minute',

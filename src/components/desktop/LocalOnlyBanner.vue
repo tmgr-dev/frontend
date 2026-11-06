@@ -12,6 +12,15 @@
 			<span v-if="deleteError" role="alert" class="text-destructive">
 				{{ deleteError }}
 			</span>
+			<button
+				v-if="onEntryFlow"
+				type="button"
+				data-testid="demo-sign-in"
+				class="rounded-md px-2 py-1 font-medium underline underline-offset-4 hover:bg-violet-200 dark:hover:bg-violet-500/20"
+				@click="$router.push({ name: 'Login' })"
+			>
+				Sign in
+			</button>
 			<template v-if="confirmingDelete">
 				<span>Delete demo?</span>
 				<button
@@ -118,6 +127,7 @@
 		type BackupStatus,
 	} from '@/local/backups';
 	import { deleteDemo } from '@/local/demoApi';
+	import { ghostStage } from '@/onboarding/ghostStage';
 	import { activeLocalWorkspace } from '@/local/runtime';
 	import { desktopOfferEnv, offerBackups } from '@/tours/desktopOffers';
 	import { isDesktopApp } from '@/utils/desktop';
@@ -152,6 +162,7 @@
 			const hiddenForSession = ref(false);
 			const backingUp = ref(false);
 			const { isDemo, code: demoCode } = useDemoWorkspace();
+			const onEntryFlow = computed(() => ghostStage.value !== null);
 			const confirmingDelete = ref(false);
 			const deleting = ref(false);
 			const deleteError = ref('');
@@ -252,6 +263,7 @@
 
 			return {
 				isDemo,
+				onEntryFlow,
 				showFirstRun,
 				warning,
 				backupsDir,

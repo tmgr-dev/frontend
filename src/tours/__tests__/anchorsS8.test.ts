@@ -22,6 +22,7 @@ const ANCHORS: Record<string, string[]> = {
 	'pages/Settings/Plugins.vue': ['plugins.install', 'plugins.help'],
 	'components/desktop/DesktopWhatsNew.vue': ['whats-new.item-tour'],
 	'components/onboarding/GhostRunHost.vue': ['ghost.panel'],
+	'components/onboarding/TryItPanel.vue': ['ghost.make-it-yours'],
 };
 
 const read = (file: string) =>

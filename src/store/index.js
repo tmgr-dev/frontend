@@ -48,6 +48,14 @@ const rememberClientWorkspaceId = (workspaceId) => {
 const token = localStorage.getItem('token')
 	? JSON.parse(localStorage.getItem('token') || '')
 	: null;
+const rememberCloudSession = () => {
+	try {
+		localStorage.setItem('tmgr:cloud-seen', '1');
+	} catch {
+		return;
+	}
+};
+if (token !== null) rememberCloudSession();
 
 const invalidateWorkspaceScopedCache = () => {
 	requestCache.invalidate('categories');
@@ -120,6 +128,32 @@ const state = {
 	pagesEvent: null,
 	/** @type {import('@/utils/localProfile').LocalProfile | null} */
 	localProfile: null,
+};
+
+const detectFreshInstall = async (state, storage, firstRun) => {
+	let hadProfile = !!state.localProfile;
+	if (!hadProfile) {
+		try {
+			const { loadLocalProfile } = await import('@/utils/localProfile');
+			hadProfile = !!(await loadLocalProfile());
+		} catch {
+			hadProfile = true;
+		}
+	}
+	let workspaceCount = Infinity;
+	try {
+		const { invoke } = await import('@tauri-apps/api/core');
+		const list = await invoke('local_workspaces_list');
+		if (Array.isArray(list)) workspaceCount = list.length;
+	} catch {
+		workspaceCount = Infinity;
+	}
+	return (
+		!!storage &&
+		firstRun.isFreshLocalInstall(
+			firstRun.freshInstallFacts(storage, hadProfile, workspaceCount),
+		)
+	);
 };
 
 const getters = {
@@ -256,6 +290,7 @@ const mutations = {
 			localStorage.removeItem('token');
 		} else {
 			localStorage.setItem('token', JSON.stringify(token));
+			rememberCloudSession();
 		}
 
 		state.token = token;
@@ -550,32 +585,11 @@ const actions = {
 	},
 
 	async startWithoutAccount({ commit, state }, { name } = {}) {
-		const { createLocalProfile, loadLocalProfile } =
-			await import('@/utils/localProfile');
+		const { createLocalProfile } = await import('@/utils/localProfile');
 		const runtime = await import('@/local/runtime');
 		const firstRun = await import('@/onboarding/localFirstRun');
 		const storage = localStorageSafe();
-		let hadProfile = !!state.localProfile;
-		if (!hadProfile) {
-			try {
-				hadProfile = !!(await loadLocalProfile());
-			} catch {
-				hadProfile = true;
-			}
-		}
-		let workspaceCount = Infinity;
-		try {
-			const { invoke } = await import('@tauri-apps/api/core');
-			const list = await invoke('local_workspaces_list');
-			if (Array.isArray(list)) workspaceCount = list.length;
-		} catch {
-			workspaceCount = Infinity;
-		}
-		const fresh =
-			!!storage &&
-			firstRun.isFreshLocalInstall(
-				firstRun.freshInstallFacts(storage, hadProfile, workspaceCount),
-			);
+		const fresh = await detectFreshInstall(state, storage, firstRun);
 		if (!fresh && storage) firstRun.clearFreshMarker(storage);
 		const profile = await createLocalProfile(name);
 		let first = runtime.firstRealWorkspace(
@@ -587,6 +601,31 @@ const actions = {
 		commit('setLocalProfile', profile);
 		const { default: router } = await import('@/router');
 		await router.push('/app');
+	},
+
+	async startFreshInstall({ commit, state }) {
+		const storage = localStorageSafe();
+		const firstRun = await import('@/onboarding/localFirstRun');
+		const { hasCloudSeen } = await import('@/utils/cloudSeen');
+		if (!storage || hasCloudSeen(storage)) return false;
+		if (!(await detectFreshInstall(state, storage, firstRun))) return false;
+		const { createLocalProfile } = await import('@/utils/localProfile');
+		const runtime = await import('@/local/runtime');
+		const { createDemoWorkspace } = await import('@/local/demoApi');
+		const { rememberDemoOfferAnswer } = await import('@/local/demoOffer');
+		const { setGhostStage } = await import('@/onboarding/ghostStage');
+		const profile = await createLocalProfile();
+		if (!runtime.firstRealWorkspace(await runtime.listLocalWorkspaces(true)))
+			await runtime.createLocalWorkspace('My workspace');
+		const demo = await createDemoWorkspace();
+		runtime.setActiveLocalWorkspace(demo);
+		firstRun.writeFreshMarker(storage, demo.code, new Date(), 'demo');
+		setGhostStage('watch');
+		rememberDemoOfferAnswer(storage, 'watched');
+		commit('setLocalProfile', profile);
+		const { default: router } = await import('@/router');
+		await router.push('/app');
+		return true;
 	},
 
 	async loadWorkspaces({ commit, state }) {

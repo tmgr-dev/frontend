@@ -1,6 +1,7 @@
 import { DEMO_AGENT, type DemoCard } from '@/local/demoSeed';
 import { GHOST_HEADER } from '@/local/ghostHeader';
 import type { AxiosInstance } from 'axios';
+import { ref } from 'vue';
 
 export type GhostPhase = 'idle' | 'playing' | 'finished' | 'aborted';
 export type GhostOutcome = 'completed' | 'skipped' | 'aborted' | 'failed';
@@ -209,6 +210,8 @@ export const createAxiosGhostEnv = (
 	runChanged: hooks.runChanged,
 	timerChanged: hooks.timerChanged,
 });
+
+export const ghostPlaying = ref(false);
 
 type PlayListener = () => void;
 const playListeners = new Set<PlayListener>();

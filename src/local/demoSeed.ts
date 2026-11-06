@@ -1,6 +1,7 @@
 import type { BatchStatement, LocalContext, LocalDb } from './types';
 
 export const DEMO_META = 'onboarding:demo';
+export const GHOST_RUN_META = 'onboarding:ghost_run';
 export const DEMO_WORKSPACE_NAME = 'Demo: Launch week';
 export const DEMO_AGENT = 'demo-agent';
 export const GHOST_CARD = 'Fix login redirect';
@@ -123,42 +124,27 @@ export const resetDemoCard = async (
 			params: [todo, ctx.now().toISOString(), task.id],
 			expectChanges: true,
 		},
+		{
+			sql: `INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`,
+			params: [GHOST_RUN_META, ctx.now().toISOString()],
+		},
 	]);
 	if (failedAt !== null) return null;
 	return { taskId: task.id, todo, inProgress, review };
 };
 
+export const finishGhostRun = async (ctx: LocalContext): Promise<void> => {
+	await ctx.db.execute(`DELETE FROM meta WHERE key = ?`, [GHOST_RUN_META]);
+};
+
 export const recoverDemo = async (ctx: LocalContext): Promise<number[]> => {
 	if (!(await isDemoDb(ctx.db))) return [];
-	const now = ctx.now().toISOString();
-	const timed = await ctx.db.select<{ id: number }>(
-		`SELECT id FROM tasks WHERE start_time > 0 AND title = ?`,
-		[GHOST_CARD],
+	const flagged = await ctx.db.select(
+		`SELECT 1 AS found FROM meta WHERE key = ?`,
+		[GHOST_RUN_META],
 	);
-	const dangling = await ctx.db.select<{ task_id: number }>(
-		`SELECT DISTINCT task_id FROM agent_work_runs WHERE status = 'running' AND agent = ?`,
-		[DEMO_AGENT],
-	);
-	if (timed.length)
-		await ctx.db.execute(
-			`UPDATE tasks SET start_time = 0, updated_at = ? WHERE start_time > 0 AND title = ?`,
-			[now, GHOST_CARD],
-		);
-	if (dangling.length)
-		await ctx.db.execute(
-			`UPDATE agent_work_runs SET status = 'abandoned', ended_at = COALESCE(updated_at, started_at),
-				duration_seconds = CAST((julianday(COALESCE(updated_at, started_at)) - julianday(started_at)) * 86400 AS INTEGER),
-				version = version + 1, updated_at = ?
-			 WHERE status = 'running' AND agent = ?`,
-			[now, DEMO_AGENT],
-		);
-	const touched = [
-		...new Set([...timed.map((t) => t.id), ...dangling.map((r) => r.task_id)]),
-	];
-	if (touched.length)
-		await ctx.db.execute(
-			`UPDATE tasks SET common_time = 0 WHERE title = ? AND common_time > 0`,
-			[GHOST_CARD],
-		);
-	return touched;
+	if (!flagged.length) return [];
+	const card = await resetDemoCard(ctx);
+	await finishGhostRun(ctx);
+	return card ? [card.taskId] : [];
 };

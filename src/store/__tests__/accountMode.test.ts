@@ -1,4 +1,6 @@
+import * as demoOffer from '@/local/demoOffer';
 import * as firstRun from '@/onboarding/localFirstRun';
+import * as cloudSeen from '@/utils/cloudSeen';
 import * as tokenSync from '@/utils/tokenSync';
 import * as workspaceContext from '@/utils/workspaceContext';
 import { readFileSync } from 'fs';
@@ -52,6 +54,13 @@ function fixture(desktop = true) {
 		setActiveLocalWorkspace: jest.fn(),
 		push: jest.fn(async () => {}),
 		invoke: jest.fn(async (_command: string) => [] as any[]),
+		createDemoWorkspace: jest.fn(async () => ({
+			id: -7,
+			name: 'Demo: Launch week',
+			code: 'demo-launch-week',
+			demo: true,
+		})),
+		setGhostStage: jest.fn(),
 	};
 	const config = evaluate(
 		'../index.js',
@@ -82,6 +91,10 @@ function fixture(desktop = true) {
 			'@tauri-apps/api/core': { invoke: mocks.invoke },
 			'@/router': { default: { push: mocks.push } },
 			'@/onboarding/localFirstRun': firstRun,
+			'@/utils/cloudSeen': cloudSeen,
+			'@/local/demoOffer': demoOffer,
+			'@/local/demoApi': { createDemoWorkspace: mocks.createDemoWorkspace },
+			'@/onboarding/ghostStage': { setGhostStage: mocks.setGhostStage },
 		},
 		storage,
 	).default;
@@ -274,6 +287,85 @@ describe('startWithoutAccount stale marker', () => {
 		await start(fx);
 		expect(fx.mocks.invoke).toHaveBeenCalledWith('local_workspaces_list');
 		expect(JSON.parse(fx.data.get(MARKER)!).code).toBe('old');
+	});
+});
+
+describe('startFreshInstall', () => {
+	const MARKER = 'tmgr:onboarding:local-fresh';
+	const start = async (fx: ReturnType<typeof fixture>) => {
+		const commit = jest.fn((name: string, value: any) =>
+			fx.config.mutations[name](fx.config.state, value),
+		);
+		const started = await fx.config.actions.startFreshInstall({
+			commit,
+			state: fx.config.state,
+		});
+		return { started, commit };
+	};
+
+	it('creates the profile, a real workspace and the demo, and opens the demo without Welcome', async () => {
+		const fx = fixture();
+		const { started, commit } = await start(fx);
+		expect(started).toBe(true);
+		expect(fx.mocks.createLocalProfile).toHaveBeenCalledWith();
+		expect(fx.mocks.createLocalWorkspace).toHaveBeenCalledWith('My workspace');
+		expect(fx.mocks.createDemoWorkspace).toHaveBeenCalledTimes(1);
+		expect(fx.mocks.setActiveLocalWorkspace).toHaveBeenCalledWith(
+			expect.objectContaining({ code: 'demo-launch-week' }),
+		);
+		expect(commit).toHaveBeenCalledWith('setLocalProfile', PROFILE);
+		expect(fx.mocks.push).toHaveBeenCalledWith('/app');
+		expect(fx.mocks.setGhostStage).toHaveBeenCalledWith('watch');
+		expect(JSON.parse(fx.data.get(MARKER)!)).toMatchObject({
+			code: 'demo-launch-week',
+			entry: 'demo',
+		});
+		expect(fx.data.get('tmgr:onboarding:demo-offered')).toBe('watched');
+	});
+
+	it.each([
+		[
+			'a cloud user who signed out',
+			(fx: ReturnType<typeof fixture>) => fx.data.set('tmgr:cloud-seen', '1'),
+		],
+		[
+			'a profile in the app state',
+			(fx: ReturnType<typeof fixture>) =>
+				(fx.config.state.localProfile = PROFILE),
+		],
+		[
+			'a profile on disk',
+			(fx: ReturnType<typeof fixture>) =>
+				fx.mocks.loadLocalProfile.mockResolvedValue(PROFILE),
+		],
+		[
+			'an existing local workspace',
+			(fx: ReturnType<typeof fixture>) =>
+				fx.mocks.invoke.mockResolvedValue([{ id: -9, code: 'old' }]),
+		],
+		[
+			'starter tasks already seeded',
+			(fx: ReturnType<typeof fixture>) =>
+				fx.data.set(
+					'tmgr:onboarding:v1',
+					JSON.stringify({ starter_seeded_at: '2026-10-01T10:00:00Z' }),
+				),
+		],
+	])('leaves Welcome alone for %s', async (_name, arrange) => {
+		const fx = fixture();
+		arrange(fx);
+		const { started } = await start(fx);
+		expect(started).toBe(false);
+		expect(fx.mocks.createLocalProfile).not.toHaveBeenCalled();
+		expect(fx.mocks.createDemoWorkspace).not.toHaveBeenCalled();
+		expect(fx.mocks.setGhostStage).not.toHaveBeenCalled();
+		expect(fx.mocks.push).not.toHaveBeenCalled();
+	});
+
+	it('remembers a cloud session when a token is set', () => {
+		const fx = fixture();
+		fx.config.mutations.setToken(fx.config.state, 'header.payload.sig');
+		expect(fx.data.get('tmgr:cloud-seen')).toBe('1');
 	});
 });
 

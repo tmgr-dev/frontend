@@ -330,7 +330,7 @@ export const desktopTours: TourDef[] = [
 		group: 'desktop',
 		title: 'Watch an agent work',
 		minutes: 1,
-		triggers: [{ kind: 'hub' }],
+		triggers: [{ kind: 'first_run' }, { kind: 'hub' }],
 		requires: { account: 'local', platforms: ['desktop_local'] },
 		steps: [
 			{

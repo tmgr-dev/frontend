@@ -1,4 +1,6 @@
 import { requestGhostPlay, stopGhost } from '@/onboarding/ghost';
+import { setGhostStage } from '@/onboarding/ghostStage';
+import { toursEngine } from '@/tours/useTours';
 import { FIRST_WORKSPACE_NAME } from './accountless';
 import { DEMO_WORKSPACE_NAME, seedDemo } from './demoSeed';
 import {
@@ -83,4 +85,22 @@ export const deleteDemo = async (code: string): Promise<void> => {
 		firstRealWorkspace(rest) ??
 		(await createLocalWorkspace(FIRST_WORKSPACE_NAME));
 	await openWorkspace(next);
+};
+
+export const completeDemoEntry = async (
+	options: { deleteDemo?: boolean } = {},
+): Promise<void> => {
+	const list = await listLocalWorkspaces(true);
+	const demo = list.find((w) => w.demo);
+	const mine =
+		firstRealWorkspace(list) ??
+		(await createLocalWorkspace(FIRST_WORKSPACE_NAME));
+	await stopGhost();
+	setActiveLocalWorkspace(mine);
+	const engine = toursEngine();
+	await engine.api.setIntent('human', { seed: true, workspace: mine.code });
+	setGhostStage('finished');
+	if (options.deleteDemo && demo) await deleteDemo(demo.code);
+	await openWorkspace(mine);
+	void engine.api.startSequence(['desktop.local-workspace'], 'first_run');
 };

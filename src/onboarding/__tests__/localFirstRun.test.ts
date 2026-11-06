@@ -1,5 +1,6 @@
 import { emptyOnboarding } from '@/tours/store';
 import {
+	GHOST_FIRST_RUN_SEQUENCE,
 	LOCAL_FIRST_RUN_SEQUENCE,
 	isFreshLocalInstall,
 	readFreshMarker,
@@ -224,6 +225,49 @@ describe('runLocalFirstRun', () => {
 		expect(deps.setIntent).not.toHaveBeenCalled();
 		expect(deps.startSequence).not.toHaveBeenCalled();
 		expect(deps.clearMarker).not.toHaveBeenCalled();
+	});
+
+	it('enters through the demo without seeding starter tasks and starts the ghost sequence only', async () => {
+		const { deps, release } = build({
+			marker: () => ({ ...MARKER, code: 'demo-launch-week', entry: 'demo' }),
+			activeCode: () => 'demo-launch-week',
+		});
+		release();
+		expect(await runLocalFirstRun(deps)).toBe('started');
+		expect(deps.setIntent).toHaveBeenCalledWith('human', {
+			seed: false,
+			workspace: 'demo-launch-week',
+		});
+		expect(deps.startSequence).toHaveBeenCalledWith(
+			GHOST_FIRST_RUN_SEQUENCE,
+			'first_run',
+		);
+		expect(GHOST_FIRST_RUN_SEQUENCE).toEqual(['desktop.ghost-watch']);
+	});
+
+	it('keeps the old flow for a marker without an entry', async () => {
+		const { deps, release } = build();
+		release();
+		await runLocalFirstRun(deps);
+		expect(deps.setIntent).toHaveBeenCalledWith('human', {
+			seed: true,
+			workspace: 'my-workspace',
+		});
+	});
+
+	it('reads and writes the entry on the marker', () => {
+		const storage = memory();
+		writeFreshMarker(
+			storage,
+			'demo-launch-week',
+			new Date('2026-10-12T10:00:00.000Z'),
+			'demo',
+		);
+		expect(readFreshMarker(storage)).toEqual({
+			code: 'demo-launch-week',
+			at: '2026-10-12T10:00:00.000Z',
+			entry: 'demo',
+		});
 	});
 
 	it('keeps the marker when the sequence fails so the next launch retries', async () => {
