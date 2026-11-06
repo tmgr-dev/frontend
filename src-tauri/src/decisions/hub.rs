@@ -12,6 +12,8 @@ pub enum Change {
   Updated,
 }
 
+type Hit = (usize, Event);
+
 pub type Sink = Box<dyn Fn(&Change, usize) + Send + Sync>;
 
 const LISTEN_GRACE: Duration = Duration::from_secs(5);
@@ -212,52 +214,91 @@ impl Hub {
     final_only: bool,
     alive: &dyn Fn() -> bool,
   ) -> Result<(String, Option<Event>), String> {
+    let (mut ids, hit) = self.wait_set(&[(id.to_owned(), since)], timeout, final_only, alive)?;
+    Ok((ids.remove(0), hit.map(|(_, e)| e)))
+  }
+
+  pub fn wait_any_while(
+    self: &Arc<Self>,
+    cards: &[(String, u64)],
+    timeout: Duration,
+    final_only: bool,
+    alive: &dyn Fn() -> bool,
+  ) -> Result<Option<(String, Event)>, String> {
+    let (ids, hit) = self.wait_set(cards, timeout, final_only, alive)?;
+    Ok(hit.map(|(i, e)| (ids[i].clone(), e)))
+  }
+
+  fn wait_set(
+    self: &Arc<Self>,
+    cards: &[(String, u64)],
+    timeout: Duration,
+    final_only: bool,
+    alive: &dyn Fn() -> bool,
+  ) -> Result<(Vec<String>, Option<Hit>), String> {
     let deadline = Instant::now() + timeout;
     let mut guard = self.lock();
-    if guard.canon(id).is_err() {
+    if cards.iter().any(|(id, _)| guard.canon(id).is_err()) {
       if let Some(dir) = &self.spool {
         drop(guard);
         self.ingest_spool(dir);
         guard = self.lock();
       }
     }
-    let id = guard.canon(id)?;
+    let ids = cards.iter().map(|(id, _)| guard.canon(id)).collect::<Result<Vec<_>, _>>()?;
     if !alive() {
-      return Ok((id, None));
+      return Ok((ids, None));
     }
-    let mut rose = !final_only && self.deliver(&id, since);
-    if let Some(e) = guard.wait_event(&id, since, final_only)? {
-      rose |= !final_only && !e.is_final() && self.deliver(&id, e.seq);
+    let mut rose = false;
+    for (id, (_, since)) in ids.iter().zip(cards) {
+      rose |= !final_only && self.deliver(id, *since);
+    }
+    if let Some((i, e)) = Self::first_event(&mut guard, &ids, cards, final_only)? {
+      rose |= !final_only && !e.is_final() && self.deliver(&ids[i], e.seq);
       drop(guard);
       if rose {
         self.changed(Change::Updated);
       }
-      return Ok((id, Some(e)));
+      return Ok((ids, Some((i, e))));
     }
     drop(guard);
     if rose {
       self.changed(Change::Updated);
     }
-    let _waiting = (!final_only).then(|| self.enter(&id));
+    let _waiting: Vec<_> = if final_only { Vec::new() } else { ids.iter().map(|id| self.enter(id)).collect() };
     guard = self.lock();
     loop {
-      if let Some(e) = guard.wait_event(&id, since, final_only)? {
+      if let Some((i, e)) = Self::first_event(&mut guard, &ids, cards, final_only)? {
         if !alive() {
-          return Ok((id, None));
+          return Ok((ids, None));
         }
-        let rose = !final_only && !e.is_final() && self.deliver(&id, e.seq);
+        let rose = !final_only && !e.is_final() && self.deliver(&ids[i], e.seq);
         drop(guard);
         if rose {
           self.changed(Change::Updated);
         }
-        return Ok((id, Some(e)));
+        return Ok((ids, Some((i, e))));
       }
       let left = deadline.saturating_duration_since(Instant::now());
       if left.is_zero() || !alive() {
-        return Ok((id, None));
+        return Ok((ids, None));
       }
       guard = self.cv.wait_timeout(guard, left.min(ALIVE_STEP)).unwrap_or_else(|p| p.into_inner()).0;
     }
+  }
+
+  fn first_event(
+    store: &mut Store,
+    ids: &[String],
+    cards: &[(String, u64)],
+    final_only: bool,
+  ) -> Result<Option<Hit>, String> {
+    for (i, (id, (_, since))) in ids.iter().zip(cards).enumerate() {
+      if let Some(e) = store.wait_event(id, *since, final_only)? {
+        return Ok(Some((i, e)));
+      }
+    }
+    Ok(None)
   }
 
   pub fn reply(&self, id: &str, text: Option<String>, lines: Vec<LineComment>) -> Result<String, String> {

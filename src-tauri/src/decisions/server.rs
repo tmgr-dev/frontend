@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tmgr_ipc::decisions::{
-  prepare_server_dir, read_line_limited, socket_endpoint, token_ok, write_line, Op, Request, Response, MAX_WAIT_MS,
-  PROTO, SOCK, UNAUTHORIZED,
+  prepare_server_dir, read_line_limited, socket_endpoint, token_ok, write_busy, write_line, Op, Request, Response,
+  MAX_WAIT_CARDS, MAX_WAIT_MS, PROTO, SOCK, UNAUTHORIZED,
 };
 use tmgr_ipc::endpoint;
 use tmgr_ipc::server::accept_check;
@@ -26,6 +26,10 @@ pub struct Server {
 
 impl Server {
   pub fn start(hub: Arc<Hub>, dir: &Path) -> io::Result<Server> {
+    Self::start_limited(hub, dir, MAX_CONNECTIONS)
+  }
+
+  fn start_limited(hub: Arc<Hub>, dir: &Path, limit: usize) -> io::Result<Server> {
     tmgr_ipc::dirs::ensure_private_dir(dir)?;
     let listener = endpoint::bind(&socket_endpoint(dir))?;
     let token = prepare_server_dir(dir)?;
@@ -41,8 +45,10 @@ impl Server {
           std::thread::sleep(Duration::from_millis(50));
           continue;
         };
-        if active.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
+        if active.fetch_add(1, Ordering::SeqCst) >= limit {
           active.fetch_sub(1, Ordering::SeqCst);
+          let _ = stream.set_nonblocking(true);
+          let _ = write_busy(&mut &stream);
           continue;
         }
         let (hub, token, active) = (hub.clone(), token.clone(), active.clone());
@@ -118,6 +124,20 @@ fn dispatch(hub: &Arc<Hub>, op: Op, stream: &UnixStream) -> Response {
         card_id: Some(card_id),
         event,
         ..Default::default()
+      }))
+    }
+    Op::WaitAny { cards, timeout_ms, final_only } => {
+      if cards.is_empty() {
+        return Response::err("no cards to wait on");
+      }
+      if cards.len() > MAX_WAIT_CARDS {
+        return Response::err(format!("too many cards (limit {MAX_WAIT_CARDS})"));
+      }
+      let cards: Vec<(String, u64)> = cards.into_iter().map(|c| (c.card_id, c.since)).collect();
+      let timeout = Duration::from_millis(timeout_ms.min(MAX_WAIT_MS));
+      done(hub.wait_any_while(&cards, timeout, final_only, &|| peer_alive(stream)).map(|hit| {
+        let (card_id, event) = hit.unzip();
+        Response { ok: true, card_id, event, ..Default::default() }
       }))
     }
     Op::Reply { card_id, text, line_replies } => done(hub.reply(&card_id, text, line_replies).map(|card_id| Response {
@@ -718,5 +738,136 @@ mod tests {
     assert!(c.wait(&id, 0, Duration::from_millis(50), false).unwrap().is_none());
     assert_eq!(r.hub.get(&id).unwrap().title, "while away");
     assert_eq!(r.hub.ingest_spool(&r.dir), 0);
+  }
+
+  fn hold_line(dir: &Path, id: &str, timeout_ms: u64) -> String {
+    let tok = std::fs::read_to_string(dir.join(TOKEN)).unwrap();
+    format!(
+      r#"{{"v":1,"token":"{}","op":"wait","card_id":"{id}","since":0,"timeout_ms":{timeout_ms},"final_only":true}}"#,
+      tok.trim()
+    )
+  }
+
+  fn hold(dir: &Path, line: &str, n: usize) -> Vec<UnixStream> {
+    (0..n)
+      .map(|_| {
+        let mut s = loop {
+          match UnixStream::connect(dir.join(SOCK)) {
+            Ok(s) => break s,
+            Err(_) => std::thread::sleep(Duration::from_millis(5)),
+          }
+        };
+        s.write_all(line.as_bytes()).unwrap();
+        s.write_all(b"\n").unwrap();
+        s
+      })
+      .collect()
+  }
+
+  fn assert_busy_then_recovers(dir: &Path, held: Vec<UnixStream>) {
+    let c = Client::open_in(dir).unwrap();
+    let t = Instant::now();
+    loop {
+      let call = Instant::now();
+      if let Err(e) = c.ping() {
+        assert_eq!(e.kind(), io::ErrorKind::ResourceBusy, "{e}");
+        assert!(call.elapsed() < Duration::from_secs(1), "busy took {:?}", call.elapsed());
+        break;
+      }
+      assert!(t.elapsed() < Duration::from_secs(10), "never busy");
+      std::thread::sleep(Duration::from_millis(20));
+    }
+    drop(held);
+    let t = Instant::now();
+    while c.ping().is_err() {
+      assert!(t.elapsed() < Duration::from_secs(15), "still busy after release");
+      std::thread::sleep(Duration::from_millis(100));
+    }
+  }
+
+  #[test]
+  fn a_small_limit_answers_busy_instead_of_closing_silently() {
+    let r = rig();
+    let dir = r.dir.join("limited");
+    let _limited = Server::start_limited(r.hub.clone(), &dir, 2).unwrap();
+    let id = r.hub.create(card("Held")).unwrap().0;
+    let held = hold(&dir, &hold_line(&dir, &id, 30_000), 2);
+    assert_busy_then_recovers(&dir, held);
+  }
+
+  #[test]
+  fn the_real_connection_limit_answers_busy_fast_and_recovers() {
+    let r = rig();
+    let id = r.hub.create(card("Held")).unwrap().0;
+    let held = hold(&r.dir, &hold_line(&r.dir, &id, 60_000), MAX_CONNECTIONS);
+    assert_busy_then_recovers(&r.dir, held);
+    let c = Client::open_in(&r.dir).unwrap();
+    assert!(c.create(card("After")).is_ok());
+  }
+
+  fn wc(id: &str, since: u64) -> tmgr_ipc::decisions::WaitCard {
+    tmgr_ipc::decisions::WaitCard { card_id: id.into(), since }
+  }
+
+  fn three(c: &Client) -> (Vec<String>, Vec<tmgr_ipc::decisions::WaitCard>) {
+    let ids: Vec<String> = ["one", "two", "three"].iter().map(|t| c.create(card(t)).unwrap()).collect();
+    let cards = ids.iter().map(|i| wc(i, 0)).collect();
+    (ids, cards)
+  }
+
+  #[test]
+  fn wait_any_returns_the_first_answered_card_and_marks_all_listening() {
+    let r = rig();
+    let c = Client::open_in(&r.dir).unwrap();
+    let (ids, cards) = three(&c);
+    let dir = r.dir.clone();
+    let waiter = std::thread::spawn(move || {
+      let c = Client::open_in(&dir).unwrap();
+      let t = Instant::now();
+      let e = c.wait_any(&cards, Duration::from_secs(20), false, None).unwrap().unwrap();
+      (e, t.elapsed())
+    });
+    let t = Instant::now();
+    while !ids.iter().all(|i| r.hub.get(i).unwrap().listening) {
+      assert!(t.elapsed() < Duration::from_secs(5), "not all listening");
+      std::thread::sleep(Duration::from_millis(10));
+    }
+    r.hub.answer(&ids[1], answer_a()).unwrap();
+    let (e, took) = waiter.join().unwrap();
+    assert_eq!(e.card_id, ids[1]);
+    assert!(e.is_final());
+    assert!(took < Duration::from_secs(5), "{took:?}");
+  }
+
+  #[test]
+  fn wait_any_returns_at_once_for_an_already_answered_card_and_times_out_otherwise() {
+    let r = rig();
+    let c = Client::open_in(&r.dir).unwrap();
+    let (ids, cards) = three(&c);
+    let t = Instant::now();
+    assert!(c.wait_any(&cards, Duration::from_millis(150), false, None).unwrap().is_none());
+    assert!(t.elapsed() >= Duration::from_millis(140));
+    r.hub.answer(&ids[2], answer_a()).unwrap();
+    let t = Instant::now();
+    let e = c.wait_any(&cards, Duration::from_secs(20), false, None).unwrap().unwrap();
+    assert_eq!(e.card_id, ids[2]);
+    assert!(t.elapsed() < Duration::from_secs(2));
+    let past = [wc(&ids[0], 0), wc(&ids[2], e.seq + 5)];
+    assert_eq!(c.wait_any(&past, Duration::from_millis(50), true, None).unwrap().unwrap().card_id, ids[2]);
+  }
+
+  #[test]
+  fn wait_any_rejects_empty_and_oversized_lists_without_bad_request() {
+    let r = rig();
+    let c = Client::open_in(&r.dir).unwrap();
+    let err = c.wait_any(&[], Duration::ZERO, false, None).unwrap_err();
+    assert!(err.to_string().contains("no cards to wait on"), "{err}");
+    assert_ne!(err.kind(), io::ErrorKind::Unsupported);
+    let many: Vec<_> = (0..65).map(|i| wc(&format!("c_{i:032}"), 0)).collect();
+    let err = c.wait_any(&many, Duration::ZERO, false, None).unwrap_err();
+    assert!(err.to_string().contains("too many cards (limit 64)"), "{err}");
+    assert_ne!(err.kind(), io::ErrorKind::Unsupported);
+    let err = c.wait_any(&[wc("c_00000000000000000000000000000000", 0)], Duration::ZERO, false, None).unwrap_err();
+    assert!(!err.to_string().contains("bad request"), "{err}");
   }
 }
