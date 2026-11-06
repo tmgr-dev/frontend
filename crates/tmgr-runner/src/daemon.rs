@@ -129,11 +129,7 @@ fn client_config_dir(raw: &str, forbidden: &[PathBuf]) -> Result<PathBuf, &'stat
 const CLIENT_CONFIG_DIRS_FILE: &str = "client-config-dirs.json";
 
 fn add_client_config_dir(dirs: &mut Vec<PathBuf>, d: PathBuf) -> Result<bool, &'static str> {
-    let canon = sandbox::canon_lossy(&d);
-    if dirs
-        .iter()
-        .any(|e| *e == d || sandbox::canon_lossy(e) == canon)
-    {
+    if dirs.contains(&d) {
         return Ok(false);
     }
     if dirs.len() >= MAX_CLIENT_CONFIG_DIRS {
@@ -5713,12 +5709,15 @@ mod tests {
     }
 
     #[test]
-    fn aliases_of_one_client_config_dir_take_one_slot() {
+    fn every_spelling_of_a_client_config_dir_keeps_its_own_entry() {
         let (_t, link, target) = linked_config_dir();
         let mut dirs = Vec::new();
-        assert_eq!(add_client_config_dir(&mut dirs, link), Ok(true));
-        assert_eq!(add_client_config_dir(&mut dirs, target), Ok(false));
-        assert_eq!(dirs.len(), 1);
+        assert_eq!(add_client_config_dir(&mut dirs, link.clone()), Ok(true));
+        assert_eq!(add_client_config_dir(&mut dirs, target.clone()), Ok(true));
+        assert_eq!(add_client_config_dir(&mut dirs, link), Ok(false));
+        assert_eq!(dirs.len(), 2);
+        fs::remove_file(&dirs[0]).unwrap();
+        assert!(client_deny_paths(&dirs).unwrap().contains(&target));
     }
 
     #[test]
