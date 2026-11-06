@@ -1,4 +1,5 @@
 import axios, { type AxiosAdapter, type AxiosInstance } from 'axios';
+import { PluginError } from './broker';
 
 export interface MintedToken {
 	token: string;
@@ -16,6 +17,15 @@ const routeOf = (url?: string) => (url ?? '').replace(/^\/+/, '').split('?')[0];
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 	!!value && typeof value === 'object' && !Array.isArray(value);
+
+const CHECKED_ROUTE =
+	/^((tasks|project_categories)(\/\d+)?|tasks\/\d+\/countdown|daily-routines\/tasks\/\d+\/convert)$/;
+
+const entitiesOf = (data: unknown): unknown[] => {
+	if (Array.isArray(data)) return data;
+	if (isPlainObject(data) && Array.isArray(data.data)) return data.data;
+	return [data];
+};
 
 /**
  * Plugin data in a shared workspace. A fresh client, never the app's: it carries only the plugin's
@@ -69,13 +79,31 @@ export const cloudPluginClient = ({
 		return config;
 	});
 
-	client.interceptors.response.use(undefined, async (error) => {
-		const config = error?.config;
-		if (error?.response?.status === 401 && config && !config._renewed) {
-			config._renewed = true;
-			return client.request(config);
-		}
-		throw error;
-	});
+	client.interceptors.response.use(
+		(response) => {
+			const foreign =
+				CHECKED_ROUTE.test(routeOf(response.config?.url)) &&
+				entitiesOf(response.data?.data).some(
+					(entity) =>
+						isPlainObject(entity) &&
+						entity.workspace_id != null &&
+						Number(entity.workspace_id) !== workspaceId,
+				);
+			if (foreign)
+				throw new PluginError(
+					'PERMISSION_DENIED',
+					'response belongs to another workspace',
+				);
+			return response;
+		},
+		async (error) => {
+			const config = error?.config;
+			if (error?.response?.status === 401 && config && !config._renewed) {
+				config._renewed = true;
+				return client.request(config);
+			}
+			throw error;
+		},
+	);
 	return client;
 };
