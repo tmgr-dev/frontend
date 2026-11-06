@@ -1636,12 +1636,7 @@ impl ViewState {
                 }
                 b'\t' => {
                     i += 1;
-                    let browsing = ns.picker_live()
-                        && ns
-                            .picker
-                            .as_ref()
-                            .is_some_and(|p| p.mode != folder_pick::Mode::Recent);
-                    if ns.focus != NewField::Folder || browsing || !ns.complete_folder() {
+                    if ns.focus != NewField::Folder || ns.picker_live() || !ns.complete_folder() {
                         ns.step(true);
                     }
                 }
@@ -3776,6 +3771,25 @@ mod tests {
     fn picker_rows(v: &ViewState) -> Vec<folder_pick::PickRow> {
         let n = ns_of(v);
         picker_of(v).rows(n.folders.as_ref().unwrap(), 0)
+    }
+
+    #[test]
+    fn tab_in_the_live_picker_moves_to_the_next_field_and_keeps_the_folder() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        let only = h.path().join("only");
+        std::fs::create_dir(&only).unwrap();
+        for n in ["alpha", "beta", "gamma"] {
+            std::fs::remove_dir(h.path().join(n)).unwrap();
+        }
+        ns(&mut v).folder = format!("{}/", h.path().display());
+        assert!(ns_of(&v).picker_live());
+        let before = ns_of(&v).folder.clone();
+        v.edit_new_session(b"\t");
+        assert_ne!(ns_of(&v).focus, NewField::Folder);
+        assert_eq!(ns_of(&v).folder, before);
+        v.edit_new_session(b"\x1b[Z");
+        assert_eq!(ns_of(&v).focus, NewField::Folder);
     }
 
     #[test]
