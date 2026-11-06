@@ -90,6 +90,21 @@ export interface ImportReport {
 	unmapped_refs: number;
 }
 
+export interface SkillsPayload {
+	skills: { markdown: string; attach_to: string[] }[];
+}
+
+export interface SkillOutcome {
+	slug: string;
+	cloud_slug: string | null;
+	status: 'created' | 'renamed' | 'reused' | 'skipped';
+	reason: string | null;
+	attached: string[];
+	skipped_attachments: { persona_uuid: string; reason: string }[];
+}
+
+export type SkillsReport = SkillOutcome[];
+
 export interface Http {
 	get<T = any>(url: string): Promise<{ data: T }>;
 	post<T = any>(url: string, body?: unknown): Promise<{ data: T }>;
@@ -117,6 +132,7 @@ export interface ImportApi {
 	retry(jobId: string): Promise<ImportStatus>;
 	publish(jobId: string, acceptDifferences?: boolean): Promise<ImportStatus>;
 	discard(jobId: string): Promise<void>;
+	importSkills(jobId: string, payload: SkillsPayload): Promise<SkillsReport>;
 }
 
 const BASE = '/imports';
@@ -150,6 +166,10 @@ export const createImportApi = (http: Http): ImportApi => {
 		discard: async (id) => {
 			await http.delete(job(id));
 		},
+		importSkills: async (id, payload) =>
+			unwrap<{ skills: SkillsReport }>(
+				await http.post(`${job(id)}/skills`, payload),
+			).skills,
 	};
 };
 

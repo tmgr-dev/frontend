@@ -11,6 +11,7 @@
 	} from '@/components/ui/dialog';
 	import { apiErrorMessage } from '@/local/moveToCloud/api';
 	import { formatBytes, previousMoveWarning } from '@/local/moveToCloud/banner';
+	import { dryRunSkillsLine } from '@/local/moveToCloud/skills';
 	import {
 		toMappingPayload,
 		type DryRun,
@@ -98,6 +99,7 @@
 			);
 
 			const counts = computed(() => dry.value?.inventory.counts);
+			const skillsLine = computed(() => dryRunSkillsLine(dry.value?.skills ?? 0));
 			const sizeLabel = computed(() =>
 				dry.value ? formatBytes(dry.value.movedFileBytes) : '',
 			);
@@ -138,6 +140,7 @@
 				cloudName,
 				cloudPersonas,
 				counts,
+				skillsLine,
 				dry,
 				error,
 				excludedSummary,
@@ -233,6 +236,10 @@
 							<li class="flex gap-2">
 								<Check class="mt-0.5 size-4 shrink-0 text-emerald-500" />
 								<span>Statuses, categories, relations</span>
+							</li>
+							<li v-if="dry.skills > 0" class="flex gap-2">
+								<Check class="mt-0.5 size-4 shrink-0 text-emerald-500" />
+								<span>{{ skillsLine }}</span>
 							</li>
 						</ul>
 					</div>

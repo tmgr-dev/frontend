@@ -1,8 +1,11 @@
+import type { LibraryFile } from '../../skillLibrary';
 import type {
 	CreatedJob,
 	ImportApi,
 	ImportStatus,
 	PresignedUpload,
+	SkillsPayload,
+	SkillsReport,
 } from '../api';
 import type { MoveDeps, MoveNative } from '../flow';
 import type { LocalInventory } from '../inventory';
@@ -267,7 +270,14 @@ export const harness = (
 			);
 		}),
 		discard: jest.fn(async () => void log('discard')),
+		importSkills: jest.fn(
+			async (
+				_job: string,
+				_payload: SkillsPayload,
+			): Promise<SkillsReport> => [],
+		),
 	} satisfies ImportApi & Record<string, any>;
+	const library: { value: LibraryFile | null } = { value: null };
 	const storage = memoryStorage();
 	const sleeps: number[] = [];
 	const deps: MoveDeps = {
@@ -279,6 +289,7 @@ export const harness = (
 		profileUuid: async () => 'prof',
 		inventory: async () => overrides.inventory ?? INVENTORY,
 		userId: () => user.id,
+		skillLibrary: async () => library.value,
 	};
-	return { deps, native, api, storage, calls, sleeps, user };
+	return { deps, native, api, storage, calls, sleeps, user, library };
 };

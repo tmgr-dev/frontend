@@ -12,6 +12,7 @@
 	import { stepIndex } from '@/local/moveToCloud/model';
 	import { summarize } from '@/local/moveToCloud/progress';
 	import { reportLines, serverErrorLines } from '@/local/moveToCloud/report';
+	import { skillsReportLines } from '@/local/moveToCloud/skills';
 	import { getMover } from '@/local/moveToCloud/runtime';
 	import { openCloudWorkspace } from '@/utils/openCloudWorkspace';
 	import {
@@ -90,6 +91,10 @@
 						]
 					: [],
 			);
+			const skills = computed(() => view.value.published?.skills ?? null);
+			const skillLines = computed(() =>
+				skillsReportLines(skills.value?.report),
+			);
 			const cancellable = computed(
 				() =>
 					!!view.value.job &&
@@ -126,11 +131,14 @@
 				opening,
 				openError,
 				openWorkspace,
+				skillLines,
+				skills,
 				stopped,
 				summary,
 				title,
 				view,
 				retry: () => void getMover().retry(props.code),
+				retrySkills: () => void getMover().retrySkills(props.code),
 				discard: () => void getMover().discard(props.code),
 				cancelMove: () => void getMover().cancel(props.code),
 				publishAnyway: () => void getMover().publishAnyway(props.code),
@@ -151,6 +159,24 @@
 
 			<div v-if="done" class="flex flex-col items-start gap-3">
 				<p class="text-sm">Done. Open the cloud workspace.</p>
+				<p v-if="skills?.state === 'pending'" class="text-sm text-ink-subtle">
+					Copying skills...
+				</p>
+				<ul v-else-if="skillLines.length" class="flex flex-col gap-1 text-sm">
+					<li v-for="line in skillLines" :key="line" class="break-words">
+						{{ line }}
+					</li>
+				</ul>
+				<div
+					v-else-if="skills?.state === 'failed'"
+					role="alert"
+					class="flex flex-col items-start gap-2 text-sm text-destructive"
+				>
+					<p class="break-words">Skills were not copied: {{ skills.error }}</p>
+					<Button size="sm" variant="outline" :disabled="view.busy" @click="retrySkills"
+						>Retry skills</Button
+					>
+				</div>
 				<Button :disabled="opening" @click="openWorkspace"
 					>Open the cloud workspace</Button
 				>

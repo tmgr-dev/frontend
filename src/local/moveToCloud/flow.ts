@@ -1,4 +1,5 @@
 import { tourBus } from '@/tours/events';
+import type { LibraryFile } from '../skillLibrary';
 import {
 	apiErrorMessage,
 	isFileNotAllowed,
@@ -30,6 +31,7 @@ import type {
 	MovePutResult,
 	MoveSnapshot,
 } from './native';
+import { buildSkillsPayload } from './skills';
 
 export const ACCOUNT_MISMATCH_MESSAGE =
 	'This move was started by another account. Sign in as that account to continue, or discard it.';
@@ -70,6 +72,7 @@ export interface MoveDeps {
 	profileUuid(): Promise<string>;
 	inventory(code: string): Promise<LocalInventory>;
 	userId(): number | null;
+	skillLibrary(userId: number): Promise<LibraryFile | null>;
 }
 
 export interface PersonaChoice {
@@ -92,6 +95,7 @@ export interface DryRun {
 	movedFileBytes: number;
 	personas: PersonaChoice[];
 	previousMove: PublishedMove | null;
+	skills: number;
 	runningTimers: number;
 }
 
@@ -232,6 +236,9 @@ export const createMover = (deps: MoveDeps) => {
 			names,
 			limits,
 		);
+		const userId = deps.userId();
+		const library =
+			userId == null ? null : await deps.skillLibrary(userId).catch(() => null);
 		return {
 			capabilities,
 			blocker,
@@ -243,6 +250,10 @@ export const createMover = (deps: MoveDeps) => {
 			movedFileBytes: staged.reduce((sum, f) => sum + f.size, 0),
 			personas: defaultPersonaMapping(inventory.personas),
 			previousMove: load(code).published,
+			skills: buildSkillsPayload(
+				library,
+				inventory.personas.map((p) => p.uuid),
+			).skills.length,
 			runningTimers: inventory.runningTimers,
 		};
 	};
@@ -480,12 +491,40 @@ export const createMover = (deps: MoveDeps) => {
 			archive: null,
 			dir: job?.dir ?? null,
 			userId: job?.userId ?? deps.userId(),
+			skills: { state: 'pending', report: null, error: null },
 		};
 		state.job = null;
 		statuses.delete(code);
 		save(code, state);
 		emit(code);
 		tourBus.emit('migration.completed');
+	};
+
+	const carrySkills = async (code: string) => {
+		const published = load(code).published;
+		if (!published?.skills || published.skills.state === 'done') return;
+		const userId = published.userId ?? deps.userId();
+		if (userId == null || deps.userId() !== userId) return;
+		const settle = (skills: PublishedMove['skills']) => {
+			const state = load(code);
+			if (state.published?.jobId !== published.jobId) return;
+			state.published.skills = skills;
+			save(code, state);
+			emit(code);
+		};
+		try {
+			const inventory = await deps.inventory(code);
+			const { skills } = buildSkillsPayload(
+				await deps.skillLibrary(userId),
+				inventory.personas.map((p) => p.uuid),
+			);
+			const report = skills.length
+				? await api.importSkills(published.jobId, { skills })
+				: [];
+			settle({ state: 'done', report, error: null });
+		} catch (error) {
+			settle({ state: 'failed', report: null, error: apiErrorMessage(error) });
+		}
 	};
 
 	const publishFromServer = async (
@@ -516,8 +555,10 @@ export const createMover = (deps: MoveDeps) => {
 			ensureActive(code);
 			const published = await publishFromServer(code, jobId);
 			finishPublished(code, jobId, published, published.verified === true);
+			await carrySkills(code);
 		} else if (status.status === 'published') {
 			finishPublished(code, jobId, status, status.verified === true);
+			await carrySkills(code);
 		}
 	};
 
@@ -605,7 +646,19 @@ export const createMover = (deps: MoveDeps) => {
 		return guarded(code, () => advance(code));
 	};
 
-	const resume = (code: string) => guarded(code, () => advance(code));
+	const resume = (code: string) =>
+		guarded(code, async () => {
+			const hadJob = !!load(code).job;
+			await advance(code);
+			if (!hadJob) await carrySkills(code);
+		});
+
+	const retrySkills = (code: string) =>
+		guarded(code, async () => {
+			const skills = load(code).published?.skills;
+			if (skills?.state !== 'failed') return;
+			await carrySkills(code);
+		});
 
 	const retry = (code: string) =>
 		guarded(code, async () => {
@@ -636,6 +689,7 @@ export const createMover = (deps: MoveDeps) => {
 				},
 				false,
 			);
+			await carrySkills(code);
 		});
 
 	const discard = async (code: string) => {
@@ -686,6 +740,7 @@ export const createMover = (deps: MoveDeps) => {
 		start,
 		resume,
 		retry,
+		retrySkills,
 		publishAnyway,
 		discard,
 		cancel: discard,
