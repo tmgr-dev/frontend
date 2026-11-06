@@ -7,6 +7,7 @@ mod clean;
 mod export;
 mod filter;
 mod find;
+mod folder_pick;
 mod git;
 mod keys;
 mod layouts;
@@ -51,6 +52,7 @@ pub use export::{
 };
 pub use filter::{Filter, FilterEdit};
 pub use find::{CopyState, ScrollText, SearchEdit, SearchState};
+pub use folder_pick::{FolderData, FolderMark, RecentDir};
 pub use git::{
     parse_numstat, parse_pr, parse_status, valid_pr_url, GitAction, GitInfo, Pr, PrLookup,
     StatusInfo,
