@@ -18,7 +18,12 @@ probes!(
   local_access_event,
   decisions_list,
   persona_cache_clear_for_user,
-  persona_llm_clear_for_user
+  persona_llm_clear_for_user,
+  skill_library_read,
+  skill_library_write,
+  skill_library_export,
+  skill_library_import_pick,
+  skill_library_migrate_local
 );
 
 fn call(label: &str, cmd: &str) -> Result<(), String> {
@@ -48,6 +53,18 @@ fn the_acl_decides_per_command_and_window() {
   assert!(call("task-1", "decisions_list").unwrap_err().contains("not allowed on window"));
   assert!(call("decisions", "runner_enabled").unwrap_err().contains("not allowed on window"));
   assert!(call("main", "local_access_event").unwrap_err().contains("Command not found"));
+
+  for command in [
+    "skill_library_read",
+    "skill_library_write",
+    "skill_library_export",
+    "skill_library_import_pick",
+    "skill_library_migrate_local",
+  ] {
+    assert!(call("main", command).is_ok(), "{command}");
+    assert!(call("task-1", command).unwrap_err().contains("not allowed on window"), "{command}");
+    assert!(call("decisions", command).unwrap_err().contains("not allowed on window"), "{command}");
+  }
 }
 
 #[test]

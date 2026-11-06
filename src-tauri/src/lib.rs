@@ -35,6 +35,7 @@ mod plugin_tick;
 mod plugin_windows;
 mod quick_add;
 mod runner;
+mod skill_library;
 mod skill_scan;
 mod usage;
 mod page_windows;
@@ -287,6 +288,11 @@ pub fn run() {
       plugin_files::plugin_pick_file,
       skill_scan::skills_scan,
       skill_scan::skills_pick_folder,
+      skill_library::skill_library_read,
+      skill_library::skill_library_write,
+      skill_library::skill_library_export,
+      skill_library::skill_library_import_pick,
+      skill_library::skill_library_migrate_local,
       plugin_windows::plugin_page_put,
       plugin_windows::plugin_window_open,
       plugin_windows::plugin_window_call,
