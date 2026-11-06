@@ -366,6 +366,16 @@
 						: 'Local access is not available on Windows yet.'
 				}}
 			</p>
+			<RouterLink
+				v-if="localAccessAvailable && !isDemo"
+				class="self-start text-sm font-medium text-brand underline hover:opacity-80"
+				:to="{
+					name: 'ConnectLocalAgent',
+					params: { workspace_code: workspace.code },
+				}"
+			>
+				Connect your agent
+			</RouterLink>
 		</section>
 
 		<LocalPersonaConnectDialog
@@ -443,6 +453,7 @@
 		ref,
 		watch,
 	} from 'vue';
+	import { RouterLink } from 'vue-router';
 	import { useStore } from 'vuex';
 
 	/** Mirrors the Rust classify_url check, so the warning reacts to what's typed, not last saved. */
@@ -471,7 +482,13 @@
 
 	export default defineComponent({
 		name: 'LocalPersonasPanel',
-		components: { Button, Input, LocalPersonaConnectDialog, Switch },
+		components: {
+			Button,
+			Input,
+			LocalPersonaConnectDialog,
+			RouterLink,
+			Switch,
+		},
 		setup() {
 			const store = useStore();
 			const workspace = activeLocalWorkspace();

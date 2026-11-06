@@ -129,6 +129,7 @@
 	} from '@/components/ui/dialog';
 	import { Input } from '@/components/ui/input';
 	import { toast } from '@/components/ui/toast';
+	import { configSnippet } from '@/local/connectAgent';
 	import {
 		copyLocalToken,
 		getLocalAccessStatus,
@@ -248,19 +249,21 @@
 				}
 			};
 
-			const codexSnippet = computed(() => {
-				if (!issuedToken.value) return '';
-				return [
-					'[mcp_servers.tmgr-local]',
-					`command = "${bridgeCommand.value}"`,
-					`args = ["mcp", "--token-id", "${issuedToken.value.id}"]`,
-				].join('\n');
-			});
+			const codexSnippet = computed(() =>
+				issuedToken.value
+					? configSnippet('codex', bridgeCommand.value, issuedToken.value.id)
+					: '',
+			);
 
-			const claudeSnippet = computed(() => {
-				if (!issuedToken.value) return '';
-				return `claude mcp add tmgr-local -- "${bridgeCommand.value}" mcp --token-id ${issuedToken.value.id}`;
-			});
+			const claudeSnippet = computed(() =>
+				issuedToken.value
+					? configSnippet(
+							'claude-code',
+							bridgeCommand.value,
+							issuedToken.value.id,
+						)
+					: '',
+			);
 
 			const mcpConfigText = computed(() => {
 				if (!issuedToken.value) return '';
