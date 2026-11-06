@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.98
 
 - A finished session's background process now exits once its session folder is removed, not only when the whole runner folder is, so it no longer waits 24 hours when the folder was removed by hand or the runner never told it to stop.
 
