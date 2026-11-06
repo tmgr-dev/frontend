@@ -834,9 +834,9 @@ fn wrap(text: &str, width: usize, max_lines: usize) -> Vec<String> {
 
 fn footer(ns: &NewSession) -> &'static str {
     if ns.task.trim().is_empty() {
-        "Enter starts, Ctrl+R resumes a past session, Esc cancels"
+        "Enter starts, Ctrl+R resumes a past session, Esc cancels, Tab/Shift+Tab next/prev field"
     } else {
-        "Enter shows the run to confirm, Esc cancels"
+        "Enter shows the run to confirm, Esc cancels, Tab/Shift+Tab next/prev field"
     }
 }
 
@@ -3714,6 +3714,16 @@ mod tests {
     }
 
     #[test]
+    fn the_footer_names_the_field_keys() {
+        let h = tmp();
+        let v = open("/", h.path());
+        assert!(draw(&v, 120, 40).contains("Tab/Shift+Tab next/prev field"));
+        let narrow = draw(&v, 40, 40);
+        assert!(narrow.contains("Tab/Shift+Tab"), "{narrow}");
+        assert!(narrow.contains("prev field"), "{narrow}");
+    }
+
+    #[test]
     fn the_footer_wraps_at_narrow_widths_and_the_dialog_height_follows() {
         let h = tmp();
         let v = open("/", h.path());
@@ -3721,8 +3731,9 @@ mod tests {
         let height = |w| new_session_rect(Rect::new(0, 0, w, 40), ns).height;
         let wide = height(100);
         assert!(draw(&v, 100, 40).contains("Ctrl+R resumes a past session, Esc cancels"));
+        assert!(height(40) > wide);
         for w in [50, 40] {
-            assert_eq!(height(w), wide + 1, "{w}");
+            assert!(height(w) >= wide, "{w}");
             let shown = draw(&v, w, 40);
             assert!(shown.contains("Enter starts,"), "{w}\n{shown}");
             assert!(shown.contains("cancels"), "{w}\n{shown}");

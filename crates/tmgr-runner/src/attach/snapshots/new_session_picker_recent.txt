@@ -1,5 +1,4 @@
                                                                                                     
-                                                                                                    
               ╭ New session ─────────────────────────────────────────────────────────╮              
               │   Kind       claude   codex   shell   custom                         │              
               │ > Folder    /work/app                                                │              
@@ -22,7 +21,8 @@
               │                                                                      │              
               │                                                                      │              
               │                                                                      │              
-              │ Enter starts, Ctrl+R resumes a past session, Esc cancels             │              
+              │ Enter starts, Ctrl+R resumes a past session, Esc cancels,            │              
+              │ Tab/Shift+Tab next/prev field                                        │              
               │                                                                      │              
               │                                                                      │              
               ╰──────────────────────────────────────────────────────────────────────╯              
