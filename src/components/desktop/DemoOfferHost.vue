@@ -4,9 +4,9 @@
 			<DialogHeader>
 				<DialogTitle>Want a quick tour with sample data?</DialogTitle>
 				<DialogDescription>
-					The demo is a separate workspace with a ready board and a sample
-					agent run. It stays on this Mac, never mixes with your own tasks, and
-					you can delete it any time.
+					The demo is a separate workspace with a ready board and a sample agent
+					run. It stays on this Mac, never mixes with your own tasks, and you
+					can delete it any time.
 				</DialogDescription>
 			</DialogHeader>
 			<p v-if="error" class="text-sm text-destructive">{{ error }}</p>

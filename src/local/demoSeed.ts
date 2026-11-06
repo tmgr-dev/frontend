@@ -41,20 +41,18 @@ export const seedDemo = async (ctx: LocalContext): Promise<boolean> => {
 				WHERE NOT EXISTS (SELECT 1 FROM statuses WHERE name = 'Review')`,
 			params: [now, now],
 		},
-		...BOARD.map(
-			(card, index): BatchStatement => ({
-				sql: `INSERT INTO tasks (title, description, status_id, sort_order, settings, created_at, updated_at)
+		...BOARD.map((card, index): BatchStatement => ({
+			sql: `INSERT INTO tasks (title, description, status_id, sort_order, settings, created_at, updated_at)
 					VALUES (?, ?, ${statusId}, ?, '[]', ?, ?)`,
-				params: [
-					card.title,
-					card.description ?? null,
-					card.status,
-					index + 1,
-					now,
-					now,
-				],
-			}),
-		),
+			params: [
+				card.title,
+				card.description ?? null,
+				card.status,
+				index + 1,
+				now,
+				now,
+			],
+		})),
 		{
 			sql: `INSERT INTO agent_work_runs
 				(task_id, agent, model, branch, status, started_at, ended_at, duration_seconds, summary, commits, tests, actor_kind, actor_id, version, created_at, updated_at)
@@ -66,7 +64,10 @@ export const seedDemo = async (ctx: LocalContext): Promise<boolean> => {
 				now,
 				'Fixed the redirect after sign-in; kept the requested page in the URL.',
 				JSON.stringify([
-					{ sha: 'a1b2c3d', message: 'fix: keep the return path after sign-in' },
+					{
+						sha: 'a1b2c3d',
+						message: 'fix: keep the return path after sign-in',
+					},
 				]),
 				JSON.stringify({ passed: 14, failed: 0, command: 'npm test' }),
 				now,

@@ -15,10 +15,7 @@ const memory = (): OnboardingStorage => {
 	};
 };
 
-const ctxFor = async (
-	code: string,
-	seeded: boolean,
-): Promise<LocalContext> => {
+const ctxFor = async (code: string, seeded: boolean): Promise<LocalContext> => {
 	const db = memoryDb();
 	await migrate(db, NOW);
 	const workspace: LocalWorkspace = {

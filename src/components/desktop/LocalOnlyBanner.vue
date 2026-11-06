@@ -6,7 +6,9 @@
 			data-testid="demo-banner"
 			class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-violet-300 bg-violet-100 px-4 py-2 text-sm text-violet-900 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200"
 		>
-			<span class="min-w-0 flex-1">This is a demo. Nothing leaves your Mac.</span>
+			<span class="min-w-0 flex-1"
+				>This is a demo. Nothing leaves your Mac.</span
+			>
 			<span v-if="deleteError" role="alert" class="text-destructive">
 				{{ deleteError }}
 			</span>
