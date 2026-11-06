@@ -11,6 +11,10 @@ fn env_path(name: &str) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+fn env_dir(name: &str) -> io::Result<Option<PathBuf>> {
+    env_path(name).map(std::path::absolute).transpose()
+}
+
 fn home() -> io::Result<PathBuf> {
     env_path("HOME").ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))
 }
@@ -21,7 +25,7 @@ fn app_support() -> io::Result<PathBuf> {
 }
 
 pub fn runner_dir() -> io::Result<PathBuf> {
-    if let Some(p) = env_path("TMGR_RUNNER_DIR") {
+    if let Some(p) = env_dir("TMGR_RUNNER_DIR")? {
         return Ok(p);
     }
     #[cfg(target_os = "macos")]
@@ -38,7 +42,7 @@ pub fn runner_dir() -> io::Result<PathBuf> {
 }
 
 pub fn homes_dir() -> io::Result<PathBuf> {
-    if let Some(p) = env_path("TMGR_RUNNER_HOMES") {
+    if let Some(p) = env_dir("TMGR_RUNNER_HOMES")? {
         return Ok(p);
     }
     #[cfg(target_os = "macos")]
