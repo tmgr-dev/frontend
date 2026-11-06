@@ -22,6 +22,7 @@ import {
 import { createLocalApi } from './api';
 import { classify, crossesWorkspaces } from './classify';
 import { dispatchLocal } from './dispatch';
+import { isGhostRequest } from './ghostHeader';
 import { createOnboardingHandler } from './onboarding';
 import {
 	CURRENT_WORKSPACE,
@@ -274,6 +275,7 @@ export const installLocalWorkspaces = (
 		}
 		const ctx = await localContext(workspace, localUser());
 		if (isAccountless()) ctx.accountless = true;
+		if (isGhostRequest(config)) ctx.ghost = true;
 		const result = await dispatchLocal(
 			api,
 			ctx,
@@ -464,6 +466,10 @@ export const installLocalWorkspaces = (
 				activeLocalWorkspace()?.id ?? null,
 			)
 		) {
+			config.adapter = refuse;
+			return config;
+		}
+		if (isGhostRequest(config) && !activeLocalWorkspace()?.demo) {
 			config.adapter = refuse;
 			return config;
 		}

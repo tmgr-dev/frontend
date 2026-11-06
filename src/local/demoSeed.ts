@@ -3,7 +3,8 @@ import type { BatchStatement, LocalContext, LocalDb } from './types';
 export const DEMO_META = 'onboarding:demo';
 export const DEMO_WORKSPACE_NAME = 'Demo: Launch week';
 export const DEMO_AGENT = 'demo-agent';
-const REVIEW_TITLE = 'Fix login redirect';
+export const GHOST_CARD = 'Fix login redirect';
+const REVIEW_TITLE = GHOST_CARD;
 
 const BOARD: Array<{ title: string; status: string; description?: string }> = [
 	{ title: 'Write the launch announcement', status: 'Todo' },
@@ -82,4 +83,75 @@ export const seedDemo = async (ctx: LocalContext): Promise<boolean> => {
 	];
 	const { failedAt } = await ctx.db.batch(statements);
 	return failedAt === null;
+};
+
+export interface DemoCard {
+	taskId: number;
+	todo: number;
+	inProgress: number;
+	review: number;
+}
+
+const statusIdOf = async (db: LocalDb, name: string): Promise<number | null> =>
+	(
+		await db.select<{ id: number }>(
+			`SELECT id FROM statuses WHERE name = ? ORDER BY id LIMIT 1`,
+			[name],
+		)
+	)[0]?.id ?? null;
+
+export const resetDemoCard = async (
+	ctx: LocalContext,
+): Promise<DemoCard | null> => {
+	if (!(await isDemoDb(ctx.db))) return null;
+	const [task] = await ctx.db.select<{ id: number }>(
+		`SELECT id FROM tasks WHERE title = ? AND deleted_at IS NULL ORDER BY id LIMIT 1`,
+		[GHOST_CARD],
+	);
+	const [todo, inProgress, review] = await Promise.all(
+		['Todo', 'In progress', 'Review'].map((name) => statusIdOf(ctx.db, name)),
+	);
+	if (!task || todo === null || inProgress === null || review === null)
+		return null;
+	const { failedAt } = await ctx.db.batch([
+		{
+			sql: `DELETE FROM agent_work_runs WHERE task_id = ? AND agent = ?`,
+			params: [task.id, DEMO_AGENT],
+		},
+		{
+			sql: `UPDATE tasks SET status_id = ?, start_time = 0, common_time = 0, updated_at = ? WHERE id = ?`,
+			params: [todo, ctx.now().toISOString(), task.id],
+			expectChanges: true,
+		},
+	]);
+	if (failedAt !== null) return null;
+	return { taskId: task.id, todo, inProgress, review };
+};
+
+export const recoverDemo = async (ctx: LocalContext): Promise<number[]> => {
+	if (!(await isDemoDb(ctx.db))) return [];
+	const now = ctx.now().toISOString();
+	const timed = await ctx.db.select<{ id: number }>(
+		`SELECT id FROM tasks WHERE start_time > 0`,
+	);
+	const dangling = await ctx.db.select<{ task_id: number }>(
+		`SELECT DISTINCT task_id FROM agent_work_runs WHERE status = 'running' AND agent = ?`,
+		[DEMO_AGENT],
+	);
+	if (timed.length)
+		await ctx.db.execute(
+			`UPDATE tasks SET start_time = 0, updated_at = ? WHERE start_time > 0`,
+			[now],
+		);
+	if (dangling.length)
+		await ctx.db.execute(
+			`UPDATE agent_work_runs SET status = 'abandoned', ended_at = COALESCE(updated_at, started_at),
+				duration_seconds = CAST((julianday(COALESCE(updated_at, started_at)) - julianday(started_at)) * 86400 AS INTEGER),
+				version = version + 1, updated_at = ?
+			 WHERE status = 'running' AND agent = ?`,
+			[now, DEMO_AGENT],
+		);
+	return [
+		...new Set([...timed.map((t) => t.id), ...dangling.map((r) => r.task_id)]),
+	];
 };

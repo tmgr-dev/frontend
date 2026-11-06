@@ -1,7 +1,10 @@
+import { DEMO_AGENT } from '@/local/demoSeed';
+
 export interface TrackedRun {
 	id: number;
 	status: string;
 	version: number;
+	agent?: string;
 }
 
 export type AgentRunEvent = 'agent.run_started' | 'agent.run_finished';
@@ -13,7 +16,7 @@ export function agentRunEvent(
 	incoming: TrackedRun,
 	loaded: boolean,
 ): AgentRunEvent | null {
-	if (!loaded) return null;
+	if (!loaded || incoming.agent === DEMO_AGENT) return null;
 	const previous = known.find((run) => run.id === incoming.id);
 	if (!previous) return 'agent.run_started';
 	if (previous.version > incoming.version) return null;

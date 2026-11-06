@@ -1,3 +1,4 @@
+import { isGhostRequest } from '@/local/ghostHeader';
 import type { AxiosInstance } from 'axios';
 
 type Entity = Record<string, any>;
@@ -529,6 +530,7 @@ export const installDomainEvents = (
 	});
 	return instance.interceptors.response.use((response) => {
 		try {
+			if (isGhostRequest(response.config)) return response;
 			const plugin = response.config.headers?.['X-TMGR-Plugin'];
 			// Never a header: the socket path must not let anything in the request choose its own actor.
 			const localAccessActor = (response.config as any).localAccessActor;

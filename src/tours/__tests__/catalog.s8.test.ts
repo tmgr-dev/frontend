@@ -21,7 +21,10 @@ const tour = (id: string) => getTour(id)!;
 
 describe('S8 desktop catalog', () => {
 	it('registers D1-D10 in order with a hub trigger', () => {
-		expect(desktopTours.map((t) => t.id)).toEqual(S8_IDS);
+		expect(desktopTours.map((t) => t.id)).toEqual([
+			...S8_IDS,
+			'desktop.ghost-watch',
+		]);
 		for (const id of S8_IDS) {
 			expect(tour(id).group).toBe('desktop');
 			expect(tour(id).since).toBe('3.4.158');

@@ -76,6 +76,7 @@ export interface LocalContext {
 	accountless?: boolean;
 	/** The signed-in cloud user is the account that took over the local identity (stored id -1). */
 	localOwnerLinked?: boolean;
+	ghost?: boolean;
 }
 
 /** A handler result sent as the response body as is (no `{data}` envelope), e.g. a Blob. */

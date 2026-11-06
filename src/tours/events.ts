@@ -1,3 +1,4 @@
+import { isGhostRequest } from '@/local/ghostHeader';
 import { normalizePath } from '@/local/router';
 import type { AxiosInstance } from 'axios';
 
@@ -39,6 +40,7 @@ export const KNOWN_EVENTS = [
 	'tasks.actions_opened',
 	'migration.started',
 	'migration.completed',
+	'ghost.finished',
 ] as const;
 
 export type KnownEvent = (typeof KNOWN_EVENTS)[number];
@@ -322,7 +324,11 @@ export function installTourInterceptor(
 		try {
 			const status = response?.status;
 			const config = response?.config;
-			if (config && (status === undefined || (status >= 200 && status < 300))) {
+			if (
+				config &&
+				!isGhostRequest(config) &&
+				(status === undefined || (status >= 200 && status < 300))
+			) {
 				const verb = (config.method ?? 'get').toUpperCase();
 				const url = config.url ?? '';
 				const body = parseBody(config.data);

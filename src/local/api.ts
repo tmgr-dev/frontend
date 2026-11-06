@@ -413,7 +413,7 @@ const personaWritableFields = (ctx: LocalContext, body: any) => {
 export const BOARD_MOVE_META_PREFIX = 'onboarding:board_move:';
 
 export const noteStatusChange = async (ctx: LocalContext, taskId: number) => {
-	if (ctx.actor && ctx.actor.kind !== 'user') return;
+	if (ctx.ghost || (ctx.actor && ctx.actor.kind !== 'user')) return;
 	try {
 		await ctx.db.execute(
 			`INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)`,

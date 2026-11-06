@@ -435,6 +435,30 @@ describe('installTourInterceptor', () => {
 		expect(ejected()).toBe(true);
 	});
 
+	it('ignores responses to ghost requests', () => {
+		const { axios, run } = makeAxios();
+		installTourInterceptor(axios, () => undefined);
+		const seen: any[] = [];
+		const stop = tourBus.on('timer.started', (p) => seen.push(p));
+		run({
+			status: 200,
+			config: {
+				method: 'post',
+				url: 'tasks/7/countdown',
+				headers: { 'X-TMGR-Ghost': '1' },
+			},
+			data: { data: { id: 7 } },
+		});
+		expect(seen).toEqual([]);
+		run({
+			status: 200,
+			config: { method: 'post', url: 'tasks/7/countdown' },
+			data: { data: { id: 7 } },
+		});
+		expect(seen).toEqual([{ taskId: 7 }]);
+		stop();
+	});
+
 	it('ignores non-2xx and never throws', () => {
 		const { axios, run } = makeAxios();
 		installTourInterceptor(axios, () => undefined);

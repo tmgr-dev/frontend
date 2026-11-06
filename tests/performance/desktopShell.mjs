@@ -73,6 +73,20 @@ const fakeShell = async ({
         workspaces.push(workspace);
         return workspace;
       }
+      case 'local_workspace_create_demo': {
+        const workspace = {
+          id: -1000 - workspaces.length,
+          name: args.name,
+          code: 'demo-launch-week',
+          schema_version: 0,
+          created_at: new Date().toISOString(),
+          path: '/tmp/demo-launch-week',
+          database: '/tmp/demo-launch-week/workspace.db',
+          demo: true,
+        };
+        workspaces.push(workspace);
+        return workspace;
+      }
       case 'local_db_select':
         return db(args.code)
           .prepare(args.sql)

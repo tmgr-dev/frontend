@@ -71,6 +71,7 @@ export const CATALOG = {
 			'desktop.plugins',
 			'desktop.whats-new',
 			'desktop.move-to-cloud',
+			'desktop.ghost-watch',
 			'ios.tabs',
 			'ios.pomodoro',
 			'ios.widgets',

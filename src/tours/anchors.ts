@@ -13,7 +13,7 @@ export function isVisible(el: Element): boolean {
 export const OWN_LAYERS =
 	'.driver-overlay, .driver-popover, .tour-backdrop, .tour-host, .tour-ring';
 
-const IGNORED_HITS = `${OWN_LAYERS}, [data-sidebar="rail"]`;
+const IGNORED_HITS = `${OWN_LAYERS}, [data-sidebar="rail"], [data-tour="ghost.panel"]`;
 
 export function isOccluded(el: Element): boolean {
 	if (typeof document.elementFromPoint !== 'function') return false;

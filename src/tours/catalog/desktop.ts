@@ -323,4 +323,30 @@ export const desktopTours: TourDef[] = [
 			},
 		],
 	},
+	{
+		id: 'desktop.ghost-watch',
+		version: 1,
+		since: '3.4.240',
+		group: 'desktop',
+		title: 'Watch an agent work',
+		minutes: 1,
+		triggers: [{ kind: 'hub' }],
+		requires: { account: 'local', platforms: ['desktop_local'] },
+		steps: [
+			{
+				id: 's1',
+				type: 'modal',
+				title: 'A demo agent at work',
+				body: 'We open a demo workspace where a simulated agent fixes a bug. Nothing runs on your Mac.',
+			},
+			{
+				id: 's2',
+				type: 'wait',
+				anchor: 'ghost.panel',
+				waitFor: { event: 'ghost.finished' },
+				title: 'Watch the board',
+				body: 'The card moves, the timer ticks and the run fills in. Press Esc to skip ahead.',
+			},
+		],
+	},
 ];
