@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.122 — 2026-11-08
+
+- Local AI: Settings > Personas now has a Local AI section on the desktop. Press Detect to find Ollama or LM Studio on this computer, load the model list and test the connection. A server on your local network is used only after you confirm it for that address.
+- Day summary: a new Day summary button above the task list writes a short summary of today from your local and cloud workspaces using your own local model. Without a model it shows a plain list instead. Nothing is sent anywhere else, and the summary is saved as a page only if you choose Save as page.
+
 ## 0.9.120 — 2026-11-07
 
 - Git auto-tracking: TMGR can watch the git repositories you choose in Settings > Desktop. When a branch like `feat/TM-157-title` is checked out, it offers to start or switch your timer to that task. Choose Ask (default), Auto or Off. Only the branch name is read, and only tasks of the open workspace are matched.
