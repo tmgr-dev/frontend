@@ -106,6 +106,104 @@ describe('useSkillFiles', () => {
 		expect(STALE_FILES_MESSAGE).toBe('Files changed elsewhere, reloaded');
 	});
 
+	it('ignores a late failure for an earlier file', async () => {
+		let rejectA: (e: unknown) => void = () => {};
+		mockGet
+			.mockImplementationOnce(
+				() => new Promise((_, reject) => (rejectA = reject)),
+			)
+			.mockResolvedValueOnce({
+				path: 'b.md',
+				content: 'B',
+				size: 1,
+				sha256: 'sb',
+			});
+		const state = useSkillFiles(() => 'demo');
+		const a = state.view('a.md');
+		await state.view('b.md');
+		rejectA(new Error('late'));
+		await a;
+		expect(state.openPath.value).toBe('b.md');
+		expect(state.content.value).toBe('B');
+		expect(state.contentLoading.value).toBe(false);
+		expect(mockToast).not.toHaveBeenCalled();
+	});
+
+	it('ignores a late finish for an earlier file', async () => {
+		let resolveA: (v: unknown) => void = () => {};
+		mockGet
+			.mockImplementationOnce(
+				() => new Promise((resolve) => (resolveA = resolve)),
+			)
+			.mockImplementationOnce(() => new Promise(() => {}));
+		const state = useSkillFiles(() => 'demo');
+		const a = state.view('a.md');
+		void state.view('b.md');
+		resolveA({ path: 'a.md', content: 'A', size: 1, sha256: 'sa' });
+		await a;
+		expect(state.openPath.value).toBe('b.md');
+		expect(state.content.value).toBe('');
+		expect(state.contentLoading.value).toBe(true);
+	});
+
+	it('does not claim a reload after a 409 when the reload fails', async () => {
+		mockList
+			.mockResolvedValueOnce(index(['a.md'], 'old'))
+			.mockRejectedValueOnce(new Error('down'));
+		mockDelete.mockRejectedValue({ response: { status: 409 } });
+		const state = useSkillFiles(
+			() => 'demo',
+			jest.fn(),
+			() => true,
+		);
+		await state.load();
+		await state.remove('a.md');
+		expect(mockToast).not.toHaveBeenCalledWith(
+			expect.objectContaining({ title: STALE_FILES_MESSAGE }),
+		);
+		expect(mockToast).toHaveBeenCalledWith(
+			expect.objectContaining({ title: 'Could not load files' }),
+		);
+		expect(state.files.value).toEqual([]);
+		expect(state.filesSha256.value).toBe('');
+	});
+
+	it('load reports success', async () => {
+		mockList.mockResolvedValueOnce(index(['a.md'])).mockRejectedValueOnce(1);
+		const state = useSkillFiles(() => 'demo');
+		expect(await state.load()).toBe(true);
+		expect(await state.load()).toBe(false);
+	});
+
+	it('clears the content when the selected file changed or is gone', async () => {
+		const withSha = (path: string, sha256: string) => ({
+			files: [{ path, size: 1, sha256, updated_at: 'x' }],
+			files_sha256: sha256,
+		});
+		mockGet.mockResolvedValue({
+			path: 'a.md',
+			content: 'old',
+			size: 3,
+			sha256: 's1',
+		});
+		mockList
+			.mockResolvedValueOnce(withSha('a.md', 's1'))
+			.mockResolvedValueOnce(withSha('a.md', 's1'))
+			.mockResolvedValueOnce(withSha('a.md', 's2'))
+			.mockResolvedValueOnce(withSha('b.md', 's3'));
+		const state = useSkillFiles(() => 'demo');
+		await state.load();
+		await state.view('a.md');
+		await state.load();
+		expect(state.content.value).toBe('old');
+		await state.load();
+		expect(state.openPath.value).toBeNull();
+		expect(state.content.value).toBe('');
+		await state.view('a.md');
+		await state.load();
+		expect(state.openPath.value).toBeNull();
+	});
+
 	it('shows a generic error on other failures', async () => {
 		mockDelete.mockRejectedValue({ response: { status: 500 } });
 		const state = useSkillFiles(

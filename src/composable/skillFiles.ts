@@ -21,38 +21,55 @@ export const useSkillFiles = (
 	const content = ref('');
 	const contentLoading = ref(false);
 
-	const load = async () => {
+	let viewRequest = 0;
+	let openSha256 = '';
+
+	const clearSelection = () => {
+		viewRequest++;
+		openPath.value = null;
+		openSha256 = '';
+		content.value = '';
+		contentLoading.value = false;
+	};
+
+	const load = async (): Promise<boolean> => {
 		loading.value = true;
 		try {
 			const index = await listSharedSkillFiles(slug());
 			files.value = index.files;
 			filesSha256.value = index.files_sha256;
-			if (
-				openPath.value &&
-				!files.value.some((f) => f.path === openPath.value)
-			) {
-				openPath.value = null;
-				content.value = '';
+			if (openPath.value) {
+				const open = files.value.find((f) => f.path === openPath.value);
+				if (!open || (openSha256 && open.sha256 !== openSha256)) {
+					clearSelection();
+				}
 			}
+			return true;
 		} catch {
 			toast({ title: 'Could not load files', variant: 'destructive' });
+			return false;
 		} finally {
 			loading.value = false;
 		}
 	};
 
 	const view = async (path: string) => {
+		const request = ++viewRequest;
 		openPath.value = path;
+		openSha256 = '';
 		content.value = '';
 		contentLoading.value = true;
 		try {
 			const file = await getSharedSkillFile(slug(), path);
-			if (openPath.value === path) content.value = file.content;
+			if (request !== viewRequest) return;
+			content.value = file.content;
+			openSha256 = file.sha256;
 		} catch {
+			if (request !== viewRequest) return;
 			openPath.value = null;
 			toast({ title: 'Could not load the file', variant: 'destructive' });
 		} finally {
-			contentLoading.value = false;
+			if (request === viewRequest) contentLoading.value = false;
 		}
 	};
 
@@ -67,8 +84,13 @@ export const useSkillFiles = (
 			const status = (error as { response?: { status?: number } })?.response
 				?.status;
 			if (status === 409) {
-				await load();
-				toast({ title: STALE_FILES_MESSAGE, variant: 'destructive' });
+				if (await load()) {
+					toast({ title: STALE_FILES_MESSAGE, variant: 'destructive' });
+				} else {
+					files.value = [];
+					filesSha256.value = '';
+					clearSelection();
+				}
 				onChanged();
 			} else {
 				toast({ title: 'Could not delete the file', variant: 'destructive' });

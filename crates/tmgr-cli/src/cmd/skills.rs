@@ -146,11 +146,14 @@ fn show(ctx: &Ctx, slug: &str) -> Result<Output> {
     let slug = valid_slug(slug)?;
     let client = ctx.cloud_client()?;
     let skill = client.shared_skill(slug).map_err(forbidden_hint)?;
-    let files = client
-        .shared_skill_files(slug)
-        .map_err(forbidden_hint)?
-        .and_then(|v| v.get("files").and_then(Value::as_array).cloned())
-        .unwrap_or_default();
+    let files = match client.shared_skill_files(slug).map_err(forbidden_hint)? {
+        None => Vec::new(),
+        Some(v) => v
+            .get("files")
+            .and_then(Value::as_array)
+            .cloned()
+            .ok_or_else(|| Error::internal("the server returned a malformed file list"))?,
+    };
     let body = sanitize(skill.get("body").and_then(Value::as_str).unwrap_or(""));
     let human = if ctx.quiet {
         body

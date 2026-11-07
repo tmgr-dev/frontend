@@ -185,6 +185,36 @@ async fn show_on_an_old_server_without_the_files_route_prints_no_files() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn show_fails_on_a_malformed_files_response() {
+    let env = Env::new().await;
+    env.login_seed();
+    mount(
+        &env,
+        "GET",
+        "/api/shared-skills/triage",
+        200,
+        json!({"data": skill(true)}),
+    )
+    .await;
+    mount(
+        &env,
+        "GET",
+        "/api/shared-skills/triage/files",
+        200,
+        json!({"data": {"files_sha256": "abc"}}),
+    )
+    .await;
+
+    let out = env
+        .cmd()
+        .args(["skills", "show", "triage", "--no-color"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(text(&out.stderr).contains("malformed file list"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn put_sends_the_file_as_the_body_and_reads_stdin() {
     let env = Env::new().await;
     env.login_seed();

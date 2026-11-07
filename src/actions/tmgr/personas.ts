@@ -475,7 +475,7 @@ export const listSharedSkillFiles = async (
 ): Promise<SharedSkillFileIndex> => {
 	const {
 		data: { data },
-	} = await $axios.get(`/shared-skills/${slug}/files`);
+	} = await $axios.get(`/shared-skills/${encodeURIComponent(slug)}/files`);
 	return data;
 };
 
@@ -485,9 +485,12 @@ export const getSharedSkillFile = async (
 ): Promise<SharedSkillFileContent> => {
 	const {
 		data: { data },
-	} = await $axios.get(`/shared-skills/${slug}/files/content`, {
-		params: { path },
-	});
+	} = await $axios.get(
+		`/shared-skills/${encodeURIComponent(slug)}/files/content`,
+		{
+			params: { path },
+		},
+	);
 	return data;
 };
 
@@ -496,7 +499,7 @@ export const deleteSharedSkillFile = async (
 	path: string,
 	expectedFilesSha256: string,
 ): Promise<void> => {
-	await $axios.delete(`/shared-skills/${slug}/files`, {
+	await $axios.delete(`/shared-skills/${encodeURIComponent(slug)}/files`, {
 		params: { path, expected_files_sha256: expectedFilesSha256 },
 	});
 	invalidateSharedLibrary();
