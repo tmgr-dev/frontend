@@ -70,8 +70,11 @@ pub fn classify_addrs(addrs: &[IpAddr]) -> EndpointClass {
 }
 
 pub async fn resolve_endpoint(base_url: &str) -> Result<(EndpointClass, String, String, Vec<SocketAddr>), String> {
-  let origin = super::normalize_origin(base_url)?;
   let url = Url::parse(base_url.trim()).map_err(|e| e.to_string())?;
+  if !url.username().is_empty() || url.password().is_some() {
+    return Err("The server address must not contain a username or password".into());
+  }
+  let origin = super::normalize_origin(base_url)?;
   let port = url.port_or_known_default().ok_or("URL has no port")?;
   let host = url.host_str().ok_or("URL has no host")?.to_string();
   let addrs: Vec<SocketAddr> = match url.host().ok_or("URL has no host")? {
@@ -87,10 +90,30 @@ pub async fn resolve_endpoint(base_url: &str) -> Result<(EndpointClass, String, 
   Ok((classify_addrs(&ips), origin, host, addrs))
 }
 
-pub fn gate(class: EndpointClass, origin: &str, confirmed_origin: Option<&str>) -> Result<(), String> {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct LanConfirm {
+  origin: String,
+  addrs: Vec<String>,
+  user_id: i64,
+}
+
+impl LanConfirm {
+  fn covers(&self, origin: &str, addrs: &[IpAddr], user_id: i64) -> bool {
+    let stored: BTreeSet<IpAddr> = self.addrs.iter().filter_map(|addr| addr.parse().ok()).collect();
+    self.origin == origin && self.user_id == user_id && addrs.iter().all(|addr| stored.contains(addr))
+  }
+}
+
+fn gate(
+  class: EndpointClass,
+  origin: &str,
+  addrs: &[IpAddr],
+  user_id: i64,
+  confirmed: Option<&LanConfirm>,
+) -> Result<(), String> {
   match class {
     EndpointClass::Loopback => Ok(()),
-    EndpointClass::Lan if confirmed_origin == Some(origin) => Ok(()),
+    EndpointClass::Lan if confirmed.is_some_and(|saved| saved.covers(origin, addrs, user_id)) => Ok(()),
     EndpointClass::Lan => Err(format!("needs_confirmation:{origin}")),
     EndpointClass::Remote => Err(NOT_LOCAL.into()),
   }
@@ -125,28 +148,25 @@ async fn endpoint_for(
   base_url: &str,
   model: &str,
   api_key: Option<String>,
-  confirmed: Option<&str>,
+  user_id: i64,
+  confirmed: Option<&LanConfirm>,
 ) -> Result<Endpoint, String> {
   let (class, origin, host, addrs) = resolve_endpoint(base_url).await?;
-  gate(class, &origin, confirmed)?;
+  let ips: Vec<IpAddr> = addrs.iter().map(SocketAddr::ip).collect();
+  gate(class, &origin, &ips, user_id, confirmed)?;
   let pin = is_domain(&host).then(|| (host, addrs));
   Ok(Endpoint { origin, base_url: base_url.trim().to_string(), model: model.to_string(), api_key, pin })
 }
 
-#[derive(Serialize, Deserialize)]
-struct LanConfirmFile {
-  origin: String,
-}
-
-fn read_lan_confirm(path: &Path) -> Option<String> {
+fn read_lan_confirm(path: &Path) -> Option<LanConfirm> {
   let bytes = std::fs::read(path).ok()?;
-  serde_json::from_slice::<LanConfirmFile>(&bytes).ok().map(|file| file.origin)
+  serde_json::from_slice(&bytes).ok()
 }
 
-fn write_lan_confirm(path: &Path, origin: Option<&str>) -> Result<(), String> {
-  match origin {
-    Some(origin) => {
-      let bytes = serde_json::to_vec(&LanConfirmFile { origin: origin.to_string() }).map_err(|e| e.to_string())?;
+fn write_lan_confirm(path: &Path, confirm: Option<&LanConfirm>) -> Result<(), String> {
+  match confirm {
+    Some(confirm) => {
+      let bytes = serde_json::to_vec(confirm).map_err(|e| e.to_string())?;
       std::fs::write(path, bytes).map_err(|e| e.to_string())
     }
     None => match std::fs::remove_file(path) {
@@ -157,14 +177,23 @@ fn write_lan_confirm(path: &Path, origin: Option<&str>) -> Result<(), String> {
   }
 }
 
-fn record_lan_confirm(base_url: &str, origin: &str, confirmed: bool, path: &Path) -> Result<(), String> {
+fn record_lan_confirm(
+  base_url: &str,
+  origin: &str,
+  user_id: i64,
+  addrs: &[IpAddr],
+  confirmed: bool,
+  path: &Path,
+) -> Result<(), String> {
   if !confirmed {
     return write_lan_confirm(path, None);
   }
   if super::normalize_origin(base_url).ok().as_deref() != Some(origin) {
     return Err("The server address changed. Check it in Settings and try again.".into());
   }
-  write_lan_confirm(path, Some(origin))
+  let addrs: BTreeSet<String> = addrs.iter().map(IpAddr::to_string).collect();
+  let confirm = LanConfirm { origin: origin.to_string(), addrs: addrs.into_iter().collect(), user_id };
+  write_lan_confirm(path, Some(&confirm))
 }
 
 fn prompt_too_long(system: Option<&str>, prompt: &str) -> bool {
@@ -290,7 +319,7 @@ pub fn test_verdict(
       .is_some_and(|v| super::finish_reason(&v) == Some("length"));
     return Ok(if answered || truncated { Reachable::ModelOk } else { Reachable::EmptyAnswer });
   }
-  let mentions_model = body.to_ascii_lowercase().contains(&model.to_ascii_lowercase());
+  let mentions_model = !model.is_empty() && body.to_ascii_lowercase().contains(&model.to_ascii_lowercase());
   match status.as_u16() {
     400 | 404 if mentions_model => Ok(Reachable::ModelMissing),
     _ => Err(super::sanitize_error_body(&status.to_string(), body, api_key)),
@@ -429,12 +458,17 @@ fn confirm_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
   Ok(dir.join(LAN_CONFIRM_FILE))
 }
 
-async fn prepare<R: Runtime>(app: &AppHandle<R>, window: &tauri::Window<R>, user_id: i64) -> Result<Endpoint, String> {
-  ensure_main(window)?;
+fn ensure_slot_access<R: Runtime>(app: &AppHandle<R>, user_id: i64) -> Result<(), String> {
   let access = super::slot_access(crate::local_identity::current_id(app), user_id);
   if access != SlotAccess::Allowed {
     return Err(access.chat_refusal());
   }
+  Ok(())
+}
+
+async fn prepare<R: Runtime>(app: &AppHandle<R>, window: &tauri::Window<R>, user_id: i64) -> Result<Endpoint, String> {
+  ensure_main(window)?;
+  ensure_slot_access(app, user_id)?;
   let (config, api_key, confirmed) = {
     let _guard = super::config_lock();
     let config = super::read_config(app)?;
@@ -453,7 +487,7 @@ async fn prepare<R: Runtime>(app: &AppHandle<R>, window: &tauri::Window<R>, user
     let confirmed = read_lan_confirm(&confirm_path(app)?);
     (config, api_key, confirmed)
   };
-  endpoint_for(&config.base_url, &config.model, api_key, confirmed.as_deref()).await
+  endpoint_for(&config.base_url, &config.model, api_key, user_id, confirmed.as_ref()).await
 }
 
 #[tauri::command]
@@ -468,11 +502,19 @@ pub async fn llm_lan_confirm<R: Runtime>(
   window: tauri::Window<R>,
   origin: String,
   confirmed: bool,
+  user_id: i64,
 ) -> Result<(), String> {
   ensure_main(&window)?;
+  ensure_slot_access(&app, user_id)?;
+  let base_url = {
+    let _guard = super::config_lock();
+    super::read_config(&app)?.base_url
+  };
+  let addrs = if confirmed { resolve_endpoint(&base_url).await?.3 } else { Vec::new() };
+  let ips: Vec<IpAddr> = addrs.iter().map(SocketAddr::ip).collect();
   let _guard = super::config_lock();
-  let config = super::read_config(&app)?;
-  record_lan_confirm(&config.base_url, &origin, confirmed, &confirm_path(&app)?)
+  let current = super::read_config(&app)?.base_url;
+  record_lan_confirm(&current, &origin, user_id, &ips, confirmed, &confirm_path(&app)?)
 }
 
 #[tauri::command]
@@ -583,48 +625,83 @@ mod llm_oneshot_tests {
 
   #[tokio::test]
   async fn a_host_name_is_pinned_to_the_addresses_it_resolved_to() {
-    let endpoint = endpoint_for("http://localhost:11434", "m", None, None).await.unwrap();
+    let endpoint = endpoint_for("http://localhost:11434", "m", None, 1, None).await.unwrap();
     let (host, addrs) = endpoint.pin.unwrap();
     assert_eq!(host, "localhost");
     assert!(!addrs.is_empty());
   }
 
+  fn confirmation(origin: &str, addrs: &[IpAddr], user_id: i64) -> LanConfirm {
+    let mut addrs: Vec<String> = addrs.iter().map(IpAddr::to_string).collect();
+    addrs.sort();
+    LanConfirm { origin: origin.to_string(), addrs, user_id }
+  }
+
   #[test]
   fn gate_allows_loopback_and_blocks_unconfirmed_lan() {
     let origin = format!("http://{}:1234", lan(192, 168, 1, 20));
-    assert!(gate(EndpointClass::Loopback, &origin, None).is_ok());
-    let err = gate(EndpointClass::Lan, &origin, None).unwrap_err();
+    let addrs = [v4(192, 168, 1, 20)];
+    assert!(gate(EndpointClass::Loopback, &origin, &addrs, 1, None).is_ok());
+    let err = gate(EndpointClass::Lan, &origin, &addrs, 1, None).unwrap_err();
     assert_eq!(err, format!("needs_confirmation:{origin}"));
-    assert!(gate(EndpointClass::Lan, &origin, Some(origin.as_str())).is_ok());
+    let saved = confirmation(&origin, &addrs, 1);
+    assert!(gate(EndpointClass::Lan, &origin, &addrs, 1, Some(&saved)).is_ok());
+  }
+
+  #[test]
+  fn a_different_private_address_for_the_same_origin_is_unconfirmed() {
+    let origin = format!("http://{}:1234", lan(192, 168, 1, 20));
+    let saved = confirmation(&origin, &[v4(192, 168, 1, 20)], 1);
+    let moved = [v4(192, 168, 1, 99)];
+    assert!(gate(EndpointClass::Lan, &origin, &moved, 1, Some(&saved)).unwrap_err().starts_with("needs_confirmation:"));
+  }
+
+  #[test]
+  fn a_subset_of_the_confirmed_addresses_stays_confirmed() {
+    let origin = format!("http://{}:1234", lan(192, 168, 1, 20));
+    let saved = confirmation(&origin, &[v4(192, 168, 1, 20), v4(192, 168, 1, 99)], 1);
+    assert!(gate(EndpointClass::Lan, &origin, &[v4(192, 168, 1, 99)], 1, Some(&saved)).is_ok());
+  }
+
+  #[test]
+  fn another_user_is_unconfirmed_for_the_same_origin() {
+    let origin = format!("http://{}:1234", lan(192, 168, 1, 20));
+    let addrs = [v4(192, 168, 1, 20)];
+    let saved = confirmation(&origin, &addrs, 1);
+    assert!(gate(EndpointClass::Lan, &origin, &addrs, 2, Some(&saved)).unwrap_err().starts_with("needs_confirmation:"));
   }
 
   #[test]
   fn a_port_or_scheme_change_makes_a_lan_origin_unconfirmed_again() {
     let ip = lan(192, 168, 1, 20);
-    let confirmed = format!("http://{ip}:1234");
+    let addrs = [v4(192, 168, 1, 20)];
+    let confirmed = confirmation(&format!("http://{ip}:1234"), &addrs, 1);
     let other_port = format!("http://{ip}:4321");
     let other_scheme = format!("https://{ip}:1234");
-    assert!(gate(EndpointClass::Lan, &other_port, Some(confirmed.as_str())).unwrap_err().starts_with("needs_confirmation:"));
-    assert!(gate(EndpointClass::Lan, &other_scheme, Some(confirmed.as_str())).unwrap_err().starts_with("needs_confirmation:"));
+    assert!(gate(EndpointClass::Lan, &other_port, &addrs, 1, Some(&confirmed)).unwrap_err().starts_with("needs_confirmation:"));
+    assert!(gate(EndpointClass::Lan, &other_scheme, &addrs, 1, Some(&confirmed)).unwrap_err().starts_with("needs_confirmation:"));
   }
 
   #[test]
   fn remote_is_never_allowed_even_when_confirmed() {
     let origin = "http://203.0.113.8:1234";
+    let addrs = [v4(203, 0, 113, 8)];
     let expected = "The local AI server must be on this computer or your local network";
-    assert_eq!(gate(EndpointClass::Remote, origin, None).unwrap_err(), expected);
-    assert_eq!(gate(EndpointClass::Remote, origin, Some(origin)).unwrap_err(), expected);
+    assert_eq!(gate(EndpointClass::Remote, origin, &addrs, 1, None).unwrap_err(), expected);
+    let saved = confirmation(origin, &addrs, 1);
+    assert_eq!(gate(EndpointClass::Remote, origin, &addrs, 1, Some(&saved)).unwrap_err(), expected);
   }
 
   #[tokio::test]
   async fn endpoint_for_refuses_remote_and_unconfirmed_lan_before_any_send() {
     let lan_origin = format!("http://{}:1234", lan(192, 168, 1, 20));
-    assert!(endpoint_for("http://203.0.113.8:1234", "m", None, None).await.is_err());
+    assert!(endpoint_for("http://203.0.113.8:1234", "m", None, 1, None).await.is_err());
     assert_eq!(
-      endpoint_for(&lan_origin, "m", None, None).await.err().unwrap(),
+      endpoint_for(&lan_origin, "m", None, 1, None).await.err().unwrap(),
       format!("needs_confirmation:{lan_origin}")
     );
-    let ok = endpoint_for(&lan_origin, "m", None, Some(lan_origin.as_str())).await.unwrap();
+    let saved = confirmation(&lan_origin, &[v4(192, 168, 1, 20)], 1);
+    let ok = endpoint_for(&lan_origin, "m", None, 1, Some(&saved)).await.unwrap();
     assert_eq!(ok.origin, lan_origin);
     assert!(ok.pin.is_none());
   }
@@ -634,12 +711,21 @@ mod llm_oneshot_tests {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(LAN_CONFIRM_FILE);
     let origin = format!("http://{}:1234", lan(192, 168, 1, 20));
+    let saved = confirmation(&origin, &[v4(192, 168, 1, 20)], 7);
     assert_eq!(read_lan_confirm(&path), None);
-    write_lan_confirm(&path, Some(origin.as_str())).unwrap();
-    assert_eq!(read_lan_confirm(&path).as_deref(), Some(origin.as_str()));
+    write_lan_confirm(&path, Some(&saved)).unwrap();
+    assert_eq!(read_lan_confirm(&path), Some(saved));
     write_lan_confirm(&path, None).unwrap();
     assert_eq!(read_lan_confirm(&path), None);
     write_lan_confirm(&path, None).unwrap();
+  }
+
+  #[test]
+  fn an_old_origin_only_confirmation_file_counts_as_unconfirmed() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(LAN_CONFIRM_FILE);
+    std::fs::write(&path, format!(r#"{{"origin":"http://{}:1234"}}"#, lan(192, 168, 1, 20))).unwrap();
+    assert_eq!(read_lan_confirm(&path), None);
   }
 
   #[test]
@@ -658,10 +744,10 @@ mod llm_oneshot_tests {
     let base = format!("http://{ip}:1234/v1");
     let origin = format!("http://{ip}:1234");
     let other = format!("http://{}:1234", lan(192, 168, 1, 99));
-    assert!(record_lan_confirm(&base, &other, true, &path).is_err());
+    assert!(record_lan_confirm(&base, &other, 1, &[v4(192, 168, 1, 20)], true, &path).is_err());
     assert!(!path.exists());
-    record_lan_confirm(&base, &origin, true, &path).unwrap();
-    assert_eq!(read_lan_confirm(&path).as_deref(), Some(origin.as_str()));
+    record_lan_confirm(&base, &origin, 1, &[v4(192, 168, 1, 20)], true, &path).unwrap();
+    assert_eq!(read_lan_confirm(&path), Some(confirmation(&origin, &[v4(192, 168, 1, 20)], 1)));
   }
 
   #[test]
@@ -671,10 +757,23 @@ mod llm_oneshot_tests {
     let ip = lan(192, 168, 1, 20);
     let base = format!("http://{ip}:1234/v1");
     let origin = format!("http://{ip}:1234");
-    write_lan_confirm(&path, Some(origin.as_str())).unwrap();
+    write_lan_confirm(&path, Some(&confirmation(&origin, &[v4(192, 168, 1, 20)], 1))).unwrap();
     let other = format!("http://{}:4321", lan(192, 168, 1, 99));
-    record_lan_confirm(&base, &other, false, &path).unwrap();
+    record_lan_confirm(&base, &other, 1, &[], false, &path).unwrap();
     assert!(!path.exists());
+  }
+
+  #[tokio::test]
+  async fn a_base_url_with_userinfo_is_refused() {
+    let err = resolve_endpoint(&format!("http://user:secret@{}:1234", lan(192, 168, 1, 20))).await.unwrap_err();
+    assert_eq!(err, "The server address must not contain a username or password");
+  }
+
+  #[test]
+  fn an_empty_model_never_matches_a_missing_model_message() {
+    let status = reqwest::StatusCode::from_u16(404).unwrap();
+    let body = r#"{"error":{"message":"model not found"}}"#;
+    assert!(test_verdict(status, body, "", None).is_err());
   }
 
   #[test]
