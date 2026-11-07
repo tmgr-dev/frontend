@@ -156,12 +156,12 @@
 							name:
 								store.state.user?.name || store.state.localProfile?.name || '',
 							email: '',
-					  }
+						}
 					: {
 							id: Number(store.state.user?.id) || 0,
 							name: store.state.user?.name ?? '',
 							email: store.state.user?.email ?? '',
-					  };
+						};
 
 			onMounted(async () => {
 				if (!show || !workspace) return;
@@ -198,7 +198,7 @@
 						? {
 								maxTokens: DEFAULT_MAX_TOKENS,
 								maxAnswerChars: DEFAULT_MAX_ANSWER_CHARS,
-						  }
+							}
 						: await fetchPersonaLimits();
 					const { chat, cancel } = createLlmChat(
 						[personaToolDefinition(grantedPermissions)],
