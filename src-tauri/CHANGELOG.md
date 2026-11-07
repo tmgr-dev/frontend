@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.120 — 2026-11-07
+
+- Git auto-tracking: TMGR can watch the git repositories you choose in Settings > Desktop. When a branch like `feat/TM-157-title` is checked out, it offers to start or switch your timer to that task. Choose Ask (default), Auto or Off. Only the branch name is read, and only tasks of the open workspace are matched.
+
 ## 0.9.119 — 2026-11-07
 
 - AI provider keys are now tied to the account and the server they were entered for. Keys saved by earlier versions must be entered again once in Settings > Personas.
