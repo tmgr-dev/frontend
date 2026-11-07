@@ -55,13 +55,20 @@
 				API key
 				<span class="text-xs text-muted-foreground">
 					{{
-						llmStatus.hasApiKey
+						llmStatus.hasApiKey && !llmStatus.keyNeedsReentry
 							? 'A key is already saved; leave blank to keep it.'
 							: 'Optional.'
 					}}
 				</span>
 				<Input v-model="llmForm.apiKey" type="password" placeholder="sk-…" />
 			</label>
+			<p
+				v-if="llmStatus.keyNeedsReentry"
+				class="text-sm text-amber-600 dark:text-amber-400"
+			>
+				Enter your API key again to use it with this server. Keys are now tied
+				to the server they were saved for.
+			</p>
 			<p
 				v-if="llmForm.baseUrl && !isTypedUrlLocal"
 				class="text-sm text-amber-600 dark:text-amber-400"
@@ -500,6 +507,7 @@
 			const isTypedUrlLocal = computed(() => isLocalLlmUrl(llmForm.baseUrl));
 			const llmStatus = reactive({
 				hasApiKey: false,
+				keyNeedsReentry: false,
 				slotState: 'ok' as 'ok' | 'not_ready' | 'other_account',
 			});
 			const savingLlm = ref(false);
@@ -642,6 +650,7 @@
 				has_api_key: boolean;
 				is_local: boolean;
 				slot_state?: 'ok' | 'not_ready' | 'other_account';
+				key_needs_reentry?: boolean;
 			};
 
 			const fetchLlmConfig = async () => {
@@ -657,6 +666,7 @@
 				llmForm.model = config.model;
 				llmStatus.hasApiKey = config.has_api_key;
 				llmStatus.slotState = config.slot_state ?? 'ok';
+				llmStatus.keyNeedsReentry = config.key_needs_reentry ?? false;
 			};
 
 			watch(
@@ -668,6 +678,7 @@
 						if (currentUser().id !== id) return;
 						llmStatus.hasApiKey = config.has_api_key;
 						llmStatus.slotState = config.slot_state ?? 'ok';
+						llmStatus.keyNeedsReentry = config.key_needs_reentry ?? false;
 					} catch (error) {
 						console.error('[llm] failed to refresh the key status', error);
 					}

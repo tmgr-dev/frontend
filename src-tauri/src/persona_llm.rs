@@ -22,18 +22,19 @@ const LOCAL_OWNER_ID: i64 = -1;
 struct LlmConfigFile {
   base_url: String,
   model: String,
-  /// The pre-per-slot origin; read-only, new code never writes it.
-  #[serde(default)]
-  key_origin: Option<String>,
   /// The origin each account's saved Keychain key was issued for, keyed by user id.
-  #[serde(default)]
+  #[serde(default, rename = "slot_key_origins")]
   key_origins: HashMap<String, String>,
 }
 
 const UNKNOWN_ORIGIN: &str = "";
 
+fn key_needs_reentry(has_api_key: bool, file: &LlmConfigFile, user_id: i64) -> bool {
+  has_api_key && !file.base_url.trim().is_empty() && !key_may_be_sent(slot_origin(file, user_id), &file.base_url)
+}
+
 fn slot_origin(file: &LlmConfigFile, user_id: i64) -> Option<&str> {
-  file.key_origins.get(&user_id.to_string()).or(file.key_origin.as_ref()).map(String::as_str)
+  file.key_origins.get(&user_id.to_string()).map(String::as_str)
 }
 
 /// A saved key may only be sent to the origin it was issued for.
@@ -124,15 +125,17 @@ fn move_local_key_origin(origins: &mut HashMap<String, String>, status: &Migrate
   if !matches!(status, MigrateStatus::Moved | MigrateStatus::Already) {
     return false;
   }
-  let Some(origin) = origins.remove(&LOCAL_OWNER_ID.to_string()) else {
-    return matches!(status, MigrateStatus::Moved) && origins.remove(&to.to_string()).is_some();
-  };
-  if matches!(status, MigrateStatus::Moved) {
-    origins.insert(to.to_string(), origin);
-  } else {
-    origins.entry(to.to_string()).or_insert(origin);
+  let local = origins.remove(&LOCAL_OWNER_ID.to_string());
+  if !matches!(status, MigrateStatus::Moved) {
+    return local.is_some();
   }
-  true
+  match local {
+    Some(origin) => {
+      origins.insert(to.to_string(), origin);
+      true
+    }
+    None => origins.remove(&to.to_string()).is_some(),
+  }
 }
 
 /// Scheme + lowercased host + port (default ports folded in), so a path-only edit to `base_url` is not an origin change.
@@ -244,6 +247,7 @@ pub struct LlmConfigOut {
   has_api_key: bool,
   is_local: bool,
   slot_state: &'static str,
+  key_needs_reentry: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -755,7 +759,6 @@ fn save_config<S: SecretStore, W: FnOnce(&LlmConfigFile) -> Result<(), String>>(
   let file = LlmConfigFile {
     base_url,
     model,
-    key_origin: previous.key_origin,
     key_origins: origins_after(&plan, previous.key_origins, user_id, new_origin),
   };
   let write = prepare_write()?;
@@ -814,7 +817,15 @@ pub fn llm_config_get<R: Runtime>(app: AppHandle<R>, window: tauri::Window<R>, u
   let identity = crate::local_identity::current_id(&app);
   let has_api_key = slot_has_key(&PersonaLlmSecrets, identity, user_id)?;
   let is_local = classify_url(&file.base_url).map(|kind| kind == UrlKind::Local).unwrap_or(false);
-  Ok(LlmConfigOut { base_url: file.base_url, model: file.model, has_api_key, is_local, slot_state: slot_access(identity, user_id).state() })
+  let key_needs_reentry = key_needs_reentry(has_api_key, &file, user_id);
+  Ok(LlmConfigOut {
+    base_url: file.base_url,
+    model: file.model,
+    has_api_key,
+    is_local,
+    slot_state: slot_access(identity, user_id).state(),
+    key_needs_reentry,
+  })
 }
 
 /// Logout cleanup: this user's saved key, plus the pre-namespacing global key if one is still around.
@@ -1320,20 +1331,19 @@ mod tests {
     assert!(normalize_origin("not a url").is_err());
   }
 
-  fn file_with(legacy: Option<&str>, slots: &[(&str, &str)]) -> LlmConfigFile {
+  fn file_with(slots: &[(&str, &str)]) -> LlmConfigFile {
     LlmConfigFile {
-      key_origin: legacy.map(str::to_string),
       key_origins: slots.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
       ..Default::default()
     }
   }
 
   #[test]
-  fn slot_origin_prefers_the_slot_entry_over_the_legacy_value() {
-    let file = file_with(Some("https://old.example:443"), &[("7", "https://a.example:443")]);
+  fn slot_origin_reads_only_the_slot_entry() {
+    let file = file_with(&[("7", "https://a.example:443")]);
     assert_eq!(slot_origin(&file, 7), Some("https://a.example:443"));
-    assert_eq!(slot_origin(&file, 8), Some("https://old.example:443"));
-    assert_eq!(slot_origin(&file_with(None, &[]), 8), None);
+    assert_eq!(slot_origin(&file, 8), None);
+    assert_eq!(slot_origin(&file_with(&[]), 8), None);
   }
 
   #[test]
@@ -1360,7 +1370,7 @@ mod tests {
 
   #[test]
   fn a_refusal_leaves_the_stored_key_and_origins_untouched() {
-    let file = file_with(None, &[("1", "https://a.example:443")]);
+    let file = file_with(&[("1", "https://a.example:443")]);
     let before = file.key_origins.clone();
     let store = crate::local_access::tokens::MemorySecrets::new();
     store.set("api-key:1", "sk-test").unwrap();
@@ -1371,7 +1381,7 @@ mod tests {
 
   #[test]
   fn a_key_moved_by_the_migration_is_allowed_in_the_new_slot() {
-    let mut file = file_with(None, &[("-1", "https://a.example:443")]);
+    let mut file = file_with(&[("-1", "https://a.example:443")]);
     assert!(check_key_origin(slot_origin(&file, 7), "https://a.example/v1").is_err());
     assert!(move_local_key_origin(&mut file.key_origins, &MigrateStatus::Moved, 7));
     assert!(check_key_origin(slot_origin(&file, 7), "https://a.example/v1").is_ok());
@@ -1379,16 +1389,16 @@ mod tests {
   }
 
   #[test]
-  fn a_key_migrated_before_slot_origins_existed_falls_back_to_the_legacy_origin() {
-    let file = file_with(Some("https://a.example:443"), &[]);
-    assert!(check_key_origin(slot_origin(&file, 7), "https://a.example/v1").is_ok());
+  fn a_slot_without_an_entry_is_refused_for_every_server() {
+    let file = file_with(&[]);
+    assert!(check_key_origin(slot_origin(&file, 7), "https://a.example/v1").is_err());
     assert!(check_key_origin(slot_origin(&file, 7), "https://b.example/v1").is_err());
-    assert!(check_key_origin(slot_origin(&file_with(None, &[]), 7), "https://a.example/v1").is_err());
+    assert!(check_key_origin(slot_origin(&file_with(&[]), 7), "https://a.example/v1").is_err());
   }
 
   #[test]
   fn the_local_profile_slot_goes_through_the_same_origin_check() {
-    let file = file_with(None, &[("-1", "https://a.example:443")]);
+    let file = file_with(&[("-1", "https://a.example:443")]);
     assert!(user_slot_allowed(None, -1));
     assert!(check_key_origin(slot_origin(&file, -1), "https://a.example").is_ok());
     assert!(check_key_origin(slot_origin(&file, -1), "https://b.example").is_err());
@@ -1401,7 +1411,7 @@ mod tests {
 
   #[test]
   fn slot_origins_are_tracked_per_account() {
-    let mut file = file_with(None, &[("1", "https://a.example:443")]);
+    let mut file = file_with(&[("1", "https://a.example:443")]);
     file.key_origins = next_key_origins(file.key_origins, 2, true, Some("https://b.example:443".into()));
     assert!(key_may_be_sent(slot_origin(&file, 2), "https://b.example"));
     assert!(!key_may_be_sent(slot_origin(&file, 1), "https://b.example"));
@@ -1433,8 +1443,8 @@ mod tests {
   }
 
   #[test]
-  fn a_placeholder_entry_shadows_the_legacy_origin_and_is_never_sendable() {
-    let file = file_with(Some("https://a.example:443"), &[("2", UNKNOWN_ORIGIN)]);
+  fn a_placeholder_entry_is_never_sendable() {
+    let file = file_with(&[("2", UNKNOWN_ORIGIN)]);
     assert_eq!(slot_origin(&file, 2), Some(UNKNOWN_ORIGIN));
     assert!(!key_may_be_sent(slot_origin(&file, 2), "https://a.example"));
     let err = check_key_origin(slot_origin(&file, 2), "https://a.example/v1").unwrap_err();
@@ -1479,12 +1489,13 @@ mod tests {
   }
 
   #[test]
-  fn migrating_moves_the_local_origin_to_the_account() {
-    for status in [MigrateStatus::Moved, MigrateStatus::Already] {
-      let mut map = origins(&[("-1", "https://a.example:443"), ("9", "https://c.example:443")]);
-      assert!(move_local_key_origin(&mut map, &status, 7));
-      assert_eq!(map, origins(&[("7", "https://a.example:443"), ("9", "https://c.example:443")]));
-    }
+  fn migrating_moves_the_local_origin_to_the_account_only_when_the_key_moved() {
+    let mut moved = origins(&[("-1", "https://a.example:443"), ("9", "https://c.example:443")]);
+    assert!(move_local_key_origin(&mut moved, &MigrateStatus::Moved, 7));
+    assert_eq!(moved, origins(&[("7", "https://a.example:443"), ("9", "https://c.example:443")]));
+    let mut already = origins(&[("-1", "https://a.example:443"), ("9", "https://c.example:443")]);
+    assert!(move_local_key_origin(&mut already, &MigrateStatus::Already, 7));
+    assert_eq!(already, origins(&[("9", "https://c.example:443")]));
   }
 
   #[test]
@@ -1492,6 +1503,7 @@ mod tests {
     let mut map = origins(&[("-1", "https://a.example:443"), ("7", "https://b.example:443")]);
     assert!(move_local_key_origin(&mut map, &MigrateStatus::Already, 7));
     assert_eq!(map, origins(&[("7", "https://b.example:443")]));
+    assert!(!move_local_key_origin(&mut map, &MigrateStatus::Already, 7));
   }
 
   #[test]
@@ -1511,11 +1523,11 @@ mod tests {
   }
 
   #[test]
-  fn legacy_config_without_slot_origins_still_parses() {
+  fn a_config_without_slot_origins_still_parses_and_trusts_no_key() {
     let file: LlmConfigFile =
       serde_json::from_str(r#"{"base_url":"https://a.example","model":"m","key_origin":"https://a.example:443"}"#).unwrap();
     assert!(file.key_origins.is_empty());
-    assert_eq!(slot_origin(&file, 3), Some("https://a.example:443"));
+    assert_eq!(slot_origin(&file, 3), None);
   }
 
   #[test]
@@ -1798,7 +1810,7 @@ mod tests {
   }
 
   fn config_for_slot(user_id: &str) -> LlmConfigFile {
-    file_with(None, &[(user_id, A_ORIGIN)])
+    file_with(&[(user_id, A_ORIGIN)])
   }
 
   #[test]
@@ -1835,6 +1847,83 @@ mod tests {
     assert_eq!(saved.result, Err(NOT_READY.to_string()));
     assert_eq!(store.key(8).as_deref(), Some("K8"));
     assert!(saved.written.is_none());
+  }
+
+  const OLD_SHAPED_CONFIG: &str = r#"{"base_url":"https://b.example/v1","model":"m","key_origin":"https://b.example:443","key_origins":{"5":"https://b.example:443","-1":"https://b.example:443"}}"#;
+
+  fn old_shaped_config() -> LlmConfigFile {
+    serde_json::from_str(OLD_SHAPED_CONFIG).unwrap()
+  }
+
+  #[test]
+  fn keys_saved_by_an_earlier_version_need_to_be_entered_again() {
+    let file = old_shaped_config();
+    for user_id in [5, 6, -1] {
+      assert!(check_key_origin(slot_origin(&file, user_id), B).is_err(), "{user_id}");
+    }
+  }
+
+  #[test]
+  fn the_saved_file_uses_only_the_current_origin_field() {
+    let json = serde_json::to_string(&old_shaped_config()).unwrap();
+    assert!(!json.contains("\"key_origin\""), "{json}");
+    assert!(!json.contains("\"key_origins\""), "{json}");
+    assert!(json.contains("\"slot_key_origins\""), "{json}");
+  }
+
+  #[test]
+  fn each_account_needs_its_own_key_after_upgrade() {
+    let store = Spy::with(&[(5, "K5"), (6, "K6")]);
+    let kept = run_save(&store, keyless_edit(Some(5), 5, B, "m"), old_shaped_config());
+    assert_eq!(kept.result, Ok(()));
+    let after_keyless = kept.written.unwrap();
+    assert!(!after_keyless.key_origins.contains_key("5"));
+    assert!(check_key_origin(slot_origin(&after_keyless, 5), B).is_err());
+
+    let fresh = run_save(&store, request(Some(5), 5, Some("NEW"), false), after_keyless);
+    assert_eq!(fresh.result, Ok(()));
+    let after_key = fresh.written.unwrap();
+    assert!(check_key_origin(slot_origin(&after_key, 5), B).is_ok());
+    assert!(check_key_origin(slot_origin(&after_key, 6), B).is_err());
+  }
+
+  #[test]
+  fn a_keyless_save_that_moves_the_server_drops_the_key_and_records_nothing() {
+    let store = Spy::with(&[(5, "K5")]);
+    let saved = run_save(&store, keyless_edit(Some(5), 5, A, "m"), old_shaped_config());
+    assert_eq!(saved.result, Ok(()));
+    assert_eq!(store.key(5), None);
+    assert!(saved.written.unwrap().key_origins.is_empty());
+  }
+
+  #[test]
+  fn the_local_key_is_refused_until_it_is_moved_and_entered_again() {
+    let mut file = old_shaped_config();
+    assert!(check_key_origin(slot_origin(&file, -1), B).is_err());
+    file.key_origins.remove("-1");
+    move_local_key_origin(&mut file.key_origins, &MigrateStatus::Moved, 7);
+    assert!(!file.key_origins.contains_key("7"));
+    assert!(check_key_origin(slot_origin(&file, 7), B).is_err());
+  }
+
+  #[test]
+  fn an_identical_key_already_in_the_account_slot_gets_no_origin() {
+    let mut map = origins(&[("-1", A_ORIGIN)]);
+    assert!(move_local_key_origin(&mut map, &MigrateStatus::Already, 7));
+    assert!(map.is_empty());
+    let mut untouched = origins(&[("9", A_ORIGIN)]);
+    assert!(!move_local_key_origin(&mut untouched, &MigrateStatus::Already, 7));
+  }
+
+  #[test]
+  fn the_reentry_notice_follows_the_saved_key_and_server() {
+    let old = old_shaped_config();
+    assert!(key_needs_reentry(true, &old, 5));
+    assert!(!key_needs_reentry(false, &old, 5));
+    assert!(!key_needs_reentry(true, &LlmConfigFile { base_url: " ".into(), ..old.clone() }, 5));
+    let store = Spy::with(&[(5, "K5")]);
+    let saved = run_save(&store, request(Some(5), 5, Some("NEW"), false), old).written.unwrap();
+    assert!(!key_needs_reentry(true, &saved, 5));
   }
 
   #[test]
@@ -1892,7 +1981,6 @@ mod tests {
       assert_eq!(written.base_url, B);
       assert_eq!(written.model, "new");
       assert_eq!(written.key_origins, config.key_origins);
-      assert_eq!(written.key_origin, config.key_origin);
       assert_eq!(store.gets.load(std::sync::atomic::Ordering::SeqCst), 0);
       assert_eq!(store.key(user_id).as_deref(), Some("K"));
     }
@@ -1924,7 +2012,7 @@ mod tests {
   #[test]
   fn a_keyless_origin_move_while_not_ready_keeps_the_key_and_a_later_save_back_still_uses_it() {
     let store = Spy::with(&[(7, "K7")]);
-    let config = file_with(None, &[("7", A_ORIGIN)]);
+    let config = file_with(&[("7", A_ORIGIN)]);
     let moved = run_save(&store, keyless_edit(None, 7, B, "m"), config);
     assert_eq!(moved.result, Ok(()));
     let after_move = moved.written.unwrap();

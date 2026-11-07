@@ -287,6 +287,25 @@ test('another account slot shows its note and a ready slot shows none', async ()
 	expect(html).not.toContain('not available to the desktop app');
 });
 
+test('a saved key tied to another server asks to be entered again', async () => {
+	mockInvoke.mockImplementation(async (command: string) => {
+		if (command === 'llm_config_get')
+			return { ...config, key_needs_reentry: true };
+	});
+	const { state, render } = mountLive();
+	await state.refreshLlmConfig();
+	const html = await render();
+	expect(html).toContain(
+		'Enter your API key again to use it with this server.',
+	);
+	expect(html).not.toContain('leave blank to keep it');
+	mockInvoke.mockImplementation(async () => config);
+	await state.refreshLlmConfig();
+	const after = await render();
+	expect(after).not.toContain('Enter your API key again');
+	expect(after).toContain('leave blank to keep it');
+});
+
 test('the lists still load when ensuring the default agent fails', async () => {
 	(mockStore.getters as any).isLocalOnly = true;
 	const error = jest.spyOn(console, 'error').mockImplementation(() => {});
