@@ -15,7 +15,15 @@ const MAX_CONTENT_BYTES: u64 = 64 * 1024;
 const MAX_HASH_BYTES: u64 = 256 * 1024;
 const MAX_INSTALLED_BYTES: u64 = 4 * 1024 * 1024;
 const PLUGIN_MAX_DEPTH: usize = 4;
-const FOLDER_SUBDIRS: [&str; 4] = [".claude/skills", ".codex/skills", ".agents/skills", "skills"];
+const FOLDER_SUBDIRS: [&str; 7] = [
+  ".claude/skills",
+  ".codex/skills",
+  ".agents/skills",
+  "skills",
+  ".cursor/skills",
+  ".gemini/skills",
+  ".opencode/skills",
+];
 
 #[derive(Default)]
 pub struct PickedFolders(Mutex<HashMap<String, PathBuf>>);
@@ -245,6 +253,21 @@ impl Scan {
     personal(skills)
   }
 
+  fn cursor(&mut self, home: &Path) -> Vec<Package> {
+    let skills = self.skills_in(&home.join(".cursor").join("skills"), "cursor:personal:", &[]);
+    personal(skills)
+  }
+
+  fn gemini(&mut self, home: &Path) -> Vec<Package> {
+    let skills = self.skills_in(&home.join(".gemini").join("skills"), "gemini:personal:", &[]);
+    personal(skills)
+  }
+
+  fn opencode(&mut self, home: &Path) -> Vec<Package> {
+    let skills = self.skills_in(&home.join(".config").join("opencode").join("skills"), "opencode:personal:", &[]);
+    personal(skills)
+  }
+
   fn plugins(&mut self, home: &Path) -> Vec<Package> {
     let plugins_dir = home.join(".claude").join("plugins");
     let installs = read_installed(&plugins_dir.join("installed_plugins.json"))
@@ -345,6 +368,12 @@ pub fn scan_roots(home: Option<&Path>, picked: &HashMap<String, PathBuf>, folder
     push_source(&mut sources, "codex", "Codex", codex);
     let agents = scan.agents(home);
     push_source(&mut sources, "agents", "Shared agents", agents);
+    let cursor = scan.cursor(home);
+    push_source(&mut sources, "cursor", "Cursor", cursor);
+    let gemini = scan.gemini(home);
+    push_source(&mut sources, "gemini", "Gemini CLI", gemini);
+    let opencode = scan.opencode(home);
+    push_source(&mut sources, "opencode", "opencode", opencode);
   }
   let folders = scan.folders(folder_ids, picked);
   push_source(&mut sources, "folder", "Picked folders", folders);
@@ -658,6 +687,41 @@ mod tests {
   }
 
   #[test]
+  fn cursor_gemini_and_opencode_layouts_use_their_own_keys() {
+    let t = Tmp::new("new-agent-layouts");
+    skill(t.path(), ".cursor/skills/x", "x");
+    skill(t.path(), ".gemini/skills/y", "y");
+    skill(t.path(), ".config/opencode/skills/z", "z");
+    let result = scan_roots(Some(t.path()), &HashMap::new(), &[]);
+    let found: Vec<(&str, &str, &str, &str)> = result
+      .sources
+      .iter()
+      .map(|s| (s.id, s.label, s.packages[0].name.as_str(), s.packages[0].skills[0].path.as_str()))
+      .collect();
+    assert_eq!(
+      found,
+      [
+        ("cursor", "Cursor", "Personal skills", "~/.cursor/skills/x/SKILL.md"),
+        ("gemini", "Gemini CLI", "Personal skills", "~/.gemini/skills/y/SKILL.md"),
+        ("opencode", "opencode", "Personal skills", "~/.config/opencode/skills/z/SKILL.md"),
+      ]
+    );
+    assert_eq!(keys(&result), ["cursor:personal:x", "gemini:personal:y", "opencode:personal:z"]);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn skill_reachable_from_agents_and_cursor_is_listed_once_under_agents() {
+    let t = Tmp::new("agents-cursor-link");
+    let home = t.path();
+    skill(home, ".agents/skills/shared", "shared");
+    link(&home.join(".agents/skills/shared"), &home.join(".cursor/skills/shared"));
+    let result = scan_roots(Some(home), &HashMap::new(), &[]);
+    assert_eq!(keys(&result), ["agents:personal:shared"]);
+    assert!(result.skipped.iter().any(|s| s.path == "~/.cursor/skills/shared" && s.reason.contains("already listed")));
+  }
+
+  #[test]
   fn sources_come_in_fixed_order_and_empty_ones_are_omitted() {
     let t = Tmp::new("source-order");
     let folder = t.path().join("project");
@@ -665,11 +729,14 @@ mod tests {
     skill(t.path(), ".agents/skills/a", "a");
     skill(t.path(), ".codex/skills/b", "b");
     skill(t.path(), ".claude/skills/c", "c");
+    skill(t.path(), ".cursor/skills/d", "d");
+    skill(t.path(), ".gemini/skills/e", "e");
+    skill(t.path(), ".config/opencode/skills/f", "f");
     let mut picked = HashMap::new();
     let id = pick(&mut picked, &folder);
     let result = scan_roots(Some(t.path()), &picked, &[id]);
     let ids: Vec<&str> = result.sources.iter().map(|s| s.id).collect();
-    assert_eq!(ids, ["claude", "codex", "agents", "folder"]);
+    assert_eq!(ids, ["claude", "codex", "agents", "cursor", "gemini", "opencode", "folder"]);
   }
 
   #[test]
@@ -934,6 +1001,9 @@ mod tests {
     skill(&project, ".codex/skills/tool-c", "c");
     skill(&project, ".agents/skills/tool-d", "d");
     skill(&project, "skills/tool-e", "e");
+    skill(&project, ".cursor/skills/tool-f", "f");
+    skill(&project, ".gemini/skills/tool-g", "g");
+    skill(&project, ".opencode/skills/tool-h", "h");
     let mut picked = HashMap::new();
     let id = pick(&mut picked, &project);
     let result = scan_roots(Some(t.path()), &picked, std::slice::from_ref(&id));
@@ -949,6 +1019,9 @@ mod tests {
         format!("folder:{id}:.codex/skills/tool-c"),
         format!("folder:{id}:.agents/skills/tool-d"),
         format!("folder:{id}:skills/tool-e"),
+        format!("folder:{id}:.cursor/skills/tool-f"),
+        format!("folder:{id}:.gemini/skills/tool-g"),
+        format!("folder:{id}:.opencode/skills/tool-h"),
       ]
     );
   }
