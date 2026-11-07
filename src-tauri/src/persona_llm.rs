@@ -13,6 +13,9 @@ use crate::local_access::tokens::{
   migrate_secret, validate_user_id, LlmMigrateOut, MigrateStatus, SecretStore,
 };
 
+#[path = "llm_oneshot.rs"]
+pub(crate) mod oneshot;
+
 const SERVICE: &str = "dev.tmgr.persona-llm";
 const ACCOUNT: &str = "api-key";
 const CONFIG_FILE: &str = "llm_config.json";

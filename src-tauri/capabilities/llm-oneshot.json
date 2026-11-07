@@ -1,0 +1,13 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "llm-oneshot",
+	"description": "Local AI one-shot calls: main window only.",
+	"windows": ["main"],
+	"permissions": [
+		"allow-llm-detect",
+		"allow-llm-models",
+		"allow-llm-test",
+		"allow-llm-complete",
+		"allow-llm-lan-confirm"
+	]
+}
