@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Result as CoreResult};
 use tmgr_core::text::sanitize_line;
 use tmgr_ipc::decisions::{
-    self, Cancel, CardIn, Check, Client, DiffSpec, Event, Fact, Found, LinkItem, Links, Opt,
-    PatchIn, Response, Source, WaitCard, MAX_DIFFS, MAX_LINE, MAX_LINKS, MAX_PATCHES,
+    self, Cancel, CardIn, Check, Client, DiffSpec, Event, Fact, Found, Inbox, LinkItem, Links, Opt,
+    PatchIn, Response, Secret, Source, WaitCard, MAX_DIFFS, MAX_LINE, MAX_LINKS, MAX_PATCHES,
     MAX_PATCH_BYTES,
 };
 
@@ -96,10 +96,34 @@ pub enum SentFull {
     Spooled(String),
 }
 
+fn claude_inbox_with(get: impl Fn(&str) -> Option<String>) -> Option<Inbox> {
+    let endpoint = get("CLAUDE_CODE_MESSAGING_SOCKET").filter(|p| Path::new(p).is_absolute())?;
+    let token = get("CLAUDE_CODE_MESSAGING_TOKEN").filter(|t| !t.is_empty())?;
+    Some(Inbox {
+        kind: "claude".into(),
+        endpoint,
+        token: Some(Secret::new(token)),
+        session: get("CLAUDE_CODE_SESSION_ID").filter(|s| !s.is_empty()),
+    })
+}
+
+pub fn claude_inbox_from_env() -> Option<Inbox> {
+    claude_inbox_with(|k| std::env::var(k).ok())
+}
+
+pub fn hook_inbox(card: &CardIn) -> Option<Inbox> {
+    hook_inbox_with(card, claude_inbox_from_env)
+}
+
+fn hook_inbox_with(card: &CardIn, inbox: impl FnOnce() -> Option<Inbox>) -> Option<Inbox> {
+    (card.kind == "stopped").then(inbox).flatten()
+}
+
 pub fn send_card_full(mut card: CardIn) -> io::Result<SentFull> {
     card.id.get_or_insert_with(decisions::new_card_id);
     let dir = decisions::decisions_dir()?;
-    match Client::open_in(&dir).and_then(|c| c.create_full(card.clone())) {
+    let inbox = claude_inbox_from_env();
+    match Client::open_in(&dir).and_then(|c| c.create_with(card.clone(), inbox)) {
         Ok(response) => Ok(SentFull::Live(Box::new(response))),
         Err(e) if is_refusal(&e) => Err(e),
         Err(_) => decisions::spool(&dir, &card).map(SentFull::Spooled),
@@ -1030,6 +1054,71 @@ pub fn permission_card(input: &Value, cwd: &Path, session: Option<&str>) -> Card
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn env_of(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        let map: std::collections::HashMap<String, String> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        move |k| map.get(k).cloned()
+    }
+
+    const SOCK_ENV: (&str, &str) = ("CLAUDE_CODE_MESSAGING_SOCKET", "/tmp/claude.sock");
+    const TOKEN_ENV: (&str, &str) = ("CLAUDE_CODE_MESSAGING_TOKEN", "tok");
+
+    #[test]
+    fn inbox_from_env_needs_absolute_socket_and_token() {
+        assert!(claude_inbox_with(env_of(&[])).is_none());
+        assert!(claude_inbox_with(env_of(&[SOCK_ENV])).is_none());
+        assert!(claude_inbox_with(env_of(&[TOKEN_ENV])).is_none());
+        assert!(claude_inbox_with(env_of(&[
+            ("CLAUDE_CODE_MESSAGING_SOCKET", "rel/claude.sock"),
+            TOKEN_ENV
+        ]))
+        .is_none());
+        assert!(
+            claude_inbox_with(env_of(&[SOCK_ENV, ("CLAUDE_CODE_MESSAGING_TOKEN", "")])).is_none()
+        );
+    }
+
+    #[test]
+    fn inbox_from_env_reads_socket_token_and_optional_session() {
+        let i = claude_inbox_with(env_of(&[SOCK_ENV, TOKEN_ENV])).unwrap();
+        assert_eq!(i.kind, "claude");
+        assert_eq!(i.endpoint, "/tmp/claude.sock");
+        assert_eq!(i.token.as_ref().map(Secret::expose), Some("tok"));
+        assert_eq!(i.session, None);
+        let i = claude_inbox_with(env_of(&[
+            SOCK_ENV,
+            TOKEN_ENV,
+            ("CLAUDE_CODE_SESSION_ID", "s-1"),
+        ]))
+        .unwrap();
+        assert_eq!(i.session.as_deref(), Some("s-1"));
+    }
+
+    #[test]
+    fn hook_inbox_only_for_stop_cards() {
+        let inbox = || claude_inbox_with(env_of(&[SOCK_ENV, TOKEN_ENV]));
+        let cwd = Path::new("/tmp/proj");
+        let stop = stop_card(cwd, Some("s"), Some("done"), true, false).unwrap();
+        assert!(hook_inbox_with(&stop, inbox).is_some());
+        let permission = permission_card(&json!({"tool_name": "Bash"}), cwd, Some("s"));
+        assert!(hook_inbox_with(&permission, inbox).is_none());
+        for ty in [
+            "permission_prompt",
+            "elicitation_dialog",
+            "agent_needs_input",
+        ] {
+            let n = notification_card(
+                &json!({"notification_type": ty, "message": "Pick one"}),
+                cwd,
+                Some("s"),
+            )
+            .unwrap();
+            assert!(hook_inbox_with(&n, inbox).is_none(), "{ty}");
+        }
+    }
 
     #[test]
     fn a_cancelled_wait_loop_returns_at_once() {

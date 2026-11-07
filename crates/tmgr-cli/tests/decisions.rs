@@ -35,7 +35,7 @@ impl Fake {
         self.ops()
             .into_iter()
             .filter_map(|op| match op {
-                Op::Create { card } => Some(serde_json::to_value(&*card).unwrap()),
+                Op::Create { card, .. } => Some(serde_json::to_value(&*card).unwrap()),
                 _ => None,
             })
             .collect()
@@ -142,7 +142,7 @@ fn event(card_id: &str, kind: &str, seq: u64) -> Event {
 
 fn answering(choice: &'static str) -> Handler {
     Box::new(move |req| match &req.op {
-        Op::Create { card } => Response {
+        Op::Create { card, .. } => Response {
             ok: true,
             card_id: card.id.clone(),
             ..Response::default()
@@ -162,7 +162,7 @@ fn answering(choice: &'static str) -> Handler {
 
 fn silent() -> Handler {
     Box::new(|req| match &req.op {
-        Op::Create { card } => Response {
+        Op::Create { card, .. } => Response {
             ok: true,
             card_id: card.id.clone(),
             ..Response::default()
@@ -435,7 +435,7 @@ fn replies_are_sent_and_then_the_next_event_is_awaited() {
     let fake = serve(
         &st,
         Box::new(|req| match &req.op {
-            Op::Create { card } => Response {
+            Op::Create { card, .. } => Response {
                 ok: true,
                 card_id: card.id.clone(),
                 ..Response::default()
@@ -602,7 +602,7 @@ fn ask_wait_prints_interim_messages_to_stderr_and_the_final_answer() {
     let fake = serve(
         &st,
         Box::new(|req| match &req.op {
-            Op::Create { card } => Response {
+            Op::Create { card, .. } => Response {
                 ok: true,
                 card_id: card.id.clone(),
                 ..Response::default()
@@ -1117,7 +1117,7 @@ fn an_unknown_card_for_a_live_card_is_still_an_error() {
     let _fake = serve(
         &st,
         Box::new(|req| match &req.op {
-            Op::Create { card } => Response {
+            Op::Create { card, .. } => Response {
                 ok: true,
                 card_id: card.id.clone(),
                 ..Response::default()

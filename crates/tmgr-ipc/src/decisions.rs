@@ -309,12 +309,44 @@ impl Event {
     }
 }
 
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Secret(String);
+
+impl Secret {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("<redacted>")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Inbox {
+    pub kind: String,
+    pub endpoint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<Secret>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Op {
     Ping,
     Create {
         card: Box<CardIn>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        inbox: Option<Inbox>,
     },
     /// The final answer at once when the card has one; else the first event with `seq > since`
     /// (with `final_only`, only a final answer), waiting up to `timeout_ms`.
@@ -692,8 +724,13 @@ impl Client {
     }
 
     pub fn create_full(&self, card: CardIn) -> io::Result<Response> {
+        self.create_with(card, None)
+    }
+
+    pub fn create_with(&self, card: CardIn, inbox: Option<Inbox>) -> io::Result<Response> {
         let response = self.checked(Op::Create {
             card: Box::new(card),
+            inbox,
         })?;
         if response.card_id.is_none() {
             return Err(io::Error::new(
@@ -913,6 +950,91 @@ mod tests {
         assert!(serde_json::to_string(&old)
             .unwrap()
             .contains(r#""side":"old""#));
+    }
+
+    const TOKEN_VALUE: &str = "s3cr3t-token-value";
+
+    fn inbox_with_token() -> Inbox {
+        Inbox {
+            kind: "claude".into(),
+            endpoint: "/tmp/claude.sock".into(),
+            token: Some(Secret::new(TOKEN_VALUE)),
+            session: Some("sess-1".into()),
+        }
+    }
+
+    fn titled(title: &str) -> CardIn {
+        CardIn {
+            title: title.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn secret_debug_is_redacted_and_wire_is_plain() {
+        let s = Secret::new(TOKEN_VALUE);
+        assert_eq!(format!("{s:?}"), "<redacted>");
+        assert_eq!(s.expose(), TOKEN_VALUE);
+        assert_eq!(
+            serde_json::to_string(&s).unwrap(),
+            format!("\"{TOKEN_VALUE}\"")
+        );
+        let back: Secret = serde_json::from_str(&format!("\"{TOKEN_VALUE}\"")).unwrap();
+        assert_eq!(back, s);
+    }
+
+    #[test]
+    fn debug_of_request_and_card_never_shows_the_token() {
+        let request = Request {
+            v: PROTO,
+            token: "t".into(),
+            op: Op::Create {
+                card: Box::new(titled("Ship?")),
+                inbox: Some(inbox_with_token()),
+            },
+        };
+        assert!(!format!("{request:?}").contains(TOKEN_VALUE));
+        assert!(!serde_json::to_string(&titled("Ship?"))
+            .unwrap()
+            .contains(TOKEN_VALUE));
+    }
+
+    #[test]
+    fn create_round_trips_with_and_without_inbox() {
+        for inbox in [Some(inbox_with_token()), None] {
+            let request = Request {
+                v: PROTO,
+                token: "t".into(),
+                op: Op::Create {
+                    card: Box::new(titled("Ship?")),
+                    inbox: inbox.clone(),
+                },
+            };
+            let json = serde_json::to_string(&request).unwrap();
+            assert_eq!(json.contains("inbox"), inbox.is_some());
+            let back: Request = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, request);
+        }
+    }
+
+    #[test]
+    fn create_without_inbox_field_still_parses() {
+        let r: Request =
+            serde_json::from_str(r#"{"v":1,"token":"t","op":"create","card":{"title":"x"}}"#)
+                .unwrap();
+        assert!(matches!(r.op, Op::Create { inbox: None, .. }));
+    }
+
+    #[test]
+    fn spool_file_never_holds_a_token() {
+        let t = private_tmp();
+        let dir = t.path().join("d");
+        spool(&dir, &titled("Ship?")).unwrap();
+        for entry in std::fs::read_dir(dir.join(INBOX)).unwrap() {
+            let body = std::fs::read_to_string(entry.unwrap().path()).unwrap();
+            assert!(!body.contains(TOKEN_VALUE));
+            assert!(!body.contains("inbox"));
+        }
     }
 
     fn private_tmp() -> tempfile::TempDir {
