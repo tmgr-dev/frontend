@@ -1,0 +1,7 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "git-track",
+	"description": "Git branch auto-tracking folders and folder picker: main window only.",
+	"windows": ["main"],
+	"permissions": ["allow-git-track-update", "allow-git-track-pick-folder"]
+}

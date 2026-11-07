@@ -48,6 +48,8 @@ const APP_COMMANDS: &[&str] = &[
   "plugins_safe_mode",
   "plugin_pick_file",
   "skills_scan",
+  "git_track_update",
+  "git_track_pick_folder",
   "skills_pick_folder",
   "skill_library_read",
   "skill_library_write",

@@ -23,7 +23,9 @@ probes!(
   skill_library_write,
   skill_library_export,
   skill_library_import_pick,
-  skill_library_migrate_local
+  skill_library_migrate_local,
+  git_track_update,
+  git_track_pick_folder
 );
 
 fn call(label: &str, cmd: &str) -> Result<(), String> {
@@ -70,6 +72,16 @@ fn the_acl_decides_per_command_and_window() {
 #[test]
 fn sign_out_cleanup_is_allowed_for_the_main_window_only() {
   for cmd in ["persona_cache_clear_for_user", "persona_llm_clear_for_user"] {
+    assert!(call("main", cmd).is_ok(), "{cmd} on main");
+    for label in ["task-1", "page-1", "decisions", "quick-add"] {
+      assert!(call(label, cmd).unwrap_err().contains("not allowed on window"), "{cmd} on {label}");
+    }
+  }
+}
+
+#[test]
+fn git_track_commands_are_allowed_for_the_main_window_only() {
+  for cmd in ["git_track_update", "git_track_pick_folder"] {
     assert!(call("main", cmd).is_ok(), "{cmd} on main");
     for label in ["task-1", "page-1", "decisions", "quick-add"] {
       assert!(call(label, cmd).unwrap_err().contains("not allowed on window"), "{cmd} on {label}");

@@ -7,6 +7,7 @@ mod capture;
 mod decisions;
 mod downloads;
 mod embeds;
+mod git_track;
 mod idle;
 mod local_access;
 mod local_backups;
@@ -214,6 +215,7 @@ pub fn run() {
     .manage(downloads::PendingDownloads::default())
     .manage(plugin_windows::PluginWindows::default())
     .manage(skill_scan::PickedFolders::default())
+    .manage(git_track::GitTrackStore::default())
     .register_uri_scheme_protocol(plugin_windows::SCHEME, |ctx, request| {
       plugin_windows::handle(ctx.app_handle(), ctx.webview_label(), request)
     })
@@ -295,6 +297,8 @@ pub fn run() {
       plugin_files::plugin_pick_file,
       skill_scan::skills_scan,
       skill_scan::skills_pick_folder,
+      git_track::git_track_update,
+      git_track::git_track_pick_folder,
       skill_library::skill_library_read,
       skill_library::skill_library_write,
       skill_library::skill_library_export,
@@ -452,6 +456,7 @@ pub fn run() {
         log::error!("[tray] unavailable: {error}");
       }
       idle::start(app.handle());
+      git_track::start(app.handle());
       local_backups::start(app.handle());
       plugin_tick::start(app.handle());
       local_watch::start(app.handle());
