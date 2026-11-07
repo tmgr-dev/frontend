@@ -23,6 +23,8 @@ const CHARS_PER_TOKEN = 2.5;
 
 const DAY_INPUT_OPEN = '<day_input>';
 const DAY_INPUT_CLOSE = '</day_input>';
+const DAY_INPUT_TAG = /<\/?day_input>/gi;
+const HAS_ZONE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
 
 const SYSTEM_PROMPT = [
 	'You are an assistant writing a short day summary for a task manager user.',
@@ -38,8 +40,11 @@ export const dayRange = (now: Date): DayRange => ({
 	to: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1),
 });
 
+export const parseTimestamp = (iso: string): number =>
+	Date.parse(HAS_ZONE.test(iso) ? iso : `${iso}Z`);
+
 export const inRange = (iso: string, range: DayRange): boolean => {
-	const time = Date.parse(iso);
+	const time = parseTimestamp(iso);
 	return time >= range.from.getTime() && time < range.to.getTime();
 };
 
@@ -74,12 +79,21 @@ const flagsOf = (task: DayTask): string =>
 const taskLine = (task: DayTask): string =>
 	[
 		`[${task.workspace}] ${task.key} ${cut(task.title, TITLE_LIMIT)}`,
-		`now: ${task.status}`,
+		task.status ? `now: ${task.status}` : '',
 		flagsOf(task),
 		task.minutes !== undefined ? `${task.minutes}m` : '',
 	]
 		.filter(Boolean)
 		.join(' | ');
+
+const scrubDelimiters = (text: string): string => {
+	let previous: string;
+	do {
+		previous = text;
+		text = text.replace(DAY_INPUT_TAG, '');
+	} while (text !== previous);
+	return text;
+};
 
 const renderInput = (
 	tasks: DayTask[],
@@ -88,10 +102,12 @@ const renderInput = (
 ): string => {
 	const lines: string[] = [];
 	for (const task of tasks) {
-		lines.push(taskLine(task));
+		lines.push(scrubDelimiters(taskLine(task)));
 		if (snippetTasks.has(task)) {
 			for (const snippet of task.commentSnippets) {
-				lines.push(`  comment: ${head(snippet, SNIPPET_LIMIT)}`);
+				lines.push(
+					scrubDelimiters(`  comment: ${head(snippet, SNIPPET_LIMIT)}`),
+				);
 			}
 		}
 	}
@@ -152,6 +168,6 @@ export const deterministicSummary = (tasks: DayTask[]): string => {
 	].filter(Boolean);
 	const lines = rank(tasks)
 		.slice(0, DETERMINISTIC_TASKS)
-		.map((t) => `${t.key} ${t.title} (now: ${t.status})`);
+		.map((t) => `${t.key} ${t.title}${t.status ? ` (now: ${t.status})` : ''}`);
 	return [...header, ...lines].join('\n');
 };

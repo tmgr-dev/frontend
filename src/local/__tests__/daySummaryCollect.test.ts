@@ -140,7 +140,7 @@ describe('collectDay local workspaces', () => {
 		expect(taskQuery?.[1]).toEqual([FROM, TO, FROM, TO, FROM, TO]);
 	});
 
-	it('summarises comments from today, keeping the count, up to three snippets and minutes', async () => {
+	it('summarises comments from today, keeping the count and up to three snippets, without lifetime minutes', async () => {
 		(listLocalWorkspaces as jest.Mock).mockResolvedValue([
 			workspace(1, 'Personal'),
 		]);
@@ -159,6 +159,12 @@ describe('collectDay local workspaces', () => {
 				],
 				comments: [
 					{ task_id: 9, message: 'yesterday note', created_at: at(6, 20) },
+					{
+						task_id: 9,
+						message: 'from a persona',
+						created_at: at(7, 8),
+						author_kind: 'persona',
+					},
 					{ task_id: 9, message: 'first', created_at: at(7, 9) },
 					{ task_id: 9, message: ' second ', created_at: at(7, 10) },
 					{ task_id: 9, message: 'third', created_at: at(7, 11) },
@@ -175,7 +181,6 @@ describe('collectDay local workspaces', () => {
 				key: 'TM-12',
 				title: 'Reviewed',
 				status: 'In progress',
-				minutes: 90,
 				createdToday: false,
 				touchedToday: false,
 				comments: 4,
@@ -183,6 +188,35 @@ describe('collectDay local workspaces', () => {
 				source: 'local',
 			},
 		]);
+	});
+
+	it('reads a local task created in the day from an offset-less timestamp as UTC', async () => {
+		(listLocalWorkspaces as jest.Mock).mockResolvedValue([
+			workspace(1, 'Personal'),
+		]);
+		const utcLocal = (date: Date) => date.toISOString().slice(0, 19);
+		setLocal({
+			ws1: {
+				tasks: [
+					localTask({
+						id: 3,
+						title: 'Naive UTC today',
+						created_at: utcLocal(new Date(2026, 10, 7, 9)),
+						updated_at: utcLocal(new Date(2026, 10, 7, 9)),
+					}),
+					localTask({
+						id: 4,
+						title: 'Naive UTC yesterday',
+						created_at: utcLocal(new Date(2026, 10, 6, 23, 59)),
+						updated_at: utcLocal(new Date(2026, 10, 6, 23, 59)),
+					}),
+				],
+			},
+		});
+
+		const { tasks } = await run();
+
+		expect(tasks.map((t) => t.title)).toEqual(['Naive UTC today']);
 	});
 
 	it('never opens demo workspaces', async () => {
@@ -250,6 +284,157 @@ describe('collectDay cloud workspaces', () => {
 				},
 			});
 		}
+	});
+
+	it('drops activities performed by a teammate', async () => {
+		(getActivityFeed as jest.Mock).mockResolvedValue(
+			feed(
+				cloudActivity({ id: 1, subject_id: 40, subject_name: 'Mine' }),
+				cloudActivity({
+					id: 2,
+					subject_id: 41,
+					subject_name: 'Teammate',
+					user: { id: 6, name: 'Bob', email: '' },
+				}),
+			),
+		);
+
+		const { tasks } = await run({
+			cloud: [{ id: 2, name: 'Ops' }],
+			cloudUserId: 5,
+		});
+
+		expect(tasks.map((t) => t.title)).toEqual(['Mine']);
+	});
+
+	it('takes the task of a comment from metadata and merges it into the same task', async () => {
+		(getActivityFeed as jest.Mock).mockResolvedValue(
+			feed(
+				cloudActivity({
+					id: 2,
+					type: 'comment_created',
+					subject_type: 'comment',
+					subject_id: 900,
+					subject_name: '',
+					created_at: at(7, 10),
+					metadata: { comment: 'on the task', task_id: 40 },
+				}),
+				cloudActivity({ id: 1, subject_id: 40, created_at: at(7, 9) }),
+				cloudActivity({
+					id: 3,
+					type: 'comment_created',
+					subject_type: 'comment',
+					subject_id: 901,
+					subject_name: '',
+					created_at: at(7, 11),
+					metadata: { comment: 'orphan' },
+				}),
+			),
+		);
+
+		const { tasks } = await run({
+			cloud: [{ id: 2, name: 'Ops' }],
+			cloudUserId: 5,
+		});
+
+		expect(tasks).toEqual([
+			expect.objectContaining({
+				key: '#40',
+				title: 'Ship it',
+				comments: 1,
+				commentSnippets: ['on the task'],
+			}),
+		]);
+	});
+
+	it('loads the next feed page while the page is full and the day has not been left', async () => {
+		const full = (start: number, created: string) =>
+			feed(
+				...Array.from({ length: 100 }, (_, i) =>
+					cloudActivity({
+						id: start + i,
+						subject_id: start + i,
+						created_at: created,
+					}),
+				),
+			);
+		(getActivityFeed as jest.Mock).mockImplementation(
+			async (_id: number, params: { page: number }) => {
+				if (params.page === 1) return full(1000, at(7, 9));
+				return feed(
+					cloudActivity({ id: 9000, subject_id: 9000, created_at: at(7, 8) }),
+				);
+			},
+		);
+
+		const { tasks } = await run({
+			cloud: [{ id: 2, name: 'Ops' }],
+			cloudUserId: 5,
+		});
+
+		expect(
+			(getActivityFeed as jest.Mock).mock.calls.map(
+				([, params]) => params.page,
+			),
+		).toEqual([1, 2]);
+		expect(tasks.some((t) => t.key === '#9000')).toBe(true);
+		expect(tasks).toHaveLength(101);
+	});
+
+	it('stops paging once a page reaches the day start', async () => {
+		(getActivityFeed as jest.Mock).mockImplementation(async () =>
+			feed(
+				...Array.from({ length: 99 }, (_, i) =>
+					cloudActivity({ id: i, subject_id: i + 1, created_at: at(7, 9) }),
+				),
+				cloudActivity({ id: 500, subject_id: 500, created_at: at(6, 23) }),
+			),
+		);
+
+		await run({ cloud: [{ id: 2, name: 'Ops' }], cloudUserId: 5 });
+
+		expect(getActivityFeed).toHaveBeenCalledTimes(1);
+	});
+
+	it('caps the cloud feed at five pages', async () => {
+		(getActivityFeed as jest.Mock).mockImplementation(async () =>
+			feed(
+				...Array.from({ length: 100 }, (_, i) =>
+					cloudActivity({ id: i, subject_id: i + 1, created_at: at(7, 9) }),
+				),
+			),
+		);
+
+		await run({ cloud: [{ id: 2, name: 'Ops' }], cloudUserId: 5 });
+
+		expect(getActivityFeed).toHaveBeenCalledTimes(5);
+	});
+
+	it('reads an offset-less cloud timestamp as UTC at the day boundary', async () => {
+		const utcLocal = (date: Date) => date.toISOString().slice(0, 19);
+		(getActivityFeed as jest.Mock).mockResolvedValue(
+			feed(
+				cloudActivity({
+					id: 1,
+					subject_id: 40,
+					subject_name: 'Today',
+					created_at: utcLocal(new Date(2026, 10, 7, 0, 30)),
+				}),
+				cloudActivity({
+					id: 2,
+					subject_id: 41,
+					subject_name: 'Yesterday',
+					created_at: utcLocal(new Date(2026, 10, 6, 23, 30)),
+				}),
+			),
+		);
+
+		const { tasks } = await run({
+			cloud: [{ id: 2, name: 'Ops' }],
+			cloudUserId: 5,
+		});
+
+		expect(tasks.map((t) => t.title)).toEqual(['Today']);
 	});
 
 	it('reports failing cloud workspaces as skipped while the others still return', async () => {

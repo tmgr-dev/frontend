@@ -1,5 +1,12 @@
 import { getActivityFeed } from '@/actions/tmgr/dashboard';
-import { dayRange, inRange, type DayRange, type DayTask } from './daySummary';
+import type { Activity } from '@/types/dashboard';
+import {
+	dayRange,
+	inRange,
+	parseTimestamp,
+	type DayRange,
+	type DayTask,
+} from './daySummary';
 import { listLocalWorkspaces, localContext } from './runtime';
 import type { LocalWorkspace } from './types';
 
@@ -14,6 +21,7 @@ export interface CollectDayOptions {
 
 const SNIPPETS = 3;
 const FEED_PAGE = 100;
+const FEED_MAX_PAGES = 5;
 const CLOUD_TYPES = new Set([
 	'task_created',
 	'task_status_changed',
@@ -21,7 +29,7 @@ const CLOUD_TYPES = new Set([
 	'task_timer_stopped',
 ]);
 
-const TASKS_SQL = `SELECT t.id, t.title, t.common_time, t.created_at, t.updated_at,
+const TASKS_SQL = `SELECT t.id, t.title, t.created_at, t.updated_at,
 	s.name AS status, c.code AS category_code, t.category_tasks_sequence_id AS seq
 	FROM tasks t
 	LEFT JOIN statuses s ON s.id = t.status_id
@@ -32,14 +40,13 @@ const TASKS_SQL = `SELECT t.id, t.title, t.common_time, t.created_at, t.updated_
 		OR t.id IN (SELECT task_id FROM comments WHERE deleted_at IS NULL AND created_at >= ? AND created_at < ?)
 	)`;
 
-const COMMENTS_SQL = `SELECT task_id, message, created_at FROM comments
+const COMMENTS_SQL = `SELECT task_id, message, created_at, author_kind FROM comments
 	WHERE deleted_at IS NULL AND created_at >= ? AND created_at < ?
 	ORDER BY id`;
 
 type LocalTaskRow = {
 	id: number;
 	title: string;
-	common_time: number;
 	created_at: string;
 	updated_at: string;
 	status: string | null;
@@ -47,7 +54,12 @@ type LocalTaskRow = {
 	seq: number | null;
 };
 
-type LocalCommentRow = { task_id: number; message: string; created_at: string };
+type LocalCommentRow = {
+	task_id: number;
+	message: string;
+	created_at: string;
+	author_kind: string | null;
+};
 
 const pad = (value: number) => String(value).padStart(2, '0');
 
@@ -83,7 +95,9 @@ const collectLocal = async (
 	const to = range.to.toISOString();
 	const comments = (
 		await ctx.db.select<LocalCommentRow>(COMMENTS_SQL, [from, to])
-	).filter((c) => inRange(c.created_at, range));
+	).filter(
+		(c) => (c.author_kind ?? 'user') === 'user' && inRange(c.created_at, range),
+	);
 	const rows = await ctx.db.select<LocalTaskRow>(TASKS_SQL, [
 		from,
 		to,
@@ -112,8 +126,6 @@ const collectLocal = async (
 						: `#${row.id}`,
 				title: row.title,
 				status: row.status ?? '',
-				minutes:
-					row.common_time > 0 ? Math.round(row.common_time / 60) : undefined,
 				createdToday,
 				touchedToday,
 				comments: notes.length,
@@ -133,35 +145,50 @@ const collectCloud = async (
 ): Promise<DayTask[]> => {
 	const yesterday = new Date(range.from);
 	yesterday.setDate(yesterday.getDate() - 1);
-	const result = await getActivityFeed(workspace.id, {
-		per_page: FEED_PAGE,
-		filters: {
-			user_id: userId,
-			date_from: localDay(yesterday),
-			date_to: localDay(range.from),
-		},
-	});
-	if (result.error || !result.data) {
-		throw new Error(`activity feed failed for ${workspace.name}`);
+	const activities: Activity[] = [];
+	for (let page = 1; page <= FEED_MAX_PAGES; page++) {
+		const result = await getActivityFeed(workspace.id, {
+			page,
+			per_page: FEED_PAGE,
+			filters: {
+				user_id: userId,
+				date_from: localDay(yesterday),
+				date_to: localDay(range.from),
+			},
+		});
+		if (result.error || !result.data) {
+			throw new Error(`activity feed failed for ${workspace.name}`);
+		}
+		const items = result.data.data;
+		activities.push(...items);
+		if (items.length < FEED_PAGE) break;
+		const oldest = Math.min(...items.map((a) => parseTimestamp(a.created_at)));
+		if (oldest < range.from.getTime()) break;
 	}
 	const tasks = new Map<number, DayTask>();
-	for (const activity of result.data.data) {
+	for (const activity of activities) {
+		const meta = metadataOf(activity.metadata);
+		const taskId =
+			activity.subject_type === 'comment'
+				? Number(meta.task_id ?? NaN)
+				: activity.subject_id;
+		const actorId =
+			activity.user?.id ??
+			(activity as Activity & { user_id?: number }).user_id;
 		if (
 			!CLOUD_TYPES.has(activity.type) ||
-			activity.subject_id === undefined ||
+			taskId == null ||
+			!Number.isFinite(taskId) ||
+			actorId !== userId ||
 			!inRange(activity.created_at, range)
 		)
 			continue;
-		const meta = metadataOf(activity.metadata);
-		let task = tasks.get(activity.subject_id);
+		let task = tasks.get(taskId);
 		if (!task) {
 			task = {
 				workspace: workspace.name,
-				key: `#${activity.subject_id}`,
-				title:
-					activity.subject_name ||
-					textOf(meta.task_title) ||
-					`#${activity.subject_id}`,
+				key: `#${taskId}`,
+				title: '',
 				status: '',
 				createdToday: false,
 				touchedToday: true,
@@ -169,8 +196,13 @@ const collectCloud = async (
 				commentSnippets: [],
 				source: 'cloud',
 			};
-			tasks.set(activity.subject_id, task);
+			tasks.set(taskId, task);
 		}
+		if (!task.title)
+			task.title =
+				activity.subject_type === 'comment'
+					? textOf(meta.task_title)
+					: activity.subject_name || textOf(meta.task_title);
 		if (activity.type === 'task_created') task.createdToday = true;
 		if (activity.type === 'task_status_changed' && !task.status)
 			task.status = textOf(meta.new_status_name);
@@ -186,7 +218,10 @@ const collectCloud = async (
 				task.minutes = (task.minutes ?? 0) + Math.round(seconds / 60);
 		}
 	}
-	return [...tasks.values()];
+	return [...tasks.values()].map((task) => ({
+		...task,
+		title: task.title || task.key,
+	}));
 };
 
 export const collectDay = async (
