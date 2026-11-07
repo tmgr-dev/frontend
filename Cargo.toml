@@ -51,7 +51,7 @@ vte = "0.15"
 crossterm = "0.29"
 regex = "1"
 base64 = "0.22"
-getrandom = { version = "0.3", features = ["std"] }
+getrandom = { version = "0.4", features = ["std"] }
 shell-words = "1"
 subtle = "2"
 landlock = "0.4"
