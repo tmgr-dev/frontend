@@ -40,6 +40,7 @@ const skillIndex = [
 		when: 'Use when alpha',
 		version: 1,
 		source: 'shared',
+		files_sha256: EMPTY_FILES_SHA256,
 	},
 	{
 		slug: 'zeta',
@@ -47,6 +48,7 @@ const skillIndex = [
 		when: 'Use when zeta',
 		version: 1,
 		source: 'shared',
+		files_sha256: EMPTY_FILES_SHA256,
 	},
 ];
 

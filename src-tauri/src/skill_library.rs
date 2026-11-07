@@ -76,8 +76,15 @@ fn validate_files(obj: &Map<String, Value>) -> Result<(), String> {
       Some(Value::String(c)) => c.as_bytes(),
       _ => return Err("skill file content is missing".into()),
     };
-    if content.len() > sf::MAX_FILE_BYTES || sf::text_of(content).is_none() {
+    if content.len() > sf::MAX_FILE_BYTES {
       return Err("a skill file is too large or not text".into());
+    }
+    let Some(text) = sf::text_of(content) else {
+      return Err("a skill file is too large or not text".into());
+    };
+    let name = path.rsplit('/').next().unwrap_or(path);
+    if crate::skill_scan::looks_secret(name) || crate::skill_scan::find_secret(text).is_some() {
+      return Err("a skill file looks like it contains a secret".into());
     }
     total += content.len();
     let sha = sf::sha256_hex(content);
@@ -597,21 +604,41 @@ mod tests {
     assert!(validate_library(&library(vec![with_files("a", &[])])).is_ok());
   }
 
+  fn heavy_skills(count: usize, per_skill: usize) -> Vec<Value> {
+    (0..count)
+      .map(|i| {
+        let contents: Vec<String> = (0..per_skill).map(|j| format!("{j}{}", "a".repeat(60 * 1024))).collect();
+        let files: Vec<(String, &str)> = contents.iter().enumerate().map(|(j, c)| (format!("f{j}"), c.as_str())).collect();
+        let pairs: Vec<(&str, &str)> = files.iter().map(|(p, c)| (p.as_str(), *c)).collect();
+        with_files(&format!("s{i}"), &pairs)
+      })
+      .collect()
+  }
+
   #[test]
   fn the_library_file_cap_is_twelve_mib() {
     assert_eq!(MAX_FILE_BYTES, 12 * 1024 * 1024);
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("7.json");
-    fs::write(&path, vec![b' '; MAX_FILE_BYTES as usize + 1]).unwrap();
-    assert!(read_library(&path).is_err());
-    let skills: Vec<Value> = (0..100).map(|i| {
-      let contents: Vec<String> = (0..5).map(|j| format!("{j}{}", "a".repeat(60 * 1024))).collect();
-      let files: Vec<(String, &str)> = contents.iter().enumerate().map(|(j, c)| (format!("f{j}"), c.as_str())).collect();
-      let pairs: Vec<(&str, &str)> = files.iter().map(|(p, c)| (p.as_str(), *c)).collect();
-      with_files(&format!("s{i}"), &pairs)
-    }).collect();
-    assert!(write_library(&path, &library(skills)).is_err());
-    assert!(!path.exists() || fs::metadata(&path).unwrap().len() == MAX_FILE_BYTES + 1);
+    write_library(&path, &library(heavy_skills(12, 4))).unwrap();
+    assert!(fs::metadata(&path).unwrap().len() > 2_500_000);
+    assert_eq!(read_library(&path).unwrap().unwrap()["skills"].as_array().unwrap().len(), 12);
+    let other = tmp.path().join("8.json");
+    let err = write_library(&other, &library(heavy_skills(100, 4))).unwrap_err();
+    assert!(err.contains("too large"), "{err}");
+    assert!(!other.exists());
+    fs::write(&other, vec![b' '; MAX_FILE_BYTES as usize + 1]).unwrap();
+    assert!(read_library(&other).is_err());
+  }
+
+  #[test]
+  fn secret_looking_files_cannot_be_stored_or_imported() {
+    let token = format!("ghp_{}", "a".repeat(36));
+    assert!(validate_library(&library(vec![with_files("a", &[("run.sh", &format!("export T={token}"))])])).is_err());
+    assert!(validate_library(&library(vec![with_files("a", &[("credentials.json", "{}")])])).is_err());
+    assert!(validate_library(&library(vec![with_files("a", &[("refs/api-token.txt", "x")])])).is_err());
+    let import = serde_json::to_vec(&json!({ "version": 1, "skills": [with_files("a", &[("run.sh", &token)])] })).unwrap();
+    assert!(parse_import(&import).is_err());
   }
 
   #[test]

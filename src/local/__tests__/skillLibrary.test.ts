@@ -396,6 +396,7 @@ describe('personaSkillIndex', () => {
 				when: 'Use when alpha',
 				version: 1,
 				source: 'shared',
+				files_sha256: EMPTY_FILES_SHA256,
 			},
 			{
 				slug: 'gamma',
@@ -403,6 +404,7 @@ describe('personaSkillIndex', () => {
 				when: 'Use when gamma',
 				version: 1,
 				source: 'shared',
+				files_sha256: EMPTY_FILES_SHA256,
 			},
 		]);
 	});

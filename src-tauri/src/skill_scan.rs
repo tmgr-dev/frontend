@@ -661,7 +661,7 @@ fn list_files(folder: &Path) -> Listing {
   Listing { files, sha256, blocked, truncated }
 }
 
-fn looks_secret(name: &str) -> bool {
+pub(crate) fn looks_secret(name: &str) -> bool {
   let lower = name.to_ascii_lowercase();
   lower.starts_with(".env")
     || [".pem", ".key", ".p12", ".pfx"].iter().any(|ext| lower.ends_with(ext))
@@ -673,7 +673,7 @@ fn looks_secret(name: &str) -> bool {
     || lower.contains("token")
 }
 
-fn find_secret(text: &str) -> Option<&'static str> {
+pub(crate) fn find_secret(text: &str) -> Option<&'static str> {
   if text.lines().any(|line| line.contains("-----BEGIN") && line.contains("PRIVATE KEY")) {
     return Some("contains a private key block");
   }
@@ -759,7 +759,7 @@ pub async fn skills_scan<R: Runtime>(
   let mut result = tauri::async_runtime::spawn_blocking(move || scan_roots(home.as_deref(), &picked, &folder_ids))
     .await
     .map_err(|e| e.to_string())?;
-  *scanned.0.lock().map_err(|e| e.to_string())? = std::mem::take(&mut result.previews);
+  scanned.0.lock().map_err(|e| e.to_string())?.extend(std::mem::take(&mut result.previews));
   Ok(result)
 }
 

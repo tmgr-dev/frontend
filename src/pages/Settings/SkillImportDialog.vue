@@ -181,7 +181,8 @@
 								The list is cut; this skill has too many files to import.
 							</p>
 							<p class="text-muted-foreground">
-								Only files marked “will be uploaded” are sent to the cloud, as
+								Only files marked “will be uploaded” are sent to
+								{{ target ? 'the library on this device' : 'the cloud' }}, as
 								text. The secret check is best effort: read the list above.
 							</p>
 						</div>

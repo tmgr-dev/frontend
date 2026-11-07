@@ -385,11 +385,17 @@ export const mergeSkills = (
 export const personaSkillIndex = (
 	lib: LibraryFile,
 	personaUuid: string,
-): MergedSkill[] =>
-	mergeSkills([], attachedSkills(lib, personaUuid)).map((skill) => ({
-		...skill,
-		source: 'shared',
-	}));
+): (MergedSkill & { files_sha256: string })[] =>
+	attachedSkills(lib, personaUuid)
+		.map((skill) => ({
+			slug: skill.slug,
+			title: skill.title,
+			when: skill.when,
+			version: skill.version,
+			source: 'shared' as const,
+			files_sha256: skillFilesSha256(skill),
+		}))
+		.sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
 
 export const personaSkillBody = (
 	lib: LibraryFile,
