@@ -97,6 +97,9 @@ pub enum SentFull {
 }
 
 fn claude_inbox_with(get: impl Fn(&str) -> Option<String>) -> Option<Inbox> {
+    if ["OPENCODE", "GEMINI_CLI"].iter().any(|k| get(k).is_some()) {
+        return None;
+    }
     let endpoint = get("CLAUDE_CODE_MESSAGING_SOCKET").filter(|p| Path::new(p).is_absolute())?;
     let token = get("CLAUDE_CODE_MESSAGING_TOKEN").filter(|t| !t.is_empty())?;
     Some(Inbox {
@@ -1095,6 +1098,12 @@ mod tests {
         ]))
         .unwrap();
         assert_eq!(i.session.as_deref(), Some("s-1"));
+    }
+
+    #[test]
+    fn inbox_is_skipped_inside_another_agent_started_from_claude() {
+        assert!(claude_inbox_with(env_of(&[SOCK_ENV, TOKEN_ENV, ("OPENCODE", "1")])).is_none());
+        assert!(claude_inbox_with(env_of(&[SOCK_ENV, TOKEN_ENV, ("GEMINI_CLI", "1")])).is_none());
     }
 
     #[test]
