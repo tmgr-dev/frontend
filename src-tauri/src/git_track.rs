@@ -150,11 +150,11 @@ fn sanitize(folders: Vec<String>) -> Vec<PathBuf> {
 }
 
 #[tauri::command]
-pub fn git_track_update(store: State<'_, GitTrackStore>, folders: Vec<String>) {
-  let kept = sanitize(folders);
-  if let Ok(mut current) = store.0.lock() {
-    *current = kept;
-  }
+pub async fn git_track_update(store: State<'_, GitTrackStore>, folders: Vec<String>) -> Result<(), String> {
+  let folders: Vec<String> = folders.into_iter().take(MAX_FOLDERS * 2).collect();
+  let kept = tauri::async_runtime::spawn_blocking(move || sanitize(folders)).await.map_err(|e| e.to_string())?;
+  *store.0.lock().map_err(|e| e.to_string())? = kept;
+  Ok(())
 }
 
 #[tauri::command]

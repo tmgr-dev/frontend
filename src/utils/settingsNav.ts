@@ -74,7 +74,7 @@ const GROUPS: SettingsNavGroup[] = [
 		label: 'App',
 		items: [
 			tab('theme', 'Theme', 'theme'),
-			tab('desktop', 'Shortcuts', 'shortcuts'),
+			tab('desktop', 'Desktop', 'shortcuts'),
 			tab('data', 'Local data', 'local-data'),
 			tab('experimental', 'Experimental', 'experimental'),
 			tab('about', 'About', 'about'),

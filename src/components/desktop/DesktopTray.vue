@@ -166,10 +166,14 @@
 
 			const onGitBranch = async ({ key }) => {
 				if (!isOn('task.countdown')) return;
+				const workspaceBefore = store.getters.currentWorkspaceId;
 				const found = await resolveTaskByKey(key);
-				if (!found) return;
+				if (!found || store.getters.currentWorkspaceId !== workspaceBefore) {
+					return;
+				}
 				const candidate = {
 					...toTrayTask(found),
+					workspaceId: found.workspace_id ?? workspaceBefore,
 					statusType: store.getters.workspaceStatusById(found.status_id)?.type,
 				};
 				const decision = decideGitTrack({
@@ -180,11 +184,11 @@
 				if (decision === 'ignore') return;
 				const target = {
 					taskId: found.id,
-					workspaceId:
-						candidate.workspaceId ?? store.getters.currentWorkspaceId,
+					workspaceId: candidate.workspaceId,
 				};
 				if (decision === 'switch') {
 					await switchTo(target);
+					await tasksRefreshed();
 					toast({ description: `Timer switched to ${key}` });
 					return;
 				}
@@ -208,6 +212,22 @@
 					'A branch change matches a task. Open TMGR to start its timer.',
 				);
 			};
+
+			let gitQueue = Promise.resolve();
+			let tasksChanged = null;
+			const tasksRefreshed = () =>
+				new Promise((resolve) => {
+					const timer = setTimeout(resolve, 3000);
+					tasksChanged = () => {
+						clearTimeout(timer);
+						resolve();
+					};
+				});
+			watch(
+				() => props.tasks,
+				() => tasksChanged?.(),
+				{ deep: true },
+			);
 
 			const safely = (action) => async (event) => {
 				try {
@@ -257,7 +277,9 @@
 					),
 					await listen('tray://stop', safely(stopOne)),
 					await listen('tray://switch', safely(switchTo)),
-					await listen('git-track://branch', safely(onGitBranch)),
+					await listen('git-track://branch', (event) => {
+						gitQueue = gitQueue.then(() => safely(onGitBranch)(event));
+					}),
 					await listen('tray://dnd', ({ payload }) => setDnd(payload)),
 					await listen('idle://returned', async (event) => {
 						reloadActiveTasks();

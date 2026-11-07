@@ -41,7 +41,7 @@ describe('settingsNavGroups', () => {
 			Account: ['Profile', 'Notifications', 'Smart Devices', 'Privacy'],
 			Workspace: ['General', 'Modules', 'Personas'],
 			Agents: ['Agent work', 'Agent alerts', 'Plugins'],
-			App: ['Theme', 'Shortcuts', 'Local data', 'Experimental', 'About'],
+			App: ['Theme', 'Desktop', 'Local data', 'Experimental', 'About'],
 		});
 	});
 

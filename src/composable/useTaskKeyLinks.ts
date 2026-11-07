@@ -43,10 +43,6 @@ export const useTaskKeyPrefixes = () => {
 	return prefixes;
 };
 
-/**
- * The task a key names, or null. The key is not an id, so it is resolved
- * through the same search the user would type; errors count as no match.
- */
 export const resolveTaskByKey = async (key: string) => {
 	try {
 		const response = await getTasks({
@@ -61,7 +57,8 @@ export const resolveTaskByKey = async (key: string) => {
 };
 
 /**
- * Open the task a key names. A key nobody owns simply does nothing.
+ * Open the task a key names. The key is not an id, so it is resolved through
+ * the same search the user would type; a key nobody owns simply does nothing.
  */
 export const openTaskByKey = async (key: string): Promise<boolean> => {
 	try {

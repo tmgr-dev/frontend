@@ -30,9 +30,7 @@ export const loadGitTrackMode = (): GitTrackMode => {
 export const saveGitTrackMode = (mode: GitTrackMode): void => {
 	try {
 		localStorage.setItem(MODE_KEY, mode);
-	} catch {
-		/* storage unavailable: the mode falls back to ask after a restart */
-	}
+	} catch {}
 };
 
 export const loadGitTrackFolders = (): string[] => {
@@ -54,9 +52,7 @@ export const saveGitTrackFolders = (folders: string[]): void => {
 			FOLDERS_KEY,
 			JSON.stringify(folders.slice(0, MAX_GIT_TRACK_FOLDERS)),
 		);
-	} catch {
-		/* storage unavailable: the folder list won't survive a restart */
-	}
+	} catch {}
 };
 
 const updateWatchedFolders = async (folders: string[]): Promise<void> => {
