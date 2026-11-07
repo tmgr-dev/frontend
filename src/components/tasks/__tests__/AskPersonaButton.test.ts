@@ -10,6 +10,10 @@ const mockStore: { state: any; getters: any } = { state: {}, getters: {} };
 const mockLocalContext = jest.fn(async (_w: unknown, user: unknown) => ({
 	user,
 }));
+const mockFetchLimits = jest.fn(async () => ({
+	maxTokens: 4096,
+	maxAnswerChars: 20000,
+}));
 const mockReadPersonaCache = jest.fn(async () => null);
 const mockCreateLlmChat = jest.fn(() => ({
 	chat: jest.fn(),
@@ -43,6 +47,12 @@ jest.mock('@/local/personaCache', () => ({
 }));
 jest.mock('@/local/llmClient', () => ({
 	createLlmChat: (...args: []) => mockCreateLlmChat(...args),
+}));
+jest.mock('@/local/personaLimits', () => ({
+	ASK_TOTAL_TIMEOUT_MS: 900000,
+	DEFAULT_MAX_TOKENS: 4096,
+	DEFAULT_MAX_ANSWER_CHARS: 20000,
+	fetchPersonaLimits: () => mockFetchLimits(),
 }));
 const mockAskPersonaOnTask = jest.fn(async (_params: any) => ({
 	text: '',
@@ -96,7 +106,11 @@ test('local-only mode uses the local profile id everywhere', async () => {
 	for (const user of users)
 		expect(user).toEqual({ id: -1, name: 'Ann', email: '' });
 	expect(mockReadPersonaCache).toHaveBeenCalledWith('p1', -1);
-	expect(mockCreateLlmChat).toHaveBeenCalledWith(expect.anything(), -1);
+	expect(mockCreateLlmChat).toHaveBeenCalledWith(
+		expect.anything(),
+		-1,
+		expect.anything(),
+	);
 });
 
 test('a signed-in user keeps the account id', async () => {
@@ -105,7 +119,11 @@ test('a signed-in user keeps the account id', async () => {
 		{ isLocalOnly: false },
 	);
 	expect(mockReadPersonaCache).toHaveBeenCalledWith('p1', 42);
-	expect(mockCreateLlmChat).toHaveBeenCalledWith(expect.anything(), 42);
+	expect(mockCreateLlmChat).toHaveBeenCalledWith(
+		expect.anything(),
+		42,
+		expect.anything(),
+	);
 });
 
 test('the account mode is read when asking, not when the window opens', async () => {
@@ -120,7 +138,11 @@ test('the account mode is read when asking, not when the window opens', async ()
 	mockStore.getters = { isLocalOnly: false };
 	await setup.ask();
 	expect(mockReadPersonaCache).toHaveBeenCalledWith('p1', 42);
-	expect(mockCreateLlmChat).toHaveBeenCalledWith(expect.anything(), 42);
+	expect(mockCreateLlmChat).toHaveBeenCalledWith(
+		expect.anything(),
+		42,
+		expect.anything(),
+	);
 });
 
 test('shows the partial answer while asking and clears it after', async () => {
@@ -406,4 +428,89 @@ test('a failing default persona creation still lists the personas', async () => 
 	const setup = loadComponent().setup({ taskId: 1 }, { emit: jest.fn() });
 	for (const fn of mounted) await fn();
 	expect(setup.enabledPersonas.value).toHaveLength(1);
+});
+
+const mountSignedIn = async () => {
+	mounted.length = 0;
+	mockStore.state = { user: { id: 42, name: 'Bo', email: 'b@example.com' } };
+	mockStore.getters = { isLocalOnly: false };
+	const emit = jest.fn();
+	const setup = loadComponent().setup({ taskId: 1 }, { emit });
+	for (const fn of mounted) await fn();
+	return { setup, emit };
+};
+
+test('passes the platform limits to the chat and to the agent', async () => {
+	mockFetchLimits.mockResolvedValueOnce({ maxTokens: 8000, maxAnswerChars: 5000 });
+	const { setup } = await mountSignedIn();
+	await setup.ask();
+	expect(mockCreateLlmChat).toHaveBeenCalledWith(
+		expect.anything(),
+		42,
+		expect.objectContaining({ maxTokens: 8000, deadlineAt: expect.any(Number) }),
+	);
+	expect(mockAskPersonaOnTask.mock.calls[0][0].maxAnswerChars).toBe(5000);
+});
+
+test('local-only mode uses the default limits without asking the backend', async () => {
+	mounted.length = 0;
+	mockStore.state = { user: {}, localProfile: { name: 'Ann' } };
+	mockStore.getters = { isLocalOnly: true };
+	const setup = loadComponent().setup({ taskId: 1 }, { emit: jest.fn() });
+	for (const fn of mounted) await fn();
+	await setup.ask();
+	expect(mockFetchLimits).not.toHaveBeenCalled();
+	expect(mockCreateLlmChat).toHaveBeenCalledWith(
+		expect.anything(),
+		-1,
+		expect.objectContaining({ maxTokens: 4096 }),
+	);
+	expect(mockAskPersonaOnTask.mock.calls[0][0].maxAnswerChars).toBe(20000);
+});
+
+test('an over-limit answer waits for the user and Discard does not report a post', async () => {
+	const { setup, emit } = await mountSignedIn();
+	let decision!: Promise<boolean>;
+	mockAskPersonaOnTask.mockImplementationOnce(async (params: any) => {
+		decision = params.confirmPublish({ length: 25000, limit: 20000 });
+		const published = await decision;
+		return { text: 'x', toolCalls: 0, posted: published };
+	});
+	const asking = setup.ask();
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	expect(setup.pendingConfirm.value).toEqual({ length: 25000, limit: 20000 });
+	setup.settleConfirm(false);
+	await asking;
+	expect(await decision).toBe(false);
+	expect(setup.pendingConfirm.value).toBeNull();
+	expect(emit).not.toHaveBeenCalledWith('posted');
+});
+
+test('Publish anyway releases the confirmation with true', async () => {
+	const { setup, emit } = await mountSignedIn();
+	mockAskPersonaOnTask.mockImplementationOnce(async (params: any) => {
+		const published = await params.confirmPublish({ length: 25000, limit: 20000 });
+		return { text: 'x', toolCalls: 0, posted: published };
+	});
+	const asking = setup.ask();
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	setup.settleConfirm(true);
+	await asking;
+	expect(emit).toHaveBeenCalledWith('posted');
+});
+
+test('cancelling while the confirmation is showing discards the answer', async () => {
+	const { setup } = await mountSignedIn();
+	let decision!: Promise<boolean>;
+	mockAskPersonaOnTask.mockImplementationOnce(async (params: any) => {
+		decision = params.confirmPublish({ length: 25000, limit: 20000 });
+		await decision;
+		return { text: 'x', toolCalls: 0, posted: false };
+	});
+	const asking = setup.ask();
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	setup.cancelAsk();
+	await asking;
+	expect(await decision).toBe(false);
+	expect(setup.pendingConfirm.value).toBeNull();
 });

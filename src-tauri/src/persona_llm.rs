@@ -960,6 +960,67 @@ pub fn chat_completions_url(base_url: &str) -> String {
   url
 }
 
+pub const DEFAULT_MAX_TOKENS: u32 = 4096;
+const MIN_MAX_TOKENS: u32 = 256;
+const MAX_MAX_TOKENS: u32 = 65536;
+const IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+const TOTAL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+
+#[derive(Clone, Copy, Debug)]
+struct StreamLimits {
+  idle: Duration,
+  total: Duration,
+}
+
+impl Default for StreamLimits {
+  fn default() -> Self {
+    Self { idle: IDLE_TIMEOUT, total: TOTAL_TIMEOUT }
+  }
+}
+
+impl StreamLimits {
+  fn with_total_ms(total_ms: Option<u64>) -> Self {
+    let total = total_ms.map_or(TOTAL_TIMEOUT, |ms| Duration::from_millis(ms).min(TOTAL_TIMEOUT));
+    Self { idle: IDLE_TIMEOUT, total }
+  }
+}
+
+struct Deadline {
+  limits: StreamLimits,
+  ends: tokio::time::Instant,
+}
+
+impl Deadline {
+  fn new(limits: StreamLimits) -> Self {
+    Self { limits, ends: tokio::time::Instant::now() + limits.total }
+  }
+
+  async fn guard<T>(&self, work: impl std::future::Future<Output = T>) -> Result<T, String> {
+    let remaining = self.ends.saturating_duration_since(tokio::time::Instant::now());
+    let total_first = remaining <= self.limits.idle;
+    match tokio::time::timeout(self.limits.idle.min(remaining), work).await {
+      Ok(value) => Ok(value),
+      Err(_) if total_first => Err(format!(
+        "The answer took longer than {} minutes and was stopped.",
+        self.limits.total.as_secs().div_ceil(60)
+      )),
+      Err(_) => Err(format!(
+        "The model sent no data for {} seconds and the request was stopped.",
+        self.limits.idle.as_secs()
+      )),
+    }
+  }
+}
+
+fn clamp_max_tokens(requested: Option<u32>) -> u32 {
+  requested.unwrap_or(DEFAULT_MAX_TOKENS).clamp(MIN_MAX_TOKENS, MAX_MAX_TOKENS)
+}
+
+fn mentions_max_tokens(body: &str) -> bool {
+  let lower = body.to_ascii_lowercase();
+  lower.contains("max_tokens") || lower.contains("max_completion_tokens")
+}
+
 const ERROR_BODY_CAP: usize = 64 * 1024;
 const JSON_BODY_CAP: usize = 4 * 1024 * 1024;
 
@@ -1032,6 +1093,34 @@ async fn post_chat(
   Ok(response)
 }
 
+async fn open_response(
+  client: &reqwest::Client,
+  url: &str,
+  mut body: Value,
+  api_key: Option<&str>,
+  deadline: &Deadline,
+) -> Result<reqwest::Response, String> {
+  let encode = |body: &Value| serde_json::to_vec(body).map_err(|e| e.to_string());
+  let mut response = deadline.guard(post_chat(client, url, encode(&body)?, api_key)).await??;
+  if response.status() != reqwest::StatusCode::BAD_REQUEST {
+    return Ok(response);
+  }
+  let rejected = tokio::time::timeout(Duration::from_secs(5), read_capped(&mut response, ERROR_BODY_CAP))
+    .await
+    .ok()
+    .and_then(Result::ok)
+    .unwrap_or_default();
+  let rejected = String::from_utf8_lossy(&rejected);
+  let object = body.as_object_mut().ok_or("invalid request body")?;
+  let Some(tokens) = object.get("max_tokens").cloned().filter(|_| mentions_max_tokens(&rejected)) else {
+    return Err(sanitize_error_body("400 Bad Request", &rejected, api_key));
+  };
+  object.remove("max_tokens");
+  object.insert("max_completion_tokens".into(), tokens);
+  deadline.guard(post_chat(client, url, encode(&body)?, api_key)).await?
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn stream_chat<R: Runtime>(
   app: &AppHandle<R>,
   window: &str,
@@ -1040,7 +1129,10 @@ async fn stream_chat<R: Runtime>(
   api_key: Option<&str>,
   messages: Vec<Value>,
   tools: Option<Value>,
+  max_tokens: u32,
+  limits: StreamLimits,
 ) -> Result<(), String> {
+  let deadline = Deadline::new(limits);
   let client = llm_http_client(&config.base_url)?;
   let url = chat_completions_url(&config.base_url);
   // A typed struct here would silently drop fields the agent loop already built (tool_calls, tool_call_id).
@@ -1052,8 +1144,8 @@ async fn stream_chat<R: Runtime>(
   if let Some(tools) = tools {
     body["tools"] = tools;
   }
-  let body = serde_json::to_vec(&body).map_err(|e| e.to_string())?;
-  let mut response = post_chat(&client, &url, body, api_key).await?;
+  body["max_tokens"] = max_tokens.into();
+  let mut response = open_response(&client, &url, body, api_key, &deadline).await?;
   if !response.status().is_success() {
     let status = response.status().to_string();
     let body = tokio::time::timeout(Duration::from_secs(5), read_capped(&mut response, ERROR_BODY_CAP))
@@ -1069,7 +1161,7 @@ async fn stream_chat<R: Runtime>(
     .and_then(|v| v.to_str().ok())
     .is_some_and(|v| v.to_ascii_lowercase().contains("json"));
   if is_json {
-    let body = read_capped(&mut response, JSON_BODY_CAP).await?;
+    let body = deadline.guard(read_capped(&mut response, JSON_BODY_CAP)).await??;
     let text = String::from_utf8_lossy(&body);
     let events = if text.trim_start().starts_with("data:") {
       parse_sse_text(&text, api_key)
@@ -1081,17 +1173,18 @@ async fn stream_chat<R: Runtime>(
     }
     return Ok(());
   }
-  pump_stream(&mut response, api_key, |event| emit_event(app, window, request_id, event)).await
+  pump_stream(&mut response, api_key, &deadline, |event| emit_event(app, window, request_id, event)).await
 }
 
 /// Every exit flushes the redactor's held tail: terminal events through `push`, early errors through `finish`.
 async fn pump_stream<F: FnMut(ChatEvent)>(
   response: &mut reqwest::Response,
   api_key: Option<&str>,
+  deadline: &Deadline,
   mut emit: F,
 ) -> Result<(), String> {
   let mut redactor = StreamRedactor::new(api_key);
-  let result = pump_events(response, api_key, |event| redactor.push(event).into_iter().for_each(&mut emit)).await;
+  let result = pump_events(response, api_key, deadline, |event| redactor.push(event).into_iter().for_each(&mut emit)).await;
   redactor.finish().into_iter().for_each(&mut emit);
   result
 }
@@ -1099,6 +1192,7 @@ async fn pump_stream<F: FnMut(ChatEvent)>(
 async fn pump_events<F: FnMut(ChatEvent)>(
   response: &mut reqwest::Response,
   api_key: Option<&str>,
+  deadline: &Deadline,
   mut emit: F,
 ) -> Result<(), String> {
   let mut buffer = SseBuffer::default();
@@ -1106,7 +1200,7 @@ async fn pump_events<F: FnMut(ChatEvent)>(
   let mut saw_finish = false;
   let mut saw_data = false;
   loop {
-    let chunk = match response.chunk().await {
+    let chunk = match deadline.guard(response.chunk()).await? {
       Ok(chunk) => chunk,
       Err(_) if saw_finish && useful => {
         emit(ChatEvent::Done);
@@ -1138,6 +1232,7 @@ async fn pump_events<F: FnMut(ChatEvent)>(
 
 /// The key never crosses the IPC boundary; only `llm://chat` events do.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn llm_chat<R: Runtime>(
   app: AppHandle<R>,
   window: tauri::Window<R>,
@@ -1145,6 +1240,8 @@ pub async fn llm_chat<R: Runtime>(
   request_id: String,
   messages: Vec<Value>,
   tools: Option<Value>,
+  max_tokens: Option<u32>,
+  total_timeout_ms: Option<u64>,
 ) -> Result<(), String> {
   let generation = window_generation(&IN_FLIGHT, window.label())?;
   let access = slot_access(crate::local_identity::current_id(&app), user_id);
@@ -1174,7 +1271,18 @@ pub async fn llm_chat<R: Runtime>(
   let task_request_id = request_id.clone();
   register_in_flight(&IN_FLIGHT, request_id, label, generation, async move {
     if let Err(message) =
-      stream_chat(&app, &task_label, &task_request_id, &config, api_key.as_deref(), messages, tools).await
+      stream_chat(
+        &app,
+        &task_label,
+        &task_request_id,
+        &config,
+        api_key.as_deref(),
+        messages,
+        tools,
+        clamp_max_tokens(max_tokens),
+        StreamLimits::with_total_ms(total_timeout_ms),
+      )
+      .await
     {
       emit_event(&app, &task_label, &task_request_id, ChatEvent::Error { message });
     }
@@ -2858,8 +2966,164 @@ mod tests {
     let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
     let mut response = post_chat(&client, &url, b"{}".to_vec(), None).await.unwrap();
     let mut events = Vec::new();
-    let result = pump_stream(&mut response, key, |e| events.push(e)).await;
+    let result = pump_stream(&mut response, key, &Deadline::new(StreamLimits::default()), |e| events.push(e)).await;
     (result, events)
+  }
+
+  async fn serve_script(listener: tokio::net::TcpListener, script: Vec<(Duration, String)>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let Ok((mut socket, _)) = listener.accept().await else { return };
+    let mut buf = [0u8; 4096];
+    let mut seen = Vec::new();
+    while let Ok(Ok(n)) = tokio::time::timeout(Duration::from_millis(100), socket.read(&mut buf)).await {
+      if n == 0 {
+        break;
+      }
+      seen.extend_from_slice(&buf[..n]);
+      if seen.windows(4).any(|w| w == b"\r\n\r\n") && seen.ends_with(b"}") {
+        break;
+      }
+    }
+    for (delay, chunk) in script {
+      tokio::time::sleep(delay).await;
+      if socket.write_all(chunk.as_bytes()).await.is_err() {
+        return;
+      }
+    }
+    tokio::time::sleep(Duration::from_secs(10)).await;
+  }
+
+  const SSE_HEAD: &str = "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n";
+
+  fn limits(idle_ms: u64, total_ms: u64) -> StreamLimits {
+    StreamLimits { idle: Duration::from_millis(idle_ms), total: Duration::from_millis(total_ms) }
+  }
+
+  async fn pump_script(script: Vec<(Duration, String)>, limits: StreamLimits) -> (Result<(), String>, Vec<ChatEvent>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(serve_script(listener, script));
+    let client = llm_http_client("http://127.0.0.1").unwrap();
+    let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
+    let deadline = Deadline::new(limits);
+    let mut events = Vec::new();
+    let work = async {
+      let mut response = open_response(&client, &url, serde_json::json!({}), None, &deadline).await?;
+      pump_stream(&mut response, None, &deadline, |e| events.push(e)).await
+    };
+    let result = tokio::time::timeout(Duration::from_secs(5), work).await.expect("the request must end by itself");
+    (result, events)
+  }
+
+  fn ms(n: u64) -> Duration {
+    Duration::from_millis(n)
+  }
+
+  #[tokio::test]
+  async fn a_server_that_never_answers_ends_with_the_idle_message() {
+    let (result, _) = pump_script(vec![], limits(150, 600)).await;
+    assert!(result.unwrap_err().contains("The model sent no data for"));
+  }
+
+  #[tokio::test]
+  async fn a_stream_that_goes_silent_keeps_its_text_and_ends_with_the_idle_message() {
+    let script = vec![(ms(0), format!("{SSE_HEAD}{}", chunk("{\"content\":\"Hi\"}", "null")))];
+    let (result, events) = pump_script(script, limits(150, 600)).await;
+    assert!(result.unwrap_err().contains("The model sent no data for"));
+    assert_eq!(events, vec![ChatEvent::Delta { text: "Hi".into() }]);
+  }
+
+  #[tokio::test]
+  async fn a_steady_drip_resets_the_idle_timer_but_hits_the_total_cap() {
+    let mut script = vec![(ms(0), SSE_HEAD.to_string())];
+    for _ in 0..40 {
+      script.push((ms(50), chunk("{\"content\":\"x\"}", "null")));
+    }
+    let (result, events) = pump_script(script, limits(200, 500)).await;
+    assert!(result.unwrap_err().contains("took longer than"));
+    assert!(events.len() >= 3);
+  }
+
+  #[tokio::test]
+  async fn a_fast_reply_is_not_cut_off_by_tight_limits() {
+    let reply = format!("{SSE_HEAD}{}data: [DONE]\n\n", chunk("{\"content\":\"ok\"}", "\"stop\""));
+    let (result, events) = pump_script(vec![(ms(0), reply)], limits(300, 1000)).await;
+    assert!(result.is_ok());
+    assert_eq!(events.first(), Some(&ChatEvent::Delta { text: "ok".into() }));
+  }
+
+  #[test]
+  fn max_tokens_defaults_and_is_clamped() {
+    assert_eq!(clamp_max_tokens(None), 4096);
+    assert_eq!(clamp_max_tokens(Some(1)), 256);
+    assert_eq!(clamp_max_tokens(Some(9_999_999)), 65536);
+    assert_eq!(clamp_max_tokens(Some(8000)), 8000);
+  }
+
+  #[test]
+  fn the_total_timeout_from_the_caller_is_capped_at_fifteen_minutes() {
+    assert_eq!(StreamLimits::with_total_ms(None).total, Duration::from_secs(900));
+    assert_eq!(StreamLimits::with_total_ms(Some(60_000)).total, Duration::from_secs(60));
+    assert_eq!(StreamLimits::with_total_ms(Some(99_999_999)).total, Duration::from_secs(900));
+    assert_eq!(StreamLimits::with_total_ms(None).idle, Duration::from_secs(300));
+  }
+
+  async fn serve_replies(listener: tokio::net::TcpListener, replies: Vec<String>, received: std::sync::Arc<Mutex<Vec<String>>>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    for reply in replies {
+      let Ok((mut socket, _)) = listener.accept().await else { return };
+      let mut buf = [0u8; 8192];
+      let mut seen = Vec::new();
+      while let Ok(Ok(n)) = tokio::time::timeout(Duration::from_millis(100), socket.read(&mut buf)).await {
+        if n == 0 {
+          break;
+        }
+        seen.extend_from_slice(&buf[..n]);
+        if seen.windows(4).any(|w| w == b"\r\n\r\n") && seen.ends_with(b"}") {
+          break;
+        }
+      }
+      received.lock().unwrap().push(String::from_utf8_lossy(&seen).into_owned());
+      let _ = socket.write_all(reply.as_bytes()).await;
+    }
+  }
+
+  async fn open_with_replies(replies: Vec<String>) -> (Result<u16, String>, Vec<String>) {
+    use std::sync::Arc;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let received = Arc::new(Mutex::new(Vec::new()));
+    tokio::spawn(serve_replies(listener, replies, received.clone()));
+    let client = llm_http_client("http://127.0.0.1").unwrap();
+    let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
+    let body = serde_json::json!({"model": "m", "max_tokens": 4096});
+    let result = open_response(&client, &url, body, None, &Deadline::new(StreamLimits::default()))
+      .await
+      .map(|r| r.status().as_u16());
+    let seen = received.lock().unwrap().clone();
+    (result, seen)
+  }
+
+  fn bad_request(body: &str) -> String {
+    format!("HTTP/1.1 400 Bad Request\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len())
+  }
+
+  #[tokio::test]
+  async fn a_server_that_rejects_max_tokens_gets_one_retry_with_max_completion_tokens() {
+    let rejected = bad_request("{\"error\":{\"message\":\"Unsupported parameter: 'max_tokens' is not supported\"}}");
+    let ok = "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n".to_string();
+    let (result, seen) = open_with_replies(vec![rejected, ok]).await;
+    assert_eq!(result, Ok(200));
+    assert!(seen[0].contains("\"max_tokens\":4096"));
+    assert!(seen[1].contains("\"max_completion_tokens\":4096") && !seen[1].contains("\"max_tokens\""));
+  }
+
+  #[tokio::test]
+  async fn an_unrelated_bad_request_is_not_retried() {
+    let rejected = bad_request("{\"error\":\"model not found\"}");
+    let (result, seen) = open_with_replies(vec![rejected]).await;
+    assert!(result.unwrap_err().contains("400"));
+    assert_eq!(seen.len(), 1);
   }
 
   fn sse_reply(body: &str) -> String {

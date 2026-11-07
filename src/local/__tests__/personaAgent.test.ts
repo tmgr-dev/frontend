@@ -331,6 +331,56 @@ describeSqlite('local persona agent loop', () => {
 		});
 	});
 
+	describe('answers over the length limit', () => {
+		const longChat = async function* (): AsyncIterable<ChatStreamEvent> {
+			yield { type: 'text', delta: 'x'.repeat(1500) };
+		};
+		const ask = (extra: Record<string, unknown>) =>
+			askPersonaOnTask({
+				ctx,
+				router,
+				persona,
+				taskId,
+				systemPrompt: 'Review the task',
+				grantedPermissions: ['comments:write', 'agent_work:write'],
+				chat: longChat,
+				...extra,
+			});
+		const commentCount = async () =>
+			(await dispatchLocal(router, ctx, 'GET', `tasks/${taskId}/comments`))!
+				.data.data.length;
+
+		it('asks before posting and posts once confirmed', async () => {
+			const confirmPublish = jest.fn(async () => true);
+			const result = await ask({ maxAnswerChars: 1000, confirmPublish });
+			expect(confirmPublish).toHaveBeenCalledWith({ length: 1500, limit: 1000 });
+			expect(result.posted).toBe(true);
+			expect(await commentCount()).toBe(1);
+		});
+
+		it('posts nothing when the user discards it', async () => {
+			const result = await ask({
+				maxAnswerChars: 1000,
+				confirmPublish: async () => false,
+			});
+			expect(result.posted).toBe(false);
+			expect(await commentCount()).toBe(0);
+		});
+
+		it('never posts an over-limit answer without a confirmation callback', async () => {
+			const result = await ask({ maxAnswerChars: 1000 });
+			expect(result.posted).toBe(false);
+			expect(await commentCount()).toBe(0);
+		});
+
+		it('does not ask when the answer fits the limit', async () => {
+			const confirmPublish = jest.fn(async () => false);
+			const result = await ask({ maxAnswerChars: 1500, confirmPublish });
+			expect(confirmPublish).not.toHaveBeenCalled();
+			expect(result.posted).toBe(true);
+		});
+	});
+
 	it('reports the text so far to onText as it arrives, restarting each model turn', async () => {
 		let calls = 0;
 		const chat = async function* (): AsyncIterable<ChatStreamEvent> {

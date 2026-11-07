@@ -67,6 +67,32 @@ describe('createLlmChat event routing', () => {
 	});
 });
 
+describe('createLlmChat limits', () => {
+	it('sends the token cap and the time left until the deadline', async () => {
+		mockInvoke.mockImplementation(async (command: string, args: any) => {
+			if (command === 'llm_chat') emit(args.requestId, { type: 'done' });
+		});
+		const { chat } = createLlmChat([], 1, {
+			maxTokens: 8000,
+			deadlineAt: Date.now() + 60_000,
+		});
+		await drain(chat([]));
+		const args = mockInvoke.mock.calls.find((c) => c[0] === 'llm_chat')![1];
+		expect(args.maxTokens).toBe(8000);
+		expect(args.totalTimeoutMs).toBeGreaterThan(50_000);
+		expect(args.totalTimeoutMs).toBeLessThanOrEqual(60_000);
+	});
+
+	it('stops with a clear message once the overall deadline has passed', async () => {
+		mockInvoke.mockResolvedValue(undefined);
+		const { chat } = createLlmChat([], 1, { deadlineAt: Date.now() - 1 });
+		await expect(drain(chat([]))).rejects.toThrow(
+			'The answer took longer than 15 minutes and was stopped.',
+		);
+		expect(mockInvoke).not.toHaveBeenCalledWith('llm_chat', expect.anything());
+	});
+});
+
 describe('createLlmChat cancel', () => {
 	it('does not send the prompt when cancelled during identity resync', async () => {
 		let releaseResync!: () => void;

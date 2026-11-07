@@ -19,6 +19,26 @@
 		>
 			Ask persona
 		</button>
+		<template v-else-if="pendingConfirm">
+			<span class="text-ink-subtle">
+				The answer is {{ pendingConfirm.length }} characters, over the limit of
+				{{ pendingConfirm.limit }}.
+			</span>
+			<button
+				type="button"
+				class="rounded-pill border border-line px-3 py-1"
+				@click="settleConfirm(true)"
+			>
+				Publish anyway
+			</button>
+			<button
+				type="button"
+				class="rounded-pill border border-line px-3 py-1"
+				@click="settleConfirm(false)"
+			>
+				Discard
+			</button>
+		</template>
 		<template v-else>
 			<span class="text-ink-subtle">Asking…</span>
 			<button
@@ -47,6 +67,12 @@
 		personaToolDefinition,
 	} from '@/local/personaAgent';
 	import { LOCAL_OWNER_ID } from '@/local/personaGate';
+	import {
+		ASK_TOTAL_TIMEOUT_MS,
+		DEFAULT_MAX_ANSWER_CHARS,
+		DEFAULT_MAX_TOKENS,
+		fetchPersonaLimits,
+	} from '@/local/personaLimits';
 	import { readPersonaCache } from '@/local/personaCache';
 	import {
 		ensureDefaultLocalPersona,
@@ -79,7 +105,24 @@
 			const error = ref<string | null>(null);
 			const partialText = ref('');
 			let cancelCurrent: (() => Promise<void>) | null = null;
+			const pendingConfirm = ref<{ length: number; limit: number } | null>(
+				null,
+			);
+			let settleConfirmation: ((publish: boolean) => void) | null = null;
 			let cancelRequested = false;
+
+			const settleConfirm = (publish: boolean) => {
+				const settle = settleConfirmation;
+				settleConfirmation = null;
+				pendingConfirm.value = null;
+				settle?.(publish);
+			};
+
+			const confirmPublish = (info: { length: number; limit: number }) =>
+				new Promise<boolean>((resolve) => {
+					settleConfirmation = resolve;
+					pendingConfirm.value = info;
+				});
 
 			// Asking needs agent_work:write to record the run and comments:write to post the answer.
 			const enabledPersonas = computed(() =>
@@ -137,9 +180,19 @@
 						cached?.system_prompt ||
 						`You are ${persona.name}. ${persona.description ?? ''}`;
 					const grantedPermissions = persona.permissions ?? [];
+					const limits = store.getters?.isLocalOnly
+						? {
+								maxTokens: DEFAULT_MAX_TOKENS,
+								maxAnswerChars: DEFAULT_MAX_ANSWER_CHARS,
+							}
+						: await fetchPersonaLimits();
 					const { chat, cancel } = createLlmChat(
 						[personaToolDefinition(grantedPermissions)],
 						currentUser().id,
+						{
+							maxTokens: limits.maxTokens,
+							deadlineAt: Date.now() + ASK_TOTAL_TIMEOUT_MS,
+						},
 					);
 					cancelCurrent = cancel;
 					if (cancelRequested) return;
@@ -151,6 +204,8 @@
 						systemPrompt,
 						grantedPermissions,
 						chat,
+						maxAnswerChars: limits.maxAnswerChars,
+						confirmPublish,
 						onText: (text) => {
 							partialText.value = text;
 						},
@@ -163,7 +218,7 @@
 								wrote = true;
 						},
 					});
-					posted = !!result.posted || !cancelRequested;
+					posted = !!result.posted;
 				} catch (e) {
 					if (!cancelRequested)
 						error.value = e instanceof Error ? e.message : String(e);
@@ -177,6 +232,7 @@
 
 			const cancelAsk = () => {
 				cancelRequested = true;
+				settleConfirm(false);
 				return cancelCurrent?.();
 			};
 
@@ -191,6 +247,8 @@
 				asking,
 				error,
 				partialText,
+				pendingConfirm,
+				settleConfirm,
 				ask,
 				cancelAsk,
 			};

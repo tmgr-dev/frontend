@@ -75,7 +75,7 @@ export interface PersonaAgentParams {
 	onText?: (textSoFar: string) => void;
 	onToolCall?: (method: string) => void;
 	isCancelled?: () => boolean;
-	deliver?: (text: string) => Promise<void>;
+	deliver?: (text: string) => Promise<'posted' | 'discarded' | void>;
 }
 
 export interface PersonaAgentResult {
@@ -181,7 +181,7 @@ export const runPersonaAgent = async ({
 			}
 		}
 		if (isCancelled?.()) status = 'cancelled';
-		else await deliver?.(finalText);
+		else if ((await deliver?.(finalText)) === 'discarded') status = 'cancelled';
 	} catch (error) {
 		status = isCancelled?.() ? 'cancelled' : 'failed';
 		throw error;
@@ -214,12 +214,23 @@ export const runPersonaAgent = async ({
 
 /** Needs `comments:write` in the grant, same as any other persona-authored comment. */
 export const askPersonaOnTask = async (
-	params: PersonaAgentParams,
+	params: PersonaAgentParams & {
+		maxAnswerChars?: number;
+		confirmPublish?: (info: { length: number; limit: number }) => Promise<boolean>;
+	},
 ): Promise<PersonaAgentResult & { posted: boolean }> => {
 	let posted = false;
 	const result = await runPersonaAgent({
 		...params,
 		deliver: async (text) => {
+			const limit = params.maxAnswerChars;
+			if (limit !== undefined && text.length > limit) {
+				const confirmed = await params.confirmPublish?.({
+					length: text.length,
+					limit,
+				});
+				if (!confirmed) return 'discarded';
+			}
 			const actor = {
 				kind: 'persona' as const,
 				id: params.persona.uuid,
@@ -240,6 +251,7 @@ export const askPersonaOnTask = async (
 				);
 			}
 			posted = true;
+			return 'posted';
 		},
 	});
 	return { ...result, posted };

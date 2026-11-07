@@ -68,9 +68,15 @@ export const needsConfirmationOrigin = (error: unknown): string | null => {
 };
 
 /** Tool-call argument chunks stream by index; only assembled into a call once the turn is `done`. */
+export interface LlmChatOptions {
+	maxTokens?: number;
+	deadlineAt?: number;
+}
+
 export const createLlmChat = (
 	tools: unknown,
 	userId: number,
+	options: LlmChatOptions = {},
 ): { chat: ChatFn; cancel: () => Promise<void> } => {
 	let activeRequestId: string | null = null;
 	let cancelled = false;
@@ -98,7 +104,20 @@ export const createLlmChat = (
 		try {
 			await resyncCloudIdentity();
 			if (cancelled) throw new Error('cancelled');
-			await invoke('llm_chat', { userId, requestId, messages, tools });
+			const totalTimeoutMs =
+				options.deadlineAt === undefined
+					? undefined
+					: options.deadlineAt - Date.now();
+			if (totalTimeoutMs !== undefined && totalTimeoutMs <= 0)
+				throw new Error('The answer took longer than 15 minutes and was stopped.');
+			await invoke('llm_chat', {
+				userId,
+				requestId,
+				messages,
+				tools,
+				maxTokens: options.maxTokens,
+				totalTimeoutMs,
+			});
 			if (cancelled) await invoke('llm_cancel', { requestId });
 			type ToolBuffer = { id: string; name: string; arguments: string };
 			const toolBuffers: ToolBuffer[] = [];
