@@ -107,6 +107,15 @@ export interface OutgoingMessage {
 	action: MessageAction;
 }
 
+export type DeliveryState = 'sent' | 'delivered' | 'queued' | 'undelivered';
+
+export interface CardDelivery {
+	state: DeliveryState;
+	via: string | null;
+	detail: string | null;
+	at_ms: number;
+}
+
 export interface CardView {
 	id: string;
 	created_ms: number;
@@ -132,6 +141,8 @@ export interface CardView {
 	checks: CardCheck[];
 	links: CardLinks;
 	reply_via: ReplyVia;
+	push?: boolean;
+	delivery?: CardDelivery | null;
 }
 
 export type DiffLineKind = 'add' | 'del' | 'ctx';

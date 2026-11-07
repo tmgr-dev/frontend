@@ -3,6 +3,7 @@ import {
 	answerToast,
 	buildAnswer,
 	cardMode,
+	deliveryLabel,
 	isEmptyAnswer,
 } from '../answer';
 import { makeCard } from './fixtures';
@@ -68,6 +69,63 @@ describe('cardMode', () => {
 		});
 		expect(cardMode(hook)).toBe('answer');
 		expect(cardMode(makeCard({ state: 'deferred' }))).toBe('answer');
+	});
+});
+
+describe('cardMode push', () => {
+	it('allows answering a hook card with a push target', () => {
+		expect(cardMode(makeCard({ reply_via: 'hook', push: true }))).toBe(
+			'answer',
+		);
+		expect(cardMode(makeCard({ reply_via: 'hook', push: false }))).toBe(
+			'dismiss-only',
+		);
+	});
+});
+
+describe('deliveryLabel', () => {
+	const at_ms = 1;
+	it('returns null without a delivery', () => {
+		expect(deliveryLabel(null)).toBeNull();
+		expect(deliveryLabel(undefined)).toBeNull();
+	});
+
+	it('labels sent and delivered', () => {
+		expect(
+			deliveryLabel({ state: 'sent', via: null, detail: null, at_ms }),
+		).toBe('Sent to the session (unconfirmed)');
+		expect(
+			deliveryLabel({ state: 'delivered', via: null, detail: null, at_ms }),
+		).toBe('Delivered');
+		expect(
+			deliveryLabel({ state: 'delivered', via: 'runner', detail: null, at_ms }),
+		).toBe('Delivered via runner');
+		expect(
+			deliveryLabel({ state: 'delivered', via: 'hook', detail: null, at_ms }),
+		).toBe('Delivered');
+	});
+
+	it('labels queued with detail fallback', () => {
+		expect(
+			deliveryLabel({ state: 'queued', via: null, detail: null, at_ms }),
+		).toBe("Waiting for the agent's prompt");
+		expect(
+			deliveryLabel({ state: 'queued', via: null, detail: 'busy', at_ms }),
+		).toBe('busy');
+	});
+
+	it('labels undelivered with detail fallback', () => {
+		expect(
+			deliveryLabel({ state: 'undelivered', via: null, detail: null, at_ms }),
+		).toBe('Not delivered: session closed');
+		expect(
+			deliveryLabel({
+				state: 'undelivered',
+				via: null,
+				detail: 'no pty',
+				at_ms,
+			}),
+		).toBe('Not delivered: no pty');
 	});
 });
 

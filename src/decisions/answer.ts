@@ -1,4 +1,4 @@
-import type { Answer, CardView, LineComment } from './types';
+import type { Answer, CardDelivery, CardView, LineComment } from './types';
 
 export interface AnswerDraft {
 	choice?: string | null;
@@ -46,7 +46,11 @@ export const isFinal = (card: CardView): boolean =>
 
 export const cardMode = (card: CardView): CardMode => {
 	if (isFinal(card)) return 'final';
-	if (card.reply_via === 'hook' && !card.source.runner_session) {
+	if (
+		card.reply_via === 'hook' &&
+		!card.source.runner_session &&
+		card.push !== true
+	) {
 		return 'dismiss-only';
 	}
 	return 'answer';
@@ -68,4 +72,22 @@ export const answerToast = (card: CardView, answer: Answer): string => {
 			? 'saved, but the session has ended'
 			: answerSummary(card, answer)
 	}`;
+};
+
+export const deliveryLabel = (
+	delivery: CardDelivery | null | undefined,
+): string | null => {
+	if (!delivery) return null;
+	switch (delivery.state) {
+		case 'sent':
+			return 'Sent to the session (unconfirmed)';
+		case 'delivered':
+			return delivery.via === 'runner' ? 'Delivered via runner' : 'Delivered';
+		case 'queued':
+			return delivery.detail ?? "Waiting for the agent's prompt";
+		case 'undelivered':
+			return `Not delivered: ${delivery.detail ?? 'session closed'}`;
+		default:
+			return null;
+	}
 };

@@ -64,6 +64,8 @@
 			</div>
 		</div>
 
+		<div v-if="delivery" class="notice">{{ delivery }}</div>
+
 		<div v-if="mode === 'final'" class="notice final">
 			<div class="what">{{ finalTitle }}</div>
 			<div v-if="finalDetail">{{ finalDetail }}</div>
@@ -165,7 +167,7 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
-	import { cardMode, type CardMode } from '../answer';
+	import { cardMode, deliveryLabel, type CardMode } from '../answer';
 	import {
 		KIND_LABELS,
 		isHttpUrl,
@@ -209,6 +211,9 @@
 			},
 			mode(): CardMode {
 				return cardMode(this.card);
+			},
+			delivery(): string | null {
+				return deliveryLabel(this.card.delivery);
 			},
 			hasRecommended(): boolean {
 				return recommendedOption(this.card) !== null;
