@@ -54,10 +54,13 @@ jest.mock('@/local/personaGate', () => ({
 	PERSONA_PERMISSIONS: [],
 }));
 jest.mock('@/local/personas', () => mockPersonas);
-jest.mock('@/components/local/LocalAiSettings.vue', () => ({
-	__esModule: true,
-	default: { render: () => null },
-}));
+jest.mock('@/components/local/LocalAiSettings.vue', () => {
+	const { h } = jest.requireActual('vue');
+	return {
+		__esModule: true,
+		default: { render: () => h('section', { 'data-llm-settings': '' }) },
+	};
+});
 jest.mock('@/local/runtime', () => ({
 	activeLocalWorkspace: () => ({ code: 'w' }),
 	localContext: async () => ({}),
@@ -131,5 +134,33 @@ test('the lists still load when ensuring the default agent fails', async () => {
 	} finally {
 		delete (mockStore.getters as any).isLocalOnly;
 		error.mockRestore();
+	}
+});
+
+const renderPanel = async (props: Record<string, unknown> = {}) => {
+	const component = loadComponent();
+	const state = component.setup(props, {});
+	return await renderToString(
+		createSSRApp({ ...component, setup: () => state }, props),
+	);
+};
+
+test('the panel renders the AI settings by default', async () => {
+	(mockStore.getters as any).isLocalOnly = true;
+	try {
+		expect(await renderPanel()).toContain('data-llm-settings');
+	} finally {
+		delete (mockStore.getters as any).isLocalOnly;
+	}
+});
+
+test('the panel leaves out the AI settings when the page already shows them', async () => {
+	(mockStore.getters as any).isLocalOnly = true;
+	try {
+		expect(await renderPanel({ showLlmSettings: false })).not.toContain(
+			'data-llm-settings',
+		);
+	} finally {
+		delete (mockStore.getters as any).isLocalOnly;
 	}
 });

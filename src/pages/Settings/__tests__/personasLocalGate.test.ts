@@ -36,6 +36,13 @@ describe('Personas page local gate', () => {
 		expect(cloud).toContain('"tag":"PersonaSharedSkills"');
 	});
 
+	it('does not render a second AI settings form next to the persona panel', () => {
+		const { cloud, local } = rootBranches();
+		expect(cloud).toContain('"tag":"LocalPersonasPanel"');
+		expect(cloud).toContain('"rawName":":show-llm-settings"');
+		expect(local).not.toContain('show-llm-settings');
+	});
+
 	it('keeps history, restore and pin calls out of the local library', () => {
 		const source = read('../../components/local/LocalSkillsLibrary.vue');
 		expect(source).not.toMatch(/SharedSkillHistory|\/versions|\/restore|\/pin/);

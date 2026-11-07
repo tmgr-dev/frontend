@@ -38,7 +38,7 @@
 			>
 		</div>
 
-		<LocalAiSettings v-if="workspace" />
+		<LocalAiSettings v-if="workspace && showLlmSettings" />
 
 		<section
 			v-if="workspace"
@@ -397,6 +397,9 @@
 
 	export default defineComponent({
 		name: 'LocalPersonasPanel',
+		props: {
+			showLlmSettings: { type: Boolean, default: true },
+		},
 		components: {
 			Button,
 			Input,

@@ -227,7 +227,11 @@
 			</div>
 		</SettingsSection>
 
-		<LocalPersonasPanel v-if="isDesktop" class="mt-6" />
+		<LocalPersonasPanel
+			v-if="isDesktop"
+			class="mt-6"
+			:show-llm-settings="false"
+		/>
 		<LocalSkillsLibrary v-if="isDesktop" class="mt-6" />
 	</PageContainer>
 </template>
