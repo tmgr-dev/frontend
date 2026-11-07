@@ -1,4 +1,5 @@
 #![cfg(unix)]
+mod common;
 
 use std::fs;
 use std::io::Write;
@@ -189,7 +190,12 @@ impl Drop for Fx {
 }
 
 fn sessions_available() -> bool {
-    tmgr_runner::daemon::landlock_abi() >= 6
+    let abi = tmgr_runner::daemon::landlock_abi();
+    if cfg!(target_os = "linux") && abi < 6 {
+        common::skip_without_landlock(&format!("Landlock ABI {abi} < 6"));
+        return false;
+    }
+    true
 }
 
 fn wait_for(what: &str, mut done: impl FnMut() -> bool) {

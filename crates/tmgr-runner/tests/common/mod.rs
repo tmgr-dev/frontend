@@ -6,6 +6,16 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use tmgr_runner::sandbox::{prepare, Grants, Network, SandboxSpec};
 
+pub fn skip_without_landlock(reason: &str) {
+    if std::env::var("TMGR_TEST_REQUIRE_LANDLOCK").as_deref() == Ok("1") {
+        panic!("{reason}; TMGR_TEST_REQUIRE_LANDLOCK=1 requires Landlock to be usable");
+    }
+    let _ = std::io::Write::write_all(
+        &mut std::io::stderr(),
+        format!("SKIPPED: {reason}\n").as_bytes(),
+    );
+}
+
 pub const SECRET: &str = "TOPSECRET-4711";
 pub const SID: &str = "s_abcdefghij";
 pub const OTHER_SID: &str = "s_klmnopqrst";

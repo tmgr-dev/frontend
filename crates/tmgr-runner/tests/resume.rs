@@ -1,4 +1,5 @@
 #![cfg(unix)]
+mod common;
 
 use chrono::Utc;
 use std::fs;
@@ -50,7 +51,7 @@ fn private_dir(path: &Path) {
 fn sessions_available() -> bool {
     let abi = tmgr_runner::daemon::landlock_abi();
     if cfg!(target_os = "linux") && abi < 6 {
-        eprintln!("skipped: Landlock ABI {abi} < 6");
+        common::skip_without_landlock(&format!("Landlock ABI {abi} < 6"));
         return false;
     }
     true

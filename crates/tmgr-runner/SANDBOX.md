@@ -170,7 +170,7 @@ after the allow rules; on Linux they are simply never granted.
 
 macOS: the command is still wrapped in `sandbox-exec`, with `(allow default)` and only these denials: file writes, and unix-socket connects, under the runner directory (`r.sock`, session sockets), the homes directory, the tmgr config directory (both `$XDG_CONFIG_HOME/tmgr` and `~/.config/tmgr`, the runner's trust store and profile folder, each in literal and resolved form), `~/.tmgr.dev` (local workspaces and their access socket) and the profile-protected paths and the config directories CLIs reported on connect; writes to the `tmgr` executable; reads under the runner directory and the homes directory, so the agent cannot take the client secret or other runs' logs and logins. Other reads, signals, terminals and the network are not restricted. This is the real fence: without it the agent could talk to the runner or edit the trust store. Because the agent already runs inside this profile, it cannot start a sandbox of its own (`sandbox-exec` refuses to nest), so an agent's built-in macOS sandbox fails in this mode. A fenced folder that does not exist yet (for example `~/.config`) is not protected against being created as a symlink elsewhere; the agent already has full control of the real home, so this is not a new boundary.
 
-Linux: the command runs directly, with no Landlock and no helper. There is no control-plane fence, because Landlock cannot express "write anywhere except this subtree". The `TMGR_RUN_*` environment check and the typed prompts are speed bumps, not boundaries. The agent can read the client secret, talk to the runner as the CLI, and edit its own worklog, so the audit fields are not tamper-proof there. On both systems the agent has the user's full powers otherwise: ssh keys, keychain, cloud credentials and the network.
+Linux: the command runs directly, with no Landlock and no helper. There is no control-plane fence, because Landlock cannot express "write anywhere except this subtree". The `TMGR_RUN_*` environment check and the typed prompts are speed bumps, not boundaries. The agent can read the client secret, talk to the runner as the CLI, and edit its own worklog, so the audit fields are not tamper-proof there. Because the agent can act as the CLI, anything the CLI can answer or type into a session, including permission prompts shown as cards, can be answered by the agent itself; approvals in a no-sandbox Linux session are not proof that a person approved, so use the sandbox when that matters. On both systems the agent has the user's full powers otherwise: ssh keys, keychain, cloud credentials and the network.
 
 ## Network restriction
 
@@ -226,7 +226,13 @@ command (exec failure: exit 127).
 - Linux does not restrict `/proc/<pid>` metadata and `/sys` reads beyond ptrace rules; `/proc/<pid>/environ` of a process
   in another Landlock domain (another session) or outside any domain is unreadable because Landlock denies ptrace-mode
   access to non-descendant domains; `/etc` is readable.
-- macOS: reads outside the real home are not restricted (system files, other volumes); process listing and
+- Reads outside the real home differ by platform, and this is intended. macOS: everything outside the real home is
+  readable, including other repositories, other task copies and team sibling copies that live outside the home, and
+  other volumes; inside the real home only the working dir, the per-run home and toolchains are readable. Linux: only
+  the system roots listed above, the working dir, the per-run home and toolchains are readable; other repositories and
+  sibling copies are not. On macOS, do not keep confidential material outside the home if agents must not see it. The
+  test `sibling_copy_outside_home_is_readable_on_macos_only` pins this.
+- macOS: process listing and
   `sysctl` process info of other processes are not blocked. In particular `sysctl(KERN_PROCARGS2)` returns the
   environment of any same-user process that lacks the `restrict` code-signing flag, so a session can read the
   environment (including profile-granted tokens) of another running session or runner-launched agent. Seatbelt
@@ -244,6 +250,7 @@ command (exec failure: exit 127).
 - Toolchain directories are read-only: `cargo fetch`, `npm install -g` and similar that write there fail.
 - Terminals: the agent reaches its own PTY through inherited fds 0/1/2 and `/dev/tty`. Opening any other terminal device by path is denied (macOS: explicit deny on `/dev/ttys*`, `/dev/pty[p-w]*` and `/dev/tty[p-w]*`; Linux: no `/dev/pts` grant except the session's own slave). Consequence: PTYs the agent creates itself (`openpty`, `script`, `tmux`, pexpect) cannot open their slave by path and fail.
 - Private directories: the runner directory is trusted only if it, its canonical ancestors and every symlink component of the given path live in directories owned by root or the user that are not group/other-writable (unless sticky); there is no group-name exception, so on Ubuntu with umask 002 the fallback `~/.local/state/tmgr/run` is refused until `chmod g-w` or `TMGR_RUNNER_DIR` is set. The homes directory holds no secrets, so it gets only the final-directory checks (owner, 0700, not a symlink).
+- The Linux sandbox tests skip when Landlock is unavailable, unless `TMGR_TEST_REQUIRE_LANDLOCK=1` is set, in which case they fail. CI sets it on Linux.
 - Linux helper: every read/write root is re-opened and its kernel-resolved path must equal the policy path, and the working directory (handed over by the shim as a descriptor, not looked up by path) must be the directory with the
   `st_dev`/`st_ino` the runner approved, and the Landlock rule for it is created from that same descriptor; otherwise the run does not start (exit 78). This closes the swap-for-a-symlink race between validation and enforcement.
 - macOS: the agent also starts in the approved directory object, but Seatbelt rules are path based, so if that directory was renamed meanwhile the agent keeps no write access there (fail closed).
