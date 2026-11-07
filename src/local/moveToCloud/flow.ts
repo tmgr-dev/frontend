@@ -32,7 +32,11 @@ import type {
 	MovePutResult,
 	MoveSnapshot,
 } from './native';
-import { batchSkillsPayload, buildSkillsPayload } from './skills';
+import {
+	batchSkillsPayload,
+	buildSkillsPayload,
+	buildSkillsPayloadWithSlugs,
+} from './skills';
 
 export const ACCOUNT_MISMATCH_MESSAGE =
 	'This move was started by another account. Sign in as that account to continue, or discard it.';
@@ -528,12 +532,13 @@ export const createMover = (deps: MoveDeps) => {
 				published.skills.personaUuids ??
 				(await deps.inventory(code)).personas.map((p) => p.uuid);
 			const library = await deps.skillLibrary(userId);
-			const { skills } = buildSkillsPayload(library, personaUuids);
-			const { batches, tooLarge } = batchSkillsPayload(skills);
-			const report: SkillsReport = tooLarge.map((skill) => ({
-				slug:
-					library?.skills.find((item) => item.markdown === skill.markdown)
-						?.slug ?? null,
+			const { payload, slugs } = buildSkillsPayloadWithSlugs(
+				library,
+				personaUuids,
+			);
+			const { batches, tooLarge } = batchSkillsPayload(payload.skills);
+			const report: SkillsReport = tooLarge.map((index) => ({
+				slug: slugs[index] ?? null,
 				cloud_slug: null,
 				status: 'skipped' as const,
 				reason: 'too_large',

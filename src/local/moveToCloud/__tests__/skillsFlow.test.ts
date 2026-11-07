@@ -102,6 +102,35 @@ describe('skills step after publish', () => {
 		expect(report[1]).toMatchObject({ slug: 'a', status: 'created' });
 	});
 
+	it('attributes a skipped skill to its own slug when two skills share the same markdown', async () => {
+		const h = harness({ statuses: [publishedStatus()] });
+		const content = '\u0001'.repeat(60 * 1024);
+		const files = Array.from({ length: 5 }, (_, i) => ({
+			path: `f${i}`,
+			content,
+			size: content.length,
+			sha256: 'x',
+		}));
+		const twin = (slug: string, withFiles: boolean) => ({
+			...skill('a'),
+			slug,
+			...(withFiles ? { files } : {}),
+		});
+		h.library.value = {
+			...LIBRARY,
+			skills: [twin('first', false), twin('second', true)],
+			attachments: [
+				{ persona_uuid: 'p-local', slug: 'first' },
+				{ persona_uuid: 'p-local', slug: 'second' },
+			],
+		};
+		h.api.importSkills.mockResolvedValue(REPORT);
+		await move(h);
+		const report = (skillsOf(h) as any).report;
+		expect(report[0]).toMatchObject({ slug: 'second', reason: 'too_large' });
+		expect(report.filter((o: any) => o.reason === 'too_large')).toHaveLength(1);
+	});
+
 	it('also runs after a verified job is published by the server', async () => {
 		const h = harness({ statuses: [verifiedStatus()] });
 		h.library.value = LIBRARY;

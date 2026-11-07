@@ -1,10 +1,10 @@
 import type { LibraryFile } from '../skillLibrary';
 import type { SkillOutcome, SkillsPayload, SkillsReport } from './api';
 
-export const buildSkillsPayload = (
+export const buildSkillsPayloadWithSlugs = (
 	library: Pick<LibraryFile, 'skills' | 'attachments'> | null | undefined,
 	personaUuids: Iterable<string>,
-): SkillsPayload => {
+): { payload: SkillsPayload; slugs: string[] } => {
 	const moved = new Set(personaUuids);
 	const targets = new Map<string, string[]>();
 	for (const { slug, persona_uuid } of library?.attachments ?? []) {
@@ -13,10 +13,12 @@ export const buildSkillsPayload = (
 		if (!list.includes(persona_uuid)) list.push(persona_uuid);
 		targets.set(slug, list);
 	}
+	const picked = (library?.skills ?? []).filter((skill) =>
+		targets.has(skill.slug),
+	);
 	return {
-		skills: (library?.skills ?? [])
-			.filter((skill) => targets.has(skill.slug))
-			.map((skill) => ({
+		payload: {
+			skills: picked.map((skill) => ({
 				markdown: skill.markdown,
 				attach_to: targets.get(skill.slug)!,
 				files: (skill.files ?? []).map(({ path, content }) => ({
@@ -24,39 +26,53 @@ export const buildSkillsPayload = (
 					content,
 				})),
 			})),
+		},
+		slugs: picked.map((skill) => skill.slug),
 	};
 };
 
+export const buildSkillsPayload = (
+	library: Pick<LibraryFile, 'skills' | 'attachments'> | null | undefined,
+	personaUuids: Iterable<string>,
+): SkillsPayload => buildSkillsPayloadWithSlugs(library, personaUuids).payload;
+
 const MAX_BATCH_BYTES = 1_500_000;
 const MAX_BATCH_SKILLS = 100;
+
+const encodedLength = (value: unknown): number =>
+	new TextEncoder().encode(JSON.stringify(value)).length;
+
+const WRAPPER_BYTES = encodedLength({ skills: [] });
 
 export const batchSkillsPayload = (
 	skills: SkillsPayload['skills'],
 ): {
 	batches: SkillsPayload['skills'][];
-	tooLarge: SkillsPayload['skills'];
+	tooLarge: number[];
 } => {
 	const batches: SkillsPayload['skills'][] = [];
-	const tooLarge: SkillsPayload['skills'] = [];
+	const tooLarge: number[] = [];
 	let current: SkillsPayload['skills'] = [];
-	let bytes = 0;
-	for (const skill of skills) {
-		const size = new TextEncoder().encode(JSON.stringify(skill)).length;
-		if (size > MAX_BATCH_BYTES) {
-			tooLarge.push(skill);
-			continue;
+	let bytes = WRAPPER_BYTES;
+	skills.forEach((skill, index) => {
+		const size = encodedLength(skill);
+		if (WRAPPER_BYTES + size > MAX_BATCH_BYTES) {
+			tooLarge.push(index);
+			return;
 		}
+		const separator = current.length > 0 ? 1 : 0;
 		if (
 			current.length > 0 &&
-			(bytes + size > MAX_BATCH_BYTES || current.length >= MAX_BATCH_SKILLS)
+			(bytes + separator + size > MAX_BATCH_BYTES ||
+				current.length >= MAX_BATCH_SKILLS)
 		) {
 			batches.push(current);
 			current = [];
-			bytes = 0;
+			bytes = WRAPPER_BYTES;
 		}
+		bytes += (current.length > 0 ? 1 : 0) + size;
 		current.push(skill);
-		bytes += size;
-	}
+	});
 	if (current.length > 0) batches.push(current);
 	return { batches, tooLarge };
 };
