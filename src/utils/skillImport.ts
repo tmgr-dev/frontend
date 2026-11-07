@@ -35,7 +35,15 @@ export interface ScanPackage {
 }
 
 export interface ScanSource {
-	id: 'claude' | 'claude-plugin' | 'codex' | 'agents' | 'folder';
+	id:
+		| 'claude'
+		| 'claude-plugin'
+		| 'codex'
+		| 'agents'
+		| 'cursor'
+		| 'gemini'
+		| 'opencode'
+		| 'folder';
 	label: string;
 	packages: ScanPackage[];
 }

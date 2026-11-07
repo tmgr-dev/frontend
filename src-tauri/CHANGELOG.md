@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.118 — 2026-11-07
+
+- Skills library: Import from local agents now also finds skills in Cursor (`~/.cursor/skills`), Gemini CLI (`~/.gemini/skills`) and opencode (`~/.config/opencode/skills`), and in the matching `.cursor`, `.gemini` and `.opencode` folders of a chosen project folder. A skill folder shared with another tool through a symlink is listed once.
+
 ## 0.9.117 — 2026-11-06
 
 - Decisions: above 256 open connections the inbox now answers "busy" instead of closing new connections silently, so `tmgr mcp` keeps backing off quietly instead of treating the app as not running.
