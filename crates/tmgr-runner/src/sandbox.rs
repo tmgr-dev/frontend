@@ -105,6 +105,9 @@ const HOME_DENY: &[&str] = &[
     ".kube",
     "Library/Keychains",
     "Library/Application Support/dev.tmgr.cli",
+    "Library/Application Support/dev.tmgr.desktop",
+    ".config/dev.tmgr.desktop",
+    ".local/share/dev.tmgr.desktop",
     "Library/Application Support/Google/Chrome",
     "Library/Application Support/Firefox",
     "Library/Safari",
@@ -1851,6 +1854,22 @@ mod tests {
         let f = fx();
         let deny = home_deny_paths(&f.spec.real_home);
         for rel in [".config/gh", ".git-credentials", ".config/git/credentials"] {
+            assert!(
+                deny.contains(&canon_lossy(&f.spec.real_home).join(rel)),
+                "{rel}"
+            );
+        }
+    }
+
+    #[test]
+    fn home_deny_list_covers_the_desktop_app_data() {
+        let f = fx();
+        let deny = home_deny_paths(&f.spec.real_home);
+        for rel in [
+            "Library/Application Support/dev.tmgr.desktop",
+            ".config/dev.tmgr.desktop",
+            ".local/share/dev.tmgr.desktop",
+        ] {
             assert!(
                 deny.contains(&canon_lossy(&f.spec.real_home).join(rel)),
                 "{rel}"
