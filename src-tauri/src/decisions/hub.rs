@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
-use tmgr_ipc::decisions::{drain_spool, CardIn, Event, LineComment, PatchIn};
+use tmgr_ipc::decisions::{drain_spool, CardIn, Event, Found, LineComment, PatchIn};
 
-use super::store::{AnswerIn, CardView, MessageIn, Store};
+use super::store::{AnswerIn, CardView, Created, MessageIn, Store};
 
 pub enum Change {
   Created { title: String, body: String },
@@ -164,14 +164,18 @@ impl Hub {
     self.lock().open_count()
   }
 
-  pub fn create(&self, card: CardIn) -> Result<(String, &'static str), String> {
+  pub fn create(&self, card: CardIn) -> Result<Created, String> {
     let created = self.lock().create(card)?;
     if created.fresh {
       self.changed(Change::Created { title: created.card.title.clone(), body: body_of(&created.card) });
     } else if created.changed {
       self.changed(Change::Updated);
     }
-    Ok((created.id, created.outcome))
+    Ok(created)
+  }
+
+  pub fn find(&self, task: Option<&str>, key: Option<&str>, query: Option<&str>, limit: usize) -> Result<Vec<Found>, String> {
+    self.lock().find(task, key, query, limit)
   }
 
   pub fn ingest_spool(&self, dir: &Path) -> usize {
@@ -180,7 +184,7 @@ impl Hub {
       if Store::check(&card).is_err() {
         return true;
       }
-      match self.lock().create(card) {
+      match self.lock().create(CardIn { force_new: Some(true), ..card }) {
         Ok(created) => {
           added += usize::from(created.fresh);
           changed |= created.changed;
@@ -401,7 +405,7 @@ mod tests {
       source: Source { agent: "claude".into(), ..Default::default() },
       ..Default::default()
     };
-    let (id, _) = hub.create(card).unwrap();
+    let id = hub.create(card).unwrap().id;
     updates.store(0, Ordering::SeqCst);
     (hub, updates, id)
   }
@@ -460,7 +464,7 @@ mod tests {
       source: Source { agent: "claude".into(), ..Default::default() },
       ..Default::default()
     };
-    let (new_id, _) = hub.create(card).unwrap();
+    let new_id = hub.create(card).unwrap().id;
     let canon = hub.get(&new_id).unwrap().id;
     hub.wait(&new_id, 0, Duration::ZERO, false).unwrap();
     assert!(listening(&hub, &new_id));

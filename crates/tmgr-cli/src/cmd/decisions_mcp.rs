@@ -1,7 +1,7 @@
 use crate::cmd::decisions::{
     self, agent_name, check_checked, default_wait, event_text, fact_checked, parent_pid,
-    parse_check, parse_fact, pending_json, send_card, source, wait_cards, Sent, Spec, Waited,
-    KINDS, MAX_CONTEXT, MAX_TITLE,
+    parse_check, parse_fact, pending_json, send_card_full, source, wait_cards, SentFull, Spec,
+    Waited, KINDS, MAX_CONTEXT, MAX_TITLE,
 };
 use crate::cmd::mcp::{arg_err, bool_arg, int_arg, str_arg, text_result};
 use serde_json::{json, Value};
@@ -9,7 +9,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
 use tmgr_ipc::decisions::{
-    Cancel, Client, DiffSpec, LineComment, PatchIn, WaitCard, MAX_PATCH_BYTES, MAX_WAIT_CARDS,
+    Cancel, Client, DiffSpec, Found, LineComment, PatchIn, WaitCard, MAX_PATCH_BYTES,
+    MAX_WAIT_CARDS, OUTCOME_SIMILAR,
 };
 use tmgr_ipc::decisions::{MAX_DIFFS, MAX_PATCHES};
 
@@ -52,8 +53,14 @@ fn advance(card_id: &str, seq: u64) {
     }
 }
 
+const FIND_UNAVAILABLE: &str = "error: the Decisions inbox could not be reached or is too old for find_answers (update the desktop app)";
+const SIMILAR_HINT: &str = "An earlier card on this task looks like the same question. Reuse its answer (dismissed=true means the owner declined to answer, not a choice), or if it is still open call get_answer with its card_id; if your question really differs, call ask_owner again with force_new:true and a new key.";
+
 pub fn is_decisions_tool(name: &str) -> bool {
-    matches!(name, "ask_owner" | "get_answer" | "reply_owner")
+    matches!(
+        name,
+        "ask_owner" | "get_answer" | "reply_owner" | "find_answers"
+    )
 }
 
 pub fn defs() -> Vec<Value> {
@@ -61,7 +68,7 @@ pub fn defs() -> Vec<Value> {
     vec![
         json!({
             "name": "ask_owner",
-            "description": "Ask the owner a question and wait for the answer in the TMGR desktop Decisions inbox. Call it for decisions, reviews and release gates: anything where you would otherwise guess or stop and wait for the human. Give a short title, the question, and the options when the answer is a choice (set recommended to the option you advise). Add facts, checks, repo/base/head or repos (the owner sees the diffs and can comment on lines), patches (diff text you hold, no repository needed), task, prs, commits, tags and links when useful. Line comments on a card with 2 or more diff groups (repos plus patches) arrive as file = \"<label>:<path>\" where the label is the repository folder name (a second one gets -2) or the patch label; with one group the file is the plain path. Keep the repos order when you resend so the labels stay stable. To resend a question instead of piling up cards, pass key or replaces. key names one question for good: the same key from the same agent and working directory updates the still-open card in place (same card_id, queue position and messages), and if the owner already answered or dismissed it nothing is reopened and the existing answer is returned; a new round of the question needs a new key. The key is scoped to (agent, working directory, key), so a resend from another worktree needs replaces (the card_id returned the first time), which wins over key. Always use the card_id the call returns. Returns JSON: an event with type \"answer\" (choice, choice_label, note, free_text, line_comments; deferred=true means the owner postponed the decision: continue other work and call get_answer later; dismissed=true means they declined to answer) or type \"message\" (an interim owner comment, chat message or fix request: address it, then call reply_owner with your reply). If nothing arrives in time it returns {\"status\":\"pending\",\"card_id\":...}: continue other work and call get_answer with that card_id later. The card is queued even when the desktop is not running.",
+            "description": "Before asking, call find_answers for the same task: the owner often already answered. If ask_owner returns status similar_answered, use that answer instead of asking again. Ask the owner a question and wait for the answer in the TMGR desktop Decisions inbox. Call it for decisions, reviews and release gates: anything where you would otherwise guess or stop and wait for the human. Give a short title, the question, and the options when the answer is a choice (set recommended to the option you advise). Add facts, checks, repo/base/head or repos (the owner sees the diffs and can comment on lines), patches (diff text you hold, no repository needed), task, prs, commits, tags and links when useful. Line comments on a card with 2 or more diff groups (repos plus patches) arrive as file = \"<label>:<path>\" where the label is the repository folder name (a second one gets -2) or the patch label; with one group the file is the plain path. Keep the repos order when you resend so the labels stay stable. To resend a question instead of piling up cards, pass key or replaces. key names one question for good: the same key from the same agent and working directory updates the still-open card in place (same card_id, queue position and messages), and if the owner already answered or dismissed it nothing is reopened and the existing answer is returned; a new round of the question needs a new key. A deliberate new round of a question the owner already answered needs force_new:true together with a new key. The key is scoped to (agent, working directory, key), so a resend from another worktree needs replaces (the card_id returned the first time), which wins over key. Always use the card_id the call returns. Returns JSON: an event with type \"answer\" (choice, choice_label, note, free_text, line_comments; deferred=true means the owner postponed the decision: continue other work and call get_answer later; dismissed=true means they declined to answer) or type \"message\" (an interim owner comment, chat message or fix request: address it, then call reply_owner with your reply). If nothing arrives in time it returns {\"status\":\"pending\",\"card_id\":...}: continue other work and call get_answer with that card_id later. The card is queued even when the desktop is not running.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -117,7 +124,8 @@ pub fn defs() -> Vec<Value> {
                     "tags": {"type": "array", "items": {"type": "string"}, "description": "Release tags: URL or owner/repo@tag"},
                     "links": {"type": "array", "items": {"type": "string"}, "description": "Other links: [LABEL=]URL. Only http and https; at most 50 links in all."},
                     "replaces": {"type": "string", "description": "card_id of an earlier card to update in place (wins over key). Needed to resend from another worktree. If that card is already answered or dismissed the existing answer is returned."},
-                    "key": {"type": "string", "maxLength": 200, "description": "Names one question for good. The same key from the same agent and working directory updates the open card instead of creating another; a new round needs a new key. Scope is (agent, working directory, key)."},
+                    "key": {"type": "string", "maxLength": 200, "description": "Names one question for good. The same key from the same agent and working directory updates the open card instead of creating another; a new round needs a new key, and with force_new:true. Scope is (agent, working directory, key)."},
+                    "force_new": {"type": "boolean", "description": "Set true for a deliberate new round of a question that earlier cards on the same task already asked. Without it, ask_owner returns the similar earlier card (status similar_answered) instead of creating a new one. Pass it with a new key."},
                     "waitSeconds": wait
                 },
                 "required": ["title"],
@@ -133,6 +141,20 @@ pub fn defs() -> Vec<Value> {
                     "card_id": {"type": "string", "description": "card_id from ask_owner"},
                     "card_ids": {"type": "array", "minItems": 1, "maxItems": MAX_WAIT_CARDS, "items": {"type": "string"}, "description": "Several card_ids to wait on at once; merged with card_id. Either card_id or card_ids is required."},
                     "waitSeconds": wait
+                },
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "find_answers",
+            "description": "Look up the owner's past answers in the TMGR desktop Decisions inbox: answered and dismissed cards, newest first, filtered by task (TM-123 or a task URL), by key prefix or by text (query: every word must occur in the title, question, choice, free text or note). Each result gives the choice, free text, note and state (dismissed=true means the owner declined to answer). Call it before ask_owner: the owner often already answered the same question. Returns {\"answers\":[...]}.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "minLength": 1, "maxLength": 2000, "description": "Task reference (TM-123) or http(s) URL"},
+                    "key": {"type": "string", "minLength": 1, "maxLength": 200, "description": "Prefix of the card key"},
+                    "query": {"type": "string", "minLength": 1, "maxLength": 2000, "description": "Words that must all occur in the card text"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 50, "description": "How many cards to return (default 10)"}
                 },
                 "additionalProperties": false
             }
@@ -183,6 +205,7 @@ fn parse_spec(a: &Value) -> Result<Spec, String> {
         kind: str_arg(a, "kind", 0, 20)?.unwrap_or("decision").to_string(),
         blocking: bool_arg(a, "blocking")?.unwrap_or(true),
         recommended: int_arg(a, "recommended", 1, 9)?.map(|n| n as usize),
+        force_new: Some(bool_arg(a, "force_new")?.unwrap_or(false)),
         repo: str_arg(a, "repo", 1, 4096)?.map(str::to_string),
         base: str_arg(a, "base", 1, 300)?.map(str::to_string),
         head: str_arg(a, "head", 1, 300)?.map(str::to_string),
@@ -346,6 +369,44 @@ fn collect(
     event_result(card_ids, waited)
 }
 
+fn similar_answer(similar: &[Found]) -> Value {
+    let best = &similar[0];
+    let already_answered =
+        best.dismissed || matches!(best.state.as_str(), "answered" | "dismissed");
+    json!({
+        "status": "similar_answered",
+        "already_answered": already_answered,
+        "card_id": best.card_id,
+        "similar_answered": similar,
+        "hint": SIMILAR_HINT,
+    })
+}
+
+type FindArgs<'a> = (Option<&'a str>, Option<&'a str>, Option<&'a str>, u32);
+
+fn find_args(a: &Value) -> Result<FindArgs<'_>, String> {
+    Ok((
+        str_arg(a, "task", 1, 2000)?,
+        str_arg(a, "key", 1, 200)?,
+        str_arg(a, "query", 1, 2000)?,
+        int_arg(a, "limit", 1, 50)?.unwrap_or(10) as u32,
+    ))
+}
+
+fn find_answers(a: &Value) -> Value {
+    let (task, key, query, limit) = match find_args(a) {
+        Ok(p) => p,
+        Err(m) => return arg_err(&m),
+    };
+    let found = tmgr_ipc::decisions::decisions_dir()
+        .and_then(|d| Client::open_in(&d))
+        .and_then(|c| c.find(task, key, query, Some(limit)));
+    match found {
+        Ok(answers) => text_result(json!({"answers": answers}).to_string(), false),
+        Err(_) => text_result(FIND_UNAVAILABLE, true),
+    }
+}
+
 fn ask_owner(a: &Value, cancel: Option<&Cancel>, progress: &mut dyn FnMut(&str)) -> Value {
     let parsed = parse_spec(a).and_then(|s| {
         let wait = wait_arg(a)?;
@@ -356,9 +417,14 @@ fn ask_owner(a: &Value, cancel: Option<&Cancel>, progress: &mut dyn FnMut(&str))
         Ok(p) => p,
         Err(m) => return arg_err(&m),
     };
-    match send_card(card) {
-        Ok(Sent::Live(id, _)) => collect(&[id], wait, cancel, progress),
-        Ok(Sent::Spooled(id)) => text_result(pending_json(&id, true).to_string(), false),
+    match send_card_full(card) {
+        Ok(SentFull::Live(r))
+            if r.outcome.as_deref() == Some(OUTCOME_SIMILAR) && !r.similar.is_empty() =>
+        {
+            text_result(similar_answer(&r.similar).to_string(), false)
+        }
+        Ok(SentFull::Live(r)) => collect(&[r.card_id.unwrap_or_default()], wait, cancel, progress),
+        Ok(SentFull::Spooled(id)) => text_result(pending_json(&id, true).to_string(), false),
         Err(e) => text_result(format!("error: {e}"), true),
     }
 }
@@ -428,6 +494,7 @@ pub fn call(
     progress: &mut dyn FnMut(&str),
 ) -> Value {
     match name {
+        "find_answers" => find_answers(args),
         "ask_owner" => ask_owner(args, cancel, progress),
         "get_answer" => get_answer(args, cancel, progress),
         _ => reply_owner(args, cancel, progress),
@@ -474,5 +541,96 @@ mod tests {
         assert!(card_ids_arg(&json!({"card_id": "nope"})).is_err());
         assert!(card_ids_arg(&json!({"card_ids": [1]})).is_err());
         assert!(card_ids_arg(&json!({"card_ids": "c_x"})).is_err());
+    }
+
+    fn found(state: &str, dismissed: bool) -> Found {
+        Found {
+            card_id: A.into(),
+            title: "Ship it?".into(),
+            question: Some("Release 1.2?".into()),
+            state: state.into(),
+            choice_label: None,
+            free_text: None,
+            note: None,
+            dismissed,
+            key: None,
+            task: Some("TM-1".into()),
+            created_ms: 1,
+        }
+    }
+
+    #[test]
+    fn find_answers_is_a_decisions_tool_with_its_schema() {
+        assert!(is_decisions_tool("find_answers"));
+        let def = defs()
+            .into_iter()
+            .find(|d| d["name"] == "find_answers")
+            .expect("find_answers is listed");
+        let props = &def["inputSchema"]["properties"];
+        for key in ["task", "key", "query"] {
+            assert_eq!(props[key]["type"], "string", "{key}");
+        }
+        assert_eq!(props["limit"]["type"], "integer");
+        assert_eq!(props["limit"]["minimum"], 1);
+        assert_eq!(props["limit"]["maximum"], 50);
+        assert_eq!(def["inputSchema"]["additionalProperties"], false);
+    }
+
+    #[test]
+    fn ask_owner_takes_force_new() {
+        let def = defs()
+            .into_iter()
+            .find(|d| d["name"] == "ask_owner")
+            .unwrap();
+        assert_eq!(
+            def["inputSchema"]["properties"]["force_new"]["type"],
+            "boolean"
+        );
+        assert!(def["description"].as_str().unwrap().starts_with(
+            "Before asking, call find_answers for the same task: the owner often already answered."
+        ));
+    }
+
+    #[test]
+    fn force_new_defaults_to_a_similarity_check() {
+        let spec = parse_spec(&json!({"title": "t"})).unwrap();
+        assert_eq!(spec.force_new, Some(false));
+        let spec = parse_spec(&json!({"title": "t", "force_new": true})).unwrap();
+        assert_eq!(spec.force_new, Some(true));
+        assert!(parse_spec(&json!({"title": "t", "force_new": "yes"})).is_err());
+    }
+
+    #[test]
+    fn find_args_are_bounded_and_default_to_ten() {
+        let empty = json!({});
+        let (task, key, query, limit) = find_args(&empty).unwrap();
+        assert_eq!((task, key, query, limit), (None, None, None, 10));
+        let given = json!({"task": "TM-1", "limit": 50});
+        let (task, _, _, limit) = find_args(&given).unwrap();
+        assert_eq!((task, limit), (Some("TM-1"), 50));
+        assert!(find_args(&json!({"limit": 0})).is_err());
+        assert!(find_args(&json!({"limit": 51})).is_err());
+        assert!(find_args(&json!({"query": ""})).is_err());
+    }
+
+    #[test]
+    fn a_similar_answer_reports_the_best_match_and_its_state() {
+        let answered = similar_answer(&[found("answered", false), found("open", false)]);
+        assert_eq!(answered["status"], "similar_answered");
+        assert_eq!(answered["already_answered"], true);
+        assert_eq!(answered["card_id"], A);
+        assert_eq!(answered["similar_answered"].as_array().unwrap().len(), 2);
+        assert!(answered["hint"]
+            .as_str()
+            .unwrap()
+            .contains("force_new:true"));
+
+        let dismissed = similar_answer(&[found("answered", true)]);
+        assert_eq!(dismissed["already_answered"], true);
+        assert_eq!(dismissed["similar_answered"][0]["dismissed"], true);
+
+        let open = similar_answer(&[found("open", false)]);
+        assert_eq!(open["already_answered"], false);
+        assert!(open["hint"].as_str().unwrap().contains("get_answer"));
     }
 }

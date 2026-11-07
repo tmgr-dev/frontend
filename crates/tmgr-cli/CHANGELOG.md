@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.107
+
+- New MCP tool `find_answers` and command `tmgr decisions answers [--task] [--key] [--query] [--limit]`: list the owner's earlier answered and dismissed cards by task, key prefix or text, with the chosen option, free text and state. Needs the desktop app with the same release.
+- `ask_owner` now checks for the same question on the same task before it creates a card. If the owner already answered (or dismissed, or still has open) a card that looks the same, it returns `status: similar_answered` with `already_answered`, `card_id` and the `similar_answered` list instead of creating another card. Pass `force_new: true` together with a new `key` for a deliberate new round. Tool descriptions now say to call `find_answers` before asking.
+
 ## 1.0.106
 
 - `tmgr skills show` now also lists the skill's companion files (path and size). File contents are not shown. Against a server without file support nothing extra is printed.

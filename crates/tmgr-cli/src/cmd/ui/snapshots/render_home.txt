@@ -9,7 +9,7 @@ tmgr test
 │  Time      today, routine            ││  start                  Start a task: branch, status and │
 │  Usage     usage                     ││  stop                   Stop the running timer           │
 │  Account   login, logout, whoami, aut││  switch                 Stop the running timer and start │
-│  Other     version, refs             ││  done                   Finish a task: stop the timer, mo│
+│  Other     version, decisions, refs  ││  done                   Finish a task: stop the timer, mo│
 │                                      ││  board                  Full-screen kanban board of the w│
 │                                      ││                                                          │
 │                                      ││                                                          │

@@ -144,11 +144,16 @@ pub enum Command {
     },
     /// Ask the owner a question in the TMGR desktop Decisions inbox
     Ask(Box<AskArgs>),
+    /// Look up answers already given in the Decisions inbox
+    Decisions {
+        #[command(subcommand)]
+        command: crate::cmd::decisions::DecisionsCommand,
+    },
     /// Send a push notification to your phone
     Notify(NotifyArgs),
     /// Raise a phone alarm (push, then a voice call), or check one
     Alarm(AlarmArgs),
-    /// Run the MCP server over stdio (notify_user, alarm, alarm_status, ask_owner, get_answer, reply_owner, tmgr_cli)
+    /// Run the MCP server over stdio (notify_user, alarm, alarm_status, find_answers, ask_owner, get_answer, reply_owner, tmgr_cli)
     Mcp,
     /// Leader and follower links over SSH (experimental)
     #[command(hide = true)]
