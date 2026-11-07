@@ -713,6 +713,13 @@ fn read_config<R: Runtime>(app: &AppHandle<R>) -> Result<LlmConfigFile, String> 
   serde_json::from_slice(&std::fs::read(&path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
+static CONFIG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Saves, migrations and the key lookup for a chat must see the config and the Keychain as one consistent pair.
+fn config_lock() -> std::sync::MutexGuard<'static, ()> {
+  CONFIG_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 fn keyring_entry(user_id: i64) -> Result<keyring::Entry, String> {
   keyring::Entry::new(SERVICE, &format!("{ACCOUNT}:{user_id}")).map_err(|e| e.to_string())
 }
@@ -745,7 +752,9 @@ fn save_config<S: SecretStore, W: FnOnce(&LlmConfigFile) -> Result<(), String>>(
       return Err(access.save_refusal());
     }
     let previous = read_previous()?;
-    let file = LlmConfigFile { base_url, model, ..previous };
+    let moved = normalize_origin(&previous.base_url).ok() != normalize_origin(&base_url).ok();
+    let key_origins = if moved { HashMap::new() } else { previous.key_origins };
+    let file = LlmConfigFile { base_url, model, key_origins };
     return prepare_write()?(&file);
   }
   let previous = read_previous()?;
@@ -795,6 +804,7 @@ pub fn llm_config_set<R: Runtime>(
     api_key,
     clear_api_key,
   };
+  let _guard = config_lock();
   save_config(
     &PersonaLlmSecrets,
     request,
@@ -834,6 +844,7 @@ pub fn persona_llm_clear_for_user<R: Runtime>(window: tauri::Window<R>, user_id:
   if window.label() != "main" {
     return Err("persona_llm_clear_for_user may only be called from the main window".into());
   }
+  let _guard = config_lock();
   clear_keys_for_user(user_id)
 }
 
@@ -880,6 +891,7 @@ pub fn persona_llm_migrate_local<R: Runtime>(app: AppHandle<R>, window: tauri::W
   }
   let to = validate_user_id(to_user_id)?;
   crate::local_profile::require_claim(&app, to)?;
+  let _guard = config_lock();
   let mut file = read_config(&app)?;
   let status = migrate_secret(&PersonaLlmSecrets, &format!("{ACCOUNT}:-1"), &format!("{ACCOUNT}:{to}"))?;
   if move_local_key_origin(&mut file.key_origins, &status, to) {
@@ -1136,19 +1148,23 @@ pub async fn llm_chat<R: Runtime>(
   if access != SlotAccess::Allowed {
     return Err(access.chat_refusal());
   }
-  let config = read_config(&app)?;
-  if config.base_url.is_empty() {
-    return Err("Set an LLM base URL first".into());
-  }
-  let api_key = match keyring_entry(user_id)?.get_password() {
-    Ok(key) => Some(key),
-    Err(keyring::Error::NoEntry) => None,
-    Err(e) => return Err(e.to_string()),
+  let (config, api_key) = {
+    let _guard = config_lock();
+    let config = read_config(&app)?;
+    if config.base_url.is_empty() {
+      return Err("Set an LLM base URL first".into());
+    }
+    let api_key = match keyring_entry(user_id)?.get_password() {
+      Ok(key) => Some(key),
+      Err(keyring::Error::NoEntry) => None,
+      Err(e) => return Err(e.to_string()),
+    };
+    if api_key.is_some() {
+      refuses_plaintext_key(&config.base_url, true)?;
+      check_key_origin(slot_origin(&config, user_id), &config.base_url)?;
+    }
+    (config, api_key)
   };
-  if api_key.is_some() {
-    refuses_plaintext_key(&config.base_url, true)?;
-    check_key_origin(slot_origin(&config, user_id), &config.base_url)?;
-  }
 
   let label = window.label().to_string();
   let task_label = label.clone();
@@ -1975,12 +1991,12 @@ mod tests {
     for (identity, user_id) in [(Some(5), 0), (None, 7)] {
       let store = Spy::with(&[(user_id, "K")]);
       let config = LlmConfigFile { base_url: A.into(), model: "old".into(), ..config_for_slot(&user_id.to_string()) };
-      let saved = run_save(&store, keyless_edit(identity, user_id, B, "new"), config.clone());
+      let saved = run_save(&store, keyless_edit(identity, user_id, B, "new"), config);
       assert_eq!(saved.result, Ok(()), "{identity:?} {user_id}");
       let written = saved.written.unwrap();
       assert_eq!(written.base_url, B);
       assert_eq!(written.model, "new");
-      assert_eq!(written.key_origins, config.key_origins);
+      assert!(written.key_origins.is_empty());
       assert_eq!(store.gets.load(std::sync::atomic::Ordering::SeqCst), 0);
       assert_eq!(store.key(user_id).as_deref(), Some("K"));
     }
@@ -2010,21 +2026,27 @@ mod tests {
   }
 
   #[test]
-  fn a_keyless_origin_move_while_not_ready_keeps_the_key_and_a_later_save_back_still_uses_it() {
+  fn a_keyless_origin_move_while_not_ready_untrusts_every_saved_key() {
     let store = Spy::with(&[(7, "K7")]);
-    let config = file_with(&[("7", A_ORIGIN)]);
+    let config = file_with(&[("7", A_ORIGIN), ("-1", A_ORIGIN)]);
     let moved = run_save(&store, keyless_edit(None, 7, B, "m"), config);
     assert_eq!(moved.result, Ok(()));
     let after_move = moved.written.unwrap();
-    assert_eq!(after_move.key_origins.get("7").map(String::as_str), Some(A_ORIGIN));
-    assert_eq!(store.key(7).as_deref(), Some("K7"));
+    assert!(after_move.key_origins.is_empty());
 
     let back = run_save(&store, keyless_edit(Some(7), 7, A, "m"), after_move);
     assert_eq!(back.result, Ok(()));
-    assert_eq!(store.key(7).as_deref(), Some("K7"));
-    let written = back.written.unwrap();
-    assert_eq!(written.key_origins.get("7").map(String::as_str), Some(A_ORIGIN));
-    assert!(!plan_save(slot_origin(&written, 7), &written.base_url, &written.base_url, false, false, true).stale_key);
+    assert_eq!(store.key(7), None);
+    assert!(back.written.unwrap().key_origins.is_empty());
+  }
+
+  #[test]
+  fn a_same_server_edit_while_not_ready_keeps_the_saved_origins() {
+    let store = Spy::with(&[(7, "K7")]);
+    let config = file_with(&[("7", A_ORIGIN)]);
+    let saved = run_save(&store, keyless_edit(None, 7, A, "other"), LlmConfigFile { base_url: A.into(), ..config });
+    assert_eq!(saved.result, Ok(()));
+    assert_eq!(saved.written.unwrap().key_origins.get("7").map(String::as_str), Some(A_ORIGIN));
   }
 
   #[test]
