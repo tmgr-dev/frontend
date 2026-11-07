@@ -10,6 +10,7 @@ import {
 	type ImportCapabilities,
 	type ImportStatus,
 	type PersonaMappingEntry,
+	type SkillsReport,
 } from './api';
 import type { LocalInventory } from './inventory';
 import {
@@ -31,7 +32,7 @@ import type {
 	MovePutResult,
 	MoveSnapshot,
 } from './native';
-import { buildSkillsPayload } from './skills';
+import { batchSkillsPayload, buildSkillsPayload } from './skills';
 
 export const ACCOUNT_MISMATCH_MESSAGE =
 	'This move was started by another account. Sign in as that account to continue, or discard it.';
@@ -530,9 +531,12 @@ export const createMover = (deps: MoveDeps) => {
 				await deps.skillLibrary(userId),
 				personaUuids,
 			);
-			const report = skills.length
-				? await api.importSkills(published.jobId, { skills })
-				: [];
+			const report: SkillsReport = [];
+			for (const batch of batchSkillsPayload(skills)) {
+				report.push(
+					...(await api.importSkills(published.jobId, { skills: batch })),
+				);
+			}
 			settle({ state: 'done', report, error: null, personaUuids });
 		} catch (error) {
 			settle({

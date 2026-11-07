@@ -51,6 +51,7 @@ const APP_COMMANDS: &[&str] = &[
   "git_track_update",
   "git_track_pick_folder",
   "skills_pick_folder",
+  "skills_read_files",
   "skill_library_read",
   "skill_library_write",
   "skill_library_export",

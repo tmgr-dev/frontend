@@ -433,10 +433,23 @@ export const getSharedSkill = async (slug: string): Promise<SharedSkill> => {
 export const putSharedSkill = async (
 	slug: string,
 	body: string,
+	files?: {
+		files: { path: string; content: string }[];
+		expectedFilesSha256: string;
+	},
 ): Promise<SharedSkill> => {
 	const {
 		data: { data },
-	} = await $axios.put(`/shared-skills/${slug}`, { body });
+	} = await $axios.put(
+		`/shared-skills/${slug}`,
+		files
+			? {
+					body,
+					files: files.files,
+					expected_files_sha256: files.expectedFilesSha256,
+				}
+			: { body },
+	);
 	invalidateSharedLibrary();
 	return data;
 };

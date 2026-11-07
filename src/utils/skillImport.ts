@@ -7,10 +7,44 @@ import {
 } from '@/utils/personas';
 import { parse } from 'yaml';
 
-export interface ScanSupporting {
-	name: string;
+export type ScanFileStatus =
+	| 'ok'
+	| 'binary'
+	| 'too_large'
+	| 'secret'
+	| 'symlink'
+	| 'unsupported_name'
+	| 'case_conflict'
+	| 'too_deep'
+	| 'skipped_hidden'
+	| 'unreadable';
+
+export interface ScanFile {
+	path: string;
 	size: number;
+	status: ScanFileStatus;
+	reason: string | null;
+	sha256: string | null;
 }
+
+export const EMPTY_FILES_SHA256 =
+	'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+
+export const FILE_STATUS_LABELS: Record<ScanFileStatus, string> = {
+	ok: 'will be uploaded',
+	binary: 'binary, not imported',
+	too_large: 'too large, not imported',
+	secret: 'looks like a secret, blocks the skill',
+	symlink: 'symlink, not imported',
+	unsupported_name: 'unsupported name, not imported',
+	case_conflict: 'name clashes ignoring case, not imported',
+	too_deep: 'too deep, not imported',
+	skipped_hidden: 'hidden, not imported',
+	unreadable: 'cannot be read, not imported',
+};
+
+export const uploadableFiles = (skill: ScanSkill): ScanFile[] =>
+	skill.files.filter((file) => file.status === 'ok');
 
 export interface ScanSkill {
 	key: string;
@@ -23,8 +57,10 @@ export interface ScanSkill {
 	secret: boolean;
 	secret_reason: string | null;
 	symlink_target: string | null;
-	supporting: ScanSupporting[];
-	supporting_more: number;
+	files: ScanFile[];
+	files_sha256: string;
+	files_blocked: string | null;
+	files_truncated: boolean;
 }
 
 export interface ScanPackage {
@@ -224,6 +260,7 @@ const blockedReasonOf = (
 	when: string,
 ): string | null => {
 	if (skill.secret) return 'looks like it contains a secret';
+	if (skill.files_blocked) return `files: ${skill.files_blocked}`;
 	if (skill.too_large || bytes > SKILL_BODY_MAX_BYTES) {
 		return `${Math.ceil(bytes / 1024)} KiB, limit ${SKILL_BODY_MAX_BYTES / 1024} KiB`;
 	}
@@ -252,10 +289,12 @@ export const convertSkill = (
 			'front matter is not valid YAML; name and description were not read',
 		);
 	}
-	const supportingCount = skill.supporting.length + skill.supporting_more;
-	if (supportingCount > 0) {
+	const skipped = skill.files.filter(
+		(file) => file.status !== 'ok' && file.status !== 'skipped_hidden',
+	).length;
+	if (skipped > 0) {
 		warnings.push(
-			`${supportingCount} supporting ${supportingCount === 1 ? 'file' : 'files'} not imported; relative references will not resolve`,
+			`${skipped} ${skipped === 1 ? 'file' : 'files'} will not be imported, see the file list`,
 		);
 	}
 	warnings.push(...bodyWarnings(body));
@@ -289,6 +328,7 @@ export interface IndexEntry {
 	libraryVersion: number;
 	importedAt: string;
 	contentHash?: string;
+	filesSha256?: string;
 }
 
 export type ImportIndex = Record<string, IndexEntry>;
@@ -363,6 +403,7 @@ export type RowStatus =
 export interface LibraryEntryRef {
 	slug: string;
 	version: number;
+	filesSha256?: string;
 }
 
 export interface RowStatusInput {
@@ -372,6 +413,10 @@ export interface RowStatusInput {
 	library: LibraryEntryRef[];
 	libraryBodyMatches?: boolean;
 }
+
+export const sourceChanged = (skill: ScanSkill, entry: IndexEntry): boolean =>
+	skill.hash !== entry.sourceHash ||
+	skill.files_sha256 !== (entry.filesSha256 ?? EMPTY_FILES_SHA256);
 
 export const rowStatus = ({
 	skill,
@@ -385,7 +430,7 @@ export const rowStatus = ({
 		const inLibrary = library.find((item) => item.slug === entry.slug);
 		if (!inLibrary) return 'previously-imported-deleted';
 		if (inLibrary.version !== entry.libraryVersion) return 'edited-in-library';
-		return skill.hash === entry.sourceHash ? 'up-to-date' : 'changed';
+		return sourceChanged(skill, entry) ? 'changed' : 'up-to-date';
 	}
 	if (!library.some((item) => item.slug === converted.slug)) return 'new';
 	return libraryBodyMatches ? 'up-to-date' : 'slug-taken';

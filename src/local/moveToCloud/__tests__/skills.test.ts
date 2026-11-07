@@ -1,5 +1,6 @@
 import type { SkillOutcome } from '../api';
 import {
+	batchSkillsPayload,
 	buildSkillsPayload,
 	dryRunSkillsLine,
 	skillsReportLines,
@@ -39,8 +40,12 @@ describe('buildSkillsPayload', () => {
 	it('keeps skills attached to workspace personas, with their personas', () => {
 		expect(buildSkillsPayload(library, ['p1', 'p2'])).toEqual({
 			skills: [
-				{ markdown: library.skills[0].markdown, attach_to: ['p1'] },
-				{ markdown: library.skills[1].markdown, attach_to: ['p1', 'p2'] },
+				{ markdown: library.skills[0].markdown, attach_to: ['p1'], files: [] },
+				{
+					markdown: library.skills[1].markdown,
+					attach_to: ['p1', 'p2'],
+					files: [],
+				},
 			],
 		});
 	});
@@ -125,5 +130,55 @@ describe('skillsReportLines', () => {
 
 	it('words the dry run line', () => {
 		expect(dryRunSkillsLine(3)).toBe("Skills: 3 from this device's library");
+	});
+});
+
+describe('skill files in the payload', () => {
+	const withFiles = {
+		skills: [
+			{
+				...skill('a'),
+				files: [
+					{ path: 'run.sh', content: 'echo', size: 4, sha256: 'x' },
+					{ path: 'references/g.md', content: 'g', size: 1, sha256: 'y' },
+				],
+			},
+		],
+		attachments: [{ persona_uuid: 'p1', slug: 'a' }],
+	};
+
+	it('sends path and content only', () => {
+		expect(buildSkillsPayload(withFiles, ['p1']).skills[0].files).toEqual([
+			{ path: 'run.sh', content: 'echo' },
+			{ path: 'references/g.md', content: 'g' },
+		]);
+	});
+
+	it('splits a big payload into batches under the request limit', () => {
+		const big = (n: number) => ({
+			markdown: 'm',
+			attach_to: ['p1'],
+			files: [{ path: `f${n}`, content: 'a'.repeat(900_000) }],
+		});
+		const batches = batchSkillsPayload([big(1), big(2), big(3)]);
+		expect(batches.map((b) => b.length)).toEqual([1, 1, 1]);
+		expect(batchSkillsPayload([])).toEqual([]);
+		const many = Array.from({ length: 101 }, () => ({
+			markdown: 'm',
+			attach_to: [],
+			files: [],
+		}));
+		expect(batchSkillsPayload(many).map((b) => b.length)).toEqual([100, 1]);
+	});
+
+	it('explains invalid_files and files_limit per skill', () => {
+		const lines = skillsReportLines([
+			outcome({ slug: 'a', status: 'skipped', reason: 'invalid_files' }),
+			outcome({ slug: 'b', status: 'skipped', reason: 'files_limit' }),
+		]);
+		expect(lines).toEqual([
+			'a: not copied, its files are not valid (path, text or size limits)',
+			'b: not copied, its files would exceed your 10 MiB files limit',
+		]);
 	});
 });

@@ -38,6 +38,7 @@ mod plugin_tick;
 mod plugin_windows;
 mod quick_add;
 mod runner;
+mod skill_files;
 mod skill_library;
 mod skill_scan;
 mod usage;
@@ -216,6 +217,7 @@ pub fn run() {
     .manage(plugin_windows::PluginWindows::default())
     .manage(skill_scan::PickedFolders::default())
     .manage(git_track::GitTrackStore::default())
+    .manage(skill_scan::ScannedSkills::default())
     .register_uri_scheme_protocol(plugin_windows::SCHEME, |ctx, request| {
       plugin_windows::handle(ctx.app_handle(), ctx.webview_label(), request)
     })
@@ -299,6 +301,7 @@ pub fn run() {
       skill_scan::skills_pick_folder,
       git_track::git_track_update,
       git_track::git_track_pick_folder,
+      skill_scan::skills_read_files,
       skill_library::skill_library_read,
       skill_library::skill_library_write,
       skill_library::skill_library_export,

@@ -91,7 +91,11 @@ export interface ImportReport {
 }
 
 export interface SkillsPayload {
-	skills: { markdown: string; attach_to: string[] }[];
+	skills: {
+		markdown: string;
+		attach_to: string[];
+		files: { path: string; content: string }[];
+	}[];
 }
 
 export interface SkillOutcome {

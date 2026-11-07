@@ -9,8 +9,10 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, Runtime, State};
 use tauri_plugin_dialog::DialogExt;
 
+use crate::skill_files as sf;
+
 const MAX_SKILLS: usize = 1000;
-const MAX_SUPPORTING: usize = 20;
+const MAX_LISTED_FILES: usize = 500;
 const MAX_CONTENT_BYTES: u64 = 64 * 1024;
 const MAX_HASH_BYTES: u64 = 256 * 1024;
 const MAX_INSTALLED_BYTES: u64 = 4 * 1024 * 1024;
@@ -34,10 +36,28 @@ pub struct PickedFolder {
   label: String,
 }
 
+#[derive(Default)]
+pub struct ScannedSkills(Mutex<HashMap<String, SkillPreview>>);
+
+#[derive(Clone, Debug)]
+pub struct SkillPreview {
+  folder: PathBuf,
+  files: Vec<PreviewFile>,
+}
+
+#[derive(Clone, Debug)]
+struct PreviewFile {
+  path: String,
+  size: u64,
+  sha256: String,
+}
+
 #[derive(Serialize, Debug, Default)]
 pub struct ScanResult {
   sources: Vec<Source>,
   skipped: Vec<Skipped>,
+  #[serde(skip)]
+  previews: HashMap<String, SkillPreview>,
 }
 
 #[derive(Serialize, Debug)]
@@ -73,14 +93,19 @@ pub struct ScanSkill {
   secret: bool,
   secret_reason: Option<String>,
   symlink_target: Option<String>,
-  supporting: Vec<Supporting>,
-  supporting_more: usize,
+  files: Vec<SkillFile>,
+  files_sha256: String,
+  files_blocked: Option<String>,
+  files_truncated: bool,
 }
 
-#[derive(Serialize, Debug)]
-pub struct Supporting {
-  name: String,
+#[derive(Serialize, Debug, Clone, PartialEq)]
+pub struct SkillFile {
+  path: String,
   size: u64,
+  status: &'static str,
+  reason: Option<String>,
+  sha256: Option<String>,
 }
 
 struct Install {
@@ -96,6 +121,7 @@ struct Scan {
   canon_home: Option<PathBuf>,
   visited: HashSet<PathBuf>,
   skipped: Vec<Skipped>,
+  previews: HashMap<String, SkillPreview>,
   count: usize,
   limit_reported: bool,
 }
@@ -107,6 +133,7 @@ impl Scan {
       canon_home: home.and_then(|h| fs::canonicalize(h).ok()),
       visited: HashSet::new(),
       skipped: Vec::new(),
+      previews: HashMap::new(),
       count: 0,
       limit_reported: false,
     }
@@ -167,7 +194,7 @@ impl Scan {
     }
 
     let canonical = fs::canonicalize(&folder).unwrap_or_else(|_| folder.clone());
-    if !self.visited.insert(canonical) {
+    if !self.visited.insert(canonical.clone()) {
       self.skip(entry, "already listed from another location");
       return None;
     }
@@ -198,10 +225,20 @@ impl Scan {
     let secret = find_secret(text);
     let too_large = bytes.len() as u64 > MAX_CONTENT_BYTES;
     let content = if too_large || secret.is_some() { String::new() } else { text.to_owned() };
-    let mut supporting = supporting_files(&folder);
-    let supporting_more = supporting.len().saturating_sub(MAX_SUPPORTING);
-    supporting.truncate(MAX_SUPPORTING);
+    let listing = list_files(&canonical);
     let key = format!("{key_prefix}{dir_name}");
+    self.previews.insert(
+      key.clone(),
+      SkillPreview {
+        folder: canonical,
+        files: listing
+          .files
+          .iter()
+          .filter(|f| f.status == "ok")
+          .filter_map(|f| Some(PreviewFile { path: f.path.clone(), size: f.size, sha256: f.sha256.clone()? }))
+          .collect(),
+      },
+    );
     let path = self.show(&display_md);
     self.count += 1;
 
@@ -216,8 +253,10 @@ impl Scan {
       secret: secret.is_some(),
       secret_reason: secret.map(str::to_owned),
       symlink_target,
-      supporting,
-      supporting_more,
+      files: listing.files,
+      files_sha256: listing.sha256,
+      files_blocked: listing.blocked,
+      files_truncated: listing.truncated,
     })
   }
 
@@ -377,7 +416,7 @@ pub fn scan_roots(home: Option<&Path>, picked: &HashMap<String, PathBuf>, folder
   }
   let folders = scan.folders(folder_ids, picked);
   push_source(&mut sources, "folder", "Picked folders", folders);
-  ScanResult { sources, skipped: scan.skipped }
+  ScanResult { sources, skipped: scan.skipped, previews: scan.previews }
 }
 
 fn read_bounded(path: &Path, limit: u64) -> std::io::Result<Option<Vec<u8>>> {
@@ -465,20 +504,161 @@ fn plugin_skill_dirs(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
   }
 }
 
-fn supporting_files(folder: &Path) -> Vec<Supporting> {
-  let mut files: Vec<Supporting> = sorted_children(folder)
-    .into_iter()
-    .filter_map(|path| {
-      let name = name_of(&path);
-      if name == "SKILL.md" || looks_secret(&name) {
-        return None;
+struct Listing {
+  files: Vec<SkillFile>,
+  sha256: String,
+  blocked: Option<String>,
+  truncated: bool,
+}
+
+fn entry(path: &str, size: u64, status: &'static str, reason: Option<&str>) -> SkillFile {
+  SkillFile { path: printable(path), size, status, reason: reason.map(str::to_owned), sha256: None }
+}
+
+fn printable(text: &str) -> String {
+  text.chars().map(|c| if c.is_control() { '?' } else { c }).collect()
+}
+
+#[cfg(unix)]
+fn open_nofollow(path: &Path) -> std::io::Result<fs::File> {
+  use std::os::unix::fs::OpenOptionsExt;
+  fs::OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW).open(path)
+}
+
+#[cfg(not(unix))]
+fn open_nofollow(path: &Path) -> std::io::Result<fs::File> {
+  fs::File::open(path)
+}
+
+fn not_regular() -> std::io::Error {
+  std::io::Error::new(std::io::ErrorKind::InvalidInput, "not a regular file")
+}
+
+fn read_regular(path: &Path, limit: u64) -> std::io::Result<Option<Vec<u8>>> {
+  let before = fs::symlink_metadata(path)?;
+  if !before.is_file() {
+    return Err(not_regular());
+  }
+  let file = open_nofollow(path)?;
+  let meta = file.metadata()?;
+  if !meta.is_file() {
+    return Err(not_regular());
+  }
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::MetadataExt;
+    if meta.dev() != before.dev() || meta.ino() != before.ino() {
+      return Err(not_regular());
+    }
+  }
+  let mut bytes = Vec::new();
+  file.take(limit + 1).read_to_end(&mut bytes)?;
+  Ok((bytes.len() as u64 <= limit).then_some(bytes))
+}
+
+fn classify_file(path: &Path, rel: &str, name: &str, size: u64) -> SkillFile {
+  if looks_secret(name) {
+    return entry(rel, size, "secret", Some("file name looks like a secret"));
+  }
+  if size > sf::MAX_FILE_BYTES as u64 {
+    return entry(rel, size, "too_large", Some("larger than 64 KiB"));
+  }
+  let bytes = match read_regular(path, sf::MAX_FILE_BYTES as u64) {
+    Ok(Some(bytes)) => bytes,
+    Ok(None) => return entry(rel, size, "too_large", Some("larger than 64 KiB")),
+    Err(e) => return entry(rel, size, "unreadable", Some(&e.to_string())),
+  };
+  let Some(text) = sf::text_of(&bytes) else {
+    return entry(rel, size, "binary", Some("not UTF-8 text"));
+  };
+  if let Some(reason) = find_secret(text) {
+    return entry(rel, size, "secret", Some(reason));
+  }
+  SkillFile {
+    path: rel.to_owned(),
+    size: bytes.len() as u64,
+    status: "ok",
+    reason: None,
+    sha256: Some(sf::sha256_hex(&bytes)),
+  }
+}
+
+fn walk(dir: &Path, prefix: &str, segments: usize, files: &mut Vec<SkillFile>, truncated: &mut bool) {
+  for child in sorted_children(dir) {
+    if files.len() >= MAX_LISTED_FILES {
+      *truncated = true;
+      return;
+    }
+    let name = name_of(&child);
+    let rel = format!("{prefix}{name}");
+    let Ok(meta) = fs::symlink_metadata(&child) else { continue };
+    if prefix.is_empty() && name == "SKILL.md" {
+      continue;
+    }
+    let size = if meta.is_file() { meta.len() } else { 0 };
+    if name.starts_with('.') || name == "node_modules" {
+      files.push(entry(&rel, size, "skipped_hidden", Some("hidden file or folder")));
+    } else if meta.file_type().is_symlink() {
+      files.push(entry(&rel, 0, "symlink", Some("symlinks are not followed")));
+    } else if !sf::valid_segment(&name) {
+      files.push(entry(&rel, size, "unsupported_name", Some("name is not supported")));
+    } else if meta.is_dir() {
+      if segments + 1 >= sf::MAX_SEGMENTS {
+        files.push(entry(&rel, 0, "too_deep", Some("deeper than 5 levels")));
+      } else {
+        walk(&child, &format!("{rel}/"), segments + 1, files, truncated);
       }
-      let meta = fs::symlink_metadata(&path).ok()?;
-      meta.is_file().then_some(Supporting { name, size: meta.len() })
-    })
-    .collect();
-  files.sort_by(|a, b| a.name.cmp(&b.name));
-  files
+    } else if meta.is_file() {
+      if !sf::valid_path(&rel) {
+        files.push(entry(&rel, size, "unsupported_name", Some("path is too long")));
+      } else {
+        files.push(classify_file(&child, &rel, &name, size));
+      }
+    }
+  }
+}
+
+fn list_files(folder: &Path) -> Listing {
+  let mut files = Vec::new();
+  let mut truncated = false;
+  walk(folder, "", 0, &mut files, &mut truncated);
+  files.sort_by(|a, b| a.path.as_bytes().cmp(b.path.as_bytes()));
+
+  let mut seen: HashMap<String, usize> = HashMap::new();
+  for file in files.iter().filter(|f| f.status == "ok") {
+    *seen.entry(sf::path_key(&file.path)).or_insert(0) += 1;
+  }
+  for file in &mut files {
+    if file.status != "ok" {
+      continue;
+    }
+    if !file.path.contains('/') && sf::is_reserved(&file.path) {
+      file.status = "case_conflict";
+      file.reason = Some("differs from SKILL.md only by case".into());
+    } else if seen[&sf::path_key(&file.path)] > 1 {
+      file.status = "case_conflict";
+      file.reason = Some("another file differs only by case".into());
+    }
+    if file.status != "ok" {
+      file.sha256 = None;
+    }
+  }
+
+  let ok: Vec<&SkillFile> = files.iter().filter(|f| f.status == "ok").collect();
+  let total: u64 = ok.iter().map(|f| f.size).sum();
+  let blocked = if let Some(secret) = files.iter().find(|f| f.status == "secret") {
+    Some(format!("{} looks like it contains a secret", secret.path))
+  } else if truncated {
+    Some(format!("more than {MAX_LISTED_FILES} files"))
+  } else if ok.len() > sf::MAX_FILES {
+    Some(format!("more than {} files", sf::MAX_FILES))
+  } else if total > sf::MAX_SKILL_BYTES as u64 {
+    Some(format!("files total more than {} KiB", sf::MAX_SKILL_BYTES / 1024))
+  } else {
+    None
+  };
+  let sha256 = sf::files_sha256(ok.iter().filter_map(|f| Some((f.path.as_str(), f.sha256.as_deref()?))));
+  Listing { files, sha256, blocked, truncated }
 }
 
 fn looks_secret(name: &str) -> bool {
@@ -571,13 +751,101 @@ pub async fn skills_pick_folder<R: Runtime>(
 pub async fn skills_scan<R: Runtime>(
   app: AppHandle<R>,
   state: State<'_, PickedFolders>,
+  scanned: State<'_, ScannedSkills>,
   folder_ids: Vec<String>,
 ) -> Result<ScanResult, String> {
   let home = app.path().home_dir().ok();
   let picked = state.0.lock().map_err(|e| e.to_string())?.clone();
-  tauri::async_runtime::spawn_blocking(move || scan_roots(home.as_deref(), &picked, &folder_ids))
+  let mut result = tauri::async_runtime::spawn_blocking(move || scan_roots(home.as_deref(), &picked, &folder_ids))
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+  *scanned.0.lock().map_err(|e| e.to_string())? = std::mem::take(&mut result.previews);
+  Ok(result)
+}
+
+const CHANGED: &str = "changed since preview, rescan";
+
+#[derive(Serialize, Debug)]
+pub struct FileContent {
+  path: String,
+  content: String,
+  size: u64,
+  sha256: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct SkillFilesRead {
+  key: String,
+  ok: bool,
+  error: Option<String>,
+  files: Vec<FileContent>,
+  files_sha256: String,
+}
+
+fn read_preview(preview: &SkillPreview) -> Result<Vec<FileContent>, ()> {
+  if fs::canonicalize(&preview.folder).map_err(|_| ())? != preview.folder {
+    return Err(());
+  }
+  let total: u64 = preview.files.iter().map(|f| f.size).sum();
+  if preview.files.len() > sf::MAX_FILES || total > sf::MAX_SKILL_BYTES as u64 {
+    return Err(());
+  }
+  let mut out = Vec::new();
+  for file in &preview.files {
+    if !sf::valid_path(&file.path) || sf::is_reserved(&file.path) {
+      return Err(());
+    }
+    let target = preview.folder.join(&file.path);
+    if fs::canonicalize(&target).map_err(|_| ())? != target {
+      return Err(());
+    }
+    let bytes = read_regular(&target, file.size).map_err(|_| ())?.ok_or(())?;
+    if bytes.len() as u64 != file.size || sf::sha256_hex(&bytes) != file.sha256 {
+      return Err(());
+    }
+    let text = sf::text_of(&bytes).ok_or(())?;
+    if find_secret(text).is_some() {
+      return Err(());
+    }
+    out.push(FileContent {
+      path: file.path.clone(),
+      content: text.to_owned(),
+      size: file.size,
+      sha256: file.sha256.clone(),
+    });
+  }
+  Ok(out)
+}
+
+pub fn read_skill_files(previews: &HashMap<String, SkillPreview>, keys: &[String]) -> Vec<SkillFilesRead> {
+  keys
+    .iter()
+    .map(|key| {
+      let read = previews.get(key).ok_or(()).and_then(read_preview);
+      match read {
+        Ok(files) => {
+          let files_sha256 = sf::files_sha256(previews[key].files.iter().map(|f| (f.path.as_str(), f.sha256.as_str())));
+          SkillFilesRead { key: key.clone(), ok: true, error: None, files, files_sha256 }
+        }
+        Err(()) => SkillFilesRead {
+          key: key.clone(),
+          ok: false,
+          error: Some(CHANGED.to_owned()),
+          files: Vec::new(),
+          files_sha256: String::new(),
+        },
+      }
+    })
+    .collect()
+}
+
+#[tauri::command]
+pub async fn skills_read_files(
+  scanned: State<'_, ScannedSkills>,
+  keys: Vec<String>,
+) -> Result<Vec<SkillFilesRead>, String> {
+  let previews = scanned.0.lock().map_err(|e| e.to_string())?.clone();
+  tauri::async_runtime::spawn_blocking(move || read_skill_files(&previews, &keys)).await.map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -835,6 +1103,19 @@ mod tests {
     assert!(result.skipped[0].reason.contains("already listed"));
   }
 
+  fn files_of(result: &ScanResult, dir: &str) -> Vec<(String, &'static str)> {
+    let skill = all_skills(result).into_iter().find(|s| s.dir_name == dir).unwrap();
+    skill.files.iter().map(|f| (f.path.clone(), f.status)).collect()
+  }
+
+  fn status_of(result: &ScanResult, dir: &str, path: &str) -> &'static str {
+    files_of(result, dir).into_iter().find(|(p, _)| p == path).map(|(_, s)| s).unwrap_or("absent")
+  }
+
+  fn one(home: &Path) -> ScanResult {
+    scan_roots(Some(home), &HashMap::new(), &[])
+  }
+
   #[cfg(unix)]
   #[test]
   fn nothing_inside_a_skill_folder_is_followed() {
@@ -845,56 +1126,256 @@ mod tests {
     write(&home.join(".claude/skills/gamma/readme.md"), "readme");
     link(&home.join("outside-secret.txt"), &home.join(".claude/skills/gamma/leak.txt"));
     link(&home.join("store"), &home.join(".claude/skills/gamma/linkdir"));
-    let result = scan_roots(Some(home), &HashMap::new(), &[]);
-    let found = all_skills(&result);
-    assert_eq!(found.len(), 1);
-    let gamma = found.iter().find(|s| s.dir_name == "gamma").unwrap();
-    let names: Vec<&str> = gamma.supporting.iter().map(|s| s.name.as_str()).collect();
-    assert_eq!(names, ["readme.md"]);
-    assert_eq!(gamma.supporting_more, 0);
+    let result = one(home);
+    assert_eq!(all_skills(&result).len(), 1);
+    assert_eq!(
+      files_of(&result, "gamma"),
+      [("leak.txt".to_owned(), "symlink"), ("linkdir".to_owned(), "symlink"), ("readme.md".to_owned(), "ok")]
+    );
   }
 
   #[test]
-  fn secret_named_files_are_never_listed() {
-    let t = Tmp::new("secret-names");
+  fn listing_is_recursive_with_sizes_hashes_and_the_root_skill_md_left_out() {
+    let t = Tmp::new("recursive");
     let home = t.path();
     skill(home, ".claude/skills/kit", "kit");
-    for name in [
-      ".env",
-      ".env.local",
-      "id_rsa",
-      "id_ed25519.pub",
-      "server.pem",
-      "tls.key",
-      "cert.p12",
-      "keys.pfx",
-      "credentials.json",
-      "secrets.yml",
-      ".npmrc",
-      "api-token.txt",
-    ] {
-      write(&home.join(".claude/skills/kit").join(name), "x");
-    }
-    write(&home.join(".claude/skills/kit/notes.md"), "n");
-    write(&home.join(".claude/skills/kit/README.md"), "r");
-    let result = scan_roots(Some(home), &HashMap::new(), &[]);
+    write(&home.join(".claude/skills/kit/references/guide.md"), "guide");
+    write(&home.join(".claude/skills/kit/scripts/run.sh"), "echo hi\n");
+    write(&home.join(".claude/skills/kit/references/SKILL.md"), "nested");
+    let result = one(home);
     let kit = &all_skills(&result)[0];
-    let names: Vec<&str> = kit.supporting.iter().map(|s| s.name.as_str()).collect();
-    assert_eq!(names, ["README.md", "notes.md"]);
+    let paths: Vec<&str> = kit.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, ["references/SKILL.md", "references/guide.md", "scripts/run.sh"]);
+    assert!(kit.files.iter().all(|f| f.status == "ok"));
+    let guide = &kit.files[1];
+    assert_eq!(guide.size, 5);
+    assert_eq!(guide.sha256.as_deref(), Some(sf::sha256_hex(b"guide").as_str()));
+    assert_eq!(
+      kit.files_sha256,
+      sf::files_sha256(kit.files.iter().map(|f| (f.path.as_str(), f.sha256.as_deref().unwrap())))
+    );
+    assert!(kit.files_blocked.is_none());
   }
 
   #[test]
-  fn supporting_list_is_capped_at_twenty_with_a_count_of_the_rest() {
-    let t = Tmp::new("supporting-cap");
+  fn hidden_files_dirs_node_modules_and_git_are_listed_as_skipped_and_never_entered() {
+    let t = Tmp::new("hidden");
+    let home = t.path();
+    skill(home, ".claude/skills/kit", "kit");
+    write(&home.join(".claude/skills/kit/.hidden"), "x");
+    write(&home.join(".claude/skills/kit/.git/config"), "x");
+    write(&home.join(".claude/skills/kit/node_modules/pkg/index.js"), "x");
+    write(&home.join(".claude/skills/kit/notes.md"), "n");
+    let result = one(home);
+    assert_eq!(
+      files_of(&result, "kit"),
+      [
+        (".git".to_owned(), "skipped_hidden"),
+        (".hidden".to_owned(), "skipped_hidden"),
+        ("node_modules".to_owned(), "skipped_hidden"),
+        ("notes.md".to_owned(), "ok"),
+      ]
+    );
+  }
+
+  #[test]
+  fn binary_and_too_large_files_are_listed_with_status_and_not_hashed() {
+    let t = Tmp::new("binary");
+    let home = t.path();
+    skill(home, ".claude/skills/kit", "kit");
+    fs::write(home.join(".claude/skills/kit/logo.png"), [0x89, 0x50, 0x00, 0x47]).unwrap();
+    fs::write(home.join(".claude/skills/kit/latin1.txt"), [0xff, 0xfe, 0x41]).unwrap();
+    fs::write(home.join(".claude/skills/kit/big.txt"), vec![b'a'; 64 * 1024 + 1]).unwrap();
+    fs::write(home.join(".claude/skills/kit/edge.txt"), vec![b'a'; 64 * 1024]).unwrap();
+    let result = one(home);
+    assert_eq!(status_of(&result, "kit", "logo.png"), "binary");
+    assert_eq!(status_of(&result, "kit", "latin1.txt"), "binary");
+    assert_eq!(status_of(&result, "kit", "big.txt"), "too_large");
+    assert_eq!(status_of(&result, "kit", "edge.txt"), "ok");
+    let kit = &all_skills(&result)[0];
+    assert!(kit.files.iter().filter(|f| f.status != "ok").all(|f| f.sha256.is_none()));
+    assert!(kit.files_blocked.is_none());
+  }
+
+  #[test]
+  fn secret_files_block_the_skill_files_by_name_and_by_content() {
+    let t = Tmp::new("secret-files");
+    let home = t.path();
+    skill(home, ".claude/skills/named", "kit");
+    write(&home.join(".claude/skills/named/credentials.json"), "{}");
+    write(&home.join(".claude/skills/named/api-token.txt"), "x");
+    write(&home.join(".claude/skills/named/ok.md"), "fine");
+    skill(home, ".claude/skills/content", "kit");
+    write(&home.join(".claude/skills/content/deploy.sh"), &format!("{}\nabc\n", pem_header("RSA")));
+    let result = one(home);
+    assert_eq!(status_of(&result, "named", "credentials.json"), "secret");
+    assert_eq!(status_of(&result, "named", "api-token.txt"), "secret");
+    assert_eq!(status_of(&result, "named", "ok.md"), "ok");
+    assert_eq!(status_of(&result, "content", "deploy.sh"), "secret");
+    for dir in ["named", "content"] {
+      let skill = all_skills(&result).into_iter().find(|s| s.dir_name == dir).unwrap();
+      assert!(skill.files_blocked.as_deref().unwrap().contains("secret"));
+      let shown = serde_json::to_string(skill).unwrap();
+      assert!(!shown.contains("PRIVATE KEY"));
+    }
+  }
+
+  #[test]
+  fn depth_counts_from_the_skill_folder_and_five_parts_is_the_limit() {
+    let t = Tmp::new("depth");
+    let home = t.path();
+    skill(home, ".claude/skills/kit", "kit");
+    write(&home.join(".claude/skills/kit/a/b/c/d/ok.md"), "x");
+    write(&home.join(".claude/skills/kit/a/b/c/d/e/deep.md"), "x");
+    let result = one(home);
+    assert_eq!(status_of(&result, "kit", "a/b/c/d/ok.md"), "ok");
+    assert_eq!(status_of(&result, "kit", "a/b/c/d/e"), "too_deep");
+    assert_eq!(status_of(&result, "kit", "a/b/c/d/e/deep.md"), "absent");
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn files_differing_only_by_case_are_both_rejected() {
+    let t = Tmp::new("case");
+    let home = t.path();
+    skill(home, ".claude/skills/kit", "kit");
+    write(&home.join(".claude/skills/kit/A.md"), "a");
+    write(&home.join(".claude/skills/kit/a.md"), "b");
+    write(&home.join(".claude/skills/kit/refs/Same.md"), "1");
+    write(&home.join(".claude/skills/kit/refs/other.md"), "1");
+    write(&home.join(".claude/skills/kit/skill.md"), "lower");
+    let result = one(home);
+    let names = files_of(&result, "kit");
+    if names.iter().filter(|(p, _)| p.eq_ignore_ascii_case("a.md")).count() == 2 {
+      assert_eq!(status_of(&result, "kit", "A.md"), "case_conflict");
+      assert_eq!(status_of(&result, "kit", "a.md"), "case_conflict");
+    }
+    if names.iter().any(|(p, _)| p == "skill.md") && !names.iter().any(|(p, _)| p == "SKILL.md") {
+      assert_eq!(status_of(&result, "kit", "skill.md"), "case_conflict");
+    }
+    assert_eq!(status_of(&result, "kit", "refs/other.md"), "ok");
+  }
+
+  #[test]
+  fn unsupported_names_are_listed_and_never_uploaded() {
+    let t = Tmp::new("names");
+    let home = t.path();
+    skill(home, ".claude/skills/kit", "kit");
+    write(&home.join(".claude/skills/kit/my notes.md"), "x");
+    write(&home.join(".claude/skills/kit/naïve.md"), "x");
+    write(&home.join(".claude/skills/kit/-dash.md"), "x");
+    write(&home.join(".claude/skills/kit/bad dir/inner.md"), "x");
+    write(&home.join(".claude/skills/kit/fine.md"), "x");
+    let result = one(home);
+    for path in ["my notes.md", "naïve.md", "-dash.md", "bad dir"] {
+      assert_eq!(status_of(&result, "kit", path), "unsupported_name", "{path}");
+    }
+    assert_eq!(status_of(&result, "kit", "bad dir/inner.md"), "absent");
+    assert_eq!(status_of(&result, "kit", "fine.md"), "ok");
+  }
+
+  #[test]
+  fn more_than_fifty_files_or_256_kib_block_the_skill_files() {
+    let t = Tmp::new("limits");
     let home = t.path();
     skill(home, ".claude/skills/many", "many");
-    for i in 0..25 {
+    for i in 0..51 {
       write(&home.join(format!(".claude/skills/many/f{i:02}.txt")), "x");
     }
-    let result = scan_roots(Some(home), &HashMap::new(), &[]);
-    let many = &all_skills(&result)[0];
-    assert_eq!(many.supporting.len(), MAX_SUPPORTING);
-    assert_eq!(many.supporting_more, 5);
+    skill(home, ".claude/skills/fifty", "fifty");
+    for i in 0..50 {
+      write(&home.join(format!(".claude/skills/fifty/f{i:02}.txt")), "x");
+    }
+    skill(home, ".claude/skills/heavy", "heavy");
+    for i in 0..5 {
+      fs::write(home.join(format!(".claude/skills/heavy/h{i}.txt")), vec![b'a'; 60 * 1024]).unwrap();
+    }
+    let result = one(home);
+    let blocked = |dir: &str| all_skills(&result).into_iter().find(|s| s.dir_name == dir).unwrap().files_blocked.clone();
+    assert!(blocked("many").unwrap().contains("50 files"));
+    assert!(blocked("fifty").is_none());
+    assert!(blocked("heavy").unwrap().contains("256 KiB"));
+  }
+
+  fn read_one(result: &ScanResult, dir: &str) -> SkillFilesRead {
+    let key = all_skills(result).into_iter().find(|s| s.dir_name == dir).unwrap().key.clone();
+    read_skill_files(&result.previews, &[key]).remove(0)
+  }
+
+  fn kit_with_files(name: &str) -> (Tmp, ScanResult) {
+    let t = Tmp::new(name);
+    let home = t.path().to_path_buf();
+    skill(&home, ".claude/skills/kit", "kit");
+    write(&home.join(".claude/skills/kit/references/guide.md"), "guide");
+    write(&home.join(".claude/skills/kit/run.sh"), "echo hi");
+    let result = one(&home);
+    (t, result)
+  }
+
+  #[test]
+  fn import_read_returns_the_previewed_files_and_hash() {
+    let (_t, result) = kit_with_files("read-ok");
+    let read = read_one(&result, "kit");
+    assert!(read.ok, "{:?}", read.error);
+    let got: Vec<(&str, &str)> = read.files.iter().map(|f| (f.path.as_str(), f.content.as_str())).collect();
+    assert_eq!(got, [("references/guide.md", "guide"), ("run.sh", "echo hi")]);
+    assert_eq!(read.files_sha256, all_skills(&result)[0].files_sha256);
+  }
+
+  #[test]
+  fn import_read_fails_the_whole_skill_when_a_file_changed_or_vanished() {
+    let (t, result) = kit_with_files("read-changed");
+    let dir = t.path().join(".claude/skills/kit");
+    fs::write(dir.join("run.sh"), "echo bye").unwrap();
+    let read = read_one(&result, "kit");
+    assert!(!read.ok);
+    assert!(read.files.is_empty());
+    assert_eq!(read.error.as_deref(), Some("changed since preview, rescan"));
+    fs::write(dir.join("run.sh"), "echo hi").unwrap();
+    assert!(read_one(&result, "kit").ok);
+    fs::remove_file(dir.join("references/guide.md")).unwrap();
+    assert!(!read_one(&result, "kit").ok);
+  }
+
+  #[test]
+  fn import_read_rejects_same_size_changed_content() {
+    let (t, result) = kit_with_files("read-secret");
+    let dir = t.path().join(".claude/skills/kit");
+    fs::write(dir.join("run.sh"), "echo ho").unwrap();
+    assert!(!read_one(&result, "kit").ok);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn import_read_refuses_a_symlink_swapped_in_for_a_file_or_a_folder() {
+    let (t, result) = kit_with_files("read-symlink");
+    let dir = t.path().join(".claude/skills/kit");
+    write(&t.path().join("outside.txt"), "echo hi");
+    fs::remove_file(dir.join("run.sh")).unwrap();
+    link(&t.path().join("outside.txt"), &dir.join("run.sh"));
+    assert!(!read_one(&result, "kit").ok);
+    fs::remove_file(dir.join("run.sh")).unwrap();
+    write(&dir.join("run.sh"), "echo hi");
+    assert!(read_one(&result, "kit").ok);
+    write(&t.path().join("elsewhere/guide.md"), "guide");
+    fs::remove_dir_all(dir.join("references")).unwrap();
+    link(&t.path().join("elsewhere"), &dir.join("references"));
+    assert!(!read_one(&result, "kit").ok);
+  }
+
+  #[test]
+  fn import_read_rejects_unknown_keys_and_escaping_paths() {
+    let (_t, result) = kit_with_files("read-escape");
+    let unknown = read_skill_files(&result.previews, &["nope".to_owned()]).remove(0);
+    assert!(!unknown.ok);
+    let mut previews = result.previews.clone();
+    let key = all_skills(&result)[0].key.clone();
+    for bad in ["../outside.txt", "/etc/passwd", "a/./b", "SKILL.md"] {
+      let mut tampered = previews[&key].clone();
+      tampered.files = vec![PreviewFile { path: bad.to_owned(), size: 1, sha256: "x".into() }];
+      previews.insert(key.clone(), tampered);
+      assert!(!read_skill_files(&previews, std::slice::from_ref(&key))[0].ok, "{bad}");
+    }
   }
 
   #[test]

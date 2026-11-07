@@ -63,6 +63,7 @@ describe('skills step after publish', () => {
 				{
 					markdown: LIBRARY.skills[0].markdown,
 					attach_to: ['p-local', 'p-cloud'],
+					files: [],
 				},
 			],
 		});
@@ -192,6 +193,7 @@ describe('skills step robustness', () => {
 				{
 					markdown: LIBRARY.skills[0].markdown,
 					attach_to: ['p-local', 'p-cloud'],
+					files: [],
 				},
 			],
 		});
@@ -210,6 +212,7 @@ describe('skills step robustness', () => {
 				{
 					markdown: LIBRARY.skills[0].markdown,
 					attach_to: ['p-local', 'p-cloud'],
+					files: [],
 				},
 			],
 		});

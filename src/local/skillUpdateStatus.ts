@@ -1,4 +1,9 @@
-import { convertSkill, rowStatus, type ScanResult } from '@/utils/skillImport';
+import {
+	convertSkill,
+	rowStatus,
+	sourceChanged,
+	type ScanResult,
+} from '@/utils/skillImport';
 import type { LibraryFile } from './skillLibrary';
 
 export type SkillUpdateStatus =
@@ -31,10 +36,7 @@ export const linkedUpdateStatuses = (
 		});
 		if (status === 'changed') {
 			result[entry.slug] = 'update-available';
-		} else if (
-			status === 'edited-in-library' &&
-			skill.hash !== entry.sourceHash
-		) {
+		} else if (status === 'edited-in-library' && sourceChanged(skill, entry)) {
 			result[entry.slug] = 'edited-and-changed';
 		} else if (result[entry.slug] === 'not-scanned') {
 			delete result[entry.slug];

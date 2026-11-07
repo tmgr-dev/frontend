@@ -1,4 +1,8 @@
-import type { ScanResult, ScanSkill } from '@/utils/skillImport';
+import {
+	EMPTY_FILES_SHA256 as EMPTY,
+	type ScanResult,
+	type ScanSkill,
+} from '@/utils/skillImport';
 import { emptyLibrary, type LibraryFile } from '../skillLibrary';
 import { linkedUpdateStatuses } from '../skillUpdateStatus';
 
@@ -13,8 +17,10 @@ const skill = (over: Partial<ScanSkill> = {}): ScanSkill => ({
 	secret: false,
 	secret_reason: null,
 	symlink_target: null,
-	supporting: [],
-	supporting_more: 0,
+	files: [],
+	files_sha256: EMPTY,
+	files_blocked: null,
+	files_truncated: false,
 	...over,
 });
 

@@ -145,14 +145,45 @@
 							{{ selected.converted.droppedFields.join(', ') }}
 						</p>
 						<div
-							v-if="selected.skill.supporting.length"
-							class="text-xs text-muted-foreground"
+							v-if="selected.skill.files.length"
+							class="flex flex-col gap-1 text-xs"
+							data-testid="skill-import-files"
 						>
-							Supporting files (not imported):
-							{{ selected.skill.supporting.map((f) => f.name).join(', ')
-							}}<template v-if="selected.skill.supporting_more">
-								and {{ selected.skill.supporting_more }} more</template
+							<p class="font-semibold">
+								Files: {{ uploadable(selected).length }} of
+								{{ selected.skill.files.length }} will be uploaded ({{
+									uploadBytes(selected)
+								}})
+							</p>
+							<ul class="flex flex-col gap-0.5">
+								<li
+									v-for="file in selected.skill.files"
+									:key="file.path"
+									:class="[
+										'flex flex-wrap items-baseline gap-x-2 font-mono',
+										file.status === 'ok'
+											? ''
+											: file.status === 'secret'
+												? 'text-destructive'
+												: 'text-muted-foreground',
+									]"
+									:data-testid="`skill-import-file-${file.status}`"
+								>
+									<span class="break-all">{{ file.path }}</span>
+									<span>{{ file.size }} B</span>
+									<span class="font-sans">{{ fileLabel(file) }}</span>
+								</li>
+							</ul>
+							<p
+								v-if="selected.skill.files_truncated"
+								class="text-muted-foreground"
 							>
+								The list is cut; this skill has too many files to import.
+							</p>
+							<p class="text-muted-foreground">
+								Only files marked “will be uploaded” are sent to the cloud, as
+								text. The secret check is best effort: read the list above.
+							</p>
 						</div>
 						<pre
 							class="rounded border border-border bg-muted/40 p-2 font-mono text-2xs break-words whitespace-pre-wrap"
@@ -212,6 +243,7 @@
 	import { toast } from '@/components/ui/toast';
 	import store from '@/store';
 	import {
+		FILE_STATUS_LABELS,
 		defaultTicked,
 		importSummary,
 		indexStorageKey,
@@ -220,7 +252,9 @@
 		type ImportIndex,
 		type LibraryEntryRef,
 		type RowStatus,
+		type ScanFile,
 		type ScanResult,
+		uploadableFiles,
 	} from '@/utils/skillImport';
 	import {
 		adoptMatches,
@@ -231,6 +265,7 @@
 		type ImportRow,
 		type ImportTarget,
 		type RowResult,
+		type SkillFilesRead,
 	} from '@/utils/skillImportFlow';
 	import { computed, defineComponent, ref, watch, type PropType } from 'vue';
 
@@ -295,11 +330,24 @@
 			const storageKey = () =>
 				indexStorageKey(import.meta.env.VITE_API_BASE_URL ?? '', userId());
 			let scanToken = 0;
-			const toRefs = (list: { slug: string; version: number }[]) =>
-				list.map((s) => ({ slug: s.slug, version: s.version }));
+			const toRefs = (
+				list: { slug: string; version: number; files_sha256?: string }[],
+			) =>
+				list.map((s) => ({
+					slug: s.slug,
+					version: s.version,
+					filesSha256: s.files_sha256,
+				}));
 			const cloudTarget: ImportTarget = {
 				listLibrary: async () => toRefs(await listSharedSkills(false)),
-				put: (slug, markdown) => putSharedSkill(slug, markdown),
+				put: (slug, markdown, fileSet, expectedFilesSha256) =>
+					putSharedSkill(slug, markdown, {
+						files: fileSet.files.map(({ path, content }) => ({
+							path,
+							content,
+						})),
+						expectedFilesSha256,
+					}),
 				getBody: async (slug) => (await getSharedSkill(slug)).body,
 				loadIndex: () => loadIndex(localStorage, storageKey()),
 				saveIndex: (next) => saveIndex(localStorage, storageKey(), next),
@@ -430,6 +478,8 @@
 						listLibrary: target.listLibrary,
 						put: target.put,
 						getBody: target.getBody,
+						readFiles: (keys) =>
+							invokeCommand<SkillFilesRead[]>('skills_read_files', { keys }),
 						index: index.value,
 					});
 					index.value = outcome.index;
@@ -512,6 +562,17 @@
 				close,
 				onOpenChange,
 				clashSuggestion,
+				uploadable: (row: ImportRow) => uploadableFiles(row.skill),
+				uploadBytes: (row: ImportRow) => {
+					const bytes = uploadableFiles(row.skill).reduce(
+						(sum, file) => sum + file.size,
+						0,
+					);
+					return bytes < 1024
+						? `${bytes} B`
+						: `${(bytes / 1024).toFixed(1)} KiB`;
+				},
+				fileLabel: (file: ScanFile) => FILE_STATUS_LABELS[file.status],
 				statusLabel: (row: ImportRow) => STATUS_LABELS[row.status],
 				statusClass: (status: RowStatus) => STATUS_CLASSES[status],
 			};

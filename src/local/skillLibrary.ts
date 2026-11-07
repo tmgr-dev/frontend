@@ -6,6 +6,12 @@ import {
 	validateSkillMarkdown,
 } from '@/utils/personas';
 import { type IndexEntry, isIndexEntry } from '@/utils/skillImport';
+import {
+	checkSkillFiles,
+	EMPTY_FILES_SHA256,
+	type SkillFileEntry,
+	type SkillFileSet,
+} from './skillFileSet';
 
 export interface LibrarySkill {
 	slug: string;
@@ -14,8 +20,15 @@ export interface LibrarySkill {
 	markdown: string;
 	version: number;
 	updated_at: string;
+	files?: SkillFileEntry[];
+	files_sha256?: string;
 	[extra: string]: unknown;
 }
+
+export const skillFilesSha256 = (skill: LibrarySkill): string =>
+	skill.files?.length
+		? (skill.files_sha256 ?? EMPTY_FILES_SHA256)
+		: EMPTY_FILES_SHA256;
 
 export interface LibraryAttachment {
 	persona_uuid: string;
@@ -46,6 +59,8 @@ export interface SkillBody {
 	body: string;
 	version: number;
 	source: 'shared';
+	files: { path: string; size: number }[];
+	files_sha256: string;
 }
 
 export interface SkillImportSkipped {
@@ -154,9 +169,19 @@ export const validateLibraryReport = (input: unknown): LibraryReport => {
 			skipped.push({ slug, reason: 'duplicate slug' });
 			continue;
 		}
+		let fileSet: SkillFileSet | null = null;
+		if (value.files !== undefined || value.files_sha256 !== undefined) {
+			const files = checkSkillFiles(value.files, value.files_sha256);
+			if (!files.ok) {
+				skipped.push({ slug, reason: files.reason });
+				continue;
+			}
+			fileSet = files.set;
+		}
 		seen.add(slug);
 		skills.push({
 			...value,
+			...(fileSet && { files: fileSet.files, files_sha256: fileSet.sha256 }),
 			slug,
 			title: checked.title,
 			when: checked.when,
@@ -226,12 +251,21 @@ export const putSkill = (
 	slug: string,
 	markdown: string,
 	now: string,
+	fileSet?: SkillFileSet,
 ): { library: LibraryFile; skill: LibrarySkill } => {
 	const checked = checkSkill(slug, markdown);
 	if (!checked.ok) throw new SkillLibraryError(checked.reason);
+	if (fileSet) {
+		const files = checkSkillFiles(fileSet.files, fileSet.sha256);
+		if (!files.ok) throw new SkillLibraryError(files.reason);
+	}
 
 	const existing = lib.skills.find((skill) => skill.slug === slug);
-	if (existing && existing.markdown === markdown) {
+	const sameFiles =
+		!fileSet ||
+		fileSet.sha256 ===
+			(existing ? skillFilesSha256(existing) : EMPTY_FILES_SHA256);
+	if (existing && existing.markdown === markdown && sameFiles) {
 		return { library: lib, skill: existing };
 	}
 	if (!existing && lib.skills.length >= SHARED_SKILL_LIMIT) {
@@ -240,13 +274,25 @@ export const putSkill = (
 		);
 	}
 
+	const bodyChanged = !existing || existing.markdown !== markdown;
+	const {
+		files: keptFiles,
+		files_sha256: keptSha,
+		...base
+	} = existing ?? ({} as Partial<LibrarySkill>);
+	const nextFiles =
+		fileSet ??
+		(keptFiles && keptSha ? { files: keptFiles, sha256: keptSha } : undefined);
 	const skill: LibrarySkill = {
-		...existing,
+		...base,
+		...(nextFiles?.files.length
+			? { files: nextFiles.files, files_sha256: nextFiles.sha256 }
+			: {}),
 		slug,
 		title: checked.title,
 		when: checked.when,
 		markdown,
-		version: existing ? existing.version + 1 : 1,
+		version: existing ? existing.version + (bodyChanged ? 1 : 0) : 1,
 		updated_at: now,
 	};
 	const skills = existing
@@ -354,7 +400,41 @@ export const personaSkillBody = (
 		(item) => item.slug === slug,
 	);
 	return skill
-		? { slug, body: skill.markdown, version: skill.version, source: 'shared' }
+		? {
+				slug,
+				body: skill.markdown,
+				version: skill.version,
+				source: 'shared',
+				files: (skill.files ?? []).map(({ path, size }) => ({ path, size })),
+				files_sha256: skillFilesSha256(skill),
+			}
+		: null;
+};
+
+export const personaSkillFile = (
+	lib: LibraryFile,
+	personaUuid: string,
+	slug: string,
+	path: string,
+): {
+	slug: string;
+	path: string;
+	content: string;
+	size: number;
+	sha256: string;
+} | null => {
+	const skill = attachedSkills(lib, personaUuid).find(
+		(item) => item.slug === slug,
+	);
+	const file = skill?.files?.find((item) => item.path === path);
+	return file
+		? {
+				slug,
+				path: file.path,
+				content: file.content,
+				size: file.size,
+				sha256: file.sha256,
+			}
 		: null;
 };
 
@@ -396,7 +476,14 @@ export const importSkills = (
 			continue;
 		}
 		try {
-			library = putSkill(library, slug, markdown, now).library;
+			const fileSet =
+				entry.files === undefined
+					? undefined
+					: ({
+							files: entry.files,
+							sha256: entry.files_sha256,
+						} as SkillFileSet);
+			library = putSkill(library, slug, markdown, now, fileSet).library;
 			imported.push(slug);
 		} catch (error) {
 			if (!(error instanceof SkillLibraryError)) throw error;

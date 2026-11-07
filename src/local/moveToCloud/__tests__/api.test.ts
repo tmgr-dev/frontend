@@ -38,7 +38,7 @@ describe('import api skills', () => {
 		client.post.mockResolvedValueOnce({
 			data: { data: { skills: [{ slug: 'a' }] } },
 		} as any);
-		const payload = { skills: [{ markdown: 'm', attach_to: ['p'] }] };
+		const payload = { skills: [{ markdown: 'm', attach_to: ['p'], files: [] }] };
 		const report = await createImportApi(client as any).importSkills(
 			'j',
 			payload,

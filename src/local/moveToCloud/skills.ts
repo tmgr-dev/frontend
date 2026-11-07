@@ -19,8 +19,38 @@ export const buildSkillsPayload = (
 			.map((skill) => ({
 				markdown: skill.markdown,
 				attach_to: targets.get(skill.slug)!,
+				files: (skill.files ?? []).map(({ path, content }) => ({
+					path,
+					content,
+				})),
 			})),
 	};
+};
+
+const MAX_BATCH_BYTES = 1_500_000;
+const MAX_BATCH_SKILLS = 100;
+
+export const batchSkillsPayload = (
+	skills: SkillsPayload['skills'],
+): SkillsPayload['skills'][] => {
+	const batches: SkillsPayload['skills'][] = [];
+	let current: SkillsPayload['skills'] = [];
+	let bytes = 0;
+	for (const skill of skills) {
+		const size = new TextEncoder().encode(JSON.stringify(skill)).length;
+		if (
+			current.length > 0 &&
+			(bytes + size > MAX_BATCH_BYTES || current.length >= MAX_BATCH_SKILLS)
+		) {
+			batches.push(current);
+			current = [];
+			bytes = 0;
+		}
+		current.push(skill);
+		bytes += size;
+	}
+	if (current.length > 0) batches.push(current);
+	return batches;
 };
 
 const SKILL_REASONS: Record<string, string> = {
@@ -29,6 +59,8 @@ const SKILL_REASONS: Record<string, string> = {
 	not_owner: 'the persona belongs to another member',
 	not_moved: 'the persona was not moved',
 	attach_limit: 'the persona has too many skills',
+	invalid_files: 'its files are not valid (path, text or size limits)',
+	files_limit: 'its files would exceed your 10 MiB files limit',
 };
 
 const skillReason = (reason: string | null) =>

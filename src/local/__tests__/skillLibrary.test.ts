@@ -1,3 +1,5 @@
+import { createHash } from 'crypto';
+import { EMPTY_FILES_SHA256, type SkillFileSet } from '../skillFileSet';
 import {
 	attach,
 	deleteSkill,
@@ -8,6 +10,7 @@ import {
 	type LibraryFile,
 	mergeSkills,
 	personaSkillBody,
+	personaSkillFile,
 	personaSkillIndex,
 	putSkill,
 	SkillLibraryError,
@@ -417,6 +420,8 @@ describe('personaSkillBody', () => {
 			body: md('alpha'),
 			version: 1,
 			source: 'shared',
+			files: [],
+			files_sha256: EMPTY_FILES_SHA256,
 		});
 	});
 
@@ -543,5 +548,132 @@ describe('importSkills', () => {
 		expect(() => importSkills(emptyLibrary(), { version: 1 }, NOW)).toThrow(
 			SkillLibraryError,
 		);
+	});
+});
+
+const sha = (text: string) => createHash('sha256').update(text).digest('hex');
+const fileSetOf = (...pairs: [string, string][]): SkillFileSet => {
+	const files = pairs.map(([path, content]) => ({
+		path,
+		content,
+		size: Buffer.byteLength(content),
+		sha256: sha(content),
+	}));
+	const joined = [...files]
+		.sort((a, b) => (a.path < b.path ? -1 : 1))
+		.map((f) => `${f.path}\0${f.sha256}\n`)
+		.join('');
+	return { files, sha256: sha(joined) };
+};
+
+describe('skill files in the local library', () => {
+	const set = fileSetOf(['run.sh', 'echo hi'], ['refs/g.md', 'guide']);
+
+	it('stores body, files and hash in one skill record', () => {
+		const { skill } = putSkill(emptyLibrary(), 'kit', md('kit'), NOW, set);
+		expect(skill.files).toEqual(set.files);
+		expect(skill.files_sha256).toBe(set.sha256);
+		expect(skill.version).toBe(1);
+	});
+
+	it('keeps the files when only the body changes and the body when only files change', () => {
+		const first = putSkill(emptyLibrary(), 'kit', md('kit'), NOW, set).library;
+		const body = putSkill(first, 'kit', md('kit', 'T', 'new'), LATER);
+		expect(body.skill.files).toEqual(set.files);
+		expect(body.skill.version).toBe(2);
+		const next = fileSetOf(['run.sh', 'changed']);
+		const filesOnly = putSkill(first, 'kit', md('kit'), LATER, next);
+		expect(filesOnly.skill.files).toEqual(next.files);
+		expect(filesOnly.skill.version).toBe(1);
+		expect(filesOnly.library).not.toBe(first);
+	});
+
+	it('is a no-op for identical body and files, and an empty set clears the files', () => {
+		const first = putSkill(emptyLibrary(), 'kit', md('kit'), NOW, set).library;
+		expect(putSkill(first, 'kit', md('kit'), LATER, set).library).toBe(first);
+		const cleared = putSkill(first, 'kit', md('kit'), LATER, fileSetOf());
+		expect(cleared.skill.files).toBeUndefined();
+		expect(cleared.skill.files_sha256).toBeUndefined();
+	});
+
+	it('rejects bad paths, case clashes, NUL, size and count limits', () => {
+		const put = (s: SkillFileSet) =>
+			putSkill(emptyLibrary(), 'kit', md('kit'), NOW, s);
+		for (const bad of [
+			'../x',
+			'/a',
+			'a/./b',
+			'.git/c',
+			'a\\b',
+			'SKILL.md',
+			'skill.md',
+			'a/b/c/d/e/f',
+		]) {
+			expect(() => put(fileSetOf([bad, 'x']))).toThrow(SkillLibraryError);
+		}
+		expect(() => put(fileSetOf(['A.md', '1'], ['a.md', '2']))).toThrow(/case/);
+		expect(() => put(fileSetOf(['f', 'a\0b']))).toThrow(SkillLibraryError);
+		expect(() => put(fileSetOf(['f', 'a'.repeat(64 * 1024 + 1)]))).toThrow(
+			/64 KiB/,
+		);
+		const many = Array.from(
+			{ length: 51 },
+			(_, i) => [`f${i}`, 'x'] as [string, string],
+		);
+		expect(() => put(fileSetOf(...many))).toThrow(/at most 50/);
+		const heavy = ['a', 'b', 'c', 'd', 'e'].map(
+			(n) => [n, 'a'.repeat(60 * 1024)] as [string, string],
+		);
+		expect(() => put(fileSetOf(...heavy))).toThrow(/256 KiB/);
+		expect(
+			put(fileSetOf(['references/SKILL.md', 'ok'])).skill.files,
+		).toHaveLength(1);
+	});
+
+	it('drops a stored skill with tampered files when the library is read', () => {
+		const lib = putSkill(emptyLibrary(), 'kit', md('kit'), NOW, set).library;
+		const bad = {
+			...lib,
+			skills: [
+				{ ...lib.skills[0], files: [{ ...set.files[0], path: '../x' }] },
+			],
+		};
+		const report = validateLibraryReport(bad);
+		expect(report.library.skills).toEqual([]);
+		expect(report.skipped[0].slug).toBe('kit');
+		expect(validateLibraryReport(lib).library.skills[0].files).toEqual(
+			set.files,
+		);
+	});
+
+	it('serves files to the persona the skill is attached to only', () => {
+		const lib = attach(
+			putSkill(emptyLibrary(), 'kit', md('kit'), NOW, set).library,
+			PERSONA,
+			'kit',
+		);
+		expect(personaSkillBody(lib, PERSONA, 'kit')).toMatchObject({
+			files: [
+				{ path: 'run.sh', size: 7 },
+				{ path: 'refs/g.md', size: 5 },
+			],
+			files_sha256: set.sha256,
+		});
+		expect(personaSkillFile(lib, PERSONA, 'kit', 'run.sh')).toEqual({
+			slug: 'kit',
+			path: 'run.sh',
+			content: 'echo hi',
+			size: 7,
+			sha256: sha('echo hi'),
+		});
+		expect(personaSkillFile(lib, PERSONA, 'kit', 'nope.sh')).toBeNull();
+		expect(personaSkillFile(lib, 'persona-2', 'kit', 'run.sh')).toBeNull();
+	});
+
+	it('carries files through the export and import file', () => {
+		const lib = putSkill(emptyLibrary(), 'kit', md('kit'), NOW, set).library;
+		const out = importSkills(emptyLibrary(), exportProjection(lib), LATER);
+		expect(out.imported).toEqual(['kit']);
+		expect(out.library.skills[0].files).toEqual(set.files);
 	});
 });

@@ -3,6 +3,7 @@ import { dispatchLocal } from '../dispatch';
 import { handleMcpRequest } from '../mcp';
 import { disableLocalPersona, enableLocalPersona } from '../personas';
 import { migrate } from '../schema';
+import { EMPTY_FILES_SHA256 } from '../skillFileSet';
 import {
 	attach,
 	emptyLibrary,
@@ -181,6 +182,7 @@ describeSqlite('local MCP handler for personas', () => {
 				'whoami',
 				'get_persona',
 				'get_persona_skill',
+				'get_persona_skill_file',
 				'list_workspaces',
 				'tmgr_request',
 				'get_task',
@@ -402,7 +404,69 @@ describeSqlite('local MCP handler for personas', () => {
 			body: skillMarkdown('alpha'),
 			version: 1,
 			source: 'shared',
+			files: [],
+			files_sha256: EMPTY_FILES_SHA256,
 		});
+	});
+
+	it('lists companion files in get_persona_skill and serves one through get_persona_skill_file', async () => {
+		await enableLocalPersona(ctx, 'p-1', []);
+		const withFiles = async () => {
+			const files = [
+				{ path: 'run.sh', content: 'echo hi', size: 7, sha256: 'a'.repeat(64) },
+			];
+			let lib = sharedLibrary();
+			lib = {
+				...lib,
+				skills: lib.skills.map((s) =>
+					s.slug === 'alpha'
+						? { ...s, files, files_sha256: 'b'.repeat(64) }
+						: s,
+				),
+			};
+			return lib;
+		};
+		const via = async (name: string, args: Record<string, unknown>) =>
+			JSON.parse(
+				(
+					await handleMcpRequest(
+						router,
+						ctx,
+						JSON.stringify({
+							jsonrpc: '2.0',
+							id: 1,
+							method: 'tools/call',
+							params: { name, arguments: args },
+						}),
+						{ ...deps, skillLibrary: withFiles },
+					)
+				).body,
+			).result;
+		const skill = await via('get_persona_skill', { slug: 'alpha' });
+		expect(JSON.parse(skill.content[0].text)).toMatchObject({
+			files: [{ path: 'run.sh', size: 7 }],
+			files_sha256: 'b'.repeat(64),
+		});
+		const file = await via('get_persona_skill_file', {
+			slug: 'alpha',
+			path: 'run.sh',
+		});
+		expect(JSON.parse(file.content[0].text)).toEqual({
+			slug: 'alpha',
+			path: 'run.sh',
+			content: 'echo hi',
+			size: 7,
+			sha256: 'a'.repeat(64),
+		});
+		for (const args of [
+			{ slug: 'alpha', path: 'missing.sh' },
+			{ slug: 'unattached', path: 'run.sh' },
+			{ slug: 'missing', path: 'run.sh' },
+		]) {
+			const res = await via('get_persona_skill_file', args);
+			expect(res.isError).toBe(true);
+			expect(res.content[0].text).toBe('Skill not found');
+		}
 	});
 
 	it('answers get_persona_skill with the cloud not-found error for an unknown or unattached slug', async () => {

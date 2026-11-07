@@ -7,6 +7,7 @@ import {
 import {
 	convertSkill,
 	defaultTicked,
+	EMPTY_FILES_SHA256 as EMPTY,
 	importSummary,
 	indexStorageKey,
 	loadIndex,
@@ -18,6 +19,8 @@ import {
 	suggestSlug,
 	type IndexEntry,
 	type KeyValueStorage,
+	type ScanFile,
+	type ScanFileStatus,
 	type ScanSkill,
 } from '../skillImport';
 
@@ -34,8 +37,10 @@ const makeSkill = (overrides: Partial<ScanSkill> = {}): ScanSkill => {
 		secret: false,
 		secret_reason: null,
 		symlink_target: null,
-		supporting: [],
-		supporting_more: 0,
+		files: [],
+		files_sha256: EMPTY,
+		files_blocked: null,
+		files_truncated: false,
 		...overrides,
 	};
 };
@@ -370,16 +375,40 @@ describe('convertSkill title', () => {
 });
 
 describe('convertSkill warnings', () => {
-	it('counts listed and unlisted supporting files', () => {
+	it('counts files that will not be imported but not hidden ones', () => {
+		const file = (path: string, status: ScanFileStatus): ScanFile => ({
+			path,
+			size: 1,
+			status,
+			reason: null,
+			sha256: null,
+		});
 		const converted = convertSkill(
 			makeSkill({
 				content: '---\nname: triage\ndescription: d\n---\nbody\n',
-				supporting: [{ name: 'helper.md', size: 10 }],
-				supporting_more: 2,
+				files: [
+					file('a.md', 'ok'),
+					file('b.png', 'binary'),
+					file('c', 'symlink'),
+					file('.d', 'skipped_hidden'),
+				],
 			}),
 		);
 		expect(converted.warnings).toContain(
-			'3 supporting files not imported; relative references will not resolve',
+			'2 files will not be imported, see the file list',
+		);
+		expect(converted.blockedReason).toBeNull();
+	});
+
+	it('blocks the whole skill when its files are blocked', () => {
+		const converted = convertSkill(
+			makeSkill({
+				content: '---\nname: triage\ndescription: d\n---\nbody\n',
+				files_blocked: 'run.sh looks like it contains a secret',
+			}),
+		);
+		expect(converted.blockedReason).toBe(
+			'files: run.sh looks like it contains a secret',
 		);
 	});
 

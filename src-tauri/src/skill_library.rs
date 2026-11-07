@@ -8,8 +8,10 @@ use serde_json::{json, Map, Value};
 use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_dialog::DialogExt;
 
+use crate::skill_files as sf;
+
 static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-const MAX_FILE_BYTES: u64 = 2_500_000;
+const MAX_FILE_BYTES: u64 = 12 * 1024 * 1024;
 const MAX_SKILLS: usize = 100;
 const MAX_MARKDOWN_BYTES: usize = 16_384;
 const MAX_ATTACHMENTS_PER_PERSONA: usize = 20;
@@ -44,6 +46,57 @@ fn text_field<'a>(obj: &'a Map<String, Value>, key: &str) -> Result<&'a str, Str
   }
 }
 
+fn validate_files(obj: &Map<String, Value>) -> Result<(), String> {
+  let files = match obj.get("files") {
+    None => {
+      return match obj.get("files_sha256") {
+        None => Ok(()),
+        Some(_) => Err("skill files hash without files".into()),
+      }
+    }
+    Some(Value::Array(files)) => files,
+    Some(_) => return Err("skill files must be a list".into()),
+  };
+  if files.len() > sf::MAX_FILES {
+    return Err(format!("a skill has at most {} files", sf::MAX_FILES));
+  }
+  let mut keys = std::collections::HashSet::new();
+  let mut total = 0usize;
+  let mut pairs: Vec<(&str, &str)> = Vec::new();
+  for file in files {
+    let file = file.as_object().ok_or("a skill file must be an object")?;
+    let path = match file.get("path") {
+      Some(Value::String(p)) if sf::valid_path(p) && !sf::is_reserved(p) => p.as_str(),
+      _ => return Err("invalid skill file path".into()),
+    };
+    if !keys.insert(sf::path_key(path)) {
+      return Err("two skill files differ only by case".into());
+    }
+    let content = match file.get("content") {
+      Some(Value::String(c)) => c.as_bytes(),
+      _ => return Err("skill file content is missing".into()),
+    };
+    if content.len() > sf::MAX_FILE_BYTES || sf::text_of(content).is_none() {
+      return Err("a skill file is too large or not text".into());
+    }
+    total += content.len();
+    let sha = sf::sha256_hex(content);
+    if file.get("size").and_then(Value::as_u64) != Some(content.len() as u64)
+      || file.get("sha256").and_then(Value::as_str) != Some(sha.as_str())
+    {
+      return Err("a skill file does not match its size or hash".into());
+    }
+    pairs.push((path, file.get("sha256").and_then(Value::as_str).unwrap_or_default()));
+  }
+  if total > sf::MAX_SKILL_BYTES {
+    return Err("the files of a skill are too large".into());
+  }
+  if obj.get("files_sha256").and_then(Value::as_str) != Some(sf::files_sha256(pairs).as_str()) {
+    return Err("skill files hash does not match".into());
+  }
+  Ok(())
+}
+
 fn validate_skills(skills: &Value) -> Result<(), String> {
   let list = skills.as_array().ok_or("skills must be a list")?;
   if list.len() > MAX_SKILLS {
@@ -75,6 +128,7 @@ fn validate_skills(skills: &Value) -> Result<(), String> {
         return Err("skill version is invalid".into());
       }
     }
+    validate_files(obj)?;
   }
   Ok(())
 }
@@ -472,6 +526,92 @@ mod tests {
     assert!(parse_import(br#"{"version":1,"skills":[{"slug":"Bad","markdown":"x"}]}"#).is_err());
     let ok = parse_import(br#"{"version":1,"skills":[{"slug":"a","markdown":"x"}],"links":{"k":1}}"#).unwrap();
     assert_eq!(ok, json!({ "version": 1, "skills": [{ "slug": "a", "markdown": "x" }] }));
+  }
+
+  fn with_files(slug: &str, files: &[(&str, &str)]) -> Value {
+    let entries: Vec<Value> = files
+      .iter()
+      .map(|(path, content)| {
+        json!({ "path": path, "content": content, "size": content.len(), "sha256": sf::sha256_hex(content.as_bytes()) })
+      })
+      .collect();
+    let sha = sf::files_sha256(files.iter().map(|(path, content)| (*path, sf::sha256_hex(content.as_bytes()))).collect::<Vec<_>>().iter().map(|(p, s)| (*p, s.as_str())));
+    let mut value = skill(slug);
+    value["files"] = json!(entries);
+    value["files_sha256"] = json!(sha);
+    value
+  }
+
+  #[test]
+  fn files_live_in_the_same_json_and_round_trip_atomically_with_the_body() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("7.json");
+    let lib = library(vec![with_files("a", &[("references/guide.md", "guide"), ("run.sh", "echo hi")])]);
+    write_library(&path, &lib).unwrap();
+    assert_eq!(read_library(&path).unwrap(), Some(lib));
+    let names: Vec<_> = fs::read_dir(tmp.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+    assert_eq!(names, vec![std::ffi::OsString::from("7.json")]);
+  }
+
+  #[test]
+  fn file_paths_are_validated_and_never_become_disk_paths() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("7.json");
+    for bad in ["../x", "/etc/passwd", "a/./b", ".git/config", "a\\b", "SKILL.md", "skill.md", "a/b/c/d/e/f"] {
+      assert!(validate_library(&library(vec![with_files("a", &[(bad, "x")])])).is_err(), "{bad}");
+    }
+    assert!(validate_library(&library(vec![with_files("a", &[("A.md", "1"), ("a.md", "2")])])).is_err());
+    assert!(validate_library(&library(vec![with_files("a", &[("references/SKILL.md", "1")])])).is_ok());
+    let evil = with_files("a", &[("..", "x")]);
+    assert!(write_library(&path, &library(vec![evil])).is_err());
+    assert_eq!(fs::read_dir(tmp.path()).unwrap().count(), 0);
+  }
+
+  #[test]
+  fn file_limits_are_enforced() {
+    let big = "a".repeat(64 * 1024);
+    assert!(validate_library(&library(vec![with_files("a", &[("f", &big)])])).is_ok());
+    assert!(validate_library(&library(vec![with_files("a", &[("f", &format!("{big}a"))])])).is_err());
+    let names: Vec<String> = (0..51).map(|i| format!("f{i}")).collect();
+    let fifty: Vec<(&str, &str)> = names.iter().take(50).map(|n| (n.as_str(), "x")).collect();
+    let fifty_one: Vec<(&str, &str)> = names.iter().map(|n| (n.as_str(), "x")).collect();
+    assert!(validate_library(&library(vec![with_files("a", &fifty)])).is_ok());
+    assert!(validate_library(&library(vec![with_files("a", &fifty_one)])).is_err());
+    let five = ["a", "b", "c", "d", "e"];
+    let heavy: Vec<(&str, &str)> = five.iter().map(|n| (*n, big.as_str())).collect();
+    assert!(validate_library(&library(vec![with_files("a", &heavy)])).is_err());
+  }
+
+  #[test]
+  fn files_must_be_text_and_match_their_size_and_hash() {
+    assert!(validate_library(&library(vec![with_files("a", &[("f", "a\u{0}b")])])).is_err());
+    let mut tampered = with_files("a", &[("f", "one")]);
+    tampered["files"][0]["content"] = json!("two");
+    assert!(validate_library(&library(vec![tampered])).is_err());
+    let mut wrong_set = with_files("a", &[("f", "one")]);
+    wrong_set["files_sha256"] = json!("0".repeat(64));
+    assert!(validate_library(&library(vec![wrong_set])).is_err());
+    let mut orphan = skill("a");
+    orphan["files_sha256"] = json!("0".repeat(64));
+    assert!(validate_library(&library(vec![orphan])).is_err());
+    assert!(validate_library(&library(vec![with_files("a", &[])])).is_ok());
+  }
+
+  #[test]
+  fn the_library_file_cap_is_twelve_mib() {
+    assert_eq!(MAX_FILE_BYTES, 12 * 1024 * 1024);
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("7.json");
+    fs::write(&path, vec![b' '; MAX_FILE_BYTES as usize + 1]).unwrap();
+    assert!(read_library(&path).is_err());
+    let skills: Vec<Value> = (0..100).map(|i| {
+      let contents: Vec<String> = (0..5).map(|j| format!("{j}{}", "a".repeat(60 * 1024))).collect();
+      let files: Vec<(String, &str)> = contents.iter().enumerate().map(|(j, c)| (format!("f{j}"), c.as_str())).collect();
+      let pairs: Vec<(&str, &str)> = files.iter().map(|(p, c)| (p.as_str(), *c)).collect();
+      with_files(&format!("s{i}"), &pairs)
+    }).collect();
+    assert!(write_library(&path, &library(skills)).is_err());
+    assert!(!path.exists() || fs::metadata(&path).unwrap().len() == MAX_FILE_BYTES + 1);
   }
 
   #[test]
