@@ -254,6 +254,7 @@ pub(super) fn run_create_run(
 ) -> RunCreateReq {
     RunCreateReq {
         team: None,
+        finish_marker: false,
         clones: Vec::new(),
         profile,
         task: None,

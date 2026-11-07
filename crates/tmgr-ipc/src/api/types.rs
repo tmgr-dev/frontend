@@ -116,6 +116,8 @@ pub struct RunCreateReq {
     pub permission_cards: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub team: Option<TeamLink>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub finish_marker: bool,
 }
 
 /// A manual run outside the OS sandbox (`client: "cli"` only): the agent gets the real home and the caller's environment.
@@ -143,6 +145,7 @@ impl OrchestratorCreateReq {
     pub fn as_run(&self) -> RunCreateReq {
         RunCreateReq {
             team: None,
+            finish_marker: false,
             profile: self.profile.clone(),
             task: None,
             cwd: self.cwd.clone(),

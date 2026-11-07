@@ -131,6 +131,7 @@ impl Fx {
     fn req(&self, profile: &str, cards: bool) -> RunCreateReq {
         RunCreateReq {
             team: None,
+            finish_marker: false,
             clones: Vec::new(),
             profile: profile.into(),
             task: None,

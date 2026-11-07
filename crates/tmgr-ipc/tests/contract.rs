@@ -241,6 +241,7 @@ fn handshake_messages() {
 fn requests_and_responses() {
     let run = RunCreateReq {
         team: None,
+        finish_marker: false,
         clones: Vec::new(),
         profile: "codex".into(),
         task: Some(TASK),
@@ -1496,9 +1497,22 @@ fn full_bundle() -> RunBundle {
     }
 }
 
+#[test]
+fn finish_marker_defaults_to_false_and_is_omitted_when_false() {
+    let mut v = serde_json::to_value(full_req()).unwrap();
+    assert!(v.get("finish_marker").is_none());
+    let back: RunCreateReq = serde_json::from_value(v.clone()).unwrap();
+    assert!(!back.finish_marker);
+    v["finish_marker"] = serde_json::json!(true);
+    let on: RunCreateReq = serde_json::from_value(v).unwrap();
+    assert!(on.finish_marker);
+    assert_eq!(serde_json::to_value(&on).unwrap()["finish_marker"], true);
+}
+
 fn full_req() -> RunCreateReq {
     RunCreateReq {
         team: None,
+        finish_marker: false,
         permission_cards: false,
         profile: "claude".into(),
         task: Some(TaskRef {

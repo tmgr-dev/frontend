@@ -268,6 +268,14 @@ pub struct Pickup {
     pub continued_by: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub team: Option<TeamState>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub finish_marker: bool,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub exit_attempts: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_sent_at: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub exit_noted: bool,
 }
 
 fn one() -> u32 {

@@ -322,6 +322,7 @@ fn create_request(
     let sha = bundle.sha256();
     RunCreateReq {
         team: None,
+        finish_marker: false,
         clones: Vec::new(),
         profile: profile.to_string(),
         task: Some(plan.candidate.task),

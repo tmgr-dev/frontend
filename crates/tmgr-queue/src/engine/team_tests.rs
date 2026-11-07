@@ -383,7 +383,7 @@ fn without_a_request_nothing_about_teams_appears() {
     for _ in 0..4 {
         fx.pass().unwrap();
     }
-    assert!(fx.runs.sent.borrow().is_empty());
+    assert!(fx.runs.sent.borrow().iter().all(|(_, t)| t == "/exit\r"));
     assert!(fx.runs.killed.borrow().is_empty());
     assert_eq!(fx.runs.created.borrow().len(), 1);
     assert_eq!(fx.publisher.calls.borrow().len(), 1);
@@ -397,7 +397,13 @@ fn without_a_request_nothing_about_teams_appears() {
 
 #[test]
 fn a_marker_on_a_solo_pickup_does_nothing_and_on_a_team_only_causes_an_exit() {
-    let fx = cloud_fx();
+    let fx = Fx::new(|r| {
+        r.workspace = "tmgrdev".into();
+        r.project = Some("TM".into());
+        r.auto = true;
+        r.mode = Some("bypass".into());
+        r.profile = "codex".into();
+    });
     fx.cloud.tasks.replace(vec![signed(1, "do it")]);
     fx.pass().unwrap();
     marker(&pickup(&fx).bundle.launch.cwd);

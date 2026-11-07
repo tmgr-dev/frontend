@@ -4012,7 +4012,11 @@ impl Runner {
             argv.push(permit_hook::claude_settings(&self.cfg.self_exe));
         }
         if let (false, Some(_), Some(b)) = (resumed, &checked, &req.bundle) {
-            let args = prof.prompt_args(&bundle::prompt_for(b, req.team.as_ref()));
+            let args = prof.prompt_args(&bundle::prompt_with(
+                b,
+                req.team.as_ref(),
+                req.finish_marker && req.team.is_none(),
+            ));
             extra.prompt_at = prof
                 .prompt
                 .args

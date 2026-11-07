@@ -18,6 +18,7 @@ use tmgr_ipc::api::{
     BundleLaunch, BundlePersona, BundleTeam, CloneSpec, RunBundle, TeamLink, TeamRole,
 };
 
+mod solo;
 mod team;
 pub use crate::state::team_models;
 pub use team::request_team;
@@ -890,6 +891,10 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                     continues: None,
                     continued_by: None,
                     team: None,
+                    finish_marker: false,
+                    exit_attempts: 0,
+                    exit_sent_at: None,
+                    exit_noted: false,
                 });
                 pass.audit.append(
                     "candidate",
@@ -1304,6 +1309,22 @@ fn start_phase(
             pass.state.pickups[i].clones = ids;
             state::save(pass.paths, &mut pass.state)?;
         }
+        let finish_marker = lead_model.is_none() && rule.profile == team::TEAM_PROFILE;
+        if finish_marker && !team::clear_marker(std::path::Path::new(&cwd)) {
+            deps.workdirs.discard(&id, &cwd);
+            pass.state.pickups[i].clones.clear();
+            let error = "a stale finish marker could not be removed";
+            pass.set(i, Status::Failed, Some(error.into()));
+            state::save(pass.paths, &mut pass.state)?;
+            pass.audit.append(
+                "start_failed",
+                json!({"pickup": id, "rule": rule_name, "error": error}),
+            )?;
+            let p = pass.state.pickups[i].clone();
+            pass.event(&p, "failed");
+            continue;
+        }
+        pass.state.pickups[i].finish_marker = finish_marker;
         let p = pass.state.pickups[i].clone();
         let req = StartRequest {
             permission_mode: if p.cloud.is_some() {
@@ -1337,6 +1358,7 @@ fn start_phase(
                 role: TeamRole::Lead,
                 of: id.clone(),
             }),
+            finish_marker,
         };
         match deps.runs.create(&req) {
             Ok(run_id) => {
@@ -1447,6 +1469,7 @@ pub fn run_once(paths: &Paths, deps: &Deps) -> Result<PassReport> {
     refresh_runs(&mut pass, deps)?;
     let starts = !pass.state.paused && deps.policy.starts_allowed;
     team::team_phase(&mut pass, &loaded.file.rules, deps, starts)?;
+    solo::solo_exit_phase(&mut pass, deps)?;
     if pass.state.paused {
         pass.report.paused = true;
         state::save(paths, &mut pass.state)?;
@@ -1758,6 +1781,10 @@ pub fn requeue_paused(
         continues: Some(p.id.clone()),
         continued_by: None,
         team: None,
+        finish_marker: false,
+        exit_attempts: 0,
+        exit_sent_at: None,
+        exit_noted: false,
     });
     st.pickups[i].continued_by = Some(id.clone());
     st.pickups[i].released = true;
@@ -2863,6 +2890,7 @@ mod tests {
         bundle.body = case["description"].as_str().unwrap().into();
         RunCreateReq {
             team: None,
+            finish_marker: false,
             clones: Vec::new(),
             profile: start.profile.clone(),
             task: Some(task),
@@ -4445,5 +4473,10 @@ mod tests {
     mod team {
         use super::*;
         include!("engine/team_tests.rs");
+    }
+
+    mod solo {
+        use super::*;
+        include!("engine/solo_tests.rs");
     }
 }
