@@ -169,6 +169,7 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
             }
         },
         Some(Command::Ask(args)) => cmd::ask::run(ctx, args),
+        Some(Command::Decisions { command }) => cmd::decisions::run(command),
         Some(Command::Notify(args)) => cmd::notify::notify(ctx, args),
         Some(Command::Alarm(args)) => cmd::notify::alarm(ctx, args),
         #[cfg(feature = "runner")]

@@ -89,6 +89,7 @@ async fn handshake_lists_the_tools_and_negotiates_the_version() {
             "tmgr_cli",
             "ask_owner",
             "get_answer",
+            "find_answers",
             "reply_owner"
         ]
     );

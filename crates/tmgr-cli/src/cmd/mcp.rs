@@ -339,7 +339,7 @@ pub fn handle_inline(msg: &Value) -> Option<Value> {
                     "protocolVersion": negotiate(params.get("protocolVersion").and_then(Value::as_str)),
                     "capabilities": {"tools": {"listChanged": false}},
                     "serverInfo": {"name": "tmgr", "version": VERSION},
-                    "instructions": "Phone notifications for the user (notify_user, alarm, alarm_status), questions to the owner (ask_owner, get_answer, reply_owner) and short tmgr CLI help (tmgr_cli)."
+                    "instructions": "Phone notifications for the user (notify_user, alarm, alarm_status), questions to the owner (find_answers, ask_owner, get_answer, reply_owner) and short tmgr CLI help (tmgr_cli)."
                 }),
             )
         }
@@ -520,7 +520,7 @@ mod tests {
             .collect();
         let mut expected = vec!["notify_user", "alarm", "alarm_status", "tmgr_cli"];
         if cfg!(unix) {
-            expected.extend(["ask_owner", "get_answer", "reply_owner"]);
+            expected.extend(["ask_owner", "get_answer", "find_answers", "reply_owner"]);
         }
         assert_eq!(names, expected);
         for t in tool_defs().as_array().unwrap() {
