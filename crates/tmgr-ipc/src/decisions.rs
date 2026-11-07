@@ -25,6 +25,7 @@ pub const MAX_LINKS: usize = 50;
 pub const OUTCOME_CREATED: &str = "created";
 pub const OUTCOME_UPDATED: &str = "updated";
 pub const OUTCOME_FINAL: &str = "final";
+pub const OUTCOME_SIMILAR: &str = "similar";
 pub const UNAUTHORIZED: &str = "unauthorized";
 pub const BAD_REQUEST: &str = "bad request";
 pub const MAX_WAIT_MS: u64 = 3_600_000;
@@ -229,6 +230,30 @@ pub struct CardIn {
     pub reply_via: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub supersede: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub force_new: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Found {
+    pub card_id: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question: Option<String>,
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choice_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub free_text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dismissed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<String>,
+    pub created_ms: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -318,6 +343,16 @@ pub enum Op {
         timeout_ms: u64,
         #[serde(default)]
         final_only: bool,
+    },
+    Find {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        task: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        query: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u32>,
     },
 }
 
@@ -430,6 +465,10 @@ pub struct Response {
     pub version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub found: Vec<Found>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub similar: Vec<Found>,
 }
 
 impl Response {
@@ -648,13 +687,44 @@ impl Client {
     }
 
     pub fn create_outcome(&self, card: CardIn) -> io::Result<(String, Option<String>)> {
+        let response = self.create_full(card)?;
+        Ok((response.card_id.unwrap_or_default(), response.outcome))
+    }
+
+    pub fn create_full(&self, card: CardIn) -> io::Result<Response> {
         let response = self.checked(Op::Create {
             card: Box::new(card),
         })?;
-        let id = response.card_id.ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "no card id in the answer")
+        if response.card_id.is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "no card id in the answer",
+            ));
+        }
+        Ok(response)
+    }
+
+    pub fn find(
+        &self,
+        task: Option<&str>,
+        key: Option<&str>,
+        query: Option<&str>,
+        limit: Option<u32>,
+    ) -> io::Result<Vec<Found>> {
+        let r = self.call(Op::Find {
+            task: task.map(str::to_owned),
+            key: key.map(str::to_owned),
+            query: query.map(str::to_owned),
+            limit,
         })?;
-        Ok((id, response.outcome))
+        if r.ok {
+            return Ok(r.found);
+        }
+        let msg = r.error.unwrap_or_else(|| "refused".into());
+        if msg == BAD_REQUEST {
+            return Err(io::Error::new(io::ErrorKind::Unsupported, msg));
+        }
+        Err(io::Error::other(msg))
     }
 
     pub fn wait(
@@ -1333,5 +1403,59 @@ mod tests {
         assert_eq!(v["cards"][0]["card_id"], "c_1");
         assert_eq!(v["cards"][0]["since"], 3);
         assert_eq!(serde_json::from_value::<Request>(v).unwrap(), r);
+    }
+
+    #[test]
+    fn find_wire_shape() {
+        let r = Request {
+            v: PROTO,
+            token: "t".into(),
+            op: Op::Find {
+                task: Some("https://tmgr.dev/ws/tasks/211".into()),
+                key: None,
+                query: Some("ship it".into()),
+                limit: Some(5),
+            },
+        };
+        let v: serde_json::Value = serde_json::to_value(&r).unwrap();
+        assert_eq!(v["op"], "find");
+        assert_eq!(v["task"], "https://tmgr.dev/ws/tasks/211");
+        assert_eq!(v["query"], "ship it");
+        assert_eq!(v["limit"], 5);
+        assert!(v.get("key").is_none());
+        assert_eq!(serde_json::from_value::<Request>(v).unwrap(), r);
+        let bare: Request = serde_json::from_str(r#"{"v":1,"token":"t","op":"find"}"#).unwrap();
+        assert_eq!(
+            bare.op,
+            Op::Find {
+                task: None,
+                key: None,
+                query: None,
+                limit: None
+            }
+        );
+    }
+
+    #[test]
+    fn found_and_force_new_are_optional_on_the_wire() {
+        let card: CardIn = serde_json::from_str(r#"{"title":"Ship?"}"#).unwrap();
+        assert_eq!(card.force_new, None);
+        assert!(serde_json::to_value(&card)
+            .unwrap()
+            .get("force_new")
+            .is_none());
+        let found: Found = serde_json::from_str(
+            r#"{"card_id":"c_1","title":"Ship?","state":"answered","created_ms":5}"#,
+        )
+        .unwrap();
+        assert!(!found.dismissed && found.task.is_none() && found.choice_label.is_none());
+        let v = serde_json::to_value(&found).unwrap();
+        assert!(v.get("dismissed").is_none() && v.get("note").is_none());
+        let r = Response {
+            ok: true,
+            ..Default::default()
+        };
+        let v = serde_json::to_value(&r).unwrap();
+        assert!(v.get("found").is_none() && v.get("similar").is_none());
     }
 }

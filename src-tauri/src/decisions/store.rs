@@ -1,11 +1,13 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tmgr_ipc::decisions::{
-  new_card_id, valid_card_id, CardIn, Check, DiffSpec, Event, Fact, LineComment, LinkItem, Links, Opt, PatchIn, Source,
-  ThreadRef, MAX_DIFFS, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES, OUTCOME_CREATED, OUTCOME_FINAL, OUTCOME_UPDATED,
+  new_card_id, valid_card_id, CardIn, Check, DiffSpec, Event, Fact, Found, LineComment, LinkItem, Links, Opt, PatchIn,
+  Source, ThreadRef, MAX_DIFFS, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES, OUTCOME_CREATED, OUTCOME_FINAL,
+  OUTCOME_SIMILAR, OUTCOME_UPDATED,
 };
 
 pub const TITLE_MAX: usize = 300;
@@ -21,6 +23,11 @@ const MAX_LINE_COMMENTS: usize = 200;
 const THREADS_LISTED: usize = 3;
 const LIST_FINISHED: i64 = 200;
 const LINK_KINDS: [&str; 5] = ["pr", "commit", "tag", "task", "url"];
+pub const FIND_LIMIT: usize = 10;
+const FIND_MAX: usize = 50;
+const SIMILAR_WINDOW_MS: i64 = 7 * 24 * 3600 * 1000;
+const SIMILAR_SCAN: usize = 50;
+const SIMILAR_MAX: usize = 3;
 
 pub const KINDS: [&str; 7] = ["decision", "review", "release", "check", "question", "permission", "stopped"];
 const REPLY_VIA: [&str; 3] = ["mcp", "cli", "hook"];
@@ -141,6 +148,7 @@ pub struct Created {
   pub changed: bool,
   pub outcome: &'static str,
   pub card: CardIn,
+  pub similar: Vec<Found>,
 }
 
 pub struct Store {
@@ -249,6 +257,88 @@ fn json_err(e: serde_json::Error) -> String {
 
 fn sql_err(e: rusqlite::Error) -> String {
   e.to_string()
+}
+
+fn key_len(title: &str) -> Option<usize> {
+  let t = title.trim_start();
+  let letters = t.bytes().take_while(u8::is_ascii_alphabetic).count();
+  if !(2..=6).contains(&letters) {
+    return None;
+  }
+  let digits = t[letters..].strip_prefix('-')?.bytes().take_while(u8::is_ascii_digit).count();
+  (digits > 0).then_some(letters + 1 + digits)
+}
+
+fn title_key(title: &str) -> Option<String> {
+  let t = title.trim_start();
+  key_len(t).map(|n| t[..n].to_ascii_lowercase())
+}
+
+fn title_body(title: &str) -> &str {
+  let t = title.trim_start();
+  &t[key_len(t).unwrap_or(0)..]
+}
+
+fn task_path(link: &str) -> String {
+  match link.rsplit_once("/tasks/") {
+    Some((_, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => format!("tasks/{n}"),
+    _ => link.to_owned(),
+  }
+}
+
+fn task_ids(task: Option<&str>, title: &str) -> BTreeSet<String> {
+  let mut ids: BTreeSet<String> = title_key(title).into_iter().collect();
+  if let Some(t) = task.map(|t| t.trim().to_lowercase()).filter(|t| !t.is_empty()) {
+    ids.insert(task_path(&t));
+  }
+  ids
+}
+
+fn words(c: &CardIn) -> BTreeSet<String> {
+  let question = c.question.as_deref().unwrap_or("");
+  format!("{} {}", title_body(&c.title), question)
+    .split(|ch: char| !ch.is_alphanumeric())
+    .filter(|t| t.chars().count() >= 3)
+    .map(|t| t.to_lowercase().chars().take(5).collect())
+    .collect()
+}
+
+fn has_question(c: &CardIn) -> bool {
+  c.question.as_deref().is_some_and(|q| !q.trim().is_empty())
+}
+
+fn similarity(new: &CardIn, old: &CardIn) -> Option<f64> {
+  if !has_question(new) || !has_question(old) {
+    return None;
+  }
+  let new_ids = task_ids(new.links.task.as_deref(), &new.title);
+  if new_ids.is_disjoint(&task_ids(old.links.task.as_deref(), &old.title)) {
+    return None;
+  }
+  let (a, b) = (words(new), words(old));
+  let (inter, union) = (a.intersection(&b).count(), a.union(&b).count());
+  (union > 0 && 2 * inter >= union).then_some(inter as f64 / union as f64)
+}
+
+fn parse_answer(r: &Row) -> Result<Option<Event>, String> {
+  r.answer.as_deref().map(serde_json::from_str::<Event>).transpose().map_err(json_err)
+}
+
+fn found(r: &Row, c: &CardIn, answer: Option<&Event>) -> Found {
+  let dismissed = r.state == "dismissed";
+  Found {
+    card_id: r.id.clone(),
+    title: c.title.clone(),
+    question: c.question.clone(),
+    state: r.state.clone(),
+    choice_label: answer.filter(|_| !dismissed).and_then(|a| a.choice_label.clone()),
+    free_text: answer.and_then(|a| a.free_text.clone()),
+    note: answer.and_then(|a| a.note.clone()),
+    dismissed,
+    key: c.key.clone(),
+    task: c.links.task.clone().or_else(|| title_key(&c.title)),
+    created_ms: r.created_ms,
+  }
 }
 
 fn is_live(state: &str) -> bool {
@@ -376,7 +466,7 @@ impl Store {
         OUTCOME_FINAL
       };
       let card = serde_json::from_str(&existing.card).map_err(json_err)?;
-      return Ok(Created { id: canon, fresh: false, changed: false, outcome, card });
+      return Ok(Created { id: canon, fresh: false, changed: false, outcome, card, similar: Vec::new() });
     }
     let patches = std::mem::take(&mut card.patches);
     let target = self.resend_target(&card)?.filter(|(t, _)| t.state != "closed");
@@ -385,7 +475,7 @@ impl Store {
       tx.execute("INSERT INTO aliases(alias, card_id) VALUES(?1, ?2)", params![id, target.id]).map_err(sql_err)?;
       if !is_live(&target.state) {
         tx.commit().map_err(sql_err)?;
-        return Ok(Created { id: target.id, fresh: false, changed: false, outcome: OUTCOME_FINAL, card });
+        return Ok(Created { id: target.id, fresh: false, changed: false, outcome: OUTCOME_FINAL, card, similar: Vec::new() });
       }
       card.id = Some(target.id.clone());
       card.key = card.key.take().or(old.key);
@@ -397,7 +487,11 @@ impl Store {
       tx.execute("DELETE FROM patches WHERE card_id=?1", [&target.id]).map_err(sql_err)?;
       insert_patches(&tx, &target.id, &patches)?;
       tx.commit().map_err(sql_err)?;
-      return Ok(Created { id: target.id, fresh: false, changed: true, outcome: OUTCOME_UPDATED, card });
+      return Ok(Created { id: target.id, fresh: false, changed: true, outcome: OUTCOME_UPDATED, card, similar: Vec::new() });
+    }
+    let similar = self.similar(&card, !patches.is_empty())?;
+    if let Some(best) = similar.first().map(|f| f.card_id.clone()) {
+      return Ok(Created { id: best, fresh: false, changed: false, outcome: OUTCOME_SIMILAR, card, similar });
     }
     let tx = self.conn.transaction().map_err(sql_err)?;
     if card.supersede && card.reply_via == "hook" {
@@ -418,7 +512,7 @@ impl Store {
     .map_err(sql_err)?;
     insert_patches(&tx, &id, &patches)?;
     tx.commit().map_err(sql_err)?;
-    Ok(Created { id, fresh: true, changed: true, outcome: OUTCOME_CREATED, card })
+    Ok(Created { id, fresh: true, changed: true, outcome: OUTCOME_CREATED, card, similar: Vec::new() })
   }
 
   fn resolve(&self, id: &str) -> Result<Option<String>, String> {
@@ -461,6 +555,102 @@ impl Store {
     let Some(row) = canon.map(|c| self.raw(&c)).transpose()?.flatten() else { return Ok(None) };
     let old: CardIn = serde_json::from_str(&row.card).map_err(json_err)?;
     Ok((old.reply_via != "hook").then_some((row, old)))
+  }
+
+  fn similar(&self, card: &CardIn, carries_patches: bool) -> Result<Vec<Found>, String> {
+    if card.force_new != Some(false)
+      || card.reply_via == "hook"
+      || matches!(card.kind.as_str(), "review" | "release" | "check")
+      || card.diff.is_some()
+      || !card.diffs.is_empty()
+      || carries_patches
+    {
+      return Ok(Vec::new());
+    }
+    let since = now_ms() - SIMILAR_WINDOW_MS;
+    let mut stmt = self
+      .conn
+      .prepare(&format!(
+        "SELECT {CARD_COLS} FROM cards WHERE state IN ('answered','dismissed','open','deferred') AND created_ms>=?1
+           ORDER BY created_ms DESC, rowid DESC LIMIT {SIMILAR_SCAN}"
+      ))
+      .map_err(sql_err)?;
+    let rows = stmt.query_map([since], row).map_err(sql_err)?.collect::<Result<Vec<_>, _>>().map_err(sql_err)?;
+    let mut hits = Vec::new();
+    for r in rows {
+      let old: CardIn = serde_json::from_str(&r.card).map_err(json_err)?;
+      if old.reply_via == "hook" || old.diff.is_some() || !old.diffs.is_empty() || !self.patch_info(&r.id)?.is_empty() {
+        continue;
+      }
+      if let Some(score) = similarity(card, &old) {
+        let answer = parse_answer(&r)?;
+        hits.push((score, found(&r, &old, answer.as_ref())));
+      }
+    }
+    hits.sort_by(|a, b| b.0.total_cmp(&a.0));
+    Ok(hits.into_iter().take(SIMILAR_MAX).map(|(_, f)| f).collect())
+  }
+
+  pub fn find(
+    &self,
+    task: Option<&str>,
+    key_prefix: Option<&str>,
+    query: Option<&str>,
+    limit: usize,
+  ) -> Result<Vec<Found>, String> {
+    let wanted = task.map(|t| task_ids(Some(t), t)).filter(|ids| !ids.is_empty());
+    let key_prefix = key_prefix.filter(|p| !p.is_empty());
+    let tokens: Vec<String> = query.unwrap_or("").split_whitespace().map(str::to_lowercase).collect();
+    let limit = limit.clamp(1, FIND_MAX);
+    let mut stmt = self
+      .conn
+      .prepare(&format!(
+        "SELECT {CARD_COLS} FROM cards WHERE state IN ('answered','dismissed') ORDER BY created_ms DESC, rowid DESC"
+      ))
+      .map_err(sql_err)?;
+    let mut rows = stmt.query([]).map_err(sql_err)?;
+    let mut out = Vec::new();
+    while let Some(raw) = rows.next().map_err(sql_err)? {
+      let r = row(raw).map_err(sql_err)?;
+      let c: CardIn = serde_json::from_str(&r.card).map_err(json_err)?;
+      if c.reply_via == "hook" {
+        continue;
+      }
+      if let Some(ids) = &wanted {
+        if task_ids(c.links.task.as_deref(), &c.title).is_disjoint(ids) {
+          continue;
+        }
+      }
+      if let Some(p) = key_prefix {
+        if !c.key.as_deref().is_some_and(|k| k.starts_with(p)) {
+          continue;
+        }
+      }
+      let answer = parse_answer(&r)?;
+      if !tokens.is_empty() {
+        let text = [
+          Some(c.title.as_str()),
+          c.question.as_deref(),
+          c.context.as_deref(),
+          answer.as_ref().and_then(|a| a.choice_label.as_deref()),
+          answer.as_ref().and_then(|a| a.free_text.as_deref()),
+          answer.as_ref().and_then(|a| a.note.as_deref()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+        if !tokens.iter().all(|t| text.contains(t.as_str())) {
+          continue;
+        }
+      }
+      out.push(found(&r, &c, answer.as_ref()));
+      if out.len() == limit {
+        break;
+      }
+    }
+    Ok(out)
   }
 
   fn raw(&self, id: &str) -> Result<Option<Row>, String> {
@@ -1590,5 +1780,188 @@ mod tests {
     let r = s.create(CardIn { replaces: Some(id.into()), ..card("Fresh") }).unwrap();
     assert_eq!((r.id.as_str(), r.outcome), (id, "updated"));
     assert!(Store::open(&path).unwrap().get(id).unwrap().unwrap().updated_ms.is_some());
+  }
+
+
+  const TASK_211: &str = "https://tmgr.dev/ws/tasks/211";
+  const TASK_212: &str = "https://tmgr.dev/ws/tasks/212";
+  const SHIP_Q: &str = "Should we ship the 2.4 release to production today?";
+  const DAY_MS: i64 = 86_400_000;
+
+  fn asked(title: &str, question: &str, task: Option<&str>) -> CardIn {
+    CardIn {
+      question: Some(question.into()),
+      links: Links { task: task.map(Into::into), ..Default::default() },
+      force_new: Some(false),
+      ..card(title)
+    }
+  }
+
+  fn finished(s: &mut Store, c: CardIn) -> String {
+    let id = s.create_id(c);
+    s.answer(&id, pick_a()).unwrap();
+    id
+  }
+
+  fn backdate(s: &Store, id: &str, ms: i64) {
+    s.conn.execute("UPDATE cards SET created_ms=?1 WHERE id=?2", params![ms, id]).unwrap();
+  }
+
+  fn ids(found: Vec<Found>) -> Vec<String> {
+    found.into_iter().map(|f| f.card_id).collect()
+  }
+
+  #[test]
+  fn a_similar_answered_card_is_returned_instead_of_a_new_one() {
+    let mut s = mem();
+    let old = finished(&mut s, asked("Ship 2.4?", SHIP_Q, Some(TASK_211)));
+    let again = s.create(CardIn { key: Some("new-key".into()), ..asked("Ship 2.4 now?", SHIP_Q, Some(TASK_211)) }).unwrap();
+    assert_eq!((again.id.as_str(), again.fresh, again.changed, again.outcome), (old.as_str(), false, false, OUTCOME_SIMILAR));
+    assert_eq!(again.similar.len(), 1);
+    assert_eq!(again.similar[0].card_id, old);
+    assert_eq!(again.similar[0].choice_label.as_deref(), Some("Ship"));
+    assert_eq!(s.list().unwrap().len(), 1);
+  }
+
+  #[test]
+  fn another_task_is_never_similar() {
+    let mut s = mem();
+    finished(&mut s, asked("Ship 2.4?", SHIP_Q, Some(TASK_211)));
+    assert!(s.create(asked("Ship 2.4?", SHIP_Q, Some(TASK_212))).unwrap().fresh);
+    assert_eq!(s.list().unwrap().len(), 2);
+  }
+
+  #[test]
+  fn different_questions_for_the_same_task_are_not_similar() {
+    let mut s = mem();
+    finished(&mut s, asked("TM-211: Ship 2.4?", SHIP_Q, None));
+    let other = "Which database should hold the audit log for the billing service?";
+    assert!(s.create(asked("TM-211: Ship 2.4?", other, None)).unwrap().fresh);
+  }
+
+  #[test]
+  fn cards_without_a_task_are_never_deduped() {
+    let mut s = mem();
+    finished(&mut s, asked("Ship 2.4?", SHIP_Q, None));
+    assert!(s.create(asked("Ship 2.4?", SHIP_Q, None)).unwrap().fresh);
+    assert_eq!(s.list().unwrap().len(), 2);
+  }
+
+  #[test]
+  fn a_task_key_at_the_start_of_the_title_is_the_task_without_a_link() {
+    let mut s = mem();
+    let old = finished(&mut s, asked("TM-211: Ship 2.4?", SHIP_Q, None));
+    let again = s.create(asked("TM-211: Ship 2.4 now?", SHIP_Q, None)).unwrap();
+    assert_eq!((again.id.as_str(), again.outcome), (old.as_str(), OUTCOME_SIMILAR));
+  }
+
+  #[test]
+  fn a_task_key_in_the_middle_of_the_title_is_not_a_task() {
+    let mut s = mem();
+    finished(&mut s, asked("Ship 2.4 for TM-211?", SHIP_Q, None));
+    assert!(s.create(asked("Ship 2.4 for TM-211 now?", SHIP_Q, None)).unwrap().fresh);
+  }
+
+  #[test]
+  fn force_new_true_and_old_clients_create_a_card() {
+    let mut s = mem();
+    finished(&mut s, asked("Ship 2.4?", SHIP_Q, Some(TASK_211)));
+    let forced = CardIn { force_new: Some(true), ..asked("Ship 2.4?", SHIP_Q, Some(TASK_211)) };
+    assert!(s.create(forced).unwrap().fresh);
+    let old_client = CardIn { force_new: None, ..asked("Ship 2.4?", SHIP_Q, Some(TASK_211)) };
+    assert!(s.create(old_client).unwrap().fresh);
+    assert_eq!(s.list().unwrap().len(), 3);
+  }
+
+  #[test]
+  fn dismissed_matches_count_and_are_flagged_without_a_choice() {
+    let mut s = mem();
+    let old = s.create_id(asked("Ship 2.4?", SHIP_Q, Some(TASK_211)));
+    s.answer(&old, AnswerIn { choice: Some("a".into()), dismissed: true, ..Default::default() }).unwrap();
+    let again = s.create(asked("Ship 2.4 now?", SHIP_Q, Some(TASK_211))).unwrap();
+    assert_eq!(again.outcome, OUTCOME_SIMILAR);
+    assert_eq!(again.similar[0].state, "dismissed");
+    assert!(again.similar[0].dismissed);
+    assert_eq!(again.similar[0].choice_label, None);
+  }
+
+  #[test]
+  fn open_matches_count_and_report_their_state() {
+    let mut s = mem();
+    let old = s.create_id(asked("Ship 2.4?", SHIP_Q, Some(TASK_211)));
+    let again = s.create(asked("Ship 2.4 now?", SHIP_Q, Some(TASK_211))).unwrap();
+    assert_eq!((again.id.as_str(), again.outcome), (old.as_str(), OUTCOME_SIMILAR));
+    assert_eq!(again.similar[0].state, "open");
+  }
+
+  #[test]
+  fn review_release_and_check_cards_are_never_matched() {
+    let mut s = mem();
+    finished(&mut s, asked("Ship 2.4?", SHIP_Q, Some(TASK_211)));
+    for kind in ["review", "release", "check"] {
+      let c = CardIn { kind: kind.into(), ..asked("Ship 2.4?", SHIP_Q, Some(TASK_211)) };
+      assert!(s.create(c).unwrap().fresh, "{kind}");
+    }
+  }
+
+  #[test]
+  fn cards_older_than_seven_days_are_not_matched() {
+    let mut s = mem();
+    let old = finished(&mut s, asked("Ship 2.4?", SHIP_Q, Some(TASK_211)));
+    backdate(&s, &old, now_ms() - 6 * DAY_MS);
+    assert_eq!(s.create(asked("Ship 2.4 now?", SHIP_Q, Some(TASK_211))).unwrap().outcome, OUTCOME_SIMILAR);
+    backdate(&s, &old, now_ms() - 8 * DAY_MS);
+    assert!(s.create(asked("Ship 2.4 now?", SHIP_Q, Some(TASK_211))).unwrap().fresh);
+  }
+
+  #[test]
+  fn the_key_resend_path_runs_before_the_similarity_check() {
+    let mut s = mem();
+    let old = s.create_id(CardIn { key: Some("k".into()), ..asked("Ship 2.4?", SHIP_Q, Some(TASK_211)) });
+    let again = s.create(CardIn { key: Some("k".into()), ..asked("Ship 2.4 now?", SHIP_Q, Some(TASK_211)) }).unwrap();
+    assert_eq!((again.id.as_str(), again.outcome), (old.as_str(), OUTCOME_UPDATED));
+    let forced = CardIn { force_new: Some(true), key: Some("k".into()), ..asked("Ship 2.4 later?", SHIP_Q, Some(TASK_211)) };
+    assert_eq!(s.create(forced).unwrap().id, old);
+    assert_eq!(s.list().unwrap().len(), 1);
+  }
+
+  #[test]
+  fn find_filters_by_task_key_query_and_answer_text_newest_first() {
+    let mut s = mem();
+    let a = finished(&mut s, asked("TM-211: Ship 2.4?", SHIP_Q, None));
+    let b = s.create_id(CardIn { key: Some("ops/2".into()), ..asked("Roll back the cache", "Which path?", Some(TASK_211)) });
+    s.answer(&b, AnswerIn { free_text: Some("use the fallback path".into()), ..Default::default() }).unwrap();
+    let c = s.create_id(asked("Unrelated ask", "Anything?", None));
+    s.answer(&c, AnswerIn { note: Some("database migration rollback".into()), ..Default::default() }).unwrap();
+    let open = s.create_id(asked("Open one", "Still open?", Some(TASK_211)));
+    let hook_card = CardIn { reply_via: "hook".into(), kind: "stopped".into(), ..asked("Stopped", "Done?", Some(TASK_211)) };
+    let hooked = s.create_id(hook_card);
+    s.answer(&hooked, pick_a()).unwrap();
+    let g = finished(&mut s, asked("TM-211: Ship again", "Which release train carries the 2.5 hotfixes?", Some(TASK_211)));
+
+    assert_eq!(ids(s.find(Some(TASK_211), None, None, 10).unwrap()), [g.clone(), b.clone()]);
+    assert_eq!(ids(s.find(Some("TM-211"), None, None, 10).unwrap()), [g.clone(), a.clone()]);
+    assert_eq!(ids(s.find(None, None, Some("ship"), 10).unwrap()), [g.clone(), a.clone()]);
+    assert_eq!(ids(s.find(None, None, Some("rollback MIGRATION"), 10).unwrap()), [c.clone()]);
+    assert_eq!(ids(s.find(None, None, Some("fallback"), 10).unwrap()), [b.clone()]);
+    assert_eq!(ids(s.find(None, Some("ops/"), None, 10).unwrap()), [b.clone()]);
+    assert_eq!(ids(s.find(None, None, None, 1).unwrap()), [g.clone()]);
+    let all = ids(s.find(None, None, None, 10).unwrap());
+    assert!(!all.contains(&open) && !all.contains(&hooked));
+    let found_b = s.find(Some(TASK_211), None, None, 10).unwrap().pop().unwrap();
+    assert_eq!(found_b.question.as_deref(), Some("Which path?"));
+    assert_eq!(found_b.free_text.as_deref(), Some("use the fallback path"));
+    assert_eq!(found_b.key.as_deref(), Some("ops/2"));
+    assert_eq!(found_b.task.as_deref(), Some(TASK_211));
+  }
+
+  #[test]
+  fn find_caps_the_limit_at_fifty() {
+    let mut s = mem();
+    for n in 0..55 {
+      finished(&mut s, asked(&format!("Ask {n}"), "Q?", None));
+    }
+    assert_eq!(s.find(None, None, None, 1000).unwrap().len(), 50);
+    assert_eq!(s.find(None, None, None, 10).unwrap().len(), 10);
   }
 }
