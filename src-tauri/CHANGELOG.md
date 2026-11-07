@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.125 — 2026-11-08
+
+- The Decisions inbox no longer lets an agent re-ask a question you already answered. When a new card on the same task has the same question as one you answered, dismissed, or still have open, the agent gets the earlier card back instead of a duplicate. Agents can also search your past answers by task, key or text with the new `find_answers` tool (the `tmgr decisions answers` command does the same). Needs tmgr 1.0.107 for the agent side.
+
 ## 0.9.124 — 2026-11-08
 
 - Ask persona now caps the model reply at a token limit (default 4096) and stops a stalled or runaway request: after 300 seconds without data, or 15 minutes in total, it ends with a clear message.
