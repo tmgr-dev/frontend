@@ -29,6 +29,9 @@ const FIND_SCAN: usize = 2000;
 const SIMILAR_WINDOW_MS: i64 = 7 * 24 * 3600 * 1000;
 const SIMILAR_SCAN: usize = 50;
 const SIMILAR_MAX: usize = 3;
+const SIMILAR_MIN_SCORE: f64 = 0.8;
+const FOUND_TEXT_MAX: usize = 2000;
+const NOT_TASK_KEYS: [&str; 8] = ["utf", "sha", "gpt", "iso", "rfc", "node", "python", "es"];
 
 pub const KINDS: [&str; 7] = ["decision", "review", "release", "check", "question", "permission", "stopped"];
 const REPLY_VIA: [&str; 3] = ["mcp", "cli", "hook"];
@@ -267,7 +270,8 @@ fn key_len(title: &str) -> Option<usize> {
     return None;
   }
   let digits = t[letters..].strip_prefix('-')?.bytes().take_while(u8::is_ascii_digit).count();
-  (digits > 0).then_some(letters + 1 + digits)
+  let word = t[..letters].to_ascii_lowercase();
+  (digits > 0 && !NOT_TASK_KEYS.contains(&word.as_str())).then_some(letters + 1 + digits)
 }
 
 fn title_key(title: &str) -> Option<String> {
@@ -295,13 +299,29 @@ fn task_ids(task: Option<&str>, title: &str) -> BTreeSet<String> {
   ids
 }
 
-fn words(c: &CardIn) -> BTreeSet<String> {
+fn is_exact_token(t: &str) -> bool {
+  t.bytes().any(|b| b.is_ascii_digit()) || (t.chars().count() == 1 && t.is_ascii())
+}
+
+fn tokens(c: &CardIn) -> Vec<String> {
   let question = c.question.as_deref().unwrap_or("");
   format!("{} {}", title_body(&c.title), question)
     .split(|ch: char| !ch.is_alphanumeric())
-    .filter(|t| t.chars().count() >= 3)
-    .map(|t| t.to_lowercase().chars().take(5).collect())
+    .filter(|t| !t.is_empty())
+    .map(str::to_lowercase)
     .collect()
+}
+
+fn words(c: &CardIn) -> (BTreeSet<String>, BTreeSet<String>) {
+  let (mut exact, mut stems) = (BTreeSet::new(), BTreeSet::new());
+  for t in tokens(c) {
+    if is_exact_token(&t) {
+      exact.insert(t);
+    } else if t.chars().count() >= 3 {
+      stems.insert(t.chars().take(5).collect());
+    }
+  }
+  (exact, stems)
 }
 
 fn has_question(c: &CardIn) -> bool {
@@ -316,9 +336,13 @@ fn similarity(new: &CardIn, old: &CardIn) -> Option<f64> {
   if new_ids.is_disjoint(&task_ids(old.links.task.as_deref(), &old.title)) {
     return None;
   }
-  let (a, b) = (words(new), words(old));
+  let ((exact_a, a), (exact_b, b)) = (words(new), words(old));
+  if exact_a != exact_b {
+    return None;
+  }
   let (inter, union) = (a.intersection(&b).count(), a.union(&b).count());
-  (union > 0 && 2 * inter >= union).then_some(inter as f64 / union as f64)
+  let score = if union == 0 { 0.0 } else { inter as f64 / union as f64 };
+  (score >= SIMILAR_MIN_SCORE).then_some(score)
 }
 
 fn parse_answer(r: &Row) -> Result<Option<Event>, String> {
@@ -330,11 +354,11 @@ fn found(r: &Row, c: &CardIn, answer: Option<&Event>) -> Found {
   Found {
     card_id: r.id.clone(),
     title: c.title.clone(),
-    question: c.question.clone(),
+    question: cap_opt(c.question.clone(), FOUND_TEXT_MAX),
     state: r.state.clone(),
     choice_label: answer.filter(|_| !dismissed).and_then(|a| a.choice_label.clone()),
-    free_text: answer.and_then(|a| a.free_text.clone()),
-    note: answer.and_then(|a| a.note.clone()),
+    free_text: cap_opt(answer.and_then(|a| a.free_text.clone()), FOUND_TEXT_MAX),
+    note: cap_opt(answer.and_then(|a| a.note.clone()), FOUND_TEXT_MAX),
     dismissed,
     key: c.key.clone(),
     task: c.links.task.clone().or_else(|| title_key(&c.title)),
@@ -573,7 +597,7 @@ impl Store {
       .conn
       .prepare(&format!(
         "SELECT {CARD_COLS} FROM cards WHERE state IN ('answered','dismissed','open','deferred') AND created_ms>=?1
-           ORDER BY created_ms DESC, rowid DESC LIMIT {SIMILAR_SCAN}"
+           AND COALESCE(json_extract(card,'$.reply_via'),'')!='hook' ORDER BY created_ms DESC, rowid DESC LIMIT {SIMILAR_SCAN}"
       ))
       .map_err(sql_err)?;
     let rows = stmt.query_map([since], row).map_err(sql_err)?.collect::<Result<Vec<_>, _>>().map_err(sql_err)?;
@@ -588,7 +612,6 @@ impl Store {
         hits.push((score, found(&r, &old, answer.as_ref())));
       }
     }
-    hits.sort_by(|a, b| b.0.total_cmp(&a.0));
     Ok(hits.into_iter().take(SIMILAR_MAX).map(|(_, f)| f).collect())
   }
 
@@ -1783,7 +1806,6 @@ mod tests {
     assert!(Store::open(&path).unwrap().get(id).unwrap().unwrap().updated_ms.is_some());
   }
 
-
   const TASK_211: &str = "https://tmgr.dev/ws/tasks/211";
   const TASK_212: &str = "https://tmgr.dev/ws/tasks/212";
   const SHIP_Q: &str = "Should we ship the 2.4 release to production today?";
@@ -1822,6 +1844,52 @@ mod tests {
     assert_eq!(again.similar[0].card_id, old);
     assert_eq!(again.similar[0].choice_label.as_deref(), Some("Ship"));
     assert_eq!(s.list().unwrap().len(), 1);
+  }
+
+  #[test]
+  fn a_different_version_number_or_letter_is_not_similar() {
+    let mut s = mem();
+    finished(&mut s, asked("Ship 2.4?", SHIP_Q, Some(TASK_211)));
+    let c = s.create(asked("Ship 2.5?", "Should we ship the 2.5 release to production today?", Some(TASK_211))).unwrap();
+    assert!(c.fresh);
+    finished(&mut s, asked("Approve X", "Do you approve the migration plan for the billing tables?", Some(TASK_212)));
+    let c = s.create(asked("Approve Y", "Do you approve the migration plan for the billing tables?", Some(TASK_212))).unwrap();
+    assert!(c.fresh);
+  }
+
+  #[test]
+  fn a_half_overlap_is_not_similar() {
+    let mut s = mem();
+    finished(&mut s, asked("Flag", "Keep the feature flag for checkout?", Some(TASK_211)));
+    assert!(s.create(asked("Flag", "Remove the feature flag for checkout?", Some(TASK_211))).unwrap().fresh);
+  }
+
+  #[test]
+  fn the_newest_match_comes_first() {
+    let mut s = mem();
+    let first = finished(&mut s, asked("Ship 2.4?", SHIP_Q, Some(TASK_211)));
+    backdate(&s, &first, now_ms() - 2 * DAY_MS);
+    let second = s.create_id(CardIn { force_new: Some(true), ..asked("Ship 2.4?", SHIP_Q, Some(TASK_211)) });
+    s.answer(&second, pick_a()).unwrap();
+    let again = s.create(asked("Ship 2.4?", SHIP_Q, Some(TASK_211))).unwrap();
+    assert_eq!(ids(again.similar), [second, first]);
+  }
+
+  #[test]
+  fn hook_cards_do_not_crowd_out_the_scan() {
+    let mut s = mem();
+    let old = finished(&mut s, asked("Ship 2.4?", SHIP_Q, Some(TASK_211)));
+    backdate(&s, &old, now_ms() - DAY_MS);
+    for i in 0..60 {
+      s.create_id(hook(&format!("hook {i}"), &format!("s{i}")));
+    }
+    assert_eq!(s.create(asked("Ship 2.4?", SHIP_Q, Some(TASK_211))).unwrap().outcome, OUTCOME_SIMILAR);
+  }
+
+  #[test]
+  fn leading_non_task_prefixes_are_not_keys() {
+    assert_eq!(title_key("UTF-8 handling"), None);
+    assert_eq!(title_key("TM-211: x").as_deref(), Some("tm-211"));
   }
 
   #[test]
