@@ -1,4 +1,12 @@
-import { createLlmChat } from '../llmClient';
+import {
+	createLlmChat,
+	llmComplete,
+	llmDetect,
+	llmLanConfirm,
+	llmModels,
+	llmTest,
+	needsConfirmationOrigin,
+} from '../llmClient';
 
 type Handler = (e: { payload: { request_id: string; event: any } }) => void;
 
@@ -310,5 +318,111 @@ describe('createLlmChat identity resync', () => {
 		emit(requestId, { type: 'done' });
 		await running;
 		expect(order).toEqual(['resync', 'llm_chat']);
+	});
+});
+
+describe('llm command wrappers', () => {
+	const answer = (value: unknown) =>
+		mockInvoke.mockImplementation(async (command: string) => {
+			order.push(command);
+			return value;
+		});
+
+	beforeEach(() => {
+		order.length = 0;
+	});
+
+	it('llmDetect invokes llm_detect without resyncing identity', async () => {
+		const found = [{ base_url: 'http://127.0.0.1:1234', models: 2 }];
+		answer(found);
+		await expect(llmDetect()).resolves.toEqual(found);
+		expect(order).toEqual(['llm_detect']);
+		expect(mockInvoke.mock.calls[0][0]).toBe('llm_detect');
+	});
+
+	it('llmModels resyncs identity, then sends the user id', async () => {
+		answer(['qwen3', 'llama']);
+		await expect(llmModels(7)).resolves.toEqual(['qwen3', 'llama']);
+		expect(order).toEqual(['resync', 'llm_models']);
+		expect(mockInvoke).toHaveBeenCalledWith('llm_models', { userId: 7 });
+	});
+
+	it('llmTest resyncs identity, then returns the verdict', async () => {
+		answer('ok: qwen3');
+		await expect(llmTest(7)).resolves.toBe('ok: qwen3');
+		expect(order).toEqual(['resync', 'llm_test']);
+		expect(mockInvoke).toHaveBeenCalledWith('llm_test', { userId: 7 });
+	});
+
+	it('llmComplete resyncs identity, then sends the prompt options', async () => {
+		answer('summary');
+		const result = await llmComplete(7, {
+			system: 'be brief',
+			prompt: 'day input',
+			maxTokens: 300,
+			temperature: 0.2,
+		});
+		expect(result).toBe('summary');
+		expect(order).toEqual(['resync', 'llm_complete']);
+		expect(mockInvoke).toHaveBeenCalledWith('llm_complete', {
+			userId: 7,
+			system: 'be brief',
+			prompt: 'day input',
+			maxTokens: 300,
+			temperature: 0.2,
+		});
+	});
+
+	it('llmLanConfirm invokes llm_lan_confirm without resyncing identity', async () => {
+		answer(undefined);
+		await llmLanConfirm('http://192.0.2.5:1234', true);
+		expect(order).toEqual(['llm_lan_confirm']);
+		expect(mockInvoke).toHaveBeenCalledWith('llm_lan_confirm', {
+			origin: 'http://192.0.2.5:1234',
+			confirmed: true,
+		});
+	});
+
+	it('reads the origin out of a rejected llmComplete', async () => {
+		mockInvoke.mockRejectedValue('needs_confirmation:http://192.0.2.5:1234');
+		const error = await llmComplete(7, {
+			system: '',
+			prompt: '',
+			maxTokens: 1,
+			temperature: 0,
+		}).catch((e: unknown) => e);
+		expect(needsConfirmationOrigin(error)).toBe('http://192.0.2.5:1234');
+	});
+});
+
+describe('needsConfirmationOrigin', () => {
+	it('parses the origin from an Error', () => {
+		expect(
+			needsConfirmationOrigin(
+				new Error('needs_confirmation:http://192.0.2.5:1234'),
+			),
+		).toBe('http://192.0.2.5:1234');
+	});
+
+	it('parses the origin from a plain string', () => {
+		expect(
+			needsConfirmationOrigin('needs_confirmation:http://192.0.2.2:8080'),
+		).toBe('http://192.0.2.2:8080');
+	});
+
+	it('returns null for other errors', () => {
+		expect(needsConfirmationOrigin(new Error('connection refused'))).toBeNull();
+		expect(needsConfirmationOrigin('llm request failed')).toBeNull();
+		expect(needsConfirmationOrigin(undefined)).toBeNull();
+		expect(
+			needsConfirmationOrigin({ message: 'needs_confirmation:x' }),
+		).toBeNull();
+	});
+
+	it('returns null when the origin is missing', () => {
+		expect(needsConfirmationOrigin('needs_confirmation:')).toBeNull();
+		expect(
+			needsConfirmationOrigin(new Error('needs_confirmation:   ')),
+		).toBeNull();
 	});
 });

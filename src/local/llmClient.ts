@@ -19,6 +19,48 @@ const invoke = async <T>(
 	return core.invoke<T>(command, args);
 };
 
+const NEEDS_CONFIRMATION = 'needs_confirmation:';
+
+export const llmDetect = () =>
+	invoke<{ base_url: string; models: number }[]>('llm_detect');
+
+export const llmModels = async (userId: number): Promise<string[]> => {
+	await resyncCloudIdentity();
+	return invoke<string[]>('llm_models', { userId });
+};
+
+export const llmTest = async (userId: number): Promise<string> => {
+	await resyncCloudIdentity();
+	return invoke<string>('llm_test', { userId });
+};
+
+export const llmComplete = async (
+	userId: number,
+	options: {
+		system: string;
+		prompt: string;
+		maxTokens: number;
+		temperature: number;
+	},
+): Promise<string> => {
+	await resyncCloudIdentity();
+	return invoke<string>('llm_complete', { userId, ...options });
+};
+
+export const llmLanConfirm = (origin: string, confirmed: boolean) =>
+	invoke<void>('llm_lan_confirm', { origin, confirmed });
+
+export const needsConfirmationOrigin = (error: unknown): string | null => {
+	const message =
+		error instanceof Error
+			? error.message
+			: typeof error === 'string'
+			? error
+			: null;
+	if (!message?.startsWith(NEEDS_CONFIRMATION)) return null;
+	return message.slice(NEEDS_CONFIRMATION.length).trim() || null;
+};
+
 /** Tool-call argument chunks stream by index; only assembled into a call once the turn is `done`. */
 export const createLlmChat = (
 	tools: unknown,
@@ -34,8 +76,9 @@ export const createLlmChat = (
 		const requestId = crypto.randomUUID();
 		activeRequestId = requestId;
 		const { listen } = await import('@tauri-apps/api/event');
-		const { getCurrentWebviewWindow } =
-			await import('@tauri-apps/api/webviewWindow');
+		const { getCurrentWebviewWindow } = await import(
+			'@tauri-apps/api/webviewWindow'
+		);
 		const queue: RustChatEvent[] = [];
 		let wake: (() => void) | null = null;
 		const unlisten = await listen<{ request_id: string; event: RustChatEvent }>(
