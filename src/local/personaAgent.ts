@@ -23,7 +23,9 @@ export interface ToolCall {
 }
 
 export type ChatStreamEvent =
-	{ type: 'text'; delta: string } | { type: 'tool_call'; call: ToolCall };
+	| { type: 'text'; delta: string }
+	| { type: 'tool_call'; call: ToolCall }
+	| { type: 'truncated' };
 
 /** The Rust side turns the SSE stream from `llm_chat` into this; a test can fake it directly. */
 export type ChatFn = (
@@ -75,7 +77,10 @@ export interface PersonaAgentParams {
 	onText?: (textSoFar: string) => void;
 	onToolCall?: (method: string) => void;
 	isCancelled?: () => boolean;
-	deliver?: (text: string) => Promise<'posted' | 'discarded' | void>;
+	deliver?: (
+		text: string,
+		info: { cutOff: boolean },
+	) => Promise<'posted' | 'discarded' | void>;
 }
 
 export interface PersonaAgentResult {
@@ -130,6 +135,7 @@ export const runPersonaAgent = async ({
 
 	let toolCalls = 0;
 	let finalText = '';
+	let truncated = false;
 	let status: 'succeeded' | 'failed' | 'cancelled' = 'succeeded';
 	try {
 		for (;;) {
@@ -139,7 +145,8 @@ export const runPersonaAgent = async ({
 				if (event.type === 'text') {
 					textBuffer += event.delta;
 					onText?.(textBuffer);
-				} else calls.push(event.call);
+				} else if (event.type === 'truncated') truncated = true;
+				else calls.push(event.call);
 			}
 			if (!calls.length) {
 				if (!textBuffer.trim()) {
@@ -181,7 +188,7 @@ export const runPersonaAgent = async ({
 			}
 		}
 		if (isCancelled?.()) status = 'cancelled';
-		else if ((await deliver?.(finalText)) === 'discarded') status = 'cancelled';
+		else if ((await deliver?.(finalText, { cutOff: truncated })) === 'discarded') status = 'cancelled';
 	} catch (error) {
 		status = isCancelled?.() ? 'cancelled' : 'failed';
 		throw error;
@@ -216,18 +223,23 @@ export const runPersonaAgent = async ({
 export const askPersonaOnTask = async (
 	params: PersonaAgentParams & {
 		maxAnswerChars?: number;
-		confirmPublish?: (info: { length: number; limit: number }) => Promise<boolean>;
+		confirmPublish?: (info: {
+			length: number;
+			limit: number;
+			cutOff: boolean;
+		}) => Promise<boolean>;
 	},
 ): Promise<PersonaAgentResult & { posted: boolean }> => {
 	let posted = false;
 	const result = await runPersonaAgent({
 		...params,
-		deliver: async (text) => {
+		deliver: async (text, { cutOff }) => {
 			const limit = params.maxAnswerChars;
-			if (limit !== undefined && text.length > limit) {
+			if (cutOff || (limit !== undefined && text.length > limit)) {
 				const confirmed = await params.confirmPublish?.({
 					length: text.length,
-					limit,
+					limit: limit ?? text.length,
+					cutOff,
 				});
 				if (!confirmed) return 'discarded';
 			}

@@ -353,7 +353,11 @@ describeSqlite('local persona agent loop', () => {
 		it('asks before posting and posts once confirmed', async () => {
 			const confirmPublish = jest.fn(async () => true);
 			const result = await ask({ maxAnswerChars: 1000, confirmPublish });
-			expect(confirmPublish).toHaveBeenCalledWith({ length: 1500, limit: 1000 });
+			expect(confirmPublish).toHaveBeenCalledWith({
+				length: 1500,
+				limit: 1000,
+				cutOff: false,
+			});
 			expect(result.posted).toBe(true);
 			expect(await commentCount()).toBe(1);
 		});
@@ -369,6 +373,24 @@ describeSqlite('local persona agent loop', () => {
 
 		it('never posts an over-limit answer without a confirmation callback', async () => {
 			const result = await ask({ maxAnswerChars: 1000 });
+			expect(result.posted).toBe(false);
+			expect(await commentCount()).toBe(0);
+		});
+
+		it('asks even under the limit when the model was cut off by its length limit', async () => {
+			const cutOff = async function* (): AsyncIterable<ChatStreamEvent> {
+				yield { type: 'text', delta: 'half an answer' };
+				yield { type: 'truncated' };
+			};
+			const confirmPublish = jest.fn(async () => false);
+			const result = await ask({
+				chat: cutOff,
+				maxAnswerChars: 20000,
+				confirmPublish,
+			});
+			expect(confirmPublish).toHaveBeenCalledWith(
+				expect.objectContaining({ cutOff: true }),
+			);
 			expect(result.posted).toBe(false);
 			expect(await commentCount()).toBe(0);
 		});

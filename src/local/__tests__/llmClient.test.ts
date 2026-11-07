@@ -93,6 +93,51 @@ describe('createLlmChat limits', () => {
 	});
 });
 
+describe('createLlmChat length cut-off', () => {
+	const cutOff = 'The answer was cut off: the model hit its length limit';
+
+	it('turns a length cut-off after some text into a truncated event', async () => {
+		mockInvoke.mockImplementation(async (command: string, args: any) => {
+			if (command === 'llm_chat') {
+				emit(args.requestId, { type: 'delta', text: 'half' });
+				emit(args.requestId, { type: 'error', message: cutOff });
+			}
+		});
+		const { chat } = createLlmChat([], 1);
+		expect(await drain(chat([]))).toEqual([
+			{ type: 'text', delta: 'half' },
+			{ type: 'truncated' },
+		]);
+	});
+
+	it('keeps a cut-off with no text an error', async () => {
+		mockInvoke.mockImplementation(async (command: string, args: any) => {
+			if (command === 'llm_chat')
+				emit(args.requestId, { type: 'error', message: cutOff });
+		});
+		const { chat } = createLlmChat([], 1);
+		await expect(drain(chat([]))).rejects.toThrow(cutOff);
+	});
+
+	it('keeps a cut-off in the middle of a tool call an error', async () => {
+		mockInvoke.mockImplementation(async (command: string, args: any) => {
+			if (command === 'llm_chat') {
+				emit(args.requestId, { type: 'delta', text: 'x' });
+				emit(args.requestId, {
+					type: 'tool_call',
+					index: 0,
+					id: 'a',
+					name: 'tmgr_request',
+					arguments: '{"met',
+				});
+				emit(args.requestId, { type: 'error', message: cutOff });
+			}
+		});
+		const { chat } = createLlmChat([], 1);
+		await expect(drain(chat([]))).rejects.toThrow(cutOff);
+	});
+});
+
 describe('createLlmChat cancel', () => {
 	it('does not send the prompt when cancelled during identity resync', async () => {
 		let releaseResync!: () => void;

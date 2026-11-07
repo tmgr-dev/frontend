@@ -21,8 +21,14 @@
 		</button>
 		<template v-else-if="pendingConfirm">
 			<span class="text-ink-subtle">
-				The answer is {{ pendingConfirm.length }} characters, over the limit of
-				{{ pendingConfirm.limit }}.
+				<template v-if="pendingConfirm.cutOff">
+					The model hit its length limit, so the answer is cut off
+					({{ pendingConfirm.length }} characters).
+				</template>
+				<template v-else>
+					The answer is {{ pendingConfirm.length }} characters, over the limit
+					of {{ pendingConfirm.limit }}.
+				</template>
 			</span>
 			<button
 				type="button"
@@ -105,7 +111,11 @@
 			const error = ref<string | null>(null);
 			const partialText = ref('');
 			let cancelCurrent: (() => Promise<void>) | null = null;
-			const pendingConfirm = ref<{ length: number; limit: number } | null>(
+			const pendingConfirm = ref<{
+					length: number;
+					limit: number;
+					cutOff: boolean;
+				} | null>(
 				null,
 			);
 			let settleConfirmation: ((publish: boolean) => void) | null = null;
@@ -118,7 +128,11 @@
 				settle?.(publish);
 			};
 
-			const confirmPublish = (info: { length: number; limit: number }) =>
+			const confirmPublish = (info: {
+				length: number;
+				limit: number;
+				cutOff: boolean;
+			}) =>
 				new Promise<boolean>((resolve) => {
 					settleConfirmation = resolve;
 					pendingConfirm.value = info;

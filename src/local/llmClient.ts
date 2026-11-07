@@ -1,6 +1,8 @@
 import { resyncCloudIdentity } from '@/utils/cloudIdentity';
 import type { ChatFn, ChatMessage, ChatStreamEvent } from './personaAgent';
 
+const LENGTH_CUT_OFF = 'The answer was cut off: the model hit its length limit';
+
 interface RustChatEvent {
 	type: 'delta' | 'tool_call' | 'done' | 'error';
 	text?: string;
@@ -123,6 +125,7 @@ export const createLlmChat = (
 			const toolBuffers: ToolBuffer[] = [];
 			const currentByIndex = new Map<number, ToolBuffer>();
 			let done = false;
+			let sawText = false;
 			while (!done) {
 				if (!queue.length) {
 					await new Promise<void>((resolve) => {
@@ -133,6 +136,7 @@ export const createLlmChat = (
 				}
 				const event = queue.shift()!;
 				if (event.type === 'delta' && event.text) {
+					sawText = true;
 					yield { type: 'text', delta: event.text };
 				} else if (event.type === 'tool_call') {
 					const index = event.index ?? 0;
@@ -146,6 +150,14 @@ export const createLlmChat = (
 					if (event.name) buf.name = event.name;
 					buf.arguments += event.arguments ?? '';
 				} else if (event.type === 'done') {
+					done = true;
+				} else if (
+					event.type === 'error' &&
+					sawText &&
+					toolBuffers.length === 0 &&
+					event.message?.startsWith(LENGTH_CUT_OFF)
+				) {
+					yield { type: 'truncated' };
 					done = true;
 				} else if (event.type === 'error') {
 					throw new Error(event.message ?? 'LLM request failed');

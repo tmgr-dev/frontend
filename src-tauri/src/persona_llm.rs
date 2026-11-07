@@ -1002,7 +1002,7 @@ impl Deadline {
       Ok(value) => Ok(value),
       Err(_) if total_first => Err(format!(
         "The answer took longer than {} minutes and was stopped.",
-        self.limits.total.as_secs().div_ceil(60)
+        TOTAL_TIMEOUT.as_secs() / 60
       )),
       Err(_) => Err(format!(
         "The model sent no data for {} seconds and the request was stopped.",
