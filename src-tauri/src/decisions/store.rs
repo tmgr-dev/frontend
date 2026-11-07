@@ -2011,10 +2011,10 @@ mod tests {
     assert_eq!(ids(s.find(Some(TASK_211), None, None, 10).unwrap()), [g.clone(), b.clone()]);
     assert_eq!(ids(s.find(Some("TM-211"), None, None, 10).unwrap()), [g.clone(), a.clone()]);
     assert_eq!(ids(s.find(None, None, Some("ship"), 10).unwrap()), [g.clone(), a.clone()]);
-    assert_eq!(ids(s.find(None, None, Some("rollback MIGRATION"), 10).unwrap()), [c.clone()]);
-    assert_eq!(ids(s.find(None, None, Some("fallback"), 10).unwrap()), [b.clone()]);
-    assert_eq!(ids(s.find(None, Some("ops/"), None, 10).unwrap()), [b.clone()]);
-    assert_eq!(ids(s.find(None, None, None, 1).unwrap()), [g.clone()]);
+    assert_eq!(ids(s.find(None, None, Some("rollback MIGRATION"), 10).unwrap()), std::slice::from_ref(&c));
+    assert_eq!(ids(s.find(None, None, Some("fallback"), 10).unwrap()), std::slice::from_ref(&b));
+    assert_eq!(ids(s.find(None, Some("ops/"), None, 10).unwrap()), std::slice::from_ref(&b));
+    assert_eq!(ids(s.find(None, None, None, 1).unwrap()), std::slice::from_ref(&g));
     let all = ids(s.find(None, None, None, 10).unwrap());
     assert!(!all.contains(&open) && !all.contains(&hooked));
     let found_b = s.find(Some(TASK_211), None, None, 10).unwrap().pop().unwrap();
