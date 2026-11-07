@@ -276,7 +276,13 @@ const start = async () => {
 	if (isDesktopApp() && desktopWindowLabel() === 'main') {
 		void startRunnerStore();
 		installCloudIdentitySync(store);
-		if (store.state.localProfile) installLocalUpgrade(store);
+		if (store.state.localProfile)
+			installLocalUpgrade(
+				store,
+				undefined,
+				undefined,
+				import.meta.env.VITE_API_BASE_URL,
+			);
 		watch(
 			() => store.getters.accountMode,
 			(next, previous) => {

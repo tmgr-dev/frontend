@@ -256,6 +256,7 @@ pub fn run() {
       local_profile::local_profile_create,
       local_profile::local_profile_update,
       local_profile::local_profile_link,
+      local_profile::local_profile_unlink,
       local_backups::local_backup_now,
       local_backups::local_backup_list,
       local_backups::local_backup_status,

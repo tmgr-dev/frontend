@@ -107,9 +107,12 @@ test('success: links, migrates both, clears migrate and keeps the dialog flag', 
 		persona_llm_migrate_local: () => ({ status: 'moved' }),
 		persona_cache_migrate_local: () => ({ moved: 1, conflicts: 0 }),
 	});
-	installLocalUpgrade(store, invoke, storage);
+	installLocalUpgrade(store, invoke, storage, 'https://api.example/api/');
 	await flush();
-	expect(invoke).toHaveBeenCalledWith('local_profile_link', { userId: 7 });
+	expect(invoke).toHaveBeenCalledWith(
+		'local_profile_link',
+		expect.objectContaining({ userId: 7, apiBase: 'https://api.example/api/' }),
+	);
 	expect(invoke).toHaveBeenCalledWith('persona_llm_migrate_local', {
 		toUserId: 7,
 	});

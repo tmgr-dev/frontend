@@ -18,6 +18,7 @@ const APP_COMMANDS: &[&str] = &[
   "local_profile_create",
   "local_profile_update",
   "local_profile_link",
+  "local_profile_unlink",
   "local_backup_now",
   "local_backup_list",
   "local_backup_status",

@@ -24,6 +24,33 @@
 				Saved.
 			</p>
 		</form>
+		<div
+			v-if="linkedUserId"
+			class="mt-4 flex max-w-xl flex-wrap items-center gap-2"
+		>
+			<p class="flex-1 text-sm text-ink-subtle">
+				{{
+					linkedToCurrent
+						? 'Local data is linked to your account.'
+						: 'Local data is linked to another account.'
+				}}
+			</p>
+			<Button
+				type="button"
+				variant="outline"
+				:disabled="unlinking"
+				@click="unlink"
+			>
+				{{ unlinking ? 'Unlinking…' : 'Unlink' }}
+			</Button>
+			<p
+				v-if="unlinkError"
+				role="alert"
+				class="w-full text-sm text-destructive"
+			>
+				{{ unlinkError }}
+			</p>
+		</div>
 	</SettingsSection>
 </template>
 
@@ -32,7 +59,7 @@
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
 	import { Label } from '@/components/ui/label';
-	import { updateLocalProfile } from '@/utils/localProfile';
+	import { unlinkLocalProfile, updateLocalProfile } from '@/utils/localProfile';
 	import { computed, defineComponent, ref, watch } from 'vue';
 	import { useStore } from 'vuex';
 
@@ -71,7 +98,43 @@
 				}
 			};
 
-			return { name, saving, saved, error, changed, save };
+			const linkedUserId = computed(
+				() => store.state.localProfile?.linked_user_id ?? null,
+			);
+			const linkedToCurrent = computed(
+				() => linkedUserId.value === (store.state.user?.id ?? null),
+			);
+			const unlinking = ref(false);
+			const unlinkError = ref('');
+
+			const unlink = async () => {
+				if (unlinking.value) return;
+				unlinking.value = true;
+				unlinkError.value = '';
+				try {
+					await unlinkLocalProfile();
+					await store.dispatch('refreshLocalProfile');
+				} catch (e: any) {
+					unlinkError.value =
+						e?.message || String(e) || 'Could not unlink the profile.';
+				} finally {
+					unlinking.value = false;
+				}
+			};
+
+			return {
+				name,
+				saving,
+				saved,
+				error,
+				changed,
+				save,
+				linkedUserId,
+				linkedToCurrent,
+				unlinking,
+				unlinkError,
+				unlink,
+			};
 		},
 	});
 </script>

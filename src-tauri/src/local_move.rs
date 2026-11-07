@@ -1258,7 +1258,7 @@ pub fn publication_verdict(body: &Json, job_uuid: &str, expected_revision: &str)
 
 const JOB_BODY_LIMIT: usize = 1024 * 1024;
 
-fn ensure_tls_provider() {
+pub(crate) fn ensure_tls_provider() {
   if rustls::crypto::CryptoProvider::get_default().is_none() {
     let _ = rustls::crypto::ring::default_provider().install_default();
   }
@@ -1267,7 +1267,7 @@ fn ensure_tls_provider() {
 const PRODUCTION_API: &str = "https://api.tmgr.dev/api/";
 
 /// Build-time extra API (a stage build), same exact-match rules as production.
-const EXTRA_API: Option<&str> = option_env!("TMGR_DESKTOP_API_BASE");
+pub(crate) const EXTRA_API: Option<&str> = option_env!("TMGR_DESKTOP_API_BASE");
 
 fn exact_https_base(candidate: &str, allowed: &str) -> bool {
   let (Ok(candidate), Ok(allowed)) = (url::Url::parse(candidate), url::Url::parse(allowed)) else {
@@ -1302,7 +1302,7 @@ fn loopback_base(_candidate: &str) -> bool {
   false
 }
 
-fn trusted_api_base(candidate: &str, extra: Option<&str>) -> Result<String, String> {
+pub(crate) fn trusted_api_base(candidate: &str, extra: Option<&str>) -> Result<String, String> {
   let trusted = exact_https_base(candidate, PRODUCTION_API)
     || extra.is_some_and(|extra| exact_https_base(candidate, extra))
     || loopback_base(candidate);
@@ -1329,6 +1329,10 @@ fn job_url_with(api_base: &str, job_uuid: &str, extra: Option<&str>) -> Result<S
 /// header: never logged, stored or echoed in an error.
 pub async fn fetch_job(api_base: &str, job_uuid: &str, token: &str) -> Result<Json, String> {
   let url = job_url(api_base, job_uuid)?;
+  get_json(url, token, "the move").await
+}
+
+pub(crate) async fn get_json(url: String, token: &str, what: &str) -> Result<Json, String> {
   ensure_tls_provider();
   let client = reqwest::Client::builder()
     .redirect(reqwest::redirect::Policy::none())
@@ -1341,10 +1345,10 @@ pub async fn fetch_job(api_base: &str, job_uuid: &str, token: &str) -> Result<Js
     .header(reqwest::header::ACCEPT, "application/json")
     .send()
     .await
-    .map_err(|e| format!("could not reach the server to check the move: {}", e.without_url()))?;
+    .map_err(|e| format!("could not reach the server to check {what}: {}", e.without_url()))?;
   let status = response.status();
   if !status.is_success() {
-    return Err(format!("the server answered HTTP {} when checking the move", status.as_u16()));
+    return Err(format!("the server answered HTTP {} when checking {what}", status.as_u16()));
   }
   let mut body = Vec::new();
   while body.len() < JOB_BODY_LIMIT {

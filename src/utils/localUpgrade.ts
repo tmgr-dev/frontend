@@ -116,6 +116,7 @@ export const installLocalUpgrade = (
 	store: UpgradeStore,
 	invoke: Invoke = defaultInvoke,
 	storage: StorageLike | null = defaultStorage(),
+	apiBase = '',
 ) => {
 	let queue: Promise<void> = Promise.resolve();
 	let finished = false;
@@ -171,7 +172,11 @@ export const installLocalUpgrade = (
 
 		let linked: { linked_user_id?: unknown } | null;
 		try {
-			linked = (await invoke('local_profile_link', { userId })) as {
+			linked = (await invoke('local_profile_link', {
+				userId,
+				apiBase,
+				token: (store.state.token as { token?: string } | null)?.token ?? '',
+			})) as {
 				linked_user_id?: unknown;
 			} | null;
 		} catch {

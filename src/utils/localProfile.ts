@@ -23,5 +23,12 @@ export const createLocalProfile = (name?: string): Promise<LocalProfile> =>
 export const updateLocalProfile = (name: string): Promise<LocalProfile> =>
 	invoke<LocalProfile>('local_profile_update', { name });
 
-export const linkLocalProfile = (userId: number): Promise<LocalProfile> =>
-	invoke<LocalProfile>('local_profile_link', { userId });
+export const linkLocalProfile = (
+	userId: number,
+	apiBase: string,
+	token: string,
+): Promise<LocalProfile> =>
+	invoke<LocalProfile>('local_profile_link', { userId, apiBase, token });
+
+export const unlinkLocalProfile = (): Promise<boolean> =>
+	invoke<boolean>('local_profile_unlink');

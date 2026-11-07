@@ -103,6 +103,36 @@ pub fn link_at(path: &Path, user_id: i64) -> Result<LocalProfile, String> {
   Ok(profile)
 }
 
+pub fn unlink_at(path: &Path) -> Result<Option<LocalProfile>, String> {
+  match fs::remove_file(path.with_file_name(LINK_FILE)) {
+    Ok(()) => {}
+    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+    Err(_) => return Err("could not unlink the local profile".into()),
+  }
+  let Some(mut profile) = get_at(path) else { return Ok(None) };
+  if profile.linked_user_id.take().is_some() {
+    write(path, &profile)?;
+  }
+  Ok(Some(profile))
+}
+
+async fn verify_account(api_base: &str, token: &str, user_id: i64) -> Result<(), String> {
+  let base = crate::local_move::trusted_api_base(api_base, crate::local_move::EXTRA_API)?;
+  let answer = crate::local_move::get_json(format!("{base}user"), token, "the account").await?;
+  match answer.pointer("/data/id").and_then(|id| id.as_i64()) {
+    Some(id) if id == user_id => Ok(()),
+    _ => Err("the signed-in account does not match".into()),
+  }
+}
+
+pub async fn link_verified_at(path: &Path, api_base: &str, token: &str, user_id: i64) -> Result<LocalProfile, String> {
+  get_at(path).ok_or("no local profile")?;
+  if linked_id_at(path)?.is_none() {
+    verify_account(api_base, token, user_id).await?;
+  }
+  link_at(path, user_id)
+}
+
 pub fn linked_id_at(path: &Path) -> Result<Option<i64>, String> {
   let sidecar = read_link(&path.with_file_name(LINK_FILE))?;
   Ok(sidecar.or_else(|| get_at(path).and_then(|p| p.linked_user_id)))
@@ -142,11 +172,43 @@ pub fn local_profile_update<R: Runtime>(app: AppHandle<R>, name: String) -> Resu
 }
 
 #[tauri::command]
-pub fn local_profile_link<R: Runtime>(app: AppHandle<R>, window: tauri::Window<R>, user_id: i64) -> Result<LocalProfile, String> {
+pub async fn local_profile_link<R: Runtime>(
+  app: AppHandle<R>,
+  window: tauri::Window<R>,
+  user_id: i64,
+  api_base: String,
+  token: String,
+) -> Result<LocalProfile, String> {
   if window.label() != "main" {
     return Err("local_profile_link may only be called from the main window".into());
   }
-  link_at(&path(&app)?, crate::local_access::tokens::validate_user_id(user_id)?)
+  link_verified_at(&path(&app)?, &api_base, &token, crate::local_access::tokens::validate_user_id(user_id)?).await
+}
+
+#[tauri::command]
+pub async fn local_profile_unlink<R: Runtime>(app: AppHandle<R>, window: tauri::Window<R>) -> Result<bool, String> {
+  use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+  if window.label() != "main" {
+    return Err("local_profile_unlink may only be called from the main window".into());
+  }
+  let file = path(&app)?;
+  let dialog_app = app.clone();
+  let confirmed = tauri::async_runtime::spawn_blocking(move || {
+    dialog_app
+      .dialog()
+      .message("Unlink your local profile from this account? The next account that signs in on this device can then take over the local data that is still on it.")
+      .title("Unlink local profile")
+      .kind(MessageDialogKind::Warning)
+      .buttons(MessageDialogButtons::OkCancelCustom("Unlink".to_owned(), "Cancel".to_owned()))
+      .blocking_show()
+  })
+  .await
+  .unwrap_or(false);
+  if !confirmed {
+    return Ok(false);
+  }
+  unlink_at(&file)?;
+  Ok(true)
 }
 
 #[cfg(test)]
@@ -360,5 +422,171 @@ mod tests {
     fs::remove_file(link_file(&file)).unwrap();
     assert_eq!(link_at(&file, 9).unwrap().linked_user_id, Some(9));
     let _ = fs::remove_dir_all(file.parent().unwrap());
+  }
+
+  async fn serve(status: u16, location: Option<&'static str>, body: &'static str) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}/api/", listener.local_addr().unwrap());
+    let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = hits.clone();
+    tokio::spawn(async move {
+      loop {
+        let Ok((stream, _)) = listener.accept().await else { return };
+        let counter = counter.clone();
+        let service = hyper::service::service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
+          let counter = counter.clone();
+          async move {
+            assert_eq!(req.uri().path(), "/api/user");
+            assert_eq!(req.headers().get("authorization").unwrap(), "Bearer secret-token");
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let mut response = hyper::Response::builder().status(status);
+            if let Some(location) = location {
+              response = response.header("location", location);
+            }
+            Ok::<_, std::convert::Infallible>(response.body(http_body_util::Full::new(hyper::body::Bytes::from(body))).unwrap())
+          }
+        });
+        tokio::spawn(async move {
+          let _ = hyper::server::conn::http1::Builder::new()
+            .serve_connection(hyper_util::rt::TokioIo::new(stream), service)
+            .await;
+        });
+      }
+    });
+    (base, hits)
+  }
+
+  fn hits(counter: &std::sync::atomic::AtomicUsize) -> usize {
+    counter.load(std::sync::atomic::Ordering::SeqCst)
+  }
+
+  fn untouched(file: &Path) {
+    assert_eq!(linked_id_at(file).unwrap(), None);
+    assert!(!link_file(file).exists());
+    assert_eq!(get_at(file).unwrap().linked_user_id, None);
+  }
+
+  #[tokio::test]
+  async fn matching_account_links_the_profile() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join(FILE);
+    create_at(&file, Some("Ann"), "now", "u-1".into()).unwrap();
+    let (base, seen) = serve(200, None, r#"{"data":{"id":7,"email":"a@example.com"}}"#).await;
+    let linked = link_verified_at(&file, &base, "secret-token", 7).await.unwrap();
+    assert_eq!(linked.linked_user_id, Some(7));
+    assert_eq!(linked_id_at(&file).unwrap(), Some(7));
+    assert_eq!(hits(&seen), 1);
+  }
+
+  #[tokio::test]
+  async fn other_account_is_refused_and_nothing_is_written() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join(FILE);
+    create_at(&file, Some("Ann"), "now", "u-1".into()).unwrap();
+    let (base, _) = serve(200, None, r#"{"data":{"id":8}}"#).await;
+    let error = link_verified_at(&file, &base, "secret-token", 7).await.unwrap_err();
+    assert!(error.contains("does not match"), "{error}");
+    assert!(!error.contains("secret-token"));
+    untouched(&file);
+  }
+
+  #[tokio::test]
+  async fn untrusted_server_is_refused_without_a_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join(FILE);
+    create_at(&file, Some("Ann"), "now", "u-1".into()).unwrap();
+    let error = link_verified_at(&file, "https://other.example/api/", "secret-token", 7).await.unwrap_err();
+    assert!(!error.contains("secret-token"));
+    untouched(&file);
+  }
+
+  #[tokio::test]
+  async fn failed_or_unreadable_answers_link_nothing_and_hide_the_token() {
+    for (status, location, body) in [
+      (401u16, None, "{}"),
+      (500, None, "{}"),
+      (302, Some("https://elsewhere.example/"), ""),
+      (200, None, "<html>"),
+      (200, None, r#"{"data":{}}"#),
+      (200, None, r#"{"data":{"id":"7"}}"#),
+    ] {
+      let dir = tempfile::tempdir().unwrap();
+      let file = dir.path().join(FILE);
+      create_at(&file, Some("Ann"), "now", "u-1".into()).unwrap();
+      let (base, _) = serve(status, location, body).await;
+      let error = link_verified_at(&file, &base, "secret-token", 7).await.unwrap_err();
+      assert!(!error.contains("secret-token"), "{error}");
+      untouched(&file);
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join(FILE);
+    create_at(&file, Some("Ann"), "now", "u-1".into()).unwrap();
+    let error = link_verified_at(&file, "http://127.0.0.1:9/api/", "secret-token", 7).await.unwrap_err();
+    assert!(!error.contains("secret-token"));
+    untouched(&file);
+  }
+
+  #[tokio::test]
+  async fn already_linked_profile_returns_without_a_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join(FILE);
+    create_at(&file, Some("Ann"), "now", "u-1".into()).unwrap();
+    link_at(&file, 7).unwrap();
+    let (base, seen) = serve(500, None, "{}").await;
+    assert_eq!(link_verified_at(&file, &base, "secret-token", 7).await.unwrap().linked_user_id, Some(7));
+    assert_eq!(link_verified_at(&file, &base, "secret-token", 9).await.unwrap().linked_user_id, Some(7));
+    assert_eq!(link_verified_at("/nonexistent".as_ref(), &base, "secret-token", 1).await.unwrap_err(), "no local profile");
+    let unreachable = link_verified_at(&file, "http://127.0.0.1:9/api/", "secret-token", 7).await.unwrap();
+    assert_eq!(unreachable.linked_user_id, Some(7));
+    assert_eq!(hits(&seen), 0);
+  }
+
+  fn assert_unlinks(file: &Path) {
+    let after = unlink_at(file).unwrap().unwrap();
+    assert_eq!(after.linked_user_id, None);
+    assert_eq!(linked_id_at(file).unwrap(), None);
+    assert!(!link_file(file).exists());
+    assert_eq!(link_at(file, 9).unwrap().linked_user_id, Some(9));
+    assert_eq!(linked_id_at(file).unwrap(), Some(9));
+  }
+
+  #[test]
+  fn unlink_clears_field_and_sidecar_from_every_state() {
+    let both = created("unlink-both");
+    link_at(&both, 7).unwrap();
+    assert_unlinks(&both);
+
+    let only_sidecar = created("unlink-sidecar");
+    link_at(&only_sidecar, 7).unwrap();
+    strip_field(&only_sidecar);
+    assert_unlinks(&only_sidecar);
+
+    let only_field = created("unlink-field");
+    link_at(&only_field, 7).unwrap();
+    fs::remove_file(link_file(&only_field)).unwrap();
+    assert_unlinks(&only_field);
+
+    let neither = created("unlink-neither");
+    assert_unlinks(&neither);
+
+    let corrupt = created("unlink-corrupt");
+    link_at(&corrupt, 7).unwrap();
+    fs::write(link_file(&corrupt), "not json").unwrap();
+    assert_unlinks(&corrupt);
+  }
+
+  #[test]
+  fn unlink_without_a_profile_is_a_no_op() {
+    let dir = tempfile::tempdir().unwrap();
+    assert_eq!(unlink_at(&dir.path().join(FILE)).unwrap(), None);
+  }
+
+  #[test]
+  fn unlink_keeps_the_rest_of_the_profile() {
+    let file = created("unlink-keeps");
+    link_at(&file, 7).unwrap();
+    let before = get_at(&file).unwrap();
+    let after = unlink_at(&file).unwrap().unwrap();
+    assert_eq!((after.id, after.uuid, after.name, after.created_at), (before.id, before.uuid, before.name, before.created_at));
   }
 }

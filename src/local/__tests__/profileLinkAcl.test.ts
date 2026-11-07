@@ -8,6 +8,7 @@ const capability = (name: string) =>
 
 const commands: [string, string][] = [
 	['local_profile_link', 'local_profile::'],
+	['local_profile_unlink', 'local_profile::'],
 	['persona_llm_migrate_local', 'persona_llm::'],
 	['persona_cache_migrate_local', 'persona_cache::'],
 ];
