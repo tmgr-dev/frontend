@@ -382,7 +382,9 @@ fn similar_answer(similar: &[Found]) -> Value {
     })
 }
 
-fn find_args(a: &Value) -> Result<(Option<&str>, Option<&str>, Option<&str>, u32), String> {
+type FindArgs<'a> = (Option<&'a str>, Option<&'a str>, Option<&'a str>, u32);
+
+fn find_args(a: &Value) -> Result<FindArgs<'_>, String> {
     Ok((
         str_arg(a, "task", 1, 2000)?,
         str_arg(a, "key", 1, 200)?,

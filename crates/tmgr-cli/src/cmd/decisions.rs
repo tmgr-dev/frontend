@@ -92,7 +92,7 @@ pub enum Sent {
 }
 
 pub enum SentFull {
-    Live(Response),
+    Live(Box<Response>),
     Spooled(String),
 }
 
@@ -100,7 +100,7 @@ pub fn send_card_full(mut card: CardIn) -> io::Result<SentFull> {
     card.id.get_or_insert_with(decisions::new_card_id);
     let dir = decisions::decisions_dir()?;
     match Client::open_in(&dir).and_then(|c| c.create_full(card.clone())) {
-        Ok(response) => Ok(SentFull::Live(response)),
+        Ok(response) => Ok(SentFull::Live(Box::new(response))),
         Err(e) if is_refusal(&e) => Err(e),
         Err(_) => decisions::spool(&dir, &card).map(SentFull::Spooled),
     }
