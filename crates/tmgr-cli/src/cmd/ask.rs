@@ -60,6 +60,7 @@ fn spec_of(args: &AskArgs) -> std::result::Result<crate::cmd::decisions::Spec, S
         links: args.links.clone(),
         replaces: args.replaces.clone(),
         key: args.key.clone(),
+        force_new: None,
     })
 }
 

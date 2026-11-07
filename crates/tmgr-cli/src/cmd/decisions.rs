@@ -1,11 +1,16 @@
-use serde_json::Value;
+use crate::out::Output;
+use clap::{Args, Subcommand};
+use serde_json::{json, Value};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
+use tmgr_core::error::{Error, Result as CoreResult};
+use tmgr_core::text::sanitize_line;
 use tmgr_ipc::decisions::{
-    self, Cancel, CardIn, Check, Client, DiffSpec, Event, Fact, LinkItem, Links, Opt, PatchIn,
-    Source, WaitCard, MAX_DIFFS, MAX_LINE, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES,
+    self, Cancel, CardIn, Check, Client, DiffSpec, Event, Fact, Found, LinkItem, Links, Opt,
+    PatchIn, Response, Source, WaitCard, MAX_DIFFS, MAX_LINE, MAX_LINKS, MAX_PATCHES,
+    MAX_PATCH_BYTES,
 };
 
 pub const KINDS: [&str; 5] = ["decision", "review", "release", "check", "question"];
@@ -86,13 +91,28 @@ pub enum Sent {
     Spooled(String),
 }
 
-pub fn send_card(mut card: CardIn) -> io::Result<Sent> {
+pub enum SentFull {
+    Live(Response),
+    Spooled(String),
+}
+
+pub fn send_card_full(mut card: CardIn) -> io::Result<SentFull> {
     card.id.get_or_insert_with(decisions::new_card_id);
     let dir = decisions::decisions_dir()?;
-    match Client::open_in(&dir).and_then(|c| c.create_outcome(card.clone())) {
-        Ok((canonical, outcome)) => Ok(Sent::Live(canonical, outcome)),
+    match Client::open_in(&dir).and_then(|c| c.create_full(card.clone())) {
+        Ok(response) => Ok(SentFull::Live(response)),
         Err(e) if is_refusal(&e) => Err(e),
-        Err(_) => decisions::spool(&dir, &card).map(Sent::Spooled),
+        Err(_) => decisions::spool(&dir, &card).map(SentFull::Spooled),
+    }
+}
+
+pub fn send_card(card: CardIn) -> io::Result<Sent> {
+    match send_card_full(card)? {
+        SentFull::Live(response) => Ok(Sent::Live(
+            response.card_id.unwrap_or_default(),
+            response.outcome,
+        )),
+        SentFull::Spooled(id) => Ok(Sent::Spooled(id)),
     }
 }
 
@@ -290,6 +310,7 @@ pub struct Spec {
     pub links: Vec<String>,
     pub replaces: Option<String>,
     pub key: Option<String>,
+    pub force_new: Option<bool>,
 }
 
 const MAX_URL: usize = 2000;
@@ -728,6 +749,7 @@ impl Spec {
             patches,
             replaces: self.replaces,
             key: self.key.map(|k| k.trim().to_string()),
+            force_new: self.force_new,
             checks: self.checks,
             links: Links {
                 task: self.task,
@@ -743,6 +765,95 @@ impl Spec {
         }
         Ok(card)
     }
+}
+
+#[derive(Subcommand)]
+pub enum DecisionsCommand {
+    /// Answers and dismissals you gave in the Decisions inbox, newest first
+    Answers(AnswersArgs),
+}
+
+#[derive(Args)]
+pub struct AnswersArgs {
+    /// Only cards of this task (TM-123 or a task URL)
+    #[arg(long, value_name = "TASK")]
+    pub task: Option<String>,
+    /// Only cards whose key starts with this
+    #[arg(long, value_name = "PREFIX")]
+    pub key: Option<String>,
+    /// Only cards whose text contains every word of this
+    #[arg(long, value_name = "TEXT")]
+    pub query: Option<String>,
+    /// How many cards to show (1 to 50)
+    #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u32).range(1..=50))]
+    pub limit: u32,
+}
+
+pub fn run(command: &DecisionsCommand) -> CoreResult<Output> {
+    match command {
+        DecisionsCommand::Answers(args) => answers(args),
+    }
+}
+
+fn answers(args: &AnswersArgs) -> CoreResult<Output> {
+    let dir = decisions::decisions_dir()
+        .map_err(|e| Error::internal(format!("cannot locate the Decisions inbox: {e}")))?;
+    let found = Client::open_in(&dir)
+        .and_then(|c| {
+            c.find(
+                args.task.as_deref(),
+                args.key.as_deref(),
+                args.query.as_deref(),
+                Some(args.limit),
+            )
+        })
+        .map_err(|e| match e.kind() {
+            io::ErrorKind::Unsupported => {
+                Error::usage("the Decisions inbox is too old for answers (update the desktop app)")
+            }
+            _ => Error::internal(format!("the Decisions inbox could not be reached: {e}")),
+        })?;
+    Ok(Output::new(
+        json!({"answers": found}),
+        answers_human(&found),
+    ))
+}
+
+fn created(ms: i64) -> String {
+    chrono::DateTime::from_timestamp_millis(ms).map_or_else(
+        || "unknown".into(),
+        |t| t.format("%Y-%m-%d %H:%M UTC").to_string(),
+    )
+}
+
+fn answers_human(found: &[Found]) -> String {
+    if found.is_empty() {
+        return "No answers".into();
+    }
+    found
+        .iter()
+        .map(|f| {
+            let mut lines = vec![sanitize_line(&f.title)];
+            if let Some(q) = &f.question {
+                lines.push(format!("  Question: {}", sanitize_line(q)));
+            }
+            let state = if f.dismissed { "dismissed" } else { &f.state };
+            lines.push(format!("  State: {state}"));
+            if let Some(c) = &f.choice_label {
+                lines.push(format!("  Choice: {}", sanitize_line(c)));
+            }
+            if let Some(t) = &f.free_text {
+                lines.push(format!("  Free text: {}", sanitize_line(t)));
+            }
+            if let Some(n) = &f.note {
+                lines.push(format!("  Note: {}", sanitize_line(n)));
+            }
+            lines.push(format!("  Created: {}", created(f.created_ms)));
+            lines.push(format!("  Card: {}", f.card_id));
+            lines.join("\n")
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 fn side_note(side: Option<&str>) -> &'static str {
@@ -1138,5 +1249,47 @@ mod tests {
         assert_eq!(card.kind, "permission");
         assert_eq!(card.title, "p: permission for Bash");
         assert_eq!(card.question.as_deref(), Some("rm x"));
+    }
+
+    #[test]
+    fn force_new_is_passed_into_the_card_only_when_set() {
+        assert_eq!(
+            spec()
+                .into_card("mcp", Source::default())
+                .unwrap()
+                .force_new,
+            None
+        );
+        let card = Spec {
+            force_new: Some(true),
+            ..spec()
+        }
+        .into_card("mcp", Source::default())
+        .unwrap();
+        assert_eq!(card.force_new, Some(true));
+    }
+
+    #[test]
+    fn answers_print_one_block_per_card() {
+        let found = Found {
+            card_id: "c_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+            title: "Ship it?".into(),
+            question: Some("Release 1.2?".into()),
+            state: "answered".into(),
+            choice_label: Some("Yes".into()),
+            free_text: None,
+            note: None,
+            dismissed: false,
+            key: None,
+            task: Some("TM-1".into()),
+            created_ms: 0,
+        };
+        let text = answers_human(&[found.clone(), found]);
+        assert!(text.contains("Ship it?"));
+        assert!(text.contains("Question: Release 1.2?"));
+        assert!(text.contains("Choice: Yes"));
+        assert!(text.contains("Created: 1970-01-01 00:00 UTC"));
+        assert_eq!(text.matches("Ship it?").count(), 2);
+        assert_eq!(answers_human(&[]), "No answers");
     }
 }
