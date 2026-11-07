@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.123 — 2026-11-08
+
+- Skills library: importing a skill from a local agent now also brings its companion files (scripts, references, templates) along with SKILL.md. Nothing is ever run. Files with secrets, files above the size limits and unsafe paths are skipped, and the result says how many files were not imported. Local skills keep their files, the MCP tool `get_persona_skill_file` returns one file, and Move to cloud uploads them too; a skill too big to upload is listed as "too large to move to cloud".
+
 ## 0.9.122 — 2026-11-08
 
 - Local AI: Settings > Personas now has a Local AI section on the desktop. Press Detect to find Ollama or LM Studio on this computer, load the model list and test the connection. A server on your local network is used only after you confirm it for that address.
