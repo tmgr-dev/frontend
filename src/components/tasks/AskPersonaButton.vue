@@ -22,8 +22,10 @@
 		<template v-else-if="pendingConfirm">
 			<span class="text-ink-subtle">
 				<template v-if="pendingConfirm.cutOff">
-					The model hit its length limit, so the answer is cut off
-					({{ pendingConfirm.length }} characters).
+					The model hit its length limit, so the answer is cut off ({{
+						pendingConfirm.length
+					}}
+					characters).
 				</template>
 				<template v-else>
 					The answer is {{ pendingConfirm.length }} characters, over the limit
@@ -72,6 +74,7 @@
 		askPersonaOnTask,
 		personaToolDefinition,
 	} from '@/local/personaAgent';
+	import { readPersonaCache } from '@/local/personaCache';
 	import { LOCAL_OWNER_ID } from '@/local/personaGate';
 	import {
 		ASK_TOTAL_TIMEOUT_MS,
@@ -79,7 +82,6 @@
 		DEFAULT_MAX_TOKENS,
 		fetchPersonaLimits,
 	} from '@/local/personaLimits';
-	import { readPersonaCache } from '@/local/personaCache';
 	import {
 		ensureDefaultLocalPersona,
 		listLocalPersonas,
@@ -112,12 +114,10 @@
 			const partialText = ref('');
 			let cancelCurrent: (() => Promise<void>) | null = null;
 			const pendingConfirm = ref<{
-					length: number;
-					limit: number;
-					cutOff: boolean;
-				} | null>(
-				null,
-			);
+				length: number;
+				limit: number;
+				cutOff: boolean;
+			} | null>(null);
 			let settleConfirmation: ((publish: boolean) => void) | null = null;
 			let cancelRequested = false;
 
@@ -156,12 +156,12 @@
 							name:
 								store.state.user?.name || store.state.localProfile?.name || '',
 							email: '',
-						}
+					  }
 					: {
 							id: Number(store.state.user?.id) || 0,
 							name: store.state.user?.name ?? '',
 							email: store.state.user?.email ?? '',
-						};
+					  };
 
 			onMounted(async () => {
 				if (!show || !workspace) return;
@@ -198,7 +198,7 @@
 						? {
 								maxTokens: DEFAULT_MAX_TOKENS,
 								maxAnswerChars: DEFAULT_MAX_ANSWER_CHARS,
-							}
+						  }
 						: await fetchPersonaLimits();
 					const { chat, cancel } = createLlmChat(
 						[personaToolDefinition(grantedPermissions)],

@@ -441,13 +441,19 @@ const mountSignedIn = async () => {
 };
 
 test('passes the platform limits to the chat and to the agent', async () => {
-	mockFetchLimits.mockResolvedValueOnce({ maxTokens: 8000, maxAnswerChars: 5000 });
+	mockFetchLimits.mockResolvedValueOnce({
+		maxTokens: 8000,
+		maxAnswerChars: 5000,
+	});
 	const { setup } = await mountSignedIn();
 	await setup.ask();
 	expect(mockCreateLlmChat).toHaveBeenCalledWith(
 		expect.anything(),
 		42,
-		expect.objectContaining({ maxTokens: 8000, deadlineAt: expect.any(Number) }),
+		expect.objectContaining({
+			maxTokens: 8000,
+			deadlineAt: expect.any(Number),
+		}),
 	);
 	expect(mockAskPersonaOnTask.mock.calls[0][0].maxAnswerChars).toBe(5000);
 });
@@ -472,13 +478,21 @@ test('an over-limit answer waits for the user and Discard does not report a post
 	const { setup, emit } = await mountSignedIn();
 	let decision!: Promise<boolean>;
 	mockAskPersonaOnTask.mockImplementationOnce(async (params: any) => {
-		decision = params.confirmPublish({ length: 25000, limit: 20000, cutOff: false });
+		decision = params.confirmPublish({
+			length: 25000,
+			limit: 20000,
+			cutOff: false,
+		});
 		const published = await decision;
 		return { text: 'x', toolCalls: 0, posted: published };
 	});
 	const asking = setup.ask();
 	await new Promise((resolve) => setTimeout(resolve, 0));
-	expect(setup.pendingConfirm.value).toEqual({ length: 25000, limit: 20000, cutOff: false });
+	expect(setup.pendingConfirm.value).toEqual({
+		length: 25000,
+		limit: 20000,
+		cutOff: false,
+	});
 	setup.settleConfirm(false);
 	await asking;
 	expect(await decision).toBe(false);
@@ -489,7 +503,11 @@ test('an over-limit answer waits for the user and Discard does not report a post
 test('Publish anyway releases the confirmation with true', async () => {
 	const { setup, emit } = await mountSignedIn();
 	mockAskPersonaOnTask.mockImplementationOnce(async (params: any) => {
-		const published = await params.confirmPublish({ length: 25000, limit: 20000, cutOff: false });
+		const published = await params.confirmPublish({
+			length: 25000,
+			limit: 20000,
+			cutOff: false,
+		});
 		return { text: 'x', toolCalls: 0, posted: published };
 	});
 	const asking = setup.ask();
@@ -503,7 +521,11 @@ test('cancelling while the confirmation is showing discards the answer', async (
 	const { setup } = await mountSignedIn();
 	let decision!: Promise<boolean>;
 	mockAskPersonaOnTask.mockImplementationOnce(async (params: any) => {
-		decision = params.confirmPublish({ length: 25000, limit: 20000, cutOff: false });
+		decision = params.confirmPublish({
+			length: 25000,
+			limit: 20000,
+			cutOff: false,
+		});
 		await decision;
 		return { text: 'x', toolCalls: 0, posted: false };
 	});

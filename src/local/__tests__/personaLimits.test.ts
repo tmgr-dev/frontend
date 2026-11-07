@@ -1,7 +1,4 @@
-import {
-	fetchPersonaLimits,
-	resetPersonaLimitsCache,
-} from '../personaLimits';
+import { fetchPersonaLimits, resetPersonaLimitsCache } from '../personaLimits';
 
 const mockGet = jest.fn();
 jest.mock('@/plugins/axios', () => ({

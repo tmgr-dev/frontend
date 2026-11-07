@@ -63,8 +63,8 @@ export const needsConfirmationOrigin = (error: unknown): string | null => {
 		error instanceof Error
 			? error.message
 			: typeof error === 'string'
-				? error
-				: null;
+			? error
+			: null;
 	if (!message?.startsWith(NEEDS_CONFIRMATION)) return null;
 	return message.slice(NEEDS_CONFIRMATION.length).trim() || null;
 };
@@ -90,8 +90,9 @@ export const createLlmChat = (
 		const requestId = crypto.randomUUID();
 		activeRequestId = requestId;
 		const { listen } = await import('@tauri-apps/api/event');
-		const { getCurrentWebviewWindow } =
-			await import('@tauri-apps/api/webviewWindow');
+		const { getCurrentWebviewWindow } = await import(
+			'@tauri-apps/api/webviewWindow'
+		);
 		const queue: RustChatEvent[] = [];
 		let wake: (() => void) | null = null;
 		const unlisten = await listen<{ request_id: string; event: RustChatEvent }>(
@@ -111,7 +112,9 @@ export const createLlmChat = (
 					? undefined
 					: options.deadlineAt - Date.now();
 			if (totalTimeoutMs !== undefined && totalTimeoutMs <= 0)
-				throw new Error('The answer took longer than 15 minutes and was stopped.');
+				throw new Error(
+					'The answer took longer than 15 minutes and was stopped.',
+				);
 			await invoke('llm_chat', {
 				userId,
 				requestId,

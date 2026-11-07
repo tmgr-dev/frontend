@@ -178,8 +178,8 @@ export const runPersonaAgent = async ({
 				const content =
 					typeof method !== 'string' || typeof path !== 'string'
 						? { message: 'method and path are required strings' }
-						: ((await dispatchLocal(router, personaCtx, method, path, body))
-								?.data ?? { message: `no local route for ${method} ${path}` });
+						: (await dispatchLocal(router, personaCtx, method, path, body))
+								?.data ?? { message: `no local route for ${method} ${path}` };
 				messages.push({
 					role: 'tool',
 					tool_call_id: call.id,
@@ -188,7 +188,10 @@ export const runPersonaAgent = async ({
 			}
 		}
 		if (isCancelled?.()) status = 'cancelled';
-		else if ((await deliver?.(finalText, { cutOff: truncated })) === 'discarded') status = 'cancelled';
+		else if (
+			(await deliver?.(finalText, { cutOff: truncated })) === 'discarded'
+		)
+			status = 'cancelled';
 	} catch (error) {
 		status = isCancelled?.() ? 'cancelled' : 'failed';
 		throw error;
