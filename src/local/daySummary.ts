@@ -154,6 +154,13 @@ export const stripThink = (text: string): string => {
 	return stripped.startsWith('<think>') ? '' : stripped;
 };
 
+export const sanitizeSummary = (text: string): string =>
+	text
+		.replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+		.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+		.replace(/https?:\/\/[^\s<>()[\]]+/gi, '')
+		.replace(/<\/?[a-zA-Z][^>]*>/g, '');
+
 export const deterministicSummary = (tasks: DayTask[]): string => {
 	if (!tasks.length) return 'Nothing recorded today.';
 	const created = tasks.filter((t) => t.createdToday).length;

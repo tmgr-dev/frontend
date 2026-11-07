@@ -68,6 +68,9 @@
 				>
 					Regenerate
 				</Button>
+				<p v-if="aiOrigin" class="basis-full text-xs text-ink-subtle">
+					Sends task titles, statuses and comment excerpts to {{ aiOrigin }}.
+				</p>
 				<Button
 					variant="outline"
 					:disabled="summary === null"
@@ -101,6 +104,7 @@
 		buildDayInput,
 		buildMessages,
 		deterministicSummary,
+		sanitizeSummary,
 		stripThink,
 		type DayTask,
 	} from '@/local/daySummary';
@@ -120,6 +124,15 @@
 
 	const messageOf = (error: unknown): string =>
 		error instanceof Error ? error.message : String(error);
+
+	const originOf = (url: string): string | null => {
+		try {
+			const { origin } = new URL(url);
+			return origin === 'null' ? null : origin;
+		} catch {
+			return null;
+		}
+	};
 
 	export default defineComponent({
 		name: 'DaySummaryModal',
@@ -154,6 +167,7 @@
 			const lanOrigin = ref<string | null>(null);
 			const error = ref<string | null>(null);
 			const notice = ref<string | null>(null);
+			const aiOrigin = ref<string | null>(null);
 			const workspaceCount = computed(
 				() => new Set(tasks.value.map((task) => task.workspace)).size,
 			);
@@ -171,6 +185,7 @@
 
 			const load = async () => {
 				loading.value = true;
+				aiOrigin.value = await baseUrl().then(originOf, () => null);
 				try {
 					const result = await collectDay({
 						now: new Date(),
@@ -218,13 +233,15 @@
 					const { system, prompt } = buildMessages(
 						buildDayInput(tasks.value).text,
 					);
-					const answer = stripThink(
-						await llmComplete(userId(), {
-							system,
-							prompt,
-							maxTokens: 800,
-							temperature: 0.2,
-						}),
+					const answer = sanitizeSummary(
+						stripThink(
+							await llmComplete(userId(), {
+								system,
+								prompt,
+								maxTokens: 800,
+								temperature: 0.2,
+							}),
+						),
 					);
 					if (!answer) {
 						fallback();
@@ -300,6 +317,7 @@
 				lanOrigin,
 				error,
 				notice,
+				aiOrigin,
 				workspaceCount,
 				localWorkspace,
 				summarize,

