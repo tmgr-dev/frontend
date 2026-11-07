@@ -621,7 +621,7 @@ test.describe('desktop app', () => {
     ]);
     await expect(groupItems(page, 'app')).toHaveText([
       'Theme',
-      'Shortcuts',
+      'Desktop',
       'Experimental',
       'About',
     ]);
@@ -631,7 +631,7 @@ test.describe('desktop app', () => {
     await expect(page.locator('[data-tour="nav.ask-ai"]')).toHaveCount(0);
 
     await page.getByTestId('settings-nav-desktop').click();
-    await expect(heading(page)).toHaveText('Keyboard shortcuts');
+    await expect(heading(page)).toHaveText('Desktop');
     await expectActive(page, 'desktop');
 
     await page.getByTestId('settings-nav-plugins').click();

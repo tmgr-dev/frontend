@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -26,7 +27,11 @@ pub struct BranchEvent {
 }
 
 #[derive(Default)]
-pub struct GitTrackStore(pub Mutex<Vec<PathBuf>>);
+pub struct GitTrackStore {
+  pub folders: Mutex<Vec<PathBuf>>,
+  ticket: AtomicU64,
+  written: Mutex<u64>,
+}
 
 #[derive(Default)]
 pub struct BranchWatcher {
@@ -151,9 +156,14 @@ fn sanitize(folders: Vec<String>) -> Vec<PathBuf> {
 
 #[tauri::command]
 pub async fn git_track_update(store: State<'_, GitTrackStore>, folders: Vec<String>) -> Result<(), String> {
+  let ticket = store.ticket.fetch_add(1, Ordering::SeqCst) + 1;
   let folders: Vec<String> = folders.into_iter().take(MAX_FOLDERS * 2).collect();
   let kept = tauri::async_runtime::spawn_blocking(move || sanitize(folders)).await.map_err(|e| e.to_string())?;
-  *store.0.lock().map_err(|e| e.to_string())? = kept;
+  let mut written = store.written.lock().map_err(|e| e.to_string())?;
+  if ticket > *written {
+    *written = ticket;
+    *store.folders.lock().map_err(|e| e.to_string())? = kept;
+  }
   Ok(())
 }
 
@@ -183,7 +193,7 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) {
     let mut watcher = BranchWatcher::default();
     loop {
       std::thread::sleep(Duration::from_secs(POLL_SECS));
-      let folders = app.state::<GitTrackStore>().0.lock().map(|list| list.clone()).unwrap_or_default();
+      let folders = app.state::<GitTrackStore>().folders.lock().map(|list| list.clone()).unwrap_or_default();
       let observed: Vec<(String, Option<String>)> = folders
         .iter()
         .map(|folder| (folder.to_string_lossy().into_owned(), read_branch(folder)))

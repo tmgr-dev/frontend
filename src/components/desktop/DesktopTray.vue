@@ -110,6 +110,7 @@
 			const recent = ref([]);
 			const away = ref(null);
 			const unlisteners = [];
+			let unmounted = false;
 			let userSubscription = null;
 			let subscribedUserId = null;
 
@@ -295,12 +296,14 @@
 				if ('Notification' in window && Notification.permission !== 'granted') {
 					Notification.requestPermission();
 				}
+				if (unmounted) return;
 				syncGitTrack().catch((error) =>
 					console.error('git track sync failed', error),
 				);
 			});
 
 			onBeforeUnmount(() => {
+				unmounted = true;
 				unlisteners.forEach((unlisten) => unlisten());
 				subscribe(null);
 				pushTrayState({ running: [], recent: [] });
