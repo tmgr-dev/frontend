@@ -44,17 +44,28 @@ export const useTaskKeyPrefixes = () => {
 };
 
 /**
- * Open the task a key names. The key is not an id, so it is resolved through
- * the same search the user would type; a key nobody owns simply does nothing.
+ * The task a key names, or null. The key is not an id, so it is resolved
+ * through the same search the user would type; errors count as no match.
  */
-export const openTaskByKey = async (key: string): Promise<boolean> => {
+export const resolveTaskByKey = async (key: string) => {
 	try {
 		const response = await getTasks({
 			page: 1,
 			per_page: 20,
 			params: { search: key },
 		});
-		const task = pickTaskByKey(response?.data || [], key);
+		return pickTaskByKey(response?.data || [], key) ?? null;
+	} catch {
+		return null;
+	}
+};
+
+/**
+ * Open the task a key names. A key nobody owns simply does nothing.
+ */
+export const openTaskByKey = async (key: string): Promise<boolean> => {
+	try {
+		const task = await resolveTaskByKey(key);
 		if (!task) {
 			return false;
 		}

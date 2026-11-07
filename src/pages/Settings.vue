@@ -61,12 +61,17 @@
 							</SettingsSection>
 						</div>
 
-						<SettingsSection
+						<div
 							v-if="isDesktopSection && isDesktop"
-							title="Keyboard shortcuts"
+							class="flex flex-col gap-6"
 						>
-							<DesktopShortcutsSettings />
-						</SettingsSection>
+							<SettingsSection title="Git auto-tracking">
+								<DesktopGitTrackSettings />
+							</SettingsSection>
+							<SettingsSection title="Keyboard shortcuts">
+								<DesktopShortcutsSettings />
+							</SettingsSection>
+						</div>
 
 						<RunnerExperimentalSettings v-if="isExperimental" />
 
@@ -364,6 +369,7 @@
 		updateUserSettings,
 		updateUserSettingsV2,
 	} from '@/actions/tmgr/user';
+	import DesktopGitTrackSettings from '@/components/desktop/DesktopGitTrackSettings.vue';
 	import DesktopShortcutsSettings from '@/components/desktop/DesktopShortcutsSettings.vue';
 	import LocalAccountSection from '@/components/desktop/LocalAccountSection.vue';
 	import LocalDataSettings from '@/components/desktop/LocalDataSettings.vue';
@@ -419,6 +425,7 @@
 			Profile,
 			Confirm,
 			NotificationSettingsForm,
+			DesktopGitTrackSettings,
 			DesktopShortcutsSettings,
 			RunnerExperimentalSettings,
 			LocalAccountSection,
@@ -503,7 +510,7 @@
 				if (this.isNotification) return 'Notifications';
 				if (this.isTheme) return 'Theme';
 				if (this.isExperimental) return 'Experimental';
-				if (this.isDesktopSection) return 'Keyboard shortcuts';
+				if (this.isDesktopSection) return 'Desktop';
 				if (this.isLocalData) return 'Local data';
 				if (this.isPrivacy) return 'Privacy';
 				if (this.isAgentWork) return 'Agent work';

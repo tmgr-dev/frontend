@@ -31,6 +31,8 @@
 		AlertDialogHeader,
 		AlertDialogTitle,
 	} from '@/components/ui/alert-dialog';
+	import { ToastAction, useToast } from '@/components/ui/toast';
+	import { resolveTaskByKey } from '@/composable/useTaskKeyLinks';
 	import { usePusher } from '@/composable/usePusher';
 	import { pluginState } from '@/pluginSystem/state';
 	import router from '@/router';
@@ -43,13 +45,21 @@
 		rememberRecent,
 		sameTask,
 		saveRecent,
+		toTrayTask,
 	} from '@/utils/desktopTray';
 	import { isDndActive, setDnd } from '@/utils/dnd';
+	import {
+		decideGitTrack,
+		loadGitTrackMode,
+		syncGitTrack,
+		unwatchGitTrack,
+	} from '@/utils/gitTrack';
 	import { showSurface } from '@/utils/moduleSurfaces';
 	import { openTaskPreferringWindow } from '@/utils/openTaskInWorkspace';
 	import {
 		computed,
 		defineComponent,
+		h,
 		onBeforeUnmount,
 		onMounted,
 		ref,
@@ -94,6 +104,7 @@
 		},
 		setup(props) {
 			const pusher = usePusher();
+			const { toast } = useToast();
 			const isOn = (key) =>
 				store.getters['featureToggles/isFeatureEnabled'](key);
 			const recent = ref([]);
@@ -153,6 +164,51 @@
 				}
 			};
 
+			const onGitBranch = async ({ key }) => {
+				if (!isOn('task.countdown')) return;
+				const found = await resolveTaskByKey(key);
+				if (!found) return;
+				const candidate = {
+					...toTrayTask(found),
+					statusType: store.getters.workspaceStatusById(found.status_id)?.type,
+				};
+				const decision = decideGitTrack({
+					mode: loadGitTrackMode(),
+					task: candidate,
+					runningTasks: props.tasks,
+				});
+				if (decision === 'ignore') return;
+				const target = {
+					taskId: found.id,
+					workspaceId:
+						candidate.workspaceId ?? store.getters.currentWorkspaceId,
+				};
+				if (decision === 'switch') {
+					await switchTo(target);
+					toast({ description: `Timer switched to ${key}` });
+					return;
+				}
+				const message = props.tasks.length
+					? `Switch timer to ${key}?`
+					: `Start timer on ${key}?`;
+				toast({
+					title: message,
+					duration: 30000,
+					action: h(
+						ToastAction,
+						{
+							altText: 'Start timer',
+							onClick: () => switchTo(target).catch(() => reloadActiveTasks()),
+						},
+						() => 'Start timer',
+					),
+				});
+				notify(
+					message,
+					'A branch change matches a task. Open TMGR to start its timer.',
+				);
+			};
+
 			const safely = (action) => async (event) => {
 				try {
 					await action(event.payload);
@@ -201,6 +257,7 @@
 					),
 					await listen('tray://stop', safely(stopOne)),
 					await listen('tray://switch', safely(switchTo)),
+					await listen('git-track://branch', safely(onGitBranch)),
 					await listen('tray://dnd', ({ payload }) => setDnd(payload)),
 					await listen('idle://returned', async (event) => {
 						reloadActiveTasks();
@@ -216,12 +273,16 @@
 				if ('Notification' in window && Notification.permission !== 'granted') {
 					Notification.requestPermission();
 				}
+				syncGitTrack().catch((error) =>
+					console.error('git track sync failed', error),
+				);
 			});
 
 			onBeforeUnmount(() => {
 				unlisteners.forEach((unlisten) => unlisten());
 				subscribe(null);
 				pushTrayState({ running: [], recent: [] });
+				unwatchGitTrack().catch(() => {});
 			});
 
 			const runningLabel = computed(() =>
