@@ -1,5 +1,6 @@
 mod diff;
 mod hub;
+pub mod push;
 mod server;
 mod store;
 
@@ -12,7 +13,7 @@ use tauri::utils::config::BackgroundThrottlingPolicy;
 use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
-use tmgr_ipc::decisions::{decisions_dir, CardIn, Event, DB};
+use tmgr_ipc::decisions::{decisions_dir, Event, DB};
 
 use diff::DiffGroups;
 use hub::{pid_alive, Change, Hub};
@@ -23,7 +24,6 @@ pub const LABEL: &str = "decisions";
 pub const SHORTCUT: &str = "CmdOrCtrl+Shift+D";
 pub const TRAY_ID: &str = "decisions";
 const LIVENESS_EVERY: Duration = Duration::from_secs(15);
-const DELIVERY_MAX: usize = 4000;
 
 static OPEN: AtomicUsize = AtomicUsize::new(0);
 
@@ -33,6 +33,7 @@ pub fn open_count() -> usize {
 
 pub struct Decisions {
   hub: Arc<Hub>,
+  queue: Arc<push::Queue>,
   _server: Mutex<Option<Server>>,
 }
 
@@ -113,7 +114,9 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
       None
     }
   };
-  app.manage(Decisions { hub: hub.clone(), _server: Mutex::new(server) });
+  let queue = Arc::new(push::Queue::default());
+  push::spawn_worker(app, Arc::downgrade(&hub), queue.clone());
+  app.manage(Decisions { hub: hub.clone(), queue, _server: Mutex::new(server) });
   crate::tray::refresh_current(app);
   ensure_shortcut(app);
 
@@ -134,37 +137,10 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Sen
   tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?
 }
 
-pub fn delivery_text(event: &Event) -> Option<String> {
-  if event.dismissed || event.deferred || event.kind != "answer" {
-    return None;
-  }
-  let mut parts: Vec<String> = Vec::new();
-  parts.extend(event.free_text.clone());
-  parts.extend(event.note.clone());
-  for c in &event.line_comments {
-    parts.push(format!("{}:{}: {}", c.file, c.line, c.text));
-  }
-  let flat: String = parts
-    .join("; ")
-    .chars()
-    .map(|c| if c.is_control() { ' ' } else { c })
-    .collect::<String>()
-    .split_whitespace()
-    .collect::<Vec<_>>()
-    .join(" ");
-  let flat: String = flat.chars().take(DELIVERY_MAX).collect();
-  (!flat.is_empty()).then_some(flat)
-}
-
-fn deliver<R: Runtime>(app: &AppHandle<R>, card: &CardIn, event: &Event) {
-  let Some(session) = card.source.runner_session.clone().filter(|_| card.reply_via == "hook") else { return };
-  let Some(text) = delivery_text(event) else { return };
-  let Some(runner) = app.try_state::<crate::runner::Runner>() else { return };
-  let runner = runner.inner().clone();
+fn spawn_route<R: Runtime>(app: &AppHandle<R>, id: String, event: Event) {
+  let app = app.clone();
   std::thread::spawn(move || {
-    if let Err(e) = runner.session_send(&session, &format!("{text}\r")) {
-      log::warn!("[decisions] could not type the answer into the agent session: {e}");
-    }
+    push::route(&app, &id, &event, None);
   });
 }
 
@@ -183,12 +159,12 @@ pub async fn decisions_get<R: Runtime>(app: AppHandle<R>, id: String) -> Result<
 #[tauri::command]
 pub async fn decisions_answer<R: Runtime>(app: AppHandle<R>, id: String, answer: AnswerIn) -> Result<CardView, String> {
   let hub = hub_of(&app)?;
-  let (event, card, view) = blocking(move || {
-    let (event, card) = hub.answer(&id, answer)?;
-    Ok((event, card, hub.get(&id)?))
+  let (event, view) = blocking(move || {
+    let (event, _) = hub.answer(&id, answer)?;
+    Ok((event, hub.get(&id)?))
   })
   .await?;
-  deliver(&app, &card, &event);
+  spawn_route(&app, view.id.clone(), event);
   Ok(view)
 }
 
@@ -199,11 +175,13 @@ pub async fn decisions_message<R: Runtime>(
   message: MessageIn,
 ) -> Result<CardView, String> {
   let hub = hub_of(&app)?;
-  blocking(move || {
-    hub.message(&id, message)?;
-    hub.get(&id)
+  let (event, view) = blocking(move || {
+    let event = hub.message(&id, message)?;
+    Ok((event, hub.get(&id)?))
   })
-  .await
+  .await?;
+  spawn_route(&app, view.id.clone(), event);
+  Ok(view)
 }
 
 #[tauri::command]
@@ -224,49 +202,4 @@ pub fn decisions_open_link<R: Runtime>(app: AppHandle<R>, url: String) -> Result
     return Err("only http and https links open".to_owned());
   }
   app.opener().open_url(parsed.as_str(), None::<&str>).map_err(|e| e.to_string())
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use tmgr_ipc::decisions::LineComment;
-
-  fn answer() -> Event {
-    Event { kind: "answer".into(), ..Default::default() }
-  }
-
-  #[test]
-  fn delivery_joins_note_and_line_comments() {
-    let e = Event {
-      note: Some("after lunch".into()),
-      line_comments: vec![LineComment { file: "a.rs".into(), line: 3, side: None, text: "rename".into() }],
-      ..answer()
-    };
-    assert_eq!(delivery_text(&e).unwrap(), "after lunch; a.rs:3: rename");
-    let free = Event { free_text: Some("do X".into()), ..answer() };
-    assert_eq!(delivery_text(&free).unwrap(), "do X");
-  }
-
-  #[test]
-  fn delivery_never_types_the_choice() {
-    let e = Event { choice_label: Some("rm -rf x".into()), choice: Some("$(id)".into()), ..answer() };
-    assert!(delivery_text(&e).is_none());
-    let with_note = Event { note: Some("ok".into()), ..e };
-    assert_eq!(delivery_text(&with_note).unwrap(), "ok");
-  }
-
-  #[test]
-  fn delivery_strips_control_characters_and_newlines() {
-    let e = Event { free_text: Some("a\u{1b}[31m\nb\r\n\tc".into()), ..answer() };
-    assert_eq!(delivery_text(&e).unwrap(), "a [31m b c");
-  }
-
-  #[test]
-  fn delivery_skips_dismissed_deferred_and_empty() {
-    assert!(delivery_text(&Event { dismissed: true, free_text: Some("x".into()), ..answer() }).is_none());
-    assert!(delivery_text(&Event { deferred: true, free_text: Some("x".into()), ..answer() }).is_none());
-    assert!(delivery_text(&answer()).is_none());
-    let long = Event { free_text: Some("x".repeat(DELIVERY_MAX * 2)), ..answer() };
-    assert_eq!(delivery_text(&long).unwrap().len(), DELIVERY_MAX);
-  }
 }

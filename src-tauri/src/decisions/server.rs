@@ -110,7 +110,7 @@ fn dispatch(hub: &Arc<Hub>, op: Op, stream: &UnixStream) -> Response {
   let done = |r: Result<Response, String>| r.unwrap_or_else(Response::err);
   match op {
     Op::Ping => Response { ok: true, version: Some(env!("CARGO_PKG_VERSION").into()), ..Default::default() },
-    Op::Create { card, .. } => done(hub.create(*card).map(|created| Response {
+    Op::Create { card, inbox } => done(hub.create_with(*card, inbox).map(|created| Response {
       ok: true,
       card_id: Some(created.id),
       outcome: Some(created.outcome.to_owned()),

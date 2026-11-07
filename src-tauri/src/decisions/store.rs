@@ -5,8 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tmgr_ipc::decisions::{
-  new_card_id, valid_card_id, CardIn, Check, DiffSpec, Event, Fact, Found, LineComment, LinkItem, Links, Opt, PatchIn,
-  Source, ThreadRef, MAX_DIFFS, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES, OUTCOME_CREATED, OUTCOME_FINAL,
+  new_card_id, valid_card_id, CardIn, Check, DiffSpec, Event, Fact, Found, Inbox, LineComment, LinkItem, Links, Opt,
+  PatchIn, Secret, Source, ThreadRef, MAX_DIFFS, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES, OUTCOME_CREATED, OUTCOME_FINAL,
   OUTCOME_SIMILAR, OUTCOME_UPDATED,
 };
 
@@ -120,6 +120,8 @@ pub struct CardView {
   pub closed_reason: Option<String>,
   pub can_reply: bool,
   pub listening: bool,
+  pub push: bool,
+  pub delivery: Option<DeliveryView>,
   pub source: Source,
   pub kind: String,
   pub blocking: bool,
@@ -138,6 +140,38 @@ pub struct CardView {
   pub reply_via: String,
   pub answer: Option<Event>,
   pub messages: Vec<MessageView>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct DeliveryView {
+  pub state: String,
+  pub via: String,
+  pub detail: String,
+  pub at_ms: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct Target {
+  pub kind: String,
+  pub endpoint: String,
+  pub token: Option<Secret>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Recorded {
+  Same,
+  New,
+  Changed,
+}
+
+pub struct Routing {
+  pub id: String,
+  pub card: CardIn,
+  pub state: String,
+  pub gone: bool,
+  pub latest_seq: u64,
+  pub targets: Vec<Target>,
+  pub target: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -370,6 +404,38 @@ fn is_live(state: &str) -> bool {
   state == "open" || state == "deferred"
 }
 
+fn pid_of(endpoint: &str) -> Option<String> {
+  let name = endpoint.rsplit('/').next()?;
+  let digits: String = name.chars().take_while(char::is_ascii_digit).collect();
+  (!digits.is_empty()).then_some(digits)
+}
+
+fn plain(s: String, max: usize) -> Option<String> {
+  (!s.is_empty() && s.chars().count() <= max && !s.chars().any(|c| c.is_control() || c == '|')).then_some(s)
+}
+
+pub fn delivery_target(conn: &Connection, card_id: &str) -> Option<String> {
+  let mut parts: Vec<String> = Vec::new();
+  if let Ok(mut stmt) = conn.prepare("SELECT kind, endpoint, session FROM push_targets WHERE card_id=?1") {
+    let rows = stmt
+      .query_map([card_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?)))
+      .map(|rows| rows.filter_map(Result::ok).collect::<Vec<_>>())
+      .unwrap_or_default();
+    for (kind, endpoint, session) in rows {
+      let who = session.filter(|s| !s.is_empty()).or_else(|| pid_of(&endpoint)).unwrap_or_else(|| "unknown".into());
+      parts.push(format!("{kind}:{who}"));
+    }
+  }
+  let runner: Option<String> = conn
+    .query_row("SELECT json_extract(card,'$.source.runner_session') FROM cards WHERE id=?1", [card_id], |r| r.get(0))
+    .ok()
+    .flatten();
+  parts.extend(runner.filter(|r| !r.is_empty()).map(|r| format!("runner:{r}")));
+  parts.sort();
+  parts.dedup();
+  (!parts.is_empty()).then(|| parts.join("|"))
+}
+
 fn insert_patches(tx: &rusqlite::Transaction<'_>, id: &str, patches: &[PatchIn]) -> Result<(), String> {
   for (i, p) in patches.iter().enumerate() {
     tx.execute(
@@ -455,7 +521,14 @@ impl Store {
          CREATE TABLE IF NOT EXISTS patches(
            card_id TEXT NOT NULL, idx INTEGER NOT NULL, label TEXT NOT NULL, text TEXT NOT NULL,
            PRIMARY KEY(card_id, idx));
-         CREATE TABLE IF NOT EXISTS aliases(alias TEXT PRIMARY KEY, card_id TEXT NOT NULL);",
+         CREATE TABLE IF NOT EXISTS aliases(alias TEXT PRIMARY KEY, card_id TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS push_targets(
+           card_id TEXT NOT NULL, endpoint TEXT NOT NULL, kind TEXT NOT NULL, token TEXT, session TEXT,
+           updated_ms INTEGER NOT NULL, PRIMARY KEY(card_id, endpoint));
+         CREATE TABLE IF NOT EXISTS deliveries(
+           card_id TEXT NOT NULL, seq INTEGER NOT NULL, state TEXT NOT NULL, via TEXT NOT NULL,
+           detail TEXT NOT NULL, at_ms INTEGER NOT NULL, PRIMARY KEY(card_id, seq));
+         UPDATE deliveries SET state='undelivered', detail='desktop restarted' WHERE state='queued';",
       )
       .map_err(sql_err)?;
     let has_updated: i64 = conn
@@ -478,6 +551,89 @@ impl Store {
   }
 
   pub fn create(&mut self, card: CardIn) -> Result<Created, String> {
+    self.create_with(card, None)
+  }
+
+  pub fn create_with(&mut self, card: CardIn, inbox: Option<Inbox>) -> Result<Created, String> {
+    let created = self.create_card(card)?;
+    if let Some(inbox) = inbox.filter(|_| matches!(created.outcome, OUTCOME_CREATED | OUTCOME_UPDATED)) {
+      self.upsert_target(&created.id, inbox)?;
+    }
+    Ok(created)
+  }
+
+  fn upsert_target(&self, id: &str, inbox: Inbox) -> Result<(), String> {
+    let (Some(kind), Some(endpoint)) = (plain(inbox.kind, 32), plain(inbox.endpoint, 512)) else { return Ok(()) };
+    let token = inbox.token.map(|t| t.expose().to_owned()).filter(|t| !t.is_empty());
+    let session = inbox.session.and_then(|s| plain(s, 256));
+    self
+      .conn
+      .execute(
+        "INSERT INTO push_targets(card_id, endpoint, kind, token, session, updated_ms) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(card_id, endpoint) DO UPDATE SET kind=?3, token=?4, session=?5, updated_ms=?6",
+        params![id, endpoint, kind, token, session, now_ms()],
+      )
+      .map(drop)
+      .map_err(sql_err)
+  }
+
+  pub fn drop_target(&self, id: &str, endpoint: &str) {
+    let _ = self.conn.execute("DELETE FROM push_targets WHERE card_id=?1 AND endpoint=?2", params![id, endpoint]);
+  }
+
+  pub fn record_delivery(&self, id: &str, seq: u64, state: &str, via: &str, detail: &str) -> Result<Recorded, String> {
+    let same = self
+      .conn
+      .query_row(
+        "SELECT state=?3 AND via=?4 AND detail=?5 FROM deliveries WHERE card_id=?1 AND seq=?2",
+        params![id, seq as i64, state, via, detail],
+        |r| r.get::<_, bool>(0),
+      )
+      .optional()
+      .map_err(sql_err)?;
+    if same == Some(true) {
+      return Ok(Recorded::Same);
+    }
+    self
+      .conn
+      .execute(
+        "INSERT INTO deliveries(card_id, seq, state, via, detail, at_ms) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(card_id, seq) DO UPDATE SET state=?3, via=?4, detail=?5, at_ms=?6",
+        params![id, seq as i64, state, via, detail, now_ms()],
+      )
+      .map_err(sql_err)?;
+    Ok(if same.is_some() { Recorded::Changed } else { Recorded::New })
+  }
+
+  pub fn routing(&self, id: &str) -> Result<Option<Routing>, String> {
+    let Some(id) = self.resolve(id)? else { return Ok(None) };
+    let Some(r) = self.raw(&id)? else { return Ok(None) };
+    let card = serde_json::from_str(&r.card).map_err(json_err)?;
+    let latest_seq: i64 =
+      self.conn.query_row("SELECT COALESCE(MAX(seq),0) FROM events WHERE card_id=?1", [&id], |r| r.get(0)).map_err(sql_err)?;
+    let targets = self
+      .conn
+      .prepare("SELECT kind, endpoint, token FROM push_targets WHERE card_id=?1 ORDER BY endpoint")
+      .map_err(sql_err)?
+      .query_map([&id], |t| {
+        Ok(Target {
+          kind: t.get(0)?,
+          endpoint: t.get(1)?,
+          token: t.get::<_, Option<String>>(2)?.map(Secret::new),
+        })
+      })
+      .map_err(sql_err)?
+      .collect::<Result<Vec<_>, _>>()
+      .map_err(sql_err)?;
+    let target = self.delivery_target(&id)?;
+    Ok(Some(Routing { id, card, state: r.state, gone: r.session_gone, latest_seq: latest_seq as u64, targets, target }))
+  }
+
+  pub fn delivery_target(&self, id: &str) -> Result<Option<String>, String> {
+    Ok(delivery_target(&self.conn, &self.canon(id)?))
+  }
+
+  fn create_card(&mut self, card: CardIn) -> Result<Created, String> {
     let mut card = sanitize(card)?;
     let id = card.id.clone().unwrap_or_else(new_card_id);
     card.id = Some(id.clone());
@@ -521,6 +677,13 @@ impl Store {
     let tx = self.conn.transaction().map_err(sql_err)?;
     if card.supersede && card.reply_via == "hook" {
       if let Some(session) = &card.source.session {
+        tx.execute(
+          "DELETE FROM push_targets WHERE card_id IN (SELECT id FROM cards WHERE state='open'
+             AND json_extract(card,'$.reply_via')='hook'
+             AND json_extract(card,'$.source.agent')=?1 AND json_extract(card,'$.source.session')=?2)",
+          params![card.source.agent, session],
+        )
+        .map_err(sql_err)?;
         tx.execute(
           "UPDATE cards SET state='closed', closed_reason=?1 WHERE state='open'
              AND json_extract(card,'$.reply_via')='hook'
@@ -686,6 +849,19 @@ impl Store {
     let answer = r.answer.as_deref().map(serde_json::from_str::<Event>).transpose().map_err(json_err)?;
     let live = is_live(&r.state);
     let patches = self.patch_info(&r.id)?;
+    let push = self
+      .conn
+      .query_row("SELECT EXISTS(SELECT 1 FROM push_targets WHERE card_id=?1)", [&r.id], |t| t.get::<_, bool>(0))
+      .map_err(sql_err)?;
+    let delivery = self
+      .conn
+      .query_row(
+        "SELECT state, via, detail, at_ms FROM deliveries WHERE card_id=?1 ORDER BY seq DESC LIMIT 1",
+        [&r.id],
+        |t| Ok(DeliveryView { state: t.get(0)?, via: t.get(1)?, detail: t.get(2)?, at_ms: t.get(3)? }),
+      )
+      .optional()
+      .map_err(sql_err)?;
     let mut stmt = self
       .conn
       .prepare("SELECT seq, author, text, file, line, side, created_ms FROM messages WHERE card_id=?1 ORDER BY seq")
@@ -713,6 +889,8 @@ impl Store {
       closed_reason: r.closed_reason,
       can_reply: live && (c.reply_via == "mcp" || c.reply_via == "cli"),
       listening: false,
+      push,
+      delivery,
       state: r.state,
       source: c.source,
       kind: c.kind,
@@ -994,6 +1172,15 @@ impl Store {
   }
 
   pub fn close_session(&mut self, agent: &str, session: &str) -> Result<u64, String> {
+    self
+      .conn
+      .execute(
+        "DELETE FROM push_targets WHERE card_id IN (SELECT id FROM cards WHERE state='open'
+           AND json_extract(card,'$.reply_via')='hook'
+           AND json_extract(card,'$.source.agent')=?1 AND json_extract(card,'$.source.session')=?2)",
+        params![cap(agent, 128), cap(session, FIELD_MAX)],
+      )
+      .map_err(sql_err)?;
     let n = self
       .conn
       .execute(
@@ -1057,6 +1244,7 @@ impl Store {
   pub fn mark_gone(&mut self, ids: &[String]) -> Result<(), String> {
     for id in ids {
       self.conn.execute("UPDATE cards SET session_gone=1 WHERE id=?1", [id]).map_err(sql_err)?;
+      self.conn.execute("DELETE FROM push_targets WHERE card_id=?1", [id]).map_err(sql_err)?;
     }
     Ok(())
   }
@@ -2032,5 +2220,70 @@ mod tests {
     }
     assert_eq!(s.find(None, None, None, 1000).unwrap().len(), 50);
     assert_eq!(s.find(None, None, None, 10).unwrap().len(), 10);
+  }
+
+  fn inbox_for(endpoint: &str) -> Inbox {
+    Inbox { kind: "claude".into(), endpoint: endpoint.into(), token: Some(Secret::new("tok")), session: Some("sx".into()) }
+  }
+
+  fn targets(s: &Store, id: &str) -> Vec<String> {
+    s.routing(id).unwrap().unwrap().targets.into_iter().map(|t| t.endpoint).collect()
+  }
+
+  #[test]
+  fn a_create_with_an_inbox_registers_the_target_under_the_canonical_id() {
+    let mut s = mem();
+    let first = s.create_with(keyed("Alpha", "k1"), Some(inbox_for("/tmp/cc-socks/1.sock"))).unwrap();
+    assert_eq!(first.outcome, OUTCOME_CREATED);
+    let again = s.create_with(CardIn { id: Some("c_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into()), ..keyed("Alpha 2", "k1") }, Some(inbox_for("/tmp/cc-socks/2.sock"))).unwrap();
+    assert_eq!(again.outcome, OUTCOME_UPDATED);
+    assert_eq!(again.id, first.id);
+    assert_eq!(targets(&s, &first.id), ["/tmp/cc-socks/1.sock", "/tmp/cc-socks/2.sock"]);
+    let alias = s.create_with(replacing("Alpha 3", &first.id), Some(inbox_for("/tmp/cc-socks/3.sock"))).unwrap();
+    assert_eq!(alias.id, first.id);
+    assert_eq!(targets(&s, &first.id).len(), 3);
+    assert!(s.get(&first.id).unwrap().unwrap().push);
+  }
+
+  #[test]
+  fn similar_and_final_outcomes_register_no_target() {
+    let mut s = mem();
+    let done = finished(&mut s, asked("Ship v2 release", "Which one?", Some("TM-1")));
+    let sim = s.create_with(asked("Ship v2 release", "Which one?", Some("TM-1")), Some(inbox_for("/tmp/cc-socks/9.sock"))).unwrap();
+    assert_eq!(sim.outcome, OUTCOME_SIMILAR);
+    assert!(targets(&s, &done).is_empty());
+    let fin = s.create_with(replacing("again", &done), Some(inbox_for("/tmp/cc-socks/9.sock"))).unwrap();
+    assert_eq!(fin.outcome, OUTCOME_FINAL);
+    assert!(targets(&s, &done).is_empty());
+  }
+
+  #[test]
+  fn closing_marking_gone_and_superseding_delete_targets() {
+    let mut s = mem();
+    let a = s.create_with(hook("one", "s1"), Some(inbox_for("/tmp/cc-socks/1.sock"))).unwrap().id;
+    s.close_session("claude", "s1").unwrap();
+    assert!(targets(&s, &a).is_empty());
+    let b = s.create_with(hook("two", "s2"), Some(inbox_for("/tmp/cc-socks/2.sock"))).unwrap().id;
+    let c = s.create_with(hook("three", "s2"), Some(inbox_for("/tmp/cc-socks/3.sock"))).unwrap().id;
+    assert!(targets(&s, &b).is_empty());
+    assert_eq!(targets(&s, &c).len(), 1);
+    s.mark_gone(std::slice::from_ref(&c)).unwrap();
+    assert!(targets(&s, &c).is_empty());
+    assert!(!s.get(&c).unwrap().unwrap().push);
+  }
+
+  #[test]
+  fn the_latest_delivery_row_wins_and_a_later_state_overwrites() {
+    let mut s = mem();
+    let id = s.create(card("Q")).unwrap().id;
+    assert_eq!(s.record_delivery(&id, 1, "sent", "claude", "").unwrap(), Recorded::New);
+    assert_eq!(s.record_delivery(&id, 1, "sent", "claude", "").unwrap(), Recorded::Same);
+    assert_eq!(s.record_delivery(&id, 1, "delivered", "agent", "").unwrap(), Recorded::Changed);
+    s.record_delivery(&id, 2, "queued", "runner", "w").unwrap();
+    let d = s.get(&id).unwrap().unwrap().delivery.unwrap();
+    assert_eq!((d.state.as_str(), d.via.as_str()), ("queued", "runner"));
+    let json = serde_json::to_value(s.get(&id).unwrap().unwrap()).unwrap();
+    assert_eq!(json["delivery"]["detail"], "w");
+    assert_eq!(json["push"], false);
   }
 }
