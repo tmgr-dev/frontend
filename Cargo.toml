@@ -30,6 +30,8 @@ rustix = { version = "1", default-features = false, features = ["std", "fs"] }
 sha1 = "0.11"
 sha2 = "0.11"
 hmac = "0.13"
+hkdf = "0.13"
+aes-gcm = "0.10"
 ratatui = "0.30"
 unicode-width = "0.2"
 toml_edit = "0.22"
@@ -45,6 +47,7 @@ tmgr-usage = { path = "crates/tmgr-usage" }
 tmgr-queue = { path = "crates/tmgr-queue" }
 tmgr-approval = { path = "crates/tmgr-approval" }
 tmgr-fuzzy = { path = "crates/tmgr-fuzzy" }
+tmgr-phone = { path = "crates/tmgr-phone" }
 portable-pty = "0.9"
 vt100 = "0.16"
 vte = "0.15"
