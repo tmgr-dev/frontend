@@ -38,7 +38,11 @@ const desktopWithoutAnalytics = (): Plugin => {
 	};
 };
 
-const standaloneDevPages = ['/runner-terminal.html', '/decisions.html'];
+const standaloneDevPages = [
+	'/runner-terminal.html',
+	'/decisions.html',
+	'/decisions-phones.html',
+];
 
 const runnerTerminalDevCsp = (): Plugin => ({
 	name: 'runner-terminal-dev-csp',
@@ -151,6 +155,9 @@ export default defineConfig({
 					new URL('./runner-terminal.html', import.meta.url),
 				),
 				decisions: fileURLToPath(new URL('./decisions.html', import.meta.url)),
+				'decisions-phones': fileURLToPath(
+					new URL('./decisions-phones.html', import.meta.url),
+				),
 			},
 			output: {
 				// Vite 8 builds with rolldown: the object form of manualChunks is gone and the

@@ -136,6 +136,8 @@
 
 		<AlarmPhoneSection id="alarm-phone" class="mt-6" />
 
+		<PhonesSection id="phones" class="mt-6" />
+
 		<Dialog
 			:open="dialogOpen && !!issuedToken"
 			@update:open="(v) => (dialogOpen = v)"
@@ -229,6 +231,7 @@
 	import { toast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import AlarmPhoneSection from '@/pages/Settings/AlarmPhoneSection.vue';
+	import PhonesSection from '@/pages/Settings/PhonesSection.vue';
 	import { computed, defineComponent, nextTick, onMounted, ref } from 'vue';
 
 	export default defineComponent({
@@ -239,6 +242,7 @@
 			AiAgentsOverview,
 			SettingsSection,
 			AlarmPhoneSection,
+			PhonesSection,
 			AgentConnectTabs,
 			CodeSnippet,
 			Button,
