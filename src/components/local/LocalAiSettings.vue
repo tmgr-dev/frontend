@@ -115,8 +115,9 @@
 			class="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950/40"
 		>
 			<p class="text-amber-800 dark:text-amber-200">
-				This server is on your local network. Task titles and status changes
-				(also from cloud workspaces) will be sent to {{ lanPrompt.origin }}.
+				This server is on your local network. Task titles, statuses and comment
+				excerpts (also from cloud workspaces) will be sent to
+				{{ lanPrompt.origin }}.
 			</p>
 			<div class="flex gap-2">
 				<Button size="sm" @click="allowLan">Allow</Button>
@@ -233,7 +234,7 @@
 			const forgetVisible = computed(
 				() =>
 					!!savedOrigin.value &&
-					(confirmedOrigin.value === savedOrigin.value ||
+					(confirmedOrigin.value !== null ||
 						!isLoopbackUrl(savedBaseUrl.value)),
 			);
 			const invoke = async <T>(

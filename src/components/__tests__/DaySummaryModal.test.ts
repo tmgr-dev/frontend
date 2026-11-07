@@ -47,7 +47,7 @@ jest.mock('@/components/ui/button', () => {
 	return {
 		Button: {
 			render(this: any) {
-				return h('button', null, this.$slots.default?.());
+				return h('button', this.$attrs, this.$slots.default?.());
 			},
 		},
 	};
@@ -225,7 +225,9 @@ test('a LAN endpoint asks before sending the titles and retries once allowed', a
 	await state.summarize();
 
 	expect(state.lanOrigin.value).toBe('http://192.0.2.5:11434');
-	expect(await render()).toContain('http://192.0.2.5:11434?');
+	expect(await render()).toContain(
+		'Task titles, statuses and comment excerpts (also from cloud workspaces) will be sent to http://192.0.2.5:11434.',
+	);
 	await state.sendToLan();
 	expect(mockLlm.llmLanConfirm).toHaveBeenCalledWith(
 		'http://192.0.2.5:11434',
@@ -234,4 +236,35 @@ test('a LAN endpoint asks before sending the titles and retries once allowed', a
 	expect(mockLlm.llmComplete).toHaveBeenCalledTimes(2);
 	expect(state.lanOrigin.value).toBeNull();
 	expect(await render()).toContain('- Retried summary');
+});
+
+test('an empty day gives the plain summary without calling the model', async () => {
+	mockCollect.mockResolvedValueOnce({ tasks: [], skipped: [] });
+	const { state, render } = await mountModal();
+
+	await state.summarize();
+
+	expect(mockLlm.llmComplete).not.toHaveBeenCalled();
+	const html = await render();
+	expect(html).toContain('Nothing recorded today.');
+	expect(html).toContain('No AI');
+});
+
+test('regenerate is disabled while the LAN confirmation is open', async () => {
+	const lanError = new Error('lan');
+	mockLlm.needsConfirmationOrigin.mockImplementation((error: unknown) =>
+		error === lanError ? 'http://192.0.2.5:11434' : null,
+	);
+	mockLlm.llmComplete
+		.mockResolvedValueOnce('- First summary')
+		.mockRejectedValueOnce(lanError);
+	const { state, render } = await mountModal();
+	await state.summarize();
+	const regenerate = /<button[^>]*>\s*Regenerate\s*<\/button>/;
+	expect((await render()).match(regenerate)?.[0]).not.toContain('disabled');
+
+	await state.summarize();
+
+	expect(state.lanOrigin.value).toBe('http://192.0.2.5:11434');
+	expect((await render()).match(regenerate)?.[0]).toContain('disabled');
 });

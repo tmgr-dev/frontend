@@ -389,7 +389,7 @@ test('a LAN server asks for confirmation and retries the action once allowed', a
 
 	expect(state.lanPrompt.value?.origin).toBe('http://192.0.2.5:11434');
 	expect(await render()).toContain(
-		'This server is on your local network. Task titles and status changes (also from cloud workspaces) will be sent to http://192.0.2.5:11434.',
+		'Task titles, statuses and comment excerpts (also from cloud workspaces) will be sent to http://192.0.2.5:11434.',
 	);
 	await state.allowLan();
 	expect(mockLlm.llmLanConfirm).toHaveBeenCalledWith(
@@ -423,4 +423,40 @@ test('forget confirmation is hidden for a localhost saved URL', async () => {
 	await state.refreshLlmConfig();
 	expect(await render()).not.toContain('Forget confirmation');
 	expect(await render()).toContain('OLLAMA_CONTEXT_LENGTH');
+});
+
+test('forget confirmation is offered for a saved URL that differs from the confirmed origin only by the default port', async () => {
+	mockInvoke.mockImplementation(async (command: string) => {
+		if (command === 'llm_config_get')
+			return { ...config, base_url: 'http://nas.lan:80' };
+	});
+	const { state, render } = mountLive();
+	await state.refreshLlmConfig();
+	expect(await render()).toContain('Forget confirmation');
+
+	await state.forgetLan();
+
+	expect(mockLlm.llmLanConfirm).toHaveBeenCalledWith('http://nas.lan', false);
+});
+
+test('forget confirmation appears after allowing a loopback URL saved with an explicit default port', async () => {
+	mockInvoke.mockImplementation(async (command: string) => {
+		if (command === 'llm_config_get')
+			return { ...config, base_url: 'http://127.0.0.1:80' };
+	});
+	const { state, render } = mountLive();
+	await state.refreshLlmConfig();
+	expect(await render()).not.toContain('Forget confirmation');
+	const lanError = new Error('lan');
+	mockLlm.needsConfirmationOrigin.mockImplementation((error: unknown) =>
+		error === lanError ? 'http://127.0.0.1:80' : null,
+	);
+	mockLlm.llmTest
+		.mockRejectedValueOnce(lanError)
+		.mockResolvedValueOnce('OK: retried');
+	await state.testConnection();
+
+	await state.allowLan();
+
+	expect(await render()).toContain('Forget confirmation');
 });

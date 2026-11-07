@@ -22,7 +22,8 @@
 				class="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950/40"
 			>
 				<p class="text-amber-800 dark:text-amber-200">
-					Send today's task titles to {{ lanOrigin }}?
+					Task titles, statuses and comment excerpts (also from cloud
+					workspaces) will be sent to {{ lanOrigin }}.
 				</p>
 				<div class="flex gap-2">
 					<Button size="sm" @click="sendToLan">Send</Button>
@@ -62,7 +63,7 @@
 				<Button
 					v-else
 					variant="outline"
-					:disabled="summarizing"
+					:disabled="summarizing || !!lanOrigin"
 					@click="summarize"
 				>
 					Regenerate
@@ -210,7 +211,7 @@
 				notice.value = null;
 				summarizing.value = true;
 				try {
-					if (!(await baseUrl())) {
+					if (!tasks.value.length || !(await baseUrl())) {
 						fallback();
 						return;
 					}
