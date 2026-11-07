@@ -43,6 +43,11 @@ export const FILE_STATUS_LABELS: Record<ScanFileStatus, string> = {
 	unreadable: 'cannot be read, not imported',
 };
 
+export const skippedFileCount = (skill: ScanSkill): number =>
+	skill.files.filter(
+		(file) => file.status !== 'ok' && file.status !== 'skipped_hidden',
+	).length;
+
 export const uploadableFiles = (skill: ScanSkill): ScanFile[] =>
 	skill.files.filter((file) => file.status === 'ok');
 
@@ -289,9 +294,7 @@ export const convertSkill = (
 			'front matter is not valid YAML; name and description were not read',
 		);
 	}
-	const skipped = skill.files.filter(
-		(file) => file.status !== 'ok' && file.status !== 'skipped_hidden',
-	).length;
+	const skipped = skippedFileCount(skill);
 	if (skipped > 0) {
 		warnings.push(
 			`${skipped} ${skipped === 1 ? 'file' : 'files'} will not be imported, see the file list`,

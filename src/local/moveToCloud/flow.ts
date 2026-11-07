@@ -527,12 +527,20 @@ export const createMover = (deps: MoveDeps) => {
 			const personaUuids =
 				published.skills.personaUuids ??
 				(await deps.inventory(code)).personas.map((p) => p.uuid);
-			const { skills } = buildSkillsPayload(
-				await deps.skillLibrary(userId),
-				personaUuids,
-			);
-			const report: SkillsReport = [];
-			for (const batch of batchSkillsPayload(skills)) {
+			const library = await deps.skillLibrary(userId);
+			const { skills } = buildSkillsPayload(library, personaUuids);
+			const { batches, tooLarge } = batchSkillsPayload(skills);
+			const report: SkillsReport = tooLarge.map((skill) => ({
+				slug:
+					library?.skills.find((item) => item.markdown === skill.markdown)
+						?.slug ?? null,
+				cloud_slug: null,
+				status: 'skipped' as const,
+				reason: 'too_large',
+				attached: [],
+				skipped_attachments: [],
+			}));
+			for (const batch of batches) {
 				report.push(
 					...(await api.importSkills(published.jobId, { skills: batch })),
 				);

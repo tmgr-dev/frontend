@@ -70,6 +70,38 @@ describe('skills step after publish', () => {
 		expect(skillsOf(h)).toMatchObject({ state: 'done', report: REPORT });
 	});
 
+	it('reports a skill that is too large per skill and still posts the others', async () => {
+		const h = harness({ statuses: [publishedStatus()] });
+		const content = '\u0001'.repeat(60 * 1024);
+		const heavy = {
+			...skill('b'),
+			files: Array.from({ length: 5 }, (_, i) => ({
+				path: `f${i}`,
+				content,
+				size: content.length,
+				sha256: 'x',
+			})),
+		};
+		h.library.value = {
+			...LIBRARY,
+			skills: [skill('a'), heavy],
+			attachments: [
+				{ persona_uuid: 'p-local', slug: 'a' },
+				{ persona_uuid: 'p-local', slug: 'b' },
+			],
+		};
+		h.api.importSkills.mockResolvedValue(REPORT);
+		await move(h);
+		expect(h.api.importSkills).toHaveBeenCalledTimes(1);
+		const report = (skillsOf(h) as any).report;
+		expect(report[0]).toMatchObject({
+			slug: 'b',
+			status: 'skipped',
+			reason: 'too_large',
+		});
+		expect(report[1]).toMatchObject({ slug: 'a', status: 'created' });
+	});
+
 	it('also runs after a verified job is published by the server', async () => {
 		const h = harness({ statuses: [verifiedStatus()] });
 		h.library.value = LIBRARY;

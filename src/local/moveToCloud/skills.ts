@@ -32,12 +32,20 @@ const MAX_BATCH_SKILLS = 100;
 
 export const batchSkillsPayload = (
 	skills: SkillsPayload['skills'],
-): SkillsPayload['skills'][] => {
+): {
+	batches: SkillsPayload['skills'][];
+	tooLarge: SkillsPayload['skills'];
+} => {
 	const batches: SkillsPayload['skills'][] = [];
+	const tooLarge: SkillsPayload['skills'] = [];
 	let current: SkillsPayload['skills'] = [];
 	let bytes = 0;
 	for (const skill of skills) {
 		const size = new TextEncoder().encode(JSON.stringify(skill)).length;
+		if (size > MAX_BATCH_BYTES) {
+			tooLarge.push(skill);
+			continue;
+		}
 		if (
 			current.length > 0 &&
 			(bytes + size > MAX_BATCH_BYTES || current.length >= MAX_BATCH_SKILLS)
@@ -50,7 +58,7 @@ export const batchSkillsPayload = (
 		bytes += size;
 	}
 	if (current.length > 0) batches.push(current);
-	return batches;
+	return { batches, tooLarge };
 };
 
 const SKILL_REASONS: Record<string, string> = {
@@ -60,6 +68,7 @@ const SKILL_REASONS: Record<string, string> = {
 	not_moved: 'the persona was not moved',
 	attach_limit: 'the persona has too many skills',
 	invalid_files: 'its files are not valid (path, text or size limits)',
+	too_large: 'too large to move to cloud',
 	files_limit: 'its files would exceed your 10 MiB files limit',
 };
 

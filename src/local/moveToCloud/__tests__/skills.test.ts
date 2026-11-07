@@ -160,15 +160,36 @@ describe('skill files in the payload', () => {
 			attach_to: ['p1'],
 			files: [{ path: `f${n}`, content: 'a'.repeat(900_000) }],
 		});
-		const batches = batchSkillsPayload([big(1), big(2), big(3)]);
+		const { batches } = batchSkillsPayload([big(1), big(2), big(3)]);
 		expect(batches.map((b) => b.length)).toEqual([1, 1, 1]);
-		expect(batchSkillsPayload([])).toEqual([]);
+		expect(batchSkillsPayload([])).toEqual({ batches: [], tooLarge: [] });
 		const many = Array.from({ length: 101 }, () => ({
 			markdown: 'm',
 			attach_to: [],
 			files: [],
 		}));
-		expect(batchSkillsPayload(many).map((b) => b.length)).toEqual([100, 1]);
+		expect(batchSkillsPayload(many).batches.map((b) => b.length)).toEqual([
+			100, 1,
+		]);
+	});
+
+	it('keeps back a skill whose serialized size is over the limit, measured after JSON escaping', () => {
+		const content = '\u0001'.repeat(60 * 1024);
+		expect(content.length).toBeLessThan(64 * 1024);
+		const heavy = {
+			markdown: 'm',
+			attach_to: ['p1'],
+			files: Array.from({ length: 5 }, (_, i) => ({ path: `f${i}`, content })),
+		};
+		const light = { markdown: 'm', attach_to: ['p1'], files: [] };
+		const out = batchSkillsPayload([light, heavy]);
+		expect(out.tooLarge).toEqual([heavy]);
+		expect(out.batches).toEqual([[light]]);
+		expect(
+			skillsReportLines([
+				outcome({ slug: 'a', status: 'skipped', reason: 'too_large' }),
+			]),
+		).toEqual(['a: not copied, too large to move to cloud']);
 	});
 
 	it('explains invalid_files and files_limit per skill', () => {

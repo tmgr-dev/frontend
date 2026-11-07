@@ -15,6 +15,7 @@ import {
 	recordImport,
 	rowStatus,
 	saveIndex,
+	skippedFileCount,
 	slugify,
 	suggestSlug,
 	type IndexEntry,
@@ -398,6 +399,29 @@ describe('convertSkill warnings', () => {
 			'2 files will not be imported, see the file list',
 		);
 		expect(converted.blockedReason).toBeNull();
+	});
+
+	it('counts skipped files for the import result', () => {
+		const file = (status: ScanFileStatus): ScanFile => ({
+			path: status,
+			size: 1,
+			status,
+			reason: null,
+			sha256: null,
+		});
+		expect(
+			skippedFileCount(
+				makeSkill({
+					files: [
+						file('ok'),
+						file('binary'),
+						file('too_large'),
+						file('skipped_hidden'),
+					],
+				}),
+			),
+		).toBe(2);
+		expect(skippedFileCount(makeSkill())).toBe(0);
 	});
 
 	it('blocks the whole skill when its files are blocked', () => {

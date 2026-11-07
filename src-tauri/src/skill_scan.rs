@@ -3,6 +3,7 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -36,13 +37,53 @@ pub struct PickedFolder {
   label: String,
 }
 
+const PREVIEW_TTL: Duration = Duration::from_secs(3600);
+const MAX_PREVIEWS: usize = 5000;
+const MAX_SCANNED_FILE_BYTES: u64 = 8 * 1024 * 1024;
+const SCAN_CHUNK: usize = 256 * 1024;
+const SCAN_OVERLAP: usize = 4096;
+
 #[derive(Default)]
-pub struct ScannedSkills(Mutex<HashMap<String, SkillPreview>>);
+pub struct ScannedSkills(Mutex<PreviewStore>);
+
+#[derive(Default)]
+struct PreviewStore {
+  entries: HashMap<String, (Instant, SkillPreview)>,
+}
+
+impl PreviewStore {
+  fn insert_all(&mut self, previews: HashMap<String, SkillPreview>, now: Instant) {
+    self.entries.retain(|_, (at, _)| now.saturating_duration_since(*at) <= PREVIEW_TTL);
+    for (key, preview) in previews {
+      self.entries.insert(key, (now, preview));
+    }
+    if self.entries.len() > MAX_PREVIEWS {
+      let mut by_age: Vec<(Instant, String)> = self.entries.iter().map(|(k, (at, _))| (*at, k.clone())).collect();
+      by_age.sort();
+      for (_, key) in by_age.into_iter().take(self.entries.len() - MAX_PREVIEWS) {
+        self.entries.remove(&key);
+      }
+    }
+  }
+
+  fn take(&self, keys: &[String], now: Instant) -> HashMap<String, SkillPreview> {
+    keys
+      .iter()
+      .filter_map(|key| {
+        let (at, preview) = self.entries.get(key)?;
+        (now.saturating_duration_since(*at) <= PREVIEW_TTL).then(|| (key.clone(), preview.clone()))
+      })
+      .collect()
+  }
+}
 
 #[derive(Clone, Debug)]
 pub struct SkillPreview {
   folder: PathBuf,
   files: Vec<PreviewFile>,
+  listing: Vec<SkillFile>,
+  blocked: Option<String>,
+  truncated: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -237,6 +278,9 @@ impl Scan {
           .filter(|f| f.status == "ok")
           .filter_map(|f| Some(PreviewFile { path: f.path.clone(), size: f.size, sha256: f.sha256.clone()? }))
           .collect(),
+        listing: listing.files.clone(),
+        blocked: listing.blocked.clone(),
+        truncated: listing.truncated,
       },
     );
     let path = self.show(&display_md);
@@ -534,7 +578,32 @@ fn not_regular() -> std::io::Error {
   std::io::Error::new(std::io::ErrorKind::InvalidInput, "not a regular file")
 }
 
-fn read_regular(path: &Path, limit: u64) -> std::io::Result<Option<Vec<u8>>> {
+#[cfg(target_os = "macos")]
+fn handle_path(file: &fs::File) -> std::io::Result<PathBuf> {
+  use std::os::fd::AsRawFd;
+  use std::os::unix::ffi::OsStringExt;
+  let mut buf = vec![0u8; libc::PATH_MAX as usize];
+  if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETPATH, buf.as_mut_ptr()) } == -1 {
+    return Err(std::io::Error::last_os_error());
+  }
+  let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+  buf.truncate(len);
+  Ok(PathBuf::from(std::ffi::OsString::from_vec(buf)))
+}
+
+#[cfg(target_os = "linux")]
+fn handle_path(file: &fs::File) -> std::io::Result<PathBuf> {
+  use std::os::fd::AsRawFd;
+  fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd()))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn handle_path(file: &fs::File) -> std::io::Result<PathBuf> {
+  let _ = file;
+  Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "no handle path"))
+}
+
+fn open_checked(path: &Path, root: Option<&Path>) -> std::io::Result<fs::File> {
   let before = fs::symlink_metadata(path)?;
   if !before.is_file() {
     return Err(not_regular());
@@ -551,9 +620,71 @@ fn read_regular(path: &Path, limit: u64) -> std::io::Result<Option<Vec<u8>>> {
       return Err(not_regular());
     }
   }
+  if let Some(root) = root {
+    let real = match handle_path(&file) {
+      Ok(real) => real,
+      Err(e) if e.kind() == std::io::ErrorKind::Unsupported => fs::canonicalize(path)?,
+      Err(e) => return Err(e),
+    };
+    if !real.starts_with(root) {
+      return Err(not_regular());
+    }
+  }
+  Ok(file)
+}
+
+fn read_regular(path: &Path, root: Option<&Path>, limit: u64) -> std::io::Result<Option<Vec<u8>>> {
+  let file = open_checked(path, root)?;
   let mut bytes = Vec::new();
   file.take(limit + 1).read_to_end(&mut bytes)?;
   Ok((bytes.len() as u64 <= limit).then_some(bytes))
+}
+
+enum Streamed {
+  Text(Option<&'static str>),
+  Binary,
+}
+
+fn stream_check(path: &Path, root: Option<&Path>) -> std::io::Result<Streamed> {
+  let mut file = open_checked(path, root)?;
+  let mut pending: Vec<u8> = Vec::new();
+  let mut tail = String::new();
+  let mut chunk = vec![0u8; SCAN_CHUNK];
+  let mut total = 0u64;
+  loop {
+    let n = file.read(&mut chunk)?;
+    if n == 0 {
+      break;
+    }
+    total += n as u64;
+    if total > MAX_SCANNED_FILE_BYTES {
+      return Err(not_regular());
+    }
+    if chunk[..n].contains(&0) {
+      return Ok(Streamed::Binary);
+    }
+    pending.extend_from_slice(&chunk[..n]);
+    let valid = match std::str::from_utf8(&pending) {
+      Ok(text) => text.len(),
+      Err(e) if e.error_len().is_none() => e.valid_up_to(),
+      Err(_) => return Ok(Streamed::Binary),
+    };
+    let window = format!("{tail}{}", std::str::from_utf8(&pending[..valid]).unwrap_or_default());
+    if let Some(reason) = find_secret(&window) {
+      return Ok(Streamed::Text(Some(reason)));
+    }
+    let mut from = window.len().saturating_sub(SCAN_OVERLAP);
+    while !window.is_char_boundary(from) {
+      from += 1;
+    }
+    tail = window[from..].to_owned();
+    pending.drain(..valid);
+  }
+  if pending.is_empty() {
+    Ok(Streamed::Text(None))
+  } else {
+    Ok(Streamed::Binary)
+  }
 }
 
 fn classify_file(path: &Path, rel: &str, name: &str, size: u64) -> SkillFile {
@@ -561,9 +692,17 @@ fn classify_file(path: &Path, rel: &str, name: &str, size: u64) -> SkillFile {
     return entry(rel, size, "secret", Some("file name looks like a secret"));
   }
   if size > sf::MAX_FILE_BYTES as u64 {
-    return entry(rel, size, "too_large", Some("larger than 64 KiB"));
+    if size > MAX_SCANNED_FILE_BYTES {
+      return entry(rel, size, "too_large", Some("larger than 8 MiB, not checked"));
+    }
+    return match stream_check(path, None) {
+      Ok(Streamed::Binary) => entry(rel, size, "binary", Some("not UTF-8 text")),
+      Ok(Streamed::Text(Some(reason))) => entry(rel, size, "secret", Some(reason)),
+      Ok(Streamed::Text(None)) => entry(rel, size, "too_large", Some("larger than 64 KiB")),
+      Err(e) => entry(rel, size, "unreadable", Some(&e.to_string())),
+    };
   }
-  let bytes = match read_regular(path, sf::MAX_FILE_BYTES as u64) {
+  let bytes = match read_regular(path, None, sf::MAX_FILE_BYTES as u64) {
     Ok(Some(bytes)) => bytes,
     Ok(None) => return entry(rel, size, "too_large", Some("larger than 64 KiB")),
     Err(e) => return entry(rel, size, "unreadable", Some(&e.to_string())),
@@ -759,7 +898,7 @@ pub async fn skills_scan<R: Runtime>(
   let mut result = tauri::async_runtime::spawn_blocking(move || scan_roots(home.as_deref(), &picked, &folder_ids))
     .await
     .map_err(|e| e.to_string())?;
-  scanned.0.lock().map_err(|e| e.to_string())?.extend(std::mem::take(&mut result.previews));
+  scanned.0.lock().map_err(|e| e.to_string())?.insert_all(std::mem::take(&mut result.previews), Instant::now());
   Ok(result)
 }
 
@@ -786,6 +925,13 @@ fn read_preview(preview: &SkillPreview) -> Result<Vec<FileContent>, ()> {
   if fs::canonicalize(&preview.folder).map_err(|_| ())? != preview.folder {
     return Err(());
   }
+  let now = list_files(&preview.folder);
+  if now.files != preview.listing || now.blocked != preview.blocked || now.truncated != preview.truncated {
+    return Err(());
+  }
+  if preview.blocked.is_some() {
+    return Err(());
+  }
   let total: u64 = preview.files.iter().map(|f| f.size).sum();
   if preview.files.len() > sf::MAX_FILES || total > sf::MAX_SKILL_BYTES as u64 {
     return Err(());
@@ -799,7 +945,7 @@ fn read_preview(preview: &SkillPreview) -> Result<Vec<FileContent>, ()> {
     if fs::canonicalize(&target).map_err(|_| ())? != target {
       return Err(());
     }
-    let bytes = read_regular(&target, file.size).map_err(|_| ())?.ok_or(())?;
+    let bytes = read_regular(&target, Some(&preview.folder), file.size).map_err(|_| ())?.ok_or(())?;
     if bytes.len() as u64 != file.size || sf::sha256_hex(&bytes) != file.sha256 {
       return Err(());
     }
@@ -844,7 +990,7 @@ pub async fn skills_read_files(
   scanned: State<'_, ScannedSkills>,
   keys: Vec<String>,
 ) -> Result<Vec<SkillFilesRead>, String> {
-  let previews = scanned.0.lock().map_err(|e| e.to_string())?.clone();
+  let previews = scanned.0.lock().map_err(|e| e.to_string())?.take(&keys, Instant::now());
   tauri::async_runtime::spawn_blocking(move || read_skill_files(&previews, &keys)).await.map_err(|e| e.to_string())
 }
 
@@ -1361,6 +1507,97 @@ mod tests {
     fs::remove_dir_all(dir.join("references")).unwrap();
     link(&t.path().join("elsewhere"), &dir.join("references"));
     assert!(!read_one(&result, "kit").ok);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn an_opened_handle_under_a_symlinked_directory_is_rejected_by_its_real_path() {
+    let t = Tmp::new("handle-path");
+    let root = fs::canonicalize(t.path()).unwrap().join("skill");
+    write(&root.join("real/f.txt"), "x");
+    write(&fs::canonicalize(t.path()).unwrap().join("outside/f.txt"), "x");
+    link(&fs::canonicalize(t.path()).unwrap().join("outside"), &root.join("swapped"));
+    assert!(open_checked(&root.join("real/f.txt"), Some(&root)).is_ok());
+    assert!(open_checked(&root.join("swapped/f.txt"), Some(&root)).is_err());
+    assert!(open_checked(&root.join("swapped/f.txt"), None).is_ok());
+  }
+
+  #[test]
+  fn import_read_fails_when_a_secret_file_appeared_after_the_preview() {
+    let (t, result) = kit_with_files("read-new-secret");
+    let dir = t.path().join(".claude/skills/kit");
+    write(&dir.join("added.txt"), "harmless");
+    assert!(!read_one(&result, "kit").ok);
+    fs::remove_file(dir.join("added.txt")).unwrap();
+    assert!(read_one(&result, "kit").ok);
+    write(&dir.join("leak.sh"), &format!("T=ghp_{}", "a".repeat(36)));
+    let read = read_one(&result, "kit");
+    assert!(!read.ok);
+    assert_eq!(read.error.as_deref(), Some("changed since preview, rescan"));
+  }
+
+  #[test]
+  fn secrets_in_files_over_64_kib_block_the_skill_even_across_chunk_boundaries() {
+    let t = Tmp::new("big-secret");
+    let home = t.path();
+    let token = format!("ghp_{}", "a".repeat(36));
+    for (dir, offset) in [("inside", 90 * 1024), ("boundary", SCAN_CHUNK - 5), ("late", 3 * 1024 * 1024)] {
+      skill(home, &format!(".claude/skills/{dir}"), "kit");
+      let mut text = "a ".repeat(offset / 2);
+      text.push_str(&token);
+      text.push_str(&" b".repeat(200 * 1024));
+      write(&home.join(format!(".claude/skills/{dir}/big.txt")), &text);
+    }
+    skill(home, ".claude/skills/clean", "kit");
+    write(&home.join(".claude/skills/clean/big.txt"), &"word ".repeat(40 * 1024));
+    skill(home, ".claude/skills/binary", "kit");
+    let mut bin = "word ".repeat(30 * 1024).into_bytes();
+    bin.push(0);
+    bin.extend_from_slice(&[b'a'; 1000]);
+    fs::write(home.join(".claude/skills/binary/big.dat"), bin).unwrap();
+    skill(home, ".claude/skills/huge", "kit");
+    fs::write(home.join(".claude/skills/huge/huge.txt"), vec![b'a'; 9 * 1024 * 1024]).unwrap();
+    let result = one(home);
+    for dir in ["inside", "boundary", "late"] {
+      assert_eq!(status_of(&result, dir, "big.txt"), "secret", "{dir}");
+      let found = all_skills(&result).into_iter().find(|s| s.dir_name == dir).unwrap();
+      assert!(found.files_blocked.is_some());
+    }
+    assert_eq!(status_of(&result, "clean", "big.txt"), "too_large");
+    assert_eq!(status_of(&result, "binary", "big.dat"), "binary");
+    assert_eq!(status_of(&result, "huge", "huge.txt"), "too_large");
+    let huge = all_skills(&result).into_iter().find(|s| s.dir_name == "huge").unwrap();
+    assert!(huge.files_blocked.is_none());
+    assert!(huge.files[0].reason.as_deref().unwrap().contains("not checked"));
+  }
+
+  fn dummy_preview() -> SkillPreview {
+    SkillPreview { folder: PathBuf::new(), files: vec![], listing: vec![], blocked: None, truncated: false }
+  }
+
+  fn batch(keys: impl Iterator<Item = String>) -> HashMap<String, SkillPreview> {
+    keys.map(|k| (k, dummy_preview())).collect()
+  }
+
+  #[test]
+  fn preview_store_drops_old_entries_caps_the_total_and_returns_only_requested_keys() {
+    let base = Instant::now();
+    let mut store = PreviewStore::default();
+    store.insert_all(batch(["old".to_owned()].into_iter()), base);
+    let later = base + Duration::from_secs(3601);
+    store.insert_all(batch(["new".to_owned(), "other".to_owned()].into_iter()), later);
+    assert!(!store.entries.contains_key("old"));
+    let taken = store.take(&["new".to_owned(), "missing".to_owned()], later);
+    assert_eq!(taken.keys().collect::<Vec<_>>(), ["new"]);
+    assert!(store.take(&["new".to_owned()], later + Duration::from_secs(3601)).is_empty());
+
+    let mut capped = PreviewStore::default();
+    capped.insert_all(batch((0..3000).map(|i| format!("a{i}"))), base);
+    capped.insert_all(batch((0..3000).map(|i| format!("b{i}"))), base + Duration::from_secs(1));
+    assert_eq!(capped.entries.len(), MAX_PREVIEWS);
+    assert!(capped.entries.keys().all(|k| k.starts_with('b') || k.starts_with('a')));
+    assert_eq!(capped.entries.keys().filter(|k| k.starts_with('b')).count(), 3000);
+    assert_eq!(capped.entries.keys().filter(|k| k.starts_with('a')).count(), 2000);
   }
 
   #[test]

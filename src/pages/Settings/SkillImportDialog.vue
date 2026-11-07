@@ -86,7 +86,7 @@
 											: 'text-destructive',
 									]"
 								>
-									{{ resultFor(row)!.ok ? 'Imported' : resultFor(row)!.error }}
+									{{ resultText(row) }}
 								</span>
 							</span>
 						</div>
@@ -255,6 +255,7 @@
 		type RowStatus,
 		type ScanFile,
 		type ScanResult,
+		skippedFileCount,
 		uploadableFiles,
 	} from '@/utils/skillImport';
 	import {
@@ -558,6 +559,14 @@
 				isTracked,
 				setSlug,
 				resultFor,
+				resultText: (row: ImportRow) => {
+					const result = results.value[row.skill.key];
+					if (!result?.ok) return result?.error;
+					const skipped = skippedFileCount(row.skill);
+					return skipped
+						? `Imported, ${skipped} ${skipped === 1 ? 'file' : 'files'} not imported`
+						: 'Imported';
+				},
 				addFolder,
 				confirm,
 				close,
