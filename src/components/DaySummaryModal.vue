@@ -267,7 +267,7 @@
 				if (!origin) return;
 				lanOrigin.value = null;
 				try {
-					await llmLanConfirm(origin, true);
+					await llmLanConfirm(userId(), origin, true);
 				} catch (caught) {
 					error.value = messageOf(caught);
 					return;

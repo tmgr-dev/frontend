@@ -230,6 +230,7 @@ test('a LAN endpoint asks before sending the titles and retries once allowed', a
 	);
 	await state.sendToLan();
 	expect(mockLlm.llmLanConfirm).toHaveBeenCalledWith(
+		expect.any(Number),
 		'http://192.0.2.5:11434',
 		true,
 	);

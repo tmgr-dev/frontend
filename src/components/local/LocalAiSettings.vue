@@ -376,7 +376,7 @@
 				if (!prompt) return;
 				lanPrompt.value = null;
 				await runLocal(async () => {
-					await llmLanConfirm(prompt.origin, true);
+					await llmLanConfirm(userId(), prompt.origin, true);
 					confirmedOrigin.value = prompt.origin;
 					await prompt.retry();
 				});
@@ -390,7 +390,7 @@
 				runLocal(async () => {
 					const origin = savedOrigin.value;
 					if (!origin) return;
-					await llmLanConfirm(origin, false);
+					await llmLanConfirm(userId(), origin, false);
 					confirmedOrigin.value = null;
 				});
 

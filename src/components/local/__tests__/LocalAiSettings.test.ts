@@ -393,6 +393,7 @@ test('a LAN server asks for confirmation and retries the action once allowed', a
 	);
 	await state.allowLan();
 	expect(mockLlm.llmLanConfirm).toHaveBeenCalledWith(
+		expect.any(Number),
 		'http://192.0.2.5:11434',
 		true,
 	);
@@ -413,6 +414,7 @@ test('forget confirmation is offered for a non-loopback saved URL and revokes it
 	await state.forgetLan();
 
 	expect(mockLlm.llmLanConfirm).toHaveBeenCalledWith(
+		expect.any(Number),
 		'http://192.0.2.5:11434',
 		false,
 	);
@@ -436,7 +438,11 @@ test('forget confirmation is offered for a saved URL that differs from the confi
 
 	await state.forgetLan();
 
-	expect(mockLlm.llmLanConfirm).toHaveBeenCalledWith('http://nas.lan', false);
+	expect(mockLlm.llmLanConfirm).toHaveBeenCalledWith(
+		expect.any(Number),
+		'http://nas.lan',
+		false,
+	);
 });
 
 test('forget confirmation appears after allowing a loopback URL saved with an explicit default port', async () => {

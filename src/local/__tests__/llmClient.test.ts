@@ -373,13 +373,14 @@ describe('llm command wrappers', () => {
 		});
 	});
 
-	it('llmLanConfirm invokes llm_lan_confirm without resyncing identity', async () => {
+	it('llmLanConfirm resyncs identity then invokes llm_lan_confirm with the user', async () => {
 		answer(undefined);
-		await llmLanConfirm('http://192.0.2.5:1234', true);
-		expect(order).toEqual(['llm_lan_confirm']);
+		await llmLanConfirm(7, 'http://192.0.2.5:1234', true);
+		expect(order).toEqual(['resync', 'llm_lan_confirm']);
 		expect(mockInvoke).toHaveBeenCalledWith('llm_lan_confirm', {
 			origin: 'http://192.0.2.5:1234',
 			confirmed: true,
+			userId: 7,
 		});
 	});
 

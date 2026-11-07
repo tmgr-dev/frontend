@@ -47,8 +47,14 @@ export const llmComplete = async (
 	return invoke<string>('llm_complete', { userId, ...options });
 };
 
-export const llmLanConfirm = (origin: string, confirmed: boolean) =>
-	invoke<void>('llm_lan_confirm', { origin, confirmed });
+export const llmLanConfirm = async (
+	userId: number,
+	origin: string,
+	confirmed: boolean,
+): Promise<void> => {
+	await resyncCloudIdentity();
+	return invoke<void>('llm_lan_confirm', { origin, confirmed, userId });
+};
 
 export const needsConfirmationOrigin = (error: unknown): string | null => {
 	const message =
