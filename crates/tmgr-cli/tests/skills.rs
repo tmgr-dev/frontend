@@ -102,6 +102,89 @@ async fn show_prints_the_markdown_and_quiet_prints_only_the_body() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn show_lists_the_files_without_their_content() {
+    let env = Env::new().await;
+    env.login_seed();
+    mount(
+        &env,
+        "GET",
+        "/api/shared-skills/triage",
+        200,
+        json!({"data": skill(true)}),
+    )
+    .await;
+    mount(
+        &env,
+        "GET",
+        "/api/shared-skills/triage/files",
+        200,
+        json!({"data": {"files_sha256": "abc", "files": [
+            {"path": "scripts/run.sh", "size": 42, "sha256": "x", "updated_at": "2026-11-01T10:00:00Z"}
+        ]}}),
+    )
+    .await;
+
+    let out = env
+        .cmd()
+        .args(["skills", "show", "triage", "--no-color"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let s = text(&out.stdout);
+    assert!(
+        s.contains("Files") && s.contains("scripts/run.sh") && s.contains("42 B"),
+        "{s}"
+    );
+
+    let out = env
+        .cmd()
+        .args(["skills", "show", "triage", "--json"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        stdout_json(&out)["data"]["files"][0]["path"],
+        "scripts/run.sh"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn show_on_an_old_server_without_the_files_route_prints_no_files() {
+    let env = Env::new().await;
+    env.login_seed();
+    mount(
+        &env,
+        "GET",
+        "/api/shared-skills/triage",
+        200,
+        json!({"data": skill(true)}),
+    )
+    .await;
+    mount(
+        &env,
+        "GET",
+        "/api/shared-skills/triage/files",
+        404,
+        json!({"message": "Not Found"}),
+    )
+    .await;
+
+    let out = env
+        .cmd()
+        .args(["skills", "show", "triage", "--no-color"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(!text(&out.stdout).contains("Files"));
+
+    let out = env
+        .cmd()
+        .args(["skills", "show", "triage", "--json"])
+        .output()
+        .unwrap();
+    assert!(stdout_json(&out)["data"].get("files").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn put_sends_the_file_as_the_body_and_reads_stdin() {
     let env = Env::new().await;
     env.login_seed();

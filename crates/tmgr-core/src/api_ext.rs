@@ -199,6 +199,20 @@ impl Client {
         )?))
     }
 
+    pub fn shared_skill_files(&self, slug: &str) -> Result<Option<Value>> {
+        match self.request(
+            Method::GET,
+            &format!("/api/shared-skills/{slug}/files"),
+            &[],
+            None,
+            "skills:read",
+        ) {
+            Ok(value) => Ok(Some(unwrap_data(value))),
+            Err(e) if e.kind == crate::error::Kind::NotFound => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     pub fn put_shared_skill(&self, slug: &str, body: &str) -> Result<Value> {
         let (status, value) = self.request_status(
             Method::PUT,

@@ -126,12 +126,31 @@ fn list(ctx: &Ctx) -> Result<Output> {
     Ok(Output::new(json!({ "skills": items }), human))
 }
 
+fn file_lines(ctx: &Ctx, files: &[Value]) -> String {
+    let rows = files
+        .iter()
+        .map(|f| {
+            let size = f.get("size").and_then(Value::as_u64).unwrap_or(0);
+            format!(
+                "  {}  {}",
+                text(f, "path"),
+                ctx.style.muted(&format!("{size} B"))
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("{}\n{rows}", ctx.style.bold("Files"))
+}
+
 fn show(ctx: &Ctx, slug: &str) -> Result<Output> {
     let slug = valid_slug(slug)?;
-    let skill = ctx
-        .cloud_client()?
-        .shared_skill(slug)
-        .map_err(forbidden_hint)?;
+    let client = ctx.cloud_client()?;
+    let skill = client.shared_skill(slug).map_err(forbidden_hint)?;
+    let files = client
+        .shared_skill_files(slug)
+        .map_err(forbidden_hint)?
+        .and_then(|v| v.get("files").and_then(Value::as_array).cloned())
+        .unwrap_or_default();
     let body = sanitize(skill.get("body").and_then(Value::as_str).unwrap_or(""));
     let human = if ctx.quiet {
         body
@@ -142,9 +161,21 @@ fn show(ctx: &Ctx, slug: &str) -> Result<Output> {
         } else {
             format!("\n{}", ctx.style.muted(&format!("when: {when}")))
         };
-        format!("{}{when}\n\n{body}", line(ctx, &skill).trim_start())
+        let listing = if files.is_empty() {
+            String::new()
+        } else {
+            format!("\n\n{}", file_lines(ctx, &files))
+        };
+        format!(
+            "{}{when}\n\n{body}{listing}",
+            line(ctx, &skill).trim_start()
+        )
     };
-    Ok(Output::new(json!({ "skill": skill }), human))
+    let mut json = json!({ "skill": skill });
+    if !files.is_empty() {
+        json["files"] = Value::Array(files);
+    }
+    Ok(Output::new(json, human))
 }
 
 fn read_input(file: &std::path::Path) -> Result<String> {
