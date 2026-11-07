@@ -249,7 +249,7 @@ export const collectDay = async (
 							return [] as DayTask[];
 						}),
 					),
-			  );
+				);
 	return {
 		tasks: [...localTasks.flat(), ...cloudTasks.flat()],
 		skipped,

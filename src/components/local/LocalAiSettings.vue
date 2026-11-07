@@ -237,7 +237,7 @@
 					(confirmedOrigin.value !== null ||
 						!isLoopbackUrl(savedBaseUrl.value)),
 			);
-			const invoke = async <T>(
+			const invoke = async <T,>(
 				command: string,
 				args?: Record<string, unknown>,
 			): Promise<T> => {

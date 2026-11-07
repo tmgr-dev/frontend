@@ -442,12 +442,12 @@
 							name:
 								store.state.user?.name || store.state.localProfile?.name || '',
 							email: '',
-					  }
+						}
 					: {
 							id: Number(store.state.user?.id) || 0,
 							name: store.state.user?.name ?? '',
 							email: store.state.user?.email ?? '',
-					  };
+						};
 
 			const ctxFor = async () => {
 				if (!workspace) throw new Error('No local workspace is open');

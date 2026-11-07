@@ -154,7 +154,7 @@ async fn endpoint_for(
   let (class, origin, host, addrs) = resolve_endpoint(base_url).await?;
   let ips: Vec<IpAddr> = addrs.iter().map(SocketAddr::ip).collect();
   gate(class, &origin, &ips, user_id, confirmed)?;
-  let pin = is_domain(&host).then(|| (host, addrs));
+  let pin = is_domain(&host).then_some((host, addrs));
   Ok(Endpoint { origin, base_url: base_url.trim().to_string(), model: model.to_string(), api_key, pin })
 }
 

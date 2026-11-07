@@ -33,11 +33,11 @@
 
 			<div v-if="summary !== null" class="flex flex-col gap-2">
 				<span
-					class="w-fit rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold uppercase text-muted-foreground"
+					class="w-fit rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground uppercase"
 				>
 					{{ aiGenerated ? 'AI-generated, may be inaccurate' : 'No AI' }}
 				</span>
-				<p class="whitespace-pre-line text-sm">{{ summary }}</p>
+				<p class="text-sm whitespace-pre-line">{{ summary }}</p>
 				<RouterLink
 					v-if="!aiGenerated"
 					:to="{ name: 'PersonaSettings' }"
@@ -154,7 +154,7 @@
 			const localUser = () => ({
 				id: userId(),
 				name: store.state.user?.name || store.state.localProfile?.name || '',
-				email: localOnly ? '' : store.state.user?.email ?? '',
+				email: localOnly ? '' : (store.state.user?.email ?? ''),
 			});
 			const localWorkspace = activeLocalWorkspace();
 
