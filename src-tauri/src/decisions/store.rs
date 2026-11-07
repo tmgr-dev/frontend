@@ -25,6 +25,7 @@ const LIST_FINISHED: i64 = 200;
 const LINK_KINDS: [&str; 5] = ["pr", "commit", "tag", "task", "url"];
 pub const FIND_LIMIT: usize = 10;
 const FIND_MAX: usize = 50;
+const FIND_SCAN: usize = 2000;
 const SIMILAR_WINDOW_MS: i64 = 7 * 24 * 3600 * 1000;
 const SIMILAR_SCAN: usize = 50;
 const SIMILAR_MAX: usize = 3;
@@ -605,7 +606,7 @@ impl Store {
     let mut stmt = self
       .conn
       .prepare(&format!(
-        "SELECT {CARD_COLS} FROM cards WHERE state IN ('answered','dismissed') ORDER BY created_ms DESC, rowid DESC"
+        "SELECT {CARD_COLS} FROM cards WHERE state IN ('answered','dismissed') ORDER BY created_ms DESC, rowid DESC LIMIT {FIND_SCAN}"
       ))
       .map_err(sql_err)?;
     let mut rows = stmt.query([]).map_err(sql_err)?;
