@@ -32,7 +32,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls-no-p
 sha2 = "0.10"
 hmac = "0.12"
 subtle = "2"
-minisign-verify = "0.2"
+minisign-verify = "0.3"
 url = "2"
 tauri-plugin-dialog = "2"
 base64 = "0.22"
