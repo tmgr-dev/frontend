@@ -134,8 +134,8 @@ describe('collectDay local workspaces', () => {
 			expect.objectContaining({ id: 1 }),
 			expect.objectContaining({ id: 5 }),
 		);
-		const taskQuery = dbs.ws1.select.mock.calls.find(([sql]) =>
-			sql.includes('FROM tasks'),
+		const taskQuery = (dbs.ws1.select.mock.calls as unknown[][]).find(([sql]) =>
+			(sql as string).includes('FROM tasks'),
 		);
 		expect(taskQuery?.[1]).toEqual([FROM, TO, FROM, TO, FROM, TO]);
 	});
