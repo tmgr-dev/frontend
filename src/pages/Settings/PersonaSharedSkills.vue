@@ -30,6 +30,13 @@
 						}}
 					</span>
 					<span
+						v-if="skill.pinned_version && skill.files_count"
+						data-testid="shared-skill-files-not-pinned"
+						class="mt-1 mr-1 inline-block text-2xs text-muted-foreground"
+					>
+						Files are not pinned
+					</span>
+					<span
 						v-if="skill.overridden"
 						data-testid="shared-skill-overridden"
 						class="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-2xs font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"

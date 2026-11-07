@@ -67,6 +67,8 @@ export interface SharedSkillAttachment extends SharedSkillPersonaRef {
 
 export interface SharedSkillSummary extends PersonaSkillSummary {
 	attached_personas: SharedSkillAttachment[];
+	files_count?: number;
+	files_sha256?: string;
 }
 
 export interface SharedSkill extends SharedSkillSummary {
@@ -77,6 +79,7 @@ export interface PersonaSharedSkill extends PersonaSkillSummary {
 	overridden: boolean;
 	pinned_version: number | null;
 	latest_version: number;
+	files_count?: number;
 }
 
 export type SharedSkillVersionKind =
@@ -119,6 +122,7 @@ export interface DeletedSharedSkill {
 	deleted_at: string;
 	purge_at: string;
 	latest_version: number;
+	files_count?: number;
 	versions: DeletedSharedSkillVersionRow[];
 }
 
@@ -445,6 +449,57 @@ export const deleteSharedSkill = async (
 	} = await $axios.delete(`/shared-skills/${slug}`);
 	invalidateSharedLibrary();
 	return data;
+};
+
+export interface SharedSkillFile {
+	path: string;
+	size: number;
+	sha256: string;
+	updated_at: string;
+}
+
+export interface SharedSkillFileIndex {
+	files: SharedSkillFile[];
+	files_sha256: string;
+}
+
+export interface SharedSkillFileContent {
+	path: string;
+	content: string;
+	size: number;
+	sha256: string;
+}
+
+export const listSharedSkillFiles = async (
+	slug: string,
+): Promise<SharedSkillFileIndex> => {
+	const {
+		data: { data },
+	} = await $axios.get(`/shared-skills/${slug}/files`);
+	return data;
+};
+
+export const getSharedSkillFile = async (
+	slug: string,
+	path: string,
+): Promise<SharedSkillFileContent> => {
+	const {
+		data: { data },
+	} = await $axios.get(`/shared-skills/${slug}/files/content`, {
+		params: { path },
+	});
+	return data;
+};
+
+export const deleteSharedSkillFile = async (
+	slug: string,
+	path: string,
+	expectedFilesSha256: string,
+): Promise<void> => {
+	await $axios.delete(`/shared-skills/${slug}/files`, {
+		params: { path, expected_files_sha256: expectedFilesSha256 },
+	});
+	invalidateSharedLibrary();
 };
 
 export const listSharedSkillVersions = async (

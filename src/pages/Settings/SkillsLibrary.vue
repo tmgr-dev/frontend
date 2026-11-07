@@ -56,6 +56,16 @@
 					>
 						History
 					</Button>
+					<Button
+						v-if="skill.files_count"
+						variant="outline"
+						size="sm"
+						:aria-label="`Files of ${skill.title}`"
+						data-testid="skill-files-open"
+						@click="filesSlug = filesSlug === skill.slug ? null : skill.slug"
+					>
+						Files ({{ skill.files_count }})
+					</Button>
 					<Button variant="outline" size="sm" @click="startEdit(skill)">
 						Edit
 					</Button>
@@ -73,6 +83,13 @@
 			:title="historySkill.title"
 			@close="historySlug = null"
 			@changed="$emit('changed')"
+		/>
+
+		<SkillFiles
+			v-if="filesSkill"
+			:key="filesSkill.slug"
+			:slug="filesSkill.slug"
+			@changed="onFilesChanged"
 		/>
 
 		<DeletedSkills :reload-token="deletedToken" @changed="onRestored" />
@@ -141,6 +158,7 @@
 	import { Button } from '@/components/ui/button';
 	import DeletedSkills from './DeletedSkills.vue';
 	import SharedSkillHistory from './SharedSkillHistory.vue';
+	import SkillFiles from './SkillFiles.vue';
 	import { Textarea } from '@/components/ui/textarea';
 	import { toast } from '@/components/ui/toast';
 	import store from '@/store';
@@ -166,6 +184,7 @@
 			Button,
 			DeletedSkills,
 			SharedSkillHistory,
+			SkillFiles,
 			SkillImportDialog,
 			Textarea,
 		},
@@ -180,6 +199,7 @@
 			const editingSlug = ref<string | null>(null);
 			const draft = ref(SKILL_TEMPLATE);
 			const historySlug = ref<string | null>(null);
+			const filesSlug = ref<string | null>(null);
 			const serverErrors = ref<Record<string, string[]> | null>(null);
 			const importOpen = ref(false);
 			const deletedToken = ref(0);
@@ -202,6 +222,16 @@
 			const historySkill = computed(
 				() => skills.value.find((s) => s.slug === historySlug.value) ?? null,
 			);
+
+			const filesSkill = computed(() => {
+				const skill = skills.value.find((s) => s.slug === filesSlug.value);
+				return skill?.files_count ? skill : null;
+			});
+
+			const onFilesChanged = async () => {
+				await load();
+				emit('changed');
+			};
 
 			const draftBytes = computed(() => byteLength(draft.value));
 			const draftErrors = computed(
@@ -329,6 +359,9 @@
 				editingSlug,
 				historySlug,
 				historySkill,
+				filesSlug,
+				filesSkill,
+				onFilesChanged,
 				draft,
 				draftBytes,
 				draftErrors,

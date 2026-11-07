@@ -32,8 +32,13 @@
 				<div class="min-w-0">
 					<p class="truncate text-sm font-medium">{{ item.title }}</p>
 					<p class="truncate text-xs text-muted-foreground">
-						{{ item.slug }} · Deleted {{ relative(item.deleted_at) }} · Removed
-						for good on {{ date(item.purge_at) }}
+						{{ item.slug }} ·
+						<template v-if="item.files_count"
+							>{{ item.files_count }}
+							{{ item.files_count === 1 ? 'file' : 'files' }} ·
+						</template>
+						Deleted {{ relative(item.deleted_at) }} · Removed for good on
+						{{ date(item.purge_at) }}
 					</p>
 				</div>
 				<Button
