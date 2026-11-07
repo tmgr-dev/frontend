@@ -125,7 +125,10 @@ async fn verify_account(api_base: &str, token: &str, user_id: i64) -> Result<(),
   }
 }
 
+static LINK_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 pub async fn link_verified_at(path: &Path, api_base: &str, token: &str, user_id: i64) -> Result<LocalProfile, String> {
+  let _guard = LINK_LOCK.lock().await;
   get_at(path).ok_or("no local profile")?;
   if linked_id_at(path)?.is_none() {
     verify_account(api_base, token, user_id).await?;
@@ -207,6 +210,7 @@ pub async fn local_profile_unlink<R: Runtime>(app: AppHandle<R>, window: tauri::
   if !confirmed {
     return Ok(false);
   }
+  let _guard = LINK_LOCK.lock().await;
   unlink_at(&file)?;
   Ok(true)
 }
@@ -539,6 +543,24 @@ mod tests {
     let unreachable = link_verified_at(&file, "http://127.0.0.1:9/api/", "secret-token", 7).await.unwrap();
     assert_eq!(unreachable.linked_user_id, Some(7));
     assert_eq!(hits(&seen), 0);
+  }
+
+  #[tokio::test]
+  async fn concurrent_first_links_agree_on_one_account() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join(FILE);
+    create_at(&file, Some("Ann"), "now", "u-1".into()).unwrap();
+    let (base_a, _) = serve(200, None, r#"{"data":{"id":7}}"#).await;
+    let (base_b, _) = serve(200, None, r#"{"data":{"id":8}}"#).await;
+    let (a, b) = tokio::join!(
+      link_verified_at(&file, &base_a, "secret-token", 7),
+      link_verified_at(&file, &base_b, "secret-token", 8),
+    );
+    let winner = linked_id_at(&file).unwrap();
+    assert_eq!(a.unwrap().linked_user_id, winner);
+    assert_eq!(b.unwrap().linked_user_id, winner);
+    assert_eq!(get_at(&file).unwrap().linked_user_id, winner);
+    assert!(winner == Some(7) || winner == Some(8));
   }
 
   fn assert_unlinks(file: &Path) {
