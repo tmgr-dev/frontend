@@ -350,7 +350,9 @@
 							</AppTooltip>
 						</div>
 
-						<div class="mt-3 flex items-center gap-x-3 text-2xs text-ink-subtle">
+						<div
+							class="mt-3 flex items-center gap-x-3 text-2xs text-ink-subtle"
+						>
 							<TaskTimeInfo
 								:created-at="task.created_at"
 								:updated-at="task.updated_at"
