@@ -278,3 +278,41 @@ describe('classify onboarding', () => {
 		expect(classify('GET', 'onboardings', true)).toBe('local');
 	});
 });
+
+describe('classify dashboard activities', () => {
+	it('sends a cloud workspace activity feed to the server while a local workspace is active', () => {
+		expect(classify('GET', 'workspaces/56/dashboard/activities', true)).toBe(
+			'server',
+		);
+		expect(
+			classify('GET', '/api/workspaces/1/dashboard/activities?page=2', true),
+		).toBe('server');
+	});
+
+	it('keeps a local workspace activity feed off the server', () => {
+		expect(classify('GET', 'workspaces/-3/dashboard/activities', true)).toBe(
+			'local',
+		);
+		expect(
+			classify('GET', 'workspaces/56/dashboard/activities/extra', true),
+		).toBe('local');
+	});
+
+	it('does not send a write to the activity feed to the server', () => {
+		expect(classify('POST', 'workspaces/56/dashboard/activities', true)).toBe(
+			'local',
+		);
+	});
+
+	it('leaves accountless sessions unchanged', () => {
+		expect(
+			classify(
+				'GET',
+				'workspaces/56/dashboard/activities',
+				true,
+				undefined,
+				true,
+			),
+		).toBe('local');
+	});
+});

@@ -40,6 +40,9 @@ const ACCOUNT = [
 	/^agent-usage(\/|$)/,
 ];
 
+/** Only digits match, so a negative (local) workspace id never reaches the server. */
+const DASHBOARD_ACTIVITIES_CLOUD = /^workspaces\/\d+\/dashboard\/activities$/;
+
 /** Calls an account-less session answers itself, so the app boots the same way it does signed in. */
 const GUEST: [RegExp, string[]][] = [
 	[/^user$/, ['GET']],
@@ -88,6 +91,7 @@ export const classify = (
 	) {
 		return 'server';
 	}
+	if (verb === 'GET' && DASHBOARD_ACTIVITIES_CLOUD.test(path)) return 'server';
 	return 'local';
 };
 
