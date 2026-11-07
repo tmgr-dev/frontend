@@ -3,7 +3,6 @@ mod common;
 
 use common::*;
 use std::fs;
-use std::io::Write;
 use std::os::linux::net::SocketAddrExt;
 use std::os::unix::net::{SocketAddr, UnixListener};
 use std::process::Command;
@@ -15,8 +14,7 @@ fn fx() -> Fx {
 fn landlock_usable(f: &Fx) -> bool {
     let o = f.run("exit 0");
     if o.code == Some(78) {
-        // Not eprintln: the test harness hides that when a test passes.
-        let _ = writeln!(std::io::stderr(), "SKIPPED: {}", o.stderr);
+        skip_without_landlock(&o.stderr);
         assert!(o.stderr.contains("sandbox"), "{}", o.stderr);
         assert!(o.stderr.contains("the run does not start"), "{}", o.stderr);
         return false;
@@ -389,7 +387,7 @@ fn read_only_grant_denies_links_into_the_folder() {
     .unwrap();
     let o = f.run_with_objects(&objects, "cat .git/objects/info/alternates >/dev/null");
     if o.code == Some(78) {
-        let _ = writeln!(std::io::stderr(), "SKIPPED: {}", o.stderr);
+        skip_without_landlock(&o.stderr);
         return;
     }
     assert!(o.ok(), "{} {}", o.stdout, o.stderr);

@@ -3,7 +3,6 @@ mod common;
 
 use common::*;
 use std::fs;
-use std::io::Write;
 use std::path::PathBuf;
 
 #[cfg(target_os = "linux")]
@@ -57,7 +56,7 @@ fn team() -> Team {
 fn usable(f: &Fx) -> bool {
     let o = f.run("exit 0");
     if o.code == Some(78) {
-        eprintln!("SKIPPED: {}", o.stderr);
+        skip_without_landlock(&o.stderr);
         return false;
     }
     assert!(o.ok(), "{} {}", o.stdout, o.stderr);
@@ -101,20 +100,28 @@ fn a_worker_writes_only_its_own_copy() {
 }
 
 #[test]
-fn measure_whether_a_sibling_copy_can_be_read() {
+fn sibling_copy_outside_home_is_readable_on_macos_only() {
     let t = team();
     if !usable(&t.f) {
         return;
     }
+    fs::write(t.outside.join("plain.txt"), SIBLING_MARK).unwrap();
+    let readable = cfg!(target_os = "macos");
     let o = t.f.run("cat ../w2/theirs.txt");
-    let verdict = if o.ok() && o.stdout.contains(SIBLING_MARK) {
-        "allowed"
-    } else {
-        "denied"
-    };
-    let line = format!("TM606_SIBLING_READ {PLATFORM} {verdict}");
-    writeln!(std::io::stderr(), "{line}").unwrap();
-    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(dir.join("tm606_sibling_read.txt"), format!("{line}\n")).unwrap();
+    assert_eq!(
+        o.ok() && o.stdout.contains(SIBLING_MARK),
+        readable,
+        "{PLATFORM}: {} {}",
+        o.stdout,
+        o.stderr
+    );
+    let o =
+        t.f.run(&format!("cat {}", t.f.path(&t.outside.join("plain.txt"))));
+    assert_eq!(
+        o.ok() && o.stdout.contains(SIBLING_MARK),
+        readable,
+        "{PLATFORM}: {} {}",
+        o.stdout,
+        o.stderr
+    );
 }

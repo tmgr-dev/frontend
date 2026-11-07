@@ -1,4 +1,5 @@
 #![cfg(unix)]
+mod common;
 
 use serde_json::{json, Value};
 use std::fs;
@@ -356,7 +357,7 @@ fn sessions_available() -> bool {
     if abi >= 6 {
         return true;
     }
-    eprintln!("skipped: Landlock ABI {abi} < 6");
+    common::skip_without_landlock(&format!("Landlock ABI {abi} < 6"));
     false
 }
 
