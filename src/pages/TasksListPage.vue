@@ -15,6 +15,7 @@
 	} from '@/actions/tmgr/workspaces';
 	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
 	import Confetti from '@/components/Confetti.vue';
+	import DaySummaryModal from '@/components/DaySummaryModal.vue';
 	import EmptyState from '@/components/EmptyState.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
@@ -40,6 +41,7 @@
 		buildArchivedStatusSets,
 		isArchivedTask as isArchivedTaskBySets,
 	} from '@/utils/archivedTasks';
+	import { isDesktopApp } from '@/utils/desktop';
 	import {
 		formatTaskCount,
 		listTotalSeconds,
@@ -84,6 +86,8 @@
 	const route = useRoute();
 	const router = useRouter();
 	const selectableTasks = ref(false);
+	const isDesktop = isDesktopApp();
+	const showDaySummary = ref(false);
 	const errorLoading = ref(false);
 	const searchText = ref<string | null>(null);
 	const searchTimeout = ref<ReturnType<typeof setTimeout> | null>(null);
@@ -861,6 +865,12 @@
 
 <template>
 	<BaseLayout :title="pageTitle">
+		<template v-if="isDesktop" #header-actions>
+			<Button variant="outline" size="sm" @click="showDaySummary = true">
+				Day summary
+			</Button>
+			<DaySummaryModal v-if="showDaySummary" @close="showDaySummary = false" />
+		</template>
 		<template #action>
 			<div class="flex flex-col gap-2">
 				<div class="w-full py-2">
