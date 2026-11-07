@@ -7,7 +7,10 @@ const SETTINGS_DESKTOP = {
 	query: { tab: 'desktop' },
 } as const;
 const SETTINGS_DATA = { name: 'Settings', query: { tab: 'data' } } as const;
-const PERSONAS = { name: 'PersonaSettings' } as const;
+const CONNECT_AGENT = {
+	name: 'ConnectLocalAgent',
+	params: 'currentWorkspace',
+} as const;
 const PLUGINS = { name: 'PluginSettings' } as const;
 
 export const DESKTOP_RELEASE_TOURS: Record<string, TourId[]> = {
@@ -198,14 +201,13 @@ export const desktopTours: TourDef[] = [
 	},
 	{
 		id: 'desktop.local-agent',
-		version: 1,
+		version: 2,
 		since: SINCE,
 		group: 'desktop',
 		title: 'Connect a local agent',
 		minutes: 2,
 		triggers: [{ kind: 'hub' }],
 		requires: {
-			modules: ['personas', 'agent_work'],
 			capability: 'localAccess',
 			platforms: DESKTOP,
 		},
@@ -214,28 +216,20 @@ export const desktopTours: TourDef[] = [
 			{
 				id: 's1',
 				type: 'spot',
-				anchor: 'local-personas.panel',
-				route: PERSONAS,
-				title: 'Local agents',
-				body: 'Agents on this computer can work in local workspaces. Access is off until you switch it on.',
+				anchor: 'connect-local.agents',
+				route: CONNECT_AGENT,
+				title: 'Connect your agent',
+				body: 'Agents on this computer can work in local workspaces. Tick yours and press Install. TMGR sets up the connection and turns on what it needs.',
 			},
 			{
 				id: 's2',
-				type: 'spot',
-				anchor: 'local-personas.access',
-				route: PERSONAS,
-				title: 'Local agent access',
-				body: 'Switch on local agent access so agents on this computer can connect.',
-			},
-			{
-				id: 's3',
 				type: 'wait',
-				anchor: 'local-personas.connect',
-				route: PERSONAS,
+				anchor: 'connect-local.agents',
+				route: CONNECT_AGENT,
 				waitFor: { event: 'agent.first_local_call' },
 				alreadyDone: 'local_agent_connected',
 				title: 'Connect your agent',
-				body: 'Copy the command into your agent and let it make a call. We continue on the first one.',
+				body: 'Pick your agent and press Install. We continue on its first call.',
 			},
 		],
 	},
@@ -320,6 +314,32 @@ export const desktopTours: TourDef[] = [
 				type: 'modal',
 				title: 'Moved',
 				body: 'Done. Open the cloud workspace.',
+			},
+		],
+	},
+	{
+		id: 'desktop.ghost-watch',
+		version: 1,
+		since: '3.4.240',
+		group: 'desktop',
+		title: 'Watch an agent work',
+		minutes: 1,
+		triggers: [{ kind: 'first_run' }, { kind: 'hub' }],
+		requires: { account: 'local', platforms: ['desktop_local'] },
+		steps: [
+			{
+				id: 's1',
+				type: 'modal',
+				title: 'A demo agent at work',
+				body: 'We open a demo workspace where a simulated agent fixes a bug. Nothing runs on your Mac.',
+			},
+			{
+				id: 's2',
+				type: 'wait',
+				anchor: 'ghost.panel',
+				waitFor: { event: 'ghost.finished' },
+				title: 'Watch the board',
+				body: 'The card moves, the timer ticks and the run fills in. Press Esc to skip ahead.',
 			},
 		],
 	},

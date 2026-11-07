@@ -825,10 +825,22 @@ mod tests {
 
     #[test]
     fn unreachable_upstream_is_502() {
-        let dead = {
+        let mut last = String::new();
+        let mut found = None;
+        for _ in 0..20 {
             let l = TcpListener::bind("127.0.0.1:0").unwrap();
-            l.local_addr().unwrap()
-        };
+            let addr = l.local_addr().unwrap();
+            drop(l);
+            match TcpStream::connect_timeout(&addr, Duration::from_secs(1)) {
+                Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
+                    found = Some(addr);
+                    break;
+                }
+                other => last = format!("{addr}: {other:?}"),
+            }
+        }
+        let dead =
+            found.unwrap_or_else(|| panic!("no refused port after 20 attempts; last probe {last}"));
         let (resolver, _) = counted(dead);
         let proxy = Proxy::start_with(pats(&["files.example.com"]), resolver).unwrap();
         assert_eq!(
@@ -880,11 +892,25 @@ mod tests {
         let (resolver, _) = counted("127.0.0.1:9".parse().unwrap());
         let proxy = Proxy::start_with(pats(&["files.example.com"]), resolver).unwrap();
         let port = proxy.port;
+        assert!(listens_on(port));
         drop(proxy);
-        assert!(TcpStream::connect_timeout(
-            &SocketAddr::from(([127, 0, 0, 1], port)),
-            Duration::from_millis(500)
-        )
-        .is_err());
+        assert!(!listens_on(port));
+    }
+
+    // A connect probe cannot tell: on macOS a concurrently forked child can inherit a copy of the listener.
+    fn listens_on(port: u16) -> bool {
+        (0..4096).any(|fd| unsafe {
+            let mut addr: libc::sockaddr_in = std::mem::zeroed();
+            let mut len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+            let named =
+                libc::getsockname(fd, (&mut addr as *mut libc::sockaddr_in).cast(), &mut len) == 0
+                    && addr.sin_family == libc::AF_INET as libc::sa_family_t
+                    && u16::from_be(addr.sin_port) == port;
+            let mut peer: libc::sockaddr_in = std::mem::zeroed();
+            let mut plen = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+            named
+                && libc::getpeername(fd, (&mut peer as *mut libc::sockaddr_in).cast(), &mut plen)
+                    != 0
+        })
     }
 }

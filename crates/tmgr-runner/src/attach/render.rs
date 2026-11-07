@@ -1,6 +1,8 @@
 use super::actions::find;
 use super::keys::Cmd;
-use super::newsession::{draw_new_session, new_session_cursor};
+use super::newsession::{
+    draw_new_session, draw_past_prompt, new_session_cursor, past_prompt_cursor,
+};
 use super::palette::PaletteMode;
 use super::palette::{
     palette_inner, palette_list, palette_rect, palette_top, query_avail, query_tail, RowView,
@@ -167,6 +169,9 @@ fn render_all(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
     if st.git_open {
         super::git::draw_git(buf, area, st);
     }
+    if st.cp.is_open() {
+        super::checkpoints::draw_checkpoints(buf, area, st);
+    }
     if st.notes.is_some() {
         super::notes::draw_notes(buf, area, st);
     }
@@ -179,10 +184,14 @@ fn render_all(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
     if st.qmenu.is_some() {
         draw_qmenu(buf, area, st);
     }
+    if st.perm_overlay_open() {
+        super::permcard::draw_overlay(buf, area, st);
+    }
     if let Some(peek) = &st.peek {
         draw_peek(buf, area, peek);
     }
     draw_new_session(buf, area, st);
+    draw_past_prompt(buf, area, st);
 }
 
 fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
@@ -266,6 +275,9 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
             SidebarLine::Activity(id) => draw_activity(buf, area, st, id, nested, y),
             SidebarLine::Sub { session, id } => draw_sub(buf, area, st, session, id, nested, y),
             SidebarLine::Detail(id) => draw_detail(buf, area, st, id, nested, y),
+            SidebarLine::Perm { session, row, full } => {
+                super::permcard::draw_row(buf, area, st, session, *row, *full, y)
+            }
             SidebarLine::Session { id, indent } => {
                 nested = *indent;
                 draw_session_row(buf, area, st, id, *indent, focused, y);
@@ -415,8 +427,33 @@ fn draw_session_row(
             label.to_string()
         };
         let drawn = put(buf, name_x, y, &shown, name_style, name_room);
-        if fits {
-            put(buf, drawn, y, &format!(" (+{subs})"), dim(), suffix_w);
+        let drawn = if fits {
+            put(buf, drawn, y, &format!(" (+{subs})"), dim(), suffix_w)
+        } else {
+            drawn
+        };
+        if let Some(marker) = st.leaders.get(&row.id) {
+            let room = age_x.saturating_sub(drawn + 1);
+            let full = format!(" [{marker}]");
+            let shown = if full.width() <= usize::from(room) {
+                full
+            } else {
+                " ◉".to_string()
+            };
+            put(buf, drawn, y, &shown, Style::new().fg(colors().warn), room);
+        } else if let Some(label) = st.team_label(&row.id) {
+            let room = age_x.saturating_sub(drawn + 1);
+            let full = format!(" [{label}]");
+            let shown = if full.width() <= usize::from(room) {
+                full
+            } else {
+                format!(" {}", if label == "lead" { "L" } else { &label })
+            };
+            put(buf, drawn, y, &shown, dim(), room);
+        }
+        if st.cards_on(&row.id) && !st.leaders.contains_key(&row.id) {
+            let room = age_x.saturating_sub(drawn + 1);
+            put(buf, drawn, y, " ◈", dim(), room.min(2));
         }
         put(
             buf,
@@ -840,6 +877,27 @@ pub(crate) fn header_watch(st: &ViewState, p: &PaneRect) -> Option<(u16, u16)> {
     Some((x, w))
 }
 
+fn header_cp_text(st: &ViewState, p: &PaneRect, geo: &HeaderGeo, taken: usize) -> Option<String> {
+    super::checkpoints::badge(
+        st.cp.status.get(&p.session)?,
+        geo.spare.saturating_sub(taken),
+    )
+}
+
+pub(crate) fn header_checkpoints(st: &ViewState, p: &PaneRect) -> Option<(u16, u16)> {
+    let geo = header_geo(p, st)?;
+    let chip_w = header_chip_text(st, p, &geo).map_or(0, |c| c.width());
+    let git_w = header_git_text(st, p, &geo, chip_w).map_or(0, |c| c.width());
+    let watch_w = header_watch_text(st, p, &geo, chip_w + git_w).map_or(0, |c| c.width());
+    let taken = chip_w + git_w + watch_w;
+    let badge = header_cp_text(st, p, &geo, taken)?;
+    let before =
+        1 + geo.index.to_string().width() + 2 + geo.shown.width() + 3 + geo.state.width() + taken;
+    let x = p.outer.x + 1 + u16::try_from(before).ok()? + 3;
+    let w = u16::try_from(badge.width()).ok()?.checked_sub(3)?;
+    Some((x, w))
+}
+
 fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
     let geo = header_geo(p, st);
     let index = geo.as_ref().map_or_else(
@@ -868,6 +926,12 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
             if let Some(machine) = st.machine_of(&p.session) {
                 spans.push(text(&format!(" @{machine}"), dim()));
             }
+            if let Some(marker) = st.leaders.get(&p.session) {
+                spans.push(text(
+                    &format!(" [{marker}]"),
+                    Style::new().fg(colors().warn),
+                ));
+            }
             spans.push(text(&format!(" · {}", geo.state), Style::new()));
             let mut spare = geo.spare;
             if let Some(chip) = header_chip_text(st, p, &geo) {
@@ -888,6 +952,11 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
                     _ => dim(),
                 };
                 spans.push(text(&badge, style));
+            }
+            let watch_w = header_watch_text(st, p, &geo, chip_w + git_w).map_or(0, |c| c.width());
+            if let Some(badge) = header_cp_text(st, p, &geo, chip_w + git_w + watch_w) {
+                spare = spare.saturating_sub(badge.width());
+                spans.push(text(&badge, dim()));
             }
             if let Some(parts) = header_meta(st, &p.session, spare) {
                 spare = spare.saturating_sub(3 + parts_width(&parts));
@@ -963,6 +1032,9 @@ fn draw_pane(buf: &mut Buffer, p: &PaneRect, st: &ViewState, screens: &dyn Scree
             if st.scroll.is_some() && st.focused_session() == Some(p.session.as_str()) {
                 super::find::draw_overlay(buf, p.outer, inner, snap, st, &p.session);
             }
+            if let Some(m) = st.msel.as_ref().filter(|m| m.session == p.session) {
+                super::msel::paint(buf, inner, snap, m);
+            }
         }
         None => {
             let label = match st.machine_of(&p.session) {
@@ -1015,6 +1087,10 @@ fn draw_snapshot(buf: &mut Buffer, inner: Rect, snap: &Snapshot, mark: Option<&G
 }
 
 pub fn cursor(st: &ViewState, lay: &Layout, screens: &dyn ScreenSource) -> Option<(u16, u16)> {
+    if let Some(p) = &st.past_prompt {
+        let area = Rect::new(lay.status.x, 0, lay.status.width, lay.status.bottom());
+        return past_prompt_cursor(p, area);
+    }
     if let Some(ns) = &st.new_session {
         let area = Rect::new(lay.status.x, 0, lay.status.width, lay.status.bottom());
         return new_session_cursor(ns, area);
@@ -1056,6 +1132,7 @@ pub fn cursor(st: &ViewState, lay: &Layout, screens: &dyn ScreenSource) -> Optio
         || st.help
         || st.sidebar_focus.is_some()
         || st.qmenu.is_some()
+        || st.perm_overlay_open()
         || st.filter_input()
     {
         return None;
@@ -1144,6 +1221,9 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
         _ => st.notice.clone(),
     };
     let focused = match st.focused_row() {
+        Some(r) if st.cards_on(&r.id) => {
+            format!("{} · {} · cards on", r.name, state_label(r))
+        }
         Some(r) => format!("{} · {}", r.name, state_label(r)),
         None => "no sessions".to_string(),
     };
@@ -1183,7 +1263,7 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
             spans.extend(counts(st));
         }
     }
-    let hint = "Ctrl-] ? help";
+    let hint = "drag copies  Ctrl-] ? help";
     let hint_w = hint.width() as u16 + 1;
     let used: usize = spans.iter().map(|s| s.content.width()).sum();
     let usage = st.usage_parts();
@@ -1214,7 +1294,7 @@ const MOUSE: &[(&str, &str)] = &[
     ("drop", "a dropped file is pasted there"),
     (
         "drag",
-        "a line resizes; Shift-drag selects (iTerm2: Option)",
+        "select + copy; Ctrl/Alt-drag: app; Shift-drag: terminal",
     ),
 ];
 
@@ -1254,6 +1334,10 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
             Cmd::Notes,
         ]),
         "new / prompts / layouts / templates / notes",
+    ),
+    (
+        HelpKey::Cmds(&[Cmd::ResumePast]),
+        "resume or fork a past session",
     ),
     (
         HelpKey::Cmds(&[Cmd::FocusOther]),
@@ -1316,8 +1400,8 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "scroll back through history",
     ),
     (
-        HelpKey::Cmds(&[Cmd::Questions, Cmd::Subagents, Cmd::Help]),
-        "agent questions / subagents / this help",
+        HelpKey::Cmds(&[Cmd::Questions, Cmd::Subagents, Cmd::Checkpoints]),
+        "agent questions / subagents / checkpoints",
     ),
     (
         HelpKey::Lit("Ctrl-]"),

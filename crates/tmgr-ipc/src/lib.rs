@@ -4,6 +4,8 @@ pub mod proto;
 #[cfg(unix)]
 pub mod auth;
 #[cfg(unix)]
+pub mod decisions;
+#[cfg(unix)]
 pub mod dirs;
 #[cfg(unix)]
 pub mod endpoint;

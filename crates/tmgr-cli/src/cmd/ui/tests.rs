@@ -517,6 +517,7 @@ fn internal_paths_never_reach_groups() {
         &["ui"],
         &["hook", "claude"],
         &["hook", "codex"],
+        &["hook", "decisions"],
         &["git", "hook"],
     ];
     if cfg!(feature = "runner") {
@@ -1002,6 +1003,10 @@ fn run_is_guarded_only_for_bypass_trust_and_publish_flags() {
     assert!(guard::is_guarded(
         run,
         &vals(&[("trust", Value::Bool(true))])
+    ));
+    assert!(guard::is_guarded(
+        run,
+        &vals(&[("no_sandbox", Value::Bool(true))])
     ));
     assert!(!guard::is_guarded(run, &vals(&[("mode", text("ask"))])));
     assert!(!guard::is_guarded(run, &Values::new()));

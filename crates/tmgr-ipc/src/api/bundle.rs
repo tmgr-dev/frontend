@@ -87,7 +87,40 @@ pub struct BundleTeam {
     pub mode: TeamMode,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamRole {
+    Lead,
+    Worker(u8),
+}
+
+/// A label on a run that belongs to a queue team. It grants nothing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TeamLink {
+    pub role: TeamRole,
+    pub of: String,
+}
+
+impl TeamLink {
+    pub fn validate(&self) -> Result<(), String> {
+        let ok = |c: char| c.is_ascii_alphanumeric() || "._-".contains(c);
+        if self.of.is_empty() || self.of.len() > 64 || !self.of.chars().all(ok) {
+            return Err("team.of must be 1 to 64 characters of A-Za-z0-9._-".into());
+        }
+        if self.role == TeamRole::Worker(0) {
+            return Err("team worker number starts at 1".into());
+        }
+        Ok(())
+    }
+
+    pub fn is_worker(&self) -> bool {
+        matches!(self.role, TeamRole::Worker(_))
+    }
+}
+
 pub const MAX_TEAM_SIZE: u8 = 5;
+pub const MAX_ASSIGNMENT_BYTES: usize = 16384;
 pub const MAX_PERSONA_INSTRUCTIONS: usize = 32768;
 pub const MAX_CONTEXT_PAGES: usize = 5;
 pub const MAX_CONTEXT_BYTES: usize = 65536;
@@ -108,6 +141,8 @@ pub struct RunBundle {
     pub context: Vec<BundlePage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub team: Option<BundleTeam>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assignment: Option<String>,
     pub launch: BundleLaunch,
 }
 
@@ -131,6 +166,13 @@ impl RunBundle {
         if let Some(t) = &self.team {
             if !(1..=MAX_TEAM_SIZE).contains(&t.size) {
                 return Err(format!("team.size must be 1 to {MAX_TEAM_SIZE}"));
+            }
+        }
+        if let Some(a) = &self.assignment {
+            if a.len() > MAX_ASSIGNMENT_BYTES {
+                return Err(format!(
+                    "assignment must be at most {MAX_ASSIGNMENT_BYTES} bytes"
+                ));
             }
         }
         valid_author("author.id", &self.author)?;

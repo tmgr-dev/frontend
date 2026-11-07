@@ -9,4 +9,4 @@
                         │                                                                                                                  │
                         │                                                                                                                  │
  + New session     tmpl ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
- tmgr runner · local · sidebar: Up/Down move, Enter opens, Esc/Right back                                                     Ctrl-] ? help
+ tmgr runner · local · sidebar: Up/Down move, Enter opens, Esc/Right back                                        drag copies  Ctrl-] ? help

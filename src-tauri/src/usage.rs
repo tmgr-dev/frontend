@@ -2,7 +2,7 @@ use chrono::{DateTime, Duration, Local, NaiveDate, NaiveDateTime, SecondsFormat,
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tmgr_usage::consent::{forget, ConsentChange, ReadLogs, FORGET_WAIT};
+use tmgr_usage::consent::{delete_sessions_index, forget, ConsentChange, ReadLogs, FORGET_WAIT};
 use tmgr_usage::error::UsageError;
 use tmgr_usage::limits::LimitWindow;
 use tmgr_usage::pricing::PriceEntry;
@@ -179,23 +179,47 @@ fn consent_set_inner(
     Some(_) => return Err("Unknown choice.".into()),
   };
   let (dir, store) = open(env)?;
-  store.change_log_consent(&ConsentChange { state, claude, codex }, now).map_err(user_error)?;
+  let change = ConsentChange { state, claude, codex };
+  store.change_log_consent(&change, now).map_err(user_error)?;
+  if change.denies() {
+    delete_sessions_index(env).map_err(|_| NOT_DELETED.to_string())?;
+  }
   consent_out(env, &dir, &store)
 }
 
 const BUSY: &str = "A scan is running. Try again in a moment.";
 
-fn forget_inner(flag: &AtomicBool, env: &Env, now: DateTime<Utc>, wait: std::time::Duration) -> Result<UsageConsentOut, String> {
+const NOT_DELETED: &str = "The usage data could not be deleted.";
+
+fn forget_inner(
+  flag: &AtomicBool,
+  env: &Env,
+  now: DateTime<Utc>,
+  wait: std::time::Duration,
+  runner_dir: Option<&std::path::Path>,
+) -> Result<UsageConsentOut, String> {
   let (dir, mut store) = open(env)?;
   let Some(_guard) = ScanGuard::acquire(flag) else {
     let deny = ConsentChange { state: Some(ReadLogs::Denied), ..ConsentChange::default() };
     store.change_log_consent(&deny, now).map_err(user_error)?;
+    delete_sessions_index(env).map_err(|_| NOT_DELETED.to_string())?;
     return Err(BUSY.into());
   };
   forget(&mut store, &dir, now, wait).map_err(|e| match e {
     UsageError::Busy => BUSY.to_string(),
-    _ => "The usage data could not be deleted.".to_string(),
+    _ => NOT_DELETED.to_string(),
   })?;
+  delete_sessions_index(env).map_err(|_| NOT_DELETED.to_string())?;
+  #[cfg(unix)]
+  if let Some(runner_dir) = runner_dir {
+    match tmgr_ipc::dirs::clear_questions(runner_dir, wait) {
+      Ok(true) => {}
+      Ok(false) => return Err(BUSY.into()),
+      Err(_) => return Err(NOT_DELETED.into()),
+    }
+  }
+  #[cfg(not(unix))]
+  let _ = runner_dir;
   consent_out(env, &dir, &store)
 }
 
@@ -722,7 +746,11 @@ pub async fn usage_forget() -> Result<UsageConsentOut, String> {
   if snap() {
     return Err(SNAP_REASON.into());
   }
-  blocking(|| forget_inner(&SCANNING, &Env::from_process(), Utc::now(), FORGET_WAIT)).await
+  #[cfg(unix)]
+  let runner_dir = Some(tmgr_ipc::dirs::runner_dir().map_err(|_| NOT_DELETED.to_string())?);
+  #[cfg(not(unix))]
+  let runner_dir: Option<std::path::PathBuf> = None;
+  blocking(move || forget_inner(&SCANNING, &Env::from_process(), Utc::now(), FORGET_WAIT, runner_dir.as_deref())).await
 }
 
 #[tauri::command]
@@ -824,6 +852,39 @@ mod tests {
     assert_eq!(consent_inner(&env).unwrap().state, "denied");
   }
 
+  fn index_files(env: &Env) -> Vec<std::path::PathBuf> {
+    let p = paths::sessions_index(env).unwrap();
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    ["", "-wal", "-shm"]
+      .iter()
+      .map(|suffix| {
+        let mut f = p.as_os_str().to_owned();
+        f.push(suffix);
+        let f = std::path::PathBuf::from(f);
+        std::fs::write(&f, b"x").unwrap();
+        f
+      })
+      .collect()
+  }
+
+  #[test]
+  fn denying_a_tool_or_forgetting_deletes_the_session_search_index() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = granted(tmp.path());
+    let now = local_noon();
+    let files = index_files(&env);
+    consent_set_inner(&env, now, Some("granted"), Some(true), Some(true)).unwrap();
+    assert!(files.iter().all(|f| f.exists()));
+    consent_set_inner(&env, now, None, None, Some(false)).unwrap();
+    assert!(files.iter().all(|f| !f.exists()));
+    let files = index_files(&env);
+    consent_set_inner(&env, now, Some("denied"), None, None).unwrap();
+    assert!(files.iter().all(|f| !f.exists()));
+    let files = index_files(&env);
+    forget_inner(&AtomicBool::new(false), &env, now, FORGET_WAIT, Some(&tmp.path().join("run"))).unwrap();
+    assert!(files.iter().all(|f| !f.exists()));
+  }
+
   #[test]
   fn forget_deletes_events_limits_and_snapshots_and_turns_reading_off() {
     let tmp = tempfile::tempdir().unwrap();
@@ -838,7 +899,7 @@ mod tests {
     std::fs::write(snaps.join("s.json"), "{}").unwrap();
 
     let flag = AtomicBool::new(false);
-    let c = forget_inner(&flag, &env, now, FORGET_WAIT).unwrap();
+    let c = forget_inner(&flag, &env, now, FORGET_WAIT, Some(&tmp.path().join("run"))).unwrap();
     assert_eq!((c.state, c.claude, c.codex, c.has_data), ("denied", true, true, false));
     assert!(!flag.load(Ordering::Acquire));
     assert_eq!(events(&env), 0);
@@ -846,7 +907,7 @@ mod tests {
     assert!(!ov.has_data && ov.limits.is_empty());
     assert!(!snaps.exists());
     assert_eq!(scan_inner(&flag, &env, now).unwrap().state, "off");
-    assert_eq!(forget_inner(&flag, &env, now, FORGET_WAIT).unwrap().state, "denied");
+    assert_eq!(forget_inner(&flag, &env, now, FORGET_WAIT, Some(&tmp.path().join("run"))).unwrap().state, "denied");
   }
 
   #[test]
@@ -858,7 +919,7 @@ mod tests {
     scan_inner(&AtomicBool::new(false), &env, now).unwrap();
     let flag = AtomicBool::new(false);
     let held = ScanGuard::acquire(&flag).unwrap();
-    assert_eq!(forget_inner(&flag, &env, now, FORGET_WAIT).unwrap_err(), "A scan is running. Try again in a moment.");
+    assert_eq!(forget_inner(&flag, &env, now, FORGET_WAIT, Some(&tmp.path().join("run"))).unwrap_err(), "A scan is running. Try again in a moment.");
     assert_eq!(events(&env), 2);
     assert_eq!(consent_inner(&env).unwrap().state, "denied", "reading is off even though nothing was deleted");
     drop(held);
@@ -873,12 +934,50 @@ mod tests {
     scan_inner(&AtomicBool::new(false), &env, now).unwrap();
     let held = tmgr_usage::consent::scan_lock(&paths::data_dir(&env).unwrap()).unwrap();
     let flag = AtomicBool::new(false);
-    let err = forget_inner(&flag, &env, now, std::time::Duration::from_millis(120)).unwrap_err();
+    let err = forget_inner(&flag, &env, now, std::time::Duration::from_millis(120), Some(&tmp.path().join("run"))).unwrap_err();
     assert_eq!(err, "A scan is running. Try again in a moment.");
     assert_eq!(events(&env), 2);
     assert_eq!(consent_inner(&env).unwrap().state, "denied");
     drop(held);
-    assert!(!forget_inner(&flag, &env, now, FORGET_WAIT).unwrap().has_data);
+    assert!(!forget_inner(&flag, &env, now, FORGET_WAIT, Some(&tmp.path().join("run"))).unwrap().has_data);
+  }
+
+  #[cfg(unix)]
+  fn saved_questions(runner_dir: &Path) -> std::path::PathBuf {
+    let q = tmgr_ipc::dirs::questions_dir(runner_dir);
+    std::fs::create_dir_all(&q).unwrap();
+    std::fs::write(q.join("s1.json"), "{}").unwrap();
+    std::fs::write(q.join("marks.jsonl"), "{}").unwrap();
+    std::fs::write(q.join("settings.json"), "{}").unwrap();
+    q
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn forget_also_deletes_saved_runner_questions_and_keeps_their_settings() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = granted(tmp.path());
+    let run = tmp.path().join("run");
+    let q = saved_questions(&run);
+    forget_inner(&AtomicBool::new(false), &env, local_noon(), FORGET_WAIT, Some(&run)).unwrap();
+    assert!(!q.join("s1.json").exists() && !q.join("marks.jsonl").exists());
+    assert!(q.join("settings.json").exists());
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn forget_while_the_runner_scans_questions_is_busy_with_reading_off_and_keeps_them() {
+    use std::os::fd::AsRawFd;
+    let tmp = tempfile::tempdir().unwrap();
+    let env = granted(tmp.path());
+    let run = tmp.path().join("run");
+    let q = saved_questions(&run);
+    let held = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(q.join(tmgr_ipc::dirs::QUESTIONS_LOCK)).unwrap();
+    assert_eq!(unsafe { libc::flock(held.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) }, 0);
+    let err = forget_inner(&AtomicBool::new(false), &env, local_noon(), std::time::Duration::from_millis(120), Some(&run)).unwrap_err();
+    assert_eq!(err, "A scan is running. Try again in a moment.");
+    assert!(q.join("s1.json").exists());
+    assert_eq!(consent_inner(&env).unwrap().state, "denied");
   }
 
   #[test]

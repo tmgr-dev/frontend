@@ -7,6 +7,18 @@ const run = (id: number, status: string, version = 1) => ({
 });
 
 describe('agentRunEvent', () => {
+	it('stays silent for the demo agent', () => {
+		const demo = { ...run(1, 'running'), agent: 'demo-agent' };
+		expect(agentRunEvent([], demo, true)).toBeNull();
+		expect(
+			agentRunEvent(
+				[run(1, 'running')],
+				{ ...demo, status: 'succeeded', version: 2 },
+				true,
+			),
+		).toBeNull();
+	});
+
 	it('emits started for a new running run', () => {
 		expect(agentRunEvent([], run(1, 'running'), true)).toBe(
 			'agent.run_started',

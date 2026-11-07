@@ -14,7 +14,7 @@ export const OLD_RECORD_MESSAGE =
 	'This move was recorded by an older version, so the local copy cannot be removed automatically.';
 
 export interface Guard {
-	id: 'published' | 'unchanged' | 'files';
+	id: 'published' | 'unchanged' | 'files' | 'skills';
 	ok: boolean;
 	label: string;
 }
@@ -49,6 +49,11 @@ export const removeLocalCopyGuards = (state: GuardState): Guard[] => {
 				published.excluded.every((file) => file.resolution !== null),
 			label:
 				'Every file that could not be uploaded is exported or accepted as lost',
+		},
+		{
+			id: 'skills',
+			ok: !published?.skills || published.skills.state === 'done',
+			label: 'Skills from this device are copied to your cloud library',
 		},
 	];
 };

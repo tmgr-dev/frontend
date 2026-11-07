@@ -46,6 +46,8 @@
 		"allow-local-move-put",
 		"allow-local-move-archive",
 		"allow-local-workspace-remove",
+		"allow-local-workspace-create-demo",
+		"allow-local-workspace-delete-demo",
 		"allow-local-move-export-file",
 		"allow-local-move-pick-export-target",
 		"allow-local-move-accept-lost",
@@ -60,7 +62,9 @@
 		"allow-plugins-safe-mode",
 		"allow-plugin-pick-file",
 		"allow-plugin-fetch",
+		"allow-plugin-image-fetch",
 		"allow-plugin-notify",
+		"allow-plugin-open-tg-link",
 		"allow-hide-quick-add",
 		"allow-open-quick-add",
 		"allow-open-task-window",
@@ -81,12 +85,6 @@
 		"allow-plugin-catalog-refresh",
 		"allow-plugin-install",
 		"allow-plugins-installed-list",
-		"allow-plugin-uninstall",
-		"allow-persona-cache-put",
-		"allow-persona-cache-get",
-		"allow-llm-config-set",
-		"allow-llm-config-get",
-		"allow-llm-chat",
-		"allow-llm-cancel"
+		"allow-plugin-uninstall"
 	]
 }

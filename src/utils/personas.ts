@@ -96,9 +96,16 @@ export const extractFieldErrors = (error: unknown): FieldErrors | null => {
 };
 
 export const SKILL_LIMIT = 20;
+export const SHARED_SKILL_LIMIT = 100;
+export const ATTACHED_SKILL_LIMIT = 20;
 export const SKILL_BODY_MAX_BYTES = 16384;
 export const SKILL_TITLE_MAX_LENGTH = 120;
 export const SKILL_SLUG_PATTERN = /^[a-z0-9-]{1,60}$/;
+export const RESERVED_SKILL_SLUG = 'deleted';
+export const isReservedSkillSlug = (slug: string) =>
+	slug === RESERVED_SKILL_SLUG;
+export const RESERVED_SKILL_MESSAGE =
+	'This skill uses a reserved name. Rename it with the tmgr CLI, or delete it.';
 export const SKILL_TEMPLATE =
 	'---\nslug: \ntitle: \nwhen: \nactions: []\n---\n';
 
@@ -151,6 +158,7 @@ export const parseSkillFrontMatter = (
 export const validateSkillMarkdown = (
 	markdown: string,
 	expectedSlug: string,
+	isNew = false,
 ): Record<string, string[]> | null => {
 	const errors: Record<string, string[]> = {};
 
@@ -173,6 +181,8 @@ export const validateSkillMarkdown = (
 		errors.slug = [
 			"must be lowercase letters, digits or '-', up to 60 characters",
 		];
+	} else if (isNew && isReservedSkillSlug(parsed.slug)) {
+		errors.slug = ['This name is reserved'];
 	} else if (expectedSlug && parsed.slug !== expectedSlug) {
 		errors.slug = ['must match the URL slug'];
 	}
@@ -188,6 +198,34 @@ export const validateSkillMarkdown = (
 	}
 
 	return Object.keys(errors).length > 0 ? errors : null;
+};
+
+export const sharedSkillDeleteConfirm = (
+	title: string,
+	attached: { id: string; name: string; pinned_version?: number | null }[],
+): string => {
+	const question = `Delete skill "${title}"?`;
+	if (attached.length === 0) return question;
+	return `${question}\n\nAttached to ${attached
+		.map((p) =>
+			p.pinned_version ? `${p.name} (pinned to v${p.pinned_version})` : p.name,
+		)
+		.join(', ')}. They lose this skill immediately; no copy is kept.`;
+};
+
+export const detachedSkillsTitle = (detached: unknown[]): string =>
+	detached.length === 0
+		? 'Skill deleted'
+		: `Skill deleted and detached from ${detached.length} ${
+				detached.length === 1 ? 'persona' : 'personas'
+			}`;
+
+export const attachableSharedSkills = <T extends { slug: string }>(
+	library: T[],
+	attached: { slug: string }[],
+): T[] => {
+	const taken = new Set(attached.map((s) => s.slug));
+	return library.filter((s) => !taken.has(s.slug));
 };
 
 export const TOKEN_LABEL_MAX_LENGTH = 60;
@@ -387,3 +425,17 @@ export type PersonaScope = 'account' | 'workspace';
 
 export const personaScopeLabel = (workspaceId: number | null | undefined) =>
 	workspaceId ? 'Workspace' : 'Only me';
+
+export const buildReplacePersonas = (
+	others: Array<{ id: string; version: number }>,
+	checked: Set<string>,
+): Array<{ id: string; version: number }> =>
+	others
+		.filter((p) => checked.has(p.id))
+		.map((p) => ({ id: p.id, version: p.version }));
+
+export const convertSuccessTitle = (replaced: number): string => {
+	const base = 'Converted to a shared skill';
+	if (replaced <= 0) return base;
+	return `${base} and replaced on ${replaced} ${replaced === 1 ? 'persona' : 'personas'}`;
+};

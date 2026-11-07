@@ -8,14 +8,16 @@ runner uninstall-service | Runner | -
 runner trust | Runner | dir
 runner untrust | Runner | dir
 runner trusted | Runner | -
-runner allow | Runner | workspace, lifetime
+runner allow | Runner | workspace, lifetime, require_signed_rules, require_signed_persona
 runner disallow | Runner | workspace
 runner allowed | Runner | -
 runner bind | Runner | target, path
 runner unbind | Runner | target
 runner list | Runner | -
+runner gc | Runner | dry_run
 runner watch | Runner | dir, cmd
-run | Agents | task, agent_cmd, agent, model, cwd, name, no_attach, trust, mode, base, fetch, publish, review, push, drop
+runner git-diff | Runner | dir, pager
+run | Agents | task, agent_cmd, agent, model, cwd, name, worktree, no_worktree, no_attach, trust, mode, no_sandbox, checkpoints, no_checkpoints, permission_cards, base, fetch, publish, review, push, drop
 agents | Agents | -
 agents login | Agents | profile, replace
 agents logout | Agents | profile
@@ -29,10 +31,11 @@ send | Agents | session, text, no_enter, wait, timeout
 peek | Agents | session, lines
 halt | Agents | session, kill
 rm | Agents | session
-resume | Other | session
+resume | Other | session, fork, mode, no_sandbox, no_attach
 rename | Agents | session, name
 session summary | Other | session, plain
 session export | Other | session, md, page, remove_findings
+session list | Other | agent, search, limit
 time | Time | today, since, by
 time sync | Time | state
 time idle | Time | seconds
@@ -40,6 +43,9 @@ questions | Agents | session, status
 questions answer | Agents | id
 questions ignore | Agents | id
 questions haiku | Agents | state
+checkpoints list | Agents | session
+checkpoints diff | Agents | session, n, current
+checkpoints restore | Agents | session, n
 version | Other | -
 login | Account | scopes, with_token, label, no_browser
 logout | Account | -
@@ -76,6 +82,12 @@ note | Pages | title, title_flag, task, parent
 page pull | Pages | dir, tree, all, force
 page push | Pages | files
 page status | Pages | dir
+skills list | Agents | -
+skills show | Agents | slug
+skills put | Agents | slug, file
+skills delete | Agents | slug
+skills attach | Agents | persona, slug
+skills detach | Agents | persona, slug
 agent start | Agents | reference, agent, model, branch
 agent update | Agents | run, branch, commits, pr, tests_passed, tests_failed, tests_cmd, summary, task
 agent finish | Agents | run, status, commits, pr, tests_passed, tests_failed, tests_cmd, summary, task
@@ -84,6 +96,7 @@ agent status clear | Agents | session_id
 agent status list | Agents | -
 hook install | Account | target, project, print
 hook uninstall | Account | target, project, print
+ask | Agents | title, question, context, options, recommended, kind, blocking, repo, base, head, facts, checks, task, pr, diffs, patches, commits, tags, links, replaces, key, wait, timeout
 notify | Account | text, title, priority, link
 alarm | Account | text, title, ack_timeout, delivery_timeout, no_call, call_attempts, no_wait, max_wait
 alarm status | Account | id, wait
@@ -95,6 +108,7 @@ queue disable | Queue | -
 queue rules list | Queue | -
 queue rules add | Queue | name, workspace, persona, profile, repo, project, status_type, model, max_concurrent, hours, trusted_authors, auto, mode
 queue rules rm | Queue | name
+queue add | Queue | task, team, mode
 queue approve | Queue | pickup
 queue release | Queue | pickup
 queue run-once | Queue | -
@@ -141,3 +155,4 @@ usage reset | Usage | -
 usage statusline install | Usage | account, install
 usage statusline uninstall | Usage | account
 self-update | Account | check, channel, allow_downgrade
+setup terminal | Account | check

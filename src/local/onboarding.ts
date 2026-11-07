@@ -4,6 +4,7 @@ import type {
 	TourState,
 	TourStatus,
 } from '@/tours/types';
+import { isDemoDb } from './demoSeed';
 import {
 	FACT_KEYS,
 	computeFacts,
@@ -146,6 +147,21 @@ export const createOnboardingHandler = (
 		if (path === 'onboarding' && verb === 'GET')
 			return ok({ ...state, facts: await factsFor(FACT_KEYS) });
 
+		if (path === 'onboarding/demo' && verb === 'GET') {
+			let demo = false;
+			let code: string | null = null;
+			try {
+				const ctx = deps ? await deps.ctxFor() : null;
+				if (ctx) {
+					code = ctx.workspace.code;
+					demo = await isDemoDb(ctx.db);
+				}
+			} catch (error) {
+				console.error('local demo check failed', error);
+			}
+			return { status: 200, data: { data: { is_demo: demo, code } } };
+		}
+
 		if (path === 'onboarding/facts' && verb === 'GET') {
 			const keys = String(params?.keys ?? '')
 				.split(',')
@@ -182,7 +198,13 @@ export const createOnboardingHandler = (
 								: undefined,
 						)
 					: 0;
-			save(state);
+			const latest: LocalOnboardingState = load(storage);
+			latest.intent = state.intent;
+			if (state.starter_seeded_at) {
+				latest.starter_seeded_at = state.starter_seeded_at;
+				latest.starter_workspace = state.starter_workspace;
+			}
+			save(latest);
 			return {
 				status: 200,
 				data: {

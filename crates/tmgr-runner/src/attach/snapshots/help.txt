@@ -8,6 +8,7 @@
                         │             │ s             two panes, or collapse to one                  │                                     │
                         │             │ | v / - h     split right / split down                       │                                     │
                         │             │ c / i / L / T new / prompts / layouts / templates / notes    │                                     │
+                        │             │ H             resume or fork a past session                  │                                     │
                         │             │ Tab           focus next pane (Shift-Tab previous)           │                                     │
                         │             │ arrows        move focus (Shift+arrows: resize)              │                                     │
                         │             │ Left at edge  focus the sidebar (Up/Down, Enter, Esc)        │                                     │
@@ -20,12 +21,11 @@
                         │             │ Enter / R / M resume exited / reconnect linked machines      │                                     │
                         │             │ x / X         stop (asks first) / remove if exited           │                                     │
                         │             │ [             scroll back through history                    │                                     │
-                        │             │ q / u / ?     agent questions / subagents / this help        │                                     │
+                        │             │ q / u / C     agent questions / subagents / checkpoints      │                                     │
                         │             │ Ctrl-]        send a literal Ctrl-] to the session           │                                     │
                         │             │                                                              │                                     │
                         │             │ ? again closes this box                                      │                                     │
                         │             │                                                              │                                     │
                         │             │                                                              │                                     │
-                        │             │                                                              │                                     │
  + New session     tmpl ╰─────────────│                                                              │─────────────────────────────────────╯
- tmgr runner · local · dev-server · wa╰──────────────────────────────────────────────────────────────╯                        Ctrl-] ? help
+ tmgr runner · local · dev-server · wa╰──────────────────────────────────────────────────────────────╯           drag copies  Ctrl-] ? help

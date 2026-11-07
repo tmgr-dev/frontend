@@ -235,6 +235,106 @@ fn codex_rollouts_are_found_by_id_or_folder() {
     );
 }
 
+fn rollout_with(day: &Path, name: &str, meta_id: &str) -> std::path::PathBuf {
+    let p = day.join(name);
+    append(
+        &p,
+        &[
+            serde_json::json!({"type":"session_meta","payload":{"id":meta_id,"cwd":"/work/a"}})
+                .to_string(),
+        ],
+    );
+    p
+}
+
+#[test]
+fn a_fork_source_rollout_must_name_the_asked_conversation_inside() {
+    let d = private_tmp();
+    let day = d.path().join(".codex/sessions/2026/10/20");
+    std::fs::create_dir_all(&day).unwrap();
+    let other = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+    let good = rollout_with(&day, &format!("rollout-2026-10-20T10-00-00-{U}.jsonl"), U);
+    assert_eq!(
+        tail::locate_codex_rollout_of(d.path(), U),
+        Some((good, Some("/work/a".into())))
+    );
+    rollout_with(
+        &day,
+        &format!("rollout-2026-10-20T11-00-00-{other}.jsonl"),
+        U,
+    );
+    assert_eq!(tail::locate_codex_rollout_of(d.path(), other), None);
+    let day2 = d.path().join(".codex/sessions/2026/10/21");
+    std::fs::create_dir_all(&day2).unwrap();
+    let p = day2.join(format!("rollout-2026-10-21T10-00-00-{other}.jsonl"));
+    append(
+        &p,
+        &[serde_json::json!({"type":"event_msg","payload":{"id":other}}).to_string()],
+    );
+    assert_eq!(tail::locate_codex_rollout_of(d.path(), other), None);
+}
+
+#[test]
+fn subagent_rollouts_are_never_picked_by_folder_or_forked_by_id() {
+    let d = private_tmp();
+    let day = d.path().join(".codex/sessions/2026/10/20");
+    std::fs::create_dir_all(&day).unwrap();
+    let sub = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+    let main = rollout_with(&day, &format!("rollout-2026-10-20T10-00-00-{U}.jsonl"), U);
+    append(
+        &day.join(format!("rollout-2026-10-20T11-00-00-{sub}.jsonl")),
+        &[serde_json::json!({"type":"session_meta","payload":{"id":sub,"cwd":"/work/a","source":{"subagent":{"thread_spawn":{}}}}}).to_string()],
+    );
+    assert_eq!(
+        tail::locate_codex_rollout(d.path(), None, "/work/a"),
+        Some(main)
+    );
+    assert_eq!(tail::locate_codex_rollout_of(d.path(), sub), None);
+}
+
+#[test]
+fn a_fork_source_rollout_reports_its_folder() {
+    let d = private_tmp();
+    let day = d.path().join(".codex/sessions/2026/10/20");
+    std::fs::create_dir_all(&day).unwrap();
+    let p = day.join(format!("rollout-2026-10-20T10-00-00-{U}.jsonl"));
+    append(
+        &p,
+        &[serde_json::json!({"type":"session_meta","payload":{"id":U}}).to_string()],
+    );
+    assert_eq!(tail::locate_codex_rollout_of(d.path(), U), Some((p, None)));
+}
+
+#[test]
+fn a_fork_source_rollout_is_never_found_through_a_link() {
+    use std::os::unix::fs::symlink;
+    let d = private_tmp();
+    let day = d.path().join(".codex/sessions/2026/10/20");
+    std::fs::create_dir_all(&day).unwrap();
+    let outside = d.path().join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    let real = rollout_with(&outside, &format!("rollout-x-{U}.jsonl"), U);
+    symlink(
+        &real,
+        day.join(format!("rollout-2026-10-20T10-00-00-{U}.jsonl")),
+    )
+    .unwrap();
+    assert_eq!(tail::locate_codex_rollout_of(d.path(), U), None);
+
+    let e = private_tmp();
+    let codex = e.path().join(".codex");
+    std::fs::create_dir_all(&codex).unwrap();
+    let real_sessions = e.path().join("elsewhere/2026/10/20");
+    std::fs::create_dir_all(&real_sessions).unwrap();
+    rollout_with(
+        &real_sessions,
+        &format!("rollout-2026-10-20T10-00-00-{U}.jsonl"),
+        U,
+    );
+    symlink(e.path().join("elsewhere"), codex.join("sessions")).unwrap();
+    assert_eq!(tail::locate_codex_rollout_of(e.path(), U), None);
+}
+
 #[test]
 fn store_round_trip_marks_and_prefixes() {
     let d = private_tmp();
@@ -350,7 +450,12 @@ fn only_one_scanner_holds_the_lock() {
     let held = store.try_lock().unwrap().unwrap();
     assert!(store.try_lock().unwrap().is_none());
     drop(held);
-    assert!(store.try_lock().unwrap().is_some());
+    // A child spawned by a parallel test can hold the descriptor until its exec.
+    let free = (0..200).any(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        store.try_lock().unwrap().is_some()
+    });
+    assert!(free);
 }
 
 fn fake(dir: &Path, body: &str) -> std::path::PathBuf {
@@ -390,10 +495,19 @@ impl Rig {
     }
 
     fn scanner(&self, claude: Option<std::path::PathBuf>) -> Scanner {
+        self.scanner_with(claude, |_| true)
+    }
+
+    fn scanner_with(
+        &self,
+        claude: Option<std::path::PathBuf>,
+        allowed: impl Fn(Format) -> bool + Send + 'static,
+    ) -> Scanner {
         Scanner::new(
             Store::new(self.runner.path()),
             claude,
             self.work.path().to_path_buf(),
+            allowed,
         )
     }
 
@@ -406,6 +520,7 @@ impl Rig {
             pid: 0,
             log_id: Some(U.into()),
             settled,
+            unsandboxed_ms: None,
         }
     }
 
@@ -810,4 +925,138 @@ fn old_per_sentence_entries_load_sort_and_keep_their_marks() {
         paste_text(&a.q, 20),
         "> Earlier you asked (just now): \"Old sentence one here?\"\nAnswer: "
     );
+}
+
+fn asking() -> [String; 2] {
+    [user("go"), agent("Done. Should I also update the docs?")]
+}
+
+fn counting_gate(
+    allow_calls: usize,
+) -> (
+    std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    impl Fn(Format) -> bool + Send + 'static,
+) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let calls = std::sync::Arc::new(AtomicUsize::new(0));
+    let seen = calls.clone();
+    (calls, move |_| {
+        seen.fetch_add(1, Ordering::SeqCst) < allow_calls
+    })
+}
+
+fn nothing_stored(rig: &Rig) {
+    let file = Store::new(rig.runner.path()).load(SID);
+    assert_eq!((file.offset, file.transcript.as_str()), (0, ""));
+    assert!(file.questions.is_empty());
+    assert!(rig.texts().is_empty());
+    let saved = std::fs::read_dir(Store::new(rig.runner.path()).dir())
+        .map(|d| {
+            d.flatten()
+                .filter(|e| e.file_name().to_string_lossy().starts_with("s_"))
+                .count()
+        })
+        .unwrap_or(0);
+    assert_eq!(saved, 0);
+}
+
+#[test]
+fn a_denied_scanner_reads_and_stores_nothing() {
+    let rig = Rig::new();
+    append(&rig.transcript, &asking());
+    let mut s = rig.scanner_with(None, |_| false);
+    assert!(!s.scan(&[rig.src(true)], 1000));
+    nothing_stored(&rig);
+}
+
+#[test]
+fn only_the_denied_format_is_skipped() {
+    let rig = Rig::new();
+    append(&rig.transcript, &asking());
+    let mut s = rig.scanner_with(None, |f| f == Format::Codex);
+    assert!(!s.scan(&[rig.src(true)], 1000));
+    nothing_stored(&rig);
+    let mut s = rig.scanner_with(None, |f| f == Format::Claude);
+    assert!(s.scan(&[rig.src(true)], 1000));
+    assert_eq!(rig.texts(), vec!["Should I also update the docs?"]);
+}
+
+#[test]
+fn consent_withdrawn_before_haiku_never_runs_the_binary_and_saves_nothing() {
+    let rig = Rig::new();
+    let bin = fake(
+        rig.bin.path(),
+        "touch called.txt\ncat >/dev/null\necho '{\"questions\":[]}'",
+    );
+    append(&rig.transcript, &asking());
+    let (calls, gate) = counting_gate(1);
+    let mut s = rig.scanner_with(Some(bin), gate);
+    assert!(!s.scan(&[rig.src(true)], 1000));
+    assert!(calls.load(std::sync::atomic::Ordering::SeqCst) >= 2);
+    assert!(!rig.work.path().join("called.txt").exists());
+    nothing_stored(&rig);
+}
+
+#[test]
+fn consent_withdrawn_during_haiku_saves_nothing_and_keeps_the_offset() {
+    let rig = Rig::new();
+    let bin = fake(
+        rig.bin.path(),
+        "touch called.txt\ncat >/dev/null\necho '{\"questions\":[\"Should I also update the docs?\"]}'",
+    );
+    append(&rig.transcript, &asking());
+    let (_, gate) = counting_gate(2);
+    let mut s = rig.scanner_with(Some(bin), gate);
+    assert!(!s.scan(&[rig.src(true)], 1000));
+    assert!(rig.work.path().join("called.txt").exists());
+    nothing_stored(&rig);
+}
+
+#[test]
+fn reading_resumes_after_a_later_allow_and_finds_what_was_missed() {
+    let rig = Rig::new();
+    let on = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let flag = on.clone();
+    let mut s = rig.scanner_with(None, move |_| {
+        flag.load(std::sync::atomic::Ordering::SeqCst)
+    });
+    append(&rig.transcript, &asking());
+    assert!(s.scan(&[rig.src(true)], 1000));
+    on.store(false, std::sync::atomic::Ordering::SeqCst);
+    append(
+        &rig.transcript,
+        &[user("next"), agent("Ready. Which flag do you prefer?")],
+    );
+    assert!(!s.scan(&[rig.src(true)], 1001));
+    assert_eq!(rig.texts(), vec!["Should I also update the docs?"]);
+    on.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(s.scan(&[rig.src(true)], 1002));
+    assert_eq!(rig.texts().len(), 2);
+}
+
+#[test]
+fn forget_denied_drops_the_tails_of_a_denied_format_only() {
+    let rig = Rig::new();
+    append(&rig.transcript, &asking());
+    let allowed = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0b11));
+    let gate = allowed.clone();
+    let mut s = rig.scanner_with(None, move |f| {
+        let bit = if f == Format::Claude { 1 } else { 2 };
+        gate.load(std::sync::atomic::Ordering::SeqCst) & bit != 0
+    });
+    s.scan(&[rig.src(true)], 1000);
+    s.tails.insert(
+        "other".into(),
+        Tailer::new(
+            Format::Codex,
+            rig.runner.path().to_path_buf(),
+            rig.runner.path().join("x.jsonl"),
+            None,
+        ),
+    );
+    assert_eq!(s.tails.len(), 2);
+    allowed.store(0b10, std::sync::atomic::Ordering::SeqCst);
+    s.forget_denied();
+    assert_eq!(s.tails.len(), 1);
+    assert!(s.tails.values().all(|t| t.format() == Format::Codex));
 }

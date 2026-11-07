@@ -33,6 +33,7 @@ const db = nodeSqliteAvailable ? memoryDb() : null;
 
 jest.mock('../runtime', () => ({
 	listLocalWorkspaces: async () => workspaces,
+	firstRealWorkspace: (list: LocalWorkspace[]) => list.find((w) => !w.demo),
 	activeLocalWorkspace: () => active,
 	hasActiveLocalWorkspace: () => active !== null,
 	setActiveLocalWorkspace: (w: LocalWorkspace | null) => {

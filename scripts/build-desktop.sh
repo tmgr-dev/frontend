@@ -22,6 +22,10 @@ if [[ -z "${APPLE_SIGNING_IDENTITY}" ]]; then
 	echo "No Developer ID Application identity found; the app will be unsigned." >&2
 fi
 
+if [[ "$(uname -s)" == "Darwin" ]]; then
+	WIDGET_SIGN_IDENTITY="${APPLE_SIGNING_IDENTITY:--}" bash scripts/build-widget.sh
+fi
+
 UPDATER_KEY="${TAURI_UPDATER_KEY_FILE:-$HOME/.tauri/tmgr-updater.key}"
 if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" && -f "$UPDATER_KEY" ]]; then
 	export TAURI_SIGNING_PRIVATE_KEY="$(cat "$UPDATER_KEY")"

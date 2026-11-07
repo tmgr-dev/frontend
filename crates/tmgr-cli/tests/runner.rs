@@ -132,6 +132,10 @@ impl Env {
             ("TMGR_RUNNER_HOMES", self.homes.path().display().to_string()),
             ("TMGR_T0_QUIET_MS", self.quiet_ms.to_string()),
             ("XDG_CONFIG_HOME", cfg.display().to_string()),
+            (
+                "TMGR_USAGE_DIR",
+                self.tmp.path().join("usage").display().to_string(),
+            ),
             ("TMGR_AGENTS_DIR", cfg.join("agents").display().to_string()),
             ("TERM", "xterm-256color".into()),
             ("NO_COLOR", "1".into()),
@@ -202,11 +206,20 @@ impl Env {
     }
 
     fn pty(&self, args: &[&str]) -> Pty {
-        Pty::spawn(self, args, None)
+        Pty::spawn(self, args, None, &[])
+    }
+
+    fn pty_ssh(&self, args: &[&str]) -> Pty {
+        Pty::spawn(
+            self,
+            args,
+            None,
+            &[("SSH_CONNECTION", "192.0.2.1 1 192.0.2.2 22")],
+        )
     }
 
     fn pty_home(&self, args: &[&str], home: &Path) -> Pty {
-        Pty::spawn(self, args, Some(home))
+        Pty::spawn(self, args, Some(home), &[])
     }
 }
 
@@ -251,6 +264,7 @@ fn shutdown_runner(run: &Path) {
 
 struct Pty {
     screen: Arc<Mutex<vt100::Parser>>,
+    raw: Arc<Mutex<Vec<u8>>>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
     _master: Box<dyn portable_pty::MasterPty + Send>,
@@ -263,7 +277,7 @@ impl Drop for Pty {
 }
 
 impl Pty {
-    fn spawn(env: &Env, args: &[&str], home: Option<&Path>) -> Pty {
+    fn spawn(env: &Env, args: &[&str], home: Option<&Path>, extra: &[(&str, &str)]) -> Pty {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: 30,
@@ -280,22 +294,29 @@ impl Pty {
         if let Some(h) = home {
             cmd.env("HOME", h);
         }
+        for (k, v) in extra {
+            cmd.env(k, v);
+        }
         let child = pair.slave.spawn_command(cmd).unwrap();
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().unwrap();
         let screen = Arc::new(Mutex::new(vt100::Parser::new(30, 100, 0)));
         let sink = screen.clone();
+        let raw = Arc::new(Mutex::new(Vec::new()));
+        let raw_sink = raw.clone();
         thread::spawn(move || {
             let mut buf = [0u8; 4096];
             while let Ok(n) = reader.read(&mut buf) {
                 if n == 0 {
                     break;
                 }
+                raw_sink.lock().unwrap().extend_from_slice(&buf[..n]);
                 sink.lock().unwrap().process(&buf[..n]);
             }
         });
         Pty {
             screen,
+            raw,
             writer: pair.master.take_writer().unwrap(),
             child,
             _master: pair.master,
@@ -714,6 +735,53 @@ fn halt_send_and_rm_manage_a_session() {
     assert_eq!(data["summary"]["exited"], 1);
     env.data(&["rm", &id, "--json"]);
     assert!(env.sessions().is_empty());
+}
+
+#[test]
+fn halt_kill_stops_the_leftovers_of_an_exited_session() {
+    let env = Env::new();
+    let pid_file = env.proj.join("bg.pid");
+    let script = env.script(
+        "bg.sh",
+        &format!(
+            "(trap '' TERM HUP INT; exec sleep 300) &\necho $! > {}\nwait\n",
+            pid_file.display()
+        ),
+    );
+    let Some(id) = env.start(&script, "bg") else {
+        return;
+    };
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while fs::read_to_string(&pid_file).map_or(true, |t| t.trim().is_empty()) {
+        assert!(Instant::now() < deadline, "no leftover process started");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let leftover = fs::read_to_string(&pid_file).unwrap().trim().to_string();
+    let alive = || {
+        Command::new("kill")
+            .args(["-0", &leftover])
+            .stderr(Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    };
+    env.tmgr(&["halt", &id]);
+    assert!(alive(), "the leftover did not survive the stop");
+    let plain = env.data(&["halt", &id, "--json"]);
+    assert_eq!(plain["background"], true);
+    assert!(alive(), "a plain halt killed the leftover");
+    let killed = env.data(&["halt", &id, "--kill", "--json"]);
+    assert_eq!(killed["signal"], "kill");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while alive() {
+        assert!(
+            Instant::now() < deadline,
+            "the leftover survived halt --kill"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let again = env.data(&["halt", &id, "--kill", "--json"]);
+    assert!(again.get("background").is_none());
 }
 
 #[test]
@@ -1658,3 +1726,328 @@ fn stop_asks_first_and_the_header_button_stops_after_yes() {
     }
     pty.detach();
 }
+
+fn osc52_payloads(raw: &[u8]) -> Vec<String> {
+    use base64::Engine;
+    let text = String::from_utf8_lossy(raw);
+    text.split("\x1b]52;c;")
+        .skip(1)
+        .filter_map(|rest| rest.split('\x07').next())
+        .filter_map(|b64| base64::engine::general_purpose::STANDARD.decode(b64).ok())
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .collect()
+}
+
+#[test]
+fn dragging_in_a_pane_copies_only_that_panes_cleaned_text_over_osc52() {
+    let env = Env::new();
+    let a = env.script(
+        "a.sh",
+        "echo '│ ⏺ alpha line one   │'\necho '│   second line      │'\necho READY-A\nsleep 300\n",
+    );
+    let b = env.script("b.sh", "echo NEIGHBOUR-TEXT\nsleep 300\n");
+    let Some(ida) = env.start(&a, "aaa-agent") else {
+        return;
+    };
+    env.start(&b, "bbb-neighbour").unwrap();
+    let mut pty = env.pty_ssh(&["attach", &ida]);
+    pty.wait_for("READY-A");
+    pty.type_bytes(b"\x1d");
+    pty.type_bytes(b"s");
+    pty.wait_for("NEIGHBOUR-TEXT");
+    thread::sleep(Duration::from_millis(500));
+    let rows: Vec<String> = pty.screen.lock().unwrap().screen().rows(0, 100).collect();
+    let first = rows
+        .iter()
+        .position(|r| r.contains("alpha line one"))
+        .unwrap();
+    let second = rows.iter().position(|r| r.contains("second line")).unwrap();
+    let col_of = |row: &str, needle: &str| row[..row.find(needle).unwrap()].chars().count();
+    let start = col_of(&rows[first], "alpha") + 1;
+    let end = col_of(&rows[second], "second line") + "second line".len() + 1;
+    pty.type_bytes(format!("\x1b[<0;{start};{}M", first + 1).as_bytes());
+    pty.type_bytes(format!("\x1b[<32;{};{}M", start + 5, first + 1).as_bytes());
+    pty.type_bytes(format!("\x1b[<32;{end};{}M", second + 1).as_bytes());
+    pty.type_bytes(format!("\x1b[<0;{end};{}m", second + 1).as_bytes());
+    let until = Instant::now() + Duration::from_secs(15);
+    let copied = loop {
+        if let Some(p) = osc52_payloads(&pty.raw.lock().unwrap()).pop() {
+            break p;
+        }
+        assert!(Instant::now() < until, "no OSC 52; screen:\n{}", pty.text());
+        thread::sleep(Duration::from_millis(50));
+    };
+    assert_eq!(copied, "alpha line one\nsecond line");
+    assert!(!copied.contains("NEIGHBOUR-TEXT") && !copied.contains('│'));
+    pty.wait_for("terminal clipboard");
+    pty.detach();
+}
+
+fn worktree_agent(env: &Env, body: &str) {
+    let agents = env.tmp.path().join("cfg/agents");
+    fs::create_dir_all(&agents).unwrap();
+    fs::write(
+        agents.join("wt.toml"),
+        format!("id = \"wt\"\nname = \"Wt\"\ncommand = [\"/bin/sh\", \"-c\", {body:?}]\n"),
+    )
+    .unwrap();
+}
+
+fn processes_in(folder: &Path) -> String {
+    let folder = fs::canonicalize(folder).unwrap();
+    let mut found = Vec::new();
+    #[cfg(target_os = "macos")]
+    {
+        let out = Command::new("/usr/sbin/lsof")
+            .args(["-w", "-d", "cwd,txt", "-Fpcn"])
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        let (mut pid, mut name) = ("", "");
+        for line in text.lines() {
+            if let Some(p) = line.strip_prefix('p') {
+                pid = p;
+            } else if let Some(c) = line.strip_prefix('c') {
+                name = c;
+            } else if line
+                .strip_prefix('n')
+                .is_some_and(|n| Path::new(n).starts_with(&folder))
+            {
+                found.push(format!("{pid} {name}"));
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    for e in fs::read_dir("/proc").unwrap().flatten() {
+        let holds = ["cwd", "exe"]
+            .iter()
+            .any(|l| fs::read_link(e.path().join(l)).is_ok_and(|p| p.starts_with(&folder)));
+        if holds {
+            let args = fs::read(e.path().join("cmdline")).unwrap_or_default();
+            found.push(format!(
+                "{} {}",
+                e.file_name().to_string_lossy(),
+                String::from_utf8_lossy(&args).replace('\0', " ")
+            ));
+        }
+    }
+    found.join("; ")
+}
+
+fn git_repo(dir: &Path) {
+    git_cli(dir, &["init", "-q", "-b", "main"]);
+    fs::write(dir.join("a.txt"), "a").unwrap();
+    git_cli(dir, &["add", "a.txt"]);
+    git_cli(dir, &["commit", "-q", "-m", "a"]);
+}
+
+fn wt_run(env: &Env, extra: &[&str]) -> Output {
+    let cwd = env.proj.display().to_string();
+    let mut args = vec![
+        "run",
+        "--agent",
+        "wt",
+        "--cwd",
+        &cwd,
+        "--no-attach",
+        "--json",
+    ];
+    args.extend_from_slice(extra);
+    env.tmgr(&args)
+}
+
+#[test]
+fn worktree_run_in_a_folder_that_is_not_a_repository_is_refused() {
+    let env = Env::new();
+    worktree_agent(&env, "sleep 30\n");
+    let out = wt_run(&env, &["--worktree"]);
+    assert!(!out.status.success());
+    assert!(
+        out_text(&out).contains("not inside a git repository"),
+        "{}",
+        out_text(&out)
+    );
+    assert!(!env.tmp.path().join("p-worktrees").exists());
+    assert!(env.sessions().is_empty());
+}
+
+#[test]
+fn worktree_is_off_unless_asked_and_the_config_turns_it_on() {
+    let env = Env::new();
+    worktree_agent(&env, "sleep 30\n");
+    git_repo(&env.proj);
+    let Some(()) = sandbox_usable().then_some(()) else {
+        return;
+    };
+    let out = wt_run(&env, &[]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    assert!(!env.tmp.path().join("p-worktrees").exists());
+    let cfg = env.tmp.path().join("cfg/tmgr");
+    fs::create_dir_all(&cfg).unwrap();
+    fs::write(cfg.join("config.toml"), "[attach]\nworktree = true\n").unwrap();
+    let out = wt_run(&env, &["--name", "cfgon"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    assert!(env.tmp.path().join("p-worktrees/cfgon/.git").is_dir());
+    let out = wt_run(&env, &["--no-worktree", "--name", "plain"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    assert!(!env.tmp.path().join("p-worktrees/plain").exists());
+}
+
+#[test]
+fn worktree_run_gets_its_own_checkout_and_rm_never_deletes_without_a_terminal() {
+    let env = Env::new();
+    worktree_agent(&env, "echo READY\nsleep 1\n");
+    git_repo(&env.proj);
+    if !sandbox_usable() {
+        return;
+    }
+    let out = wt_run(&env, &["--worktree", "--name", "alpha"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    let id = json_of(&out)["data"]["id"].as_str().unwrap().to_string();
+    let wt = env.tmp.path().join("p-worktrees/alpha");
+    let real = fs::canonicalize(&wt).unwrap();
+    assert_eq!(json_of(&out)["data"]["cwd"], real.to_str().unwrap());
+    assert!(wt.join("a.txt").exists());
+    let again = wt_run(&env, &["--worktree", "--name", "alpha"]);
+    assert!(!again.status.success());
+    wait_session_state(&env, &id, "exited");
+    fs::write(wt.join("scratch"), "x").unwrap();
+    let rm = env.tmgr(&["rm", &id]);
+    assert!(rm.status.success(), "{}", out_text(&rm));
+    assert!(
+        out_text(&rm).contains("kept: it has uncommitted"),
+        "{}\nin the folder: {}",
+        out_text(&rm),
+        processes_in(&wt)
+    );
+    assert!(wt.join("scratch").exists());
+}
+
+#[test]
+fn worktree_rm_of_a_clean_checkout_only_tells_how_to_delete_it() {
+    let env = Env::new();
+    worktree_agent(&env, "echo READY\nsleep 1\n");
+    git_repo(&env.proj);
+    if !sandbox_usable() {
+        return;
+    }
+    let out = wt_run(&env, &["--worktree", "--name", "beta"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    let id = json_of(&out)["data"]["id"].as_str().unwrap().to_string();
+    wait_session_state(&env, &id, "exited");
+    let rm = env.tmgr(&["rm", &id]);
+    let wt = env.tmp.path().join("p-worktrees/beta");
+    assert!(
+        out_text(&rm).contains("can be deleted"),
+        "{}\nin the folder: {}",
+        out_text(&rm),
+        processes_in(&wt)
+    );
+    assert!(wt.exists());
+}
+
+#[test]
+fn worktree_session_can_commit_in_its_checkout_and_rm_keeps_unmerged_work() {
+    let env = Env::new();
+    worktree_agent(
+        &env,
+        "exec 2>err.log\necho x > made.txt\ngit add made.txt\ngit -c user.name=a -c user.email=a@example.com commit -q -m made && rm -f err.log\n",
+    );
+    git_repo(&env.proj);
+    if !sandbox_usable() {
+        return;
+    }
+    let out = wt_run(&env, &["--worktree", "--name", "gamma"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    let id = json_of(&out)["data"]["id"].as_str().unwrap().to_string();
+    wait_session_state(&env, &id, "exited");
+    let wt = env.tmp.path().join("p-worktrees/gamma");
+    if env
+        .sessions()
+        .iter()
+        .any(|s| s["id"] == id.as_str() && s["state"]["exit_code"] == 71)
+    {
+        eprintln!("skipped: the sandbox could not be applied on this host");
+        return;
+    }
+    let log = Command::new("git")
+        .current_dir(&wt)
+        .args(["log", "--format=%s", "-1"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&log.stdout).trim(),
+        "made",
+        "{}",
+        fs::read_to_string(wt.join("err.log")).unwrap_or_default()
+    );
+    let rm = env.tmgr(&["rm", &id, "--json"]);
+    assert!(rm.status.success(), "{}", out_text(&rm));
+    let note = json_of(&rm)["data"]["worktree"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        note.contains("kept") && note.contains("not merged"),
+        "{note}"
+    );
+    assert!(wt.join("made.txt").exists());
+    let main_log = Command::new("git")
+        .current_dir(&env.proj)
+        .args(["branch", "--list", "gamma"])
+        .output()
+        .unwrap();
+    assert!(main_log.stdout.is_empty());
+}
+
+#[test]
+fn gc_never_lists_a_session_checkout() {
+    let env = Env::new();
+    worktree_agent(&env, "sleep 1\n");
+    git_repo(&env.proj);
+    if !sandbox_usable() {
+        return;
+    }
+    let out = wt_run(&env, &["--worktree", "--name", "delta"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    let id = json_of(&out)["data"]["id"].as_str().unwrap().to_string();
+    wait_session_state(&env, &id, "exited");
+    let gc = env.tmgr(&["runner", "gc", "--dry-run", "--json"]);
+    assert!(!out_text(&gc).contains("delta"), "{}", out_text(&gc));
+    assert!(env.tmp.path().join("p-worktrees/delta/.git").is_dir());
+}
+
+#[test]
+fn rm_accepts_the_path_of_a_checkout_whose_session_is_gone() {
+    let env = Env::new();
+    worktree_agent(&env, "sleep 1\n");
+    git_repo(&env.proj);
+    if !sandbox_usable() {
+        return;
+    }
+    let out = wt_run(&env, &["--worktree", "--name", "eps"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    let id = json_of(&out)["data"]["id"].as_str().unwrap().to_string();
+    wait_session_state(&env, &id, "exited");
+    let _ = env.tmgr(&["rm", &id]);
+    let wt = env.tmp.path().join("p-worktrees/eps");
+    let by_path = env.tmgr(&["rm", wt.to_str().unwrap()]);
+    assert_eq!(by_path.status.code(), Some(1), "{}", out_text(&by_path));
+    assert!(
+        out_text(&by_path).contains("can be deleted"),
+        "{}",
+        out_text(&by_path)
+    );
+    assert!(wt.exists());
+    let other = env.tmgr(&["rm", env.proj.to_str().unwrap()]);
+    assert!(!other.status.success());
+    assert!(
+        out_text(&other).contains("not a checkout made by"),
+        "{}",
+        out_text(&other)
+    );
+    assert!(env.proj.join("a.txt").exists());
+}
+
+#[path = "runner_checkpoints/mod.rs"]
+mod runner_checkpoints;

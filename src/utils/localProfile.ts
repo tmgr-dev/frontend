@@ -3,6 +3,7 @@ export interface LocalProfile {
 	uuid: string;
 	name: string;
 	created_at: string;
+	linked_user_id?: number | null;
 }
 
 const invoke = async <T>(
@@ -21,3 +22,6 @@ export const createLocalProfile = (name?: string): Promise<LocalProfile> =>
 
 export const updateLocalProfile = (name: string): Promise<LocalProfile> =>
 	invoke<LocalProfile>('local_profile_update', { name });
+
+export const linkLocalProfile = (userId: number): Promise<LocalProfile> =>
+	invoke<LocalProfile>('local_profile_link', { userId });

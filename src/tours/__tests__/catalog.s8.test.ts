@@ -21,7 +21,10 @@ const tour = (id: string) => getTour(id)!;
 
 describe('S8 desktop catalog', () => {
 	it('registers D1-D10 in order with a hub trigger', () => {
-		expect(desktopTours.map((t) => t.id)).toEqual(S8_IDS);
+		expect(desktopTours.map((t) => t.id)).toEqual([
+			...S8_IDS,
+			'desktop.ghost-watch',
+		]);
 		for (const id of S8_IDS) {
 			expect(tour(id).group).toBe('desktop');
 			expect(tour(id).since).toBe('3.4.158');
@@ -65,8 +68,9 @@ describe('S8 desktop catalog', () => {
 	it('requirements match the plan', () => {
 		expect(tour('desktop.local-agent').requires).toMatchObject({
 			capability: 'localAccess',
-			modules: ['personas', 'agent_work'],
 		});
+		expect(tour('desktop.local-agent').requires?.modules).toBeUndefined();
+		expect(tour('desktop.local-agent').version).toBe(2);
 		expect(tour('desktop.local-workspace').requires).toMatchObject({
 			account: 'local',
 		});
@@ -89,8 +93,17 @@ describe('S8 desktop catalog', () => {
 	});
 
 	it('local agent waits for the first local call and skips when already connected', () => {
-		const s3 = tour('desktop.local-agent').steps[2];
-		expect(s3).toMatchObject({
+		const steps = tour('desktop.local-agent').steps;
+		expect(steps).toHaveLength(2);
+		expect(steps[0]).toMatchObject({
+			type: 'spot',
+			anchor: 'connect-local.agents',
+			route: { name: 'ConnectLocalAgent', params: 'currentWorkspace' },
+		});
+		expect(steps[1]).toMatchObject({
+			type: 'wait',
+			anchor: 'connect-local.agents',
+			route: { name: 'ConnectLocalAgent', params: 'currentWorkspace' },
 			waitFor: { event: 'agent.first_local_call' },
 			alreadyDone: 'local_agent_connected',
 		});

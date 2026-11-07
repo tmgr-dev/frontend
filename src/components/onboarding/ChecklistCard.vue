@@ -104,9 +104,19 @@
 
 <script lang="ts">
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { useDemoWorkspace } from '@/composable/useDemoWorkspace';
 	import { buildChecklist } from '@/onboarding/checklist';
+	import { ghostStage } from '@/onboarding/ghostStage';
+	import { onboardingApi } from '@/tours/api';
 	import { useTours } from '@/tours/useTours';
-	import { computed, defineComponent, onBeforeUnmount, ref, watch } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onBeforeUnmount,
+		onMounted,
+		ref,
+		watch,
+	} from 'vue';
 	import { useStore } from 'vuex';
 
 	export default defineComponent({
@@ -119,8 +129,10 @@
 			const menuOpen = ref(false);
 			const root = ref<HTMLElement | null>(null);
 
+			const { isDemo, code: workspaceCode } = useDemoWorkspace();
 			const visible = computed(() => {
-				if (store.getters.isLocalOnly) return false;
+				if (store.getters.isLocalOnly)
+					return ghostStage.value !== null && !isDemo.value;
 				const intent = tours.onboarding.value?.intent;
 				return intent === 'human' || intent === 'agent';
 			});
@@ -160,6 +172,23 @@
 					},
 				),
 			);
+			const LOCAL_FACTS = [
+				'has_task',
+				'has_timer_minute',
+				'has_board_move',
+				'has_routine',
+				'has_page',
+			];
+			const refreshLocalFacts = async () => {
+				if (!store.getters.isLocalOnly) return;
+				try {
+					tours.patchFacts(await onboardingApi().fetchFacts(LOCAL_FACTS));
+				} catch (error) {
+					console.error('local checklist facts failed', error);
+				}
+			};
+			onMounted(refreshLocalFacts);
+			watch(workspaceCode, refreshLocalFacts);
 			const progressWidth = computed(() =>
 				checklist.value.total
 					? `${Math.round(

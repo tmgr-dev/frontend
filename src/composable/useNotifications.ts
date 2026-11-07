@@ -10,7 +10,7 @@ import {
 import { usePusher } from '@/composable/usePusher';
 import type { ActionError } from '@/types/dashboard';
 import { requestCache } from '@/utils/requestCache';
-import { computed, getCurrentScope, onScopeDispose, ref } from 'vue';
+import { computed, getCurrentScope, onScopeDispose, ref, watch } from 'vue';
 
 interface UseNotificationsReturn {
 	notifications: import('vue').Ref<Notification[]>;
@@ -30,9 +30,11 @@ interface UseNotificationsReturn {
 	subscribeToRealtime: (userId: number) => void;
 	unsubscribeFromRealtime: (userId: number) => void;
 	clearNewNotificationIndicator: () => void;
+	followUser: (source: () => number | null | undefined) => void;
 }
 
 const unreadCount = ref<number>(0);
+let unreadCountOwner: number | null = null;
 
 export function useNotifications(): UseNotificationsReturn {
 	const notifications = ref<Notification[]>([]);
@@ -47,10 +49,12 @@ export function useNotifications(): UseNotificationsReturn {
 	let subscribedUserId: number | null = null;
 	let subscriptionId: string | null = null;
 	let pulseTimeout: ReturnType<typeof setTimeout> | null = null;
+	let generation = 0;
 
 	const hasMore = computed(() => currentPage.value < totalPages.value);
 
 	const loadNotifications = async (page: number = 1): Promise<void> => {
+		const startedAt = generation;
 		try {
 			loading.value = true;
 			error.value = null;
@@ -59,6 +63,7 @@ export function useNotifications(): UseNotificationsReturn {
 				page,
 				perPage,
 			);
+			if (startedAt !== generation) return;
 
 			if (page === 1) {
 				notifications.value = response.data;
@@ -69,6 +74,7 @@ export function useNotifications(): UseNotificationsReturn {
 			currentPage.value = response.current_page;
 			totalPages.value = response.last_page;
 		} catch (err: any) {
+			if (startedAt !== generation) return;
 			error.value = {
 				message: err.response?.data?.message || 'Failed to load notifications',
 				type: 'server',
@@ -77,7 +83,7 @@ export function useNotifications(): UseNotificationsReturn {
 			};
 			console.error('Error loading notifications:', err);
 		} finally {
-			loading.value = false;
+			if (startedAt === generation) loading.value = false;
 		}
 	};
 
@@ -88,16 +94,21 @@ export function useNotifications(): UseNotificationsReturn {
 	};
 
 	const refreshUnreadCount = async (): Promise<void> => {
+		const startedAt = generation;
 		try {
-			unreadCount.value = await getUnreadCount();
+			const count = await getUnreadCount();
+			if (startedAt !== generation) return;
+			unreadCount.value = count;
 		} catch (err) {
 			console.error('Error refreshing unread count:', err);
 		}
 	};
 
 	const markNotificationAsRead = async (id: number): Promise<void> => {
+		const startedAt = generation;
 		try {
 			await markAsRead(id);
+			if (startedAt !== generation) return;
 
 			const notification = notifications.value.find((n) => n.id === id);
 			if (notification && !notification.read_at) {
@@ -111,8 +122,10 @@ export function useNotifications(): UseNotificationsReturn {
 	};
 
 	const markAllNotificationsAsRead = async (): Promise<void> => {
+		const startedAt = generation;
 		try {
 			await markAllAsRead();
+			if (startedAt !== generation) return;
 
 			notifications.value.forEach((notification) => {
 				if (!notification.read_at) {
@@ -128,8 +141,10 @@ export function useNotifications(): UseNotificationsReturn {
 	};
 
 	const removeNotification = async (id: number): Promise<void> => {
+		const startedAt = generation;
 		try {
 			await deleteNotification(id);
+			if (startedAt !== generation) return;
 
 			const index = notifications.value.findIndex((n) => n.id === id);
 			if (index !== -1) {
@@ -207,7 +222,38 @@ export function useNotifications(): UseNotificationsReturn {
 		clearNewNotificationIndicator();
 	};
 
-	if (getCurrentScope()) onScopeDispose(unsubscribeFromRealtime);
+	const followUser = (source: () => number | null | undefined): void => {
+		watch(
+			source,
+			(userId) => {
+				generation++;
+				notifications.value = [];
+				currentPage.value = 1;
+				totalPages.value = 1;
+				loading.value = false;
+				const owner = userId || null;
+				if (owner !== unreadCountOwner) {
+					unreadCount.value = 0;
+					unreadCountOwner = owner;
+				}
+				clearNewNotificationIndicator();
+				if (userId) {
+					subscribeToRealtime(userId);
+					void loadNotifications();
+					void refreshUnreadCount();
+				} else {
+					unsubscribeFromRealtime();
+				}
+			},
+			{ immediate: true },
+		);
+	};
+
+	if (getCurrentScope())
+		onScopeDispose(() => {
+			generation++;
+			unsubscribeFromRealtime();
+		});
 
 	return {
 		notifications,
@@ -227,5 +273,6 @@ export function useNotifications(): UseNotificationsReturn {
 		subscribeToRealtime,
 		unsubscribeFromRealtime,
 		clearNewNotificationIndicator,
+		followUser,
 	};
 }

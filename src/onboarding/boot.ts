@@ -6,6 +6,7 @@ import { toursEngine } from '@/tours/useTours';
 import { desktopWindowLabel, isDesktopApp } from '@/utils/desktop';
 import { effectScope, watch } from 'vue';
 import type { Router } from 'vue-router';
+import { advanceToWheel } from './ghostStage';
 import {
 	clearFreshMarker,
 	readFreshMarker,
@@ -205,7 +206,11 @@ export function installOnboardingFlow(
 				setIntent: (intent, options) => engine.api.setIntent(intent, options),
 				waitConsentClosed,
 				startSequence: (ids, trigger) => engine.api.startSequence(ids, trigger),
-			}).catch((error) => console.error('local first run failed', error));
+			})
+				.then((result) => {
+					if (result === 'seeded') advanceToWheel();
+				})
+				.catch((error) => console.error('local first run failed', error));
 		},
 		{ immediate: true },
 	);

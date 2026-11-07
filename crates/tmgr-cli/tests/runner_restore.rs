@@ -93,11 +93,13 @@ impl Env {
                 exe_pin: None,
                 argv_sha256: None,
                 bypass: false,
+                no_sandbox: false,
                 boot: None,
                 pids: Vec::new(),
                 created_ms: now_ms(),
                 cols: 80,
                 rows: 24,
+                permission_cards: false,
             },
             None,
         )

@@ -11,6 +11,7 @@
 	import { Button } from '@/components/ui/button';
 	import { Textarea } from '@/components/ui/textarea';
 	import store from '@/store';
+	import { autosizeTextarea, isEnterSend } from '@/utils/commentComposer';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import {
 		Edit2,
@@ -52,6 +53,15 @@
 
 	const comments = ref<ChatComment[]>([]);
 	const newMessage = ref('');
+	const chatInput = ref<{ $el: HTMLTextAreaElement } | null>(null);
+	watch(newMessage, () =>
+		nextTick(() => autosizeTextarea(chatInput.value?.$el, 120)),
+	);
+	const onEnter = (event: KeyboardEvent) => {
+		if (!isEnterSend(event)) return;
+		event.preventDefault();
+		sendMessage();
+	};
 	const isLoading = ref(false);
 	const isSending = ref(false);
 	const replyingTo = ref<ChatComment | null>(null);
@@ -385,13 +395,14 @@
 				</Button>
 			</div>
 
-			<div class="flex gap-2">
+			<div class="flex items-end gap-2">
 				<Textarea
+					ref="chatInput"
 					v-model="newMessage"
 					placeholder="Type a message..."
+					rows="1"
 					class="max-h-[120px] min-h-[40px] resize-none"
-					@keydown.enter.exact.prevent="sendMessage"
-					@keydown.enter.shift.exact="newMessage += '\n'"
+					@keydown.enter="onEnter"
 				/>
 				<div class="flex flex-col gap-1">
 					<Button

@@ -19,4 +19,4 @@
                         │                                                                                                                  │
                         │                                                                                                                  │
  + New session     tmpl ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
- tmgr runner · local · a · working · ● 4 ◌ 1 ◆ 0 ✓ 1                                                                          Ctrl-] ? help
+ tmgr runner · local · a · working · ● 4 ◌ 1 ◆ 0 ✓ 1                                                             drag copies  Ctrl-] ? help

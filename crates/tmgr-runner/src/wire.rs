@@ -67,6 +67,38 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 
 pub const SHIM_CWD_FD: i32 = 3;
 
+/// One past the highest fd open now, so the `pre_exec` sweep covers what the process inherited without
+/// a syscall for every possible descriptor. Falls back to the soft limit when the fd list is unreadable.
+pub(crate) fn inherited_fd_limit() -> libc::c_int {
+    let dir = if cfg!(target_os = "linux") {
+        "/proc/self/fd"
+    } else {
+        "/dev/fd"
+    };
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        let max = entries
+            .filter_map(|e| e.ok()?.file_name().to_str()?.parse::<libc::c_int>().ok())
+            .max();
+        if let Some(max) = max {
+            return max + 1;
+        }
+    }
+    let mut lim = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) } != 0 {
+        return 1024;
+    }
+    lim.rlim_cur.min(65536) as libc::c_int
+}
+
+pub(crate) fn cloexec_from(first: libc::c_int, limit: libc::c_int) {
+    for fd in first..limit {
+        unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LaunchFile {
     pub argv: Vec<String>,
@@ -156,6 +188,17 @@ mod tests {
     use tmgr_ipc::proto::ServerMsg;
 
     const SID: &str = "s_abcdefghij";
+
+    #[test]
+    fn the_fd_sweep_reaches_the_highest_open_fd_and_stays_short() {
+        let f = std::fs::File::open("/dev/null").unwrap();
+        let high = 700;
+        assert!(unsafe { libc::dup2(std::os::fd::AsRawFd::as_raw_fd(&f), high) } == high);
+        let limit = inherited_fd_limit();
+        unsafe { libc::close(high) };
+        assert!(limit > high, "limit {limit}");
+        assert!(limit < 4096, "limit {limit}");
+    }
 
     fn busy_screen(rows: u16, cols: u16, shift: u8) -> Snapshot {
         let line = |r: u8| Line {

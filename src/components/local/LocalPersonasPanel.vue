@@ -83,6 +83,22 @@
 					Remove key
 				</Button>
 			</div>
+			<p
+				v-if="llmStatus.slotState === 'not_ready'"
+				class="text-sm text-amber-600 dark:text-amber-400"
+			>
+				Your account is not available to the desktop app yet. Reload the app or
+				sign in again to manage the API key.
+			</p>
+			<p
+				v-else-if="llmStatus.slotState === 'other_account'"
+				class="text-sm text-amber-600 dark:text-amber-400"
+			>
+				These AI provider settings belong to another account.
+			</p>
+			<p v-if="llmError" class="text-sm text-red-600 dark:text-red-400">
+				{{ llmError }}
+			</p>
 		</section>
 
 		<section
@@ -202,11 +218,65 @@
 				</div>
 
 				<div
+					v-if="
+						skillLibrary &&
+						(skillLibrary.skills.length || attachedSkills(persona).length)
+					"
+					class="flex flex-col gap-2 border-t border-border pt-2"
+				>
+					<p class="text-xs font-medium">Library skills</p>
+					<div
+						v-for="skill in attachedSkills(persona)"
+						:key="skill.slug"
+						class="flex items-center justify-between gap-3 text-xs"
+					>
+						<span class="truncate">{{ skill.title }} ({{ skill.slug }})</span>
+						<Button
+							size="sm"
+							variant="outline"
+							@click="detachSkill(persona, skill.slug)"
+						>
+							Detach
+						</Button>
+					</div>
+					<p v-if="skillError" class="text-xs text-red-600 dark:text-red-400">
+						{{ skillError }}
+					</p>
+					<select
+						v-if="unattachedSkills(persona).length"
+						class="w-fit rounded border border-border bg-background px-2 py-1 text-xs"
+						:disabled="attachedSkills(persona).length >= attachedLimit"
+						@change="
+							(e) => {
+								attachSkill(persona, (e.target as HTMLSelectElement).value);
+								(e.target as HTMLSelectElement).value = '';
+							}
+						"
+					>
+						<option value="">
+							{{
+								attachedSkills(persona).length >= attachedLimit
+									? `Limit of ${attachedLimit} skills reached`
+									: 'Attach a library skill…'
+							}}
+						</option>
+						<option
+							v-for="skill in unattachedSkills(persona)"
+							:key="skill.slug"
+							:value="skill.slug"
+						>
+							{{ skill.title }} ({{ skill.slug }})
+						</option>
+					</select>
+				</div>
+
+				<div
 					v-if="canConnect(persona) && localAccessAvailable"
 					class="flex flex-col gap-2 border-t border-border pt-2"
 				>
 					<div class="flex items-center justify-between">
 						<Button
+							v-if="!isDemo"
 							size="sm"
 							variant="outline"
 							data-tour="local-personas.connect"
@@ -214,6 +284,9 @@
 						>
 							Connect an agent
 						</Button>
+						<span v-else class="text-xs text-ink-subtle">
+							Not available in the demo
+						</span>
 						<Button
 							v-if="tokensFor(persona).some((t) => !t.revokedAt)"
 							size="sm"
@@ -293,6 +366,16 @@
 						: 'Local access is not available on Windows yet.'
 				}}
 			</p>
+			<RouterLink
+				v-if="localAccessAvailable && !isDemo"
+				class="self-start text-sm font-medium text-brand underline hover:opacity-80"
+				:to="{
+					name: 'ConnectLocalAgent',
+					params: { workspace_code: workspace.code },
+				}"
+			>
+				Connect your agent
+			</RouterLink>
 		</section>
 
 		<LocalPersonaConnectDialog
@@ -327,6 +410,7 @@
 		type LocalAccessStatus,
 		type TokenInfo,
 	} from '@/local/localTokens';
+	import { useDemoWorkspace } from '@/composable/useDemoWorkspace';
 	import { tauriPersonaCache } from '@/local/personaCache';
 	import {
 		LOCAL_OWNER_ID,
@@ -344,11 +428,32 @@
 	} from '@/local/personas';
 	import { activeLocalWorkspace, localContext } from '@/local/runtime';
 	import {
+		attach,
+		detach,
+		type LibraryFile,
+		type LibrarySkill,
+	} from '@/local/skillLibrary';
+	import { skillLibraryRevision } from '@/local/skillLibraryRevision';
+	import {
+		readSkillLibrary,
+		updateSkillLibrary,
+	} from '@/local/tauriSkillLibrary';
+	import {
 		localAccessConnect,
 		resolveLocalAccessConnect,
 	} from '@/pluginSystem/state';
+	import { resyncCloudIdentity } from '@/utils/cloudIdentity';
 	import { supportsLocalAccess } from '@/utils/desktop';
-	import { computed, defineComponent, onMounted, reactive, ref } from 'vue';
+	import { ATTACHED_SKILL_LIMIT } from '@/utils/personas';
+	import {
+		computed,
+		defineComponent,
+		onMounted,
+		reactive,
+		ref,
+		watch,
+	} from 'vue';
+	import { RouterLink } from 'vue-router';
 	import { useStore } from 'vuex';
 
 	/** Mirrors the Rust classify_url check, so the warning reacts to what's typed, not last saved. */
@@ -377,7 +482,13 @@
 
 	export default defineComponent({
 		name: 'LocalPersonasPanel',
-		components: { Button, Input, LocalPersonaConnectDialog, Switch },
+		components: {
+			Button,
+			Input,
+			LocalPersonaConnectDialog,
+			RouterLink,
+			Switch,
+		},
 		setup() {
 			const store = useStore();
 			const workspace = activeLocalWorkspace();
@@ -387,10 +498,15 @@
 			const drafts = reactive<Record<string, PersonaPermission[]>>({});
 			const llmForm = reactive({ baseUrl: '', model: '', apiKey: '' });
 			const isTypedUrlLocal = computed(() => isLocalLlmUrl(llmForm.baseUrl));
-			const llmStatus = reactive({ hasApiKey: false });
+			const llmStatus = reactive({
+				hasApiKey: false,
+				slotState: 'ok' as 'ok' | 'not_ready' | 'other_account',
+			});
 			const savingLlm = ref(false);
+			const llmError = ref<string | null>(null);
 			const tokens = ref<TokenInfo[]>([]);
 			const connectPersona = ref<WorkspacePersonaRow | null>(null);
+			const { isDemo } = useDemoWorkspace();
 			const accessStatus = reactive<LocalAccessStatus>({
 				enabled: false,
 				listening: false,
@@ -447,8 +563,65 @@
 				}
 			};
 
+			const skillLibrary = ref<LibraryFile | null>(null);
+			const skillError = ref<string | null>(null);
+
+			const refreshSkillLibrary = async () => {
+				const id = currentUser().id;
+				if (!id) return;
+				try {
+					skillLibrary.value = await readSkillLibrary(id);
+				} catch {
+					skillLibrary.value = null;
+				}
+			};
+
+			watch(skillLibraryRevision, refreshSkillLibrary);
+			watch(() => currentUser().id, refreshSkillLibrary);
+
+			const attachedSkills = (persona: WorkspacePersonaRow): LibrarySkill[] =>
+				(skillLibrary.value?.attachments ?? [])
+					.filter((a) => a.persona_uuid === persona.uuid)
+					.flatMap((a) => {
+						const skill = skillLibrary.value?.skills.find(
+							(item) => item.slug === a.slug,
+						);
+						return skill ? [skill] : [];
+					});
+
+			const unattachedSkills = (persona: WorkspacePersonaRow) => {
+				const taken = new Set(attachedSkills(persona).map((s) => s.slug));
+				return (skillLibrary.value?.skills ?? []).filter(
+					(s) => !taken.has(s.slug),
+				);
+			};
+
+			const changeAttachment = async (
+				change: (lib: LibraryFile) => LibraryFile,
+			) => {
+				skillError.value = null;
+				try {
+					await updateSkillLibrary(currentUser().id, (lib) => ({
+						library: change(lib),
+						result: null,
+					}));
+				} catch (error) {
+					skillError.value =
+						error instanceof Error ? error.message : String(error);
+				}
+				await refreshSkillLibrary();
+			};
+
+			const attachSkill = (persona: WorkspacePersonaRow, slug: string) =>
+				slug
+					? changeAttachment((lib) => attach(lib, persona.uuid, slug))
+					: undefined;
+			const detachSkill = (persona: WorkspacePersonaRow, slug: string) =>
+				changeAttachment((lib) => detach(lib, persona.uuid, slug));
+
 			const refreshPersonas = async () => {
 				if (!workspace) return;
+				refreshSkillLibrary();
 				const ctx = await ctxFor();
 				personas.value = await listLocalPersonas(ctx);
 				for (const persona of personas.value)
@@ -463,17 +636,43 @@
 				return core.invoke<T>(command, args);
 			};
 
+			type LlmConfig = {
+				base_url: string;
+				model: string;
+				has_api_key: boolean;
+				is_local: boolean;
+				slot_state?: 'ok' | 'not_ready' | 'other_account';
+			};
+
+			const fetchLlmConfig = async () => {
+				await resyncCloudIdentity();
+				return invoke<LlmConfig>('llm_config_get', {
+					userId: currentUser().id,
+				});
+			};
+
 			const refreshLlmConfig = async () => {
-				const config = await invoke<{
-					base_url: string;
-					model: string;
-					has_api_key: boolean;
-					is_local: boolean;
-				}>('llm_config_get', { userId: currentUser().id });
+				const config = await fetchLlmConfig();
 				llmForm.baseUrl = config.base_url;
 				llmForm.model = config.model;
 				llmStatus.hasApiKey = config.has_api_key;
+				llmStatus.slotState = config.slot_state ?? 'ok';
 			};
+
+			watch(
+				() => currentUser().id,
+				async (id) => {
+					if (!workspace) return;
+					try {
+						const config = await fetchLlmConfig();
+						if (currentUser().id !== id) return;
+						llmStatus.hasApiKey = config.has_api_key;
+						llmStatus.slotState = config.slot_state ?? 'ok';
+					} catch (error) {
+						console.error('[llm] failed to refresh the key status', error);
+					}
+				},
+			);
 
 			const refreshTokens = async () => {
 				if (!workspace) return;
@@ -486,7 +685,16 @@
 
 			onMounted(async () => {
 				if (!workspace) return;
-				if (localOnly) await ensureDefaultLocalPersona(await ctxFor());
+				if (localOnly) {
+					try {
+						await ensureDefaultLocalPersona(await ctxFor());
+					} catch (error) {
+						console.error(
+							'[personas] failed to ensure the default agent',
+							error,
+						);
+					}
+				}
 				await Promise.all([
 					refreshPersonas(),
 					refreshLlmConfig(),
@@ -614,7 +822,9 @@
 
 			const saveLlmConfig = async () => {
 				savingLlm.value = true;
+				llmError.value = null;
 				try {
+					await resyncCloudIdentity();
 					await invoke('llm_config_set', {
 						userId: currentUser().id,
 						baseUrl: llmForm.baseUrl,
@@ -624,6 +834,9 @@
 					});
 					llmForm.apiKey = '';
 					await refreshLlmConfig();
+				} catch (error) {
+					llmError.value =
+						error instanceof Error ? error.message : String(error);
 				} finally {
 					savingLlm.value = false;
 				}
@@ -631,7 +844,9 @@
 
 			const removeApiKey = async () => {
 				savingLlm.value = true;
+				llmError.value = null;
 				try {
+					await resyncCloudIdentity();
 					await invoke('llm_config_set', {
 						userId: currentUser().id,
 						baseUrl: llmForm.baseUrl,
@@ -641,6 +856,9 @@
 					});
 					llmForm.apiKey = '';
 					await refreshLlmConfig();
+				} catch (error) {
+					llmError.value =
+						error instanceof Error ? error.message : String(error);
 				} finally {
 					savingLlm.value = false;
 				}
@@ -649,6 +867,13 @@
 			return {
 				workspace,
 				localOnly,
+				skillLibrary,
+				skillError,
+				attachedLimit: ATTACHED_SKILL_LIMIT,
+				attachedSkills,
+				unattachedSkills,
+				attachSkill,
+				detachSkill,
 				showAddForm,
 				adding,
 				addError,
@@ -659,6 +884,7 @@
 				syncError,
 				llmForm,
 				llmStatus,
+				llmError,
 				isTypedUrlLocal,
 				savingLlm,
 				PERSONA_PERMISSIONS,
@@ -668,9 +894,11 @@
 				togglePermission,
 				sync,
 				saveLlmConfig,
+				refreshLlmConfig,
 				removeApiKey,
 				tokens,
 				connectPersona,
+				isDemo,
 				localAccessAvailable,
 				accessStatus,
 				accessToggling,

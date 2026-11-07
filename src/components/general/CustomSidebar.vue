@@ -27,6 +27,7 @@
 	import DesktopAppBar from '@/components/desktop/DesktopAppBar.vue';
 	import LocalMoveBanner from '@/components/desktop/LocalMoveBanner.vue';
 	import LocalOnlyBanner from '@/components/desktop/LocalOnlyBanner.vue';
+	import LocalUpgradeHost from '@/components/desktop/LocalUpgradeHost.vue';
 	import MoveToCloudHost from '@/components/desktop/MoveToCloudHost.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import DarkMode from '@/components/general/DarkMode.vue';
@@ -79,6 +80,7 @@
 	} from '@/components/ui/sidebar';
 	import AddTaskModalTrigger from '@/components/ui/sidebar/AddTaskModalTrigger.vue';
 	import SidebarMobileCloser from '@/components/ui/sidebar/SidebarMobileCloser.vue';
+	import { useDemoWorkspace } from '@/composable/useDemoWorkspace';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { useNavHistory } from '@/composable/useNavHistory';
@@ -91,6 +93,7 @@
 	import { pagesAvailable } from '@/utils/pagesTree';
 	import { requestCache } from '@/utils/requestCache';
 	import { serverMessageFrom } from '@/utils/serverError';
+	import { workspaceIconStyle } from '@/utils/workspaceColor';
 	import { useMediaQuery } from '@vueuse/core';
 	import {
 		ArchiveIcon,
@@ -98,6 +101,7 @@
 		ArrowRight,
 		BadgeCheck,
 		BarChart3,
+		Brain,
 		ChevronsUpDown,
 		ClipboardListIcon,
 		CloudUpload,
@@ -152,6 +156,7 @@
 	const navHistory = useNavHistory();
 	const { canBack, canForward } = navHistory;
 	const isLocalOnly = computed(() => store.getters.isLocalOnly === true);
+	const { isDemo } = useDemoWorkspace();
 	const isMobile = useMediaQuery('(max-width: 768px)');
 	const showAskAi = computed(
 		() => !isDesktop && !isLocalOnly.value && isFeatureEnabled('ai.assistant'),
@@ -317,6 +322,20 @@
 		() => {
 			if (sidebarBooting) return;
 			void loadSidebar();
+		},
+	);
+
+	// A rename or colour change commits to the store; store items win, the sidebar keeps its own membership.
+	watch(
+		() => store.state.workspaces,
+		() => {
+			const byId = store.state.workspacesById as Record<number, Workspace>;
+			workspaces.value = workspaces.value.map(
+				(workspace) => byId[workspace.id] ?? workspace,
+			);
+			const id = activeWorkspace.value?.id;
+			const same = workspaces.value.find((workspace) => workspace.id === id);
+			if (same) activeWorkspace.value = same;
 		},
 	);
 
@@ -562,6 +581,7 @@
 										>
 											<div
 												class="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
+												:style="workspaceIconStyle(activeWorkspace?.color)"
 											>
 												<PackageOpen class="size-4" />
 											</div>
@@ -577,6 +597,13 @@
 														data-testid="local-workspace-badge"
 														data-tour="local.badge"
 														>Local</span
+													>
+													<span
+														v-if="isDemo"
+														class="shrink-0 rounded bg-violet-500/15 px-1.5 py-0.5 text-2xs font-semibold text-violet-600 uppercase dark:text-violet-400"
+														data-testid="demo-badge"
+														data-tour="ghost.badge"
+														>DEMO</span
 													>
 												</span>
 												<span class="truncate text-xs">{{
@@ -613,6 +640,7 @@
 									>
 										<div
 											class="flex size-6 items-center justify-center rounded-sm border"
+											:style="workspaceIconStyle(workspace.color)"
 										>
 											<component
 												:is="
@@ -686,7 +714,7 @@
 											</div>
 										</DropdownMenuItem>
 										<DropdownMenuItem
-											v-if="!isLocalOnly"
+											v-if="!isLocalOnly && !isDemo"
 											class="cursor-pointer gap-2 p-2"
 											data-testid="move-to-cloud-menu-item"
 											@click="moveToCloud"
@@ -894,6 +922,19 @@
 								</SidebarMenuButton>
 							</SidebarMenuItem>
 							<SidebarMenuItem
+								v-if="activeWorkspace?.code && pagesEnabled && !isLocalOnly"
+							>
+								<SidebarMenuButton as-child>
+									<router-link
+										:to="`/${activeWorkspace.code}/memory`"
+										:class="NAV_ACTIVE"
+									>
+										<Brain />
+										<span>Memory</span>
+									</router-link>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+							<SidebarMenuItem
 								v-if="activeWorkspace?.code && isFeatureEnabled('graph')"
 							>
 								<SidebarMenuButton as-child>
@@ -974,7 +1015,7 @@
 								size="sm"
 								data-testid="sidebar-create-account"
 								data-tour="nav.create-account"
-								@click="$router.push({ name: 'Login' })"
+								@click="$router.push({ name: 'Register' })"
 							>
 								Create account
 							</Button>
@@ -1268,6 +1309,7 @@
 	</Dialog>
 
 	<MoveToCloudHost v-if="isDesktop && !isLocalOnly" />
+	<LocalUpgradeHost v-if="isDesktop && !isLocalOnly" />
 
 	<Confirm
 		v-if="showExitConfirm"

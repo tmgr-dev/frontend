@@ -181,6 +181,11 @@ fn list_all(client: &tmgr_core::api::Client, base: &str) -> Result<(Vec<Value>, 
     Ok((items, false))
 }
 
+fn is_owner_comment(kind: &str, author: &str, owner: &str) -> bool {
+    kind == "user"
+        && (author == owner || (author == "-1" && owner.parse::<i64>().is_ok_and(|id| id > 0)))
+}
+
 /// A local workspace opened for reading tasks the way the queue snapshots them: the edit journal is
 /// verified once and every task's author comes from it.
 pub struct LocalTasks {
@@ -249,7 +254,7 @@ impl LocalTasks {
                 a.iter()
                     .map(|c| {
                         let kind = text(c, "author_kind");
-                        let human = kind == "user" && text(c, "author_id") == *owner;
+                        let human = is_owner_comment(&kind, &text(c, "author_id"), owner);
                         BundleComment {
                             author: BundleAuthor {
                                 kind: if human {
@@ -422,6 +427,17 @@ mod tests {
             persona_text: String::new(),
             cloud: None,
         }
+    }
+
+    #[test]
+    fn comments_of_the_local_account_stay_human_for_a_signed_in_owner() {
+        assert!(is_owner_comment("user", "-1", "7"));
+        assert!(is_owner_comment("user", "7", "7"));
+        assert!(is_owner_comment("user", "-1", "-1"));
+        assert!(!is_owner_comment("user", "8", "7"));
+        assert!(!is_owner_comment("user", "-1", "-2"));
+        assert!(!is_owner_comment("user", "-1", "0"));
+        assert!(!is_owner_comment("persona", "-1", "7"));
     }
 
     #[test]

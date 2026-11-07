@@ -20,6 +20,7 @@ import type { AgentSession } from '@/utils/agentStatus';
 import type { CommentReactionsUpdatedEvent } from '@/utils/commentReactions';
 import type { ChannelAuthorizationHandler } from '@/utils/pusherChannelAuthorizer';
 import { createChannelAuthorizer } from '@/utils/pusherChannelAuthorizer';
+import { tokenSubject } from '@/utils/tokenSync';
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 import type { Ref } from 'vue';
@@ -81,10 +82,74 @@ const connectionState = ref<ConnectionState>('disconnected');
 const connectionError = ref<ActionError | null>(null);
 let echoInstance: Echo | null = null;
 const subscriptions = new Map<string, ChannelSubscription>();
+let realtimeUserId: number | null = null;
+let workspaceFeed: { userId: number; id: string } | null = null;
+let dormant: {
+	userId: number;
+	channels: Map<string, Map<string, EventHandlers>>;
+} | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 const cancelReconnect = (): void => {
 	if (reconnectTimer !== null) clearTimeout(reconnectTimer);
 	reconnectTimer = null;
+};
+
+const CLOUD_WORKSPACE_CHANNEL = /^App\.Workspace\.\d+$/;
+const userChannelName = (userId: number): string => `App.User.${userId}`;
+
+const hasCloudWorkspaceSubscribers = (): boolean => {
+	for (const [name, sub] of subscriptions) {
+		if (CLOUD_WORKSPACE_CHANNEL.test(name) && sub.handlers.size > 0) {
+			return true;
+		}
+	}
+	return false;
+};
+
+const workspaceIdOf = (data: unknown): number | null => {
+	const raw = (data as { workspace_id?: unknown } | null | undefined)
+		?.workspace_id;
+	if (typeof raw !== 'number' && typeof raw !== 'string') return null;
+	const id = Number(raw);
+	return Number.isInteger(id) && id > 0 ? id : null;
+};
+
+const isWorkspaceFeedChannel = (channelName: string): boolean =>
+	workspaceFeed !== null &&
+	channelName === userChannelName(workspaceFeed.userId);
+
+const routed = (
+	channelName: string,
+	data: unknown,
+): { handlers: EventHandlers[] } | undefined => {
+	const sub = subscriptions.get(channelName);
+	if (!sub) return undefined;
+	const handlers = [...sub.handlers.values()];
+	const workspaceId = isWorkspaceFeedChannel(channelName)
+		? workspaceIdOf(data)
+		: null;
+	if (workspaceId !== null) {
+		subscriptions
+			.get(`App.Workspace.${workspaceId}`)
+			?.handlers.forEach((h) => handlers.push(h));
+	}
+	return { handlers };
+};
+
+const routedToAll = (
+	channelName: string,
+): { handlers: EventHandlers[] } | undefined => {
+	const sub = subscriptions.get(channelName);
+	if (!sub) return undefined;
+	const handlers = [...sub.handlers.values()];
+	if (isWorkspaceFeedChannel(channelName)) {
+		for (const [name, workspaceSub] of subscriptions) {
+			if (CLOUD_WORKSPACE_CHANNEL.test(name)) {
+				workspaceSub.handlers.forEach((h) => handlers.push(h));
+			}
+		}
+	}
+	return { handlers };
 };
 
 // Legacy Vuex consumers resolve this lazily, so store creation opens no socket.
@@ -112,9 +177,21 @@ export function deliverToUser(
 		?.handlers.forEach((handlers) => call(handlers));
 }
 
+export function setRealtimeUser(userId: number | null | undefined): void {
+	realtimeUserId = Number(userId) > 0 ? Number(userId) : null;
+	if (dormant && realtimeUserId !== null && realtimeUserId !== dormant.userId) {
+		dormant = null;
+	}
+	if (workspaceFeed || dormant || hasCloudWorkspaceSubscribers()) usePusher();
+}
+
 export function disconnectRealtime(): void {
 	if (echoInstance) usePusher().disconnect();
-	else cancelReconnect();
+	else {
+		cancelReconnect();
+		realtimeUserId = null;
+		workspaceFeed = null;
+	}
 }
 const reconnectConfig = {
 	maxAttempts: 5,
@@ -302,12 +379,36 @@ export function usePusher(): UsePusherReturn {
 		}, delay);
 	};
 
+	// The feed is a handler of its own on the user channel, so the channel stays joined
+	// while either user handlers or workspace subscribers remain.
+	const syncWorkspaceFeed = (): void => {
+		const wanted =
+			realtimeUserId !== null &&
+			getAuthToken() &&
+			hasCloudWorkspaceSubscribers()
+				? realtimeUserId
+				: null;
+		if (workspaceFeed && workspaceFeed.userId !== wanted) {
+			const previous = workspaceFeed;
+			workspaceFeed = null;
+			unsubscribeHandler(userChannelName(previous.userId), previous.id);
+		}
+		if (wanted !== null && !workspaceFeed) {
+			const id = subscribe(userChannelName(wanted), {});
+			if (id) workspaceFeed = { userId: wanted, id };
+		}
+	};
+
 	// Subscribe to a channel with event handlers - returns subscription ID for unsubscribing
-	const subscribe = (channelName: string, events: EventHandlers): string => {
-		// Local (desktop, SQLite) workspaces have negative ids and no realtime channel; neither has a
-		// session without a cloud token.
-		if (/^App\.Workspace\.-\d+$/.test(channelName) || !getAuthToken()) {
-			const subscriptionId = generateSubscriptionId();
+	const subscribe = (
+		channelName: string,
+		events: EventHandlers,
+		reuseId?: string,
+	): string => {
+		// Workspace channels are logical: their events arrive on the member's own user channel. Neither
+		// has a session without a cloud token.
+		if (channelName.startsWith('App.Workspace.') || !getAuthToken()) {
+			const subscriptionId = reuseId ?? generateSubscriptionId();
 			const existing = subscriptions.get(channelName);
 			if (existing) {
 				existing.handlers.set(subscriptionId, events);
@@ -318,6 +419,7 @@ export function usePusher(): UsePusherReturn {
 					isPrivate: true,
 				});
 			}
+			syncWorkspaceFeed();
 			return subscriptionId;
 		}
 		if (!echoInstance) {
@@ -329,13 +431,13 @@ export function usePusher(): UsePusherReturn {
 			return '';
 		}
 
-		const subscriptionId = generateSubscriptionId();
+		const subscriptionId = reuseId ?? generateSubscriptionId();
 
 		try {
 			// Check if we already have a subscription to this channel
 			const existingSubscription = subscriptions.get(channelName);
 
-			if (existingSubscription) {
+			if (existingSubscription?.channel) {
 				// Add new handler to existing channel subscription
 				existingSubscription.handlers.set(subscriptionId, events);
 
@@ -354,12 +456,13 @@ export function usePusher(): UsePusherReturn {
 				: echoInstance.channel(channelName);
 
 			// Create handlers map and add the first handler
-			const handlers = new Map<string, EventHandlers>();
+			const handlers =
+				existingSubscription?.handlers ?? new Map<string, EventHandlers>();
 			handlers.set(subscriptionId, events);
 
 			// Set up event listeners that dispatch to ALL handlers
 			channel.listen('.activity.created', (data: { activity: Activity }) => {
-				const sub = subscriptions.get(channelName);
+				const sub = routed(channelName, data);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onActivityCreated?.(data.activity));
 				}
@@ -368,7 +471,7 @@ export function usePusher(): UsePusherReturn {
 			channel.listen(
 				'.dashboard.updated',
 				(data: { statistics: Partial<DashboardStatistics> }) => {
-					const sub = subscriptions.get(channelName);
+					const sub = routed(channelName, data);
 					if (sub) {
 						sub.handlers.forEach((h) =>
 							h.onDashboardUpdated?.(data.statistics),
@@ -385,7 +488,7 @@ export function usePusher(): UsePusherReturn {
 					updated_by_user_id: number;
 					source_instance_id?: string;
 				}) => {
-					const sub = subscriptions.get(channelName);
+					const sub = routed(channelName, data);
 
 					if (sub) {
 						sub.handlers.forEach((h) => {
@@ -400,11 +503,23 @@ export function usePusher(): UsePusherReturn {
 				},
 			);
 
+			channel.listen(
+				'.tasks.reordered',
+				(data: { status_id: number; source_instance_id?: string }) => {
+					const sub = routed(channelName, data);
+					if (sub) {
+						sub.handlers.forEach((h) =>
+							h.onTasksReordered?.(data.status_id, data.source_instance_id),
+						);
+					}
+				},
+			);
+
 			(['assigned', 'unassigned'] as const).forEach((type) => {
 				channel.listen(
 					`.task.${type}`,
 					(data: Omit<TaskAssignmentEvent, 'type'>) => {
-						const sub = subscriptions.get(channelName);
+						const sub = routed(channelName, data);
 						if (sub) {
 							sub.handlers.forEach((h) =>
 								h.onTaskAssignmentChanged?.({ ...data, type }),
@@ -417,49 +532,49 @@ export function usePusher(): UsePusherReturn {
 			// TM-224: the API broadcasts these on the user's own channel when a timer starts or stops,
 			// so the same user's other tabs can follow a timer they did not start themselves.
 			channel.listen('.task-countdown-started', (data: { task: any }) => {
-				const sub = subscriptions.get(channelName);
+				const sub = routed(channelName, data);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onTaskCountdownStarted?.(data.task));
 				}
 			});
 
 			channel.listen('.task-countdown-stopped', (data: { task: any }) => {
-				const sub = subscriptions.get(channelName);
+				const sub = routed(channelName, data);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onTaskCountdownStopped?.(data.task));
 				}
 			});
 
 			channel.listen('.agent-work.changed', (data: { run: AgentWorkRun }) => {
-				const sub = subscriptions.get(channelName);
+				const sub = routed(channelName, data);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onAgentWorkChanged?.(data.run));
 				}
 			});
 
 			channel.listen('.agent-status.changed', (data: AgentSession) => {
-				const sub = subscriptions.get(channelName);
+				const sub = routed(channelName, data);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onAgentStatusChanged?.(data));
 				}
 			});
 
 			channel.listen('.comment-added', (data: { comment: any }) => {
-				const sub = subscriptions.get(channelName);
+				const sub = routed(channelName, data);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onCommentAdded?.(data.comment));
 				}
 			});
 
 			channel.listen('.comment-updated', (data: { comment: any }) => {
-				const sub = subscriptions.get(channelName);
+				const sub = routed(channelName, data);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onCommentUpdated?.(data.comment));
 				}
 			});
 
 			channel.listen('.comment-deleted', (data: { comment: any }) => {
-				const sub = subscriptions.get(channelName);
+				const sub = routed(channelName, data);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onCommentDeleted?.(data.comment));
 				}
@@ -468,7 +583,7 @@ export function usePusher(): UsePusherReturn {
 			channel.listen(
 				'.comment-reactions-updated',
 				(data: CommentReactionsUpdatedEvent) => {
-					const sub = subscriptions.get(channelName);
+					const sub = routed(channelName, data);
 					if (sub) {
 						sub.handlers.forEach((h) => h.onCommentReactionsUpdated?.(data));
 					}
@@ -478,7 +593,7 @@ export function usePusher(): UsePusherReturn {
 			channel.listen(
 				'.member.status.changed',
 				(data: { member: TeamMemberStatus }) => {
-					const sub = subscriptions.get(channelName);
+					const sub = routed(channelName, data);
 					if (sub) {
 						sub.handlers.forEach((h) => h.onMemberStatusChanged?.(data.member));
 					}
@@ -486,7 +601,7 @@ export function usePusher(): UsePusherReturn {
 			);
 
 			channel.listen('.notification.created', (data: any) => {
-				const sub = subscriptions.get(channelName);
+				const sub = routed(channelName, data);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onNotificationCreated?.(data));
 				}
@@ -494,7 +609,7 @@ export function usePusher(): UsePusherReturn {
 
 			PAGE_EVENT_TYPES.forEach((type) => {
 				channel.listen(`.${type}`, (data: PageEventPayload) => {
-					const sub = subscriptions.get(channelName);
+					const sub = routed(channelName, data);
 					if (sub) {
 						sub.handlers.forEach((h) => h.onPageEvent?.(type, data));
 					}
@@ -502,28 +617,28 @@ export function usePusher(): UsePusherReturn {
 			});
 
 			channel.listen('.agent.step', (data: AgentStepEvent) => {
-				const sub = subscriptions.get(channelName);
+				const sub = routed(channelName, data);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onAgentStep?.(data));
 				}
 			});
 
 			channel.listen('.agent.reply', (data: AgentReplyEvent) => {
-				const sub = subscriptions.get(channelName);
+				const sub = routed(channelName, data);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onAgentReply?.(data));
 				}
 			});
 
 			channel.listen('.agent.confirmation', (data: AgentConfirmationEvent) => {
-				const sub = subscriptions.get(channelName);
+				const sub = routed(channelName, data);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onAgentConfirmation?.(data));
 				}
 			});
 
 			channel.listen('.agent.compacted', (data: AgentCompactedEvent) => {
-				const sub = subscriptions.get(channelName);
+				const sub = routed(channelName, data);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onAgentCompacted?.(data));
 				}
@@ -538,7 +653,7 @@ export function usePusher(): UsePusherReturn {
 					recoverable: true,
 					details: error,
 				};
-				const sub = subscriptions.get(channelName);
+				const sub = routedToAll(channelName);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onError?.(actionError));
 				}
@@ -546,7 +661,7 @@ export function usePusher(): UsePusherReturn {
 
 			// Handle reconnection
 			channel.subscribed(() => {
-				const sub = subscriptions.get(channelName);
+				const sub = routedToAll(channelName);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onReconnect?.());
 				}
@@ -582,6 +697,7 @@ export function usePusher(): UsePusherReturn {
 		channelName: string,
 		subscriptionId: string,
 	): void => {
+		dormant?.channels.get(channelName)?.delete(subscriptionId);
 		const subscription = subscriptions.get(channelName);
 
 		if (subscription) {
@@ -589,6 +705,7 @@ export function usePusher(): UsePusherReturn {
 
 			if (subscription.handlers.size === 0 && !subscription.channel) {
 				subscriptions.delete(channelName);
+				syncWorkspaceFeed();
 				return;
 			}
 
@@ -606,10 +723,19 @@ export function usePusher(): UsePusherReturn {
 
 	// Unsubscribe from a channel entirely (removes all handlers)
 	const unsubscribe = (channelName: string): void => {
+		dormant?.channels.delete(channelName);
 		const subscription = subscriptions.get(channelName);
 
 		if (subscription && !subscription.channel) {
 			subscriptions.delete(channelName);
+			syncWorkspaceFeed();
+			return;
+		}
+
+		if (subscription && workspaceFeed && isWorkspaceFeedChannel(channelName)) {
+			for (const id of [...subscription.handlers.keys()]) {
+				if (id !== workspaceFeed.id) subscription.handlers.delete(id);
+			}
 			return;
 		}
 
@@ -652,14 +778,50 @@ export function usePusher(): UsePusherReturn {
 		restartConnection();
 	};
 
+	// Views that outlive a disconnect get their handlers back for the same user only.
+	const rememberHandlers = (): typeof dormant => {
+		if (realtimeUserId === null) return null;
+		const own = userChannelName(realtimeUserId);
+		const channels = new Map<string, Map<string, EventHandlers>>();
+		for (const [name, sub] of subscriptions) {
+			if (name !== own && !CLOUD_WORKSPACE_CHANNEL.test(name)) continue;
+			const kept = new Map(sub.handlers);
+			if (name === own && workspaceFeed) kept.delete(workspaceFeed.id);
+			if (kept.size > 0) channels.set(name, kept);
+		}
+		return { userId: realtimeUserId, channels };
+	};
+
+	const restoreHandlers = (): void => {
+		if (!dormant || dormant.userId !== realtimeUserId) return;
+		const token = getAuthToken();
+		if (!token) return;
+		const owner = tokenSubject({ token });
+		if (owner !== null && owner !== dormant.userId) {
+			dormant = null;
+			return;
+		}
+		const { channels } = dormant;
+		dormant = null;
+		for (const [name, handlers] of channels) {
+			for (const [id, events] of handlers) subscribe(name, events, id);
+		}
+	};
+
 	// Disconnect from Pusher
 	const disconnect = (): void => {
 		cancelReconnect();
 		reconnectConfig.currentAttempt = 0;
+		const remembered = echoInstance ? rememberHandlers() : null;
+		const kept = dormant;
+		dormant = null;
+		realtimeUserId = null;
+		workspaceFeed = null;
 		if (echoInstance) {
 			try {
 				// Unsubscribe from all channels
 				unsubscribeAll();
+				dormant = remembered ?? kept;
 
 				// Disconnect Echo
 				const previousEcho = echoInstance;
@@ -739,6 +901,8 @@ export function usePusher(): UsePusherReturn {
 	if (!echoInstance) {
 		initializeEcho();
 	}
+	restoreHandlers();
+	syncWorkspaceFeed();
 
 	return {
 		// Connection state

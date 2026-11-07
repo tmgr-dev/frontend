@@ -57,9 +57,36 @@ pub struct Entry {
     pub keys: Vec<PinnedKey>,
     #[serde(default)]
     pub repos: BTreeMap<String, RepoBinding>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub require_signed_rules: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub require_signed_persona: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl Entry {
+    pub fn policy_refusal(&self, persona_covered: bool, context_covered: bool) -> Option<Refusal> {
+        let missing = match (
+            self.require_signed_rules && !context_covered,
+            self.require_signed_persona && !persona_covered,
+        ) {
+            (false, false) => return None,
+            (true, false) => "workspace rules",
+            (false, true) => "a persona",
+            (true, true) => "workspace rules and a persona",
+        };
+        Some(Refusal::new(
+            format!(
+                "this machine requires signed {} for workspace {}, and the approval does not cover them (a workspace with no rules cannot satisfy this)",
+                missing, self.workspace_code
+            ),
+            "open the task in the web app and click Confirm for agent runs",
+        ))
+    }
+
     pub fn expiry(&self) -> Option<DateTime<Utc>> {
         self.expires_at
             .as_deref()
@@ -332,7 +359,13 @@ pub fn check_claim(
             "open the task in the web app and click Confirm for agent runs",
         ));
     }
-    Ok(())
+    match entry.policy_refusal(
+        claim.persona_sha256.is_some(),
+        claim.context_sha256.is_some(),
+    ) {
+        Some(r) => Err(r),
+        None => Ok(()),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -426,6 +459,8 @@ mod tests {
             expires_at: None,
             keys: vec![],
             repos: BTreeMap::new(),
+            require_signed_rules: false,
+            require_signed_persona: false,
         }
     }
 

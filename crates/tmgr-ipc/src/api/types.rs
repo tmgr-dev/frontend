@@ -1,4 +1,4 @@
-use super::bundle::RunBundle;
+use super::bundle::{RunBundle, TeamLink};
 use super::screen::{Line, Modes, Snapshot};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -55,6 +55,14 @@ pub struct CreateReq {
     pub task: Option<TaskRef>,
 }
 
+/// A conversation the agent recorded outside the runner, resumed or forked by its id.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExternalResume {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fork: bool,
+}
+
 /// Params of `runs.create` (the runner resolves argv from the profile).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunCreateReq {
@@ -100,6 +108,22 @@ pub struct RunCreateReq {
     pub unattended: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clones: Vec<CloneSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_sandbox: Option<NoSandbox>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_resume: Option<ExternalResume>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub permission_cards: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team: Option<TeamLink>,
+}
+
+/// A manual run outside the OS sandbox (`client: "cli"` only): the agent gets the real home and the caller's environment.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NoSandbox {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
 }
 
 /// Params of `orchestrator.create` (`client: "cli"` only): the runner builds the command and the prompt itself.
@@ -118,6 +142,7 @@ pub struct OrchestratorCreateReq {
 impl OrchestratorCreateReq {
     pub fn as_run(&self) -> RunCreateReq {
         RunCreateReq {
+            team: None,
             profile: self.profile.clone(),
             task: None,
             cwd: self.cwd.clone(),
@@ -140,6 +165,9 @@ impl OrchestratorCreateReq {
             cloud: None,
             unattended: true,
             clones: Vec::new(),
+            no_sandbox: None,
+            external_resume: None,
+            permission_cards: false,
         }
     }
 }
@@ -213,13 +241,17 @@ pub struct RestoredRun {
 }
 
 /// Params of `sessions.resume`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResumeParams {
     pub id: String,
     #[serde(default = "default_cols")]
     pub cols: u16,
     #[serde(default = "default_rows")]
     pub rows: u16,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_sandbox: Option<NoSandbox>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -273,6 +305,16 @@ pub struct SessionInfo {
     pub resumed_from: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub human_s: Option<u64>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_sandbox: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoints: Option<super::checkpoints::CheckpointStatus>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub permission_cards: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team: Option<TeamLink>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_session_id: Option<String>,
 }
 
 /// Params of `runs.lookup`.
@@ -308,6 +350,8 @@ pub struct SessionText {
     pub rows: u16,
     pub cols: u16,
     pub lines: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub wrapped: Vec<bool>,
     pub scroll_max: u32,
 }
 
@@ -375,6 +419,8 @@ pub struct KillParams {
 pub struct SendParams {
     pub id: String,
     pub text: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub at_prompt: bool,
 }
 
 /// Params of `attach.open` and `attach.set`.
@@ -415,4 +461,50 @@ pub struct PathParams {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrustRemoved {
     pub removed: bool,
+}
+
+/// One agent permission prompt, from `permissions.list` (`client: "cli"` only).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PermissionCard {
+    pub id: String,
+    pub session: String,
+    pub agent: String,
+    pub tool: String,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub danger: Vec<String>,
+    pub can_answer: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why_not: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub always_label: Option<String>,
+    #[serde(default, skip_serializing_if = "is_zero_ms")]
+    pub armed_in_ms: u64,
+}
+
+fn is_zero_ms(v: &u64) -> bool {
+    *v == 0
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionChoice {
+    Yes,
+    Always,
+    No,
+}
+
+/// Params of `permissions.answer` (`client: "cli"` only). The daemon re-checks the live prompt and refuses if it changed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PermissionAnswer {
+    pub session: String,
+    pub card: String,
+    pub choice: PermissionChoice,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub confirmed: bool,
 }

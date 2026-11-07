@@ -1,10 +1,12 @@
+import { getUser } from '@/actions/tmgr/user';
 import alertPlugin from '@/alert';
+import { disconnectRealtime, setRealtimeUser } from '@/composable/usePusher';
 import components from '@/globalComponents.ts';
 import { installLocalWorkspaces } from '@/local/install';
 import { activeLocalWorkspace } from '@/local/runtime';
 import { installOnboardingFlow } from '@/onboarding/boot';
 import { mask, VueTheMask } from '@/plugins/VueTheMask';
-import $axios from '@/plugins/axios';
+import $axios, { hardLogout } from '@/plugins/axios';
 import Selectable from '@/plugins/directives/selectable';
 import { startPrivacy } from '@/privacy/boot';
 import router from '@/router';
@@ -13,6 +15,7 @@ import store from '@/store';
 import { installTours } from '@/tours/boot';
 import { installTourTelemetry } from '@/tours/telemetryAdapter';
 import { shouldReloadOnModeChange } from '@/utils/accountModeSwitch';
+import { installCloudIdentitySync } from '@/utils/cloudIdentity';
 import {
 	desktopPlatform,
 	desktopWindowLabel,
@@ -25,11 +28,12 @@ import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import { installFileDropGuard } from '@/utils/fileDrag';
 import { installFocusSource } from '@/utils/focusSource';
 import { findInjectedScripts } from '@/utils/injectedScripts';
+import { installLocalUpgrade, markLocalUpgrade } from '@/utils/localUpgrade';
 import { requestCache } from '@/utils/requestCache';
 import { installRoutineSnapshotInvalidation } from '@/utils/routineSnapshotInvalidation';
+import { syncSessionFromStorage } from '@/utils/sessionSync';
 import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { setTimeZoneSource } from '@/utils/timezone';
-import { tokenFromStorageEvent } from '@/utils/tokenSync';
 import {
 	applyRelayedEvent,
 	installWindowEventRelay,
@@ -178,6 +182,57 @@ if (isDesktopApp()) {
 					invalidate: (key) => requestCache.invalidate(key),
 				}),
 		);
+		void Promise.all([
+			import('@/local/externalChanges'),
+			import('@/local/runtime'),
+			import('@/composable/usePusher'),
+			import('@/actions/tmgr/tasks'),
+			import('@/actions/tmgr/agentWork'),
+			import('@tauri-apps/api/event'),
+		]).then(
+			async ([
+				{ installExternalChanges, EXTERNAL_CHANGE_EVENT },
+				runtime,
+				{ deliverToWorkspace, deliverToUser },
+				{ getTask },
+				{ getAgentWork },
+				{ listen },
+			]) => {
+				await runtime.listLocalWorkspaces();
+				return installExternalChanges({
+					active: () => runtime.activeLocalWorkspace(),
+					subscribeActive: runtime.onActiveLocalWorkspaceChange,
+					listen: (handler) =>
+						listen<{ code: string }>(EXTERNAL_CHANGE_EVENT, (event) =>
+							handler(event.payload.code),
+						),
+					getDb: async (workspace) =>
+						(
+							await runtime.localContext(workspace as any, {
+								id: 0,
+								name: '',
+								email: '',
+							})
+						).db,
+					fetchTask: async (workspaceId, taskId) =>
+						runtime.activeLocalWorkspace()?.id === workspaceId
+							? getTask(taskId)
+							: null,
+					fetchAgentRuns: async (workspaceId, taskId) =>
+						runtime.activeLocalWorkspace()?.id === workspaceId
+							? (await getAgentWork(taskId)).runs
+							: [],
+					deliver: deliverToWorkspace,
+					deliverToUser: (call) => {
+						const userId = store.state.user?.id;
+						if (userId) deliverToUser(userId, call);
+					},
+					invalidate: (key) => requestCache.invalidate(key),
+					reloadActiveTasks: () =>
+						store.commit('incrementReloadActiveTasksKey'),
+				});
+			},
+		);
 	}
 }
 
@@ -191,13 +246,22 @@ window
 	});
 
 // Another tab rotated the token (or logged out): adopt it here so this tab
-// never replays a retired refresh token. setToken re-persists the same value,
-// which fires no storage event in this tab and a no-op one in the others.
+// never replays a retired refresh token, and follow an account change or a
+// sign-out. setToken re-persists the same value, which fires no storage event
+// in this tab and a no-op one in the others.
 window.addEventListener('storage', (event) => {
-	const result = tokenFromStorageEvent(event, store.state.token);
-	if (result.changed) {
-		store.commit('setToken', result.token);
-	}
+	void syncSessionFromStorage(event, {
+		getToken: () => store.state.token,
+		getUserId: () => store.state.user?.id,
+		commitToken: (token) => store.commit('setToken', token),
+		signOut: () => hardLogout({ expired: false }),
+		clearInFlight: () => requestCache.clearInFlight(),
+		getUser: async () => {
+			await getUser();
+			await store.dispatch('loadWorkspaces');
+		},
+		disconnectRealtime,
+	});
 });
 
 const app = createApp(App);
@@ -211,16 +275,25 @@ const start = async () => {
 	await profileReady;
 	if (isDesktopApp() && desktopWindowLabel() === 'main') {
 		void startRunnerStore();
+		installCloudIdentitySync(store);
+		if (store.state.localProfile) installLocalUpgrade(store);
 		watch(
 			() => store.getters.accountMode,
 			(next, previous) => {
-				if (shouldReloadOnModeChange(previous, next))
+				if (shouldReloadOnModeChange(previous, next)) {
+					if (previous === 'local' && next === 'cloud') markLocalUpgrade();
 					window.location.assign('/app');
+				}
 			},
 		);
 	}
 	app.use(router);
 	app.use(store);
+	watch(
+		() => (store.state.token ? store.state.user?.id : null),
+		setRealtimeUser,
+		{ immediate: true },
+	);
 	installTours($axios, store, router);
 	installTourTelemetry();
 	installOnboardingFlow(store, router);

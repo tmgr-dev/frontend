@@ -12,7 +12,10 @@ use tmgr_core::error::{Error, Result};
 
 const MAX_FILE: u64 = 1024 * 1024;
 const RUN_TOOLS_MATCHER: &str = "mcp__.*__(start_agent_work|finish_agent_work)$";
-const CLAUDE_EVENTS: [(&str, &str, Option<&str>); 4] = [
+type Events = [(&'static str, &'static str, Option<&'static str>); 4];
+type Classify = fn(&str) -> Option<&'static str>;
+
+const CLAUDE_EVENTS: Events = [
     ("Notification", "notification", None),
     ("UserPromptSubmit", "user-prompt-submit", None),
     ("Stop", "stop", None),
@@ -99,6 +102,24 @@ fn legacy_event(sub: &str) -> Option<&'static str> {
     }
 }
 
+const DECISIONS_EVENTS: Events = [
+    ("Stop", "stop", None),
+    ("Notification", "notification", None),
+    ("PermissionRequest", "permission-request", None),
+    ("UserPromptSubmit", "user-prompt-submit", None),
+];
+
+pub fn classify_decisions(cmd: &str) -> Option<&'static str> {
+    let t = shell_split(cmd)?;
+    if basename(t.first()?) == "tmgr" && t.len() == 4 && t[1] == "hook" && t[2] == "decisions" {
+        return DECISIONS_EVENTS
+            .iter()
+            .map(|(_, e, _)| *e)
+            .find(|e| *e == t[3]);
+    }
+    None
+}
+
 pub fn classify_claude(cmd: &str) -> Option<&'static str> {
     let t = shell_split(cmd)?;
     let first = basename(t.first()?);
@@ -182,16 +203,24 @@ fn our_group(matcher: Option<&str>, cmd: &str) -> Value {
     }
 }
 
-fn desired_command(exe: &str, sub: &str) -> String {
-    format!("{} hook claude {sub}", shell_quote(exe))
+fn desired_command(exe: &str, group: &str, sub: &str) -> String {
+    format!("{} hook {group} {sub}", shell_quote(exe))
 }
 
 pub fn claude_snippet(exe: &str) -> String {
+    hooks_snippet(exe, "claude", &CLAUDE_EVENTS)
+}
+
+pub fn decisions_snippet(exe: &str) -> String {
+    hooks_snippet(exe, "decisions", &DECISIONS_EVENTS)
+}
+
+fn hooks_snippet(exe: &str, group: &str, events: &Events) -> String {
     let mut hooks = Map::new();
-    for (event, sub, matcher) in CLAUDE_EVENTS {
+    for (event, sub, matcher) in events {
         hooks.insert(
             event.to_string(),
-            json!([our_group(matcher, &desired_command(exe, sub))]),
+            json!([our_group(*matcher, &desired_command(exe, group, sub))]),
         );
     }
     let mut text = serde_json::to_string_pretty(&json!({ "hooks": hooks })).unwrap_or_default();
@@ -209,6 +238,28 @@ fn codex_array(exe: &str) -> String {
 }
 
 pub fn plan_claude(old: &str, exe: &str, remove: bool) -> Result<String> {
+    plan_hooks(old, exe, remove, "claude", &CLAUDE_EVENTS, classify_claude)
+}
+
+pub fn plan_decisions(old: &str, exe: &str, remove: bool) -> Result<String> {
+    plan_hooks(
+        old,
+        exe,
+        remove,
+        "decisions",
+        &DECISIONS_EVENTS,
+        classify_decisions,
+    )
+}
+
+fn plan_hooks(
+    old: &str,
+    exe: &str,
+    remove: bool,
+    group: &str,
+    events: &Events,
+    classify: Classify,
+) -> Result<String> {
     let mut root: Value = if old.trim().is_empty() {
         Value::Object(Map::new())
     } else {
@@ -235,7 +286,7 @@ pub fn plan_claude(old: &str, exe: &str, remove: bool) -> Result<String> {
             let Some(arr) = hooks.get_mut(&event).and_then(Value::as_array_mut) else {
                 continue;
             };
-            touched |= strip_ours(arr);
+            touched |= strip_ours(arr, classify);
             if arr.is_empty() {
                 hooks.remove(&event);
             }
@@ -247,13 +298,19 @@ pub fn plan_claude(old: &str, exe: &str, remove: bool) -> Result<String> {
             obj.remove("hooks");
         }
     } else {
-        for (event, sub, matcher) in CLAUDE_EVENTS {
+        for (event, sub, matcher) in events {
             let arr = hooks
-                .entry(event)
+                .entry(*event)
                 .or_insert_with(|| Value::Array(Vec::new()))
                 .as_array_mut()
                 .ok_or_else(|| invalid(&format!("\"{event}\" hooks")))?;
-            install_event(arr, sub, matcher, &desired_command(exe, sub));
+            install_event(
+                arr,
+                sub,
+                *matcher,
+                &desired_command(exe, group, sub),
+                classify,
+            );
         }
     }
     Ok(if root == original && !old.trim().is_empty() {
@@ -263,7 +320,7 @@ pub fn plan_claude(old: &str, exe: &str, remove: bool) -> Result<String> {
     })
 }
 
-fn strip_ours(arr: &mut Vec<Value>) -> bool {
+fn strip_ours(arr: &mut Vec<Value>, classify: Classify) -> bool {
     let mut removed = false;
     for group in arr.iter_mut() {
         let Some(inner) = group.get_mut("hooks").and_then(Value::as_array_mut) else {
@@ -273,7 +330,7 @@ fn strip_ours(arr: &mut Vec<Value>) -> bool {
         inner.retain(|h| {
             h.get("command")
                 .and_then(Value::as_str)
-                .and_then(classify_claude)
+                .and_then(classify)
                 .is_none()
         });
         removed |= inner.len() != before;
@@ -290,18 +347,34 @@ fn is_empty_group(g: &Value) -> bool {
             .is_some_and(|o| o.keys().all(|k| k == "hooks" || k == "matcher"))
 }
 
-fn install_event(arr: &mut Vec<Value>, sub: &str, matcher: Option<&str>, desired: &str) {
+fn matcher_covers(group: Option<&str>, wanted: Option<&str>) -> bool {
+    match group {
+        None | Some("") | Some("*") => true,
+        Some(g) => wanted == Some(g),
+    }
+}
+
+fn install_event(
+    arr: &mut Vec<Value>,
+    sub: &str,
+    matcher: Option<&str>,
+    desired: &str,
+    classify: Classify,
+) {
     let mut found = false;
     for group in arr.iter_mut() {
+        let covers = matcher_covers(group.get("matcher").and_then(Value::as_str), matcher);
         let Some(inner) = group.get_mut("hooks").and_then(Value::as_array_mut) else {
             continue;
         };
+        if !covers {
+            inner.retain(|h| {
+                h.get("command").and_then(Value::as_str).and_then(classify) != Some(sub)
+            });
+            continue;
+        }
         for h in inner.iter_mut() {
-            let is_ours = h
-                .get("command")
-                .and_then(Value::as_str)
-                .and_then(classify_claude)
-                == Some(sub);
+            let is_ours = h.get("command").and_then(Value::as_str).and_then(classify) == Some(sub);
             if is_ours && !found {
                 found = true;
                 if h.get("command").and_then(Value::as_str) != Some(desired) {
@@ -310,25 +383,22 @@ fn install_event(arr: &mut Vec<Value>, sub: &str, matcher: Option<&str>, desired
             }
         }
     }
+    arr.retain(|g| !is_empty_group(g));
     if found {
-        strip_duplicates(arr, sub, desired);
+        strip_duplicates(arr, sub, desired, classify);
     } else {
         arr.push(our_group(matcher, desired));
     }
 }
 
-fn strip_duplicates(arr: &mut Vec<Value>, sub: &str, desired: &str) {
+fn strip_duplicates(arr: &mut Vec<Value>, sub: &str, desired: &str, classify: Classify) {
     let mut seen = false;
     for group in arr.iter_mut() {
         let Some(inner) = group.get_mut("hooks").and_then(Value::as_array_mut) else {
             continue;
         };
         inner.retain(|h| {
-            let ours = h
-                .get("command")
-                .and_then(Value::as_str)
-                .and_then(classify_claude)
-                == Some(sub);
+            let ours = h.get("command").and_then(Value::as_str).and_then(classify) == Some(sub);
             if !ours {
                 return true;
             }
@@ -410,10 +480,10 @@ pub fn target_path(target: HookTarget, project: bool) -> Result<PathBuf> {
         (HookTarget::Codex, false) => Ok(env_abs("CODEX_HOME")
             .unwrap_or(home()?.join(".codex"))
             .join("config.toml")),
-        (HookTarget::Claude, false) => Ok(env_abs("CLAUDE_CONFIG_DIR")
+        (HookTarget::Claude | HookTarget::Decisions, false) => Ok(env_abs("CLAUDE_CONFIG_DIR")
             .unwrap_or(home()?.join(".claude"))
             .join("settings.json")),
-        (HookTarget::Claude, true) => {
+        (HookTarget::Claude | HookTarget::Decisions, true) => {
             let cwd = std::env::current_dir()?;
             let root = gitx::Git::at(&cwd).toplevel().unwrap_or(cwd);
             Ok(root.join(".claude").join("settings.json"))
@@ -438,6 +508,7 @@ pub fn plan(target: HookTarget, path: &Path, exe: &str, remove: bool) -> Result<
     let (real, old) = read_existing(path)?;
     let new = match target {
         HookTarget::Claude => plan_claude(&old, exe, remove)?,
+        HookTarget::Decisions => plan_decisions(&old, exe, remove)?,
         HookTarget::Codex => plan_codex(&old, exe, remove)?,
     };
     Ok(Change {
@@ -468,12 +539,14 @@ pub fn run(ctx: &Ctx, args: &HookInstallArgs, remove: bool) -> Result<Output> {
     let name = match args.target {
         HookTarget::Claude => "claude",
         HookTarget::Codex => "codex",
+        HookTarget::Decisions => "decisions",
     };
     let scope = if args.project { "project" } else { "user" };
     if args.print && !remove {
         let snippet = match args.target {
             HookTarget::Claude => claude_snippet(&exe),
             HookTarget::Codex => codex_snippet(&exe),
+            HookTarget::Decisions => decisions_snippet(&exe),
         };
         note(ctx, args, remove);
         return Ok(Output::new(
@@ -791,5 +864,109 @@ mod tests {
             codex_snippet(EXE),
             format!("notify = [\"{EXE}\", \"hook\", \"codex\", \"notify\"]\n")
         );
+    }
+
+    #[test]
+    fn decisions_commands_are_classified_apart_from_claude_ones() {
+        assert_eq!(
+            classify_decisions("/opt/tmgr hook decisions permission-request"),
+            Some("permission-request")
+        );
+        assert_eq!(classify_decisions("/opt/tmgr hook decisions bogus"), None);
+        assert_eq!(classify_decisions("/opt/tmgr hook claude stop"), None);
+        assert_eq!(classify_claude("/opt/tmgr hook decisions stop"), None);
+        assert_eq!(classify_decisions("echo hook decisions stop"), None);
+    }
+
+    #[test]
+    fn decisions_install_merges_beside_other_hooks_and_is_idempotent() {
+        let old = "{\n  \"hooks\": {\n    \"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"my-notifier\"}]}]\n  }\n}\n";
+        let claude = plan_claude(old, EXE, false).unwrap();
+        let both = plan_decisions(&claude, EXE, false).unwrap();
+        let v = parsed(&both);
+        assert_eq!(
+            cmds(&v, "Stop"),
+            vec![
+                "my-notifier".to_string(),
+                format!("{EXE} hook claude stop"),
+                format!("{EXE} hook decisions stop"),
+            ]
+        );
+        assert_eq!(
+            cmds(&v, "PermissionRequest"),
+            vec![format!("{EXE} hook decisions permission-request")]
+        );
+        assert_eq!(cmds(&v, "Notification").len(), 2);
+        assert_eq!(cmds(&v, "UserPromptSubmit").len(), 2);
+        assert_eq!(plan_decisions(&both, EXE, false).unwrap(), both);
+    }
+
+    #[test]
+    fn our_hook_in_a_narrower_matcher_group_is_moved_to_a_proper_group() {
+        let narrow = format!("{EXE} hook claude stop");
+        let old = json!({"hooks": {"Stop": [
+            {"matcher": "Bash", "hooks": [
+                {"type": "command", "command": narrow},
+                {"type": "command", "command": "my-notifier"}
+            ]}
+        ]}})
+        .to_string();
+        let v = parsed(&plan_claude(&old, EXE, false).unwrap());
+        let groups = v["hooks"]["Stop"].as_array().unwrap();
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0]["matcher"], "Bash");
+        assert_eq!(groups[0]["hooks"].as_array().unwrap().len(), 1);
+        assert_eq!(groups[0]["hooks"][0]["command"], "my-notifier");
+        assert!(groups[1].get("matcher").is_none());
+        assert_eq!(groups[1]["hooks"][0]["command"], narrow);
+        assert_eq!(
+            plan_claude(&v.to_string(), EXE, false).unwrap(),
+            v.to_string()
+        );
+    }
+
+    #[test]
+    fn a_group_left_empty_by_the_move_is_dropped() {
+        let old = json!({"hooks": {"Stop": [
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": format!("{EXE} hook claude stop")}]}
+        ]}})
+        .to_string();
+        let v = parsed(&plan_claude(&old, EXE, false).unwrap());
+        assert_eq!(v["hooks"]["Stop"].as_array().unwrap().len(), 1);
+        assert!(v["hooks"]["Stop"][0].get("matcher").is_none());
+    }
+
+    #[test]
+    fn decisions_uninstall_leaves_claude_hooks_and_the_reverse() {
+        let both = plan_decisions(&plan_claude("", EXE, false).unwrap(), EXE, false).unwrap();
+        let without = parsed(&plan_decisions(&both, EXE, true).unwrap());
+        assert_eq!(
+            cmds(&without, "Stop"),
+            vec![format!("{EXE} hook claude stop")]
+        );
+        assert!(without["hooks"].get("PermissionRequest").is_none());
+        assert_eq!(cmds(&without, "PostToolUse").len(), 1);
+        let only = parsed(&plan_claude(&both, EXE, true).unwrap());
+        assert_eq!(
+            cmds(&only, "Stop"),
+            vec![format!("{EXE} hook decisions stop")]
+        );
+        assert!(only["hooks"].get("PostToolUse").is_none());
+        let clean = plan_decisions(&plan_decisions("", EXE, false).unwrap(), EXE, true).unwrap();
+        assert_eq!(parsed(&clean), json!({}));
+        assert_eq!(plan_decisions("{}", EXE, true).unwrap(), "{}");
+    }
+
+    #[test]
+    fn decisions_snippet_lists_the_four_events() {
+        let v = parsed(&decisions_snippet(EXE));
+        for (event, sub) in [
+            ("Stop", "stop"),
+            ("Notification", "notification"),
+            ("PermissionRequest", "permission-request"),
+            ("UserPromptSubmit", "user-prompt-submit"),
+        ] {
+            assert_eq!(cmds(&v, event), vec![format!("{EXE} hook decisions {sub}")]);
+        }
     }
 }

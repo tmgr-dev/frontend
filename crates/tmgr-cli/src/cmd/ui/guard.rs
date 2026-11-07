@@ -23,11 +23,14 @@ pub const GUARDED: &[Rule] = &[
     rule(&["runner", "unbind"], None, None),
     rule(&["runner", "install-service"], Some("install"), None),
     rule(&["run"], Some("mode"), Some("bypass")),
+    rule(&["run"], Some("no_sandbox"), None),
     rule(&["run"], Some("trust"), None),
     rule(&["run"], Some("publish"), None),
     rule(&["run"], Some("review"), None),
     rule(&["run"], Some("push"), None),
     rule(&["run"], Some("drop"), None),
+    rule(&["resume"], Some("mode"), Some("bypass")),
+    rule(&["resume"], Some("no_sandbox"), None),
     rule(&["queue", "enable"], None, None),
     rule(&["queue", "approve"], None, None),
     rule(&["queue", "release"], None, None),
@@ -41,6 +44,7 @@ pub const GUARDED: &[Rule] = &[
     rule(&["git", "install-hooks"], Some("global"), None),
     rule(&["init"], Some("install"), None),
     rule(&["hook", "install"], None, None),
+    rule(&["setup", "terminal"], None, None),
 ];
 
 pub fn is_guarded(node: &Node, values: &Values) -> bool {

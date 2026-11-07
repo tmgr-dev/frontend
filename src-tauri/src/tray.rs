@@ -111,7 +111,7 @@ pub fn ticket_code(title: &str) -> Option<&str> {
   valid.then_some(code)
 }
 
-fn truncate(text: &str, max: usize) -> String {
+pub(crate) fn truncate(text: &str, max: usize) -> String {
   if text.chars().count() <= max {
     return text.to_owned();
   }
@@ -168,7 +168,7 @@ fn is_format_control(c: char) -> bool {
 }
 
 /// Maps newlines to a space, drops control/Cf characters, collapses whitespace, trims, and truncates.
-fn sanitize_plugin_text(text: &str, max: usize) -> Option<String> {
+pub(crate) fn sanitize_plugin_text(text: &str, max: usize) -> Option<String> {
   let mapped: String = text
     .chars()
     .map(|c| if matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}') { ' ' } else { c })
@@ -235,8 +235,13 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
         .build(app)?,
     );
   }
+  menu = menu.item(&MenuItemBuilder::with_id("open", "Open TMGR").build(app)?);
+  #[cfg(unix)]
+  {
+    let label = format!("Decisions ({})", crate::decisions::open_count());
+    menu = menu.item(&MenuItemBuilder::with_id(crate::decisions::TRAY_ID, label).build(app)?);
+  }
   menu = menu
-    .item(&MenuItemBuilder::with_id("open", "Open TMGR").build(app)?)
     .item(&dnd_menu.build()?)
     .item(&MenuItemBuilder::with_id("shortcuts", "Shortcuts…").build(app)?)
     .item(
@@ -299,6 +304,12 @@ fn refresh<R: Runtime>(app: &AppHandle<R>, state: &TrayState) {
   let _ = tray.set_title(Some(tray_title(state, now_secs()).unwrap_or_default()));
 }
 
+pub fn refresh_current<R: Runtime>(app: &AppHandle<R>) {
+  let Some(store) = app.try_state::<TrayStore>() else { return };
+  let state = store.0.lock().unwrap().clone();
+  refresh(app, &state);
+}
+
 fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
   log::info!("[tray] menu {id}");
   if let Some(task_id) = id.strip_prefix("open:") {
@@ -328,6 +339,8 @@ fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
   }
   match id {
     "open" => show_main(app),
+    #[cfg(unix)]
+    crate::decisions::TRAY_ID => crate::decisions::open_window(app),
     "shortcuts" => {
       show_main(app);
       let _ = app.emit("tray://shortcuts", ());
@@ -370,6 +383,7 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let mut last: Option<String> = None;
     loop {
       std::thread::sleep(Duration::from_millis(1000));
+      crate::widget_state::flush_pending_reload();
       let state = ticker.state::<TrayStore>().0.lock().unwrap().clone();
       let title = tray_title(&state, now_secs());
       if title != last {
@@ -397,6 +411,7 @@ pub fn tray_update<R: Runtime>(app: AppHandle<R>, store: State<'_, TrayStore>, s
   *current = state.clone();
   drop(current);
   refresh(&app, &state);
+  crate::widget_state::publish(&app, &state);
 }
 
 pub fn normalize_dnd_option(option: &str) -> &str {

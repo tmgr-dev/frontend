@@ -11,7 +11,7 @@ pub fn collapse(raw: &str) -> String {
     for c in raw.chars() {
         let c = if c.is_whitespace() { ' ' } else { c };
         if c.is_control()
-            || matches!(c, '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{feff}')
+            || matches!(c, '\u{61c}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{feff}')
         {
             continue;
         }
@@ -356,6 +356,11 @@ pub fn candidates(text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn arabic_letter_mark_is_dropped() {
+        assert_eq!(collapse("a\u{61c}b"), "ab");
+    }
 
     #[test]
     fn plain_question() {

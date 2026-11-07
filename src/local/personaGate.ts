@@ -3,6 +3,15 @@ import { LocalHttpError, type LocalContext } from './types';
 /** Owner id of a persona created on this machine without a cloud account; it keeps working after a later sign-in. */
 export const LOCAL_OWNER_ID = -1;
 
+export const isLinkedLocalOwner = (userId: number, linkedUserId: unknown) =>
+	userId > 0 && Number(linkedUserId) === userId;
+
+/** True when a stored -1 id reads as the current user; rows keep -1. */
+export const mapsLocalIdentity = (ctx: LocalContext, storedId: unknown) =>
+	ctx.localOwnerLinked === true &&
+	ctx.user.id > 0 &&
+	String(storedId) === String(LOCAL_OWNER_ID);
+
 /** Same permission vocabulary the cloud gate uses. */
 export const PERSONA_PERMISSIONS = [
 	'tasks:read',
@@ -230,6 +239,22 @@ export const checkPersonaAccess = async (
 		throw new LocalHttpError(
 			403,
 			`Persona is missing permission ${entry.permission}`,
+			'PERMISSION_MISSING',
+		);
+	}
+};
+
+export const requirePersonaPermission = async (
+	ctx: LocalContext,
+	permission: PersonaPermission,
+): Promise<void> => {
+	if (ctx.actor?.kind !== 'persona') return;
+	const grant = await checkPersonaIdentity(ctx);
+	const permissions: string[] = JSON.parse(grant.permissions || '[]');
+	if (!permissions.includes(permission)) {
+		throw new LocalHttpError(
+			403,
+			`Persona is missing permission ${permission}`,
 			'PERMISSION_MISSING',
 		);
 	}

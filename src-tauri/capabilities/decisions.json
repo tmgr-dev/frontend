@@ -1,0 +1,21 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "decisions",
+	"description": "Decisions inbox window: only its own commands, window basics and event listening.",
+	"windows": ["decisions"],
+	"permissions": [
+		"core:event:allow-listen",
+		"core:event:allow-unlisten",
+		"core:window:allow-minimize",
+		"core:window:allow-toggle-maximize",
+		"core:window:allow-internal-toggle-maximize",
+		"core:window:allow-close",
+		"core:window:allow-start-dragging",
+		"allow-decisions-list",
+		"allow-decisions-get",
+		"allow-decisions-answer",
+		"allow-decisions-message",
+		"allow-decisions-diff",
+		"allow-decisions-open-link"
+	]
+}

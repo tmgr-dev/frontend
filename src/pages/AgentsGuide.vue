@@ -130,6 +130,23 @@
 						</li>
 					</ul>
 				</section>
+
+				<section id="plugins" class="space-y-3">
+					<h2 class="text-lg font-semibold">Build a plugin with your agent</h2>
+					<p>
+						Ask your agent to make a TMGR desktop plugin. Point it at
+						<a
+							href="/docs/plugins.md"
+							target="_blank"
+							rel="noopener"
+							class="text-primary hover:underline"
+						>
+							the plugin guide
+						</a>
+						or <code class="font-mono">/llms.txt</code>: it covers the manifest,
+						permissions and the whole write, test and try loop.
+					</p>
+				</section>
 			</div>
 		</template>
 	</BaseLayout>

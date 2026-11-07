@@ -1,11 +1,14 @@
 use super::broadcast::Broadcast;
 use super::chip::TaskChip;
+use super::clean::CopyContext;
 use super::filter::Filter;
 use super::find::{CopyState, ScrollText, SearchState};
+use super::folder_pick::FolderData;
 use super::keys::{Cmd, ScrollKey};
 use super::layouts::{LayoutOffer, LayoutRestore, SavedLayout};
 use super::mouse::{encode, wants, Kind, MouseEvent};
-use super::newsession::{NewEdit, NewSession, Place, TaskOpt};
+use super::msel::{has_modifiers, strip_modifiers, Click, MouseSel};
+use super::newsession::{NewEdit, NewSession, Place, TaskOpt, TypedPrompt};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::place::Loc;
 use super::prompts::Prompt;
@@ -21,7 +24,7 @@ use crate::questions::Entry;
 use ratatui::layout::{Margin, Rect};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use tmgr_ipc::api::{MouseMode, State, StateKind};
+use tmgr_ipc::api::{MouseMode, State, StateKind, TeamLink, TeamRole};
 
 pub const SIDEBAR_WIDTH: u16 = 24;
 pub const MIN_SIDEBAR_WIDTH: u16 = 16;
@@ -141,6 +144,7 @@ pub struct ViewState {
     pub palette: Option<Palette>,
     pub git: HashMap<String, super::git::GitInfo>,
     pub git_open: bool,
+    pub cp: super::checkpoints::CpState,
     pub export: Option<super::export::ExportState>,
     pub notes: Option<super::notes::NotesState>,
     pub summary: Option<super::summary::SummaryDraft>,
@@ -156,15 +160,24 @@ pub struct ViewState {
     pub(crate) layout_gen: u64,
     pub filter: Option<Filter>,
     pub new_session: Option<NewSession>,
+    pub past_prompt: Option<TypedPrompt>,
     pub new_kind: Option<String>,
     pub new_place: Option<Place>,
+    pub worktree_default: bool,
+    pub permission_cards_default: bool,
+    pub priv_gate: Option<super::PrivGate>,
+    pub privileged_lock: Option<String>,
     pub broadcast: Option<Broadcast>,
     pub stext: Option<ScrollText>,
     pub search: Option<SearchState>,
     pub copy: Option<CopyState>,
     pub copied: Option<String>,
+    pub copied_context: CopyContext,
+    pub msel: Option<MouseSel>,
+    pub(crate) last_click: Option<Click>,
     pub new_tasks: Vec<TaskOpt>,
     pub new_tasks_note: Option<String>,
+    pub new_folders: Option<FolderData>,
     pub sidebar_focus: Option<SidebarItem>,
     pub allow_new: bool,
     pub locs: HashMap<String, Loc>,
@@ -176,7 +189,10 @@ pub struct ViewState {
     pub chips: HashMap<String, TaskChip>,
     pub peek: Option<Peek>,
     pub questions: Vec<Entry>,
+    pub reads_hint: Option<&'static str>,
     pub qmenu: Option<QMenu>,
+    pub perm_cards: Vec<tmgr_ipc::api::PermissionCard>,
+    pub perm: super::permcard::PermUi,
     pub goto: Option<GotoMark>,
     pub forkable: Vec<String>,
     pub now_s: u64,
@@ -184,6 +200,8 @@ pub struct ViewState {
     pub(crate) collapsed: HashSet<String>,
     pub machines: Vec<Machine>,
     pub remote: HashMap<String, String>,
+    pub leaders: HashMap<String, String>,
+    pub teams: HashMap<String, TeamLink>,
     collapsed_machines: HashSet<String>,
     group_order: Vec<String>,
     tabs: Vec<Tab>,
@@ -285,6 +303,11 @@ pub enum SidebarLine {
         id: String,
     },
     Detail(String),
+    Perm {
+        session: String,
+        row: usize,
+        full: bool,
+    },
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -412,6 +435,7 @@ impl ViewState {
             palette: None,
             git: HashMap::new(),
             git_open: false,
+            cp: Default::default(),
             export: None,
             notes: None,
             summary: None,
@@ -427,15 +451,24 @@ impl ViewState {
             layout_gen: 0,
             filter: None,
             new_session: None,
+            past_prompt: None,
             new_kind: None,
             new_place: None,
+            worktree_default: false,
+            permission_cards_default: false,
+            priv_gate: None,
+            privileged_lock: None,
             broadcast: None,
             stext: None,
             search: None,
             copy: None,
             copied: None,
+            copied_context: CopyContext::default(),
+            msel: None,
+            last_click: None,
             new_tasks: Vec::new(),
             new_tasks_note: None,
+            new_folders: None,
             sidebar_focus: None,
             allow_new: true,
             locs: HashMap::new(),
@@ -447,7 +480,10 @@ impl ViewState {
             chips: HashMap::new(),
             peek: None,
             questions: Vec::new(),
+            reads_hint: None,
             qmenu: None,
+            perm_cards: Vec::new(),
+            perm: super::permcard::PermUi::default(),
             goto: None,
             forkable: Vec::new(),
             now_s: 0,
@@ -455,6 +491,8 @@ impl ViewState {
             collapsed: HashSet::new(),
             machines: Vec::new(),
             remote: HashMap::new(),
+            leaders: HashMap::new(),
+            teams: HashMap::new(),
             collapsed_machines: HashSet::new(),
             group_order: Vec::new(),
             tabs: Vec::new(),
@@ -474,7 +512,7 @@ impl ViewState {
         self.remote.get(id).map(String::as_str)
     }
 
-    fn is_local(&self, id: &str) -> bool {
+    pub(crate) fn is_local(&self, id: &str) -> bool {
         self.machines.is_empty() || !self.remote.contains_key(id)
     }
 
@@ -870,6 +908,7 @@ impl ViewState {
                 SidebarLine::Activity(_)
                 | SidebarLine::Sub { .. }
                 | SidebarLine::Detail(_)
+                | SidebarLine::Perm { .. }
                 | SidebarLine::Empty(_) => None,
             })
             .collect();
@@ -896,11 +935,33 @@ impl ViewState {
                 plan.retain(|l| !matches!(l, SidebarLine::Detail(_)));
             }
         }
+        let plan = self.perm_expand(plan, room, rect.width);
         let lines = plan.into_iter().zip(rect.y + 1..last).collect();
         SidebarLayout { lines, new_row }
     }
 
+    pub fn team_label(&self, id: &str) -> Option<String> {
+        Some(match self.teams.get(id)?.role {
+            TeamRole::Lead => "lead".to_string(),
+            TeamRole::Worker(n) => format!("w{n}"),
+        })
+    }
+
+    pub fn set_teams(&mut self, area: Rect, teams: HashMap<String, TeamLink>) -> bool {
+        if self.teams == teams {
+            return false;
+        }
+        let before = self.sidebar_items(area);
+        self.teams = teams;
+        self.refresh_groups();
+        self.keep_sidebar_focus(area, &before);
+        true
+    }
+
     fn group_key(&self, id: &str) -> String {
+        if let Some(t) = self.teams.get(id) {
+            return format!("\0team:{}", t.of);
+        }
         self.locs
             .get(id)
             .map_or_else(|| format!("\0{id}"), |l| l.root.clone())
@@ -920,10 +981,19 @@ impl ViewState {
             }
         }
         out.retain(|(_, m)| !m.is_empty());
+        for (_, m) in out.iter_mut().filter(|(k, _)| k.starts_with("\0team:")) {
+            m.sort_by_key(|r| {
+                self.teams.get(&r.id).map_or(0, |t| match t.role {
+                    TeamRole::Lead => 0,
+                    TeamRole::Worker(n) => n,
+                })
+            });
+        }
         out
     }
 
     fn status_lines(&self, id: &str, out: &mut Vec<SidebarLine>) {
+        self.perm_line(id, out);
         if self.status_line(id).is_none() {
             return;
         }
@@ -1075,6 +1145,9 @@ impl ViewState {
     }
 
     pub fn group_title(&self, key: &str) -> Option<(String, Option<String>)> {
+        if let Some(of) = key.strip_prefix("\0team:") {
+            return Some((format!("team {of}"), None));
+        }
         let first = self
             .sessions
             .iter()
@@ -1464,18 +1537,21 @@ impl ViewState {
             Cmd::Filter => self.open_filter(),
             Cmd::Questions => self.toggle_questions(),
             Cmd::NeedsYou => self.jump_to_needing(),
+            Cmd::Permissions => self.open_permissions(),
             Cmd::Subagents => {
                 if let Some(id) = self.focused_session().map(str::to_string) {
                     self.toggle_subs(&id);
                 }
             }
             Cmd::Git => self.toggle_git(),
+            Cmd::Checkpoints => self.toggle_checkpoints(),
             Cmd::Broadcast => self.toggle_broadcast(),
             Cmd::BroadcastMark => self.mark_broadcast(),
             Cmd::Detach
             | Cmd::Picker
             | Cmd::Resume
             | Cmd::NewSession
+            | Cmd::ResumePast
             | Cmd::OpenTask
             | Cmd::Search
             | Cmd::CopyMode
@@ -1762,6 +1838,7 @@ impl ViewState {
                         return Hit::Sub(session.clone(), id.clone())
                     }
                     SidebarLine::Detail(id) => return Hit::Session(id.clone()),
+                    SidebarLine::Perm { session, .. } => return Hit::Session(session.clone()),
                     SidebarLine::Session { id, .. } => id,
                 };
                 let Some(r) = self.sessions.iter().find(|s| s.id == *id) else {
@@ -1816,6 +1893,11 @@ impl ViewState {
                             return Hit::Watch(p.session.clone());
                         }
                     }
+                    if let Some((x, w)) = super::render::header_checkpoints(self, p) {
+                        if col >= x && col < x + w {
+                            return Hit::Checkpoints(p.session.clone());
+                        }
+                    }
                 }
                 if row + 1 == p.outer.bottom() {
                     if let Some(r) = super::broadcast::marker_rect(p, self) {
@@ -1846,6 +1928,7 @@ impl ViewState {
             | Hit::Subs(_)
             | Hit::Chip(_)
             | Hit::Git(_)
+            | Hit::Checkpoints(_)
             | Hit::Broadcast(_)
             | Hit::Sub(..)
             | Hit::Filter
@@ -1885,17 +1968,26 @@ impl ViewState {
         }
         if kind == Kind::Move
             || self.new_session.is_some()
+            || self.past_prompt.is_some()
             || self.palette.is_some()
             || self.git_open
+            || self.cp.is_open()
             || self.summary.is_some()
             || self.export.is_some()
             || self.notes.is_some()
             || self.qmenu.is_some()
+            || self.perm_overlay_open()
             || self.peek.is_some()
             || self.help
         {
             self.border_drag = None;
             self.split_drag = None;
+            if self.msel.as_ref().is_some_and(|m| m.held) {
+                self.msel = None;
+            }
+        }
+        if self.past_prompt.is_some() {
+            return out;
         }
         if self.new_session.is_some() {
             return self.new_session_mouse(area, ev, out);
@@ -1915,8 +2007,14 @@ impl ViewState {
         if self.git_open {
             return self.git_mouse(area, ev, out);
         }
+        if self.cp.is_open() {
+            return self.cp_mouse(area, ev, out);
+        }
         if self.qmenu.is_some() {
             return self.qmenu_mouse(area, ev, out);
+        }
+        if self.perm_mouse(area, ev, &mut out) {
+            return out;
         }
         if ev.is_left_press() && self.sidebar_focus.take().is_some() {
             out.redraw = true;
@@ -1953,6 +2051,7 @@ impl ViewState {
                     let c = ev.col.clamp(p.inner.x, p.inner.right() - 1) - p.inner.x;
                     let r = ev.row.clamp(p.inner.y, p.inner.bottom() - 1) - p.inner.y;
                     if wants(pane.mouse, kind) {
+                        let ev = strip_modifiers(ev);
                         out.forward = Some((g, encode(&ev, c, r, pane.mouse.encoding)));
                     }
                 }
@@ -1961,6 +2060,9 @@ impl ViewState {
                 }
                 return out;
             }
+        }
+        if self.msel_handles(&ev) {
+            return self.msel_mouse(area, ev, info, out);
         }
         match self.hit(area, ev.col, ev.row) {
             Hit::Button(id, ctl) => {
@@ -1985,6 +2087,13 @@ impl ViewState {
                 if ev.is_left_press() {
                     self.open(&id);
                     self.toggle_git();
+                    out.redraw = true;
+                }
+            }
+            Hit::Checkpoints(id) => {
+                if ev.is_left_press() {
+                    self.open(&id);
+                    self.toggle_checkpoints();
                     out.redraw = true;
                 }
             }
@@ -2050,11 +2159,24 @@ impl ViewState {
                     self.focus_pane(idx);
                     out.redraw = true;
                 }
-                if !local && wants(pane.mouse, kind) {
+                let agent = !local && wants(pane.mouse, kind);
+                if ev.is_left_press()
+                    && self.copy.is_none()
+                    && self.machine_of(&session).is_none()
+                    && !(agent && has_modifiers(&ev))
+                {
+                    if let Some(at) = at {
+                        self.msel_press(&session, at, ev, agent, pane);
+                        out.redraw = true;
+                        return out;
+                    }
+                }
+                if agent {
                     if let Some((c, r)) = at {
                         if kind == Kind::Press {
                             self.grab = Some(session.clone());
                         }
+                        let ev = strip_modifiers(ev);
                         out.forward = Some((session, encode(&ev, c, r, pane.mouse.encoding)));
                     }
                 }
@@ -2110,7 +2232,7 @@ impl ViewState {
         out
     }
 
-    fn wheel(&mut self, idx: usize, up: bool, scroll_max: usize) -> bool {
+    pub(super) fn wheel(&mut self, idx: usize, up: bool, scroll_max: usize) -> bool {
         self.focus_pane(idx);
         if up {
             if self.scroll.is_none() {
@@ -2490,6 +2612,8 @@ pub struct MouseOut {
     pub notes: Option<super::notes::NotesAction>,
     pub new_edit: Option<NewEdit>,
     pub question: Option<QEdit>,
+    pub perm: Option<tmgr_ipc::api::PermissionAnswer>,
+    pub want_text: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2503,6 +2627,7 @@ pub enum Hit {
     Subs(String),
     Chip(String),
     Git(String),
+    Checkpoints(String),
     Broadcast(String),
     Sub(String, String),
     Filter,

@@ -4,6 +4,7 @@ pub mod egress;
 pub mod exe;
 pub mod login;
 pub mod orchestrator;
+pub mod permit;
 pub mod profile;
 pub mod resume;
 pub mod sandbox;
@@ -19,6 +20,8 @@ pub mod autopilot;
 #[cfg(unix)]
 pub mod bundle;
 #[cfg(unix)]
+pub mod checkpoint;
+#[cfg(unix)]
 pub mod client;
 #[cfg(unix)]
 pub mod clone;
@@ -29,13 +32,19 @@ pub mod daemon;
 #[cfg(unix)]
 pub mod folders;
 #[cfg(unix)]
+pub mod hostview;
+#[cfg(unix)]
 pub mod humantime;
+#[cfg(unix)]
+pub mod permit_hook;
 #[cfg(unix)]
 pub mod questions;
 #[cfg(unix)]
 pub mod restore;
 #[cfg(unix)]
 pub mod service;
+#[cfg(unix)]
+pub mod sessionwt;
 #[cfg(unix)]
 pub mod shim;
 #[cfg(unix)]

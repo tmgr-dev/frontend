@@ -13,7 +13,7 @@ use std::cell::{Cell, RefCell};
 use std::io::Read;
 use std::time::Duration;
 
-pub const DEFAULT_SCOPES: [&str; 7] = [
+pub const DEFAULT_SCOPES: [&str; 9] = [
     "workspaces:read",
     "tasks:read",
     "tasks:write",
@@ -21,6 +21,8 @@ pub const DEFAULT_SCOPES: [&str; 7] = [
     "comments:create",
     "time:read",
     "time:write",
+    "skills:read",
+    "skills:write",
 ];
 
 const MAX_BODY: u64 = 8 * 1024 * 1024;
@@ -851,7 +853,7 @@ mod tests {
         assert!(e.message.contains("tasks:create"));
         assert_eq!(
             e.hint.as_deref(),
-            Some("tmgr login --scopes workspaces:read,tasks:read,tasks:write,tasks:create,comments:create,time:read,time:write")
+            Some("tmgr login --scopes workspaces:read,tasks:read,tasks:write,tasks:create,comments:create,time:read,time:write,skills:read,skills:write")
         );
         let e = map_error(403, &json!({"error": "insufficient_scope"}), "pages:read");
         assert!(e.hint.unwrap().ends_with(",pages:read"));

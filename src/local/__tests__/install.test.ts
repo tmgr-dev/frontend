@@ -171,6 +171,67 @@ describeSqlite('installLocalWorkspaces', () => {
 		expect(sent).toEqual([]);
 	});
 
+	describe('ghost requests', () => {
+		const ghost = { headers: { 'X-TMGR-Ghost': '1' } };
+
+		it('are refused when the active workspace is not the demo and never reach the server', async () => {
+			active = LOCAL;
+			await expect(
+				client.post('tasks', { title: 'Nope' }, ghost),
+			).rejects.toMatchObject({ response: { status: 409 } });
+			expect(
+				(await client.get('tasks/current')).data.data.map((t: any) => t.title),
+			).not.toContain('Nope');
+			expect(sent).toEqual([]);
+		});
+
+		it('are refused with a cloud workspace active and never reach the network', async () => {
+			active = null;
+			await expect(
+				client.post('tasks/1/countdown', undefined, ghost),
+			).rejects.toMatchObject({ response: { status: 409 } });
+			expect(sent).toEqual([]);
+		});
+
+		it('are refused when workspace_id names another workspace', async () => {
+			active = { ...LOCAL, demo: true };
+			await expect(
+				client.post(
+					'tasks',
+					{ title: 'Wrong' },
+					{
+						...ghost,
+						params: { workspace_id: -1 },
+					},
+				),
+			).rejects.toMatchObject({ response: { status: 409 } });
+			expect(sent).toEqual([]);
+		});
+
+		it('are refused when they do not name the workspace they were meant for', async () => {
+			active = { ...LOCAL, demo: true };
+			await expect(
+				client.post('tasks', { title: 'Unscoped' }, ghost),
+			).rejects.toMatchObject({ response: { status: 409 } });
+			expect(sent).toEqual([]);
+		});
+
+		it('write into the demo without telling plugins', async () => {
+			active = { ...LOCAL, demo: true };
+			const seen: DomainEvent[] = [];
+			const off = events.on((event) => seen.push(event));
+			const created = await client.post(
+				'tasks',
+				{ title: 'Ghost card' },
+				{ ...ghost, params: { workspace_id: LOCAL.id } },
+			);
+			off();
+			expect(created.status).toBe(201);
+			expect(seen).toEqual([]);
+			expect(sent).toEqual([]);
+		});
+	});
+
 	it('a pinned client stays in its local workspace whatever the app switches to', async () => {
 		const pinned = pinnedLocalClient(LOCAL.id, () => ({
 			id: 7,

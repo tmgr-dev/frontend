@@ -1,7 +1,7 @@
 <template>
 	<div
 		v-if="show && enabledPersonas.length"
-		class="mb-3 flex items-center gap-2 text-xs"
+		class="mb-3 flex flex-wrap items-center gap-2 text-xs"
 	>
 		<select
 			v-model="selected"
@@ -29,6 +29,12 @@
 				Cancel
 			</button>
 		</template>
+		<div
+			v-if="partialText"
+			class="flex max-h-32 w-full flex-col-reverse overflow-y-auto text-ink-subtle"
+		>
+			<div class="whitespace-pre-wrap">{{ partialText }}</div>
+		</div>
 		<span v-if="error" class="text-red-600 dark:text-red-400">{{ error }}</span>
 	</div>
 </template>
@@ -40,15 +46,23 @@
 		askPersonaOnTask,
 		personaToolDefinition,
 	} from '@/local/personaAgent';
+	import { LOCAL_OWNER_ID } from '@/local/personaGate';
 	import { readPersonaCache } from '@/local/personaCache';
 	import {
+		ensureDefaultLocalPersona,
 		listLocalPersonas,
 		type WorkspacePersonaRow,
 	} from '@/local/personas';
 	import { activeLocalWorkspace, localContext } from '@/local/runtime';
 	import store from '@/store';
 	import { isDesktopApp } from '@/utils/desktop';
-	import { computed, defineComponent, onMounted, ref } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onBeforeUnmount,
+		onMounted,
+		ref,
+	} from 'vue';
 
 	export default defineComponent({
 		name: 'AskPersonaButton',
@@ -63,7 +77,9 @@
 			const selected = ref<string | null>(null);
 			const asking = ref(false);
 			const error = ref<string | null>(null);
+			const partialText = ref('');
 			let cancelCurrent: (() => Promise<void>) | null = null;
+			let cancelRequested = false;
 
 			// Asking needs agent_work:write to record the run and comments:write to post the answer.
 			const enabledPersonas = computed(() =>
@@ -76,15 +92,28 @@
 				),
 			);
 
-			const currentUser = () => ({
-				id: Number(store.state.user?.id) || 0,
-				name: store.state.user?.name ?? '',
-				email: store.state.user?.email ?? '',
-			});
+			const currentUser = () =>
+				store.getters?.isLocalOnly
+					? {
+							id: LOCAL_OWNER_ID,
+							name:
+								store.state.user?.name || store.state.localProfile?.name || '',
+							email: '',
+						}
+					: {
+							id: Number(store.state.user?.id) || 0,
+							name: store.state.user?.name ?? '',
+							email: store.state.user?.email ?? '',
+						};
 
 			onMounted(async () => {
 				if (!show || !workspace) return;
 				const ctx = await localContext(workspace, currentUser());
+				if (store.getters?.isLocalOnly) {
+					try {
+						await ensureDefaultLocalPersona(ctx);
+					} catch {}
+				}
 				personas.value = await listLocalPersonas(ctx);
 				selected.value = enabledPersonas.value[0]?.uuid ?? null;
 			});
@@ -97,6 +126,10 @@
 				if (!persona) return;
 				asking.value = true;
 				error.value = null;
+				partialText.value = '';
+				cancelRequested = false;
+				let wrote = false;
+				let posted = false;
 				try {
 					const ctx = await localContext(workspace, currentUser());
 					const cached = await readPersonaCache(persona.uuid, currentUser().id);
@@ -109,7 +142,8 @@
 						currentUser().id,
 					);
 					cancelCurrent = cancel;
-					await askPersonaOnTask({
+					if (cancelRequested) return;
+					const result = await askPersonaOnTask({
 						ctx,
 						router,
 						persona: { uuid: persona.uuid, name: persona.name },
@@ -117,19 +151,49 @@
 						systemPrompt,
 						grantedPermissions,
 						chat,
+						onText: (text) => {
+							partialText.value = text;
+						},
+						isCancelled: () => cancelRequested,
+						onToolCall: (method: string) => {
+							if (
+								typeof method === 'string' &&
+								String(method).toUpperCase() !== 'GET'
+							)
+								wrote = true;
+						},
 					});
-					emit('posted');
+					posted = !!result.posted || !cancelRequested;
 				} catch (e) {
-					error.value = e instanceof Error ? e.message : String(e);
+					if (!cancelRequested)
+						error.value = e instanceof Error ? e.message : String(e);
 				} finally {
+					if (posted || wrote) emit('posted');
 					asking.value = false;
+					if (cancelRequested || !error.value) partialText.value = '';
 					cancelCurrent = null;
 				}
 			};
 
-			const cancelAsk = () => cancelCurrent?.();
+			const cancelAsk = () => {
+				cancelRequested = true;
+				return cancelCurrent?.();
+			};
 
-			return { show, enabledPersonas, selected, asking, error, ask, cancelAsk };
+			onBeforeUnmount(() => {
+				Promise.resolve(cancelAsk()).catch(() => {});
+			});
+
+			return {
+				show,
+				enabledPersonas,
+				selected,
+				asking,
+				error,
+				partialText,
+				ask,
+				cancelAsk,
+			};
 		},
 	});
 </script>

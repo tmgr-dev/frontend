@@ -30,6 +30,7 @@ jobs:
   lint:
     name: fmt and clippy
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -48,22 +49,19 @@ jobs:
   test:
     name: test ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 55
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: linux-x86_64
-            runner: ubuntu-latest
-            target: ''
-          - name: linux-aarch64
-            runner: ubuntu-24.04-arm
-            target: ''
-          - name: macos-arm64
-            runner: macos-latest
-            target: ''
-          - name: macos-x86_64
-            runner: macos-latest
-            target: x86_64-apple-darwin
+        # macOS slots are scarce and shared with release work: x86_64 runs only on master, Dependabot PRs skip macOS.
+        include: >-
+          ${{ fromJSON(github.event.pull_request.user.login == 'dependabot[bot]'
+          && '[{"name":"linux-x86_64","runner":"ubuntu-latest","target":""},{"name":"linux-aarch64","runner":"ubuntu-24.04-arm","target":""}]'
+          || github.event_name == 'pull_request'
+          && '[{"name":"linux-x86_64","runner":"ubuntu-latest","target":""},{"name":"linux-aarch64","runner":"ubuntu-24.04-arm","target":""},{"name":"macos-arm64","runner":"macos-latest","target":""}]'
+          || '[{"name":"linux-x86_64","runner":"ubuntu-latest","target":""},{"name":"linux-aarch64","runner":"ubuntu-24.04-arm","target":""},{"name":"macos-arm64","runner":"macos-latest","target":""},{"name":"macos-x86_64","runner":"macos-latest","target":"x86_64-apple-darwin"}]') }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -76,6 +74,7 @@ jobs:
           key: ${{ matrix.name }}
 
       - name: test
+        timeout-minutes: 30
         env:
           TARGET: ${{ matrix.target }}
           TMGR_BUILD_COMMIT: ${{ github.sha }}
@@ -84,6 +83,7 @@ jobs:
           cargo test --workspace --locked --no-fail-fast ${TARGET:+--target "$TARGET"}
 
       - name: test runner feature
+        timeout-minutes: 20
         env:
           TARGET: ${{ matrix.target }}
           TMGR_BUILD_COMMIT: ${{ github.sha }}

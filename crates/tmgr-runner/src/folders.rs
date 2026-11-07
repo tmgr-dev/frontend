@@ -19,7 +19,7 @@ pub fn store(homes: &Path) -> PathBuf {
     homes.join(FILE)
 }
 
-fn read_capped(path: &Path, max: u64) -> Option<Vec<u8>> {
+pub(crate) fn read_capped(path: &Path, max: u64) -> Option<Vec<u8>> {
     let f = std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)

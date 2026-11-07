@@ -1,16 +1,21 @@
+use super::attach_checkpoints;
 use super::attach_chip::{chipper, ChipJob, Opener, SystemOpener};
 use super::attach_clip::{Clipboard, SystemClipboard};
+use super::attach_consent::Reads;
 use super::attach_export;
-use super::attach_git::{diff_argv, git_worker, GitJob};
-use super::attach_goto::{fork_call, fork_name, goto_call, text_call, Found, FORK_PASTE_WAIT};
+use super::attach_git::{diff_pane_argv, git_worker, GitJob};
+use super::attach_goto::{
+    can_fork, fork_call, fork_name, goto_call, text_call, Found, FORK_PASTE_WAIT,
+};
 use super::attach_layouts;
 use super::attach_links::{split_local, LinkMsg};
 use super::attach_new::{
-    default_folder, dialog_for, execute_task, in_agent, installed_kinds, kind_label, place_session,
-    prepare_task, registers_shell, route, spawn_size, start_session, NewFlow, Route, SpawnErr,
-    TaskReview,
+    self, default_folder, dialog_for, execute_task, in_agent, installed_kinds, kind_label,
+    place_session, prepare_task, registers_shell, route, spawn_size, start_session, NewFlow, Route,
+    SpawnErr, TaskReview,
 };
 use super::attach_notes;
+use super::attach_past::{self, Go, Shape};
 use super::attach_prompts;
 use super::attach_push;
 use super::attach_questions::{claude_binary, questioner, QuestionJob};
@@ -27,9 +32,11 @@ use super::attach_status::{peek_worker, status_worker, PeekJob};
 use super::attach_summary::{claim, post_real, summarizer, unclaim, Generated, SummaryJob};
 use super::attach_tasks;
 use super::attach_templates;
-use super::attach_title::{agent_src, titler, AgentSrc, TitleJob};
+use super::attach_title::{agent_src, title_real_home, titler, AgentSrc, TitleJob};
 use super::attach_usage::{usage_source, usage_worker};
+use super::menu::{self, dialog_path, load_dialog, save_dialog, DialogMemory};
 use super::run_task::Prepared;
+use super::session_wt::{delete, plan_removal, Ask, Removal};
 use super::watch as watcher;
 use super::{connect, rerr};
 use ratatui::backend::CrosstermBackend;
@@ -51,17 +58,19 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{
-    caps, CreateReq, Modes, RestoredRun, SessionInfo, Snapshot, StateKind, TaskRef,
+    caps, CheckpointStatus, CreateReq, Modes, PermissionAnswer, PermissionCard, RestoredRun,
+    SessionInfo, Snapshot, StateKind, TaskRef,
 };
 use tmgr_ipc::proto::{valid_session_id, ServerMsg};
 use tmgr_runner::attach::{
-    cursor, deliver, enter_mouse, focus_on, kind_for_background, layout, mode_changes, open_urls,
-    parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes, valid_pr_url, Action,
-    AgentTitle, AttentionTracker, Cmd, Confirm, Control, GitAction, GitInfo, Hit, InputSplitter,
-    LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier, PaletteEdit, PaletteEntry,
-    PaletteMode, PaneInfo, Place, PostTarget, PrLookup, QEdit, RenameEdit, ScreenSource, ScrollKey,
-    ScrollState, ScrollText, SearchEdit, SessionRow, SessionStatus, SidebarEdit, SignalSettings,
-    SignalTracker, SplitDir, SummaryAction, SummaryDraft, TaskChip, TaskOpt, ThemeKind, UsageBar,
+    clean_selection, cursor, deliver, enter_mouse, focus_on, kind_for_background, layout,
+    mode_changes, open_urls, parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes,
+    valid_pr_url, Action, AgentTitle, AttentionTracker, Cmd, Confirm, Control, CpAction, CpMsg,
+    GitAction, GitInfo, Hit, InputSplitter, KindOpt, LayoutPrefs, Loc, NewEdit, NewRequest,
+    NewSession, Notifier, PaletteEdit, PaletteEntry, PaletteMode, PaneInfo, PastEdit, Place,
+    PostTarget, PrLookup, QEdit, Remembered, RenameEdit, ScreenSource, ScrollKey, ScrollState,
+    ScrollText, SearchEdit, SessionRow, SessionStatus, SidebarEdit, SignalSettings, SignalTracker,
+    SplitDir, SummaryAction, SummaryDraft, TaskChip, TaskOpt, ThemeKind, TypedPrompt, UsageBar,
     ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
@@ -120,8 +129,11 @@ impl Guard {
         ACTIVE.store(true, Ordering::SeqCst);
         let guard = Guard;
         execute!(io::stdout(), EnterAlternateScreen, Hide)?;
+        io::stdout().write_all(b"\x1b[?2004h")?;
+        io::stdout().flush()?;
         let previous = panic::take_hook();
         panic::set_hook(Box::new(move |info| {
+            menu::kill_smart();
             restore();
             previous(info);
         }));
@@ -146,11 +158,21 @@ enum Msg {
     Down(String),
     Link(LinkMsg),
     Sessions(Vec<SessionInfo>),
+    PermCards(Vec<PermissionCard>),
+    PermAnswered {
+        card: String,
+        result: std::result::Result<(), String>,
+    },
+    Worktree(Removal),
     Locs(Vec<(String, Loc)>),
     Titles(Vec<(String, Option<AgentTitle>)>),
     Status(HashMap<String, SessionStatus>),
     Usage(UsageBar),
     Git(HashMap<String, GitInfo>),
+    Folders(tmgr_runner::attach::FolderData),
+    FolderMark(String, Option<tmgr_runner::attach::FolderMark>),
+    Checkpoints(CpMsg),
+    CheckpointsNote(String),
     Summary(Generated),
     Exported(std::result::Result<String, String>),
     NotesSent(std::result::Result<String, String>),
@@ -162,7 +184,7 @@ enum Msg {
         sub: String,
         lines: Vec<String>,
     },
-    Questions(Vec<Entry>),
+    Questions(Vec<Entry>, Reads),
     Goto {
         session: String,
         question: String,
@@ -171,6 +193,7 @@ enum Msg {
     Forked {
         source: String,
         prefill: String,
+        conversation: String,
         result: std::result::Result<RestoredRun, String>,
     },
     Created {
@@ -187,6 +210,14 @@ enum Msg {
     Resumed {
         old: String,
         result: std::result::Result<RestoredRun, String>,
+    },
+    PastPrepared {
+        result: std::result::Result<attach_past::Ready, SpawnErr>,
+        size: (u16, u16),
+    },
+    PastStarted {
+        result: std::result::Result<SessionInfo, String>,
+        fork: bool,
     },
     TemplateStarted {
         result: std::result::Result<SessionInfo, SpawnErr>,
@@ -228,6 +259,10 @@ impl ScreenSource for Screens<'_> {
     }
 }
 
+fn outbound_denial(reads: Reads) -> Option<&'static str> {
+    reads.denial(tmgr_runner::attach::Format::Claude)
+}
+
 fn short_age(now: u64, since: u64) -> String {
     let s = now.saturating_sub(since) / 1000;
     match s {
@@ -241,8 +276,10 @@ fn short_age(now: u64, since: u64) -> String {
 fn attention_target(view: &ViewState) -> Option<&str> {
     if view.sidebar_focus.is_some()
         || view.new_session.is_some()
+        || view.past_prompt.is_some()
         || view.palette.is_some()
         || view.qmenu.is_some()
+        || view.perm_overlay_open()
         || view.confirm.is_some()
         || view.rename.is_some()
         || view.filter_input()
@@ -281,6 +318,30 @@ fn session_kind(s: &SessionInfo) -> Option<String> {
     }
 }
 
+fn sandboxed_roots(
+    rows: &[SessionRow],
+    starts: &HashMap<String, (String, u32)>,
+    unsandboxed: &HashSet<String>,
+) -> Vec<PathBuf> {
+    rows.iter()
+        .filter(|r| !unsandboxed.contains(&r.id))
+        .filter_map(|r| starts.get(&r.id))
+        .map(|(start, _)| PathBuf::from(start))
+        .collect()
+}
+
+fn git_branch_only(
+    id: &str,
+    cwds: &[PathBuf],
+    unsandboxed: &HashSet<String>,
+    sandboxed: &[PathBuf],
+) -> bool {
+    !unsandboxed.contains(id)
+        || cwds.iter().any(|c| {
+            tmgr_queue::workdir::in_queue_run_dir(c) || sandboxed.iter().any(|s| c.starts_with(s))
+        })
+}
+
 fn rows(list: &[SessionInfo]) -> Vec<SessionRow> {
     let now = now_ms();
     list.iter()
@@ -312,12 +373,15 @@ struct App {
     last_user: Instant,
     attention: AttentionTracker,
     prefs_tx: Sender<Value>,
+    perm_tx: Sender<PermissionAnswer>,
     cfg: RunnerConfig,
     tx: SyncSender<Msg>,
     starts: HashMap<String, (String, u32)>,
+    unsandboxed: HashSet<String>,
     pending: HashMap<String, Instant>,
     creating: HashMap<String, String>,
     new_flow: NewFlow,
+    new_memory: Option<PathBuf>,
     typed: Option<(String, Vec<u8>)>,
     removing: HashSet<String>,
     stopped: HashSet<String>,
@@ -334,6 +398,8 @@ struct App {
     last_prefs: Option<LayoutPrefs>,
     scrolled: Option<(String, u32)>,
     notice_until: Option<Instant>,
+    worktree_offer: Option<(Ask, String)>,
+    worktree_held: Option<String>,
     probe_tx: SyncSender<Vec<ProbeJob>>,
     probe_pending: bool,
     tried: HashSet<String>,
@@ -380,6 +446,7 @@ struct App {
     last_status: Instant,
     usage_tx: SyncSender<Vec<QuestionJob>>,
     git_tx: SyncSender<Vec<GitJob>>,
+    marks_tx: mpsc::Sender<Vec<String>>,
     git_pending: bool,
     last_git: Instant,
     usage_pending: bool,
@@ -389,23 +456,129 @@ struct App {
     question_pending: bool,
     last_question: Instant,
     question_exited: HashSet<String>,
+    reads: Reads,
+    reads_notified: bool,
     qstore: Store,
     forking: HashSet<String>,
     fork_paste: HashMap<String, (String, Instant)>,
     template_ids: HashMap<String, bool>,
     remote: Remote,
+    past: Option<menu::State>,
+    past_busy: bool,
+    past_hold: Option<PastHold>,
+    past_resumes: HashSet<String>,
+    past_forks: HashSet<String>,
+}
+
+struct PastHold {
+    go: Go,
+    size: (u16, u16),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PastRoute {
+    Overlay,
+    Swallow,
+    Close,
+    Pass,
+}
+
+fn past_route(open: bool, confirm: bool, action: &Action) -> PastRoute {
+    if !open || confirm {
+        return PastRoute::Pass;
+    }
+    match action {
+        Action::Forward(_) | Action::Paste { .. } | Action::Drop(_) => PastRoute::Overlay,
+        Action::Mouse(_) | Action::Scroll(_) => PastRoute::Swallow,
+        Action::Cmd(Cmd::ResumePast) => PastRoute::Pass,
+        Action::Cmd(_) => PastRoute::Close,
+        Action::FocusIn | Action::FocusOut => PastRoute::Pass,
+    }
+}
+
+fn menu_agent(kind_id: &str) -> Option<&'static str> {
+    match kind_id {
+        "claude" => Some("claude-code"),
+        "codex" => Some("codex"),
+        _ => None,
+    }
+}
+
+fn dialog_agent(d: &NewSession) -> Option<&'static str> {
+    d.kinds.get(d.kind).and_then(|k| menu_agent(&k.id))
 }
 
 type ProbeJob = (String, u32, String);
 
+fn open_with_memory(
+    view: &mut ViewState,
+    folder: String,
+    kinds: Vec<KindOpt>,
+    home: PathBuf,
+    path: Option<&Path>,
+) {
+    view.open_new_session(folder, kinds, home);
+    let m = path.map(load_dialog).unwrap_or_default();
+    view.apply_remembered(&Remembered {
+        agent: m.agent,
+        bypass: m.bypass,
+        no_sandbox: m.no_sandbox,
+        worktree: m.worktree,
+        permission_cards: m.permission_cards,
+        checkpoints: m.checkpoints,
+    });
+}
+
+fn save_dialog_memory(
+    path: Option<&Path>,
+    dialog: Option<&NewSession>,
+    started: bool,
+    req: &NewRequest,
+) {
+    let (Some(path), Some(dialog), true) = (path, dialog, started) else {
+        return;
+    };
+    if req.task.is_some() || !matches!(req.kind, tmgr_runner::attach::SpawnKind::Agent { .. }) {
+        return;
+    }
+    let Some(kind) = dialog.kinds.get(dialog.kind) else {
+        return;
+    };
+    let _ = save_dialog(
+        path,
+        &DialogMemory {
+            agent: kind.id.clone(),
+            bypass: req.bypass,
+            no_sandbox: req.no_sandbox,
+            worktree: Some(req.worktree),
+            permission_cards: Some(req.permission_cards),
+            checkpoints: req.checkpoints,
+        },
+    );
+}
+
 impl App {
     fn on_msg(&mut self, msg: Msg) -> io::Result<Option<Exit>> {
+        self.enable_checkpoints_for(&msg);
         match msg {
             Msg::Stdin(bytes) => return self.on_stdin(&bytes),
             Msg::StdinClosed => return Ok(Some(Exit::Detached)),
             Msg::Down(why) => return Ok(Some(Exit::Lost(why))),
             Msg::Link(msg) => self.on_link(msg),
             Msg::Sessions(list) => self.on_sessions(&list),
+            Msg::PermCards(cards) => {
+                self.view.perm_clock(now_ms());
+                if self.view.set_perm_cards(cards) {
+                    self.dirty = true;
+                }
+            }
+            Msg::PermAnswered { card, result } => {
+                self.dirty = true;
+                if let Err(e) = result {
+                    self.view.perm_refused(&card);
+                    self.notify(&format!("permission: {}", sanitize_text(&e)));
+                }
+            }
             Msg::Locs(found) => {
                 self.probe_pending = false;
                 if self.view.set_locs(self.area(), found) {
@@ -478,14 +651,21 @@ impl App {
                     self.dirty = true;
                 }
             }
+            Msg::Checkpoints(msg) => {
+                if self.view.cp_msg(msg) {
+                    self.dirty = true;
+                }
+            }
+            Msg::CheckpointsNote(note) => self.notify(&note),
             Msg::Usage(bar) => {
                 self.usage_pending = false;
                 if self.view.set_usage(bar) {
                     self.dirty = true;
                 }
             }
-            Msg::Questions(entries) => {
+            Msg::Questions(entries, reads) => {
                 self.question_pending = false;
+                self.on_reads(reads);
                 if self.view.set_questions(entries) {
                     self.dirty = true;
                 }
@@ -498,8 +678,9 @@ impl App {
             Msg::Forked {
                 source,
                 prefill,
+                conversation,
                 result,
-            } => self.on_forked(&source, prefill, result),
+            } => self.on_forked(&source, (prefill, &conversation), result),
             Msg::Created {
                 result,
                 dir,
@@ -511,7 +692,10 @@ impl App {
                 req,
                 target,
             } => self.on_spawned(id, result, &req, &target),
+            Msg::Worktree(removal) => self.on_worktree(removal),
             Msg::Resumed { old, result } => self.on_resumed(&old, result),
+            Msg::PastPrepared { result, size } => self.on_past_prepared(result, size),
+            Msg::PastStarted { result, fork } => self.on_past_started(result, fork),
             Msg::TemplateStarted {
                 result,
                 req,
@@ -528,14 +712,37 @@ impl App {
                 self.text_pending = None;
                 self.text_at = Instant::now();
                 self.dirty = true;
-                let active = (self.view.search.is_some() || self.view.copy.is_some())
-                    && self.view.scroll.is_some();
+                let waiting = self.view.msel_waiting();
+                let active = waiting
+                    || ((self.view.search.is_some() || self.view.copy.is_some())
+                        && self.view.scroll.is_some());
                 match result {
                     Ok(text) if active && self.view.focused_session() == Some(session.as_str()) => {
                         let rows = self.page() + 1;
                         self.view.set_scroll_text(text, rows);
+                        if waiting {
+                            self.view.finish_msel();
+                            if self.view.search.is_none() && self.view.copy.is_none() {
+                                self.view.stext = None;
+                            }
+                            self.copy_out();
+                        }
                     }
-                    Ok(_) => {}
+                    Ok(_) => {
+                        if waiting
+                            && self
+                                .view
+                                .msel
+                                .as_ref()
+                                .is_some_and(|m| m.session == session)
+                        {
+                            self.view.clear_msel();
+                        }
+                    }
+                    Err(e) if waiting => {
+                        self.view.clear_msel();
+                        self.notify(&e);
+                    }
                     Err(e) => {
                         self.view.clear_find();
                         self.view.scroll = None;
@@ -543,6 +750,14 @@ impl App {
                         self.notify(&e);
                     }
                 }
+            }
+            Msg::Folders(data) => {
+                self.view.set_new_folders(data);
+                self.dirty = true;
+            }
+            Msg::FolderMark(path, mark) => {
+                self.view.set_folder_mark(path, mark);
+                self.dirty = true;
             }
             Msg::Tasks(result) => {
                 match result {
@@ -579,6 +794,24 @@ impl App {
     }
 
     fn on_sessions(&mut self, list: &[SessionInfo]) {
+        if self.view.set_cards_on(cards_wanted(list)) {
+            self.dirty = true;
+        }
+        let leaders = tmgr_link::store::Paths::from_env()
+            .map(|p| super::ops::leader_markers(&p))
+            .unwrap_or_default();
+        if leaders != self.view.leaders {
+            self.view.leaders = leaders;
+            self.dirty = true;
+        }
+        let teams = list
+            .iter()
+            .filter_map(|s| {
+                let t = s.team.as_ref().filter(|t| t.validate().is_ok())?;
+                Some((s.id.clone(), t.clone()))
+            })
+            .collect();
+        self.dirty |= self.view.set_teams(self.area(), teams);
         let new = merge_pending(
             rows(list),
             &local_rows(&self.view.sessions),
@@ -589,9 +822,21 @@ impl App {
         self.dirty |= meta;
         self.starts
             .retain(|id, _| list.iter().any(|s| &s.id == id) || self.pending.contains_key(id));
+        self.unsandboxed = list
+            .iter()
+            .filter(|s| s.no_sandbox)
+            .map(|s| s.id.clone())
+            .collect();
         for s in list {
             self.starts
                 .insert(s.id.clone(), (s.cwd.clone(), s.child_pid));
+        }
+        let statuses: HashMap<String, CheckpointStatus> = list
+            .iter()
+            .filter_map(|s| Some((s.id.clone(), s.checkpoints.clone()?)))
+            .collect();
+        if self.view.set_checkpoints(statuses) {
+            self.dirty = true;
         }
         self.view.watchers = list
             .iter()
@@ -710,7 +955,7 @@ impl App {
                 if row.name != src.default_name {
                     return None;
                 }
-                if row.exited() && !self.exit_scanned.insert(id.clone()) {
+                if row.exited() && self.exit_scanned.contains(&id) {
                     return None;
                 }
                 Some(TitleJob {
@@ -718,6 +963,7 @@ impl App {
                     src: src.clone(),
                     sandbox_home: self.cfg.homes.join(&id),
                     log: self.cfg.dir.join("sessions").join(&id).join("output.log"),
+                    real_home: title_real_home(src, attach_export::home_dir()),
                     id,
                 })
             })
@@ -729,7 +975,20 @@ impl App {
         }
         self.last_title = Instant::now();
         self.titles_tried.extend(jobs.iter().map(|j| j.id.clone()));
+        let exited: Vec<String> = jobs
+            .iter()
+            .filter(|j| {
+                self.view
+                    .sessions
+                    .iter()
+                    .any(|r| r.id == j.id && r.exited())
+            })
+            .map(|j| j.id.clone())
+            .collect();
         self.title_pending = self.title_tx.try_send(jobs).is_ok();
+        if self.title_pending {
+            self.exit_scanned.extend(exited);
+        }
     }
 
     fn question_job(&self, row: &SessionRow, src: &AgentSrc) -> QuestionJob {
@@ -746,6 +1005,7 @@ impl App {
                 .join("output.log"),
             exited: row.exited(),
             settled: !matches!(row.state.kind, StateKind::Working | StateKind::Starting),
+            real_home: None,
         }
     }
 
@@ -979,7 +1239,7 @@ impl App {
         }
         self.running_seen
             .retain(|id| self.view.sessions.iter().any(|r| &r.id == id));
-        if self.summary_mode == SummaryMode::Never {
+        if ended.is_empty() || self.summary_mode == SummaryMode::Never || !Reads::current().claude {
             return;
         }
         for (id, since) in ended {
@@ -1019,6 +1279,9 @@ impl App {
         };
         if src.format != tmgr_runner::attach::Format::Claude {
             return self.notify("export is available for Claude sessions");
+        }
+        if let Some(hint) = Reads::current().denial(src.format) {
+            return self.notify(hint);
         }
         let Some(home) = attach_export::home_dir() else {
             return self.notify("cannot find your home folder");
@@ -1122,6 +1385,9 @@ impl App {
     fn export_action(&mut self, action: tmgr_runner::attach::ExportAction) {
         use tmgr_runner::attach::ExportAction;
         self.dirty = true;
+        if let Some(hint) = outbound_denial(Reads::current()) {
+            return self.notify(hint);
+        }
         self.notify("exporting…");
         let tx = self.tx.clone();
         match action {
@@ -1152,14 +1418,39 @@ impl App {
         let Some((draft, job)) = self.summary_job(&id, now_ms()) else {
             return self.notify("summaries are available for Claude sessions");
         };
+        if let Some(hint) = Reads::current().denial(job.job.src.format) {
+            return self.notify(hint);
+        }
         if self.summary_tx.try_send(job).is_err() {
             return self.notify("a summary is already being prepared, try again in a moment");
         }
         self.view.show_summary(draft);
     }
 
+    fn on_reads(&mut self, reads: Reads) {
+        if reads != self.reads {
+            self.question_exited.clear();
+            self.exit_scanned.clear();
+        }
+        self.reads = reads;
+        let hint = reads.hint();
+        if self.view.set_reads_hint(hint) {
+            self.dirty = true;
+        }
+        let affected = self.agents.values().any(|a| !reads.allows(a.format));
+        if let Some(hint) = hint.filter(|_| !self.reads_notified && affected) {
+            self.reads_notified = true;
+            self.notify(hint);
+        }
+    }
+
     fn on_summary(&mut self, done: Generated) {
         self.dirty = true;
+        if done.denied {
+            self.summary_auto.remove(&done.key);
+            self.view.drop_summary(&done.key);
+            return self.notify(&done.text);
+        }
         if let Some(mut draft) = self.summary_auto.remove(&done.key) {
             draft.text = Some(done.text);
             draft.plain = done.plain;
@@ -1192,6 +1483,9 @@ impl App {
     }
 
     fn post_now(&mut self, draft: SummaryDraft) {
+        if let Some(hint) = outbound_denial(Reads::current()) {
+            return self.notify(hint);
+        }
         let kept = Box::new(draft.clone());
         let (Some(target), Some(text)) = (draft.target, draft.text) else {
             return;
@@ -1217,6 +1511,7 @@ impl App {
             return;
         }
         self.last_git = Instant::now();
+        let sandboxed = sandboxed_roots(&self.view.sessions, &self.starts, &self.unsandboxed);
         let jobs: Vec<GitJob> = self
             .view
             .panes()
@@ -1230,13 +1525,65 @@ impl App {
                     .into_iter()
                     .map(PathBuf::from)
                     .collect();
+                let branch_only = git_branch_only(id, &cwds, &self.unsandboxed, &sandboxed);
                 (!row.exited() || !cwds.is_empty()).then(|| GitJob {
                     id: id.clone(),
                     cwds,
+                    branch_only,
                 })
             })
             .collect();
         self.git_pending = self.git_tx.try_send(jobs).is_ok();
+    }
+
+    fn enable_checkpoints_for(&self, msg: &Msg) {
+        let (id, flag) = match msg {
+            Msg::Spawned {
+                result: Ok(info),
+                req,
+                ..
+            }
+            | Msg::TemplateStarted {
+                result: Ok(info),
+                req,
+                ..
+            }
+            | Msg::LayoutStarted {
+                result: Ok(info),
+                req,
+                ..
+            } => (info.id.clone(), req.checkpoints),
+            Msg::Created {
+                result: Ok(info), ..
+            } => (info.id.clone(), None),
+            _ => return,
+        };
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            if let Some(note) = attach_checkpoints::enable(&cfg, &id, flag) {
+                let _ = tx.send(Msg::CheckpointsNote(note));
+            }
+        });
+    }
+
+    fn probe_checkpoints(&mut self) {
+        for job in self.view.cp_due(Instant::now()) {
+            let cfg = self.cfg.clone();
+            let tx = self.tx.clone();
+            thread::spawn(move || {
+                let _ = tx.send(Msg::Checkpoints(attach_checkpoints::fetch(&cfg, job)));
+            });
+        }
+    }
+
+    fn checkpoints_action(&mut self, action: CpAction) {
+        self.dirty = true;
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let _ = tx.send(Msg::Checkpoints(attach_checkpoints::act(&cfg, action)));
+        });
     }
 
     fn git_action(&mut self, action: GitAction) {
@@ -1260,10 +1607,8 @@ impl App {
                 };
                 let pager = std::env::var("PAGER").ok();
                 self.view.git_open = false;
-                self.request_split_cmd(
-                    SplitDir::Down,
-                    Some((diff_argv(pager.as_deref()), root, "diff")),
-                );
+                let argv = diff_pane_argv(&self.cfg.self_exe, &root, pager.as_deref());
+                self.request_split_cmd(SplitDir::Down, Some((argv, root, "diff")));
             }
         }
     }
@@ -1301,9 +1646,20 @@ impl App {
             if row.exited() && !self.question_exited.insert(row.id.clone()) {
                 continue;
             }
-            jobs.push(self.question_job(row, src));
+            let mut job = self.question_job(row, src);
+            job.real_home = title_real_home(src, attach_export::home_dir());
+            jobs.push(job);
         }
         self.question_pending = self.question_tx.try_send(jobs).is_ok();
+    }
+
+    fn perm_answer(&mut self, answer: PermissionAnswer) {
+        self.dirty = true;
+        let card = answer.card.clone();
+        if self.perm_tx.send(answer).is_err() {
+            self.view.perm_refused(&card);
+            self.notify("permission: answer worker is gone");
+        }
     }
 
     fn questions_input(&mut self, data: &[u8]) {
@@ -1438,8 +1794,8 @@ impl App {
         else {
             return self.notify("this session is not ready to fork yet");
         };
-        if src.profile != "claude-code" {
-            return self.notify("fork works for Claude Code sessions only");
+        if !can_fork(&src.profile) {
+            return self.notify("fork works for Claude Code and Codex sessions only");
         }
         if !self.forking.insert(session.clone()) {
             return;
@@ -1459,10 +1815,15 @@ impl App {
         let cfg = self.cfg.clone();
         let tx = self.tx.clone();
         thread::spawn(move || {
-            let result = fork_call(&cfg, &job, &name, size);
+            let (result, conversation) =
+                match fork_call(&cfg, &job, &name, size, (Reads::current(), None)) {
+                    Ok((run, id)) => (Ok(run), id),
+                    Err(e) => (Err(e), String::new()),
+                };
             let sent = tx.send(Msg::Forked {
                 source: job.id,
                 prefill,
+                conversation,
                 result,
             });
             if let Err(mpsc::SendError(Msg::Forked {
@@ -1477,10 +1838,14 @@ impl App {
     fn on_forked(
         &mut self,
         source: &str,
-        prefill: String,
+        (prefill, conversation): (String, &str),
         result: std::result::Result<RestoredRun, String>,
     ) {
         self.forking.remove(source);
+        let from_past = self.past_forks.remove(source);
+        if from_past {
+            self.past_busy = false;
+        }
         self.dirty = true;
         let info = match result {
             Ok(run) => run.session,
@@ -1492,12 +1857,20 @@ impl App {
         self.pending.insert(info.id.clone(), Instant::now());
         self.starts
             .insert(info.id.clone(), (info.cwd.clone(), info.child_pid));
-        let split = place_session(&mut self.view, source, Place::Right, &info.id);
-        self.fork_paste
-            .insert(info.id.clone(), (prefill, Instant::now()));
+        let target = match self.view.focused_session() {
+            Some(focused) if from_past && !self.view.panes().iter().any(|p| p == source) => {
+                focused.to_string()
+            }
+            _ => source.to_string(),
+        };
+        let split = place_session(&mut self.view, &target, Place::Right, &info.id);
+        if keeps_fork_paste(from_past, &prefill) {
+            self.fork_paste
+                .insert(info.id.clone(), (prefill, Instant::now()));
+        }
         let name = sanitize_text(&info.name).into_owned();
         if split {
-            self.notify(&format!("forked into {name}"));
+            self.notify(&format!("forked into {name} (conversation {conversation})"));
         } else {
             self.notify(&format!("forked into {name}, no room for another pane"));
         }
@@ -1751,11 +2124,22 @@ impl App {
         };
         let folder = default_folder(process_cwd(pid), start, std::env::current_dir().ok(), &home);
         self.new_flow.drop_review();
-        self.view.open_new_session(folder, installed_kinds(), home);
+        open_with_memory(
+            &mut self.view,
+            folder,
+            installed_kinds(),
+            home,
+            self.new_memory.as_deref(),
+        );
         let tx = self.tx.clone();
         let agent = in_agent();
         thread::spawn(move || {
             let _ = tx.send(Msg::Tasks(attach_tasks::load(agent)));
+        });
+        let live_cwds: Vec<String> = self.starts.values().map(|(cwd, _)| cwd.clone()).collect();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let _ = tx.send(Msg::Folders(super::attach_folders::load(&live_cwds)));
         });
     }
 
@@ -1888,6 +2272,35 @@ impl App {
         });
     }
 
+    fn dialog_prompt_cramped(&mut self, data: &[u8]) -> bool {
+        let open = self
+            .view
+            .new_session
+            .as_ref()
+            .is_some_and(|n| n.priv_prompt_open());
+        let esc = !data.is_empty() && data.iter().all(|&b| b == 0x1b);
+        if !open || esc || self.view.priv_prompt_fits(self.area()) {
+            return false;
+        }
+        self.dirty = true;
+        self.notify("enlarge the terminal to read the whole warning");
+        true
+    }
+
+    fn save_pins(&mut self, pins: &[String]) {
+        if let Some(path) = super::attach_folders::pins_path() {
+            let _ = super::attach_folders::save_pins(&path, pins);
+        }
+        self.dirty = true;
+    }
+
+    fn feed_folder_marks(&mut self) {
+        let paths = self.view.take_folder_mark_requests();
+        if !paths.is_empty() {
+            let _ = self.marks_tx.send(paths);
+        }
+    }
+
     fn sync_review(&mut self) {
         let shown = self
             .view
@@ -1900,22 +2313,39 @@ impl App {
     fn modal_input(&mut self, route: Route, action: Action) {
         match (route, action) {
             (Route::Dialog, Action::Forward(data)) => {
+                if self.dialog_prompt_cramped(&data) {
+                    return;
+                }
                 let before = self.view.new_session.clone();
                 match self.view.edit_new_session(&data) {
                     NewEdit::Submit(req) => self.begin_spawn(before, req),
                     NewEdit::Approve => self.approve_task(),
+                    NewEdit::Pins(pins) => self.save_pins(&pins),
+                    NewEdit::ResumePast => {
+                        let kind = before.as_ref().and_then(dialog_agent);
+                        self.open_past(kind);
+                    }
                     _ => {}
                 }
                 self.sync_review();
+                self.feed_folder_marks();
             }
+            (Route::PastPrompt, Action::Forward(data)) => self.past_prompt_input(&data),
             (Route::Dialog, Action::Drop(data) | Action::Paste { data, .. }) => {
                 self.view.insert_new_session_text(&data);
+                self.feed_folder_marks();
             }
             (Route::Git, Action::Forward(data)) => {
                 if let Some(action) = self.view.edit_git(&data) {
                     self.git_action(action);
                 }
                 self.dirty = true;
+            }
+            (Route::Checkpoints, Action::Forward(data)) => {
+                self.dirty = true;
+                if let Some(action) = self.view.edit_cp(&data) {
+                    self.checkpoints_action(action);
+                }
             }
             (Route::Export, Action::Forward(data)) => {
                 if let Some(action) = self.view.edit_export(&data) {
@@ -1942,6 +2372,13 @@ impl App {
                 self.dirty = true;
             }
             (Route::Questions, Action::Forward(data)) => self.questions_input(&data),
+            (Route::Perm, Action::Forward(data)) => {
+                let area = self.area();
+                if let Some(answer) = self.view.edit_perm(area, &data) {
+                    self.perm_answer(answer);
+                }
+                self.dirty = true;
+            }
             (Route::Peek, Action::Forward(data)) => {
                 self.view.edit_peek(&data);
                 self.dirty = true;
@@ -1966,6 +2403,12 @@ impl App {
     ) {
         self.dirty = true;
         let dialog = self.new_flow.finish(id);
+        save_dialog_memory(
+            self.new_memory.as_deref(),
+            dialog.as_ref(),
+            result.is_ok(),
+            req,
+        );
         let info = match result {
             Ok(info) => info,
             Err(e) => {
@@ -2052,6 +2495,10 @@ impl App {
 
     fn on_resumed(&mut self, old: &str, result: std::result::Result<RestoredRun, String>) {
         self.resuming.remove(old);
+        let from_past = self.past_resumes.remove(old);
+        if from_past {
+            self.past_busy = false;
+        }
         self.dirty = true;
         let run = match result {
             Ok(run) => run,
@@ -2071,7 +2518,11 @@ impl App {
         self.starts.remove(old);
         self.starts
             .insert(new.clone(), (info.cwd.clone(), info.child_pid));
+        let was_pane = self.view.panes().iter().any(|p| p == old);
         self.view.replace_session(old, &new);
+        if from_past && !was_pane {
+            self.show_past(&new);
+        }
         self.cache.remove(old);
         if let Some(size) = self.sent_sizes.remove(old) {
             self.sent_sizes.insert(new.clone(), size);
@@ -2079,6 +2530,281 @@ impl App {
         self.stopped.remove(old);
         self.watched = None;
         self.notify(&resumed_notice(&info.name, run.via.as_deref()));
+    }
+
+    fn past_size(&self, place: Place) -> (u16, u16) {
+        let target = self
+            .view
+            .focused_session()
+            .map(str::to_string)
+            .unwrap_or_default();
+        let content = layout(self.area(), &self.view)
+            .panes
+            .iter()
+            .find(|p| p.session == target)
+            .map(|p| p.content())
+            .unwrap_or_default();
+        spawn_size(content, place)
+    }
+
+    fn past_in_flight(&self) -> bool {
+        self.past_busy || self.past_hold.is_some()
+    }
+
+    fn open_past(&mut self, kind: Option<&str>) {
+        self.dirty = true;
+        if in_agent() {
+            return self.notify("not available inside an agent session");
+        }
+        if self.past_in_flight() {
+            return self.notify("a session is still starting");
+        }
+        self.leave_overlays();
+        self.view.confirm = None;
+        self.view.rename = None;
+        self.past = Some(menu::open_in_attach(kind));
+    }
+
+    fn past_input(&mut self, action: Action) {
+        self.dirty = true;
+        let Some(state) = self.past.as_mut() else {
+            return;
+        };
+        let fed = match action {
+            Action::Forward(data) => menu::feed_keys(state, &data),
+            Action::Paste { data, .. } | Action::Drop(data) => {
+                menu::feed_paste(state, &data);
+                menu::Fed::Stay
+            }
+            _ => return,
+        };
+        match fed {
+            menu::Fed::Stay => {}
+            menu::Fed::Close => self.past = None,
+            menu::Fed::Pick(pick) => {
+                self.past = None;
+                self.start_past(pick);
+            }
+        }
+    }
+
+    fn start_past(&mut self, pick: Option<menu::Pick>) {
+        self.dirty = true;
+        let Some(pick) = pick else {
+            return self.open_new_session();
+        };
+        if self.past_in_flight() {
+            return self.notify("a session is still starting");
+        }
+        match attach_past::shape(&pick) {
+            Shape::Resume => self.resume_past(&pick.id),
+            Shape::Fork => self.fork_past(pick.id),
+            Shape::External | Shape::ResumeFlagged => self.prepare_past(pick),
+        }
+    }
+
+    fn resume_past(&mut self, id: &str) {
+        if let Err(e) = tmgr_link::privileged::guard() {
+            return self.notify(&attach_past::spawn_notice(&attach_new::task_err(e)));
+        }
+        if !valid_session_id(id) {
+            return self.notify("not available for linked sessions");
+        }
+        let row = self.view.sessions.iter().find(|r| r.id == id);
+        match (resume_step(row, &self.resuming), row.is_some()) {
+            (ResumeStep::Start, _) => {
+                self.past_busy = true;
+                self.past_resumes.insert(id.to_string());
+                self.request_resume(id);
+            }
+            (ResumeStep::Notice(text), _) => self.notify(text),
+            (ResumeStep::Ignore, true) => self.notify("a session is still starting"),
+            (ResumeStep::Ignore, false) => self.notify("that session is no longer in the list"),
+        }
+    }
+
+    fn fork_past(&mut self, id: String) {
+        if !self.forking.insert(id.clone()) {
+            return self.notify("a session is still starting");
+        }
+        let size = self.past_size(Place::Right);
+        self.past_busy = true;
+        self.past_forks.insert(id.clone());
+        self.notify("forking…");
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let (result, conversation) = match attach_past::run_fork(&cfg, &id, size) {
+                Ok((run, conversation)) => (Ok(run), conversation),
+                Err(e) => (Err(attach_past::spawn_notice(&e)), String::new()),
+            };
+            let sent = tx.send(Msg::Forked {
+                source: id,
+                prefill: String::new(),
+                conversation,
+                result,
+            });
+            if let Err(mpsc::SendError(Msg::Forked {
+                result: Ok(run), ..
+            })) = sent
+            {
+                run_ladder(&cfg, &run.session.id, true, KILL_ONLY);
+            }
+        });
+    }
+
+    fn prepare_past(&mut self, pick: menu::Pick) {
+        let size = self.past_size(self.view.new_place.unwrap_or_default());
+        self.past_busy = true;
+        self.notify("checking the session…");
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let result = attach_past::prepare(&cfg, &pick);
+            let _ = tx.send(Msg::PastPrepared { result, size });
+        });
+    }
+
+    fn on_past_prepared(
+        &mut self,
+        result: std::result::Result<attach_past::Ready, SpawnErr>,
+        size: (u16, u16),
+    ) {
+        self.past_busy = false;
+        self.dirty = true;
+        match result {
+            Err(e) => self.notify(&attach_past::spawn_notice(&e)),
+            Ok(ready) => {
+                self.leave_overlays();
+                self.view.confirm = None;
+                self.view.rename = None;
+                self.past_hold = Some(PastHold { go: ready.go, size });
+                self.view
+                    .open_past_prompt(TypedPrompt::new(ready.lines, ready.ask));
+            }
+        }
+    }
+
+    fn past_prompt_input(&mut self, data: &[u8]) {
+        self.dirty = true;
+        let esc = !data.is_empty() && data.iter().all(|&b| b == 0x1b);
+        if !esc && !self.view.past_prompt_fits(self.area()) {
+            return self.notify("enlarge the terminal to read the whole warning");
+        }
+        match self.view.edit_past_prompt(data) {
+            PastEdit::Editing => {}
+            PastEdit::Cancel => {
+                self.past_hold = None;
+                self.notify("cancelled, nothing was started");
+            }
+            PastEdit::Mismatch => {
+                self.past_hold = None;
+                self.notify("confirmation did not match, nothing was started");
+            }
+            PastEdit::Confirmed => self.execute_past(),
+        }
+    }
+
+    fn cancel_past_prompt(&mut self) {
+        if self.view.past_prompt.take().is_some() {
+            self.past_hold = None;
+            self.notify("cancelled, nothing was started");
+        }
+    }
+
+    fn execute_past(&mut self) {
+        let Some(PastHold { go, size }) = self.past_hold.take() else {
+            return;
+        };
+        self.past_busy = true;
+        self.notify("starting…");
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        match go {
+            Go::External { query, plan, mode } => {
+                thread::spawn(move || {
+                    let fork = plan.fork;
+                    let result = attach_past::run_external(&cfg, &query, &plan, mode, size)
+                        .map_err(|e| attach_past::spawn_notice(&e));
+                    let sent = tx.send(Msg::PastStarted { result, fork });
+                    if let Err(mpsc::SendError(Msg::PastStarted {
+                        result: Ok(info), ..
+                    })) = sent
+                    {
+                        run_ladder(&cfg, &info.id, true, KILL_ONLY);
+                    }
+                });
+            }
+            Go::Tmgr {
+                session,
+                known,
+                mode,
+                no_sandbox,
+            } => {
+                let old = session.id.clone();
+                self.past_resumes.insert(old.clone());
+                self.resuming.insert(old.clone(), Instant::now());
+                thread::spawn(move || {
+                    let result = attach_past::run_tmgr_resume(
+                        &cfg,
+                        &session,
+                        known.as_deref(),
+                        mode,
+                        no_sandbox,
+                    )
+                    .map_err(|e| attach_past::spawn_notice(&e));
+                    let sent = tx.send(Msg::Resumed { old, result });
+                    if let Err(mpsc::SendError(Msg::Resumed {
+                        result: Ok(run), ..
+                    })) = sent
+                    {
+                        run_ladder(&cfg, &run.session.id, true, KILL_ONLY);
+                    }
+                });
+            }
+        }
+    }
+
+    fn show_past(&mut self, id: &str) {
+        if self.view.in_tab(id) {
+            return self.view.open(id);
+        }
+        let place = self.view.new_place.unwrap_or_default();
+        let target = self
+            .view
+            .focused_session()
+            .map(str::to_string)
+            .unwrap_or_default();
+        place_session(&mut self.view, &target, place, id);
+    }
+
+    fn on_past_started(&mut self, result: std::result::Result<SessionInfo, String>, fork: bool) {
+        self.past_busy = false;
+        self.dirty = true;
+        let info = match result {
+            Ok(info) => info,
+            Err(e) => return self.notify(&e),
+        };
+        if !self.view.sessions.iter().any(|r| r.id == info.id) {
+            self.view.sessions.extend(rows(std::slice::from_ref(&info)));
+        }
+        self.pending.insert(info.id.clone(), Instant::now());
+        self.starts
+            .insert(info.id.clone(), (info.cwd.clone(), info.child_pid));
+        let place = self.view.new_place.unwrap_or_default();
+        let target = self
+            .view
+            .focused_session()
+            .map(str::to_string)
+            .unwrap_or_default();
+        let split = place_session(&mut self.view, &target, place, &info.id);
+        let verb = if fork { "forked" } else { "resumed" };
+        let name = sanitize_text(&info.name).into_owned();
+        if place != Place::Replace && !split {
+            self.notify(&format!("{verb} {name}, no room for another pane"));
+        } else {
+            self.notify(&format!("{verb} {name}"));
+        }
     }
 
     fn begin_find(&mut self) -> Option<String> {
@@ -2129,16 +2855,31 @@ impl App {
     fn after_find(&mut self) {
         self.dirty = true;
         self.sync_scroll_mode();
-        if let Some(text) = self.view.take_copied() {
-            let msg = self.clipboard.copy(&text);
-            self.notify(&msg);
-        }
+        self.copy_out();
         if (self.view.search.is_some() || self.view.copy.is_some()) && self.view.stext.is_none() {
             self.request_text();
         }
         if let Some(n) = self.view.notice.take() {
             self.notify(&n);
         }
+    }
+
+    fn copy_out(&mut self) {
+        let Some(text) = self.view.take_copied() else {
+            return;
+        };
+        let clean = tmgr_core::config::config_dir()
+            .ok()
+            .and_then(|d| tmgr_core::config::Config::load(&d).ok())
+            .is_none_or(|c| c.attach_copy_clean());
+        let context = self.view.take_copied_context();
+        let text = if clean {
+            clean_selection(&text, &context)
+        } else {
+            text
+        };
+        let msg = self.clipboard.copy(&text);
+        self.notify(&msg);
     }
 
     fn request_text(&mut self) {
@@ -2202,6 +2943,7 @@ impl App {
         self.view.help = false;
         self.view.palette = None;
         self.view.new_session = None;
+        self.past = None;
         self.view.sidebar_focus = None;
         if self.view.scroll.take().is_some() {
             self.scroll_mode = false;
@@ -2363,11 +3105,59 @@ impl App {
             return;
         }
         let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
         let id = id.to_string();
         thread::spawn(move || {
-            if let Ok(mut c) = connect(&cfg) {
-                let _ = c.remove(&id);
+            let Ok(mut c) = connect(&cfg) else {
+                return;
+            };
+            let cwd = c
+                .list()
+                .ok()
+                .and_then(|l| l.into_iter().find(|s| s.id == id))
+                .map(|s| s.cwd);
+            if c.remove(&id).is_err() {
+                return;
             }
+            let others: Vec<String> = c
+                .list()
+                .map(|l| l.into_iter().map(|s| s.cwd).collect())
+                .unwrap_or_default();
+            if let Some(removal) = cwd.and_then(|cwd| plan_removal(&cwd, &others)) {
+                let _ = tx.send(Msg::Worktree(removal));
+            }
+        });
+    }
+
+    fn on_worktree(&mut self, removal: Removal) {
+        self.dirty = true;
+        match removal {
+            Removal::Note(n) if self.worktree_offer.is_some() => self.worktree_held = Some(n),
+            Removal::Note(n) => self.notify(&n),
+            Removal::Ask(ask) => {
+                let prompt = format!("{} y/n", ask.question);
+                self.view.notice = Some(prompt.clone());
+                self.notice_until = None;
+                self.worktree_offer = Some((ask, prompt));
+            }
+        }
+    }
+
+    fn worktree_answer(&mut self, ask: Ask, yes: bool) {
+        self.dirty = true;
+        let held = self.worktree_held.take();
+        if !yes {
+            let kept = format!("worktree {} kept", ask.name);
+            return self.notify(&held.map_or(kept.clone(), |h| format!("{kept}; {h}")));
+        }
+        self.notify(&format!("deleting worktree {}...", ask.name));
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let mut note = delete(&ask);
+            if let Some(h) = held {
+                note = format!("{note}; {h}");
+            }
+            let _ = tx.send(Msg::Worktree(Removal::Note(note)));
         });
     }
 
@@ -2468,6 +3258,11 @@ impl App {
             name: None,
             place: Place::Right,
             task: None,
+            worktree: false,
+            checkpoints: None,
+            permission_cards: false,
+            bypass: false,
+            no_sandbox: false,
         };
         let (cols, rows) = spawn_size(content, req.place);
         self.notify(&format!("starting {}...", sanitize_text(&t.name)));
@@ -2678,6 +3473,11 @@ impl App {
                 name: None,
                 place: Place::Right,
                 task: None,
+                worktree: false,
+                checkpoints: None,
+                permission_cards: false,
+                bypass: false,
+                no_sandbox: false,
             };
             let mut run_req = req.clone();
             if registers_shell(&req) {
@@ -2796,6 +3596,21 @@ impl App {
     }
 
     fn handle(&mut self, actions: Vec<Action>) -> io::Result<Option<Exit>> {
+        let forwards = actions
+            .iter()
+            .filter(|a| matches!(a, Action::Forward(_)))
+            .count();
+        let confirming = self.past.as_ref().is_some_and(menu::State::confirming);
+        let actions = if self.view.refuse_priv_batch(forwards) || (confirming && forwards > 1) {
+            self.dirty = true;
+            actions
+                .into_iter()
+                .filter(|a| !matches!(a, Action::Forward(_)))
+                .collect()
+        } else {
+            actions
+        };
+        self.view.perm_clock(now_ms());
         let user_action = actions.iter().any(|a| is_user_action(&self.view, a));
         if user_action {
             self.last_user = Instant::now();
@@ -2803,6 +3618,42 @@ impl App {
         for action in actions {
             if !matches!(action, Action::Mouse(_)) {
                 self.dirty = true;
+            }
+            if let Some((ask, prompt)) = self.worktree_offer.take() {
+                let shown = self.view.notice.as_deref() == Some(prompt.as_str());
+                let blocked = route(&self.view, &action) != Route::Other
+                    || self.past.is_some()
+                    || self.view.new_session.is_some()
+                    || self.view.palette.is_some()
+                    || self.view.confirm.is_some()
+                    || self.view.rename.is_some()
+                    || self.view.qmenu.is_some()
+                    || self.view.filter_input()
+                    || self.view.layout_offer.is_some()
+                    || self.view.help
+                    || self.view.copy.is_some()
+                    || self.view.search.is_some()
+                    || self.view.sidebar_focus.is_some();
+                if !shown {
+                    if let Some(h) = self.worktree_held.take() {
+                        self.notify(&h);
+                    }
+                } else if blocked {
+                    self.worktree_offer = Some((ask, prompt));
+                } else {
+                    match &action {
+                        Action::Forward(d) => {
+                            let yes = matches!(d.as_slice(), [b'y' | b'Y']);
+                            self.worktree_answer(ask, yes);
+                            continue;
+                        }
+                        Action::Drop(_) | Action::Paste { .. } => {
+                            self.worktree_answer(ask, false);
+                            continue;
+                        }
+                        _ => self.worktree_offer = Some((ask, prompt)),
+                    }
+                }
             }
             if self.view.layout_offer.is_some() && self.view.confirm.is_none() {
                 let answer = matches!(&action, Action::Forward(d) if offer_answer(d));
@@ -2815,6 +3666,15 @@ impl App {
                     self.view.layout_offer = None;
                     self.view.layout_restore = None;
                 }
+            }
+            match past_route(self.past.is_some(), self.view.confirm.is_some(), &action) {
+                PastRoute::Overlay => {
+                    self.past_input(action);
+                    continue;
+                }
+                PastRoute::Swallow => continue,
+                PastRoute::Close => self.past = None,
+                PastRoute::Pass => {}
             }
             let routed = route(&self.view, &action);
             if routed != Route::Other {
@@ -2829,6 +3689,7 @@ impl App {
                 Action::FocusOut => {
                     self.focus_seen = true;
                     self.window_focused = false;
+                    self.view.clear_msel();
                 }
                 Action::Forward(data) if self.view.palette.is_some() => {
                     match self.view.edit_palette(&data) {
@@ -3013,6 +3874,9 @@ impl App {
                     if let Some((id, bytes)) = out.forward {
                         self.send_to(&id, &bytes)?;
                     }
+                    if out.want_text.is_some() {
+                        self.request_text();
+                    }
                     if let Some((id, ctl)) = out.control {
                         self.control(&id, ctl)?;
                     }
@@ -3021,12 +3885,18 @@ impl App {
                             return Ok(Some(exit));
                         }
                     }
-                    if let Some(NewEdit::Submit(req)) = out.new_edit {
-                        self.begin_spawn(before, req);
+                    match out.new_edit {
+                        Some(NewEdit::Submit(req)) => self.begin_spawn(before, req),
+                        Some(NewEdit::Pins(pins)) => self.save_pins(&pins),
+                        _ => {}
                     }
                     self.sync_review();
+                    self.feed_folder_marks();
                     if let Some(edit) = out.question {
                         self.question_edit(edit);
+                    }
+                    if let Some(answer) = out.perm {
+                        self.perm_answer(answer);
                     }
                     if out.new_session {
                         self.open_new_session();
@@ -3062,8 +3932,17 @@ impl App {
                 }
                 Action::Cmd(Cmd::NewSession) => {
                     self.view.pointer = None;
+                    self.cancel_past_prompt();
                     if self.view.new_session.take().is_none() {
                         self.open_new_session();
+                    }
+                }
+                Action::Cmd(Cmd::ResumePast) => {
+                    self.view.pointer = None;
+                    self.cancel_past_prompt();
+                    if self.past.take().is_none() {
+                        let kind = self.view.new_kind.as_deref().and_then(menu_agent);
+                        self.open_past(kind);
                     }
                 }
                 Action::Cmd(cmd) => {
@@ -3075,6 +3954,7 @@ impl App {
                     self.view.confirm = None;
                     self.view.rename = None;
                     self.view.new_session = None;
+                    self.cancel_past_prompt();
                     if cmd != Cmd::Notes {
                         if let Some(n) = self.view.notes.take() {
                             if n.unsaved {
@@ -3084,6 +3964,9 @@ impl App {
                     }
                     if cmd != Cmd::Git {
                         self.view.git_open = false;
+                    }
+                    if cmd != Cmd::Checkpoints {
+                        self.view.cp.close();
                     }
                     self.view.sidebar_focus = None;
                     self.view.layout_offer = None;
@@ -3202,6 +4085,15 @@ impl App {
             }
         }
         self.report_attention(false);
+        if let Some(past) = self.past.as_mut() {
+            if menu::refresh(past) {
+                self.dirty = true;
+            }
+        }
+        self.view.perm_clock(now_ms());
+        if self.view.perm_tick() {
+            self.dirty = true;
+        }
         if self
             .send_enter
             .as_ref()
@@ -3235,6 +4127,7 @@ impl App {
         self.probe_usage();
         self.poll_watchers();
         self.probe_git();
+        self.probe_checkpoints();
         self.check_exits();
         self.check_push();
         self.probe_peek();
@@ -3243,7 +4136,7 @@ impl App {
         self.view.forkable = self
             .agents
             .iter()
-            .filter(|(_, s)| s.profile == "claude-code")
+            .filter(|(_, s)| can_fork(&s.profile))
             .map(|(id, _)| id.clone())
             .collect();
         if self.view.scroll.is_none() {
@@ -3267,6 +4160,22 @@ impl App {
         if self.scroll_mode && self.view.scroll.is_none() {
             self.scroll_mode = false;
             self.splitter.set_scroll_mode(false);
+        }
+        let area = self.area();
+        let cache = &self.cache;
+        let info = |id: &str| {
+            cache
+                .snapshot(id)
+                .map(|s| PaneInfo {
+                    mouse: s.modes.mouse,
+                    scroll_max: s.scroll_max,
+                    alt_screen: s.modes.alt_screen,
+                    app_cursor: s.modes.app_cursor,
+                })
+                .unwrap_or_default()
+        };
+        if self.view.msel_tick(area, &info) {
+            self.dirty = true;
         }
         if self.view.scroll.is_none() {
             if self.view.search.is_some() || self.view.copy.is_some() || self.view.stext.is_some() {
@@ -3344,11 +4253,18 @@ impl App {
             terminal.draw(|f| {
                 let screens = Screens(&self.cache);
                 render(f, &self.view, &screens);
+                if let Some(past) = &self.past {
+                    menu::draw_overlay(f, past);
+                    return;
+                }
                 let lay = layout(f.area(), &self.view);
                 if let Some(pos) = cursor(&self.view, &lay, &screens) {
                     f.set_cursor_position(pos);
                 }
             })?;
+            if let Some(past) = self.past.as_mut() {
+                past.mark_drawn();
+            }
             self.dirty = false;
             *last_draw = Instant::now();
         }
@@ -3443,14 +4359,53 @@ fn prober(jobs: mpsc::Receiver<Vec<ProbeJob>>, tx: SyncSender<Msg>) {
     }
 }
 
+const PERM_EVERY: Duration = Duration::from_millis(500);
+
+fn cards_wanted(list: &[SessionInfo]) -> HashSet<String> {
+    list.iter()
+        .filter(|s| s.permission_cards)
+        .map(|s| s.id.clone())
+        .collect()
+}
+
+fn answerer(cfg: RunnerConfig, jobs: mpsc::Receiver<PermissionAnswer>, tx: SyncSender<Msg>) {
+    let mut ctl = None;
+    for answer in jobs {
+        if ctl.is_none() {
+            ctl = connect(&cfg).ok();
+        }
+        let result = match ctl.as_mut() {
+            Some(c) => c.answer_permission(&answer).map_err(|e| e.to_string()),
+            None => Err("the runner is not reachable".into()),
+        };
+        if result.is_err() {
+            ctl = None;
+        }
+        let msg = Msg::PermAnswered {
+            card: answer.card,
+            result,
+        };
+        if tx.send(msg).is_err() {
+            return;
+        }
+    }
+}
+
 fn poller(
     mut ctl: tmgr_runner::client::Client,
     tx: SyncSender<Msg>,
     layouts: mpsc::Receiver<Value>,
 ) {
     let mut next_list = Instant::now() + LIST_EVERY;
+    let mut next_perm = Instant::now() + PERM_EVERY;
+    let mut polling = false;
     loop {
-        match layouts.recv_timeout(next_list.saturating_duration_since(Instant::now())) {
+        let wake = if polling {
+            next_list.min(next_perm)
+        } else {
+            next_list
+        };
+        match layouts.recv_timeout(wake.saturating_duration_since(Instant::now())) {
             Ok(mut latest) => {
                 while let Ok(newer) = layouts.recv_timeout(LAYOUT_DEBOUNCE) {
                     latest = newer;
@@ -3462,10 +4417,26 @@ fn poller(
         }
         if Instant::now() >= next_list {
             next_list = Instant::now() + LIST_EVERY;
-            if let Ok(list) = ctl.list() {
-                if tx.send(Msg::Sessions(list)).is_err() {
-                    break;
+            let now_polling = match ctl.list() {
+                Ok(list) => {
+                    let on = !cards_wanted(&list).is_empty();
+                    if tx.send(Msg::Sessions(list)).is_err() {
+                        break;
+                    }
+                    on
                 }
+                Err(_) => false,
+            };
+            if polling && !now_polling && tx.send(Msg::PermCards(Vec::new())).is_err() {
+                break;
+            }
+            polling = now_polling;
+        }
+        if polling && Instant::now() >= next_perm {
+            next_perm = Instant::now() + PERM_EVERY;
+            let cards = ctl.permissions().unwrap_or_default();
+            if tx.send(Msg::PermCards(cards)).is_err() {
+                break;
             }
         }
     }
@@ -3550,6 +4521,10 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         .map(|c| c.attach)
         .unwrap_or_default();
     view.sidebar_default = attach_cfg.sidebar_width.unwrap_or(view.sidebar_default);
+    view.worktree_default = attach_cfg.worktree.unwrap_or(false);
+    view.permission_cards_default = attach_cfg.permission_cards.unwrap_or(false);
+    view.priv_gate = Some(super::attach_new::privileged_ask);
+    view.privileged_lock = super::attach_new::in_agent().then(|| "agent session".to_string());
     let layouts_dir = attach_layouts::dir();
     let prompts_dir = attach_prompts::dir();
     let mut notice_set = false;
@@ -3575,6 +4550,11 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
             view.notice = warn;
             notice_set = view.notice.is_some();
         }
+    }
+    if view.worktree_default && view.notice.is_none() {
+        view.notice =
+            Some("worktrees on: new agent sessions get their own checkout (tmgr config set attach.worktree false)".into());
+        notice_set = true;
     }
     let web_base = {
         let cfg = tmgr_core::config::config_dir()
@@ -3603,6 +4583,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         .collect();
     let first = ratatui::crossterm::terminal::size().unwrap_or((view.width, 24));
     view.set_locs(Rect::new(0, 0, first.0, first.1), seeded);
+    view.cp.form_default = attach_checkpoints::form_default();
     let attach_client = connect(cfg)?;
     let human_time = attach_client
         .welcome()
@@ -3691,7 +4672,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     let (title_tx, title_rx) = mpsc::sync_channel(1);
     let title_out = tx.clone();
     thread::spawn(move || {
-        titler(title_rx, move |found| {
+        titler(title_rx, Reads::current, move |found| {
             title_out.send(Msg::Titles(found)).is_ok()
         })
     });
@@ -3705,7 +4686,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     let (peek_tx, peek_rx) = mpsc::sync_channel(1);
     let peek_out = tx.clone();
     thread::spawn(move || {
-        peek_worker(peek_rx, move |session, sub, lines| {
+        peek_worker(peek_rx, Reads::current, move |session, sub, lines| {
             peek_out
                 .send(Msg::Peek {
                     session,
@@ -3718,7 +4699,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     let (status_tx, status_rx) = mpsc::sync_channel(1);
     let status_out = tx.clone();
     thread::spawn(move || {
-        status_worker(status_rx, move |found| {
+        status_worker(status_rx, Reads::current, move |found| {
             status_out.send(Msg::Status(found)).is_ok()
         })
     });
@@ -3735,17 +4716,24 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     let (summary_tx, summary_rx) = mpsc::sync_channel(4);
     let summary_out = tx.clone();
     thread::spawn(move || {
-        summarizer(summary_rx, move |done| {
+        summarizer(summary_rx, Reads::current, move |done| {
             summary_out.send(Msg::Summary(done)).is_ok()
         })
     });
     let (git_tx, git_rx) = mpsc::sync_channel(1);
     let git_out = tx.clone();
     thread::spawn(move || git_worker(git_rx, move |found| git_out.send(Msg::Git(found)).is_ok()));
+    let (marks_tx, marks_rx) = mpsc::channel();
+    let marks_out = tx.clone();
+    thread::spawn(move || {
+        super::attach_folders::marks_worker(marks_rx, move |path, mark| {
+            marks_out.send(Msg::FolderMark(path, mark)).is_ok()
+        })
+    });
     let (usage_tx, usage_rx) = mpsc::sync_channel(1);
     let usage_out = tx.clone();
     thread::spawn(move || {
-        usage_worker(usage_source(), usage_rx, move |bar| {
+        usage_worker(usage_source(), usage_rx, Reads::current, move |bar| {
             usage_out.send(Msg::Usage(bar)).is_ok()
         })
     });
@@ -3753,10 +4741,18 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     let question_out = tx.clone();
     let question_dir = cfg.dir.clone();
     thread::spawn(move || {
-        questioner(question_rx, question_dir, claude_binary(), move |found| {
-            question_out.send(Msg::Questions(found)).is_ok()
-        })
+        questioner(
+            question_rx,
+            question_dir,
+            claude_binary(),
+            Reads::current,
+            move |found, reads| question_out.send(Msg::Questions(found, reads)).is_ok(),
+        )
     });
+    let (perm_tx, perm_rx) = mpsc::channel();
+    let perm_out = tx.clone();
+    let perm_cfg = cfg.clone();
+    thread::spawn(move || answerer(perm_cfg, perm_rx, perm_out));
     let poll = thread::spawn(move || poller(ctl, tx, prefs_rx));
 
     let mut app = App {
@@ -3764,6 +4760,11 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         shell_ids: list
             .iter()
             .filter(|s| is_shell_session(&s.argv, &s.name))
+            .map(|s| s.id.clone())
+            .collect(),
+        unsandboxed: list
+            .iter()
+            .filter(|s| s.no_sandbox)
             .map(|s| s.id.clone())
             .collect(),
         starts: list
@@ -3782,11 +4783,13 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         last_user: Instant::now(),
         attention: AttentionTracker::new(),
         prefs_tx,
+        perm_tx,
         cfg: cfg.clone(),
         tx: app_tx,
         pending: HashMap::new(),
         creating: HashMap::new(),
         new_flow: NewFlow::default(),
+        new_memory: dialog_path(),
         typed: None,
         removing: HashSet::new(),
         stopped: HashSet::new(),
@@ -3801,6 +4804,8 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         last_prefs: None,
         scrolled: None,
         notice_until: notice_set.then(|| Instant::now() + NOTICE_FOR),
+        worktree_offer: None,
+        worktree_held: None,
         probe_tx,
         probe_pending: false,
         tried: HashSet::new(),
@@ -3848,6 +4853,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         status_tx,
         usage_tx,
         git_tx,
+        marks_tx,
         git_pending: false,
         last_git: Instant::now() - GIT_EVERY,
         usage_pending: false,
@@ -3859,11 +4865,18 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         question_pending: false,
         last_question: Instant::now() - QUESTIONS_EVERY,
         question_exited: HashSet::new(),
+        reads: Reads::default(),
+        reads_notified: false,
         qstore: Store::new(&cfg.dir),
         forking: HashSet::new(),
         fork_paste: HashMap::new(),
         template_ids: HashMap::new(),
         remote,
+        past: None,
+        past_busy: false,
+        past_hold: None,
+        past_resumes: HashSet::new(),
+        past_forks: HashSet::new(),
     };
     let flusher = crate::cmd::time::send::Background::start(cfg.dir.clone());
     let exit = event_loop(&mut app, &rx, &mut terminal);
@@ -3871,9 +4884,19 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     app.remote.shutdown();
     let cfg_now = app.cfg.clone();
     let mut spawning = app.new_flow.is_spawning();
-    drain_creates(&mut app.creating, &mut spawning, &rx, CREATE_WAIT, |info| {
-        run_ladder(&cfg_now, &info.id, true, KILL_ONLY)
-    });
+    let mut past = PastFlight {
+        busy: app.past_busy,
+        resumes: std::mem::take(&mut app.past_resumes),
+        forks: std::mem::take(&mut app.past_forks),
+    };
+    drain_creates(
+        &mut app.creating,
+        &mut spawning,
+        &mut past,
+        &rx,
+        CREATE_WAIT,
+        |info| run_ladder(&cfg_now, &info.id, true, KILL_ONLY),
+    );
     let target = app
         .view
         .focused_row()
@@ -3933,15 +4956,27 @@ fn run_ladder(cfg: &RunnerConfig, id: &str, remove: bool, ladder: Ladder) {
     }
 }
 
+fn keeps_fork_paste(from_past: bool, prefill: &str) -> bool {
+    !from_past || !prefill.is_empty()
+}
+
+#[derive(Default)]
+struct PastFlight {
+    busy: bool,
+    resumes: HashSet<String>,
+    forks: HashSet<String>,
+}
+
 fn drain_creates(
     creating: &mut HashMap<String, String>,
     spawning: &mut bool,
+    past: &mut PastFlight,
     rx: &mpsc::Receiver<Msg>,
     wait: Duration,
     mut discard: impl FnMut(SessionInfo),
 ) {
     let end = Instant::now() + wait;
-    while !creating.is_empty() || *spawning {
+    while !creating.is_empty() || *spawning || past.busy {
         let left = end.saturating_duration_since(Instant::now());
         if left.is_zero() {
             return;
@@ -3954,6 +4989,20 @@ fn drain_creates(
                 }
             }
             Ok(Msg::TaskPrepared { .. }) => *spawning = false,
+            Ok(Msg::PastPrepared { .. }) => past.busy = false,
+            Ok(Msg::PastStarted { result, .. }) => {
+                past.busy = false;
+                if let Ok(info) = result {
+                    discard(info);
+                }
+            }
+            Ok(Msg::Forked { source, result, .. }) if past.forks.remove(&source) => {
+                past.busy = false;
+                if let Ok(run) = result {
+                    discard(run.session);
+                }
+            }
+            Ok(Msg::Resumed { old, .. }) if past.resumes.remove(&old) => past.busy = false,
             Ok(Msg::Spawned { result, req, .. }) => {
                 *spawning = false;
                 if let (Ok(info), true) = (result, registers_shell(&req)) {
@@ -4102,6 +5151,22 @@ fn dropped_path_exists(data: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn transcript_text_leaves_only_with_claude_consent() {
+        let off = Reads {
+            claude: false,
+            codex: true,
+        };
+        assert_eq!(outbound_denial(off), off.hint());
+        assert!(outbound_denial(off).is_some());
+        assert!(outbound_denial(Reads::default()).is_some());
+        assert!(outbound_denial(Reads {
+            claude: true,
+            codex: false
+        })
+        .is_none());
+    }
+
+    #[test]
     fn background_reply_is_cut_out_and_typed_bytes_are_kept() {
         let mut buf = b"ab\x1b]11;rgb:ff/ff/ff\x07cd\x1b[?62;4cef".to_vec();
         assert!(super::take_span(&mut buf, b"\x1b[?", &[b"c"]).is_some());
@@ -4119,6 +5184,8 @@ mod tests {
 
     fn info(id: &str) -> SessionInfo {
         SessionInfo {
+            agent_session_id: None,
+            team: None,
             id: id.into(),
             name: id.into(),
             argv: Vec::new(),
@@ -4141,7 +5208,52 @@ mod tests {
             permission_mode: None,
             resumed_from: None,
             human_s: None,
+            no_sandbox: false,
+            checkpoints: None,
+            permission_cards: false,
         }
+    }
+
+    #[test]
+    fn ended_sandboxed_session_still_limits_git_in_its_folder() {
+        let mut ended = info("s_ended");
+        ended.state.kind = StateKind::Exited;
+        let mut free = info("s_free");
+        free.no_sandbox = true;
+        let mut other = info("s_other");
+        other.no_sandbox = true;
+        let list = [ended, free, other];
+        let unsandboxed: HashSet<String> = ["s_free", "s_other"].map(String::from).into();
+        let starts: HashMap<String, (String, u32)> =
+            HashMap::from([("s_ended".to_string(), ("/w/proj".to_string(), 0))]);
+        let roots = sandboxed_roots(&rows(&list), &starts, &unsandboxed);
+        let inside = [PathBuf::from("/w/proj/sub")];
+        let outside = [PathBuf::from("/w/elsewhere")];
+        assert!(git_branch_only("s_free", &inside, &unsandboxed, &roots));
+        assert!(!git_branch_only("s_other", &outside, &unsandboxed, &roots));
+        assert!(git_branch_only("s_ended", &outside, &unsandboxed, &roots));
+    }
+
+    #[test]
+    fn cards_are_polled_only_for_sessions_with_the_flag() {
+        let mut on = info("s_on");
+        on.permission_cards = true;
+        assert!(cards_wanted(&[info("s_off")]).is_empty());
+        assert_eq!(
+            cards_wanted(&[info("s_off"), on]),
+            HashSet::from(["s_on".to_string()])
+        );
+    }
+
+    #[test]
+    fn keys_reach_the_pane_unless_the_card_overlay_is_open() {
+        let mut view = ViewState::new(Vec::new(), "local");
+        let key = Action::Forward(b"y".to_vec());
+        assert_eq!(route(&view, &key), Route::Other);
+        view.set_cards_on(HashSet::from(["a".to_string()]));
+        assert_eq!(route(&view, &key), Route::Other);
+        view.open_permissions();
+        assert_eq!(route(&view, &key), Route::Other);
     }
 
     fn created(id: &str, target: &str) -> Msg {
@@ -4289,6 +5401,7 @@ mod tests {
         drain_creates(
             &mut creating,
             &mut false,
+            &mut PastFlight::default(),
             &rx,
             Duration::from_secs(1),
             |i| killed.push(i.id),
@@ -4311,6 +5424,11 @@ mod tests {
                 name: None,
                 place: Place::Right,
                 task: None,
+                worktree: false,
+                checkpoints: None,
+                permission_cards: false,
+                bypass: false,
+                no_sandbox: false,
             },
             target: "a".into(),
         })
@@ -4319,6 +5437,7 @@ mod tests {
         drain_creates(
             &mut creating,
             &mut spawning,
+            &mut PastFlight::default(),
             &rx,
             Duration::from_secs(1),
             |i| killed.push(i.id),
@@ -4335,12 +5454,270 @@ mod tests {
         drain_creates(
             &mut HashMap::new(),
             &mut spawning,
+            &mut PastFlight::default(),
             &rx,
             Duration::from_millis(100),
             |_| {},
         );
         assert!(start.elapsed() < Duration::from_secs(1));
         assert!(spawning);
+    }
+
+    #[test]
+    fn drain_kills_a_session_started_from_a_past_pick_and_stops_waiting() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        let mut past = PastFlight {
+            busy: true,
+            ..PastFlight::default()
+        };
+        tx.send(Msg::PastStarted {
+            result: Ok(info("s1")),
+            fork: false,
+        })
+        .unwrap();
+        let mut killed = Vec::new();
+        drain_creates(
+            &mut HashMap::new(),
+            &mut false,
+            &mut past,
+            &rx,
+            Duration::from_secs(1),
+            |i| killed.push(i.id),
+        );
+        assert!(!past.busy);
+        assert_eq!(killed, vec!["s1"]);
+    }
+
+    #[test]
+    fn drain_stops_waiting_for_a_failed_past_start_and_a_finished_prepare() {
+        for msg in [
+            Msg::PastStarted {
+                result: Err("no".into()),
+                fork: true,
+            },
+            Msg::PastPrepared {
+                result: Err(SpawnErr {
+                    message: "no".into(),
+                    hint: None,
+                }),
+                size: (80, 24),
+            },
+        ] {
+            let (tx, rx) = mpsc::sync_channel(8);
+            tx.send(msg).unwrap();
+            let mut past = PastFlight {
+                busy: true,
+                ..PastFlight::default()
+            };
+            let mut killed = Vec::new();
+            drain_creates(
+                &mut HashMap::new(),
+                &mut false,
+                &mut past,
+                &rx,
+                Duration::from_secs(1),
+                |i| killed.push(i.id),
+            );
+            assert!(!past.busy && killed.is_empty());
+        }
+    }
+
+    #[test]
+    fn an_existing_fork_always_registers_its_paste_and_an_overlay_fork_only_with_a_prefill() {
+        assert!(keeps_fork_paste(false, "q"));
+        assert!(keeps_fork_paste(false, ""));
+        assert!(keeps_fork_paste(true, "q"));
+        assert!(!keeps_fork_paste(true, ""));
+    }
+
+    #[test]
+    fn drain_kills_a_fork_started_from_the_overlay_and_stops_waiting() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        let mut past = PastFlight {
+            busy: true,
+            forks: HashSet::from(["src".to_string()]),
+            ..PastFlight::default()
+        };
+        tx.send(Msg::Forked {
+            source: "src".into(),
+            prefill: String::new(),
+            conversation: "c".into(),
+            result: Ok(RestoredRun {
+                session: info("f1"),
+                resumed: false,
+                via: None,
+            }),
+        })
+        .unwrap();
+        let mut killed = Vec::new();
+        let start = Instant::now();
+        drain_creates(
+            &mut HashMap::new(),
+            &mut false,
+            &mut past,
+            &rx,
+            Duration::from_secs(5),
+            |i| killed.push(i.id),
+        );
+        assert!(start.elapsed() < Duration::from_secs(2));
+        assert_eq!(killed, vec!["f1"]);
+        assert!(!past.busy && past.forks.is_empty());
+    }
+
+    #[test]
+    fn drain_stops_waiting_for_an_overlay_resume_and_keeps_the_resumed_session() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        let mut past = PastFlight {
+            busy: true,
+            resumes: HashSet::from(["old".to_string()]),
+            ..PastFlight::default()
+        };
+        tx.send(Msg::Resumed {
+            old: "old".into(),
+            result: Ok(RestoredRun {
+                session: info("new"),
+                resumed: false,
+                via: None,
+            }),
+        })
+        .unwrap();
+        let mut killed = Vec::new();
+        let start = Instant::now();
+        drain_creates(
+            &mut HashMap::new(),
+            &mut false,
+            &mut past,
+            &rx,
+            Duration::from_secs(5),
+            |i| killed.push(i.id),
+        );
+        assert!(start.elapsed() < Duration::from_secs(2));
+        assert!(killed.is_empty());
+        assert!(!past.busy && past.resumes.is_empty());
+    }
+
+    #[test]
+    fn a_finished_past_prepare_does_not_end_the_wait_for_a_dialog_spawn() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        tx.send(Msg::PastPrepared {
+            result: Err(SpawnErr {
+                message: "no".into(),
+                hint: None,
+            }),
+            size: (80, 24),
+        })
+        .unwrap();
+        let mut spawning = true;
+        let mut past = PastFlight {
+            busy: true,
+            ..PastFlight::default()
+        };
+        drain_creates(
+            &mut HashMap::new(),
+            &mut spawning,
+            &mut past,
+            &rx,
+            Duration::from_millis(300),
+            |_| {},
+        );
+        assert!(spawning);
+        assert!(!past.busy);
+    }
+
+    #[test]
+    fn a_dialog_spawn_does_not_end_the_wait_for_a_past_start() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        tx.send(Msg::Spawned {
+            id: 1,
+            result: Ok(info("s1")),
+            req: NewRequest {
+                kind: SpawnKind::Custom { line: "x".into() },
+                folder: "/".into(),
+                name: None,
+                place: Place::Right,
+                task: None,
+                worktree: false,
+                checkpoints: None,
+                permission_cards: false,
+                bypass: false,
+                no_sandbox: false,
+            },
+            target: "a".into(),
+        })
+        .unwrap();
+        let mut spawning = true;
+        let mut past = PastFlight {
+            busy: true,
+            ..PastFlight::default()
+        };
+        drain_creates(
+            &mut HashMap::new(),
+            &mut spawning,
+            &mut past,
+            &rx,
+            Duration::from_millis(300),
+            |_| {},
+        );
+        assert!(!spawning);
+        assert!(past.busy);
+    }
+
+    #[test]
+    fn the_overlay_takes_keys_pastes_and_drops_and_swallows_the_mouse() {
+        let key = Action::Forward(b"a".to_vec());
+        let paste = Action::Paste {
+            data: b"x".to_vec(),
+            start: true,
+            end: true,
+        };
+        for a in [key.clone(), paste, Action::Drop(b"/x".to_vec())] {
+            assert_eq!(past_route(true, false, &a), PastRoute::Overlay);
+            assert_eq!(past_route(false, false, &a), PastRoute::Pass);
+            assert_eq!(past_route(true, true, &a), PastRoute::Pass);
+        }
+        assert_eq!(
+            past_route(true, false, &Action::Scroll(ScrollKey::Up)),
+            PastRoute::Swallow
+        );
+        assert_eq!(past_route(true, false, &Action::FocusOut), PastRoute::Pass);
+    }
+
+    #[test]
+    fn any_command_but_the_toggle_closes_the_overlay() {
+        for cmd in [
+            Cmd::NewSession,
+            Cmd::Detach,
+            Cmd::Help,
+            Cmd::Palette,
+            Cmd::Stop,
+        ] {
+            assert_eq!(
+                past_route(true, false, &Action::Cmd(cmd)),
+                PastRoute::Close,
+                "{cmd:?}"
+            );
+            assert_eq!(past_route(false, false, &Action::Cmd(cmd)), PastRoute::Pass);
+        }
+        assert_eq!(
+            past_route(true, false, &Action::Cmd(Cmd::ResumePast)),
+            PastRoute::Pass
+        );
+    }
+
+    #[test]
+    fn dialog_kinds_map_to_the_menu_agents() {
+        assert_eq!(menu_agent("claude"), Some("claude-code"));
+        assert_eq!(menu_agent("codex"), Some("codex"));
+        for other in ["shell", "custom", "agent:foo", ""] {
+            assert_eq!(menu_agent(other), None);
+        }
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.open_new_session("/".into(), installed_kinds(), "/".into());
+        let mut d = v.new_session.clone().unwrap();
+        d.kind = d.kinds.iter().position(|k| k.id == "codex").unwrap();
+        assert_eq!(dialog_agent(&d), Some("codex"));
+        d.kind = d.kinds.iter().position(|k| k.id == "shell").unwrap();
+        assert_eq!(dialog_agent(&d), None);
     }
 
     #[test]
@@ -4351,6 +5728,7 @@ mod tests {
         drain_creates(
             &mut creating,
             &mut false,
+            &mut PastFlight::default(),
             &rx,
             Duration::from_secs(2),
             |_| {},
@@ -4366,6 +5744,7 @@ mod tests {
         drain_creates(
             &mut creating,
             &mut false,
+            &mut PastFlight::default(),
             &rx,
             Duration::from_millis(100),
             |_| {},
@@ -4386,6 +5765,11 @@ mod tests {
                 name: name.map(str::to_string),
                 place: Place::Right,
                 task: None,
+                worktree: false,
+                checkpoints: None,
+                permission_cards: false,
+                bypass: false,
+                no_sandbox: false,
             },
             target: "a".into(),
         };
@@ -4407,6 +5791,7 @@ mod tests {
             drain_creates(
                 &mut HashMap::new(),
                 &mut spawning,
+                &mut PastFlight::default(),
                 &rx,
                 Duration::from_secs(1),
                 |i| killed.push(i.id),
@@ -4466,5 +5851,165 @@ mod tests {
         assert!(is_user_action(&v, &Action::Scroll(ScrollKey::PageUp)));
         v.help = true;
         assert!(is_user_action(&v, &typed()));
+    }
+
+    fn dialog_kinds() -> Vec<KindOpt> {
+        let k = |id: &str, spawn, bypass| KindOpt {
+            id: id.into(),
+            label: id.into(),
+            spawn,
+            bypass,
+        };
+        vec![
+            k(
+                "claude-code",
+                SpawnKind::Agent {
+                    profile: "claude-code".into(),
+                },
+                true,
+            ),
+            k(
+                "codex",
+                SpawnKind::Agent {
+                    profile: "codex".into(),
+                },
+                false,
+            ),
+            k("shell", SpawnKind::Shell, false),
+        ]
+    }
+
+    fn gate(
+        _: bool,
+        _: bool,
+    ) -> std::result::Result<tmgr_runner::attach::PrivAsk, (String, Option<String>)> {
+        Err(("unused".into(), None))
+    }
+
+    fn dialog_view(path: Option<&Path>) -> ViewState {
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.priv_gate = Some(gate);
+        open_with_memory(&mut v, "/".into(), dialog_kinds(), "/".into(), path);
+        v
+    }
+
+    fn started(kind: SpawnKind, task: Option<&str>) -> NewRequest {
+        NewRequest {
+            kind,
+            folder: "/".into(),
+            name: None,
+            place: Place::Right,
+            task: task.map(str::to_string),
+            worktree: true,
+            checkpoints: Some(true),
+            permission_cards: true,
+            bypass: true,
+            no_sandbox: true,
+        }
+    }
+
+    fn claude() -> SpawnKind {
+        SpawnKind::Agent {
+            profile: "claude-code".into(),
+        }
+    }
+
+    #[test]
+    fn a_started_dialog_agent_is_saved() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("attach-new.toml");
+        let v = dialog_view(Some(&path));
+        save_dialog_memory(
+            Some(&path),
+            v.new_session.as_ref(),
+            true,
+            &started(claude(), None),
+        );
+        assert_eq!(
+            load_dialog(&path),
+            DialogMemory {
+                agent: "claude-code".into(),
+                bypass: true,
+                no_sandbox: true,
+                worktree: Some(true),
+                permission_cards: Some(true),
+                checkpoints: Some(true),
+            }
+        );
+    }
+
+    #[test]
+    fn task_shell_failed_and_non_dialog_starts_leave_the_file_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("attach-new.toml");
+        let v = dialog_view(Some(&path));
+        let dialog = v.new_session.as_ref();
+        save_dialog_memory(Some(&path), dialog, true, &started(claude(), Some("TM-1")));
+        save_dialog_memory(Some(&path), dialog, true, &started(SpawnKind::Shell, None));
+        save_dialog_memory(Some(&path), dialog, false, &started(claude(), None));
+        save_dialog_memory(Some(&path), None, true, &started(claude(), None));
+        save_dialog_memory(None, dialog, true, &started(claude(), None));
+        assert!(!path.exists());
+        save_dialog_memory(Some(&path), dialog, true, &started(claude(), None));
+        let before = std::fs::read(&path).unwrap();
+        save_dialog_memory(Some(&path), dialog, true, &started(SpawnKind::Shell, None));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn the_next_dialog_shows_what_the_last_start_used() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("attach-new.toml");
+        let mut v = dialog_view(Some(&path));
+        {
+            let ns = v.new_session.as_ref().unwrap();
+            assert!(!ns.bypass && !ns.worktree && !ns.permission_cards);
+        }
+        save_dialog_memory(
+            Some(&path),
+            v.new_session.as_ref(),
+            true,
+            &started(claude(), None),
+        );
+        v.new_session = None;
+        open_with_memory(&mut v, "/".into(), dialog_kinds(), "/".into(), Some(&path));
+        let ns = v.new_session.as_ref().unwrap();
+        assert!(ns.bypass && ns.no_sandbox);
+        assert!(ns.worktree && ns.permission_cards && ns.checkpoints);
+    }
+
+    #[test]
+    fn a_failed_start_reopens_with_the_privileges_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("attach-new.toml");
+        save_dialog(
+            &path,
+            &DialogMemory {
+                agent: "claude-code".into(),
+                bypass: true,
+                no_sandbox: true,
+                ..DialogMemory::default()
+            },
+        )
+        .unwrap();
+        let v = dialog_view(Some(&path));
+        let base = v.new_session.clone().unwrap();
+        assert!(base.bypass && base.no_sandbox);
+        let again = dialog_for(&base, &started(claude(), None));
+        assert!(!again.bypass && !again.no_sandbox);
+    }
+
+    #[test]
+    fn a_missing_or_unreadable_file_changes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("attach-new.toml");
+        let v = dialog_view(Some(&path));
+        let ns = v.new_session.as_ref().unwrap();
+        assert!(!ns.bypass && !ns.no_sandbox && ns.error_hint.is_none());
+        std::fs::write(&path, "agent = [").unwrap();
+        let v = dialog_view(Some(&path));
+        assert!(v.new_session.as_ref().unwrap().error_hint.is_none());
+        let v = dialog_view(None);
+        assert!(v.new_session.as_ref().unwrap().error_hint.is_none());
     }
 }

@@ -1,0 +1,26 @@
+name: Release plugin
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node build.mjs
+      - name: Sign the bundle
+        run: |
+          node sign.mjs sign - dist/tmgr-plugin.json
+          node sign.mjs pubkey - > dist/tmgr-plugin.pub
+        env:
+          TMGR_PLUGIN_SIGNING_KEY: ${{ secrets.TMGR_PLUGIN_SIGNING_KEY }}
+      - run: >
+          gh release create "$GITHUB_REF_NAME" dist/tmgr-plugin.json dist/tmgr-plugin.json.minisig dist/tmgr-plugin.pub
+          --title "$GITHUB_REF_NAME" --notes "Plugin $GITHUB_REF_NAME"
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -11,6 +11,7 @@ export interface Workspace {
 	code: string;
 	is_local?: boolean;
 	path?: string;
+	color?: string | null;
 }
 
 export const getWorkspaces = async (
@@ -100,6 +101,36 @@ export const createWorkspace = async (payload: {
 	requestCache.invalidate('workspaces');
 
 	return data;
+};
+
+export const updateWorkspace = async (
+	workspaceId: number,
+	payload: { name?: string; color?: string },
+): Promise<Workspace> => {
+	const {
+		data: { data },
+	} = await $axios.put(`workspaces/${workspaceId}`, payload);
+
+	requestCache.invalidate('workspaces');
+
+	const existing = (store.state.workspaces as Workspace[] | undefined)?.find(
+		(workspace) => workspace.id === workspaceId,
+	);
+	const merged: Workspace = {
+		...existing,
+		...(payload.name !== undefined && { name: payload.name }),
+		...data,
+	};
+	if (existing) {
+		store.commit(
+			'setWorkspaces',
+			(store.state.workspaces as Workspace[]).map((workspace) =>
+				workspace.id === workspaceId ? merged : workspace,
+			),
+		);
+	}
+
+	return merged;
 };
 
 export const updateWorkspaceOrder = async (

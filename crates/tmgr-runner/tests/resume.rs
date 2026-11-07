@@ -1,5 +1,6 @@
 #![cfg(unix)]
 
+use chrono::Utc;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -7,17 +8,23 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
-    CreateReq, RunCreateReq, SessionInfo, StateKind, CLIENT_DESKTOP, CLIENT_WORKER,
+    CreateReq, NoSandbox, ResumeParams, RunCreateReq, SessionInfo, StateKind, CLIENT_CLI,
+    CLIENT_DESKTOP, CLIENT_WORKER,
 };
 use tmgr_runner::client::Client;
 use tmgr_runner::restore;
+use tmgr_usage::consent::{ConsentChange, ReadLogs};
+use tmgr_usage::paths::db_path;
+use tmgr_usage::Store;
 
 const HOST: &str = env!("CARGO_BIN_EXE_tmgr-runner-host");
+const OLD_GROUP_BUSY: &str = "busy: background processes of the old session are still running; wait a moment and try again, or stop them with halt --kill";
 const U1: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
 const U2: &str = "0199a213-81c0-7800-8aa1-bbab2a035a53";
 
 const AGENT: &str = r#"#!/bin/sh
-trap 'kill $! 2>/dev/null; exit 0' HUP TERM
+if [ "$1" = "--version" ]; then echo "codex-cli $(cat "$(dirname "$0")/codex-version" 2>/dev/null || echo 0.164.0)"; exit 0; fi
+trap 'kill $! 2>/dev/null; sleep 0.1; kill $! 2>/dev/null; sleep 0.2; kill $! 2>/dev/null; exit 0' HUP TERM
 echo "args:$*" >> ./log
 if [ -f ./leak ]; then (trap '' TERM HUP; exec sleep 600) & echo $! > ./leakpid; fi
 if [ -f ./announce ]; then cat ./announce; rm -f ./announce; fi
@@ -29,7 +36,7 @@ wait
 "#;
 
 const RAW: &str = r#"#!/bin/sh
-trap 'kill $! 2>/dev/null; exit 0' HUP TERM
+trap 'kill $! 2>/dev/null; sleep 0.1; kill $! 2>/dev/null; sleep 0.2; kill $! 2>/dev/null; exit 0' HUP TERM
 echo "raw:$LC_RAWTEST:$*" >> ./log
 sleep 600 &
 wait
@@ -116,6 +123,8 @@ impl H {
                 .env("TMGR_RUNNER_HOMES", &self.homes)
                 .env("TMGR_AGENTS_DIR", self.tmp.path().join("a"))
                 .env("XDG_CONFIG_HOME", self.tmp.path().join("c"))
+                .env("TMGR_USAGE_DIR", self.usage_dir())
+                .env("XDG_DATA_HOME", self.tmp.path().join("xdg-data"))
                 .env("TMGR_T0_QUIET_MS", "5000")
                 .env("TMGR_RESTORE_FORGET_MS", "300")
                 .stdin(Stdio::null())
@@ -129,6 +138,26 @@ impl H {
             assert!(Instant::now() < deadline, "runner did not start");
             thread::sleep(Duration::from_millis(50));
         }
+    }
+
+    fn usage_dir(&self) -> PathBuf {
+        self.tmp.path().join("usage")
+    }
+
+    fn consent(&self, state: Option<ReadLogs>, claude: Option<bool>, codex: Option<bool>) {
+        let dir = self.usage_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let store = Store::open(&db_path(&dir)).unwrap();
+        let ch = ConsentChange {
+            state,
+            claude,
+            codex,
+        };
+        store.change_log_consent(&ch, Utc::now()).unwrap();
+    }
+
+    fn allow_forks(&self) {
+        self.consent(Some(ReadLogs::Granted), None, None);
     }
 
     fn stop_runner(&mut self) {
@@ -154,6 +183,7 @@ impl H {
 
     fn req(&self) -> RunCreateReq {
         RunCreateReq {
+            team: None,
             clones: Vec::new(),
             profile: self.agent_id.clone(),
             task: None,
@@ -176,6 +206,9 @@ impl H {
             unattended: false,
             exe_pin: None,
             argv_sha256: None,
+            no_sandbox: None,
+            external_resume: None,
+            permission_cards: false,
         }
     }
 
@@ -232,8 +265,32 @@ impl H {
     }
 
     fn stop(&self, id: &str) {
+        let pid = self.stop_leaving_group(id);
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while restore::group_may_run(pid, None, None) {
+            if Instant::now() >= deadline {
+                let ps = Command::new("ps")
+                    .args(["-A", "-o", "pid,ppid,pgid,stat,command"])
+                    .output()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                    .unwrap_or_default();
+                panic!("process group {pid} of {id} outlived its exit:\n{ps}");
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn stop_leaving_group(&self, id: &str) -> u32 {
+        let pid = self
+            .client()
+            .list()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.id == id)
+            .map_or(0, |s| s.child_pid);
         self.client().kill(id, "term").unwrap();
         self.wait_exited(id);
+        pid
     }
 
     fn lines(&self, id: &str) -> Vec<String> {
@@ -436,7 +493,7 @@ fn link_bypass_expired_and_unpinned_queue_records_are_refused() {
     let mut h = H::full();
     h.start();
     h.announce(&claude_exit(U1));
-    let cases: [(&str, Edit); 4] = [
+    let cases: [(&str, Edit); 3] = [
         (
             "started over a link",
             Box::new(|i| {
@@ -447,7 +504,6 @@ fn link_bypass_expired_and_unpinned_queue_records_are_refused() {
             }),
         ),
         ("bypass", Box::new(|i| i.bypass = true)),
-        ("older than 7 days", Box::new(|i| i.created_ms = 1)),
         ("queue the task again", Box::new(|i| i.keyed = Some(true))),
     ];
     for (needle, edit) in cases {
@@ -926,7 +982,7 @@ fn background_processes_of_the_old_session_block_the_resume() {
         thread::sleep(Duration::from_millis(50));
     }
     let leaked = fs::read_to_string(&pid_file).unwrap().trim().to_string();
-    h.stop(&first.id);
+    let group = h.stop_leaving_group(&first.id);
     let alive = |pid: &str| {
         Command::new("kill")
             .args(["-0", pid])
@@ -952,8 +1008,111 @@ fn background_processes_of_the_old_session_block_the_resume() {
         thread::sleep(Duration::from_millis(50));
     }
     fs::remove_file(h.work.join("leak")).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while restore::group_may_run(group, None, None) {
+        assert!(Instant::now() < deadline, "process group {group} stayed");
+        thread::sleep(Duration::from_millis(50));
+    }
     let r = h.client().resume(&first.id, 80, 24).unwrap();
     assert_ne!(r.session.id, first.id);
+}
+
+fn pid_alive(pid: &str) -> bool {
+    Command::new("kill")
+        .args(["-0", pid])
+        .stderr(Stdio::null())
+        .status()
+        .unwrap()
+        .success()
+}
+
+fn exited_with_leftover(h: &mut H) -> (String, String, u32) {
+    h.start();
+    fs::write(h.work.join("leak"), b"").unwrap();
+    let first = h.started();
+    let pid_file = h.work.join("leakpid");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while fs::read_to_string(&pid_file).map_or(true, |t| t.trim().is_empty()) {
+        assert!(Instant::now() < deadline, "no leftover process started");
+        thread::sleep(Duration::from_millis(50));
+    }
+    let leaked = fs::read_to_string(&pid_file).unwrap().trim().to_string();
+    let group = h.stop_leaving_group(&first.id);
+    assert!(pid_alive(&leaked), "the leftover process did not survive");
+    (first.id, leaked, group)
+}
+
+fn wait_group_gone(group: u32) {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while restore::group_may_run(group, None, None) {
+        assert!(Instant::now() < deadline, "process group {group} stayed");
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn not_running(r: std::io::Result<impl std::fmt::Debug>) {
+    let err = r.unwrap_err().to_string();
+    assert!(err.starts_with("not_running"), "{err}");
+}
+
+#[test]
+fn killing_the_leftovers_of_an_exited_session_lets_the_resume_through() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    let (id, _, group) = exited_with_leftover(&mut h);
+    let err = h.client().resume(&id, 80, 24).unwrap_err().to_string();
+    assert!(err.starts_with("busy"), "{err}");
+    assert!(err.contains("background processes"), "{err}");
+    h.client().kill_leftovers(&id).unwrap();
+    wait_group_gone(group);
+    fs::remove_file(h.work.join("leak")).unwrap();
+    let r = h.client().resume(&id, 80, 24).unwrap();
+    assert_ne!(r.session.id, id);
+}
+
+#[test]
+fn a_leftover_survives_the_remove_when_nobody_asked_to_kill_it() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    let (id, leaked, _) = exited_with_leftover(&mut h);
+    h.client().remove(&id).unwrap();
+    thread::sleep(Duration::from_secs(2));
+    let survived = pid_alive(&leaked);
+    let _ = Command::new("kill").args(["-9", &leaked]).status();
+    assert!(survived, "the leftover died without a kill request");
+}
+
+#[test]
+fn only_the_cli_with_an_explicit_request_kills_a_leftover() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    let (id, leaked, group) = exited_with_leftover(&mut h);
+    let ask = |client: &str, signal: &str, leftovers: bool| {
+        let mut c = Client::connect_as(&h.run, client).unwrap();
+        c.set_timeouts(Duration::from_secs(60)).unwrap();
+        c.call(
+            "sessions.kill",
+            serde_json::json!({"id": id, "signal": signal, "leftovers": leftovers}),
+        )
+    };
+    not_running(h.client().kill(&id, "kill"));
+    not_running(ask(CLIENT_WORKER, "kill", true));
+    not_running(ask(CLIENT_DESKTOP, "kill", true));
+    not_running(ask(CLIENT_CLI, "term", true));
+    not_running(ask(CLIENT_CLI, "kill", false));
+    thread::sleep(Duration::from_millis(300));
+    assert!(pid_alive(&leaked), "a refused request killed the leftover");
+    ask(CLIENT_CLI, "kill", true).unwrap();
+    wait_group_gone(group);
+    let err = ask(CLIENT_CLI, "kill", true).unwrap_err().to_string();
+    assert!(err.starts_with("not_running"), "{err}");
+    assert!(err.contains("no background processes are left"), "{err}");
 }
 
 #[test]
@@ -1066,6 +1225,7 @@ fn fork_copies_the_transcript_into_a_new_home_and_leaves_the_live_session_alone(
         return;
     }
     let mut h = H::full();
+    h.allow_forks();
     h.start();
     let first = h.started();
     let proj = h.homes.join(&first.id).join(".claude/projects/-w");
@@ -1102,6 +1262,7 @@ fn fork_refuses_bad_ids_a_missing_transcript_and_other_agents() {
         return;
     }
     let mut h = H::full();
+    h.allow_forks();
     h.start();
     let first = h.started();
     let bad = h
@@ -1130,4 +1291,1022 @@ fn fork_is_refused_for_agents_other_than_claude_code() {
     let s = o.started();
     let e = o.client().fork(&s.id, U1, None, (80, 24)).unwrap_err();
     assert!(e.to_string().starts_with("forbidden"), "{e}");
+}
+
+const CODEX_RESUME: &str = "[resume]\nargs = [\"--resumed\"]\nby_id = [\"resume\", \"{resume_id}\"]\nfork_by_id = [\"fork\", \"{resume_id}\"]\n";
+
+fn rollout_rel(id: &str) -> String {
+    format!(".codex/sessions/2026/11/05/rollout-2026-11-05T10-00-00-{id}.jsonl")
+}
+
+fn rollout_body(id: &str, cwd: &Path) -> Vec<u8> {
+    format!(
+        "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"cwd\":{:?}}}}}\n{{\"type\":\"event_msg\"}}\n",
+        cwd.display().to_string()
+    )
+    .into_bytes()
+}
+
+fn put_rollout(home: &Path, name_id: &str, body: &[u8]) -> PathBuf {
+    let path = home.join(rollout_rel(name_id));
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, body).unwrap();
+    path
+}
+
+fn codex_copies(h: &H, id: &str) -> usize {
+    fs::read_dir(&h.homes)
+        .unwrap()
+        .flatten()
+        .filter(|d| d.path().join(rollout_rel(id)).exists())
+        .count()
+}
+
+#[test]
+fn a_codex_fork_copies_the_rollout_and_starts_codex_fork_with_the_id() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::agent("codex", CODEX_RESUME);
+    h.allow_forks();
+    h.start();
+    let first = h.client().create_run(h.req()).unwrap();
+    let body = rollout_body(U1, &h.work);
+    let source = put_rollout(&h.homes.join(&first.id), U1, &body);
+
+    let r = h
+        .client()
+        .fork(&first.id, U1, Some("fake-run-fork-1"), (90, 20))
+        .unwrap();
+    assert_ne!(r.session.id, first.id);
+    assert_eq!(r.via.as_deref(), Some("fork"));
+    assert_eq!(r.session.argv[2..], ["fork", U1]);
+    assert_eq!(
+        fs::read(h.homes.join(&r.session.id).join(rollout_rel(U1))).unwrap(),
+        body
+    );
+    assert_eq!(fs::read(source).unwrap(), body);
+    assert_eq!(h.client().list().unwrap().len(), 2);
+}
+
+#[test]
+fn a_codex_fork_never_copies_another_conversations_rollout_or_a_linked_one() {
+    use std::os::unix::fs::symlink;
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::agent("codex", CODEX_RESUME);
+    h.allow_forks();
+    h.start();
+    let first = h.client().create_run(h.req()).unwrap();
+    let home = h.homes.join(&first.id);
+    let none = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
+    assert!(none.to_string().starts_with("not_found"), "{none}");
+
+    put_rollout(&home, U1, &rollout_body(U2, &h.work));
+    let other = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
+    assert!(other.to_string().starts_with("not_found"), "{other}");
+
+    fs::remove_file(home.join(rollout_rel(U1))).unwrap();
+    let outside = h.tmp.path().join("outside.jsonl");
+    fs::write(&outside, rollout_body(U1, &h.work)).unwrap();
+    symlink(&outside, home.join(rollout_rel(U1))).unwrap();
+    let linked = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
+    assert!(linked.to_string().starts_with("not_found"), "{linked}");
+
+    assert_eq!(codex_copies(&h, U1), 1);
+    assert_eq!(h.client().list().unwrap().len(), 1);
+}
+
+#[test]
+fn a_codex_fork_is_refused_when_the_rollout_belongs_to_another_folder() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::agent("codex", CODEX_RESUME);
+    h.allow_forks();
+    h.start();
+    let first = h.client().create_run(h.req()).unwrap();
+    put_rollout(
+        &h.homes.join(&first.id),
+        U1,
+        &rollout_body(U1, Path::new("/elsewhere")),
+    );
+    let e = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
+    assert!(e.to_string().starts_with("forbidden"), "{e}");
+    assert!(e.to_string().contains("another folder"), "{e}");
+    assert_eq!(codex_copies(&h, U1), 1);
+    assert_eq!(h.client().list().unwrap().len(), 1);
+}
+
+#[test]
+fn a_codex_fork_is_refused_when_only_claude_may_be_read() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::agent("codex", CODEX_RESUME);
+    h.start();
+    let first = h.client().create_run(h.req()).unwrap();
+    put_rollout(&h.homes.join(&first.id), U1, &rollout_body(U1, &h.work));
+    h.consent(Some(ReadLogs::Granted), Some(true), Some(false));
+    let e = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
+    assert!(e.to_string().starts_with("forbidden"), "{e}");
+    assert!(e.to_string().contains("cannot be forked"), "{e}");
+    assert_eq!(codex_copies(&h, U1), 1);
+    assert_eq!(h.client().list().unwrap().len(), 1);
+}
+
+fn fork_refused_for_version(version: &str, expect: &str) {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::agent("codex", CODEX_RESUME);
+    h.allow_forks();
+    fs::write(h.work.join("codex-version"), version).unwrap();
+    h.start();
+    let first = h.client().create_run(h.req()).unwrap();
+    put_rollout(&h.homes.join(&first.id), U1, &rollout_body(U1, &h.work));
+    let e = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
+    assert!(e.to_string().starts_with("forbidden"), "{e}");
+    assert!(e.to_string().contains(expect), "{e}");
+    assert_eq!(codex_copies(&h, U1), 1);
+    assert_eq!(h.client().list().unwrap().len(), 1);
+}
+
+#[test]
+fn an_external_codex_fork_is_refused_when_codex_is_too_old() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::agent("codex", CODEX_RESUME);
+    h.allow_forks();
+    fs::write(h.work.join("codex-version"), "0.155.1").unwrap();
+    h.start();
+    let mut req = h.req();
+    req.cwd = fs::canonicalize(&h.work).unwrap().display().to_string();
+    req.no_sandbox = Some(NoSandbox::default());
+    req.external_resume = Some(tmgr_ipc::api::ExternalResume {
+        id: U1.into(),
+        fork: true,
+    });
+    let e = h.client().create_run(req).unwrap_err();
+    assert!(e.to_string().starts_with("forbidden"), "{e}");
+    assert!(
+        e.to_string().contains("update to Codex 0.156.0 or newer"),
+        "{e}"
+    );
+    assert_eq!(h.client().list().unwrap().len(), 0);
+}
+
+#[test]
+fn a_codex_fork_is_refused_when_codex_is_too_old() {
+    fork_refused_for_version("0.155.1", "update to Codex 0.156.0 or newer");
+}
+
+#[test]
+fn a_codex_fork_is_refused_when_the_codex_version_cannot_be_read() {
+    fork_refused_for_version("garbage", "cannot tell which Codex version");
+}
+
+fn refused_fork_leaves_nothing(h: &H, first: &SessionInfo) {
+    let e = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
+    assert!(e.to_string().starts_with("forbidden"), "{e}");
+    assert!(e.to_string().contains("cannot be forked"), "{e}");
+    assert_eq!(h.log().matches("fork-session").count(), 0, "{}", h.log());
+    let copies = fs::read_dir(&h.homes)
+        .unwrap()
+        .flatten()
+        .filter(|d| {
+            d.path()
+                .join(format!(".claude/projects/-w/{U1}.jsonl"))
+                .exists()
+        })
+        .count();
+    assert_eq!(copies, 1);
+    assert_eq!(h.client().list().unwrap().len(), 1);
+}
+
+fn fork_fixture() -> (H, SessionInfo) {
+    let mut h = H::full();
+    h.start();
+    let first = h.started();
+    let proj = h.homes.join(&first.id).join(".claude/projects/-w");
+    fs::create_dir_all(&proj).unwrap();
+    fs::write(proj.join(format!("{U1}.jsonl")), b"{\"type\":\"user\"}\n").unwrap();
+    (h, first)
+}
+
+#[test]
+fn fork_is_refused_without_a_consent_database() {
+    if !sessions_available() {
+        return;
+    }
+    let (h, first) = fork_fixture();
+    assert!(!h.usage_dir().exists());
+    refused_fork_leaves_nothing(&h, &first);
+}
+
+#[test]
+fn fork_is_refused_when_reading_is_denied() {
+    if !sessions_available() {
+        return;
+    }
+    let (h, first) = fork_fixture();
+    h.consent(Some(ReadLogs::Denied), Some(true), Some(true));
+    refused_fork_leaves_nothing(&h, &first);
+}
+
+#[test]
+fn fork_is_refused_when_the_choice_is_undecided() {
+    if !sessions_available() {
+        return;
+    }
+    let (h, first) = fork_fixture();
+    h.consent(None, Some(true), None);
+    refused_fork_leaves_nothing(&h, &first);
+}
+
+#[test]
+fn fork_is_refused_when_only_codex_may_be_read() {
+    if !sessions_available() {
+        return;
+    }
+    let (h, first) = fork_fixture();
+    h.consent(Some(ReadLogs::Granted), Some(false), Some(true));
+    refused_fork_leaves_nothing(&h, &first);
+}
+
+#[test]
+fn fork_is_refused_when_consent_is_withdrawn_before_the_copy() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    h.allow_forks();
+    let go = h.tmp.path().join("go");
+    fs::write(&go, b"").unwrap();
+    h.env.push((
+        "TMGR_TEST_HOLD_AFTER_PROFILE".into(),
+        go.display().to_string(),
+    ));
+    h.start();
+    let first = h.started();
+    let proj = h.homes.join(&first.id).join(".claude/projects/-w");
+    fs::create_dir_all(&proj).unwrap();
+    fs::write(proj.join(format!("{U1}.jsonl")), b"{\"type\":\"user\"}\n").unwrap();
+    fs::remove_file(&go).unwrap();
+    let c = h.client();
+    let id = first.id.clone();
+    let worker = thread::spawn(move || {
+        let mut c = c;
+        c.fork(&id, U1, None, (80, 24))
+    });
+    let reached = go.with_extension("reached");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !reached.exists() {
+        assert!(Instant::now() < deadline, "the fork never started");
+        thread::sleep(Duration::from_millis(20));
+    }
+    h.consent(Some(ReadLogs::Denied), None, None);
+    fs::write(&go, b"").unwrap();
+    let e = worker.join().unwrap().unwrap_err();
+    assert!(e.to_string().starts_with("forbidden"), "{e}");
+    assert!(e.to_string().contains("cannot be forked"), "{e}");
+    assert_eq!(h.log().matches("fork-session").count(), 0, "{}", h.log());
+    assert_eq!(h.client().list().unwrap().len(), 1);
+    let copies = fs::read_dir(&h.homes)
+        .unwrap()
+        .flatten()
+        .filter(|d| {
+            d.path()
+                .join(format!(".claude/projects/-w/{U1}.jsonl"))
+                .exists()
+        })
+        .count();
+    assert_eq!(copies, 1);
+}
+
+fn git_fx(dir: &Path, args: &[&str]) {
+    let out = Command::new("git")
+        .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+struct CloneRun {
+    repo: PathBuf,
+    clone: PathBuf,
+}
+
+impl CloneRun {
+    fn new(h: &H) -> CloneRun {
+        let base = fs::canonicalize(h.tmp.path()).unwrap();
+        let repo = base.join("repo");
+        fs::create_dir_all(&repo).unwrap();
+        git_fx(&repo, &["init", "-q", "-b", "main"]);
+        fs::write(repo.join("a.txt"), "a").unwrap();
+        git_fx(&repo, &["add", "a.txt"]);
+        git_fx(&repo, &["commit", "-q", "-m", "one"]);
+        git_fx(&repo, &["gc", "-q"]);
+        fs::write(repo.join("b.txt"), "b").unwrap();
+        git_fx(&repo, &["add", "b.txt"]);
+        git_fx(&repo, &["commit", "-q", "-m", "two"]);
+        let trees = base.join("repo-worktrees");
+        fs::create_dir_all(&trees).unwrap();
+        let clone = trees.join("old");
+        git_fx(
+            &base,
+            &[
+                "clone",
+                "-q",
+                "--no-local",
+                "--reference",
+                repo.to_str().unwrap(),
+                repo.to_str().unwrap(),
+                clone.to_str().unwrap(),
+            ],
+        );
+        fs::write(clone.join("c.txt"), "c").unwrap();
+        git_fx(&clone, &["add", "c.txt"]);
+        git_fx(&clone, &["commit", "-q", "-m", "three"]);
+        let script = clone.join("agent.sh");
+        fs::write(&script, AGENT).unwrap();
+        let toml = h.tmp.path().join("a").join(format!("{}.toml", h.agent_id));
+        let profile = fs::read_to_string(&toml).unwrap().replace(
+            h.work.join("agent.sh").to_str().unwrap(),
+            script.to_str().unwrap(),
+        );
+        fs::write(&toml, profile).unwrap();
+        CloneRun { repo, clone }
+    }
+
+    fn req(&self, h: &H) -> RunCreateReq {
+        let mut r = h.req();
+        r.cwd = self.clone.display().to_string();
+        r.clone_of = Some(self.repo.display().to_string());
+        r
+    }
+
+    fn log(&self) -> String {
+        fs::read_to_string(self.clone.join("log")).unwrap_or_default()
+    }
+
+    fn wait_log(&self, needle: &str, count: usize) {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while self.log().matches(needle).count() < count {
+            assert!(
+                Instant::now() < deadline,
+                "log never had {count}x {needle:?}: {:?}",
+                self.log()
+            );
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn started(&self, h: &H) -> SessionInfo {
+        fs::write(self.clone.join("announce"), claude_exit(U1)).unwrap();
+        let s = h.client().create_run(self.req(h)).unwrap();
+        self.wait_log("home:", 1);
+        s
+    }
+
+    fn object_file(&self) -> PathBuf {
+        let mut todo = vec![self.clone.join(".git/objects")];
+        while let Some(dir) = todo.pop() {
+            for e in fs::read_dir(&dir).unwrap().flatten() {
+                let p = e.path();
+                let meta = fs::symlink_metadata(&p).unwrap();
+                if meta.is_dir() {
+                    if p.file_name().is_some_and(|n| n != "info") {
+                        todo.push(p);
+                    }
+                } else if meta.is_file() {
+                    return p;
+                }
+            }
+        }
+        panic!("no object file in the clone");
+    }
+}
+
+#[test]
+fn a_clone_that_shares_object_files_is_not_resumed_and_is_left_alone() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    let c = CloneRun::new(&h);
+    h.start();
+    let first = c.started(&h);
+    h.stop(&first.id);
+    fs::write(c.clone.join("wip.txt"), "unsaved").unwrap();
+    let object = c.object_file();
+    let extra = fs::canonicalize(h.tmp.path()).unwrap().join("extra-link");
+    fs::hard_link(&object, &extra).unwrap();
+
+    let err = h
+        .client()
+        .resume(&first.id, 80, 24)
+        .unwrap_err()
+        .to_string();
+    assert!(err.starts_with("invalid_params"), "{err}");
+    assert!(err.contains(c.clone.to_str().unwrap()), "{err}");
+    assert!(err.contains("re-clone it or remove it"), "{err}");
+    assert!(c.clone.is_dir());
+    assert_eq!(
+        fs::read_to_string(c.clone.join("wip.txt")).unwrap(),
+        "unsaved"
+    );
+    assert!(object.is_file());
+    assert!(extra.is_file());
+    assert_eq!(c.log().matches("home:").count(), 1, "{}", c.log());
+    let list = h.client().list().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].id, first.id);
+    assert_eq!(list[0].state.kind, StateKind::Exited);
+}
+
+#[test]
+fn a_folder_with_shared_object_files_is_not_resumed_and_is_left_alone() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    let c = CloneRun::new(&h);
+    h.start();
+    fs::write(c.clone.join("announce"), claude_exit(U1)).unwrap();
+    let mut req = c.req(&h);
+    req.clone_of = None;
+    let first = h.client().create_run(req).unwrap();
+    c.wait_log("home:", 1);
+    h.stop(&first.id);
+    fs::write(c.clone.join("wip.txt"), "unsaved").unwrap();
+    let object = c.object_file();
+    let extra = fs::canonicalize(h.tmp.path()).unwrap().join("extra-link");
+    fs::hard_link(&object, &extra).unwrap();
+
+    let err = h
+        .client()
+        .resume(&first.id, 80, 24)
+        .unwrap_err()
+        .to_string();
+    assert!(err.starts_with("invalid_params"), "{err}");
+    assert!(err.contains("object files"), "{err}");
+    assert!(err.contains(c.clone.to_str().unwrap()), "{err}");
+    assert_eq!(
+        fs::read_to_string(c.clone.join("wip.txt")).unwrap(),
+        "unsaved"
+    );
+    assert!(object.is_file());
+    assert!(extra.is_file());
+    assert_eq!(c.log().matches("home:").count(), 1, "{}", c.log());
+    let list = h.client().list().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].state.kind, StateKind::Exited);
+}
+
+#[test]
+fn a_clone_without_shared_object_files_resumes_as_before() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    let c = CloneRun::new(&h);
+    h.start();
+    let first = c.started(&h);
+    h.stop(&first.id);
+    fs::write(c.clone.join("wip.txt"), "unsaved").unwrap();
+
+    let r = h.client().resume(&first.id, 80, 24).unwrap();
+    assert!(r.resumed);
+    assert_ne!(r.session.id, first.id);
+    assert_eq!(r.session.resumed_from.as_deref(), Some(first.id.as_str()));
+    c.wait_log("home:kept", 1);
+    assert!(
+        c.log().contains(&format!("args:--resume-id {U1}\n")),
+        "{}",
+        c.log()
+    );
+    assert_eq!(
+        fs::read_to_string(c.clone.join("wip.txt")).unwrap(),
+        "unsaved"
+    );
+}
+
+impl CloneRun {
+    fn self_contained(h: &H) -> CloneRun {
+        let base = fs::canonicalize(h.tmp.path()).unwrap();
+        let repo = base.join("repo");
+        fs::create_dir_all(&repo).unwrap();
+        git_fx(&repo, &["init", "-q", "-b", "main"]);
+        fs::write(repo.join("a.txt"), "a").unwrap();
+        git_fx(&repo, &["add", "a.txt"]);
+        git_fx(&repo, &["commit", "-q", "-m", "one"]);
+        let plan = tmgr_runner::worktree::plan(&repo, "task", None).unwrap();
+        let clone = tmgr_runner::worktree::clone_mode(&plan).unwrap().path;
+        assert!(!clone.join(".git/objects/info/alternates").exists());
+        let script = clone.join("agent.sh");
+        fs::write(&script, AGENT).unwrap();
+        let toml = h.tmp.path().join("a").join(format!("{}.toml", h.agent_id));
+        let profile = fs::read_to_string(&toml).unwrap().replace(
+            h.work.join("agent.sh").to_str().unwrap(),
+            script.to_str().unwrap(),
+        );
+        fs::write(&toml, profile).unwrap();
+        CloneRun { repo, clone }
+    }
+}
+
+#[test]
+fn a_self_contained_clone_resumes() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    let c = CloneRun::self_contained(&h);
+    h.start();
+    let first = c.started(&h);
+    h.stop(&first.id);
+    fs::write(c.clone.join("wip.txt"), "unsaved").unwrap();
+
+    let r = h.client().resume(&first.id, 80, 24).unwrap();
+    assert!(r.resumed);
+    assert_eq!(r.session.resumed_from.as_deref(), Some(first.id.as_str()));
+    c.wait_log("home:kept", 1);
+    assert_eq!(
+        fs::read_to_string(c.clone.join("wip.txt")).unwrap(),
+        "unsaved"
+    );
+}
+
+#[test]
+fn a_self_contained_clone_forks() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    h.allow_forks();
+    let c = CloneRun::self_contained(&h);
+    h.start();
+    let first = c.started(&h);
+    let encoded: String = c
+        .clone
+        .to_string_lossy()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect();
+    let proj = h
+        .homes
+        .join(&first.id)
+        .join(format!(".claude/projects/{encoded}"));
+    fs::create_dir_all(&proj).unwrap();
+    fs::write(proj.join(format!("{U1}.jsonl")), b"{\"type\":\"user\"}\n").unwrap();
+
+    let r = h.client().fork(&first.id, U1, None, (90, 20)).unwrap();
+    assert_ne!(r.session.id, first.id);
+    c.wait_log("home:new", 2);
+    assert!(
+        c.log()
+            .contains(&format!("args:--resume-id {U1} --fork-session\n")),
+        "{}",
+        c.log()
+    );
+}
+
+const FLAGGED: &str =
+    "[resume]\nargs = [\"--resumed\"]\nby_id = [\"--resume-id\", \"{resume_id}\"]\n\
+    [permission_modes]\nask = [\"--ask\"]\nbypass = [\"--yolo\"]\n";
+
+#[derive(Clone, Copy)]
+struct Was {
+    no_sandbox: bool,
+    bypass: bool,
+}
+
+impl H {
+    fn finished(&self, was: Was) -> SessionInfo {
+        let mut req = self.req();
+        req.cwd = fs::canonicalize(&self.work).unwrap().display().to_string();
+        if was.bypass {
+            req.permission_mode = Some("bypass".into());
+        }
+        if was.no_sandbox {
+            req.no_sandbox = Some(NoSandbox::default());
+        }
+        let s = self.client().create_run(req).unwrap();
+        let _ = self.client().kill(&s.id, "term");
+        self.wait_exited(&s.id);
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while restore::group_may_run(s.child_pid, None, None) && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(50));
+        }
+        // A clean exit forgets the record after TMGR_RESTORE_FORGET_MS; callers record it again afterwards.
+        thread::sleep(Duration::from_secs(2));
+        fs::write(self.sdir(&s.id).join("output.log"), claude_exit(U1)).unwrap();
+        s
+    }
+
+    fn resume_flags(
+        &self,
+        id: &str,
+        mode: Option<&str>,
+        no_sandbox: bool,
+    ) -> std::io::Result<tmgr_ipc::api::RestoredRun> {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            let r = self.client().resume_with(ResumeParams {
+                id: id.into(),
+                cols: 80,
+                rows: 24,
+                permission_mode: mode.map(str::to_string),
+                no_sandbox: no_sandbox.then(NoSandbox::default),
+            });
+            match r {
+                Err(e) if e.to_string() == OLD_GROUP_BUSY && Instant::now() < deadline => {
+                    thread::sleep(Duration::from_millis(50));
+                }
+                other => return other,
+            }
+        }
+    }
+}
+
+fn flagged_h() -> H {
+    let mut h = H::new(FLAGGED);
+    h.start();
+    h
+}
+
+#[test]
+fn flagged_resume_follows_the_sandbox_and_bypass_rules() {
+    if !sessions_available() {
+        return;
+    }
+    let h = flagged_h();
+    let plain = Was {
+        no_sandbox: false,
+        bypass: false,
+    };
+    let (bypass, ns, ns_bypass) = (
+        Was {
+            bypass: true,
+            ..plain
+        },
+        Was {
+            no_sandbox: true,
+            ..plain
+        },
+        Was {
+            no_sandbox: true,
+            bypass: true,
+        },
+    );
+    let refused: [(&str, Was, Option<&str>, bool, &str); 7] = [
+        (
+            "ns, no flags",
+            ns,
+            None,
+            false,
+            "resume it with --no-sandbox",
+        ),
+        (
+            "ns, mode only",
+            ns,
+            Some("bypass"),
+            false,
+            "resume it with --no-sandbox",
+        ),
+        (
+            "ns bypass, ns only",
+            ns_bypass,
+            None,
+            true,
+            "repeat with --mode bypass",
+        ),
+        ("sandboxed, ns", plain, None, true, "cannot be moved out"),
+        (
+            "sandboxed bypass, ns",
+            bypass,
+            Some("bypass"),
+            true,
+            "cannot be moved out",
+        ),
+        (
+            "bypass, no flags",
+            bypass,
+            None,
+            false,
+            "repeat with --mode bypass",
+        ),
+        (
+            "bypass, other mode",
+            bypass,
+            Some("ask"),
+            false,
+            "repeat with --mode bypass",
+        ),
+    ];
+    for (what, was, mode, no_sandbox, needle) in refused {
+        let s = h.finished(was);
+        let e = h
+            .resume_flags(&s.id, mode, no_sandbox)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.starts_with("forbidden: ") && e.contains(needle),
+            "{what}: {e}"
+        );
+        assert!(h.state_of(&s.id).is_some(), "{what}: session lost");
+        assert!(h.homes.join(&s.id).is_dir(), "{what}: home lost");
+        h.client().remove(&s.id).unwrap();
+    }
+
+    let s = h.finished(ns);
+    let r = h.resume_flags(&s.id, None, true).unwrap();
+    assert_eq!(r.via.as_deref(), Some("id"));
+    assert!(r.session.no_sandbox);
+    assert_eq!(r.session.agent_session_id.as_deref(), Some(U1));
+    assert_eq!(r.session.resumed_from.as_deref(), Some(s.id.as_str()));
+    assert_eq!(r.session.cwd, s.cwd);
+    assert_eq!(r.session.permission_mode.as_deref(), Some("ask"));
+    assert_eq!(r.session.argv[2..], ["--ask", "--resume-id", U1]);
+    h.stop_and_remove(&r.session.id);
+
+    let s = h.finished(ns_bypass);
+    let r = h.resume_flags(&s.id, Some("bypass"), true).unwrap();
+    assert!(r.session.no_sandbox);
+    assert_eq!(r.session.permission_mode.as_deref(), Some("bypass"));
+    assert_eq!(r.session.argv[2..], ["--yolo", "--resume-id", U1]);
+    h.stop_and_remove(&r.session.id);
+
+    let s = h.finished(plain);
+    let r = h.resume_flags(&s.id, Some("bypass"), false).unwrap();
+    assert!(!r.session.no_sandbox);
+    assert_eq!(r.session.agent_session_id, None);
+    assert_eq!(r.session.permission_mode.as_deref(), Some("bypass"));
+    assert_eq!(r.session.resumed_from.as_deref(), Some(s.id.as_str()));
+    assert!(r.session.argv.contains(&"--yolo".to_string()));
+    h.stop_and_remove(&r.session.id);
+
+    let s = h.finished(bypass);
+    let r = h.resume_flags(&s.id, Some("bypass"), false).unwrap();
+    assert_eq!(r.session.permission_mode.as_deref(), Some("bypass"));
+    h.stop_and_remove(&r.session.id);
+}
+
+#[test]
+fn flagged_resume_needs_the_agent_id_and_a_valid_mode() {
+    if !sessions_available() {
+        return;
+    }
+    let h = flagged_h();
+    let s = h.finished(Was {
+        no_sandbox: true,
+        bypass: false,
+    });
+    fs::write(h.sdir(&s.id).join("output.log"), "nothing to see\n").unwrap();
+    let e = h.resume_flags(&s.id, None, true).unwrap_err().to_string();
+    assert!(
+        e.starts_with("not_found: ") && e.contains("conversation id was not found"),
+        "{e}"
+    );
+    let e = h
+        .resume_flags(&s.id, Some("bogus"), true)
+        .unwrap_err()
+        .to_string();
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    assert!(h.state_of(&s.id).is_some());
+}
+
+#[test]
+fn flagged_resume_is_refused_for_link_queue_cloud_and_unattended_sessions() {
+    if !sessions_available() {
+        return;
+    }
+    let h = flagged_h();
+    let plain = Was {
+        no_sandbox: false,
+        bypass: false,
+    };
+    let cases: [(&str, Edit, &str); 5] = [
+        (
+            "origin",
+            Box::new(|i| {
+                i.origin = Some(tmgr_ipc::api::Origin {
+                    link: "laptop".into(),
+                    generation: 1,
+                })
+            }),
+            "started over a link",
+        ),
+        (
+            "agent_work",
+            Box::new(|i| i.agent_work = true),
+            "cannot be resumed with --mode or --no-sandbox",
+        ),
+        (
+            "keyed",
+            Box::new(|i| i.keyed = Some(true)),
+            "queue the task again",
+        ),
+        (
+            "clone_of",
+            Box::new(|i| i.clone_of = Some("/repo".into())),
+            "cannot be resumed with --mode or --no-sandbox",
+        ),
+        (
+            "unpinned queue",
+            Box::new(|i| {
+                i.keyed = Some(true);
+                i.agent_work = true;
+            }),
+            "queue the task again",
+        ),
+    ];
+    for (what, edit, needle) in cases {
+        for (mode, no_sandbox) in [
+            (Some("bypass"), false),
+            (None, true),
+            (Some("bypass"), true),
+        ] {
+            let s = h.finished(plain);
+            rewrite_relaunch(&h, &s.id, &edit);
+            let e = h
+                .resume_flags(&s.id, mode, no_sandbox)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                e.starts_with("forbidden: ") && e.contains(needle),
+                "{what} {mode:?} {no_sandbox}: {e}"
+            );
+            assert!(h.state_of(&s.id).is_some(), "{what}: session lost");
+            h.client().remove(&s.id).unwrap();
+        }
+    }
+}
+
+#[test]
+fn an_expired_session_resumes_only_while_its_home_exists_and_restore_still_refuses() {
+    if !sessions_available() {
+        return;
+    }
+    let h = flagged_h();
+    let plain = Was {
+        no_sandbox: false,
+        bypass: false,
+    };
+    let s = h.finished(plain);
+    rewrite_relaunch(&h, &s.id, |i| i.created_ms = 1);
+    let (mut intent, _) = restore::load_relaunch(&h.sdir(&s.id), &s.id).unwrap();
+    intent.pids.clear();
+    restore::record(&h.store(), &intent, None).unwrap();
+    let e = h.client().restore(&s.id).unwrap_err().to_string();
+    assert!(
+        e.starts_with("forbidden: ") && e.contains("older than 7 days"),
+        "{e}"
+    );
+    assert!(restore::load(&h.store(), &s.id).is_ok());
+    let r = h.client().resume(&s.id, 80, 24).unwrap();
+    assert_eq!(r.via.as_deref(), Some("id"));
+    assert_eq!(r.session.resumed_from.as_deref(), Some(s.id.as_str()));
+    assert!(!r.session.no_sandbox);
+    h.client().remove(&r.session.id).ok();
+
+    let gone = h.finished(plain);
+    rewrite_relaunch(&h, &gone.id, |i| i.created_ms = 1);
+    fs::remove_dir_all(h.homes.join(&gone.id)).unwrap();
+    let e = h.client().resume(&gone.id, 80, 24).unwrap_err().to_string();
+    assert!(
+        e.starts_with("not_found: ") && e.contains("run home of this expired session is gone"),
+        "{e}"
+    );
+    assert!(h.state_of(&gone.id).is_some());
+}
+
+#[test]
+fn restore_keeps_refusing_what_a_flagged_resume_accepts_and_the_result_is_never_restorable() {
+    if !sessions_available() {
+        return;
+    }
+    let h = flagged_h();
+    let was = Was {
+        no_sandbox: true,
+        bypass: true,
+    };
+    let s = h.finished(was);
+    let (mut intent, _) = restore::load_relaunch(&h.sdir(&s.id), &s.id).unwrap();
+    intent.pids.clear();
+    assert!(intent.no_sandbox && intent.bypass);
+    restore::record(&h.store(), &intent, None).unwrap();
+    let e = h.client().restore(&s.id).unwrap_err().to_string();
+    assert!(
+        e.starts_with("forbidden: ") && e.contains("without the sandbox"),
+        "{e}"
+    );
+    assert!(restore::load(&h.store(), &s.id).is_ok());
+    let r = h.resume_flags(&s.id, Some("bypass"), true).unwrap();
+    let (mut next, _) = restore::load_relaunch(&h.sdir(&r.session.id), &r.session.id).unwrap();
+    assert!(next.no_sandbox && next.bypass);
+    next.pids.clear();
+    assert_eq!(
+        restore::status(&next, next.created_ms, false),
+        restore::Status::NoSandbox
+    );
+    h.client().remove(&r.session.id).ok();
+
+    let s = h.finished(Was {
+        no_sandbox: false,
+        bypass: true,
+    });
+    let (mut intent, _) = restore::load_relaunch(&h.sdir(&s.id), &s.id).unwrap();
+    intent.pids.clear();
+    restore::record(&h.store(), &intent, None).unwrap();
+    let e = h.client().restore(&s.id).unwrap_err().to_string();
+    assert!(
+        e.starts_with("forbidden: ") && e.contains("bypass runs are never restored"),
+        "{e}"
+    );
+    let r = h.resume_flags(&s.id, Some("bypass"), false).unwrap();
+    let (mut next, _) = restore::load_relaunch(&h.sdir(&r.session.id), &r.session.id).unwrap();
+    assert!(next.bypass && !next.no_sandbox);
+    next.pids.clear();
+    assert_eq!(
+        restore::status(&next, next.created_ms, false),
+        restore::Status::Bypass
+    );
+    h.client().remove(&r.session.id).ok();
+}
+
+impl H {
+    fn stop_and_remove(&self, id: &str) {
+        let _ = self.client().kill(id, "term");
+        self.wait_exited(id);
+        self.client().remove(id).ok();
+    }
+
+    fn finished_external(&self, id: &str) -> SessionInfo {
+        let mut req = self.req();
+        req.cwd = fs::canonicalize(&self.work).unwrap().display().to_string();
+        req.no_sandbox = Some(NoSandbox::default());
+        req.external_resume = Some(tmgr_ipc::api::ExternalResume {
+            id: id.into(),
+            fork: false,
+        });
+        let s = self.client().create_run(req).unwrap();
+        let _ = self.client().kill(&s.id, "term");
+        self.wait_exited(&s.id);
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while restore::group_may_run(s.child_pid, None, None) && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(50));
+        }
+        s
+    }
+}
+
+#[test]
+fn flagged_resume_prefers_the_recorded_conversation_over_the_output_tail() {
+    if !sessions_available() {
+        return;
+    }
+    let h = flagged_h();
+    for log in [claude_exit(U2), "nothing to see\n".to_string()] {
+        let s = h.finished_external(U1);
+        fs::write(h.sdir(&s.id).join("output.log"), log).unwrap();
+        let r = h.resume_flags(&s.id, None, true).unwrap();
+        assert_eq!(r.session.agent_session_id.as_deref(), Some(U1));
+        assert_eq!(r.session.argv[2..], ["--ask", "--resume-id", U1]);
+        h.stop_and_remove(&r.session.id);
+    }
+}
+
+#[test]
+fn a_raw_session_cannot_be_resumed_with_flags() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    h.start();
+    let first = h
+        .client()
+        .create(h.raw_req(&["/bin/sh", &h.work.join("raw.sh").display().to_string()]))
+        .unwrap();
+    let _ = h.client().kill(&first.id, "term");
+    h.wait_exited(&first.id);
+    for (mode, ns) in [(Some("bypass"), false), (None, true)] {
+        let e = h.resume_flags(&first.id, mode, ns).unwrap_err().to_string();
+        assert!(
+            e.starts_with("forbidden: ") && e.contains("without an agent profile"),
+            "{e}"
+        );
+    }
+    assert!(h.state_of(&first.id).is_some());
 }

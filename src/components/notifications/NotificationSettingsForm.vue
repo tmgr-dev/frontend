@@ -154,6 +154,7 @@
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
 	import { notificationTypeLabel } from '@/utils/notificationTypes';
+	import { hasTelegramLink } from './telegramLink';
 	import {
 		computed,
 		defineComponent,
@@ -193,10 +194,7 @@
 				}));
 			});
 
-			const hasTelegram = computed(() => {
-				const user = store.getters['user/getUser'];
-				return user?.telegram_id != null || user?.telegram_username != null;
-			});
+			const hasTelegram = computed(() => hasTelegramLink(store.state.user));
 
 			const loadSettings = async () => {
 				try {

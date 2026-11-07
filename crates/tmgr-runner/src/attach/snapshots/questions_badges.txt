@@ -19,4 +19,4 @@
                         │                                                        ││                                                        │
                         │                                                        ││                                                        │
  + New session     tmpl ╰────────────────────────────────────────────────────────╯╰────────────────────────────────────────────────────────╯
- tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1 ?3                                                              Ctrl-] ? help
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1 ?3                                                 drag copies  Ctrl-] ? help

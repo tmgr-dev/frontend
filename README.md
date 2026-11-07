@@ -28,7 +28,7 @@ NixOS configuration:
 }
 ```
 
-The built-in updater is disabled in this package; update with `nix flake update tmgr`.
+The package is available for `x86_64-linux` and `aarch64-linux`. The built-in updater is disabled in this package; update with `nix flake update tmgr`.
 
 ## Project setup
 

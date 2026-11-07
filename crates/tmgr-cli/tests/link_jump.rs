@@ -41,6 +41,11 @@ impl Machine {
             .env("TMGR_RUNNER_DIR", self.home.join("no-runner"))
             .env("TMGR_CREDENTIAL_STORE", "file")
             .env("NO_COLOR", "1");
+        for (name, _) in std::env::vars_os() {
+            if tmgr_local::in_agent_session([name.to_string_lossy()]) {
+                c.env_remove(name);
+            }
+        }
         c
     }
 
@@ -381,6 +386,7 @@ fn follower_machine(
                     max: 1,
                     from: vec!["127.0.0.1".into()],
                     allow_attach_input: false,
+                    ..Default::default()
                 },
             },
         );

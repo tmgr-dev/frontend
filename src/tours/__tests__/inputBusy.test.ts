@@ -25,4 +25,14 @@ describe('isInputBusy', () => {
 		(document.getElementById('i') as HTMLInputElement).focus();
 		expect(isInputBusy()).toBe(true);
 	});
+
+	it('can ignore one kind of dialog', () => {
+		document.body.innerHTML =
+			'<div role="dialog" data-state="open" aria-labelledby="tour-x"></div>';
+		const tour = '[role="dialog"][aria-labelledby^="tour-"]';
+		expect(isInputBusy(document, tour)).toBe(false);
+		document.body.innerHTML +=
+			'<div role="dialog" data-state="open" aria-labelledby="other"></div>';
+		expect(isInputBusy(document, tour)).toBe(true);
+	});
 });

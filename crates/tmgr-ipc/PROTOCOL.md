@@ -49,6 +49,10 @@ random bytes as 64 lowercase hex characters.
 
 1. C to S `hello`: `{"type":"hello","proto":1,"client":"desktop","version":"0.3.0","pid":4242,"nonce_c":"<hex>"}`.
    `client` is `cli`, `desktop`, `worker` or `hook` (self-declared, see 6).
+   `hello` may carry an optional `"config_dir"`: the absolute path of the client's tmgr config directory. The runner
+   validates it (absolute, no `.`/`..`, named `tmgr`, not the home, runner or homes directory, at most 16 distinct)
+   and adds it to the sandbox deny list of every later session; the set is add-only and an invalid value is ignored,
+   never a handshake error. Older runners ignore the field.
 2. S checks `proto`. Different major: S sends `error` with `proto_mismatch` and
    closes. S replies `challenge`:
    `{"type":"challenge","nonce_s":"<hex>","proof_s":"<hex>"}` where
@@ -104,6 +108,11 @@ Both sides must finish within 5 seconds. A refusal is
 | `runs.restore.v1` | `runs.restore` (section 5, "Restoring interrupted runs") |
 | `sessions_resume.v1` | `sessions.resume`; `resumed_from` on `SessionInfo`; `via` in the result (section 5, "Resuming an exited session") |
 | `sessions_fork.v1` | `sessions.fork` (section 5, "Forking a Claude Code session") |
+| `manual_bypass.v1` | `permission_mode: "bypass"` without a cloud approval for a manual CLI run (section 5, "Queue capabilities") |
+| `no_sandbox.v1` | `no_sandbox` on `runs.create` and `SessionInfo` (section 5, "Runs without the sandbox") |
+| `external_resume.v1` | `external_resume` on `runs.create`, `permission_mode` and `no_sandbox` on `sessions.resume`, `agent_session_id` on `SessionInfo` (section 5, "External resume") |
+| `checkpoints.v1` | `checkpoints.*`; `checkpoints` on `SessionInfo` (section 5, "Checkpoints") |
+| `permission_cards.v1` | `permission_cards` on `runs.create` and `SessionInfo` (section 5, "Permission cards") |
 | `permission_mode.v1` | `permission_mode` on `runs.create`, `SessionInfo` and `launch` of a bundle (section 5, "Queue capabilities") |
 | `start_key.v1` | `start_key` on `runs.create`; `runs.lookup` (section 5, "Queue capabilities") |
 | `run_status.v1` | `runs.status` (section 5, "Queue capabilities") |
@@ -111,6 +120,8 @@ Both sides must finish within 5 seconds. A refusal is
 | `multi_clone.v1` | `clones` on `runs.create`; `repos_sha256` in `cloud` (section 5, "Queue capabilities") |
 | `signed_context.v1` | `persona.id`, `persona.instructions` and `context` in a bundle; `persona_sha256`, `context_sha256` in `cloud` (section 5, "Run bundles") |
 | `team.v1` | `team` in a run bundle (section 5, "Run bundles") |
+| `team.workers.v1` | `team` on `runs.create` and `SessionInfo`; `assignment` in a run bundle (section 5, "Run bundles") |
+| `team.multi.v1` | `team` together with `clones` on `runs.create`: the run folder is `<primary>-worktrees/queue/<pickup id>/lead` or `.../wK` and holds one clone per repository |
 | `orchestrator.v1` | `orchestrator.create` (section 5, "Orchestrator session") |
 | `session_text.v1` | `sessions.text` (section 5, "Session text") |
 | `trust_cwd.v1` | `trust_cwd` on `runs.create`; `trust` in `WorkSummary` (section 5, "Pre-accepted folder trust") |
@@ -163,10 +174,16 @@ missing params) and `internal`.
 | `autopilot.status` | none | `{running, pid?, status}` (`status` is `status.json` or `null`) | `forbidden` | `cli` and `desktop`; cap `autopilot.v1` |
 | `autopilot.control` | `{command}` (`pause`, `resume`, `stop`, `suspend`) | `{seq}` | `forbidden`, `not_running` | `cli` and `desktop`; `suspend` from `cli` only; cap `autopilot.v1` |
 | `autopilot.log` | `{tail}` (1 to 1000) | `{lines}` (the last `tail` JSON lines of `log.jsonl`) | `forbidden`, `invalid_params` | `cli` and `desktop`; cap `autopilot.v1` |
-| `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
+| `sessions.send` | `{id, text, at_prompt?}` (text at most 64 KiB, typed as input; `at_prompt` true refuses with `busy` unless the agent sits at its idle prompt) | `null` | `not_found`, `not_running`, `busy` | any |
+| `permissions.list` | none (`client: "cli"` only) | array of `PermissionCard` | `forbidden` |
+| `permissions.answer` | `{session, card, choice: "yes"\|"always"\|"no", confirmed?}` (`client: "cli"` only) | `null` | `forbidden`, `not_found`, `busy` |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
 | `sessions.rename` | `{id, name}` (1 to 64 printable characters, unique among sessions) | `null` | `not_found`, `invalid_params`, `busy` (name taken) | any |
 | `sessions.worklog` | `{id}` | `WorkSummary` | `not_found` | any |
+| `checkpoints.enable` | `{id, keep?}` | `CheckpointList` | `not_found`, `invalid_params` | `cli` |
+| `checkpoints.list` | `{id}` | `CheckpointList` | `not_found`, `invalid_params` when off | `cli` |
+| `checkpoints.diff` | `{id, n, against?}` | `CheckpointDiff` | `not_found`, `invalid_params` | `cli` |
+| `checkpoints.restore` | `{id, n}` | `CheckpointRestored` | `not_found`, `busy`, `forbidden` | `cli` |
 | `layout.get` | none | the stored JSON value or `null` | | any |
 | `layout.set` | `{layout}` (any JSON, at most 64 KiB serialized) | `null` | | any |
 | `attach.open` | `AttachParams` | `null`, then pushes start | `not_found` | any |
@@ -187,7 +204,7 @@ protected path); `name` is 1 to 64 printable characters; `cols`/`rows` are
 clamped to 1..500 and 1..200.
 
 `SessionInfo`: `{id, name, argv, cwd, profile: str|null, state, created_ms,
-cols, rows, shim_pid, child_pid, task?, bundle_sha256?, origin?, resumed_from?, human_s?}`. `task`, `bundle_sha256`, `origin`, `resumed_from` and `human_s` are absent when not set. `human_s` (cap `human_time.v1`, `sessions.list` only) is the human seconds counted for the session, closed chunks plus the open one; absent when 0. `resumed_from` is the id of the exited session this one replaced through `sessions.resume`; a client that tracks sessions by id maps the old id to this one.
+cols, rows, shim_pid, child_pid, task?, bundle_sha256?, origin?, resumed_from?, human_s?, no_sandbox?, permission_cards?, team?, agent_session_id?}`. `task`, `bundle_sha256`, `origin`, `resumed_from`, `human_s`, `no_sandbox`, `permission_cards`, `team` and `agent_session_id` are absent when not set. `agent_session_id` (cap `external_resume.v1`) is the id of the agent conversation an external resume continues. `team` (cap `team.workers.v1`) is the label the run was created with. `no_sandbox` (cap `no_sandbox.v1`) is `true` for a run started with `no_sandbox`; absent otherwise, and a client treats absent as sandboxed. `human_s` (cap `human_time.v1`, `sessions.list` only) is the human seconds counted for the session, closed chunks plus the open one; absent when 0. `resumed_from` is the id of the exited session this one replaced through `sessions.resume`; a client that tracks sessions by id maps the old id to this one.
 
 `TaskRef`: `{workspace_id: i64, task_id: i64}`. Local workspaces have negative
 ids. The runner treats it as opaque, stores it in the session's `meta.json` (it
@@ -221,8 +238,8 @@ runner lost (reboot, logout) keep it.
 
 `runs.restore {id}` (cap `runs.restore.v1`, `cli` only) claims the record by renaming it,
 so two restores of the same session cannot both start. It refuses records older than
-7 days, records with an `origin` (a link run is re-requested by its leader) and bypass
-runs; then it sends the recorded launch through the same path as `runs.create`, with
+7 days, records with an `origin` (a link run is re-requested by its leader), bypass
+runs and runs started with `no_sandbox`; then it sends the recorded launch through the same path as `runs.create`, with
 the stored bundle and `cwd_pin`, so the bundle hash and the folder identity are checked
 again (a replaced folder answers `invalid_params` "approved folder changed"). When the
 old run's home still exists it is moved to the new session and, if the profile has
@@ -240,8 +257,11 @@ session is not touched. `agent_id` must be a lowercase UUID and the runner finds
 itself, only in the old session's run home (`.claude/projects/*/<agent_id>.jsonl`, opened without following
 links, at most 512 MiB) and copies that one file into the new run home before the agent starts. The launch
 is rebuilt exactly like a resume of that session (launch record or `meta.json`, same folder identity check,
-same refusals for link, bypass, expired and unpinned queue runs); the profile must declare `[resume] by_id`.
-Any other profile is `forbidden`.
+same refusals for link, bypass, no-sandbox, expired and unpinned queue runs); the profile must declare `[resume] by_id`.
+A `codex` session is forked the same way with `codex fork <agent_id>`: the rollout
+(`.codex/sessions/YYYY/MM/DD/rollout-*-<agent_id>.jsonl`, whose first line must be the session metadata of
+`agent_id`) is copied to the same relative path, and the profile must declare `[resume] fork_by_id`.
+Any other profile is `forbidden`. The runner also answers `forbidden` unless reading the agent's logs (Claude Code or Codex) is allowed on this device.
 
 ### Resuming an exited session
 
@@ -259,7 +279,7 @@ An agent run (a profile) is relaunched from a copy of its launch record that the
 keeps in the session directory (`relaunch.json`, plus the canonical bundle when there is one),
 so it survives the clean exit and the kill that drop the `runs.restore` record. The same
 rules as `runs.restore` apply and nothing is weakened: records with an `origin` (link), bypass
-runs, records older than 7 days and queue runs without an `exe_pin` are `forbidden`; the
+and no-sandbox runs, records older than 7 days and queue runs without an `exe_pin` are `forbidden`; the
 executable pin, the argv digest, the folder identity (`cwd_pin`) and the stored bundle hash
 are checked again. A session without a launch record (started before `relaunch.json` existed) is rebuilt
 from its own `meta.json`: the profile is looked up in the runner's current profile table (the stored
@@ -377,13 +397,25 @@ means nothing is pending. The owner applies a candidate with `tmgr agents sync <
 
 All four are additive: new optional fields and methods, no change for clients that do not send them.
 
-**`permission_mode.v1`.** `runs.create` takes an optional `permission_mode`: `ask`, `accept-edits` or `plan` (there is no bypass). The profile maps each mode it supports to arguments (`permission_modes` table) and the runner appends them after the profile's own arguments. A request names a mode the profile has no entry for, or a profile that has a `permission_modes` table but no entry for `ask` gets no mode: `invalid_params` ("profile X cannot run in mode Y"). A profile without any `permission_modes` table keeps its old behavior when no mode is requested (no extra arguments, no recorded mode). The effective mode (request value, else `ask`) is stored and returned as `SessionInfo.permission_mode`. `launch.permission_mode` of a bundle is optional and hashed only when present; when the request carries a bundle, the bundle's value must equal the effective mode, and an absent value (old bundles) is accepted only when the effective mode is `ask` or none. `sessions.create` is not affected.
+**`permission_mode.v1`.** `runs.create` takes an optional `permission_mode`: `ask`, `accept-edits`, `plan` or `bypass`. Bypass is accepted in two cases only: a cloud task with a verified approval, or a manual run from the CLI. A manual run is `client: "cli"` with no `origin`, no `start_key`, no `unattended` and no `clones`; it needs no cloud approval (a cloud task, a local-workspace task or no task at all). Every other request for bypass (desktop and worker clients, queue and autopilot runs, link runs, clones) is `forbidden`, and so is a forged or unbound cloud approval. The profile must have a `bypass` entry in `permission_modes`. Only bypass with a verified cloud approval gets the network allowlist; a manual bypass run without one keeps the open network. The profile maps each mode it supports to arguments (`permission_modes` table) and the runner appends them after the profile's own arguments. A request names a mode the profile has no entry for, or a profile that has a `permission_modes` table but no entry for `ask` gets no mode: `invalid_params` ("profile X cannot run in mode Y"). A profile without any `permission_modes` table keeps its old behavior when no mode is requested (no extra arguments, no recorded mode). The effective mode (request value, else `ask`) is stored and returned as `SessionInfo.permission_mode`. `launch.permission_mode` of a bundle is optional and hashed only when present; when the request carries a bundle, the bundle's value must equal the effective mode, and an absent value (old bundles) is accepted only when the effective mode is `ask` or none. `sessions.create` is not affected.
 
 **`start_key.v1`.** `runs.create` takes an optional `start_key` (`[A-Za-z0-9._:-]`, 1 to 64 characters). The runner stores it with a hash of the other parameters (everything except `cols`, `rows` and `start_key`). A second `runs.create` with the same key and the same hash returns the existing `SessionInfo` in whatever state it is, and starts nothing; the same key with other parameters is `busy` ("start key already used for a different request"). Keys survive a runner restart and are forgotten when the session is removed. `runs.lookup {start_key}` returns the `SessionInfo` or `not_found`.
 
 **`run_status.v1`.** `runs.status {id}` returns `{id, alive, state, exit_code, signal, started_ms, ended_ms}`: `state` is the state kind, `alive` is true while the shim is reachable and the child has not exited, `exit_code`, `signal` and `ended_ms` are `null` until the child exits, `started_ms` is `created_ms`. It carries no screen.
 
-**`clone_dir.v1`.** `runs.create` takes an optional `clone_of`, the absolute path of a repository. Before the sandbox is prepared the runner checks, walking descriptors without following any symlink, that the repository is a work tree root with a real `.git` directory, that the canonical `cwd` lies strictly inside `<repo parent>/<repo name>-worktrees/` (any depth), that `cwd/.git` is a real directory (not a worktree file) and that `cwd/.git/objects/info/alternates`, if present (at most 4 KiB), lists only `<repo>/.git/objects`. Any violation is `invalid_params`. The sandbox then gets read-only access to `<repo>/.git/objects` and nothing else of the repository; writes stay limited to `cwd` and the per-run home.
+**`clone_dir.v1`.** `runs.create` takes an optional `clone_of`, the absolute path of a repository. Before the sandbox is prepared the runner checks, walking descriptors without following any symlink, that the repository is a work tree root with a real `.git` directory, that the canonical `cwd` lies strictly inside `<repo parent>/<repo name>-worktrees/` (any depth), that `cwd/.git` is a real directory (not a worktree file) and that `cwd/.git/objects/info/alternates`, if present (at most 4 KiB), lists only `<repo>/.git/objects`. Any violation is `invalid_params`. A clone whose alternates list the repository (made by an older version) gets read-only access to `<repo>/.git/objects` and nothing else of the repository; a clone without alternates gets none. Writes stay limited to `cwd` and the per-run home.
+
+**Runs without the sandbox (`no_sandbox.v1`).** `runs.create` takes an optional `no_sandbox: {"env": {...}}`. It is accepted only for a manual CLI run (see `permission_mode.v1`); any other request is `forbidden`. The agent then runs as it would outside tmgr: its `HOME` is the real home, its environment is `env` (every `TMGR_*` name is dropped; the runner sets `TMGR_SESSION_ID`, `TMGR_RUN_ID` when it applies, `TERM` and `HOME`), and the runner writes no seeds, credential files, secrets or folder trust, applies no Landlock policy and starts no egress proxy. The per-run home still exists as a plain directory and is the only one the runner ever removes. Hooks, agent work, the work log, the live view and attach keep working. On macOS the command still runs under a minimal Seatbelt profile that only denies writes to, and unix-socket connects under, the runner directory, the homes directory, the tmgr config directory, `~/.tmgr.dev` and the profile-protected paths, and writes to the runner executable; reads are not restricted. On Linux there is no such fence. The work log records `mode` and `sandbox` ("on" or "off") in its `created` event, and the agent work summary on finish names `mode: bypass, sandbox: off`. `SessionInfo.no_sandbox` is `true` for such a session. Such a session is never restored or forked; `sessions.resume` takes it back only with an explicit `no_sandbox` (see "External resume").
+
+**External resume (`external_resume.v1`).** `runs.create` takes an optional `external_resume: {"id": "<agent session id>", "fork": false}` (`fork` absent means false): continue, or fork, a conversation the agent recorded outside the runner. It is accepted only for a manual CLI run that also carries `no_sandbox`, with no `origin`, `start_key`, `clones`, `team`, `agent_work`, `cloud`, `clone_of`, trust flags, bundle or `task`; any other request is `forbidden`. `id` must be a lowercase hyphenated UUID, else `invalid_params`. The runner builds the command only from the profile's `resume.by_id` (or `resume.fork_by_id`) template, never reads a transcript, and starts the agent in `cwd` exactly as sent: `cwd` must already be its resolved (canonical) absolute path, else `invalid_params`. A profile without the template answers `forbidden`. The new session reports `agent_session_id` (not for a fork).
+
+`sessions.resume` takes optional `permission_mode` (`bypass`, or another mode the profile defines) and `no_sandbox`. Without them nothing changes, except that an expired session may be resumed while its run home exists. With them: a session started with `no_sandbox` resumes only with `no_sandbox` (through an external resume of the conversation id found in its log); a sandboxed session cannot be resumed with `no_sandbox`; a session that ran in bypass resumes only with `permission_mode: "bypass"`. Sessions started over a link, by the queue, by a cloud approval, for agent work or as a team member are always refused. `runs.restore` and restore after a runner restart are unchanged.
+
+**Permission cards (`permission_cards.v1`).** `runs.create` takes an optional `permission_cards: true` (absent means false). It is accepted only for a manual CLI run; any other request is `forbidden`. The runner keeps it only for the built-in `claude-code` and `codex` profiles and ignores it for any other profile. It is stored with the session and carried through restore, resume and fork. When on, the runner adds a `PermissionRequest` hook that only records the request in the session home (`$HOME/.cache/tmgr-permit/<session id>/`): for `claude-code` through an extra `--settings` argument, for a sandboxed `codex` through `.codex/config.toml` in the run home. A `codex` run with `no_sandbox` gets no hook and nothing is written to the real home. `SessionInfo.permission_cards` is `true` for such a session.
+
+`permissions.list` returns one `PermissionCard` for each live session with the flag on whose screen shows a permission prompt of the agent. A card is answerable (`can_answer`) only when all of these hold: the prompt is the last block on the screen with only the agent's footer below it; the newest unconsumed hook record of the session matches the prompt text exactly (the card `text` is then the full text from the hook, never cut); the foreground process group of the terminal, from a status report no older than 1 s, is the agent process; and the agent supports the tool (`Bash`, or `Write` with the full content visible). Anything else is a view-only card with `can_answer: false` and `why_not`. `id` is a digest of the session, the hook record and the prompt, so a new prompt or a new hook record is a new card. `armed_in_ms` is the time left of a 300 ms window that starts when the runner first lists a card; an answer inside it is refused. `always_label` is set only when the agent offers a rule for exactly this command and the card has no `danger` entries.
+
+`permissions.answer` repeats every check against the live screen, in this order, and refuses with `forbidden` (the message says why) on the first failure: the session is running and has the flag; the prompt is still on screen; the recomputed `id` equals `card` (which also fails when a newer hook record exists); the card is answerable; the foreground check; the arming window; the card was not answered before; a card with `danger` needs `confirmed: true` for `yes`, and `always` is never sent for it; the agent shows the chosen option. Then the card is marked answered, its hook record is consumed (deleted), and exactly one key of the parsed option is queued as terminal input. Enter is never sent. A full input queue returns `busy` and the card stays answered. Only the `cli` client may call either method; `worker` and `desktop` get `forbidden`. Known limit: the agent can change state between the last status report and the key; the worst case is one key without Enter.
 
 **`agent_work.v1`.** `runs.create` takes an optional `agent_work: true` (absent means false). The runner then records the run as Agent work of its task in the local workspace: it needs a `task` of a local workspace (negative `workspace_id`; a cloud task is `invalid_params`, owner decision 16a.11), a profile with a `permission_modes` table (otherwise `invalid_params` naming the profile), and is `forbidden` for link runs. The runner calls its own executable as `<self> __agent-work` with one JSON request on stdin (`op` `start`, `update` or `finish`) and keeps the run id with the session: `start` when the session is created (agent = profile id, model, branch, session id), `update` with the branch and commits from the work log at most every 10 minutes, and `finish` once when the child has exited: `succeeded` for exit code 0, `cancelled` after `sessions.kill`, a revocation or a session lost while the runner was down, otherwise `failed`, with a one-line summary and the commits. Failed calls are retried and never block the session; a session that ended while the runner was down is finished after the restart. A `start_key` replay returns the existing session and opens no second run. The flag is part of the start-key hash.
 
@@ -454,7 +486,7 @@ What the pin does not cover:
 
 **`trusted_folders.v1`.** The runner keeps a local list of folders whose agent folder-trust question is answered in advance: `.trusted-folders.json` in the homes directory (mode 0600, outside every sandbox), each entry the canonical path with the folder's `st_dev`/`st_ino`. A run whose canonical `cwd` has the same path and identity, and that has no `start_key`, `clone_of` or `origin`, gets the profile's `[trust]` entry seeded as with `trust_cwd`, from any client; the work log records `trust: "remembered"`. A folder inside a trusted one, a clone or worktree of it, or a new folder at the same path is not trusted. Entries come only from `trust.add` (`client: "cli"`; `tmgr runner trust` asks to confirm and refuses inside an agent session) or from the owner's own answer: when a run of the built-in `claude-code` profile that the runner did not pre-trust (no `start_key`, `clone_of`, `origin`, not restored) exits, and its per-run `.claude.json` (a plain file, not a link) records `projects.<cwd>.hasTrustDialogAccepted: true`, the folder is added with `how: "answered"`, unless any input to that session came from a client other than `cli` or `desktop` (for example a link worker). Claude Code runs nothing before that question is answered, so the record comes from a person at this machine. The answer is read once per session (the session's record drops it when read or when foreign input arrives), so a runner restart never adds a folder again after `trust.remove`. `trust.add` may carry the `dev` and `ino` the person confirmed; a different folder at the path is then `invalid_params`. `trust.remove` matches the stored path or the canonical form of the given one, also for a folder that no longer exists.
 
-**`trust_via_repo.v1`.** `runs.create` takes an optional `trust_via_repo` (`true`) for the per-task clones `tmgr run` makes. It is accepted only from `client: "cli"` (others get `forbidden`), needs `clone_of` and is `invalid_params` together with `start_key`, `origin` or `trust_cwd`, so the queue (which always sends a `start_key`), a link or a follower can never use it; `tmgr run` does not send it inside an agent session, and a restored run does not carry it. The profile's `[trust]` entry is seeded for the clone's canonical `cwd`, as with `trust_cwd`, only when every `clone_dir.v1` check passes and in addition: the `clone_of` repository's path and `st_dev`/`st_ino` match an entry of the trusted list; `cwd` is exactly one level below `<repo>-worktrees/` and that name is not `queue`; the clone's `objects/info/alternates` exists and names the repository's object directory; and no session that has not exited has a `cwd` equal to or above the clone (such an agent could have replaced the folder). The runner cannot prove the folder is the clone `tmgr run` just made, only these properties. Otherwise the run starts without it and the agent asks as usual. A folder inside such a clone, a clone elsewhere, a clone without `--reference` and a `-worktrees` folder reached through a symlink are never covered. The work log records `trust: "repo"`. Answering the question inside a clone never adds the repository (or the clone) to the list.
+**`trust_via_repo.v1`.** `runs.create` takes an optional `trust_via_repo` (`true`) for the per-task clones `tmgr run` makes. It is accepted only from `client: "cli"` (others get `forbidden`), needs `clone_of` and is `invalid_params` together with `start_key`, `origin` or `trust_cwd`, so the queue (which always sends a `start_key`), a link or a follower can never use it; `tmgr run` does not send it inside an agent session, and a restored run does not carry it. The profile's `[trust]` entry is seeded for the clone's canonical `cwd`, as with `trust_cwd`, only when every `clone_dir.v1` check passes and in addition: the `clone_of` repository's path and `st_dev`/`st_ino` match an entry of the trusted list; `cwd` is exactly one level below `<repo>-worktrees/` and that name is not `queue`; the clone's `objects/info/alternates` names the repository's object directory, or the runner's homes folder holds a `.task-clones/<dev>-<ino>` record for that clone written when it was made, with the same clone path and repository identity; and no session that has not exited has a `cwd` equal to or above the clone (such an agent could have replaced the folder). The runner cannot prove the folder is the clone `tmgr run` just made, only these properties. Otherwise the run starts without it and the agent asks as usual. A folder inside such a clone, a clone elsewhere, a clone with neither alternates nor a record and a `-worktrees` folder reached through a symlink are never covered. The work log records `trust: "repo"`. Answering the question inside a clone never adds the repository (or the clone) to the list.
 
 ### Run bundles
 
@@ -480,6 +512,8 @@ Cloud runs (cap `signed_context.v1`) may add, all omitted when absent so other b
 `launch.permission_mode` (`ask`, `accept-edits` or `plan`) is optional, omitted when absent, and part of the hash when present.
 
 A bundle may carry `team` `{size, mode}` (cap `team.v1`; `size` 1 to 5, `mode` `eco` or `heavy`, no other fields), omitted when absent so other bundles and their hashes are unchanged. It is a note from the runner side, not owner text: it needs no signature, and `task.md` shows it in a separate block labelled as set by the runner on this machine and not signed.
+
+`runs.create` takes an optional `team` `{role, of}` (cap `team.workers.v1`, no other fields): `role` is `"lead"` or `{"worker": N}` with `N` from 1, `of` is the pickup id (1 to 64 characters of `A-Za-z0-9._-`); the run is created with it and `SessionInfo.team` returns it. It is a label for grouping and display and grants nothing: the sandbox, grants, home and egress of a member are built exactly as for a single run, and an invalid link is `invalid_params`. A bundle may carry `assignment`, a string of at most 16384 bytes, omitted when absent so other bundles and their hashes are unchanged and part of the hash when present. It is unsigned text written by the lead agent: it is outside the cloud signature, the runner refuses it (`invalid_params`) unless the request carries a `team` with role `worker`, and `task.md` shows it after the team block under "Assignment from the lead", inside the same untrusted data markers as other task text (`<<<` is escaped), never among the owner sections.
 
 `author.kind` is `human`, `agent` or `other`; `author.id`, `persona` and
 `launch.model` are optional and are omitted, never `null`. `v` is `1`. Unknown
@@ -620,6 +654,19 @@ Never recorded: terminal output, input, screen content, the text of a question
 or prompt, environment, or file contents. The log survives runner restarts;
 adopting a session does not repeat `created`. A session started before this
 capability has no log and returns an all-zero summary.
+
+### Checkpoints
+
+Capability `checkpoints.v1`, off unless a CLI client calls `checkpoints.enable`. After a turn the
+runner stores the session's working folder as a commit on `refs/tmgr/checkpoints/<id>/<n>`, built
+with plumbing and a temporary index: the user's branch, index and stash are not touched. Ignored
+files are not stored. The runner's own manifest in the session folder decides what exists; a ref
+that disagrees with it is refused.
+
+`checkpoints.restore` answers `busy` while the session is working or while another live session
+runs in the same folder, a subfolder or a parent folder. It first stores the current state (`before_n`), then only overwrites or
+deletes what that stored state holds byte for byte; anything else is listed in `left_as_is`.
+Link workers and the desktop get `forbidden`: restore is started on this machine, from the CLI.
 
 ## 6. Who may call what
 

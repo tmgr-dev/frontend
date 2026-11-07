@@ -3,9 +3,12 @@
 use serde_json::{json, Value};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
@@ -13,7 +16,9 @@ use tmgr_ipc::api::{
     CreateReq, CwdPin, ExePin, OrchestratorCreateReq, Origin, OriginRevokeParams, OriginRevoked,
     RunBundle, RunCreateReq, SessionInfo, State, StateKind, TaskRef,
 };
-use tmgr_ipc::proto::ServerMsg;
+use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};
+use tmgr_ipc::proto::{ExitInfo, ServerMsg, Stat, ToShim};
+use tmgr_ipc::{auth, endpoint, endpoint::Endpoint, secret, server};
 use tmgr_runner::client::{parse_event, AttachWriter, Client, ScreenCache};
 
 const HOST: &str = env!("CARGO_BIN_EXE_tmgr-runner-host");
@@ -60,6 +65,7 @@ struct Harness {
     agents: PathBuf,
     cfg: PathBuf,
     real_home: Option<PathBuf>,
+    drop_xdg: bool,
     env: Vec<(String, String)>,
     runner: Option<Child>,
 }
@@ -105,6 +111,7 @@ impl Harness {
             agents,
             cfg,
             real_home: None,
+            drop_xdg: false,
             env: Vec::new(),
             runner: None,
         }
@@ -123,8 +130,11 @@ impl Harness {
             .env("TMGR_AGENTS_DIR", &self.agents)
             .env("XDG_CONFIG_HOME", &self.cfg)
             .env("TMGR_T0_QUIET_MS", quiet_ms.to_string())
-            .env("TMGR_RUNNER_WRITE_TIMEOUT_MS", "1500")
-            .stdin(Stdio::null())
+            .env("TMGR_RUNNER_WRITE_TIMEOUT_MS", "1500");
+        if self.drop_xdg {
+            cmd.env_remove("XDG_CONFIG_HOME");
+        }
+        cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(err)
             .spawn()
@@ -195,6 +205,7 @@ impl Harness {
 
     fn run_req(&self, profile: &str) -> RunCreateReq {
         RunCreateReq {
+            team: None,
             clones: Vec::new(),
             profile: profile.into(),
             task: None,
@@ -217,6 +228,9 @@ impl Harness {
             unattended: false,
             exe_pin: None,
             argv_sha256: None,
+            no_sandbox: None,
+            external_resume: None,
+            permission_cards: false,
         }
     }
 
@@ -698,14 +712,581 @@ fn send_reports_a_full_input_queue() {
     let info = c.create(h.req(&["/bin/sleep", "30"])).unwrap();
     let chunk = "xxxxxxx\n".repeat(8 * 1024);
     let mut refused = None;
-    for _ in 0..200 {
+    let mut sent = 0;
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_secs(10) {
         if let Err(e) = c.send(&info.id, &chunk) {
             refused = Some(e.to_string());
             break;
         }
+        sent += 1;
     }
-    let e = refused.expect("a stalled agent must make sessions.send fail");
+    let e = refused.unwrap_or_else(|| {
+        panic!("a stalled agent must make sessions.send fail; {sent} sends of 64 KB were accepted")
+    });
     assert!(e.contains("busy") && e.contains("input queue full"), "{e}");
+}
+
+fn chunk(i: usize) -> String {
+    (0..8192)
+        .map(|n| format!("{:07}\n", i * 8192 + n))
+        .collect()
+}
+
+fn out_of(h: &Harness, name: &str) -> PathBuf {
+    h.work.join(format!("{name}.out"))
+}
+
+fn raw_agent(h: &Harness, name: &str, tail: &str) -> CreateReq {
+    let ready = h.work.join(format!("{name}.ready"));
+    let body = format!(
+        "OUT={}\nstty raw -echo\n: > {}\n{tail}\n",
+        out_of(h, name).display(),
+        ready.display()
+    );
+    let path = h.script(&format!("{name}.sh"), &body);
+    h.req(&["/bin/sh", &path])
+}
+
+fn wait_ready(h: &Harness, name: &str) {
+    let ready = h.work.join(format!("{name}.ready"));
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !ready.exists() {
+        assert!(Instant::now() < deadline, "agent {name} never became ready");
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn file_len(p: &Path) -> u64 {
+    fs::metadata(p).map(|m| m.len()).unwrap_or(0)
+}
+
+fn wait_len(p: &Path, want: u64, stall: Duration) -> u64 {
+    let mut last = file_len(p);
+    let mut since = Instant::now();
+    while last < want && since.elapsed() < stall {
+        thread::sleep(Duration::from_millis(50));
+        let now = file_len(p);
+        if now != last {
+            last = now;
+            since = Instant::now();
+        }
+    }
+    last
+}
+
+const STALL: Duration = Duration::from_secs(15);
+
+fn numbered(chunks: usize) -> Vec<u8> {
+    (0..chunks).flat_map(|i| chunk(i).into_bytes()).collect()
+}
+
+fn assert_file_is(p: &Path, want: &[u8]) {
+    let got = wait_len(p, want.len() as u64, STALL);
+    assert_eq!(
+        got,
+        want.len() as u64,
+        "agent received {got} of {} bytes",
+        want.len()
+    );
+    assert!(
+        fs::read(p).unwrap() == want,
+        "bytes differ or are reordered"
+    );
+}
+
+fn flood(c: &mut Client, id: &str, secs: u64) -> (usize, Option<String>) {
+    let chunk = chunk(0);
+    let started = Instant::now();
+    let mut sent = 0;
+    while started.elapsed() < Duration::from_secs(secs) {
+        if let Err(e) = c.send(id, &chunk) {
+            return (sent, Some(e.to_string()));
+        }
+        sent += 1;
+    }
+    (sent, None)
+}
+
+fn send_retrying(c: &mut Client, id: &str, text: &str, secs: u64) {
+    let deadline = Instant::now() + Duration::from_secs(secs);
+    loop {
+        match c.send(id, text) {
+            Ok(()) => return,
+            Err(e) => {
+                assert!(
+                    e.to_string().contains("busy") && Instant::now() < deadline,
+                    "send still refused: {e}"
+                );
+                thread::sleep(Duration::from_millis(50));
+            }
+        }
+    }
+}
+
+#[test]
+fn send_refuses_at_the_input_cap_without_waiting_and_nothing_is_dropped() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c.create(raw_agent(&h, "stall", "exec sleep 60")).unwrap();
+    wait_ready(&h, "stall");
+    let (accepted, refusal) = flood(&mut c, &info.id, 10);
+    let e = refusal.unwrap_or_else(|| panic!("no refusal after {accepted} sends of 64 KiB"));
+    assert_eq!(
+        accepted, 16,
+        "accepted {accepted} sends of 64 KiB before: {e}"
+    );
+    assert!(e.contains("busy") && e.contains("input queue full"), "{e}");
+    thread::sleep(Duration::from_millis(1500));
+    let log = fs::read_to_string(h.tmp.path().join("runner.err")).unwrap();
+    let dropped: Vec<&str> = log
+        .lines()
+        .filter(|l| l.contains("dropped") && l.contains(&info.id))
+        .collect();
+    assert!(dropped.is_empty(), "{dropped:?}");
+}
+
+#[test]
+fn send_stays_busy_on_immediate_retries_after_a_refusal() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c.create(raw_agent(&h, "stall", "exec sleep 60")).unwrap();
+    wait_ready(&h, "stall");
+    let (accepted, refusal) = flood(&mut c, &info.id, 10);
+    assert!(refusal.is_some(), "no refusal after {accepted} sends");
+    let chunk = chunk(0);
+    for retry in 1..=5 {
+        let r = c.send(&info.id, &chunk);
+        let e = r.expect_err(&format!(
+            "retry {retry} right after the refusal was accepted"
+        ));
+        assert!(e.to_string().contains("busy"), "retry {retry}: {e}");
+    }
+}
+
+#[test]
+fn a_full_queue_drains_into_a_slow_agent_without_loss_and_sends_work_again() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c
+        .create(raw_agent(&h, "slow", "sleep 2\nexec cat > \"$OUT\""))
+        .unwrap();
+    wait_ready(&h, "slow");
+    let (accepted, refusal) = flood(&mut c, &info.id, 10);
+    assert!(refusal.is_some(), "no refusal after {accepted} sends");
+    let want = (accepted * 65536) as u64;
+    let out = out_of(&h, "slow");
+    let got = wait_len(&out, want, STALL);
+    assert_eq!(
+        got, want,
+        "{accepted} sends were accepted, the agent got {got} bytes"
+    );
+    send_retrying(&mut c, &info.id, &chunk(0), 10);
+    assert_eq!(wait_len(&out, want + 65536, STALL), want + 65536);
+}
+
+#[test]
+fn a_send_after_a_stalled_agent_recovered_is_accepted_on_the_first_try() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let go = h.work.join("rec.go");
+    let tail = format!(
+        "while [ ! -e {} ]; do sleep 0.05; done\nexec cat > \"$OUT\"",
+        go.display()
+    );
+    let info = c.create(raw_agent(&h, "rec", &tail)).unwrap();
+    wait_ready(&h, "rec");
+    for i in 0..16 {
+        c.send(&info.id, &chunk(i)).unwrap();
+    }
+    let _ = c.send(&info.id, &chunk(16));
+    thread::sleep(Duration::from_millis(1200));
+    fs::write(&go, b"").unwrap();
+    let out = out_of(&h, "rec");
+    let drained = 16 * 65536;
+    assert_eq!(wait_len(&out, drained, STALL), drained);
+    thread::sleep(Duration::from_millis(1200));
+    if let Err(e) = c.send(&info.id, &chunk(16)) {
+        panic!("first send after the agent drained its queue was refused: {e}");
+    }
+    assert_file_is(&out, &numbered(17));
+}
+
+#[test]
+fn paced_sends_of_three_mib_are_never_refused_and_arrive_intact() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c
+        .create(raw_agent(&h, "paced", "exec cat > \"$OUT\""))
+        .unwrap();
+    wait_ready(&h, "paced");
+    for i in 0..48 {
+        if let Err(e) = c.send(&info.id, &chunk(i)) {
+            panic!("send {i} of 48 was refused: {e}");
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert_file_is(&out_of(&h, "paced"), &numbered(48));
+}
+
+#[test]
+fn sends_retried_on_busy_into_a_throttled_reader_all_arrive() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let tail =
+        "while dd bs=65536 count=1 iflag=fullblock >> \"$OUT\" 2>/dev/null; do sleep 0.2; done";
+    let info = c.create(raw_agent(&h, "throttled", tail)).unwrap();
+    wait_ready(&h, "throttled");
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let mut i = 0;
+    while i < 48 {
+        match c.send(&info.id, &chunk(i)) {
+            Ok(()) => i += 1,
+            Err(e) => {
+                assert!(e.to_string().contains("busy"), "send {i}: {e}");
+                assert!(Instant::now() < deadline, "only {i} of 48 sends accepted");
+                thread::sleep(Duration::from_millis(50));
+            }
+        }
+    }
+    assert_file_is(&out_of(&h, "throttled"), &numbered(48));
+}
+
+#[test]
+fn a_two_mib_paste_through_attach_arrives_byte_exact() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c
+        .create(raw_agent(&h, "paste", "exec cat > \"$OUT\""))
+        .unwrap();
+    wait_ready(&h, "paste");
+    let w = Watch::new(h.client(), &[&info.id]);
+    w.writer.input(&info.id, &numbered(32)).unwrap();
+    assert_file_is(&out_of(&h, "paste"), &numbered(32));
+}
+
+#[test]
+fn a_two_mib_paste_into_an_agent_that_prints_it_back_arrives_byte_exact() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c
+        .create(raw_agent(&h, "echoed", "exec tee \"$OUT\""))
+        .unwrap();
+    wait_ready(&h, "echoed");
+    let w = Watch::new(h.client(), &[&info.id]);
+    w.writer.input(&info.id, &numbered(32)).unwrap();
+    assert_file_is(&out_of(&h, "echoed"), &numbered(32));
+}
+
+#[test]
+fn nine_hundred_one_byte_attach_frames_into_a_slow_reader_all_arrive() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c
+        .create(raw_agent(&h, "small", "sleep 2\nexec cat > \"$OUT\""))
+        .unwrap();
+    wait_ready(&h, "small");
+    let w = Watch::new(h.client(), &[&info.id]);
+    let want: Vec<u8> = (0..900).map(|i| b'a' + (i % 26) as u8).collect();
+    for b in &want {
+        w.writer.input(&info.id, &[*b]).unwrap();
+    }
+    assert_file_is(&out_of(&h, "small"), &want);
+}
+
+#[test]
+fn a_shim_without_input_credit_delivers_input_and_reports_a_stalled_agent() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.env
+        .push(("TMGR_TEST_SHIM_NO_INPUT_CREDIT".into(), "1".into()));
+    h.start(5000);
+    let mut c = h.client();
+    let reader = c
+        .create(raw_agent(&h, "reader", "exec cat > \"$OUT\""))
+        .unwrap();
+    wait_ready(&h, "reader");
+    for i in 0..4 {
+        c.send(&reader.id, &chunk(i)).unwrap();
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert_file_is(&out_of(&h, "reader"), &numbered(4));
+    let stalled = c.create(h.req(&["/bin/sleep", "30"])).unwrap();
+    let (accepted, refusal) = flood(&mut c, &stalled.id, 10);
+    let e = refusal.unwrap_or_else(|| panic!("no refusal after {accepted} sends"));
+    assert!(e.contains("busy") && e.contains("input queue full"), "{e}");
+}
+
+// Frozen at 1.0.88: do not follow tmgr_ipc::proto.
+#[allow(dead_code)]
+#[derive(serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum OldFromShim {
+    AdoptChallenge {
+        nonce_sh: String,
+        proof_sh: String,
+    },
+    Hello(OldShimHello),
+    Stat(Stat),
+    Exited(ExitInfo),
+    InputDropped {
+        bytes: u64,
+    },
+    SignalAck {
+        sig: i32,
+        delivered: bool,
+        #[serde(default)]
+        id: u64,
+    },
+}
+
+#[allow(dead_code)]
+#[derive(serde::Deserialize)]
+struct OldShimHello {
+    pid: u32,
+    child_pid: u32,
+    started_at_ms: u64,
+    #[serde(default)]
+    exit: Option<ExitInfo>,
+    #[serde(default)]
+    cwd_dev: Option<u64>,
+    #[serde(default)]
+    cwd_ino: Option<u64>,
+}
+
+struct OldDaemon {
+    id: String,
+    stream: UnixStream,
+    drops: Arc<AtomicUsize>,
+    unparsed: Arc<AtomicUsize>,
+}
+
+impl OldDaemon {
+    fn adopt(h: &Harness, id: &str) -> OldDaemon {
+        let secret = secret::read(&h.run.join("sessions").join(id).join("adopt.secret")).unwrap();
+        let stream = endpoint::connect_within(
+            &Endpoint::load_session(&h.run, id).unwrap(),
+            server::HANDSHAKE_TIMEOUT,
+        )
+        .unwrap();
+        server::accept_check(&stream).unwrap();
+        let deadline = Instant::now() + server::HANDSHAKE_TIMEOUT;
+        let nonce_r = auth::nonce();
+        write_json(
+            &mut &stream,
+            &ToShim::Adopt {
+                nonce_r: nonce_r.clone(),
+            },
+        )
+        .unwrap();
+        let next = || match server::read_frame_by(&stream, deadline).unwrap() {
+            Some(Frame::Json(v)) => serde_json::from_value::<OldFromShim>(v)
+                .unwrap_or_else(|e| panic!("old daemon cannot parse the shim message: {e}")),
+            other => panic!("unexpected frame {other:?}"),
+        };
+        let OldFromShim::AdoptChallenge { nonce_sh, proof_sh } = next() else {
+            panic!("expected a challenge");
+        };
+        assert!(auth::verify(
+            &secret,
+            auth::SHIM,
+            &nonce_r,
+            &nonce_sh,
+            &proof_sh
+        ));
+        let proof_r = auth::proof(&secret, auth::RUNNER_ADOPT, &nonce_sh, &nonce_r);
+        write_json(&mut &stream, &ToShim::AdoptAuth { proof_r }).unwrap();
+        assert!(matches!(next(), OldFromShim::Hello(_)), "expected a hello");
+        let drops = Arc::new(AtomicUsize::new(0));
+        let unparsed = Arc::new(AtomicUsize::new(0));
+        let reader = stream.try_clone().unwrap();
+        let (d, u) = (drops.clone(), unparsed.clone());
+        thread::spawn(move || {
+            while let Ok(Some(frame)) = read_frame(&mut &reader) {
+                if let Frame::Json(v) = frame {
+                    match serde_json::from_value::<OldFromShim>(v) {
+                        Ok(OldFromShim::InputDropped { .. }) => {
+                            d.fetch_add(1, Ordering::SeqCst);
+                        }
+                        Ok(_) => {}
+                        Err(_) => {
+                            u.fetch_add(1, Ordering::SeqCst);
+                        }
+                    }
+                }
+            }
+        });
+        OldDaemon {
+            id: id.into(),
+            stream,
+            drops,
+            unparsed,
+        }
+    }
+
+    fn input(&self, data: &[u8]) {
+        let frame = Frame::Bin(BinFrame {
+            tag: TAG_INPUT,
+            session: self.id.clone(),
+            data: data.to_vec(),
+        });
+        write_frame(&mut &self.stream, &frame).unwrap();
+    }
+}
+
+#[test]
+fn a_frozen_1_0_88_daemon_adopts_a_new_shim_and_its_input_arrives() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c
+        .create(raw_agent(&h, "old", "exec cat > \"$OUT\""))
+        .unwrap();
+    wait_ready(&h, "old");
+    drop(c);
+    h.kill_runner();
+    let old = OldDaemon::adopt(&h, &info.id);
+    for i in 0..8 {
+        old.input(chunk(i).as_bytes());
+    }
+    assert_file_is(&out_of(&h, "old"), &numbered(8));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while old.unparsed.load(Ordering::SeqCst) == 0 && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert!(
+        old.unparsed.load(Ordering::SeqCst) > 0,
+        "the shim never sent the old daemon a message it does not know"
+    );
+}
+
+#[test]
+fn a_frozen_1_0_88_daemon_still_gets_input_dropped_when_it_overflows_a_new_shim() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c.create(h.req(&["/bin/sleep", "30"])).unwrap();
+    drop(c);
+    h.kill_runner();
+    let old = OldDaemon::adopt(&h, &info.id);
+    for i in 0..20 {
+        old.input(chunk(i).as_bytes());
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while old.drops.load(Ordering::SeqCst) == 0 && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert!(
+        old.drops.load(Ordering::SeqCst) > 0,
+        "no input_dropped after 1.25 MiB to a stalled agent"
+    );
+}
+
+#[test]
+fn a_restarted_daemon_refuses_at_once_when_the_shim_queue_is_full_and_recovers_after_drain() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let go = h.work.join("full.go");
+    let size = h.work.join("full.size");
+    let tail = format!(
+        "while [ ! -e {} ]; do stty size > {}; sleep 0.05; done\nexec cat > \"$OUT\"",
+        go.display(),
+        size.display()
+    );
+    let info = c.create(raw_agent(&h, "full", &tail)).unwrap();
+    wait_ready(&h, "full");
+    let accepted = 16;
+    for i in 0..accepted {
+        if let Err(e) = c.send(&info.id, &chunk(i)) {
+            panic!("send {i} of {accepted} was refused: {e}");
+        }
+    }
+    // A resize follows the sends down the same link, so once the agent sees it the shim holds them all.
+    let w = Watch::new(h.client(), &[&info.id]);
+    w.writer.resize(&info.id, 100, 30).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !fs::read_to_string(&size).is_ok_and(|s| s.contains("30 100")) {
+        assert!(Instant::now() < deadline, "the agent never saw the resize");
+        thread::sleep(Duration::from_millis(20));
+    }
+    drop(w);
+    drop(c);
+    h.kill_runner();
+    h.start(5000);
+    let mut c = h.client();
+    wait_state(&mut c, &info.id, 10, |_| true);
+    let e = c.send(&info.id, &chunk(accepted)).expect_err(&format!(
+        "send after the restart was accepted with {accepted} chunks already queued"
+    ));
+    assert!(
+        e.to_string().contains("busy") && e.to_string().contains("input queue full"),
+        "{e}"
+    );
+    fs::write(&go, b"").unwrap();
+    let queued = (accepted * 65536) as u64;
+    let out = out_of(&h, "full");
+    let got = wait_len(&out, queued, Duration::from_secs(30));
+    assert_eq!(
+        got, queued,
+        "{accepted} sends accepted, the agent got {got} bytes"
+    );
+    send_retrying(&mut c, &info.id, &chunk(accepted), 10);
+    assert_file_is(&out, &numbered(accepted + 1));
+    let live = c
+        .list()
+        .unwrap()
+        .into_iter()
+        .find(|s| s.id == info.id)
+        .unwrap();
+    assert_ne!(live.state.kind, StateKind::Exited);
 }
 
 fn env_of(pid: u32) -> String {
@@ -919,9 +1500,13 @@ fn shim_caps_pending_connections() {
         .collect();
     thread::sleep(Duration::from_millis(200));
     let mut extra = tmgr_ipc::endpoint::connect(&ep).unwrap();
-    extra
-        .set_read_timeout(Some(Duration::from_secs(2)))
-        .unwrap();
+    if let Err(e) = extra.set_read_timeout(Some(Duration::from_secs(2))) {
+        assert_eq!(
+            e.kind(),
+            std::io::ErrorKind::InvalidInput,
+            "set_read_timeout failed: {e:?}"
+        );
+    }
     let mut b = [0u8; 1];
     let n = std::io::Read::read(&mut extra, &mut b);
     assert!(matches!(n, Ok(0)), "extra connection was not closed: {n:?}");
@@ -1153,6 +1738,7 @@ impl Harness {
     fn bundled_at(&self, profile: &str, dir: &Path) -> RunCreateReq {
         let cwd = fs::canonicalize(dir).unwrap().display().to_string();
         let bundle = RunBundle {
+            assignment: None,
             v: 1,
             task: BUNDLE_TASK,
             title: "Fix login".into(),
@@ -1217,6 +1803,7 @@ fn runs_create_with_a_bundle_stores_it_writes_the_context_and_survives_restart()
     let canonical = req.bundle.as_ref().unwrap().canonical();
     let info = h.client().create_run(req).unwrap();
     assert_eq!(info.bundle_sha256.as_deref(), Some(sha.as_str()));
+    assert!(!info.no_sandbox);
 
     let stored = h.run.join("sessions").join(&info.id).join("bundle.json");
     assert_eq!(fs::read_to_string(&stored).unwrap(), canonical);
@@ -1252,7 +1839,7 @@ fn a_bundled_run_hands_the_task_to_the_agent_as_its_prompt() {
     let mut h = Harness::new();
     let script = h.script(
         "echo-agent.sh",
-        "printf '%s\\n' \"$@\" > \"$PWD/argv.txt\"\nwhile true; do sleep 0.2; done\n",
+        "printf '%s\\n' \"$@\" > \"$PWD/argv.tmp\" && mv \"$PWD/argv.tmp\" \"$PWD/argv.txt\"\nwhile true; do sleep 0.2; done\n",
     );
     fs::write(
         h.agents.join("echo.toml"),
@@ -1281,6 +1868,7 @@ fn a_bundled_run_hands_the_task_to_the_agent_as_its_prompt() {
     while !out.exists() && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(50));
     }
+    assert!(out.exists(), "agent never wrote argv.txt");
     let seen = fs::read_to_string(&out).unwrap();
     assert!(seen.starts_with("--task\nTask: Fix login\n"), "{seen}");
     assert!(
@@ -2041,6 +2629,66 @@ fn only_the_worker_may_name_an_origin_and_the_worker_must() {
     let e = err_text(fx.worker().create(fx.h.req(&["/bin/true"])));
     assert!(e.starts_with("forbidden: "), "{e}");
     assert!(fx.h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn the_workers_of_a_team_are_stopped_when_the_lead_exits_even_if_they_ignore_sigterm() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    let lead = h.script("lead.sh", "echo ready\nwhile true; do sleep 0.2; done\n");
+    let stubborn = h.script(
+        "worker.sh",
+        "trap '' TERM\necho ready\nwhile true; do sleep 0.2; done\n",
+    );
+    h.profile("lead", &["/bin/sh", &lead]);
+    h.profile("stubborn", &["/bin/sh", &stubborn]);
+    h.start(5000);
+    let mut c = Client::connect_as(&h.run, "desktop").unwrap();
+    let link = |role| tmgr_ipc::api::TeamLink {
+        role,
+        of: "q_team".into(),
+    };
+    let mut req = h.run_req("lead");
+    req.team = Some(link(tmgr_ipc::api::TeamRole::Lead));
+    let l = c.create_run(req).unwrap();
+    let mut req = h.run_req("stubborn");
+    req.team = Some(link(tmgr_ipc::api::TeamRole::Worker(1)));
+    let w = c.create_run(req).unwrap();
+    thread::sleep(Duration::from_secs(3));
+    let now = wait_state(&mut c, &w.id, 0, |_| true);
+    assert_ne!(
+        now.state.kind,
+        StateKind::Exited,
+        "a worker of a live lead keeps running"
+    );
+    c.kill(&l.id, "term").unwrap();
+    wait_state(&mut c, &l.id, 5, |s| s.kind == StateKind::Exited);
+    let done = wait_state(&mut c, &w.id, 30, |s| s.kind == StateKind::Exited);
+    assert_eq!(done.state.exit_code, Some(137));
+}
+
+#[test]
+fn a_run_for_a_link_cannot_carry_a_team_label() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    fx.trust_one(3, &["fake"], &[], 2);
+    fx.h.start(5000);
+    let mut r = fx.req("laptop", 3);
+    r.team = Some(tmgr_ipc::api::TeamLink {
+        role: tmgr_ipc::api::TeamRole::Worker(1),
+        of: "q_team".into(),
+    });
+    let e = err_text(fx.worker().create_run(r));
+    assert!(
+        e.starts_with("invalid_params: ") && e.contains("team"),
+        "{e}"
+    );
+    assert!(fx.h.client().list().unwrap().is_empty());
+    assert!(fx.worker().create_run(fx.req("laptop", 3)).is_ok());
 }
 
 #[test]
@@ -3053,7 +3701,7 @@ fn worklog_outside_a_git_repo_has_no_branch_or_commits() {
 }
 
 #[test]
-fn worklog_ignores_a_repo_whose_config_would_run_programs() {
+fn worklog_never_runs_programs_from_the_repo_config() {
     if !sessions_available() {
         return;
     }
@@ -3071,7 +3719,7 @@ fn worklog_ignores_a_repo_whose_config_would_run_programs() {
     let info = c.create(h.sh("exit 0\n")).unwrap();
     wait_exited(&mut c, &info.id);
     let s = worklog_of(&mut c, &info.id);
-    assert_eq!(s.branch, None);
+    assert_eq!(s.branch.as_deref(), Some("main"));
     assert!(s.commits.is_empty());
     assert!(!marker.exists());
 }
@@ -3189,13 +3837,24 @@ fn permission_modes_append_the_profile_arguments_and_default_to_ask() {
     for (profile, mode, want) in [
         ("modal", "accept-edits", "cannot run in mode accept-edits"),
         ("plain", "ask", "cannot run in mode ask"),
-        ("modal", "bypass", "permission_mode must be"),
     ] {
         let mut req = h.run_req(profile);
         req.permission_mode = Some(mode.into());
         let e = err_text(c.create_run(req));
         assert!(e.starts_with("invalid_params: ") && e.contains(want), "{e}");
     }
+    let mut req = h.run_req("modal");
+    req.permission_mode = Some("bypass".into());
+    let e = err_text(c.create_run(req.clone()));
+    assert!(
+        e.starts_with("forbidden: ") && e.contains("manual run"),
+        "{e}"
+    );
+    let e = err_text(h.client().create_run(req));
+    assert!(
+        e.starts_with("invalid_params: ") && e.contains("cannot run in mode bypass"),
+        "{e}"
+    );
     for (id, table) in [
         ("noask", "plan = [\"--plan\"]"),
         ("onlyedits", "accept-edits = [\"--edits\"]"),
@@ -3418,6 +4077,7 @@ impl CloneFx {
             &[
                 "clone",
                 "-q",
+                "--no-local",
                 "--reference",
                 self.repo.to_str().unwrap(),
                 self.repo.to_str().unwrap(),
@@ -3570,6 +4230,137 @@ fn a_fifo_as_alternates_is_refused_without_blocking() {
         e.starts_with("invalid_params: ") && e.contains("alternates"),
         "{e}"
     );
+}
+
+struct SharedStore {
+    h: Harness,
+    folder: PathBuf,
+}
+
+fn shared_store_fx() -> SharedStore {
+    let mut h = Harness::new();
+    h.profile(
+        "fake",
+        &["/bin/sh", "-c", "echo started > started; sleep 30"],
+    );
+    h.start(5000);
+    let base = fs::canonicalize(h.tmp.path()).unwrap().join("stores");
+    let source = base.join("source");
+    fs::create_dir_all(&source).unwrap();
+    init_repo(&source);
+    git_in(&source, &["gc", "-q"]);
+    git_in(
+        &source,
+        &["commit-graph", "write", "--split", "--reachable"],
+    );
+    let folder = base.join("copy");
+    git_in(
+        &base,
+        &[
+            "clone",
+            "-q",
+            source.to_str().unwrap(),
+            folder.to_str().unwrap(),
+        ],
+    );
+    SharedStore { h, folder }
+}
+
+fn shared_files(folder: &Path) -> usize {
+    let mut n = 0;
+    let mut todo = vec![folder.join(".git/objects")];
+    while let Some(d) = todo.pop() {
+        for e in fs::read_dir(&d).unwrap().flatten() {
+            let m = fs::symlink_metadata(e.path()).unwrap();
+            if m.is_dir() {
+                todo.push(e.path());
+            } else if std::os::unix::fs::MetadataExt::nlink(&m) > 1 {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+#[test]
+fn session_refused_when_object_store_shares_files() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = shared_store_fx();
+    assert!(shared_files(&fx.folder) > 0);
+    let mut desktop = Client::connect_as(&fx.h.run, "desktop").unwrap();
+    let mut req = fx.h.run_req("fake");
+    req.cwd = fx.folder.display().to_string();
+    let e = err_text(desktop.create_run(req));
+    assert!(
+        e.starts_with("invalid_params: ") && e.contains("object files"),
+        "{e}"
+    );
+    assert!(e.contains(fx.folder.to_str().unwrap()), "{e}");
+    let mut raw = fx.h.sh("echo started > started\n");
+    raw.cwd = fx.folder.display().to_string();
+    let e = err_text(fx.h.client().create(raw));
+    assert!(e.contains("object files"), "{e}");
+    assert!(fx.h.client().list().unwrap().is_empty());
+    assert!(!fx.folder.join("started").exists());
+    assert!(shared_files(&fx.folder) > 0);
+}
+
+#[test]
+fn reclone_clears_shared_object_files() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = shared_store_fx();
+    let mut desktop = Client::connect_as(&fx.h.run, "desktop").unwrap();
+    let mut req = fx.h.run_req("fake");
+    req.cwd = fx.folder.display().to_string();
+    assert!(err_text(desktop.create_run(req.clone())).contains("git gc --prune=now"));
+    let fresh = fx.folder.parent().unwrap().join("fresh");
+    git_in(
+        fx.folder.parent().unwrap(),
+        &[
+            "clone",
+            "-q",
+            "--no-local",
+            fx.folder.to_str().unwrap(),
+            fresh.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(shared_files(&fresh), 0);
+    req.cwd = fresh.display().to_string();
+    let info = desktop.create_run(req).unwrap();
+    wait_for("agent started", || fresh.join("started").exists());
+    fx.h.stop(&mut desktop, &info.id);
+}
+
+#[test]
+fn a_clone_run_with_a_shared_store_inside_the_folder_is_refused() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = clone_fx();
+    let dest = fx.clone_to("q_nested");
+    let nested = dest.join("nested");
+    git_in(
+        &dest,
+        &[
+            "clone",
+            "-q",
+            "--bare",
+            fx.repo.to_str().unwrap(),
+            nested.to_str().unwrap(),
+        ],
+    );
+    let mut c = Client::connect_as(&fx.h.run, "desktop").unwrap();
+    let e = err_text(c.create_run(fx.req(&dest)));
+    assert!(
+        e.starts_with("invalid_params: ") && e.contains("object files"),
+        "{e}"
+    );
+    assert!(e.contains("nested"), "{e}");
+    assert!(c.list().unwrap().is_empty());
 }
 
 #[test]
@@ -4006,7 +4797,7 @@ fn clone_into(repo: &Path, dest: &Path, reference: bool) -> PathBuf {
     let parent = dest.parent().unwrap();
     fs::create_dir_all(parent).unwrap();
     let r = repo.to_str().unwrap();
-    let mut args = vec!["clone", "-q"];
+    let mut args = vec!["clone", "-q", "--no-local"];
     if reference {
         args.extend(["--reference", r]);
     }
@@ -4078,6 +4869,31 @@ fn a_task_clone_of_a_trusted_repository_skips_the_trust_question() {
     assert!(!fx.started_trusted(unasked));
     let listed = fx.fx.h.client().call("trust.list", json!(null)).unwrap();
     assert_eq!(listed.as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn a_self_contained_task_clone_inherits_trust_only_with_its_marker() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = repo_trust_fx();
+    fx.trust(&fx.repo);
+    let self_contained = |branch: &str| {
+        let plan = tmgr_runner::worktree::plan(&fx.repo, branch, None).unwrap();
+        tmgr_runner::worktree::clone_mode(&plan).unwrap().path
+    };
+    let bare = self_contained("tm-10-bare");
+    assert!(!bare.join(".git/objects/info/alternates").exists());
+    assert!(!fx.started_trusted(fx.req(&bare)));
+    let marked = self_contained("tm-11-marked");
+    tmgr_runner::clone::mark_task_clone(fx.fx.h.homes.path(), &marked, &fx.repo).unwrap();
+    assert!(fx.started_trusted(fx.req(&marked)));
+    let queued = self_contained("tm-12-queued");
+    let moved = fx.trees.join("queue/q_2");
+    fs::create_dir_all(moved.parent().unwrap()).unwrap();
+    fs::rename(&queued, &moved).unwrap();
+    tmgr_runner::clone::mark_task_clone(fx.fx.h.homes.path(), &moved, &fx.repo).unwrap();
+    assert!(!fx.started_trusted(fx.req(&moved)));
 }
 
 #[test]
@@ -4666,6 +5482,8 @@ fn cloud_fx(signed_repo: bool) -> CloudFx {
             public_key: f["key"]["public_key"].as_str().unwrap().into(),
             device_name: "laptop".into(),
         }],
+        require_signed_rules: false,
+        require_signed_persona: false,
         repos: repos
             .into_iter()
             .map(|(k, v)| (k, tmgr_approval::RepoBinding::Path(v)))
@@ -4700,6 +5518,7 @@ impl CloudFx {
         let c = &f["cases"][2];
         let cwd = self.clone.display().to_string();
         let bundle = RunBundle {
+            assignment: None,
             v: 1,
             task: CLOUD_TASK,
             title: c["title"].as_str().unwrap().into(),
@@ -4779,13 +5598,10 @@ fn bypass_is_refused_without_a_verified_cloud_approval() {
     forged.cloud.as_mut().unwrap().signature = "AAAA".into();
     let mut unbound = fx.req("bypass", false);
     unbound.clone_of = Some(fx.h.work.display().to_string());
-    let mut plain = fx.h.run_req("cloudy");
-    plain.permission_mode = Some("bypass".into());
     for (name, r) in [
         ("missing", none),
         ("forged", forged),
         ("other repo", unbound),
-        ("not a task run", plain),
     ] {
         let e = err_text(fx.h.client().create_run(r));
         assert!(
@@ -4795,6 +5611,73 @@ fn bypass_is_refused_without_a_verified_cloud_approval() {
     }
     assert!(fx.h.client().list().unwrap().is_empty());
     assert!(!fx.clone.join(".tmgr/task.md").exists());
+}
+
+#[test]
+fn a_manual_cli_bypass_run_needs_no_cloud_approval() {
+    if !sessions_available() || !cfg!(target_os = "macos") {
+        return;
+    }
+    let fx = cloud_fx(true);
+    let mut plain = fx.h.run_req("cloudy");
+    plain.permission_mode = Some("bypass".into());
+    let info = fx.h.client().create_run(plain).unwrap();
+    assert_eq!(info.permission_mode.as_deref(), Some("bypass"));
+    fx.launch_env(&fx.h.work);
+    let args = fs::read_to_string(fx.h.work.join("args.txt")).unwrap();
+    assert!(args.contains("--yolo"), "{args}");
+    let _ = fx.h.client().kill(&info.id, "kill");
+}
+
+#[test]
+fn bypass_and_no_sandbox_are_refused_outside_a_manual_cli_run() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = cloud_fx(true);
+    let bypass = |fx: &CloudFx| {
+        let mut r = fx.h.run_req("cloudy");
+        r.permission_mode = Some("bypass".into());
+        r
+    };
+    let bare = |fx: &CloudFx| {
+        let mut r = fx.h.run_req("cloudy");
+        r.no_sandbox = Some(tmgr_ipc::api::NoSandbox::default());
+        r
+    };
+    let link = Origin {
+        link: "laptop".into(),
+        generation: 1,
+    };
+    for (what, make) in [
+        ("bypass", &bypass as &dyn Fn(&CloudFx) -> RunCreateReq),
+        ("no_sandbox", &bare),
+    ] {
+        let mut keyed = make(&fx);
+        keyed.start_key = Some("q_manual-1".into());
+        let mut unattended = make(&fx);
+        unattended.unattended = true;
+        let mut cloned = make(&fx);
+        cloned.clones = vec![tmgr_ipc::api::CloneSpec {
+            name: "a".into(),
+            clone_of: fx.repo.display().to_string(),
+        }];
+        let mut linked = make(&fx);
+        linked.origin = Some(link.clone());
+        for (name, client, req) in [
+            ("start_key", "cli", keyed),
+            ("unattended", "cli", unattended),
+            ("clones", "cli", cloned),
+            ("origin", "worker", linked),
+            ("desktop", "desktop", make(&fx)),
+            ("worker", "worker", make(&fx)),
+        ] {
+            let mut c = Client::connect_as(&fx.h.run, client).unwrap();
+            let e = err_text(c.create_run(req));
+            assert!(e.starts_with("forbidden: "), "{what} {name}: {e}");
+        }
+    }
+    assert!(fx.h.client().list().unwrap().is_empty());
 }
 
 #[test]
@@ -4839,6 +5722,405 @@ fn cloud_runs_are_restricted_and_plain_runs_stay_open() {
     let env = fx.launch_env(&fx.h.work);
     assert!(!env.iter().any(|(k, _)| k == "HTTPS_PROXY"));
     let _ = fx.h.client().kill(&info.id, "kill");
+}
+
+struct BareFx {
+    h: Harness,
+    home: PathBuf,
+}
+
+fn bare_fx(env: Vec<(String, String)>) -> BareFx {
+    let mut h = Harness::new();
+    let home = fs::canonicalize(h.tmp.path()).unwrap().join("realhome");
+    fs::create_dir(&home).unwrap();
+    fs::write(home.join("keep"), "mine").unwrap();
+    let script = h.script(
+        "bare.sh",
+        "printf '%s\\n' \"$@\" > args.txt\nenv > env.txt\nsleep 30\n",
+    );
+    fs::write(
+        h.agents.join("bare.toml"),
+        format!(
+            "id = \"bare\"\nname = \"bare\"\ncommand = [\"/bin/sh\", {script:?}]\n\
+             [permission_modes]\nask = [\"--ask\"]\nbypass = [\"--yolo\"]\n"
+        ),
+    )
+    .unwrap();
+    h.real_home = Some(home.clone());
+    h.env = env;
+    BareFx { h, home }
+}
+
+fn read_env(dir: &Path) -> Vec<(String, String)> {
+    let path = dir.join("env.txt");
+    wait_for("agent env", || path.exists());
+    thread::sleep(Duration::from_millis(200));
+    fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .filter_map(|l| l.split_once('='))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+}
+
+fn listing(dir: &Path) -> Vec<String> {
+    let mut v: Vec<String> = fs::read_dir(dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    v.sort();
+    v
+}
+
+#[test]
+fn a_no_sandbox_run_gets_the_real_home_and_the_callers_env_and_is_never_restored() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = bare_fx(Vec::new());
+    fx.h.start(5000);
+    let mut req = fx.h.run_req("bare");
+    req.permission_mode = Some("bypass".into());
+    req.no_sandbox = Some(tmgr_ipc::api::NoSandbox {
+        env: [
+            ("PATH", "/usr/bin:/bin"),
+            ("FOO", "bar"),
+            ("TMGR_RUN_TOKEN", "secret"),
+            ("HOME", "/nope"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect(),
+    });
+    let info = fx.h.client().create_run(req).unwrap();
+    assert!(info.no_sandbox);
+    assert!(info_of(&mut fx.h.client(), &info.id).no_sandbox);
+    let env = read_env(&fx.h.work);
+    let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str());
+    assert_eq!(get("HOME"), Some(fx.home.to_str().unwrap()));
+    assert_eq!(get("FOO"), Some("bar"));
+    assert_eq!(get("TERM"), Some("xterm-256color"));
+    assert_eq!(get("TMGR_SESSION_ID"), Some(info.id.as_str()));
+    assert_eq!(get("TMGR_RUN_TOKEN"), None);
+    assert_eq!(get("HTTPS_PROXY"), None);
+    assert_eq!(get("XDG_CONFIG_HOME"), None);
+    let args = fs::read_to_string(fx.h.work.join("args.txt")).unwrap();
+    assert!(args.contains("--yolo"), "{args}");
+    assert_eq!(listing(&fx.home), ["keep"]);
+    assert!(fx.h.homes.path().join(&info.id).is_dir());
+    let store = tmgr_runner::restore::store(fx.h.homes.path());
+    let t = fs::read_to_string(store.join(format!("{}.json", info.id))).unwrap();
+    assert!(t.contains("\"no_sandbox\":true"), "{t}");
+    let _ = fx.h.client().kill(&info.id, "kill");
+    wait_exited(&mut fx.h.client(), &info.id);
+    let e = err_text(fx.h.client().resume(&info.id, 80, 24));
+    assert!(
+        e.starts_with("forbidden: ") && e.contains("without the sandbox"),
+        "{e}"
+    );
+}
+
+#[test]
+fn a_no_sandbox_run_that_fails_to_start_leaves_the_real_home_alone() {
+    if !sessions_available() {
+        return;
+    }
+    let scratch = tempfile::tempdir().unwrap();
+    let hold = scratch.path().join("hold");
+    let mut fx = bare_fx(vec![(
+        "TMGR_TEST_HOLD_BEFORE_SPAWN".into(),
+        hold.display().to_string(),
+    )]);
+    fx.h.start(5000);
+    let before = listing(&fx.home);
+    let sessions = fx.h.run.join("sessions");
+    let mut req = fx.h.run_req("bare");
+    req.no_sandbox = Some(tmgr_ipc::api::NoSandbox::default());
+    let failed = create_held(
+        &fx.h,
+        &hold,
+        move |mut c| c.create_run(req),
+        move || {
+            for e in fs::read_dir(&sessions).unwrap().flatten() {
+                let _ = fs::remove_file(e.path().join("launch.json"));
+            }
+        },
+    );
+    assert!(failed.is_err());
+    assert_eq!(listing(&fx.home), before);
+    assert_eq!(fs::read_to_string(fx.home.join("keep")).unwrap(), "mine");
+    assert!(listing(fx.h.homes.path())
+        .iter()
+        .all(|n| !n.starts_with("s_")));
+    assert!(fx.h.client().list().unwrap().is_empty());
+}
+
+const EXT_ID: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
+
+struct ExtFx {
+    h: Harness,
+    work: PathBuf,
+}
+
+fn ext_fx(templates: bool) -> ExtFx {
+    let mut fx = bare_fx(Vec::new());
+    let script = fx.h.script("ext.sh", "sleep 30\n");
+    let resume = if templates {
+        "[resume]\nargs = [\"--continue\"]\nby_id = [\"--resume\", \"{resume_id}\"]\n\
+         fork_by_id = [\"--resume\", \"{resume_id}\", \"--fork-session\"]\n"
+    } else {
+        ""
+    };
+    fs::write(
+        fx.h.agents.join("ext.toml"),
+        format!(
+            "id = \"ext\"\nname = \"ext\"\ncommand = [\"/bin/sh\", {script:?}]\n\
+             [permission_modes]\nask = [\"--ask\"]\nbypass = [\"--yolo\"]\n{resume}"
+        ),
+    )
+    .unwrap();
+    fx.h.start(5000);
+    let work = fs::canonicalize(&fx.h.work).unwrap();
+    ExtFx { h: fx.h, work }
+}
+
+impl ExtFx {
+    fn req(&self, fork: bool) -> RunCreateReq {
+        let mut r = self.h.run_req("ext");
+        r.cwd = self.work.display().to_string();
+        r.no_sandbox = Some(tmgr_ipc::api::NoSandbox::default());
+        r.external_resume = Some(tmgr_ipc::api::ExternalResume {
+            id: EXT_ID.into(),
+            fork,
+        });
+        r
+    }
+}
+
+#[test]
+fn external_resume_and_fork_start_from_the_profile_template_in_the_real_home() {
+    if !sessions_available() {
+        return;
+    }
+    for (fork, mode, want) in [
+        (false, None, vec!["--ask", "--resume", EXT_ID]),
+        (false, Some("bypass"), vec!["--yolo", "--resume", EXT_ID]),
+        (
+            true,
+            None,
+            vec!["--ask", "--resume", EXT_ID, "--fork-session"],
+        ),
+        (
+            true,
+            Some("bypass"),
+            vec!["--yolo", "--resume", EXT_ID, "--fork-session"],
+        ),
+    ] {
+        let fx = ext_fx(true);
+        let mut req = fx.req(fork);
+        req.permission_mode = mode.map(str::to_string);
+        let info = fx.h.client().create_run(req).unwrap();
+        assert!(info.no_sandbox);
+        assert_eq!(info.permission_mode.as_deref(), Some(mode.unwrap_or("ask")));
+        let expected = if fork { None } else { Some(EXT_ID) };
+        assert_eq!(info.agent_session_id.as_deref(), expected);
+        assert_eq!(info.argv[2..], want);
+        assert_eq!(info.cwd, fx.work.display().to_string());
+        let raw = fs::read_to_string(
+            fx.h.run
+                .join("sessions")
+                .join(&info.id)
+                .join("worklog.jsonl"),
+        )
+        .unwrap();
+        let created: Value = serde_json::from_str(raw.lines().next().unwrap()).unwrap();
+        assert_eq!(created["mode"], mode.unwrap_or("ask"));
+        assert_eq!(created["sandbox"], "off");
+        let _ = fx.h.client().kill(&info.id, "kill");
+    }
+}
+
+#[test]
+fn external_resume_is_refused_unless_every_condition_holds() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = ext_fx(true);
+    let cloud = tmgr_ipc::api::CloudApproval {
+        repos_sha256: None,
+        persona_sha256: None,
+        context_sha256: None,
+        host: "api.tmgr.dev".into(),
+        user_id: 1,
+        workspace_id: 56,
+        task_id: 9002,
+        category_id: 127,
+        content_sha256: "0".repeat(64),
+        key_id: "k".into(),
+        signed_at: 1,
+        signature: "s".into(),
+        kind: "author".into(),
+    };
+    let mut no_sandbox = fx.req(false);
+    no_sandbox.no_sandbox = None;
+    let mut unattended = fx.req(false);
+    unattended.unattended = true;
+    let mut origin = fx.req(false);
+    origin.origin = Some(Origin {
+        link: "laptop".into(),
+        generation: 1,
+    });
+    let mut keyed = fx.req(false);
+    keyed.start_key = Some("q_ext-1".into());
+    let mut cloned = fx.req(false);
+    cloned.clones = vec![tmgr_ipc::api::CloneSpec {
+        name: "a".into(),
+        clone_of: fx.work.display().to_string(),
+    }];
+    let mut team = fx.req(false);
+    team.team = Some(tmgr_ipc::api::TeamLink {
+        role: tmgr_ipc::api::TeamRole::Lead,
+        of: "t1".into(),
+    });
+    let mut work = fx.req(false);
+    work.agent_work = true;
+    let mut cloudy = fx.req(false);
+    cloudy.cloud = Some(cloud);
+    let mut trusted = fx.req(false);
+    trusted.trust_cwd = Some(true);
+    let mut tasked = fx.req(false);
+    tasked.task = Some(TaskRef {
+        workspace_id: 1,
+        task_id: 2,
+    });
+    for (name, client, req) in [
+        ("no_sandbox", "cli", no_sandbox),
+        ("unattended", "cli", unattended),
+        ("origin", "worker", origin),
+        ("start_key", "cli", keyed),
+        ("clones", "cli", cloned),
+        ("team", "cli", team),
+        ("agent_work", "cli", work),
+        ("cloud", "cli", cloudy),
+        ("trust_cwd", "cli", trusted),
+        ("task", "cli", tasked),
+        ("desktop", "desktop", fx.req(false)),
+        ("worker", "worker", fx.req(false)),
+    ] {
+        let mut c = Client::connect_as(&fx.h.run, client).unwrap();
+        let e = err_text(c.create_run(req));
+        assert!(e.starts_with("forbidden: "), "{name}: {e}");
+    }
+    assert!(fx.h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn external_resume_refusals_name_the_missing_condition() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = ext_fx(true);
+    let mut no_sandbox = fx.req(false);
+    no_sandbox.no_sandbox = None;
+    let e = err_text(fx.h.client().create_run(no_sandbox));
+    assert!(e.contains("external_resume needs no_sandbox"), "{e}");
+    let mut keyed = fx.req(false);
+    keyed.start_key = Some("q_ext-1".into());
+    let e = err_text(fx.h.client().create_run(keyed));
+    assert!(
+        e.contains("external_resume is accepted only for a manual run"),
+        "{e}"
+    );
+    let mut work = fx.req(false);
+    work.agent_work = true;
+    let e = err_text(fx.h.client().create_run(work));
+    assert!(e.contains("not accepted for link, queue, cloud"), "{e}");
+    let mut pinned = fx.req(false);
+    pinned.argv_sha256 = Some("a".repeat(64));
+    let e = err_text(fx.h.client().create_run(pinned));
+    assert!(e.contains("not accepted for link, queue, cloud"), "{e}");
+}
+
+#[test]
+fn external_resume_checks_the_id_the_template_and_the_folder() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = ext_fx(true);
+    for bad in [
+        "--foo",
+        "$(x)",
+        "not-a-uuid",
+        "",
+        "2F0E1C3A-5B7D-4E8F-9A1B-3C4D5E6F7A8B",
+    ] {
+        let mut req = fx.req(false);
+        req.external_resume.as_mut().unwrap().id = bad.into();
+        let e = err_text(fx.h.client().create_run(req));
+        assert!(
+            e.starts_with("invalid_params: ") && e.contains("invalid agent session id"),
+            "{bad:?}: {e}"
+        );
+    }
+    let mut swapped = fx.req(false);
+    swapped.cwd_pin = Some(CwdPin { dev: 1, ino: 1 });
+    let e = err_text(fx.h.client().create_run(swapped));
+    assert!(e.contains("approved folder changed"), "{e}");
+    let mut missing = fx.req(false);
+    missing.cwd = fx.work.join("gone").display().to_string();
+    let e = err_text(fx.h.client().create_run(missing));
+    assert!(e.contains("cwd must be an existing directory"), "{e}");
+    let link = fx.work.parent().unwrap().join("via-link");
+    std::os::unix::fs::symlink(&fx.work, &link).unwrap();
+    let mut linked = fx.req(false);
+    linked.cwd = link.display().to_string();
+    let e = err_text(fx.h.client().create_run(linked));
+    assert!(e.contains("cwd must be given as its resolved path"), "{e}");
+    assert!(fx.h.client().list().unwrap().is_empty());
+    let bare = ext_fx(false);
+    for fork in [false, true] {
+        let e = err_text(bare.h.client().create_run(bare.req(fork)));
+        assert!(
+            e.starts_with("forbidden: ") && e.contains("cannot"),
+            "fork={fork}: {e}"
+        );
+    }
+    assert!(bare.h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn two_external_resumes_of_one_conversation_cannot_both_run() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = ext_fx(true);
+    let results: Vec<_> = std::thread::scope(|sc| {
+        let jobs: Vec<_> = (0..2)
+            .map(|_| sc.spawn(|| fx.h.client().create_run(fx.req(false))))
+            .collect();
+        jobs.into_iter().map(|j| j.join().unwrap()).collect()
+    });
+    let (ok, failed): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
+    thread::sleep(Duration::from_millis(300));
+    if fx
+        .h
+        .client()
+        .list()
+        .unwrap()
+        .iter()
+        .any(|s| s.state.kind == StateKind::Exited)
+    {
+        return;
+    }
+    assert_eq!((ok.len(), failed.len()), (1, 1));
+    let e = err_text(failed.into_iter().next().unwrap());
+    assert!(e.contains("already running in another tmgr session"), "{e}");
+    let forked = fx.h.client().create_run(fx.req(true)).unwrap();
+    assert_eq!(forked.agent_session_id, None);
+    for s in fx.h.client().list().unwrap() {
+        let _ = fx.h.client().kill(&s.id, "kill");
+    }
 }
 
 const MULTI_TASK: TaskRef = TaskRef {
@@ -4886,6 +6168,8 @@ fn multi_fx() -> MultiFx {
             public_key: f["key"]["public_key"].as_str().unwrap().into(),
             device_name: "laptop".into(),
         }],
+        require_signed_rules: false,
+        require_signed_persona: false,
         repos: [(
             "127".to_string(),
             tmgr_approval::RepoBinding::Set(
@@ -4957,6 +6241,7 @@ impl MultiFx {
         let c = &f["cases_v2"][0];
         let cwd = dir.display().to_string();
         let bundle = RunBundle {
+            assignment: None,
             v: 1,
             task: MULTI_TASK,
             title: c["title"].as_str().unwrap().into(),
@@ -6148,4 +7433,119 @@ fn orchestrator_create_checks_the_executable_pin() {
     right.exe_pin = Some(pin(tmgr_ipc::api::sha256_hex(&fs::read(&claude).unwrap())));
     let info = c.create_orchestrator(right).unwrap();
     let _ = c.kill(&info.id, "kill");
+}
+
+#[path = "checkpoints_ipc/mod.rs"]
+mod checkpoints_ipc;
+
+fn cli_config_dir_fx(drop_xdg: bool) -> Harness {
+    let mut h = Harness::new();
+    let home = h.tmp.path().join("home");
+    fs::create_dir(&home).unwrap();
+    fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+    h.real_home = Some(home);
+    h.drop_xdg = drop_xdg;
+    h
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_config_dir_the_cli_reports_outside_home_is_unreadable_to_a_sandboxed_agent() {
+    let mut h = cli_config_dir_fx(true);
+    let outside = tempfile::Builder::new()
+        .prefix("tx")
+        .tempdir_in("/tmp")
+        .unwrap();
+    let cli_dir = outside.path().join("tmgr");
+    fs::create_dir(&cli_dir).unwrap();
+    fs::write(cli_dir.join("secret.txt"), "cli-token-value").unwrap();
+    let script = h.script(
+        "peek.sh",
+        &format!(
+            "cat {}/secret.txt > \"$HOME/r_secret\" 2>&1\n\
+             echo $? > \"$HOME/r_rc\"\n\
+             echo done > \"$HOME/done\"\n\
+             while true; do sleep 0.2; done\n",
+            cli_dir.display()
+        ),
+    );
+    h.profile("fake", &["/bin/sh", &script]);
+    h.start(5000);
+    let mut c = Client::connect_with_config_dir(&h.run, "desktop", Some(&cli_dir)).unwrap();
+    let info = c.create_run(h.run_req("fake")).unwrap();
+    let rhome = h.homes.path().join(&info.id);
+    wait_for("agent script did not finish", || {
+        rhome.join("done").exists()
+    });
+    let out = fs::read_to_string(rhome.join("r_secret")).unwrap();
+    assert!(!out.contains("cli-token-value"), "{out}");
+    assert_ne!(fs::read_to_string(rhome.join("r_rc")).unwrap().trim(), "0");
+}
+
+#[test]
+fn a_cli_config_dir_inside_the_cwd_refuses_the_session() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = cli_config_dir_fx(false);
+    h.start(5000);
+    let cli_dir = h.work.join("tmgr");
+    fs::create_dir(&cli_dir).unwrap();
+    let mut c = Client::connect_with_config_dir(&h.run, "cli", Some(&cli_dir)).unwrap();
+    let e = c.create(h.req(&["/bin/sh", "-c", "sleep 5"])).unwrap_err();
+    assert!(e.to_string().contains("protected"), "{e}");
+}
+
+#[test]
+fn a_later_client_cannot_shrink_the_config_dirs_an_earlier_one_reported() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = cli_config_dir_fx(false);
+    h.start(5000);
+    let cli_dir = h.work.join("tmgr");
+    fs::create_dir(&cli_dir).unwrap();
+    drop(Client::connect_with_config_dir(&h.run, "cli", Some(&cli_dir)).unwrap());
+    let other = h.tmp.path().join("elsewhere").join("tmgr");
+    for dir in [None, Some(other.as_path())] {
+        let mut c = Client::connect_with_config_dir(&h.run, "cli", dir).unwrap();
+        let e = c.create(h.req(&["/bin/sh", "-c", "sleep 5"])).unwrap_err();
+        assert!(e.to_string().contains("protected"), "{e}");
+    }
+}
+
+#[test]
+fn a_config_dir_reported_before_a_restart_still_refuses_an_overlapping_cwd() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = cli_config_dir_fx(false);
+    h.start(5000);
+    let cli_dir = h.work.join("tmgr");
+    fs::create_dir(&cli_dir).unwrap();
+    drop(Client::connect_with_config_dir(&h.run, "cli", Some(&cli_dir)).unwrap());
+    wait_for("config dirs were not saved", || {
+        fs::read_to_string(h.run.join("client-config-dirs.json"))
+            .is_ok_and(|t| t.contains(cli_dir.to_str().unwrap()))
+    });
+    h.kill_runner();
+    h.start(5000);
+    let mut c = Client::connect_with_config_dir(&h.run, "cli", None).unwrap();
+    let e = c.create(h.req(&["/bin/sh", "-c", "sleep 5"])).unwrap_err();
+    assert!(e.to_string().contains("protected"), "{e}");
+}
+
+#[test]
+fn a_symlinked_cli_config_dir_refuses_a_cwd_inside_its_target() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = cli_config_dir_fx(false);
+    h.start(5000);
+    let link = h.tmp.path().join("cli").join("tmgr");
+    fs::create_dir_all(link.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(&h.work, &link).unwrap();
+    let mut c = Client::connect_with_config_dir(&h.run, "cli", Some(&link)).unwrap();
+    let e = c.create(h.req(&["/bin/sh", "-c", "sleep 5"])).unwrap_err();
+    assert!(e.to_string().contains("protected"), "{e}");
 }

@@ -63,27 +63,33 @@ pub fn decide_mode(
             downgraded_reason: None,
         });
     }
-    let blocker = if !eligible_signed {
-        Some(NOT_SIGNED)
-    } else if !sandbox {
-        Some(NO_SANDBOX)
-    } else if origin == Origin::Auto && !net_enforced {
-        Some(NET_NOT_ENFORCED)
-    } else {
-        None
-    };
-    match (blocker, origin) {
-        (None, _) => Ok(Decision {
+    if origin == Origin::Manual {
+        return Ok(Decision {
             mode: Mode::Bypass,
-            network: if net_enforced {
+            network: if net_enforced && sandbox {
                 NetworkPolicy::Restricted
             } else {
                 NetworkPolicy::Open
             },
             downgraded_reason: None,
+        });
+    }
+    let blocker = if !eligible_signed {
+        Some(NOT_SIGNED)
+    } else if !sandbox {
+        Some(NO_SANDBOX)
+    } else if !net_enforced {
+        Some(NET_NOT_ENFORCED)
+    } else {
+        None
+    };
+    match blocker {
+        None => Ok(Decision {
+            mode: Mode::Bypass,
+            network: NetworkPolicy::Restricted,
+            downgraded_reason: None,
         }),
-        (Some(why), Origin::Manual) => Err(Refusal(why.to_string())),
-        (Some(why), Origin::Auto) => Ok(Decision {
+        Some(why) => Ok(Decision {
             mode: Mode::AcceptEdits,
             network: NetworkPolicy::Open,
             downgraded_reason: Some(why.to_string()),
@@ -115,17 +121,25 @@ mod tests {
         if requested != Mode::Bypass {
             return d(requested, NetworkPolicy::Open, None);
         }
-        let fail = |why: &str| match origin {
-            Origin::Manual => Err(Refusal(why.to_string())),
-            Origin::Auto => d(Mode::AcceptEdits, NetworkPolicy::Open, Some(why)),
-        };
+        if origin == Origin::Manual {
+            return d(
+                Mode::Bypass,
+                if net && sandbox {
+                    NetworkPolicy::Restricted
+                } else {
+                    NetworkPolicy::Open
+                },
+                None,
+            );
+        }
+        let fail = |why: &str| d(Mode::AcceptEdits, NetworkPolicy::Open, Some(why));
         if !signed {
             return fail("bypass needs a task approved for agent runs");
         }
         if !sandbox {
             return fail("bypass needs the OS sandbox");
         }
-        if origin == Origin::Auto && !net {
+        if !net {
             return fail("network restriction is not enforced on this platform");
         }
         d(
@@ -162,8 +176,8 @@ mod tests {
     }
 
     #[test]
-    fn bypass_only_ever_comes_out_for_signed_sandboxed_requests() {
-        for origin in ORIGINS {
+    fn auto_bypass_only_ever_comes_out_for_signed_sandboxed_requests() {
+        for origin in [Origin::Auto] {
             for signed in [false, true] {
                 for sandbox in [false, true] {
                     for net in [false, true] {
@@ -202,8 +216,24 @@ mod tests {
     }
 
     #[test]
-    fn manual_bypass_without_approval_is_refused() {
-        assert!(decide_mode(Origin::Manual, Mode::Bypass, false, true, true).is_err());
-        assert!(decide_mode(Origin::Manual, Mode::Bypass, true, false, true).is_err());
+    fn manual_bypass_needs_no_approval_or_sandbox() {
+        for signed in [false, true] {
+            for sandbox in [false, true] {
+                for net in [false, true] {
+                    let d =
+                        decide_mode(Origin::Manual, Mode::Bypass, signed, sandbox, net).unwrap();
+                    assert_eq!(d.mode, Mode::Bypass);
+                    assert_eq!(d.downgraded_reason, None);
+                    assert_eq!(d.network == NetworkPolicy::Restricted, net && sandbox);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn auto_bypass_without_approval_is_downgraded() {
+        let d = decide_mode(Origin::Auto, Mode::Bypass, false, true, true).unwrap();
+        assert_eq!(d.mode, Mode::AcceptEdits);
+        assert_eq!(d.downgraded_reason.as_deref(), Some(NOT_SIGNED));
     }
 }

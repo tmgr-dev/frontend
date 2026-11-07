@@ -3,7 +3,11 @@ import {
 	PERSONA_PERMISSIONS,
 	type PersonaPermission,
 } from './personaGate';
-import { LocalHttpError, type LocalContext } from './types';
+import {
+	LocalHttpError,
+	type BatchStatement,
+	type LocalContext,
+} from './types';
 
 /** Owner-view Persona shape from `GET /api/personas`. Only identity fields are kept locally — the prompt goes to the persona cache, never to workspace.db. */
 export interface CloudPersona {
@@ -193,10 +197,54 @@ export const createLocalPersona = async (
 export const ensureDefaultLocalPersona = async (
 	ctx: LocalContext,
 ): Promise<{ uuid: string }> => {
-	const [existing] = await ctx.db.select<{ uuid: string }>(
-		`SELECT uuid FROM personas WHERE owner_user_id = ? ORDER BY synced_at, uuid LIMIT 1`,
-		[LOCAL_OWNER_ID],
-	);
-	if (existing) return existing;
-	return createLocalPersona(ctx, { name: DEFAULT_LOCAL_PERSONA_NAME });
+	const select = () =>
+		ctx.db.select<{ uuid: string }>(
+			`SELECT uuid FROM personas WHERE owner_user_id = ? ORDER BY synced_at, uuid LIMIT 1`,
+			[LOCAL_OWNER_ID],
+		);
+	const isEnabled = async (persona: { uuid: string } | undefined) =>
+		!!persona &&
+		(
+			await ctx.db.select<{ persona_uuid: string }>(
+				`SELECT persona_uuid FROM workspace_personas WHERE persona_uuid = ?`,
+				[persona.uuid],
+			)
+		).length > 0;
+	const [existing] = await select();
+	if (await isEnabled(existing)) return existing;
+	const uuid = existing?.uuid ?? crypto.randomUUID();
+	const now = ctx.now().toISOString();
+	const statements: BatchStatement[] = [];
+	if (!existing)
+		statements.push({
+			sql: `INSERT INTO personas (uuid, owner_user_id, owner_name, name, description, avatar_file, synced_at, archived_at)
+			 SELECT ?, ?, ?, ?, NULL, NULL, ?, NULL
+			 WHERE NOT EXISTS (SELECT 1 FROM personas WHERE owner_user_id = ?)`,
+			params: [
+				uuid,
+				LOCAL_OWNER_ID,
+				ctx.user.name,
+				DEFAULT_LOCAL_PERSONA_NAME,
+				now,
+				LOCAL_OWNER_ID,
+			],
+			expectChanges: true,
+		});
+	statements.push({
+		sql: `INSERT INTO workspace_personas (persona_uuid, permissions, enabled_at, disabled_at)
+			 SELECT ?, ?, ?, NULL
+			 WHERE NOT EXISTS (SELECT 1 FROM workspace_personas WHERE persona_uuid = ?)`,
+		params: [uuid, JSON.stringify([...PERSONA_PERMISSIONS]), now, uuid],
+	});
+	let failure: unknown = null;
+	try {
+		const result = await ctx.db.batch(statements);
+		if (result.failedAt !== null)
+			failure = new Error('Could not create the default local persona');
+	} catch (error) {
+		failure = error;
+	}
+	const [created] = await select();
+	if (await isEnabled(created)) return created;
+	throw failure ?? new Error('Could not enable the default local persona');
 };

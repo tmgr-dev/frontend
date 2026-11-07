@@ -5,7 +5,16 @@
 			Tasks, boards and a timer on every task. Start right away or sign in.
 		</template>
 
-		<div class="grid grid-cols-2 gap-2">
+		<p
+			v-if="deciding"
+			role="status"
+			class="text-center text-sm text-muted-foreground"
+			data-testid="welcome-starting"
+		>
+			Setting things up…
+		</p>
+
+		<div v-if="!deciding" class="grid grid-cols-2 gap-2">
 			<Button
 				class="h-auto min-h-10 px-4 py-2 text-center leading-tight whitespace-normal"
 				:variant="startOpen ? 'secondary' : 'default'"
@@ -26,12 +35,12 @@
 			</Button>
 		</div>
 
-		<p class="mt-4 text-center text-sm text-muted-foreground">
+		<p v-if="!deciding" class="mt-4 text-center text-sm text-muted-foreground">
 			{{ note }}
 		</p>
 
 		<form
-			v-if="startOpen"
+			v-if="startOpen && !deciding"
 			class="space-y-4 mt-6"
 			data-testid="start-form"
 			@submit.prevent="start"
@@ -70,12 +79,14 @@
 	import { Input } from '@/components/ui/input';
 	import { Label } from '@/components/ui/label';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
-	import { desktopPlatform } from '@/utils/desktop';
+	import { desktopPlatform, desktopWindowLabel } from '@/utils/desktop';
 	import { welcomeNote } from '@/utils/localOnly';
 	import { Loader2 } from 'lucide-vue-next';
 	import { defineComponent, onMounted, ref } from 'vue';
 	import { useRouter } from 'vue-router';
 	import { useStore } from 'vuex';
+
+	let freshEntryTried = false;
 
 	export default defineComponent({
 		name: 'DesktopWelcome',
@@ -88,8 +99,20 @@
 			const busy = ref(false);
 			const error = ref('');
 			const note = welcomeNote(desktopPlatform());
+			const deciding = ref(false);
 
-			onMounted(() => setDocumentTitle('Welcome'));
+			onMounted(async () => {
+				setDocumentTitle('Welcome');
+				if (freshEntryTried || desktopWindowLabel() !== 'main') return;
+				freshEntryTried = true;
+				deciding.value = true;
+				try {
+					if (await store.dispatch('startFreshInstall')) return;
+				} catch (e) {
+					console.error('fresh install entry failed', e);
+				}
+				deciding.value = false;
+			});
 
 			const start = async () => {
 				if (busy.value) return;
@@ -111,7 +134,7 @@
 
 			const signIn = () => router.push({ name: 'Login' });
 
-			return { startOpen, name, busy, error, note, start, signIn };
+			return { startOpen, name, busy, error, note, deciding, start, signIn };
 		},
 	});
 </script>

@@ -38,13 +38,15 @@ const desktopWithoutAnalytics = (): Plugin => {
 	};
 };
 
+const standaloneDevPages = ['/runner-terminal.html', '/decisions.html'];
+
 const runnerTerminalDevCsp = (): Plugin => ({
 	name: 'runner-terminal-dev-csp',
 	apply: 'serve',
 	transformIndexHtml: {
 		order: 'pre',
 		handler: (html, ctx) =>
-			ctx.path === '/runner-terminal.html'
+			standaloneDevPages.includes(ctx.path)
 				? html.replace(
 						'connect-src ipc: http://ipc.localhost',
 						'connect-src ipc: http://ipc.localhost ws://localhost:* ws://127.0.0.1:*',
@@ -148,6 +150,7 @@ export default defineConfig({
 				'runner-terminal': fileURLToPath(
 					new URL('./runner-terminal.html', import.meta.url),
 				),
+				decisions: fileURLToPath(new URL('./decisions.html', import.meta.url)),
 			},
 			output: {
 				// Vite 8 builds with rolldown: the object form of manualChunks is gone and the

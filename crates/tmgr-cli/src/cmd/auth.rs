@@ -350,7 +350,7 @@ mod tests {
 
     #[test]
     fn scopes_are_validated() {
-        assert_eq!(parse_scopes(None).unwrap().len(), 7);
+        assert_eq!(parse_scopes(None).unwrap().len(), 9);
         assert_eq!(
             parse_scopes(Some("tasks:read, workspaces:read")).unwrap(),
             vec!["tasks:read", "workspaces:read"]

@@ -1,4 +1,4 @@
-use crate::cli_agent::{AgentCommand, AlarmArgs, HookCmd, NotifyArgs};
+use crate::cli_agent::{AgentCommand, AlarmArgs, AskArgs, HookCmd, NotifyArgs};
 use crate::cli_link::{LinkCommand, WorkerArgs};
 use crate::cli_usage::UsageArgs;
 use clap::{Args, Parser, Subcommand};
@@ -16,7 +16,7 @@ pub struct Cli {
         long,
         global = true,
         value_name = "CODE",
-        long_help = "Workspace code (default: `tmgr ws use`).\n\nlocal:<code> selects a local workspace of the desktop app (~/.tmgr.dev/workspaces/<code>, or $TMGR_LOCAL_ROOT): no login and no network. The CLI acts as the desktop's local account (id -1, name from ~/.tmgr.dev/profile.json); when the desktop is signed in to an account, set `tmgr config set local_user_id <id>` to act as that user. Agent runs can only be updated by the user who started them, and only personas of that user or of the local account can be assigned."
+        long_help = "Workspace code (default: `tmgr ws use`).\n\nlocal:<code> selects a local workspace of the desktop app (~/.tmgr.dev/workspaces/<code>, or $TMGR_LOCAL_ROOT): no login and no network. When the desktop is signed in to an account, the CLI acts as that user, using the id the desktop writes to ~/.tmgr.dev/cloud-identity.json; `tmgr config set local_user_id <id>` overrides it. Otherwise it acts as the desktop's local account (id -1, name from ~/.tmgr.dev/profile.json). Agent runs can only be updated by the user who started them, and only personas of that user or of the local account can be assigned."
     )]
     pub ws: Option<String>,
     /// Never use colours
@@ -49,6 +49,9 @@ pub enum Command {
     /// Unanswered questions the agents asked in `tmgr attach` sessions
     #[cfg(feature = "runner")]
     Questions(crate::cmd::questions::QuestionsArgs),
+    /// Saved states of an agent session's working folder: list, diff and restore
+    #[cfg(feature = "runner")]
+    Checkpoints(crate::cmd::runner::checkpoints::CheckpointsArgs),
     /// Print version, commit and build target
     Version,
     /// Sign in with a device code
@@ -124,6 +127,11 @@ pub enum Command {
         #[command(subcommand)]
         command: PageCommand,
     },
+    /// Shared skills library and attaching skills to personas
+    Skills {
+        #[command(subcommand)]
+        command: SkillsCommand,
+    },
     /// Agent work runs (start, update, finish)
     Agent {
         #[command(subcommand)]
@@ -134,11 +142,13 @@ pub enum Command {
         #[command(subcommand)]
         command: HookCmd,
     },
+    /// Ask the owner a question in the TMGR desktop Decisions inbox
+    Ask(Box<AskArgs>),
     /// Send a push notification to your phone
     Notify(NotifyArgs),
     /// Raise a phone alarm (push, then a voice call), or check one
     Alarm(AlarmArgs),
-    /// Run the MCP server over stdio (notify_user, alarm, alarm_status, tmgr_cli)
+    /// Run the MCP server over stdio (notify_user, alarm, alarm_status, ask_owner, get_answer, reply_owner, tmgr_cli)
     Mcp,
     /// Leader and follower links over SSH (experimental)
     #[command(hide = true)]
@@ -174,6 +184,24 @@ pub enum Command {
     /// Update tmgr to the newest signed release
     #[command(name = "self-update")]
     SelfUpdate(SelfUpdateArgs),
+    /// Set up this computer for tmgr
+    Setup {
+        #[command(subcommand)]
+        command: SetupCommand,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SetupCommand {
+    /// Let programs in your terminal write to the clipboard (OSC 52), so copying in `tmgr attach` over SSH works
+    Terminal(SetupTerminalArgs),
+}
+
+#[derive(Args)]
+pub struct SetupTerminalArgs {
+    /// Only report what would change
+    #[arg(long)]
+    pub check: bool,
 }
 
 #[derive(Args)]
@@ -473,6 +501,44 @@ pub enum RoutineCommand {
         /// Day of the routine instance, YYYY-MM-DD (default: today)
         #[arg(long, value_name = "DATE")]
         date: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SkillsCommand {
+    /// List the skills of your library and the personas they are attached to
+    List,
+    /// Show one library skill with its Markdown
+    Show {
+        /// Skill slug
+        slug: String,
+    },
+    /// Create or update a library skill from a Markdown file with front matter
+    Put {
+        /// Skill slug (must match `slug:` in the front matter)
+        slug: String,
+        /// Markdown file, or `-` for stdin
+        #[arg(long, value_name = "FILE", value_parser = crate::paths::PathArg)]
+        file: std::path::PathBuf,
+    },
+    /// Delete a library skill; it is detached from every persona
+    Delete {
+        /// Skill slug
+        slug: String,
+    },
+    /// Attach a library skill to a persona
+    Attach {
+        /// Persona id (UUID)
+        persona: String,
+        /// Skill slug
+        slug: String,
+    },
+    /// Detach a library skill from a persona
+    Detach {
+        /// Persona id (UUID)
+        persona: String,
+        /// Skill slug
+        slug: String,
     },
 }
 

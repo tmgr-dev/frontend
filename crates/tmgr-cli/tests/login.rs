@@ -143,6 +143,7 @@ async fn login_honours_label_and_scopes() {
         serde_json::from_slice(&env.requests_to("/api/auth/device/code").await[0].body).unwrap();
     assert_eq!(body["host_label"], "spark box");
     assert_eq!(body["scopes"], json!(["tasks:read"]));
+    assert!(!body["scopes"].to_string().contains("skills:"));
     assert!(text(&out.stdout).contains("Logged in as Ann"));
 }
 
@@ -443,4 +444,25 @@ async fn device_timing_outside_sane_bounds_is_clamped_with_a_warning() {
         "{}",
         text(&out.stderr)
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn plain_login_requests_both_skills_scopes() {
+    let env = Env::new().await;
+    mock_device_code(&env, 0).await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/device/token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {
+            "access_token": ACCESS, "refresh_token": REFRESH, "expires_in": 3600, "scopes": ["tasks:read"]
+        }})))
+        .mount(&env.server)
+        .await;
+    mock_current(&env, ACCESS).await;
+    let out = env.cmd().args(["login", "--no-browser"]).output().unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let body: serde_json::Value =
+        serde_json::from_slice(&env.requests_to("/api/auth/device/code").await[0].body).unwrap();
+    let scopes = body["scopes"].as_array().unwrap();
+    assert!(scopes.contains(&json!("skills:read")));
+    assert!(scopes.contains(&json!("skills:write")));
 }

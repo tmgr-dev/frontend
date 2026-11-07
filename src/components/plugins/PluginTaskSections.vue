@@ -14,11 +14,9 @@
 					section.pluginName
 				}}</span>
 			</header>
-			<PluginView
-				v-if="trees[section.key]"
-				:node="trees[section.key]!"
-				:plugin-id="section.pluginId"
-			/>
+			<div v-if="trees[section.key]" data-selectable>
+				<PluginView :node="trees[section.key]!" :plugin-id="section.pluginId" />
+			</div>
 			<p v-else-if="errors[section.key]" class="text-xs text-muted-foreground">
 				{{ errors[section.key] }}
 			</p>

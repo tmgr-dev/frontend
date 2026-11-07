@@ -443,6 +443,58 @@ fn load_private_dedupes_revs_and_skips_binary_and_large() {
 }
 
 #[test]
+fn a_blob_that_does_not_match_its_name_is_not_loaded() {
+    use std::os::unix::fs::PermissionsExt;
+    let d = repo();
+    write(d.path(), "a.txt", b"one\n");
+    write(d.path(), "b.txt", b"two\n");
+    let head = commit(d.path(), "both");
+    let loose = |oid: &str| {
+        d.path()
+            .join(".git/objects")
+            .join(&oid[..2])
+            .join(&oid[2..])
+    };
+    let a = git_env(d.path(), &["rev-parse", "HEAD:a.txt"]);
+    let b = git_env(d.path(), &["rev-parse", "HEAD:b.txt"]);
+    std::fs::set_permissions(loose(&a), std::fs::Permissions::from_mode(0o644)).unwrap();
+    std::fs::copy(loose(&b), loose(&a)).unwrap();
+    let err = load_private(d.path(), "acme/backend", &[head]).unwrap_err();
+    assert!(err.to_string().contains("does not match its name"), "{err}");
+}
+
+#[test]
+fn loading_ignores_repository_config_and_attributes() {
+    let d = repo();
+    let marks = tempfile::tempdir().unwrap();
+    write(d.path(), "a.txt", b"one\n");
+    let base = commit(d.path(), "one");
+    write(d.path(), "b.txt", b"two\n");
+    let head = commit(d.path(), "two");
+    let touch = |name: &str| format!("touch {}/{name}", marks.path().display());
+    for (key, value) in [
+        ("hook.x.event", "reference-transaction".to_string()),
+        ("hook.x.command", touch("hook")),
+        ("core.fsmonitor", touch("fsmonitor")),
+        ("core.pager", touch("pager")),
+        ("filter.x.clean", touch("clean")),
+        ("filter.x.smudge", touch("smudge")),
+        ("diff.x.textconv", touch("textconv")),
+        ("diff.x.command", touch("diff")),
+    ] {
+        git_env(d.path(), &["config", key, &value]);
+    }
+    write(d.path(), ".git/info/attributes", b"* filter=x diff=x\n");
+    let side = load_private(d.path(), "acme/backend", std::slice::from_ref(&head)).unwrap();
+    let mut paths: Vec<&str> = side.files.iter().map(|f| f.path.as_str()).collect();
+    paths.sort();
+    assert_eq!(paths, vec!["a.txt", "b.txt"]);
+    let public = load_public(d.path(), "acme/frontend", &base, &head, vec![]).unwrap();
+    assert_eq!(public.new_files.len(), 1);
+    assert_eq!(std::fs::read_dir(marks.path()).unwrap().count(), 0);
+}
+
+#[test]
 fn load_public_scans_every_commit_including_added_then_deleted() {
     let d = repo();
     write(d.path(), "keep.ts", b"let a = 1;\n");

@@ -99,6 +99,8 @@ pub struct ResumeDecl {
     pub at: ResumeAt,
     #[serde(default)]
     pub by_id: Option<Vec<String>>,
+    #[serde(default)]
+    pub fork_by_id: Option<Vec<String>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -328,17 +330,34 @@ impl Profile {
         extra: &[String],
         id: &str,
     ) -> Result<Option<Vec<String>>, String> {
-        let Some((r, by_id)) = self
-            .resume
-            .as_ref()
-            .and_then(|r| r.by_id.as_ref().map(|b| (r, b)))
-        else {
+        let by_id = self.resume.as_ref().and_then(|r| r.by_id.as_deref());
+        self.argv_from_id_template(model, extra, by_id, id)
+    }
+
+    pub fn fork_argv_by_id(
+        &self,
+        model: Option<&str>,
+        extra: &[String],
+        id: &str,
+    ) -> Result<Option<Vec<String>>, String> {
+        let fork = self.resume.as_ref().and_then(|r| r.fork_by_id.as_deref());
+        self.argv_from_id_template(model, extra, fork, id)
+    }
+
+    fn argv_from_id_template(
+        &self,
+        model: Option<&str>,
+        extra: &[String],
+        template: Option<&[String]>,
+        id: &str,
+    ) -> Result<Option<Vec<String>>, String> {
+        let (Some(r), Some(template)) = (&self.resume, template) else {
             return Ok(None);
         };
         if !crate::resume::valid_resume_id(id) {
             return Err("invalid resume id".into());
         }
-        let args = by_id
+        let args = template
             .iter()
             .map(|a| {
                 if a == RESUME_ID {
@@ -412,14 +431,14 @@ fn check_launch(p: &Profile) -> Result<(), String> {
         if r.args.iter().any(|a| a.contains('{')) {
             return Err("resume.args take no placeholders".into());
         }
-        if let Some(b) = &r.by_id {
+        for (field, template) in [("by_id", &r.by_id), ("fork_by_id", &r.fork_by_id)] {
+            let Some(b) = template else { continue };
             let holes = b.iter().filter(|a| *a == RESUME_ID).count();
             let stray = b.iter().any(|a| a != RESUME_ID && a.contains('{'));
             if holes != 1 || stray {
-                return Err(
-                    "resume.by_id must hold \"{resume_id}\" exactly once as a whole argument"
-                        .into(),
-                );
+                return Err(format!(
+                    "resume.{field} must hold \"{{resume_id}}\" exactly once as a whole argument"
+                ));
             }
         }
     }
@@ -975,6 +994,116 @@ idle = ['^> $']
     }
 
     #[test]
+    fn builtin_agents_resume_and_fork_by_id_full_vectors() {
+        let (set, _) = ProfileSet::load(None);
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let claude = set.get("claude-code").unwrap();
+        let codex = set.get("codex").unwrap();
+        let ask = |p: &Profile| p.permission_args("ask").unwrap().to_vec();
+        let bypass = |p: &Profile| p.bypass_args().unwrap().to_vec();
+
+        let argv = |p: &Profile, fork: bool, extra: &[String]| {
+            let made = if fork {
+                p.fork_argv_by_id(None, extra, U)
+            } else {
+                p.resume_argv_by_id(None, extra, U)
+            };
+            made.unwrap().unwrap()
+        };
+
+        assert_eq!(
+            argv(claude, false, &bypass(claude)),
+            v(&[
+                "claude",
+                "--permission-mode",
+                "bypassPermissions",
+                "--resume",
+                U
+            ])
+        );
+        assert_eq!(
+            argv(claude, true, &bypass(claude)),
+            v(&[
+                "claude",
+                "--permission-mode",
+                "bypassPermissions",
+                "--resume",
+                U,
+                "--fork-session"
+            ])
+        );
+        assert_eq!(
+            argv(claude, false, &ask(claude)),
+            v(&["claude", "--permission-mode", "manual", "--resume", U])
+        );
+        assert_eq!(
+            argv(claude, true, &ask(claude)),
+            v(&[
+                "claude",
+                "--permission-mode",
+                "manual",
+                "--resume",
+                U,
+                "--fork-session"
+            ])
+        );
+        assert_eq!(
+            argv(codex, false, &bypass(codex)),
+            v(&[
+                "codex",
+                "resume",
+                U,
+                "--no-daemon",
+                "--dangerously-bypass-approvals-and-sandbox"
+            ])
+        );
+        assert_eq!(
+            argv(codex, true, &bypass(codex)),
+            v(&[
+                "codex",
+                "fork",
+                U,
+                "--no-daemon",
+                "--dangerously-bypass-approvals-and-sandbox"
+            ])
+        );
+        assert_eq!(
+            argv(codex, false, &ask(codex)),
+            v(&[
+                "codex",
+                "resume",
+                U,
+                "--no-daemon",
+                "--ask-for-approval",
+                "on-request"
+            ])
+        );
+        assert_eq!(
+            argv(codex, true, &ask(codex)),
+            v(&[
+                "codex",
+                "fork",
+                U,
+                "--no-daemon",
+                "--ask-for-approval",
+                "on-request"
+            ])
+        );
+        for p in [claude, codex] {
+            for bad in [
+                "--foo",
+                "$(x)",
+                "not-a-uuid",
+                "",
+                "2F0E1C3A-5B7D-4E8F-9A1B-3C4D5E6F7A8B",
+            ] {
+                assert!(p.resume_argv_by_id(None, &[], bad).is_err(), "{bad:?}");
+                assert!(p.fork_argv_by_id(None, &[], bad).is_err(), "{bad:?}");
+            }
+        }
+    }
+
+    #[test]
     fn launch_fields_are_validated() {
         for bad in [
             "[resume]\nargs = []\n",
@@ -1081,12 +1210,7 @@ idle = ['^> $']
         );
         assert_eq!(
             set.get("codex").unwrap().bypass_args().unwrap(),
-            [
-                "--ask-for-approval",
-                "never",
-                "--sandbox",
-                "workspace-write"
-            ]
+            ["--dangerously-bypass-approvals-and-sandbox"]
         );
         for id in ["agy", "opencode", "cursor-agent", "aider"] {
             assert!(set.get(id).unwrap().bypass_args().is_none(), "{id}");

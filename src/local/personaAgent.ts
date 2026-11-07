@@ -50,7 +50,10 @@ export const personaToolDefinition = (grantedPermissions: string[]) => {
 			parameters: {
 				type: 'object',
 				properties: {
-					method: { type: 'string', enum: ['GET', 'POST', 'PATCH', 'DELETE'] },
+					method: {
+						type: 'string',
+						enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+					},
 					path: { type: 'string' },
 					body: { type: 'object' },
 				},
@@ -69,6 +72,10 @@ export interface PersonaAgentParams {
 	grantedPermissions: string[];
 	chat: ChatFn;
 	maxToolCalls?: number;
+	onText?: (textSoFar: string) => void;
+	onToolCall?: (method: string) => void;
+	isCancelled?: () => boolean;
+	deliver?: (text: string) => Promise<void>;
 }
 
 export interface PersonaAgentResult {
@@ -84,6 +91,10 @@ export const runPersonaAgent = async ({
 	systemPrompt,
 	chat,
 	maxToolCalls = 8,
+	onText,
+	onToolCall,
+	isCancelled,
+	deliver,
 }: PersonaAgentParams): Promise<PersonaAgentResult> => {
 	const actor = {
 		kind: 'persona' as const,
@@ -119,32 +130,44 @@ export const runPersonaAgent = async ({
 
 	let toolCalls = 0;
 	let finalText = '';
-	let status: 'succeeded' | 'failed' = 'succeeded';
+	let status: 'succeeded' | 'failed' | 'cancelled' = 'succeeded';
 	try {
-		while (toolCalls < maxToolCalls) {
+		for (;;) {
 			const calls: ToolCall[] = [];
 			let textBuffer = '';
 			for await (const event of chat(messages)) {
-				if (event.type === 'text') textBuffer += event.delta;
-				else calls.push(event.call);
+				if (event.type === 'text') {
+					textBuffer += event.delta;
+					onText?.(textBuffer);
+				} else calls.push(event.call);
 			}
 			if (!calls.length) {
+				if (!textBuffer.trim()) {
+					throw new Error('The model returned an empty answer');
+				}
 				finalText = textBuffer;
 				break;
 			}
+			if (toolCalls >= maxToolCalls) {
+				throw new Error(
+					`The agent stopped after ${maxToolCalls} tool calls without an answer`,
+				);
+			}
+			const batch = calls.slice(0, maxToolCalls - toolCalls);
 			messages.push({
 				role: 'assistant',
 				content: textBuffer || null,
-				tool_calls: calls.map((call) => ({
+				tool_calls: batch.map((call) => ({
 					id: call.id,
 					type: 'function',
 					function: { name: call.name, arguments: call.rawArguments },
 				})),
 			});
-			for (const call of calls) {
-				if (toolCalls >= maxToolCalls) break;
+			for (const call of batch) {
+				if (isCancelled?.()) throw new Error('cancelled');
 				toolCalls += 1;
 				const { method, path, body } = call.args ?? {};
+				onToolCall?.(method);
 				const content =
 					typeof method !== 'string' || typeof path !== 'string'
 						? { message: 'method and path are required strings' }
@@ -157,21 +180,33 @@ export const runPersonaAgent = async ({
 				});
 			}
 		}
+		if (isCancelled?.()) status = 'cancelled';
+		else await deliver?.(finalText);
 	} catch (error) {
-		status = 'failed';
+		status = isCancelled?.() ? 'cancelled' : 'failed';
 		throw error;
 	} finally {
 		if (runId !== null) {
-			await dispatchLocal(
-				router,
-				personaCtx,
-				'POST',
-				`agent-work/${runId}/finish`,
-				{
-					status,
-					summary: finalText.slice(0, 2000),
-				},
-			);
+			try {
+				const finished = await dispatchLocal(
+					router,
+					personaCtx,
+					'POST',
+					`agent-work/${runId}/finish`,
+					{
+						status,
+						summary: finalText.slice(0, 2000),
+					},
+				);
+				if (!finished || finished.status >= 400)
+					console.warn(
+						`[persona] could not finish agent-work run ${runId}: ${
+							finished?.status ?? 'no route'
+						}`,
+					);
+			} catch {
+				console.warn(`[persona] could not finish agent-work run ${runId}`);
+			}
 		}
 	}
 	return { text: finalText, toolCalls };
@@ -180,28 +215,32 @@ export const runPersonaAgent = async ({
 /** Needs `comments:write` in the grant, same as any other persona-authored comment. */
 export const askPersonaOnTask = async (
 	params: PersonaAgentParams,
-): Promise<PersonaAgentResult> => {
-	const result = await runPersonaAgent(params);
-	if (result.text.trim()) {
-		const actor = {
-			kind: 'persona' as const,
-			id: params.persona.uuid,
-			name: params.persona.name,
-		};
-		const posted = await dispatchLocal(
-			params.router,
-			{ ...params.ctx, actor },
-			'POST',
-			`tasks/${params.taskId}/comments`,
-			{ message: result.text },
-		);
-		if (!posted || posted.status >= 400) {
-			throw new Error(
-				`Could not post the persona's answer as a comment: ${
-					posted?.data?.message ?? 'no route'
-				}`,
+): Promise<PersonaAgentResult & { posted: boolean }> => {
+	let posted = false;
+	const result = await runPersonaAgent({
+		...params,
+		deliver: async (text) => {
+			const actor = {
+				kind: 'persona' as const,
+				id: params.persona.uuid,
+				name: params.persona.name,
+			};
+			const response = await dispatchLocal(
+				params.router,
+				{ ...params.ctx, actor },
+				'POST',
+				`tasks/${params.taskId}/comments`,
+				{ message: text },
 			);
-		}
-	}
-	return result;
+			if (!response || response.status >= 400) {
+				throw new Error(
+					`Could not post the persona's answer as a comment: ${
+						response?.data?.message ?? 'no route'
+					}`,
+				);
+			}
+			posted = true;
+		},
+	});
+	return { ...result, posted };
 };

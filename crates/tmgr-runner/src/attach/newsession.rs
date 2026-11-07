@@ -1,3 +1,4 @@
+use super::folder_pick::{self, Act, DrawCtx, Env, FolderData, FolderMark, PKey, Picker, PICK_H};
 use super::mouse::MouseEvent;
 use super::palette::{esc_key, next_char, query_tail, Key};
 use super::render::{dim, put};
@@ -9,7 +10,10 @@ use ratatui::layout::{Margin, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Clear, Widget};
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,6 +37,7 @@ pub struct KindOpt {
     pub id: String,
     pub label: String,
     pub spawn: SpawnKind,
+    pub bypass: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -48,6 +53,124 @@ pub struct NewRequest {
     pub name: Option<String>,
     pub place: Place,
     pub task: Option<String>,
+    pub worktree: bool,
+    pub checkpoints: Option<bool>,
+    pub permission_cards: bool,
+    pub bypass: bool,
+    pub no_sandbox: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PrivAsk {
+    pub word: &'static str,
+    pub prompt: String,
+    pub warnings: Vec<&'static str>,
+}
+
+pub type PrivGate = fn(bool, bool) -> Result<PrivAsk, (String, Option<String>)>;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Remembered {
+    pub agent: String,
+    pub bypass: bool,
+    pub no_sandbox: bool,
+    pub worktree: Option<bool>,
+    pub permission_cards: Option<bool>,
+    pub checkpoints: Option<bool>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TypedPrompt {
+    before: Vec<String>,
+    ask: PrivAsk,
+    typed: String,
+    cleared: bool,
+    seen: Cell<Option<Instant>>,
+}
+
+#[derive(Clone, Debug)]
+struct PrivPrompt {
+    req: NewRequest,
+    prompt: TypedPrompt,
+}
+
+impl std::ops::Deref for PrivPrompt {
+    type Target = TypedPrompt;
+
+    fn deref(&self) -> &TypedPrompt {
+        &self.prompt
+    }
+}
+
+impl std::ops::DerefMut for PrivPrompt {
+    fn deref_mut(&mut self) -> &mut TypedPrompt {
+        &mut self.prompt
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PromptKey {
+    Editing,
+    Cancel,
+    Enter(bool),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PastEdit {
+    Editing,
+    Cancel,
+    Confirmed,
+    Mismatch,
+}
+
+impl TypedPrompt {
+    pub fn new(before: Vec<String>, ask: PrivAsk) -> TypedPrompt {
+        TypedPrompt {
+            before: before
+                .iter()
+                .map(|l| strip_control(&sanitize_text(l)))
+                .collect(),
+            ask,
+            typed: String::new(),
+            cleared: false,
+            seen: Cell::new(None),
+        }
+    }
+
+    fn refuse_batch(&mut self) {
+        self.typed.clear();
+        self.cleared = true;
+    }
+
+    fn edit(&mut self, data: &[u8]) -> PromptKey {
+        if !data.is_empty() && data.iter().all(|&b| b == 0x1b) {
+            return PromptKey::Cancel;
+        }
+        if !self.seen.get().is_some_and(|t| t.elapsed() >= PROMPT_DELAY) {
+            return PromptKey::Editing;
+        }
+        let (c, used) = next_char(data);
+        if data.is_empty() || used != data.len() {
+            self.refuse_batch();
+            return PromptKey::Editing;
+        }
+        self.cleared = false;
+        match data[0] {
+            b'\r' | b'\n' => return PromptKey::Enter(self.typed == self.ask.word),
+            0x7f | 0x08 => {
+                self.typed.pop();
+            }
+            0x15 => self.typed.clear(),
+            _ => {
+                if let Some(c) = c.filter(|c| !c.is_control()) {
+                    if self.typed.chars().count() < MAX_TYPED {
+                        self.typed.push(c);
+                    }
+                }
+            }
+        }
+        PromptKey::Editing
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -55,6 +178,8 @@ pub enum NewEdit {
     Editing,
     Submit(NewRequest),
     Approve,
+    ResumePast,
+    Pins(Vec<String>),
     Cancel,
 }
 
@@ -65,7 +190,9 @@ const MAX_TASK: usize = 128;
 const MAX_TASK_OPTS: usize = 200;
 const MAX_ENTRIES: usize = 500;
 const MAX_WIDTH: u16 = 72;
-const LABEL_W: u16 = 10;
+const LABEL_W: u16 = 12;
+const MAX_TYPED: usize = 32;
+const PROMPT_DELAY: Duration = Duration::from_millis(300);
 const START_LABEL: &str = "[ Start ]";
 
 impl Place {
@@ -88,7 +215,12 @@ pub enum NewField {
     Command,
     Folder,
     Name,
+    Worktree,
+    PermissionCards,
+    Bypass,
+    NoSandbox,
     Where,
+    Checkpoints,
     Start,
 }
 
@@ -100,6 +232,14 @@ pub struct NewSession {
     pub command: String,
     pub name: String,
     pub place: Place,
+    pub worktree: bool,
+    pub permission_cards: bool,
+    pub bypass: bool,
+    pub no_sandbox: bool,
+    remembered: bool,
+    pub priv_gate: Option<PrivGate>,
+    pub priv_lock: Option<String>,
+    priv_prompt: Option<PrivPrompt>,
     pub error: Option<String>,
     pub error_hint: Option<String>,
     pub focus: NewField,
@@ -108,9 +248,22 @@ pub struct NewSession {
     pub tasks: Vec<TaskOpt>,
     pub task_at: usize,
     pub task_note: Option<String>,
+    pub checkpoints: bool,
     pub review: Option<Vec<String>>,
     pub home: PathBuf,
     pub list_dir: fn(&Path) -> Vec<String>,
+    pub browse_dir: fn(&Path) -> Vec<String>,
+    pub folders: Option<FolderData>,
+    picker: Option<Picker>,
+    pick_fits: Cell<bool>,
+    marks: HashMap<String, Option<FolderMark>>,
+    mark_reqs: Vec<String>,
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
 }
 
 fn strip_control(s: &str) -> String {
@@ -197,6 +350,44 @@ impl NewSession {
             .is_some_and(|k| matches!(k.spawn, SpawnKind::Agent { .. }))
     }
 
+    fn kind_bypass(&self) -> bool {
+        self.kinds.get(self.kind).is_some_and(|k| k.bypass)
+    }
+
+    fn lock_of(&self, f: NewField) -> Option<String> {
+        if let Some(reason) = &self.priv_lock {
+            return Some(reason.clone());
+        }
+        if self.priv_gate.is_none() {
+            return Some("unavailable".into());
+        }
+        (f == NewField::Bypass && !self.kind_bypass()).then(|| "no bypass mode".into())
+    }
+
+    fn remembered_line(&self) -> Option<String> {
+        if !self.remembered {
+            return None;
+        }
+        let what = match (self.bypass, self.no_sandbox) {
+            (true, true) => "Bypass and no sandbox are",
+            (true, false) => "Bypass is",
+            (false, true) => "No sandbox is",
+            (false, false) => return None,
+        };
+        Some(format!("{what} on, remembered from your last session"))
+    }
+
+    pub fn clear_privileges(&mut self) {
+        self.bypass = false;
+        self.no_sandbox = false;
+        self.remembered = false;
+        self.priv_prompt = None;
+    }
+
+    pub fn priv_prompt_open(&self) -> bool {
+        self.priv_prompt.is_some()
+    }
+
     pub fn task_matches(&self) -> Vec<&TaskOpt> {
         let query = self.task.trim();
         if query.is_empty() {
@@ -242,8 +433,74 @@ impl NewSession {
         if self.is_agent() {
             f.push(NewField::Task);
         }
-        f.extend([NewField::Name, NewField::Where, NewField::Start]);
+        f.push(NewField::Name);
+        if self.is_agent() {
+            f.push(NewField::Worktree);
+            f.push(NewField::PermissionCards);
+            f.push(NewField::Bypass);
+            f.push(NewField::NoSandbox);
+        }
+        f.extend([NewField::Where, NewField::Checkpoints, NewField::Start]);
         f
+    }
+
+    fn sync_picker(&mut self) {
+        if self.focus != NewField::Folder {
+            self.picker = None;
+        } else if self.picker.is_none() && self.folders.is_some() {
+            self.picker = Some(Picker::new());
+        }
+    }
+
+    fn picker_live(&self) -> bool {
+        self.pick_fits.get()
+            && self.focus == NewField::Folder
+            && self.picker.as_ref().is_some_and(Picker::live)
+    }
+
+    fn pick_h(&self) -> usize {
+        if self.pick_fits.get() && self.picker_live() {
+            usize::from(PICK_H)
+        } else {
+            0
+        }
+    }
+
+    fn pick(&mut self, k: PKey, pins: &mut Option<Vec<String>>) {
+        match self.pick_key(k) {
+            Act::Fall => self.step(k == PKey::Down),
+            Act::Pins(p) => *pins = Some(p),
+            _ => {}
+        }
+    }
+
+    fn pick_key(&mut self, k: PKey) -> Act {
+        let (Some(mut p), Some(mut data)) = (self.picker.take(), self.folders.take()) else {
+            return Act::Done;
+        };
+        let home = self.home.clone();
+        let act = p.key(
+            k,
+            &mut Env {
+                folder: &mut self.folder,
+                data: &mut data,
+                home: &home,
+                list: self.browse_dir,
+                now: now_ms(),
+            },
+        );
+        for path in std::mem::take(&mut p.want_marks) {
+            if !self.marks.contains_key(&path) {
+                self.marks.insert(path.clone(), None);
+                self.mark_reqs.push(path);
+            }
+        }
+        self.picker = Some(p);
+        self.folders = Some(data);
+        if !matches!(act, Act::Fall | Act::Cancel) {
+            self.clear_error();
+        }
+        act
     }
 
     fn clear_error(&mut self) {
@@ -277,6 +534,7 @@ impl NewSession {
         let n = fields.len();
         let next = if down { (at + 1) % n } else { (at + n - 1) % n };
         self.focus = fields[next];
+        self.sync_picker();
     }
 
     fn cycle(&mut self, forward: bool) {
@@ -289,6 +547,9 @@ impl NewSession {
                     } else {
                         (self.kind + n - 1) % n
                     };
+                    self.bypass = false;
+                    self.no_sandbox = false;
+                    self.remembered = false;
                     self.clear_error();
                 }
             }
@@ -303,6 +564,28 @@ impl NewSession {
                         (at + n - 1) % n
                     };
                 }
+            }
+            NewField::Worktree => {
+                self.worktree = !self.worktree;
+                self.clear_error();
+            }
+            NewField::Checkpoints => {
+                self.checkpoints = !self.checkpoints;
+                self.clear_error();
+            }
+            NewField::PermissionCards => {
+                self.permission_cards = !self.permission_cards;
+                self.clear_error();
+            }
+            NewField::Bypass if self.lock_of(NewField::Bypass).is_none() => {
+                self.bypass = !self.bypass;
+                self.remembered = false;
+                self.clear_error();
+            }
+            NewField::NoSandbox if self.lock_of(NewField::NoSandbox).is_none() => {
+                self.no_sandbox = !self.no_sandbox;
+                self.remembered = false;
+                self.clear_error();
             }
             NewField::Where => {
                 let at = Place::ALL
@@ -360,11 +643,44 @@ impl NewSession {
             Ok(req) => Ok(req),
             Err((field, msg)) => {
                 self.focus = field;
+                self.sync_picker();
+                if field == NewField::Folder {
+                    if let Some(p) = self.picker.as_mut() {
+                        p.saved = self.folder.clone();
+                        p.mode = folder_pick::Mode::Path;
+                    }
+                }
                 self.error = Some(msg.to_string());
                 self.error_hint = None;
                 Err(())
             }
         }
+    }
+
+    fn try_submit(&mut self) -> Option<NewRequest> {
+        let req = self.submit().ok()?;
+        if !req.bypass && !req.no_sandbox {
+            return Some(req);
+        }
+        let asked = match self.priv_gate {
+            Some(gate) => gate(req.bypass, req.no_sandbox),
+            None => Err(("bypass and no sandbox are unavailable here".into(), None)),
+        };
+        match asked {
+            Ok(ask) => {
+                self.error = None;
+                self.error_hint = None;
+                self.priv_prompt = Some(PrivPrompt {
+                    req,
+                    prompt: TypedPrompt::new(Vec::new(), ask),
+                });
+            }
+            Err((msg, hint)) => {
+                self.error = Some(msg);
+                self.error_hint = hint;
+            }
+        }
+        None
     }
 
     fn validate(&self) -> Result<NewRequest, (NewField, String)> {
@@ -427,22 +743,42 @@ impl NewSession {
             }
             other => other.clone(),
         };
+        let bypass = self.is_agent() && self.bypass && self.lock_of(NewField::Bypass).is_none();
+        let no_sandbox =
+            self.is_agent() && self.no_sandbox && self.lock_of(NewField::NoSandbox).is_none();
+        if task.is_some() && (bypass || no_sandbox) {
+            return Err((
+                NewField::Task,
+                "a task start cannot use bypass or no sandbox; turn them off".into(),
+            ));
+        }
         Ok(NewRequest {
             kind: spawn,
             folder,
             name: (!name.is_empty()).then(|| name.to_string()),
             place: self.place,
+            worktree: self.worktree && self.is_agent() && task.is_none(),
+            permission_cards: self.permission_cards && self.is_agent() && task.is_none(),
+            bypass,
+            no_sandbox,
             task,
+            checkpoints: Some(self.checkpoints),
         })
     }
 }
 
 struct Notes {
+    remembered: Vec<String>,
     error: Vec<String>,
     hint: Vec<String>,
+    help: Vec<String>,
 }
 
 impl Notes {
+    fn help_h(&self) -> usize {
+        self.help.len().max(1)
+    }
+
     fn error_h(&self) -> usize {
         self.error.len().max(1)
     }
@@ -496,6 +832,14 @@ fn wrap(text: &str, width: usize, max_lines: usize) -> Vec<String> {
     lines
 }
 
+fn footer(ns: &NewSession) -> &'static str {
+    if ns.task.trim().is_empty() {
+        "Enter starts, Ctrl+R resumes a past session, Esc cancels, Tab/Shift+Tab next/prev field"
+    } else {
+        "Enter shows the run to confirm, Esc cancels, Tab/Shift+Tab next/prev field"
+    }
+}
+
 fn notes(ns: &NewSession, area_width: u16) -> Notes {
     let width = usize::from(MAX_WIDTH.min(area_width))
         .saturating_sub(4)
@@ -506,9 +850,34 @@ fn notes(ns: &NewSession, area_width: u16) -> Notes {
             .unwrap_or_default()
     };
     Notes {
+        remembered: ns
+            .remembered_line()
+            .map(|t| wrap(&t, width, 2))
+            .unwrap_or_default(),
         error: clean(&ns.error, 2),
         hint: clean(&ns.error_hint, 3),
+        help: wrap(footer(ns), width, 3),
     }
+}
+
+fn prompt_lines(p: &TypedPrompt, area_width: u16) -> Vec<String> {
+    let width = usize::from(MAX_WIDTH.min(area_width))
+        .saturating_sub(4)
+        .max(1);
+    let mut out: Vec<String> = p
+        .before
+        .iter()
+        .flat_map(|l| wrap(l, width, 3))
+        .chain(
+            p.ask
+                .warnings
+                .iter()
+                .flat_map(|w| wrap(w, width, usize::MAX)),
+        )
+        .collect();
+    out.push(String::new());
+    out.extend(wrap(&p.ask.prompt, width, 3));
+    out
 }
 
 fn review_wrapped(lines: &[String], width: u16) -> Vec<String> {
@@ -520,12 +889,28 @@ fn review_wrapped(lines: &[String], width: u16) -> Vec<String> {
 }
 
 pub(crate) fn new_session_rect(area: Rect, ns: &NewSession) -> Rect {
-    let w = MAX_WIDTH.min(area.width);
     let n = notes(ns, area.width);
-    let body = match &ns.review {
-        Some(lines) => review_wrapped(lines, area.width).len() + 4,
-        None => ns.fields().len() + n.error_h() + n.hint_h() + 6,
+    let plain = ns.fields().len() + n.remembered.len() + n.error_h() + n.hint_h() + n.help_h() + 5;
+    ns.pick_fits
+        .set(plain + usize::from(PICK_H) <= usize::from(area.height) && area.width >= 30);
+    let body = match (&ns.review, &ns.priv_prompt) {
+        (Some(lines), _) => review_wrapped(lines, area.width).len() + 4,
+        (None, Some(p)) => prompt_lines(p, area.width).len() + 4,
+        (None, None) => {
+            ns.fields().len()
+                + ns.pick_h()
+                + n.remembered.len()
+                + n.error_h()
+                + n.hint_h()
+                + n.help_h()
+                + 5
+        }
     };
+    dialog_rect(area, body)
+}
+
+fn dialog_rect(area: Rect, body: usize) -> Rect {
+    let w = MAX_WIDTH.min(area.width);
     let h = u16::try_from(body).unwrap_or(u16::MAX).min(area.height);
     Rect::new(
         area.x + (area.width - w) / 2,
@@ -540,16 +925,19 @@ fn inner(rect: Rect) -> Rect {
 }
 
 fn field_rows(ns: &NewSession, inner: Rect) -> Vec<(NewField, Rect)> {
-    if ns.review.is_some() {
+    if ns.review.is_some() || ns.priv_prompt.is_some() {
         return Vec::new();
     }
     ns.fields()
         .into_iter()
         .zip(0u16..)
         .map(|(f, k)| {
+            let after =
+                ns.fields().iter().position(|x| *x == NewField::Folder) < Some(usize::from(k));
+            let shift = if after { ns.pick_h() as u16 } else { 0 };
             (
                 f,
-                Rect::new(inner.x, inner.y.saturating_add(k), inner.width, 1),
+                Rect::new(inner.x, inner.y.saturating_add(k + shift), inner.width, 1),
             )
         })
         .filter(|(_, r)| r.y < inner.bottom())
@@ -588,6 +976,26 @@ fn option_labels(ns: &NewSession, field: NewField) -> (Vec<String>, usize) {
             ns.kinds.iter().map(|k| strip_control(&k.label)).collect(),
             ns.kind,
         ),
+        NewField::Worktree => (
+            vec!["Off".to_string(), "On".to_string()],
+            usize::from(ns.worktree),
+        ),
+        NewField::Checkpoints => (
+            vec!["Off".to_string(), "On".to_string()],
+            usize::from(ns.checkpoints),
+        ),
+        NewField::PermissionCards => (
+            vec!["Off".to_string(), "On".to_string()],
+            usize::from(ns.permission_cards),
+        ),
+        NewField::Bypass => (
+            vec!["Off".to_string(), "On".to_string()],
+            usize::from(ns.bypass),
+        ),
+        NewField::NoSandbox => (
+            vec!["Off".to_string(), "On".to_string()],
+            usize::from(ns.no_sandbox),
+        ),
         _ => (
             Place::ALL.iter().map(|p| p.label().to_string()).collect(),
             Place::ALL.iter().position(|p| *p == ns.place).unwrap_or(0),
@@ -603,6 +1011,11 @@ fn field_label(f: NewField) -> &'static str {
         NewField::Folder => "Folder",
         NewField::Name => "Name",
         NewField::Where => "Where",
+        NewField::Worktree => "Worktree",
+        NewField::Checkpoints => "Rewind",
+        NewField::PermissionCards => "Approvals",
+        NewField::Bypass => "Bypass",
+        NewField::NoSandbox => "No sandbox",
         NewField::Start => "",
     }
 }
@@ -650,6 +1063,8 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
         .border_type(BorderType::Rounded)
         .title(if ns.review.is_some() {
             " Start this run? "
+        } else if ns.priv_prompt.is_some() {
+            " Confirm "
         } else {
             " New session "
         })
@@ -681,7 +1096,29 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
         }
         return;
     }
+    if let Some(p) = &ns.priv_prompt {
+        draw_typed(buf, inner, p, area.width, "Enter confirms, Esc goes back");
+        return;
+    }
     let rows = field_rows(ns, inner);
+    if let (true, Some(p), Some(data)) = (ns.picker_live(), ns.picker.as_ref(), ns.folders.as_ref())
+    {
+        if let Some((_, frow)) = rows.iter().find(|(f, _)| *f == NewField::Folder) {
+            let area = Rect::new(frow.x + 2, frow.y + 1, frow.width.saturating_sub(2), PICK_H);
+            let area = area.intersection(inner);
+            folder_pick::draw(
+                buf,
+                area,
+                p,
+                &DrawCtx {
+                    data,
+                    marks: &ns.marks,
+                    home: &ns.home,
+                    now: now_ms(),
+                },
+            );
+        }
+    }
     for (f, row) in &rows {
         let focused = *f == ns.focus;
         let marker = if focused { "> " } else { "  " };
@@ -702,11 +1139,33 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
         let x = value_x(*row);
         let avail = value_avail(*row);
         match f {
-            NewField::Kind | NewField::Where => {
+            NewField::Bypass | NewField::NoSandbox if ns.lock_of(*f).is_some() => {
+                let reason = ns.lock_of(*f).unwrap_or_default();
+                put(
+                    buf,
+                    x,
+                    row.y,
+                    &format!(" locked: {}", strip_control(&sanitize_text(&reason))),
+                    dim(),
+                    row.right().saturating_sub(x),
+                );
+            }
+            NewField::Kind
+            | NewField::Where
+            | NewField::Worktree
+            | NewField::Checkpoints
+            | NewField::PermissionCards
+            | NewField::Bypass
+            | NewField::NoSandbox => {
                 let (labels, sel) = option_labels(ns, *f);
                 for (i, off, w) in option_spans(&labels, sel, avail) {
                     let style = if i == sel {
-                        Style::new().add_modifier(Modifier::REVERSED)
+                        let on = Style::new().add_modifier(Modifier::REVERSED);
+                        if sel == 1 && matches!(f, NewField::Bypass | NewField::NoSandbox) {
+                            on.fg(colors().bad)
+                        } else {
+                            on
+                        }
                     } else {
                         Style::new()
                     };
@@ -754,7 +1213,7 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
             }
         }
     }
-    let base = u16::try_from(ns.fields().len()).unwrap_or(u16::MAX);
+    let base = u16::try_from(ns.fields().len() + ns.pick_h()).unwrap_or(u16::MAX);
     let line = |k: usize| {
         inner
             .y
@@ -763,7 +1222,7 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
     };
     let bottom = inner.bottom();
     let n = notes(ns, area.width);
-    for (i, text) in n.error.iter().enumerate() {
+    for (i, text) in n.remembered.iter().enumerate() {
         if line(1 + i) < bottom {
             put(
                 buf,
@@ -775,27 +1234,107 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
             );
         }
     }
-    let hint_at = 1 + n.error_h();
+    let error_at = 1 + n.remembered.len();
+    for (i, text) in n.error.iter().enumerate() {
+        if line(error_at + i) < bottom {
+            put(
+                buf,
+                inner.x,
+                line(error_at + i),
+                text,
+                Style::new().fg(colors().bad),
+                inner.width,
+            );
+        }
+    }
+    let hint_at = error_at + n.error_h();
     for (i, text) in n.hint.iter().enumerate() {
         if line(hint_at + i) < bottom {
             put(buf, inner.x, line(hint_at + i), text, dim(), inner.width);
         }
     }
     let help_at = hint_at + n.hint_h();
-    if line(help_at) < bottom {
+    for (i, text) in n.help.iter().enumerate() {
+        if line(help_at + i) < bottom {
+            put(buf, inner.x, line(help_at + i), text, dim(), inner.width);
+        }
+    }
+}
+
+fn draw_typed(buf: &mut Buffer, inner: Rect, p: &TypedPrompt, area_width: u16, hint: &str) {
+    if p.seen.get().is_none() {
+        p.seen.set(Some(Instant::now()));
+    }
+    let lines = prompt_lines(p, area_width);
+    for (i, text) in lines.iter().enumerate() {
+        let y = inner.y.saturating_add(u16::try_from(i).unwrap_or(u16::MAX));
+        if y < inner.bottom() {
+            put(buf, inner.x, y, text, Style::new(), inner.width);
+        }
+    }
+    let y = inner
+        .y
+        .saturating_add(u16::try_from(lines.len()).unwrap_or(u16::MAX));
+    if y < inner.bottom() {
         put(
             buf,
             inner.x,
-            line(help_at),
-            if ns.task.trim().is_empty() {
-                "Enter starts, Esc cancels"
-            } else {
-                "Enter shows the run to confirm, Esc cancels"
-            },
-            dim(),
+            y,
+            &format!("> {}", strip_control(&p.typed)),
+            Style::new(),
             inner.width,
         );
     }
+    if y.saturating_add(1) < inner.bottom() {
+        let (text, style) = if p.cleared {
+            (
+                "Type one key at a time; input was cleared.",
+                Style::new().fg(colors().bad),
+            )
+        } else {
+            (hint, dim())
+        };
+        put(buf, inner.x, y + 1, text, style, inner.width);
+    }
+}
+
+fn typed_cursor(p: &TypedPrompt, inner: Rect, area_width: u16) -> (u16, u16) {
+    let y = inner
+        .y
+        .saturating_add(u16::try_from(prompt_lines(p, area_width).len()).unwrap_or(u16::MAX));
+    let x = inner.x.saturating_add(2 + p.typed.width() as u16);
+    (
+        x.min(inner.right().saturating_sub(1)),
+        y.min(inner.bottom().saturating_sub(1)),
+    )
+}
+
+pub(crate) fn draw_past_prompt(buf: &mut Buffer, area: Rect, st: &ViewState) {
+    let Some(p) = &st.past_prompt else {
+        return;
+    };
+    let rect = past_prompt_rect(area, p);
+    if rect.is_empty() {
+        return;
+    }
+    Clear.render(rect, buf);
+    Block::bordered()
+        .border_type(BorderType::Rounded)
+        .title(" Confirm ")
+        .render(rect, buf);
+    let inner = inner(rect);
+    if !inner.is_empty() {
+        draw_typed(buf, inner, p, area.width, "Enter confirms, Esc cancels");
+    }
+}
+
+pub(crate) fn past_prompt_cursor(p: &TypedPrompt, area: Rect) -> Option<(u16, u16)> {
+    let inner = inner(past_prompt_rect(area, p));
+    (!inner.is_empty()).then(|| typed_cursor(p, inner, area.width))
+}
+
+fn past_prompt_rect(area: Rect, p: &TypedPrompt) -> Rect {
+    dialog_rect(area, prompt_lines(p, area.width).len() + 4)
 }
 
 pub(crate) fn new_session_cursor(ns: &NewSession, area: Rect) -> Option<(u16, u16)> {
@@ -804,9 +1343,20 @@ pub(crate) fn new_session_cursor(ns: &NewSession, area: Rect) -> Option<(u16, u1
     if rect.is_empty() || inner.is_empty() || ns.review.is_some() {
         return None;
     }
+    if let Some(p) = &ns.priv_prompt {
+        return Some(typed_cursor(p, inner, area.width));
+    }
     let (_, row) = field_rows(ns, inner)
         .into_iter()
         .find(|(f, _)| *f == ns.focus)?;
+    if let Some(p) = ns
+        .picker
+        .as_ref()
+        .filter(|p| ns.picker_live() && p.mode == folder_pick::Mode::Search)
+    {
+        let x = row.x + 2 + 8 + strip_control(&p.query).width() as u16;
+        return Some((x.min(row.right().saturating_sub(1)), row.y + 1));
+    }
     let text = strip_control(field_text(ns, ns.focus)?);
     let avail = value_avail(row);
     let w = query_tail(&text, avail.saturating_sub(1)).width();
@@ -833,6 +1383,14 @@ impl ViewState {
             command: String::new(),
             name: String::new(),
             place: self.new_place.unwrap_or_default(),
+            worktree: self.worktree_default,
+            permission_cards: self.permission_cards_default,
+            bypass: false,
+            no_sandbox: false,
+            remembered: false,
+            priv_gate: self.priv_gate,
+            priv_lock: self.privileged_lock.clone(),
+            priv_prompt: None,
             error: None,
             error_hint: None,
             focus: NewField::Kind,
@@ -841,10 +1399,94 @@ impl ViewState {
             tasks: self.new_tasks.clone(),
             task_at: 0,
             task_note: self.new_tasks_note.clone(),
+            checkpoints: self.cp.form_default,
             review: None,
             home,
             list_dir: list_dirs,
+            browse_dir: folder_pick::browse_dirs,
+            folders: self.new_folders.clone(),
+            picker: None,
+            pick_fits: Cell::new(true),
+            marks: HashMap::new(),
+            mark_reqs: Vec::new(),
         });
+    }
+
+    pub fn apply_remembered(&mut self, r: &Remembered) {
+        let Some(ns) = self.new_session.as_mut() else {
+            return;
+        };
+        if let Some(v) = r.worktree {
+            ns.worktree = v;
+        }
+        if let Some(v) = r.permission_cards {
+            ns.permission_cards = v;
+        }
+        if let Some(v) = r.checkpoints {
+            ns.checkpoints = v;
+        }
+        if !r.bypass && !r.no_sandbox {
+            return;
+        }
+        let clean = |t: &str| strip_control(&sanitize_text(t));
+        let agent = clean(&r.agent);
+        let selected = ns
+            .kinds
+            .get(ns.kind)
+            .filter(|_| ns.is_agent())
+            .map(|k| k.id.as_str());
+        let mut off = Vec::new();
+        let mut reason = String::new();
+        let wrong_agent = selected != Some(r.agent.as_str());
+        if wrong_agent {
+            off.extend([
+                r.bypass.then_some("bypass"),
+                r.no_sandbox.then_some("no sandbox"),
+            ]);
+        } else {
+            for (wanted, field, name) in [
+                (r.bypass, NewField::Bypass, "bypass"),
+                (r.no_sandbox, NewField::NoSandbox, "no sandbox"),
+            ] {
+                if !wanted {
+                    continue;
+                }
+                match ns.lock_of(field) {
+                    None => {
+                        if field == NewField::Bypass {
+                            ns.bypass = true;
+                        } else {
+                            ns.no_sandbox = true;
+                        }
+                        ns.remembered = true;
+                    }
+                    Some(lock) => {
+                        off.push(Some(name));
+                        reason = if lock == "no bypass mode" {
+                            "this agent has no bypass mode".into()
+                        } else {
+                            format!("locked: {}", clean(&lock))
+                        };
+                    }
+                }
+            }
+        }
+        let off: Vec<&str> = off.into_iter().flatten().collect();
+        if off.is_empty() {
+            return;
+        }
+        let (names, verb, pronoun) = match off.as_slice() {
+            [one] => (one.to_string(), "is", "it was"),
+            _ => (off.join(" and "), "are", "they were"),
+        };
+        if wrong_agent {
+            reason = if agent.is_empty() {
+                format!("{pronoun} set for a different agent")
+            } else {
+                format!("{pronoun} set for {agent}")
+            };
+        }
+        ns.error_hint = Some(format!("Remembered {names} {verb} off: {reason}"));
     }
 
     pub fn set_new_tasks(&mut self, mut tasks: Vec<TaskOpt>, note: Option<String>) {
@@ -866,13 +1508,60 @@ impl ViewState {
             })
     }
 
+    pub fn refuse_priv_batch(&mut self, forwards: usize) -> bool {
+        let Some(p) = self
+            .new_session
+            .as_mut()
+            .and_then(|n| n.priv_prompt.as_mut().map(|p| &mut p.prompt))
+            .or(self.past_prompt.as_mut())
+            .filter(|_| forwards > 1)
+        else {
+            return false;
+        };
+        p.refuse_batch();
+        true
+    }
+
+    pub fn priv_prompt_fits(&self, area: Rect) -> bool {
+        self.new_session
+            .as_ref()
+            .and_then(|ns| ns.priv_prompt.as_ref())
+            .is_some_and(|p| prompt_lines(p, area.width).len() + 4 <= usize::from(area.height))
+    }
+
     pub fn review_new_session(&mut self, mut ns: NewSession, lines: Vec<String>) {
+        ns.picker = None;
         ns.review = Some(lines);
         self.new_session = Some(ns);
     }
 
-    pub fn reopen_new_session(&mut self, ns: NewSession) {
+    pub fn reopen_new_session(&mut self, mut ns: NewSession) {
+        ns.picker = None;
         self.new_session = Some(ns);
+    }
+
+    pub fn set_new_folders(&mut self, data: FolderData) {
+        let mut data = data.cleaned();
+        if let Some(old) = &self.new_folders {
+            data.pins = old.pins.clone();
+        }
+        self.new_folders = Some(data.clone());
+        if let Some(ns) = self.new_session.as_mut() {
+            ns.folders = Some(data);
+        }
+    }
+
+    pub fn take_folder_mark_requests(&mut self) -> Vec<String> {
+        self.new_session
+            .as_mut()
+            .map(|ns| std::mem::take(&mut ns.mark_reqs))
+            .unwrap_or_default()
+    }
+
+    pub fn set_folder_mark(&mut self, path: String, mark: Option<FolderMark>) {
+        if let Some(ns) = self.new_session.as_mut() {
+            ns.marks.insert(path, mark);
+        }
     }
 
     pub fn remember_new_session(&mut self, req: &NewRequest, kind_id: &str) {
@@ -892,10 +1581,22 @@ impl ViewState {
             }
             return NewEdit::Editing;
         }
+        if ns.priv_prompt.is_some() {
+            return self.edit_priv_prompt(data);
+        }
         if !data.is_empty() && data.iter().all(|&b| b == 0x1b) {
+            if ns
+                .picker
+                .as_ref()
+                .is_some_and(|p| p.mode != folder_pick::Mode::Recent)
+            {
+                ns.pick_key(PKey::Esc);
+                return NewEdit::Editing;
+            }
             self.new_session = None;
             return NewEdit::Cancel;
         }
+        let mut pins: Option<Vec<String>> = None;
         let mut i = 0;
         while i < data.len() {
             let Some(ns) = self.new_session.as_mut() else {
@@ -907,9 +1608,25 @@ impl ViewState {
                     let seq = &data[i..i + used];
                     i += used;
                     match key {
+                        Key::Up if ns.picker_live() => ns.pick(PKey::Up, &mut pins),
+                        Key::Down if ns.picker_live() => ns.pick(PKey::Down, &mut pins),
                         Key::Up => ns.step(false),
                         Key::Down => ns.step(true),
                         Key::Other => match seq {
+                            b"\x1b[C" | b"\x1bOC" if ns.picker_live() => {
+                                ns.pick(PKey::Right, &mut pins)
+                            }
+                            b"\x1b[D" | b"\x1bOD" if ns.picker_live() => {
+                                ns.pick(PKey::Left, &mut pins)
+                            }
+                            b"\x1b"
+                                if ns
+                                    .picker
+                                    .as_ref()
+                                    .is_some_and(|p| p.mode != folder_pick::Mode::Recent) =>
+                            {
+                                ns.pick(PKey::Esc, &mut pins)
+                            }
                             b"\x1b[C" | b"\x1bOC" => ns.cycle(true),
                             b"\x1b[D" | b"\x1bOD" => ns.cycle(false),
                             b"\x1b[Z" => ns.step(false),
@@ -919,56 +1636,160 @@ impl ViewState {
                 }
                 b'\t' => {
                     i += 1;
-                    if ns.focus != NewField::Folder || !ns.complete_folder() {
+                    if ns.focus != NewField::Folder || ns.picker_live() || !ns.complete_folder() {
                         ns.step(true);
                     }
                 }
                 b'\r' | b'\n' => {
                     i += 1;
-                    if let Ok(req) = ns.submit() {
+                    if ns.picker_live() && ns.pick_key(PKey::Enter) != Act::Submit {
+                        continue;
+                    }
+                    if let Some(req) = ns.try_submit() {
                         self.new_session = None;
                         return NewEdit::Submit(req);
+                    }
+                    if ns.priv_prompt.is_some() {
+                        break;
                     }
                 }
                 0x7f | 0x08 => {
                     i += 1;
-                    if let Some((s, _)) = ns.text_field() {
+                    if ns.picker_live() {
+                        ns.pick(PKey::Back, &mut pins);
+                    } else if let Some((s, _)) = ns.text_field() {
                         s.pop();
                         ns.clear_error();
                     }
                 }
+                0x10 => {
+                    i += 1;
+                    if ns.picker_live() {
+                        ns.pick(PKey::Pin, &mut pins);
+                    }
+                }
                 0x15 => {
                     i += 1;
-                    if let Some((s, _)) = ns.text_field() {
+                    if ns.picker_live() {
+                        ns.pick(PKey::Clear, &mut pins);
+                    } else if let Some((s, _)) = ns.text_field() {
                         s.clear();
                         ns.clear_error();
                     }
                 }
+                0x12 => return NewEdit::ResumePast,
                 _ => {
                     let (c, used) = next_char(&data[i..]);
                     i += used;
                     if let Some(c) = c.filter(|c| !c.is_control()) {
-                        ns.push_char(c);
+                        if ns.picker_live() {
+                            ns.pick(PKey::Char(c), &mut pins);
+                        } else {
+                            ns.push_char(c);
+                        }
                     }
                 }
             }
         }
         if self.new_session.is_some() {
+            if let Some(p) = pins {
+                if let Some(d) = self.new_folders.as_mut() {
+                    d.pins = p.clone();
+                }
+                return NewEdit::Pins(p);
+            }
             NewEdit::Editing
         } else {
             NewEdit::Cancel
         }
     }
 
+    fn edit_priv_prompt(&mut self, data: &[u8]) -> NewEdit {
+        let Some(ns) = self.new_session.as_mut() else {
+            return NewEdit::Cancel;
+        };
+        let Some(p) = ns.priv_prompt.as_mut() else {
+            return NewEdit::Editing;
+        };
+        match p.edit(data) {
+            PromptKey::Editing => {}
+            PromptKey::Cancel => ns.priv_prompt = None,
+            PromptKey::Enter(matched) => {
+                let Some(p) = ns.priv_prompt.take() else {
+                    return NewEdit::Editing;
+                };
+                if matched {
+                    self.new_session = None;
+                    return NewEdit::Submit(p.req);
+                }
+                ns.bypass = false;
+                ns.no_sandbox = false;
+                ns.error = Some("confirmation did not match, nothing was started".into());
+                ns.error_hint = None;
+            }
+        }
+        NewEdit::Editing
+    }
+
+    pub fn open_past_prompt(&mut self, p: TypedPrompt) {
+        self.past_prompt = Some(p);
+    }
+
+    pub fn past_prompt_open(&self) -> bool {
+        self.past_prompt.is_some()
+    }
+
+    pub fn past_prompt_fits(&self, area: Rect) -> bool {
+        self.past_prompt
+            .as_ref()
+            .is_some_and(|p| prompt_lines(p, area.width).len() + 4 <= usize::from(area.height))
+    }
+
+    pub fn edit_past_prompt(&mut self, data: &[u8]) -> PastEdit {
+        let Some(p) = self.past_prompt.as_mut() else {
+            return PastEdit::Cancel;
+        };
+        match p.edit(data) {
+            PromptKey::Editing => PastEdit::Editing,
+            PromptKey::Cancel => {
+                self.past_prompt = None;
+                PastEdit::Cancel
+            }
+            PromptKey::Enter(matched) => {
+                self.past_prompt = None;
+                if matched {
+                    PastEdit::Confirmed
+                } else {
+                    PastEdit::Mismatch
+                }
+            }
+        }
+    }
+
     pub fn insert_new_session_text(&mut self, data: &[u8]) {
-        let Some(ns) = self.new_session.as_mut().filter(|n| n.review.is_none()) else {
+        let Some(ns) = self
+            .new_session
+            .as_mut()
+            .filter(|n| n.review.is_none() && n.priv_prompt.is_none())
+        else {
             return;
         };
         let text = String::from_utf8_lossy(data)
             .replace("\x1b[200~", "")
             .replace("\x1b[201~", "");
+        if ns.picker_live() && text.starts_with(['/', '~']) {
+            if let Some(p) = ns.picker.as_mut() {
+                p.saved = ns.folder.clone();
+                p.mode = folder_pick::Mode::Path;
+                ns.folder.clear();
+            }
+        }
         for c in text.chars().filter(|c| !c.is_control()) {
-            ns.push_char(c);
+            if ns.picker_live() {
+                ns.pick_key(PKey::Char(c));
+            } else {
+                ns.push_char(c);
+            }
         }
     }
 
@@ -991,7 +1812,7 @@ impl ViewState {
             out.new_edit = Some(NewEdit::Cancel);
             return out;
         }
-        if ns.review.is_some() {
+        if ns.review.is_some() || ns.priv_prompt.is_some() {
             return out;
         }
         let Some((field, row)) = field_rows(ns, inner(rect))
@@ -1001,10 +1822,17 @@ impl ViewState {
             return out;
         };
         ns.focus = field;
+        ns.sync_picker();
         let x = value_x(row);
         let avail = value_avail(row);
         match field {
-            NewField::Kind | NewField::Where => {
+            NewField::Kind
+            | NewField::Where
+            | NewField::Worktree
+            | NewField::Checkpoints
+            | NewField::PermissionCards
+            | NewField::Bypass
+            | NewField::NoSandbox => {
                 let (labels, sel) = option_labels(ns, field);
                 let hit = option_spans(&labels, sel, avail)
                     .into_iter()
@@ -1012,6 +1840,21 @@ impl ViewState {
                 if let Some((i, _, _)) = hit {
                     if field == NewField::Kind {
                         ns.kind = i;
+                        ns.bypass = false;
+                        ns.no_sandbox = false;
+                        ns.remembered = false;
+                    } else if field == NewField::Bypass {
+                        ns.remembered = false;
+                        ns.bypass = i == 1 && ns.lock_of(field).is_none();
+                    } else if field == NewField::NoSandbox {
+                        ns.remembered = false;
+                        ns.no_sandbox = i == 1 && ns.lock_of(field).is_none();
+                    } else if field == NewField::Worktree {
+                        ns.worktree = i == 1;
+                    } else if field == NewField::Checkpoints {
+                        ns.checkpoints = i == 1;
+                    } else if field == NewField::PermissionCards {
+                        ns.permission_cards = i == 1;
                     } else {
                         ns.place = Place::ALL[i];
                     }
@@ -1021,12 +1864,12 @@ impl ViewState {
             NewField::Start => {
                 let w = START_LABEL.width() as u16;
                 if ev.col >= x && ev.col < x + w {
-                    out.new_edit = Some(match ns.submit() {
-                        Ok(req) => {
+                    out.new_edit = Some(match ns.try_submit() {
+                        Some(req) => {
                             self.new_session = None;
                             NewEdit::Submit(req)
                         }
-                        Err(()) => NewEdit::Editing,
+                        None => NewEdit::Editing,
                     });
                 }
             }
@@ -1049,6 +1892,7 @@ mod tests {
             id: id.into(),
             label: id.into(),
             spawn,
+            bypass: id == "claude",
         };
         vec![
             k(
@@ -1073,8 +1917,27 @@ mod tests {
         ]
     }
 
+    fn test_gate(bypass: bool, no_sandbox: bool) -> Result<PrivAsk, (String, Option<String>)> {
+        let word = if no_sandbox { "no-sandbox" } else { "bypass" };
+        let mut warnings = Vec::new();
+        if bypass {
+            warnings.push(
+                "warning: bypass mode: the agent runs every command and edit without asking.",
+            );
+        }
+        if no_sandbox {
+            warnings.push("warning: no sandbox: the agent runs with your real home folder, your SSH keys, credentials and environment, with no sandbox and no network limits. Only the runner's control files are protected (macOS).");
+        }
+        Ok(PrivAsk {
+            word,
+            prompt: format!("Type {word} to continue:"),
+            warnings,
+        })
+    }
+
     fn open(folder: &str, home: &Path) -> ViewState {
         let mut v = ViewState::new(Vec::new(), "r");
+        v.priv_gate = Some(test_gate);
         v.open_new_session(folder.into(), kinds(), home.to_path_buf());
         v
     }
@@ -1153,6 +2016,11 @@ mod tests {
             name: None,
             place: Place::Below,
             task: None,
+            worktree: false,
+            checkpoints: None,
+            permission_cards: false,
+            bypass: false,
+            no_sandbox: false,
         };
         v.remember_new_session(&req, "shell");
         let p = v.prefs();
@@ -1213,7 +2081,7 @@ mod tests {
     fn where_cycles_and_tab_moves_between_fields() {
         let h = tmp();
         let mut v = open("/", h.path());
-        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B");
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B");
         assert_eq!(ns(&mut v).focus, NewField::Where);
         v.edit_new_session(b"\x1b[C");
         assert_eq!(ns(&mut v).place, Place::Below);
@@ -1222,8 +2090,10 @@ mod tests {
         v.edit_new_session(b"\x1b[D");
         assert_eq!(ns(&mut v).place, Place::Replace);
         v.edit_new_session(b"\t");
+        assert_eq!(ns(&mut v).focus, NewField::Checkpoints);
+        v.edit_new_session(b"\t");
         assert_eq!(ns(&mut v).focus, NewField::Start);
-        v.edit_new_session(b"\x1b[Z");
+        v.edit_new_session(b"\x1b[Z\x1b[Z");
         assert_eq!(ns(&mut v).focus, NewField::Where);
     }
 
@@ -1252,7 +2122,7 @@ mod tests {
         std::fs::create_dir(h.path().join("proj")).unwrap();
         let mut v = open("~/proj/", h.path());
         ns(&mut v).name = "  work ".into();
-        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[C");
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[C");
         let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
             panic!("expected submit");
         };
@@ -1272,6 +2142,90 @@ mod tests {
         };
         assert_eq!(req.folder, h.path().to_string_lossy());
         assert_eq!(req.name, None);
+    }
+
+    #[test]
+    fn the_worktree_row_is_off_by_default_and_for_agents_only() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        assert!(ns(&mut v).fields().contains(&NewField::Worktree));
+        assert!(!ns(&mut v).worktree);
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B");
+        assert_eq!(ns(&mut v).focus, NewField::Worktree);
+        v.edit_new_session(b"\x1b[C");
+        assert!(ns(&mut v).worktree);
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert!(req.worktree);
+        let mut v = open("/", h.path());
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[C");
+        v.edit_new_session(b"\x1b[A\x1b[A\x1b[A\x1b[A\x1b[D");
+        assert_eq!(ns(&mut v).kind, 3);
+        assert!(!ns(&mut v).fields().contains(&NewField::Worktree));
+        ns(&mut v).command = "echo".into();
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert!(!req.worktree);
+    }
+
+    #[test]
+    fn the_worktree_row_starts_from_the_configured_default() {
+        let h = tmp();
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.worktree_default = true;
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        assert!(ns(&mut v).worktree);
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[D");
+        assert!(!ns(&mut v).worktree);
+    }
+
+    #[test]
+    fn the_permission_cards_row_is_off_by_default_and_for_agents_only() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        assert!(ns(&mut v).fields().contains(&NewField::PermissionCards));
+        assert!(!ns(&mut v).permission_cards);
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B");
+        assert_eq!(ns(&mut v).focus, NewField::PermissionCards);
+        v.edit_new_session(b"\x1b[C");
+        assert!(ns(&mut v).permission_cards);
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert!(req.permission_cards);
+        let mut v = open("/", h.path());
+        ns(&mut v).permission_cards = true;
+        v.edit_new_session(b"\x1b[C\x1b[C\x1b[C");
+        assert!(!ns(&mut v).fields().contains(&NewField::PermissionCards));
+        ns(&mut v).command = "echo".into();
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert!(!req.permission_cards);
+    }
+
+    #[test]
+    fn the_permission_cards_row_starts_from_the_configured_default() {
+        let h = tmp();
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.permission_cards_default = true;
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        assert!(ns(&mut v).permission_cards);
+    }
+
+    #[test]
+    fn a_task_start_makes_its_own_clone_so_the_worktree_flag_is_dropped() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        with_tasks(&mut v);
+        ns(&mut v).worktree = true;
+        ns(&mut v).task = "TM-12".into();
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert!(req.task.is_some() && !req.worktree);
     }
 
     #[test]
@@ -1501,7 +2455,7 @@ mod tests {
             "Where",
             "Right",
             "[ Start ]",
-            "Enter starts, Esc cancels",
+            "Enter starts, Ctrl+R resumes a past session, Esc cancels",
         ] {
             assert!(s.contains(want), "missing {want}\n{s}");
         }
@@ -1563,7 +2517,7 @@ mod tests {
         assert!(n.hint.len() >= 2 && n.hint.len() <= 3);
         assert_eq!(n.hint.join(" "), long_hint());
         let s = draw(&v, 100, 30);
-        assert!(s.contains("Enter starts, Esc cancels"));
+        assert!(s.contains("Enter starts, Ctrl+R resumes a past session, Esc cancels"));
         for l in &n.hint {
             assert!(s.contains(l.as_str()), "missing {l}\n{s}");
         }
@@ -1887,5 +2841,1194 @@ mod tests {
         );
         let shown = draw(&v, 80, 20);
         assert!(shown.matches('z').count() >= 120);
+    }
+
+    fn ready(v: &ViewState) {
+        if let Some(p) = v.new_session.as_ref().and_then(|n| n.priv_prompt.as_ref()) {
+            p.seen
+                .set(Instant::now().checked_sub(Duration::from_secs(1)));
+        }
+    }
+
+    fn keys(v: &mut ViewState, text: &str) -> NewEdit {
+        ready(v);
+        let mut last = NewEdit::Editing;
+        for c in text.chars() {
+            let mut b = [0u8; 4];
+            last = v.edit_new_session(c.encode_utf8(&mut b).as_bytes());
+            if last != NewEdit::Editing {
+                return last;
+            }
+        }
+        last
+    }
+
+    fn flip(v: &mut ViewState, f: NewField) {
+        ns(v).focus = f;
+        v.edit_new_session(b"\x1b[C");
+    }
+
+    fn privileged(v: &mut ViewState, bypass: bool, no_sandbox: bool) {
+        if bypass {
+            flip(v, NewField::Bypass);
+        }
+        if no_sandbox {
+            flip(v, NewField::NoSandbox);
+        }
+    }
+
+    #[test]
+    fn the_privilege_rows_start_off_for_agents_only() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        assert!(!ns(&mut v).bypass && !ns(&mut v).no_sandbox);
+        let fields = ns(&mut v).fields();
+        assert!(fields.contains(&NewField::Bypass) && fields.contains(&NewField::NoSandbox));
+        ns(&mut v).kind = 2;
+        let fields = ns(&mut v).fields();
+        assert!(!fields.contains(&NewField::Bypass) && !fields.contains(&NewField::NoSandbox));
+        let req = ns(&mut v).validate().unwrap();
+        assert!(!req.bypass && !req.no_sandbox);
+    }
+
+    #[test]
+    fn an_unprivileged_submit_never_asks_anything() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert!(!req.bypass && !req.no_sandbox);
+    }
+
+    #[test]
+    fn a_privileged_submit_keeps_the_form_open_until_the_word_is_typed() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        privileged(&mut v, true, false);
+        assert!(ns(&mut v).bypass);
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+        assert_eq!(keys(&mut v, "bypas"), NewEdit::Editing);
+        let NewEdit::Submit(req) = keys(&mut v, "s\r") else {
+            panic!("expected submit");
+        };
+        assert!(req.bypass && !req.no_sandbox);
+        assert!(v.new_session.is_none());
+    }
+
+    #[test]
+    fn no_sandbox_asks_for_its_own_word_even_with_bypass() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        privileged(&mut v, true, true);
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        assert_eq!(keys(&mut v, "bypass\r"), NewEdit::Editing);
+        assert!(v.new_session.is_some() && !ns(&mut v).priv_prompt_open());
+        privileged(&mut v, true, true);
+        v.edit_new_session(b"\r");
+        let NewEdit::Submit(req) = keys(&mut v, "no-sandbox\r") else {
+            panic!("expected submit");
+        };
+        assert!(req.bypass && req.no_sandbox);
+    }
+
+    #[test]
+    fn a_wrong_word_cancels_keeps_the_form_and_turns_the_toggles_off() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        privileged(&mut v, true, true);
+        v.edit_new_session(b"\r");
+        assert_eq!(keys(&mut v, "yes\r"), NewEdit::Editing);
+        let n = ns(&mut v);
+        assert!(!n.priv_prompt_open() && !n.bypass && !n.no_sandbox);
+        assert!(n.error.as_deref().unwrap().contains("nothing was started"));
+    }
+
+    #[test]
+    fn the_word_must_match_exactly() {
+        let h = tmp();
+        for typed in ["Bypass\r", " bypass\r", "bypass \r", "bypas\r", "\r"] {
+            let mut v = open("/", h.path());
+            privileged(&mut v, true, false);
+            v.edit_new_session(b"\r");
+            assert_eq!(keys(&mut v, typed), NewEdit::Editing, "{typed:?}");
+            assert!(v.new_session.is_some());
+        }
+    }
+
+    #[test]
+    fn escape_in_the_prompt_goes_back_to_the_form() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        privileged(&mut v, true, false);
+        v.edit_new_session(b"\r");
+        assert_eq!(v.edit_new_session(b"\x1b"), NewEdit::Editing);
+        assert!(v.new_session.is_some() && !ns(&mut v).priv_prompt_open());
+    }
+
+    #[test]
+    fn paste_arrows_and_trailing_bytes_cannot_confirm() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        privileged(&mut v, true, false);
+        v.edit_new_session(b"\r");
+        ready(&v);
+        v.insert_new_session_text(b"bypass");
+        assert_eq!(v.edit_new_session(b"\x1b[A\x1b[C"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        assert!(v.new_session.is_some());
+    }
+
+    #[test]
+    fn bytes_after_the_enter_that_opens_the_prompt_are_dropped() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        privileged(&mut v, true, false);
+        assert_eq!(v.edit_new_session(b"\rbypass\r"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+        ready(&v);
+        assert_eq!(v.edit_new_session(b"bypass\r"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+    }
+
+    #[test]
+    fn a_whole_word_with_enter_in_one_chunk_never_confirms_and_clears_the_line() {
+        let h = tmp();
+        for raw in ["no-sandbox\r", "\x1b[201~no-sandbox\r", "no-sandbox\n"] {
+            let mut v = prompt_view(h.path(), 0, true);
+            ready(&v);
+            assert_eq!(v.edit_new_session(b"no-"), NewEdit::Editing);
+            assert_eq!(
+                v.edit_new_session(raw.as_bytes()),
+                NewEdit::Editing,
+                "{raw:?}"
+            );
+            assert!(v.new_session.is_some() && ns(&mut v).priv_prompt_open());
+            assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+            assert!(!ns(&mut v).priv_prompt_open() && v.new_session.is_some());
+        }
+    }
+
+    #[test]
+    fn utf8_characters_and_backspace_still_edit_the_line() {
+        let h = tmp();
+        let mut v = prompt_view(h.path(), 0, true);
+        keys(&mut v, "\u{e9}x");
+        v.edit_new_session(b"\x7f");
+        assert!(draw(&v, 76, 14).contains("> \u{e9}"));
+        assert!(!draw(&v, 76, 14).contains("> \u{e9}x"));
+    }
+
+    #[test]
+    fn nothing_typed_before_the_prompt_was_shown_for_a_moment_counts() {
+        let h = tmp();
+        let mut v = prompt_view(h.path(), 0, true);
+        for c in "no-sandbox".chars() {
+            let mut b = [0u8; 4];
+            v.edit_new_session(c.encode_utf8(&mut b).as_bytes());
+        }
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+        let mut v = prompt_view(h.path(), 0, true);
+        draw(&v, 76, 14);
+        for c in "no-sandbox".chars() {
+            let mut b = [0u8; 4];
+            v.edit_new_session(c.encode_utf8(&mut b).as_bytes());
+        }
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+    }
+
+    fn replay(v: &mut ViewState, reads: &[&[u8]]) -> Vec<NewEdit> {
+        let mut split = crate::attach::InputSplitter::new();
+        let mut out = Vec::new();
+        for read in reads {
+            let actions = split.feed(read);
+            let forwards = actions
+                .iter()
+                .filter(|a| matches!(a, crate::attach::Action::Forward(_)))
+                .count();
+            if v.refuse_priv_batch(forwards) {
+                continue;
+            }
+            for action in actions {
+                if let crate::attach::Action::Forward(d) = action {
+                    if v.new_session.is_some() {
+                        out.push(v.edit_new_session(&d));
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn after_the_delay_one_read_split_by_events_is_refused_and_says_so() {
+        let h = tmp();
+        let one_read: &[u8] =
+            b"n\x1b[Io\x1b[I-\x1b[Is\x1b[Ia\x1b[In\x1b[Id\x1b[Ib\x1b[Io\x1b[Ix\x1b[I\r";
+        let mut v = prompt_view(h.path(), 0, true);
+        ready(&v);
+        let out = replay(&mut v, &[b"n", one_read]);
+        assert!(out.iter().all(|e| !matches!(e, NewEdit::Submit(_))));
+        assert!(ns(&mut v).priv_prompt_open());
+        let shown = draw(&v, 76, 14);
+        assert!(shown.contains("input was cleared"));
+        assert!(!shown.contains("> n"));
+        let out = replay(&mut v, &[b"x"]);
+        assert!(out.iter().all(|e| !matches!(e, NewEdit::Submit(_))));
+        assert!(!draw(&v, 76, 14).contains("input was cleared"));
+    }
+
+    #[test]
+    fn a_coalesced_chunk_clears_the_line_with_a_visible_note() {
+        let h = tmp();
+        let mut v = prompt_view(h.path(), 0, false);
+        keys(&mut v, "byp");
+        assert_eq!(v.edit_new_session(b"s\r"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open() && ns(&mut v).bypass);
+        assert!(draw(&v, 76, 14).contains("Type one key at a time; input was cleared."));
+    }
+
+    #[test]
+    fn queued_input_split_by_events_or_reads_cannot_confirm() {
+        let h = tmp();
+        let cases: [&[&[u8]]; 5] = [
+            &[b"\r\x1b[Ibypass\r"],
+            &[b"\r\x1b[<35;5;5Mbypass\r"],
+            &[b"\r", b"bypass\r"],
+            &[b"\r\x1b[Ib\x1b[Iy\x1b[Ip\x1b[Ia\x1b[Is\x1b[Is\x1b[I\r"],
+            &[b"\r\x1b[Ib", b"y", b"p", b"a", b"s", b"s", b"\r"],
+        ];
+        for reads in cases {
+            let mut v = open("/", h.path());
+            privileged(&mut v, true, false);
+            let out = replay(&mut v, reads);
+            assert!(
+                out.iter().all(|e| !matches!(e, NewEdit::Submit(_))),
+                "{reads:?}"
+            );
+            assert!(v.new_session.is_some());
+        }
+    }
+
+    #[test]
+    fn a_click_on_start_followed_by_queued_bytes_cannot_confirm() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        privileged(&mut v, false, true);
+        let row = row_of(&mut v, NewField::Start);
+        click(&mut v, row.x + LABEL_W + 2, row.y);
+        assert!(ns(&mut v).priv_prompt_open());
+        let out = replay(&mut v, &[b"n", b"o", b"-", b"\r"]);
+        assert!(out.iter().all(|e| !matches!(e, NewEdit::Submit(_))));
+    }
+
+    #[test]
+    fn the_start_button_goes_through_the_same_prompt() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        privileged(&mut v, false, true);
+        let row = row_of(&mut v, NewField::Start);
+        let out = click(&mut v, row.x + LABEL_W + 2, row.y);
+        assert_eq!(out.new_edit, Some(NewEdit::Editing));
+        assert!(ns(&mut v).priv_prompt_open());
+        let out = click(&mut v, 50, 15);
+        assert!(out.new_edit.is_none() && ns(&mut v).priv_prompt_open());
+        let out = click(&mut v, 0, 0);
+        assert_eq!(out.new_edit, Some(NewEdit::Cancel));
+        assert!(v.new_session.is_none());
+    }
+
+    #[test]
+    fn clicking_the_toggles_flips_them_and_changing_the_kind_clears_them() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        let row = row_of(&mut v, NewField::Bypass);
+        click(&mut v, row.x + LABEL_W + 6, row.y);
+        assert!(ns(&mut v).bypass);
+        let row = row_of(&mut v, NewField::NoSandbox);
+        click(&mut v, row.x + LABEL_W + 6, row.y);
+        assert!(ns(&mut v).no_sandbox);
+        ns(&mut v).focus = NewField::Kind;
+        v.edit_new_session(b"\x1b[C");
+        assert!(!ns(&mut v).bypass && !ns(&mut v).no_sandbox);
+        flip(&mut v, NewField::NoSandbox);
+        let row = row_of(&mut v, NewField::Kind);
+        click(&mut v, row.x + LABEL_W + 2, row.y);
+        assert!(!ns(&mut v).no_sandbox);
+    }
+
+    #[test]
+    fn a_profile_without_a_bypass_mode_locks_only_that_toggle() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        ns(&mut v).kind = 1;
+        flip(&mut v, NewField::Bypass);
+        assert!(!ns(&mut v).bypass);
+        assert!(ns(&mut v)
+            .lock_of(NewField::Bypass)
+            .unwrap()
+            .contains("no bypass"));
+        flip(&mut v, NewField::NoSandbox);
+        assert!(ns(&mut v).no_sandbox);
+        let shown = draw(&v, 100, 30);
+        assert!(shown.contains("locked: no bypass mode"));
+    }
+
+    #[test]
+    fn a_lock_from_the_caller_blocks_both_toggles_and_the_request() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        v.new_session = None;
+        v.privileged_lock = Some("agent session".into());
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        privileged(&mut v, true, true);
+        assert!(!ns(&mut v).bypass && !ns(&mut v).no_sandbox);
+        ns(&mut v).bypass = true;
+        ns(&mut v).no_sandbox = true;
+        let req = ns(&mut v).validate().unwrap();
+        assert!(!req.bypass && !req.no_sandbox);
+        let shown = draw(&v, 100, 30);
+        assert_eq!(shown.matches("locked: agent session").count(), 2);
+    }
+
+    #[test]
+    fn without_a_gate_the_toggles_are_locked() {
+        let h = tmp();
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        flip(&mut v, NewField::NoSandbox);
+        assert!(!ns(&mut v).no_sandbox);
+    }
+
+    #[test]
+    fn a_refusing_gate_shows_its_error_and_never_prompts() {
+        fn refuse(_: bool, _: bool) -> Result<PrivAsk, (String, Option<String>)> {
+            Err(("refused here".into(), Some("run it yourself".into())))
+        }
+        let h = tmp();
+        let mut v = open("/", h.path());
+        v.priv_gate = None;
+        v.new_session = None;
+        v.priv_gate = Some(refuse);
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        privileged(&mut v, true, false);
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        let n = ns(&mut v);
+        assert!(!n.priv_prompt_open());
+        assert_eq!(n.error.as_deref(), Some("refused here"));
+        assert_eq!(n.error_hint.as_deref(), Some("run it yourself"));
+    }
+
+    #[test]
+    fn a_task_cannot_be_combined_with_the_toggles() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        with_tasks(&mut v);
+        ns(&mut v).task = "TM-12".into();
+        privileged(&mut v, true, false);
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        let n = ns(&mut v);
+        assert!(!n.priv_prompt_open());
+        assert!(n.error.as_deref().unwrap().contains("task"));
+        assert_eq!(n.focus, NewField::Task);
+    }
+
+    fn prompt_view(h: &Path, kind: usize, both: bool) -> ViewState {
+        let mut v = open("/", h);
+        ns(&mut v).kind = kind;
+        privileged(&mut v, kind == 0 && !both, both);
+        if both {
+            flip(&mut v, NewField::Bypass);
+        }
+        v.edit_new_session(b"\r");
+        v
+    }
+
+    #[test]
+    fn the_prompt_wraps_the_whole_warning_at_narrow_widths_and_needs_room() {
+        let h = tmp();
+        let mut v = prompt_view(h.path(), 0, true);
+        let shown = draw(&v, 30, 40);
+        assert!(!shown.contains('\u{2026}'));
+        for part in ["asking.", "SSH", "network", "(macOS).", "Type no-sandbox"] {
+            assert!(shown.contains(part), "{part}");
+        }
+        assert!(v.priv_prompt_fits(Rect::new(0, 0, 30, 40)));
+        assert!(!v.priv_prompt_fits(Rect::new(0, 0, 30, 6)));
+        keys(&mut v, "no-sa");
+        assert!(draw(&v, 30, 40).contains("> no-sa"));
+    }
+
+    #[test]
+    fn hostile_bytes_in_the_prompt_cannot_reach_the_screen() {
+        let h = tmp();
+        let mut v = prompt_view(h.path(), 0, false);
+        keys(&mut v, "a\x07b\x1b]0;x\x07c");
+        let shown = draw(&v, 60, 20);
+        assert!(!shown.chars().any(|c| c.is_control() && c != '\n'));
+    }
+
+    #[test]
+    fn snapshot_privilege_prompt() {
+        let h = tmp();
+        let mut v = prompt_view(h.path(), 0, true);
+        keys(&mut v, "no-s");
+        snapshot("new_session_privileged", &draw(&v, 76, 14));
+    }
+
+    #[test]
+    fn snapshot_privilege_prompt_narrow() {
+        let h = tmp();
+        let v = prompt_view(h.path(), 0, true);
+        snapshot("new_session_privileged_narrow", &draw(&v, 34, 20));
+    }
+
+    #[test]
+    fn snapshot_locked_privilege_rows_narrow() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        ns(&mut v).kind = 1;
+        v.new_session.as_mut().unwrap().priv_lock = None;
+        snapshot("new_session_locked_narrow", &draw(&v, 40, 16));
+    }
+
+    fn rem(agent: &str, bypass: bool, no_sandbox: bool) -> Remembered {
+        Remembered {
+            agent: agent.into(),
+            bypass,
+            no_sandbox,
+            ..Remembered::default()
+        }
+    }
+
+    fn open_remembered(kind: &str, r: &Remembered, h: &Path) -> ViewState {
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.priv_gate = Some(test_gate);
+        v.new_kind = Some(kind.into());
+        v.open_new_session("/".into(), kinds(), h.to_path_buf());
+        v.apply_remembered(r);
+        v
+    }
+
+    fn hint(v: &ViewState) -> String {
+        v.new_session
+            .as_ref()
+            .unwrap()
+            .error_hint
+            .clone()
+            .unwrap_or_default()
+    }
+
+    fn on_cells_in_alert(v: &ViewState, f: NewField) -> bool {
+        let ns = v.new_session.as_ref().unwrap();
+        let rect = new_session_rect(AREA, ns);
+        let row = field_rows(ns, inner(rect))
+            .into_iter()
+            .find(|(g, _)| *g == f)
+            .unwrap()
+            .1;
+        let mut t = Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
+        t.draw(|fr| {
+            let area = fr.area();
+            draw_new_session(fr.buffer_mut(), area, v)
+        })
+        .unwrap();
+        let buf = t.backend().buffer();
+        (row.x..row.right()).any(|x| {
+            buf[(x, row.y)].symbol() == "O"
+                && buf[(x + 1, row.y)].symbol() == "n"
+                && buf[(x, row.y)].fg == colors().bad
+        })
+    }
+
+    #[test]
+    fn remembered_flags_for_the_selected_agent_are_on_visible_and_still_ask() {
+        let h = tmp();
+        let mut v = open_remembered("claude", &rem("claude", true, true), h.path());
+        assert!(ns(&mut v).bypass && ns(&mut v).no_sandbox);
+        assert_eq!(hint(&v), "");
+        let shown = draw(&v, 100, 30);
+        assert!(shown.contains("Bypass and no sandbox are on, remembered from your last session"));
+        assert!(on_cells_in_alert(&v, NewField::Bypass));
+        assert!(on_cells_in_alert(&v, NewField::NoSandbox));
+        assert!(!on_cells_in_alert(&v, NewField::Worktree));
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+    }
+
+    #[test]
+    fn the_remembered_line_counts_in_the_dialog_height_and_keeps_errors_visible() {
+        let h = tmp();
+        let plain = open("/", h.path());
+        let v = open_remembered("claude", &rem("claude", true, false), h.path());
+        let a = new_session_rect(AREA, plain.new_session.as_ref().unwrap());
+        let b = new_session_rect(AREA, v.new_session.as_ref().unwrap());
+        assert_eq!(b.height, a.height + 1);
+        let mut v = v;
+        ns(&mut v).error = Some("folder is required".into());
+        let shown = draw(&v, 100, 30);
+        assert!(shown.contains("Bypass is on, remembered from your last session"));
+        assert!(shown.contains("folder is required"));
+        assert!(shown.contains("Enter starts, Ctrl+R resumes a past session, Esc cancels"));
+    }
+
+    #[test]
+    fn remembered_flags_for_another_agent_stay_off_with_a_note() {
+        let h = tmp();
+        let mut v = open_remembered("codex", &rem("claude", true, true), h.path());
+        assert!(!ns(&mut v).bypass && !ns(&mut v).no_sandbox);
+        assert_eq!(
+            hint(&v),
+            "Remembered bypass and no sandbox are off: they were set for claude"
+        );
+        let shown = draw(&v, 100, 30);
+        assert!(shown.contains("were set for claude"));
+        assert!(!shown.contains("remembered from your last session"));
+        let mut v = open_remembered("codex", &rem("claude", false, true), h.path());
+        assert!(!ns(&mut v).no_sandbox);
+        assert_eq!(
+            hint(&v),
+            "Remembered no sandbox is off: it was set for claude"
+        );
+    }
+
+    #[test]
+    fn a_kind_without_a_bypass_mode_drops_only_the_bypass() {
+        let h = tmp();
+        let mut v = open_remembered("codex", &rem("codex", true, true), h.path());
+        assert!(!ns(&mut v).bypass && ns(&mut v).no_sandbox);
+        assert_eq!(
+            hint(&v),
+            "Remembered bypass is off: this agent has no bypass mode"
+        );
+        let shown = draw(&v, 100, 30);
+        assert!(shown.contains("No sandbox is on, remembered from your last session"));
+        assert!(on_cells_in_alert(&v, NewField::NoSandbox));
+    }
+
+    #[test]
+    fn a_caller_lock_or_a_missing_gate_keeps_both_off_with_a_note() {
+        let h = tmp();
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.priv_gate = Some(test_gate);
+        v.privileged_lock = Some("agent session".into());
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        v.apply_remembered(&rem("claude", true, true));
+        assert!(!ns(&mut v).bypass && !ns(&mut v).no_sandbox);
+        assert_eq!(
+            hint(&v),
+            "Remembered bypass and no sandbox are off: locked: agent session"
+        );
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        v.apply_remembered(&rem("claude", true, false));
+        assert!(!ns(&mut v).bypass);
+        assert_eq!(hint(&v), "Remembered bypass is off: locked: unavailable");
+    }
+
+    #[test]
+    fn nothing_remembered_means_no_note() {
+        let h = tmp();
+        for r in [rem("", false, false), rem("gone", false, false)] {
+            let mut v = open_remembered("claude", &r, h.path());
+            assert_eq!(hint(&v), "");
+            assert!(!ns(&mut v).bypass && !ns(&mut v).no_sandbox);
+            assert!(!draw(&v, 100, 30).contains("emembered"));
+        }
+    }
+
+    #[test]
+    fn changing_the_kind_or_a_toggle_clears_the_flags_and_the_remembered_line() {
+        let h = tmp();
+        let line = "remembered from your last session";
+        let mut v = open_remembered("claude", &rem("claude", true, true), h.path());
+        ns(&mut v).focus = NewField::Kind;
+        v.edit_new_session(b"\x1b[C");
+        assert!(!ns(&mut v).bypass && !ns(&mut v).no_sandbox);
+        assert!(!draw(&v, 100, 30).contains(line));
+        v.edit_new_session(b"\x1b[D");
+        assert!(!draw(&v, 100, 30).contains(line));
+        flip(&mut v, NewField::Bypass);
+        assert!(!draw(&v, 100, 30).contains(line));
+
+        let mut v = open_remembered("claude", &rem("claude", true, true), h.path());
+        flip(&mut v, NewField::Bypass);
+        assert!(!ns(&mut v).bypass && ns(&mut v).no_sandbox);
+        assert!(!draw(&v, 100, 30).contains(line));
+        assert!(!on_cells_in_alert(&v, NewField::NoSandbox) || ns(&mut v).no_sandbox);
+
+        let mut v = open_remembered("claude", &rem("claude", true, true), h.path());
+        let row = row_of(&mut v, NewField::Kind);
+        click(&mut v, row.x + LABEL_W + 2, row.y);
+        assert!(!ns(&mut v).bypass && !draw(&v, 100, 30).contains(line));
+
+        let mut v = open_remembered("claude", &rem("claude", true, false), h.path());
+        let row = row_of(&mut v, NewField::Bypass);
+        click(&mut v, row.x + LABEL_W + 2, row.y);
+        assert!(!ns(&mut v).bypass && !draw(&v, 100, 30).contains(line));
+    }
+
+    #[test]
+    fn the_note_goes_away_with_the_next_edit() {
+        let h = tmp();
+        let mut v = open_remembered("codex", &rem("claude", true, false), h.path());
+        assert!(!hint(&v).is_empty());
+        flip(&mut v, NewField::Worktree);
+        assert_eq!(hint(&v), "");
+    }
+
+    #[test]
+    fn remembered_worktree_cards_and_rewind_are_applied_only_when_set() {
+        let h = tmp();
+        let r = Remembered {
+            worktree: Some(true),
+            permission_cards: Some(true),
+            checkpoints: Some(false),
+            ..Remembered::default()
+        };
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.priv_gate = Some(test_gate);
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        v.apply_remembered(&r);
+        assert!(ns(&mut v).worktree && ns(&mut v).permission_cards && !ns(&mut v).checkpoints);
+
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.worktree_default = true;
+        v.permission_cards_default = true;
+        v.cp.form_default = true;
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        v.apply_remembered(&Remembered::default());
+        assert!(ns(&mut v).worktree && ns(&mut v).permission_cards && ns(&mut v).checkpoints);
+        v.apply_remembered(&Remembered {
+            worktree: Some(false),
+            permission_cards: Some(false),
+            checkpoints: Some(false),
+            ..Remembered::default()
+        });
+        assert!(!ns(&mut v).worktree && !ns(&mut v).permission_cards && !ns(&mut v).checkpoints);
+    }
+
+    #[test]
+    fn a_hostile_agent_id_in_the_note_is_cleaned() {
+        let h = tmp();
+        let v = open_remembered("codex", &rem("cla\x1b[31mude\u{7}", true, false), h.path());
+        let note = hint(&v);
+        assert!(!note.chars().any(|c| c.is_control()), "{note:?}");
+        assert!(note.starts_with("Remembered bypass is off: it was set for"));
+        let shown = draw(&v, 100, 30);
+        assert!(!shown.contains('\x1b'));
+    }
+
+    #[test]
+    fn a_failed_start_reopens_with_the_flags_off_and_no_remembered_line() {
+        let h = tmp();
+        let v = open_remembered("claude", &rem("claude", true, true), h.path());
+        let mut saved = v.new_session.clone().unwrap();
+        saved.clear_privileges();
+        let mut v = v;
+        v.reopen_new_session(saved);
+        assert!(!ns(&mut v).bypass && !ns(&mut v).no_sandbox);
+        assert!(!draw(&v, 100, 30).contains("remembered from your last session"));
+    }
+
+    #[test]
+    fn ctrl_r_in_the_form_asks_to_resume_a_past_session_and_keeps_the_form() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        assert_eq!(v.edit_new_session(b"\x12"), NewEdit::ResumePast);
+        assert!(v.new_session.is_some());
+        let mut v = open("/", h.path());
+        ns(&mut v).focus = NewField::Name;
+        assert_eq!(v.edit_new_session(b"ab\x12"), NewEdit::ResumePast);
+        assert_eq!(ns(&mut v).name, "ab");
+    }
+
+    #[test]
+    fn ctrl_r_is_ignored_during_the_review_and_the_typed_prompt() {
+        let h = tmp();
+        let mut v = prompt_view(h.path(), 0, true);
+        assert_eq!(v.edit_new_session(b"\x12"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+        ready(&v);
+        assert_eq!(v.edit_new_session(b"\x12"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+        let mut v = open("/", h.path());
+        let dialog = ns(&mut v).clone();
+        v.review_new_session(dialog, vec!["x".into()]);
+        assert_eq!(v.edit_new_session(b"\x12"), NewEdit::Editing);
+    }
+
+    #[test]
+    fn the_form_footer_names_ctrl_r() {
+        let h = tmp();
+        let v = open("/", h.path());
+        let shown = draw(&v, 100, 30);
+        assert!(
+            shown.contains("Enter starts, Ctrl+R resumes a past session, Esc cancels"),
+            "{shown}"
+        );
+    }
+
+    fn past_draw(v: &ViewState, w: u16, h: u16) -> String {
+        let mut t = Terminal::new(TestBackend::new(w, h)).unwrap();
+        t.draw(|f| {
+            let area = f.area();
+            draw_past_prompt(f.buffer_mut(), area, v)
+        })
+        .unwrap();
+        let buf = t.backend().buffer().clone();
+        (0..h)
+            .map(|y| {
+                (0..w)
+                    .map(|x| buf[(x, y)].symbol().to_string())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn past_ask() -> PrivAsk {
+        test_gate(false, true).unwrap()
+    }
+
+    fn past_view(before: Vec<String>) -> ViewState {
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.open_past_prompt(TypedPrompt::new(before, past_ask()));
+        v
+    }
+
+    fn past_ready(v: &ViewState) {
+        if let Some(p) = &v.past_prompt {
+            p.seen
+                .set(Instant::now().checked_sub(Duration::from_secs(1)));
+        }
+    }
+
+    fn past_keys(v: &mut ViewState, text: &str) -> PastEdit {
+        past_ready(v);
+        let mut last = PastEdit::Editing;
+        for c in text.chars() {
+            let mut b = [0u8; 4];
+            last = v.edit_past_prompt(c.encode_utf8(&mut b).as_bytes());
+            if last != PastEdit::Editing {
+                return last;
+            }
+        }
+        last
+    }
+
+    #[test]
+    fn the_past_prompt_confirms_only_the_exact_word() {
+        let mut v = past_view(Vec::new());
+        assert_eq!(past_keys(&mut v, "no-sandbox\r"), PastEdit::Confirmed);
+        assert!(!v.past_prompt_open());
+        for typed in ["No-sandbox\r", "no-sandbox \r", "no-sandbo\r", "\r"] {
+            let mut v = past_view(Vec::new());
+            assert_eq!(past_keys(&mut v, typed), PastEdit::Mismatch, "{typed:?}");
+            assert!(!v.past_prompt_open());
+        }
+    }
+
+    #[test]
+    fn escape_cancels_the_past_prompt() {
+        let mut v = past_view(Vec::new());
+        assert_eq!(v.edit_past_prompt(b"\x1b"), PastEdit::Cancel);
+        assert!(!v.past_prompt_open());
+    }
+
+    #[test]
+    fn nothing_typed_before_the_past_prompt_was_shown_for_a_moment_counts() {
+        let mut v = past_view(Vec::new());
+        for c in "no-sandbox".chars() {
+            let mut b = [0u8; 4];
+            assert_eq!(
+                v.edit_past_prompt(c.encode_utf8(&mut b).as_bytes()),
+                PastEdit::Editing
+            );
+        }
+        assert_eq!(v.edit_past_prompt(b"\r"), PastEdit::Editing);
+        assert!(v.past_prompt_open());
+    }
+
+    #[test]
+    fn a_whole_word_in_one_chunk_never_confirms_the_past_prompt() {
+        for raw in ["no-sandbox\r", "\x1b[201~no-sandbox\r", "no-sandbox\n"] {
+            let mut v = past_view(Vec::new());
+            past_ready(&v);
+            assert_eq!(v.edit_past_prompt(raw.as_bytes()), PastEdit::Editing);
+            assert!(v.past_prompt_open());
+            assert_eq!(v.edit_past_prompt(b"\r"), PastEdit::Mismatch);
+        }
+    }
+
+    #[test]
+    fn a_batch_of_forwards_clears_the_past_prompt_line() {
+        let mut v = past_view(Vec::new());
+        past_keys(&mut v, "no-san");
+        assert!(!v.refuse_priv_batch(1));
+        assert!(v.refuse_priv_batch(2));
+        assert_eq!(past_keys(&mut v, "\r"), PastEdit::Mismatch);
+        let mut v = past_view(Vec::new());
+        past_keys(&mut v, "no-");
+        v.refuse_priv_batch(3);
+        assert!(past_draw(&v, 80, 20).contains("input was cleared"));
+    }
+
+    #[test]
+    fn the_past_prompt_shows_the_details_the_warnings_and_the_word_in_order() {
+        let before = vec![
+            "warning: it may still be running".to_string(),
+            "Resume this conversation?".to_string(),
+            "  folder   /work/\x1b[2Jx".to_string(),
+        ];
+        let v = past_view(before);
+        let shown = past_draw(&v, 100, 30);
+        assert!(!shown.contains('\x1b'));
+        let at = |needle: &str| {
+            shown
+                .find(needle)
+                .unwrap_or_else(|| panic!("{needle}\n{shown}"))
+        };
+        assert!(at("may still be running") < at("Resume this conversation?"));
+        assert!(at("Resume this conversation?") < at("/work/"));
+        assert!(at("/work/") < at("warning: no sandbox"));
+        assert!(at("warning: no sandbox") < at("Type no-sandbox"));
+        assert!(shown.contains("Esc cancels"));
+    }
+
+    #[test]
+    fn the_past_prompt_needs_room_and_its_cursor_follows_the_line() {
+        let mut v = past_view(vec!["Resume this conversation?".into()]);
+        assert!(v.past_prompt_fits(Rect::new(0, 0, 80, 30)));
+        assert!(!v.past_prompt_fits(Rect::new(0, 0, 30, 5)));
+        let area = Rect::new(0, 0, 80, 30);
+        let before = super::past_prompt_cursor(v.past_prompt.as_ref().unwrap(), area).unwrap();
+        past_keys(&mut v, "no");
+        let after = super::past_prompt_cursor(v.past_prompt.as_ref().unwrap(), area).unwrap();
+        assert_eq!(after.1, before.1);
+        assert_eq!(after.0, before.0 + 2);
+    }
+
+    #[test]
+    fn the_footer_names_the_field_keys() {
+        let h = tmp();
+        let v = open("/", h.path());
+        assert!(draw(&v, 120, 40).contains("Tab/Shift+Tab next/prev field"));
+        let narrow = draw(&v, 40, 40);
+        assert!(narrow.contains("Tab/Shift+Tab"), "{narrow}");
+        assert!(narrow.contains("prev field"), "{narrow}");
+    }
+
+    #[test]
+    fn the_footer_wraps_at_narrow_widths_and_the_dialog_height_follows() {
+        let h = tmp();
+        let v = open("/", h.path());
+        let ns = v.new_session.as_ref().unwrap();
+        let height = |w| new_session_rect(Rect::new(0, 0, w, 40), ns).height;
+        let wide = height(100);
+        assert!(draw(&v, 100, 40).contains("Ctrl+R resumes a past session, Esc cancels"));
+        assert_eq!(height(50), wide);
+        assert_eq!(height(40), wide + 1);
+        for w in [50, 40] {
+            let shown = draw(&v, w, 40);
+            assert!(shown.contains("Enter starts,"), "{w}\n{shown}");
+            assert!(shown.contains("cancels"), "{w}\n{shown}");
+        }
+    }
+
+    fn fake_browse(_: &Path) -> Vec<String> {
+        vec!["api".into(), ".cache".into(), "web".into()]
+    }
+
+    fn rec(path: &str, count: u32, live: bool) -> folder_pick::RecentDir {
+        folder_pick::RecentDir {
+            path: path.into(),
+            last_ms: 0,
+            count,
+            live,
+        }
+    }
+
+    fn at(h: &Path, name: &str) -> String {
+        h.join(name).to_string_lossy().into_owned()
+    }
+
+    fn picking(h: &Path) -> ViewState {
+        for n in ["alpha", "beta", "gamma"] {
+            std::fs::create_dir(h.join(n)).unwrap();
+        }
+        let mut v = open(&h.to_string_lossy(), h);
+        ns(&mut v).browse_dir = fake_browse;
+        v.set_new_folders(FolderData {
+            recents: vec![
+                rec(&at(h, "beta"), 5, false),
+                rec(&at(h, "alpha"), 1, false),
+                rec(&at(h, "gamma"), 1, false),
+            ],
+            pins: Vec::new(),
+        });
+        v.edit_new_session(b"\t");
+        v
+    }
+
+    fn picker_of(v: &ViewState) -> &Picker {
+        ns_of(v).picker.as_ref().unwrap()
+    }
+
+    fn picker_rows(v: &ViewState) -> Vec<folder_pick::PickRow> {
+        let n = ns_of(v);
+        picker_of(v).rows(n.folders.as_ref().unwrap(), 0)
+    }
+
+    #[test]
+    fn tab_in_the_live_picker_moves_to_the_next_field_and_keeps_the_folder() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        let only = h.path().join("only");
+        std::fs::create_dir(&only).unwrap();
+        for n in ["alpha", "beta", "gamma"] {
+            std::fs::remove_dir(h.path().join(n)).unwrap();
+        }
+        ns(&mut v).folder = format!("{}/", h.path().display());
+        assert!(ns_of(&v).picker_live());
+        let before = ns_of(&v).folder.clone();
+        v.edit_new_session(b"\t");
+        assert_ne!(ns_of(&v).focus, NewField::Folder);
+        assert_eq!(ns_of(&v).folder, before);
+        v.edit_new_session(b"\x1b[Z");
+        assert_eq!(ns_of(&v).focus, NewField::Folder);
+    }
+
+    #[test]
+    fn tab_into_the_folder_field_opens_the_picker_on_recent() {
+        let h = tmp();
+        let v = picking(h.path());
+        assert!(ns_of(&v).picker_live());
+        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Recent);
+        assert_eq!(ns_of(&v).focus, NewField::Folder);
+    }
+
+    #[test]
+    fn down_enter_starts_in_the_second_recent_folder() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        assert_eq!(v.edit_new_session(b"\x1b[B"), NewEdit::Editing);
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert_eq!(req.folder, at(h.path(), "alpha"));
+    }
+
+    #[test]
+    fn enter_without_moving_keeps_the_default_folder() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert_eq!(req.folder, h.path().to_string_lossy());
+    }
+
+    #[test]
+    fn typing_letters_searches_and_enter_starts_at_the_top_match() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        assert_eq!(v.edit_new_session(b"g"), NewEdit::Editing);
+        assert_eq!(v.edit_new_session(b"am"), NewEdit::Editing);
+        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Search);
+        assert_eq!(picker_of(&v).query, "gam");
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert_eq!(req.folder, at(h.path(), "gamma"));
+    }
+
+    #[test]
+    fn slash_enters_path_mode_where_tab_completes_and_esc_restores_the_folder() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        ns(&mut v).list_dir = fake_dirs;
+        let before = ns_of(&v).folder.clone();
+        v.edit_new_session(b"/");
+        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Path);
+        assert_eq!(ns_of(&v).folder, "/");
+        v.edit_new_session(b"r/b");
+        assert_eq!(ns_of(&v).folder, "/r/b");
+        v.edit_new_session(b"\t");
+        assert_eq!(ns_of(&v).folder, "/r/beta/");
+        assert_eq!(ns_of(&v).focus, NewField::Folder);
+        v.edit_new_session(b"\x1b");
+        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Recent);
+        assert_eq!(ns_of(&v).folder, before);
+    }
+
+    #[test]
+    fn esc_in_recent_cancels_the_dialog() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        assert_eq!(v.edit_new_session(b"\x1b"), NewEdit::Cancel);
+        assert!(v.new_session.is_none());
+    }
+
+    #[test]
+    fn right_browses_left_goes_up_and_dot_shows_hidden_entries() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        v.edit_new_session(b"\x1b[B");
+        v.edit_new_session(b"\x1b[C");
+        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Browse);
+        assert_eq!(picker_of(&v).dir, at(h.path(), "alpha"));
+        assert_eq!(picker_rows(&v).len(), 3);
+        v.edit_new_session(b".");
+        assert!(picker_of(&v).hidden);
+        assert_eq!(picker_rows(&v).len(), 4);
+        v.edit_new_session(b"\x1b[D");
+        assert_eq!(picker_of(&v).dir, h.path().to_string_lossy());
+    }
+
+    #[test]
+    fn down_at_the_bottom_moves_focus_to_the_next_field() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        v.edit_new_session(b"\x1b[B\x1b[B");
+        assert_eq!(ns_of(&v).focus, NewField::Folder);
+        v.edit_new_session(b"\x1b[B");
+        assert_eq!(ns_of(&v).focus, NewField::Task);
+        assert!(ns_of(&v).picker.is_none());
+    }
+
+    #[test]
+    fn ctrl_p_pins_the_highlighted_folder_and_returns_the_list() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        v.edit_new_session(b"\x1b[B");
+        let pins = vec![at(h.path(), "alpha")];
+        assert_eq!(v.edit_new_session(b"\x10"), NewEdit::Pins(pins.clone()));
+        assert_eq!(v.new_folders.as_ref().unwrap().pins, pins);
+        assert_eq!(picker_rows(&v)[0].path, pins[0]);
+        assert!(picker_rows(&v)[0].pinned);
+    }
+
+    #[test]
+    fn reopen_clears_the_picker_so_typing_edits_the_folder_text() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        let before = ns_of(&v).folder.clone();
+        let dialog = v.new_session.take().unwrap();
+        v.reopen_new_session(dialog);
+        assert!(ns_of(&v).picker.is_none());
+        v.edit_new_session(b"x");
+        assert_eq!(ns_of(&v).folder, format!("{before}x"));
+    }
+
+    #[test]
+    fn a_bypass_request_from_the_picker_still_asks_for_the_word() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        flip(&mut v, NewField::Bypass);
+        v.edit_new_session(&b"\x1b[Z".repeat(5));
+        assert_eq!(ns_of(&v).focus, NewField::Folder);
+        v.edit_new_session(b"\x1b[B");
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        assert!(ns(&mut v).priv_prompt_open());
+        let NewEdit::Submit(req) = keys(&mut v, "bypass\r") else {
+            panic!("expected submit");
+        };
+        assert!(req.bypass);
+        assert_eq!(req.folder, at(h.path(), "alpha"));
+    }
+
+    #[test]
+    fn paste_into_the_picker_searches_and_enter_starts_at_the_match() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        v.insert_new_session_text(b"gam");
+        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Search);
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected submit");
+        };
+        assert_eq!(req.folder, at(h.path(), "gamma"));
+    }
+
+    #[test]
+    fn browsing_requests_child_marks_and_set_folder_mark_renders_them() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        v.edit_new_session(b"\x1b[B\x1b[C");
+        assert_eq!(
+            v.take_folder_mark_requests(),
+            vec![
+                at(&h.path().join("alpha"), "api"),
+                at(&h.path().join("alpha"), "web")
+            ]
+        );
+        assert!(v.take_folder_mark_requests().is_empty());
+        v.set_folder_mark(
+            at(&h.path().join("alpha"), "api"),
+            Some(FolderMark {
+                branch: "feat/x".into(),
+                dirty: true,
+                merged: false,
+            }),
+        );
+        let shown = draw(&v, AREA.width, AREA.height);
+        assert!(shown.contains("git:feat/x ●dirty"), "{shown}");
+    }
+
+    fn picker_view(folder: &str) -> ViewState {
+        let mut v = open(folder, Path::new("/work/home"));
+        ns(&mut v).browse_dir = fake_browse;
+        v.set_new_folders(FolderData {
+            recents: vec![
+                rec("/work/app", 9, false),
+                rec("/work/app/web", 2, true),
+                rec("/work/home/notes", 2, false),
+                rec("/work/api", 3, false),
+            ],
+            pins: vec!["/work/infra".into()],
+        });
+        v.edit_new_session(b"\t");
+        v
+    }
+
+    #[test]
+    fn snapshot_picker_recent() {
+        let v = picker_view("/work/app");
+        snapshot(
+            "new_session_picker_recent",
+            &draw(&v, AREA.width, AREA.height),
+        );
+    }
+
+    #[test]
+    fn snapshot_picker_browse() {
+        let mut v = picker_view("/work/app");
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[C");
+        v.set_folder_mark(
+            "/work/app/api".into(),
+            Some(FolderMark {
+                branch: "feat/x".into(),
+                dirty: true,
+                merged: false,
+            }),
+        );
+        snapshot(
+            "new_session_picker_browse",
+            &draw(&v, AREA.width, AREA.height),
+        );
+    }
+
+    #[test]
+    fn snapshot_picker_search() {
+        let mut v = picker_view("/work/app");
+        v.edit_new_session(b"ap");
+        snapshot(
+            "new_session_picker_search",
+            &draw(&v, AREA.width, AREA.height),
+        );
     }
 }

@@ -1,0 +1,20 @@
+                                  
+╭ Confirm ───────────────────────╮
+│ warning: bypass mode: the      │
+│ agent runs every command and   │
+│ edit without asking.           │
+│ warning: no sandbox: the agent │
+│ runs with your real home       │
+│ folder, your SSH keys,         │
+│ credentials and environment,   │
+│ with no sandbox and no network │
+│ limits. Only the runner's      │
+│ control files are protected    │
+│ (macOS).                       │
+│                                │
+│ Type no-sandbox to continue:   │
+│ >                              │
+│ Enter confirms, Esc goes back  │
+╰────────────────────────────────╯
+                                  
+                                  

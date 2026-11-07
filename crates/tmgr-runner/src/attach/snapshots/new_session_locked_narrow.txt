@@ -1,0 +1,16 @@
+╭ New session ─────────────────────────╮
+│ > Kind       claude   codex   shell  │
+│   Folder    /                        │
+│   Task      optional, type a key or  │
+│   Name                               │
+│   Worktree   Off   On                │
+│   Approvals  Off   On                │
+│   Bypass     locked: no bypass mode  │
+│   No sandbox Off   On                │
+│   Where      New tab   Right         │
+│   Rewind     Off   On                │
+│             [ Start ]                │
+│                                      │
+│                                      │
+│                                      │
+╰──────────────────────────────────────╯

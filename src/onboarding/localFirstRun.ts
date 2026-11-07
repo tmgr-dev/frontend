@@ -10,11 +10,14 @@ export const LOCAL_FIRST_RUN_SEQUENCE = [
 	'desktop.quick-add',
 ];
 
+export const GHOST_FIRST_RUN_SEQUENCE = ['desktop.ghost-watch'];
+
 export const FRESH_MARKER_TTL_MS = 10 * 60 * 1000;
 
 export interface FreshMarker {
 	code: string;
 	at: string;
+	entry?: 'demo';
 }
 
 export interface MarkerStorage {
@@ -51,11 +54,16 @@ export function writeFreshMarker(
 	storage: MarkerStorage,
 	code: string,
 	at: Date,
+	entry?: 'demo',
 ): void {
 	try {
 		storage.setItem(
 			LOCAL_FRESH_KEY,
-			JSON.stringify({ code, at: at.toISOString() }),
+			JSON.stringify({
+				code,
+				at: at.toISOString(),
+				...(entry ? { entry } : {}),
+			}),
 		);
 	} catch {
 		/* storage unavailable: no first-run tours */
@@ -67,7 +75,11 @@ export function readFreshMarker(storage: MarkerStorage): FreshMarker | null {
 		const raw = storage.getItem(LOCAL_FRESH_KEY);
 		const value = raw ? JSON.parse(raw) : null;
 		if (value && typeof value.code === 'string' && typeof value.at === 'string')
-			return value;
+			return {
+				code: value.code,
+				at: value.at,
+				...(value.entry === 'demo' ? { entry: 'demo' as const } : {}),
+			};
 	} catch {
 		/* unreadable marker counts as none */
 	}
@@ -163,8 +175,12 @@ export async function runLocalFirstRun(
 	) {
 		return 'none';
 	}
+	const demoEntry = marker.entry === 'demo';
 	if (deps.state()?.intent === null) {
-		await deps.setIntent('human', { seed: true, workspace: marker.code });
+		await deps.setIntent('human', {
+			seed: !demoEntry,
+			workspace: marker.code,
+		});
 	}
 	if (deps.state()?.tips_mode !== 'auto') {
 		deps.clearMarker();
@@ -172,7 +188,10 @@ export async function runLocalFirstRun(
 	}
 	await deps.waitConsentClosed();
 	if (!deps.localOnly()) return 'none';
-	await deps.startSequence(LOCAL_FIRST_RUN_SEQUENCE, 'first_run');
+	await deps.startSequence(
+		demoEntry ? GHOST_FIRST_RUN_SEQUENCE : LOCAL_FIRST_RUN_SEQUENCE,
+		'first_run',
+	);
 	deps.clearMarker();
 	return 'started';
 }

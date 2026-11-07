@@ -1,7 +1,10 @@
+mod agent_connect;
 #[cfg(target_os = "macos")]
 mod app_menu;
 mod app_links;
 mod capture;
+#[cfg(unix)]
+mod decisions;
 mod downloads;
 mod embeds;
 mod idle;
@@ -11,27 +14,38 @@ mod local_db;
 mod local_export;
 mod local_files;
 mod local_move;
+#[doc(hidden)]
+pub mod local_identity;
 mod local_profile;
+mod local_watch;
+mod local_demo;
 mod local_workspaces;
 mod plugin_catalog;
 mod persona_cache;
-mod persona_llm;
+#[doc(hidden)]
+pub mod persona_llm;
 mod plugin_dev;
 mod plugin_files;
 mod plugin_market;
+mod plugin_images;
 mod plugin_net;
 mod plugin_notify;
+mod plugin_open_link;
 #[cfg(feature = "isolation-selftest")]
 mod plugin_selftest;
 mod plugin_tick;
 mod plugin_windows;
 mod quick_add;
 mod runner;
+mod skill_library;
+mod skill_scan;
 mod usage;
 mod page_windows;
 mod task_windows;
 mod tray;
 mod update_relaunch;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code, unused_imports))]
+mod widget_state;
 
 use std::path::{Path, PathBuf};
 
@@ -113,6 +127,7 @@ pub(crate) fn with_app_webview_handlers<'a, R: Runtime>(
     // Embed addresses are allowed for iframes, but the hook cannot tell frames apart. If the page itself
     // ever lands on one, bring the app back.
     .on_page_load(move |window, payload| {
+      persona_llm::on_page_load(window.label(), payload.event());
       if payload.event() == PageLoadEvent::Started && !is_app_url(payload.url()) {
         log::warn!("[nav] {} left the app for {}; returning", window.label(), payload.url().host_str().unwrap_or(""));
         let _ = window.navigate(home.clone());
@@ -198,6 +213,7 @@ pub fn run() {
     .manage(local_move::Moving::default())
     .manage(downloads::PendingDownloads::default())
     .manage(plugin_windows::PluginWindows::default())
+    .manage(skill_scan::PickedFolders::default())
     .register_uri_scheme_protocol(plugin_windows::SCHEME, |ctx, request| {
       plugin_windows::handle(ctx.app_handle(), ctx.webview_label(), request)
     })
@@ -234,9 +250,12 @@ pub fn run() {
       local_db::local_db_execute,
       local_db::local_db_backup,
       local_db::local_db_batch,
+      local_identity::local_identity_set,
+      local_identity::local_identity_clear,
       local_profile::local_profile_get,
       local_profile::local_profile_create,
       local_profile::local_profile_update,
+      local_profile::local_profile_link,
       local_backups::local_backup_now,
       local_backups::local_backup_list,
       local_backups::local_backup_status,
@@ -250,6 +269,8 @@ pub fn run() {
       local_move::local_move_put,
       local_move::local_move_archive,
       local_move::local_workspace_remove,
+      local_demo::local_workspace_create_demo,
+      local_demo::local_workspace_delete_demo,
       local_move::local_move_export_file,
       local_move::local_move_pick_export_target,
       local_move::local_move_accept_lost,
@@ -261,7 +282,9 @@ pub fn run() {
       plugin_dev::plugins_dev_reveal,
       plugin_dev::plugins_safe_mode,
       plugin_net::plugin_fetch,
+      plugin_images::plugin_image_fetch,
       plugin_notify::plugin_notify,
+      plugin_open_link::plugin_open_tg_link,
       plugin_catalog::plugin_catalog,
       plugin_catalog::plugin_catalog_refresh,
       plugin_market::plugin_github_release,
@@ -269,6 +292,13 @@ pub fn run() {
       plugin_market::plugins_installed_list,
       plugin_market::plugin_uninstall,
       plugin_files::plugin_pick_file,
+      skill_scan::skills_scan,
+      skill_scan::skills_pick_folder,
+      skill_library::skill_library_read,
+      skill_library::skill_library_write,
+      skill_library::skill_library_export,
+      skill_library::skill_library_import_pick,
+      skill_library::skill_library_migrate_local,
       plugin_windows::plugin_page_put,
       plugin_windows::plugin_window_open,
       plugin_windows::plugin_window_call,
@@ -279,11 +309,15 @@ pub fn run() {
       persona_cache::persona_cache_put,
       persona_cache::persona_cache_get,
       persona_cache::persona_cache_clear_for_user,
+      persona_cache::persona_cache_migrate_local,
       persona_llm::llm_config_set,
       persona_llm::llm_config_get,
       persona_llm::llm_chat,
       persona_llm::llm_cancel,
       persona_llm::persona_llm_clear_for_user,
+      persona_llm::persona_llm_migrate_local,
+      agent_connect::agents_detect,
+      agent_connect::agent_connect_run,
       local_access::local_token_issue,
       local_access::local_token_list,
       local_access::local_token_revoke,
@@ -315,10 +349,31 @@ pub fn run() {
       runner::commands::runner_term_resize,
       runner::commands::runner_term_scroll,
       runner::commands::runner_term_detach,
-      runner::commands::runner_term_open_link
+      runner::commands::runner_term_open_link,
+      #[cfg(unix)]
+      decisions::decisions_list,
+      #[cfg(unix)]
+      decisions::decisions_get,
+      #[cfg(unix)]
+      decisions::decisions_answer,
+      #[cfg(unix)]
+      decisions::decisions_message,
+      #[cfg(unix)]
+      decisions::decisions_diff,
+      #[cfg(unix)]
+      decisions::decisions_open_link
     ])
     .on_window_event(|window, event| {
       runner::commands::on_window_event(window, event);
+      persona_llm::on_window_event(window.label(), event);
+      #[cfg(unix)]
+      if window.label() == decisions::LABEL {
+        match event {
+          WindowEvent::CloseRequested { .. } => log::info!("[decisions] window close requested"),
+          WindowEvent::Destroyed => log::info!("[decisions] window destroyed"),
+          _ => {}
+        }
+      }
       if let WindowEvent::Focused(false) = event {
         if window.label() == quick_add::LABEL {
           let _ = window.hide();
@@ -398,9 +453,14 @@ pub fn run() {
       idle::start(app.handle());
       local_backups::start(app.handle());
       plugin_tick::start(app.handle());
+      local_watch::start(app.handle());
       runner::commands::setup(app.handle());
       if let Err(error) = local_access::setup(app.handle()) {
         log::error!("[local-access] failed to start: {error}");
+      }
+      #[cfg(unix)]
+      if let Err(error) = decisions::setup(app.handle()) {
+        log::error!("[decisions] failed to start: {error}");
       }
       Ok(())
     })

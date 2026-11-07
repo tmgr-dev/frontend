@@ -31,7 +31,15 @@ fn run() -> i32 {
     if let Some(code) = cmd::runner::internal_entry() {
         return code;
     }
-    let cli = match Cli::try_parse() {
+    #[cfg(feature = "runner")]
+    let parsed = match cmd::runner::menu::entry() {
+        cmd::runner::menu::Entry::Skip => Cli::try_parse(),
+        cmd::runner::menu::Entry::Argv(argv) => Cli::try_parse_from(argv),
+        cmd::runner::menu::Entry::Exit(code) => return code,
+    };
+    #[cfg(not(feature = "runner"))]
+    let parsed = Cli::try_parse();
+    let cli = match parsed {
         Ok(cli) => cli,
         Err(e) => return usage_exit(e),
     };
@@ -72,6 +80,9 @@ fn standalone(cli: &Cli) -> Option<i32> {
             command: HookCmd::Claude { event, .. },
         }) => Some(cmd::hook::claude(event, cli.server.clone())),
         Some(Command::Hook {
+            command: HookCmd::Decisions { event, .. },
+        }) => Some(cmd::hook::decisions(event)),
+        Some(Command::Hook {
             command: HookCmd::Codex { args },
         }) => Some(cmd::hook::codex(args, cli.server.clone())),
         Some(Command::Usage(UsageArgs {
@@ -87,7 +98,10 @@ fn standalone(cli: &Cli) -> Option<i32> {
 fn is_agent_hook_invocation() -> bool {
     let mut args = std::env::args().skip(1).filter(|a| !a.starts_with('-'));
     match args.next().as_deref() {
-        Some("hook") => matches!(args.next().as_deref(), Some("claude" | "codex")),
+        Some("hook") => matches!(
+            args.next().as_deref(),
+            Some("claude" | "codex" | "decisions")
+        ),
         Some("usage") => args.next().as_deref() == Some("statusline-hook"),
         _ => false,
     }
@@ -150,10 +164,11 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         Some(Command::Hook { command }) => match command {
             HookCmd::Install(a) => cmd::hookinstall::run(ctx, a, false),
             HookCmd::Uninstall(a) => cmd::hookinstall::run(ctx, a, true),
-            HookCmd::Claude { .. } | HookCmd::Codex { .. } => {
+            HookCmd::Claude { .. } | HookCmd::Codex { .. } | HookCmd::Decisions { .. } => {
                 Err(Error::internal("handled before the session starts"))
             }
         },
+        Some(Command::Ask(args)) => cmd::ask::run(ctx, args),
         Some(Command::Notify(args)) => cmd::notify::notify(ctx, args),
         Some(Command::Alarm(args)) => cmd::notify::alarm(ctx, args),
         #[cfg(feature = "runner")]
@@ -162,6 +177,8 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         Some(Command::Time(args)) => cmd::time::run(ctx, args),
         #[cfg(feature = "runner")]
         Some(Command::Questions(args)) => cmd::questions::run(ctx, args),
+        #[cfg(feature = "runner")]
+        Some(Command::Checkpoints(args)) => cmd::runner::checkpoints::run(ctx, args),
         Some(Command::Mcp) => Err(Error::internal("handled before the session starts")),
         Some(Command::Worker(_)) => Err(Error::internal("handled before the session starts")),
         Some(Command::Link { command }) => cmd::link::run(ctx, command),
@@ -175,12 +192,16 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         Some(Command::Log(args)) => cmd::log::run(ctx, args),
         Some(Command::Today(args)) => cmd::today::run(ctx, args),
         Some(Command::Routine { command }) => cmd::routine::run(ctx, command),
+        Some(Command::Skills { command }) => cmd::skills::run(ctx, command),
         Some(Command::Note(args)) => cmd::note::run(ctx, args),
         Some(Command::Page { command }) => cmd::page::run(ctx, command),
         Some(Command::Board(args)) => cmd::board::run(ctx, args),
         Some(Command::Ui) => Err(Error::internal("handled before the session starts")),
         Some(Command::Usage(args)) => cmd::usage::run(ctx, args),
         Some(Command::SelfUpdate(args)) => cmd::self_update::run(ctx, args),
+        Some(Command::Setup { command }) => match command {
+            cli::SetupCommand::Terminal(args) => cmd::setup_terminal::run(ctx, args),
+        },
         Some(Command::Refs) => Ok(Output::new(
             json!({"help": "refs"}),
             cli::REFS_HELP.to_string(),

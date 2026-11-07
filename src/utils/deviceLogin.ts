@@ -14,6 +14,9 @@ export const SCOPE_DESCRIPTIONS: Record<string, string> = {
 	'pages:append': 'Append to Pages',
 	'notify:send': 'Send notifications and phone alarms to your devices',
 	'agent-approvals:write': "Sign agent-run approvals with this computer's key",
+	'skills:read': 'Read your shared skills and which personas use them',
+	'skills:write':
+		'Create, change and delete your shared skills and attach them to your personas (changes what those agents are told to do)',
 };
 
 export const describeScope = (scope: string): string =>

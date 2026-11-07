@@ -8,6 +8,8 @@ use crate::folders;
 use crate::humantime;
 use crate::login;
 use crate::orchestrator;
+use crate::permit::{self, spool, Eval};
+use crate::permit_hook;
 use crate::profile::{self, Matcher, Profile, ProfileSet};
 use crate::restore;
 use crate::resume;
@@ -35,16 +37,17 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
     limits, method, AutopilotCommand, AutopilotControlParams, AutopilotControlled, AutopilotLog,
     AutopilotLogParams, AutopilotStartParams, AutopilotStarted, CreateReq, CwdPin, ErrorCode,
     EventMsg, ExePin, ForkParams, LookupParams, OrchestratorCreateReq, Origin, OriginRevokeParams,
-    OriginRevoked, PathParams, RestoredRun, ResumeParams, RunCreateReq, RunStatus, SessionInfo,
-    SessionText, Snapshot, State, StateKind, StatusInfo, TaskRef, TextParams, TrustRemoved,
-    CLIENT_CLI, CLIENT_DESKTOP, CLIENT_WORKER,
+    OriginRevoked, PathParams, PermissionAnswer, PermissionCard, PermissionChoice, RestoredRun,
+    ResumeParams, RunCreateReq, RunStatus, SessionInfo, SessionText, Snapshot, State, StateKind,
+    StatusInfo, TaskRef, TeamLink, TeamRole, TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP,
+    CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -52,16 +55,23 @@ use tmgr_ipc::frame::{
     read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT, TAG_REPLAY,
 };
 use tmgr_ipc::proto::{
-    new_session_id, valid_session_id, ClientMsg, ErrorBody, ExitInfo, FromShim, Request, Response,
-    ServerMsg, ShimHello, ToShim, PROTO_VERSION,
+    new_session_id, valid_session_id, ClientMsg, ErrorBody, ExitInfo, FromShim, InputCredit,
+    Request, Response, ServerMsg, ShimHello, ToShim, PROTO_VERSION,
 };
 use tmgr_ipc::{auth, secret, server};
+
+mod checkpoints;
 
 const MAX_CONNS: usize = 64;
 const SHIM_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const SHIM_QUEUE: usize = 1024;
 const SHIM_INPUT_CAP: usize = 1 << 20;
 const SHIM_INPUT_FRAMES: usize = 512;
+const SHIM_CREDIT_FRAMES: u64 = 1024;
+const SHIM_LINK_SILENT: Duration = Duration::from_secs(5);
+const ATTACH_INPUT_WAIT: Duration = Duration::from_secs(2);
+// A note typed into the agent only shows on screen after its next redraw; wait that long before the next one.
+const SEND_SETTLE: Duration = Duration::from_secs(5);
 const MAX_REPLIES_PER_SEC: u32 = 32;
 const MAX_PENDING: usize = 16;
 const REJECT_LOG_EVERY: Duration = Duration::from_secs(10);
@@ -83,6 +93,124 @@ const PROTECTED_IN_HOME: [&str; 10] = [
     "Library/Application Support/Google/Chrome",
     "Library/Application Support/Firefox",
 ];
+
+const MAX_CLIENT_CONFIG_DIRS: usize = 16;
+
+fn client_config_dir(raw: &str, forbidden: &[PathBuf]) -> Result<PathBuf, &'static str> {
+    use std::path::Component;
+    if raw.chars().any(char::is_control) {
+        return Err("contains a control character");
+    }
+    let dir = PathBuf::from(raw);
+    if !dir.is_absolute() {
+        return Err("is not absolute");
+    }
+    if raw.split('/').any(|s| s == "." || s == "..")
+        || !dir
+            .components()
+            .all(|c| matches!(c, Component::RootDir | Component::Normal(_)))
+    {
+        return Err("contains . or .. components");
+    }
+    if dir.file_name() != Some(std::ffi::OsStr::new("tmgr")) {
+        return Err("is not named tmgr");
+    }
+    let mut forms = sandbox::protected_forms(&dir);
+    forms.extend(login::path_chain(&dir).map_err(|_| "cannot be resolved")?);
+    if forbidden
+        .iter()
+        .any(|f| forms.iter().any(|d| f.starts_with(d)))
+    {
+        return Err("contains the home, runner or session directories");
+    }
+    Ok(dir)
+}
+
+const CLIENT_CONFIG_DIRS_FILE: &str = "client-config-dirs.json";
+
+fn add_client_config_dir(dirs: &mut Vec<PathBuf>, d: PathBuf) -> Result<bool, &'static str> {
+    if dirs.contains(&d) {
+        return Ok(false);
+    }
+    if dirs.len() >= MAX_CLIENT_CONFIG_DIRS {
+        return Err("exceeds the limit of reported directories");
+    }
+    dirs.push(d);
+    Ok(true)
+}
+
+fn config_dir_forbidden(cfg: &RunnerConfig) -> Vec<PathBuf> {
+    let canon = |p: &Path| sandbox::canon_lossy(p);
+    let mut forbidden = vec![
+        cfg.dir.clone(),
+        canon(&cfg.dir),
+        cfg.homes.clone(),
+        canon(&cfg.homes),
+    ];
+    if let Some(h) = std::env::var_os("HOME").map(PathBuf::from) {
+        forbidden.push(canon(&h));
+        forbidden.push(h);
+    }
+    forbidden
+}
+
+fn client_deny_paths(dirs: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    let mut out = Vec::new();
+    for d in dirs {
+        let chain = login::path_chain(d).map_err(|e| format!("{}: {e}", d.display()))?;
+        for p in chain.into_iter().chain(sandbox::protected_forms(d)) {
+            if !out.contains(&p) {
+                out.push(p);
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn load_client_config_dirs(dir: &Path, forbidden: &[PathBuf]) -> Vec<PathBuf> {
+    let path = dir.join(CLIENT_CONFIG_DIRS_FILE);
+    let bytes = match fs::read(&path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Vec::new(),
+        Err(e) => {
+            log(&format!(
+                "client config dirs: cannot read {CLIENT_CONFIG_DIRS_FILE}: {e}"
+            ));
+            return Vec::new();
+        }
+    };
+    let Ok(raw) = serde_json::from_slice::<Vec<String>>(&bytes) else {
+        log(&format!(
+            "client config dirs: {CLIENT_CONFIG_DIRS_FILE} is damaged, starting empty"
+        ));
+        return Vec::new();
+    };
+    let mut dirs = Vec::new();
+    for r in raw {
+        let verdict =
+            client_config_dir(&r, forbidden).and_then(|d| add_client_config_dir(&mut dirs, d));
+        if let Err(why) = verdict {
+            log(&format!(
+                "client config dirs: skipped a saved entry: it {why}"
+            ));
+        }
+    }
+    dirs
+}
+
+fn save_client_config_dirs(dir: &Path, dirs: &[PathBuf]) -> io::Result<()> {
+    let names: Vec<&str> = dirs.iter().filter_map(|d| d.to_str()).collect();
+    let mut tmp = tempfile::Builder::new()
+        .prefix(".client-config-dirs")
+        .tempfile_in(dir)?;
+    io::Write::write_all(
+        &mut tmp,
+        &serde_json::to_vec(&names).map_err(io::Error::other)?,
+    )?;
+    tmp.persist(dir.join(CLIENT_CONFIG_DIRS_FILE))
+        .map_err(|e| e.error)?;
+    Ok(())
+}
 
 fn profile_protected_paths() -> Result<Vec<PathBuf>, ApiErr> {
     let dir = profile::user_dir();
@@ -282,6 +410,16 @@ struct Meta {
     env_pass: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     boot: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    no_sandbox: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checkpoints: Option<u32>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    permission_cards: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    team: Option<TeamLink>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    agent_session_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -307,6 +445,10 @@ struct RunExtra {
     run_id_env: bool,
     resume_of: Option<ResumeSeed>,
     fork: Option<ForkSeed>,
+    no_sandbox: Option<std::collections::BTreeMap<String, String>>,
+    permission_cards: bool,
+    team: Option<TeamLink>,
+    agent_session_id: Option<String>,
 }
 
 #[derive(Clone)]
@@ -325,6 +467,7 @@ struct ResumeCtx {
 struct ForkSeed {
     from_home: PathBuf,
     rel: PathBuf,
+    codex: bool,
 }
 
 struct Resuming<'a>(&'a AtomicBool);
@@ -350,22 +493,84 @@ struct Inner {
     matcher: Option<Matcher>,
     fixed: Option<State>,
     size_owner: Option<u64>,
+    input_sent_at: Option<Instant>,
+}
+
+#[derive(Default)]
+struct InputBook {
+    sent_bytes: u64,
+    sent_frames: u64,
+    last: InputCredit,
+    stalled: bool,
+    heard: Option<Instant>,
+}
+
+impl InputBook {
+    // A shim that failed a write stops reporting but keeps delivering input.
+    fn link_silent(&self) -> bool {
+        self.heard.is_some_and(|h| h.elapsed() > SHIM_LINK_SILENT)
+    }
+
+    fn outstanding(&self) -> (u64, u64) {
+        (
+            self.sent_bytes.saturating_sub(self.last.received_bytes) + self.last.queued_bytes,
+            self.sent_frames.saturating_sub(self.last.received_frames) + self.last.queued_frames,
+        )
+    }
+
+    fn has_room(&self, len: usize) -> bool {
+        let (bytes, frames) = self.outstanding();
+        bytes + len as u64 <= SHIM_INPUT_CAP as u64 && frames < SHIM_CREDIT_FRAMES
+    }
+}
+
+type Book = Arc<(Mutex<InputBook>, Condvar)>;
+
+fn input_room(
+    queued_bytes: &AtomicUsize,
+    queued_frames: &AtomicUsize,
+    book: Option<&InputBook>,
+    len: usize,
+) -> bool {
+    let frames = queued_frames.load(Ordering::SeqCst);
+    match book {
+        Some(b) if !b.link_silent() => b.has_room(len) && frames < SHIM_INPUT_FRAMES,
+        _ => {
+            queued_bytes.load(Ordering::SeqCst) + len <= SHIM_INPUT_CAP
+                && frames < SHIM_INPUT_FRAMES
+        }
+    }
+}
+
+fn input_left_link(
+    queued_bytes: &AtomicUsize,
+    queued_frames: &AtomicUsize,
+    credit: Option<&Book>,
+    len: usize,
+) {
+    queued_bytes.fetch_sub(len, Ordering::SeqCst);
+    queued_frames.fetch_sub(1, Ordering::SeqCst);
+    if let Some(book) = credit {
+        let _held = lock(&book.0);
+        book.1.notify_all();
+    }
 }
 
 struct ShimLink {
     tx: SyncSender<Frame>,
     queued_bytes: Arc<AtomicUsize>,
     queued_frames: Arc<AtomicUsize>,
+    credit: Option<Book>,
 }
 
 impl ShimLink {
-    fn spawn(stream: &UnixStream) -> io::Result<ShimLink> {
+    fn spawn(stream: &UnixStream, credit: Option<Book>) -> io::Result<ShimLink> {
         let mut out = stream.try_clone()?;
         out.set_write_timeout(Some(SHIM_WRITE_TIMEOUT))?;
         let (tx, rx) = mpsc::sync_channel::<Frame>(SHIM_QUEUE);
         let queued_bytes = Arc::new(AtomicUsize::new(0));
         let queued_frames = Arc::new(AtomicUsize::new(0));
-        let (b, f) = (queued_bytes.clone(), queued_frames.clone());
+        let (b, f, book) = (queued_bytes.clone(), queued_frames.clone(), credit.clone());
         thread::spawn(move || {
             while let Ok(frame) = rx.recv() {
                 let input_len = match &frame {
@@ -374,8 +579,7 @@ impl ShimLink {
                 };
                 let res = write_frame(&mut out, &frame);
                 if let Some(n) = input_len {
-                    b.fetch_sub(n, Ordering::SeqCst);
-                    f.fetch_sub(1, Ordering::SeqCst);
+                    input_left_link(&b, &f, book.as_ref(), n);
                 }
                 if res.is_err() {
                     let _ = out.shutdown(std::net::Shutdown::Both);
@@ -387,9 +591,21 @@ impl ShimLink {
             tx,
             queued_bytes,
             queued_frames,
+            credit,
         })
     }
 }
+
+#[derive(Default)]
+struct Cards {
+    first_seen: Option<(String, Instant)>,
+    answered: Option<String>,
+    consumed: Option<(u64, u64)>,
+    last_hook: Option<permit::HookEvent>,
+}
+
+const CARD_ARM: Duration = Duration::from_millis(300);
+const STAT_FRESH: Duration = Duration::from_secs(1);
 
 struct ReplyBudget {
     window: Instant,
@@ -420,6 +636,11 @@ struct Session {
     halted: AtomicBool,
     foreign_input: AtomicBool,
     resuming: AtomicBool,
+    cp: checkpoints::Cp,
+    home: PathBuf,
+    fg: Mutex<Option<(i32, Instant)>>,
+    cards: Mutex<Cards>,
+    team_stop: Mutex<Option<(Instant, Instant)>>,
 }
 
 fn write_meta(dir: &Path, meta: &Meta) {
@@ -488,6 +709,10 @@ impl Session {
         }
     }
 
+    fn team(&self) -> Option<TeamLink> {
+        lock(&self.inner).meta.team.clone()
+    }
+
     fn state(&self) -> State {
         let i = lock(&self.inner);
         self.effective(&i)
@@ -497,6 +722,8 @@ impl Session {
         let i = lock(&self.inner);
         let m = &i.meta;
         SessionInfo {
+            team: m.team.clone(),
+            agent_session_id: m.agent_session_id.clone(),
             id: m.id.clone(),
             name: m.name.clone(),
             argv: m.argv.clone(),
@@ -514,6 +741,9 @@ impl Session {
             permission_mode: m.permission_mode.clone(),
             resumed_from: m.resumed_from.clone(),
             human_s: None,
+            no_sandbox: m.no_sandbox,
+            checkpoints: self.cp_info(&i),
+            permission_cards: m.permission_cards,
         }
     }
 
@@ -540,13 +770,15 @@ impl Session {
 
     fn text(&self, lines: Option<u32>) -> SessionText {
         let mut i = lock(&self.inner);
-        let (rows, cols, scroll_max, mut lines) = i.screen.text_lines(lines.map(|n| n as usize));
-        cap_text(&mut lines, MAX_TEXT_BYTES);
+        let (rows, cols, scroll_max, mut lines, mut wrapped) =
+            i.screen.text_lines(lines.map(|n| n as usize));
+        cap_text(&mut lines, &mut wrapped, MAX_TEXT_BYTES);
         SessionText {
             id: i.meta.id.clone(),
             rows,
             cols,
             lines,
+            wrapped,
             scroll_max,
         }
     }
@@ -607,6 +839,7 @@ impl Session {
             (i.meta.task, i.meta.origin.clone())
         };
         self.persist();
+        self.cp_note(&states);
         for state in states {
             self.hub.broadcast(to_json(&EventMsg {
                 session: self.id.clone(),
@@ -655,9 +888,13 @@ impl Session {
         }
         let g = lock(&self.shim);
         let Some(link) = g.as_ref() else { return false };
-        if link.queued_bytes.load(Ordering::SeqCst) + bytes.len() > SHIM_INPUT_CAP
-            || link.queued_frames.load(Ordering::SeqCst) >= SHIM_INPUT_FRAMES
-        {
+        let mut book = link.credit.as_ref().map(|c| lock(&c.0));
+        if !input_room(
+            &link.queued_bytes,
+            &link.queued_frames,
+            book.as_deref(),
+            bytes.len(),
+        ) {
             return false;
         }
         link.queued_bytes.fetch_add(bytes.len(), Ordering::SeqCst);
@@ -672,7 +909,39 @@ impl Session {
             link.queued_frames.fetch_sub(1, Ordering::SeqCst);
             return false;
         }
+        if let Some(b) = &mut book {
+            b.sent_bytes += bytes.len() as u64;
+            b.sent_frames += 1;
+        }
         true
+    }
+
+    fn wait_input_room(&self, len: usize) {
+        let Some((book, queued_bytes, queued_frames)) = lock(&self.shim).as_ref().and_then(|l| {
+            l.credit
+                .clone()
+                .map(|c| (c, l.queued_bytes.clone(), l.queued_frames.clone()))
+        }) else {
+            return;
+        };
+        let deadline = Instant::now() + ATTACH_INPUT_WAIT;
+        let mut b = lock(&book.0);
+        while !b.stalled && !input_room(&queued_bytes, &queued_frames, Some(&b), len) {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                b.stalled = !b.link_silent() && !b.has_room(len);
+                log(&format!(
+                    "session {} input is stalled; dropping attach input",
+                    self.id
+                ));
+                return;
+            }
+            b = book
+                .1
+                .wait_timeout(b, left)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
+        }
     }
 
     fn reply_allowed(&self) -> bool {
@@ -723,8 +992,192 @@ impl Session {
         }
     }
 
+    fn card_agent(&self) -> Option<permit::Agent> {
+        let i = lock(&self.inner);
+        i.meta
+            .profile
+            .as_deref()
+            .and_then(permit::agent_of)
+            .filter(|_| i.meta.permission_cards)
+    }
+
+    fn newest_hook(&self, consumed: Option<(u64, u64)>) -> Option<permit::HookEvent> {
+        let ev = spool::newest(&self.home, &self.id)?;
+        let key = spool::order(&ev.id)?;
+        consumed.is_none_or(|c| key > c).then_some(ev)
+    }
+
+    fn foreground_is_agent(&self) -> bool {
+        let child = lock(&self.inner).meta.child_pid;
+        lock(&self.fg).is_some_and(|(pg, at)| {
+            at.elapsed() <= STAT_FRESH && u32::try_from(pg).is_ok_and(|p| p == child)
+        })
+    }
+
+    fn card(&self) -> Option<PermissionCard> {
+        let agent = self.card_agent()?;
+        let mut c = lock(&self.cards);
+        let hook = self
+            .newest_hook(c.consumed)
+            .or_else(|| c.answered.is_some().then(|| c.last_hook.clone()).flatten());
+        let (rows, cwd) = {
+            let mut i = lock(&self.inner);
+            (i.screen.text_lines(None).3, i.meta.cwd.clone())
+        };
+        let fg = self.foreground_is_agent();
+        let base = PermissionCard {
+            session: self.id.clone(),
+            agent: agent.name().into(),
+            ..PermissionCard::default()
+        };
+        let Some(ev) = Eval::new(&self.id, &cwd, agent, &rows, hook) else {
+            c.first_seen = None;
+            c.answered = None;
+            let state = self.state();
+            let detail = state.detail.filter(|d| {
+                state.kind == StateKind::Blocked && !d.to_lowercase().contains("trust this folder")
+            })?;
+            return Some(PermissionCard {
+                id: permit::digest(&[&self.id, &detail]),
+                text: permit::clean_text(&detail),
+                why_not: Some("open the pane to answer".into()),
+                ..base
+            });
+        };
+        if c.first_seen.as_ref().is_none_or(|(id, _)| *id != ev.id) {
+            c.first_seen = Some((ev.id.clone(), Instant::now()));
+        }
+        let waited = c
+            .first_seen
+            .as_ref()
+            .map_or(Duration::ZERO, |(_, t)| t.elapsed());
+        let why_not = if c.answered.as_deref() == Some(&ev.id) {
+            Some("answered".to_string())
+        } else if let permit::Verdict::ViewOnly(why) = ev.verdict {
+            Some(why.to_string())
+        } else if !fg {
+            Some("another process is in the foreground".to_string())
+        } else {
+            None
+        };
+        Some(PermissionCard {
+            id: ev.id.clone(),
+            tool: ev.tool(),
+            text: ev.text(),
+            path: ev.path(),
+            reason: ev.reason(),
+            danger: ev.danger.iter().map(|d| d.to_string()).collect(),
+            can_answer: why_not.is_none(),
+            why_not,
+            always_label: ev.always_label(),
+            armed_in_ms: CARD_ARM.saturating_sub(waited).as_millis() as u64,
+            ..base
+        })
+    }
+
+    fn answer_card(&self, client: &str, a: &PermissionAnswer) -> Result<(), ApiErr> {
+        let agent = self
+            .card_agent()
+            .ok_or_else(|| refused("permission cards are off for this session"))?;
+        let mut c = lock(&self.cards);
+        if c.answered.as_deref() == Some(&a.card) {
+            return Err(refused("this prompt was already answered"));
+        }
+        let hook = self.newest_hook(c.consumed);
+        let (rows, cwd) = {
+            let mut i = lock(&self.inner);
+            (i.screen.text_lines(None).3, i.meta.cwd.clone())
+        };
+        let ev = Eval::new(&self.id, &cwd, agent, &rows, hook)
+            .ok_or_else(|| refused("the prompt is no longer on screen"))?;
+        if ev.id != a.card {
+            return Err(refused("the prompt changed since the card was shown"));
+        }
+        if let permit::Verdict::ViewOnly(why) = ev.verdict {
+            return Err(refused(why));
+        }
+        if !self.foreground_is_agent() {
+            return Err(refused("another process is in the foreground"));
+        }
+        let first = match &c.first_seen {
+            Some((id, t)) if *id == ev.id => *t,
+            _ => {
+                c.first_seen = Some((ev.id.clone(), Instant::now()));
+                return Err(refused("the card was just shown; try again"));
+            }
+        };
+        if first.elapsed() < CARD_ARM {
+            return Err(refused("the card was just shown; try again"));
+        }
+        let choice = match a.choice {
+            PermissionChoice::Yes => permit::Choice::Yes,
+            PermissionChoice::Always => permit::Choice::Always,
+            PermissionChoice::No => permit::Choice::No,
+        };
+        let key = ev.key(choice, a.confirmed).map_err(refused)?;
+        c.answered = Some(ev.id.clone());
+        if let Some(h) = &ev.hook {
+            c.consumed = spool::order(&h.id);
+            c.last_hook = Some(h.clone());
+            spool::remove(&self.home, &self.id, &h.id);
+        }
+        self.note_input_from(client);
+        if self.input(&key) {
+            Ok(())
+        } else {
+            Err(api(
+                ErrorCode::Busy,
+                "input queue full; the agent is not reading its input",
+            ))
+        }
+    }
+
+    fn input_at_prompt(&self, bytes: &[u8], now: Instant) -> Result<(), ApiErr> {
+        {
+            let mut i = lock(&self.inner);
+            let bottom = i.screen.bottom_text(10);
+            let rows = i.screen.text_lines(None).3;
+            let agent = i.meta.profile.as_deref().and_then(permit::agent_of);
+            let idle_queue = lock(&self.shim).as_ref().is_some_and(|l| {
+                let book = l.credit.as_ref().map(|c| lock(&c.0));
+                match &book {
+                    Some(b) if !b.link_silent() => b.outstanding().1 == 0,
+                    _ => l.queued_frames.load(Ordering::SeqCst) == 0,
+                }
+            });
+            if self.effective(&i).kind == StateKind::Blocked
+                || !prompt_ready(i.matcher.as_ref(), agent, &bottom, &rows)
+                || i.input_sent_at
+                    .is_some_and(|at| now.saturating_duration_since(at) < SEND_SETTLE)
+                || !idle_queue
+            {
+                return Err(api(ErrorCode::Busy, "the agent is not at its prompt"));
+            }
+            if self.input_dropped.swap(false, Ordering::SeqCst) || !self.shim_input(bytes) {
+                return Err(api(
+                    ErrorCode::Busy,
+                    "input queue full; the agent is not reading its input",
+                ));
+            }
+            if !bytes.is_empty() {
+                i.input_sent_at = Some(now);
+            }
+        }
+        if !bytes.is_empty() {
+            self.change(|i, now, out| out.extend(i.det.on_input(now)));
+        }
+        Ok(())
+    }
+
     fn input(&self, bytes: &[u8]) -> bool {
-        let accepted = self.shim_input(bytes);
+        let accepted = {
+            let mut i = lock(&self.inner);
+            let ok = self.shim_input(bytes);
+            if ok && !bytes.is_empty() {
+                i.input_sent_at = Some(Instant::now());
+            }
+            ok
+        };
         if accepted && !bytes.is_empty() {
             self.change(|i, now, out| out.extend(i.det.on_input(now)));
         }
@@ -829,6 +1282,7 @@ impl Session {
 
     fn tick(self: &Arc<Self>) {
         self.change(|i, now, out| out.extend(i.det.tick(now)));
+        self.cp_tick();
         self.agent_work();
     }
 
@@ -837,13 +1291,14 @@ impl Session {
         let Some(intent) = pending.as_ref() else {
             return;
         };
-        match agentwork::begin(
+        match agentwork::begin_as(
             &self.dir,
             intent.task,
             &intent.agent,
             intent.model.as_deref(),
             &self.id,
-            intent.hold_success,
+            (intent.hold_success, intent.audit.clone()),
+            intent.role.clone(),
         ) {
             Ok(()) => *pending = None,
             Err(e) => {
@@ -951,7 +1406,17 @@ impl Session {
     }
 
     fn attach_shim(self: &Arc<Self>, stream: UnixStream, hello: ShimHello, fresh: bool) {
-        if let Ok(link) = ShimLink::spawn(&stream) {
+        let book: Option<Book> = hello.input.map(|last| {
+            Arc::new((
+                Mutex::new(InputBook {
+                    last,
+                    heard: Some(Instant::now()),
+                    ..InputBook::default()
+                }),
+                Condvar::new(),
+            ))
+        });
+        if let Ok(link) = ShimLink::spawn(&stream, book.clone()) {
             *lock(&self.shim) = Some(link);
         }
         if let Some(e) = &hello.exit {
@@ -959,7 +1424,7 @@ impl Session {
         }
         let me = self.clone();
         thread::spawn(move || {
-            me.read_shim(&stream, fresh);
+            me.read_shim(&stream, fresh, book);
             *lock(&me.shim) = None;
             if !me.revoking.load(Ordering::SeqCst) {
                 me.interrupt();
@@ -967,12 +1432,18 @@ impl Session {
         });
     }
 
-    fn read_shim(&self, stream: &UnixStream, answer_replay: bool) {
+    fn read_shim(&self, stream: &UnixStream, answer_replay: bool, book: Option<Book>) {
         while let Ok(Some(frame)) = read_frame(&mut &*stream) {
+            if let Some(book) = &book {
+                lock(&book.0).heard = Some(Instant::now());
+            }
             match frame {
                 Frame::Bin(b) => self.feed(&b.data, answer_replay || b.tag != TAG_REPLAY),
                 Frame::Json(v) => match serde_json::from_value::<FromShim>(v) {
-                    Ok(FromShim::Stat(s)) => self.on_stat(s.fg_cpu_ns, s.fg_waiting_tty),
+                    Ok(FromShim::Stat(s)) => {
+                        *lock(&self.fg) = s.fg_pgid.map(|p| (p, Instant::now()));
+                        self.on_stat(s.fg_cpu_ns, s.fg_waiting_tty)
+                    }
                     Ok(FromShim::Exited(e)) => self.on_exit_report(&e),
                     Ok(FromShim::SignalAck { id, delivered, .. }) => {
                         let mut acks = lock(&self.sig_acks);
@@ -981,8 +1452,18 @@ impl Session {
                         }
                         acks.insert(id, delivered);
                     }
+                    Ok(FromShim::InputCredit(c)) => {
+                        if let Some(book) = &book {
+                            let mut b = lock(&book.0);
+                            b.last = c;
+                            b.stalled = false;
+                            book.1.notify_all();
+                        }
+                    }
                     Ok(FromShim::InputDropped { bytes }) => {
-                        self.input_dropped.store(true, Ordering::SeqCst);
+                        if book.is_none() {
+                            self.input_dropped.store(true, Ordering::SeqCst);
+                        }
                         if !self.drop_logged.swap(true, Ordering::SeqCst) {
                             log(&format!(
                                 "session {} dropped {bytes} bytes of input",
@@ -1091,7 +1572,7 @@ impl Session {
 
     fn prior_text(&self) -> String {
         let mut i = lock(&self.inner);
-        let (_, _, _, lines) = i.screen.text_lines(Some(SCROLLBACK + 1000));
+        let (_, _, _, lines, _) = i.screen.text_lines(Some(SCROLLBACK + 1000));
         let end = lines
             .iter()
             .rposition(|l| !l.is_empty())
@@ -1254,11 +1735,14 @@ struct Runner {
     hub: Arc<Hub>,
     create_lock: Mutex<()>,
     key_lock: Mutex<()>,
+    external_lock: Mutex<()>,
     layout_lock: Mutex<()>,
     stop: AtomicBool,
     conns: Arc<AtomicUsize>,
     pending: Arc<AtomicUsize>,
     rejects: Mutex<Rejects>,
+    client_config_dirs: Mutex<Vec<PathBuf>>,
+    config_dir_warned: AtomicBool,
     next_conn: AtomicU64,
     autopilot: autopilot::Host,
     clock: Mutex<humantime::Clock>,
@@ -1297,6 +1781,80 @@ fn base_env() -> Vec<(String, String)> {
             ) || k.starts_with("LC_")
         })
         .collect()
+}
+
+type Member<'a> = (&'a str, Option<&'a TeamLink>, bool);
+
+fn orphaned_workers<'a>(sessions: &[Member<'a>], lead_of: &str) -> Vec<&'a str> {
+    sessions
+        .iter()
+        .filter(|(_, team, alive)| *alive && team.is_some_and(|t| t.is_worker() && t.of == lead_of))
+        .map(|(id, _, _)| *id)
+        .collect()
+}
+
+fn leadless_groups(sessions: &[Member<'_>], absent_lead_counts: bool) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for (_, team, alive) in sessions {
+        let Some(t) = team.filter(|t| t.is_worker() && *alive) else {
+            continue;
+        };
+        if out.contains(&t.of) {
+            continue;
+        }
+        let leads = || {
+            sessions.iter().filter_map(|(_, l, a)| {
+                l.filter(|l| l.role == TeamRole::Lead && l.of == t.of)
+                    .map(|_| *a)
+            })
+        };
+        if leads().any(|a| a) || (!absent_lead_counts && leads().next().is_none()) {
+            continue;
+        }
+        out.push(t.of.clone());
+    }
+    out
+}
+
+/// Workers to stop: the live workers of every team without a live lead, and any live worker already being
+/// stopped, so a stop is seen through even once its lead's session is gone.
+fn stop_targets(
+    members: &[Member<'_>],
+    stopping: &[bool],
+    absent_lead_counts: bool,
+) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for of in leadless_groups(members, absent_lead_counts) {
+        for id in orphaned_workers(members, &of) {
+            out.push((id.to_string(), of.clone()));
+        }
+    }
+    for ((id, team, alive), stopping) in members.iter().zip(stopping) {
+        let Some(t) = team.filter(|t| *stopping && *alive && t.is_worker()) else {
+            continue;
+        };
+        if !out.iter().any(|(i, _)| i == id) {
+            out.push((id.to_string(), t.of.clone()));
+        }
+    }
+    out
+}
+
+const TEAM_STOP_RESEND: Duration = Duration::from_secs(5);
+const TEAM_STOP_GRACE: Duration = Duration::from_secs(10);
+
+fn team_stop_signal(sent: Option<(Instant, Instant)>, now: Instant) -> Option<i32> {
+    let Some((first, last)) = sent else {
+        return Some(libc::SIGTERM);
+    };
+    if now.duration_since(last) < TEAM_STOP_RESEND {
+        return None;
+    }
+    if now.duration_since(first) >= TEAM_STOP_GRACE {
+        Some(libc::SIGKILL)
+    } else {
+        Some(libc::SIGTERM)
+    }
 }
 
 fn signal_number(name: &str) -> Option<i32> {
@@ -1354,6 +1912,8 @@ fn intent_from_meta(meta: &Meta, profile: &str) -> Result<restore::Intent, ApiEr
         argv_sha256: None,
         resume_decl: None,
         bypass: meta.permission_mode.as_deref() == Some("bypass"),
+        no_sandbox: meta.no_sandbox,
+        permission_cards: meta.permission_cards,
         boot: None,
         pids: Vec::new(),
         created_ms: meta.created_ms,
@@ -1450,7 +2010,12 @@ fn resume_rec(r: &crate::profile::ResumeDecl) -> restore::ResumeRec {
         }
         .into(),
         by_id: r.by_id.clone(),
+        fork_by_id: r.fork_by_id.clone(),
     }
+}
+
+fn fork_approved(pinned: Option<&Option<restore::ResumeRec>>) -> bool {
+    pinned.is_none_or(|w| w.as_ref().is_some_and(|w| w.fork_by_id.is_some()))
 }
 
 fn check_resume_pin(
@@ -1462,8 +2027,12 @@ fn check_resume_pin(
     };
     let approved = want.as_ref().is_some_and(|w| w.by_id.is_some());
     let comparable = match declared {
-        Some(d) if !approved => Some(restore::ResumeRec { by_id: None, ..d }),
-        d => d,
+        Some(d) => Some(restore::ResumeRec {
+            by_id: d.by_id.filter(|_| approved),
+            fork_by_id: d.fork_by_id.filter(|_| fork_approved(pinned)),
+            ..d
+        }),
+        None => None,
     };
     if comparable == *want {
         Ok(approved)
@@ -1549,6 +2118,7 @@ fn plan_mode(
     prof: &Profile,
     req: &RunCreateReq,
     cloud: &Option<Result<(), String>>,
+    manual: bool,
     sandbox: bool,
     net_enforced: bool,
 ) -> Result<ModePlan, ApiErr> {
@@ -1568,14 +2138,12 @@ fn plan_mode(
         });
     }
     match cloud {
-        None => {
-            return Err(api(
-                ErrorCode::InvalidParams,
-                "permission_mode must be ask, accept-edits or plan",
-            ))
-        }
+        None if !manual => return Err(api(
+            ErrorCode::Forbidden,
+            "bypass without a cloud approval is accepted only for a manual run from the tmgr CLI",
+        )),
         Some(Err(m)) => return Err(api(ErrorCode::Forbidden, m.clone())),
-        Some(Ok(())) => {}
+        None | Some(Ok(())) => {}
     }
     let bypass_args = prof
         .bypass_args()
@@ -1591,7 +2159,7 @@ fn plan_mode(
     } else {
         Orig::Manual
     };
-    let d = decide_mode(origin, Mode::Bypass, true, sandbox, net_enforced)
+    let d = decide_mode(origin, Mode::Bypass, verified, sandbox, net_enforced)
         .map_err(|r| api(ErrorCode::Forbidden, r.0))?;
     if d.mode == Mode::Bypass {
         return Ok(ModePlan {
@@ -1599,7 +2167,7 @@ fn plan_mode(
             mode: Some("bypass".into()),
             args: bypass_args.clone(),
             pin_args: bypass_args,
-            restricted: d.network == NetworkPolicy::Restricted,
+            restricted: verified && d.network == NetworkPolicy::Restricted,
             bypass: true,
             note: None,
         });
@@ -1617,6 +2185,117 @@ fn plan_mode(
         bypass: false,
         note: d.downgraded_reason,
     })
+}
+
+fn holds_success(cloud_run: bool, team: Option<&TeamLink>) -> bool {
+    cloud_run && !team.is_some_and(TeamLink::is_worker)
+}
+
+fn needs_no_sandbox() -> ApiErr {
+    api(
+        ErrorCode::Forbidden,
+        "this session ran without the sandbox, so its conversation is in the real home; resume it with --no-sandbox",
+    )
+}
+
+fn needs_bypass_flag() -> ApiErr {
+    api(
+        ErrorCode::Forbidden,
+        "this session ran in bypass mode; repeat with --mode bypass to resume it",
+    )
+}
+
+fn is_manual_run(client: &str, req: &RunCreateReq) -> bool {
+    client == CLIENT_CLI
+        && req.origin.is_none()
+        && req.start_key.is_none()
+        && !req.unattended
+        && req.clones.is_empty()
+}
+
+fn check_external_resume(
+    req: &RunCreateReq,
+    manual: bool,
+    restore_from: Option<&str>,
+    ctx: Option<&ResumeCtx>,
+) -> Result<(), ApiErr> {
+    let Some(e) = &req.external_resume else {
+        return Ok(());
+    };
+    if !resume::valid_resume_id(&e.id) {
+        return Err(api(ErrorCode::InvalidParams, "invalid agent session id"));
+    }
+    let refuse = |m: &str| Err(api(ErrorCode::Forbidden, m));
+    if !manual {
+        return refuse("external_resume is accepted only for a manual run from the tmgr CLI");
+    }
+    if req.no_sandbox.is_none() {
+        return refuse("external_resume needs no_sandbox: the conversation lives in the real home");
+    }
+    if req.unattended
+        || req.origin.is_some()
+        || req.start_key.is_some()
+        || !req.clones.is_empty()
+        || req.team.is_some()
+        || req.agent_work
+        || req.cloud.is_some()
+        || req.clone_of.is_some()
+        || req.trust_cwd.is_some()
+        || req.trust_via_repo.is_some()
+        || req.bundle.is_some()
+        || req.bundle_sha256.is_some()
+        || (restore_from.is_none()
+            && (req.task.is_some() || req.exe_pin.is_some() || req.argv_sha256.is_some()))
+    {
+        return refuse(
+            "external_resume is not accepted for link, queue, cloud, team, agent work or task runs",
+        );
+    }
+    let seeded = ctx.is_some_and(|c| c.id.is_some() || c.fork.is_some());
+    if seeded || restore_from.is_some() != ctx.is_some() {
+        return refuse("external_resume cannot be combined with a restore or a fork");
+    }
+    Ok(())
+}
+
+fn external_argv(
+    prof: &Profile,
+    (model, perm_args): (Option<&str>, &[String]),
+    e: &tmgr_ipc::api::ExternalResume,
+    id_approved: bool,
+    (sent, opened): (&str, &Path),
+) -> Result<(Vec<String>, &'static str), ApiErr> {
+    if !id_approved {
+        return Err(api(
+            ErrorCode::Forbidden,
+            "the approved launch of this session does not allow resume by id",
+        ));
+    }
+    if opened != Path::new(sent) {
+        return Err(api(
+            ErrorCode::InvalidParams,
+            format!(
+                "cwd must be given as its resolved path ({}); the agent finds its conversations by folder",
+                opened.display()
+            ),
+        ));
+    }
+    let (argv, via) = if e.fork {
+        (prof.fork_argv_by_id(model, perm_args, &e.id), "fork")
+    } else {
+        (prof.resume_argv_by_id(model, perm_args, &e.id), "id")
+    };
+    match argv.map_err(|m| api(ErrorCode::InvalidParams, m))? {
+        Some(argv) => Ok((argv, via)),
+        None => Err(api(
+            ErrorCode::Forbidden,
+            format!(
+                "the {} agent cannot {} a conversation by id",
+                prof.id,
+                if e.fork { "fork" } else { "resume" }
+            ),
+        )),
+    }
 }
 
 fn check_multi_request(req: &RunCreateReq) -> Result<(), ApiErr> {
@@ -1690,6 +2369,13 @@ fn kill_reason(p: &Value) -> Result<Option<String>, ApiErr> {
     }
     let clean = crate::sanitize::sanitize_text(raw).trim().to_string();
     Ok((!clean.is_empty()).then_some(clean))
+}
+
+fn refused(why: &str) -> ApiErr {
+    api(
+        ErrorCode::Forbidden,
+        format!("permission answer refused: {why}"),
+    )
 }
 
 fn session_id_param(v: &Value) -> Result<String, ApiErr> {
@@ -1811,7 +2497,14 @@ impl Runner {
                         ));
                     }
                 }
-                self.create_run(req).map(|i| to_json(&i))
+                let manual = is_manual_run(&conn.client, &req);
+                if req.permission_cards && !manual {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "permission_cards is accepted only for a manual run from the tmgr CLI",
+                    ));
+                }
+                self.create_run(req, manual).map(|i| to_json(&i))
             }
             method::ORCHESTRATOR_CREATE => {
                 if conn.client != CLIENT_CLI {
@@ -1880,8 +2573,7 @@ impl Runner {
                 if !valid_session_id(&q.id) {
                     return Err(api(ErrorCode::InvalidParams, "invalid session id"));
                 }
-                self.resume_session(&q.id, q.cols, q.rows)
-                    .map(|r| to_json(&r))
+                self.resume_session(&q).map(|r| to_json(&r))
             }
             method::SESSIONS_FORK => {
                 if conn.client != CLIENT_CLI {
@@ -1903,7 +2595,11 @@ impl Runner {
                 self.origin_revoke(params(p)?).map(|r| to_json(&r))
             }
             method::SESSIONS_KILL => {
-                let s = self.live(&session_id_param(p)?)?;
+                let sid = session_id_param(p)?;
+                if let Some(s) = self.session(&sid).filter(|s| s.is_exited()) {
+                    return self.kill_leftovers(conn, &s, p);
+                }
+                let s = self.live(&sid)?;
                 let name = p.get("signal").and_then(Value::as_str).unwrap_or("");
                 let sig = signal_number(name).ok_or_else(|| {
                     api(
@@ -1912,10 +2608,7 @@ impl Runner {
                     )
                 })?;
                 let reason = kill_reason(p)?;
-                let id = s.sig_seq.fetch_add(1, Ordering::SeqCst) + 1;
-                s.halt(reason.as_deref());
-                s.shim_msg(&ToShim::Signal { sig, id });
-                restore::forget(&self.intents(), &s.id);
+                self.signal_session(&s, sig, reason.as_deref());
                 Ok(Value::Null)
             }
             method::AUTOPILOT_START => {
@@ -1973,6 +2666,12 @@ impl Runner {
                 if text.len() > MAX_INPUT {
                     return Err(api(ErrorCode::InvalidParams, "text is too large"));
                 }
+                let at_prompt = p.get("at_prompt").and_then(Value::as_bool).unwrap_or(false);
+                if at_prompt {
+                    s.input_at_prompt(text.as_bytes(), Instant::now())?;
+                    s.note_input_from(&conn.client);
+                    return Ok(Value::Null);
+                }
                 s.note_input_from(&conn.client);
                 if s.input_dropped.swap(false, Ordering::SeqCst) || !s.input(text.as_bytes()) {
                     return Err(api(
@@ -1980,6 +2679,39 @@ impl Runner {
                         "input queue full; the agent is not reading its input",
                     ));
                 }
+                Ok(Value::Null)
+            }
+            method::PERMISSIONS_LIST => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "permission cards are only available to the tmgr CLI",
+                    ));
+                }
+                let mut cards: Vec<PermissionCard> = self
+                    .all()
+                    .iter()
+                    .filter(|s| !s.is_exited() && s.has_shim())
+                    .filter_map(|s| s.card())
+                    .collect();
+                cards.sort_by(|a, b| a.session.cmp(&b.session));
+                Ok(to_json(&cards))
+            }
+            method::PERMISSIONS_ANSWER => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "permission cards are only available to the tmgr CLI",
+                    ));
+                }
+                let a: PermissionAnswer = params(p)?;
+                let s = self
+                    .session(&a.session)
+                    .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
+                if s.is_exited() || !s.has_shim() {
+                    return Err(refused("the session is not running"));
+                }
+                s.answer_card(&conn.client, &a)?;
                 Ok(Value::Null)
             }
             method::SESSIONS_TEXT => {
@@ -2002,6 +2734,18 @@ impl Runner {
                     .session(&q.id)
                     .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
                 Ok(to_json(&s.text(q.lines)))
+            }
+            method::CHECKPOINTS_ENABLE
+            | method::CHECKPOINTS_LIST
+            | method::CHECKPOINTS_DIFF
+            | method::CHECKPOINTS_RESTORE => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "checkpoints are accepted only from the tmgr CLI",
+                    ));
+                }
+                self.checkpoints_call(req.method.as_str(), p)
             }
             method::SESSIONS_WORKLOG => {
                 let s = self
@@ -2028,6 +2772,95 @@ impl Runner {
             method::ATTACH_OPEN => self.attach_open(conn, p),
             method::ATTACH_SET => self.attach_set(conn, p),
             m => Err(api(ErrorCode::UnknownMethod, format!("unknown method {m}"))),
+        }
+    }
+
+    fn kill_leftovers(&self, conn: &Conn, s: &Arc<Session>, p: &Value) -> Result<Value, ApiErr> {
+        let not_running = || api(ErrorCode::NotRunning, "session is not running");
+        let asked = p.get("leftovers").and_then(Value::as_bool) == Some(true)
+            && p.get("signal").and_then(Value::as_str) == Some("kill");
+        if conn.client != CLIENT_CLI || !asked {
+            return Err(not_running());
+        }
+        kill_reason(p)?;
+        let none_left = || api(ErrorCode::NotRunning, "no background processes are left");
+        let meta = lock(&s.inner).meta.clone();
+        let boot = restore::boot_marker();
+        if !restore::group_may_run(meta.child_pid, meta.boot.as_deref(), boot.as_deref()) {
+            return Err(none_left());
+        }
+        if !s.has_shim() {
+            return Err(api(
+                ErrorCode::Busy,
+                "the session no longer controls its background processes; stop them by hand",
+            ));
+        }
+        let id = s.sig_seq.fetch_add(1, Ordering::SeqCst) + 1;
+        s.shim_msg(&ToShim::Signal {
+            sig: libc::SIGKILL,
+            id,
+        });
+        let deadline = Instant::now() + Duration::from_secs(1);
+        let ack = loop {
+            let ack = lock(&s.sig_acks).remove(&id);
+            if ack.is_some() || Instant::now() >= deadline {
+                break ack;
+            }
+            thread::sleep(Duration::from_millis(10));
+        };
+        if ack == Some(false) {
+            if !restore::group_may_run(meta.child_pid, meta.boot.as_deref(), boot.as_deref()) {
+                return Err(none_left());
+            }
+            return Err(api(
+                ErrorCode::Busy,
+                "the session cannot signal its background processes; it may predate a runner update. Stop them by hand",
+            ));
+        }
+        Ok(Value::Null)
+    }
+
+    fn signal_session(&self, s: &Session, sig: i32, reason: Option<&str>) {
+        let id = s.sig_seq.fetch_add(1, Ordering::SeqCst) + 1;
+        s.halt(reason);
+        s.shim_msg(&ToShim::Signal { sig, id });
+        restore::forget(&self.intents(), &s.id);
+    }
+
+    fn stop_orphaned_workers(&self, absent_lead_counts: bool) {
+        let all = self.all();
+        let teams: Vec<Option<TeamLink>> = all.iter().map(|s| s.team()).collect();
+        let members: Vec<Member> = all
+            .iter()
+            .zip(&teams)
+            .map(|(s, t)| {
+                let lead = t.as_ref().is_some_and(|t| t.role == TeamRole::Lead);
+                let alive = !s.is_exited() && !(lead && s.halted.load(Ordering::SeqCst));
+                (s.id.as_str(), t.as_ref(), alive)
+            })
+            .collect();
+        let stopping: Vec<bool> = all.iter().map(|s| lock(&s.team_stop).is_some()).collect();
+        let targets = stop_targets(&members, &stopping, absent_lead_counts);
+        let now = Instant::now();
+        for (id, of) in targets {
+            let Some(s) = all.iter().find(|s| s.id == id).filter(|s| s.has_shim()) else {
+                continue;
+            };
+            let mut sent = lock(&s.team_stop);
+            let Some(sig) = team_stop_signal(*sent, now) else {
+                continue;
+            };
+            *sent = Some((sent.map_or(now, |(first, _)| first), now));
+            drop(sent);
+            let how = if sig == libc::SIGKILL {
+                "killed"
+            } else {
+                "stopped"
+            };
+            log(&format!(
+                "session {id}: {how}, the lead of team {of} is gone"
+            ));
+            self.signal_session(s, sig, Some("team lead exited"));
         }
     }
 
@@ -2108,10 +2941,42 @@ impl Runner {
         Ok(cwd)
     }
 
+    fn note_client_config_dir(&self, raw: Option<&str>) {
+        let Some(raw) = raw else { return };
+        let forbidden = config_dir_forbidden(&self.cfg);
+        let verdict = client_config_dir(raw, &forbidden).and_then(|d| {
+            let mut dirs = lock(&self.client_config_dirs);
+            let added = add_client_config_dir(&mut dirs, d)?;
+            if added {
+                if let Err(e) = save_client_config_dirs(&self.cfg.dir, &dirs) {
+                    log(&format!("client config dirs: cannot save: {e}"));
+                }
+            }
+            Ok(())
+        });
+        if let Err(why) = verdict {
+            let over_cap = why.starts_with("exceeds");
+            if over_cap || !self.config_dir_warned.swap(true, Ordering::SeqCst) {
+                log(&format!("ignored a client config dir ({raw:?}): it {why}"));
+            }
+        }
+    }
+
+    fn client_deny_paths(&self) -> Result<Vec<PathBuf>, ApiErr> {
+        let dirs = lock(&self.client_config_dirs).clone();
+        client_deny_paths(&dirs).map_err(|e| {
+            api(
+                ErrorCode::Sandbox,
+                format!("cannot establish the protected CLI config paths, no session starts: {e}"),
+            )
+        })
+    }
+
     fn protected_overlap(&self, cwd: &Path) -> Result<bool, ApiErr> {
         let canon = |p: &Path| fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
         let mut denied = vec![canon(&self.cfg.dir), canon(&self.cfg.homes)];
         denied.extend(profile_protected_paths()?);
+        denied.extend(self.client_deny_paths()?);
         let mut home = None;
         if let Some(h) = std::env::var_os("HOME").map(PathBuf::from) {
             let h = canon(&h);
@@ -2251,6 +3116,20 @@ impl Runner {
         serde_json::from_slice::<Meta>(&bytes).ok()?.trust_file
     }
 
+    fn refuse_held(&self, agent_id: &str) -> Result<(), ApiErr> {
+        let held = self.all().into_iter().any(|s| {
+            s.state().kind != StateKind::Exited
+                && lock(&s.inner).meta.agent_session_id.as_deref() == Some(agent_id)
+        });
+        if held {
+            return Err(api(
+                ErrorCode::Busy,
+                "this conversation is already running in another tmgr session; fork it instead",
+            ));
+        }
+        Ok(())
+    }
+
     fn by_key(&self, key: &str) -> Option<Arc<Session>> {
         self.all()
             .into_iter()
@@ -2290,6 +3169,7 @@ impl Runner {
                         .then_some(&claim.intent.resume_decl);
                     self.create_run_as(
                         restore::request(&claim.intent, bundle),
+                        false,
                         Some(old),
                         pinned_resume,
                         None,
@@ -2308,6 +3188,7 @@ impl Runner {
                     ));
                     claim.keep();
                 }
+                self.carry_checkpoints(old, &session.id);
                 if self.session(old).is_some_and(|s| s.is_exited()) {
                     let _ = self.remove(old);
                 }
@@ -2325,12 +3206,8 @@ impl Runner {
         }
     }
 
-    fn resume_session(
-        self: &Arc<Self>,
-        old: &str,
-        cols: u16,
-        rows: u16,
-    ) -> Result<RestoredRun, ApiErr> {
+    fn resume_session(self: &Arc<Self>, q: &ResumeParams) -> Result<RestoredRun, ApiErr> {
+        let (old, cols, rows) = (q.id.as_str(), q.cols, q.rows);
         let s = self
             .session(old)
             .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
@@ -2372,24 +3249,33 @@ impl Runner {
         ) {
             return Err(api(
                 ErrorCode::Busy,
-                "background processes of the old session are still running",
+                "background processes of the old session are still running; wait a moment and try again, or stop them with halt --kill",
             ));
         }
         let prior = s.prior_text();
         let (info, resumed, via) = match &meta.profile {
             Some(profile) => {
-                let resume_id = resume::id_from_log(&self.sdir(old).join("output.log"), profile);
+                let resume_id = meta
+                    .agent_session_id
+                    .clone()
+                    .or_else(|| resume::id_from_log(&self.sdir(old).join("output.log"), profile));
                 self.resume_agent(
                     (&meta, profile.as_str()),
                     (cols, rows),
                     interrupted,
                     resume_id,
                     prior,
+                    q,
                 )?
             }
+            None if q.permission_mode.is_some() || q.no_sandbox.is_some() => return Err(api(
+                ErrorCode::Forbidden,
+                "a session without an agent profile cannot be resumed with --mode or --no-sandbox",
+            )),
             None => self.resume_raw(&meta, old, (cols, rows), prior)?,
         };
         restore::forget(&self.intents(), old);
+        self.carry_checkpoints(old, &info.id);
         let _ = self.remove_session(old);
         log(&format!("session {old} resumed as {} ({via})", info.id));
         Ok(RestoredRun {
@@ -2447,25 +3333,43 @@ impl Runner {
             ));
         }
         let meta = lock(&s.inner).meta.clone();
-        let profile = match meta.profile.as_deref() {
-            Some(p @ "claude-code") => p.to_string(),
+        let (profile, codex) = match meta.profile.as_deref() {
+            Some(p @ "claude-code") => (p.to_string(), false),
+            Some(p @ "codex") => (p.to_string(), true),
             _ => {
                 return Err(api(
                     ErrorCode::Forbidden,
-                    "only a Claude Code session can be forked",
+                    "only a Claude Code or Codex session can be forked",
                 ))
             }
         };
+        fork_consent(codex)?;
         let from_home = self.cfg.homes.join(&q.id);
-        let found = crate::attach::locate(&crate::attach::Source {
-            home: &from_home,
-            format: crate::attach::Format::Claude,
-            cwd: &meta.cwd,
-            pid: 0,
-            log_id: Some(&q.agent_id),
-        });
+        let found = if codex {
+            let (path, cwd) =
+                crate::questions::tail::locate_codex_rollout_of(&from_home, &q.agent_id)
+                    .ok_or_else(|| {
+                        api(ErrorCode::NotFound, "the conversation file was not found")
+                    })?;
+            if !cwd.is_some_and(|c| same_path(&c, &meta.cwd)) {
+                return Err(api(
+                    ErrorCode::Forbidden,
+                    "the conversation was recorded in another folder than this session's",
+                ));
+            }
+            Some(path)
+        } else {
+            crate::attach::locate(&crate::attach::Source {
+                home: &from_home,
+                format: crate::attach::Format::Claude,
+                cwd: &meta.cwd,
+                pid: 0,
+                log_id: Some(&q.agent_id),
+            })
+            .map(|(path, _)| path)
+        };
         let rel = found
-            .and_then(|(path, _)| path.strip_prefix(&from_home).ok().map(Path::to_path_buf))
+            .and_then(|path| path.strip_prefix(&from_home).ok().map(Path::to_path_buf))
             .ok_or_else(|| api(ErrorCode::NotFound, "the conversation file was not found"))?;
         let (mut intent, bundle) = self.load_launch(&meta, &profile)?;
         let CwdPin { dev, ino } = intent.cwd_pin;
@@ -2502,12 +3406,17 @@ impl Runner {
         let pinned_resume = intent.argv_sha256.is_some().then_some(&intent.resume_decl);
         let (info, resumed, _, via) = self.create_run_as(
             req,
+            false,
             None,
             pinned_resume,
             Some(ResumeCtx {
                 id: Some(q.agent_id),
                 text: String::new(),
-                fork: Some(ForkSeed { from_home, rel }),
+                fork: Some(ForkSeed {
+                    from_home,
+                    rel,
+                    codex,
+                }),
             }),
         )?;
         log(&format!("session {} forked from {} ({via})", info.id, q.id));
@@ -2523,8 +3432,9 @@ impl Runner {
         (meta, profile): (&Meta, &str),
         (cols, rows): (u16, u16),
         interrupted: bool,
-        id: Option<String>,
+        mut id: Option<String>,
         prior: String,
+        flags: &ResumeParams,
     ) -> Result<(SessionInfo, bool, &'static str), ApiErr> {
         let (old, name) = (meta.id.as_str(), meta.name.clone());
         let (mut intent, bundle) = self.load_launch(meta, profile)?;
@@ -2533,7 +3443,10 @@ impl Runner {
         if !interrupted {
             intent.pids.clear();
         }
-        match restore::status(&intent, now_ms(), false) {
+        let status = restore::status(&intent, now_ms(), false);
+        let flagged = flags.permission_mode.is_some() || flags.no_sandbox.is_some();
+        let relaxed = flagged || status == restore::Status::Expired;
+        match status {
             restore::Status::Restorable if intent.needs_queue_pin() => return Err(api(
                 ErrorCode::Forbidden,
                 "this queue run was recorded without an approved executable; queue the task again",
@@ -2542,15 +3455,79 @@ impl Runner {
             restore::Status::Running | restore::Status::Restoring => {
                 return Err(api(ErrorCode::Busy, "the session may still be running"))
             }
-            st => return Err(api(ErrorCode::Forbidden, st.reason())),
+            restore::Status::NoSandbox if !relaxed => return Err(needs_no_sandbox()),
+            restore::Status::Bypass if !relaxed => return Err(needs_bypass_flag()),
+            restore::Status::Link => return Err(api(ErrorCode::Forbidden, status.reason())),
+            _ => {}
         }
         let mut req = restore::request(&intent, bundle);
         req.cols = cols;
         req.rows = rows;
         req.name = Some(name);
+        let mut manual = false;
+        if relaxed {
+            if intent.needs_queue_pin()
+                || intent.agent_work
+                || intent.keyed == Some(true)
+                || intent.clone_of.is_some()
+                || meta.start_key.is_some()
+                || meta.clone_of.is_some()
+                || meta.multi
+                || meta.team.is_some()
+                || req.bundle.is_some()
+            {
+                return Err(api(
+                    ErrorCode::Forbidden,
+                    "a session started by the queue, a cloud approval, a team or agent work cannot be resumed with --mode or --no-sandbox, or after it expired",
+                ));
+            }
+            let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+            let prof = known_profile(&set, profile)?;
+            let want_bypass = flags.permission_mode.as_deref() == Some("bypass");
+            if let Some(m) = flags.permission_mode.as_deref().filter(|_| !want_bypass) {
+                resolve_mode(prof, Some(m))?;
+            }
+            let old_bypass = intent.bypass;
+            if intent.no_sandbox && flags.no_sandbox.is_none() {
+                return Err(needs_no_sandbox());
+            }
+            if !intent.no_sandbox && flags.no_sandbox.is_some() {
+                return Err(api(
+                    ErrorCode::Forbidden,
+                    "this session was recorded inside the sandbox home and cannot be moved out; start from it with fork or a new session",
+                ));
+            }
+            if old_bypass && !want_bypass {
+                return Err(needs_bypass_flag());
+            }
+            if let Some(m) = &flags.permission_mode {
+                req.permission_mode = Some(m.clone());
+            }
+            if status == restore::Status::Expired && !self.cfg.homes.join(old).is_dir() {
+                return Err(api(
+                    ErrorCode::NotFound,
+                    "the run home of this expired session is gone, so its conversation cannot be resumed; start it again with tmgr run",
+                ));
+            }
+            manual = true;
+            if let Some(ns) = &flags.no_sandbox {
+                let agent_id = id.take().ok_or_else(|| {
+                    api(
+                        ErrorCode::NotFound,
+                        "the agent's conversation id was not found in the session log, so it cannot be resumed",
+                    )
+                })?;
+                req.no_sandbox = Some(ns.clone());
+                req.external_resume = Some(tmgr_ipc::api::ExternalResume {
+                    id: agent_id,
+                    fork: false,
+                });
+            }
+        }
         let pinned_resume = intent.argv_sha256.is_some().then_some(&intent.resume_decl);
         let (info, resumed, _, via) = self.create_run_as(
             req,
+            manual,
             Some(old),
             pinned_resume,
             Some(ResumeCtx {
@@ -2595,8 +3572,12 @@ impl Runner {
         Ok((info, false, "rerun"))
     }
 
-    fn create_run(self: &Arc<Self>, req: RunCreateReq) -> Result<SessionInfo, ApiErr> {
-        self.create_run_as(req, None, None, None)
+    fn create_run(
+        self: &Arc<Self>,
+        req: RunCreateReq,
+        manual: bool,
+    ) -> Result<SessionInfo, ApiErr> {
+        self.create_run_as(req, manual, None, None, None)
             .map(|(info, _, _, _)| info)
     }
 
@@ -2700,10 +3681,27 @@ impl Runner {
     fn create_run_as(
         self: &Arc<Self>,
         req: RunCreateReq,
+        manual: bool,
         restore_from: Option<&str>,
         pinned_resume: Option<&Option<restore::ResumeRec>>,
         resume_ctx: Option<ResumeCtx>,
     ) -> Result<(SessionInfo, bool, bool, &'static str), ApiErr> {
+        check_external_resume(&req, manual, restore_from, resume_ctx.as_ref())?;
+        if req.no_sandbox.is_some() && !manual {
+            return Err(api(
+                ErrorCode::Forbidden,
+                "no_sandbox is accepted only for a manual run from the tmgr CLI",
+            ));
+        }
+        let external = req.external_resume.clone();
+        let _external = external
+            .as_ref()
+            .filter(|e| !e.fork)
+            .map(|e| {
+                let guard = lock(&self.external_lock);
+                self.refuse_held(&e.id).map(|()| guard)
+            })
+            .transpose()?;
         let start = match &req.start_key {
             Some(k) if !valid_start_key(k) => {
                 return Err(api(
@@ -2733,6 +3731,15 @@ impl Runner {
                 };
             }
         }
+        if let Some(t) = &req.team {
+            t.validate().map_err(|m| api(ErrorCode::InvalidParams, m))?;
+            if req.origin.is_some() {
+                return Err(api(
+                    ErrorCode::InvalidParams,
+                    "a team label cannot be combined with origin",
+                ));
+            }
+        }
         let checked = bundle::check(&req, tmgr_ipc::api::limits::MAX_BUNDLE)
             .map_err(|(code, m)| api(code, m))?;
         let pinned = match &checked {
@@ -2745,14 +3752,20 @@ impl Runner {
         hold_at("TMGR_TEST_HOLD_AFTER_PROFILE");
         let id_approved = check_resume_pin(prof.resume.as_ref().map(resume_rec), pinned_resume)?;
         let cloud = cloud_verdict(&req);
-        let plan = plan_mode(
+        let no_sandbox = req.no_sandbox.is_some();
+        let mut plan = plan_mode(
             prof,
             &req,
             &cloud,
-            true,
+            manual,
+            !no_sandbox,
             sandbox::network_restriction_enforced(),
         )?;
+        if no_sandbox {
+            plan.restricted = false;
+        }
         let (mode, perm_args) = (plan.mode.clone(), plan.args.clone());
+        let audit = agentwork::audit_note(mode.as_deref(), no_sandbox);
         if req.agent_work {
             check_agent_work(&req, mode.as_deref())?;
         } else if req.cloud.is_some() {
@@ -2784,7 +3797,7 @@ impl Runner {
                 ))
             }
             (Some(repo), Some(d)) => {
-                vec![clone::check(d, repo).map_err(|(code, m)| api(code, m))?]
+                vec![clone::check(d, repo, &self.cfg.homes).map_err(|(code, m)| api(code, m))?]
             }
             _ if multi => {
                 let task = req
@@ -2809,13 +3822,21 @@ impl Runner {
                     .iter()
                     .map(|c| (c.name.clone(), c.clone_of.clone()))
                     .collect();
-                clone::check_multi(dir, &primary, &specs).map_err(|(code, m)| api(code, m))?
+                clone::check_multi(dir, &primary, &specs, req.team.as_ref(), &self.cfg.homes)
+                    .map_err(|(code, m)| api(code, m))?
             }
             _ => Vec::new(),
         };
         let fork = resume_ctx.as_ref().and_then(|c| c.fork.clone());
         let home_kept = restore_from.is_some_and(|old| self.cfg.homes.join(old).is_dir());
         let by_id = match resume_ctx.as_ref().and_then(|c| c.id.as_deref()) {
+            Some(id) if fork.as_ref().is_some_and(|f| f.codex) => {
+                if id_approved && fork_approved(pinned_resume) {
+                    prof.fork_argv_by_id(req.model.as_deref(), &perm_args, id)
+                } else {
+                    Ok(None)
+                }
+            }
             Some(id) if (home_kept || fork.is_some()) && id_approved => {
                 prof.resume_argv_by_id(req.model.as_deref(), &perm_args, id)
             }
@@ -2828,14 +3849,25 @@ impl Runner {
                 "this agent cannot be forked: its profile has no resume by id",
             ));
         }
-        let (resume, via) = match by_id {
-            Some(argv) => (Some(argv), "id"),
-            None if home_kept => (
+        let external_argv = match (&external, dir) {
+            (Some(e), Some(d)) => Some(external_argv(
+                prof,
+                (req.model.as_deref(), &perm_args),
+                e,
+                id_approved,
+                (&req.cwd, &d.path),
+            )?),
+            _ => None,
+        };
+        let (resume, via) = match (external_argv, by_id) {
+            (Some((argv, via)), _) => (Some(argv), via),
+            (None, Some(argv)) => (Some(argv), "id"),
+            (None, None) if home_kept => (
                 prof.resume_argv_with(req.model.as_deref(), &perm_args)
                     .map_err(|e| api(ErrorCode::InvalidParams, e))?,
                 "continue",
             ),
-            None => (None, "fresh"),
+            (None, None) => (None, "fresh"),
         };
         let resumed = resume.is_some();
         let via = match (resumed, fork.is_some()) {
@@ -2845,7 +3877,7 @@ impl Runner {
         };
         let mut argv = match resume {
             Some(mut argv) => {
-                if fork.is_some() {
+                if fork.as_ref().is_some_and(|f| !f.codex) {
                     argv.push("--fork-session".to_string());
                 }
                 argv
@@ -2854,7 +3886,7 @@ impl Runner {
                 .argv_with(req.model.as_deref(), &perm_args)
                 .map_err(|e| api(ErrorCode::InvalidParams, e))?,
         };
-        let explicit = match (req.trust_cwd == Some(true), &prof.trust) {
+        let explicit = match (req.trust_cwd == Some(true) && !no_sandbox, &prof.trust) {
             (false, _) => None,
             (true, Some(t)) => Some(t.clone()),
             (true, None) => {
@@ -2870,9 +3902,11 @@ impl Runner {
         let unattended =
             req.start_key.is_some() || req.clone_of.is_some() || req.origin.is_some() || multi;
         let remembered = explicit.is_none()
+            && !no_sandbox
             && !unattended
             && dir.is_some_and(|d| folders::is_trusted(&self.cfg.homes, &d.path, d.id()));
         let via_repo = explicit.is_none()
+            && !no_sandbox
             && req.trust_via_repo == Some(true)
             && req.start_key.is_none()
             && req.origin.is_none()
@@ -2900,12 +3934,17 @@ impl Runner {
             _ => (None, None),
         };
         let learn_trust = trust.is_none()
+            && !no_sandbox
             && !unattended
             && restore_from.is_none()
             && dir.is_some()
             && prof.id == "claude-code"
             && prof.source == profile::Source::Builtin
             && prof.trust.is_some();
+        let permission_cards = req.permission_cards
+            && prof.source == profile::Source::Builtin
+            && permit_hook::supported_profile(&prof.id);
+        let forking = fork.is_some() || external.as_ref().is_some_and(|e| e.fork);
         let mut extra = RunExtra {
             trust,
             trust_note,
@@ -2927,6 +3966,10 @@ impl Runner {
                 _ => None,
             },
             fork,
+            no_sandbox: req.no_sandbox.as_ref().map(|n| n.env.clone()),
+            permission_cards,
+            team: req.team.clone(),
+            agent_session_id: external.as_ref().filter(|e| !e.fork).map(|e| e.id.clone()),
         };
         if plan.restricted {
             extra.egress = Some(
@@ -2958,8 +4001,18 @@ impl Runner {
                 ));
             }
         }
+        if forking && prof.id == "codex" {
+            let mut probe = prof.command.clone();
+            probe[0].clone_from(&argv[0]);
+            crate::exe::codex_fork_supported(&crate::exe::version_output(&probe))
+                .map_err(|m| api(ErrorCode::Forbidden, m))?;
+        }
+        if permission_cards && prof.id == "claude-code" {
+            argv.push("--settings".to_string());
+            argv.push(permit_hook::claude_settings(&self.cfg.self_exe));
+        }
         if let (false, Some(_), Some(b)) = (resumed, &checked, &req.bundle) {
-            let args = prof.prompt_args(&bundle::prompt(b));
+            let args = prof.prompt_args(&bundle::prompt_for(b, req.team.as_ref()));
             extra.prompt_at = prof
                 .prompt
                 .args
@@ -3029,6 +4082,8 @@ impl Runner {
                 exe_pin: req.exe_pin,
                 argv_sha256: req.argv_sha256,
                 bypass: plan.bypass,
+                no_sandbox,
+                permission_cards,
                 boot: restore::boot_marker(),
                 pids: vec![info.shim_pid, info.child_pid],
                 created_ms: info.created_ms,
@@ -3059,7 +4114,12 @@ impl Runner {
                 task,
                 agent: info.profile.clone().unwrap_or_default(),
                 model: info_model,
-                hold_success: cloud_run,
+                hold_success: holds_success(cloud_run, req.team.as_ref()),
+                audit,
+                role: req.team.as_ref().map(|t| match t.role {
+                    TeamRole::Lead => "lead".to_string(),
+                    TeamRole::Worker(k) => format!("worker-{k}"),
+                }),
             });
             s.prepare_agent_work();
         }
@@ -3091,7 +4151,9 @@ impl Runner {
         restore_from: Option<&str>,
     ) -> Result<SessionInfo, ApiErr> {
         let cwd = self.validate(&req)?;
-        sandbox::landlock_tier(landlock_abi()).map_err(|e| api(ErrorCode::Sandbox, e))?;
+        if extra.no_sandbox.is_none() {
+            sandbox::landlock_tier(landlock_abi()).map_err(|e| api(ErrorCode::Sandbox, e))?;
+        }
         let matcher = match prof {
             None => None,
             Some(p) => Some(Matcher::new(p).map_err(|e| api(ErrorCode::UnknownProfile, e))?),
@@ -3110,6 +4172,9 @@ impl Runner {
                 &opened
             }
         };
+        if extra.no_sandbox.is_none() {
+            clone::check_stores(dir).map_err(|(code, m)| api(code, m))?;
+        }
         let _g = lock(&self.create_lock);
         let mut repo_trust_dropped = false;
         let _fence = match origin {
@@ -3256,6 +4321,7 @@ impl Runner {
         ensure_private_dir(sdir).map_err(internal)?;
         ensure_private_leaf(home).map_err(internal)?;
         if let Some(f) = &extra.fork {
+            fork_consent(f.codex)?;
             copy_transcript(&f.from_home, &f.rel, home).map_err(|e| {
                 api(
                     ErrorCode::Internal,
@@ -3266,12 +4332,20 @@ impl Runner {
         let real_home = std::env::var_os("HOME")
             .map(PathBuf::from)
             .unwrap_or_default();
+        let unsandboxed = extra.no_sandbox.as_ref();
+        if unsandboxed.is_some() && !real_home.is_absolute() {
+            return Err(api(
+                ErrorCode::Sandbox,
+                "a run without the sandbox needs an absolute HOME",
+            ));
+        }
         let mut base = base_env();
         let profile_protected = profile_protected_paths()?;
+        let client_dirs = self.client_deny_paths()?;
         let mut grants = sandbox::Grants::default();
         let mut seeds = Vec::new();
         let mut secret_files = Vec::new();
-        if let Some(p) = prof {
+        if let (Some(p), None) = (prof, unsandboxed) {
             let pid = &p.id;
             {
                 let mut protected = vec![
@@ -3279,6 +4353,7 @@ impl Runner {
                     home.parent().unwrap_or(home).to_path_buf(),
                 ];
                 protected.extend(profile_protected.iter().cloned());
+                protected.extend(client_dirs.iter().cloned());
                 let prep = login::prepare(p, &real_home, &protected, |_| None)
                     .map_err(|e| api(ErrorCode::Sandbox, e))?;
                 for w in &prep.warnings {
@@ -3299,8 +4374,9 @@ impl Runner {
             }
         }
         grants.deny = profile_protected;
+        grants.deny.extend(client_dirs);
         grants.run_id = extra.run_id_env;
-        for o in &extra.objects {
+        for o in extra.objects.iter().filter(|o| o.borrows) {
             o.reverify().map_err(|e| api(ErrorCode::Sandbox, e))?;
             grants.objects_ro.push((o.path.clone(), o.id));
         }
@@ -3311,14 +4387,14 @@ impl Runner {
                 format!("{}:{}", cwd.display(), above.display()),
             ));
         }
-        let proxy = match &extra.egress {
+        let proxy = match extra.egress.as_ref().filter(|_| unsandboxed.is_none()) {
             Some(allow) => Some(
                 crate::egress::Proxy::start(allow.clone())
                     .map_err(|e| api(ErrorCode::Sandbox, format!("egress proxy: {e}")))?,
             ),
             None => None,
         };
-        let launch = sandbox::prepare(&SandboxSpec {
+        let spec = SandboxSpec {
             session_id: id.to_string(),
             argv: req.argv.clone(),
             cwd: cwd.to_path_buf(),
@@ -3333,7 +4409,18 @@ impl Runner {
             network: proxy.as_ref().map_or(sandbox::Network::Open, |p| {
                 sandbox::Network::Restricted { proxy_port: p.port }
             }),
-        })
+        };
+        let launch = match unsandboxed {
+            Some(caller) => sandbox::unsandboxed_env(
+                caller,
+                &spec.base_env,
+                &spec.real_home,
+                id,
+                extra.run_id_env,
+            )
+            .and_then(|env| sandbox::prepare_unsandboxed(&spec, env)),
+            None => sandbox::prepare(&spec),
+        }
         .map_err(|e| api(ErrorCode::Sandbox, e))?;
         if let Some(note) = &extra.mode_note {
             log(&format!(
@@ -3343,15 +4430,28 @@ impl Runner {
         for n in &launch.notes {
             log(&format!("session {id}: {n}"));
         }
-        let records = login::apply_seeds(&seeds, home).map_err(|e| api(ErrorCode::Sandbox, e))?;
-        seedguard::save(sdir, &records).map_err(internal)?;
-        if let Some(t) = &extra.trust {
-            login::apply_trust(home, t, cwd).map_err(|e| api(ErrorCode::Sandbox, e))?;
-        }
-        for note in login::apply_secret_files(&secret_files, home)
-            .map_err(|e| api(ErrorCode::Sandbox, e))?
-        {
-            log(&format!("session {id}: {note}"));
+        if unsandboxed.is_none() {
+            let records =
+                login::apply_seeds(&seeds, home).map_err(|e| api(ErrorCode::Sandbox, e))?;
+            seedguard::save(sdir, &records).map_err(internal)?;
+            if let Some(t) = &extra.trust {
+                login::apply_trust(home, t, cwd).map_err(|e| api(ErrorCode::Sandbox, e))?;
+            }
+            if extra.permission_cards && prof.is_some_and(|p| p.id == "codex") {
+                let command = permit_hook::hook_command(&self.cfg.self_exe, "codex");
+                let config = fs::canonicalize(home)
+                    .map_err(|e| api(ErrorCode::Sandbox, e.to_string()))?
+                    .join(".codex/config.toml");
+                login::edit_in_home(home, Path::new(".codex/config.toml"), |existing| {
+                    permit_hook::codex_config(existing, &command, &config)
+                })
+                .map_err(|e| api(ErrorCode::Sandbox, e))?;
+            }
+            for note in login::apply_secret_files(&secret_files, home)
+                .map_err(|e| api(ErrorCode::Sandbox, e))?
+            {
+                log(&format!("session {id}: {note}"));
+            }
         }
         let (cols, rows) = clamp_size(req.cols, req.rows);
         let lf = LaunchFile {
@@ -3369,7 +4469,7 @@ impl Runner {
             *installed = Some(bundle::install(sdir, b).map_err(|(code, m)| api(code, m))?);
         }
         hold_before_spawn();
-        for o in &extra.objects {
+        for o in extra.objects.iter().filter(|o| o.borrows) {
             o.reverify().map_err(|e| api(ErrorCode::Sandbox, e))?;
         }
         let log_file = OpenOptions::new()
@@ -3394,11 +4494,13 @@ impl Runner {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(log_file);
+        let fd_limit = crate::wire::inherited_fd_limit();
         unsafe {
             shim_cmd.pre_exec(move || {
                 if libc::dup2(src, SHIM_CWD_FD) < 0 {
                     return Err(io::Error::last_os_error());
                 }
+                crate::wire::cloexec_from(SHIM_CWD_FD + 1, fd_limit);
                 Ok(())
             })
         };
@@ -3458,7 +4560,7 @@ impl Runner {
             exit_signal: None,
             trust_file: extra.trust.as_ref().map(|t| t.file.clone()),
             learn_trust: match (&prof.and_then(|p| p.trust.clone()), extra.learn_trust) {
-                (Some(t), true) => Some(LearnTrust {
+                (Some(t), true) if unsandboxed.is_none() => Some(LearnTrust {
                     home: home.display().to_string(),
                     file: t.file.clone(),
                     path: t.path.clone(),
@@ -3469,6 +4571,11 @@ impl Runner {
             resumed_from: extra.resume_of.as_ref().map(|r| r.from.clone()),
             env_pass: req.env_pass.clone(),
             boot: restore::boot_marker(),
+            no_sandbox: unsandboxed.is_some(),
+            checkpoints: None,
+            permission_cards: extra.permission_cards,
+            team: extra.team.clone(),
+            agent_session_id: extra.agent_session_id.clone(),
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
@@ -3483,7 +4590,11 @@ impl Runner {
             session.seed_prior(&r.text);
         }
         *lock(&session.proxy) = proxy;
-        session.worklog.created(&session.info(), extra.trust_note);
+        session.worklog.created(
+            &session.info(),
+            extra.trust_note,
+            (extra.permission_mode.as_deref(), unsandboxed.is_some()),
+        );
         session.attach_shim(stream, hello, true);
         lock(&self.sessions).insert(id.to_string(), session.clone());
         log(&format!("session {id} created: {}", req.argv[0]));
@@ -3492,7 +4603,14 @@ impl Runner {
 
     fn new_session(&self, meta: Meta, matcher: Option<Matcher>, sdir: &Path) -> Arc<Session> {
         let screen = ScreenModel::new(meta.rows, meta.cols, SCROLLBACK);
-        Arc::new(Session {
+        let home = if meta.no_sandbox {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_default()
+        } else {
+            self.cfg.homes.join(&meta.id)
+        };
+        let session = Arc::new(Session {
             id: meta.id.clone(),
             dir: sdir.to_path_buf(),
             hub: self.hub.clone(),
@@ -3504,6 +4622,7 @@ impl Runner {
                 matcher,
                 fixed: None,
                 size_owner: None,
+                input_sent_at: None,
             }),
             version: AtomicU64::new(0),
             shim: Mutex::new(None),
@@ -3526,7 +4645,14 @@ impl Runner {
             halted: AtomicBool::new(false),
             foreign_input: AtomicBool::new(false),
             resuming: AtomicBool::new(false),
-        })
+            cp: checkpoints::Cp::new(self.cfg.homes.clone()),
+            home,
+            fg: Mutex::new(None),
+            cards: Mutex::new(Cards::default()),
+            team_stop: Mutex::new(None),
+        });
+        session.cp_refresh();
+        session
     }
 
     fn rename(&self, id: &str, name: &str) -> Result<(), ApiErr> {
@@ -3584,6 +4710,7 @@ impl Runner {
             log(&format!("session {id}: {line}"));
         }
         lock(&self.sessions).remove(id);
+        s.cp_forget();
         let _ = fs::remove_dir_all(self.sdir(id));
         let _ = fs::remove_dir_all(self.cfg.homes.join(id));
         let s_dir = self.cfg.dir.join("s");
@@ -3857,6 +4984,7 @@ impl Runner {
             }
         }
         s.note_input_from(&conn.client);
+        s.wait_input_room(data.len());
         let _ = s.input(data);
     }
 
@@ -3893,6 +5021,7 @@ impl Runner {
             }
         };
         drop(pending);
+        self.note_client_config_dir(hello.config_dir.as_deref());
         let _ = stream.set_write_timeout(Some(write_timeout()));
         let Ok(w) = stream.try_clone() else { return };
         let conn = Arc::new(Conn {
@@ -4062,6 +5191,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     }
     let mut clock = humantime::Clock::new(humantime::Settings::load(&cfg.dir).idle_s);
     clock.load_totals(&humantime::read_records(&cfg.dir));
+    let saved_config_dirs = load_client_config_dirs(&cfg.dir, &config_dir_forbidden(&cfg));
     let rt = Arc::new(Runner {
         rename_lock: Mutex::new(()),
         cfg: cfg.clone(),
@@ -4071,11 +5201,14 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         hub: Arc::new(Hub::default()),
         create_lock: Mutex::new(()),
         key_lock: Mutex::new(()),
+        external_lock: Mutex::new(()),
         layout_lock: Mutex::new(()),
         stop: AtomicBool::new(false),
         conns: Arc::new(AtomicUsize::new(0)),
         pending: Arc::new(AtomicUsize::new(0)),
         rejects: Mutex::new(Rejects::default()),
+        client_config_dirs: Mutex::new(saved_config_dirs),
+        config_dir_warned: AtomicBool::new(false),
         next_conn: AtomicU64::new(1),
         autopilot: autopilot::Host::default(),
         clock: Mutex::new(clock),
@@ -4093,6 +5226,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         }
     });
     rt.adopt_all();
+    rt.stop_orphaned_workers(true);
     let ep = Endpoint::new_runner(&cfg.dir)?;
     let listener: UnixListener = endpoint::bind(&ep)?;
     listener.set_nonblocking(true)?;
@@ -4121,6 +5255,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
             for s in ticker.all() {
                 s.tick();
             }
+            ticker.stop_orphaned_workers(false);
             ticker.autopilot.tick(&ticker.cfg.self_exe);
         }
     });
@@ -4193,6 +5328,26 @@ fn test_passthrough(_: &str) -> bool {
     false
 }
 
+fn same_path(a: &str, b: &str) -> bool {
+    a == b || matches!((fs::canonicalize(a), fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
+}
+
+fn fork_consent(codex: bool) -> Result<(), ApiErr> {
+    let env = tmgr_usage::paths::Env::from_process();
+    let (tool, name) = if codex {
+        (tmgr_usage::Tool::Codex, "Codex")
+    } else {
+        (tmgr_usage::Tool::Claude, "Claude Code")
+    };
+    if tmgr_usage::consent::granted_read_only(&env, tool) {
+        return Ok(());
+    }
+    Err(api(
+        ErrorCode::Forbidden,
+        format!("reading {name} transcripts is off on this device, so this session cannot be forked: run tmgr usage consent allow, or turn it on in TMGR desktop (AI Usage)"),
+    ))
+}
+
 pub fn daemon_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
     const KEEP: &[&str] = &[
         "HOME",
@@ -4207,6 +5362,7 @@ pub fn daemon_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
         "XDG_CONFIG_HOME",
         "XDG_STATE_HOME",
         "XDG_DATA_HOME",
+        "TMGR_USAGE_DIR",
         "XDG_CACHE_HOME",
         "XDG_RUNTIME_DIR",
         "TMGR_RUNNER_DIR",
@@ -4217,6 +5373,7 @@ pub fn daemon_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
         "TMGR_RUNNER_WRITE_TIMEOUT_MS",
         "TMGR_TEST_HOLD_BEFORE_SPAWN",
         "TMGR_TEST_SHIM_NO_CWD_ID",
+        "TMGR_TEST_SHIM_NO_INPUT_CREDIT",
         ENV_CLEAN,
     ];
     std::env::vars_os()
@@ -4248,8 +5405,10 @@ pub fn start_background(cfg: &RunnerConfig) -> io::Result<u32> {
         .stdin(Stdio::null())
         .stdout(log_file.try_clone()?)
         .stderr(log_file);
+    let fd_limit = crate::wire::inherited_fd_limit();
     unsafe {
-        cmd.pre_exec(|| {
+        cmd.pre_exec(move || {
+            crate::wire::cloexec_from(3, fd_limit);
             match libc::fork() {
                 -1 => return Err(io::Error::last_os_error()),
                 0 => {}
@@ -4284,7 +5443,7 @@ pub fn start_background(cfg: &RunnerConfig) -> io::Result<u32> {
 
 const MAX_TEXT_BYTES: usize = 512 << 10;
 
-fn cap_text(lines: &mut Vec<String>, max: usize) {
+fn cap_text(lines: &mut Vec<String>, wrapped: &mut Vec<bool>, max: usize) {
     let mut total: usize = lines.iter().map(|l| l.len() + 8).sum();
     let mut drop = 0;
     while total > max && drop < lines.len() {
@@ -4292,6 +5451,7 @@ fn cap_text(lines: &mut Vec<String>, max: usize) {
         drop += 1;
     }
     lines.drain(..drop);
+    wrapped.drain(..drop);
 }
 
 const FORK_COPY_CAP: u64 = 512 * 1024 * 1024;
@@ -4365,6 +5525,18 @@ fn copy_transcript(from_home: &Path, rel: &Path, to_home: &Path) -> io::Result<(
     Ok(())
 }
 
+fn prompt_ready(
+    matcher: Option<&Matcher>,
+    agent: Option<permit::Agent>,
+    bottom: &[String],
+    rows: &[String],
+) -> bool {
+    matcher
+        .and_then(|m| m.check(bottom))
+        .is_some_and(|(rule, _)| rule.starts_with("idle"))
+        && agent.is_none_or(|a| permit::parse_dialog(a, rows).is_none())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4389,6 +5561,24 @@ mod tests {
         assert_eq!(fs::read(to.join(rel)).unwrap(), b"line\n");
         assert!(!to.join(".claude/projects/p/other.jsonl").exists());
         assert!(copy_transcript(&from, rel, &to).is_err());
+    }
+
+    #[test]
+    fn copy_transcript_keeps_a_codex_rollout_at_its_relative_path() {
+        let (_t, from, to) = fork_dirs();
+        let rel = Path::new(".codex/sessions/2026/11/05/rollout-2026-11-05T10-00-00-a.jsonl");
+        fs::create_dir_all(from.join(rel).parent().unwrap()).unwrap();
+        fs::write(from.join(rel), b"{\"type\":\"session_meta\"}\n").unwrap();
+        fs::create_dir_all(to.join(".codex")).unwrap();
+        copy_transcript(&from, rel, &to).unwrap();
+        assert_eq!(
+            fs::read(to.join(rel)).unwrap(),
+            b"{\"type\":\"session_meta\"}\n"
+        );
+        assert_eq!(
+            fs::read(from.join(rel)).unwrap(),
+            b"{\"type\":\"session_meta\"}\n"
+        );
     }
 
     #[test]
@@ -4424,15 +5614,652 @@ mod tests {
         }
     }
 
+    fn screen_of(text: &str) -> ScreenModel {
+        let mut s = ScreenModel::new(24, 100, 100);
+        s.feed(text.replace('\n', "\r\n").as_bytes());
+        s
+    }
+
+    fn ready(profile: &str, text: &str) -> bool {
+        let (set, _) = ProfileSet::load(None);
+        let matcher = Matcher::new(set.get(profile).unwrap()).unwrap();
+        let mut screen = screen_of(text);
+        let bottom = screen.bottom_text(10);
+        let rows = screen.text_lines(None).3;
+        prompt_ready(Some(&matcher), permit::agent_of(profile), &bottom, &rows)
+    }
+
+    fn forbidden() -> Vec<PathBuf> {
+        vec![
+            PathBuf::from("/home/u"),
+            PathBuf::from("/run/tmgr-runner"),
+            PathBuf::from("/run/tmgr-runner/homes"),
+        ]
+    }
+
+    #[test]
+    fn a_client_config_dir_must_be_a_plain_absolute_tmgr_path() {
+        let f = forbidden();
+        assert_eq!(
+            client_config_dir("/tmp/x/tmgr", &f),
+            Ok(PathBuf::from("/tmp/x/tmgr"))
+        );
+        for bad in [
+            "tmgr",
+            "x/tmgr",
+            "/tmp/../etc/tmgr",
+            "/tmp/./x/tmgr",
+            "/tmp/x/other",
+            "/tmp/x/tmgr/sub",
+            "/tmp/x\n/tmgr",
+            "/tmp/x\0/tmgr",
+            "/tmp/x\r/tmgr",
+            "",
+            "/",
+        ] {
+            assert!(client_config_dir(bad, &f).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_client_config_dir_cannot_cover_home_the_runner_dir_or_the_session_homes() {
+        let f = forbidden();
+        assert!(client_config_dir("/home/u/tmgr", &f).is_ok());
+        assert!(client_config_dir("/run/tmgr-runner/tmgr", &f).is_ok());
+        let f = vec![
+            PathBuf::from("/tmgr"),
+            PathBuf::from("/run/tmgr"),
+            PathBuf::from("/run/tmgr/homes"),
+        ];
+        assert!(client_config_dir("/tmgr", &f).is_err());
+        assert!(client_config_dir("/run/tmgr", &f).is_err());
+        assert!(client_config_dir("/run/tmgr/homes/tmgr", &f).is_ok());
+        let f = vec![PathBuf::from("/a/tmgr/b")];
+        assert!(client_config_dir("/a/tmgr", &f).is_err());
+    }
+
+    fn linked_config_dir() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let t = tempfile::tempdir().unwrap();
+        let target = fs::canonicalize(t.path()).unwrap().join("elsewhere");
+        fs::create_dir(&target).unwrap();
+        let link = t.path().join("tmgr");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        (t, link, target)
+    }
+
+    #[test]
+    fn a_client_config_dir_linking_to_home_or_the_runner_dir_is_ignored() {
+        let (t, link, target) = linked_config_dir();
+        assert!(client_config_dir(link.to_str().unwrap(), std::slice::from_ref(&target)).is_err());
+        assert!(client_config_dir(link.to_str().unwrap(), &[target.join("run")]).is_err());
+        assert!(client_config_dir(link.to_str().unwrap(), &[t.path().join("other")]).is_ok());
+        let (_t2, link2, _) = linked_config_dir();
+        std::fs::remove_file(&link2).unwrap();
+        std::os::unix::fs::symlink("/", &link2).unwrap();
+        assert!(client_config_dir(link2.to_str().unwrap(), &[PathBuf::from("/home/u")]).is_err());
+    }
+
+    #[test]
+    fn a_symlinked_client_config_dir_denies_its_target_too() {
+        let (_t, link, target) = linked_config_dir();
+        let deny = client_deny_paths(std::slice::from_ref(&link)).unwrap();
+        assert!(deny.contains(&link));
+        assert!(deny.contains(&target));
+        assert!(deny.contains(&fs::canonicalize(&target).unwrap()));
+    }
+
+    #[test]
+    fn every_spelling_of_a_client_config_dir_keeps_its_own_entry() {
+        let (_t, link, target) = linked_config_dir();
+        let mut dirs = Vec::new();
+        assert_eq!(add_client_config_dir(&mut dirs, link.clone()), Ok(true));
+        assert_eq!(add_client_config_dir(&mut dirs, target.clone()), Ok(true));
+        assert_eq!(add_client_config_dir(&mut dirs, link), Ok(false));
+        assert_eq!(dirs.len(), 2);
+        fs::remove_file(&dirs[0]).unwrap();
+        assert!(client_deny_paths(&dirs).unwrap().contains(&target));
+    }
+
+    #[test]
+    fn saved_client_config_dirs_round_trip_and_invalid_entries_are_skipped() {
+        let t = tempfile::tempdir().unwrap();
+        let good = t.path().join("x").join("tmgr");
+        save_client_config_dirs(t.path(), std::slice::from_ref(&good)).unwrap();
+        assert_eq!(load_client_config_dirs(t.path(), &[]), vec![good.clone()]);
+        let text = serde_json::to_string(&[
+            good.to_str().unwrap(),
+            "relative/tmgr",
+            "/a/../b/tmgr",
+            "/a/other",
+        ])
+        .unwrap();
+        fs::write(t.path().join(CLIENT_CONFIG_DIRS_FILE), text).unwrap();
+        assert_eq!(load_client_config_dirs(t.path(), &[]), vec![good]);
+        fs::write(t.path().join(CLIENT_CONFIG_DIRS_FILE), "not json").unwrap();
+        assert!(load_client_config_dirs(t.path(), &[]).is_empty());
+        let empty = tempfile::tempdir().unwrap();
+        assert!(load_client_config_dirs(empty.path(), &[]).is_empty());
+    }
+
+    #[test]
+    fn the_set_of_client_config_dirs_dedupes_and_stops_at_the_cap() {
+        let mut dirs = Vec::new();
+        for i in 0..MAX_CLIENT_CONFIG_DIRS {
+            add_client_config_dir(&mut dirs, PathBuf::from(format!("/t/{i}/tmgr"))).unwrap();
+        }
+        add_client_config_dir(&mut dirs, PathBuf::from("/t/0/tmgr")).unwrap();
+        assert_eq!(dirs.len(), MAX_CLIENT_CONFIG_DIRS);
+        assert!(add_client_config_dir(&mut dirs, PathBuf::from("/t/new/tmgr")).is_err());
+        assert_eq!(dirs.len(), MAX_CLIENT_CONFIG_DIRS);
+    }
+
+    #[test]
+    fn at_prompt_refuses_a_screen_with_an_approval_dialog() {
+        let dialog = include_str!("../profiles/screens/claude-bash-approval.txt");
+        assert!(!ready("claude-code", dialog));
+        assert!(!ready("claude-code", "Do you want to proceed?\n"));
+        assert!(!ready("claude-code", "working\n"));
+    }
+
+    #[test]
+    fn at_prompt_accepts_the_idle_prompt_alone_on_the_bottom_line() {
+        assert!(ready("claude-code", "done\n\n❯\n"));
+    }
+
+    #[test]
+    fn at_prompt_refuses_without_a_profile_matcher() {
+        assert!(!prompt_ready(None, None, &["❯".into()], &[]));
+    }
+
+    fn lone_session() -> (tempfile::TempDir, Arc<Session>, mpsc::Receiver<Frame>) {
+        let t = tempfile::tempdir().unwrap();
+        let cfg = RunnerConfig {
+            dir: t.path().join("run"),
+            homes: t.path().join("homes"),
+            self_exe: PathBuf::from("tmgr"),
+            quiet_ms: 1000,
+            version: "test".into(),
+            max_sessions: 4,
+        };
+        let rt = Runner {
+            rename_lock: Mutex::new(()),
+            cfg,
+            secret: String::new(),
+            started: Instant::now(),
+            sessions: Mutex::new(HashMap::new()),
+            hub: Arc::new(Hub::default()),
+            create_lock: Mutex::new(()),
+            key_lock: Mutex::new(()),
+            external_lock: Mutex::new(()),
+            layout_lock: Mutex::new(()),
+            stop: AtomicBool::new(false),
+            conns: Arc::new(AtomicUsize::new(0)),
+            pending: Arc::new(AtomicUsize::new(0)),
+            rejects: Mutex::new(Rejects::default()),
+            client_config_dirs: Mutex::new(Vec::new()),
+            config_dir_warned: AtomicBool::new(false),
+            next_conn: AtomicU64::new(1),
+            autopilot: autopilot::Host::default(),
+            clock: Mutex::new(humantime::Clock::new(0)),
+        };
+        let meta: Meta = serde_json::from_value(serde_json::json!({
+            "id": "s1", "name": "n", "argv": ["claude"], "cwd": t.path(),
+            "profile": "claude-code", "created_ms": 0, "cols": 100, "rows": 24,
+            "shim_pid": 1, "child_pid": 2,
+        }))
+        .unwrap();
+        let (set, _) = ProfileSet::load(None);
+        let matcher = Matcher::new(set.get("claude-code").unwrap()).ok();
+        let sdir = t.path().join("s1");
+        fs::create_dir_all(&sdir).unwrap();
+        let s = rt.new_session(meta, matcher, &sdir);
+        let (tx, rx) = mpsc::sync_channel::<Frame>(SHIM_QUEUE);
+        *lock(&s.shim) = Some(ShimLink {
+            tx,
+            queued_bytes: Arc::new(AtomicUsize::new(0)),
+            queued_frames: Arc::new(AtomicUsize::new(0)),
+            credit: None,
+        });
+        (t, s, rx)
+    }
+
+    fn drain(s: &Session, rx: &mpsc::Receiver<Frame>) {
+        let g = lock(&s.shim);
+        let link = g.as_ref().unwrap();
+        while let Ok(Frame::Bin(b)) = rx.try_recv() {
+            input_left_link(
+                &link.queued_bytes,
+                &link.queued_frames,
+                link.credit.as_ref(),
+                b.data.len(),
+            );
+        }
+    }
+
+    fn send_at_prompt(s: &Session, bytes: &[u8], now: Instant) -> bool {
+        s.input_at_prompt(bytes, now).is_ok()
+    }
+
+    const IDLE: &[u8] = "done\r\n\r\n\u{276f}\r\n".as_bytes();
+
+    fn settled() -> Instant {
+        Instant::now() + SEND_SETTLE
+    }
+
+    #[test]
+    fn a_second_send_right_after_the_first_is_refused_even_after_an_echo() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        assert!(send_at_prompt(&s, b"one\r", Instant::now()));
+        drain(&s, &rx);
+        s.feed(b"\r\nworking\r\n\r\n\xe2\x9d\xaf\r\n", true);
+        assert!(!send_at_prompt(&s, b"two\r", Instant::now()));
+    }
+
+    #[test]
+    fn a_second_send_is_accepted_once_the_settle_time_has_passed_at_a_ready_prompt() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        assert!(send_at_prompt(&s, b"one\r", Instant::now()));
+        drain(&s, &rx);
+        s.feed(b"\r\nworking\r\n\r\n\xe2\x9d\xaf\r\n", true);
+        assert!(send_at_prompt(&s, b"two\r", settled()));
+    }
+
+    #[test]
+    fn a_keystroke_that_prints_nothing_blocks_a_send_only_until_the_settle_time_passes() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        assert!(s.input(b"\x1b[A"));
+        drain(&s, &rx);
+        assert!(!send_at_prompt(&s, b"note\r", Instant::now()));
+        assert!(send_at_prompt(&s, b"note\r", settled()));
+    }
+
+    #[test]
+    fn a_send_at_the_prompt_waits_while_input_is_still_queued_for_the_shim() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        assert!(s.input(b"1"));
+        assert!(!send_at_prompt(&s, b"note\r", settled()));
+        drain(&s, &rx);
+        assert!(send_at_prompt(&s, b"note\r", settled()));
+    }
+
+    fn credit(rb: u64, rf: u64, qb: u64, qf: u64) -> InputCredit {
+        InputCredit {
+            received_bytes: rb,
+            received_frames: rf,
+            queued_bytes: qb,
+            queued_frames: qf,
+        }
+    }
+
+    fn credit_session() -> (tempfile::TempDir, Arc<Session>, mpsc::Receiver<Frame>, Book) {
+        let (t, s, rx) = lone_session();
+        let book: Book = Arc::new((Mutex::new(InputBook::default()), Condvar::new()));
+        lock(&s.shim).as_mut().unwrap().credit = Some(book.clone());
+        (t, s, rx, book)
+    }
+
+    fn from_shim(s: &Session, book: Option<&Book>, msg: &FromShim) {
+        let (mut shim, daemon) = UnixStream::pair().unwrap();
+        write_json(&mut shim, msg).unwrap();
+        drop(shim);
+        s.read_shim(&daemon, false, book.cloned());
+    }
+
+    fn report(s: &Session, book: &Book, c: InputCredit) {
+        from_shim(s, Some(book), &FromShim::InputCredit(c));
+    }
+
+    #[test]
+    fn the_book_counts_absolute_state_and_never_underflows() {
+        let mut b = InputBook::default();
+        assert_eq!(b.outstanding(), (0, 0));
+        b.sent_bytes = 10;
+        b.sent_frames = 2;
+        assert_eq!(b.outstanding(), (10, 2));
+        b.last = credit(4, 1, 6, 1);
+        assert_eq!(b.outstanding(), (12, 2));
+        b.last = credit(10, 2, 0, 0);
+        assert_eq!(b.outstanding(), (0, 0));
+        b.last = credit(99, 9, 0, 0);
+        assert_eq!(b.outstanding(), (0, 0));
+        b.last = credit(0, 0, 7, 3);
+        assert_eq!(b.outstanding(), (17, 5));
+    }
+
+    #[test]
+    fn the_book_has_room_up_to_the_byte_and_frame_caps() {
+        let mut b = InputBook::default();
+        assert!(b.has_room(SHIM_INPUT_CAP));
+        assert!(!b.has_room(SHIM_INPUT_CAP + 1));
+        b.last = credit(0, 0, SHIM_INPUT_CAP as u64 - 1, 1);
+        assert!(b.has_room(1));
+        assert!(!b.has_room(2));
+        b.last = credit(0, 0, 0, SHIM_CREDIT_FRAMES - 1);
+        assert!(b.has_room(1));
+        b.last = credit(0, 0, 0, SHIM_CREDIT_FRAMES);
+        assert!(!b.has_room(1));
+    }
+
+    #[test]
+    fn a_credit_link_refuses_when_the_shim_queue_is_full_even_if_the_socket_drained() {
+        let (_t, s, rx, book) = credit_session();
+        let chunk = vec![0u8; SHIM_INPUT_CAP / 4];
+        for _ in 0..4 {
+            assert!(s.shim_input(&chunk));
+        }
+        drain(&s, &rx);
+        assert!(!s.shim_input(b"x"));
+        assert_eq!(lock(&book.0).outstanding().0, SHIM_INPUT_CAP as u64);
+        report(&s, &book, credit(SHIM_INPUT_CAP as u64, 4, 0, 0));
+        assert!(s.shim_input(b"x"));
+    }
+
+    #[test]
+    fn a_credit_link_allows_more_small_frames_than_the_legacy_cap() {
+        let (_t, s, rx, book) = credit_session();
+        for _ in 0..SHIM_CREDIT_FRAMES {
+            assert!(s.shim_input(b"k"));
+            drain(&s, &rx);
+        }
+        assert!(!s.shim_input(b"k"));
+        report(
+            &s,
+            &book,
+            credit(SHIM_CREDIT_FRAMES, SHIM_CREDIT_FRAMES, 0, 0),
+        );
+        assert!(s.shim_input(b"k"));
+    }
+
+    #[test]
+    fn a_credit_link_idle_check_follows_the_shim_queue_not_the_socket() {
+        let (_t, s, rx, book) = credit_session();
+        s.feed(IDLE, true);
+        assert!(s.shim_input(b"1"));
+        drain(&s, &rx);
+        assert!(!send_at_prompt(&s, b"note\r", settled()));
+        report(&s, &book, credit(1, 1, 0, 0));
+        assert!(send_at_prompt(&s, b"note\r", settled()));
+    }
+
+    #[test]
+    fn a_dropped_report_does_not_poison_a_credit_link() {
+        let (_t, s, _rx, book) = credit_session();
+        from_shim(&s, Some(&book), &FromShim::InputDropped { bytes: 1 });
+        assert!(!s.input_dropped.load(Ordering::SeqCst));
+        assert!(s.input(b"a"));
+    }
+
+    #[test]
+    fn a_dropped_report_still_sets_the_flag_on_a_legacy_link() {
+        let (_t, s, _rx) = lone_session();
+        from_shim(&s, None, &FromShim::InputDropped { bytes: 1 });
+        assert!(s.input_dropped.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn a_silent_credit_link_falls_back_to_the_socket_counters_until_the_shim_is_heard() {
+        let (_t, s, rx, book) = credit_session();
+        s.feed(IDLE, true);
+        report(&s, &book, credit(0, 0, SHIM_INPUT_CAP as u64, 1));
+        assert!(!s.shim_input(b"x"));
+        lock(&book.0).heard = Some(Instant::now() - SHIM_LINK_SILENT - Duration::from_secs(1));
+        assert!(s.shim_input(b"x"));
+        drain(&s, &rx);
+        assert!(send_at_prompt(&s, b"note\r", settled()));
+        report(&s, &book, credit(0, 0, SHIM_INPUT_CAP as u64, 1));
+        assert!(!s.shim_input(b"x"));
+    }
+
+    #[test]
+    fn a_credit_link_keeps_channel_room_for_control_frames() {
+        let (_t, s, _rx, _book) = credit_session();
+        lock(&s.shim)
+            .as_ref()
+            .unwrap()
+            .queued_frames
+            .store(SHIM_INPUT_FRAMES, Ordering::SeqCst);
+        assert!(!s.shim_input(b"x"));
+    }
+
+    #[test]
+    fn the_attach_wait_holds_input_until_the_link_channel_has_room() {
+        let (_t, s, rx, book) = credit_session();
+        for _ in 0..SHIM_INPUT_FRAMES {
+            assert!(s.shim_input(b"k"));
+        }
+        assert!(lock(&book.0).has_room(1));
+        let s2 = s.clone();
+        let h = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(200));
+            drain(&s2, &rx);
+            rx
+        });
+        let t0 = Instant::now();
+        s.wait_input_room(1);
+        let waited = t0.elapsed();
+        let _rx = h.join().unwrap();
+        assert!(s.input(b"x"));
+        assert!(waited >= Duration::from_millis(100), "{waited:?}");
+        assert!(waited < ATTACH_INPUT_WAIT, "{waited:?}");
+        assert!(!lock(&book.0).stalled);
+    }
+
+    #[test]
+    fn a_lagging_link_channel_does_not_latch_a_stall() {
+        let (_t, s, _rx, book) = credit_session();
+        for _ in 0..SHIM_INPUT_FRAMES {
+            assert!(s.shim_input(b"k"));
+        }
+        let t0 = Instant::now();
+        s.wait_input_room(1);
+        assert!(t0.elapsed() >= ATTACH_INPUT_WAIT);
+        assert!(!lock(&book.0).stalled);
+    }
+
+    #[test]
+    fn the_attach_wait_returns_at_once_with_room_and_marks_a_stall_on_timeout() {
+        let (_t, s, _rx, book) = credit_session();
+        let t0 = Instant::now();
+        s.wait_input_room(1);
+        assert!(t0.elapsed() < Duration::from_millis(500));
+        report(&s, &book, credit(0, 0, SHIM_INPUT_CAP as u64, 1));
+        let t0 = Instant::now();
+        s.wait_input_room(1);
+        assert!(t0.elapsed() >= ATTACH_INPUT_WAIT);
+        assert!(lock(&book.0).stalled);
+        let t0 = Instant::now();
+        s.wait_input_room(1);
+        assert!(t0.elapsed() < Duration::from_millis(500));
+        report(&s, &book, credit(0, 0, 0, 0));
+        assert!(!lock(&book.0).stalled);
+    }
+
+    #[test]
+    fn the_attach_wait_wakes_when_a_credit_makes_room() {
+        let (_t, s, _rx, book) = credit_session();
+        report(&s, &book, credit(0, 0, SHIM_INPUT_CAP as u64, 1));
+        let (s2, b2) = (s.clone(), book.clone());
+        let h = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(200));
+            report(&s2, &b2, credit(0, 0, 0, 0));
+        });
+        let t0 = Instant::now();
+        s.wait_input_room(1);
+        h.join().unwrap();
+        assert!(t0.elapsed() < ATTACH_INPUT_WAIT);
+        assert!(!lock(&book.0).stalled);
+    }
+
+    #[test]
+    fn a_legacy_link_never_waits() {
+        let (_t, s, _rx) = lone_session();
+        let t0 = Instant::now();
+        s.wait_input_room(1);
+        assert!(t0.elapsed() < Duration::from_millis(100));
+    }
+
+    #[test]
+    fn a_queued_frame_alone_blocks_a_send_with_no_recent_input() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(IDLE, true);
+        lock(&s.shim)
+            .as_ref()
+            .unwrap()
+            .queued_frames
+            .fetch_add(1, Ordering::SeqCst);
+        assert!(!send_at_prompt(&s, b"note\r", settled()));
+    }
+
+    #[test]
+    fn a_send_at_the_prompt_is_refused_off_the_prompt() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(b"working\r\n", true);
+        assert!(!send_at_prompt(&s, b"one\r", settled()));
+    }
+
+    #[test]
+    fn a_send_at_the_prompt_is_refused_while_a_permission_dialog_is_showing() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(
+            "Do you want to proceed?\r\n\u{276f} 1. Yes\r\n  2. No\r\n".as_bytes(),
+            true,
+        );
+        assert!(!send_at_prompt(&s, b"one\r", settled()));
+    }
+
     #[test]
     fn session_text_drops_the_oldest_lines_to_fit_one_frame() {
         let mut lines: Vec<String> = (0..10).map(|i| format!("{i}{}", "x".repeat(99))).collect();
-        cap_text(&mut lines, 5 * 108);
+        let mut wrapped = vec![false; 10];
+        cap_text(&mut lines, &mut wrapped, 5 * 108);
         assert_eq!(lines.len(), 5);
+        assert_eq!(wrapped.len(), 5);
         assert!(lines[0].starts_with('5') && lines[4].starts_with('9'));
         let mut small = vec!["a".to_string()];
-        cap_text(&mut small, 100);
+        let mut small_wrapped = vec![true];
+        cap_text(&mut small, &mut small_wrapped, 100);
+        assert_eq!(small_wrapped, [true]);
         assert_eq!(small, ["a"]);
+    }
+
+    fn member<'a>(
+        id: &'a str,
+        role: Option<TeamRole>,
+        of: &'a str,
+        alive: bool,
+    ) -> (&'a str, Option<TeamLink>, bool) {
+        (
+            id,
+            role.map(|role| TeamLink {
+                role,
+                of: of.into(),
+            }),
+            alive,
+        )
+    }
+
+    fn orphans(m: &[(&str, Option<TeamLink>, bool)], lead_of: &str) -> Vec<String> {
+        let v: Vec<_> = m.iter().map(|(i, t, a)| (*i, t.as_ref(), *a)).collect();
+        orphaned_workers(&v, lead_of)
+            .into_iter()
+            .map(String::from)
+            .collect()
+    }
+
+    fn groups(m: &[(&str, Option<TeamLink>, bool)], absent: bool) -> Vec<String> {
+        let v: Vec<_> = m.iter().map(|(i, t, a)| (*i, t.as_ref(), *a)).collect();
+        leadless_groups(&v, absent)
+    }
+
+    #[test]
+    fn orphaned_workers_are_only_the_live_workers_of_that_team() {
+        let m = [
+            member("lead", Some(TeamRole::Lead), "q1", false),
+            member("w1", Some(TeamRole::Worker(1)), "q1", true),
+            member("w2", Some(TeamRole::Worker(2)), "q1", true),
+            member("w3", Some(TeamRole::Worker(3)), "q1", false),
+            member("o1", Some(TeamRole::Worker(1)), "q2", true),
+            member("o2", Some(TeamRole::Lead), "q2", true),
+            member("plain", None, "", true),
+        ];
+        assert_eq!(orphans(&m, "q1"), ["w1", "w2"]);
+        assert!(orphans(&m, "q2").iter().all(|i| i != "o2"));
+        assert_eq!(orphans(&m, "q2"), ["o1"]);
+        assert!(orphans(&m, "nope").is_empty());
+    }
+
+    #[test]
+    fn an_orphaned_worker_is_signalled_again_and_then_killed() {
+        let t0 = Instant::now();
+        let at = |s: u64| t0 + Duration::from_secs(s);
+        assert_eq!(team_stop_signal(None, t0), Some(libc::SIGTERM));
+        assert_eq!(team_stop_signal(Some((t0, t0)), at(1)), None);
+        assert_eq!(team_stop_signal(Some((t0, t0)), at(5)), Some(libc::SIGTERM));
+        assert_eq!(team_stop_signal(Some((t0, at(5))), at(8)), None);
+        assert_eq!(
+            team_stop_signal(Some((t0, at(5))), at(10)),
+            Some(libc::SIGKILL)
+        );
+        assert_eq!(
+            team_stop_signal(Some((t0, at(10))), at(15)),
+            Some(libc::SIGKILL)
+        );
+    }
+
+    #[test]
+    fn a_worker_being_stopped_stays_a_target_after_its_lead_is_removed() {
+        let m = [
+            member("w1", Some(TeamRole::Worker(1)), "q1", true),
+            member("w2", Some(TeamRole::Worker(2)), "q1", false),
+            member("w3", Some(TeamRole::Worker(1)), "q2", true),
+            member("lead3", Some(TeamRole::Lead), "q2", true),
+        ];
+        let v: Vec<_> = m.iter().map(|(i, t, a)| (*i, t.as_ref(), *a)).collect();
+        assert!(stop_targets(&v, &[false, false, false, false], false).is_empty());
+        let ids = |s: &[bool]| -> Vec<String> {
+            stop_targets(&v, s, false)
+                .into_iter()
+                .map(|(i, _)| i)
+                .collect()
+        };
+        assert_eq!(ids(&[true, true, false, false]), ["w1"]);
+        assert_eq!(
+            stop_targets(&v, &[false; 4], true),
+            [("w1".to_string(), "q1".to_string())]
+        );
+    }
+
+    #[test]
+    fn leadless_groups_need_a_live_worker_and_no_live_lead() {
+        let m = [
+            member("lead", Some(TeamRole::Lead), "q1", false),
+            member("w1", Some(TeamRole::Worker(1)), "q1", true),
+            member("lead2", Some(TeamRole::Lead), "q2", true),
+            member("w2", Some(TeamRole::Worker(1)), "q2", true),
+            member("w3", Some(TeamRole::Worker(1)), "q3", true),
+            member("w4", Some(TeamRole::Worker(1)), "q4", false),
+            member("lead4", Some(TeamRole::Lead), "q4", false),
+            member("plain", None, "", true),
+        ];
+        assert_eq!(groups(&m, false), ["q1"]);
+        assert_eq!(groups(&m, true), ["q1", "q3"]);
+    }
+
+    #[test]
+    fn only_a_worker_run_closes_its_agent_work_on_a_clean_exit() {
+        let team = |role| TeamLink {
+            role,
+            of: "q_team".into(),
+        };
+        assert!(holds_success(true, None));
+        assert!(holds_success(true, Some(&team(TeamRole::Lead))));
+        assert!(!holds_success(true, Some(&team(TeamRole::Worker(1)))));
+        assert!(!holds_success(false, None));
+        assert!(!holds_success(false, Some(&team(TeamRole::Lead))));
     }
 
     fn plan_req(mode: &str, unattended: bool) -> RunCreateReq {
@@ -4451,20 +6278,55 @@ mod tests {
         sandbox: bool,
         net: bool,
     ) -> Result<ModePlan, ApiErr> {
+        plan_as(mode, unattended, cloud, !unattended, sandbox, net)
+    }
+
+    fn plan_as(
+        mode: &str,
+        unattended: bool,
+        cloud: Option<Result<(), String>>,
+        manual: bool,
+        sandbox: bool,
+        net: bool,
+    ) -> Result<ModePlan, ApiErr> {
         let (set, _) = ProfileSet::load(None);
         plan_mode(
             set.get("claude-code").unwrap(),
             &plan_req(mode, unattended),
             &cloud,
+            manual,
             sandbox,
             net,
         )
     }
 
     #[test]
-    fn bypass_needs_a_verified_cloud_approval() {
-        let none = plan("bypass", false, None, true, true).err().unwrap();
-        assert!(none.msg.contains("permission_mode must be"), "{}", none.msg);
+    fn bypass_needs_a_verified_cloud_approval_unless_the_run_is_manual() {
+        let none = plan_as("bypass", false, None, false, true, true)
+            .err()
+            .unwrap();
+        assert!(matches!(none.code, ErrorCode::Forbidden), "{}", none.msg);
+        let unattended = plan_as("bypass", true, None, false, true, true)
+            .err()
+            .unwrap();
+        assert!(matches!(unattended.code, ErrorCode::Forbidden));
+        let manual = plan_as("bypass", false, None, true, true, true).unwrap();
+        assert!(manual.bypass && manual.mode.as_deref() == Some("bypass"));
+        assert!(!manual.restricted);
+        assert_eq!(manual.args, ["--permission-mode", "bypassPermissions"]);
+        let bare = plan_as("bypass", false, None, true, false, true).unwrap();
+        assert!(bare.bypass && !bare.restricted);
+        let forged_manual = plan_as(
+            "bypass",
+            false,
+            Some(Err("forged".into())),
+            true,
+            true,
+            true,
+        )
+        .err()
+        .unwrap();
+        assert!(matches!(forged_manual.code, ErrorCode::Forbidden));
         let forged = plan("bypass", false, Some(Err("forged".into())), true, true)
             .err()
             .unwrap();
@@ -4476,6 +6338,24 @@ mod tests {
         let ok = plan("bypass", false, Some(Ok(())), true, true).unwrap();
         assert!(ok.bypass && ok.restricted && ok.mode.as_deref() == Some("bypass"));
         assert_eq!(ok.args, ["--permission-mode", "bypassPermissions"]);
+    }
+
+    #[test]
+    fn manual_bypass_uses_each_profiles_bypass_args() {
+        let (set, _) = ProfileSet::load(None);
+        for (id, arg) in [
+            ("claude-code", "bypassPermissions"),
+            ("codex", "--dangerously-bypass-approvals-and-sandbox"),
+        ] {
+            let mut req = plan_req("bypass", false);
+            req.profile = id.into();
+            let p = plan_mode(set.get(id).unwrap(), &req, &None, true, true, true).unwrap();
+            assert!(
+                p.bypass && p.args.iter().any(|a| a == arg),
+                "{id}: {:?}",
+                p.args
+            );
+        }
     }
 
     #[test]
@@ -4527,6 +6407,7 @@ mod tests {
             args: vec!["--continue".into()],
             at: "end".into(),
             by_id: by_id.map(|b| b.iter().map(|s| s.to_string()).collect()),
+            fork_by_id: None,
         }
     }
 
@@ -4552,6 +6433,28 @@ mod tests {
         let mut at = now.clone();
         at.at = "after_command".into();
         assert!(check_resume_pin(Some(at), Some(&Some(now))).is_err());
+    }
+
+    fn fork_rec(by_id: bool, fork: Option<&[&str]>) -> restore::ResumeRec {
+        restore::ResumeRec {
+            fork_by_id: fork.map(|f| f.iter().map(|s| s.to_string()).collect()),
+            ..rec(by_id.then_some(&["resume", "{resume_id}"]))
+        }
+    }
+
+    #[test]
+    fn a_pinned_fork_template_is_part_of_the_approval_and_never_gained() {
+        let fork = ["fork", "{resume_id}"];
+        let now = fork_rec(true, Some(&fork));
+        assert!(fork_approved(None));
+        assert!(fork_approved(Some(&Some(now.clone()))));
+        assert!(!fork_approved(Some(&Some(fork_rec(true, None)))));
+        assert!(!fork_approved(Some(&None)));
+        assert!(check_resume_pin(Some(now.clone()), Some(&Some(now.clone()))).unwrap());
+        assert!(check_resume_pin(Some(now.clone()), Some(&Some(fork_rec(true, None)))).unwrap());
+        let other = fork_rec(true, Some(&["fork", "--other", "{resume_id}"]));
+        assert!(check_resume_pin(Some(other), Some(&Some(now.clone()))).is_err());
+        assert!(check_resume_pin(Some(fork_rec(true, None)), Some(&Some(now))).is_err());
     }
 
     #[test]
@@ -4596,6 +6499,7 @@ mod tests {
                         exit: None,
                         cwd_dev: None,
                         cwd_ino: None,
+                        input: None,
                     });
                     write_json(&mut s, &hello).unwrap();
                     return b"ok".to_vec();

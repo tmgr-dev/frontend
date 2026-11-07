@@ -26,6 +26,8 @@ fn entry(expires: Option<&str>) -> Entry {
             device_name: "laptop".into(),
         }],
         repos: BTreeMap::new(),
+        require_signed_rules: false,
+        require_signed_persona: false,
     }
 }
 
@@ -407,4 +409,105 @@ fn the_stamp_covers_every_hash_and_stays_compatible_with_v2() {
     v2.persona_sha256 = None;
     v2.repos_sha256 = Some("r".into());
     assert_eq!(Rollback::stamp(&v2), format!("{}:r", v2.content_sha256));
+}
+
+fn with_policy(rules: bool, persona: bool) -> Entry {
+    let mut e = entry(None);
+    e.require_signed_rules = rules;
+    e.require_signed_persona = persona;
+    e
+}
+
+#[test]
+fn the_policy_is_judged_on_the_signed_hashes_only() {
+    let (v2, t2, b2) = claim();
+    let accepted = |rules: bool, persona: bool, c: &CloudApproval, t: &str, b: &str| {
+        check_claim(&with_policy(rules, persona), c, t, b).is_ok()
+    };
+    assert!(accepted(false, false, &v2, &t2, &b2));
+    assert!(!accepted(true, false, &v2, &t2, &b2));
+    assert!(!accepted(false, true, &v2, &t2, &b2));
+    assert!(!accepted(true, true, &v2, &t2, &b2));
+    // (persona, rules) covered by cases_v3: 0 both, 1 persona, 2 rules, 3 both
+    for (i, persona, rules) in [
+        (0, true, true),
+        (1, true, false),
+        (2, false, true),
+        (3, true, true),
+    ] {
+        let (c, t, b) = v3_claim(i);
+        assert!(accepted(false, false, &c, &t, &b), "{i}");
+        assert_eq!(accepted(true, false, &c, &t, &b), rules, "{i} rules");
+        assert_eq!(accepted(false, true, &c, &t, &b), persona, "{i} persona");
+        assert_eq!(
+            accepted(true, true, &c, &t, &b),
+            rules && persona,
+            "{i} both"
+        );
+    }
+}
+
+#[test]
+fn a_policy_refusal_names_what_is_missing_and_how_to_fix_it() {
+    let (c, t, b) = claim();
+    let r = check_claim(&with_policy(true, false), &c, &t, &b).unwrap_err();
+    assert!(r.message.contains("workspace rules"), "{}", r.message);
+    assert!(r.message.contains("no rules"), "{}", r.message);
+    assert!(r.fix.contains("Confirm for agent runs"), "{}", r.fix);
+    let r = check_claim(&with_policy(false, true), &c, &t, &b).unwrap_err();
+    assert!(r.message.contains("persona"), "{}", r.message);
+}
+
+#[test]
+fn a_forged_coverage_cannot_satisfy_the_policy() {
+    let (mut c, t, b) = claim();
+    c.persona_sha256 = Some("a".repeat(64));
+    c.context_sha256 = Some("b".repeat(64));
+    let r = check_claim(&with_policy(true, true), &c, &t, &b).unwrap_err();
+    assert!(
+        r.message.contains("signature is not valid"),
+        "{}",
+        r.message
+    );
+}
+
+#[test]
+fn the_policy_round_trips_and_an_unset_policy_leaves_the_file_unchanged() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("runner-allow.json");
+    let mut f = AllowFile::default();
+    f.upsert(with_policy(true, false));
+    f.save_to(&path).unwrap();
+    let raw: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(raw["entries"][0]["require_signed_rules"], true);
+    assert!(raw["entries"][0].get("require_signed_persona").is_none());
+    let back = AllowFile::load_from(&path).unwrap();
+    assert!(back.entries[0].require_signed_rules && !back.entries[0].require_signed_persona);
+    let mut f = AllowFile::default();
+    f.upsert(with_policy(false, true));
+    f.save_to(&path).unwrap();
+    assert!(AllowFile::load_from(&path).unwrap().entries[0].require_signed_persona);
+
+    let mut f = AllowFile::default();
+    f.upsert(entry(None));
+    f.save_to(&path).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(!text.contains("require_signed"), "{text}");
+}
+
+#[test]
+fn an_old_file_without_the_fields_loads_with_the_policy_off() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("runner-allow.json");
+    let e = serde_json::json!({
+        "server": "api.tmgr.dev", "user_id": 1, "workspace_id": 56, "workspace_code": "tmgrdev",
+        "allowed_at": "2025-10-01T00:00:00Z", "expires_at": null, "keys": [], "repos": {}
+    });
+    std::fs::write(
+        &path,
+        serde_json::json!({"version": 1, "entries": [e]}).to_string(),
+    )
+    .unwrap();
+    let f = AllowFile::load_from(&path).unwrap();
+    assert!(!f.entries[0].require_signed_rules && !f.entries[0].require_signed_persona);
 }

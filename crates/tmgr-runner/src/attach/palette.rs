@@ -80,6 +80,7 @@ fn aliases(cmd: Cmd) -> &'static str {
         Cmd::SplitRight => "split vertical",
         Cmd::SplitDown => "split horizontal",
         Cmd::NewSession => "create start chat agent",
+        Cmd::ResumePast => "history continue fork old previous conversation codex claude",
         Cmd::Questions => "asked pocket answer ignore reply",
         Cmd::OpenTask => "ticket issue browser desktop chip",
         Cmd::Search => "find grep history scrollback",
@@ -87,6 +88,7 @@ fn aliases(cmd: Cmd) -> &'static str {
         Cmd::Broadcast => "all panes same prompt send many fan out",
         Cmd::BroadcastMark => "select target pane broadcast",
         Cmd::NeedsYou => "attention waiting permission question alert",
+        Cmd::Permissions => "permission approve allow deny card prompt",
         Cmd::Subagents => "agents tasks background peek",
         Cmd::Notes => "note write memo scratch todo markdown task",
         Cmd::Watch => "tests rerun build watch cargo npm monitor",
@@ -178,7 +180,10 @@ pub(crate) fn esc_key(b: &[u8]) -> (Key, usize) {
 }
 
 pub(crate) fn next_char(b: &[u8]) -> (Option<char>, usize) {
-    let len = match b[0] {
+    let Some(&first) = b.first() else {
+        return (None, 0);
+    };
+    let len = match first {
         0..=0x7f => 1,
         0xc2..=0xdf => 2,
         0xe0..=0xef => 3,
@@ -228,6 +233,12 @@ impl ViewState {
                 search: format!("{} {}", aliases(a.cmd), a.label),
                 right: format!("Ctrl-] {}", a.hotkey),
             })
+            .chain(self.wants_perm_poll().then(|| Item {
+                entry: PaletteEntry::Cmd(Cmd::Permissions),
+                label: "Permission requests".to_string(),
+                search: format!("{} Permission requests", aliases(Cmd::Permissions)),
+                right: "Ctrl-] a".to_string(),
+            }))
             .chain(self.sidebar_rows().into_iter().map(|s| Item {
                 entry: PaletteEntry::Session(s.id.clone()),
                 label: s.name.clone(),

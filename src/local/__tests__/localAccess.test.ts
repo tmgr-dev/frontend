@@ -13,6 +13,12 @@ import {
 } from '../localAccess';
 import { disableLocalPersona, enableLocalPersona } from '../personas';
 import { migrate } from '../schema';
+import {
+	attach,
+	emptyLibrary,
+	putSkill,
+	type LibraryFile,
+} from '../skillLibrary';
 import type { LocalContext, LocalUser, LocalWorkspace } from '../types';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
 
@@ -35,6 +41,16 @@ describeSqlite('local access socket bridge handler', () => {
 		database: '/tmp/x/workspace.db',
 	};
 	const user: LocalUser = { id: 7, name: 'Yurij', email: 'me@example.com' };
+	const sharedLibrary = (): LibraryFile => {
+		const markdown = (slug: string) =>
+			`---\nslug: ${slug}\ntitle: Title ${slug}\nwhen: Use when ${slug}\nactions: []\n---\nBody`;
+		let lib = emptyLibrary();
+		for (const slug of ['zeta', 'alpha', 'unattached']) {
+			lib = putSkill(lib, slug, markdown(slug), '2026-11-06T10:00:00Z').library;
+		}
+		lib = attach(lib, 'p-1', 'zeta');
+		return attach(lib, 'p-1', 'alpha');
+	};
 
 	const baseDeps = (): LocalAccessDeps => ({
 		resolveWorkspace: async (code) =>
@@ -51,6 +67,7 @@ describeSqlite('local access socket bridge handler', () => {
 			expiresAt: '2027-01-01T00:00:00Z',
 		}),
 		promptVersion: async () => 3,
+		skillLibrary: async () => sharedLibrary(),
 	});
 
 	const payload = (
@@ -303,12 +320,40 @@ describeSqlite('local access socket bridge handler', () => {
 			owner: { id: 7, name: 'Yurij' },
 			prompt_version: 3,
 			workspace: { id: -1, code: 'local-personal' },
-			skills: [],
+			skills: [
+				{
+					slug: 'alpha',
+					title: 'Title alpha',
+					when: 'Use when alpha',
+					version: 1,
+					source: 'shared',
+				},
+				{
+					slug: 'zeta',
+					title: 'Title zeta',
+					when: 'Use when zeta',
+					version: 1,
+					source: 'shared',
+				},
+			],
 		});
 		expect(body.persona.workspace.permissions).toEqual(
 			expect.arrayContaining(['tasks:read', 'tasks:write']),
 		);
 		expect(body.token).toMatchObject({ id: 'lt_test', prefix: 'tmgrl_abcd' });
+	});
+
+	it('answers whoami with no skills when the skill library cannot be read', async () => {
+		const deps = baseDeps();
+		deps.skillLibrary = async () => {
+			throw new Error('unreadable');
+		};
+		const reply = await handleLocalAccessRequest(
+			payload({ path: '/api/local/whoami' }),
+			deps,
+		);
+		expect(reply.status).toBe(200);
+		expect(JSON.parse(reply.body).persona.skills).toEqual([]);
 	});
 
 	it('answers GET /api/local/_grant with the persona permissions', async () => {

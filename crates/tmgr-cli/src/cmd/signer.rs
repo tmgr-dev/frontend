@@ -803,6 +803,8 @@ mod tests {
                 public_key: own.public_key.clone(),
                 device_name: "CLI".into(),
             }],
+            require_signed_rules: false,
+            require_signed_persona: false,
             repos: Default::default(),
         }
     }
@@ -1199,7 +1201,9 @@ mod tests {
         let f = fake.clone();
         let err = on_thread(move || {
             let c = client_for(&uri);
-            let s = Signer::with_keychain(&c, &uri, 1, Box::new(f), false).unwrap();
+            let s = Signer::with_keychain(&c, &uri, 1, Box::new(f), false)
+                .unwrap()
+                .with_guard(|| privileged::check(false, false));
             s.sign_tasks(&[task(1, "a")]).unwrap_err()
         })
         .await;

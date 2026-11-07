@@ -102,9 +102,8 @@ fn absolute(dir: &str, base: &Path) -> PathBuf {
 
 fn target(ctx: &Ctx, global: bool) -> Result<Target> {
     if global {
-        let cwd = std::env::current_dir()?;
-        let git = Git::at(cwd);
-        return match git.query(&["config", "--global", "--path", "--get", "core.hooksPath"]) {
+        let neutral = gitx::Neutral::new()?;
+        return match neutral.query(&["config", "--global", "--path", "--get", "core.hooksPath"]) {
             Some(p) if PathBuf::from(&p).is_absolute() => Ok(Target {
                 dir: PathBuf::from(p),
                 shared: true,
@@ -125,13 +124,7 @@ fn target(ctx: &Ctx, global: bool) -> Result<Target> {
         Error::usage("not inside a git repository").hint("run it in a repository, or use --global")
     })?;
     let top = repo.dir().to_path_buf();
-    if let Some(line) = repo.query(&[
-        "config",
-        "--show-scope",
-        "--path",
-        "--get",
-        "core.hooksPath",
-    ]) {
+    if let Some(line) = repo.config(&["--show-scope", "--path", "--get", "core.hooksPath"]) {
         let (scope, value) = line.split_once('\t').unwrap_or(("local", line.as_str()));
         let dir = absolute(value, &top);
         let outside = !dir.starts_with(&top)
@@ -146,10 +139,10 @@ fn target(ctx: &Ctx, global: bool) -> Result<Target> {
         });
     }
     let hooks = repo
-        .query(&["rev-parse", "--git-path", "hooks"])
+        .hooks_dir()
         .ok_or_else(|| Error::internal("cannot locate the hooks directory"))?;
     Ok(Target {
-        dir: absolute(&hooks, &top),
+        dir: absolute(&hooks.to_string_lossy(), &top),
         shared: false,
         set_global_config: false,
         in_worktree: false,
@@ -239,8 +232,7 @@ fn install(ctx: &Ctx, global: bool) -> Result<Output> {
             .dir
             .to_str()
             .ok_or_else(|| Error::usage("the hooks path is not valid UTF-8"))?;
-        let cwd = std::env::current_dir()?;
-        Git::at(cwd).run_ok(&["config", "--global", "core.hooksPath", dir], "config")?;
+        gitx::Neutral::new()?.run_ok(&["config", "--global", "core.hooksPath", dir], "config")?;
     }
     let mut human = format!(
         "{} commit-msg hook installed in {}",

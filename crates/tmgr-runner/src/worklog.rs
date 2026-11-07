@@ -1,6 +1,6 @@
+use crate::hostview::{Access, HostView};
 use crate::sanitize::sanitize_text;
 use crate::wire::now_ms;
-use crate::worktree::GitEnv;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
@@ -33,6 +33,10 @@ enum Ev {
         cwd_head: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         trust: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mode: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sandbox: Option<String>,
     },
     State {
         ts: u64,
@@ -106,11 +110,10 @@ fn clip(s: &str, max: usize) -> String {
     sanitize_text(s).chars().take(max).collect()
 }
 
-fn git_facts(cwd: &Path) -> Option<(GitEnv, Option<String>, Option<String>)> {
-    let git = GitEnv::open_facts(cwd).ok()?;
-    if git.run(&["rev-parse", "--is-inside-work-tree"]).ok()? != "true" {
-        return None;
-    }
+fn git_facts(cwd: &Path) -> Option<(HostView, Option<String>, Option<String>)> {
+    let git = HostView::discover_facts(cwd, Access::Read)
+        .ok()?
+        .with_work_tree();
     let branch = git
         .run(&["symbolic-ref", "--short", "-q", "HEAD"])
         .ok()
@@ -158,7 +161,7 @@ impl Log {
         }
     }
 
-    fn facts(&self) -> Option<(GitEnv, Option<String>, Option<String>)> {
+    fn facts(&self) -> Option<(HostView, Option<String>, Option<String>)> {
         self.facts.then(|| git_facts(&self.cwd)).flatten()
     }
 
@@ -201,7 +204,7 @@ impl Log {
         }
     }
 
-    pub fn created(&self, info: &SessionInfo, trust: Option<&str>) {
+    pub fn created(&self, info: &SessionInfo, trust: Option<&str>, audit: (Option<&str>, bool)) {
         {
             let mut st = lock(&self.st);
             if st.created {
@@ -229,6 +232,8 @@ impl Log {
                 cwd_branch: branch,
                 cwd_head: head,
                 trust: trust.map(str::to_string),
+                mode: audit.0.map(str::to_string),
+                sandbox: Some(if audit.1 { "off" } else { "on" }.to_string()),
             },
             true,
         );
@@ -292,7 +297,7 @@ impl Log {
     }
 }
 
-fn commits(git: &GitEnv, range: &str) -> Vec<WorkCommit> {
+fn commits(git: &HostView, range: &str) -> Vec<WorkCommit> {
     let max = format!("--max-count={MAX_COMMITS}");
     let Ok(out) = git.run(&["log", "--reverse", &max, "--format=%H%x1f%s", range]) else {
         return Vec::new();
@@ -398,6 +403,7 @@ pub fn summary_at(dir: &Path, now: u64) -> WorkSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::worktree::GitEnv;
 
     fn write(dir: &Path, lines: &[&str]) {
         std::fs::write(dir.join(FILE), lines.join("\n") + "\n").unwrap();
@@ -407,6 +413,27 @@ mod tests {
         format!(
             r#"{{"ev":"created","ts":{ts},"profile":null,"argv0_basename":"sh","task":null,"bundle_sha256":null,"cwd_branch":"main","cwd_head":null}}"#
         )
+    }
+
+    #[test]
+    fn created_carries_the_mode_and_sandbox_and_old_lines_still_parse() {
+        let old: Ev = serde_json::from_str(&created(1)).unwrap();
+        assert!(matches!(
+            old,
+            Ev::Created {
+                mode: None,
+                sandbox: None,
+                ..
+            }
+        ));
+        let new = created(1).replace('}', r#","mode":"bypass","sandbox":"off"}"#);
+        match serde_json::from_str::<Ev>(&new).unwrap() {
+            Ev::Created { mode, sandbox, .. } => {
+                assert_eq!(mode.as_deref(), Some("bypass"));
+                assert_eq!(sandbox.as_deref(), Some("off"));
+            }
+            _ => panic!("not a created event"),
+        }
     }
 
     fn state(ts: u64, kind: &str) -> String {

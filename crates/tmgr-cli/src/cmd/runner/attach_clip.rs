@@ -44,10 +44,6 @@ fn pbcopy(text: String) {
     });
 }
 
-fn remote_session() -> bool {
-    std::env::var_os("SSH_CONNECTION").is_some() || std::env::var_os("SSH_TTY").is_some()
-}
-
 impl Clipboard for SystemClipboard {
     fn copy(&mut self, text: &str) -> String {
         let clean = plain(text);
@@ -58,21 +54,44 @@ impl Clipboard for SystemClipboard {
             let _ = out.write_all(&osc52(&clean));
             let _ = out.flush();
         }
-        let local = !remote_session() && cfg!(target_os = "macos");
+        let local = !crate::cmd::setup_terminal::remote_session() && cfg!(target_os = "macos");
         if local {
             pbcopy(clean);
         }
-        if osc || local {
-            format!("copied {n} character{}", if n == 1 { "" } else { "s" })
-        } else {
-            format!("{n} characters are too long for the terminal clipboard")
-        }
+        copy_notice(n, osc, local)
+    }
+}
+
+fn copy_notice(n: usize, osc: bool, local: bool) -> String {
+    let chars = format!("{n} character{}", if n == 1 { "" } else { "s" });
+    if local {
+        format!("copied {chars}")
+    } else if osc {
+        format!(
+            "sent {chars} to the terminal clipboard (empty? run `tmgr setup terminal` on your computer)"
+        )
+    } else {
+        format!("{chars} too long for the terminal clipboard")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_local_copy_says_copied_because_a_terminal_never_confirms() {
+        assert_eq!(copy_notice(5, true, true), "copied 5 characters");
+        assert_eq!(copy_notice(5, false, true), "copied 5 characters");
+        assert_eq!(
+            copy_notice(1, true, false),
+            "sent 1 character to the terminal clipboard (empty? run `tmgr setup terminal` on your computer)"
+        );
+        assert_eq!(
+            copy_notice(200_000, false, false),
+            "200000 characters too long for the terminal clipboard"
+        );
+    }
 
     #[test]
     fn copied_text_is_plain_with_newlines_only() {

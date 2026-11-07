@@ -1,3 +1,4 @@
+import * as tokenSync from '@/utils/tokenSync';
 import * as workspaceContext from '@/utils/workspaceContext';
 import { readFileSync } from 'fs';
 import { ModuleKind, transpileModule } from 'typescript';
@@ -42,6 +43,7 @@ function fixture(extraDeps: Record<string, unknown> = {}, storage?: unknown) {
 				DESKTOP_BAR_DISMISS_KEY: 'tmgr:desktop-bar-dismissed',
 			},
 			'@/utils/requestCache': { requestCache: cache },
+			'@/utils/tokenSync': tokenSync,
 			'@/utils/workspaceContext': workspaceContext,
 			'@/composable/usePusher': { disconnectRealtime: jest.fn() },
 			...extraDeps,
@@ -83,6 +85,26 @@ test('logout clears persona LLM data on the desktop app, using the user id captu
 	const state = { user: { id: 42 }, token: { token: 'x' } };
 	config.actions.logout({ commit: jest.fn(), state });
 	expect(clearPersonaLlmForLogout).toHaveBeenCalledWith(42);
+});
+
+test('a failed persona LLM cleanup on logout is written to the desktop log', async () => {
+	const clearPersonaLlmForLogout = jest
+		.fn()
+		.mockRejectedValue(new Error('persona_llm_clear_for_user: denied'));
+	const log = { error: jest.fn().mockResolvedValue(undefined) };
+	const consoleError = jest.spyOn(console, 'error').mockImplementation();
+	const { config } = fixture({
+		'@/local/personaCache': { clearPersonaLlmForLogout },
+		'@/utils/desktop': { isDesktopApp: () => true },
+		'@tauri-apps/plugin-log': log,
+	});
+	const state = { user: { id: 42 }, token: { token: 'x' } };
+	config.actions.logout({ commit: jest.fn(), state });
+	await new Promise((done) => setTimeout(done, 0));
+	consoleError.mockRestore();
+	expect(log.error).toHaveBeenCalledWith(
+		expect.stringContaining('persona_llm_clear_for_user: denied'),
+	);
 });
 
 test('logout leaves persona LLM data alone outside the desktop app', () => {
@@ -247,4 +269,27 @@ test('login state flips clear the desktop bar dismissal, token rotation does not
 	expect(removeItem).not.toHaveBeenCalledWith('tmgr:desktop-bar-dismissed');
 	mutations.setToken(state, null);
 	expect(removeItem).toHaveBeenCalledWith('tmgr:desktop-bar-dismissed');
+});
+
+test('logout with the local user id -1 does not touch the persona slot', () => {
+	const clearPersonaLlmForLogout = jest.fn();
+	const { config } = fixture({
+		'@/local/personaCache': { clearPersonaLlmForLogout },
+		'@/utils/desktop': { isDesktopApp: jest.fn().mockReturnValue(true) },
+	});
+	config.actions.logout({
+		commit: jest.fn(),
+		state: { user: { id: -1 }, token: null },
+	});
+	expect(clearPersonaLlmForLogout).not.toHaveBeenCalled();
+});
+
+test('logout leaves the local upgrade marker alone', () => {
+	const removeItem = jest.fn();
+	const { config } = fixture(
+		{ '@/utils/desktop': { isDesktopApp: jest.fn().mockReturnValue(false) } },
+		{ getItem: () => null, setItem: jest.fn(), removeItem },
+	);
+	config.actions.logout({ commit: jest.fn(), state: { user: null } });
+	expect(removeItem).not.toHaveBeenCalledWith('tmgr:local-upgrade');
 });

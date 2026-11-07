@@ -1,6 +1,6 @@
 use crate::cmd::notifyenv::NotifyEnv;
 use crate::ctx::Ctx;
-use crate::gitx::run_capture;
+use crate::gitx::Reader;
 use crate::runfinish;
 use serde_json::Value;
 use std::io::{IsTerminal, Read, Seek, SeekFrom};
@@ -40,15 +40,6 @@ fn debug(msg: &str) {
     }
 }
 
-fn git_program() -> &'static str {
-    let no_path = std::env::var_os("PATH").is_none_or(|p| p.is_empty());
-    if no_path && Path::new("/usr/bin/git").exists() {
-        "/usr/bin/git"
-    } else {
-        "git"
-    }
-}
-
 fn git_timeout() -> Duration {
     (budget() / 4).max(Duration::from_millis(400))
 }
@@ -63,6 +54,18 @@ const SESSION_MAX_AGE: Duration = Duration::from_secs(24 * 3600);
 pub fn claude(event: &str, server_override: Option<String>) -> i32 {
     let event = event.to_string();
     guarded(move || claude_work(&event, server_override));
+    0
+}
+
+#[cfg(unix)]
+pub fn decisions(event: &str) -> i32 {
+    let event = event.to_string();
+    guarded(move || decisions_work(&event));
+    0
+}
+
+#[cfg(not(unix))]
+pub fn decisions(_event: &str) -> i32 {
     0
 }
 
@@ -212,21 +215,27 @@ fn send_push(env: &NotifyEnv, payload: &PushPayload) {
     let _ = http.push(payload, push_timeout());
 }
 
-fn git_out(cwd: &Path, args: &[&str]) -> Option<String> {
-    let mut full = vec!["-c", "core.fsmonitor=false"];
-    full.extend_from_slice(args);
-    let out = match run_capture(git_program(), Some(cwd), &full, git_timeout()) {
-        Ok(o) => o,
-        Err(e) => {
-            debug(&format!("git {args:?} could not run: {e}"));
-            return None;
+fn git_reader(cwd: &Path) -> Reader {
+    Reader::open(cwd, git_timeout(), true)
+}
+
+fn reader_out(reader: &Reader, args: &[&str]) -> Option<String> {
+    match reader.run(args) {
+        Ok(text) => {
+            if text.is_empty() {
+                debug(&format!("git {args:?} output empty"));
+            }
+            (!text.is_empty()).then_some(text)
         }
-    };
-    let text = out.stdout.trim().to_string();
-    if !out.ok || text.is_empty() {
-        debug(&format!("git {args:?} ok={} output={text:?}", out.ok));
+        Err(e) => {
+            debug(&format!("git {args:?} failed: {e}"));
+            None
+        }
     }
-    (out.ok && !text.is_empty()).then_some(text)
+}
+
+fn git_out(cwd: &Path, args: &[&str]) -> Option<String> {
+    reader_out(&git_reader(cwd), args)
 }
 
 fn commits_since(cwd: &Path, start_sha: &str) -> Vec<String> {
@@ -269,13 +278,9 @@ fn cloud_client(env: &NotifyEnv) -> Option<Client> {
 }
 
 fn locate_run(state: &runstate::Runs, cwd: &Path, now: i64, mode: Touch) -> Option<runstate::Run> {
-    let out = git_out(
-        cwd,
-        &["rev-parse", "--show-toplevel", "--abbrev-ref", "HEAD"],
-    )?;
-    let mut lines = out.lines();
-    let repo = lines.next()?.to_string();
-    let branch_name = lines.next()?.to_string();
+    let reader = git_reader(cwd);
+    let repo = reader.repo()?.display().to_string();
+    let branch_name = reader_out(&reader, &["rev-parse", "--abbrev-ref", "HEAD"])?;
     if branch_name == "HEAD" {
         return None;
     }
@@ -532,7 +537,8 @@ fn post_git_commits(client: &Client, view: &agentwork::RunView, cwd: &Path) {
         return;
     };
     let ended = view.ended_at.unwrap_or_else(now_s);
-    let git = |args: &[&str]| git_out(cwd, args);
+    let reader = git_reader(cwd);
+    let git = |args: &[&str]| reader_out(&reader, args);
     let commits = runfinish::collect(&git, view.branch.as_deref(), started, ended, &view.commits);
     if commits.is_empty() {
         return;
@@ -576,7 +582,50 @@ fn post_tool_use(env: &NotifyEnv, cwd: &Path, input: &Value) {
     }
 }
 
+#[cfg(all(unix, feature = "runner"))]
+fn valid_turn_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+#[cfg(all(unix, feature = "runner"))]
+fn touch_turn_marker(home: &Path, id: &str) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    if !valid_turn_id(id) {
+        return Err(std::io::ErrorKind::InvalidInput.into());
+    }
+    let dir = home.join(".cache").join("tmgr-turn");
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&dir)?;
+    let f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(dir.join(id))?;
+    f.set_modified(std::time::SystemTime::now())
+}
+
+fn mark_turn() {
+    #[cfg(all(unix, feature = "runner"))]
+    if let (Some(id), Some(home)) = (
+        std::env::var("TMGR_SESSION_ID").ok(),
+        std::env::var_os("HOME").map(PathBuf::from),
+    ) {
+        let _ = touch_turn_marker(&home, &id);
+    }
+}
+
 fn claude_work(event: &str, server_override: Option<String>) {
+    if event == "stop" {
+        mark_turn();
+    }
     let Some(input) = read_stdin() else { return };
     let Ok(env) = NotifyEnv::load(server_override, false) else {
         return;
@@ -634,7 +683,56 @@ fn claude_work(event: &str, server_override: Option<String>) {
     }
 }
 
+#[cfg(unix)]
+fn decisions_work(event: &str) {
+    use crate::cmd::decisions as cards;
+    use tmgr_ipc::decisions::{decisions_dir, Client};
+    let Some(input) = read_stdin() else { return };
+    let Ok(client) = decisions_dir().and_then(|d| Client::open_in(&d)) else {
+        return;
+    };
+    let cwd = payload_cwd(&input)
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("/"));
+    let session = str_of(&input, "session_id");
+    let card = match event {
+        "user-prompt-submit" => {
+            if let Some(s) = session.filter(|s| !s.is_empty()) {
+                let _ = client.close_session("claude-code", s);
+            }
+            return;
+        }
+        "stop" => {
+            let env = tmgr_usage::paths::Env::from_process();
+            let last = str_of(&input, "last_assistant_message");
+            let has_text = last.is_some_and(|m| !m.trim().is_empty());
+            let message = tmgr_usage::consent::granted_read_only(&env, tmgr_usage::Tool::Claude)
+                .then_some(last)
+                .flatten();
+            let git = if has_text {
+                git_out(&cwd, &["rev-parse", "--is-inside-work-tree"]).is_some()
+            } else {
+                crate::gitx::Git::at(&cwd).is_dirty().unwrap_or(false)
+            };
+            match cards::stop_card(&cwd, session, message, has_text, git) {
+                Some(c) => c,
+                None => return,
+            }
+        }
+        "notification" => match cards::notification_card(&input, &cwd, session) {
+            Some(c) => c,
+            None => return,
+        },
+        "permission-request" => cards::permission_card(&input, &cwd, session),
+        _ => return,
+    };
+    if let Err(e) = client.create(card) {
+        debug(&format!("decisions card not sent: {e}"));
+    }
+}
+
 fn codex_work(raw: Option<String>, server_override: Option<String>) {
+    mark_turn();
     let Some(raw) = raw.filter(|r| r.len() <= MAX_ARG_JSON) else {
         return;
     };
@@ -656,6 +754,47 @@ fn codex_work(raw: Option<String>, server_override: Option<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(all(unix, feature = "runner"))]
+    #[test]
+    fn the_turn_marker_is_touched_with_a_fresh_mtime_in_a_private_dir() {
+        use std::os::unix::fs::PermissionsExt;
+        let home = tempfile::tempdir().unwrap();
+        touch_turn_marker(home.path(), "s_abc1234567").unwrap();
+        let dir = home.path().join(".cache/tmgr-turn");
+        let mark = dir.join("s_abc1234567");
+        assert_eq!(
+            std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        let old = std::time::SystemTime::now() - Duration::from_secs(3600);
+        std::fs::File::options()
+            .write(true)
+            .open(&mark)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        touch_turn_marker(home.path(), "s_abc1234567").unwrap();
+        let fresh = std::fs::metadata(&mark).unwrap().modified().unwrap();
+        assert!(fresh > old + Duration::from_secs(3000));
+    }
+
+    #[cfg(all(unix, feature = "runner"))]
+    #[test]
+    fn the_turn_marker_rejects_bad_ids_and_symlinks() {
+        let home = tempfile::tempdir().unwrap();
+        for bad in ["", "../x", "a/b", "a b", "x\0y", &"a".repeat(65)] {
+            assert!(touch_turn_marker(home.path(), bad).is_err(), "{bad:?}");
+        }
+        assert!(!home.path().join(".cache").exists());
+        let dir = home.path().join(".cache/tmgr-turn");
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = home.path().join("outside");
+        std::fs::write(&target, b"keep").unwrap();
+        std::os::unix::fs::symlink(&target, dir.join("s_abc1234567")).unwrap();
+        assert!(touch_turn_marker(home.path(), "s_abc1234567").is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"keep");
+    }
 
     #[test]
     fn the_testing_budget_is_clamped() {

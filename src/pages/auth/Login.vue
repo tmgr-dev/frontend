@@ -111,6 +111,14 @@
 				class="font-medium text-primary underline-offset-4 hover:underline"
 				>Sign up</router-link
 			>
+			<div v-if="isLocalMode" class="mt-2">
+				<router-link
+					to="/app"
+					data-testid="continue-without-account"
+					class="font-medium text-primary underline-offset-4 hover:underline"
+					>Continue without an account</router-link
+				>
+			</div>
 		</template>
 	</AuthLayout>
 </template>
@@ -146,11 +154,12 @@
 	import { createOAuthBinding } from '@/utils/oauthBinding';
 	import { consumeSessionExpired } from '@/utils/sessionExpiry';
 	import { AxiosError } from 'axios';
-	import { onMounted, ref } from 'vue';
+	import { computed, onMounted, ref } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 
 	const route = useRoute();
 	const router = useRouter();
+	const isLocalMode = computed(() => store.getters.accountMode === 'local');
 	const isDesktop = isDesktopApp();
 	const telegramBotName = import.meta.env.VITE_TELEGRAM_BOT_NAME;
 	const telegramWidgetKey = ref(0);

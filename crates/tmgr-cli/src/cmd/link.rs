@@ -1,5 +1,5 @@
 use crate::cli_link::{
-    AddArgs, AuditArgs, InitArgs, LinkCommand, RevokeArgs, ScopeArgs, TrustArgs,
+    AddArgs, AuditArgs, InitArgs, LinkCommand, RevokeArgs, ScopeArgs, Switch, TrustArgs,
 };
 use crate::ctx::Ctx;
 use crate::out::{table, Output};
@@ -15,6 +15,7 @@ use tmgr_link::grammar;
 use tmgr_link::jump;
 use tmgr_link::leader::{self, Client, SshTarget};
 use tmgr_link::privileged;
+use tmgr_link::registry::{self, Terminated};
 use tmgr_link::scope::Scope;
 use tmgr_link::sshd::{self, Verdict};
 use tmgr_link::store::{Follower, Paths, Store};
@@ -184,7 +185,7 @@ fn add(ctx: &Ctx, paths: &Paths, a: &AddArgs) -> Result<Output> {
 }
 
 fn scope_json(s: &Scope) -> Value {
-    json!({"repos": s.repos, "agents": s.agents, "models": s.models, "max": s.max, "from": s.from, "allow_attach_input": s.allow_attach_input, "allow_bypass": false})
+    json!({"repos": s.repos, "agents": s.agents, "models": s.models, "max": s.max, "from": s.from, "allow_attach_input": s.allow_attach_input, "remote_control": s.remote_control, "include_bypass": s.include_bypass, "allow_bypass": false})
 }
 
 fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
@@ -214,6 +215,8 @@ fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
             max: a.max,
             from: Some(a.from.clone()),
             allow_attach_input: a.allow_attach_input.then_some(true),
+            remote_control: None,
+            include_bypass: None,
         },
     };
     let plan = follower::plan_trust(paths, &input, &bin, check)?;
@@ -374,6 +377,8 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
         max: a.max,
         from,
         allow_attach_input: a.allow_attach_input,
+        remote_control: a.remote_control.map(Switch::is_on),
+        include_bypass: a.include_bypass.map(Switch::is_on),
     };
     let plan = follower::plan_scope(paths, &a.name, &input)?;
     let changes = a.repos.is_some()
@@ -381,7 +386,9 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
         || a.models.is_some()
         || a.max.is_some()
         || a.from.is_some()
-        || a.allow_attach_input.is_some();
+        || a.allow_attach_input.is_some()
+        || a.remote_control.is_some()
+        || a.include_bypass.is_some();
     if !changes {
         return Ok(Output::new(
             json!({"link": plan.name, "scope": scope_json(&plan.new)}),
@@ -398,9 +405,33 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
                 plan.name, plan.name
             ),
         )?;
+        for warning in full_access_warnings(&plan.old, &plan.new) {
+            eprintln!("{warning}");
+        }
+        if !full_access_warnings(&plan.old, &plan.new).is_empty() {
+            privileged::confirm_typed_stdio(
+                FULL_ACCESS_WORD,
+                &format!("Type {FULL_ACCESS_WORD} to give {} this access:", plan.name),
+            )?;
+        }
     }
     let bin = std::env::current_exe()?;
     follower::apply_scope(paths, &plan, &bin)?;
+    let closed = close_attached(paths, &plan.name, &plan.new).map_err(|mut e| {
+        e.message = format!("the scope is saved, but {}", e.message);
+        e
+    })?;
+    let unknown = closed.as_ref().map_or(0, |t| t.unknown);
+    let unchecked = format!(
+        "{unknown} worker record(s) of {} could not be checked, so an attach may still be open until its next check",
+        plan.name
+    );
+    if unknown > 0 && (input.remote_control == Some(false) || input.include_bypass == Some(false)) {
+        return Err(
+            Error::internal(format!("the scope is saved, but {unchecked}"))
+                .hint(unknown_workers_hint(paths, &plan.name)),
+        );
+    }
     let kind = if plan.widening {
         "widened"
     } else if plan.old == plan.new {
@@ -408,15 +439,86 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
     } else {
         "narrowed"
     };
+    let mut human = format!(
+        "{} scope {kind}: {}",
+        ctx.style.good("✓"),
+        plan.new.summary()
+    );
+    if plan.new.include_bypass && !plan.new.remote_control {
+        human.push_str("\nnote: include-bypass has no effect until remote control is on");
+    }
+    if let Some(t) = &closed {
+        human.push_str(&format!(
+            "\nclosed {} open remote attach(es), {} still running",
+            t.signalled, t.survivors
+        ));
+    }
+    if unknown > 0 {
+        human.push_str(&format!("\nwarning: {unchecked}"));
+    }
     Ok(Output::new(
-        json!({"link": plan.name, "change": kind, "scope": scope_json(&plan.new)}),
-        format!(
-            "{} scope {kind}: {}",
-            ctx.style.good("✓"),
-            plan.new.summary()
-        ),
+        json!({
+            "link": plan.name,
+            "change": kind,
+            "scope": scope_json(&plan.new),
+            "closed": closed.as_ref().map(|t| json!({"signalled": t.signalled, "survivors": t.survivors, "unknown": t.unknown})),
+        }),
+        human,
     ))
 }
+
+const FULL_ACCESS_WORD: &str = "full access";
+
+fn full_access_warnings(old: &Scope, new: &Scope) -> Vec<String> {
+    let mut out = Vec::new();
+    if new.remote_control && !old.remote_control {
+        out.push(
+            "Remote control gives this leader FULL ACCESS to this machine with your tokens and keys: it can see, type into and halt every runner session here, including ones you started yourself."
+                .to_string(),
+        );
+    }
+    if new.include_bypass && (!old.include_bypass || (new.remote_control && !old.remote_control)) {
+        out.push(
+            "Include-bypass makes sandbox-free sessions (--no-sandbox, --mode bypass) reachable too: full access to this machine with your tokens and keys, without the sandbox."
+                .to_string(),
+        );
+        if !new.remote_control {
+            out.push("It has no effect until remote control is on.".to_string());
+        }
+    }
+    out
+}
+
+fn close_attached(paths: &Paths, name: &str, new: &Scope) -> Result<Option<Terminated>> {
+    let hint = |e: Error| e.hint(unknown_workers_hint(paths, name));
+    if !registry::any_attached(paths, name, &|a| follower::must_close(new, a)).map_err(hint)? {
+        return Ok(None);
+    }
+    std::thread::sleep(CLOSE_WAIT);
+    let t = follower::close_after_scope_change(paths, name, new, CLOSE_GRACE).map_err(hint)?;
+    Audit::new(&paths.audit_dir()).append(
+        "link.scope.closed",
+        json!({"link": name, "signalled": t.signalled, "survivors": t.survivors, "unknown": t.unknown}),
+    )?;
+    if t.survivors > 0 {
+        return Err(Error::internal(format!(
+            "{} remote attach worker(s) of {name} did not stop",
+            t.survivors
+        ))
+        .hint(format!("tmgr link revoke {name}")));
+    }
+    Ok(Some(t))
+}
+
+fn unknown_workers_hint(paths: &Paths, name: &str) -> String {
+    format!(
+        "check the records of {name} in {}, remove one only once its worker is gone, then rerun",
+        paths.link_dir().join("workers").display()
+    )
+}
+
+const CLOSE_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
+const CLOSE_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
 
 fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
     let name = a.name.as_str();
@@ -448,6 +550,17 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
             contained.workers.survivors
         ));
     }
+    if let Some(cause) = &contained.workers_unreadable {
+        problems.push(format!(
+            "the worker registry could not be read ({cause}), so its workers could not be checked"
+        ));
+    }
+    if contained.workers.unknown > 0 {
+        problems.push(format!(
+            "{} worker record(s) could not be checked",
+            contained.workers.unknown
+        ));
+    }
     if contained.runs_unreadable {
         problems
             .push("the link runs file is unreadable, so its runs could not be checked".to_string());
@@ -472,14 +585,24 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
             contained.runs_surviving
         ));
     }
+    if contained.incomplete() && problems.is_empty() {
+        problems.push("a containment step did not finish".to_string());
+    }
     if !problems.is_empty() {
+        let retry = format!(
+            "start the runner if needed and retry: tmgr runner start; tmgr link revoke {name} --halt-runs"
+        );
+        let workers_unclear =
+            contained.workers_unreadable.is_some() || contained.workers.unknown > 0;
         return Err(Error::internal(format!(
             "containment incomplete after revoking {name}: {}",
             problems.join("; ")
         ))
-        .hint(format!(
-            "start the runner if needed and retry: tmgr runner start; tmgr link revoke {name} --halt-runs"
-        )));
+        .hint(if workers_unclear {
+            format!("{}; {retry}", unknown_workers_hint(paths, name))
+        } else {
+            retry
+        }));
     }
     let keys_removed = r.as_ref().map_or(0, |r| r.keys_removed);
     let removed = if r.is_none() {
@@ -620,16 +743,6 @@ fn format_entry(ctx: &Ctx, e: &Value) -> String {
         .unwrap_or_else(|_| text("ts"));
     let link = text("link");
     if text("event") == "worker.request" {
-        let args = e
-            .get("args")
-            .and_then(Value::as_object)
-            .map(|m| {
-                m.iter()
-                    .map(|(k, v)| format!("{k}={}", sanitize_line(v.as_str().unwrap_or(""))))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            })
-            .unwrap_or_default();
         let decision = text("decision");
         let reason = text("reason");
         let verdict = if decision == "accepted" {
@@ -642,22 +755,230 @@ fn format_entry(ctx: &Ctx, e: &Value) -> String {
             };
             ctx.style.accent(&tail)
         };
-        let what = format!("{} {args}", text("method"));
-        return format!("{when} from {link}  {}  {verdict}", what.trim_end());
+        return format!("{when} from {link}  {}  {verdict}", request_what(e));
     }
-    let rest: Vec<String> = e
-        .as_object()
+    if let Some(line) = remote_line(e, &when, &link) {
+        return line;
+    }
+    format!(
+        "{when} {} {} {}",
+        audit_field(&text("event")),
+        audit_field(&link),
+        other_fields(e)
+    )
+    .trim_end()
+    .to_string()
+}
+
+fn other_fields(e: &Value) -> String {
+    e.as_object()
         .into_iter()
         .flatten()
         .filter(|(k, _)| !matches!(k.as_str(), "v" | "seq" | "ts" | "prev" | "event" | "link"))
         .map(|(k, v)| {
             format!(
-                "{k}={}",
-                sanitize_line(&v.as_str().map_or_else(|| v.to_string(), str::to_string))
+                "{}={}",
+                audit_field(k),
+                audit_field(&v.as_str().map_or_else(|| v.to_string(), str::to_string))
             )
         })
-        .collect();
-    format!("{when} {} {link} {}", text("event"), rest.join(" "))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn audit_field(raw: &str) -> String {
+    let clean = sanitize_line(raw);
+    if !clean
+        .chars()
+        .all(|c| c.is_ascii_graphic() && !matches!(c, '"' | '\\' | '='))
+    {
+        format!("{clean:?}")
+    } else {
+        clean
+    }
+}
+
+fn request_what(e: &Value) -> String {
+    let method = audit_field(e.get("method").and_then(Value::as_str).unwrap_or(""));
+    format!("{method} {}", request_args(e))
         .trim_end()
         .to_string()
+}
+
+fn request_args(e: &Value) -> String {
+    e.get("args")
+        .and_then(Value::as_object)
+        .map(|m| {
+            m.iter()
+                .map(|(k, v)| {
+                    format!(
+                        "{}={}",
+                        audit_field(k),
+                        audit_field(v.as_str().unwrap_or(""))
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_default()
+}
+
+fn remote_line(e: &Value, when: &str, link: &str) -> Option<String> {
+    let text = |k: &str| sanitize_line(e.get(k).and_then(Value::as_str).unwrap_or(""));
+    match text("event").as_str() {
+        "worker.attach_input" => {
+            let session = ["run", "session", "id"]
+                .iter()
+                .map(|k| text(k))
+                .find(|v| !v.is_empty())
+                .unwrap_or_default();
+            let via = if text("via") == "remote_control" {
+                " (remote control)"
+            } else {
+                ""
+            };
+            let count = e
+                .get("msgs")
+                .and_then(Value::as_u64)
+                .map_or(String::new(), |n| format!(", {n} messages"));
+            Some(
+                format!(
+                    "{when} worker.attach_input {link} input sent to session {session}{via}{count}"
+                )
+                .trim_end()
+                .to_string(),
+            )
+        }
+        "link.scope.closed" => {
+            let num = |k: &str| e.get(k).and_then(Value::as_u64).unwrap_or(0);
+            Some(format!(
+                "{when} link.scope.closed {link} remote attaches stopped={} still-running={} unknown={}",
+                num("signalled"),
+                num("survivors"),
+                num("unknown")
+            ))
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attach_input_audit_names_link_and_session_but_never_content() {
+        let e = json!({"event": "worker.attach_input", "link": "macbook", "run": "s_abc", "via": "remote_control", "bytes": 12, "data": "SECRET"});
+        let line = remote_line(&e, "t", "macbook").unwrap();
+        assert!(line.contains("macbook"));
+        assert!(line.contains("s_abc"));
+        assert!(line.contains("remote control"));
+        assert!(!line.contains("SECRET"));
+    }
+
+    #[test]
+    fn audit_view_strips_terminal_controls_from_request_field_names() {
+        let e = json!({"args": {"\u{1b}[2Jevil": "\u{1b}[31mv"}});
+        assert!(!request_args(&e).contains('\u{1b}'));
+    }
+
+    #[test]
+    fn audit_view_keeps_a_spaced_value_from_looking_like_more_fields() {
+        let e = json!({"args": {"run": "s_x accepted=1"}});
+        assert_eq!(request_args(&e), r#"run="s_x accepted=1""#);
+        assert_eq!(request_args(&json!({"args": {"run": "s_x"}})), "run=s_x");
+    }
+
+    #[test]
+    fn audit_view_keeps_a_spaced_method_from_looking_like_more_fields() {
+        let e = json!({"method": "runs.halt accepted", "args": {"run": "s_x"}});
+        assert_eq!(request_what(&e), r#""runs.halt accepted" run=s_x"#);
+        let plain = json!({"method": "runs.list"});
+        assert_eq!(request_what(&plain), "runs.list");
+    }
+
+    #[test]
+    fn request_args_quote_equals_and_backslash_in_values() {
+        assert_eq!(request_args(&json!({"args": {"a": "b=c"}})), r#"a="b=c""#);
+        assert_eq!(request_args(&json!({"args": {"a": "b\\c"}})), r#"a="b\\c""#);
+    }
+
+    #[test]
+    fn fallback_fields_quote_keys_and_values_like_request_fields() {
+        let spaced = json!({"s_x accepted=1": "v", "k": "s_x accepted=1"});
+        let text = other_fields(&spaced);
+        assert!(text.contains(r#""s_x accepted=1"=v"#), "{text}");
+        assert!(text.contains(r#"k="s_x accepted=1""#), "{text}");
+        assert_eq!(other_fields(&json!({"k": "plain"})), "k=plain");
+        assert_eq!(other_fields(&json!({"n": 3})), "n=3");
+        assert_eq!(other_fields(&json!({"a": ["x y"]})), r#"a="[\"x y\"]""#);
+        assert_eq!(other_fields(&json!({"a": "b=c"})), r#"a="b=c""#);
+        assert_eq!(other_fields(&json!({"a": "b\\c"})), r#"a="b\\c""#);
+    }
+
+    #[test]
+    fn audit_view_keeps_quote_characters_from_joining_fields() {
+        let e = json!({"args": {"a": "\"x", "b": "y\""}});
+        assert_eq!(request_args(&e), r#"a="\"x" b="y\"""#);
+    }
+
+    #[test]
+    fn audit_view_quotes_blank_looking_unicode() {
+        let e = json!({"method": "runs.halt\u{2800}\u{2800}accepted"});
+        assert!(request_what(&e).starts_with('"'));
+    }
+
+    #[test]
+    fn attach_input_audit_shows_the_count() {
+        let e = json!({"event": "worker.attach_input", "link": "macbook", "run": "s_abc", "via": "remote_control", "msgs": 3, "bytes": 12});
+        assert!(remote_line(&e, "t", "macbook")
+            .unwrap()
+            .contains("3 messages"));
+    }
+
+    #[test]
+    fn scope_closed_audit_shows_the_link() {
+        let e = json!({"event": "link.scope.closed", "link": "macbook", "signalled": 2, "survivors": 0});
+        let line = remote_line(&e, "t", "macbook").unwrap();
+        assert!(line.contains("macbook"));
+        assert!(line.contains("stopped=2"));
+        let e = json!({"event": "link.scope.closed", "link": "macbook", "unknown": 1});
+        assert!(remote_line(&e, "t", "macbook")
+            .unwrap()
+            .contains("unknown=1"));
+    }
+
+    #[test]
+    fn enabling_remote_control_warns_about_full_access_and_bypass_about_the_sandbox() {
+        let off = Scope::default();
+        let remote = Scope {
+            remote_control: true,
+            ..Default::default()
+        };
+        let both = Scope {
+            remote_control: true,
+            include_bypass: true,
+            ..Default::default()
+        };
+        let text = full_access_warnings(&off, &remote).join(" ");
+        assert!(text.contains("FULL ACCESS") && text.contains("tokens and keys"));
+        assert!(!text.contains("sandbox"));
+        let text = full_access_warnings(&remote, &both).join(" ");
+        assert!(text.contains("sandbox-free") && text.contains("tokens and keys"));
+        assert!(full_access_warnings(&both, &off).is_empty());
+        let stored = Scope {
+            include_bypass: true,
+            ..Default::default()
+        };
+        assert!(full_access_warnings(&stored, &both)
+            .join(" ")
+            .contains("sandbox-free"));
+        let alone = Scope {
+            include_bypass: true,
+            ..Default::default()
+        };
+        assert!(full_access_warnings(&off, &alone)
+            .join(" ")
+            .contains("no effect until remote control is on"));
+    }
 }

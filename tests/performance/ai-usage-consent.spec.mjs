@@ -211,7 +211,7 @@ test('Not now shows the off card and never scans; Allow there scans', async ({
   const usage = fakeUsage();
   await openUsage(page, usage, 'light', { runner });
   await expect(page.getByTestId('usage-consent-scope')).toContainText(
-    "This setting doesn't cover the TMGR runner yet",
+    'the TMGR runner on this device. With reading on, the runner reads',
   );
   await page.getByRole('button', { name: 'Not now' }).click();
   expect(usage.calls.at(-1).args).toEqual({ state: 'denied' });

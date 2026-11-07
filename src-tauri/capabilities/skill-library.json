@@ -1,0 +1,13 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "skill-library",
+	"description": "Local skills library: main window only.",
+	"windows": ["main"],
+	"permissions": [
+		"allow-skill-library-read",
+		"allow-skill-library-write",
+		"allow-skill-library-export",
+		"allow-skill-library-import-pick",
+		"allow-skill-library-migrate-local"
+	]
+}

@@ -91,15 +91,17 @@ impl Rig {
         git(&clone, &["commit", "-q", "-m", "fix login"]);
         let bare = root.join("remote.git");
         git(&root, &["init", "-q", "--bare", bare.to_str().unwrap()]);
+        common::seed_remote(&repo, &bare);
         std::fs::write(
             root.join(".gitconfig"),
             format!(
-                "[url \"{}\"]\n\tinsteadOf = https://github.com/acme/widgets.git\n",
-                bare.display()
+                "[url \"{}:acme/widgets.git\"]\n\tinsteadOf = https://github.com/acme/widgets.git\n",
+                common::STUB_SSH_HOST
             ),
         )
         .unwrap();
         let stub = root.join("stub");
+        common::write_ssh_stub(&stub, &[("acme/widgets.git", &bare)]);
         write_script(
             &stub,
             "gh",
@@ -257,6 +259,16 @@ fn running_run() -> Value {
     json!([{"id": 77, "status": "running", "agent": "claude-code", "branch": BRANCH}])
 }
 
+fn assert_only_main(bare: &Path) {
+    let branches = git(bare, &["branch", "--list"]);
+    assert!(
+        branches
+            .lines()
+            .all(|l| l.trim_start_matches('*').trim() == "main"),
+        "{branches}"
+    );
+}
+
 fn stderr(o: &std::process::Output) -> String {
     common::text(&o.stderr)
 }
@@ -326,7 +338,7 @@ async fn a_clone_on_another_branch_publishes_nothing() {
     assert_ne!(out.status.code(), Some(0));
     assert!(stderr(&out).contains("pinned"), "{}", stderr(&out));
     assert!(rig.gh_argv().is_none());
-    assert!(git(&rig.bare, &["branch", "--list"]).is_empty());
+    assert_only_main(&rig.bare);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -371,7 +383,7 @@ async fn a_merge_commit_in_the_run_publishes_nothing() {
         stderr(&out)
     );
     assert!(rig.gh_argv().is_none());
-    assert!(git(&rig.bare, &["branch", "--list"]).is_empty());
+    assert_only_main(&rig.bare);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -412,5 +424,231 @@ async fn a_task_edited_after_approval_is_not_published() {
     assert_eq!(out.status.code(), Some(5), "{}", stderr(&out));
     assert!(stderr(&out).contains("changed since"), "{}", stderr(&out));
     assert!(rig.gh_argv().is_none());
-    assert!(git(&rig.bare, &["branch", "--list"]).is_empty());
+    assert_only_main(&rig.bare);
+}
+
+fn commit_ci_then_more(rig: &Rig) -> String {
+    std::fs::create_dir_all(rig.clone.join(".github/workflows")).unwrap();
+    std::fs::write(rig.clone.join(".github/workflows/ci.yml"), "on: push\n").unwrap();
+    git(&rig.clone, &["add", "-A"]);
+    git(&rig.clone, &["commit", "-q", "-m", "ci"]);
+    let ci = git(&rig.clone, &["rev-parse", "HEAD"]);
+    std::fs::write(rig.clone.join("more.txt"), "more\n").unwrap();
+    git(&rig.clone, &["add", "-A"]);
+    git(&rig.clone, &["commit", "-q", "-m", "more"]);
+    git(
+        &rig.repo,
+        &["fetch", "-q", rig.clone.to_str().unwrap(), BRANCH],
+    );
+    ci
+}
+
+fn assert_refused_without_publishing(rig: &Rig, out: &std::process::Output, needle: &str) {
+    assert_ne!(out.status.code(), Some(0), "{}", stderr(out));
+    assert!(stderr(out).contains(needle), "{}", stderr(out));
+    assert!(rig.gh_argv().is_none());
+    assert_only_main(&rig.bare);
+}
+
+fn loose(repo: &Path, sha: &str) -> PathBuf {
+    repo.join(".git/objects").join(&sha[..2]).join(&sha[2..])
+}
+
+fn replace_object(repo: &Path, name: &str, source: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    let to = loose(repo, name);
+    std::fs::set_permissions(&to, std::fs::Permissions::from_mode(0o644)).unwrap();
+    std::fs::copy(loose(repo, source), &to).unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_publish_base_comes_from_the_remote_not_local_refs() {
+    let rig = Rig::new(running_run()).await;
+    assert!(rig.cmd(&["runner", "start"]).status.success());
+    let ci = commit_ci_then_more(&rig);
+    git(&rig.repo, &["update-ref", "refs/remotes/origin/main", &ci]);
+    let out = rig.publish();
+    assert_refused_without_publishing(&rig, &out, ".github");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_base_commit_that_fails_verification_is_refused() {
+    let rig = Rig::new(running_run()).await;
+    assert!(rig.cmd(&["runner", "start"]).status.success());
+    let ci = commit_ci_then_more(&rig);
+    let base = git(&rig.repo, &["rev-parse", "main"]);
+    replace_object(&rig.repo, &base, &ci);
+    let out = rig.publish();
+    assert_refused_without_publishing(&rig, &out, "does not match its name");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_base_tree_that_fails_verification_is_refused() {
+    let rig = Rig::new(running_run()).await;
+    assert!(rig.cmd(&["runner", "start"]).status.success());
+    let ci = commit_ci_then_more(&rig);
+    let base_tree = git(&rig.repo, &["rev-parse", "main^{tree}"]);
+    let ci_tree = git(&rig.repo, &["rev-parse", &format!("{ci}^{{tree}}")]);
+    replace_object(&rig.repo, &base_tree, &ci_tree);
+    let out = rig.publish();
+    assert_refused_without_publishing(&rig, &out, "does not match its name");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_new_object_that_fails_verification_is_refused() {
+    let rig = Rig::new(running_run()).await;
+    assert!(rig.cmd(&["runner", "start"]).status.success());
+    for (file, text) in [("one.txt", "one\n"), ("two.txt", "two\n")] {
+        std::fs::write(rig.clone.join(file), text).unwrap();
+        git(&rig.clone, &["add", "-A"]);
+        git(&rig.clone, &["commit", "-q", "-m", file]);
+    }
+    git(
+        &rig.repo,
+        &["fetch", "-q", rig.clone.to_str().unwrap(), BRANCH],
+    );
+    let one = git(&rig.repo, &["rev-parse", "FETCH_HEAD~1:one.txt"]);
+    let two = git(&rig.repo, &["rev-parse", "FETCH_HEAD:two.txt"]);
+    replace_object(&rig.repo, &one, &two);
+    let out = rig.publish();
+    assert_refused_without_publishing(&rig, &out, "does not match its name");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_workflow_file_added_and_removed_within_the_run_publishes_nothing() {
+    let rig = Rig::new(running_run()).await;
+    assert!(rig.cmd(&["runner", "start"]).status.success());
+    std::fs::create_dir_all(rig.clone.join(".github/workflows")).unwrap();
+    std::fs::write(rig.clone.join(".github/workflows/ci.yml"), "on: push\n").unwrap();
+    git(&rig.clone, &["add", "-A"]);
+    git(&rig.clone, &["commit", "-q", "-m", "ci"]);
+    git(&rig.clone, &["rm", "-q", "-r", ".github"]);
+    git(&rig.clone, &["commit", "-q", "-m", "drop ci"]);
+    let out = rig.publish();
+    assert_refused_without_publishing(&rig, &out, ".github");
+}
+
+fn advance_remote(rig: &Rig, file: &str, text: &str) -> String {
+    let other = rig.env.tmp.path().join("other");
+    if !other.exists() {
+        git(
+            rig.env.tmp.path(),
+            &[
+                "clone",
+                "-q",
+                rig.bare.to_str().unwrap(),
+                other.to_str().unwrap(),
+            ],
+        );
+    }
+    let at = other.join(file);
+    std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+    std::fs::write(at, text).unwrap();
+    git(&other, &["add", "-A"]);
+    git(&other, &["commit", "-q", "-m", file]);
+    git(&other, &["push", "-q", "origin", "main"]);
+    git(&other, &["rev-parse", "HEAD"])
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_branch_from_an_older_commit_is_refused_when_the_workflows_of_the_default_branch_differ()
+{
+    let rig = Rig::new(running_run()).await;
+    assert!(rig.cmd(&["runner", "start"]).status.success());
+    advance_remote(&rig, ".github/workflows/x.yml", "on: push\n");
+    let out = rig.publish();
+    assert_refused_without_publishing(&rig, &out, ".github");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_branch_from_an_older_commit_publishes_when_the_workflows_match() {
+    let rig = Rig::new(running_run()).await;
+    assert!(rig.cmd(&["runner", "start"]).status.success());
+    let with_ci = advance_remote(&rig, ".github/workflows/x.yml", "on: push\n");
+    git(
+        &rig.clone,
+        &["fetch", "-q", rig.bare.to_str().unwrap(), "main"],
+    );
+    git(&rig.clone, &["rebase", "-q", "--onto", &with_ci, "main"]);
+    advance_remote(&rig, "upstream.txt", "u\n");
+    let out = rig.publish();
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_remote_that_cannot_name_its_default_branch_publishes_nothing() {
+    let rig = Rig::new(running_run()).await;
+    assert!(rig.cmd(&["runner", "start"]).status.success());
+    git(&rig.bare, &["update-ref", "-d", "refs/heads/main"]);
+    let out = rig.publish();
+    assert_ne!(out.status.code(), Some(0));
+    assert!(
+        stderr(&out).contains("default branch of the remote"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(rig.gh_argv().is_none());
+    assert_only_main(&rig.bare);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_default_branch_of_the_remote_is_used_when_the_server_names_one_it_lacks() {
+    let rig = Rig::new(running_run()).await;
+    assert!(rig.cmd(&["runner", "start"]).status.success());
+    git(&rig.bare, &["branch", "-m", "main", "trunk"]);
+    git(&rig.bare, &["symbolic-ref", "HEAD", "refs/heads/trunk"]);
+    let out = rig.publish();
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let argv = rig.gh_argv().expect("gh ran");
+    assert!(
+        argv.windows(2).any(|w| w == ["--base", "trunk"]),
+        "{argv:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_base_that_exists_only_on_the_remote_is_fetched_before_publishing() {
+    let rig = Rig::new(running_run()).await;
+    assert!(rig.cmd(&["runner", "start"]).status.success());
+    let other = rig.env.tmp.path().join("other");
+    git(
+        rig.env.tmp.path(),
+        &[
+            "clone",
+            "-q",
+            rig.bare.to_str().unwrap(),
+            other.to_str().unwrap(),
+        ],
+    );
+    std::fs::write(other.join("upstream.txt"), "u\n").unwrap();
+    git(&other, &["add", "-A"]);
+    git(&other, &["commit", "-q", "-m", "upstream"]);
+    git(&other, &["push", "-q", "origin", "main"]);
+    let moved = git(&other, &["rev-parse", "HEAD"]);
+    assert!(std::process::Command::new("git")
+        .args(["cat-file", "-e", &moved])
+        .current_dir(&rig.repo)
+        .status()
+        .map(|s| !s.success())
+        .unwrap());
+    let out = rig.publish();
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    git(&rig.repo, &["cat-file", "-e", &moved]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_origin_of_another_repository_publishes_nothing_and_reads_no_remote() {
+    let rig = Rig::new(running_run()).await;
+    assert!(rig.cmd(&["runner", "start"]).status.success());
+    git(
+        &rig.repo,
+        &[
+            "remote",
+            "set-url",
+            "origin",
+            "https://github.com/other/widgets.git",
+        ],
+    );
+    let out = rig.publish();
+    assert_refused_without_publishing(&rig, &out, "is not the repository linked");
 }

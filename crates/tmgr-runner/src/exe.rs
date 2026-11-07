@@ -37,6 +37,73 @@ pub fn resolve_exe(name: &str, path: &OsStr, base: Option<&Path>) -> Result<Path
     found.ok_or_else(missing)
 }
 
+const CODEX_FORK_MIN: (u64, u64, u64) = (0, 156, 0);
+
+fn version_key(text: &str) -> Option<(u64, u64, u64)> {
+    text.split_whitespace().find_map(|tok| {
+        let tok = tok.strip_prefix('v').unwrap_or(tok);
+        let core = tok.split(['-', '+']).next()?;
+        let mut n = core.split('.').map(|p| p.parse::<u64>().ok());
+        let (a, b, c) = (n.next()??, n.next()??, n.next()??);
+        n.next().is_none().then_some((a, b, c))
+    })
+}
+
+/// `Ok` when `codex --version` names a release that takes the profile's `--no-daemon` (0.156.0) and so also has `codex fork <id>` (0.81.0).
+pub fn codex_fork_supported(version_output: &str) -> Result<(), String> {
+    let (a, b, c) = version_key(version_output).ok_or_else(|| {
+        "cannot tell which Codex version is installed; forking needs Codex 0.156.0 or newer"
+            .to_string()
+    })?;
+    if (a, b, c) < CODEX_FORK_MIN {
+        return Err(format!(
+            "Codex {a}.{b}.{c} cannot fork a conversation; update to Codex 0.156.0 or newer"
+        ));
+    }
+    Ok(())
+}
+
+pub fn version_output(command: &[String]) -> String {
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
+    let Some((exe, args)) = command.split_first() else {
+        return String::new();
+    };
+    let mut cmd = Command::new(exe);
+    cmd.args(args)
+        .arg("--version")
+        .env_clear()
+        .current_dir("/")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .process_group(0);
+    for key in ["PATH", "HOME"] {
+        if let Some(v) = std::env::var_os(key) {
+            cmd.env(key, v);
+        }
+    }
+    let Ok(mut child) = cmd.spawn() else {
+        return String::new();
+    };
+    let pid = child.id() as i32;
+    let Some(stdout) = child.stdout.take() else {
+        return String::new();
+    };
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut out = String::new();
+        let _ = stdout.take(4096).read_to_string(&mut out);
+        let _ = tx.send(out);
+    });
+    let out = rx.recv_timeout(Duration::from_secs(5)).unwrap_or_default();
+    unsafe { libc::kill(-pid, libc::SIGKILL) };
+    let _ = child.kill();
+    let _ = child.wait();
+    out
+}
+
 const PIN_MAX: u64 = 512 << 20;
 
 /// Checks that `resolved` is the pinned executable and returns the canonical path to exec.
@@ -98,6 +165,39 @@ fn hash(file: &File) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn codex_fork_needs_0_156_or_newer() {
+        use super::codex_fork_supported as ok;
+        assert!(ok("codex-cli 0.164.0\n").is_ok());
+        assert!(ok("codex-cli 0.156.0").is_ok());
+        assert!(ok("codex-cli 1.0.0").is_ok());
+        assert!(ok("codex-cli 0.156.1-alpha.2").is_ok());
+        assert!(ok("codex-cli 0.156.0-alpha.7").is_ok());
+        for old in [
+            "codex-cli 0.80.0",
+            "codex 0.9.12",
+            "codex-cli 0.155.1",
+            "codex-cli 0.155.9-alpha.1",
+        ] {
+            let e = ok(old).unwrap_err();
+            assert!(e.contains("0.156.0 or newer"), "{old}: {e}");
+        }
+        for junk in [
+            "",
+            "codex-cli",
+            "codex-cli dev",
+            "codex-cli 0.81",
+            "codex-cli 0.81.0.1",
+            "codex-cli -1.0.0",
+        ] {
+            let e = ok(junk).unwrap_err();
+            assert!(
+                e.contains("cannot tell which Codex version"),
+                "{junk:?}: {e}"
+            );
+        }
+    }
+
     use super::*;
 
     fn script(dir: &Path, name: &str, mode: u32) -> PathBuf {

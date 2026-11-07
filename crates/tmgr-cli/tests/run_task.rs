@@ -3,9 +3,11 @@
 use rusqlite::Connection;
 use serde_json::{json, Value};
 use std::fs;
+use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::{mpsc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::StateKind;
@@ -13,6 +15,10 @@ use tmgr_runner::client::Client;
 
 const BIN: &str = env!("CARGO_BIN_EXE_tmgr");
 const WS_ID: i64 = -444_001;
+const COMMAND_LIMIT: Duration = Duration::from_secs(120);
+
+// macOS creates pipes and sets CLOEXEC in two steps: a concurrent spawn inherits the pipe and holds it open
+static SPAWN: Mutex<()> = Mutex::new(());
 
 struct Fx {
     tmp: tempfile::TempDir,
@@ -25,6 +31,7 @@ fn private_dir(path: &Path) {
 }
 
 fn git(dir: &Path, args: &[&str]) -> String {
+    let _spawn = SPAWN.lock().unwrap_or_else(|e| e.into_inner());
     let out = Command::new("git")
         .current_dir(dir)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
@@ -208,7 +215,74 @@ impl Fx {
     }
 
     fn tmgr(&self, args: &[&str]) -> Output {
-        self.cmd(args).output().unwrap()
+        self.bounded(self.cmd(args), args)
+    }
+
+    fn bounded(&self, mut command: Command, args: &[&str]) -> Output {
+        let mut child = {
+            let _spawn = SPAWN.lock().unwrap_or_else(|e| e.into_inner());
+            command
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap()
+        };
+        let (tx, rx) = mpsc::channel();
+        for (i, pipe) in [
+            Box::new(child.stdout.take().unwrap()) as Box<dyn Read + Send>,
+            Box::new(child.stderr.take().unwrap()),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let tx = tx.clone();
+            thread::spawn(move || {
+                let mut pipe = pipe;
+                let mut b = Vec::new();
+                let _ = pipe.read_to_end(&mut b);
+                let _ = tx.send((i, b));
+            });
+        }
+        let deadline = Instant::now() + COMMAND_LIMIT;
+        let stuck = |what: &str, child: &mut std::process::Child| -> ! {
+            let ps = Command::new("ps")
+                .args(["-axo", "pid,ppid,stat,etime,command"])
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                .unwrap_or_default();
+            let ps: String = ps
+                .lines()
+                .filter(|l| l.contains(&*self.tmp.path().to_string_lossy()) || l.contains("tmgr"))
+                .map(|l| format!("{l}\n"))
+                .collect();
+            let log = fs::read_to_string(self.run().join("runner.log")).unwrap_or_default();
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("tmgr {args:?} {what} within {COMMAND_LIMIT:?}\nrunner log:\n{log}\nprocesses:\n{ps}");
+        };
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                stuck("did not exit", &mut child);
+            }
+            thread::sleep(Duration::from_millis(50));
+        };
+        let mut bytes = [Vec::new(), Vec::new()];
+        for _ in 0..2 {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match rx.recv_timeout(left.max(Duration::from_secs(1))) {
+                Ok((i, b)) => bytes[i] = b,
+                Err(_) => stuck("exited but kept its output open", &mut child),
+            }
+        }
+        let [stdout, stderr] = bytes;
+        Output {
+            status,
+            stdout,
+            stderr,
+        }
     }
 
     fn json(&self, args: &[&str]) -> (bool, Value) {
@@ -458,11 +532,9 @@ fn the_runner_refuses_a_command_line_other_than_the_confirmed_one() {
         confirmed.replace("ask = [\"--ask\"]", "ask = [\"--ask\", \"--extra\"]"),
     )
     .unwrap();
-    let started = fx
-        .cmd(&["runner", "start"])
-        .env("TMGR_AGENTS_DIR", &other)
-        .output()
-        .unwrap();
+    let mut start = fx.cmd(&["runner", "start"]);
+    start.env("TMGR_AGENTS_DIR", &other);
+    let started = fx.bounded(start, &["runner", "start"]);
     assert!(
         started.status.success(),
         "{}",

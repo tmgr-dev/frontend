@@ -16,19 +16,27 @@ use tmgr_runner::wire::now_ms;
 const HOST: &str = env!("CARGO_BIN_EXE_tmgr-runner-host");
 
 const AGENT: &str = r#"#!/bin/sh
-trap 'kill $! 2>/dev/null; exit 0' HUP TERM
+trap 'kill $! 2>/dev/null; sleep 0.1; kill $! 2>/dev/null; sleep 0.2; kill $! 2>/dev/null; exit 0' HUP TERM
 echo "args:$*" >> ./log
 if [ -f "$HOME/marker" ]; then kept=1; else kept=; fi
 if [ -f ./change-seed ] && [ -z "$kept" ]; then echo '{"a":2}' > "$HOME/.fake/auth.json"; fi
+if [ ! -f ./exit-now ]; then sleep 600 & fi
 if [ -n "$kept" ]; then echo "home:kept" >> ./log; else echo x > "$HOME/marker"; echo "home:new" >> ./log; fi
 if [ -f ./exit-now ]; then exit 0; fi
-sleep 600 &
 wait
 "#;
 
 fn private_dir(path: &Path) {
     fs::create_dir_all(path).unwrap();
     fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
+}
+
+fn process_table() -> String {
+    Command::new("ps")
+        .args(["-A", "-o", "pid,ppid,pgid,stat,command"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
 }
 
 fn sessions_available() -> bool {
@@ -129,6 +137,7 @@ impl H {
 
     fn req(&self) -> RunCreateReq {
         RunCreateReq {
+            team: None,
             clones: Vec::new(),
             profile: "fake".into(),
             task: None,
@@ -151,6 +160,9 @@ impl H {
             unattended: false,
             exe_pin: None,
             argv_sha256: None,
+            no_sandbox: None,
+            external_resume: None,
+            permission_cards: false,
         }
     }
 
@@ -175,7 +187,8 @@ impl H {
             let _ = r.kill();
             let _ = r.wait();
         }
-        for pid in [s.child_pid, s.shim_pid] {
+        let pids = [s.child_pid, s.shim_pid];
+        for pid in pids {
             if let Ok(p) = i32::try_from(pid) {
                 if p > 1 {
                     unsafe {
@@ -185,16 +198,15 @@ impl H {
                 }
             }
         }
-        let deadline = Instant::now() + Duration::from_secs(10);
-        for pid in [s.child_pid, s.shim_pid] {
-            let Ok(p) = i32::try_from(pid) else { continue };
-            while p > 1 && unsafe { libc::kill(p, 0) } == 0 {
-                assert!(
-                    Instant::now() < deadline,
-                    "session processes outlived the reboot"
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while restore::pids_may_run(&pids, None, None) {
+            if Instant::now() >= deadline {
+                panic!(
+                    "session processes {pids:?} outlived the reboot:\n{}",
+                    process_table()
                 );
-                thread::sleep(Duration::from_millis(20));
             }
+            thread::sleep(Duration::from_millis(20));
         }
         if lose_runner_dir {
             fs::remove_dir_all(&self.run).unwrap();
@@ -242,7 +254,14 @@ fn restore_after_reboot(lose_runner_dir: bool) {
 
     let e = h.entries();
     assert_eq!(e.len(), 1);
-    assert_eq!(e[0].status, Status::Restorable);
+    assert_eq!(
+        e[0].status,
+        Status::Restorable,
+        "pids {:?}, boot {:?}\n{}",
+        e[0].intent.pids,
+        e[0].intent.boot,
+        process_table()
+    );
     assert!(e[0].resumable);
 
     let r = h.client().restore(&first.id).unwrap();
@@ -547,11 +566,13 @@ fn forged(h: &H, id: &str, edit: impl Fn(&mut Intent)) {
         exe_pin: None,
         argv_sha256: None,
         bypass: false,
+        no_sandbox: false,
         boot: None,
         pids: Vec::new(),
         created_ms: now_ms(),
         cols: 80,
         rows: 24,
+        permission_cards: false,
     };
     edit(&mut i);
     restore::record(&h.store(), &i, None).unwrap();
@@ -572,9 +593,11 @@ fn link_bypass_expired_and_bundle_less_records_are_refused() {
     forged(&h, "s_dddddddddd", |i| {
         i.bundle_sha256 = Some("ab".repeat(32));
     });
+    forged(&h, "s_eeeeeeeeee", |i| i.no_sandbox = true);
     for (id, want) in [
         ("s_aaaaaaaaaa", "forbidden"),
         ("s_bbbbbbbbbb", "forbidden"),
+        ("s_eeeeeeeeee", "forbidden"),
         ("s_cccccccccc", "forbidden"),
         ("s_dddddddddd", "invalid_params"),
     ] {
@@ -771,4 +794,215 @@ fn restore_rechecks_the_argv_digest_against_the_rebuilt_command_line() {
     let r = h.client().restore(&first.id).unwrap();
     assert!(r.resumed);
     assert_eq!(r.session.argv, [exe.as_str(), "--x", "--resumed"]);
+}
+
+fn git_fx(dir: &Path, args: &[&str]) {
+    let out = Command::new("git")
+        .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn a_clone_that_shares_object_files_is_not_restored_and_is_left_alone() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::new(true);
+    let base = fs::canonicalize(h.tmp.path()).unwrap();
+    let repo = base.join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    git_fx(&repo, &["init", "-q", "-b", "main"]);
+    fs::write(repo.join("a.txt"), "a").unwrap();
+    git_fx(&repo, &["add", "a.txt"]);
+    git_fx(&repo, &["commit", "-q", "-m", "one"]);
+    let trees = base.join("repo-worktrees");
+    fs::create_dir_all(&trees).unwrap();
+    let clone = trees.join("old");
+    git_fx(
+        &base,
+        &[
+            "clone",
+            "-q",
+            "--no-local",
+            "--reference",
+            repo.to_str().unwrap(),
+            repo.to_str().unwrap(),
+            clone.to_str().unwrap(),
+        ],
+    );
+    fs::write(clone.join("c.txt"), "c").unwrap();
+    git_fx(&clone, &["add", "c.txt"]);
+    git_fx(&clone, &["commit", "-q", "-m", "two"]);
+    let script = clone.join("agent.sh");
+    fs::write(&script, AGENT).unwrap();
+    let toml = h.agents.join("fake.toml");
+    let profile = fs::read_to_string(&toml).unwrap().replace(
+        h.work.join("agent.sh").to_str().unwrap(),
+        script.to_str().unwrap(),
+    );
+    fs::write(&toml, profile).unwrap();
+    h.start();
+    let mut req = h.req();
+    req.cwd = clone.display().to_string();
+    req.clone_of = Some(repo.display().to_string());
+    let first = h.client().create_run(req).unwrap();
+    let log = clone.join("log");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !fs::read_to_string(&log)
+        .unwrap_or_default()
+        .contains("home:")
+    {
+        assert!(Instant::now() < deadline, "session did not start");
+        thread::sleep(Duration::from_millis(50));
+    }
+    h.reboot(&first, true);
+
+    fs::write(clone.join("wip.txt"), "unsaved").unwrap();
+    let mut todo = vec![clone.join(".git/objects")];
+    let mut object = None;
+    while let Some(dir) = todo.pop() {
+        for e in fs::read_dir(&dir).unwrap().flatten() {
+            let p = e.path();
+            let meta = fs::symlink_metadata(&p).unwrap();
+            if meta.is_dir() {
+                if p.file_name().is_some_and(|n| n != "info") {
+                    todo.push(p);
+                }
+            } else if meta.is_file() {
+                object = Some(p);
+            }
+        }
+    }
+    let object = object.expect("no object file in the clone");
+    let extra = base.join("extra-link");
+    fs::hard_link(&object, &extra).unwrap();
+
+    let err = h.client().restore(&first.id).unwrap_err().to_string();
+    assert!(err.starts_with("invalid_params"), "{err}");
+    assert!(err.contains(clone.to_str().unwrap()), "{err}");
+    assert!(err.contains("re-clone it or remove it"), "{err}");
+    assert!(clone.is_dir());
+    assert_eq!(
+        fs::read_to_string(clone.join("wip.txt")).unwrap(),
+        "unsaved"
+    );
+    assert!(object.is_file());
+    assert!(extra.is_file());
+    assert_eq!(h.entries()[0].status, Status::Restorable);
+    assert!(h.homes.join(&first.id).is_dir());
+    assert!(h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn a_self_contained_clone_is_restored() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::new(true);
+    let base = fs::canonicalize(h.tmp.path()).unwrap();
+    let repo = base.join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    git_fx(&repo, &["init", "-q", "-b", "main"]);
+    fs::write(repo.join("a.txt"), "a").unwrap();
+    git_fx(&repo, &["add", "a.txt"]);
+    git_fx(&repo, &["commit", "-q", "-m", "one"]);
+    let plan = tmgr_runner::worktree::plan(&repo, "task", None).unwrap();
+    let clone = tmgr_runner::worktree::clone_mode(&plan).unwrap().path;
+    assert!(!clone.join(".git/objects/info/alternates").exists());
+    let script = clone.join("agent.sh");
+    fs::write(&script, AGENT).unwrap();
+    let toml = h.agents.join("fake.toml");
+    let profile = fs::read_to_string(&toml).unwrap().replace(
+        h.work.join("agent.sh").to_str().unwrap(),
+        script.to_str().unwrap(),
+    );
+    fs::write(&toml, profile).unwrap();
+    h.start();
+    let mut req = h.req();
+    req.cwd = clone.display().to_string();
+    req.clone_of = Some(repo.display().to_string());
+    let first = h.client().create_run(req).unwrap();
+    let log = clone.join("log");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !fs::read_to_string(&log)
+        .unwrap_or_default()
+        .contains("home:")
+    {
+        assert!(Instant::now() < deadline, "session did not start");
+        thread::sleep(Duration::from_millis(50));
+    }
+    h.reboot(&first, true);
+    fs::write(clone.join("wip.txt"), "unsaved").unwrap();
+
+    let r = h.client().restore(&first.id).unwrap();
+    assert!(r.resumed);
+    assert_ne!(r.session.id, first.id);
+    assert_eq!(
+        fs::read_to_string(clone.join("wip.txt")).unwrap(),
+        "unsaved"
+    );
+}
+
+#[test]
+fn a_folder_with_shared_object_files_is_not_restored_and_is_left_alone() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::new(true);
+    let work = fs::canonicalize(&h.work).unwrap();
+    git_fx(&work, &["init", "-q", "-b", "main"]);
+    fs::write(work.join("a.txt"), "a").unwrap();
+    git_fx(&work, &["add", "a.txt"]);
+    git_fx(&work, &["commit", "-q", "-m", "one"]);
+    h.start();
+    let mut req = h.req();
+    req.cwd = work.display().to_string();
+    let first = h.client().create_run(req).unwrap();
+    let log = work.join("log");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !fs::read_to_string(&log)
+        .unwrap_or_default()
+        .contains("home:")
+    {
+        assert!(Instant::now() < deadline, "session did not start");
+        thread::sleep(Duration::from_millis(50));
+    }
+    h.reboot(&first, true);
+
+    let mut todo = vec![work.join(".git/objects")];
+    let mut object = None;
+    while let Some(dir) = todo.pop() {
+        for e in fs::read_dir(&dir).unwrap().flatten() {
+            let p = e.path();
+            let meta = fs::symlink_metadata(&p).unwrap();
+            if meta.is_dir() {
+                todo.push(p);
+            } else if meta.is_file() {
+                object = Some(p);
+            }
+        }
+    }
+    let object = object.expect("no object file in the folder");
+    let extra = fs::canonicalize(h.tmp.path()).unwrap().join("extra-link");
+    fs::hard_link(&object, &extra).unwrap();
+
+    let err = h.client().restore(&first.id).unwrap_err().to_string();
+    assert!(err.starts_with("invalid_params"), "{err}");
+    assert!(err.contains("object files"), "{err}");
+    assert!(err.contains(work.to_str().unwrap()), "{err}");
+    assert!(object.is_file());
+    assert!(extra.is_file());
+    assert_eq!(h.entries()[0].status, Status::Restorable);
+    assert!(h.homes.join(&first.id).is_dir());
+    assert!(h.client().list().unwrap().is_empty());
 }

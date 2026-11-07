@@ -143,6 +143,8 @@ enum Request {
         model: Option<String>,
         branch: Option<String>,
         session_id: Option<String>,
+        #[serde(default)]
+        role: Option<String>,
     },
     Update {
         workspace: String,
@@ -275,6 +277,7 @@ fn handle(request: Request) -> Result<Value> {
             model,
             branch,
             session_id,
+            role,
         } => {
             let ws = find_workspace(&workspace)?;
             let task_id = positive("task_id", task_id)?;
@@ -282,12 +285,15 @@ fn handle(request: Request) -> Result<Value> {
                 Some(v) => Some(word("session_id", v, 100, "_.:-")?),
                 None => None,
             };
-            let body = json!({
+            let mut body = json!({
                 "agent": profile(&agent)?,
                 "model": optional("model", model.as_deref(), 128)?,
                 "branch": optional("branch", branch.as_deref(), 255)?,
                 "session_id": session,
             });
+            if let Some(role) = role.as_deref() {
+                body["role"] = json!(word("role", role, 32, "-")?);
+            }
             let s = Session::open(&ws, Some(runner_actor()), true)?;
             if let Some(sid) = session.as_deref() {
                 if let Some(run_id) = running_run_of_session(&s, task_id, sid)? {
@@ -488,6 +494,7 @@ pub fn bundle_from_local(
         });
     }
     let bundle = RunBundle {
+        assignment: None,
         v: 1,
         task: TaskRef {
             workspace_id: ws.manifest.id,
@@ -532,11 +539,6 @@ pub fn bundle_cmd(
     cwd: &Path,
     mode: super::PermissionMode,
 ) -> Result<i32> {
-    if mode == super::PermissionMode::Bypass {
-        return Err(Error::usage(
-            "bypass mode is only for tasks of an allowed cloud workspace",
-        ));
-    }
     let reference = o.ws.as_deref().ok_or_else(|| {
         Error::usage("pass --ws local:<code>").hint("run bundles are built from local workspaces")
     })?;

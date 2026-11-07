@@ -445,14 +445,16 @@ describe('openLink', () => {
 	const linkPackage = (
 		permissions: string[],
 		allowedDomains: string[],
+		schemes: string[] = [],
+		engine = '^1.0',
 	): PluginPackage => ({
 		manifest: parseManifest({
 			id: 'tmgr.link',
 			name: 'Link',
 			version: '1.0.0',
-			engines: { tmgr: '^1.0' },
+			engines: { tmgr: engine },
 			permissions,
-			links: { allowedDomains },
+			links: { allowedDomains, schemes },
 		}),
 		code: '',
 		source: 'builtin',
@@ -477,6 +479,60 @@ describe('openLink', () => {
 		expect(host.openLink('nope', 'https://a.example.com/x')).toBe(false);
 		expect(opened).toEqual(['https://a.example.com/x']);
 		host.dispose();
+	});
+
+	it('opens a Telegram link only with schemes on 1.13, and https stays unchanged', async () => {
+		const opened: string[] = [];
+		const { host } = setup(
+			[linkPackage(['links:open'], ['a.example.com'], ['tg'], '^1.13')],
+			{},
+			{},
+			{},
+			{ openExternal: (url: string) => opened.push(url) },
+		);
+		await host.load();
+		await host.activate(LOCAL);
+		expect(host.openLink('tmgr.link', 'tg://resolve?domain=telegram')).toBe(
+			true,
+		);
+		expect(host.openLink('tmgr.link', 'tg://proxy?server=a&port=1')).toBe(
+			false,
+		);
+		expect(host.openLink('tmgr.link', 'TG://resolve?domain=telegram')).toBe(
+			false,
+		);
+		expect(host.openLink('tmgr.link', 'https://a.example.com/x')).toBe(true);
+		expect(opened).toEqual([
+			'tg://resolve?domain=telegram',
+			'https://a.example.com/x',
+		]);
+		host.dispose();
+	});
+
+	it('refuses a Telegram link without schemes, and until the member allows the plugin', async () => {
+		for (const [pkg, machineAllowed] of [
+			[linkPackage(['links:open'], ['a.example.com'], [], '^1.13'), true],
+			[linkPackage(['links:open'], [], ['tg'], '^1.13'), false],
+		] as const) {
+			const opened: string[] = [];
+			const { host } = setup(
+				[pkg],
+				{},
+				{},
+				{},
+				{
+					openExternal: (url: string) => opened.push(url),
+					machineAllowed: () => machineAllowed,
+				},
+			);
+			await host.load();
+			await host.activate(LOCAL);
+			expect(host.openLink('tmgr.link', 'tg://resolve?domain=telegram')).toBe(
+				false,
+			);
+			expect(opened).toEqual([]);
+			host.dispose();
+		}
 	});
 
 	it('refuses links until the member allows the plugin on this computer', async () => {
@@ -513,6 +569,273 @@ describe('openLink', () => {
 		await host.activate(LOCAL);
 		expect(host.openLink('tmgr.link', 'https://a.example.com/x')).toBe(false);
 		expect(opened).toEqual([]);
+		host.dispose();
+	});
+});
+
+describe('loadImage', () => {
+	const PNG_BYTES = Buffer.from([
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4,
+	]);
+	const PNG = { mime: 'image/png', base64: PNG_BYTES.toString('base64') };
+	const URL_A = 'https://img.example.com/a.png';
+
+	const imagePackage = (
+		domains: string[] = ['img.example.com'],
+		engines = '^1.13',
+	): PluginPackage => ({
+		manifest: parseManifest({
+			id: 'tmgr.img',
+			name: 'Img',
+			version: '1.0.0',
+			engines: { tmgr: engines },
+			permissions: engines === '^1.13' ? ['images:remote'] : [],
+			...(engines === '^1.13' ? { images: { allowedDomains: domains } } : {}),
+		}),
+		code: '',
+		source: 'builtin',
+	});
+
+	const started = async (
+		pkgs: PluginPackage[],
+		extra: Partial<Parameters<typeof createPluginHost>[0]> = {},
+	) => {
+		const result = setup(pkgs, {}, {}, {}, extra);
+		await result.host.load();
+		await result.host.activate(LOCAL);
+		for (const { manifest } of pkgs)
+			await until(
+				() => result.state.plugins[manifest.id].status === 'running',
+				`${manifest.id} running`,
+			);
+		return result;
+	};
+
+	it('returns a data: URL for a declared host', async () => {
+		const fetchImage = jest.fn(async () => PNG);
+		const { host } = await started([imagePackage()], { fetchImage });
+		await expect(host.loadImage('tmgr.img', URL_A)).resolves.toBe(
+			`data:image/png;base64,${PNG.base64}`,
+		);
+		expect(fetchImage).toHaveBeenCalledWith(URL_A);
+		host.dispose();
+	});
+
+	it('refuses an undeclared host, http, userinfo, a port and an unknown plugin', async () => {
+		const fetchImage = jest.fn(async () => PNG);
+		const { host } = await started([imagePackage()], { fetchImage });
+		for (const url of [
+			'https://other.example.com/a.png',
+			'http://img.example.com/a.png',
+			'https://u:p@img.example.com/a.png',
+			'https://img.example.com:8443/a.png',
+			'data:image/png;base64,AAAA',
+			'blob:https://img.example.com/x',
+			'/a.png',
+		]) {
+			await expect(host.loadImage('tmgr.img', url)).rejects.toThrow();
+		}
+		await expect(host.loadImage('nope', URL_A)).rejects.toThrow();
+		expect(fetchImage).not.toHaveBeenCalled();
+		host.dispose();
+	});
+
+	it('refuses a plugin that is not running', async () => {
+		const fetchImage = jest.fn(async () => PNG);
+		const { host, state } = setup([imagePackage()], {}, {}, {}, { fetchImage });
+		await host.load();
+		await expect(host.loadImage('tmgr.img', URL_A)).rejects.toThrow();
+		await host.activate(LOCAL);
+		await until(() => state.plugins['tmgr.img'].status === 'running');
+		await expect(host.loadImage('tmgr.img', URL_A)).resolves.toContain('data:');
+		host.dispose();
+		await expect(host.loadImage('tmgr.img', URL_A)).rejects.toThrow();
+	});
+
+	it('refuses when the plugin may not use this computer', async () => {
+		const fetchImage = jest.fn(async () => PNG);
+		const { host } = await started([imagePackage()], {
+			fetchImage,
+			machineAllowed: () => false,
+		});
+		await expect(host.loadImage('tmgr.img', URL_A)).rejects.toThrow();
+		expect(fetchImage).not.toHaveBeenCalled();
+		host.dispose();
+	});
+
+	it('refuses an older engine and a missing fetcher', async () => {
+		const fetchImage = jest.fn(async () => PNG);
+		const old = await started([imagePackage([], '^1.12')], { fetchImage });
+		await expect(old.host.loadImage('tmgr.img', URL_A)).rejects.toThrow();
+		old.host.dispose();
+		const none = await started([imagePackage()]);
+		await expect(none.host.loadImage('tmgr.img', URL_A)).rejects.toThrow();
+		none.host.dispose();
+		expect(fetchImage).not.toHaveBeenCalled();
+	});
+
+	it('refuses an answer that is not the image it claims to be', async () => {
+		for (const answer of [
+			{ mime: 'image/svg+xml', base64: PNG.base64 },
+			{ mime: 'image/jpeg', base64: PNG.base64 },
+			{ mime: 'image/png', base64: 'not base64!' },
+			{ mime: 'image/png', base64: '' },
+		]) {
+			const { host } = await started([imagePackage()], {
+				fetchImage: async () => answer,
+			});
+			await expect(host.loadImage('tmgr.img', URL_A)).rejects.toThrow();
+			host.dispose();
+		}
+	});
+
+	it('caches and coalesces concurrent loads, and retries after a failure', async () => {
+		let release: (value: typeof PNG) => void = () => undefined;
+		const fetchImage = jest.fn(
+			() => new Promise<typeof PNG>((resolve) => (release = resolve)),
+		);
+		const { host } = await started([imagePackage()], { fetchImage });
+		const first = host.loadImage('tmgr.img', URL_A);
+		const second = host.loadImage('tmgr.img', URL_A);
+		await until(() => fetchImage.mock.calls.length === 1, 'fetch started');
+		release(PNG);
+		expect(await first).toBe(await second);
+		expect(fetchImage).toHaveBeenCalledTimes(1);
+		await host.loadImage('tmgr.img', URL_A);
+		expect(fetchImage).toHaveBeenCalledTimes(1);
+		host.dispose();
+
+		let calls = 0;
+		const flaky = await started([imagePackage()], {
+			fetchImage: async () => {
+				if (calls++ === 0) throw new Error('boom');
+				return PNG;
+			},
+		});
+		await expect(flaky.host.loadImage('tmgr.img', URL_A)).rejects.toThrow(
+			'boom',
+		);
+		await expect(flaky.host.loadImage('tmgr.img', URL_A)).resolves.toContain(
+			'data:',
+		);
+		flaky.host.dispose();
+	});
+
+	it('evicts the oldest entry beyond 64 pictures', async () => {
+		const fetchImage = jest.fn(async () => PNG);
+		const { host } = await started([imagePackage()], { fetchImage });
+		const url = (n: number) => `https://img.example.com/${n}.png`;
+		for (let n = 0; n < 65; n++) await host.loadImage('tmgr.img', url(n));
+		expect(fetchImage).toHaveBeenCalledTimes(65);
+		await host.loadImage('tmgr.img', url(64));
+		expect(fetchImage).toHaveBeenCalledTimes(65);
+		await host.loadImage('tmgr.img', url(0));
+		expect(fetchImage).toHaveBeenCalledTimes(66);
+		host.dispose();
+	});
+
+	it('refuses a plugin that does not hold images:remote, even with a declared host', async () => {
+		const fetchImage = jest.fn(async () => PNG);
+		const pkgs = imagePackage();
+		pkgs.manifest.permissions = [];
+		const { host } = await started([pkgs], { fetchImage });
+		await expect(host.loadImage('tmgr.img', URL_A)).rejects.toThrow();
+		expect(fetchImage).not.toHaveBeenCalled();
+		host.dispose();
+	});
+
+	it('runs at most 2 remote loads at once per plugin and never blocks another plugin', async () => {
+		const releases: Array<() => void> = [];
+		const fetchImage = jest.fn(
+			(_url: string) =>
+				new Promise<typeof PNG>((resolve) => releases.push(() => resolve(PNG))),
+		);
+		const other = imagePackage();
+		other.manifest.id = 'tmgr.img2';
+		const { host } = await started([imagePackage(), other], { fetchImage });
+		const url = (n: number) => `https://img.example.com/${n}.png`;
+		const loads = [0, 1, 2, 3].map((n) => host.loadImage('tmgr.img', url(n)));
+		const free = host.loadImage('tmgr.img2', url(9));
+		await until(() => fetchImage.mock.calls.length === 3, 'three started');
+		expect(fetchImage.mock.calls.map((c) => c[0])).toEqual([
+			url(0),
+			url(1),
+			url(9),
+		]);
+		releases[0]();
+		await until(() => fetchImage.mock.calls.length === 4, 'next started');
+		expect(fetchImage).toHaveBeenLastCalledWith(url(2));
+		releases.slice(1).forEach((release) => release());
+		await until(() => fetchImage.mock.calls.length === 5, 'last started');
+		releases.slice(4).forEach((release) => release());
+		await Promise.all([...loads, free]);
+		host.dispose();
+	});
+
+	it.each(['stopped', 'machine consent revoked'])(
+		'does not fetch a queued load once the plugin is %s',
+		async (how) => {
+			const releases: Array<() => void> = [];
+			const fetchImage = jest.fn(
+				(_url: string) =>
+					new Promise<typeof PNG>((resolve) =>
+						releases.push(() => resolve(PNG)),
+					),
+			);
+			let machine = true;
+			const { host } = await started([imagePackage()], {
+				fetchImage,
+				machineAllowed: () => machine,
+			});
+			const url = (n: number) => `https://img.example.com/${n}.png`;
+			const first = [0, 1].map((n) => host.loadImage('tmgr.img', url(n)));
+			const queued = host.loadImage('tmgr.img', url(2));
+			const rejected = expect(queued).rejects.toThrow();
+			await until(() => fetchImage.mock.calls.length === 2, 'slots full');
+			if (how === 'stopped') await host.setEnabled('tmgr.img', false);
+			else {
+				machine = false;
+				await host.restart('tmgr.img');
+			}
+			releases.forEach((release) => release());
+			await Promise.all(first);
+			await rejected;
+			expect(fetchImage).toHaveBeenCalledTimes(2);
+			host.dispose();
+		},
+	);
+
+	it('does not serve a cached picture to a plugin without that host', async () => {
+		const fetchImage = jest.fn(async () => PNG);
+		const second = imagePackage(['other.example.com']);
+		second.manifest.id = 'tmgr.img2';
+		const { host } = await started([imagePackage(), second], { fetchImage });
+		await host.loadImage('tmgr.img', URL_A);
+		await expect(host.loadImage('tmgr.img2', URL_A)).rejects.toThrow();
+		host.dispose();
+	});
+
+	it('renders image nodes of its own manifest through the sanitiser', async () => {
+		const withPage: PluginPackage = {
+			...pkg(
+				'tmgr.imgpage',
+				`tmgr.ui.providePage('v', () => ({ type: 'image', src: 'https://img.example.com/a.png', alt: 'x' }));`,
+				[],
+				{ views: [{ id: 'v', title: 'V' }] },
+				'builtin',
+				'^1.13',
+			),
+		};
+		withPage.manifest.permissions = ['images:remote'];
+		withPage.manifest.images = { allowedDomains: ['img.example.com'] };
+		const { host } = await started([withPage]);
+		expect(await host.renderPage('tmgr.imgpage', 'v')).toEqual({
+			type: 'image',
+			src: 'https://img.example.com/a.png',
+			alt: 'x',
+		});
+		withPage.manifest.images = { allowedDomains: [] };
+		expect(await host.renderPage('tmgr.imgpage', 'v')).toBeNull();
 		host.dispose();
 	});
 });

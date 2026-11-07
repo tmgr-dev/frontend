@@ -6,6 +6,7 @@
 			</template>
 		</PageHeader>
 		<LocalPersonasPanel />
+		<LocalSkillsLibrary class="mt-6" />
 	</PageContainer>
 	<PageContainer v-else width="narrow">
 		<PageHeader title="Personas">
@@ -146,7 +147,17 @@
 					>
 						Skills
 					</summary>
-					<PersonaSkills :persona="persona" class="mt-3" />
+					<PersonaSkills
+						:persona="persona"
+						class="mt-3"
+						@changed="skillsRevision++"
+					/>
+					<PersonaSharedSkills
+						:persona="persona"
+						:revision="skillsRevision"
+						class="mt-4 border-t border-border pt-3"
+						@changed="skillsRevision++"
+					/>
 				</details>
 
 				<details class="border-t border-border pt-3">
@@ -167,6 +178,14 @@
 				No personas yet.
 			</p>
 		</div>
+
+		<SettingsSection
+			title="Skills library"
+			description="Skills you write once and attach to any of your personas. Editing one updates every persona it is attached to."
+			class="mt-6"
+		>
+			<SkillsLibrary :revision="skillsRevision" @changed="skillsRevision++" />
+		</SettingsSection>
 
 		<SettingsSection
 			v-if="currentWorkspace && sharedPersonas.length"
@@ -205,6 +224,7 @@
 		</SettingsSection>
 
 		<LocalPersonasPanel v-if="isDesktop" class="mt-6" />
+		<LocalSkillsLibrary v-if="isDesktop" class="mt-6" />
 	</PageContainer>
 </template>
 
@@ -227,6 +247,7 @@
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import LocalPersonasPanel from '@/components/local/LocalPersonasPanel.vue';
+	import LocalSkillsLibrary from '@/components/local/LocalSkillsLibrary.vue';
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
 	import { toast } from '@/components/ui/toast';
@@ -241,14 +262,17 @@
 	} from '@/utils/personas';
 	import { computed, defineComponent, onMounted, ref } from 'vue';
 	import PersonaForm, { type PersonaFormModel } from './PersonaForm.vue';
+	import PersonaSharedSkills from './PersonaSharedSkills.vue';
 	import PersonaSkills from './PersonaSkills.vue';
 	import PersonaTokens from './PersonaTokens.vue';
 	import PersonaWorkspaceGrants from './PersonaWorkspaceGrants.vue';
+	import SkillsLibrary from './SkillsLibrary.vue';
 
 	const emptyForm = (): PersonaFormModel => ({
 		name: '',
 		description: '',
 		system_prompt: '',
+		owner_notifications: 'all',
 		scope: 'account',
 	});
 
@@ -260,12 +284,15 @@
 			PageContainer,
 			PageHeader,
 			SettingsSection,
+			SkillsLibrary,
 			PersonaAvatar,
 			PersonaForm,
+			PersonaSharedSkills,
 			PersonaSkills,
 			PersonaTokens,
 			PersonaWorkspaceGrants,
 			LocalPersonasPanel,
+			LocalSkillsLibrary,
 		},
 		setup() {
 			setDocumentTitle('Personas');
@@ -278,6 +305,7 @@
 			const form = ref<PersonaFormModel>(emptyForm());
 			const formErrors = ref<Record<string, string[]>>({});
 			const saving = ref(false);
+			const skillsRevision = ref(0);
 			const isDesktop = isDesktopApp();
 			const isLocalOnly = isDesktop && !!store.getters.isLocalOnly;
 			const workspaceGrants = ref<PersonaGrant[]>([]);
@@ -341,6 +369,7 @@
 					name: persona.name,
 					description: persona.description ?? '',
 					system_prompt: persona.system_prompt ?? '',
+					owner_notifications: persona.owner_notifications ?? 'all',
 					scope: persona.workspace_id ? 'workspace' : 'account',
 				};
 				formErrors.value = {};
@@ -359,6 +388,7 @@
 					name: form.value.name,
 					description: form.value.description || undefined,
 					system_prompt: form.value.system_prompt || undefined,
+					owner_notifications: form.value.owner_notifications,
 				};
 				if (
 					!editingId.value &&
@@ -441,6 +471,7 @@
 				form,
 				formErrors,
 				saving,
+				skillsRevision,
 				isDesktop,
 				isLocalOnly,
 				currentWorkspace,

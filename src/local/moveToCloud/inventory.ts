@@ -1,3 +1,4 @@
+import { isDemoDb } from '../demoSeed';
 import type { LocalDb } from '../types';
 import { resolveMime } from './model';
 
@@ -30,6 +31,7 @@ export interface InventoryPersona {
 
 export interface LocalInventory {
 	schemaVersion: number;
+	demo: boolean;
 	counts: LocalCounts;
 	files: InventoryFile[];
 	personas: InventoryPersona[];
@@ -49,8 +51,10 @@ export const readInventory = async (db: LocalDb): Promise<LocalInventory> => {
 	const personas = await db.select<any>(
 		`SELECT uuid, name, description, owner_user_id, owner_name FROM personas ORDER BY name`,
 	);
+	const demo = await isDemoDb(db);
 	return {
 		schemaVersion: Number(schema[0]?.value ?? 0),
+		demo,
 		counts: {
 			tasks: await count(
 				db,

@@ -60,6 +60,35 @@ pub struct ConsentChange {
     pub codex: Option<bool>,
 }
 
+impl ConsentChange {
+    pub fn denies(&self) -> bool {
+        self.state == Some(ReadLogs::Denied)
+            || self.claude == Some(false)
+            || self.codex == Some(false)
+    }
+}
+
+pub fn remove_index_files(path: &Path) -> std::io::Result<()> {
+    let mut first = None;
+    for suffix in ["", "-wal", "-shm"] {
+        let mut p = path.as_os_str().to_owned();
+        p.push(suffix);
+        match std::fs::remove_file(std::path::PathBuf::from(p)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => first = first.or(Some(e)),
+        }
+    }
+    first.map_or(Ok(()), Err)
+}
+
+pub fn delete_sessions_index(env: &Env) -> std::io::Result<()> {
+    match paths::sessions_index(env) {
+        Some(p) => remove_index_files(&p),
+        None => Ok(()),
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 struct Stored {
     state: String,
@@ -244,14 +273,17 @@ pub fn each_allowed(
 /// For background readers that must not create anything: whether `tool` may be read under the
 /// background rule. A missing or unreadable store means no.
 pub fn granted_read_only(env: &Env, tool: Tool) -> bool {
-    let Ok(dir) = paths::data_dir(env) else {
-        return false;
-    };
-    let db = paths::db_path(&dir);
-    db.is_file()
-        && Store::open_read_only(&db)
-            .and_then(|s| s.log_consent())
-            .is_ok_and(|c| c.allows(tool, false))
+    consent_read_only(env).is_some_and(|c| c.allows(tool, false))
+}
+
+pub fn consent_read_only(env: &Env) -> Option<LogConsent> {
+    let db = paths::db_path(&paths::data_dir(env).ok()?);
+    if !db.is_file() {
+        return None;
+    }
+    Store::open_read_only(&db)
+        .and_then(|s| s.log_consent())
+        .ok()
 }
 
 /// Deletes everything scanned (database rows and statusLine snapshots); the reading choice stays.
@@ -571,5 +603,65 @@ mod tests {
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
         assert!(result.is_err());
         assert_eq!(s.log_consent().unwrap().state, ReadLogs::Denied);
+    }
+
+    #[test]
+    fn deleting_the_sessions_index_removes_every_sibling_and_tolerates_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let env = Env {
+            home: Some(tmp.path().to_path_buf()),
+            vars: HashMap::new(),
+        };
+        delete_sessions_index(&env).unwrap();
+        let p = paths::sessions_index(&env).unwrap();
+        assert_eq!(p, tmp.path().join(".config/tmgr/sessions-index.sqlite"));
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        for suffix in ["", "-wal", "-shm"] {
+            let mut f = p.as_os_str().to_owned();
+            f.push(suffix);
+            std::fs::write(f, b"x").unwrap();
+        }
+        delete_sessions_index(&env).unwrap();
+        assert!(std::fs::read_dir(p.parent().unwrap())
+            .unwrap()
+            .next()
+            .is_none());
+    }
+
+    #[test]
+    fn a_failed_deletion_is_reported() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("sessions-index.sqlite");
+        std::fs::create_dir(&p).unwrap();
+        assert!(remove_index_files(&p).is_err());
+    }
+
+    #[test]
+    fn only_a_deny_counts_as_denying() {
+        assert!(change(Some(ReadLogs::Denied), None, None).denies());
+        assert!(change(None, Some(false), None).denies());
+        assert!(change(None, None, Some(false)).denies());
+        assert!(!change(Some(ReadLogs::Granted), Some(true), Some(true)).denies());
+        assert!(!change(None, None, None).denies());
+    }
+
+    #[test]
+    fn the_index_follows_an_absolute_xdg_config_home() {
+        let env = Env {
+            home: Some(PathBuf::from("/h")),
+            vars: HashMap::from([("XDG_CONFIG_HOME".to_string(), "/x".to_string())]),
+        };
+        assert_eq!(
+            paths::sessions_index(&env),
+            Some(PathBuf::from("/x/tmgr/sessions-index.sqlite"))
+        );
+        let rel = Env {
+            home: Some(PathBuf::from("/h")),
+            vars: HashMap::from([("XDG_CONFIG_HOME".to_string(), "rel".to_string())]),
+        };
+        assert_eq!(
+            paths::sessions_index(&rel),
+            Some(PathBuf::from("/h/.config/tmgr/sessions-index.sqlite"))
+        );
     }
 }

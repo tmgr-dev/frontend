@@ -59,6 +59,7 @@
 	import TaskAgentRunner from '@/components/runner/TaskAgentRunner.vue';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
+	import AiRewritePanel from '@/components/tasks/AiRewritePanel.vue';
 	import AskPersonaButton from '@/components/tasks/AskPersonaButton.vue';
 	import CloudAgentApproval from '@/components/tasks/CloudAgentApproval.vue';
 	import ConfirmForAgentRuns from '@/components/tasks/ConfirmForAgentRuns.vue';
@@ -182,6 +183,7 @@
 	import { generateTaskUrl } from '@/utils/url';
 	import {
 		DocumentPlusIcon,
+		PlusIcon,
 		TrashIcon,
 		XMarkIcon,
 	} from '@heroicons/vue/20/solid';
@@ -665,6 +667,17 @@
 		window.removeEventListener('resize', resizeCommentInputs),
 	);
 	const commentsCount = ref(0);
+	// Board cards and list rows show comments_count: keep it on the form (other paths commit
+	// form.value too, and it is not an autosaved field) and patch the one task.
+	const onCommentsCount = (count: number) => {
+		commentsCount.value = count;
+		const task = form.value as Task & { comments_count?: number };
+		if (!task.id || Number(task.comments_count ?? 0) === count) return;
+		task.comments_count = count;
+		requestCache.invalidate(`task-${task.id}`);
+		requestCache.invalidate(/^tasks-status-/);
+		store.commit('updateSingleTask', { ...task });
+	};
 	const showGitActivityModal = ref(false);
 	const gitActivityCount = ref(0);
 	const showCursorAgentModal = ref(false);
@@ -770,7 +783,9 @@
 		if (titleTextarea.value) {
 			titleTextarea.value.style.height = 'auto';
 			titleTextarea.value.style.height =
-				titleTextarea.value.scrollHeight + 'px';
+				titleTextarea.value.scrollHeight +
+				(titleTextarea.value.offsetHeight - titleTextarea.value.clientHeight) +
+				'px';
 		}
 	};
 
@@ -1482,6 +1497,9 @@
 			const result = await getCursorAgents(id);
 			if (formDisposed || form.value.id !== id) return;
 			cursorAgents.value = result;
+			if (result.some((a: any) => a.status === 'FINISHED')) {
+				void taskCommentsRef.value?.loadComments?.();
+			}
 		} catch (e) {
 			console.error('[Cursor] Failed to load agents:', e);
 			cursorAgents.value = [];
@@ -1928,9 +1946,16 @@
 			}
 		} catch (e) {
 			console.error(e);
+			toast({ title: "Couldn't delete the task", variant: 'destructive' });
 		} finally {
 			isLoading.value = false;
 		}
+	};
+
+	const showDeleteConfirm = ref(false);
+	const confirmDeleteTask = () => {
+		showDeleteConfirm.value = false;
+		deleteCurrentTask();
 	};
 
 	const backlogStatusChangeConfirm = ref<{
@@ -2507,13 +2532,13 @@
 			:class="[
 				isModal
 					? 'h-full max-h-[100dvh] w-full flex-col overflow-hidden'
-					: 'mx-auto w-full max-w-7xl flex-col border-line lg:h-[calc(100dvh-var(--app-chrome-h,4rem))] lg:flex-row lg:overflow-hidden min-[1537px]:border-x',
+					: 'mx-auto w-full max-w-7xl flex-col border-line xl:h-[calc(100dvh-var(--app-chrome-h,4rem))] xl:flex-row xl:overflow-hidden min-[1537px]:border-x',
 			]"
 		>
 			<!-- Form Panel (main / left column) -->
 			<div
 				class="flex w-full flex-col"
-				:class="isModal ? 'min-h-0 flex-1' : 'lg:min-h-0 lg:min-w-0 lg:flex-1'"
+				:class="isModal ? 'min-h-0 flex-1' : 'xl:min-h-0 xl:min-w-0 xl:flex-1'"
 			>
 				<div
 					v-if="saveError || recoverableDraft"
@@ -2674,7 +2699,7 @@
 					:class="
 						isModal
 							? 'min-h-0 flex-1 overflow-x-hidden overflow-y-auto'
-							: 'lg:min-h-0 lg:flex-1 lg:overflow-x-hidden lg:overflow-y-auto'
+							: 'xl:min-h-0 xl:flex-1 xl:overflow-x-hidden xl:overflow-y-auto'
 					"
 				>
 					<!-- External Update Notification -->
@@ -2722,6 +2747,7 @@
 							data-tour="task-form.title"
 							v-model="form.title"
 							ref="titleTextarea"
+							aria-label="Task name"
 							class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 outline-hidden placeholder:text-ink-subtle"
 							:class="[
 								'text-2xl leading-snug font-semibold tracking-tight text-ink',
@@ -3012,10 +3038,23 @@
 					</div>
 
 					<!-- DESCRIPTION label -->
-					<div
-						class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
-					>
-						Description
+					<div class="flex items-center justify-between gap-2">
+						<div
+							class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
+						>
+							Description
+						</div>
+						<AiRewritePanel
+							v-if="!isLocalWorkspaceTask && isFeatureEnabled('ai.assistant')"
+							:key="form.id"
+							:description="form.description ?? ''"
+							:disabled-reason="
+								editorType === 'block'
+									? 'Not available for descriptions written in Editor.js'
+									: undefined
+							"
+							@apply="onDescriptionInput('description', $event)"
+						/>
 					</div>
 
 					<!-- Editor section with toggle button -->
@@ -3232,7 +3271,7 @@
 						ref="taskCommentsRef"
 						:task-id="form.id"
 						class="mt-4"
-						@update:count="commentsCount = $event"
+						@update:count="onCommentsCount"
 					/>
 				</main>
 
@@ -3243,6 +3282,7 @@
 				>
 					<!-- Comment composer (modal only — page has it in the right rail) -->
 					<AskPersonaButton
+						:key="form.id"
 						v-if="
 							showSurface('comments.composer') &&
 							isFeatureEnabled('personas') &&
@@ -3446,8 +3486,9 @@
 								size="icon"
 								title="Delete"
 								aria-label="Delete"
+								:disabled="isLoading"
 								class="h-8 w-8 text-ink-muted hover:bg-status-fix-bg hover:text-status-fix focus-visible:bg-status-fix-bg focus-visible:text-status-fix"
-								@click="deleteCurrentTask"
+								@click="showDeleteConfirm = true"
 							>
 								<TrashIcon />
 							</Button>
@@ -3461,7 +3502,7 @@
 			<aside
 				v-if="!isModal && form.id && showSurface('comments.rail')"
 				:style="footerHeightVars(footerHeight)"
-				class="flex w-full flex-col border-t border-line bg-surface lg:h-full lg:w-[380px] lg:shrink-0 lg:border-t-0 lg:border-l xl:w-[420px]"
+				class="flex w-full flex-col border-t border-line bg-surface xl:h-full xl:w-[420px] xl:shrink-0 xl:border-t-0 xl:border-l"
 			>
 				<div
 					class="flex min-h-[var(--task-header-height)] shrink-0 items-center justify-between border-b border-line px-4 py-3"
@@ -3473,21 +3514,22 @@
 				</div>
 				<div
 					ref="commentsRailScroller"
-					class="px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+					class="px-4 py-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto"
 				>
 					<TaskComments
 						data-tour="task-form.comments"
 						ref="taskCommentsRef"
 						:task-id="form.id"
 						hide-header
-						@update:count="commentsCount = $event"
+						@update:count="onCommentsCount"
 					/>
 				</div>
 				<div
-					class="flex shrink-0 flex-col justify-center border-t border-line bg-surface px-4 py-3 lg:min-h-[var(--task-footer-height)]"
+					class="flex shrink-0 flex-col justify-center border-t border-line bg-surface px-4 py-3 xl:min-h-[var(--task-footer-height)]"
 					@mousedown.stop
 				>
 					<AskPersonaButton
+						:key="form.id"
 						v-if="
 							isFeatureEnabled('personas') && form.id && isLocalWorkspaceTask
 						"
@@ -3576,6 +3618,15 @@
 		</div>
 
 		<Confirm
+			v-if="showDeleteConfirm"
+			title="Delete task"
+			:body="`Are you sure you want to delete &quot;${form.title}&quot;?`"
+			@onCancel="showDeleteConfirm = false"
+			@closing-modal="showDeleteConfirm = false"
+			@onOk="confirmDeleteTask"
+		/>
+
+		<Confirm
 			v-if="showBacklogStatusChangeConfirm"
 			title="Task in Backlog"
 			:body="backlogConfirmBody"
@@ -3620,6 +3671,7 @@
 					@launched="loadCursorAgents"
 					@stopped="loadCursorAgents"
 					@followup-sent="taskCommentsRef?.loadComments()"
+					@conversation-synced="taskCommentsRef?.loadComments()"
 				/>
 			</DialogContent>
 		</Dialog>

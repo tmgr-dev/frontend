@@ -264,6 +264,16 @@
 			<span class="flex-1"></span>
 
 			<span
+				v-if="commentsCount > 0"
+				class="flex items-center gap-1 text-2xs text-ink-subtle tabular-nums"
+				data-testid="task-comment-count"
+			>
+				<MessageCircle class="h-3 w-3" aria-hidden="true" />
+				<span aria-hidden="true">{{ commentsCount }}</span>
+				<span class="sr-only">{{ commentsLabel }}</span>
+			</span>
+
+			<span
 				v-if="formattedDate"
 				class="flex items-center gap-1 text-2xs tabular-nums"
 				:class="overtime ? 'text-status-fix-fg' : 'text-ink-subtle'"
@@ -378,6 +388,7 @@
 		Eye,
 		FilePenLine,
 		GripVertical,
+		MessageCircle,
 		MoreVertical,
 		Pause,
 		Play,
@@ -447,6 +458,7 @@
 			UserPlus,
 			Check,
 			GripVertical,
+			MessageCircle,
 			Play,
 			Pause,
 		},
@@ -534,6 +546,14 @@
 			},
 			user() {
 				return this.$store.state.user;
+			},
+			commentsCount() {
+				return Number(this.task.comments_count) || 0;
+			},
+			commentsLabel() {
+				return this.commentsCount === 1
+					? '1 comment'
+					: `${this.commentsCount} comments`;
 			},
 			displayTask() {
 				if (!this.task.start_time) {

@@ -23,14 +23,17 @@
 
 let
   source = lib.importJSON ./source.json;
+  debArch = if stdenv.hostPlatform.isAarch64 then "arm64" else "amd64";
 in
 stdenv.mkDerivation {
   pname = "tmgr";
   inherit (source) version;
 
   src = fetchurl {
-    url = "https://github.com/tmgr-dev/frontend/releases/download/desktop-v${source.version}/TMGR_${source.version}_amd64.deb";
-    inherit (source) hash;
+    url = "https://github.com/tmgr-dev/frontend/releases/download/desktop-v${source.version}/TMGR_${source.version}_${debArch}.deb";
+    hash =
+      source.hashes.${stdenv.hostPlatform.system}
+        or (throw "tmgr: nix/source.json has no hash for ${stdenv.hostPlatform.system}");
   };
 
   nativeBuildInputs = [
@@ -88,7 +91,10 @@ stdenv.mkDerivation {
     homepage = "https://tmgr.dev";
     license = lib.licenses.unfree;
     sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
-    platforms = [ "x86_64-linux" ];
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
     mainProgram = "tmgr";
   };
 }

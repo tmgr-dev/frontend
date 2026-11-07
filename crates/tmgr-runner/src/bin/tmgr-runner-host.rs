@@ -12,6 +12,7 @@ fn main() {
     {
         ["runner", "serve"] => serve(),
         ["__shim", dir, id] => shim::shim_main(&PathBuf::from(dir), id),
+        ["__permission-hook", agent] => tmgr_runner::permit_hook::hook_main(agent),
         ["__sandbox-exec", ..] => sandbox::exec_helper(&args[1..]),
         ["__agent-work"] => fake_agent_work(),
         ["queue", "autopilot", "serve", "--settings", id] => fake_autopilot(id),

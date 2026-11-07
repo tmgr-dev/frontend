@@ -32,6 +32,22 @@ const http = () => {
 	};
 };
 
+describe('import api skills', () => {
+	it('posts the payload and unwraps the report', async () => {
+		const { client } = http();
+		client.post.mockResolvedValueOnce({
+			data: { data: { skills: [{ slug: 'a' }] } },
+		} as any);
+		const payload = { skills: [{ markdown: 'm', attach_to: ['p'] }] };
+		const report = await createImportApi(client as any).importSkills(
+			'j',
+			payload,
+		);
+		expect(client.post).toHaveBeenCalledWith('/imports/j/skills', payload);
+		expect(report).toEqual([{ slug: 'a' }]);
+	});
+});
+
 describe('import api', () => {
 	it('hits the contract routes', async () => {
 		const { client, calls } = http();

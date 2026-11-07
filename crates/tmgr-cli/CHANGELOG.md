@@ -1,5 +1,307 @@
 # Changelog
 
+## 1.0.104
+
+- `tmgr mcp`: when the desktop app answers that the Decisions inbox is busy (more than 256 open connections, desktop 0.9.117 and later), the wait keeps its 250 ms to 5 s backoff instead of failing. Older desktop apps that close the connection silently are handled as before.
+- `tmgr mcp` now handles `notifications/cancelled`: a cancelled `get_answer`, `ask_owner` or `reply_owner` drops its wait within a second, frees its worker and sends no response, so abandoned waits no longer pile up.
+- `get_answer` accepts `card_ids` (up to 64, merged with `card_id`): one wait covers all of them and returns the first event from any card, with its `card_id`; when nothing arrives it returns `{"status":"pending","card_ids":[...]}`. With a desktop app older than 0.9.117 it falls back to waiting on the cards in turn.
+
+## 1.0.103
+
+- `tmgr attach`: the questions pocket (`?N`, Go to, Context, Answer, Ignore, Fork) now works for Claude Code sessions started without the sandbox. Their conversation lives in the real `~/.claude`, which the pocket never looked at, so it found nothing. It now reads only the session id in `sessions/<pid>.json` and that session's transcript in the project folder of its working folder, the same narrow lookup as the session titles. Sandboxed Claude sessions and Codex are unchanged.
+
+## 1.0.102
+
+- `tmgr mcp`: `get_answer`, `ask_owner` and `reply_owner` no longer return `pending` ("not running") at once when the desktop app cannot be reached or drops the connection. The wait now retries with a pause of 250 ms growing to 5 s until `waitSeconds` runs out, so a listener that asks again on `pending` no longer spins the CPU. With many waits open at once (above about 256 in total) the desktop drops new connections, and before this each dropped wait came back instantly.
+- `tmgr mcp` now exits within a second when stdin closes while a decisions wait is still open, instead of up to 15 seconds later.
+
+## 1.0.101
+
+- New `tmgr setup terminal [--check]`: run it on the computer where your terminal runs, so copying in `tmgr attach` over SSH reaches the clipboard. It finds Warp, WarpOss, iTerm2, Ghostty, kitty, Alacritty, WezTerm and tmux, and for each one that blocks OSC 52 clipboard writes it shows the exact line, asks, backs the file up as `<file>.tmgr-backup-<timestamp>` and writes it. Write access only, never clipboard read. Apps that already allow it are reported as already OK, and the apps that need a restart are named. `--yes` applies without asking, `--check` only reports, and without a terminal nothing is changed.
+- Over SSH the copy notice now ends with a pointer to `tmgr setup terminal`.
+
+## 1.0.100
+
+- `tmgr attach`: in the New session form, Tab and Shift+Tab now always move to the next and previous field while the folder picker is open; before, Tab kept completing the selected folder path and the fields below Folder were hard to reach. Tab completion stays in the plain path field (type `/`, `~` or `.`). The footer now says `Tab/Shift+Tab next/prev field`.
+- A relative `TMGR_RUNNER_DIR` or `TMGR_RUNNER_HOMES` is now made absolute (and `..` folded) when it is read. Before, a session's background process, which moves to `/` after start, could not find its session folder and ended about a second after the agent exited.
+
+## 1.0.99
+
+- `tmgr attach`: the New session folder field now opens a folder picker. Recent shows pinned folders first, then folders of past and live sessions ranked by use and recency; typing searches them; Right opens a folder in a file-style browser (Left goes up, `.` shows hidden folders, `~` jumps home) with the git branch, dirty, merged and live markers; typing `/`, `~` or `.` still gives the plain path field with Tab completion. Ctrl+P pins or unpins a folder (kept in `folder-pins.toml` in the CLI config folder). Enter still starts, with the same checks and prompts as before.
+
+## 1.0.98
+
+- A finished session's background process now exits once its session folder is removed, not only when the whole runner folder is, so it no longer waits 24 hours when the folder was removed by hand or the runner never told it to stop.
+
+## 1.0.97
+
+- Hardening: sandboxed agents can no longer read the tmgr CLI's config folder when the CLI and the runner use different config locations (for example a different `XDG_CONFIG_HOME`). The CLI now tells the runner where its config lives; the runner adds that folder to every session's deny list, remembers it across restarts, and refuses to start a session whose working folder contains it. The default protections cannot be removed this way.
+
+## 1.0.96
+
+- The Decisions inbox no longer fills with empty cards from Claude Code notifications: `idle_prompt` makes no card, `agent_needs_input` and `elicitation_dialog` make one only when the message has real text (stock text such as "Claude is waiting for your input" does not count), and a finished-turn card needs the assistant's last message or uncommitted changes. A `permission_prompt` notification with only stock text makes no card, since the `permission-request` card already names the tool and command. `tmgr ask` and `ask_owner` cards are unchanged.
+
+## 1.0.95
+
+- Typing or pasting fast into an attached session no longer loses keystrokes when the machine is busy: the runner now waits for room on its link to the agent instead of dropping the input.
+- self-update: releases are now signed; install this version manually once.
+- The installer (`install.sh`) verifies the release signature with minisign when it is installed; without minisign it checks the archive against the SHA-256 in the release manifest fetched over HTTPS, warns, and installs. A wrong checksum or a bad signature always stops the install.
+
+## 1.0.94
+
+- `tmgr attach`: the New session dialog (`Ctrl-] c`) remembers the agent and the Worktree, Approvals, Bypass, No sandbox and Rewind choices from the last session you started there. When bypass or no sandbox is remembered, both show as On and a line under the options says so before you start. This memory applies only to that dialog: the queue, task runs and `tmgr run` are not affected.
+- `tmgr attach`: `Ctrl-] H`, or Ctrl+R inside the New session dialog, opens the `tmgr run` session list over the panes. A tmgr, Claude Code or Codex session can be resumed or forked from there with the same bypass and no-sandbox choices, warnings and typed confirmation as `tmgr run`. The key is `H` because `R` already resumes the focused session.
+- The session search in `tmgr run` and in attach puts chat-name matches first: exact name, then names that start with the text, then names that contain it, then matches in the conversation, folder and other fields.
+
+## 1.0.93
+
+- A decisions call (`get_answer`, `ask --wait`, MCP tools) no longer ends as pending when the desktop is replacing its token file at that moment: the client keeps retrying with the token it had, and the desktop now swaps the file in atomically.
+
+## 1.0.92
+
+- Forking a Codex conversation now checks `codex --version` first and refuses a Codex older than 0.156.0, or one whose version cannot be read, with a message that names the minimum. Resuming by id is unchanged.
+- U+061C (Arabic letter mark) is removed or replaced like the other bidirectional controls in the remaining text cleaners (task bundles, permission and question prompts, copied terminal text, the desktop runner view).
+
+## 1.0.91
+
+- `tmgr send` is refused with "input queue full" before the shim would drop input, so an agent that stopped reading its terminal no longer loses text that was reported as sent. A retry stays refused until the agent drains, and sending works again as soon as it does. A send into a session whose queue was already full when the runner restarted is refused too.
+- A paste above 1 MiB through attach waits up to 2 seconds for room each time the queue fills, so a slow reader gets all of it. If the agent makes no progress for that long, the rest of the paste is still dropped.
+- Sessions started by an older version keep the previous behaviour until they end, and an older runner can adopt sessions started by this one.
+
+## 1.0.90
+
+- `tmgr ask` and the MCP `ask_owner` tool validate link schemes: `--pr`, `--task` and fact links accept web URLs and plain references such as `TM-9` or `owner/repo#12`, and refuse other URL schemes with a clear error.
+- Cards sent in quick succession reach the Decisions inbox in the order they were sent.
+- A request larger than the Decisions limit is refused with a "too large" message instead of a broken connection.
+- Line comments on a diff carry the side they were made on (`file:line (deleted)` for removed lines), and `reply_owner` line replies accept an optional `side`.
+
+## 1.0.89
+
+- Queue, `tmgr run` and `--worktree` clones now hold their own copy of the repository's objects, so rewinding or deleting a branch and pruning in the source repository no longer damages them. Each new clone takes a little longer to make and uses disk space for a pack of the repository. Existing clones keep working as they are, and they still rely on the source repository's objects.
+- A team lead clone receives each worker's commits when they are imported, so `git merge --squash <sha>` keeps working.
+- The clones `tmgr run` makes keep skipping the folder-trust question in a trusted repository. The runner recognises new clones from a record kept outside the clone. Needs a runner restart after upgrading.
+- Importing a branch is refused when the clone's objects exceed the repository's own by more than 2 GiB.
+- A `--worktree` session is refused inside a clone kept in a `<repo>-worktrees` folder. Start it from the original repository.
+
+## 1.0.88
+
+- Harden git invocations in CLI commands and hooks. `tmgr start` refuses a repository with config it does not recognize and names the key; other repositories work as before.
+- `tmgr start --stash` refuses a repository with submodules. Commit or stash the changes yourself first.
+- `tmgr` publish reads the default branch and base from the remote, so it needs network access, and refuses a remote of another repository. Continuing a run checks its origin too.
+- A branch that differs from the default branch under `.github`, in any commit or in its tip, is not published. Rebase it on the default branch.
+- A sandboxed session refuses a folder whose object store shares files with another repository. The message says how to clear them, usually `git gc --prune=now` and `git commit-graph write --reachable`.
+
+## 1.0.87
+
+- `tmgr runner gc` keeps a team run when a worker's imported commits are not in the lead clone, or when that cannot be confirmed. The check compares the lead's HEAD tree with a trial merge of the worker branch, so squash merges and cherry-picks count as merged. The skip reason names the worker.
+
+## 1.0.86
+
+- `tmgr ask` and `ask_owner`: several repositories on one card (`--diff`, `repos`), ready patches from a file or stdin (`--patch`, `patches`), and links to PRs, commits, tags and other URLs (`--commit`, `--tag`, `--link`, repeated `--pr`).
+- Resend updates the open card in place with `--key` or `--replaces`. A waiter on the old id gets the answer, and an answered card is never reopened.
+- `tmgr ask --wait` waits while the desktop is down instead of exiting 8 at once. Exit 8 now comes only at `--timeout`.
+- A long-running `tmgr mcp` no longer gets `error: unauthorized` after the desktop restarts. Restart `tmgr mcp` to pick this up.
+- A text-only `reply_owner` lands in the one line thread waiting for the agent. With two or more waiting threads it is refused and names them.
+
+## 1.0.85
+
+- Smart search in the `tmgr run` session list: press Ctrl+A and ask a question. The local index picks candidate sessions, only their fragments go to Claude Code, and it answers with the best sessions and a one-line reason each. It runs only on that key press and uses your own Claude Code login and limits.
+- The key is hidden when Claude Code is not installed or not logged in; typing to filter keeps working. Codex is not used for this.
+- Sending fragments of a Codex session to Claude Code asks for a typed `send` first. To be asked again, delete `smart-search.toml` from your tmgr config folder.
+- The search call runs without tools and does not add a session to your history.
+
+## 1.0.84
+
+- `tmgr resume <session> --fork` and the fork action now work for a runner session that runs Codex: the fork continues from the conversation of that session, and `tmgr` names the new conversation.
+- Runner: restart it to use this.
+
+## 1.0.83
+
+- The new-session form in `tmgr attach` has Bypass and No sandbox toggles. Turning one on asks you to type the same confirmation as `tmgr run`, right in the form; pasted or queued input is refused. Neither toggle is available inside an agent session.
+
+## 1.0.82
+
+- Bare `tmgr run` on a terminal now opens a menu: pick the agent, then a new session or one to resume or fork, then the flags, with the final command shown before it starts. The menu remembers your last choice as a preselection and never skips the typed confirmation for bypass or no-sandbox.
+- Typing in the session list filters it through the local search index. Rows of a conversation running elsewhere, or whose folder is gone, say so up front.
+- The menu does not appear when flags are given, without a terminal, or inside an agent session: `tmgr run` behaves as before in those cases.
+
+## 1.0.81
+
+- New `tmgr session list`: past sessions from the runner, Claude Code and Codex, with agent, project, time and the start of the conversation. `--agent`, `--search`, `--limit` and `--json` are supported.
+- `--search` uses a full-text index kept on this machine in your tmgr config folder, private to your user. It is built only with log-read consent (`tmgr usage consent`), and denying consent deletes it. Session files are only read.
+- `tmgr resume` now also accepts a Claude Code or Codex conversation id, plus `--fork`, `--mode bypass`, `--no-sandbox` and `--no-attach`. Bypass and no-sandbox ask for a typed confirmation, as `tmgr run` does, and stay unavailable to queue, autopilot and link starts.
+- Ordinary sessions live in your real home folder, so resuming one by conversation id needs `--no-sandbox`. A conversation running in another terminal cannot be resumed, only forked. A session whose folder is gone or moved is refused.
+- Runner: restart it to use these (`external_resume.v1`).
+
+## 1.0.80
+
+- New `tmgr skills` commands: `list`, `show`, `put`, `delete`, `attach` and `detach` manage your shared skills library and attach skills to personas.
+- `tmgr login` now also requests `skills:read` and `skills:write`. Logins from before this version do not have them: run `tmgr login` again and approve shared skills access. Until then, `tmgr skills` says so instead of showing a raw 403.
+- `skills:write` can change what your agents are told to do. To leave it out, uncheck it on the approval page or pass your own `--scopes` list.
+
+## 1.0.79
+
+- Runner git hardening.
+
+## 1.0.78
+
+- Decisions inbox for the TMGR desktop (macOS and Linux): MCP tools `ask_owner`, `get_answer` and `reply_owner`, the `tmgr ask` command, and `tmgr hook decisions <event>` with `tmgr hook install|uninstall decisions`.
+
+## 1.0.77
+
+- Checkpoint hardening in the runner.
+
+## 1.0.76
+
+- `tmgr runner gc` now collects a team run over several repositories: the run folder with the lead's and workers' clones, and the `queue-team/` branches in every repository of the run. If any clone in any repository has uncommitted or untracked changes, a commit that was not brought into its repository, or does not match what the run recorded, the whole team run is kept.
+
+## 1.0.75
+
+- Fix: after a git command, a question check or the attach Git panel's git call finished, the runner or `tmgr attach` could send SIGKILL to an unrelated process that had just been given the same process id. They now end the child's process group before the child is reaped.
+
+## 1.0.74
+
+- `tmgr attach`: the Git panel and the diff pane now run git against a git folder the host builds from the repository's data, not the work folder's own `.git`. The diff pane leaves submodules out.
+- Repositories with `extensions.worktreeConfig` (and `worktree.useRelativePaths`) now show the Git panel; their `config.worktree` is checked like the repository config.
+
+## 1.0.73
+
+- Session checkpoints keep their git data in a private folder of the runner, so sandboxed sessions get checkpoints again. Existing checkpoints move there on first use.
+
+## 1.0.72
+
+- Team runs work with rules that cover several repositories. The lead and each worker get their own folder with one clone per repository (`queue/<id>/lead/<name>`, `queue/<id>/wK/<name>`). Each worker's commits are brought into the repository they were made in, and the lead is told which folder each commit belongs to. If one repository of a worker cannot be brought in, none of that worker's commits are, and the branches already made for it are removed. The pull requests are opened per repository, as for a single-agent run. Needs a runner restarted after the update (`team.multi.v1`). Do not downgrade while such a team is running: an older version would publish without the workers' work.
+- A queue run over several repositories can now be published; before, the publish refused its run folder.
+- `tmgr runner gc` skips a team over several repositories and says so; such folders and their `queue-team/` branches are not collected yet.
+
+## 1.0.71
+
+- Hardening: before running host `git` in a work folder, the runner and `tmgr attach` check where the folder's `.git` points. Only the folder's own git directory or a worktree that its repository registered for this folder are accepted; anything else hides the attach Git panel.
+
+## 1.0.70
+
+- Team runs: a worker that sits at its prompt for 10 minutes without writing `.tmgr/done` is reported to the lead in one note per idle stretch. The lead ends that worker by creating the empty file `.tmgr/end-wK` in its own folder; the runner never stops an idle worker on its own.
+- Team runs: `/exit` is sent up to 3 times, a minute apart, while the agent is at its prompt. A worker that said it is done (or that the lead ended) and still ignores `/exit` is then stopped, and its commits are still brought in. The lead is never stopped; its unanswered `/exit` is written to the audit log.
+- The runner checks the prompt and types a note in one step, and waits 5 seconds after any input before typing the next note, so a note can no longer land in a permission dialog that appeared in between.
+
+## 1.0.69
+
+- `tmgr runner gc` reads lead and single-run copies without their git settings, the way it already reads worker copies.
+- `tmgr runner gc` keeps a copy whose commits are only in its reflog.
+- `tmgr runner gc` gives each copy a few seconds and a bounded amount of git output, and keeps the copy past either.
+
+## 1.0.68
+
+- The runner refuses to start or resume a session in a queue or `--worktree` checkout made before 1.0.63, because such a checkout shares object files with the source repository. The message names the folder: re-clone it or remove it. The runner does not delete or change the folder, so uncommitted work in it stays. The runner is Unix-only, so Windows is not affected.
+
+## 1.0.67
+
+- Hardening: the `tmgr attach` Git panel keeps its sandbox limits for the folder of a sandboxed session after the session has ended. It shows only the branch there, as it does while the session runs.
+- Hardening: checkpoints read git config names strictly. If a name is not valid UTF-8 or the names cannot be read, the checkpoint is skipped and says why, instead of running with hooks it could not turn off.
+
+## 1.0.66
+
+- Runner sessions no longer keep file descriptors they inherited from the command that started them, so a script or test reading `tmgr` output is not left waiting after `tmgr` exits.
+- A git command that leaves a stray background process behind no longer blocks the runner after the command itself finishes.
+- When a git command fails, the error now includes its exit status.
+- A finished session's background process now exits once its runner folder has been removed.
+- A session's background process no longer stays in the folder its agent was started in, so `tmgr rm` does not report the folder as in use while that process is exiting.
+- `tmgr queue add <task> --team N [--mode eco|heavy]` asks for a team on one task: a lead plus up to N workers, each in its own copy of the repository, and one pull request for the task. The lead plans, the workers do the parts, the lead brings their commits together. `eco` is a Sonnet lead with Haiku workers, `heavy` an Opus lead with Sonnet workers. The confirmation shows `max_concurrent` x team size as the most agents that can run at once.
+- `tmgr attach` shows the lead and the workers of a team run. If the lead stops, its workers are stopped too.
+
+## 1.0.65
+
+- Hardening: host `git` and `gh` commands that the runner and `tmgr attach` run in session folders now ignore repository settings that could start other programs. For sandboxed sessions the attach Git panel shows only the branch and says the rest was not read.
+- Checkpoints are paused for sandboxed sessions for now. A sandboxed session started with checkpoints on still starts and says "checkpoints are off for sandboxed sessions for now". Existing checkpoints are kept. Sessions started with `--no-sandbox` keep checkpoints.
+
+## 1.0.64
+
+- `tmgr attach`: answer an agent's permission prompt from the sidebar, off by default. Turn it on with `tmgr run --permission-cards`, the Approvals row in the new-session form, or `tmgr config set attach.permission_cards true`. The setting is read when a session is created. The status line shows `cards on` and such sessions carry a `◈` marker.
+- A card shows the session and the agent's full command or file, with Allow and Deny. It shows the agent's "always" option only when the agent offers one for that command. If the text does not fit, Show all opens it in an overlay and the buttons appear at the end. `Ctrl-] a` or "Permission requests" in the palette opens the cards.
+- Risky commands are red and need a second confirmation. Nothing is approved automatically. The second confirmation comes from a list of known risky patterns, so a command that is not red is not proven safe.
+- The answer is one key typed into the agent's own prompt, and the card goes away when the agent continues.
+- Answers work for Claude Code Bash, Claude Code Write with the full content visible, and Codex commands in a sandboxed session. Anything else, or anything that does not match exactly what the agent shows, gets a view-only card with Open pane and no buttons.
+- Cards are local only. Remote attach shows none, and no server or web path can answer a prompt.
+
+## 1.0.63
+
+- Queue and `--worktree` checkouts are now cloned without sharing object files with the source repository.
+
+## 1.0.62
+
+- `tmgr attach`: session checkpoints, off by default. With them on, the runner stores the session's folder after each agent turn, so you can go back. Turn them on for one session with `tmgr run --checkpoints` or the `Rewind` row in the new-session form, or for new sessions with `tmgr config set attach.checkpoints true`. `tmgr config set attach.checkpoints_keep <n>` sets how many are kept per session (default 50, 3 to 1000).
+- In `tmgr attach`, the `↶` control in the pane header or `Ctrl-] C` lists the checkpoints with a diff preview. Restore asks y/n first and stores the current state as a checkpoint before changing anything, so a restore can be undone.
+- `tmgr checkpoints list|diff|restore <session> <n>` does the same from the command line.
+- A checkpoint holds tracked and untracked files and leaves out ignored ones. Your branch, index, stash and history are not touched: checkpoints live on private refs, `refs/tmgr/checkpoints/<session>/<n>`, removed when the session is removed.
+- Restore only overwrites or deletes what the stored current state holds byte for byte. Anything else stays, and restore lists it as left as is. Ignored files stay.
+- A folder that is not a git repository has no checkpoints, and the session says so.
+- Limits: restore checks each file again right before replacing or deleting it, but a write in the instant after that check, or later through a file another program already holds open, is lost and the undo checkpoint does not have it. Restore is refused while another live session of this runner works in the same folder, a subfolder or a parent folder (a separate `--worktree` checkout is fine), and the confirmation warns about this. Editors, watchers and sessions outside this runner are not detected, and a session started after the check is not stopped. Files over the size cap and hard-linked files are not stored and are counted as skipped. Nested repositories and submodules are not covered. Untracked files that are not ignored, secrets included, end up in the local `.git/objects`. `git log --all` shows checkpoint commits, and `git push --mirror` would push the refs. The agent is not told about a restore. Sessions started from the desktop or the queue do not pick up the global setting.
+
+## 1.0.61
+
+- `tmgr run --agent <profile> --worktree` starts the agent in its own checkout `<repo>-worktrees/<session name>` on a new branch of the same name, made from the current commit, so two agents never write the same files. It is a `git clone --reference` checkout, not a linked worktree: the sandbox must not reach the repository's `.git`. The branch stays in the checkout until you bring it over; the command to do that is printed.
+- Off by default. `tmgr config set attach.worktree true` turns it on for every agent session (`--no-worktree` opts out for one run); the `tmgr attach` new-session form has a Worktree row and shows a notice when the setting is on. A folder that is not a git repository is refused.
+- `tmgr rm` (and removing an exited session in `tmgr attach`) asks before deleting the checkout, only when it has no uncommitted or untracked changes, stash, unmerged branches or unmerged commits and nothing uses it. Otherwise it keeps the checkout and says why. It never forces, and the branch is kept in the repository when it has commits. `tmgr rm <path>` does the same for a checkout whose session is already gone.
+
+## 1.0.60
+
+- `tmgr runner halt --kill` now stops the background processes an exited session left behind and waits up to 5 seconds for them. A session blocked from resuming by such processes can be resumed afterwards.
+- `tmgr runner halt --kill` on a running session keeps the kill going until the whole session has stopped, for up to 30 seconds.
+- `tmgr runner halt` on an exited session sends no signal and says when background processes may still be running.
+- `tmgr runner resume`: the refusal for leftover background processes now names `halt --kill`.
+
+## 1.0.59
+
+- `tmgr link`: a worker whose process could not be queried is now reported as "could not be checked", no longer as gone. Its record stays and `tmgr link revoke` does not report success in that case.
+- `tmgr link`: worker records past a directory read error are read again, and any that stay unreadable are reported.
+- `tmgr link scope`: an error after the save now says the scope was saved, and records that could not be checked are reported whichever flags are on, also as `closed.unknown` with `--json`.
+- `tmgr link audit`: the fallback view quotes values the same way as request fields.
+
+## 1.0.58
+
+- Local workspaces (`local:<code>`): the CLI now picks up the account the desktop is signed in to automatically, so runs, comments and personas of that account work without `tmgr config set local_user_id`. The config value still wins when set. Runs and comments that the local account (id -1) wrote earlier stay yours.
+
+## 1.0.57
+
+- Experimental (`tmgr link`): remote control over the link. On the follower, `tmgr link scope <leader> --remote-control on|off` lets that leader see, attach with input to, and halt ALL runner sessions on this machine, including ones you started locally; from the leader, `tmgr attach --on <follower>` and `tmgr agents --host <follower>` then show them (FROM column: `leader` or `local`). `--include-bypass on|off` extends this to sessions started with `--no-sandbox` or `--mode bypass`; it has no effect unless remote control is on. Both flags default to off, `tmgr link trust` has no such flags, and the values must be written as `on` or `off`.
+- Turning either flag on needs a terminal, is refused inside agent sessions, never accepts `--yes`, and asks for a second typed confirmation (`full access`) that says the leader gets full access to this machine with your tokens and keys (and, for include-bypass, that sandbox-free sessions become reachable). Turning them off is always allowed, also from an agent session: open remote attaches are closed within a couple of seconds and `tmgr link audit` shows `link.scope.closed`.
+- Only sessions started by the runner are controllable; a plain `claude` outside the runner is not. Several attaches to one session share one screen: input from each interleaves without locking, opening an attach with input resizes the session and the last resizer wins, and typing locally resizes it back. A remote attach ends after 1 hour or 45 seconds without activity and attaching again works; the permission itself does not expire. At most 4 workers run per link. A runner daemon too old to report session modes hides other sessions from the leader until you run `tmgr runner restart`.
+- While a leader is attached, `tmgr attach` shows `<leader> attached (control)` or `(view)` on that session's pane title and sidebar row, and `tmgr agents` shows it in the ORIGIN column. The audit log records connect, input (that input happened and how many messages, never what was typed; written before the first send of each second and counted each second) and halt with the link name and session id. Rejected requests keep only known fields, bounded in length.
+- Privileged commands (`tmgr link trust`, `tmgr link scope` when it widens, and the others behind the same check) are now refused in more agent sessions, also when they run outside the runner.
+- The server and the web app are not involved: control exists only over the link, through SSH between the two machines.
+- `tmgr link revoke` and turning a remote control flag off now fail with a clear message when a worker record cannot be checked, and keep the record, instead of reporting success.
+- On the leader, `tmgr attach --on <follower>` without a session no longer picks a session started on the follower itself; with several candidates it asks for an explicit id. `tmgr halt --on` refuses a name shared by several runs.
+
+## 1.0.56
+
+- The runner now checks the reading choice itself before it forks a Claude Code session. It is the same choice you set with `tmgr usage consent allow` or in TMGR desktop under AI Usage. Without it the fork is refused and the message says how to allow it. This takes effect after `tmgr runner restart`, which keeps your sessions but closes open `tmgr attach` windows, so attach again afterwards.
+- `tmgr runner allow WS --require-signed-rules` or `--require-signed-persona` now prints one line when the running runner is older than 1.0.55 and ignores the policy until `tmgr runner restart`. `tmgr runner allowed` prints the same line. The policy is saved either way, and tmgr does not restart the runner for you.
+- New `tmgr runner gc` (experimental): removes the copies of finished `tmgr run` tasks whose pull request is merged or closed and that have nothing running in them. `--dry-run` shows what it would remove.
+
+## 1.0.55
+
+- The runner now asks first. In `tmgr attach` and the runner commands, transcripts of Claude Code and Codex sessions are read only after you allow reading on this device (`tmgr usage consent allow`, or per tool in TMGR desktop under AI Usage). That covers titles, activity status, subagent peek, question detection, Haiku classification, per-session cost, export, summaries (including automatic ones posted to the server) and fork. With no decision yet nothing is read, even when you ask by hand. Sessions then show the plain agent name, no new questions are detected and one short line says how to allow; running, waiting, blocked and exited keep working. Denying stops the next read. Open `tmgr attach` windows from an older version keep their old behaviour until you reattach; this consent check doesn't need a runner restart.
+- `tmgr usage reset` also deletes the questions the runner saved (`tmgr questions`), except the `tmgr questions haiku` setting. Questions saved earlier stay after `deny` until then. If you allow reading again, questions from sessions whose logs are still there can be detected again.
+- New `tmgr runner allow WS --require-signed-rules` and `--require-signed-persona`: on this machine, a cloud run in that workspace starts only if its signed approval covers the workspace rules or a persona. Older approvals are refused, and so is a workspace with no rules under `--require-signed-rules`. Running `allow` again keeps the policy, only `tmgr runner disallow WS` clears it, and the server cannot change it. `tmgr runner allowed` shows it in a POLICY column.
+- `--require-signed-rules` and `--require-signed-persona` take effect only after `tmgr runner restart`. Until then the policy is saved but cloud runs are not refused.
+
+## 1.0.54
+
+- In `tmgr attach`, a `tmgr run --no-sandbox` Claude session now shows its `/rename` or automatic title in the sidebar and pane header. This is an exception to the rule that titles are read only from the sandbox home: for such a session tmgr reads your real `~/.claude`, but only that session's own files: `sessions/<pid>.json` to get its id, then that id's transcript in the project folder of the session's working folder. Sandboxed sessions still never read the real home. A title is not available if the session had already exited when you attached, and no-sandbox Codex sessions show no agent title. A name set in tmgr still wins, including the task key a task run is named after.
+
+## 1.0.53
+
+- Copying from `tmgr attach` / `tmgr run` now joins a paragraph that the agent wrapped at its own width into one line, and removes the indent of the next lines when the selection starts after a marker such as `⏺`. Lists, tables, headings, indented blocks, short lines, log lines, lines starting with the same word as the previous one or with a path or flag, and lines ending in `;`, `{`, `}`, `:` or `\` keep their breaks. Long lines of code without such an ending can still be joined; `tmgr config set attach.copy.clean false` copies the text as it is.
+- Over SSH the copy notice now says `sent N characters to the terminal clipboard` instead of `copied`, because the terminal never confirms that it accepted the text. If the clipboard stays empty, allow OSC 52 in your terminal (in Warp: `osc52_clipboard_access = "write_only"` under `[terminal]` in its `settings.toml`).
+
+## 1.0.52
+
+- `tmgr run --mode bypass` now works for tasks of a local workspace (`--ws local:<code>`) and for `--agent` without a task, not only for cloud tasks. It shows a warning and asks you to type `bypass`; `--yes` is not accepted, and it is refused inside agent sessions and without a terminal.
+- New `tmgr run --no-sandbox` (with a task or `--agent`, also combined with `--mode bypass`): the agent runs outside the sandbox with your real home folder, your own environment, and no network limits. It asks you to type `no-sandbox`, never accepts `--yes`, and is refused inside agent sessions and for queue, autopilot and link runs. On macOS the runner's socket and the tmgr config stay write-protected; Linux has no such fence.
+
+- In `tmgr attach` / `tmgr run`, dragging the mouse inside a pane now selects text in that pane only (never the neighbour panes, sidebar, borders or status line), highlights it and copies it when you release the button: to the system clipboard, and over SSH through OSC 52. Double-click selects a word, triple-click a line; dragging past the top or bottom edge scrolls the history. Lines the terminal wrapped at the pane width are joined into one line, real line breaks stay (the runner now reports which rows were soft-wrapped). When a program in the pane uses the mouse itself, a plain drag selects text and a plain click still goes to the program; hold Ctrl or Alt while dragging to send the drag to the program. Shift-drag (Option-drag in iTerm2) and `--no-mouse` work as before.
+- Copied text is cleaned by default (also for the keyboard copy mode): ANSI sequences, box-drawing and block characters, spinners, zero-width characters and trailing spaces are removed, a leading box frame or UI marker (`⏺ ⎿ ❯ ✻ ●` and similar) is dropped and the common indent of the answer frame is removed. `tmgr config set attach.copy.clean false` copies the text as it is.
+
 ## 1.0.51
 
 - Autopilot no longer reports signed tasks as "skipped: the task has no approval for agent runs" right after it starts. Those lines came from an older queue session saved on this machine, before the tasks were signed; autopilot now shows a skip only after the queue has checked the task again in this run. The counters on the status screen no longer include failed or finished tasks from earlier runs either; a task that is still running or waiting from an earlier run is still shown.

@@ -90,6 +90,131 @@ describeSqlite('local-only personas', () => {
 		expect(rows.map((r) => r.name)).toEqual(['Local agent']);
 	});
 
+	it('creates exactly one default persona with permissions under concurrent calls', async () => {
+		const results = await Promise.all([
+			ensureDefaultLocalPersona(ctx),
+			ensureDefaultLocalPersona(ctx),
+			ensureDefaultLocalPersona(ctx),
+		]);
+		expect(new Set(results.map((r) => r.uuid)).size).toBe(1);
+		const rows = await listLocalPersonas(ctx);
+		expect(rows).toHaveLength(1);
+		expect(rows[0].permissions).toEqual([...PERSONA_PERMISSIONS]);
+		expect(
+			await ctx.db.select(`SELECT persona_uuid FROM workspace_personas`),
+		).toHaveLength(1);
+	});
+
+	it('the loser of a creation race returns the winner with one row in each table', async () => {
+		const inner = ctx.db;
+		const winnerCtx = { ...ctx, db: inner };
+		let raced = false;
+		const loserCtx: LocalContext = {
+			...ctx,
+			db: {
+				...inner,
+				batch: async (statements) => {
+					if (!raced) {
+						raced = true;
+						await ensureDefaultLocalPersona(winnerCtx);
+					}
+					return inner.batch(statements);
+				},
+			},
+		};
+		const loser = await ensureDefaultLocalPersona(loserCtx);
+		const [winner] = await inner.select<{ uuid: string }>(
+			`SELECT uuid FROM personas WHERE owner_user_id = -1`,
+		);
+		expect(loser.uuid).toBe(winner.uuid);
+		expect(
+			await inner.select(`SELECT uuid FROM personas WHERE owner_user_id = -1`),
+		).toHaveLength(1);
+		expect(
+			await inner.select(`SELECT persona_uuid FROM workspace_personas`),
+		).toHaveLength(1);
+	});
+
+	it('returns the persona another caller created when the batch throws', async () => {
+		const inner = ctx.db;
+		const winnerCtx = { ...ctx, db: inner };
+		const loserCtx: LocalContext = {
+			...ctx,
+			db: {
+				...inner,
+				batch: async () => {
+					await ensureDefaultLocalPersona(winnerCtx);
+					throw new Error('database is locked');
+				},
+			},
+		};
+		const loser = await ensureDefaultLocalPersona(loserCtx);
+		expect((await listLocalPersonas(ctx)).map((r) => r.uuid)).toEqual([
+			loser.uuid,
+		]);
+	});
+
+	it('rejects when the batch reports a miss and no persona exists afterwards', async () => {
+		const inner = ctx.db;
+		const missCtx: LocalContext = {
+			...ctx,
+			db: { ...inner, batch: async () => ({ results: [], failedAt: 0 }) },
+		};
+		await expect(ensureDefaultLocalPersona(missCtx)).rejects.toThrow();
+	});
+
+	it('two concurrent calls race through both batches and resolve to the same persona', async () => {
+		const inner = ctx.db;
+		const failedAt: (number | null)[] = [];
+		const racingCtx: LocalContext = {
+			...ctx,
+			db: {
+				...inner,
+				batch: async (statements) => {
+					const result = await inner.batch(statements);
+					failedAt.push(result.failedAt);
+					return result;
+				},
+			},
+		};
+		const [a, b] = await Promise.all([
+			ensureDefaultLocalPersona(racingCtx),
+			ensureDefaultLocalPersona(racingCtx),
+		]);
+		expect(failedAt).toEqual([null, 0]);
+		expect(a.uuid).toBe(b.uuid);
+		expect(
+			await inner.select(`SELECT uuid FROM personas WHERE owner_user_id = -1`),
+		).toHaveLength(1);
+		expect(
+			await inner.select(`SELECT persona_uuid FROM workspace_personas`),
+		).toHaveLength(1);
+	});
+
+	it('rolls back the persona row when the permissions insert fails', async () => {
+		await ctx.db.execute(
+			`CREATE TRIGGER fail_wp BEFORE INSERT ON workspace_personas
+			 BEGIN SELECT RAISE(ABORT, 'boom'); END`,
+		);
+		await expect(ensureDefaultLocalPersona(ctx)).rejects.toThrow();
+		const rows = await ctx.db.select(`SELECT uuid FROM personas`);
+		expect(rows).toHaveLength(0);
+	});
+
+	it('adds the missing permissions row to an older default persona', async () => {
+		await ctx.db.execute(
+			`INSERT INTO personas (uuid, owner_user_id, owner_name, name, description, avatar_file, synced_at, archived_at)
+			 VALUES ('legacy-default', -1, 'Ada', 'Local agent', NULL, NULL, ?, NULL)`,
+			[clock.toISOString()],
+		);
+		const healed = await ensureDefaultLocalPersona(ctx);
+		expect(healed.uuid).toBe('legacy-default');
+		const rows = await listLocalPersonas(ctx);
+		expect(rows).toHaveLength(1);
+		expect(rows[0].permissions).toEqual([...PERSONA_PERMISSIONS]);
+		expect(rows[0].enabled_at).not.toBeNull();
+	});
+
 	it('does not add a default when the workspace already has a local persona', async () => {
 		await createLocalPersona(ctx, { name: 'Scribe' });
 		await ensureDefaultLocalPersona(ctx);

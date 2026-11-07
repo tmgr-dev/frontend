@@ -34,13 +34,14 @@ args = ["{prompt}"]
 args = ["resume", "--last"]
 at = "after_command"
 by_id = ["resume", "{resume_id}"]
+fork_by_id = ["fork", "{resume_id}"]
 
 [hooks]
 kind = "config-override"
 
 [permission_modes]
 ask = ["--ask-for-approval", "on-request"]
-bypass = ["--ask-for-approval", "never", "--sandbox", "workspace-write"]
+bypass = ["--dangerously-bypass-approvals-and-sandbox"]
 
 [network]
 allow = ["api.openai.com", "chatgpt.com", "auth.openai.com"]

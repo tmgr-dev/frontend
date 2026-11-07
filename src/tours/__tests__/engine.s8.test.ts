@@ -98,6 +98,15 @@ describe('requires.capability', () => {
 		expect(item(h).available).toBe(true);
 	});
 
+	it('stays available when the personas and agent_work modules are off', () => {
+		const off = ['personas', 'agent_work'];
+		const h = make({
+			capability: (name) => name === 'localAccess',
+			isModuleEnabled: (key) => !off.includes(key),
+		});
+		expect(item(h).available).toBe(true);
+	});
+
 	it('refuses to start when unsupported', async () => {
 		const h = make({ capability: () => false });
 		await h.engine.init();

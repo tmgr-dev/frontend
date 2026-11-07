@@ -213,10 +213,20 @@ pub fn assert_no_secrets(out: &std::process::Output) {
 }
 
 pub fn dead_server() -> String {
-    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = l.local_addr().unwrap();
-    drop(l);
-    format!("http://{addr}")
+    let mut last = String::new();
+    for _ in 0..20 {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap();
+        drop(l);
+        let probe = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(1));
+        match probe {
+            Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
+                return format!("http://{addr}");
+            }
+            other => last = format!("{addr}: {other:?}"),
+        }
+    }
+    panic!("no refused port after 20 attempts; last probe {last}");
 }
 
 impl Env {
@@ -322,6 +332,30 @@ pub fn write_script(dir: &std::path::Path, name: &str, body: &str) -> PathBuf {
     std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
     std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
     p
+}
+
+pub fn seed_remote(repo: &std::path::Path, bare: &std::path::Path) {
+    git(bare, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+    git(
+        repo,
+        &["push", "-q", bare.to_str().unwrap(), "main:refs/heads/main"],
+    );
+}
+
+pub const STUB_SSH_HOST: &str = "git@example.invalid";
+
+pub fn write_ssh_stub(dir: &std::path::Path, routes: &[(&str, &std::path::Path)]) -> PathBuf {
+    let mut arms = String::new();
+    for (path, bare) in routes {
+        arms.push_str(&format!("  \"{path}\") repo=\"{}\" ;;\n", bare.display()));
+    }
+    write_script(
+        dir,
+        "ssh",
+        &format!(
+            "for a in \"$@\"; do cmd=\"$a\"; done\nsvc=${{cmd%% *}}\npath=${{cmd#* }}\npath=${{path#\\'}}\npath=${{path%\\'}}\npath=${{path#/}}\ncase \"$path\" in\n{arms}  *) echo \"unknown repository $path\" >&2; exit 1 ;;\nesac\nunset GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT\ncase \"$svc\" in\n  git-upload-pack) exec git upload-pack \"$repo\" ;;\n  git-receive-pack) exec git receive-pack \"$repo\" ;;\n  *) echo \"unsupported $svc\" >&2; exit 1 ;;\nesac"
+        ),
+    )
 }
 
 pub fn now_s() -> i64 {

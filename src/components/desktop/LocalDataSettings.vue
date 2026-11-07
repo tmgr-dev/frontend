@@ -51,7 +51,11 @@
 						{{ row.busy ? 'Backing up…' : 'Back up now' }}
 					</Button>
 				</SettingsRow>
-				<SettingsRow label="Move to cloud" data-tour="settings.data-move">
+				<SettingsRow
+					v-if="!row.workspace.demo"
+					label="Move to cloud"
+					data-tour="settings.data-move"
+				>
 					<template #description>
 						<template v-if="!signedIn">
 							Sign in to move this workspace to your account.

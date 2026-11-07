@@ -1,0 +1,14 @@
+{
+	"name": "yourname-hello-tmgr-plugin",
+	"version": "1.0.0",
+	"private": true,
+	"description": "A TMGR plugin, started from the plugin-sdk template.",
+	"scripts": {
+		"validate": "node validate.mjs .",
+		"build": "node build.mjs",
+		"test": "node --test main.test.mjs"
+	},
+	"devDependencies": {
+		"tmgr-plugin-testing": "file:../testing"
+	}
+}

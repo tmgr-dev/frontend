@@ -83,4 +83,8 @@ export const permissionChanges = (
 	domains: after.links.allowedDomains.filter(
 		(d) => !before.links.allowedDomains.includes(d),
 	),
+	schemes: after.links.schemes.filter((s) => !before.links.schemes.includes(s)),
+	imageDomains: after.images.allowedDomains.filter(
+		(d) => !before.images.allowedDomains.includes(d),
+	),
 });

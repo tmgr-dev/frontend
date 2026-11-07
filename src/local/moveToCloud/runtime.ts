@@ -1,6 +1,7 @@
 import store from '@/store';
 import { createLocalProfile, loadLocalProfile } from '@/utils/localProfile';
 import { listLocalWorkspaces, localContext } from '../runtime';
+import { readSkillLibrary } from '../tauriSkillLibrary';
 import { importApi } from './api';
 import { createMover, type Mover } from './flow';
 import type { DecisionDeps, RemoveDeps } from './guards';
@@ -43,6 +44,7 @@ export const getMover = (): Mover => {
 					(await localContext(await localWorkspace(code), reader)).db,
 				),
 			userId: currentUserId,
+			skillLibrary: readSkillLibrary,
 		});
 	}
 	return shared;

@@ -3,6 +3,259 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.117 — 2026-11-06
+
+- Decisions: above 256 open connections the inbox now answers "busy" instead of closing new connections silently, so `tmgr mcp` keeps backing off quietly instead of treating the app as not running.
+- Decisions: one wait can now cover a set of cards (`get_answer` with `card_ids` in `tmgr mcp` 1.0.104), so an agent watching several cards holds one connection instead of one per card.
+
+## 0.9.116 — 2026-11-06
+
+- New macOS widget: add "TMGR" from the widget gallery (right-click the desktop or open Notification Center, then Edit Widgets) to see the running timer with a live elapsed time, or "No timer running". It is read-only for now. The widget reads one small file with the running task titles and has no network access.
+
+## 0.9.115 — 2026-11-06
+
+- Decisions: the answer box grows with what you type (up to a limit, then it scrolls), and the card column is wider, with the description allowed to grow to half the window height instead of a small 240 px box.
+- Plugins in shared workspaces: a response that carries a task or project category from another workspace is now rejected instead of being passed to the plugin.
+
+## 0.9.114 — 2026-11-06
+
+- Decisions is now "Decisions · Doom Solving": it is doom scrolling, only you solve things. The window gets a small "doom solving" subtitle, a fun empty-queue message, a card that flies out when you answer it, and a handful of quiet easter eggs (streaks, speedrun, night owl, inbox zero and a few more). Everything is local, never blocks the keyboard, and turns into text only with reduced motion.
+
+## 0.9.113 — 2026-11-06
+
+- Decisions: new "Search queue" box above the queue. It filters cards as you type by title, description and task key; Esc clears it, and "No matches" shows when nothing fits. Hotkeys stay off while you type, and the selection moves to the first match when the current card is filtered out.
+
+## 0.9.112 — 2026-11-06
+
+- Shift+Enter now adds a new line in every chat box: the AI assistant, the Decisions chat, the task chat and the agent follow-up box. Enter still sends, and the Enter that confirms an input-method composition no longer sends by mistake. The boxes grow with the text and scroll past a maximum height.
+- 0.9.111 was tagged without release notes and never published.
+
+## 0.9.110 — 2026-11-06
+
+- New "Connect your agent" screen for local workspaces (Settings → Personas → Local agent access → Connect your agent). It finds Claude Code and Codex on your Mac and shows the exact commands before running them. Install adds the TMGR server to the agent with its own CLI, turns on local agent access and the Personas and Agent work modules. Remove takes it out again.
+- Your token stays in the macOS Keychain and is never part of the command. Cursor gets a ready config to copy.
+- Install is unavailable when TMGR runs from its download location instead of Applications, and in plugin safe mode.
+- The "Connect a local agent" tour now opens this screen and is offered without enabling modules first.
+- The Claude Code command in the agent connect dialog now uses `--scope user`, so it works from any folder.
+
+## 0.9.109 — 2026-11-06
+
+- New first launch: on a fresh install TMGR skips the Welcome screen and opens a demo workspace where a simulated agent works for about 20 seconds. Then it is your turn: move a card, start a timer or add a task, and press "Create my workspace" to get your own workspace with starter tasks. Sign in is one click away in the demo banner.
+- The Getting started checklist now shows in local mode for fresh installs (never in the demo itself).
+- Existing users and signed-out accounts still see the Welcome screen and are not moved into the demo.
+- Demo fixes: quitting during the simulated run resets the card instead of leaving it half-moved, time you track on the demo card is no longer wiped on relaunch, and with reduced motion the demo shows the finished board immediately.
+
+## 0.9.108 — 2026-11-06
+
+- Move to cloud now carries your skills library: skills on this device that are attached to the moved workspace's personas go into your account's shared skills library and are attached to the cloud personas. A skill already in your library with the same content is reused; a different skill with the same name is added as `name-2`.
+- After the move, one line reports what happened: added, already in your library, renamed. If copying skills fails, "Retry skills" tries again without repeating the move.
+- Remove local copy waits until the skills are copied.
+
+## 0.9.107 — 2026-11-06
+
+- The demo plays itself: a simulated agent moves a card across the board, runs a timer and fills in an agent run in about 20 seconds. Esc skips to the end, Replay plays it again, and with reduced motion enabled it shows the finished board without playing. Nothing real runs and nothing counts toward your own progress.
+- Help hub: "Watch an agent work" starts the demo from the Getting started page.
+- Fixed: Watch the demo opened the demo workspace under the wrong address, so the sidebar and columns still showed your other workspace while the demo data was loaded. It now switches to the demo properly.
+- Deleting the demo while it plays stops the simulated agent first.
+
+## 0.9.106 — 2026-11-06
+
+- Demo workspace: Help menu -> Watch the demo creates a separate workspace with a ready board and a sample agent run. It is marked DEMO, stays on this Mac, and can be deleted from its banner (it goes to the Trash).
+- The demo never mixes with your data: it is excluded from Move to cloud, agent runs, agent tokens, routines and backups, and is never picked as your first workspace.
+- Existing local users get a one-time offer to watch the demo; declining is remembered.
+
+## 0.9.105 — 2026-11-06
+
+- Skills library for local workspaces: local personas can use skills stored on this device. Create, edit and attach skills in Settings > Personas, and the local MCP `get_persona` and `get_persona_skill` return them with the same shape as the cloud.
+- Import skills from local agents into the device library, see "Update available" when a source file changed, and export or import the library as a file to move it between machines.
+
+## 0.9.104 — 2026-11-06
+
+- Signing out now deletes that account's AI model key from the Keychain and its cached persona prompts, so the next account on this Mac starts clean. The key of the local profile (no account) is never touched.
+- If that cleanup fails, the reason is written to the app log instead of being silently ignored.
+
+## 0.9.103 — 2026-11-06
+
+- Linux: the desktop app is now built for ARM64 (aarch64) as well: deb, rpm and AppImage, with in-app updates.
+- Linux: Snap packages are built for amd64 and arm64; store publishing follows once the store listing is set up.
+- Nix: the package supports aarch64-linux.
+
+## 0.9.102 — 2026-11-05
+
+- Decisions: long facts, questions and chips wrap inside the card instead of overflowing it.
+- Decisions: a comment on an added line stays on that line instead of appearing under the deleted line with the same number.
+- Decisions: Enter on a focused link or button follows it and never answers the card.
+- Decisions: card links with schemes other than http and https are shown as plain text or dropped.
+- Decisions: cards sent together keep their order; a closed client stops listening within seconds; tag chips show the tag name.
+
+## 0.9.101 — 2026-11-05
+
+- Decisions: agent replies in the card chat and in diff line comments now show as formatted text: headings, lists, code, tables and links. Your own messages stay exactly as you typed them.
+- Decisions: the Changes view shows the total lines added and removed across the whole card in its header, marked partial when a file could not be counted.
+
+## 0.9.100 — 2026-11-05
+
+- Live updates: workspace activity, task changes and page edits now arrive through your own account channel. Nothing changes on screen.
+
+## 0.9.99 — 2026-11-05
+
+- Decisions: a card can show several repositories and ready patches, grouped in the diff view.
+- Decisions: PRs, commits, tags, the task and other links sit next to the card and open in the browser.
+- Decisions: a resent question updates the open card in place and keeps its thread.
+- Decisions: close a card from the list with the cross, without opening it. A waiting sender sees it as dismissed.
+- Decisions: an agent's plain reply to a line comment now lands in that line's thread.
+- Decisions: the waiting note now says what is true: no agent listening, session ended, or the agent has the message and has not replied yet.
+
+## 0.9.98 — 2026-11-04
+
+- Decisions: a diff that times out now says macOS may be waiting for access to the disk, and to press Refresh after allowing it. Cards whose session ended no longer show "Agent is waiting", and answering one says it was saved but the session has ended. The window now shows "All clear" after the last pending card; finished cards stay in the queue.
+
+## 0.9.97 — 2026-11-04
+
+- New Decisions window (macOS and Linux). Questions, reviews, release gates and manual checks from your agent sessions pile up in one queue, and each answer goes back to the session that asked. Open it with CmdOrCtrl+Shift+D or from the tray item "Decisions (N)". Agents reach it through the `ask_owner` MCP tool, `tmgr ask` or the Claude Code hooks from `tmgr hook install decisions`, which need tmgr CLI 1.0.78 or later.
+
+## 0.9.96 — 2026-11-04
+
+- Skills library: new "Import from local agents" button. It scans your Claude Code, Claude Code plugins, Codex and shared agent skill folders (and any project folder you pick), shows them by source and package with a preview, and imports the ones you tick. Importing again updates the same library skill instead of duplicating it. Nothing is executed, supporting files and anything that looks like a secret are never sent, and skills over 16 KiB are listed but not imported.
+
+## 0.9.95 — 2026-11-04
+
+- Moving from local mode to a cloud account: if you switch accounts or sign out while your local data and AI provider key are being moved, the move now waits and continues on the next sign-in or app start. Before, it could stop for good or show the result to the wrong account.
+- If this device can't be linked to your account, the warning now says so and offers Skip. Your data stays on this device, and the key keeps working in local mode.
+
+## 0.9.94 — 2026-11-04
+
+- Runner: the agent sessions panel shows a team run together, lead first, then its workers labelled w1, w2 and so on. Team runs are started with `tmgr queue add <task> --team N`, from tmgr CLI 1.0.66.
+
+## 0.9.93 — 2026-11-04
+
+- Plugins (API 1.13): plugins can open Telegram chat links (tg://) when they have the links permission and declare it, and show pictures: built-in ones, or ones from sites the plugin lists, after you allow the new "images:remote" permission.
+- Plugins: a manifest for an older plugin API that already uses the new `images` field or link schemes is now refused at install.
+
+## 0.9.92 — 2026-11-04
+
+- Plugins (API 1.12): plugins can show bar and line charts with axis labels and a tooltip on hover or with the arrow keys.
+
+## 0.9.91 — 2026-11-04
+
+- Plugins (API 1.11): plugins can show a multi-line text area, sent with a button or Cmd+Enter, and a date picker.
+
+## 0.9.90 — 2026-11-03
+
+- Plugins: selecting text in a plugin table row or card no longer runs its action, and the text inside plugin buttons, tabs and cards is not selected when you click them.
+
+## 0.9.89 — 2026-11-03
+
+- Plugins: text on plugin pages and in plugin sections of a task can be selected and copied again.
+
+## 0.9.88 — 2026-11-03
+
+- Plugins: input fields, dropdowns and checkboxes drawn by a plugin now show "Plugin: <name>" under them, so you can tell them from TMGR's own fields. They are also kept out of browser and password manager autofill.
+- Ask persona fixes (TM-801, TM-794).
+- Asking a persona: closing or reloading a separate task window now stops a running question. Before, it kept running in the background and using AI tokens.
+- Correction to 0.9.83: "closing the task window stops the question" held only for the task window inside the app, not for a separate task window or a reload.
+
+## 0.9.87 — 2026-11-03
+
+- Plugins (API 1.10): event timelines, chat-style message feeds, sparkline charts, empty-state placeholders and loading skeletons.
+- Plugins: tables can align and size columns, sort by a column, color rows, run an action when a row is clicked and expand a row to show details.
+
+## 0.9.86 — 2026-11-03
+
+- Plugins (API 1.9): plugins can show a text or search field, a dropdown and a checkbox. A plugin receives only the value you enter into its own control, and only when you change it.
+
+## 0.9.85 — 2026-11-03
+
+- Plugins (API 1.8): collapsible sections (with a title, or showing the first few items and an "N more" toggle), tabs and a segmented switch.
+- Plugins: buttons can be danger, success or outline, show an icon or only an icon, be disabled or show a loading spinner, and have a tooltip; buttons can be grouped.
+- Plugins: badges can show an icon and a tooltip, and a standalone icon element with a fixed icon set.
+
+## 0.9.84 — 2026-11-03
+
+- Plugins (API 1.7): plugin pages and task sections can show formatted documents — headings, lists, task lists, tables, quotes and code blocks.
+- Plugins: text can mix bold, italic, inline code and strikethrough, keeps its line breaks, and can be up to 20 000 characters long.
+- Plugins: a code block with wrapping and a copy button.
+
+## 0.9.83 — 2026-11-02
+
+- Asking a persona: an answer that stops at the tool call limit, an empty answer, or one the server cut off now shows a message instead of ending silently, and the run is no longer recorded as a success.
+- Asking a persona: cancelling is recorded as cancelled, and closing the task window stops the question.
+- Asking a persona: errors from the AI server (including its own message) are shown, and non-streaming replies work.
+- Local-only mode: the default local persona is created when you open a task, so Ask persona no longer waits for a visit to Settings.
+- AI provider settings: base URLs with a query string, a fragment, spaces or a full chat-completions path work.
+
+## 0.9.82 — 2026-11-02
+
+- AI provider settings: when your account has not reached the desktop app yet, the message now says so and what to do, instead of blaming another account. The base URL and model can still be saved in that state; the API key is left alone.
+- AI provider settings: the panel now picks up your account as soon as it is available and shows whether a key is saved, without reopening the page.
+- A failed attempt to share your account with the desktop app is retried before AI settings and chat are used.
+
+## 0.9.81 — 2026-11-02
+
+- Asking a persona: the answer now appears as it is written, in a small scrolling area under Asking…. The finished answer is still posted as a comment.
+- Asking a persona: Cancel now works at any point, including between the persona's steps, and shows no error.
+- AI provider: a base URL that already ends in `/v1`, as LM Studio and vLLM document, now works. Before, it failed with a 404.
+- AI provider: tool calls are no longer lost when a server sends several in one piece, or sends them together with text.
+- Personas can now use the routes that edit their own comment and a page section, within the permissions you gave them.
+
+## 0.9.80 — 2026-11-02
+
+- AI provider settings: Settings now shows a message next to the save button when saving your provider settings or removing your key fails, instead of failing silently.
+- AI provider settings: settings can be saved only for the account you are using now. If you save right after signing in and see a message about another account, try again in a moment.
+
+## 0.9.79 — 2026-11-02
+
+- AI provider key: a saved key now works only with the server recorded for it, tracked separately for each account on this computer. If it doesn't match, asking a persona shows a message that names the server and asks you to enter the key again in Settings. The key is not deleted. You will see this if your key was saved for a different server than the one now set, was saved with an invalid server URL, or an earlier version lost the record of its server.
+- Using the desktop without an account: asking a persona from the task form now uses your saved provider key and your local profile. The first time, it creates the workspace's context page. That page is stored only in the local workspace.
+- Cloud agent runs: the desktop now notifies you when a workspace's permission to run cloud agents on this computer expires within 3 days. It checks at startup and every 6 hours, and notifies at most once a day per workspace, so several workspaces mean several notifications.
+
+## 0.9.78 — 2026-11-02
+
+- Using the desktop without an account: you can now create an account or sign in from inside the app. Your local workspaces stay, and your cloud workspace appears next to them.
+- After you sign in, your local AI provider key moves to that account. If the move fails, the key stays where it was, the app shows a warning with Retry, and it tries again at the next start.
+- Local comments and personas you created now show as yours when you use the first account you signed in with on this computer.
+
+## 0.9.77 — 2026-11-02
+
+- The desktop shares your signed-in account id and name with the tmgr CLI through a small file, so CLI actions on local workspaces are attributed to you. The file is removed when you sign out.
+- Local workspaces: the desktop picks up changes made by the tmgr CLI or other processes within about a second, without reloading.
+
+## 0.9.76 — 2026-11-02
+
+- Plugins: a plugin now needs the `pages:write` permission to save or delete its per-page data (`pageData.set`, `pageData.delete`). Reading it (`pageData.get`, `pageData.getMany`) still needs `pages:read`. Plugin authors: add `pages:write` to your manifest if your plugin writes per-page data. A plugin with only `pages:read` that writes now gets a permission refusal. Local workspaces only.
+
+## 0.9.75 — 2026-11-01
+
+- Plugins: a plugin now needs the `tasks:write` permission to save or delete its task data (`taskData.set`, `taskData.delete`). Reading it (`taskData.get`, `taskData.getMany`) still needs `tasks:read`. Plugin authors: add `tasks:write` to your manifest if your plugin writes task data.
+
+## 0.9.74 — 2026-11-01
+
+- AI Usage: the setting for reading AI tool logs now also covers the runner on this device (tmgr CLI 1.0.55 or newer). Until you turn it on for a tool, the runner doesn't read that tool's sessions: no titles, new questions, summaries, export or cost for them. Whether a session is working or waiting still shows. Questions saved earlier stay until you use Forget scanned data.
+- Forget scanned data also deletes the questions the runner saved on this device.
+- Personas: a new setting chooses when you are notified about a persona's activity: all, only when it asks for you, or never.
+- Plugins: plugins can now work with routines in shared workspaces.
+
+## 0.9.73 — 2026-11-01
+
+- Routines: in a local workspace you can select routines and move them to a cloud workspace, as routines or as tasks. The dialog says what is sent to the server, what is lost and that the local copy is removed.
+- Tasks: the task form can rewrite the description with AI. You see the result first and choose whether to accept it.
+
+## 0.9.72 — 2026-11-01
+
+- Local access: hardened token and permission checks.
+
+## 0.9.71 — 2026-10-27
+
+- Workspaces: the owner can rename a workspace and pick its colour in Settings → Workspace. The workspace icon in the sidebar and the switcher uses that colour.
+- Tasks: descriptions no longer break words in the middle. Deleting a task from the task view asks first and shows an error if it fails. Below 1280 px wide, comments move under the task.
+- Comments: the reaction picker opens above the button and closes with Esc or a click outside without closing the task. Board cards and list rows show how many comments a task has.
+- Graph: the graph section in tasks and pages starts collapsed and loads only when you open it.
+- Routines: a failed save keeps your edits and shows the error. Deleting a routine asks first.
+- Board and list: "Archive all" asks first and reports errors. List titles use the full row width.
+- Dialogs: keyboard focus stays inside an open dialog and returns where it was. Esc in Pomodoro settings closes only them, and Pomodoro follows the theme.
+- Settings: saving and smart-device token actions show a confirmation or an error. The Pages list has a Retry button after a failed load.
+- Accessibility: icon-only buttons have names for screen readers, and actions that appeared only on hover now show on keyboard focus and on touch.
+
 ## 0.9.70 — 2026-10-25
 
 - Privacy: TMGR now asks before reading your Claude Code and Codex session logs on this device. Nothing is read until you choose Allow on the AI Usage page. You can change this any time in Settings → Privacy → AI usage, turn each tool on or off, or forget the data already scanned. Background scans and Autopilot follow the same choice.

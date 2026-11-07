@@ -11,6 +11,7 @@ import { DESKTOP_BAR_DISMISS_KEY } from '@/utils/openDesktopLink';
 import { requestCache } from '@/utils/requestCache';
 import { isInSecondaryWindow } from '@/utils/taskWindow';
 import { browserTimeZone, isValidTimeZone } from '@/utils/timezone';
+import { tokenSubject } from '@/utils/tokenSync';
 import {
 	isKnownWorkspaceId,
 	overlayCurrentWorkspace,
@@ -47,6 +48,14 @@ const rememberClientWorkspaceId = (workspaceId) => {
 const token = localStorage.getItem('token')
 	? JSON.parse(localStorage.getItem('token') || '')
 	: null;
+const rememberCloudSession = () => {
+	try {
+		localStorage.setItem('tmgr:cloud-seen', '1');
+	} catch {
+		return;
+	}
+};
+if (token !== null) rememberCloudSession();
 
 const invalidateWorkspaceScopedCache = () => {
 	requestCache.invalidate('categories');
@@ -54,6 +63,23 @@ const invalidateWorkspaceScopedCache = () => {
 	requestCache.invalidate('workspace-statuses');
 	requestCache.invalidate(/^tasks-status-/);
 	requestCache.clearInFlight();
+};
+
+const forgetCloudUser = (state, { bump = true } = {}) => {
+	if (!(state.user?.id > 0)) return;
+	if (bump) state.sessionGeneration++;
+	state.user = {};
+	state.userSettingsMap = {};
+	state.defaultWorkspaceId = null;
+	state.clientWorkspaceId = null;
+	state.workspaces = [];
+	state.workspacesById = {};
+	writeWorkspaceId(sessionStorageSafe(), WORKSPACE_SESSION_KEY, null);
+	writeWorkspaceId(localStorageSafe(), WORKSPACE_LOCAL_KEY, null);
+	requestCache.setContext('guest');
+	requestCache.clear();
+	if (state.dailyRoutines)
+		dailyRoutinesModule.mutations.reset(state.dailyRoutines);
 };
 
 const state = {
@@ -102,6 +128,32 @@ const state = {
 	pagesEvent: null,
 	/** @type {import('@/utils/localProfile').LocalProfile | null} */
 	localProfile: null,
+};
+
+const detectFreshInstall = async (state, storage, firstRun) => {
+	let hadProfile = !!state.localProfile;
+	if (!hadProfile) {
+		try {
+			const { loadLocalProfile } = await import('@/utils/localProfile');
+			hadProfile = !!(await loadLocalProfile());
+		} catch {
+			hadProfile = true;
+		}
+	}
+	let workspaceCount = Infinity;
+	try {
+		const { invoke } = await import('@tauri-apps/api/core');
+		const list = await invoke('local_workspaces_list');
+		if (Array.isArray(list)) workspaceCount = list.length;
+	} catch {
+		workspaceCount = Infinity;
+	}
+	return (
+		!!storage &&
+		firstRun.isFreshLocalInstall(
+			firstRun.freshInstallFacts(storage, hadProfile, workspaceCount),
+		)
+	);
 };
 
 const getters = {
@@ -215,9 +267,19 @@ const mutations = {
 		state.localProfile = profile ?? null;
 	},
 	setToken(state, token) {
-		if ((state.token == null) !== (token == null)) {
+		const flipped = (state.token == null) !== (token == null);
+		if (flipped) {
 			state.sessionGeneration++;
 			localStorageSafe()?.removeItem(DESKTOP_BAR_DISMISS_KEY);
+		}
+		if (state.token != null && token == null) {
+			forgetCloudUser(state, { bump: false });
+		} else if (token != null) {
+			const subject = tokenSubject(token);
+			if (subject != null && state.user?.id > 0 && state.user.id !== subject) {
+				forgetCloudUser(state, { bump: !flipped });
+				disconnectRealtime();
+			}
 		}
 		if (token == null) {
 			disconnectRealtime();
@@ -228,11 +290,14 @@ const mutations = {
 			localStorage.removeItem('token');
 		} else {
 			localStorage.setItem('token', JSON.stringify(token));
+			rememberCloudSession();
 		}
 
 		state.token = token;
 	},
 	setUser(state, user) {
+		const subject = tokenSubject(state.token);
+		if (subject != null && user?.id > 0 && user.id !== subject) return;
 		if (state.user?.id !== user?.id) {
 			state.sessionGeneration++;
 			requestCache.clear();
@@ -469,12 +534,20 @@ const actions = {
 		// preferred_editor, …) survive, but per-user data must not leak to
 		// the next account on a shared browser.
 		const userId = state.user?.id;
-		if (isDesktopApp() && userId != null) {
-			clearPersonaLlmForLogout(userId).catch((error) => {
+		if (isDesktopApp() && userId > 0) {
+			clearPersonaLlmForLogout(userId).catch(async (error) => {
 				console.error(
 					'[auth] failed to clear persona LLM data on logout',
 					error,
 				);
+				try {
+					const log = await import('@tauri-apps/plugin-log');
+					await log.error(
+						`[auth] failed to clear persona LLM data on logout: ${error?.message ?? error}`,
+					);
+				} catch {
+					/* logging must never break logout */
+				}
 			});
 		}
 		disconnectRealtime();
@@ -512,41 +585,60 @@ const actions = {
 	},
 
 	async startWithoutAccount({ commit, state }, { name } = {}) {
-		const { createLocalProfile, loadLocalProfile } =
-			await import('@/utils/localProfile');
+		const { createLocalProfile } = await import('@/utils/localProfile');
 		const runtime = await import('@/local/runtime');
 		const firstRun = await import('@/onboarding/localFirstRun');
 		const storage = localStorageSafe();
-		let hadProfile = !!state.localProfile;
-		if (!hadProfile) {
-			try {
-				hadProfile = !!(await loadLocalProfile());
-			} catch {
-				hadProfile = true;
-			}
-		}
-		let workspaceCount = Infinity;
-		try {
-			const { invoke } = await import('@tauri-apps/api/core');
-			const list = await invoke('local_workspaces_list');
-			if (Array.isArray(list)) workspaceCount = list.length;
-		} catch {
-			workspaceCount = Infinity;
-		}
-		const fresh =
-			!!storage &&
-			firstRun.isFreshLocalInstall(
-				firstRun.freshInstallFacts(storage, hadProfile, workspaceCount),
-			);
+		const fresh = await detectFreshInstall(state, storage, firstRun);
 		if (!fresh && storage) firstRun.clearFreshMarker(storage);
 		const profile = await createLocalProfile(name);
-		let [first] = await runtime.listLocalWorkspaces(true);
+		let first = runtime.firstRealWorkspace(
+			await runtime.listLocalWorkspaces(true),
+		);
 		if (!first) first = await runtime.createLocalWorkspace('My workspace');
 		runtime.setActiveLocalWorkspace(first);
 		if (fresh) firstRun.writeFreshMarker(storage, first.code, new Date());
 		commit('setLocalProfile', profile);
 		const { default: router } = await import('@/router');
 		await router.push('/app');
+	},
+
+	async startFreshInstall({ commit, state }) {
+		const storage = localStorageSafe();
+		const firstRun = await import('@/onboarding/localFirstRun');
+		const { hasCloudSeen, hasRunBefore } = await import('@/utils/cloudSeen');
+		if (!storage || hasCloudSeen(storage) || hasRunBefore(storage))
+			return false;
+		if (!(await detectFreshInstall(state, storage, firstRun))) return false;
+		const { createLocalProfile } = await import('@/utils/localProfile');
+		const runtime = await import('@/local/runtime');
+		const { createDemoWorkspace } = await import('@/local/demoApi');
+		const { rememberDemoOfferAnswer } = await import('@/local/demoOffer');
+		const { setGhostStage } = await import('@/onboarding/ghostStage');
+		const profile = await createLocalProfile();
+		let mine = runtime.firstRealWorkspace(
+			await runtime.listLocalWorkspaces(true),
+		);
+		if (!mine) mine = await runtime.createLocalWorkspace('My workspace');
+		let demo = null;
+		try {
+			demo = await createDemoWorkspace();
+		} catch (error) {
+			console.error('demo workspace failed, starting without it', error);
+		}
+		if (demo) {
+			runtime.setActiveLocalWorkspace(demo);
+			firstRun.writeFreshMarker(storage, demo.code, new Date(), 'demo');
+			setGhostStage('watch');
+			rememberDemoOfferAnswer(storage, 'watched');
+		} else {
+			runtime.setActiveLocalWorkspace(mine);
+			firstRun.writeFreshMarker(storage, mine.code, new Date());
+		}
+		commit('setLocalProfile', profile);
+		const { default: router } = await import('@/router');
+		await router.push('/app');
+		return true;
 	},
 
 	async loadWorkspaces({ commit, state }) {

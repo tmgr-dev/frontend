@@ -6,12 +6,17 @@ use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
+use tmgr_core::api::Warning;
 use tmgr_core::approval::{
     fingerprint, valid_public_key, AllowFile, Entry, PinnedKey, RepoBinding,
 };
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::text::sanitize_line;
+use tmgr_core::Envelope;
 use tmgr_link::privileged;
+use tmgr_runner::client::Client;
+
+const POLICY_MIN_VERSION: (u64, u64, u64) = (1, 0, 55);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lifetime {
@@ -176,7 +181,77 @@ pub fn key_conflict(previous: &Entry, keys: &[(PinnedKey, Option<String>)]) -> R
     Ok(())
 }
 
-pub fn allow(o: &Opts, workspace: &str, lifetime: Lifetime) -> Result<i32> {
+pub fn policy_text(rules: bool, persona: bool) -> Option<String> {
+    match (rules, persona) {
+        (false, false) => None,
+        (true, false) => Some("rules".into()),
+        (false, true) => Some("persona".into()),
+        (true, true) => Some("rules, persona".into()),
+    }
+}
+
+fn applies_policy(version: &str) -> bool {
+    super::restart::parse_version(version).is_some_and(|v| v >= POLICY_MIN_VERSION)
+}
+
+fn restart_notice() -> Option<String> {
+    let cfg = super::runner_config().ok()?;
+    let version = match Client::connect(&cfg.dir) {
+        Ok(c) => {
+            let v = c.welcome().runner_version.clone();
+            if applies_policy(&v) {
+                return None;
+            }
+            sanitize_line(&v)
+        }
+        Err(e) if super::is_down(&e) => return None,
+        Err(_) => {
+            let probe = tmgr_ipc::endpoint::Endpoint::load_runner(&cfg.dir)
+                .and_then(|ep| tmgr_ipc::endpoint::connect(&ep));
+            if probe.is_err_and(|e| super::is_down(&e)) {
+                return None;
+            }
+            String::new()
+        }
+    };
+    let bin = super::bin();
+    Some(if version.is_empty() {
+        format!("the running runner did not report its version, so it may ignore the signed run policy until you run `{bin} runner restart`; until then cloud runs may not be refused")
+    } else {
+        format!("the running runner (version {version}) ignores the signed run policy until you run `{bin} runner restart`; until then cloud runs are not refused")
+    })
+}
+
+fn has_policy(e: &Entry) -> bool {
+    e.require_signed_rules || e.require_signed_persona
+}
+
+fn emit_with_notice(o: &Opts, data: Value, human: String, notice: Option<String>) -> i32 {
+    let Some(line) = notice else {
+        return emit(o, data, human);
+    };
+    if o.json {
+        let env = Envelope::with_warnings(data, vec![Warning::new("runner_restart", line)]);
+        println!(
+            "{}",
+            serde_json::to_string(&env).expect("envelope serializes")
+        );
+        return 0;
+    }
+    let code = emit(o, data, human);
+    if !o.quiet {
+        eprintln!("{line}");
+    }
+    code
+}
+
+pub fn allow(
+    o: &Opts,
+    workspace: &str,
+    lifetime: Lifetime,
+    require_rules: bool,
+    require_persona: bool,
+) -> Result<i32> {
     privileged::guard()?;
     if workspace.starts_with(tmgr_core::local::PREFIX) {
         return Err(Error::usage(
@@ -232,6 +307,19 @@ pub fn allow(o: &Opts, workspace: &str, lifetime: Lifetime) -> Result<i32> {
         "A task is started only if it carries a signature by one of the keys below, made over its exact title and description. \
 These keys are pinned now; a key added later is not trusted until you run this again. Anyone who controls one of these keys can start agents on this machine."
     );
+    let (rules, persona) = previous
+        .as_ref()
+        .map_or((require_rules, require_persona), |p| {
+            (
+                p.require_signed_rules || require_rules,
+                p.require_signed_persona || require_persona,
+            )
+        });
+    if let Some(what) = policy_text(rules, persona) {
+        eprintln!(
+            "Policy: a run starts only if its approval covers signed {what}. Only `tmgr runner disallow` followed by `tmgr runner allow` lifts it."
+        );
+    }
     for (k, created) in &keys {
         let fresh = previous
             .as_ref()
@@ -277,6 +365,10 @@ These keys are pinned now; a key added later is not trusted until you run this a
             allowed_at: stamp(now),
             expires_at: expires.map(stamp),
             keys: keys.iter().map(|(k, _)| k.clone()).collect(),
+            require_signed_rules: require_rules
+                || current.as_ref().is_some_and(|p| p.require_signed_rules),
+            require_signed_persona: require_persona
+                || current.as_ref().is_some_and(|p| p.require_signed_persona),
             repos: current.map(|p| p.repos).unwrap_or_default(),
         };
         file.upsert(entry.clone());
@@ -289,7 +381,8 @@ These keys are pinned now; a key added later is not trusted until you run this a
         sanitize_line(&ws.code),
         expires.map_or(String::new(), |e| format!(" until {}", stamp(e)))
     );
-    Ok(emit(o, data, human))
+    let notice = has_policy(&entry).then(restart_notice).flatten();
+    Ok(emit_with_notice(o, data, human, notice))
 }
 
 pub fn disallow(o: &Opts, workspace: &str) -> Result<i32> {
@@ -331,6 +424,8 @@ pub fn describe(e: &Entry, now: DateTime<Utc>) -> Value {
             "fingerprint": fingerprint(&k.public_key),
         })).collect::<Vec<_>>(),
         "repos": e.repos,
+        "require_signed_rules": e.require_signed_rules,
+        "require_signed_persona": e.require_signed_persona,
     })
 }
 
@@ -369,6 +464,7 @@ pub fn allowed(o: &Opts) -> Result<i32> {
             "SERVER".into(),
             "EXPIRES".into(),
             "KEYS".into(),
+            "POLICY".into(),
         ]];
         for e in &file.entries {
             let expires = match (&e.expires_at, e.expired(now)) {
@@ -385,6 +481,8 @@ pub fn allowed(o: &Opts) -> Result<i32> {
                     .map(|k| fingerprint(&k.public_key))
                     .collect::<Vec<_>>()
                     .join(", "),
+                policy_text(e.require_signed_rules, e.require_signed_persona)
+                    .unwrap_or_else(|| "-".into()),
             ]);
         }
         let mut out = crate::out::table(&rows);
@@ -394,7 +492,13 @@ pub fn allowed(o: &Opts) -> Result<i32> {
         }
         out
     };
-    Ok(emit(o, data, human))
+    let notice = file
+        .entries
+        .iter()
+        .any(has_policy)
+        .then(restart_notice)
+        .flatten();
+    Ok(emit_with_notice(o, json!(data), human, notice))
 }
 
 #[cfg(test)]
@@ -450,6 +554,8 @@ mod key_tests {
             allowed_at: "2025-10-01T00:00:00Z".into(),
             expires_at: None,
             keys: vec![pin("k1", A)],
+            require_signed_rules: false,
+            require_signed_persona: false,
             repos: BTreeMap::new(),
         }
     }
@@ -561,5 +667,63 @@ mod key_tests {
         AllowFile::update_at(&path, |f| pin_into(f, "s", 1, 2, &own(), "CLI (macOS)")).unwrap();
         let loaded = AllowFile::load_from(&path).unwrap();
         assert!(loaded.find("s", 1, 2).unwrap().key("c1").is_some());
+    }
+}
+
+#[cfg(test)]
+mod policy_tests {
+    use super::*;
+
+    #[test]
+    fn pinning_a_key_keeps_the_policy() {
+        let own = OwnKey {
+            key_id: "k9".into(),
+            public_key: "BImU1e2SPEdD/HKLzjfuQlNuLgKE44/qEF5a+626Bj0KtbPSIGIwmRlfUMIyP75vzLHw7BUXRArO87Ad8xnmazE=".into(),
+        };
+        let mut file = AllowFile::default();
+        file.upsert(Entry {
+            server: "s".into(),
+            user_id: 1,
+            workspace_id: 2,
+            workspace_code: "w".into(),
+            allowed_at: "2025-10-01T00:00:00Z".into(),
+            expires_at: None,
+            keys: vec![],
+            repos: Default::default(),
+            require_signed_rules: true,
+            require_signed_persona: true,
+        });
+        assert!(pin_into(&mut file, "s", 1, 2, &own, "CLI").unwrap());
+        let e = &file.entries[0];
+        assert!(e.require_signed_rules && e.require_signed_persona && e.keys.len() == 1);
+    }
+
+    #[test]
+    fn the_policy_text_names_what_is_required() {
+        assert_eq!(policy_text(false, false), None);
+        assert_eq!(policy_text(true, false).as_deref(), Some("rules"));
+        assert_eq!(policy_text(false, true).as_deref(), Some("persona"));
+        assert_eq!(policy_text(true, true).as_deref(), Some("rules, persona"));
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::*;
+
+    #[test]
+    fn only_runners_from_the_policy_release_on_apply_the_policy() {
+        for (v, applies) in [
+            ("1.0.54", false),
+            ("1.0.55", true),
+            ("1.0.56", true),
+            ("1.0.55-dev", true),
+            ("0.9.75", false),
+            ("2.0.0", true),
+            ("", false),
+            ("garbage", false),
+        ] {
+            assert_eq!(applies_policy(v), applies, "{v:?}");
+        }
     }
 }

@@ -106,6 +106,7 @@ export const runSchedulerTick = async (deps: SchedulerDeps): Promise<void> => {
 	let reminded = pruneReminded(loadReminded(deps.storage), todayIso);
 
 	for (const workspace of workspaces) {
+		if (workspace.demo) continue;
 		try {
 			const ctx = await deps.context(workspace);
 			await materializeDueInstances(ctx);

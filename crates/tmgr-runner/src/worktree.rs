@@ -1,3 +1,4 @@
+use crate::hostview::{Access, HostView};
 use std::collections::BTreeSet;
 use std::ffi::CString;
 use std::fs;
@@ -13,7 +14,8 @@ use std::time::{Duration, Instant};
 
 const MAX_REF: usize = 100;
 const MAX_COPY: u64 = 1024 * 1024;
-const HARDENING: [&str; 14] = [
+const DRAIN_AFTER_STOP: usize = 1024 * 1024;
+pub(crate) const HARDENING: [&str; 16] = [
     "-c",
     "core.hooksPath=/dev/null",
     "-c",
@@ -28,22 +30,24 @@ const HARDENING: [&str; 14] = [
     "core.untrackedCache=false",
     "-c",
     "core.askPass=",
+    "-c",
+    "core.alternateRefsCommand=: #",
 ];
 
 #[derive(Clone, Copy)]
-struct Limits {
-    deadline: Duration,
-    max_stdout: usize,
-    max_stderr: usize,
+pub(crate) struct Limits {
+    pub(crate) deadline: Duration,
+    pub(crate) max_stdout: usize,
+    pub(crate) max_stderr: usize,
 }
 
-const PLUMBING: Limits = Limits {
+pub(crate) const PLUMBING: Limits = Limits {
     deadline: Duration::from_secs(600),
     max_stdout: 16 * 1024 * 1024,
     max_stderr: 1024 * 1024,
 };
 
-const FACTS: Limits = Limits {
+pub(crate) const FACTS: Limits = Limits {
     deadline: Duration::from_secs(5),
     max_stdout: 256 * 1024,
     max_stderr: 64 * 1024,
@@ -57,18 +61,45 @@ pub struct GitEnv {
     offline: bool,
 }
 
-fn drain<R: Read + Send + 'static>(
+fn drain<R: Read + AsRawFd + Send + 'static>(
     mut src: R,
     cap: usize,
     over: Arc<AtomicBool>,
+    stop: Arc<AtomicBool>,
 ) -> std::thread::JoinHandle<Vec<u8>> {
     std::thread::spawn(move || {
         let mut buf = Vec::new();
         let mut chunk = [0u8; 8192];
+        let mut after_stop = 0;
         loop {
+            let stopping = stop.load(Ordering::SeqCst);
+            if stopping && after_stop >= DRAIN_AFTER_STOP {
+                break;
+            }
+            let mut pfd = libc::pollfd {
+                fd: src.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            let ready = unsafe { libc::poll(&mut pfd, 1, if stopping { 0 } else { 20 }) };
+            if ready == 0 {
+                if stopping {
+                    break;
+                }
+                continue;
+            }
+            if ready < 0 {
+                if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                    continue;
+                }
+                break;
+            }
             match src.read(&mut chunk) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
+                    if stopping {
+                        after_stop += n;
+                    }
                     if buf.len() + n > cap {
                         over.store(true, Ordering::SeqCst);
                         break;
@@ -81,15 +112,41 @@ fn drain<R: Read + Send + 'static>(
     })
 }
 
-fn run_bounded(
+pub fn exited_unreaped(pid: libc::pid_t) -> std::io::Result<bool> {
+    let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+    let r = unsafe {
+        libc::waitid(
+            libc::P_PID,
+            pid as libc::id_t,
+            &mut info,
+            libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+        )
+    };
+    if r != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(unsafe { info.si_pid() } == pid)
+}
+
+pub fn kill_group_of_unreaped(pgid: libc::pid_t) {
+    debug_assert!(
+        exited_unreaped(pgid).is_ok(),
+        "the group leader was reaped before its group was killed"
+    );
+    unsafe { libc::kill(-pgid, libc::SIGKILL) };
+}
+
+pub(crate) fn run_bounded(
     mut cmd: Command,
     deadline: Duration,
     max_stdout: usize,
     max_stderr: usize,
 ) -> Result<Output, String> {
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let fd_limit = crate::wire::inherited_fd_limit();
     unsafe {
-        cmd.pre_exec(|| {
+        cmd.pre_exec(move || {
+            crate::wire::cloexec_from(3, fd_limit);
             if libc::setpgid(0, 0) < 0 {
                 return Err(std::io::Error::last_os_error());
             }
@@ -99,40 +156,39 @@ fn run_bounded(
     let mut child = cmd.spawn().map_err(|e| format!("cannot spawn: {e}"))?;
     let pgid = child.id() as libc::pid_t;
     let over = Arc::new(AtomicBool::new(false));
+    let stop = Arc::new(AtomicBool::new(false));
     let out = child
         .stdout
         .take()
-        .map(|s| drain(s, max_stdout, over.clone()));
+        .map(|s| drain(s, max_stdout, over.clone(), stop.clone()));
     let err = child
         .stderr
         .take()
-        .map(|s| drain(s, max_stderr, over.clone()));
+        .map(|s| drain(s, max_stderr, over.clone(), stop.clone()));
     let start = Instant::now();
     let mut failure = None;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break Some(status),
-            Ok(None) => {}
+    loop {
+        match exited_unreaped(pgid) {
+            Ok(true) => break,
+            Ok(false) => {}
             Err(e) => {
                 failure = Some(format!("wait failed: {e}"));
-                break None;
+                break;
             }
         }
         if over.load(Ordering::SeqCst) {
             failure = Some("output exceeded its cap".to_string());
-            break None;
+            break;
         }
         if start.elapsed() >= deadline {
             failure = Some("deadline exceeded".to_string());
-            break None;
+            break;
         }
         std::thread::sleep(Duration::from_millis(5));
-    };
-    unsafe { libc::kill(-pgid, libc::SIGKILL) };
-    let status = match status {
-        Some(s) => s,
-        None => child.wait().map_err(|e| format!("wait failed: {e}"))?,
-    };
+    }
+    kill_group_of_unreaped(pgid);
+    let status = child.wait().map_err(|e| format!("wait failed: {e}"))?;
+    stop.store(true, Ordering::SeqCst);
     let join = |h: Option<std::thread::JoinHandle<Vec<u8>>>| {
         h.map_or_else(Vec::new, |h| h.join().unwrap_or_default())
     };
@@ -149,6 +205,16 @@ fn run_bounded(
         stdout,
         stderr,
     })
+}
+
+pub(crate) fn absolute_path_entries(value: &std::ffi::OsStr) -> std::ffi::OsString {
+    let kept: Vec<PathBuf> = std::env::split_paths(value)
+        .filter(|entry| entry.is_absolute())
+        .collect();
+    match std::env::join_paths(kept) {
+        Ok(joined) if !joined.is_empty() => joined,
+        _ => "/usr/bin:/bin".into(),
+    }
 }
 
 impl GitEnv {
@@ -187,8 +253,10 @@ impl GitEnv {
         if !raw.status.success() {
             return Err(format!("not a git repository: {}", dir.display()));
         }
+        let names = std::str::from_utf8(&raw.stdout)
+            .map_err(|_| "repository config has a key that is not valid text".to_string())?;
         let mut filters = BTreeSet::new();
-        for name in String::from_utf8_lossy(&raw.stdout).split('\0') {
+        for name in names.split('\0') {
             if name.is_empty() {
                 continue;
             }
@@ -213,15 +281,19 @@ impl GitEnv {
         cmd.env_clear();
         for (k, v) in std::env::vars_os() {
             let key = k.to_string_lossy();
-            if matches!(key.as_ref(), "PATH" | "HOME" | "LANG") || key.starts_with("LC_") {
+            if matches!(key.as_ref(), "HOME" | "LANG") || key.starts_with("LC_") {
                 cmd.env(k, v);
             }
         }
-        cmd.env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .env("GIT_NO_LAZY_FETCH", "1")
-            .env("GIT_OPTIONAL_LOCKS", "0");
+        cmd.env(
+            "PATH",
+            absolute_path_entries(&std::env::var_os("PATH").unwrap_or_default()),
+        )
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_NO_LAZY_FETCH", "1")
+        .env("GIT_OPTIONAL_LOCKS", "0");
         for (k, v) in &self.extra {
             cmd.env(k, v);
         }
@@ -262,7 +334,7 @@ impl GitEnv {
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     }
 
-    fn succeeds(&self, args: &[&str]) -> bool {
+    pub(crate) fn succeeds(&self, args: &[&str]) -> bool {
         self.run_raw(args).is_ok_and(|o| o.status.success())
     }
 }
@@ -278,6 +350,9 @@ fn forbidden(name: &str) -> Option<&'static str> {
     let last = n.rsplit('.').next().unwrap_or("");
     if n.starts_with("include.") || n.starts_with("includeif.") {
         return Some("config includes");
+    }
+    if n.starts_with("hook.") || n == "gc.recentobjectshook" {
+        return Some("runs an external program");
     }
     if n.starts_with("credential.") || n.starts_with("uploadpack.") || n.starts_with("protocol.") {
         return Some("runs or widens external programs");
@@ -313,7 +388,7 @@ fn filter_name(key: &str) -> Option<&str> {
     Some(name)
 }
 
-fn valid_ref(name: &str) -> Result<(), String> {
+pub(crate) fn valid_ref(name: &str) -> Result<(), String> {
     let bad = |why: &str| Err(format!("invalid ref name {name:?}: {why}"));
     if name.is_empty() || name.len() > MAX_REF {
         return bad("empty or too long");
@@ -339,7 +414,7 @@ fn valid_ref(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn utf8(p: &Path) -> Result<&str, String> {
+pub(crate) fn utf8(p: &Path) -> Result<&str, String> {
     p.to_str()
         .ok_or_else(|| format!("path is not valid UTF-8: {}", p.display()))
 }
@@ -348,7 +423,7 @@ fn is_symlink(p: &Path) -> bool {
     fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink())
 }
 
-fn worktrees_root(repo: &Path) -> Result<PathBuf, String> {
+pub(crate) fn worktrees_root(repo: &Path) -> Result<PathBuf, String> {
     let name = repo
         .file_name()
         .and_then(|n| n.to_str())
@@ -357,7 +432,7 @@ fn worktrees_root(repo: &Path) -> Result<PathBuf, String> {
     Ok(parent.join(format!("{name}-worktrees")))
 }
 
-fn approved_path(repo: &Path, path: &Path) -> Result<(), String> {
+pub(crate) fn approved_path(repo: &Path, path: &Path) -> Result<(), String> {
     let root = worktrees_root(repo)?;
     if is_symlink(&root) {
         return Err(format!("{} is a symlink", root.display()));
@@ -404,11 +479,10 @@ pub struct Status {
 pub fn plan(repo: &Path, branch: &str, base: Option<&str>) -> Result<Plan, String> {
     let repo = fs::canonicalize(repo).map_err(|e| format!("{}: {e}", repo.display()))?;
     utf8(&repo)?;
-    let git = GitEnv::open(&repo)?;
-    let top = git.run(&["rev-parse", "--show-toplevel"])?;
-    if fs::canonicalize(&top).map_err(|e| e.to_string())? != repo {
+    if fs::symlink_metadata(repo.join(".git")).is_err() {
         return Err(format!("{} is not a repository root", repo.display()));
     }
+    let git = HostView::open(&repo, Access::Read)?;
     valid_ref(branch)?;
     let base = match base {
         Some(b) => {
@@ -437,7 +511,7 @@ pub fn plan(repo: &Path, branch: &str, base: Option<&str>) -> Result<Plan, Strin
     })
 }
 
-fn default_base(git: &GitEnv) -> Result<String, String> {
+fn default_base(git: &HostView) -> Result<String, String> {
     if let Ok(head) = git.run(&["symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD"]) {
         if valid_ref(&head).is_ok() && git.succeeds(&["rev-parse", "--verify", "--quiet", &head]) {
             return Ok(head);
@@ -498,24 +572,44 @@ pub fn create(plan: &Plan, fetch: bool) -> Result<Worktree, String> {
 
 pub fn clone_mode(plan: &Plan) -> Result<Worktree, String> {
     prepare_root(plan)?;
-    let src = GitEnv::open(&plan.repo)?;
-    let sha = src.run(&[
+    let sha = HostView::open(&plan.repo, Access::Read)?.run(&[
         "rev-parse",
         "--verify",
         &format!("{}^{{commit}}", plan.base),
     ])?;
+    let src = GitEnv::bare(&worktrees_root(&plan.repo)?);
     let repo = utf8(&plan.repo)?;
-    src.run(&[
-        "clone",
-        "--no-checkout",
-        "--reference",
-        repo,
-        "--",
-        repo,
-        utf8(&plan.path)?,
-    ])?;
-    let git = GitEnv::open(&plan.path)?;
-    git.run(&["checkout", "--no-track", "-b", &plan.branch, &sha])?;
+    let built = (|| -> Result<GitEnv, String> {
+        src.run(&[
+            "clone",
+            "--no-checkout",
+            "--no-local",
+            "--reference",
+            repo,
+            "--",
+            repo,
+            utf8(&plan.path)?,
+        ])?;
+        let git = GitEnv::open(&plan.path)?;
+        git.run(&["checkout", "--no-track", "-b", &plan.branch, &sha])?;
+        git.run(&["repack", "-a", "-d", "-q"])?;
+        match fs::remove_file(plan.path.join(".git/objects/info/alternates")) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                return Err(format!("cannot detach the clone from its source: {e}"))
+            }
+            _ => {}
+        }
+        git.run(&["rev-list", "--objects", "--quiet", "HEAD"])
+            .map_err(|e| format!("the clone is incomplete: {e}"))?;
+        Ok(git)
+    })();
+    let git = match built {
+        Ok(git) => git,
+        Err(e) => {
+            let _ = fs::remove_dir_all(&plan.path);
+            return Err(e);
+        }
+    };
     soft_exclude(&git, &plan.path, &plan.path);
     Ok(Worktree {
         repo: plan.repo.clone(),
@@ -850,6 +944,48 @@ mod tests {
     }
 
     #[test]
+    fn run_bounded_children_do_not_inherit_fds() {
+        let mut fds = [0 as libc::c_int; 2];
+        assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+        unsafe { libc::fcntl(fds[1], libc::F_SETFD, 0) };
+        let mut c = Command::new("/bin/sh");
+        c.arg("-c").arg(format!("test -e /dev/fd/{}", fds[1]));
+        let out = run_bounded(c, Duration::from_secs(5), 1024, 1024);
+        unsafe {
+            libc::close(fds[0]);
+            libc::close(fds[1]);
+        }
+        let out = out.unwrap();
+        assert!(!out.status.success(), "the child still sees the fd");
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "reaped before its group was killed")]
+    fn killing_a_group_after_its_leader_was_reaped_is_refused() {
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", "exit 0"]);
+        let mut child = c.spawn().unwrap();
+        let pgid = child.id() as libc::pid_t;
+        child.wait().unwrap();
+        kill_group_of_unreaped(pgid);
+    }
+
+    #[test]
+    fn a_finished_leader_stays_waitable_until_its_group_is_killed() {
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", "exit 0"]);
+        let mut child = c.spawn().unwrap();
+        let pgid = child.id() as libc::pid_t;
+        while !exited_unreaped(pgid).unwrap() {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(exited_unreaped(pgid).unwrap());
+        kill_group_of_unreaped(pgid);
+        assert!(child.wait().unwrap().success());
+    }
+
+    #[test]
     fn run_bounded_returns_output_within_limits() {
         let mut c = Command::new("/bin/sh");
         c.args(["-c", "echo hi; echo oops >&2; exit 3"]);
@@ -857,6 +993,74 @@ mod tests {
         assert_eq!(out.stdout, b"hi\n");
         assert_eq!(out.stderr, b"oops\n");
         assert_eq!(out.status.code(), Some(3));
+    }
+
+    #[test]
+    fn run_bounded_returns_when_an_escaped_process_holds_the_pipes() {
+        let sleep = CString::new("/bin/sleep").unwrap();
+        let five = CString::new("5").unwrap();
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", "echo hi; echo oops >&2"]);
+        c.stdin(Stdio::null());
+        unsafe {
+            c.pre_exec(move || {
+                if libc::fork() == 0 {
+                    libc::setsid();
+                    let argv = [sleep.as_ptr(), five.as_ptr(), std::ptr::null()];
+                    libc::execv(sleep.as_ptr(), argv.as_ptr());
+                    libc::_exit(127);
+                }
+                Ok(())
+            });
+        }
+        let t = Instant::now();
+        let out = run_bounded(c, Duration::from_secs(30), 1024, 1024).unwrap();
+        assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
+        assert_eq!(out.stdout, b"hi\n");
+        assert_eq!(out.stderr, b"oops\n");
+    }
+
+    #[test]
+    fn run_bounded_returns_when_an_escaped_process_keeps_writing() {
+        let sh = CString::new("/bin/sh").unwrap();
+        let dash_c = CString::new("-c").unwrap();
+        let script = CString::new("while :; do echo 0123456789abcdef; done").unwrap();
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", "exit 0"]);
+        c.stdin(Stdio::null());
+        unsafe {
+            c.pre_exec(move || {
+                if libc::fork() == 0 {
+                    libc::setsid();
+                    let argv = [
+                        sh.as_ptr(),
+                        dash_c.as_ptr(),
+                        script.as_ptr(),
+                        std::ptr::null(),
+                    ];
+                    libc::execv(sh.as_ptr(), argv.as_ptr());
+                    libc::_exit(127);
+                }
+                Ok(())
+            });
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(run_bounded(c, Duration::from_secs(30), 1 << 30, 1024));
+        });
+        let out = rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("run_bounded hung");
+        assert!(out.is_ok(), "{out:?}");
+    }
+
+    #[test]
+    fn run_bounded_keeps_all_output_written_before_exit() {
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", "head -c 200000 /dev/zero | tr '\\0' x"]);
+        c.stdin(Stdio::null());
+        let out = run_bounded(c, Duration::from_secs(10), 1 << 20, 1024).unwrap();
+        assert_eq!(out.stdout.len(), 200_000);
     }
 
     fn packs(repo: &Path) -> usize {
@@ -1017,10 +1221,24 @@ mod tests {
     }
 
     #[test]
-    fn plan_refuses_exec_and_include_config_keys() {
+    fn git_runs_with_absolute_path_entries_only() {
+        assert_eq!(
+            absolute_path_entries(":.:/usr/bin:bin".as_ref()),
+            std::ffi::OsString::from("/usr/bin")
+        );
+        assert_eq!(
+            absolute_path_entries("".as_ref()),
+            std::ffi::OsString::from("/usr/bin:/bin")
+        );
+    }
+
+    #[test]
+    fn plan_does_not_read_exec_and_include_config_keys() {
         for (key, val) in [
             ("include.path", "../x"),
             ("includeIf.gitdir:/x.path", "../x"),
+            ("hook.x.command", "touch /nope"),
+            ("gc.recentObjectsHook", "touch /nope"),
             ("core.fsmonitor", "true"),
             ("core.sshCommand", "touch /nope"),
             ("extensions.worktreeConfig", "true"),
@@ -1031,8 +1249,7 @@ mod tests {
         ] {
             let fx = fixture();
             git(&fx.repo, &["config", key, val]);
-            let err = plan(&fx.repo, "x", None).unwrap_err();
-            assert!(err.contains("refused"), "{key}: {err}");
+            assert!(plan(&fx.repo, "x", None).is_ok(), "{key}");
         }
     }
 
@@ -1076,7 +1293,9 @@ mod tests {
         let fx = fixture();
         let marks = plant_traps(&fx);
         let control = fx.repo.parent().unwrap().join("control");
-        let st = Command::new("git")
+        let mut plain = Command::new("git");
+        plain
+            .stdin(Stdio::null())
             .current_dir(&fx.repo)
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .args([
@@ -1085,9 +1304,55 @@ mod tests {
                 "--detach",
                 "--",
                 control.to_str().unwrap(),
-            ])
-            .output()
-            .unwrap();
+            ]);
+        let done = Arc::new(AtomicBool::new(false));
+        let watchdog = {
+            let done = done.clone();
+            std::thread::spawn(move || {
+                for _ in 0..200 {
+                    if done.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                let table = Command::new("ps")
+                    .args(["-axo", "pid,ppid,pgid,stat,etime,command"])
+                    .output()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                    .unwrap_or_default();
+                let leader = table
+                    .lines()
+                    .find(|l| l.contains("worktree add") && l.contains("control"))
+                    .and_then(|l| l.split_whitespace().next());
+                for line in table.lines().filter(|l| {
+                    l.contains("post-checkout")
+                        || leader.is_some_and(|p| l.split_whitespace().nth(2) == Some(p))
+                }) {
+                    eprintln!("stalled process: {line}");
+                    #[cfg(target_os = "macos")]
+                    if let Some(pid) = line.split_whitespace().next() {
+                        if let Ok(o) = Command::new("sample").args([pid, "1"]).output() {
+                            eprintln!(
+                                "{}{}",
+                                String::from_utf8_lossy(&o.stdout),
+                                String::from_utf8_lossy(&o.stderr)
+                            );
+                        }
+                    }
+                }
+            })
+        };
+        let st =
+            run_bounded(plain, Duration::from_secs(30), 1 << 20, 1 << 20).unwrap_or_else(|why| {
+                done.store(true, Ordering::SeqCst);
+                panic!(
+                    "plain git worktree add: {why}; marks: {:?}; control exists: {}",
+                    marks.iter().map(|m| m.exists()).collect::<Vec<_>>(),
+                    control.exists()
+                )
+            });
+        done.store(true, Ordering::SeqCst);
+        watchdog.join().unwrap();
         assert!(st.status.success());
         assert!(
             marks[0].exists() && marks[1].exists() && marks[3].exists(),
@@ -1334,12 +1599,139 @@ mod tests {
         let wt = clone_mode(&p).unwrap();
         assert!(wt.clone && wt.path.join("a.txt").exists());
         assert_eq!(git(&wt.path, &["branch", "--show-current"]), "untrusted");
-        let alt = fs::read_to_string(wt.path.join(".git/objects/info/alternates")).unwrap();
-        assert!(alt.contains(fx.repo.to_str().unwrap()));
+        assert_standalone(&wt.path);
         assert!(status(&wt).unwrap().clean);
         assert!(remove(&wt, true).is_err());
         for n in ["hook", "smudge", "clean", "process"] {
             assert!(!fx.outside.join(n).exists());
         }
+    }
+
+    fn shared_objects(dir: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        let mut todo = vec![dir.join(".git/objects")];
+        while let Some(d) = todo.pop() {
+            for e in fs::read_dir(&d).unwrap() {
+                let p = e.unwrap().path();
+                let m = fs::symlink_metadata(&p).unwrap();
+                if m.is_dir() {
+                    todo.push(p);
+                } else if m.is_file() && m.nlink() > 1 {
+                    out.push(p);
+                }
+            }
+        }
+        out
+    }
+
+    fn loose_objects(dir: &Path) -> usize {
+        fs::read_dir(dir.join(".git/objects"))
+            .unwrap()
+            .filter_map(|e| {
+                let p = e.unwrap().path();
+                (p.file_name().unwrap().len() == 2).then(|| fs::read_dir(p).unwrap().count())
+            })
+            .sum()
+    }
+
+    #[test]
+    fn clone_mode_shares_no_object_files_with_the_source() {
+        let fx = fixture();
+        git(&fx.repo, &["gc", "-q"]);
+        commit_file(&fx.repo, "later.txt", "later");
+        assert!(packs(&fx.repo) > 0 && loose_objects(&fx.repo) > 0);
+        let wt = clone_mode(&plan(&fx.repo, "feat/nl", None).unwrap()).unwrap();
+        assert_standalone(&wt.path);
+        assert_eq!(shared_objects(&wt.path), Vec::<PathBuf>::new());
+        assert_eq!(shared_objects(&fx.repo), Vec::<PathBuf>::new());
+        assert_eq!(
+            git(&wt.path, &["log", "--format=%s", "-n", "5"]),
+            "later.txt\na.txt"
+        );
+        assert!(wt.path.join("later.txt").is_file());
+    }
+
+    #[test]
+    fn clone_mode_works_from_a_source_that_has_alternates() {
+        let fx = fixture();
+        let shared = fx.outside.join("shared");
+        git(
+            &fx.outside,
+            &[
+                "clone",
+                "-q",
+                "--reference",
+                fx.repo.to_str().unwrap(),
+                fx.repo.to_str().unwrap(),
+                "shared",
+            ],
+        );
+        assert!(shared.join(".git/objects/info/alternates").is_file());
+        let wt = clone_mode(&plan(&shared, "feat/alt", None).unwrap()).unwrap();
+        assert_eq!(shared_objects(&wt.path), Vec::<PathBuf>::new());
+        assert!(wt.path.join("a.txt").is_file());
+        git(&wt.path, &["fsck", "--connectivity-only"]);
+    }
+
+    #[test]
+    fn clone_mode_works_from_a_repository_without_packs() {
+        let fx = fixture();
+        assert_eq!(packs(&fx.repo), 0);
+        let wt = clone_mode(&plan(&fx.repo, "feat/np", None).unwrap()).unwrap();
+        assert_eq!(shared_objects(&wt.path), Vec::<PathBuf>::new());
+        assert_eq!(git(&wt.path, &["rev-list", "--count", "HEAD"]), "1");
+        commit_file(&wt.path, "n.txt", "n");
+        assert_eq!(git(&wt.path, &["rev-list", "--count", "HEAD"]), "2");
+    }
+
+    fn prune_source(repo: &Path) {
+        git(repo, &["reflog", "expire", "--expire=now", "--all"]);
+        git(repo, &["gc", "-q", "--prune=now"]);
+    }
+
+    fn assert_standalone(dir: &Path) {
+        assert!(!dir.join(".git/objects/info/alternates").exists());
+        let out = author(GitEnv::bare(dir))
+            .run(&["fsck", "--full", "--strict"])
+            .unwrap();
+        assert!(!out.contains("missing"), "{out}");
+        git(dir, &["log", "--format=%H"]);
+        git(dir, &["gc", "-q"]);
+        git(dir, &["fetch", "-q", "origin"]);
+    }
+
+    #[test]
+    fn clone_mode_survives_the_source_branch_being_rewound_and_pruned() {
+        let fx = fixture();
+        let first = git(&fx.repo, &["rev-parse", "HEAD"]);
+        commit_file(&fx.repo, "b.txt", "b");
+        let wt = clone_mode(&plan(&fx.repo, "feat/rw", None).unwrap()).unwrap();
+        git(&fx.repo, &["reset", "-q", "--hard", &first]);
+        prune_source(&fx.repo);
+        assert!(wt.path.join("b.txt").is_file());
+        assert_standalone(&wt.path);
+    }
+
+    #[test]
+    fn clone_mode_survives_its_base_branch_being_deleted_and_pruned() {
+        let fx = fixture();
+        git(&fx.repo, &["checkout", "-q", "-b", "side"]);
+        commit_file(&fx.repo, "side.txt", "s");
+        git(&fx.repo, &["checkout", "-q", "main"]);
+        let wt = clone_mode(&plan(&fx.repo, "feat/del", Some("side")).unwrap()).unwrap();
+        git(&fx.repo, &["branch", "-q", "-D", "side"]);
+        prune_source(&fx.repo);
+        assert!(wt.path.join("side.txt").is_file());
+        assert_standalone(&wt.path);
+    }
+
+    #[test]
+    fn a_failed_clone_mode_leaves_no_folder() {
+        let fx = fixture();
+        let mut p = plan(&fx.repo, "feat/ok", None).unwrap();
+        p.branch = "bad..name".to_string();
+        let err = clone_mode(&p).unwrap_err();
+        assert!(err.contains("checkout"), "{err}");
+        assert!(fs::symlink_metadata(&p.path).is_err());
     }
 }

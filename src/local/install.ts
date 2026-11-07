@@ -22,6 +22,7 @@ import {
 import { createLocalApi } from './api';
 import { classify, crossesWorkspaces } from './classify';
 import { dispatchLocal } from './dispatch';
+import { isGhostRequest } from './ghostHeader';
 import { createOnboardingHandler } from './onboarding';
 import {
 	CURRENT_WORKSPACE,
@@ -34,6 +35,7 @@ import { normalizePath } from './router';
 import {
 	activeLocalWorkspace,
 	createLocalWorkspace,
+	firstRealWorkspace,
 	hasActiveLocalWorkspace,
 	listLocalWorkspaces,
 	localContext,
@@ -271,8 +273,17 @@ export const installLocalWorkspaces = (
 				message: 'The local workspace is gone; pick another workspace',
 			});
 		}
+		if (
+			isGhostRequest(config) &&
+			(!workspace.demo || config.params?.workspace_id !== workspace.id)
+		)
+			return respond(config, 409, {
+				message:
+					'This change belongs to another workspace and was not saved; reopen the task',
+			});
 		const ctx = await localContext(workspace, localUser());
 		if (isAccountless()) ctx.accountless = true;
+		if (isGhostRequest(config)) ctx.ghost = true;
 		const result = await dispatchLocal(
 			api,
 			ctx,
@@ -320,7 +331,7 @@ export const installLocalWorkspaces = (
 		const current = activeLocalWorkspace();
 		if (current) return current;
 		const first =
-			list[0] ??
+			firstRealWorkspace(list) ??
 			(await (creatingFirst ??= createLocalWorkspace(
 				FIRST_WORKSPACE_NAME,
 			).finally(() => {
@@ -463,6 +474,10 @@ export const installLocalWorkspaces = (
 				activeLocalWorkspace()?.id ?? null,
 			)
 		) {
+			config.adapter = refuse;
+			return config;
+		}
+		if (isGhostRequest(config) && !activeLocalWorkspace()?.demo) {
 			config.adapter = refuse;
 			return config;
 		}

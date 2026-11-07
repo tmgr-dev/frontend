@@ -1,0 +1,11 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "llm-settings",
+	"description": "Persona model settings and cache writes: main window only.",
+	"windows": ["main"],
+	"permissions": [
+		"allow-llm-config-set",
+		"allow-llm-config-get",
+		"allow-persona-cache-put"
+	]
+}

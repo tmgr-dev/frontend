@@ -32,6 +32,8 @@ pub struct Hello {
     pub pid: u32,
     #[serde(default)]
     pub nonce_c: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -190,6 +192,14 @@ pub struct ExitInfo {
     pub signal: Option<i32>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InputCredit {
+    pub received_bytes: u64,
+    pub received_frames: u64,
+    pub queued_bytes: u64,
+    pub queued_frames: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShimHello {
     pub pid: u32,
@@ -201,6 +211,8 @@ pub struct ShimHello {
     pub cwd_dev: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd_ino: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<InputCredit>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -225,6 +237,7 @@ pub enum FromShim {
     InputDropped {
         bytes: u64,
     },
+    InputCredit(InputCredit),
     SignalAck {
         sig: i32,
         delivered: bool,
@@ -237,6 +250,17 @@ pub enum FromShim {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn hello_config_dir_is_optional_in_both_directions() {
+        let old: Hello = serde_json::from_value(json!({"proto": 1, "nonce_c": "n"})).unwrap();
+        assert_eq!(old.config_dir, None);
+        let v = serde_json::to_value(&old).unwrap();
+        assert!(v.get("config_dir").is_none());
+        let new: Hello =
+            serde_json::from_value(json!({"proto": 1, "config_dir": "/x/tmgr"})).unwrap();
+        assert_eq!(new.config_dir.as_deref(), Some("/x/tmgr"));
+    }
 
     #[test]
     fn generated_ids_are_valid_and_distinct() {
@@ -288,9 +312,45 @@ mod tests {
             exit: None,
             cwd_dev: Some(4),
             cwd_ino: None,
+            input: None,
         });
         let back: FromShim = serde_json::from_value(serde_json::to_value(&h).unwrap()).unwrap();
         assert_eq!(back, h);
+        assert!(serde_json::to_value(&h).unwrap().get("input").is_none());
+        let credit = InputCredit {
+            received_bytes: 5,
+            received_frames: 2,
+            queued_bytes: 3,
+            queued_frames: 1,
+        };
+        let h = FromShim::Hello(ShimHello {
+            pid: 1,
+            child_pid: 2,
+            started_at_ms: 3,
+            exit: None,
+            cwd_dev: None,
+            cwd_ino: None,
+            input: Some(credit),
+        });
+        let v = serde_json::to_value(&h).unwrap();
+        assert_eq!(v["input"]["queued_bytes"], 3);
+        assert_eq!(serde_json::from_value::<FromShim>(v).unwrap(), h);
+        let old: FromShim = serde_json::from_value(
+            json!({"type": "hello", "pid": 1, "child_pid": 2, "started_at_ms": 3}),
+        )
+        .unwrap();
+        assert!(matches!(
+            old,
+            FromShim::Hello(ShimHello { input: None, .. })
+        ));
+        let c = FromShim::InputCredit(credit);
+        let v = serde_json::to_value(&c).unwrap();
+        assert_eq!(
+            v,
+            json!({"type": "input_credit", "received_bytes": 5, "received_frames": 2,
+                   "queued_bytes": 3, "queued_frames": 1})
+        );
+        assert_eq!(serde_json::from_value::<FromShim>(v).unwrap(), c);
         let e = ServerMsg::Event(json!({"session": "s_abcdefghij", "state": "working"}));
         let back: ServerMsg = serde_json::from_value(serde_json::to_value(&e).unwrap()).unwrap();
         assert_eq!(back, e);

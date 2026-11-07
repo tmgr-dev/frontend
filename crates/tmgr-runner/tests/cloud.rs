@@ -41,6 +41,8 @@ fn allow(expires: Option<&str>, repo: Option<&str>) -> AllowFile {
             public_key: f["key"]["public_key"].as_str().unwrap().into(),
             device_name: "laptop".into(),
         }],
+        require_signed_rules: false,
+        require_signed_persona: false,
         repos: repos
             .into_iter()
             .map(|(k, v)| (k, tmgr_approval::RepoBinding::Path(v)))
@@ -53,6 +55,7 @@ fn req() -> RunCreateReq {
     let f = fx();
     let c = &f["cases"][2];
     let bundle = RunBundle {
+        assignment: None,
         v: 1,
         task: TASK,
         title: c["title"].as_str().unwrap().into(),
@@ -74,6 +77,7 @@ fn req() -> RunCreateReq {
         },
     };
     RunCreateReq {
+        team: None,
         clones: Vec::new(),
         profile: "claude-code".into(),
         task: Some(TASK),
@@ -110,6 +114,9 @@ fn req() -> RunCreateReq {
         unattended: false,
         exe_pin: None,
         argv_sha256: None,
+        no_sandbox: None,
+        external_resume: None,
+        permission_cards: false,
     }
 }
 
@@ -713,4 +720,73 @@ fn an_older_signed_claim_after_a_v3_one_is_a_rollback() {
     seen.record(key, v3.signed_at, &tmgr_approval::Rollback::stamp(&v3));
     let r = req_v3(0);
     check_with(&r, r.task.unwrap(), Ok(good()), now(), Some(seen)).unwrap();
+}
+
+fn policy(mut a: AllowFile, rules: bool, persona: bool) -> AllowFile {
+    let e = &mut a.entries[0];
+    e.require_signed_rules = rules;
+    e.require_signed_persona = persona;
+    a
+}
+
+fn rules_only_set() -> RunCreateReq {
+    let mut r = req_v3(2);
+    r.cloud.as_mut().unwrap().repos_sha256 = fx()["cases_v3"][2]["repos_sha256"]
+        .as_str()
+        .map(String::from);
+    r.clone_of = None;
+    r.clones = vec![
+        clone_spec("backend", "/code/backend"),
+        clone_spec("frontend", "/code/frontend"),
+    ];
+    r
+}
+
+fn accepted(r: &RunCreateReq, a: AllowFile) -> bool {
+    check_with(r, r.task.unwrap(), Ok(a), now(), None).is_ok()
+}
+
+#[test]
+fn the_rules_policy_refuses_what_the_signature_does_not_cover() {
+    let g = || policy(good(), true, false);
+    let s = || policy(two(), true, false);
+    assert!(!accepted(&req(), g()));
+    assert!(accepted(&req_v3(0), g()));
+    assert!(!accepted(&req_v3(1), g()));
+    assert!(accepted(&rules_only_set(), s()));
+    assert!(!accepted(&req_v2(), s()));
+    let e = check_with(&req(), TASK, Ok(g()), now(), None).unwrap_err();
+    assert!(e.contains("workspace rules"), "{e}");
+}
+
+#[test]
+fn the_persona_policy_refuses_what_the_signature_does_not_cover() {
+    let g = || policy(good(), false, true);
+    assert!(!accepted(&req(), g()));
+    assert!(accepted(&req_v3(1), g()));
+    assert!(accepted(&req_v3(0), g()));
+    assert!(!accepted(&rules_only_set(), policy(two(), false, true)));
+    assert!(!accepted(&req_v2(), policy(two(), false, true)));
+}
+
+#[test]
+fn both_policies_need_both_and_off_changes_nothing() {
+    let g = || policy(good(), true, true);
+    assert!(accepted(&req_v3(0), g()));
+    assert!(!accepted(&req_v3(1), g()));
+    assert!(!accepted(&req(), g()));
+    assert!(accepted(&req(), policy(good(), false, false)));
+}
+
+#[test]
+fn a_crafted_request_cannot_borrow_coverage_from_unsigned_fields() {
+    let mut r = req();
+    let v3 = req_v3(0);
+    r.cloud.as_mut().unwrap().persona_sha256 = v3.cloud.as_ref().unwrap().persona_sha256.clone();
+    r.cloud.as_mut().unwrap().context_sha256 = v3.cloud.as_ref().unwrap().context_sha256.clone();
+    r.bundle.as_mut().unwrap().persona = v3.bundle.as_ref().unwrap().persona.clone();
+    r.bundle.as_mut().unwrap().context = v3.bundle.as_ref().unwrap().context.clone();
+    r.bundle_sha256 = Some(r.bundle.as_ref().unwrap().sha256());
+    let e = check_with(&r, TASK, Ok(policy(good(), true, true)), now(), None).unwrap_err();
+    assert!(e.contains("signature is not valid"), "{e}");
 }

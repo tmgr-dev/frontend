@@ -72,16 +72,11 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        include:
-          - name: macos
-            runner: macos-latest
-            bundles: app,dmg
-          - name: windows
-            runner: windows-latest
-            bundles: nsis,msi
-          - name: linux
-            runner: ubuntu-22.04
-            bundles: deb,rpm,appimage
+        # Dependabot opens many PRs at once; macOS slots are scarce and shared with release work.
+        include: >-
+          ${{ fromJSON(github.event.pull_request.user.login == 'dependabot[bot]'
+          && '[{"name":"windows","runner":"windows-latest","bundles":"nsis,msi"},{"name":"linux","runner":"ubuntu-22.04","bundles":"deb,rpm,appimage"}]'
+          || '[{"name":"macos","runner":"macos-latest","bundles":"app,dmg"},{"name":"windows","runner":"windows-latest","bundles":"nsis,msi"},{"name":"linux","runner":"ubuntu-22.04","bundles":"deb,rpm,appimage"},{"name":"linux-arm","runner":"ubuntu-22.04-arm","bundles":"deb,rpm,appimage"}]') }}
     defaults:
       run:
         shell: bash
@@ -92,7 +87,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: linux system packages
-        if: matrix.name == 'linux'
+        if: startsWith(matrix.name, 'linux')
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
@@ -122,7 +117,45 @@ jobs:
           npx tauri signer generate --ci -w "$RUNNER_TEMP/dry-run.key" -p ''
           echo "DRY_RUN_KEY=$RUNNER_TEMP/dry-run.key" >> "$GITHUB_ENV"
 
-      # The only step that sees signing secrets, and only on tag pushes. Tauri treats a set-but-empty
+      - name: build widget extension
+        if: matrix.name == 'macos'
+        env:
+          APPLE_CERTIFICATE: ${{ env.DRY_RUN == 'false' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ env.DRY_RUN == 'false' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ env.DRY_RUN == 'false' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+        run: |
+          if [ "$DRY_RUN" = "false" ] && { [ -z "$APPLE_CERTIFICATE" ] || [ -z "$APPLE_SIGNING_IDENTITY" ]; }; then
+            echo "::error::APPLE_CERTIFICATE and APPLE_SIGNING_IDENTITY secrets are required for the widget"
+            exit 1
+          fi
+          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            KEYCHAIN_PATH="$RUNNER_TEMP/widget-signing.keychain-db"
+            KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
+            echo "::add-mask::$KEYCHAIN_PASSWORD"
+            echo "WIDGET_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+            printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/widget-cert.p12"
+            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security set-keychain-settings -lut 3600 "$KEYCHAIN_PATH"
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security import "$RUNNER_TEMP/widget-cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+            rm -f "$RUNNER_TEMP/widget-cert.p12"
+            security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
+            security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+            export WIDGET_SIGN_IDENTITY="$APPLE_SIGNING_IDENTITY"
+            export WIDGET_KEYCHAIN="$KEYCHAIN_PATH"
+          fi
+          unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD
+          bash scripts/build-widget.sh
+
+      - name: remove widget signing keychain
+        if: always() && matrix.name == 'macos'
+        run: |
+          if [ -n "${WIDGET_KEYCHAIN:-}" ]; then
+            security delete-keychain "$WIDGET_KEYCHAIN" || true
+          fi
+          rm -f "$RUNNER_TEMP/widget-cert.p12"
+
+      # The widget step and this step see signing secrets, and only on tag pushes. Tauri treats a set-but-empty
       # APPLE_* variable as configured, so empty ones are dropped before the build.
       - name: build and sign
         env:
@@ -145,6 +178,26 @@ jobs:
           done
           if [ "$DRY_RUN" = "true" ]; then export TAURI_SIGNING_PRIVATE_KEY="$DRY_RUN_KEY"; fi
           npx tauri build --bundles ${{ matrix.bundles }}
+
+      - name: verify widget in the macOS bundle
+        if: matrix.name == 'macos'
+        run: |
+          APP=src-tauri/target/release/bundle/macos/TMGR.app
+          APPEX="$APP/Contents/PlugIns/TMGRWidget.appex"
+          test -d "$APPEX"
+          if [ "$DRY_RUN" = "false" ]; then
+            codesign --verify --deep --strict --verbose=2 "$APP"
+          fi
+          codesign -dv "$APP"
+          codesign -dv --verbose=4 "$APPEX" 2> "$RUNNER_TEMP/appex-sig.txt"
+          cat "$RUNNER_TEMP/appex-sig.txt"
+          if [ "$DRY_RUN" = "false" ]; then
+            grep -q 'Authority=Developer ID Application' "$RUNNER_TEMP/appex-sig.txt"
+            grep -Eq 'flags=0x[0-9a-f]+\(.*runtime' "$RUNNER_TEMP/appex-sig.txt"
+            grep -q '^Timestamp=' "$RUNNER_TEMP/appex-sig.txt"
+          fi
+          codesign -d --entitlements - "$APPEX" 2>&1 | tee "$RUNNER_TEMP/appex-entitlements.txt"
+          grep -q 'com.apple.security.app-sandbox' "$RUNNER_TEMP/appex-entitlements.txt"
 
       - name: stage bundles
         run: |
@@ -170,14 +223,19 @@ jobs:
               stage "$BUNDLE/deb/*.deb" "TMGR_${APP_VERSION}_amd64.deb"
               stage "$BUNDLE/rpm/*.rpm" "TMGR-${APP_VERSION}-1.x86_64.rpm"
               ;;
+            linux-arm)
+              stage "$BUNDLE/appimage/*.AppImage" "TMGR_${APP_VERSION}_aarch64.AppImage"
+              stage "$BUNDLE/deb/*.deb" "TMGR_${APP_VERSION}_arm64.deb"
+              stage "$BUNDLE/rpm/*.rpm" "TMGR-${APP_VERSION}-1.aarch64.rpm"
+              ;;
           esac
           find src-tauri/target/release/bundle -type f \( -name '*.sig' -o -name '*.deb' -o -name '*.rpm' -o -name '*.msi' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.dmg' -o -name '*.tar.gz' \)
           ls -l "$OUT"
 
       - name: smoke linux
-        if: matrix.name == 'linux'
+        if: startsWith(matrix.name, 'linux')
         run: |
-          DEB="$PWD/staging/TMGR_${APP_VERSION}_amd64.deb"
+          DEB=$(ls "$PWD"/staging/TMGR_${APP_VERSION}_*.deb)
           sudo apt-get install -y "$DEB"
           BIN=$(dpkg -L "$(dpkg-deb -f "$DEB" Package)" | grep '^/usr/bin/' | head -n 1)
           echo "binary: $BIN"
@@ -232,9 +290,22 @@ jobs:
           if-no-files-found: error
 
   snap:
-    name: build snap
+    name: build snap ${{ matrix.arch }}
     needs: [meta, build]
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.arch == 'arm64' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+            bundles: linux
+            triplet: x86_64-linux-gnu
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+            bundles: linux-arm
+            triplet: aarch64-linux-gnu
     env:
       APP_VERSION: ${{ needs.meta.outputs.version }}
     steps:
@@ -242,13 +313,13 @@ jobs:
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: bundles-linux
+          name: bundles-${{ matrix.bundles }}
           path: linux
 
       - name: prepare snap sources
         run: |
           mkdir snap-src
-          cp "linux/TMGR_${APP_VERSION}_amd64.deb" snap-src/
+          cp linux/TMGR_${APP_VERSION}_${{ matrix.arch }}.deb snap-src/
           sed -i "s/^version: .*/version: '$APP_VERSION'/" snap/snapcraft.yaml
 
       - uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1.3.0
@@ -257,12 +328,12 @@ jobs:
       - name: stage snap
         run: |
           mkdir -p staging
-          cp "${{ steps.build.outputs.snap }}" "staging/TMGR_${APP_VERSION}_amd64.snap"
+          cp "${{ steps.build.outputs.snap }}" "staging/TMGR_${APP_VERSION}_${{ matrix.arch }}.snap"
           ls -l staging
 
       - name: inspect snap
         run: |
-          unsquashfs -q -d "$RUNNER_TEMP/snapfs" "staging/TMGR_${APP_VERSION}_amd64.snap"
+          unsquashfs -q -d "$RUNNER_TEMP/snapfs" "staging/TMGR_${APP_VERSION}_${{ matrix.arch }}.snap"
           cd "$RUNNER_TEMP/snapfs"
           cat meta/snap.yaml
           BIN=$(readlink -f bin/tmgr-launch)
@@ -272,21 +343,25 @@ jobs:
           ICON=$(sed -n 's/^Icon=\${SNAP}\///p' "$DESKTOP")
           test -f "$ICON"
           grep -q 'x-scheme-handler/tmgr' "$DESKTOP" || echo "::warning::desktop file has no tmgr scheme handler"
-          ls usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess
+          ls usr/lib/${{ matrix.triplet }}/webkit2gtk-4.1/WebKitWebProcess
           grep -q 'TMGR_DISABLE_UPDATER' meta/snap.yaml
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: bundles-snap
+          name: bundles-snap-${{ matrix.arch }}
           path: staging/*
           if-no-files-found: error
 
   release:
     name: ${{ needs.meta.outputs.dry_run == 'true' && 'assemble (dry run)' || 'publish release' }}
     needs: [meta, build, snap]
+    # latest.json needs the macOS bundle, which Dependabot PRs do not build.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     env:
       APP_VERSION: ${{ needs.meta.outputs.version }}
       DRY_RUN: ${{ needs.meta.outputs.dry_run }}
@@ -324,6 +399,9 @@ jobs:
           add "linux-x86_64 linux-x86_64-appimage" "TMGR_${APP_VERSION}_amd64.AppImage"
           add "linux-x86_64-deb" "TMGR_${APP_VERSION}_amd64.deb"
           add "linux-x86_64-rpm" "TMGR-${APP_VERSION}-1.x86_64.rpm"
+          add "linux-aarch64 linux-aarch64-appimage" "TMGR_${APP_VERSION}_aarch64.AppImage"
+          add "linux-aarch64-deb" "TMGR_${APP_VERSION}_arm64.deb"
+          add "linux-aarch64-rpm" "TMGR-${APP_VERSION}-1.aarch64.rpm"
           jq -n \
             --arg version "$APP_VERSION" \
             --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -340,6 +418,11 @@ jobs:
           name: latest-json-dry-run
           path: release/latest.json
 
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: env.DRY_RUN == 'false'
+        with:
+          subject-path: release/*
+
       - name: publish GitHub release
         if: env.DRY_RUN == 'false'
         env:
@@ -352,7 +435,7 @@ jobs:
             --latest
 
   snap-publish:
-    name: publish snap to edge
+    name: publish snap to stable and edge
     needs: [meta, release]
     if: needs.meta.outputs.dry_run == 'false'
     runs-on: ubuntu-latest
@@ -362,11 +445,27 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
         with:
-          name: bundles-snap
+          pattern: bundles-snap-*
           path: snap
+          merge-multiple: true
 
       - uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40 # v1.2.0
         if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
         with:
           snap: snap/TMGR_${{ needs.meta.outputs.version }}_amd64.snap
-          release: edge
+          release: stable,edge
+
+      - name: find arm64 snap
+        id: arm
+        if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
+        run: |
+          if [ -f "snap/TMGR_${{ needs.meta.outputs.version }}_arm64.snap" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40 # v1.2.0
+        if: steps.arm.outputs.found == 'true'
+        continue-on-error: true
+        with:
+          snap: snap/TMGR_${{ needs.meta.outputs.version }}_arm64.snap
+          release: stable,edge

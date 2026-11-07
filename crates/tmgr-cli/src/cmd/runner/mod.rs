@@ -1,15 +1,19 @@
 pub(crate) mod allow;
 mod attach;
+mod attach_checkpoints;
 mod attach_chip;
 mod attach_clip;
+pub(crate) mod attach_consent;
 mod attach_export;
 mod attach_export_cmd;
+mod attach_folders;
 mod attach_git;
 mod attach_goto;
 mod attach_layouts;
 mod attach_links;
 mod attach_new;
 mod attach_notes;
+mod attach_past;
 mod attach_prompts;
 mod attach_push;
 mod attach_questions;
@@ -23,17 +27,25 @@ mod attach_templates;
 mod attach_title;
 mod attach_usage;
 pub(crate) mod bind;
+pub(crate) mod catalog;
+pub(crate) mod checkpoints;
 pub(crate) mod cloud;
 mod gate;
+mod gc;
 mod local;
+pub(crate) mod menu;
 mod observe;
 mod ops;
+mod privilege;
 mod remote;
 mod remote_attach;
 mod restart;
 mod restore;
+mod resume_any;
 mod run_task;
 mod service;
+mod session_list;
+mod session_wt;
 mod trusted;
 mod watch;
 
@@ -61,7 +73,7 @@ pub enum RunnerCommands {
     Agents(AgentsArgs),
     /// [experimental] Open the live full-screen view of sessions
     #[command(
-        after_help = "Mouse: click a session in the sidebar or a pane to switch, wheel scrolls history, dropped files are pasted into the pane under the mouse.\nSelect text with Shift-drag (Option-drag in iTerm2), or start with --no-mouse."
+        after_help = "Mouse: click a session in the sidebar or a pane to switch, wheel scrolls history, dropped files are pasted into the pane under the mouse.\nDrag inside a pane selects text in that pane only and copies it on release (double-click a word, triple-click a line); soft-wrapped lines are joined and box-drawing, UI markers and trailing spaces are removed (tmgr config set attach.copy.clean false keeps the text as is). Hold Ctrl or Alt while dragging to send the drag to a program that uses the mouse itself. Shift-drag (Option-drag in iTerm2) is the terminal's own selection, or start with --no-mouse."
     )]
     Attach(AttachArgs),
     /// [experimental] Type a line of text into a session, optionally waiting for the agent to answer
@@ -89,6 +101,27 @@ pub enum SessionCmd {
     Summary(SummaryArgs),
     /// [experimental] Export a Claude session as Markdown (to a file or a TMGR page); only when you ask, after a secret scan
     Export(ExportArgs),
+    /// [experimental] List past sessions: tmgr's own and those of Claude Code and Codex on this machine (nothing leaves it)
+    List(SessionListArgs),
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum SessionAgent {
+    Claude,
+    Codex,
+}
+
+#[derive(Args)]
+pub struct SessionListArgs {
+    /// Only sessions of this agent
+    #[arg(long, value_enum)]
+    pub agent: Option<SessionAgent>,
+    /// Find sessions whose conversation contains these words (builds a local index first)
+    #[arg(long, value_name = "TEXT")]
+    pub search: Option<String>,
+    /// Most rows to show
+    #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(1..=1000))]
+    pub limit: u32,
 }
 
 #[derive(Args)]
@@ -147,10 +180,29 @@ pub enum RunnerCmd {
     Unbind(bind::UnbindArgs),
     /// [experimental] List the repositories bound to categories on this machine
     List,
+    /// [experimental] Remove the copies of finished `tmgr run` tasks (pull request merged or closed, nothing running in them)
+    Gc(GcArgs),
     #[command(hide = true)]
     Serve,
     #[command(hide = true)]
     Watch(WatchArgs),
+    #[command(hide = true)]
+    GitDiff(GitDiffArgs),
+}
+
+#[derive(Args)]
+pub struct GcArgs {
+    /// Check everything and print what would be removed, without changing anything
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+#[derive(Args)]
+pub struct GitDiffArgs {
+    #[arg(long)]
+    pub dir: String,
+    #[arg(long)]
+    pub pager: Option<String>,
 }
 
 #[derive(Args)]
@@ -169,6 +221,12 @@ pub struct AllowArgs {
     /// How long the permission lasts: 8h, 7d, 30d or forever
     #[arg(long = "for", value_name = "DURATION", default_value = "30d", value_parser = allow::Lifetime::parse)]
     pub lifetime: allow::Lifetime,
+    /// Start a run only if its approval covers the workspace rules (kept until disallow)
+    #[arg(long)]
+    pub require_signed_rules: bool,
+    /// Start a run only if its approval covers a persona (kept until disallow)
+    #[arg(long)]
+    pub require_signed_persona: bool,
 }
 
 #[derive(Args)]
@@ -237,15 +295,46 @@ pub struct RunArgs {
     /// Session name
     #[arg(long, value_name = "NAME")]
     pub name: Option<String>,
+    /// Start the agent in its own checkout `<repo>-worktrees/<session name>` on a new branch of the same name, so two agents never write the same files (config attach.worktree makes this the default)
+    #[arg(long, requires = "agent", conflicts_with_all = ["agent_cmd", "task", "on", "trust", "no_worktree"])]
+    pub worktree: bool,
+    /// Start in the working directory itself even when attach.worktree is on
+    #[arg(long, conflicts_with = "worktree")]
+    pub no_worktree: bool,
     /// Start the session without opening the live view
     #[arg(long)]
     pub no_attach: bool,
     /// [experimental] Pre-accept the agent's folder-trust prompt for this folder, for this run only
     #[arg(long, requires = "agent", conflicts_with_all = ["agent_cmd", "on", "task"])]
     pub trust: bool,
-    /// Permission mode for a task run (default ask; accept-edits for a cloud task; bypass only for a cloud task)
-    #[arg(long, value_enum, requires = "task", conflicts_with = "on")]
+    /// Permission mode (default ask; accept-edits for a cloud task). bypass skips the agent's permission prompts; asks you to confirm
+    #[arg(
+        long,
+        value_enum,
+        conflicts_with_all = ["on", "agent_cmd"],
+        requires = "agent"
+    )]
     pub mode: Option<PermissionMode>,
+    /// Run the agent outside the sandbox with your real home folder and environment; asks you to type a confirmation
+    #[arg(
+        long,
+        requires = "agent",
+        conflicts_with_all = ["on", "agent_cmd", "trust"]
+    )]
+    pub no_sandbox: bool,
+    /// Save the working folder after each turn so `checkpoints restore` can undo the agent's changes (git folders)
+    #[arg(long, conflicts_with_all = ["no_checkpoints", "on", "fetch", "publish", "review"])]
+    pub checkpoints: bool,
+    /// Do not save checkpoints for this session even if `attach.checkpoints` is on
+    #[arg(long, conflicts_with_all = ["on", "fetch", "publish", "review"])]
+    pub no_checkpoints: bool,
+    /// Record the agent's permission requests so attach can show them as cards (default: config attach.permission_cards); only for claude-code and codex
+    #[arg(
+        long,
+        requires = "agent",
+        conflicts_with_all = ["on", "agent_cmd", "task"]
+    )]
+    pub permission_cards: bool,
     /// Branch or commit the task's clone starts from (default: the repository's current branch)
     #[arg(long, value_name = "BASE", requires = "task", conflicts_with = "on")]
     pub base: Option<String>,
@@ -267,6 +356,16 @@ pub struct RunArgs {
     /// Discard a run held by the leak gate (asks you to type the task key); the run folder stays
     #[arg(long, requires = "review", conflicts_with = "push")]
     pub drop: bool,
+}
+
+impl RunArgs {
+    pub(super) fn checkpoints_flag(&self) -> Option<bool> {
+        match (self.checkpoints, self.no_checkpoints) {
+            (true, _) => Some(true),
+            (_, true) => Some(false),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Args)]
@@ -443,14 +542,28 @@ pub struct RenameArgs {
 
 #[derive(Args)]
 pub struct RmArgs {
-    /// Session id or name
+    /// Session id or name, or the folder of a `run --worktree` checkout whose session is gone
     pub session: String,
 }
 
 #[derive(Args)]
 pub struct ResumeArgs {
-    /// Session id or name of an exited session
+    /// Session id or name of an exited session, or the id of an agent conversation
     pub session: String,
+    /// Continue as a new session that leaves the original conversation untouched
+    #[arg(long)]
+    pub fork: bool,
+    /// Permission mode to resume with
+    #[arg(long, value_enum, value_name = "MODE")]
+    pub mode: Option<PermissionMode>,
+    /// Resume with your real home folder, with no sandbox
+    #[arg(long)]
+    pub no_sandbox: bool,
+    /// Start the session without opening the live view
+    #[arg(long)]
+    pub no_attach: bool,
+    #[arg(long, hide = true)]
+    pub attach: bool,
 }
 
 pub struct Opts<'a> {
@@ -468,6 +581,9 @@ pub fn internal_entry() -> Option<i32> {
             &PathBuf::from(&args[1]),
             &args[2],
         )),
+        Some("__permission-hook") if args.len() == 2 => {
+            Some(tmgr_runner::permit_hook::hook_main(&args[1]))
+        }
         Some("__sandbox-exec") => Some(tmgr_runner::sandbox::exec_helper(&args[1..])),
         Some("__agent-work") if args.len() == 1 => Some(local::agent_work_main()),
         _ => None,
@@ -522,7 +638,7 @@ pub fn rerr(e: io::Error) -> Error {
     ) {
         return Error::new(Kind::Offline, "lost the connection to the runner");
     }
-    let msg = e.to_string();
+    let msg = tmgr_runner::sanitize::sanitize_text(&e.to_string()).into_owned();
     if msg.starts_with("unknown_method: ") {
         return Error::new(Kind::Conflict, "the running runner is older than this tmgr")
             .hint(format!("{0} runner restart", bin()));

@@ -1,6 +1,7 @@
 import { desktopWindowLabel } from '@/utils/desktop';
 import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { ensureContextPage } from './pages/service';
+import { isLinkedLocalOwner } from './personaGate';
 import { migrate } from './schema';
 import type {
 	LocalActor,
@@ -41,7 +42,13 @@ export const listLocalWorkspaces = (
 ): Promise<LocalWorkspace[]> => {
 	if (!listed || refresh) {
 		listed = invoke<LocalWorkspace[]>('local_workspaces_list')
-			.then((list) => (workspaces = Array.isArray(list) ? list : []))
+			.then((list) => {
+				const before = activeLocalWorkspace()?.demo === true;
+				workspaces = Array.isArray(list) ? list : [];
+				if ((activeLocalWorkspace()?.demo === true) !== before)
+					announceActive();
+				return workspaces;
+			})
 			.catch((error) => {
 				listed = null;
 				console.error('Failed to list local workspaces', error);
@@ -49,6 +56,15 @@ export const listLocalWorkspaces = (
 			});
 	}
 	return listed;
+};
+
+export const firstRealWorkspace = <T extends { demo?: boolean }>(
+	list: T[],
+): T | undefined => list.find((workspace) => !workspace.demo);
+
+export const forgetLocalWorkspace = (code: string) => {
+	databases.delete(code);
+	contextSeeded.delete(code);
 };
 
 export const createLocalWorkspace = async (
@@ -61,6 +77,17 @@ export const createLocalWorkspace = async (
 	return created;
 };
 
+const activeListeners = new Set<() => void>();
+
+export const onActiveLocalWorkspaceChange = (listener: () => void) => {
+	activeListeners.add(listener);
+	return () => {
+		activeListeners.delete(listener);
+	};
+};
+
+const announceActive = () => activeListeners.forEach((listener) => listener());
+
 export const activeLocalWorkspace = (): LocalWorkspace | null =>
 	activeCode ? (workspaces.find((w) => w.code === activeCode) ?? null) : null;
 
@@ -71,6 +98,7 @@ export const hasActiveLocalWorkspace = (): boolean => activeCode !== null;
 
 export const setActiveLocalWorkspace = (workspace: LocalWorkspace | null) => {
 	activeCode = workspace?.code ?? null;
+	announceActive();
 	if (isDetachedWindowLabel(desktopWindowLabel())) return;
 	try {
 		if (activeCode) localStorage.setItem(ACTIVE_KEY, activeCode);
@@ -83,6 +111,7 @@ export const setActiveLocalWorkspace = (workspace: LocalWorkspace | null) => {
 /** This window only, never persisted: follow the local workspace the app has open, or none so calls go to the cloud. */
 export const followActiveLocalWorkspace = (follow = true) => {
 	activeCode = follow ? readActive() : null;
+	announceActive();
 };
 
 export const localWorkspaceById = async (id: number) =>
@@ -155,6 +184,11 @@ export const localContext = async (
 		files: filesOf(workspace),
 		actor,
 	};
+	if (user.id > 0) {
+		const { default: store } = await import('@/store');
+		const linked = (store.state.localProfile as any)?.linked_user_id;
+		if (isLinkedLocalOwner(user.id, linked)) ctx.localOwnerLinked = true;
+	}
 	if (user.id !== 0 && !contextSeeded.has(workspace.code)) {
 		contextSeeded.add(workspace.code);
 		await ensureContextPage({ ...ctx, actor: undefined }).catch((error) => {

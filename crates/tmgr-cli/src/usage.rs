@@ -77,8 +77,8 @@ mod tests {
 
     #[test]
     fn unknown_subcommand_keeps_the_clap_suggestion() {
-        let e = err(&["statu"]);
-        assert!(e.hint.as_ref().unwrap().contains("status"));
+        let e = err(&["boad"]);
+        assert!(e.hint.as_ref().unwrap().contains("board"));
         assert_eq!(e.exit_code(), 2);
     }
 }

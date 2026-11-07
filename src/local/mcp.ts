@@ -1,6 +1,16 @@
 import { dispatchLocal } from './dispatch';
-import { checkPersonaIdentity, type PersonaPermission } from './personaGate';
+import {
+	checkPersonaIdentity,
+	mapsLocalIdentity,
+	type PersonaPermission,
+} from './personaGate';
 import { normalizePath, type LocalRouter } from './router';
+import {
+	emptyLibrary,
+	personaSkillBody,
+	personaSkillIndex,
+	type LibraryFile,
+} from './skillLibrary';
 import type { LocalContext } from './types';
 
 export interface McpDeps {
@@ -8,7 +18,19 @@ export interface McpDeps {
 		system_prompt?: string | null;
 		prompt_version?: number | null;
 	} | null>;
+	skillLibrary?: () => Promise<LibraryFile>;
 }
+
+const libraryFor = (deps: McpDeps): Promise<LibraryFile> =>
+	deps.skillLibrary ? deps.skillLibrary() : Promise.resolve(emptyLibrary());
+
+const skillIndexFor = async (deps: McpDeps, personaUuid: string) => {
+	try {
+		return personaSkillIndex(await libraryFor(deps), personaUuid);
+	} catch {
+		return [];
+	}
+};
 
 class ToolError extends Error {}
 
@@ -499,23 +521,26 @@ const TOOLS: ToolDef[] = [
 			const persona = await personaRow(ctx);
 			const permissions = await personaGrantPermissions(ctx);
 			const prompt = await deps.personaPrompt(ctx.actor!.id);
+			const skills = await skillIndexFor(deps, ctx.actor!.id);
 			return {
 				user_id: ctx.user.id,
 				persona: {
 					id: ctx.actor!.id,
 					name: persona?.name ?? ctx.actor!.name,
 					description: persona?.description ?? null,
-					owner: {
-						id: persona?.owner_user_id ?? ctx.user.id,
-						name: persona?.owner_name ?? ctx.user.name,
-					},
+					owner: mapsLocalIdentity(ctx, persona?.owner_user_id)
+						? { id: ctx.user.id, name: ctx.user.name }
+						: {
+								id: persona?.owner_user_id ?? ctx.user.id,
+								name: persona?.owner_name ?? ctx.user.name,
+							},
 					prompt_version: prompt?.prompt_version ?? null,
 					workspace: {
 						id: ctx.workspace.id,
 						code: ctx.workspace.code,
 						permissions,
 					},
-					skills: [],
+					skills,
 				},
 			};
 		},
@@ -529,13 +554,14 @@ const TOOLS: ToolDef[] = [
 		async handler(_args, ctx, _router, deps) {
 			const persona = await personaRow(ctx);
 			const prompt = await deps.personaPrompt(ctx.actor!.id);
+			const skills = await skillIndexFor(deps, ctx.actor!.id);
 			return {
 				id: ctx.actor!.id,
 				name: persona?.name ?? ctx.actor!.name,
 				description: persona?.description ?? null,
 				system_prompt: prompt?.system_prompt ?? null,
 				prompt_version: prompt?.prompt_version ?? null,
-				skills: [],
+				skills,
 			};
 		},
 	},
@@ -548,8 +574,16 @@ const TOOLS: ToolDef[] = [
 			properties: { slug: { type: 'string' } },
 			required: ['slug'],
 		},
-		async handler() {
-			throw new ToolError('No skills in local workspaces yet');
+		async handler(args, ctx, _router, deps) {
+			const slug = String(requireArg(args, 'slug'));
+			let skill: ReturnType<typeof personaSkillBody> = null;
+			try {
+				skill = personaSkillBody(await libraryFor(deps), ctx.actor!.id, slug);
+			} catch {
+				skill = null;
+			}
+			if (!skill) throw new ToolError('Skill not found');
+			return skill;
 		},
 	},
 	{

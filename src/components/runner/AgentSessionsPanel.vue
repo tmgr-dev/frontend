@@ -21,11 +21,17 @@
 			class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface"
 		>
 			<li
-				v-for="session in list"
+				v-for="{ session, label } in rows"
 				:key="session.id"
 				class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm"
 				:data-session="session.id"
 			>
+				<span
+					v-if="label"
+					class="rounded border border-line px-1.5 text-xs font-medium text-ink-subtle"
+					data-testid="agent-team-label"
+					>{{ label }}</span
+				>
 				<AgentStateChip :state="session.state" />
 				<span
 					v-if="exitCodeLabel(session.state)"
@@ -79,6 +85,7 @@
 	import { exitCodeLabel } from '@/runner/states';
 	import { statusDetail } from '@/runner/statusLine';
 	import { useRunner } from '@/runner/store';
+	import { groupTeams } from '@/runner/teams';
 	import {
 		computed,
 		defineComponent,
@@ -124,6 +131,8 @@
 				);
 			});
 
+			const rows = computed(() => groupTeams(list.value));
+
 			const unavailable = computed(() => {
 				const state = runner.status.value?.state;
 				if (state === 'incompatible')
@@ -147,6 +156,7 @@
 
 			return {
 				list,
+				rows,
 				unavailable,
 				now,
 				actionError,

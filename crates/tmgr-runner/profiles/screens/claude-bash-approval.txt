@@ -1,0 +1,21 @@
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Haiku 4.5 · API Usage Billing
+ ▝▝   ▝▝   /work/proj
+
+❯ hello
+
+  Running it
+  ⎿  $ touch hello.txt; ls -la
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ Bash command
+ run it
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ touch hello.txt; ls -la
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and always allow access to /work/proj from this project
+   3. No
+
+ Esc to cancel · Tab to amend

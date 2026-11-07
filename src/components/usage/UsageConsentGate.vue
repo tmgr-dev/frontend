@@ -50,11 +50,17 @@
 			</p>
 			<p class="text-ink-subtle" data-testid="usage-consent-scope">
 				Your choice covers AI usage in this app, background jobs, agent
-				notifications and the tmgr CLI on this device. This setting doesn't
-				cover the TMGR runner yet: for sessions it starts, it reads their logs
-				for titles, questions and status, saves detected questions with your
-				prompt and the reply on this device, and may send reply text to Claude
-				(Haiku) to spot questions.
+				notifications, the tmgr CLI and the TMGR runner on this device. With
+				reading on, the runner reads the logs of sessions it starts for titles,
+				questions and status, saves detected questions with your prompt and the
+				reply on this device, and may send reply text to Claude (Haiku) to spot
+				questions. Without Allow the runner reads none of it, even when you ask
+				by hand (export, summary, fork): sessions show the plain agent name and
+				no questions are detected, while running, waiting and exited keep
+				working. Turning reading off stops the next read. Questions already
+				saved stay until Forget scanned data, which deletes them too; if you
+				allow reading again, questions from sessions whose logs are still there
+				can be detected again.
 			</p>
 			<p v-if="current.has_data" class="text-ink-subtle">
 				Numbers TMGR read earlier stay on this device. To delete them, use

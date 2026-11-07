@@ -1,4 +1,4 @@
-use crate::workdir::git_bytes;
+use crate::workdir::{object_id, repo_git_bytes, unverified};
 use base64::Engine;
 use regex::{Regex, RegexBuilder};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -1051,7 +1051,7 @@ struct TreeEntry {
 }
 
 fn list_tree(repo: &Path, rev: &str) -> Result<Vec<TreeEntry>> {
-    let raw = git_bytes(
+    let raw = repo_git_bytes(
         repo,
         &["ls-tree", "-r", "-z", "-l", "--end-of-options", rev],
         None,
@@ -1087,7 +1087,7 @@ fn fetch_blobs(repo: &Path, oids: &[String]) -> Result<HashMap<String, Vec<u8>>>
     }
     let mut input = oids.join("\n").into_bytes();
     input.push(b'\n');
-    let raw = git_bytes(repo, &["cat-file", "--batch"], Some(input))?;
+    let raw = repo_git_bytes(repo, &["cat-file", "--batch"], Some(input))?;
     let mut pos = 0;
     while pos < raw.len() {
         let Some(nl) = raw[pos..].iter().position(|&b| b == b'\n') else {
@@ -1105,7 +1105,11 @@ fn fetch_blobs(repo: &Path, oids: &[String]) -> Result<HashMap<String, Vec<u8>>>
         if pos + size > raw.len() {
             return Err(Error::internal("truncated git cat-file output"));
         }
-        out.insert(f[0].to_string(), raw[pos..pos + size].to_vec());
+        let body = &raw[pos..pos + size];
+        if object_id("blob", body, f[0].len()) != f[0] {
+            return Err(unverified(f[0]));
+        }
+        out.insert(f[0].to_string(), body.to_vec());
         pos += size + 1;
     }
     Ok(out)
@@ -1324,7 +1328,7 @@ fn sizes(repo: &Path, oids: &[String]) -> Result<HashMap<String, u64>> {
     }
     let mut input = oids.join("\n").into_bytes();
     input.push(b'\n');
-    let raw = git_bytes(repo, &["cat-file", "--batch-check"], Some(input))?;
+    let raw = repo_git_bytes(repo, &["cat-file", "--batch-check"], Some(input))?;
     for line in String::from_utf8_lossy(&raw).lines() {
         let f: Vec<&str> = line.split(' ').collect();
         if f.len() == 3 {
@@ -1413,7 +1417,7 @@ pub fn load_public(
         .map(|e| e.path)
         .collect();
     let range = format!("{base}..{head}");
-    let listed = git_bytes(
+    let listed = repo_git_bytes(
         repo,
         &["rev-list", "--reverse", "--end-of-options", &range],
         None,
@@ -1424,7 +1428,7 @@ pub fn load_public(
         if !is_sha(sha) {
             return Err(Error::internal("unexpected git rev-list output"));
         }
-        let raw = git_bytes(repo, &["cat-file", "commit", "--end-of-options", sha], None)?;
+        let raw = repo_git_bytes(repo, &["cat-file", "commit", "--end-of-options", sha], None)?;
         let info = parse_commit(&raw)?;
         let short = &sha[..7];
         all_texts.push((format!("commit {short} author"), info.author));
@@ -1433,12 +1437,12 @@ pub fn load_public(
             all_texts.push((format!("commit {short} message"), info.message));
         }
         let patch = match &info.parent {
-            Some(parent) => git_bytes(repo, &patch_args(&[parent, sha], false), None)?,
-            None => git_bytes(repo, &patch_args(&[sha], true), None)?,
+            Some(parent) => repo_git_bytes(repo, &patch_args(&[parent, sha], false), None)?,
+            None => repo_git_bytes(repo, &patch_args(&[sha], true), None)?,
         };
         changes.extend(parse_patch(&String::from_utf8_lossy(&patch)));
     }
-    let net = git_bytes(repo, &patch_args(&[base, head], false), None)?;
+    let net = repo_git_bytes(repo, &patch_args(&[base, head], false), None)?;
     changes.extend(parse_patch(&String::from_utf8_lossy(&net)));
     all_texts.extend(texts);
 

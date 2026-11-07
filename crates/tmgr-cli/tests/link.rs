@@ -70,6 +70,7 @@ impl Fx {
             max: 2,
             from: vec![],
             allow_attach_input: false,
+            ..Default::default()
         }
     }
 
@@ -82,9 +83,15 @@ impl Fx {
             .env_remove("TMGR_RUNNER_DIR")
             .env_remove("TMGR_RUN_TOKEN")
             .env_remove("TMGR_RUN_ID")
+            .env_remove("TMGR_SESSION_ID")
             .env("TMGR_RUNNER_DIR", self.home.join("no-runner"))
             .env("TMGR_CREDENTIAL_STORE", "file")
             .env("NO_COLOR", "1");
+        for (name, _) in std::env::vars_os() {
+            if tmgr_local::in_agent_session([name.to_string_lossy()]) {
+                c.env_remove(name);
+            }
+        }
         c
     }
 
@@ -284,6 +291,335 @@ fn revoke_with_an_unreadable_runs_file_exits_1_and_says_so() {
         "{text}"
     );
     assert!(Store::load(&f.paths).unwrap().leaders.is_empty());
+}
+
+#[test]
+fn revoke_with_an_unreadable_worker_registry_exits_1_and_says_so() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let dir = f.paths.link_dir();
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("workers"), b"").unwrap();
+    let out = f
+        .tmgr()
+        .args(["link", "revoke", "laptop"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    let text = err_text(&out);
+    assert!(text.contains("worker registry"), "{text}");
+    assert!(text.contains("not a directory"), "{text}");
+    assert!(
+        text.contains("tmgr link revoke laptop --halt-runs"),
+        "{text}"
+    );
+    assert!(Store::load(&f.paths).unwrap().leaders.is_empty());
+}
+
+#[test]
+fn revoke_with_an_unknown_worker_record_exits_1_and_says_so() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let workers = f.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&workers).unwrap();
+    std::fs::write(workers.join("laptop.4242.json"), b"not json").unwrap();
+    let out = f
+        .tmgr()
+        .args(["link", "revoke", "laptop"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    assert!(
+        err_text(&out).contains("could not be checked"),
+        "{}",
+        err_text(&out)
+    );
+    assert!(workers.join("laptop.4242.json").exists());
+}
+
+#[test]
+fn turning_remote_control_off_with_an_unknown_worker_record_saves_off_and_fails() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            ..f.scope()
+        },
+    );
+    let workers = f.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&workers).unwrap();
+    std::fs::write(workers.join("laptop.4242.json"), b"not json").unwrap();
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--remote-control", "off"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    assert!(
+        err_text(&out).contains("could not be checked"),
+        "{}",
+        err_text(&out)
+    );
+    let store = Store::load(&f.paths).unwrap();
+    assert!(!store.leaders["laptop"].scope.remote_control);
+}
+
+#[test]
+fn running_off_again_with_an_unknown_worker_record_still_fails() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let workers = f.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&workers).unwrap();
+    std::fs::write(workers.join("laptop.4242.json"), b"not json").unwrap();
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--include-bypass", "off"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    assert!(err_text(&out).contains("saved"), "{}", err_text(&out));
+}
+
+#[test]
+fn an_unknown_worker_record_only_warns_on_an_unrelated_scope_change() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            allow_attach_input: true,
+            ..f.scope()
+        },
+    );
+    let workers = f.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&workers).unwrap();
+    std::fs::write(workers.join("laptop.4242.json"), b"not json").unwrap();
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--allow-attach-input", "false"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("could not be checked"), "{text}");
+}
+
+#[test]
+fn an_unknown_worker_record_is_counted_in_json_on_an_unrelated_scope_change() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            allow_attach_input: true,
+            ..f.scope()
+        },
+    );
+    let workers = f.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&workers).unwrap();
+    std::fs::write(workers.join("laptop.4242.json"), b"not json").unwrap();
+    let out = f
+        .tmgr()
+        .args([
+            "link",
+            "scope",
+            "laptop",
+            "--allow-attach-input",
+            "false",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"]["closed"]["unknown"], 1, "{v}");
+}
+
+fn both_on_fixture(bad_record: bool) -> Fx {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            include_bypass: true,
+            allow_attach_input: true,
+            ..f.scope()
+        },
+    );
+    if bad_record {
+        let workers = f.paths.link_dir().join("workers");
+        std::fs::create_dir_all(&workers).unwrap();
+        std::fs::write(workers.join("laptop.4242.json"), b"not json").unwrap();
+    }
+    f
+}
+
+#[test]
+fn an_unknown_worker_record_does_not_fail_a_scope_change_with_both_flags_on() {
+    let f = both_on_fixture(true);
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--allow-attach-input", "false"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("could not be checked"), "{text}");
+    assert!(f
+        .paths
+        .link_dir()
+        .join("workers")
+        .join("laptop.4242.json")
+        .exists());
+
+    let f = both_on_fixture(true);
+    let out = f
+        .tmgr()
+        .args([
+            "link",
+            "scope",
+            "laptop",
+            "--allow-attach-input",
+            "false",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"]["closed"]["unknown"], 1, "{v}");
+    assert!(f
+        .paths
+        .link_dir()
+        .join("workers")
+        .join("laptop.4242.json")
+        .exists());
+}
+
+#[test]
+fn both_flags_on_with_no_bad_records_closes_nothing_and_does_not_warn() {
+    let f = both_on_fixture(false);
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--allow-attach-input", "false"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(!text.contains("could not be checked"), "{text}");
+
+    let f = both_on_fixture(false);
+    let out = f
+        .tmgr()
+        .args([
+            "link",
+            "scope",
+            "laptop",
+            "--allow-attach-input",
+            "false",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(v["data"]["closed"].is_null(), "{v}");
+}
+
+fn registry_file_fixture() -> Fx {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            ..f.scope()
+        },
+    );
+    let dir = f.paths.link_dir();
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("workers"), b"").unwrap();
+    f
+}
+
+#[test]
+fn a_registry_error_after_the_scope_is_saved_says_it_is_saved() {
+    let f = registry_file_fixture();
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--remote-control", "off"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    assert!(err_text(&out).contains("saved"), "{}", err_text(&out));
+    assert!(!scope_flags(&f).0);
+
+    let f = registry_file_fixture();
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--allow-attach-input", "false"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    assert!(err_text(&out).contains("saved"), "{}", err_text(&out));
+}
+
+struct RestoreMode(PathBuf);
+
+impl Drop for RestoreMode {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o700));
+    }
+}
+
+fn unreadable_registry_dir() -> Option<(Fx, RestoreMode)> {
+    use std::os::unix::fs::PermissionsExt;
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            ..f.scope()
+        },
+    );
+    let workers = f.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&workers).unwrap();
+    let guard = RestoreMode(workers.clone());
+    std::fs::set_permissions(&workers, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::read_dir(&workers).is_ok() {
+        return None;
+    }
+    Some((f, guard))
+}
+
+#[test]
+fn revoke_with_a_registry_directory_that_cannot_be_read_exits_1_and_says_so() {
+    let Some((f, _guard)) = unreadable_registry_dir() else {
+        return;
+    };
+    let out = f
+        .tmgr()
+        .args(["link", "revoke", "laptop"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    let text = err_text(&out);
+    assert!(text.contains("worker registry"), "{text}");
+    assert!(text.to_lowercase().contains("permission denied"), "{text}");
+    assert!(Store::load(&f.paths).unwrap().leaders.is_empty());
+}
+
+#[test]
+fn scope_with_a_registry_directory_that_cannot_be_read_says_it_is_saved() {
+    let Some((f, _guard)) = unreadable_registry_dir() else {
+        return;
+    };
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--remote-control", "off"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    assert!(err_text(&out).contains("saved"), "{}", err_text(&out));
 }
 
 #[test]
@@ -650,4 +986,268 @@ fn files_written_by_the_cli_are_private() {
     assert_eq!(mode(&f.paths.audit_dir()), 0o700);
     assert_eq!(mode(&Audit::new(&f.paths.audit_dir()).current()), 0o600);
     assert_eq!(mode(&f.paths.config.join("credentials.json")), 0o600);
+}
+
+fn scope_flags(f: &Fx) -> (bool, bool) {
+    let s = Store::load(&f.paths).unwrap().leaders["laptop"]
+        .scope
+        .clone();
+    (s.remote_control, s.include_bypass)
+}
+
+fn links_bytes(f: &Fx) -> Vec<u8> {
+    std::fs::read(f.paths.links_toml()).unwrap()
+}
+
+#[test]
+fn enabling_remote_control_or_include_bypass_is_refused_in_an_agent_session_with_exit_5() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let before = links_bytes(&f);
+    for flag in ["--remote-control", "--include-bypass"] {
+        let out = f
+            .tmgr()
+            .env("TMGR_SESSION_ID", "s_x")
+            .args(["link", "scope", "laptop", flag, "on", "--yes"])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(5), "{flag}: {}", err_text(&out));
+        assert_eq!(links_bytes(&f), before, "{flag}");
+    }
+}
+
+#[test]
+fn enabling_is_refused_under_every_agent_session_marker() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let before = links_bytes(&f);
+    for marker in [
+        "CLAUDECODE",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CODEX_SANDBOX_MODE",
+        "TMGR_AGENT_SESSION",
+    ] {
+        let out = f
+            .tmgr()
+            .env(marker, "1")
+            .args(["link", "scope", "laptop", "--remote-control", "on"])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(5), "{marker}: {}", err_text(&out));
+        assert_eq!(links_bytes(&f), before, "{marker}");
+    }
+}
+
+#[test]
+fn a_mixed_call_that_turns_one_flag_on_is_still_guarded() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            include_bypass: true,
+            ..f.scope()
+        },
+    );
+    let before = links_bytes(&f);
+    for args in [
+        &["--remote-control", "on", "--include-bypass", "off"][..],
+        &["--remote-control", "on", "--max", "1"][..],
+    ] {
+        let mut a = vec!["link", "scope", "laptop"];
+        a.extend_from_slice(args);
+        let out = f
+            .tmgr()
+            .env("TMGR_SESSION_ID", "s_x")
+            .args(&a)
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(5), "{args:?}");
+        let out = f.tmgr().args(&a).output().unwrap();
+        assert_eq!(out.status.code(), Some(10), "{args:?}");
+        assert_eq!(links_bytes(&f), before, "{args:?}");
+    }
+}
+
+#[test]
+fn enabling_remote_control_without_a_terminal_exits_10_and_changes_nothing() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let before = links_bytes(&f);
+    for flag in ["--remote-control", "--include-bypass"] {
+        let out = f
+            .tmgr()
+            .args(["link", "scope", "laptop", flag, "on", "--yes"])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(10), "{flag}: {}", err_text(&out));
+        assert_eq!(links_bytes(&f), before, "{flag}");
+    }
+}
+
+#[test]
+fn turning_remote_control_or_include_bypass_off_works_from_an_agent_session_without_a_terminal() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            include_bypass: true,
+            ..f.scope()
+        },
+    );
+    for (flag, want) in [
+        ("--include-bypass", (true, false)),
+        ("--remote-control", (false, false)),
+    ] {
+        let out = f
+            .tmgr()
+            .env("TMGR_SESSION_ID", "s_x")
+            .args(["link", "scope", "laptop", flag, "off"])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(0), "{flag}: {}", err_text(&out));
+        assert_eq!(scope_flags(&f), want, "{flag}");
+    }
+}
+
+#[test]
+fn old_links_files_parse_as_off_and_new_links_start_off() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let raw = String::from_utf8(links_bytes(&f)).unwrap();
+    assert!(!raw.contains("remote_control") && !raw.contains("include_bypass"));
+    assert_eq!(scope_flags(&f), (false, false));
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--json"])
+        .output()
+        .unwrap();
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"]["scope"]["remote_control"], false);
+    assert_eq!(v["data"]["scope"]["include_bypass"], false);
+    assert_eq!(v["data"]["scope"]["allow_bypass"], false);
+}
+
+#[test]
+fn trust_has_no_remote_control_flags() {
+    let f = fx();
+    for flag in ["--remote-control", "--include-bypass"] {
+        let out = f
+            .tmgr()
+            .args([
+                "link",
+                "trust",
+                "ssh-ed25519",
+                "AAAA",
+                "--as",
+                "leader",
+                "--name",
+                "l",
+                flag,
+                "on",
+            ])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(2), "{flag}");
+        assert!(err_text(&out).contains("unexpected argument"), "{flag}");
+    }
+}
+
+#[test]
+fn remote_control_values_must_be_explicit_on_or_off() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let before = links_bytes(&f);
+    for args in [
+        &["--remote-control", "maybe"][..],
+        &["--remote-control"][..],
+        &["--include-bypass", "true"][..],
+    ] {
+        let mut a = vec!["link", "scope", "laptop"];
+        a.extend_from_slice(args);
+        let out = f.tmgr().args(&a).output().unwrap();
+        assert_eq!(out.status.code(), Some(2), "{args:?}: {}", err_text(&out));
+        assert_eq!(links_bytes(&f), before);
+    }
+}
+
+fn fake_attached_worker(f: &Fx, bypass: bool) -> std::process::Child {
+    let child = std::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .unwrap();
+    let dir = f.paths.link_dir().join("workers");
+    std::fs::create_dir_all(&dir).unwrap();
+    let rec = json!({
+        "pid": child.id(),
+        "start": tmgr_link::registry::process_start(child.id()).unwrap(),
+        "enrollment": ENR,
+        "attached": {"run": "s_abc", "input": true, "remote": true, "bypass": bypass},
+    });
+    std::fs::write(
+        dir.join(format!("laptop.{}.json", child.id())),
+        rec.to_string(),
+    )
+    .unwrap();
+    child
+}
+
+#[test]
+fn turning_remote_control_off_stops_remote_attach_workers_and_audits_it() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            ..f.scope()
+        },
+    );
+    let mut worker = fake_attached_worker(&f, false);
+    let out = f
+        .tmgr()
+        .args([
+            "link",
+            "scope",
+            "laptop",
+            "--remote-control",
+            "off",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    assert!(worker.wait().is_ok_and(|s| !s.success()));
+    let entries = Audit::new(&f.paths.audit_dir()).tail(10).unwrap();
+    let closed = entries
+        .iter()
+        .find(|e| e["event"] == "link.scope.closed")
+        .expect("closed entry");
+    assert_eq!(closed["link"], "laptop");
+    assert_eq!(closed["signalled"], 1);
+    assert_eq!(closed["survivors"], 0);
+}
+
+#[test]
+fn turning_only_include_bypass_off_stops_bypass_attaches_and_spares_the_rest() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            include_bypass: true,
+            ..f.scope()
+        },
+    );
+    let mut bypass = fake_attached_worker(&f, true);
+    let mut plain = fake_attached_worker(&f, false);
+    let out = f
+        .tmgr()
+        .args(["link", "scope", "laptop", "--include-bypass", "off"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    assert!(bypass.wait().is_ok_and(|s| !s.success()));
+    assert!(plain.try_wait().unwrap().is_none());
+    plain.kill().unwrap();
+    plain.wait().unwrap();
 }

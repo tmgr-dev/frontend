@@ -1795,6 +1795,8 @@ mod tests {
             allowed_at: "2026-10-01T00:00:00Z".into(),
             expires_at: None,
             keys: Vec::new(),
+            require_signed_rules: false,
+            require_signed_persona: false,
             repos: Default::default(),
         };
         entry.keys.push(PinnedKey {

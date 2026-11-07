@@ -41,6 +41,7 @@ args = ["{prompt}"]
 [resume]
 args = ["--continue"]
 by_id = ["--resume", "{resume_id}"]
+fork_by_id = ["--resume", "{resume_id}", "--fork-session"]
 
 [hooks]
 kind = "settings-file"

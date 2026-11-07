@@ -9,4 +9,4 @@
                         │                                                                                              │
                         │                                                                                              │
  + New session     tmpl ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
- tmgr runner · spark · only one session, nothing to split                                                 Ctrl-] ? help
+ tmgr runner · spark · only one session, nothing to split                                    drag copies  Ctrl-] ? help

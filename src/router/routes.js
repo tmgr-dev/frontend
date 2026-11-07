@@ -392,6 +392,16 @@ const routes = [
 		name: 'WelcomeSetupAgent',
 	},
 	{
+		path: '/:workspace_code/connect-agent',
+		component: () => import('@/pages/desktop/ConnectLocalAgent.vue'),
+		meta: {
+			title: 'Connect your agent',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+		},
+		name: 'ConnectLocalAgent',
+	},
+	{
 		path: '/:workspace_code/getting-started',
 		component: () => import('@/pages/GettingStarted.vue'),
 		meta: {
@@ -821,6 +831,16 @@ const routes = [
 				name: 'WorkspacePageVersions',
 			},
 		],
+	},
+	{
+		path: '/:workspace_code/memory',
+		component: () => import('@/pages/WorkspaceMemory.vue'),
+		meta: {
+			title: 'Memory',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+		},
+		name: 'WorkspaceMemory',
 	},
 	{
 		path: '/:workspace_code/:category_code',

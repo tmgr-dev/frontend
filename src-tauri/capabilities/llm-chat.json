@@ -1,0 +1,11 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "llm-chat",
+	"description": "Asking a persona from a task: main and task windows only.",
+	"windows": ["main", "task-*"],
+	"permissions": [
+		"allow-llm-chat",
+		"allow-llm-cancel",
+		"allow-persona-cache-get"
+	]
+}

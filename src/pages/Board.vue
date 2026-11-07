@@ -450,67 +450,83 @@
 																		@task-archived="updateSingleTaskInBoard"
 																	/>
 																</template>
-															</Draggable>
-
-															<!-- TM-151: quick-add right under the last card. Teleported into the
-												     scroll container like the inline input; the drag handle selector
-												     keeps Sortable from ever picking it up. -->
-															<Teleport
-																v-if="
-																	tasksLoaded &&
-																	column.tasks.length > 0 &&
-																	creatingTaskColumnId !== column.status.id
-																"
-																:to="`.board-card-draggable[data-column-id='${column.status.id}']`"
-															>
-																<button
-																	type="button"
-																	class="board-add-task mx-1 mt-1 flex w-[calc(100%-0.5rem)] items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
-																	@click="startCreatingTask(column)"
-																>
-																	<span class="material-icons text-sm"
-																		>add</span
+																<template #footer>
+																	<template
+																		v-if="
+																			tasksLoaded &&
+																			column.paging &&
+																			!column.paging.complete
+																		"
 																	>
-																	Add task
-																</button>
-															</Teleport>
-
-															<Teleport
-																v-if="
-																	tasksLoaded &&
-																	creatingTaskColumnId === column.status.id
-																"
-																:to="`.board-card-draggable[data-column-id='${column.status.id}']`"
-															>
-																<div class="shrink-0 px-1 pt-1 pb-1">
-																	<div class="flex flex-col gap-2">
-																		<input
-																			v-model="newTaskTitle"
-																			@keyup.enter="createQuickTask(column)"
-																			@keyup.esc="cancelCreatingTask"
-																			@blur="handleInputBlur"
-																			placeholder="Enter task title..."
-																			class="task-title-input w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
+																		<ColumnSentinel
+																			:key="`${column.tasks.length}:${column.paging.settled}`"
+																			@visible="loadMoreTasks(column)"
 																		/>
-																		<div class="flex gap-2">
-																			<Button
-																				size="sm"
-																				class="flex-1"
-																				@click="createQuickTask(column)"
+																	</template>
+
+																	<!-- TM-151: quick-add right under the last card. In the
+													     scroll container like the inline input; the drag handle selector
+													     keeps Sortable from ever picking it up. -->
+																	<template
+																		v-if="
+																			tasksLoaded &&
+																			column.tasks.length > 0 &&
+																			creatingTaskColumnId !== column.status.id
+																		"
+																	>
+																		<button
+																			key="quick-add"
+																			type="button"
+																			class="board-add-task mx-1 mt-1 flex w-[calc(100%-0.5rem)] items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
+																			@click="startCreatingTask(column)"
+																		>
+																			<span class="material-icons text-sm"
+																				>add</span
 																			>
-																				Add
-																			</Button>
-																			<Button
-																				variant="secondary"
-																				size="sm"
-																				@click="cancelCreatingTask"
-																			>
-																				Cancel
-																			</Button>
+																			Add task
+																		</button>
+																	</template>
+
+																	<template
+																		v-if="
+																			tasksLoaded &&
+																			creatingTaskColumnId === column.status.id
+																		"
+																	>
+																		<div
+																			key="quick-add-input"
+																			class="shrink-0 px-1 pt-1 pb-1"
+																		>
+																			<div class="flex flex-col gap-2">
+																				<input
+																					v-model="newTaskTitle"
+																					@keyup.enter="createQuickTask(column)"
+																					@keyup.esc="cancelCreatingTask"
+																					@blur="handleInputBlur"
+																					placeholder="Enter task title..."
+																					class="task-title-input w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
+																				/>
+																				<div class="flex gap-2">
+																					<Button
+																						size="sm"
+																						class="flex-1"
+																						@click="createQuickTask(column)"
+																					>
+																						Add
+																					</Button>
+																					<Button
+																						variant="secondary"
+																						size="sm"
+																						@click="cancelCreatingTask"
+																					>
+																						Cancel
+																					</Button>
+																				</div>
+																			</div>
 																		</div>
-																	</div>
-																</div>
-															</Teleport>
+																	</template>
+																</template>
+															</Draggable>
 														</div>
 													</div>
 												</div>
@@ -793,6 +809,8 @@
 	import {
 		createTask,
 		getSortedTasksByStatus,
+		getTasksByStatusPage,
+		moveTask,
 		refreshAssignedTask,
 		updateStatusOfTasks,
 		updateTaskOrders,
@@ -806,6 +824,7 @@
 		updateWorkspaceOrder,
 	} from '@/actions/tmgr/workspaces';
 	import BoardTaskCount from '@/components/board/BoardTaskCount.vue';
+	import ColumnSentinel from '@/components/board/ColumnSentinel.vue';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import Dropdown from '@/components/general/Dropdown.vue';
@@ -830,6 +849,24 @@
 		filterBoardTasks,
 		MY_PERSONAS_FILTER,
 	} from '@/utils/boardLoading';
+	import {
+		applyTotals,
+		BOARD_PAGE_SIZE,
+		beginOwnMove,
+		bumpColumnEpochs,
+		completeOwnMove,
+		createColumnPaging,
+		createRealtimeBuffer,
+		dedupeFirstPages,
+		isKeysetResponse,
+		loadAllPages,
+		loadNextPage,
+		mergeRealtimeTask,
+		placementAt,
+		reloadWindow,
+		removeRealtimeTask,
+		resyncPagedColumns,
+	} from '@/utils/boardColumnPaging';
 	import { boardTaskCounts } from '@/utils/boardSummary';
 	import { hexToHsl, hslToHex } from '@/utils/colors';
 	import {
@@ -838,10 +875,6 @@
 		sortByPriority,
 	} from '@/utils/priority';
 	import { createRequestSequence } from '@/utils/requestSequence';
-	import {
-		removeTaskFromColumns,
-		upsertTaskInColumns,
-	} from '@/utils/taskPatch';
 	import { MenuItem } from '@headlessui/vue';
 	import { EllipsisVerticalIcon } from '@heroicons/vue/20/solid';
 	import ColorPicker from '@radial-color-picker/vue-color-picker';
@@ -872,6 +905,7 @@
 			Confirm,
 			WorkspaceUsers,
 			BoardTaskCount,
+			ColumnSentinel,
 			RemoveSampleTasksButton,
 			FeatureGate,
 			BoardPreview,
@@ -965,6 +999,11 @@
 			boardError: '',
 			boardReady: false,
 			dragSaveQueue: Promise.resolve(),
+			pendingMoveIds: markRaw(new Set()),
+			dirtyStatusIds: markRaw(new Set()),
+			realtimeBuffer: markRaw(createRealtimeBuffer()),
+			boardInstanceId: `board-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+			totalsTimer: null,
 			boardInitializing: false,
 			boardDisposed: false,
 			boardLoader: null,
@@ -982,6 +1021,11 @@
 				this.pluginBadgeFeed.update(
 					this.columns.flatMap((column) => column.tasks),
 				);
+			},
+			needsFullLoad() {
+				if (!this.boardReady) return;
+				this.invalidateColumnLoads();
+				this.boardLoader.schedule();
 			},
 			'$store.state.reloadTasksKey'() {
 				this.loadTasks();
@@ -1024,6 +1068,7 @@
 			'$store.state.filter': {
 				handler() {
 					if (!this.boardReady) return;
+					this.invalidateColumnLoads();
 					this.boardLoader.schedule();
 				},
 				deep: true,
@@ -1059,6 +1104,14 @@
 							`${t.id}:${t.common_time}:${t.approximately_time}:${t.start_time}`,
 					)
 					.join(',');
+			},
+			needsFullLoad() {
+				const filter = this.$store.state.filter;
+				return (
+					filter.prioritySort ||
+					filter.selectedPriorities.length > 0 ||
+					this.activeBoardFilters.length > 0
+				);
 			},
 			workspaceUsersWithoutAll() {
 				return this.workspaceUsers.filter((user) => user.id !== 0);
@@ -1126,8 +1179,28 @@
 						)
 						.map((column) => column.status.id),
 				);
-				if (upsertTaskInColumns(this.columns, updatedTask) === 'ignored')
+				if (
+					this.pendingMoveIds.size &&
+					!this.pendingMoveIds.has(updatedTask.id)
+				)
+					this.markDirty(
+						updatedTask.status_id,
+						this.columns.find((c) =>
+							c.tasks.some((t) => t.id === updatedTask.id),
+						)?.status.id,
+					);
+				const patch = mergeRealtimeTask(
+					this.columns,
+					updatedTask,
+					this.pendingMoveIds,
+					this.dirtyStatusIds,
+				);
+				this.scheduleTotalsRefresh();
+				if (patch === 'reload') {
+					this.reloadOrMark(updatedTask.status_id);
 					return;
+				}
+				if (patch === 'ignored') return;
 				if (this.prioritySortActive) this.sortColumnsByPriority(affected);
 				this.refreshColumnSummaries(affected);
 			},
@@ -1138,21 +1211,157 @@
 				}
 			},
 			removeTaskFromBoard(taskId) {
-				if (removeTaskFromColumns(this.columns, taskId)) {
+				if (this.pendingMoveIds.size)
+					this.markDirty(
+						this.columns.find((c) => c.tasks.some((t) => t.id === taskId))
+							?.status.id,
+					);
+				if (removeRealtimeTask(this.columns, taskId)) {
 					this.refreshColumnSummaries();
 				}
+				this.scheduleTotalsRefresh();
+			},
+			fetchKeysetPage(statusId, cursor, limit) {
+				const filter = this.$store.state.filter;
+				const params = { limit, fields: 'card' };
+				if (cursor) params.cursor = cursor;
+				if (filter.searchText) params.search = filter.searchText;
+				if (filter.selectedCategory)
+					params.project_category_id = filter.selectedCategory;
+				if (filter.selectedUser) params.assignee_id = filter.selectedUser;
+				if (filter.selectedPersona === MY_PERSONAS_FILTER)
+					params.my_personas = 1;
+				else if (filter.selectedPersona)
+					params.persona = filter.selectedPersona;
+				return getTasksByStatusPage(statusId, params);
+			},
+			replayBufferedEvents() {
+				for (const event of this.realtimeBuffer.take()) {
+					if (event.kind === 'update') this.updateSingleTaskInBoard(event.task);
+					else if (event.kind === 'remove') this.removeTaskFromBoard(event.id);
+					else if (event.kind === 'reload') this.reloadOrMark(event.statusId);
+					else this.resyncColumns();
+				}
+			},
+			resyncColumns() {
+				for (const statusId of resyncPagedColumns(this.columns))
+					this.reloadOrMark(statusId);
+			},
+			invalidateColumnLoads() {
+				bumpColumnEpochs(
+					this.columns,
+					this.columns.map((c) => c.status.id),
+				);
+			},
+			markDirty(...statusIds) {
+				for (const id of statusIds)
+					if (id != null) this.dirtyStatusIds.add(Number(id));
+			},
+			reloadOrMark(statusId) {
+				if (this.pendingMoveIds.size) this.markDirty(statusId);
+				else void this.reloadColumnWindow(Number(statusId));
+			},
+			async flushDirtyColumns() {
+				const ids = [...this.dirtyStatusIds];
+				this.dirtyStatusIds.clear();
+				for (const id of ids) await this.reloadColumnWindow(id);
+			},
+			async loadMoreTasks(column) {
+				try {
+					await loadNextPage(
+						() => this.columns,
+						column.status.id,
+						this.fetchKeysetPage,
+						{ limit: BOARD_PAGE_SIZE, pending: this.pendingMoveIds },
+					);
+					this.refreshColumnSummaries(new Set([column.status.id]));
+				} catch {
+					this.boardError = 'Could not load more tasks.';
+					const paging = column.paging;
+					setTimeout(() => {
+						if (!this.boardDisposed) paging.settled++;
+					}, 3000);
+				}
+			},
+			async reloadColumnWindow(statusId) {
+				try {
+					await reloadWindow(
+						() => this.columns,
+						statusId,
+						this.fetchKeysetPage,
+						{ limit: BOARD_PAGE_SIZE },
+					);
+					this.refreshColumnSummaries(new Set([statusId]));
+				} catch {
+					this.boardError = 'Could not refresh the column.';
+				}
+			},
+			async ensureColumnComplete(column) {
+				if (!column?.paging || column.paging.complete) return true;
+				try {
+					await loadAllPages(
+						() => this.columns,
+						column.status.id,
+						this.fetchKeysetPage,
+						{ pending: this.pendingMoveIds },
+					);
+				} catch {
+					this.toast({
+						title: 'Could not load all tasks',
+						description: 'Please try again.',
+						variant: 'destructive',
+					});
+					return false;
+				}
+				this.refreshColumnSummaries(new Set([column.status.id]));
+				return !!this.findColumn(column.status.id)?.paging?.complete;
+			},
+			scheduleTotalsRefresh() {
+				if (!this.columns.some((c) => c.paging && !c.paging.complete)) return;
+				clearTimeout(this.totalsTimer);
+				this.totalsTimer = setTimeout(() => {
+					void this.refreshTotals();
+				}, 800);
+			},
+			async refreshTotals() {
+				if (this.boardDisposed) return;
+				const targets = this.columns.filter(
+					(c) => c.paging && !c.paging.complete,
+				);
+				await Promise.all(
+					targets.map(async (column) => {
+						const paging = column.paging;
+						try {
+							const page = await this.fetchKeysetPage(
+								column.status.id,
+								null,
+								1,
+							);
+							if (this.findColumn(column.status.id)?.paging === paging)
+								applyTotals(paging, page.meta);
+						} catch {}
+					}),
+				);
+				if (!this.boardDisposed) this.refreshColumnSummaries();
 			},
 			refreshColumnSummaries(affected = null) {
 				this.columns = this.columns.map((column) => {
 					if (affected && !affected.has(column.status.id)) return column;
 					const tasksInColumn = column.tasks;
-					const taskCount = tasksInColumn.length;
-					const summary = tasksInColumn.reduce(
-						(acc, task) => (task.common_time || 0) + acc,
-						0,
-					);
+					const paging = column.paging;
+					const serverTotals =
+						paging && !paging.complete && paging.total !== undefined;
+					const taskCount = serverTotals ? paging.total : tasksInColumn.length;
+					const summary = serverTotals
+						? Number(paging.totalSeconds) || 0
+						: tasksInColumn.reduce(
+								(acc, task) => (task.common_time || 0) + acc,
+								0,
+							);
 					const summaryInHours = this.formatTime(summary);
-					const overtimeSeconds = this.calculateColumnOvertime(tasksInColumn);
+					const overtimeSeconds = serverTotals
+						? Number(paging.totalOvertimeSeconds) || 0
+						: this.calculateColumnOvertime(tasksInColumn);
 					const overtimeFormatted = this.formatOvertime(overtimeSeconds);
 
 					return {
@@ -1349,6 +1558,21 @@
 				if (!task) return;
 				const sorted = this.prioritySortActive;
 				const target = this.findColumn(status);
+				if (
+					target &&
+					(target.paging || this.findColumn(sourceStatus)?.paging)
+				) {
+					const index = target.tasks.findIndex((t) => t.id === id);
+					if (index === -1) return;
+					task.status_id = status;
+					await this.moveCardKeyset(
+						task,
+						sourceStatus,
+						status,
+						placementAt(target.tasks, index),
+					);
+					return;
+				}
 				if (sorted && target)
 					this.sortColumnsByPriority(new Set([target.status.id]));
 				const dropOrder = (statusId) =>
@@ -1365,6 +1589,45 @@
 					.catch(() => {
 						this.boardError =
 							'Could not save task order. Refresh to restore the server order.';
+					});
+				await this.dragSaveQueue;
+			},
+			async moveCardKeyset(task, sourceStatus, targetStatus, placement) {
+				const id = task.id;
+				beginOwnMove(
+					this.columns,
+					id,
+					[sourceStatus, targetStatus],
+					this.pendingMoveIds,
+				);
+				this.dragSaveQueue = this.dragSaveQueue
+					.then(async () => {
+						const result = await completeOwnMove({
+							getColumns: () => this.columns,
+							taskId: id,
+							sourceStatus,
+							targetStatus,
+							pending: this.pendingMoveIds,
+							send: () =>
+								moveTask(
+									id,
+									{ status_id: targetStatus, ...placement },
+									this.boardInstanceId,
+								),
+							fetchPage: this.fetchKeysetPage,
+							limit: BOARD_PAGE_SIZE,
+						});
+						if (!result.ok && result.error?.response?.status !== 409)
+							this.boardError =
+								'Could not move the task. The column was refreshed.';
+						if (this.pendingMoveIds.size === 0) await this.flushDirtyColumns();
+						this.refreshColumnSummaries();
+						this.scheduleTotalsRefresh();
+					})
+					.catch(() => {
+						this.pendingMoveIds.delete(id);
+						this.boardError =
+							'Could not move the task. Refresh to restore the server order.';
 					});
 				await this.dragSaveQueue;
 			},
@@ -1415,6 +1678,14 @@
 				if (taskIndex === -1 || taskIndex === 0) {
 					return;
 				}
+				if (column.paging) {
+					column.tasks.splice(taskIndex, 1);
+					column.tasks.unshift(task);
+					await this.moveCardKeyset(task, column.status.id, column.status.id, {
+						position: 'top',
+					});
+					return;
+				}
 
 				column.tasks.splice(taskIndex, 1);
 				column.tasks.unshift(task);
@@ -1425,6 +1696,14 @@
 				if (this.prioritySortActive) return;
 				const taskIndex = column.tasks.findIndex((t) => t.id === task.id);
 				if (taskIndex === -1 || taskIndex === column.tasks.length - 1) {
+					return;
+				}
+				if (column.paging) {
+					column.tasks.splice(taskIndex, 1);
+					if (column.paging.complete) column.tasks.push(task);
+					await this.moveCardKeyset(task, column.status.id, column.status.id, {
+						position: 'bottom',
+					});
 					return;
 				}
 
@@ -1460,6 +1739,8 @@
 				if (!column) {
 					return null;
 				}
+				if (!(await this.ensureColumnComplete(column))) return;
+				column = this.findColumn(column.status.id) ?? column;
 				const { tasks } = column;
 				const taskIds = tasks.map((t) => t.id);
 				if (!taskIds.length) {
@@ -1494,8 +1775,9 @@
 					archiveAll,
 				);
 			},
-			openMoveTasksModal(column) {
-				this.sourceColumnForMove = column;
+			async openMoveTasksModal(column) {
+				if (!(await this.ensureColumnComplete(column))) return;
+				this.sourceColumnForMove = this.findColumn(column.status.id) ?? column;
 				this.isShowMoveTasksModal = true;
 				this.$store.commit('openModal');
 			},
@@ -1595,6 +1877,9 @@
 						tasks:
 							this.columns.find((column) => column.status.id === status.id)
 								?.tasks || [],
+						paging: this.columns.find(
+							(column) => column.status.id === status.id,
+						)?.paging,
 					});
 				}
 
@@ -1657,27 +1942,56 @@
 				return this.boardLoader?.run();
 			},
 			async fetchBoardTasks() {
+				this.realtimeBuffer.begin();
 				const columns = this.columns;
 				const filter = {
 					...this.$store.state.filter,
 					myUserId: this.$store.state.user?.id,
 				};
-				const tasks = await Promise.all(
-					columns.map((column) =>
-						getSortedTasksByStatus(column.status.id, {
+				const keyset = !this.needsFullLoad && !this.$store.getters.isLocalOnly;
+				const results = await Promise.all(
+					columns.map(async (column) => {
+						if (keyset) {
+							try {
+								const page = await this.fetchKeysetPage(
+									column.status.id,
+									null,
+									BOARD_PAGE_SIZE,
+								);
+								if (isKeysetResponse(page)) return { page };
+							} catch (error) {
+								const status = error?.response?.status;
+								if (status === 401 || status === 403) throw error;
+							}
+						}
+						const tasks = await getSortedTasksByStatus(column.status.id, {
 							params: {
 								fields: 'card',
 								'order[column]': 'order',
 								'order[direction]': 'asc',
 								...(filter.searchText ? { search: filter.searchText } : {}),
 							},
-						}),
-					),
+						});
+						return { tasks };
+					}),
 				);
-				return columns.map((column, index) => ({
-					...column,
-					tasks: filterBoardTasks(tasks[index], filter),
-				}));
+				const pages = dedupeFirstPages(
+					results.map((result) => result.page ?? { data: [] }),
+				);
+				return columns.map((column, index) => {
+					const { page, tasks } = results[index];
+					if (!page)
+						return {
+							...column,
+							tasks: filterBoardTasks(tasks, filter),
+							paging: undefined,
+						};
+					return {
+						...column,
+						tasks: pages[index],
+						paging: createColumnPaging(page.meta),
+					};
+				});
 			},
 			syncBoardFilters() {
 				const query = this.$route.query;
@@ -1811,12 +2125,28 @@
 						this.pusherSubscriptionId = this.pusher.subscribeToWorkspace(
 							this.workspaceId,
 							{
-								onTaskUpdated: (task, action) => {
+								onTaskUpdated: (task, action, _userId, sourceInstanceId) => {
+									if (sourceInstanceId === this.boardInstanceId) return;
+									this.realtimeBuffer.record(
+										action === 'deleted'
+											? { kind: 'remove', id: task.id }
+											: { kind: 'update', task },
+									);
 									if (action === 'deleted') {
 										this.removeTaskFromBoard(task.id);
 									} else {
 										this.updateSingleTaskInBoard(task);
 									}
+								},
+								onTasksReordered: (statusId, sourceInstanceId) => {
+									if (sourceInstanceId === this.boardInstanceId) return;
+									if (this.realtimeBuffer.record({ kind: 'reload', statusId }))
+										return;
+									this.reloadOrMark(statusId);
+								},
+								onReconnect: () => {
+									if (this.realtimeBuffer.record({ kind: 'resync' })) return;
+									this.resyncColumns();
 								},
 								onTaskAssignmentChanged: ({ task_id }) => {
 									const onBoard = this.columns.some((column) =>
@@ -1950,15 +2280,17 @@
 			this.boardLoader = createBoardLoader(
 				() => {
 					this.syncBoardQuery();
-					return this.fetchBoardTasks();
+					return this.dragSaveQueue.then(() => this.fetchBoardTasks());
 				},
 				(columns) => {
 					this.columns = columns;
+					this.replayBufferedEvents();
 					this.refreshColumnSummaries();
 					this.tasksLoaded = true;
 					this.updateScrollContainers();
 				},
 				() => {
+					this.realtimeBuffer.take();
 					this.boardError = 'Could not refresh tasks.';
 				},
 				(loading) => {
@@ -1983,6 +2315,7 @@
 			this.pluginBadgeFeed.dispose();
 			this.boardLoader.dispose();
 			this.columnSequence.dispose();
+			clearTimeout(this.totalsTimer);
 		},
 		unmounted() {
 			document.body.classList.remove('overflow-hidden');

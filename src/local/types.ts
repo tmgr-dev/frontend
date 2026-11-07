@@ -35,6 +35,7 @@ export interface LocalWorkspace {
 	created_at: string;
 	path: string;
 	database: string;
+	demo?: boolean;
 }
 
 export interface LocalUser {
@@ -73,6 +74,9 @@ export interface LocalContext {
 	actor?: LocalActor;
 	/** No cloud account: modules that need one are off and user-scope switches are kept locally. */
 	accountless?: boolean;
+	/** The signed-in cloud user is the account that took over the local identity (stored id -1). */
+	localOwnerLinked?: boolean;
+	ghost?: boolean;
 }
 
 /** A handler result sent as the response body as is (no `{data}` envelope), e.g. a Blob. */

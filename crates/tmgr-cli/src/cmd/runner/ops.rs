@@ -9,6 +9,7 @@ use std::io::{BufRead, IsTerminal, Write};
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
+use tmgr_core::config::{self, Config};
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{CandidateInfo, CreateReq, RestoredRun, RunCreateReq, SessionInfo, StateKind};
 use tmgr_runner::client::Client;
@@ -16,6 +17,8 @@ use tmgr_runner::daemon::{self, RunnerConfig};
 use tmgr_runner::exe;
 use tmgr_runner::login;
 use tmgr_runner::profile::{self, ProfileSet};
+use tmgr_runner::restore;
+use tmgr_runner::resume::valid_resume_id;
 use tmgr_runner::sanitize::sanitize_text;
 use tmgr_runner::seedguard;
 use tmgr_runner::wire::now_ms;
@@ -32,14 +35,22 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             RunnerCmd::Trust(a) => super::trusted::trust(o, &a.dir),
             RunnerCmd::Untrust(a) => super::trusted::untrust(o, &a.dir),
             RunnerCmd::Trusted => super::trusted::list(o),
-            RunnerCmd::Allow(a) => super::allow::allow(o, &a.workspace, a.lifetime),
+            RunnerCmd::Allow(a) => super::allow::allow(
+                o,
+                &a.workspace,
+                a.lifetime,
+                a.require_signed_rules,
+                a.require_signed_persona,
+            ),
             RunnerCmd::Disallow(a) => super::allow::disallow(o, &a.workspace),
             RunnerCmd::Allowed => super::allow::allowed(o),
             RunnerCmd::Bind(a) => super::bind::bind(o, &a.target, &a.path),
             RunnerCmd::Unbind(a) => super::bind::unbind(o, &a.target),
             RunnerCmd::List => super::bind::list(o),
+            RunnerCmd::Gc(a) => super::gc::run(o, a.dry_run),
             RunnerCmd::Serve => serve(),
             RunnerCmd::Watch(a) => super::watch::run(&a.dir, &a.cmd),
+            RunnerCmd::GitDiff(a) => super::attach_git::diff_in_pane(&a.dir, a.pager.as_deref()),
         },
         RunnerCommands::Run(a) => match (&a.on, &a.task) {
             (Some(link), _) => remote::run(o, link, a),
@@ -117,10 +128,13 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
         RunnerCommands::Session {
             command: super::SessionCmd::Export(a),
         } => super::attach_export_cmd::run(o, a),
+        RunnerCommands::Session {
+            command: super::SessionCmd::List(a),
+        } => super::session_list::run(o, a),
     }
 }
 
-fn clean(s: &str) -> String {
+pub(super) fn clean(s: &str) -> String {
     sanitize_text(s).into_owned()
 }
 
@@ -239,6 +253,7 @@ pub(super) fn run_create_run(
     trust: bool,
 ) -> RunCreateReq {
     RunCreateReq {
+        team: None,
         clones: Vec::new(),
         profile,
         task: None,
@@ -261,7 +276,20 @@ pub(super) fn run_create_run(
         unattended: false,
         exe_pin: None,
         argv_sha256: None,
+        no_sandbox: None,
+        external_resume: None,
+        permission_cards: false,
     }
+}
+
+pub(super) fn elevated(
+    mut req: RunCreateReq,
+    mode: Option<super::PermissionMode>,
+    no_sandbox: bool,
+) -> RunCreateReq {
+    req.permission_mode = mode.map(|m| m.as_str().to_string());
+    req.no_sandbox = super::privilege::request(no_sandbox);
+    req
 }
 
 fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
@@ -302,8 +330,12 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
             ),
         }
     }
+    let bypass = a.mode == Some(super::PermissionMode::Bypass);
     if raw.is_none() {
-        login_preflight(a.agent.as_deref().unwrap_or_default())?;
+        super::privilege::confirm(bypass, a.no_sandbox, false, false)?;
+        if !a.no_sandbox {
+            login_preflight(a.agent.as_deref().unwrap_or_default())?;
+        }
     }
     let cfg = runner_config()?;
     daemon::start_background(&cfg).map_err(rerr)?;
@@ -313,18 +345,53 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
         }
     }
     let mut client = connect(&cfg)?;
+    super::privilege::check_caps(&client.welcome().caps, bypass, a.no_sandbox)?;
     let info = match raw {
         Some(argv) => client.create(run_create_req(argv, cwd_str, a.name.clone(), cols, rows)),
-        None => client.create_run(run_create_run(
-            a.agent.clone().unwrap_or_default(),
-            cwd_str,
-            a.name.clone(),
-            a.model.clone(),
-            (cols, rows),
-            a.trust,
-        )),
+        None => {
+            let mut req = run_create_run(
+                a.agent.clone().unwrap_or_default(),
+                cwd_str,
+                a.name.clone(),
+                a.model.clone(),
+                (cols, rows),
+                a.trust,
+            );
+            let mut made = None;
+            if super::session_wt::wanted(a.worktree, a.no_worktree, a.trust) {
+                let taken: Vec<String> = client
+                    .list()
+                    .map_err(rerr)?
+                    .into_iter()
+                    .map(|s| s.name)
+                    .collect();
+                let caps = client.welcome().caps.clone();
+                let sc = super::session_wt::start(&mut req, &taken, &caps).map_err(|e| {
+                    Error::usage(e).hint(format!(
+                        "run it in a git repository, or pass --no-worktree to start in {}",
+                        clean(&cwd.display().to_string())
+                    ))
+                })?;
+                if !o.json && !o.quiet {
+                    eprintln!("{}", super::session_wt::started_note(&sc));
+                }
+                made = Some(sc);
+            }
+            req.permission_cards = a.permission_cards
+                || config::config_dir()
+                    .ok()
+                    .and_then(|d| Config::load(&d).ok())
+                    .is_some_and(|c| c.attach_permission_cards());
+            super::privilege::check_cards_cap(&client.welcome().caps, req.permission_cards)?;
+            let started = client.create_run(elevated(req, a.mode, a.no_sandbox));
+            if let (Err(_), Some(sc)) = (&started, &made) {
+                tmgr_runner::sessionwt::abandon(sc);
+            }
+            started
+        }
     }
     .map_err(rerr)?;
+    super::checkpoints::enable_new(&mut client, &info.id, a.checkpoints_flag())?;
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         return attach::run(&cfg, &info.id);
     }
@@ -338,7 +405,7 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
     Ok(emit(o, &info, human))
 }
 
-fn list_or_empty(cfg: &RunnerConfig) -> Result<Vec<SessionInfo>> {
+pub(super) fn list_or_empty(cfg: &RunnerConfig) -> Result<Vec<SessionInfo>> {
     match Client::connect(&cfg.dir) {
         Ok(mut c) => c.list().map_err(rerr),
         Err(e) if is_down(&e) => Ok(Vec::new()),
@@ -388,7 +455,7 @@ fn paint_badge(o: &Opts, s: &SessionInfo) -> String {
     }
 }
 
-fn short_cwd(cwd: &str) -> String {
+pub(super) fn short_cwd(cwd: &str) -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     if home.is_empty() {
         return cwd.to_string();
@@ -624,6 +691,28 @@ fn agent_apply(profile: &str) -> Result<i32> {
     Ok(0)
 }
 
+pub(super) fn leader_markers(
+    paths: &tmgr_link::store::Paths,
+) -> std::collections::HashMap<String, String> {
+    tmgr_link::registry::attached_leaders(paths)
+        .into_iter()
+        .map(|(run, leaders)| {
+            let text = leaders
+                .iter()
+                .map(|l| {
+                    format!(
+                        "{} attached ({})",
+                        tmgr_core::text::sanitize_line(&l.link),
+                        if l.input { "control" } else { "view" }
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            (run, text)
+        })
+        .collect()
+}
+
 fn agents(o: &Opts) -> Result<i32> {
     let cfg = runner_config()?;
     let sessions = list_or_empty(&cfg)?;
@@ -655,7 +744,12 @@ fn agents(o: &Opts) -> Result<i32> {
             .collect();
         return Ok(emit(o, json!({"sessions": tagged, "summary": summary}), ""));
     }
-    let show_origin = sessions.iter().any(|s| origins.contains_key(&s.id));
+    let attached = tmgr_link::store::Paths::from_env()
+        .map(|p| leader_markers(&p))
+        .unwrap_or_default();
+    let show_origin = sessions
+        .iter()
+        .any(|s| origins.contains_key(&s.id) || attached.contains_key(&s.id));
     let restorable = super::restore::count(&cfg, &sessions);
     let hint = || {
         if restorable > 0 {
@@ -695,7 +789,15 @@ fn agents(o: &Opts) -> Result<i32> {
             tmgr_core::text::sanitize_line(&short_cwd(&s.cwd)),
         ];
         if show_origin {
-            row.push(origins.get(&s.id).map_or("-".into(), |o| clean(o)));
+            let mut origin = origins.get(&s.id).map_or("-".into(), |o| clean(o));
+            if let Some(marker) = attached.get(&s.id) {
+                origin = if origin == "-" {
+                    clean(marker)
+                } else {
+                    format!("{origin}, {}", clean(marker))
+                };
+            }
+            row.push(origin);
         }
         rows.push(row);
     }
@@ -807,11 +909,7 @@ fn wait_exit(c: &mut Client, id: &str, limit: Duration) -> Result<bool> {
 fn halt(o: &Opts, a: &HaltArgs) -> Result<i32> {
     let (mut c, s) = with_session(&a.session)?;
     if s.state.kind == StateKind::Exited {
-        return Ok(emit(
-            o,
-            json!({"id": s.id, "signal": null, "exited": true}),
-            format!("{} has already exited", clean(&s.name)),
-        ));
+        return halt_exited(o, &mut c, &s, a.kill);
     }
     let mut signal = if a.kill { "kill" } else { "int" };
     c.kill(&s.id, signal).map_err(rerr)?;
@@ -832,6 +930,77 @@ fn halt(o: &Opts, a: &HaltArgs) -> Result<i32> {
         json!({"id": s.id, "signal": signal, "exited": true}),
         format!("{} stopped", clean(&s.name)),
     ))
+}
+
+fn halt_exited(o: &Opts, c: &mut Client, s: &SessionInfo, kill: bool) -> Result<i32> {
+    let name = clean(&s.name);
+    let leftover = || restore::group_may_run(s.child_pid, None, None);
+    let gone = || {
+        emit(
+            o,
+            json!({"id": s.id, "signal": null, "exited": true}),
+            format!("{name} has already exited"),
+        )
+    };
+    if !leftover() {
+        return Ok(gone());
+    }
+    if !kill {
+        return Ok(emit(
+            o,
+            json!({"id": s.id, "signal": null, "exited": true, "background": true}),
+            format!(
+                "{name} has already exited; background processes may still be running (stop them with {} halt --kill)",
+                super::bin()
+            ),
+        ));
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut sent = false;
+    let mut busy: Option<String> = None;
+    loop {
+        match c.kill_leftovers(&s.id) {
+            Ok(()) => sent = true,
+            Err(e) if e.to_string().starts_with("not_running") => {
+                if e.to_string().contains("no background processes are left") {
+                    break;
+                }
+                if !sent && leftover() {
+                    return Err(Error::new(
+                        Kind::Conflict,
+                        "the running runner is older than this tmgr and cannot stop background processes",
+                    )
+                    .hint(format!("{} runner restart", super::bin())));
+                }
+                if !leftover() {
+                    break;
+                }
+            }
+            Err(e) if e.to_string().starts_with("busy") => {
+                let msg = rerr(e).to_string();
+                if msg.contains("no longer controls") {
+                    return Err(Error::conflict(msg));
+                }
+                busy = Some(msg);
+            }
+            Err(e) => return Err(rerr(e)),
+        }
+        if Instant::now() >= deadline {
+            return Err(Error::conflict(busy.unwrap_or_else(|| {
+                format!("{name} has exited, but background processes are still running")
+            })));
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    Ok(if sent {
+        emit(
+            o,
+            json!({"id": s.id, "signal": "kill", "exited": true}),
+            format!("{name}: background processes killed"),
+        )
+    } else {
+        gone()
+    })
 }
 
 fn work_log(o: &Opts, key: &str) -> Result<i32> {
@@ -901,14 +1070,53 @@ fn rename(o: &Opts, a: &RenameArgs) -> Result<i32> {
     ))
 }
 
+fn rm_checkout(o: &Opts, path: &str) -> Result<i32> {
+    let real = std::fs::canonicalize(path)
+        .map_err(|e| Error::not_found(format!("{}: {e}", clean(path))))?;
+    let shown = real.display().to_string();
+    let others: Vec<String> = connect(&runner_config()?)
+        .ok()
+        .and_then(|mut c| c.list().ok())
+        .map(|l| l.into_iter().map(|x| x.cwd).collect())
+        .unwrap_or_default();
+    let note = super::session_wt::offer_removal(
+        &shown,
+        &others,
+        !o.json && crate::interact::is_interactive(),
+    )
+    .ok_or_else(|| {
+        Error::usage(format!(
+            "{} is not a checkout made by tmgr run --worktree",
+            clean(&shown)
+        ))
+    })?;
+    let deleted = note.ends_with(" deleted");
+    emit(o, json!({"worktree": note}), note.clone());
+    Ok(if deleted { 0 } else { 1 })
+}
+
 fn rm(o: &Opts, a: &RmArgs) -> Result<i32> {
-    let (mut c, s) = with_session(&a.session)?;
+    let (mut c, s) = match with_session(&a.session) {
+        Ok(found) => found,
+        Err(_) if a.session.contains('/') => return rm_checkout(o, &a.session),
+        Err(e) => return Err(e),
+    };
     c.remove(&s.id).map_err(rerr)?;
-    Ok(emit(
-        o,
-        json!({"id": s.id}),
-        format!("removed {}", clean(&s.name)),
-    ))
+    let others: Vec<String> = c
+        .list()
+        .map(|l| l.into_iter().map(|x| x.cwd).collect())
+        .unwrap_or_default();
+    let note = super::session_wt::offer_removal(
+        &s.cwd,
+        &others,
+        !o.json && crate::interact::is_interactive(),
+    );
+    let mut human = format!("removed {}", clean(&s.name));
+    if let Some(n) = &note {
+        human.push('\n');
+        human.push_str(n);
+    }
+    Ok(emit(o, json!({"id": s.id, "worktree": note}), human))
 }
 
 fn resume_report(r: &RestoredRun, bin: &str) -> String {
@@ -921,26 +1129,45 @@ fn resume_report(r: &RestoredRun, bin: &str) -> String {
         None if r.resumed => "resumed",
         None => "started fresh",
     };
-    format!("{how} {name} ({id}); attach with: {bin} attach {id}")
+    let conversation = r
+        .session
+        .agent_session_id
+        .as_deref()
+        .map(|c| format!(" conversation {}", line(c)))
+        .unwrap_or_default();
+    format!("{how} {name} ({id}){conversation}; attach with: {bin} attach {id}")
 }
 
 fn resume(o: &Opts, a: &ResumeArgs) -> Result<i32> {
     tmgr_link::privileged::guard()?;
+    if valid_resume_id(&a.session) && !super::resume_any::is_tmgr_session(&a.session)? {
+        return super::resume_any::external(o, a);
+    }
     let (mut c, s) = with_session(&a.session)?;
-    if s.state.kind != StateKind::Exited {
-        return Err(Error::new(
-            Kind::Conflict,
-            format!("{} is still running", clean(&s.name)),
-        ));
+    if a.fork {
+        return super::resume_any::fork_tmgr(o, a, &s);
+    }
+    let flagged = a.mode.is_some() || a.no_sandbox;
+    let (warnings, known) = super::resume_any::tmgr_resume_checks(&s, a.no_sandbox)?;
+    for w in &warnings {
+        eprintln!("{w}");
     }
     eprintln!(
-        "Resume this session?\n  session  {}\n  name     {}\n  folder   {}",
-        clean(&s.id),
-        clean(&s.name),
-        clean(&s.cwd)
+        "{}",
+        super::resume_any::tmgr_resume_header(&s, a.no_sandbox).join("\n")
     );
-    crate::interact::confirm("Start it again?", false, false)?;
-    let r = c.resume(&s.id, s.cols, s.rows).map_err(rerr)?;
+    let r = if flagged {
+        let bypass = a.mode == Some(super::PermissionMode::Bypass);
+        super::privilege::confirm(bypass, a.no_sandbox, false, false)?;
+        super::resume_any::resume_flagged(&mut c, &s, known.as_deref(), a.mode, a.no_sandbox)?
+    } else {
+        crate::interact::confirm("Start it again?", false, false)?;
+        c.resume(&s.id, s.cols, s.rows).map_err(rerr)?
+    };
+    if (flagged || a.attach) && !a.no_attach && !o.json && std::io::stdout().is_terminal() {
+        return attach::run(&runner_config()?, &r.session.id);
+    }
+    let r = super::resume_any::clean_run(&r);
     Ok(emit(o, &r, resume_report(&r, &super::bin())))
 }
 
@@ -972,6 +1199,25 @@ mod tests {
         assert_eq!(say(Some("fresh"), false), format!("started fresh {tail}"));
         assert_eq!(say(None, true), format!("resumed {tail}"));
         assert_eq!(say(None, false), format!("started fresh {tail}"));
+    }
+
+    #[test]
+    fn resume_report_names_the_conversation_that_was_resumed() {
+        let mut r = restored(Some("id"), true);
+        r.session.agent_session_id = Some("2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b".into());
+        let text = resume_report(&r, "tmgr");
+        assert!(
+            text.contains("(s_bbbbbbbbbb) conversation 2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b;"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn runner_errors_lose_c1_and_bidi_characters() {
+        let e = rerr(std::io::Error::other(
+            "invalid_params: cwd must be given as its resolved path (/a\u{9b}b\u{202e})",
+        ));
+        assert_eq!(e.message, "cwd must be given as its resolved path (/a?b?)");
     }
 
     #[test]

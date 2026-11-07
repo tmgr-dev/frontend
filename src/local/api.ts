@@ -18,6 +18,7 @@ import {
 	unassignPersona,
 	withPersonaAssignees,
 } from './personaAssignees';
+import { mapsLocalIdentity, requirePersonaPermission } from './personaGate';
 import { LocalRouter } from './router';
 import { addRoutineRoutes } from './routines/routes';
 import { isRoutineId, updateRoutineTaskFields } from './routines/service';
@@ -144,7 +145,13 @@ const agentWorkActor = (
 		};
 	}
 	if (row.actor_kind === 'plugin') return { kind: 'plugin', id: row.actor_id };
-	return { kind: 'user', id: row.actor_id, name: ctx.user.name };
+	return {
+		kind: 'user',
+		id: mapsLocalIdentity(ctx, row.actor_id)
+			? String(ctx.user.id)
+			: row.actor_id,
+		name: ctx.user.name,
+	};
 };
 
 const agentWorkJson = (
@@ -273,8 +280,16 @@ const requireOwnRunningRun = async (ctx: LocalContext, id: number) => {
 	);
 	if (!row) throw notFound('Agent work run');
 	const actor = actorOf(ctx);
+	const legacyLocalUser =
+		actor.kind === 'user' &&
+		Number.isInteger(Number(actor.id)) &&
+		Number(actor.id) > 0 &&
+		row.actor_kind === 'user' &&
+		String(row.actor_id) === '-1';
 	const sameActor =
-		row.actor_kind === actor.kind && String(row.actor_id) === ownerIdOf(actor);
+		legacyLocalUser ||
+		(row.actor_kind === actor.kind &&
+			String(row.actor_id) === ownerIdOf(actor));
 	const sameNamespace =
 		actor.kind !== 'plugin' || inPluginNamespace(row.agent, actor.id);
 	if (!sameActor || !sameNamespace) {
@@ -398,7 +413,7 @@ const personaWritableFields = (ctx: LocalContext, body: any) => {
 export const BOARD_MOVE_META_PREFIX = 'onboarding:board_move:';
 
 export const noteStatusChange = async (ctx: LocalContext, taskId: number) => {
-	if (ctx.actor && ctx.actor.kind !== 'user') return;
+	if (ctx.ghost || (ctx.actor && ctx.actor.kind !== 'user')) return;
 	try {
 		await ctx.db.execute(
 			`INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)`,
@@ -1198,14 +1213,21 @@ export const createLocalApi = () => {
 				if (!comment) throw notFound('Comment');
 				const actor = actorOf(ctx);
 				const ownerId = ownerIdOf(actor);
+				const ownIds =
+					actor.kind === 'user' && mapsLocalIdentity(ctx, '-1')
+						? [ownerId, '-1']
+						: [ownerId];
 				const existing = await ctx.db.select<{ id: number }>(
-					`SELECT id FROM comment_reactions WHERE comment_id = ? AND emoji = ? AND actor_kind = ? AND actor_id = ?`,
-					[comment.id, emoji, actor.kind, ownerId],
+					`SELECT id FROM comment_reactions WHERE comment_id = ? AND emoji = ? AND actor_kind = ? AND actor_id IN (${ownIds
+						.map(() => '?')
+						.join(',')})`,
+					[comment.id, emoji, actor.kind, ...ownIds],
 				);
 				if (existing.length) {
-					await ctx.db.execute(`DELETE FROM comment_reactions WHERE id = ?`, [
-						existing[0].id,
-					]);
+					for (const row of existing)
+						await ctx.db.execute(`DELETE FROM comment_reactions WHERE id = ?`, [
+							row.id,
+						]);
 				} else {
 					await ctx.db.execute(
 						`INSERT INTO comment_reactions (comment_id, emoji, actor_kind, actor_id, created_at) VALUES (?, ?, ?, ?, ?)`,
@@ -1342,7 +1364,7 @@ export const createLocalApi = () => {
 			201,
 		)
 		.add('GET', 'files/:id(\\d+)', async ({ ctx, params }) =>
-			fileJson(await loadFile(ctx, Number(params.id)), ctx),
+			fileJson(await loadReadableFile(ctx, Number(params.id)), ctx),
 		)
 		.add('GET', 'files/:id(\\d+)/signed-url', async ({ ctx, params }) => {
 			const file = await loadFile(ctx, Number(params.id));
@@ -1352,7 +1374,7 @@ export const createLocalApi = () => {
 			};
 		})
 		.add('GET', 'files/:id(\\d+)/content', async ({ ctx, params }) => {
-			const file = await loadFile(ctx, Number(params.id));
+			const file = await loadReadableFile(ctx, Number(params.id));
 			return new LocalRaw(await ctx.files.read(file.file_path));
 		})
 		.add('DELETE', 'files/:id(\\d+)', async ({ ctx, params }) => {
@@ -2004,31 +2026,44 @@ const loadFile = async (ctx: LocalContext, id: number) => {
 	return row;
 };
 
-const commentJson = (row: any, ctx: LocalContext) => ({
-	id: row.id,
-	task_id: row.task_id,
-	message: row.message,
-	content: row.message,
-	created_at: row.created_at,
-	updated_at: row.updated_at,
-	user_id: ctx.user.id,
-	user: {
-		id: ctx.user.id,
-		name: ctx.user.name,
-		email: ctx.user.email,
-		has_avatar: false,
-	},
-	author: {
-		kind: row.author_kind ?? 'user',
-		id: row.author_id ?? String(ctx.user.id),
-		name: row.author_name ?? ctx.user.name,
-		...((row.author_kind ?? 'user') === 'user'
-			? {}
-			: { owner: { id: String(ctx.user.id), name: ctx.user.name } }),
-	},
-	cursor_agent_id: null,
-	cursor_message_type: null,
-});
+const loadReadableFile = async (ctx: LocalContext, id: number) => {
+	const file = await loadFile(ctx, id);
+	if (file.page_id != null) await requirePersonaPermission(ctx, 'pages:read');
+	return file;
+};
+
+const commentJson = (row: any, ctx: LocalContext) => {
+	const authorMapped =
+		(row.author_kind ?? 'user') === 'user' &&
+		mapsLocalIdentity(ctx, row.author_id);
+	return {
+		id: row.id,
+		task_id: row.task_id,
+		message: row.message,
+		content: row.message,
+		created_at: row.created_at,
+		updated_at: row.updated_at,
+		user_id: ctx.user.id,
+		user: {
+			id: ctx.user.id,
+			name: ctx.user.name,
+			email: ctx.user.email,
+			has_avatar: false,
+		},
+		author: {
+			kind: row.author_kind ?? 'user',
+			id: authorMapped
+				? String(ctx.user.id)
+				: (row.author_id ?? String(ctx.user.id)),
+			name: authorMapped ? ctx.user.name : (row.author_name ?? ctx.user.name),
+			...((row.author_kind ?? 'user') === 'user'
+				? {}
+				: { owner: { id: String(ctx.user.id), name: ctx.user.name } }),
+		},
+		cursor_agent_id: null,
+		cursor_message_type: null,
+	};
+};
 
 /** Per-comment reaction summaries, `reacted` and `users` relative to who is asking (see `actorOf`). */
 const reactionsFor = async (ctx: LocalContext, commentIds: number[]) => {
@@ -2070,11 +2105,26 @@ const reactionsFor = async (ctx: LocalContext, commentIds: number[]) => {
 			reacted: false,
 			users: [],
 		};
-		entry.count += 1;
-		if (row.actor_kind === actor.kind && String(row.actor_id) === ownerId)
+		const mapped =
+			row.actor_kind === 'user' && mapsLocalIdentity(ctx, row.actor_id);
+		const duplicate =
+			ctx.localOwnerLinked === true &&
+			row.actor_kind === 'user' &&
+			entry.users.some(
+				(u: { id: number }) =>
+					u.id === (mapped ? ctx.user.id : Number(row.actor_id)),
+			);
+		if (!duplicate) entry.count += 1;
+		if (
+			row.actor_kind === actor.kind &&
+			(String(row.actor_id) === ownerId || (mapped && actor.kind === 'user'))
+		)
 			entry.reacted = true;
-		if (row.actor_kind === 'user')
-			entry.users.push({ id: Number(row.actor_id), name: ctx.user.name });
+		if (row.actor_kind === 'user' && !duplicate)
+			entry.users.push({
+				id: mapped ? ctx.user.id : Number(row.actor_id),
+				name: ctx.user.name,
+			});
 		perComment.set(row.emoji, entry);
 	}
 	for (const [commentId, perComment] of byComment)

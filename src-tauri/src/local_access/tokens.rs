@@ -312,6 +312,15 @@ impl TokenStore {
     Ok(out)
   }
 
+  /// The token with this id when it is not revoked, not expired and not a plugin token.
+  pub fn find_live(&self, id: &str, now_epoch: i64) -> Result<Option<TokenInfo>, String> {
+    let tokens = self.tokens.lock().map_err(|e| e.to_string())?;
+    Ok(tokens
+      .iter()
+      .find(|t| t.id == id && t.revoked_at.is_none() && t.expires_at_epoch > now_epoch && t.plugin_id.is_none())
+      .map(TokenInfo::from))
+  }
+
   pub fn issue(&self, params: IssueParams, now_epoch: i64) -> Result<(TokenInfo, String), IssueError> {
     if params.label.is_empty() || params.label.chars().count() > 60 {
       return Err(IssueError::BadLabel);
@@ -364,6 +373,8 @@ impl TokenStore {
     }
     token.revoked_at = Some(epoch_to_iso(now_epoch));
     self.persist(&tokens)?;
+    drop(tokens);
+    self.delete_secret(id);
     Ok(true)
   }
 
@@ -379,7 +390,7 @@ impl TokenStore {
       return Err("at least one filter is required".into());
     }
     let mut tokens = self.tokens.lock().map_err(|e| e.to_string())?;
-    let mut count = 0usize;
+    let mut revoked_ids = Vec::new();
     for token in tokens.iter_mut() {
       if token.revoked_at.is_some() {
         continue;
@@ -394,15 +405,32 @@ impl TokenStore {
         continue;
       }
       token.revoked_at = Some(epoch_to_iso(now_epoch));
-      count += 1;
+      revoked_ids.push(token.id.clone());
     }
-    if count > 0 {
+    if !revoked_ids.is_empty() {
       self.persist(&tokens)?;
+      drop(tokens);
+      for id in &revoked_ids {
+        self.delete_secret(id);
+      }
     }
-    Ok(count)
+    Ok(revoked_ids.len())
   }
 
-  pub fn copy_secret(&self, id: &str) -> Result<Option<String>, String> {
+  fn delete_secret(&self, id: &str) {
+    if let Err(error) = self.secrets.delete(id) {
+      log::warn!("[local-access] could not delete the stored secret of token {id}: {error}");
+    }
+  }
+
+  pub fn copy_secret(&self, id: &str, now_epoch: i64) -> Result<Option<String>, String> {
+    {
+      let tokens = self.tokens.lock().map_err(|e| e.to_string())?;
+      match tokens.iter().find(|t| t.id == id) {
+        Some(token) if token.revoked_at.is_none() && token.expires_at_epoch > now_epoch => {}
+        _ => return Ok(None),
+      }
+    }
     self.secrets.get(id)
   }
 
@@ -435,6 +463,50 @@ impl TokenStore {
   }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MigrateStatus {
+  None,
+  Moved,
+  Already,
+  Conflict,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LlmMigrateOut {
+  pub status: MigrateStatus,
+}
+
+pub fn validate_user_id(id: i64) -> Result<i64, String> {
+  if id > 0 && id <= 9_007_199_254_740_991 {
+    Ok(id)
+  } else {
+    Err("invalid user id".into())
+  }
+}
+
+pub fn migrate_secret<S: SecretStore>(store: &S, src: &str, dst: &str) -> Result<MigrateStatus, String> {
+  let Some(secret) = store.get(src).map_err(|_| "could not read the saved key")? else {
+    return Ok(MigrateStatus::None);
+  };
+  match store.get(dst).map_err(|_| "could not read the destination key")? {
+    Some(existing) if existing == secret => {
+      store.delete(src).map_err(|_| "could not remove the old key")?;
+      Ok(MigrateStatus::Already)
+    }
+    Some(_) => Ok(MigrateStatus::Conflict),
+    None => {
+      let written = store.set(dst, &secret).is_ok() && store.get(dst).ok().flatten().as_deref() == Some(secret.as_str());
+      if !written {
+        let _ = store.delete(dst);
+        return Err("could not write the key to the new account".into());
+      }
+      store.delete(src).map_err(|_| "could not remove the old key")?;
+      Ok(MigrateStatus::Moved)
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -459,6 +531,23 @@ mod tests {
       expires_in_days: 90,
       plugin_id: None,
     }
+  }
+
+  #[test]
+  fn find_live_skips_revoked_expired_plugin_and_unknown_tokens() {
+    let store = store("find-live");
+    let now = 1_000_000;
+    let (live, _) = store.issue(issue_params("ws"), now).unwrap();
+    let (revoked, _) = store.issue(issue_params("ws"), now).unwrap();
+    store.revoke(&revoked.id, now).unwrap();
+    let mut plugin_params = issue_params("ws");
+    plugin_params.plugin_id = Some("plug".into());
+    let (plugin, _) = store.issue(plugin_params, now).unwrap();
+    assert!(store.find_live(&live.id, now + 10).unwrap().is_some());
+    assert!(store.find_live(&revoked.id, now + 10).unwrap().is_none());
+    assert!(store.find_live(&plugin.id, now + 10).unwrap().is_none());
+    assert!(store.find_live("lt_unknown000000000", now).unwrap().is_none());
+    assert!(store.find_live(&live.id, now + 91 * 86_400).unwrap().is_none());
   }
 
   #[test]
@@ -630,10 +719,273 @@ mod tests {
   fn issued_secret_is_never_returned_again() {
     let store = store("secret-once");
     let (info, secret) = store.issue(issue_params("local-personal"), 0).unwrap();
-    assert_eq!(store.copy_secret(&info.id).unwrap(), Some(secret.clone()));
+    assert_eq!(store.copy_secret(&info.id, 0).unwrap(), Some(secret.clone()));
     let listed = store.list(None).unwrap();
     let json = serde_json::to_string(&listed[0]).unwrap();
     assert!(!json.contains(&secret));
     assert!(json.contains(&listed[0].prefix));
+  }
+
+  struct FailingDelete(MemorySecrets);
+
+  impl SecretStore for FailingDelete {
+    fn set(&self, id: &str, secret: &str) -> Result<(), String> {
+      self.0.set(id, secret)
+    }
+    fn get(&self, id: &str) -> Result<Option<String>, String> {
+      self.0.get(id)
+    }
+    fn delete(&self, _id: &str) -> Result<(), String> {
+      Err("keychain unavailable".into())
+    }
+  }
+
+  fn store_with_secrets(name: &str, secrets: Arc<dyn SecretStore>) -> TokenStore {
+    TokenStore::open(temp_dir(name), secrets).unwrap()
+  }
+
+  #[test]
+  fn revoke_removes_the_stored_secret() {
+    let secrets = Arc::new(MemorySecrets::new());
+    let store = store_with_secrets("revoke-deletes", secrets.clone());
+    let (info, _) = store.issue(issue_params("local-personal"), 0).unwrap();
+    assert!(secrets.get(&info.id).unwrap().is_some());
+    assert!(store.revoke(&info.id, 10).unwrap());
+    assert!(secrets.get(&info.id).unwrap().is_none());
+  }
+
+  #[test]
+  fn revoke_all_removes_the_stored_secrets_of_the_revoked_tokens_only() {
+    let secrets = Arc::new(MemorySecrets::new());
+    let store = store_with_secrets("revoke-all-deletes", secrets.clone());
+    let (a, _) = store.issue(issue_params("ws-a"), 0).unwrap();
+    let (b, _) = store.issue(issue_params("ws-b"), 0).unwrap();
+    assert_eq!(store.revoke_all(None, None, Some("ws-a"), 10).unwrap(), 1);
+    assert!(secrets.get(&a.id).unwrap().is_none());
+    assert!(secrets.get(&b.id).unwrap().is_some());
+  }
+
+  #[test]
+  fn revocation_succeeds_when_the_secret_cannot_be_deleted() {
+    let store = store_with_secrets("revoke-delete-fails", Arc::new(FailingDelete(MemorySecrets::new())));
+    let (a, secret) = store.issue(issue_params("ws-a"), 0).unwrap();
+    let (b, _) = store.issue(issue_params("ws-b"), 0).unwrap();
+    assert!(store.revoke(&a.id, 10).unwrap());
+    assert_eq!(store.verify(&secret, 20).unwrap_err(), TokenError::Revoked);
+    assert_eq!(store.revoke_all(None, None, Some("ws-b"), 10).unwrap(), 1);
+    assert!(store.copy_secret(&b.id, 20).unwrap().is_none());
+  }
+
+  #[test]
+  fn copy_secret_only_returns_secrets_of_live_tokens() {
+    let secrets = Arc::new(MemorySecrets::new());
+    let store = store_with_secrets("copy-live-only", secrets.clone());
+    let (live, live_secret) = store.issue(issue_params("ws-a"), 1000).unwrap();
+    let expires_at = 1000 + 90 * 86_400;
+    assert!(store.copy_secret(&live.id, 2000).unwrap().is_some_and(|secret| secret == live_secret));
+    assert!(store.copy_secret(&live.id, expires_at).unwrap().is_none());
+    assert!(store.copy_secret("lt_missing", 2000).unwrap().is_none());
+
+    let (revoked, _) = store.issue(issue_params("ws-b"), 1000).unwrap();
+    store.revoke(&revoked.id, 1500).unwrap();
+    secrets.set(&revoked.id, "leftover").unwrap();
+    assert!(store.copy_secret(&revoked.id, 2000).unwrap().is_none());
+  }
+}
+
+#[cfg(test)]
+mod migrate_tests {
+  use super::*;
+  use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
+
+  #[derive(Default)]
+  struct Flaky {
+    inner: MemorySecrets,
+    fail_get_dst: AtomicBool,
+    fail_set: AtomicBool,
+    drop_set: AtomicBool,
+    garble_set: AtomicBool,
+    fail_delete_src: AtomicBool,
+  }
+
+  impl SecretStore for Flaky {
+    fn set(&self, id: &str, secret: &str) -> Result<(), String> {
+      if self.fail_set.load(SeqCst) {
+        return Err("set failed".into());
+      }
+      if self.drop_set.load(SeqCst) {
+        return Ok(());
+      }
+      if self.garble_set.load(SeqCst) {
+        return self.inner.set(id, "garbled");
+      }
+      self.inner.set(id, secret)
+    }
+
+    fn get(&self, id: &str) -> Result<Option<String>, String> {
+      if id == DST && self.fail_get_dst.load(SeqCst) {
+        return Err("get failed".into());
+      }
+      self.inner.get(id)
+    }
+
+    fn delete(&self, id: &str) -> Result<(), String> {
+      if id == SRC && self.fail_delete_src.load(SeqCst) {
+        return Err("delete failed".into());
+      }
+      self.inner.delete(id)
+    }
+  }
+
+  const SRC: &str = "api-key:-1";
+  const DST: &str = "api-key:7";
+  const KEY: &str = "sk-secret-value";
+
+  fn run(s: &Flaky) -> Result<MigrateStatus, String> {
+    migrate_secret(s, SRC, DST)
+  }
+
+  fn with_src() -> Flaky {
+    let s = Flaky::default();
+    s.inner.set(SRC, KEY).unwrap();
+    s
+  }
+
+  #[test]
+  fn none_when_source_is_empty() {
+    let s = Flaky::default();
+    assert_eq!(run(&s).unwrap(), MigrateStatus::None);
+    assert_eq!(s.inner.get(DST).unwrap(), None);
+  }
+
+  #[test]
+  fn moves_when_destination_is_empty() {
+    let s = with_src();
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Moved);
+    assert_eq!(s.inner.get(SRC).unwrap(), None);
+    assert_eq!(s.inner.get(DST).unwrap().as_deref(), Some(KEY));
+    assert_eq!(run(&s).unwrap(), MigrateStatus::None);
+  }
+
+  #[test]
+  fn already_when_destination_equals_source_and_removes_source() {
+    let s = with_src();
+    s.inner.set(DST, KEY).unwrap();
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Already);
+    assert_eq!(s.inner.get(SRC).unwrap(), None);
+    assert_eq!(s.inner.get(DST).unwrap().as_deref(), Some(KEY));
+  }
+
+  #[test]
+  fn conflict_changes_nothing() {
+    let s = with_src();
+    s.inner.set(DST, "other").unwrap();
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Conflict);
+    assert_eq!(s.inner.get(SRC).unwrap().as_deref(), Some(KEY));
+    assert_eq!(s.inner.get(DST).unwrap().as_deref(), Some("other"));
+  }
+
+  #[test]
+  fn destination_read_error_changes_nothing_and_rerun_moves() {
+    let s = with_src();
+    s.fail_get_dst.store(true, SeqCst);
+    assert!(run(&s).is_err());
+    assert_eq!(s.inner.get(SRC).unwrap().as_deref(), Some(KEY));
+    assert_eq!(s.inner.get(DST).unwrap(), None);
+    s.fail_get_dst.store(false, SeqCst);
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Moved);
+  }
+
+  #[test]
+  fn failed_write_keeps_source_and_rerun_moves() {
+    let s = with_src();
+    s.fail_set.store(true, SeqCst);
+    let err = run(&s).unwrap_err();
+    assert!(!err.contains(KEY));
+    assert_eq!(s.inner.get(SRC).unwrap().as_deref(), Some(KEY));
+    assert_eq!(s.inner.get(DST).unwrap(), None);
+    s.fail_set.store(false, SeqCst);
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Moved);
+    assert_eq!(s.inner.get(DST).unwrap().as_deref(), Some(KEY));
+  }
+
+  #[test]
+  fn silently_dropped_write_is_an_error_and_keeps_source() {
+    let s = with_src();
+    s.drop_set.store(true, SeqCst);
+    assert!(run(&s).is_err());
+    assert_eq!(s.inner.get(SRC).unwrap().as_deref(), Some(KEY));
+    assert_eq!(s.inner.get(DST).unwrap(), None);
+    s.drop_set.store(false, SeqCst);
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Moved);
+  }
+
+  #[test]
+  fn read_back_mismatch_removes_destination_keeps_source() {
+    let s = with_src();
+    s.garble_set.store(true, SeqCst);
+    let err = run(&s).unwrap_err();
+    assert!(!err.contains(KEY) && !err.contains("garbled"));
+    assert_eq!(s.inner.get(SRC).unwrap().as_deref(), Some(KEY));
+    assert_eq!(s.inner.get(DST).unwrap(), None);
+    s.garble_set.store(false, SeqCst);
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Moved);
+  }
+
+  #[test]
+  fn failed_source_delete_keeps_both_and_rerun_is_already() {
+    let s = with_src();
+    s.fail_delete_src.store(true, SeqCst);
+    let err = run(&s).unwrap_err();
+    assert!(!err.contains(KEY));
+    assert_eq!(s.inner.get(SRC).unwrap().as_deref(), Some(KEY));
+    assert_eq!(s.inner.get(DST).unwrap().as_deref(), Some(KEY));
+    assert_eq!(run(&s).unwrap_err(), err);
+    s.fail_delete_src.store(false, SeqCst);
+    assert_eq!(run(&s).unwrap(), MigrateStatus::Already);
+    assert_eq!(s.inner.get(SRC).unwrap(), None);
+  }
+
+  #[test]
+  fn user_id_bounds() {
+    assert!(validate_user_id(1).is_ok());
+    assert!(validate_user_id(9_007_199_254_740_991).is_ok());
+    for bad in [0, -1, i64::MIN, 9_007_199_254_740_992, i64::MAX] {
+      assert!(validate_user_id(bad).is_err(), "{bad}");
+    }
+  }
+
+  #[test]
+  fn status_serialises_lowercase() {
+    let json = |s| serde_json::to_string(&s).unwrap();
+    assert_eq!(json(MigrateStatus::None), "\"none\"");
+    assert_eq!(json(MigrateStatus::Moved), "\"moved\"");
+    assert_eq!(json(MigrateStatus::Already), "\"already\"");
+    assert_eq!(json(MigrateStatus::Conflict), "\"conflict\"");
+  }
+
+  #[test]
+  fn serialised_result_and_errors_never_contain_the_key() {
+    let mut seen = Vec::new();
+    for case in 0..6 {
+      let s = with_src();
+      match case {
+        1 => s.inner.set(DST, KEY).unwrap(),
+        2 => s.inner.set(DST, "other").unwrap(),
+        3 => s.fail_set.store(true, SeqCst),
+        4 => s.garble_set.store(true, SeqCst),
+        5 => s.fail_delete_src.store(true, SeqCst),
+        _ => {}
+      }
+      seen.push(match run(&s) {
+        Ok(status) => serde_json::to_string(&LlmMigrateOut { status }).unwrap(),
+        Err(e) => e,
+      });
+    }
+    assert_eq!(seen[0], r#"{"status":"moved"}"#);
+    assert_eq!(seen[2], r#"{"status":"conflict"}"#);
+    for out in &seen {
+      assert!(!out.contains(KEY) && !out.contains("other") && !out.contains("garbled"), "{out}");
+    }
   }
 }

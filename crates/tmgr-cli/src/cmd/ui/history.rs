@@ -12,6 +12,7 @@ const NEVER_RECORDED: &[&[&str]] = &[
     &["link"],
     &["notify"],
     &["alarm"],
+    &["ask"],
     &["agents", "login"],
     &["agents", "logout"],
     &["agents", "sync"],

@@ -49,11 +49,15 @@
 
 			onMounted(async () => {
 				if (store.getters.isLocalOnly) return;
-				workspaces.value = await listLocalWorkspaces();
-				retryOffer();
-				const pending = workspaces.value.filter(
-					(workspace) => loadPersisted(browserStorage, workspace.code).job,
+				workspaces.value = (await listLocalWorkspaces()).filter(
+					(workspace) => !workspace.demo,
 				);
+				retryOffer();
+				const pending = workspaces.value.filter((workspace) => {
+					const state = loadPersisted(browserStorage, workspace.code);
+					const skills = state.published?.skills;
+					return !!state.job || (!!skills && skills.state !== 'done');
+				});
 				if (!pending.length) return;
 				const account = await waitForUser(
 					userSnapshot,
@@ -68,7 +72,9 @@
 			watch(
 				() => [moveUi.dialogCode, moveUi.progressCode],
 				async () => {
-					workspaces.value = await listLocalWorkspaces();
+					workspaces.value = (await listLocalWorkspaces()).filter(
+						(workspace) => !workspace.demo,
+					);
 				},
 			);
 

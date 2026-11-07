@@ -8,7 +8,7 @@ pub use store::{
     MAX_PER_SESSION,
 };
 
-use crate::attach::{locate, Format, Source};
+use crate::attach::{locate, locate_unsandboxed_claude, Format, Source};
 use rules::{clip_head, clip_tail, collapse, groups, groups_for_spans, Group};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -27,6 +27,7 @@ pub struct SessionSrc {
     pub pid: u32,
     pub log_id: Option<String>,
     pub settled: bool,
+    pub unsandboxed_ms: Option<u64>,
 }
 
 pub struct Scanner {
@@ -36,10 +37,16 @@ pub struct Scanner {
     timeout: Duration,
     tails: HashMap<String, Tailer>,
     haiku_off_until: Option<Instant>,
+    allowed: Box<dyn Fn(Format) -> bool + Send>,
 }
 
 impl Scanner {
-    pub fn new(store: Store, claude: Option<PathBuf>, workdir: PathBuf) -> Scanner {
+    pub fn new(
+        store: Store,
+        claude: Option<PathBuf>,
+        workdir: PathBuf,
+        allowed: impl Fn(Format) -> bool + Send + 'static,
+    ) -> Scanner {
         Scanner {
             store,
             claude,
@@ -47,6 +54,7 @@ impl Scanner {
             timeout: haiku::TIMEOUT,
             tails: HashMap::new(),
             haiku_off_until: None,
+            allowed: Box::new(allowed),
         }
     }
 
@@ -57,6 +65,15 @@ impl Scanner {
 
     pub fn store(&self) -> &Store {
         &self.store
+    }
+
+    pub fn forget_denied(&mut self) {
+        let claude = (self.allowed)(Format::Claude);
+        let codex = (self.allowed)(Format::Codex);
+        self.tails.retain(|_, t| match t.format() {
+            Format::Claude => claude,
+            Format::Codex => codex,
+        });
     }
 
     pub fn scan(&mut self, sources: &[SessionSrc], now_s: u64) -> bool {
@@ -73,6 +90,10 @@ impl Scanner {
     }
 
     fn scan_one(&mut self, src: &SessionSrc, now_s: u64, budget: &mut usize) -> bool {
+        if !(self.allowed)(src.format) {
+            self.tails.remove(&src.id);
+            return false;
+        }
         let Some(path) = transcript_path(src) else {
             return false;
         };
@@ -96,7 +117,7 @@ impl Scanner {
         let mut dirty = file.transcript != shown || file.offset != offset;
         let mut added = false;
         if let Some(turn) = turn {
-            let found = self.classify(&turn, budget);
+            let found = self.classify(src.format, &turn, budget);
             let marks = self.store.entries(Some(&src.id));
             for (group, origin) in found {
                 let text = group.label;
@@ -124,6 +145,10 @@ impl Scanner {
                 added = true;
             }
         }
+        if !(self.allowed)(src.format) {
+            self.tails.remove(&src.id);
+            return false;
+        }
         if dirty {
             file.transcript = shown.into_owned();
             file.offset = offset;
@@ -132,7 +157,12 @@ impl Scanner {
         added
     }
 
-    fn classify(&mut self, turn: &Turn, budget: &mut usize) -> Vec<(Group, Origin)> {
+    fn classify(
+        &mut self,
+        format: Format,
+        turn: &Turn,
+        budget: &mut usize,
+    ) -> Vec<(Group, Origin)> {
         let mut out: Vec<(Group, Origin)> = turn
             .asked
             .iter()
@@ -159,7 +189,11 @@ impl Scanner {
         let usable = self.store.settings().haiku
             && *budget > 0
             && self.haiku_off_until.is_none_or(|t| Instant::now() >= t);
-        let Some(bin) = self.claude.clone().filter(|_| usable) else {
+        let Some(bin) = self
+            .claude
+            .clone()
+            .filter(|_| usable && (self.allowed)(format))
+        else {
             from_rule(&mut out);
             return out;
         };
@@ -184,6 +218,10 @@ impl Scanner {
 
 pub fn transcript_path(src: &SessionSrc) -> Option<PathBuf> {
     match src.format {
+        Format::Claude if src.unsandboxed_ms.is_some() => {
+            locate_unsandboxed_claude(&src.home, &src.cwd, src.pid, src.unsandboxed_ms?)
+                .map(|(p, _)| p)
+        }
         Format::Claude => {
             let source = Source {
                 home: &src.home,

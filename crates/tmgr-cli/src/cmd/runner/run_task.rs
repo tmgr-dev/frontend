@@ -10,8 +10,8 @@ use tmgr_core::refs::{parse_task_ref, TaskRef as RefKind};
 use tmgr_core::text::sanitize_line;
 use tmgr_ipc::api::limits::MAX_BUNDLE;
 use tmgr_ipc::api::{
-    argv_sha256, caps, sha256_hex, BundleAuthor, BundleLaunch, BundlePersona, ExePin, RunBundle,
-    RunCreateReq, SessionInfo,
+    argv_sha256, caps, sha256_hex, BundleAuthor, BundleLaunch, BundlePersona, ExePin, NoSandbox,
+    RunBundle, RunCreateReq, SessionInfo,
 };
 use tmgr_queue::source::{Candidate, LocalTasks};
 use tmgr_queue::workdir;
@@ -211,6 +211,7 @@ fn bundle(
 ) -> Result<RunBundle> {
     let c = &p.candidate;
     let bundle = RunBundle {
+        assignment: None,
         v: 1,
         task: c.task,
         title: c.title.clone(),
@@ -287,11 +288,6 @@ pub(super) fn prepare(
     profile: &str,
     mode: PermissionMode,
 ) -> Result<Prepared> {
-    if mode == PermissionMode::Bypass {
-        return Err(Error::usage(
-            "bypass mode is only for tasks of an allowed cloud workspace",
-        ));
-    }
     Ok(Prepared {
         plan: plan(ws, cwd, reference)?,
         reference: reference.to_string(),
@@ -320,11 +316,12 @@ fn create_request(
     bundle: RunBundle,
     via_repo: bool,
     (exe_pin, argv_digest): (ExePin, String),
-    (profile, mode): (&str, &str),
+    (profile, mode, no_sandbox): (&str, &str, Option<NoSandbox>),
 ) -> RunCreateReq {
     let (cols, rows) = l.size;
     let sha = bundle.sha256();
     RunCreateReq {
+        team: None,
         clones: Vec::new(),
         profile: profile.to_string(),
         task: Some(plan.candidate.task),
@@ -351,15 +348,30 @@ fn create_request(
         unattended: false,
         exe_pin: Some(exe_pin),
         argv_sha256: Some(argv_digest),
+        no_sandbox,
+        external_resume: None,
+        permission_cards: false,
+    }
+}
+
+pub(super) fn mark_task_clone(clone: &std::path::Path, repo: &str) {
+    if let Ok(homes) = tmgr_ipc::dirs::homes_dir() {
+        let _ = tmgr_runner::clone::mark_task_clone(&homes, clone, std::path::Path::new(repo));
     }
 }
 
 pub(super) fn execute(p: &Prepared, l: &Launch) -> Result<Started> {
+    execute_with(p, l, false)
+}
+
+fn execute_with(p: &Prepared, l: &Launch, no_sandbox: bool) -> Result<Started> {
     let profile = p.profile.as_str();
     let mode = p.mode;
     let reference = p.reference.as_str();
     let plan = &p.plan;
-    super::ops::login_preflight(profile)?;
+    if !no_sandbox {
+        super::ops::login_preflight(profile)?;
+    }
     let (exe_pin, argv_digest) = launch_pin(profile, l.model, mode)?;
     let earlier = record(plan)
         .map(|(_, clone, _)| clone)
@@ -379,6 +391,7 @@ pub(super) fn execute(p: &Prepared, l: &Launch) -> Result<Started> {
     }
     remember(plan)?;
     workdir::prepare_clone(&plan.repo, &plan.clone, &plan.branch, l.base)?;
+    mark_task_clone(&plan.clone, &plan.repo);
     let cwd = std::fs::canonicalize(&plan.clone)
         .map_err(|e| Error::internal(format!("clone {}: {e}", plan.clone.display())))?
         .to_string_lossy()
@@ -388,6 +401,7 @@ pub(super) fn execute(p: &Prepared, l: &Launch) -> Result<Started> {
     daemon::start_background(&cfg).map_err(rerr)?;
     let mut client = connect(&cfg)?;
     let have = &client.welcome().caps;
+    super::privilege::check_caps(have, mode == "bypass", no_sandbox)?;
     if [caps::EXE_PIN_V1, caps::ARGV_PIN_V1]
         .iter()
         .any(|c| !have.iter().any(|h| h == c))
@@ -410,7 +424,7 @@ pub(super) fn execute(p: &Prepared, l: &Launch) -> Result<Started> {
             bundle,
             via_repo,
             (exe_pin, argv_digest),
-            (profile, mode),
+            (profile, mode, super::privilege::request(no_sandbox)),
         ))
         .map_err(rerr)?;
     Ok(Started {
@@ -439,8 +453,11 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     if !o.json && !o.quiet {
         eprintln!("{}", p.summary());
     }
-    crate::interact::confirm("Start this run?", true, a.yes)?;
-    let Started { info, cwd, fetch } = execute(
+    let bypass = a.mode == Some(PermissionMode::Bypass);
+    if !super::privilege::confirm(bypass, a.no_sandbox, false, a.yes)? {
+        crate::interact::confirm("Start this run?", true, a.yes)?;
+    }
+    let Started { info, cwd, fetch } = execute_with(
         &p,
         &Launch {
             model: a.model.as_deref(),
@@ -448,8 +465,10 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             base: a.base.as_deref(),
             size: super::ops::terminal_size(),
         },
+        a.no_sandbox,
     )?;
     let cfg = runner_config()?;
+    super::checkpoints::enable_new(&mut connect(&cfg)?, &info.id, a.checkpoints_flag())?;
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         eprintln!(
             "The agent's commits stay in its clone; bring its branch into your repository with:\n  {fetch}"
@@ -576,7 +595,7 @@ mod tests {
             b,
             false,
             pins(),
-            ("claude-code", "ask"),
+            ("claude-code", "ask", None),
         );
         assert!(req.agent_work);
         assert_eq!(req.task, Some(p.candidate.task));
@@ -602,17 +621,29 @@ mod tests {
             b,
             true,
             pins(),
-            ("claude-code", "ask"),
+            ("claude-code", "ask", None),
         );
         assert_eq!(req.name.as_deref(), Some("mine"));
         assert_eq!(req.trust_via_repo, Some(true));
     }
 
     #[test]
-    fn bypass_is_refused_before_anything_is_read() {
-        let err = prepare(None, None, "TM-7", "claude-code", PermissionMode::Bypass)
-            .err()
-            .unwrap();
-        assert!(err.message.contains("bypass"));
+    fn bypass_and_no_sandbox_reach_the_run_request() {
+        let p = plan();
+        let b = bundle(&p, "claude-code", None, "bypass", "/c").unwrap();
+        let env = NoSandbox {
+            env: [("PATH".to_string(), "/bin".to_string())].into(),
+        };
+        let req = create_request(
+            &p,
+            &launch(None),
+            "/c".into(),
+            b,
+            false,
+            pins(),
+            ("claude-code", "bypass", Some(env.clone())),
+        );
+        assert_eq!(req.permission_mode.as_deref(), Some("bypass"));
+        assert_eq!(req.no_sandbox, Some(env));
     }
 }

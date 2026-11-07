@@ -72,6 +72,20 @@ describe('removeLocalCopyGuards', () => {
 		).toEqual(['published']);
 	});
 
+	it('blocks while skills are pending or failed and allows done or legacy', () => {
+		const skills = (state: 'pending' | 'failed' | 'done') =>
+			ids({
+				published: published({
+					skills: { state, report: null, error: null },
+				}),
+				liveRevision: 'rev-1',
+			});
+		expect(skills('pending')).toEqual(['skills']);
+		expect(skills('failed')).toEqual(['skills']);
+		expect(skills('done')).toEqual([]);
+		expect(ids({ published: published(), liveRevision: 'rev-1' })).toEqual([]);
+	});
+
 	it('blocks when the live revision differs from the snapshot', () => {
 		expect(ids({ published: published(), liveRevision: 'rev-2' })).toEqual([
 			'unchanged',

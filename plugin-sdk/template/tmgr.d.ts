@@ -1,5 +1,5 @@
 /**
- * Types for TMGR plugin authors (API 1.6). A plugin's main.js runs in a sandbox where `tmgr` and
+ * Types for TMGR plugin authors (API 1.8). A plugin's main.js runs in a sandbox where `tmgr` and
  * `console` are the only globals: no DOM, no fetch, no timers. Every call returns a Promise and may
  * reject with an Error whose `name` is one of PluginErrorCode.
  */
@@ -344,6 +344,43 @@ type TmgrEvent =
 			taskId?: number;
 	  };
 
+/** API 1.8. The closed set of icon names; any other name is dropped (the text of a button or badge stays). */
+type TmgrIconName =
+	| 'check'
+	| 'x'
+	| 'plus'
+	| 'minus'
+	| 'alert-triangle'
+	| 'info'
+	| 'circle-help'
+	| 'clock'
+	| 'calendar'
+	| 'user'
+	| 'users'
+	| 'star'
+	| 'heart'
+	| 'flag'
+	| 'tag'
+	| 'link'
+	| 'external-link'
+	| 'copy'
+	| 'trash'
+	| 'edit'
+	| 'pencil'
+	| 'search'
+	| 'filter'
+	| 'settings'
+	| 'refresh'
+	| 'play'
+	| 'pause'
+	| 'download'
+	| 'upload'
+	| 'git-branch'
+	| 'git-pull-request'
+	| 'bug'
+	| 'zap'
+	| 'lock';
+
 type TmgrTone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
 type TmgrColor =
 	'gray' | 'green' | 'yellow' | 'red' | 'blue' | 'purple' | 'orange';
@@ -406,7 +443,30 @@ type TmgrNode =
 			}[];
 	  }
 	| { type: 'heading'; text: string; level?: 1 | 2 | 3 }
-	| { type: 'text'; text: string; tone?: TmgrTone }
+	/**
+	 * API 1.7: text may be up to 20000 chars (other strings stay at 1000) and newlines show as line breaks.
+	 * `spans` (up to 200) mixes styles inside one text; the joined span texts replace `text`.
+	 */
+	| {
+			type: 'text';
+			text: string;
+			tone?: TmgrTone;
+			spans?: {
+				text: string;
+				bold?: boolean;
+				italic?: boolean;
+				code?: boolean;
+				strike?: boolean;
+			}[];
+	  }
+	/**
+	 * API 1.7. Renders Markdown (up to 20000 chars): headings, paragraphs, bold/italic/strikethrough, code,
+	 * lists, task lists, tables, quotes and rules. Raw HTML shows as text and images show their alt text.
+	 * Only https links to manifest links.allowedDomains are clickable (needs links:open); others are plain text.
+	 */
+	| { type: 'markdown'; text: string }
+	/** API 1.7. Monospace block with a copy button (up to 20000 chars). `wrap` defaults to true; false scrolls sideways. */
+	| { type: 'code'; text: string; lang?: string; wrap?: boolean }
 	| {
 			type: 'badge';
 			text: string;
@@ -414,7 +474,13 @@ type TmgrNode =
 			/** API 1.3. */
 			command?: string;
 			args?: unknown;
+			/** API 1.8. */
+			icon?: TmgrIconName;
+			/** API 1.8. Plain text, up to 200 chars. */
+			tooltip?: string;
 	  }
+	/** API 1.8. A small inline icon. */
+	| { type: 'icon'; name: TmgrIconName; tone?: TmgrTone }
 	| {
 			type: 'stat';
 			label: string;
@@ -428,8 +494,66 @@ type TmgrNode =
 	| { type: 'list'; items: TmgrNode[] }
 	| {
 			type: 'table';
-			columns: { key: string; title: string }[];
-			rows: { taskId?: number; cells: Record<string, TmgrNode> }[];
+			columns: {
+				key: string;
+				title: string;
+				/** API 1.10. */
+				align?: 'left' | 'center' | 'right';
+				/** API 1.10. 'xs' 4rem, 'sm' 7rem, 'md' 12rem, 'lg' 18rem. */
+				width?: 'xs' | 'sm' | 'md' | 'lg';
+				/** API 1.10. Clicking the header sorts the rows in the app; nothing is sent to the plugin. */
+				sortable?: boolean;
+			}[];
+			rows: {
+				taskId?: number;
+				cells: Record<string, TmgrNode>;
+				/** API 1.10. Sort values by column key; without one the cell text is used. */
+				sort?: Record<string, string | number>;
+				/** API 1.10. Tints the row and adds a colored left edge. */
+				color?: TmgrColor;
+				/** API 1.10. Runs when the row is clicked (not when a control inside it is). */
+				onClick?: { command: string; args?: unknown };
+				/** API 1.10. Nodes shown under the row when the user opens its arrow. */
+				expand?: TmgrNode[];
+			}[];
+	  }
+	/** API 1.10. A vertical list of events, at most 200. `at` is shown as given (at most 64 characters). */
+	| {
+			type: 'timeline';
+			items: { at: string; title?: string; text: string; tone?: TmgrColor }[];
+	  }
+	/** API 1.10. Chat bubbles, at most 200. `text` is plain text; line breaks are kept. */
+	| {
+			type: 'messages';
+			items: {
+				author: string;
+				text: string;
+				at?: string;
+				side?: 'left' | 'right';
+			}[];
+	  }
+	/** API 1.10. A small line chart of up to 365 finite numbers. `label` is read out by screen readers. */
+	| { type: 'sparkline'; values: number[]; color?: TmgrColor; label?: string }
+	/** API 1.12. A bar or line chart. Up to 365 labels, 8 series and 365 values per series; `null` is a gap, as is any value beyond 1e15 in absolute size. Series with a blank name are dropped. `height` is 120 to 400 px (default 200). `label` is read out by screen readers. */
+	| {
+			type: 'chart';
+			kind?: 'bar' | 'line';
+			labels?: Array<string | number>;
+			series: Array<{
+				name: string;
+				values: Array<number | null>;
+				color?: TmgrColor;
+			}>;
+			height?: number;
+			label?: string;
+	  }
+	/** API 1.10. A placeholder for "nothing here". */
+	| { type: 'empty'; title: string; text?: string; icon?: TmgrIconName }
+	/** API 1.10. A loading placeholder. `lines` is 1 to 12 (default 3). */
+	| {
+			type: 'skeleton';
+			variant?: 'text' | 'card' | 'table';
+			lines?: number;
 	  }
 	/**
 	 * confirm (≤200 chars) asks the user, naming your plugin, before the command runs.
@@ -441,15 +565,130 @@ type TmgrNode =
 			command: string;
 			args?: unknown;
 			confirm?: string;
-			variant?: 'default' | 'primary' | 'ghost';
+			/** 'danger', 'success' and 'outline' need API 1.8. */
+			variant?:
+				'default' | 'primary' | 'ghost' | 'danger' | 'success' | 'outline';
 			size?: 'sm' | 'md';
+			/** API 1.8. */
+			icon?: TmgrIconName;
+			/** API 1.8. Shows only the icon; `text` stays as the accessible label and tooltip. Needs `icon`. */
+			iconOnly?: boolean;
+			/** API 1.8. A disabled or loading button does not run its command. */
+			disabled?: boolean;
+			loading?: boolean;
+			/** API 1.8. Plain text, up to 200 chars. */
+			tooltip?: string;
+	  }
+	/** API 1.8. Buttons side by side (up to 12); other children are dropped. */
+	| { type: 'buttonGroup'; children: Extract<TmgrNode, { type: 'button' }>[] }
+	/**
+	 * API 1.8. With `title` a disclosure header hides the children until opened (`open` sets the start state).
+	 * With `visible` only the first N children show, plus an "N more" / "Show less" button. The state stays in the app.
+	 */
+	| {
+			type: 'collapse';
+			title?: string;
+			open?: boolean;
+			visible?: number;
+			children: TmgrNode[];
+	  }
+	/** API 1.8. Up to 12 tabs with unique string ids (≤64 chars). The selected tab stays in the app; `selected` is the start tab. */
+	| {
+			type: 'tabs';
+			tabs: {
+				id: string;
+				title: string;
+				badge?: string;
+				children: TmgrNode[];
+			}[];
+			selected?: string;
+	  }
+	/**
+	 * API 1.8. A 2 to 4 option switch controlled by the plugin: a click runs `command` with `{ ...args, value }`,
+	 * where `value` is one of the option values. Render the new `value` when the command ends.
+	 */
+	| {
+			type: 'segmented';
+			options: { value: string; text: string }[];
+			value: string;
+			command: string;
+			args?: unknown;
+	  }
+	/**
+	 * API 1.9. A single-line text field. The typed text (at most 500 characters) reaches `command` only as `args.value`,
+	 * after the user types ('change', after `debounce` ms, 150 to 2000, default 300) or presses Enter ('submit').
+	 * `name` is your own identifier (at most 64 characters of A-Z a-z 0-9 _ . -). It is never shown or sent.
+	 */
+	| {
+			type: 'input';
+			name: string;
+			placeholder?: string;
+			value?: string;
+			command: string;
+			args?: unknown;
+			mode?: 'change' | 'submit';
+			debounce?: number;
+	  }
+	/** API 1.9. A drop-down of up to 100 options. Choosing one runs `command` with `{ ...args, value }`, the option's own value. */
+	| {
+			type: 'select';
+			name: string;
+			options: { value: string; text: string }[];
+			value?: string;
+			placeholder?: string;
+			command: string;
+			args?: unknown;
+	  }
+	/** API 1.9. A checkbox. Toggling it runs `command` with `{ ...args, value }`, where `value` is a boolean. */
+	| {
+			type: 'checkbox';
+			name: string;
+			label: string;
+			checked?: boolean;
+			command: string;
+			args?: unknown;
+	  }
+	/**
+	 * API 1.11. A multi-line text field with its own Send button. Nothing is sent while the user types: Send, or
+	 * Cmd+Enter / Ctrl+Enter, runs `command` with `{ ...args, value }`, the text cut to 5000 characters.
+	 * Unsent text stays when you render again; after sending, your next `value` is shown. `rows` is 2 to 12 (default 4),
+	 * `submitText` at most 40 characters (default "Send").
+	 */
+	| {
+			type: 'textarea';
+			name: string;
+			value?: string;
+			placeholder?: string;
+			rows?: number;
+			submitText?: string;
+			command: string;
+			args?: unknown;
+	  }
+	/**
+	 * API 1.11. A date picker. Choosing a date in `min`..`max` runs `command` with `{ ...args, value: 'YYYY-MM-DD' }`;
+	 * clearing it sends `value: null`. Dates must be real calendar dates in years 1000 to 9999; invalid ones are dropped.
+	 */
+	| {
+			type: 'date';
+			name: string;
+			value?: string | null;
+			min?: string;
+			max?: string;
+			command: string;
+			args?: unknown;
 	  }
 	| { type: 'taskLink'; taskId: number; text: string }
 	| { type: 'divider' }
 	/** Monospace text with a copy-to-clipboard button. */
 	| { type: 'copyable'; text: string; label?: string }
-	/** Needs links:open, and the link's host must be in manifest links.allowedDomains; otherwise it renders as plain text. */
+	/** Needs links:open, and the link's host must be in manifest links.allowedDomains; otherwise it renders as plain text. API 1.13: a tg://resolve, privatepost or join URL also opens when manifest links.schemes has "tg". */
 	| { type: 'link'; url: string; text?: string }
+	/**
+	 * API 1.13. `alt` is required (at most 200 characters). `src` is either a `data:image/png|jpeg|gif|webp;base64,...`
+	 * URL (at most 512 KB decoded, 2 MB per tree) or an https URL on a host in manifest `images.allowedDomains`
+	 * (needs the `images:remote` permission and the plugin to run on this computer). `width` is 16 to 800 px. Anything else drops the node.
+	 */
+	| { type: 'image'; src: string; alt: string; width?: number }
 	/** Relative time, e.g. "5 min ago" / "in 2 h"; at is an ISO 8601 timestamp. */
 	| { type: 'timeAgo'; at: string }
 	/** Like timeAgo, but colored: red once past, yellow within 24 h. */
@@ -558,14 +797,18 @@ declare const tmgr: {
 		keys(): Promise<string[]>;
 	};
 	/**
-	 * Per-task JSON values up to 64 KB, sharing the 5 MB / 1000 key quota with `storage`. No
-	 * permission needed beyond the task existing. Not available in shared workspaces yet.
+	 * Per-task JSON values up to 64 KB, sharing the 5 MB / 1000 key quota with `storage`. In shared
+	 * workspaces the calls reject with NOT_SUPPORTED: the server has the endpoints, but the desktop
+	 * app does not use them there yet.
 	 */
 	taskData: {
+		/** Needs tasks:read. */
 		get<T = unknown>(taskId: number, key: string): Promise<T | null>;
+		/** Needs tasks:write. */
 		set(taskId: number, key: string, value: unknown): Promise<void>;
+		/** Needs tasks:write. */
 		delete(taskId: number, key: string): Promise<void>;
-		/** Up to 500 task ids in one call; meant for `ui.provideBadges` (one call per batch). */
+		/** Needs tasks:read. Up to 500 task ids in one call; meant for `ui.provideBadges` (one call per batch). */
 		getMany<T = unknown>(
 			taskIds: number[],
 			key: string,
@@ -632,14 +875,17 @@ declare const tmgr: {
 		): Promise<TmgrPage>;
 	};
 	/**
-	 * API 1.5, needs pages:read. Per-page JSON values up to 64 KB, with their own 5 MB / 1000 key quota per
+	 * API 1.5. Per-page JSON values up to 64 KB, with their own 5 MB / 1000 key quota per
 	 * plugin. Local workspaces only. Removed when the page is permanently deleted.
 	 */
 	pageData: {
+		/** Needs pages:read. */
 		get<T = unknown>(pageId: number, key: string): Promise<T | null>;
+		/** Needs pages:write. */
 		set(pageId: number, key: string, value: unknown): Promise<void>;
+		/** Needs pages:write. */
 		delete(pageId: number, key: string): Promise<void>;
-		/** Up to 500 page ids in one call. */
+		/** Needs pages:read. Up to 500 page ids in one call. */
 		getMany<T = unknown>(
 			pageIds: number[],
 			key: string,

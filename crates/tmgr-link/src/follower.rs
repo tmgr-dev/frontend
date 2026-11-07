@@ -18,6 +18,8 @@ pub struct ScopeInput {
     pub max: Option<u32>,
     pub from: Option<Vec<String>>,
     pub allow_attach_input: Option<bool>,
+    pub remote_control: Option<bool>,
+    pub include_bypass: Option<bool>,
 }
 
 fn build_scope(base: &Scope, input: &ScopeInput) -> Result<Scope> {
@@ -69,6 +71,12 @@ fn build_scope(base: &Scope, input: &ScopeInput) -> Result<Scope> {
     }
     if let Some(from) = &input.from {
         scope.from = grammar::parse_cidr_list(from)?;
+    }
+    if let Some(on) = input.remote_control {
+        scope.remote_control = on;
+    }
+    if let Some(on) = input.include_bypass {
+        scope.include_bypass = on;
     }
     if let Some(allow) = input.allow_attach_input {
         scope.allow_attach_input = allow;
@@ -347,7 +355,9 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
         return Ok(());
     }
     let _lock = crate::store::lock_links(paths)?;
-    crate::tombstone::check_capacity(paths)?;
+    if plan.widening {
+        crate::tombstone::check_capacity(paths)?;
+    }
     let mut store = Store::load(paths)?;
     if store.version != plan.store_version {
         return Err(changed_meanwhile());
@@ -484,6 +494,7 @@ pub struct Contained {
     pub runs_surviving: usize,
     pub unconfirmed: Vec<String>,
     pub runs_unreadable: bool,
+    pub workers_unreadable: Option<String>,
     pub tombstones: usize,
     pub nothing_to_contain: bool,
 }
@@ -495,6 +506,8 @@ impl Contained {
             || !self.unconfirmed.is_empty()
             || self.workers.survivors > 0
             || self.runs_unreadable
+            || self.workers.unknown > 0
+            || self.workers_unreadable.is_some()
     }
 }
 
@@ -516,6 +529,21 @@ fn survivors(backend: &mut dyn crate::runner::Backend, link: &str, cutoff: u64) 
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
+}
+
+pub fn must_close(new: &Scope, attached: &crate::registry::Attached) -> bool {
+    attached.remote && (!new.remote_control || (attached.bypass && !new.include_bypass))
+}
+
+pub fn close_after_scope_change(
+    paths: &Paths,
+    name: &str,
+    new: &Scope,
+    grace: std::time::Duration,
+) -> Result<crate::registry::Terminated> {
+    crate::registry::terminate_where(paths, name, grace, &|_, attached| {
+        attached.is_some_and(|a| must_close(new, a))
+    })
 }
 
 pub fn contain(
@@ -556,8 +584,12 @@ pub fn contain_revoked(
     let cutoff = tombs.iter().map(|t| t.generation).max();
     let ours = |enrollment: &str| revoked.iter().any(|e| e == enrollment);
     let runs = crate::ownership::Runs::lock_lenient(paths)?;
-    let workers =
-        crate::registry::terminate(paths, name, std::time::Duration::from_secs(3), &ours)?;
+    let terminated =
+        crate::registry::terminate(paths, name, std::time::Duration::from_secs(3), &ours);
+    let (workers, workers_unreadable) = match terminated {
+        Ok(t) => (t, None),
+        Err(e) => (Default::default(), Some(e.to_string())),
+    };
     let records: Vec<String> = runs
         .of_link(name)
         .into_iter()
@@ -568,6 +600,7 @@ pub fn contain_revoked(
         workers,
         runs_known: records.len(),
         runs_unreadable: runs.is_damaged(),
+        workers_unreadable,
         tombstones: tombs.len(),
         ..Contained::default()
     };
@@ -622,12 +655,14 @@ pub fn contain_revoked(
             "workers_signalled": out.workers.signalled,
             "workers_stale": out.workers.stale,
             "workers_surviving": out.workers.survivors,
+            "workers_unknown": out.workers.unknown,
             "runs_known": out.runs_known,
             "runs_halted": out.runs_halted,
             "halt_failed": out.halt_failed,
             "runs_surviving": out.runs_surviving,
             "unconfirmed": out.unconfirmed,
             "runs_unreadable": out.runs_unreadable,
+            "workers_unreadable": out.workers_unreadable,
             "cutoff_generation": cutoff,
         }),
     )?;
@@ -690,6 +725,8 @@ mod tests {
                 max: Some(3),
                 from: None,
                 allow_attach_input: None,
+                remote_control: None,
+                include_bypass: None,
             },
         }
     }
@@ -1243,5 +1280,151 @@ mod tests {
         std::fs::remove_file(f.paths.authorized_keys()).unwrap();
         assert_eq!(revoke(&f.paths, "laptop").unwrap().keys_removed, 0);
         assert!(Store::load(&f.paths).unwrap().leaders.is_empty());
+    }
+
+    fn marked_worker(f: &Fx, remote: bool, bypass: bool) -> std::process::Child {
+        let child = std::process::Command::new("sleep")
+            .arg("60")
+            .stdin(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let dir = f.paths.link_dir().join("workers");
+        tmgr_core::config::ensure_private_dir(&f.paths.config).unwrap();
+        tmgr_core::config::ensure_private_dir(&f.paths.link_dir()).unwrap();
+        tmgr_core::config::ensure_private_dir(&dir).unwrap();
+        let rec = json!({
+            "pid": child.id(),
+            "start": crate::registry::process_start(child.id()).unwrap(),
+            "enrollment": "e",
+            "attached": {"run": "s_abc", "input": true, "remote": remote, "bypass": bypass},
+        });
+        std::fs::write(
+            dir.join(format!("laptop.{}.json", child.id())),
+            serde_json::to_vec(&rec).unwrap(),
+        )
+        .unwrap();
+        child
+    }
+
+    fn flags(remote_control: bool, include_bypass: bool) -> Scope {
+        Scope {
+            remote_control,
+            include_bypass,
+            ..Default::default()
+        }
+    }
+
+    fn assert_survivors(children: &mut [std::process::Child], want: &[bool]) {
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut alive: Vec<bool>;
+        loop {
+            alive = children
+                .iter_mut()
+                .map(|c| c.try_wait().unwrap().is_none())
+                .collect();
+            if alive == want || std::time::Instant::now() >= end {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        for c in children.iter_mut() {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+        assert_eq!(alive, want);
+    }
+
+    #[test]
+    fn turning_remote_control_off_closes_every_remote_attach_and_spares_owned_ones() {
+        let f = fx();
+        let mut ws = [
+            marked_worker(&f, true, false),
+            marked_worker(&f, true, true),
+            marked_worker(&f, false, false),
+        ];
+        let t = close_after_scope_change(
+            &f.paths,
+            "laptop",
+            &flags(false, true),
+            std::time::Duration::from_secs(5),
+        )
+        .unwrap();
+        assert_eq!(t.signalled, 2);
+        assert_survivors(&mut ws, &[false, false, true]);
+    }
+
+    #[test]
+    fn dropping_include_bypass_closes_only_remote_bypass_attaches() {
+        let f = fx();
+        let mut ws = [
+            marked_worker(&f, true, false),
+            marked_worker(&f, true, true),
+            marked_worker(&f, false, true),
+        ];
+        let t = close_after_scope_change(
+            &f.paths,
+            "laptop",
+            &flags(true, false),
+            std::time::Duration::from_secs(5),
+        )
+        .unwrap();
+        assert_eq!(t.signalled, 1);
+        assert_survivors(&mut ws, &[true, false, true]);
+    }
+
+    #[test]
+    fn running_off_again_closes_a_remote_attach_left_open() {
+        let f = fx();
+        let mut ws = [
+            marked_worker(&f, true, false),
+            marked_worker(&f, false, false),
+        ];
+        let t = close_after_scope_change(
+            &f.paths,
+            "laptop",
+            &flags(false, false),
+            std::time::Duration::from_secs(5),
+        )
+        .unwrap();
+        assert_eq!(t.signalled, 1);
+        assert_survivors(&mut ws, &[false, true]);
+    }
+
+    #[test]
+    fn a_full_tombstone_file_refuses_widening_but_not_turning_a_flag_off() {
+        let f = fx();
+        trust(&f, "laptop");
+        let on = ScopeInput {
+            remote_control: Some(true),
+            ..Default::default()
+        };
+        let plan = plan_scope(&f.paths, "laptop", &on).unwrap();
+        apply_scope(&f.paths, &plan, &f.bin).unwrap();
+        for i in 0..crate::tombstone::MAX_UNRESOLVED {
+            crate::tombstone::record(&f.paths, &format!("l{i}"), "e", i as u64).unwrap();
+        }
+        let off = ScopeInput {
+            remote_control: Some(false),
+            ..Default::default()
+        };
+        let plan = plan_scope(&f.paths, "laptop", &off).unwrap();
+        apply_scope(&f.paths, &plan, &f.bin).unwrap();
+        let plan = plan_scope(&f.paths, "laptop", &on).unwrap();
+        assert!(apply_scope(&f.paths, &plan, &f.bin).is_err());
+    }
+
+    #[test]
+    fn a_scope_change_that_takes_nothing_away_closes_nothing() {
+        let f = fx();
+        let mut ws = [marked_worker(&f, true, true)];
+        let t = close_after_scope_change(
+            &f.paths,
+            "laptop",
+            &flags(true, true),
+            std::time::Duration::from_secs(1),
+        )
+        .unwrap();
+        assert_eq!(t.signalled, 0);
+        assert_survivors(&mut ws, &[true]);
     }
 }

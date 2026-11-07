@@ -8,8 +8,10 @@ use tmgr_ipc::api::limits::MAX_INPUT;
 use tmgr_ipc::api::{
     method, AttachParams, AutopilotCommand, AutopilotControlParams, AutopilotControlled,
     AutopilotLog, AutopilotLogParams, AutopilotStartParams, AutopilotStarted, AutopilotStatus,
-    CandidateInfo, CreateReq, EventMsg, ForkParams, IdParams, KillParams, LayoutSetParams, Line,
-    LookupParams, OrchestratorCreateReq, RenameParams, RestoredRun, ResumeParams, RunCreateReq,
+    CandidateInfo, CheckpointDiff, CheckpointDiffParams, CheckpointEnableParams, CheckpointList,
+    CheckpointRestoreParams, CheckpointRestored, CreateReq, DiffAgainst, EventMsg, ForkParams,
+    IdParams, KillParams, LayoutSetParams, Line, LookupParams, OrchestratorCreateReq,
+    PermissionAnswer, PermissionCard, RenameParams, RestoredRun, ResumeParams, RunCreateReq,
     RunStatus, ScreenPush, SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams,
     Welcome, WorkSummary, CLIENT_CLI,
 };
@@ -37,6 +39,18 @@ fn attach_params(ids: &[String]) -> AttachParams {
     }
 }
 
+fn env_config_dir() -> Option<std::path::PathBuf> {
+    let abs = |k: &str| {
+        std::env::var_os(k)
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.is_absolute())
+    };
+    match abs("XDG_CONFIG_HOME") {
+        Some(x) => Some(x.join("tmgr")),
+        None => abs("HOME").map(|h| h.join(".config").join("tmgr")),
+    }
+}
+
 pub struct Client {
     stream: UnixStream,
     next_id: u64,
@@ -58,9 +72,28 @@ impl Client {
     }
 
     pub fn connect_with_as(dir: &Path, secret: &str, client: &str) -> io::Result<Client> {
+        Client::connect_handshaking(dir, secret, client, env_config_dir().as_deref())
+    }
+
+    pub fn connect_with_config_dir(
+        dir: &Path,
+        client: &str,
+        config_dir: Option<&Path>,
+    ) -> io::Result<Client> {
+        let secret = secret::read(&dir.join("client.secret"))?;
+        Client::connect_handshaking(dir, &secret, client, config_dir)
+    }
+
+    fn connect_handshaking(
+        dir: &Path,
+        secret: &str,
+        client: &str,
+        config_dir: Option<&Path>,
+    ) -> io::Result<Client> {
         let ep = Endpoint::load_runner(dir)?;
         let stream = endpoint::connect(&ep)?;
-        let welcome = server::handshake_client(&stream, client, secret)?;
+        let config_dir = config_dir.and_then(Path::to_str);
+        let welcome = server::handshake_client_with(&stream, client, secret, config_dir)?;
         Ok(Client {
             stream,
             next_id: 1,
@@ -153,11 +186,16 @@ impl Client {
     }
 
     pub fn resume(&mut self, id: &str, cols: u16, rows: u16) -> io::Result<RestoredRun> {
-        let params = ResumeParams {
+        self.resume_with(ResumeParams {
             id: id.into(),
             cols,
             rows,
-        };
+            permission_mode: None,
+            no_sandbox: None,
+        })
+    }
+
+    pub fn resume_with(&mut self, params: ResumeParams) -> io::Result<RestoredRun> {
         from_value(self.call(method::SESSIONS_RESUME, to_params(&params)?)?)
     }
 
@@ -197,6 +235,11 @@ impl Client {
             .map(drop)
     }
 
+    pub fn kill_leftovers(&mut self, id: &str) -> io::Result<()> {
+        let params = serde_json::json!({"id": id, "signal": "kill", "leftovers": true});
+        self.call(method::SESSIONS_KILL, params).map(drop)
+    }
+
     pub fn autopilot_start(&mut self, settings_id: &str) -> io::Result<AutopilotStarted> {
         let params = AutopilotStartParams {
             settings_id: settings_id.into(),
@@ -222,11 +265,29 @@ impl Client {
     }
 
     pub fn send(&mut self, id: &str, text: &str) -> io::Result<()> {
+        self.send_with(id, text, false)
+    }
+
+    pub fn send_at_prompt(&mut self, id: &str, text: &str) -> io::Result<()> {
+        self.send_with(id, text, true)
+    }
+
+    fn send_with(&mut self, id: &str, text: &str, at_prompt: bool) -> io::Result<()> {
         let params = SendParams {
             id: id.into(),
             text: text.into(),
+            at_prompt,
         };
         self.call(method::SESSIONS_SEND, to_params(&params)?)
+            .map(drop)
+    }
+
+    pub fn permissions(&mut self) -> io::Result<Vec<PermissionCard>> {
+        from_value(self.call(method::PERMISSIONS_LIST, Value::Null)?)
+    }
+
+    pub fn answer_permission(&mut self, answer: &PermissionAnswer) -> io::Result<()> {
+        self.call(method::PERMISSIONS_ANSWER, to_params(answer)?)
             .map(drop)
     }
 
@@ -256,6 +317,42 @@ impl Client {
     pub fn worklog(&mut self, id: &str) -> io::Result<WorkSummary> {
         let params = IdParams { id: id.into() };
         from_value(self.call(method::SESSIONS_WORKLOG, to_params(&params)?)?)
+    }
+
+    pub fn checkpoints_enable(
+        &mut self,
+        id: &str,
+        keep: Option<u32>,
+    ) -> io::Result<CheckpointList> {
+        let params = CheckpointEnableParams {
+            id: id.into(),
+            keep,
+        };
+        from_value(self.call(method::CHECKPOINTS_ENABLE, to_params(&params)?)?)
+    }
+
+    pub fn checkpoints_list(&mut self, id: &str) -> io::Result<CheckpointList> {
+        let params = IdParams { id: id.into() };
+        from_value(self.call(method::CHECKPOINTS_LIST, to_params(&params)?)?)
+    }
+
+    pub fn checkpoints_diff(
+        &mut self,
+        id: &str,
+        n: u64,
+        against: DiffAgainst,
+    ) -> io::Result<CheckpointDiff> {
+        let params = CheckpointDiffParams {
+            id: id.into(),
+            n,
+            against,
+        };
+        from_value(self.call(method::CHECKPOINTS_DIFF, to_params(&params)?)?)
+    }
+
+    pub fn checkpoints_restore(&mut self, id: &str, n: u64) -> io::Result<CheckpointRestored> {
+        let params = CheckpointRestoreParams { id: id.into(), n };
+        from_value(self.call(method::CHECKPOINTS_RESTORE, to_params(&params)?)?)
     }
 
     pub fn stop(&mut self) -> io::Result<()> {

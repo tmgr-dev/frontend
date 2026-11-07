@@ -1,18 +1,23 @@
 mod actions;
 mod attention;
 mod broadcast;
+mod checkpoints;
 mod chip;
+mod clean;
 mod export;
 mod filter;
 mod find;
+mod folder_pick;
 mod git;
 mod keys;
 mod layouts;
 mod modes;
 mod mouse;
+mod msel;
 mod newsession;
 mod notes;
 mod palette;
+mod permcard;
 mod place;
 mod prompts;
 mod push;
@@ -35,13 +40,19 @@ mod tests;
 pub use actions::{ActionDef, ACTIONS};
 pub use attention::AttentionTracker;
 pub use broadcast::{peer_bytes, Broadcast};
+pub use checkpoints::{
+    badge as checkpoints_badge, friendly_error as checkpoints_error, CpAction, CpFetch, CpMsg,
+    CpState, BUSY_MESSAGE, OFF_MESSAGE,
+};
 pub use chip::{chip_text, open_urls, TaskChip};
+pub use clean::{clean_copy, clean_selection, CopyContext};
 pub use export::{
     escape_markdown, fmt_size, markdown_lines, scan as scan_export,
     transcript as export_transcript, Decision, ExportAction, ExportState, Finding,
 };
 pub use filter::{Filter, FilterEdit};
 pub use find::{CopyState, ScrollText, SearchEdit, SearchState};
+pub use folder_pick::{FolderData, FolderMark, RecentDir};
 pub use git::{
     parse_numstat, parse_pr, parse_status, valid_pr_url, GitAction, GitInfo, Pr, PrLookup,
     StatusInfo,
@@ -54,11 +65,14 @@ pub use layouts::{
 };
 pub use modes::{enter_mouse, focus_on, mode_changes, reset_modes};
 pub use mouse::{encode, wants, Kind, MouseEvent};
+pub use msel::{click_count, Click, Finish, Gran, MouseSel};
 pub use newsession::{
-    KindOpt, NewEdit, NewField, NewRequest, NewSession, Place, SpawnKind, TaskOpt,
+    KindOpt, NewEdit, NewField, NewRequest, NewSession, PastEdit, Place, PrivAsk, PrivGate,
+    Remembered, SpawnKind, TaskOpt, TypedPrompt,
 };
 pub use notes::{NotesAction, NotesState, NotesTask};
 pub use palette::{Palette, PaletteEdit, PaletteEntry, PaletteMode, RowView};
+pub use permcard::{PermBtn, PermUi};
 pub use place::{fit, probe, tail2, Loc};
 pub use prompts::{defaults as default_prompts, paste_bytes, Prompt, PromptForm};
 pub use prompts::{parse as parse_prompts, render as render_prompts};
@@ -79,7 +93,9 @@ pub use templates::{
     shell_quote, substitute as substitute_template, Field, Template, TemplateForm,
 };
 pub use theme::{kind_for_background, parse_osc11, ThemeKind, OSC11_QUERY};
-pub use title::{age_label, clip, locate, AgentTitle, Format, Source, TitleScan};
+pub use title::{
+    age_label, clip, locate, locate_unsandboxed_claude, AgentTitle, Format, Source, TitleScan,
+};
 pub use tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES};
 pub use usage::{Cost, Part, Reading, SessionMeta, Tone, UsageBar};
 pub use view::{

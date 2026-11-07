@@ -106,14 +106,7 @@ export const createDataApi = (
 		`plugins/${encodeURIComponent(
 			storageId,
 		)}/pages/${pageId}/data/${encodeURIComponent(key)}`;
-	/** Defence in depth: the broker already refuses every routines.* call outside a local workspace. */
-	const routinesNotSupported = () => {
-		if (cloud)
-			throw new PluginError(
-				'NOT_SUPPORTED',
-				'routines are not available in shared workspaces yet',
-			);
-	};
+	const inWorkspace = cloud ? { workspace_id: workspaceId } : {};
 	// Overlapping calls on one routine would each see no instance for the date and create two.
 	const routineQueues = new Map<number, Promise<unknown>>();
 	const routineSerial = <T>(id: number, run: () => Promise<T>): Promise<T> => {
@@ -521,45 +514,46 @@ export const createDataApi = (
 			};
 		},
 		listRoutines: async (from, to) => {
-			routinesNotSupported();
 			const rows = (unwrap(
 				await http.get('daily-routines/expand', {
 					headers,
-					params: { from, to },
+					params: { from, to, ...inWorkspace },
 				}),
 			) ?? []) as any[];
 			return rows.map(toRoutineEntry);
 		},
 		getRoutine: async (id) => {
-			routinesNotSupported();
 			return toRoutine(
 				unwrap(await http.get(`daily-routines/tasks/${id}`, { headers })),
 			);
 		},
 		listRoutineInstances: async (id) => {
-			routinesNotSupported();
 			const rows = (unwrap(
 				await http.get(`daily-routines/tasks/${id}/instances`, { headers }),
 			) ?? []) as any[];
 			return rows.map(toRoutineInstance);
 		},
 		createRoutine: async ({ title, description, date, time }) => {
-			routinesNotSupported();
 			const response = date
 				? await http.post(
 						'daily-routines/tasks/recurring',
-						{ title, description, scheduled_date: date, scheduled_time: time },
+						{
+							title,
+							description,
+							scheduled_date: date,
+							scheduled_time: time,
+							...inWorkspace,
+						},
 						{ headers },
 					)
 				: await http.post(
 						'daily-routines/tasks',
-						{ title, description },
+						{ title, description, ...inWorkspace },
 						{ headers },
 					);
 			return toRoutine(unwrap(response));
 		},
 		updateRoutine: async (id, patch) => {
-			routinesNotSupported();
 			return toRoutine(
 				unwrap(
 					await http.put(`daily-routines/tasks/${id}`, patch, { headers }),
@@ -567,15 +561,12 @@ export const createDataApi = (
 			);
 		},
 		completeRoutine: async (id, date) => {
-			routinesNotSupported();
 			return routineSerial(id, () => setRoutineStatus(id, date, 'COMPLETED'));
 		},
 		skipRoutine: async (id, date) => {
-			routinesNotSupported();
 			return routineSerial(id, () => setRoutineStatus(id, date, 'SKIPPED'));
 		},
 		convertRoutine: async (id, { categoryId, statusId }) => {
-			routinesNotSupported();
 			return withKey(
 				unwrap(
 					await http.post(

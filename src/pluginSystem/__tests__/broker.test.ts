@@ -689,7 +689,7 @@ describe('per-task plugin data', () => {
 				}),
 			),
 		).toBe('PERMISSION_DENIED');
-		const { broker } = setup(['tasks:read'], { api });
+		const { broker } = setup(['tasks:read', 'tasks:write'], { api });
 		expect(
 			await broker.call('taskData.get', { taskId: 1, key: 'estimate' }),
 		).toBeNull();
@@ -715,8 +715,49 @@ describe('per-task plugin data', () => {
 		).toBeNull();
 	});
 
+	it('refuses set and delete without tasks:write, and get and getMany without tasks:read', async () => {
+		const taskDataSet = jest.fn(async () => undefined);
+		const taskDataDelete = jest.fn(async () => undefined);
+		const api = {
+			...fakeApi(),
+			taskDataGet: async () => null,
+			taskDataGetMany: async () => ({}),
+			taskDataSet,
+			taskDataDelete,
+		};
+		const reader = setup(['tasks:read'], { api }).broker;
+		expect(
+			await code(
+				reader.call('taskData.set', { taskId: 1, key: 'k', value: 1 }),
+			),
+		).toBe('PERMISSION_DENIED');
+		expect(
+			await code(reader.call('taskData.delete', { taskId: 1, key: 'k' })),
+		).toBe('PERMISSION_DENIED');
+		expect(taskDataSet).not.toHaveBeenCalled();
+		expect(taskDataDelete).not.toHaveBeenCalled();
+		await expect(
+			reader.call('taskData.get', { taskId: 1, key: 'k' }),
+		).resolves.toBeNull();
+		await expect(
+			reader.call('taskData.getMany', { taskIds: [1], key: 'k' }),
+		).resolves.toEqual({});
+
+		const writer = setup(['tasks:write'], { api }).broker;
+		await writer.call('taskData.set', { taskId: 1, key: 'k', value: 1 });
+		await writer.call('taskData.delete', { taskId: 1, key: 'k' });
+		expect(taskDataSet).toHaveBeenCalledTimes(1);
+		expect(taskDataDelete).toHaveBeenCalledTimes(1);
+		expect(
+			await code(writer.call('taskData.get', { taskId: 1, key: 'k' })),
+		).toBe('PERMISSION_DENIED');
+		expect(
+			await code(writer.call('taskData.getMany', { taskIds: [1], key: 'k' })),
+		).toBe('PERMISSION_DENIED');
+	});
+
 	it('rejects an oversized value and a key that is too long, byte-accurate for multi-byte text', async () => {
-		const { broker } = setup(['tasks:read']);
+		const { broker } = setup(['tasks:read', 'tasks:write']);
 		expect(
 			await code(
 				broker.call('taskData.set', {
@@ -1395,28 +1436,23 @@ describe('routines', () => {
 		).toBe('INVALID_PARAMS');
 	});
 
-	it('refuses every routines.* call outside a local workspace, before touching the api', async () => {
+	it('serves routines.* calls in a shared workspace through the api', async () => {
 		const { broker, api } = setup(['routines:read', 'routines:write'], {
 			workspace: { id: -7, code: 'shared', name: 'Shared', kind: 'cloud' },
 		});
-		expect(
-			await code(
-				broker.call('routines.list', { from: '2026-09-01', to: '2026-09-02' }),
-			),
-		).toBe('NOT_SUPPORTED');
-		expect(await code(broker.call('routines.get', { id: 1 }))).toBe(
-			'NOT_SUPPORTED',
-		);
-		expect(await code(broker.call('routines.create', { title: 'x' }))).toBe(
-			'NOT_SUPPORTED',
-		);
-		expect(await code(broker.call('routines.complete', { id: 1 }))).toBe(
-			'NOT_SUPPORTED',
-		);
-		expect(await code(broker.call('routines.convertToTask', { id: 1 }))).toBe(
-			'NOT_SUPPORTED',
-		);
-		expect(api.calls).toEqual([]);
+		await broker.call('routines.list', {
+			from: '2026-09-01',
+			to: '2026-09-02',
+		});
+		await broker.call('routines.get', { id: 1 });
+		await broker.call('routines.create', { title: 'x' });
+		await broker.call('routines.complete', { id: 1, date: '2026-09-01' });
+		expect(api.calls.map((call) => call[0])).toEqual([
+			'listRoutines',
+			'getRoutine',
+			'createRoutine',
+			'completeRoutine',
+		]);
 	});
 
 	it('convertToTask needs both routines:write and tasks:write', async () => {
@@ -1652,8 +1688,55 @@ describe('pages (API 1.5)', () => {
 		]);
 	});
 
+	it('refuses pageData set and delete without pages:write, and get and getMany without pages:read', async () => {
+		const pageDataSet = jest.fn(async () => undefined);
+		const pageDataDelete = jest.fn(async () => undefined);
+		const api = {
+			...fakeApi(),
+			pageDataGet: async () => null,
+			pageDataGetMany: async () => ({}),
+			pageDataSet,
+			pageDataDelete,
+		};
+		const reader = setup(['pages:read'], { api }).broker;
+		expect(
+			await code(
+				reader.call('pageData.set', { pageId: 5, key: 'k', value: 1 }),
+			),
+		).toBe('PERMISSION_DENIED');
+		expect(
+			await code(reader.call('pageData.delete', { pageId: 5, key: 'k' })),
+		).toBe('PERMISSION_DENIED');
+		expect(pageDataSet).not.toHaveBeenCalled();
+		expect(pageDataDelete).not.toHaveBeenCalled();
+		await expect(
+			reader.call('pageData.get', { pageId: 5, key: 'k' }),
+		).resolves.toBeNull();
+		await expect(
+			reader.call('pageData.getMany', { pageIds: [5], key: 'k' }),
+		).resolves.toEqual({});
+
+		const both = setup(['pages:read', 'pages:write'], { api }).broker;
+		await both.call('pageData.set', { pageId: 5, key: 'k', value: 1 });
+		await both.call('pageData.delete', { pageId: 5, key: 'k' });
+		expect(pageDataSet).toHaveBeenCalledTimes(1);
+		expect(pageDataDelete).toHaveBeenCalledTimes(1);
+
+		const none = setup([], { api }).broker;
+		expect(await code(none.call('pageData.get', { pageId: 5, key: 'k' }))).toBe(
+			'PERMISSION_DENIED',
+		);
+		expect(
+			await code(none.call('pageData.getMany', { pageIds: [5], key: 'k' })),
+		).toBe('PERMISSION_DENIED');
+
+		expect(() => setup(['pages:write'], { api })).toThrow(
+			'pages:write needs pages:read',
+		);
+	});
+
 	it('stores per-page data as JSON with a 200-character key and a 64 KB value', async () => {
-		const { broker, api } = setup(['pages:read']);
+		const { broker, api } = setup(['pages:read', 'pages:write']);
 		await broker.call('pageData.set', {
 			pageId: 5,
 			key: 'seen',

@@ -1,3 +1,4 @@
+use super::clean::CopyContext;
 use super::keys::ScrollKey;
 use super::palette::{esc_key, next_char, query_tail};
 use super::render::put;
@@ -19,6 +20,9 @@ pub struct ScrollText {
     pub session: String,
     pub lines: Vec<String>,
     pub cols: usize,
+    pub wrapped: Vec<bool>,
+    pub scroll_max: usize,
+    pub rows: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -53,7 +57,7 @@ pub enum SearchEdit {
     Cancel,
 }
 
-fn chars_of(line: &str) -> Vec<char> {
+pub(super) fn chars_of(line: &str) -> Vec<char> {
     line.chars().filter(|c| !c.is_control()).collect()
 }
 
@@ -61,11 +65,18 @@ fn wrapped(line: &str, cols: usize) -> bool {
     cols > 0 && line.width() >= cols
 }
 
+pub fn row_wrapped(flags: &[bool], idx: usize, line: &str, cols: usize) -> bool {
+    flags
+        .get(idx)
+        .copied()
+        .unwrap_or_else(|| wrapped(line, cols))
+}
+
 fn fold(c: char) -> char {
     c.to_lowercase().next().unwrap_or(c)
 }
 
-pub fn find_hits(lines: &[String], cols: usize, query: &str) -> Vec<Span> {
+pub fn find_hits(lines: &[String], cols: usize, flags: &[bool], query: &str) -> Vec<Span> {
     let needle: Vec<char> = query.chars().filter(|c| !c.is_control()).collect();
     if needle.is_empty() {
         return Vec::new();
@@ -79,7 +90,7 @@ pub fn find_hits(lines: &[String], cols: usize, query: &str) -> Vec<Span> {
         for (c, ch) in cs.iter().enumerate() {
             stream.push((key(*ch), Some((l, c))));
         }
-        if !wrapped(line, cols) {
+        if !row_wrapped(flags, l, line, cols) {
             stream.push(('\n', None));
         }
     }
@@ -119,9 +130,18 @@ fn segments(span: &Span, lines: &[String]) -> Vec<(usize, usize, usize)> {
         .collect()
 }
 
+pub fn yank_lead(lines: &[String], a: (usize, usize), b: (usize, usize)) -> String {
+    let (line, col) = a.min(b);
+    lines
+        .get(line)
+        .map(|l| chars_of(l).iter().take(col).collect())
+        .unwrap_or_default()
+}
+
 pub fn selection_text(
     lines: &[String],
     cols: usize,
+    flags: &[bool],
     a: (usize, usize),
     b: (usize, usize),
 ) -> String {
@@ -138,7 +158,7 @@ pub fn selection_text(
         if s < e {
             out.extend(&cs[s..e]);
         }
-        if l != to.0 && !wrapped(line, cols) {
+        if l != to.0 && !row_wrapped(flags, l, line, cols) {
             out.push('\n');
         }
         if out.len() >= MAX_COPY {
@@ -166,7 +186,7 @@ impl ViewState {
             .and_then(|s| s.current.and_then(|i| s.hits.get(i)).map(|h| (h.l0, h.c0)));
         if let Some(s) = self.search.as_mut().filter(|s| s.session == session) {
             if let Some(t) = &self.stext {
-                s.hits = find_hits(&t.lines, t.cols, &s.query);
+                s.hits = find_hits(&t.lines, t.cols, &t.wrapped, &s.query);
             }
             s.current = keep
                 .and_then(|k| s.hits.iter().position(|h| (h.l0, h.c0) == k))
@@ -215,12 +235,16 @@ impl ViewState {
         self.copied.take()
     }
 
+    pub fn take_copied_context(&mut self) -> CopyContext {
+        std::mem::take(&mut self.copied_context)
+    }
+
     fn recompute(&mut self, rows: usize) {
         let Some(t) = self.stext.clone() else {
             return;
         };
         if let Some(s) = self.search.as_mut().filter(|s| s.session == t.session) {
-            s.hits = find_hits(&t.lines, t.cols, &s.query);
+            s.hits = find_hits(&t.lines, t.cols, &t.wrapped, &s.query);
             s.current = s.hits.len().checked_sub(1);
         }
         self.reveal_current(rows);
@@ -436,10 +460,14 @@ impl ViewState {
                     (end.0, self.line_len(end.0).saturating_sub(1))
                 };
                 if let Some(t) = &self.stext {
-                    let text = selection_text(&t.lines, t.cols, from, to);
+                    let text = selection_text(&t.lines, t.cols, &t.wrapped, from, to);
                     if text.is_empty() {
                         self.notice = Some("nothing to copy".into());
                     } else {
+                        self.copied_context = CopyContext {
+                            lead: yank_lead(&t.lines, from, to),
+                            cols: t.cols,
+                        };
                         self.copied = Some(text);
                     }
                 }

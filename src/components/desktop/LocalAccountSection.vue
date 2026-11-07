@@ -4,8 +4,8 @@
 			You are not signed in. Your workspaces live only on this computer.
 		</p>
 		<template #footer>
-			<Button @click="go">Create account</Button>
-			<Button variant="outline" @click="go">Sign in</Button>
+			<Button @click="goRegister">Create account</Button>
+			<Button variant="outline" @click="goLogin">Sign in</Button>
 		</template>
 	</SettingsSection>
 </template>
@@ -21,8 +21,9 @@
 		components: { SettingsSection, Button },
 		setup() {
 			const router = useRouter();
-			const go = () => router.push({ name: 'Login' });
-			return { go };
+			const goRegister = () => router.push({ name: 'Register' });
+			const goLogin = () => router.push({ name: 'Login' });
+			return { goRegister, goLogin };
 		},
 	});
 </script>

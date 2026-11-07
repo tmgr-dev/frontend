@@ -6,12 +6,18 @@
   outputs =
     { self, nixpkgs }:
     let
-      system = "x86_64-linux";
-      pkgs = import nixpkgs {
-        inherit system;
-        config.allowUnfree = true;
-      };
-      tmgr = pkgs.callPackage ./nix/package.nix { };
+      desktopSystems = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
+      desktopFor =
+        s:
+        (import nixpkgs {
+          system = s;
+          config.allowUnfree = true;
+        }).callPackage
+          ./nix/package.nix
+          { };
 
       cliSystems = [
         "x86_64-linux"
@@ -24,17 +30,19 @@
       });
     in
     {
-      packages = nixpkgs.lib.recursiveUpdate cliPackages {
-        ${system} = {
-          inherit tmgr;
+      packages = nixpkgs.lib.recursiveUpdate cliPackages (
+        nixpkgs.lib.genAttrs desktopSystems (s: rec {
+          tmgr = desktopFor s;
           default = tmgr;
-        };
-      };
+        })
+      );
 
-      apps.${system}.default = {
-        type = "app";
-        program = "${tmgr}/bin/tmgr";
-      };
+      apps = nixpkgs.lib.genAttrs desktopSystems (s: {
+        default = {
+          type = "app";
+          program = "${self.packages.${s}.tmgr}/bin/tmgr";
+        };
+      });
 
       overlays.default = final: _prev: {
         tmgr = final.callPackage ./nix/package.nix { };

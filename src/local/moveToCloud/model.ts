@@ -1,4 +1,8 @@
-import type { CreateJobRequest, PersonaMappingEntry } from './api';
+import type {
+	CreateJobRequest,
+	PersonaMappingEntry,
+	SkillsReport,
+} from './api';
 import type { MoveSnapshotFile } from './native';
 
 export const BUNDLE_SCHEMA = 1;
@@ -77,6 +81,13 @@ export interface MoveJob {
 	userId: number | null;
 }
 
+export interface SkillsStep {
+	state: 'pending' | 'done' | 'failed';
+	report: SkillsReport | null;
+	error: string | null;
+	personaUuids?: string[];
+}
+
 export interface PublishedMove {
 	jobId: string;
 	workspaceId: number | null;
@@ -88,6 +99,7 @@ export interface PublishedMove {
 	archive: { path: string; revision: string; fullDigest: string } | null;
 	dir: string | null;
 	userId: number | null;
+	skills?: SkillsStep;
 }
 
 export interface PersistedMove {

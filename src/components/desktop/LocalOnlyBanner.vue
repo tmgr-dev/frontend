@@ -1,5 +1,58 @@
 <template>
-	<div v-if="showFirstRun || warning" class="flex flex-col">
+	<div v-if="isDemo || showFirstRun || warning" class="flex flex-col">
+		<div
+			v-if="isDemo"
+			role="status"
+			data-testid="demo-banner"
+			class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-violet-300 bg-violet-100 px-4 py-2 text-sm text-violet-900 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200"
+		>
+			<span class="min-w-0 flex-1"
+				>This is a demo. Nothing leaves your Mac.</span
+			>
+			<span v-if="deleteError" role="alert" class="text-destructive">
+				{{ deleteError }}
+			</span>
+			<button
+				v-if="onEntryFlow"
+				type="button"
+				data-testid="demo-sign-in"
+				class="rounded-md px-2 py-1 font-medium underline underline-offset-4 hover:bg-violet-200 dark:hover:bg-violet-500/20"
+				@click="$router.push({ name: 'Login' })"
+			>
+				Sign in
+			</button>
+			<template v-if="confirmingDelete">
+				<span>Delete demo?</span>
+				<button
+					type="button"
+					data-testid="demo-delete-confirm"
+					class="rounded-md px-2 py-1 font-medium underline underline-offset-4 hover:bg-violet-200 disabled:opacity-60 dark:hover:bg-violet-500/20"
+					:disabled="deleting"
+					@click="confirmDelete"
+				>
+					{{ deleting ? 'Deleting…' : 'Yes' }}
+				</button>
+				<button
+					type="button"
+					data-testid="demo-delete-cancel"
+					class="rounded-md px-2 py-1 hover:bg-violet-200 disabled:opacity-60 dark:hover:bg-violet-500/20"
+					:disabled="deleting"
+					@click="confirmingDelete = false"
+				>
+					Cancel
+				</button>
+			</template>
+			<button
+				v-else
+				type="button"
+				data-testid="demo-delete"
+				class="rounded-md px-2 py-1 font-medium underline underline-offset-4 hover:bg-violet-200 disabled:opacity-60 dark:hover:bg-violet-500/20"
+				:disabled="deleting"
+				@click="confirmingDelete = true"
+			>
+				Delete demo
+			</button>
+		</div>
 		<div
 			v-if="showFirstRun"
 			role="status"
@@ -66,12 +119,15 @@
 </template>
 
 <script lang="ts">
+	import { useDemoWorkspace } from '@/composable/useDemoWorkspace';
 	import {
 		backupNow,
 		backupStatus,
 		revealBackups,
 		type BackupStatus,
 	} from '@/local/backups';
+	import { completeDemoEntry, deleteDemo } from '@/local/demoApi';
+	import { ghostStage } from '@/onboarding/ghostStage';
 	import { activeLocalWorkspace } from '@/local/runtime';
 	import { desktopOfferEnv, offerBackups } from '@/tours/desktopOffers';
 	import { isDesktopApp } from '@/utils/desktop';
@@ -105,6 +161,11 @@
 			const firstRunDismissed = ref(bannerDismissed());
 			const hiddenForSession = ref(false);
 			const backingUp = ref(false);
+			const { isDemo, code: demoCode } = useDemoWorkspace();
+			const onEntryFlow = computed(() => ghostStage.value !== null);
+			const confirmingDelete = ref(false);
+			const deleting = ref(false);
+			const deleteError = ref('');
 			let timer: ReturnType<typeof setInterval> | undefined;
 
 			const localOnly = computed(() => store.getters.isLocalOnly === true);
@@ -145,7 +206,11 @@
 			watch(watching, () => void refresh());
 
 			const showFirstRun = computed(
-				() => isDesktopApp() && localOnly.value && !firstRunDismissed.value,
+				() =>
+					isDesktopApp() &&
+					localOnly.value &&
+					!isDemo.value &&
+					!firstRunDismissed.value,
 			);
 			const warning = computed(() => {
 				if (!watching.value || hiddenForSession.value || !status.value)
@@ -168,7 +233,7 @@
 			const openBackups = () => {
 				if (status.value) void revealBackups(status.value.code).catch(() => {});
 			};
-			const createAccount = () => router.push({ name: 'Login' });
+			const createAccount = () => router.push({ name: 'Register' });
 			const backupNowClick = async () => {
 				if (!status.value || backingUp.value) return;
 				backingUp.value = true;
@@ -182,17 +247,39 @@
 				}
 			};
 
+			const confirmDelete = async () => {
+				if (!demoCode.value || deleting.value) return;
+				deleting.value = true;
+				deleteError.value = '';
+				try {
+					if (ghostStage.value === 'watch' || ghostStage.value === 'wheel')
+						await completeDemoEntry({ deleteDemo: true });
+					else await deleteDemo(demoCode.value);
+				} catch (e) {
+					deleteError.value = e instanceof Error ? e.message : String(e);
+					confirmingDelete.value = false;
+				} finally {
+					deleting.value = false;
+				}
+			};
+
 			return {
+				isDemo,
+				onEntryFlow,
 				showFirstRun,
 				warning,
 				backupsDir,
 				backupsLabel,
 				hiddenForSession,
 				backingUp,
+				confirmingDelete,
+				deleting,
+				deleteError,
 				dismissFirstRun,
 				openBackups,
 				createAccount,
 				backupNowClick,
+				confirmDelete,
 			};
 		},
 	});

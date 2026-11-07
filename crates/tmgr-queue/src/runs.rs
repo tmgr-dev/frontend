@@ -1,5 +1,5 @@
 use tmgr_core::error::Result;
-use tmgr_ipc::api::{caps, CloneSpec, CloudApproval, RunBundle, TaskRef};
+use tmgr_ipc::api::{caps, CloneSpec, CloudApproval, RunBundle, TaskRef, TeamLink};
 
 pub const PERMISSION_MODE: &str = "ask";
 
@@ -47,12 +47,19 @@ pub struct StartRequest {
     pub cloud: Option<CloudApproval>,
     pub unattended: bool,
     pub clones: Vec<CloneSpec>,
+    pub team: Option<TeamLink>,
 }
 
 pub trait RunsClient {
     fn create(&self, req: &StartRequest) -> Result<String>;
     fn status(&self, run_id: &str) -> RunState;
     fn lookup(&self, start_key: &str) -> Lookup;
+    /// Types fixed text into a run. Callers send engine-made text only, never agent-written text.
+    fn send(&self, run_id: &str, text: &str) -> Result<()>;
+    /// Asks the runner to stop a run; `force` kills it outright. Success means the runner took the request, not that the run ended.
+    fn kill_run(&self, run_id: &str, force: bool, reason: &str) -> Result<()>;
+    /// Whether the agent of the run is idle and waiting for input.
+    fn idle(&self, run_id: &str) -> bool;
 }
 
 pub const REQUIRED_CAPS: [&str; 8] = [
@@ -84,5 +91,34 @@ mod tests {
             let some: Vec<String> = all.iter().filter(|c| *c != missing).cloned().collect();
             assert!(!runner_supports_queue(&some), "{missing}");
         }
+    }
+
+    #[test]
+    fn a_queue_start_has_no_room_for_external_resume_or_no_sandbox() {
+        fn fields(r: StartRequest) {
+            let StartRequest {
+                start_key: _,
+                permission_mode: _,
+                rule: _,
+                trigger: _,
+                profile: _,
+                model: _,
+                cwd: _,
+                clone_of: _,
+                exe_path: _,
+                exe_sha256: _,
+                argv_sha256: _,
+                name: _,
+                task: _,
+                bundle: _,
+                bundle_sha256: _,
+                cloud: _,
+                unattended: _,
+                clones: _,
+                team: _,
+            } = r;
+        }
+        let _ = fields;
+        assert!(!REQUIRED_CAPS.contains(&caps::EXTERNAL_RESUME_V1));
     }
 }

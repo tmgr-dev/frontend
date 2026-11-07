@@ -28,8 +28,14 @@ src-tauri/tests/fixtures
 # Emitted by plugin-sdk/testing/sync-prelude.mjs; a test compares them byte for byte.
 plugin-sdk/**/*.generated.js
 
+# Copied by plugin-sdk/create-tmgr-plugin/sync.mjs; a test compares them byte for byte.
+plugin-sdk/create-tmgr-plugin/template
+
 # Written by scripts/nix-bump.sh (CI desktop-nix job) in its own layout.
 nix/source.json
 
 # organize-imports would move `import './utcClock'` (sets TZ) below the modules under test.
 src/local/__tests__/parity.test.ts
+
+# Emitted by plugin-sdk/cli/sync.mjs; a test compares them byte for byte.
+plugin-sdk/cli/lib

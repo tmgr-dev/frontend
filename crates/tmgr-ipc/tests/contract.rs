@@ -86,6 +86,7 @@ fn snapshot() -> Snapshot {
 
 fn bundle() -> RunBundle {
     RunBundle {
+        assignment: None,
         v: 1,
         task: TASK,
         title: "Fix \"login\" é中".into(),
@@ -136,6 +137,8 @@ fn origin() -> Origin {
 
 fn session_info() -> SessionInfo {
     SessionInfo {
+        team: None,
+        agent_session_id: None,
         id: SID.into(),
         name: "fix login".into(),
         argv: vec![
@@ -157,6 +160,9 @@ fn session_info() -> SessionInfo {
         permission_mode: None,
         resumed_from: None,
         human_s: None,
+        no_sandbox: false,
+        checkpoints: None,
+        permission_cards: false,
     }
 }
 
@@ -198,6 +204,7 @@ fn handshake_messages() {
             version: "0.3.0".into(),
             pid: 4242,
             nonce_c: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff".into(),
+            config_dir: None,
         }),
     );
     golden(
@@ -233,6 +240,7 @@ fn handshake_messages() {
 #[test]
 fn requests_and_responses() {
     let run = RunCreateReq {
+        team: None,
         clones: Vec::new(),
         profile: "codex".into(),
         task: Some(TASK),
@@ -255,6 +263,9 @@ fn requests_and_responses() {
         unattended: false,
         exe_pin: None,
         argv_sha256: None,
+        no_sandbox: None,
+        external_resume: None,
+        permission_cards: false,
     };
     golden("run_create_req", &run);
     golden(
@@ -293,6 +304,16 @@ fn requests_and_responses() {
         "run_create_req_start_key",
         &RunCreateReq {
             start_key: Some("q_abc-1".into()),
+            ..run.clone()
+        },
+    );
+    golden(
+        "run_create_req_no_sandbox",
+        &RunCreateReq {
+            permission_mode: Some("bypass".into()),
+            no_sandbox: Some(NoSandbox {
+                env: [("EDITOR".to_string(), "vi".to_string())].into(),
+            }),
             ..run.clone()
         },
     );
@@ -433,6 +454,20 @@ fn method_params_and_results() {
         },
     );
     golden(
+        "session_info_no_sandbox",
+        &SessionInfo {
+            no_sandbox: true,
+            ..session_info()
+        },
+    );
+    golden(
+        "session_info_agent_session_id",
+        &SessionInfo {
+            agent_session_id: Some("2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b".into()),
+            ..session_info()
+        },
+    );
+    golden(
         "lookup_params",
         &LookupParams {
             start_key: "q_abc-1".into(),
@@ -488,6 +523,7 @@ fn method_params_and_results() {
                 "hi".into(),
                 String::new(),
             ],
+            wrapped: vec![true, false, false, false],
             scroll_max: 42,
         },
     );
@@ -566,6 +602,8 @@ fn method_params_and_results() {
     golden(
         "session_info_notask",
         &SessionInfo {
+            team: None,
+            agent_session_id: None,
             id: SID.into(),
             name: "sh".into(),
             argv: vec!["/bin/sh".into()],
@@ -583,6 +621,9 @@ fn method_params_and_results() {
             permission_mode: None,
             resumed_from: None,
             human_s: None,
+            no_sandbox: false,
+            checkpoints: None,
+            permission_cards: false,
         },
     );
     golden(
@@ -623,6 +664,15 @@ fn method_params_and_results() {
         &SendParams {
             id: SID.into(),
             text: "hello\r".into(),
+            at_prompt: false,
+        },
+    );
+    golden(
+        "send_params_at_prompt",
+        &SendParams {
+            id: SID.into(),
+            text: "hello\r".into(),
+            at_prompt: true,
         },
     );
     golden("id_params", &IdParams { id: SID.into() });
@@ -810,6 +860,23 @@ fn error_codes_use_todays_strings_and_keep_unknown_ones() {
 }
 
 #[test]
+fn checkpoint_types_round_trip_and_off_sessions_stay_unchanged() {
+    let item =
+        json!({"n": 7, "kind": "before_restore", "turn": 5, "files": 3, "skipped": 0, "at_ms": 12});
+    let parsed: CheckpointItem = serde_json::from_value(item.clone()).unwrap();
+    assert_eq!(parsed.kind, CheckpointKind::BeforeRestore);
+    assert_eq!(serde_json::to_value(&parsed).unwrap(), item);
+    let params: CheckpointDiffParams = serde_json::from_value(json!({"id": "s", "n": 1})).unwrap();
+    assert_eq!(params.against, DiffAgainst::Previous);
+    let mut session = serde_json::to_value(session_info()).unwrap();
+    assert!(session.get("checkpoints").is_none());
+    session["checkpoints"] =
+        json!({"available": false, "note": "not a git repository", "count": 0});
+    let parsed: SessionInfo = serde_json::from_value(session).unwrap();
+    assert!(!parsed.checkpoints.unwrap().available);
+}
+
+#[test]
 fn constants_are_pinned() {
     assert_eq!(PROTO_VERSION, 1);
     assert_eq!(
@@ -844,7 +911,14 @@ fn constants_are_pinned() {
             "orchestrator.v1",
             "sessions_resume.v1",
             "human_time.v1",
-            "sessions_fork.v1"
+            "sessions_fork.v1",
+            "manual_bypass.v1",
+            "no_sandbox.v1",
+            "external_resume.v1",
+            "checkpoints.v1",
+            "permission_cards.v1",
+            "team.workers.v1",
+            "team.multi.v1"
         ]
     );
     let methods = [
@@ -856,6 +930,8 @@ fn constants_are_pinned() {
         method::SESSIONS_SEND,
         method::SESSIONS_REMOVE,
         method::SESSIONS_RENAME,
+        method::PERMISSIONS_LIST,
+        method::PERMISSIONS_ANSWER,
         method::RUNS_CREATE,
         method::LAYOUT_GET,
         method::LAYOUT_SET,
@@ -888,6 +964,8 @@ fn constants_are_pinned() {
             "sessions.send",
             "sessions.remove",
             "sessions.rename",
+            "permissions.list",
+            "permissions.answer",
             "runs.create",
             "layout.get",
             "layout.set",
@@ -915,6 +993,12 @@ fn constants_are_pinned() {
 }
 
 #[test]
+fn a_session_info_without_the_no_sandbox_field_is_sandboxed() {
+    let info: SessionInfo = serde_json::from_value(fixture("session_info")).unwrap();
+    assert!(!info.no_sandbox);
+}
+
+#[test]
 fn unknown_fields_are_ignored_everywhere() {
     let mut info = fixture("session_info");
     info["future_field"] = json!({"a": 1});
@@ -930,7 +1014,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 30);
+    assert_eq!(w.caps.len(), 37);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1379,4 +1463,194 @@ fn a_team_changes_the_hash_only_when_present_and_is_validated() {
     let mut v = serde_json::to_value(bundle()).unwrap();
     v["team"] = json!({"size": 2, "mode": "eco", "extra": 1});
     assert!(serde_json::from_value::<RunBundle>(v).is_err());
+}
+
+fn full_bundle() -> RunBundle {
+    RunBundle {
+        assignment: None,
+        v: 1,
+        task: TaskRef {
+            workspace_id: -3,
+            task_id: 412,
+        },
+        title: "Fix login".into(),
+        body: "body\n</x>".into(),
+        author: BundleAuthor {
+            kind: AuthorKind::Human,
+            id: Some("u_7".into()),
+        },
+        comments: vec![],
+        pages: vec![],
+        persona: None,
+        context: vec![],
+        team: Some(BundleTeam {
+            size: 3,
+            mode: TeamMode::Eco,
+        }),
+        launch: BundleLaunch {
+            profile: "claude".into(),
+            model: Some("opus".into()),
+            cwd: "/work/project".into(),
+            permission_mode: Some("plan".into()),
+        },
+    }
+}
+
+fn full_req() -> RunCreateReq {
+    RunCreateReq {
+        team: None,
+        permission_cards: false,
+        profile: "claude".into(),
+        task: Some(TaskRef {
+            workspace_id: -3,
+            task_id: 412,
+        }),
+        cwd: "/work/project".into(),
+        name: Some("n".into()),
+        model: Some("opus".into()),
+        cols: 100,
+        rows: 30,
+        bundle: Some(full_bundle()),
+        bundle_sha256: Some("a".repeat(64)),
+        cwd_pin: None,
+        origin: Some(Origin {
+            link: "laptop".into(),
+            generation: 7,
+        }),
+        permission_mode: Some("plan".into()),
+        start_key: Some("k".into()),
+        clone_of: Some("/work/project".into()),
+        trust_cwd: Some(true),
+        trust_via_repo: Some(true),
+        exe_pin: None,
+        argv_sha256: Some("b".repeat(64)),
+        agent_work: true,
+        cloud: None,
+        unattended: true,
+        clones: Vec::new(),
+        no_sandbox: None,
+        external_resume: None,
+    }
+}
+
+fn full_info() -> SessionInfo {
+    SessionInfo {
+        team: None,
+        agent_session_id: None,
+        permission_cards: false,
+        id: "s_abcdefghij".into(),
+        name: "n".into(),
+        argv: vec!["claude".into()],
+        cwd: "/work/project".into(),
+        profile: Some("claude".into()),
+        state: State {
+            kind: StateKind::Working,
+            since_ms: 1,
+            detail: None,
+            exit_code: None,
+        },
+        created_ms: 2,
+        cols: 100,
+        rows: 30,
+        shim_pid: 5,
+        child_pid: 6,
+        task: Some(TaskRef {
+            workspace_id: -3,
+            task_id: 412,
+        }),
+        bundle_sha256: Some("a".repeat(64)),
+        origin: Some(Origin {
+            link: "laptop".into(),
+            generation: 7,
+        }),
+        permission_mode: Some("plan".into()),
+        resumed_from: Some("s_zzzzzzzzzz".into()),
+        human_s: Some(9),
+        no_sandbox: true,
+        checkpoints: None,
+    }
+}
+
+fn base_fixture(name: &str) -> String {
+    let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"))
+}
+
+#[test]
+fn non_team_wire_forms_match_the_base_fixtures() {
+    let req = serde_json::to_string(&full_req()).unwrap();
+    assert_eq!(req, base_fixture("base_full_run_create_req.json"));
+    let info = serde_json::to_string(&full_info()).unwrap();
+    assert_eq!(info, base_fixture("base_full_session_info.json"));
+    let b = full_bundle();
+    assert_eq!(
+        b.canonical(),
+        base_fixture("base_full_bundle.canonical.json")
+    );
+    assert_eq!(b.sha256(), base_fixture("base_full_bundle.sha256"));
+}
+
+#[test]
+fn team_link_wire_form_round_trips_and_is_validated() {
+    let lead = TeamLink {
+        role: TeamRole::Lead,
+        of: "p_1".into(),
+    };
+    let worker = TeamLink {
+        role: TeamRole::Worker(2),
+        of: "p_1".into(),
+    };
+    assert_eq!(
+        serde_json::to_value(&lead).unwrap(),
+        json!({"role": "lead", "of": "p_1"})
+    );
+    assert_eq!(
+        serde_json::to_value(&worker).unwrap(),
+        json!({"role": {"worker": 2}, "of": "p_1"})
+    );
+    let mut req = full_req();
+    req.team = Some(worker.clone());
+    let v = serde_json::to_value(&req).unwrap();
+    assert_eq!(v["team"], json!({"role": {"worker": 2}, "of": "p_1"}));
+    assert_eq!(serde_json::from_value::<RunCreateReq>(v).unwrap(), req);
+    assert!(
+        serde_json::from_value::<TeamLink>(json!({"role": "lead", "of": "p", "x": 1})).is_err()
+    );
+    assert!(lead.validate().is_ok() && worker.validate().is_ok());
+    assert!(TeamLink {
+        of: String::new(),
+        ..lead.clone()
+    }
+    .validate()
+    .is_err());
+    assert!(TeamLink {
+        of: "a/b".into(),
+        ..lead
+    }
+    .validate()
+    .is_err());
+    assert!(TeamLink {
+        role: TeamRole::Worker(0),
+        ..worker
+    }
+    .validate()
+    .is_err());
+    assert!(caps::ALL.contains(&caps::TEAM_WORKERS_V1));
+    assert_eq!(caps::TEAM_WORKERS_V1, "team.workers.v1");
+    assert!(caps::ALL.contains(&caps::TEAM_MULTI_V1));
+    assert_eq!(caps::TEAM_MULTI_V1, "team.multi.v1");
+}
+
+#[test]
+fn an_assignment_is_hashed_only_when_present_and_is_size_limited() {
+    let mut b = full_bundle();
+    let base = b.sha256();
+    b.assignment = Some("part one".into());
+    assert_ne!(b.sha256(), base);
+    assert!(b.canonical().contains(r#""assignment":"part one""#));
+    assert!(b.validate().is_ok());
+    b.assignment = Some("x".repeat(MAX_ASSIGNMENT_BYTES + 1));
+    assert!(b.validate().is_err());
+    b.assignment = None;
+    assert_eq!(b.sha256(), base);
 }

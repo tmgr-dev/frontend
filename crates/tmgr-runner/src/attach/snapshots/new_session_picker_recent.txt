@@ -1,0 +1,30 @@
+                                                                                                    
+              ╭ New session ─────────────────────────────────────────────────────────╮              
+              │   Kind       claude   codex   shell   custom                         │              
+              │ > Folder    /work/app                                                │              
+              │   Recent                                                             │              
+              │   ▸ ★ /work/infra                                                    │              
+              │       /work/app/web                                             live │              
+              │       /work/app                                                      │              
+              │       /work/api                                                      │              
+              │       ~/notes                                                        │              
+              │   ↑↓ pick  Enter start  → open  type to search  ^P pin  ⌫ edit       │              
+              │   Task      optional, type a key or words                            │              
+              │   Name                                                               │              
+              │   Worktree   Off   On                                                │              
+              │   Approvals  Off   On                                                │              
+              │   Bypass     Off   On                                                │              
+              │   No sandbox Off   On                                                │              
+              │   Where      New tab   Right   Below   Replace                       │              
+              │   Rewind     Off   On                                                │              
+              │             [ Start ]                                                │              
+              │                                                                      │              
+              │                                                                      │              
+              │                                                                      │              
+              │ Enter starts, Ctrl+R resumes a past session, Esc cancels,            │              
+              │ Tab/Shift+Tab next/prev field                                        │              
+              │                                                                      │              
+              │                                                                      │              
+              ╰──────────────────────────────────────────────────────────────────────╯              
+                                                                                                    
+                                                                                                    

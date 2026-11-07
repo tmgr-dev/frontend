@@ -382,6 +382,15 @@ impl Runner {
     w.flush().map_err(|e| e.to_string())
   }
 
+  pub fn session_send(&self, sid: &str, text: &str) -> Result<(), String> {
+    self.gate()?;
+    api::check_session_id(sid)?;
+    if text.len() > MAX_INPUT {
+      return Err("input too large".to_owned());
+    }
+    self.connect()?.0.call(method::SESSIONS_SEND, json!({"id": sid, "text": text})).map(drop).map_err(err)
+  }
+
   pub fn term_resize(&self, sid: &str, cols: u32, rows: u32) -> Result<(), String> {
     let t = self.term(sid)?;
     let (cols, rows) = clamp_size(cols, rows);

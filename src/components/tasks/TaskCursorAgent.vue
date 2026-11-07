@@ -100,7 +100,7 @@
 						</div>
 
 						<button
-							@click="launchAgent"
+							@click="launchAgent('implement')"
 							:disabled="launching || !selectedBranch"
 							class="flex w-full items-center justify-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-on-accent transition hover:bg-brand-hover disabled:opacity-50"
 						>
@@ -123,6 +123,16 @@
 								class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
 							></div>
 							{{ launching ? 'Launching...' : 'Launch Cursor Agent' }}
+						</button>
+
+						<button
+							@click="launchAgent('research')"
+							:disabled="launching || !selectedBranch"
+							title="The agent investigates the task and posts a report as a comment. It does not change code."
+							data-testid="cursor-research-button"
+							class="flex w-full items-center justify-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink transition hover:bg-surface-hover disabled:opacity-50"
+						>
+							Research
 						</button>
 					</div>
 
@@ -272,13 +282,14 @@
 							Send Follow-up Instruction
 						</label>
 						<div class="flex gap-2">
-							<input
+							<textarea
 								v-model="followUpPrompt"
-								type="text"
+								rows="1"
+								data-follow-up
 								placeholder="Type additional instructions..."
-								class="flex-1 rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong"
-								@keyup.enter="sendFollowUpToAgent(agent.id)"
-							/>
+								class="max-h-40 flex-1 resize-none rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong"
+								@keydown.enter="onFollowUpEnter($event, agent.id)"
+							></textarea>
 							<button
 								@click="sendFollowUpToAgent(agent.id)"
 								:disabled="!followUpPrompt || sendingFollowUp"
@@ -304,17 +315,21 @@
 <script>
 	import {
 		getCursorAgents,
+		getCursorConversation,
 		getGitHubBranches,
 		launchCursorAgent,
 		sendFollowUp,
 		stopCursorAgent,
 	} from '@/actions/tmgr/cursor';
 	import { apiErrorText } from '@/utils/apiErrorText';
+	import { autosizeTextarea, isEnterSend } from '@/utils/commentComposer';
+	import { createCursorConversationSync } from '@/utils/cursorConversationSync';
 	import { createPollingLoop } from '@/utils/pollingLoop';
 	import { defineComponent } from 'vue';
 
 	export default defineComponent({
 		name: 'TaskCursorAgent',
+		emits: ['launched', 'stopped', 'followup-sent', 'conversation-synced'],
 		props: {
 			taskId: {
 				type: Number,
@@ -339,6 +354,7 @@
 				pollingInterval: null,
 				disposed: false,
 				agentsRequest: null,
+				conversationSync: null,
 				showLaunchForm: false,
 			};
 		},
@@ -350,8 +366,16 @@
 			},
 		},
 		watch: {
+			followUpPrompt() {
+				this.$nextTick(() =>
+					this.$el
+						.querySelectorAll('textarea[data-follow-up]')
+						.forEach((el) => autosizeTextarea(el)),
+				);
+			},
 			agents: {
 				handler(newAgents) {
+					this.syncConversations(newAgents);
 					const hasActive = newAgents.some(
 						(agent) =>
 							agent.status === 'CREATING' || agent.status === 'RUNNING',
@@ -382,12 +406,30 @@
 			this.disposed = true;
 		},
 		methods: {
+			onFollowUpEnter(event, agentId) {
+				if (!isEnterSend(event)) return;
+				event.preventDefault();
+				this.sendFollowUpToAgent(agentId);
+			},
 			loadAgents() {
 				if (this.agentsRequest) return this.agentsRequest;
 				this.agentsRequest = this.fetchAgents().finally(() => {
 					this.agentsRequest = null;
 				});
 				return this.agentsRequest;
+			},
+			async syncConversations(agents) {
+				if (!this.conversationSync) {
+					this.conversationSync = createCursorConversationSync(
+						this.taskId,
+						getCursorConversation,
+					);
+				}
+				const taskId = this.taskId;
+				const changed = await this.conversationSync.update(agents);
+				if (changed && !this.disposed && taskId === this.taskId) {
+					this.$emit('conversation-synced');
+				}
 			},
 			async fetchAgents() {
 				try {
@@ -443,13 +485,14 @@
 					this.loadBranchesFromGitHub(this.branchSearch || undefined);
 				}, 300);
 			},
-			async launchAgent() {
+			async launchAgent(mode = 'implement') {
 				try {
 					this.launching = true;
 					this.error = null;
 					const agent = await launchCursorAgent(
 						this.taskId,
 						this.selectedBranch,
+						mode,
 					);
 					this.agents.unshift(agent);
 					this.showLaunchForm = false;

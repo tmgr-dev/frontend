@@ -25,6 +25,7 @@ const ACCOUNT = [
 	// Persona catalog lives on the account, not the workspace, even while a local one is active.
 	/^personas(\/|$)/,
 	/^persona-tokens(\/|$)/,
+	/^shared-skills(\/|$)/,
 	// Move to cloud talks to the server about the local workspace the user chose to upload.
 	/^imports(\/|$)/,
 	/^notify-tokens(\/|$)/,

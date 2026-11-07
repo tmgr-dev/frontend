@@ -8,6 +8,7 @@
 
 mod autopilot;
 mod bundle;
+mod checkpoints;
 mod error;
 pub mod policy;
 mod screen;
@@ -16,6 +17,7 @@ mod worklog;
 
 pub use autopilot::*;
 pub use bundle::*;
+pub use checkpoints::*;
 pub use error::ErrorCode;
 pub use screen::*;
 pub use types::*;
@@ -53,12 +55,19 @@ pub mod caps {
     pub const AUTOPILOT_V1: &str = "autopilot.v1";
     pub const SIGNED_CONTEXT_V1: &str = "signed_context.v1";
     pub const TEAM_V1: &str = "team.v1";
+    pub const TEAM_WORKERS_V1: &str = "team.workers.v1";
+    pub const TEAM_MULTI_V1: &str = "team.multi.v1";
     pub const ORCHESTRATOR_V1: &str = "orchestrator.v1";
     pub const SESSIONS_RESUME_V1: &str = "sessions_resume.v1";
     pub const HUMAN_TIME_V1: &str = "human_time.v1";
     pub const SESSIONS_FORK_V1: &str = "sessions_fork.v1";
+    pub const MANUAL_BYPASS_V1: &str = "manual_bypass.v1";
+    pub const NO_SANDBOX_V1: &str = "no_sandbox.v1";
+    pub const EXTERNAL_RESUME_V1: &str = "external_resume.v1";
+    pub const CHECKPOINTS_V1: &str = "checkpoints.v1";
+    pub const PERMISSION_CARDS_V1: &str = "permission_cards.v1";
 
-    pub const ALL: [&str; 30] = [
+    pub const ALL: [&str; 37] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -89,6 +98,13 @@ pub mod caps {
         SESSIONS_RESUME_V1,
         HUMAN_TIME_V1,
         SESSIONS_FORK_V1,
+        MANUAL_BYPASS_V1,
+        NO_SANDBOX_V1,
+        EXTERNAL_RESUME_V1,
+        CHECKPOINTS_V1,
+        PERMISSION_CARDS_V1,
+        TEAM_WORKERS_V1,
+        TEAM_MULTI_V1,
     ];
 }
 
@@ -99,6 +115,8 @@ pub mod method {
     pub const SESSIONS_CREATE: &str = "sessions.create";
     pub const SESSIONS_KILL: &str = "sessions.kill";
     pub const SESSIONS_SEND: &str = "sessions.send";
+    pub const PERMISSIONS_LIST: &str = "permissions.list";
+    pub const PERMISSIONS_ANSWER: &str = "permissions.answer";
     pub const SESSIONS_REMOVE: &str = "sessions.remove";
     pub const SESSIONS_RENAME: &str = "sessions.rename";
     pub const SESSIONS_WORKLOG: &str = "sessions.worklog";
@@ -123,6 +141,10 @@ pub mod method {
     pub const AUTOPILOT_CONTROL: &str = "autopilot.control";
     pub const AUTOPILOT_LOG: &str = "autopilot.log";
     pub const ORCHESTRATOR_CREATE: &str = "orchestrator.create";
+    pub const CHECKPOINTS_ENABLE: &str = "checkpoints.enable";
+    pub const CHECKPOINTS_LIST: &str = "checkpoints.list";
+    pub const CHECKPOINTS_DIFF: &str = "checkpoints.diff";
+    pub const CHECKPOINTS_RESTORE: &str = "checkpoints.restore";
 }
 
 pub mod limits {

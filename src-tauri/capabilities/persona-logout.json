@@ -1,0 +1,10 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "persona-logout",
+	"description": "Deleting the signed-out account's persona model key and prompt cache: main window only.",
+	"windows": ["main"],
+	"permissions": [
+		"allow-persona-cache-clear-for-user",
+		"allow-persona-llm-clear-for-user"
+	]
+}

@@ -14,7 +14,7 @@ use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{
     read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT, TAG_OUTPUT, TAG_REPLAY,
 };
-use tmgr_ipc::proto::{valid_session_id, ExitInfo, FromShim, ShimHello, Stat, ToShim};
+use tmgr_ipc::proto::{valid_session_id, ExitInfo, FromShim, InputCredit, ShimHello, Stat, ToShim};
 use tmgr_ipc::{auth, secret, server};
 
 const RING_CAP: usize = 2 << 20;
@@ -26,31 +26,62 @@ const INPUT_CAP: usize = 1 << 20;
 const INPUT_FRAMES: usize = 1024;
 
 #[derive(Default)]
+struct InputState {
+    frames: VecDeque<Vec<u8>>,
+    bytes: usize,
+    writing: usize,
+    conn: u64,
+    received_bytes: u64,
+    received_frames: u64,
+    credit_gen: u64,
+}
+
+impl InputState {
+    fn credit(&self) -> InputCredit {
+        InputCredit {
+            received_bytes: self.received_bytes,
+            received_frames: self.received_frames,
+            queued_bytes: self.bytes as u64,
+            queued_frames: (self.frames.len() + self.writing) as u64,
+        }
+    }
+}
+
+#[derive(Default)]
 struct InputQueue {
-    q: Mutex<(VecDeque<Vec<u8>>, usize)>,
+    q: Mutex<InputState>,
     ready: Condvar,
+    consumed: Condvar,
     dropped: AtomicU64,
 }
 
 impl InputQueue {
-    fn push(&self, data: Vec<u8>) {
+    fn push(&self, conn_id: u64, data: Vec<u8>) {
         if data.is_empty() {
             return;
         }
         let mut g = lock(&self.q);
-        if g.1 + data.len() > INPUT_CAP || g.0.len() >= INPUT_FRAMES {
+        if g.conn == conn_id {
+            g.received_bytes += data.len() as u64;
+            g.received_frames += 1;
+        } else {
+            g.credit_gen += 1;
+            self.consumed.notify_one();
+        }
+        if g.bytes + data.len() > INPUT_CAP || g.frames.len() >= INPUT_FRAMES {
             self.dropped.fetch_add(data.len() as u64, Ordering::SeqCst);
             return;
         }
-        g.1 += data.len();
-        g.0.push_back(data);
+        g.bytes += data.len();
+        g.frames.push_back(data);
         self.ready.notify_one();
     }
 
     fn pop(&self) -> Vec<u8> {
         let mut g = lock(&self.q);
         loop {
-            if let Some(d) = g.0.pop_front() {
+            if let Some(d) = g.frames.pop_front() {
+                g.writing += 1;
                 return d;
             }
             g = self.ready.wait(g).unwrap_or_else(|e| e.into_inner());
@@ -58,31 +89,122 @@ impl InputQueue {
     }
 
     fn done(&self, n: usize) {
-        lock(&self.q).1 -= n;
+        let mut g = lock(&self.q);
+        g.bytes -= n;
+        g.writing = g.writing.saturating_sub(1);
+        g.credit_gen += 1;
+        self.consumed.notify_one();
     }
+
+    fn begin_conn(&self, id: u64) -> InputCredit {
+        let mut g = lock(&self.q);
+        g.conn = id;
+        g.received_bytes = 0;
+        g.received_frames = 0;
+        g.credit()
+    }
+
+    fn snapshot(&self) -> InputCredit {
+        lock(&self.q).credit()
+    }
+
+    fn wait_credit_change(&self, seen: u64) -> u64 {
+        let mut g = lock(&self.q);
+        while g.credit_gen == seen {
+            g = self.consumed.wait(g).unwrap_or_else(|e| e.into_inner());
+        }
+        g.credit_gen
+    }
+}
+
+const CLD_EXITED: i32 = 1;
+const KILL_FAST: Duration = Duration::from_secs(2);
+const KILL_LIMIT: Duration = Duration::from_secs(30);
+
+fn pace(kill_elapsed: Option<Duration>) -> (bool, Duration) {
+    match kill_elapsed {
+        None => (false, Duration::from_secs(1)),
+        Some(e) if e < KILL_FAST => (true, Duration::from_millis(20)),
+        Some(e) if e < KILL_LIMIT => (true, Duration::from_secs(1)),
+        Some(_) => (false, Duration::from_secs(1)),
+    }
+}
+
+#[cfg(target_os = "linux")]
+unsafe fn si_status(info: &libc::siginfo_t) -> libc::c_int {
+    let off = 12usize.next_multiple_of(std::mem::align_of::<usize>()) + 8;
+    (info as *const libc::siginfo_t)
+        .cast::<u8>()
+        .add(off)
+        .cast::<libc::c_int>()
+        .read()
+}
+
+#[cfg(not(target_os = "linux"))]
+unsafe fn si_status(info: &libc::siginfo_t) -> libc::c_int {
+    info.si_status()
+}
+
+struct GuardState {
+    reaped: bool,
+    kill_since: Option<Instant>,
 }
 
 struct ChildGuard {
     pid: i32,
-    exited: Mutex<bool>,
+    state: Mutex<GuardState>,
 }
 
 impl ChildGuard {
     fn new(pid: i32) -> ChildGuard {
         ChildGuard {
             pid,
-            exited: Mutex::new(false),
+            state: Mutex::new(GuardState {
+                reaped: false,
+                kill_since: None,
+            }),
         }
     }
 
     fn signal(&self, sig: i32) -> bool {
-        let exited = lock(&self.exited);
-        !*exited && unsafe { libc::kill(-self.pid, sig) } == 0
+        let mut st = lock(&self.state);
+        if st.reaped {
+            return false;
+        }
+        if sig == libc::SIGKILL {
+            st.kill_since.get_or_insert_with(Instant::now);
+        }
+        unsafe { libc::kill(-self.pid, sig) == 0 }
     }
 
-    fn wait(&self) -> libc::c_int {
+    fn reaped(&self) -> bool {
+        lock(&self.state).reaped
+    }
+
+    fn reap_locked(&self, st: &mut GuardState) {
+        st.reaped = true;
+        let mut status: libc::c_int = 0;
         loop {
-            let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+            let r = unsafe { libc::waitpid(self.pid, &mut status, 0) };
+            if r == self.pid
+                || (r < 0 && io::Error::last_os_error().kind() != io::ErrorKind::Interrupted)
+            {
+                return;
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn reap_now(&self) {
+        let mut st = lock(&self.state);
+        if !st.reaped {
+            self.reap_locked(&mut st);
+        }
+    }
+
+    fn wait(&self) -> ExitInfo {
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        loop {
             let r = unsafe {
                 libc::waitid(
                     libc::P_PID,
@@ -91,21 +213,78 @@ impl ChildGuard {
                     libc::WEXITED | libc::WNOWAIT,
                 )
             };
-            if r == 0 || io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
+            if r == 0 {
                 break;
             }
+            if io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
+                let mut st = lock(&self.state);
+                self.reap_locked(&mut st);
+                return ExitInfo {
+                    code: Some(0),
+                    signal: None,
+                };
+            }
         }
-        let mut exited = lock(&self.exited);
-        *exited = true;
-        let mut status: libc::c_int = 0;
+        let status = unsafe { si_status(&info) };
+        let exit = if info.si_code == CLD_EXITED {
+            ExitInfo {
+                code: Some(status & 0xff),
+                signal: None,
+            }
+        } else {
+            ExitInfo {
+                code: None,
+                signal: Some(status),
+            }
+        };
+        let grace = if lock(&self.state).kill_since.is_some() {
+            Duration::from_millis(500)
+        } else {
+            Duration::ZERO
+        };
+        self.settle(Some(Instant::now() + grace));
+        exit
+    }
+
+    fn settle(&self, deadline: Option<Instant>) -> bool {
         loop {
-            let r = unsafe { libc::waitpid(self.pid, &mut status, 0) };
-            if r == self.pid {
-                return status;
-            }
-            if r < 0 && io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
-                return 0;
-            }
+            let nap = {
+                let mut st = lock(&self.state);
+                if st.reaped {
+                    return true;
+                }
+                let elapsed = st.kill_since.map(|t| t.elapsed());
+                let (send, nap) = pace(elapsed);
+                if elapsed.is_some_and(|e| e >= KILL_LIMIT) {
+                    st.kill_since = None;
+                }
+                if send {
+                    unsafe { libc::kill(-self.pid, libc::SIGKILL) };
+                }
+                if !proc::group_has_live_member(self.pid) {
+                    self.reap_locked(&mut st);
+                    return true;
+                }
+                nap
+            };
+            let nap = match deadline {
+                Some(d) => {
+                    let left = d.saturating_duration_since(Instant::now());
+                    if left.is_zero() {
+                        return false;
+                    }
+                    nap.min(left)
+                }
+                None => nap,
+            };
+            thread::sleep(nap);
+        }
+    }
+
+    fn last_kill(&self) {
+        let st = lock(&self.state);
+        if !st.reaped && st.kill_since.is_some() {
+            unsafe { libc::kill(-self.pid, libc::SIGKILL) };
         }
     }
 }
@@ -239,6 +418,7 @@ impl Shim {
             }
             st.next_conn += 1;
             let id = st.next_conn;
+            let credit = self.input.begin_conn(id);
             let mut out = out;
             let hello = FromShim::Hello(ShimHello {
                 pid: std::process::id(),
@@ -247,6 +427,7 @@ impl Shim {
                 exit: st.exit.clone(),
                 cwd_dev: report_cwd_id().then_some(self.cwd_id.0),
                 cwd_ino: report_cwd_id().then_some(self.cwd_id.1),
+                input: credit_enabled().then_some(credit),
             });
             let replay = Frame::Bin(BinFrame {
                 tag: TAG_REPLAY,
@@ -259,7 +440,7 @@ impl Shim {
             st.conn = Some(Conn { id, out });
             id
         };
-        self.serve_conn(&stream);
+        self.serve_conn(&stream, conn_id);
         let mut st = lock(&self.st);
         if st.conn.as_ref().is_some_and(|c| c.id == conn_id) {
             st.conn = None;
@@ -295,11 +476,11 @@ impl Shim {
         )
     }
 
-    fn serve_conn(self: &Arc<Self>, stream: &UnixStream) {
+    fn serve_conn(self: &Arc<Self>, stream: &UnixStream, conn_id: u64) {
         loop {
             match read_frame(&mut &*stream) {
                 Ok(Some(Frame::Bin(b))) if b.tag == TAG_INPUT => {
-                    self.input.push(b.data);
+                    self.input.push(conn_id, b.data);
                 }
                 Ok(Some(Frame::Json(v))) => match serde_json::from_value::<ToShim>(v) {
                     Ok(ToShim::Resize { cols, rows }) => {
@@ -317,6 +498,7 @@ impl Shim {
                         self.send(&mut st, &FromShim::SignalAck { sig, delivered, id });
                     }
                     Ok(ToShim::Reap) => {
+                        self.child.last_kill();
                         self.cleanup();
                         std::process::exit(0);
                     }
@@ -336,26 +518,15 @@ fn read_secret(dir: &Path, id: &str) -> io::Result<String> {
     secret::read(&dir.join("sessions").join(id).join("adopt.secret"))
 }
 
-fn exit_info(status: libc::c_int) -> ExitInfo {
-    if libc::WIFEXITED(status) {
-        ExitInfo {
-            code: Some(libc::WEXITSTATUS(status)),
-            signal: None,
-        }
-    } else {
-        ExitInfo {
-            code: None,
-            signal: Some(libc::WTERMSIG(status)),
-        }
-    }
-}
-
 pub fn shim_main(dir: &Path, id: &str) -> i32 {
     if !valid_session_id(id) {
         eprintln!("shim: invalid session id");
         return 2;
     }
-    unsafe { libc::setsid() };
+    unsafe {
+        libc::setsid();
+        libc::signal(libc::SIGCHLD, libc::SIG_DFL);
+    }
     match run(dir, id) {
         Ok(()) => 0,
         Err(e) => {
@@ -372,6 +543,16 @@ fn report_cwd_id() -> bool {
 
 #[cfg(not(debug_assertions))]
 fn report_cwd_id() -> bool {
+    true
+}
+
+#[cfg(debug_assertions)]
+fn credit_enabled() -> bool {
+    std::env::var_os("TMGR_TEST_SHIM_NO_INPUT_CREDIT").is_none()
+}
+
+#[cfg(not(debug_assertions))]
+fn credit_enabled() -> bool {
     true
 }
 
@@ -418,6 +599,7 @@ fn run(dir: &Path, id: &str) -> io::Result<()> {
     }
     cmd.cwd(".");
     let child = pair.slave.spawn_command(cmd).map_err(io::Error::other)?;
+    std::env::set_current_dir("/")?;
     drop(pair.slave);
     let child_pid = child
         .process_id()
@@ -455,6 +637,9 @@ fn run(dir: &Path, id: &str) -> io::Result<()> {
     });
 
     spawn_input_writer(input, writer);
+    if credit_enabled() {
+        spawn_input_credit(&shim);
+    }
     spawn_reader(&shim, reader);
     spawn_waiter(&shim, child);
     spawn_stat(&shim);
@@ -484,6 +669,19 @@ fn spawn_input_writer(queue: Arc<InputQueue>, mut pty: Box<dyn Write + Send>) {
     });
 }
 
+fn spawn_input_credit(shim: &Arc<Shim>) {
+    let shim = shim.clone();
+    thread::spawn(move || {
+        let mut seen = 0;
+        loop {
+            seen = shim.input.wait_credit_change(seen);
+            let mut st = lock(&shim.st);
+            let credit = shim.input.snapshot();
+            shim.send(&mut st, &FromShim::InputCredit(credit));
+        }
+    });
+}
+
 fn spawn_reader(shim: &Arc<Shim>, mut reader: Box<dyn Read + Send>) {
     let shim = shim.clone();
     thread::spawn(move || {
@@ -504,8 +702,7 @@ fn spawn_waiter(shim: &Arc<Shim>, child: Box<dyn portable_pty::Child + Send + Sy
     let shim = shim.clone();
     thread::spawn(move || {
         let _keep = child;
-        let status = shim.child.wait();
-        let info = exit_info(status);
+        let info = shim.child.wait();
         let deadline = Instant::now() + Duration::from_secs(1);
         while !shim.reader_done.load(Ordering::SeqCst) && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(10));
@@ -514,6 +711,10 @@ fn spawn_waiter(shim: &Arc<Shim>, child: Box<dyn portable_pty::Child + Send + Sy
         st.exit = Some(info.clone());
         st.exited_at = Some(Instant::now());
         shim.send(&mut st, &FromShim::Exited(info));
+        drop(st);
+        if !shim.child.reaped() {
+            shim.child.settle(None);
+        }
     });
 }
 
@@ -546,9 +747,11 @@ fn spawn_reaper(shim: &Arc<Shim>) {
     let shim = shim.clone();
     thread::spawn(move || loop {
         thread::sleep(Duration::from_secs(1));
-        let expired = lock(&shim.st)
-            .exited_at
-            .is_some_and(|t| t.elapsed() >= REAP_AFTER);
+        let expired = lock(&shim.st).exited_at.is_some_and(|t| {
+            t.elapsed() >= REAP_AFTER
+                || fs::symlink_metadata(shim.dir.join("sessions").join(&shim.id))
+                    .is_err_and(|e| e.kind() == io::ErrorKind::NotFound)
+        });
         if expired {
             shim.cleanup();
             std::process::exit(0);
@@ -565,6 +768,31 @@ mod proc {
         let ticks: u64 = f.get(11)?.parse::<u64>().ok()? + f.get(12)?.parse::<u64>().ok()?;
         let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as u64;
         Some(ticks * (1_000_000_000 / hz))
+    }
+
+    pub(crate) fn group_has_live_member(pgid: i32) -> bool {
+        let Ok(rd) = std::fs::read_dir("/proc") else {
+            return false;
+        };
+        rd.flatten().any(|e| {
+            let name = e.file_name();
+            let Some(name) = name.to_str() else {
+                return false;
+            };
+            if name.is_empty() || !name.bytes().all(|b| b.is_ascii_digit()) {
+                return false;
+            }
+            let Ok(text) = std::fs::read_to_string(e.path().join("stat")) else {
+                return false;
+            };
+            let Some(i) = text.rfind(')') else {
+                return false;
+            };
+            let mut f = text.get(i + 2..).unwrap_or("").split(' ');
+            let state = f.next().unwrap_or("");
+            let pgrp = f.nth(1).and_then(|v| v.parse::<i32>().ok());
+            pgrp == Some(pgid) && !matches!(state, "Z" | "X")
+        })
     }
 
     pub fn waiting_tty(pid: i32) -> Option<bool> {
@@ -625,6 +853,11 @@ mod proc {
         rc == 0 && v == 1
     }
 
+    pub(crate) fn group_has_live_member(pgid: i32) -> bool {
+        // EPERM means only zombies are left
+        unsafe { libc::kill(-pgid, 0) == 0 }
+    }
+
     pub fn waiting_tty(_pid: i32) -> Option<bool> {
         None
     }
@@ -636,74 +869,283 @@ mod proc {
         None
     }
 
+    pub(crate) fn group_has_live_member(_pgid: i32) -> bool {
+        false
+    }
+
     pub fn waiting_tty(_pid: i32) -> Option<bool> {
         None
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::zombie_processes)]
 mod tests {
-    use super::{proc, ChildGuard, InputQueue, INPUT_CAP, INPUT_FRAMES};
-    use std::io::{BufRead, BufReader};
+    use super::{proc, ChildGuard, InputCredit, InputQueue, INPUT_CAP, INPUT_FRAMES};
     use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
     use std::sync::atomic::Ordering;
     use std::time::Duration;
 
-    #[test]
-    #[allow(clippy::zombie_processes)]
-    fn signal_is_refused_once_the_child_exited_and_never_reaches_the_group() {
+    fn spawn_group(script: &str) -> std::process::Child {
         let mut cmd = Command::new("/bin/sh");
-        cmd.args(["-c", "sleep 30 & echo $!; exit 0"])
-            .stdout(Stdio::piped());
+        cmd.args(["-c", script]).stdout(Stdio::piped());
         unsafe {
             cmd.pre_exec(|| {
                 libc::setsid();
                 Ok(())
             });
         }
-        let mut child = cmd.spawn().unwrap();
-        let mut line = String::new();
-        BufReader::new(child.stdout.take().unwrap())
-            .read_line(&mut line)
-            .unwrap();
-        let grandchild: i32 = line.trim().parse().unwrap();
-        let guard = ChildGuard::new(child.id() as i32);
-        let status = guard.wait();
-        assert!(libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0);
-        assert!(!guard.signal(libc::SIGKILL));
-        let alive = unsafe { libc::kill(grandchild, 0) } == 0;
-        unsafe { libc::kill(grandchild, libc::SIGKILL) };
-        assert!(alive, "the group was signalled after the child exited");
+        cmd.spawn().unwrap()
+    }
+
+    fn pipe_reaches_eof(out: &mut std::process::ChildStdout, bound: Duration) -> bool {
+        use std::os::fd::AsRawFd;
+        let fd = out.as_raw_fd();
+        let deadline = std::time::Instant::now() + bound;
+        let mut buf = [0u8; 4096];
+        while std::time::Instant::now() < deadline {
+            let mut p = libc::pollfd {
+                fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            if unsafe { libc::poll(&mut p, 1, 20) } <= 0 {
+                continue;
+            }
+            let n = unsafe { libc::read(fd, buf.as_mut_ptr().cast(), buf.len()) };
+            if n == 0 {
+                return true;
+            }
+        }
+        false
     }
 
     #[test]
-    #[allow(clippy::zombie_processes)]
-    fn signal_reaches_a_running_child_group() {
-        let mut cmd = Command::new("/bin/sleep");
-        cmd.arg("30");
-        unsafe {
-            cmd.pre_exec(|| {
-                libc::setsid();
-                Ok(())
-            });
+    fn sigkill_empties_a_group_that_forks_during_the_kill() {
+        let mut survivors = 0;
+        let trials = 60;
+        for i in 0..trials {
+            let mut child =
+                spawn_group("i=0; while [ $i -lt 500 ]; do sleep 20 & i=$((i+1)); done");
+            let mut out = child.stdout.take().unwrap();
+            let guard = ChildGuard::new(child.id() as i32);
+            std::thread::sleep(Duration::from_millis(2 + (i * 28 / trials) as u64));
+            guard.signal(libc::SIGKILL);
+            let _ = guard.wait();
+            if !pipe_reaches_eof(&mut out, Duration::from_secs(2)) {
+                survivors += 1;
+            }
         }
-        let child = cmd.spawn().unwrap();
+        assert_eq!(survivors, 0, "{survivors}/{trials} trials left a survivor");
+    }
+
+    fn read_pid(out: &mut std::process::ChildStdout) -> i32 {
+        use std::io::Read;
+        let mut line = Vec::new();
+        let mut b = [0u8; 1];
+        while out.read(&mut b).unwrap() == 1 && b[0] != b'\n' {
+            line.push(b[0]);
+        }
+        String::from_utf8(line).unwrap().trim().parse().unwrap()
+    }
+
+    fn alive(pid: i32) -> bool {
+        unsafe { libc::kill(pid, 0) == 0 }
+    }
+
+    fn kill_pid(pid: i32) {
+        unsafe { libc::kill(pid, libc::SIGKILL) };
+    }
+
+    const HOLDOUT: &str = "(trap '' TERM HUP; exec sleep 30) & echo $!; ";
+
+    #[test]
+    fn signal_is_refused_after_the_reap_and_never_reaches_the_group() {
+        let mut child = spawn_group("sleep 30 & echo $!; exit 0");
+        let mut out = child.stdout.take().unwrap();
+        let member = read_pid(&mut out);
+        let guard = ChildGuard::new(child.id() as i32);
+        let exit = guard.wait();
+        assert_eq!(exit.code, Some(0));
+        assert!(!guard.reaped());
+        guard.reap_now();
+        assert!(guard.reaped());
+        assert!(!guard.signal(libc::SIGKILL));
+        let still = alive(member);
+        kill_pid(member);
+        assert!(still, "the group was signalled after the reap");
+    }
+
+    #[test]
+    fn signal_reaches_a_running_child_group() {
+        let mut child = spawn_group("exec sleep 30");
         let guard = ChildGuard::new(child.id() as i32);
         assert!(guard.signal(libc::SIGKILL));
-        let status = guard.wait();
-        assert_eq!(libc::WTERMSIG(status), libc::SIGKILL);
+        let exit = guard.wait();
+        assert_eq!(exit.signal, Some(libc::SIGKILL));
+        assert!(guard.reaped());
+        let _ = child.wait();
+    }
+
+    #[test]
+    fn signal_reaches_a_member_after_the_leader_exited() {
+        let mut child = spawn_group(&format!("{HOLDOUT}exit 0"));
+        let mut out = child.stdout.take().unwrap();
+        let member = read_pid(&mut out);
+        std::thread::sleep(Duration::from_millis(200));
+        let guard = ChildGuard::new(child.id() as i32);
+        assert_eq!(guard.wait().code, Some(0));
+        assert!(!guard.reaped());
+        assert!(guard.signal(libc::SIGKILL));
+        let settled = guard.settle(Some(std::time::Instant::now() + Duration::from_secs(5)));
+        let eof = pipe_reaches_eof(&mut out, Duration::from_secs(2));
+        kill_pid(member);
+        assert!(settled && guard.reaped());
+        assert!(eof, "the member survived the group kill");
+    }
+
+    #[test]
+    fn a_lone_child_is_reaped_at_once() {
+        let mut child = spawn_group("exit 3");
+        let guard = ChildGuard::new(child.id() as i32);
+        assert_eq!(guard.wait().code, Some(3));
+        assert!(guard.reaped());
+        let _ = child.wait();
+    }
+
+    #[test]
+    fn a_polite_signal_does_not_escalate() {
+        let mut child = spawn_group(&format!(
+            "{HOLDOUT}trap 'exit 0' TERM; while :; do sleep 0.1; done"
+        ));
+        let mut out = child.stdout.take().unwrap();
+        let member = read_pid(&mut out);
+        std::thread::sleep(Duration::from_millis(200));
+        let guard = ChildGuard::new(child.id() as i32);
+        assert!(guard.signal(libc::SIGTERM));
+        assert_eq!(guard.wait().code, Some(0));
+        let settled = guard.settle(Some(std::time::Instant::now() + Duration::from_millis(300)));
+        guard.last_kill();
+        let early_eof = pipe_reaches_eof(&mut out, Duration::from_millis(200));
+        let still = alive(member);
+        assert!(guard.signal(libc::SIGKILL));
+        let cleared = guard.settle(Some(std::time::Instant::now() + Duration::from_secs(5)));
+        let eof = pipe_reaches_eof(&mut out, Duration::from_secs(2));
+        kill_pid(member);
+        assert!(!settled && !early_eof && still, "a polite signal escalated");
+        assert!(cleared && eof);
+    }
+
+    #[test]
+    fn a_member_that_left_the_group_is_not_touched() {
+        if Command::new("perl").arg("-v").output().is_err() {
+            eprintln!("perl is missing, skipping");
+            return;
+        }
+        let mut child = spawn_group(
+            "perl -e 'use POSIX; $|=1; if (fork()==0) { POSIX::setsid(); print \"$$\\n\"; exec \"sleep\",\"20\" }'; exec sleep 20",
+        );
+        let mut out = child.stdout.take().unwrap();
+        let escapee = read_pid(&mut out);
+        let guard = ChildGuard::new(child.id() as i32);
+        assert!(guard.signal(libc::SIGKILL));
+        let _ = guard.wait();
+        let settled = guard.settle(Some(std::time::Instant::now() + Duration::from_secs(5)));
+        let still = alive(escapee);
+        kill_pid(escapee);
+        assert!(settled && guard.reaped());
+        assert!(still, "a process outside the group was killed");
+    }
+
+    #[test]
+    fn a_leftover_survives_without_a_sigkill_request() {
+        let mut child = spawn_group(&format!("{HOLDOUT}exit 0"));
+        let mut out = child.stdout.take().unwrap();
+        let member = read_pid(&mut out);
+        std::thread::sleep(Duration::from_millis(200));
+        let guard = ChildGuard::new(child.id() as i32);
+        let _ = guard.wait();
+        let settled = guard.settle(Some(std::time::Instant::now() + Duration::from_millis(300)));
+        guard.last_kill();
+        let still = alive(member);
+        kill_pid(member);
+        assert!(!settled && still);
+        assert!(guard.settle(Some(std::time::Instant::now() + Duration::from_secs(5))));
+    }
+
+    #[test]
+    fn group_membership_ignores_zombies_and_missing_groups() {
+        let mut child = spawn_group("exec sleep 20");
+        let pgid = child.id() as i32;
+        assert!(proc::group_has_live_member(pgid));
+        unsafe { libc::kill(pgid, libc::SIGKILL) };
+        let t = std::time::Instant::now();
+        while proc::group_has_live_member(pgid) && t.elapsed() < Duration::from_secs(3) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!proc::group_has_live_member(pgid), "a zombie counted");
+        let _ = child.wait();
+        assert!(!proc::group_has_live_member(pgid));
+    }
+
+    #[test]
+    fn a_zombie_leader_with_a_live_member_still_counts() {
+        let mut child = spawn_group("sleep 20 & echo $!; exit 0");
+        let mut out = child.stdout.take().unwrap();
+        let member = read_pid(&mut out);
+        let pgid = child.id() as i32;
+        std::thread::sleep(Duration::from_millis(200));
+        let counted = proc::group_has_live_member(pgid);
+        kill_pid(member);
+        let t = std::time::Instant::now();
+        while proc::group_has_live_member(pgid) && t.elapsed() < Duration::from_secs(3) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let emptied = !proc::group_has_live_member(pgid);
+        let _ = child.wait();
+        assert!(counted, "a live member behind a zombie leader was missed");
+        assert!(emptied);
+    }
+
+    #[test]
+    fn the_exit_code_is_truncated_to_eight_bits() {
+        if Command::new("perl").arg("-v").output().is_err() {
+            eprintln!("perl is missing, skipping");
+            return;
+        }
+        for (arg, want) in [("256", 0), ("-1", 255)] {
+            let mut child = spawn_group(&format!("exec perl -MPOSIX -e 'POSIX::_exit({arg})'"));
+            let guard = ChildGuard::new(child.id() as i32);
+            let exit = guard.wait();
+            assert_eq!((exit.code, exit.signal), (Some(want), None), "_exit({arg})");
+            let _ = child.wait();
+        }
+    }
+
+    #[test]
+    fn pace_follows_the_kill_phases() {
+        use super::pace;
+        let ms = Duration::from_millis;
+        let s = Duration::from_secs;
+        assert_eq!(pace(None), (false, s(1)));
+        assert_eq!(pace(Some(ms(0))), (true, ms(20)));
+        assert_eq!(pace(Some(ms(1999))), (true, ms(20)));
+        assert_eq!(pace(Some(s(2))), (true, s(1)));
+        assert_eq!(pace(Some(ms(29_999))), (true, s(1)));
+        assert_eq!(pace(Some(s(30))), (false, s(1)));
+        assert_eq!(pace(Some(s(3600))), (false, s(1)));
     }
 
     #[test]
     fn input_queue_drops_past_the_cap_and_counts_it() {
         let q = InputQueue::default();
-        q.push(vec![0; INPUT_CAP]);
-        q.push(vec![0; 10]);
+        q.push(0, vec![0; INPUT_CAP]);
+        q.push(0, vec![0; 10]);
         assert_eq!(q.dropped.load(Ordering::SeqCst), 10);
         let d = q.pop();
         q.done(d.len());
-        q.push(vec![0; 10]);
+        q.push(0, vec![0; 10]);
         assert_eq!(q.dropped.load(Ordering::SeqCst), 10);
     }
 
@@ -711,14 +1153,85 @@ mod tests {
     fn input_queue_ignores_empty_frames_and_caps_the_count() {
         let q = InputQueue::default();
         for _ in 0..INPUT_FRAMES * 2 {
-            q.push(Vec::new());
+            q.push(0, Vec::new());
         }
-        assert_eq!(q.q.lock().unwrap().0.len(), 0);
+        assert_eq!(q.q.lock().unwrap().frames.len(), 0);
         for _ in 0..INPUT_FRAMES + 5 {
-            q.push(vec![1]);
+            q.push(0, vec![1]);
         }
-        assert_eq!(q.q.lock().unwrap().0.len(), INPUT_FRAMES);
+        assert_eq!(q.q.lock().unwrap().frames.len(), INPUT_FRAMES);
         assert_eq!(q.dropped.load(Ordering::SeqCst), 5);
+    }
+
+    #[test]
+    fn input_credit_counts_received_and_queued_including_the_frame_being_written() {
+        let q = InputQueue::default();
+        assert_eq!(q.begin_conn(1), InputCredit::default());
+        q.push(1, vec![0; 4]);
+        q.push(1, vec![0; 6]);
+        assert_eq!(
+            q.snapshot(),
+            InputCredit {
+                received_bytes: 10,
+                received_frames: 2,
+                queued_bytes: 10,
+                queued_frames: 2
+            }
+        );
+        let d = q.pop();
+        assert_eq!(q.snapshot().queued_frames, 2);
+        assert_eq!(q.snapshot().queued_bytes, 10);
+        q.done(d.len());
+        let c = q.snapshot();
+        assert_eq!((c.queued_bytes, c.queued_frames), (6, 1));
+        assert_eq!((c.received_bytes, c.received_frames), (10, 2));
+    }
+
+    #[test]
+    fn input_credit_counts_a_dropped_frame_as_received_but_not_queued() {
+        let q = InputQueue::default();
+        q.begin_conn(1);
+        q.push(1, vec![0; INPUT_CAP]);
+        q.push(1, vec![0; 10]);
+        let c = q.snapshot();
+        assert_eq!(
+            (c.received_bytes, c.received_frames),
+            (INPUT_CAP as u64 + 10, 2)
+        );
+        assert_eq!((c.queued_bytes, c.queued_frames), (INPUT_CAP as u64, 1));
+        assert_eq!(q.dropped.load(Ordering::SeqCst), 10);
+    }
+
+    #[test]
+    fn input_credit_resets_received_on_a_new_connection_and_keeps_the_leftovers() {
+        let q = InputQueue::default();
+        q.begin_conn(1);
+        q.push(1, vec![0; 7]);
+        let c = q.begin_conn(2);
+        assert_eq!((c.received_bytes, c.received_frames), (0, 0));
+        assert_eq!((c.queued_bytes, c.queued_frames), (7, 1));
+        let seen = q.q.lock().unwrap().credit_gen;
+        q.push(1, vec![0; 3]);
+        assert_ne!(q.q.lock().unwrap().credit_gen, seen);
+        let c = q.snapshot();
+        assert_eq!((c.received_bytes, c.received_frames), (0, 0));
+        assert_eq!((c.queued_bytes, c.queued_frames), (10, 2));
+        q.push(2, vec![0; 5]);
+        let c = q.snapshot();
+        assert_eq!((c.received_bytes, c.received_frames), (5, 1));
+        assert_eq!((c.queued_bytes, c.queued_frames), (15, 3));
+    }
+
+    #[test]
+    fn input_credit_ignores_empty_frames_and_wakes_on_done() {
+        let q = InputQueue::default();
+        q.begin_conn(1);
+        q.push(1, Vec::new());
+        assert_eq!(q.snapshot(), InputCredit::default());
+        q.push(1, vec![1]);
+        let d = q.pop();
+        q.done(d.len());
+        assert_eq!(q.wait_credit_change(0), 1);
     }
 
     #[test]

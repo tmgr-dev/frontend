@@ -12,6 +12,8 @@
 		"allow-local-access-status",
 		"allow-local-access-set-enabled",
 		"allow-local-access-ready",
-		"allow-local-access-reply"
+		"allow-local-access-reply",
+		"allow-agents-detect",
+		"allow-agent-connect-run"
 	]
 }

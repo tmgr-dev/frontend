@@ -17,9 +17,34 @@ pub struct Scope {
     pub from: Vec<String>,
     #[serde(default)]
     pub allow_attach_input: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub remote_control: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub include_bypass: bool,
+}
+
+pub fn is_bypass_session(s: &tmgr_ipc::api::SessionInfo) -> bool {
+    s.no_sandbox
+        || s.permission_mode.as_deref() == Some("bypass")
+        || tmgr_ipc::api::policy::argv_is_bypass(&s.argv)
+        || s.argv
+            .iter()
+            .any(|a| a == "--no-sandbox" || a.starts_with("--no-sandbox="))
 }
 
 impl Scope {
+    pub fn controls(&self, bypass: bool) -> bool {
+        self.remote_control && (!bypass || self.include_bypass)
+    }
+
+    pub fn may_see(&self, owned: bool, bypass: bool) -> bool {
+        owned || self.controls(bypass)
+    }
+
+    pub fn may_input(&self, owned: bool, bypass: bool) -> bool {
+        self.controls(bypass) || (owned && self.allow_attach_input)
+    }
+
     pub fn widens(&self, old: &Scope) -> bool {
         let repos = self
             .repos
@@ -35,7 +60,9 @@ impl Scope {
         let models = !old.models.is_empty()
             && (self.models.is_empty() || self.models.iter().any(|m| !old.models.contains(m)));
         let input = self.allow_attach_input && !old.allow_attach_input;
-        repos || agents || models || self.max > old.max || from || input
+        let remote = (self.remote_control && !old.remote_control)
+            || (self.include_bypass && !old.include_bypass);
+        repos || agents || models || self.max > old.max || from || input || remote
     }
 
     pub fn summary(&self) -> String {
@@ -64,8 +91,14 @@ impl Scope {
         } else {
             "attach input: forbidden"
         };
+        let remote = match (self.remote_control, self.include_bypass) {
+            (false, false) => "remote control: off",
+            (true, false) => "remote control: on, bypass sessions excluded",
+            (true, true) => "remote control: on, bypass sessions included",
+            (false, true) => "remote control: off (include-bypass has no effect)",
+        };
         format!(
-            "{repos} · {agents} · {models} · max {} running · {from} · {input} · bypass-permissions: forbidden",
+            "{repos} · {agents} · {models} · max {} running · {from} · {input} · {remote} · bypass-permissions: forbidden",
             self.max
         )
     }
@@ -132,13 +165,26 @@ pub struct Accepted {
     pub repo: Option<String>,
 }
 
+pub const AUDIT_VALUE_MAX: usize = 256;
+const AUDIT_FIELDS: &[&str] = &[
+    "run",
+    "task",
+    "task_hash",
+    "repo",
+    "agent",
+    "persona",
+    "model",
+    "mode",
+];
+
 pub fn audit_args(params: &Value) -> Value {
     match params {
         Value::Object(m) => {
             let mut out = Map::new();
-            for (k, v) in m.iter().take(12) {
-                if let Value::String(s) = v {
-                    out.insert(k.clone(), Value::String(s.clone()));
+            for (k, v) in m {
+                if let (true, Value::String(s)) = (AUDIT_FIELDS.contains(&k.as_str()), v) {
+                    let bounded = s.chars().take(AUDIT_VALUE_MAX).collect();
+                    out.insert(k.clone(), Value::String(bounded));
                 }
             }
             Value::Object(out)
@@ -302,6 +348,7 @@ mod tests {
             max: 2,
             from: vec![],
             allow_attach_input: false,
+            ..Default::default()
         }
     }
 
@@ -446,6 +493,7 @@ mod tests {
             max: 2,
             from: vec!["192.0.2.0/24".into()],
             allow_attach_input: false,
+            ..Default::default()
         };
         assert!(!base.widens(&base));
         let mut narrower = base.clone();
@@ -507,5 +555,63 @@ mod tests {
     fn audit_args_keep_only_short_string_fields() {
         let a = audit_args(&json!({"task":"TM-1","n":5,"nested":{"a":1}}));
         assert_eq!(a, json!({"task":"TM-1"}));
+    }
+
+    #[test]
+    fn audit_args_drop_unknown_fields_and_bound_the_values() {
+        let long = "x".repeat(5000);
+        let a = audit_args(&json!({"text":"typed","\u{1b}[2Jevil":"v","run":long}));
+        let m = a.as_object().unwrap();
+        assert_eq!(m.keys().collect::<Vec<_>>(), ["run"]);
+        assert_eq!(m["run"].as_str().unwrap().chars().count(), AUDIT_VALUE_MAX);
+    }
+
+    #[test]
+    fn access_needs_remote_control_and_bypass_needs_its_own_flag() {
+        let mut s = Scope::default();
+        for bypass in [false, true] {
+            assert!(s.may_see(true, bypass));
+            assert!(!s.may_see(false, bypass));
+            assert!(!s.may_input(false, bypass));
+        }
+        s.include_bypass = true;
+        assert!(!s.may_see(false, false) && !s.may_see(false, true));
+        assert!(!s.may_input(false, true));
+        s.remote_control = true;
+        s.include_bypass = false;
+        assert!(s.may_see(false, false) && s.may_input(false, false));
+        assert!(!s.may_see(false, true) && !s.may_input(false, true));
+        s.include_bypass = true;
+        assert!(s.may_see(false, true) && s.may_input(false, true));
+    }
+
+    #[test]
+    fn owned_input_keeps_the_old_rule_unless_remote_control_applies() {
+        let mut s = Scope::default();
+        assert!(!s.may_input(true, false));
+        s.allow_attach_input = true;
+        assert!(s.may_input(true, false) && s.may_input(true, true));
+        s.allow_attach_input = false;
+        s.remote_control = true;
+        assert!(s.may_input(true, false) && !s.may_input(true, true));
+    }
+
+    #[test]
+    fn bypass_is_detected_from_every_form() {
+        let mut s = serde_json::from_value::<tmgr_ipc::api::SessionInfo>(json!({
+            "id": "s_x", "name": "n", "argv": [], "cwd": "/", "profile": null,
+            "state": {"kind": "working", "since_ms": 1, "detail": null, "exit_code": null},
+            "created_ms": 1, "cols": 80, "rows": 24, "shim_pid": 1, "child_pid": 2
+        }))
+        .unwrap();
+        assert!(!is_bypass_session(&s));
+        s.no_sandbox = true;
+        assert!(is_bypass_session(&s));
+        s.no_sandbox = false;
+        s.permission_mode = Some("bypass".into());
+        assert!(is_bypass_session(&s));
+        s.permission_mode = None;
+        s.argv = vec!["claude".into(), "--dangerously-skip-permissions".into()];
+        assert!(is_bypass_session(&s));
     }
 }

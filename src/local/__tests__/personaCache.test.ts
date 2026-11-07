@@ -60,7 +60,7 @@ it('clears both the persona cache and the persona LLM keychain entry for the giv
 	});
 });
 
-it('clearing on logout is best effort: one failing call does not reject or stop the other', async () => {
+it('a failing cleanup call still runs the other and rejects with the failed command', async () => {
 	invoke.mockImplementation((command: string) =>
 		command === 'persona_cache_clear_for_user'
 			? Promise.reject(new Error('locked'))
@@ -68,7 +68,9 @@ it('clearing on logout is best effort: one failing call does not reject or stop 
 	);
 	const { clearPersonaLlmForLogout } = load();
 
-	await expect(clearPersonaLlmForLogout(42)).resolves.toBeUndefined();
+	await expect(clearPersonaLlmForLogout(42)).rejects.toThrow(
+		/persona_cache_clear_for_user: locked/,
+	);
 	expect(invoke).toHaveBeenCalledWith('persona_llm_clear_for_user', {
 		userId: 42,
 	});

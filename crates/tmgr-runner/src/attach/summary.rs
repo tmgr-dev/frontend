@@ -634,6 +634,13 @@ impl ViewState {
         }
     }
 
+    pub fn drop_summary(&mut self, key: &str) {
+        if self.summary.as_ref().is_some_and(|d| d.key == key) {
+            self.summary = None;
+        }
+        self.summary_queue.retain(|d| d.key != key);
+    }
+
     pub fn set_summary_text(&mut self, key: &str, text: String, plain: bool) -> bool {
         let slot = self
             .summary

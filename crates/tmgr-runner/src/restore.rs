@@ -23,6 +23,8 @@ pub struct ResumeRec {
     pub at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub by_id: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fork_by_id: Option<Vec<String>>,
 }
 
 impl Intent {
@@ -67,6 +69,10 @@ pub struct Intent {
     pub resume_decl: Option<ResumeRec>,
     #[serde(default)]
     pub bypass: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_sandbox: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub permission_cards: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub boot: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -85,6 +91,7 @@ pub enum Status {
     Expired,
     Link,
     Bypass,
+    NoSandbox,
 }
 
 impl Status {
@@ -96,6 +103,9 @@ impl Status {
             Status::Expired => "older than 7 days; start it again with tmgr run",
             Status::Link => "started over a link; the leader has to request it again",
             Status::Bypass => "bypass runs are never restored; start it again with tmgr run",
+            Status::NoSandbox => {
+                "runs without the sandbox are never restored; start it again with tmgr run"
+            }
         }
     }
 }
@@ -296,6 +306,8 @@ pub fn status(i: &Intent, now_ms: u64, running: bool) -> Status {
         Status::Running
     } else if i.origin.is_some() {
         Status::Link
+    } else if i.no_sandbox {
+        Status::NoSandbox
     } else if i.bypass {
         Status::Bypass
     } else if now_ms.saturating_sub(i.created_ms) > TTL_MS {
@@ -398,6 +410,7 @@ pub fn is_claimed(store: &Path, id: &str) -> bool {
 
 pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
     RunCreateReq {
+        team: None,
         clones: Vec::new(),
         profile: i.profile.clone(),
         task: i.task,
@@ -420,6 +433,9 @@ pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
         unattended: false,
         exe_pin: i.exe_pin.clone(),
         argv_sha256: i.argv_sha256.clone(),
+        no_sandbox: None,
+        external_resume: None,
+        permission_cards: i.permission_cards,
     }
 }
 
@@ -613,11 +629,13 @@ mod tests {
             exe_pin: None,
             argv_sha256: None,
             bypass: false,
+            no_sandbox: false,
             boot: None,
             pids: Vec::new(),
             created_ms: 1_000,
             cols: 100,
             rows: 30,
+            permission_cards: false,
         }
     }
 
@@ -678,6 +696,11 @@ mod tests {
         let mut b = i.clone();
         b.bypass = true;
         assert_eq!(status(&b, 2_000, false), Status::Bypass);
+        let mut n = i.clone();
+        n.no_sandbox = true;
+        assert_eq!(status(&n, 2_000, false), Status::NoSandbox);
+        n.bypass = true;
+        assert_eq!(status(&n, 2_000, false), Status::NoSandbox);
         assert_eq!(status(&i, 2_000, false), Status::Restorable);
     }
 
@@ -879,6 +902,20 @@ mod tests {
         assert_eq!(req.task, i.task);
         assert_eq!(req.origin, None);
         assert_eq!((req.cols, req.rows), (100, 30));
+    }
+
+    #[test]
+    fn request_carries_the_permission_cards_flag_and_old_records_default_to_off() {
+        let mut i = intent(A);
+        assert!(!request(&i, None).permission_cards);
+        i.permission_cards = true;
+        assert!(request(&i, None).permission_cards);
+        let text = serde_json::to_string(&i).unwrap();
+        assert!(text.contains("\"permission_cards\":true"));
+        let mut old: serde_json::Value = serde_json::from_str(&text).unwrap();
+        old.as_object_mut().unwrap().remove("permission_cards");
+        let back: Intent = serde_json::from_value(old).unwrap();
+        assert!(!back.permission_cards);
     }
 
     #[test]

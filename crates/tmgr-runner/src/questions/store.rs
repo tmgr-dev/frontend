@@ -7,7 +7,7 @@ use std::io::{Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
-use tmgr_ipc::dirs::{ensure_private_dir, questions_dir};
+use tmgr_ipc::dirs::{ensure_private_dir, questions_dir, QUESTIONS_LOCK};
 use tmgr_ipc::proto::valid_session_id;
 
 pub const MAX_PER_SESSION: usize = 200;
@@ -16,7 +16,6 @@ const MAX_FILE: u64 = 8 << 20;
 const KEEP_S: u64 = 30 * 24 * 3600;
 const MARKS: &str = "marks.jsonl";
 const SETTINGS: &str = "settings.json";
-const LOCK: &str = "scan.lock";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -152,7 +151,7 @@ impl Store {
             .write(true)
             .mode(0o600)
             .custom_flags(libc::O_NOFOLLOW)
-            .open(self.dir.join(LOCK))?;
+            .open(self.dir.join(QUESTIONS_LOCK))?;
         let rc = unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
         Ok((rc == 0).then_some(ScanLock { _file: f }))
     }

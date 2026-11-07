@@ -4,7 +4,7 @@ use super::{attach, connect, emit, rerr, runner_config, Opts, PermissionMode, Ru
 use crate::cmd::notifyenv::NotifyEnv;
 use crate::cmd::shared::resolve_task;
 use crate::ctx::Ctx;
-use crate::gitx::{parse_remote, Git};
+use crate::gitx::parse_remote;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::json;
@@ -23,7 +23,7 @@ use tmgr_core::notify::build_push;
 use tmgr_core::text::{sanitize_line, truncate_chars};
 use tmgr_ipc::api::{
     caps, sha256_hex, AuthorKind, BundleAuthor, BundleLaunch, BundlePage, BundlePersona, CloneSpec,
-    CloudApproval, ExePin, RunBundle, RunCreateReq, TaskRef,
+    CloudApproval, ExePin, NoSandbox, RunBundle, RunCreateReq, TaskRef,
 };
 use tmgr_link::privileged;
 use tmgr_queue::clones::{plan_clones, ClaimRepo, ClonePlan};
@@ -383,11 +383,8 @@ pub fn repo_matches(fetch_url: &str, push_url: &str, full_name: &str) -> bool {
 }
 
 pub(crate) fn verify_repo(repo: &Path, full_name: &str) -> Result<()> {
-    let git = Git::at(repo);
-    let fetch = git.query(&["remote", "get-url", "origin"]);
-    let push = git.query(&["remote", "get-url", "--push", "origin"]);
-    match (fetch, push) {
-        (Some(f), Some(p)) if repo_matches(&f, &p, full_name) => Ok(()),
+    match workdir::origin_urls(repo) {
+        Ok((f, p)) if repo_matches(&f, &p, full_name) => Ok(()),
         _ => Err(Error::new(
             Kind::Forbidden,
             format!(
@@ -895,16 +892,16 @@ fn notify_started(ctx: &Ctx, ok: &GateOk) {
     }
 }
 
-fn record_path(code: &str, task_id: i64) -> Option<PathBuf> {
+pub(super) fn record_path(code: &str, task_id: i64) -> Option<PathBuf> {
     tmgr_core::active::state_dir()
         .map(|d| d.join("task-runs").join(format!("{code}-{task_id}.json")))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct CloneRecord {
-    name: String,
-    repo: String,
-    identity: Option<(u64, u64)>,
+pub(super) struct CloneRecord {
+    pub(super) name: String,
+    pub(super) repo: String,
+    pub(super) identity: Option<(u64, u64)>,
 }
 
 fn record_body(
@@ -954,17 +951,22 @@ fn write_record(
     config::write_atomic(&path, body.to_string().as_bytes(), 0o600)
 }
 
-struct Record {
-    repo: String,
-    clone: PathBuf,
-    branch: String,
-    session: Option<String>,
+pub(super) struct Record {
+    pub(super) repo: String,
+    pub(super) clone: PathBuf,
+    pub(super) branch: String,
+    pub(super) session: Option<String>,
     agent: Option<String>,
-    clones: Vec<CloneRecord>,
+    pub(super) clones: Vec<CloneRecord>,
     held: Option<Held>,
+    audit: Option<String>,
 }
 
 fn set_held(code: &str, task_id: i64, held: Option<&Held>) -> Result<()> {
+    set_key(code, task_id, "held", held.map(|h| json!(h)))
+}
+
+fn set_key(code: &str, task_id: i64, key: &str, value: Option<serde_json::Value>) -> Result<()> {
     let Some(path) = record_path(code, task_id) else {
         return Ok(());
     };
@@ -972,18 +974,18 @@ fn set_held(code: &str, task_id: i64, held: Option<&Held>) -> Result<()> {
         .map_err(|_| Error::not_found("no cloud run of this task is recorded on this machine"))?;
     let mut v: serde_json::Value = serde_json::from_str(&text)
         .map_err(|_| Error::internal("the run record of this task is damaged"))?;
-    match held {
-        Some(h) => v["held"] = json!(h),
+    match value {
+        Some(x) => v[key] = x,
         None => {
             if let Some(m) = v.as_object_mut() {
-                m.remove("held");
+                m.remove(key);
             }
         }
     }
     config::write_atomic(&path, v.to_string().as_bytes(), 0o600)
 }
 
-fn read_record(code: &str, task_id: i64) -> Result<Record> {
+pub(super) fn read_record(code: &str, task_id: i64) -> Result<Record> {
     let missing = || {
         Error::not_found("no cloud run of this task is recorded on this machine")
             .hint("start it with tmgr run <task> --agent <profile>")
@@ -1002,6 +1004,7 @@ fn read_record(code: &str, task_id: i64) -> Result<Record> {
         session: text_of("session"),
         agent: text_of("agent"),
         held: serde_json::from_value(v["held"].clone()).ok(),
+        audit: text_of("audit"),
         clones: v["clones"]
             .as_array()
             .map(|list| {
@@ -1037,10 +1040,12 @@ struct RunPlan<'a> {
     unattended: bool,
     exe_pin: ExePin,
     argv_sha256: String,
+    no_sandbox: Option<NoSandbox>,
 }
 
 fn run_request(p: &RunPlan) -> RunCreateReq {
     RunCreateReq {
+        team: None,
         clones: p.clones.clone(),
         profile: p.profile.to_string(),
         task: Some(p.task),
@@ -1063,6 +1068,9 @@ fn run_request(p: &RunPlan) -> RunCreateReq {
         unattended: p.unattended,
         exe_pin: Some(p.exe_pin.clone()),
         argv_sha256: Some(p.argv_sha256.clone()),
+        no_sandbox: p.no_sandbox.clone(),
+        external_resume: None,
+        permission_cards: false,
     }
 }
 
@@ -1168,27 +1176,24 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             sanitize_line(&profile)
         );
     }
-    if mode_arg == PermissionMode::Bypass {
+    if mode_arg == PermissionMode::Bypass && !a.no_sandbox {
         eprintln!(
             "warning: bypass mode: the agent will not ask before running commands; only the OS sandbox and a restricted network limit it."
         );
     }
     let interactive = crate::interact::is_interactive();
-    let open_bypass = bypass_needs_consent(
+    let typed = super::privilege::confirm(
         mode_arg == PermissionMode::Bypass,
+        a.no_sandbox,
         tmgr_runner::sandbox::network_restriction_enforced(),
         a.yes,
-        interactive,
     )?;
-    if open_bypass {
-        crate::interact::confirm(
-            "Network restriction is not enforced on this platform: the agent will have open network access without asking. Start anyway?",
-            false,
-            false,
-        )?;
+    if !typed {
+        crate::interact::confirm("Start this run?", true, a.yes)?;
     }
-    crate::interact::confirm("Start this run?", true, a.yes)?;
-    super::ops::login_preflight(&profile)?;
+    if !a.no_sandbox {
+        super::ops::login_preflight(&profile)?;
+    }
     let (exe_pin, argv_digest) = super::run_task::launch_pin(&profile, a.model.as_deref(), mode)?;
     if target.exists() {
         return Err(Error::new(
@@ -1218,6 +1223,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         Layout::Single { repo, clone } => {
             write_record(&ws.code, task_id, repo, clone, &branch, None, &[])?;
             workdir::prepare_clone(repo, clone, &branch, a.base.as_deref())?;
+            super::run_task::mark_task_clone(clone, repo);
             (repo.clone(), clone.clone(), Vec::new())
         }
         Layout::Multi { run_dir, plans } => {
@@ -1243,6 +1249,9 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
                 .map(|p| (p.name.clone(), p.path.clone()))
                 .collect();
             workdir::prepare_run_folder(run_dir, &pairs, &branch)?;
+            for p in plans {
+                super::run_task::mark_task_clone(&run_dir.join(&p.name), &p.path);
+            }
             let identified = plans
                 .iter()
                 .map(|p| {
@@ -1279,6 +1288,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         task_id,
     };
     let bundle = RunBundle {
+        assignment: None,
         v: 1,
         task: task_ref,
         title: ok.title.clone(),
@@ -1325,6 +1335,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         )
         .hint(format!("{0} runner restart", super::bin())));
     }
+    super::privilege::check_caps(have, false, a.no_sandbox)?;
     let via_repo = have.iter().any(|h| h == caps::TRUST_VIA_REPO_V1)
         && !privileged::RUN_ENV
             .iter()
@@ -1362,6 +1373,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             unattended: a.yes || !interactive,
             exe_pin,
             argv_sha256: argv_digest,
+            no_sandbox: super::privilege::request(a.no_sandbox),
         }))
         .map_err(rerr)?;
     write_record(
@@ -1373,6 +1385,10 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         Some((&info.id, &profile)),
         &clone_records,
     )?;
+    if let Some(note) = tmgr_runner::agentwork::audit_note(Some(mode), a.no_sandbox) {
+        set_key(&ws.code, task_id, "audit", Some(json!(note)))?;
+    }
+    super::checkpoints::enable_new(&mut rc, &info.id, a.checkpoints_flag())?;
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         return attach::run(&cfg, &info.id);
     }
@@ -1454,52 +1470,78 @@ struct RepoState {
     changed_paths: Vec<String>,
 }
 
-fn repo_state(repo: &Path, head: &str, server_default: Option<&str>) -> Result<RepoState> {
+fn repo_state(
+    repo: &Path,
+    head: &str,
+    full_name: &str,
+    server_default: Option<&str>,
+) -> Result<RepoState> {
     let q = |args: &[&str]| workdir::git_query(repo, args);
-    let default_branch = q(&["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
-        .ok()
-        .and_then(|b| b.strip_prefix("origin/").map(str::to_string))
-        .or_else(|| server_default.map(str::to_string))
-        .ok_or_else(|| {
-            Error::new(
-                Kind::Forbidden,
-                "cannot tell the default branch of the repository",
-            )
-            .hint("run git remote set-head origin --auto in it")
-        })?;
-    tmgr_core::branch::validate_branch_name(&default_branch)?;
-    let remote_ref = format!("refs/remotes/origin/{default_branch}");
-    let base = if q(&["rev-parse", "--verify", "-q", &remote_ref]).is_ok() {
-        remote_ref
-    } else {
-        format!("refs/heads/{default_branch}")
-    };
+    let remote = workdir::remote_base(repo, full_name, server_default)?;
+    let workdir::RemoteBase {
+        default_branch,
+        sha: base,
+        fetch_url,
+        push_url,
+    } = remote;
     let (descends_from_base, merge_commits) = workdir::history_facts(repo, &base, head)?;
+    if descends_from_base && merge_commits == 0 {
+        workdir::verify_new_objects(repo, &base, head)?;
+    }
     let count = q(&["rev-list", "--count", &format!("{base}..{head}")])?;
-    let diff = if descends_from_base {
-        q(&[
+    let paths = |args: &[&str]| -> Result<Vec<String>> {
+        Ok(q(args)?
+            .split('\0')
+            .map(|p| p.trim_matches('\n'))
+            .filter(|p| !p.is_empty())
+            .map(str::to_string)
+            .collect())
+    };
+    let mut changed_paths = Vec::new();
+    if descends_from_base {
+        let range = format!("{base}..{head}");
+        changed_paths.extend(paths(&[
             "diff",
             "--name-only",
             "-z",
             "--no-renames",
             &format!("{base}...{head}"),
-        ])?
-    } else {
-        String::new()
-    };
+        ])?);
+        changed_paths.extend(paths(&[
+            "log",
+            "--name-only",
+            "--format=",
+            "-z",
+            "--no-renames",
+            &range,
+        ])?);
+        changed_paths.extend(paths(&[
+            "diff",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            &base,
+            head,
+            "--",
+            ":(icase).github",
+        ])?);
+    }
     Ok(RepoState {
         default_branch,
         base,
-        fetch_url: q(&["remote", "get-url", "origin"])?,
-        push_url: q(&["remote", "get-url", "--push", "origin"])?,
+        fetch_url,
+        push_url,
         commit_count: count.trim().parse().unwrap_or(0),
         descends_from_base,
         merge_commits,
-        changed_paths: diff
-            .split('\0')
-            .filter(|p| !p.is_empty())
-            .map(str::to_string)
-            .collect(),
+        changed_paths,
+    })
+}
+
+fn any_live(sessions: &[tmgr_ipc::api::SessionInfo], task: TaskRef, session: Option<&str>) -> bool {
+    sessions.iter().any(|s| {
+        s.state.kind != tmgr_ipc::api::StateKind::Exited
+            && (session == Some(s.id.as_str()) || s.task == Some(task))
     })
 }
 
@@ -1512,11 +1554,7 @@ fn ensure_not_live(task: TaskRef, session: Option<&str>) -> Result<()> {
         )
         .hint(format!("{} runner start", super::bin()))
     })?;
-    let live = rc.list().map_err(rerr)?.into_iter().any(|s| {
-        s.state.kind != tmgr_ipc::api::StateKind::Exited
-            && (session == Some(s.id.as_str()) || s.task == Some(task))
-    });
-    if live {
+    if any_live(&rc.list().map_err(rerr)?, task, session) {
         return Err(
             Error::new(Kind::Conflict, "the run of this task is still live")
                 .hint("wait for the agent to finish or stop it, then publish again"),
@@ -1531,6 +1569,8 @@ pub struct Published<'a> {
     pub pr_url: &'a str,
     pub agent: Option<&'a str>,
     pub branch: &'a str,
+    pub audit: Option<&'a str>,
+    pub team: bool,
 }
 
 pub struct PublishedAll<'a> {
@@ -1539,6 +1579,25 @@ pub struct PublishedAll<'a> {
     pub urls: &'a [(String, String)],
     pub agent: Option<&'a str>,
     pub branch: &'a str,
+    pub audit: Option<&'a str>,
+    pub team: bool,
+}
+
+fn published_all<'a>(
+    t: &'a PublishTarget,
+    task_id: i64,
+    workspace_id: i64,
+    urls: &'a [(String, String)],
+) -> PublishedAll<'a> {
+    PublishedAll {
+        task_id: u64::try_from(task_id).unwrap_or_default(),
+        workspace_id,
+        urls,
+        agent: t.agent.as_deref(),
+        branch: &t.branch,
+        audit: t.audit.as_deref(),
+        team: t.queue.as_ref().is_some_and(|q| q.team),
+    }
 }
 
 pub fn report_published(client: &tmgr_core::api::Client, p: &Published) -> Vec<String> {
@@ -1552,11 +1611,17 @@ pub fn report_published(client: &tmgr_core::api::Client, p: &Published) -> Vec<S
             branch: p.branch,
             summary: format!("Opened {}", p.pr_url),
             comment: format!("The agent finished. Pull request: {}", p.pr_url),
+            audit: p.audit,
+            team: p.team,
         },
     )
 }
 
 pub fn report_published_all(client: &tmgr_core::api::Client, p: &PublishedAll) -> Vec<String> {
+    report_with(client, &all_report(p))
+}
+
+fn all_report<'a>(p: &PublishedAll<'a>) -> Report<'a> {
     let first = p.urls.first().map_or("", |(_, u)| u.as_str());
     let joined: Vec<&str> = p.urls.iter().map(|(_, u)| u.as_str()).collect();
     let list: Vec<String> = p
@@ -1564,18 +1629,17 @@ pub fn report_published_all(client: &tmgr_core::api::Client, p: &PublishedAll) -
         .iter()
         .map(|(repo, url)| format!("- {repo}: {url}"))
         .collect();
-    report_with(
-        client,
-        &Report {
-            task_id: p.task_id,
-            workspace_id: p.workspace_id,
-            pr_url: first,
-            agent: p.agent,
-            branch: p.branch,
-            summary: format!("Opened {}", joined.join(", ")),
-            comment: format!("The agent finished. Pull requests:\n{}", list.join("\n")),
-        },
-    )
+    Report {
+        task_id: p.task_id,
+        workspace_id: p.workspace_id,
+        pr_url: first,
+        agent: p.agent,
+        branch: p.branch,
+        summary: format!("Opened {}", joined.join(", ")),
+        comment: format!("The agent finished. Pull requests:\n{}", list.join("\n")),
+        audit: p.audit,
+        team: p.team,
+    }
 }
 
 const RESUMED_COMMENT: &str =
@@ -1610,6 +1674,8 @@ pub fn report_resumed(client: &tmgr_core::api::Client, p: &PublishedAll) -> Vec<
             branch: p.branch,
             summary: format!("Resumed and updated {}", joined.join(", ")),
             comment: resumed_comment(p.urls),
+            audit: p.audit,
+            team: p.team,
         },
     )
 }
@@ -1633,6 +1699,8 @@ struct Report<'a> {
     branch: &'a str,
     summary: String,
     comment: String,
+    audit: Option<&'a str>,
+    team: bool,
 }
 
 fn running_run(
@@ -1640,6 +1708,7 @@ fn running_run(
     task_id: u64,
     agent: Option<&str>,
     branch: &str,
+    team: bool,
 ) -> Option<tmgr_core::agentwork::RunView> {
     use tmgr_core::agentwork;
     client
@@ -1649,11 +1718,21 @@ fn running_run(
         .unwrap_or_default()
         .into_iter()
         .filter_map(|r| agentwork::parse_run(r).ok())
-        .find(|r| {
-            r.status == "running"
-                && agent.is_none_or(|a| r.agent.as_deref() == Some(a))
-                && r.branch.as_deref().is_none_or(|b| b == branch)
-        })
+        .find(|r| run_matches(r, agent, branch, team))
+}
+
+fn run_matches(
+    r: &tmgr_core::agentwork::RunView,
+    agent: Option<&str>,
+    branch: &str,
+    team: bool,
+) -> bool {
+    r.status == "running"
+        && agent.is_none_or(|a| r.agent.as_deref() == Some(a))
+        && match r.branch.as_deref() {
+            Some(b) => b == branch,
+            None => !team,
+        }
 }
 
 fn already_held(t: &PublishTarget, held: &Held) -> bool {
@@ -1684,7 +1763,13 @@ fn report_held(
 ) {
     use tmgr_core::agentwork;
     let task_id = u64::try_from(t.task_id).unwrap_or_default();
-    if let Some(run) = running_run(client, task_id, t.agent.as_deref(), &t.branch) {
+    if let Some(run) = running_run(
+        client,
+        task_id,
+        t.agent.as_deref(),
+        &t.branch,
+        workdir::is_team_lead_clone(&t.clone_dir),
+    ) {
         let progress = agentwork::Progress {
             summary: Some(format!(
                 "Held before publish by the leak gate: {}. Nothing was pushed.",
@@ -1714,12 +1799,15 @@ fn report_with(client: &tmgr_core::api::Client, p: &Report) -> Vec<String> {
     use tmgr_core::agentwork;
     let mut warnings = Vec::new();
     let note = |what: &str, e: &Error| format!("{what}: {}", sanitize_line(&e.message));
-    let running = running_run(client, p.task_id, p.agent, p.branch);
+    let running = running_run(client, p.task_id, p.agent, p.branch, p.team);
     match running {
         Some(run) => {
             let progress = agentwork::Progress {
                 pr_url: Some(p.pr_url.to_string()),
-                summary: Some(p.summary.clone()),
+                summary: Some(match p.audit {
+                    Some(a) => format!("{}; {a}", p.summary),
+                    None => p.summary.clone(),
+                }),
                 ..Default::default()
             };
             if let Err(e) = agentwork::finish(client, run.id, "succeeded", &progress) {
@@ -1756,6 +1844,14 @@ pub struct PublishTarget {
     pub repo: Option<String>,
     pub clones: Vec<CloneRef>,
     pub resume: BTreeMap<String, String>,
+    pub audit: Option<String>,
+    pub queue: Option<QueueRun>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueueRun {
+    pub pickup_id: String,
+    pub team: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1853,13 +1949,7 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
             let outcome = finish_multi(t, staged, &title, &body, mode)?;
             match &outcome {
                 Outcome::Published(urls) => {
-                    let published = PublishedAll {
-                        task_id: u64::try_from(task_id).unwrap_or_default(),
-                        workspace_id: ws.id,
-                        urls,
-                        agent: t.agent.as_deref(),
-                        branch: &t.branch,
-                    };
+                    let published = published_all(t, task_id, ws.id, urls);
                     let warnings = if resumed {
                         report_resumed(client, &published)
                     } else {
@@ -1924,7 +2014,7 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
         .to_str()
         .ok_or_else(|| Error::usage("the repository path is not valid UTF-8"))?;
     let sha = workdir::import_branch(repo_str, &t.clone_dir, &t.branch)?;
-    let state = repo_state(&repo, &sha, category.default_branch.as_deref())?;
+    let state = repo_state(&repo, &sha, full_name, category.default_branch.as_deref())?;
     let task_key = verified.task_key.clone();
     let input = PublishInput {
         sha,
@@ -1954,13 +2044,7 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
             .resuming(&[(full_name.to_string(), wip.clone())]);
         let plan = if draft { plan.draft() } else { plan };
         let urls = publish_all(&plan)?;
-        let published = PublishedAll {
-            task_id: u64::try_from(task_id).unwrap_or_default(),
-            workspace_id: ws.id,
-            urls: &urls,
-            agent: t.agent.as_deref(),
-            branch: &t.branch,
-        };
+        let published = published_all(t, task_id, ws.id, &urls);
         let warnings = if draft {
             report_published_all(client, &published)
         } else {
@@ -1985,11 +2069,26 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
             pr_url: &pr_url,
             agent: t.agent.as_deref(),
             branch: &t.branch,
+            audit: t.audit.as_deref(),
+            team: workdir::is_team_lead_clone(&t.clone_dir),
         },
     ) {
         eprintln!("warning: {w}");
     }
     Ok(Outcome::Published(vec![(full_name.to_string(), pr_url)]))
+}
+
+fn run_folders(primary: &str, t: &PublishTarget) -> Vec<PathBuf> {
+    let queue = t.queue.as_ref().and_then(|q| {
+        let dir = workdir::clone_dir(primary, &q.pickup_id)?;
+        Some(if q.team { workdir::lead_dir(&dir) } else { dir })
+    });
+    match &t.queue {
+        Some(_) => queue.into_iter().collect(),
+        None => workdir::run_clone_dir(primary, &t.branch)
+            .into_iter()
+            .collect(),
+    }
 }
 
 struct Staged {
@@ -2020,10 +2119,11 @@ fn stage_multi(
             "the clones recorded for this run are not the ones of the bound repositories",
         ));
     }
-    let live_folder = plans
+    let allowed = plans
         .first()
-        .and_then(|p| workdir::run_clone_dir(&p.path, &t.branch));
-    if live_folder.as_deref() != Some(t.clone_dir.as_path()) {
+        .map(|p| run_folders(&p.path, t))
+        .unwrap_or_default();
+    if !allowed.contains(&t.clone_dir) {
         return Err(Error::new(
             Kind::Forbidden,
             "the recorded run folder is not the one of the bound primary repository",
@@ -2153,7 +2253,7 @@ fn import_and_plan(
             base: String::new(),
             commits: 0,
         });
-        let state = repo_state(&repo, &sha, None)?;
+        let state = repo_state(&repo, &sha, &plan.full_name, None)?;
         if let Some(last) = touched.last_mut() {
             last.base = state.base.clone();
             last.commits = state.commit_count;
@@ -2197,6 +2297,8 @@ fn target_of(ws_code: String, task_id: i64, rec: Record) -> PublishTarget {
             })
             .collect(),
         resume: BTreeMap::new(),
+        audit: rec.audit,
+        queue: None,
     }
 }
 
@@ -2365,6 +2467,80 @@ pub fn publish_cmd(o: &Opts, reference: &str) -> Result<i32> {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    fn run_view(branch: Option<&str>, status: &str) -> tmgr_core::agentwork::RunView {
+        tmgr_core::agentwork::RunView {
+            id: 1,
+            status: status.into(),
+            agent: Some("claude-code".into()),
+            branch: branch.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_publish_matches_the_lead_run_and_never_a_worker_run() {
+        let task = "queue/q_abc";
+        let team = |r| run_matches(&r, Some("claude-code"), task, true);
+        assert!(team(run_view(Some(task), "running")));
+        assert!(
+            !team(run_view(None, "running")),
+            "a worker run without a branch"
+        );
+        assert!(!team(run_view(Some("queue-team/q_abc/w1"), "running")));
+        assert!(!team(run_view(Some(task), "succeeded")));
+        let solo = |r| run_matches(&r, Some("claude-code"), task, false);
+        assert!(solo(run_view(Some(task), "running")));
+        assert!(solo(run_view(None, "running")));
+        assert!(!solo(run_view(Some("other"), "running")));
+        assert!(run_matches(
+            &run_view(Some("other"), "running"),
+            None,
+            "other",
+            false
+        ));
+    }
+
+    fn session(
+        id: &str,
+        state: &str,
+        task: i64,
+        team: Option<serde_json::Value>,
+    ) -> tmgr_ipc::api::SessionInfo {
+        let mut v = serde_json::json!({
+            "id": id, "name": "n", "argv": ["claude"], "cwd": "/w", "cols": 80, "rows": 24,
+            "created_ms": 1, "shim_pid": 1, "child_pid": 2,
+            "task": {"workspace_id": 5, "task_id": task},
+            "state": {"kind": state, "since_ms": 1}
+        });
+        if let Some(t) = team {
+            v["team"] = t;
+        }
+        serde_json::from_value(v).unwrap()
+    }
+
+    #[test]
+    fn publishing_waits_for_every_member_of_a_team_and_passes_once_all_have_exited() {
+        let task = TaskRef {
+            workspace_id: 5,
+            task_id: 1,
+        };
+        let link = |role: serde_json::Value| Some(serde_json::json!({"role": role, "of": "q_abc"}));
+        let live = [
+            session("s_lead", "exited", 1, link(serde_json::json!("lead"))),
+            session("s_w1", "exited", 1, link(serde_json::json!({"worker": 1}))),
+            session("s_w2", "waiting", 1, link(serde_json::json!({"worker": 2}))),
+        ];
+        assert!(any_live(&live, task, Some("s_lead")));
+        let done = [
+            session("s_lead", "exited", 1, link(serde_json::json!("lead"))),
+            session("s_w1", "exited", 1, link(serde_json::json!({"worker": 1}))),
+            session("s_w2", "exited", 1, link(serde_json::json!({"worker": 2}))),
+            session("s_other", "working", 2, None),
+        ];
+        assert!(!any_live(&done, task, Some("s_lead")));
+    }
+
     use serde_json::{json, Value};
     use std::collections::BTreeMap;
     use tmgr_core::approval::PinnedKey;
@@ -2407,6 +2583,8 @@ mod tests {
                 vec![]
             },
             repos: BTreeMap::new(),
+            require_signed_rules: false,
+            require_signed_persona: false,
         });
         a
     }
@@ -2694,6 +2872,7 @@ mod tests {
                 sha256: "e".repeat(64),
             },
             argv_sha256: "a".repeat(64),
+            no_sandbox: None,
         });
         assert_eq!(
             serde_json::to_string(&req).unwrap(),
@@ -2738,6 +2917,7 @@ mod tests {
                 sha256: "e".repeat(64),
             },
             argv_sha256: "a".repeat(64),
+            no_sandbox: None,
         });
         let v = serde_json::to_value(&req).unwrap();
         assert!(v.get("clone_of").is_none());
@@ -3126,6 +3306,7 @@ mod tests {
         let request = |c: &Candidate| {
             let bundle = bundle_of(&rule, c, "/tmp/clone", &Default::default());
             let mut r = RunCreateReq {
+                team: None,
                 clones: Vec::new(),
                 profile: "claude-code".into(),
                 task: Some(task),
@@ -3148,6 +3329,9 @@ mod tests {
                 unattended: true,
                 exe_pin: None,
                 argv_sha256: None,
+                no_sandbox: None,
+                external_resume: None,
+                permission_cards: false,
             };
             r.bundle.as_mut().unwrap().launch.permission_mode = None;
             r.bundle_sha256 = Some(r.bundle.as_ref().unwrap().sha256());
@@ -3216,6 +3400,77 @@ mod tests {
                 .success();
             assert!(ok, "{args:?}");
         }
+    }
+
+    fn repo_cmd(dir: &Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("git")
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{args:?}");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    fn committed_repo(dir: &Path, origin: &str) -> String {
+        git_repo(dir, origin);
+        std::fs::write(dir.join("a.txt"), "a").unwrap();
+        repo_cmd(dir, &["add", "a.txt"]);
+        repo_cmd(dir, &["commit", "-q", "-m", "a"]);
+        repo_cmd(dir, &["rev-parse", "HEAD"])
+    }
+
+    #[test]
+    fn the_state_of_a_repository_reads_both_origin_urls() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(d.path()).unwrap().join("r");
+        committed_repo(&repo, "https://github.com/o/r.git");
+        repo_cmd(
+            &repo,
+            &["config", "remote.origin.pushurl", "git@github.com:o/r.git"],
+        );
+        let (fetch, push) = workdir::origin_urls(&repo).unwrap();
+        assert_eq!(fetch, "https://github.com/o/r.git");
+        assert_eq!(push, "git@github.com:o/r.git");
+    }
+
+    #[test]
+    fn the_state_of_a_repository_uses_the_fetch_url_for_pushing_without_a_push_url() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(d.path()).unwrap().join("r");
+        committed_repo(&repo, "https://github.com/o/r.git");
+        let (_, push) = workdir::origin_urls(&repo).unwrap();
+        assert_eq!(push, "https://github.com/o/r.git");
+    }
+
+    #[test]
+    fn a_repository_is_verified_by_its_stored_urls_not_by_rewritten_ones() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(d.path()).unwrap().join("r");
+        git_repo(&repo, "https://example.com/x.git");
+        repo_cmd(
+            &repo,
+            &[
+                "config",
+                "url.https://github.com/o/r.git.insteadOf",
+                "https://example.com/x.git",
+            ],
+        );
+        assert!(verify_repo(&repo, "o/r").is_err());
+    }
+
+    #[test]
+    fn a_repository_whose_origin_points_at_the_named_repository_is_verified() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(d.path()).unwrap().join("r");
+        git_repo(&repo, "https://github.com/o/r.git");
+        assert!(verify_repo(&repo, "o/r").is_ok());
+        assert!(verify_repo(&repo, "o/other").is_err());
     }
 
     fn category() -> Category {
@@ -3400,6 +3655,8 @@ mod tests {
             repo: None,
             clones,
             resume: BTreeMap::new(),
+            audit: None,
+            queue: None,
         };
         let refs = || {
             ["backend", "frontend"]
@@ -3451,6 +3708,89 @@ mod tests {
         ]))
         .unwrap_err();
         assert!(e.message.contains("not the folder"), "{}", e.message);
+    }
+
+    #[test]
+    fn a_queue_pickup_folder_is_accepted_for_its_own_pickup_only() {
+        let d = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(d.path()).unwrap();
+        let (be, fe) = (root.join("be"), root.join("fe"));
+        git_repo(&be, "https://github.com/tmgr-dev/backend.git");
+        git_repo(&fe, "https://github.com/tmgr-dev/frontend.git");
+        let entry = set_entry(&[("tmgr-dev/backend", &be), ("tmgr-dev/frontend", &fe)]);
+        let list = names(&["tmgr-dev/backend", "tmgr-dev/frontend"]);
+        let queue_dir = root.join("be-worktrees/queue/q_1");
+        let target = |dir: PathBuf, id: &str, team: bool| PublishTarget {
+            workspace_code: "tmgrdev".into(),
+            task_id: 9100,
+            clone_dir: dir,
+            branch: "tmgr/tm-411".into(),
+            session_id: None,
+            agent: None,
+            repo: None,
+            clones: ["backend", "frontend"]
+                .iter()
+                .map(|n| CloneRef {
+                    name: n.to_string(),
+                    identity: None,
+                })
+                .collect(),
+            resume: BTreeMap::new(),
+            audit: None,
+            queue: Some(QueueRun {
+                pickup_id: id.into(),
+                team,
+            }),
+        };
+        let accepted = |t: PublishTarget| {
+            stage_multi(&t, &entry, &category(), &list, "t", "b")
+                .err()
+                .is_none_or(|e| !e.message.contains("bound primary repository"))
+        };
+        assert!(accepted(target(queue_dir.clone(), "q_1", false)));
+        assert!(accepted(target(queue_dir.join("lead"), "q_1", true)));
+        assert!(!accepted(target(queue_dir.clone(), "q_1", true)));
+        assert!(!accepted(target(queue_dir.join("lead"), "q_1", false)));
+        assert!(!accepted(target(queue_dir.clone(), "q_2", false)));
+        assert!(!accepted(target(queue_dir.join("lead"), "q_2", true)));
+        assert!(!accepted(target(
+            root.join("fe-worktrees/queue/q_1"),
+            "q_1",
+            false
+        )));
+        assert!(!accepted(target(queue_dir.join("lead/x"), "q_1", true)));
+        let run_dir = workdir::run_clone_dir(&be.to_string_lossy(), "tmgr/tm-411").unwrap();
+        assert!(!accepted(target(run_dir, "q_1", false)));
+        let mut plain = target(queue_dir, "q_1", false);
+        plain.queue = None;
+        assert!(!accepted(plain));
+    }
+
+    #[test]
+    fn a_team_multi_publish_reports_the_lead_run() {
+        let urls = [(
+            "o/r".to_string(),
+            "https://github.com/o/r/pull/1".to_string(),
+        )];
+        let at = |team: bool| PublishTarget {
+            workspace_code: "tmgrdev".into(),
+            task_id: 1,
+            clone_dir: PathBuf::from("/w/be-worktrees/queue/q_1/lead"),
+            branch: "tmgr/tm-1".into(),
+            session_id: None,
+            agent: Some("claude-code".into()),
+            repo: None,
+            clones: Vec::new(),
+            resume: BTreeMap::new(),
+            audit: None,
+            queue: Some(QueueRun {
+                pickup_id: "q_1".into(),
+                team,
+            }),
+        };
+        let team = |team: bool| all_report(&published_all(&at(team), 1, 2, &urls)).team;
+        assert!(team(true));
+        assert!(!team(false));
     }
 
     #[test]
@@ -3507,5 +3847,84 @@ mod tests {
             record_body("/work/be", clone, "tmgr/x", None, &rec).to_string(),
             r#"{"repo":"/work/be","clone":"/work/be-worktrees/tmgr-x","branch":"tmgr/x","cloud":true,"clones":[{"name":"backend","repo":"tmgr-dev/backend","dev":7,"ino":9}]}"#
         );
+    }
+
+    fn with_policy(rules: bool, persona: bool) -> AllowFile {
+        let mut a = ok_allow();
+        a.entries[0].require_signed_rules = rules;
+        a.entries[0].require_signed_persona = persona;
+        a
+    }
+
+    fn bundle_v3_rules_only() -> Value {
+        let c = &fx()["cases_v3"][2];
+        let mut b = bundle_v3(2);
+        b["category"] = json!({"id": 127, "code": "TM", "github_full_name": null, "default_branch": null,
+            "repositories": c["repositories"], "repos_sha256": c["repos_sha256"]});
+        b["approval"]["repos_sha256"] = c["repos_sha256"].clone();
+        b
+    }
+
+    #[test]
+    fn the_rules_policy_needs_a_v3_approval_that_covers_the_rules() {
+        let a = with_policy(true, false);
+        assert!(gate(&a, bundle_v2(), &live(), None).is_err());
+        assert!(gate(&a, bundle(), &live(), None).is_err());
+        assert!(gate(&a, bundle_v3(0), &live(), None).is_ok());
+        assert!(gate(&a, bundle_v3_rules_only(), &live(), None).is_ok());
+        let r = gate(&a, bundle_v3(1), &live(), None).unwrap_err();
+        assert!(r.message.contains("workspace rules"), "{}", r.message);
+        assert_eq!(r.fix, RECONFIRM);
+    }
+
+    #[test]
+    fn the_persona_policy_needs_a_v3_approval_that_covers_a_persona() {
+        let a = with_policy(false, true);
+        assert!(gate(&a, bundle_v2(), &live(), None).is_err());
+        assert!(gate(&a, bundle(), &live(), None).is_err());
+        assert!(gate(&a, bundle_v3(1), &live(), None).is_ok());
+        assert!(gate(&a, bundle_v3(0), &live(), None).is_ok());
+        let r = gate(&a, bundle_v3_rules_only(), &live(), None).unwrap_err();
+        assert!(r.message.contains("persona"), "{}", r.message);
+    }
+
+    #[test]
+    fn both_policies_need_both_and_off_changes_nothing() {
+        let a = with_policy(true, true);
+        assert!(gate(&a, bundle_v3(0), &live(), None).is_ok());
+        assert!(gate(&a, bundle_v3(1), &live(), None).is_err());
+        assert!(gate(&a, bundle_v3_rules_only(), &live(), None).is_err());
+        assert!(gate(&a, bundle_v2(), &live(), None).is_err());
+        let off = with_policy(false, false);
+        assert!(gate(&off, bundle_v2(), &live(), None).is_ok());
+        assert!(gate(&off, bundle(), &live(), None).is_ok());
+    }
+
+    #[test]
+    fn a_server_cannot_claim_coverage_the_signature_does_not_have() {
+        let a = with_policy(true, true);
+        let mut b = bundle();
+        b["approval"]["persona_sha256"] = fx()["cases_v3"][0]["persona_sha256"].clone();
+        b["approval"]["context_sha256"] = fx()["cases_v3"][0]["context_sha256"].clone();
+        b["persona"] = fx()["cases_v3"][0]["persona"].clone();
+        let r = gate(&a, b, &live(), None).unwrap_err();
+        assert!(!r.message.contains("requires signed"), "{}", r.message);
+    }
+
+    #[test]
+    fn a_refused_policy_leaves_the_rollback_state_alone() {
+        let rollback = Rollback::default();
+        let key = Rollback::key("api.tmgr.dev", 1, 56, 9100);
+        let r = cloud_gate(
+            &with_policy(true, false),
+            &live(),
+            &parse_eligibility(bundle_v2()).unwrap(),
+            "api.tmgr.dev",
+            1,
+            now(),
+            rollback.seen(&key),
+        );
+        assert!(r.is_err());
+        assert_eq!(rollback, Rollback::default());
     }
 }

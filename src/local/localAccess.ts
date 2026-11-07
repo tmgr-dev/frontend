@@ -12,9 +12,20 @@ import { respond } from './install';
 import { withLiveWrites } from './liveUpdates';
 import { handleMcpRequest } from './mcp';
 import { readPersonaCache } from './personaCache';
-import { checkPersonaIdentity, LOCAL_OWNER_ID } from './personaGate';
+import {
+	checkPersonaIdentity,
+	LOCAL_OWNER_ID,
+	mapsLocalIdentity,
+} from './personaGate';
 import { normalizePath } from './router';
 import { listLocalWorkspaces, localContext } from './runtime';
+import {
+	emptyLibrary,
+	personaSkillIndex,
+	type LibraryFile,
+	type MergedSkill,
+} from './skillLibrary';
+import { readSkillLibrary } from './tauriSkillLibrary';
 import {
 	LocalHttpError,
 	type LocalActor,
@@ -55,6 +66,7 @@ export interface LocalAccessDeps {
 	) => Promise<LocalContext>;
 	tokenInfo: (tokenId: string) => Promise<LocalAccessTokenInfo | null>;
 	promptVersion: (personaUuid: string) => Promise<number | null>;
+	skillLibrary?: () => Promise<LibraryFile>;
 }
 
 const errorReply = (
@@ -143,11 +155,24 @@ const parseBody = (raw: string | null): any => {
 	}
 };
 
+const personaSkills = async (
+	deps: LocalAccessDeps,
+	personaUuid: string,
+): Promise<MergedSkill[]> => {
+	if (!deps.skillLibrary) return [];
+	try {
+		return personaSkillIndex(await deps.skillLibrary(), personaUuid);
+	} catch {
+		return [];
+	}
+};
+
 const whoamiBody = async (
 	ctx: LocalContext,
 	tokenId: string,
 	tokenInfo: LocalAccessTokenInfo | null,
 	promptVersion: number | null,
+	skills: MergedSkill[],
 ) => {
 	const [persona] = await ctx.db.select<{
 		name: string;
@@ -171,17 +196,19 @@ const whoamiBody = async (
 			id: ctx.actor!.id,
 			name: persona?.name ?? ctx.actor!.name,
 			description: persona?.description ?? null,
-			owner: {
-				id: persona?.owner_user_id ?? ctx.user.id,
-				name: persona?.owner_name ?? ctx.user.name,
-			},
+			owner: mapsLocalIdentity(ctx, persona?.owner_user_id)
+				? { id: ctx.user.id, name: ctx.user.name }
+				: {
+						id: persona?.owner_user_id ?? ctx.user.id,
+						name: persona?.owner_name ?? ctx.user.name,
+					},
 			prompt_version: promptVersion,
 			workspace: {
 				id: ctx.workspace.id,
 				code: ctx.workspace.code,
 				permissions,
 			},
-			skills: [] as unknown[],
+			skills,
 		},
 		token: {
 			id: tokenId,
@@ -271,15 +298,22 @@ export const handleLocalAccessRequest = async (
 					);
 				throw error;
 			}
-			const [tokenInfo, promptVersion] = await Promise.all([
+			const [tokenInfo, promptVersion, skills] = await Promise.all([
 				deps.tokenInfo(payload.tokenId),
 				deps.promptVersion(payload.personaUuid),
+				personaSkills(deps, payload.personaUuid),
 			]);
 			noteFirstLocalCall(200);
 			return {
 				status: 200,
 				body: JSON.stringify(
-					await whoamiBody(ctx, payload.tokenId, tokenInfo, promptVersion),
+					await whoamiBody(
+						ctx,
+						payload.tokenId,
+						tokenInfo,
+						promptVersion,
+						skills,
+					),
 				),
 			};
 		}
@@ -316,6 +350,7 @@ export const handleLocalAccessRequest = async (
 			});
 			const result = await handleMcpRequest(router, ctx, payload.body ?? '', {
 				personaPrompt: (uuid) => readPersonaCache(uuid, ctx.user.id),
+				skillLibrary: () => readSkillLibrary(ctx.user.id),
 			});
 			noteFirstLocalCall(result.status);
 			return { status: result.status, body: result.body };
@@ -461,6 +496,10 @@ export const installLocalAccess = async (store: any): Promise<void> => {
 			if (userId == null) return null;
 			const cached = await readPersonaCache(uuid, userId);
 			return cached?.prompt_version ?? null;
+		},
+		skillLibrary: async () => {
+			const userId = currentUser()?.id;
+			return userId == null ? emptyLibrary() : readSkillLibrary(userId);
 		},
 	};
 

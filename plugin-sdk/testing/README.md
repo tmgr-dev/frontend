@@ -70,3 +70,6 @@ Those four source files have no Vue or Tauri dependency (`broker.ts` and `manife
 imports at all once their type-only imports are stripped), so a straight TypeScript-to-JS transpile is
 byte-for-byte the same logic the app runs — permission checks, parameter validation and manifest rules
 never drift from what ships.
+
+The sanitizer renders API 1.7 `markdown` nodes with `marked`, which ships only as an ES module. The harness
+loads it with `require()`, so it needs Node 20.19+ or 22.12+.

@@ -16,7 +16,7 @@ pub const GENERATION: &str = "isolation-selftest";
 const KEY: &str = "selftest.probe/page";
 const ARG: &str = "--plugin-isolation-selftest";
 
-const APP_COMMANDS: [&str; 15] = [
+const APP_COMMANDS: [&str; 17] = [
   "plugin_install",
   "plugin_uninstall",
   "plugin_github_release",
@@ -29,6 +29,8 @@ const APP_COMMANDS: [&str; 15] = [
   "plugin_window_open",
   "plugin_windows_close",
   "plugin_fetch",
+  "plugin_image_fetch",
+  "plugin_open_tg_link",
   "local_db_select",
   "plugin_catalog",
   "plugin:opener|open_url",
@@ -66,6 +68,8 @@ fn probe(port: u16) -> String {
     plugin_window_open: {{ key: 'other.plugin/page', title: 'x', generation: 'x' }},
     plugin_windows_close: {{ pluginId: null }},
     plugin_fetch: {{ request: {{ url: base + '/plugin-fetch', method: 'GET', headers: [], body: null }} }},
+    plugin_image_fetch: {{ url: 'https://example.com/a.png' }},
+    plugin_open_tg_link: {{ url: 'tg://resolve?domain=telegram' }},
     local_db_select: {{ code: 'x', sql: 'SELECT 1', params: [] }},
     plugin_catalog: {{}},
     'plugin:opener|open_url': {{ url: base + '/opener' }},

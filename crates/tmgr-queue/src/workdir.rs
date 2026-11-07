@@ -1,7 +1,10 @@
 use std::collections::BTreeMap;
+use std::ffi::OsString;
+use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tmgr_core::error::{Error, Kind, Result};
+use tmgr_runner::hostview::{Access, HostView};
 
 pub fn clone_dir(repo: &str, pickup_id: &str) -> Option<PathBuf> {
     let repo = Path::new(repo);
@@ -14,22 +17,75 @@ pub fn clone_dir(repo: &str, pickup_id: &str) -> Option<PathBuf> {
     )
 }
 
+/// Whether `path` lies in a run directory made by `clone_dir`, where a queue agent may be writing.
+pub fn in_queue_run_dir(path: &Path) -> bool {
+    let names: Vec<_> = path.components().map(|c| c.as_os_str()).collect();
+    names
+        .windows(3)
+        .any(|w| w[1] == "queue" && w[0].to_str().is_some_and(|n| n.ends_with("-worktrees")))
+}
+
 pub fn branch_name(pickup_id: &str) -> String {
     format!("queue/{pickup_id}")
 }
 
-pub(crate) fn git_command(dir: Option<&Path>) -> Command {
+pub const LEAD_DIR: &str = "lead";
+
+pub fn lead_dir(team_dir: &Path) -> PathBuf {
+    team_dir.join(LEAD_DIR)
+}
+
+pub fn is_team_lead_clone(dir: &Path) -> bool {
+    fn name(p: Option<&Path>) -> Option<&str> {
+        p.and_then(|p| p.file_name()).and_then(|n| n.to_str())
+    }
+    let queue = dir.parent().and_then(Path::parent);
+    name(Some(dir)) == Some(LEAD_DIR)
+        && name(queue) == Some("queue")
+        && name(queue.and_then(Path::parent)).is_some_and(|n| n.ends_with("-worktrees"))
+}
+
+pub fn worker_dir(team_dir: &Path, k: u8) -> PathBuf {
+    team_dir.join(format!("w{k}"))
+}
+
+pub fn worker_branch(pickup_id: &str, k: u8) -> String {
+    format!("{TEAM_REF_PREFIX}{pickup_id}/w{k}")
+}
+
+const TEAM_REF_PREFIX: &str = "queue-team/";
+
+fn member_dir_name(name: &str) -> bool {
+    name == LEAD_DIR
+        || name
+            .strip_prefix('w')
+            .is_some_and(|k| matches!(k, "1" | "2" | "3" | "4" | "5"))
+}
+
+pub fn absolute_path_entries(value: &std::ffi::OsStr) -> std::ffi::OsString {
+    let kept: Vec<PathBuf> = std::env::split_paths(value)
+        .filter(|entry| entry.is_absolute())
+        .collect();
+    match std::env::join_paths(kept) {
+        Ok(joined) if !joined.is_empty() => joined,
+        _ => "/usr/bin:/bin".into(),
+    }
+}
+
+pub fn absolute_path() -> std::ffi::OsString {
+    absolute_path_entries(&std::env::var_os("PATH").unwrap_or_default())
+}
+
+fn fixed_git_command() -> Command {
     let mut cmd = Command::new("git");
     cmd.env_clear()
-        .env(
-            "PATH",
-            std::env::var_os("PATH").unwrap_or_else(|| "/usr/bin:/bin".into()),
-        )
+        .env("PATH", absolute_path())
         .env("HOME", "/nonexistent")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_ALLOW_PROTOCOL", "file")
+        .env("GIT_NO_LAZY_FETCH", "1")
         .args([
             "-c",
             "core.hooksPath=/dev/null",
@@ -45,14 +101,430 @@ pub(crate) fn git_command(dir: Option<&Path>) -> Command {
             "diff.external=",
             "-c",
             "core.pager=cat",
+            "-c",
+            "core.alternateRefsCommand=",
+            "-c",
+            "gc.auto=0",
+            "-c",
+            "maintenance.auto=false",
+            "-c",
+            "submodule.recurse=false",
+            "-c",
+            "fetch.recurseSubmodules=false",
         ]);
+    cmd
+}
+
+fn named_program_overrides(names: &[u8]) -> Vec<(OsString, &'static str)> {
+    let key = |section: &str, sub: &[u8], var: &str| {
+        let mut k = format!("{section}.").into_bytes();
+        k.extend_from_slice(sub);
+        k.push(b'.');
+        k.extend_from_slice(var.as_bytes());
+        OsString::from_vec(k)
+    };
+    let mut out = Vec::new();
+    for name in names.split(|b| *b == 0) {
+        let Some(dot) = name.iter().position(|b| *b == b'.') else {
+            continue;
+        };
+        let (section, rest) = (&name[..dot], &name[dot + 1..]);
+        let Some(last) = rest.iter().rposition(|b| *b == b'.') else {
+            continue;
+        };
+        let sub = &rest[..last];
+        match section {
+            b"hook" => out.push((key("hook", sub, "enabled"), "false")),
+            b"filter" => {
+                for var in ["clean", "smudge", "process"] {
+                    out.push((key("filter", sub, var), ""));
+                }
+                out.push((key("filter", sub, "required"), "false"));
+            }
+            _ => {}
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+pub(crate) fn git_command(dir: Option<&Path>) -> Command {
+    let mut cmd = fixed_git_command();
     if let Some(d) = dir {
+        let mut list = fixed_git_command();
+        list.arg("-C")
+            .arg(d)
+            .args(["config", "--name-only", "--list", "-z"]);
+        let names = output_within(&mut list, GIT_TIMEOUT)
+            .map(|o| o.stdout)
+            .unwrap_or_default();
+        let overrides = named_program_overrides(&names);
+        cmd.env("GIT_CONFIG_COUNT", overrides.len().to_string());
+        for (i, (key, value)) in overrides.iter().enumerate() {
+            cmd.env(format!("GIT_CONFIG_KEY_{i}"), key)
+                .env(format!("GIT_CONFIG_VALUE_{i}"), value);
+        }
         cmd.arg("-C").arg(d);
     }
     cmd
 }
 
-pub(crate) fn git_bytes(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<Vec<u8>> {
+fn plain_config_key(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    let Some((section, rest)) = n.split_once('.') else {
+        return false;
+    };
+    let var = rest.rsplit('.').next().unwrap_or("");
+    match section {
+        "branch" | "user" => true,
+        "remote" => matches!(
+            var,
+            "url" | "pushurl" | "fetch" | "push" | "tagopt" | "prune" | "mirror"
+        ),
+        "core" => matches!(
+            rest,
+            "repositoryformatversion"
+                | "filemode"
+                | "bare"
+                | "logallrefupdates"
+                | "ignorecase"
+                | "precomposeunicode"
+                | "symlinks"
+                | "autocrlf"
+                | "eol"
+                | "safecrlf"
+                | "abbrev"
+                | "quotepath"
+                | "untrackedcache"
+                | "hookspath"
+                | "fsmonitor"
+        ),
+        "lfs" => matches!(var, "locksverify" | "repositoryformatversion"),
+        _ => matches!(
+            n.as_str(),
+            "commit.gpgsign"
+                | "tag.gpgsign"
+                | "pull.rebase"
+                | "pull.ff"
+                | "push.default"
+                | "push.autosetupremote"
+                | "fetch.prune"
+                | "init.defaultbranch"
+                | "rebase.autostash"
+                | "gc.auto"
+                | "maintenance.auto"
+                | "extensions.relativeworktrees"
+                | "extensions.worktreeconfig"
+                | "worktree.userelativepaths"
+        ),
+    }
+}
+
+fn normalized(path: &Path) -> Option<PathBuf> {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::RootDir => out.push("/"),
+            Component::Normal(name) => out.push(name),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    return None;
+                }
+            }
+            Component::Prefix(_) => {}
+        }
+    }
+    Some(out)
+}
+
+fn named_path(dir: &Path, text: &str, prefix: &str) -> Option<PathBuf> {
+    let target = text.trim_end_matches(['\n', '\r']).strip_prefix(prefix)?;
+    if target.is_empty() || target.trim() != target || target.chars().any(char::is_control) {
+        return None;
+    }
+    let joined = dir.join(target);
+    let path = normalized(&joined)?;
+    (std::fs::canonicalize(&joined).ok()? == path).then_some(path)
+}
+
+/// The git directory of the work folder `root` and its common directory, when `.git` is the folder's own
+/// directory, a `gitdir:` file naming a directory inside the folder, or one naming a worktree that a
+/// repository's `.git/worktrees/` registered for this very folder. A git directory inside the folder must
+/// not name a common directory elsewhere.
+pub fn expected_git_dir(root: &Path) -> Option<(PathBuf, PathBuf)> {
+    let root = std::fs::canonicalize(root).ok()?;
+    let dot_git = root.join(".git");
+    let git_dir = if std::fs::symlink_metadata(&dot_git).ok()?.is_dir() {
+        dot_git.clone()
+    } else {
+        named_path(&root, &read_small(&root, ".git")?, "gitdir: ")?
+    };
+    if git_dir.starts_with(&root) {
+        let commondir = std::fs::symlink_metadata(git_dir.join("commondir"));
+        return matches!(commondir, Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+            .then(|| (git_dir.clone(), git_dir));
+    }
+    let worktrees = git_dir.parent()?;
+    let common = worktrees.parent()?;
+    if worktrees.file_name()? != "worktrees"
+        || common.file_name()? != ".git"
+        || !std::fs::symlink_metadata(common).ok()?.is_dir()
+    {
+        return None;
+    }
+    let back = named_path(&git_dir, &read_small(&git_dir, "gitdir")?, "")?;
+    (back == dot_git).then(|| (git_dir.clone(), common.to_path_buf()))
+}
+
+/// Whether the repository's own configuration holds only settings that run nothing once git commands pin core.hooksPath and core.fsmonitor.
+#[cfg(test)]
+pub fn repo_config_is_plain(dir: &Path) -> bool {
+    tempfile::tempdir().is_ok_and(|tmp| host_git_dir(dir, tmp.path()).is_some())
+}
+
+/// Fills `into`, an empty folder only the host writes, with a git directory for the work folder `dir`
+/// (as `expected_git_dir` finds it) to pass as `GIT_DIR` with `dir` as the work tree. Its config is
+/// written here from the plain settings of the repository (`repo_config_is_plain`, including the
+/// worktree's `config.worktree` when extensions.worktreeConfig is on); HEAD, branches, remote-tracking
+/// refs, the index, info/exclude and shallow are copies read once as data, and objects come through an
+/// alternate. Nothing git reads afterwards names a program from the folder.
+pub fn host_git_dir(dir: &Path, into: &Path) -> Option<()> {
+    let (git_dir, common) = expected_git_dir(dir)?;
+    let objects = common.join("objects");
+    let objects = objects.to_str().filter(|o| !o.contains('\n'))?;
+    let mut settings = plain_settings(&common, "config", into)?;
+    let worktree_config = settings
+        .iter()
+        .rev()
+        .find(|(k, _)| k == "extensions.worktreeconfig")
+        .is_some_and(|(_, v)| config_true(v.as_deref()));
+    if worktree_config {
+        settings.extend(plain_settings(&git_dir, "config.worktree", into)?);
+    }
+    let config = host_config(&settings)?;
+    let head = read_small(&git_dir, "HEAD")?;
+    let head = head.strip_suffix('\n').unwrap_or(&head);
+    let head_ok = match head.strip_prefix("ref: ") {
+        Some(name) => name.starts_with("refs/heads/") && plain_ref_name(name),
+        None => is_sha(head),
+    };
+    if !head_ok {
+        return None;
+    }
+    let (direct, symbolic) = host_refs(&common)?;
+    let index = optional_file(&git_dir, "index", MAX_INDEX)?;
+    let shallow = optional_file(&common, "shallow", 1 << 20)?;
+    if let Some(text) = &shallow {
+        let text = std::str::from_utf8(text).ok()?;
+        if !text.lines().all(is_sha) {
+            return None;
+        }
+    }
+    let exclude = optional_file(&common, "info/exclude", 1 << 20).flatten();
+    let write = || -> std::io::Result<()> {
+        std::fs::create_dir_all(into.join("objects/info"))?;
+        std::fs::create_dir_all(into.join("refs"))?;
+        std::fs::write(into.join("objects/info/alternates"), format!("{objects}\n"))?;
+        std::fs::write(into.join("config"), &config)?;
+        std::fs::write(into.join("HEAD"), format!("{head}\n"))?;
+        let packed: String = direct
+            .iter()
+            .map(|(name, sha)| format!("{sha} {name}\n"))
+            .collect();
+        std::fs::write(into.join("packed-refs"), packed)?;
+        for (name, target) in &symbolic {
+            let path = into.join(name);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(path, format!("ref: {target}\n"))?;
+        }
+        if let Some(index) = &index {
+            std::fs::write(into.join("index"), index)?;
+        }
+        if let Some(shallow) = &shallow {
+            std::fs::write(into.join("shallow"), shallow)?;
+        }
+        std::fs::create_dir_all(into.join("info"))?;
+        std::fs::write(into.join("info/attributes"), "* !filter !diff !merge\n")?;
+        if let Some(exclude) = &exclude {
+            std::fs::write(into.join("info/exclude"), exclude)?;
+        }
+        Ok(())
+    };
+    write().ok()
+}
+
+fn config_true(value: Option<&str>) -> bool {
+    value.is_none_or(|v| {
+        !matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "false" | "no" | "off" | "0" | ""
+        )
+    })
+}
+
+/// The settings of the config file `rel` in `dir`, read once and parsed from our own copy, when every
+/// key is plain. A missing file has none.
+fn plain_settings(dir: &Path, rel: &str, scratch: &Path) -> Option<Vec<(String, Option<String>)>> {
+    let Some(bytes) = optional_file(dir, rel, 1 << 20)? else {
+        return Some(Vec::new());
+    };
+    let copy = scratch.join("snapshot.config");
+    std::fs::write(&copy, bytes).ok()?;
+    let mut list = fixed_git_command();
+    list.env("GIT_CEILING_DIRECTORIES", scratch)
+        .args(["config", "--no-includes", "--list", "-z", "--file"])
+        .arg(&copy)
+        .current_dir(scratch);
+    let out = output_bounded(&mut list, std::time::Duration::from_secs(10), 4 << 20);
+    std::fs::remove_file(&copy).ok()?;
+    let out = out.ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(out.stdout).ok()?;
+    let settings: Vec<(String, Option<String>)> = text
+        .split('\0')
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| match entry.split_once('\n') {
+            Some((key, value)) => (key.to_string(), Some(value.to_string())),
+            None => (entry.to_string(), None),
+        })
+        .collect();
+    settings
+        .iter()
+        .all(|(key, _)| plain_config_key(key))
+        .then_some(settings)
+}
+
+/// The bytes of the regular file `rel` in `dir` up to `cap`, `Some(None)` when it does not exist, and
+/// `None` when it is anything else or larger.
+fn optional_file(dir: &Path, rel: &str, cap: u64) -> Option<Option<Vec<u8>>> {
+    use std::io::Read;
+    match std::fs::symlink_metadata(dir.join(rel)) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Some(None),
+        _ => {}
+    }
+    let file = open_beneath(dir, rel, libc::O_NONBLOCK)?;
+    let meta = file.metadata().ok()?;
+    if !meta.file_type().is_file() || meta.len() > cap {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    file.take(cap + 1).read_to_end(&mut bytes).ok()?;
+    (bytes.len() as u64 <= cap).then_some(Some(bytes))
+}
+
+fn host_config(settings: &[(String, Option<String>)]) -> Option<String> {
+    let quoted = |s: &str| -> Option<String> {
+        (!s.chars().any(char::is_control))
+            .then(|| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")))
+    };
+    let mut out = String::from("[core]\n\trepositoryformatversion = 0\n\tbare = false\n");
+    for (key, value) in settings {
+        let (section, rest) = key.split_once('.')?;
+        let (sub, var) = match rest.rsplit_once('.') {
+            Some((sub, var)) => (Some(sub), var),
+            None => (None, rest),
+        };
+        let carried = match (section, sub) {
+            ("core", None) => matches!(
+                var,
+                "filemode"
+                    | "ignorecase"
+                    | "precomposeunicode"
+                    | "symlinks"
+                    | "autocrlf"
+                    | "eol"
+                    | "safecrlf"
+            ),
+            ("branch", Some(_)) => matches!(var, "remote" | "pushremote" | "merge" | "rebase"),
+            ("remote", Some(_)) => matches!(var, "url" | "pushurl" | "fetch" | "push"),
+            _ => false,
+        };
+        if !carried {
+            continue;
+        }
+        let header = match sub {
+            Some(sub) => format!("[{section} {}]\n", quoted(sub)?),
+            None => format!("[{section}]\n"),
+        };
+        let value = quoted(value.as_deref().unwrap_or("true"))?;
+        out.push_str(&format!("{header}\t{var} = {value}\n"));
+    }
+    Some(out)
+}
+
+const MAX_HOST_REFS: usize = 100_000;
+
+/// The branches and remote-tracking refs of the common directory `common`, read as data: direct refs
+/// with their objects and symbolic refs with their targets. Loose refs win over packed ones.
+fn host_refs(common: &Path) -> Option<(BTreeMap<String, String>, BTreeMap<String, String>)> {
+    use std::io::Read;
+    let wanted = |name: &str| {
+        (name.starts_with("refs/heads/") || name.starts_with("refs/remotes/"))
+            && plain_ref_name(name)
+    };
+    let mut direct = BTreeMap::new();
+    if let Some(bytes) = optional_file(common, "packed-refs", 64 << 20)? {
+        for line in std::str::from_utf8(&bytes).ok()?.lines() {
+            let Some((sha, name)) = line.split_once(' ') else {
+                continue;
+            };
+            if is_sha(sha) && wanted(name) {
+                direct.insert(name.to_string(), sha.to_string());
+            }
+        }
+    }
+    let mut symbolic = BTreeMap::new();
+    let mut pending = vec!["refs/heads".to_string(), "refs/remotes".to_string()];
+    let mut seen = 0usize;
+    while let Some(rel) = pending.pop() {
+        let Some(dir) = open_beneath(common, &rel, libc::O_DIRECTORY) else {
+            continue;
+        };
+        for name in entries(&dir) {
+            seen += 1;
+            if seen > MAX_HOST_REFS {
+                return None;
+            }
+            let Some(name_text) = name.to_str() else {
+                continue;
+            };
+            let full = format!("{rel}/{name_text}");
+            if open_in(&dir, &name, libc::O_DIRECTORY).is_some() {
+                pending.push(full);
+                continue;
+            }
+            let Some(file) = open_in(&dir, &name, libc::O_NONBLOCK) else {
+                continue;
+            };
+            if !file.metadata().is_ok_and(|m| m.file_type().is_file()) || !wanted(&full) {
+                continue;
+            }
+            let mut text = String::new();
+            if file.take(4096).read_to_string(&mut text).is_err() {
+                continue;
+            }
+            let text = text.trim_end_matches('\n');
+            if let Some(target) = text.strip_prefix("ref: ") {
+                if wanted(target) {
+                    direct.remove(&full);
+                    symbolic.insert(full, target.to_string());
+                }
+            } else if is_sha(text) {
+                direct.insert(full, text.to_string());
+            }
+        }
+    }
+    Some((direct, symbolic))
+}
+
+pub fn git_bytes(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<Vec<u8>> {
     let mut cmd = git_command(Some(dir));
     cmd.args(["-c", "core.quotepath=off"]).args(args);
     let out = output_within_input(&mut cmd, GIT_TIMEOUT, input)?;
@@ -65,6 +537,37 @@ pub(crate) fn git_bytes(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Re
         ));
     }
     Ok(out.stdout)
+}
+
+pub fn host_view(repo: &Path, access: Access) -> Result<HostView> {
+    HostView::open(repo, access).map_err(Error::internal)
+}
+
+fn view_git(repo: &Path, access: Access, args: &[&str]) -> Result<String> {
+    host_view(repo, access)?.run(args).map_err(Error::internal)
+}
+
+fn repo_git(repo: &Path, pre: &[&str], args: &[&str], input: Option<Vec<u8>>) -> Result<Vec<u8>> {
+    let view = host_view(repo, Access::Read)?;
+    let mut cmd = view.prepared(pre, args).map_err(Error::internal)?;
+    let out = output_bounded_input(&mut cmd, GIT_TIMEOUT, TRUSTED_OUTPUT_CAP, input)?;
+    if !out.status.success() {
+        let msg = String::from_utf8_lossy(&out.stderr);
+        let line = msg.lines().next().unwrap_or("git failed");
+        return Err(Error::new(
+            Kind::Internal,
+            format!("git {}: {line}", args.first().unwrap_or(&"")),
+        ));
+    }
+    Ok(out.stdout)
+}
+
+pub(crate) fn repo_git_bytes(
+    repo: &Path,
+    args: &[&str],
+    input: Option<Vec<u8>>,
+) -> Result<Vec<u8>> {
+    repo_git(repo, &["-c", "core.quotepath=off"], args, input)
 }
 
 fn git(dir: Option<&Path>, args: &[&str]) -> Result<String> {
@@ -152,6 +655,125 @@ pub(crate) fn output_within_input(
     })
 }
 
+pub const TRUSTED_OUTPUT_CAP: usize = 64 << 20;
+
+/// Like `output_within`, but the deadline also covers collecting the output (a grandchild keeping a pipe
+/// open cannot hold the caller) and more than `cap` bytes on a pipe is an error, never a truncated result.
+pub fn output_bounded(
+    cmd: &mut Command,
+    limit: std::time::Duration,
+    cap: usize,
+) -> Result<std::process::Output> {
+    output_bounded_input(cmd, limit, cap, None)
+}
+
+pub(crate) fn output_bounded_input(
+    cmd: &mut Command,
+    limit: std::time::Duration,
+    cap: usize,
+    input: Option<Vec<u8>>,
+) -> Result<std::process::Output> {
+    use std::io::{Read, Write};
+    use std::process::Stdio;
+    use std::sync::mpsc::{channel, RecvTimeoutError};
+    use std::time::{Duration, Instant};
+    let mut child = cmd
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| Error::internal(format!("cannot run git: {e}")))?;
+    if let (Some(data), Some(mut stdin)) = (input, child.stdin.take()) {
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(&data);
+        });
+    }
+    let (tx, rx) = channel::<(bool, Option<Vec<u8>>)>();
+    let pipes: [(bool, Option<Box<dyn Read + Send>>); 2] = [
+        (
+            true,
+            child
+                .stdout
+                .take()
+                .map(|p| Box::new(p) as Box<dyn Read + Send>),
+        ),
+        (
+            false,
+            child
+                .stderr
+                .take()
+                .map(|p| Box::new(p) as Box<dyn Read + Send>),
+        ),
+    ];
+    for (is_out, pipe) in pipes {
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut p) = pipe {
+                let mut chunk = [0u8; 8192];
+                loop {
+                    match p.read(&mut chunk) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            buf.extend_from_slice(&chunk[..n]);
+                            if buf.len() > cap {
+                                let _ = tx.send((is_out, None));
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+            let _ = tx.send((is_out, Some(buf)));
+        });
+    }
+    drop(tx);
+    let fail = |child: &mut std::process::Child, msg: String| {
+        let _ = child.kill();
+        let _ = child.wait();
+        Err(Error::internal(msg))
+    };
+    let deadline = Instant::now() + limit;
+    let mut out: Option<Vec<u8>> = None;
+    let mut err: Option<Vec<u8>> = None;
+    let mut status: Option<std::process::ExitStatus> = None;
+    loop {
+        if status.is_none() {
+            match child.try_wait() {
+                Ok(st) => status = st,
+                Err(e) => return fail(&mut child, format!("cannot wait for git: {e}")),
+            }
+        }
+        if let (Some(st), Some(o), Some(e)) = (status, out.as_ref(), err.as_ref()) {
+            return Ok(std::process::Output {
+                status: st,
+                stdout: o.clone(),
+                stderr: e.clone(),
+            });
+        }
+        let now = Instant::now();
+        if now >= deadline {
+            return fail(&mut child, "git did not finish in time".into());
+        }
+        let wait = (deadline - now).min(Duration::from_millis(10));
+        match rx.recv_timeout(wait) {
+            Ok((is_out, Some(buf))) => *(if is_out { &mut out } else { &mut err }) = Some(buf),
+            Ok((_, None)) => return fail(&mut child, format!("git printed more than {cap} bytes")),
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => {
+                if out.is_none() || err.is_none() {
+                    return fail(&mut child, "git output could not be read".into());
+                }
+                std::thread::sleep(wait);
+            }
+        }
+    }
+}
+
 pub trait WorkDirs {
     fn prepare(&self, repo: &str, pickup_id: &str, cwd: &str) -> Result<()>;
 
@@ -164,6 +786,33 @@ pub trait WorkDirs {
     ) -> Result<()> {
         Err(Error::internal(
             "this work directory provider cannot pin a branch",
+        ))
+    }
+
+    /// One clone of a team run (`<run folder>/lead` or `<run folder>/wK`) on a new `branch`.
+    fn prepare_member(
+        &self,
+        _repo: &str,
+        _pickup_id: &str,
+        _cwd: &str,
+        _branch: &str,
+    ) -> Result<()> {
+        Err(Error::internal(
+            "this work directory provider cannot make team clones",
+        ))
+    }
+
+    /// A team member folder (`<run folder>/lead` or `wK`) holding one clone per `(name, repository)`.
+    fn prepare_member_multi(
+        &self,
+        _primary: &str,
+        _pickup_id: &str,
+        _cwd: &str,
+        _clones: &[(String, String)],
+        _branch: &str,
+    ) -> Result<()> {
+        Err(Error::internal(
+            "this work directory provider cannot make several team clones",
         ))
     }
 
@@ -187,7 +836,9 @@ pub trait WorkDirs {
     }
 
     /// Continues a paused run: a clone (`clones` empty: one clone of `primary`, saved under `""`) whose task branch
-    /// starts at the commit saved in `heads`. Refuses unless the remote branch is still there.
+    /// starts at the commit saved in `heads`. `full_names` names the repository each clone (keyed like `heads`) must
+    /// come from. Refuses unless the remote branch is still there.
+    #[allow(clippy::too_many_arguments)]
     fn prepare_continue(
         &self,
         _primary: &str,
@@ -196,6 +847,7 @@ pub trait WorkDirs {
         _clones: &[(String, String)],
         _branch: &str,
         _heads: &BTreeMap<String, String>,
+        _full_names: &BTreeMap<String, String>,
     ) -> Result<()> {
         Err(Error::internal(
             "this work directory provider cannot continue a paused run",
@@ -214,7 +866,7 @@ pub fn run_clone_dir(repo: &str, branch: &str) -> Option<PathBuf> {
     )
 }
 
-/// A hardened `git clone --reference` of `repo` at `dest` on a new `branch` (from `base`, else the repo's
+/// A hardened `git clone --no-local --reference` of `repo` at `dest` on a new `branch` (from `base`, else the repo's
 /// current branch); hooks, fsmonitor and credential helpers are off. Nothing is left behind on failure.
 pub fn prepare_clone(repo: &str, dest: &Path, branch: &str, base: Option<&str>) -> Result<()> {
     if dest.exists() {
@@ -225,8 +877,9 @@ pub fn prepare_clone(repo: &str, dest: &Path, branch: &str, base: Option<&str>) 
         Some(b) => {
             tmgr_core::branch::validate_base(b)?;
             let commit = format!("{b}^{{commit}}");
-            git(
-                Some(Path::new(repo)),
+            view_git(
+                Path::new(repo),
+                Access::Read,
                 &[
                     "rev-parse",
                     "--verify",
@@ -241,11 +894,12 @@ pub fn prepare_clone(repo: &str, dest: &Path, branch: &str, base: Option<&str>) 
                 ))
             })?
         }
-        None => git(
-            Some(Path::new(repo)),
+        None => view_git(
+            Path::new(repo),
+            Access::Read,
             &["symbolic-ref", "--quiet", "--short", "HEAD"],
         )
-        .or_else(|_| git(Some(Path::new(repo)), &["rev-parse", "HEAD"]))?,
+        .or_else(|_| view_git(Path::new(repo), Access::Read, &["rev-parse", "HEAD"]))?,
     };
     make_clone(repo, dest, &|dest| {
         git(
@@ -269,6 +923,7 @@ fn make_clone(repo: &str, dest: &Path, checkout: &dyn Fn(&Path) -> Result<()>) -
             &[
                 "clone",
                 "--no-checkout",
+                "--no-local",
                 "--template=",
                 "--reference",
                 repo,
@@ -279,7 +934,15 @@ fn make_clone(repo: &str, dest: &Path, checkout: &dyn Fn(&Path) -> Result<()>) -
         )?;
         git(Some(dest), &["config", "core.hooksPath", "/dev/null"])?;
         git(Some(dest), &["config", "core.fsmonitor", "false"])?;
-        checkout(dest)
+        checkout(dest)?;
+        git(Some(dest), &["repack", "-a", "-d", "-q"])?;
+        match std::fs::remove_file(dest.join(".git/objects/info/alternates")) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+            _ => {}
+        }
+        git(Some(dest), &["rev-list", "--objects", "--quiet", "HEAD"])
+            .map(|_| ())
+            .map_err(|e| Error::internal(format!("the clone is incomplete: {e}")))
     })();
     if result.is_err() {
         let _ = std::fs::remove_dir_all(dest);
@@ -288,19 +951,53 @@ fn make_clone(repo: &str, dest: &Path, checkout: &dyn Fn(&Path) -> Result<()>) -
 }
 
 /// The commit `refs/heads/<branch>` points at on the remote `origin` of `repo`, or `None` when the remote has no such branch.
-pub fn remote_branch_head(repo: &str, branch: &str) -> Result<Option<String>> {
+/// Refuses unless both URLs of `origin` are the repository `full_name`.
+pub fn remote_branch_head(repo: &str, full_name: &str, branch: &str) -> Result<Option<String>> {
     validate_branch(branch)?;
     let reference = format!("refs/heads/{branch}");
-    let argv: Vec<String> = ["git", "-C", repo, "ls-remote", "origin", &reference]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    let out = crate::publish::run_hardened(&argv, Path::new(repo))?;
+    let view = host_view(Path::new(repo), remote_access())?;
+    let url = checked_origin(&view, full_name)?;
+    let out = view
+        .run(&["ls-remote", "--", &remote_target(&url), &reference])
+        .map_err(Error::internal)?;
     Ok(out
         .lines()
         .filter_map(|l| l.split_once('\t'))
         .find(|(_, r)| *r == reference)
         .map(|(sha, _)| sha.to_string()))
+}
+
+#[cfg(test)]
+thread_local! {
+    static LOCAL_REMOTES: std::cell::RefCell<BTreeMap<String, String>> =
+        const { std::cell::RefCell::new(BTreeMap::new()) };
+}
+
+fn remote_access() -> Access {
+    #[cfg(test)]
+    if LOCAL_REMOTES.with(|c| !c.borrow().is_empty()) {
+        return Access::Write;
+    }
+    Access::Network
+}
+
+fn remote_target(url: &str) -> String {
+    #[cfg(test)]
+    if let Some(local) = LOCAL_REMOTES.with(|c| c.borrow().get(url).cloned()) {
+        return local;
+    }
+    url.to_string()
+}
+
+fn checked_origin(view: &HostView, full_name: &str) -> Result<String> {
+    let url = view
+        .origin_url()
+        .filter(|u| !u.is_empty() && !u.starts_with('-'))
+        .ok_or_else(|| Error::internal("the repository has no usable origin"))?;
+    let push = view.origin_push_url().unwrap_or(url);
+    crate::publish::check_remote(full_name, url, push)
+        .map_err(|r| Error::new(Kind::Forbidden, r.to_string()))?;
+    Ok(url.to_string())
 }
 
 fn moved_remotely(branch: &str) -> Error {
@@ -311,7 +1008,13 @@ fn moved_remotely(branch: &str) -> Error {
 
 /// A hardened clone of `repo` at `dest` whose `branch` starts at `sha`, the commit the paused run pushed. Refuses
 /// unless the remote branch is still at `sha`.
-pub fn prepare_continue_clone(repo: &str, dest: &Path, branch: &str, sha: &str) -> Result<()> {
+pub fn prepare_continue_clone(
+    repo: &str,
+    full_name: &str,
+    dest: &Path,
+    branch: &str,
+    sha: &str,
+) -> Result<()> {
     validate_branch(branch)?;
     if dest.exists() {
         return Err(Error::conflict("the run directory already exists"));
@@ -319,26 +1022,26 @@ pub fn prepare_continue_clone(repo: &str, dest: &Path, branch: &str, sha: &str) 
     if !is_sha(sha) {
         return Err(Error::internal("the saved commit is not a full object id"));
     }
-    match remote_branch_head(repo, branch)? {
+    match remote_branch_head(repo, full_name, branch)? {
         Some(head) if head.eq_ignore_ascii_case(sha) => {}
         _ => return Err(moved_remotely(branch)),
     }
     let commit = format!("{sha}^{{commit}}");
-    let have = |r: &str| git(Some(Path::new(r)), &["cat-file", "-e", &commit]).is_ok();
+    let have = |r: &str| {
+        host_view(Path::new(r), Access::Read)
+            .is_ok_and(|v| v.succeeds(&["cat-file", "-e", &commit]))
+    };
     if !have(repo) {
-        let argv: Vec<String> = [
-            "git",
-            "-C",
-            repo,
+        let view = host_view(Path::new(repo), remote_access())?;
+        let url = checked_origin(&view, full_name)?;
+        view.run(&[
             "fetch",
             "--no-tags",
-            "origin",
+            "--",
+            &remote_target(&url),
             &format!("refs/heads/{branch}"),
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-        crate::publish::run_hardened(&argv, Path::new(repo))?;
+        ])
+        .map_err(Error::internal)?;
         if !have(repo) {
             return Err(moved_remotely(branch));
         }
@@ -348,11 +1051,21 @@ pub fn prepare_continue_clone(repo: &str, dest: &Path, branch: &str, sha: &str) 
     })
 }
 
+fn expected_name<'a>(full_names: &'a BTreeMap<String, String>, key: &str) -> Result<&'a str> {
+    full_names.get(key).map(String::as_str).ok_or_else(|| {
+        Error::new(
+            Kind::Forbidden,
+            "the repository this run belongs to is not known, so it cannot be continued",
+        )
+    })
+}
+
 fn prepare_continue_folder(
     run_dir: &Path,
     clones: &[(String, String)],
     branch: &str,
     heads: &BTreeMap<String, String>,
+    full_names: &BTreeMap<String, String>,
 ) -> Result<()> {
     if run_dir.exists() {
         return Err(Error::conflict("the run directory already exists"));
@@ -360,12 +1073,13 @@ fn prepare_continue_folder(
     std::fs::create_dir_all(run_dir)?;
     let result = clones.iter().try_for_each(|(name, repo)| {
         let dest = run_dir.join(name);
+        let full_name = expected_name(full_names, name)?;
         match heads.get(name) {
-            Some(sha) => match remote_branch_head(repo, branch)? {
+            Some(sha) => match remote_branch_head(repo, full_name, branch)? {
                 None => Err(moved_remotely(branch)),
-                Some(_) => prepare_continue_clone(repo, &dest, branch, sha),
+                Some(_) => prepare_continue_clone(repo, full_name, &dest, branch, sha),
             },
-            None => match remote_branch_head(repo, branch)? {
+            None => match remote_branch_head(repo, full_name, branch)? {
                 None => prepare_clone(repo, &dest, branch, None),
                 Some(_) => Err(moved_remotely(branch)),
             },
@@ -441,6 +1155,20 @@ pub(crate) fn open_beneath(
     at(dir.as_raw_fd(), last.as_bytes(), last_flags)
 }
 
+pub(crate) fn unlink_beneath(root: &Path, rel: &str) -> bool {
+    use std::os::fd::AsRawFd;
+    let Some((parent, name)) = rel.rsplit_once('/') else {
+        return false;
+    };
+    let Some(dir) = open_beneath(root, parent, libc::O_DIRECTORY) else {
+        return false;
+    };
+    let Ok(name) = std::ffi::CString::new(name) else {
+        return false;
+    };
+    unsafe { libc::unlinkat(dir.as_raw_fd(), name.as_ptr(), 0) == 0 }
+}
+
 pub(crate) fn open_in(
     dir: &std::fs::File,
     name: &std::ffi::OsStr,
@@ -490,6 +1218,31 @@ pub(crate) fn entries(dir: &std::fs::File) -> Vec<std::ffi::OsString> {
 
 const MAX_IMPORT: u64 = 2 << 30;
 
+fn regular_files_size(root: &Path) -> u64 {
+    let mut total = 0u64;
+    let mut todo = vec![root.to_path_buf()];
+    while let Some(dir) = todo.pop() {
+        let Ok(read) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in read.flatten() {
+            let Ok(meta) = std::fs::symlink_metadata(entry.path()) else {
+                continue;
+            };
+            if meta.is_dir() {
+                todo.push(entry.path());
+            } else if meta.is_file() {
+                total = total.saturating_add(meta.len());
+            }
+        }
+    }
+    total
+}
+
+fn import_allowance(repo: &str) -> u64 {
+    MAX_IMPORT.saturating_add(regular_files_size(&Path::new(repo).join(".git/objects")))
+}
+
 fn copy_regular(
     dir: &std::fs::File,
     name: &std::ffi::OsStr,
@@ -505,7 +1258,9 @@ fn copy_regular(
         return Ok(());
     }
     *budget = budget.checked_sub(meta.len()).ok_or_else(|| {
-        Error::usage("the clone's objects are larger than 2 GiB, too large to import")
+        Error::usage(
+            "the clone's objects exceed the repository's own by more than 2 GiB, too large to import",
+        )
     })?;
     let mut out = std::fs::OpenOptions::new()
         .write(true)
@@ -517,10 +1272,10 @@ fn copy_regular(
 
 /// Copies the clone's loose objects and packs, regular files only, never following a symlink and
 /// ignoring the clone's own alternates.
-fn copy_objects(clone: &Path, into: &Path) -> Result<()> {
+fn copy_objects(clone: &Path, into: &Path, allowance: u64) -> Result<()> {
     let objects = open_beneath(clone, ".git/objects", libc::O_DIRECTORY)
         .ok_or_else(|| Error::usage("the clone has no object store of its own"))?;
-    let mut budget = MAX_IMPORT;
+    let mut budget = allowance;
     for name in entries(&objects) {
         let text = name.to_string_lossy();
         let fanout = text.len() == 2 && text.bytes().all(|b| b.is_ascii_hexdigit());
@@ -584,7 +1339,23 @@ pub(crate) fn clone_tip(clone: &Path, branch: &str) -> Option<String> {
 /// of the clone's objects and borrows the rest from `repo`, which fetches from it. Returns the
 /// imported commit.
 pub fn git_query(repo: &Path, args: &[&str]) -> Result<String> {
-    git(Some(repo), args)
+    let mut at = 0;
+    while args.get(at) == Some(&"-c") && args.get(at + 1).is_some() {
+        at += 2;
+    }
+    let out = repo_git(repo, &args[..at], &args[at..], None)?;
+    Ok(String::from_utf8_lossy(&out).trim().to_string())
+}
+
+/// The fetch and push URL of `origin` as stored in `repo`'s config, read as data and never rewritten.
+pub fn origin_urls(repo: &Path) -> Result<(String, String)> {
+    let view = host_view(repo, Access::Read)?;
+    let fetch = view
+        .origin_url()
+        .filter(|u| !u.is_empty())
+        .ok_or_else(|| Error::internal("the repository has no origin"))?;
+    let push = view.origin_push_url().unwrap_or(fetch);
+    Ok((fetch.to_string(), push.to_string()))
 }
 
 /// The branch a clone's HEAD names, read from `.git/HEAD` as data without running git there.
@@ -595,25 +1366,637 @@ pub fn clone_head_branch(clone: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
+/// What a team worker's copy says about its refs, read as data without running git there.
+pub struct CopyRefs {
+    pub head: String,
+    /// Every commit the copy's reflogs name.
+    pub logged: Vec<String>,
+    pub stash: bool,
+    /// Every other ref of the copy (branches, tags, remote-tracking refs, notes...) with its object.
+    pub others: Vec<(String, String)>,
+}
+
+fn plain_ref_name(name: &str) -> bool {
+    name.starts_with("refs/")
+        && name.split('/').all(|c| {
+            !c.is_empty() && c != "." && c != ".." && !c.bytes().any(|b| b.is_ascii_control())
+        })
+}
+
+fn loose_refs(dir: &std::fs::File, prefix: &str, out: &mut Vec<String>) -> bool {
+    for name in entries(dir) {
+        let full = format!("{prefix}{}", name.to_string_lossy());
+        if let Some(sub) = open_in(dir, &name, libc::O_DIRECTORY) {
+            if !loose_refs(&sub, &format!("{full}/"), out) {
+                return false;
+            }
+        } else if open_in(dir, &name, libc::O_NONBLOCK)
+            .and_then(|f| f.metadata().ok())
+            .is_some_and(|m| m.file_type().is_file())
+        {
+            out.push(full);
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
+/// The branch tip, the stash flag and every other ref of a worker's copy. HEAD must name `branch`.
+/// Symbolic refs are skipped: they point at refs that are listed themselves.
+pub fn copy_refs(copy: &Path, branch: &str) -> std::result::Result<CopyRefs, String> {
+    if clone_head_branch(copy).as_deref() != Some(branch) {
+        return Err(format!("HEAD is not on the branch {branch}"));
+    }
+    let reference = format!("refs/heads/{branch}");
+    let root = open_beneath(copy, ".git/refs", libc::O_DIRECTORY)
+        .ok_or("the copy's refs cannot be read")?;
+    let mut loose = Vec::new();
+    if !loose_refs(&root, "refs/", &mut loose) {
+        return Err("the copy's refs have entries that are not plain files".into());
+    }
+    let mut refs: BTreeMap<String, String> = BTreeMap::new();
+    let mut packed: BTreeMap<String, String> = BTreeMap::new();
+    if std::fs::symlink_metadata(copy.join(".git/packed-refs")).is_ok() {
+        let text =
+            read_small(copy, ".git/packed-refs").ok_or("the copy's packed refs cannot be read")?;
+        for line in text.lines() {
+            if line.starts_with('#') || line.starts_with('^') || line.is_empty() {
+                continue;
+            }
+            let (sha, name) = line
+                .split_once(' ')
+                .ok_or("the copy's packed refs are malformed")?;
+            if !plain_ref_name(name) || !is_sha(sha) {
+                return Err("the copy has a ref that is not readable".into());
+            }
+            packed.insert(name.to_string(), sha.to_string());
+        }
+    }
+    for name in &loose {
+        if !plain_ref_name(name) {
+            return Err("the copy has a ref that is not readable".into());
+        }
+        let text =
+            read_small(copy, &format!(".git/{name}")).ok_or("the copy's refs cannot be read")?;
+        let text = text.trim();
+        if text.starts_with("ref: ") {
+            continue;
+        }
+        if !is_sha(text) {
+            return Err("the copy has a ref that is not readable".into());
+        }
+        refs.insert(name.clone(), text.to_string());
+    }
+    for (name, sha) in packed {
+        refs.entry(name).or_insert(sha);
+    }
+    let stash = refs.remove("refs/stash").is_some();
+    let head = refs
+        .remove(&reference)
+        .ok_or("the copy's branch has no readable commit")?;
+    Ok(CopyRefs {
+        head,
+        logged: logged_commits(copy)?,
+        stash,
+        others: refs.into_iter().collect(),
+    })
+}
+
+fn logged_commits(copy: &Path) -> std::result::Result<Vec<String>, String> {
+    let unreadable = || "the copy's reflog cannot be read".to_string();
+    match std::fs::symlink_metadata(copy.join(".git/logs")) {
+        Err(_) => return Ok(Vec::new()),
+        Ok(m) if !m.is_dir() => return Err(unreadable()),
+        Ok(_) => {}
+    }
+    let mut files = Vec::new();
+    if std::fs::symlink_metadata(copy.join(".git/logs/HEAD")).is_ok() {
+        files.push("HEAD".to_string());
+    }
+    if std::fs::symlink_metadata(copy.join(".git/logs/refs")).is_ok() {
+        let root =
+            open_beneath(copy, ".git/logs/refs", libc::O_DIRECTORY).ok_or_else(unreadable)?;
+        let mut names = Vec::new();
+        if !loose_refs(&root, "refs/", &mut names) {
+            return Err(unreadable());
+        }
+        files.extend(names);
+    }
+    let mut shas = std::collections::BTreeSet::new();
+    for file in files {
+        let text = read_small(copy, &format!(".git/logs/{file}")).ok_or_else(unreadable)?;
+        for line in text.lines().filter(|l| !l.trim().is_empty()) {
+            let mut tokens = line.split(' ');
+            for sha in [tokens.next(), tokens.next()] {
+                let sha = sha.filter(|s| is_sha(s)).ok_or_else(unreadable)?;
+                if !sha.bytes().all(|b| b == b'0') {
+                    shas.insert(sha.to_string());
+                }
+            }
+        }
+    }
+    Ok(shas.into_iter().collect())
+}
+
+const MAX_INDEX: u64 = 64 << 20;
+
+fn only_regular_files(dir: &std::fs::File) -> bool {
+    entries(dir).iter().all(|name| {
+        open_in(dir, name, libc::O_NONBLOCK)
+            .and_then(|f| f.metadata().ok())
+            .is_some_and(|m| m.file_type().is_file())
+    })
+}
+
+fn object_store_plain(copy: &Path) -> bool {
+    let Some(objects) = open_beneath(copy, ".git/objects", libc::O_DIRECTORY) else {
+        return false;
+    };
+    entries(&objects).iter().all(|name| {
+        let n = name.to_string_lossy();
+        let fan_out = n.len() == 2 && n.bytes().all(|b| b.is_ascii_hexdigit());
+        if !fan_out && n != "pack" {
+            return true;
+        }
+        open_in(&objects, name, libc::O_DIRECTORY).is_some_and(|d| only_regular_files(&d))
+    })
+}
+
+/// Whether the copy's own object alternates are none, or only `allowed` (the repository it was cloned with
+/// `--reference`). Anything else would make git read objects from elsewhere.
+pub fn copy_alternates_ok(copy: &Path, allowed: &Path) -> bool {
+    let real_dir = |rel: &str| std::fs::symlink_metadata(copy.join(rel)).map(|m| m.is_dir());
+    if [".git", ".git/objects"]
+        .iter()
+        .any(|r| !matches!(real_dir(r), Ok(true)))
+        || [".git/objects/info", ".git/objects/pack"]
+            .iter()
+            .any(|r| matches!(real_dir(r), Ok(false)))
+    {
+        return false;
+    }
+    if !object_store_plain(copy) {
+        return false;
+    }
+    let rel = ".git/objects/info/alternates";
+    if std::fs::symlink_metadata(copy.join(rel)).is_err() {
+        return true;
+    }
+    let Some(text) = read_small(copy, rel) else {
+        return false;
+    };
+    let allowed = std::fs::canonicalize(allowed).ok();
+    text.lines().filter(|l| !l.trim().is_empty()).all(|l| {
+        let p = Path::new(l.trim());
+        p.is_absolute() && allowed.is_some() && std::fs::canonicalize(p).ok() == allowed
+    })
+}
+
+/// Makes `git_dir` (an empty folder of ours) a bare repository that reads a worker's copy as data:
+/// its objects through alternates, its index, its branch as `HEAD`, every other ref of the copy as
+/// `refs/copy/<n>` and `trusted` commits as `refs/host/<n>`. None of the copy's git settings or ref
+/// names reach git.
+pub fn trusted_git_dir(
+    git_dir: &Path,
+    copy: &Path,
+    branch: &str,
+    refs: &CopyRefs,
+    trusted: &[String],
+    source_objects: &Path,
+    limit: std::time::Duration,
+) -> std::result::Result<(), String> {
+    use std::io::Read;
+    validate_branch(branch).map_err(|e| e.message)?;
+    let objects = copy.join(".git/objects");
+    let objects = objects
+        .to_str()
+        .filter(|o| !o.contains('\n'))
+        .ok_or("the copy's path is not plain")?;
+    let source_objects = source_objects
+        .to_str()
+        .filter(|o| !o.contains('\n'))
+        .ok_or("the repository's path is not plain")?;
+    let mut init = fixed_git_command();
+    init.args(["init", "--bare", "-q"])
+        .arg(git_dir)
+        .current_dir(git_dir);
+    let out = output_bounded(&mut init, limit, TRUSTED_OUTPUT_CAP).map_err(|e| e.message)?;
+    if !out.status.success() {
+        return Err("git init failed".into());
+    }
+    let file = open_beneath(copy, ".git/index", libc::O_NONBLOCK).ok_or("the copy has no index")?;
+    let meta = file.metadata().map_err(|e| e.to_string())?;
+    if !meta.file_type().is_file() || meta.len() > MAX_INDEX {
+        return Err("the copy's index is not a plain file of a sane size".into());
+    }
+    let mut index = Vec::new();
+    file.take(MAX_INDEX)
+        .read_to_end(&mut index)
+        .map_err(|e| e.to_string())?;
+    let mut packed = format!("{} refs/heads/{branch}\n", refs.head);
+    for (n, (_, sha)) in refs.others.iter().enumerate() {
+        packed.push_str(&format!("{sha} refs/copy/{n}\n"));
+    }
+    for (n, sha) in trusted.iter().filter(|s| is_sha(s)).enumerate() {
+        packed.push_str(&format!("{sha} refs/host/{n}\n"));
+    }
+    for (n, sha) in refs.logged.iter().enumerate() {
+        packed.push_str(&format!("{sha} refs/log/{n}\n"));
+    }
+    let exclude = match std::fs::symlink_metadata(copy.join(".git/info/exclude")) {
+        Ok(_) => Some(
+            read_small(copy, ".git/info/exclude")
+                .ok_or("the copy's exclude file cannot be read")?,
+        ),
+        Err(_) => None,
+    };
+    let write = || -> std::io::Result<()> {
+        std::fs::write(
+            git_dir.join("objects/info/alternates"),
+            format!("{objects}\n{source_objects}\n"),
+        )?;
+        std::fs::write(git_dir.join("index"), &index)?;
+        std::fs::write(git_dir.join("HEAD"), format!("ref: refs/heads/{branch}\n"))?;
+        if let Some(text) = &exclude {
+            std::fs::create_dir_all(git_dir.join("info"))?;
+            std::fs::write(git_dir.join("info/exclude"), text)?;
+        }
+        std::fs::write(git_dir.join("packed-refs"), packed)
+    };
+    write().map_err(|e| e.to_string())
+}
+
+/// Runs git over a folder from `trusted_git_dir` with `copy` as the work tree.
+pub fn trusted_git_bytes(
+    git_dir: &Path,
+    copy: &Path,
+    args: &[&str],
+    limit: std::time::Duration,
+) -> std::result::Result<Vec<u8>, String> {
+    let mut cmd = fixed_git_command();
+    cmd.arg("--git-dir")
+        .arg(git_dir)
+        .arg("--work-tree")
+        .arg(copy)
+        .args([
+            "-c",
+            "core.bare=false",
+            "-c",
+            "core.quotepath=off",
+            "-c",
+            "core.commitGraph=false",
+        ])
+        .args(args)
+        .current_dir(git_dir);
+    let out = output_bounded(&mut cmd, limit, TRUSTED_OUTPUT_CAP).map_err(|e| e.message)?;
+    if !out.status.success() {
+        let msg = String::from_utf8_lossy(&out.stderr);
+        let line = msg.lines().next().unwrap_or("failed");
+        return Err(format!("git {}: {line}", args.first().unwrap_or(&"")));
+    }
+    Ok(out.stdout)
+}
+
 /// Whether the new commits `base..head` sit on `base`'s history (no root commit among them, a shared
 /// merge base; `base` may have moved on since), and how many of them are merge commits.
 pub fn history_facts(repo: &Path, base: &str, head: &str) -> Result<(bool, usize)> {
     let range = format!("{base}..{head}");
     let count = |extra: &str| -> Result<usize> {
-        let out = git(Some(repo), &["rev-list", extra, "--count", &range])?;
+        let out = view_git(repo, Access::Read, &["rev-list", extra, "--count", &range])?;
         Ok(out.trim().parse().unwrap_or(usize::MAX))
     };
-    let shared = git(Some(repo), &["merge-base", base, head]).is_ok();
+    let shared = view_git(repo, Access::Read, &["merge-base", base, head]).is_ok();
     let roots = count("--max-parents=0")?;
     Ok((shared && roots == 0, count("--merges")?))
+}
+
+pub struct RemoteBase {
+    pub default_branch: String,
+    pub sha: String,
+    pub fetch_url: String,
+    pub push_url: String,
+}
+
+fn no_remote_base(why: impl std::fmt::Display) -> Error {
+    Error::new(
+        Kind::Forbidden,
+        format!("cannot read the default branch of the remote repository: {why}"),
+    )
+}
+
+/// The default branch of the repository `full_name` as the remote reports it, and the commit it points at, made
+/// available (and verified) in `repo`. Nothing is taken from refs stored in `repo`.
+pub fn remote_base(
+    repo: &Path,
+    full_name: &str,
+    server_default: Option<&str>,
+) -> Result<RemoteBase> {
+    let view = host_view(repo, Access::Network)?;
+    let fetch_url = view
+        .origin_url()
+        .filter(|u| !u.is_empty())
+        .ok_or_else(|| Error::internal("the repository has no origin"))?
+        .to_string();
+    let push_url = view.origin_push_url().unwrap_or(&fetch_url).to_string();
+    crate::publish::check_remote(full_name, &fetch_url, &push_url)
+        .map_err(|r| Error::new(Kind::Forbidden, r.to_string()))?;
+    if let Some(d) = server_default {
+        validate_branch(d)?;
+    }
+    let wanted = server_default.map(|d| format!("refs/heads/{d}"));
+    let mut args = vec!["ls-remote", "--symref", "--", fetch_url.as_str(), "HEAD"];
+    args.extend(wanted.as_deref());
+    let listing = view
+        .run(&args)
+        .map_err(|e| no_remote_base(tmgr_core::text::sanitize_line(&e)))?;
+    let mut shas: BTreeMap<&str, &str> = BTreeMap::new();
+    let mut head_target = None;
+    for line in listing.lines() {
+        let Some((left, name)) = line.split_once('\t') else {
+            continue;
+        };
+        match left.strip_prefix("ref: ") {
+            Some(target) if name == "HEAD" => head_target = Some(target),
+            Some(_) => {}
+            None if is_sha(left) => {
+                shas.insert(name, left);
+            }
+            None => {}
+        }
+    }
+    let by_server = server_default.and_then(|d| {
+        let sha = shas.get(format!("refs/heads/{d}").as_str())?;
+        Some((d.to_string(), (*sha).to_string()))
+    });
+    let (default_branch, sha) = match by_server {
+        Some(found) => found,
+        None => {
+            let branch = head_target
+                .and_then(|t| t.strip_prefix("refs/heads/"))
+                .ok_or_else(|| no_remote_base("the remote does not name its default branch"))?;
+            validate_branch(branch)?;
+            let sha = shas
+                .get("HEAD")
+                .ok_or_else(|| no_remote_base("the remote does not list its default branch"))?;
+            (branch.to_string(), (*sha).to_string())
+        }
+    };
+    let commit = format!("{sha}^{{commit}}");
+    if !view.succeeds(&["cat-file", "-e", &commit]) {
+        view.run(&["fetch", "--no-tags", "--", &fetch_url, &sha])
+            .map_err(|e| no_remote_base(tmgr_core::text::sanitize_line(&e)))?;
+        if !view.succeeds(&["cat-file", "-e", &commit]) {
+            verify_base_objects(repo, &sha)?;
+            return Err(no_remote_base("the commit is not available after fetching"));
+        }
+    }
+    verify_base_objects(repo, &sha)?;
+    Ok(RemoteBase {
+        default_branch,
+        sha,
+        fetch_url,
+        push_url,
+    })
+}
+
+enum Hasher {
+    Sha1(sha1::Sha1),
+    Sha256(sha2::Sha256),
+}
+
+impl Hasher {
+    fn new(width: usize, kind: &str, size: u64) -> Hasher {
+        use sha2::Digest;
+        let header = format!("{kind} {size}\0");
+        if width == 64 {
+            let mut d = sha2::Sha256::new();
+            d.update(header.as_bytes());
+            Hasher::Sha256(d)
+        } else {
+            let mut d = sha1::Sha1::new();
+            d.update(header.as_bytes());
+            Hasher::Sha1(d)
+        }
+    }
+
+    fn update(&mut self, bytes: &[u8]) {
+        use sha2::Digest;
+        match self {
+            Hasher::Sha1(d) => d.update(bytes),
+            Hasher::Sha256(d) => d.update(bytes),
+        }
+    }
+
+    fn finish(self) -> String {
+        use sha2::Digest;
+        let raw = match self {
+            Hasher::Sha1(d) => d.finalize().to_vec(),
+            Hasher::Sha256(d) => d.finalize().to_vec(),
+        };
+        raw.iter().map(|b| format!("{b:02x}")).collect()
+    }
+}
+
+pub(crate) fn object_id(kind: &str, body: &[u8], width: usize) -> String {
+    let mut h = Hasher::new(width, kind, body.len() as u64);
+    h.update(body);
+    h.finish()
+}
+
+fn unreadable_objects() -> Error {
+    Error::new(
+        Kind::Forbidden,
+        "the objects of the repository cannot be read",
+    )
+}
+
+pub(crate) fn unverified(oid: &str) -> Error {
+    Error::new(
+        Kind::Forbidden,
+        format!("the object {oid} of the repository does not match its name"),
+    )
+}
+
+const MAX_STRUCTURE: u64 = 64 << 20;
+
+/// Streams `oids` through `cat-file --batch`, hashing every object as the store returns it. A blob is hashed and
+/// dropped; a commit or tree is handed to `each` after it matched its name.
+fn hash_objects(
+    repo: &Path,
+    oids: &[String],
+    width: usize,
+    mut each: impl FnMut(&str, &str, Vec<u8>) -> Result<()>,
+) -> Result<()> {
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::process::Stdio;
+    let view = host_view(repo, Access::Read)?;
+    let mut cmd = view
+        .prepared(&[], &["cat-file", "--batch"])
+        .map_err(Error::internal)?;
+    let mut child = cmd
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| Error::internal(format!("cannot run git: {e}")))?;
+    let mut feed = Vec::new();
+    for oid in oids {
+        feed.extend_from_slice(oid.as_bytes());
+        feed.push(b'\n');
+    }
+    let mut stdin = child.stdin.take().ok_or_else(unreadable_objects)?;
+    std::thread::spawn(move || {
+        let _ = stdin.write_all(&feed);
+    });
+    let pid = child.id() as i32;
+    let (done, finished) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        if finished.recv_timeout(GIT_TIMEOUT).is_err() {
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+        }
+    });
+    let mut out = BufReader::new(child.stdout.take().ok_or_else(unreadable_objects)?);
+    let result = (|| -> Result<()> {
+        let mut header = String::new();
+        let mut chunk = vec![0u8; 64 << 10];
+        for want in oids {
+            header.clear();
+            if out
+                .read_line(&mut header)
+                .map_err(|_| unreadable_objects())?
+                == 0
+            {
+                return Err(unreadable_objects());
+            }
+            let mut f = header.trim_end_matches('\n').split(' ');
+            let (Some(oid), Some(kind), Some(size)) = (f.next(), f.next(), f.next()) else {
+                return Err(unreadable_objects());
+            };
+            let size: u64 = size.parse().map_err(|_| unreadable_objects())?;
+            let keep = kind != "blob";
+            if oid != want || (keep && size > MAX_STRUCTURE) {
+                return Err(unreadable_objects());
+            }
+            let mut hasher = Hasher::new(width, kind, size);
+            let mut body = Vec::new();
+            let mut left = size;
+            while left > 0 {
+                let take = chunk.len().min(left as usize);
+                let n = out
+                    .read(&mut chunk[..take])
+                    .map_err(|_| unreadable_objects())?;
+                if n == 0 {
+                    return Err(unreadable_objects());
+                }
+                hasher.update(&chunk[..n]);
+                if keep {
+                    body.extend_from_slice(&chunk[..n]);
+                }
+                left -= n as u64;
+            }
+            let mut newline = [0u8; 1];
+            out.read_exact(&mut newline)
+                .map_err(|_| unreadable_objects())?;
+            if hasher.finish() != *want {
+                return Err(unverified(want));
+            }
+            each(want, kind, body)?;
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+    let _ = done.send(());
+    result
+}
+
+fn subtrees(body: &[u8], width: usize) -> Option<Vec<String>> {
+    let raw = width / 2;
+    let mut out = Vec::new();
+    let mut at = 0;
+    while at < body.len() {
+        let nul = body[at..].iter().position(|b| *b == 0)? + at;
+        let mode = body[at..nul].split(|b| *b == b' ').next()?;
+        let id = body.get(nul + 1..nul + 1 + raw)?;
+        if mode.iter().skip_while(|b| **b == b'0').eq(b"40000".iter()) {
+            out.push(id.iter().map(|b| format!("{b:02x}")).collect());
+        }
+        at = nul + 1 + raw;
+    }
+    Some(out)
+}
+
+const VERIFY_BATCH: usize = 1000;
+
+/// Each object must hash to its name.
+fn verify_base_objects(repo: &Path, commit: &str) -> Result<()> {
+    let width = commit.len();
+    let mut tree = None;
+    hash_objects(repo, &[commit.to_string()], width, |oid, kind, body| {
+        if kind != "commit" {
+            return Err(unverified(oid));
+        }
+        tree = std::str::from_utf8(&body)
+            .ok()
+            .and_then(|t| t.strip_prefix("tree "))
+            .and_then(|t| t.get(..width))
+            .filter(|t| is_sha(t))
+            .map(str::to_string);
+        Ok(())
+    })?;
+    let tree = tree.ok_or_else(unreadable_objects)?;
+    let mut seen = std::collections::HashSet::from([tree.clone()]);
+    let mut level = vec![tree];
+    while !level.is_empty() {
+        let mut next = Vec::new();
+        for chunk in level.chunks(VERIFY_BATCH) {
+            hash_objects(repo, chunk, width, |oid, kind, body| {
+                if kind != "tree" {
+                    return Err(unverified(oid));
+                }
+                for child in subtrees(&body, width).ok_or_else(unreadable_objects)? {
+                    if seen.insert(child.clone()) {
+                        next.push(child);
+                    }
+                }
+                Ok(())
+            })?;
+        }
+        level = next;
+    }
+    Ok(())
+}
+
+/// Every commit, tree and blob of `base..head` must hash to its name.
+pub fn verify_new_objects(repo: &Path, base: &str, head: &str) -> Result<()> {
+    let listing = repo_git_bytes(
+        repo,
+        &[
+            "rev-list",
+            "--objects",
+            "--no-object-names",
+            &format!("{base}..{head}"),
+        ],
+        None,
+    )?;
+    let oids: Vec<String> = String::from_utf8_lossy(&listing)
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect();
+    hash_objects(repo, &oids, head.len(), |_, _, _| Ok(()))
 }
 
 /// The commit `refs/heads/<branch>` points at in `repo`, or `None` when the branch does not exist.
 pub fn branch_tip(repo: &Path, branch: &str) -> Result<Option<String>> {
     validate_branch(branch)?;
     let reference = format!("refs/heads/{branch}");
-    Ok(git(
-        Some(repo),
+    Ok(view_git(
+        repo,
+        Access::Read,
         &[
             "rev-parse",
             "--verify",
@@ -635,10 +2018,59 @@ pub fn restore_branch(
     validate_branch(branch)?;
     let reference = format!("refs/heads/{branch}");
     match before {
-        None => git(Some(repo), &["update-ref", "-d", &reference, imported])?,
-        Some(old) => git(Some(repo), &["update-ref", &reference, old, imported])?,
+        None => view_git(
+            repo,
+            Access::Write,
+            &["update-ref", "--no-deref", "-d", &reference, imported],
+        )?,
+        Some(old) => view_git(
+            repo,
+            Access::Write,
+            &["update-ref", "--no-deref", &reference, old, imported],
+        )?,
     };
     Ok(())
+}
+
+/// Puts the objects of `base..tip` from `source` into the object store of the clone `lead`, writing only
+/// through directory handles opened without following links; no git runs inside the lead.
+pub fn deliver_commits(source: &Path, lead: &Path, base: &str, tip: &str) -> Result<()> {
+    if !is_sha(base) || !is_sha(tip) {
+        return Err(Error::usage("the commits to deliver are not commit ids"));
+    }
+    let view = host_view(source, Access::Read)?;
+    let mut cmd = view
+        .prepared(&[], &["pack-objects", "--revs", "--stdout", "-q"])
+        .map_err(Error::internal)?;
+    let input = if view.succeeds(&["cat-file", "-e", &format!("{base}^{{commit}}")]) {
+        format!("{tip}\n^{base}\n")
+    } else {
+        format!("{tip}\n")
+    }
+    .into_bytes();
+    let out = output_bounded_input(&mut cmd, GIT_TIMEOUT, MAX_IMPORT as usize, Some(input))?;
+    if !out.status.success() {
+        return Err(Error::internal("git pack-objects failed"));
+    }
+    let tmp = tempfile::Builder::new()
+        .prefix("tmgr-deliver")
+        .tempdir()
+        .map_err(|e| Error::internal(format!("temporary directory: {e}")))?;
+    let bare = tmp.path().join("b.git");
+    git(
+        None,
+        &[
+            "init",
+            "-q",
+            "--bare",
+            "--template=",
+            &bare.to_string_lossy(),
+        ],
+    )?;
+    git_bytes(&bare, &["unpack-objects", "-q"], Some(out.stdout))?;
+    let git_dir = open_beneath(lead, ".git", libc::O_DIRECTORY)
+        .ok_or_else(|| Error::usage("the lead clone has no .git folder of its own"))?;
+    crate::wip::copy_new_objects(&bare, &git_dir)
 }
 
 pub fn import_branch(repo: &str, clone: &Path, branch: &str) -> Result<String> {
@@ -652,7 +2084,7 @@ pub fn import_branch(repo: &str, clone: &Path, branch: &str) -> Result<String> {
     let bare = tmp.path().join("b.git");
     let b = bare.to_string_lossy().into_owned();
     git(None, &["init", "-q", "--bare", "--template=", &b])?;
-    copy_objects(clone, &bare.join("objects"))?;
+    copy_objects(clone, &bare.join("objects"), import_allowance(repo))?;
     std::fs::write(
         bare.join("objects/info/alternates"),
         format!("{}\n", Path::new(repo).join(".git/objects").display()),
@@ -661,17 +2093,77 @@ pub fn import_branch(repo: &str, clone: &Path, branch: &str) -> Result<String> {
         Some(&bare),
         &["update-ref", &format!("refs/heads/{branch}"), &sha],
     )?;
-    git(
-        Some(Path::new(repo)),
-        &[
-            "fetch",
-            "--no-tags",
-            "--",
-            &b,
-            &format!("refs/heads/{branch}:refs/heads/{branch}"),
-        ],
-    )?;
+    let reference = format!("refs/heads/{branch}");
+    let view = host_view(Path::new(repo), Access::Write)?;
+    if checked_out(view.common_dir(), branch)? {
+        return Err(Error::conflict(format!(
+            "the branch {branch} is checked out in the repository"
+        )));
+    }
+    if view.succeeds(&["symbolic-ref", "-q", &reference]) {
+        return Err(Error::conflict(format!(
+            "the branch {branch} is a symbolic ref"
+        )));
+    }
+    view.run(&["fetch", "--no-tags", "--", &b, &reference])
+        .map_err(Error::internal)?;
+    let old = view
+        .run(&[
+            "rev-parse",
+            "--verify",
+            "-q",
+            &format!("{reference}^{{commit}}"),
+        ])
+        .ok();
+    if let Some(old) = &old {
+        if !view.succeeds(&["merge-base", "--is-ancestor", old, &sha]) {
+            return Err(Error::conflict(format!(
+                "the branch {branch} is not an ancestor of the imported commit"
+            )));
+        }
+    }
+    view.run(&[
+        "update-ref",
+        "--no-deref",
+        &reference,
+        &sha,
+        old.as_deref().unwrap_or(""),
+    ])
+    .map_err(Error::internal)?;
     Ok(sha)
+}
+
+const MAX_WORKTREES: usize = 1024;
+
+fn checked_out(common: &Path, branch: &str) -> Result<bool> {
+    let want = format!("ref: refs/heads/{branch}");
+    let main = read_small(common, "HEAD")
+        .ok_or_else(|| Error::internal("the repository HEAD cannot be read"))?;
+    if main.trim().eq_ignore_ascii_case(&want) {
+        return Ok(true);
+    }
+    let names = match std::fs::read_dir(common.join("worktrees")) {
+        Ok(entries) => entries
+            .take(MAX_WORKTREES + 1)
+            .collect::<std::io::Result<Vec<_>>>()?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e.into()),
+    };
+    if names.len() > MAX_WORKTREES {
+        return Err(Error::internal("the repository has too many worktrees"));
+    }
+    for entry in names {
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| Error::internal("a worktree name is not valid UTF-8"))?;
+        if read_small(common, &format!("worktrees/{name}/HEAD"))
+            .is_some_and(|h| h.trim().eq_ignore_ascii_case(&want))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn validate_branch(branch: &str) -> Result<()> {
@@ -681,12 +2173,16 @@ fn validate_branch(branch: &str) -> Result<()> {
 pub struct GitClone;
 
 pub fn discard_run_dir(pickup_id: &str, cwd: &str) {
-    let dir = Path::new(cwd);
+    let mut dir = Path::new(cwd);
     let named = |p: Option<&Path>, want: &dyn Fn(&str) -> bool| {
         p.and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
             .is_some_and(want)
     };
+    let team = named(Some(dir), &|n| n == LEAD_DIR) && named(dir.parent(), &|n| n == pickup_id);
+    if team {
+        dir = dir.parent().unwrap_or(dir);
+    }
     let ours = named(Some(dir), &|n| n == pickup_id)
         && named(dir.parent(), &|n| n == "queue")
         && named(dir.parent().and_then(Path::parent), &|n| {
@@ -695,6 +2191,47 @@ pub fn discard_run_dir(pickup_id: &str, cwd: &str) {
     let real = std::fs::symlink_metadata(dir).is_ok_and(|m| m.is_dir());
     if ours && real {
         let _ = std::fs::remove_dir_all(dir);
+        if team {
+            if let Some(repo) = repo_of_run_dir(dir) {
+                remove_team_refs(&repo, pickup_id);
+            }
+        }
+    }
+}
+
+/// `<parent>/<repo>` for a run folder `<parent>/<repo>-worktrees/queue/<id>`.
+pub fn repo_of_run_dir(run_dir: &Path) -> Option<PathBuf> {
+    let worktrees = run_dir.parent()?.parent()?;
+    let stem = worktrees
+        .file_name()?
+        .to_str()?
+        .strip_suffix("-worktrees")?;
+    Some(worktrees.parent()?.join(stem))
+}
+
+/// Deletes the temporary `queue-team/<pickup>/*` branches of a finished team run from the repository.
+pub fn remove_team_refs(repo: &Path, pickup_id: &str) {
+    let plain = !pickup_id.is_empty()
+        && pickup_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    if !plain {
+        return;
+    }
+    let prefix = format!("refs/heads/{TEAM_REF_PREFIX}{pickup_id}/");
+    let Ok(view) = host_view(repo, Access::Write) else {
+        return;
+    };
+    let Ok(listed) = view.run(&["for-each-ref", "--format=%(refname) %(objectname)", &prefix])
+    else {
+        return;
+    };
+    for (name, sha) in listed
+        .lines()
+        .filter_map(|l| l.split_once(' '))
+        .filter(|(n, _)| n.starts_with(&prefix))
+    {
+        let _ = view.run(&["update-ref", "--no-deref", "-d", name, sha]);
     }
 }
 
@@ -725,6 +2262,45 @@ impl WorkDirs for GitClone {
         prepare_clone(repo, &dest, branch, None)
     }
 
+    fn prepare_member(&self, repo: &str, pickup_id: &str, cwd: &str, branch: &str) -> Result<()> {
+        let team_dir = clone_dir(repo, pickup_id)
+            .ok_or_else(|| Error::internal("the repository path has no parent directory"))?;
+        let dest = Path::new(cwd);
+        let named = dest
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(member_dir_name);
+        if dest.parent() != Some(team_dir.as_path()) || !named {
+            return Err(Error::internal(
+                "the run directory does not belong to this pickup",
+            ));
+        }
+        prepare_clone(repo, dest, branch, None)
+    }
+
+    fn prepare_member_multi(
+        &self,
+        primary: &str,
+        pickup_id: &str,
+        cwd: &str,
+        clones: &[(String, String)],
+        branch: &str,
+    ) -> Result<()> {
+        let team_dir = clone_dir(primary, pickup_id)
+            .ok_or_else(|| Error::internal("the repository path has no parent directory"))?;
+        let dest = Path::new(cwd);
+        let named = dest
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(member_dir_name);
+        if dest.parent() != Some(team_dir.as_path()) || !named {
+            return Err(Error::internal(
+                "the run directory does not belong to this pickup",
+            ));
+        }
+        prepare_run_folder(dest, clones, branch)
+    }
+
     fn prepare_multi(
         &self,
         primary: &str,
@@ -743,6 +2319,7 @@ impl WorkDirs for GitClone {
         prepare_run_folder(&dest, clones, branch)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn prepare_continue(
         &self,
         primary: &str,
@@ -751,6 +2328,7 @@ impl WorkDirs for GitClone {
         clones: &[(String, String)],
         branch: &str,
         heads: &BTreeMap<String, String>,
+        full_names: &BTreeMap<String, String>,
     ) -> Result<()> {
         let dest = clone_dir(primary, pickup_id)
             .ok_or_else(|| Error::internal("the repository path has no parent directory"))?;
@@ -763,9 +2341,15 @@ impl WorkDirs for GitClone {
             let sha = heads
                 .get("")
                 .ok_or_else(|| Error::internal("no commit was saved for this run"))?;
-            return prepare_continue_clone(primary, &dest, branch, sha);
+            return prepare_continue_clone(
+                primary,
+                expected_name(full_names, "")?,
+                &dest,
+                branch,
+                sha,
+            );
         }
-        prepare_continue_folder(&dest, clones, branch, heads)
+        prepare_continue_folder(&dest, clones, branch, heads, full_names)
     }
 }
 
@@ -832,7 +2416,7 @@ mod tests {
         assert!(!dest.join(".git/hooks/post-checkout").exists());
         let branch = git(Some(&dest), &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap();
         assert_eq!(branch, "queue/q_abc");
-        assert!(dest.join(".git/objects/info/alternates").is_file());
+        assert_standalone(&dest);
         assert_eq!(
             git(Some(&dest), &["config", "core.hooksPath"]).unwrap(),
             "/dev/null"
@@ -869,6 +2453,200 @@ mod tests {
             assert!(!bad.exists());
         }
         assert!(prepare_clone(&r, &dest.with_file_name("dash"), "-x", None).is_err());
+    }
+
+    #[test]
+    fn host_git_commands_keep_only_absolute_path_entries() {
+        assert_eq!(
+            absolute_path_entries(":.:/usr/bin:bin:/bin".as_ref()),
+            std::ffi::OsString::from("/usr/bin:/bin")
+        );
+        assert_eq!(
+            absolute_path_entries("relative".as_ref()),
+            std::ffi::OsString::from("/usr/bin:/bin")
+        );
+    }
+
+    #[test]
+    fn only_settings_known_to_run_nothing_count_as_plain() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(tmp.path()).unwrap();
+        init_repo(&repo);
+        assert!(repo_config_is_plain(&repo));
+        git(Some(&repo), &["config", "remote.origin.url", "file:///x"]).unwrap();
+        git(Some(&repo), &["config", "branch.main.remote", "origin"]).unwrap();
+        assert!(repo_config_is_plain(&repo));
+        git(Some(&repo), &["config", "unknown.setting", "1"]).unwrap();
+        assert!(!repo_config_is_plain(&repo));
+        assert!(!repo_config_is_plain(&repo.join("missing")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_repository_path_that_is_not_utf8_is_never_plain() {
+        use std::os::unix::ffi::OsStrExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join(std::ffi::OsStr::from_bytes(b"repo\xff"));
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        assert!(!repo_config_is_plain(&repo));
+    }
+
+    #[test]
+    fn only_queue_run_directories_count_as_queue_run_directories() {
+        assert!(in_queue_run_dir(Path::new("/w/p-worktrees/queue/id")));
+        assert!(in_queue_run_dir(Path::new("/w/p-worktrees/queue/id/src")));
+        assert!(!in_queue_run_dir(Path::new("/w/p-worktrees/queue")));
+        assert!(!in_queue_run_dir(Path::new("/w/p-worktrees/feature")));
+        assert!(!in_queue_run_dir(Path::new("/w/queue/id/src")));
+    }
+
+    #[test]
+    fn team_member_copies_count_as_queue_run_directories() {
+        let team = Path::new("/w/p-worktrees/queue/q_abc");
+        for dir in [lead_dir(team), worker_dir(team, 1), worker_dir(team, 5)] {
+            assert!(in_queue_run_dir(&dir), "{}", dir.display());
+            assert!(in_queue_run_dir(&dir.join("src")));
+        }
+    }
+
+    fn worktree_fixture() -> (tempfile::TempDir, PathBuf, PathBuf, PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        init_repo(&repo);
+        let wt = root.join("wt");
+        git(
+            Some(&repo),
+            &["worktree", "add", "-q", "--detach", wt.to_str().unwrap()],
+        )
+        .unwrap();
+        (tmp, root, repo, wt)
+    }
+
+    #[test]
+    fn a_git_file_of_a_registered_worktree_is_followed_to_its_repository_configuration() {
+        let (_tmp, _root, repo, wt) = worktree_fixture();
+        assert!(repo_config_is_plain(&wt));
+        git(Some(&repo), &["config", "include.path", "elsewhere"]).unwrap();
+        assert!(!repo_config_is_plain(&wt));
+    }
+
+    #[test]
+    fn relative_git_file_and_back_pointer_of_a_worktree_are_accepted() {
+        let (_tmp, _root, repo, wt) = worktree_fixture();
+        let admin = repo.join(".git/worktrees/wt");
+        std::fs::write(wt.join(".git"), "gitdir: ../repo/.git/worktrees/wt\n").unwrap();
+        std::fs::write(admin.join("gitdir"), "../../../../wt/.git\n").unwrap();
+        git(
+            Some(&repo),
+            &["config", "core.repositoryFormatVersion", "1"],
+        )
+        .unwrap();
+        git(
+            Some(&repo),
+            &["config", "extensions.relativeWorktrees", "true"],
+        )
+        .unwrap();
+        assert!(repo_config_is_plain(&wt));
+    }
+
+    #[test]
+    fn a_git_dir_inside_the_work_folder_is_accepted_without_a_commondir() {
+        let (_tmp, root, repo, _wt) = worktree_fixture();
+        let own = root.join("own");
+        std::fs::create_dir_all(&own).unwrap();
+        init_repo(&own);
+        assert!(repo_config_is_plain(&own));
+        std::fs::write(
+            own.join(".git/commondir"),
+            format!("{}\n", repo.join(".git").display()),
+        )
+        .unwrap();
+        assert!(!repo_config_is_plain(&own));
+
+        let moved = root.join("moved");
+        std::fs::create_dir_all(&moved).unwrap();
+        init_repo(&moved);
+        std::fs::rename(moved.join(".git"), moved.join("inner")).unwrap();
+        std::fs::write(moved.join(".git"), "gitdir: inner\n").unwrap();
+        assert!(repo_config_is_plain(&moved));
+        for text in ["gitdir: inner \n", "gitdir: inner\t\n", "gitdir:  inner\n"] {
+            std::fs::write(moved.join(".git"), text).unwrap();
+            assert!(!repo_config_is_plain(&moved), "{text:?}");
+        }
+        std::os::unix::fs::symlink(&root, moved.join("up")).unwrap();
+        std::fs::write(moved.join(".git"), "gitdir: up/../inner\n").unwrap();
+        assert!(!repo_config_is_plain(&moved));
+        std::fs::write(moved.join(".git"), "gitdir: inner\r\n").unwrap();
+        assert!(repo_config_is_plain(&moved));
+        std::fs::write(moved.join("inner/commondir"), "../../repo/.git\n").unwrap();
+        assert!(!repo_config_is_plain(&moved));
+    }
+
+    #[test]
+    fn a_git_file_naming_anything_else_is_refused() {
+        let (_tmp, root, repo, wt) = worktree_fixture();
+        let admin = repo.join(".git/worktrees/wt");
+        let refused = |name: &str, text: &str| {
+            let dir = root.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join(".git"), text).unwrap();
+            assert!(!repo_config_is_plain(&dir), "{name}");
+        };
+        refused(
+            "other",
+            &format!("gitdir: {}\n", repo.join(".git").display()),
+        );
+        refused("up", "gitdir: ../repo/.git\n");
+        refused("stranger", &format!("gitdir: {}\n", admin.display()));
+        refused(
+            "dots",
+            &format!(
+                "gitdir: {}/x/../../repo/.git\n",
+                root.join("dots").display()
+            ),
+        );
+        refused("empty", "gitdir: \n");
+        refused("nul", &format!("gitdir: {}\0\n", admin.display()));
+        refused(
+            "two-lines",
+            &format!("gitdir: {}\n{}\n", admin.display(), admin.display()),
+        );
+
+        std::os::unix::fs::symlink(&repo, root.join("link")).unwrap();
+        std::fs::write(
+            wt.join(".git"),
+            format!(
+                "gitdir: {}\n",
+                root.join("link/.git/worktrees/wt").display()
+            ),
+        )
+        .unwrap();
+        assert!(!repo_config_is_plain(&wt));
+
+        let linked = root.join("linked");
+        std::fs::create_dir_all(&linked).unwrap();
+        std::os::unix::fs::symlink(wt.join(".git"), linked.join(".git")).unwrap();
+        assert!(!repo_config_is_plain(&linked));
+    }
+
+    #[test]
+    fn a_repository_with_a_large_file_filter_still_answers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(tmp.path()).unwrap();
+        init_repo(&repo);
+        git(
+            Some(&repo),
+            &["config", "filter.lfs.clean", "git-lfs clean -- %f"],
+        )
+        .unwrap();
+        git(Some(&repo), &["config", "filter.lfs.required", "true"]).unwrap();
+        let head = git_query(&repo, &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(head.len(), 40);
+        assert_eq!(branch_tip(&repo, "main").unwrap().as_deref(), Some(&*head));
     }
 
     #[test]
@@ -971,13 +2749,147 @@ mod tests {
         std::fs::write(heads.join("tm-2-fix"), format!("{tip}\n")).unwrap();
         assert!(import_branch(&r, &dest, "tm-2-fix").is_ok());
         let huge = std::fs::File::create(objects.join("pack/pack-big.pack")).unwrap();
-        huge.set_len(MAX_IMPORT + 1).unwrap();
+        huge.set_len(MAX_IMPORT + regular_files_size(&repo.join(".git/objects")) + 1)
+            .unwrap();
         let err = import_branch(&r, &dest, "tm-2-fix").unwrap_err();
         assert!(err.to_string().contains("too large"), "{err}");
         std::fs::remove_file(objects.join("pack/pack-big.pack")).unwrap();
         std::fs::rename(&objects, root.join("moved-objects")).unwrap();
         std::os::unix::fs::symlink(root.join("moved-objects"), &objects).unwrap();
         assert!(import_branch(&r, &dest, "tm-2-fix").is_err());
+    }
+
+    #[test]
+    fn a_lead_prepared_before_the_workers_commit_squashes_their_imported_commits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let r = repo.to_string_lossy().into_owned();
+        let base = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        let team = clone_dir(&r, "q_team").unwrap();
+        let lead = lead_dir(&team);
+        GitClone
+            .prepare_member(&r, "q_team", &lead.to_string_lossy(), "queue/q_team")
+            .unwrap();
+        let mut tips = Vec::new();
+        for k in 1..=2u8 {
+            let w = worker_dir(&team, k);
+            let branch = worker_branch("q_team", k);
+            GitClone
+                .prepare_member(&r, "q_team", &w.to_string_lossy(), &branch)
+                .unwrap();
+            commit_file(&w, &format!("w{k}.txt"));
+            commit_file(&w, &format!("w{k}b.txt"));
+            let tip = import_branch(&r, &w, &branch).unwrap();
+            deliver_commits(&repo, &lead, &base, &tip).unwrap();
+            deliver_commits(&repo, &lead, &base, &tip).unwrap();
+            tips.push(tip);
+        }
+        for (k, tip) in tips.iter().enumerate() {
+            run_git(&lead, &["merge", "--squash", tip]);
+            run_git(&lead, &["commit", "-q", "-m", &format!("worker {}", k + 1)]);
+        }
+        for f in ["w1.txt", "w1b.txt", "w2.txt", "w2b.txt"] {
+            assert!(lead.join(f).is_file(), "{f}");
+        }
+        let head = git(Some(&lead), &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(history_facts(&lead, &base, &head).unwrap(), (true, 0));
+        let count = git(
+            Some(&lead),
+            &["rev-list", "--count", &format!("{base}..{head}")],
+        )
+        .unwrap();
+        assert_eq!(count, "2");
+        run_git(&lead, &["fsck", "--full", "--strict"]);
+    }
+
+    #[test]
+    fn delivering_without_a_base_the_source_no_longer_has_sends_the_whole_history_of_the_tip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let r = repo.to_string_lossy().into_owned();
+        let team = clone_dir(&r, "q_gone").unwrap();
+        let lead = lead_dir(&team);
+        GitClone
+            .prepare_member(&r, "q_gone", &lead.to_string_lossy(), "queue/q_gone")
+            .unwrap();
+        let init = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        commit_file(&repo, "b.txt");
+        let base = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        run_git(&repo, &["checkout", "-q", "-b", "worker", &init]);
+        commit_file(&repo, "w.txt");
+        let tip = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        run_git(&repo, &["checkout", "-q", "main"]);
+        run_git(&repo, &["reset", "-q", "--hard", &init]);
+        run_git(&repo, &["reflog", "expire", "--expire=now", "--all"]);
+        run_git(&repo, &["gc", "-q", "--prune=now"]);
+        assert!(git(
+            Some(&repo),
+            &["cat-file", "-e", &format!("{base}^{{commit}}")]
+        )
+        .is_err());
+        deliver_commits(&repo, &lead, &base, &tip).unwrap();
+        run_git(&lead, &["cat-file", "-e", &format!("{tip}^{{commit}}")]);
+        run_git(&lead, &["rev-list", "--objects", "--quiet", &tip]);
+    }
+
+    #[test]
+    fn a_linked_object_folder_in_the_lead_is_never_written_through() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let r = repo.to_string_lossy().into_owned();
+        let base = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        let team = clone_dir(&r, "q_team").unwrap();
+        let (lead, w) = (lead_dir(&team), worker_dir(&team, 1));
+        let branch = worker_branch("q_team", 1);
+        for (dir, b) in [(&lead, "queue/q_team"), (&w, branch.as_str())] {
+            GitClone
+                .prepare_member(&r, "q_team", &dir.to_string_lossy(), b)
+                .unwrap();
+        }
+        commit_file(&w, "w1.txt");
+        let tip = import_branch(&r, &w, &branch).unwrap();
+        let outside = root.join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        let objects = lead.join(".git/objects");
+        for fan in 0..256 {
+            let dir = objects.join(format!("{fan:02x}"));
+            let _ = std::fs::remove_dir(&dir);
+            std::os::unix::fs::symlink(&outside, &dir).unwrap();
+        }
+        assert!(deliver_commits(&repo, &lead, &base, &tip).is_err());
+        assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 0);
+        for fan in 0..256 {
+            std::fs::remove_file(objects.join(format!("{fan:02x}"))).unwrap();
+        }
+        std::fs::rename(&objects, lead.join(".git/objects.real")).unwrap();
+        std::os::unix::fs::symlink(&outside, &objects).unwrap();
+        assert!(deliver_commits(&repo, &lead, &base, &tip).is_err());
+        assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn only_the_lead_folder_of_a_queue_run_is_a_team_lead_clone() {
+        assert!(is_team_lead_clone(Path::new(
+            "/w/proj-worktrees/queue/q_1/lead"
+        )));
+        for other in [
+            "/w/proj-worktrees/queue/q_1/w1",
+            "/w/proj-worktrees/queue/q_1",
+            "/w/proj-worktrees/lead",
+            "/w/proj/queue/q_1/lead",
+            "/w/proj-worktrees/other/q_1/lead",
+        ] {
+            assert!(!is_team_lead_clone(Path::new(other)), "{other}");
+        }
     }
 
     #[test]
@@ -1130,16 +3042,32 @@ mod tests {
         init_repo(&repo);
         let bare = root.join(format!("{name}-origin.git"));
         run_git(root, &["init", "-q", "--bare", &bare.to_string_lossy()]);
-        run_git(&repo, &["remote", "add", "origin", &bare.to_string_lossy()]);
-        run_git(&repo, &["push", "-q", "origin", "main"]);
+        run_git(&repo, &["push", "-q", &bare.to_string_lossy(), "main"]);
+        local_origin(&repo, name, &bare);
         repo.to_string_lossy().into_owned()
+    }
+
+    fn names(list: &[(&str, &str)]) -> BTreeMap<String, String> {
+        list.iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    fn local_origin(repo: &Path, name: &str, bare: &Path) {
+        let url = format!("https://github.com/acme/{name}.git");
+        run_git(repo, &["remote", "add", "origin", &url]);
+        LOCAL_REMOTES.with(|c| {
+            c.borrow_mut()
+                .insert(url, bare.to_string_lossy().into_owned())
+        });
     }
 
     fn push_branch_commit(repo: &str, branch: &str, file: &str) -> String {
         let repo = Path::new(repo);
         run_git(repo, &["checkout", "-q", "-B", branch]);
         commit_file(repo, file);
-        run_git(repo, &["push", "-q", "-f", "origin", branch]);
+        let bare = format!("{}-origin.git", repo.display());
+        run_git(repo, &["push", "-q", "-f", &bare, branch]);
         let sha = git(Some(repo), &["rev-parse", "HEAD"]).unwrap();
         run_git(repo, &["checkout", "-q", "main"]);
         sha
@@ -1161,6 +3089,7 @@ mod tests {
                 &[],
                 "tmgr/tm-1-fix",
                 &heads,
+                &names(&[("", "acme/proj")]),
             )
             .unwrap();
         assert_eq!(git(Some(&dest), &["rev-parse", "HEAD"]).unwrap(), wip);
@@ -1189,6 +3118,7 @@ mod tests {
                 &[],
                 "tmgr/tm-1-fix",
                 &heads,
+                &names(&[("", "acme/proj")]),
             )
             .unwrap_err();
         assert!(err.message.contains("not at the commit"), "{}", err.message);
@@ -1203,6 +3133,7 @@ mod tests {
                 &[],
                 "tmgr/tm-2-none",
                 &gone,
+                &names(&[("", "acme/proj")]),
             )
             .is_err());
         assert!(!dest.exists());
@@ -1226,6 +3157,7 @@ mod tests {
                 &clones,
                 "tmgr/tm-3-x",
                 &heads,
+                &names(&[("alpha", "acme/alpha"), ("beta", "acme/beta")]),
             )
             .unwrap();
         assert_eq!(
@@ -1249,6 +3181,7 @@ mod tests {
                 &clones,
                 "tmgr/tm-3-x",
                 &heads,
+                &names(&[("alpha", "acme/alpha"), ("beta", "acme/beta")]),
             )
             .is_err());
         assert!(!dest.exists());
@@ -1264,7 +3197,13 @@ mod tests {
         let wip_b = push_branch_commit(&b, "tmgr/tm-6-x", "wip.txt");
         run_git(
             Path::new(&b),
-            &["push", "-q", "origin", "--delete", "tmgr/tm-6-x"],
+            &[
+                "push",
+                "-q",
+                &format!("{b}-origin.git"),
+                "--delete",
+                "tmgr/tm-6-x",
+            ],
         );
         let clones = vec![("alpha".to_string(), a.clone()), ("beta".to_string(), b)];
         let heads = BTreeMap::from([("alpha".to_string(), wip_a), ("beta".to_string(), wip_b)]);
@@ -1277,9 +3216,1362 @@ mod tests {
                 &clones,
                 "tmgr/tm-6-x",
                 &heads,
+                &names(&[("alpha", "acme/alpha"), ("beta", "acme/beta")]),
             )
             .unwrap_err();
         assert!(err.message.contains("not at the commit"), "{}", err.message);
+        assert!(!dest.exists());
+    }
+
+    fn shared_objects(dir: &Path) -> Vec<PathBuf> {
+        use std::os::unix::fs::MetadataExt;
+        let mut out = Vec::new();
+        let mut todo = vec![dir.join(".git/objects")];
+        while let Some(d) = todo.pop() {
+            for e in std::fs::read_dir(&d).unwrap() {
+                let p = e.unwrap().path();
+                let m = std::fs::symlink_metadata(&p).unwrap();
+                if m.is_dir() {
+                    todo.push(p);
+                } else if m.is_file() && m.nlink() > 1 {
+                    out.push(p);
+                }
+            }
+        }
+        out
+    }
+
+    fn objects_by_kind(dir: &Path) -> (usize, usize) {
+        let mut loose = 0;
+        let mut packed = 0;
+        for e in std::fs::read_dir(dir.join(".git/objects")).unwrap() {
+            let p = e.unwrap().path();
+            let name = p.file_name().unwrap().to_string_lossy().into_owned();
+            if name.len() == 2 {
+                loose += std::fs::read_dir(&p).unwrap().count();
+            } else if name == "pack" {
+                packed += std::fs::read_dir(&p)
+                    .unwrap()
+                    .filter(|e| {
+                        e.as_ref()
+                            .unwrap()
+                            .path()
+                            .extension()
+                            .is_some_and(|x| x == "pack")
+                    })
+                    .count();
+            }
+        }
+        (loose, packed)
+    }
+
+    #[test]
+    fn a_clone_shares_no_object_files_with_its_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(tmp.path()).unwrap().join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        run_git(&repo, &["gc", "-q"]);
+        std::fs::write(repo.join("later.txt"), "later\n").unwrap();
+        run_git(&repo, &["add", "."]);
+        run_git(&repo, &["commit", "-q", "-m", "later"]);
+        let (loose, packed) = objects_by_kind(&repo);
+        assert!(loose > 0 && packed > 0);
+        let r = repo.to_string_lossy().into_owned();
+        let dest = clone_dir(&r, "q_nl").unwrap();
+        GitClone
+            .prepare(&r, "q_nl", &dest.to_string_lossy())
+            .unwrap();
+        assert_standalone(&dest);
+        assert_eq!(shared_objects(&dest), Vec::<PathBuf>::new());
+        assert_eq!(shared_objects(&repo), Vec::<PathBuf>::new());
+        let log = git(Some(&dest), &["log", "--format=%s", "-n", "5"]).unwrap();
+        assert_eq!(log, "later\ninit");
+        assert!(dest.join("later.txt").is_file());
+    }
+
+    #[test]
+    fn a_clone_works_from_a_source_that_has_alternates() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let base = root.join("base");
+        std::fs::create_dir(&base).unwrap();
+        init_repo(&base);
+        let source = root.join("proj");
+        run_git(
+            &root,
+            &[
+                "clone",
+                "-q",
+                "--reference",
+                base.to_str().unwrap(),
+                base.to_str().unwrap(),
+                "proj",
+            ],
+        );
+        assert!(source.join(".git/objects/info/alternates").is_file());
+        let r = source.to_string_lossy().into_owned();
+        let dest = clone_dir(&r, "q_alt").unwrap();
+        GitClone
+            .prepare(&r, "q_alt", &dest.to_string_lossy())
+            .unwrap();
+        assert_eq!(shared_objects(&dest), Vec::<PathBuf>::new());
+        assert!(dest.join("README.md").is_file());
+        git(Some(&dest), &["fsck", "--connectivity-only"]).unwrap();
+    }
+
+    #[test]
+    fn a_clone_works_from_a_repository_without_packs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(tmp.path()).unwrap().join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        assert_eq!(objects_by_kind(&repo).1, 0);
+        let r = repo.to_string_lossy().into_owned();
+        let dest = clone_dir(&r, "q_np").unwrap();
+        GitClone
+            .prepare(&r, "q_np", &dest.to_string_lossy())
+            .unwrap();
+        assert_eq!(shared_objects(&dest), Vec::<PathBuf>::new());
+        assert_eq!(
+            git(Some(&dest), &["rev-list", "--count", "HEAD"]).unwrap(),
+            "1"
+        );
+        std::fs::write(dest.join("new.txt"), "n\n").unwrap();
+        run_git(&dest, &["add", "."]);
+        run_git(&dest, &["commit", "-q", "-m", "next"]);
+        assert_eq!(
+            git(Some(&dest), &["rev-list", "--count", "HEAD"]).unwrap(),
+            "2"
+        );
+    }
+
+    fn within<T: Send + 'static>(secs: u64, f: impl FnOnce() -> T + Send + 'static) -> T {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(secs))
+            .expect("did not return in time")
+    }
+
+    fn sh_cmd(script: &str) -> Command {
+        let mut c = Command::new("sh");
+        c.args(["-c", script]);
+        c
+    }
+
+    #[test]
+    fn bounded_runner_kills_a_command_that_runs_too_long() {
+        let started = std::time::Instant::now();
+        let r = within(5, || {
+            output_bounded(
+                &mut sh_cmd("sleep 30"),
+                std::time::Duration::from_millis(300),
+                1 << 20,
+            )
+        });
+        assert!(r.is_err());
+        assert!(started.elapsed() < std::time::Duration::from_secs(4));
+    }
+
+    #[test]
+    fn bounded_runner_stops_a_command_that_prints_too_much() {
+        let r = within(5, || {
+            output_bounded(
+                &mut Command::new("yes"),
+                std::time::Duration::from_secs(30),
+                64 << 10,
+            )
+        });
+        assert!(r.unwrap_err().message.contains("more than"));
+    }
+
+    #[test]
+    fn bounded_runner_does_not_wait_for_a_grandchild_holding_the_pipe() {
+        let started = std::time::Instant::now();
+        let _ = within(5, || {
+            output_bounded(
+                &mut sh_cmd("(sleep 30 &) ; echo hi"),
+                std::time::Duration::from_millis(500),
+                1 << 20,
+            )
+        });
+        assert!(started.elapsed() < std::time::Duration::from_secs(4));
+    }
+
+    #[test]
+    fn bounded_runner_returns_the_output_of_a_small_command() {
+        let out = within(5, || {
+            output_bounded(
+                &mut sh_cmd("printf out; printf err >&2"),
+                std::time::Duration::from_secs(5),
+                1 << 20,
+            )
+        })
+        .unwrap();
+        assert!(out.status.success());
+        assert_eq!((out.stdout, out.stderr), (b"out".to_vec(), b"err".to_vec()));
+    }
+
+    fn copy_with_reflog(lines: &str) -> (tempfile::TempDir, PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = std::fs::canonicalize(tmp.path()).unwrap();
+        run_git(&dir, &["init", "-q", "-b", "tmgr/w1"]);
+        run_git(&dir, &["commit", "-q", "--allow-empty", "-m", "init"]);
+        std::fs::remove_dir_all(dir.join(".git/logs")).unwrap();
+        std::fs::create_dir_all(dir.join(".git/logs")).unwrap();
+        std::fs::write(dir.join(".git/logs/HEAD"), lines).unwrap();
+        (tmp, dir)
+    }
+
+    #[test]
+    fn copy_refs_lists_commits_named_in_the_reflog() {
+        let a = "a".repeat(40);
+        let b = "b".repeat(40);
+        let zero = "0".repeat(40);
+        let (_t, dir) = copy_with_reflog(&format!(
+            "{zero} {a} t <t@example.com> 1 +0000\tcommit: x\n\n{a} {b} t <t@example.com> 2 +0000\treset: y\n"
+        ));
+        let refs = copy_refs(&dir, "tmgr/w1").unwrap();
+        assert_eq!(refs.logged, [a, b]);
+    }
+
+    #[test]
+    fn copy_refs_refuse_a_malformed_or_unreadable_reflog() {
+        let a = "a".repeat(40);
+        let (_t, dir) = copy_with_reflog(&format!("{a} zzz t\tx\n"));
+        assert!(copy_refs(&dir, "tmgr/w1").is_err());
+        let (_t, dir) = copy_with_reflog("");
+        std::fs::remove_file(dir.join(".git/logs/HEAD")).unwrap();
+        assert!(copy_refs(&dir, "tmgr/w1").unwrap().logged.is_empty());
+        std::fs::create_dir_all(dir.join(".git/logs/refs/heads")).unwrap();
+        std::os::unix::fs::symlink("/etc/hosts", dir.join(".git/logs/refs/heads/l")).unwrap();
+        assert!(copy_refs(&dir, "tmgr/w1").is_err());
+        std::fs::remove_file(dir.join(".git/logs/refs/heads/l")).unwrap();
+        std::fs::write(
+            dir.join(".git/logs/refs/heads/big"),
+            vec![b'x'; (1 << 20) + 1],
+        )
+        .unwrap();
+        assert!(copy_refs(&dir, "tmgr/w1").is_err());
+    }
+
+    #[test]
+    fn copy_refs_without_a_log_folder_has_no_logged_commits() {
+        let (_t, dir) = copy_with_reflog("");
+        std::fs::remove_dir_all(dir.join(".git/logs")).unwrap();
+        assert!(copy_refs(&dir, "tmgr/w1").unwrap().logged.is_empty());
+    }
+
+    #[test]
+    fn alternates_check_refuses_links_and_odd_files_in_the_object_store() {
+        let (_t, dir) = copy_with_reflog("");
+        let allowed = dir.join("elsewhere");
+        assert!(copy_alternates_ok(&dir, &allowed));
+        let objects = dir.join(".git/objects");
+        let fan = std::fs::read_dir(&objects)
+            .unwrap()
+            .flatten()
+            .find(|e| e.file_name().len() == 2)
+            .unwrap()
+            .path();
+        let moved = dir.join("moved");
+        std::fs::rename(&fan, &moved).unwrap();
+        std::os::unix::fs::symlink(&moved, &fan).unwrap();
+        assert!(!copy_alternates_ok(&dir, &allowed));
+        std::fs::remove_file(&fan).unwrap();
+        std::fs::rename(&moved, &fan).unwrap();
+        assert!(copy_alternates_ok(&dir, &allowed));
+        let object = std::fs::read_dir(&fan)
+            .unwrap()
+            .flatten()
+            .next()
+            .unwrap()
+            .path();
+        let kept = dir.join("kept");
+        std::fs::rename(&object, &kept).unwrap();
+        std::os::unix::fs::symlink(&kept, &object).unwrap();
+        assert!(!copy_alternates_ok(&dir, &allowed));
+        std::fs::remove_file(&object).unwrap();
+        std::fs::rename(&kept, &object).unwrap();
+        let fifo = std::ffi::CString::new(fan.join("ff").to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+        assert!(!copy_alternates_ok(&dir, &allowed));
+    }
+
+    fn host_run(repo: &Path, host: &Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .env_clear()
+            .env("PATH", absolute_path())
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_OPTIONAL_LOCKS", "0")
+            .env("GIT_DIR", host)
+            .env("GIT_WORK_TREE", repo)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout).unwrap()
+    }
+
+    fn hostile_config(marker: &Path) -> String {
+        format!(
+            "[filter \"x\"]\n\tclean = touch {0}\n\tsmudge = touch {0}\n[core]\n\tfsmonitor = touch {0}\n\tpager = touch {0}\n[diff \"x\"]\n\ttextconv = touch {0}\n",
+            marker.display()
+        )
+    }
+
+    fn append(path: &Path, text: &str) {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+        std::io::Write::write_all(&mut file, text.as_bytes()).unwrap();
+    }
+
+    fn repo_at(root: &Path, name: &str) -> PathBuf {
+        let repo = root.join(name);
+        std::fs::create_dir_all(&repo).unwrap();
+        init_repo(&repo);
+        repo
+    }
+
+    fn canon_tmp() -> (tempfile::TempDir, PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        (tmp, root)
+    }
+
+    fn prepared(repo: &Path) -> (tempfile::TempDir, PathBuf) {
+        let host = tempfile::tempdir().unwrap();
+        let path = host.path().to_path_buf();
+        assert!(host_git_dir(repo, &path).is_some());
+        (host, path)
+    }
+
+    #[test]
+    fn a_config_rewritten_after_the_private_dir_is_built_never_reaches_git() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let marker = root.join("ran");
+        let (_host, host) = prepared(&repo);
+        append(&repo.join(".git/config"), &hostile_config(&marker));
+        std::fs::write(repo.join(".gitattributes"), "*.md filter=x diff=x\n").unwrap();
+        std::fs::write(repo.join("README.md"), "changed after the check\n").unwrap();
+        let status = host_run(&repo, &host, &["status", "--porcelain"]);
+        assert!(status.contains("README.md"), "{status}");
+        let numstat = host_run(&repo, &host, &["diff", "HEAD", "--numstat"]);
+        assert!(numstat.contains("README.md"), "{numstat}");
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn a_commondir_added_after_the_private_dir_is_built_never_reaches_git() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let other = repo_at(&root, "other");
+        let marker = root.join("ran");
+        append(&other.join(".git/config"), &hostile_config(&marker));
+        let (_host, host) = prepared(&repo);
+        std::fs::write(
+            repo.join(".git/commondir"),
+            format!("{}\n", other.join(".git").display()),
+        )
+        .unwrap();
+        std::fs::write(repo.join(".gitattributes"), "*.md filter=x\n").unwrap();
+        std::fs::write(repo.join("README.md"), "changed\n").unwrap();
+        let status = host_run(&repo, &host, &["status", "--porcelain"]);
+        assert!(status.contains("README.md"), "{status}");
+        host_run(&repo, &host, &["diff", "HEAD", "--numstat"]);
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn a_swapped_dot_git_after_the_private_dir_is_built_never_reaches_git() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let marker = root.join("ran");
+        let (_host, host) = prepared(&repo);
+        std::fs::rename(repo.join(".git"), root.join("real-git")).unwrap();
+        std::fs::create_dir(repo.join(".git")).unwrap();
+        std::os::unix::fs::symlink(root.join("real-git/objects"), repo.join(".git/objects"))
+            .unwrap();
+        std::fs::write(repo.join(".git/config"), hostile_config(&marker)).unwrap();
+        std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(repo.join(".gitattributes"), "*.md filter=x\n").unwrap();
+        std::fs::write(repo.join("README.md"), "changed\n").unwrap();
+        let status = host_run(&repo, &host, &["status", "--porcelain"]);
+        assert!(status.contains("README.md"), "{status}");
+        host_run(&repo, &host, &["diff", "HEAD", "--numstat"]);
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn a_config_that_runs_a_program_is_refused_before_the_private_dir_is_built() {
+        for (key, value) in [
+            ("filter.x.clean", "touch m"),
+            ("filter.x.process", "touch m"),
+            ("include.path", "elsewhere"),
+            ("includeIf.gitdir:/.path", "elsewhere"),
+            ("core.pager", "touch m"),
+            ("core.sshCommand", "touch m"),
+            ("core.editor", "touch m"),
+            ("diff.x.textconv", "touch m"),
+            ("diff.external", "touch m"),
+            ("alias.st", "!touch m"),
+            ("credential.helper", "!touch m"),
+            ("url.x.insteadOf", "y"),
+        ] {
+            let (_tmp, root) = canon_tmp();
+            let repo = repo_at(&root, "repo");
+            git(Some(&repo), &["config", key, value]).unwrap();
+            let host = tempfile::tempdir().unwrap();
+            assert!(host_git_dir(&repo, host.path()).is_none(), "{key}");
+            assert!(!repo_config_is_plain(&repo), "{key}");
+        }
+    }
+
+    #[test]
+    fn a_config_that_is_a_fifo_is_refused_without_blocking() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let config = repo.join(".git/config");
+        std::fs::remove_file(&config).unwrap();
+        assert!(Command::new("mkfifo")
+            .arg(&config)
+            .status()
+            .unwrap()
+            .success());
+        let refused = within(10, move || {
+            let host = tempfile::tempdir().unwrap();
+            host_git_dir(&repo, host.path()).is_none()
+        });
+        assert!(refused);
+    }
+
+    #[test]
+    fn a_config_that_is_a_symlink_is_refused() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let real = root.join("elsewhere.config");
+        std::fs::copy(repo.join(".git/config"), &real).unwrap();
+        std::fs::remove_file(repo.join(".git/config")).unwrap();
+        std::os::unix::fs::symlink(&real, repo.join(".git/config")).unwrap();
+        let host = tempfile::tempdir().unwrap();
+        assert!(host_git_dir(&repo, host.path()).is_none());
+    }
+
+    #[test]
+    fn a_config_value_with_quotes_and_backslashes_round_trips() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let url = r#"https://example.com/a"b\c d"#;
+        git(Some(&repo), &["config", "remote.origin.url", url]).unwrap();
+        let (_host, host) = prepared(&repo);
+        let read = host_run(
+            &repo,
+            &host,
+            &[
+                "config",
+                "--file",
+                host.join("config").to_str().unwrap(),
+                "--get",
+                "remote.origin.url",
+            ],
+        );
+        assert_eq!(read.trim_end_matches('\n'), url);
+    }
+
+    #[test]
+    fn a_config_value_with_a_control_character_is_refused() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        git(Some(&repo), &["config", "remote.origin.url", "a\tb"]).unwrap();
+        let host = tempfile::tempdir().unwrap();
+        assert!(host_git_dir(&repo, host.path()).is_none());
+    }
+
+    #[test]
+    fn only_a_few_inert_settings_are_carried_into_the_private_config() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        for (key, value) in [
+            ("remote.origin.url", "file:///x"),
+            ("branch.main.remote", "origin"),
+            ("branch.main.merge", "refs/heads/main"),
+            ("core.hooksPath", "/tmp/hooks"),
+            ("core.fsmonitor", "true"),
+            ("core.abbrev", "12"),
+            ("extensions.worktreeConfig", "true"),
+            ("user.name", "someone"),
+            ("user.email", "someone@example.com"),
+            ("commit.gpgsign", "true"),
+            ("pull.rebase", "true"),
+        ] {
+            git(Some(&repo), &["config", key, value]).unwrap();
+        }
+        let (_host, host) = prepared(&repo);
+        let text = std::fs::read_to_string(host.join("config")).unwrap();
+        let keys = host_run(
+            &repo,
+            &host,
+            &[
+                "config",
+                "--file",
+                host.join("config").to_str().unwrap(),
+                "--list",
+                "--name-only",
+            ],
+        );
+        for key in keys.lines() {
+            assert!(
+                matches!(
+                    key,
+                    "core.repositoryformatversion"
+                        | "core.bare"
+                        | "core.filemode"
+                        | "core.ignorecase"
+                        | "core.precomposeunicode"
+                        | "remote.origin.url"
+                        | "branch.main.remote"
+                        | "branch.main.merge"
+                ),
+                "{key}\n{text}"
+            );
+        }
+        for banned in [
+            "hookspath",
+            "fsmonitor",
+            "worktreeconfig",
+            "user",
+            "gpgsign",
+        ] {
+            assert!(!text.to_ascii_lowercase().contains(banned), "{banned}");
+        }
+        assert!(keys.lines().any(|k| k == "remote.origin.url"));
+        assert!(keys.lines().any(|k| k == "branch.main.merge"));
+    }
+
+    #[test]
+    fn a_detached_head_works_through_the_private_dir() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        git(Some(&repo), &["checkout", "-q", "--detach"]).unwrap();
+        let sha = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        let (_host, host) = prepared(&repo);
+        assert_eq!(host_run(&repo, &host, &["rev-parse", "HEAD"]).trim(), sha);
+        host_run(&repo, &host, &["status", "--porcelain"]);
+    }
+
+    #[test]
+    fn remote_tracking_refs_symbolic_and_packed_survive_in_the_private_dir() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let sha = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        git(
+            Some(&repo),
+            &["update-ref", "refs/remotes/origin/main", "HEAD"],
+        )
+        .unwrap();
+        git(
+            Some(&repo),
+            &[
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/main",
+            ],
+        )
+        .unwrap();
+        let (_a, loose) = prepared(&repo);
+        assert_eq!(
+            host_run(&repo, &loose, &["symbolic-ref", "refs/remotes/origin/HEAD"]).trim(),
+            "refs/remotes/origin/main"
+        );
+        git(Some(&repo), &["pack-refs", "--all"]).unwrap();
+        let (_b, packed) = prepared(&repo);
+        for name in ["main", "refs/remotes/origin/main", "origin/HEAD"] {
+            assert_eq!(
+                host_run(&repo, &packed, &["rev-parse", name]).trim(),
+                sha,
+                "{name}"
+            );
+        }
+        assert_eq!(
+            host_run(
+                &repo,
+                &packed,
+                &["symbolic-ref", "refs/remotes/origin/HEAD"]
+            )
+            .trim(),
+            "refs/remotes/origin/main"
+        );
+    }
+
+    #[test]
+    fn a_shallow_file_with_anything_but_commit_ids_is_refused() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let sha = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        std::fs::write(repo.join(".git/shallow"), format!("{sha}\n")).unwrap();
+        let host = tempfile::tempdir().unwrap();
+        assert!(host_git_dir(&repo, host.path()).is_some());
+        std::fs::write(
+            repo.join(".git/shallow"),
+            format!("{sha}\n../../etc/passwd\n"),
+        )
+        .unwrap();
+        let host = tempfile::tempdir().unwrap();
+        assert!(host_git_dir(&repo, host.path()).is_none());
+    }
+
+    fn enable_worktree_config(repo: &Path) {
+        git(Some(repo), &["config", "core.repositoryformatversion", "1"]).unwrap();
+        git(Some(repo), &["config", "extensions.worktreeConfig", "true"]).unwrap();
+    }
+
+    fn linked(repo: &Path, root: &Path) -> PathBuf {
+        let wt = root.join("wt");
+        git(
+            Some(repo),
+            &["worktree", "add", "-q", "--detach", wt.to_str().unwrap()],
+        )
+        .unwrap();
+        wt
+    }
+
+    #[test]
+    fn a_repository_with_worktree_config_and_its_linked_worktree_are_plain() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        enable_worktree_config(&repo);
+        assert!(repo_config_is_plain(&repo));
+        let wt = linked(&repo, &root);
+        assert!(repo_config_is_plain(&wt));
+    }
+
+    #[test]
+    fn a_hostile_worktree_config_makes_the_main_and_the_linked_worktree_not_plain() {
+        for hostile in [
+            "[filter \"x\"]\n\tclean = touch m\n",
+            "[core]\n\tpager = touch m\n",
+        ] {
+            let (_tmp, root) = canon_tmp();
+            let repo = repo_at(&root, "repo");
+            enable_worktree_config(&repo);
+            let wt = linked(&repo, &root);
+            assert!(repo_config_is_plain(&repo));
+            assert!(repo_config_is_plain(&wt));
+            std::fs::write(repo.join(".git/config.worktree"), hostile).unwrap();
+            assert!(!repo_config_is_plain(&repo), "{hostile}");
+            assert!(repo_config_is_plain(&wt), "{hostile}");
+            std::fs::write(repo.join(".git/worktrees/wt/config.worktree"), hostile).unwrap();
+            assert!(!repo_config_is_plain(&wt), "{hostile}");
+        }
+    }
+
+    #[test]
+    fn an_allowed_setting_in_the_worktree_config_stays_plain() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        enable_worktree_config(&repo);
+        let wt = linked(&repo, &root);
+        let text = "[user]\n\tname = someone\n";
+        std::fs::write(repo.join(".git/config.worktree"), text).unwrap();
+        std::fs::write(repo.join(".git/worktrees/wt/config.worktree"), text).unwrap();
+        assert!(repo_config_is_plain(&repo));
+        assert!(repo_config_is_plain(&wt));
+    }
+
+    #[test]
+    fn a_worktree_config_fsmonitor_never_runs_through_the_private_dir() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        enable_worktree_config(&repo);
+        let marker = root.join("ran");
+        std::fs::write(
+            repo.join(".git/config.worktree"),
+            format!("[core]\n\tfsmonitor = touch {}\n", marker.display()),
+        )
+        .unwrap();
+        let host = tempfile::tempdir().unwrap();
+        if host_git_dir(&repo, host.path()).is_some() {
+            host_run(&repo, host.path(), &["status", "--porcelain"]);
+            host_run(&repo, host.path(), &["diff", "HEAD", "--numstat"]);
+        }
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn a_worktree_config_is_ignored_while_the_extension_is_off() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let marker = root.join("ran");
+        std::fs::write(repo.join(".git/config.worktree"), hostile_config(&marker)).unwrap();
+        std::fs::write(repo.join(".gitattributes"), "*.md filter=x\n").unwrap();
+        std::fs::write(repo.join("README.md"), "changed\n").unwrap();
+        assert!(repo_config_is_plain(&repo));
+        let (_host, host) = prepared(&repo);
+        let text = std::fs::read_to_string(host.join("config")).unwrap();
+        assert!(
+            !text.contains("worktree") && !text.contains("filter"),
+            "{text}"
+        );
+        host_run(&repo, &host, &["status", "--porcelain"]);
+        host_run(&repo, &host, &["diff", "HEAD", "--numstat"]);
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn relative_worktree_paths_setting_is_plain() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        git(
+            Some(&repo),
+            &["config", "worktree.useRelativePaths", "true"],
+        )
+        .unwrap();
+        assert!(repo_config_is_plain(&repo));
+    }
+
+    #[test]
+    fn agent_attributes_never_route_files_through_a_host_filter_driver() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "repo");
+        let marker = root.join("ran");
+        std::fs::write(repo.join(".gitattributes"), "* filter=lfs diff=lfs\n").unwrap();
+        std::fs::write(repo.join("README.md"), "hello\nworld\n").unwrap();
+        let (_host, host) = prepared(&repo);
+        let clean = format!("filter.lfs.clean=touch {}", marker.display());
+        let host_config = ["-c", clean.as_str(), "-c", "filter.lfs.required=true"];
+        let status = [host_config.as_slice(), &["status", "--porcelain"]].concat();
+        host_run(&repo, &host, &status);
+        let numstat = [host_config.as_slice(), &["diff", "HEAD", "--numstat"]].concat();
+        let stats = host_run(&repo, &host, &numstat);
+        assert!(!marker.exists());
+        assert!(stats.contains("1\t0\tREADME.md"), "{stats}");
+    }
+
+    fn raw(dir: &Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    fn plant(repo: &Path, marks: &Path) {
+        std::fs::create_dir_all(marks).unwrap();
+        let touch = |name: &str| format!("touch {}/{name}", marks.display());
+        for (key, value) in [
+            ("hook.x.event", "reference-transaction".to_string()),
+            ("hook.x.command", touch("hook")),
+            ("hook.y.event", "pre-push".to_string()),
+            ("hook.y.command", touch("prepush")),
+            ("core.fsmonitor", touch("fsmonitor")),
+            ("core.sshCommand", touch("ssh")),
+            ("core.pager", touch("pager")),
+            ("filter.x.clean", touch("clean")),
+            ("filter.x.smudge", touch("smudge")),
+            ("diff.x.textconv", touch("textconv")),
+        ] {
+            raw(repo, &["config", key, &value]);
+        }
+        std::fs::write(repo.join(".git/info/attributes"), "* filter=x diff=x\n").unwrap();
+        let hooks = repo.join(".git/hooks");
+        std::fs::create_dir_all(&hooks).unwrap();
+        for name in [
+            "reference-transaction",
+            "pre-push",
+            "post-update",
+            "pre-auto-gc",
+        ] {
+            std::fs::write(hooks.join(name), format!("#!/bin/sh\n{}\n", touch(name))).unwrap();
+            std::fs::set_permissions(
+                hooks.join(name),
+                std::os::unix::fs::PermissionsExt::from_mode(0o755),
+            )
+            .unwrap();
+        }
+    }
+
+    fn assert_quiet(marks: &Path) {
+        let ran: Vec<_> = std::fs::read_dir(marks)
+            .map(|d| d.flatten().map(|e| e.file_name()).collect())
+            .unwrap_or_default();
+        assert!(ran.is_empty(), "repository config or hooks ran: {ran:?}");
+    }
+
+    fn bare_origin(root: &Path, repo: &Path) -> PathBuf {
+        let bare = root.join("origin.git");
+        raw(root, &["init", "-q", "--bare", "-b", "main", "origin.git"]);
+        raw(repo, &["push", "-q", &bare.to_string_lossy(), "main"]);
+        local_origin(repo, "proj", &bare);
+        bare
+    }
+
+    #[test]
+    fn a_hook_added_after_the_view_is_opened_does_not_run_on_a_ref_update() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let view = host_view(&repo, Access::Write).unwrap();
+        let marks = root.join("marks");
+        plant(&repo, &marks);
+        view.run(&["update-ref", "refs/heads/t", "HEAD"]).unwrap();
+        assert_quiet(&marks);
+        assert_eq!(
+            raw(&repo, &["rev-parse", "refs/heads/t"]),
+            raw(&repo, &["rev-parse", "HEAD"])
+        );
+    }
+
+    #[test]
+    fn restoring_and_removing_branches_ignore_repository_config() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let tip = raw(&repo, &["rev-parse", "HEAD"]);
+        raw(&repo, &["branch", "tm-1-fix"]);
+        raw(&repo, &["branch", "queue-team/p1/w1"]);
+        raw(&repo, &["pack-refs", "--all"]);
+        let marks = root.join("marks");
+        plant(&repo, &marks);
+        assert_eq!(
+            branch_tip(&repo, "tm-1-fix").unwrap().as_deref(),
+            Some(tip.as_str())
+        );
+        restore_branch(&repo, "tm-1-fix", None, &tip).unwrap();
+        assert_eq!(branch_tip(&repo, "tm-1-fix").unwrap(), None);
+        remove_team_refs(&repo, "p1");
+        assert_eq!(branch_tip(&repo, "queue-team/p1/w1").unwrap(), None);
+        assert!(history_facts(&repo, "HEAD", "HEAD").is_ok());
+        assert_eq!(git_query(&repo, &["rev-parse", "HEAD"]).unwrap(), tip);
+        assert_quiet(&marks);
+    }
+
+    #[test]
+    fn importing_ignores_repository_config_and_still_refuses_a_checked_out_branch() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let dest = run_clone_dir(&r, "tm-3-fix").unwrap();
+        prepare_clone(&r, &dest, "tm-3-fix", None).unwrap();
+        std::fs::write(dest.join("work.txt"), "x\n").unwrap();
+        raw(&dest, &["add", "work.txt"]);
+        raw(&dest, &["commit", "-q", "-m", "agent change"]);
+        let marks = root.join("marks");
+        plant(&repo, &marks);
+        let sha = import_branch(&r, &dest, "tm-3-fix").unwrap();
+        assert_eq!(raw(&repo, &["rev-parse", "tm-3-fix"]), sha);
+        assert_quiet(&marks);
+
+        let dest4 = run_clone_dir(&r, "tm-4-fix").unwrap();
+        prepare_clone(&r, &dest4, "tm-4-fix", None).unwrap();
+        std::fs::write(dest4.join("more.txt"), "y\n").unwrap();
+        raw(&dest4, &["add", "more.txt"]);
+        raw(&dest4, &["commit", "-q", "-m", "second change"]);
+        raw(&repo, &["checkout", "-q", "-b", "tm-4-fix"]);
+        let before = raw(&repo, &["rev-parse", "tm-4-fix"]);
+        assert!(import_branch(&r, &dest4, "tm-4-fix").is_err());
+        assert_eq!(raw(&repo, &["rev-parse", "tm-4-fix"]), before);
+    }
+
+    #[test]
+    fn preparing_a_clone_reads_the_base_without_repository_config() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let marks = root.join("marks");
+        plant(&repo, &marks);
+        let dest = run_clone_dir(&r, "tm-5-fix").unwrap();
+        prepare_clone(&r, &dest, "tm-5-fix", Some("main")).unwrap();
+        assert!(dest.join("README.md").is_file());
+        let dest2 = run_clone_dir(&r, "tm-6-fix").unwrap();
+        prepare_clone(&r, &dest2, "tm-6-fix", None).unwrap();
+        assert!(dest2.join("README.md").is_file());
+        assert_quiet(&marks);
+    }
+
+    #[test]
+    fn the_remote_branch_is_read_from_the_origin_url_without_repository_config() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let bare = bare_origin(&root, &repo);
+        let tip = raw(&repo, &["rev-parse", "HEAD"]);
+        let marks = root.join("marks");
+        plant(&repo, &marks);
+        raw(
+            &repo,
+            &[
+                "config",
+                &format!("url.{}/nowhere/.insteadOf", root.display()),
+                &format!("{}/", root.display()),
+            ],
+        );
+        let r = repo.to_string_lossy().into_owned();
+        assert_eq!(
+            remote_branch_head(&r, "acme/proj", "main")
+                .unwrap()
+                .as_deref(),
+            Some(tip.as_str())
+        );
+        assert_eq!(remote_branch_head(&r, "acme/proj", "absent").unwrap(), None);
+        assert!(bare.is_dir());
+        assert_quiet(&marks);
+    }
+
+    #[test]
+    fn continuing_fetches_the_saved_commit_from_the_origin_url_without_repository_config() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let bare = bare_origin(&root, &repo);
+        let other = root.join("other");
+        raw(&root, &["clone", "-q", &bare.to_string_lossy(), "other"]);
+        raw(&other, &["checkout", "-q", "-b", "tm-7-fix"]);
+        std::fs::write(other.join("late.txt"), "z\n").unwrap();
+        raw(&other, &["add", "late.txt"]);
+        raw(&other, &["commit", "-q", "-m", "late"]);
+        raw(&other, &["push", "-q", "origin", "tm-7-fix"]);
+        let sha = raw(&other, &["rev-parse", "HEAD"]);
+        let marks = root.join("marks");
+        plant(&repo, &marks);
+        let r = repo.to_string_lossy().into_owned();
+        let dest = run_clone_dir(&r, "tm-7-fix").unwrap();
+        prepare_continue_clone(&r, "acme/proj", &dest, "tm-7-fix", &sha).unwrap();
+        assert!(dest.join("late.txt").is_file());
+        assert_eq!(raw(&dest, &["rev-parse", "HEAD"]), sha);
+        assert_quiet(&marks);
+    }
+
+    #[test]
+    fn a_local_origin_is_not_used_for_the_remote_head_or_a_fetch() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let bare = root.join("origin.git");
+        raw(&root, &["init", "-q", "--bare", "-b", "main", "origin.git"]);
+        raw(&repo, &["remote", "add", "origin", &bare.to_string_lossy()]);
+        raw(&repo, &["push", "-q", "origin", "main"]);
+        let r = repo.to_string_lossy().into_owned();
+        let err = remote_branch_head(&r, "acme/proj", "main").unwrap_err();
+        assert!(
+            err.message.contains("not the repository linked"),
+            "{}",
+            err.message
+        );
+        let dest = run_clone_dir(&r, "tm-8-fix").unwrap();
+        let sha = raw(&repo, &["rev-parse", "HEAD"]);
+        assert!(prepare_continue_clone(&r, "acme/proj", &dest, "tm-8-fix", &sha).is_err());
+        assert!(!dest.exists());
+        assert!(bare.is_dir());
+    }
+
+    fn symref(repo: &Path, name: &str, target: &str) {
+        raw(
+            repo,
+            &[
+                "symbolic-ref",
+                &format!("refs/heads/{name}"),
+                &format!("refs/heads/{target}"),
+            ],
+        );
+    }
+
+    #[test]
+    fn removing_a_branch_that_is_a_symbolic_ref_keeps_the_branch_it_names() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let tip = raw(&repo, &["rev-parse", "HEAD"]);
+        raw(&repo, &["branch", "keep"]);
+        symref(&repo, "tm-1-fix", "keep");
+        let _ = restore_branch(&repo, "tm-1-fix", None, &tip);
+        assert_eq!(raw(&repo, &["rev-parse", "keep"]), tip);
+    }
+
+    #[test]
+    fn resetting_a_branch_that_is_a_symbolic_ref_keeps_the_branch_it_names() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let first = raw(&repo, &["rev-parse", "HEAD"]);
+        commit_file(&repo, "b.txt");
+        let tip = raw(&repo, &["rev-parse", "HEAD"]);
+        raw(&repo, &["branch", "keep"]);
+        symref(&repo, "tm-1-fix", "keep");
+        let _ = restore_branch(&repo, "tm-1-fix", Some(&first), &tip);
+        assert_eq!(raw(&repo, &["rev-parse", "keep"]), tip);
+    }
+
+    #[test]
+    fn team_refs_that_are_symbolic_refs_keep_the_branches_they_name() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let tip = raw(&repo, &["rev-parse", "HEAD"]);
+        raw(&repo, &["branch", "keep"]);
+        symref(&repo, "queue-team/p1/w1", "keep");
+        remove_team_refs(&repo, "p1");
+        assert_eq!(raw(&repo, &["rev-parse", "keep"]), tip);
+    }
+
+    fn clone_with_commit(r: &str, branch: &str) -> PathBuf {
+        let dest = run_clone_dir(r, branch).unwrap();
+        prepare_clone(r, &dest, branch, None).unwrap();
+        std::fs::write(dest.join("work.txt"), "x\n").unwrap();
+        raw(&dest, &["add", "work.txt"]);
+        raw(&dest, &["commit", "-q", "-m", "agent change"]);
+        dest
+    }
+
+    #[test]
+    fn importing_into_a_branch_that_is_a_symbolic_ref_never_moves_the_branch_it_names() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let dest = clone_with_commit(&r, "tm-6-fix");
+        raw(&repo, &["branch", "keep"]);
+        let keep = raw(&repo, &["rev-parse", "keep"]);
+        symref(&repo, "tm-6-fix", "keep");
+        assert!(import_branch(&r, &dest, "tm-6-fix").is_err());
+        assert_eq!(raw(&repo, &["rev-parse", "keep"]), keep);
+    }
+
+    #[test]
+    fn importing_refuses_a_branch_checked_out_in_a_linked_worktree() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let dest = clone_with_commit(&r, "tm-7-fix");
+        let wt = root.join("wt");
+        raw(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "tm-7-fix",
+                wt.to_str().unwrap(),
+            ],
+        );
+        let before = raw(&repo, &["rev-parse", "tm-7-fix"]);
+        assert!(import_branch(&r, &dest, "tm-7-fix").is_err());
+        assert_eq!(raw(&repo, &["rev-parse", "tm-7-fix"]), before);
+    }
+
+    #[test]
+    fn a_checked_out_branch_is_matched_regardless_of_letter_case() {
+        let (_tmp, root) = canon_tmp();
+        let common = root.join("common");
+        std::fs::create_dir_all(common.join("worktrees/w")).unwrap();
+        std::fs::write(common.join("HEAD"), "ref: refs/heads/Feature\n").unwrap();
+        assert!(checked_out(&common, "feature").unwrap());
+        std::fs::write(common.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(common.join("worktrees/w/HEAD"), "ref: refs/heads/Topic\n").unwrap();
+        assert!(checked_out(&common, "topic").unwrap());
+        assert!(!checked_out(&common, "other").unwrap());
+    }
+
+    #[test]
+    fn importing_refuses_a_branch_that_has_moved_to_other_history() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let dest = clone_with_commit(&r, "tm-8-fix");
+        raw(&repo, &["checkout", "-q", "-b", "tm-8-fix"]);
+        commit_file(&repo, "other.txt");
+        raw(&repo, &["checkout", "-q", "main"]);
+        let before = raw(&repo, &["rev-parse", "tm-8-fix"]);
+        assert!(import_branch(&r, &dest, "tm-8-fix").is_err());
+        assert_eq!(raw(&repo, &["rev-parse", "tm-8-fix"]), before);
+    }
+
+    #[test]
+    fn importing_updates_a_branch_that_only_moves_forward() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let dest = clone_with_commit(&r, "tm-9-fix");
+        raw(&repo, &["branch", "tm-9-fix"]);
+        let sha = import_branch(&r, &dest, "tm-9-fix").unwrap();
+        assert_eq!(raw(&repo, &["rev-parse", "tm-9-fix"]), sha);
+    }
+
+    #[test]
+    fn a_restored_branch_is_never_set_to_a_tag_object() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let first = raw(&repo, &["rev-parse", "HEAD"]);
+        commit_file(&repo, "b.txt");
+        let second = raw(&repo, &["rev-parse", "HEAD"]);
+        raw(&repo, &["branch", "tm-1-fix"]);
+        raw(&repo, &["tag", "-a", "-m", "t", "v1", &first]);
+        let tag = raw(&repo, &["rev-parse", "v1"]);
+        assert!(restore_branch(&repo, "tm-1-fix", Some(&tag), &second).is_err());
+        assert_eq!(raw(&repo, &["rev-parse", "tm-1-fix"]), second);
+        assert!(restore_branch(&repo, "tm-1-fix", Some(&first), &tag).is_err());
+        assert_eq!(raw(&repo, &["rev-parse", "tm-1-fix"]), second);
+    }
+
+    #[test]
+    fn a_shallow_file_is_not_carried_into_host_views() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        commit_file(&repo, "b.txt");
+        let mid = raw(&repo, &["rev-parse", "HEAD"]);
+        commit_file(&repo, "c.txt");
+        std::fs::write(repo.join(".git/shallow"), format!("{mid}\n")).unwrap();
+        assert_eq!(
+            git_query(&repo, &["rev-list", "--count", "HEAD"]).unwrap(),
+            "3"
+        );
+    }
+
+    #[test]
+    fn a_shallow_clone_fails_history_queries_instead_of_hiding_commits() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        commit_file(&repo, "b.txt");
+        commit_file(&repo, "c.txt");
+        let shallow = root.join("shallow");
+        let out = Command::new("git")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .args([
+                "-c",
+                "protocol.file.allow=always",
+                "clone",
+                "-q",
+                "--depth",
+                "1",
+            ])
+            .arg(format!("file://{}", repo.display()))
+            .arg(&shallow)
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        assert!(git_query(&shallow, &["rev-list", "--count", "HEAD"]).is_err());
+    }
+
+    #[test]
+    fn a_leading_config_pair_is_a_pre_argument_of_the_view() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        commit_file(&repo, "\u{e9}.txt");
+        let out = git_query(
+            &repo,
+            &[
+                "-c",
+                "core.quotepath=off",
+                "diff",
+                "--name-only",
+                "HEAD~1",
+                "HEAD",
+            ],
+        )
+        .unwrap();
+        assert_eq!(out, "\u{e9}.txt");
+    }
+
+    #[test]
+    fn a_git_output_over_the_cap_is_an_error() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let big = root.join("big.bin");
+        std::fs::write(&big, vec![0u8; TRUSTED_OUTPUT_CAP + (1 << 20)]).unwrap();
+        let sha = raw(&repo, &["hash-object", "-w", big.to_str().unwrap()]);
+        assert!(repo_git_bytes(&repo, &["cat-file", "blob", &sha], None).is_err());
+    }
+
+    #[test]
+    fn subtrees_accept_a_zero_padded_directory_mode() {
+        let id = [7u8; 20];
+        let mut body = Vec::new();
+        for mode in ["40000", "040000", "100644"] {
+            body.extend_from_slice(format!("{mode} n\0").as_bytes());
+            body.extend_from_slice(&id);
+        }
+        let found = subtrees(&body, 40).unwrap();
+        assert_eq!(found, vec!["07".repeat(20); 2]);
+    }
+
+    #[test]
+    fn new_objects_are_verified_without_holding_a_large_blob() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let base = raw(&repo, &["rev-parse", "HEAD"]);
+        std::fs::write(
+            repo.join("big.bin"),
+            vec![1u8; TRUSTED_OUTPUT_CAP + (1 << 20)],
+        )
+        .unwrap();
+        raw(&repo, &["add", "big.bin"]);
+        raw(&repo, &["commit", "-q", "-m", "big"]);
+        let head = raw(&repo, &["rev-parse", "HEAD"]);
+        verify_new_objects(&repo, &base, &head).unwrap();
+    }
+
+    #[test]
+    fn a_new_object_that_does_not_match_its_name_is_refused() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let base = raw(&repo, &["rev-parse", "HEAD"]);
+        commit_file(&repo, "a.txt");
+        commit_file(&repo, "b.txt");
+        let head = raw(&repo, &["rev-parse", "HEAD"]);
+        let loose = |oid: &str| repo.join(".git/objects").join(&oid[..2]).join(&oid[2..]);
+        let a = raw(&repo, &["rev-parse", "HEAD~1:a.txt"]);
+        let b = raw(&repo, &["rev-parse", "HEAD:b.txt"]);
+        std::fs::set_permissions(loose(&a), std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::copy(loose(&b), loose(&a)).unwrap();
+        let err = verify_new_objects(&repo, &base, &head).unwrap_err();
+        assert!(err.message.contains("does not match its name"), "{err}");
+    }
+
+    #[test]
+    fn a_git_command_still_takes_input_through_the_view() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let out = repo_git_bytes(
+            &repo,
+            &["cat-file", "--batch-check"],
+            Some(b"HEAD\n".to_vec()),
+        )
+        .unwrap();
+        assert!(String::from_utf8_lossy(&out).contains(" commit "));
+    }
+
+    #[test]
+    fn the_import_allowance_grows_with_the_source_store() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let before = import_allowance(&r);
+        assert!(before > MAX_IMPORT);
+        let pad = std::fs::File::create(repo.join(".git/objects/pack/pack-pad.pack")).unwrap();
+        pad.set_len(MAX_IMPORT).unwrap();
+        assert_eq!(import_allowance(&r), before + MAX_IMPORT);
+    }
+
+    fn prune_source(repo: &Path) {
+        raw(repo, &["reflog", "expire", "--expire=now", "--all"]);
+        raw(repo, &["gc", "-q", "--prune=now"]);
+    }
+
+    fn assert_standalone(dest: &Path) {
+        assert!(!dest.join(".git/objects/info/alternates").exists());
+        let fsck = Command::new("git")
+            .current_dir(dest)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .args(["fsck", "--full", "--strict"])
+            .output()
+            .unwrap();
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&fsck.stdout),
+            String::from_utf8_lossy(&fsck.stderr)
+        );
+        assert!(fsck.status.success() && !text.contains("missing"), "{text}");
+        raw(dest, &["log", "--format=%H"]);
+        raw(dest, &["gc", "-q"]);
+        raw(dest, &["fetch", "-q", "origin"]);
+    }
+
+    fn assert_agent_commit_imports(repo: &Path, dest: &Path, branch: &str) {
+        let r = repo.to_string_lossy().into_owned();
+        std::fs::write(dest.join("agent.txt"), "agent\n").unwrap();
+        raw(dest, &["add", "agent.txt"]);
+        raw(dest, &["commit", "-q", "-m", "agent change"]);
+        let sha = import_branch(&r, dest, branch).unwrap();
+        raw(repo, &["cat-file", "-e", &format!("{sha}^{{commit}}")]);
+        assert_eq!(raw(repo, &["rev-parse", branch]), sha);
+    }
+
+    #[test]
+    fn a_clone_survives_the_source_branch_being_rewound_and_pruned() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let first = raw(&repo, &["rev-parse", "HEAD"]);
+        commit_file(&repo, "b.txt");
+        let r = repo.to_string_lossy().into_owned();
+        let dest = run_clone_dir(&r, "tm-9-fix").unwrap();
+        prepare_clone(&r, &dest, "tm-9-fix", None).unwrap();
+        raw(&repo, &["reset", "-q", "--hard", &first]);
+        prune_source(&repo);
+        assert_standalone(&dest);
+        assert_agent_commit_imports(&repo, &dest, "tm-9-fix");
+    }
+
+    #[test]
+    fn a_clone_survives_its_base_branch_being_deleted_and_pruned() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        raw(&repo, &["checkout", "-q", "-b", "side"]);
+        commit_file(&repo, "side.txt");
+        raw(&repo, &["checkout", "-q", "main"]);
+        let r = repo.to_string_lossy().into_owned();
+        let dest = run_clone_dir(&r, "tm-10-fix").unwrap();
+        prepare_clone(&r, &dest, "tm-10-fix", Some("side")).unwrap();
+        raw(&repo, &["branch", "-q", "-D", "side"]);
+        prune_source(&repo);
+        assert!(dest.join("side.txt").is_file());
+        assert_standalone(&dest);
+        assert_agent_commit_imports(&repo, &dest, "tm-10-fix");
+    }
+
+    #[test]
+    fn a_continued_clone_is_self_contained_when_the_commit_came_through_fetch_head() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let bare = bare_origin(&root, &repo);
+        let other = root.join("other");
+        raw(&root, &["clone", "-q", &bare.to_string_lossy(), "other"]);
+        raw(&other, &["checkout", "-q", "-b", "tm-11-fix"]);
+        commit_file(&other, "late.txt");
+        raw(&other, &["push", "-q", "origin", "tm-11-fix"]);
+        let sha = raw(&other, &["rev-parse", "HEAD"]);
+        let r = repo.to_string_lossy().into_owned();
+        let dest = run_clone_dir(&r, "tm-11-fix").unwrap();
+        prepare_continue_clone(&r, "acme/proj", &dest, "tm-11-fix", &sha).unwrap();
+        prune_source(&repo);
+        assert!(dest.join("late.txt").is_file());
+        assert_eq!(raw(&dest, &["rev-parse", "HEAD"]), sha);
+        assert_standalone(&dest);
+    }
+
+    #[test]
+    fn a_failed_repack_leaves_no_clone_and_says_why() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let dest = run_clone_dir(&r, "tm-12-fix").unwrap();
+        let err = make_clone(&r, &dest, &|d| {
+            git(
+                Some(d),
+                &["checkout", "-q", "-b", "tm-12-fix", "origin/main"],
+            )?;
+            std::fs::write(
+                d.join(".git/refs/heads/broken"),
+                "0123456789012345678901234567890123456789\n",
+            )?;
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(err.to_string().contains("repack"), "{err}");
         assert!(!dest.exists());
     }
 }

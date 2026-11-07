@@ -39,3 +39,23 @@ export const tokenFromStorageEvent = (
 		(next?.refresh_token ?? null) === (current?.refresh_token ?? null);
 	return same ? { changed: false } : { changed: true, token: next };
 };
+
+/** Account id carried in the token's `sub` claim; unverified, only for comparing. */
+export const tokenSubject = (
+	token: TokenEnvelope | null | undefined,
+): number | null => {
+	try {
+		const payload = token?.token?.split('.')[1];
+		if (!payload) {
+			return null;
+		}
+		const { sub } = JSON.parse(
+			atob(payload.replace(/-/g, '+').replace(/_/g, '/')),
+		);
+		const id =
+			typeof sub === 'number' ? sub : /^\d+$/.test(sub) ? Number(sub) : NaN;
+		return Number.isSafeInteger(id) && id > 0 ? id : null;
+	} catch {
+		return null;
+	}
+};

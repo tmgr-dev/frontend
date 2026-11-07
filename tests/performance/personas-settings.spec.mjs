@@ -34,6 +34,54 @@ test('the Personas settings page lists personas and offers a create form', async
   await expect(page.getByPlaceholder('Reviewer')).toBeVisible();
 });
 
+test('editing a persona saves its owner notification setting', async ({
+  page,
+}) => {
+  await mockApp(page);
+  let saved = null;
+  await page.route('**/api/personas/uuid-1', (route) => {
+    saved = route.request().postDataJSON();
+    return route.fulfill({ json: { data: {} } });
+  });
+  await page.route('**/api/personas*', (route) =>
+    route.fulfill({
+      json: {
+        data: [
+          {
+            id: 'uuid-1',
+            name: 'Reviewer',
+            description: null,
+            avatar_url: null,
+            system_prompt: '',
+            owner_notifications: 'none',
+            prompt_version: 1,
+            archived_at: null,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+            owner: { id: 1, name: 'Test User' },
+            can_edit: true,
+          },
+        ],
+      },
+    }),
+  );
+
+  await page.goto('/settings/personas');
+  const select = page.getByRole('combobox', {
+    name: "Notify me about this persona's activity",
+  });
+  await expect(select).toHaveText('All');
+
+  await page.getByRole('button', { name: 'Edit' }).first().click();
+  await expect(select).toHaveText('Never');
+
+  await select.click();
+  await page.getByRole('option', { name: 'Only when it asks for me' }).click();
+  await page.getByRole('button', { name: 'Save' }).click();
+
+  await expect.poll(() => saved?.owner_notifications).toBe('mentions');
+});
+
 test('an empty persona list shows the empty state instead of an error', async ({
   page,
 }) => {
@@ -159,4 +207,433 @@ test('issuing a persona token shows the secret once, then clears it on close', a
   await page.getByRole('button', { name: 'Done' }).click();
 
   await expect(page.getByText(secret)).not.toBeVisible();
+});
+
+test('the shared skills library can create, attach, flag overrides and delete', async ({
+  page,
+}) => {
+  await mockApp(page);
+  await page.route('**/api/personas*', (route) =>
+    route.fulfill({
+      json: {
+        data: [
+          {
+            id: 'uuid-1',
+            name: 'Reviewer',
+            description: null,
+            avatar_url: null,
+            system_prompt: '',
+            prompt_version: 1,
+            archived_at: null,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+            owner: { id: 1, name: 'Test User' },
+            can_edit: true,
+          },
+        ],
+      },
+    }),
+  );
+  await page.route('**/api/personas/uuid-1/skills*', (route) =>
+    route.fulfill({ json: { data: [] } }),
+  );
+
+  const entry = (slug, title) => ({
+    slug,
+    title,
+    when: `when ${slug}`,
+    actions: [],
+    version: 1,
+    updated_at: '2026-01-01T00:00:00Z',
+  });
+  const library = [entry('triage', 'Triage')];
+  let attached = [];
+  const puts = [];
+
+  const summary = (skill) => ({
+    ...skill,
+    attached_personas: attached
+      .filter((a) => a.slug === skill.slug)
+      .map(() => ({ id: 'uuid-1', name: 'Reviewer', overridden: true })),
+  });
+
+  await page.route('**/api/shared-skills**', async (route) => {
+    const request = route.request();
+    const slug = new URL(request.url()).pathname.split('/').pop();
+    if (request.method() === 'DELETE') {
+      const index = library.findIndex((s) => s.slug === slug);
+      const detached = attached.some((a) => a.slug === slug)
+        ? [{ id: 'uuid-1', name: 'Reviewer' }]
+        : [];
+      library.splice(index, 1);
+      attached = attached.filter((a) => a.slug !== slug);
+      return route.fulfill({ json: { data: { detached_personas: detached } } });
+    }
+    if (request.method() === 'PUT') {
+      puts.push(slug);
+      const body = request.postDataJSON().body;
+      const title = /^title:\s*(.+)$/m.exec(body)?.[1] ?? slug;
+      library.push(entry(slug, title));
+      return route.fulfill({ json: { data: entry(slug, title) } });
+    }
+    return route.fulfill({ json: { data: library.map(summary) } });
+  });
+  await page.route('**/api/personas/uuid-1/shared-skills**', async (route) => {
+    const request = route.request();
+    const slug = new URL(request.url()).pathname.split('/').pop();
+    if (request.method() === 'PUT') {
+      attached.push(entry(slug, library.find((s) => s.slug === slug).title));
+      return route.fulfill({ json: { data: attached.at(-1) } });
+    }
+    if (request.method() === 'DELETE') {
+      attached = attached.filter((a) => a.slug !== slug);
+      return route.fulfill({ status: 204, body: '' });
+    }
+    return route.fulfill({
+      json: { data: attached.map((a) => ({ ...a, overridden: true })) },
+    });
+  });
+
+  await page.goto('/settings/personas');
+
+  const libraryPanel = page.getByTestId('skills-library');
+  await expect(libraryPanel.getByText('Triage', { exact: true })).toBeVisible();
+  await expect(libraryPanel.getByText('Not attached')).toBeVisible();
+
+  await libraryPanel
+    .getByRole('textbox')
+    .fill(
+      '---\nslug: review\ntitle: Review\nwhen: reviewing a change\nactions: []\n---\nCheck the diff.\n',
+    );
+  await libraryPanel.getByRole('button', { name: 'Create skill' }).click();
+  await expect.poll(() => puts).toEqual(['review']);
+  await expect(libraryPanel.getByText('Review', { exact: true })).toBeVisible();
+
+  await page.getByText('Skills', { exact: true }).first().click();
+  const panel = page.getByTestId('persona-shared-skills');
+  await expect(panel.getByText('No library skills attached.')).toBeVisible();
+
+  await panel.getByRole('combobox', { name: 'Attach a library skill' }).click();
+  await page.getByRole('option', { name: 'Triage (triage)' }).click();
+
+  await expect(panel.getByText('v1 · when triage')).toBeVisible();
+  await expect(panel.getByTestId('shared-skill-overridden')).toHaveText(
+    "Overridden by this persona's own skill",
+  );
+  await expect(libraryPanel.getByText('Reviewer (overridden)')).toBeVisible();
+
+  let message = '';
+  page.once('dialog', (dialog) => {
+    message = dialog.message();
+    dialog.accept();
+  });
+  await libraryPanel
+    .locator('div.rounded', { hasText: 'Triage' })
+    .getByRole('button', { name: 'Delete' })
+    .click();
+
+  await expect.poll(() => message).toContain('Attached to Reviewer');
+  await expect(
+    page.getByText('Skill deleted and detached from 1 persona'),
+  ).toBeVisible();
+  await expect(panel.getByText('No library skills attached.')).toBeVisible();
+});
+
+test('converting an own skill to shared explains a clash and sends only the checked replacements', async ({
+  page,
+}) => {
+  await mockApp(page);
+  await page.route('**/api/personas*', (route) =>
+    route.fulfill({
+      json: {
+        data: [
+          {
+            id: 'uuid-1',
+            name: 'Reviewer',
+            description: null,
+            avatar_url: null,
+            system_prompt: '',
+            prompt_version: 1,
+            archived_at: null,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+            owner: { id: 1, name: 'Test User' },
+            can_edit: true,
+          },
+        ],
+      },
+    }),
+  );
+  let own = [
+    {
+      slug: 'triage',
+      title: 'Triage',
+      when: 'sort it',
+      actions: [],
+      version: 1,
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+    {
+      slug: 'review',
+      title: 'Review',
+      when: 'review it',
+      actions: [],
+      version: 1,
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+  ];
+  const posts = [];
+  await page.route('**/api/personas/uuid-1/skills', (route) =>
+    route.fulfill({ json: { data: own } }),
+  );
+  await page.route('**/api/personas/uuid-1/shared-skills**', (route) =>
+    route.fulfill({ json: { data: [] } }),
+  );
+  await page.route('**/api/shared-skills**', (route) =>
+    route.fulfill({ json: { data: [] } }),
+  );
+  await page.route('**/api/personas/uuid-1/skills/*/convert', (route) => {
+    const request = route.request();
+    const slug = request.url().split('/').slice(-2)[0];
+    if (request.method() === 'POST') {
+      posts.push(request.postDataJSON());
+      own = own.filter((s) => s.slug !== slug);
+      return route.fulfill({
+        json: {
+          data: {
+            skill: { slug },
+            replaced_personas: [{ id: 'uuid-3', name: 'Archivist' }],
+          },
+        },
+      });
+    }
+    return route.fulfill({
+      json: {
+        data: {
+          slug,
+          library_clash: slug === 'triage',
+          other_personas: [
+            {
+              id: 'uuid-2',
+              name: 'Helper',
+              archived: false,
+              same_body: true,
+              version: 2,
+            },
+            {
+              id: 'uuid-3',
+              name: 'Archivist',
+              archived: true,
+              same_body: false,
+              version: 4,
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  await page.goto('/settings/personas');
+  await page.getByText('Skills', { exact: true }).first().click();
+
+  await page.getByTestId('convert-skill-triage').click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByTestId('convert-clash')).toContainText(
+    'Your skills library already has a skill with the slug “triage”. Delete or rename one of them first.',
+  );
+  await expect(dialog.getByTestId('convert-confirm')).toHaveCount(0);
+  await dialog.getByTestId('convert-close').click();
+  await expect(dialog).toHaveCount(0);
+
+  await page.getByTestId('convert-skill-review').click();
+  await expect(dialog).toContainText(
+    'Moves this skill to your skills library and attaches it to Reviewer. Agents keep the same instructions.',
+  );
+  await expect(dialog.getByText('Same text')).toBeVisible();
+  await expect(
+    dialog.getByText('Different text — will be replaced'),
+  ).toBeVisible();
+  await expect(dialog.getByText('(archived)')).toBeVisible();
+  await expect(dialog.getByTestId('convert-replace-uuid-2')).not.toBeChecked();
+  await expect(dialog.getByTestId('convert-replace-uuid-3')).not.toBeChecked();
+
+  await dialog.getByTestId('convert-replace-uuid-3').check();
+  await dialog.getByTestId('convert-confirm').click();
+
+  await expect
+    .poll(() => posts)
+    .toEqual([{ replace_personas: [{ id: 'uuid-3', version: 4 }] }]);
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId('convert-skill-review')).toHaveCount(0);
+  await expect(
+    page.getByText('Converted to a shared skill and replaced on 1 persona'),
+  ).toBeVisible();
+});
+
+test('a shared skill shows its history, restores a version and pins a persona', async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    sessionStorage.setItem('tmgr:tours:auto', 'true'),
+  );
+  await mockApp(page);
+  await page.route('**/api/personas*', (route) =>
+    route.fulfill({
+      json: {
+        data: [
+          {
+            id: 'uuid-1',
+            name: 'Reviewer',
+            description: null,
+            avatar_url: null,
+            system_prompt: '',
+            prompt_version: 1,
+            archived_at: null,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+            owner: { id: 1, name: 'Test User' },
+            can_edit: true,
+          },
+        ],
+      },
+    }),
+  );
+  await page.route('**/api/personas/uuid-1/skills*', (route) =>
+    route.fulfill({ json: { data: [] } }),
+  );
+
+  let latest = 2;
+  let pinned = null;
+  const restores = [];
+  const pins = [];
+  const bodies = { 1: 'Check the diff.', 2: 'Check the diff.\nRun the tests.' };
+  const row = (version, kind) => ({
+    version,
+    kind,
+    restored_from: kind === 'restore' ? 1 : null,
+    title: 'Triage',
+    author: { id: 1, name: 'Test User' },
+    created_at: '2026-01-01T00:00:00Z',
+    current: version === latest,
+    pinned_personas:
+      pinned === version ? [{ id: 'uuid-1', name: 'Reviewer' }] : [],
+  });
+  const versionRows = () => {
+    const rows = [row(1, 'create'), row(2, 'edit')];
+    if (latest === 3) rows.push(row(3, 'restore'));
+    return rows.reverse();
+  };
+  const skill = () => ({
+    slug: 'triage',
+    title: 'Triage',
+    when: 'when triage',
+    actions: [],
+    version: latest,
+    updated_at: '2026-01-01T00:00:00Z',
+    attached_personas: [
+      {
+        id: 'uuid-1',
+        name: 'Reviewer',
+        overridden: false,
+        pinned_version: pinned,
+      },
+    ],
+  });
+  const attachedEntry = () => ({
+    ...skill(),
+    version: pinned ?? latest,
+    pinned_version: pinned,
+    latest_version: latest,
+    overridden: false,
+  });
+
+  await page.route('**/api/shared-skills/triage/versions/*', (route) => {
+    const version = Number(
+      new URL(route.request().url()).pathname.split('/').pop(),
+    );
+    return route.fulfill({
+      json: {
+        data: {
+          ...row(version, 'edit'),
+          when: 'w',
+          actions: [],
+          body: bodies[version] ?? '',
+        },
+      },
+    });
+  });
+  await page.route('**/api/shared-skills/triage/versions', (route) =>
+    route.fulfill({ json: { data: versionRows() } }),
+  );
+  await page.route('**/api/shared-skills/triage/restore', (route) => {
+    restores.push(route.request().postDataJSON());
+    latest = 3;
+    bodies[3] = bodies[1];
+    return route.fulfill({ json: { data: skill() } });
+  });
+  await page.route('**/api/shared-skills', (route) =>
+    route.fulfill({ json: { data: [skill()] } }),
+  );
+  await page.route(
+    '**/api/personas/uuid-1/shared-skills/triage/pin',
+    (route) => {
+      if (route.request().method() === 'PUT') {
+        pins.push(route.request().postDataJSON());
+        pinned = route.request().postDataJSON().version;
+      } else {
+        pinned = null;
+      }
+      return route.fulfill({ json: { data: attachedEntry() } });
+    },
+  );
+  await page.route('**/api/personas/uuid-1/shared-skills', (route) =>
+    route.fulfill({ json: { data: [attachedEntry()] } }),
+  );
+
+  await page.goto('/settings/personas');
+
+  const libraryPanel = page.getByTestId('skills-library');
+  await libraryPanel.getByRole('button', { name: 'History' }).click();
+  const history = page.getByTestId('shared-skill-history');
+  await expect(history.getByTestId('history-version-2')).toContainText(
+    'Current',
+  );
+  await expect(history.getByTestId('history-diff')).toContainText(
+    '+ Run the tests.',
+  );
+  await expect(
+    history.getByRole('button', { name: 'Restore this version' }),
+  ).toHaveCount(0);
+
+  await history.getByTestId('history-version-1').click();
+  await expect(history.getByTestId('history-diff')).toContainText(
+    '+ Check the diff.',
+  );
+
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toBe(
+      'Restore version 1? This creates version 3 with its content.',
+    );
+    dialog.accept();
+  });
+  await history.getByRole('button', { name: 'Restore this version' }).click();
+  await expect
+    .poll(() => restores)
+    .toEqual([{ version: 1, expected_version: 2 }]);
+  await expect(history.getByTestId('history-version-3')).toContainText(
+    'Restored from v1',
+  );
+
+  await page.getByText('Skills', { exact: true }).first().click();
+  const panel = page.getByTestId('persona-shared-skills');
+  await panel.getByRole('combobox', { name: 'Version for triage' }).click();
+  await page.getByRole('option', { name: 'v1', exact: true }).click();
+  await expect.poll(() => pins).toEqual([{ version: 1 }]);
+  await expect(panel.getByTestId('shared-skill-pinned')).toHaveText(
+    'Pinned to v1 · latest v3',
+  );
+
+  await panel.getByRole('combobox', { name: 'Version for triage' }).click();
+  await page.getByRole('option', { name: 'Latest (v3)' }).click();
+  await expect(panel.getByTestId('shared-skill-pinned')).toHaveCount(0);
 });

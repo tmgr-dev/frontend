@@ -66,6 +66,21 @@
 			{{ message }}
 		</p>
 
+		<p
+			v-if="failure"
+			role="alert"
+			data-testid="register-error"
+			class="mb-4 text-sm text-destructive"
+		>
+			{{ failure }}
+			<router-link
+				v-if="emailTaken"
+				to="/login"
+				class="font-medium underline underline-offset-4"
+				>Sign in</router-link
+			>
+		</p>
+
 		<form class="space-y-4" @submit.prevent="register">
 			<div class="space-y-2">
 				<Label for="name" class="text-foreground">Name</Label>
@@ -120,10 +135,14 @@
 					v-model="form.password_confirmation"
 					id="password_confirmation"
 					type="password"
+					:class="{ 'border-destructive': errors.password_confirmation }"
 					placeholder="Confirm your password"
 					autocomplete="new-password"
 					class="h-10"
 				/>
+				<p v-if="errors.password_confirmation" class="text-sm text-destructive">
+					{{ errors.password_confirmation[0] }}
+				</p>
 			</div>
 			<Button
 				type="submit"
@@ -143,6 +162,14 @@
 				class="font-medium text-primary underline-offset-4 hover:underline"
 				>Sign in</router-link
 			>
+			<div v-if="isLocalMode" class="mt-2">
+				<router-link
+					to="/app"
+					data-testid="continue-without-account"
+					class="font-medium text-primary underline-offset-4 hover:underline"
+					>Continue without an account</router-link
+				>
+			</div>
 		</template>
 	</AuthLayout>
 </template>
@@ -170,14 +197,15 @@
 	import { isDesktopApp } from '@/utils/desktop';
 	import { DesktopAuthProvider } from '@/utils/desktopAuth';
 	import { createOAuthBinding } from '@/utils/oauthBinding';
-	import { AxiosError } from 'axios';
-	import { onMounted, ref } from 'vue';
+	import { submitRegistration } from '@/utils/registerFlow';
+	import { computed, onMounted, ref } from 'vue';
 	import { useRouter } from 'vue-router';
 	import { useStore } from 'vuex';
 
 	const router = useRouter();
 	const store = useStore();
 	const isDesktop = isDesktopApp();
+	const isLocalMode = computed(() => store.getters.accountMode === 'local');
 	const telegramBotName = import.meta.env.VITE_TELEGRAM_BOT_NAME;
 	const telegramWidgetKey = ref(0);
 	const telegramFailures = ref(0);
@@ -185,6 +213,8 @@
 
 	const isLoading = ref(false);
 	const message = ref('');
+	const failure = ref('');
+	const emailTaken = ref(false);
 	const errors = ref<Record<string, string[]>>({});
 	const form = ref({
 		name: '',
@@ -195,16 +225,23 @@
 
 	async function register() {
 		if (isLoading.value) return;
+		errors.value = {};
+		failure.value = '';
+		emailTaken.value = false;
+		isLoading.value = true;
 		try {
-			errors.value = {};
-			isLoading.value = true;
-			await registerAction(form.value);
-			await enterApp();
-		} catch (error: unknown) {
-			if (error instanceof AxiosError) {
-				errors.value = error.response?.data?.errors;
+			const result = await submitRegistration(form.value, registerAction);
+			if (!result.ok) {
+				errors.value = result.errors;
+				failure.value = result.message;
+				emailTaken.value = result.emailTaken;
+				return;
 			}
-			// Error is already presented by the form.
+			try {
+				await enterApp();
+			} catch {
+				failure.value = 'Signed in, but the app could not load. Reload it.';
+			}
 		} finally {
 			isLoading.value = false;
 		}

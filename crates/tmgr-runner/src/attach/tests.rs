@@ -9,6 +9,8 @@ use std::collections::HashMap;
 use tmgr_ipc::api::{Attr, Color, Line, Modes, Snapshot, Span, BOLD};
 use tmgr_ipc::api::{MouseEncoding, MouseLevel, MouseMode, State, StateKind};
 
+mod checkpoints;
+
 fn forward(b: &[u8]) -> Action {
     Action::Forward(b.to_vec())
 }
@@ -655,7 +657,7 @@ fn blocked_pane_gets_accent_border_and_sidebar_lists_it_first() {
 
 #[test]
 fn adversarial_snapshot_text_never_reaches_the_buffer() {
-    let evil = "\x1b]52;c;AAAA\x07\u{9b}31m\u{202e}rtl \x01\u{301}x \u{2066}\u{feff}";
+    let evil = "\x1b]52;c;AAAA\x07\u{9b}31m\u{202e}rtl \x01\u{301}x \u{2066}\u{feff}\u{61c}";
     let mut s = Screens::default();
     for id in ["a", "b"] {
         s.0.insert(
@@ -683,7 +685,7 @@ fn adversarial_snapshot_text_never_reaches_the_buffer() {
                     assert!(
                         c != '\u{1b}'
                             && !('\u{80}'..='\u{9f}').contains(&c)
-                            && !matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{200e}' | '\u{200f}' | '\u{feff}')
+                            && !matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{61c}' | '\u{200e}' | '\u{200f}' | '\u{feff}')
                             && !c.is_control(),
                         "bad char {c:?} in {:?}",
                         cell.symbol()
@@ -969,7 +971,7 @@ fn clicks_are_forwarded_with_pane_relative_coordinates() {
     v.apply(Cmd::Sidebar);
     let out = v.on_mouse(
         AREA,
-        ev(0, 10, 7, false),
+        ev(16, 10, 7, false),
         &mouse_info(sgr_mode(MouseLevel::Press), 0),
     );
     assert_eq!(out.forward, Some(("a".into(), b"\x1b[<0;10;7M".to_vec())));
@@ -1004,7 +1006,7 @@ fn motion_needs_any_motion_and_drag_follows_the_grab() {
             .forward,
         None
     );
-    v.on_mouse(AREA, ev(0, 5, 5, false), &mouse_info(press, 0));
+    v.on_mouse(AREA, ev(16, 5, 5, false), &mouse_info(press, 0));
     let out = v.on_mouse(AREA, ev(32, 400, 400, false), &mouse_info(press, 0));
     assert_eq!(out.forward.map(|f| f.0), Some("a".to_string()));
     let out = v.on_mouse(AREA, ev(0, 400, 400, true), &mouse_info(press, 0));
@@ -2040,7 +2042,7 @@ fn drag_from_one_pane_stays_clamped_to_it_when_over_another() {
     let info = mouse_info(sgr_mode(MouseLevel::Drag), 0);
     let out = v.on_mouse(
         AREA,
-        ev(0, first.inner.x + 1, first.inner.y + 1, false),
+        ev(16, first.inner.x + 1, first.inner.y + 1, false),
         &info,
     );
     assert_eq!(out.forward.as_ref().map(|f| f.0.as_str()), Some("a"));
@@ -2098,7 +2100,7 @@ fn grab_is_cleared_when_its_session_leaves_the_panes() {
     let p = layout(AREA, &v).panes[0].clone();
     v.on_mouse(
         AREA,
-        ev(0, p.inner.x + 1, p.inner.y + 1, false),
+        ev(16, p.inner.x + 1, p.inner.y + 1, false),
         &mouse_info(sgr_mode(MouseLevel::Drag), 0),
     );
     assert_eq!(v.grab.as_deref(), Some("a"));
@@ -2234,12 +2236,12 @@ fn wide_right_split_still_resizes_on_the_horizontal_axis() {
 }
 
 #[test]
-fn help_shows_the_mouse_section_at_34_rows() {
+fn help_shows_the_mouse_section_at_35_rows() {
     let mut v = two_pane(140);
     v.help = true;
-    let text = draw(&v, &screens(), 140, 34);
+    let text = draw(&v, &screens(), 140, 35);
     assert!(text.contains("pick a tab, a session or a pane"));
-    assert!(text.contains("Shift-drag selects"));
+    assert!(text.contains("select + copy"));
     assert!(text.contains("? again closes this box"));
 }
 
@@ -3332,6 +3334,7 @@ fn shape(v: &ViewState) -> Vec<String> {
                 format!("{}{id}", if indent { "  " } else { "" })
             }
             SidebarLine::Detail(id) => format!("~{id}"),
+            SidebarLine::Perm { session, row, .. } => format!("!{session}{row}"),
             SidebarLine::Activity(id) => format!("^{id}"),
             SidebarLine::Sub { id, .. } => format!("*{id}"),
             SidebarLine::Machine {
@@ -3520,6 +3523,99 @@ fn details_are_dropped_before_rows_when_the_sidebar_is_short() {
     assert!(lines
         .iter()
         .all(|(l, _)| !matches!(l, SidebarLine::Detail(_))));
+}
+
+fn team_link(of: &str, role: tmgr_ipc::api::TeamRole) -> tmgr_ipc::api::TeamLink {
+    tmgr_ipc::api::TeamLink {
+        role,
+        of: of.into(),
+    }
+}
+
+fn team_view() -> ViewState {
+    use tmgr_ipc::api::TeamRole::{Lead, Worker};
+    let rows = ["x", "w2", "lead", "w1", "y"]
+        .iter()
+        .map(|id| row(id, id, StateKind::Working, "1m"))
+        .collect();
+    let mut v = ViewState::new(rows, "local");
+    v.width = 140;
+    v.grouped = true;
+    v.set_locs(
+        AREA,
+        vec![
+            ("x".into(), loc("/w/app", "/w/app", Some("main"))),
+            ("w2".into(), loc("/q/p1/w2", "/q/p1/w2", Some("t/w2"))),
+            ("lead".into(), loc("/q/p1/lead", "/q/p1/lead", Some("t"))),
+            ("w1".into(), loc("/q/p1/w1", "/q/p1/w1", Some("t/w1"))),
+            ("y".into(), loc("/w/app", "/w/app/src", Some("main"))),
+        ],
+    );
+    v.set_teams(
+        AREA,
+        HashMap::from([
+            ("w2".into(), team_link("p1", Worker(2))),
+            ("lead".into(), team_link("p1", Lead)),
+            ("w1".into(), team_link("p1", Worker(1))),
+        ]),
+    );
+    v
+}
+
+#[test]
+fn team_sessions_group_together_lead_first_then_workers_by_number() {
+    let v = team_view();
+    let team = shape(&v);
+    assert!(
+        team.contains(&"H \0team:p1 3 false".to_string()),
+        "{team:?}"
+    );
+    let at = team
+        .iter()
+        .position(|l| l.starts_with("H \0team:p1"))
+        .unwrap();
+    assert_eq!(team[at + 1..at + 4], ["  lead", "  w1", "  w2"]);
+}
+
+#[test]
+fn team_members_are_labelled_lead_and_w_number() {
+    let mut v = team_view();
+    for _ in 0..20 {
+        v.apply(Cmd::SidebarWider);
+    }
+    let text = draw(&v, &screens(), 140, 22);
+    for label in ["[lead]", "[w1]", "[w2]"] {
+        assert!(text.contains(label), "{label}\n{text}");
+    }
+    let narrow = draw(&team_view(), &screens(), 140, 22);
+    assert!(narrow.contains("lead L"), "{narrow}");
+}
+
+#[test]
+fn a_team_group_does_not_swallow_sessions_of_other_teams_or_plain_ones() {
+    use tmgr_ipc::api::TeamRole::{Lead, Worker};
+    let mut v = team_view();
+    v.set_teams(
+        AREA,
+        HashMap::from([
+            ("w2".into(), team_link("p2", Worker(1))),
+            ("lead".into(), team_link("p1", Lead)),
+            ("w1".into(), team_link("p1", Worker(1))),
+        ]),
+    );
+    let s = shape(&v);
+    assert!(s.iter().any(|l| l.starts_with("H \0team:p1 2")), "{s:?}");
+    assert!(s.iter().any(|l| l == "w2" || l.ends_with("w2")), "{s:?}");
+    assert!(s.iter().any(|l| l.starts_with("H /w/app 2")), "{s:?}");
+}
+
+#[test]
+fn without_team_links_the_sidebar_is_byte_identical_to_the_pinned_snapshot() {
+    let mut v = grouped_view();
+    assert!(!v.set_teams(AREA, HashMap::new()));
+    assert_snapshot("grouped", &draw(&v, &screens(), 140, 22));
+    v.collapsed.insert("/w/app".into());
+    assert_snapshot("grouped_folded", &draw(&v, &screens(), 140, 22));
 }
 
 #[test]
@@ -5352,6 +5448,54 @@ mod questions_ui {
     }
 
     #[test]
+    fn the_reads_hint_replaces_the_empty_open_list_text_only() {
+        let hint = "Titles and questions are off: run tmgr usage consent allow";
+        let mut v = two_pane(140);
+        v.now_s = NOW;
+        v.set_questions(vec![entry(
+            "q1",
+            "a",
+            "Keep the old API?",
+            Status::Ignored,
+            90,
+        )]);
+        assert!(v.open_questions(None));
+        v.edit_qmenu(b"\t");
+        assert!(!v.qmenu.as_ref().unwrap().ignored);
+        assert!(draw(&v, &screens(), 140, 30).contains("No open questions"));
+        assert!(v.set_reads_hint(Some(hint)));
+        assert!(!v.set_reads_hint(Some(hint)));
+        let text = draw(&v, &screens(), 140, 30);
+        assert!(text.contains(hint), "{text}");
+        assert!(!text.contains("No open questions"));
+        v.set_reads_hint(None);
+        assert!(draw(&v, &screens(), 140, 30).contains("No open questions"));
+    }
+
+    #[test]
+    fn with_no_questions_at_all_the_notice_carries_the_hint() {
+        let hint = "Titles and questions are off: run tmgr usage consent allow";
+        let mut v = two_pane(140);
+        assert!(!v.open_questions(None));
+        assert_eq!(v.notice.as_deref(), Some("no unanswered questions"));
+        v.set_reads_hint(Some(hint));
+        assert!(!v.open_questions(None));
+        assert_eq!(v.notice.as_deref(), Some(hint));
+    }
+
+    #[test]
+    fn a_list_with_entries_ignores_the_reads_hint() {
+        let mut v = with_questions(140);
+        v.set_reads_hint(Some(
+            "Titles and questions are off: run tmgr usage consent allow",
+        ));
+        v.open_questions(Some("a".into()));
+        let text = draw(&v, &screens(), 140, 30);
+        assert!(text.contains("Should I also gate"), "{text}");
+        assert!(!text.contains("Titles and questions are off"));
+    }
+
+    #[test]
     fn escape_and_q_close_the_menu() {
         for key in [&b"\x1b"[..], b"q"] {
             let mut v = with_questions(140);
@@ -6651,6 +6795,7 @@ fn git_info() -> GitInfo {
             url: "https://github.com/acme/shop/pull/615".into(),
             state: "open".into(),
         }),
+        branch_only: false,
     }
 }
 
@@ -7020,6 +7165,7 @@ fn find_view(lines: &[&str], cols: usize) -> ViewState {
             session: "a".into(),
             lines: lines_of(lines),
             cols,
+            ..Default::default()
         },
         10,
     );
@@ -7034,22 +7180,22 @@ fn type_search(v: &mut ViewState, text: &str) -> SearchEdit {
 #[test]
 fn search_finds_every_hit_and_smart_case_decides_sensitivity() {
     let lines = lines_of(&["Error: build failed", "error again", "no match"]);
-    let hits = super::find::find_hits(&lines, 40, "error");
+    let hits = super::find::find_hits(&lines, 40, &[], "error");
     assert_eq!(hits.len(), 2);
-    assert_eq!(super::find::find_hits(&lines, 40, "Error").len(), 1);
-    assert!(super::find::find_hits(&lines, 40, "").is_empty());
+    assert_eq!(super::find::find_hits(&lines, 40, &[], "Error").len(), 1);
+    assert!(super::find::find_hits(&lines, 40, &[], "").is_empty());
 }
 
 #[test]
 fn search_joins_wrapped_rows_but_not_separate_lines() {
     let lines = lines_of(&["0123456789", "abc def", "tail"]);
-    let hits = super::find::find_hits(&lines, 10, "89ab");
+    let hits = super::find::find_hits(&lines, 10, &[], "89ab");
     assert_eq!(hits.len(), 1);
     assert_eq!(
         (hits[0].l0, hits[0].c0, hits[0].l1, hits[0].c1),
         (0, 8, 1, 2)
     );
-    assert!(super::find::find_hits(&lines, 10, "deftail").is_empty());
+    assert!(super::find::find_hits(&lines, 10, &[], "deftail").is_empty());
 }
 
 #[test]
@@ -7067,6 +7213,7 @@ fn typing_a_query_marks_hits_starts_at_the_newest_and_scrolls_to_it() {
             session: "a".into(),
             lines,
             cols: 40,
+            ..Default::default()
         },
         10,
     );
@@ -7121,19 +7268,27 @@ fn n_without_a_search_says_so() {
 }
 
 #[test]
+fn yank_lead_comes_from_the_top_of_the_selection_in_either_direction() {
+    let lines = lines_of(&["top row", "bottom row"]);
+    assert_eq!(super::find::yank_lead(&lines, (0, 4), (1, 2)), "top ");
+    assert_eq!(super::find::yank_lead(&lines, (1, 2), (0, 4)), "top ");
+    assert_eq!(super::find::yank_lead(&lines, (9, 2), (9, 4)), "");
+}
+
+#[test]
 fn selection_text_joins_wrapped_rows_and_strips_controls() {
     let lines = lines_of(&["0123456789", "abc", "x\u{1b}[31my"]);
     assert_eq!(
-        super::find::selection_text(&lines, 10, (0, 8), (1, 1)),
+        super::find::selection_text(&lines, 10, &[], (0, 8), (1, 1)),
         "89ab"
     );
     assert_eq!(
-        super::find::selection_text(&lines, 10, (1, 0), (2, 5)),
+        super::find::selection_text(&lines, 10, &[], (1, 0), (2, 5)),
         "abc
 x[31my"
     );
     assert_eq!(
-        super::find::selection_text(&lines, 10, (1, 2), (1, 0)),
+        super::find::selection_text(&lines, 10, &[], (1, 2), (1, 0)),
         "abc"
     );
 }
@@ -7251,6 +7406,7 @@ fn hits_are_highlighted_in_the_visible_rows_and_the_bar_shows_the_count() {
             session: "a".into(),
             lines: lines_of(&["alpha beta", "gamma", "beta again beta", "> "]),
             cols: 40,
+            ..Default::default()
         },
         4,
     );
@@ -7278,6 +7434,7 @@ fn copy_selection_is_reversed_and_the_bar_names_the_mode() {
             session: "a".into(),
             lines: lines_of(&["alpha beta", "gamma", "beta again beta", "> "]),
             cols: 40,
+            ..Default::default()
         },
         4,
     );
@@ -7304,6 +7461,7 @@ fn clicking_in_copy_mode_places_the_cursor_without_forwarding() {
             session: "a".into(),
             lines: lines_of(&["alpha beta", "gamma", "beta again beta", "> "]),
             cols: 40,
+            ..Default::default()
         },
         4,
     );
@@ -7370,6 +7528,7 @@ fn the_bar_sits_on_the_border_row_and_the_caret_stays_off_it() {
             session: "a".into(),
             lines: lines_of(&["alpha beta", "gamma", "beta again beta", "> "]),
             cols: 40,
+            ..Default::default()
         },
         4,
     );
@@ -7587,6 +7746,19 @@ fn the_summary_key_is_free_and_s_opens_a_queued_draft_only_when_asked() {
     assert!(v.set_summary_text("9-a-1", "- done".into(), false));
     assert!(v.open_summary());
     assert_eq!(v.summary.as_ref().unwrap().text.as_deref(), Some("- done"));
+}
+
+#[test]
+fn dropping_a_summary_clears_it_from_the_preview_and_the_queue() {
+    let mut v = two_pane(140);
+    v.show_summary(draft(None, true));
+    v.drop_summary("9-a-1");
+    assert!(v.summary.is_none());
+    v.queue_summary(draft(None, true));
+    v.drop_summary("other");
+    assert!(!v.queue_summary(draft(None, true)));
+    v.drop_summary("9-a-1");
+    assert!(v.queue_summary(draft(None, true)));
 }
 
 #[test]
@@ -9404,4 +9576,54 @@ fn stop_on_an_exited_linked_run_does_not_offer_the_local_remove_key() {
     v.apply(Cmd::Stop);
     assert_eq!(v.notice.as_deref(), Some("already exited"));
     assert!(v.confirm.is_none());
+}
+
+#[test]
+fn pane_title_and_sidebar_show_who_is_attached() {
+    let mut v = ViewState::new(four(), "a");
+    v.width = 140;
+    let quiet = draw(&v, &screens(), 140, 22);
+    assert!(!quiet.contains("attached"));
+    v.leaders
+        .insert("a".into(), "macbook attached (control)".into());
+    let shown = draw(&v, &screens(), 140, 22);
+    assert!(shown.contains("macbook attached (control)"));
+    assert!(shown.contains("claude ◉"));
+    v.leaders
+        .insert("a".into(), "macbook attached (view)".into());
+    let shown = draw(&v, &screens(), 140, 22);
+    assert!(shown.contains("macbook attached (view)"));
+    assert!(!shown.contains("attached (control)"));
+}
+
+#[test]
+fn a_panel_with_only_a_branch_says_the_rest_was_not_read() {
+    let mut v = two_pane(140);
+    let focused = v.focused_session().unwrap().to_string();
+    let mut info = git_info();
+    info.branch_only = true;
+    v.set_git(HashMap::from([(focused, info)]));
+    v.apply(Cmd::Git);
+    let text = draw(&v, &screens(), 140, 22);
+    assert!(text.contains("not read for a sandboxed session"));
+    assert!(!text.contains("origin/main"));
+}
+
+#[test]
+fn ctrl_bracket_h_resumes_a_past_session_and_the_palette_and_help_list_it() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(&[0x1d, b'H']), vec![Action::Cmd(Cmd::ResumePast)]);
+    let def = ACTIONS.iter().find(|d| d.cmd == Cmd::ResumePast).unwrap();
+    assert!(def.palette);
+    assert_eq!(
+        def.label,
+        "Resume a past session (tmgr, Claude Code, Codex)"
+    );
+    let mut v = ViewState::new(four(), "");
+    query(&mut v, "resume a past");
+    assert_eq!(first(&v), PaletteEntry::Cmd(Cmd::ResumePast));
+    v.palette = None;
+    v.help = true;
+    let help = draw(&v, &screens(), 140, 40);
+    assert!(help.contains("resume or fork a past session"), "{help}");
 }

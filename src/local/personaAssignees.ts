@@ -1,4 +1,4 @@
-import { LOCAL_OWNER_ID } from './personaGate';
+import { LOCAL_OWNER_ID, mapsLocalIdentity } from './personaGate';
 import { LocalHttpError, type LocalContext } from './types';
 
 export interface PersonaView {
@@ -43,12 +43,14 @@ const reportAssignment = (report: TaskAssignmentReport) => {
 	});
 };
 
-export const personaView = (row: any): PersonaView => ({
+export const personaView = (row: any, ctx: LocalContext): PersonaView => ({
 	id: row.uuid,
 	name: row.name,
 	description: row.description ?? null,
 	avatar_url: row.avatar_file ? `/api/personas/${row.uuid}/avatar` : null,
-	owner: { id: Number(row.owner_user_id), name: row.owner_name },
+	owner: mapsLocalIdentity(ctx, row.owner_user_id)
+		? { id: ctx.user.id, name: ctx.user.name }
+		: { id: Number(row.owner_user_id), name: row.owner_name },
 	workspace_id: null,
 });
 
@@ -63,7 +65,7 @@ export const assignablePersonas = async (
 	const rows = await ctx.db.select<any>(`${ASSIGNABLE_SQL} ORDER BY p.name`, [
 		ctx.user.id,
 	]);
-	return rows.map(personaView);
+	return rows.map((row) => personaView(row, ctx));
 };
 
 export const requireHumanActor = (ctx: LocalContext) => {
@@ -92,7 +94,8 @@ export const resolvePersona = async (
 	const pool = [...(await assignablePersonas(ctx))];
 	if (taskId != null) {
 		for (const row of await assignedRows(ctx, taskId)) {
-			if (!pool.some((p) => p.id === row.uuid)) pool.push(personaView(row));
+			if (!pool.some((p) => p.id === row.uuid))
+				pool.push(personaView(row, ctx));
 		}
 	}
 	const found =
@@ -130,7 +133,7 @@ export const withPersonaAssignees = async <T extends { id: number }>(
 		);
 		for (const row of rows) {
 			const list = byTask.get(row.task_id) ?? [];
-			list.push(personaView(row));
+			list.push(personaView(row, ctx));
 			byTask.set(row.task_id, list);
 		}
 	}
@@ -177,7 +180,7 @@ export const setTaskPersonas = async (
 	}
 	const toRemove = current
 		.filter((r) => !targetIds.includes(r.uuid))
-		.map(personaView);
+		.map((row) => personaView(row, ctx));
 	const wasEmpty = current.length === 0;
 	const nowEmpty = current.length - toRemove.length + toAdd.length === 0;
 	const now = ctx.now().toISOString();

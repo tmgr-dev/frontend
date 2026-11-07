@@ -18,6 +18,15 @@
 					</p>
 				</div>
 				<div class="flex shrink-0 gap-2">
+					<Button
+						v-if="!isLocalOnly"
+						variant="outline"
+						size="sm"
+						:data-testid="`convert-skill-${skill.slug}`"
+						@click="convertSlug = skill.slug"
+					>
+						Convert to shared
+					</Button>
 					<Button variant="outline" size="sm" @click="startEdit(skill)">
 						Edit
 					</Button>
@@ -72,6 +81,16 @@
 				</Button>
 			</div>
 		</div>
+
+		<PersonaConvertSkillDialog
+			v-if="convertSlug"
+			:open="true"
+			:persona-id="persona.id"
+			:persona-name="persona.name"
+			:slug="convertSlug"
+			@update:open="(value) => !value && (convertSlug = null)"
+			@converted="onConverted"
+		/>
 	</div>
 </template>
 
@@ -87,6 +106,8 @@
 	import { Button } from '@/components/ui/button';
 	import { Textarea } from '@/components/ui/textarea';
 	import { toast } from '@/components/ui/toast';
+	import store from '@/store';
+	import { isDesktopApp } from '@/utils/desktop';
 	import {
 		byteLength,
 		extractFieldErrors,
@@ -102,20 +123,24 @@
 		ref,
 		type PropType,
 	} from 'vue';
+	import PersonaConvertSkillDialog from './PersonaConvertSkillDialog.vue';
 
 	export default defineComponent({
 		name: 'PersonaSkills',
-		components: { Button, Textarea },
+		components: { Button, PersonaConvertSkillDialog, Textarea },
 		props: {
 			persona: { type: Object as PropType<Persona>, required: true },
 		},
-		setup(props) {
+		emits: ['changed'],
+		setup(props, { emit }) {
 			const skills = ref<PersonaSkillSummary[]>([]);
 			const loading = ref(true);
 			const saving = ref(false);
 			const editingSlug = ref<string | null>(null);
 			const draft = ref(SKILL_TEMPLATE);
 			const serverErrors = ref<Record<string, string[]> | null>(null);
+			const convertSlug = ref<string | null>(null);
+			const isLocalOnly = isDesktopApp() && !!store.getters.isLocalOnly;
 
 			const load = async () => {
 				loading.value = true;
@@ -177,6 +202,7 @@
 					toast({ title: 'Skill saved' });
 					cancelEdit();
 					await load();
+					emit('changed');
 				} catch (error) {
 					const fieldErrors = extractFieldErrors(error);
 					if (fieldErrors) {
@@ -195,9 +221,17 @@
 					await deletePersonaSkill(props.persona.id, skill.slug);
 					if (editingSlug.value === skill.slug) cancelEdit();
 					await load();
+					emit('changed');
 				} catch {
 					toast({ title: 'Could not delete skill', variant: 'destructive' });
 				}
+			};
+
+			const onConverted = async (slug: string) => {
+				if (editingSlug.value === slug) cancelEdit();
+				convertSlug.value = null;
+				await load();
+				emit('changed');
 			};
 
 			onMounted(load);
@@ -214,6 +248,9 @@
 				cancelEdit,
 				submit,
 				remove,
+				convertSlug,
+				isLocalOnly,
+				onConverted,
 				SKILL_LIMIT,
 				SKILL_BODY_MAX_BYTES,
 			};

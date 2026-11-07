@@ -272,4 +272,75 @@ describeSqlite('persona whitelist gate in the local router', () => {
 			'edited by the user',
 		);
 	});
+
+	describe('files attached to pages', () => {
+		const insertFile = async (column: 'page_id' | 'task_id') => {
+			let ref = taskId;
+			if (column === 'page_id') {
+				const now = clock.toISOString();
+				const page = await ctx.db.execute(
+					`INSERT INTO pages (title, slug, author_id, author_kind, author_ref, updated_by_id, updated_by_kind, updated_by_ref, created_at, updated_at)
+					 VALUES ('Spec', 'spec', -1, 'user', 'me', -1, 'user', 'me', ?, ?)`,
+					[now, now],
+				);
+				ref = Number(page.lastInsertId);
+			}
+			const file = await ctx.db.execute(
+				`INSERT INTO files (${column}, name, file_path, mime_type, size, created_at) VALUES (?, 'a.txt', 'k/a.txt', 'text/plain', 1, ?)`,
+				[ref, clock.toISOString()],
+			);
+			return Number(file.lastInsertId);
+		};
+
+		it.each(['files/:id', 'files/:id/content'])(
+			'denies %s for a persona without pages:read',
+			async (route) => {
+				await enableLocalPersona(ctx, 'p-1', ['files:attachments']);
+				const id = await insertFile('page_id');
+				const res = await call(
+					'GET',
+					route.replace(':id', String(id)),
+					undefined,
+					persona,
+				);
+				expect(res!.status).toBe(403);
+				expect(res!.data.message).toBe(
+					'Persona is missing permission pages:read',
+				);
+			},
+		);
+
+		it.each(['files/:id', 'files/:id/content'])(
+			'serves %s for a persona with pages:read',
+			async (route) => {
+				await enableLocalPersona(ctx, 'p-1', [
+					'files:attachments',
+					'pages:read',
+				]);
+				const id = await insertFile('page_id');
+				const res = await call(
+					'GET',
+					route.replace(':id', String(id)),
+					undefined,
+					persona,
+				);
+				expect(res!.status).toBe(200);
+			},
+		);
+
+		it.each(['files/:id', 'files/:id/content'])(
+			'still serves a task file on %s with only files:attachments',
+			async (route) => {
+				await enableLocalPersona(ctx, 'p-1', ['files:attachments']);
+				const id = await insertFile('task_id');
+				const res = await call(
+					'GET',
+					route.replace(':id', String(id)),
+					undefined,
+					persona,
+				);
+				expect(res!.status).toBe(200);
+			},
+		);
+	});
 });

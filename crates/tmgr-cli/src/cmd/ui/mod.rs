@@ -86,7 +86,7 @@ pub fn entry(cli: &Cli) -> Option<i32> {
 
 type Term = Terminal<CrosstermBackend<std::io::Stdout>>;
 
-struct Restore;
+pub(crate) struct Restore;
 
 impl Drop for Restore {
     fn drop(&mut self) {
@@ -94,7 +94,7 @@ impl Drop for Restore {
     }
 }
 
-fn leave_screen() {
+pub(crate) fn leave_screen() {
     let _ = disable_raw_mode();
     let _ = execute!(
         stdout(),
@@ -105,7 +105,7 @@ fn leave_screen() {
     );
 }
 
-fn enter_screen() -> std::io::Result<()> {
+pub(crate) fn enter_screen() -> std::io::Result<()> {
     enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen, EnableBracketedPaste)
 }

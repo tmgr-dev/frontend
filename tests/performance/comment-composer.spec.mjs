@@ -71,7 +71,7 @@ const box = (loc) => loc.evaluate((el) => el.getBoundingClientRect().toJSON());
 const scrollers = {
   modal: (page) => page.locator('.new-form-container main'),
   page: (page) =>
-    page.locator('aside div.lg\\:overflow-y-auto:has([data-comment-id])'),
+    page.locator('aside div.xl\\:overflow-y-auto:has([data-comment-id])'),
 };
 
 const scrollState = (scroller) =>
@@ -196,7 +196,7 @@ for (const [name, open] of Object.entries(surfaces)) {
       await input.fill('a long comment that wraps '.repeat(3));
       const before = (await box(input)).height;
       // The modal field gets narrower at 1100px (one more line); the page rail goes full width
-      // below lg (one line less).
+      // below xl (one line less).
       await page.setViewportSize({
         width: name === 'modal' ? 1100 : 800,
         height: 900,

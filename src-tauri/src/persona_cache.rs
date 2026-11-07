@@ -1,6 +1,7 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Manager, Runtime};
 
@@ -30,7 +31,16 @@ fn cache_path<R: Runtime>(app: &AppHandle<R>, user_id: i64, uuid: &str) -> Resul
 }
 
 #[tauri::command]
-pub fn persona_cache_put<R: Runtime>(app: AppHandle<R>, user_id: i64, uuid: String, data: Value) -> Result<(), String> {
+pub fn persona_cache_put<R: Runtime>(
+  app: AppHandle<R>,
+  window: tauri::Window<R>,
+  user_id: i64,
+  uuid: String,
+  data: Value,
+) -> Result<(), String> {
+  if window.label() != "main" {
+    return Err("persona_cache_put may only be called from the main window".into());
+  }
   let path = cache_path(&app, user_id, &uuid)?;
   fs::write(path, serde_json::to_vec(&data).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
@@ -45,14 +55,26 @@ pub fn persona_cache_get<R: Runtime>(app: AppHandle<R>, user_id: i64, uuid: Stri
   serde_json::from_slice(&bytes).map(Some).map_err(|e| e.to_string())
 }
 
-/// Best-effort logout cleanup: this user's cache dir, plus any pre-namespacing flat `<uuid>.json` files.
+/// Logout cleanup: this user's cache dir, plus any pre-namespacing flat `<uuid>.json` files.
 #[tauri::command]
-pub fn persona_cache_clear_for_user<R: Runtime>(app: AppHandle<R>, user_id: i64) -> Result<(), String> {
-  let dir = cache_dir(&app, user_id)?;
+pub fn persona_cache_clear_for_user<R: Runtime>(
+  app: AppHandle<R>,
+  window: tauri::Window<R>,
+  user_id: i64,
+) -> Result<(), String> {
+  if window.label() != "main" {
+    return Err("persona_cache_clear_for_user may only be called from the main window".into());
+  }
+  clear_for_user(&cache_root(&app)?, user_id)
+}
+
+fn clear_for_user(root: &Path, user_id: i64) -> Result<(), String> {
+  let user_id = crate::local_access::tokens::validate_user_id(user_id)?;
+  let dir = root.join(user_id.to_string());
   if dir.exists() {
     fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
   }
-  if let Ok(entries) = fs::read_dir(cache_root(&app)?) {
+  if let Ok(entries) = fs::read_dir(root) {
     for entry in entries.flatten() {
       if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
         let _ = fs::remove_file(entry.path());
@@ -62,9 +84,81 @@ pub fn persona_cache_clear_for_user<R: Runtime>(app: AppHandle<R>, user_id: i64)
   Ok(())
 }
 
+#[derive(Debug, Default, PartialEq, Eq, Serialize)]
+pub struct CacheMigrateOut {
+  pub moved: u32,
+  pub conflicts: u32,
+}
+
+pub fn migrate_dir(src: &Path, dst: &Path) -> Result<CacheMigrateOut, String> {
+  let mut out = CacheMigrateOut::default();
+  if !src.is_dir() {
+    return Ok(out);
+  }
+  fs::create_dir_all(dst).map_err(|e| e.to_string())?;
+  for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
+    let entry = entry.map_err(|e| e.to_string())?;
+    if !entry.file_type().map_err(|e| e.to_string())?.is_file() {
+      continue;
+    }
+    let target = dst.join(entry.file_name());
+    if target.exists() {
+      out.conflicts += 1;
+    } else {
+      fs::rename(entry.path(), &target).map_err(|e| e.to_string())?;
+      out.moved += 1;
+    }
+  }
+  Ok(out)
+}
+
+#[tauri::command]
+pub fn persona_cache_migrate_local<R: Runtime>(
+  app: AppHandle<R>,
+  window: tauri::Window<R>,
+  to_user_id: i64,
+) -> Result<CacheMigrateOut, String> {
+  if window.label() != "main" {
+    return Err("persona_cache_migrate_local may only be called from the main window".into());
+  }
+  let to = crate::local_access::tokens::validate_user_id(to_user_id)?;
+  crate::local_profile::require_claim(&app, to)?;
+  let root = cache_root(&app)?;
+  migrate_dir(&root.join("-1"), &root.join(to.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn clear_for_user_refuses_the_local_identity_and_keeps_its_cache() {
+    let root = tempfile::tempdir().unwrap();
+    let local = root.path().join("-1");
+    fs::create_dir_all(&local).unwrap();
+    fs::write(local.join("p-1.json"), b"{}").unwrap();
+
+    assert!(clear_for_user(root.path(), -1).is_err());
+    assert!(clear_for_user(root.path(), 0).is_err());
+    assert!(local.join("p-1.json").exists());
+  }
+
+  #[test]
+  fn clear_for_user_removes_only_that_account_and_flat_legacy_files() {
+    let root = tempfile::tempdir().unwrap();
+    for id in ["-1", "42", "43"] {
+      fs::create_dir_all(root.path().join(id)).unwrap();
+      fs::write(root.path().join(id).join("p-1.json"), b"{}").unwrap();
+    }
+    fs::write(root.path().join("legacy.json"), b"{}").unwrap();
+
+    clear_for_user(root.path(), 42).unwrap();
+
+    assert!(!root.path().join("42").exists());
+    assert!(!root.path().join("legacy.json").exists());
+    assert!(root.path().join("-1/p-1.json").exists());
+    assert!(root.path().join("43/p-1.json").exists());
+  }
 
   #[test]
   fn safe_uuid_filename_accepts_a_plain_uuid() {
@@ -83,5 +177,46 @@ mod tests {
     assert!(safe_uuid_filename("").is_err());
     assert!(safe_uuid_filename(&"a".repeat(65)).is_err());
     assert!(safe_uuid_filename(&"a".repeat(64)).is_ok());
+  }
+
+  fn put(dir: &Path, name: &str, body: &str) {
+    fs::create_dir_all(dir).unwrap();
+    fs::write(dir.join(name), body).unwrap();
+  }
+
+  #[test]
+  fn migrate_dir_moves_files_and_counts_conflicts() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (src, dst) = (tmp.path().join("-1"), tmp.path().join("7"));
+    put(&src, "a.json", "A");
+    put(&src, "b.json", "B");
+    put(&dst, "b.json", "OLD");
+    let out = migrate_dir(&src, &dst).unwrap();
+    assert_eq!(out, CacheMigrateOut { moved: 1, conflicts: 1 });
+    assert_eq!(fs::read_to_string(dst.join("a.json")).unwrap(), "A");
+    assert_eq!(fs::read_to_string(dst.join("b.json")).unwrap(), "OLD");
+    assert_eq!(fs::read_to_string(src.join("b.json")).unwrap(), "B");
+    assert!(!src.join("a.json").exists());
+  }
+
+  #[test]
+  fn migrate_dir_missing_source_is_zero_and_creates_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (src, dst) = (tmp.path().join("-1"), tmp.path().join("7"));
+    assert_eq!(migrate_dir(&src, &dst).unwrap(), CacheMigrateOut::default());
+    assert!(!src.exists() && !dst.exists());
+  }
+
+  #[test]
+  fn migrate_dir_rerun_after_partial_move_finishes_the_rest() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (src, dst) = (tmp.path().join("-1"), tmp.path().join("7"));
+    put(&src, "a.json", "A");
+    put(&src, "b.json", "B");
+    put(&dst, "a.json", "A");
+    fs::remove_file(src.join("a.json")).unwrap();
+    assert_eq!(migrate_dir(&src, &dst).unwrap(), CacheMigrateOut { moved: 1, conflicts: 0 });
+    assert_eq!(migrate_dir(&src, &dst).unwrap(), CacheMigrateOut::default());
+    assert_eq!(fs::read_to_string(dst.join("b.json")).unwrap(), "B");
   }
 }

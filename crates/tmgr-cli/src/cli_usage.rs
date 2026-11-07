@@ -95,13 +95,13 @@ pub enum UsageCommand {
     Sync(SyncArgs),
     /// Whether tmgr may read the Claude Code and Codex logs on this device: status, allow or deny
     #[command(
-        long_about = "Whether tmgr may read the local Claude Code and Codex logs on this device. The choice is stored in the usage data folder and shared with TMGR desktop (AI Usage, Settings -> Privacy).\n\nUntil you choose, commands you run by hand (`tmgr usage`, `limits`, `task`, `scan`, `sync`) still read the logs, while TMGR desktop and background scans (autopilot, automatic sync after an agent run) do not. After `deny` nothing reads them; the commands show the stored data. Kept: counts, tokens, cost, model names, timestamps, session ids, project folders and branches, names of the tools, skills and commands used, edited file types and pull requests. Prompt and reply text is never stored. Nothing leaves this device unless you upload it with `tmgr usage sync`.\n\nWithout it, agent notifications (the Claude Code Stop hook) do not read the session transcript either. This setting doesn't cover the runner yet: for sessions it launched, the runner reads their transcripts for titles, questions and status, saves detected questions (your prompt and the reply text) on disk (`tmgr questions`), and may send reply text to Claude (Haiku) to classify questions."
+        long_about = "Whether tmgr may read the local Claude Code and Codex logs on this device. The choice is stored in the usage data folder and shared with TMGR desktop (AI Usage, Settings -> Privacy).\n\nUntil you choose, commands you run by hand (`tmgr usage`, `limits`, `task`, `scan`, `sync`) still read the logs, while TMGR desktop and background scans (autopilot, automatic sync after an agent run) do not. After `deny` nothing reads them; the commands show the stored data. Kept: counts, tokens, cost, model names, timestamps, session ids, project folders and branches, names of the tools, skills and commands used, edited file types and pull requests. Prompt and reply text is never stored. Nothing leaves this device unless you upload it with `tmgr usage sync`.\n\nWithout it, agent notifications (the Claude Code Stop hook) do not read the session transcript either. The setting also covers the runner (`tmgr runner`, `tmgr attach`, `tmgr questions`). With reading allowed, for sessions it starts the runner reads their logs for titles, questions and status, saves detected questions (your prompt and the reply text) on disk (`tmgr questions`), and may send reply text to Claude (Haiku) to classify questions. Without `allow` the runner reads none of it, even for commands you run by hand (export, summary, fork, `tmgr runner session summary`); this is an exception to the rule above that hand-run commands still read while unset. Sessions then show the plain agent name and no questions are detected; running, waiting and exited keep working. `deny` stops the next read; questions already saved stay until `tmgr usage reset` (or Forget scanned data in TMGR desktop), which deletes them too and keeps the `tmgr questions haiku` setting. If reading is allowed again, questions from sessions whose logs are still there can be detected again."
     )]
     Consent {
         #[command(subcommand)]
         command: Option<ConsentCommand>,
     },
-    /// Delete all usage data (database and statusline snapshots)
+    /// Delete all usage data (database and statusline snapshots) and, where the runner is built in, saved runner questions
     Reset,
     /// Claude Code statusLine integration for rate limits
     Statusline {
@@ -215,7 +215,7 @@ pub enum ConsentCommand {
     Status,
     /// Allow reading the logs on this device
     Allow,
-    /// Stop reading the logs on this device (stored data stays; `tmgr usage reset` deletes it)
+    /// Stop reading the logs on this device, the runner's too (stored data and saved runner questions stay; `tmgr usage reset` deletes them)
     Deny,
 }
 

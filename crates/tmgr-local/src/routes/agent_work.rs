@@ -431,8 +431,14 @@ fn own_running_run(req: &Request<'_>, id: i64) -> Result<Row, Outcome> {
     ))?
     .ok_or_else(|| not_found("Agent work run"))?;
     let actor = req.ctx.acting();
-    let same_actor = col(&row, "actor_kind").as_str() == Some(actor.kind.as_str())
-        && js::string(col(&row, "actor_id")) == actor.owner();
+    let stored_id = js::string(col(&row, "actor_id"));
+    let legacy_local_user = actor.kind == "user"
+        && actor.id.parse::<i64>().is_ok_and(|id| id > 0)
+        && col(&row, "actor_kind").as_str() == Some("user")
+        && stored_id == "-1";
+    let same_actor = legacy_local_user
+        || (col(&row, "actor_kind").as_str() == Some(actor.kind.as_str())
+            && stored_id == actor.owner());
     let agent = js::string(col(&row, "agent"));
     let namespace = format!("plugin:{}", actor.id);
     let same_namespace =
@@ -462,7 +468,11 @@ pub(super) fn start(req: &Request<'_>) -> Handled {
     let branch = limited_or_null(body.get("branch").unwrap_or(&none), 255)?;
     let actor = req.ctx.acting();
     let now = req.ctx.iso_now();
-    sql(execute(
+    let teammate = body
+        .get("role")
+        .is_some_and(|r| r.as_str().is_some_and(|r| !r.is_empty()));
+    if !teammate {
+        sql(execute(
         req.conn,
         "UPDATE agent_work_runs SET status = 'abandoned', ended_at = COALESCE(updated_at, started_at),
 					duration_seconds = CAST((julianday(COALESCE(updated_at, started_at)) - julianday(started_at)) * 86400 AS INTEGER),
@@ -470,6 +480,7 @@ pub(super) fn start(req: &Request<'_>) -> Handled {
 				 WHERE task_id = ? AND actor_kind = ? AND actor_id = ? AND agent = ? AND status = 'running'",
         &[text(&now), int(task_id), text(&actor.kind), text(actor.owner()), text(&agent)],
     ))?;
+    }
     let inserted = sql(execute(
         req.conn,
         "INSERT INTO agent_work_runs
@@ -635,6 +646,74 @@ mod tests {
         assert_eq!(
             get(&conn, &c, "workspaces/-42/agent-work?since=yesterday").0,
             422
+        );
+    }
+
+    fn finish_as(user_id: i64, stored_actor: &str) -> u16 {
+        let conn = db(&format!(
+            "INSERT INTO tasks (id, title, created_at, updated_at) VALUES (1, 't', 'x', 'x');
+             INSERT INTO agent_work_runs (id, task_id, agent, status, started_at, actor_kind, actor_id, created_at, updated_at)
+             VALUES (1, 1, 'codex', 'running', '2026-10-13T11:00:00.000Z', 'user', '{stored_actor}', 'x', 'x');"
+        ));
+        conn.execute_batch("PRAGMA query_only = OFF").unwrap();
+        let mut c = ctx("2026-10-13T12:00:00.000Z");
+        c.user.id = user_id;
+        crate::dispatch(
+            &conn,
+            &c,
+            "POST",
+            "agent-work/1/finish",
+            Some(&json!({ "status": "succeeded" })),
+        )
+        .unwrap()
+        .unwrap()
+        .status
+    }
+
+    #[test]
+    fn a_run_started_as_the_local_account_can_be_finished_by_a_signed_in_user() {
+        assert_eq!(finish_as(7, "-1"), 200);
+        assert_eq!(finish_as(-1, "-1"), 200);
+        assert_eq!(finish_as(7, "7"), 200);
+    }
+
+    #[test]
+    fn another_user_still_cannot_finish_the_run() {
+        assert_eq!(finish_as(8, "7"), 403);
+        assert_eq!(finish_as(-1, "7"), 403);
+        assert_eq!(finish_as(-2, "-1"), 403);
+        assert_eq!(finish_as(0, "-1"), 403);
+        assert_eq!(finish_as(7, "-2"), 403);
+    }
+
+    fn running_after_two_starts(second: serde_json::Value) -> i64 {
+        let conn =
+            db("INSERT INTO tasks (id, title, created_at, updated_at) VALUES (1, 't', 'x', 'x');");
+        conn.execute_batch("PRAGMA query_only = OFF").unwrap();
+        let c = ctx("2026-10-13T12:00:00.000Z");
+        for body in [json!({ "agent": "claude-code", "role": "lead" }), second] {
+            let out = crate::dispatch(&conn, &c, "POST", "tasks/1/agent-work", Some(&body))
+                .unwrap()
+                .unwrap();
+            assert_eq!(out.status, 201, "{:?}", out.data);
+        }
+        conn.query_row(
+            "SELECT COUNT(*) FROM agent_work_runs WHERE status = 'running'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_team_member_does_not_end_the_run_of_a_teammate_but_a_plain_start_still_does() {
+        assert_eq!(
+            running_after_two_starts(json!({ "agent": "claude-code", "role": "worker-1" })),
+            2
+        );
+        assert_eq!(
+            running_after_two_starts(json!({ "agent": "claude-code" })),
+            1
         );
     }
 

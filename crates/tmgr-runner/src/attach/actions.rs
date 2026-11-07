@@ -60,6 +60,13 @@ pub const ACTIONS: &[ActionDef] = &[
         "New session (claude, codex, shell, ...)",
         true,
     ),
+    def(
+        Cmd::ResumePast,
+        b"H",
+        "H",
+        "Resume a past session (tmgr, Claude Code, Codex)",
+        true,
+    ),
     def(Cmd::FocusOther, b"\t", "Tab", "Focus next pane", true),
     def(
         Cmd::FocusPrev,
@@ -193,6 +200,13 @@ pub const ACTIONS: &[ActionDef] = &[
         true,
     ),
     def(
+        Cmd::Checkpoints,
+        b"C",
+        "C",
+        "Checkpoints: list, preview and restore the working tree",
+        true,
+    ),
+    def(
         Cmd::Summary,
         b"S",
         "S",
@@ -240,6 +254,13 @@ pub const ACTIONS: &[ActionDef] = &[
         "T",
         "Session templates: start an agent with a prepared prompt",
         true,
+    ),
+    def(
+        Cmd::Permissions,
+        b"a",
+        "a",
+        "Permission requests from the agents",
+        false,
     ),
     def(Cmd::Reconnect, b"M", "M", "Reconnect linked machines", true),
     def(Cmd::Help, b"?", "?", "Show the key help", true),

@@ -73,6 +73,9 @@
 		</div>
 
 		<DesktopWhatsNew v-if="isDesktop && isMainWindow" />
+		<DemoOfferHost v-if="isDesktop && isMainWindow" />
+		<GhostRunHost v-if="isDesktop && isMainWindow" />
+		<TryItPanel v-if="isDesktop && isMainWindow" />
 		<PagesImportDialog
 			v-if="pagesImport.open"
 			:key="pagesImport.key"
@@ -104,6 +107,7 @@
 		getWorkspaces,
 	} from '@/actions/tmgr/workspaces';
 	import ActiveTasks from '@/components/ActiveTasks.vue';
+	import DemoOfferHost from '@/components/desktop/DemoOfferHost.vue';
 	import DesktopAuthLinks from '@/components/desktop/DesktopAuthLinks.vue';
 	import DesktopDownloads from '@/components/desktop/DesktopDownloads.vue';
 	import DesktopHotkeys from '@/components/desktop/DesktopHotkeys.vue';
@@ -116,6 +120,8 @@
 	import CommandPalette from '@/components/general/CommandPalette.vue';
 	import CustomSidebar from '@/components/general/CustomSidebar.vue';
 	import Modal from '@/components/Modal.vue';
+	import GhostRunHost from '@/components/onboarding/GhostRunHost.vue';
+	import TryItPanel from '@/components/onboarding/TryItPanel.vue';
 	import ConsentPanel from '@/components/privacy/ConsentPanel.vue';
 	import SettingsLayout from '@/components/settings/SettingsLayout.vue';
 	import TaskSidePanel from '@/components/tasks/TaskSidePanel.vue';
@@ -183,6 +189,9 @@
 			DesktopTray,
 			DesktopUpdateCheck,
 			DesktopWhatsNew,
+			DemoOfferHost,
+			GhostRunHost,
+			TryItPanel,
 			Modal,
 			TaskSidePanel,
 			Alert,

@@ -4,6 +4,7 @@ use std::process::Command;
 use std::time::Duration;
 use tmgr_core::branch::{slug, validate_branch_name};
 use tmgr_core::error::{Error, Result};
+use tmgr_runner::hostview::Access;
 
 const PREFIX: &str = "tmgr/";
 const PROTECTED: &[&str] = &["main", "master", "develop"];
@@ -200,6 +201,24 @@ fn clean_body(body: &str) -> String {
     body.chars().filter(|c| *c != '\0').take(MAX_BODY).collect()
 }
 
+pub fn check_remote(
+    full_name: &str,
+    fetch_url: &str,
+    push_url: &str,
+) -> std::result::Result<(), Refusal> {
+    let (owner, repo_name) = valid_full_name(full_name)
+        .ok_or_else(|| Refusal::BadInput("the repository name is not owner/name".into()))?;
+    for (which, url) in [("fetch", fetch_url), ("push", push_url)] {
+        if !url_matches(url, &owner, &repo_name) {
+            return Err(Refusal::RemoteMismatch {
+                which,
+                url: one_line(url, 120),
+            });
+        }
+    }
+    Ok(())
+}
+
 pub fn publish_plan(input: &PublishInput) -> std::result::Result<PublishSteps, Refusal> {
     let branch = input.pinned_branch.as_str();
     if !branch_shape_ok(branch) {
@@ -225,20 +244,12 @@ pub fn publish_plan(input: &PublishInput) -> std::result::Result<PublishSteps, R
     if let Some(p) = input.changed_paths.iter().find(|p| under_dot_github(p)) {
         return Err(Refusal::WorkflowChange(p.clone()));
     }
-    let (owner, repo_name) = valid_full_name(&input.github_full_name)
-        .ok_or_else(|| Refusal::BadInput("the repository name is not owner/name".into()))?;
-    for (which, url) in [
-        ("fetch", &input.origin_fetch_url),
-        ("push", &input.origin_push_url),
-    ] {
-        if !url_matches(url, &owner, &repo_name) {
-            return Err(Refusal::RemoteMismatch {
-                which,
-                url: one_line(url, 120),
-            });
-        }
-    }
-    let repo = abs_clean("the bound repository", &input.repo)?;
+    check_remote(
+        &input.github_full_name,
+        &input.origin_fetch_url,
+        &input.origin_push_url,
+    )?;
+    abs_clean("the bound repository", &input.repo)?;
     abs_clean("the clone", &input.clone_dir)?;
     let title = one_line(&input.pr_title, MAX_TITLE);
     if title.is_empty() {
@@ -253,12 +264,8 @@ pub fn publish_plan(input: &PublishInput) -> std::result::Result<PublishSteps, R
     let spec = format!("{}:refs/heads/{branch}", input.sha);
     let push = vec![
         "git".to_string(),
-        "-c".into(),
-        "core.hooksPath=/dev/null".into(),
-        "-C".into(),
-        repo,
         "push".into(),
-        "origin".into(),
+        input.origin_push_url.clone(),
         spec,
     ];
     let pr = vec![
@@ -297,21 +304,47 @@ pub fn publish_env(vars: impl Iterator<Item = (String, String)>) -> Vec<(String,
                     | "GITHUB_TOKEN"
             ) || k.starts_with("GH_")
         })
+        .map(|(k, v)| {
+            if k == "PATH" {
+                let kept = crate::workdir::absolute_path_entries(v.as_ref());
+                (k, kept.to_string_lossy().into_owned())
+            } else {
+                (k, v)
+            }
+        })
         .collect();
     out.push(("GIT_TERMINAL_PROMPT".into(), "0".into()));
     out
 }
 
+const STEP_OUTPUT_CAP: usize = 1 << 20;
+
 fn run(argv: &[String], cwd: &Path) -> Result<String> {
     let (program, args) = argv
         .split_first()
         .ok_or_else(|| Error::internal("empty publish command"))?;
-    let mut cmd = Command::new(program);
-    cmd.env_clear()
-        .envs(publish_env(std::env::vars()))
-        .current_dir(cwd)
-        .args(args);
-    let out = workdir::output_within(&mut cmd, STEP_TIMEOUT)?;
+    let scratch;
+    let view;
+    let mut cmd;
+    if program == "git" {
+        let access = if args.first().is_some_and(|a| a == "push") {
+            Access::Network
+        } else {
+            Access::Read
+        };
+        view = workdir::host_view(cwd, access)?;
+        let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+        cmd = view.prepared(&[], &argv).map_err(Error::internal)?;
+    } else {
+        scratch = tempfile::tempdir()
+            .map_err(|e| Error::internal(format!("temporary directory: {e}")))?;
+        cmd = Command::new(program);
+        cmd.env_clear()
+            .envs(publish_env(std::env::vars()))
+            .current_dir(scratch.path())
+            .args(args);
+    }
+    let out = workdir::output_bounded(&mut cmd, STEP_TIMEOUT, STEP_OUTPUT_CAP)?;
     if !out.status.success() {
         let msg = String::from_utf8_lossy(&out.stderr);
         let line = msg.lines().next().unwrap_or("failed");
@@ -384,8 +417,6 @@ impl PublishAllPlan {
                 }
                 r.verify = Some(vec![
                     "git".to_string(),
-                    "-C".into(),
-                    r.steps.repo.to_string_lossy().into_owned(),
                     "merge-base".into(),
                     "--is-ancestor".into(),
                     sha.clone(),
@@ -644,12 +675,8 @@ mod tests {
             s.push,
             [
                 "git",
-                "-c",
-                "core.hooksPath=/dev/null",
-                "-C",
-                "/work/repo",
                 "push",
-                "origin",
+                "git@github.com:tmgr-dev/backend.git",
                 "0123456789abcdef0123456789abcdef01234567:refs/heads/tmgr/tm-410-fix-login"
             ]
         );
@@ -731,7 +758,7 @@ mod tests {
                     "{a}"
                 );
             }
-            assert_eq!(s.push.iter().filter(|a| a.contains(':')).count(), 1);
+            assert_eq!(s.push.iter().filter(|a| a.contains("refs/")).count(), 1);
             let spec = s.push.last().unwrap();
             assert_eq!(spec, &format!("{}:refs/heads/{}", i.sha, i.pinned_branch));
             assert!(!spec.contains("master"));
@@ -923,11 +950,91 @@ mod tests {
     }
 
     #[test]
-    fn only_the_bound_repository_appears_in_the_push_command() {
+    fn the_push_names_the_validated_url_and_no_local_path() {
         let s = publish_plan(&input()).unwrap();
-        let paths: Vec<&String> = s.push.iter().filter(|a| a.starts_with('/')).collect();
-        assert_eq!(paths, ["/work/repo"]);
+        assert!(s.push.iter().all(|a| !a.starts_with('/')));
+        assert!(!s.push.iter().any(|a| a == "origin"));
+        assert_eq!(s.repo, Path::new("/work/repo"));
         assert!(!s.push.iter().chain(&s.pr).any(|a| a.contains("worktrees")));
+    }
+
+    fn raw(dir: &Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    #[test]
+    fn a_push_to_a_local_path_is_refused_and_runs_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        workdir::init_repo(&repo);
+        let planned = root.join("planned.git");
+        let other = root.join("other.git");
+        for name in ["planned.git", "other.git"] {
+            raw(&root, &["init", "-q", "--bare", name]);
+        }
+        raw(
+            &repo,
+            &["remote", "add", "origin", &planned.to_string_lossy()],
+        );
+        let sha = raw(&repo, &["rev-parse", "HEAD"]);
+        let argv = vec![
+            "git".to_string(),
+            "push".into(),
+            planned.to_string_lossy().into_owned(),
+            format!("{sha}:refs/heads/tmgr/tm-1-fix"),
+        ];
+        let marks = root.join("marks");
+        std::fs::create_dir(&marks).unwrap();
+        let touch = |name: &str| format!("touch {}/{name}", marks.display());
+        raw(
+            &repo,
+            &["config", "remote.origin.url", &other.to_string_lossy()],
+        );
+        raw(
+            &repo,
+            &[
+                "config",
+                &format!("url.{}.insteadOf", other.display()),
+                &planned.to_string_lossy(),
+            ],
+        );
+        raw(&repo, &["config", "hook.y.event", "pre-push"]);
+        raw(&repo, &["config", "hook.y.command", &touch("hook")]);
+        raw(&repo, &["config", "core.sshCommand", &touch("ssh")]);
+        let hooks = repo.join(".git/hooks");
+        std::fs::write(
+            hooks.join("pre-push"),
+            format!("#!/bin/sh\n{}\n", touch("pre-push")),
+        )
+        .unwrap();
+        std::fs::set_permissions(
+            hooks.join("pre-push"),
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
+        let err = run(&argv, &repo).unwrap_err();
+        assert!(err.message.contains("not allowed"), "{}", err.message);
+        for bare in [&planned, &other] {
+            assert!(raw(bare, &["for-each-ref"]).is_empty());
+        }
+        assert_eq!(std::fs::read_dir(&marks).unwrap().count(), 0);
     }
 
     #[test]
@@ -972,6 +1079,29 @@ mod tests {
                 "GIT_TERMINAL_PROMPT"
             ]
         );
+    }
+
+    #[test]
+    fn a_publish_step_that_prints_too_much_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let argv: Vec<String> = ["/bin/sh", "-c", "head -c 3000000 /dev/zero"]
+            .map(String::from)
+            .to_vec();
+        assert!(run(&argv, dir.path()).is_err());
+    }
+
+    #[test]
+    fn a_publish_step_with_small_output_returns_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let argv: Vec<String> = ["/bin/sh", "-c", "echo done"].map(String::from).to_vec();
+        assert_eq!(run(&argv, dir.path()).unwrap(), "done");
+    }
+
+    #[test]
+    fn publish_keeps_only_absolute_path_entries() {
+        let vars = [("PATH".to_string(), ".:/usr/bin::bin".to_string())];
+        let out = publish_env(vars.into_iter());
+        assert_eq!(out[0], ("PATH".to_string(), "/usr/bin".to_string()));
     }
 
     #[test]
@@ -1072,8 +1202,8 @@ mod tests {
                 &format!("{}:refs/heads/tmgr/tm-410-fix-login", sha.repeat(40))
             );
             assert_eq!(
-                r.steps.push[4],
-                format!("/work/{}", r.full_name.split('/').nth(1).unwrap())
+                r.steps.push[2],
+                format!("git@github.com:{}.git", r.full_name)
             );
             assert_eq!(
                 r.list,
@@ -1275,9 +1405,9 @@ mod tests {
             .iter()
             .position(|a| a.contains(&"merge-base".to_string()))
             .unwrap();
-        assert_eq!(log[verify][4], "--is-ancestor");
-        assert_eq!(log[verify][5], wip);
-        assert_eq!(log[verify][6], "a".repeat(40));
+        assert_eq!(log[verify][2], "--is-ancestor");
+        assert_eq!(log[verify][3], wip);
+        assert_eq!(log[verify][4], "a".repeat(40));
         let lease = format!("--force-with-lease=refs/heads/tmgr/tm-410-fix-login:{wip}");
         let pushes: Vec<&Vec<String>> = log
             .iter()

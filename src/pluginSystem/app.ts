@@ -587,6 +587,10 @@ export const installPlugins = async (
 			const { invoke } = await import('@tauri-apps/api/core');
 			return invoke('plugin_fetch', { request });
 		},
+		fetchImage: async (url) => {
+			const { invoke } = await import('@tauri-apps/api/core');
+			return invoke('plugin_image_fetch', { url });
+		},
 		requestLocalConnection: (pluginId, opts) => {
 			const pending = requestLocalAccessConnect({
 				pluginId,
@@ -608,6 +612,12 @@ export const installPlugins = async (
 		// Not the app's own origin: the main window's on_new_window hook denies the popup and hands the
 		// URL to the system opener, the same way any other external link in the app already opens.
 		openExternal: (url) => {
+			if (url.startsWith('tg:')) {
+				void import('@tauri-apps/api/core').then(({ invoke }) =>
+					invoke('plugin_open_tg_link', { url }).catch(() => undefined),
+				);
+				return;
+			}
 			window.open(url, '_blank', 'noopener,noreferrer');
 		},
 		currentWorkspaceId: () => {
