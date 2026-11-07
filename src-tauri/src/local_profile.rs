@@ -170,7 +170,8 @@ pub fn local_profile_create<R: Runtime>(app: AppHandle<R>, name: Option<String>)
 }
 
 #[tauri::command]
-pub fn local_profile_update<R: Runtime>(app: AppHandle<R>, name: String) -> Result<LocalProfile, String> {
+pub async fn local_profile_update<R: Runtime>(app: AppHandle<R>, name: String) -> Result<LocalProfile, String> {
+  let _guard = LINK_LOCK.lock().await;
   update_at(&path(&app)?, &name)
 }
 
