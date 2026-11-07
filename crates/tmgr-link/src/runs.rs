@@ -516,6 +516,7 @@ fn create(
     }
     let mut req = RunCreateReq {
         team: None,
+        finish_marker: false,
         clones: Vec::new(),
         profile: agent.to_string(),
         task: Some(task),

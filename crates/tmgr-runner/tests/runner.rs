@@ -207,6 +207,7 @@ impl Harness {
     fn run_req(&self, profile: &str) -> RunCreateReq {
         RunCreateReq {
             team: None,
+            finish_marker: false,
             clones: Vec::new(),
             profile: profile.into(),
             task: None,

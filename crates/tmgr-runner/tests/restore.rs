@@ -139,6 +139,7 @@ impl H {
     fn req(&self) -> RunCreateReq {
         RunCreateReq {
             team: None,
+            finish_marker: false,
             clones: Vec::new(),
             profile: "fake".into(),
             task: None,

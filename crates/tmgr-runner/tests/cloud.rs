@@ -78,6 +78,7 @@ fn req() -> RunCreateReq {
     };
     RunCreateReq {
         team: None,
+        finish_marker: false,
         clones: Vec::new(),
         profile: "claude-code".into(),
         task: Some(TASK),

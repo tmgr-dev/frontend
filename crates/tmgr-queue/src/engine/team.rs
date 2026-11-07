@@ -21,10 +21,10 @@ pub const PLAN_FILE: &str = ".tmgr/team-plan.json";
 pub const DONE_FILE: &str = ".tmgr/done";
 pub const TEAM_PROFILE: &str = "claude-code";
 const MAX_REJECTIONS: u8 = 3;
-const EXIT_TEXT: &str = "/exit\r";
+pub(super) const EXIT_TEXT: &str = "/exit\r";
 const WORKER_IDLE_SECS: i64 = 600;
-const MAX_EXIT_ATTEMPTS: u8 = 3;
-const EXIT_RETRY_SECS: i64 = 60;
+pub(super) const MAX_EXIT_ATTEMPTS: u8 = 3;
+pub(super) const EXIT_RETRY_SECS: i64 = 60;
 const END_FILE_WORKERS: u8 = 9;
 
 #[derive(Deserialize)]
@@ -109,18 +109,18 @@ fn file_present(cwd: &Path, rel: &str) -> bool {
         .is_some_and(|m| m.file_type().is_file())
 }
 
-fn secs_since(at: Option<&str>, now: DateTime<Utc>) -> i64 {
+pub(super) fn secs_since(at: Option<&str>, now: DateTime<Utc>) -> i64 {
     at.and_then(|t| DateTime::parse_from_rfc3339(t).ok())
         .map_or(i64::MAX, |t| (now - t.with_timezone(&Utc)).num_seconds())
 }
 
-fn restart_if_future(at: &mut Option<String>, now: DateTime<Utc>) {
+pub(super) fn restart_if_future(at: &mut Option<String>, now: DateTime<Utc>) {
     if secs_since(at.as_deref(), now) < 0 {
         *at = Some(ts(now));
     }
 }
 
-fn retry_due(attempts: u8, sent_at: Option<&str>, now: DateTime<Utc>) -> bool {
+pub(super) fn retry_due(attempts: u8, sent_at: Option<&str>, now: DateTime<Utc>) -> bool {
     attempts == 0 || (attempts < MAX_EXIT_ATTEMPTS && secs_since(sent_at, now) >= EXIT_RETRY_SECS)
 }
 
@@ -140,7 +140,7 @@ fn idle_text(idle: &[(u8, i64)]) -> String {
     )
 }
 
-fn clear_marker(cwd: &Path) -> bool {
+pub(super) fn clear_marker(cwd: &Path) -> bool {
     !marker_present(cwd) || (unlink_beneath(cwd, DONE_FILE) && !marker_present(cwd))
 }
 
@@ -747,6 +747,7 @@ fn start_worker(pass: &mut Pass, i: usize, k: u8, rule: &Rule, deps: &Deps) -> R
             role: TeamRole::Worker(k),
             of: p.id.clone(),
         }),
+        finish_marker: false,
     };
     match deps.runs.create(&req) {
         Ok(run) => {

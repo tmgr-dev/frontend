@@ -1636,6 +1636,7 @@ fn run_create_req(req: &StartRequest) -> RunCreateReq {
         no_sandbox: None,
         external_resume: None,
         permission_cards: false,
+        finish_marker: req.finish_marker,
     }
 }
 
@@ -1923,6 +1924,7 @@ mod run_request_tests {
             unattended: true,
             clones: Vec::new(),
             team: None,
+            finish_marker: false,
         }
     }
 

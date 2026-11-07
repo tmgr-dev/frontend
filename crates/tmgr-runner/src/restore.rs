@@ -411,6 +411,7 @@ pub fn is_claimed(store: &Path, id: &str) -> bool {
 pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
     RunCreateReq {
         team: None,
+        finish_marker: false,
         clones: Vec::new(),
         profile: i.profile.clone(),
         task: i.task,

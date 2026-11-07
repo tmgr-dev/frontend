@@ -30,6 +30,7 @@ pub struct Checked {
     pub dir: Dir,
     pub team: Option<TeamLink>,
     pub multi: bool,
+    pub finish_marker: bool,
 }
 
 fn refuse<T>(m: impl Into<String>) -> Result<T, Refusal> {
@@ -76,6 +77,7 @@ pub fn check(req: &RunCreateReq, max: usize) -> Result<Option<Checked>, Refusal>
         dir,
         team: req.team.clone(),
         multi: !req.clones.is_empty(),
+        finish_marker: req.finish_marker && req.team.is_none(),
     }))
 }
 
@@ -233,11 +235,12 @@ pub fn install(sdir: &Path, checked: &Checked) -> Result<Prior, Refusal> {
     let cwd_fd = checked.dir.file.as_raw_fd();
     let prior = write_context(
         cwd_fd,
-        &render_for(
+        &render_with(
             &bundle,
             &checked.sha256,
             checked.team.as_ref(),
             checked.multi,
+            checked.finish_marker,
         ),
     )?;
     exclude_from_git(cwd_fd);
@@ -585,6 +588,10 @@ pub fn prompt(b: &RunBundle) -> String {
 }
 
 pub fn prompt_for(b: &RunBundle, link: Option<&TeamLink>) -> String {
+    prompt_with(b, link, false)
+}
+
+pub fn prompt_with(b: &RunBundle, link: Option<&TeamLink>, finish: bool) -> String {
     let title = clean(b.title.trim());
     let mut out = format!("Task: {title}\n\n");
     let body = clean(b.body.trim());
@@ -621,6 +628,7 @@ pub fn prompt_for(b: &RunBundle, link: Option<&TeamLink>) -> String {
         out.push_str(&note);
     }
     out.push_str(&team_notes(b, link));
+    out.push_str(finish_note(finish));
     out.push_str("The task is also saved in .tmgr/task.md in this folder");
     out.push_str(if b.pages.is_empty() {
         ".\n"
@@ -635,12 +643,25 @@ pub fn prompt_for(b: &RunBundle, link: Option<&TeamLink>) -> String {
         None => (title.as_str(), ""),
     };
     format!(
-        "Task: {short}{more}\n\n{}{}The task is too long to show here. Read .tmgr/task.md in this folder: \
+        "Task: {short}{more}\n\n{}{}{}The task is too long to show here. Read .tmgr/task.md in this folder: \
          it holds the full title, the description and the comments.\n",
         owner_note(b).unwrap_or_default(),
-        team_notes(b, link)
+        team_notes(b, link),
+        finish_note(finish)
     )
 }
+
+fn finish_note(finish: bool) -> &'static str {
+    if finish {
+        "When the task is finished, write an empty file .tmgr/done in this folder and stop; .tmgr/task.md says more.\n\n"
+    } else {
+        ""
+    }
+}
+
+const FINISH_BLOCK: &str = "## When you are done\n\nSet by the runner on this machine, not signed by anyone. \
+     This run ends when you signal it. When the task is finished and everything is committed on the task branch, \
+     write an empty file .tmgr/done in this folder and stop; the runner then ends your session.\n\n";
 
 fn team_notes(b: &RunBundle, link: Option<&TeamLink>) -> String {
     match (link.map(|l| l.role), &b.team) {
@@ -748,6 +769,16 @@ pub fn render(b: &RunBundle, sha256: &str) -> String {
 }
 
 pub fn render_for(b: &RunBundle, sha256: &str, link: Option<&TeamLink>, multi: bool) -> String {
+    render_with(b, sha256, link, multi, false)
+}
+
+pub fn render_with(
+    b: &RunBundle,
+    sha256: &str,
+    link: Option<&TeamLink>,
+    multi: bool,
+    finish: bool,
+) -> String {
     let owner = owner_persona(b).is_some() || !b.context.is_empty();
     let mut out = if owner {
         String::from(
@@ -791,6 +822,9 @@ pub fn render_for(b: &RunBundle, sha256: &str, link: Option<&TeamLink>, multi: b
         (Some(t), Some(TeamRole::Lead)) => out.push_str(&lead_block(t, multi)),
         (Some(t), _) => out.push_str(&team_block(t)),
         _ => {}
+    }
+    if finish {
+        out.push_str(FINISH_BLOCK);
     }
     if let (Some(TeamRole::Worker(k)), Some(_)) = (link.map(|l| l.role), &b.assignment) {
         out.push_str(&worker_block(k, multi));
@@ -868,6 +902,7 @@ mod tests {
         };
         RunCreateReq {
             team: None,
+            finish_marker: false,
             clones: Vec::new(),
             profile: "p".into(),
             task: Some(task),
@@ -1521,6 +1556,22 @@ mod team_tests {
             prompt(&b),
             "Task: Fix login\n\nUsers cannot sign in.\n\nThe task is also saved in .tmgr/task.md in this folder.\n"
         );
+    }
+
+    #[test]
+    fn a_finish_marker_adds_the_done_block_and_nothing_else_changes() {
+        let b = bundle(None);
+        let with = render_with(&b, "abc", None, false, true);
+        assert!(with.contains("## When you are done\n"), "{with}");
+        assert!(with.contains("write an empty file .tmgr/done"), "{with}");
+        assert!(with.find("## When you are done").unwrap() < with.find("## Title").unwrap());
+        assert_eq!(
+            render_with(&b, "abc", None, false, false),
+            render(&b, "abc")
+        );
+        assert!(!render(&b, "abc").contains(".tmgr/done"));
+        assert!(prompt_with(&b, None, true).contains(".tmgr/done"));
+        assert_eq!(prompt_with(&b, None, false), prompt(&b));
     }
 
     #[test]

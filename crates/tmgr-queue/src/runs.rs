@@ -48,6 +48,7 @@ pub struct StartRequest {
     pub unattended: bool,
     pub clones: Vec<CloneSpec>,
     pub team: Option<TeamLink>,
+    pub finish_marker: bool,
 }
 
 pub trait RunsClient {
@@ -116,6 +117,7 @@ mod tests {
                 unattended: _,
                 clones: _,
                 team: _,
+                finish_marker: _,
             } = r;
         }
         let _ = fields;

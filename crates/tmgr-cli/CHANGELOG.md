@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Queue runs with a single agent (no team) and Claude Code now end by themselves when the agent writes an empty `.tmgr/done` file in its folder, so publishing no longer waits for someone to close the session. The task file tells the agent to write it when the work is committed; the queue then types `/exit` into the idle session, retrying up to 3 times a minute apart, and the audit log records `run_exit_sent` and `run_exit_unanswered`.
+
 ## 1.0.104
 
 - `tmgr mcp`: when the desktop app answers that the Decisions inbox is busy (more than 256 open connections, desktop 0.9.117 and later), the wait keeps its 250 ms to 5 s backoff instead of failing. Older desktop apps that close the connection silently are handled as before.
