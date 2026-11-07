@@ -14,6 +14,7 @@ use tmgr_ipc::endpoint;
 use tmgr_ipc::server::accept_check;
 
 use super::hub::Hub;
+use super::store::FIND_LIMIT;
 
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -109,14 +110,18 @@ fn dispatch(hub: &Arc<Hub>, op: Op, stream: &UnixStream) -> Response {
   let done = |r: Result<Response, String>| r.unwrap_or_else(Response::err);
   match op {
     Op::Ping => Response { ok: true, version: Some(env!("CARGO_PKG_VERSION").into()), ..Default::default() },
-    Op::Create { card } => {
-      done(hub.create(*card).map(|(id, outcome)| Response {
-        ok: true,
-        card_id: Some(id),
-        outcome: Some(outcome.to_owned()),
-        ..Default::default()
-      }))
-    }
+    Op::Create { card } => done(hub.create(*card).map(|created| Response {
+      ok: true,
+      card_id: Some(created.id),
+      outcome: Some(created.outcome.to_owned()),
+      similar: created.similar,
+      ..Default::default()
+    })),
+    Op::Find { task, key, query, limit } => done(
+      hub
+        .find(task.as_deref(), key.as_deref(), query.as_deref(), limit.map_or(FIND_LIMIT, |n| n as usize))
+        .map(|found| Response { ok: true, found, ..Default::default() }),
+    ),
     Op::Wait { card_id, since, timeout_ms, final_only } => {
       let timeout = Duration::from_millis(timeout_ms.min(MAX_WAIT_MS));
       done(hub.wait_while(&card_id, since, timeout, final_only, &|| peer_alive(stream)).map(|(card_id, event)| Response {
@@ -157,7 +162,7 @@ mod tests {
   use std::io::Write;
   use std::sync::Mutex;
   use std::time::Instant;
-  use tmgr_ipc::decisions::{spool, CardIn, Client, Opt, PatchIn, Source, TOKEN};
+  use tmgr_ipc::decisions::{spool, CardIn, Client, Links, Opt, PatchIn, Source, TOKEN};
 
   use crate::decisions::hub::Change;
   use crate::decisions::store::{AnswerIn, MessageIn, Store};
@@ -790,7 +795,7 @@ mod tests {
     let r = rig();
     let dir = r.dir.join("limited");
     let _limited = Server::start_limited(r.hub.clone(), &dir, 2).unwrap();
-    let id = r.hub.create(card("Held")).unwrap().0;
+    let id = r.hub.create(card("Held")).unwrap().id;
     let held = hold(&dir, &hold_line(&dir, &id, 30_000), 2);
     assert_busy_then_recovers(&dir, held);
   }
@@ -798,7 +803,7 @@ mod tests {
   #[test]
   fn the_real_connection_limit_answers_busy_fast_and_recovers() {
     let r = rig();
-    let id = r.hub.create(card("Held")).unwrap().0;
+    let id = r.hub.create(card("Held")).unwrap().id;
     let held = hold(&r.dir, &hold_line(&r.dir, &id, 60_000), MAX_CONNECTIONS);
     assert_busy_then_recovers(&r.dir, held);
     let c = Client::open_in(&r.dir).unwrap();
@@ -882,5 +887,26 @@ mod tests {
     assert_ne!(err.kind(), io::ErrorKind::Unsupported);
     let err = c.wait_any(&[wc("c_00000000000000000000000000000000", 0)], Duration::ZERO, false, None).unwrap_err();
     assert!(!err.to_string().contains("bad request"), "{err}");
+  }
+
+  #[test]
+  fn similar_and_find_travel_over_the_socket() {
+    let r = rig();
+    let c = Client::open_in(&r.dir).unwrap();
+    let task = "https://tmgr.dev/ws/tasks/211";
+    let asked = |title: &str| CardIn {
+      question: Some("Should we ship the 2.4 release today?".into()),
+      links: Links { task: Some(task.into()), ..Default::default() },
+      force_new: Some(false),
+      ..card(title)
+    };
+    let id = c.create(asked("Ship 2.4?")).unwrap();
+    r.hub.answer(&id, answer_a()).unwrap();
+    let again = c.create_full(asked("Ship 2.4 now?")).unwrap();
+    assert_eq!((again.card_id.as_deref(), again.outcome.as_deref()), (Some(id.as_str()), Some("similar")));
+    assert_eq!(again.similar.len(), 1);
+    let found = c.find(Some(task), None, None, None).unwrap();
+    assert_eq!(found.iter().map(|f| f.card_id.as_str()).collect::<Vec<_>>(), [id.as_str()]);
+    assert!(c.find(None, None, Some("nomatch"), Some(5)).unwrap().is_empty());
   }
 }
