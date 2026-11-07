@@ -5,10 +5,27 @@
 			Base URL
 			<Input v-model="llmForm.baseUrl" placeholder="http://localhost:11434" />
 		</label>
+		<div class="flex gap-2">
+			<Button
+				size="sm"
+				variant="outline"
+				:disabled="savingLlm"
+				@click="detectLocal"
+			>
+				Detect
+			</Button>
+		</div>
 		<label class="flex flex-col gap-1 text-sm">
 			Model
-			<Input v-model="llmForm.model" placeholder="llama3.1" />
+			<Input
+				v-model="llmForm.model"
+				list="local-llm-models"
+				placeholder="llama3.1"
+			/>
 		</label>
+		<datalist id="local-llm-models">
+			<option v-for="model in models" :key="model" :value="model" />
+		</datalist>
 		<label class="flex flex-col gap-1 text-sm">
 			API key
 			<span class="text-xs text-muted-foreground">
@@ -61,6 +78,55 @@
 		>
 			These AI provider settings belong to another account.
 		</p>
+		<div class="flex flex-wrap gap-2">
+			<Button
+				size="sm"
+				variant="outline"
+				:disabled="llmDirty"
+				@click="refreshModels"
+			>
+				Refresh models
+			</Button>
+			<Button
+				size="sm"
+				variant="outline"
+				:disabled="llmDirty"
+				@click="testConnection"
+			>
+				Test connection
+			</Button>
+			<Button
+				v-if="forgetVisible"
+				size="sm"
+				variant="outline"
+				@click="forgetLan"
+			>
+				Forget confirmation
+			</Button>
+		</div>
+		<p v-if="llmDirty" class="text-sm text-muted-foreground">
+			Save first - these use the saved settings.
+		</p>
+		<p v-if="llmNotice" class="text-sm text-muted-foreground">
+			{{ llmNotice }}
+		</p>
+		<div
+			v-if="lanPrompt"
+			class="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950/40"
+		>
+			<p class="text-amber-800 dark:text-amber-200">
+				This server is on your local network. Task titles and status changes
+				(also from cloud workspaces) will be sent to {{ lanPrompt.origin }}.
+			</p>
+			<div class="flex gap-2">
+				<Button size="sm" @click="allowLan">Allow</Button>
+				<Button size="sm" variant="outline" @click="cancelLan">Cancel</Button>
+			</div>
+		</div>
+		<p class="text-xs text-muted-foreground">
+			Ollama picks its context size at startup (often 4096). Raise it with
+			OLLAMA_CONTEXT_LENGTH for long summaries.
+		</p>
 		<p v-if="llmError" class="text-sm text-red-600 dark:text-red-400">
 			{{ llmError }}
 		</p>
@@ -70,6 +136,13 @@
 <script lang="ts">
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
+	import {
+		llmDetect,
+		llmLanConfirm,
+		llmModels,
+		llmTest,
+		needsConfirmationOrigin,
+	} from '@/local/llmClient';
 	import { LOCAL_OWNER_ID } from '@/local/personaGate';
 	import { resyncCloudIdentity } from '@/utils/cloudIdentity';
 	import {
@@ -81,6 +154,23 @@
 		watch,
 	} from 'vue';
 	import { useStore } from 'vuex';
+
+	const isLoopbackUrl = (input: string): boolean => {
+		try {
+			const host = new URL(input).hostname.replace(/^\[|\]$/g, '');
+			return host === 'localhost' || host === '::1' || /^127\./.test(host);
+		} catch {
+			return false;
+		}
+	};
+
+	const originOf = (input: string): string | null => {
+		try {
+			return new URL(input).origin;
+		} catch {
+			return null;
+		}
+	};
 
 	/** Mirrors the Rust classify_url check, so the warning reacts to what's typed, not last saved. */
 	const isLocalLlmUrl = (input: string): boolean => {
@@ -124,6 +214,28 @@
 			});
 			const savingLlm = ref(false);
 			const llmError = ref<string | null>(null);
+			const savedBaseUrl = ref('');
+			const savedModel = ref('');
+			const llmNotice = ref<string | null>(null);
+			const models = ref<string[]>([]);
+			const confirmedOrigin = ref<string | null>(null);
+			const lanPrompt = ref<{
+				origin: string;
+				retry: () => Promise<void>;
+			} | null>(null);
+			const llmDirty = computed(
+				() =>
+					llmForm.baseUrl !== savedBaseUrl.value ||
+					llmForm.model !== savedModel.value ||
+					llmForm.apiKey !== '',
+			);
+			const savedOrigin = computed(() => originOf(savedBaseUrl.value));
+			const forgetVisible = computed(
+				() =>
+					!!savedOrigin.value &&
+					(confirmedOrigin.value === savedOrigin.value ||
+						!isLoopbackUrl(savedBaseUrl.value)),
+			);
 			const invoke = async <T>(
 				command: string,
 				args?: Record<string, unknown>,
@@ -152,6 +264,8 @@
 				const config = await fetchLlmConfig();
 				llmForm.baseUrl = config.base_url;
 				llmForm.model = config.model;
+				savedBaseUrl.value = config.base_url;
+				savedModel.value = config.model;
 				llmStatus.hasApiKey = config.has_api_key;
 				llmStatus.slotState = config.slot_state ?? 'ok';
 				llmStatus.keyNeedsReentry = config.key_needs_reentry ?? false;
@@ -218,7 +332,79 @@
 				}
 			};
 
+			const runLocal = async (action: () => Promise<void>) => {
+				llmError.value = null;
+				llmNotice.value = null;
+				try {
+					await action();
+				} catch (error) {
+					const origin = needsConfirmationOrigin(error);
+					if (origin)
+						lanPrompt.value = { origin, retry: () => runLocal(action) };
+					else
+						llmError.value =
+							error instanceof Error ? error.message : String(error);
+				}
+			};
+
+			const detectLocal = () =>
+				runLocal(async () => {
+					const found = await llmDetect();
+					if (!found.length) {
+						llmNotice.value =
+							'No local server found on the default Ollama / LM Studio ports.';
+						return;
+					}
+					llmForm.baseUrl = found[0].base_url;
+					llmNotice.value = `Found ${found[0].models} models at ${found[0].base_url}. Save to use it.`;
+				});
+
+			const refreshModels = () =>
+				runLocal(async () => {
+					models.value = [];
+					models.value = await llmModels(userId());
+				});
+
+			const testConnection = () =>
+				runLocal(async () => {
+					llmNotice.value = await llmTest(userId());
+				});
+
+			const allowLan = async () => {
+				const prompt = lanPrompt.value;
+				if (!prompt) return;
+				lanPrompt.value = null;
+				await runLocal(async () => {
+					await llmLanConfirm(prompt.origin, true);
+					confirmedOrigin.value = prompt.origin;
+					await prompt.retry();
+				});
+			};
+
+			const cancelLan = () => {
+				lanPrompt.value = null;
+			};
+
+			const forgetLan = () =>
+				runLocal(async () => {
+					const origin = savedOrigin.value;
+					if (!origin) return;
+					await llmLanConfirm(origin, false);
+					confirmedOrigin.value = null;
+				});
+
 			return {
+				llmDirty,
+				llmNotice,
+				models,
+				lanPrompt,
+				forgetVisible,
+				detectLocal,
+				refreshModels,
+				testConnection,
+				allowLan,
+				cancelLan,
+				forgetLan,
 				llmForm,
 				llmStatus,
 				llmError,

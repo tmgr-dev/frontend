@@ -26,6 +26,10 @@
 			</template>
 		</PageHeader>
 
+		<SettingsSection v-if="isDesktop" title="Local AI" class="mb-6">
+			<LocalAiSettings />
+		</SettingsSection>
+
 		<SettingsSection
 			data-tour="personas.create"
 			:title="editingId ? 'Edit persona' : 'New persona'"
@@ -246,6 +250,7 @@
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
+	import LocalAiSettings from '@/components/local/LocalAiSettings.vue';
 	import LocalPersonasPanel from '@/components/local/LocalPersonasPanel.vue';
 	import LocalSkillsLibrary from '@/components/local/LocalSkillsLibrary.vue';
 	import { Button } from '@/components/ui/button';
@@ -284,6 +289,7 @@
 			PageContainer,
 			PageHeader,
 			SettingsSection,
+			LocalAiSettings,
 			SkillsLibrary,
 			PersonaAvatar,
 			PersonaForm,

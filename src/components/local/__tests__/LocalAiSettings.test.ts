@@ -8,6 +8,13 @@ import { createSSRApp, nextTick, reactive } from 'vue';
 const mockInvoke = jest.fn();
 const mockStore = reactive({ state: { user: { id: 7 } as any }, getters: {} });
 const mockResync = jest.fn();
+const mockLlm = {
+	llmDetect: jest.fn(),
+	llmModels: jest.fn(),
+	llmTest: jest.fn(),
+	llmLanConfirm: jest.fn(),
+	needsConfirmationOrigin: jest.fn(),
+};
 let mockMounted: (() => Promise<void>) | undefined;
 
 jest.mock('vue', () => ({
@@ -35,6 +42,14 @@ jest.mock('@/components/ui/input', () => {
 	return { Input: { render: () => h('input') } };
 });
 jest.mock('@/local/personaGate', () => ({ LOCAL_OWNER_ID: -1 }));
+jest.mock('@/local/llmClient', () => ({
+	llmDetect: (...args: unknown[]) => mockLlm.llmDetect(...args),
+	llmModels: (...args: unknown[]) => mockLlm.llmModels(...args),
+	llmTest: (...args: unknown[]) => mockLlm.llmTest(...args),
+	llmLanConfirm: (...args: unknown[]) => mockLlm.llmLanConfirm(...args),
+	needsConfirmationOrigin: (...args: unknown[]) =>
+		mockLlm.needsConfirmationOrigin(...args),
+}));
 jest.mock('@/utils/cloudIdentity', () => ({
 	resyncCloudIdentity: (...args: unknown[]) => mockResync(...args),
 }));
@@ -97,6 +112,12 @@ const config = {
 
 beforeEach(() => {
 	mockStore.state.user = { id: 7 };
+	mockLlm.needsConfirmationOrigin.mockReset();
+	mockLlm.needsConfirmationOrigin.mockReturnValue(null);
+	mockLlm.llmDetect.mockReset();
+	mockLlm.llmModels.mockReset();
+	mockLlm.llmTest.mockReset();
+	mockLlm.llmLanConfirm.mockReset();
 	mockResync.mockReset();
 	mockResync.mockResolvedValue(undefined);
 	mockInvoke.mockReset();
@@ -287,4 +308,119 @@ test('the saved config loads on mount for the local owner', async () => {
 	} finally {
 		delete (mockStore.getters as any).isLocalOnly;
 	}
+});
+
+test('detect fills the base URL without saving and reports the models found', async () => {
+	const { state, render } = mountLive();
+	await state.refreshLlmConfig();
+	mockLlm.llmDetect.mockResolvedValueOnce([
+		{ base_url: 'http://127.0.0.1:1234', models: 3 },
+	]);
+
+	await state.detectLocal();
+
+	expect(state.llmForm.baseUrl).toBe('http://127.0.0.1:1234');
+	expect(mockInvoke).not.toHaveBeenCalledWith(
+		'llm_config_set',
+		expect.anything(),
+	);
+	expect(await render()).toContain('Found 3 models at http://127.0.0.1:1234');
+});
+
+test('detect with no local server says so', async () => {
+	const { state, render } = mountLive();
+	mockLlm.llmDetect.mockResolvedValueOnce([]);
+
+	await state.detectLocal();
+
+	expect(await render()).toContain(
+		'No local server found on the default Ollama / LM Studio ports.',
+	);
+});
+
+test('refresh models fills the suggestions and a failure leaves them empty', async () => {
+	const { state, render } = mountLive();
+	await state.refreshLlmConfig();
+	mockLlm.llmModels.mockResolvedValueOnce(['llama3.1', 'qwen2.5']);
+
+	await state.refreshModels();
+
+	expect(mockLlm.llmModels).toHaveBeenCalledWith(7);
+	expect(await render()).toContain('value="qwen2.5"');
+	mockLlm.llmModels.mockRejectedValueOnce(new Error('404 Not Found'));
+
+	await state.refreshModels();
+
+	const html = await render();
+	expect(html).toContain('404 Not Found');
+	expect(html).not.toContain('value="qwen2.5"');
+});
+
+test('test connection shows the verdict and is blocked while the form differs from the saved config', async () => {
+	const { state, render } = mountLive();
+	await state.refreshLlmConfig();
+	mockLlm.llmTest.mockResolvedValueOnce('OK: llama3.1 answered');
+
+	await state.testConnection();
+
+	expect(await render()).toContain('OK: llama3.1 answered');
+	state.llmForm.model = 'other-model';
+	expect(state.llmDirty.value).toBe(true);
+	expect(await render()).toContain(
+		'Save first - these use the saved settings.',
+	);
+	state.llmForm.model = 'llama3.1';
+	expect(state.llmDirty.value).toBe(false);
+	expect(await render()).not.toContain('Save first');
+});
+
+test('a LAN server asks for confirmation and retries the action once allowed', async () => {
+	const { state, render } = mountLive();
+	await state.refreshLlmConfig();
+	const lanError = new Error('lan');
+	mockLlm.needsConfirmationOrigin.mockImplementation((error: unknown) =>
+		error === lanError ? 'http://192.0.2.5:11434' : null,
+	);
+	mockLlm.llmTest
+		.mockRejectedValueOnce(lanError)
+		.mockResolvedValueOnce('OK: retried');
+
+	await state.testConnection();
+
+	expect(state.lanPrompt.value?.origin).toBe('http://192.0.2.5:11434');
+	expect(await render()).toContain(
+		'This server is on your local network. Task titles and status changes (also from cloud workspaces) will be sent to http://192.0.2.5:11434.',
+	);
+	await state.allowLan();
+	expect(mockLlm.llmLanConfirm).toHaveBeenCalledWith(
+		'http://192.0.2.5:11434',
+		true,
+	);
+	expect(mockLlm.llmTest).toHaveBeenCalledTimes(2);
+	expect(state.lanPrompt.value).toBeNull();
+	expect(await render()).toContain('OK: retried');
+});
+
+test('forget confirmation is offered for a non-loopback saved URL and revokes it', async () => {
+	mockInvoke.mockImplementation(async (command: string) => {
+		if (command === 'llm_config_get')
+			return { ...config, base_url: 'http://192.0.2.5:11434' };
+	});
+	const { state, render } = mountLive();
+	await state.refreshLlmConfig();
+	expect(await render()).toContain('Forget confirmation');
+
+	await state.forgetLan();
+
+	expect(mockLlm.llmLanConfirm).toHaveBeenCalledWith(
+		'http://192.0.2.5:11434',
+		false,
+	);
+});
+
+test('forget confirmation is hidden for a localhost saved URL', async () => {
+	const { state, render } = mountLive();
+	await state.refreshLlmConfig();
+	expect(await render()).not.toContain('Forget confirmation');
+	expect(await render()).toContain('OLLAMA_CONTEXT_LENGTH');
 });
