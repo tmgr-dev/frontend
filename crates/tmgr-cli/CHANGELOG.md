@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.105
 
 - Queue runs with a single agent (no team) and Claude Code now end by themselves when the agent writes an empty `.tmgr/done` file in its folder, so publishing no longer waits for someone to close the session. The task file tells the agent to write it when the work is committed; the queue then types `/exit` into the idle session, retrying up to 3 times a minute apart, and the audit log records `run_exit_sent` and `run_exit_unanswered`.
 
