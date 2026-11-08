@@ -13,6 +13,10 @@ module.exports = {
   testMatch: ['**/__tests__/**/*.test.ts', '**/?(*.)+(spec|test).ts'],
   moduleNameMapper: {
     '^\\./messageCatalog$': '<rootDir>/src/i18n/messageCatalog.node.ts',
+    // jsdom resolves the "browser" export (ESM); pin the CommonJS builds.
+    '^vue-i18n$': '<rootDir>/node_modules/vue-i18n/dist/vue-i18n.cjs',
+    '^@intlify/(core-base|shared|message-compiler)$':
+      '<rootDir>/node_modules/@intlify/$1/dist/$1.cjs',
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   // marked ships ESM only and jest runs CommonJS here, so it is compiled like
