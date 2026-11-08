@@ -177,7 +177,19 @@ export default defineConfig({
 							priority: 100,
 							test: /^\0/,
 						},
-						vendorGroup('vendor-vue', ['vue', 'vue-router', 'vuex'], 60),
+						vendorGroup(
+							'vendor-vue',
+							[
+								'vue',
+								'vue-router',
+								'vuex',
+								'vue-i18n',
+								'@intlify/core-base',
+								'@intlify/message-compiler',
+								'@intlify/shared',
+							],
+							60,
+						),
 						vendorGroup(
 							'vendor-editor',
 							[
