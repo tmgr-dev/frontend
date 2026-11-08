@@ -166,7 +166,7 @@
 		"title": "Exécution de l'agent",
 		"description": "Affichez ce que les agents IA coûtent sur vos tâches, sur tous vos appareils.",
 		"syncLabel": "Synchronisation de l'utilisation des agents",
-		"syncDescription": "Envoie les totaux par tâche pour que le web et le mobile puissent les afficher : jetons, coût IA (équivalent API), agent, modèle, noms d'outils et compteurs. Jamais les prompts, les réponses, les chemins de fichiers ni les arguments de commandes. Les envois ne démarrent que depuis la CLI tmgr, une fois activés là-bas : à la main avec `tmgr usage sync`, ou après chaque exécution de l'agent si vous confirmez aussi `tmgr usage sync auto on`. La désactivation supprime tout ce qui a déjà été envoyé.",
+		"syncDescription": "Envoie les totaux par tâche pour que le web et le mobile puissent les afficher : tokens, coût IA (équivalent API), agent, modèle, noms d'outils et compteurs. Jamais les prompts, les réponses, les chemins de fichiers ni les arguments de commandes. Les envois ne démarrent que depuis la CLI tmgr, une fois activés là-bas : à la main avec `tmgr usage sync`, ou après chaque exécution de l'agent si vous confirmez aussi `tmgr usage sync auto on`. La désactivation supprime tout ce qui a déjà été envoyé.",
 		"unavailable": "La synchronisation de l'utilisation des agents n'est pas encore disponible sur ce serveur.",
 		"uploadsTitle": "Vos envois",
 		"uploadsDescription": "Ce que ce compte a envoyé, du plus récent au plus ancien.",
