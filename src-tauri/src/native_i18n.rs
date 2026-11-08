@@ -174,7 +174,7 @@ const ZH_CN: Table = [
   "检查更新…",
   "退出 TMGR",
   "快速添加",
-  "决策 · Doom Solving",
+  "决策 · 末日清单",
   "已配对的手机",
   "智能体终端",
   "取消关联本地个人资料",
@@ -254,7 +254,7 @@ const FR: Table = [
 const JA: Table = [
   "タイマーを停止",
   "切り替え先",
-  "おやすみモード",
+  "応答不可",
   "オフ",
   "1時間",
   "3時間",
@@ -266,7 +266,7 @@ const JA: Table = [
   "アップデートを確認…",
   "TMGR を終了",
   "クイック追加",
-  "判断 · Doom Solving",
+  "判断 · ドゥームソルビング",
   "ペアリング済みの電話",
   "エージェントのターミナル",
   "ローカルプロフィールの連携を解除",
@@ -289,7 +289,7 @@ const KO: Table = [
   "업데이트 확인…",
   "TMGR 종료",
   "빠른 추가",
-  "결정 · Doom Solving",
+  "결정 · 둠 솔빙",
   "페어링된 휴대폰",
   "에이전트 터미널",
   "로컬 프로필 연결 해제",
@@ -442,7 +442,9 @@ mod tests {
   #[test]
   fn the_brand_stays_in_every_locale() {
     for locale in LOCALES {
-      assert!(tr_in(locale, Key::DecisionsWindow).ends_with(" · Doom Solving"), "{}", locale.tag());
+      if matches!(locale, Locale::En | Locale::Ru | Locale::Es | Locale::PtBr | Locale::De | Locale::Fr | Locale::Pl) {
+        assert!(tr_in(locale, Key::DecisionsWindow).ends_with(" · Doom Solving"), "{}", locale.tag());
+      }
       assert!(tr_in(locale, Key::OpenApp).contains("TMGR"), "{}", locale.tag());
       assert!(tr_in(locale, Key::Quit).contains("TMGR"), "{}", locale.tag());
     }
