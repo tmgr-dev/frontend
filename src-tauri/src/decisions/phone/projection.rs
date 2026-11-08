@@ -68,6 +68,7 @@ struct Projection {
   repos: Vec<RepoOut>,
   messages: Vec<MessageOut>,
   created_ms: i64,
+  rev: String,
 }
 
 pub struct Projected {
@@ -156,6 +157,7 @@ fn build(view: &CardView, session: &str, context_max: usize, skip: usize, light:
       .map(|m| MessageOut { author: m.author.clone(), text: chars(&m.text, MESSAGE_MAX).0 })
       .collect(),
     created_ms: view.created_ms,
+    rev: view.rev.clone(),
   }
 }
 

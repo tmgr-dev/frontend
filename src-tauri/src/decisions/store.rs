@@ -6,6 +6,7 @@ use super::phone;
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tmgr_phone::AckResult;
 use tmgr_ipc::decisions::{
   new_card_id, valid_card_id, CardIn, Check, DiffSpec, Event, Fact, Found, LineComment, LinkItem, Links, Opt, PatchIn,
@@ -141,6 +142,8 @@ pub struct CardView {
   pub reply_via: String,
   pub answer: Option<Event>,
   pub messages: Vec<MessageView>,
+  #[serde(skip)]
+  pub rev: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -778,6 +781,7 @@ impl Store {
       .map_err(sql_err)?
       .collect::<Result<Vec<_>, _>>()
       .map_err(sql_err)?;
+    let rev = self.revision(&r.id, &r.card, &messages)?;
     Ok(CardView {
       id: r.id,
       created_ms: r.created_ms,
@@ -803,7 +807,27 @@ impl Store {
       reply_via: c.reply_via,
       answer,
       messages,
+      rev,
     })
+  }
+
+  fn revision(&self, id: &str, card_json: &str, messages: &[MessageView]) -> Result<String, String> {
+    let mut h = Sha256::new();
+    let mut put = |s: &str| {
+      h.update((s.len() as u64).to_be_bytes());
+      h.update(s.as_bytes());
+    };
+    put(card_json);
+    for m in messages {
+      put(&m.author);
+      put(&m.text);
+    }
+    put("patches");
+    for p in self.patches(id)? {
+      put(&p.label);
+      put(&p.text);
+    }
+    Ok(tmgr_phone::hex(&h.finalize()))
   }
 
   fn patch_info(&self, id: &str) -> Result<Vec<PatchInfo>, String> {

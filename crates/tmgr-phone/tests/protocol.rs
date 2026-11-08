@@ -68,7 +68,7 @@ fn hello_ctx(d: &Party) -> HelloCtx<'_> {
 }
 
 const ANSWER_ID: &str = "00112233445566778899aabbccddeeff";
-const CARD_PROJECTION: &str = "{\"p\":1,\"kind\":\"question\",\"title\":\"Ship it?\"}";
+const CARD_PROJECTION: &str = "{\"p\":1,\"kind\":\"question\",\"title\":\"Ship it?\",\"rev\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}";
 
 fn answer_body() -> AnswerBody {
     AnswerBody {

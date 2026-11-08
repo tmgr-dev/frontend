@@ -358,6 +358,28 @@ fn a_new_agent_message_makes_the_digest_stale() {
 }
 
 #[test]
+fn a_changed_patch_makes_the_digest_stale() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let patch = |text: &str| tmgr_ipc::decisions::PatchIn { label: "fix".into(), text: text.into() };
+  let make = |text: &str, replaces: Option<String>| CardIn {
+    title: "Apply?".into(),
+    kind: "decision".into(),
+    replaces,
+    patches: vec![patch(text)],
+    source: Source { agent: "claude".into(), session: Some("s1".into()), ..Default::default() },
+    options: vec![Opt { id: "a".into(), label: "Ship".into(), recommended: true }],
+    ..Default::default()
+  };
+  let id = r.hub.create(make("+safe\n", None)).unwrap().id;
+  let (digest, session) = r.bind(&p, &id);
+  r.hub.create(make("+evil\n", Some(id.clone()))).unwrap();
+  let body = r.body(&id, &digest, &session, Action::Answer, Some("a"), None);
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Changed);
+  assert_eq!(r.state(&id), "open");
+}
+
+#[test]
 fn a_moved_session_target_is_changed_and_nothing_is_typed() {
   let r = rig();
   let p = r.pair("mb1", "Pocket", 10);
