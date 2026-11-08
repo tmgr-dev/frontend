@@ -1,23 +1,26 @@
+import { t } from '@/i18n';
 import type { RunnerStatus } from './api';
 import { sanitizeMessage } from './errors';
 
 export const statusLine = (status: RunnerStatus | null): string => {
 	switch (status?.state) {
 		case 'ready':
-			return status.version ? `Ready v${status.version}` : 'Ready';
+			return status.version
+				? t('desktop.helpers.runner.status.readyVersion', {
+						version: status.version,
+					})
+				: t('desktop.helpers.runner.status.ready');
 		case 'incompatible':
-			return 'Incompatible version';
+			return t('desktop.helpers.runner.status.incompatible');
 		case 'absent':
-			return 'Not running';
+			return t('desktop.helpers.runner.status.absent');
 		default:
-			return 'Checking…';
+			return t('desktop.helpers.runner.status.checking');
 	}
 };
-
-export const INCOMPATIBLE_DEFAULT = 'Update the TMGR runner';
 
 export const statusDetail = (status: RunnerStatus | null): string | null => {
 	if (status?.state !== 'incompatible') return null;
 	const text = sanitizeMessage(status.message ?? '');
-	return text || INCOMPATIBLE_DEFAULT;
+	return text || t('desktop.helpers.runner.status.updateRunner');
 };

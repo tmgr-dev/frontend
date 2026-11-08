@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 export const MAX_SECONDS = 120;
 export const MAX_BYTES = 1_500_000;
 export const MAX_UPLOAD_BYTES = 1_900_000;
@@ -35,38 +37,41 @@ export const transcribeFailure = (error: unknown): VoiceFailure => {
 	const status = e?.response?.status;
 	if (status === 403) return { message: null, blocked: false };
 	if (status === 401)
-		return { message: 'Your session expired. Sign in again.', blocked: false };
+		return {
+			message: t('public.helpers.voice.sessionExpired'),
+			blocked: false,
+		};
 	if (status === 413)
 		return {
-			message: 'The recording is too long. Try a shorter one.',
+			message: t('public.helpers.voice.tooLong'),
 			blocked: false,
 		};
 	if (status === 415)
 		return {
-			message: 'This browser records a format that is not supported.',
+			message: t('public.helpers.voice.badFormat'),
 			blocked: false,
 		};
 	if (status === 422)
-		return { message: 'No speech was detected. Try again.', blocked: false };
+		return { message: t('public.helpers.voice.noSpeech'), blocked: false };
 	if (status === 429)
 		return {
-			message: 'Too many voice requests. Wait a minute and try again.',
+			message: t('public.helpers.voice.tooMany'),
 			blocked: false,
 		};
 	if (status === 503)
 		return {
-			message: 'Voice transcription is unavailable right now.',
+			message: t('public.helpers.voice.unavailable'),
 			blocked: false,
 		};
 	if (status && status >= 500)
 		return {
-			message: 'Voice transcription failed. Try again.',
+			message: t('public.helpers.voice.failed'),
 			blocked: false,
 		};
 	if (e?.code === 'ECONNABORTED')
-		return { message: 'Transcription timed out. Try again.', blocked: false };
+		return { message: t('public.helpers.voice.timedOut'), blocked: false };
 	return {
-		message: 'Could not reach the server. Check your connection.',
+		message: t('public.helpers.voice.noServer'),
 		blocked: false,
 	};
 };
@@ -75,18 +80,17 @@ export const microphoneFailure = (error: unknown): VoiceFailure => {
 	const name = (error as { name?: string })?.name;
 	if (name === 'NotAllowedError' || name === 'SecurityError')
 		return {
-			message:
-				'Microphone access is blocked. Allow it in your browser or system settings.',
+			message: t('public.helpers.voice.micBlocked'),
 			blocked: true,
 		};
 	if (name === 'NotFoundError' || name === 'OverconstrainedError')
-		return { message: 'No microphone was found.', blocked: true };
+		return { message: t('public.helpers.voice.noMic'), blocked: true };
 	if (name === 'NotReadableError' || name === 'AbortError')
 		return {
-			message: 'The microphone is busy or unavailable.',
+			message: t('public.helpers.voice.micBusy'),
 			blocked: false,
 		};
-	return { message: 'Could not start the microphone.', blocked: false };
+	return { message: t('public.helpers.voice.micStart'), blocked: false };
 };
 
 export interface InsertResult {
@@ -223,7 +227,7 @@ export const createVoiceRecorder = (deps: VoiceRecorderDeps): VoiceRecorder => {
 			set({
 				status: 'idle',
 				seconds: 0,
-				error: 'The recording is too long. Try a shorter one.',
+				error: t('public.helpers.voice.tooLong'),
 			});
 			return;
 		}
@@ -231,7 +235,7 @@ export const createVoiceRecorder = (deps: VoiceRecorderDeps): VoiceRecorder => {
 			set({
 				status: 'idle',
 				seconds: 0,
-				error: 'The recording was too short.',
+				error: t('public.helpers.voice.tooShort'),
 			});
 			return;
 		}
@@ -241,7 +245,11 @@ export const createVoiceRecorder = (deps: VoiceRecorderDeps): VoiceRecorder => {
 			const text = (await deps.transcribe(blob, mime, abort.signal)).trim();
 			if (gen !== generation) return;
 			if (!text) {
-				set({ status: 'idle', seconds: 0, error: 'Nothing was recognized.' });
+				set({
+					status: 'idle',
+					seconds: 0,
+					error: t('public.helpers.voice.nothingRecognized'),
+				});
 				return;
 			}
 			set({ status: 'idle', seconds: 0 });
@@ -294,7 +302,10 @@ export const createVoiceRecorder = (deps: VoiceRecorderDeps): VoiceRecorder => {
 				releaseStream();
 				recorder = null;
 				chunks = [];
-				fail({ message: 'Recording failed.', blocked: false });
+				fail({
+					message: t('public.helpers.voice.recordingFailed'),
+					blocked: false,
+				});
 			};
 			startedAt = deps.now();
 			rec.start(TIMESLICE_MS);
@@ -308,7 +319,7 @@ export const createVoiceRecorder = (deps: VoiceRecorderDeps): VoiceRecorder => {
 			generation++;
 			releaseStream();
 			recorder = null;
-			fail({ message: 'Could not start the recording.', blocked: false });
+			fail({ message: t('public.helpers.voice.recordStart'), blocked: false });
 		}
 	};
 

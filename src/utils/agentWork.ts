@@ -4,6 +4,7 @@ import type {
 	AgentWorkRun,
 	AgentWorkTotals,
 } from '@/actions/tmgr/agentWork';
+import { t } from '@/i18n';
 
 const KNOWN_AGENTS: Record<string, string> = {
 	'claude-code': 'Claude Code',
@@ -164,22 +165,34 @@ export const timeRows = (
 	const waiting = agents?.waitingSeconds ?? null;
 	const rows: TimeRow[] = [];
 	if (active === null) {
-		rows.push({ key: 'agents', label: 'Agents', seconds: agentSeconds });
+		rows.push({
+			key: 'agents',
+			label: t('taskAgent.helpers.work.agents'),
+			seconds: agentSeconds,
+		});
 	} else {
-		rows.push({ key: 'active', label: 'Agents active', seconds: active });
+		rows.push({
+			key: 'active',
+			label: t('taskAgent.helpers.work.active'),
+			seconds: active,
+		});
 	}
 	if (wall !== null)
-		rows.push({ key: 'wall', label: 'Wall-clock', seconds: wall });
+		rows.push({
+			key: 'wall',
+			label: t('taskAgent.helpers.work.wall'),
+			seconds: wall,
+		});
 	if (waiting !== null)
 		rows.push({
 			key: 'waiting',
-			label: 'Waiting between runs',
+			label: t('taskAgent.helpers.work.waiting'),
 			seconds: waiting,
 		});
 	if (active !== null && Math.abs(agentSeconds - active) >= 1)
 		rows.push({
 			key: 'agents',
-			label: 'Agent time (sum of runs)',
+			label: t('taskAgent.helpers.work.sum'),
 			seconds: agentSeconds,
 		});
 	return rows;

@@ -36,5 +36,17 @@
 		"openFailed": "Could not open the plugin window: {error}",
 		"nothingToShow": "The plugin returned nothing to show.",
 		"drawFailed": "The plugin could not draw this page: {error}"
+	},
+	"helpers": {
+		"time": {
+			"fewSeconds": "a few seconds",
+			"min": "{n} min",
+			"hour": "{n} h",
+			"day": "{n} d",
+			"justNow": "just now",
+			"ago": "{span} ago",
+			"in": "in {span}",
+			"overdue": "overdue {span}"
+		}
 	}
 }

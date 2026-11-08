@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import {
 	loadPersisted,
 	savePersisted,
@@ -7,8 +8,8 @@ import {
 	type PublishedMove,
 } from './model';
 
-export const REMOVE_ACCOUNT_MESSAGE =
-	'This move was published by another account. Sign in as that account to remove the local copy.';
+export const removeAccountMessage = (): string =>
+	t('desktop.helpers.move.guards.removeAccount');
 export const SIGN_IN_MESSAGE = 'Sign in to remove the local copy.';
 export const OLD_RECORD_MESSAGE =
 	'This move was recorded by an older version, so the local copy cannot be removed automatically.';
@@ -31,7 +32,7 @@ export const removeLocalCopyGuards = (state: GuardState): Guard[] => {
 		{
 			id: 'published',
 			ok: !!published && published.verified && !!published.dir,
-			label: 'The move is published and verified in your cloud account',
+			label: t('desktop.helpers.move.guards.published'),
 		},
 		{
 			id: 'unchanged',
@@ -40,20 +41,19 @@ export const removeLocalCopyGuards = (state: GuardState): Guard[] => {
 				!!liveRevision &&
 				published.revision !== '' &&
 				liveRevision === published.revision,
-			label: 'Nothing changed in this workspace since the snapshot',
+			label: t('desktop.helpers.move.guards.unchanged'),
 		},
 		{
 			id: 'files',
 			ok:
 				!!published &&
 				published.excluded.every((file) => file.resolution !== null),
-			label:
-				'Every file that could not be uploaded is exported or accepted as lost',
+			label: t('desktop.helpers.move.guards.files'),
 		},
 		{
 			id: 'skills',
 			ok: !published?.skills || published.skills.state === 'done',
-			label: 'Skills from this device are copied to your cloud library',
+			label: t('desktop.helpers.move.guards.skills'),
 		},
 	];
 };
@@ -189,7 +189,7 @@ export const removeLocalCopy = async (
 	if (!published) throw new Error('This workspace has no published move');
 	const session = deps.session();
 	if (removalAccountMismatch(published, session.userId)) {
-		throw new Error(REMOVE_ACCOUNT_MESSAGE);
+		throw new Error(removeAccountMessage());
 	}
 	if (!session.token) throw new Error(SIGN_IN_MESSAGE);
 	if (!published.dir) throw new Error(OLD_RECORD_MESSAGE);
@@ -197,7 +197,10 @@ export const removeLocalCopy = async (
 	const failed = removeLocalCopyGuards({ published, liveRevision }).find(
 		(g) => !g.ok,
 	);
-	if (failed) throw new Error(`Cannot remove yet: ${failed.label}.`);
+	if (failed)
+		throw new Error(
+			t('desktop.helpers.move.guards.cannotRemove', { reason: failed.label }),
+		);
 	const archive = await deps.moveArchive(code);
 	recordArchive(deps.storage, code, archive);
 	await deps.workspaceRemove({

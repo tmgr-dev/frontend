@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 export const isDesktopApp = (): boolean =>
 	typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -29,26 +30,38 @@ export const hasNativeTitleBar = (
 
 export const trayName = (
 	platform: DesktopPlatform | null = desktopPlatform(),
-): string => (isMacLike(platform) ? 'menu bar' : 'system tray');
+): string =>
+	t(
+		isMacLike(platform)
+			? 'desktop.helpers.trayName.menuBar'
+			: 'desktop.helpers.trayName.systemTray',
+	);
 
 export const revealInFileManagerLabel = (
 	platform: DesktopPlatform | null = desktopPlatform(),
 ): string => {
-	if (platform === 'windows') return 'Show in Explorer';
-	if (platform === 'linux') return 'Show in file manager';
-	return 'Show in Finder';
+	if (platform === 'windows')
+		return t('desktop.helpers.revealInFileManager.explorer');
+	if (platform === 'linux')
+		return t('desktop.helpers.revealInFileManager.fileManager');
+	return t('desktop.helpers.revealInFileManager.finder');
 };
 
 export const thisComputerName = (
 	platform: DesktopPlatform | null = desktopPlatform(),
-): string => (isMacLike(platform) ? 'this Mac' : 'this computer');
+): string =>
+	t(
+		isMacLike(platform)
+			? 'desktop.helpers.thisComputer.mac'
+			: 'desktop.helpers.thisComputer.computer',
+	);
 
 export const supportsSelectionCapture = (
 	platform: DesktopPlatform | null = desktopPlatform(),
 ): boolean => isMacLike(platform);
 
-export const PLUGIN_WINDOWS_UNAVAILABLE =
-	'Plugin windows are not available on Windows yet.';
+export const pluginWindowsUnavailable = (): string =>
+	t('desktop.helpers.pluginWindowsUnavailable');
 
 export const supportsPluginWindows = (
 	platform: DesktopPlatform | null = desktopPlatform(),

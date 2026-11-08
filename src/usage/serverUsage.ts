@@ -4,6 +4,7 @@ import type {
 	TaskCostRates,
 	TaskCostTokens,
 } from '@/actions/tmgr/taskCost';
+import { t } from '@/i18n';
 import { formatUsd, modelShort, pricedCost } from './taskModel';
 import type {
 	TaskNode,
@@ -133,12 +134,16 @@ export const pickUsage = ({
 			aggregate: synced,
 			notice:
 				Math.round(delta * 100) > UNSYNCED_DELTA_CENTS
-					? `This device has ${formatUsd(delta)} of usage not yet synced.`
+					? t('taskAgent.helpers.usage.server.unsynced', {
+							amount: formatUsd(delta),
+						})
 					: null,
 		};
 	}
 	const unknownNotice =
-		serverState === 'failed' ? 'Could not read the synced usage.' : null;
+		serverState === 'failed'
+			? t('taskAgent.helpers.usage.server.readFailed')
+			: null;
 	if (hasLocal) {
 		return {
 			source: 'local',
@@ -146,7 +151,7 @@ export const pickUsage = ({
 			notice:
 				serverState !== 'ready'
 					? unknownNotice
-					: 'Local only — not synced. The task cost API and other members see no AI usage for this task. Run `tmgr usage sync` to upload it.',
+					: t('taskAgent.helpers.usage.server.localOnly'),
 		};
 	}
 	return { source: 'none', aggregate: null, notice: unknownNotice };
@@ -167,17 +172,21 @@ export const ratesRows = (
 ): { model: string; text: string }[] =>
 	(rates ?? []).map((r) => {
 		const parts = [
-			['input', rate(r.input)],
-			['output', rate(r.output)],
-			['cache read', rate(r.cacheRead)],
-			['cache write 5m', rate(r.cacheWrite5m)],
-			['cache write 1h', rate(r.cacheWrite1h)],
+			[t('taskAgent.helpers.usage.rates.input'), rate(r.input)],
+			[t('taskAgent.helpers.usage.rates.output'), rate(r.output)],
+			[t('taskAgent.helpers.usage.rates.cacheRead'), rate(r.cacheRead)],
+			[t('taskAgent.helpers.usage.rates.cacheWrite5m'), rate(r.cacheWrite5m)],
+			[t('taskAgent.helpers.usage.rates.cacheWrite1h'), rate(r.cacheWrite1h)],
 		]
 			.filter(([, value]) => value !== null)
-			.map(([label, value]) => `${label} ${value}`);
+			.map(([label, value]) =>
+				t('taskAgent.helpers.usage.rates.line', { label, value }),
+			);
 		return {
 			model: modelShort(r.model),
-			text: `${parts.join(' · ')} per 1M tokens`,
+			text: t('taskAgent.helpers.usage.rates.per1M', {
+				parts: parts.join(' · '),
+			}),
 		};
 	});
 
@@ -185,7 +194,5 @@ export const unpricedWarning = (
 	count: number | null | undefined,
 ): string | null => {
 	if (!count || count <= 0) return null;
-	return `${count} ${
-		count === 1 ? 'event has' : 'events have'
-	} no price; the cost is understated.`;
+	return t('taskAgent.helpers.usage.unpriced', count);
 };

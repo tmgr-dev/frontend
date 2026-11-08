@@ -483,5 +483,258 @@
 			"runnerNotRunning": "The TMGR runner is not running. Start it to see autopilot here.",
 			"updateRunner": "Update the TMGR runner to see autopilot here."
 		}
+	},
+	"helpers": {
+		"trayName": {
+			"menuBar": "menu bar",
+			"systemTray": "system tray"
+		},
+		"revealInFileManager": {
+			"explorer": "Show in Explorer",
+			"fileManager": "Show in file manager",
+			"finder": "Show in Finder"
+		},
+		"thisComputer": {
+			"mac": "this Mac",
+			"computer": "this computer"
+		},
+		"pluginWindowsUnavailable": "Plugin windows are not available on Windows yet.",
+		"download": {
+			"title": "Downloaded {name}",
+			"finished": "Download finished",
+			"savedTo": "Saved to Downloads",
+			"failed": "Download failed",
+			"couldNotSave": "{name} could not be saved.",
+			"theFile": "The file"
+		},
+		"updateCheck": {
+			"tryAgainLater": "Try again later.",
+			"upToDateVersion": "You're up to date (v{version})",
+			"upToDate": "You're up to date",
+			"available": "Update v{version} available",
+			"installHint": "Install and restart to update.",
+			"failed": "Update check failed",
+			"couldNotCheck": "Could not check for updates",
+			"checkConnection": "Check your connection and try again."
+		},
+		"primaryModifiers": {
+			"mac": "Use at least one of ⌘ ⌃ ⌥",
+			"other": "Use at least one of Ctrl, Alt, {key}",
+			"win": "Win",
+			"super": "Super"
+		},
+		"away": {
+			"hoursMinutes": "{h} h {m} min",
+			"minutes": "{m} min"
+		},
+		"localOnly": {
+			"welcomeMac": "Your data stays on this Mac. You can create an account later.",
+			"welcomeComputer": "Your data stays on this computer. You can create an account later.",
+			"noBackup": "No backup yet",
+			"backupJustNow": "Last backup: just now",
+			"backupMinutes": "Last backup: {n} minute ago | Last backup: {n} minutes ago",
+			"backupHours": "Last backup: {n} hour ago | Last backup: {n} hours ago",
+			"backupDays": "Last backup: {n} day ago | Last backup: {n} days ago",
+			"backupFailed": "Last backup failed: {error}",
+			"backupStale": "No backup for {days} days"
+		},
+		"upgradeFailure": {
+			"link": "This device could not be linked to your account, so your local data stays on this device for now. You can keep working, retry, or skip.",
+			"move": "Some local data could not be moved to this account yet. You can keep working, and we will try again next time you start the app."
+		},
+		"move": {
+			"copiedBanner": "Copied to your cloud workspace {name} on {date}. Changes here are not synced.",
+			"previousMove": "You moved this workspace on {date}. This creates a second cloud copy.",
+			"entities": {
+				"personas": "Personas",
+				"statuses": "Statuses",
+				"categories": "Categories",
+				"tasks": "Tasks",
+				"comments": "Comments",
+				"files": "Files",
+				"pages": "Pages",
+				"page_versions": "Page versions",
+				"routines": "Routines",
+				"agent_runs": "Agent runs",
+				"assignments": "Assignments",
+				"relations": "Relations",
+				"modules": "Modules"
+			},
+			"skipReasons": {
+				"excluded": "left out of the move",
+				"not_uploaded": "not uploaded",
+				"not_allowed": "not allowed",
+				"persona_is_me": "belongs to you",
+				"disabled": "disabled",
+				"unsupported": "not supported",
+				"duplicate": "duplicate",
+				"unknown_module": "unknown module",
+				"unmapped_target": "its target was not moved"
+			},
+			"report": {
+				"moved": "{entity}: {imported} of {expected} moved",
+				"movedSkipped": "{entity}: {imported} of {expected} moved, {skipped} skipped",
+				"fileSkipped": "{name}: skipped, {reason}",
+				"unmapped": "{n} reference points to something that was not moved | {n} references point to something that was not moved",
+				"countMismatch": "{entity}: expected {expected}, moved {imported}, skipped {skipped}",
+				"bundleMismatch": "{entity}: the bundle held {actual} of {expected} items",
+				"unmappedRefs": "{count} references point to something that was not moved",
+				"failed": "The move failed on the server."
+			},
+			"rows": {
+				"backup": "Backup created",
+				"bundle": "Bundle uploaded",
+				"statuses": "Statuses and categories",
+				"tasks": "Tasks",
+				"comments": "Comments",
+				"files": "Files",
+				"pages": "Pages",
+				"links": "Links",
+				"routines": "Routines and agent runs",
+				"publish": "Check and publish"
+			},
+			"rowCount": "{label} {done} of {total}",
+			"rowSkipped": "{label} · {skipped} skipped (see report)",
+			"excludedReasons": {
+				"missing": "file is missing",
+				"too_large": "too large",
+				"mime": "type not allowed",
+				"refused": "refused by the server"
+			},
+			"skillReasons": {
+				"library_full": "your library is full",
+				"invalid": "not a valid skill",
+				"not_owner": "the persona belongs to another member",
+				"not_moved": "the persona was not moved",
+				"attach_limit": "the persona has too many skills",
+				"invalid_files": "its files are not valid (path, text or size limits)",
+				"too_large": "too large to move to cloud",
+				"files_limit": "its files would exceed your 10 MiB files limit"
+			},
+			"skills": {
+				"aSkill": "a skill",
+				"added": "{n} added",
+				"reused": "{n} already in your library",
+				"renamed": "{n} renamed ({list})",
+				"summary": "Skills: {parts}",
+				"notCopied": "{name}: not copied, {reason}",
+				"notAttached": "{name}: not attached to {n} persona, {reason} | {name}: not attached to {n} personas, {reason}",
+				"dryRun": "Skills: {count} from this device's library"
+			},
+			"guards": {
+				"published": "The move is published and verified in your cloud account",
+				"unchanged": "Nothing changed in this workspace since the snapshot",
+				"files": "Every file that could not be uploaded is exported or accepted as lost",
+				"skills": "Skills from this device are copied to your cloud library",
+				"removeAccount": "This move was published by another account. Sign in as that account to remove the local copy.",
+				"cannotRemove": "Cannot remove yet: {reason}."
+			},
+			"legacy": "This move was started by an older version. Discard it and start again."
+		},
+		"runner": {
+			"states": {
+				"done": "Done",
+				"failed": "Failed",
+				"interrupted": "Interrupted",
+				"starting": "Starting",
+				"working": "Working",
+				"waiting": "Idle",
+				"blocked": "Needs input",
+				"unknown": "Unknown"
+			},
+			"exitCode": "Exited (code {code})",
+			"status": {
+				"ready": "Ready",
+				"readyVersion": "Ready v{version}",
+				"incompatible": "Incompatible version",
+				"absent": "Not running",
+				"checking": "Checking…",
+				"updateRunner": "Update the TMGR runner"
+			},
+			"errors": {
+				"busy": "The agent is busy, try again in a moment.",
+				"unknownProfile": "This agent profile is not available. Pick another profile.",
+				"sandbox": "The sandbox blocked this run. Check the project folder and try again.",
+				"limit": "Too many agents are running. Stop one and try again.",
+				"invalidParams": "The runner rejected the request. Check the project folder and try again.",
+				"taskNotFound": "This task was not found in the local workspace.",
+				"prefix": {
+					"start": "Could not start the agent",
+					"stop": "Could not stop the agent",
+					"input": "Could not send input to the agent",
+					"open": "Could not open the terminal"
+				},
+				"withMessage": "{prefix}: {message}",
+				"withoutMessage": "{prefix}."
+			},
+			"cloudTooltip": "Agent runs work only with local workspaces for now.",
+			"absentTooltip": "TMGR runner is not running. Start it with `tmgr runner start`.",
+			"age": {
+				"justNow": "just now",
+				"minutes": "{n}m ago",
+				"hours": "{n}h ago",
+				"days": "{n}d ago"
+			}
+		},
+		"autopilot": {
+			"empty": "Autopilot is not running.",
+			"titleQueue": "Queue loop",
+			"title": "Autopilot",
+			"words": {
+				"starting": "starting",
+				"running": "running",
+				"paused": "paused",
+				"stopping": "stopping",
+				"stopped": "stopped",
+				"suspended": "suspended",
+				"notRunning": "not running"
+			},
+			"lastState": "last state {state}",
+			"lastStateUpdated": "last state {state}, updated {age} ago",
+			"counters": {
+				"done": "done (PR)",
+				"inWork": "in work",
+				"needsFeedback": "needs feedback",
+				"blocked": "blocked",
+				"held": "held",
+				"failed": "failed",
+				"queued": "queued"
+			},
+			"limit": {
+				"unknown": "{label}: unknown{age}",
+				"pct": "{label}: {pct}% {source}{age}",
+				"age": " {age} ago",
+				"marks": " (stop new at {soft}%, pause at {hard}%)",
+				"resets": " · resets {time}"
+			},
+			"cost": {
+				"ofCap": "{used} of {cap} cap",
+				"noneYet": "none yet, {cap} cap"
+			},
+			"guardOff": "no usage limit (the guard is off)",
+			"nextStop": "≈ {pct}% of the {window} window left before \"{kind}\""
+		},
+		"connectAgent": {
+			"notes": {
+				"modules": "Install also turns on local agent access and the Personas and Agent work modules in this workspace.",
+				"keychain": "Your token stays in the macOS Keychain. It is not part of the command.",
+				"oneWorkspace": "Each agent connects to one workspace. Installing here replaces an earlier TMGR connection."
+			},
+			"translocated": "Move TMGR to Applications, open it from there, then install.",
+			"safeMode": "Plugin safe mode is on, so agents cannot connect. Turn it off and reopen this screen.",
+			"unsupported": "Installing from this screen works on macOS only. Use Copy config instead.",
+			"bridge": "TMGR cannot work out its own program path, so agents cannot connect from here.",
+			"timeout": "The command did not finish. Press Install again, or Remove.",
+			"claudeFailureNote": "The earlier TMGR entry in Claude Code was already removed.",
+			"installed": "Restart {title} so it picks up TMGR. Then ask it to list your TMGR tasks.",
+			"installFailed": "Could not connect {title}.",
+			"removed": "Removed TMGR from {title}.",
+			"removeFailed": "Could not remove TMGR from {title}.",
+			"demoRefusal": "Create your own workspace first, then connect your agent.",
+			"rateLimit": "You have already created 10 agent tokens in the last hour. Wait a little and try again."
+		},
+		"socialLogin": {
+			"startFailed": "Could not start sign-in."
+		}
 	}
 }

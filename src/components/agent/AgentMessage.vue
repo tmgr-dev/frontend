@@ -9,11 +9,7 @@
 		formatMessageStats,
 		formatMessageTime,
 	} from '@/utils/agentMessageMeta';
-	import {
-		QUOTE_UNAVAILABLE,
-		quoteAuthor,
-		sentChip,
-	} from '@/utils/agentQuotes';
+	import { quoteUnavailable, quoteAuthor, sentChip } from '@/utils/agentQuotes';
 	import { agentToolLabel } from '@/utils/agentToolLabels';
 	import { writeClipboard } from '@/utils/share';
 	import { Check, Copy, Loader2, Pin, Reply } from 'lucide-vue-next';
@@ -103,7 +99,7 @@
 					>
 						<span class="font-medium">{{ quoteAuthor(quote.role) }}</span>
 						<span class="block truncate">{{ sentChip(quote).text }}</span>
-						<span class="italic">{{ QUOTE_UNAVAILABLE }}</span>
+						<span class="italic">{{ quoteUnavailable() }}</span>
 					</div>
 				</li>
 			</ul>

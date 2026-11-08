@@ -53,7 +53,7 @@ describe('SkillsLibrary deleted section', () => {
 	it('guards Edit and History for the reserved slug but not Delete', () => {
 		const flat = source.replace(/\s+/g, ' ');
 		expect(flat).toContain('isReservedSkillSlug(skill.slug)');
-		expect(flat).toContain('RESERVED_SKILL_MESSAGE');
+		expect(flat).toContain('reservedSkillMessage');
 		expect(flat).toMatch(/@click="openHistory\(skill\)"/);
 		expect(flat).toMatch(/@click="startEdit\(skill\)"/);
 		expect(flat).toMatch(/@click="remove\(skill\)"/);

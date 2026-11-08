@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 export interface DownloadFinished {
 	name: string | null;
 	path: string | null;
@@ -18,14 +20,18 @@ export const downloadToast = ({
 }: DownloadFinished): DownloadToast =>
 	success
 		? {
-				title: name ? `Downloaded ${name}` : 'Download finished',
-				description: 'Saved to Downloads',
+				title: name
+					? t('desktop.helpers.download.title', { name })
+					: t('desktop.helpers.download.finished'),
+				description: t('desktop.helpers.download.savedTo'),
 				variant: 'default',
 				revealPath: path,
 			}
 		: {
-				title: 'Download failed',
-				description: `${name ?? 'The file'} could not be saved.`,
+				title: t('desktop.helpers.download.failed'),
+				description: t('desktop.helpers.download.couldNotSave', {
+					name: name ?? t('desktop.helpers.download.theFile'),
+				}),
 				variant: 'destructive',
 				revealPath: null,
 			};

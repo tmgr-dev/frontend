@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { AgentCompaction, AgentMessage } from '@/types/agent';
 
 export const mergeCompaction = (
@@ -35,10 +36,10 @@ export const compactErrorMessage = (
 ): string => {
 	switch (status) {
 		case 409:
-			return serverMessage?.trim() || 'Nothing to compact right now.';
+			return serverMessage?.trim() || t('agents.helpers.compaction.nothing');
 		case 429:
-			return 'Compacting is rate limited. Try again later.';
+			return t('agents.helpers.compaction.rateLimited');
 		default:
-			return 'Could not compact the history. Please try again.';
+			return t('agents.helpers.compaction.failed');
 	}
 };

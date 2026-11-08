@@ -30,11 +30,7 @@
 	} from '@/composable/useAgentStatus';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { usePusher } from '@/composable/usePusher';
-	import {
-		STATE_GLYPHS,
-		STATE_LABELS,
-		statusTooltip,
-	} from '@/utils/agentStatus';
+	import { STATE_GLYPHS, stateLabel, statusTooltip } from '@/utils/agentStatus';
 	import { t } from '@/i18n';
 	import { computed, defineComponent, onBeforeUnmount, watch } from 'vue';
 	import { useStore } from 'vuex';
@@ -94,7 +90,7 @@
 			const stateClass = computed(() => STATE_CLASSES[status.value?.state]);
 			const ariaLabel = computed(() => {
 				if (!status.value) return undefined;
-				const state = STATE_LABELS[status.value.state].toLowerCase();
+				const state = stateLabel(status.value.state).toLowerCase();
 				return status.value.count > 1
 					? t(
 							'taskAgent.statusChip.ariaLabelSessions',

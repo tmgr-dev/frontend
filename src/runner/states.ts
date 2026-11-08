@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { RunnerExitDetail, RunnerState } from './api';
 
 export type StateTone =
@@ -17,26 +18,52 @@ export interface StateView {
 
 const EXIT_DETAILS: RunnerExitDetail[] = ['done', 'failed', 'interrupted'];
 
-const EXITED: Record<RunnerExitDetail, StateView> = {
-	done: { label: 'Done', tone: 'success', highlight: false },
-	failed: { label: 'Failed', tone: 'danger', highlight: false },
-	interrupted: { label: 'Interrupted', tone: 'warning', highlight: false },
+const EXITED: Record<RunnerExitDetail, { tone: StateTone }> = {
+	done: { tone: 'success' },
+	failed: { tone: 'danger' },
+	interrupted: { tone: 'warning' },
 };
 
 export const describeState = (state: RunnerState): StateView => {
 	switch (state.kind) {
 		case 'starting':
-			return { label: 'Starting', tone: 'info', highlight: false };
+			return {
+				label: t('desktop.helpers.runner.states.starting'),
+				tone: 'info',
+				highlight: false,
+			};
 		case 'working':
-			return { label: 'Working', tone: 'active', highlight: false };
+			return {
+				label: t('desktop.helpers.runner.states.working'),
+				tone: 'active',
+				highlight: false,
+			};
 		case 'waiting':
-			return { label: 'Idle', tone: 'neutral', highlight: false };
+			return {
+				label: t('desktop.helpers.runner.states.waiting'),
+				tone: 'neutral',
+				highlight: false,
+			};
 		case 'blocked':
-			return { label: 'Needs input', tone: 'attention', highlight: true };
-		case 'exited':
-			return { ...EXITED[state.detail ?? 'done'] };
+			return {
+				label: t('desktop.helpers.runner.states.blocked'),
+				tone: 'attention',
+				highlight: true,
+			};
+		case 'exited': {
+			const detail = state.detail ?? 'done';
+			return {
+				label: t(`desktop.helpers.runner.states.${detail}`),
+				tone: EXITED[detail].tone,
+				highlight: false,
+			};
+		}
 		default:
-			return { label: 'Unknown', tone: 'neutral', highlight: false };
+			return {
+				label: t('desktop.helpers.runner.states.unknown'),
+				tone: 'neutral',
+				highlight: false,
+			};
 	}
 };
 
@@ -60,7 +87,7 @@ export const exitCodeLabel = (state: RunnerState): string | null =>
 	state.kind === 'exited' &&
 	state.detail === 'failed' &&
 	Number.isInteger(state.exitCode)
-		? `Exited (code ${state.exitCode})`
+		? t('desktop.helpers.runner.exitCode', { code: state.exitCode })
 		: null;
 
 export const TONE_CLASS: Record<StateTone, string> = {

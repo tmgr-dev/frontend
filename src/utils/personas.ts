@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { AuthorRef } from '@/types/author';
 
 export const PERSONA_PERMISSIONS = [
@@ -74,10 +75,10 @@ export const byteLength = (text: string): number =>
 	new TextEncoder().encode(text ?? '').length;
 
 export const validatePersonaName = (name: string): string | null => {
-	if (!name || !name.trim()) return 'Name is required';
+	if (!name || !name.trim()) return t('agents.helpers.personas.nameRequired');
 	if (name.length > NAME_MAX_LENGTH)
-		return `Name must be ${NAME_MAX_LENGTH} characters or fewer`;
-	if (name.includes('@')) return 'Name cannot contain "@"';
+		return t('agents.helpers.personas.nameTooLong', { max: NAME_MAX_LENGTH });
+	if (name.includes('@')) return t('agents.helpers.personas.nameAt');
 	return null;
 };
 
@@ -92,7 +93,10 @@ export const extractFieldErrors = (error: unknown): FieldErrors | null => {
 	if (response?.status !== 422) return null;
 	const data = response.data;
 	if (!data?.errors) return null;
-	return { message: data.message ?? 'Validation failed', errors: data.errors };
+	return {
+		message: data.message ?? t('agents.helpers.personas.validationFailed'),
+		errors: data.errors,
+	};
 };
 
 export const SKILL_LIMIT = 20;
@@ -104,8 +108,8 @@ export const SKILL_SLUG_PATTERN = /^[a-z0-9-]{1,60}$/;
 export const RESERVED_SKILL_SLUG = 'deleted';
 export const isReservedSkillSlug = (slug: string) =>
 	slug === RESERVED_SKILL_SLUG;
-export const RESERVED_SKILL_MESSAGE =
-	'This skill uses a reserved name. Rename it with the tmgr CLI, or delete it.';
+export const reservedSkillMessage = (): string =>
+	t('agents.helpers.personas.reserved');
 export const SKILL_TEMPLATE =
 	'---\nslug: \ntitle: \nwhen: \nactions: []\n---\n';
 
@@ -163,38 +167,44 @@ export const validateSkillMarkdown = (
 	const errors: Record<string, string[]> = {};
 
 	if (byteLength(markdown) > SKILL_BODY_MAX_BYTES) {
-		errors.body = [`must not exceed ${SKILL_BODY_MAX_BYTES} bytes`];
+		errors.body = [
+			t('agents.helpers.personas.skill.bodyBytes', {
+				max: SKILL_BODY_MAX_BYTES,
+			}),
+		];
 	}
 
 	const parsed = parseSkillFrontMatter(markdown);
 	if (!parsed) {
 		errors.body = [
 			...(errors.body ?? []),
-			"must start with a '---' front-matter block closed by a second '---'",
+			t('agents.helpers.personas.skill.frontMatter'),
 		];
 		return errors;
 	}
 
 	if (!parsed.slug) {
-		errors.slug = ['is required'];
+		errors.slug = [t('agents.helpers.personas.skill.required')];
 	} else if (!SKILL_SLUG_PATTERN.test(parsed.slug)) {
-		errors.slug = [
-			"must be lowercase letters, digits or '-', up to 60 characters",
-		];
+		errors.slug = [t('agents.helpers.personas.skill.slugPattern')];
 	} else if (isNew && isReservedSkillSlug(parsed.slug)) {
-		errors.slug = ['This name is reserved'];
+		errors.slug = [t('agents.helpers.personas.skill.slugReserved')];
 	} else if (expectedSlug && parsed.slug !== expectedSlug) {
-		errors.slug = ['must match the URL slug'];
+		errors.slug = [t('agents.helpers.personas.skill.slugMatch')];
 	}
 
 	if (!parsed.title) {
-		errors.title = ['is required'];
+		errors.title = [t('agents.helpers.personas.skill.required')];
 	} else if (parsed.title.length > SKILL_TITLE_MAX_LENGTH) {
-		errors.title = [`must not exceed ${SKILL_TITLE_MAX_LENGTH} characters`];
+		errors.title = [
+			t('agents.helpers.personas.skill.titleLength', {
+				max: SKILL_TITLE_MAX_LENGTH,
+			}),
+		];
 	}
 
 	if (!parsed.when) {
-		errors.when = ['is required'];
+		errors.when = [t('agents.helpers.personas.skill.required')];
 	}
 
 	return Object.keys(errors).length > 0 ? errors : null;
@@ -204,21 +214,27 @@ export const sharedSkillDeleteConfirm = (
 	title: string,
 	attached: { id: string; name: string; pinned_version?: number | null }[],
 ): string => {
-	const question = `Delete skill "${title}"?`;
+	const question = t('agents.helpers.personas.skill.deleteQuestion', { title });
 	if (attached.length === 0) return question;
-	return `${question}\n\nAttached to ${attached
-		.map((p) =>
-			p.pinned_version ? `${p.name} (pinned to v${p.pinned_version})` : p.name,
-		)
-		.join(', ')}. They lose this skill immediately; no copy is kept.`;
+	return t('agents.helpers.personas.skill.deleteAttached', {
+		question,
+		list: attached
+			.map((p) =>
+				p.pinned_version
+					? t('agents.helpers.personas.skill.pinned', {
+							name: p.name,
+							version: p.pinned_version,
+						})
+					: p.name,
+			)
+			.join(', '),
+	});
 };
 
 export const detachedSkillsTitle = (detached: unknown[]): string =>
 	detached.length === 0
-		? 'Skill deleted'
-		: `Skill deleted and detached from ${detached.length} ${
-				detached.length === 1 ? 'persona' : 'personas'
-			}`;
+		? t('agents.helpers.personas.skill.deleted')
+		: t('agents.helpers.personas.skill.deletedDetached', detached.length);
 
 export const attachableSharedSkills = <T extends { slug: string }>(
 	library: T[],
@@ -233,9 +249,12 @@ export const EXPIRY_OPTIONS = [30, 90, 180, 365] as const;
 export const DEFAULT_TOKEN_EXPIRY_DAYS = 90;
 
 export const validateTokenLabel = (label: string): string | null => {
-	if (!label || !label.trim()) return 'Label is required';
+	if (!label || !label.trim())
+		return t('agents.helpers.personas.labelRequired');
 	if (label.length > TOKEN_LABEL_MAX_LENGTH)
-		return `Label must be ${TOKEN_LABEL_MAX_LENGTH} characters or fewer`;
+		return t('agents.helpers.personas.labelTooLong', {
+			max: TOKEN_LABEL_MAX_LENGTH,
+		});
 	return null;
 };
 
@@ -310,9 +329,12 @@ export const resolveAuthor = (
 		id: author.id,
 		name: author.name,
 		subtitle: author.owner
-			? `${author.kind === 'ai' ? 'requested by' : 'persona of'} ${
-					author.owner.name
-				}`
+			? t(
+					author.kind === 'ai'
+						? 'agents.helpers.personas.requestedBy'
+						: 'agents.helpers.personas.personaOf',
+					{ name: author.owner.name },
+				)
 			: null,
 		avatar: author.avatar ?? null,
 	};
@@ -424,7 +446,11 @@ export const hasMyPersonaAssignee = (
 export type PersonaScope = 'account' | 'workspace';
 
 export const personaScopeLabel = (workspaceId: number | null | undefined) =>
-	workspaceId ? 'Workspace' : 'Only me';
+	t(
+		workspaceId
+			? 'agents.helpers.personas.scopeWorkspace'
+			: 'agents.helpers.personas.scopeMe',
+	);
 
 export const buildReplacePersonas = (
 	others: Array<{ id: string; version: number }>,
@@ -435,7 +461,6 @@ export const buildReplacePersonas = (
 		.map((p) => ({ id: p.id, version: p.version }));
 
 export const convertSuccessTitle = (replaced: number): string => {
-	const base = 'Converted to a shared skill';
-	if (replaced <= 0) return base;
-	return `${base} and replaced on ${replaced} ${replaced === 1 ? 'persona' : 'personas'}`;
+	if (replaced <= 0) return t('agents.helpers.personas.converted');
+	return t('agents.helpers.personas.convertedReplaced', replaced);
 };

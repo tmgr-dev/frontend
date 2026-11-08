@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type {
 	AutopilotInput,
 	AutopilotView,
@@ -19,7 +20,6 @@ interface PrLink {
 	url: string | null;
 }
 
-const EMPTY_TEXT = 'Autopilot is not running.';
 const EMPTY_COMMAND = 'tmgr queue autopilot';
 const KNOWN_STATES = ['running', 'paused', 'stopping', 'stopped', 'suspended'];
 const EVENT_LIMIT = 50;
@@ -137,8 +137,8 @@ const buttonsFor = (running: boolean, state: string): ButtonsView => {
 };
 
 const startingHeader = (): HeaderView => ({
-	title: 'Autopilot',
-	word: 'starting',
+	title: t('desktop.helpers.autopilot.title'),
+	word: t('desktop.helpers.autopilot.words.starting'),
 	note: null,
 	needsUpdate: false,
 	startedAt: null,
@@ -165,21 +165,31 @@ const statusHeader = (
 
 	let word = state ? cleanText(state, 32) : '—';
 	if (!needsUpdate) {
-		if (running) word = state;
-		else word = stopped ? 'stopped' : 'not running';
+		if (running) word = t(`desktop.helpers.autopilot.words.${state}`);
+		else
+			word = t(
+				stopped
+					? 'desktop.helpers.autopilot.words.stopped'
+					: 'desktop.helpers.autopilot.words.notRunning',
+			);
 	}
 
 	const lastState =
 		!needsUpdate && !running && !stopped
-			? `last state ${state}${
-					updatedMs === null
-						? ''
-						: `, updated ${span((nowMs - updatedMs) / 1000)} ago`
-				}`
+			? updatedMs === null
+				? t('desktop.helpers.autopilot.lastState', { state })
+				: t('desktop.helpers.autopilot.lastStateUpdated', {
+						state,
+						age: span((nowMs - updatedMs) / 1000),
+					})
 			: null;
 
 	return {
-		title: d.kind === 'queue' ? 'Queue loop' : 'Autopilot',
+		title: t(
+			d.kind === 'queue'
+				? 'desktop.helpers.autopilot.titleQueue'
+				: 'desktop.helpers.autopilot.title',
+		),
 		word,
 		note: lastState,
 		needsUpdate,
@@ -223,7 +233,8 @@ const limitView = (
 	)}`;
 	const source = text(raw.source, 32);
 	const age = ageSpan(nowMs, raw.observed_at);
-	const ageSuffix = age === null ? '' : ` ${age} ago`;
+	const ageSuffix =
+		age === null ? '' : t('desktop.helpers.autopilot.limit.age', { age });
 	const pct = num(raw.used_pct);
 	const soft = num(raw.stop_new_at);
 	const hard = num(raw.pause_at);
@@ -232,11 +243,24 @@ const limitView = (
 	const resets =
 		resetsMs === null ? null : clock(raw.resets_at as string, tzMinutes);
 
-	let body = `${label}: unknown${ageSuffix}`;
+	let body = t('desktop.helpers.autopilot.limit.unknown', {
+		label,
+		age: ageSuffix,
+	});
 	if (pct !== null) {
-		body = `${label}: ${Math.round(pct)}% ${source}${ageSuffix}`;
-		if (marks) body += ` (stop new at ${marks.soft}%, pause at ${marks.hard}%)`;
-		if (resets !== null) body += ` · resets ${resets}`;
+		body = t('desktop.helpers.autopilot.limit.pct', {
+			label,
+			pct: Math.round(pct),
+			source,
+			age: ageSuffix,
+		});
+		if (marks)
+			body += t('desktop.helpers.autopilot.limit.marks', {
+				soft: marks.soft,
+				hard: marks.hard,
+			});
+		if (resets !== null)
+			body += t('desktop.helpers.autopilot.limit.resets', { time: resets });
 	}
 
 	return {
@@ -258,9 +282,13 @@ const costView = (d: Loose): CostView => {
 	const cap = num(c.api_cap_usd);
 	let api = 'n/a';
 	if (apiUsd !== null && cap !== null)
-		api = `${money(apiUsd)} of ${money(cap)} cap`;
+		api = t('desktop.helpers.autopilot.cost.ofCap', {
+			used: money(apiUsd),
+			cap: money(cap),
+		});
 	else if (apiUsd !== null) api = money(apiUsd);
-	else if (cap !== null) api = `none yet, ${money(cap)} cap`;
+	else if (cap !== null)
+		api = t('desktop.helpers.autopilot.cost.noneYet', { cap: money(cap) });
 	return {
 		subscription: money(subscriptionUsd),
 		basis: subscriptionUsd > 0 ? optText(c.basis, 200) : null,
@@ -334,7 +362,7 @@ export const buildView = (
 		? [
 				{
 					key: 'done',
-					label: 'done (PR)',
+					label: t('desktop.helpers.autopilot.counters.done'),
 					count: int(tasks.done_pr),
 					items: prs.map((p) =>
 						p.url ? { task: p.task, url: p.url } : { task: p.task },
@@ -342,37 +370,37 @@ export const buildView = (
 				},
 				{
 					key: 'inWork',
-					label: 'in work',
+					label: t('desktop.helpers.autopilot.counters.inWork'),
 					count: int(tasks.in_work),
 					items: runs.map((r) => ({ task: r.task, title: r.title })),
 				},
 				{
 					key: 'needsFeedback',
-					label: 'needs feedback',
+					label: t('desktop.helpers.autopilot.counters.needsFeedback'),
 					count: int(tasks.needs_feedback),
 					items: null,
 				},
 				{
 					key: 'blocked',
-					label: 'blocked',
+					label: t('desktop.helpers.autopilot.counters.blocked'),
 					count: int(tasks.blocked),
 					items: null,
 				},
 				{
 					key: 'held',
-					label: 'held',
+					label: t('desktop.helpers.autopilot.counters.held'),
 					count: int(tasks.held),
 					items: reasonItems(resume.held ?? summary.held),
 				},
 				{
 					key: 'failed',
-					label: 'failed',
+					label: t('desktop.helpers.autopilot.counters.failed'),
 					count: int(tasks.failed),
 					items: reasonItems(resume.failed ?? summary.failed),
 				},
 				{
 					key: 'queued',
-					label: 'queued',
+					label: t('desktop.helpers.autopilot.counters.queued'),
 					count: int(tasks.queued),
 					items: null,
 				},
@@ -386,7 +414,7 @@ export const buildView = (
 
 	return {
 		empty: !input.running && !hasStatus,
-		emptyText: EMPTY_TEXT,
+		emptyText: t('desktop.helpers.autopilot.empty'),
 		emptyCommand: EMPTY_COMMAND,
 		header: !hasStatus
 			? input.running
@@ -399,14 +427,16 @@ export const buildView = (
 		limits,
 		limitsNote:
 			limits.length === 0 && settings.usage_guard === false
-				? 'no usage limit (the guard is off)'
+				? t('desktop.helpers.autopilot.guardOff')
 				: null,
 		nextStop:
 			pctLeft === null
 				? null
-				: `≈ ${Math.round(pctLeft)}% of the ${windowName(
-						text(nextRaw.window, 32),
-					)} window left before "${text(nextRaw.kind, 200)}"`,
+				: t('desktop.helpers.autopilot.nextStop', {
+						pct: Math.round(pctLeft),
+						window: windowName(text(nextRaw.window, 32)),
+						kind: text(nextRaw.kind, 200),
+					}),
 		cost: hasStatus ? costView(d) : null,
 		unconfirmedNew: int(d.unconfirmed_new),
 		events: list(d.events)

@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { formatWorkDuration, isHttpUrl } from '../utils/agentWork';
 import type {
 	HookStat,
@@ -70,25 +71,37 @@ export interface TokenRow {
 
 export const tokenRows = (tokens: TaskTokens): TokenRow[] => {
 	const rows: TokenRow[] = [
-		{ key: 'input', label: 'Input', value: tokens.input },
+		{
+			key: 'input',
+			label: t('taskAgent.helpers.usage.rows.input'),
+			value: tokens.input,
+		},
 		{
 			key: 'cache_read',
-			label: 'Cache read',
+			label: t('taskAgent.helpers.usage.rows.cache_read'),
 			value: tokens.cache_read,
 			pct: cacheReadPct(tokens),
 		},
 		{
 			key: 'cache_write_5m',
-			label: 'Cache write 5m',
+			label: t('taskAgent.helpers.usage.rows.cache_write_5m'),
 			value: tokens.cache_write_5m,
 		},
 		{
 			key: 'cache_write_1h',
-			label: 'Cache write 1h',
+			label: t('taskAgent.helpers.usage.rows.cache_write_1h'),
 			value: tokens.cache_write_1h,
 		},
-		{ key: 'output', label: 'Output', value: tokens.output },
-		{ key: 'reasoning', label: 'Reasoning', value: tokens.reasoning },
+		{
+			key: 'output',
+			label: t('taskAgent.helpers.usage.rows.output'),
+			value: tokens.output,
+		},
+		{
+			key: 'reasoning',
+			label: t('taskAgent.helpers.usage.rows.reasoning'),
+			value: tokens.reasoning,
+		},
 	];
 	return rows.filter(
 		(row) => row.key === 'input' || row.key === 'output' || row.value !== 0,
@@ -104,8 +117,14 @@ export const nodeLabel = (node: TaskNode): string => {
 
 export const nodeTime = (node: TaskNode): { text: string; title: string } =>
 	node.active_ms != null
-		? { text: formatMs(node.active_ms), title: 'active' }
-		: { text: formatMs(node.duration_ms), title: 'wall-clock' };
+		? {
+				text: formatMs(node.active_ms),
+				title: t('taskAgent.helpers.usage.timeActive'),
+			}
+		: {
+				text: formatMs(node.duration_ms),
+				title: t('taskAgent.helpers.usage.timeWallClock'),
+			};
 
 export const modelShort = (model: string): string =>
 	model.replace(/^claude-/, '');
@@ -170,10 +189,22 @@ export const blockSummary = ({
 	prLabel,
 }: BlockSummaryInput): string => {
 	const parts: string[] = [];
-	if (youSeconds !== null) parts.push(`You ${formatWorkDuration(youSeconds)}`);
+	if (youSeconds !== null)
+		parts.push(
+			t('taskAgent.helpers.usage.summary.you', {
+				time: formatWorkDuration(youSeconds),
+			}),
+		);
 	if (agentSeconds > 0)
-		parts.push(`Agents ${formatWorkDuration(agentSeconds)}`);
-	if (aiCostUsd !== null) parts.push(`${formatUsd(aiCostUsd)} AI`);
+		parts.push(
+			t('taskAgent.helpers.usage.summary.agents', {
+				time: formatWorkDuration(agentSeconds),
+			}),
+		);
+	if (aiCostUsd !== null)
+		parts.push(
+			t('taskAgent.helpers.usage.summary.ai', { cost: formatUsd(aiCostUsd) }),
+		);
 	if (prLabel !== null) parts.push(prLabel);
 	return parts.join(' · ');
 };

@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { MoveView } from './flow';
 import { stepIndex } from './model';
 
@@ -28,17 +29,17 @@ type RowId =
 	| 'routines'
 	| 'publish';
 
-const ROWS: { id: RowId; label: string }[] = [
-	{ id: 'backup', label: 'Backup created' },
-	{ id: 'bundle', label: 'Bundle uploaded' },
-	{ id: 'statuses', label: 'Statuses and categories' },
-	{ id: 'tasks', label: 'Tasks' },
-	{ id: 'comments', label: 'Comments' },
-	{ id: 'files', label: 'Files' },
-	{ id: 'pages', label: 'Pages' },
-	{ id: 'links', label: 'Links' },
-	{ id: 'routines', label: 'Routines and agent runs' },
-	{ id: 'publish', label: 'Check and publish' },
+const ROWS: { id: RowId }[] = [
+	{ id: 'backup' },
+	{ id: 'bundle' },
+	{ id: 'statuses' },
+	{ id: 'tasks' },
+	{ id: 'comments' },
+	{ id: 'files' },
+	{ id: 'pages' },
+	{ id: 'links' },
+	{ id: 'routines' },
+	{ id: 'publish' },
 ];
 
 const PHASES: Record<string, [RowId, number]> = {
@@ -72,7 +73,9 @@ const phaseOrder = (phase: string | null | undefined): number =>
 	PHASES[(phase ?? '').toLowerCase()]?.[1] ?? 0;
 
 const countLabel = (label: string, done: number, total: number) =>
-	total > 0 ? `${label} ${done} of ${total}` : label;
+	total > 0
+		? t('desktop.helpers.move.rowCount', { label, done, total })
+		: label;
 
 export const summarize = (view: MoveView): ProgressSummary => {
 	const job = view.job;
@@ -117,13 +120,14 @@ export const summarize = (view: MoveView): ProgressSummary => {
 			state = 'active';
 		}
 		if (row.id === 'files' && skipped > 0 && state === 'done') state = 'warn';
-		let label = row.label;
+		let label = t(`desktop.helpers.move.rows.${row.id}`);
 		if (row.id === 'files') {
 			const serverRow = current === index && status ? status : null;
 			const total = serverRow ? serverRow.total : view.filesTotal;
 			const done = serverRow ? serverRow.done : view.filesDone;
 			label = countLabel(label, done, total);
-			if (skipped > 0) label += ` · ${skipped} skipped (see report)`;
+			if (skipped > 0)
+				label = t('desktop.helpers.move.rowSkipped', { label, skipped });
 		} else if (current === index && status && status.total > 0) {
 			label = countLabel(label, status.done, status.total);
 		}

@@ -201,7 +201,7 @@
 		detachedSkillsTitle,
 		extractFieldErrors,
 		isReservedSkillSlug,
-		RESERVED_SKILL_MESSAGE,
+		reservedSkillMessage,
 		SHARED_SKILL_LIMIT,
 		SKILL_BODY_MAX_BYTES,
 		SKILL_TEMPLATE,
@@ -278,7 +278,7 @@
 
 			const guardReserved = (skill: SharedSkillSummary) => {
 				if (!isReservedSkillSlug(skill.slug)) return false;
-				toast({ title: RESERVED_SKILL_MESSAGE, variant: 'destructive' });
+				toast({ title: reservedSkillMessage(), variant: 'destructive' });
 				return true;
 			};
 

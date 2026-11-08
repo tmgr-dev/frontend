@@ -66,7 +66,7 @@
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
 	import type { UiNode } from '@/pluginSystem/uiTree';
 	import {
-		PLUGIN_WINDOWS_UNAVAILABLE,
+		pluginWindowsUnavailable,
 		supportsPluginWindows,
 	} from '@/utils/desktop';
 	import { sanitizeDeepLinkParams } from '@/utils/desktopShortcuts';
@@ -182,7 +182,7 @@
 				openWindow,
 				windowsSupported,
 				windowError,
-				unavailableText: PLUGIN_WINDOWS_UNAVAILABLE,
+				unavailableText: pluginWindowsUnavailable(),
 			};
 		},
 	});

@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { tourBus } from '@/tours/events';
 import type { LibraryFile } from '../skillLibrary';
 import {
@@ -40,8 +41,7 @@ import {
 
 export const ACCOUNT_MISMATCH_MESSAGE =
 	'This move was started by another account. Sign in as that account to continue, or discard it.';
-export const LEGACY_MOVE_MESSAGE =
-	'This move was started by an older version. Discard it and start again.';
+export const legacyMoveMessage = (): string => t('desktop.helpers.move.legacy');
 export const SIGN_IN_TO_MOVE_MESSAGE =
 	'Sign in to move this workspace to the cloud.';
 export const DEMO_MOVE_MESSAGE =
@@ -170,7 +170,7 @@ export const createMover = (deps: MoveDeps) => {
 	const accountMismatch = (job: MoveJob | null) =>
 		!!job && job.userId != null && deps.userId() !== job.userId;
 	const assertAccount = (job: MoveJob | null) => {
-		if (legacy(job)) throw new Error(LEGACY_MOVE_MESSAGE);
+		if (legacy(job)) throw new Error(legacyMoveMessage());
 		if (accountMismatch(job)) throw new Error(ACCOUNT_MISMATCH_MESSAGE);
 	};
 	const ensureActive = (code: string) => {

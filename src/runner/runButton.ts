@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { isLocalWorkspaceId } from '@/local/classify';
 import {
 	runnerStartRun,
@@ -8,10 +9,10 @@ import {
 import { describeRunnerError } from './errors';
 import { statusDetail } from './statusLine';
 
-export const CLOUD_TOOLTIP =
-	'Agent runs work only with local workspaces for now.';
-export const ABSENT_TOOLTIP =
-	'TMGR runner is not running. Start it with `tmgr runner start`.';
+export const cloudTooltip = (): string =>
+	t('desktop.helpers.runner.cloudTooltip');
+export const absentTooltip = (): string =>
+	t('desktop.helpers.runner.absentTooltip');
 
 export interface RunButtonModel {
 	visible: boolean;
@@ -38,10 +39,10 @@ export const runButtonModel = (input: {
 		tooltip,
 	});
 	if (input.workspaceId === null || !isLocalWorkspaceId(input.workspaceId))
-		return run(CLOUD_TOOLTIP);
+		return run(cloudTooltip());
 	if (input.status?.state === 'incompatible')
 		return run(statusDetail(input.status));
-	if (input.status?.state !== 'ready') return run(ABSENT_TOOLTIP);
+	if (input.status?.state !== 'ready') return run(absentTooltip());
 	return run(null);
 };
 

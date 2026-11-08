@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type {
 	AgentMessage,
 	PendingAction,
@@ -14,7 +15,7 @@ const STATUSES: PendingActionStatus[] = [
 	'superseded',
 ];
 
-const EXPIRED_TEXT = 'Expired — nothing was changed';
+const expiredText = (): string => t('agents.helpers.confirmation.expired');
 
 const asRecord = (v: unknown): Record<string, unknown> =>
 	v && typeof v === 'object' && !Array.isArray(v)
@@ -97,9 +98,11 @@ export const expiryHint = (iso: string, nowMs: number = Date.now()): string => {
 	const at = expiresAtMs(iso);
 	if (Number.isNaN(at)) return '';
 	const left = at - nowMs;
-	if (left <= 0) return EXPIRED_TEXT;
-	if (left < 60000) return 'Expires in less than a minute';
-	return `Expires in ${Math.ceil(left / 60000)} min`;
+	if (left <= 0) return expiredText();
+	if (left < 60000) return t('agents.helpers.confirmation.lessThanMinute');
+	return t('agents.helpers.confirmation.expiresIn', {
+		n: Math.ceil(left / 60000),
+	});
 };
 
 export const safeResultUrl = (
@@ -123,33 +126,43 @@ export const actionOutcome = (
 	switch (a.status) {
 		case 'pending':
 			return isPastExpiry(a, nowMs)
-				? { text: EXPIRED_TEXT, tone: 'muted' }
+				? { text: expiredText(), tone: 'muted' }
 				: null;
 		case 'executing':
-			return { text: 'Applying…', tone: 'muted' };
+			return { text: t('agents.helpers.confirmation.applying'), tone: 'muted' };
 		case 'executed':
-			return { text: 'Done', tone: 'ok', url: safeResultUrl(a.result) };
+			return {
+				text: t('agents.helpers.confirmation.done'),
+				tone: 'ok',
+				url: safeResultUrl(a.result),
+			};
 		case 'failed': {
 			const message = a.result?.message;
 			return {
 				text:
 					typeof message === 'string' && message
-						? `Failed: ${message}`
-						: 'Failed',
+						? t('agents.helpers.confirmation.failedWith', { message })
+						: t('agents.helpers.confirmation.failed'),
 				tone: 'error',
 			};
 		}
 		case 'cancelled':
-			return { text: 'Cancelled', tone: 'muted' };
+			return {
+				text: t('agents.helpers.confirmation.cancelled'),
+				tone: 'muted',
+			};
 		case 'expired':
-			return { text: EXPIRED_TEXT, tone: 'muted' };
+			return { text: expiredText(), tone: 'muted' };
 		case 'superseded':
-			return { text: 'Skipped — you sent a new message', tone: 'muted' };
+			return {
+				text: t('agents.helpers.confirmation.superseded'),
+				tone: 'muted',
+			};
 	}
 };
 
 export const isLongBody = (body: string | null): boolean =>
 	!!body && (body.length > 200 || body.split('\n').length > 3);
 
-export const DECISION_CONFLICT_MESSAGE =
-	'This card was already handled or has expired.';
+export const decisionConflictMessage = (): string =>
+	t('agents.helpers.confirmation.conflict');

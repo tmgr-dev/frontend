@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 import { norm } from '@/utils/agentApproval';
 
 export type ApprovalState = 'none' | 'active' | 'stale' | 'revoked';
@@ -115,19 +117,19 @@ export const splitInvisible = (text: string): TextPiece[] => {
 export const revokedByLabel = (kind: string | null | undefined): string => {
 	switch (kind) {
 		case 'ui':
-			return 'the web app';
+			return t('taskAgent.helpers.approval.revokedBy.ui');
 		case 'cli':
-			return 'the CLI';
+			return t('taskAgent.helpers.approval.revokedBy.cli');
 		case 'mcp':
-			return 'MCP';
+			return t('taskAgent.helpers.approval.revokedBy.mcp');
 		case 'persona':
-			return 'an agent persona';
+			return t('taskAgent.helpers.approval.revokedBy.persona');
 		case 'plugin':
-			return 'a plugin';
+			return t('taskAgent.helpers.approval.revokedBy.plugin');
 		case 'legacy':
-			return 'a legacy token';
+			return t('taskAgent.helpers.approval.revokedBy.legacy');
 		default:
-			return 'an integration';
+			return t('taskAgent.helpers.approval.revokedBy.other');
 	}
 };
 
@@ -136,12 +138,14 @@ export const revokedReasonLabel = (reason: string | null | undefined) => {
 		case 'title_changed':
 		case 'description_changed':
 		case 'content_changed':
-			return 'text edited';
+			return t('taskAgent.helpers.approval.reasonEdited');
 		case 'comment':
 		case 'comment_added':
-			return 'comment added';
+			return t('taskAgent.helpers.approval.reasonComment');
 		default:
-			return reason ? reason.replace(/_/g, ' ') : 'changed';
+			return reason
+				? reason.replace(/_/g, ' ')
+				: t('taskAgent.helpers.approval.reasonChanged');
 	}
 };
 
@@ -160,11 +164,11 @@ export const categoryIdOf = (task: CategoryFields): number => {
 
 export const categoryLabel = (task: CategoryFields): string => {
 	const id = categoryIdOf(task);
-	if (!id) return 'No category';
+	if (!id) return t('taskAgent.helpers.approval.noCategory');
 	const category = task.category;
 	if (category && typeof category === 'object' && category.id === id) {
 		const parts = [category.code, category.title].filter(Boolean);
 		if (parts.length) return parts.join(' - ');
 	}
-	return `Category #${id}`;
+	return t('taskAgent.helpers.approval.category', { id });
 };

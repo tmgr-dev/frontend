@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 export type RunnerAction = 'start' | 'stop' | 'input' | 'open';
 
 export interface RunnerErrorView {
@@ -8,29 +10,13 @@ export interface RunnerErrorView {
 const MAX_LENGTH = 160;
 
 const FIXED: Array<[RegExp, string]> = [
-	[/^busy\b/, 'The agent is busy, try again in a moment.'],
-	[
-		/^unknown_profile\b/,
-		'This agent profile is not available. Pick another profile.',
-	],
-	[
-		/^sandbox\b/,
-		'The sandbox blocked this run. Check the project folder and try again.',
-	],
-	[/^limit\b/, 'Too many agents are running. Stop one and try again.'],
-	[
-		/^invalid_params\b/,
-		'The runner rejected the request. Check the project folder and try again.',
-	],
-	[/^task not found\b/, 'This task was not found in the local workspace.'],
+	[/^busy\b/, 'busy'],
+	[/^unknown_profile\b/, 'unknownProfile'],
+	[/^sandbox\b/, 'sandbox'],
+	[/^limit\b/, 'limit'],
+	[/^invalid_params\b/, 'invalidParams'],
+	[/^task not found\b/, 'taskNotFound'],
 ];
-
-const PREFIX: Record<RunnerAction, string> = {
-	start: 'Could not start the agent',
-	stop: 'Could not stop the agent',
-	input: 'Could not send input to the agent',
-	open: 'Could not open the terminal',
-};
 
 export const rawErrorText = (error: unknown): string => {
 	if (typeof error === 'string') return error;
@@ -54,11 +40,18 @@ export const describeRunnerError = (
 	const raw = rawErrorText(error);
 	const key = raw.trim().toLowerCase();
 	if (key === 'cancelled') return { cancelled: true, text: '' };
-	for (const [pattern, text] of FIXED)
-		if (pattern.test(key)) return { cancelled: false, text };
+	for (const [pattern, name] of FIXED)
+		if (pattern.test(key))
+			return {
+				cancelled: false,
+				text: t(`desktop.helpers.runner.errors.${name}`),
+			};
 	const message = sanitizeMessage(raw);
+	const prefix = t(`desktop.helpers.runner.errors.prefix.${action}`);
 	return {
 		cancelled: false,
-		text: message ? `${PREFIX[action]}: ${message}` : `${PREFIX[action]}.`,
+		text: message
+			? t('desktop.helpers.runner.errors.withMessage', { prefix, message })
+			: t('desktop.helpers.runner.errors.withoutMessage', { prefix }),
 	};
 };

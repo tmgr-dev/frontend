@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { DEFAULT_TOKEN_EXPIRY_DAYS } from '@/utils/personas';
 import {
 	getLocalAccessStatus,
@@ -98,10 +99,8 @@ export const runAgentConnect = (
 ): Promise<RunOutcome> =>
 	invoke('agent_connect_run', { agent, action, tokenId });
 
-export const DEMO_REFUSAL =
-	'Create your own workspace first, then connect your agent.';
-const RATE_LIMIT_MESSAGE =
-	'You have already created 10 agent tokens in the last hour. Wait a little and try again.';
+export const demoRefusal = (): string =>
+	t('desktop.helpers.connectAgent.demoRefusal');
 
 export const errorText = (error: unknown): string => {
 	const text =
@@ -110,7 +109,9 @@ export const errorText = (error: unknown): string => {
 			: error instanceof Error
 				? error.message
 				: String(error);
-	return /10 tokens|per hour/i.test(text) ? RATE_LIMIT_MESSAGE : text;
+	return /10 tokens|per hour/i.test(text)
+		? t('desktop.helpers.connectAgent.rateLimit')
+		: text;
 };
 
 const MODULE_KEYS = ['personas', 'agent_work'];
@@ -184,7 +185,7 @@ export const installAgent = async (args: {
 		return {
 			status: 'failed',
 			outcome: null,
-			error: DEMO_REFUSAL,
+			error: demoRefusal(),
 			modulesChanged: false,
 		};
 	const info = agentInfo(agent);
@@ -291,7 +292,7 @@ export const copyConfigToken = async (args: {
 	modulesChanged: boolean;
 }> => {
 	const { agent, workspace, user } = args;
-	if (workspace.demo) throw new Error(DEMO_REFUSAL);
+	if (workspace.demo) throw new Error(demoRefusal());
 	const info = agentInfo(agent);
 	const existing = (await listLocalTokens()).find(
 		(t) =>

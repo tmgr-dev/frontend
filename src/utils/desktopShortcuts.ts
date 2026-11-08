@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { LOCAL_ID, PLUGIN_ID } from '@/pluginSystem/manifest';
 import {
 	DesktopPlatform,
@@ -91,10 +92,13 @@ export const primaryModifiersHint = (
 	platform: DesktopPlatform | null = desktopPlatform(),
 ): string =>
 	isMacLike(platform)
-		? 'Use at least one of ⌘ ⌃ ⌥'
-		: `Use at least one of Ctrl, Alt, ${
-				platform === 'windows' ? 'Win' : 'Super'
-			}`;
+		? t('desktop.helpers.primaryModifiers.mac')
+		: t('desktop.helpers.primaryModifiers.other', {
+				key:
+					platform === 'windows'
+						? t('desktop.helpers.primaryModifiers.win')
+						: t('desktop.helpers.primaryModifiers.super'),
+			});
 
 const keyFromCode = (code: string): string | null => {
 	if (/^Key[A-Z]$/.test(code)) return code.slice(3);

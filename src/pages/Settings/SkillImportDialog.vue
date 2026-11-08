@@ -275,7 +275,7 @@
 	import { t } from '@/i18n';
 	import store from '@/store';
 	import {
-		FILE_STATUS_LABELS,
+		fileStatusLabel,
 		defaultTicked,
 		importSummary,
 		indexStorageKey,
@@ -620,7 +620,7 @@
 								count: (bytes / 1024).toFixed(1),
 							});
 				},
-				fileLabel: (file: ScanFile) => FILE_STATUS_LABELS[file.status],
+				fileLabel: (file: ScanFile) => fileStatusLabel(file.status),
 				statusLabel: (row: ImportRow) => t(STATUS_KEYS[row.status]),
 				statusClass: (status: RowStatus) => STATUS_CLASSES[status],
 			};

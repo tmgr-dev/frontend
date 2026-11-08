@@ -11,11 +11,11 @@ jest.mock('@/local/connectAgent', () => ({
 }));
 
 import {
-	CLAUDE_FAILURE_NOTE,
-	INSTALL_NOTES,
-	SAFE_MODE_TEXT,
-	TIMEOUT_TEXT,
-	TRANSLOCATED_TEXT,
+	claudeFailureNote,
+	installNotes,
+	safeModeText,
+	timeoutText,
+	translocatedText,
 	useConnectLocalAgent,
 } from '@/composable/useConnectLocalAgent';
 
@@ -142,7 +142,7 @@ describe('preview and install gating', () => {
 				],
 			},
 		]);
-		expect(INSTALL_NOTES).toEqual([
+		expect(installNotes()).toEqual([
 			'Install also turns on local agent access and the Personas and Agent work modules in this workspace.',
 			'Your token stays in the macOS Keychain. It is not part of the command.',
 			'Each agent connects to one workspace. Installing here replaces an earlier TMGR connection.',
@@ -164,8 +164,8 @@ describe('preview and install gating', () => {
 		state.toggle('claude-code', true);
 		state.preview();
 		expect(state.canInstall.value).toBe(false);
-		expect(state.installBlock.value).toBe(TRANSLOCATED_TEXT);
-		expect(TRANSLOCATED_TEXT).toBe(
+		expect(state.installBlock.value).toBe(translocatedText());
+		expect(translocatedText()).toBe(
 			'Move TMGR to Applications, open it from there, then install.',
 		);
 	});
@@ -175,7 +175,7 @@ describe('preview and install gating', () => {
 		state.toggle('claude-code', true);
 		state.preview();
 		expect(state.canInstall.value).toBe(false);
-		expect(state.installBlock.value).toBe(SAFE_MODE_TEXT);
+		expect(state.installBlock.value).toBe(safeModeText());
 	});
 
 	it('disables Install without platform support', async () => {
@@ -264,8 +264,8 @@ describe('install', () => {
 		const result = state.results['claude-code'];
 		expect(result.status).toBe('failed');
 		expect(result.steps[0].output).toBe('boom');
-		expect(result.note).toBe(CLAUDE_FAILURE_NOTE);
-		expect(CLAUDE_FAILURE_NOTE).toBe(
+		expect(result.note).toBe(claudeFailureNote());
+		expect(claudeFailureNote()).toBe(
 			'The earlier TMGR entry in Claude Code was already removed.',
 		);
 	});
@@ -294,8 +294,8 @@ describe('install', () => {
 		});
 		const { state } = await ready();
 		await state.install();
-		expect(state.results['claude-code'].message).toBe(TIMEOUT_TEXT);
-		expect(TIMEOUT_TEXT).toBe(
+		expect(state.results['claude-code'].message).toBe(timeoutText());
+		expect(timeoutText()).toBe(
 			'The command did not finish. Press Install again, or Remove.',
 		);
 	});

@@ -1,8 +1,11 @@
+import { currentLocale, t } from '@/i18n';
+
 export const money = (usd: number | null | undefined): string => {
 	const value = usd == null ? NaN : Number(usd);
 	if (!Number.isFinite(value)) return '—';
 	if (value > 0 && value < 0.01) return '<$0.01';
-	if (value >= 1000) return `$${Math.round(value).toLocaleString('en-US')}`;
+	if (value >= 1000)
+		return `$${Math.round(value).toLocaleString(currentLocale())}`;
 	return `$${value.toFixed(2)}`;
 };
 
@@ -29,7 +32,7 @@ export const count = (n: number | null | undefined): string => {
 export const span = (seconds: number | null | undefined): string => {
 	if (seconds === null || seconds === undefined || !Number.isFinite(seconds))
 		return '—';
-	if (seconds <= 0) return 'now';
+	if (seconds <= 0) return t('agents.helpers.usage.format.now');
 	const s = Math.floor(seconds);
 	const days = Math.floor(s / 86400);
 	const hours = Math.floor((s % 86400) / 3600);
@@ -43,7 +46,9 @@ export const span = (seconds: number | null | undefined): string => {
 export const ago = (seconds: number | null | undefined): string => {
 	if (seconds === null || seconds === undefined || !Number.isFinite(seconds))
 		return '—';
-	return seconds < 60 ? 'just now' : `${span(seconds)} ago`;
+	return seconds < 60
+		? t('agents.helpers.usage.format.justNow')
+		: t('agents.helpers.usage.format.ago', { span: span(seconds) });
 };
 
 const TOOL_NAMES: Record<string, string> = {
@@ -75,7 +80,7 @@ export const barTone = (value: number | null | undefined): BarTone => {
 };
 
 export const axisMoney = (usd: number): string =>
-	`$${Number.isInteger(usd) ? usd.toLocaleString('en-US') : usd.toFixed(2)}`;
+	`$${Number.isInteger(usd) ? usd.toLocaleString(currentLocale()) : usd.toFixed(2)}`;
 
 export const share = (value: number): string => {
 	if (!Number.isFinite(value)) return '—';
@@ -88,33 +93,26 @@ export const signedPercent = (value: number): string => {
 	return `${rounded > 0 ? '+' : rounded < 0 ? '−' : ''}${Math.abs(rounded)}%`;
 };
 
-const MONTHS = [
-	'Jan',
-	'Feb',
-	'Mar',
-	'Apr',
-	'May',
-	'Jun',
-	'Jul',
-	'Aug',
-	'Sep',
-	'Oct',
-	'Nov',
-	'Dec',
-];
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
 const dayParts = (day: string): [number, number, number] => {
 	const [y, m, d] = day.split('-').map(Number);
 	return [y, m - 1, d];
 };
 
-export const shortDay = (day: string): string => {
-	const [, m, d] = dayParts(day);
-	return `${MONTHS[m] ?? '—'} ${d}`;
+const dayFormat = (
+	day: string,
+	options: Intl.DateTimeFormatOptions,
+): string | null => {
+	const [y, m, d] = dayParts(day);
+	if (!(m >= 0 && m < 12)) return null;
+	return new Intl.DateTimeFormat(currentLocale(), {
+		...options,
+		timeZone: 'UTC',
+	}).format(Date.UTC(y, m, d));
 };
 
-export const longDay = (day: string): string => {
-	const [y, m, d] = dayParts(day);
-	return `${WEEKDAYS[new Date(y, m, d).getDay()]}, ${shortDay(day)}`;
-};
+export const shortDay = (day: string): string =>
+	dayFormat(day, { month: 'short', day: 'numeric' }) ?? `— ${dayParts(day)[2]}`;
+
+export const longDay = (day: string): string =>
+	dayFormat(day, { weekday: 'short', month: 'short', day: 'numeric' }) ??
+	`— ${dayParts(day)[2]}`;

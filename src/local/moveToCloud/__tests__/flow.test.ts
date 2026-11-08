@@ -3,7 +3,7 @@ import { UNSUPPORTED_SCHEMA_MESSAGE } from '../api';
 import {
 	ACCOUNT_MISMATCH_MESSAGE,
 	createMover,
-	LEGACY_MOVE_MESSAGE,
+	legacyMoveMessage,
 	toMappingPayload,
 } from '../flow';
 import { loadPersisted, savePersisted, storageKey } from '../model';
@@ -591,8 +591,8 @@ describe('moves without a recorded account', () => {
 			h.user.id = id;
 			expect(mover.view(CODE).legacy).toBe(true);
 			const view = await mover.resume(CODE);
-			expect(view.job?.error).toBe(LEGACY_MOVE_MESSAGE);
-			expect(LEGACY_MOVE_MESSAGE).toBe(
+			expect(view.job?.error).toBe(legacyMoveMessage());
+			expect(legacyMoveMessage()).toBe(
 				'This move was started by an older version. Discard it and start again.',
 			);
 			await mover.retry(CODE);

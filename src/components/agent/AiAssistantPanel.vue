@@ -696,15 +696,15 @@
 					class="rounded-pill border border-line px-2.5 py-1 text-xs text-ink-subtle hover:bg-surface-hover hover:text-ink"
 					@click="runScenario(scenario)"
 				>
-					{{ scenario.label }}
+					{{ $t(scenario.labelKey) }}
 				</button>
 				<button
 					v-for="scenario in fillScenarios"
-					:key="scenario.label"
+					:key="scenario.labelKey"
 					class="rounded-pill border border-dashed border-line px-2.5 py-1 text-xs text-ink-subtle hover:bg-surface-hover hover:text-ink"
 					@click="fillScenario(scenario)"
 				>
-					{{ scenario.label }}
+					{{ $t(scenario.labelKey) }}
 				</button>
 			</div>
 			<ul

@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { LibraryFile } from '../skillLibrary';
 import type { SkillOutcome, SkillsPayload, SkillsReport } from './api';
 
@@ -77,21 +78,26 @@ export const batchSkillsPayload = (
 	return { batches, tooLarge };
 };
 
-const SKILL_REASONS: Record<string, string> = {
-	library_full: 'your library is full',
-	invalid: 'not a valid skill',
-	not_owner: 'the persona belongs to another member',
-	not_moved: 'the persona was not moved',
-	attach_limit: 'the persona has too many skills',
-	invalid_files: 'its files are not valid (path, text or size limits)',
-	too_large: 'too large to move to cloud',
-	files_limit: 'its files would exceed your 10 MiB files limit',
-};
+const SKILL_REASONS = new Set([
+	'library_full',
+	'invalid',
+	'not_owner',
+	'not_moved',
+	'attach_limit',
+	'invalid_files',
+	'too_large',
+	'files_limit',
+]);
 
 const skillReason = (reason: string | null) =>
-	reason ? (SKILL_REASONS[reason] ?? reason.replace(/_/g, ' ')) : '';
+	reason
+		? SKILL_REASONS.has(reason)
+			? t(`desktop.helpers.move.skillReasons.${reason}`)
+			: reason.replace(/_/g, ' ')
+		: '';
 
-const name = (o: SkillOutcome) => o.slug ?? o.cloud_slug ?? 'a skill';
+const name = (o: SkillOutcome) =>
+	o.slug ?? o.cloud_slug ?? t('desktop.helpers.move.skills.aSkill');
 
 export const skillsReportLines = (
 	report: SkillsReport | null | undefined,
@@ -100,21 +106,32 @@ export const skillsReportLines = (
 	const by = (status: SkillOutcome['status']) =>
 		report.filter((o) => o.status === status);
 	const parts: string[] = [];
-	if (by('created').length) parts.push(`${by('created').length} added`);
+	if (by('created').length)
+		parts.push(
+			t('desktop.helpers.move.skills.added', { n: by('created').length }),
+		);
 	if (by('reused').length)
-		parts.push(`${by('reused').length} already in your library`);
+		parts.push(
+			t('desktop.helpers.move.skills.reused', { n: by('reused').length }),
+		);
 	const renamed = by('renamed');
 	if (renamed.length)
 		parts.push(
-			`${renamed.length} renamed (${renamed
-				.map((o) => `${name(o)} → ${o.cloud_slug}`)
-				.join(', ')})`,
+			t('desktop.helpers.move.skills.renamed', {
+				n: renamed.length,
+				list: renamed.map((o) => `${name(o)} → ${o.cloud_slug}`).join(', '),
+			}),
 		);
-	const lines = parts.length ? [`Skills: ${parts.join(', ')}`] : [];
+	const lines = parts.length
+		? [t('desktop.helpers.move.skills.summary', { parts: parts.join(', ') })]
+		: [];
 	for (const outcome of report) {
 		if (outcome.status === 'skipped') {
 			lines.push(
-				`${name(outcome)}: not copied, ${skillReason(outcome.reason)}`,
+				t('desktop.helpers.move.skills.notCopied', {
+					name: name(outcome),
+					reason: skillReason(outcome.reason),
+				}),
 			);
 		}
 		const reasons = new Map<string, number>();
@@ -122,9 +139,11 @@ export const skillsReportLines = (
 			reasons.set(reason, (reasons.get(reason) ?? 0) + 1);
 		for (const [reason, n] of reasons) {
 			lines.push(
-				`${name(outcome)}: not attached to ${n} ${
-					n === 1 ? 'persona' : 'personas'
-				}, ${skillReason(reason)}`,
+				t(
+					'desktop.helpers.move.skills.notAttached',
+					{ name: name(outcome), reason: skillReason(reason), n },
+					n,
+				),
 			);
 		}
 	}
@@ -132,4 +151,4 @@ export const skillsReportLines = (
 };
 
 export const dryRunSkillsLine = (count: number): string =>
-	`Skills: ${count} from this device's library`;
+	t('desktop.helpers.move.skills.dryRun', { count });

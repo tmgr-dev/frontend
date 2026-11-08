@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 export interface TrayTask {
 	id: number;
 	title: string;
@@ -78,7 +80,9 @@ export const formatAway = (seconds: number): string => {
 	const minutes = Math.max(1, Math.round(seconds / 60));
 	const h = Math.floor(minutes / 60);
 	const m = minutes % 60;
-	return h > 0 ? `${h} h ${m} min` : `${m} min`;
+	return h > 0
+		? t('desktop.helpers.away.hoursMinutes', { h, m })
+		: t('desktop.helpers.away.minutes', { m });
 };
 
 export const loadRecent = (userId: number): TrayTask[] => {

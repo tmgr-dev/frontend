@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import {
 	CONNECT_AGENTS,
 	agentInfo,
@@ -14,23 +15,23 @@ import {
 import type { LocalUser, LocalWorkspace } from '@/local/types';
 import { computed, reactive, ref } from 'vue';
 
-export const INSTALL_NOTES = [
-	'Install also turns on local agent access and the Personas and Agent work modules in this workspace.',
-	'Your token stays in the macOS Keychain. It is not part of the command.',
-	'Each agent connects to one workspace. Installing here replaces an earlier TMGR connection.',
+export const installNotes = (): string[] => [
+	t('desktop.helpers.connectAgent.notes.modules'),
+	t('desktop.helpers.connectAgent.notes.keychain'),
+	t('desktop.helpers.connectAgent.notes.oneWorkspace'),
 ];
-export const TRANSLOCATED_TEXT =
-	'Move TMGR to Applications, open it from there, then install.';
-export const SAFE_MODE_TEXT =
-	'Plugin safe mode is on, so agents cannot connect. Turn it off and reopen this screen.';
-export const UNSUPPORTED_TEXT =
-	'Installing from this screen works on macOS only. Use Copy config instead.';
-export const BRIDGE_TEXT =
-	'TMGR cannot work out its own program path, so agents cannot connect from here.';
-export const TIMEOUT_TEXT =
-	'The command did not finish. Press Install again, or Remove.';
-export const CLAUDE_FAILURE_NOTE =
-	'The earlier TMGR entry in Claude Code was already removed.';
+export const translocatedText = (): string =>
+	t('desktop.helpers.connectAgent.translocated');
+export const safeModeText = (): string =>
+	t('desktop.helpers.connectAgent.safeMode');
+export const unsupportedText = (): string =>
+	t('desktop.helpers.connectAgent.unsupported');
+export const bridgeText = (): string =>
+	t('desktop.helpers.connectAgent.bridge');
+export const timeoutText = (): string =>
+	t('desktop.helpers.connectAgent.timeout');
+export const claudeFailureNote = (): string =>
+	t('desktop.helpers.connectAgent.claudeFailureNote');
 
 const PLACEHOLDER = '<new token id>';
 
@@ -58,7 +59,7 @@ const viewOf = (
 		result.status === 'ok'
 			? okMessage
 			: result.status === 'timeout'
-				? TIMEOUT_TEXT
+				? timeoutText()
 				: (result.error ?? failMessage),
 	steps: (result.outcome?.steps ?? []).map((s) => ({
 		command: commandLine(s.display),
@@ -103,10 +104,10 @@ export function useConnectLocalAgent(deps: {
 	const installBlock = computed<string | null>(() => {
 		const d = detect.value;
 		if (!d) return null;
-		if (!d.platformSupported) return UNSUPPORTED_TEXT;
-		if (d.safeMode) return SAFE_MODE_TEXT;
-		if (d.bridge.reason === 'translocated') return TRANSLOCATED_TEXT;
-		if (!d.bridge.ok) return BRIDGE_TEXT;
+		if (!d.platformSupported) return unsupportedText();
+		if (d.safeMode) return safeModeText();
+		if (d.bridge.reason === 'translocated') return translocatedText();
+		if (!d.bridge.ok) return bridgeText();
 		return null;
 	});
 
@@ -176,15 +177,19 @@ export function useConnectLocalAgent(deps: {
 				});
 				const view = viewOf(
 					result,
-					`Restart ${row.info.title} so it picks up TMGR. Then ask it to list your TMGR tasks.`,
-					`Could not connect ${row.info.title}.`,
+					t('desktop.helpers.connectAgent.installed', {
+						title: row.info.title,
+					}),
+					t('desktop.helpers.connectAgent.installFailed', {
+						title: row.info.title,
+					}),
 				);
 				if (
 					result.status !== 'ok' &&
 					agent === 'claude-code' &&
 					(result.outcome?.steps.length ?? 0) > 0
 				)
-					view.note = CLAUDE_FAILURE_NOTE;
+					view.note = claudeFailureNote();
 				results[agent] = view;
 				if (result.modulesChanged) await refreshModules();
 			}
@@ -201,8 +206,8 @@ export function useConnectLocalAgent(deps: {
 			const title = agentInfo(agent).title;
 			results[agent] = viewOf(
 				await removeAgent({ agent }),
-				`Removed TMGR from ${title}.`,
-				`Could not remove TMGR from ${title}.`,
+				t('desktop.helpers.connectAgent.removed', { title }),
+				t('desktop.helpers.connectAgent.removeFailed', { title }),
 			);
 		} finally {
 			busyRemove.value = '';

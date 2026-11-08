@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import {
 	errorText,
 	usageConsent,
@@ -19,16 +20,10 @@ export const consentGate = (c: UsageConsent | null): ConsentGate | null => {
 };
 
 export const readingNote = (state: UsageConsent['state']): string =>
-	({
-		granted:
-			'On: TMGR reads these logs on this device to show cost and limits, and the runner reads the sessions it starts.',
-		denied:
-			"Off: TMGR doesn't read these logs for AI usage on this device, and the runner reads none of them.",
-		unset:
-			"Not chosen yet: the desktop app and background jobs don't read them for AI usage, tmgr usage commands you run yourself still do. The runner reads none of them until you allow it.",
-	})[state];
+	t(`agents.helpers.usage.consent.${state}`);
 
-export const FORGET_DONE = 'Deleted. Reading AI tool logs is off.';
+export const forgetDone = (): string =>
+	t('agents.helpers.usage.consent.forgetDone');
 
 export const useUsageConsent = (initial: UsageConsent | null = null) => {
 	const consent = ref<UsageConsent | null>(initial);
@@ -62,7 +57,7 @@ export const useUsageConsent = (initial: UsageConsent | null = null) => {
 		if (busy.value) return false;
 		const ok = await run(usageForget);
 		if (ok) {
-			message.value = FORGET_DONE;
+			message.value = forgetDone();
 			return true;
 		}
 		const failure = error.value;

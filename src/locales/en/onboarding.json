@@ -1066,5 +1066,30 @@
 			"command": "Command ran",
 			"agent": "Agent connected"
 		}
+	},
+	"helpers": {
+		"checklist": {
+			"human": {
+				"createTask": "Create a task",
+				"runTimer": "Run a timer for a minute",
+				"moveCard": "Move a card on the board",
+				"addRoutine": "Add a daily routine",
+				"writePage": "Write a page",
+				"connectAgent": "Connect an AI agent"
+			},
+			"agent": {
+				"connectAgent": "Connect an agent",
+				"firstAgentRun": "Run your first agent task",
+				"phoneAlert": "Get a phone alert when your agent needs you",
+				"startTimer": "Start a timer on a task",
+				"contextPage": "Write a context page your agents read",
+				"inviteTeammate": "Invite a teammate"
+			},
+			"verifyEmail": "Verify your email first"
+		},
+		"aha": {
+			"firstRun": "First agent run logged. This is what TMGR does.",
+			"timerLogged": "Logged {minutes}m on {title}. Your time stays with the task."
+		}
 	}
 }

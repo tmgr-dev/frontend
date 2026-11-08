@@ -83,7 +83,7 @@
 	import { runnerHalt, runnerOpenTerminal } from '@/runner/api';
 	import { describeRunnerError } from '@/runner/errors';
 	import { formatAge } from '@/runner/format';
-	import { ABSENT_TOOLTIP } from '@/runner/runButton';
+	import { absentTooltip } from '@/runner/runButton';
 	import { exitCodeLabel } from '@/runner/states';
 	import { statusDetail } from '@/runner/statusLine';
 	import { useRunner } from '@/runner/store';
@@ -139,7 +139,7 @@
 				const state = runner.status.value?.state;
 				if (state === 'incompatible')
 					return statusDetail(runner.status.value) ?? '';
-				if (state && state !== 'ready') return ABSENT_TOOLTIP;
+				if (state && state !== 'ready') return absentTooltip();
 				return '';
 			});
 

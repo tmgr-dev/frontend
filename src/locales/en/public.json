@@ -72,5 +72,26 @@
 		"unsupported": "Voice input is not supported here",
 		"stopTranscribe": "Stop and transcribe",
 		"dictate": "Dictate"
+	},
+	"helpers": {
+		"voice": {
+			"sessionExpired": "Your session expired. Sign in again.",
+			"tooLong": "The recording is too long. Try a shorter one.",
+			"badFormat": "This browser records a format that is not supported.",
+			"noSpeech": "No speech was detected. Try again.",
+			"tooMany": "Too many voice requests. Wait a minute and try again.",
+			"unavailable": "Voice transcription is unavailable right now.",
+			"failed": "Voice transcription failed. Try again.",
+			"timedOut": "Transcription timed out. Try again.",
+			"noServer": "Could not reach the server. Check your connection.",
+			"micBlocked": "Microphone access is blocked. Allow it in your browser or system settings.",
+			"noMic": "No microphone was found.",
+			"micBusy": "The microphone is busy or unavailable.",
+			"micStart": "Could not start the microphone.",
+			"tooShort": "The recording was too short.",
+			"nothingRecognized": "Nothing was recognized.",
+			"recordingFailed": "Recording failed.",
+			"recordStart": "Could not start the recording."
+		}
 	}
 }

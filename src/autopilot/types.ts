@@ -131,7 +131,7 @@ export interface StatusDoc {
 }
 
 export interface HeaderView {
-	title: 'Autopilot' | 'Queue loop';
+	title: string;
 	word: string;
 	note: string | null;
 	needsUpdate: boolean;

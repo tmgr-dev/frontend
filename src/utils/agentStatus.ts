@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 export type AgentSessionState =
 	'working' | 'waiting' | 'blocked' | 'idle' | 'done' | 'exited';
 
@@ -37,14 +39,19 @@ const rank = (state: AgentSessionState): number => {
 	return index === -1 ? PRIORITY.length : index;
 };
 
-export const STATE_LABELS: Record<AgentSessionState, string> = {
-	working: 'Working',
-	waiting: 'Waiting',
-	blocked: 'Blocked',
-	idle: 'Idle',
-	done: 'Done',
-	exited: 'Exited',
-};
+const STATE_KEYS: AgentSessionState[] = [
+	'working',
+	'waiting',
+	'blocked',
+	'idle',
+	'done',
+	'exited',
+];
+
+export const stateLabel = (state: AgentSessionState): string =>
+	STATE_KEYS.includes(state)
+		? t(`taskAgent.helpers.status.states.${state}`)
+		: state;
 
 export const STATE_GLYPHS: Record<AgentSessionState, string> = {
 	working: '●',
@@ -103,25 +110,31 @@ export const formatSince = (iso: string | null, nowMs: number): string => {
 	const at = Date.parse(iso ?? '');
 	if (Number.isNaN(at)) return '';
 	const minutes = Math.max(0, Math.floor((nowMs - at) / 60000));
-	if (minutes < 1) return 'just now';
-	if (minutes < 60) return `${minutes} min ago`;
+	if (minutes < 1) return t('taskAgent.helpers.status.justNow');
+	if (minutes < 60) return t('taskAgent.helpers.status.minAgo', { n: minutes });
 	const hours = Math.floor(minutes / 60);
-	if (hours < 24) return `${hours} h ago`;
-	return `${Math.floor(hours / 24)} d ago`;
+	if (hours < 24) return t('taskAgent.helpers.status.hourAgo', { n: hours });
+	return t('taskAgent.helpers.status.dayAgo', { n: Math.floor(hours / 24) });
 };
 
 export const sessionTooltip = (
 	session: AgentSession,
 	nowMs: number,
 ): string => {
-	const who = session.agent_profile || 'agent';
-	const where = session.host_label ? ` on ${session.host_label}` : '';
+	const who = session.agent_profile || t('taskAgent.helpers.status.agent');
+	const where = session.host_label
+		? t('taskAgent.helpers.status.on', { host: session.host_label })
+		: '';
 	const since = formatSince(session.state_since, nowMs);
 	const parts = [
-		`${STATE_LABELS[session.state] ?? session.state}: ${who}${where}`,
+		t('taskAgent.helpers.status.line', {
+			state: stateLabel(session.state),
+			who,
+			where,
+		}),
 	];
-	if (since) parts.push(`since ${since}`);
-	if (session.stale) parts.push('no recent updates');
+	if (since) parts.push(t('taskAgent.helpers.status.since', { since }));
+	if (session.stale) parts.push(t('taskAgent.helpers.status.noRecent'));
 	return parts.join(' · ');
 };
 

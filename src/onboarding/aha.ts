@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 export interface AhaDeps {
 	userId: () => number | string | null;
 	intent: () => string | null;
@@ -120,8 +122,7 @@ export function createAhaWatcher(deps: AhaDeps): AhaWatcher {
 				if (facts?.agent_runs_finished) {
 					const observedPending = sawPending;
 					markShown(userId, 'agent');
-					if (observedPending)
-						deps.toast('First agent run logged. This is what TMGR does.');
+					if (observedPending) deps.toast(t('onboarding.helpers.aha.firstRun'));
 					return stop();
 				}
 				if (facts) sawPending = true;
@@ -155,7 +156,10 @@ export function createAhaWatcher(deps: AhaDeps): AhaWatcher {
 			markShown(userId, 'timer');
 			const minutes = Math.max(1, Math.round(payload.minutes));
 			deps.toast(
-				`Logged ${minutes}m on ${payload.title}. Your time stays with the task.`,
+				t('onboarding.helpers.aha.timerLogged', {
+					minutes,
+					title: payload.title,
+				}),
 			);
 		},
 	};

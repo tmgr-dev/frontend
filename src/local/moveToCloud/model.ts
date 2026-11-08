@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type {
 	CreateJobRequest,
 	PersonaMappingEntry,
@@ -215,12 +216,7 @@ export const excludedReason = (
 };
 
 export const reasonLabel = (reason: ExcludedReason): string =>
-	({
-		missing: 'file is missing',
-		too_large: 'too large',
-		mime: 'type not allowed',
-		refused: 'refused by the server',
-	})[reason];
+	t(`desktop.helpers.move.excludedReasons.${reason}`);
 
 export const splitSnapshotFiles = (
 	files: MoveSnapshotFile[],
