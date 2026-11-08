@@ -1,0 +1,183 @@
+{
+	"language": {
+		"title": "Język",
+		"label": "Język interfejsu",
+		"description": "Używany w aplikacji, e-mailach i powiadomieniach.",
+		"saveFailed": "Nie udało się zapisać języka"
+	},
+	"page": {
+		"settings": "Ustawienia",
+		"profile": "Profil",
+		"devices": "Inteligentne urządzenia",
+		"notifications": "Powiadomienia",
+		"theme": "Motyw",
+		"experimental": "Eksperymentalne",
+		"desktop": "Desktop",
+		"localData": "Dane lokalne",
+		"privacy": "Prywatność",
+		"agentWork": "Praca agenta",
+		"about": "Informacje"
+	},
+	"loading": "Ładowanie ustawień",
+	"loadFailed": "Nie udało się załadować ustawień.",
+	"layout": {
+		"back": "Wróć do ustawień"
+	},
+	"nav": {
+		"groups": {
+			"account": "Konto",
+			"workspace": "Przestrzeń robocza",
+			"agents": "Agenci",
+			"app": "Aplikacja"
+		},
+		"items": {
+			"profile": "Profil",
+			"notification": "Powiadomienia",
+			"device": "Inteligentne urządzenia",
+			"privacy": "Prywatność",
+			"workspaces": "Ogólne",
+			"modules": "Moduły",
+			"personas": "Persony",
+			"agent-work": "Praca agenta",
+			"agent-notifications": "Alerty agentów",
+			"plugins": "Wtyczki",
+			"theme": "Motyw",
+			"desktop": "Desktop",
+			"data": "Dane lokalne",
+			"experimental": "Eksperymentalne",
+			"about": "Informacje"
+		}
+	},
+	"alerts": {
+		"errorTitle": "Błąd",
+		"updated": "Ustawienia zostały zaktualizowane",
+		"updateFailed": "Nie udało się zaktualizować ustawień",
+		"editorUpdated": "Edytor zaktualizowany. Ponowne ładowanie strony..."
+	},
+	"push": {
+		"title": "Powiadomienia push (starsze)",
+		"enable": "Włącz powiadomienia push w przeglądarce",
+		"test": "Wyślij testowe powiadomienie",
+		"showTooltips": "Pokazuj podpowiedzi",
+		"registrationTitle": "Rejestracja powiadomień",
+		"registrationBody": "Sprawdź uprawnienia do powiadomień"
+	},
+	"desktop": {
+		"gitTracking": "Automatyczne śledzenie Git",
+		"shortcuts": "Skróty klawiszowe"
+	},
+	"about": {
+		"version": "Wersja {version}",
+		"moreTitle": "Więcej od autora",
+		"moreDescription": "Inne produkty twórców TMGR."
+	},
+	"theme": {
+		"title": "Motyw",
+		"description": "Wybierz motyw kolorystyczny oraz tryb jasny lub ciemny.",
+		"active": "aktywny",
+		"mode": "Tryb:",
+		"light": "Jasny",
+		"dark": "Ciemny",
+		"system": "Systemowy",
+		"default": "Domyślny",
+		"tags": {
+			"default": "kanoniczny",
+			"dracula": "fioletowy",
+			"nord": "mroźny",
+			"one-dark": "atom",
+			"monokai": "klasyczny",
+			"solarized-dark": "stonowany",
+			"gruvbox-dark": "retro",
+			"tokyo-night": "nocny",
+			"github-dark": "domyślny",
+			"night-owl": "głęboki",
+			"cobalt2": "niebieski",
+			"palenight": "material",
+			"ayu-dark": "ciepły",
+			"catppuccin-mocha": "pastelowy",
+			"synthwave-84": "neonowy",
+			"github-light": "jasny",
+			"oled": "czysta czerń",
+			"colorblind": "okabe-ito"
+		}
+	},
+	"timezone": {
+		"title": "Strefa czasowa",
+		"description": "Codzienne rutyny uruchamiają się, a dni zaczynają się według tej strefy czasowej.",
+		"placeholder": "Wybierz strefę czasową",
+		"search": "Szukaj stref czasowych",
+		"notFound": "Nie znaleziono strefy czasowej.",
+		"detected": "Wykryto: {zone}",
+		"useDetected": "Użyj wykrytej",
+		"saveFailed": "Nie udało się zapisać strefy czasowej"
+	},
+	"telegram": {
+		"title": "Telegram",
+		"connectedAs": "Połączono jako {'@'}{username}",
+		"unlink": "Odłącz",
+		"connect": "Połącz Telegram",
+		"connectBody": "Kliknij przycisk poniżej, aby otworzyć Telegram i połączyć konto. Po połączeniu będziesz otrzymywać powiadomienia przez Telegram.",
+		"open": "Otwórz Telegram",
+		"unlinkTitle": "Odłącz Telegram",
+		"unlinkBody": "Czy na pewno chcesz odłączyć konto Telegram? Nie będziesz już otrzymywać powiadomień przez Telegram."
+	},
+	"device": {
+		"tokenTitle": "Token API",
+		"tokenHidden": "Token jest ustawiony (ukryty). Wygeneruj nowy, jeśli go zgubiłeś.",
+		"tokenNeeded": "Trzeba wygenerować token",
+		"hide": "Ukryj",
+		"show": "Pokaż",
+		"copyNow": "Skopiuj go teraz — nie zostanie pokazany ponownie.",
+		"created": "Utworzono: {date}",
+		"generateNew": "Wygeneruj nowy token",
+		"generate": "Wygeneruj token",
+		"revoke": "Unieważnij token",
+		"generateTitle": "Generowanie nowego tokenu",
+		"regenerateBody": "Czy na pewno chcesz wygenerować nowy token? Obecny token straci ważność, a wszystkie urządzenia, które go używają, trzeba będzie zaktualizować.",
+		"generateBody": "Wygenerować nowy token dla twoich inteligentnych urządzeń?",
+		"generateFailed": "Nie udało się wygenerować tokenu",
+		"generated": "Token został wygenerowany",
+		"revokeTitle": "Unieważnianie tokenu",
+		"revokeBody": "Czy na pewno chcesz unieważnić ten token? Wszystkie urządzenia z tym tokenem przestaną działać, dopóki nie zostaną skonfigurowane z nowym tokenem.",
+		"revokeFailed": "Nie udało się unieważnić tokenu",
+		"revoked": "Token został unieważniony",
+		"howTo": {
+			"title": "Jak używać",
+			"step1": "1. Wygeneruj token przyciskiem powyżej",
+			"step2": "2. Dołącz token do zapytań API swojego urządzenia w nagłówku:",
+			"secure": "Chroń swój token. Jeśli wycieknie, natychmiast wygeneruj nowy."
+		},
+		"mcp": {
+			"title": "Konfiguracja MCP",
+			"intro": "TMGR MCP używa tokenu inteligentnego urządzenia jako niestandardowego nagłówka. Wygeneruj token powyżej, a następnie skonfiguruj klienta MCP obsługującego zdalne serwery Streamable HTTP z nagłówkami (Claude Code: {command}).",
+			"serverUrl": "Adres URL serwera",
+			"clientConfig": "Konfiguracja klienta",
+			"oauth": "Uwaga o OAuth: ten serwer TMGR MCP nie jest jeszcze konektorem OAuth. W przeciwieństwie do Spendly uwierzytelnia `/mcp/**` przez `X-Smart-Device-Token`, więc niestandardowe konektory Claude.ai wymagające OAuth discovery nie są obsługiwane w tej konfiguracji.",
+			"notify": "Ten MCP działa na twoich zadaniach i czasie. Aby otrzymywać od agentów powiadomienia push i alarmy na telefonie, połącz tmgr-notify w sekcji {link}.",
+			"notifyLink": "Alerty agentów"
+		},
+		"docs": {
+			"title": "Dokumentacja",
+			"api": "Dokumentacja Smart Device API",
+			"mcp": "Konfiguracja serwera MCP"
+		}
+	},
+	"agentUsage": {
+		"title": "Praca agenta",
+		"description": "Zobacz, ile kosztują agenci AI przy twoich zadaniach, na każdym urządzeniu.",
+		"syncLabel": "Synchronizacja użycia agentów",
+		"syncDescription": "Przesyła sumy dla poszczególnych zadań, aby mogły je pokazywać wersje webowa i mobilna: tokeny, koszt AI (w przeliczeniu na API), nazwy agenta, modelu i narzędzi oraz liczby. Nigdy nie przesyła promptów, odpowiedzi, ścieżek plików ani argumentów poleceń. Przesyłanie rozpoczyna się tylko z CLI tmgr, po włączeniu go tam: ręcznie poleceniem `tmgr usage sync` lub po każdym uruchomieniu agenta, jeśli dodatkowo potwierdzisz `tmgr usage sync auto on`. Wyłączenie usuwa wszystko, co zostało już przesłane.",
+		"unavailable": "Synchronizacja użycia agentów nie jest jeszcze dostępna na tym serwerze.",
+		"uploadsTitle": "Twoje przesłane dane",
+		"uploadsDescription": "To, co przesłało to konto, od najnowszych.",
+		"deleteAll": "Usuń wszystko",
+		"empty": "Nic nie przesłano.",
+		"turnOffTitle": "Wyłączyć synchronizację użycia agentów?",
+		"turnOffBody": "Wszystko, co przesłało to konto, zostanie usunięte z TMGR. Możesz włączyć ją ponownie później.",
+		"keepOn": "Zostaw włączoną",
+		"turnOff": "Wyłącz i usuń",
+		"deleteTitle": "Usunąć wszystkie przesłane dane?",
+		"deleteBody": "Wszystko, co przesłało to konto, zostanie usunięte z TMGR. Synchronizacja użycia agentów pozostanie bez zmian.",
+		"genericError": "Coś poszło nie tak."
+	}
+}
