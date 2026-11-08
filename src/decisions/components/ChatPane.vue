@@ -2,7 +2,7 @@
 	<div class="pane">
 		<div ref="log" class="chat">
 			<div v-if="messages.length === 0" class="placeholder">
-				No messages on this card yet.
+				{{ $t('decisions.chat.empty') }}
 			</div>
 			<div
 				v-for="message in messages"
@@ -11,8 +11,10 @@
 				:class="{ me: message.author === 'owner' }"
 			>
 				<div class="who">
-					<template v-if="message.author === 'owner'">You</template>
-					<template v-else><i></i>Agent</template>
+					<template v-if="message.author === 'owner'">{{
+						$t('decisions.chat.you')
+					}}</template>
+					<template v-else><i></i>{{ $t('decisions.chat.agent') }}</template>
 				</div>
 				<div
 					v-if="isAgent(message)"
@@ -33,12 +35,14 @@
 				:disabled="!canReply"
 				:placeholder="
 					canReply
-						? 'Ask the agent about this card… Enter'
-						: 'Chat is unavailable'
+						? $t('decisions.chat.placeholder')
+						: $t('decisions.chat.unavailable')
 				"
 				@keydown="onKey"
 			></textarea>
-			<div v-if="!canReply" class="hint">Answer in the agent session.</div>
+			<div v-if="!canReply" class="hint">
+				{{ $t('decisions.chat.answerInSession') }}
+			</div>
 		</div>
 	</div>
 </template>

@@ -1,6 +1,8 @@
 <template>
 	<div class="pane">
-		<div v-if="checks.length === 0" class="placeholder">No checks listed.</div>
+		<div v-if="checks.length === 0" class="placeholder">
+			{{ $t('decisions.checks.empty') }}
+		</div>
 		<div v-for="(check, index) in checks" :key="index" class="check">
 			<span class="ic" :class="check.state">{{ GLYPH[check.state] }}</span>
 			{{ check.text }}

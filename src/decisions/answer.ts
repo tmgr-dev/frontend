@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { Answer, CardDelivery, CardView, LineComment } from './types';
 
 export interface AnswerDraft {
@@ -57,21 +58,25 @@ export const cardMode = (card: CardView): CardMode => {
 };
 
 export const answerSummary = (card: CardView, answer: Answer): string => {
-	if (answer.dismissed) return 'dismissed';
-	if (answer.deferred) return 'deferred';
+	if (answer.dismissed) return t('decisions.answer.dismissed');
+	if (answer.deferred) return t('decisions.answer.deferred');
 	const option = card.options.find((o) => o.id === answer.choice);
-	const text = option?.label ?? answer.free_text ?? 'answered';
-	return answer.note && option ? `${text} + note` : text;
+	const text =
+		option?.label ?? answer.free_text ?? t('decisions.answer.answered');
+	return answer.note && option
+		? t('decisions.answer.withNote', { text })
+		: text;
 };
 
 export const answerToast = (card: CardView, answer: Answer): string => {
 	const title =
 		card.title.length > 48 ? `${card.title.slice(0, 47)}…` : card.title;
-	return `${title}: ${
-		card.session_gone
-			? 'saved, but the session has ended'
-			: answerSummary(card, answer)
-	}`;
+	return t('decisions.answer.toast', {
+		title,
+		summary: card.session_gone
+			? t('decisions.answer.sessionGone')
+			: answerSummary(card, answer),
+	});
 };
 
 export const deliveryLabel = (
@@ -80,19 +85,21 @@ export const deliveryLabel = (
 	if (!delivery) return null;
 	switch (delivery.state) {
 		case 'sent':
-			return 'Sent to the session (unconfirmed)';
+			return t('decisions.delivery.sent');
 		case 'delivered':
-			return delivery.via === 'runner' ? 'Delivered via runner' : 'Delivered';
+			return delivery.via === 'runner'
+				? t('decisions.delivery.deliveredRunner')
+				: t('decisions.delivery.delivered');
 		case 'queued':
-			return delivery.detail ?? "Waiting for the agent's prompt";
+			return delivery.detail ?? t('decisions.delivery.queued');
 		case 'undelivered':
-			return `Not delivered: ${delivery.detail ?? 'session closed'}`;
+			return t('decisions.delivery.undelivered', {
+				reason: delivery.detail ?? t('decisions.delivery.sessionClosed'),
+			});
 		default:
 			return null;
 	}
 };
 
-export const UNPICKED_LABEL = 'Not picked up by any agent';
-
 export const unpickedLabel = (card: CardView): string | null =>
-	card.unpicked ? UNPICKED_LABEL : null;
+	card.unpicked ? t('decisions.unpicked') : null;

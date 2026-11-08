@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { RunnerState, TermFrame } from '@/runner/api';
 import { describeRunnerError } from '@/runner/errors';
 import { describeState, sanitizeState, type StateView } from '@/runner/states';
@@ -31,9 +32,7 @@ export interface TermView {
 const WHEEL_STEP = 3;
 
 export const scrollIndicatorText = (offset: number): string =>
-	`Scrolled back ${offset} ${
-		offset === 1 ? 'line' : 'lines'
-	} — press End to return`;
+	t('runnerTerminal.scrolledBack', offset);
 
 export const createController = (deps: {
 	term: TermLike;

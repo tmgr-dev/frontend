@@ -7,7 +7,7 @@
 		>
 			<div class="lights" data-tauri-drag-region></div>
 			<div class="wtitle" data-tauri-drag-region>
-				tmgr · Decisions · Doom Solving <span>— tmgr.dev</span>
+				{{ $t('decisions.window.titlebar') }} <span>— tmgr.dev</span>
 			</div>
 			<div class="balance" data-tauri-drag-region></div>
 		</div>
@@ -40,7 +40,7 @@
 								:class="{ on: tab === 'diff' }"
 								@click="tab = 'diff'"
 							>
-								Changes
+								{{ $t('decisions.tabs.changes') }}
 								<span v-if="threadCount" class="cnt">{{ threadCount }}</span>
 							</button>
 							<button
@@ -48,7 +48,7 @@
 								:class="{ on: tab === 'checks' }"
 								@click="tab = 'checks'"
 							>
-								Checks
+								{{ $t('decisions.tabs.checks') }}
 								<span v-if="current.checks.length" class="cnt">{{
 									current.checks.length
 								}}</span>
@@ -58,7 +58,7 @@
 								:class="{ on: tab === 'chat' }"
 								@click="openChat"
 							>
-								Chat <kbd>C</kbd>
+								{{ $t('decisions.tabs.chat') }} <kbd>C</kbd>
 							</button>
 							<span
 								v-if="tab === 'diff' && currentHasChanges && totals"
@@ -66,12 +66,14 @@
 								data-totals
 								:title="
 									totals.exact
-										? 'Total lines changed in this card'
-										: 'Some files could not be counted, so the total is partial'
+										? $t('decisions.tabs.totalExact')
+										: $t('decisions.tabs.totalPartial')
 								"
 								><span class="a">+{{ totals.added }}</span>
 								<span class="d">−{{ totals.removed }}</span
-								><span v-if="!totals.exact" class="partial">partial</span></span
+								><span v-if="!totals.exact" class="partial">{{
+									$t('decisions.tabs.partial')
+								}}</span></span
 							>
 							<button
 								v-if="tab === 'diff' && currentHasChanges"
@@ -79,7 +81,7 @@
 								class="refresh"
 								@click="loadDiff(current.id, true)"
 							>
-								Refresh
+								{{ $t('decisions.tabs.refresh') }}
 							</button>
 						</div>
 						<DiffPane
@@ -120,16 +122,18 @@
 					class="empty doom-done"
 				>
 					<div class="big">✓</div>
-					Doom solving complete. Go touch grass.
-					<small>Nothing is waiting for your decision.</small>
+					{{ $t('decisions.empty.done') }}
+					<small>{{ $t('decisions.empty.doneHint') }}</small>
 					<span class="grass" aria-hidden="true">🌱</span>
 				</div>
-				<div v-else-if="loadFailed" class="empty">Could not load decisions</div>
-				<div v-else-if="loaded" class="empty">
-					No matches
-					<small>Clear the search to see the queue.</small>
+				<div v-else-if="loadFailed" class="empty">
+					{{ $t('decisions.empty.loadFailed') }}
 				</div>
-				<div v-else class="empty">Loading…</div>
+				<div v-else-if="loaded" class="empty">
+					{{ $t('decisions.empty.noMatches') }}
+					<small>{{ $t('decisions.empty.noMatchesHint') }}</small>
+				</div>
+				<div v-else class="empty">{{ $t('decisions.empty.loading') }}</div>
 			</main>
 		</div>
 		<footer class="statusbar">
@@ -137,16 +141,22 @@
 			<span style="color: var(--fg)">Decisions</span>
 			<span class="grow"></span>
 			<div class="keys">
-				<span><kbd>Enter</kbd> accept</span>
-				<span><kbd>1</kbd>–<kbd>9</kbd> pick</span>
-				<span><kbd>⇧</kbd> + note</span>
-				<span><kbd>T</kbd> free text</span>
-				<span><kbd>D</kbd> defer</span>
-				<span><kbd>X</kbd> dismiss</span>
-				<span><kbd>↑</kbd><kbd>↓</kbd> cards</span>
+				<span><kbd>Enter</kbd> {{ $t('decisions.statusbar.accept') }}</span>
+				<span
+					><kbd>1</kbd>–<kbd>9</kbd> {{ $t('decisions.statusbar.pick') }}</span
+				>
+				<span><kbd>⇧</kbd> {{ $t('decisions.statusbar.note') }}</span>
+				<span><kbd>T</kbd> {{ $t('decisions.statusbar.freeText') }}</span>
+				<span><kbd>D</kbd> {{ $t('decisions.statusbar.defer') }}</span>
+				<span><kbd>X</kbd> {{ $t('decisions.statusbar.dismiss') }}</span>
+				<span
+					><kbd>↑</kbd><kbd>↓</kbd> {{ $t('decisions.statusbar.cards') }}</span
+				>
 			</div>
 			<span class="dot"></span>
-			<span>{{ progress.pending }} waiting</span>
+			<span>{{
+				$t('decisions.statusbar.waiting', { n: progress.pending })
+			}}</span>
 		</footer>
 		<div class="toast" :class="{ on: toast.on, error: toast.error }">
 			<span>{{ toast.text }}</span>
@@ -163,6 +173,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import { defineComponent } from 'vue';
 	import {
 		answerToast,
@@ -346,7 +357,7 @@
 		},
 		async mounted() {
 			window.addEventListener('keydown', this.onKeydown);
-			document.title = 'Decisions · Doom Solving';
+			document.title = t('decisions.window.title');
 			this.openedAt = Date.now();
 			let ticks = 0;
 			this.clock = window.setInterval(() => {
@@ -382,14 +393,17 @@
 					this.loadFailed = false;
 				} catch (error) {
 					this.loadFailed = true;
-					this.showToast(`Could not load decisions: ${String(error)}`, true);
+					this.showToast(
+						t('decisions.toast.loadFailed', { error: String(error) }),
+						true,
+					);
 				} finally {
 					this.loaded = true;
 					this.refreshing = false;
 				}
 				if (!this.awaitsShown && doomAwaits(this.progress.pending)) {
 					this.awaitsShown = true;
-					this.doomNotify('Your doom awaits');
+					this.doomNotify(t('decisions.doom.awaits'));
 				}
 				if (this.refreshAgain) {
 					this.refreshAgain = false;
@@ -462,20 +476,20 @@
 					burst();
 				}
 				const lifetime = lifetimeMilestone(this.eggs.total);
-				if (lifetime) notes.push(`${lifetime} decisions solved`);
+				if (lifetime) notes.push(t('decisions.doom.lifetime', { n: lifetime }));
 				if (
 					isSpeedrun(this.openedAt, now) &&
 					speedrunReady(this.lastSpeedrunAt, now)
 				) {
 					this.lastSpeedrunAt = now;
-					notes.push('Speedrun any%');
+					notes.push(t('decisions.doom.speedrun'));
 				}
 				const when = new Date(now);
 				if (isNightOwl(when)) {
 					const night = inboxZeroToday(this.eggs.nightOwlDay, when);
 					if (night.fire) {
 						this.eggs = { ...this.eggs, nightOwlDay: night.day };
-						notes.push('Night owl: still solving');
+						notes.push(t('decisions.doom.nightOwl'));
 					}
 				}
 				this.zeroCheck = true;
@@ -489,7 +503,7 @@
 				this.eggs = { ...this.eggs, inboxZeroDay: result.day };
 				saveEggState(this.eggs);
 				burst();
-				this.doomNotify('Inbox zero. Doom solved for today.');
+				this.doomNotify(t('decisions.doom.inboxZero'));
 			},
 			feedKonami(event: KeyboardEvent) {
 				if (event.repeat || event.isComposing) return;
@@ -512,7 +526,7 @@
 				this.doomModeTimer = window.setTimeout(() => {
 					this.doomMode = false;
 				}, 5000);
-				this.doomNotify('DOOM mode: engaged');
+				this.doomNotify(t('decisions.doom.mode'));
 			},
 			openLink(url: string) {
 				if (isHttpUrl(url)) void decisionsOpenLink(url).catch(() => undefined);
@@ -541,7 +555,10 @@
 				try {
 					await decisionsAnswer(card.id, answer);
 				} catch (error) {
-					this.showToast(`Could not send the answer: ${String(error)}`, true);
+					this.showToast(
+						t('decisions.toast.answerFailed', { error: String(error) }),
+						true,
+					);
 					return;
 				}
 				if (solved) {
@@ -564,7 +581,10 @@
 				try {
 					await decisionsAnswer(id, answer);
 				} catch (error) {
-					this.showToast(`Could not send the answer: ${String(error)}`, true);
+					this.showToast(
+						t('decisions.toast.answerFailed', { error: String(error) }),
+						true,
+					);
 					return;
 				}
 				const following = nextCardId(this.order, id);
@@ -583,7 +603,10 @@
 					await this.refreshCard(card.id);
 					if (message.action === 'fix') await this.loadDiff(card.id, true);
 				} catch (error) {
-					this.showToast(`Could not send the message: ${String(error)}`, true);
+					this.showToast(
+						t('decisions.toast.messageFailed', { error: String(error) }),
+						true,
+					);
 				}
 			},
 			sendChat(text: string) {

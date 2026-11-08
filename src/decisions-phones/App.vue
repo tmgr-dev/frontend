@@ -1,7 +1,7 @@
 <template>
 	<div class="phones">
 		<header class="bar" data-tauri-drag-region>
-			<span data-tauri-drag-region>tmgr · Phones</span>
+			<span data-tauri-drag-region>{{ $t('decisions.phones.title') }}</span>
 		</header>
 		<main class="body">
 			<p v-if="s.error" class="err" role="alert">{{ s.error }}</p>
@@ -12,10 +12,10 @@
 					<img
 						class="qr"
 						:src="s.pairing.qr_svg_data_url"
-						alt="Pairing QR code"
+						:alt="$t('decisions.phones.qrAlt')"
 					/>
 					<p class="muted">
-						Expires in
+						{{ $t('decisions.phones.expiresIn') }}
 						<strong data-test="countdown">{{ countdown }}</strong>
 					</p>
 				</template>
@@ -24,7 +24,7 @@
 					class="confirm"
 					@submit.prevent="submit"
 				>
-					<label for="code">Type the code shown on your iPhone</label>
+					<label for="code">{{ $t('decisions.phones.typeCode') }}</label>
 					<input
 						id="code"
 						v-model="code"
@@ -39,22 +39,28 @@
 						<strong data-test="countdown">{{ countdown }}</strong>
 					</p>
 					<button type="submit" class="primary" :disabled="!valid || s.busy">
-						Confirm
+						{{ $t('decisions.phones.confirm') }}
 					</button>
 				</form>
 				<p v-else-if="s.pairing.state === 'done'" class="muted">
-					You can answer Decisions cards from the phone now.
+					{{ $t('decisions.phones.done') }}
 				</p>
 				<div class="row">
 					<button type="button" :disabled="s.busy" @click="c.cancelPairing()">
-						{{ active ? 'Cancel' : 'Close' }}
+						{{
+							active
+								? $t('decisions.phones.cancel')
+								: $t('decisions.phones.close')
+						}}
 					</button>
 				</div>
 			</section>
 
 			<section class="card">
-				<h2>Paired phones</h2>
-				<p v-if="!s.phones.length" class="muted">No phones are paired yet.</p>
+				<h2>{{ $t('decisions.phones.pairedPhones') }}</h2>
+				<p v-if="!s.phones.length" class="muted">
+					{{ $t('decisions.phones.none') }}
+				</p>
 				<ul v-else class="list">
 					<li v-for="p in s.phones" :key="p.id">
 						<div class="info">
@@ -63,12 +69,18 @@
 								shortFingerprint(p.fingerprint)
 							}}</span>
 							<span class="muted">
-								Paired {{ formatDate(p.paired_at_ms) }} · last used
-								{{ sinceLabel(p.last_used_ms, now) }}
+								{{
+									$t('decisions.phones.pairedInfo', {
+										date: formatDate(p.paired_at_ms),
+										since: sinceLabel(p.last_used_ms, now),
+									})
+								}}
 							</span>
 						</div>
 						<div v-if="s.revokeId === p.id" class="row" role="alertdialog">
-							<span>Revoke {{ p.name }}?</span>
+							<span>{{
+								$t('decisions.phones.revokeQuestion', { name: p.name })
+							}}</span>
 							<button
 								type="button"
 								class="danger"
@@ -76,9 +88,11 @@
 								:disabled="s.busy"
 								@click="c.confirmRevoke()"
 							>
-								Revoke
+								{{ $t('decisions.phones.revoke') }}
 							</button>
-							<button type="button" @click="c.cancelRevoke()">Keep</button>
+							<button type="button" @click="c.cancelRevoke()">
+								{{ $t('decisions.phones.keep') }}
+							</button>
 						</div>
 						<button
 							v-else
@@ -87,7 +101,7 @@
 							:disabled="s.busy"
 							@click="c.askRevoke(p.id)"
 						>
-							Revoke
+							{{ $t('decisions.phones.revoke') }}
 						</button>
 					</li>
 				</ul>
@@ -97,6 +111,7 @@
 </template>
 
 <script lang="ts">
+	import { currentLocale } from '@/i18n';
 	import {
 		computed,
 		defineComponent,
@@ -149,7 +164,7 @@
 				s.pairing ? countdownLabel(s.pairing.expires_ms, now.value) : '',
 			);
 			const formatDate = (ms: number) =>
-				new Date(ms).toLocaleDateString(undefined, {
+				new Date(ms).toLocaleDateString(currentLocale(), {
 					year: 'numeric',
 					month: 'short',
 					day: 'numeric',

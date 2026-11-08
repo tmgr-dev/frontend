@@ -1,3 +1,4 @@
+import { currentLocale, i18n, t } from '@/i18n';
 import type {
 	CardKind,
 	CardLinkKind,
@@ -6,14 +7,9 @@ import type {
 	CardView,
 } from './types';
 
-export const KIND_LABELS: Record<CardKind, string> = {
-	decision: 'Decision',
-	review: 'Review',
-	release: 'Release',
-	check: 'Check',
-	question: 'Question',
-	permission: 'Permission',
-	stopped: 'Finished',
+export const kindLabel = (kind: CardKind): string => {
+	const key = `decisions.kind.${kind}`;
+	return i18n.global.te(key) ? t(key) : kind;
 };
 
 export const isHttpUrl = (value: string): boolean => {
@@ -29,7 +25,7 @@ export const linkLabel = (value: string): string => {
 	if (!isHttpUrl(value)) return value;
 	const url = new URL(value);
 	const pull = /\/pull\/(\d+)/.exec(url.pathname);
-	if (pull) return `PR #${pull[1]}`;
+	if (pull) return t('decisions.link.pr', { n: pull[1] });
 	const issue = /\/issues\/(\d+)/.exec(url.pathname);
 	if (issue) return `#${issue[1]}`;
 	const tag = /\/releases\/tag\/(.+?)\/?$/.exec(url.pathname);
@@ -56,13 +52,7 @@ export interface LinkSection {
 	entries: LinkEntry[];
 }
 
-const LINK_SECTIONS: { kind: CardLinkKind; title: string }[] = [
-	{ kind: 'pr', title: 'PRs' },
-	{ kind: 'commit', title: 'Commits' },
-	{ kind: 'tag', title: 'Tags' },
-	{ kind: 'task', title: 'Task' },
-	{ kind: 'url', title: 'Other' },
-];
+const LINK_SECTIONS: CardLinkKind[] = ['pr', 'commit', 'tag', 'task', 'url'];
 
 export const linkSections = (links: CardLinks): LinkSection[] => {
 	const seen = new Set<string>();
@@ -70,7 +60,7 @@ export const linkSections = (links: CardLinks): LinkSection[] => {
 	const add = (kind: CardLinkKind, url: string, label?: string) => {
 		if (!url || seen.has(url)) return;
 		seen.add(url);
-		const target = LINK_SECTIONS.some((s) => s.kind === kind) ? kind : 'url';
+		const target = LINK_SECTIONS.includes(kind) ? kind : 'url';
 		const list = byKind.get(target) ?? [];
 		list.push({ url, label: label || linkLabel(url) });
 		byKind.set(target, list);
@@ -78,11 +68,16 @@ export const linkSections = (links: CardLinks): LinkSection[] => {
 	for (const item of links.items ?? []) add(item.kind, item.url, item.label);
 	if (links.pr) add('pr', links.pr);
 	if (links.task) add('task', links.task);
-	return LINK_SECTIONS.flatMap(({ kind, title }) => {
+	return LINK_SECTIONS.flatMap((kind) => {
 		const entries = byKind.get(kind);
-		return entries ? [{ title, entries }] : [];
+		return entries
+			? [{ title: t(`decisions.link.sections.${kind}`), entries }]
+			: [];
 	});
 };
 
 export const updatedLabel = (ms: number): string =>
-	new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+	new Date(ms).toLocaleTimeString(currentLocale(), {
+		hour: '2-digit',
+		minute: '2-digit',
+	});

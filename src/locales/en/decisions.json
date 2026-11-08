@@ -1,0 +1,200 @@
+{
+	"window": {
+		"title": "Decisions · Doom Solving",
+		"titlebar": "tmgr · Decisions · Doom Solving"
+	},
+	"kind": {
+		"decision": "Decision",
+		"review": "Review",
+		"release": "Release",
+		"check": "Check",
+		"question": "Question",
+		"permission": "Permission",
+		"stopped": "Finished"
+	},
+	"link": {
+		"pr": "PR #{n}",
+		"sections": {
+			"pr": "PRs",
+			"commit": "Commits",
+			"tag": "Tags",
+			"task": "Task",
+			"url": "Other"
+		}
+	},
+	"subtitle": {
+		"default": "doom solving",
+		"rare": {
+			"scrollingUseful": "doom scrolling, but make it useful",
+			"oneMoreCard": "one more card, then bed",
+			"optionalDoom": "the doom is optional, the decisions are not",
+			"solvingNotScrolling": "solving, not scrolling",
+			"touchGrass": "touch grass after this one",
+			"notProcrastination": "it is not procrastination if the agents wait",
+			"hello": "hello, doom"
+		}
+	},
+	"doom": {
+		"awaits": "Your doom awaits",
+		"streak": "Doom Solving streak: {n}",
+		"lifetime": "{n} decisions solved",
+		"speedrun": "Speedrun any%",
+		"nightOwl": "Night owl: still solving",
+		"inboxZero": "Inbox zero. Doom solved for today.",
+		"mode": "DOOM mode: engaged"
+	},
+	"answer": {
+		"dismissed": "dismissed",
+		"deferred": "deferred",
+		"answered": "answered",
+		"withNote": "{text} + note",
+		"sessionGone": "saved, but the session has ended",
+		"toast": "{title}: {summary}"
+	},
+	"delivery": {
+		"sent": "Sent to the session (unconfirmed)",
+		"deliveredRunner": "Delivered via runner",
+		"delivered": "Delivered",
+		"queued": "Waiting for the agent's prompt",
+		"undelivered": "Not delivered: {reason}",
+		"sessionClosed": "session closed"
+	},
+	"unpicked": "Not picked up by any agent",
+	"wait": {
+		"sessionGone": "The session ended, so no agent will see this.",
+		"notListening": "No agent is listening right now; it'll see this when it comes back.",
+		"waiting": "waiting for the agent…",
+		"noReplyDelivered": "The agent hasn't replied yet.",
+		"noReplyPending": "The agent hasn't replied yet; it'll see this when it next checks."
+	},
+	"toast": {
+		"loadFailed": "Could not load decisions: {error}",
+		"answerFailed": "Could not send the answer: {error}",
+		"messageFailed": "Could not send the message: {error}"
+	},
+	"tabs": {
+		"changes": "Changes",
+		"checks": "Checks",
+		"chat": "Chat",
+		"refresh": "Refresh",
+		"partial": "partial",
+		"totalExact": "Total lines changed in this card",
+		"totalPartial": "Some files could not be counted, so the total is partial"
+	},
+	"empty": {
+		"done": "Doom solving complete. Go touch grass.",
+		"doneHint": "Nothing is waiting for your decision.",
+		"loadFailed": "Could not load decisions",
+		"noMatches": "No matches",
+		"noMatchesHint": "Clear the search to see the queue.",
+		"loading": "Loading…"
+	},
+	"statusbar": {
+		"accept": "accept",
+		"pick": "pick",
+		"note": "+ note",
+		"freeText": "free text",
+		"defer": "defer",
+		"dismiss": "dismiss",
+		"cards": "cards",
+		"waiting": "{n} waiting"
+	},
+	"queue": {
+		"title": "Queue",
+		"count": "{pending} of {total}",
+		"search": "Search queue",
+		"complete": "Doom solving complete. Go touch grass.",
+		"noMatches": "No matches",
+		"empty": "Nothing in the queue.",
+		"deferred": "deferred",
+		"updated": "updated",
+		"agentWaiting": "An agent is waiting",
+		"closeCard": "Close card"
+	},
+	"card": {
+		"sessionEnded": "Session ended",
+		"agentWaiting": "Agent is waiting",
+		"updatedAt": "updated {time}",
+		"position": "· {position} of {total}",
+		"dismissed": "Dismissed",
+		"closed": "Closed",
+		"deferred": "Deferred",
+		"answered": "Answered",
+		"dismissOnly": "This card comes from a terminal session without a return path. Answer in the agent session, or dismiss it here.",
+		"dismiss": "Dismiss",
+		"recommended": "★ recommended",
+		"addNote": "✎ + note",
+		"addNoteTitle": "Choose and add a note",
+		"notePlaceholder": "Note for “{label}”… sent with your choice",
+		"noteSend": "Enter — send · Shift+Enter — new line",
+		"noteCancel": "Esc — without a note",
+		"viaRunner": "Your answer is typed into the agent session.",
+		"freeWithOptions": "Your own answer… (T) — sent to the agent as a comment",
+		"freeOnly": "Your answer… (T) — Enter to send",
+		"hints": {
+			"accept": "accept ★",
+			"pick": "pick",
+			"pickNote": "pick + note",
+			"defer": "defer",
+			"dismiss": "dismiss",
+			"chat": "chat",
+			"cards": "cards"
+		}
+	},
+	"chat": {
+		"empty": "No messages on this card yet.",
+		"you": "You",
+		"agent": "Agent",
+		"placeholder": "Ask the agent about this card… Enter",
+		"unavailable": "Chat is unavailable",
+		"answerInSession": "Answer in the agent session."
+	},
+	"checks": {
+		"empty": "No checks listed."
+	},
+	"diff": {
+		"noneAttached": "No changes attached to this card.",
+		"loading": "Loading changes…",
+		"loadFailed": "Could not load changes: {error}",
+		"none": "No changes.",
+		"truncated": "The diff is too large and was truncated.",
+		"commentOnLine": "Comment on this line",
+		"you": "You",
+		"agent": "Agent",
+		"draftLabel": "You · will be sent with your answer",
+		"remove": "Remove",
+		"fix": "Fix",
+		"fixClarify": "Fix + clarify…",
+		"keep": "Keep",
+		"reply": "Reply",
+		"send": "Send",
+		"addToAnswer": "Add to answer",
+		"close": "Close",
+		"keptAsIs": "Kept as is",
+		"sentFix": "Sent to the agent: fix",
+		"fixPlaceholder": "How exactly to fix it… (empty — just “Fix”)",
+		"commentPlaceholder": "Comment on this line…",
+		"hintSend": "Enter — send to the agent · Shift+Enter — new line",
+		"hintDraft": "Enter — add to your answer · Shift+Enter — new line",
+		"groupKind": {
+			"repo": "repo",
+			"patch": "patch"
+		}
+	},
+	"phones": {
+		"title": "tmgr · Phones",
+		"qrAlt": "Pairing QR code",
+		"expiresIn": "Expires in",
+		"typeCode": "Type the code shown on your iPhone",
+		"confirm": "Confirm",
+		"done": "You can answer Decisions cards from the phone now.",
+		"cancel": "Cancel",
+		"close": "Close",
+		"pairedPhones": "Paired phones",
+		"none": "No phones are paired yet.",
+		"pairedInfo": "Paired {date} · last used {since}",
+		"revokeQuestion": "Revoke {name}?",
+		"revoke": "Revoke",
+		"keep": "Keep"
+	}
+}

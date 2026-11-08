@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 export const STREAK_MILESTONES = [5, 10, 25, 50, 100] as const;
 export const STREAK_GAP_MS = 10 * 60 * 1000;
 export const SPEEDRUN_MS = 3000;
@@ -20,15 +22,15 @@ export const KONAMI = [
 	'a',
 ] as const;
 
-export const DEFAULT_SUBTITLE = 'doom solving';
+export const DEFAULT_SUBTITLE = 'decisions.subtitle.default';
 export const RARE_LINES = [
-	'doom scrolling, but make it useful',
-	'one more card, then bed',
-	'the doom is optional, the decisions are not',
-	'solving, not scrolling',
-	'touch grass after this one',
-	'it is not procrastination if the agents wait',
-	'hello, doom',
+	'decisions.subtitle.rare.scrollingUseful',
+	'decisions.subtitle.rare.oneMoreCard',
+	'decisions.subtitle.rare.optionalDoom',
+	'decisions.subtitle.rare.solvingNotScrolling',
+	'decisions.subtitle.rare.touchGrass',
+	'decisions.subtitle.rare.notProcrastination',
+	'decisions.subtitle.rare.hello',
 ] as const;
 
 export interface EggState {
@@ -145,7 +147,7 @@ export const doomAwaits = (pending: number): boolean =>
 	pending >= DOOM_AWAITS_AT;
 
 export const streakMessage = (streak: number): string =>
-	`Doom Solving streak: ${streak}`;
+	t('decisions.doom.streak', { n: streak });
 
 const DOOM_SLOT = 'tmgr.decisions.doom.v1';
 

@@ -1,0 +1,9 @@
+{
+	"title": "Agent terminal",
+	"agentSession": "Agent session",
+	"connecting": "Connecting",
+	"detach": "Detach",
+	"reattach": "Reattach",
+	"sessionEnded": "Session ended: {reason}",
+	"scrolledBack": "Scrolled back {n} line — press End to return | Scrolled back {n} lines — press End to return"
+}

@@ -4,20 +4,26 @@
 			<div class="logo">⚡</div>
 			<div class="ws-name">
 				<b>Decisions</b>
-				<small class="doom-sub">{{ subtitle }}</small>
+				<small class="doom-sub">{{ $t(subtitle) }}</small>
 			</div>
 			<span v-if="progress.pending" class="badge">{{ progress.pending }}</span>
 		</div>
 		<div class="sect">
-			Queue<span>{{ progress.pending }} of {{ progress.total }}</span>
+			{{ $t('decisions.queue.title')
+			}}<span>{{
+				$t('decisions.queue.count', {
+					pending: progress.pending,
+					total: progress.total,
+				})
+			}}</span>
 		</div>
 		<div class="prog"><i :style="{ width: progress.percent + '%' }"></i></div>
 		<input
 			type="text"
 			autocomplete="off"
 			class="queue-search"
-			placeholder="Search queue"
-			aria-label="Search queue"
+			:placeholder="$t('decisions.queue.search')"
+			:aria-label="$t('decisions.queue.search')"
 			:value="query"
 			@input="onInput"
 			@keydown.esc="clearQuery"
@@ -27,13 +33,13 @@
 			class="doom-complete"
 		>
 			<span class="grass" aria-hidden="true">🌱</span>
-			Doom solving complete. Go touch grass.
+			{{ $t('decisions.queue.complete') }}
 		</div>
 		<div v-if="groups.length === 0" class="empty-queue">
 			{{
 				query.trim() && progress.total > 0
-					? 'No matches'
-					: 'Nothing in the queue.'
+					? $t('decisions.queue.noMatches')
+					: $t('decisions.queue.empty')
 			}}
 		</div>
 		<template v-for="group in groups" :key="group.key">
@@ -49,17 +55,21 @@
 				>
 					<div class="row">
 						<span class="tag" :class="'t-' + card.kind">{{
-							KIND_LABELS[card.kind]
+							kindLabel(card.kind)
 						}}</span>
-						<span v-if="card.state === 'deferred'" class="k">deferred</span>
-						<span v-if="card.updated_ms" class="upd">updated</span>
+						<span v-if="card.state === 'deferred'" class="k">{{
+							$t('decisions.queue.deferred')
+						}}</span>
+						<span v-if="card.updated_ms" class="upd">{{
+							$t('decisions.queue.updated')
+						}}</span>
 						<span v-if="card.unpicked" class="unpicked">{{
-							UNPICKED_LABEL
+							$t('decisions.unpicked')
 						}}</span>
 						<span
 							v-if="card.blocking && !isDone(card) && !card.session_gone"
 							class="block"
-							title="An agent is waiting"
+							:title="$t('decisions.queue.agentWaiting')"
 						></span>
 					</div>
 					<span class="t">{{ card.title }}</span>
@@ -68,8 +78,8 @@
 					v-if="!isDone(card)"
 					type="button"
 					class="close"
-					aria-label="Close card"
-					title="Close card"
+					:aria-label="$t('decisions.queue.closeCard')"
+					:title="$t('decisions.queue.closeCard')"
 					@click.stop="$emit('dismiss', card.id)"
 				>
 					×
@@ -81,8 +91,7 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
-	import { UNPICKED_LABEL } from '../answer';
-	import { KIND_LABELS } from '../format';
+	import { kindLabel } from '../format';
 	import { isPending, type QueueGroup, type QueueProgress } from '../queue';
 	import type { CardView } from '../types';
 
@@ -93,13 +102,11 @@
 			selectedId: { type: String as PropType<string | null>, default: null },
 			progress: { type: Object as PropType<QueueProgress>, required: true },
 			query: { type: String, default: '' },
-			subtitle: { type: String, default: 'doom solving' },
+			subtitle: { type: String, default: 'decisions.subtitle.default' },
 		},
 		emits: ['select', 'dismiss', 'update:query'],
-		data() {
-			return { KIND_LABELS, UNPICKED_LABEL };
-		},
 		methods: {
+			kindLabel,
 			onInput(event: Event) {
 				this.$emit('update:query', (event.target as HTMLInputElement).value);
 			},

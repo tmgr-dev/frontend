@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type {
 	CardMessage,
 	CardView,
@@ -127,16 +128,16 @@ export const agentWaitNotice = (
 	if (!last || last.author !== 'owner' || ctx.final || !ctx.canReply) {
 		return null;
 	}
-	if (ctx.sessionGone) return 'The session ended, so no agent will see this.';
+	if (ctx.sessionGone) return t('decisions.wait.sessionGone');
 	const delivered = last.delivered === true;
 	if (!ctx.listening && !delivered) {
-		return "No agent is listening right now; it'll see this when it comes back.";
+		return t('decisions.wait.notListening');
 	}
 	if (ctx.now - last.created_ms < AGENT_WAIT_MS)
-		return 'waiting for the agent…';
+		return t('decisions.wait.waiting');
 	return delivered
-		? "The agent hasn't replied yet."
-		: "The agent hasn't replied yet; it'll see this when it next checks.";
+		? t('decisions.wait.noReplyDelivered')
+		: t('decisions.wait.noReplyPending');
 };
 
 export type RequestSeqs = Record<string, number>;

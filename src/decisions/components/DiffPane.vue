@@ -1,20 +1,22 @@
 <template>
 	<div class="pane">
 		<div v-if="!hasDiff" class="placeholder">
-			No changes attached to this card.
+			{{ $t('decisions.diff.noneAttached') }}
 		</div>
 		<div v-else-if="!diff || diff.status === 'loading'" class="placeholder">
-			Loading changes…
+			{{ $t('decisions.diff.loading') }}
 		</div>
 		<div v-else-if="diff.status === 'error'" class="placeholder">
-			Could not load changes: {{ diff.error }}
+			{{ $t('decisions.diff.loadFailed', { error: diff.error }) }}
 		</div>
 		<template v-else-if="diff.groups">
-			<div v-if="diff.groups.length === 0" class="placeholder">No changes.</div>
+			<div v-if="diff.groups.length === 0" class="placeholder">
+				{{ $t('decisions.diff.none') }}
+			</div>
 			<section v-for="(group, gi) in panes" :key="group.key" class="dgroup">
 				<div v-if="panes.length > 1" class="gh">
 					<span class="gl">{{ group.label }}</span>
-					<span class="gk">{{ group.kind }}</span>
+					<span class="gk">{{ groupKind(group.kind) }}</span>
 					<span v-if="group.base || group.head" class="gr">{{
 						rangeLabel(group.base, group.head)
 					}}</span>
@@ -23,10 +25,10 @@
 					{{ group.view.error }}
 				</div>
 				<div v-else-if="group.view.files.length === 0" class="placeholder">
-					No changes.
+					{{ $t('decisions.diff.none') }}
 				</div>
 				<div v-if="group.view.truncated" class="placeholder">
-					The diff is too large and was truncated.
+					{{ $t('decisions.diff.truncated') }}
 				</div>
 				<div v-for="(file, fi) in group.files" :key="file.path" class="file">
 					<div class="fh">
@@ -53,7 +55,7 @@
 									<button
 										type="button"
 										class="cb"
-										title="Comment on this line"
+										:title="$t('decisions.diff.commentOnLine')"
 										@click="openThread(file.qpath, line, 'reply')"
 									>
 										+
@@ -74,8 +76,12 @@
 										:class="message.author"
 									>
 										<div class="who">
-											<template v-if="message.author === 'owner'">You</template>
-											<template v-else><i></i>Agent</template>
+											<template v-if="message.author === 'owner'">{{
+												$t('decisions.diff.you')
+											}}</template>
+											<template v-else
+												><i></i>{{ $t('decisions.diff.agent') }}</template
+											>
 										</div>
 										<div
 											v-if="isAgent(message)"
@@ -90,14 +96,14 @@
 										:key="'d' + di"
 										class="cm owner"
 									>
-										<div class="who">You · will be sent with your answer</div>
+										<div class="who">{{ $t('decisions.diff.draftLabel') }}</div>
 										{{ draft.comment.text }}
 										<div class="acts">
 											<button
 												type="button"
 												@click="$emit('remove-draft', draft.index)"
 											>
-												Remove
+												{{ $t('decisions.diff.remove') }}
 											</button>
 										</div>
 									</div>
@@ -111,22 +117,22 @@
 												class="pri"
 												@click="fix(file.qpath, line, '')"
 											>
-												Fix
+												{{ $t('decisions.diff.fix') }}
 											</button>
 											<button
 												type="button"
 												@click="openThread(file.qpath, line, 'fix')"
 											>
-												Fix + clarify…
+												{{ $t('decisions.diff.fixClarify') }}
 											</button>
 											<button type="button" @click="keep(file.qpath, line)">
-												Keep
+												{{ $t('decisions.diff.keep') }}
 											</button>
 											<button
 												type="button"
 												@click="openThread(file.qpath, line, 'reply')"
 											>
-												Reply
+												{{ $t('decisions.diff.reply') }}
 											</button>
 										</div>
 									</div>
@@ -152,8 +158,8 @@
 												>
 													{{
 														modes[keyOf(file.qpath, line)] === 'fix'
-															? 'Fix'
-															: 'Send'
+															? $t('decisions.diff.fix')
+															: $t('decisions.diff.send')
 													}}
 												</button>
 												<button
@@ -163,10 +169,10 @@
 													type="button"
 													@click="submit(file.qpath, line, 'draft')"
 												>
-													Add to answer
+													{{ $t('decisions.diff.addToAnswer') }}
 												</button>
 												<button type="button" @click="close(file.qpath, line)">
-													Close
+													{{ $t('decisions.diff.close') }}
 												</button>
 											</span>
 										</div>
@@ -182,6 +188,7 @@
 </template>
 
 <script lang="ts">
+	import { i18n, t } from '@/i18n';
 	import { defineComponent, type PropType } from 'vue';
 	import {
 		agentWaitNotice,
@@ -235,7 +242,7 @@
 				open: {} as Record<string, boolean>,
 				modes: {} as Record<string, ComposerMode>,
 				texts: {} as Record<string, string>,
-				resolved: {} as Record<string, string>,
+				resolved: {} as Record<string, 'kept' | 'fixSent'>,
 				composer: null as HTMLTextAreaElement | null,
 			};
 		},
@@ -265,8 +272,8 @@
 			},
 			composerHint(): string {
 				return this.canReply && !this.final
-					? 'Enter — send to the agent · Shift+Enter — new line'
-					: 'Enter — add to your answer · Shift+Enter — new line';
+					? t('decisions.diff.hintSend')
+					: t('decisions.diff.hintDraft');
 			},
 		},
 		methods: {
@@ -288,6 +295,10 @@
 					this.threads.has(key) ||
 					this.drafts.some((d) => threadKey(d.file, d.line, d.side) === key)
 				);
+			},
+			groupKind(kind: string): string {
+				const key = `decisions.diff.groupKind.${kind}`;
+				return i18n.global.te(key) ? t(key) : kind;
 			},
 			rangeLabel(base?: string, head?: string): string {
 				return `${base ?? ''}..${head ?? ''}`;
@@ -349,12 +360,14 @@
 				return Boolean(this.open[this.keyOf(file, line)]);
 			},
 			resolvedLabel(file: string, line: DiffLine): string {
-				return this.resolved[this.keyOf(file, line)] ?? '';
+				const state = this.resolved[this.keyOf(file, line)];
+				if (state === 'kept') return t('decisions.diff.keptAsIs');
+				return state === 'fixSent' ? t('decisions.diff.sentFix') : '';
 			},
 			composerPlaceholder(file: string, line: DiffLine): string {
 				return this.modes[this.keyOf(file, line)] === 'fix'
-					? 'How exactly to fix it… (empty — just “Fix”)'
-					: 'Comment on this line…';
+					? t('decisions.diff.fixPlaceholder')
+					: t('decisions.diff.commentPlaceholder');
 			},
 			setComposer(el: unknown) {
 				this.composer = (el as HTMLTextAreaElement | null) ?? this.composer;
@@ -372,7 +385,7 @@
 				this.texts[key] = '';
 			},
 			keep(file: string, line: DiffLine) {
-				this.resolved[this.keyOf(file, line)] = 'Kept as is';
+				this.resolved[this.keyOf(file, line)] = 'kept';
 			},
 			fix(file: string, line: DiffLine, extra: string) {
 				const number = lineNumber(line);
@@ -386,7 +399,7 @@
 				};
 				this.$emit('send', message);
 				const key = this.keyOf(file, line);
-				this.resolved[key] = 'Sent to the agent: fix';
+				this.resolved[key] = 'fixSent';
 				this.open[key] = false;
 				this.texts[key] = '';
 			},

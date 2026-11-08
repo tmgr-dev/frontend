@@ -1,4 +1,6 @@
 import '@/assets/styles/_design-tokens.scss';
+import { detectLocale, i18n, setLocale, storedLocale } from '@/i18n';
+import { followStoredLocale } from '@/i18n/followStoredLocale';
 import '@fontsource/exo-2/400.css';
 import '@fontsource/exo-2/600.css';
 import { createApp } from 'vue';
@@ -10,4 +12,10 @@ const applyScheme = () =>
 applyScheme();
 scheme.addEventListener('change', applyScheme);
 
-createApp(App).mount('#root');
+followStoredLocale();
+
+void setLocale(
+	detectLocale({ stored: storedLocale(), browser: navigator.languages ?? [] }),
+)
+	.catch(() => undefined)
+	.then(() => createApp(App).use(i18n).mount('#root'));

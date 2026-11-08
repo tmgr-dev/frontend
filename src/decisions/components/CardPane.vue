@@ -2,19 +2,21 @@
 	<section class="card">
 		<div class="meta">
 			<span class="tag" :class="'t-' + card.kind">{{
-				KIND_LABELS[card.kind]
+				kindLabel(card.kind)
 			}}</span>
 			<span class="tag src">{{ sourceLabel(card) }}</span>
-			<span v-if="card.session_gone" class="tag gone">Session ended</span>
+			<span v-if="card.session_gone" class="tag gone">{{
+				$t('decisions.card.sessionEnded')
+			}}</span>
 			<span
 				v-if="card.blocking && mode !== 'final' && !card.session_gone"
 				class="tag blocking"
-				>Agent is waiting</span
+				>{{ $t('decisions.card.agentWaiting') }}</span
 			>
-			<span v-if="card.updated_ms" class="upd"
-				>updated {{ updatedLabel(card.updated_ms) }}</span
-			>
-			<span>· {{ position }} of {{ total }}</span>
+			<span v-if="card.updated_ms" class="upd">{{
+				$t('decisions.card.updatedAt', { time: updatedLabel(card.updated_ms) })
+			}}</span>
+			<span>{{ $t('decisions.card.position', { position, total }) }}</span>
 		</div>
 		<h1>{{ card.title }}</h1>
 		<div
@@ -76,15 +78,14 @@
 			<div v-if="card.question" class="q">{{ card.question }}</div>
 
 			<div v-if="mode === 'dismiss-only'" class="notice">
-				This card comes from a terminal session without a return path. Answer in
-				the agent session, or dismiss it here.
+				{{ $t('decisions.card.dismissOnly') }}
 				<div style="margin-top: 10px">
 					<button
 						type="button"
 						class="btn"
 						@click="$emit('answer', { dismissed: true })"
 					>
-						Dismiss <kbd>X</kbd>
+						{{ $t('decisions.card.dismiss') }} <kbd>X</kbd>
 					</button>
 				</div>
 			</div>
@@ -105,15 +106,17 @@
 					>
 						<kbd>{{ index + 1 }}</kbd>
 						<span class="label">{{ option.label }}</span>
-						<span v-if="option.recommended" class="star">★ recommended</span>
+						<span v-if="option.recommended" class="star">{{
+							$t('decisions.card.recommended')
+						}}</span>
 						<span v-else class="spacer"></span>
 						<button
 							type="button"
 							class="add"
-							title="Choose and add a note"
+							:title="$t('decisions.card.addNoteTitle')"
 							@click.stop="pick(index, true)"
 						>
-							✎ + note
+							{{ $t('decisions.card.addNote') }}
 						</button>
 					</div>
 					<div v-if="noteFor === option.id" class="note">
@@ -122,18 +125,18 @@
 							v-model="note"
 							data-input="note"
 							:placeholder="
-								'Note for “' + option.label + '”… sent with your choice'
+								$t('decisions.card.notePlaceholder', { label: option.label })
 							"
 							@keydown="onNoteKey($event, option.id)"
 						></textarea>
 						<div class="tf">
-							<span>Enter — send · Shift+Enter — new line</span>
-							<span>Esc — without a note</span>
+							<span>{{ $t('decisions.card.noteSend') }}</span>
+							<span>{{ $t('decisions.card.noteCancel') }}</span>
 						</div>
 					</div>
 				</div>
 				<div v-if="viaRunner" class="notice">
-					Your answer is typed into the agent session.
+					{{ $t('decisions.card.viaRunner') }}
 				</div>
 				<textarea
 					ref="free"
@@ -143,23 +146,30 @@
 					data-input="free"
 					:placeholder="
 						card.options.length
-							? 'Your own answer… (T) — sent to the agent as a comment'
-							: 'Your answer… (T) — Enter to send'
+							? $t('decisions.card.freeWithOptions')
+							: $t('decisions.card.freeOnly')
 					"
 					@keydown="onFreeKey"
 				></textarea>
 				<div class="hints">
-					<span v-if="hasRecommended"><kbd>Enter</kbd> accept ★</span>
+					<span v-if="hasRecommended"
+						><kbd>Enter</kbd> {{ $t('decisions.card.hints.accept') }}</span
+					>
 					<span v-if="card.options.length"
-						><kbd>1</kbd>–<kbd>{{ card.options.length }}</kbd> pick</span
+						><kbd>1</kbd>–<kbd>{{ card.options.length }}</kbd>
+						{{ $t('decisions.card.hints.pick') }}</span
 					>
 					<span
-						><kbd>⇧</kbd>+<kbd>1</kbd>… / <kbd>⇧Enter</kbd> pick + note</span
+						><kbd>⇧</kbd>+<kbd>1</kbd>… / <kbd>⇧Enter</kbd>
+						{{ $t('decisions.card.hints.pickNote') }}</span
 					>
-					<span><kbd>D</kbd> defer</span>
-					<span><kbd>X</kbd> dismiss</span>
-					<span><kbd>C</kbd> chat</span>
-					<span><kbd>↑</kbd><kbd>↓</kbd> cards</span>
+					<span><kbd>D</kbd> {{ $t('decisions.card.hints.defer') }}</span>
+					<span><kbd>X</kbd> {{ $t('decisions.card.hints.dismiss') }}</span>
+					<span><kbd>C</kbd> {{ $t('decisions.card.hints.chat') }}</span>
+					<span
+						><kbd>↑</kbd><kbd>↓</kbd>
+						{{ $t('decisions.card.hints.cards') }}</span
+					>
 				</div>
 			</template>
 		</template>
@@ -174,8 +184,9 @@
 		unpickedLabel,
 		type CardMode,
 	} from '../answer';
+	import { t } from '@/i18n';
 	import {
-		KIND_LABELS,
+		kindLabel,
 		isHttpUrl,
 		linkLabel,
 		linkSections,
@@ -202,7 +213,6 @@
 		data() {
 			const recommended = recommendedOption(this.card);
 			return {
-				KIND_LABELS,
 				FACT_GLYPH: { ok: '✓', bad: '✗', wait: '◷' },
 				selected: (recommended?.id ?? null) as string | null,
 				noteFor: null as string | null,
@@ -238,10 +248,10 @@
 			},
 			finalTitle(): string {
 				const { state, answer } = this.card;
-				if (state === 'dismissed') return 'Dismissed';
-				if (state === 'closed') return 'Closed';
-				if (answer?.deferred) return 'Deferred';
-				return 'Answered';
+				if (state === 'dismissed') return t('decisions.card.dismissed');
+				if (state === 'closed') return t('decisions.card.closed');
+				if (answer?.deferred) return t('decisions.card.deferred');
+				return t('decisions.card.answered');
 			},
 			finalDetail(): string {
 				const { state, answer, closed_reason: reason, options } = this.card;
@@ -265,6 +275,7 @@
 			window.clearTimeout(this.pickTimer);
 		},
 		methods: {
+			kindLabel,
 			sourceLabel,
 			linkLabel,
 			isHttpUrl,
