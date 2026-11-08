@@ -1,0 +1,789 @@
+{
+	"taskCount": {
+		"label": "{n} task | {n} tasks",
+		"inProgress": "{n} in progress",
+		"done": "{n} done",
+		"hidden": "{n} hidden",
+		"summary": "{parts} — {percent}% complete"
+	},
+	"graph": {
+		"section": {
+			"title": "Graph"
+		},
+		"canvas": {
+			"label": "Graph of {count} connected items"
+		},
+		"neighborhood": {
+			"expand": "Expand",
+			"zoomIn": "Zoom in",
+			"zoomOut": "Zoom out",
+			"fitToView": "Fit to view",
+			"rings": "Inner ring: direct links · Outer ring: 2 steps away, dimmed · Dashed: weak link",
+			"truncatedWithHidden": "Showing the closest {closest} — {hidden} more hidden",
+			"truncated": "Showing the closest {closest}",
+			"empty": "No links yet — relate tasks, link pages or assign people to see the graph",
+			"loadFailed": "Could not load the graph",
+			"retry": "Retry",
+			"loading": "Loading graph…"
+		},
+		"types": {
+			"task": "Task",
+			"page": "Page",
+			"user": "Person",
+			"persona": "Persona",
+			"agentRun": "Agent run"
+		},
+		"groups": {
+			"tasks": "Tasks",
+			"pages": "Pages",
+			"people": "People & personas",
+			"agentRuns": "Agent runs"
+		},
+		"overlay": {
+			"dialogLabel": "Graph",
+			"title": "Graph",
+			"task": "Task",
+			"page": "Page",
+			"back": "Back",
+			"closeLabel": "Close graph",
+			"selected": "SELECTED",
+			"whyConnected": "WHY IT'S CONNECTED",
+			"more": "+{n} more",
+			"centre": "This is the centre of the graph.",
+			"openTask": "Open task",
+			"openPage": "Open page",
+			"centerHere": "Center here",
+			"loading": "Loading…",
+			"depth": "DEPTH",
+			"depthLabel": "Depth",
+			"steps": "{n} step | {n} steps",
+			"show": "SHOW",
+			"similarLater": "Similar by meaning (later)"
+		}
+	},
+	"dashboard": {
+		"activityChart": {
+			"title": "Activity over time",
+			"loadError": "Couldn't load chart data",
+			"empty": "No activity in this period",
+			"scaleNote": "Each line is scaled to its own peak",
+			"dateColumn": "Date",
+			"summaryIntro": "Activity over time, last {n} days.",
+			"summaryTotal": "{label}: total {total}.",
+			"summaryTotalPeak": "{label}: total {total}, peak {peak} on {day}.",
+			"summaryPeakOnly": "{label}: peak {peak} on {day}.",
+			"summaryNone": "{label}: none."
+		},
+		"activityFeed": {
+			"title": "Recent Activity",
+			"refreshAria": "Refresh activities",
+			"clearDayAria": "Clear day filter",
+			"dayFilterLoading": "Activities on {day}",
+			"dayFilterCount": "{count} on {day}",
+			"activityCount": "{n} activity | {n} activities",
+			"dayLoadError": "Couldn't load activities for this day",
+			"loadingMore": "Loading...",
+			"loadMore": "Load More Activities",
+			"noMatch": "No activities match this filter",
+			"emptyTitle": "No activities yet",
+			"emptyDescription": "Activities will appear here as team members work on tasks.",
+			"live": "Live updates enabled",
+			"authorAll": "All",
+			"authorPeople": "People",
+			"authorPersonas": "Personas",
+			"authorPlugins": "Plugins"
+		},
+		"activityItem": {
+			"by": "by {name}"
+		},
+		"activityFilters": {
+			"types": {
+				"allTypes": "All Types",
+				"taskCreated": "Task Created",
+				"taskUpdated": "Task Updated",
+				"taskCompleted": "Task Completed",
+				"taskDeleted": "Task Deleted",
+				"statusChanged": "Status Changed",
+				"taskAssigned": "Task Assigned",
+				"personaAssigned": "Persona Assigned",
+				"timerStarted": "Timer Started",
+				"timerStopped": "Timer Stopped",
+				"commentAdded": "Comment Added",
+				"commentUpdated": "Comment Updated",
+				"commentDeleted": "Comment Deleted",
+				"categoryCreated": "Category Created",
+				"categoryUpdated": "Category Updated",
+				"categoryDeleted": "Category Deleted",
+				"fileUploaded": "File Uploaded",
+				"fileDeleted": "File Deleted",
+				"memberJoined": "Member Joined",
+				"memberLeft": "Member Left",
+				"routineCompleted": "Routine Completed"
+			},
+			"ranges": {
+				"allTime": "All Time",
+				"today": "Today",
+				"yesterday": "Yesterday",
+				"thisWeek": "This Week",
+				"lastWeek": "Last Week",
+				"thisMonth": "This Month",
+				"lastMonth": "Last Month"
+			},
+			"allUsers": "All Users",
+			"clearAria": "Clear filters"
+		},
+		"kpiCard": {
+			"unavailable": "Unavailable"
+		},
+		"recentTaskItem": {
+			"overdue": "Overdue",
+			"assignees": "Assignees:",
+			"moreAssignees": "+{n} more",
+			"stopTimer": "Stop timer",
+			"startTimer": "Start timer",
+			"noStatus": "No Status",
+			"ariaTask": "Task: {title}",
+			"ariaStatus": "Status: {status}",
+			"ariaAssignedTo": "Assigned to: {name}",
+			"ariaUpdated": "Updated: {when}",
+			"timerRunning": "Timer running"
+		},
+		"recentTasksList": {
+			"title": "Recent Tasks",
+			"refreshAria": "Refresh recent tasks",
+			"viewAll": "View All",
+			"emptyTitle": "No recent tasks",
+			"emptyDescription": "Recent task updates will appear here.",
+			"createTask": "Create Task"
+		},
+		"statisticsGrid": {
+			"totalTasks": {
+				"title": "Total Tasks",
+				"description": "All tasks in workspace"
+			},
+			"activeTasks": {
+				"title": "Active Tasks",
+				"description": "Currently in progress"
+			},
+			"completedToday": {
+				"title": "Completed Today",
+				"description": "Tasks finished today"
+			},
+			"completedWeek": {
+				"title": "Completed This Week",
+				"description": "Tasks finished this week"
+			},
+			"timeToday": {
+				"title": "Time Today",
+				"description": "Time tracked today"
+			},
+			"timeWeek": {
+				"title": "Time This Week",
+				"description": "Time tracked this week"
+			},
+			"teamMembers": {
+				"title": "Team Members",
+				"description": "Active workspace members"
+			},
+			"overdueTasks": {
+				"title": "Overdue Tasks",
+				"description": "Tasks past due date"
+			},
+			"dailyRoutine": {
+				"title": "Daily Routine",
+				"description": "Completion rate"
+			}
+		},
+		"teamActivityWidget": {
+			"title": "Active members",
+			"windowAria": "Activity window",
+			"windows": {
+				"today": "Today",
+				"d7": "7d",
+				"d30": "30d",
+				"all": "All time"
+			},
+			"subtitles": {
+				"today": "Members’ activity today",
+				"all": "Members’ activity, all time",
+				"d30": "Members’ activity in the last 30 days",
+				"d7": "Members’ activity in the last 7 days"
+			},
+			"activeNow": "{n} active now",
+			"refreshAria": "Refresh team activity",
+			"colMember": "Member",
+			"colActivity": "Activity",
+			"colDone": "Done",
+			"colTracked": "Tracked",
+			"colActive": "Active",
+			"colLastActive": "Last active",
+			"totalMembers": "Total members",
+			"activeToday": "Active today",
+			"activeTimers": "Active timers",
+			"trackedWindow": "Tracked · {window}",
+			"doneWindow": "Done · {window}",
+			"emptyTitle": "No team members",
+			"emptyDescription": "Invite team members to see their activity here.",
+			"invite": "Invite Members"
+		},
+		"topCategoriesCard": {
+			"title": "Top categories",
+			"empty": "No tracked time in this period"
+		},
+		"teamMemberItem": {
+			"activeRecently": "Active in the last 5 minutes",
+			"inactive": "Inactive",
+			"lastTouched": "Last touched",
+			"noRecentActivity": "No recent activity",
+			"summaryLine": "{done} done · {tracked} · {active} active · {last}",
+			"activityTitle": "Activity, last {n} day(s)",
+			"dtDone": "Done",
+			"dtTracked": "Tracked",
+			"dtActiveTasks": "Active tasks",
+			"dtLastActive": "Last active",
+			"justNow": "just now",
+			"minutesAgo": "{n}m ago",
+			"hoursAgo": "{n}h ago",
+			"daysAgo": "{n}d ago",
+			"commentsCount": "{n} comments",
+			"streak": "streak {n}",
+			"ariaMember": "Team member: {name}",
+			"online": "Online",
+			"offline": "Offline",
+			"workingOn": "Working on: {title}",
+			"timerRunning": "Timer running",
+			"lastActive": "Last active: {when}",
+			"ariaStats": "{tracked} tracked, {done} done, {active} active, {comments} comments, streak {streak}"
+		}
+	},
+	"graphMap": {
+		"canvas": {
+			"emptyLabel": "Map of tasks and pages grouped by category",
+			"bottleneck": "Bottleneck: {name} blocks {count}.",
+			"label": "Map of {nodes} tasks and pages in {clusters} clusters: {names}.{bottleneck} Use the search box to move around the map by keyboard."
+		},
+		"timeline": {
+			"pause": "Pause timeline",
+			"play": "Play timeline",
+			"label": "Timeline"
+		},
+		"insights": {
+			"whatMapShows": "WHAT THE MAP SHOWS",
+			"bottleneck": "Bottleneck",
+			"hubs": "Hubs",
+			"bridges": "Bridges",
+			"noLinks": "No links",
+			"empty": "Insights appear when the map has data.",
+			"hideOrphans": "Hide items with no links",
+			"showOrphans": "Show items with no links",
+			"howToUse": "HOW TO USE IT",
+			"howToUseText": "Click a cluster to zoom in. Click a dot to open its neighborhood. Drag the time range to watch the map grow week by week.",
+			"legend": "Clusters = categories · Bright curves = links between areas · Dashed rings = items with no links · Orange = bottleneck"
+		}
+	},
+	"categoryPage": {
+		"gate": {
+			"title": "Project Categories",
+			"description": "Organize your tasks into categories and subcategories. Create a hierarchical structure for better project management."
+		},
+		"loadingLabel": "Loading categories",
+		"empty": {
+			"title": "No categories yet",
+			"body": "A category groups tasks and sets defaults for new ones: title pattern like {pattern}, hourly rate, estimate.",
+			"create": "New category"
+		},
+		"missing": {
+			"title": "Category not found",
+			"body": "It may have been deleted or moved to another workspace.",
+			"open": "Open categories"
+		},
+		"subcategory": "Subcategory",
+		"createTask": "Create task",
+		"createTaskTitle": "Create a task in this category",
+		"navLabel": "Category",
+		"tabs": {
+			"tasks": "Tasks",
+			"subcategories": "Subcategories",
+			"settings": "Settings"
+		},
+		"discard": {
+			"title": "Discard unsaved changes?",
+			"description": "Your edits to this category will be lost.",
+			"keep": "Keep editing",
+			"confirm": "Discard"
+		},
+		"workspaceFallback": "Workspace",
+		"topLevel": "Top level",
+		"newCategory": "New category",
+		"documentTitle": {
+			"categories": "Categories"
+		}
+	},
+	"workspaceMap": {
+		"workspace": "Workspace",
+		"title": "Map — how everything connects",
+		"searchPlaceholder": "task, page, person",
+		"searchLabel": "Search the map",
+		"searchResults": "Search results",
+		"timeRange": "Time range",
+		"ranges": {
+			"d7": "Last 7 days",
+			"d30": "Last 30 days",
+			"d90": "Last 90 days",
+			"all": "All time"
+		},
+		"groupByCategory": "Group by category",
+		"truncated": "Showing {shown} of {total} — narrow the time range",
+		"loading": "Mapping your workspace…",
+		"loadFailed": "The map could not be loaded.",
+		"retry": "Try again",
+		"emptyTitle": "Nothing to map in this period",
+		"emptyText": "Tasks and pages show up here once they are created or updated in the selected time range.",
+		"showAllTime": "Show all time",
+		"legend": "Clusters = categories · Bright curves = links between areas · Dashed rings = items with no links · Orange = bottleneck",
+		"whatMapShows": "What the map shows",
+		"zoomIn": "Zoom in",
+		"zoomOut": "Zoom out",
+		"fitToScreen": "Fit to screen"
+	},
+	"categories": {
+		"agentRepositories": {
+			"title": "Agent run repositories",
+			"description": "Repositories agents may work on for tasks of this category. Leave empty to use the linked GitHub repository.",
+			"saveFailed": "Could not save the repositories."
+		},
+		"titlePattern": {
+			"defaultLabel": "Task title pattern",
+			"noPlaceholders": "No placeholders.",
+			"literalNotice": "Every new task will literally start with “{pattern}”.",
+			"use": "Use {fix}",
+			"preview": "Preview",
+			"sampleTitle": "Task title",
+			"chips": {
+				"categoryNumber": "category number",
+				"workspaceNumber": "workspace number",
+				"date": "date",
+				"weekday": "weekday"
+			}
+		},
+		"cursor": {
+			"title": "Cursor AI Integration",
+			"configureTitle": "Configure Cursor AI Agent",
+			"configureDescription": "Add your Cursor API key to enable AI-powered code generation for this category",
+			"apiKeyLabel": "Cursor API Key",
+			"apiKeyHelp": "Get your API key from {link}",
+			"dashboard": "Cursor Dashboard",
+			"validating": "Validating…",
+			"saveKey": "Save API Key",
+			"configured": "Cursor AI Agent Configured",
+			"ready": "Ready to assist with code generation for this category",
+			"updateKey": "Update Key",
+			"removeKey": "Remove Key",
+			"removing": "Removing…",
+			"newApiKeyLabel": "New Cursor API Key",
+			"saveFailed": "Failed to save API key",
+			"removeFailed": "Failed to remove API key",
+			"removeConfirm": "Are you sure you want to remove Cursor API key from this category?"
+		},
+		"github": {
+			"title": "GitHub Integration",
+			"connectTitle": "Connect GitHub Repository",
+			"connectDescription": "Link your GitHub repository to automatically track commits, branches, and pull requests",
+			"installing": "Installing…",
+			"installApp": "Install GitHub App",
+			"installed": "✓ GitHub App is installed. Select a repository to connect:",
+			"noRepositories": "No repositories available. Make sure the GitHub App has access to your repositories.",
+			"selectRepository": "Select Repository",
+			"selectPlaceholder": "— Select repository —",
+			"connecting": "Connecting…",
+			"connectRepository": "Connect Repository",
+			"connectedTo": "Connected to",
+			"lastSynced": "Last synced: {date}",
+			"syncing": "Syncing…",
+			"syncNow": "Sync Now",
+			"relinking": "Relinking…",
+			"relinkTasks": "Relink Tasks",
+			"relinkTitle": "Relink existing commits/branches to tasks",
+			"disconnecting": "Disconnecting…",
+			"disconnect": "Disconnect",
+			"loadFailed": "Failed to load GitHub integration status",
+			"installFailed": "Failed to start GitHub App installation",
+			"connectFailed": "Failed to connect repository",
+			"disconnectConfirm": "Are you sure you want to disconnect this repository?",
+			"disconnectFailed": "Failed to disconnect repository",
+			"syncFailed": "Failed to sync repository",
+			"relinkFailed": "Failed to relink task references",
+			"justNow": "just now",
+			"minutesAgo": "{n} minute ago | {n} minutes ago",
+			"hoursAgo": "{n} hour ago | {n} hours ago",
+			"daysAgo": "{n} day ago | {n} days ago"
+		},
+		"pane": {
+			"fixAll": "Fix all {count}",
+			"saveFirst": "Save or discard your changes first",
+			"issues": "{n} category names new tasks literally | {n} categories name new tasks literally",
+			"sections": {
+				"general": "General",
+				"newTasks": "New tasks",
+				"newTasksHint": "Defaults for tasks created in this category",
+				"integrations": "Integrations",
+				"dangerZone": "Danger zone"
+			},
+			"fields": {
+				"name": "Name",
+				"code": "Code",
+				"codeHint": "Letters and digits",
+				"codePlaceholder": "e.g., PROJ, FEAT, BUG",
+				"parent": "Parent",
+				"noParent": "No parent",
+				"copyFrom": "Copy settings from",
+				"copyFromHint": "Fills the fields below, you can still change them",
+				"dontCopy": "Don’t copy"
+			},
+			"createNote": "Integrations and the danger zone appear after the category is created.",
+			"integrations": {
+				"cursorLabel": "Cursor AI agent",
+				"cursorHint": "Send tasks from this category to Cursor agents",
+				"connected": "Connected",
+				"notConnected": "Not connected",
+				"unavailable": "Unavailable",
+				"manage": "Manage",
+				"connect": "Connect",
+				"githubLabel": "GitHub",
+				"githubHint": "Link tasks to a repository",
+				"installApp": "Install GitHub App",
+				"reposLabel": "Agent repositories",
+				"reposHint": "Where agent runs may work, as owner/name",
+				"addRepository": "Add repository",
+				"repositoriesCount": "{n} repository | {n} repositories"
+			},
+			"danger": {
+				"moveLabel": "Move to another workspace",
+				"moveHint": "With its subcategories and tasks",
+				"move": "Move…",
+				"deleteLabel": "Delete category",
+				"deleteHint": "The category is removed from the list",
+				"delete": "Delete…"
+			},
+			"bar": {
+				"discard": "Discard",
+				"newSubcategory": "New subcategory of {title}",
+				"newTopLevel": "New top-level category",
+				"changes": "{n} unsaved change | {n} unsaved changes"
+			},
+			"deleteDialog": {
+				"title": "Delete “{title}”?",
+				"description": "The category is removed from the list."
+			},
+			"transfer": {
+				"title": "Move category to another workspace",
+				"description": "\"{title}\" will be moved with all its subcategories and tasks. Task statuses are matched to the target workspace by name, then by type; assignees who are not members of the target workspace are removed.",
+				"placeholder": "Select workspace",
+				"noOther": "You are not a member of any other workspace.",
+				"moving": "Moving...",
+				"move": "Move"
+			},
+			"settings": {
+				"titlePatternLabel": "Task title pattern",
+				"titlePatternHint": "Prefix for every new task title",
+				"rateLabel": "Rate per hour",
+				"estimateLabel": "Default estimate",
+				"reminderLabel": "Timer reminder every",
+				"reminderHint": "Sound each time the running timer passes it",
+				"durationError": "Use a duration like 45m, 2h or 1h 30m",
+				"durationHint": "Like 45m, 2h or 1h 30m",
+				"durationPlaceholder": "e.g., 45m",
+				"rateUnit": "/ h",
+				"select": "Select",
+				"customValue": "Custom value"
+			},
+			"toasts": {
+				"success": "Success",
+				"tryAgain": "Please try again.",
+				"cursorConfigured": "Cursor API key configured successfully",
+				"cursorRemoved": "Cursor API key removed",
+				"githubConnected": "Connected to {name}",
+				"githubDisconnected": "Repository disconnected",
+				"githubSynced": "Repository synced successfully",
+				"relinked": "Relinked {total} items: {commits} commits, {branches} branches, {pullRequests} PRs",
+				"saveFailed": "Could not save the category",
+				"defaultsNotSaved": "Defaults for new tasks were not saved",
+				"kept": {
+					"code": "The server kept the old code",
+					"parent": "The server kept the old parent",
+					"codeAndParent": "The server kept the old code and parent"
+				},
+				"otherSaved": "Other changes were saved.",
+				"saved": "Saved",
+				"categorySaved": "The category was saved",
+				"createFailed": "Could not create the category",
+				"created": "Category created",
+				"createdDefaultsFailed": "Its defaults for new tasks were not saved. Set them again and save.",
+				"fixedPatterns": "Fixed {n} title pattern | Fixed {n} title patterns",
+				"fixedPartial": "Fixed {fixed} of {total} title patterns",
+				"fixedPartialRest": "{rest} could not be saved. Try again for the rest.",
+				"deleteFailed": "Could not delete the category",
+				"deleted": "Category deleted",
+				"workspacesFailed": "Could not load workspaces",
+				"moved": "\"{title}\" moved to {workspace}",
+				"anotherWorkspace": "another workspace",
+				"transferFailed": "Transfer failed",
+				"moveFailed": "Could not move the category. Please try again."
+			}
+		}
+	},
+	"boardPage": {
+		"featureGate": {
+			"title": "Kanban Board",
+			"description": "Visualize your tasks in a Kanban-style board. Drag and drop tasks between columns to update their status."
+		},
+		"refresh": "Refresh",
+		"filters": "Filters",
+		"addStatus": "Add status",
+		"editStatus": "Edit status",
+		"createStatus": "Create status",
+		"refreshingTasks": "Refreshing tasks…",
+		"dragToReorderColumns": "Drag to reorder columns",
+		"overtime": "Overtime",
+		"createTask": "Create task",
+		"createATask": "Create a task",
+		"moveAllTasksTo": "Move all tasks to…",
+		"archiveAll": "Archive all",
+		"addTask": "Add task",
+		"taskTitlePlaceholder": "Enter task title...",
+		"statusForm": {
+			"namePlaceholder": "Name",
+			"typePlaceholder": "Select Type",
+			"nameLabel": "Status name :",
+			"typeLabel": "Status type :",
+			"colorLabel": "Status color :"
+		},
+		"moveModal": {
+			"title": "Move all tasks to",
+			"description": "Move {count} task(s) from \"{title}\" to:"
+		},
+		"reorderModal": {
+			"title": "Reorder Statuses",
+			"hint": "Hold and drag the six dots icon to reorder",
+			"save": "Save Order"
+		},
+		"allCategories": "All categories",
+		"allUsers": "All users",
+		"errors": {
+			"loadMoreTasks": "Could not load more tasks.",
+			"refreshColumn": "Could not refresh the column.",
+			"saveOrder": "Could not save task order. Refresh to restore the server order.",
+			"moveRefreshed": "Could not move the task. The column was refreshed.",
+			"moveRestore": "Could not move the task. Refresh to restore the server order.",
+			"refreshBoard": "Could not refresh the board.",
+			"loadBoard": "Could not load the board.",
+			"refreshTasks": "Could not refresh tasks."
+		},
+		"toasts": {
+			"loadAllFailed": {
+				"title": "Could not load all tasks",
+				"description": "Please try again."
+			},
+			"noTasksToArchive": "No tasks to archive in this column",
+			"archiveStatusMissing": {
+				"title": "Archive status not found",
+				"description": "Create an archive status first."
+			},
+			"archiveFailed": {
+				"title": "Failed to archive tasks",
+				"description": "Please try again."
+			}
+		},
+		"confirms": {
+			"deleteStatus": {
+				"title": "Delete status",
+				"body": "Are you sure?"
+			},
+			"archive": {
+				"title": "Archive {n} task? | Archive {n} tasks?",
+				"body": "All tasks in \"{name}\" will be moved to the archive."
+			},
+			"move": {
+				"title": "Move all tasks",
+				"body": "Move {count} task(s) from \"{source}\" to \"{target}\"?"
+			}
+		},
+		"userSaved": {
+			"title": "Saved",
+			"body": "User data saved"
+		}
+	},
+	"dashboardPage": {
+		"title": "Dashboard",
+		"titleWithWorkspace": "{name} Dashboard",
+		"subtitle": "Activity, members and tracked time across your workspace.",
+		"gateDescription": "Get insights into your productivity with statistics, activity heatmaps, and real-time team updates.",
+		"errors": {
+			"offline": "You appear to be offline. Some features may not work properly.",
+			"realtime": "Real-time connection failed. Updates may be delayed.",
+			"unexpected": "An unexpected error occurred.",
+			"connectionLostMessage": "Network connection lost",
+			"connectionLost": "Connection Lost",
+			"dashboardError": "Dashboard Error",
+			"retrying": "Retrying...",
+			"tryAgain": "Try Again",
+			"checkConnection": "Check Connection",
+			"boundaryMessage": "The dashboard encountered an unexpected error. Please try refreshing the page."
+		},
+		"periods": {
+			"week": "Last 7 days",
+			"month": "Last 30 days"
+		},
+		"periodLabel": "Dashboard period",
+		"realtime": {
+			"active": "Real-time updates active",
+			"inactive": "Real-time updates inactive",
+			"live": "Live",
+			"offline": "Offline",
+			"youreOffline": "You're offline"
+		},
+		"refresh": {
+			"label": "Refresh",
+			"ariaBusy": "Refreshing dashboard data",
+			"ariaIdle": "Refresh dashboard data",
+			"status": "Dashboard is currently refreshing"
+		},
+		"actionsLabel": "Dashboard actions",
+		"a11y": {
+			"shortcuts": "Keyboard shortcuts: Ctrl+R to refresh, Ctrl+1-5 to navigate sections, Escape to clear errors",
+			"keyNumbers": "Key numbers, last {n} day | Key numbers, last {n} days",
+			"loadedAnnouncement": "Dashboard loaded successfully",
+			"failedAnnouncement": "Dashboard failed to load",
+			"teamDescription": "Team member activity and status. Shows who is online and their current tasks.",
+			"teamLoading": "Loading team activity",
+			"heatmapLoading": "Loading activity heatmap",
+			"statisticsLoading": "Loading workspace statistics",
+			"statisticsDescription": "Grid of workspace statistics including task counts, time tracking, and team metrics. Use arrow keys to navigate between cards.",
+			"activityHeading": "Recent Activity Feed",
+			"activityDescription": "List of recent workspace activities. Use arrow keys to navigate, Enter to open activity details.",
+			"activityLoading": "Loading recent activities"
+		},
+		"kpi": {
+			"activity": "Activity",
+			"members": "Active members",
+			"tracked": "Tracked hours",
+			"completed": "Completed",
+			"activityHint": "Actions logged in the workspace",
+			"membersHint": "of {total} members",
+			"trackedHint": "Time on task timers",
+			"completedHint": "Tasks moved to done",
+			"vsPrevious": "vs previous {n} day | vs previous {n} days"
+		},
+		"hours": "{n} h",
+		"teamActivity": "Team Activity",
+		"chartSubtitle": "Per day, last {n} day | Per day, last {n} days",
+		"categoriesSubtitle": "By tracked time · last {n} day | By tracked time · last {n} days",
+		"heatmap": {
+			"title": "Activity Heatmap",
+			"description": "Activity of everyone in this workspace. Each square is one day (UTC); darker squares mean more activity.",
+			"rangeLabel": "Heatmap range",
+			"last12Months": "Last 12 months",
+			"groupLabel": "Activity heatmap showing {n} total contributions",
+			"groupLabelLoading": "Activity heatmap loading",
+			"loadFailed": "Failed to load heatmap data",
+			"retry": "Retry",
+			"noData": "No contribution data available"
+		},
+		"statisticsTitle": "Workspace Statistics",
+		"loadingState": {
+			"label": "Loading dashboard",
+			"title": "Loading Dashboard",
+			"body": "Fetching your workspace data..."
+		},
+		"boundaryTitle": "Dashboard Error",
+		"mainLabel": "Dashboard"
+	},
+	"projectCategoryList": {
+		"perPage": "{n} per page",
+		"documentTitle": "Categories",
+		"loadTasksFailed": "Could not load category tasks.",
+		"loadCategoriesFailed": "Could not load categories.",
+		"anotherWorkspace": "another workspace",
+		"movedTitle": "\"{title}\" moved to {workspace}",
+		"transferFailed": "Transfer failed",
+		"transferFailedText": "Could not move the category. Please try again.",
+		"loadingCategories": "Loading categories",
+		"loadingTasks": "Loading category tasks",
+		"noSubcategories": "No subcategories yet.",
+		"deletedHint": "(deleted, but can be restored)",
+		"subcategories": "subcategories",
+		"tasks": "tasks",
+		"author": "author",
+		"moveToWorkspace": "Move to workspace",
+		"restore": "Restore",
+		"transferTitle": "Move category to another workspace",
+		"transferDescription": "\"{title}\" will be moved with all its subcategories and tasks. Task statuses are matched to the target workspace by name, then by type; assignees who are not members of the target workspace are removed.",
+		"selectWorkspace": "Select workspace",
+		"noOtherWorkspaces": "You are not a member of any other workspace.",
+		"moving": "Moving...",
+		"move": "Move",
+		"showing": "Showing {from} to {to} of {total} categories",
+		"previous": "Previous",
+		"page": "Page {current} of {last}",
+		"createFirstTask": "Create your first task in this category",
+		"createTask": "+ Create task"
+	},
+	"tasksList": {
+		"titles": {
+			"current": "Current tasks",
+			"hidden": "Hidden tasks",
+			"archive": "Archive",
+			"tasks": "Tasks",
+			"fallback": "Task List"
+		},
+		"workspaceTasksTitle": "{name} Tasks",
+		"stateFilters": {
+			"open": "Open",
+			"done": "Done",
+			"all": "All"
+		},
+		"sortFields": {
+			"updatedAt": "Updated",
+			"createdAt": "Created",
+			"expiredAt": "Deadline",
+			"scheduledDate": "Scheduled"
+		},
+		"noDoneToArchive": "No done tasks to archive",
+		"loadDoneFailed": "Could not load done tasks",
+		"archivedCount": "Archived {n} done tasks",
+		"archiveFailed": "Could not archive tasks",
+		"daySummary": "Day summary",
+		"totalTime": "Total Time",
+		"workingDays": "Working Days",
+		"perDay": "(8h/day)",
+		"workingMonths": "Working Months",
+		"perMonth": "(160h/month)",
+		"workingYears": "Working Years",
+		"perYear": "(2000h/year)",
+		"overtime": "Overtime",
+		"totalOvertime": "Total Overtime",
+		"showTasks": "Show tasks",
+		"archiveDone": "Archive done",
+		"searchPlaceholder": "search task",
+		"searchLabel": "Search tasks",
+		"sortByDate": "Sort by date",
+		"newestFirst": "Newest first",
+		"oldestFirst": "Oldest first",
+		"filtersTitle": "filters",
+		"filtersDialogTitle": "Filters",
+		"status": "Status",
+		"priority": "Priority",
+		"sortByPriority": "Sort by priority",
+		"reset": "reset",
+		"selectionMode": "Tasks selection mode",
+		"updating": "Updating tasks…",
+		"loadFailed": "Could not load tasks. Please try again.",
+		"retry": "Retry",
+		"noMatches": "No tasks match your filters",
+		"clearFilters": "Clear filters",
+		"createFirst": "Create your first task to get started",
+		"createTask": "+ Create task",
+		"archiveDialogTitle": "Archive done tasks",
+		"archiveDialogBody": "Archive {n} done task? | Archive {n} done tasks?"
+	}
+}

@@ -2,8 +2,8 @@
 	<div>
 		<FeatureGate
 			feature-key="board"
-			title="Kanban Board"
-			description="Visualize your tasks in a Kanban-style board. Drag and drop tasks between columns to update their status."
+			:title="$t('board.boardPage.featureGate.title')"
+			:description="$t('board.boardPage.featureGate.description')"
 			:icon="SquareKanban"
 		>
 			<template #preview>
@@ -35,7 +35,7 @@
 										<button
 											type="button"
 											class="flex h-9 w-9 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
-											title="Refresh"
+											:title="$t('board.boardPage.refresh')"
 											@click="retryBoard"
 										>
 											<span class="material-icons text-xl">refresh</span>
@@ -48,7 +48,7 @@
 													? 'text-brand'
 													: 'text-ink-subtle hover:text-ink'
 											"
-											title="Filters"
+											:title="$t('board.boardPage.filters')"
 											@click="isFiltersModalShown = true"
 										>
 											<span class="material-icons text-xl">filter_list</span>
@@ -103,7 +103,7 @@
 													:class="active ? 'bg-surface-hover' : ''"
 													@click.prevent="openCreateStatusModal"
 												>
-													Add status
+													{{ $t('board.boardPage.addStatus') }}
 												</a>
 											</template>
 										</FiltersBoard>
@@ -171,7 +171,7 @@
 																class="w-full justify-start"
 																@click="openCreateStatusModal"
 															>
-																Add status
+																{{ $t('board.boardPage.addStatus') }}
 															</Button>
 														</template>
 													</FiltersBoard>
@@ -196,7 +196,9 @@
 											aria-hidden="true"
 										/>
 									</span>
-									<span class="sr-only">Refreshing tasks…</span>
+									<span class="sr-only">{{
+										$t('board.boardPage.refreshingTasks')
+									}}</span>
 								</template>
 							</div>
 							<div
@@ -205,7 +207,9 @@
 								class="px-4 py-2 text-sm text-ink-subtle"
 							>
 								{{ boardError }}
-								<button class="underline" @click="retryBoard">Retry</button>
+								<button class="underline" @click="retryBoard">
+									{{ $t('common.actions.retry') }}
+								</button>
 							</div>
 							<div class="board-wrapper">
 								<!-- Loading skeleton -->
@@ -255,7 +259,9 @@
 																<div
 																	v-if="activeDraggable"
 																	class="column-drag-handle flex cursor-grab items-center text-ink-subtle active:cursor-grabbing"
-																	title="Drag to reorder columns"
+																	:title="
+																		$t('board.boardPage.dragToReorderColumns')
+																	"
 																>
 																	<EllipsisVerticalIcon
 																		class="h-3"
@@ -300,13 +306,16 @@
 																		<span
 																			v-if="column.overtime"
 																			class="ml-1 text-status-fix-fg"
-																			title="Overtime"
+																			:title="$t('board.boardPage.overtime')"
 																		>
 																			+{{ column.overtime }}
 																		</span>
 																	</span>
 
-																	<AppTooltip content="Create task" side="left">
+																	<AppTooltip
+																		:content="$t('board.boardPage.createTask')"
+																		side="left"
+																	>
 																		<button
 																			data-tour="board.add-in-column"
 																			class="flex h-5 w-5 items-center justify-center rounded text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-ink focus-visible:opacity-100"
@@ -332,7 +341,7 @@
 																					class="material-icons text-base text-ink-subtle"
 																					>add</span
 																				>
-																				Create a task
+																				{{ $t('board.boardPage.createATask') }}
 																			</a>
 																		</MenuItem>
 																		<MenuItem v-slot="{ active }">
@@ -348,7 +357,7 @@
 																					class="material-icons text-base text-ink-subtle"
 																					>edit</span
 																				>
-																				Edit status
+																				{{ $t('board.boardPage.editStatus') }}
 																			</a>
 																		</MenuItem>
 																		<MenuItem
@@ -369,7 +378,9 @@
 																					class="material-icons text-base text-ink-subtle"
 																					>swap_horiz</span
 																				>
-																				Move all tasks to…
+																				{{
+																					$t('board.boardPage.moveAllTasksTo')
+																				}}
 																			</a>
 																		</MenuItem>
 																		<MenuItem
@@ -390,7 +401,7 @@
 																					class="material-icons text-base text-ink-subtle"
 																					>archive</span
 																				>
-																				Archive all
+																				{{ $t('board.boardPage.archiveAll') }}
 																			</a>
 																		</MenuItem>
 																	</Dropdown>
@@ -414,7 +425,7 @@
 																<span class="material-icons text-base"
 																	>add</span
 																>
-																Add task
+																{{ $t('board.boardPage.addTask') }}
 															</button>
 															<Draggable
 																v-model="column.tasks"
@@ -483,7 +494,7 @@
 																			<span class="material-icons text-sm"
 																				>add</span
 																			>
-																			Add task
+																			{{ $t('board.boardPage.addTask') }}
 																		</button>
 																	</template>
 
@@ -503,7 +514,11 @@
 																					@keyup.enter="createQuickTask(column)"
 																					@keyup.esc="cancelCreatingTask"
 																					@blur="handleInputBlur"
-																					placeholder="Enter task title..."
+																					:placeholder="
+																						$t(
+																							'board.boardPage.taskTitlePlaceholder',
+																						)
+																					"
 																					class="task-title-input w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
 																				/>
 																				<div class="flex gap-2">
@@ -512,14 +527,14 @@
 																						class="flex-1"
 																						@click="createQuickTask(column)"
 																					>
-																						Add
+																						{{ $t('common.actions.add') }}
 																					</Button>
 																					<Button
 																						variant="secondary"
 																						size="sm"
 																						@click="cancelCreatingTask"
 																					>
-																						Cancel
+																						{{ $t('common.actions.cancel') }}
 																					</Button>
 																				</div>
 																			</div>
@@ -561,23 +576,27 @@
 													v-if="isCreatingStatus"
 													class="mb-3 text-center text-xl"
 												>
-													Create status
+													{{ $t('board.boardPage.createStatus') }}
 												</h1>
 												<h1 v-else class="mb-3 text-center text-xl">
-													Edit status
+													{{ $t('board.boardPage.editStatus') }}
 												</h1>
 												<label class="mb-3 flex flex-col gap-2 font-medium">
-													Status name :
+													{{ $t('board.boardPage.statusForm.nameLabel') }}
 													<TextField
-														placeholder="Name"
+														:placeholder="
+															$t('board.boardPage.statusForm.namePlaceholder')
+														"
 														v-model="statusName"
 														:errors="errors.name"
 													/>
 												</label>
 												<label class="mb-4 flex flex-col gap-2 font-medium">
-													Status type :
+													{{ $t('board.boardPage.statusForm.typeLabel') }}
 													<Select
-														placeholder="Select Type"
+														:placeholder="
+															$t('board.boardPage.statusForm.typePlaceholder')
+														"
 														:options="statusTypes"
 														v-model="statusType"
 														:errors="errors.type"
@@ -588,7 +607,9 @@
 												<div
 													class="mb-3 flex items-center justify-between font-medium"
 												>
-													<span>Status color :</span>
+													<span>{{
+														$t('board.boardPage.statusForm.colorLabel')
+													}}</span>
 													<button
 														type="button"
 														:style="{ backgroundColor: statusColor }"
@@ -605,7 +626,11 @@
 													type="button"
 													@click="saveNewStatus()"
 												>
-													{{ isCreatingStatus ? 'Create' : 'Save' }}
+													{{
+														isCreatingStatus
+															? $t('common.actions.create')
+															: $t('common.actions.save')
+													}}
 												</Button>
 
 												<Button
@@ -615,7 +640,7 @@
 													type="button"
 													@click="deleteStatus"
 												>
-													Delete
+													{{ $t('common.actions.delete') }}
 												</Button>
 											</div>
 										</div>
@@ -632,7 +657,7 @@
 										<div class="relative p-8">
 											<button
 												type="button"
-												aria-label="Close"
+												:aria-label="$t('common.actions.close')"
 												class="absolute top-1 right-1 opacity-50 transition-opacity hover:opacity-100"
 												@click="closePickerModal"
 											>
@@ -654,7 +679,7 @@
 												type="button"
 												@click="applyColor"
 											>
-												Apply
+												{{ $t('common.actions.apply') }}
 											</Button>
 										</div>
 									</template>
@@ -668,11 +693,15 @@
 									<template #modal-body>
 										<div>
 											<h1 class="mb-4 text-center text-xl font-semibold">
-												Move all tasks to
+												{{ $t('board.boardPage.moveModal.title') }}
 											</h1>
 											<p class="mb-4 text-center text-sm text-ink-muted">
-												Move {{ sourceColumnForMove?.tasks.length }} task(s)
-												from "{{ sourceColumnForMove?.title }}" to:
+												{{
+													$t('board.boardPage.moveModal.description', {
+														count: sourceColumnForMove?.tasks.length,
+														title: sourceColumnForMove?.title,
+													})
+												}}
 											</p>
 											<div class="space-y-2">
 												<button
@@ -698,7 +727,7 @@
 												class="mt-4 w-full"
 												@click="closeMoveTasksModal"
 											>
-												Cancel
+												{{ $t('common.actions.cancel') }}
 											</Button>
 										</div>
 									</template>
@@ -712,7 +741,7 @@
 										<div>
 											<div class="relative mb-4">
 												<h1 class="text-center text-xl font-semibold">
-													Reorder Statuses
+													{{ $t('board.boardPage.reorderModal.title') }}
 												</h1>
 												<button
 													type="button"
@@ -725,7 +754,7 @@
 												</button>
 											</div>
 											<p class="mb-4 text-center text-sm text-ink-muted">
-												Hold and drag the six dots icon to reorder
+												{{ $t('board.boardPage.reorderModal.hint') }}
 											</p>
 											<Draggable
 												v-model="mobileReorderColumns"
@@ -764,13 +793,13 @@
 											</Draggable>
 											<div class="mt-4 flex gap-2">
 												<Button class="flex-1" @click="saveMobileReorder">
-													Save Order
+													{{ $t('board.boardPage.reorderModal.save') }}
 												</Button>
 												<Button
 													variant="outline"
 													@click="closeMobileReorderModal"
 												>
-													Cancel
+													{{ $t('common.actions.cancel') }}
 												</Button>
 											</div>
 										</div>
@@ -868,6 +897,7 @@
 		resyncPagedColumns,
 	} from '@/utils/boardColumnPaging';
 	import { boardTaskCounts } from '@/utils/boardSummary';
+	import { t } from '@/i18n';
 	import { hexToHsl, hslToHex } from '@/utils/colors';
 	import {
 		parsePriorityFilter,
@@ -1276,7 +1306,7 @@
 					);
 					this.refreshColumnSummaries(new Set([column.status.id]));
 				} catch {
-					this.boardError = 'Could not load more tasks.';
+					this.boardError = t('board.boardPage.errors.loadMoreTasks');
 					const paging = column.paging;
 					setTimeout(() => {
 						if (!this.boardDisposed) paging.settled++;
@@ -1293,7 +1323,7 @@
 					);
 					this.refreshColumnSummaries(new Set([statusId]));
 				} catch {
-					this.boardError = 'Could not refresh the column.';
+					this.boardError = t('board.boardPage.errors.refreshColumn');
 				}
 			},
 			async ensureColumnComplete(column) {
@@ -1307,8 +1337,8 @@
 					);
 				} catch {
 					this.toast({
-						title: 'Could not load all tasks',
-						description: 'Please try again.',
+						title: t('board.boardPage.toasts.loadAllFailed.title'),
+						description: t('board.boardPage.toasts.loadAllFailed.description'),
 						variant: 'destructive',
 					});
 					return false;
@@ -1531,8 +1561,8 @@
 					await this.loadTasks();
 				};
 				this.showConfirm(
-					'Delete status',
-					'Are you sure?',
+					t('board.boardPage.confirms.deleteStatus.title'),
+					t('board.boardPage.confirms.deleteStatus.body'),
 					deleteStatusConfirmation,
 				);
 			},
@@ -1587,8 +1617,7 @@
 						if (sourceTasks) await this.saveOrders(sourceTasks);
 					})
 					.catch(() => {
-						this.boardError =
-							'Could not save task order. Refresh to restore the server order.';
+						this.boardError = t('board.boardPage.errors.saveOrder');
 					});
 				await this.dragSaveQueue;
 			},
@@ -1618,16 +1647,14 @@
 							limit: BOARD_PAGE_SIZE,
 						});
 						if (!result.ok && result.error?.response?.status !== 409)
-							this.boardError =
-								'Could not move the task. The column was refreshed.';
+							this.boardError = t('board.boardPage.errors.moveRefreshed');
 						if (this.pendingMoveIds.size === 0) await this.flushDirtyColumns();
 						this.refreshColumnSummaries();
 						this.scheduleTotalsRefresh();
 					})
 					.catch(() => {
 						this.pendingMoveIds.delete(id);
-						this.boardError =
-							'Could not move the task. Refresh to restore the server order.';
+						this.boardError = t('board.boardPage.errors.moveRestore');
 					});
 				await this.dragSaveQueue;
 			},
@@ -1716,8 +1743,7 @@
 				this.dragSaveQueue = this.dragSaveQueue
 					.then(() => this.saveOrders(tasks))
 					.catch(() => {
-						this.boardError =
-							'Could not save task order. Refresh to restore the server order.';
+						this.boardError = t('board.boardPage.errors.saveOrder');
 					});
 				return this.dragSaveQueue;
 			},
@@ -1744,14 +1770,16 @@
 				const { tasks } = column;
 				const taskIds = tasks.map((t) => t.id);
 				if (!taskIds.length) {
-					this.toast({ title: 'No tasks to archive in this column' });
+					this.toast({ title: t('board.boardPage.toasts.noTasksToArchive') });
 					return;
 				}
 				const archiveStatus = this.statuses?.find((s) => s.type === 'archived');
 				if (!archiveStatus) {
 					this.toast({
-						title: 'Archive status not found',
-						description: 'Create an archive status first.',
+						title: t('board.boardPage.toasts.archiveStatusMissing.title'),
+						description: t(
+							'board.boardPage.toasts.archiveStatusMissing.description',
+						),
 						variant: 'destructive',
 					});
 					return;
@@ -1763,15 +1791,19 @@
 						await this.loadTasks();
 					} catch {
 						this.toast({
-							title: 'Failed to archive tasks',
-							description: 'Please try again.',
+							title: t('board.boardPage.toasts.archiveFailed.title'),
+							description: t(
+								'board.boardPage.toasts.archiveFailed.description',
+							),
 							variant: 'destructive',
 						});
 					}
 				};
 				this.showConfirm(
-					`Archive ${taskIds.length} ${taskIds.length === 1 ? 'task' : 'tasks'}?`,
-					`All tasks in "${column.status.name}" will be moved to the archive.`,
+					t('board.boardPage.confirms.archive.title', taskIds.length),
+					t('board.boardPage.confirms.archive.body', {
+						name: column.status.name,
+					}),
 					archiveAll,
 				);
 			},
@@ -1841,8 +1873,12 @@
 
 				this.closeMoveTasksModal();
 				this.showConfirm(
-					'Move all tasks',
-					`Move ${taskCount} task(s) from "${sourceColumnTitle}" to "${targetColumnTitle}"?`,
+					t('board.boardPage.confirms.move.title'),
+					t('board.boardPage.confirms.move.body', {
+						count: taskCount,
+						source: sourceColumnTitle,
+						target: targetColumnTitle,
+					}),
 					confirmMove,
 				);
 			},
@@ -2057,7 +2093,7 @@
 					await this.loadTasks();
 				} catch (error) {
 					if (!this.boardDisposed) {
-						this.boardError = 'Could not refresh the board.';
+						this.boardError = t('board.boardPage.errors.refreshBoard');
 						this.boardLoading = false;
 					}
 				}
@@ -2106,12 +2142,18 @@
 					}
 					this.userData = user;
 					this.workspacesData = workspaces;
-					this.categories = [{ id: 0, title: 'All categories' }, ...categories];
+					this.categories = [
+						{ id: 0, title: t('board.boardPage.allCategories') },
+						...categories,
+					];
 					if (this.workspaceId) {
 						if (users === null)
 							users = await getWorkspaceMembers(this.workspaceId);
 						if (this.boardDisposed) return;
-						this.workspaceUsers = [{ id: 0, name: 'All users' }, ...users];
+						this.workspaceUsers = [
+							{ id: 0, name: t('board.boardPage.allUsers') },
+							...users,
+						];
 						this.assignablePersonas =
 							personas ?? (await fetchPersonas(this.workspaceId)) ?? [];
 						if (this.boardDisposed) return;
@@ -2171,7 +2213,7 @@
 					}
 				} catch (error) {
 					if (!this.boardDisposed) {
-						this.boardError = 'Could not load the board.';
+						this.boardError = t('board.boardPage.errors.loadBoard');
 						this.boardLoading = false;
 					}
 				} finally {
@@ -2181,7 +2223,10 @@
 			async saveUser() {
 				try {
 					this.user = await updateUser(this.user);
-					this.showAlert('Saved', 'User data saved');
+					this.showAlert(
+						t('board.boardPage.userSaved.title'),
+						t('board.boardPage.userSaved.body'),
+					);
 				} catch (e) {
 					this.errors = e.response?.data?.errors || {};
 				}
@@ -2291,7 +2336,7 @@
 				},
 				() => {
 					this.realtimeBuffer.take();
-					this.boardError = 'Could not refresh tasks.';
+					this.boardError = t('board.boardPage.errors.refreshTasks');
 				},
 				(loading) => {
 					this.boardLoading = loading;

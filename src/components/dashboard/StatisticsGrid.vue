@@ -20,6 +20,7 @@
 
 <script setup lang="ts">
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { t } from '@/i18n';
 	import type { DashboardStatistics } from '@/types/dashboard';
 	import { computed } from 'vue';
 	import StatisticCard from './StatisticCard.vue';
@@ -68,85 +69,101 @@
 			[
 				{
 					key: 'total_tasks',
-					title: 'Total Tasks',
+					title: t('board.dashboard.statisticsGrid.totalTasks.title'),
 					value: props.statistics.total_tasks || 0,
 					icon: 'tasks',
 					color: 'blue',
-					description: 'All tasks in workspace',
+					description: t(
+						'board.dashboard.statisticsGrid.totalTasks.description',
+					),
 					filter: { status: 'all' },
 				},
 				{
 					key: 'active_tasks',
-					title: 'Active Tasks',
+					title: t('board.dashboard.statisticsGrid.activeTasks.title'),
 					value: props.statistics.active_tasks || 0,
 					icon: 'play',
 					color: 'green',
-					description: 'Currently in progress',
+					description: t(
+						'board.dashboard.statisticsGrid.activeTasks.description',
+					),
 					filter: { status: 'active' },
 				},
 				{
 					key: 'completed_today',
-					title: 'Completed Today',
+					title: t('board.dashboard.statisticsGrid.completedToday.title'),
 					value: props.statistics.completed_today || 0,
 					icon: 'check',
 					color: 'green',
-					description: 'Tasks finished today',
+					description: t(
+						'board.dashboard.statisticsGrid.completedToday.description',
+					),
 					filter: { status: 'completed', period: 'today' },
 				},
 				{
 					key: 'completed_week',
-					title: 'Completed This Week',
+					title: t('board.dashboard.statisticsGrid.completedWeek.title'),
 					value: props.statistics.completed_week || 0,
 					icon: 'calendar',
 					color: 'indigo',
-					description: 'Tasks finished this week',
+					description: t(
+						'board.dashboard.statisticsGrid.completedWeek.description',
+					),
 					filter: { status: 'completed', period: 'week' },
 				},
 				{
 					key: 'time_today',
-					title: 'Time Today',
+					title: t('board.dashboard.statisticsGrid.timeToday.title'),
 					value: formatTime(props.statistics.time_today || 0),
 					icon: 'clock',
 					color: 'orange',
-					description: 'Time tracked today',
+					description: t(
+						'board.dashboard.statisticsGrid.timeToday.description',
+					),
 					filter: { view: 'time_tracking', period: 'today' },
 				},
 				{
 					key: 'time_week',
-					title: 'Time This Week',
+					title: t('board.dashboard.statisticsGrid.timeWeek.title'),
 					value: formatTime(props.statistics.time_week || 0),
 					icon: 'clock',
 					color: 'purple',
-					description: 'Time tracked this week',
+					description: t('board.dashboard.statisticsGrid.timeWeek.description'),
 					filter: { view: 'time_tracking', period: 'week' },
 				},
 				{
 					key: 'team_members',
-					title: 'Team Members',
+					title: t('board.dashboard.statisticsGrid.teamMembers.title'),
 					value: props.statistics.team_members || 0,
 					icon: 'users',
 					color: 'blue',
-					description: 'Active workspace members',
+					description: t(
+						'board.dashboard.statisticsGrid.teamMembers.description',
+					),
 					filter: { view: 'team' },
 				},
 				{
 					key: 'overdue_tasks',
-					title: 'Overdue Tasks',
+					title: t('board.dashboard.statisticsGrid.overdueTasks.title'),
 					value: props.statistics.overdue_tasks || 0,
 					icon: 'alert',
 					color: 'red',
-					description: 'Tasks past due date',
+					description: t(
+						'board.dashboard.statisticsGrid.overdueTasks.description',
+					),
 					filter: { status: 'overdue' },
 				},
 				{
 					key: 'daily_routine_completion',
-					title: 'Daily Routine',
+					title: t('board.dashboard.statisticsGrid.dailyRoutine.title'),
 					value: formatPercentage(
 						props.statistics.daily_routine_completion_rate || 0,
 					),
 					icon: 'repeat',
 					color: 'green',
-					description: 'Completion rate',
+					description: t(
+						'board.dashboard.statisticsGrid.dailyRoutine.description',
+					),
 					filter: { view: 'daily_routine' },
 				},
 			] satisfies StatisticCardData[]

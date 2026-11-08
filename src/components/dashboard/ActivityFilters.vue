@@ -6,38 +6,80 @@
 			@update:model-value="handleFilterChange"
 		>
 			<SelectTrigger class="w-32">
-				<SelectValue placeholder="All Types" />
+				<SelectValue
+					:placeholder="$t('board.dashboard.activityFilters.types.allTypes')"
+				/>
 			</SelectTrigger>
 			<SelectContent>
-				<SelectItem value="all">All Types</SelectItem>
-				<SelectSeparator />
-				<SelectItem value="task_created">Task Created</SelectItem>
-				<SelectItem value="task_updated">Task Updated</SelectItem>
-				<SelectItem value="task_completed">Task Completed</SelectItem>
-				<SelectItem value="task_deleted">Task Deleted</SelectItem>
-				<SelectItem value="task_status_changed">Status Changed</SelectItem>
-				<SelectItem value="task_assigned">Task Assigned</SelectItem>
-				<SelectItem value="task_persona_assigned">
-					Persona Assigned
+				<SelectItem value="all">
+					{{ $t('board.dashboard.activityFilters.types.allTypes') }}
 				</SelectItem>
-				<SelectItem value="task_timer_started">Timer Started</SelectItem>
-				<SelectItem value="task_timer_stopped">Timer Stopped</SelectItem>
 				<SelectSeparator />
-				<SelectItem value="comment_created">Comment Added</SelectItem>
-				<SelectItem value="comment_updated">Comment Updated</SelectItem>
-				<SelectItem value="comment_deleted">Comment Deleted</SelectItem>
+				<SelectItem value="task_created">
+					{{ $t('board.dashboard.activityFilters.types.taskCreated') }}
+				</SelectItem>
+				<SelectItem value="task_updated">
+					{{ $t('board.dashboard.activityFilters.types.taskUpdated') }}
+				</SelectItem>
+				<SelectItem value="task_completed">
+					{{ $t('board.dashboard.activityFilters.types.taskCompleted') }}
+				</SelectItem>
+				<SelectItem value="task_deleted">
+					{{ $t('board.dashboard.activityFilters.types.taskDeleted') }}
+				</SelectItem>
+				<SelectItem value="task_status_changed">
+					{{ $t('board.dashboard.activityFilters.types.statusChanged') }}
+				</SelectItem>
+				<SelectItem value="task_assigned">
+					{{ $t('board.dashboard.activityFilters.types.taskAssigned') }}
+				</SelectItem>
+				<SelectItem value="task_persona_assigned">
+					{{ $t('board.dashboard.activityFilters.types.personaAssigned') }}
+				</SelectItem>
+				<SelectItem value="task_timer_started">
+					{{ $t('board.dashboard.activityFilters.types.timerStarted') }}
+				</SelectItem>
+				<SelectItem value="task_timer_stopped">
+					{{ $t('board.dashboard.activityFilters.types.timerStopped') }}
+				</SelectItem>
 				<SelectSeparator />
-				<SelectItem value="category_created">Category Created</SelectItem>
-				<SelectItem value="category_updated">Category Updated</SelectItem>
-				<SelectItem value="category_deleted">Category Deleted</SelectItem>
+				<SelectItem value="comment_created">
+					{{ $t('board.dashboard.activityFilters.types.commentAdded') }}
+				</SelectItem>
+				<SelectItem value="comment_updated">
+					{{ $t('board.dashboard.activityFilters.types.commentUpdated') }}
+				</SelectItem>
+				<SelectItem value="comment_deleted">
+					{{ $t('board.dashboard.activityFilters.types.commentDeleted') }}
+				</SelectItem>
 				<SelectSeparator />
-				<SelectItem value="file_uploaded">File Uploaded</SelectItem>
-				<SelectItem value="file_deleted">File Deleted</SelectItem>
+				<SelectItem value="category_created">
+					{{ $t('board.dashboard.activityFilters.types.categoryCreated') }}
+				</SelectItem>
+				<SelectItem value="category_updated">
+					{{ $t('board.dashboard.activityFilters.types.categoryUpdated') }}
+				</SelectItem>
+				<SelectItem value="category_deleted">
+					{{ $t('board.dashboard.activityFilters.types.categoryDeleted') }}
+				</SelectItem>
 				<SelectSeparator />
-				<SelectItem value="member_joined">Member Joined</SelectItem>
-				<SelectItem value="member_left">Member Left</SelectItem>
+				<SelectItem value="file_uploaded">
+					{{ $t('board.dashboard.activityFilters.types.fileUploaded') }}
+				</SelectItem>
+				<SelectItem value="file_deleted">
+					{{ $t('board.dashboard.activityFilters.types.fileDeleted') }}
+				</SelectItem>
 				<SelectSeparator />
-				<SelectItem value="routine_completed">Routine Completed</SelectItem>
+				<SelectItem value="member_joined">
+					{{ $t('board.dashboard.activityFilters.types.memberJoined') }}
+				</SelectItem>
+				<SelectItem value="member_left">
+					{{ $t('board.dashboard.activityFilters.types.memberLeft') }}
+				</SelectItem>
+				<SelectSeparator />
+				<SelectItem value="routine_completed">
+					{{ $t('board.dashboard.activityFilters.types.routineCompleted') }}
+				</SelectItem>
 			</SelectContent>
 		</Select>
 
@@ -47,10 +89,14 @@
 			@update:model-value="handleUserChange"
 		>
 			<SelectTrigger class="w-32">
-				<SelectValue placeholder="All Users" />
+				<SelectValue
+					:placeholder="$t('board.dashboard.activityFilters.allUsers')"
+				/>
 			</SelectTrigger>
 			<SelectContent>
-				<SelectItem value="all">All Users</SelectItem>
+				<SelectItem value="all">{{
+					$t('board.dashboard.activityFilters.allUsers')
+				}}</SelectItem>
 				<SelectSeparator />
 				<SelectItem
 					v-for="user in workspaceUsers"
@@ -79,7 +125,7 @@
 				>
 					<span class="flex items-center gap-2 truncate">
 						<CalendarIcon class="h-4 w-4 shrink-0 opacity-70" />
-						<span class="truncate">{{ dateRangeLabel }}</span>
+						<span class="truncate">{{ $t(selectedDateRange.labelKey) }}</span>
 					</span>
 					<ChevronDown class="h-4 w-4 shrink-0 opacity-50" />
 				</button>
@@ -94,7 +140,7 @@
 						class="w-full justify-start"
 						@click="selectDateRange(range)"
 					>
-						{{ range.label }}
+						{{ $t(range.labelKey) }}
 					</Button>
 				</div>
 			</PopoverContent>
@@ -106,7 +152,7 @@
 			type="button"
 			@click="clearFilters"
 			class="flex h-10 w-10 items-center justify-center rounded-md text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
-			aria-label="Clear filters"
+			:aria-label="$t('board.dashboard.activityFilters.clearAria')"
 		>
 			<XMarkIcon class="h-4 w-4" />
 		</button>
@@ -140,7 +186,7 @@
 	}
 
 	interface DateRange {
-		label: string;
+		labelKey: string;
 		value: string;
 		from?: string;
 		to?: string;
@@ -157,20 +203,37 @@
 	const localFilters = ref<ActivityFiltersType>({ ...props.modelValue });
 
 	const dateRanges: DateRange[] = [
-		{ label: 'All Time', value: 'all' },
-		{ label: 'Today', value: 'today' },
-		{ label: 'Yesterday', value: 'yesterday' },
-		{ label: 'This Week', value: 'week' },
-		{ label: 'Last Week', value: 'last_week' },
-		{ label: 'This Month', value: 'month' },
-		{ label: 'Last Month', value: 'last_month' },
+		{
+			labelKey: 'board.dashboard.activityFilters.ranges.allTime',
+			value: 'all',
+		},
+		{
+			labelKey: 'board.dashboard.activityFilters.ranges.today',
+			value: 'today',
+		},
+		{
+			labelKey: 'board.dashboard.activityFilters.ranges.yesterday',
+			value: 'yesterday',
+		},
+		{
+			labelKey: 'board.dashboard.activityFilters.ranges.thisWeek',
+			value: 'week',
+		},
+		{
+			labelKey: 'board.dashboard.activityFilters.ranges.lastWeek',
+			value: 'last_week',
+		},
+		{
+			labelKey: 'board.dashboard.activityFilters.ranges.thisMonth',
+			value: 'month',
+		},
+		{
+			labelKey: 'board.dashboard.activityFilters.ranges.lastMonth',
+			value: 'last_month',
+		},
 	];
 
 	const selectedDateRange = ref<DateRange>(dateRanges[0]);
-
-	const dateRangeLabel = computed(() => {
-		return selectedDateRange.value.label;
-	});
 
 	const hasActiveFilters = computed(() => {
 		return (

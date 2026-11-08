@@ -18,7 +18,9 @@
 					</h4>
 					<div v-if="task.is_overdue" class="flex items-center">
 						<ExclamationTriangleIcon class="h-4 w-4 text-status-fix" />
-						<span class="sr-only">Overdue</span>
+						<span class="sr-only">{{
+							$t('board.dashboard.recentTaskItem.overdue')
+						}}</span>
 					</div>
 				</div>
 
@@ -62,7 +64,9 @@
 					v-if="task.assignees && task.assignees.length > 1"
 					class="space-x-1 mt-2 flex items-center"
 				>
-					<span class="text-xs text-ink-subtle">Assignees:</span>
+					<span class="text-xs text-ink-subtle">{{
+						$t('board.dashboard.recentTaskItem.assignees')
+					}}</span>
 					<div class="-space-x-1 flex">
 						<MemberAvatarLink
 							v-for="assignee in task.assignees.slice(0, 3)"
@@ -81,7 +85,11 @@
 						<div
 							v-if="task.assignees.length > 3"
 							class="flex h-5 w-5 items-center justify-center rounded-full border border-surface bg-surface-sunken"
-							:title="`+${task.assignees.length - 3} more`"
+							:title="
+								$t('board.dashboard.recentTaskItem.moreAssignees', {
+									n: task.assignees.length - 3,
+								})
+							"
 						>
 							<span class="text-xs font-medium text-ink-muted">
 								+{{ task.assignees.length - 3 }}
@@ -100,7 +108,11 @@
 					size="sm"
 					@click.stop="handleTimerToggle"
 					:class="timerButtonClasses"
-					:title="task.timer_running ? 'Stop timer' : 'Start timer'"
+					:title="
+						task.timer_running
+							? $t('board.dashboard.recentTaskItem.stopTimer')
+							: $t('board.dashboard.recentTaskItem.startTimer')
+					"
 				>
 					<component :is="timerIcon" class="h-4 w-4" />
 					<span v-if="task.timer_running && timerDuration" class="ml-1 text-xs">
@@ -148,7 +160,7 @@
 					v-else
 					class="flex h-8 w-24 items-center justify-center rounded-md border border-line text-xs text-ink-subtle"
 				>
-					No Status
+					{{ $t('board.dashboard.recentTaskItem.noStatus') }}
 				</div>
 			</div>
 		</div>
@@ -156,6 +168,7 @@
 </template>
 
 <script setup lang="ts">
+	import { currentLocale, t } from '@/i18n';
 	import MemberAvatarLink from '@/components/general/MemberAvatarLink.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import DoneCheckbox from '@/components/tasks/DoneCheckbox.vue';
@@ -215,7 +228,7 @@
 	const statusText = computed(() =>
 		simpleMode.value
 			? stateLabel(props.task.status)
-			: props.task.status?.name || 'Unknown',
+			: props.task.status?.name || t('common.states.unknown'),
 	);
 	const handleDoneChange = (checked: boolean) => {
 		const target = checked ? doneStatusId.value : openStatusId.value;
@@ -226,7 +239,7 @@
 	const timerDuration = ref<string>('');
 
 	const formattedDate = computed(() => {
-		return new Date(props.task.updated_at).toLocaleString();
+		return new Date(props.task.updated_at).toLocaleString(currentLocale());
 	});
 
 	const priorityIcon = computed(() => priorityOption(props.task.priority).icon);
@@ -290,18 +303,24 @@
 
 	const accessibilityLabel = computed(() => {
 		const parts = [
-			`Task: ${props.task.title}`,
-			`Status: ${statusText.value}`,
-			`Assigned to: ${props.task.user.name}`,
-			`Updated: ${props.task.updated_at_human}`,
+			t('board.dashboard.recentTaskItem.ariaTask', { title: props.task.title }),
+			t('board.dashboard.recentTaskItem.ariaStatus', {
+				status: statusText.value,
+			}),
+			t('board.dashboard.recentTaskItem.ariaAssignedTo', {
+				name: props.task.user.name,
+			}),
+			t('board.dashboard.recentTaskItem.ariaUpdated', {
+				when: props.task.updated_at_human,
+			}),
 		];
 
 		if (props.task.is_overdue) {
-			parts.push('Overdue');
+			parts.push(t('board.dashboard.recentTaskItem.overdue'));
 		}
 
 		if (props.task.timer_running) {
-			parts.push('Timer running');
+			parts.push(t('board.dashboard.recentTaskItem.timerRunning'));
 		}
 
 		return parts.join(', ');

@@ -6,7 +6,11 @@
 		<button
 			type="button"
 			class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink text-surface-base"
-			:aria-label="playing ? 'Pause timeline' : 'Play timeline'"
+			:aria-label="
+				playing
+					? $t('board.graphMap.timeline.pause')
+					: $t('board.graphMap.timeline.play')
+			"
 			data-testid="map-play"
 			@click="$emit('toggle')"
 		>
@@ -20,7 +24,7 @@
 			:max="Math.max(0, steps - 1)"
 			step="1"
 			:value="modelValue"
-			aria-label="Timeline"
+			:aria-label="$t('board.graphMap.timeline.label')"
 			data-testid="map-scrubber"
 			@input="
 				$emit(

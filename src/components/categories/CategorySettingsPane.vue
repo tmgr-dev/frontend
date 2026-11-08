@@ -16,10 +16,10 @@
 				size="sm"
 				class="h-7 border-line-strong bg-surface text-xs text-ink"
 				:disabled="fixing || dirty"
-				:title="dirty ? 'Save or discard your changes first' : undefined"
+				:title="dirty ? $t('board.categories.pane.saveFirst') : undefined"
 				@click="fixAll"
 			>
-				Fix all {{ issues.length }}
+				{{ $t('board.categories.pane.fixAll', { count: issues.length }) }}
 			</Button>
 		</div>
 
@@ -30,8 +30,14 @@
 			@submit.prevent="submit"
 		>
 			<section :aria-labelledby="`${formId}-general`" class="flex flex-col">
-				<SectionHead :id="`${formId}-general`" title="General" />
-				<SettingRow label="Name" :label-for="`${formId}-name`">
+				<SectionHead
+					:id="`${formId}-general`"
+					:title="$t('board.categories.pane.sections.general')"
+				/>
+				<SettingRow
+					:label="$t('board.categories.pane.fields.name')"
+					:label-for="`${formId}-name`"
+				>
 					<input
 						:id="`${formId}-name`"
 						ref="nameField"
@@ -39,7 +45,7 @@
 						:data-autofocus="isCreate || undefined"
 						type="text"
 						autocomplete="off"
-						placeholder="Name"
+						:placeholder="$t('board.categories.pane.fields.name')"
 						:aria-invalid="!!errors.title || undefined"
 						:class="[inputClass, 'max-w-[360px]', errors.title && errorClass]"
 					/>
@@ -48,8 +54,8 @@
 					</p>
 				</SettingRow>
 				<SettingRow
-					label="Code"
-					hint="Letters and digits"
+					:label="$t('board.categories.pane.fields.code')"
+					:hint="$t('board.categories.pane.fields.codeHint')"
 					:label-for="`${formId}-code`"
 				>
 					<input
@@ -58,7 +64,7 @@
 						type="text"
 						autocomplete="off"
 						spellcheck="false"
-						placeholder="e.g., PROJ, FEAT, BUG"
+						:placeholder="$t('board.categories.pane.fields.codePlaceholder')"
 						:aria-invalid="!!errors.code || undefined"
 						:class="[
 							inputClass,
@@ -71,17 +77,24 @@
 						{{ errors.code[0] }}
 					</p>
 				</SettingRow>
-				<SettingRow label="Parent" :label-for="`${formId}-parent`">
+				<SettingRow
+					:label="$t('board.categories.pane.fields.parent')"
+					:label-for="`${formId}-parent`"
+				>
 					<Select v-model="form.parent">
 						<SelectTrigger
 							:id="`${formId}-parent`"
 							:class="[fieldClass, 'max-w-[260px]']"
-							aria-label="Parent"
+							:aria-label="$t('board.categories.pane.fields.parent')"
 						>
-							<SelectValue placeholder="No parent" />
+							<SelectValue
+								:placeholder="$t('board.categories.pane.fields.noParent')"
+							/>
 						</SelectTrigger>
 						<SelectContent>
-							<SelectItem value="none">No parent</SelectItem>
+							<SelectItem value="none">{{
+								$t('board.categories.pane.fields.noParent')
+							}}</SelectItem>
 							<SelectItem
 								v-for="option in parentChoices"
 								:key="option.category.id"
@@ -108,8 +121,8 @@
 			>
 				<SectionHead
 					:id="`${formId}-new`"
-					title="New tasks"
-					hint="Defaults for tasks created in this category"
+					:title="$t('board.categories.pane.sections.newTasks')"
+					:hint="$t('board.categories.pane.sections.newTasksHint')"
 				/>
 				<div
 					v-if="catalogueState === 'loading'"
@@ -120,20 +133,22 @@
 				<template v-else>
 					<SettingRow
 						v-if="isCreate && copyDefault"
-						label="Copy settings from"
-						hint="Fills the fields below, you can still change them"
+						:label="$t('board.categories.pane.fields.copyFrom')"
+						:hint="$t('board.categories.pane.fields.copyFromHint')"
 						:label-for="`${formId}-copy`"
 					>
 						<Select :model-value="copyFrom" @update:model-value="applyCopy">
 							<SelectTrigger
 								:id="`${formId}-copy`"
 								:class="[fieldClass, 'max-w-[260px]']"
-								aria-label="Copy settings from"
+								:aria-label="$t('board.categories.pane.fields.copyFrom')"
 							>
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								<SelectItem value="none">Don’t copy</SelectItem>
+								<SelectItem value="none">{{
+									$t('board.categories.pane.fields.dontCopy')
+								}}</SelectItem>
 								<SelectItem
 									v-for="option in copyChoices"
 									:key="option.id"
@@ -170,7 +185,7 @@
 		</form>
 
 		<p v-if="isCreate" class="text-[13px] text-ink-muted">
-			Integrations and the danger zone appear after the category is created.
+			{{ $t('board.categories.pane.createNote') }}
 		</p>
 
 		<template v-if="!isCreate && category">
@@ -179,16 +194,23 @@
 				:aria-labelledby="`${formId}-int`"
 				class="flex flex-col max-lg:hidden"
 			>
-				<SectionHead :id="`${formId}-int`" title="Integrations" />
+				<SectionHead
+					:id="`${formId}-int`"
+					:title="$t('board.categories.pane.sections.integrations')"
+				/>
 				<SettingRow
 					v-if="cursorEnabled"
-					label="Cursor AI agent"
-					hint="Send tasks from this category to Cursor agents"
+					:label="$t('board.categories.pane.integrations.cursorLabel')"
+					:hint="$t('board.categories.pane.integrations.cursorHint')"
 					inline
 				>
 					<StatusPill
 						:done="!!category.cursor_connected"
-						:text="category.cursor_connected ? 'Connected' : 'Not connected'"
+						:text="
+							category.cursor_connected
+								? $t('board.categories.pane.integrations.connected')
+								: $t('board.categories.pane.integrations.notConnected')
+						"
 					/>
 					<Button
 						type="button"
@@ -200,10 +222,10 @@
 					>
 						{{
 							open.cursor
-								? 'Close'
+								? $t('common.actions.close')
 								: category.cursor_connected
-									? 'Manage'
-									: 'Connect'
+									? $t('board.categories.pane.integrations.manage')
+									: $t('board.categories.pane.integrations.connect')
 						}}
 					</Button>
 					<template v-if="open.cursor" #below>
@@ -212,16 +234,18 @@
 							:is-create="false"
 							class="!mt-0 !border-t-0 !pt-0"
 							@cursor-configured="
-								onCursor('Cursor API key configured successfully')
+								onCursor($t('board.categories.pane.toasts.cursorConfigured'))
 							"
-							@cursor-removed="onCursor('Cursor API key removed')"
+							@cursor-removed="
+								onCursor($t('board.categories.pane.toasts.cursorRemoved'))
+							"
 						/>
 					</template>
 				</SettingRow>
 				<SettingRow
 					v-if="githubEnabled"
-					label="GitHub"
-					hint="Link tasks to a repository"
+					:label="$t('board.categories.pane.integrations.githubLabel')"
+					:hint="$t('board.categories.pane.integrations.githubHint')"
 					inline
 				>
 					<StatusPill
@@ -229,8 +253,9 @@
 						:done="!!github?.repository"
 						:text="
 							github === null
-								? 'Unavailable'
-								: github.repository?.full_name || 'Not connected'
+								? $t('board.categories.pane.integrations.unavailable')
+								: github.repository?.full_name ||
+									$t('board.categories.pane.integrations.notConnected')
 						"
 					/>
 					<Button
@@ -243,10 +268,10 @@
 					>
 						{{
 							open.github
-								? 'Close'
+								? $t('common.actions.close')
 								: github && !github.has_installation
-									? 'Install GitHub App'
-									: 'Manage'
+									? $t('board.categories.pane.integrations.installApp')
+									: $t('board.categories.pane.integrations.manage')
 						}}
 					</Button>
 					<template v-if="open.github" #below>
@@ -254,17 +279,30 @@
 							:category-id="category.id"
 							:is-create="false"
 							class="!mt-0 !border-t-0 !pt-0"
-							@connected="onGitHub(`Connected to ${$event}`)"
-							@disconnected="onGitHub('Repository disconnected')"
-							@synced="notify('Success', 'Repository synced successfully')"
+							@connected="
+								onGitHub(
+									$t('board.categories.pane.toasts.githubConnected', {
+										name: $event,
+									}),
+								)
+							"
+							@disconnected="
+								onGitHub($t('board.categories.pane.toasts.githubDisconnected'))
+							"
+							@synced="
+								notify(
+									$t('board.categories.pane.toasts.success'),
+									$t('board.categories.pane.toasts.githubSynced'),
+								)
+							"
 							@relinked="onRelinked"
 						/>
 					</template>
 				</SettingRow>
 				<SettingRow
 					v-if="agentRuns"
-					label="Agent repositories"
-					hint="Where agent runs may work, as owner/name"
+					:label="$t('board.categories.pane.integrations.reposLabel')"
+					:hint="$t('board.categories.pane.integrations.reposHint')"
 					inline
 				>
 					<StatusPill v-if="repos" :text="reposText" />
@@ -277,7 +315,11 @@
 						@click="toggle('repos')"
 					>
 						{{
-							open.repos ? 'Close' : repos?.length ? 'Edit' : 'Add repository'
+							open.repos
+								? $t('common.actions.close')
+								: repos?.length
+									? $t('common.actions.edit')
+									: $t('board.categories.pane.integrations.addRepository')
 						}}
 					</Button>
 					<template v-if="open.repos" #below>
@@ -290,10 +332,14 @@
 			</section>
 
 			<section :aria-labelledby="`${formId}-danger`" class="flex flex-col">
-				<SectionHead :id="`${formId}-danger`" title="Danger zone" danger />
+				<SectionHead
+					:id="`${formId}-danger`"
+					:title="$t('board.categories.pane.sections.dangerZone')"
+					danger
+				/>
 				<SettingRow
-					label="Move to another workspace"
-					hint="With its subcategories and tasks"
+					:label="$t('board.categories.pane.danger.moveLabel')"
+					:hint="$t('board.categories.pane.danger.moveHint')"
 					inline
 				>
 					<Button
@@ -305,12 +351,12 @@
 						@click="openTransfer"
 					>
 						<ArrowRightLeft aria-hidden="true" />
-						Move…
+						{{ $t('board.categories.pane.danger.move') }}
 					</Button>
 				</SettingRow>
 				<SettingRow
-					label="Delete category"
-					hint="The category is removed from the list"
+					:label="$t('board.categories.pane.danger.deleteLabel')"
+					:hint="$t('board.categories.pane.danger.deleteHint')"
 					inline
 				>
 					<Button
@@ -325,7 +371,7 @@
 						@click="deleteOpen = true"
 					>
 						<Trash2 aria-hidden="true" />
-						Delete…
+						{{ $t('board.categories.pane.danger.delete') }}
 					</Button>
 				</SettingRow>
 			</section>
@@ -344,7 +390,11 @@
 				:disabled="saving || done"
 				@click="isCreate ? $emit('close') : discard()"
 			>
-				{{ isCreate ? 'Cancel' : 'Discard' }}
+				{{
+					isCreate
+						? $t('common.actions.cancel')
+						: $t('board.categories.pane.bar.discard')
+				}}
 			</Button>
 			<Button
 				type="submit"
@@ -353,25 +403,31 @@
 				class="h-8 px-4 text-[13px] font-semibold"
 				:disabled="saving || done || invalid"
 			>
-				{{ isCreate ? 'Create' : 'Save' }}
+				{{ isCreate ? $t('common.actions.create') : $t('common.actions.save') }}
 			</Button>
 		</div>
 
 		<AlertDialog v-model:open="deleteOpen">
 			<AlertDialogContent>
 				<AlertDialogHeader>
-					<AlertDialogTitle>Delete “{{ category?.title }}”?</AlertDialogTitle>
+					<AlertDialogTitle>{{
+						$t('board.categories.pane.deleteDialog.title', {
+							title: category?.title ?? '',
+						})
+					}}</AlertDialogTitle>
 					<AlertDialogDescription>
-						The category is removed from the list.
+						{{ $t('board.categories.pane.deleteDialog.description') }}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
-					<AlertDialogCancel>Cancel</AlertDialogCancel>
+					<AlertDialogCancel>{{
+						$t('common.actions.cancel')
+					}}</AlertDialogCancel>
 					<AlertDialogAction
 						class="bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
 						@click="remove"
 					>
-						Delete
+						{{ $t('common.actions.delete') }}
 					</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialogContent>
@@ -380,12 +436,15 @@
 		<Dialog v-model:open="transfer.open">
 			<DialogContent class="sm:max-w-[425px]">
 				<DialogHeader>
-					<DialogTitle>Move category to another workspace</DialogTitle>
+					<DialogTitle>{{
+						$t('board.categories.pane.transfer.title')
+					}}</DialogTitle>
 					<DialogDescription>
-						"{{ category?.title }}" will be moved with all its subcategories and
-						tasks. Task statuses are matched to the target workspace by name,
-						then by type; assignees who are not members of the target workspace
-						are removed.
+						{{
+							$t('board.categories.pane.transfer.description', {
+								title: category?.title ?? '',
+							})
+						}}
 					</DialogDescription>
 				</DialogHeader>
 				<LegacySelect
@@ -393,11 +452,11 @@
 					:options="transfer.targets"
 					label-key="name"
 					value-key="id"
-					placeholder="Select workspace"
+					:placeholder="$t('board.categories.pane.transfer.placeholder')"
 					class="w-full"
 				/>
 				<p v-if="transfer.targets.length === 0" class="text-sm text-ink-subtle">
-					You are not a member of any other workspace.
+					{{ $t('board.categories.pane.transfer.noOther') }}
 				</p>
 				<DialogFooter>
 					<Button
@@ -405,7 +464,11 @@
 						:disabled="!transfer.targetWorkspaceId || transfer.busy"
 						@click="move"
 					>
-						{{ transfer.busy ? 'Moving...' : 'Move' }}
+						{{
+							transfer.busy
+								? $t('board.categories.pane.transfer.moving')
+								: $t('board.categories.pane.transfer.move')
+						}}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -461,6 +524,7 @@
 	import { Skeleton } from '@/components/ui/skeleton';
 	import { Switch } from '@/components/ui/switch';
 	import { useToast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import {
 		ESTIMATE_KEY,
 		fixedSettingsPayload,
@@ -492,18 +556,19 @@
 
 	const LABELS = {
 		[TITLE_PATTERN_KEY]: {
-			label: 'Task title pattern',
-			hint: 'Prefix for every new task title',
+			labelKey: 'board.categories.pane.settings.titlePatternLabel',
+			hintKey: 'board.categories.pane.settings.titlePatternHint',
 		},
-		[RATE_KEY]: { label: 'Rate per hour' },
-		[ESTIMATE_KEY]: { label: 'Default estimate' },
+		[RATE_KEY]: { labelKey: 'board.categories.pane.settings.rateLabel' },
+		[ESTIMATE_KEY]: {
+			labelKey: 'board.categories.pane.settings.estimateLabel',
+		},
 		[REMINDER_KEY]: {
-			label: 'Timer reminder every',
-			hint: 'Sound each time the running timer passes it',
+			labelKey: 'board.categories.pane.settings.reminderLabel',
+			hintKey: 'board.categories.pane.settings.reminderHint',
 		},
 	};
 	const COMPACT_KEYS = [RATE_KEY, ESTIMATE_KEY, REMINDER_KEY];
-	const DURATION_ERROR = 'Use a duration like 45m, 2h or 1h 30m';
 	const FIELD_CLASS =
 		'h-9 rounded-lg border-line-strong bg-surface-base px-2.5 text-sm text-ink';
 	const INPUT_CLASS =
@@ -712,14 +777,12 @@
 
 			const issues = computed(() => literalIssues(props.nodes));
 			const issuesText = computed(() =>
-				issues.value.length === 1
-					? '1 category names new tasks literally'
-					: `${issues.value.length} categories name new tasks literally`,
+				t('board.categories.pane.issues', issues.value.length),
 			);
 			const reposText = computed(() => {
 				const count = repos.value?.length ?? 0;
-				if (!count) return 'None';
-				return count === 1 ? '1 repository' : `${count} repositories`;
+				if (!count) return t('common.states.none');
+				return t('board.categories.pane.integrations.repositoriesCount', count);
 			});
 
 			const parentChoices = computed(() =>
@@ -748,8 +811,10 @@
 					: null,
 			);
 
-			const labelOf = (def) => LABELS[def.key]?.label ?? def.name;
-			const hintOf = (def) => LABELS[def.key]?.hint ?? '';
+			const labelOf = (def) =>
+				LABELS[def.key]?.labelKey ? t(LABELS[def.key].labelKey) : def.name;
+			const hintOf = (def) =>
+				LABELS[def.key]?.hintKey ? t(LABELS[def.key].hintKey) : '';
 			const controlId = (def) => `${formId}-setting-${def.id}`;
 			const isDuration = (def) => def.component_type === 'time_in_seconds';
 			const showsCustom = (def) =>
@@ -793,11 +858,11 @@
 			const barText = computed(() => {
 				if (props.isCreate)
 					return parent.value
-						? `New subcategory of ${parent.value.title}`
-						: 'New top-level category';
-				return `${changes.value} unsaved ${
-					changes.value === 1 ? 'change' : 'changes'
-				}`;
+						? t('board.categories.pane.bar.newSubcategory', {
+								title: parent.value.title,
+							})
+						: t('board.categories.pane.bar.newTopLevel');
+				return t('board.categories.pane.bar.changes', changes.value);
 			});
 
 			const fillSettings = (source) => {
@@ -902,7 +967,11 @@
 					)
 						return;
 				}
-				notify(title, data?.message || 'Please try again.', 'destructive');
+				notify(
+					title,
+					data?.message || t('board.categories.pane.toasts.tryAgain'),
+					'destructive',
+				);
 			};
 
 			const parentId = () =>
@@ -922,7 +991,7 @@
 				try {
 					saved = await updateCategory(c.id, payload);
 				} catch (e) {
-					fail(e, 'Could not save the category');
+					fail(e, t('board.categories.pane.toasts.saveFailed'));
 					return;
 				}
 				const kept = [];
@@ -953,8 +1022,9 @@
 						await updateCategorySettings(c.id, settingsPayload());
 					} catch (e) {
 						notify(
-							'Defaults for new tasks were not saved',
-							e?.response?.data?.message || 'Please try again.',
+							t('board.categories.pane.toasts.defaultsNotSaved'),
+							e?.response?.data?.message ||
+								t('board.categories.pane.toasts.tryAgain'),
 							'destructive',
 						);
 						emit('saved', c.id);
@@ -964,12 +1034,15 @@
 				initial.value = current();
 				if (kept.length) {
 					notify(
-						`The server kept the old ${kept.join(' and ')}`,
-						'Other changes were saved.',
+						t(`board.categories.pane.toasts.kept.${kept.join('And')}`),
+						t('board.categories.pane.toasts.otherSaved'),
 						'destructive',
 					);
 				} else {
-					notify('Saved', 'The category was saved');
+					notify(
+						t('board.categories.pane.toasts.saved'),
+						t('board.categories.pane.toasts.categorySaved'),
+					);
 				}
 				emit('saved', c.id);
 			};
@@ -986,7 +1059,7 @@
 				try {
 					created = await createCategory(payload);
 				} catch (e) {
-					fail(e, 'Could not create the category');
+					fail(e, t('board.categories.pane.toasts.createFailed'));
 					return;
 				}
 				const settings = settingsPayload();
@@ -1005,12 +1078,12 @@
 				emit('dirty', false);
 				if (settingsFailed) {
 					notify(
-						'Category created',
-						'Its defaults for new tasks were not saved. Set them again and save.',
+						t('board.categories.pane.toasts.created'),
+						t('board.categories.pane.toasts.createdDefaultsFailed'),
 						'destructive',
 					);
 				} else {
-					notify('Category created');
+					notify(t('board.categories.pane.toasts.created'));
 				}
 				done.value = true;
 				emit('created', created.id);
@@ -1046,15 +1119,16 @@
 				fixing.value = false;
 				emit('saved', category.value?.id);
 				if (fixed === targets.length) {
-					notify(
-						`Fixed ${fixed} title ${fixed === 1 ? 'pattern' : 'patterns'}`,
-					);
+					notify(t('board.categories.pane.toasts.fixedPatterns', fixed));
 				} else {
 					notify(
-						`Fixed ${fixed} of ${targets.length} title patterns`,
-						`${
-							targets.length - fixed
-						} could not be saved. Try again for the rest.`,
+						t('board.categories.pane.toasts.fixedPartial', {
+							fixed,
+							total: targets.length,
+						}),
+						t('board.categories.pane.toasts.fixedPartialRest', {
+							rest: targets.length - fixed,
+						}),
 						'destructive',
 					);
 				}
@@ -1067,8 +1141,9 @@
 					await deleteCategory(category.value.id);
 				} catch (e) {
 					notify(
-						'Could not delete the category',
-						e?.response?.data?.message || 'Please try again.',
+						t('board.categories.pane.toasts.deleteFailed'),
+						e?.response?.data?.message ||
+							t('board.categories.pane.toasts.tryAgain'),
 						'destructive',
 					);
 					done.value = false;
@@ -1076,7 +1151,7 @@
 				}
 				initial.value = null;
 				emit('dirty', false);
-				notify('Category deleted');
+				notify(t('board.categories.pane.toasts.deleted'));
 				emit('deleted');
 			};
 
@@ -1087,8 +1162,8 @@
 					transfer.targets = workspaces.filter((w) => Number(w.id) !== current);
 				} catch (e) {
 					notify(
-						'Could not load workspaces',
-						'Please try again.',
+						t('board.categories.pane.toasts.workspacesFailed'),
+						t('board.categories.pane.toasts.tryAgain'),
 						'destructive',
 					);
 					return;
@@ -1111,7 +1186,12 @@
 						(w) => Number(w.id) === Number(transfer.targetWorkspaceId),
 					);
 					notify(
-						`"${c.title}" moved to ${target?.name ?? 'another workspace'}`,
+						t('board.categories.pane.toasts.moved', {
+							title: c.title,
+							workspace:
+								target?.name ??
+								t('board.categories.pane.toasts.anotherWorkspace'),
+						}),
 						describeCategoryTransfer(result),
 					);
 					transfer.open = false;
@@ -1121,9 +1201,9 @@
 					emit('moved');
 				} catch (e) {
 					notify(
-						'Transfer failed',
+						t('board.categories.pane.toasts.transferFailed'),
 						e?.response?.data?.message ||
-							'Could not move the category. Please try again.',
+							t('board.categories.pane.toasts.moveFailed'),
 						'destructive',
 					);
 				} finally {
@@ -1176,27 +1256,35 @@
 			};
 
 			const onCursor = (message) => {
-				notify('Success', message);
+				notify(t('board.categories.pane.toasts.success'), message);
 				emit('integration-changed');
 			};
 
 			const onGitHub = (message) => {
-				notify('Success', message);
+				notify(t('board.categories.pane.toasts.success'), message);
 				if (category.value) loadGitHub(category.value.id);
 			};
 
 			const onRelinked = (stats) => {
 				const total = stats.commits + stats.branches + stats.pull_requests;
 				notify(
-					'Success',
-					`Relinked ${total} items: ${stats.commits} commits, ${stats.branches} branches, ${stats.pull_requests} PRs`,
+					t('board.categories.pane.toasts.success'),
+					t('board.categories.pane.toasts.relinked', {
+						total,
+						commits: stats.commits,
+						branches: stats.branches,
+						pullRequests: stats.pull_requests,
+					}),
 				);
 			};
 
 			const DurationInput = (def, id) => {
 				const showError =
 					invalidIds.value.includes(def.id) && focusedDuration.value !== def.id;
-				const hint = def.key === ESTIMATE_KEY ? 'Like 45m, 2h or 1h 30m' : '';
+				const hint =
+					def.key === ESTIMATE_KEY
+						? t('board.categories.pane.settings.durationHint')
+						: '';
 				const noteId = `${id}-note`;
 				return h('div', { class: 'flex min-w-0 flex-col gap-1.5' }, [
 					h('input', {
@@ -1204,7 +1292,9 @@
 						type: 'text',
 						autocomplete: 'off',
 						spellcheck: 'false',
-						placeholder: 'e.g., 45m',
+						placeholder: t(
+							'board.categories.pane.settings.durationPlaceholder',
+						),
 						value: durationText[def.id] ?? '',
 						'aria-invalid': showError || undefined,
 						'aria-describedby': showError || hint ? noteId : undefined,
@@ -1221,7 +1311,7 @@
 						? h(
 								'p',
 								{ id: noteId, class: 'text-xs text-status-fix-fg' },
-								DURATION_ERROR,
+								t('board.categories.pane.settings.durationError'),
 							)
 						: hint &&
 							h('p', { id: noteId, class: 'text-xs text-ink-muted' }, hint),
@@ -1272,7 +1362,7 @@
 														class:
 															'pointer-events-none absolute right-3 top-2 text-[13px] text-ink-muted',
 													},
-													'/ h',
+													t('board.categories.pane.settings.rateUnit'),
 												),
 										],
 									)
@@ -1299,7 +1389,9 @@
 											},
 											() =>
 												h(SelectValue, {
-													placeholder: def.description || 'Select',
+													placeholder:
+														def.description ||
+														t('board.categories.pane.settings.select'),
 												}),
 										),
 										h(SelectContent, null, () =>
@@ -1332,7 +1424,7 @@
 											checked: !!custom[def.id],
 											'onUpdate:checked': (v) => (custom[def.id] = v),
 										}),
-										'Custom value',
+										t('board.categories.pane.settings.customValue'),
 									],
 								),
 						]);

@@ -11,12 +11,11 @@
 				>
 					<div class="flex min-w-0 flex-col gap-1">
 						<div class="text-sm text-ink-muted">
-							Workspace<template v-if="workspaceCode">
-								· {{ workspaceCode }}</template
-							>
+							{{ $t('board.workspaceMap.workspace')
+							}}<template v-if="workspaceCode"> · {{ workspaceCode }}</template>
 						</div>
 						<h1 class="text-xl font-semibold sm:text-2xl">
-							Map — how everything connects
+							{{ $t('board.workspaceMap.title') }}
 						</h1>
 					</div>
 					<div class="flex flex-wrap items-center gap-2">
@@ -28,8 +27,8 @@
 								<input
 									v-model="query"
 									type="text"
-									placeholder="task, page, person"
-									aria-label="Search the map"
+									:placeholder="$t('board.workspaceMap.searchPlaceholder')"
+									:aria-label="$t('board.workspaceMap.searchLabel')"
 									role="combobox"
 									aria-autocomplete="list"
 									aria-controls="map-results"
@@ -56,7 +55,7 @@
 								v-if="resultsVisible"
 								id="map-results"
 								role="listbox"
-								aria-label="Search results"
+								:aria-label="$t('board.workspaceMap.searchResults')"
 								class="absolute top-full left-0 z-20 mt-1 max-h-72 w-72 overflow-y-auto rounded-xl border border-line bg-surface-base py-1 shadow-lg"
 								data-testid="map-results"
 							>
@@ -80,7 +79,7 @@
 						<div
 							class="flex rounded-xl border border-line bg-surface p-0.5"
 							role="group"
-							aria-label="Time range"
+							:aria-label="$t('board.workspaceMap.timeRange')"
 							data-tour="map.filters"
 						>
 							<button
@@ -97,7 +96,7 @@
 								:data-testid="`range-${r.key}`"
 								@click="range = r.key"
 							>
-								{{ r.label }}
+								{{ $t(rangeKeys[r.key]) }}
 							</button>
 						</div>
 						<button
@@ -117,7 +116,7 @@
 									:class="group ? 'left-3.5' : 'left-0.5'"
 								/>
 							</span>
-							Group by category
+							{{ $t('board.workspaceMap.groupByCategory') }}
 						</button>
 					</div>
 				</header>
@@ -166,19 +165,21 @@
 							class="absolute inset-0 flex items-center justify-center text-sm text-ink-muted"
 							role="status"
 						>
-							Mapping your workspace…
+							{{ $t('board.workspaceMap.loading') }}
 						</div>
 						<div
 							v-else-if="state === 'error'"
 							class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-sm"
 						>
-							<p class="text-ink-muted">The map could not be loaded.</p>
+							<p class="text-ink-muted">
+								{{ $t('board.workspaceMap.loadFailed') }}
+							</p>
 							<button
 								type="button"
 								class="rounded-lg bg-ink px-3.5 py-2 font-semibold text-surface-base"
 								@click="load"
 							>
-								Try again
+								{{ $t('board.workspaceMap.retry') }}
 							</button>
 						</div>
 						<div
@@ -186,10 +187,11 @@
 							class="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center text-sm"
 							data-testid="map-empty"
 						>
-							<p class="font-semibold">Nothing to map in this period</p>
+							<p class="font-semibold">
+								{{ $t('board.workspaceMap.emptyTitle') }}
+							</p>
 							<p class="max-w-xs text-ink-muted">
-								Tasks and pages show up here once they are created or updated in
-								the selected time range.
+								{{ $t('board.workspaceMap.emptyText') }}
 							</p>
 							<button
 								v-if="range !== 'all'"
@@ -197,7 +199,7 @@
 								class="rounded-lg bg-ink px-3.5 py-2 font-semibold text-surface-base"
 								@click="range = 'all'"
 							>
-								Show all time
+								{{ $t('board.workspaceMap.showAllTime') }}
 							</button>
 						</div>
 
@@ -220,7 +222,7 @@
 							class="pointer-events-none absolute right-4 bottom-3 left-4 text-xs text-ink-muted"
 							data-testid="map-legend"
 						>
-							{{ MAP_LEGEND }}
+							{{ $t('board.workspaceMap.legend') }}
 						</div>
 
 						<div
@@ -235,7 +237,7 @@
 								data-testid="map-sheet-toggle"
 								@click="sheetOpen = !sheetOpen"
 							>
-								What the map shows
+								{{ $t('board.workspaceMap.whatMapShows') }}
 								<ChevronUp
 									class="h-4 w-4 transition-transform"
 									:class="sheetOpen ? 'rotate-180' : ''"
@@ -283,7 +285,6 @@
 	import {
 		buildInsights,
 		endOfDayMs,
-		MAP_LEGEND,
 		matchNodes,
 		prepareMap,
 		rangeBounds,
@@ -291,11 +292,11 @@
 		startOfDayMs,
 		timelineSpan,
 		timelineSteps,
-		truncationNotice,
 		type PreparedMap,
 		type RangeKey,
 	} from '@/components/graph/map/mapLogic';
 	import BaseLayout from '@/components/layouts/BaseLayout.vue';
+	import { currentLocale, t } from '@/i18n';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { ChevronUp, Maximize2, Minus, Plus, Search } from 'lucide-vue-next';
 	import {
@@ -310,6 +311,13 @@
 	} from 'vue';
 	import { useRouter } from 'vue-router';
 	import { useStore } from 'vuex';
+
+	const rangeKeys: Record<RangeKey, string> = {
+		'7': 'board.workspaceMap.ranges.d7',
+		'30': 'board.workspaceMap.ranges.d30',
+		'90': 'board.workspaceMap.ranges.d90',
+		all: 'board.workspaceMap.ranges.all',
+	};
 
 	const MAP_LIMIT = 3000;
 	const PLAY_MS = 450;
@@ -367,20 +375,20 @@
 			const matches = computed(() =>
 				prepared.value ? matchNodes(prepared.value, query.value) : null,
 			);
-			const notice = computed(() =>
-				prepared.value
-					? truncationNotice(
-							prepared.value.nodes.length,
-							prepared.value.map.total,
-							prepared.value.map.truncated,
-						)
-					: null,
-			);
+			const notice = computed(() => {
+				const p = prepared.value;
+				if (!p) return null;
+				const shown = p.nodes.length;
+				const total = p.map.total;
+				return p.map.truncated || total > shown
+					? t('board.workspaceMap.truncated', { shown, total })
+					: null;
+			});
 			const cursorMs = computed(() => timeline.value[step.value] ?? Infinity);
 			const cursorLabel = computed(() => {
-				const t = cursorMs.value;
-				return Number.isFinite(t)
-					? new Date(t).toLocaleDateString('en', {
+				const ms = cursorMs.value;
+				return Number.isFinite(ms)
+					? new Date(ms).toLocaleDateString(currentLocale(), {
 							month: 'short',
 							day: 'numeric',
 						})
@@ -504,19 +512,23 @@
 				overlayEntity.value = id;
 			};
 
-			const controls = [
-				{ label: 'Zoom in', icon: Plus, run: () => canvas.value?.zoomBy(1.4) },
+			const controls = computed(() => [
 				{
-					label: 'Zoom out',
+					label: t('board.workspaceMap.zoomIn'),
+					icon: Plus,
+					run: () => canvas.value?.zoomBy(1.4),
+				},
+				{
+					label: t('board.workspaceMap.zoomOut'),
 					icon: Minus,
 					run: () => canvas.value?.zoomBy(1 / 1.4),
 				},
 				{
-					label: 'Fit to screen',
+					label: t('board.workspaceMap.fitToScreen'),
 					icon: Maximize2,
 					run: () => canvas.value?.fit(),
 				},
-			];
+			]);
 
 			watch(range, load);
 			watch(enabled, (on) => (on ? load() : undefined));
@@ -546,7 +558,7 @@
 
 			return {
 				RANGES,
-				MAP_LEGEND,
+				rangeKeys,
 				canvas,
 				range,
 				query,

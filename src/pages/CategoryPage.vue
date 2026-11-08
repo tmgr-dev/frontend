@@ -5,8 +5,8 @@
 		<FeatureGate
 			v-else
 			feature-key="categories"
-			title="Project Categories"
-			description="Organize your tasks into categories and subcategories. Create a hierarchical structure for better project management."
+			:title="$t('board.categoryPage.gate.title')"
+			:description="$t('board.categoryPage.gate.description')"
 			:icon="FolderOpen"
 		>
 			<template #preview>
@@ -19,7 +19,7 @@
 					:loaded="loaded"
 					:error="error"
 					:retry="refresh"
-					label="Loading categories"
+					:label="$t('board.categoryPage.loadingLabel')"
 				>
 					<template #skeleton>
 						<div class="flex flex-col gap-5 pt-2 md:pt-5">
@@ -45,28 +45,29 @@
 						</span>
 						<template v-if="state === 'empty'">
 							<h1 class="text-base font-semibold text-ink">
-								No categories yet
+								{{ $t('board.categoryPage.empty.title') }}
 							</h1>
 							<p class="text-sm leading-normal text-ink-muted">
-								A category groups tasks and sets defaults for new ones: title
-								pattern like
-								<code class="font-mono text-xs">TM-{index#category}</code>,
-								hourly rate, estimate.
+								<i18n-t keypath="board.categoryPage.empty.body" tag="span">
+									<template #pattern>
+										<code class="font-mono text-xs">TM-{index#category}</code>
+									</template>
+								</i18n-t>
 							</p>
 							<Button
 								data-tour="categories.create"
 								class="mt-1 h-9 px-3.5 text-sm font-semibold"
 								@click="goCreate(null)"
 							>
-								New category
+								{{ $t('board.categoryPage.empty.create') }}
 							</Button>
 						</template>
 						<template v-else>
 							<h1 class="text-base font-semibold text-ink">
-								Category not found
+								{{ $t('board.categoryPage.missing.title') }}
 							</h1>
 							<p class="text-sm leading-normal text-ink-muted">
-								It may have been deleted or moved to another workspace.
+								{{ $t('board.categoryPage.missing.body') }}
 							</p>
 							<Button
 								v-if="workspaceCode"
@@ -74,7 +75,7 @@
 								class="mt-1 h-9 px-3.5 text-sm"
 								@click="goIndex"
 							>
-								Open categories
+								{{ $t('board.categoryPage.missing.open') }}
 							</Button>
 						</template>
 					</div>
@@ -111,13 +112,13 @@
 										@click="goCreate(node.category.id)"
 									>
 										<Plus />
-										Subcategory
+										{{ $t('board.categoryPage.subcategory') }}
 									</Button>
 									<Button
 										type="button"
 										size="sm"
 										class="text-[13px]"
-										title="Create a task in this category"
+										:title="$t('board.categoryPage.createTaskTitle')"
 										@click="
 											$store.commit('createTaskInProjectCategoryId', {
 												projectCategoryId: node.category.id,
@@ -126,13 +127,13 @@
 										"
 									>
 										<Plus />
-										Create task
+										{{ $t('board.categoryPage.createTask') }}
 									</Button>
 								</div>
 							</header>
 							<nav
 								v-if="state === 'view'"
-								aria-label="Category"
+								:aria-label="$t('board.categoryPage.navLabel')"
 								class="-mx-4 flex gap-6 overflow-x-auto px-4 shadow-[inset_0_-1px_0_var(--line-color)] md:mx-0 md:px-0"
 							>
 								<router-link
@@ -147,7 +148,7 @@
 											: 'border-transparent text-ink-muted hover:text-ink'
 									"
 								>
-									{{ item.label }}
+									{{ $t(item.labelKey) }}
 								</router-link>
 							</nav>
 						</div>
@@ -185,14 +186,20 @@
 		<AlertDialog :open="confirm.open" @update:open="(v) => !v && decide(false)">
 			<AlertDialogContent>
 				<AlertDialogHeader>
-					<AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+					<AlertDialogTitle>{{
+						$t('board.categoryPage.discard.title')
+					}}</AlertDialogTitle>
 					<AlertDialogDescription>
-						Your edits to this category will be lost.
+						{{ $t('board.categoryPage.discard.description') }}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
-					<AlertDialogCancel>Keep editing</AlertDialogCancel>
-					<Button type="button" @click="decide(true)">Discard</Button>
+					<AlertDialogCancel>{{
+						$t('board.categoryPage.discard.keep')
+					}}</AlertDialogCancel>
+					<Button type="button" @click="decide(true)">{{
+						$t('board.categoryPage.discard.confirm')
+					}}</Button>
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialog>
@@ -223,6 +230,7 @@
 		useCategoryTree,
 	} from '@/composable/useCategoryTree';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { t } from '@/i18n';
 	import ProjectCategoryList from '@/pages/ProjectCategoryList.vue';
 	import { Folder, FolderOpen, FolderX, Plus } from 'lucide-vue-next';
 	import { computed, defineComponent, reactive, ref, watch } from 'vue';
@@ -235,9 +243,9 @@
 	import { useStore } from 'vuex';
 
 	const TABS = [
-		{ id: 'tasks', label: 'Tasks' },
-		{ id: 'subcategories', label: 'Subcategories' },
-		{ id: 'settings', label: 'Settings' },
+		{ id: 'tasks', labelKey: 'board.categoryPage.tabs.tasks' },
+		{ id: 'subcategories', labelKey: 'board.categoryPage.tabs.subcategories' },
+		{ id: 'settings', labelKey: 'board.categoryPage.tabs.settings' },
 	];
 	const INDEX_ROUTES = ['WorkspaceCategories', 'FallbackCategoriesList'];
 
@@ -281,7 +289,9 @@
 					null,
 			);
 			const workspaceName = computed(
-				() => store.getters.currentWorkspace?.name || 'Workspace',
+				() =>
+					store.getters.currentWorkspace?.name ||
+					t('board.categoryPage.workspaceFallback'),
 			);
 			const routeName = computed(() => String(route.name));
 			const findNode = (id) =>
@@ -342,7 +352,7 @@
 			const crumbOf = (ancestors) =>
 				ancestors.length
 					? ancestors.map((a) => a.title).join(' / ')
-					: 'Top level';
+					: t('board.categoryPage.topLevel');
 			const crumb = computed(() => {
 				if (state.value === 'create')
 					return parentNode.value
@@ -350,11 +360,13 @@
 								...parentNode.value.ancestors,
 								parentNode.value.category,
 							])
-						: 'Top level';
+						: t('board.categoryPage.topLevel');
 				return crumbOf(node.value?.ancestors ?? []);
 			});
 			const heading = computed(() =>
-				state.value === 'create' ? 'New category' : node.value?.category.title,
+				state.value === 'create'
+					? t('board.categoryPage.newCategory')
+					: node.value?.category.title,
 			);
 
 			const categoryRoute = (id, query = {}) =>
@@ -398,9 +410,9 @@
 			watch(
 				() =>
 					state.value === 'missing'
-						? 'Category not found'
+						? t('board.categoryPage.missing.title')
 						: state.value === 'empty'
-							? 'Categories'
+							? t('board.categoryPage.documentTitle.categories')
 							: state.value === 'create'
 								? heading.value
 								: node.value?.category.title,

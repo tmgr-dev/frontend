@@ -1,7 +1,9 @@
 <template>
 	<div class="recent-tasks-list">
 		<div class="recent-tasks-header mb-4 flex items-center justify-between">
-			<h3 class="text-lg font-semibold text-ink">Recent Tasks</h3>
+			<h3 class="text-lg font-semibold text-ink">
+				{{ $t('board.dashboard.recentTasksList.title') }}
+			</h3>
 			<div class="space-x-2 flex items-center">
 				<Button
 					variant="ghost"
@@ -9,12 +11,12 @@
 					@click="refreshTasks"
 					:disabled="loading"
 					class="p-2"
-					aria-label="Refresh recent tasks"
+					:aria-label="$t('board.dashboard.recentTasksList.refreshAria')"
 				>
 					<ArrowPathIcon :class="['h-4 w-4', loading && 'animate-spin']" />
 				</Button>
 				<Button variant="outline" size="sm" @click="viewAllTasks">
-					View All
+					{{ $t('board.dashboard.recentTasksList.viewAll') }}
 				</Button>
 			</div>
 		</div>
@@ -45,10 +47,10 @@
 			<template v-else>
 				<EmptyState
 					icon="task"
-					title="No recent tasks"
-					description="Recent task updates will appear here."
+					:title="$t('board.dashboard.recentTasksList.emptyTitle')"
+					:description="$t('board.dashboard.recentTasksList.emptyDescription')"
 					:action="{
-						label: 'Create Task',
+						label: $t('board.dashboard.recentTasksList.createTask'),
 						onClick: createNewTask,
 					}"
 				/>

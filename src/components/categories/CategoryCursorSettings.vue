@@ -1,6 +1,8 @@
 <template>
 	<div v-if="!isCreate" class="mt-6 border-t border-line pt-6">
-		<h3 class="mb-4 text-base font-semibold text-ink">Cursor AI Integration</h3>
+		<h3 class="mb-4 text-base font-semibold text-ink">
+			{{ $t('board.categories.cursor.title') }}
+		</h3>
 
 		<div v-if="loading" class="flex items-center justify-center py-8">
 			<div
@@ -32,11 +34,10 @@
 				</div>
 			</div>
 			<h4 class="mb-2 text-center text-base font-semibold text-ink">
-				Configure Cursor AI Agent
+				{{ $t('board.categories.cursor.configureTitle') }}
 			</h4>
 			<p class="mx-auto mb-5 max-w-md text-center text-sm text-ink-muted">
-				Add your Cursor API key to enable AI-powered code generation for this
-				category
+				{{ $t('board.categories.cursor.configureDescription') }}
 			</p>
 
 			<div class="space-y-3 mt-4">
@@ -45,7 +46,7 @@
 						for="cursorApiKey"
 						class="mb-1.5 block text-sm font-semibold text-ink"
 					>
-						Cursor API Key
+						{{ $t('board.categories.cursor.apiKeyLabel') }}
 					</label>
 					<input
 						id="cursorApiKey"
@@ -55,14 +56,17 @@
 						class="h-10 w-full rounded-card border border-line bg-surface px-3 font-mono text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-strong"
 					/>
 					<p class="mt-1.5 text-xs text-ink-muted">
-						Get your API key from
-						<a
-							href="https://cursor.com/dashboard?tab=cloud-agents"
-							target="_blank"
-							class="text-brand hover:underline"
-						>
-							Cursor Dashboard
-						</a>
+						<i18n-t keypath="board.categories.cursor.apiKeyHelp" tag="span">
+							<template #link>
+								<a
+									href="https://cursor.com/dashboard?tab=cloud-agents"
+									target="_blank"
+									class="text-brand hover:underline"
+								>
+									{{ $t('board.categories.cursor.dashboard') }}
+								</a>
+							</template>
+						</i18n-t>
 					</p>
 				</div>
 
@@ -78,7 +82,11 @@
 					:disabled="!apiKey || saving"
 					class="h-10 w-full rounded-pill bg-brand text-sm font-semibold text-on-accent shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
 				>
-					{{ saving ? 'Validating…' : 'Save API Key' }}
+					{{
+						saving
+							? $t('board.categories.cursor.validating')
+							: $t('board.categories.cursor.saveKey')
+					}}
 				</button>
 			</div>
 		</div>
@@ -88,10 +96,10 @@
 				<div class="flex items-center justify-between gap-3">
 					<div>
 						<p class="text-sm font-semibold text-ink">
-							Cursor AI Agent Configured
+							{{ $t('board.categories.cursor.configured') }}
 						</p>
 						<p class="mt-1 text-xs text-ink-muted">
-							Ready to assist with code generation for this category
+							{{ $t('board.categories.cursor.ready') }}
 						</p>
 					</div>
 					<svg
@@ -115,14 +123,18 @@
 					@click="editing = true"
 					class="inline-flex h-9 items-center justify-center rounded-pill border border-line bg-surface px-4 text-sm font-semibold text-ink transition-colors hover:bg-surface-hover"
 				>
-					Update Key
+					{{ $t('board.categories.cursor.updateKey') }}
 				</button>
 				<button
 					@click="removeKey"
 					:disabled="removing"
 					class="inline-flex h-9 items-center justify-center rounded-pill border border-status-fix bg-status-fix-bg px-4 text-sm font-semibold text-status-fix-fg transition-colors hover:opacity-90 disabled:opacity-50"
 				>
-					{{ removing ? 'Removing…' : 'Remove Key' }}
+					{{
+						removing
+							? $t('board.categories.cursor.removing')
+							: $t('board.categories.cursor.removeKey')
+					}}
 				</button>
 			</div>
 
@@ -135,7 +147,7 @@
 						for="cursorApiKeyEdit"
 						class="mb-1.5 block text-sm font-semibold text-ink"
 					>
-						New Cursor API Key
+						{{ $t('board.categories.cursor.newApiKeyLabel') }}
 					</label>
 					<input
 						id="cursorApiKeyEdit"
@@ -159,13 +171,17 @@
 						:disabled="!apiKey || saving"
 						class="inline-flex h-9 items-center justify-center rounded-pill bg-brand px-4 text-sm font-semibold text-on-accent shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
 					>
-						{{ saving ? 'Validating…' : 'Save' }}
+						{{
+							saving
+								? $t('board.categories.cursor.validating')
+								: $t('common.actions.save')
+						}}
 					</button>
 					<button
 						@click="cancelEdit"
 						class="inline-flex h-9 items-center justify-center rounded-pill border border-line bg-surface px-4 text-sm font-semibold text-ink transition-colors hover:bg-surface-hover"
 					>
-						Cancel
+						{{ $t('common.actions.cancel') }}
 					</button>
 				</div>
 			</div>
@@ -179,6 +195,7 @@
 		getCursorStatus,
 		updateCursorApiKey,
 	} from '@/actions/tmgr/cursor';
+	import { t } from '@/i18n';
 	import { apiErrorText } from '@/utils/apiErrorText';
 	import { defineComponent } from 'vue';
 
@@ -237,17 +254,13 @@
 					this.apiKey = '';
 					this.$emit('cursor-configured');
 				} catch (e) {
-					this.error = apiErrorText(e, 'Failed to save API key');
+					this.error = apiErrorText(e, t('board.categories.cursor.saveFailed'));
 				} finally {
 					this.saving = false;
 				}
 			},
 			async removeKey() {
-				if (
-					!confirm(
-						'Are you sure you want to remove Cursor API key from this category?',
-					)
-				) {
+				if (!confirm(t('board.categories.cursor.removeConfirm'))) {
 					return;
 				}
 
@@ -261,7 +274,10 @@
 					this.apiKey = '';
 					this.$emit('cursor-removed');
 				} catch (e) {
-					this.error = apiErrorText(e, 'Failed to remove API key');
+					this.error = apiErrorText(
+						e,
+						t('board.categories.cursor.removeFailed'),
+					);
 				} finally {
 					this.removing = false;
 				}

@@ -1,6 +1,8 @@
 <template>
 	<div v-if="!isCreate" class="mt-6 border-t border-line pt-6">
-		<h3 class="mb-4 text-base font-semibold text-ink">GitHub Integration</h3>
+		<h3 class="mb-4 text-base font-semibold text-ink">
+			{{ $t('board.categories.github.title') }}
+		</h3>
 
 		<div v-if="loading" class="flex items-center justify-center py-8">
 			<div
@@ -32,19 +34,20 @@
 				</div>
 			</div>
 			<h4 class="mb-2 text-center text-base font-semibold text-ink">
-				Connect GitHub Repository
+				{{ $t('board.categories.github.connectTitle') }}
 			</h4>
 			<p class="mx-auto mb-5 max-w-md text-center text-sm text-ink-muted">
-				Link your GitHub repository to automatically track commits, branches,
-				and pull requests
+				{{ $t('board.categories.github.connectDescription') }}
 			</p>
 			<button
 				@click="installGitHubApp"
 				:disabled="installing"
 				class="mx-auto flex h-10 items-center justify-center rounded-pill bg-brand px-6 text-sm font-semibold text-on-accent shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
 			>
-				<span v-if="installing">Installing…</span>
-				<span v-else>Install GitHub App</span>
+				<span v-if="installing">{{
+					$t('board.categories.github.installing')
+				}}</span>
+				<span v-else>{{ $t('board.categories.github.installApp') }}</span>
 			</button>
 		</div>
 
@@ -53,7 +56,7 @@
 				class="rounded-card border border-status-done/40 bg-status-done-bg p-4"
 			>
 				<p class="text-sm text-status-done-fg">
-					✓ GitHub App is installed. Select a repository to connect:
+					{{ $t('board.categories.github.installed') }}
 				</p>
 			</div>
 
@@ -62,20 +65,21 @@
 				class="rounded-card border border-status-fix/40 bg-status-fix-bg p-4"
 			>
 				<p class="text-sm text-status-fix-fg">
-					No repositories available. Make sure the GitHub App has access to your
-					repositories.
+					{{ $t('board.categories.github.noRepositories') }}
 				</p>
 			</div>
 
 			<div v-else>
 				<label class="mb-2 block text-sm font-semibold text-ink">
-					Select Repository
+					{{ $t('board.categories.github.selectRepository') }}
 				</label>
 				<select
 					v-model="selectedRepo"
 					class="h-10 w-full rounded-card border border-line bg-surface px-3 text-sm text-ink outline-hidden"
 				>
-					<option :value="null">— Select repository —</option>
+					<option :value="null">
+						{{ $t('board.categories.github.selectPlaceholder') }}
+					</option>
 					<option
 						v-for="repo in status.available_repositories"
 						:key="repo.id"
@@ -90,8 +94,12 @@
 					:disabled="!selectedRepo || connecting"
 					class="mt-4 inline-flex h-10 items-center justify-center rounded-pill bg-brand px-6 text-sm font-semibold text-on-accent shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
 				>
-					<span v-if="connecting">Connecting…</span>
-					<span v-else>Connect Repository</span>
+					<span v-if="connecting">{{
+						$t('board.categories.github.connecting')
+					}}</span>
+					<span v-else>{{
+						$t('board.categories.github.connectRepository')
+					}}</span>
 				</button>
 			</div>
 		</div>
@@ -103,7 +111,7 @@
 				<div class="flex items-center justify-between gap-3">
 					<div>
 						<p class="text-sm font-semibold text-status-done-fg">
-							Connected to
+							{{ $t('board.categories.github.connectedTo') }}
 							<a
 								:href="`https://github.com/${status.repository.full_name}`"
 								target="_blank"
@@ -116,7 +124,11 @@
 							v-if="status.repository.last_synced_at"
 							class="mt-1 text-xs text-status-done-fg/80"
 						>
-							Last synced: {{ formatDate(status.repository.last_synced_at) }}
+							{{
+								$t('board.categories.github.lastSynced', {
+									date: formatDate(status.repository.last_synced_at),
+								})
+							}}
 						</p>
 					</div>
 					<svg
@@ -141,18 +153,22 @@
 					:disabled="syncing"
 					class="inline-flex h-9 items-center justify-center rounded-pill bg-brand px-4 text-sm font-semibold text-on-accent shadow-tmgr-xs transition-colors hover:bg-brand-hover disabled:opacity-50"
 				>
-					<span v-if="syncing">Syncing…</span>
-					<span v-else>Sync Now</span>
+					<span v-if="syncing">{{
+						$t('board.categories.github.syncing')
+					}}</span>
+					<span v-else>{{ $t('board.categories.github.syncNow') }}</span>
 				</button>
 
 				<button
 					@click="relinkRepository"
 					:disabled="relinking"
 					class="inline-flex h-9 items-center justify-center rounded-pill border border-line bg-surface px-4 text-sm font-semibold text-ink transition-colors hover:bg-surface-hover disabled:opacity-50"
-					title="Relink existing commits/branches to tasks"
+					:title="$t('board.categories.github.relinkTitle')"
 				>
-					<span v-if="relinking">Relinking…</span>
-					<span v-else>Relink Tasks</span>
+					<span v-if="relinking">{{
+						$t('board.categories.github.relinking')
+					}}</span>
+					<span v-else>{{ $t('board.categories.github.relinkTasks') }}</span>
 				</button>
 
 				<button
@@ -160,8 +176,10 @@
 					:disabled="disconnecting"
 					class="inline-flex h-9 items-center justify-center rounded-pill border border-status-fix/40 bg-status-fix-bg px-4 text-sm font-semibold text-status-fix-fg transition-colors hover:opacity-90 disabled:opacity-50"
 				>
-					<span v-if="disconnecting">Disconnecting…</span>
-					<span v-else>Disconnect</span>
+					<span v-if="disconnecting">{{
+						$t('board.categories.github.disconnecting')
+					}}</span>
+					<span v-else>{{ $t('board.categories.github.disconnect') }}</span>
 				</button>
 			</div>
 		</div>
@@ -185,6 +203,7 @@
 		syncCategoryRepository,
 		syncGitHubInstallations,
 	} from '@/actions/tmgr/github';
+	import { currentLocale, t } from '@/i18n';
 	import { apiErrorText } from '@/utils/apiErrorText';
 
 	export default {
@@ -237,7 +256,7 @@
 					this.status = await getCategoryGitHubStatus(this.categoryId);
 				} catch (e) {
 					console.error('Failed to load GitHub status:', e);
-					this.error = 'Failed to load GitHub integration status';
+					this.error = t('board.categories.github.loadFailed');
 				} finally {
 					this.loading = false;
 				}
@@ -250,7 +269,7 @@
 					window.location.href = url;
 				} catch (e) {
 					console.error('Failed to get install URL:', e);
-					this.error = 'Failed to start GitHub App installation';
+					this.error = t('board.categories.github.installFailed');
 					this.installing = false;
 				}
 			},
@@ -271,13 +290,16 @@
 					await this.loadStatus();
 				} catch (e) {
 					console.error('Failed to connect repository:', e);
-					this.error = apiErrorText(e, 'Failed to connect repository');
+					this.error = apiErrorText(
+						e,
+						t('board.categories.github.connectFailed'),
+					);
 				} finally {
 					this.connecting = false;
 				}
 			},
 			async disconnectRepository() {
-				if (!confirm('Are you sure you want to disconnect this repository?')) {
+				if (!confirm(t('board.categories.github.disconnectConfirm'))) {
 					return;
 				}
 
@@ -291,7 +313,10 @@
 					await this.loadStatus();
 				} catch (e) {
 					console.error('Failed to disconnect repository:', e);
-					this.error = apiErrorText(e, 'Failed to disconnect repository');
+					this.error = apiErrorText(
+						e,
+						t('board.categories.github.disconnectFailed'),
+					);
 				} finally {
 					this.disconnecting = false;
 				}
@@ -307,7 +332,7 @@
 					await this.loadStatus();
 				} catch (e) {
 					console.error('Failed to sync repository:', e);
-					this.error = apiErrorText(e, 'Failed to sync repository');
+					this.error = apiErrorText(e, t('board.categories.github.syncFailed'));
 				} finally {
 					this.syncing = false;
 				}
@@ -323,7 +348,10 @@
 					await this.loadStatus();
 				} catch (e) {
 					console.error('Failed to relink repository:', e);
-					this.error = apiErrorText(e, 'Failed to relink task references');
+					this.error = apiErrorText(
+						e,
+						t('board.categories.github.relinkFailed'),
+					);
 				} finally {
 					this.relinking = false;
 				}
@@ -336,15 +364,14 @@
 				const diffHours = Math.floor(diffMs / 3600000);
 				const diffDays = Math.floor(diffMs / 86400000);
 
-				if (diffMins < 1) return 'just now';
+				if (diffMins < 1) return t('board.categories.github.justNow');
 				if (diffMins < 60)
-					return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+					return t('board.categories.github.minutesAgo', diffMins);
 				if (diffHours < 24)
-					return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-				if (diffDays < 7)
-					return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+					return t('board.categories.github.hoursAgo', diffHours);
+				if (diffDays < 7) return t('board.categories.github.daysAgo', diffDays);
 
-				return date.toLocaleDateString();
+				return date.toLocaleDateString(currentLocale());
 			},
 		},
 	};

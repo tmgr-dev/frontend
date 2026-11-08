@@ -35,6 +35,7 @@
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { usePusher } from '@/composable/usePusher';
 	import { useWorkflowMode } from '@/composable/useWorkflowMode';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import type { TaskPriority } from '@/types/dashboard';
 	import {
@@ -42,11 +43,7 @@
 		isArchivedTask as isArchivedTaskBySets,
 	} from '@/utils/archivedTasks';
 	import { isDesktopApp } from '@/utils/desktop';
-	import {
-		formatTaskCount,
-		listTotalSeconds,
-		sumTaskSeconds,
-	} from '@/utils/listTotals';
+	import { listTotalSeconds, sumTaskSeconds } from '@/utils/listTotals';
 	import {
 		totalOvertimeSeconds,
 		type EstimatedTask,
@@ -98,12 +95,12 @@
 	let initialized = false;
 	let initializing = false;
 	const h1 = {
-		CurrentTasksList: 'Current tasks',
-		HiddenTasksList: 'Hidden tasks',
-		ArchiveTasksList: 'Archive',
-		ArchiveTasksListWithWorkspace: 'Archive',
-		WorkspaceTasksList: 'Tasks',
-		FallbackTasksList: 'Current tasks',
+		CurrentTasksList: 'board.tasksList.titles.current',
+		HiddenTasksList: 'board.tasksList.titles.hidden',
+		ArchiveTasksList: 'board.tasksList.titles.archive',
+		ArchiveTasksListWithWorkspace: 'board.tasksList.titles.archive',
+		WorkspaceTasksList: 'board.tasksList.titles.tasks',
+		FallbackTasksList: 'board.tasksList.titles.current',
 	};
 	const tasks = ref<Task[]>([]);
 	const isLoadingActions = ref<Record<string, boolean>>({});
@@ -112,10 +109,10 @@
 	const { simpleMode, archiveStatusId, workspaceStatuses, isDoneTask } =
 		useWorkflowMode();
 	const { toast } = useToast();
-	const STATE_FILTERS: { value: TaskStateFilter; label: string }[] = [
-		{ value: 'open', label: 'Open' },
-		{ value: 'done', label: 'Done' },
-		{ value: 'all', label: 'All' },
+	const STATE_FILTERS: { value: TaskStateFilter; labelKey: string }[] = [
+		{ value: 'open', labelKey: 'board.tasksList.stateFilters.open' },
+		{ value: 'done', labelKey: 'board.tasksList.stateFilters.done' },
+		{ value: 'all', labelKey: 'board.tasksList.stateFilters.all' },
 	];
 	const ALL_TASKS_PER_PAGE = 100000;
 	const stateFilter = ref<TaskStateFilter>('all');
@@ -134,10 +131,13 @@
 	// Date-field sorting for status lists (archive/hidden/done). Mirrors the API's
 	// order[column]/order[direction] contract; default matches the backend (updated_at desc).
 	const SORT_FIELDS = [
-		{ value: 'updated_at', label: 'Updated' },
-		{ value: 'created_at', label: 'Created' },
-		{ value: 'expired_at', label: 'Deadline' },
-		{ value: 'scheduled_date', label: 'Scheduled' },
+		{ value: 'updated_at', labelKey: 'board.tasksList.sortFields.updatedAt' },
+		{ value: 'created_at', labelKey: 'board.tasksList.sortFields.createdAt' },
+		{ value: 'expired_at', labelKey: 'board.tasksList.sortFields.expiredAt' },
+		{
+			value: 'scheduled_date',
+			labelKey: 'board.tasksList.sortFields.scheduledDate',
+		},
 	] as const;
 	const initialQuery = readTaskListQuery(route.query);
 	const sortColumn = ref(initialQuery.sort);
@@ -233,8 +233,11 @@
 	const activeStatusIds = computed(() =>
 		statusFilterOptions.value.length ? selectedStatusIds.value : [],
 	);
-	const pageTitle = computed(
-		() => (h1 as Record<string, string>)[route.name as string] || 'Task List',
+	const pageTitle = computed(() =>
+		t(
+			(h1 as Record<string, string>)[route.name as string] ||
+				'board.tasksList.titles.fallback',
+		),
 	);
 
 	function isArchivedTask(task: Task) {
@@ -311,7 +314,10 @@
 	);
 
 	const taskCountLabel = computed(() =>
-		formatTaskCount(pagination.value?.total ?? tasks.value.length),
+		t(
+			'board.taskCount.label',
+			Number(pagination.value?.total ?? tasks.value.length) || 0,
+		),
 	);
 
 	const timeStats = computed(() => {
@@ -437,7 +443,9 @@
 
 				if (currentWorkspace?.code) {
 					// Set a page title that includes workspace name and task count
-					const baseTitle = `${currentWorkspace.name} Tasks`;
+					const baseTitle = t('board.tasksList.workspaceTasksTitle', {
+						name: currentWorkspace.name,
+					});
 					const titleWithCount =
 						pagination.value.total !== undefined
 							? `${baseTitle} (${pagination.value.total})`
@@ -790,14 +798,14 @@
 				workspaceStatuses.value,
 			).map((task) => task.id as number);
 			if (!ids.length) {
-				toast({ title: 'No done tasks to archive' });
+				toast({ title: t('board.tasksList.noDoneToArchive') });
 				return;
 			}
 			archiveDoneIds.value = ids;
 		} catch (e) {
 			console.error(e);
 			toast({
-				title: 'Could not load done tasks',
+				title: t('board.tasksList.loadDoneFailed'),
 				variant: 'destructive',
 			});
 		}
@@ -811,10 +819,15 @@
 		try {
 			await updateStatusOfTasks(ids, archivedId);
 			await loadTasks();
-			toast({ title: `Archived ${ids.length} done tasks` });
+			toast({
+				title: t('board.tasksList.archivedCount', { n: ids.length }),
+			});
 		} catch (e) {
 			console.error(e);
-			toast({ title: 'Could not archive tasks', variant: 'destructive' });
+			toast({
+				title: t('board.tasksList.archiveFailed'),
+				variant: 'destructive',
+			});
 		}
 	}
 
@@ -867,7 +880,7 @@
 	<BaseLayout :title="pageTitle">
 		<template v-if="isDesktop" #header-actions>
 			<Button variant="outline" size="sm" @click="showDaySummary = true">
-				Day summary
+				{{ $t('board.tasksList.daySummary') }}
 			</Button>
 			<DaySummaryModal v-if="showDaySummary" @close="showDaySummary = false" />
 		</template>
@@ -888,7 +901,7 @@
 								<div
 									class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 								>
-									Total Time
+									{{ $t('board.tasksList.totalTime') }}
 								</div>
 								<div class="text-xl font-semibold text-ink tabular-nums">
 									{{ summaryTime }}
@@ -900,12 +913,14 @@
 								<div
 									class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 								>
-									Working Days
+									{{ $t('board.tasksList.workingDays') }}
 								</div>
 								<div class="text-xl font-semibold text-status-done-fg">
 									{{ timeStats.workingDays }}
 								</div>
-								<div class="text-2xs text-ink-subtle">(8h/day)</div>
+								<div class="text-2xs text-ink-subtle">
+									{{ $t('board.tasksList.perDay') }}
+								</div>
 							</div>
 							<div
 								class="flex flex-col items-center justify-center text-center"
@@ -913,12 +928,14 @@
 								<div
 									class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 								>
-									Working Months
+									{{ $t('board.tasksList.workingMonths') }}
 								</div>
 								<div class="text-xl font-semibold text-status-testing-fg">
 									{{ timeStats.workingMonths }}
 								</div>
-								<div class="text-2xs text-ink-subtle">(160h/month)</div>
+								<div class="text-2xs text-ink-subtle">
+									{{ $t('board.tasksList.perMonth') }}
+								</div>
 							</div>
 							<div
 								class="flex flex-col items-center justify-center text-center"
@@ -926,12 +943,14 @@
 								<div
 									class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 								>
-									Working Years
+									{{ $t('board.tasksList.workingYears') }}
 								</div>
 								<div class="text-xl font-semibold text-status-progress-fg">
 									{{ timeStats.workingYears }}
 								</div>
-								<div class="text-2xs text-ink-subtle">(2000h/year)</div>
+								<div class="text-2xs text-ink-subtle">
+									{{ $t('board.tasksList.perYear') }}
+								</div>
 							</div>
 							<div
 								v-if="formattedTotalOvertime"
@@ -940,7 +959,7 @@
 								<div
 									class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 								>
-									Overtime
+									{{ $t('board.tasksList.overtime') }}
 								</div>
 								<div class="text-xl font-semibold text-status-fix-fg">
 									+{{ formattedTotalOvertime }}
@@ -960,7 +979,7 @@
 							<span
 								v-if="formattedTotalOvertime"
 								class="ml-2 text-status-fix-fg"
-								title="Total Overtime"
+								:title="$t('board.tasksList.totalOvertime')"
 							>
 								+{{ formattedTotalOvertime }}
 							</span>
@@ -974,7 +993,7 @@
 						<div
 							class="flex shrink-0 overflow-hidden rounded-pill border border-line bg-surface"
 							role="group"
-							aria-label="Show tasks"
+							:aria-label="$t('board.tasksList.showTasks')"
 						>
 							<button
 								v-for="option in STATE_FILTERS"
@@ -989,7 +1008,7 @@
 								:aria-pressed="stateFilter === option.value"
 								@click="stateFilter = option.value"
 							>
-								{{ option.label }}
+								{{ $t(option.labelKey) }}
 							</button>
 						</div>
 						<button
@@ -998,7 +1017,7 @@
 							class="h-9 shrink-0 rounded-pill border border-line bg-surface px-3 text-sm text-ink-subtle transition-colors hover:text-ink"
 							@click="askArchiveDone"
 						>
-							Archive done
+							{{ $t('board.tasksList.archiveDone') }}
 						</button>
 					</div>
 
@@ -1006,8 +1025,8 @@
 						<div class="relative flex-1">
 							<input
 								v-model="searchText"
-								placeholder="search task"
-								aria-label="Search tasks"
+								:placeholder="$t('board.tasksList.searchPlaceholder')"
+								:aria-label="$t('board.tasksList.searchLabel')"
 								type="search"
 								class="h-9 w-full rounded-pill border border-line bg-surface pr-3 pl-4 text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-strong"
 							/>
@@ -1017,7 +1036,7 @@
 							<select
 								v-model="sortColumn"
 								@change="changeSort"
-								title="Sort by date"
+								:title="$t('board.tasksList.sortByDate')"
 								class="h-9 rounded-pill border border-line bg-surface pr-7 pl-3 text-sm text-ink outline-hidden"
 							>
 								<option
@@ -1025,14 +1044,16 @@
 									:key="field.value"
 									:value="field.value"
 								>
-									{{ field.label }}
+									{{ $t(field.labelKey) }}
 								</option>
 							</select>
 							<button
 								@click="toggleSortDirection"
 								type="button"
 								:title="
-									sortDirection === 'desc' ? 'Newest first' : 'Oldest first'
+									sortDirection === 'desc'
+										? $t('board.tasksList.newestFirst')
+										: $t('board.tasksList.oldestFirst')
 								"
 								class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border border-line bg-surface text-ink-subtle transition-colors hover:text-ink"
 							>
@@ -1049,7 +1070,7 @@
 								<button
 									@click="showCategorySelect = !showCategorySelect"
 									type="button"
-									title="filters"
+									:title="$t('board.tasksList.filtersTitle')"
 									class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border bg-surface text-ink-subtle transition-colors hover:text-ink"
 									:class="[
 										(selectedCategory && selectedCategory !== -1) ||
@@ -1068,7 +1089,9 @@
 								class="rounded-card border border-line bg-surface text-ink sm:max-w-[425px]"
 							>
 								<DialogHeader>
-									<DialogTitle>Filters</DialogTitle>
+									<DialogTitle>{{
+										$t('board.tasksList.filtersDialogTitle')
+									}}</DialogTitle>
 								</DialogHeader>
 
 								<CategoriesCombobox
@@ -1081,11 +1104,13 @@
 									v-if="statusFilterOptions.length"
 									class="flex flex-col gap-2"
 								>
-									<span class="text-sm font-medium text-ink">Status</span>
+									<span class="text-sm font-medium text-ink">{{
+										$t('board.tasksList.status')
+									}}</span>
 									<div
 										class="flex flex-wrap gap-2"
 										role="group"
-										aria-label="Status"
+										:aria-label="$t('board.tasksList.status')"
 									>
 										<button
 											v-for="option in statusFilterOptions"
@@ -1107,11 +1132,13 @@
 									</div>
 								</div>
 								<div v-if="isActiveList" class="flex flex-col gap-2">
-									<span class="text-sm font-medium text-ink">Priority</span>
+									<span class="text-sm font-medium text-ink">{{
+										$t('board.tasksList.priority')
+									}}</span>
 									<div
 										class="flex flex-wrap gap-2"
 										role="group"
-										aria-label="Priority"
+										:aria-label="$t('board.tasksList.priority')"
 									>
 										<button
 											v-for="option in PRIORITIES"
@@ -1140,12 +1167,12 @@
 												updatePriorityQuery(activePriorities, !prioritySort)
 											"
 										/>
-										Sort by priority
+										{{ $t('board.tasksList.sortByPriority') }}
 									</label>
 								</div>
 								<DialogFooter>
 									<Button variant="outline" @click="resetFilters">
-										reset
+										{{ $t('board.tasksList.reset') }}
 									</Button>
 								</DialogFooter>
 							</DialogContent>
@@ -1154,7 +1181,7 @@
 						<button
 							@click="selectableTasks = !selectableTasks"
 							type="button"
-							title="Tasks selection mode"
+							:title="$t('board.tasksList.selectionMode')"
 							data-tour="list.select"
 							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border bg-surface text-ink-subtle transition-colors hover:text-ink"
 							:class="[
@@ -1174,15 +1201,17 @@
 					class="flex min-h-6 items-center justify-between text-sm text-ink-muted"
 					role="status"
 				>
-					<span v-if="isLoading && hasLoadedTasks">Updating tasks…</span>
+					<span v-if="isLoading && hasLoadedTasks">{{
+						$t('board.tasksList.updating')
+					}}</span>
 					<template v-if="errorLoading">
-						<span>Could not load tasks. Please try again.</span>
+						<span>{{ $t('board.tasksList.loadFailed') }}</span>
 						<Button
 							variant="outline"
 							size="sm"
 							@click="retryList"
 							:disabled="isLoading"
-							>Retry</Button
+							>{{ $t('board.tasksList.retry') }}</Button
 						>
 					</template>
 				</div>
@@ -1205,13 +1234,19 @@
 				>
 					<EmptyState
 						v-if="hasActiveSearch"
-						title="No tasks match your filters"
-						:action="{ label: 'Clear filters', onClick: clearSearch }"
+						:title="$t('board.tasksList.noMatches')"
+						:action="{
+							label: $t('board.tasksList.clearFilters'),
+							onClick: clearSearch,
+						}"
 					/>
 					<EmptyState
 						v-else
-						description="Create your first task to get started"
-						:action="{ label: '+ Create task', onClick: openCreateTaskModal }"
+						:description="$t('board.tasksList.createFirst')"
+						:action="{
+							label: $t('board.tasksList.createTask'),
+							onClick: openCreateTaskModal,
+						}"
 					/>
 
 					<confetti v-if="hasAbilityToShowConfetti" />
@@ -1232,10 +1267,8 @@
 
 	<Confirm
 		v-if="archiveDoneIds"
-		title="Archive done tasks"
-		:body="`Archive ${archiveDoneIds.length} done ${
-			archiveDoneIds.length === 1 ? 'task' : 'tasks'
-		}?`"
+		:title="$t('board.tasksList.archiveDialogTitle')"
+		:body="$t('board.tasksList.archiveDialogBody', archiveDoneIds.length)"
 		@onCancel="archiveDoneIds = null"
 		@onOk="confirmArchiveDone"
 	/>

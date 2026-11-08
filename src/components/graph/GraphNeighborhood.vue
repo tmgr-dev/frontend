@@ -32,7 +32,7 @@
 				class="flex items-center gap-1.5 rounded-full border border-line bg-surface/90 px-2.5 py-1"
 			>
 				<span class="legend-glyph" :style="glyphStyle(type)" />
-				{{ styles[type].label }}
+				{{ $t(typeKeys[type]) }}
 			</span>
 		</div>
 
@@ -44,7 +44,7 @@
 			@click="$emit('expand')"
 		>
 			<Maximize2 class="h-3.5 w-3.5" />
-			Expand
+			{{ $t('board.graph.neighborhood.expand') }}
 		</button>
 
 		<div
@@ -54,7 +54,7 @@
 			<button
 				type="button"
 				class="p-2 text-ink-muted hover:bg-surface-hover"
-				aria-label="Zoom in"
+				:aria-label="$t('board.graph.neighborhood.zoomIn')"
 				@click="zoom(1.3)"
 			>
 				<Plus class="h-4 w-4" />
@@ -62,7 +62,7 @@
 			<button
 				type="button"
 				class="border-t border-line p-2 text-ink-muted hover:bg-surface-hover"
-				aria-label="Zoom out"
+				:aria-label="$t('board.graph.neighborhood.zoomOut')"
 				@click="zoom(1 / 1.3)"
 			>
 				<Minus class="h-4 w-4" />
@@ -70,7 +70,7 @@
 			<button
 				type="button"
 				class="border-t border-line p-2 text-ink-muted hover:bg-surface-hover"
-				aria-label="Fit to view"
+				:aria-label="$t('board.graph.neighborhood.fitToView')"
 				@click="fit"
 			>
 				<Scan class="h-4 w-4" />
@@ -81,8 +81,7 @@
 			v-if="mode === 'full'"
 			class="pointer-events-none absolute bottom-3 left-3 max-w-[70%] text-xs text-ink-muted"
 		>
-			Inner ring: direct links · Outer ring: 2 steps away, dimmed · Dashed: weak
-			link
+			{{ $t('board.graph.neighborhood.rings') }}
 		</p>
 
 		<p
@@ -99,32 +98,33 @@
 			class="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-ink-muted"
 			data-testid="graph-empty"
 		>
-			No links yet — relate tasks, link pages or assign people to see the graph
+			{{ $t('board.graph.neighborhood.empty') }}
 		</div>
 		<div
 			v-else-if="failed"
 			class="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center text-sm text-ink-muted"
 		>
-			Could not load the graph
+			{{ $t('board.graph.neighborhood.loadFailed') }}
 			<button
 				type="button"
 				class="rounded-lg border border-line bg-surface px-3 py-1 text-xs text-ink hover:bg-surface-hover"
 				@click="reload"
 			>
-				Retry
+				{{ $t('board.graph.neighborhood.retry') }}
 			</button>
 		</div>
 		<div
 			v-else-if="loading && !shown"
 			class="absolute inset-0 flex items-center justify-center text-sm text-ink-muted"
 		>
-			Loading graph…
+			{{ $t('board.graph.neighborhood.loading') }}
 		</div>
 	</div>
 </template>
 
 <script lang="ts">
 	import { workspaceIdOf } from '@/components/graph/entity';
+	import { t } from '@/i18n';
 	import type { GraphResult } from '@/types/graph';
 	import { Maximize2, Minus, Plus, Scan } from 'lucide-vue-next';
 	import {
@@ -148,6 +148,14 @@
 	} from './graphLogic';
 	import { useDocumentTheme } from './useDocumentTheme';
 	import { useGraphResult } from './useGraphResult';
+
+	const typeKeys: Record<string, string> = {
+		task: 'board.graph.types.task',
+		page: 'board.graph.types.page',
+		user: 'board.graph.types.user',
+		persona: 'board.graph.types.persona',
+		agent_run: 'board.graph.types.agentRun',
+	};
 
 	export default defineComponent({
 		name: 'GraphNeighborhood',
@@ -220,8 +228,11 @@
 				);
 				const closest = r.nodes.length;
 				return hidden
-					? `Showing the closest ${closest} — ${hidden} more hidden`
-					: `Showing the closest ${closest}`;
+					? t('board.graph.neighborhood.truncatedWithHidden', {
+							closest,
+							hidden,
+						})
+					: t('board.graph.neighborhood.truncated', { closest });
 			});
 
 			watch([legend, narrow], () => nextTick(measure));
@@ -261,7 +272,7 @@
 				reload,
 				truncatedNotice,
 				glyphStyle,
-				styles: TYPE_STYLES,
+				typeKeys,
 				fit: () => canvas.value?.fit(),
 				zoom: (factor: number) => canvas.value?.zoomBy(factor),
 			};

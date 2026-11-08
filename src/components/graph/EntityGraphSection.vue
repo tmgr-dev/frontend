@@ -14,7 +14,7 @@
 					:class="expanded ? 'rotate-90' : ''"
 					aria-hidden="true"
 				/>
-				Graph
+				{{ $t('board.graph.section.title') }}
 			</button>
 		</h3>
 		<div v-if="expanded" :id="bodyId">

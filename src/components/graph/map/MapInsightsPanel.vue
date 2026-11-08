@@ -4,7 +4,7 @@
 			class="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4"
 		>
 			<div v-if="!bare" class="text-xs tracking-wide text-ink-muted">
-				WHAT THE MAP SHOWS
+				{{ $t('board.graphMap.insights.whatMapShows') }}
 			</div>
 			<template v-if="insights">
 				<button
@@ -16,7 +16,7 @@
 				>
 					<span
 						class="text-sm font-semibold text-orange-600 dark:text-orange-300"
-						>Bottleneck</span
+						>{{ $t('board.graphMap.insights.bottleneck') }}</span
 					>
 					<span class="text-sm leading-5">{{ insights.bottleneck.text }}</span>
 				</button>
@@ -27,7 +27,9 @@
 					data-testid="insight-hubs"
 					@click="$emit('focus', insights.hubs.ids)"
 				>
-					<span class="text-sm font-semibold">Hubs</span>
+					<span class="text-sm font-semibold">{{
+						$t('board.graphMap.insights.hubs')
+					}}</span>
 					<span class="text-sm leading-5">{{ insights.hubs.text }}</span>
 				</button>
 				<button
@@ -37,7 +39,9 @@
 					data-testid="insight-bridges"
 					@click="$emit('focus', insights.bridges.ids)"
 				>
-					<span class="text-sm font-semibold">Bridges</span>
+					<span class="text-sm font-semibold">{{
+						$t('board.graphMap.insights.bridges')
+					}}</span>
 					<span class="text-sm leading-5">{{ insights.bridges.text }}</span>
 				</button>
 				<button
@@ -46,12 +50,14 @@
 					data-testid="insight-orphans"
 					@click="$emit('focus-orphans', insights.orphans.ids)"
 				>
-					<span class="text-sm font-semibold text-ink-muted">No links</span>
+					<span class="text-sm font-semibold text-ink-muted">{{
+						$t('board.graphMap.insights.noLinks')
+					}}</span>
 					<span class="text-sm leading-5">{{ insights.orphans.text }}</span>
 				</button>
 			</template>
 			<p v-else class="text-sm text-ink-muted">
-				Insights appear when the map has data.
+				{{ $t('board.graphMap.insights.empty') }}
 			</p>
 			<button
 				type="button"
@@ -60,19 +66,24 @@
 				data-testid="toggle-orphans"
 				@click="$emit('toggle-orphans')"
 			>
-				{{ showOrphans ? 'Hide' : 'Show' }} items with no links
+				{{
+					showOrphans
+						? $t('board.graphMap.insights.hideOrphans')
+						: $t('board.graphMap.insights.showOrphans')
+				}}
 			</button>
 		</div>
 		<div
 			class="flex flex-col gap-2.5 rounded-2xl border border-line bg-surface p-4"
 		>
-			<div class="text-xs tracking-wide text-ink-muted">HOW TO USE IT</div>
+			<div class="text-xs tracking-wide text-ink-muted">
+				{{ $t('board.graphMap.insights.howToUse') }}
+			</div>
 			<p class="text-sm leading-5">
-				Click a cluster to zoom in. Click a dot to open its neighborhood. Drag
-				the time range to watch the map grow week by week.
+				{{ $t('board.graphMap.insights.howToUseText') }}
 			</p>
 			<p v-if="legend" class="text-xs leading-4 text-ink-muted">
-				{{ LEGEND }}
+				{{ $t('board.graphMap.insights.legend') }}
 			</p>
 		</div>
 	</div>
@@ -80,7 +91,7 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
-	import { MAP_LEGEND as LEGEND, type MapInsights } from './mapLogic';
+	import type { MapInsights } from './mapLogic';
 
 	export default defineComponent({
 		name: 'MapInsightsPanel',
@@ -94,9 +105,6 @@
 			bare: { type: Boolean, default: false },
 		},
 		emits: ['focus', 'focus-orphans', 'toggle-orphans'],
-		setup() {
-			return { LEGEND };
-		},
 	});
 </script>
 

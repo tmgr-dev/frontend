@@ -37,6 +37,7 @@
 	import { useToast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useWorkflowMode } from '@/composable/useWorkflowMode';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import { describeCategoryTransfer } from '@/utils/categoryTransfer';
 	import { filterTasksByState, paginateLocally } from '@/utils/taskStateFilter';
@@ -122,17 +123,19 @@
 		to: 0,
 	});
 
-	const perPageOptions = [
-		{ label: '10 per page', value: 10 },
-		{ label: '25 per page', value: 25 },
-		{ label: '50 per page', value: 50 },
-	];
+	const perPageOptions = computed(() =>
+		[10, 25, 50].map((value) => ({
+			label: t('board.projectCategoryList.perPage', { n: value }),
+			value,
+		})),
+	);
 
-	const categoriesPerPageOptions = [
-		{ label: '10 per page', value: 10 },
-		{ label: '25 per page', value: 25 },
-		{ label: '50 per page', value: 50 },
-	];
+	const categoriesPerPageOptions = computed(() =>
+		[10, 25, 50].map((value) => ({
+			label: t('board.projectCategoryList.perPage', { n: value }),
+			value,
+		})),
+	);
 
 	const { simpleMode, workspaceStatuses: simpleStatuses } = useWorkflowMode();
 	const ALL_TASKS_PER_PAGE = 100000;
@@ -258,7 +261,8 @@
 		} catch (error) {
 			if (current()) {
 				tasksError.value =
-					error?.response?.data?.message || 'Could not load category tasks.';
+					error?.response?.data?.message ||
+					t('board.projectCategoryList.loadTasksFailed');
 				if (error?.response?.status === 403) permissionDenied.value = true;
 			}
 		} finally {
@@ -298,7 +302,8 @@
 		} catch (error) {
 			if (current()) {
 				categoriesError.value =
-					error?.response?.data?.message || 'Could not load categories.';
+					error?.response?.data?.message ||
+					t('board.projectCategoryList.loadCategoriesFailed');
 				if (error?.response?.status === 403) permissionDenied.value = true;
 			}
 		} finally {
@@ -359,9 +364,11 @@
 				(w) => Number(w.id) === Number(targetWorkspaceId),
 			);
 			toaster.toast({
-				title: `"${category.title}" moved to ${
-					target?.name ?? 'another workspace'
-				}`,
+				title: t('board.projectCategoryList.movedTitle', {
+					title: category.title,
+					workspace:
+						target?.name ?? t('board.projectCategoryList.anotherWorkspace'),
+				}),
 				description: describeCategoryTransfer(result),
 			});
 			transferDialog.value = {
@@ -376,10 +383,10 @@
 		} catch (e) {
 			console.error(e);
 			toaster.toast({
-				title: 'Transfer failed',
+				title: t('board.projectCategoryList.transferFailed'),
 				description:
 					e?.response?.data?.message ||
-					'Could not move the category. Please try again.',
+					t('board.projectCategoryList.transferFailedText'),
 				variant: 'destructive',
 			});
 			transferDialog.value.busy = false;
@@ -455,7 +462,9 @@
 	watch(
 		category,
 		(newCategory) => {
-			const title = newCategory ? newCategory.title : 'Categories';
+			const title = newCategory
+				? newCategory.title
+				: t('board.projectCategoryList.documentTitle');
 			setDocumentTitle(title);
 		},
 		{ immediate: true },
@@ -508,7 +517,7 @@
 				:loaded="!isCategoriesFirstLoading"
 				:error="categoriesError"
 				:retry="loadCategories"
-				label="Loading categories"
+				:label="$t('board.projectCategoryList.loadingCategories')"
 			>
 				<template #skeleton>
 					<div class="grid min-h-48 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
@@ -522,7 +531,7 @@
 						v-if="categories && categories.length === 0"
 						class="text-sm text-ink-muted"
 					>
-						No subcategories yet.
+						{{ $t('board.projectCategoryList.noSubcategories') }}
 					</p>
 					<div
 						class="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3"
@@ -572,20 +581,26 @@
 									v-if="category.deleted_at !== null"
 									class="mb-2 text-sm text-ink-subtle italic"
 								>
-									(deleted, but can be restored)
+									{{ $t('board.projectCategoryList.deletedHint') }}
 								</p>
 
 								<div
 									class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-ink-muted"
 								>
-									<div class="flex items-center gap-1.5" title="subcategories">
+									<div
+										class="flex items-center gap-1.5"
+										:title="$t('board.projectCategoryList.subcategories')"
+									>
 										<FolderClosedIcon class="h-4 w-4 text-ink-subtle" />
 										<span class="font-medium text-ink">{{
 											category.children_count
 										}}</span>
 									</div>
 
-									<div class="flex items-center gap-1.5" title="tasks">
+									<div
+										class="flex items-center gap-1.5"
+										:title="$t('board.projectCategoryList.tasks')"
+									>
 										<ClipboardListIcon class="h-4 w-4 text-ink-subtle" />
 										<span class="font-medium text-ink">{{
 											category.tasks_count
@@ -595,7 +610,7 @@
 									<span
 										v-if="category.user?.name"
 										class="flex items-center gap-1.5"
-										title="author"
+										:title="$t('board.projectCategoryList.author')"
 									>
 										<CircleUserRoundIcon class="h-4 w-4 text-ink-subtle" />
 										<span class="font-medium text-ink">{{
@@ -630,7 +645,7 @@
 												"
 											>
 												<FolderPenIcon />
-												<span>Edit</span>
+												<span>{{ $t('common.actions.edit') }}</span>
 											</DropdownMenuItem>
 
 											<DropdownMenuItem
@@ -638,7 +653,9 @@
 												@click="openTransferDialog(category)"
 											>
 												<ArrowRightLeftIcon />
-												<span>Move to workspace</span>
+												<span>{{
+													$t('board.projectCategoryList.moveToWorkspace')
+												}}</span>
 											</DropdownMenuItem>
 
 											<DropdownMenuItem
@@ -646,7 +663,7 @@
 												@click="deleteCategory(category)"
 											>
 												<Trash2Icon />
-												<span>Delete</span>
+												<span>{{ $t('common.actions.delete') }}</span>
 											</DropdownMenuItem>
 
 											<DropdownMenuItem
@@ -654,7 +671,9 @@
 												@click="restoreCategory(category)"
 											>
 												<ArchiveRestoreIcon />
-												<span>Restore</span>
+												<span>{{
+													$t('board.projectCategoryList.restore')
+												}}</span>
 											</DropdownMenuItem>
 										</DropdownMenuContent>
 									</DropdownMenu>
@@ -666,12 +685,15 @@
 					<Dialog v-model:open="transferDialog.open">
 						<DialogContent class="sm:max-w-[425px]">
 							<DialogHeader>
-								<DialogTitle>Move category to another workspace</DialogTitle>
+								<DialogTitle>{{
+									$t('board.projectCategoryList.transferTitle')
+								}}</DialogTitle>
 								<DialogDescription>
-									"{{ transferDialog.category?.title }}" will be moved with all
-									its subcategories and tasks. Task statuses are matched to the
-									target workspace by name, then by type; assignees who are not
-									members of the target workspace are removed.
+									{{
+										$t('board.projectCategoryList.transferDescription', {
+											title: transferDialog.category?.title,
+										})
+									}}
 								</DialogDescription>
 							</DialogHeader>
 
@@ -680,14 +702,14 @@
 								:options="transferTargets"
 								label-key="name"
 								value-key="id"
-								placeholder="Select workspace"
+								:placeholder="$t('board.projectCategoryList.selectWorkspace')"
 								class="w-full"
 							/>
 							<p
 								v-if="transferTargets.length === 0"
 								class="text-sm text-ink-subtle"
 							>
-								You are not a member of any other workspace.
+								{{ $t('board.projectCategoryList.noOtherWorkspaces') }}
 							</p>
 
 							<DialogFooter>
@@ -698,7 +720,11 @@
 									"
 									@click="transferCategory"
 								>
-									{{ transferDialog.busy ? 'Moving...' : 'Move' }}
+									{{
+										transferDialog.busy
+											? $t('board.projectCategoryList.moving')
+											: $t('board.projectCategoryList.move')
+									}}
 								</Button>
 							</DialogFooter>
 						</DialogContent>
@@ -732,9 +758,13 @@
 					>
 						<div class="flex items-center gap-3">
 							<span class="text-sm text-ink-subtle">
-								Showing {{ categoriesPagination.from }} to
-								{{ categoriesPagination.to }} of
-								{{ categoriesPagination.total }} categories
+								{{
+									$t('board.projectCategoryList.showing', {
+										from: categoriesPagination.from,
+										to: categoriesPagination.to,
+										total: categoriesPagination.total,
+									})
+								}}
 							</span>
 
 							<Select
@@ -761,12 +791,16 @@
 								variant="outline"
 								class="h-9 rounded-pill"
 							>
-								Previous
+								{{ $t('board.projectCategoryList.previous') }}
 							</Button>
 
 							<span class="px-2 text-sm whitespace-nowrap text-ink-subtle">
-								Page {{ categoriesPagination.current_page }} of
-								{{ categoriesPagination.last_page }}
+								{{
+									$t('board.projectCategoryList.page', {
+										current: categoriesPagination.current_page,
+										last: categoriesPagination.last_page,
+									})
+								}}
 							</span>
 
 							<Button
@@ -782,7 +816,7 @@
 								variant="outline"
 								class="h-9 rounded-pill"
 							>
-								Next
+								{{ $t('common.actions.next') }}
 							</Button>
 						</div>
 					</div>
@@ -795,7 +829,7 @@
 				:loaded="!isTasksFirstLoading"
 				:error="tasksError"
 				:retry="loadTasks"
-				label="Loading category tasks"
+				:label="$t('board.projectCategoryList.loadingTasks')"
 				><template #skeleton>
 					<div class="space-y-2 mt-6 min-h-96 px-2">
 						<Skeleton class="h-28 w-full" />
@@ -821,9 +855,9 @@
 					class="mt-5 text-center text-xl italic"
 				>
 					<EmptyState
-						description="Create your first task in this category"
+						:description="$t('board.projectCategoryList.createFirstTask')"
 						:action="{
-							label: '+ Create task',
+							label: $t('board.projectCategoryList.createTask'),
 							onClick: () => store.commit('setShowCreatingTaskModal'),
 						}"
 					/>

@@ -59,7 +59,11 @@
 							/>
 						</MemberAvatarLink>
 						<span class="min-w-0 truncate text-xs text-ink-muted">
-							by {{ activity.user.name }}
+							{{
+								$t('board.dashboard.activityItem.by', {
+									name: activity.user.name,
+								})
+							}}
 						</span>
 					</template>
 				</div>
@@ -72,6 +76,7 @@
 	import AuthorBadge from '@/components/general/AuthorBadge.vue';
 	import MemberAvatarLink from '@/components/general/MemberAvatarLink.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
+	import { currentLocale } from '@/i18n';
 	import type { Activity } from '@/types/dashboard';
 	import { cn } from '@/utils';
 	import {
@@ -118,7 +123,7 @@
 	const time = computed(() => activityTime(props.activity));
 
 	const formattedDate = computed(() => {
-		return new Date(props.activity.created_at).toLocaleString();
+		return new Date(props.activity.created_at).toLocaleString(currentLocale());
 	});
 
 	const activityIcon = computed(() => {
