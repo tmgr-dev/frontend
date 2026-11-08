@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.132 — 2026-11-08
+
+- The TMGR iPhone app can now show how many decisions are waiting: this app tells the phone the number of open cards along with each update, so the iPhone shows it on its Decisions tab and app icon. After this app restarts, the phone gets one "New decision waiting" notification if any cards are still open. Needs the TMGR iPhone app 1.20.1 with its latest update.
+
 ## 0.9.131 — 2026-11-08
 
 - When you answer a Decisions card that links to a TMGR task, the answer is now also posted to that task as a comment (the question, your choice or text, and the card id), once per answer and retried if you were offline. The comment is written only when the task is in the workspace named in the card link; otherwise it is skipped and the answer stays in the Decisions inbox. Only answers from the last 7 days are posted after the update.
