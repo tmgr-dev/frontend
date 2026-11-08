@@ -215,6 +215,31 @@ reach) and returns `<self exe> __sandbox-exec <policy> -- <argv>`. The binary's 
 and exit 78), builds the ruleset with hard requirements, restricts itself, verifies full enforcement and execs the
 command (exec failure: exit 127).
 
+### Granted object stores
+
+A legacy clone that borrows objects through `objects/info/alternates` gets the source repository's object directory as a
+read-only grant. Landlock cannot restrict `chmod`, `chown`, `utime` or `setxattr`, so on Linux the helper also makes the
+directory read-only at the mount level:
+
+- Before Landlock is applied, the helper creates a user and mount namespace (identity uid/gid maps, so file ownership
+  looks unchanged), bind-mounts each granted object directory onto itself and remounts it read-only, keeping the original
+  mount's `nosuid`/`nodev`/`noexec`/atime flags. It then checks that the mount reports read-only. Changing modes,
+  owners, times or extended attributes under the directory then fails with `EROFS`. The mount is private to the session;
+  the host's view is unchanged.
+- The whole sequence is first tried in a forked probe process. If it cannot work, the helper continues without the
+  namespace: unprivileged user namespaces disabled (`kernel.unprivileged_userns_clone=0`, `user.max_user_namespaces=0`),
+  restricted by the distribution (Ubuntu 24.04 `kernel.apparmor_restrict_unprivileged_userns=1`), blocked by a container
+  seccomp profile (Docker's default), or a multithreaded helper process. Once the probe succeeds, any later failure
+  stops the run (exit 78).
+- The helper records the outcome in `<runner dir>/sessions/<id>/objects_ro` (`namespace` or `fallback: <reason>`), and the
+  daemon logs it when the run ends.
+- Independently of the namespace, the daemon records the mode of every directory and file under each granted object
+  directory before the run (`objects-modes` in the session directory, outside the sandbox) and, after the run ends
+  (also after a daemon restart, or when the session is removed), restores any mode that changed. Directories are
+  restored before their contents, symlinks are never followed, and entries that did not exist at the start or whose inode
+  changed are left alone. Owner, modification times and extended attributes are not restored, and the restore runs when
+  the runner sees the session exit, so a process that outlives the session could change modes again afterwards.
+
 ## Known limitations
 
 - Network is open unless the run is `Restricted` (macOS only, see above); an open network is not data-exfiltration protection for anything the agent can read.
