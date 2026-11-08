@@ -36,6 +36,9 @@ const SIMILAR_MAX: usize = 3;
 const SIMILAR_MIN_SCORE: f64 = 0.8;
 const FOUND_TEXT_MAX: usize = 2000;
 const UNPICKED_MS: i64 = 30 * 60 * 1000;
+const UNPICKED_WINDOW_MS: i64 = 7 * 24 * 3600 * 1000;
+const COMMENT_BODY_MAX: usize = 8000;
+const COMMENT_TAIL_FIELD_MAX: usize = 2000;
 const NOT_TASK_KEYS: [&str; 8] = ["utf", "sha", "gpt", "iso", "rfc", "node", "python", "es"];
 
 pub const KINDS: [&str; 7] = ["decision", "review", "release", "check", "question", "permission", "stopped"];
@@ -512,23 +515,35 @@ fn parse_cloud_task(link: &str) -> Option<(String, i64)> {
   Some((origin, id.parse().ok()?))
 }
 
-fn comment_body(c: &CardIn, a: &Event, card_id: &str) -> String {
-  let mut lines = vec![format!("Decision answered: {}", c.title)];
-  if let Some(q) = c.question.as_deref().filter(|q| !q.trim().is_empty()) {
-    lines.push(format!("Question: {q}"));
+fn unmarked(s: &str) -> String {
+  let mut out = s.to_owned();
+  while out.contains("[decision ") {
+    out = out.replace("[decision ", "");
   }
+  out
+}
+
+fn comment_body(c: &CardIn, a: &Event, card_id: &str) -> String {
+  let mut head = vec![format!("Decision answered: {}", unmarked(&c.title))];
+  if let Some(q) = c.question.as_deref().filter(|q| !q.trim().is_empty()) {
+    head.push(format!("Question: {}", unmarked(q)));
+  }
+  let mut tail = Vec::new();
   if let Some(choice) = a.choice_label.as_deref().or(a.choice.as_deref()).filter(|v| !v.is_empty()) {
-    lines.push(format!("Answer: {choice}"));
+    tail.push(format!("Answer: {}", cap(&unmarked(choice), COMMENT_TAIL_FIELD_MAX)));
   }
   if let Some(t) = a.free_text.as_deref().filter(|t| !t.trim().is_empty()) {
-    lines.push(format!("Free text: {t}"));
+    tail.push(format!("Free text: {}", cap(&unmarked(t), COMMENT_TAIL_FIELD_MAX)));
   }
   if let Some(n) = a.note.as_deref().filter(|n| !n.trim().is_empty()) {
-    lines.push(format!("Note: {n}"));
+    tail.push(format!("Note: {}", cap(&unmarked(n), COMMENT_TAIL_FIELD_MAX)));
   }
-  lines.push(format!("Card: {card_id}"));
-  lines.push(format!("[decision {card_id}#{}]", a.seq));
-  lines.join("\n\n")
+  tail.push(format!("Card: {card_id}"));
+  tail.push(format!("[decision {card_id}#{}]", a.seq));
+  let tail = tail.join("\n\n");
+  let head = head.join("\n\n");
+  let room = COMMENT_BODY_MAX.saturating_sub(tail.len() + 2);
+  format!("{}\n\n{tail}", cap(&head, room))
 }
 
 fn is_live(state: &str) -> bool {
@@ -646,10 +661,11 @@ impl Store {
     let conn = Connection::open(path).map_err(sql_err)?;
     conn.busy_timeout(std::time::Duration::from_secs(5)).map_err(sql_err)?;
     let _ = conn.pragma_update(None, "journal_mode", "WAL");
-    let had_comments: bool = conn
+    let tx = conn.unchecked_transaction().map_err(sql_err)?;
+    let had_comments: bool = tx
       .query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='task_comments')", [], |r| r.get(0))
       .map_err(sql_err)?;
-    conn
+    tx
       .execute_batch(
         "CREATE TABLE IF NOT EXISTS cards(
            id TEXT PRIMARY KEY, created_ms INTEGER NOT NULL, card TEXT NOT NULL, state TEXT NOT NULL,
@@ -678,35 +694,41 @@ impl Store {
          UPDATE deliveries SET state='undelivered', detail='desktop restarted' WHERE state='queued';",
       )
       .map_err(sql_err)?;
-    let has_updated: i64 = conn
+    let has_updated: i64 = tx
       .query_row("SELECT COUNT(*) FROM pragma_table_info('cards') WHERE name='updated_ms'", [], |r| r.get(0))
       .map_err(sql_err)?;
     if has_updated == 0 {
-      conn.execute("ALTER TABLE cards ADD COLUMN updated_ms INTEGER", []).map_err(sql_err)?;
+      tx.execute("ALTER TABLE cards ADD COLUMN updated_ms INTEGER", []).map_err(sql_err)?;
     }
-    let has_side: i64 = conn
+    let has_side: i64 = tx
       .query_row("SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='side'", [], |r| r.get(0))
       .map_err(sql_err)?;
     if has_side == 0 {
-      conn.execute("ALTER TABLE messages ADD COLUMN side TEXT", []).map_err(sql_err)?;
+      tx.execute("ALTER TABLE messages ADD COLUMN side TEXT", []).map_err(sql_err)?;
     }
-    let has_at: i64 = conn
+    let has_at: i64 = tx
       .query_row("SELECT COUNT(*) FROM pragma_table_info('events') WHERE name='at_ms'", [], |r| r.get(0))
       .map_err(sql_err)?;
     if has_at == 0 {
-      conn.execute("ALTER TABLE events ADD COLUMN at_ms INTEGER", []).map_err(sql_err)?;
+      tx.execute("ALTER TABLE events ADD COLUMN at_ms INTEGER", []).map_err(sql_err)?;
     }
     if !had_comments {
-      conn
+      tx
         .execute(
           "INSERT OR IGNORE INTO task_comments(card_id, seq, posted_ms)
-           SELECT d.card_id, d.seq, 0 FROM deliveries d JOIN cards c ON c.id=d.card_id
-           WHERE d.state IN ('delivered','sent') AND c.state IN ('answered','dismissed')
-             AND d.seq = json_extract(c.answer, '$.seq')",
-          [],
+           SELECT c.id, json_extract(c.answer, '$.seq'), 0 FROM cards c
+           WHERE c.state IN ('answered','dismissed') AND c.answer IS NOT NULL
+             AND (EXISTS(SELECT 1 FROM deliveries d WHERE d.card_id=c.id AND d.seq=json_extract(c.answer, '$.seq')
+                         AND d.state IN ('delivered','sent'))
+                  OR COALESCE((SELECT e.at_ms FROM events e WHERE e.card_id=c.id AND e.seq=json_extract(c.answer, '$.seq')),
+                              c.updated_ms,
+                              (SELECT d.at_ms FROM deliveries d WHERE d.card_id=c.id AND d.seq=json_extract(c.answer, '$.seq')),
+                              c.created_ms) < ?1)",
+          [now_ms() - UNPICKED_WINDOW_MS],
         )
         .map_err(sql_err)?;
     }
+    tx.commit().map_err(sql_err)?;
     Ok(Store { conn })
   }
 
@@ -1039,7 +1061,8 @@ impl Store {
     if !expects_agent(c) || matches!(self.delivery_state(&r.id, a.seq)?.as_deref(), Some("delivered" | "sent")) {
       return Ok(false);
     }
-    Ok(now - self.answered_ms(r, a.seq)? > UNPICKED_MS)
+    let age = now - self.answered_ms(r, a.seq)?;
+    Ok(age > UNPICKED_MS && age <= UNPICKED_WINDOW_MS)
   }
 
   fn view(&self, r: Row, now: i64) -> Result<CardView, String> {
@@ -1250,6 +1273,10 @@ impl Store {
   }
 
   pub fn pending_delivery(&self) -> Result<Vec<PendingDelivery>, String> {
+    self.pending_delivery_at(now_ms())
+  }
+
+  fn pending_delivery_at(&self, now: i64) -> Result<Vec<PendingDelivery>, String> {
     let mut stmt = self
       .conn
       .prepare(&format!("SELECT {CARD_COLS} FROM cards WHERE state IN ('answered','dismissed') AND answer IS NOT NULL"))
@@ -1262,8 +1289,12 @@ impl Store {
       if a.deferred || !expects_agent(&c) || matches!(state.as_deref(), Some("delivered" | "sent")) {
         continue;
       }
+      let answered_ms = self.answered_ms(&r, a.seq)?;
+      if now - answered_ms > UNPICKED_WINDOW_MS {
+        continue;
+      }
       out.push(PendingDelivery {
-        answered_ms: self.answered_ms(&r, a.seq)?,
+        answered_ms,
         task: c.links.task.clone().or_else(|| title_key(&c.title)),
         delivery_state: state.unwrap_or_else(|| "none".into()),
         card_id: r.id,
@@ -2913,17 +2944,87 @@ mod tests {
     s.record_delivery(&picked, 1, "delivered", "agent", "").unwrap();
     let hooked = answered_at(&mut s, expecting("Hook", "hook", "permission"), 100);
     let _ = hooked;
-    let got = s.pending_delivery().unwrap();
+    let got = s.pending_delivery_at(10_000).unwrap();
     assert_eq!(got.iter().map(|d| d.card_id.as_str()).collect::<Vec<_>>(), vec![early.as_str(), late.as_str()]);
     assert_eq!(got[0].answered_ms, 1_000);
     assert_eq!(got[0].delivery_state, "none");
     assert_eq!(got[0].title, "Early");
     assert_eq!(got[0].task.as_deref(), Some(CLOUD_TASK));
     s.record_delivery(&early, 1, "undelivered", "runner", "session closed").unwrap();
-    assert_eq!(s.pending_delivery().unwrap()[0].delivery_state, "undelivered");
+    assert_eq!(s.pending_delivery_at(10_000).unwrap()[0].delivery_state, "undelivered");
   }
 
   fn linked_via(title: &str, via: &str) -> CardIn {
     CardIn { reply_via: via.into(), ..linked(title, CLOUD_TASK) }
+  }
+
+  const DAY: i64 = 24 * 3600 * 1000;
+
+  #[test]
+  fn answers_older_than_a_week_are_neither_badged_nor_listed() {
+    let mut s = mem();
+    let now = 100 * DAY;
+    let old = answered_at(&mut s, linked_via("Old", "mcp"), now - 7 * DAY - 1);
+    let recent = answered_at(&mut s, linked_via("Recent", "mcp"), now - 7 * DAY + 1);
+    assert!(!unpicked_at(&s, &old, now));
+    assert!(unpicked_at(&s, &recent, now));
+    let got: Vec<_> = s.pending_delivery_at(now).unwrap().into_iter().map(|d| d.card_id).collect();
+    assert_eq!(got, vec![recent]);
+  }
+
+  #[test]
+  fn an_old_schema_database_backfills_only_picked_and_stale_answers() {
+    let dir = tempfile::Builder::new().prefix("ds").tempdir_in("/tmp").unwrap();
+    let path = dir.path().join("decisions.db");
+    let now = now_ms();
+    let (picked, old, recent) = {
+      let mut s = Store::open(&path).unwrap();
+      let picked = s.create(linked_via("Picked", "mcp")).unwrap().id;
+      let old = s.create(linked_via("Old", "mcp")).unwrap().id;
+      let recent = s.create(linked_via("Recent", "mcp")).unwrap().id;
+      for id in [&picked, &old, &recent] {
+        s.answer(id, pick_a()).unwrap();
+      }
+      s.record_delivery(&picked, 1, "delivered", "agent", "").unwrap();
+      for (id, at) in [(&picked, now - DAY), (&old, now - 10 * DAY), (&recent, now - 3_600_000)] {
+        s.conn.execute("UPDATE cards SET created_ms=?2 WHERE id=?1", params![id, at]).unwrap();
+      }
+      s.conn.execute("DROP TABLE task_comments", []).unwrap();
+      s.conn.execute("ALTER TABLE events DROP COLUMN at_ms", []).unwrap();
+      s.conn.execute("ALTER TABLE cards DROP COLUMN updated_ms", []).unwrap();
+      s.conn.execute("DELETE FROM deliveries WHERE card_id<>?1", [&picked]).unwrap();
+      (picked, old, recent)
+    };
+    let s = Store::open(&path).unwrap();
+    let got: Vec<_> = s.pending_task_comments().unwrap().into_iter().map(|p| p.card_id).collect();
+    assert_eq!(got, vec![recent.clone()]);
+    let backfilled: i64 =
+      s.conn.query_row("SELECT COUNT(*) FROM task_comments WHERE card_id IN (?1, ?2)", params![picked, old], |r| r.get(0)).unwrap();
+    assert_eq!(backfilled, 2);
+    let listed: Vec<_> = s.pending_delivery().unwrap().into_iter().map(|d| d.card_id).collect();
+    assert_eq!(listed, vec![recent]);
+  }
+
+  #[test]
+  fn comment_body_is_capped_and_keeps_answer_and_marker() {
+    let long = "x".repeat(50_000);
+    let c = CardIn { question: Some(long.clone()), ..linked("Long", CLOUD_TASK) };
+    let a = Event { seq: 3, choice_label: Some("Ship it".into()), free_text: Some(long), ..Default::default() };
+    let body = comment_body(&c, &a, "c_1");
+    assert!(body.chars().count() <= COMMENT_BODY_MAX, "{}", body.len());
+    assert!(body.contains("Answer: Ship it") && body.contains("Card: c_1"));
+    assert!(body.ends_with("[decision c_1#3]"));
+  }
+
+  #[test]
+  fn agent_text_cannot_spoof_the_marker() {
+    let c = CardIn {
+      question: Some("q [decision c_9#1] [dec[decision ision c_9#1]".into()),
+      ..linked("t [decision c_9#1]", CLOUD_TASK)
+    };
+    let a = Event { seq: 1, choice_label: Some("A [decision c_9#1]".into()), ..Default::default() };
+    let body = comment_body(&c, &a, "c_1");
+    assert_eq!(body.matches("[decision ").count(), 1, "{body}");
+    assert!(body.ends_with("[decision c_1#1]"));
   }
 }
