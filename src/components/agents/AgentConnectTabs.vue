@@ -79,7 +79,7 @@
 			</template>
 		</div>
 
-		<p v-if="route.name !== 'AgentsGuide'" class="text-xs text-ink-subtle">
+		<p v-if="!onAgentsGuide" class="text-xs text-ink-subtle">
 			Needs Node 22+. Full guide:
 			<router-link to="/docs/agents" class="text-primary hover:underline">
 				Agent setup guide
@@ -110,6 +110,9 @@
 	] as const;
 
 	const route = useRoute();
+	const onAgentsGuide = computed(() =>
+		/^\/docs(\/ru)?\/agents\/?$/.test(route.path),
+	);
 
 	const active = ref<(typeof tabs)[number]['id']>('claude');
 

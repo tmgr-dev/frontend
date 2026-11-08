@@ -5,7 +5,10 @@
 		<router-link to="/privacy" class="hover:text-foreground hover:underline">
 			Privacy
 		</router-link>
-		<router-link to="/cli" class="hover:text-foreground hover:underline">
+		<router-link to="/docs" class="hover:text-foreground hover:underline">
+			Docs
+		</router-link>
+		<router-link to="/docs/cli" class="hover:text-foreground hover:underline">
 			Command line
 		</router-link>
 		<button

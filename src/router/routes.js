@@ -1,3 +1,4 @@
+import docsRoutes from '@/router/docsRoutes';
 import { gatedPage } from '@/router/moduleGate';
 import store from '@/store';
 import { SETTINGS_NAV_COLUMN_QUERY } from '@/utils/settingsNav';
@@ -702,31 +703,7 @@ const routes = [
 		},
 		name: 'Privacy',
 	},
-	{
-		path: '/docs/agents',
-		component: () => import('@/pages/AgentsGuide.vue'),
-		meta: {
-			title: 'AI agents setup',
-			transitionName: 'fade-fast',
-			navbarHidden: false,
-			allowedGuests: true,
-			notOnlyForLoggedUsers: true,
-		},
-		name: 'AgentsGuide',
-	},
-
-	{
-		path: '/cli',
-		component: () => import('@/pages/CliGuide.vue'),
-		meta: {
-			title: 'tmgr command line',
-			transitionName: 'fade-fast',
-			navbarHidden: false,
-			allowedGuests: true,
-			notOnlyForLoggedUsers: true,
-		},
-		name: 'CliGuide',
-	},
+	...docsRoutes,
 
 	// New URL structure routes
 	// CHANGES: Added keepAlive meta for cached views

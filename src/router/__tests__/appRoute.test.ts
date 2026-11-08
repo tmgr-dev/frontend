@@ -16,6 +16,7 @@ const loadRoutes = (canUseApp: boolean, workspaceCode?: string) => {
 	};
 	(globalThis as any).window = { app: { $store: store } };
 	const dependencies: Record<string, unknown> = {
+		'@/router/docsRoutes': { default: [] },
 		'@/router/moduleGate': {
 			gatedPage: (_k: string, _t: string, f: unknown) => f,
 		},

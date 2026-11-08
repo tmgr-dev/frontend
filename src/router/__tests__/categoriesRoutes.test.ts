@@ -9,6 +9,7 @@ const loadRoutes = () => {
 	const loaded = { exports: {} as any };
 	(globalThis as any).window = { app: { $store: { getters: {}, state: {} } } };
 	const dependencies: Record<string, unknown> = {
+		'@/router/docsRoutes': { default: [] },
 		'@/router/moduleGate': {
 			gatedPage: (_k: string, _t: string, f: unknown) => f,
 		},
