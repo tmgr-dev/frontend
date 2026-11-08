@@ -981,6 +981,49 @@ fn a_replayed_message_id_is_audited_once() {
   assert_eq!(r.phones.verification_failures(), 3);
 }
 
+fn verify_failed_lines(r: &Rig) -> usize {
+  std::fs::read_to_string(r.dir.path().join("audit.jsonl")).unwrap().lines().filter(|l| l.contains("verify_failed")).count()
+}
+
+#[test]
+fn a_reused_message_id_with_a_different_body_is_audited_again() {
+  let r = rig();
+  r.pair("mb1", "Pocket", 10);
+  for body in ["{}", "{\"a\":1}", "{}"] {
+    r.relay.push_with_id("same", "answer", &r.next_id(), body);
+    r.phones.poll_all();
+  }
+  assert_eq!(verify_failed_lines(&r), 2);
+}
+
+#[test]
+fn the_same_message_id_in_another_mailbox_is_audited() {
+  let r = rig();
+  let first = r.pair("mb1", "Pocket", 10).pin;
+  let second = r.pair("mb2", "Tablet", 20).pin;
+  let msg = RelayMsg { id: "same".into(), kind: "answer".into(), reference: String::new(), body: "{}".into() };
+  r.phones.verification_failed(&first, &msg);
+  r.phones.verification_failed(&second, &msg);
+  r.phones.verification_failed(&second, &msg);
+  assert_eq!(verify_failed_lines(&r), 2);
+}
+
+#[test]
+fn the_failure_dedupe_evicts_one_entry_at_a_time() {
+  let r = rig();
+  let pin = r.pair("mb1", "Pocket", 10).pin;
+  let msg = |id: usize| RelayMsg { id: format!("m{id}"), kind: "answer".into(), reference: String::new(), body: "{}".into() };
+  for i in 0..1025 {
+    r.phones.verification_failed(&pin, &msg(i));
+  }
+  assert_eq!(verify_failed_lines(&r), 1025);
+  r.phones.verification_failed(&pin, &msg(1024));
+  r.phones.verification_failed(&pin, &msg(1));
+  assert_eq!(verify_failed_lines(&r), 1025);
+  r.phones.verification_failed(&pin, &msg(0));
+  assert_eq!(verify_failed_lines(&r), 1026);
+}
+
 #[test]
 fn the_audit_file_stays_near_its_cap() {
   let dir = tempfile::tempdir().unwrap();

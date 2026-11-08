@@ -1,4 +1,7 @@
+use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::Ordering;
+
+use sha2::{Digest, Sha256};
 
 use tmgr_ipc::decisions::{CardIn, Event};
 use tmgr_phone::{AckBody, AckResult, Pairing};
@@ -12,6 +15,14 @@ use super::Phones;
 const ALERT_EVERY_MS: i64 = 10 * 60 * 1000;
 const FAILED_IDS_MAX: usize = 1024;
 const OTHER_PHONE: &str = "another phone";
+
+type FailureKey = (String, String, [u8; 32]);
+
+#[derive(Default)]
+pub(super) struct FailedIds {
+  order: VecDeque<FailureKey>,
+  set: HashSet<FailureKey>,
+}
 
 impl Phones {
   fn pairing_of<'a>(pin: &'a Pin) -> Pairing<'a> {
@@ -40,18 +51,26 @@ impl Phones {
     )
   }
 
-  fn first_failure(&self, id: &str) -> bool {
+  fn first_failure(&self, mailbox: &str, msg: &RelayMsg) -> bool {
+    let key: FailureKey = (mailbox.to_owned(), msg.id.clone(), Sha256::digest(msg.body.as_bytes()).into());
     let mut seen = self.failed_ids.lock().unwrap_or_else(|p| p.into_inner());
-    if seen.len() >= FAILED_IDS_MAX {
-      seen.clear();
+    if seen.set.contains(&key) {
+      return false;
     }
-    seen.insert(id.to_owned())
+    if seen.order.len() >= FAILED_IDS_MAX {
+      if let Some(oldest) = seen.order.pop_front() {
+        seen.set.remove(&oldest);
+      }
+    }
+    seen.set.insert(key.clone());
+    seen.order.push_back(key);
+    true
   }
 
   pub(super) fn verification_failed(&self, pin: &Pin, msg: &RelayMsg) {
     let now = (self.now)();
     self.failures.fetch_add(1, Ordering::SeqCst);
-    if self.first_failure(&msg.id) {
+    if self.first_failure(&pin.mailbox, msg) {
       self.audit.append(now, "verify_failed", &[("mailbox", &pin.mailbox), ("message", &msg.id)]);
     }
     let last = self.last_alert.load(Ordering::SeqCst);
