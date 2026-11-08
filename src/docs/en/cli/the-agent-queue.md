@@ -3,7 +3,7 @@ title: 10. The agent queue
 section: CLI tutorials
 order: 39
 description: Let approved tasks start agents on your machine by themselves and receive the result as a pull request.
-video:
+video: https://tmgr.dev/l/video/en/tmgr-cli-10-queue.mp4
 ---
 
 This lesson sets up the agent queue: tasks assigned to a persona and approved by you start on your machine, and the result arrives as a pull request.

@@ -3,7 +3,7 @@ title: 5. The Decisions inbox
 section: CLI tutorials
 order: 34
 description: Let an agent ask you a question, answer it in one place and look up past answers.
-video:
+video: https://tmgr.dev/l/video/en/tmgr-cli-05-decisions.mp4
 ---
 
 In this lesson an agent asks a question, you answer it in the Decisions inbox, and the answer goes back to the agent.

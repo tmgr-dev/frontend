@@ -3,7 +3,7 @@ title: 9. Agent work reports
 section: CLI tutorials
 order: 38
 description: Install agent hooks, report a run with agent start, update and finish, and read the log.
-video:
+video: https://tmgr.dev/l/video/en/tmgr-cli-09-agent-reports.mp4
 ---
 
 This lesson shows how agents report their work on tasks and how you read those reports.

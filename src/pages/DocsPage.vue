@@ -86,12 +86,22 @@
 				</header>
 
 				<div
-					v-if="videoUrl"
+					v-if="video"
 					class="mb-8 aspect-video overflow-hidden rounded-lg border border-border bg-muted"
 					data-testid="docs-video"
 				>
+					<video
+						v-if="video.kind === 'file'"
+						:src="video.src"
+						:aria-label="`${ui.video}: ${resolved.page.title}`"
+						controls
+						preload="metadata"
+						playsinline
+						class="h-full w-full"
+					></video>
 					<iframe
-						:src="videoUrl"
+						v-else
+						:src="video.src"
 						:title="`${ui.video}: ${resolved.page.title}`"
 						class="h-full w-full"
 						allow="
@@ -256,10 +266,10 @@
 		DOCS_COMPONENTS,
 		DOCS_UI,
 		docsHead,
+		docsVideo,
 		parseDocsPath,
 		prevNext,
 		resolveDoc,
-		youtubeEmbedUrl,
 		type DocsSearchResult,
 	} from '@/utils/docs';
 	import { renderDoc } from '@/utils/docsMarkdown';
@@ -339,9 +349,7 @@
 			);
 			const shownLang = computed(() => resolved.value?.page.lang ?? lang.value);
 			const pager = computed(() => prevNext(nav.value, slug.value));
-			const videoUrl = computed(() =>
-				youtubeEmbedUrl(resolved.value?.page.video),
-			);
+			const video = computed(() => docsVideo(resolved.value?.page.video));
 
 			const mcpUrl = resolveMcpUrl(
 				import.meta.env.VITE_API_BASE_URL,
@@ -556,7 +564,7 @@
 				resolved,
 				shownLang,
 				pager,
-				videoUrl,
+				video,
 				rendered,
 				toc,
 				searchEntries,

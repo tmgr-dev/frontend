@@ -3,7 +3,7 @@ title: 2. Tasks from the terminal
 section: CLI tutorials
 order: 31
 description: Create, list and open tasks, move them on the board and script tmgr with JSON.
-video:
+video: https://tmgr.dev/l/video/en/tmgr-cli-02-tasks.mp4
 ---
 
 In this lesson you create tasks, look at them and move them across the board without opening the browser. You need a signed-in `tmgr`: see [1. Install and sign in](/docs/cli/install-and-sign-in).

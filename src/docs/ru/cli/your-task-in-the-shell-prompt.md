@@ -3,7 +3,7 @@ title: 6. Задача в приглашении шелла
 section: Уроки по CLI
 order: 35
 description: Показывайте текущую задачу и таймер в приглашении шелла, в tmux и в статус-строке Claude Code.
-video:
+video: https://tmgr.dev/l/video/ru/tmgr-cli-06-prompt.mp4
 ---
 
 В этом уроке вы выводите текущую задачу и таймер в приглашение шелла, в tmux и в статус-строку Claude Code.
