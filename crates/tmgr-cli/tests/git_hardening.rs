@@ -402,6 +402,24 @@ async fn start_refuses_a_repository_that_configures_a_transfer_program() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn start_accepts_a_repository_with_advice_and_status_settings() {
+    let (env, repo) = start_env().await;
+    git(&repo, &["config", "advice.detachedHead", "false"]);
+    git(&repo, &["config", "status.showUntrackedFiles", "all"]);
+    std::fs::write(repo.join("README.md"), "changed\n").unwrap();
+    let out = env
+        .tmgr_in(&repo, None)
+        .args(["start", "TM-512", "--stash", "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        git(&repo, &["branch", "--show-current"]),
+        "tm-512-checkout-apple-pay-button"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn start_ignores_files_that_the_global_excludes_file_ignores() {
     let (env, repo) = start_env().await;
     let ignore = env.tmp.path().join("global-ignore");

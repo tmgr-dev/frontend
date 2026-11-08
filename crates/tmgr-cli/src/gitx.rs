@@ -342,6 +342,8 @@ fn config_key_allowed(key: &str) -> bool {
                 | "commentchar"
                 | "quotepath"
         ),
+        ("advice", None) => true,
+        ("status", None) => var != "submodulesummary",
         ("pull", None) => !matches!(var, "twohead" | "octopus"),
         ("push", None) => matches!(var, "default" | "autosetupremote" | "followtags"),
         ("fetch", None) => matches!(var, "prune" | "prunetags"),
@@ -841,6 +843,10 @@ mod tests {
             "lfs.https://example.com/a/b/info/lfs.access",
             "submodule.lib.active",
             "extensions.worktreeConfig",
+            "advice.detachedHead",
+            "ADVICE.statusHints",
+            "status.showUntrackedFiles",
+            "status.relativePaths",
         ] {
             assert!(config_key_allowed(ok), "{ok}");
         }
@@ -859,6 +865,14 @@ mod tests {
             "pull.twohead",
             "branch.autosetupmerge",
             "nodots",
+            "advice.x.y",
+            "status.x.short",
+            "status.submoduleSummary",
+            "filter.x.required",
+            "alias.st",
+            "http.proxy",
+            "gc.auto",
+            "core.excludesFile",
         ] {
             assert!(!config_key_allowed(bad), "{bad}");
         }
