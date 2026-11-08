@@ -2,7 +2,7 @@ use std::fmt;
 use std::time::Duration;
 
 use reqwest::Method;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
 
 const BODY_LIMIT: usize = 4 << 20;
@@ -38,11 +38,25 @@ impl fmt::Display for RelayError {
 
 #[derive(Clone, Deserialize)]
 pub struct RelayMsg {
+  #[serde(deserialize_with = "id_from_int_or_string")]
   pub id: String,
   pub kind: String,
   #[serde(rename = "ref", default)]
   pub reference: String,
   pub body: String,
+}
+
+fn id_from_int_or_string<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+  #[derive(Deserialize)]
+  #[serde(untagged)]
+  enum Id {
+    Int(i64),
+    Text(String),
+  }
+  Ok(match Id::deserialize(d)? {
+    Id::Int(n) => n.to_string(),
+    Id::Text(s) => s,
+  })
 }
 
 impl fmt::Debug for RelayMsg {
@@ -52,6 +66,13 @@ impl fmt::Debug for RelayMsg {
 }
 
 pub type RelayResult<T> = Result<T, RelayError>;
+
+pub fn parse_messages(raw: &[u8]) -> RelayResult<Vec<RelayMsg>> {
+  let unreadable = || RelayError::Bad("the relay answer is not readable".into());
+  let v: Value = serde_json::from_slice(raw).map_err(|_| unreadable())?;
+  let list = v.get("data").cloned().unwrap_or(v);
+  serde_json::from_value(list).map_err(|_| unreadable())
+}
 
 pub fn usable(msgs: Vec<RelayMsg>) -> impl Iterator<Item = RelayMsg> {
   msgs.into_iter().filter(|m| safe_segment(&m.id)).take(MESSAGES_PER_POLL)
@@ -127,11 +148,7 @@ impl Relay for HttpRelay {
   }
 
   fn list_messages(&self, c: &Conn) -> RelayResult<Vec<RelayMsg>> {
-    let raw = Self::call(c, Method::GET, "/messages", None)?;
-    let v: Value =
-      serde_json::from_slice(&raw).map_err(|_| RelayError::Bad("the relay answer is not readable".into()))?;
-    let list = v.get("data").cloned().unwrap_or(v);
-    serde_json::from_value(list).map_err(|_| RelayError::Bad("the relay answer is not readable".into()))
+    parse_messages(&Self::call(c, Method::GET, "/messages", None)?)
   }
 
   fn post_message(&self, c: &Conn, kind: &str, reference: &str, body: &str) -> RelayResult<()> {
@@ -147,6 +164,46 @@ impl Relay for HttpRelay {
 
   fn delete_mailbox(&self, c: &Conn) -> RelayResult<()> {
     Self::call(c, Method::DELETE, "", None).map(|_| ())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  const NUMERIC: &str = r#"{"id":42,"kind":"hello","ref":"hello","body":"x","created_at":"2026-11-08T16:00:00Z"}"#;
+
+  #[test]
+  fn numeric_id_in_data_wrapper_is_read() {
+    let msgs = parse_messages(format!(r#"{{"data":[{NUMERIC}]}}"#).as_bytes()).unwrap();
+    assert_eq!(msgs.len(), 1);
+    assert_eq!(msgs[0].id, "42");
+    assert_eq!(msgs[0].kind, "hello");
+  }
+
+  #[test]
+  fn numeric_id_in_bare_array_is_read() {
+    let msgs = parse_messages(format!("[{NUMERIC}]").as_bytes()).unwrap();
+    assert_eq!(msgs.len(), 1);
+    assert_eq!(msgs[0].id, "42");
+  }
+
+  #[test]
+  fn string_id_is_still_read() {
+    let raw = r#"{"data":[{"id":"abc-1","kind":"answer","ref":"r","body":"x"}]}"#;
+    assert_eq!(parse_messages(raw.as_bytes()).unwrap()[0].id, "abc-1");
+  }
+
+  #[test]
+  fn empty_list_is_read() {
+    assert!(parse_messages(br#"{"data":[]}"#).unwrap().is_empty());
+    assert!(parse_messages(b"[]").unwrap().is_empty());
+  }
+
+  #[test]
+  fn garbage_is_refused() {
+    assert!(parse_messages(b"not json").is_err());
+    assert!(parse_messages(br#"{"data":[{"id":1.5,"kind":"k","body":"b"}]}"#).is_err());
   }
 }
 

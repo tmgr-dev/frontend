@@ -5,8 +5,8 @@
 				type="button"
 				variant="ghost"
 				size="icon"
-				title="Share"
-				aria-label="Share"
+				:title="$t('tasks.shareMenu.share')"
+				:aria-label="$t('tasks.shareMenu.share')"
 				data-testid="task-share-trigger"
 				class="h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink"
 			>

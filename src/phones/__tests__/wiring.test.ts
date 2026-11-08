@@ -72,6 +72,8 @@ describe('phones window wiring', () => {
 		expect(descriptor.scriptSetup ?? descriptor.script!.content).toContain(
 			'phonesAvailable(isDesktopApp(), store.getters.isLocalOnly)',
 		);
-		expect(descriptor.template!.content).toContain('Pair an iPhone');
+		expect(descriptor.template!.content).toContain(
+			"$t('settingsPages.phonesSection.pair')",
+		);
 	});
 });

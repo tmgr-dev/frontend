@@ -1,9 +1,7 @@
 <template>
 	<AuthLayout>
-		<template #title>Create your account</template>
-		<template #subtitle
-			>Set up a workspace for your tasks in a minute.</template
-		>
+		<template #title>{{ $t('auth.register.title') }}</template>
+		<template #subtitle>{{ $t('auth.register.subtitle') }}</template>
 
 		<div class="grid grid-cols-3 gap-2">
 			<Button
@@ -43,7 +41,7 @@
 				variant="outline"
 				class="h-10"
 				@click="telegramPaused = false"
-				>Try again</Button
+				>{{ $t('auth.common.tryAgain') }}</Button
 			>
 			<TelegramLoginWidget
 				v-else
@@ -58,7 +56,9 @@
 
 		<div class="my-6 flex items-center gap-3">
 			<Separator class="flex-1" />
-			<span class="text-xs text-muted-foreground">Or continue with email</span>
+			<span class="text-xs text-muted-foreground">{{
+				$t('auth.common.orContinueWithEmail')
+			}}</span>
 			<Separator class="flex-1" />
 		</div>
 
@@ -77,19 +77,21 @@
 				v-if="emailTaken"
 				to="/login"
 				class="font-medium underline underline-offset-4"
-				>Sign in</router-link
+				>{{ $t('auth.common.signIn') }}</router-link
 			>
 		</p>
 
 		<form class="space-y-4" @submit.prevent="register">
 			<div class="space-y-2">
-				<Label for="name" class="text-foreground">Name</Label>
+				<Label for="name" class="text-foreground">{{
+					$t('auth.register.name')
+				}}</Label>
 				<Input
 					v-model="form.name"
 					id="name"
 					type="text"
 					:class="{ 'border-destructive': errors.name }"
-					placeholder="Your name"
+					:placeholder="$t('auth.register.namePlaceholder')"
 					autocomplete="name"
 					class="h-10"
 				/>
@@ -98,13 +100,15 @@
 				</p>
 			</div>
 			<div class="space-y-2">
-				<Label for="email" class="text-foreground">E-mail</Label>
+				<Label for="email" class="text-foreground">{{
+					$t('auth.common.email')
+				}}</Label>
 				<Input
 					v-model="form.email"
 					id="email"
 					type="email"
 					:class="{ 'border-destructive': errors.email }"
-					placeholder="your@email.com"
+					:placeholder="$t('auth.register.emailPlaceholder')"
 					autocomplete="email"
 					class="h-10"
 				/>
@@ -113,13 +117,15 @@
 				</p>
 			</div>
 			<div class="space-y-2">
-				<Label for="password" class="text-foreground">Password</Label>
+				<Label for="password" class="text-foreground">{{
+					$t('auth.common.password')
+				}}</Label>
 				<Input
 					v-model="form.password"
 					id="password"
 					type="password"
 					:class="{ 'border-destructive': errors.password }"
-					placeholder="Create a password"
+					:placeholder="$t('auth.register.passwordPlaceholder')"
 					autocomplete="new-password"
 					class="h-10"
 				/>
@@ -128,15 +134,15 @@
 				</p>
 			</div>
 			<div class="space-y-2">
-				<Label for="password_confirmation" class="text-foreground"
-					>Confirm password</Label
-				>
+				<Label for="password_confirmation" class="text-foreground">{{
+					$t('auth.register.confirmPassword')
+				}}</Label>
 				<Input
 					v-model="form.password_confirmation"
 					id="password_confirmation"
 					type="password"
 					:class="{ 'border-destructive': errors.password_confirmation }"
-					placeholder="Confirm your password"
+					:placeholder="$t('auth.register.confirmPasswordPlaceholder')"
 					autocomplete="new-password"
 					class="h-10"
 				/>
@@ -150,24 +156,27 @@
 				:disabled="isLoading"
 				class="mt-2 h-10 w-full"
 			>
-				<span v-if="!isLoading">Create account</span>
-				<span v-else>Creating...</span>
+				<span v-if="!isLoading">{{ $t('auth.register.submit') }}</span>
+				<span v-else>{{ $t('auth.register.creating') }}</span>
 			</Button>
 		</form>
 
 		<template #footer>
-			Already have an account?
-			<router-link
-				to="/login"
-				class="font-medium text-primary underline-offset-4 hover:underline"
-				>Sign in</router-link
-			>
+			<i18n-t keypath="auth.register.haveAccount" tag="span">
+				<template #link>
+					<router-link
+						to="/login"
+						class="font-medium text-primary underline-offset-4 hover:underline"
+						>{{ $t('auth.common.signIn') }}</router-link
+					>
+				</template>
+			</i18n-t>
 			<div v-if="isLocalMode" class="mt-2">
 				<router-link
 					to="/app"
 					data-testid="continue-without-account"
 					class="font-medium text-primary underline-offset-4 hover:underline"
-					>Continue without an account</router-link
+					>{{ $t('auth.common.continueWithoutAccount') }}</router-link
 				>
 			</div>
 		</template>
@@ -194,6 +203,7 @@
 	import { Separator } from '@/components/ui/separator';
 	import { startDesktopSocialLogin } from '@/composable/useDesktopSocialLogin';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { t } from '@/i18n';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { DesktopAuthProvider } from '@/utils/desktopAuth';
 	import { createOAuthBinding } from '@/utils/oauthBinding';
@@ -240,7 +250,7 @@
 			try {
 				await enterApp();
 			} catch {
-				failure.value = 'Signed in, but the app could not load. Reload it.';
+				failure.value = t('auth.register.appLoadFailed');
 			}
 		} finally {
 			isLoading.value = false;
@@ -264,7 +274,7 @@
 	}
 
 	function telegramFailed() {
-		message.value = 'Telegram sign-in failed, try again';
+		message.value = t('auth.common.telegramFailed');
 		// Re-render once by itself; later failures wait for a click, so a
 		// widget that fails on every load can't hammer the API.
 		telegramFailures.value++;
@@ -273,8 +283,7 @@
 	}
 
 	function telegramResultDropped() {
-		message.value =
-			"Telegram sign-in didn't finish. Allow pop-ups for this site and try again.";
+		message.value = t('auth.common.telegramNotFinished');
 	}
 
 	async function enterApp() {
@@ -335,6 +344,6 @@
 	}
 
 	onMounted(() => {
-		setDocumentTitle('Register');
+		setDocumentTitle(t('auth.register.documentTitle'));
 	});
 </script>

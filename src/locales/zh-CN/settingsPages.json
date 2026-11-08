@@ -1,0 +1,972 @@
+{
+	"workspaces": {
+		"documentTitle": "工作区设置",
+		"loadFailed": "无法加载工作区设置。",
+		"toast": {
+			"editorUpdated": "编辑器已更新。正在重新加载页面...",
+			"saved": "保存成功！",
+			"saveSettingsFailed": "无法保存工作区设置",
+			"workspaceSaved": "工作区已保存",
+			"error": "错误",
+			"saveWorkspaceFailed": "无法保存工作区",
+			"defaultSaved": "默认工作区已保存",
+			"defaultSaveFailed": "无法保存默认工作区",
+			"created": "创建成功！",
+			"inviteFailed": "无法发送邀请，请重试。",
+			"deleteFailed": "无法删除工作区，请重试。",
+			"leaveFailed": "无法退出工作区，请重试。",
+			"memberRemoved": "成员已移除",
+			"memberRemovedDescription": "{name} 已从工作区中移除",
+			"removeMemberFailed": "无法移除成员"
+		},
+		"membersLoadFailed": "无法加载工作区成员。",
+		"title": "工作区设置",
+		"newWorkspace": "新建工作区",
+		"create": {
+			"title": "创建新工作区",
+			"description": "请输入新工作区的名称",
+			"namePlaceholder": "新工作区名称"
+		},
+		"invite": {
+			"label": "邀请",
+			"title": "发送邀请",
+			"description": "输入邮箱地址，邀请成员加入此工作区",
+			"emailsPlaceholder": "输入邮箱（用逗号分隔），例如：\nuser1{'@'}example.com,\nuser2{'@'}example.com,\n...\nuserN{'@'}example.com",
+			"send": "发送"
+		},
+		"delete": {
+			"label": "删除工作区",
+			"description": "这将为所有成员永久删除工作区 {name} 及其中的任务、页面和文件。此操作无法撤销。"
+		},
+		"exit": {
+			"label": "退出工作区",
+			"confirmTitle": "你确定吗？",
+			"confirmDescription": "此操作无法由你自己撤销。如果想重新加入此工作区，请让工作区的成员再次向你发送邀请。"
+		},
+		"loading": "正在加载工作区设置",
+		"general": {
+			"title": "工作区",
+			"name": "名称",
+			"nameEmpty": "名称不能为空",
+			"colour": "颜色",
+			"defaultColour": "默认"
+		},
+		"preferences": {
+			"title": "偏好设置",
+			"customValue": "设置自定义值"
+		},
+		"default": {
+			"title": "默认工作区",
+			"description": "用于 Telegram、MCP、智能设备，以及在新设备上打开 TMGR 时。",
+			"choose": "选择工作区",
+			"setAsDefault": "设为默认"
+		},
+		"members": {
+			"title": "成员",
+			"loading": "正在加载成员",
+			"none": "未找到成员",
+			"owner": "所有者",
+			"removeTitle": "移除成员",
+			"removeConfirm": "确定要将 {name} 从此工作区移除吗？此操作无法撤销。"
+		},
+		"invitations": {
+			"title": "邀请"
+		}
+	},
+	"plugins": {
+		"title": "插件",
+		"subtitle": "插件在本地工作区中运行；在共享工作区中，需由创建者为所有人启用后才会运行。每个插件都在自己的沙盒中运行，只拥有其卡片上列出的权限。",
+		"howItWorks": "插件的工作方式",
+		"openWorkspace": "打开一个工作区，即可为其启用或停用插件。",
+		"sharedCreator": "共享工作区：{name}。该工作区由你创建：你在此启用的插件将对每位成员运行。",
+		"sharedMember": "共享工作区：{name}。只有创建者可以在此启用插件，插件将对每位成员运行。",
+		"currentWorkspace": "当前工作区：{name}",
+		"safeMode": {
+			"title": "安全模式",
+			"description": "停用所有插件。使用 --safe-mode 启动应用效果相同。"
+		},
+		"devMode": {
+			"title": "开发者模式",
+			"description": "从 ~/.tmgr.dev/plugins 加载插件。它们默认处于关闭状态。"
+		},
+		"tray": {
+			"title": "{tray}文字",
+			"description": "允许一个插件在{tray}中的计时器旁显示文字。"
+		},
+		"dev": {
+			"showFolder": "显示文件夹",
+			"reload": "重新加载插件"
+		},
+		"install": {
+			"title": "从 GitHub 安装",
+			"description": "粘贴插件仓库地址。应用会读取其最新发布版本，并在安装前显示它可能执行的操作。",
+			"repoLabel": "插件仓库",
+			"checking": "正在检查…",
+			"check": "检查"
+		},
+		"offer": {
+			"updateTitle": "更新 {name} {version}？",
+			"installTitle": "安装 {name} {version}？",
+			"from": "来自 github.com/{repo}（{tag}），发布者：{publisher}。",
+			"verified": "已验证的发布者：使用 TMGR 目录中列出的密钥签名。",
+			"unverified": "未验证的发布者：已签名，但未列入 TMGR 目录。其密钥会被记住，后续更新必须使用相同的密钥签名。",
+			"itCan": "它可以：",
+			"connectTo": "它可以连接到：{origins}（仅限这台电脑）",
+			"openLinks": "它可以打开指向以下域名的链接：{domains}",
+			"telegram": "它可以打开 Telegram 链接（tg://）。",
+			"pictures": "从以下域名加载图片：{domains}。插件每次显示图片时，这些网站都会收到一次请求。",
+			"companion": "配合你自行安装的外部程序使用（{description}）。它将以你选择的角色身份写入内容。",
+			"newInVersion": "此版本的新内容：",
+			"schemeLinks": "{scheme}:// 链接",
+			"imagesFrom": "来自 {domain} 的图片",
+			"startOff": "已安装的插件默认处于关闭状态；请按工作区分别启用。",
+			"update": "更新",
+			"install": "安装"
+		},
+		"remove": {
+			"title": "移除 {name}？",
+			"description": "插件将从这台电脑上删除。它在工作区中的数据会保留，直到你重新安装或清除该工作区。"
+		},
+		"card": {
+			"originVerified": "来自 github.com/{repo} · {tag} · 已验证的发布者",
+			"originUnverified": "来自 github.com/{repo} · {tag} · 未验证的发布者",
+			"checkUpdate": "检查更新",
+			"turnOn": "启用 {name}",
+			"allowed": "允许使用这台电脑上的网络和文件。",
+			"notAllowed": "在你允许之前，它在这台电脑上的网络和文件访问保持关闭。",
+			"stopAllowing": "停止允许",
+			"allow": "在这台电脑上允许",
+			"connectTo": "可以连接到：{origins}（仅限这台电脑）",
+			"openLinks": "可以打开指向以下域名的链接：{domains}",
+			"telegram": "可以打开 Telegram 链接（tg://）",
+			"pictures": "从以下域名加载图片：{domains}。插件每次显示图片时，这些网站都会收到一次请求。",
+			"can": "可以：",
+			"openView": "打开“{title}”",
+			"saveSettings": "保存设置",
+			"log": "日志（{count}）",
+			"copyDiagnostics": "复制诊断信息"
+		},
+		"permission": {
+			"tasksRead": "读取任务",
+			"tasksWrite": "创建和修改任务",
+			"statusesRead": "读取状态",
+			"categoriesRead": "读取项目",
+			"timeRead": "读取已跟踪的时间",
+			"timeWrite": "开始和停止计时器",
+			"commentsRead": "读取评论",
+			"commentsWrite": "添加评论",
+			"notifications": "显示通知",
+			"filesExport": "将文件保存到此工作区的导出文件夹",
+			"filesAttachments": "读取任务附件",
+			"filesPick": "读取你选择的文件",
+			"statusesWrite": "创建和修改状态",
+			"categoriesWrite": "创建和修改项目",
+			"relationsRead": "读取任务之间的关联",
+			"relationsWrite": "关联和取消关联任务",
+			"agentWorkRead": "读取任务上的 AI 智能体运行",
+			"agentWorkWrite": "记录任务上的 AI 智能体运行",
+			"alarms": "在后台按计划唤醒",
+			"tray": "向{tray}图标添加项目和文字",
+			"deeplinks": "可通过其他应用中的 tmgr:// 链接打开",
+			"linksOpen": "在浏览器中打开网页链接",
+			"imagesRemote": "从其声明的网站加载图片",
+			"routinesRead": "读取你的笔记和例行事项（仅限本地工作区）",
+			"routinesWrite": "添加、重命名、完成和转换你的笔记和例行事项（仅限本地工作区）",
+			"viewsBadge": "在其侧边栏项目上显示计数",
+			"pagesRead": "读取你的页面及其页面数据",
+			"pagesWrite": "创建页面、修改页面文本并保存页面数据",
+			"pagesSections": "写入页面中由它自己管理的章节",
+			"menusTask": "向任务“…”菜单添加项目",
+			"none": "除自身存储外无任何权限",
+			"groupReads": "读取你的数据",
+			"groupChanges": "修改你的数据",
+			"groupInterface": "更改界面",
+			"groupOutside": "访问应用之外"
+		},
+		"toast": {
+			"upToDate": "{name} 已是最新版本",
+			"updated": "{name} 已更新",
+			"installed": "{name} 已安装",
+			"removed": "{name} 已移除",
+			"changeFailed": "无法为此工作区更改插件",
+			"commandFailed": "插件命令执行失败",
+			"settingsSaved": "插件设置已保存",
+			"diagnosticsCopied": "诊断信息已复制",
+			"diagnosticsFailed": "无法复制诊断信息"
+		},
+		"source": {
+			"builtin": "内置",
+			"folder": "文件夹",
+			"installed": "已安装"
+		},
+		"status": {
+			"running": "运行中",
+			"starting": "正在启动…",
+			"stopped": "已关闭",
+			"failed": "启动失败",
+			"crashed": "出错后已关闭",
+			"blocked": "已被 TMGR 屏蔽"
+		}
+	},
+	"skillFiles": {
+		"title": "文件 · {slug}",
+		"loading": "正在加载文件…",
+		"deleteFile": "删除 {path}"
+	},
+	"deletedSkills": {
+		"recentlyDeleted": "最近删除",
+		"loadFailed": "无法加载最近删除的技能。",
+		"filesCount": "{n} 个文件",
+		"hideVersions": "隐藏版本",
+		"versions": "版本",
+		"deletedUser": "已删除的用户",
+		"previewFailed": "无法加载此版本，请重试。",
+		"restore": "恢复",
+		"restoredFrom": "已从 v{version} 恢复",
+		"kind": {
+			"baseline": "基线",
+			"create": "已创建",
+			"edit": "已编辑",
+			"restore": "已恢复",
+			"convert": "已转换"
+		},
+		"deletedOn": "{when}删除 · 将于 {date} 永久移除",
+		"attachmentsNote": "角色附件不会被恢复。"
+	},
+	"sharedSkillHistory": {
+		"deletedUser": "已删除的用户",
+		"previewFailed": "无法加载此版本，请重试。",
+		"restoredFrom": "已从 v{version} 恢复",
+		"kind": {
+			"baseline": "基线",
+			"create": "已创建",
+			"edit": "已编辑",
+			"restore": "已恢复",
+			"convert": "已转换"
+		},
+		"title": "历史记录：{title}",
+		"loading": "正在加载历史记录…",
+		"current": "当前",
+		"pinnedBy": "固定者：{names}",
+		"compare": "与当前版本比较",
+		"restoreVersion": "恢复此版本",
+		"confirmRestore": "恢复版本 {version}？这将创建包含其内容的版本 {next}。"
+	},
+	"skillsLibrary": {
+		"importFromAgents": "从本地智能体导入",
+		"loading": "正在加载技能库…",
+		"empty": "暂无共享技能。",
+		"notAttached": "未关联",
+		"overriddenTitle": "已被此角色自己的技能覆盖",
+		"overridden": "（已覆盖）",
+		"historyOf": "{title} 的历史记录",
+		"filesOf": "{title} 的文件",
+		"history": "历史记录",
+		"filesButton": "文件（{count}）",
+		"used": "已使用 {count}/{limit}",
+		"editing": "编辑 {slug}",
+		"newSkill": "新建共享技能",
+		"bytes": "{count} / {max} 字节",
+		"saveChanges": "保存更改",
+		"createSkill": "创建技能",
+		"loadFailed": "无法加载技能库",
+		"loadSkillFailed": "无法加载此技能",
+		"limitReached": "你的技能库已有 {limit} 个技能",
+		"saved": "技能已保存",
+		"saveFailed": "无法保存技能",
+		"deleteFailed": "无法删除技能"
+	},
+	"modules": {
+		"title": "模块",
+		"subtitleWorkspace": "工作区“{name}”：选择 TMGR 中可用的功能",
+		"subtitle": "选择 TMGR 中可用的功能",
+		"loading": "正在加载模块",
+		"ownerOnlyNotice": "只有工作区所有者可以启用或停用模块。你可以为自己隐藏某个模块。",
+		"applyPreset": "应用预设",
+		"ownerOnlyHint": "只有所有者可以更改模块",
+		"core": "核心",
+		"hideCore": "为我隐藏核心部分",
+		"packCount": "已开启 {enabled}/{total}",
+		"askOwner": "请让所有者开启此项",
+		"account": "此账号",
+		"accountDescription": "在每个工作区中对你生效",
+		"turnOffTitle": "关闭工作流？",
+		"turnOff": "关闭",
+		"personal": "个人偏好",
+		"personalDescription": "这些设置只影响你的账号",
+		"errorTitle": "错误",
+		"updated": "模块已更新",
+		"personalUpdated": "个人偏好已更新",
+		"updateFailed": "无法更新模块",
+		"preferenceFailed": "无法更新偏好",
+		"loadFailed": "无法加载模块。"
+	},
+	"skillImportDialog": {
+		"title": "从本地智能体导入技能",
+		"introDevice": "对这台电脑上的技能文件夹进行只读扫描。不会执行任何内容；只有你勾选的技能会保存到这台设备上的技能库。",
+		"introCloud": "对这台电脑上的技能文件夹进行只读扫描。不会执行任何内容；只有你勾选的技能会发送到你的技能库。",
+		"scanning": "正在扫描…",
+		"scanFailed": "无法扫描这台电脑。",
+		"empty": "未找到技能。使用“添加文件夹…”扫描项目。",
+		"cannotImport": "无法导入：{reason}",
+		"slugLabel": "库标识",
+		"useInstead": "改用 {slug}",
+		"droppedFields": "未带入：{fields}",
+		"filesSummary": "文件：共 {total} 个，将上传 {count} 个（{bytes}）",
+		"fileSize": "{size} B",
+		"truncated": "列表已截断；此技能的文件过多，无法导入。",
+		"uploadNoteDevice": "只有标记为“将上传”的文件会以文本形式发送到这台设备上的技能库。密钥检查只是尽力而为：请查看上面的列表。",
+		"uploadNoteCloud": "只有标记为“将上传”的文件会以文本形式发送到云端。密钥检查只是尽力而为：请查看上面的列表。",
+		"selectPrompt": "选择一个技能进行预览。",
+		"addFolder": "添加文件夹…",
+		"selectedCount": "已选 {count} 个",
+		"importSelected": "导入所选",
+		"bytes": "{count} B",
+		"kib": "{count} KiB",
+		"imported": "已导入",
+		"importedSkipped": "已导入，{n} 个文件未导入",
+		"folderFailed": "无法打开文件夹",
+		"indexFailed": "无法记录已导入的内容",
+		"indexFailedDescription": "下次导入时，这些技能将被视为已在技能库中。",
+		"refreshFailed": "无法刷新技能库",
+		"importFailed": "无法导入技能",
+		"status": {
+			"new": "新增",
+			"upToDate": "已是最新",
+			"changed": "自上次导入后已更改 — 将更新",
+			"editedInLibrary": "导入后已在技能库中编辑 — 将覆盖",
+			"slugTaken": "技能库中标识已被占用 — 勾选以覆盖",
+			"previouslyImportedDeleted": "曾导入过，已从技能库删除",
+			"blocked": "无法导入"
+		}
+	},
+	"pluginsHelp": {
+		"title": "插件的工作方式",
+		"subtitle": "插件可以为 TMGR 桌面应用添加徽标、页面、任务章节和命令。",
+		"backLabel": "返回插件",
+		"glanceLabel": "一览",
+		"glance": {
+			"sandboxed": {
+				"title": "沙盒隔离",
+				"text": "只有其卡片上列出的权限。"
+			},
+			"signed": {
+				"title": "已签名",
+				"text": "GitHub 插件必须由其作者签名。"
+			},
+			"shared": {
+				"title": "由创建者共享",
+				"text": "在共享工作区中，只有创建者可以启用插件。"
+			},
+			"stop": {
+				"title": "易于停止",
+				"text": "安全模式可一次性关闭所有插件。"
+			}
+		},
+		"abilities": {
+			"data": {
+				"title": "你的数据",
+				"text": "只有它申请的内容，例如“读取任务”。"
+			},
+			"network": {
+				"title": "网络",
+				"text": "只有它声明的本机地址，以红色显示。"
+			},
+			"pages": {
+				"title": "它自己的页面",
+				"text": "在独立窗口中，无法访问其他任何内容。"
+			}
+		},
+		"can": {
+			"title": "插件可以做什么",
+			"intro": "只有其卡片上写明的内容。其余一切都是关闭的。"
+		},
+		"github": {
+			"title": "从 GitHub 安装",
+			"step1": "粘贴链接",
+			"check": "检查",
+			"step2": "查看它可以做什么",
+			"installPrompt": "安装 Timer 1.0.0？",
+			"itCan": "它可以：读取任务",
+			"verified": "已验证的发布者",
+			"step3": "启用它",
+			"running": "运行中",
+			"verifiedText": "TMGR 认识这位作者的签名密钥。",
+			"unverified": "未验证的发布者",
+			"unverifiedText": "已签名，但未经 TMGR 审核。仅在你信任作者时安装。",
+			"signed": "每个发布版本都必须签名。应用会记住作者的密钥，因此由其他人签名的更新会被拒绝。"
+		},
+		"unsigned": {
+			"title": "没有签名的插件",
+			"intro": "适用于你自己编写的插件，或未发布的插件。",
+			"step1": "把文件夹放到那里",
+			"step2": "开启开发者模式",
+			"step3": "点击“重新加载插件”",
+			"note": "沙盒和权限都相同，但没有人核实过作者。文件夹插件无法共享到工作区。"
+		},
+		"shared": {
+			"title": "共享工作区",
+			"creator": "创建者",
+			"turnsOn": "启用了 Timer 1.2",
+			"point1": "只有创建者可以启用插件。所有人使用相同的版本。",
+			"point2": "插件使用自己的短期密钥：仅限此工作区，仅限其权限。",
+			"point3": "你电脑上的网络、文件、{tray}、tmgr:// 链接和网页链接需要等待",
+			"allow": "在这台电脑上允许",
+			"point4": "插件保存的内容由所有成员共享。"
+		},
+		"trouble": {
+			"title": "当插件碍事时",
+			"switchOff": "关闭它",
+			"switchOffText": "在它的卡片上操作，或将其移除。",
+			"safeMode": "安全模式",
+			"everythingOff": "全部关闭",
+			"everythingOffText": "或使用 {flag} 启动应用。",
+			"blocked": "已被 TMGR 屏蔽",
+			"weStop": "我们会阻止有害插件",
+			"weStopText": "已签名的屏蔽列表会在所有地方关闭有害插件。",
+			"note": "五分钟内失败三次的插件会自动关闭。"
+		},
+		"authors": {
+			"title": "面向插件作者",
+			"step1": "从模板开始",
+			"step2": "签名并发布",
+			"step2Text": "{keygen}，将密钥保存为 {secret} 密钥，推送形如 {tag} 的标签。",
+			"step3": "获得验证（可选）",
+			"step3Text": "向 {link} 提交包含你的 id、仓库和公钥的拉取请求。有害插件也请在那里举报。",
+			"api11": "API 1.1：每项新能力都是独立的权限（闹钟、{tray}、tmgr:// 链接、网页链接、状态、关联、智能体运行），安装或更新时会显示。在开发者模式下用 {example} 全部试一遍；插件日志会显示调用被拒绝的原因。",
+			"api12": "API 1.2：插件可以读写日常事项（笔记和例行事项），仅限这台设备 — 暂不支持共享工作区。",
+			"api14": "API 1.4：插件可以在自己的侧边栏项目上显示计数。它需要 views:badge 权限，安装或更新时会显示，无需额外授权。过长的{tray}标题会以“…”缩短，而不是被拒绝。",
+			"api15": "API 1.5：插件可以操作页面。pages:read 可读取和搜索页面，pages:write 可创建、编辑和追加内容，pages:sections 则让插件只能写入由它自己管理的章节。安装或更新时都会显示各项权限。插件无法添加页面类型。",
+			"api16": "API 1.6：插件最多可向任务“…”菜单添加 3 个项目，位置包括看板卡片、任务列表和任务页面。它需要 menus:task 权限，安装或更新时会显示。插件运行期间，这些项目会显示在各自的分组中；插件项目总数超过 4 个时，它们会收进一个“插件”子菜单。"
+		}
+	},
+	"personaForm": {
+		"whoCanAssign": "谁可以分配",
+		"onlyMe": "仅我",
+		"onlyMeHint": "可在你授权的工作区中分配",
+		"thisWorkspace": "此工作区",
+		"thisWorkspaceHint": "每位成员都可以向它分配任务；只有你可以编辑它",
+		"name": "名称",
+		"namePlaceholder": "审阅者",
+		"description": "描述",
+		"descriptionPlaceholder": "此角色的用途",
+		"systemPrompt": "系统提示词（Markdown）",
+		"systemPromptPlaceholder": "你是...",
+		"bytes": "{used} / {max} 字节",
+		"notify": "有关此角色活动时通知我",
+		"notifyAll": "全部",
+		"notifyMentions": "仅在它需要我时",
+		"notifyNone": "从不"
+	},
+	"personaTokens": {
+		"loading": "正在加载智能体连接…",
+		"empty": "暂无智能体连接。",
+		"details": "{prefix}… · {workspace} · 到期：{expires} · 上次使用：{lastUsed}",
+		"never": "从未",
+		"revoke": "撤销",
+		"connect": "连接智能体",
+		"revokeAll": "全部撤销",
+		"loadFailed": "无法加载智能体连接",
+		"revoked": "已撤销",
+		"expired": "已过期",
+		"active": "有效",
+		"confirmRevoke": "撤销“{label}”连接？",
+		"revokeFailed": "无法撤销令牌",
+		"confirmRevokeAll": "撤销此角色的所有智能体连接？",
+		"revokeAllFailed": "无法撤销令牌"
+	},
+	"personaConnectDialog": {
+		"title": "连接智能体",
+		"loadingWorkspaces": "正在加载工作区…",
+		"noGrant": "此角色尚无有效的工作区授权。请先在上方“工作区”中授予访问权限，然后再回到这里。",
+		"workspace": "工作区",
+		"label": "标签",
+		"labelPlaceholder": "我笔记本上的 Claude Code",
+		"expires": "有效期",
+		"days": "{n} 天",
+		"tokenNote": "与你的设备令牌不同，此令牌只在一个工作区中有效，仅限于此角色在该工作区的授权，并且它写入的所有内容都以此角色的身份签名。",
+		"issuing": "正在签发…",
+		"issue": "签发令牌",
+		"copyNow": "请立即复制此令牌 — 之后将无法再次查看。",
+		"addToConfig": "将其添加到智能体的 {file}：",
+		"mcpConfig": "MCP 配置",
+		"secretNote": "请将令牌本身放入环境变量或已加入 gitignore 的密钥文件 — 切勿提交。",
+		"issueFailed": "无法签发令牌",
+		"copyFailed": "无法复制到剪贴板"
+	},
+	"personaConvertSkillDialog": {
+		"title": "转换为共享",
+		"loadFailed": "无法加载转换详情。",
+		"clash": "你的技能库中已有标识为“{slug}”的技能。请先删除或重命名其中一个。",
+		"intro": "将此技能移到你的技能库，并关联到 {name}。智能体的指令保持不变。",
+		"replaceCopy": "同时替换 {name} 上的副本",
+		"archived": "（已归档）",
+		"sameText": "文本相同",
+		"differentText": "文本不同 — 将被替换",
+		"convert": "转换",
+		"convertFailed": "无法转换此技能"
+	},
+	"personaSharedSkills": {
+		"fromLibrary": "来自技能库",
+		"loading": "正在加载技能库中的技能…",
+		"empty": "未关联技能库中的技能。请在角色下方的技能库中创建一个，然后在此关联。",
+		"pinned": "固定在 v{pinned} · 最新 v{latest}",
+		"overridden": "已被此角色自己的技能覆盖",
+		"versionFor": "{slug} 的版本",
+		"latest": "最新（v{version}）",
+		"detach": "取消关联",
+		"attachedCount": "已关联 {count}/{limit}",
+		"attach": "关联技能库中的技能",
+		"versionsFailed": "无法加载版本",
+		"loadFailed": "无法加载技能库中的技能",
+		"attachFailed": "无法关联技能",
+		"detachFailed": "无法取消关联技能",
+		"versionFailed": "无法更改技能版本",
+		"filesNotPinned": "文件不会被固定"
+	},
+	"personaSkills": {
+		"loading": "正在加载技能…",
+		"empty": "暂无技能。",
+		"convert": "转换为共享",
+		"usedCount": "已使用 {count}/{limit}",
+		"editing": "编辑 {slug}",
+		"newSkill": "新建技能",
+		"bytes": "{used} / {max} 字节",
+		"saveChanges": "保存更改",
+		"createSkill": "创建技能",
+		"loadFailed": "无法加载技能",
+		"loadOneFailed": "无法加载此技能",
+		"limitReached": "你已有 {limit} 个技能",
+		"saved": "技能已保存",
+		"saveFailed": "无法保存技能",
+		"confirmDelete": "删除技能“{title}”？",
+		"deleteFailed": "无法删除技能"
+	},
+	"personaWorkspaceGrants": {
+		"localNote": "此处不列出本地工作区。请打开该本地工作区，然后在它自己的“角色 → 在这台设备上”面板中授权此角色。",
+		"onThisDevice": "在这台设备上",
+		"loading": "正在加载工作区…",
+		"empty": "没有共享工作区。",
+		"home": "主工作区 · 归档此角色即可移除访问权限",
+		"blocked": "已被工作区创建者禁止",
+		"effective": "在此处生效：{permissions}",
+		"changeFailed": "无法更改此工作区",
+		"blockedByCreator": "已被工作区创建者禁止",
+		"permissionsFailed": "无法更新权限"
+	},
+	"personas": {
+		"agentsTitle": "智能体",
+		"agentsSubtitle": "将 Claude Code 和其他 MCP 客户端连接到你的本地工作区。",
+		"title": "角色",
+		"subtitle": "角色是你的 AI 智能体所使用的身份：拥有自己的名称、头像和系统提示词，并在每个工作区中拥有各自的权限。已使用 {count}/{limit}。",
+		"showArchived": "显示已归档",
+		"localAi": "本地 AI",
+		"editPersona": "编辑角色",
+		"newPersona": "新建角色",
+		"saveChanges": "保存更改",
+		"createPersona": "创建角色",
+		"change": "更改",
+		"archived": "已归档",
+		"promptVersion": "提示词 v{version}",
+		"archive": "归档",
+		"restore": "恢复",
+		"workspaces": "工作区",
+		"skills": "技能",
+		"agentConnections": "智能体连接",
+		"empty": "暂无角色。",
+		"skillsLibrary": "技能库",
+		"skillsLibraryDescription": "只需编写一次，即可关联到你的任何角色的技能。编辑其中一个，会更新所有关联了它的角色。",
+		"workspacePersonas": "工作区角色",
+		"workspacePersonasDescription": "{name} 中其他成员为整个工作区创建的角色。任何人都可以向它们分配任务；只有其所有者可以编辑。",
+		"personaOf": "{name} 的角色",
+		"workspaceScope": "工作区：{name}",
+		"thisWorkspace": "此工作区",
+		"loadFailed": "无法加载角色。",
+		"updated": "角色已更新",
+		"created": "角色已创建",
+		"saveFailed": "无法保存角色",
+		"archiveFailed": "无法归档角色",
+		"restoreFailed": "无法恢复角色（上限为 {limit} 个）",
+		"avatarFailed": "无法上传头像"
+	},
+	"consentPanel": {
+		"ariaLabel": "隐私选择",
+		"saveFailed": "无法在此浏览器中保存你的选择。此窗口中的数据共享已停止。",
+		"usage": {
+			"title": "帮助改进 TMGR？",
+			"intro": "与你的账号无关联的使用事件。默认关闭。",
+			"whatWeSend": "我们发送的内容",
+			"whatWeCollect": "我们收集的内容",
+			"details": "如果你同意，TMGR 会发送与你的账号无关联的使用事件：你打开了哪些界面和引导、完成了哪些步骤、应用版本和平台。",
+			"weSend": "我们会发送：",
+			"weSendText": "事件名称，如 tour_step_completed · 随机的安装 ID · 应用版本、操作系统、屏幕尺寸类别",
+			"weNeverSend": "我们绝不会发送：",
+			"weNeverSendText": "任务、页面或评论文本 · 姓名、邮箱、文件名 · 你的账号 ID。事件不会连同你的 IP 地址一起存储。",
+			"changeAnytime": "可随时在“设置 → 隐私”中更改。关闭后会立即停止发送；你也可以删除已发送的数据。",
+			"decline": "不，谢谢",
+			"accept": "共享使用数据"
+		},
+		"analytics": {
+			"title": "Cookie 和分析",
+			"text": "我们希望使用 Google Analytics 来了解人们如何找到和使用 TMGR。它会设置 Cookie 并向 Google 发送数据。除非你允许，否则它保持关闭。你可以随时更改。",
+			"privacyPolicy": "隐私政策",
+			"decline": "拒绝",
+			"accept": "允许分析"
+		}
+	},
+	"privacyLinks": {
+		"privacy": "隐私",
+		"commandLine": "命令行",
+		"cookieSettings": "Cookie 设置"
+	},
+	"privacySettings": {
+		"cookiesTitle": "Cookie 和分析",
+		"googleAnalytics": "Google Analytics",
+		"googleAnalyticsDescription": "帮助我们了解 TMGR 的使用情况。会设置 Cookie 并向 Google 发送数据。除非你允许，否则保持关闭。",
+		"privacyPolicy": "隐私政策"
+	},
+	"usageDataControls": {
+		"title": "使用数据",
+		"saveFailed": "无法在此浏览器中保存你的选择。此窗口中的数据共享已停止。",
+		"receiptError": "无法为此安装保留删除密钥。请使用“删除已发送的数据”来移除其数据。",
+		"shareLabel": "共享使用数据",
+		"shareDescription": "与你的账号无关联：事件名称、随机的安装 ID、应用版本和平台。绝不包含任务内容、姓名或邮箱。",
+		"installId": "安装 ID：",
+		"resetId": "重置 ID",
+		"pending": "等待发送的事件：",
+		"view": "查看",
+		"dataSent": "已发送的数据",
+		"deleteSent": "删除已发送的数据",
+		"coverage": "此开关涵盖来自这台设备的事件。基于账号数据的汇总新手引导统计在隐私政策中说明。",
+		"readMore": "了解更多",
+		"footer": "关闭共享会立即停止发送。原始事件保留 30 天。",
+		"queueTitle": "等待发送的事件",
+		"deleteFailed": "无法删除全部内容。共享已关闭。请稍后重试。",
+		"deleted": "已删除。共享已关闭。",
+		"nothingToDelete": "没有可删除的内容。共享已关闭。"
+	},
+	"signedInDevices": {
+		"title": "已登录的设备",
+		"description": "使用 tmgr login 登录的命令行会话。",
+		"loadFailed": "无法加载设备。",
+		"tryAgain": "重试",
+		"empty": "暂无 CLI 设备。请在终端中运行 {command}。",
+		"onHost": "位于 {host}",
+		"lastUsed": "登录于 {signedIn} · 上次使用 {lastUsed}",
+		"never": "从未",
+		"editScopes": "编辑权限范围",
+		"revoke": "撤销",
+		"savedTitle": "已保存",
+		"savedDescription": "设备权限范围已更新",
+		"errorTitle": "错误",
+		"updateFailed": "无法更新设备权限范围",
+		"confirmRevoke": "撤销 {host} 上的 {client}？它将被退出登录。",
+		"doneTitle": "完成",
+		"revoked": "设备已撤销",
+		"revokeFailed": "无法撤销设备"
+	},
+	"phonesSection": {
+		"title": "手机",
+		"intro": "在 TMGR iPhone 应用中回答决策卡片。配对需要这台 Mac 保持开机。",
+		"macName": "这台 Mac 的名称",
+		"manage": "管理手机",
+		"openFailed": "无法打开窗口",
+		"pair": "配对 iPhone"
+	},
+	"profile": {
+		"title": "个人资料",
+		"pictureTitle": "头像",
+		"uploading": "正在上传…",
+		"changePicture": "更换头像",
+		"acceptedFormats": "支持的格式：PNG、JPEG、WebP、GIF。",
+		"accountTitle": "账号",
+		"name": "姓名",
+		"email": "邮箱",
+		"emailReadonly": "此处无法更改邮箱",
+		"changePassword": "修改密码",
+		"leaveBlank": "留空则保持当前密码不变。",
+		"currentPassword": "当前密码",
+		"newPassword": "新密码",
+		"confirmPassword": "确认密码",
+		"socialHint": "使用 Google、GitHub 或 Apple 注册且从未设置过密码？请在登录页面使用“忘记密码”来设置。",
+		"signOutOthers": "退出其他设备",
+		"signOutOthersHint": "如果你认为有其他人访问过你的账号，建议执行此操作。这台设备保持登录状态。",
+		"agentTitle": "智能体连接",
+		"agentDescription": "撤销所有角色令牌，涵盖你的全部角色和工作区。",
+		"revoking": "正在撤销…",
+		"revokeAll": "撤销所有角色令牌",
+		"tokensRevokedNotice": "设备、智能体和通知令牌已被撤销 — 请重新生成。",
+		"pickImage": "选择图片文件",
+		"readFailed": "无法读取该图片",
+		"uploadFailed": "无法上传该图片",
+		"removeFailed": "无法移除头像",
+		"passwordChanged": "密码已修改",
+		"savedTitle": "已保存",
+		"savedDescription": "用户数据已保存",
+		"confirmRevokeAll": "撤销你所有角色的全部角色令牌？",
+		"doneTitle": "完成",
+		"allRevoked": "所有角色令牌已撤销",
+		"errorTitle": "错误",
+		"revokeFailed": "无法撤销角色令牌"
+	},
+	"avatarCropModal": {
+		"title": "裁剪头像",
+		"description": "拖动以移动，滚动或使用滑块缩放。",
+		"zoom": "缩放"
+	},
+	"privacy": {
+		"title": "隐私政策",
+		"lastUpdated": "最后更新：2026 年 10 月 13 日",
+		"summary": {
+			"store": "我们会存储你放入 TMGR 的内容（你的账号、任务、页面、文件、时间记录），以保证服务正常运行。我们不会出售这些数据，也不展示广告。",
+			"local": "桌面应用中的本地工作区保留在你的设备上。",
+			"consent": "在你允许之前，Google Analytics 保持关闭。使用数据同样在你允许之前保持关闭。这两项你都可以随时更改。",
+			"thirdParties": "部分功能会向其他公司发送数据，例如 AI 功能使用 OpenAI，闹钟来电使用 Twilio。下文列出了这些服务。",
+			"title": "摘要"
+		},
+		"controller": {
+			"todoName": "[控制者名称和地址 — 待确认]",
+			"text": "你的个人数据的控制者是 {controller}。联系方式：{contact}。",
+			"title": "谁负责"
+		},
+		"todoEmail": "[联系邮箱 — 待确认]",
+		"accountData": {
+			"accountLabel": "账号：",
+			"account": "{label}姓名、邮箱地址、密码哈希、你使用的登录提供方（GitHub、Google、Apple、Telegram）的 ID、你的头像和你的设置。",
+			"contentLabel": "你的内容：",
+			"content": "{label}工作区、任务、评论、页面、上传的文件、时间记录、例行事项、AI 助手对话，以及你所连接的 AI 智能体的工作日志。",
+			"devicesLabel": "设备和通知：",
+			"devices": "{label}登录会话、用于 Face ID 登录的设备密钥、iOS 应用的推送令牌、你的私有通知主题，以及你为智能体和设备创建的访问令牌。",
+			"alarmLabel": "闹钟电话号码：",
+			"alarm": "{label}仅在你设置了闹钟来电时才会存储，并且是加密存储。",
+			"integrationsLabel": "你连接的集成：",
+			"integrations": "{label}你的 Telegram ID 和用户名、你关联的 GitHub 仓库中的数据（包括提交作者的姓名和邮箱），以及你的 Cursor API 密钥。",
+			"usage": "我们使用这些数据为你运行 TMGR。我们不会在数据库中存储你的 IP 地址。我们的服务器会在内存中保留客户端 IP 地址最多一小时，以限制猜测密码等滥用行为。",
+			"title": "我们为你的账号存储的数据"
+		},
+		"desktopLocal": {
+			"intro": "桌面应用中的本地工作区是你电脑上的一个数据库文件，其备份保存在你电脑上的一个文件夹中。其内容不会发送给我们。",
+			"connects": "桌面应用仍会因少数用途而连接互联网：",
+			"updates": "它会向 GitHub 检查应用更新。GitHub 会看到你的 IP 地址。",
+			"plugins": "它会在启动时以及每六小时从 GitHub 刷新插件目录。",
+			"ai": "如果你自行配置了 AI 端点，它会与该端点通信。",
+			"usage": "只有在你开启使用数据时，它才会发送使用数据（见下文）。",
+			"noAnalytics": "桌面应用绝不会加载 Google Analytics 或 Plausible。",
+			"title": "无需账号的桌面应用"
+		},
+		"usageData": {
+			"intro": "如果你同意，应用会发送与你的账号无关联的使用事件。它们让我们了解人们打开了哪些界面和引导、完成了哪些步骤，以便我们改进 TMGR。",
+			"sentLabel": "发送的内容：",
+			"sent": "{label}事件名称，如 {code}，以及固定的取值（例如哪个引导、哪一步）；在你设备上创建的随机安装 ID；每次启动应用时的随机 ID；应用版本（主版本和次版本）；平台；你使用的是云端账号还是本地工作区；屏幕尺寸类别（小、中或大）；以及事件发生的小时。",
+			"neverSentLabel": "绝不发送的内容：",
+			"neverSent": "{label}任务、页面或评论文本、姓名、邮箱、文件名、工作区名称、链接、你的账号 ID、你的登录令牌或 Cookie。",
+			"ipLabel": "你的 IP 地址",
+			"ip": "{label}不会随事件一起存储。它会在内存中保留最多一小时，以限制滥用。",
+			"retentionLabel": "保留期限：",
+			"retention": "{label}原始事件在 30 天后删除。每日汇总（每个事件的计数，不含安装 ID）保留 13 个月。",
+			"offLabel": "关闭方式：",
+			"off": "{label}在“设置 → 隐私”或本页下方关闭“共享使用数据”。所有标签页和窗口中的发送会立即停止，你设备上等待发送的事件会被删除。",
+			"deleteLabel": "删除已发送的数据：",
+			"delete": "{label}你的设备为每个安装 ID 保留一个删除密钥。在“设置 → 隐私”或本页下方点击“删除已发送的数据”，会用它从我们的服务器删除这些事件，即使你已关闭共享也是如此。",
+			"pseudonymous": "由于安装 ID 会长期保持不变，我们将使用数据视为假名化的个人数据。法律依据是你的同意，你可以随时撤回。",
+			"title": "使用数据（可选）"
+		},
+		"analytics": {
+			"title": "Google Analytics 和页面浏览计数（网页版）",
+			"gaLabel": "Google Analytics",
+			"googlePolicy": "Google 的隐私政策",
+			"google": "只有在你允许后，网页版才会加载 {ga}。它会设置 Cookie（{cookie}），并将你的 IP 地址、设备和浏览器信息以及你访问的页面发送给 Google。如果你拒绝，它绝不会加载。你可以随时通过下方或登录页面底部的“Cookie 设置”，或在设置中更改你的选择。法律依据是你的同意。参见 {policy}。",
+			"choice": "你当前的选择：{status}",
+			"cookieSettings": "Cookie 设置",
+			"plausibleLabel": "Plausible：",
+			"plausible": "{label}网页版使用我们自行托管的 Plausible 实例统计页面浏览量。它不设置 Cookie，也不存储 IP 地址或个人标识符。桌面应用不会加载它。法律依据是我们了解有多少人使用本网站的合法利益。",
+			"yandex": "不再使用 Yandex Metrica。"
+		},
+		"onboardingAggregates": {
+			"counts": "为了了解新手引导是否有效，我们会统计所有账号中有多少人注册、验证了邮箱、创建了第一个任务、启动了计时器、连接了 AI 智能体或完成了引导。这些数字来自 TMGR 本来就会存储的数据，只以合计形式显示，且少于 10 人的分组会被隐藏。",
+			"basis": "无论你是否共享使用数据，这都会进行，因为它使用的是账号数据，而不是设备事件。法律依据是我们改进新手引导的合法利益。你可以写信给我们提出异议（参见“联系方式”）。",
+			"title": "基于账号数据的新手引导统计"
+		},
+		"thirdParties": {
+			"title": "我们使用的服务",
+			"service": "服务",
+			"whatFor": "用途",
+			"receive": "接收的数据",
+			"rows": {
+				"hetzner": {
+					"use": "运行 TMGR 的服务器",
+					"receive": "存储在 TMGR 中的所有数据"
+				},
+				"bunny": {
+					"use": "网页应用和网站的内容分发",
+					"receive": "你加载页面时的 IP 地址和浏览器信息"
+				},
+				"storage": {
+					"todo": "[名称 — 待确认]",
+					"name": "对象存储提供方 {todo}",
+					"use": "上传的文件、头像和导出内容",
+					"receive": "你上传的文件"
+				},
+				"email": {
+					"todo": "[名称 — 待确认]",
+					"name": "邮件服务提供方 {todo}",
+					"use": "验证邮件、密码重置邮件和通知邮件",
+					"receive": "你的邮箱地址和邮件内容"
+				},
+				"openai": {
+					"use": "AI 功能：AI 助手、“优化描述”以及 Telegram 语音消息转写",
+					"receive": "这些功能处理的文本、任务数据和语音消息，仅在你使用时发送"
+				},
+				"twilio": {
+					"use": "闹钟来电和用于验证手机的短信验证码",
+					"receive": "你的电话号码，以及来电中播报的闹钟标题和消息"
+				},
+				"expo": {
+					"use": "iOS 应用的推送通知、实时活动和更新",
+					"receive": "推送令牌和通知内容",
+					"name": "Expo 和 Apple"
+				},
+				"signin": {
+					"use": "登录，如果你选择该提供方",
+					"receive": "登录所需的信息；我们会收到你的姓名和邮箱"
+				},
+				"github": {
+					"use": "GitHub 集成（如果你安装）以及桌面应用更新",
+					"receive": "你关联的仓库数据；桌面应用检查更新时的 IP 地址"
+				},
+				"telegram": {
+					"use": "Telegram 机器人，如果你连接它",
+					"receive": "你的聊天 ID，以及机器人发送和接收的消息"
+				},
+				"cursor": {
+					"use": "启动 Cursor 智能体，如果你添加了 Cursor API 密钥",
+					"receive": "你发送的任务提示词和仓库详情"
+				},
+				"jsdelivr": {
+					"use": "代码高亮的样式表",
+					"receive": "加载时的 IP 地址和浏览器信息"
+				},
+				"ga": {
+					"use": "网页分析，仅在你允许时使用",
+					"receive": "见上文"
+				}
+			},
+			"selfHosted": "实时更新、浏览器通知（ntfy）、页面浏览计数（Plausible）和密钥存储都运行在我们自己的服务器上。"
+		},
+		"retention": {
+			"account": "账号数据和你的内容：只要你的账号存在就会保留。",
+			"sessions": "登录会话：访问令牌 1 小时后过期，刷新令牌最长 30 天后过期。",
+			"usage": "使用数据：原始事件 30 天，每日汇总 13 个月。",
+			"logsTodo": "[保留期限 — 待确认]",
+			"logs": "服务器和 CDN 访问日志：{todo}。",
+			"title": "数据保留多长时间"
+		},
+		"yourRights": {
+			"intro": "你可以要求获取你的数据副本、更正数据、删除数据、反对基于合法利益的处理，并撤回任何同意。你也可以向数据保护机构投诉。",
+			"export": "在应用中，你可以导出任务（CSV、XLSX）、例行事项（iCal）和本地工作区（Markdown），删除工作区并修改你的个人资料。",
+			"delete": "如需删除整个账号或获取完整的数据副本，请写信给我们（参见“联系方式”）。应用目前尚不支持自助删除账号。",
+			"children": "TMGR 不适用于 16 岁以下的儿童。",
+			"title": "你的权利"
+		},
+		"changes": {
+			"text": "本政策变更时，我们会更新顶部的日期。对于重要变更，我们会在其生效前在应用内通知你。",
+			"title": "变更"
+		},
+		"contact": {
+			"text": "关于你的数据的问题或请求：{todo}。",
+			"title": "联系方式"
+		},
+		"status": {
+			"granted": "已允许",
+			"denied": "已拒绝",
+			"unset": "尚未选择"
+		}
+	},
+	"agentNotifications": {
+		"title": "智能体提醒",
+		"subtitle": "当 Claude Code、Codex 或其他 AI 智能体需要你时，在手机上收到推送通知 — 接收者始终是你（令牌所有者），一个令牌在你所在的所有工作区中都有效。创建令牌，然后一步连接 Claude Code、Codex 或 Cursor。",
+		"newToken": "新建令牌",
+		"labelOptional": "标签（可选）",
+		"labelPlaceholder": "我笔记本上的 Claude Code",
+		"creating": "正在创建…",
+		"createToken": "创建令牌",
+		"copyNow": "请立即复制此令牌 — 之后将无法再次查看。",
+		"showSetup": "显示设置",
+		"tokens": "令牌",
+		"loadingTokens": "正在加载令牌…",
+		"noTokens": "暂无智能体通知令牌。",
+		"untitled": "未命名令牌",
+		"never": "从未",
+		"meta": "{prefix}… · 创建于 {created} · 上次使用 {lastUsed}",
+		"revoke": "撤销",
+		"howToConnect": "如何连接",
+		"haveToken": "已有令牌？使用这些代码片段，并将 {placeholder} 替换为它。",
+		"yourToken": "<你的令牌>",
+		"hideSnippets": "隐藏代码片段",
+		"showSnippets": "显示代码片段",
+		"fullGuide": "完整设置指南",
+		"connectTitle": "连接你的智能体",
+		"notifyTokenLabel": "通知令牌",
+		"sending": "正在发送…",
+		"sendTest": "发送测试通知",
+		"phoneCall": "想在出现故障时接到电话？请在下方{link}。",
+		"setupAlarm": "设置闹钟电话",
+		"loadFailed": "无法加载令牌。",
+		"createFailed": "无法创建令牌",
+		"test": {
+			"sent": "已发送 — 请查看你的手机。（通过 {channels}）",
+			"noChannels": "没有送达任何通知：请安装 TMGR 手机应用并允许通知，或在个人资料中关联 Telegram。",
+			"deduplicated": "刚刚已发送过。",
+			"rateLimitedIn": "通知过多 — 请在 {seconds} 秒后重试。",
+			"rateLimited": "通知过多 — 请稍后重试。",
+			"unauthorized": "此令牌被拒绝。请创建一个新的。",
+			"unreachable": "无法连接到 TMGR。"
+		},
+		"copyFailed": "无法复制到剪贴板",
+		"confirmRevoke": "撤销“{label}”令牌？",
+		"revokeFailed": "无法撤销令牌"
+	},
+	"alarmPhoneSection": {
+		"title": "闹钟电话",
+		"loading": "正在加载闹钟电话…",
+		"unconfigured": "此服务器未配置闹钟电话。",
+		"unreadable": "无法读取已存储的号码。请移除后重新输入。",
+		"intro": "仅用于推送未被确认时的紧急闹钟。加密存储。我们会向你发送验证码短信以进行验证。",
+		"verified": "已验证",
+		"notVerified": "未验证",
+		"testCall": "测试来电",
+		"change": "更改",
+		"callsFrom": "闹钟将从 {number} 呼叫你",
+		"addContact": "添加到通讯录",
+		"tipFavorites": "将其添加到“个人收藏”。",
+		"tipIphone": "iPhone：在“专注模式 → 勿扰模式和睡眠”中，允许来自“个人收藏”的来电并开启“重复来电”。",
+		"tipAndroid": "Android：为该联系人加星标，并在勿扰模式中允许星标联系人。",
+		"verificationCode": "验证码",
+		"verify": "验证",
+		"resendIn": "{seconds} 秒后重新发送",
+		"resend": "重新发送验证码",
+		"tryAgainIn": "请在 {time} 后重试",
+		"phoneLabel": "电话号码（E.164）",
+		"invalidFormat": "请使用国际格式，例如 +15550100123。",
+		"errors": {
+			"callFailed": "无法拨打电话",
+			"unconfigured": "此服务器未配置闹钟电话",
+			"invalidPhone": "电话号码无效",
+			"tryAgainIn": "请在 {time} 后重试",
+			"tooMany": "尝试次数过多，请稍后重试",
+			"reset": "错误的验证码过多。请重新输入号码。",
+			"conflict": "目前对此号码无需任何操作",
+			"generic": "出了点问题"
+		},
+		"loadFailed": "无法加载闹钟电话。",
+		"numberChanged": "此号码已更改，请重新检查",
+		"wrongCode": "验证码错误。",
+		"wrongCodeLeft": "验证码错误。剩余尝试次数：{count}。",
+		"calling": "正在呼叫。",
+		"callsUnconfigured": "此服务器未配置来电功能",
+		"verifyFirst": "请先验证号码",
+		"copyFailed": "无法复制",
+		"contactFailed": "无法下载联系人",
+		"confirmRemove": "移除闹钟电话？"
+	}
+}

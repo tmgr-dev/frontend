@@ -1,9 +1,7 @@
 <template>
 	<AuthLayout>
-		<template #title>Reset your password</template>
-		<template #subtitle
-			>Enter your email and we'll send you a reset link.</template
-		>
+		<template #title>{{ $t('auth.forgotPassword.title') }}</template>
+		<template #subtitle>{{ $t('auth.forgotPassword.subtitle') }}</template>
 
 		<div v-if="message">
 			<div
@@ -12,19 +10,23 @@
 				{{ message }}
 			</div>
 			<Button as-child variant="outline" class="mt-4 h-10 w-full">
-				<router-link to="/login">Back to Login</router-link>
+				<router-link to="/login">{{
+					$t('auth.common.backToLogin')
+				}}</router-link>
 			</Button>
 		</div>
 
 		<form v-else class="space-y-4" @submit.prevent="sendResetLink">
 			<div class="space-y-2">
-				<Label for="email" class="text-foreground">E-mail</Label>
+				<Label for="email" class="text-foreground">{{
+					$t('auth.common.email')
+				}}</Label>
 				<Input
 					v-model="email"
 					id="email"
 					type="email"
 					:class="{ 'border-destructive': errors.email }"
-					placeholder="Enter your email"
+					:placeholder="$t('auth.forgotPassword.emailPlaceholder')"
 					autocomplete="email"
 					class="h-10"
 				/>
@@ -38,25 +40,28 @@
 				:disabled="isLoading"
 				class="mt-2 h-10 w-full"
 			>
-				<span v-if="!isLoading">Send reset link</span>
-				<span v-else>Sending...</span>
+				<span v-if="!isLoading">{{ $t('auth.forgotPassword.submit') }}</span>
+				<span v-else>{{ $t('auth.forgotPassword.sending') }}</span>
 			</Button>
 			<div class="text-center">
 				<router-link
 					to="/login"
 					class="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-					>Back to Login</router-link
+					>{{ $t('auth.common.backToLogin') }}</router-link
 				>
 			</div>
 		</form>
 
 		<template #footer>
-			Don't have an account?
-			<router-link
-				to="/register"
-				class="font-medium text-primary underline-offset-4 hover:underline"
-				>Sign up</router-link
-			>
+			<i18n-t keypath="auth.forgotPassword.noAccount" tag="span">
+				<template #link>
+					<router-link
+						to="/register"
+						class="font-medium text-primary underline-offset-4 hover:underline"
+						>{{ $t('auth.common.signUp') }}</router-link
+					>
+				</template>
+			</i18n-t>
 		</template>
 	</AuthLayout>
 </template>
@@ -68,13 +73,14 @@
 	import { Input } from '@/components/ui/input';
 	import { Label } from '@/components/ui/label';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { t } from '@/i18n';
 	import { AxiosError } from 'axios';
 	import { onMounted, ref } from 'vue';
 
 	const email = ref('');
 
 	onMounted(() => {
-		setDocumentTitle('Reset Password');
+		setDocumentTitle(t('auth.forgotPassword.documentTitle'));
 	});
 	const message = ref('');
 	const isLoading = ref(false);
@@ -88,8 +94,7 @@
 			isLoading.value = true;
 			await resetPassword({ email: email.value });
 
-			message.value =
-				"The reset link was sent. If you didn't get the email, please check your spam folder.";
+			message.value = t('auth.forgotPassword.sent');
 		} catch (error: unknown) {
 			if (error instanceof AxiosError) {
 				errors.value = error.response?.data?.errors;

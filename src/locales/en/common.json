@@ -1,0 +1,42 @@
+{
+	"actions": {
+		"save": "Save",
+		"saving": "Saving…",
+		"cancel": "Cancel",
+		"delete": "Delete",
+		"remove": "Remove",
+		"close": "Close",
+		"edit": "Edit",
+		"create": "Create",
+		"add": "Add",
+		"apply": "Apply",
+		"reset": "Reset",
+		"back": "Back",
+		"next": "Next",
+		"done": "Done",
+		"confirm": "Confirm",
+		"retry": "Retry",
+		"search": "Search",
+		"copy": "Copy",
+		"copied": "Copied",
+		"open": "Open",
+		"learnMore": "Learn more",
+		"continue": "Continue",
+		"skip": "Skip",
+		"enable": "Enable",
+		"disable": "Disable"
+	},
+	"states": {
+		"loading": "Loading…",
+		"yes": "Yes",
+		"no": "No",
+		"on": "On",
+		"off": "Off",
+		"none": "None",
+		"unknown": "Unknown"
+	},
+	"errors": {
+		"generic": "Something went wrong. Please try again.",
+		"network": "Network error. Check your connection and try again."
+	}
+}

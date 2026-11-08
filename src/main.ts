@@ -2,6 +2,7 @@ import { getUser } from '@/actions/tmgr/user';
 import alertPlugin from '@/alert';
 import { disconnectRealtime, setRealtimeUser } from '@/composable/usePusher';
 import components from '@/globalComponents.ts';
+import { detectLocale, i18n, setLocale, storedLocale } from '@/i18n';
 import { installLocalWorkspaces } from '@/local/install';
 import { activeLocalWorkspace } from '@/local/runtime';
 import { installOnboardingFlow } from '@/onboarding/boot';
@@ -271,8 +272,12 @@ app.component('VueTheMask', VueTheMask);
 app.directive('mask', mask);
 app.use(Selectable);
 
+const localeReady = setLocale(
+	detectLocale({ stored: storedLocale(), browser: navigator.languages ?? [] }),
+).catch(() => undefined);
+
 const start = async () => {
-	await profileReady;
+	await Promise.all([profileReady, localeReady]);
 	if (isDesktopApp() && desktopWindowLabel() === 'main') {
 		void startRunnerStore();
 		installCloudIdentitySync(store);
@@ -293,6 +298,7 @@ const start = async () => {
 			},
 		);
 	}
+	app.use(i18n);
 	app.use(router);
 	app.use(store);
 	watch(

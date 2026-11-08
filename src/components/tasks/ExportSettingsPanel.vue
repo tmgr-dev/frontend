@@ -1,6 +1,8 @@
 <template>
 	<div class="mt-4 w-full">
-		<div class="mb-2 text-sm font-medium text-ink-muted">Export Settings</div>
+		<div class="mb-2 text-sm font-medium text-ink-muted">
+			{{ $t('tasks.exportSettings.title') }}
+		</div>
 
 		<div class="space-y-2 text-sm">
 			<!-- Round hours up -->
@@ -11,7 +13,7 @@
 					class="h-4 w-4 rounded accent-brand"
 					@change="emitSettings"
 				/>
-				<span>Round hours up</span>
+				<span>{{ $t('tasks.exportSettings.roundHoursUp') }}</span>
 			</label>
 
 			<!-- Zero expected hours on off-days -->
@@ -22,12 +24,14 @@
 					class="h-4 w-4 rounded accent-brand"
 					@change="emitSettings"
 				/>
-				<span>Zero expected hours on off-days</span>
+				<span>{{ $t('tasks.exportSettings.zeroExpectedWeekends') }}</span>
 			</label>
 
 			<!-- Weekend days -->
 			<div>
-				<span class="text-ink-subtle">Weekend days:</span>
+				<span class="text-ink-subtle">{{
+					$t('tasks.exportSettings.weekendDays')
+				}}</span>
 				<div class="mt-1 flex flex-wrap gap-1">
 					<label
 						v-for="day in orderedDays"
@@ -44,14 +48,16 @@
 							class="h-3.5 w-3.5 rounded accent-brand"
 							@change="toggleWeekendDay(day.value)"
 						/>
-						<span class="text-xs">{{ day.label }}</span>
+						<span class="text-xs">{{ $t(day.labelKey) }}</span>
 					</label>
 				</div>
 			</div>
 
 			<!-- Custom holidays -->
 			<div>
-				<span class="text-ink-subtle">Custom holidays:</span>
+				<span class="text-ink-subtle">{{
+					$t('tasks.exportSettings.customHolidays')
+				}}</span>
 				<div class="mt-1 flex items-center gap-2">
 					<input
 						v-model="holidayInput"
@@ -62,7 +68,7 @@
 						class="rounded-md bg-status-done px-3 py-1 text-sm text-white hover:opacity-90"
 						@click="addHoliday"
 					>
-						Add
+						{{ $t('tasks.exportSettings.add') }}
 					</button>
 				</div>
 				<div
@@ -93,7 +99,7 @@
 					class="h-4 w-4 rounded accent-brand"
 					@change="emitSettings"
 				/>
-				<span>Parse date from task title</span>
+				<span>{{ $t('tasks.exportSettings.parseDateFromTitle') }}</span>
 			</label>
 		</div>
 	</div>
@@ -106,13 +112,13 @@
 	} from '@/utils/exportSettings';
 
 	const ALL_DAYS = [
-		{ value: 0, label: 'Sun' },
-		{ value: 1, label: 'Mon' },
-		{ value: 2, label: 'Tue' },
-		{ value: 3, label: 'Wed' },
-		{ value: 4, label: 'Thu' },
-		{ value: 5, label: 'Fri' },
-		{ value: 6, label: 'Sat' },
+		{ value: 0, labelKey: 'tasks.exportSettings.days.sun' },
+		{ value: 1, labelKey: 'tasks.exportSettings.days.mon' },
+		{ value: 2, labelKey: 'tasks.exportSettings.days.tue' },
+		{ value: 3, labelKey: 'tasks.exportSettings.days.wed' },
+		{ value: 4, labelKey: 'tasks.exportSettings.days.thu' },
+		{ value: 5, labelKey: 'tasks.exportSettings.days.fri' },
+		{ value: 6, labelKey: 'tasks.exportSettings.days.sat' },
 	];
 
 	export default {

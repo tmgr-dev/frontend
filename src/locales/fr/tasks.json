@@ -1,0 +1,233 @@
+{
+	"doneCheckbox": {
+		"label": "Terminée"
+	},
+	"linkChips": {
+		"title": "Liens",
+		"page": "Page {id}"
+	},
+	"pageMentions": {
+		"title": "Mentionnée dans les pages"
+	},
+	"priorityBadge": {
+		"title": "Priorité {label}"
+	},
+	"shareMenu": {
+		"share": "Partager"
+	},
+	"timeEntries": {
+		"title": "Sessions de terminal",
+		"partial": "en partie couvert par un autre temps suivi"
+	},
+	"timeInfo": {
+		"created": "Créée : {time}",
+		"edited": "Modifiée : {time}",
+		"overtime": "Heures supplémentaires"
+	},
+	"actions": {
+		"delete": "Supprimer",
+		"save": "Enregistrer",
+		"create": "Créer",
+		"settings": "Paramètres"
+	},
+	"reminder": {
+		"label": "Rappel"
+	},
+	"sidePanel": {
+		"label": "Tâche"
+	},
+	"exportSettings": {
+		"title": "Paramètres d'export",
+		"roundHoursUp": "Arrondir les heures à l'unité supérieure",
+		"zeroExpectedWeekends": "Zéro heure attendue les jours de repos",
+		"weekendDays": "Jours de week-end :",
+		"customHolidays": "Jours fériés personnalisés :",
+		"add": "Ajouter",
+		"parseDateFromTitle": "Extraire la date du titre de la tâche",
+		"days": {
+			"sun": "Dim",
+			"mon": "Lun",
+			"tue": "Mar",
+			"wed": "Mer",
+			"thu": "Jeu",
+			"fri": "Ven",
+			"sat": "Sam"
+		}
+	},
+	"multipleActions": {
+		"title": "Actions groupées",
+		"updateTasks": "Mettre à jour les tâches",
+		"markDone": "Marquer comme terminées",
+		"markDoneNoStatus": "Marquer comme terminées (aucun statut Terminée)",
+		"markOpen": "Marquer comme ouvertes",
+		"archive": "Archiver",
+		"delete": "Supprimer",
+		"moveToStatus": "Déplacer vers le statut",
+		"agentRuns": "Exécutions d'agent",
+		"confirmAgentRuns": "Confirmer pour les exécutions d'agent",
+		"export": "Exporter",
+		"exportCsv": "Exporter en CSV",
+		"exportJpg": "Exporter en JPEG",
+		"exportXlsx": "Exporter en XLSX",
+		"seconds": "{n} s",
+		"execute": "Exécuter"
+	},
+	"pomodoroSettings": {
+		"dialogLabel": "Paramètres Pomodoro",
+		"title": "Pomodoro",
+		"description": "Configurez les intervalles de concentration et de pause. Les paramètres s'appliquent à toutes vos tâches.",
+		"focusDuration": "Durée de concentration",
+		"shortBreak": "Pause courte",
+		"longBreak": "Pause longue",
+		"longBreakEvery": "Pause longue tous les",
+		"pomodoros": "pomodoro | pomodoros",
+		"autoStart": "Démarrer automatiquement l'intervalle suivant",
+		"autoStartHint": "Évite le bouton de lecture entre concentration et pause",
+		"pauseTracking": "Suspendre le temps suivi pendant la pause",
+		"pauseTrackingHint": "Arrête le chronomètre pendant que vous vous reposez",
+		"notifications": "Notifications",
+		"notify": {
+			"silent": "Silencieuses",
+			"system": "Système",
+			"both": "Les deux"
+		},
+		"sound": "Son de fin d'intervalle",
+		"sounds": {
+			"bell": "Cloche",
+			"chime": "Carillon",
+			"wood": "Bois",
+			"digital": "Numérique"
+		},
+		"minutesUnit": "min",
+		"saveError": "Impossible d'enregistrer les paramètres. Réessayez."
+	},
+	"pomodoroBlock": {
+		"phase": {
+			"focus": "CONCENTRATION",
+			"short": "PAUSE COURTE",
+			"long": "PAUSE LONGUE"
+		},
+		"skipPhase": "Passer la phase",
+		"reset": "Réinitialiser",
+		"distractedHint": "Je me suis laissé distraire",
+		"distracted": "DISTRAIT",
+		"distractedCount": "DISTRAIT · {n}",
+		"settings": "Paramètres Pomodoro",
+		"disable": "Désactiver Pomodoro pour cette tâche",
+		"summary": "{n} POMODOROS · {focus}/{short}/{long}"
+	},
+	"attachments": {
+		"loadError": "Impossible de charger les pièces jointes.",
+		"title": "Pièces jointes",
+		"addFiles": "Ajouter des fichiers",
+		"pendingNote": "{size} · Sera envoyé à la création de la tâche",
+		"open": "Ouvrir {name}",
+		"uploading": "Envoi de {size}…",
+		"dismiss": "Ignorer l'envoi",
+		"none": "Aucune pièce jointe pour l'instant",
+		"addMore": "Ajouter d'autres fichiers",
+		"dropHint": "Cliquez ou glissez des fichiers ici pour joindre des documents, des images ou d'autres fichiers",
+		"download": "Télécharger"
+	},
+	"gallery": {
+		"file": "Fichier",
+		"position": "Fichier {n} sur {total}",
+		"downloadFailed": "Échec du téléchargement",
+		"zoomOut": "Zoom arrière",
+		"zoomIn": "Zoom avant",
+		"fitTitle": "Ajuster à la fenêtre (0)",
+		"fit": "Ajuster à la fenêtre",
+		"actualSizeTitle": "Taille réelle (100 %)",
+		"actualSize": "Taille réelle",
+		"previous": "Précédent",
+		"previousFile": "Fichier précédent",
+		"next": "Suivant",
+		"nextFile": "Fichier suivant",
+		"imageError": "Impossible de charger l'image. Réessayer",
+		"fileError": "Impossible de charger le fichier",
+		"unsupported": "L'aperçu n'est pas disponible ici",
+		"previewOf": "Aperçu de {name}"
+	},
+	"comments": {
+		"activity": "Activité",
+		"filter": {
+			"all": "Tous",
+			"people": "Personnes",
+			"personas": "Personas",
+			"plugins": "Plugins"
+		},
+		"empty": "Aucun commentaire pour l'instant",
+		"noMatch": "Aucun commentaire ne correspond à ce filtre",
+		"aiAssistant": "Assistant IA",
+		"deleteComment": "Supprimer le commentaire",
+		"confirmDelete": "Supprimer ce commentaire ?",
+		"addReaction": "Ajouter une réaction"
+	},
+	"relations": {
+		"title": "Tâches liées",
+		"link": "Lier",
+		"removeRelation": "Supprimer la relation",
+		"dialogTitle": "Lier un ticket",
+		"issue": "Ticket",
+		"searchPlaceholder": "Rechercher…",
+		"searching": "Recherche…",
+		"type": "Type",
+		"select": "Sélectionner…",
+		"linking": "Liaison…",
+		"removeTitle": "Supprimer le lien",
+		"removeBody": "Supprimer le lien « {type} » vers la tâche n° {id} ?",
+		"errors": {
+			"loadTypes": "Impossible de charger les types de relation",
+			"fillAll": "Veuillez remplir tous les champs",
+			"add": "Impossible d'ajouter la relation entre tâches",
+			"remove": "Impossible de supprimer la relation entre tâches"
+		}
+	},
+	"boardCard": {
+		"dragReorder": "Glisser pour réorganiser",
+		"dragMove": "Glisser pour déplacer",
+		"stopTimer": "Arrêter le minuteur",
+		"startTimer": "Démarrer le minuteur",
+		"changeAssignee": "Changer l'assigné",
+		"assignSomeone": "Assigner quelqu'un",
+		"searchMembers": "Rechercher des membres...",
+		"noMembers": "Aucun membre trouvé.",
+		"taskActions": "Actions de la tâche",
+		"openDetails": "Ouvrir les détails",
+		"settings": "Paramètres",
+		"moveToTop": "Déplacer en haut",
+		"moveToBottom": "Déplacer en bas",
+		"archive": "Archiver",
+		"delete": "Supprimer",
+		"commentsLabel": "{n} commentaire | {n} commentaires",
+		"archiveTitle": "Archiver la tâche",
+		"archiveBody": "Voulez-vous vraiment archiver « {title} » ?",
+		"deleteTitle": "Supprimer la tâche",
+		"deleteBody": "Voulez-vous vraiment supprimer « {title} » ?",
+		"archiveStatusMissing": "Statut d'archive introuvable",
+		"archiveStatusMissingHint": "Créez d'abord un statut d'archive.",
+		"archiveFailed": "Impossible d'archiver la tâche",
+		"tryAgain": "Veuillez réessayer.",
+		"deleteFailed": "Impossible de supprimer la tâche. Veuillez réessayer."
+	},
+	"list": {
+		"selectedTasks": "Tâches sélectionnées :",
+		"deselectAll": "Tout désélectionner",
+		"selectAll": "Tout sélectionner",
+		"process": "Traiter ({n})",
+		"summary": "{selected} sur {total} · {hours} h",
+		"summaryOvertime": "{selected} sur {total} · {hours} h · +{overtime} supplémentaires",
+		"restore": "Restaurer",
+		"restoreFromTrash": "Restaurer depuis la corbeille",
+		"deleteTask": "Supprimer la tâche",
+		"timerRunning": "Minuteur en cours",
+		"overtime": "+{time} supplémentaires",
+		"showing": "Affichage de {from} à {to} sur {total} tâches",
+		"perPage": "{n} par page",
+		"previous": "Précédent",
+		"next": "Suivant",
+		"page": "Page {page} sur {last}",
+		"deleteTasksTitle": "Supprimer les tâches",
+		"deleteTasksBody": "Êtes-vous sûr ?"
+	}
+}

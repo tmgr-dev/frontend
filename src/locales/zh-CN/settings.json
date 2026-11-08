@@ -1,0 +1,184 @@
+{
+	"language": {
+		"title": "语言",
+		"label": "界面语言",
+		"description": "用于整个应用、邮件和通知。",
+		"saveFailed": "保存语言失败"
+	},
+	"page": {
+		"settings": "设置",
+		"profile": "个人资料",
+		"devices": "智能设备",
+		"notifications": "通知",
+		"theme": "主题",
+		"experimental": "实验性功能",
+		"desktop": "桌面端",
+		"localData": "本地数据",
+		"privacy": "隐私",
+		"agentWork": "智能体运行",
+		"about": "关于"
+	},
+	"loading": "正在加载设置",
+	"loadFailed": "无法加载设置。",
+	"layout": {
+		"back": "返回设置"
+	},
+	"nav": {
+		"groups": {
+			"account": "账号",
+			"workspace": "工作区",
+			"agents": "智能体",
+			"app": "应用"
+		},
+		"items": {
+			"profile": "个人资料",
+			"notification": "通知",
+			"device": "智能设备",
+			"privacy": "隐私",
+			"workspaces": "常规",
+			"modules": "模块",
+			"personas": "角色",
+			"agent-work": "智能体运行",
+			"agent-notifications": "智能体提醒",
+			"plugins": "插件",
+			"theme": "主题",
+			"desktop": "桌面端",
+			"data": "本地数据",
+			"experimental": "实验性功能",
+			"about": "关于"
+		}
+	},
+	"alerts": {
+		"errorTitle": "错误",
+		"updated": "设置已更新",
+		"updateFailed": "更新设置失败",
+		"editorUpdated": "编辑器已更新，正在重新加载页面..."
+	},
+	"push": {
+		"title": "推送通知（旧版）",
+		"enable": "启用网页推送",
+		"test": "发送测试通知",
+		"showTooltips": "显示提示",
+		"registrationTitle": "通知注册",
+		"registrationBody": "请检查通知权限"
+	},
+	"desktop": {
+		"gitTracking": "Git 自动跟踪",
+		"shortcuts": "键盘快捷键"
+	},
+	"about": {
+		"version": "版本 {version}",
+		"moreTitle": "来自开发者的更多产品",
+		"moreDescription": "TMGR 开发团队的其他产品。",
+		"cliLink": "命令行 (tmgr)"
+	},
+	"theme": {
+		"title": "主题",
+		"description": "选择配色主题和浅色/深色模式。",
+		"active": "使用中",
+		"mode": "模式：",
+		"light": "浅色",
+		"dark": "深色",
+		"system": "跟随系统",
+		"default": "默认",
+		"tags": {
+			"default": "经典",
+			"dracula": "紫色",
+			"nord": "冰霜",
+			"one-dark": "Atom",
+			"monokai": "经典",
+			"solarized-dark": "柔和",
+			"gruvbox-dark": "复古",
+			"tokyo-night": "夜晚",
+			"github-dark": "默认",
+			"night-owl": "深邃",
+			"cobalt2": "蓝色",
+			"palenight": "Material",
+			"ayu-dark": "暖色",
+			"catppuccin-mocha": "粉彩",
+			"synthwave-84": "霓虹",
+			"github-light": "浅色",
+			"oled": "纯黑",
+			"colorblind": "Okabe-Ito"
+		}
+	},
+	"timezone": {
+		"title": "时区",
+		"description": "日常事项的触发时间和每天的起始时间以此时区为准。",
+		"placeholder": "选择时区",
+		"search": "搜索时区",
+		"notFound": "未找到时区。",
+		"detected": "检测到：{zone}",
+		"useDetected": "使用检测到的时区",
+		"saveFailed": "保存时区失败"
+	},
+	"telegram": {
+		"title": "Telegram",
+		"connectedAs": "已连接为 {'@'}{username}",
+		"unlink": "解除关联",
+		"connect": "连接 Telegram",
+		"connectBody": "点击下方按钮打开 Telegram 并连接你的账号。连接后，你将通过 Telegram 收到通知。",
+		"open": "打开 Telegram",
+		"unlinkTitle": "解除 Telegram 关联",
+		"unlinkBody": "确定要解除 Telegram 账号的关联吗？之后你将不再通过 Telegram 收到通知。"
+	},
+	"device": {
+		"tokenTitle": "API 令牌",
+		"tokenHidden": "令牌已设置（已隐藏）。如果丢失，请重新生成。",
+		"tokenNeeded": "需要生成令牌",
+		"hide": "隐藏",
+		"show": "显示",
+		"copyNow": "请立即复制，之后将不再显示。",
+		"created": "创建于：{date}",
+		"generateNew": "生成新令牌",
+		"generate": "生成令牌",
+		"revoke": "撤销令牌",
+		"generateTitle": "生成新令牌",
+		"regenerateBody": "确定要生成新令牌吗？现有令牌将失效，使用它的所有设备都需要更新。",
+		"generateBody": "为你的智能设备生成新令牌？",
+		"generateFailed": "生成令牌失败",
+		"generated": "令牌已生成",
+		"revokeTitle": "撤销令牌",
+		"revokeBody": "确定要撤销此令牌吗？使用此令牌的所有设备将停止工作，直到用新令牌重新配置。",
+		"revokeFailed": "撤销令牌失败",
+		"revoked": "令牌已撤销",
+		"howTo": {
+			"title": "使用方法",
+			"step1": "1. 使用上方按钮生成令牌",
+			"step2": "2. 在设备的 API 请求中通过以下请求头携带令牌：",
+			"secure": "请妥善保管令牌。如果泄露，请立即生成新令牌。"
+		},
+		"mcp": {
+			"title": "MCP 设置",
+			"intro": "TMGR MCP 将智能设备令牌用作自定义请求头。请先在上方生成令牌，然后配置支持带请求头的远程 Streamable HTTP 服务器的 MCP 客户端（Claude Code：{command}）。",
+			"serverUrl": "服务器 URL",
+			"clientConfig": "客户端配置",
+			"oauth": "OAuth 说明：此 TMGR MCP 服务器目前还不是 OAuth 连接器。与 Spendly 不同，它使用 `X-Smart-Device-Token` 验证 `/mcp/**`，因此此配置不支持需要 OAuth 发现的 Claude.ai 自定义连接器。",
+			"notify": "此 MCP 用于处理你的任务和工时。如需接收智能体的手机通知和闹钟，请在{link}中连接 tmgr-notify。",
+			"notifyLink": "智能体提醒"
+		},
+		"docs": {
+			"title": "文档",
+			"api": "智能设备 API 参考",
+			"mcp": "MCP 服务器设置"
+		}
+	},
+	"agentUsage": {
+		"title": "智能体运行",
+		"description": "在所有设备上查看 AI 智能体在你的任务上的花费。",
+		"syncLabel": "智能体用量同步",
+		"syncDescription": "上传每个任务的汇总数据，以便网页和移动端显示：令牌数、AI 费用（按 API 价格折算）、智能体、模型和工具名称以及次数。绝不上传提示词、回复、文件路径或命令参数。上传只能从 tmgr CLI 开始，且需先在 CLI 中开启：手动运行 `tmgr usage sync`，或在同时确认 `tmgr usage sync auto on` 后于每次智能体运行结束时自动上传。关闭后，已上传的全部数据将被删除。",
+		"unavailable": "此服务器暂不支持智能体用量同步。",
+		"uploadsTitle": "你的上传记录",
+		"uploadsDescription": "此账号已上传的内容，最新的在前。",
+		"deleteAll": "全部删除",
+		"empty": "暂无上传内容。",
+		"turnOffTitle": "关闭智能体用量同步？",
+		"turnOffBody": "此账号已上传的所有内容都将从 TMGR 中删除。你可以稍后重新开启。",
+		"keepOn": "保持开启",
+		"turnOff": "关闭并删除",
+		"deleteTitle": "删除所有上传内容？",
+		"deleteBody": "此账号已上传的所有内容都将从 TMGR 中删除。智能体用量同步保持当前状态。",
+		"genericError": "出了点问题。"
+	}
+}

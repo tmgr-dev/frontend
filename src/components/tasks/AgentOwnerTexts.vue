@@ -8,14 +8,16 @@
 			<summary
 				class="cursor-pointer text-2xs font-bold text-ink-subtle uppercase"
 			>
-				Persona instructions (<template
-					v-for="(piece, i) in personaBlock.name"
-					:key="i"
-					><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{
-						piece.text
-					}}</mark
-					><template v-else>{{ piece.text }}</template></template
-				>)
+				<i18n-t keypath="taskAgent.ownerTexts.personaInstructions" tag="span">
+					<template #name>
+						<template v-for="(piece, i) in personaBlock.name" :key="i"
+							><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{
+								piece.text
+							}}</mark
+							><template v-else>{{ piece.text }}</template></template
+						>
+					</template>
+				</i18n-t>
 				<span v-if="personaNote" class="font-normal normal-case">{{
 					personaNote
 				}}</span>
@@ -32,7 +34,7 @@
 			<summary
 				class="cursor-pointer text-2xs font-bold text-ink-subtle uppercase"
 			>
-				Workspace rules
+				{{ $t('taskAgent.ownerTexts.workspaceRules') }}
 				<span v-if="rulesNote" class="font-normal normal-case">{{
 					rulesNote
 				}}</span>
@@ -53,7 +55,7 @@
 				</div>
 				<pre
 					class="max-h-48 overflow-y-auto font-mono text-xs break-words whitespace-pre-wrap"
-				><template v-if="!page.body.length">(empty)</template><template v-for="(piece, i) in page.body" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
+				><template v-if="!page.body.length">{{ $t('taskAgent.ownerTexts.empty') }}</template><template v-for="(piece, i) in page.body" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
 			</div>
 		</details>
 	</div>

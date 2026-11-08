@@ -3,9 +3,9 @@
 		:is="standalone ? 'PageContainer' : 'div'"
 		:width="standalone ? 'narrow' : undefined"
 	>
-		<PageHeader v-if="standalone" title="Profile" />
+		<PageHeader v-if="standalone" :title="$t('settingsPages.profile.title')" />
 		<div class="flex flex-col gap-6">
-			<SettingsSection title="Profile picture">
+			<SettingsSection :title="$t('settingsPages.profile.pictureTitle')">
 				<div class="flex items-center gap-4">
 					<UserAvatar
 						:key="avatarKey"
@@ -29,7 +29,11 @@
 								:disabled="avatarBusy"
 								@click="$refs.avatarInput.click()"
 							>
-								{{ avatarBusy ? 'Uploading…' : 'Change picture' }}
+								{{
+									avatarBusy
+										? $t('settingsPages.profile.uploading')
+										: $t('settingsPages.profile.changePicture')
+								}}
 							</Button>
 							<Button
 								v-if="user.has_avatar"
@@ -38,7 +42,7 @@
 								:disabled="avatarBusy"
 								@click="dropAvatar"
 							>
-								Remove
+								{{ $t('common.actions.remove') }}
 							</Button>
 						</div>
 						<AvatarCropModal
@@ -52,31 +56,39 @@
 							{{ avatarError }}
 						</p>
 						<p class="text-xs text-ink-subtle">
-							Accepted formats: PNG, JPEG, WebP, GIF.
+							{{ $t('settingsPages.profile.acceptedFormats') }}
 						</p>
 					</div>
 				</div>
 			</SettingsSection>
 
-			<SettingsSection title="Account">
+			<SettingsSection :title="$t('settingsPages.profile.accountTitle')">
 				<div class="flex max-w-sm flex-col gap-4">
 					<div class="flex flex-col gap-1.5">
-						<Label for="profile-name">Name</Label>
+						<Label for="profile-name">{{
+							$t('settingsPages.profile.name')
+						}}</Label>
 						<Input id="profile-name" v-model="user.name" autocomplete="name" />
 						<p v-if="errors.name" class="text-xs text-destructive">
 							{{ errors.name[0] }}
 						</p>
 					</div>
 					<div v-if="user.email" class="flex flex-col gap-1.5">
-						<Label for="profile-email">Email</Label>
+						<Label for="profile-email">{{
+							$t('settingsPages.profile.email')
+						}}</Label>
 						<Input id="profile-email" :model-value="user.email" disabled />
-						<p class="text-xs text-ink-subtle">Email can't be changed here</p>
+						<p class="text-xs text-ink-subtle">
+							{{ $t('settingsPages.profile.emailReadonly') }}
+						</p>
 					</div>
 				</div>
 				<div class="mt-6 border-t border-border pt-6">
-					<h3 class="text-sm font-semibold text-ink">Change password</h3>
+					<h3 class="text-sm font-semibold text-ink">
+						{{ $t('settingsPages.profile.changePassword') }}
+					</h3>
 					<p class="mt-1 text-sm text-ink-subtle">
-						Leave blank to keep your current password.
+						{{ $t('settingsPages.profile.leaveBlank') }}
 					</p>
 					<p
 						v-if="tokensRevoked"
@@ -88,7 +100,9 @@
 				</div>
 				<div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<div class="flex flex-col gap-1.5 sm:col-span-2">
-						<Label for="profile-current-password">Current password</Label>
+						<Label for="profile-current-password">{{
+							$t('settingsPages.profile.currentPassword')
+						}}</Label>
 						<Input
 							id="profile-current-password"
 							v-model="user.current_password"
@@ -104,7 +118,9 @@
 						</p>
 					</div>
 					<div class="flex flex-col gap-1.5">
-						<Label for="profile-password">New password</Label>
+						<Label for="profile-password">{{
+							$t('settingsPages.profile.newPassword')
+						}}</Label>
 						<Input
 							id="profile-password"
 							v-model="user.password"
@@ -117,7 +133,7 @@
 					</div>
 					<div class="flex flex-col gap-1.5">
 						<Label for="profile-password-confirmation">
-							Confirm password
+							{{ $t('settingsPages.profile.confirmPassword') }}
 						</Label>
 						<Input
 							id="profile-password-confirmation"
@@ -133,8 +149,7 @@
 						</p>
 					</div>
 					<p class="text-xs text-ink-subtle sm:col-span-2">
-						Signed up with Google, GitHub or Apple and never set a password? Use
-						Forgot password on the sign-in page to set one.
+						{{ $t('settingsPages.profile.socialHint') }}
 					</p>
 				</div>
 				<label
@@ -149,16 +164,17 @@
 						data-testid="logout-other-sessions"
 					/>
 					<span>
-						Sign out of other devices
+						{{ $t('settingsPages.profile.signOutOthers') }}
 						<span class="block text-xs text-ink-subtle">
-							Recommended if you think someone else had access to your account.
-							This device stays signed in.
+							{{ $t('settingsPages.profile.signOutOthersHint') }}
 						</span>
 					</span>
 				</label>
 				<template #footer>
 					<Button :disabled="saving" @click="saveUser">
-						{{ saving ? 'Saving…' : 'Save' }}
+						{{
+							saving ? $t('common.actions.saving') : $t('common.actions.save')
+						}}
 					</Button>
 				</template>
 			</SettingsSection>
@@ -167,8 +183,8 @@
 
 			<SettingsSection
 				tone="danger"
-				title="Agent connections"
-				description="Revoke every persona token, across all your personas and workspaces."
+				:title="$t('settingsPages.profile.agentTitle')"
+				:description="$t('settingsPages.profile.agentDescription')"
 			>
 				<template #actions>
 					<Button
@@ -177,7 +193,11 @@
 						:disabled="revokingAllTokens"
 						@click="revokeAllPersonaTokens"
 					>
-						{{ revokingAllTokens ? 'Revoking…' : 'Revoke all persona tokens' }}
+						{{
+							revokingAllTokens
+								? $t('settingsPages.profile.revoking')
+								: $t('settingsPages.profile.revokeAll')
+						}}
 					</Button>
 				</template>
 			</SettingsSection>
@@ -205,6 +225,7 @@
 	import { Label } from '@/components/ui/label';
 	import { toast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { t } from '@/i18n';
 
 	export default {
 		name: 'Profile',
@@ -245,13 +266,12 @@
 			avatarKey: 0,
 		}),
 		async mounted() {
-			setDocumentTitle('Profile');
+			setDocumentTitle(t('settingsPages.profile.title'));
 			// @todo try to get from store this data first
 			this.user = await getUser(); // inside we put response to store. @todo think how to reorganize it or don't care
 		},
 		computed: {
-			tokensRevokedNotice: () =>
-				'Device, agent and notification tokens were revoked — generate new ones.',
+			tokensRevokedNotice: () => t('settingsPages.profile.tokensRevokedNotice'),
 		},
 		methods: {
 			async onAvatarPicked(event) {
@@ -265,7 +285,7 @@
 				this.avatarError = null;
 
 				if (!file.type.startsWith('image/')) {
-					this.avatarError = 'Pick an image file';
+					this.avatarError = t('settingsPages.profile.pickImage');
 					return;
 				}
 
@@ -273,7 +293,7 @@
 			},
 			onCropError() {
 				this.cropFile = null;
-				this.avatarError = 'Could not read that image';
+				this.avatarError = t('settingsPages.profile.readFailed');
 			},
 			async uploadAvatar(file) {
 				this.cropFile = null;
@@ -290,7 +310,8 @@
 					this.avatarKey += 1;
 				} catch (error) {
 					this.avatarError =
-						error.response?.data?.message ?? 'Could not upload that picture';
+						error.response?.data?.message ??
+						t('settingsPages.profile.uploadFailed');
 				} finally {
 					this.avatarBusy = false;
 				}
@@ -306,7 +327,8 @@
 					this.avatarKey += 1;
 				} catch (error) {
 					this.avatarError =
-						error.response?.data?.message ?? 'Could not remove the picture';
+						error.response?.data?.message ??
+						t('settingsPages.profile.removeFailed');
 				} finally {
 					this.avatarBusy = false;
 				}
@@ -328,11 +350,14 @@
 						this.tokensRevoked = true;
 						this.$emit('password-changed');
 						toast({
-							title: 'Password changed',
+							title: t('settingsPages.profile.passwordChanged'),
 							description: this.tokensRevokedNotice,
 						});
 					} else {
-						toast({ title: 'Saved', description: 'User data saved' });
+						toast({
+							title: t('settingsPages.profile.savedTitle'),
+							description: t('settingsPages.profile.savedDescription'),
+						});
 					}
 				} catch (error) {
 					const data = error.response?.data;
@@ -347,20 +372,19 @@
 				}
 			},
 			async revokeAllPersonaTokens() {
-				if (
-					!window.confirm(
-						'Revoke every persona token across all your personas?',
-					)
-				)
+				if (!window.confirm(t('settingsPages.profile.confirmRevokeAll')))
 					return;
 				this.revokingAllTokens = true;
 				try {
 					await revokeAllMyPersonaTokens();
-					toast({ title: 'Done', description: 'All persona tokens revoked' });
+					toast({
+						title: t('settingsPages.profile.doneTitle'),
+						description: t('settingsPages.profile.allRevoked'),
+					});
 				} catch {
 					toast({
-						title: 'Error',
-						description: 'Could not revoke persona tokens',
+						title: t('settingsPages.profile.errorTitle'),
+						description: t('settingsPages.profile.revokeFailed'),
 						variant: 'destructive',
 					});
 				} finally {

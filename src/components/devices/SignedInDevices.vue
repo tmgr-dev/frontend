@@ -1,20 +1,25 @@
 <template>
 	<SettingsSection
-		title="Signed-in devices"
-		description="Command-line sessions signed in with tmgr login."
+		:title="$t('settingsPages.signedInDevices.title')"
+		:description="$t('settingsPages.signedInDevices.description')"
 	>
-		<p v-if="loading" class="text-sm text-ink-subtle">Loading…</p>
+		<p v-if="loading" class="text-sm text-ink-subtle">
+			{{ $t('common.states.loading') }}
+		</p>
 		<p v-else-if="loadFailed" class="text-sm text-destructive">
-			Could not load devices.
-			<button type="button" class="underline" @click="load">Try again</button>
+			{{ $t('settingsPages.signedInDevices.loadFailed') }}
+			<button type="button" class="underline" @click="load">
+				{{ $t('settingsPages.signedInDevices.tryAgain') }}
+			</button>
 		</p>
 		<p
 			v-else-if="devices.length === 0"
 			class="text-sm text-ink-subtle"
 			data-testid="devices-empty"
 		>
-			No CLI devices yet. Run <CommandChip command="tmgr login" /> in your
-			terminal.
+			<i18n-t keypath="settingsPages.signedInDevices.empty" tag="span">
+				<template #command><CommandChip command="tmgr login" /></template>
+			</i18n-t>
 		</p>
 		<ul v-else class="divide-y divide-border" data-testid="devices-list">
 			<li
@@ -27,20 +32,26 @@
 					<div class="min-w-0">
 						<p class="text-sm font-medium break-words text-ink">
 							{{ device.client_name }}
-							<span class="font-normal text-ink-subtle"
-								>on {{ device.host_label }}</span
-							>
+							<span class="font-normal text-ink-subtle">{{
+								$t('settingsPages.signedInDevices.onHost', {
+									host: device.host_label,
+								})
+							}}</span>
 						</p>
 						<p class="text-xs text-ink-subtle">
-							Signed in {{ formatDate(device.created_at) }} · Last used
 							{{
-								device.last_used_at ? formatDate(device.last_used_at) : 'never'
+								$t('settingsPages.signedInDevices.lastUsed', {
+									signedIn: formatDate(device.created_at),
+									lastUsed: device.last_used_at
+										? formatDate(device.last_used_at)
+										: $t('settingsPages.signedInDevices.never'),
+								})
 							}}
 						</p>
 					</div>
 					<div v-if="editingId !== device.id" class="flex gap-2">
 						<Button variant="outline" size="sm" @click="startEdit(device)">
-							Edit scopes
+							{{ $t('settingsPages.signedInDevices.editScopes') }}
 						</Button>
 						<Button
 							variant="destructive"
@@ -48,7 +59,7 @@
 							:disabled="busyId === device.id"
 							@click="revoke(device)"
 						>
-							Revoke
+							{{ $t('settingsPages.signedInDevices.revoke') }}
 						</Button>
 					</div>
 				</div>
@@ -66,7 +77,11 @@
 							:disabled="editSelected.length === 0 || busyId === device.id"
 							@click="saveEdit(device)"
 						>
-							{{ busyId === device.id ? 'Saving…' : 'Save' }}
+							{{
+								busyId === device.id
+									? $t('common.actions.saving')
+									: $t('common.actions.save')
+							}}
 						</Button>
 						<Button
 							variant="outline"
@@ -74,7 +89,7 @@
 							:disabled="busyId === device.id"
 							@click="editingId = null"
 						>
-							Cancel
+							{{ $t('common.actions.cancel') }}
 						</Button>
 					</div>
 				</div>
@@ -104,6 +119,7 @@
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
+	import { currentLocale, t } from '@/i18n';
 	import {
 		describeScope,
 		toggleScope,
@@ -133,7 +149,9 @@
 			visibleScopes,
 			formatDate(value) {
 				const date = new Date(value);
-				return Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
+				return Number.isNaN(date.getTime())
+					? ''
+					: date.toLocaleString(currentLocale());
 			},
 			async load() {
 				this.loading = true;
@@ -166,11 +184,14 @@
 						item.id === device.id ? { ...item, ...updated } : item,
 					);
 					this.editingId = null;
-					toast({ title: 'Saved', description: 'Device scopes updated' });
+					toast({
+						title: t('settingsPages.signedInDevices.savedTitle'),
+						description: t('settingsPages.signedInDevices.savedDescription'),
+					});
 				} catch {
 					toast({
-						title: 'Error',
-						description: 'Could not update device scopes',
+						title: t('settingsPages.signedInDevices.errorTitle'),
+						description: t('settingsPages.signedInDevices.updateFailed'),
 						variant: 'destructive',
 					});
 				} finally {
@@ -180,7 +201,10 @@
 			async revoke(device) {
 				if (
 					!window.confirm(
-						`Revoke ${device.client_name} on ${device.host_label}? It will be signed out.`,
+						t('settingsPages.signedInDevices.confirmRevoke', {
+							client: device.client_name,
+							host: device.host_label,
+						}),
 					)
 				)
 					return;
@@ -188,11 +212,14 @@
 				try {
 					await revokeCliDevice(device.id);
 					this.devices = this.devices.filter((item) => item.id !== device.id);
-					toast({ title: 'Done', description: 'Device revoked' });
+					toast({
+						title: t('settingsPages.signedInDevices.doneTitle'),
+						description: t('settingsPages.signedInDevices.revoked'),
+					});
 				} catch {
 					toast({
-						title: 'Error',
-						description: 'Could not revoke the device',
+						title: t('settingsPages.signedInDevices.errorTitle'),
+						description: t('settingsPages.signedInDevices.revokeFailed'),
 						variant: 'destructive',
 					});
 				} finally {

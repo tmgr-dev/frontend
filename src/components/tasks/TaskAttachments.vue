@@ -1,12 +1,14 @@
 <template>
 	<div class="task-attachments mt-4">
 		<div v-if="loadError" role="alert" class="py-2 text-sm">
-			Could not load attachments.
-			<button class="underline" @click="load">Retry</button>
+			{{ $t('tasks.attachments.loadError') }}
+			<button class="underline" @click="load">
+				{{ $t('common.actions.retry') }}
+			</button>
 		</div>
 		<div class="mb-3 flex items-center justify-between">
 			<h3 class="text-sm font-semibold text-ink-muted">
-				Attachments
+				{{ $t('tasks.attachments.title') }}
 				<span v-if="files.length" class="font-normal text-ink-subtle">
 					({{ files.length }})
 				</span>
@@ -17,7 +19,7 @@
 				class="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-brand transition-colors hover:bg-brand-bg"
 			>
 				<Paperclip :size="16" />
-				<span>Add files</span>
+				<span>{{ $t('tasks.attachments.addFiles') }}</span>
 			</button>
 		</div>
 
@@ -39,15 +41,18 @@
 						{{ file.name }}
 					</p>
 					<p class="text-xs text-ink-subtle">
-						{{ formatFileSize(file.size) }} · Will upload when the task is
-						created
+						{{
+							$t('tasks.attachments.pendingNote', {
+								size: formatFileSize(file.size),
+							})
+						}}
 					</p>
 				</div>
 				<button
 					type="button"
 					@click="removePending(index)"
 					class="shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-status-fix-bg hover:text-status-fix-fg"
-					title="Remove"
+					:title="$t('common.actions.remove')"
 				>
 					<X :size="16" />
 				</button>
@@ -64,7 +69,7 @@
 						v-if="previews[file.id]"
 						type="button"
 						class="block cursor-zoom-in rounded"
-						:title="`Open ${file.name}`"
+						:title="$t('tasks.attachments.open', { name: file.name })"
 						@click="openGallery(file)"
 					>
 						<img
@@ -92,7 +97,7 @@
 					:disabled="busyFileId === file.id"
 					@click="download(file)"
 					class="shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-surface-active hover:text-ink disabled:opacity-50"
-					title="Download"
+					:title="$t('tasks.attachments.download')"
 				>
 					<Download :size="16" />
 				</button>
@@ -101,7 +106,7 @@
 					:disabled="busyFileId === file.id"
 					@click="remove(file)"
 					class="shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-status-fix-bg hover:text-status-fix-fg disabled:opacity-50"
-					title="Remove"
+					:title="$t('common.actions.remove')"
 				>
 					<X :size="16" />
 				</button>
@@ -133,14 +138,19 @@
 						class="text-xs"
 						:class="upload.error ? 'text-status-fix-fg' : 'text-ink-subtle'"
 					>
-						{{ upload.error || `Uploading ${formatFileSize(upload.size)}…` }}
+						{{
+							upload.error ||
+							$t('tasks.attachments.uploading', {
+								size: formatFileSize(upload.size),
+							})
+						}}
 					</p>
 				</div>
 				<button
 					v-if="upload.error"
 					type="button"
 					@click="dismissUpload(upload.id)"
-					aria-label="Dismiss upload"
+					:aria-label="$t('tasks.attachments.dismiss')"
 					class="shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-status-fix-bg hover:text-status-fix-fg"
 				>
 					<X :size="16" />
@@ -154,10 +164,14 @@
 		>
 			<FileIcon :size="32" class="mx-auto mb-2 text-ink-subtle" />
 			<p class="text-sm text-ink-subtle">
-				{{ files.length === 0 ? 'No attachments yet' : 'Add more files' }}
+				{{
+					files.length === 0
+						? $t('tasks.attachments.none')
+						: $t('tasks.attachments.addMore')
+				}}
 			</p>
 			<p class="mt-1 text-xs text-ink-subtle">
-				Click or drag files here to attach documents, images, or other files
+				{{ $t('tasks.attachments.dropHint') }}
 			</p>
 		</div>
 

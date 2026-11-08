@@ -1,0 +1,233 @@
+{
+	"doneCheckbox": {
+		"label": "完了"
+	},
+	"linkChips": {
+		"title": "リンク",
+		"page": "ページ {id}"
+	},
+	"pageMentions": {
+		"title": "言及されているページ"
+	},
+	"priorityBadge": {
+		"title": "優先度：{label}"
+	},
+	"shareMenu": {
+		"share": "共有"
+	},
+	"timeEntries": {
+		"title": "ターミナルセッション",
+		"partial": "他の記録済み時間と一部重複"
+	},
+	"timeInfo": {
+		"created": "作成：{time}",
+		"edited": "編集：{time}",
+		"overtime": "超過時間"
+	},
+	"actions": {
+		"delete": "削除",
+		"save": "保存",
+		"create": "作成",
+		"settings": "設定"
+	},
+	"reminder": {
+		"label": "リマインダー"
+	},
+	"sidePanel": {
+		"label": "タスク"
+	},
+	"exportSettings": {
+		"title": "エクスポート設定",
+		"roundHoursUp": "時間を切り上げる",
+		"zeroExpectedWeekends": "休日の想定時間をゼロにする",
+		"weekendDays": "休日の曜日：",
+		"customHolidays": "任意の休日：",
+		"add": "追加",
+		"parseDateFromTitle": "タスクのタイトルから日付を解析",
+		"days": {
+			"sun": "日",
+			"mon": "月",
+			"tue": "火",
+			"wed": "水",
+			"thu": "木",
+			"fri": "金",
+			"sat": "土"
+		}
+	},
+	"multipleActions": {
+		"title": "一括操作",
+		"updateTasks": "タスクを更新",
+		"markDone": "完了にする",
+		"markDoneNoStatus": "完了にする（完了ステータスなし）",
+		"markOpen": "未完了にする",
+		"archive": "アーカイブする",
+		"delete": "削除",
+		"moveToStatus": "ステータスへ移動",
+		"agentRuns": "エージェントの実行",
+		"confirmAgentRuns": "エージェントの実行を確認",
+		"export": "エクスポート",
+		"exportCsv": "CSV にエクスポート",
+		"exportJpg": "JPEG にエクスポート",
+		"exportXlsx": "XLSX にエクスポート",
+		"seconds": "{n}秒",
+		"execute": "実行"
+	},
+	"pomodoroSettings": {
+		"dialogLabel": "ポモドーロ設定",
+		"title": "ポモドーロ",
+		"description": "集中と休憩の間隔を設定します。設定はすべてのタスクに適用されます。",
+		"focusDuration": "集中時間",
+		"shortBreak": "短い休憩",
+		"longBreak": "長い休憩",
+		"longBreakEvery": "長い休憩の間隔",
+		"pomodoros": "ポモドーロ",
+		"autoStart": "次の区間を自動で開始",
+		"autoStartHint": "集中と休憩の間の再生ボタンを省略します",
+		"pauseTracking": "休憩中は記録時間を一時停止",
+		"pauseTrackingHint": "休んでいる間は実時間の計測を止めます",
+		"notifications": "通知",
+		"notify": {
+			"silent": "なし",
+			"system": "システム",
+			"both": "両方"
+		},
+		"sound": "区間終了時のサウンド",
+		"sounds": {
+			"bell": "ベル",
+			"chime": "チャイム",
+			"wood": "ウッド",
+			"digital": "デジタル"
+		},
+		"minutesUnit": "分",
+		"saveError": "設定を保存できませんでした。もう一度お試しください。"
+	},
+	"pomodoroBlock": {
+		"phase": {
+			"focus": "集中",
+			"short": "短い休憩",
+			"long": "長い休憩"
+		},
+		"skipPhase": "区間をスキップ",
+		"reset": "リセット",
+		"distractedHint": "気が散った",
+		"distracted": "気が散った",
+		"distractedCount": "気が散った · {n}",
+		"settings": "ポモドーロ設定",
+		"disable": "このタスクのポモドーロを無効にする",
+		"summary": "ポモドーロ {n} 回 · {focus}/{short}/{long}"
+	},
+	"attachments": {
+		"loadError": "添付ファイルを読み込めませんでした。",
+		"title": "添付ファイル",
+		"addFiles": "ファイルを追加",
+		"pendingNote": "{size} · タスクの作成時にアップロードされます",
+		"open": "{name} を開く",
+		"uploading": "{size} をアップロード中…",
+		"dismiss": "アップロードを閉じる",
+		"none": "添付ファイルはまだありません",
+		"addMore": "ファイルをさらに追加",
+		"dropHint": "クリックするか、ここにファイルをドラッグして、ドキュメントや画像などを添付します",
+		"download": "ダウンロード"
+	},
+	"gallery": {
+		"file": "ファイル",
+		"position": "ファイル {n} / {total}",
+		"downloadFailed": "ダウンロードに失敗しました",
+		"zoomOut": "縮小",
+		"zoomIn": "拡大",
+		"fitTitle": "ウィンドウに合わせる (0)",
+		"fit": "ウィンドウに合わせる",
+		"actualSizeTitle": "実際のサイズ (100%)",
+		"actualSize": "実際のサイズ",
+		"previous": "前へ",
+		"previousFile": "前のファイル",
+		"next": "次へ",
+		"nextFile": "次のファイル",
+		"imageError": "画像を読み込めませんでした。再試行",
+		"fileError": "ファイルを読み込めませんでした",
+		"unsupported": "ここではプレビューできません",
+		"previewOf": "{name} のプレビュー"
+	},
+	"comments": {
+		"activity": "アクティビティ",
+		"filter": {
+			"all": "すべて",
+			"people": "ユーザー",
+			"personas": "ペルソナ",
+			"plugins": "プラグイン"
+		},
+		"empty": "コメントはまだありません",
+		"noMatch": "このフィルターに一致するコメントはありません",
+		"aiAssistant": "AI アシスタント",
+		"deleteComment": "コメントを削除",
+		"confirmDelete": "このコメントを削除しますか？",
+		"addReaction": "リアクションを追加"
+	},
+	"relations": {
+		"title": "関連タスク",
+		"link": "リンク",
+		"removeRelation": "関連を解除",
+		"dialogTitle": "課題をリンク",
+		"issue": "課題",
+		"searchPlaceholder": "検索…",
+		"searching": "検索中…",
+		"type": "種類",
+		"select": "選択…",
+		"linking": "リンク中…",
+		"removeTitle": "リンクを解除",
+		"removeBody": "タスク #{id} への「{type}」リンクを解除しますか？",
+		"errors": {
+			"loadTypes": "関連の種類を読み込めませんでした",
+			"fillAll": "すべての項目を入力してください",
+			"add": "タスクの関連を追加できませんでした",
+			"remove": "タスクの関連を解除できませんでした"
+		}
+	},
+	"boardCard": {
+		"dragReorder": "ドラッグして並べ替え",
+		"dragMove": "ドラッグして移動",
+		"stopTimer": "タイマーを停止",
+		"startTimer": "タイマーを開始",
+		"changeAssignee": "担当者を変更",
+		"assignSomeone": "担当者を割り当て",
+		"searchMembers": "メンバーを検索…",
+		"noMembers": "メンバーが見つかりません。",
+		"taskActions": "タスクの操作",
+		"openDetails": "詳細を開く",
+		"settings": "設定",
+		"moveToTop": "先頭へ移動",
+		"moveToBottom": "末尾へ移動",
+		"archive": "アーカイブする",
+		"delete": "削除",
+		"commentsLabel": "コメント {n} 件",
+		"archiveTitle": "タスクをアーカイブ",
+		"archiveBody": "「{title}」をアーカイブしてもよろしいですか？",
+		"deleteTitle": "タスクを削除",
+		"deleteBody": "「{title}」を削除してもよろしいですか？",
+		"archiveStatusMissing": "アーカイブのステータスが見つかりません",
+		"archiveStatusMissingHint": "先にアーカイブのステータスを作成してください。",
+		"archiveFailed": "タスクをアーカイブできませんでした",
+		"tryAgain": "もう一度お試しください。",
+		"deleteFailed": "タスクを削除できませんでした。もう一度お試しください。"
+	},
+	"list": {
+		"selectedTasks": "選択中のタスク：",
+		"deselectAll": "すべて選択解除",
+		"selectAll": "すべて選択",
+		"process": "処理 ({n})",
+		"summary": "{total} 件中 {selected} 件 · {hours}時間",
+		"summaryOvertime": "{total} 件中 {selected} 件 · {hours}時間 · 超過 +{overtime}",
+		"restore": "復元",
+		"restoreFromTrash": "ゴミ箱から復元",
+		"deleteTask": "タスクを削除",
+		"timerRunning": "タイマー作動中",
+		"overtime": "超過 +{time}",
+		"showing": "{total} 件中 {from}～{to} 件のタスクを表示",
+		"perPage": "{n} 件/ページ",
+		"previous": "前へ",
+		"next": "次へ",
+		"page": "{page} / {last} ページ",
+		"deleteTasksTitle": "タスクを削除",
+		"deleteTasksBody": "よろしいですか？"
+	}
+}

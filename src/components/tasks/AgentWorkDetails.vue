@@ -5,16 +5,20 @@
 			data-testid="agent-work-details"
 		>
 			<DialogHeader>
-				<DialogTitle class="text-ink">Agent work — details</DialogTitle>
+				<DialogTitle class="text-ink">{{
+					$t('taskAgent.details.title')
+				}}</DialogTitle>
 			</DialogHeader>
 
 			<section class="flex flex-col gap-2" data-section="totals">
 				<h3 class="text-2xs font-bold tracking-wide text-ink-subtle uppercase">
-					Totals
+					{{ $t('taskAgent.details.totals') }}
 				</h3>
 				<dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
 					<div>
-						<dt class="text-2xs text-ink-subtle">You</dt>
+						<dt class="text-2xs text-ink-subtle">
+							{{ $t('taskAgent.details.you') }}
+						</dt>
 						<dd class="font-mono">
 							{{ formatWorkDuration(totals.humanSeconds) }}
 						</dd>
@@ -29,7 +33,7 @@
 					</div>
 					<div v-if="humanCost">
 						<dt class="text-2xs text-ink-subtle">
-							Your time at {{ humanCost.rate }}/h
+							{{ $t('taskAgent.details.yourTime', { rate: humanCost.rate }) }}
 						</dt>
 						<dd class="font-mono">{{ humanCost.text }}</dd>
 					</div>
@@ -55,7 +59,7 @@
 				class="text-xs text-ink-subtle"
 				data-state="loading"
 			>
-				Reading local AI usage…
+				{{ $t('taskAgent.details.loadingLocal') }}
 			</p>
 			<p
 				v-else-if="!aggregate && unsupportedReason"
@@ -69,14 +73,14 @@
 				class="text-xs text-ink-subtle"
 				data-state="error"
 			>
-				The local usage data could not be read.
+				{{ $t('taskAgent.details.localError') }}
 			</p>
 			<p
 				v-else-if="!aggregate"
 				class="text-xs text-ink-subtle"
 				data-state="empty"
 			>
-				No agent usage linked to this task yet.
+				{{ $t('taskAgent.details.empty') }}
 			</p>
 
 			<template v-if="aggregate">
@@ -84,15 +88,19 @@
 					<h3
 						class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 					>
-						Tokens
+						{{ $t('taskAgent.details.tokens') }}
 						<span class="font-normal normal-case">· {{ sourceLabel }}</span>
 					</h3>
 					<ul class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
 						<li v-for="row in tokenList" :key="row.key">
 							<span class="text-ink-subtle">{{ row.label }}</span>
 							<span class="ml-1 font-mono">{{ formatTokens(row.value) }}</span>
-							<span v-if="row.pct != null" class="ml-1 text-2xs text-ink-subtle"
-								>({{ row.pct }}% of input side)</span
+							<span
+								v-if="row.pct != null"
+								class="ml-1 text-2xs text-ink-subtle"
+								>{{
+									$t('taskAgent.details.pctOfInput', { pct: row.pct })
+								}}</span
 							>
 						</li>
 					</ul>
@@ -102,7 +110,9 @@
 						data-section="rates"
 					>
 						<li v-for="row in rates" :key="row.model">
-							<span class="font-semibold text-ink">Rates {{ row.model }}</span>
+							<span class="font-semibold text-ink">{{
+								$t('taskAgent.details.rates', { model: row.model })
+							}}</span>
 							{{ row.text }}
 						</li>
 					</ul>
@@ -116,7 +126,7 @@
 					<h3
 						class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 					>
-						Agents
+						{{ $t('taskAgent.details.agents') }}
 					</h3>
 					<ul class="flex max-h-64 flex-col overflow-y-auto text-sm">
 						<li v-for="row in flatTree" :key="row.node.id">
@@ -134,7 +144,7 @@
 								<span
 									v-if="row.node.link === 'likely'"
 									class="rounded-pill bg-amber-100 px-1.5 text-2xs text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-									>likely</span
+									>{{ $t('taskAgent.details.likely') }}</span
 								>
 								<span
 									class="ml-auto font-mono text-ink-subtle"
@@ -165,7 +175,7 @@
 								nodeTime(selected).text
 							}}</span>
 							·
-							{{ selected.events }} events
+							{{ $t('taskAgent.details.events', selected.events) }}
 						</div>
 						<ul class="flex flex-wrap gap-x-3 gap-y-0.5">
 							<li v-for="row in selectedTokens" :key="row.key">
@@ -181,7 +191,7 @@
 						</div>
 					</div>
 					<p v-if="aggregate.truncated.nodes" class="text-2xs text-ink-subtle">
-						Some agents are not shown: the tree is capped.
+						{{ $t('taskAgent.details.treeCapped') }}
 					</p>
 				</section>
 
@@ -193,36 +203,20 @@
 					<h3
 						class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 					>
-						Tools
+						{{ $t('taskAgent.details.tools') }}
 					</h3>
 					<p v-if="tools.length" class="text-sm">
 						{{ tools.map(formatTool).join(' · ') }}
 					</p>
 					<p v-if="mcp.length" class="text-xs text-ink-subtle">
 						<span class="font-semibold text-ink">MCP</span>
-						{{
-							mcp
-								.map(
-									(m) =>
-										`${m.server} ×${m.calls}${
-											m.errors ? ` (${m.errors} errors)` : ''
-										}`,
-								)
-								.join(' · ')
-						}}
+						{{ mcp.map(mcpText).join(' · ') }}
 					</p>
 					<p v-if="hooks.length" class="text-xs text-ink-subtle">
-						<span class="font-semibold text-ink">Hooks</span>
-						{{
-							hooks
-								.map(
-									(h) =>
-										`${h.event} ${h.name} ×${h.count} (${formatMs(
-											h.duration_ms,
-										)})${h.errors ? `, ${h.errors} failed` : ''}`,
-								)
-								.join(' · ')
-						}}
+						<span class="font-semibold text-ink">{{
+							$t('taskAgent.details.hooks')
+						}}</span>
+						{{ hooks.map(hookText).join(' · ') }}
 					</p>
 				</section>
 
@@ -234,7 +228,7 @@
 					<h3
 						class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 					>
-						Context
+						{{ $t('taskAgent.details.context') }}
 					</h3>
 					<p
 						v-for="row in contextRows"
@@ -253,7 +247,7 @@
 				data-section="code"
 			>
 				<h3 class="text-2xs font-bold tracking-wide text-ink-subtle uppercase">
-					Code
+					{{ $t('taskAgent.details.code') }}
 				</h3>
 				<div
 					v-for="run in codeRuns"
@@ -270,17 +264,18 @@
 							target="_blank"
 							rel="noopener noreferrer"
 							class="text-brand hover:underline"
-							>Pull request</a
+							>{{ $t('taskAgent.details.pullRequest') }}</a
 						>
 						<span v-if="run.tests">
-							tests
-							<span class="text-emerald-600 dark:text-emerald-400"
-								>{{ run.tests.passed ?? 0 }} passed</span
+							{{ $t('taskAgent.details.tests') }}
+							<span class="text-emerald-600 dark:text-emerald-400">{{
+								$t('taskAgent.details.testsPassed', run.tests.passed ?? 0)
+							}}</span
 							><template v-if="run.tests.failed"
 								>,
-								<span class="text-red-600 dark:text-red-400"
-									>{{ run.tests.failed }} failed</span
-								></template
+								<span class="text-red-600 dark:text-red-400">{{
+									$t('taskAgent.details.testsFailed', run.tests.failed)
+								}}</span></template
 							>
 						</span>
 					</div>
@@ -290,7 +285,9 @@
 						data-section="releases"
 					>
 						<li v-for="(rel, i) in releaseRows(run)" :key="i">
-							<span class="text-ink-subtle">Release</span>
+							<span class="text-ink-subtle">{{
+								$t('taskAgent.details.release')
+							}}</span>
 							<span class="ml-1 font-mono">{{ rel.label }}</span>
 							<a
 								v-if="rel.ciUrl"
@@ -298,7 +295,7 @@
 								target="_blank"
 								rel="noopener noreferrer"
 								class="ml-2 text-brand hover:underline"
-								>CI</a
+								>{{ $t('taskAgent.details.ci') }}</a
 							>
 							<span
 								v-if="rel.digest"
@@ -309,7 +306,9 @@
 						</li>
 					</ul>
 					<p v-if="deployRow(run)" data-section="deploy">
-						<span class="text-ink-subtle">Deploy</span>
+						<span class="text-ink-subtle">{{
+							$t('taskAgent.details.deploy')
+						}}</span>
 						<span class="ml-1 font-mono">{{ deployRow(run).label }}</span>
 						<a
 							v-if="deployRow(run).url"
@@ -317,7 +316,7 @@
 							target="_blank"
 							rel="noopener noreferrer"
 							class="ml-2 text-brand hover:underline"
-							>Open</a
+							>{{ $t('common.actions.open') }}</a
 						>
 					</p>
 					<ul
@@ -330,7 +329,9 @@
 							:key="i"
 							:title="check.command || undefined"
 						>
-							<span class="text-ink-subtle">Check</span>
+							<span class="text-ink-subtle">{{
+								$t('taskAgent.details.check')
+							}}</span>
 							<span class="ml-1">{{ check.name }} — {{ check.result }}</span>
 						</li>
 					</ul>
@@ -359,7 +360,7 @@
 								class="ml-2 rounded-pill bg-zinc-100 px-1.5 text-2xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
 								:title="
 									commit.source === 'git'
-										? 'Found in git, not reported by the agent'
+										? $t('taskAgent.details.foundInGit')
 										: undefined
 								"
 								>{{ commit.source }}</span
@@ -412,6 +413,7 @@
 		isHttpUrl,
 		timeRows,
 	} from '@/utils/agentWork';
+	import { t } from '@/i18n';
 	import { computed, defineComponent, ref, watch } from 'vue';
 
 	const list = (items) => items.map((i) => `${i.name} ×${i.count}`).join(' · ');
@@ -420,25 +422,62 @@
 		const rows = [];
 		if (summary.skills?.items.length) {
 			const extra = summary.skills.available
-				? ` (${summary.skills.available} available)`
+				? ` ${t('taskAgent.details.skillsAvailable', {
+						n: summary.skills.available,
+					})}`
 				: '';
-			rows.push({ label: 'Skills', text: list(summary.skills.items) + extra });
+			rows.push({
+				label: t('taskAgent.details.skills'),
+				text: list(summary.skills.items) + extra,
+			});
 		}
 		if (summary.plugins)
-			rows.push({ label: 'Plugins', text: list(summary.plugins) });
+			rows.push({
+				label: t('taskAgent.details.plugins'),
+				text: list(summary.plugins),
+			});
 		if (summary.slash_commands)
-			rows.push({ label: 'Commands', text: list(summary.slash_commands) });
+			rows.push({
+				label: t('taskAgent.details.commands'),
+				text: list(summary.slash_commands),
+			});
 		if (summary.permission_modes)
 			rows.push({
-				label: 'Permission modes',
+				label: t('taskAgent.details.permissionModes'),
 				text: summary.permission_modes
 					.map((m) => `${m.mode} ×${m.count}`)
 					.join(' · '),
 			});
 		if (summary.compactions)
-			rows.push({ label: 'Compactions', text: String(summary.compactions) });
+			rows.push({
+				label: t('taskAgent.details.compactions'),
+				text: String(summary.compactions),
+			});
 		return rows;
 	};
+
+	const mcpText = (m) =>
+		m.errors
+			? t(
+					'taskAgent.details.mcpEntryErrors',
+					{ server: m.server, calls: m.calls, errors: m.errors },
+					m.errors,
+				)
+			: t('taskAgent.details.mcpEntry', { server: m.server, calls: m.calls });
+
+	const hookText = (h) =>
+		t(
+			h.errors
+				? 'taskAgent.details.hookEntryFailed'
+				: 'taskAgent.details.hookEntry',
+			{
+				event: h.event,
+				name: h.name,
+				count: h.count,
+				duration: formatMs(h.duration_ms),
+				errors: h.errors,
+			},
+		);
 
 	const flatten = (tree, out = []) => {
 		for (const item of tree) {
@@ -521,7 +560,9 @@
 			const aggregate = computed(() => picked.value.aggregate);
 			const notice = computed(() => picked.value.notice);
 			const sourceLabel = computed(() =>
-				picked.value.source === 'synced' ? 'Synced to TMGR' : 'Local only',
+				picked.value.source === 'synced'
+					? t('taskAgent.details.sourceSynced')
+					: t('taskAgent.details.sourceLocal'),
 			);
 			const unpriced = computed(() =>
 				unpricedWarning(aggregate.value?.totals.unpriced_events),
@@ -548,8 +589,8 @@
 				return {
 					label:
 						picked.value.source === 'synced'
-							? 'AI, synced (API-equivalent)'
-							: 'AI, local only (API-equivalent)',
+							? t('taskAgent.details.aiSynced')
+							: t('taskAgent.details.aiLocal'),
 					text: formatUsd(aggregate.value.totals.cost_usd),
 				};
 			});
@@ -614,6 +655,8 @@
 							run.checks?.length,
 					),
 				),
+				mcpText,
+				hookText,
 				formatWorkDuration,
 				isHttpUrl,
 				formatMs,

@@ -1,0 +1,42 @@
+{
+	"actions": {
+		"save": "Speichern",
+		"saving": "Wird gespeichert…",
+		"cancel": "Abbrechen",
+		"delete": "Löschen",
+		"remove": "Entfernen",
+		"close": "Schließen",
+		"edit": "Bearbeiten",
+		"create": "Erstellen",
+		"add": "Hinzufügen",
+		"apply": "Anwenden",
+		"reset": "Zurücksetzen",
+		"back": "Zurück",
+		"next": "Weiter",
+		"done": "Fertig",
+		"confirm": "Bestätigen",
+		"retry": "Erneut versuchen",
+		"search": "Suchen",
+		"copy": "Kopieren",
+		"copied": "Kopiert",
+		"open": "Öffnen",
+		"learnMore": "Mehr erfahren",
+		"continue": "Fortfahren",
+		"skip": "Überspringen",
+		"enable": "Aktivieren",
+		"disable": "Deaktivieren"
+	},
+	"states": {
+		"loading": "Wird geladen…",
+		"yes": "Ja",
+		"no": "Nein",
+		"on": "An",
+		"off": "Aus",
+		"none": "Keine",
+		"unknown": "Unbekannt"
+	},
+	"errors": {
+		"generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
+		"network": "Netzwerkfehler. Prüfe deine Verbindung und versuche es erneut."
+	}
+}

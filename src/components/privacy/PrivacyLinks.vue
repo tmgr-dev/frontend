@@ -3,13 +3,13 @@
 		class="flex items-center justify-center gap-4 text-xs text-muted-foreground"
 	>
 		<router-link to="/privacy" class="hover:text-foreground hover:underline">
-			Privacy
+			{{ $t('settingsPages.privacyLinks.privacy') }}
 		</router-link>
 		<router-link to="/docs" class="hover:text-foreground hover:underline">
-			Docs
+			{{ $t('settingsPages.privacyLinks.docs') }}
 		</router-link>
 		<router-link to="/docs/cli" class="hover:text-foreground hover:underline">
-			Command line
+			{{ $t('settingsPages.privacyLinks.commandLine') }}
 		</router-link>
 		<button
 			v-if="!desktop"
@@ -17,7 +17,7 @@
 			class="hover:text-foreground hover:underline"
 			@click="reopenChoice"
 		>
-			Cookie settings
+			{{ $t('settingsPages.privacyLinks.cookieSettings') }}
 		</button>
 	</p>
 </template>

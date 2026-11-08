@@ -69,6 +69,15 @@ PWA is configured in `vite.config.ts` with `NetworkFirst` for `/api/*` (5min TTL
 - **Workspace context** must be in URLs and API calls — pull `currentWorkspace.code` from the store rather than hardcoding.
 - The full style guide (`.cursorrules`) has extensive examples for Options API, Vuex modules, composables, and shadcn usage; consult it for boilerplate but treat the points above as the binding constraints.
 
+## Localization
+
+- UI text goes through vue-i18n keys only: `$t('area.key')` in templates, `t()` from `@/i18n` in code. New copy is
+  written in English in `src/locales/en/<area>.json`; other languages are translated from it. Rules, message syntax
+  and plural forms: `docs/i18n/README.md`, terms: `docs/i18n/glossary.md`.
+- `npm test` runs `src/i18n/__tests__/catalogs.test.ts`: every message compiles, placeholders and plural forms match
+  English, every literal key used in `src` exists. A missing translation is not an error (falls back to English).
+- Status and category names stored in the database stay English; translate by status type in the UI.
+
 ## Desktop releases
 
 - A desktop release is the tag `desktop-vX.Y.Z`; the version must match `src-tauri/tauri.conf.json`,

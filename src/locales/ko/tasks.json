@@ -1,0 +1,233 @@
+{
+	"doneCheckbox": {
+		"label": "완료"
+	},
+	"linkChips": {
+		"title": "링크",
+		"page": "페이지 {id}"
+	},
+	"pageMentions": {
+		"title": "언급된 페이지"
+	},
+	"priorityBadge": {
+		"title": "{label} 우선순위"
+	},
+	"shareMenu": {
+		"share": "공유"
+	},
+	"timeEntries": {
+		"title": "터미널 세션",
+		"partial": "다른 추적 시간과 일부 겹침"
+	},
+	"timeInfo": {
+		"created": "생성: {time}",
+		"edited": "수정: {time}",
+		"overtime": "초과 근무"
+	},
+	"actions": {
+		"delete": "삭제",
+		"save": "저장",
+		"create": "만들기",
+		"settings": "설정"
+	},
+	"reminder": {
+		"label": "알림"
+	},
+	"sidePanel": {
+		"label": "작업"
+	},
+	"exportSettings": {
+		"title": "내보내기 설정",
+		"roundHoursUp": "시간 올림",
+		"zeroExpectedWeekends": "휴무일 예상 시간 0",
+		"weekendDays": "주말 요일:",
+		"customHolidays": "사용자 지정 휴일:",
+		"add": "추가",
+		"parseDateFromTitle": "작업 제목에서 날짜 인식",
+		"days": {
+			"sun": "일",
+			"mon": "월",
+			"tue": "화",
+			"wed": "수",
+			"thu": "목",
+			"fri": "금",
+			"sat": "토"
+		}
+	},
+	"multipleActions": {
+		"title": "일괄 작업",
+		"updateTasks": "작업 업데이트",
+		"markDone": "완료로 표시",
+		"markDoneNoStatus": "완료로 표시 (완료 상태 없음)",
+		"markOpen": "미완료로 표시",
+		"archive": "보관",
+		"delete": "삭제",
+		"moveToStatus": "상태로 이동",
+		"agentRuns": "에이전트 실행",
+		"confirmAgentRuns": "에이전트 실행 확인",
+		"export": "내보내기",
+		"exportCsv": "CSV로 내보내기",
+		"exportJpg": "JPEG로 내보내기",
+		"exportXlsx": "XLSX로 내보내기",
+		"seconds": "{n}초",
+		"execute": "실행"
+	},
+	"pomodoroSettings": {
+		"dialogLabel": "뽀모도로 설정",
+		"title": "뽀모도로",
+		"description": "집중 시간과 휴식 시간을 설정하세요. 모든 작업에 적용돼요.",
+		"focusDuration": "집중 시간",
+		"shortBreak": "짧은 휴식",
+		"longBreak": "긴 휴식",
+		"longBreakEvery": "긴 휴식 간격",
+		"pomodoros": "뽀모도로",
+		"autoStart": "다음 구간 자동 시작",
+		"autoStartHint": "집중과 휴식 사이에 재생 버튼을 건너뛰어요",
+		"pauseTracking": "휴식 중 추적 시간 일시 중지",
+		"pauseTrackingHint": "쉬는 동안 경과 시간 측정을 멈춰요",
+		"notifications": "알림",
+		"notify": {
+			"silent": "무음",
+			"system": "시스템",
+			"both": "둘 다"
+		},
+		"sound": "구간 종료 소리",
+		"sounds": {
+			"bell": "벨",
+			"chime": "차임",
+			"wood": "우드",
+			"digital": "디지털"
+		},
+		"minutesUnit": "분",
+		"saveError": "설정을 저장하지 못했어요. 다시 시도해 주세요."
+	},
+	"pomodoroBlock": {
+		"phase": {
+			"focus": "집중",
+			"short": "짧은 휴식",
+			"long": "긴 휴식"
+		},
+		"skipPhase": "구간 건너뛰기",
+		"reset": "초기화",
+		"distractedHint": "집중이 흐트러졌어요",
+		"distracted": "흐트러짐",
+		"distractedCount": "흐트러짐 · {n}",
+		"settings": "뽀모도로 설정",
+		"disable": "이 작업에서 뽀모도로 끄기",
+		"summary": "뽀모도로 {n}회 · {focus}/{short}/{long}"
+	},
+	"attachments": {
+		"loadError": "첨부 파일을 불러오지 못했어요.",
+		"title": "첨부 파일",
+		"addFiles": "파일 추가",
+		"pendingNote": "{size} · 작업을 만들 때 업로드돼요",
+		"open": "{name} 열기",
+		"uploading": "{size} 업로드 중…",
+		"dismiss": "업로드 닫기",
+		"none": "첨부 파일이 없어요",
+		"addMore": "파일 더 추가",
+		"dropHint": "클릭하거나 파일을 끌어다 놓아 문서, 이미지 등 파일을 첨부하세요",
+		"download": "다운로드"
+	},
+	"gallery": {
+		"file": "파일",
+		"position": "파일 {n}/{total}",
+		"downloadFailed": "다운로드하지 못했어요",
+		"zoomOut": "축소",
+		"zoomIn": "확대",
+		"fitTitle": "창에 맞추기 (0)",
+		"fit": "창에 맞추기",
+		"actualSizeTitle": "실제 크기 (100%)",
+		"actualSize": "실제 크기",
+		"previous": "이전",
+		"previousFile": "이전 파일",
+		"next": "다음",
+		"nextFile": "다음 파일",
+		"imageError": "이미지를 불러오지 못했어요. 다시 시도",
+		"fileError": "파일을 불러오지 못했어요",
+		"unsupported": "여기서는 미리 볼 수 없어요",
+		"previewOf": "{name} 미리보기"
+	},
+	"comments": {
+		"activity": "활동",
+		"filter": {
+			"all": "전체",
+			"people": "사람",
+			"personas": "페르소나",
+			"plugins": "플러그인"
+		},
+		"empty": "아직 댓글이 없어요",
+		"noMatch": "이 필터에 맞는 댓글이 없어요",
+		"aiAssistant": "AI 어시스턴트",
+		"deleteComment": "댓글 삭제",
+		"confirmDelete": "이 댓글을 삭제할까요?",
+		"addReaction": "반응 추가"
+	},
+	"relations": {
+		"title": "연결된 작업",
+		"link": "연결",
+		"removeRelation": "관계 제거",
+		"dialogTitle": "이슈 연결",
+		"issue": "이슈",
+		"searchPlaceholder": "검색…",
+		"searching": "검색 중…",
+		"type": "유형",
+		"select": "선택…",
+		"linking": "연결 중…",
+		"removeTitle": "링크 제거",
+		"removeBody": "작업 #{id}과(와)의 '{type}' 링크를 제거할까요?",
+		"errors": {
+			"loadTypes": "관계 유형을 불러오지 못했어요",
+			"fillAll": "모든 항목을 입력해 주세요",
+			"add": "작업 관계를 추가하지 못했어요",
+			"remove": "작업 관계를 제거하지 못했어요"
+		}
+	},
+	"boardCard": {
+		"dragReorder": "끌어서 순서 변경",
+		"dragMove": "끌어서 이동",
+		"stopTimer": "타이머 중지",
+		"startTimer": "타이머 시작",
+		"changeAssignee": "담당자 변경",
+		"assignSomeone": "담당자 지정",
+		"searchMembers": "멤버 검색...",
+		"noMembers": "멤버를 찾을 수 없어요.",
+		"taskActions": "작업 메뉴",
+		"openDetails": "상세 보기",
+		"settings": "설정",
+		"moveToTop": "맨 위로 이동",
+		"moveToBottom": "맨 아래로 이동",
+		"archive": "보관",
+		"delete": "삭제",
+		"commentsLabel": "댓글 {n}개",
+		"archiveTitle": "작업 보관",
+		"archiveBody": "\"{title}\"을(를) 보관할까요?",
+		"deleteTitle": "작업 삭제",
+		"deleteBody": "\"{title}\"을(를) 삭제할까요?",
+		"archiveStatusMissing": "보관 상태를 찾을 수 없어요",
+		"archiveStatusMissingHint": "먼저 보관 상태를 만드세요.",
+		"archiveFailed": "작업을 보관하지 못했어요",
+		"tryAgain": "다시 시도해 주세요.",
+		"deleteFailed": "작업을 삭제하지 못했어요. 다시 시도해 주세요."
+	},
+	"list": {
+		"selectedTasks": "선택한 작업:",
+		"deselectAll": "모두 선택 해제",
+		"selectAll": "모두 선택",
+		"process": "처리 ({n})",
+		"summary": "{total}개 중 {selected}개 · {hours}시간",
+		"summaryOvertime": "{total}개 중 {selected}개 · {hours}시간 · 초과 +{overtime}",
+		"restore": "복원",
+		"restoreFromTrash": "휴지통에서 복원",
+		"deleteTask": "작업 삭제",
+		"timerRunning": "타이머 실행 중",
+		"overtime": "초과 +{time}",
+		"showing": "총 {total}개 중 {from}~{to}번째 작업",
+		"perPage": "페이지당 {n}개",
+		"previous": "이전",
+		"next": "다음",
+		"page": "{page}/{last} 페이지",
+		"deleteTasksTitle": "작업 삭제",
+		"deleteTasksBody": "정말 삭제할까요?"
+	}
+}

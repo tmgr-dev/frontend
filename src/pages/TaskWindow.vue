@@ -11,11 +11,11 @@
 				class="mt-3 rounded-md border border-line bg-surface-sunken px-3 py-1.5 text-ink hover:bg-surface-hover"
 				@click="closeWindow"
 			>
-				Close window
+				{{ $t('taskForm.window.close') }}
 			</button>
 		</div>
 		<div v-else-if="!ready" class="m-auto text-sm text-ink-subtle">
-			Loading...
+			{{ $t('taskForm.window.loading') }}
 		</div>
 		<NewForm v-else :is-modal="true" detached @close="closeWindow" />
 	</div>
@@ -28,6 +28,7 @@
 	} from '@/actions/tmgr/featureToggles';
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import NewForm from '@/pages/NewForm.vue';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import { shouldCloseDetachedWindow } from '@/utils/accountModeSwitch';
 	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
@@ -81,14 +82,13 @@
 						Number(route.params.id),
 					);
 					if (!workspace) {
-						error.value = 'This task could not be found.';
+						error.value = t('taskForm.window.notFound');
 						return;
 					}
 					ready.value = true;
 				} catch (e) {
 					console.error('Error opening task window:', e);
-					error.value =
-						'The task could not be opened. Close this window and try again.';
+					error.value = t('taskForm.window.openFailed');
 				}
 			};
 			void open();

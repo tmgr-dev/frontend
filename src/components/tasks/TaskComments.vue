@@ -11,6 +11,7 @@
 	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import { Avatar } from '@/components/ui/avatar';
 	import { Button } from '@/components/ui/button';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import type { AttachedFile } from '@/utils/aiAttachments';
 	import { sortCommentsOldestFirst } from '@/utils/commentOrder';
@@ -89,11 +90,11 @@
 	const reactionPickerFor = ref<number | null>(null);
 	const reactionInFlight = new Set<string>();
 	const authorFilter = ref<AuthorFilter>('all');
-	const authorFilterOptions: { value: AuthorFilter; label: string }[] = [
-		{ value: 'all', label: 'All' },
-		{ value: 'people', label: 'People' },
-		{ value: 'personas', label: 'Personas' },
-		{ value: 'plugins', label: 'Plugins' },
+	const authorFilterOptions: { value: AuthorFilter; labelKey: string }[] = [
+		{ value: 'all', labelKey: 'tasks.comments.filter.all' },
+		{ value: 'people', labelKey: 'tasks.comments.filter.people' },
+		{ value: 'personas', labelKey: 'tasks.comments.filter.personas' },
+		{ value: 'plugins', labelKey: 'tasks.comments.filter.plugins' },
 	];
 
 	const currentUser = computed(() => store.state.user);
@@ -146,7 +147,7 @@
 	};
 
 	const handleDelete = async (commentId: number) => {
-		if (!confirm('Delete this comment?')) return;
+		if (!confirm(t('tasks.comments.confirmDelete'))) return;
 
 		try {
 			await deleteComment(commentId);
@@ -398,7 +399,9 @@
 		<!-- Header -->
 		<div v-if="!hideHeader" class="mb-3 flex items-center gap-2">
 			<MessageCircle class="h-4 w-4 text-ink-subtle" />
-			<span class="text-sm font-medium text-ink">Activity</span>
+			<span class="text-sm font-medium text-ink">{{
+				$t('tasks.comments.activity')
+			}}</span>
 			<span v-if="commentsCount > 0" class="text-xs text-ink-subtle">
 				{{ commentsCount }}
 			</span>
@@ -417,7 +420,7 @@
 				]"
 				@click="authorFilter = option.value"
 			>
-				{{ option.label }}
+				{{ $t(option.labelKey) }}
 			</button>
 		</div>
 
@@ -429,14 +432,14 @@
 		</div>
 
 		<div v-else-if="comments.length === 0" class="py-2 text-xs text-ink-subtle">
-			No comments yet
+			{{ $t('tasks.comments.empty') }}
 		</div>
 
 		<div
 			v-else-if="filteredComments.length === 0"
 			class="py-2 text-xs text-ink-subtle"
 		>
-			No comments match this filter
+			{{ $t('tasks.comments.noMatch') }}
 		</div>
 
 		<div v-else class="space-y-3">
@@ -515,7 +518,7 @@
 							v-else-if="comment.user?.email === 'ai@tmgr.dev'"
 							class="text-sm font-semibold text-brand"
 						>
-							AI Assistant
+							{{ $t('tasks.comments.aiAssistant') }}
 						</span>
 						<AuthorBadge
 							v-else-if="comment.author && comment.author.kind !== 'user'"
@@ -538,7 +541,7 @@
 								variant="ghost"
 								size="icon"
 								class="h-6 w-6 hover:bg-status-fix-bg hover:text-status-fix-fg"
-								aria-label="Delete comment"
+								:aria-label="$t('tasks.comments.deleteComment')"
 								@click="handleDelete(comment.id)"
 							>
 								<Trash2 class="h-3 w-3" />
@@ -580,7 +583,7 @@
 								type="button"
 								class="inline-flex h-6 w-6 items-center justify-center rounded-full text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-ink focus-visible:opacity-100"
 								:class="{ 'opacity-100': reactionPickerFor === comment.id }"
-								aria-label="Add reaction"
+								:aria-label="$t('tasks.comments.addReaction')"
 								aria-haspopup="menu"
 								:aria-expanded="reactionPickerFor === comment.id"
 								@click="toggleReactionPicker(comment.id, $event)"
@@ -593,7 +596,7 @@
 								:ref="setPickerEl"
 								role="menu"
 								data-state="open"
-								aria-label="Add reaction"
+								:aria-label="$t('tasks.comments.addReaction')"
 								data-testid="reaction-picker"
 								class="invisible fixed top-0 left-0 z-50 flex gap-0.5 rounded-lg border border-line bg-surface p-1 shadow-md"
 								@keydown="onPickerKeydown"

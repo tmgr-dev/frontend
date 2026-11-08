@@ -2,21 +2,23 @@
 	<Dialog :open="open" @update:open="onOpenChange">
 		<DialogContent class="sm:max-w-[920px]" data-testid="skill-import">
 			<DialogHeader>
-				<DialogTitle>Import skills from local agents</DialogTitle>
+				<DialogTitle>{{
+					$t('settingsPages.skillImportDialog.title')
+				}}</DialogTitle>
 			</DialogHeader>
 			<p class="text-xs text-muted-foreground">
-				Read-only scan of skill folders on this computer. Nothing is executed;
-				only the skills you tick are
 				{{
 					target
-						? 'saved to the skills library on this device'
-						: 'sent to your skills library'
-				}}.
+						? $t('settingsPages.skillImportDialog.introDevice')
+						: $t('settingsPages.skillImportDialog.introCloud')
+				}}
 			</p>
 
-			<p v-if="scanning" class="text-sm text-muted-foreground">Scanning…</p>
+			<p v-if="scanning" class="text-sm text-muted-foreground">
+				{{ $t('settingsPages.skillImportDialog.scanning') }}
+			</p>
 			<p v-else-if="scanFailed" class="text-sm text-destructive">
-				Could not scan this computer.
+				{{ $t('settingsPages.skillImportDialog.scanFailed') }}
 			</p>
 			<div v-else class="grid min-h-[320px] grid-cols-2 gap-3">
 				<div class="flex max-h-[420px] flex-col gap-3 overflow-y-auto pr-1">
@@ -25,7 +27,7 @@
 						class="text-sm text-muted-foreground"
 						data-testid="skill-import-empty"
 					>
-						No skills found. Use “Add folder…” to scan a project.
+						{{ $t('settingsPages.skillImportDialog.empty') }}
 					</p>
 					<div v-for="group in groups" :key="group.id" class="flex flex-col">
 						<label class="flex items-center gap-2 text-sm font-semibold">
@@ -108,10 +110,14 @@
 							v-if="selected.converted.blockedReason"
 							class="text-xs text-destructive"
 						>
-							Cannot import: {{ selected.converted.blockedReason }}
+							{{
+								$t('settingsPages.skillImportDialog.cannotImport', {
+									reason: selected.converted.blockedReason,
+								})
+							}}
 						</p>
 						<label class="flex flex-col gap-1 text-xs">
-							Library slug
+							{{ $t('settingsPages.skillImportDialog.slugLabel') }}
 							<input
 								class="rounded border border-border bg-background px-2 py-1 font-mono text-xs"
 								:value="selected.converted.slug"
@@ -129,7 +135,11 @@
 							class="w-fit text-xs text-primary underline"
 							@click="setSlug(selected!, clashSuggestion(selected!))"
 						>
-							Use {{ clashSuggestion(selected) }} instead
+							{{
+								$t('settingsPages.skillImportDialog.useInstead', {
+									slug: clashSuggestion(selected),
+								})
+							}}
 						</button>
 						<ul
 							v-if="selected.converted.warnings.length"
@@ -141,8 +151,11 @@
 							v-if="selected.converted.droppedFields.length"
 							class="text-xs text-muted-foreground"
 						>
-							Not carried over:
-							{{ selected.converted.droppedFields.join(', ') }}
+							{{
+								$t('settingsPages.skillImportDialog.droppedFields', {
+									fields: selected.converted.droppedFields.join(', '),
+								})
+							}}
 						</p>
 						<div
 							v-if="selected.skill.files.length"
@@ -150,10 +163,13 @@
 							data-testid="skill-import-files"
 						>
 							<p class="font-semibold">
-								Files: {{ uploadable(selected).length }} of
-								{{ selected.skill.files.length }} will be uploaded ({{
-									uploadBytes(selected)
-								}})
+								{{
+									$t('settingsPages.skillImportDialog.filesSummary', {
+										count: uploadable(selected).length,
+										total: selected.skill.files.length,
+										bytes: uploadBytes(selected),
+									})
+								}}
 							</p>
 							<ul class="flex flex-col gap-0.5">
 								<li
@@ -170,7 +186,11 @@
 									:data-testid="`skill-import-file-${file.status}`"
 								>
 									<span class="break-all">{{ file.path }}</span>
-									<span>{{ file.size }} B</span>
+									<span>{{
+										$t('settingsPages.skillImportDialog.fileSize', {
+											size: file.size,
+										})
+									}}</span>
 									<span class="font-sans">{{ fileLabel(file) }}</span>
 								</li>
 							</ul>
@@ -178,12 +198,14 @@
 								v-if="selected.skill.files_truncated"
 								class="text-muted-foreground"
 							>
-								The list is cut; this skill has too many files to import.
+								{{ $t('settingsPages.skillImportDialog.truncated') }}
 							</p>
 							<p class="text-muted-foreground">
-								Only files marked “will be uploaded” are sent to
-								{{ target ? 'the library on this device' : 'the cloud' }}, as
-								text. The secret check is best effort: read the list above.
+								{{
+									target
+										? $t('settingsPages.skillImportDialog.uploadNoteDevice')
+										: $t('settingsPages.skillImportDialog.uploadNoteCloud')
+								}}
 							</p>
 						</div>
 						<pre
@@ -192,7 +214,7 @@
 							>{{ selected.converted.markdown }}</pre>
 					</template>
 					<p v-else class="text-sm text-muted-foreground">
-						Select a skill to preview it.
+						{{ $t('settingsPages.skillImportDialog.selectPrompt') }}
 					</p>
 				</div>
 			</div>
@@ -205,21 +227,29 @@
 					:disabled="busy || scanning"
 					@click="addFolder"
 				>
-					Add folder…
+					{{ $t('settingsPages.skillImportDialog.addFolder') }}
 				</Button>
 				<div class="flex items-center gap-2">
 					<span class="text-xs text-muted-foreground">
-						{{ tickedCount }} selected
+						{{
+							$t('settingsPages.skillImportDialog.selectedCount', {
+								count: tickedCount,
+							})
+						}}
 					</span>
 					<Button variant="outline" :disabled="busy" @click="close">
-						{{ finished ? 'Close' : 'Cancel' }}
+						{{
+							finished
+								? $t('common.actions.close')
+								: $t('common.actions.cancel')
+						}}
 					</Button>
 					<Button
 						data-testid="skill-import-confirm"
 						:disabled="busy || scanning || tickedCount === 0"
 						@click="confirm"
 					>
-						Import selected
+						{{ $t('settingsPages.skillImportDialog.importSelected') }}
 					</Button>
 				</div>
 			</DialogFooter>
@@ -242,6 +272,7 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { toast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import {
 		FILE_STATUS_LABELS,
@@ -271,14 +302,16 @@
 	} from '@/utils/skillImportFlow';
 	import { computed, defineComponent, ref, watch, type PropType } from 'vue';
 
-	const STATUS_LABELS: Record<RowStatus, string> = {
-		new: 'New',
-		'up-to-date': 'Up to date',
-		changed: 'Changed since last import — will update',
-		'edited-in-library': 'Edited in library since import — will overwrite',
-		'slug-taken': 'Slug taken in library — tick to overwrite',
-		'previously-imported-deleted': 'Imported before, deleted from library',
-		blocked: 'Cannot import',
+	const STATUS_KEYS: Record<RowStatus, string> = {
+		new: 'settingsPages.skillImportDialog.status.new',
+		'up-to-date': 'settingsPages.skillImportDialog.status.upToDate',
+		changed: 'settingsPages.skillImportDialog.status.changed',
+		'edited-in-library':
+			'settingsPages.skillImportDialog.status.editedInLibrary',
+		'slug-taken': 'settingsPages.skillImportDialog.status.slugTaken',
+		'previously-imported-deleted':
+			'settingsPages.skillImportDialog.status.previouslyImportedDeleted',
+		blocked: 'settingsPages.skillImportDialog.status.blocked',
 	};
 
 	const STATUS_CLASSES: Record<RowStatus, string> = {
@@ -465,7 +498,7 @@
 					await scan();
 				} catch {
 					toast({
-						title: 'Could not open the folder',
+						title: t('settingsPages.skillImportDialog.folderFailed'),
 						variant: 'destructive',
 					});
 				}
@@ -487,9 +520,10 @@
 					index.value = outcome.index;
 					if (!(await target.saveIndex(outcome.index))) {
 						toast({
-							title: 'Could not remember what was imported',
-							description:
-								'The next import will treat these skills as already in the library.',
+							title: t('settingsPages.skillImportDialog.indexFailed'),
+							description: t(
+								'settingsPages.skillImportDialog.indexFailedDescription',
+							),
 							variant: 'destructive',
 						});
 					}
@@ -524,11 +558,13 @@
 								defaultTicked(row.status);
 						}
 					} catch {
-						toast({ title: 'Could not refresh the library' });
+						toast({
+							title: t('settingsPages.skillImportDialog.refreshFailed'),
+						});
 					}
 				} catch {
 					toast({
-						title: 'Could not import the skills',
+						title: t('settingsPages.skillImportDialog.importFailed'),
 						variant: 'destructive',
 					});
 				} finally {
@@ -564,8 +600,8 @@
 					if (!result?.ok) return result?.error;
 					const skipped = skippedFileCount(row.skill);
 					return skipped
-						? `Imported, ${skipped} ${skipped === 1 ? 'file' : 'files'} not imported`
-						: 'Imported';
+						? t('settingsPages.skillImportDialog.importedSkipped', skipped)
+						: t('settingsPages.skillImportDialog.imported');
 				},
 				addFolder,
 				confirm,
@@ -579,11 +615,13 @@
 						0,
 					);
 					return bytes < 1024
-						? `${bytes} B`
-						: `${(bytes / 1024).toFixed(1)} KiB`;
+						? t('settingsPages.skillImportDialog.bytes', { count: bytes })
+						: t('settingsPages.skillImportDialog.kib', {
+								count: (bytes / 1024).toFixed(1),
+							});
 				},
 				fileLabel: (file: ScanFile) => FILE_STATUS_LABELS[file.status],
-				statusLabel: (row: ImportRow) => STATUS_LABELS[row.status],
+				statusLabel: (row: ImportRow) => t(STATUS_KEYS[row.status]),
 				statusClass: (status: RowStatus) => STATUS_CLASSES[status],
 			};
 		},

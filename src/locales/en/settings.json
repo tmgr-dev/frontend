@@ -1,0 +1,184 @@
+{
+	"language": {
+		"title": "Language",
+		"label": "Interface language",
+		"description": "Used across the app, emails and notifications.",
+		"saveFailed": "Failed to save the language"
+	},
+	"page": {
+		"settings": "Settings",
+		"profile": "Profile",
+		"devices": "Smart devices",
+		"notifications": "Notifications",
+		"theme": "Theme",
+		"experimental": "Experimental",
+		"desktop": "Desktop",
+		"localData": "Local data",
+		"privacy": "Privacy",
+		"agentWork": "Agent work",
+		"about": "About"
+	},
+	"loading": "Loading settings",
+	"loadFailed": "Could not load settings.",
+	"layout": {
+		"back": "Back to Settings"
+	},
+	"nav": {
+		"groups": {
+			"account": "Account",
+			"workspace": "Workspace",
+			"agents": "Agents",
+			"app": "App"
+		},
+		"items": {
+			"profile": "Profile",
+			"notification": "Notifications",
+			"device": "Smart Devices",
+			"privacy": "Privacy",
+			"workspaces": "General",
+			"modules": "Modules",
+			"personas": "Personas",
+			"agent-work": "Agent work",
+			"agent-notifications": "Agent alerts",
+			"plugins": "Plugins",
+			"theme": "Theme",
+			"desktop": "Desktop",
+			"data": "Local data",
+			"experimental": "Experimental",
+			"about": "About"
+		}
+	},
+	"alerts": {
+		"errorTitle": "Error",
+		"updated": "Settings updated successfully",
+		"updateFailed": "Failed to update settings",
+		"editorUpdated": "Editor updated. Reloading page..."
+	},
+	"push": {
+		"title": "Push notifications (legacy)",
+		"enable": "Enable web pushes",
+		"test": "Send test notification",
+		"showTooltips": "Show tooltips",
+		"registrationTitle": "Notifications registration",
+		"registrationBody": "Please check notifications permissions"
+	},
+	"desktop": {
+		"gitTracking": "Git auto-tracking",
+		"shortcuts": "Keyboard shortcuts"
+	},
+	"about": {
+		"version": "Version {version}",
+		"moreTitle": "More from the maker",
+		"moreDescription": "Other products from the people who build TMGR.",
+		"cliLink": "Command line (tmgr)"
+	},
+	"theme": {
+		"title": "Theme",
+		"description": "Pick a color theme and light/dark mode.",
+		"active": "active",
+		"mode": "Mode:",
+		"light": "Light",
+		"dark": "Dark",
+		"system": "System",
+		"default": "Default",
+		"tags": {
+			"default": "canonical",
+			"dracula": "purple",
+			"nord": "frost",
+			"one-dark": "atom",
+			"monokai": "classic",
+			"solarized-dark": "muted",
+			"gruvbox-dark": "retro",
+			"tokyo-night": "night",
+			"github-dark": "default",
+			"night-owl": "deep",
+			"cobalt2": "blue",
+			"palenight": "material",
+			"ayu-dark": "warm",
+			"catppuccin-mocha": "pastel",
+			"synthwave-84": "neon",
+			"github-light": "light",
+			"oled": "true black",
+			"colorblind": "okabe-ito"
+		}
+	},
+	"timezone": {
+		"title": "Timezone",
+		"description": "Daily routines fire and days start in this timezone.",
+		"placeholder": "Select a timezone",
+		"search": "Search timezones",
+		"notFound": "No timezone found.",
+		"detected": "Detected: {zone}",
+		"useDetected": "Use detected",
+		"saveFailed": "Failed to save the timezone"
+	},
+	"telegram": {
+		"title": "Telegram",
+		"connectedAs": "Connected as {'@'}{username}",
+		"unlink": "Unlink",
+		"connect": "Connect Telegram",
+		"connectBody": "Click the button below to open Telegram and connect your account. After connecting, you'll receive notifications through Telegram.",
+		"open": "Open Telegram",
+		"unlinkTitle": "Unlink Telegram",
+		"unlinkBody": "Are you sure you want to unlink your Telegram account? You will no longer receive notifications through Telegram."
+	},
+	"device": {
+		"tokenTitle": "API token",
+		"tokenHidden": "Token is set (hidden). Generate a new one if you lost it.",
+		"tokenNeeded": "Token needs to be generated",
+		"hide": "Hide",
+		"show": "Show",
+		"copyNow": "Copy it now — it won't be shown again.",
+		"created": "Created: {date}",
+		"generateNew": "Generate new token",
+		"generate": "Generate token",
+		"revoke": "Revoke token",
+		"generateTitle": "Generate New Token",
+		"regenerateBody": "Are you sure you want to generate a new token? This will invalidate the existing token and any devices using it will need to be updated.",
+		"generateBody": "Generate a new token for your smart devices?",
+		"generateFailed": "Failed to generate token",
+		"generated": "Token generated successfully",
+		"revokeTitle": "Revoke Token",
+		"revokeBody": "Are you sure you want to revoke this token? All devices using this token will stop working until reconfigured with a new token.",
+		"revokeFailed": "Failed to revoke token",
+		"revoked": "Token revoked successfully",
+		"howTo": {
+			"title": "How to use",
+			"step1": "1. Generate a token using the button above",
+			"step2": "2. Include the token in your device's API requests using the header:",
+			"secure": "Keep your token secure. If compromised, generate a new one immediately."
+		},
+		"mcp": {
+			"title": "MCP setup",
+			"intro": "TMGR MCP uses the smart device token as a custom header. Generate the token above, then configure an MCP client that supports remote Streamable HTTP servers with headers (Claude Code: {command}).",
+			"serverUrl": "Server URL",
+			"clientConfig": "Client configuration",
+			"oauth": "OAuth note: this TMGR MCP server is not an OAuth connector yet. Unlike Spendly, it authenticates `/mcp/**` with `X-Smart-Device-Token`, so Claude.ai custom connectors that require OAuth discovery are not supported by this setup.",
+			"notify": "This MCP works with your tasks and time. For phone notifications and alarms from agents, connect tmgr-notify in {link}.",
+			"notifyLink": "Agent alerts"
+		},
+		"docs": {
+			"title": "Documentation",
+			"api": "Smart Device API reference",
+			"mcp": "MCP server setup"
+		}
+	},
+	"agentUsage": {
+		"title": "Agent work",
+		"description": "Show what AI agents cost on your tasks, on every device.",
+		"syncLabel": "Agent usage sync",
+		"syncDescription": "Uploads per-task totals so web and mobile can show them: tokens, AI cost (API-equivalent), agent, model and tool names, and counts. Never prompts, replies, file paths or command arguments. Uploads start only from the tmgr CLI, after you turn them on there: by hand with `tmgr usage sync`, or after each agent run if you also confirm `tmgr usage sync auto on`. Turning it off deletes everything already uploaded.",
+		"unavailable": "Agent usage sync is not available on this server yet.",
+		"uploadsTitle": "Your uploads",
+		"uploadsDescription": "What this account has uploaded, newest first.",
+		"deleteAll": "Delete all",
+		"empty": "Nothing uploaded.",
+		"turnOffTitle": "Turn off Agent usage sync?",
+		"turnOffBody": "Everything this account has uploaded is deleted from TMGR. You can turn it on again later.",
+		"keepOn": "Keep it on",
+		"turnOff": "Turn off and delete",
+		"deleteTitle": "Delete all uploads?",
+		"deleteBody": "Everything this account has uploaded is deleted from TMGR. Agent usage sync stays as it is.",
+		"genericError": "Something went wrong."
+	}
+}

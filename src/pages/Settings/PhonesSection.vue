@@ -1,12 +1,16 @@
 <template>
-	<SettingsSection v-if="available" title="Phones">
+	<SettingsSection
+		v-if="available"
+		:title="$t('settingsPages.phonesSection.title')"
+	>
 		<div class="flex flex-col gap-3">
 			<p class="text-sm text-muted-foreground">
-				Answer Decisions cards from the TMGR iPhone app. Pairing needs this Mac
-				to be on.
+				{{ $t('settingsPages.phonesSection.intro') }}
 			</p>
 			<label class="flex max-w-xs flex-col gap-1">
-				<span class="text-sm font-medium">Name of this Mac</span>
+				<span class="text-sm font-medium">{{
+					$t('settingsPages.phonesSection.macName')
+				}}</span>
 				<Input
 					:model-value="desktopName"
 					maxlength="40"
@@ -18,7 +22,7 @@
 			</p>
 			<div class="flex flex-wrap gap-2">
 				<Button type="button" size="sm" :disabled="busy" @click="pair">
-					Pair an iPhone
+					{{ $t('settingsPages.phonesSection.pair') }}
 				</Button>
 				<Button
 					type="button"
@@ -27,7 +31,7 @@
 					:disabled="busy"
 					@click="manage"
 				>
-					Manage phones
+					{{ $t('settingsPages.phonesSection.manage') }}
 				</Button>
 			</div>
 		</div>
@@ -40,6 +44,7 @@
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
 	import { phonesBeginPairing, phonesOpenWindow } from '@/phones/api';
+	import { t } from '@/i18n';
 	import { pairIphone } from '@/phones/pair';
 	import { DEFAULT_DESKTOP_NAME, phonesAvailable } from '@/phones/view';
 	import store from '@/store';
@@ -78,7 +83,10 @@
 				try {
 					await phonesOpenWindow();
 				} catch (e) {
-					error.value = typeof e === 'string' ? e : 'Could not open the window';
+					error.value =
+						typeof e === 'string'
+							? e
+							: t('settingsPages.phonesSection.openFailed');
 				}
 			};
 

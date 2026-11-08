@@ -24,7 +24,7 @@
 					/>
 				</svg>
 				<h3 class="text-2xs font-bold tracking-wide text-ink-subtle uppercase">
-					Linked Tasks
+					{{ $t('tasks.relations.title') }}
 				</h3>
 			</div>
 			<button
@@ -43,7 +43,7 @@
 						clip-rule="evenodd"
 					/>
 				</svg>
-				Link
+				{{ $t('tasks.relations.link') }}
 			</button>
 		</div>
 
@@ -90,7 +90,7 @@
 							</div>
 							<button
 								@click="handleRemoveRelation(relation)"
-								aria-label="Remove relation"
+								:aria-label="$t('tasks.relations.removeRelation')"
 								class="ml-1 inline-flex h-5 w-5 items-center justify-center rounded opacity-0 transition-colors group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-status-fix-bg hover:text-status-fix-fg focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
 							>
 								<svg
@@ -125,10 +125,12 @@
 		>
 			<!-- Dialog Header -->
 			<div class="flex items-center justify-between">
-				<h2 class="text-base font-semibold">Link Issue</h2>
+				<h2 class="text-base font-semibold">
+					{{ $t('tasks.relations.dialogTitle') }}
+				</h2>
 				<button
 					@click="cancelAdding"
-					aria-label="Close"
+					:aria-label="$t('common.actions.close')"
 					class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
 				>
 					<svg
@@ -150,7 +152,9 @@
 			<div class="grid gap-3">
 				<!-- Task Search -->
 				<div class="grid gap-1.5">
-					<label class="text-xs font-medium text-ink-subtle">Issue</label>
+					<label class="text-xs font-medium text-ink-subtle">
+						{{ $t('tasks.relations.issue') }}
+					</label>
 					<div class="relative">
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
@@ -167,7 +171,7 @@
 						<input
 							v-model="taskSearchQuery"
 							type="text"
-							placeholder="Search…"
+							:placeholder="$t('tasks.relations.searchPlaceholder')"
 							class="flex h-10 w-full rounded-md border border-line bg-surface-sunken px-3 pl-9 text-sm text-ink placeholder:text-ink-subtle focus-visible:border-line-strong"
 							@input="
 								handleTaskSearch(
@@ -185,7 +189,7 @@
 							v-if="isSearching"
 							class="py-3 text-center text-sm text-ink-subtle"
 						>
-							Searching…
+							{{ $t('tasks.relations.searching') }}
 						</div>
 						<button
 							v-for="task in searchResults"
@@ -203,13 +207,15 @@
 
 				<!-- Relationship Type -->
 				<div class="grid gap-1.5">
-					<label class="text-xs font-medium text-ink-subtle">Type</label>
+					<label class="text-xs font-medium text-ink-subtle">
+						{{ $t('tasks.relations.type') }}
+					</label>
 					<div class="relative">
 						<select
 							v-model="newRelation.typeId"
 							class="flex h-10 w-full appearance-none rounded-md border border-line bg-surface-sunken px-3 text-sm text-ink"
 						>
-							<option value="">Select…</option>
+							<option value="">{{ $t('tasks.relations.select') }}</option>
 							<option
 								v-for="type in relationTypes"
 								:key="type.id"
@@ -259,14 +265,18 @@
 					@click="cancelAdding"
 					class="inline-flex h-9 items-center justify-center rounded-md border border-line bg-surface px-4 text-sm font-medium text-ink transition-colors hover:bg-surface-hover"
 				>
-					Cancel
+					{{ $t('common.actions.cancel') }}
 				</button>
 				<button
 					@click="handleAddRelation"
 					:disabled="!selectedTask || !newRelation.typeId || isLoading"
 					class="inline-flex h-9 items-center justify-center rounded-md bg-brand px-4 text-sm font-semibold text-on-accent transition-colors hover:bg-brand-hover disabled:pointer-events-none disabled:opacity-50"
 				>
-					{{ isLoading ? 'Linking…' : 'Link' }}
+					{{
+						isLoading
+							? $t('tasks.relations.linking')
+							: $t('tasks.relations.link')
+					}}
 				</button>
 			</div>
 		</div>
@@ -275,8 +285,13 @@
 	<!-- Confirm Dialog -->
 	<Confirm
 		v-if="showRemoveConfirm"
-		title="Remove link"
-		:body="`Remove link '${relationToRemove?.relation_type.name}' to task #${relationToRemove?.related_task.id}?`"
+		:title="$t('tasks.relations.removeTitle')"
+		:body="
+			$t('tasks.relations.removeBody', {
+				type: relationToRemove?.relation_type.name,
+				id: relationToRemove?.related_task.id,
+			})
+		"
 		@on-ok="confirmRemoveRelation"
 		@on-cancel="cancelRemoveRelation"
 	/>
@@ -293,6 +308,7 @@
 		type TaskRelationType,
 	} from '@/actions/tmgr/taskRelations';
 	import Confirm from '@/components/general/Confirm.vue';
+	import { t } from '@/i18n';
 	import { computed, h, onMounted, onUnmounted, ref } from 'vue';
 
 	const props = withDefaults(
@@ -510,7 +526,7 @@
 			relationTypes.value = await getTaskRelationTypes();
 		} catch (err: any) {
 			console.error('Failed to load relation types:', err);
-			error.value = 'Failed to load relation types';
+			error.value = t('tasks.relations.errors.loadTypes');
 		}
 	};
 
@@ -549,7 +565,7 @@
 
 	const handleAddRelation = async () => {
 		if (!selectedTask.value || !newRelation.value.typeId) {
-			error.value = 'Please fill all fields';
+			error.value = t('tasks.relations.errors.fillAll');
 			return;
 		}
 
@@ -566,7 +582,7 @@
 			cancelAdding();
 		} catch (err: any) {
 			error.value =
-				err.response?.data?.message || 'Failed to add task relation';
+				err.response?.data?.message || t('tasks.relations.errors.add');
 			console.error('Failed to add relation:', err);
 		} finally {
 			isLoading.value = false;
@@ -593,7 +609,7 @@
 			emit('update');
 		} catch (err: any) {
 			error.value =
-				err.response?.data?.message || 'Failed to remove task relation';
+				err.response?.data?.message || t('tasks.relations.errors.remove');
 			console.error('Failed to remove relation:', err);
 		} finally {
 			isLoading.value = false;

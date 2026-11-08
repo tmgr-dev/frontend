@@ -35,6 +35,7 @@
 		STATE_LABELS,
 		statusTooltip,
 	} from '@/utils/agentStatus';
+	import { t } from '@/i18n';
 	import { computed, defineComponent, onBeforeUnmount, watch } from 'vue';
 	import { useStore } from 'vuex';
 
@@ -93,10 +94,14 @@
 			const stateClass = computed(() => STATE_CLASSES[status.value?.state]);
 			const ariaLabel = computed(() => {
 				if (!status.value) return undefined;
-				const label = `Agent ${STATE_LABELS[status.value.state].toLowerCase()}`;
+				const state = STATE_LABELS[status.value.state].toLowerCase();
 				return status.value.count > 1
-					? `${label}, ${status.value.count} sessions`
-					: label;
+					? t(
+							'taskAgent.statusChip.ariaLabelSessions',
+							{ state, n: status.value.count },
+							status.value.count,
+						)
+					: t('taskAgent.statusChip.ariaLabel', { state });
 			});
 
 			return { enabled, status, tooltip, glyph, stateClass, ariaLabel };

@@ -1,6 +1,6 @@
 <template>
 	<div>
-		<SettingsSection title="Usage data">
+		<SettingsSection :title="$t('settingsPages.usageDataControls.title')">
 			<div class="flex flex-col gap-2">
 				<p
 					v-if="saveFailed"
@@ -8,8 +8,7 @@
 					data-testid="consent-save-error"
 					class="text-sm text-destructive"
 				>
-					Couldn't save your choice in this browser. Sharing is stopped in this
-					window.
+					{{ $t('settingsPages.usageDataControls.saveFailed') }}
 				</p>
 				<p
 					v-if="snapshot.error"
@@ -17,13 +16,12 @@
 					data-testid="receipt-error"
 					class="text-sm text-destructive"
 				>
-					Couldn't keep a deletion key for this install. Use "Delete data
-					already sent" to remove its data.
+					{{ $t('settingsPages.usageDataControls.receiptError') }}
 				</p>
 				<SettingsRow
 					v-slot="{ labelId, descriptionId }"
-					label="Share usage data"
-					description="Not linked to your account: event names, a random install ID, app version and platform. Never task content, names or emails."
+					:label="$t('settingsPages.usageDataControls.shareLabel')"
+					:description="$t('settingsPages.usageDataControls.shareDescription')"
 				>
 					<Switch
 						data-testid="usage-switch"
@@ -35,7 +33,7 @@
 				</SettingsRow>
 				<SettingsRow>
 					<template #label>
-						Install ID:
+						{{ $t('settingsPages.usageDataControls.installId') }}
 						<span data-testid="install-id" class="font-mono">{{
 							snapshot.installId ? shortInstallId(snapshot.installId) : '\u2014'
 						}}</span>
@@ -46,17 +44,19 @@
 						:disabled="!snapshot.active"
 						@click="getTelemetry()?.resetId()"
 					>
-						Reset ID
+						{{ $t('settingsPages.usageDataControls.resetId') }}
 					</Button>
 				</SettingsRow>
 				<SettingsRow>
 					<template #label>
-						Events waiting to be sent:
+						{{ $t('settingsPages.usageDataControls.pending') }}
 						<span data-testid="pending-count">{{ snapshot.pending }}</span>
 					</template>
-					<Button variant="outline" size="sm" @click="openQueue">View</Button>
+					<Button variant="outline" size="sm" @click="openQueue">{{
+						$t('settingsPages.usageDataControls.view')
+					}}</Button>
 				</SettingsRow>
-				<SettingsRow label="Data already sent">
+				<SettingsRow :label="$t('settingsPages.usageDataControls.dataSent')">
 					<template #description>
 						<span
 							v-if="deleteMessage"
@@ -72,30 +72,31 @@
 						:aria-busy="deleting"
 						@click="deleteSent"
 					>
-						Delete data already sent
+						{{ $t('settingsPages.usageDataControls.deleteSent') }}
 					</Button>
 				</SettingsRow>
 				<p class="text-sm text-ink-subtle">
-					This switch covers events from this device. Aggregated onboarding
-					statistics from account data are described in the privacy policy.
+					{{ $t('settingsPages.usageDataControls.coverage') }}
 					<router-link
 						to="/privacy#onboarding-aggregates"
 						class="text-primary hover:underline"
 					>
-						Read more
+						{{ $t('settingsPages.usageDataControls.readMore') }}
 					</router-link>
 				</p>
 			</div>
 			<template #footer>
 				<p class="text-sm text-ink-subtle">
-					Turning sharing off stops it at once. Raw events are kept for 30 days.
+					{{ $t('settingsPages.usageDataControls.footer') }}
 				</p>
 			</template>
 		</SettingsSection>
 		<Dialog v-model:open="queueOpen">
 			<DialogContent class="max-w-xl">
 				<DialogHeader>
-					<DialogTitle class="text-ink">Events waiting to be sent</DialogTitle>
+					<DialogTitle class="text-ink">{{
+						$t('settingsPages.usageDataControls.queueTitle')
+					}}</DialogTitle>
 				</DialogHeader>
 				<pre
 					data-testid="queue-json"
@@ -117,6 +118,7 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { Switch } from '@/components/ui/switch';
+	import { t } from '@/i18n';
 	import { useConsent } from '@/privacy/useConsent';
 	import { getTelemetry } from '@/telemetry';
 	import { shortInstallId, useTelemetry } from '@/telemetry/useTelemetry';
@@ -144,10 +146,10 @@
 		try {
 			const { deleted, failed } = await telemetry.deleteSent();
 			deleteMessage.value = failed
-				? 'Could not delete everything. Sharing is off. Try again later.'
+				? t('settingsPages.usageDataControls.deleteFailed')
 				: deleted
-					? 'Deleted. Sharing is off.'
-					: 'Nothing to delete. Sharing is off.';
+					? t('settingsPages.usageDataControls.deleted')
+					: t('settingsPages.usageDataControls.nothingToDelete');
 		} finally {
 			deleting.value = false;
 		}

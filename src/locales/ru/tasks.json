@@ -1,0 +1,233 @@
+{
+	"doneCheckbox": {
+		"label": "Выполнено"
+	},
+	"linkChips": {
+		"title": "Ссылки",
+		"page": "Страница {id}"
+	},
+	"pageMentions": {
+		"title": "Упоминается на страницах"
+	},
+	"priorityBadge": {
+		"title": "Приоритет: {label}"
+	},
+	"shareMenu": {
+		"share": "Поделиться"
+	},
+	"timeEntries": {
+		"title": "Сессии терминала",
+		"partial": "частично покрыто другим учтённым временем"
+	},
+	"timeInfo": {
+		"created": "Создано: {time}",
+		"edited": "Изменено: {time}",
+		"overtime": "Переработка"
+	},
+	"actions": {
+		"delete": "Удалить",
+		"save": "Сохранить",
+		"create": "Создать",
+		"settings": "Настройки"
+	},
+	"reminder": {
+		"label": "Напоминание"
+	},
+	"sidePanel": {
+		"label": "Задача"
+	},
+	"exportSettings": {
+		"title": "Настройки экспорта",
+		"roundHoursUp": "Округлять часы вверх",
+		"zeroExpectedWeekends": "Ноль ожидаемых часов в выходные",
+		"weekendDays": "Выходные дни:",
+		"customHolidays": "Свои праздники:",
+		"add": "Добавить",
+		"parseDateFromTitle": "Брать дату из названия задачи",
+		"days": {
+			"sun": "Вс",
+			"mon": "Пн",
+			"tue": "Вт",
+			"wed": "Ср",
+			"thu": "Чт",
+			"fri": "Пт",
+			"sat": "Сб"
+		}
+	},
+	"multipleActions": {
+		"title": "Массовые действия",
+		"updateTasks": "Обновить задачи",
+		"markDone": "Отметить выполненными",
+		"markDoneNoStatus": "Отметить выполненными (нет статуса «Выполнено»)",
+		"markOpen": "Отметить открытыми",
+		"archive": "Архивировать",
+		"delete": "Удалить",
+		"moveToStatus": "Перенести в статус",
+		"agentRuns": "Запуски агентов",
+		"confirmAgentRuns": "Подтвердить для запусков агентов",
+		"export": "Экспорт",
+		"exportCsv": "Экспорт в CSV",
+		"exportJpg": "Экспорт в JPEG",
+		"exportXlsx": "Экспорт в XLSX",
+		"seconds": "{n} с",
+		"execute": "Выполнить"
+	},
+	"pomodoroSettings": {
+		"dialogLabel": "Настройки Pomodoro",
+		"title": "Pomodoro",
+		"description": "Настройте интервалы работы и перерывов. Настройки действуют для всех ваших задач.",
+		"focusDuration": "Длительность фокуса",
+		"shortBreak": "Короткий перерыв",
+		"longBreak": "Длинный перерыв",
+		"longBreakEvery": "Длинный перерыв каждые",
+		"pomodoros": "помодоро | помодоро | помодоро",
+		"autoStart": "Автозапуск следующего интервала",
+		"autoStartHint": "Не нажимать «Старт» между фокусом и перерывом",
+		"pauseTracking": "Приостанавливать учёт времени на перерыве",
+		"pauseTrackingHint": "Останавливать часы, пока вы отдыхаете",
+		"notifications": "Уведомления",
+		"notify": {
+			"silent": "Без звука",
+			"system": "Системные",
+			"both": "Оба вида"
+		},
+		"sound": "Звук конца интервала",
+		"sounds": {
+			"bell": "Колокольчик",
+			"chime": "Перезвон",
+			"wood": "Дерево",
+			"digital": "Цифровой"
+		},
+		"minutesUnit": "мин",
+		"saveError": "Не удалось сохранить настройки. Попробуйте ещё раз."
+	},
+	"pomodoroBlock": {
+		"phase": {
+			"focus": "ФОКУС",
+			"short": "КОРОТКИЙ ПЕРЕРЫВ",
+			"long": "ДЛИННЫЙ ПЕРЕРЫВ"
+		},
+		"skipPhase": "Пропустить этап",
+		"reset": "Сбросить",
+		"distractedHint": "Отвлекаюсь",
+		"distracted": "ОТВЛЕЧЕНИЕ",
+		"distractedCount": "ОТВЛЕЧЕНИЙ · {n}",
+		"settings": "Настройки Pomodoro",
+		"disable": "Отключить Pomodoro для этой задачи",
+		"summary": "ПОМОДОРО: {n} · {focus}/{short}/{long}"
+	},
+	"attachments": {
+		"loadError": "Не удалось загрузить вложения.",
+		"title": "Вложения",
+		"addFiles": "Добавить файлы",
+		"pendingNote": "{size} · Будет загружено при создании задачи",
+		"open": "Открыть {name}",
+		"uploading": "Загрузка {size}…",
+		"dismiss": "Скрыть загрузку",
+		"none": "Вложений пока нет",
+		"addMore": "Добавить ещё файлы",
+		"dropHint": "Нажмите или перетащите сюда файлы, чтобы прикрепить документы, изображения и другие файлы",
+		"download": "Скачать"
+	},
+	"gallery": {
+		"file": "Файл",
+		"position": "Файл {n} из {total}",
+		"downloadFailed": "Не удалось скачать",
+		"zoomOut": "Уменьшить",
+		"zoomIn": "Увеличить",
+		"fitTitle": "По размеру окна (0)",
+		"fit": "По размеру окна",
+		"actualSizeTitle": "Исходный размер (100%)",
+		"actualSize": "Исходный размер",
+		"previous": "Назад",
+		"previousFile": "Предыдущий файл",
+		"next": "Далее",
+		"nextFile": "Следующий файл",
+		"imageError": "Не удалось загрузить изображение. Повторить",
+		"fileError": "Не удалось загрузить файл",
+		"unsupported": "Предпросмотр здесь недоступен",
+		"previewOf": "Предпросмотр: {name}"
+	},
+	"comments": {
+		"activity": "Активность",
+		"filter": {
+			"all": "Все",
+			"people": "Люди",
+			"personas": "Персоны",
+			"plugins": "Плагины"
+		},
+		"empty": "Комментариев пока нет",
+		"noMatch": "Нет комментариев по этому фильтру",
+		"aiAssistant": "ИИ-ассистент",
+		"deleteComment": "Удалить комментарий",
+		"confirmDelete": "Удалить этот комментарий?",
+		"addReaction": "Добавить реакцию"
+	},
+	"relations": {
+		"title": "Связанные задачи",
+		"link": "Связать",
+		"removeRelation": "Удалить связь",
+		"dialogTitle": "Связать задачу",
+		"issue": "Задача",
+		"searchPlaceholder": "Поиск…",
+		"searching": "Поиск…",
+		"type": "Тип",
+		"select": "Выберите…",
+		"linking": "Связывание…",
+		"removeTitle": "Удалить связь",
+		"removeBody": "Удалить связь «{type}» с задачей #{id}?",
+		"errors": {
+			"loadTypes": "Не удалось загрузить типы связей",
+			"fillAll": "Заполните все поля",
+			"add": "Не удалось добавить связь между задачами",
+			"remove": "Не удалось удалить связь между задачами"
+		}
+	},
+	"boardCard": {
+		"dragReorder": "Перетащите, чтобы изменить порядок",
+		"dragMove": "Перетащите, чтобы переместить",
+		"stopTimer": "Остановить таймер",
+		"startTimer": "Запустить таймер",
+		"changeAssignee": "Сменить исполнителя",
+		"assignSomeone": "Назначить исполнителя",
+		"searchMembers": "Поиск участников…",
+		"noMembers": "Участники не найдены.",
+		"taskActions": "Действия с задачей",
+		"openDetails": "Открыть подробности",
+		"settings": "Настройки",
+		"moveToTop": "В начало",
+		"moveToBottom": "В конец",
+		"archive": "Архивировать",
+		"delete": "Удалить",
+		"commentsLabel": "{n} комментарий | {n} комментария | {n} комментариев",
+		"archiveTitle": "Архивировать задачу",
+		"archiveBody": "Вы уверены, что хотите архивировать «{title}»?",
+		"deleteTitle": "Удалить задачу",
+		"deleteBody": "Вы уверены, что хотите удалить «{title}»?",
+		"archiveStatusMissing": "Статус архива не найден",
+		"archiveStatusMissingHint": "Сначала создайте статус архива.",
+		"archiveFailed": "Не удалось архивировать задачу",
+		"tryAgain": "Попробуйте ещё раз.",
+		"deleteFailed": "Не удалось удалить задачу. Попробуйте ещё раз."
+	},
+	"list": {
+		"selectedTasks": "Выбрано задач:",
+		"deselectAll": "Снять выбор",
+		"selectAll": "Выбрать все",
+		"process": "Обработать ({n})",
+		"summary": "{selected} из {total} · {hours} ч",
+		"summaryOvertime": "{selected} из {total} · {hours} ч · +{overtime} переработки",
+		"restore": "Восстановить",
+		"restoreFromTrash": "Восстановить из корзины",
+		"deleteTask": "Удалить задачу",
+		"timerRunning": "Таймер запущен",
+		"overtime": "+{time} переработки",
+		"showing": "Показано {from}–{to} из {total} задач",
+		"perPage": "{n} на странице",
+		"previous": "Назад",
+		"next": "Далее",
+		"page": "Страница {page} из {last}",
+		"deleteTasksTitle": "Удалить задачи",
+		"deleteTasksBody": "Вы уверены?"
+	}
+}

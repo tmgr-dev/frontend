@@ -17,7 +17,8 @@
 			@confirm-agent-runs="openBulkAgentConfirm"
 		>
 			<p class="text-center text-ink">
-				<b>Selected tasks: </b>{{ selected.filter(Boolean).length }}<br />
+				<b>{{ $t('tasks.list.selectedTasks') + ' ' }}</b
+				>{{ selected.filter(Boolean).length }}<br />
 				{{ timeForModal }}
 			</p>
 		</TasksMultipleActionsModal>
@@ -34,7 +35,11 @@
 				type="button"
 				class="h-9 rounded-pill border border-line bg-surface px-4 text-sm font-medium text-ink hover:bg-surface-hover"
 			>
-				{{ allSelected ? 'Deselect all' : 'Select all' }}
+				{{
+					allSelected
+						? $t('tasks.list.deselectAll')
+						: $t('tasks.list.selectAll')
+				}}
 			</button>
 			<button
 				v-if="selected.filter(Boolean).length > 0"
@@ -43,7 +48,7 @@
 				data-tour="list.process"
 				class="h-9 rounded-pill bg-status-done px-4 text-sm font-medium text-white shadow-tmgr-xs hover:opacity-90"
 			>
-				Process ({{ selected.filter(Boolean).length }})
+				{{ $t('tasks.list.process', { n: selected.filter(Boolean).length }) }}
 			</button>
 			<span
 				v-if="selected.filter(Boolean).length > 0"
@@ -150,8 +155,8 @@
 									@click.stop
 									:title="
 										visibleAssignees(task).length
-											? 'Change assignee'
-											: 'Assign someone'
+											? $t('tasks.boardCard.changeAssignee')
+											: $t('tasks.boardCard.assignSomeone')
 									"
 								>
 									<UserPlus
@@ -181,8 +186,13 @@
 								@click.stop
 							>
 								<Command>
-									<CommandInput placeholder="Search members..." class="h-9" />
-									<CommandEmpty>No members found.</CommandEmpty>
+									<CommandInput
+										:placeholder="$t('tasks.boardCard.searchMembers')"
+										class="h-9"
+									/>
+									<CommandEmpty>{{
+										$t('tasks.boardCard.noMembers')
+									}}</CommandEmpty>
 									<CommandList>
 										<CommandGroup>
 											<CommandItem
@@ -229,7 +239,7 @@
 									:class="
 										isFeatureEnabled('task.assignees') ? 'right-11' : 'right-3'
 									"
-									aria-label="Task actions"
+									:aria-label="$t('tasks.boardCard.taskActions')"
 									@click.stop
 								>
 									<MoreVertical class="h-4 w-4" />
@@ -240,32 +250,32 @@
 									@click="$store.commit('setCurrentTaskIdForModal', task.id)"
 								>
 									<Eye class="mr-2 h-4 w-4" />
-									<span>Open details</span>
+									<span>{{ $t('tasks.boardCard.openDetails') }}</span>
 								</DropdownMenuItem>
 								<DropdownMenuItem @click="settingsTask = task">
 									<Settings2 class="mr-2 h-4 w-4" />
-									<span>Settings</span>
+									<span>{{ $t('tasks.boardCard.settings') }}</span>
 								</DropdownMenuItem>
 								<DropdownMenuItem
 									v-if="canArchive(task)"
 									@click="archiveTask(task)"
 								>
 									<Archive class="mr-2 h-4 w-4" />
-									<span>Archive</span>
+									<span>{{ $t('tasks.boardCard.archive') }}</span>
 								</DropdownMenuItem>
 								<DropdownMenuItem
 									v-if="canUnarchive(task)"
 									@click="unarchiveTask(task)"
 								>
 									<ArchiveRestore class="mr-2 h-4 w-4" />
-									<span>Restore</span>
+									<span>{{ $t('tasks.list.restore') }}</span>
 								</DropdownMenuItem>
 								<DropdownMenuItem
 									v-if="getShowButtons(task).restore"
 									@click="restoreTask(task)"
 								>
 									<Undo2 class="mr-2 h-4 w-4" />
-									<span>Restore from trash</span>
+									<span>{{ $t('tasks.list.restoreFromTrash') }}</span>
 								</DropdownMenuItem>
 								<TaskShareItems :task="task" submenu />
 								<PluginTaskMenuItems :task-id="task.id as number" />
@@ -276,7 +286,7 @@
 										@click="removeTask(task)"
 									>
 										<Trash2 class="mr-2 h-4 w-4" />
-										<span>Delete task</span>
+										<span>{{ $t('tasks.list.deleteTask') }}</span>
 									</DropdownMenuItem>
 								</template>
 							</DropdownMenuContent>
@@ -297,7 +307,7 @@
 							<span
 								v-if="task.start_time"
 								class="h-[5px] w-[5px] animate-tmgr-pulse rounded-full bg-status-done"
-								title="Timer running"
+								:title="$t('tasks.list.timerRunning')"
 							></span>
 
 							<span
@@ -307,7 +317,9 @@
 								"
 								:title="
 									taskOvertimes[String(task.id)]
-										? `+${taskOvertimes[String(task.id)]} overtime`
+										? $t('tasks.list.overtime', {
+												time: taskOvertimes[String(task.id)],
+											})
 										: undefined
 								"
 							>
@@ -316,12 +328,12 @@
 
 							<AppTooltip
 								v-if="!task.start_time"
-								content="Start timer"
+								:content="$t('tasks.boardCard.startTimer')"
 								side="top"
 							>
 								<button
 									type="button"
-									aria-label="Start timer"
+									:aria-label="$t('tasks.boardCard.startTimer')"
 									:disabled="isLoadingActions[`start-${task.id}`]"
 									class="ml-1 flex h-6 w-6 items-center justify-center rounded bg-status-done text-white shadow-tmgr-xs transition-opacity hover:opacity-90 disabled:opacity-50"
 									@click.stop="startCountdown(task, `start-${task.id}`)"
@@ -333,10 +345,14 @@
 									<Loader v-else is-mini />
 								</button>
 							</AppTooltip>
-							<AppTooltip v-else content="Stop timer" side="top">
+							<AppTooltip
+								v-else
+								:content="$t('tasks.boardCard.stopTimer')"
+								side="top"
+							>
 								<button
 									type="button"
-									aria-label="Stop timer"
+									:aria-label="$t('tasks.boardCard.stopTimer')"
 									:disabled="isLoadingActions[`stop-${task.id}`]"
 									class="ml-1 flex h-6 w-6 items-center justify-center rounded bg-status-fix text-white shadow-tmgr-xs transition-opacity hover:opacity-90 disabled:opacity-50"
 									@click.stop="stopCountdown(task, `stop-${task.id}`)"
@@ -428,8 +444,13 @@
 			>
 				<div class="flex items-center gap-3">
 					<span class="text-sm text-ink-subtle">
-						Showing {{ pagination.from }} to {{ pagination.to }} of
-						{{ pagination.total }} tasks
+						{{
+							$t('tasks.list.showing', {
+								from: pagination.from,
+								to: pagination.to,
+								total: pagination.total,
+							})
+						}}
 					</span>
 
 					<select
@@ -437,9 +458,15 @@
 						@change="onPerPageChange"
 						class="h-9 rounded-pill border border-line bg-surface px-3 text-sm text-ink outline-hidden"
 					>
-						<option :value="10">10 per page</option>
-						<option :value="25">25 per page</option>
-						<option :value="50">50 per page</option>
+						<option :value="10">
+							{{ $t('tasks.list.perPage', { n: 10 }) }}
+						</option>
+						<option :value="25">
+							{{ $t('tasks.list.perPage', { n: 25 }) }}
+						</option>
+						<option :value="50">
+							{{ $t('tasks.list.perPage', { n: 50 }) }}
+						</option>
 					</select>
 				</div>
 
@@ -449,11 +476,16 @@
 						@click="onPageChange(pagination.current_page - 1)"
 						class="h-9 rounded-pill border border-line bg-surface px-4 text-sm text-ink hover:bg-surface-hover disabled:opacity-40"
 					>
-						Previous
+						{{ $t('tasks.list.previous') }}
 					</button>
 
 					<span class="px-2 text-sm whitespace-nowrap text-ink-subtle">
-						Page {{ pagination.current_page }} of {{ pagination.last_page }}
+						{{
+							$t('tasks.list.page', {
+								page: pagination.current_page,
+								last: pagination.last_page,
+							})
+						}}
 					</span>
 
 					<button
@@ -461,7 +493,7 @@
 						@click="onPageChange(pagination.current_page + 1)"
 						class="h-9 rounded-pill border border-line bg-surface px-4 text-sm text-ink hover:bg-surface-hover disabled:opacity-40"
 					>
-						Next
+						{{ $t('tasks.list.next') }}
 					</button>
 				</div>
 			</div>
@@ -491,6 +523,7 @@
 </template>
 
 <script lang="ts">
+	import { currentLocale, t } from '@/i18n';
 	import { getAssignablePersonas } from '@/actions/tmgr/personas';
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import {
@@ -859,11 +892,15 @@
 					}
 				}
 				const overtimeText = formatOvertime(overtimeSeconds);
-				let text = `${tasks.length} of ${this.tasks.length} · ${totalHours}h`;
-				if (overtimeText) {
-					text += ` · +${overtimeText} overtime`;
-				}
-				return text;
+				return t(
+					overtimeText ? 'tasks.list.summaryOvertime' : 'tasks.list.summary',
+					{
+						selected: tasks.length,
+						total: this.tasks.length,
+						hours: totalHours,
+						overtime: overtimeText,
+					},
+				);
 			},
 			taskComputedData() {
 				return this.tasks.reduce(
@@ -964,7 +1001,7 @@
 			},
 			commentsLabelOf(task: Task): string {
 				const count = this.commentsCountOf(task);
-				return count === 1 ? '1 comment' : `${count} comments`;
+				return t('tasks.boardCard.commentsLabel', { n: count }, count);
 			},
 			personaAssigneesOf(task: Task) {
 				return personaAssigneesOf(task);
@@ -1264,7 +1301,7 @@
 			formatFullDate(dateString: string) {
 				if (!dateString) return '';
 				const date = new Date(dateString);
-				return date.toLocaleString('en-US', {
+				return date.toLocaleString(currentLocale(), {
 					year: 'numeric',
 					month: 'long',
 					day: 'numeric',
@@ -1294,7 +1331,11 @@
 						this.resetSelectedTasks();
 					}
 				};
-				this.showConfirm('Delete tasks', 'Are you sure?', deleteMultipleTasks);
+				this.showConfirm(
+					t('tasks.list.deleteTasksTitle'),
+					t('tasks.list.deleteTasksBody'),
+					deleteMultipleTasks,
+				);
 			},
 			selectedGetter() {
 				return this.selected;

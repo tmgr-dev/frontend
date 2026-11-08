@@ -1,0 +1,233 @@
+{
+	"doneCheckbox": {
+		"label": "Completada"
+	},
+	"linkChips": {
+		"title": "Vínculos",
+		"page": "Página {id}"
+	},
+	"pageMentions": {
+		"title": "Mencionada en páginas"
+	},
+	"priorityBadge": {
+		"title": "Prioridad {label}"
+	},
+	"shareMenu": {
+		"share": "Compartir"
+	},
+	"timeEntries": {
+		"title": "Sesiones de terminal",
+		"partial": "cubierta en parte por otro tiempo registrado"
+	},
+	"timeInfo": {
+		"created": "Creada: {time}",
+		"edited": "Editada: {time}",
+		"overtime": "Horas extra"
+	},
+	"actions": {
+		"delete": "Eliminar",
+		"save": "Guardar",
+		"create": "Crear",
+		"settings": "Ajustes"
+	},
+	"reminder": {
+		"label": "Recordatorio"
+	},
+	"sidePanel": {
+		"label": "Tarea"
+	},
+	"exportSettings": {
+		"title": "Ajustes de exportación",
+		"roundHoursUp": "Redondear horas hacia arriba",
+		"zeroExpectedWeekends": "Cero horas previstas en días libres",
+		"weekendDays": "Días de fin de semana:",
+		"customHolidays": "Festivos personalizados:",
+		"add": "Añadir",
+		"parseDateFromTitle": "Detectar la fecha en el título de la tarea",
+		"days": {
+			"sun": "Dom",
+			"mon": "Lun",
+			"tue": "Mar",
+			"wed": "Mié",
+			"thu": "Jue",
+			"fri": "Vie",
+			"sat": "Sáb"
+		}
+	},
+	"multipleActions": {
+		"title": "Acciones en lote",
+		"updateTasks": "Actualizar tareas",
+		"markDone": "Marcar como completadas",
+		"markDoneNoStatus": "Marcar como completadas (sin estado Completada)",
+		"markOpen": "Marcar como abiertas",
+		"archive": "Archivar",
+		"delete": "Eliminar",
+		"moveToStatus": "Mover a estado",
+		"agentRuns": "Ejecuciones de agentes",
+		"confirmAgentRuns": "Confirmar para ejecuciones de agentes",
+		"export": "Exportar",
+		"exportCsv": "Exportar a CSV",
+		"exportJpg": "Exportar a JPEG",
+		"exportXlsx": "Exportar a XLSX",
+		"seconds": "{n} s",
+		"execute": "Ejecutar"
+	},
+	"pomodoroSettings": {
+		"dialogLabel": "Ajustes de Pomodoro",
+		"title": "Pomodoro",
+		"description": "Configura los intervalos de enfoque y descanso. Los ajustes se aplican a todas tus tareas.",
+		"focusDuration": "Duración del enfoque",
+		"shortBreak": "Descanso corto",
+		"longBreak": "Descanso largo",
+		"longBreakEvery": "Descanso largo cada",
+		"pomodoros": "pomodoro | pomodoros",
+		"autoStart": "Iniciar automáticamente el siguiente intervalo",
+		"autoStartHint": "Omite el botón de reproducir entre enfoque y descanso",
+		"pauseTracking": "Pausar el tiempo registrado durante el descanso",
+		"pauseTrackingHint": "Detiene el reloj mientras descansas",
+		"notifications": "Notificaciones",
+		"notify": {
+			"silent": "Silencio",
+			"system": "Sistema",
+			"both": "Ambas"
+		},
+		"sound": "Sonido de fin de intervalo",
+		"sounds": {
+			"bell": "Campana",
+			"chime": "Carillón",
+			"wood": "Madera",
+			"digital": "Digital"
+		},
+		"minutesUnit": "min",
+		"saveError": "No se pudieron guardar los ajustes. Inténtalo de nuevo."
+	},
+	"pomodoroBlock": {
+		"phase": {
+			"focus": "ENFOQUE",
+			"short": "DESCANSO CORTO",
+			"long": "DESCANSO LARGO"
+		},
+		"skipPhase": "Omitir fase",
+		"reset": "Restablecer",
+		"distractedHint": "Me distraje",
+		"distracted": "DISTRAÍDO",
+		"distractedCount": "DISTRAÍDO · {n}",
+		"settings": "Ajustes de Pomodoro",
+		"disable": "Desactivar Pomodoro para esta tarea",
+		"summary": "{n} POMODOROS · {focus}/{short}/{long}"
+	},
+	"attachments": {
+		"loadError": "No se pudieron cargar los adjuntos.",
+		"title": "Adjuntos",
+		"addFiles": "Añadir archivos",
+		"pendingNote": "{size} · Se subirá al crear la tarea",
+		"open": "Abrir {name}",
+		"uploading": "Subiendo {size}…",
+		"dismiss": "Descartar subida",
+		"none": "Aún no hay adjuntos",
+		"addMore": "Añadir más archivos",
+		"dropHint": "Haz clic o arrastra archivos aquí para adjuntar documentos, imágenes u otros archivos",
+		"download": "Descargar"
+	},
+	"gallery": {
+		"file": "Archivo",
+		"position": "Archivo {n} de {total}",
+		"downloadFailed": "Error al descargar",
+		"zoomOut": "Alejar",
+		"zoomIn": "Acercar",
+		"fitTitle": "Ajustar a la ventana (0)",
+		"fit": "Ajustar a la ventana",
+		"actualSizeTitle": "Tamaño real (100%)",
+		"actualSize": "Tamaño real",
+		"previous": "Anterior",
+		"previousFile": "Archivo anterior",
+		"next": "Siguiente",
+		"nextFile": "Archivo siguiente",
+		"imageError": "No se pudo cargar la imagen. Reintentar",
+		"fileError": "No se pudo cargar el archivo",
+		"unsupported": "La vista previa no está disponible aquí",
+		"previewOf": "Vista previa de {name}"
+	},
+	"comments": {
+		"activity": "Actividad",
+		"filter": {
+			"all": "Todos",
+			"people": "Personas",
+			"personas": "Personas IA",
+			"plugins": "Complementos"
+		},
+		"empty": "Aún no hay comentarios",
+		"noMatch": "Ningún comentario coincide con este filtro",
+		"aiAssistant": "Asistente de IA",
+		"deleteComment": "Eliminar comentario",
+		"confirmDelete": "¿Eliminar este comentario?",
+		"addReaction": "Añadir reacción"
+	},
+	"relations": {
+		"title": "Tareas vinculadas",
+		"link": "Vincular",
+		"removeRelation": "Quitar relación",
+		"dialogTitle": "Vincular incidencia",
+		"issue": "Incidencia",
+		"searchPlaceholder": "Buscar…",
+		"searching": "Buscando…",
+		"type": "Tipo",
+		"select": "Seleccionar…",
+		"linking": "Vinculando…",
+		"removeTitle": "Quitar vínculo",
+		"removeBody": "¿Quitar el vínculo '{type}' con la tarea #{id}?",
+		"errors": {
+			"loadTypes": "No se pudieron cargar los tipos de relación",
+			"fillAll": "Rellena todos los campos",
+			"add": "No se pudo añadir la relación de tareas",
+			"remove": "No se pudo quitar la relación de tareas"
+		}
+	},
+	"boardCard": {
+		"dragReorder": "Arrastra para reordenar",
+		"dragMove": "Arrastra para mover",
+		"stopTimer": "Detener temporizador",
+		"startTimer": "Iniciar temporizador",
+		"changeAssignee": "Cambiar responsable",
+		"assignSomeone": "Asignar a alguien",
+		"searchMembers": "Buscar miembros...",
+		"noMembers": "No se encontraron miembros.",
+		"taskActions": "Acciones de la tarea",
+		"openDetails": "Abrir detalles",
+		"settings": "Ajustes",
+		"moveToTop": "Mover al principio",
+		"moveToBottom": "Mover al final",
+		"archive": "Archivar",
+		"delete": "Eliminar",
+		"commentsLabel": "{n} comentario | {n} comentarios",
+		"archiveTitle": "Archivar tarea",
+		"archiveBody": "¿Seguro que quieres archivar \"{title}\"?",
+		"deleteTitle": "Eliminar tarea",
+		"deleteBody": "¿Seguro que quieres eliminar \"{title}\"?",
+		"archiveStatusMissing": "No se encontró el estado de archivo",
+		"archiveStatusMissingHint": "Crea primero un estado de archivo.",
+		"archiveFailed": "No se pudo archivar la tarea",
+		"tryAgain": "Inténtalo de nuevo.",
+		"deleteFailed": "No se pudo eliminar la tarea. Inténtalo de nuevo."
+	},
+	"list": {
+		"selectedTasks": "Tareas seleccionadas:",
+		"deselectAll": "Deseleccionar todo",
+		"selectAll": "Seleccionar todo",
+		"process": "Procesar ({n})",
+		"summary": "{selected} de {total} · {hours} h",
+		"summaryOvertime": "{selected} de {total} · {hours} h · +{overtime} de horas extra",
+		"restore": "Restaurar",
+		"restoreFromTrash": "Restaurar de la papelera",
+		"deleteTask": "Eliminar tarea",
+		"timerRunning": "Temporizador en marcha",
+		"overtime": "+{time} de horas extra",
+		"showing": "Mostrando de {from} a {to} de {total} tareas",
+		"perPage": "{n} por página",
+		"previous": "Anterior",
+		"next": "Siguiente",
+		"page": "Página {page} de {last}",
+		"deleteTasksTitle": "Eliminar tareas",
+		"deleteTasksBody": "¿Seguro?"
+	}
+}

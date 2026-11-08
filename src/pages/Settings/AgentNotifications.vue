@@ -1,34 +1,39 @@
 <template>
 	<PageContainer width="narrow">
-		<PageHeader title="Agent alerts">
+		<PageHeader :title="$t('settingsPages.agentNotifications.title')">
 			<template #subtitle>
-				Get a push notification on your phone when Claude Code, Codex or another
-				AI agent needs you — the recipient is always you, the token owner, and a
-				token works across every workspace you're in. Create a token, then
-				connect Claude Code, Codex or Cursor in one step.
+				{{ $t('settingsPages.agentNotifications.subtitle') }}
 			</template>
 		</PageHeader>
 
 		<AiAgentsOverview class="mb-6" />
 
 		<SettingsSection
-			title="New token"
+			:title="$t('settingsPages.agentNotifications.newToken')"
 			class="mb-6"
 			data-tour="agent-notify.connect"
 		>
 			<form class="flex flex-col gap-3" @submit.prevent="submitCreate">
 				<label class="flex flex-col gap-1">
-					<span class="text-sm font-medium">Label (optional)</span>
+					<span class="text-sm font-medium">{{
+						$t('settingsPages.agentNotifications.labelOptional')
+					}}</span>
 					<Input
 						:model-value="label"
 						maxlength="60"
-						placeholder="Claude Code on my laptop"
+						:placeholder="
+							$t('settingsPages.agentNotifications.labelPlaceholder')
+						"
 						@update:model-value="(v) => (label = String(v))"
 					/>
 				</label>
 				<div>
 					<Button type="submit" :disabled="creating">
-						{{ creating ? 'Creating…' : 'Create token' }}
+						{{
+							creating
+								? $t('settingsPages.agentNotifications.creating')
+								: $t('settingsPages.agentNotifications.createToken')
+						}}
 					</Button>
 				</div>
 			</form>
@@ -38,7 +43,7 @@
 				class="mt-4 flex flex-col gap-2 border-t border-border pt-4"
 			>
 				<p class="text-sm font-medium text-amber-600 dark:text-amber-400">
-					Copy this token now — you won't see it again.
+					{{ $t('settingsPages.agentNotifications.copyNow') }}
 				</p>
 				<div class="flex items-center gap-2">
 					<code
@@ -47,12 +52,14 @@
 						{{ issuedToken.token }}
 					</code>
 					<Button type="button" variant="outline" size="sm" @click="copyToken">
-						{{ copied ? 'Copied' : 'Copy' }}
+						{{
+							copied ? $t('common.actions.copied') : $t('common.actions.copy')
+						}}
 					</Button>
 				</div>
 				<div class="flex items-center gap-2">
 					<Button type="button" size="sm" @click="dialogOpen = true">
-						Show setup
+						{{ $t('settingsPages.agentNotifications.showSetup') }}
 					</Button>
 					<Button
 						type="button"
@@ -60,7 +67,7 @@
 						size="sm"
 						@click="dismissToken"
 					>
-						Done
+						{{ $t('common.actions.done') }}
 					</Button>
 				</div>
 			</div>
@@ -70,13 +77,13 @@
 			{{ loadError }}
 		</p>
 
-		<SettingsSection title="Tokens">
+		<SettingsSection :title="$t('settingsPages.agentNotifications.tokens')">
 			<p v-if="loading" class="text-sm text-muted-foreground">
-				Loading tokens…
+				{{ $t('settingsPages.agentNotifications.loadingTokens') }}
 			</p>
 			<div v-else class="flex flex-col gap-2">
 				<p v-if="tokens.length === 0" class="text-sm text-muted-foreground">
-					No agent notification tokens yet.
+					{{ $t('settingsPages.agentNotifications.noTokens') }}
 				</p>
 				<div
 					v-for="token in tokens"
@@ -85,13 +92,19 @@
 				>
 					<div class="min-w-0">
 						<p class="truncate text-sm font-medium">
-							{{ token.label || 'Untitled token' }}
+							{{
+								token.label || $t('settingsPages.agentNotifications.untitled')
+							}}
 						</p>
 						<p class="truncate text-xs text-muted-foreground">
-							{{ token.prefix }}… · created {{ formatDate(token.created_at) }}
-							· last used
 							{{
-								token.last_used_at ? formatDate(token.last_used_at) : 'never'
+								$t('settingsPages.agentNotifications.meta', {
+									prefix: token.prefix,
+									created: formatDate(token.created_at),
+									lastUsed: token.last_used_at
+										? formatDate(token.last_used_at)
+										: $t('settingsPages.agentNotifications.never'),
+								})
 							}}
 						</p>
 					</div>
@@ -101,25 +114,37 @@
 						class="shrink-0"
 						@click="revoke(token)"
 					>
-						Revoke
+						{{ $t('settingsPages.agentNotifications.revoke') }}
 					</Button>
 				</div>
 			</div>
 		</SettingsSection>
 
-		<SettingsSection title="How to connect" class="mt-6">
+		<SettingsSection
+			:title="$t('settingsPages.agentNotifications.howToConnect')"
+			class="mt-6"
+		>
 			<div class="flex flex-col gap-3 text-sm text-muted-foreground">
 				<p>
-					Already have a token? Use these snippets and replace
-					<code class="rounded bg-muted px-1 py-0.5 font-mono text-xs"
-						>&lt;your token&gt;</code
+					<i18n-t
+						keypath="settingsPages.agentNotifications.haveToken"
+						tag="span"
 					>
-					with it.
+						<template #placeholder>
+							<code class="rounded bg-muted px-1 py-0.5 font-mono text-xs">{{
+								$t('settingsPages.agentNotifications.yourToken')
+							}}</code>
+						</template>
+					</i18n-t>
 				</p>
 				<Collapsible v-model:open="snippetsOpen" class="flex flex-col gap-3">
 					<CollapsibleTrigger as-child>
 						<Button type="button" variant="outline" size="sm" class="w-fit">
-							{{ snippetsOpen ? 'Hide snippets' : 'Show snippets' }}
+							{{
+								snippetsOpen
+									? $t('settingsPages.agentNotifications.hideSnippets')
+									: $t('settingsPages.agentNotifications.showSnippets')
+							}}
 						</Button>
 					</CollapsibleTrigger>
 					<CollapsibleContent>
@@ -128,7 +153,7 @@
 				</Collapsible>
 				<p>
 					<router-link to="/docs/agents" class="text-primary hover:underline">
-						Full setup guide
+						{{ $t('settingsPages.agentNotifications.fullGuide') }}
 					</router-link>
 				</p>
 			</div>
@@ -146,14 +171,19 @@
 				class="max-h-[90vh] overflow-y-auto sm:max-w-[680px] [&>*]:min-w-0"
 			>
 				<DialogHeader>
-					<DialogTitle>Connect your agent</DialogTitle>
+					<DialogTitle>{{
+						$t('settingsPages.agentNotifications.connectTitle')
+					}}</DialogTitle>
 				</DialogHeader>
 				<template v-if="issuedToken">
 					<div class="flex min-w-0 flex-col gap-2">
 						<p class="text-sm font-medium text-amber-600 dark:text-amber-400">
-							Copy this token now — you won't see it again.
+							{{ $t('settingsPages.agentNotifications.copyNow') }}
 						</p>
-						<CodeSnippet :code="issuedToken.token" label="Notify token" />
+						<CodeSnippet
+							:code="issuedToken.token"
+							:label="$t('settingsPages.agentNotifications.notifyTokenLabel')"
+						/>
 					</div>
 
 					<AgentConnectTabs
@@ -171,27 +201,38 @@
 								:disabled="testing"
 								@click="sendTest"
 							>
-								{{ testing ? 'Sending…' : 'Send test notification' }}
+								{{
+									testing
+										? $t('settingsPages.agentNotifications.sending')
+										: $t('settingsPages.agentNotifications.sendTest')
+								}}
 							</Button>
 							<p v-if="testMessage" class="text-sm" role="status">
 								{{ testMessage }}
 							</p>
 						</div>
 						<p class="text-sm text-muted-foreground">
-							Want a phone call for incidents?
-							<button
-								type="button"
-								class="text-primary hover:underline"
-								@click="goToAlarmPhone"
+							<i18n-t
+								keypath="settingsPages.agentNotifications.phoneCall"
+								tag="span"
 							>
-								Set up an alarm phone
-							</button>
-							below.
+								<template #link>
+									<button
+										type="button"
+										class="text-primary hover:underline"
+										@click="goToAlarmPhone"
+									>
+										{{ $t('settingsPages.agentNotifications.setupAlarm') }}
+									</button>
+								</template>
+							</i18n-t>
 						</p>
 					</div>
 				</template>
 				<DialogFooter>
-					<Button type="button" @click="dismissToken">Done</Button>
+					<Button type="button" @click="dismissToken">{{
+						$t('common.actions.done')
+					}}</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
@@ -230,6 +271,7 @@
 	import { Input } from '@/components/ui/input';
 	import { toast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { currentLocale, t } from '@/i18n';
 	import AlarmPhoneSection from '@/pages/Settings/AlarmPhoneSection.vue';
 	import PhonesSection from '@/pages/Settings/PhonesSection.vue';
 	import { computed, defineComponent, nextTick, onMounted, ref } from 'vue';
@@ -257,7 +299,7 @@
 			Input,
 		},
 		setup() {
-			setDocumentTitle('Agent alerts');
+			setDocumentTitle(t('settingsPages.agentNotifications.title'));
 
 			const tokens = ref<NotifyToken[]>([]);
 			const loading = ref(true);
@@ -277,7 +319,7 @@
 				try {
 					tokens.value = await listNotifyTokens();
 				} catch {
-					loadError.value = 'Could not load tokens.';
+					loadError.value = t('settingsPages.agentNotifications.loadFailed');
 				} finally {
 					loading.value = false;
 				}
@@ -296,7 +338,10 @@
 					dialogOpen.value = true;
 					await load();
 				} catch {
-					toast({ title: 'Could not create token', variant: 'destructive' });
+					toast({
+						title: t('settingsPages.agentNotifications.createFailed'),
+						variant: 'destructive',
+					});
 				} finally {
 					creating.value = false;
 				}
@@ -328,21 +373,23 @@
 				if (!result) return '';
 				switch (result.kind) {
 					case 'sent':
-						return `Sent — check your phone. (via ${result.channels.join(
-							', ',
-						)})`;
+						return t('settingsPages.agentNotifications.test.sent', {
+							channels: result.channels.join(', '),
+						});
 					case 'no_channels':
-						return 'Nothing was delivered: install the TMGR mobile app and allow notifications, or link Telegram in Profile.';
+						return t('settingsPages.agentNotifications.test.noChannels');
 					case 'deduplicated':
-						return 'Already sent a moment ago.';
+						return t('settingsPages.agentNotifications.test.deduplicated');
 					case 'rate_limited':
 						return result.retryAfter
-							? `Too many notifications — try again in ${result.retryAfter} s.`
-							: 'Too many notifications — try again shortly.';
+							? t('settingsPages.agentNotifications.test.rateLimitedIn', {
+									seconds: result.retryAfter,
+								})
+							: t('settingsPages.agentNotifications.test.rateLimited');
 					case 'unauthorized':
-						return 'This token was rejected. Create a new one.';
+						return t('settingsPages.agentNotifications.test.unauthorized');
 					default:
-						return 'Could not reach TMGR.';
+						return t('settingsPages.agentNotifications.test.unreachable');
 				}
 			});
 
@@ -362,7 +409,7 @@
 					setTimeout(() => (copied.value = false), 2000);
 				} catch {
 					toast({
-						title: 'Could not copy to clipboard',
+						title: t('settingsPages.agentNotifications.copyFailed'),
 						variant: 'destructive',
 					});
 				}
@@ -371,7 +418,10 @@
 			const revoke = async (token: NotifyToken) => {
 				if (
 					!window.confirm(
-						`Revoke the "${token.label || 'Untitled token'}" token?`,
+						t('settingsPages.agentNotifications.confirmRevoke', {
+							label:
+								token.label || t('settingsPages.agentNotifications.untitled'),
+						}),
 					)
 				)
 					return;
@@ -379,11 +429,15 @@
 					await revokeNotifyToken(token.id);
 					await load();
 				} catch {
-					toast({ title: 'Could not revoke token', variant: 'destructive' });
+					toast({
+						title: t('settingsPages.agentNotifications.revokeFailed'),
+						variant: 'destructive',
+					});
 				}
 			};
 
-			const formatDate = (date: string) => new Date(date).toLocaleDateString();
+			const formatDate = (date: string) =>
+				new Date(date).toLocaleDateString(currentLocale());
 
 			onMounted(load);
 

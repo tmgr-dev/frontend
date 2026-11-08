@@ -1,0 +1,972 @@
+{
+	"workspaces": {
+		"documentTitle": "Ajustes del espacio de trabajo",
+		"loadFailed": "No se pudieron cargar los ajustes del espacio de trabajo.",
+		"toast": {
+			"editorUpdated": "Editor actualizado. Recargando la página...",
+			"saved": "¡Guardado correctamente!",
+			"saveSettingsFailed": "No se pudieron guardar los ajustes del espacio de trabajo",
+			"workspaceSaved": "Espacio de trabajo guardado",
+			"error": "Error",
+			"saveWorkspaceFailed": "No se pudo guardar el espacio de trabajo",
+			"defaultSaved": "Espacio de trabajo predeterminado guardado",
+			"defaultSaveFailed": "No se pudo guardar el espacio de trabajo predeterminado",
+			"created": "¡Creado correctamente!",
+			"inviteFailed": "No se pudieron enviar las invitaciones. Inténtalo de nuevo.",
+			"deleteFailed": "No se pudo eliminar el espacio de trabajo. Inténtalo de nuevo.",
+			"leaveFailed": "No se pudo salir del espacio de trabajo. Inténtalo de nuevo.",
+			"memberRemoved": "Miembro eliminado",
+			"memberRemovedDescription": "{name} fue eliminado del espacio de trabajo",
+			"removeMemberFailed": "No se pudo eliminar al miembro"
+		},
+		"membersLoadFailed": "No se pudieron cargar los miembros del espacio de trabajo.",
+		"title": "Ajustes del espacio de trabajo",
+		"newWorkspace": "Nuevo espacio de trabajo",
+		"create": {
+			"title": "Creando un nuevo espacio de trabajo",
+			"description": "Introduce un nombre para tu nuevo espacio de trabajo",
+			"namePlaceholder": "Nombre del nuevo espacio de trabajo"
+		},
+		"invite": {
+			"label": "Invitar",
+			"title": "Enviar invitaciones",
+			"description": "Introduce direcciones de correo para invitar a miembros a este espacio de trabajo",
+			"emailsPlaceholder": "Introduce correos (separados por comas), por ejemplo:\nusuario1{'@'}example.com,\nusuario2{'@'}example.com,\n...\nusuarioN{'@'}example.com",
+			"send": "Enviar"
+		},
+		"delete": {
+			"label": "Eliminar espacio de trabajo",
+			"description": "Esto elimina de forma permanente el espacio de trabajo {name} con sus tareas, páginas y archivos para todos los miembros. No se puede deshacer."
+		},
+		"exit": {
+			"label": "Salir del espacio de trabajo",
+			"confirmTitle": "¿Seguro que quieres continuar?",
+			"confirmDescription": "No podrás deshacer esta acción por tu cuenta. Si quieres volver a este espacio de trabajo, pide a un miembro que te envíe otra invitación."
+		},
+		"loading": "Cargando ajustes del espacio de trabajo",
+		"general": {
+			"title": "Espacio de trabajo",
+			"name": "Nombre",
+			"nameEmpty": "El nombre no puede estar vacío",
+			"colour": "Color",
+			"defaultColour": "Predeterminado"
+		},
+		"preferences": {
+			"title": "Preferencias",
+			"customValue": "Establecer valor personalizado"
+		},
+		"default": {
+			"title": "Espacio de trabajo predeterminado",
+			"description": "Lo usan Telegram, MCP, los dispositivos inteligentes y al abrir TMGR en un dispositivo nuevo.",
+			"choose": "Elige un espacio de trabajo",
+			"setAsDefault": "Establecer como predeterminado"
+		},
+		"members": {
+			"title": "Miembros",
+			"loading": "Cargando miembros",
+			"none": "No se encontraron miembros",
+			"owner": "Propietario",
+			"removeTitle": "Eliminar miembro",
+			"removeConfirm": "¿Seguro que quieres eliminar a {name} de este espacio de trabajo? Esta acción no se puede deshacer."
+		},
+		"invitations": {
+			"title": "Invitaciones"
+		}
+	},
+	"plugins": {
+		"title": "Complementos",
+		"subtitle": "Los complementos se ejecutan en espacios de trabajo locales y, en uno compartido, cuando su creador los activa para todos. Cada uno se ejecuta en su propio entorno aislado, solo con los permisos indicados en su tarjeta.",
+		"howItWorks": "Cómo funcionan los complementos",
+		"openWorkspace": "Abre un espacio de trabajo para activar o desactivar sus complementos.",
+		"sharedCreator": "Espacio de trabajo compartido: {name}. Lo creaste tú: un complemento que actives aquí se ejecuta para todos los miembros.",
+		"sharedMember": "Espacio de trabajo compartido: {name}. Solo su creador activa aquí los complementos; se ejecutan para todos los miembros.",
+		"currentWorkspace": "Espacio de trabajo actual: {name}",
+		"safeMode": {
+			"title": "Modo seguro",
+			"description": "Desactiva todos los complementos. Iniciar la aplicación con --safe-mode hace lo mismo."
+		},
+		"devMode": {
+			"title": "Modo desarrollador",
+			"description": "Carga complementos desde ~/.tmgr.dev/plugins. Empiezan desactivados."
+		},
+		"tray": {
+			"title": "Texto de {tray}",
+			"description": "Permite que un complemento muestre texto junto al temporizador en {tray}."
+		},
+		"dev": {
+			"showFolder": "Mostrar carpeta",
+			"reload": "Recargar complementos"
+		},
+		"install": {
+			"title": "Instalar desde GitHub",
+			"description": "Pega un repositorio de complemento. La aplicación lee su última versión y muestra lo que puede hacer antes de instalar nada.",
+			"repoLabel": "Repositorio del complemento",
+			"checking": "Comprobando…",
+			"check": "Comprobar"
+		},
+		"offer": {
+			"updateTitle": "¿Actualizar {name} {version}?",
+			"installTitle": "¿Instalar {name} {version}?",
+			"from": "Desde github.com/{repo} ({tag}), de {publisher}.",
+			"verified": "Editor verificado: firmado con la clave incluida en el catálogo de TMGR.",
+			"unverified": "Editor sin verificar: firmado, pero no incluido en el catálogo de TMGR. Su clave se recuerda y las actualizaciones deben firmarse con la misma clave.",
+			"itCan": "Puede:",
+			"connectTo": "Puede conectarse a: {origins} (solo este ordenador)",
+			"openLinks": "Puede abrir enlaces a: {domains}",
+			"telegram": "Puede abrir enlaces de Telegram (tg://).",
+			"pictures": "Carga imágenes de: {domains}. Esos sitios reciben una solicitud cada vez que el complemento muestra una imagen.",
+			"companion": "Funciona con un programa externo que instalas tú ({description}). Escribirá como una persona que elijas.",
+			"newInVersion": "Novedades de esta versión:",
+			"schemeLinks": "enlaces {scheme}://",
+			"imagesFrom": "imágenes de {domain}",
+			"startOff": "Los complementos instalados empiezan desactivados; actívalos por espacio de trabajo.",
+			"update": "Actualizar",
+			"install": "Instalar"
+		},
+		"remove": {
+			"title": "¿Eliminar {name}?",
+			"description": "El complemento se elimina de este ordenador. Sus datos en los espacios de trabajo permanecen hasta que lo vuelvas a instalar o limpies el espacio de trabajo."
+		},
+		"card": {
+			"originVerified": "Desde github.com/{repo} · {tag} · editor verificado",
+			"originUnverified": "Desde github.com/{repo} · {tag} · editor sin verificar",
+			"checkUpdate": "Buscar actualización",
+			"turnOn": "Activar {name}",
+			"allowed": "Con permiso para usar la red y los archivos de este ordenador.",
+			"notAllowed": "Su acceso a la red y a los archivos sigue desactivado en este ordenador hasta que lo permitas.",
+			"stopAllowing": "Dejar de permitir",
+			"allow": "Permitir en este ordenador",
+			"connectTo": "Puede conectarse a: {origins} (solo este ordenador)",
+			"openLinks": "Puede abrir enlaces a: {domains}",
+			"telegram": "Puede abrir enlaces de Telegram (tg://)",
+			"pictures": "Carga imágenes de: {domains}. Esos sitios reciben una solicitud cada vez que el complemento muestra una imagen.",
+			"can": "Puede:",
+			"openView": "Abrir “{title}”",
+			"saveSettings": "Guardar ajustes",
+			"log": "Registro ({count})",
+			"copyDiagnostics": "Copiar diagnóstico"
+		},
+		"permission": {
+			"tasksRead": "leer tareas",
+			"tasksWrite": "crear y modificar tareas",
+			"statusesRead": "leer estados",
+			"categoriesRead": "leer proyectos",
+			"timeRead": "leer el tiempo registrado",
+			"timeWrite": "iniciar y detener temporizadores",
+			"commentsRead": "leer comentarios",
+			"commentsWrite": "añadir comentarios",
+			"notifications": "mostrar notificaciones",
+			"filesExport": "guardar archivos en la carpeta de exportaciones de este espacio de trabajo",
+			"filesAttachments": "leer los adjuntos de las tareas",
+			"filesPick": "leer un archivo que elijas",
+			"statusesWrite": "crear y modificar estados",
+			"categoriesWrite": "crear y modificar proyectos",
+			"relationsRead": "leer los vínculos entre tareas",
+			"relationsWrite": "vincular y desvincular tareas",
+			"agentWorkRead": "leer el trabajo de agentes de IA en las tareas",
+			"agentWorkWrite": "registrar el trabajo de agentes de IA en las tareas",
+			"alarms": "activarse según un horario en segundo plano",
+			"tray": "añadir elementos y texto al icono de {tray}",
+			"deeplinks": "abrirse desde enlaces tmgr:// en otras aplicaciones",
+			"linksOpen": "abrir enlaces web en tu navegador",
+			"imagesRemote": "cargar imágenes de los sitios que declara",
+			"routinesRead": "leer tus notas y rutinas (solo espacios de trabajo locales)",
+			"routinesWrite": "añadir, renombrar, completar y convertir tus notas y rutinas (solo espacios de trabajo locales)",
+			"viewsBadge": "mostrar contadores en sus elementos de la barra lateral",
+			"pagesRead": "leer tus páginas y sus datos por página",
+			"pagesWrite": "crear páginas, modificar su texto y guardar datos por página",
+			"pagesSections": "escribir en sus propias secciones gestionadas de las páginas",
+			"menusTask": "añadir elementos al menú … de la tarea",
+			"none": "nada más allá de su propio almacenamiento",
+			"groupReads": "lee tus datos",
+			"groupChanges": "modifica tus datos",
+			"groupInterface": "modifica la interfaz",
+			"groupOutside": "accede al exterior de la aplicación"
+		},
+		"toast": {
+			"upToDate": "{name} está actualizado",
+			"updated": "{name} actualizado",
+			"installed": "{name} instalado",
+			"removed": "{name} eliminado",
+			"changeFailed": "No se pudo cambiar el complemento para este espacio de trabajo",
+			"commandFailed": "Falló el comando del complemento",
+			"settingsSaved": "Ajustes del complemento guardados",
+			"diagnosticsCopied": "Diagnóstico copiado",
+			"diagnosticsFailed": "No se pudo copiar el diagnóstico"
+		},
+		"source": {
+			"builtin": "Integrado",
+			"folder": "Carpeta",
+			"installed": "Instalado"
+		},
+		"status": {
+			"running": "En ejecución",
+			"starting": "Iniciando…",
+			"stopped": "Desactivado",
+			"failed": "Error al iniciar",
+			"crashed": "Desactivado tras errores",
+			"blocked": "Bloqueado por TMGR"
+		}
+	},
+	"skillFiles": {
+		"title": "Archivos · {slug}",
+		"loading": "Cargando archivos…",
+		"deleteFile": "Eliminar {path}"
+	},
+	"deletedSkills": {
+		"recentlyDeleted": "Eliminadas recientemente",
+		"loadFailed": "No se pudieron cargar las habilidades eliminadas recientemente.",
+		"filesCount": "{n} archivo | {n} archivos",
+		"hideVersions": "Ocultar versiones",
+		"versions": "Versiones",
+		"deletedUser": "Usuario eliminado",
+		"previewFailed": "No se pudo cargar esta versión. Inténtalo de nuevo.",
+		"restore": "Restaurar",
+		"restoredFrom": "Restaurada desde v{version}",
+		"kind": {
+			"baseline": "Base",
+			"create": "Creada",
+			"edit": "Editada",
+			"restore": "Restaurada",
+			"convert": "Convertida"
+		},
+		"deletedOn": "Eliminada {when} · Se borrará definitivamente el {date}",
+		"attachmentsNote": "Los adjuntos de las personas no se restauran."
+	},
+	"sharedSkillHistory": {
+		"deletedUser": "Usuario eliminado",
+		"previewFailed": "No se pudo cargar esta versión. Inténtalo de nuevo.",
+		"restoredFrom": "Restaurada desde v{version}",
+		"kind": {
+			"baseline": "Base",
+			"create": "Creada",
+			"edit": "Editada",
+			"restore": "Restaurada",
+			"convert": "Convertida"
+		},
+		"title": "Historial: {title}",
+		"loading": "Cargando historial…",
+		"current": "Actual",
+		"pinnedBy": "Fijada por: {names}",
+		"compare": "Comparar con la actual",
+		"restoreVersion": "Restaurar esta versión",
+		"confirmRestore": "¿Restaurar la versión {version}? Esto crea la versión {next} con su contenido."
+	},
+	"skillsLibrary": {
+		"importFromAgents": "Importar desde agentes locales",
+		"loading": "Cargando biblioteca…",
+		"empty": "Aún no hay habilidades compartidas.",
+		"notAttached": "Sin asociar",
+		"overriddenTitle": "Reemplazada por una habilidad propia de esta persona",
+		"overridden": "(reemplazada)",
+		"historyOf": "Historial de {title}",
+		"filesOf": "Archivos de {title}",
+		"history": "Historial",
+		"filesButton": "Archivos ({count})",
+		"used": "{count}/{limit} usadas",
+		"editing": "Editar {slug}",
+		"newSkill": "Nueva habilidad compartida",
+		"bytes": "{count} / {max} bytes",
+		"saveChanges": "Guardar cambios",
+		"createSkill": "Crear habilidad",
+		"loadFailed": "No se pudo cargar la biblioteca de habilidades",
+		"loadSkillFailed": "No se pudo cargar esta habilidad",
+		"limitReached": "Tu biblioteca ya tiene {limit} habilidades",
+		"saved": "Habilidad guardada",
+		"saveFailed": "No se pudo guardar la habilidad",
+		"deleteFailed": "No se pudo eliminar la habilidad"
+	},
+	"modules": {
+		"title": "Módulos",
+		"subtitleWorkspace": "Espacio de trabajo “{name}”: elige qué está disponible en TMGR",
+		"subtitle": "Elige qué está disponible en TMGR",
+		"loading": "Cargando módulos",
+		"ownerOnlyNotice": "Solo el propietario del espacio de trabajo puede activar o desactivar módulos. Puedes ocultar un módulo solo para ti.",
+		"applyPreset": "Aplicar un preajuste",
+		"ownerOnlyHint": "Solo el propietario puede cambiar los módulos",
+		"core": "Básicos",
+		"hideCore": "Ocultar para mí las secciones básicas",
+		"packCount": "{enabled} de {total} activados",
+		"askOwner": "Pide al propietario que lo active",
+		"account": "Esta cuenta",
+		"accountDescription": "Se aplica a ti en todos los espacios de trabajo",
+		"turnOffTitle": "¿Desactivar Workflow?",
+		"turnOff": "Desactivar",
+		"personal": "Preferencias personales",
+		"personalDescription": "Estos ajustes solo afectan a tu cuenta",
+		"errorTitle": "Error",
+		"updated": "Módulo actualizado",
+		"personalUpdated": "Preferencia personal actualizada",
+		"updateFailed": "No se pudo actualizar el módulo",
+		"preferenceFailed": "No se pudo actualizar la preferencia",
+		"loadFailed": "No se pudieron cargar los módulos."
+	},
+	"skillImportDialog": {
+		"title": "Importar habilidades de agentes locales",
+		"introDevice": "Análisis de solo lectura de las carpetas de habilidades de este ordenador. No se ejecuta nada; solo las habilidades que marques se guardan en la biblioteca de habilidades de este dispositivo.",
+		"introCloud": "Análisis de solo lectura de las carpetas de habilidades de este ordenador. No se ejecuta nada; solo las habilidades que marques se envían a tu biblioteca de habilidades.",
+		"scanning": "Analizando…",
+		"scanFailed": "No se pudo analizar este ordenador.",
+		"empty": "No se encontraron habilidades. Usa “Añadir carpeta…” para analizar un proyecto.",
+		"cannotImport": "No se puede importar: {reason}",
+		"slugLabel": "Slug de la biblioteca",
+		"useInstead": "Usar {slug} en su lugar",
+		"droppedFields": "No se conservó: {fields}",
+		"filesSummary": "Archivos: se subirán {count} de {total} ({bytes})",
+		"fileSize": "{size} B",
+		"truncated": "La lista está cortada; esta habilidad tiene demasiados archivos para importarla.",
+		"uploadNoteDevice": "Solo los archivos marcados como “se subirá” se envían como texto a la biblioteca de este dispositivo. La comprobación de secretos es un esfuerzo razonable: lee la lista de arriba.",
+		"uploadNoteCloud": "Solo los archivos marcados como “se subirá” se envían como texto a la nube. La comprobación de secretos es un esfuerzo razonable: lee la lista de arriba.",
+		"selectPrompt": "Selecciona una habilidad para verla.",
+		"addFolder": "Añadir carpeta…",
+		"selectedCount": "{count} seleccionadas",
+		"importSelected": "Importar selección",
+		"bytes": "{count} B",
+		"kib": "{count} KiB",
+		"imported": "Importadas",
+		"importedSkipped": "Importadas, {n} archivo sin importar | Importadas, {n} archivos sin importar",
+		"folderFailed": "No se pudo abrir la carpeta",
+		"indexFailed": "No se pudo recordar lo que se importó",
+		"indexFailedDescription": "La próxima importación tratará estas habilidades como si ya estuvieran en la biblioteca.",
+		"refreshFailed": "No se pudo actualizar la biblioteca",
+		"importFailed": "No se pudieron importar las habilidades",
+		"status": {
+			"new": "Nueva",
+			"upToDate": "Actualizada",
+			"changed": "Cambió desde la última importación: se actualizará",
+			"editedInLibrary": "Editada en la biblioteca desde la importación: se sobrescribirá",
+			"slugTaken": "Slug ya usado en la biblioteca: marca para sobrescribir",
+			"previouslyImportedDeleted": "Importada antes, eliminada de la biblioteca",
+			"blocked": "No se puede importar"
+		}
+	},
+	"pluginsHelp": {
+		"title": "Cómo funcionan los complementos",
+		"subtitle": "Los complementos añaden insignias, páginas, secciones de tarea y comandos a la aplicación de escritorio de TMGR.",
+		"backLabel": "Volver a complementos",
+		"glanceLabel": "De un vistazo",
+		"glance": {
+			"sandboxed": {
+				"title": "Aislado",
+				"text": "Solo los permisos de su tarjeta."
+			},
+			"signed": {
+				"title": "Firmado",
+				"text": "Los complementos de GitHub deben estar firmados por su autor."
+			},
+			"shared": {
+				"title": "Lo decide el creador",
+				"text": "En un espacio de trabajo compartido solo su creador activa los complementos."
+			},
+			"stop": {
+				"title": "Fácil de detener",
+				"text": "El modo seguro desactiva todos los complementos a la vez."
+			}
+		},
+		"abilities": {
+			"data": {
+				"title": "Tus datos",
+				"text": "Solo lo que pidió, como \"leer tareas\"."
+			},
+			"network": {
+				"title": "Red",
+				"text": "Solo las direcciones localhost que declara, mostradas en rojo."
+			},
+			"pages": {
+				"title": "Sus propias páginas",
+				"text": "En una ventana aparte que no alcanza nada más."
+			}
+		},
+		"can": {
+			"title": "Qué puede hacer un complemento",
+			"intro": "Solo lo que dice su tarjeta. Todo lo demás está cerrado."
+		},
+		"github": {
+			"title": "Instalar desde GitHub",
+			"step1": "Pega el enlace",
+			"check": "Comprobar",
+			"step2": "Mira lo que puede hacer",
+			"installPrompt": "¿Instalar Timer 1.0.0?",
+			"itCan": "Puede: leer tareas",
+			"verified": "Editor verificado",
+			"step3": "Actívalo",
+			"running": "En ejecución",
+			"verifiedText": "TMGR conoce la clave de firma de este autor.",
+			"unverified": "Editor sin verificar",
+			"unverifiedText": "Firmado, pero no revisado por TMGR. Instálalo solo si confías en el autor.",
+			"signed": "Cada versión debe estar firmada. La aplicación recuerda la clave del autor, así que se rechaza una actualización firmada por otra persona."
+		},
+		"unsigned": {
+			"title": "Complementos sin firma",
+			"intro": "Para un complemento que escribes tú o que no está publicado.",
+			"step1": "Coloca la carpeta ahí",
+			"step2": "Activa el modo desarrollador",
+			"step3": "Pulsa Recargar complementos",
+			"note": "Mismo entorno aislado, mismos permisos, pero nadie comprobó al autor. Los complementos de carpeta no se pueden compartir con un espacio de trabajo."
+		},
+		"shared": {
+			"title": "Espacios de trabajo compartidos",
+			"creator": "Creador",
+			"turnsOn": "activa Timer 1.2",
+			"point1": "Solo el creador activa los complementos. Todos obtienen la misma versión.",
+			"point2": "El complemento usa su propia clave de corta duración: solo este espacio de trabajo y solo sus permisos.",
+			"point3": "La red, los archivos, {tray}, los enlaces tmgr:// y los enlaces web de tu ordenador esperan a",
+			"allow": "Permitir en este ordenador",
+			"point4": "Lo que guarda el complemento lo comparten todos los miembros."
+		},
+		"trouble": {
+			"title": "Cuando un complemento estorba",
+			"switchOff": "Desactívalo",
+			"switchOffText": "En su tarjeta, o elimínalo.",
+			"safeMode": "Modo seguro",
+			"everythingOff": "Todo desactivado",
+			"everythingOffText": "O inicia la aplicación con {flag}.",
+			"blocked": "Bloqueado por TMGR",
+			"weStop": "Detenemos los dañinos",
+			"weStopText": "Una lista de bloqueo firmada desactiva en todas partes un complemento dañino.",
+			"note": "Un complemento que falla tres veces en cinco minutos se desactiva solo."
+		},
+		"authors": {
+			"title": "Para autores de complementos",
+			"step1": "Empieza desde la plantilla",
+			"step2": "Firma y publica",
+			"step2Text": "{keygen}, guarda la clave como el secreto {secret} y sube una etiqueta como {tag}.",
+			"step3": "Consigue la verificación (opcional)",
+			"step3Text": "Envía un pull request con tu id, repositorio y clave pública a {link}. Informa allí también de los complementos dañinos.",
+			"api11": "API 1.1: cada nueva capacidad es un permiso propio (alarmas, {tray}, enlaces tmgr://, enlaces web, estados, relaciones, trabajo de agentes), que se muestra al instalar o actualizar. Pruébalas todas con {example} en modo desarrollador; el registro del complemento muestra por qué se rechazó una llamada.",
+			"api12": "API 1.2: los complementos pueden leer y escribir las rutinas diarias (notas y rutinas), solo en este dispositivo y todavía no en espacios de trabajo compartidos.",
+			"api14": "API 1.4: un complemento puede mostrar un contador en su propio elemento de la barra lateral. Necesita el permiso views:badge, que se muestra al instalar o actualizar, y ningún consentimiento adicional. Los títulos largos de {tray} se acortan con \"…\" en lugar de rechazarse.",
+			"api15": "API 1.5: los complementos pueden trabajar con páginas. pages:read las lee y busca, pages:write crea, edita y añade, y pages:sections permite que un complemento escriba solo en sus propias secciones gestionadas. Cada uno se muestra al instalar o actualizar. Los complementos no pueden añadir tipos de página.",
+			"api16": "API 1.6: un complemento puede añadir hasta 3 elementos al menú … de la tarea, en las tarjetas del tablero, en la lista de tareas y en la página de la tarea. Necesita menus:task, que se muestra al instalar o actualizar. Los elementos aparecen en su propio grupo mientras el complemento se ejecuta; con más de 4 elementos de complementos en total pasan a un submenú Complementos."
+		}
+	},
+	"personaForm": {
+		"whoCanAssign": "Quién puede asignarla",
+		"onlyMe": "Solo yo",
+		"onlyMeHint": "asignable en los espacios de trabajo a los que le des acceso",
+		"thisWorkspace": "Este espacio de trabajo",
+		"thisWorkspaceHint": "cualquier miembro puede asignarle tareas; solo tú la editas",
+		"name": "Nombre",
+		"namePlaceholder": "Revisor",
+		"description": "Descripción",
+		"descriptionPlaceholder": "Para qué sirve esta persona",
+		"systemPrompt": "Prompt del sistema (Markdown)",
+		"systemPromptPlaceholder": "Eres...",
+		"bytes": "{used} / {max} bytes",
+		"notify": "Avisarme de la actividad de esta persona",
+		"notifyAll": "Todo",
+		"notifyMentions": "Solo cuando me lo pida",
+		"notifyNone": "Nunca"
+	},
+	"personaTokens": {
+		"loading": "Cargando conexiones de agentes…",
+		"empty": "Aún no hay conexiones de agentes.",
+		"details": "{prefix}… · {workspace} · caduca {expires} · último uso {lastUsed}",
+		"never": "nunca",
+		"revoke": "Revocar",
+		"connect": "Conectar un agente",
+		"revokeAll": "Revocar todas",
+		"loadFailed": "No se pudieron cargar las conexiones de agentes",
+		"revoked": "Revocada",
+		"expired": "Caducada",
+		"active": "Activa",
+		"confirmRevoke": "¿Revocar la conexión \"{label}\"?",
+		"revokeFailed": "No se pudo revocar el token",
+		"confirmRevokeAll": "¿Revocar todas las conexiones de agentes de esta persona?",
+		"revokeAllFailed": "No se pudieron revocar los tokens"
+	},
+	"personaConnectDialog": {
+		"title": "Conectar un agente",
+		"loadingWorkspaces": "Cargando espacios de trabajo…",
+		"noGrant": "Esta persona aún no tiene acceso activo a ningún espacio de trabajo. Dale acceso en Espacios de trabajo, arriba, y vuelve aquí.",
+		"workspace": "Espacio de trabajo",
+		"label": "Etiqueta",
+		"labelPlaceholder": "Claude Code en mi portátil",
+		"expires": "Caduca",
+		"days": "{n} día | {n} días",
+		"tokenNote": "A diferencia del token de tu dispositivo, este token funciona en un solo espacio de trabajo, está limitado al acceso de esta persona allí y todo lo que escribe se firma como esta persona.",
+		"issuing": "Emitiendo…",
+		"issue": "Emitir token",
+		"copyNow": "Copia este token ahora: no volverás a verlo.",
+		"addToConfig": "Añádelo al {file} de tu agente:",
+		"mcpConfig": "configuración MCP",
+		"secretNote": "Guarda el token en una variable de entorno o en un archivo de secretos ignorado por git, y nunca lo subas al repositorio.",
+		"issueFailed": "No se pudo emitir el token",
+		"copyFailed": "No se pudo copiar al portapapeles"
+	},
+	"personaConvertSkillDialog": {
+		"title": "Convertir en compartida",
+		"loadFailed": "No se pudieron cargar los detalles de la conversión.",
+		"clash": "Tu biblioteca de habilidades ya tiene una habilidad con el slug “{slug}”. Elimina o renombra una de las dos primero.",
+		"intro": "Mueve esta habilidad a tu biblioteca de habilidades y la asocia a {name}. Los agentes conservan las mismas instrucciones.",
+		"replaceCopy": "Reemplazar también la copia de {name}",
+		"archived": "(archivada)",
+		"sameText": "Mismo texto",
+		"differentText": "Texto distinto: se reemplazará",
+		"convert": "Convertir",
+		"convertFailed": "No se pudo convertir esta habilidad"
+	},
+	"personaSharedSkills": {
+		"fromLibrary": "De la biblioteca",
+		"loading": "Cargando habilidades de la biblioteca…",
+		"empty": "No hay habilidades de la biblioteca asociadas. Crea una en la biblioteca de habilidades, debajo de las personas, y asóciala aquí.",
+		"pinned": "Fijada en v{pinned} · última v{latest}",
+		"overridden": "Reemplazada por una habilidad propia de esta persona",
+		"versionFor": "Versión de {slug}",
+		"latest": "Última (v{version})",
+		"detach": "Desasociar",
+		"attachedCount": "{count}/{limit} asociadas",
+		"attach": "Asociar una habilidad de la biblioteca",
+		"versionsFailed": "No se pudieron cargar las versiones",
+		"loadFailed": "No se pudieron cargar las habilidades de la biblioteca",
+		"attachFailed": "No se pudo asociar la habilidad",
+		"detachFailed": "No se pudo desasociar la habilidad",
+		"versionFailed": "No se pudo cambiar la versión de la habilidad",
+		"filesNotPinned": "Los archivos no están fijados"
+	},
+	"personaSkills": {
+		"loading": "Cargando habilidades…",
+		"empty": "Aún no hay habilidades.",
+		"convert": "Convertir en compartida",
+		"usedCount": "{count}/{limit} usadas",
+		"editing": "Editar {slug}",
+		"newSkill": "Nueva habilidad",
+		"bytes": "{used} / {max} bytes",
+		"saveChanges": "Guardar cambios",
+		"createSkill": "Crear habilidad",
+		"loadFailed": "No se pudieron cargar las habilidades",
+		"loadOneFailed": "No se pudo cargar esta habilidad",
+		"limitReached": "Ya tienes {limit} habilidades",
+		"saved": "Habilidad guardada",
+		"saveFailed": "No se pudo guardar la habilidad",
+		"confirmDelete": "¿Eliminar la habilidad \"{title}\"?",
+		"deleteFailed": "No se pudo eliminar la habilidad"
+	},
+	"personaWorkspaceGrants": {
+		"localNote": "Los espacios de trabajo locales no aparecen aquí. Abre el espacio de trabajo local y da acceso a esta persona en su propio panel Personas → \"En este dispositivo\".",
+		"onThisDevice": "En este dispositivo",
+		"loading": "Cargando espacios de trabajo…",
+		"empty": "No hay espacios de trabajo compartidos.",
+		"home": "Espacio de trabajo de origen · archiva la persona para quitar el acceso",
+		"blocked": "Bloqueada por el creador del espacio de trabajo",
+		"effective": "Efectivo aquí: {permissions}",
+		"changeFailed": "No se pudo cambiar este espacio de trabajo",
+		"blockedByCreator": "Bloqueada por el creador del espacio de trabajo",
+		"permissionsFailed": "No se pudieron actualizar los permisos"
+	},
+	"personas": {
+		"agentsTitle": "Agentes",
+		"agentsSubtitle": "Conecta Claude Code y otros clientes MCP a tu espacio de trabajo local.",
+		"title": "Personas",
+		"subtitle": "Una persona es una identidad bajo la que actúan tus agentes de IA: con su propio nombre, avatar y prompt del sistema, y sus propios permisos por espacio de trabajo. {count}/{limit} usadas.",
+		"showArchived": "Mostrar archivadas",
+		"localAi": "IA local",
+		"editPersona": "Editar persona",
+		"newPersona": "Nueva persona",
+		"saveChanges": "Guardar cambios",
+		"createPersona": "Crear persona",
+		"change": "Cambiar",
+		"archived": "Archivada",
+		"promptVersion": "prompt v{version}",
+		"archive": "Archivar",
+		"restore": "Restaurar",
+		"workspaces": "Espacios de trabajo",
+		"skills": "Habilidades",
+		"agentConnections": "Conexiones de agentes",
+		"empty": "Aún no hay personas.",
+		"skillsLibrary": "Biblioteca de habilidades",
+		"skillsLibraryDescription": "Habilidades que escribes una vez y asocias a cualquiera de tus personas. Editar una actualiza todas las personas a las que está asociada.",
+		"workspacePersonas": "Personas del espacio de trabajo",
+		"workspacePersonasDescription": "Personas que otros miembros de {name} crearon para todo el espacio de trabajo. Cualquiera puede asignarles tareas; solo su propietario las edita.",
+		"personaOf": "persona de {name}",
+		"workspaceScope": "Espacio de trabajo: {name}",
+		"thisWorkspace": "este espacio de trabajo",
+		"loadFailed": "No se pudieron cargar las personas.",
+		"updated": "Persona actualizada",
+		"created": "Persona creada",
+		"saveFailed": "No se pudo guardar la persona",
+		"archiveFailed": "No se pudo archivar la persona",
+		"restoreFailed": "No se pudo restaurar la persona (el límite es {limit})",
+		"avatarFailed": "No se pudo subir el avatar"
+	},
+	"consentPanel": {
+		"ariaLabel": "Opciones de privacidad",
+		"saveFailed": "No se pudo guardar tu elección en este navegador. El uso compartido se detiene en esta ventana.",
+		"usage": {
+			"title": "¿Quieres ayudar a mejorar TMGR?",
+			"intro": "Eventos de uso no vinculados a tu cuenta. Desactivado por defecto.",
+			"whatWeSend": "Qué enviamos",
+			"whatWeCollect": "Qué recopilamos",
+			"details": "Si aceptas, TMGR envía eventos de uso no vinculados a tu cuenta: qué pantallas y recorridos abres, qué pasos completas, la versión de la aplicación y la plataforma.",
+			"weSend": "Enviamos:",
+			"weSendText": "nombres de eventos como tour_step_completed · un ID de instalación aleatorio · versión de la aplicación, sistema operativo, clase de tamaño de pantalla",
+			"weNeverSend": "Nunca enviamos:",
+			"weNeverSendText": "texto de tareas, páginas o comentarios · nombres, correos, nombres de archivo · el ID de tu cuenta. Tu dirección IP no se guarda con los eventos.",
+			"changeAnytime": "Cámbialo cuando quieras en Ajustes → Privacidad. Al desactivarlo se detiene el envío al instante; también puedes borrar lo que ya se envió.",
+			"decline": "No, gracias",
+			"accept": "Compartir datos de uso"
+		},
+		"analytics": {
+			"title": "Cookies y analítica",
+			"text": "Nos gustaría usar Google Analytics para entender cómo la gente encuentra y usa TMGR. Instala cookies y envía datos a Google. Permanece desactivado a menos que lo permitas. Puedes cambiarlo cuando quieras.",
+			"privacyPolicy": "Política de privacidad",
+			"decline": "Rechazar",
+			"accept": "Permitir analítica"
+		}
+	},
+	"privacyLinks": {
+		"privacy": "Privacidad",
+		"commandLine": "Línea de comandos",
+		"cookieSettings": "Ajustes de cookies"
+	},
+	"privacySettings": {
+		"cookiesTitle": "Cookies y analítica",
+		"googleAnalytics": "Google Analytics",
+		"googleAnalyticsDescription": "Nos ayuda a entender cómo se usa TMGR. Instala cookies y envía datos a Google. Desactivado a menos que lo permitas.",
+		"privacyPolicy": "Política de privacidad"
+	},
+	"usageDataControls": {
+		"title": "Datos de uso",
+		"saveFailed": "No se pudo guardar tu elección en este navegador. El uso compartido se detiene en esta ventana.",
+		"receiptError": "No se pudo conservar una clave de borrado para esta instalación. Usa \"Borrar datos ya enviados\" para eliminar sus datos.",
+		"shareLabel": "Compartir datos de uso",
+		"shareDescription": "No vinculados a tu cuenta: nombres de eventos, un ID de instalación aleatorio, versión de la aplicación y plataforma. Nunca contenido de tareas, nombres ni correos.",
+		"installId": "ID de instalación:",
+		"resetId": "Restablecer ID",
+		"pending": "Eventos pendientes de enviar:",
+		"view": "Ver",
+		"dataSent": "Datos ya enviados",
+		"deleteSent": "Borrar datos ya enviados",
+		"coverage": "Este interruptor cubre los eventos de este dispositivo. Las estadísticas agregadas de incorporación a partir de datos de la cuenta se describen en la política de privacidad.",
+		"readMore": "Más información",
+		"footer": "Al desactivar el uso compartido se detiene al instante. Los eventos sin procesar se conservan 30 días.",
+		"queueTitle": "Eventos pendientes de enviar",
+		"deleteFailed": "No se pudo borrar todo. El uso compartido está desactivado. Inténtalo más tarde.",
+		"deleted": "Borrado. El uso compartido está desactivado.",
+		"nothingToDelete": "No hay nada que borrar. El uso compartido está desactivado."
+	},
+	"signedInDevices": {
+		"title": "Dispositivos con sesión iniciada",
+		"description": "Sesiones de línea de comandos iniciadas con tmgr login.",
+		"loadFailed": "No se pudieron cargar los dispositivos.",
+		"tryAgain": "Intentar de nuevo",
+		"empty": "Aún no hay dispositivos CLI. Ejecuta {command} en tu terminal.",
+		"onHost": "en {host}",
+		"lastUsed": "Sesión iniciada {signedIn} · Último uso {lastUsed}",
+		"never": "nunca",
+		"editScopes": "Editar ámbitos",
+		"revoke": "Revocar",
+		"savedTitle": "Guardado",
+		"savedDescription": "Ámbitos del dispositivo actualizados",
+		"errorTitle": "Error",
+		"updateFailed": "No se pudieron actualizar los ámbitos del dispositivo",
+		"confirmRevoke": "¿Revocar {client} en {host}? Se cerrará su sesión.",
+		"doneTitle": "Listo",
+		"revoked": "Dispositivo revocado",
+		"revokeFailed": "No se pudo revocar el dispositivo"
+	},
+	"phonesSection": {
+		"title": "Teléfonos",
+		"intro": "Responde las tarjetas de Decisiones desde la aplicación TMGR para iPhone. Para emparejar, este Mac debe estar encendido.",
+		"macName": "Nombre de este Mac",
+		"manage": "Gestionar teléfonos",
+		"openFailed": "No se pudo abrir la ventana",
+		"pair": "Emparejar un iPhone"
+	},
+	"profile": {
+		"title": "Perfil",
+		"pictureTitle": "Foto de perfil",
+		"uploading": "Subiendo…",
+		"changePicture": "Cambiar foto",
+		"acceptedFormats": "Formatos admitidos: PNG, JPEG, WebP, GIF.",
+		"accountTitle": "Cuenta",
+		"name": "Nombre",
+		"email": "Correo electrónico",
+		"emailReadonly": "El correo no se puede cambiar aquí",
+		"changePassword": "Cambiar contraseña",
+		"leaveBlank": "Déjalo en blanco para mantener tu contraseña actual.",
+		"currentPassword": "Contraseña actual",
+		"newPassword": "Nueva contraseña",
+		"confirmPassword": "Confirmar contraseña",
+		"socialHint": "¿Te registraste con Google, GitHub o Apple y nunca definiste una contraseña? Usa ¿Olvidaste tu contraseña? en la página de inicio de sesión para crear una.",
+		"signOutOthers": "Cerrar sesión en otros dispositivos",
+		"signOutOthersHint": "Recomendado si crees que alguien más tuvo acceso a tu cuenta. Este dispositivo mantiene la sesión iniciada.",
+		"agentTitle": "Conexiones de agentes",
+		"agentDescription": "Revoca todos los tokens de personas, en todas tus personas y espacios de trabajo.",
+		"revoking": "Revocando…",
+		"revokeAll": "Revocar todos los tokens de personas",
+		"tokensRevokedNotice": "Se revocaron los tokens de dispositivos, agentes y notificaciones: genera otros nuevos.",
+		"pickImage": "Elige un archivo de imagen",
+		"readFailed": "No se pudo leer esa imagen",
+		"uploadFailed": "No se pudo subir esa foto",
+		"removeFailed": "No se pudo quitar la foto",
+		"passwordChanged": "Contraseña cambiada",
+		"savedTitle": "Guardado",
+		"savedDescription": "Datos de usuario guardados",
+		"confirmRevokeAll": "¿Revocar todos los tokens de todas tus personas?",
+		"doneTitle": "Listo",
+		"allRevoked": "Todos los tokens de personas revocados",
+		"errorTitle": "Error",
+		"revokeFailed": "No se pudieron revocar los tokens de personas"
+	},
+	"avatarCropModal": {
+		"title": "Recortar avatar",
+		"description": "Arrastra para mover; desplaza o usa el control deslizante para ampliar.",
+		"zoom": "Zoom"
+	},
+	"privacy": {
+		"title": "Política de privacidad",
+		"lastUpdated": "Última actualización: 13 de octubre de 2026",
+		"summary": {
+			"store": "Guardamos lo que introduces en TMGR (tu cuenta, tareas, páginas, archivos, registros de tiempo) para que el servicio funcione. No lo vendemos ni mostramos anuncios.",
+			"local": "Los espacios de trabajo locales de la aplicación de escritorio permanecen en tu dispositivo.",
+			"consent": "Google Analytics está desactivado hasta que lo permitas. Los datos de uso también están desactivados hasta que los permitas. Puedes cambiar ambos en cualquier momento.",
+			"thirdParties": "Algunas funciones envían datos a otras empresas, por ejemplo a OpenAI para las funciones de IA o a Twilio para las llamadas de alarma. Se enumeran más abajo.",
+			"title": "Resumen"
+		},
+		"controller": {
+			"todoName": "[Nombre y dirección del responsable: pendiente de confirmar]",
+			"text": "El responsable de tus datos personales es {controller}. Contacto: {contact}.",
+			"title": "Quién es el responsable"
+		},
+		"todoEmail": "[correo de contacto: pendiente de confirmar]",
+		"accountData": {
+			"accountLabel": "Cuenta:",
+			"account": "{label} nombre, dirección de correo, hash de la contraseña, los identificadores de los proveedores de inicio de sesión que usas (GitHub, Google, Apple, Telegram), tu avatar y tus ajustes.",
+			"contentLabel": "Tu contenido:",
+			"content": "{label} espacios de trabajo, tareas, comentarios, páginas, archivos subidos, registros de tiempo, rutinas, conversaciones con el asistente de IA y los registros de trabajo de los agentes de IA que conectas.",
+			"devicesLabel": "Dispositivos y notificaciones:",
+			"devices": "{label} sesiones de inicio de sesión, claves de dispositivo para iniciar sesión con Face ID, tokens push de la aplicación de iOS, tu tema privado de notificaciones y los tokens de acceso que creas para agentes y dispositivos.",
+			"alarmLabel": "Teléfono de alarma:",
+			"alarm": "{label} solo si configuras las llamadas de alarma. Se guarda cifrado.",
+			"integrationsLabel": "Integraciones que conectas:",
+			"integrations": "{label} tu id y nombre de usuario de Telegram, datos de los repositorios de GitHub que vinculas (incluidos los nombres y correos de los autores de commits) y tu clave de API de Cursor.",
+			"usage": "Usamos estos datos para que TMGR funcione para ti. No guardamos tu dirección IP en la base de datos. Nuestros servidores conservan las direcciones IP de los clientes en memoria hasta una hora para limitar abusos como adivinar contraseñas.",
+			"title": "Datos que guardamos de tu cuenta"
+		},
+		"desktopLocal": {
+			"intro": "Un espacio de trabajo local de la aplicación de escritorio es un archivo de base de datos en tu ordenador, y sus copias de seguridad se guardan en una carpeta de tu ordenador. Su contenido no se nos envía.",
+			"connects": "La aplicación de escritorio sigue conectándose a internet para algunas cosas:",
+			"updates": "Consulta GitHub para buscar actualizaciones de la aplicación. GitHub ve tu dirección IP.",
+			"plugins": "Actualiza el catálogo de complementos desde GitHub al iniciarse y cada seis horas.",
+			"ai": "Se comunica con el punto de acceso de IA que configures tú, si configuras uno.",
+			"usage": "Envía datos de uso solo si activas los datos de uso (ver más abajo).",
+			"noAnalytics": "La aplicación de escritorio nunca carga Google Analytics ni Plausible.",
+			"title": "Aplicación de escritorio sin cuenta"
+		},
+		"usageData": {
+			"intro": "Si aceptas, la aplicación envía eventos de uso no vinculados a tu cuenta. Nos muestran qué pantallas y recorridos guiados abre la gente y qué pasos completa, para que podamos mejorar TMGR.",
+			"sentLabel": "Qué se envía:",
+			"sent": "{label} nombres de eventos como {code} con valores fijos (por ejemplo, qué recorrido y qué paso), un id de instalación aleatorio creado en tu dispositivo, un id aleatorio para cada inicio de la aplicación, la versión de la aplicación (mayor y menor), la plataforma, si usas una cuenta en la nube o un espacio de trabajo local, una clase de tamaño de pantalla (pequeña, mediana o grande) y la hora del evento.",
+			"neverSentLabel": "Qué nunca se envía:",
+			"neverSent": "{label} texto de tareas, páginas o comentarios, nombres, correos, nombres de archivo, nombres de espacios de trabajo, enlaces, el id de tu cuenta, tu token de inicio de sesión o cookies.",
+			"ipLabel": "Tu dirección IP",
+			"ip": "{label} no se guarda con los eventos. Se conserva en memoria hasta una hora para limitar abusos.",
+			"retentionLabel": "Conservación:",
+			"retention": "{label} los eventos sin procesar se borran a los 30 días. Los totales diarios (recuentos por evento, sin ids de instalación) se conservan 13 meses.",
+			"offLabel": "Desactivarlo:",
+			"off": "{label} desactiva \"Compartir datos de uso\" en Ajustes → Privacidad o más abajo en esta página. El envío se detiene al instante en todas las pestañas y ventanas, y los eventos pendientes en tu dispositivo se borran.",
+			"deleteLabel": "Borrar lo enviado:",
+			"delete": "{label} tu dispositivo conserva una clave de borrado para cada id de instalación. \"Borrar datos ya enviados\" en Ajustes → Privacidad o más abajo en esta página la usa para borrar esos eventos de nuestros servidores, incluso después de desactivar el uso compartido.",
+			"pseudonymous": "Como el id de instalación se mantiene igual con el tiempo, tratamos los datos de uso como datos personales seudonimizados. La base jurídica es tu consentimiento, que puedes retirar en cualquier momento.",
+			"title": "Datos de uso (opcional)"
+		},
+		"analytics": {
+			"title": "Google Analytics y recuento de visitas de página (web)",
+			"gaLabel": "Google Analytics",
+			"googlePolicy": "la política de privacidad de Google",
+			"google": "{ga} se carga en la aplicación web solo después de que lo permitas. Instala cookies ({cookie}) y envía a Google tu dirección IP, datos del dispositivo y del navegador y las páginas que visitas. Si lo rechazas, nunca se carga. Puedes cambiar tu elección en cualquier momento con \"Ajustes de cookies\", más abajo o al final de la página de inicio de sesión, o en Ajustes. La base jurídica es tu consentimiento. Consulta {policy}.",
+			"choice": "Tu elección actual: {status}",
+			"cookieSettings": "Ajustes de cookies",
+			"plausibleLabel": "Plausible:",
+			"plausible": "{label} la aplicación web cuenta las visitas de página con una instancia de Plausible alojada por nosotros. No instala cookies ni guarda direcciones IP ni identificadores personales. La aplicación de escritorio no la carga. La base jurídica es nuestro interés legítimo en saber cuánta gente usa el sitio.",
+			"yandex": "Yandex Metrica ya no se usa."
+		},
+		"onboardingAggregates": {
+			"counts": "Para saber si la incorporación funciona, contamos, entre todas las cuentas, cuántas personas se registraron, verificaron su correo, crearon una primera tarea, iniciaron un temporizador, conectaron un agente de IA o terminaron un recorrido guiado. Estas cifras salen de datos que TMGR ya guarda. Solo se muestran como totales y los grupos de menos de 10 personas se ocultan.",
+			"basis": "Esto ocurre compartas o no datos de uso, porque usa datos de la cuenta, no eventos del dispositivo. La base jurídica es nuestro interés legítimo en mejorar la incorporación. Puedes oponerte escribiéndonos (ver Contacto).",
+			"title": "Estadísticas de incorporación a partir de datos de la cuenta"
+		},
+		"thirdParties": {
+			"title": "Servicios que usamos",
+			"service": "Servicio",
+			"whatFor": "Para qué",
+			"receive": "Qué reciben",
+			"rows": {
+				"hetzner": {
+					"use": "Servidores que ejecutan TMGR",
+					"receive": "Todos los datos guardados en TMGR"
+				},
+				"bunny": {
+					"use": "Entrega de contenido para la aplicación web y el sitio web",
+					"receive": "Tu dirección IP y datos del navegador al cargar páginas"
+				},
+				"storage": {
+					"todo": "[nombre: pendiente de confirmar]",
+					"name": "Proveedor de almacenamiento de objetos {todo}",
+					"use": "Archivos subidos, avatares y exportaciones",
+					"receive": "Los archivos que subes"
+				},
+				"email": {
+					"todo": "[nombre: pendiente de confirmar]",
+					"name": "Proveedor de correo {todo}",
+					"use": "Correos de verificación, de restablecimiento de contraseña y de notificaciones",
+					"receive": "Tu dirección de correo y el contenido del mensaje"
+				},
+				"openai": {
+					"use": "Funciones de IA: el asistente de IA, \"Optimizar descripción\" y la transcripción de mensajes de voz de Telegram",
+					"receive": "El texto, los datos de tareas y los mensajes de voz con los que trabajan estas funciones, solo cuando las usas"
+				},
+				"twilio": {
+					"use": "Llamadas de alarma y códigos SMS para verificar tu teléfono",
+					"receive": "Tu número de teléfono y el título y mensaje de la alarma leídos en la llamada"
+				},
+				"expo": {
+					"use": "Notificaciones push, Live Activities y actualizaciones de la aplicación de iOS",
+					"receive": "Tokens push y el contenido de la notificación",
+					"name": "Expo y Apple"
+				},
+				"signin": {
+					"use": "Inicio de sesión, si eliges ese proveedor",
+					"receive": "Lo que necesita el inicio de sesión; recibimos tu nombre y correo"
+				},
+				"github": {
+					"use": "La integración con GitHub, si la instalas, y las actualizaciones de la aplicación de escritorio",
+					"receive": "Datos de los repositorios que vinculas; tu dirección IP cuando la aplicación de escritorio busca actualizaciones"
+				},
+				"telegram": {
+					"use": "El bot de Telegram, si lo conectas",
+					"receive": "Tu id de chat y los mensajes que el bot envía y recibe"
+				},
+				"cursor": {
+					"use": "Iniciar agentes de Cursor, si añades tu clave de API de Cursor",
+					"receive": "El prompt de la tarea y los detalles del repositorio que envías"
+				},
+				"jsdelivr": {
+					"use": "Hoja de estilos para el resaltado de código",
+					"receive": "Tu dirección IP y datos del navegador al cargarse"
+				},
+				"ga": {
+					"use": "Analítica web, solo si la permites",
+					"receive": "Ver arriba"
+				}
+			},
+			"selfHosted": "Las actualizaciones en tiempo real, las notificaciones del navegador (ntfy), el recuento de visitas de página (Plausible) y el almacenamiento de secretos se ejecutan en nuestros propios servidores."
+		},
+		"retention": {
+			"account": "Datos de la cuenta y tu contenido: mientras exista tu cuenta.",
+			"sessions": "Sesiones de inicio de sesión: los tokens de acceso caducan a la hora y los tokens de actualización a los 30 días como máximo.",
+			"usage": "Datos de uso: eventos sin procesar 30 días, totales diarios 13 meses.",
+			"logsTodo": "[conservación: pendiente de confirmar]",
+			"logs": "Registros de acceso del servidor y de la CDN: {todo}.",
+			"title": "Cuánto tiempo conservamos los datos"
+		},
+		"yourRights": {
+			"intro": "Puedes pedir una copia de tus datos, corregirlos, borrarlos, oponerte al tratamiento basado en el interés legítimo y retirar cualquier consentimiento. También puedes presentar una reclamación ante una autoridad de protección de datos.",
+			"export": "En la aplicación puedes exportar tareas (CSV, XLSX), rutinas (iCal) y espacios de trabajo locales (Markdown), eliminar espacios de trabajo y cambiar tu perfil.",
+			"delete": "Para eliminar toda tu cuenta u obtener una copia completa de tus datos, escríbenos (ver Contacto). La aplicación aún no permite eliminar la cuenta por cuenta propia.",
+			"children": "TMGR no está pensado para menores de 16 años.",
+			"title": "Tus derechos"
+		},
+		"changes": {
+			"text": "Cuando esta política cambie, actualizaremos la fecha de arriba. Si los cambios son importantes, te avisaremos en la aplicación antes de que se apliquen.",
+			"title": "Cambios"
+		},
+		"contact": {
+			"text": "Preguntas o solicitudes sobre tus datos: {todo}.",
+			"title": "Contacto"
+		},
+		"status": {
+			"granted": "Permitido",
+			"denied": "Rechazado",
+			"unset": "Aún sin elegir"
+		}
+	},
+	"agentNotifications": {
+		"title": "Alertas de agentes",
+		"subtitle": "Recibe una notificación push en tu teléfono cuando Claude Code, Codex u otro agente de IA te necesite: el destinatario eres siempre tú, el propietario del token, y un token funciona en todos los espacios de trabajo en los que estás. Crea un token y conecta Claude Code, Codex o Cursor en un solo paso.",
+		"newToken": "Nuevo token",
+		"labelOptional": "Etiqueta (opcional)",
+		"labelPlaceholder": "Claude Code en mi portátil",
+		"creating": "Creando…",
+		"createToken": "Crear token",
+		"copyNow": "Copia este token ahora: no volverás a verlo.",
+		"showSetup": "Mostrar configuración",
+		"tokens": "Tokens",
+		"loadingTokens": "Cargando tokens…",
+		"noTokens": "Aún no hay tokens de notificación de agentes.",
+		"untitled": "Token sin título",
+		"never": "nunca",
+		"meta": "{prefix}… · creado {created} · último uso {lastUsed}",
+		"revoke": "Revocar",
+		"howToConnect": "Cómo conectar",
+		"haveToken": "¿Ya tienes un token? Usa estos fragmentos y sustituye {placeholder} por él.",
+		"yourToken": "<tu token>",
+		"hideSnippets": "Ocultar fragmentos",
+		"showSnippets": "Mostrar fragmentos",
+		"fullGuide": "Guía de configuración completa",
+		"connectTitle": "Conecta tu agente",
+		"notifyTokenLabel": "Token de notificación",
+		"sending": "Enviando…",
+		"sendTest": "Enviar notificación de prueba",
+		"phoneCall": "¿Quieres una llamada telefónica para incidentes? {link} más abajo.",
+		"setupAlarm": "Configura un teléfono de alarma",
+		"loadFailed": "No se pudieron cargar los tokens.",
+		"createFailed": "No se pudo crear el token",
+		"test": {
+			"sent": "Enviada: revisa tu teléfono. (vía {channels})",
+			"noChannels": "No se entregó nada: instala la aplicación móvil de TMGR y permite las notificaciones, o vincula Telegram en el Perfil.",
+			"deduplicated": "Ya se envió hace un momento.",
+			"rateLimitedIn": "Demasiadas notificaciones: inténtalo de nuevo en {seconds} s.",
+			"rateLimited": "Demasiadas notificaciones: inténtalo de nuevo en breve.",
+			"unauthorized": "Se rechazó este token. Crea uno nuevo.",
+			"unreachable": "No se pudo contactar con TMGR."
+		},
+		"copyFailed": "No se pudo copiar al portapapeles",
+		"confirmRevoke": "¿Revocar el token \"{label}\"?",
+		"revokeFailed": "No se pudo revocar el token"
+	},
+	"alarmPhoneSection": {
+		"title": "Teléfono de alarma",
+		"loading": "Cargando teléfono de alarma…",
+		"unconfigured": "El teléfono de alarma no está configurado en este servidor.",
+		"unreadable": "No se puede leer el número guardado. Quítalo e introdúcelo de nuevo.",
+		"intro": "Se usa solo para alarmas críticas cuando no se confirma el push. Se guarda cifrado. Te enviaremos un código por SMS para verificarlo.",
+		"verified": "Verificado",
+		"notVerified": "Sin verificar",
+		"testCall": "Llamada de prueba",
+		"change": "Cambiar",
+		"callsFrom": "Las alarmas te llaman desde {number}",
+		"addContact": "Añadir a contactos",
+		"tipFavorites": "Añádelo a Favoritos.",
+		"tipIphone": "iPhone: en Modos de concentración → No molestar y Dormir, permite las llamadas de Favoritos y activa Llamadas repetidas.",
+		"tipAndroid": "Android: marca el contacto con una estrella y permite los contactos destacados en No molestar.",
+		"verificationCode": "Código de verificación",
+		"verify": "Verificar",
+		"resendIn": "Reenviar en {seconds} s",
+		"resend": "Reenviar código",
+		"tryAgainIn": "Inténtalo de nuevo en {time}",
+		"phoneLabel": "Número de teléfono (E.164)",
+		"invalidFormat": "Usa el formato internacional, p. ej. +15550100123.",
+		"errors": {
+			"callFailed": "No se pudo realizar la llamada",
+			"unconfigured": "El teléfono de alarma no está configurado en este servidor",
+			"invalidPhone": "Número de teléfono no válido",
+			"tryAgainIn": "Inténtalo de nuevo en {time}",
+			"tooMany": "Demasiados intentos, inténtalo más tarde",
+			"reset": "Demasiados códigos incorrectos. Introduce el número de nuevo.",
+			"conflict": "No hay nada que hacer con este número ahora mismo",
+			"generic": "Algo salió mal"
+		},
+		"loadFailed": "No se pudo cargar el teléfono de alarma.",
+		"numberChanged": "Este número cambió, vuelve a comprobarlo",
+		"wrongCode": "Código incorrecto.",
+		"wrongCodeLeft": "Código incorrecto. Intentos restantes: {count}.",
+		"calling": "Llamando ahora.",
+		"callsUnconfigured": "Las llamadas no están configuradas en este servidor",
+		"verifyFirst": "Verifica primero el número",
+		"copyFailed": "No se pudo copiar",
+		"contactFailed": "No se pudo descargar el contacto",
+		"confirmRemove": "¿Quitar el teléfono de alarma?"
+	}
+}

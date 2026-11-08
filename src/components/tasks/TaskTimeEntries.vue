@@ -4,9 +4,9 @@
 		class="flex flex-col gap-1"
 		data-testid="task-time-entries"
 	>
-		<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
-			>Terminal sessions</span
-		>
+		<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase">{{
+			$t('tasks.timeEntries.title')
+		}}</span>
 		<ul
 			class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface"
 		>
@@ -27,7 +27,7 @@
 					class="flex flex-wrap items-center gap-x-2 text-2xs text-ink-subtle"
 				>
 					<span>{{ row.source }}</span>
-					<span v-if="row.partial">partly covered by other tracked time</span>
+					<span v-if="row.partial">{{ $t('tasks.timeEntries.partial') }}</span>
 				</div>
 			</li>
 		</ul>

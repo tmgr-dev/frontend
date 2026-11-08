@@ -4,7 +4,7 @@
 			<Switcher
 				name="reminder"
 				v-model="isActiveReminder"
-				placeholder="Reminder"
+				:placeholder="$t('tasks.reminder.label')"
 			/>
 		</div>
 	</div>

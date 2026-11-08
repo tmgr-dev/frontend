@@ -19,6 +19,7 @@ jest.mock('@/components/ui/toast', () => ({
 }));
 
 import { STALE_FILES_MESSAGE, useSkillFiles } from '@/composable/skillFiles';
+import { i18n } from '@/i18n';
 
 const index = (paths: string[], sha = 'sha-1') => ({
 	files: paths.map((path) => ({
@@ -241,7 +242,7 @@ const renderFiles = async (state: Record<string, unknown>) => {
 		setup: () => state,
 		render,
 	});
-	return renderToString(createSSRApp(Comp));
+	return renderToString(createSSRApp(Comp).use(i18n));
 };
 
 describe('SkillFiles template', () => {
@@ -292,7 +293,9 @@ describe('library wiring', () => {
 	it('says files are not pinned next to the pin label', () => {
 		const source = flat('PersonaSharedSkills.vue');
 		expect(source).toContain('skill.pinned_version && skill.files_count');
-		expect(source).toContain('Files are not pinned');
+		expect(source).toContain(
+			'settingsPages.personaSharedSkills.filesNotPinned',
+		);
 	});
 
 	it('shows the file count of deleted skills only when present', () => {

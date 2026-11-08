@@ -1,7 +1,9 @@
 <template>
 	<form class="flex flex-col gap-3" @submit.prevent="$emit('submit')">
 		<fieldset v-if="showScope" class="flex flex-col gap-1.5">
-			<legend class="mb-1 text-sm font-medium">Who can assign it</legend>
+			<legend class="mb-1 text-sm font-medium">
+				{{ $t('settingsPages.personaForm.whoCanAssign') }}
+			</legend>
 			<label class="flex items-center gap-2 text-sm">
 				<input
 					type="radio"
@@ -11,9 +13,9 @@
 					:checked="modelValue.scope === 'account'"
 					@change="update('scope', 'account')"
 				/>
-				Only me
+				{{ $t('settingsPages.personaForm.onlyMe') }}
 				<span class="text-xs text-muted-foreground">
-					assignable in workspaces you grant it to
+					{{ $t('settingsPages.personaForm.onlyMeHint') }}
 				</span>
 			</label>
 			<label class="flex items-center gap-2 text-sm">
@@ -25,19 +27,22 @@
 					:checked="modelValue.scope === 'workspace'"
 					@change="update('scope', 'workspace')"
 				/>
-				This workspace{{ workspaceName ? ` (${workspaceName})` : '' }}
+				{{ $t('settingsPages.personaForm.thisWorkspace')
+				}}{{ workspaceName ? ` (${workspaceName})` : '' }}
 				<span class="text-xs text-muted-foreground">
-					every member can assign tasks to it; only you edit it
+					{{ $t('settingsPages.personaForm.thisWorkspaceHint') }}
 				</span>
 			</label>
 		</fieldset>
 
 		<label class="flex flex-col gap-1">
-			<span class="text-sm font-medium">Name</span>
+			<span class="text-sm font-medium">{{
+				$t('settingsPages.personaForm.name')
+			}}</span>
 			<Input
 				:model-value="modelValue.name"
 				maxlength="60"
-				placeholder="Reviewer"
+				:placeholder="$t('settingsPages.personaForm.namePlaceholder')"
 				@update:model-value="(v) => update('name', String(v))"
 			/>
 			<span v-if="fieldErrors.name" class="text-xs text-destructive">
@@ -46,12 +51,14 @@
 		</label>
 
 		<label class="flex flex-col gap-1">
-			<span class="text-sm font-medium">Description</span>
+			<span class="text-sm font-medium">{{
+				$t('settingsPages.personaForm.description')
+			}}</span>
 			<Textarea
 				:model-value="modelValue.description"
 				maxlength="500"
 				rows="2"
-				placeholder="What this persona is for"
+				:placeholder="$t('settingsPages.personaForm.descriptionPlaceholder')"
 				@update:model-value="(v) => update('description', String(v))"
 			/>
 			<span v-if="fieldErrors.description" class="text-xs text-destructive">
@@ -60,12 +67,14 @@
 		</label>
 
 		<label class="flex flex-col gap-1">
-			<span class="text-sm font-medium">System prompt (Markdown)</span>
+			<span class="text-sm font-medium">{{
+				$t('settingsPages.personaForm.systemPrompt')
+			}}</span>
 			<Textarea
 				:model-value="modelValue.system_prompt"
 				rows="6"
 				class="font-mono text-xs"
-				placeholder="You are..."
+				:placeholder="$t('settingsPages.personaForm.systemPromptPlaceholder')"
 				@update:model-value="(v) => update('system_prompt', String(v))"
 			/>
 			<span
@@ -74,7 +83,12 @@
 					promptOverLimit ? 'text-destructive' : 'text-muted-foreground',
 				]"
 			>
-				{{ promptBytes }} / {{ PROMPT_MAX_BYTES }} bytes
+				{{
+					$t('settingsPages.personaForm.bytes', {
+						used: promptBytes,
+						max: PROMPT_MAX_BYTES,
+					})
+				}}
 			</span>
 			<span v-if="fieldErrors.system_prompt" class="text-xs text-destructive">
 				{{ fieldErrors.system_prompt.join(' ') }}
@@ -83,19 +97,25 @@
 
 		<label class="flex flex-col gap-1">
 			<span class="text-sm font-medium">
-				Notify me about this persona's activity
+				{{ $t('settingsPages.personaForm.notify') }}
 			</span>
 			<Select
 				:model-value="modelValue.owner_notifications"
 				@update:model-value="(v) => update('owner_notifications', String(v))"
 			>
-				<SelectTrigger aria-label="Notify me about this persona's activity">
+				<SelectTrigger :aria-label="$t('settingsPages.personaForm.notify')">
 					<SelectValue />
 				</SelectTrigger>
 				<SelectContent>
-					<SelectItem value="all">All</SelectItem>
-					<SelectItem value="mentions">Only when it asks for me</SelectItem>
-					<SelectItem value="none">Never</SelectItem>
+					<SelectItem value="all">{{
+						$t('settingsPages.personaForm.notifyAll')
+					}}</SelectItem>
+					<SelectItem value="mentions">{{
+						$t('settingsPages.personaForm.notifyMentions')
+					}}</SelectItem>
+					<SelectItem value="none">{{
+						$t('settingsPages.personaForm.notifyNone')
+					}}</SelectItem>
 				</SelectContent>
 			</Select>
 			<span
@@ -108,7 +128,7 @@
 
 		<div class="flex gap-2">
 			<Button type="submit" size="sm" :disabled="saving || promptOverLimit">
-				{{ submitLabel }}
+				{{ submitLabel || $t('common.actions.save') }}
 			</Button>
 			<Button
 				v-if="showCancel"
@@ -117,7 +137,7 @@
 				size="sm"
 				@click="$emit('cancel')"
 			>
-				Cancel
+				{{ $t('common.actions.cancel') }}
 			</Button>
 		</div>
 	</form>
@@ -168,7 +188,7 @@
 				default: () => ({}),
 			},
 			saving: { type: Boolean, default: false },
-			submitLabel: { type: String, default: 'Save' },
+			submitLabel: { type: String, default: '' },
 			showCancel: { type: Boolean, default: false },
 			showScope: { type: Boolean, default: false },
 			workspaceName: { type: String, default: '' },

@@ -1,0 +1,233 @@
+{
+	"doneCheckbox": {
+		"label": "Erledigt"
+	},
+	"linkChips": {
+		"title": "Links",
+		"page": "Seite {id}"
+	},
+	"pageMentions": {
+		"title": "Auf Seiten erwähnt"
+	},
+	"priorityBadge": {
+		"title": "Priorität: {label}"
+	},
+	"shareMenu": {
+		"share": "Teilen"
+	},
+	"timeEntries": {
+		"title": "Terminal-Sitzungen",
+		"partial": "teilweise durch andere erfasste Zeit abgedeckt"
+	},
+	"timeInfo": {
+		"created": "Erstellt: {time}",
+		"edited": "Bearbeitet: {time}",
+		"overtime": "Überstunden"
+	},
+	"actions": {
+		"delete": "Löschen",
+		"save": "Speichern",
+		"create": "Erstellen",
+		"settings": "Einstellungen"
+	},
+	"reminder": {
+		"label": "Erinnerung"
+	},
+	"sidePanel": {
+		"label": "Aufgabe"
+	},
+	"exportSettings": {
+		"title": "Export-Einstellungen",
+		"roundHoursUp": "Stunden aufrunden",
+		"zeroExpectedWeekends": "An freien Tagen keine Sollstunden",
+		"weekendDays": "Wochenendtage:",
+		"customHolidays": "Eigene Feiertage:",
+		"add": "Hinzufügen",
+		"parseDateFromTitle": "Datum aus dem Aufgabentitel lesen",
+		"days": {
+			"sun": "So",
+			"mon": "Mo",
+			"tue": "Di",
+			"wed": "Mi",
+			"thu": "Do",
+			"fri": "Fr",
+			"sat": "Sa"
+		}
+	},
+	"multipleActions": {
+		"title": "Sammelaktionen",
+		"updateTasks": "Aufgaben aktualisieren",
+		"markDone": "Als erledigt markieren",
+		"markDoneNoStatus": "Als erledigt markieren (kein Status „Erledigt“)",
+		"markOpen": "Als offen markieren",
+		"archive": "Archivieren",
+		"delete": "Löschen",
+		"moveToStatus": "In Status verschieben",
+		"agentRuns": "Agent-Läufe",
+		"confirmAgentRuns": "Für Agent-Läufe bestätigen",
+		"export": "Exportieren",
+		"exportCsv": "Als CSV exportieren",
+		"exportJpg": "Als JPEG exportieren",
+		"exportXlsx": "Als XLSX exportieren",
+		"seconds": "{n} s",
+		"execute": "Ausführen"
+	},
+	"pomodoroSettings": {
+		"dialogLabel": "Pomodoro-Einstellungen",
+		"title": "Pomodoro",
+		"description": "Lege Fokus- und Pausenintervalle fest. Die Einstellungen gelten für alle deine Aufgaben.",
+		"focusDuration": "Fokusdauer",
+		"shortBreak": "Kurze Pause",
+		"longBreak": "Lange Pause",
+		"longBreakEvery": "Lange Pause alle",
+		"pomodoros": "Pomodoro | Pomodoros",
+		"autoStart": "Nächstes Intervall automatisch starten",
+		"autoStartHint": "Die Play-Taste zwischen Fokus und Pause überspringen",
+		"pauseTracking": "Zeiterfassung in der Pause anhalten",
+		"pauseTrackingHint": "Die Uhr stoppen, während du dich erholst",
+		"notifications": "Benachrichtigungen",
+		"notify": {
+			"silent": "Lautlos",
+			"system": "System",
+			"both": "Beides"
+		},
+		"sound": "Ton am Intervallende",
+		"sounds": {
+			"bell": "Glocke",
+			"chime": "Gong",
+			"wood": "Holz",
+			"digital": "Digital"
+		},
+		"minutesUnit": "Min.",
+		"saveError": "Einstellungen konnten nicht gespeichert werden. Versuche es erneut."
+	},
+	"pomodoroBlock": {
+		"phase": {
+			"focus": "FOKUS",
+			"short": "KURZE PAUSE",
+			"long": "LANGE PAUSE"
+		},
+		"skipPhase": "Phase überspringen",
+		"reset": "Zurücksetzen",
+		"distractedHint": "Ich wurde abgelenkt",
+		"distracted": "ABGELENKT",
+		"distractedCount": "ABGELENKT · {n}",
+		"settings": "Pomodoro-Einstellungen",
+		"disable": "Pomodoro für diese Aufgabe deaktivieren",
+		"summary": "{n} POMODOROS · {focus}/{short}/{long}"
+	},
+	"attachments": {
+		"loadError": "Anhänge konnten nicht geladen werden.",
+		"title": "Anhänge",
+		"addFiles": "Dateien hinzufügen",
+		"pendingNote": "{size} · Wird hochgeladen, sobald die Aufgabe erstellt ist",
+		"open": "{name} öffnen",
+		"uploading": "{size} wird hochgeladen…",
+		"dismiss": "Upload ausblenden",
+		"none": "Noch keine Anhänge",
+		"addMore": "Weitere Dateien hinzufügen",
+		"dropHint": "Klicke hier oder ziehe Dateien hierher, um Dokumente, Bilder oder andere Dateien anzuhängen",
+		"download": "Herunterladen"
+	},
+	"gallery": {
+		"file": "Datei",
+		"position": "Datei {n} von {total}",
+		"downloadFailed": "Download fehlgeschlagen",
+		"zoomOut": "Verkleinern",
+		"zoomIn": "Vergrößern",
+		"fitTitle": "An Fenster anpassen (0)",
+		"fit": "An Fenster anpassen",
+		"actualSizeTitle": "Originalgröße (100 %)",
+		"actualSize": "Originalgröße",
+		"previous": "Zurück",
+		"previousFile": "Vorherige Datei",
+		"next": "Weiter",
+		"nextFile": "Nächste Datei",
+		"imageError": "Bild konnte nicht geladen werden. Erneut versuchen",
+		"fileError": "Datei konnte nicht geladen werden",
+		"unsupported": "Hier ist keine Vorschau verfügbar",
+		"previewOf": "Vorschau von {name}"
+	},
+	"comments": {
+		"activity": "Aktivität",
+		"filter": {
+			"all": "Alle",
+			"people": "Personen",
+			"personas": "Personas",
+			"plugins": "Plugins"
+		},
+		"empty": "Noch keine Kommentare",
+		"noMatch": "Keine Kommentare entsprechen diesem Filter",
+		"aiAssistant": "KI-Assistent",
+		"deleteComment": "Kommentar löschen",
+		"confirmDelete": "Diesen Kommentar löschen?",
+		"addReaction": "Reaktion hinzufügen"
+	},
+	"relations": {
+		"title": "Verknüpfte Aufgaben",
+		"link": "Verknüpfen",
+		"removeRelation": "Beziehung entfernen",
+		"dialogTitle": "Vorgang verknüpfen",
+		"issue": "Vorgang",
+		"searchPlaceholder": "Suchen…",
+		"searching": "Suche läuft…",
+		"type": "Typ",
+		"select": "Auswählen…",
+		"linking": "Wird verknüpft…",
+		"removeTitle": "Verknüpfung entfernen",
+		"removeBody": "Verknüpfung „{type}“ zu Aufgabe #{id} entfernen?",
+		"errors": {
+			"loadTypes": "Beziehungstypen konnten nicht geladen werden",
+			"fillAll": "Bitte fülle alle Felder aus",
+			"add": "Aufgabenbeziehung konnte nicht hinzugefügt werden",
+			"remove": "Aufgabenbeziehung konnte nicht entfernt werden"
+		}
+	},
+	"boardCard": {
+		"dragReorder": "Zum Umsortieren ziehen",
+		"dragMove": "Zum Verschieben ziehen",
+		"stopTimer": "Timer stoppen",
+		"startTimer": "Timer starten",
+		"changeAssignee": "Zuständigen ändern",
+		"assignSomeone": "Jemanden zuweisen",
+		"searchMembers": "Mitglieder suchen...",
+		"noMembers": "Keine Mitglieder gefunden.",
+		"taskActions": "Aufgabenaktionen",
+		"openDetails": "Details öffnen",
+		"settings": "Einstellungen",
+		"moveToTop": "Nach oben verschieben",
+		"moveToBottom": "Nach unten verschieben",
+		"archive": "Archivieren",
+		"delete": "Löschen",
+		"commentsLabel": "{n} Kommentar | {n} Kommentare",
+		"archiveTitle": "Aufgabe archivieren",
+		"archiveBody": "Möchtest du „{title}“ wirklich archivieren?",
+		"deleteTitle": "Aufgabe löschen",
+		"deleteBody": "Möchtest du „{title}“ wirklich löschen?",
+		"archiveStatusMissing": "Archivstatus nicht gefunden",
+		"archiveStatusMissingHint": "Erstelle zuerst einen Archivstatus.",
+		"archiveFailed": "Aufgabe konnte nicht archiviert werden",
+		"tryAgain": "Bitte versuche es erneut.",
+		"deleteFailed": "Aufgabe konnte nicht gelöscht werden. Bitte versuche es erneut."
+	},
+	"list": {
+		"selectedTasks": "Ausgewählte Aufgaben:",
+		"deselectAll": "Auswahl aufheben",
+		"selectAll": "Alle auswählen",
+		"process": "Verarbeiten ({n})",
+		"summary": "{selected} von {total} · {hours} h",
+		"summaryOvertime": "{selected} von {total} · {hours} h · +{overtime} Überstunden",
+		"restore": "Wiederherstellen",
+		"restoreFromTrash": "Aus dem Papierkorb wiederherstellen",
+		"deleteTask": "Aufgabe löschen",
+		"timerRunning": "Timer läuft",
+		"overtime": "+{time} Überstunden",
+		"showing": "Aufgaben {from} bis {to} von {total}",
+		"perPage": "{n} pro Seite",
+		"previous": "Zurück",
+		"next": "Weiter",
+		"page": "Seite {page} von {last}",
+		"deleteTasksTitle": "Aufgaben löschen",
+		"deleteTasksBody": "Bist du sicher?"
+	}
+}

@@ -1,0 +1,184 @@
+{
+	"language": {
+		"title": "Idioma",
+		"label": "Idioma de la interfaz",
+		"description": "Se usa en toda la aplicación, los correos y las notificaciones.",
+		"saveFailed": "No se pudo guardar el idioma"
+	},
+	"page": {
+		"settings": "Ajustes",
+		"profile": "Perfil",
+		"devices": "Dispositivos inteligentes",
+		"notifications": "Notificaciones",
+		"theme": "Tema",
+		"experimental": "Experimental",
+		"desktop": "Escritorio",
+		"localData": "Datos locales",
+		"privacy": "Privacidad",
+		"agentWork": "Trabajo del agente",
+		"about": "Acerca de"
+	},
+	"loading": "Cargando ajustes",
+	"loadFailed": "No se pudieron cargar los ajustes.",
+	"layout": {
+		"back": "Volver a Ajustes"
+	},
+	"nav": {
+		"groups": {
+			"account": "Cuenta",
+			"workspace": "Espacio de trabajo",
+			"agents": "Agentes",
+			"app": "Aplicación"
+		},
+		"items": {
+			"profile": "Perfil",
+			"notification": "Notificaciones",
+			"device": "Dispositivos inteligentes",
+			"privacy": "Privacidad",
+			"workspaces": "General",
+			"modules": "Módulos",
+			"personas": "Personas",
+			"agent-work": "Trabajo del agente",
+			"agent-notifications": "Alertas del agente",
+			"plugins": "Complementos",
+			"theme": "Tema",
+			"desktop": "Escritorio",
+			"data": "Datos locales",
+			"experimental": "Experimental",
+			"about": "Acerca de"
+		}
+	},
+	"alerts": {
+		"errorTitle": "Error",
+		"updated": "Ajustes actualizados correctamente",
+		"updateFailed": "No se pudieron actualizar los ajustes",
+		"editorUpdated": "Editor actualizado. Recargando la página..."
+	},
+	"push": {
+		"title": "Notificaciones push (heredado)",
+		"enable": "Activar notificaciones web",
+		"test": "Enviar notificación de prueba",
+		"showTooltips": "Mostrar sugerencias",
+		"registrationTitle": "Registro de notificaciones",
+		"registrationBody": "Comprueba los permisos de notificaciones"
+	},
+	"desktop": {
+		"gitTracking": "Seguimiento automático con Git",
+		"shortcuts": "Atajos de teclado"
+	},
+	"about": {
+		"version": "Versión {version}",
+		"moreTitle": "Más del autor",
+		"moreDescription": "Otros productos de las personas que crean TMGR.",
+		"cliLink": "Línea de comandos (tmgr)"
+	},
+	"theme": {
+		"title": "Tema",
+		"description": "Elige un tema de color y el modo claro u oscuro.",
+		"active": "activo",
+		"mode": "Modo:",
+		"light": "Claro",
+		"dark": "Oscuro",
+		"system": "Sistema",
+		"default": "Predeterminado",
+		"tags": {
+			"default": "canónico",
+			"dracula": "morado",
+			"nord": "escarcha",
+			"one-dark": "atom",
+			"monokai": "clásico",
+			"solarized-dark": "suave",
+			"gruvbox-dark": "retro",
+			"tokyo-night": "noche",
+			"github-dark": "predeterminado",
+			"night-owl": "profundo",
+			"cobalt2": "azul",
+			"palenight": "material",
+			"ayu-dark": "cálido",
+			"catppuccin-mocha": "pastel",
+			"synthwave-84": "neón",
+			"github-light": "claro",
+			"oled": "negro puro",
+			"colorblind": "okabe-ito"
+		}
+	},
+	"timezone": {
+		"title": "Zona horaria",
+		"description": "Las rutinas diarias se activan y los días empiezan según esta zona horaria.",
+		"placeholder": "Selecciona una zona horaria",
+		"search": "Buscar zonas horarias",
+		"notFound": "No se encontró ninguna zona horaria.",
+		"detected": "Detectada: {zone}",
+		"useDetected": "Usar la detectada",
+		"saveFailed": "No se pudo guardar la zona horaria"
+	},
+	"telegram": {
+		"title": "Telegram",
+		"connectedAs": "Conectado como {'@'}{username}",
+		"unlink": "Desvincular",
+		"connect": "Conectar Telegram",
+		"connectBody": "Haz clic en el botón de abajo para abrir Telegram y conectar tu cuenta. Una vez conectada, recibirás las notificaciones por Telegram.",
+		"open": "Abrir Telegram",
+		"unlinkTitle": "Desvincular Telegram",
+		"unlinkBody": "¿Seguro que quieres desvincular tu cuenta de Telegram? Dejarás de recibir notificaciones por Telegram."
+	},
+	"device": {
+		"tokenTitle": "Token de API",
+		"tokenHidden": "El token está configurado (oculto). Genera uno nuevo si lo perdiste.",
+		"tokenNeeded": "Es necesario generar un token",
+		"hide": "Ocultar",
+		"show": "Mostrar",
+		"copyNow": "Cópialo ahora: no se volverá a mostrar.",
+		"created": "Creado: {date}",
+		"generateNew": "Generar nuevo token",
+		"generate": "Generar token",
+		"revoke": "Revocar token",
+		"generateTitle": "Generar nuevo token",
+		"regenerateBody": "¿Seguro que quieres generar un nuevo token? Esto invalidará el token actual y habrá que actualizar los dispositivos que lo usan.",
+		"generateBody": "¿Generar un nuevo token para tus dispositivos inteligentes?",
+		"generateFailed": "No se pudo generar el token",
+		"generated": "Token generado correctamente",
+		"revokeTitle": "Revocar token",
+		"revokeBody": "¿Seguro que quieres revocar este token? Todos los dispositivos que lo usan dejarán de funcionar hasta que se reconfiguren con un nuevo token.",
+		"revokeFailed": "No se pudo revocar el token",
+		"revoked": "Token revocado correctamente",
+		"howTo": {
+			"title": "Cómo usarlo",
+			"step1": "1. Genera un token con el botón de arriba",
+			"step2": "2. Incluye el token en las solicitudes de API de tu dispositivo con el encabezado:",
+			"secure": "Mantén tu token seguro. Si se ve comprometido, genera uno nuevo de inmediato."
+		},
+		"mcp": {
+			"title": "Configuración de MCP",
+			"intro": "El MCP de TMGR usa el token del dispositivo inteligente como encabezado personalizado. Genera el token arriba y configura un cliente MCP que admita servidores remotos Streamable HTTP con encabezados (Claude Code: {command}).",
+			"serverUrl": "URL del servidor",
+			"clientConfig": "Configuración del cliente",
+			"oauth": "Nota sobre OAuth: este servidor MCP de TMGR aún no es un conector OAuth. A diferencia de Spendly, autentica `/mcp/**` con `X-Smart-Device-Token`, por lo que los conectores personalizados de Claude.ai que requieren detección OAuth no son compatibles con esta configuración.",
+			"notify": "Este MCP trabaja con tus tareas y tu tiempo. Para notificaciones y alarmas en el teléfono desde los agentes, conecta tmgr-notify en {link}.",
+			"notifyLink": "Alertas del agente"
+		},
+		"docs": {
+			"title": "Documentación",
+			"api": "Referencia de la API de dispositivos inteligentes",
+			"mcp": "Configuración del servidor MCP"
+		}
+	},
+	"agentUsage": {
+		"title": "Trabajo del agente",
+		"description": "Muestra cuánto cuestan los agentes de IA en tus tareas, en todos tus dispositivos.",
+		"syncLabel": "Sincronización del uso de agentes",
+		"syncDescription": "Sube los totales por tarea para que la web y el móvil puedan mostrarlos: tokens, coste de IA (equivalente en API), agente, modelo, nombres de herramientas y recuentos. Nunca prompts, respuestas, rutas de archivos ni argumentos de comandos. Las subidas solo empiezan desde la CLI de tmgr, después de que las actives allí: a mano con `tmgr usage sync`, o tras cada ejecución del agente si además confirmas `tmgr usage sync auto on`. Al desactivarla se elimina todo lo ya subido.",
+		"unavailable": "La sincronización del uso de agentes aún no está disponible en este servidor.",
+		"uploadsTitle": "Tus subidas",
+		"uploadsDescription": "Lo que ha subido esta cuenta, de la más reciente a la más antigua.",
+		"deleteAll": "Eliminar todo",
+		"empty": "No se ha subido nada.",
+		"turnOffTitle": "¿Desactivar la sincronización del uso de agentes?",
+		"turnOffBody": "Todo lo que ha subido esta cuenta se elimina de TMGR. Puedes volver a activarla más tarde.",
+		"keepOn": "Mantener activada",
+		"turnOff": "Desactivar y eliminar",
+		"deleteTitle": "¿Eliminar todas las subidas?",
+		"deleteBody": "Todo lo que ha subido esta cuenta se elimina de TMGR. La sincronización del uso de agentes se queda como está.",
+		"genericError": "Algo salió mal."
+	}
+}

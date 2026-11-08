@@ -1,13 +1,13 @@
 <template>
 	<div class="flex flex-col gap-6" data-testid="agent-usage-sync">
 		<SettingsSection
-			title="Agent work"
-			description="Show what AI agents cost on your tasks, on every device."
+			:title="$t('settings.agentUsage.title')"
+			:description="$t('settings.agentUsage.description')"
 		>
 			<SettingsRow
 				v-slot="{ labelId, descriptionId }"
-				label="Agent usage sync"
-				description="Uploads per-task totals so web and mobile can show them: tokens, AI cost (API-equivalent), agent, model and tool names, and counts. Never prompts, replies, file paths or command arguments. Uploads start only from the tmgr CLI, after you turn them on there: by hand with `tmgr usage sync`, or after each agent run if you also confirm `tmgr usage sync auto on`. Turning it off deletes everything already uploaded."
+				:label="$t('settings.agentUsage.syncLabel')"
+				:description="$t('settings.agentUsage.syncDescription')"
 			>
 				<Switch
 					data-testid="agent-usage-sync-switch"
@@ -19,7 +19,7 @@
 				/>
 			</SettingsRow>
 			<p v-if="!available" class="mt-2 text-sm text-ink-subtle">
-				Agent usage sync is not available on this server yet.
+				{{ $t('settings.agentUsage.unavailable') }}
 			</p>
 			<p v-if="error" class="mt-2 text-sm text-destructive" role="alert">
 				{{ error }}
@@ -28,8 +28,8 @@
 
 		<SettingsSection
 			v-if="available"
-			title="Your uploads"
-			description="What this account has uploaded, newest first."
+			:title="$t('settings.agentUsage.uploadsTitle')"
+			:description="$t('settings.agentUsage.uploadsDescription')"
 		>
 			<template #actions>
 				<Button
@@ -39,14 +39,14 @@
 					data-testid="agent-usage-delete-all"
 					@click="confirmDelete = true"
 				>
-					Delete all
+					{{ $t('settings.agentUsage.deleteAll') }}
 				</Button>
 			</template>
 			<p v-if="loading" class="text-sm text-ink-subtle" aria-live="polite">
-				Loading…
+				{{ $t('common.states.loading') }}
 			</p>
 			<p v-else-if="!rows.length" class="text-sm text-ink-subtle">
-				Nothing uploaded.
+				{{ $t('settings.agentUsage.empty') }}
 			</p>
 			<ul v-else class="divide-y divide-line text-sm">
 				<li
@@ -69,18 +69,21 @@
 		<AlertDialog v-model:open="confirmOff">
 			<AlertDialogContent>
 				<AlertDialogHeader>
-					<AlertDialogTitle>Turn off Agent usage sync?</AlertDialogTitle>
+					<AlertDialogTitle>{{
+						$t('settings.agentUsage.turnOffTitle')
+					}}</AlertDialogTitle>
 					<AlertDialogDescription>
-						Everything this account has uploaded is deleted from TMGR. You can
-						turn it on again later.
+						{{ $t('settings.agentUsage.turnOffBody') }}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
-					<AlertDialogCancel>Keep it on</AlertDialogCancel>
+					<AlertDialogCancel>{{
+						$t('settings.agentUsage.keepOn')
+					}}</AlertDialogCancel>
 					<AlertDialogAction
 						class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						@click="turnOff"
-						>Turn off and delete</AlertDialogAction
+						>{{ $t('settings.agentUsage.turnOff') }}</AlertDialogAction
 					>
 				</AlertDialogFooter>
 			</AlertDialogContent>
@@ -89,18 +92,21 @@
 		<AlertDialog v-model:open="confirmDelete">
 			<AlertDialogContent>
 				<AlertDialogHeader>
-					<AlertDialogTitle>Delete all uploads?</AlertDialogTitle>
+					<AlertDialogTitle>{{
+						$t('settings.agentUsage.deleteTitle')
+					}}</AlertDialogTitle>
 					<AlertDialogDescription>
-						Everything this account has uploaded is deleted from TMGR. Agent
-						usage sync stays as it is.
+						{{ $t('settings.agentUsage.deleteBody') }}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
-					<AlertDialogCancel>Cancel</AlertDialogCancel>
+					<AlertDialogCancel>{{
+						$t('common.actions.cancel')
+					}}</AlertDialogCancel>
 					<AlertDialogAction
 						class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						@click="deleteAll"
-						>Delete all</AlertDialogAction
+						>{{ $t('settings.agentUsage.deleteAll') }}</AlertDialogAction
 					>
 				</AlertDialogFooter>
 			</AlertDialogContent>
@@ -132,6 +138,7 @@
 	} from '@/components/ui/alert-dialog';
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
+	import { t } from '@/i18n';
 	import { formatDistanceToNow } from 'date-fns';
 	import { computed, defineComponent, onMounted, ref } from 'vue';
 	import { useStore } from 'vuex';
@@ -139,7 +146,7 @@
 	const message = (e: unknown) =>
 		(e as any)?.response?.data?.message ||
 		(e as Error)?.message ||
-		'Something went wrong.';
+		t('settings.agentUsage.genericError');
 
 	export default defineComponent({
 		name: 'AgentUsageSync',

@@ -5,8 +5,7 @@
 			class="flex flex-col items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 sm:flex-row sm:items-center sm:justify-between dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
 		>
 			<span>
-				Local workspaces aren't listed here. Open the local workspace, then
-				grant this persona in its own Personas → "On this device" panel.
+				{{ $t('settingsPages.personaWorkspaceGrants.localNote') }}
 			</span>
 			<Button
 				size="sm"
@@ -14,17 +13,17 @@
 				class="shrink-0"
 				@click="goToLocalPersonas"
 			>
-				On this device
+				{{ $t('settingsPages.personaWorkspaceGrants.onThisDevice') }}
 			</Button>
 		</div>
 		<p v-if="loading" class="text-xs text-muted-foreground">
-			Loading workspaces…
+			{{ $t('settingsPages.personaWorkspaceGrants.loading') }}
 		</p>
 		<p
 			v-else-if="workspaces.length === 0"
 			class="text-xs text-muted-foreground"
 		>
-			No shared workspaces.
+			{{ $t('settingsPages.personaWorkspaceGrants.empty') }}
 		</p>
 		<div
 			v-for="ws in workspaces"
@@ -38,13 +37,13 @@
 						v-if="persona.workspace_id === ws.id"
 						class="ml-2 text-2xs text-muted-foreground"
 					>
-						Home workspace · archive the persona to remove access
+						{{ $t('settingsPages.personaWorkspaceGrants.home') }}
 					</span>
 					<span
 						v-if="grantFor(ws.id)?.blocked"
 						class="ml-2 text-2xs text-destructive"
 					>
-						Blocked by workspace creator
+						{{ $t('settingsPages.personaWorkspaceGrants.blocked') }}
 					</span>
 				</div>
 				<Switch
@@ -83,9 +82,12 @@
 					{{ perm }}
 				</label>
 				<p class="text-2xs text-muted-foreground">
-					Effective here:
 					{{
-						(grantFor(ws.id)?.effective_permissions ?? []).join(', ') || 'none'
+						$t('settingsPages.personaWorkspaceGrants.effective', {
+							permissions:
+								(grantFor(ws.id)?.effective_permissions ?? []).join(', ') ||
+								$t('common.states.none').toLowerCase(),
+						})
 					}}
 				</p>
 			</div>
@@ -105,6 +107,7 @@
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
 	import { toast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import { isDesktopApp } from '@/utils/desktop';
 	import {
@@ -189,9 +192,11 @@
 					const status = (error as { response?: { status?: number } })?.response
 						?.status;
 					toast({
-						title: 'Could not change this workspace',
+						title: t('settingsPages.personaWorkspaceGrants.changeFailed'),
 						description:
-							status === 409 ? 'Blocked by the workspace creator' : undefined,
+							status === 409
+								? t('settingsPages.personaWorkspaceGrants.blockedByCreator')
+								: undefined,
 						variant: 'destructive',
 					});
 				} finally {
@@ -218,7 +223,7 @@
 					);
 				} catch {
 					toast({
-						title: 'Could not update permissions',
+						title: t('settingsPages.personaWorkspaceGrants.permissionsFailed'),
 						variant: 'destructive',
 					});
 				} finally {

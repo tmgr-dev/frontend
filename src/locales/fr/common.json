@@ -1,0 +1,42 @@
+{
+	"actions": {
+		"save": "Enregistrer",
+		"saving": "Enregistrement…",
+		"cancel": "Annuler",
+		"delete": "Supprimer",
+		"remove": "Retirer",
+		"close": "Fermer",
+		"edit": "Modifier",
+		"create": "Créer",
+		"add": "Ajouter",
+		"apply": "Appliquer",
+		"reset": "Réinitialiser",
+		"back": "Retour",
+		"next": "Suivant",
+		"done": "Terminé",
+		"confirm": "Confirmer",
+		"retry": "Réessayer",
+		"search": "Rechercher",
+		"copy": "Copier",
+		"copied": "Copié",
+		"open": "Ouvrir",
+		"learnMore": "En savoir plus",
+		"continue": "Continuer",
+		"skip": "Passer",
+		"enable": "Activer",
+		"disable": "Désactiver"
+	},
+	"states": {
+		"loading": "Chargement…",
+		"yes": "Oui",
+		"no": "Non",
+		"on": "Activé",
+		"off": "Désactivé",
+		"none": "Aucun",
+		"unknown": "Inconnu"
+	},
+	"errors": {
+		"generic": "Une erreur s'est produite. Veuillez réessayer.",
+		"network": "Erreur réseau. Vérifiez votre connexion et réessayez."
+	}
+}

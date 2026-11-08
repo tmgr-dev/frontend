@@ -3,9 +3,13 @@
 		<DialogContent
 			class="top-0 left-0 flex h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-none bg-black/95 p-0 text-white/90 data-[state=closed]:slide-out-to-left-0 data-[state=closed]:slide-out-to-top-0 data-[state=open]:slide-in-from-left-0 data-[state=open]:slide-in-from-top-0 sm:max-w-none sm:rounded-none"
 		>
-			<DialogTitle class="sr-only">{{ current?.name ?? 'File' }}</DialogTitle>
+			<DialogTitle class="sr-only">{{
+				current?.name ?? $t('tasks.gallery.file')
+			}}</DialogTitle>
 			<DialogDescription class="sr-only">
-				File {{ index + 1 }} of {{ images.length }}
+				{{
+					$t('tasks.gallery.position', { n: index + 1, total: images.length })
+				}}
 			</DialogDescription>
 
 			<div
@@ -25,14 +29,14 @@
 					class="shrink-0 text-red-300"
 					data-testid="viewer-download-error"
 				>
-					Download failed
+					{{ $t('tasks.gallery.downloadFailed') }}
 				</span>
 				<div v-if="kind === 'image'" class="flex shrink-0 items-center gap-0.5">
 					<button
 						type="button"
 						class="rounded p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:hover:bg-transparent"
-						title="Zoom out"
-						aria-label="Zoom out"
+						:title="$t('tasks.gallery.zoomOut')"
+						:aria-label="$t('tasks.gallery.zoomOut')"
 						:disabled="zoom <= ZOOM_MIN"
 						@click="setZoom(zoomOut(zoom))"
 					>
@@ -41,8 +45,8 @@
 					<button
 						type="button"
 						class="rounded p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:hover:bg-transparent"
-						title="Zoom in"
-						aria-label="Zoom in"
+						:title="$t('tasks.gallery.zoomIn')"
+						:aria-label="$t('tasks.gallery.zoomIn')"
 						:disabled="zoom >= ZOOM_MAX"
 						@click="setZoom(zoomIn(zoom))"
 					>
@@ -51,8 +55,8 @@
 					<button
 						type="button"
 						class="rounded p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-						title="Fit to window (0)"
-						aria-label="Fit to window"
+						:title="$t('tasks.gallery.fitTitle')"
+						:aria-label="$t('tasks.gallery.fit')"
 						@click="fit"
 					>
 						<Maximize :size="18" />
@@ -60,8 +64,8 @@
 					<button
 						type="button"
 						class="rounded px-2 py-1 text-xs text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-						title="Actual size (100%)"
-						aria-label="Actual size"
+						:title="$t('tasks.gallery.actualSizeTitle')"
+						:aria-label="$t('tasks.gallery.actualSize')"
 						@click="actualSize"
 					>
 						100%
@@ -70,8 +74,8 @@
 				<button
 					type="button"
 					class="shrink-0 rounded p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-					title="Download"
-					aria-label="Download"
+					:title="$t('tasks.attachments.download')"
+					:aria-label="$t('tasks.attachments.download')"
 					:disabled="downloading"
 					@click="download"
 				>
@@ -85,8 +89,8 @@
 					v-if="images.length > 1"
 					type="button"
 					class="absolute left-2 z-10 rounded-full bg-black/50 p-2 text-white transition-colors hover:bg-black/70"
-					title="Previous"
-					aria-label="Previous file"
+					:title="$t('tasks.gallery.previous')"
+					:aria-label="$t('tasks.gallery.previousFile')"
 					@click="step(-1)"
 				>
 					<ChevronLeft :size="24" />
@@ -142,7 +146,7 @@
 						class="relative text-white underline"
 						@click="retryImage"
 					>
-						Could not load image. Retry
+						{{ $t('tasks.gallery.imageError') }}
 					</button>
 					<Loader2
 						v-if="!imageError && !layers.thumb && !layers.full"
@@ -167,13 +171,13 @@
 						data-testid="viewer-error"
 					>
 						<AlertCircle :size="28" class="text-white/60" />
-						<p>Could not load file</p>
+						<p>{{ $t('tasks.gallery.fileError') }}</p>
 						<button
 							type="button"
 							class="rounded-md border border-white/30 px-3 py-1.5 text-sm text-white transition-colors hover:bg-white/10"
 							@click="loadContent"
 						>
-							Retry
+							{{ $t('common.actions.retry') }}
 						</button>
 					</div>
 					<div
@@ -182,14 +186,14 @@
 						data-testid="viewer-unsupported"
 					>
 						<FileIcon :size="28" class="text-white/60" />
-						<p>Preview is not available here</p>
+						<p>{{ $t('tasks.gallery.unsupported') }}</p>
 						<button
 							type="button"
 							class="rounded-md border border-white/30 px-3 py-1.5 text-sm text-white transition-colors hover:bg-white/10 disabled:opacity-50"
 							:disabled="downloading"
 							@click="download"
 						>
-							Download
+							{{ $t('tasks.attachments.download') }}
 						</button>
 					</div>
 					<iframe
@@ -203,7 +207,7 @@
 						v-else-if="kind === 'markdown'"
 						class="h-full w-full max-w-3xl overflow-auto rounded-md bg-surface p-6 text-ink"
 						tabindex="0"
-						:aria-label="`Preview of ${current?.name}`"
+						:aria-label="$t('tasks.gallery.previewOf', { name: current?.name })"
 						data-viewer-scroll
 						data-testid="viewer-markdown"
 					>
@@ -217,7 +221,7 @@
 						v-else-if="kind === 'text'"
 						class="h-full w-full max-w-4xl overflow-auto rounded-md bg-surface p-4 font-mono text-xs break-words whitespace-pre-wrap text-ink"
 						tabindex="0"
-						:aria-label="`Preview of ${current?.name}`"
+						:aria-label="$t('tasks.gallery.previewOf', { name: current?.name })"
 						data-viewer-scroll
 						data-testid="viewer-text"
 						>{{ textContent }}</pre>
@@ -227,8 +231,8 @@
 					v-if="images.length > 1"
 					type="button"
 					class="absolute right-2 z-10 rounded-full bg-black/50 p-2 text-white transition-colors hover:bg-black/70"
-					title="Next"
-					aria-label="Next file"
+					:title="$t('tasks.gallery.next')"
+					:aria-label="$t('tasks.gallery.nextFile')"
 					@click="step(1)"
 				>
 					<ChevronRight :size="24" />

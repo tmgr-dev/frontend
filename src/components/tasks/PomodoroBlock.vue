@@ -72,12 +72,12 @@
 									boxShadow: `0 0 6px ${phaseMeta.color}`,
 								}"
 							/>
-							{{ phaseMeta.label }}
+							{{ $t(phaseMeta.labelKey) }}
 						</span>
 						<button
 							type="button"
 							class="flex h-[22px] w-[22px] items-center justify-center rounded-md hover:bg-surface-hover"
-							title="Skip phase"
+							:title="$t('tasks.pomodoroBlock.skipPhase')"
 							@click="skip"
 						>
 							<SkipForward :size="11" class="text-ink-subtle" />
@@ -85,7 +85,7 @@
 						<button
 							type="button"
 							class="flex h-[22px] w-[22px] items-center justify-center rounded-md hover:bg-surface-hover"
-							title="Reset"
+							:title="$t('tasks.pomodoroBlock.reset')"
 							@click="reset"
 						>
 							<RotateCcw :size="11" class="text-ink-subtle" />
@@ -94,20 +94,22 @@
 						<button
 							type="button"
 							class="inline-flex items-center gap-1.5 rounded-md border-0 bg-status-progress-bg px-2 py-1 text-[10px] font-semibold tracking-[.05em] text-status-progress-fg hover:bg-status-progress/20"
-							title="I got distracted"
+							:title="$t('tasks.pomodoroBlock.distractedHint')"
 							@click="handleDistract"
 						>
 							<Zap :size="11" />
-							DISTRACTED{{
+							{{
 								state.distractions_count > 0
-									? ` · ${state.distractions_count}`
-									: ''
+									? $t('tasks.pomodoroBlock.distractedCount', {
+											n: state.distractions_count,
+										})
+									: $t('tasks.pomodoroBlock.distracted')
 							}}
 						</button>
 						<button
 							type="button"
 							class="flex h-[26px] w-[26px] items-center justify-center rounded-md hover:bg-surface-hover"
-							title="Pomodoro settings"
+							:title="$t('tasks.pomodoroBlock.settings')"
 							data-tour="pomodoro.settings"
 							@click="settingsOpen = true"
 						>
@@ -116,7 +118,7 @@
 						<button
 							type="button"
 							class="flex h-[26px] w-[26px] items-center justify-center rounded-md hover:bg-surface-hover"
-							title="Disable Pomodoro for this task"
+							:title="$t('tasks.pomodoroBlock.disable')"
 							@click="handleDisable"
 						>
 							<X :size="13" class="text-ink-subtle" />
@@ -141,9 +143,13 @@
 							/>
 						</div>
 						<span class="text-[10px] font-bold tracking-[.08em] text-ink-muted">
-							{{ state.completed_pomodoros }} POMODOROS ·
-							{{ settings.focusMin }}/{{ settings.shortMin }}/{{
-								settings.longMin
+							{{
+								$t('tasks.pomodoroBlock.summary', {
+									n: state.completed_pomodoros,
+									focus: settings.focusMin,
+									short: settings.shortMin,
+									long: settings.longMin,
+								})
 							}}
 						</span>
 					</div>
@@ -187,16 +193,20 @@
 
 	const PHASE_META: Record<
 		PomodoroPhase,
-		{ label: string; color: string; soft: string }
+		{ labelKey: string; color: string; soft: string }
 	> = {
-		focus: { label: 'FOCUS', color: '#e85a4f', soft: 'rgba(232,90,79,.16)' },
+		focus: {
+			labelKey: 'tasks.pomodoroBlock.phase.focus',
+			color: '#e85a4f',
+			soft: 'rgba(232,90,79,.16)',
+		},
 		short: {
-			label: 'SHORT BREAK',
+			labelKey: 'tasks.pomodoroBlock.phase.short',
 			color: '#5b8cff',
 			soft: 'rgba(91,140,255,.16)',
 		},
 		long: {
-			label: 'LONG BREAK',
+			labelKey: 'tasks.pomodoroBlock.phase.long',
 			color: '#a78bfa',
 			soft: 'rgba(167,139,250,.18)',
 		},

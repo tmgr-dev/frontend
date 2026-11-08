@@ -4,23 +4,26 @@
 			:class="issuedSecret ? 'sm:max-w-[640px]' : 'sm:max-w-[480px]'"
 		>
 			<DialogHeader>
-				<DialogTitle>Connect an agent</DialogTitle>
+				<DialogTitle>{{
+					$t('settingsPages.personaConnectDialog.title')
+				}}</DialogTitle>
 			</DialogHeader>
 
 			<template v-if="!issuedSecret">
 				<p v-if="loadingWorkspaces" class="text-sm text-muted-foreground">
-					Loading workspaces…
+					{{ $t('settingsPages.personaConnectDialog.loadingWorkspaces') }}
 				</p>
 				<p
 					v-else-if="eligibleWorkspaces.length === 0"
 					class="text-sm text-muted-foreground"
 				>
-					This persona has no active workspace grant yet. Grant it access under
-					Workspaces above, then come back here.
+					{{ $t('settingsPages.personaConnectDialog.noGrant') }}
 				</p>
 				<form v-else class="flex flex-col gap-3" @submit.prevent="submit">
 					<label class="flex flex-col gap-1">
-						<span class="text-sm font-medium">Workspace</span>
+						<span class="text-sm font-medium">{{
+							$t('settingsPages.personaConnectDialog.workspace')
+						}}</span>
 						<Select
 							:model-value="String(form.workspace_id)"
 							@update:model-value="(v) => (form.workspace_id = Number(v))"
@@ -41,11 +44,15 @@
 					</label>
 
 					<label class="flex flex-col gap-1">
-						<span class="text-sm font-medium">Label</span>
+						<span class="text-sm font-medium">{{
+							$t('settingsPages.personaConnectDialog.label')
+						}}</span>
 						<Input
 							:model-value="form.label"
 							maxlength="60"
-							placeholder="Claude Code on my laptop"
+							:placeholder="
+								$t('settingsPages.personaConnectDialog.labelPlaceholder')
+							"
 							@update:model-value="(v) => (form.label = String(v))"
 						/>
 						<span v-if="fieldErrors.label" class="text-xs text-destructive">
@@ -54,7 +61,9 @@
 					</label>
 
 					<label class="flex flex-col gap-1">
-						<span class="text-sm font-medium">Expires</span>
+						<span class="text-sm font-medium">{{
+							$t('settingsPages.personaConnectDialog.expires')
+						}}</span>
 						<Select
 							:model-value="String(form.expires_in_days)"
 							@update:model-value="(v) => (form.expires_in_days = Number(v))"
@@ -68,21 +77,23 @@
 									:key="days"
 									:value="String(days)"
 								>
-									{{ days }} days
+									{{ $t('settingsPages.personaConnectDialog.days', days) }}
 								</SelectItem>
 							</SelectContent>
 						</Select>
 					</label>
 
 					<p class="text-xs text-muted-foreground">
-						Unlike your device token, this token works in one workspace only, is
-						limited to this persona's grant there, and everything it writes is
-						signed as this persona.
+						{{ $t('settingsPages.personaConnectDialog.tokenNote') }}
 					</p>
 
 					<DialogFooter>
 						<Button type="submit" :disabled="issuing">
-							{{ issuing ? 'Issuing…' : 'Issue token' }}
+							{{
+								issuing
+									? $t('settingsPages.personaConnectDialog.issuing')
+									: $t('settingsPages.personaConnectDialog.issue')
+							}}
 						</Button>
 					</DialogFooter>
 				</form>
@@ -90,7 +101,7 @@
 
 			<template v-else>
 				<p class="text-sm font-medium text-amber-600 dark:text-amber-400">
-					Copy this token now — you won't see it again.
+					{{ $t('settingsPages.personaConnectDialog.copyNow') }}
 				</p>
 				<div class="flex items-center gap-2">
 					<code
@@ -99,21 +110,33 @@
 						{{ issuedSecret }}
 					</code>
 					<Button type="button" variant="outline" size="sm" @click="copySecret">
-						{{ copied ? 'Copied' : 'Copy' }}
+						{{
+							copied ? $t('common.actions.copied') : $t('common.actions.copy')
+						}}
 					</Button>
 				</div>
 
 				<div class="flex min-w-0 flex-col gap-2">
-					<p class="text-sm">Add it to your agent's <code>.mcp.json</code>:</p>
-					<CodeSnippet :code="snippet" label="MCP config" />
+					<i18n-t
+						keypath="settingsPages.personaConnectDialog.addToConfig"
+						tag="p"
+						class="text-sm"
+					>
+						<template #file><code>.mcp.json</code></template>
+					</i18n-t>
+					<CodeSnippet
+						:code="snippet"
+						:label="$t('settingsPages.personaConnectDialog.mcpConfig')"
+					/>
 					<p class="text-xs text-muted-foreground">
-						Put the token itself in an environment variable or a gitignored
-						secret file — never commit it.
+						{{ $t('settingsPages.personaConnectDialog.secretNote') }}
 					</p>
 				</div>
 
 				<DialogFooter>
-					<Button type="button" @click="close">Done</Button>
+					<Button type="button" @click="close">{{
+						$t('common.actions.done')
+					}}</Button>
 				</DialogFooter>
 			</template>
 		</DialogContent>
@@ -146,6 +169,7 @@
 		SelectValue,
 	} from '@/components/ui/select';
 	import { toast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import {
 		buildMcpUrl,
 		buildPersonaTokenSnippet,
@@ -283,7 +307,10 @@
 					if (errors) {
 						fieldErrors.value = errors.errors;
 					} else {
-						toast({ title: 'Could not issue token', variant: 'destructive' });
+						toast({
+							title: t('settingsPages.personaConnectDialog.issueFailed'),
+							variant: 'destructive',
+						});
 					}
 				} finally {
 					issuing.value = false;
@@ -298,7 +325,7 @@
 					setTimeout(() => (copied.value = false), 2000);
 				} catch {
 					toast({
-						title: 'Could not copy to clipboard',
+						title: t('settingsPages.personaConnectDialog.copyFailed'),
 						variant: 'destructive',
 					});
 				}

@@ -177,7 +177,29 @@ export default defineConfig({
 							priority: 100,
 							test: /^\0/,
 						},
-						vendorGroup('vendor-vue', ['vue', 'vue-router', 'vuex'], 60),
+						{
+							name: (id: string) => {
+								const lang = /[\\/]src[\\/]locales[\\/]([^\\/]+)[\\/]/.exec(
+									id,
+								)?.[1];
+								return lang ? `locale-${lang}` : null;
+							},
+							priority: 90,
+							test: /[\\/]src[\\/]locales[\\/](?!en[\\/])/,
+						},
+						vendorGroup(
+							'vendor-vue',
+							[
+								'vue',
+								'vue-router',
+								'vuex',
+								'vue-i18n',
+								'@intlify/core-base',
+								'@intlify/message-compiler',
+								'@intlify/shared',
+							],
+							60,
+						),
 						vendorGroup(
 							'vendor-editor',
 							[

@@ -4,14 +4,16 @@
 		class="flex flex-col gap-2 border-t border-border pt-3"
 		data-testid="deleted-skills"
 	>
-		<h5 class="text-xs font-semibold">Recently deleted</h5>
+		<h5 class="text-xs font-semibold">
+			{{ $t('settingsPages.deletedSkills.recentlyDeleted') }}
+		</h5>
 		<div
 			v-if="error"
 			class="flex items-center gap-2 text-xs text-destructive"
 			data-testid="deleted-skills-error"
 			role="alert"
 		>
-			Could not load recently deleted skills.
+			{{ $t('settingsPages.deletedSkills.loadFailed') }}
 			<Button
 				variant="outline"
 				size="sm"
@@ -19,7 +21,7 @@
 				data-testid="deleted-skills-retry"
 				@click="load"
 			>
-				Retry
+				{{ $t('common.actions.retry') }}
 			</Button>
 		</div>
 		<div
@@ -34,11 +36,17 @@
 					<p class="truncate text-xs text-muted-foreground">
 						{{ item.slug }} ·
 						<template v-if="item.files_count"
-							>{{ item.files_count }}
-							{{ item.files_count === 1 ? 'file' : 'files' }} ·
+							>{{
+								$t('settingsPages.deletedSkills.filesCount', item.files_count)
+							}}
+							·
 						</template>
-						Deleted {{ relative(item.deleted_at) }} · Removed for good on
-						{{ date(item.purge_at) }}
+						{{
+							$t('settingsPages.deletedSkills.deletedOn', {
+								when: relative(item.deleted_at),
+								date: date(item.purge_at),
+							})
+						}}
 					</p>
 				</div>
 				<Button
@@ -48,7 +56,11 @@
 					:data-testid="`deleted-skill-toggle-${item.slug}`"
 					@click="toggle(item.slug)"
 				>
-					{{ expanded === item.slug ? 'Hide versions' : 'Versions' }}
+					{{
+						expanded === item.slug
+							? $t('settingsPages.deletedSkills.hideVersions')
+							: $t('settingsPages.deletedSkills.versions')
+					}}
 				</Button>
 			</div>
 			<div
@@ -72,7 +84,10 @@
 							<span class="font-semibold">v{{ v.version }}</span>
 							· {{ kindLabel(v) }}
 							<span class="block text-muted-foreground">
-								{{ v.author_name ?? 'Deleted user' }} ·
+								{{
+									v.author_name ?? $t('settingsPages.deletedSkills.deletedUser')
+								}}
+								·
 								{{ relative(v.created_at) }}
 							</span>
 						</button>
@@ -88,7 +103,7 @@
 						role="alert"
 						data-testid="deleted-preview-error"
 					>
-						Couldn't load this version. Try again.
+						{{ $t('settingsPages.deletedSkills.previewFailed') }}
 					</p>
 					<div
 						v-else-if="preview"
@@ -108,10 +123,10 @@
 							data-testid="deleted-restore"
 							@click="restore"
 						>
-							Restore
+							{{ $t('settingsPages.deletedSkills.restore') }}
 						</Button>
 						<span class="text-xs text-muted-foreground">
-							Persona attachments are not restored.
+							{{ $t('settingsPages.deletedSkills.attachmentsNote') }}
 						</span>
 					</div>
 				</div>
@@ -124,15 +139,16 @@
 	import type { DeletedSharedSkillVersionRow } from '@/actions/tmgr/personas';
 	import { Button } from '@/components/ui/button';
 	import { useDeletedSkills } from '@/composable/deletedSkills';
+	import { currentLocale, t } from '@/i18n';
 	import { formatRelativeTime } from '@/utils/dailyRoutines/relativeTime';
 	import { defineComponent, onMounted, watch } from 'vue';
 
-	const KIND_LABELS: Record<string, string> = {
-		baseline: 'Baseline',
-		create: 'Created',
-		edit: 'Edited',
-		restore: 'Restored',
-		convert: 'Converted',
+	const KIND_KEYS: Record<string, string> = {
+		baseline: 'settingsPages.deletedSkills.kind.baseline',
+		create: 'settingsPages.deletedSkills.kind.create',
+		edit: 'settingsPages.deletedSkills.kind.edit',
+		restore: 'settingsPages.deletedSkills.kind.restore',
+		convert: 'settingsPages.deletedSkills.kind.convert',
 	};
 
 	export default defineComponent({
@@ -147,8 +163,12 @@
 
 			const kindLabel = (v: DeletedSharedSkillVersionRow) =>
 				v.kind === 'restore' && v.restored_from
-					? `Restored from v${v.restored_from}`
-					: (KIND_LABELS[v.kind] ?? v.kind);
+					? t('settingsPages.deletedSkills.restoredFrom', {
+							version: v.restored_from,
+						})
+					: KIND_KEYS[v.kind]
+						? t(KIND_KEYS[v.kind])
+						: v.kind;
 
 			watch(
 				() => props.reloadToken,
@@ -161,7 +181,7 @@
 				kindLabel,
 				relative: (iso: string) => formatRelativeTime(iso),
 				date: (iso: string) =>
-					new Date(iso).toLocaleDateString('en-US', {
+					new Date(iso).toLocaleDateString(currentLocale(), {
 						year: 'numeric',
 						month: 'short',
 						day: 'numeric',

@@ -1,0 +1,972 @@
+{
+	"workspaces": {
+		"documentTitle": "Configurações do espaço de trabalho",
+		"loadFailed": "Não foi possível carregar as configurações do espaço de trabalho.",
+		"toast": {
+			"editorUpdated": "Editor atualizado. Recarregando a página...",
+			"saved": "Salvo com sucesso!",
+			"saveSettingsFailed": "Não foi possível salvar as configurações do espaço de trabalho",
+			"workspaceSaved": "Espaço de trabalho salvo",
+			"error": "Erro",
+			"saveWorkspaceFailed": "Falha ao salvar o espaço de trabalho",
+			"defaultSaved": "Espaço de trabalho padrão salvo",
+			"defaultSaveFailed": "Não foi possível salvar o espaço de trabalho padrão",
+			"created": "Criado com sucesso!",
+			"inviteFailed": "Falha ao enviar os convites. Tente novamente.",
+			"deleteFailed": "Falha ao excluir o espaço de trabalho. Tente novamente.",
+			"leaveFailed": "Falha ao sair do espaço de trabalho. Tente novamente.",
+			"memberRemoved": "Membro removido",
+			"memberRemovedDescription": "{name} foi removido do espaço de trabalho",
+			"removeMemberFailed": "Falha ao remover o membro"
+		},
+		"membersLoadFailed": "Não foi possível carregar os membros do espaço de trabalho.",
+		"title": "Configurações do espaço de trabalho",
+		"newWorkspace": "Novo espaço de trabalho",
+		"create": {
+			"title": "Criando novo espaço de trabalho",
+			"description": "Digite um nome para o seu novo espaço de trabalho",
+			"namePlaceholder": "Nome do novo espaço de trabalho"
+		},
+		"invite": {
+			"label": "Convidar",
+			"title": "Enviar convite(s)",
+			"description": "Digite os e-mails para convidar membros a este espaço de trabalho",
+			"emailsPlaceholder": "Digite os e-mails (separados por vírgula), por exemplo:\nuser1{'@'}example.com,\nuser2{'@'}example.com,\n...\nuserN{'@'}example.com",
+			"send": "Enviar"
+		},
+		"delete": {
+			"label": "Excluir espaço de trabalho",
+			"description": "Isso exclui permanentemente o espaço de trabalho {name}, com suas tarefas, páginas e arquivos, para todos os membros. Esta ação não pode ser desfeita."
+		},
+		"exit": {
+			"label": "Sair do espaço de trabalho",
+			"confirmTitle": "Tem certeza absoluta?",
+			"confirmDescription": "Você não poderá desfazer esta ação sozinho. Se quiser voltar a este espaço de trabalho, peça a um membro dele que envie um novo convite."
+		},
+		"loading": "Carregando configurações do espaço de trabalho",
+		"general": {
+			"title": "Espaço de trabalho",
+			"name": "Nome",
+			"nameEmpty": "O nome não pode ficar vazio",
+			"colour": "Cor",
+			"defaultColour": "Padrão"
+		},
+		"preferences": {
+			"title": "Preferências",
+			"customValue": "Definir valor personalizado"
+		},
+		"default": {
+			"title": "Espaço de trabalho padrão",
+			"description": "Usado pelo Telegram, pelo MCP, por dispositivos inteligentes e quando você abre o TMGR em um novo dispositivo.",
+			"choose": "Escolha um espaço de trabalho",
+			"setAsDefault": "Definir como padrão"
+		},
+		"members": {
+			"title": "Membros",
+			"loading": "Carregando membros",
+			"none": "Nenhum membro encontrado",
+			"owner": "Proprietário",
+			"removeTitle": "Remover membro",
+			"removeConfirm": "Tem certeza de que quer remover {name} deste espaço de trabalho? Esta ação não pode ser desfeita."
+		},
+		"invitations": {
+			"title": "Convites"
+		}
+	},
+	"plugins": {
+		"title": "Plugins",
+		"subtitle": "Os plugins funcionam em espaços de trabalho locais e, em um espaço de trabalho compartilhado, depois que o criador os ativa para todos. Cada um roda em seu próprio sandbox, apenas com as permissões listadas no seu cartão.",
+		"howItWorks": "Como os plugins funcionam",
+		"openWorkspace": "Abra um espaço de trabalho para ativar ou desativar plugins nele.",
+		"sharedCreator": "Espaço de trabalho compartilhado: {name}. Você o criou: um plugin que você ativar aqui roda para todos os membros.",
+		"sharedMember": "Espaço de trabalho compartilhado: {name}. Somente o criador ativa plugins aqui; eles rodam para todos os membros.",
+		"currentWorkspace": "Espaço de trabalho atual: {name}",
+		"safeMode": {
+			"title": "Modo seguro",
+			"description": "Desativa todos os plugins. Iniciar o aplicativo com --safe-mode faz o mesmo."
+		},
+		"devMode": {
+			"title": "Modo desenvolvedor",
+			"description": "Carrega plugins de ~/.tmgr.dev/plugins. Eles começam desativados."
+		},
+		"tray": {
+			"title": "Texto na {tray}",
+			"description": "Permite que um plugin mostre texto ao lado do cronômetro na {tray}."
+		},
+		"dev": {
+			"showFolder": "Mostrar pasta",
+			"reload": "Recarregar plugins"
+		},
+		"install": {
+			"title": "Instalar do GitHub",
+			"description": "Cole o repositório de um plugin. O aplicativo lê a última release e mostra o que ela pode fazer antes de instalar qualquer coisa.",
+			"repoLabel": "Repositório do plugin",
+			"checking": "Verificando…",
+			"check": "Verificar"
+		},
+		"offer": {
+			"updateTitle": "Atualizar {name} {version}?",
+			"installTitle": "Instalar {name} {version}?",
+			"from": "De github.com/{repo} ({tag}), por {publisher}.",
+			"verified": "Publicador verificado: assinado com a chave listada no catálogo do TMGR.",
+			"unverified": "Publicador não verificado: assinado, mas não listado no catálogo do TMGR. A chave dele fica registrada, e as atualizações precisam ser assinadas com a mesma chave.",
+			"itCan": "Ele pode:",
+			"connectTo": "Pode se conectar a: {origins} (somente este computador)",
+			"openLinks": "Pode abrir links para: {domains}",
+			"telegram": "Pode abrir links do Telegram (tg://).",
+			"pictures": "Carrega imagens de: {domains}. Esses sites recebem uma requisição cada vez que o plugin mostra uma imagem.",
+			"companion": "Funciona com um programa externo que você mesmo instala ({description}). Ele vai escrever como uma persona de sua escolha.",
+			"newInVersion": "Novidades desta versão:",
+			"schemeLinks": "links {scheme}://",
+			"imagesFrom": "imagens de {domain}",
+			"startOff": "Os plugins instalados começam desativados; ative-os por espaço de trabalho.",
+			"update": "Atualizar",
+			"install": "Instalar"
+		},
+		"remove": {
+			"title": "Remover {name}?",
+			"description": "O plugin é excluído deste computador. Os dados dele nos espaços de trabalho permanecem até você instalá-lo de novo ou limpar o espaço de trabalho."
+		},
+		"card": {
+			"originVerified": "De github.com/{repo} · {tag} · publicador verificado",
+			"originUnverified": "De github.com/{repo} · {tag} · publicador não verificado",
+			"checkUpdate": "Verificar atualização",
+			"turnOn": "Ativar {name}",
+			"allowed": "Tem permissão para usar a rede e os arquivos deste computador.",
+			"notAllowed": "O acesso dele à rede e aos arquivos fica desativado neste computador até você permitir.",
+			"stopAllowing": "Deixar de permitir",
+			"allow": "Permitir neste computador",
+			"connectTo": "Pode se conectar a: {origins} (somente este computador)",
+			"openLinks": "Pode abrir links para: {domains}",
+			"telegram": "Pode abrir links do Telegram (tg://)",
+			"pictures": "Carrega imagens de: {domains}. Esses sites recebem uma requisição cada vez que o plugin mostra uma imagem.",
+			"can": "Pode:",
+			"openView": "Abrir “{title}”",
+			"saveSettings": "Salvar configurações",
+			"log": "Registro ({count})",
+			"copyDiagnostics": "Copiar diagnóstico"
+		},
+		"permission": {
+			"tasksRead": "ler tarefas",
+			"tasksWrite": "criar e alterar tarefas",
+			"statusesRead": "ler status",
+			"categoriesRead": "ler projetos",
+			"timeRead": "ler o tempo registrado",
+			"timeWrite": "iniciar e parar cronômetros",
+			"commentsRead": "ler comentários",
+			"commentsWrite": "adicionar comentários",
+			"notifications": "mostrar notificações",
+			"filesExport": "salvar arquivos na pasta de exportações deste espaço de trabalho",
+			"filesAttachments": "ler anexos de tarefas",
+			"filesPick": "ler um arquivo que você escolher",
+			"statusesWrite": "criar e alterar status",
+			"categoriesWrite": "criar e alterar projetos",
+			"relationsRead": "ler vínculos entre tarefas",
+			"relationsWrite": "vincular e desvincular tarefas",
+			"agentWorkRead": "ler a execução de agentes de IA nas tarefas",
+			"agentWorkWrite": "registrar a execução de agentes de IA nas tarefas",
+			"alarms": "ser ativado em um horário agendado em segundo plano",
+			"tray": "adicionar itens e texto ao ícone da {tray}",
+			"deeplinks": "ser aberto por links tmgr:// de outros aplicativos",
+			"linksOpen": "abrir links da web no seu navegador",
+			"imagesRemote": "carregar imagens dos sites que ele declara",
+			"routinesRead": "ler suas notas e rotinas (somente espaços de trabalho locais)",
+			"routinesWrite": "adicionar, renomear, concluir e converter suas notas e rotinas (somente espaços de trabalho locais)",
+			"viewsBadge": "mostrar contadores nos seus itens da barra lateral",
+			"pagesRead": "ler suas páginas e os dados de cada página",
+			"pagesWrite": "criar páginas, alterar o texto delas e salvar dados por página",
+			"pagesSections": "escrever em suas próprias seções gerenciadas das páginas",
+			"menusTask": "adicionar itens ao menu da tarefa …",
+			"none": "nada além do seu próprio armazenamento",
+			"groupReads": "lê seus dados",
+			"groupChanges": "altera seus dados",
+			"groupInterface": "altera a interface",
+			"groupOutside": "acessa o exterior do aplicativo"
+		},
+		"toast": {
+			"upToDate": "{name} está atualizado",
+			"updated": "{name} atualizado",
+			"installed": "{name} instalado",
+			"removed": "{name} removido",
+			"changeFailed": "Não foi possível alterar o plugin neste espaço de trabalho",
+			"commandFailed": "O comando do plugin falhou",
+			"settingsSaved": "Configurações do plugin salvas",
+			"diagnosticsCopied": "Diagnóstico copiado",
+			"diagnosticsFailed": "Não foi possível copiar o diagnóstico"
+		},
+		"source": {
+			"builtin": "Integrado",
+			"folder": "Pasta",
+			"installed": "Instalado"
+		},
+		"status": {
+			"running": "Em execução",
+			"starting": "Iniciando…",
+			"stopped": "Desativado",
+			"failed": "Falha ao iniciar",
+			"crashed": "Desativado após erros",
+			"blocked": "Bloqueado pelo TMGR"
+		}
+	},
+	"skillFiles": {
+		"title": "Arquivos · {slug}",
+		"loading": "Carregando arquivos…",
+		"deleteFile": "Excluir {path}"
+	},
+	"deletedSkills": {
+		"recentlyDeleted": "Excluídas recentemente",
+		"loadFailed": "Não foi possível carregar as habilidades excluídas recentemente.",
+		"filesCount": "{n} arquivo | {n} arquivos",
+		"hideVersions": "Ocultar versões",
+		"versions": "Versões",
+		"deletedUser": "Usuário excluído",
+		"previewFailed": "Não foi possível carregar esta versão. Tente novamente.",
+		"restore": "Restaurar",
+		"restoredFrom": "Restaurada da v{version}",
+		"kind": {
+			"baseline": "Base",
+			"create": "Criada",
+			"edit": "Editada",
+			"restore": "Restaurada",
+			"convert": "Convertida"
+		},
+		"deletedOn": "Excluída {when} · Removida definitivamente em {date}",
+		"attachmentsNote": "Os anexos da persona não são restaurados."
+	},
+	"sharedSkillHistory": {
+		"deletedUser": "Usuário excluído",
+		"previewFailed": "Não foi possível carregar esta versão. Tente novamente.",
+		"restoredFrom": "Restaurada da v{version}",
+		"kind": {
+			"baseline": "Base",
+			"create": "Criada",
+			"edit": "Editada",
+			"restore": "Restaurada",
+			"convert": "Convertida"
+		},
+		"title": "Histórico: {title}",
+		"loading": "Carregando histórico…",
+		"current": "Atual",
+		"pinnedBy": "Fixada por: {names}",
+		"compare": "Comparar com a atual",
+		"restoreVersion": "Restaurar esta versão",
+		"confirmRestore": "Restaurar a versão {version}? Isso cria a versão {next} com o conteúdo dela."
+	},
+	"skillsLibrary": {
+		"importFromAgents": "Importar de agentes locais",
+		"loading": "Carregando biblioteca…",
+		"empty": "Nenhuma habilidade compartilhada ainda.",
+		"notAttached": "Não anexada",
+		"overriddenTitle": "Substituída pela habilidade própria desta persona",
+		"overridden": "(substituída)",
+		"historyOf": "Histórico de {title}",
+		"filesOf": "Arquivos de {title}",
+		"history": "Histórico",
+		"filesButton": "Arquivos ({count})",
+		"used": "{count}/{limit} em uso",
+		"editing": "Editar {slug}",
+		"newSkill": "Nova habilidade compartilhada",
+		"bytes": "{count} / {max} bytes",
+		"saveChanges": "Salvar alterações",
+		"createSkill": "Criar habilidade",
+		"loadFailed": "Não foi possível carregar a biblioteca de habilidades",
+		"loadSkillFailed": "Não foi possível carregar esta habilidade",
+		"limitReached": "Sua biblioteca já tem {limit} habilidades",
+		"saved": "Habilidade salva",
+		"saveFailed": "Não foi possível salvar a habilidade",
+		"deleteFailed": "Não foi possível excluir a habilidade"
+	},
+	"modules": {
+		"title": "Módulos",
+		"subtitleWorkspace": "Espaço de trabalho “{name}”: escolha o que fica disponível no TMGR",
+		"subtitle": "Escolha o que fica disponível no TMGR",
+		"loading": "Carregando módulos",
+		"ownerOnlyNotice": "Somente o proprietário do espaço de trabalho pode ativar ou desativar módulos. Você pode ocultar um módulo só para você.",
+		"applyPreset": "Aplicar uma predefinição",
+		"ownerOnlyHint": "Somente o proprietário pode alterar os módulos",
+		"core": "Essenciais",
+		"hideCore": "Ocultar seções essenciais para mim",
+		"packCount": "{enabled} de {total} ativos",
+		"askOwner": "Peça ao proprietário para ativar isto",
+		"account": "Esta conta",
+		"accountDescription": "Vale para você em todos os espaços de trabalho",
+		"turnOffTitle": "Desativar o Workflow?",
+		"turnOff": "Desativar",
+		"personal": "Preferências pessoais",
+		"personalDescription": "Estas configurações afetam apenas a sua conta",
+		"errorTitle": "Erro",
+		"updated": "Módulo atualizado",
+		"personalUpdated": "Preferência pessoal atualizada",
+		"updateFailed": "Falha ao atualizar o módulo",
+		"preferenceFailed": "Falha ao atualizar a preferência",
+		"loadFailed": "Não foi possível carregar os módulos."
+	},
+	"skillImportDialog": {
+		"title": "Importar habilidades de agentes locais",
+		"introDevice": "Varredura somente leitura das pastas de habilidades deste computador. Nada é executado; apenas as habilidades que você marcar são salvas na biblioteca de habilidades deste dispositivo.",
+		"introCloud": "Varredura somente leitura das pastas de habilidades deste computador. Nada é executado; apenas as habilidades que você marcar são enviadas à sua biblioteca de habilidades.",
+		"scanning": "Verificando…",
+		"scanFailed": "Não foi possível varrer este computador.",
+		"empty": "Nenhuma habilidade encontrada. Use “Adicionar pasta…” para varrer um projeto.",
+		"cannotImport": "Não é possível importar: {reason}",
+		"slugLabel": "Slug na biblioteca",
+		"useInstead": "Usar {slug} no lugar",
+		"droppedFields": "Não incluído: {fields}",
+		"filesSummary": "Arquivos: {count} de {total} serão enviados ({bytes})",
+		"fileSize": "{size} B",
+		"truncated": "A lista foi cortada; esta habilidade tem arquivos demais para importar.",
+		"uploadNoteDevice": "Somente os arquivos marcados como “serão enviados” vão para a biblioteca deste dispositivo, como texto. A verificação de segredos é feita no melhor esforço: leia a lista acima.",
+		"uploadNoteCloud": "Somente os arquivos marcados como “serão enviados” vão para a nuvem, como texto. A verificação de segredos é feita no melhor esforço: leia a lista acima.",
+		"selectPrompt": "Selecione uma habilidade para visualizá-la.",
+		"addFolder": "Adicionar pasta…",
+		"selectedCount": "{count} selecionadas",
+		"importSelected": "Importar selecionadas",
+		"bytes": "{count} B",
+		"kib": "{count} KiB",
+		"imported": "Importadas",
+		"importedSkipped": "Importadas, {n} arquivo não importado | Importadas, {n} arquivos não importados",
+		"folderFailed": "Não foi possível abrir a pasta",
+		"indexFailed": "Não foi possível lembrar o que foi importado",
+		"indexFailedDescription": "A próxima importação tratará estas habilidades como já presentes na biblioteca.",
+		"refreshFailed": "Não foi possível atualizar a biblioteca",
+		"importFailed": "Não foi possível importar as habilidades",
+		"status": {
+			"new": "Nova",
+			"upToDate": "Atualizada",
+			"changed": "Alterada desde a última importação — será atualizada",
+			"editedInLibrary": "Editada na biblioteca desde a importação — será sobrescrita",
+			"slugTaken": "Slug já usado na biblioteca — marque para sobrescrever",
+			"previouslyImportedDeleted": "Importada antes, excluída da biblioteca",
+			"blocked": "Não pode ser importada"
+		}
+	},
+	"pluginsHelp": {
+		"title": "Como os plugins funcionam",
+		"subtitle": "Os plugins adicionam selos, páginas, seções de tarefas e comandos ao aplicativo desktop do TMGR.",
+		"backLabel": "Voltar aos plugins",
+		"glanceLabel": "Resumo",
+		"glance": {
+			"sandboxed": {
+				"title": "Em sandbox",
+				"text": "Somente as permissões do seu cartão."
+			},
+			"signed": {
+				"title": "Assinado",
+				"text": "Os plugins do GitHub precisam ser assinados pelo autor."
+			},
+			"shared": {
+				"title": "Compartilhado pelo criador",
+				"text": "Em um espaço de trabalho compartilhado, só o criador ativa plugins."
+			},
+			"stop": {
+				"title": "Fácil de parar",
+				"text": "O modo seguro desativa todos os plugins de uma vez."
+			}
+		},
+		"abilities": {
+			"data": {
+				"title": "Seus dados",
+				"text": "Somente o que ele pediu, como “ler tarefas”."
+			},
+			"network": {
+				"title": "Rede",
+				"text": "Somente endereços localhost que ele declara, mostrados em vermelho."
+			},
+			"pages": {
+				"title": "Suas próprias páginas",
+				"text": "Em uma janela separada que não alcança mais nada."
+			}
+		},
+		"can": {
+			"title": "O que um plugin pode fazer",
+			"intro": "Somente o que o cartão dele diz. Todo o resto fica fechado."
+		},
+		"github": {
+			"title": "Instalando do GitHub",
+			"step1": "Cole o link",
+			"check": "Verificar",
+			"step2": "Veja o que ele pode fazer",
+			"installPrompt": "Instalar Timer 1.0.0?",
+			"itCan": "Ele pode: ler tarefas",
+			"verified": "Publicador verificado",
+			"step3": "Ative",
+			"running": "Em execução",
+			"verifiedText": "O TMGR conhece a chave de assinatura deste autor.",
+			"unverified": "Publicador não verificado",
+			"unverifiedText": "Assinado, mas não revisado pelo TMGR. Instale apenas se confiar no autor.",
+			"signed": "Toda release precisa ser assinada. O aplicativo registra a chave do autor, então uma atualização assinada por outra pessoa é recusada."
+		},
+		"unsigned": {
+			"title": "Plugins sem assinatura",
+			"intro": "Para um plugin que você mesmo escreve ou que não foi publicado.",
+			"step1": "Coloque a pasta lá",
+			"step2": "Ative o modo desenvolvedor",
+			"step3": "Pressione Recarregar plugins",
+			"note": "Mesmo sandbox, mesmas permissões, mas ninguém verificou o autor. Plugins de pasta não podem ser compartilhados com um espaço de trabalho."
+		},
+		"shared": {
+			"title": "Espaços de trabalho compartilhados",
+			"creator": "Criador",
+			"turnsOn": "ativa o Timer 1.2",
+			"point1": "Somente o criador ativa plugins. Todos recebem a mesma versão.",
+			"point2": "O plugin usa a própria chave de curta duração: somente este espaço de trabalho, somente as permissões dele.",
+			"point3": "Rede, arquivos, a {tray}, links tmgr:// e links da web no seu computador aguardam",
+			"allow": "Permitir neste computador",
+			"point4": "O que o plugin salva é compartilhado por todos os membros."
+		},
+		"trouble": {
+			"title": "Quando um plugin atrapalha",
+			"switchOff": "Desative-o",
+			"switchOffText": "No cartão dele, ou remova-o.",
+			"safeMode": "Modo seguro",
+			"everythingOff": "Tudo desativado",
+			"everythingOffText": "Ou inicie o aplicativo com {flag}.",
+			"blocked": "Bloqueado pelo TMGR",
+			"weStop": "Nós paramos os nocivos",
+			"weStopText": "Uma lista de bloqueio assinada desativa um plugin nocivo em todos os lugares.",
+			"note": "Um plugin que falha três vezes em cinco minutos se desativa sozinho."
+		},
+		"authors": {
+			"title": "Para autores de plugins",
+			"step1": "Comece pelo modelo",
+			"step2": "Assine e publique",
+			"step2Text": "{keygen}, salve a chave como o segredo {secret} e envie uma tag como {tag}.",
+			"step3": "Seja verificado (opcional)",
+			"step3Text": "Pull request com seu id, repositório e chave pública para {link}. Denuncie plugins nocivos lá também.",
+			"api11": "API 1.1: cada nova capacidade é uma permissão própria (alarmes, {tray}, links tmgr://, links da web, status, relações, execução de agentes), exibida na instalação ou atualização. Experimente todas com {example} no modo desenvolvedor; o registro do plugin mostra por que uma chamada foi recusada.",
+			"api12": "API 1.2: os plugins podem ler e escrever as rotinas diárias (notas e rotinas), somente neste dispositivo — ainda não em espaços de trabalho compartilhados.",
+			"api14": "API 1.4: um plugin pode mostrar um contador no próprio item da barra lateral. Ele precisa da permissão views:badge, exibida na instalação ou atualização, e de nenhum consentimento extra. Títulos longos na {tray} são encurtados com \"…\" em vez de recusados.",
+			"api15": "API 1.5: os plugins podem trabalhar com páginas. pages:read lê e busca, pages:write cria, edita e acrescenta, e pages:sections permite que um plugin escreva somente em suas próprias seções gerenciadas. Cada uma é exibida na instalação ou atualização. Os plugins não podem adicionar tipos de página.",
+			"api16": "API 1.6: um plugin pode adicionar até 3 itens ao menu da tarefa …, nos cartões do quadro, na lista de tarefas e na página da tarefa. Ele precisa de menus:task, exibida na instalação ou atualização. Os itens aparecem em um grupo próprio enquanto o plugin está em execução; com mais de 4 itens de plugins no total, eles passam para um único submenu Plugins."
+		}
+	},
+	"personaForm": {
+		"whoCanAssign": "Quem pode atribuir",
+		"onlyMe": "Somente eu",
+		"onlyMeHint": "atribuível nos espaços de trabalho aos quais você der acesso",
+		"thisWorkspace": "Este espaço de trabalho",
+		"thisWorkspaceHint": "todos os membros podem atribuir tarefas a ela; só você a edita",
+		"name": "Nome",
+		"namePlaceholder": "Revisor",
+		"description": "Descrição",
+		"descriptionPlaceholder": "Para que serve esta persona",
+		"systemPrompt": "Prompt do sistema (Markdown)",
+		"systemPromptPlaceholder": "Você é...",
+		"bytes": "{used} / {max} bytes",
+		"notify": "Notificar-me sobre a atividade desta persona",
+		"notifyAll": "Tudo",
+		"notifyMentions": "Somente quando ela precisar de mim",
+		"notifyNone": "Nunca"
+	},
+	"personaTokens": {
+		"loading": "Carregando conexões de agentes…",
+		"empty": "Nenhuma conexão de agente ainda.",
+		"details": "{prefix}… · {workspace} · expira {expires} · último uso {lastUsed}",
+		"never": "nunca",
+		"revoke": "Revogar",
+		"connect": "Conectar um agente",
+		"revokeAll": "Revogar tudo",
+		"loadFailed": "Não foi possível carregar as conexões de agentes",
+		"revoked": "Revogada",
+		"expired": "Expirada",
+		"active": "Ativa",
+		"confirmRevoke": "Revogar a conexão \"{label}\"?",
+		"revokeFailed": "Não foi possível revogar o token",
+		"confirmRevokeAll": "Revogar todas as conexões de agentes desta persona?",
+		"revokeAllFailed": "Não foi possível revogar os tokens"
+	},
+	"personaConnectDialog": {
+		"title": "Conectar um agente",
+		"loadingWorkspaces": "Carregando espaços de trabalho…",
+		"noGrant": "Esta persona ainda não tem acesso ativo a nenhum espaço de trabalho. Conceda o acesso em Espaços de trabalho, acima, e volte aqui.",
+		"workspace": "Espaço de trabalho",
+		"label": "Rótulo",
+		"labelPlaceholder": "Claude Code no meu notebook",
+		"expires": "Expira em",
+		"days": "{n} dia | {n} dias",
+		"tokenNote": "Diferente do token do seu dispositivo, este token funciona em um único espaço de trabalho, é limitado ao acesso desta persona nele, e tudo o que ele escreve é assinado como esta persona.",
+		"issuing": "Emitindo…",
+		"issue": "Emitir token",
+		"copyNow": "Copie este token agora — você não o verá novamente.",
+		"addToConfig": "Adicione-o ao {file} do seu agente:",
+		"mcpConfig": "configuração do MCP",
+		"secretNote": "Coloque o token em uma variável de ambiente ou em um arquivo secreto ignorado pelo Git — nunca faça commit dele.",
+		"issueFailed": "Não foi possível emitir o token",
+		"copyFailed": "Não foi possível copiar para a área de transferência"
+	},
+	"personaConvertSkillDialog": {
+		"title": "Converter em compartilhada",
+		"loadFailed": "Não foi possível carregar os detalhes da conversão.",
+		"clash": "Sua biblioteca de habilidades já tem uma habilidade com o slug “{slug}”. Exclua ou renomeie uma delas primeiro.",
+		"intro": "Move esta habilidade para a sua biblioteca de habilidades e a anexa a {name}. Os agentes mantêm as mesmas instruções.",
+		"replaceCopy": "Substituir também a cópia em {name}",
+		"archived": "(arquivada)",
+		"sameText": "Mesmo texto",
+		"differentText": "Texto diferente — será substituído",
+		"convert": "Converter",
+		"convertFailed": "Não foi possível converter esta habilidade"
+	},
+	"personaSharedSkills": {
+		"fromLibrary": "Da biblioteca",
+		"loading": "Carregando habilidades da biblioteca…",
+		"empty": "Nenhuma habilidade da biblioteca anexada. Crie uma na biblioteca de habilidades, abaixo das personas, e anexe-a aqui.",
+		"pinned": "Fixada na v{pinned} · mais recente v{latest}",
+		"overridden": "Substituída pela habilidade própria desta persona",
+		"versionFor": "Versão de {slug}",
+		"latest": "Mais recente (v{version})",
+		"detach": "Desanexar",
+		"attachedCount": "{count}/{limit} anexadas",
+		"attach": "Anexar uma habilidade da biblioteca",
+		"versionsFailed": "Não foi possível carregar as versões",
+		"loadFailed": "Não foi possível carregar as habilidades da biblioteca",
+		"attachFailed": "Não foi possível anexar a habilidade",
+		"detachFailed": "Não foi possível desanexar a habilidade",
+		"versionFailed": "Não foi possível alterar a versão da habilidade",
+		"filesNotPinned": "Os arquivos não são fixados"
+	},
+	"personaSkills": {
+		"loading": "Carregando habilidades…",
+		"empty": "Nenhuma habilidade ainda.",
+		"convert": "Converter em compartilhada",
+		"usedCount": "{count}/{limit} em uso",
+		"editing": "Editar {slug}",
+		"newSkill": "Nova habilidade",
+		"bytes": "{used} / {max} bytes",
+		"saveChanges": "Salvar alterações",
+		"createSkill": "Criar habilidade",
+		"loadFailed": "Não foi possível carregar as habilidades",
+		"loadOneFailed": "Não foi possível carregar esta habilidade",
+		"limitReached": "Você já tem {limit} habilidades",
+		"saved": "Habilidade salva",
+		"saveFailed": "Não foi possível salvar a habilidade",
+		"confirmDelete": "Excluir a habilidade \"{title}\"?",
+		"deleteFailed": "Não foi possível excluir a habilidade"
+	},
+	"personaWorkspaceGrants": {
+		"localNote": "Os espaços de trabalho locais não aparecem aqui. Abra o espaço de trabalho local e conceda acesso a esta persona no painel Personas → \"Neste dispositivo\" dele.",
+		"onThisDevice": "Neste dispositivo",
+		"loading": "Carregando espaços de trabalho…",
+		"empty": "Nenhum espaço de trabalho compartilhado.",
+		"home": "Espaço de trabalho de origem · arquive a persona para remover o acesso",
+		"blocked": "Bloqueada pelo criador do espaço de trabalho",
+		"effective": "Em vigor aqui: {permissions}",
+		"changeFailed": "Não foi possível alterar este espaço de trabalho",
+		"blockedByCreator": "Bloqueada pelo criador do espaço de trabalho",
+		"permissionsFailed": "Não foi possível atualizar as permissões"
+	},
+	"personas": {
+		"agentsTitle": "Agentes",
+		"agentsSubtitle": "Conecte o Claude Code e outros clientes MCP ao seu espaço de trabalho local.",
+		"title": "Personas",
+		"subtitle": "Uma persona é uma identidade sob a qual seus agentes de IA atuam: nome, avatar e prompt do sistema próprios, com permissões próprias por espaço de trabalho. {count}/{limit} em uso.",
+		"showArchived": "Mostrar arquivadas",
+		"localAi": "IA local",
+		"editPersona": "Editar persona",
+		"newPersona": "Nova persona",
+		"saveChanges": "Salvar alterações",
+		"createPersona": "Criar persona",
+		"change": "Alterar",
+		"archived": "Arquivada",
+		"promptVersion": "prompt v{version}",
+		"archive": "Arquivar",
+		"restore": "Restaurar",
+		"workspaces": "Espaços de trabalho",
+		"skills": "Habilidades",
+		"agentConnections": "Conexões de agentes",
+		"empty": "Nenhuma persona ainda.",
+		"skillsLibrary": "Biblioteca de habilidades",
+		"skillsLibraryDescription": "Habilidades que você escreve uma vez e anexa a qualquer uma das suas personas. Editar uma atualiza todas as personas às quais ela está anexada.",
+		"workspacePersonas": "Personas do espaço de trabalho",
+		"workspacePersonasDescription": "Personas que outros membros de {name} criaram para todo o espaço de trabalho. Qualquer pessoa pode atribuir tarefas a elas; só o dono delas as edita.",
+		"personaOf": "persona de {name}",
+		"workspaceScope": "Espaço de trabalho: {name}",
+		"thisWorkspace": "este espaço de trabalho",
+		"loadFailed": "Não foi possível carregar as personas.",
+		"updated": "Persona atualizada",
+		"created": "Persona criada",
+		"saveFailed": "Não foi possível salvar a persona",
+		"archiveFailed": "Não foi possível arquivar a persona",
+		"restoreFailed": "Não foi possível restaurar a persona (o limite é {limit})",
+		"avatarFailed": "Não foi possível enviar o avatar"
+	},
+	"consentPanel": {
+		"ariaLabel": "Opções de privacidade",
+		"saveFailed": "Não foi possível salvar sua escolha neste navegador. O compartilhamento está interrompido nesta janela.",
+		"usage": {
+			"title": "Ajudar a melhorar o TMGR?",
+			"intro": "Eventos de uso que não são vinculados à sua conta. Desativado por padrão.",
+			"whatWeSend": "O que enviamos",
+			"whatWeCollect": "O que coletamos",
+			"details": "Se você concordar, o TMGR envia eventos de uso que não são vinculados à sua conta: quais telas e tours você abre, quais etapas conclui, a versão do aplicativo e a plataforma.",
+			"weSend": "Enviamos:",
+			"weSendText": "nomes de eventos como tour_step_completed · um ID de instalação aleatório · versão do aplicativo, sistema operacional, classe de tamanho de tela",
+			"weNeverSend": "Nunca enviamos:",
+			"weNeverSendText": "texto de tarefas, páginas ou comentários · nomes, e-mails, nomes de arquivos · o ID da sua conta. Seu endereço IP não é armazenado com os eventos.",
+			"changeAnytime": "Mude quando quiser em Configurações → Privacidade. Ao desativar, o envio para na hora; você também pode excluir o que já foi enviado.",
+			"decline": "Não, obrigado",
+			"accept": "Compartilhar dados de uso"
+		},
+		"analytics": {
+			"title": "Cookies e análise de uso",
+			"text": "Gostaríamos de usar o Google Analytics para entender como as pessoas encontram e usam o TMGR. Ele define cookies e envia dados ao Google. Fica desativado, a menos que você permita. Você pode mudar isso quando quiser.",
+			"privacyPolicy": "Política de privacidade",
+			"decline": "Recusar",
+			"accept": "Permitir análise de uso"
+		}
+	},
+	"privacyLinks": {
+		"privacy": "Privacidade",
+		"commandLine": "Linha de comando",
+		"cookieSettings": "Configurações de cookies"
+	},
+	"privacySettings": {
+		"cookiesTitle": "Cookies e análise de uso",
+		"googleAnalytics": "Google Analytics",
+		"googleAnalyticsDescription": "Nos ajuda a entender como o TMGR é usado. Define cookies e envia dados ao Google. Desativado, a menos que você permita.",
+		"privacyPolicy": "Política de privacidade"
+	},
+	"usageDataControls": {
+		"title": "Dados de uso",
+		"saveFailed": "Não foi possível salvar sua escolha neste navegador. O compartilhamento está interrompido nesta janela.",
+		"receiptError": "Não foi possível guardar uma chave de exclusão para esta instalação. Use \"Excluir dados já enviados\" para remover os dados dela.",
+		"shareLabel": "Compartilhar dados de uso",
+		"shareDescription": "Não vinculados à sua conta: nomes de eventos, um ID de instalação aleatório, versão do aplicativo e plataforma. Nunca conteúdo de tarefas, nomes ou e-mails.",
+		"installId": "ID da instalação:",
+		"resetId": "Redefinir ID",
+		"pending": "Eventos aguardando envio:",
+		"view": "Ver",
+		"dataSent": "Dados já enviados",
+		"deleteSent": "Excluir dados já enviados",
+		"coverage": "Este botão cobre os eventos deste dispositivo. As estatísticas agregadas de onboarding, obtidas dos dados da conta, estão descritas na política de privacidade.",
+		"readMore": "Saiba mais",
+		"footer": "Ao desativar o compartilhamento, ele para na hora. Os eventos brutos são mantidos por 30 dias.",
+		"queueTitle": "Eventos aguardando envio",
+		"deleteFailed": "Não foi possível excluir tudo. O compartilhamento está desativado. Tente novamente mais tarde.",
+		"deleted": "Excluído. O compartilhamento está desativado.",
+		"nothingToDelete": "Nada para excluir. O compartilhamento está desativado."
+	},
+	"signedInDevices": {
+		"title": "Dispositivos conectados",
+		"description": "Sessões de linha de comando conectadas com tmgr login.",
+		"loadFailed": "Não foi possível carregar os dispositivos.",
+		"tryAgain": "Tentar novamente",
+		"empty": "Nenhum dispositivo CLI ainda. Execute {command} no seu terminal.",
+		"onHost": "em {host}",
+		"lastUsed": "Conectado {signedIn} · Último uso {lastUsed}",
+		"never": "nunca",
+		"editScopes": "Editar escopos",
+		"revoke": "Revogar",
+		"savedTitle": "Salvo",
+		"savedDescription": "Escopos do dispositivo atualizados",
+		"errorTitle": "Erro",
+		"updateFailed": "Não foi possível atualizar os escopos do dispositivo",
+		"confirmRevoke": "Revogar {client} em {host}? A sessão será encerrada.",
+		"doneTitle": "Pronto",
+		"revoked": "Dispositivo revogado",
+		"revokeFailed": "Não foi possível revogar o dispositivo"
+	},
+	"phonesSection": {
+		"title": "Celulares",
+		"intro": "Responda aos cartões de decisões pelo aplicativo TMGR para iPhone. O pareamento exige que este Mac esteja ligado.",
+		"macName": "Nome deste Mac",
+		"manage": "Gerenciar celulares",
+		"openFailed": "Não foi possível abrir a janela",
+		"pair": "Parear um iPhone"
+	},
+	"profile": {
+		"title": "Perfil",
+		"pictureTitle": "Foto de perfil",
+		"uploading": "Enviando…",
+		"changePicture": "Alterar foto",
+		"acceptedFormats": "Formatos aceitos: PNG, JPEG, WebP, GIF.",
+		"accountTitle": "Conta",
+		"name": "Nome",
+		"email": "E-mail",
+		"emailReadonly": "O e-mail não pode ser alterado aqui",
+		"changePassword": "Alterar senha",
+		"leaveBlank": "Deixe em branco para manter a senha atual.",
+		"currentPassword": "Senha atual",
+		"newPassword": "Nova senha",
+		"confirmPassword": "Confirmar senha",
+		"socialHint": "Criou sua conta com Google, GitHub ou Apple e nunca definiu uma senha? Use Esqueci a senha na página de login para definir uma.",
+		"signOutOthers": "Sair dos outros dispositivos",
+		"signOutOthersHint": "Recomendado se você acha que outra pessoa teve acesso à sua conta. Este dispositivo continua conectado.",
+		"agentTitle": "Conexões de agentes",
+		"agentDescription": "Revogue todos os tokens de persona, em todas as suas personas e espaços de trabalho.",
+		"revoking": "Revogando…",
+		"revokeAll": "Revogar todos os tokens de persona",
+		"tokensRevokedNotice": "Os tokens de dispositivo, de agente e de notificação foram revogados — gere novos.",
+		"pickImage": "Escolha um arquivo de imagem",
+		"readFailed": "Não foi possível ler essa imagem",
+		"uploadFailed": "Não foi possível enviar essa foto",
+		"removeFailed": "Não foi possível remover a foto",
+		"passwordChanged": "Senha alterada",
+		"savedTitle": "Salvo",
+		"savedDescription": "Dados do usuário salvos",
+		"confirmRevokeAll": "Revogar todos os tokens de persona em todas as suas personas?",
+		"doneTitle": "Pronto",
+		"allRevoked": "Todos os tokens de persona foram revogados",
+		"errorTitle": "Erro",
+		"revokeFailed": "Não foi possível revogar os tokens de persona"
+	},
+	"avatarCropModal": {
+		"title": "Recortar avatar",
+		"description": "Arraste para mover; role ou use o controle deslizante para dar zoom.",
+		"zoom": "Zoom"
+	},
+	"privacy": {
+		"title": "Política de privacidade",
+		"lastUpdated": "Última atualização: 13 de outubro de 2026",
+		"summary": {
+			"store": "Armazenamos o que você coloca no TMGR (sua conta, tarefas, páginas, arquivos, registros de tempo) para o serviço funcionar. Não vendemos esses dados e não exibimos anúncios.",
+			"local": "Os espaços de trabalho locais do aplicativo desktop ficam no seu dispositivo.",
+			"consent": "O Google Analytics fica desativado até você permitir. Os dados de uso também ficam desativados até você permitir. Você pode mudar os dois a qualquer momento.",
+			"thirdParties": "Alguns recursos enviam dados a outras empresas, por exemplo a OpenAI para os recursos de IA ou a Twilio para as chamadas de alarme. Elas estão listadas abaixo.",
+			"title": "Resumo"
+		},
+		"controller": {
+			"todoName": "[Nome e endereço do controlador — a confirmar]",
+			"text": "O controlador dos seus dados pessoais é {controller}. Contato: {contact}.",
+			"title": "Quem é o responsável"
+		},
+		"todoEmail": "[e-mail de contato — a confirmar]",
+		"accountData": {
+			"accountLabel": "Conta:",
+			"account": "{label} nome, endereço de e-mail, hash da senha, os ids dos provedores de login que você usa (GitHub, Google, Apple, Telegram), seu avatar e suas configurações.",
+			"contentLabel": "Seu conteúdo:",
+			"content": "{label} espaços de trabalho, tarefas, comentários, páginas, arquivos enviados, registros de tempo, rotinas, conversas com o assistente de IA e os registros de trabalho dos agentes de IA que você conecta.",
+			"devicesLabel": "Dispositivos e notificações:",
+			"devices": "{label} sessões de login, chaves de dispositivo para login com Face ID, tokens de push do aplicativo iOS, seu tópico privado de notificações e os tokens de acesso que você cria para agentes e dispositivos.",
+			"alarmLabel": "Telefone de alarme:",
+			"alarm": "{label} somente se você configurar chamadas de alarme. Ele é armazenado criptografado.",
+			"integrationsLabel": "Integrações que você conecta:",
+			"integrations": "{label} seu id e nome de usuário do Telegram, dados dos repositórios do GitHub que você vincula (incluindo nomes e e-mails dos autores dos commits) e sua chave de API do Cursor.",
+			"usage": "Usamos esses dados para operar o TMGR para você. Não armazenamos seu endereço IP no banco de dados. Nossos servidores mantêm os endereços IP dos clientes na memória por até uma hora para limitar abusos, como tentativas de adivinhar senhas.",
+			"title": "Dados que armazenamos da sua conta"
+		},
+		"desktopLocal": {
+			"intro": "Um espaço de trabalho local no aplicativo desktop é um arquivo de banco de dados no seu computador, e os backups dele são salvos em uma pasta no seu computador. O conteúdo dele não é enviado para nós.",
+			"connects": "O aplicativo desktop ainda se conecta à internet para algumas coisas:",
+			"updates": "Ele consulta o GitHub em busca de atualizações do aplicativo. O GitHub vê seu endereço IP.",
+			"plugins": "Ele atualiza o catálogo de plugins a partir do GitHub ao iniciar e a cada seis horas.",
+			"ai": "Ele se comunica com o endpoint de IA que você mesmo configura, se você configurar um.",
+			"usage": "Ele envia dados de uso somente se você ativar os dados de uso (veja abaixo).",
+			"noAnalytics": "O aplicativo desktop nunca carrega o Google Analytics nem o Plausible.",
+			"title": "Aplicativo desktop sem conta"
+		},
+		"usageData": {
+			"intro": "Se você concordar, o aplicativo envia eventos de uso que não são vinculados à sua conta. Eles nos mostram quais telas e tours guiados as pessoas abrem e quais etapas concluem, para que possamos melhorar o TMGR.",
+			"sentLabel": "O que é enviado:",
+			"sent": "{label} nomes de eventos como {code} com valores fixos (por exemplo, qual tour e qual etapa), um id de instalação aleatório criado no seu dispositivo, um id aleatório para cada início do aplicativo, a versão do aplicativo (principal e secundária), a plataforma, se você usa uma conta na nuvem ou um espaço de trabalho local, uma classe de tamanho de tela (pequena, média ou grande) e a hora do evento.",
+			"neverSentLabel": "O que nunca é enviado:",
+			"neverSent": "{label} texto de tarefas, páginas ou comentários, nomes, e-mails, nomes de arquivos, nomes de espaços de trabalho, links, o id da sua conta, seu token de login ou cookies.",
+			"ipLabel": "Seu endereço IP",
+			"ip": "{label} não é armazenado com os eventos. Ele é mantido na memória por até uma hora para limitar abusos.",
+			"retentionLabel": "Retenção:",
+			"retention": "{label} os eventos brutos são excluídos após 30 dias. Os totais diários (contagens por evento, sem ids de instalação) são mantidos por 13 meses.",
+			"offLabel": "Como desativar:",
+			"off": "{label} desative \"Compartilhar dados de uso\" em Configurações → Privacidade ou abaixo, nesta página. O envio para na hora em todas as abas e janelas, e os eventos que aguardam no seu dispositivo são excluídos.",
+			"deleteLabel": "Como excluir o que foi enviado:",
+			"delete": "{label} seu dispositivo guarda uma chave de exclusão para cada id de instalação. \"Excluir dados já enviados\" em Configurações → Privacidade ou abaixo, nesta página, usa essa chave para excluir esses eventos dos nossos servidores, mesmo depois de você desativar o compartilhamento.",
+			"pseudonymous": "Como o id de instalação permanece o mesmo ao longo do tempo, tratamos os dados de uso como dados pessoais pseudonimizados. A base legal é o seu consentimento, que você pode retirar a qualquer momento.",
+			"title": "Dados de uso (opcional)"
+		},
+		"analytics": {
+			"title": "Google Analytics e contagem de visualizações de página (web)",
+			"gaLabel": "Google Analytics",
+			"googlePolicy": "Política de privacidade do Google",
+			"google": "O {ga} só é carregado no aplicativo web depois que você permite. Ele define cookies ({cookie}) e envia ao Google seu endereço IP, detalhes do dispositivo e do navegador e as páginas que você visita. Se você recusar, ele nunca é carregado. Você pode mudar sua escolha a qualquer momento em \"Configurações de cookies\", abaixo ou no rodapé da página de login, ou nas Configurações. A base legal é o seu consentimento. Veja {policy}.",
+			"choice": "Sua escolha atual: {status}",
+			"cookieSettings": "Configurações de cookies",
+			"plausibleLabel": "Plausible:",
+			"plausible": "{label} o aplicativo web conta as visualizações de página com uma instância do Plausible que hospedamos nós mesmos. Ele não define cookies e não armazena endereços IP nem identificadores pessoais. O aplicativo desktop não o carrega. A base legal é o nosso interesse legítimo em saber quantas pessoas usam o site.",
+			"yandex": "O Yandex Metrica não é mais usado."
+		},
+		"onboardingAggregates": {
+			"counts": "Para saber se o onboarding funciona, contamos, em todas as contas, quantas pessoas se cadastraram, verificaram o e-mail, criaram uma primeira tarefa, iniciaram um cronômetro, conectaram um agente de IA ou concluíram um tour guiado. Esses números vêm de dados que o TMGR armazena de qualquer forma. Eles são mostrados apenas como totais, e grupos com menos de 10 pessoas ficam ocultos.",
+			"basis": "Isso acontece independentemente de você compartilhar dados de uso, porque usa dados da conta, não eventos do dispositivo. A base legal é o nosso interesse legítimo em melhorar o onboarding. Você pode se opor escrevendo para nós (veja Contato).",
+			"title": "Estatísticas de onboarding a partir de dados da conta"
+		},
+		"thirdParties": {
+			"title": "Serviços que usamos",
+			"service": "Serviço",
+			"whatFor": "Para quê",
+			"receive": "O que recebem",
+			"rows": {
+				"hetzner": {
+					"use": "Servidores que executam o TMGR",
+					"receive": "Todos os dados armazenados no TMGR"
+				},
+				"bunny": {
+					"use": "Entrega de conteúdo do aplicativo web e do site",
+					"receive": "Seu endereço IP e detalhes do navegador quando você carrega páginas"
+				},
+				"storage": {
+					"todo": "[nome — a confirmar]",
+					"name": "Provedor de armazenamento de objetos {todo}",
+					"use": "Arquivos enviados, avatares e exportações",
+					"receive": "Os arquivos que você envia"
+				},
+				"email": {
+					"todo": "[nome — a confirmar]",
+					"name": "Provedor de e-mail {todo}",
+					"use": "E-mails de verificação, de redefinição de senha e de notificação",
+					"receive": "Seu endereço de e-mail e o conteúdo do e-mail"
+				},
+				"openai": {
+					"use": "Recursos de IA: o assistente de IA, \"Otimizar descrição\" e a transcrição de mensagens de voz do Telegram",
+					"receive": "O texto, os dados de tarefas e as mensagens de voz com que esses recursos trabalham, somente quando você os usa"
+				},
+				"twilio": {
+					"use": "Chamadas de alarme e códigos por SMS para verificar seu telefone",
+					"receive": "Seu número de telefone e o título e a mensagem do alarme lidos na chamada"
+				},
+				"expo": {
+					"use": "Notificações push, Live Activities e atualizações do aplicativo iOS",
+					"receive": "Tokens de push e o conteúdo das notificações",
+					"name": "Expo e Apple"
+				},
+				"signin": {
+					"use": "Login, se você escolher esse provedor",
+					"receive": "O que o login exige; recebemos seu nome e e-mail"
+				},
+				"github": {
+					"use": "A integração com o GitHub, se você a instalar, e as atualizações do aplicativo desktop",
+					"receive": "Dados dos repositórios que você vincula; seu endereço IP quando o aplicativo desktop procura atualizações"
+				},
+				"telegram": {
+					"use": "O bot do Telegram, se você o conectar",
+					"receive": "O id do seu chat e as mensagens que o bot envia e recebe"
+				},
+				"cursor": {
+					"use": "Iniciar agentes do Cursor, se você adicionar sua chave de API do Cursor",
+					"receive": "O prompt da tarefa e os detalhes do repositório que você envia"
+				},
+				"jsdelivr": {
+					"use": "Folha de estilos para destaque de código",
+					"receive": "Seu endereço IP e detalhes do navegador quando ela é carregada"
+				},
+				"ga": {
+					"use": "Análise de uso da web, somente se você permitir",
+					"receive": "Veja acima"
+				}
+			},
+			"selfHosted": "As atualizações em tempo real, as notificações do navegador (ntfy), a contagem de visualizações de página (Plausible) e o armazenamento de segredos rodam nos nossos próprios servidores."
+		},
+		"retention": {
+			"account": "Dados da conta e seu conteúdo: enquanto a sua conta existir.",
+			"sessions": "Sessões de login: os tokens de acesso expiram após 1 hora e os tokens de atualização, após no máximo 30 dias.",
+			"usage": "Dados de uso: eventos brutos por 30 dias, totais diários por 13 meses.",
+			"logsTodo": "[retenção — a confirmar]",
+			"logs": "Logs de acesso dos servidores e da CDN: {todo}.",
+			"title": "Por quanto tempo mantemos os dados"
+		},
+		"yourRights": {
+			"intro": "Você pode pedir uma cópia dos seus dados, corrigi-los, excluí-los, se opor ao tratamento baseado em interesse legítimo e retirar qualquer consentimento. Você também pode apresentar uma reclamação a uma autoridade de proteção de dados.",
+			"export": "No aplicativo, você pode exportar tarefas (CSV, XLSX), rotinas (iCal) e espaços de trabalho locais (Markdown), excluir espaços de trabalho e alterar seu perfil.",
+			"delete": "Para excluir toda a sua conta ou obter uma cópia completa dos seus dados, escreva para nós (veja Contato). O aplicativo ainda não tem exclusão de conta por autoatendimento.",
+			"children": "O TMGR não se destina a crianças menores de 16 anos.",
+			"title": "Seus direitos"
+		},
+		"changes": {
+			"text": "Quando esta política mudar, atualizamos a data no topo. Para mudanças importantes, avisamos você no aplicativo antes de elas entrarem em vigor.",
+			"title": "Alterações"
+		},
+		"contact": {
+			"text": "Dúvidas ou solicitações sobre os seus dados: {todo}.",
+			"title": "Contato"
+		},
+		"status": {
+			"granted": "Permitido",
+			"denied": "Recusado",
+			"unset": "Ainda não escolhido"
+		}
+	},
+	"agentNotifications": {
+		"title": "Alertas do agente",
+		"subtitle": "Receba uma notificação push no celular quando o Claude Code, o Codex ou outro agente de IA precisar de você — o destinatário é sempre você, o dono do token, e um token funciona em todos os espaços de trabalho em que você está. Crie um token e depois conecte o Claude Code, o Codex ou o Cursor em uma única etapa.",
+		"newToken": "Novo token",
+		"labelOptional": "Rótulo (opcional)",
+		"labelPlaceholder": "Claude Code no meu notebook",
+		"creating": "Criando…",
+		"createToken": "Criar token",
+		"copyNow": "Copie este token agora — você não o verá novamente.",
+		"showSetup": "Mostrar configuração",
+		"tokens": "Tokens",
+		"loadingTokens": "Carregando tokens…",
+		"noTokens": "Nenhum token de notificação de agente ainda.",
+		"untitled": "Token sem título",
+		"never": "nunca",
+		"meta": "{prefix}… · criado {created} · último uso {lastUsed}",
+		"revoke": "Revogar",
+		"howToConnect": "Como conectar",
+		"haveToken": "Já tem um token? Use estes trechos e substitua {placeholder} por ele.",
+		"yourToken": "<seu token>",
+		"hideSnippets": "Ocultar trechos",
+		"showSnippets": "Mostrar trechos",
+		"fullGuide": "Guia de configuração completo",
+		"connectTitle": "Conecte seu agente",
+		"notifyTokenLabel": "Token de notificação",
+		"sending": "Enviando…",
+		"sendTest": "Enviar notificação de teste",
+		"phoneCall": "Quer uma ligação para incidentes? {link} abaixo.",
+		"setupAlarm": "Configure um telefone de alarme",
+		"loadFailed": "Não foi possível carregar os tokens.",
+		"createFailed": "Não foi possível criar o token",
+		"test": {
+			"sent": "Enviado — confira seu celular. (via {channels})",
+			"noChannels": "Nada foi entregue: instale o aplicativo móvel do TMGR e permita as notificações, ou vincule o Telegram no Perfil.",
+			"deduplicated": "Já foi enviado há instantes.",
+			"rateLimitedIn": "Notificações demais — tente novamente em {seconds} s.",
+			"rateLimited": "Notificações demais — tente novamente em breve.",
+			"unauthorized": "Este token foi rejeitado. Crie um novo.",
+			"unreachable": "Não foi possível alcançar o TMGR."
+		},
+		"copyFailed": "Não foi possível copiar para a área de transferência",
+		"confirmRevoke": "Revogar o token \"{label}\"?",
+		"revokeFailed": "Não foi possível revogar o token"
+	},
+	"alarmPhoneSection": {
+		"title": "Telefone de alarme",
+		"loading": "Carregando telefone de alarme…",
+		"unconfigured": "O telefone de alarme não está configurado neste servidor.",
+		"unreadable": "Não foi possível ler o número armazenado. Remova-o e digite-o de novo.",
+		"intro": "Usado apenas para alarmes críticos quando o push não é confirmado. Armazenado criptografado. Enviaremos um código por SMS para verificá-lo.",
+		"verified": "Verificado",
+		"notVerified": "Não verificado",
+		"testCall": "Ligação de teste",
+		"change": "Alterar",
+		"callsFrom": "Os alarmes ligam para você a partir de {number}",
+		"addContact": "Adicionar aos contatos",
+		"tipFavorites": "Adicione-o aos Favoritos.",
+		"tipIphone": "iPhone: em Foco → Não Perturbe e Sono, permita chamadas dos Favoritos e ative Chamadas Repetidas.",
+		"tipAndroid": "Android: marque o contato com estrela e permita contatos com estrela em Não perturbe.",
+		"verificationCode": "Código de verificação",
+		"verify": "Verificar",
+		"resendIn": "Reenviar em {seconds}s",
+		"resend": "Reenviar código",
+		"tryAgainIn": "Tente novamente em {time}",
+		"phoneLabel": "Número de telefone (E.164)",
+		"invalidFormat": "Use o formato internacional, por ex. +15550100123.",
+		"errors": {
+			"callFailed": "Não foi possível fazer a ligação",
+			"unconfigured": "O telefone de alarme não está configurado neste servidor",
+			"invalidPhone": "Número de telefone inválido",
+			"tryAgainIn": "Tente novamente em {time}",
+			"tooMany": "Tentativas demais, tente novamente mais tarde",
+			"reset": "Muitos códigos errados. Digite o número de novo.",
+			"conflict": "Nada a fazer com este número no momento",
+			"generic": "Algo deu errado"
+		},
+		"loadFailed": "Não foi possível carregar o telefone de alarme.",
+		"numberChanged": "Este número mudou, confira de novo",
+		"wrongCode": "Código incorreto.",
+		"wrongCodeLeft": "Código incorreto. Tentativas restantes: {count}.",
+		"calling": "Ligando agora.",
+		"callsUnconfigured": "As ligações não estão configuradas neste servidor",
+		"verifyFirst": "Verifique o número primeiro",
+		"copyFailed": "Não foi possível copiar",
+		"contactFailed": "Não foi possível baixar o contato",
+		"confirmRemove": "Remover o telefone de alarme?"
+	}
+}

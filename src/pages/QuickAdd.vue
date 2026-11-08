@@ -19,7 +19,7 @@
 				{{ headingText }}
 				<select
 					v-model="workspaceId"
-					aria-label="Workspace"
+					:aria-label="$t('taskForm.quickAdd.workspace')"
 					class="rounded-md border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground outline-hidden dark:border-border dark:bg-background"
 					:disabled="saving"
 					@change="rememberWorkspace"
@@ -30,7 +30,9 @@
 				</select>
 			</span>
 			<div class="flex items-center gap-2">
-				<span data-tauri-drag-region>esc to close</span>
+				<span data-tauri-drag-region>{{
+					$t('taskForm.quickAdd.escToClose')
+				}}</span>
 				<button
 					type="button"
 					class="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
@@ -38,7 +40,7 @@
 					data-testid="quick-add-submit"
 					@click="submit"
 				>
-					Add ↵
+					{{ $t('taskForm.quickAdd.add') }}
 				</button>
 			</div>
 		</div>
@@ -66,7 +68,7 @@
 						:data-testid="`quick-add-mode-${option.value}`"
 						@click="mode = option.value"
 					>
-						{{ option.label }}
+						{{ $t(option.labelKey) }}
 					</button>
 				</span>
 				<template v-if="isTask">
@@ -74,10 +76,12 @@
 						v-model="categoryId"
 						class="max-w-[16rem] min-w-0 rounded-md border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground outline-hidden dark:border-border dark:bg-background"
 						:disabled="saving || categoriesLoading"
-						aria-label="Category"
+						:aria-label="$t('taskForm.quickAdd.category')"
 						data-testid="quick-add-category"
 					>
-						<option :value="null">No category</option>
+						<option :value="null">
+							{{ $t('taskForm.quickAdd.noCategory') }}
+						</option>
 						<option
 							v-for="option in categoryOptions"
 							:key="option.id"
@@ -91,7 +95,7 @@
 						class="text-destructive dark:text-destructive"
 						data-testid="quick-add-categories-error"
 					>
-						Could not load categories
+						{{ $t('taskForm.quickAdd.categoriesError') }}
 					</span>
 				</template>
 			</div>
@@ -102,19 +106,23 @@
 						v-model="pageQuery"
 						data-selectable
 						class="w-28 rounded-md border border-border bg-transparent px-1.5 py-1 outline-hidden dark:border-border"
-						placeholder="Find page"
-						aria-label="Find page"
+						:placeholder="$t('taskForm.quickAdd.findPage')"
+						:aria-label="$t('taskForm.quickAdd.findPage')"
 						:disabled="saving"
 					/>
 					<select
 						v-model="pageId"
-						aria-label="Page"
+						:aria-label="$t('taskForm.quickAdd.page')"
 						class="min-w-0 flex-1 rounded-md border border-border bg-transparent px-1.5 py-1 outline-hidden dark:border-border dark:bg-background"
 						:disabled="saving || !pageOptions.length"
 						data-testid="quick-add-page"
 					>
 						<option :value="null" disabled>
-							{{ pagesLoading ? 'Loading pages…' : 'Choose a page' }}
+							{{
+								pagesLoading
+									? $t('taskForm.quickAdd.loadingPages')
+									: $t('taskForm.quickAdd.choosePage')
+							}}
 						</option>
 						<option
 							v-for="option in visiblePageOptions"
@@ -126,12 +134,12 @@
 					</select>
 					<select
 						v-model="section"
-						aria-label="Section"
+						:aria-label="$t('taskForm.quickAdd.section')"
 						class="w-40 rounded-md border border-border bg-transparent px-1.5 py-1 outline-hidden dark:border-border dark:bg-background"
 						:disabled="saving || !pageId"
 						data-testid="quick-add-section"
 					>
-						<option value="">End of page</option>
+						<option value="">{{ $t('taskForm.quickAdd.endOfPage') }}</option>
 						<option v-for="heading in sections" :key="heading" :value="heading">
 							{{ heading }}
 						</option>
@@ -142,8 +150,8 @@
 					v-model="pageText"
 					data-selectable
 					class="min-h-0 flex-1 resize-none rounded-md border border-border bg-muted/50 p-2 text-sm outline-hidden dark:bg-muted/30"
-					placeholder="What to add to the page?"
-					aria-label="Text to add to the page"
+					:placeholder="$t('taskForm.quickAdd.pageTextPlaceholder')"
+					:aria-label="$t('taskForm.quickAdd.pageTextLabel')"
 					:disabled="saving"
 				/>
 			</div>
@@ -160,8 +168,8 @@
 					v-model="title"
 					data-selectable
 					class="w-full min-w-0 border-b border-border bg-transparent pb-1 text-xl font-medium outline-hidden placeholder:text-muted-foreground"
-					placeholder="What needs to be done?"
-					aria-label="Title"
+					:placeholder="$t('taskForm.quickAdd.titlePlaceholder')"
+					:aria-label="$t('taskForm.quickAdd.title')"
 					:disabled="saving"
 				/>
 			</div>
@@ -170,8 +178,8 @@
 				v-model="note"
 				data-selectable
 				class="min-h-0 flex-1 resize-none rounded-md border border-border bg-muted/50 p-2 text-sm outline-hidden dark:bg-muted/30"
-				placeholder="Description"
-				aria-label="Description"
+				:placeholder="$t('taskForm.quickAdd.description')"
+				:aria-label="$t('taskForm.quickAdd.description')"
 				:disabled="saving"
 			/>
 			<div
@@ -180,7 +188,7 @@
 			>
 				<img
 					:src="screenshotUrl"
-					alt="Screenshot"
+					:alt="$t('taskForm.quickAdd.screenshot')"
 					class="max-h-full max-w-[60%] rounded-md border border-border object-contain dark:border-border"
 				/>
 				<button
@@ -188,7 +196,7 @@
 					class="text-xs text-muted-foreground hover:text-foreground"
 					@click="dropScreenshot"
 				>
-					Remove
+					{{ $t('taskForm.quickAdd.remove') }}
 				</button>
 			</div>
 			<div
@@ -202,7 +210,7 @@
 					data-testid="quick-add-capture"
 					@click="captureHere"
 				>
-					Capture screenshot
+					{{ $t('taskForm.quickAdd.captureScreenshot') }}
 				</button>
 				<button
 					type="button"
@@ -211,10 +219,10 @@
 					data-testid="quick-add-choose-image"
 					@click="fileInput.click()"
 				>
-					Choose image
+					{{ $t('taskForm.quickAdd.chooseImage') }}
 				</button>
 				<span class="text-muted-foreground dark:text-muted-foreground">
-					Capture or choose a screenshot
+					{{ $t('taskForm.quickAdd.captureOrChoose') }}
 				</span>
 			</div>
 
@@ -225,7 +233,7 @@
 					class="text-muted-foreground hover:text-foreground"
 					@click="showNote = true"
 				>
-					+ Description
+					{{ $t('taskForm.quickAdd.addDescription') }}
 				</button>
 				<button
 					v-if="pendingScreenshotUrl"
@@ -235,7 +243,7 @@
 					data-testid="quick-add-use-new-screenshot"
 					@click="usePendingScreenshot"
 				>
-					Use new screenshot
+					{{ $t('taskForm.quickAdd.useNewScreenshot') }}
 				</button>
 				<button
 					v-if="draftStarted"
@@ -245,15 +253,14 @@
 					data-testid="quick-add-discard"
 					@click="discard"
 				>
-					Discard
+					{{ $t('taskForm.quickAdd.discard') }}
 				</button>
 				<span
 					v-if="screenshotUnsent"
 					class="text-muted-foreground dark:text-muted-foreground"
 					data-testid="quick-add-unsent-hint"
 				>
-					Screenshot kept, but not sent with a routine or task. Adding discards
-					it.
+					{{ $t('taskForm.quickAdd.screenshotUnsent') }}
 				</span>
 				<span
 					v-if="message"
@@ -278,6 +285,7 @@
 		activeLocalWorkspace,
 		followActiveLocalWorkspace,
 	} from '@/local/runtime';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import {
 		activeCategories,
@@ -334,17 +342,17 @@
 	} from 'vue';
 
 	const MODES = [
-		{ value: 'routine', label: 'Routine' },
-		{ value: 'task', label: 'Task' },
-		{ value: 'screenshot', label: 'Task + screenshot' },
-		{ value: 'page', label: 'Page' },
+		{ value: 'routine', labelKey: 'taskForm.quickAdd.modes.routine' },
+		{ value: 'task', labelKey: 'taskForm.quickAdd.modes.task' },
+		{ value: 'screenshot', labelKey: 'taskForm.quickAdd.modes.screenshot' },
+		{ value: 'page', labelKey: 'taskForm.quickAdd.modes.page' },
 	];
 
 	const HEADINGS = {
-		routine: 'Add to Daily Routines in',
-		task: 'Add task to backlog in',
-		screenshot: 'Add task with screenshot to backlog in',
-		page: 'Add to a page in',
+		routine: 'taskForm.quickAdd.headings.routine',
+		task: 'taskForm.quickAdd.headings.task',
+		screenshot: 'taskForm.quickAdd.headings.screenshot',
+		page: 'taskForm.quickAdd.headings.page',
 	};
 
 	const invoke = async (command, args) => {
@@ -377,9 +385,6 @@
 			/* logging must never break quick add */
 		}
 	};
-
-	const ACCESSIBILITY_HINT =
-		'Allow TMGR in System Settings → Privacy & Security → Accessibility, then try again.';
 
 	export default defineComponent({
 		name: 'QuickAdd',
@@ -417,7 +422,7 @@
 			let resumeDraft = false;
 
 			const isTask = computed(() => isTaskType(mode.value));
-			const headingText = computed(() => HEADINGS[mode.value]);
+			const headingText = computed(() => t(HEADINGS[mode.value]));
 			const visiblePageOptions = computed(() =>
 				filterPageOptions(pageOptions.value, pageQuery.value, pageId.value),
 			);
@@ -487,8 +492,8 @@
 					error.value = true;
 					message.value =
 						e?.response?.data?.error === 'feature_disabled'
-							? 'Pages are disabled in this workspace.'
-							: 'Could not load pages.';
+							? t('taskForm.quickAdd.pagesDisabled')
+							: t('taskForm.quickAdd.pagesLoadFailed');
 				} finally {
 					if (request === pagesRequest) pagesLoading.value = false;
 				}
@@ -799,7 +804,7 @@
 					} else {
 						note.value = appendText(note.value, payload.text);
 					}
-					message.value = 'Selected text added to your draft';
+					message.value = t('taskForm.quickAdd.selectedTextAdded');
 				}
 				if (plan.screenshot) {
 					const capture = await readCapture(payload.screenshot);
@@ -810,12 +815,12 @@
 						dropPendingScreenshot();
 						pendingScreenshot = capture.file;
 						pendingScreenshotUrl.value = capture.url;
-						message.value = 'Draft kept. New screenshot captured';
+						message.value = t('taskForm.quickAdd.draftKept');
 					}
 				}
 				if (payload?.error === 'accessibility') {
 					error.value = true;
-					message.value = ACCESSIBILITY_HINT;
+					message.value = t('taskForm.quickAdd.accessibilityHint');
 				}
 				if (plan.keep && categoriesWorkspace === workspaceId.value) {
 					if (isTask.value) void loadCategories(true);
@@ -832,7 +837,7 @@
 				if (!canSubmit.value || saving.value) return;
 				saving.value = true;
 				error.value = false;
-				message.value = 'Adding…';
+				message.value = t('taskForm.quickAdd.adding');
 				const ws = selectedWorkspace();
 				try {
 					if (!pagesWorkspace || pagesWorkspace.id !== ws?.id) {
@@ -850,7 +855,7 @@
 						{ uploadPageFile, appendToPage, relayPageAppended },
 					);
 					writeLastPage(ws.id, pageId.value);
-					message.value = 'Added';
+					message.value = t('taskForm.quickAdd.added');
 					setTimeout(async () => {
 						await hide();
 						reset();
@@ -861,7 +866,7 @@
 					error.value = true;
 					message.value =
 						e?.response?.data?.message ||
-						'Could not add to the page. Try again.';
+						t('taskForm.quickAdd.addToPageFailed');
 				} finally {
 					saving.value = false;
 				}
@@ -875,7 +880,7 @@
 					try {
 						indexes = await fetchIndexes();
 					} catch (e) {
-						e.userMessage = 'Could not get the next task number. Try again.';
+						e.userMessage = t('taskForm.quickAdd.nextNumberFailed');
 						throw e;
 					}
 				}
@@ -891,7 +896,7 @@
 				if (!canAdd.value || saving.value) return;
 				saving.value = true;
 				error.value = false;
-				message.value = 'Adding…';
+				message.value = t('taskForm.quickAdd.adding');
 				const targetWorkspace = workspaces.value.find(
 					(ws) => ws.id === workspaceId.value,
 				);
@@ -939,7 +944,7 @@
 							void relayCreated('task');
 						}
 					}
-					message.value = 'Added';
+					message.value = t('taskForm.quickAdd.added');
 					setTimeout(async () => {
 						await hide();
 						reset();
@@ -951,7 +956,7 @@
 					message.value =
 						e?.userMessage ||
 						e?.response?.data?.message ||
-						'Could not add the task. Try again.';
+						t('taskForm.quickAdd.addTaskFailed');
 				} finally {
 					saving.value = false;
 				}

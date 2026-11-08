@@ -7,7 +7,9 @@
 		<template #modal-body>
 			<div class="text-ink">
 				<div class="flex items-center justify-between">
-					<div class="text-xl font-bold">Batch Actions</div>
+					<div class="text-xl font-bold">
+						{{ $t('tasks.multipleActions.title') }}
+					</div>
 					<a
 						class="text-ink-subtle hover:text-ink"
 						href="#close"
@@ -30,33 +32,40 @@
 						v-model="selectedAction"
 						class="flex-1 rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink outline-hidden"
 					>
-						<optgroup v-if="simpleMode" label="Update tasks">
+						<optgroup
+							v-if="simpleMode"
+							:label="$t('tasks.multipleActions.updateTasks')"
+						>
 							<option
 								:value="`status:${doneStatusId}`"
 								:disabled="!doneStatusId"
 							>
-								{{ doneStatusId ? 'Mark done' : 'Mark done (no Done status)' }}
+								{{
+									doneStatusId
+										? $t('tasks.multipleActions.markDone')
+										: $t('tasks.multipleActions.markDoneNoStatus')
+								}}
 							</option>
 							<option
 								:value="`status:${openStatusId}`"
 								:disabled="!openStatusId"
 							>
-								Mark open
+								{{ $t('tasks.multipleActions.markOpen') }}
 							</option>
 							<option
 								v-if="archiveStatusId"
 								:value="`status:${archiveStatusId}`"
 							>
-								Archive
+								{{ $t('tasks.multipleActions.archive') }}
 							</option>
 							<option
 								v-if="status === 'hidden' || status === 'done'"
 								value="delete"
 							>
-								Delete
+								{{ $t('tasks.multipleActions.delete') }}
 							</option>
 						</optgroup>
-						<optgroup v-else label="Move to status">
+						<optgroup v-else :label="$t('tasks.multipleActions.moveToStatus')">
 							<option
 								v-for="workspaceStatus in statuses"
 								:key="workspaceStatus.id"
@@ -68,16 +77,27 @@
 								v-if="status === 'hidden' || status === 'done'"
 								value="delete"
 							>
-								Delete
+								{{ $t('tasks.multipleActions.delete') }}
 							</option>
 						</optgroup>
-						<optgroup v-if="agentRunsOn" label="Agent runs">
-							<option value="agent-confirm">Confirm for agent runs</option>
+						<optgroup
+							v-if="agentRunsOn"
+							:label="$t('tasks.multipleActions.agentRuns')"
+						>
+							<option value="agent-confirm">
+								{{ $t('tasks.multipleActions.confirmAgentRuns') }}
+							</option>
 						</optgroup>
-						<optgroup label="Export">
-							<option value="export:csv">Export to CSV</option>
-							<option value="export:jpg">Export to JPEG</option>
-							<option value="export:xlsx">Export to XLSX</option>
+						<optgroup :label="$t('tasks.multipleActions.export')">
+							<option value="export:csv">
+								{{ $t('tasks.multipleActions.exportCsv') }}
+							</option>
+							<option value="export:jpg">
+								{{ $t('tasks.multipleActions.exportJpg') }}
+							</option>
+							<option value="export:xlsx">
+								{{ $t('tasks.multipleActions.exportXlsx') }}
+							</option>
 						</optgroup>
 					</select>
 					<button
@@ -88,9 +108,11 @@
 					>
 						<template v-if="isLoading">
 							<loader is-mini />
-							<span>{{ elapsedTime }}s</span>
+							<span>{{
+								$t('tasks.multipleActions.seconds', { n: elapsedTime })
+							}}</span>
 						</template>
-						<span v-else>Execute</span>
+						<span v-else>{{ $t('tasks.multipleActions.execute') }}</span>
 					</button>
 				</div>
 			</div>

@@ -7,11 +7,11 @@
 			class="h-7 gap-1 px-2 text-xs text-ink-muted hover:bg-surface-hover hover:text-ink"
 			data-testid="ai-rewrite-open"
 			:disabled="!canRewrite"
-			:title="disabledReason || 'Rewrite the description with AI'"
+			:title="disabledReason || $t('taskAgent.aiRewrite.openTitle')"
 			@click="open"
 		>
 			<Sparkles class="h-3.5 w-3.5" />
-			Rewrite with AI
+			{{ $t('taskAgent.aiRewrite.open') }}
 		</Button>
 		<Button
 			v-if="undoVisible"
@@ -23,7 +23,7 @@
 			@click="undo"
 		>
 			<Undo2 class="h-3.5 w-3.5" />
-			Undo AI rewrite
+			{{ $t('taskAgent.aiRewrite.undo') }}
 		</Button>
 
 		<Dialog :open="isOpen" @update:open="onOpenChange">
@@ -31,16 +31,18 @@
 				class="flex max-h-[90vh] w-[calc(100vw-1.5rem)] max-w-5xl flex-col gap-3 overflow-hidden rounded-card border border-line bg-surface p-4 text-ink sm:p-6"
 			>
 				<DialogHeader>
-					<DialogTitle class="text-ink">Rewrite with AI</DialogTitle>
+					<DialogTitle class="text-ink">{{
+						$t('taskAgent.aiRewrite.open')
+					}}</DialogTitle>
 					<DialogDescription class="text-ink-muted">
-						Review the proposed text. Nothing changes until you accept it.
+						{{ $t('taskAgent.aiRewrite.dialogDescription') }}
 					</DialogDescription>
 				</DialogHeader>
 
 				<div
 					class="flex flex-wrap gap-1.5"
 					role="tablist"
-					aria-label="Revisions"
+					:aria-label="$t('taskAgent.aiRewrite.revisions')"
 				>
 					<button
 						v-for="(_, index) in session.revisions"
@@ -56,7 +58,11 @@
 						]"
 						@click="select(index)"
 					>
-						{{ index === 0 ? 'Original' : `Revision ${index}` }}
+						{{
+							index === 0
+								? $t('taskAgent.aiRewrite.original')
+								: $t('taskAgent.aiRewrite.revision', { n: index })
+						}}
 					</button>
 				</div>
 
@@ -67,7 +73,7 @@
 						<h3
 							class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 						>
-							Original
+							{{ $t('taskAgent.aiRewrite.original') }}
 						</h3>
 						<div
 							class="max-h-40 min-h-[4rem] overflow-y-auto rounded-md border border-line bg-surface-sunken px-3 py-2 md:max-h-[50vh]"
@@ -93,7 +99,7 @@
 								role="status"
 							>
 								<Loader2 class="h-4 w-4 animate-spin" />
-								Rewriting…
+								{{ $t('taskAgent.aiRewrite.rewriting') }}
 							</p>
 							<DescriptionMarkdown v-else :content="selectedText(session)" />
 						</div>
@@ -113,7 +119,7 @@
 						:disabled="loading"
 						@click="run(lastInstruction)"
 					>
-						Try again
+						{{ $t('taskAgent.aiRewrite.tryAgain') }}
 					</button>
 				</div>
 
@@ -121,8 +127,8 @@
 					<Input
 						v-model="instruction"
 						class="min-w-0 flex-1"
-						placeholder="Refine: e.g. make it shorter, add acceptance criteria"
-						aria-label="Refine instruction"
+						:placeholder="$t('taskAgent.aiRewrite.refinePlaceholder')"
+						:aria-label="$t('taskAgent.aiRewrite.refineLabel')"
 						data-testid="ai-rewrite-instruction"
 						:disabled="loading"
 					/>
@@ -132,7 +138,7 @@
 						:disabled="loading || !instruction.trim()"
 						data-testid="ai-rewrite-refine"
 					>
-						Refine
+						{{ $t('taskAgent.aiRewrite.refine') }}
 					</Button>
 				</form>
 
@@ -144,7 +150,7 @@
 						data-testid="ai-rewrite-cancel"
 						@click="close"
 					>
-						Cancel
+						{{ $t('common.actions.cancel') }}
 					</Button>
 					<Button
 						type="button"
@@ -153,7 +159,7 @@
 						:disabled="loading || session.selected === 0"
 						@click="accept"
 					>
-						Accept
+						{{ $t('taskAgent.aiRewrite.accept') }}
 					</Button>
 				</div>
 			</DialogContent>
@@ -173,6 +179,7 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { Input } from '@/components/ui/input';
+	import { t } from '@/i18n';
 	import {
 		acceptRevision,
 		addRevision,
@@ -210,12 +217,12 @@
 			? props.disabledReason
 			: props.description.trim()
 				? ''
-				: 'Write a description first',
+				: t('taskAgent.aiRewrite.writeFirst'),
 	);
 	const previewLabel = computed(() =>
 		session.value.selected === 0
-			? 'Preview: original'
-			: `Preview: revision ${session.value.selected}`,
+			? t('taskAgent.aiRewrite.previewOriginal')
+			: t('taskAgent.aiRewrite.previewRevision', { n: session.value.selected }),
 	);
 	const undoVisible = computed(
 		() => undoText.value !== null && props.description === acceptedText.value,
@@ -270,8 +277,7 @@
 	const accept = () => {
 		const accepted = acceptRevision(session.value, props.description);
 		if (!accepted) {
-			error.value =
-				'The description changed while this was open. Close and rewrite it again.';
+			error.value = t('taskAgent.aiRewrite.changedWhileOpen');
 			return;
 		}
 		undoText.value = accepted.previous;

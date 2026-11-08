@@ -1,0 +1,42 @@
+{
+	"actions": {
+		"save": "Zapisz",
+		"saving": "Zapisywanie…",
+		"cancel": "Anuluj",
+		"delete": "Usuń",
+		"remove": "Usuń",
+		"close": "Zamknij",
+		"edit": "Edytuj",
+		"create": "Utwórz",
+		"add": "Dodaj",
+		"apply": "Zastosuj",
+		"reset": "Resetuj",
+		"back": "Wstecz",
+		"next": "Dalej",
+		"done": "Gotowe",
+		"confirm": "Potwierdź",
+		"retry": "Ponów",
+		"search": "Szukaj",
+		"copy": "Kopiuj",
+		"copied": "Skopiowano",
+		"open": "Otwórz",
+		"learnMore": "Dowiedz się więcej",
+		"continue": "Kontynuuj",
+		"skip": "Pomiń",
+		"enable": "Włącz",
+		"disable": "Wyłącz"
+	},
+	"states": {
+		"loading": "Ładowanie…",
+		"yes": "Tak",
+		"no": "Nie",
+		"on": "Wł.",
+		"off": "Wył.",
+		"none": "Brak",
+		"unknown": "Nieznane"
+	},
+	"errors": {
+		"generic": "Coś poszło nie tak. Spróbuj ponownie.",
+		"network": "Błąd sieci. Sprawdź połączenie i spróbuj ponownie."
+	}
+}

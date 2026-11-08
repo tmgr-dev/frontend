@@ -1,0 +1,233 @@
+{
+	"doneCheckbox": {
+		"label": "Ukończone"
+	},
+	"linkChips": {
+		"title": "Powiązania",
+		"page": "Strona {id}"
+	},
+	"pageMentions": {
+		"title": "Wspomniane na stronach"
+	},
+	"priorityBadge": {
+		"title": "Priorytet: {label}"
+	},
+	"shareMenu": {
+		"share": "Udostępnij"
+	},
+	"timeEntries": {
+		"title": "Sesje terminala",
+		"partial": "częściowo pokryte innym śledzonym czasem"
+	},
+	"timeInfo": {
+		"created": "Utworzono: {time}",
+		"edited": "Edytowano: {time}",
+		"overtime": "Nadgodziny"
+	},
+	"actions": {
+		"delete": "Usuń",
+		"save": "Zapisz",
+		"create": "Utwórz",
+		"settings": "Ustawienia"
+	},
+	"reminder": {
+		"label": "Przypomnienie"
+	},
+	"sidePanel": {
+		"label": "Zadanie"
+	},
+	"exportSettings": {
+		"title": "Ustawienia eksportu",
+		"roundHoursUp": "Zaokrąglaj godziny w górę",
+		"zeroExpectedWeekends": "Zero oczekiwanych godzin w dni wolne",
+		"weekendDays": "Dni weekendu:",
+		"customHolidays": "Własne święta:",
+		"add": "Dodaj",
+		"parseDateFromTitle": "Odczytuj datę z tytułu zadania",
+		"days": {
+			"sun": "Nd",
+			"mon": "Pn",
+			"tue": "Wt",
+			"wed": "Śr",
+			"thu": "Cz",
+			"fri": "Pt",
+			"sat": "Sb"
+		}
+	},
+	"multipleActions": {
+		"title": "Akcje zbiorcze",
+		"updateTasks": "Zaktualizuj zadania",
+		"markDone": "Oznacz jako ukończone",
+		"markDoneNoStatus": "Oznacz jako ukończone (brak statusu Ukończone)",
+		"markOpen": "Oznacz jako otwarte",
+		"archive": "Archiwizuj",
+		"delete": "Usuń",
+		"moveToStatus": "Przenieś do statusu",
+		"agentRuns": "Uruchomienia agentów",
+		"confirmAgentRuns": "Potwierdź dla uruchomień agentów",
+		"export": "Eksport",
+		"exportCsv": "Eksportuj do CSV",
+		"exportJpg": "Eksportuj do JPEG",
+		"exportXlsx": "Eksportuj do XLSX",
+		"seconds": "{n} s",
+		"execute": "Wykonaj"
+	},
+	"pomodoroSettings": {
+		"dialogLabel": "Ustawienia Pomodoro",
+		"title": "Pomodoro",
+		"description": "Skonfiguruj interwały skupienia i przerw. Ustawienia dotyczą wszystkich Twoich zadań.",
+		"focusDuration": "Czas skupienia",
+		"shortBreak": "Krótka przerwa",
+		"longBreak": "Długa przerwa",
+		"longBreakEvery": "Długa przerwa co",
+		"pomodoros": "pomodoro | pomodoro | pomodoro",
+		"autoStart": "Automatycznie rozpoczynaj kolejny interwał",
+		"autoStartHint": "Pomiń przycisk odtwarzania między skupieniem a przerwą",
+		"pauseTracking": "Wstrzymaj śledzony czas podczas przerwy",
+		"pauseTrackingHint": "Zatrzymaj zegar, gdy odpoczywasz",
+		"notifications": "Powiadomienia",
+		"notify": {
+			"silent": "Ciche",
+			"system": "Systemowe",
+			"both": "Oba"
+		},
+		"sound": "Dźwięk końca interwału",
+		"sounds": {
+			"bell": "Dzwonek",
+			"chime": "Gong",
+			"wood": "Drewno",
+			"digital": "Cyfrowy"
+		},
+		"minutesUnit": "min",
+		"saveError": "Nie udało się zapisać ustawień. Spróbuj ponownie."
+	},
+	"pomodoroBlock": {
+		"phase": {
+			"focus": "SKUPIENIE",
+			"short": "KRÓTKA PRZERWA",
+			"long": "DŁUGA PRZERWA"
+		},
+		"skipPhase": "Pomiń fazę",
+		"reset": "Resetuj",
+		"distractedHint": "Coś mnie rozproszyło",
+		"distracted": "ROZPROSZENIE",
+		"distractedCount": "ROZPROSZENIA · {n}",
+		"settings": "Ustawienia Pomodoro",
+		"disable": "Wyłącz Pomodoro dla tego zadania",
+		"summary": "POMODORO: {n} · {focus}/{short}/{long}"
+	},
+	"attachments": {
+		"loadError": "Nie udało się wczytać załączników.",
+		"title": "Załączniki",
+		"addFiles": "Dodaj pliki",
+		"pendingNote": "{size} · Zostanie przesłane po utworzeniu zadania",
+		"open": "Otwórz {name}",
+		"uploading": "Przesyłanie {size}…",
+		"dismiss": "Odrzuć przesyłanie",
+		"none": "Brak załączników",
+		"addMore": "Dodaj więcej plików",
+		"dropHint": "Kliknij lub przeciągnij tu pliki, aby dołączyć dokumenty, obrazy lub inne pliki",
+		"download": "Pobierz"
+	},
+	"gallery": {
+		"file": "Plik",
+		"position": "Plik {n} z {total}",
+		"downloadFailed": "Pobieranie nie powiodło się",
+		"zoomOut": "Pomniejsz",
+		"zoomIn": "Powiększ",
+		"fitTitle": "Dopasuj do okna (0)",
+		"fit": "Dopasuj do okna",
+		"actualSizeTitle": "Rzeczywisty rozmiar (100%)",
+		"actualSize": "Rzeczywisty rozmiar",
+		"previous": "Wstecz",
+		"previousFile": "Poprzedni plik",
+		"next": "Dalej",
+		"nextFile": "Następny plik",
+		"imageError": "Nie udało się wczytać obrazu. Ponów",
+		"fileError": "Nie udało się wczytać pliku",
+		"unsupported": "Podgląd nie jest tu dostępny",
+		"previewOf": "Podgląd: {name}"
+	},
+	"comments": {
+		"activity": "Aktywność",
+		"filter": {
+			"all": "Wszystkie",
+			"people": "Osoby",
+			"personas": "Persony",
+			"plugins": "Wtyczki"
+		},
+		"empty": "Brak komentarzy",
+		"noMatch": "Brak komentarzy pasujących do tego filtru",
+		"aiAssistant": "Asystent AI",
+		"deleteComment": "Usuń komentarz",
+		"confirmDelete": "Usunąć ten komentarz?",
+		"addReaction": "Dodaj reakcję"
+	},
+	"relations": {
+		"title": "Powiązane zadania",
+		"link": "Powiąż",
+		"removeRelation": "Usuń powiązanie",
+		"dialogTitle": "Powiąż zadanie",
+		"issue": "Zadanie",
+		"searchPlaceholder": "Szukaj…",
+		"searching": "Wyszukiwanie…",
+		"type": "Typ",
+		"select": "Wybierz…",
+		"linking": "Powiązywanie…",
+		"removeTitle": "Usuń powiązanie",
+		"removeBody": "Usunąć powiązanie „{type}” z zadaniem #{id}?",
+		"errors": {
+			"loadTypes": "Nie udało się wczytać typów powiązań",
+			"fillAll": "Wypełnij wszystkie pola",
+			"add": "Nie udało się dodać powiązania zadań",
+			"remove": "Nie udało się usunąć powiązania zadań"
+		}
+	},
+	"boardCard": {
+		"dragReorder": "Przeciągnij, aby zmienić kolejność",
+		"dragMove": "Przeciągnij, aby przenieść",
+		"stopTimer": "Zatrzymaj timer",
+		"startTimer": "Uruchom timer",
+		"changeAssignee": "Zmień wykonawcę",
+		"assignSomeone": "Przypisz osobę",
+		"searchMembers": "Szukaj członków...",
+		"noMembers": "Nie znaleziono członków.",
+		"taskActions": "Akcje zadania",
+		"openDetails": "Otwórz szczegóły",
+		"settings": "Ustawienia",
+		"moveToTop": "Przenieś na górę",
+		"moveToBottom": "Przenieś na dół",
+		"archive": "Archiwizuj",
+		"delete": "Usuń",
+		"commentsLabel": "{n} komentarz | {n} komentarze | {n} komentarzy",
+		"archiveTitle": "Archiwizuj zadanie",
+		"archiveBody": "Czy na pewno chcesz zarchiwizować „{title}”?",
+		"deleteTitle": "Usuń zadanie",
+		"deleteBody": "Czy na pewno chcesz usunąć „{title}”?",
+		"archiveStatusMissing": "Nie znaleziono statusu archiwum",
+		"archiveStatusMissingHint": "Najpierw utwórz status archiwum.",
+		"archiveFailed": "Nie udało się zarchiwizować zadania",
+		"tryAgain": "Spróbuj ponownie.",
+		"deleteFailed": "Nie udało się usunąć zadania. Spróbuj ponownie."
+	},
+	"list": {
+		"selectedTasks": "Zaznaczone zadania:",
+		"deselectAll": "Odznacz wszystkie",
+		"selectAll": "Zaznacz wszystkie",
+		"process": "Przetwórz ({n})",
+		"summary": "{selected} z {total} · {hours} godz.",
+		"summaryOvertime": "{selected} z {total} · {hours} godz. · +{overtime} nadgodzin",
+		"restore": "Przywróć",
+		"restoreFromTrash": "Przywróć z kosza",
+		"deleteTask": "Usuń zadanie",
+		"timerRunning": "Timer działa",
+		"overtime": "+{time} nadgodzin",
+		"showing": "Wyświetlane {from}–{to} z {total} zadań",
+		"perPage": "{n} na stronę",
+		"previous": "Wstecz",
+		"next": "Dalej",
+		"page": "Strona {page} z {last}",
+		"deleteTasksTitle": "Usuń zadania",
+		"deleteTasksBody": "Czy na pewno?"
+	}
+}

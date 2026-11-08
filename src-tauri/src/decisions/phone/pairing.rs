@@ -166,6 +166,7 @@ impl Phones {
       error: None,
       finishing: false,
     });
+    log::info!("[phones] pairing started");
     self.host.changed();
     self.host.open_window();
     self.wake();
@@ -215,6 +216,7 @@ impl Phones {
       }
     };
     if let Some(conn) = conn {
+      log::info!("[phones] pairing: the QR code expired");
       let _ = self.relay.delete_mailbox(&conn);
       self.host.changed();
     }
@@ -234,8 +236,15 @@ impl Phones {
         _ => return,
       }
     };
-    let Ok(msgs) = self.relay.list_messages(&conn) else {
-      return;
+    let msgs = match self.relay.list_messages(&conn) {
+      Ok(m) => {
+        self.poll_recovered("pairing");
+        m
+      }
+      Err(e) => {
+        self.poll_failed("pairing", "pairing: reading the relay messages failed", &e);
+        return;
+      }
     };
     let mut junk = Vec::new();
     let mut abort = None;
@@ -256,15 +265,20 @@ impl Phones {
           p.seen.push(m.id.clone());
         }
         match opened {
-          Err(_) => junk.push(m.clone()),
+          Err(e) => {
+            log::warn!("[phones] pairing: a message was not a valid hello and is deleted: {e}");
+            junk.push(m.clone());
+          }
           Ok(h) => match &p.hello {
             None => {
               p.hello = Some((h, m.id.clone()));
               p.state = PairState::Confirm;
+              log::info!("[phones] pairing: the phone answered, waiting for the code");
               changed = true;
             }
             Some((first, _)) if first.body == h.body => {}
             Some(_) => {
+              log::warn!("[phones] pairing: a second device answered the QR code");
               abort = Some(self.fail(p, "A second device answered the QR code. Pairing was cancelled."));
               changed = true;
             }
@@ -296,6 +310,7 @@ impl Phones {
       let matches: bool = hello.code.as_bytes().ct_eq(typed.as_bytes()).into();
       if !matches {
         p.attempts_left = p.attempts_left.saturating_sub(1);
+        log::info!("[phones] pairing: wrong code, {} attempts left", p.attempts_left);
         let dead = (p.attempts_left == 0).then(|| self.fail(p, "Too many wrong codes. Start again."));
         drop(g);
         if let Some(conn) = dead {
@@ -337,12 +352,14 @@ impl Phones {
     match finished {
       Ok(()) => {
         p.state = PairState::Done;
+        log::info!("[phones] pairing: done");
         drop(g);
         let _ = self.relay.delete_message(&conn, &msg_id);
         self.host.changed();
         self.refresh_snapshots(true);
       }
       Err(reason) => {
+        log::warn!("[phones] pairing: failed: {reason}");
         let conn = self.fail(p, &reason);
         drop(g);
         let _ = self.relay.delete_mailbox(&conn);
@@ -398,6 +415,7 @@ impl Phones {
     let taken = self.pairing.lock().unwrap_or_else(|p| p.into_inner()).take();
     if let Some(p) = taken {
       if matches!(p.state, PairState::Waiting | PairState::Confirm) {
+        log::info!("[phones] pairing: cancelled");
         let _ = self.relay.delete_mailbox(&p.conn);
         self.audit.append((self.now)(), "pair_cancelled", &[("mailbox", &p.conn.mailbox)]);
       }

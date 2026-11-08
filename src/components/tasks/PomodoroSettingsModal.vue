@@ -14,26 +14,31 @@
 				<div class="flex-1">
 					<div class="mb-1.5 flex items-center gap-2.5">
 						<span class="text-xl">🍅</span>
-						<h2 class="text-xl font-bold tracking-tight">Pomodoro</h2>
+						<h2 class="text-xl font-bold tracking-tight">
+							{{ $t('tasks.pomodoroSettings.title') }}
+						</h2>
 					</div>
 					<p class="text-[13px] leading-snug text-ink-muted">
-						Configure focus and break intervals. Settings apply to all your
-						tasks.
+						{{ $t('tasks.pomodoroSettings.description') }}
 					</p>
 				</div>
 				<button
 					type="button"
 					class="flex h-7 w-7 items-center justify-center rounded-md hover:bg-surface-hover"
 					@click="$emit('close')"
-					aria-label="Close"
+					:aria-label="$t('common.actions.close')"
 				>
 					<X :size="16" class="text-ink-subtle" />
 				</button>
 			</div>
 
 			<div class="mb-3.5 grid grid-cols-2 gap-2.5">
-				<SettingLabel>Focus duration</SettingLabel>
-				<SettingLabel>Short break</SettingLabel>
+				<SettingLabel>{{
+					$t('tasks.pomodoroSettings.focusDuration')
+				}}</SettingLabel>
+				<SettingLabel>{{
+					$t('tasks.pomodoroSettings.shortBreak')
+				}}</SettingLabel>
 				<TimeField
 					:model-value="draft.focusMin"
 					accent="#e85a4f"
@@ -44,8 +49,12 @@
 					accent="#5b8cff"
 					@update:model-value="set('shortMin', $event)"
 				/>
-				<SettingLabel>Long break</SettingLabel>
-				<SettingLabel>Long break every</SettingLabel>
+				<SettingLabel>{{
+					$t('tasks.pomodoroSettings.longBreak')
+				}}</SettingLabel>
+				<SettingLabel>{{
+					$t('tasks.pomodoroSettings.longBreakEvery')
+				}}</SettingLabel>
 				<TimeField
 					:model-value="draft.longMin"
 					accent="#a78bfa"
@@ -55,7 +64,7 @@
 					:model-value="draft.longEvery"
 					:min="2"
 					:max="12"
-					:suffix="draft.longEvery === 1 ? 'pomodoro' : 'pomodoros'"
+					:suffix="$t('tasks.pomodoroSettings.pomodoros', draft.longEvery)"
 					@update:model-value="set('longEvery', $event)"
 				/>
 			</div>
@@ -64,22 +73,24 @@
 				class="mb-3.5 overflow-hidden rounded-[10px] border border-line bg-surface-sunken"
 			>
 				<RowToggle
-					title="Auto-start next interval"
-					subtitle="Skip the play button between focus and break"
+					:title="$t('tasks.pomodoroSettings.autoStart')"
+					:subtitle="$t('tasks.pomodoroSettings.autoStartHint')"
 					:model-value="draft.autoStart"
 					@update:model-value="set('autoStart', $event)"
 				/>
 				<div class="h-px bg-line" />
 				<RowToggle
-					title="Pause Time Tracked during break"
-					subtitle="Stop the wall-clock while you rest"
+					:title="$t('tasks.pomodoroSettings.pauseTracking')"
+					:subtitle="$t('tasks.pomodoroSettings.pauseTrackingHint')"
 					:model-value="draft.pauseTrackingOnBreak"
 					@update:model-value="set('pauseTrackingOnBreak', $event)"
 				/>
 			</div>
 
 			<div class="mb-3.5">
-				<SettingLabel>Notifications</SettingLabel>
+				<SettingLabel>{{
+					$t('tasks.pomodoroSettings.notifications')
+				}}</SettingLabel>
 				<div
 					class="grid grid-cols-3 gap-1 rounded-[10px] border border-line bg-surface-sunken p-1"
 				>
@@ -96,13 +107,13 @@
 						@click="set('notify', opt.value)"
 					>
 						<component :is="opt.icon" :size="13" />
-						{{ opt.label }}
+						{{ $t(opt.labelKey) }}
 					</button>
 				</div>
 			</div>
 
 			<div class="mb-5">
-				<SettingLabel>End-of-interval sound</SettingLabel>
+				<SettingLabel>{{ $t('tasks.pomodoroSettings.sound') }}</SettingLabel>
 				<div class="rounded-[10px] border border-line bg-surface-sunken p-1.5">
 					<div class="grid grid-cols-4 gap-1">
 						<button
@@ -117,7 +128,7 @@
 							"
 							@click="pickSound(s.id)"
 						>
-							{{ s.label }}
+							{{ $t(s.labelKey) }}
 						</button>
 					</div>
 					<div
@@ -164,7 +175,7 @@
 				:disabled="saving"
 				@click="handleSave"
 			>
-				{{ saving ? 'Saving…' : 'Save' }}
+				{{ saving ? $t('common.actions.saving') : $t('common.actions.save') }}
 			</button>
 		</div>
 	</div>
@@ -177,6 +188,7 @@
 	} from '@/actions/tmgr/pomodoro';
 	import { useDialogFocus } from '@/composable/useDialogFocus';
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
+	import { t } from '@/i18n';
 	import { playPomodoroSound } from '@/utils/pomodoroSound';
 	import { Bell, Eye, Minus, Plus, Volume2, VolumeX, X } from 'lucide-vue-next';
 	import {
@@ -271,7 +283,7 @@
 					h(
 						'span',
 						{ class: 'mr-2.5 text-[11px] font-medium text-ink-muted' },
-						'min',
+						t('tasks.pomodoroSettings.minutesUnit'),
 					),
 					h('span', {
 						class: 'inline-block h-1.5 w-1.5 rounded-full',
@@ -413,7 +425,7 @@
 			const dialogFocus = useDialogFocus(
 				modalId,
 				dialogEl,
-				'Pomodoro settings',
+				t('tasks.pomodoroSettings.dialogLabel'),
 			);
 			const { registerModal, unregisterModal } = useModalEscHandler();
 			let tracked = false;
@@ -463,7 +475,7 @@
 				try {
 					await savePomodoroSettings(draft.value);
 				} catch {
-					saveError.value = "Couldn't save settings. Try again.";
+					saveError.value = t('tasks.pomodoroSettings.saveError');
 					return;
 				} finally {
 					saving.value = false;
@@ -481,15 +493,27 @@
 				pickSound,
 				handleSave,
 				notifyOptions: [
-					{ value: 'silent' as const, label: 'Silent', icon: Eye },
-					{ value: 'system' as const, label: 'System', icon: Bell },
-					{ value: 'both' as const, label: 'Both', icon: Volume2 },
+					{
+						value: 'silent' as const,
+						labelKey: 'tasks.pomodoroSettings.notify.silent',
+						icon: Eye,
+					},
+					{
+						value: 'system' as const,
+						labelKey: 'tasks.pomodoroSettings.notify.system',
+						icon: Bell,
+					},
+					{
+						value: 'both' as const,
+						labelKey: 'tasks.pomodoroSettings.notify.both',
+						icon: Volume2,
+					},
 				],
 				sounds: [
-					{ id: 'bell', label: 'Bell' },
-					{ id: 'chime', label: 'Chime' },
-					{ id: 'wood', label: 'Wood' },
-					{ id: 'digital', label: 'Digital' },
+					{ id: 'bell', labelKey: 'tasks.pomodoroSettings.sounds.bell' },
+					{ id: 'chime', labelKey: 'tasks.pomodoroSettings.sounds.chime' },
+					{ id: 'wood', labelKey: 'tasks.pomodoroSettings.sounds.wood' },
+					{ id: 'digital', labelKey: 'tasks.pomodoroSettings.sounds.digital' },
 				],
 				X,
 				Volume2,

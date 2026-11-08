@@ -1,4 +1,5 @@
 import '@vue/runtime-core';
+import type { ComposerTranslation } from 'vue-i18n';
 import type { RouteLocationNormalizedLoaded, Router } from 'vue-router';
 
 declare module '@vue/runtime-core' {
@@ -6,5 +7,7 @@ declare module '@vue/runtime-core' {
 		$router: Router;
 		$route: RouteLocationNormalizedLoaded;
 		showAlert(title?: string, description?: string): void;
+		$t: ComposerTranslation;
+		$te(key: string): boolean;
 	}
 }

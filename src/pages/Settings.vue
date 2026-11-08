@@ -7,7 +7,7 @@
 					:loaded="initialLoaded"
 					:error="initialError"
 					:retry="loadInitialSettings"
-					label="Loading settings"
+					:label="$t('settings.loading')"
 				>
 					<div class="flex flex-col gap-6">
 						<div
@@ -16,7 +16,7 @@
 						>
 							<NotificationSettingsForm />
 
-							<SettingsSection title="Push notifications (legacy)">
+							<SettingsSection :title="$t('settings.push.title')">
 								<div class="flex flex-col gap-4">
 									<div class="flex flex-wrap gap-2">
 										<Button
@@ -25,19 +25,19 @@
 											size="sm"
 											@click="togglePushes"
 										>
-											Enable web pushes
+											{{ $t('settings.push.enable') }}
 										</Button>
 										<Button
 											variant="outline"
 											size="sm"
 											@click="testWebPushNotifications"
 										>
-											Send test notification
+											{{ $t('settings.push.test') }}
 										</Button>
 									</div>
 									<SettingsRow
 										v-slot="{ labelId, descriptionId }"
-										label="Show tooltips"
+										:label="$t('settings.push.showTooltips')"
 									>
 										<Switch
 											:checked="userSettings.showTooltips"
@@ -55,7 +55,7 @@
 										:aria-busy="savingSettings"
 										@click="updateSettings"
 									>
-										Save
+										{{ $t('common.actions.save') }}
 									</Button>
 								</template>
 							</SettingsSection>
@@ -65,10 +65,10 @@
 							v-if="isDesktopSection && isDesktop"
 							class="flex flex-col gap-6"
 						>
-							<SettingsSection title="Git auto-tracking">
+							<SettingsSection :title="$t('settings.desktop.gitTracking')">
 								<DesktopGitTrackSettings />
 							</SettingsSection>
-							<SettingsSection title="Keyboard shortcuts">
+							<SettingsSection :title="$t('settings.desktop.shortcuts')">
 								<DesktopShortcutsSettings />
 							</SettingsSection>
 						</div>
@@ -79,7 +79,7 @@
 							<SettingsSection title="TMGR">
 								<div class="flex flex-col gap-2 text-sm">
 									<p v-if="appVersion" class="text-muted-foreground">
-										Version {{ appVersion }}
+										{{ $t('settings.about.version', { version: appVersion }) }}
 									</p>
 									<a
 										href="https://tmgr.dev"
@@ -96,7 +96,7 @@
 										class="text-primary hover:underline"
 										data-testid="settings-cli-link"
 									>
-										Command line (tmgr)
+										{{ $t('settings.about.cliLink') }}
 									</a>
 								</div>
 							</SettingsSection>
@@ -104,8 +104,8 @@
 							<PromotionsList
 								v-if="promotionsEnabled && !localOnly"
 								placement="about"
-								section-title="More from the maker"
-								section-description="Other products from the people who build TMGR."
+								:section-title="$t('settings.about.moreTitle')"
+								:section-description="$t('settings.about.moreDescription')"
 							/>
 						</div>
 
@@ -116,11 +116,13 @@
 						<SettingsSection
 							v-if="isTheme"
 							data-tour="settings.theme"
-							title="Theme"
-							description="Pick a color theme and light/dark mode."
+							:title="$t('settings.theme.title')"
+							:description="$t('settings.theme.description')"
 						>
 							<ThemePicker />
 						</SettingsSection>
+
+						<LanguageSetting v-if="isTheme" />
 
 						<TimeZoneSetting v-if="isTheme && !localOnly" />
 
@@ -142,14 +144,18 @@
 							<SettingsSection
 								v-if="telegramEnabled"
 								data-tour="settings.telegram"
-								title="Telegram"
+								:title="$t('settings.telegram.title')"
 							>
 								<div
 									v-if="user.telegram_username"
 									class="flex flex-wrap items-center gap-3"
 								>
 									<span class="text-sm text-status-done">
-										Connected as @{{ user.telegram_username }}
+										{{
+											$t('settings.telegram.connectedAs', {
+												username: user.telegram_username,
+											})
+										}}
 									</span>
 									<Button
 										variant="outline"
@@ -157,11 +163,11 @@
 										class="text-destructive"
 										@click="unlinkTelegram"
 									>
-										Unlink
+										{{ $t('settings.telegram.unlink') }}
 									</Button>
 								</div>
 								<Button v-else @click="generateTelegramLink">
-									Connect Telegram
+									{{ $t('settings.telegram.connect') }}
 								</Button>
 							</SettingsSection>
 						</div>
@@ -170,10 +176,12 @@
 							<SettingsSection
 								v-if="mcpEnabled"
 								data-tour="settings.device-token"
-								title="API token"
+								:title="$t('settings.device.tokenTitle')"
 							>
 								<div class="flex max-w-xl flex-col gap-1.5">
-									<Label for="smart-device-token">API token</Label>
+									<Label for="smart-device-token">{{
+										$t('settings.device.tokenTitle')
+									}}</Label>
 									<div class="flex flex-wrap items-center gap-2">
 										<Input
 											v-if="tokenState === 'fresh'"
@@ -189,8 +197,8 @@
 											class="min-w-[220px] flex-1"
 											:placeholder="
 												tokenState === 'hidden'
-													? 'Token is set (hidden). Generate a new one if you lost it.'
-													: 'Token needs to be generated'
+													? $t('settings.device.tokenHidden')
+													: $t('settings.device.tokenNeeded')
 											"
 											readonly
 											:disabled="tokenState === 'hidden'"
@@ -203,7 +211,11 @@
 										>
 											<Check v-if="tokenCopied" class="text-status-done" />
 											<Copy v-else />
-											{{ tokenCopied ? 'Copied' : 'Copy' }}
+											{{
+												tokenCopied
+													? $t('common.actions.copied')
+													: $t('common.actions.copy')
+											}}
 										</Button>
 										<Button
 											v-if="tokenState === 'fresh'"
@@ -213,26 +225,33 @@
 										>
 											<EyeOff v-if="showToken" />
 											<Eye v-else />
-											{{ showToken ? 'Hide' : 'Show' }}
+											{{
+												showToken
+													? $t('settings.device.hide')
+													: $t('settings.device.show')
+											}}
 										</Button>
 									</div>
 									<p
 										v-if="tokenState === 'fresh'"
 										class="text-xs text-ink-subtle"
 									>
-										Copy it now — it won't be shown again.
+										{{ $t('settings.device.copyNow') }}
 									</p>
 									<p v-if="hasSmartDeviceToken" class="text-xs text-ink-subtle">
-										Created:
-										{{ formatDate(user.smart_device_token_created_at) }}
+										{{
+											$t('settings.device.created', {
+												date: formatDate(user.smart_device_token_created_at),
+											})
+										}}
 									</p>
 								</div>
 								<template #footer>
 									<Button @click="generateSmartDeviceToken">
 										{{
 											hasSmartDeviceToken
-												? 'Generate new token'
-												: 'Generate token'
+												? $t('settings.device.generateNew')
+												: $t('settings.device.generate')
 										}}
 									</Button>
 									<Button
@@ -240,41 +259,41 @@
 										variant="destructive"
 										@click="revokeSmartDeviceToken"
 									>
-										Revoke token
+										{{ $t('settings.device.revoke') }}
 									</Button>
 								</template>
 							</SettingsSection>
 
-							<SettingsSection v-if="mcpEnabled" title="How to use">
+							<SettingsSection
+								v-if="mcpEnabled"
+								:title="$t('settings.device.howTo.title')"
+							>
 								<div class="flex flex-col gap-2 text-sm text-ink-subtle">
-									<p>1. Generate a token using the button above</p>
-									<p>
-										2. Include the token in your device's API requests using the
-										header:
-									</p>
+									<p>{{ $t('settings.device.howTo.step1') }}</p>
+									<p>{{ $t('settings.device.howTo.step2') }}</p>
 									<code
 										class="block overflow-x-auto rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs text-ink"
 									>
 										X-Smart-Device-Token: your_token_here
 									</code>
-									<p>
-										Keep your token secure. If compromised, generate a new one
-										immediately.
-									</p>
+									<p>{{ $t('settings.device.howTo.secure') }}</p>
 								</div>
 							</SettingsSection>
 
-							<SettingsSection v-if="mcpEnabled" title="MCP setup">
+							<SettingsSection
+								v-if="mcpEnabled"
+								:title="$t('settings.device.mcp.title')"
+							>
 								<div class="flex flex-col gap-3 text-sm text-ink-subtle">
-									<p>
-										TMGR MCP uses the smart device token as a custom header.
-										Generate the token above, then configure an MCP client that
-										supports remote Streamable HTTP servers with headers (Claude
-										Code:
-										<CommandChip :command="mcpAddCommand" />).
-									</p>
+									<i18n-t keypath="settings.device.mcp.intro" tag="p">
+										<template #command>
+											<CommandChip :command="mcpAddCommand" />
+										</template>
+									</i18n-t>
 									<div>
-										<p class="mb-1 font-medium text-ink">Server URL</p>
+										<p class="mb-1 font-medium text-ink">
+											{{ $t('settings.device.mcp.serverUrl') }}
+										</p>
 										<code
 											class="block overflow-x-auto rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs text-ink"
 										>
@@ -283,31 +302,26 @@
 									</div>
 									<div>
 										<p class="mb-1 font-medium text-ink">
-											Client configuration
+											{{ $t('settings.device.mcp.clientConfig') }}
 										</p>
 										<pre
 											class="overflow-x-auto rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs whitespace-pre text-ink"
 											>{{ mcpClientConfig }}</pre>
 									</div>
-									<p>
-										OAuth note: this TMGR MCP server is not an OAuth connector
-										yet. Unlike Spendly, it authenticates `/mcp/**` with
-										`X-Smart-Device-Token`, so Claude.ai custom connectors that
-										require OAuth discovery are not supported by this setup.
-									</p>
-									<p>
-										This MCP works with your tasks and time. For phone
-										notifications and alarms from agents, connect tmgr-notify in
-										<router-link
-											to="/settings/agent-notifications"
-											class="text-primary hover:underline"
-											>Agent alerts</router-link
-										>.
-									</p>
+									<p>{{ $t('settings.device.mcp.oauth') }}</p>
+									<i18n-t keypath="settings.device.mcp.notify" tag="p">
+										<template #link>
+											<router-link
+												to="/settings/agent-notifications"
+												class="text-primary hover:underline"
+												>{{ $t('settings.device.mcp.notifyLink') }}</router-link
+											>
+										</template>
+									</i18n-t>
 								</div>
 							</SettingsSection>
 
-							<SettingsSection title="Documentation">
+							<SettingsSection :title="$t('settings.device.docs.title')">
 								<ul class="flex flex-col gap-1 text-sm">
 									<li>
 										<a
@@ -316,7 +330,7 @@
 											rel="noopener"
 											class="text-primary hover:underline"
 										>
-											Smart Device API reference
+											{{ $t('settings.device.docs.api') }}
 										</a>
 									</li>
 									<li>
@@ -326,7 +340,7 @@
 											rel="noopener"
 											class="text-primary hover:underline"
 										>
-											MCP server setup
+											{{ $t('settings.device.docs.mcp') }}
 										</a>
 									</li>
 								</ul>
@@ -352,7 +366,7 @@
 								:href="confirm.link"
 								target="_blank"
 							>
-								Open Telegram
+								{{ $t('settings.telegram.open') }}
 							</a>
 						</template>
 					</confirm>
@@ -386,6 +400,7 @@
 	import CommandChip from '@/components/general/CommandChip.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import ThemePicker from '@/components/general/ThemePicker.vue';
+	import LanguageSetting from '@/components/general/LanguageSetting.vue';
 	import TimeZoneSetting from '@/components/general/TimeZoneSetting.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
@@ -408,6 +423,7 @@
 	import Profile from '@/pages/Profile.vue';
 	import { isRunnerSupported } from '@/runner/api';
 	import TipsSettings from '@/tours/ui/TipsSettings.vue';
+	import { t } from '@/i18n';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { resolveMcpUrl } from '@/utils/mcpConnectSnippets';
 	import { writeNtfySubscribed } from '@/utils/ntfySubscription';
@@ -441,6 +457,7 @@
 			LocalDataSettings,
 			LocalProfileSettings,
 			ThemePicker,
+			LanguageSetting,
 			TimeZoneSetting,
 			CommandChip,
 			SettingsSection,
@@ -514,17 +531,17 @@
 				return this.$store.getters['featureToggles/isFeatureEnabled']('mcp');
 			},
 			pageTitle() {
-				if (this.isProfile) return 'Profile';
-				if (this.isDevice) return 'Smart devices';
-				if (this.isNotification) return 'Notifications';
-				if (this.isTheme) return 'Theme';
-				if (this.isExperimental) return 'Experimental';
-				if (this.isDesktopSection) return 'Desktop';
-				if (this.isLocalData) return 'Local data';
-				if (this.isPrivacy) return 'Privacy';
-				if (this.isAgentWork) return 'Agent work';
-				if (this.isAbout) return 'About';
-				return 'Settings';
+				if (this.isProfile) return t('settings.page.profile');
+				if (this.isDevice) return t('settings.page.devices');
+				if (this.isNotification) return t('settings.page.notifications');
+				if (this.isTheme) return t('settings.page.theme');
+				if (this.isExperimental) return t('settings.page.experimental');
+				if (this.isDesktopSection) return t('settings.page.desktop');
+				if (this.isLocalData) return t('settings.page.localData');
+				if (this.isPrivacy) return t('settings.page.privacy');
+				if (this.isAgentWork) return t('settings.page.agentWork');
+				if (this.isAbout) return t('settings.page.about');
+				return t('settings.page.settings');
 			},
 			hasSmartDeviceToken() {
 				return hasSmartDeviceToken(this.user);
@@ -580,7 +597,7 @@
 			},
 		},
 		async mounted() {
-			setDocumentTitle('Settings');
+			setDocumentTitle(t('settings.page.settings'));
 			await this.loadInitialSettings();
 		},
 		methods: {
@@ -601,7 +618,7 @@
 					}
 					this.initialLoaded = true;
 				} catch {
-					this.initialError = 'Could not load settings.';
+					this.initialError = t('settings.loadFailed');
 				} finally {
 					this.initialPending = false;
 				}
@@ -843,10 +860,10 @@
 			},
 			async generateSmartDeviceToken() {
 				this.showConfirm(
-					'Generate New Token',
+					t('settings.device.generateTitle'),
 					this.hasSmartDeviceToken
-						? 'Are you sure you want to generate a new token? This will invalidate the existing token and any devices using it will need to be updated.'
-						: 'Generate a new token for your smart devices?',
+						? t('settings.device.regenerateBody')
+						: t('settings.device.generateBody'),
 					async () => {
 						let response;
 						try {
@@ -855,7 +872,7 @@
 							console.error('Failed to generate token:', error);
 							this.confirm = null;
 							this.showAlert(
-								serverMessageFrom(error, 'Failed to generate token'),
+								serverMessageFrom(error, t('settings.device.generateFailed')),
 								'error',
 							);
 							return;
@@ -863,7 +880,7 @@
 						this.freshToken = response?.data?.token ?? null;
 						this.showToken = false;
 						this.confirm = null;
-						this.showAlert('Token generated successfully');
+						this.showAlert(t('settings.device.generated'));
 						await this.refreshUserAfterTokenChange();
 					},
 				);
@@ -871,8 +888,8 @@
 
 			async revokeSmartDeviceToken() {
 				this.showConfirm(
-					'Revoke Token',
-					'Are you sure you want to revoke this token? All devices using this token will stop working until reconfigured with a new token.',
+					t('settings.device.revokeTitle'),
+					t('settings.device.revokeBody'),
 					async () => {
 						try {
 							await revokeSmartDeviceToken();
@@ -880,7 +897,7 @@
 							console.error('Failed to revoke token:', error);
 							this.confirm = null;
 							this.showAlert(
-								serverMessageFrom(error, 'Failed to revoke token'),
+								serverMessageFrom(error, t('settings.device.revokeFailed')),
 								'error',
 							);
 							return;
@@ -892,7 +909,7 @@
 							smart_device_token: null,
 						};
 						this.confirm = null;
-						this.showAlert('Token revoked successfully');
+						this.showAlert(t('settings.device.revoked'));
 						await this.refreshUserAfterTokenChange();
 					},
 				);
@@ -909,7 +926,7 @@
 			showAlert(message, type = 'success') {
 				if (type === 'error') {
 					this.toaster.toast({
-						title: 'Error',
+						title: t('settings.alerts.errorTitle'),
 						description: message,
 						variant: 'destructive',
 					});
@@ -927,8 +944,8 @@
 					const link = await generateLink();
 
 					this.showConfirm(
-						'Connect Telegram',
-						"Click the button below to open Telegram and connect your account. After connecting, you'll receive notifications through Telegram.",
+						t('settings.telegram.connect'),
+						t('settings.telegram.connectBody'),
 						() => {
 							window.open(link, '_blank');
 							this.confirm = null;
@@ -942,8 +959,8 @@
 
 			async unlinkTelegram() {
 				this.showConfirm(
-					'Unlink Telegram',
-					'Are you sure you want to unlink your Telegram account? You will no longer receive notifications through Telegram.',
+					t('settings.telegram.unlinkTitle'),
+					t('settings.telegram.unlinkBody'),
 					async () => {
 						try {
 							await unlink();
@@ -982,8 +999,8 @@
 					this.$store.commit('setPusherBeamsUserId', userId);
 				} catch (e) {
 					this.showConfirm(
-						'Notifications registration',
-						'Please check notifications permissions',
+						t('settings.push.registrationTitle'),
+						t('settings.push.registrationBody'),
 						() => {
 							this.confirm = null;
 						},
@@ -1070,7 +1087,7 @@
 								: '';
 
 							if (normalizedOriginalValue !== editorValue) {
-								this.showAlert('Editor updated. Reloading page...');
+								this.showAlert(t('settings.alerts.editorUpdated'));
 
 								// Force localStorage update one more time to ensure it's saved before reload
 								localStorage.setItem('preferred_editor', editorValue);
@@ -1086,10 +1103,10 @@
 					}
 
 					this.initSettings(this.availableSettings, data.settings);
-					this.showAlert('Settings updated successfully');
+					this.showAlert(t('settings.alerts.updated'));
 				} catch (e) {
 					console.error(e);
-					this.showAlert('Failed to update settings', 'error');
+					this.showAlert(t('settings.alerts.updateFailed'), 'error');
 				} finally {
 					this.savingSettings = false;
 				}
