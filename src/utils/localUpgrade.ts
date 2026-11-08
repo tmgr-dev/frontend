@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { reactive } from 'vue';
 
 export const LOCAL_UPGRADE_KEY = 'tmgr:local-upgrade';
@@ -86,8 +87,8 @@ export const clearUpgradeDialog = (
 
 export const upgradeFailureSentence = (failed: FailedStep | null) =>
 	failed === 'link'
-		? 'This device could not be linked to your account, so your local data stays on this device for now. You can keep working, retry, or skip.'
-		: 'Some local data could not be moved to this account yet. You can keep working, and we will try again next time you start the app.';
+		? t('desktop.helpers.upgradeFailure.link')
+		: t('desktop.helpers.upgradeFailure.move');
 
 export const canSkipLocalUpgrade = (failed: FailedStep | null) =>
 	failed === 'link';

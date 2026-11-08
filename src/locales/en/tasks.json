@@ -229,5 +229,51 @@
 		"page": "Page {page} of {last}",
 		"deleteTasksTitle": "Delete tasks",
 		"deleteTasksBody": "Are you sure?"
+	},
+	"helpers": {
+		"doneDisabledTooltip": "This workspace has no Done status",
+		"state": {
+			"done": "Done",
+			"archived": "Archived",
+			"open": "Open"
+		},
+		"boardDate": {
+			"today": "Today",
+			"yesterday": "Yesterday"
+		},
+		"backlogTimer": {
+			"title": "Task in Backlog",
+			"message": "Task \"{title}\" is in backlog. Switch to \"{status}\" status?"
+		},
+		"fileSize": {
+			"b": "{n} B",
+			"kb": "{n} KB",
+			"mb": "{n} MB",
+			"gb": "{n} GB"
+		},
+		"attachmentErrors": {
+			"tooLargeWithLimit": "File is too large. The limit is {limit}.",
+			"tooLarge": "File is too large.",
+			"typeNotAllowed": "This file type cannot be attached.",
+			"notAttachable": "This file cannot be attached.",
+			"noAccess": "You do not have access to this file.",
+			"uploadFailed": "Upload failed. Please try again.",
+			"empty": "File is empty."
+		},
+		"priority": {
+			"urgent": "Urgent",
+			"high": "High",
+			"medium": "Medium",
+			"low": "Low"
+		},
+		"timeEntrySource": {
+			"attach": "Terminal session"
+		},
+		"relativeTime": {
+			"justNow": "just now",
+			"minutesAgo": "{n}m ago",
+			"hoursAgo": "{n}h ago",
+			"daysAgo": "{n}d ago"
+		}
 	}
 }

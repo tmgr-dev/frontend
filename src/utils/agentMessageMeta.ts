@@ -1,3 +1,4 @@
+import { currentLocale, t } from '@/i18n';
 import type { AgentMessage } from '@/types/agent';
 
 const pad = (n: number): string => String(n).padStart(2, '0');
@@ -18,7 +19,7 @@ export const formatMessageFullTime = (
 ): string => {
 	const date = parse(iso);
 	return date
-		? date.toLocaleString('en-US', {
+		? date.toLocaleString(currentLocale(), {
 				dateStyle: 'medium',
 				timeStyle: 'medium',
 			})
@@ -35,11 +36,12 @@ export const formatDayLabel = (
 	const date = parse(iso);
 	if (!date) return '';
 	const now = new Date(nowMs);
-	if (dayKey(date) === dayKey(now)) return 'Today';
+	if (dayKey(date) === dayKey(now)) return t('agents.helpers.message.today');
 	const yesterday = new Date(now);
 	yesterday.setDate(now.getDate() - 1);
-	if (dayKey(date) === dayKey(yesterday)) return 'Yesterday';
-	return date.toLocaleDateString('en-US', {
+	if (dayKey(date) === dayKey(yesterday))
+		return t('agents.helpers.message.yesterday');
+	return date.toLocaleDateString(currentLocale(), {
 		month: 'short',
 		day: 'numeric',
 		...(date.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
@@ -69,14 +71,17 @@ export const daySeparators = (
 
 export const formatDuration = (ms: number): string => {
 	if (!Number.isFinite(ms) || ms < 0) return '';
-	if (ms < 59950) return `${(ms / 1000).toFixed(1)} s`;
+	if (ms < 59950)
+		return t('agents.helpers.message.seconds', { n: (ms / 1000).toFixed(1) });
 	const total = Math.round(ms / 1000);
 	const minutes = Math.floor(total / 60);
 	const seconds = total % 60;
-	return seconds ? `${minutes} min ${seconds} s` : `${minutes} min`;
+	return seconds
+		? t('agents.helpers.message.minSec', { min: minutes, sec: seconds })
+		: t('agents.helpers.message.min', { min: minutes });
 };
 
-const formatTokens = (n: number): string => n.toLocaleString('en-US');
+const formatTokens = (n: number): string => n.toLocaleString(currentLocale());
 
 export const formatMessageStats = (
 	m: Pick<AgentMessage, 'duration_ms' | 'input_tokens' | 'output_tokens'>,
@@ -90,14 +95,23 @@ export const formatMessageStats = (
 	const hasOut = typeof m.output_tokens === 'number';
 	if (hasIn && hasOut) {
 		parts.push(
-			`${formatTokens(m.input_tokens as number)} in / ${formatTokens(
-				m.output_tokens as number,
-			)} out tokens`,
+			t('agents.helpers.message.tokensInOut', {
+				input: formatTokens(m.input_tokens as number),
+				output: formatTokens(m.output_tokens as number),
+			}),
 		);
 	} else if (hasIn) {
-		parts.push(`${formatTokens(m.input_tokens as number)} in tokens`);
+		parts.push(
+			t('agents.helpers.message.tokensIn', {
+				n: formatTokens(m.input_tokens as number),
+			}),
+		);
 	} else if (hasOut) {
-		parts.push(`${formatTokens(m.output_tokens as number)} out tokens`);
+		parts.push(
+			t('agents.helpers.message.tokensOut', {
+				n: formatTokens(m.output_tokens as number),
+			}),
+		);
 	}
 	return parts.join(' · ');
 };

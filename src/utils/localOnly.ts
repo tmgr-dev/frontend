@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { DesktopPlatform } from '@/utils/desktop';
 
 export const BACKUP_STALE_DAYS = 3;
@@ -5,25 +6,26 @@ export const BACKUP_STALE_DAYS = 3;
 const BANNER_KEY = 'tmgr:local-only-banner';
 
 export const welcomeNote = (platform: DesktopPlatform | null): string =>
-	`Your data stays on this ${
-		platform === 'macos' ? 'Mac' : 'computer'
-	}. You can create an account later.`;
-
-const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+	t(
+		platform === 'macos'
+			? 'desktop.helpers.localOnly.welcomeMac'
+			: 'desktop.helpers.localOnly.welcomeComputer',
+	);
 
 export const lastBackupLabel = (
 	iso: string | null | undefined,
 	now: number = Date.now(),
 ): string => {
 	const at = iso ? Date.parse(iso) : NaN;
-	if (Number.isNaN(at)) return 'No backup yet';
+	if (Number.isNaN(at)) return t('desktop.helpers.localOnly.noBackup');
 	const diff = Math.max(0, now - at);
 	const minutes = Math.floor(diff / 60_000);
-	if (minutes < 1) return 'Last backup: just now';
-	if (minutes < 60) return `Last backup: ${plural(minutes, 'minute')} ago`;
+	if (minutes < 1) return t('desktop.helpers.localOnly.backupJustNow');
+	if (minutes < 60)
+		return t('desktop.helpers.localOnly.backupMinutes', minutes);
 	const hours = Math.floor(minutes / 60);
-	if (hours < 24) return `Last backup: ${plural(hours, 'hour')} ago`;
-	return `Last backup: ${plural(Math.floor(hours / 24), 'day')} ago`;
+	if (hours < 24) return t('desktop.helpers.localOnly.backupHours', hours);
+	return t('desktop.helpers.localOnly.backupDays', Math.floor(hours / 24));
 };
 
 export interface BackupWarning {
@@ -38,14 +40,19 @@ export const backupWarning = (
 	if (status.last_error) {
 		return {
 			kind: 'failed',
-			message: `Last backup failed: ${status.last_error}`,
+			message: t('desktop.helpers.localOnly.backupFailed', {
+				error: status.last_error,
+			}),
 		};
 	}
 	const at = status.last_backup_at ? Date.parse(status.last_backup_at) : NaN;
 	if (Number.isNaN(at)) return null;
 	const days = Math.floor((now - at) / 86_400_000);
 	if (days < BACKUP_STALE_DAYS) return null;
-	return { kind: 'stale', message: `No backup for ${days} days` };
+	return {
+		kind: 'stale',
+		message: t('desktop.helpers.localOnly.backupStale', { days }),
+	};
 };
 
 export const settingsAccess = (localOnly: boolean) => ({

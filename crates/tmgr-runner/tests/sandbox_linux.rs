@@ -4,6 +4,7 @@ mod common;
 use common::*;
 use std::fs;
 use std::os::linux::net::SocketAddrExt;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{SocketAddr, UnixListener};
 use std::process::Command;
 
@@ -412,4 +413,127 @@ fn a_self_contained_clone_works_without_an_objects_grant() {
         "git -c user.name=t -c user.email=t@example.com log --oneline >/dev/null && git fsck --no-progress && echo b > b.txt && git add b.txt && git -c user.name=t -c user.email=t@example.com commit -q -m b && git gc -q && git fsck --no-progress",
     );
     assert!(o.ok(), "{} {}", o.stdout, o.stderr);
+}
+
+const CHMOD_THROUGH_ALTERNATES: &str = r#"alt=$(head -n1 .git/objects/info/alternates); obj=$(ls -d "$alt"/??/* | head -n1); fan=$(dirname "$obj"); for p in "$obj" "$fan" "$alt"; do chmod 000 "$p" 2>&1; echo "rc=$?"; done"#;
+
+fn modes(root: &std::path::Path) -> std::collections::BTreeMap<std::path::PathBuf, u32> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut out = std::collections::BTreeMap::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(p) = stack.pop() {
+        let m = fs::symlink_metadata(&p).unwrap();
+        out.insert(p.clone(), m.permissions().mode() & 0o7777);
+        if m.is_dir() {
+            for e in fs::read_dir(&p).unwrap() {
+                stack.push(e.unwrap().path());
+            }
+        }
+    }
+    out
+}
+
+struct Chmods {
+    objects: std::path::PathBuf,
+    sdir: std::path::PathBuf,
+    before: std::collections::BTreeMap<std::path::PathBuf, u32>,
+    rcs: Vec<String>,
+    stdout: String,
+    record: String,
+}
+
+fn chmod_scenario(f: &Fx, helper_env: &[(&str, &str)]) -> Option<Chmods> {
+    if !landlock_usable(f) {
+        return None;
+    }
+    let objects = f.borrowing_clone();
+    let sdir = f.runner_dir.join("sessions").join(SID);
+    fs::create_dir_all(&sdir).unwrap();
+    tmgr_runner::objectmodes::save(&sdir, std::slice::from_ref(&objects)).unwrap();
+    let before = modes(&objects);
+    let script = format!("git log --oneline >/dev/null && echo gitok; {CHMOD_THROUGH_ALTERNATES}");
+    let o = f.run_objects(&objects, &script, helper_env);
+    assert!(o.ok(), "{} {}", o.stdout, o.stderr);
+    assert!(o.stdout.contains("gitok"), "{} {}", o.stdout, o.stderr);
+    let record = fs::read_to_string(sdir.join("objects_ro")).unwrap();
+    let rcs = o
+        .stdout
+        .lines()
+        .filter(|l| l.starts_with("rc="))
+        .map(String::from)
+        .collect();
+    Some(Chmods {
+        objects,
+        sdir,
+        before,
+        rcs,
+        stdout: o.stdout,
+        record,
+    })
+}
+
+fn host_git_reads(dir: &std::path::Path) {
+    for args in [&["fsck", "--no-progress"][..], &["cat-file", "-p", "HEAD"]] {
+        let o = Command::new("git")
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{args:?}: {o:?}");
+    }
+}
+
+#[test]
+fn read_only_grant_denies_metadata_changes() {
+    let f = fx();
+    let Some(s) = chmod_scenario(&f, &[]) else {
+        return;
+    };
+    if s.record == "namespace" {
+        assert_eq!(s.rcs.len(), 3, "{:?}", s.rcs);
+        assert!(s.rcs.iter().all(|r| r != "rc=0"), "{:?}", s.rcs);
+        assert_eq!(
+            s.stdout.matches("Read-only file system").count(),
+            3,
+            "{}",
+            s.stdout
+        );
+        assert_eq!(modes(&s.objects), s.before);
+    } else {
+        assert!(s.record.starts_with("fallback: "), "{}", s.record);
+        assert!(
+            std::env::var("TMGR_TEST_REQUIRE_RO_MOUNT").as_deref() != Ok("1"),
+            "TMGR_TEST_REQUIRE_RO_MOUNT=1 requires the read-only mount: {}",
+            s.record
+        );
+        eprintln!("NAMESPACE PATH NOT TESTED: {}", s.record);
+    }
+    tmgr_runner::objectmodes::finish(&s.sdir);
+    assert_eq!(modes(&s.objects), s.before);
+    host_git_reads(s.objects.parent().unwrap());
+    host_git_reads(&f.cwd);
+}
+
+#[test]
+fn modes_of_a_granted_object_store_are_restored_after_the_run() {
+    let f = fx();
+    let Some(s) = chmod_scenario(&f, &[("TMGR_TEST_FORCE_RO_FALLBACK", "1")]) else {
+        return;
+    };
+    assert!(s.record.starts_with("fallback: "), "{}", s.record);
+    assert_eq!(s.rcs, ["rc=0", "rc=0", "rc=0"]);
+    assert_eq!(
+        fs::metadata(&s.objects).unwrap().permissions().mode() & 0o777,
+        0
+    );
+    let lines = tmgr_runner::objectmodes::finish(&s.sdir);
+    assert!(
+        lines.iter().any(|l| l.starts_with("restored the mode")),
+        "{lines:?}"
+    );
+    assert_eq!(modes(&s.objects), s.before);
+    host_git_reads(s.objects.parent().unwrap());
+    host_git_reads(&f.cwd);
 }

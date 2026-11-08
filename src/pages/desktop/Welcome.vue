@@ -87,7 +87,7 @@
 	import { desktopPlatform, desktopWindowLabel } from '@/utils/desktop';
 	import { welcomeNote } from '@/utils/localOnly';
 	import { Loader2 } from 'lucide-vue-next';
-	import { defineComponent, onMounted, ref } from 'vue';
+	import { computed, defineComponent, onMounted, ref } from 'vue';
 	import { useRouter } from 'vue-router';
 	import { useStore } from 'vuex';
 
@@ -103,7 +103,7 @@
 			const name = ref('');
 			const busy = ref(false);
 			const error = ref('');
-			const note = welcomeNote(desktopPlatform());
+			const note = computed(() => welcomeNote(desktopPlatform()));
 			const deciding = ref(false);
 
 			onMounted(async () => {

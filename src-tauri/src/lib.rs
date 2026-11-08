@@ -380,6 +380,8 @@ pub fn run() {
       #[cfg(unix)]
       decisions::decisions_mark_task_comment,
       #[cfg(unix)]
+      decisions::decisions_skip_task_comment,
+      #[cfg(unix)]
       decisions::phone::phones_begin_pairing,
       #[cfg(unix)]
       decisions::phone::phones_open_window,

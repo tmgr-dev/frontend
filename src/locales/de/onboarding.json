@@ -1066,5 +1066,30 @@
 			"command": "Befehl ausgeführt",
 			"agent": "Agent verbunden"
 		}
+	},
+	"helpers": {
+		"checklist": {
+			"human": {
+				"createTask": "Eine Aufgabe erstellen",
+				"runTimer": "Einen Timer eine Minute laufen lassen",
+				"moveCard": "Eine Karte auf dem Board verschieben",
+				"addRoutine": "Eine Tagesroutine hinzufügen",
+				"writePage": "Eine Seite schreiben",
+				"connectAgent": "Einen KI-Agenten verbinden"
+			},
+			"agent": {
+				"connectAgent": "Einen Agenten verbinden",
+				"firstAgentRun": "Deine erste Agent-Aufgabe ausführen",
+				"phoneAlert": "Einen Handy-Alarm erhalten, wenn dein Agent dich braucht",
+				"startTimer": "Einen Timer für eine Aufgabe starten",
+				"contextPage": "Eine Kontextseite schreiben, die deine Agenten lesen",
+				"inviteTeammate": "Ein Teammitglied einladen"
+			},
+			"verifyEmail": "Bestätige zuerst deine E-Mail"
+		},
+		"aha": {
+			"firstRun": "Erster Agent-Lauf protokolliert. Das ist es, was TMGR macht.",
+			"timerLogged": "{minutes} Min. für {title} erfasst. Deine Zeit bleibt bei der Aufgabe."
+		}
 	}
 }

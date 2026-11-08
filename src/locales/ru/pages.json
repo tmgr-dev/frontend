@@ -225,5 +225,73 @@
 		"loading": "Загрузка...",
 		"notFound": "Эту страницу не удалось найти.",
 		"openFailed": "Не удалось открыть страницу. Закройте это окно и попробуйте ещё раз."
+	},
+	"helpers": {
+		"network": {
+			"operational": "Операционные",
+			"personal": "Личные",
+			"strategic": "Стратегические"
+		},
+		"aliasSource": {
+			"telegram": "Telegram",
+			"rocketchat": "Rocket.Chat",
+			"slack": "Slack",
+			"github": "GitHub",
+			"email": "Email",
+			"other": "Другое"
+		},
+		"validation": {
+			"invalidMember": "Недопустимый участник",
+			"mustBeList": "Должен быть список",
+			"chooseSource": "Выберите источник",
+			"enterIdentifier": "Введите идентификатор",
+			"nameTooLong": "Слишком длинное имя",
+			"chooseRelationship": "Выберите тип отношений",
+			"maxChars": "Не более 255 символов",
+			"dateFormat": "Дата в формате ГГГГ-ММ-ДД",
+			"invalidTask": "Недопустимая задача",
+			"invalidValue": "Недопустимое значение",
+			"invalidProperties": "Недопустимые свойства"
+		},
+		"property": {
+			"member": "Участник",
+			"relationship": "Отношения",
+			"company": "Компания",
+			"role": "Роль",
+			"aliases": "Псевдонимы",
+			"lastContact": "Последний контакт",
+			"date": "Дата",
+			"participants": "Участники",
+			"tasks": "Задачи"
+		},
+		"pageType": {
+			"plain": "Обычная страница",
+			"context": "Контекст",
+			"person": "Человек",
+			"meeting": "Встреча"
+		},
+		"owner": {
+			"persona": "Персона",
+			"member": "Участник",
+			"system": "Система",
+			"agents": "Агенты"
+		},
+		"taskFromSelection": {
+			"selectionNotFound": "Выделенный текст не найден на странице. Обновите страницу и попробуйте ещё раз.",
+			"pageChanged": "Страница изменилась. Обновите её и попробуйте ещё раз.",
+			"noAccess": "Нет доступа к проекту.",
+			"failed": "Не удалось создать задачу."
+		},
+		"image": {
+			"alignLeft": "По левому краю",
+			"alignCenter": "По центру",
+			"alignRight": "По правому краю",
+			"fullWidth": "На всю ширину",
+			"download": "Скачать",
+			"replaceImage": "Заменить изображение",
+			"deleteImage": "Удалить изображение",
+			"captionPlaceholder": "Напишите подпись",
+			"loadFailed": "Не удалось загрузить изображение"
+		}
 	}
 }

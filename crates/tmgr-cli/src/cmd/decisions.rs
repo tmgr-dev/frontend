@@ -859,9 +859,17 @@ fn pending_delivery() -> CoreResult<Output> {
             _ => Error::internal(format!("the Decisions inbox could not be reached: {e}")),
         })?;
     Ok(Output::new(
-        json!({"pending": pending}),
+        json!({"pending": pending.iter().map(pending_json_row).collect::<Vec<_>>()}),
         pending_human(&pending),
     ))
+}
+
+fn pending_json_row(p: &PendingDelivery) -> Value {
+    let mut v = serde_json::to_value(p).unwrap_or(Value::Null);
+    if let Some(o) = v.as_object_mut() {
+        o.entry("comment_skipped").or_insert(Value::Null);
+    }
+    v
 }
 
 fn pending_human(pending: &[PendingDelivery]) -> String {
@@ -871,13 +879,17 @@ fn pending_human(pending: &[PendingDelivery]) -> String {
     pending
         .iter()
         .map(|p| {
+            let skipped = p.comment_skipped.as_deref().map_or_else(String::new, |r| {
+                format!("  (skipped: {})", sanitize_line(r))
+            });
             format!(
-                "{}  {}  {}  {}  {}",
+                "{}  {}  {}  {}  {}{}",
                 created(p.answered_ms),
                 p.card_id,
                 p.delivery_state,
                 p.task.as_deref().map_or_else(|| "-".into(), sanitize_line),
-                sanitize_line(&p.title)
+                sanitize_line(&p.title),
+                skipped
             )
         })
         .collect::<Vec<_>>()

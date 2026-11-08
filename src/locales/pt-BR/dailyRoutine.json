@@ -218,5 +218,22 @@
 		"copyTitle": "{title} (cópia)",
 		"importErrors": "\nErros:\n- {list}",
 		"importSummary": "Importadas: {created}, ignoradas: {skipped}, substituídas: {replaced}.{errors}"
+	},
+	"helpers": {
+		"recurrence": {
+			"daily": "Diária",
+			"everyNDays": "A cada {n} dia | A cada {n} dias",
+			"weekly": "Semanal",
+			"weekdays": "Dias úteis",
+			"weekends": "Fins de semana",
+			"monthly": "Mensal · dia {day}",
+			"yearly": "Anual · {date}"
+		},
+		"relative": {
+			"now": "agora",
+			"secondsAgo": "há {n} segundo | há {n} segundos",
+			"minutesAgo": "há {n} minuto | há {n} minutos",
+			"hoursAgo": "há {n} hora | há {n} horas"
+		}
 	}
 }

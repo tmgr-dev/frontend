@@ -236,5 +236,81 @@
 		"pullRequests": "プルリクエスト ({n})",
 		"by": "{author}",
 		"loadFailed": "Git アクティビティを読み込めませんでした"
+	},
+	"helpers": {
+		"usage": {
+			"rows": {
+				"input": "入力",
+				"cache_read": "キャッシュ読み取り",
+				"cache_write_5m": "キャッシュ書き込み 5 分",
+				"cache_write_1h": "キャッシュ書き込み 1 時間",
+				"output": "出力",
+				"reasoning": "推論"
+			},
+			"timeActive": "稼働",
+			"timeWallClock": "実経過",
+			"summary": {
+				"you": "あなた {time}",
+				"agents": "エージェント {time}",
+				"ai": "AI {cost}"
+			},
+			"server": {
+				"unsynced": "このデバイスに、未同期の利用分が {amount} あります。",
+				"readFailed": "同期済みの利用状況を読み取れませんでした。",
+				"localOnly": "ローカルのみ — 同期されていません。タスクコスト API や他のメンバーには、このタスクの AI 利用状況が表示されません。`tmgr usage sync` を実行してアップロードしてください。"
+			},
+			"rates": {
+				"input": "入力",
+				"output": "出力",
+				"cacheRead": "キャッシュ読み取り",
+				"cacheWrite5m": "キャッシュ書き込み 5 分",
+				"cacheWrite1h": "キャッシュ書き込み 1 時間",
+				"line": "{label} {value}",
+				"per1M": "100 万トークンあたり {parts}"
+			},
+			"unpriced": "{count} 件のイベントに価格がないため、コストは実際より低く表示されています。"
+		},
+		"status": {
+			"states": {
+				"working": "作業中",
+				"waiting": "待機中",
+				"blocked": "ブロック中",
+				"idle": "アイドル",
+				"done": "完了",
+				"exited": "終了"
+			},
+			"justNow": "たった今",
+			"minAgo": "{n} 分前",
+			"hourAgo": "{n} 時間前",
+			"dayAgo": "{n} 日前",
+			"agent": "エージェント",
+			"on": " ({host})",
+			"line": "{state}: {who}{where}",
+			"since": "{since} から",
+			"noRecent": "最近の更新なし"
+		},
+		"work": {
+			"agents": "エージェント",
+			"active": "エージェント稼働",
+			"wall": "実経過時間",
+			"waiting": "実行の合間の待機",
+			"sum": "エージェント時間(実行の合計)"
+		},
+		"approval": {
+			"revokedBy": {
+				"ui": "Web アプリ",
+				"cli": "CLI",
+				"mcp": "MCP",
+				"persona": "エージェントのペルソナ",
+				"plugin": "プラグイン",
+				"legacy": "旧形式のトークン",
+				"other": "連携サービス"
+			},
+			"reasonEdited": "テキストが編集されました",
+			"reasonComment": "コメントが追加されました",
+			"reasonChanged": "変更されました",
+			"noCategory": "プロジェクトなし",
+			"category": "プロジェクト #{id}"
+		}
 	}
 }

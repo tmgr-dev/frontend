@@ -50,7 +50,7 @@ import {
 	mergeCompaction,
 } from '@/utils/agentCompaction';
 import {
-	DECISION_CONFLICT_MESSAGE,
+	decisionConflictMessage,
 	openActionIds,
 } from '@/utils/agentConfirmation';
 import {
@@ -62,7 +62,7 @@ import {
 import {
 	addQuote,
 	isQuoteListFull,
-	QUOTE_LIMIT_MESSAGE,
+	quoteLimitMessage,
 	removeQuote,
 } from '@/utils/agentQuotes';
 import type { AttachedFile } from '@/utils/aiAttachments';
@@ -331,7 +331,7 @@ export function useAgentChat(): UseAgentChatReturn {
 	const addQuoteDraft = (draft: QuoteDraft): boolean => {
 		const next = addQuote(quotes.value, draft);
 		if (next === quotes.value) {
-			if (isQuoteListFull(quotes.value)) error.value = QUOTE_LIMIT_MESSAGE;
+			if (isQuoteListFull(quotes.value)) error.value = quoteLimitMessage();
 			return false;
 		}
 		quotes.value = next;
@@ -568,7 +568,7 @@ export function useAgentChat(): UseAgentChatReturn {
 			if (isBusy(state.value)) startPolling(conversationId);
 		} catch (e) {
 			if (httpStatus(e) === 409) {
-				error.value = DECISION_CONFLICT_MESSAGE;
+				error.value = decisionConflictMessage();
 				await refreshMessages(conversationId);
 				return;
 			}

@@ -1,7 +1,8 @@
+import { currentLocale, t } from '@/i18n';
 import type { PublishedMove } from './model';
 
 export const formatMoveDate = (iso: string): string =>
-	new Date(iso).toLocaleDateString('en-US', {
+	new Date(iso).toLocaleDateString(currentLocale(), {
 		dateStyle: 'medium',
 		timeZone: 'UTC',
 	});
@@ -9,16 +10,17 @@ export const formatMoveDate = (iso: string): string =>
 export const copiedBannerText = (
 	published: Pick<PublishedMove, 'name' | 'at'>,
 ): string =>
-	`Copied to your cloud workspace ${published.name} on ${formatMoveDate(
-		published.at,
-	)}. Changes here are not synced.`;
+	t('desktop.helpers.move.copiedBanner', {
+		name: published.name,
+		date: formatMoveDate(published.at),
+	});
 
 export const previousMoveWarning = (
 	published: Pick<PublishedMove, 'at'>,
 ): string =>
-	`You moved this workspace on ${formatMoveDate(
-		published.at,
-	)}. This creates a second cloud copy.`;
+	t('desktop.helpers.move.previousMove', {
+		date: formatMoveDate(published.at),
+	});
 
 const dismissed = new Set<string>();
 

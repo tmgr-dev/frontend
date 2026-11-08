@@ -483,5 +483,278 @@
 			"runnerNotRunning": "TMGR 러너가 실행 중이 아니에요. 여기서 오토파일럿을 보려면 시작하세요.",
 			"updateRunner": "여기서 오토파일럿을 보려면 TMGR 러너를 업데이트하세요."
 		}
+	},
+	"helpers": {
+		"trayName": {
+			"menuBar": "메뉴 막대",
+			"systemTray": "시스템 트레이"
+		},
+		"revealInFileManager": {
+			"explorer": "탐색기에서 보기",
+			"fileManager": "파일 관리자에서 보기",
+			"finder": "Finder에서 보기"
+		},
+		"thisComputer": {
+			"mac": "이 Mac",
+			"computer": "이 컴퓨터"
+		},
+		"pluginWindowsUnavailable": "플러그인 창은 아직 Windows에서 사용할 수 없어요.",
+		"download": {
+			"title": "{name} 다운로드 완료",
+			"finished": "다운로드 완료",
+			"savedTo": "다운로드 폴더에 저장했어요",
+			"failed": "다운로드 실패",
+			"couldNotSave": "{name}을(를) 저장하지 못했어요.",
+			"theFile": "파일"
+		},
+		"updateCheck": {
+			"tryAgainLater": "나중에 다시 시도해 주세요.",
+			"upToDateVersion": "최신 버전이에요 (v{version})",
+			"upToDate": "최신 버전이에요",
+			"available": "v{version} 업데이트를 사용할 수 있어요",
+			"installHint": "설치하고 다시 시작하면 업데이트돼요.",
+			"failed": "업데이트 확인 실패",
+			"couldNotCheck": "업데이트를 확인하지 못했어요",
+			"checkConnection": "연결 상태를 확인하고 다시 시도해 주세요."
+		},
+		"primaryModifiers": {
+			"mac": "⌘ ⌃ ⌥ 중 하나 이상을 사용해 주세요",
+			"other": "Ctrl, Alt, {key} 중 하나 이상을 사용해 주세요",
+			"win": "Win",
+			"super": "Super"
+		},
+		"away": {
+			"hoursMinutes": "{h}시간 {m}분",
+			"minutes": "{m}분"
+		},
+		"localOnly": {
+			"welcomeMac": "데이터는 이 Mac에만 저장돼요. 계정은 나중에 만들 수 있어요.",
+			"welcomeComputer": "데이터는 이 컴퓨터에만 저장돼요. 계정은 나중에 만들 수 있어요.",
+			"noBackup": "아직 백업이 없어요",
+			"backupJustNow": "마지막 백업: 방금",
+			"backupMinutes": "마지막 백업: {n}분 전",
+			"backupHours": "마지막 백업: {n}시간 전",
+			"backupDays": "마지막 백업: {n}일 전",
+			"backupFailed": "마지막 백업 실패: {error}",
+			"backupStale": "{days}일 동안 백업하지 않았어요"
+		},
+		"upgradeFailure": {
+			"link": "이 기기를 계정에 연결하지 못해서 로컬 데이터는 당분간 이 기기에 남아 있어요. 계속 사용하거나, 다시 시도하거나, 건너뛸 수 있어요.",
+			"move": "일부 로컬 데이터를 아직 이 계정으로 옮기지 못했어요. 계속 사용해도 되고, 다음에 앱을 시작할 때 다시 시도할게요."
+		},
+		"move": {
+			"copiedBanner": "{date}에 클라우드 워크스페이스 {name}(으)로 복사했어요. 여기서 바꾼 내용은 동기화되지 않아요.",
+			"previousMove": "{date}에 이 워크스페이스를 이동했어요. 다시 이동하면 클라우드 사본이 하나 더 생겨요.",
+			"entities": {
+				"personas": "페르소나",
+				"statuses": "상태",
+				"categories": "프로젝트",
+				"tasks": "작업",
+				"comments": "댓글",
+				"files": "파일",
+				"pages": "페이지",
+				"page_versions": "페이지 버전",
+				"routines": "루틴",
+				"agent_runs": "에이전트 실행",
+				"assignments": "담당 지정",
+				"relations": "관계",
+				"modules": "모듈"
+			},
+			"skipReasons": {
+				"excluded": "이동 대상에서 제외됨",
+				"not_uploaded": "업로드되지 않음",
+				"not_allowed": "허용되지 않음",
+				"persona_is_me": "내 것임",
+				"disabled": "비활성화됨",
+				"unsupported": "지원되지 않음",
+				"duplicate": "중복",
+				"unknown_module": "알 수 없는 모듈",
+				"unmapped_target": "대상이 이동하지 않았음"
+			},
+			"report": {
+				"moved": "{entity}: {expected}개 중 {imported}개 이동",
+				"movedSkipped": "{entity}: {expected}개 중 {imported}개 이동, {skipped}개 건너뜀",
+				"fileSkipped": "{name}: 건너뜀, {reason}",
+				"unmapped": "참조 {n}개가 이동하지 않은 대상을 가리켜요",
+				"countMismatch": "{entity}: 예상 {expected}개, 이동 {imported}개, 건너뜀 {skipped}개",
+				"bundleMismatch": "{entity}: 번들에 {expected}개 중 {actual}개만 있었어요",
+				"unmappedRefs": "참조 {count}개가 이동하지 않은 대상을 가리켜요",
+				"failed": "서버에서 이동에 실패했어요."
+			},
+			"rows": {
+				"backup": "백업 생성됨",
+				"bundle": "번들 업로드됨",
+				"statuses": "상태와 프로젝트",
+				"tasks": "작업",
+				"comments": "댓글",
+				"files": "파일",
+				"pages": "페이지",
+				"links": "링크",
+				"routines": "루틴과 에이전트 실행",
+				"publish": "확인 및 게시"
+			},
+			"rowCount": "{label} {total}개 중 {done}개",
+			"rowSkipped": "{label} · {skipped}개 건너뜀 (보고서 참고)",
+			"excludedReasons": {
+				"missing": "파일이 없음",
+				"too_large": "너무 큼",
+				"mime": "허용되지 않는 형식",
+				"refused": "서버가 거부함"
+			},
+			"skillReasons": {
+				"library_full": "라이브러리가 가득 찼음",
+				"invalid": "올바른 스킬이 아님",
+				"not_owner": "다른 멤버의 페르소나임",
+				"not_moved": "페르소나가 이동하지 않았음",
+				"attach_limit": "페르소나에 연결된 스킬이 너무 많음",
+				"invalid_files": "파일이 올바르지 않음 (경로, 텍스트 또는 크기 제한)",
+				"too_large": "클라우드로 옮기기에는 너무 큼",
+				"files_limit": "파일이 10 MiB 파일 한도를 넘게 됨"
+			},
+			"skills": {
+				"aSkill": "스킬",
+				"added": "{n}개 추가됨",
+				"reused": "{n}개는 이미 라이브러리에 있음",
+				"renamed": "{n}개 이름 변경됨 ({list})",
+				"summary": "스킬: {parts}",
+				"notCopied": "{name}: 복사하지 않음, {reason}",
+				"notAttached": "{name}: 페르소나 {n}개에 연결하지 않음, {reason}",
+				"dryRun": "스킬: 이 기기의 라이브러리에서 {count}개"
+			},
+			"guards": {
+				"published": "이동이 게시되었고 클라우드 계정에서 확인되었어요",
+				"unchanged": "스냅숏 이후 이 워크스페이스에서 바뀐 내용이 없어요",
+				"files": "업로드하지 못한 파일은 모두 내보내거나 손실로 인정했어요",
+				"skills": "이 기기의 스킬이 클라우드 라이브러리로 복사되었어요",
+				"removeAccount": "이 이동은 다른 계정에서 게시했어요. 해당 계정으로 로그인해야 로컬 사본을 제거할 수 있어요.",
+				"cannotRemove": "아직 제거할 수 없어요: {reason}.",
+				"signIn": "로컬 사본을 삭제하려면 로그인하세요.",
+				"oldRecord": "이 이전은 이전 버전에서 기록되어 로컬 사본을 자동으로 삭제할 수 없습니다."
+			},
+			"legacy": "이전 버전에서 시작한 이동이에요. 취소하고 처음부터 다시 시작해 주세요.",
+			"accountMismatch": "이 이전은 다른 계정에서 시작되었습니다. 계속하려면 해당 계정으로 로그인하거나 이전을 취소하세요.",
+			"signInToMove": "이 워크스페이스를 클라우드로 이전하려면 로그인하세요.",
+			"demo": "데모 워크스페이스는 이 Mac에 남으며 클라우드로 이전할 수 없습니다",
+			"cancelled": "이전이 취소되었습니다",
+			"unsupportedSchema": "이 워크스페이스를 이전하려면 TMGR를 업데이트하세요.",
+			"quota": "이전은 하루에 최대 3번 시작할 수 있습니다. 내일 다시 시도하세요.",
+			"running": "다른 이전이 아직 진행 중입니다.",
+			"tooLarge": "이 워크스페이스는 너무 커서 한 번에 이전할 수 없습니다.",
+			"genericError": "문제가 발생했습니다."
+		},
+		"runner": {
+			"states": {
+				"done": "완료",
+				"failed": "실패",
+				"interrupted": "중단됨",
+				"starting": "시작 중",
+				"working": "작업 중",
+				"waiting": "대기 중",
+				"blocked": "입력 필요",
+				"unknown": "알 수 없음"
+			},
+			"exitCode": "종료됨 (코드 {code})",
+			"status": {
+				"ready": "준비됨",
+				"readyVersion": "준비됨 v{version}",
+				"incompatible": "호환되지 않는 버전",
+				"absent": "실행 중이 아님",
+				"checking": "확인 중…",
+				"updateRunner": "TMGR 러너 업데이트"
+			},
+			"errors": {
+				"busy": "에이전트가 바빠요. 잠시 후 다시 시도해 주세요.",
+				"unknownProfile": "이 에이전트 프로필을 사용할 수 없어요. 다른 프로필을 선택해 주세요.",
+				"sandbox": "샌드박스가 이 실행을 차단했어요. 프로젝트 폴더를 확인하고 다시 시도해 주세요.",
+				"limit": "실행 중인 에이전트가 너무 많아요. 하나를 중지한 뒤 다시 시도해 주세요.",
+				"invalidParams": "러너가 요청을 거부했어요. 프로젝트 폴더를 확인하고 다시 시도해 주세요.",
+				"taskNotFound": "로컬 워크스페이스에서 이 작업을 찾을 수 없어요.",
+				"prefix": {
+					"start": "에이전트를 시작하지 못했어요",
+					"stop": "에이전트를 중지하지 못했어요",
+					"input": "에이전트에 입력을 보내지 못했어요",
+					"open": "터미널을 열지 못했어요"
+				},
+				"withMessage": "{prefix}: {message}",
+				"withoutMessage": "{prefix}."
+			},
+			"cloudTooltip": "에이전트 실행은 아직 로컬 워크스페이스에서만 사용할 수 있어요.",
+			"absentTooltip": "TMGR 러너가 실행 중이 아니에요. `tmgr runner start`로 시작해 주세요.",
+			"age": {
+				"justNow": "방금",
+				"minutes": "{n}분 전",
+				"hours": "{n}시간 전",
+				"days": "{n}일 전"
+			}
+		},
+		"autopilot": {
+			"empty": "오토파일럿이 실행 중이 아니에요.",
+			"titleQueue": "큐 반복",
+			"title": "오토파일럿",
+			"words": {
+				"starting": "시작 중",
+				"running": "실행 중",
+				"paused": "일시 중지됨",
+				"stopping": "중지하는 중",
+				"stopped": "중지됨",
+				"suspended": "보류됨",
+				"notRunning": "실행 중이 아님"
+			},
+			"lastState": "마지막 상태 {state}",
+			"lastStateUpdated": "마지막 상태 {state}, {age} 전 업데이트",
+			"counters": {
+				"done": "완료 (PR)",
+				"inWork": "작업 중",
+				"needsFeedback": "피드백 필요",
+				"blocked": "막힘",
+				"held": "보류",
+				"failed": "실패",
+				"queued": "대기열"
+			},
+			"limit": {
+				"unknown": {
+					"base": "{label}: 알 수 없음",
+					"age": "{label}: 알 수 없음 {age} 전"
+				},
+				"pct": {
+					"base": "{label}: {pct}% {source}",
+					"resets": "{label}: {pct}% {source} · {time}에 초기화",
+					"marks": "{label}: {pct}% {source} (새 작업 중단 {soft}%, 일시 중지 {hard}%)",
+					"marksResets": "{label}: {pct}% {source} (새 작업 중단 {soft}%, 일시 중지 {hard}%) · {time}에 초기화",
+					"age": "{label}: {pct}% {source} {age} 전",
+					"ageResets": "{label}: {pct}% {source} {age} 전 · {time}에 초기화",
+					"ageMarks": "{label}: {pct}% {source} {age} 전 (새 작업 중단 {soft}%, 일시 중지 {hard}%)",
+					"ageMarksResets": "{label}: {pct}% {source} {age} 전 (새 작업 중단 {soft}%, 일시 중지 {hard}%) · {time}에 초기화"
+				}
+			},
+			"cost": {
+				"ofCap": "한도 {cap} 중 {used}",
+				"noneYet": "아직 없음, 한도 {cap}"
+			},
+			"guardOff": "사용량 한도 없음 (가드가 꺼져 있어요)",
+			"nextStop": "\"{kind}\"까지 {window} 구간의 약 {pct}%가 남았어요"
+		},
+		"connectAgent": {
+			"notes": {
+				"modules": "설치하면 이 워크스페이스에서 로컬 에이전트 접근과 페르소나, 에이전트 작업 모듈도 함께 켜져요.",
+				"keychain": "토큰은 macOS 키체인에 보관돼요. 명령어에는 포함되지 않아요.",
+				"oneWorkspace": "에이전트는 워크스페이스 하나에만 연결돼요. 여기서 설치하면 이전 TMGR 연결이 교체돼요."
+			},
+			"translocated": "TMGR를 응용 프로그램 폴더로 옮기고 그곳에서 연 뒤 설치해 주세요.",
+			"safeMode": "플러그인 안전 모드가 켜져 있어 에이전트를 연결할 수 없어요. 끈 다음 이 화면을 다시 열어 주세요.",
+			"unsupported": "이 화면에서 설치하는 기능은 macOS에서만 작동해요. 대신 설정 복사를 사용해 주세요.",
+			"bridge": "TMGR가 자신의 프로그램 경로를 알아내지 못해 여기서는 에이전트를 연결할 수 없어요.",
+			"timeout": "명령이 끝나지 않았어요. 설치를 다시 누르거나 제거해 주세요.",
+			"claudeFailureNote": "Claude Code의 이전 TMGR 항목은 이미 제거했어요.",
+			"installed": "{title}을(를) 다시 시작해 TMGR를 인식하게 해 주세요. 그런 다음 TMGR 작업 목록을 보여 달라고 요청해 보세요.",
+			"installFailed": "{title}을(를) 연결하지 못했어요.",
+			"removed": "{title}에서 TMGR를 제거했어요.",
+			"removeFailed": "{title}에서 TMGR를 제거하지 못했어요.",
+			"demoRefusal": "먼저 나만의 워크스페이스를 만든 뒤 에이전트를 연결해 주세요.",
+			"rateLimit": "지난 한 시간 동안 에이전트 토큰을 이미 10개 만들었어요. 잠시 기다린 뒤 다시 시도해 주세요."
+		},
+		"socialLogin": {
+			"startFailed": "로그인을 시작하지 못했어요."
+		}
 	}
 }

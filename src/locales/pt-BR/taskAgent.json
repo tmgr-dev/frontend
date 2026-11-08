@@ -236,5 +236,81 @@
 		"pullRequests": "Pull requests ({n})",
 		"by": "por {author}",
 		"loadFailed": "Falha ao carregar a atividade do Git"
+	},
+	"helpers": {
+		"usage": {
+			"rows": {
+				"input": "Entrada",
+				"cache_read": "Leitura de cache",
+				"cache_write_5m": "Escrita de cache 5 min",
+				"cache_write_1h": "Escrita de cache 1 h",
+				"output": "Saída",
+				"reasoning": "Raciocínio"
+			},
+			"timeActive": "ativo",
+			"timeWallClock": "tempo real",
+			"summary": {
+				"you": "Você {time}",
+				"agents": "Agentes {time}",
+				"ai": "{cost} de IA"
+			},
+			"server": {
+				"unsynced": "Este dispositivo tem {amount} de uso ainda não sincronizado.",
+				"readFailed": "Não foi possível ler o uso sincronizado.",
+				"localOnly": "Somente local — não sincronizado. A API de custo da tarefa e os outros membros não veem uso de IA nesta tarefa. Execute `tmgr usage sync` para enviá-lo."
+			},
+			"rates": {
+				"input": "entrada",
+				"output": "saída",
+				"cacheRead": "leitura de cache",
+				"cacheWrite5m": "escrita de cache 5 min",
+				"cacheWrite1h": "escrita de cache 1 h",
+				"line": "{label} {value}",
+				"per1M": "{parts} por 1 M de tokens"
+			},
+			"unpriced": "{count} evento está sem preço; o custo está subestimado. | {count} eventos estão sem preço; o custo está subestimado."
+		},
+		"status": {
+			"states": {
+				"working": "Trabalhando",
+				"waiting": "Aguardando",
+				"blocked": "Bloqueado",
+				"idle": "Ocioso",
+				"done": "Concluído",
+				"exited": "Encerrado"
+			},
+			"justNow": "agora mesmo",
+			"minAgo": "há {n} min",
+			"hourAgo": "há {n} h",
+			"dayAgo": "há {n} d",
+			"agent": "agente",
+			"on": " em {host}",
+			"line": "{state}: {who}{where}",
+			"since": "desde {since}",
+			"noRecent": "sem atualizações recentes"
+		},
+		"work": {
+			"agents": "Agentes",
+			"active": "Agentes ativos",
+			"wall": "Tempo real",
+			"waiting": "Aguardando entre execuções",
+			"sum": "Tempo dos agentes (soma das execuções)"
+		},
+		"approval": {
+			"revokedBy": {
+				"ui": "o aplicativo web",
+				"cli": "a CLI",
+				"mcp": "o MCP",
+				"persona": "uma persona de agente",
+				"plugin": "um plugin",
+				"legacy": "um token legado",
+				"other": "uma integração"
+			},
+			"reasonEdited": "texto editado",
+			"reasonComment": "comentário adicionado",
+			"reasonChanged": "alterado",
+			"noCategory": "Sem projeto",
+			"category": "Projeto #{id}"
+		}
 	}
 }

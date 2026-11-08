@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { humanizeGroupName, humanizeKey } from '@/utils/featureToggleCopy';
 import { moduleNeedsAccount } from '@/utils/localOnly';
 
@@ -174,9 +175,11 @@ export const dependencyLabel = (
 	map: ModulesMap,
 ): string => {
 	if (!entry.depends_on?.length) return '';
-	return `needs: ${entry.depends_on
-		.map((key) => map[key]?.name || humanizeKey(key))
-		.join(', ')}`;
+	return t('general.helpers.modules.needsColon', {
+		list: entry.depends_on
+			.map((key) => map[key]?.name || humanizeKey(key))
+			.join(', '),
+	});
 };
 
 export interface ModuleRow {
@@ -223,9 +226,11 @@ export const buildModulesView = (payload: ModulesPayload, isOwner: boolean) => {
 		return {
 			name,
 			needs: blocking.length
-				? `needs ${blocking
-						.map((dep) => dep.name || humanizeKey(dep.key))
-						.join(', ')}`
+				? t('general.helpers.modules.needs', {
+						list: blocking
+							.map((dep) => dep.name || humanizeKey(dep.key))
+							.join(', '),
+					})
 				: '',
 			off: blocking.length > 0,
 		};
@@ -248,17 +253,17 @@ export const gateCopy = (isOwner: boolean, hiddenByMe = false) => {
 	if (hiddenByMe) {
 		return {
 			kind: 'link',
-			text: 'Show this module',
+			text: t('general.helpers.modules.showModule'),
 			to: '/settings/modules',
 		} as const;
 	}
 	return isOwner
 		? ({
 				kind: 'link',
-				text: 'Enable this feature',
+				text: t('general.helpers.modules.enableFeature'),
 				to: '/settings/modules',
 			} as const)
-		: ({ kind: 'ask', text: 'Ask the owner to turn this on' } as const);
+		: ({ kind: 'ask', text: t('general.helpers.modules.askOwner') } as const);
 };
 
 export const shouldShowPicker = (input: {
@@ -282,9 +287,6 @@ export const featureDisabledMessage = (error: any): string | null => {
 		? response.data.message
 		: null;
 };
-
-export const MODULES_FOOTER =
-	'Turning a module off hides it for everyone in this workspace. Your data stays. Turn it back on and everything is where you left it.';
 
 export const CUSTOM_CHOICE = 'custom';
 
@@ -323,21 +325,21 @@ export const payloadFromLegacy = (
 	};
 };
 
-export const CORE_DESCRIPTION =
-	'Always available. You can hide any of them for yourself.';
-
 export const hiddenBadge = (hidden: boolean): string | null =>
-	hidden ? 'Hidden for you' : null;
+	hidden ? t('general.helpers.modules.hiddenForYou') : null;
 
 export const hideButtonLabel = (hidden: boolean): string =>
-	hidden ? 'Show for me' : 'Hide for me';
+	hidden
+		? t('general.helpers.modules.showForMe')
+		: t('general.helpers.modules.hideForMe');
 
 export const presetSummary = (
 	preset: ModulePreset,
 	modules: Pick<ModuleEntry, 'key' | 'name'>[],
 ): string => {
-	if (preset.key === 'everything') return 'All modules';
-	if (preset.modules.length === 0) return 'No modules, core only';
+	if (preset.key === 'everything')
+		return t('general.helpers.modules.allModules');
+	if (preset.modules.length === 0) return t('general.helpers.modules.coreOnly');
 	const names = new Map(modules.map((m) => [m.key, m.name]));
 	return preset.modules
 		.filter((key) => !key.startsWith('notifications.'))
@@ -369,14 +371,13 @@ export const payloadNotices = (payload: ModulesPayload): string[] =>
 		(notice): notice is string => typeof notice === 'string' && !!notice,
 	);
 
-export const WORKFLOW_OFF_CONFIRM =
-	'Tasks get a Done checkbox instead of statuses; the Board is hidden. Statuses and their tasks stay and come back when you turn it on.';
-
 export const workflowOffConfirm = (
 	key: string,
 	enabled: boolean,
 ): string | null =>
-	key === 'workflow' && !enabled ? WORKFLOW_OFF_CONFIRM : null;
+	key === 'workflow' && !enabled
+		? t('general.helpers.modules.workflowOffConfirm')
+		: null;
 
 export const presetNotes = (
 	preset: ModulePreset,
@@ -390,26 +391,28 @@ export const presetNotes = (
 	if (target === was) return [];
 	return [
 		target
-			? 'Workflow: Done checkbox → statuses'
-			: 'Workflow: statuses → Done checkbox',
+			? t('general.helpers.modules.workflowOn')
+			: t('general.helpers.modules.workflowOff'),
 	];
 };
 
-const PRESET_SUMMARIES: Record<string, string> = {
-	personal: 'Just me: tasks and time, with a Done checkbox',
-	team: 'Work together with statuses and a board',
-	developer: 'Me and my AI agents, with statuses and a board',
-	everything: 'Every module turned on',
-	minimal: 'Just tasks: List, Timer and Comments',
-};
+const PRESET_SUMMARY_KEYS = [
+	'personal',
+	'team',
+	'developer',
+	'everything',
+	'minimal',
+];
 
 export const presetCard = (
 	preset: Pick<ModulePreset, 'key' | 'name' | 'description'>,
 ): { title: string; summary: string } => {
 	const title = preset.name || humanizeKey(preset.key);
 	const description = preset.description || '';
-	const summary =
-		PRESET_SUMMARIES[preset.key] ??
-		(description.toLowerCase() === title.toLowerCase() ? '' : description);
+	const summary = PRESET_SUMMARY_KEYS.includes(preset.key)
+		? t(`general.helpers.modules.presetSummary.${preset.key}`)
+		: description.toLowerCase() === title.toLowerCase()
+			? ''
+			: description;
 	return { title, summary };
 };

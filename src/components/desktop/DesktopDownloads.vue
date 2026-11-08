@@ -16,7 +16,6 @@
 		name: 'DesktopDownloads',
 		setup() {
 			const { toast } = useToast();
-			const revealLabel = revealInFileManagerLabel();
 			let unlisten: (() => void) | null = null;
 			let disposed = false;
 
@@ -45,10 +44,10 @@
 								? h(
 										ToastAction,
 										{
-											altText: revealLabel,
+											altText: revealInFileManagerLabel(),
 											onClick: () => reveal(revealPath),
 										},
-										() => revealLabel,
+										() => revealInFileManagerLabel(),
 									)
 								: undefined,
 						});

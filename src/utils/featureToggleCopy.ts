@@ -1,31 +1,28 @@
-const GROUP_LABELS: Record<string, string> = {
-	pages: 'Pages',
-	task: 'Tasks',
-	notifications: 'Notifications',
-};
+import { t } from '@/i18n';
 
-const DESCRIPTIONS: Record<string, string> = {
-	categories: 'Group tasks into categories to organize your workspace.',
-	board: 'Switch to a kanban board view for tracking task status.',
-	workflow: 'Custom statuses, the status picker and board columns.',
-	pages:
-		'Keep notes, context and documentation in a tree of pages that people and agents can edit.',
-	graph:
-		'See how tasks, pages, people and agent runs connect: a Graph section on tasks and pages, and the workspace Map.',
-	agent_work:
-		'Lets AI agents report their work and time on tasks; when off, agent runs are hidden and agents skip reporting.',
-	dashboard: 'See an overview of activity and progress across your workspace.',
-	daily_routines:
-		'Track recurring routines and notes separate from your tasks.',
-	'task.comments': 'Allow comments and discussion on tasks.',
-	'task.countdown': 'Track time spent on tasks with a start/stop timer.',
-	'task.files': 'Allow files to be attached to tasks.',
-	'task.relations': 'Allow tasks to be linked to related tasks.',
-	'task.checkpoints': 'Break tasks down into smaller checkpoints.',
-	'task.assignees': 'Assign tasks to specific workspace members.',
-	exports: 'Export workspace data.',
-	default_landing_page: 'Choose which page opens first when you log in.',
-};
+const GROUP_KEYS = ['pages', 'task', 'notifications'];
+
+const DESCRIPTION_KEYS = [
+	'categories',
+	'board',
+	'workflow',
+	'pages',
+	'graph',
+	'agent_work',
+	'dashboard',
+	'daily_routines',
+	'task.comments',
+	'task.countdown',
+	'task.files',
+	'task.relations',
+	'task.checkpoints',
+	'task.assignees',
+	'exports',
+	'default_landing_page',
+];
+
+const camelKey = (key: string): string =>
+	key.replace(/[._]([a-z])/g, (_, char: string) => char.toUpperCase());
 
 export const humanizeKey = (key: string): string => {
 	const spaced = key.replace(/[._]/g, ' ');
@@ -33,9 +30,15 @@ export const humanizeKey = (key: string): string => {
 };
 
 export const humanizeGroupName = (group: string): string =>
-	GROUP_LABELS[group] ?? humanizeKey(group);
+	GROUP_KEYS.includes(group)
+		? t(`settingsPages.helpers.featureToggle.groups.${group}`)
+		: humanizeKey(group);
 
 export const featureDescription = (
 	key: string,
 	feature?: { description?: string },
-): string => feature?.description || DESCRIPTIONS[key] || '';
+): string =>
+	feature?.description ||
+	(DESCRIPTION_KEYS.includes(key)
+		? t(`settingsPages.helpers.featureToggle.descriptions.${camelKey(key)}`)
+		: '');

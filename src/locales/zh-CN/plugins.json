@@ -36,5 +36,17 @@
 		"openFailed": "无法打开插件窗口：{error}",
 		"nothingToShow": "插件没有返回任何可显示的内容。",
 		"drawFailed": "插件无法绘制此页面：{error}"
+	},
+	"helpers": {
+		"time": {
+			"fewSeconds": "几秒",
+			"min": "{n} 分钟",
+			"hour": "{n} 小时",
+			"day": "{n} 天",
+			"justNow": "刚刚",
+			"ago": "{span}前",
+			"in": "{span}后",
+			"overdue": "已逾期 {span}"
+		}
 	}
 }

@@ -785,5 +785,84 @@
 		"createTask": "+ Utwórz zadanie",
 		"archiveDialogTitle": "Archiwizuj ukończone zadania",
 		"archiveDialogBody": "Zarchiwizować {n} ukończone zadanie? | Zarchiwizować {n} ukończone zadania? | Zarchiwizować {n} ukończonych zadań?"
+	},
+	"helpers": {
+		"thirtyDayHint": "{hint} · ostatnie 30 dni",
+		"tracked": {
+			"minutes": "{m} min",
+			"hoursMinutes": "{h} godz. {m} min"
+		},
+		"heatmap": {
+			"days": "{n} dzień | {n} dni | {n} dni",
+			"headlineYear": "{n} wkład w {year} | {n} wkłady w {year} | {n} wkładów w {year}",
+			"headlineLastYear": "{n} wkład w ostatnim roku | {n} wkłady w ostatnim roku | {n} wkładów w ostatnim roku",
+			"streakCurrent": "Obecna seria: {current} • Najdłuższa: {longest}",
+			"streakYear": "Najdłuższa seria w {year}: {longest}"
+		},
+		"categoryTransfer": {
+			"tasksMoved": "Przeniesiono {n} zadanie. | Przeniesiono {n} zadania. | Przeniesiono {n} zadań.",
+			"mapping": "{from} → {to} ({tasks})",
+			"noStatus": "bez statusu",
+			"statuses": "Statusy: {mappings}.",
+			"assigneesRemoved": "Usunięto {n} wykonawcę (nie jest członkiem docelowej przestrzeni roboczej). | Usunięto {n} wykonawców (nie są członkami docelowej przestrzeni roboczej). | Usunięto {n} wykonawców (nie są członkami docelowej przestrzeni roboczej)."
+		},
+		"activityTitles": {
+			"assignedToPersona": "Przypisano zadanie do: {persona}",
+			"unassignedFromPersona": "Cofnięto przypisanie zadania od: {persona}",
+			"fallback": "Aktywność",
+			"taskCreated": "Utworzono zadanie",
+			"taskUpdated": "Zaktualizowano zadanie",
+			"taskCompleted": "Ukończono zadanie",
+			"taskDeleted": "Usunięto zadanie",
+			"taskRestored": "Przywrócono zadanie",
+			"taskStatusChanged": "Przeniesiono zadanie",
+			"taskAssigned": "Przypisano zadanie",
+			"taskPersonaAssigned": "Przypisano zadanie do persony",
+			"taskPersonaUnassigned": "Cofnięto przypisanie zadania od persony",
+			"taskTimerStarted": "Uruchomiono timer",
+			"taskTimerStopped": "Zatrzymano timer",
+			"commentCreated": "Dodano komentarz",
+			"commentUpdated": "Edytowano komentarz",
+			"commentDeleted": "Usunięto komentarz",
+			"categoryCreated": "Utworzono kategorię",
+			"categoryUpdated": "Zaktualizowano kategorię",
+			"categoryDeleted": "Usunięto kategorię",
+			"fileUploaded": "Dołączono plik",
+			"fileDeleted": "Usunięto plik",
+			"memberJoined": "Dołączono do przestrzeni roboczej",
+			"memberLeft": "Opuszczono przestrzeń roboczą",
+			"routineCompleted": "Ukończono rutynę",
+			"agentWorkStarted": "Rozpoczęto pracę agenta",
+			"agentWorkUpdated": "Zaktualizowano pracę agenta",
+			"agentWorkFinished": "Zakończono pracę agenta"
+		},
+		"graph": {
+			"comment": "Komentarz",
+			"thisTask": "to zadanie",
+			"thisPage": "ta strona"
+		},
+		"map": {
+			"pagesTitle": "Strony i dokumenty",
+			"noCategory": "Bez kategorii",
+			"category": "Kategoria",
+			"listAnd": "{head} i {last}",
+			"blocks": "{who} blokuje {n} zadanie | {who} blokuje {n} zadania | {who} blokuje {n} zadań",
+			"blocksIn": "{who} blokuje {n} zadanie w: {names} | {who} blokuje {n} zadania w: {names} | {who} blokuje {n} zadań w: {names}",
+			"hubs": "{list} łączy najwięcej elementów | {list} łączą najwięcej elementów | {list} łączą najwięcej elementów",
+			"bridges": "{from} łączą się z {to}",
+			"orphans": "{n} element — strony, do których nic nie prowadzi, zadania bez powiązań | {n} elementy — strony, do których nic nie prowadzi, zadania bez powiązań | {n} elementów — strony, do których nic nie prowadzi, zadania bez powiązań",
+			"noOrphans": "Każdy element ma co najmniej jedno powiązanie"
+		},
+		"integrationHint": {
+			"github": {
+				"title": "Nie połączono repozytorium GitHub",
+				"message": "Ta kategoria nie ma jeszcze połączonego repozytorium GitHub. Połącz je w ustawieniach kategorii, aby śledzić commity, gałęzie i pull requesty jej zadań."
+			},
+			"cursor": {
+				"title": "Nie skonfigurowano agenta Cursor",
+				"message": "Ta kategoria nie ma jeszcze skonfigurowanego agenta Cursor. Dodaj klucz API Cursor w ustawieniach kategorii, aby uruchamiać agentów przy jej zadaniach."
+			},
+			"openCategorySettings": "Otwórz ustawienia kategorii"
+		}
 	}
 }

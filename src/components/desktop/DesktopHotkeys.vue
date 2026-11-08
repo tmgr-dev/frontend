@@ -67,7 +67,7 @@
 	import router from '@/router';
 	import store from '@/store';
 	import {
-		PLUGIN_WINDOWS_UNAVAILABLE,
+		pluginWindowsUnavailable,
 		supportsPluginWindows,
 	} from '@/utils/desktop';
 	import {
@@ -202,7 +202,7 @@
 				if (!view) return cantOpenLink();
 				if (view.ui && !supportsPluginWindows()) {
 					return toast({
-						title: PLUGIN_WINDOWS_UNAVAILABLE,
+						title: pluginWindowsUnavailable(),
 						variant: 'destructive',
 					});
 				}

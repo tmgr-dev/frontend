@@ -483,5 +483,278 @@
 			"runnerNotRunning": "TMGR ランナーが起動していません。オートパイロットを表示するには起動してください。",
 			"updateRunner": "オートパイロットを表示するには、TMGR ランナーをアップデートしてください。"
 		}
+	},
+	"helpers": {
+		"trayName": {
+			"menuBar": "メニューバー",
+			"systemTray": "システムトレイ"
+		},
+		"revealInFileManager": {
+			"explorer": "エクスプローラーで表示",
+			"fileManager": "ファイルマネージャーで表示",
+			"finder": "Finder で表示"
+		},
+		"thisComputer": {
+			"mac": "この Mac",
+			"computer": "このコンピューター"
+		},
+		"pluginWindowsUnavailable": "プラグインウィンドウは、Windows ではまだ利用できません。",
+		"download": {
+			"title": "{name} をダウンロードしました",
+			"finished": "ダウンロードが完了しました",
+			"savedTo": "ダウンロードフォルダに保存しました",
+			"failed": "ダウンロードに失敗しました",
+			"couldNotSave": "{name} を保存できませんでした。",
+			"theFile": "ファイル"
+		},
+		"updateCheck": {
+			"tryAgainLater": "後でもう一度お試しください。",
+			"upToDateVersion": "最新です(v{version})",
+			"upToDate": "最新です",
+			"available": "アップデート v{version} があります",
+			"installHint": "インストールして再起動すると更新されます。",
+			"failed": "アップデートの確認に失敗しました",
+			"couldNotCheck": "アップデートを確認できませんでした",
+			"checkConnection": "接続を確認してもう一度お試しください。"
+		},
+		"primaryModifiers": {
+			"mac": "⌘ ⌃ ⌥ のうち少なくとも 1 つを使用してください",
+			"other": "Ctrl、Alt、{key} のうち少なくとも 1 つを使用してください",
+			"win": "Win",
+			"super": "Super"
+		},
+		"away": {
+			"hoursMinutes": "{h} 時間 {m} 分",
+			"minutes": "{m} 分"
+		},
+		"localOnly": {
+			"welcomeMac": "データはこの Mac にのみ保存されます。アカウントは後から作成できます。",
+			"welcomeComputer": "データはこのコンピューターにのみ保存されます。アカウントは後から作成できます。",
+			"noBackup": "バックアップはまだありません",
+			"backupJustNow": "最終バックアップ: たった今",
+			"backupMinutes": "最終バックアップ: {n} 分前",
+			"backupHours": "最終バックアップ: {n} 時間前",
+			"backupDays": "最終バックアップ: {n} 日前",
+			"backupFailed": "前回のバックアップに失敗しました: {error}",
+			"backupStale": "{days} 日間バックアップがありません"
+		},
+		"upgradeFailure": {
+			"link": "このデバイスをアカウントにリンクできなかったため、ローカルデータは当面このデバイスに残ります。作業を続けるか、再試行するか、スキップできます。",
+			"move": "一部のローカルデータをこのアカウントにまだ移動できていません。作業は続けられます。次回アプリを起動したときに再試行します。"
+		},
+		"move": {
+			"copiedBanner": "{date} にクラウドワークスペース {name} へコピーしました。ここでの変更は同期されません。",
+			"previousMove": "このワークスペースは {date} に移動済みです。もう一度行うと、2 つ目のクラウドコピーが作成されます。",
+			"entities": {
+				"personas": "ペルソナ",
+				"statuses": "ステータス",
+				"categories": "プロジェクト",
+				"tasks": "タスク",
+				"comments": "コメント",
+				"files": "ファイル",
+				"pages": "ページ",
+				"page_versions": "ページのバージョン",
+				"routines": "ルーティン",
+				"agent_runs": "エージェントの実行",
+				"assignments": "割り当て",
+				"relations": "関連",
+				"modules": "モジュール"
+			},
+			"skipReasons": {
+				"excluded": "移動の対象外にしました",
+				"not_uploaded": "アップロードされていません",
+				"not_allowed": "許可されていません",
+				"persona_is_me": "自分に属しています",
+				"disabled": "無効です",
+				"unsupported": "非対応です",
+				"duplicate": "重複しています",
+				"unknown_module": "不明なモジュールです",
+				"unmapped_target": "参照先が移動されていません"
+			},
+			"report": {
+				"moved": "{entity}: {expected} 件中 {imported} 件を移動しました",
+				"movedSkipped": "{entity}: {expected} 件中 {imported} 件を移動、{skipped} 件をスキップしました",
+				"fileSkipped": "{name}: スキップしました({reason})",
+				"unmapped": "{n} 件の参照が、移動されなかったものを指しています",
+				"countMismatch": "{entity}: 期待 {expected} 件、移動 {imported} 件、スキップ {skipped} 件",
+				"bundleMismatch": "{entity}: バンドルには {expected} 件中 {actual} 件しか含まれていませんでした",
+				"unmappedRefs": "{count} 件の参照が、移動されなかったものを指しています",
+				"failed": "サーバー側で移動に失敗しました。"
+			},
+			"rows": {
+				"backup": "バックアップを作成しました",
+				"bundle": "バンドルをアップロードしました",
+				"statuses": "ステータスとプロジェクト",
+				"tasks": "タスク",
+				"comments": "コメント",
+				"files": "ファイル",
+				"pages": "ページ",
+				"links": "リンク",
+				"routines": "ルーティンとエージェントの実行",
+				"publish": "確認と公開"
+			},
+			"rowCount": "{label} {total} 件中 {done} 件",
+			"rowSkipped": "{label} · {skipped} 件スキップ(レポートを参照)",
+			"excludedReasons": {
+				"missing": "ファイルが見つかりません",
+				"too_large": "大きすぎます",
+				"mime": "許可されていない形式です",
+				"refused": "サーバーに拒否されました"
+			},
+			"skillReasons": {
+				"library_full": "ライブラリがいっぱいです",
+				"invalid": "有効なスキルではありません",
+				"not_owner": "ペルソナが別のメンバーに属しています",
+				"not_moved": "ペルソナが移動されませんでした",
+				"attach_limit": "ペルソナのスキルが多すぎます",
+				"invalid_files": "ファイルが無効です(パス、テキスト、サイズの制限)",
+				"too_large": "クラウドへ移動するには大きすぎます",
+				"files_limit": "ファイルが 10 MiB のファイル上限を超えてしまいます"
+			},
+			"skills": {
+				"aSkill": "スキル",
+				"added": "{n} 件追加",
+				"reused": "{n} 件はすでにライブラリにあります",
+				"renamed": "{n} 件の名前を変更({list})",
+				"summary": "スキル: {parts}",
+				"notCopied": "{name}: コピーされませんでした({reason})",
+				"notAttached": "{name}: {n} 件のペルソナに添付されませんでした({reason})",
+				"dryRun": "スキル: このデバイスのライブラリから {count} 件"
+			},
+			"guards": {
+				"published": "移動が公開され、クラウドアカウントで確認されました",
+				"unchanged": "スナップショット以降、このワークスペースに変更はありません",
+				"files": "アップロードできなかったファイルはすべて、エクスポート済みか、失われたものとして承認済みです",
+				"skills": "このデバイスのスキルがクラウドライブラリにコピーされています",
+				"removeAccount": "この移動は別のアカウントで公開されました。ローカルコピーを削除するには、そのアカウントでログインしてください。",
+				"cannotRemove": "まだ削除できません: {reason}。",
+				"signIn": "ローカルコピーを削除するにはサインインしてください。",
+				"oldRecord": "この移行は古いバージョンで記録されたため、ローカルコピーを自動で削除できません。"
+			},
+			"legacy": "この移動は古いバージョンで開始されました。破棄して、最初からやり直してください。",
+			"accountMismatch": "この移行は別のアカウントで開始されました。続けるにはそのアカウントでサインインするか、移行を破棄してください。",
+			"signInToMove": "このワークスペースをクラウドに移行するにはサインインしてください。",
+			"demo": "デモワークスペースはこの Mac に残り、クラウドへは移行できません",
+			"cancelled": "移行をキャンセルしました",
+			"unsupportedSchema": "このワークスペースを移行するには TMGR を更新してください。",
+			"quota": "移行は 1 日に最大 3 回まで開始できます。明日もう一度お試しください。",
+			"running": "別の移行がまだ実行中です。",
+			"tooLarge": "このワークスペースは大きすぎて、一度に移行できません。",
+			"genericError": "問題が発生しました。"
+		},
+		"runner": {
+			"states": {
+				"done": "完了",
+				"failed": "失敗",
+				"interrupted": "中断",
+				"starting": "開始中",
+				"working": "作業中",
+				"waiting": "待機中",
+				"blocked": "入力待ち",
+				"unknown": "不明"
+			},
+			"exitCode": "終了しました(コード {code})",
+			"status": {
+				"ready": "準備完了",
+				"readyVersion": "準備完了 v{version}",
+				"incompatible": "互換性のないバージョン",
+				"absent": "起動していません",
+				"checking": "確認中…",
+				"updateRunner": "TMGR ランナーを更新"
+			},
+			"errors": {
+				"busy": "エージェントがビジー状態です。しばらくしてからもう一度お試しください。",
+				"unknownProfile": "このエージェントプロファイルは利用できません。別のプロファイルを選んでください。",
+				"sandbox": "サンドボックスがこの実行をブロックしました。プロジェクトフォルダを確認してもう一度お試しください。",
+				"limit": "実行中のエージェントが多すぎます。1 つ停止してもう一度お試しください。",
+				"invalidParams": "ランナーがリクエストを拒否しました。プロジェクトフォルダを確認してもう一度お試しください。",
+				"taskNotFound": "このタスクはローカルワークスペースに見つかりませんでした。",
+				"prefix": {
+					"start": "エージェントを起動できませんでした",
+					"stop": "エージェントを停止できませんでした",
+					"input": "エージェントに入力を送信できませんでした",
+					"open": "ターミナルを開けませんでした"
+				},
+				"withMessage": "{prefix}: {message}",
+				"withoutMessage": "{prefix}。"
+			},
+			"cloudTooltip": "エージェントの実行は、今のところローカルワークスペースでのみ使えます。",
+			"absentTooltip": "TMGR ランナーが起動していません。`tmgr runner start` で起動してください。",
+			"age": {
+				"justNow": "たった今",
+				"minutes": "{n} 分前",
+				"hours": "{n} 時間前",
+				"days": "{n} 日前"
+			}
+		},
+		"autopilot": {
+			"empty": "オートパイロットは実行されていません。",
+			"titleQueue": "キューループ",
+			"title": "オートパイロット",
+			"words": {
+				"starting": "開始中",
+				"running": "実行中",
+				"paused": "一時停止中",
+				"stopping": "停止中",
+				"stopped": "停止",
+				"suspended": "中断中",
+				"notRunning": "停止中"
+			},
+			"lastState": "最終状態 {state}",
+			"lastStateUpdated": "最終状態 {state}、{age}前に更新",
+			"counters": {
+				"done": "完了(PR)",
+				"inWork": "作業中",
+				"needsFeedback": "フィードバック待ち",
+				"blocked": "ブロック中",
+				"held": "保留中",
+				"failed": "失敗",
+				"queued": "待機中"
+			},
+			"limit": {
+				"unknown": {
+					"base": "{label}: 不明",
+					"age": "{label}: 不明 {age}前"
+				},
+				"pct": {
+					"base": "{label}: {pct}% {source}",
+					"resets": "{label}: {pct}% {source} · {time} にリセット",
+					"marks": "{label}: {pct}% {source} (新規停止 {soft}%、一時停止 {hard}%)",
+					"marksResets": "{label}: {pct}% {source} (新規停止 {soft}%、一時停止 {hard}%) · {time} にリセット",
+					"age": "{label}: {pct}% {source} {age}前",
+					"ageResets": "{label}: {pct}% {source} {age}前 · {time} にリセット",
+					"ageMarks": "{label}: {pct}% {source} {age}前 (新規停止 {soft}%、一時停止 {hard}%)",
+					"ageMarksResets": "{label}: {pct}% {source} {age}前 (新規停止 {soft}%、一時停止 {hard}%) · {time} にリセット"
+				}
+			},
+			"cost": {
+				"ofCap": "上限 {cap} のうち {used}",
+				"noneYet": "まだありません(上限 {cap})"
+			},
+			"guardOff": "利用上限なし(ガードはオフ)",
+			"nextStop": "「{kind}」までに {window} ウィンドウの約 {pct}% が残っています"
+		},
+		"connectAgent": {
+			"notes": {
+				"modules": "インストールすると、このワークスペースでローカルエージェントのアクセスと、ペルソナ・エージェントの実行モジュールもオンになります。",
+				"keychain": "トークンは macOS のキーチェーンに保存されます。コマンドには含まれません。",
+				"oneWorkspace": "各エージェントが接続できるワークスペースは 1 つです。ここにインストールすると、以前の TMGR 接続は置き換えられます。"
+			},
+			"translocated": "TMGR をアプリケーションフォルダに移動し、そこから開いてからインストールしてください。",
+			"safeMode": "プラグインのセーフモードがオンのため、エージェントは接続できません。オフにしてこの画面を開き直してください。",
+			"unsupported": "この画面からのインストールは macOS のみ対応しています。代わりに「設定をコピー」を使ってください。",
+			"bridge": "TMGR が自身のプログラムパスを特定できないため、ここからエージェントを接続できません。",
+			"timeout": "コマンドが完了しませんでした。もう一度「インストール」を押すか、「削除」してください。",
+			"claudeFailureNote": "Claude Code の以前の TMGR エントリはすでに削除されています。",
+			"installed": "{title} を再起動して TMGR を読み込ませてください。その後、TMGR のタスクを一覧表示するよう頼んでみましょう。",
+			"installFailed": "{title} を接続できませんでした。",
+			"removed": "{title} から TMGR を削除しました。",
+			"removeFailed": "{title} から TMGR を削除できませんでした。",
+			"demoRefusal": "まず自分のワークスペースを作成してから、エージェントを接続してください。",
+			"rateLimit": "過去 1 時間にすでに 10 個のエージェントトークンを作成しました。少し待ってからもう一度お試しください。"
+		},
+		"socialLogin": {
+			"startFailed": "ログインを開始できませんでした。"
+		}
 	}
 }

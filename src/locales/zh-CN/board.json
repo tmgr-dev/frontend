@@ -785,5 +785,84 @@
 		"createTask": "+ 创建任务",
 		"archiveDialogTitle": "归档已完成的任务",
 		"archiveDialogBody": "归档 {n} 个已完成任务？"
+	},
+	"helpers": {
+		"thirtyDayHint": "{hint} · 近 30 天",
+		"tracked": {
+			"minutes": "{m} 分",
+			"hoursMinutes": "{h} 小时 {m} 分"
+		},
+		"heatmap": {
+			"days": "{n} 天",
+			"headlineYear": "{year} 年共 {n} 次贡献",
+			"headlineLastYear": "过去一年共 {n} 次贡献",
+			"streakCurrent": "当前连续：{current} • 最长：{longest}",
+			"streakYear": "{year} 年最长连续：{longest}"
+		},
+		"categoryTransfer": {
+			"tasksMoved": "已移动 {n} 个任务。",
+			"mapping": "{from} → {to}（{tasks}）",
+			"noStatus": "无状态",
+			"statuses": "状态：{mappings}。",
+			"assigneesRemoved": "已移除 {n} 位负责人（不是目标工作区的成员）。"
+		},
+		"activityTitles": {
+			"assignedToPersona": "将任务分配给 {persona}",
+			"unassignedFromPersona": "取消了 {persona} 的任务分配",
+			"fallback": "动态",
+			"taskCreated": "创建了任务",
+			"taskUpdated": "更新了任务",
+			"taskCompleted": "完成了任务",
+			"taskDeleted": "删除了任务",
+			"taskRestored": "恢复了任务",
+			"taskStatusChanged": "移动了任务",
+			"taskAssigned": "分配了任务",
+			"taskPersonaAssigned": "将任务分配给角色",
+			"taskPersonaUnassigned": "取消了任务的角色分配",
+			"taskTimerStarted": "启动了计时器",
+			"taskTimerStopped": "停止了计时器",
+			"commentCreated": "发表了评论",
+			"commentUpdated": "编辑了评论",
+			"commentDeleted": "删除了评论",
+			"categoryCreated": "创建了项目",
+			"categoryUpdated": "更新了项目",
+			"categoryDeleted": "删除了项目",
+			"fileUploaded": "添加了文件",
+			"fileDeleted": "移除了文件",
+			"memberJoined": "加入了工作区",
+			"memberLeft": "离开了工作区",
+			"routineCompleted": "完成了例行事项",
+			"agentWorkStarted": "开始了智能体运行",
+			"agentWorkUpdated": "更新了智能体运行",
+			"agentWorkFinished": "结束了智能体运行"
+		},
+		"graph": {
+			"comment": "评论",
+			"thisTask": "此任务",
+			"thisPage": "此页面"
+		},
+		"map": {
+			"pagesTitle": "页面与文档",
+			"noCategory": "无项目",
+			"category": "项目",
+			"listAnd": "{head}和{last}",
+			"blocks": "{who}阻塞了 {n} 个任务",
+			"blocksIn": "{who}在 {names} 中阻塞了 {n} 个任务",
+			"hubs": "{list}关联的内容最多",
+			"bridges": "{from}连接 {to}",
+			"orphans": "{n} 项：无人链接的页面、没有关联的任务",
+			"noOrphans": "每一项都至少有一个链接"
+		},
+		"integrationHint": {
+			"github": {
+				"title": "未关联 GitHub 仓库",
+				"message": "此项目尚未关联 GitHub 仓库。在项目设置中连接一个，即可跟踪其任务的提交、分支和拉取请求。"
+			},
+			"cursor": {
+				"title": "未配置 Cursor 智能体",
+				"message": "此项目尚未配置 Cursor 智能体。在项目设置中添加 Cursor API 密钥，即可对其任务启动智能体。"
+			},
+			"openCategorySettings": "打开项目设置"
+		}
 	}
 }

@@ -969,5 +969,83 @@
 		"copyFailed": "コピーできませんでした",
 		"contactFailed": "連絡先をダウンロードできませんでした",
 		"confirmRemove": "アラーム用の電話を削除しますか？"
+	},
+	"helpers": {
+		"editorLegacy": "{label} — レガシー",
+		"featureToggle": {
+			"groups": {
+				"pages": "ページ",
+				"task": "タスク",
+				"notifications": "通知"
+			},
+			"descriptions": {
+				"categories": "タスクをプロジェクトにまとめて、ワークスペースを整理します。",
+				"board": "カンバンボード表示に切り替えて、タスクのステータスを管理します。",
+				"workflow": "カスタムステータス、ステータスピッカー、ボードの列。",
+				"pages": "メモ、コンテキスト、ドキュメントを、メンバーもエージェントも編集できるページのツリーにまとめます。",
+				"graph": "タスク、ページ、人物、エージェントの実行のつながりを確認できます。タスクとページの「グラフ」セクションと、ワークスペースのマップが使えます。",
+				"agentWork": "AI エージェントがタスクでの作業と時間を報告できるようにします。オフにすると、エージェントの実行は非表示になり、エージェントは報告をスキップします。",
+				"dashboard": "ワークスペース全体のアクティビティと進捗の概要を確認できます。",
+				"dailyRoutines": "タスクとは別に、繰り返しのルーティンとメモを管理します。",
+				"taskComments": "タスクにコメントやディスカッションを追加できるようにします。",
+				"taskCountdown": "開始/停止タイマーで、タスクにかけた時間を記録します。",
+				"taskFiles": "タスクにファイルを添付できるようにします。",
+				"taskRelations": "タスクを関連するタスクにリンクできるようにします。",
+				"taskCheckpoints": "タスクを小さなチェックポイントに分けます。",
+				"taskAssignees": "タスクを特定のワークスペースメンバーに割り当てます。",
+				"exports": "ワークスペースのデータをエクスポートします。",
+				"defaultLandingPage": "ログイン時に最初に開くページを選びます。"
+			}
+		},
+		"deviceScope": {
+			"workspacesRead": "ワークスペース、ステータス、プロジェクトを表示",
+			"tasksRead": "タスクとそのコメントを読み取り",
+			"tasksWrite": "タスクのステータスとフィールドを変更",
+			"tasksCreate": "タスクを作成",
+			"commentsCreate": "コメントを追加",
+			"timeRead": "時間レポートを読み取り",
+			"timeWrite": "タイマーを開始・停止",
+			"agentWorkWrite": "タスクでの AI エージェントの作業を記録",
+			"agentStatusWrite": "ローカル AI エージェントの状態(作業中、待機中、完了)をワークスペースと共有",
+			"pagesRead": "ページを読み取り",
+			"pagesWrite": "ページを編集",
+			"pagesAppend": "ページに追記",
+			"notifySend": "デバイスに通知とスマホのアラームを送信",
+			"agentApprovalsWrite": "このコンピューターの鍵でエージェント実行の承認に署名",
+			"skillsRead": "共有スキルと、それを使うペルソナを読み取り",
+			"skillsWrite": "共有スキルを作成・変更・削除し、ペルソナに添付(エージェントへの指示が変わります)"
+		},
+		"workspaceColor": {
+			"red": "赤",
+			"orange": "オレンジ",
+			"yellow": "黄",
+			"green": "緑",
+			"teal": "ティール",
+			"blue": "青",
+			"violet": "紫",
+			"pink": "ピンク"
+		},
+		"phones": {
+			"pairStartFailed": "ペアリングを開始できませんでした",
+			"enterName": "この Mac の名前を入力してください",
+			"signIn": "スマホをペアリングするにはログインしてください",
+			"genericError": "問題が発生しました",
+			"never": "なし",
+			"justNow": "たった今",
+			"minutesAgo": "{n} 分前",
+			"hoursAgo": "{n} 時間前",
+			"daysAgo": "{n} 日前",
+			"scanCode": "TMGR の iPhone アプリでこのコードをスキャンしてください",
+			"typeCodeOn": "{name} に表示されているコードを入力してください",
+			"typeCodeOnIphone": "iPhone に表示されているコードを入力してください",
+			"pairingFailed": "ペアリングに失敗しました",
+			"isPaired": "{name} をペアリングしました",
+			"phonePaired": "スマホをペアリングしました",
+			"attemptsLeft": "残り {n} 回"
+		},
+		"modules": {
+			"footer": "モジュールをオフにすると、このワークスペースの全員に対して非表示になります。データは残ります。オンに戻せば、すべて元の状態に戻ります。",
+			"coreDescription": "常に利用できます。自分だけ非表示にすることもできます。"
+		}
 	}
 }

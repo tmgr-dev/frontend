@@ -1,10 +1,13 @@
+import { t } from '@/i18n';
 import type { AgentMessage, AgentQuote, QuoteDraft } from '@/types/agent';
 import { formatMessageTime } from '@/utils/agentMessageMeta';
 
 export const MAX_QUOTES = 5;
 export const MAX_QUOTE_TEXT = 4000;
-export const QUOTE_LIMIT_MESSAGE = `You can quote up to ${MAX_QUOTES} messages.`;
-export const QUOTE_UNAVAILABLE = 'Original message unavailable';
+export const quoteLimitMessage = (): string =>
+	t('agents.helpers.quotes.limit', { max: MAX_QUOTES });
+export const quoteUnavailable = (): string =>
+	t('agents.helpers.quotes.unavailable');
 
 export const addQuote = (
 	quotes: QuoteDraft[],
@@ -39,7 +42,7 @@ export const removeQuote = (
 ): QuoteDraft[] => quotes.filter((_, i) => i !== index);
 
 export const quoteAuthor = (role: 'user' | 'assistant'): string =>
-	role === 'user' ? 'You' : 'AI';
+	t(role === 'user' ? 'agents.helpers.quotes.you' : 'agents.helpers.quotes.ai');
 
 export const truncateQuote = (text: string, max = 80): string => {
 	const flat = text.replace(/\s+/g, ' ').trim();
@@ -58,7 +61,9 @@ export const draftChip = (
 ): QuoteChip => {
 	const message = messages.find((m) => m.id === draft.message_id);
 	return {
-		author: message ? quoteAuthor(message.role) : 'Message',
+		author: message
+			? quoteAuthor(message.role)
+			: t('agents.helpers.quotes.message'),
 		time: message ? formatMessageTime(message.created_at) : '',
 		text: truncateQuote(draft.text ?? message?.content ?? ''),
 	};

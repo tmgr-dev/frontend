@@ -236,5 +236,81 @@
 		"pullRequests": "拉取请求（{n}）",
 		"by": "作者：{author}",
 		"loadFailed": "无法加载 Git 动态"
+	},
+	"helpers": {
+		"usage": {
+			"rows": {
+				"input": "输入",
+				"cache_read": "缓存读取",
+				"cache_write_5m": "缓存写入 5 分钟",
+				"cache_write_1h": "缓存写入 1 小时",
+				"output": "输出",
+				"reasoning": "推理"
+			},
+			"timeActive": "活跃",
+			"timeWallClock": "实际耗时",
+			"summary": {
+				"you": "你 {time}",
+				"agents": "智能体 {time}",
+				"ai": "AI {cost}"
+			},
+			"server": {
+				"unsynced": "此设备上有 {amount} 的用量尚未同步。",
+				"readFailed": "无法读取已同步的用量。",
+				"localOnly": "仅限本地，未同步。任务费用 API 和其他成员看不到此任务的 AI 用量。运行 `tmgr usage sync` 即可上传。"
+			},
+			"rates": {
+				"input": "输入",
+				"output": "输出",
+				"cacheRead": "缓存读取",
+				"cacheWrite5m": "缓存写入 5 分钟",
+				"cacheWrite1h": "缓存写入 1 小时",
+				"line": "{label} {value}",
+				"per1M": "{parts}，每百万 token"
+			},
+			"unpriced": "有 {count} 个事件没有价格，费用被低估了。"
+		},
+		"status": {
+			"states": {
+				"working": "工作中",
+				"waiting": "等待中",
+				"blocked": "已阻塞",
+				"idle": "空闲",
+				"done": "已完成",
+				"exited": "已退出"
+			},
+			"justNow": "刚刚",
+			"minAgo": "{n} 分钟前",
+			"hourAgo": "{n} 小时前",
+			"dayAgo": "{n} 天前",
+			"agent": "智能体",
+			"on": " 在 {host}",
+			"line": "{state}：{who}{where}",
+			"since": "自 {since}",
+			"noRecent": "近期无更新"
+		},
+		"work": {
+			"agents": "智能体",
+			"active": "智能体活跃",
+			"wall": "实际耗时",
+			"waiting": "运行间隙等待",
+			"sum": "智能体用时（各次运行之和）"
+		},
+		"approval": {
+			"revokedBy": {
+				"ui": "网页版",
+				"cli": "CLI",
+				"mcp": "MCP",
+				"persona": "某个智能体角色",
+				"plugin": "某个插件",
+				"legacy": "某个旧版令牌",
+				"other": "某个集成"
+			},
+			"reasonEdited": "文本已编辑",
+			"reasonComment": "已添加评论",
+			"reasonChanged": "已更改",
+			"noCategory": "无项目",
+			"category": "项目 #{id}"
+		}
 	}
 }

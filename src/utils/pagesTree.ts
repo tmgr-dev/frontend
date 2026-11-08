@@ -6,16 +6,16 @@ export interface PageNode extends PageSummary {
 
 export interface PageCreateOption {
 	type: PageType;
-	label: string;
+	labelKey: string;
 }
 
 export const DEFAULT_PAGE_TITLE = 'Untitled';
 
 export const PAGE_CREATE_OPTIONS: PageCreateOption[] = [
-	{ type: 'plain', label: 'Plain page' },
-	{ type: 'context', label: 'Context' },
-	{ type: 'person', label: 'Person' },
-	{ type: 'meeting', label: 'Meeting' },
+	{ type: 'plain', labelKey: 'pages.helpers.pageType.plain' },
+	{ type: 'context', labelKey: 'pages.helpers.pageType.context' },
+	{ type: 'person', labelKey: 'pages.helpers.pageType.person' },
+	{ type: 'meeting', labelKey: 'pages.helpers.pageType.meeting' },
 ];
 
 const compareSiblings = (a: PageSummary, b: PageSummary): number => {

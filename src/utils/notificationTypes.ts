@@ -1,34 +1,39 @@
-export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
-	task_created: 'Task created',
-	task_updated: 'Task updated',
-	task_status_changed: 'Task status changed',
-	task_assigned: 'Task assigned',
-	task_deleted: 'Task deleted',
-	task_restored: 'Task restored',
-	task_completed: 'Task completed',
-	comment_created: 'New comment',
-	comment_updated: 'Comment updated',
-	comment_deleted: 'Comment deleted',
-	category_created: 'Category created',
-	category_updated: 'Category updated',
-	category_deleted: 'Category deleted',
-	category_restored: 'Category restored',
-	file_uploaded: 'File uploaded',
-	file_deleted: 'File deleted',
-	member_joined: 'Member joined',
-	member_left: 'Member left workspace',
-	member_removed: 'Member removed',
-	task_persona_assigned: 'Task assigned to a persona',
-	task_persona_unassigned: 'Task unassigned from a persona',
-	comment_reaction_toggled: 'Comment reaction',
-	agent_work_started: 'Agent work started',
-	agent_work_updated: 'Agent work updated',
-	agent_work_finished: 'Agent work finished',
-	page_created: 'New page',
-	page_updated: 'Page updated',
-	page_mentioned: 'You were mentioned on a page',
-	memory_added: 'Added to memory',
-};
+import { t } from '@/i18n';
+
+const NOTIFICATION_TYPES = [
+	'task_created',
+	'task_updated',
+	'task_status_changed',
+	'task_assigned',
+	'task_deleted',
+	'task_restored',
+	'task_completed',
+	'comment_created',
+	'comment_updated',
+	'comment_deleted',
+	'category_created',
+	'category_updated',
+	'category_deleted',
+	'category_restored',
+	'file_uploaded',
+	'file_deleted',
+	'member_joined',
+	'member_left',
+	'member_removed',
+	'task_persona_assigned',
+	'task_persona_unassigned',
+	'comment_reaction_toggled',
+	'agent_work_started',
+	'agent_work_updated',
+	'agent_work_finished',
+	'page_created',
+	'page_updated',
+	'page_mentioned',
+	'memory_added',
+];
+
+const camelType = (type: string): string =>
+	type.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase());
 
 export const normalizeNotificationType = (type: string): string =>
 	(type || '').replace(/\./g, '_');
@@ -39,8 +44,11 @@ const humanizeType = (type: string): string => {
 };
 
 export const notificationTypeLabel = (type: string): string =>
-	NOTIFICATION_TYPE_LABELS[normalizeNotificationType(type)] ??
-	(humanizeType(type) || type);
+	NOTIFICATION_TYPES.includes(normalizeNotificationType(type))
+		? t(
+				`workspace.helpers.notificationTypes.${camelType(normalizeNotificationType(type))}`,
+			)
+		: humanizeType(type) || type;
 
 export const notificationTitle = (notification: {
 	type?: string;
@@ -48,7 +56,10 @@ export const notificationTitle = (notification: {
 }): string => {
 	const title = (notification.title ?? '').trim();
 	if (title && title !== notification.type) return title;
-	return notificationTypeLabel(notification.type ?? '') || 'Notification';
+	return (
+		notificationTypeLabel(notification.type ?? '') ||
+		t('workspace.helpers.notificationTypes.fallback')
+	);
 };
 
 export const isPageNotification = (type: string): boolean =>

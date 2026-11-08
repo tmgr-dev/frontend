@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import {
 	byteLength,
 	SHARED_SKILL_LIMIT,
@@ -30,18 +31,8 @@ export interface ScanFile {
 export const EMPTY_FILES_SHA256 =
 	'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 
-export const FILE_STATUS_LABELS: Record<ScanFileStatus, string> = {
-	ok: 'will be uploaded',
-	binary: 'binary, not imported',
-	too_large: 'too large, not imported',
-	secret: 'looks like a secret, blocks the skill',
-	symlink: 'symlink, not imported',
-	unsupported_name: 'unsupported name, not imported',
-	case_conflict: 'name clashes ignoring case, not imported',
-	too_deep: 'too deep, not imported',
-	skipped_hidden: 'hidden, not imported',
-	unreadable: 'cannot be read, not imported',
-};
+export const fileStatusLabel = (status: ScanFileStatus): string =>
+	t(`agents.helpers.skillImport.fileStatus.${status}`);
 
 export const skippedFileCount = (skill: ScanSkill): number =>
 	skill.files.filter(
@@ -240,19 +231,21 @@ const repairWhen = (text: string): string =>
 
 const fitWhen = (text: string, warnings: string[]): string => {
 	if (text.length <= WHEN_MAX_LENGTH) return text;
-	warnings.push(`description cut to ${WHEN_MAX_LENGTH} characters`);
+	warnings.push(
+		t('agents.helpers.skillImport.warn.descriptionCut', {
+			max: WHEN_MAX_LENGTH,
+		}),
+	);
 	return text.slice(0, WHEN_MAX_LENGTH).trimEnd();
 };
 
 const bodyWarnings = (body: string): string[] => {
 	const warnings: string[] = [];
 	if (body.includes('CLAUDE_PLUGIN_ROOT')) {
-		warnings.push(
-			'refers to ${CLAUDE_PLUGIN_ROOT}, which does not exist in the library',
-		);
+		warnings.push(t('agents.helpers.skillImport.warn.pluginRoot'));
 	}
 	if (/\]\(\.{1,2}\//.test(body) || /(^|[\s`'"(])scripts\//m.test(body)) {
-		warnings.push('refers to relative paths that will not resolve');
+		warnings.push(t('agents.helpers.skillImport.warn.relativePaths'));
 	}
 	return warnings;
 };
@@ -264,13 +257,20 @@ const blockedReasonOf = (
 	slug: string,
 	when: string,
 ): string | null => {
-	if (skill.secret) return 'looks like it contains a secret';
-	if (skill.files_blocked) return `files: ${skill.files_blocked}`;
+	if (skill.secret) return t('agents.helpers.skillImport.blocked.secret');
+	if (skill.files_blocked)
+		return t('agents.helpers.skillImport.blocked.files', {
+			files: skill.files_blocked,
+		});
 	if (skill.too_large || bytes > SKILL_BODY_MAX_BYTES) {
-		return `${Math.ceil(bytes / 1024)} KiB, limit ${SKILL_BODY_MAX_BYTES / 1024} KiB`;
+		return t('agents.helpers.skillImport.blocked.size', {
+			kib: Math.ceil(bytes / 1024),
+			limit: SKILL_BODY_MAX_BYTES / 1024,
+		});
 	}
-	if (!skill.content.trim()) return 'empty file';
-	if (!when) return 'no description';
+	if (!skill.content.trim())
+		return t('agents.helpers.skillImport.blocked.empty');
+	if (!when) return t('agents.helpers.skillImport.blocked.noDescription');
 	const errors = validateSkillMarkdown(markdown, slug);
 	if (!errors) return null;
 	return Object.entries(errors)
@@ -288,17 +288,14 @@ export const convertSkill = (
 	const description = collapse(scalarText(data.description));
 
 	const warnings: string[] = [];
-	if (frontMatter === null) warnings.push('no front matter');
+	if (frontMatter === null)
+		warnings.push(t('agents.helpers.skillImport.warn.noFrontMatter'));
 	if (invalid) {
-		warnings.push(
-			'front matter is not valid YAML; name and description were not read',
-		);
+		warnings.push(t('agents.helpers.skillImport.warn.invalidYaml'));
 	}
 	const skipped = skippedFileCount(skill);
 	if (skipped > 0) {
-		warnings.push(
-			`${skipped} ${skipped === 1 ? 'file' : 'files'} will not be imported, see the file list`,
-		);
+		warnings.push(t('agents.helpers.skillImport.warn.filesSkipped', skipped));
 	}
 	warnings.push(...bodyWarnings(body));
 
@@ -476,7 +473,7 @@ export const planImport = (
 		if (usedSlugs.has(item.slug)) {
 			blocked.push({
 				skillKey: item.skillKey,
-				reason: 'duplicate slug in selection',
+				reason: t('agents.helpers.skillImport.plan.duplicate'),
 			});
 			continue;
 		}
@@ -486,7 +483,7 @@ export const planImport = (
 		) {
 			blocked.push({
 				skillKey: item.skillKey,
-				reason: 'slug taken in the library since the scan',
+				reason: t('agents.helpers.skillImport.plan.taken'),
 			});
 			continue;
 		}
@@ -495,7 +492,7 @@ export const planImport = (
 			if (projectedCount + 1 > limit) {
 				blocked.push({
 					skillKey: item.skillKey,
-					reason: 'library limit reached',
+					reason: t('agents.helpers.skillImport.plan.limit'),
 				});
 				continue;
 			}
@@ -510,6 +507,8 @@ export const planImport = (
 export const importSummary = (results: { ok: boolean }[]): string => {
 	const ok = results.filter((result) => result.ok).length;
 	const failed = results.length - ok;
-	const imported = `Imported ${ok} ${ok === 1 ? 'skill' : 'skills'}`;
-	return failed === 0 ? imported : `${imported}, ${failed} failed`;
+	const imported = t('agents.helpers.skillImport.summary.imported', ok);
+	return failed === 0
+		? imported
+		: t('agents.helpers.skillImport.summary.failed', { imported, failed });
 };

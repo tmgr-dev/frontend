@@ -483,5 +483,278 @@
 			"runnerNotRunning": "Der TMGR-Runner läuft nicht. Starte ihn, um den Autopiloten hier zu sehen.",
 			"updateRunner": "Aktualisiere den TMGR-Runner, um den Autopiloten hier zu sehen."
 		}
+	},
+	"helpers": {
+		"trayName": {
+			"menuBar": "Menüleiste",
+			"systemTray": "Infobereich"
+		},
+		"revealInFileManager": {
+			"explorer": "Im Explorer anzeigen",
+			"fileManager": "Im Dateimanager anzeigen",
+			"finder": "Im Finder anzeigen"
+		},
+		"thisComputer": {
+			"mac": "diesem Mac",
+			"computer": "diesem Computer"
+		},
+		"pluginWindowsUnavailable": "Plugin-Fenster sind unter Windows noch nicht verfügbar.",
+		"download": {
+			"title": "{name} heruntergeladen",
+			"finished": "Download abgeschlossen",
+			"savedTo": "In Downloads gespeichert",
+			"failed": "Download fehlgeschlagen",
+			"couldNotSave": "{name} konnte nicht gespeichert werden.",
+			"theFile": "Die Datei"
+		},
+		"updateCheck": {
+			"tryAgainLater": "Versuch es später noch einmal.",
+			"upToDateVersion": "Du bist auf dem neuesten Stand (v{version})",
+			"upToDate": "Du bist auf dem neuesten Stand",
+			"available": "Update v{version} verfügbar",
+			"installHint": "Installiere es und starte neu, um zu aktualisieren.",
+			"failed": "Update-Prüfung fehlgeschlagen",
+			"couldNotCheck": "Updates konnten nicht geprüft werden",
+			"checkConnection": "Prüfe deine Verbindung und versuch es noch einmal."
+		},
+		"primaryModifiers": {
+			"mac": "Verwende mindestens eine der Tasten ⌘ ⌃ ⌥",
+			"other": "Verwende mindestens eine der Tasten Strg, Alt, {key}",
+			"win": "Win",
+			"super": "Super"
+		},
+		"away": {
+			"hoursMinutes": "{h} Std. {m} Min.",
+			"minutes": "{m} Min."
+		},
+		"localOnly": {
+			"welcomeMac": "Deine Daten bleiben auf diesem Mac. Ein Konto kannst du später erstellen.",
+			"welcomeComputer": "Deine Daten bleiben auf diesem Computer. Ein Konto kannst du später erstellen.",
+			"noBackup": "Noch kein Backup",
+			"backupJustNow": "Letztes Backup: gerade eben",
+			"backupMinutes": "Letztes Backup: vor {n} Minute | Letztes Backup: vor {n} Minuten",
+			"backupHours": "Letztes Backup: vor {n} Stunde | Letztes Backup: vor {n} Stunden",
+			"backupDays": "Letztes Backup: vor {n} Tag | Letztes Backup: vor {n} Tagen",
+			"backupFailed": "Letztes Backup fehlgeschlagen: {error}",
+			"backupStale": "Seit {days} Tagen kein Backup"
+		},
+		"upgradeFailure": {
+			"link": "Dieses Gerät konnte nicht mit deinem Konto verknüpft werden, deshalb bleiben deine lokalen Daten vorerst auf diesem Gerät. Du kannst weiterarbeiten, es erneut versuchen oder überspringen.",
+			"move": "Einige lokale Daten konnten noch nicht in dieses Konto verschoben werden. Du kannst weiterarbeiten, und wir versuchen es beim nächsten Start der App erneut."
+		},
+		"move": {
+			"copiedBanner": "Am {date} in deinen Cloud-Arbeitsbereich {name} kopiert. Änderungen hier werden nicht synchronisiert.",
+			"previousMove": "Du hast diesen Arbeitsbereich am {date} verschoben. Dadurch entsteht eine zweite Cloud-Kopie.",
+			"entities": {
+				"personas": "Personas",
+				"statuses": "Status",
+				"categories": "Projekte",
+				"tasks": "Aufgaben",
+				"comments": "Kommentare",
+				"files": "Dateien",
+				"pages": "Seiten",
+				"page_versions": "Seitenversionen",
+				"routines": "Routinen",
+				"agent_runs": "Agent-Läufe",
+				"assignments": "Zuweisungen",
+				"relations": "Beziehungen",
+				"modules": "Module"
+			},
+			"skipReasons": {
+				"excluded": "vom Verschieben ausgenommen",
+				"not_uploaded": "nicht hochgeladen",
+				"not_allowed": "nicht erlaubt",
+				"persona_is_me": "gehört dir",
+				"disabled": "deaktiviert",
+				"unsupported": "nicht unterstützt",
+				"duplicate": "Duplikat",
+				"unknown_module": "unbekanntes Modul",
+				"unmapped_target": "sein Ziel wurde nicht verschoben"
+			},
+			"report": {
+				"moved": "{entity}: {imported} von {expected} verschoben",
+				"movedSkipped": "{entity}: {imported} von {expected} verschoben, {skipped} übersprungen",
+				"fileSkipped": "{name}: übersprungen, {reason}",
+				"unmapped": "{n} Verweis zeigt auf etwas, das nicht verschoben wurde | {n} Verweise zeigen auf etwas, das nicht verschoben wurde",
+				"countMismatch": "{entity}: erwartet {expected}, verschoben {imported}, übersprungen {skipped}",
+				"bundleMismatch": "{entity}: Das Paket enthielt {actual} von {expected} Elementen",
+				"unmappedRefs": "{count} Verweise zeigen auf etwas, das nicht verschoben wurde",
+				"failed": "Das Verschieben ist auf dem Server fehlgeschlagen."
+			},
+			"rows": {
+				"backup": "Backup erstellt",
+				"bundle": "Paket hochgeladen",
+				"statuses": "Status und Projekte",
+				"tasks": "Aufgaben",
+				"comments": "Kommentare",
+				"files": "Dateien",
+				"pages": "Seiten",
+				"links": "Verknüpfungen",
+				"routines": "Routinen und Agent-Läufe",
+				"publish": "Prüfen und veröffentlichen"
+			},
+			"rowCount": "{label} {done} von {total}",
+			"rowSkipped": "{label} · {skipped} übersprungen (siehe Bericht)",
+			"excludedReasons": {
+				"missing": "Datei fehlt",
+				"too_large": "zu groß",
+				"mime": "Typ nicht erlaubt",
+				"refused": "vom Server abgelehnt"
+			},
+			"skillReasons": {
+				"library_full": "deine Bibliothek ist voll",
+				"invalid": "kein gültiger Skill",
+				"not_owner": "die Persona gehört einem anderen Mitglied",
+				"not_moved": "die Persona wurde nicht verschoben",
+				"attach_limit": "die Persona hat zu viele Skills",
+				"invalid_files": "seine Dateien sind ungültig (Pfad-, Text- oder Größenlimits)",
+				"too_large": "zu groß, um in die Cloud verschoben zu werden",
+				"files_limit": "seine Dateien würden dein Dateilimit von 10 MiB überschreiten"
+			},
+			"skills": {
+				"aSkill": "ein Skill",
+				"added": "{n} hinzugefügt",
+				"reused": "{n} bereits in deiner Bibliothek",
+				"renamed": "{n} umbenannt ({list})",
+				"summary": "Skills: {parts}",
+				"notCopied": "{name}: nicht kopiert, {reason}",
+				"notAttached": "{name}: nicht an {n} Persona angehängt, {reason} | {name}: nicht an {n} Personas angehängt, {reason}",
+				"dryRun": "Skills: {count} aus der Bibliothek dieses Geräts"
+			},
+			"guards": {
+				"published": "Das Verschieben ist veröffentlicht und in deinem Cloud-Konto geprüft",
+				"unchanged": "Seit dem Snapshot hat sich in diesem Arbeitsbereich nichts geändert",
+				"files": "Jede Datei, die nicht hochgeladen werden konnte, ist exportiert oder als verloren akzeptiert",
+				"skills": "Skills von diesem Gerät sind in deine Cloud-Bibliothek kopiert",
+				"removeAccount": "Dieses Verschieben wurde von einem anderen Konto veröffentlicht. Melde dich mit diesem Konto an, um die lokale Kopie zu entfernen.",
+				"cannotRemove": "Entfernen noch nicht möglich: {reason}.",
+				"signIn": "Melde dich an, um die lokale Kopie zu entfernen.",
+				"oldRecord": "Dieser Umzug wurde von einer älteren Version aufgezeichnet, daher kann die lokale Kopie nicht automatisch entfernt werden."
+			},
+			"legacy": "Dieses Verschieben wurde von einer älteren Version gestartet. Verwirf es und starte neu.",
+			"accountMismatch": "Dieser Umzug wurde von einem anderen Konto gestartet. Melde dich mit diesem Konto an, um fortzufahren, oder verwirf ihn.",
+			"signInToMove": "Melde dich an, um diesen Arbeitsbereich in die Cloud zu verschieben.",
+			"demo": "Der Demo-Arbeitsbereich bleibt auf diesem Mac und kann nicht in die Cloud verschoben werden",
+			"cancelled": "Umzug abgebrochen",
+			"unsupportedSchema": "Aktualisiere TMGR, um diesen Arbeitsbereich zu verschieben.",
+			"quota": "Du kannst bis zu 3 Umzüge pro Tag starten. Versuche es morgen erneut.",
+			"running": "Ein anderer Umzug läuft noch.",
+			"tooLarge": "Dieser Arbeitsbereich ist zu groß, um ihn in einem Schritt zu verschieben.",
+			"genericError": "Etwas ist schiefgelaufen."
+		},
+		"runner": {
+			"states": {
+				"done": "Erledigt",
+				"failed": "Fehlgeschlagen",
+				"interrupted": "Unterbrochen",
+				"starting": "Startet",
+				"working": "Arbeitet",
+				"waiting": "Inaktiv",
+				"blocked": "Braucht Eingabe",
+				"unknown": "Unbekannt"
+			},
+			"exitCode": "Beendet (Code {code})",
+			"status": {
+				"ready": "Bereit",
+				"readyVersion": "Bereit v{version}",
+				"incompatible": "Inkompatible Version",
+				"absent": "Läuft nicht",
+				"checking": "Wird geprüft…",
+				"updateRunner": "TMGR-Runner aktualisieren"
+			},
+			"errors": {
+				"busy": "Der Agent ist beschäftigt, versuch es gleich noch einmal.",
+				"unknownProfile": "Dieses Agent-Profil ist nicht verfügbar. Wähle ein anderes Profil.",
+				"sandbox": "Die Sandbox hat diesen Lauf blockiert. Prüfe den Projektordner und versuch es noch einmal.",
+				"limit": "Es laufen zu viele Agenten. Stoppe einen und versuch es noch einmal.",
+				"invalidParams": "Der Runner hat die Anfrage abgelehnt. Prüfe den Projektordner und versuch es noch einmal.",
+				"taskNotFound": "Diese Aufgabe wurde im lokalen Arbeitsbereich nicht gefunden.",
+				"prefix": {
+					"start": "Der Agent konnte nicht gestartet werden",
+					"stop": "Der Agent konnte nicht gestoppt werden",
+					"input": "Die Eingabe konnte nicht an den Agenten gesendet werden",
+					"open": "Das Terminal konnte nicht geöffnet werden"
+				},
+				"withMessage": "{prefix}: {message}",
+				"withoutMessage": "{prefix}."
+			},
+			"cloudTooltip": "Agent-Läufe funktionieren vorerst nur mit lokalen Arbeitsbereichen.",
+			"absentTooltip": "Der TMGR-Runner läuft nicht. Starte ihn mit `tmgr runner start`.",
+			"age": {
+				"justNow": "gerade eben",
+				"minutes": "vor {n} Min.",
+				"hours": "vor {n} Std.",
+				"days": "vor {n} T."
+			}
+		},
+		"autopilot": {
+			"empty": "Autopilot läuft nicht.",
+			"titleQueue": "Warteschlangen-Schleife",
+			"title": "Autopilot",
+			"words": {
+				"starting": "startet",
+				"running": "läuft",
+				"paused": "pausiert",
+				"stopping": "stoppt",
+				"stopped": "gestoppt",
+				"suspended": "ausgesetzt",
+				"notRunning": "läuft nicht"
+			},
+			"lastState": "letzter Zustand {state}",
+			"lastStateUpdated": "letzter Zustand {state}, aktualisiert vor {age}",
+			"counters": {
+				"done": "erledigt (PR)",
+				"inWork": "in Arbeit",
+				"needsFeedback": "braucht Feedback",
+				"blocked": "blockiert",
+				"held": "angehalten",
+				"failed": "fehlgeschlagen",
+				"queued": "in der Warteschlange"
+			},
+			"limit": {
+				"unknown": {
+					"base": "{label}: unbekannt",
+					"age": "{label}: unbekannt vor {age}"
+				},
+				"pct": {
+					"base": "{label}: {pct} % {source}",
+					"resets": "{label}: {pct} % {source} · wird zurückgesetzt {time}",
+					"marks": "{label}: {pct} % {source} (keine neuen ab {soft} %, Pause ab {hard} %)",
+					"marksResets": "{label}: {pct} % {source} (keine neuen ab {soft} %, Pause ab {hard} %) · wird zurückgesetzt {time}",
+					"age": "{label}: {pct} % {source} vor {age}",
+					"ageResets": "{label}: {pct} % {source} vor {age} · wird zurückgesetzt {time}",
+					"ageMarks": "{label}: {pct} % {source} vor {age} (keine neuen ab {soft} %, Pause ab {hard} %)",
+					"ageMarksResets": "{label}: {pct} % {source} vor {age} (keine neuen ab {soft} %, Pause ab {hard} %) · wird zurückgesetzt {time}"
+				}
+			},
+			"cost": {
+				"ofCap": "{used} von {cap} Limit",
+				"noneYet": "noch keine, Limit {cap}"
+			},
+			"guardOff": "kein Nutzungslimit (die Schutzfunktion ist aus)",
+			"nextStop": "≈ {pct} % des {window}-Fensters übrig bis „{kind}“"
+		},
+		"connectAgent": {
+			"notes": {
+				"modules": "Die Installation aktiviert außerdem den lokalen Agent-Zugriff und die Module Personas und Agent-Lauf in diesem Arbeitsbereich.",
+				"keychain": "Dein Token bleibt im macOS-Schlüsselbund. Er ist nicht Teil des Befehls.",
+				"oneWorkspace": "Jeder Agent verbindet sich mit einem Arbeitsbereich. Die Installation hier ersetzt eine frühere TMGR-Verbindung."
+			},
+			"translocated": "Verschiebe TMGR in den Ordner „Programme“, öffne es von dort und installiere dann.",
+			"safeMode": "Der abgesicherte Plugin-Modus ist an, deshalb können sich Agenten nicht verbinden. Schalte ihn aus und öffne diese Ansicht erneut.",
+			"unsupported": "Die Installation von diesem Bildschirm funktioniert nur unter macOS. Nutze stattdessen „Konfiguration kopieren“.",
+			"bridge": "TMGR kann seinen eigenen Programmpfad nicht ermitteln, deshalb können sich Agenten von hier aus nicht verbinden.",
+			"timeout": "Der Befehl wurde nicht abgeschlossen. Klicke noch einmal auf Installieren oder auf Entfernen.",
+			"claudeFailureNote": "Der frühere TMGR-Eintrag in Claude Code wurde bereits entfernt.",
+			"installed": "Starte {title} neu, damit es TMGR übernimmt. Bitte es dann, deine TMGR-Aufgaben aufzulisten.",
+			"installFailed": "{title} konnte nicht verbunden werden.",
+			"removed": "TMGR wurde aus {title} entfernt.",
+			"removeFailed": "TMGR konnte nicht aus {title} entfernt werden.",
+			"demoRefusal": "Erstelle zuerst deinen eigenen Arbeitsbereich und verbinde dann deinen Agenten.",
+			"rateLimit": "Du hast in der letzten Stunde bereits 10 Agent-Tokens erstellt. Warte kurz und versuch es noch einmal."
+		},
+		"socialLogin": {
+			"startFailed": "Die Anmeldung konnte nicht gestartet werden."
+		}
 	}
 }

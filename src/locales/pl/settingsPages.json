@@ -969,5 +969,83 @@
 		"copyFailed": "Nie udało się skopiować",
 		"contactFailed": "Nie udało się pobrać kontaktu",
 		"confirmRemove": "Usunąć telefon alarmowy?"
+	},
+	"helpers": {
+		"editorLegacy": "{label} — starsza wersja",
+		"featureToggle": {
+			"groups": {
+				"pages": "Strony",
+				"task": "Zadania",
+				"notifications": "Powiadomienia"
+			},
+			"descriptions": {
+				"categories": "Grupuj zadania w kategorie, aby uporządkować przestrzeń roboczą.",
+				"board": "Przełącz na widok tablicy kanban do śledzenia statusów zadań.",
+				"workflow": "Własne statusy, wybór statusu i kolumny tablicy.",
+				"pages": "Trzymaj notatki, kontekst i dokumentację w drzewie stron, które mogą edytować ludzie i agenci.",
+				"graph": "Zobacz, jak łączą się zadania, strony, osoby i uruchomienia agentów: sekcja Graf w zadaniach i stronach oraz Mapa przestrzeni roboczej.",
+				"agentWork": "Pozwala agentom AI raportować swoją pracę i czas przy zadaniach; po wyłączeniu uruchomienia agentów są ukryte, a agenci pomijają raportowanie.",
+				"dashboard": "Zobacz przegląd aktywności i postępów w całej przestrzeni roboczej.",
+				"dailyRoutines": "Śledź cykliczne rutyny i notatki oddzielnie od zadań.",
+				"taskComments": "Pozwól na komentarze i dyskusje przy zadaniach.",
+				"taskCountdown": "Śledź czas spędzony nad zadaniami za pomocą timera start/stop.",
+				"taskFiles": "Pozwól dołączać pliki do zadań.",
+				"taskRelations": "Pozwól łączyć zadania z powiązanymi zadaniami.",
+				"taskCheckpoints": "Dziel zadania na mniejsze punkty kontrolne.",
+				"taskAssignees": "Przypisuj zadania konkretnym członkom przestrzeni roboczej.",
+				"exports": "Eksportuj dane przestrzeni roboczej.",
+				"defaultLandingPage": "Wybierz, która strona otwiera się jako pierwsza po zalogowaniu."
+			}
+		},
+		"deviceScope": {
+			"workspacesRead": "Zobacz swoje przestrzenie robocze, statusy i projekty",
+			"tasksRead": "Czytaj zadania i ich komentarze",
+			"tasksWrite": "Zmieniaj status i pola zadań",
+			"tasksCreate": "Twórz zadania",
+			"commentsCreate": "Dodawaj komentarze",
+			"timeRead": "Czytaj raporty czasu",
+			"timeWrite": "Uruchamiaj i zatrzymuj swój timer",
+			"agentWorkWrite": "Zapisuj pracę agentów AI przy zadaniach",
+			"agentStatusWrite": "Udostępniaj przestrzeni roboczej status swojego lokalnego agenta AI (pracuje, czeka, gotowe)",
+			"pagesRead": "Czytaj Strony",
+			"pagesWrite": "Edytuj Strony",
+			"pagesAppend": "Dopisuj do Stron",
+			"notifySend": "Wysyłaj powiadomienia i alarmy telefoniczne na swoje urządzenia",
+			"agentApprovalsWrite": "Podpisuj zatwierdzenia uruchomień agentów kluczem tego komputera",
+			"skillsRead": "Czytaj swoje współdzielone skille i persony, które ich używają",
+			"skillsWrite": "Twórz, zmieniaj i usuwaj swoje współdzielone skille oraz przypisuj je swoim personom (zmienia to, co mają robić ci agenci)"
+		},
+		"workspaceColor": {
+			"red": "Czerwony",
+			"orange": "Pomarańczowy",
+			"yellow": "Żółty",
+			"green": "Zielony",
+			"teal": "Morski",
+			"blue": "Niebieski",
+			"violet": "Fioletowy",
+			"pink": "Różowy"
+		},
+		"phones": {
+			"pairStartFailed": "Nie udało się rozpocząć parowania",
+			"enterName": "Wpisz nazwę tego Maca",
+			"signIn": "Zaloguj się, aby sparować telefon",
+			"genericError": "Coś poszło nie tak",
+			"never": "nigdy",
+			"justNow": "przed chwilą",
+			"minutesAgo": "{n} min temu",
+			"hoursAgo": "{n} godz. temu",
+			"daysAgo": "{n} d temu",
+			"scanCode": "Zeskanuj ten kod w aplikacji TMGR na iPhone'a",
+			"typeCodeOn": "Wpisz kod widoczny na urządzeniu {name}",
+			"typeCodeOnIphone": "Wpisz kod widoczny na Twoim iPhonie",
+			"pairingFailed": "Parowanie nie powiodło się",
+			"isPaired": "Urządzenie {name} zostało sparowane",
+			"phonePaired": "Telefon sparowany",
+			"attemptsLeft": "Pozostała {n} próba | Pozostały {n} próby | Pozostało {n} prób"
+		},
+		"modules": {
+			"footer": "Wyłączenie modułu ukrywa go dla wszystkich w tej przestrzeni roboczej. Twoje dane zostają. Włącz go ponownie, a wszystko będzie tam, gdzie to zostawiono.",
+			"coreDescription": "Zawsze dostępne. Każdy z nich możesz ukryć tylko dla siebie."
+		}
 	}
 }

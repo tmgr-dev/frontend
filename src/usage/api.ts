@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { invoke } from '@tauri-apps/api/core';
 
 export interface UsageCostByType {
@@ -157,5 +158,5 @@ export const errorText = (error: unknown): string => {
 	const message = (error as { message?: unknown } | null)?.message;
 	return typeof message === 'string' && message
 		? message
-		: 'Something went wrong.';
+		: t('agents.helpers.usage.error.generic');
 };

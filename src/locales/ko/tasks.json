@@ -229,5 +229,51 @@
 		"page": "{page}/{last} 페이지",
 		"deleteTasksTitle": "작업 삭제",
 		"deleteTasksBody": "정말 삭제할까요?"
+	},
+	"helpers": {
+		"doneDisabledTooltip": "이 워크스페이스에는 완료 상태가 없어요",
+		"state": {
+			"done": "완료",
+			"archived": "보관됨",
+			"open": "열림"
+		},
+		"boardDate": {
+			"today": "오늘",
+			"yesterday": "어제"
+		},
+		"backlogTimer": {
+			"title": "백로그의 작업",
+			"message": "\"{title}\" 작업이 백로그에 있어요. \"{status}\" 상태로 바꿀까요?"
+		},
+		"fileSize": {
+			"b": "{n} B",
+			"kb": "{n} KB",
+			"mb": "{n} MB",
+			"gb": "{n} GB"
+		},
+		"attachmentErrors": {
+			"tooLargeWithLimit": "파일이 너무 커요. 한도는 {limit}예요.",
+			"tooLarge": "파일이 너무 커요.",
+			"typeNotAllowed": "이 파일 형식은 첨부할 수 없어요.",
+			"notAttachable": "이 파일은 첨부할 수 없어요.",
+			"noAccess": "이 파일에 접근할 권한이 없어요.",
+			"uploadFailed": "업로드에 실패했어요. 다시 시도해 주세요.",
+			"empty": "파일이 비어 있어요."
+		},
+		"priority": {
+			"urgent": "긴급",
+			"high": "높음",
+			"medium": "보통",
+			"low": "낮음"
+		},
+		"timeEntrySource": {
+			"attach": "터미널 세션"
+		},
+		"relativeTime": {
+			"justNow": "방금",
+			"minutesAgo": "{n}분 전",
+			"hoursAgo": "{n}시간 전",
+			"daysAgo": "{n}일 전"
+		}
 	}
 }

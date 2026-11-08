@@ -229,5 +229,199 @@
 		"privacyNote": "TMGR 会读取你的 AI 工具在此电脑上写入的会话日志，并保存 token 数量、费用、模型名称、时间戳、会话 ID、项目文件夹和 Git 分支，以及 AI 使用的工具、技能和命令的名称、它编辑的文件类型和它打开的拉取请求。提示词和回复文本绝不会被存储。除非你通过 tmgr usage sync 上传，否则数据只保留在此设备上。",
 		"matchFailed": "无法将用量匹配到任务：{error}",
 		"documentTitle": "AI 用量"
+	},
+	"helpers": {
+		"usage": {
+			"consent": {
+				"granted": "已开启：TMGR 会在此设备上读取这些日志来显示费用和额度，运行器会读取它所启动的会话。",
+				"denied": "已关闭：TMGR 不会在此设备上读取这些日志来统计 AI 用量，运行器也不会读取其中任何内容。",
+				"unset": "尚未选择：桌面应用和后台任务不会读取这些日志来统计 AI 用量，但你自己运行的 tmgr usage 命令仍会读取。在你允许之前，运行器不会读取任何内容。",
+				"forgetDone": "已删除。读取 AI 工具日志已关闭。"
+			},
+			"format": {
+				"now": "现在",
+				"justNow": "刚刚",
+				"ago": "{span}前"
+			},
+			"error": {
+				"generic": "出了点问题。"
+			}
+		},
+		"toolLabels": {
+			"get_task": "正在读取任务",
+			"list_tasks": "正在列出任务",
+			"search_tasks": "正在搜索任务",
+			"list_comments": "正在读取评论",
+			"list_statuses": "正在读取看板状态",
+			"list_members": "正在读取成员",
+			"list_routines": "正在读取例行事项",
+			"time_summary": "正在汇总已记录的时间",
+			"deadline_report": "正在检查截止时间",
+			"routine_agenda": "正在读取你的例行事项",
+			"get_routine": "正在读取例行事项",
+			"create_task": "正在准备任务",
+			"add_comment": "正在准备评论",
+			"update_task": "正在准备任务更新",
+			"add_checkpoint": "正在准备检查点",
+			"start_timer": "正在准备启动计时器",
+			"stop_timer": "正在准备停止计时器",
+			"link_tasks": "正在准备任务关联",
+			"create_routine": "正在准备例行事项",
+			"update_routine": "正在准备例行事项修改",
+			"set_routine_state": "正在准备例行事项打卡",
+			"move_routine_instance": "正在准备移动例行事项",
+			"convert_routine": "正在准备将例行事项转为任务"
+		},
+		"compaction": {
+			"nothing": "目前没有需要压缩的内容。",
+			"rateLimited": "压缩操作过于频繁，请稍后再试。",
+			"failed": "无法压缩历史记录，请重试。"
+		},
+		"pins": {
+			"saveFailed": "无法保存置顶事实，请重试。",
+			"invalid": "置顶事实无效。",
+			"limit": "最多可置顶 {max} 条事实。请先移除一条再添加。",
+			"charsLeft": "置顶事实只剩 {left} 个字符可用。"
+		},
+		"cursor": {
+			"taskFallback": "任务 #{id}"
+		},
+		"scenarios": {
+			"run": {
+				"morning_summary": "早间摘要",
+				"day_results": "今日成果",
+				"week_results": "本周成果",
+				"blockers_stale": "阻塞与停滞的任务",
+				"estimate_similar": "按相似任务估算"
+			},
+			"fill": {
+				"epic": "将史诗拆分为子任务",
+				"meeting": "复盘一次会议"
+			}
+		},
+		"message": {
+			"today": "今天",
+			"yesterday": "昨天",
+			"seconds": "{n} 秒",
+			"minSec": "{min} 分 {sec} 秒",
+			"min": "{min} 分钟",
+			"tokensInOut": "输入 {input} / 输出 {output} 个 token",
+			"tokensIn": "输入 {n} 个 token",
+			"tokensOut": "输出 {n} 个 token"
+		},
+		"quotes": {
+			"limit": "最多可引用 {max} 条消息。",
+			"unavailable": "原消息不可用",
+			"you": "你",
+			"ai": "AI",
+			"message": "消息"
+		},
+		"confirmation": {
+			"expired": "已过期，未做任何更改",
+			"lessThanMinute": "不到 1 分钟后过期",
+			"expiresIn": "{n} 分钟后过期",
+			"applying": "正在应用…",
+			"done": "已完成",
+			"failedWith": "失败：{message}",
+			"failed": "失败",
+			"cancelled": "已取消",
+			"superseded": "已跳过：你发送了新消息",
+			"conflict": "此卡片已处理或已过期。"
+		},
+		"attachments": {
+			"hint": "PDF、图片、Word、Excel、PowerPoint 和文本文件",
+			"file": "文件",
+			"tooMany": "每条消息最多可附加 {max} 个文件。",
+			"unsupported": "{name}：不支持此文件类型。支持：{hint}。",
+			"tooLarge": "{name} 超过了 {size}。",
+			"empty": "{name} 是空文件。",
+			"errors": {
+				"file_not_found": "找不到某个附件。请移除后重试。",
+				"forbidden": "你无权访问其中一个附件。",
+				"file_not_on_task": "这里只能使用附加在此任务上的文件。",
+				"file_too_large": "某个附件超过了 {size}。",
+				"too_many_files": "每条消息最多可附加 {max} 个文件。",
+				"unsupported_file_type": "助手无法读取其中一个文件。支持：{hint}。",
+				"too_many_pages": "某个 PDF 页数过多（上限为 40 页）。",
+				"unreadable_file": "无法读取其中一个文件。",
+				"documents_too_large": "附加的文档太大，无法一起发送。请移除一些后重试。",
+				"invalid_file": "文件名无效。",
+				"invalid_file_path": "无法附加上传的文件，请重试。",
+				"file_bound_elsewhere": "无法附加上传的文件，请重试。"
+			}
+		},
+		"personas": {
+			"nameRequired": "名称为必填项",
+			"nameTooLong": "名称不能超过 {max} 个字符",
+			"nameAt": "名称不能包含“{'@'}”",
+			"validationFailed": "验证失败",
+			"reserved": "此技能使用了保留名称。请用 tmgr CLI 重命名，或将其删除。",
+			"skill": {
+				"bodyBytes": "不能超过 {max} 字节",
+				"frontMatter": "必须以“---”前置元数据块开头，并以第二个“---”结束",
+				"required": "为必填项",
+				"slugPattern": "必须是小写字母、数字或“-”，最多 60 个字符",
+				"slugReserved": "此名称为保留名称",
+				"slugMatch": "必须与 URL 标识一致",
+				"titleLength": "不能超过 {max} 个字符",
+				"deleteQuestion": "删除技能“{title}”？",
+				"deleteAttached": "{question}\n\n已关联到 {list}。它们会立即失去此技能，且不会保留副本。",
+				"pinned": "{name}（固定在 v{version}）",
+				"deleted": "技能已删除",
+				"deletedDetached": "技能已删除，并已从 {n} 个角色上移除"
+			},
+			"labelRequired": "标签为必填项",
+			"labelTooLong": "标签不能超过 {max} 个字符",
+			"requestedBy": "由 {name} 请求",
+			"personaOf": "{name} 的角色",
+			"scopeWorkspace": "工作区",
+			"scopeMe": "仅自己",
+			"converted": "已转换为共享技能",
+			"convertedReplaced": "已转换为共享技能，并已替换 {n} 个角色上的技能"
+		},
+		"skillImport": {
+			"fileStatus": {
+				"ok": "将被上传",
+				"binary": "二进制文件，不导入",
+				"too_large": "过大，不导入",
+				"secret": "疑似密钥，会阻止该技能",
+				"symlink": "符号链接，不导入",
+				"unsupported_name": "名称不受支持，不导入",
+				"case_conflict": "忽略大小写后名称冲突，不导入",
+				"too_deep": "层级过深，不导入",
+				"skipped_hidden": "隐藏文件，不导入",
+				"unreadable": "无法读取，不导入"
+			},
+			"warn": {
+				"descriptionCut": "描述已截断为 {max} 个字符",
+				"pluginRoot": "引用了 {'$'}{'{'}CLAUDE_PLUGIN_ROOT{'}'}，而它在库中并不存在",
+				"relativePaths": "引用了无法解析的相对路径",
+				"noFrontMatter": "没有前置元数据",
+				"invalidYaml": "前置元数据不是有效的 YAML，未读取名称和描述",
+				"filesSkipped": "有 {n} 个文件不会被导入，详见文件列表"
+			},
+			"blocked": {
+				"secret": "疑似包含密钥",
+				"files": "文件：{files}",
+				"size": "{kib} KiB，上限 {limit} KiB",
+				"empty": "空文件",
+				"noDescription": "没有描述"
+			},
+			"plan": {
+				"duplicate": "所选内容中标识重复",
+				"taken": "扫描后该标识已在库中被占用",
+				"limit": "已达到库的上限"
+			},
+			"summary": {
+				"imported": "已导入 {n} 个技能",
+				"failed": "{imported}，{failed} 个失败"
+			},
+			"flow": {
+				"changedSincePreview": "预览后已变更，请重新扫描",
+				"filesChanged": "扫描后库中的文件已变更。请重新扫描后再试。",
+				"replaced": "自上次导入以来，库中的技能已被替换。请再次勾选以覆盖。",
+				"requestFailed": "请求失败"
+			}
+		}
 	}
 }

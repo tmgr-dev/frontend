@@ -1,14 +1,14 @@
 import { contrastRatio } from '@/theme/paletteCss';
 
 export const WORKSPACE_COLORS = [
-	{ value: '#EF4444', name: 'Red' },
-	{ value: '#F97316', name: 'Orange' },
-	{ value: '#EAB308', name: 'Yellow' },
-	{ value: '#22C55E', name: 'Green' },
-	{ value: '#14B8A6', name: 'Teal' },
-	{ value: '#3B82F6', name: 'Blue' },
-	{ value: '#8B5CF6', name: 'Violet' },
-	{ value: '#EC4899', name: 'Pink' },
+	{ value: '#EF4444', nameKey: 'settingsPages.helpers.workspaceColor.red' },
+	{ value: '#F97316', nameKey: 'settingsPages.helpers.workspaceColor.orange' },
+	{ value: '#EAB308', nameKey: 'settingsPages.helpers.workspaceColor.yellow' },
+	{ value: '#22C55E', nameKey: 'settingsPages.helpers.workspaceColor.green' },
+	{ value: '#14B8A6', nameKey: 'settingsPages.helpers.workspaceColor.teal' },
+	{ value: '#3B82F6', nameKey: 'settingsPages.helpers.workspaceColor.blue' },
+	{ value: '#8B5CF6', nameKey: 'settingsPages.helpers.workspaceColor.violet' },
+	{ value: '#EC4899', nameKey: 'settingsPages.helpers.workspaceColor.pink' },
 ] as const;
 
 const HEX = /^#[0-9a-f]{6}$/i;

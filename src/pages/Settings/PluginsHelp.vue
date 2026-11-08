@@ -389,7 +389,7 @@
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
-	import { t } from '@/i18n';
+	import { currentLocale, t } from '@/i18n';
 	import { trayName } from '@/utils/desktop';
 	import {
 		ArrowRight,
@@ -407,7 +407,7 @@
 		ShieldCheck,
 		Users,
 	} from 'lucide-vue-next';
-	import { computed, defineComponent, h, type PropType } from 'vue';
+	import { computed, defineComponent, h, type PropType, watch } from 'vue';
 
 	const StepLabel = defineComponent({
 		props: {
@@ -492,9 +492,13 @@
 			Users,
 		},
 		setup() {
-			setDocumentTitle(t('settingsPages.pluginsHelp.title'));
+			watch(
+				() => currentLocale(),
+				() => setDocumentTitle(t('settingsPages.pluginsHelp.title')),
+				{ immediate: true },
+			);
 			return {
-				trayName: trayName(),
+				trayName: computed(() => trayName()),
 				glance: computed(() => [
 					{
 						icon: ShieldCheck,

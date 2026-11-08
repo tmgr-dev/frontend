@@ -229,5 +229,199 @@
 		"privacyNote": "TMGR lee los registros de sesión que tus herramientas de IA escriben en este equipo y guarda recuentos de tokens, coste, nombres de modelos, marcas de tiempo, ids de sesión, carpetas de proyectos y ramas de git, y los nombres de las herramientas, habilidades y comandos que usó la IA, los tipos de archivo que editó y las pull requests que abrió. El texto de prompts y respuestas nunca se guarda. Los datos permanecen en este dispositivo a menos que los subas con tmgr usage sync.",
 		"matchFailed": "No se pudo asociar el uso a tareas: {error}",
 		"documentTitle": "Uso de IA"
+	},
+	"helpers": {
+		"usage": {
+			"consent": {
+				"granted": "Activado: TMGR lee estos registros en este dispositivo para mostrar el coste y los límites, y el runner lee las sesiones que inicia.",
+				"denied": "Desactivado: TMGR no lee estos registros para el uso de IA en este dispositivo, y el runner no lee ninguno.",
+				"unset": "Sin elegir todavía: la aplicación de escritorio y las tareas en segundo plano no los leen para el uso de IA, pero los comandos tmgr usage que ejecutes tú sí. El runner no lee ninguno hasta que lo permitas.",
+				"forgetDone": "Eliminado. La lectura de registros de herramientas de IA está desactivada."
+			},
+			"format": {
+				"now": "ahora",
+				"justNow": "justo ahora",
+				"ago": "hace {span}"
+			},
+			"error": {
+				"generic": "Algo salió mal."
+			}
+		},
+		"toolLabels": {
+			"get_task": "Leyendo la tarea",
+			"list_tasks": "Listando tareas",
+			"search_tasks": "Buscando tareas",
+			"list_comments": "Leyendo comentarios",
+			"list_statuses": "Leyendo los estados del tablero",
+			"list_members": "Leyendo los miembros",
+			"list_routines": "Leyendo las rutinas",
+			"time_summary": "Sumando el tiempo registrado",
+			"deadline_report": "Revisando fechas límite",
+			"routine_agenda": "Leyendo tus rutinas",
+			"get_routine": "Leyendo la rutina",
+			"create_task": "Preparando una tarea",
+			"add_comment": "Preparando un comentario",
+			"update_task": "Preparando un cambio en la tarea",
+			"add_checkpoint": "Preparando un punto de control",
+			"start_timer": "Preparando el inicio del temporizador",
+			"stop_timer": "Preparando la detención del temporizador",
+			"link_tasks": "Preparando un vínculo entre tareas",
+			"create_routine": "Preparando una rutina",
+			"update_routine": "Preparando un cambio en la rutina",
+			"set_routine_state": "Preparando el marcado de una rutina",
+			"move_routine_instance": "Preparando el traslado de una rutina",
+			"convert_routine": "Preparando la conversión de una rutina en tarea"
+		},
+		"compaction": {
+			"nothing": "No hay nada que compactar ahora mismo.",
+			"rateLimited": "La compactación tiene un límite de frecuencia. Inténtalo más tarde.",
+			"failed": "No se pudo compactar el historial. Inténtalo de nuevo."
+		},
+		"pins": {
+			"saveFailed": "No se pudo guardar el dato fijado. Inténtalo de nuevo.",
+			"invalid": "El dato fijado no es válido.",
+			"limit": "Puedes fijar hasta {max} datos. Quita uno para añadir otro.",
+			"charsLeft": "Solo quedan {left} caracteres para los datos fijados."
+		},
+		"cursor": {
+			"taskFallback": "Tarea #{id}"
+		},
+		"scenarios": {
+			"run": {
+				"morning_summary": "Resumen de la mañana",
+				"day_results": "Resultados del día",
+				"week_results": "Resultados de la semana",
+				"blockers_stale": "Bloqueos y tareas estancadas",
+				"estimate_similar": "Estimar según tareas similares"
+			},
+			"fill": {
+				"epic": "Dividir una épica en subtareas",
+				"meeting": "Revisar una reunión"
+			}
+		},
+		"message": {
+			"today": "Hoy",
+			"yesterday": "Ayer",
+			"seconds": "{n} s",
+			"minSec": "{min} min {sec} s",
+			"min": "{min} min",
+			"tokensInOut": "{input} tokens de entrada / {output} de salida",
+			"tokensIn": "{n} tokens de entrada",
+			"tokensOut": "{n} tokens de salida"
+		},
+		"quotes": {
+			"limit": "Puedes citar hasta {max} mensajes.",
+			"unavailable": "Mensaje original no disponible",
+			"you": "Tú",
+			"ai": "IA",
+			"message": "Mensaje"
+		},
+		"confirmation": {
+			"expired": "Caducó: no se cambió nada",
+			"lessThanMinute": "Caduca en menos de un minuto",
+			"expiresIn": "Caduca en {n} min",
+			"applying": "Aplicando…",
+			"done": "Hecho",
+			"failedWith": "Error: {message}",
+			"failed": "Error",
+			"cancelled": "Cancelado",
+			"superseded": "Omitido: enviaste un mensaje nuevo",
+			"conflict": "Esta tarjeta ya se procesó o ha caducado."
+		},
+		"attachments": {
+			"hint": "PDF, imágenes, Word, Excel, PowerPoint y archivos de texto",
+			"file": "ARCHIVO",
+			"tooMany": "Puedes adjuntar hasta {max} archivos a un mensaje.",
+			"unsupported": "{name}: este tipo de archivo no es compatible. Compatibles: {hint}.",
+			"tooLarge": "{name} supera {size}.",
+			"empty": "{name} está vacío.",
+			"errors": {
+				"file_not_found": "No se encontró un archivo adjunto. Quítalo e inténtalo de nuevo.",
+				"forbidden": "No tienes acceso a uno de los archivos adjuntos.",
+				"file_not_on_task": "Aquí solo se pueden usar archivos adjuntos a esta tarea.",
+				"file_too_large": "Un archivo adjunto supera {size}.",
+				"too_many_files": "Puedes adjuntar hasta {max} archivos a un mensaje.",
+				"unsupported_file_type": "El asistente no puede leer uno de los archivos. Compatibles: {hint}.",
+				"too_many_pages": "Un PDF tiene demasiadas páginas (el límite es 40).",
+				"unreadable_file": "No se pudo leer uno de los archivos.",
+				"documents_too_large": "Los documentos adjuntos son demasiado grandes para enviarlos juntos. Quita alguno e inténtalo de nuevo.",
+				"invalid_file": "El nombre del archivo no es válido.",
+				"invalid_file_path": "No se pudo adjuntar la subida. Inténtalo de nuevo.",
+				"file_bound_elsewhere": "No se pudo adjuntar la subida. Inténtalo de nuevo."
+			}
+		},
+		"personas": {
+			"nameRequired": "El nombre es obligatorio",
+			"nameTooLong": "El nombre debe tener {max} caracteres o menos",
+			"nameAt": "El nombre no puede contener \"{'@'}\"",
+			"validationFailed": "Error de validación",
+			"reserved": "Esta habilidad usa un nombre reservado. Renómbrala con la CLI de tmgr o elimínala.",
+			"skill": {
+				"bodyBytes": "no debe superar {max} bytes",
+				"frontMatter": "debe empezar con un bloque front matter '---' cerrado por un segundo '---'",
+				"required": "es obligatorio",
+				"slugPattern": "debe contener letras minúsculas, dígitos o '-', hasta 60 caracteres",
+				"slugReserved": "Este nombre está reservado",
+				"slugMatch": "debe coincidir con el slug de la URL",
+				"titleLength": "no debe superar {max} caracteres",
+				"deleteQuestion": "¿Eliminar la habilidad \"{title}\"?",
+				"deleteAttached": "{question}\n\nAsociada a {list}. Perderán esta habilidad de inmediato; no se conserva ninguna copia.",
+				"pinned": "{name} (fijada a la v{version})",
+				"deleted": "Habilidad eliminada",
+				"deletedDetached": "Habilidad eliminada y desvinculada de {n} persona | Habilidad eliminada y desvinculada de {n} personas"
+			},
+			"labelRequired": "La etiqueta es obligatoria",
+			"labelTooLong": "La etiqueta debe tener {max} caracteres o menos",
+			"requestedBy": "solicitada por {name}",
+			"personaOf": "persona de {name}",
+			"scopeWorkspace": "Espacio de trabajo",
+			"scopeMe": "Solo yo",
+			"converted": "Convertida en habilidad compartida",
+			"convertedReplaced": "Convertida en habilidad compartida y reemplazada en {n} persona | Convertida en habilidad compartida y reemplazada en {n} personas"
+		},
+		"skillImport": {
+			"fileStatus": {
+				"ok": "se subirá",
+				"binary": "binario, no se importa",
+				"too_large": "demasiado grande, no se importa",
+				"secret": "parece un secreto, bloquea la habilidad",
+				"symlink": "enlace simbólico, no se importa",
+				"unsupported_name": "nombre no admitido, no se importa",
+				"case_conflict": "el nombre coincide sin distinguir mayúsculas, no se importa",
+				"too_deep": "demasiado profundo, no se importa",
+				"skipped_hidden": "oculto, no se importa",
+				"unreadable": "no se puede leer, no se importa"
+			},
+			"warn": {
+				"descriptionCut": "descripción recortada a {max} caracteres",
+				"pluginRoot": "hace referencia a {'$'}{'{'}CLAUDE_PLUGIN_ROOT{'}'}, que no existe en la biblioteca",
+				"relativePaths": "hace referencia a rutas relativas que no se resolverán",
+				"noFrontMatter": "sin front matter",
+				"invalidYaml": "el front matter no es YAML válido; no se leyeron el nombre ni la descripción",
+				"filesSkipped": "{n} archivo no se importará, consulta la lista de archivos | {n} archivos no se importarán, consulta la lista de archivos"
+			},
+			"blocked": {
+				"secret": "parece contener un secreto",
+				"files": "archivos: {files}",
+				"size": "{kib} KiB, límite {limit} KiB",
+				"empty": "archivo vacío",
+				"noDescription": "sin descripción"
+			},
+			"plan": {
+				"duplicate": "slug duplicado en la selección",
+				"taken": "slug ocupado en la biblioteca desde el análisis",
+				"limit": "límite de la biblioteca alcanzado"
+			},
+			"summary": {
+				"imported": "{n} habilidad importada | {n} habilidades importadas",
+				"failed": "{imported}, {failed} con error"
+			},
+			"flow": {
+				"changedSincePreview": "cambió desde la vista previa, vuelve a analizar",
+				"filesChanged": "Los archivos de la biblioteca cambiaron desde el análisis. Vuelve a analizar e inténtalo de nuevo.",
+				"replaced": "La habilidad de la biblioteca se reemplazó desde la última importación. Márcala de nuevo para sobrescribirla.",
+				"requestFailed": "La solicitud falló"
+			}
+		}
 	}
 }

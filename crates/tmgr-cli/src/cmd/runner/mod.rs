@@ -180,6 +180,8 @@ pub enum RunnerCmd {
     Unbind(bind::UnbindArgs),
     /// [experimental] List the repositories bound to categories on this machine
     List,
+    /// [experimental] Bring the branch of a session clone into its repository (a session name from inside the repository, or the clone's path); nothing runs inside the clone
+    Import(ImportArgs),
     /// [experimental] Remove the copies of finished `tmgr run` tasks (pull request merged or closed, nothing running in them)
     Gc(GcArgs),
     #[command(hide = true)]
@@ -188,6 +190,13 @@ pub enum RunnerCmd {
     Watch(WatchArgs),
     #[command(hide = true)]
     GitDiff(GitDiffArgs),
+}
+
+#[derive(Args)]
+pub struct ImportArgs {
+    /// Session name (looked up beside the repository you are in) or path of the session clone
+    #[arg(value_name = "SESSION")]
+    pub target: String,
 }
 
 #[derive(Args)]
@@ -295,10 +304,10 @@ pub struct RunArgs {
     /// Session name
     #[arg(long, value_name = "NAME")]
     pub name: Option<String>,
-    /// Start the agent in its own checkout `<repo>-worktrees/<session name>` on a new branch of the same name, so two agents never write the same files (config attach.worktree makes this the default)
+    /// Start the agent in its own checkout `<repo>-worktrees/<session name>` on a new branch of the same name, so two agents never write the same files (the default for sandboxed sessions in a git repository; config attach.worktree turns it off)
     #[arg(long, requires = "agent", conflicts_with_all = ["agent_cmd", "task", "on", "trust", "no_worktree"])]
     pub worktree: bool,
-    /// Start in the working directory itself even when attach.worktree is on
+    /// Start in the working directory itself instead of a session clone
     #[arg(long, conflicts_with = "worktree")]
     pub no_worktree: bool,
     /// Start the session without opening the live view

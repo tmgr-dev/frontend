@@ -1,3 +1,5 @@
+import { currentLocale } from '@/i18n';
+
 function toNumber(value: unknown): number | null {
 	if (value === null || value === undefined) return null;
 	const num = typeof value === 'number' ? value : Number(value);
@@ -7,13 +9,13 @@ function toNumber(value: unknown): number | null {
 export function formatCount(value: unknown): string {
 	const num = toNumber(value);
 	if (num === null) return '—';
-	return Math.round(num).toLocaleString('en-US');
+	return Math.round(num).toLocaleString(currentLocale());
 }
 
 export function formatHours(value: unknown): string {
 	const num = toNumber(value);
 	if (num === null) return '—';
-	return num.toLocaleString('en-US', {
+	return num.toLocaleString(currentLocale(), {
 		minimumFractionDigits: 0,
 		maximumFractionDigits: 1,
 	});
@@ -22,7 +24,7 @@ export function formatHours(value: unknown): string {
 export function hoursToDays(value: unknown): string {
 	const num = toNumber(value);
 	if (num === null) return '—';
-	return (num / 24).toLocaleString('en-US', {
+	return (num / 24).toLocaleString(currentLocale(), {
 		minimumFractionDigits: 2,
 		maximumFractionDigits: 2,
 	});
@@ -31,7 +33,7 @@ export function hoursToDays(value: unknown): string {
 export function hoursToYears(value: unknown): string {
 	const num = toNumber(value);
 	if (num === null) return '—';
-	return (num / 24 / 365).toLocaleString('en-US', {
+	return (num / 24 / 365).toLocaleString(currentLocale(), {
 		minimumFractionDigits: 2,
 		maximumFractionDigits: 2,
 	});

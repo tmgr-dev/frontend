@@ -785,5 +785,84 @@
 		"createTask": "+ Aufgabe erstellen",
 		"archiveDialogTitle": "Erledigte Aufgaben archivieren",
 		"archiveDialogBody": "{n} erledigte Aufgabe archivieren? | {n} erledigte Aufgaben archivieren?"
+	},
+	"helpers": {
+		"thirtyDayHint": "{hint} · letzte 30 Tage",
+		"tracked": {
+			"minutes": "{m} Min.",
+			"hoursMinutes": "{h} Std. {m} Min."
+		},
+		"heatmap": {
+			"days": "{n} Tag | {n} Tage",
+			"headlineYear": "{n} Beitrag in {year} | {n} Beiträge in {year}",
+			"headlineLastYear": "{n} Beitrag im letzten Jahr | {n} Beiträge im letzten Jahr",
+			"streakCurrent": "Aktuelle Serie: {current} • Längste: {longest}",
+			"streakYear": "Längste Serie in {year}: {longest}"
+		},
+		"categoryTransfer": {
+			"tasksMoved": "{n} Aufgabe verschoben. | {n} Aufgaben verschoben.",
+			"mapping": "{from} → {to} ({tasks})",
+			"noStatus": "kein Status",
+			"statuses": "Status: {mappings}.",
+			"assigneesRemoved": "{n} Zuständiger entfernt (kein Mitglied des Ziel-Arbeitsbereichs). | {n} Zuständige entfernt (keine Mitglieder des Ziel-Arbeitsbereichs)."
+		},
+		"activityTitles": {
+			"assignedToPersona": "Aufgabe {persona} zugewiesen",
+			"unassignedFromPersona": "Aufgabe von {persona} entfernt",
+			"fallback": "Aktivität",
+			"taskCreated": "Aufgabe erstellt",
+			"taskUpdated": "Aufgabe aktualisiert",
+			"taskCompleted": "Aufgabe erledigt",
+			"taskDeleted": "Aufgabe gelöscht",
+			"taskRestored": "Aufgabe wiederhergestellt",
+			"taskStatusChanged": "Aufgabe verschoben",
+			"taskAssigned": "Aufgabe zugewiesen",
+			"taskPersonaAssigned": "Aufgabe einer Persona zugewiesen",
+			"taskPersonaUnassigned": "Aufgabe von einer Persona entfernt",
+			"taskTimerStarted": "Timer gestartet",
+			"taskTimerStopped": "Timer gestoppt",
+			"commentCreated": "Kommentar geschrieben",
+			"commentUpdated": "Kommentar bearbeitet",
+			"commentDeleted": "Kommentar gelöscht",
+			"categoryCreated": "Projekt erstellt",
+			"categoryUpdated": "Projekt aktualisiert",
+			"categoryDeleted": "Projekt gelöscht",
+			"fileUploaded": "Datei angehängt",
+			"fileDeleted": "Datei entfernt",
+			"memberJoined": "Dem Arbeitsbereich beigetreten",
+			"memberLeft": "Den Arbeitsbereich verlassen",
+			"routineCompleted": "Routine abgeschlossen",
+			"agentWorkStarted": "Agent-Lauf gestartet",
+			"agentWorkUpdated": "Agent-Lauf aktualisiert",
+			"agentWorkFinished": "Agent-Lauf beendet"
+		},
+		"graph": {
+			"comment": "Kommentar",
+			"thisTask": "diese Aufgabe",
+			"thisPage": "diese Seite"
+		},
+		"map": {
+			"pagesTitle": "Seiten & Dokumente",
+			"noCategory": "Kein Projekt",
+			"category": "Projekt",
+			"listAnd": "{head} und {last}",
+			"blocks": "{who} blockiert {n} Aufgabe | {who} blockiert {n} Aufgaben",
+			"blocksIn": "{who} blockiert {n} Aufgabe in {names} | {who} blockiert {n} Aufgaben in {names}",
+			"hubs": "{list} verbindet die meisten Elemente | {list} verbinden die meisten Elemente",
+			"bridges": "{from} verbinden {to}",
+			"orphans": "{n} Element – Seiten, auf die niemand verlinkt, Aufgaben ohne Beziehungen | {n} Elemente – Seiten, auf die niemand verlinkt, Aufgaben ohne Beziehungen",
+			"noOrphans": "Jedes Element hat mindestens eine Verknüpfung"
+		},
+		"integrationHint": {
+			"github": {
+				"title": "Kein GitHub-Repository verknüpft",
+				"message": "Mit diesem Projekt ist noch kein GitHub-Repository verknüpft. Verbinde in den Projekteinstellungen eins, um Commits, Branches und Pull Requests der zugehörigen Aufgaben zu verfolgen."
+			},
+			"cursor": {
+				"title": "Kein Cursor-Agent eingerichtet",
+				"message": "Für dieses Projekt ist noch kein Cursor-Agent eingerichtet. Füge in den Projekteinstellungen einen Cursor-API-Schlüssel hinzu, um Agenten für die zugehörigen Aufgaben zu starten."
+			},
+			"openCategorySettings": "Projekteinstellungen öffnen"
+		}
 	}
 }

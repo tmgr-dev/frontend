@@ -1,4 +1,5 @@
-import { format, isValid } from 'date-fns';
+import { currentLocale, t } from '@/i18n';
+import { isValid } from 'date-fns';
 
 /** Compact date label for board cards: "Today" / "Yesterday" / "Jan 22". */
 export function formatBoardDate(
@@ -14,7 +15,10 @@ export function formatBoardDate(
 		a.getDate() === b.getDate();
 	const yesterday = new Date(now);
 	yesterday.setDate(now.getDate() - 1);
-	if (sameDay(d, now)) return 'Today';
-	if (sameDay(d, yesterday)) return 'Yesterday';
-	return format(d, 'MMM d');
+	if (sameDay(d, now)) return t('tasks.helpers.boardDate.today');
+	if (sameDay(d, yesterday)) return t('tasks.helpers.boardDate.yesterday');
+	return d.toLocaleDateString(currentLocale(), {
+		month: 'short',
+		day: 'numeric',
+	});
 }

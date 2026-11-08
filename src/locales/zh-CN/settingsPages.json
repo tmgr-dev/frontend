@@ -969,5 +969,83 @@
 		"copyFailed": "无法复制",
 		"contactFailed": "无法下载联系人",
 		"confirmRemove": "移除闹钟电话？"
+	},
+	"helpers": {
+		"editorLegacy": "{label}（旧版）",
+		"featureToggle": {
+			"groups": {
+				"pages": "页面",
+				"task": "任务",
+				"notifications": "通知"
+			},
+			"descriptions": {
+				"categories": "将任务按项目分组，整理你的工作区。",
+				"board": "切换到看板视图，跟踪任务状态。",
+				"workflow": "自定义状态、状态选择器和看板列。",
+				"pages": "在页面树中记录笔记、上下文和文档，成员和智能体都可以编辑。",
+				"graph": "查看任务、页面、人员和智能体运行之间的关联：任务和页面上的“图谱”区块，以及工作区地图。",
+				"agentWork": "让 AI 智能体在任务上汇报它们的工作和用时；关闭后，智能体运行会被隐藏，智能体也不再汇报。",
+				"dashboard": "查看整个工作区的动态和进度概览。",
+				"dailyRoutines": "在任务之外单独跟踪例行事项和笔记。",
+				"taskComments": "允许在任务上评论和讨论。",
+				"taskCountdown": "用开始/停止计时器记录任务花费的时间。",
+				"taskFiles": "允许为任务添加附件。",
+				"taskRelations": "允许将任务与相关任务关联。",
+				"taskCheckpoints": "将任务拆分为更小的检查点。",
+				"taskAssignees": "将任务分配给指定的工作区成员。",
+				"exports": "导出工作区数据。",
+				"defaultLandingPage": "选择登录后最先打开的页面。"
+			}
+		},
+		"deviceScope": {
+			"workspacesRead": "查看你的工作区、状态和项目",
+			"tasksRead": "读取任务及其评论",
+			"tasksWrite": "更改任务状态和字段",
+			"tasksCreate": "创建任务",
+			"commentsCreate": "添加评论",
+			"timeRead": "读取工时报告",
+			"timeWrite": "启动和停止你的计时器",
+			"agentWorkWrite": "在任务上记录 AI 智能体的运行",
+			"agentStatusWrite": "与你的工作区共享本地 AI 智能体的状态（工作中、等待中、已完成）",
+			"pagesRead": "读取页面",
+			"pagesWrite": "编辑页面",
+			"pagesAppend": "向页面追加内容",
+			"notifySend": "向你的设备发送通知和手机闹钟",
+			"agentApprovalsWrite": "用这台电脑的密钥签署智能体运行的审批",
+			"skillsRead": "读取你的共享技能以及哪些角色在使用它们",
+			"skillsWrite": "创建、修改和删除你的共享技能，并将其关联到你的角色（会改变这些智能体收到的指令）"
+		},
+		"workspaceColor": {
+			"red": "红色",
+			"orange": "橙色",
+			"yellow": "黄色",
+			"green": "绿色",
+			"teal": "青色",
+			"blue": "蓝色",
+			"violet": "紫色",
+			"pink": "粉色"
+		},
+		"phones": {
+			"pairStartFailed": "无法开始配对",
+			"enterName": "请为这台 Mac 输入名称",
+			"signIn": "登录后即可配对手机",
+			"genericError": "出了点问题",
+			"never": "从未",
+			"justNow": "刚刚",
+			"minutesAgo": "{n} 分钟前",
+			"hoursAgo": "{n} 小时前",
+			"daysAgo": "{n} 天前",
+			"scanCode": "用 TMGR iPhone 应用扫描此二维码",
+			"typeCodeOn": "输入 {name} 上显示的代码",
+			"typeCodeOnIphone": "输入 iPhone 上显示的代码",
+			"pairingFailed": "配对失败",
+			"isPaired": "{name} 已配对",
+			"phonePaired": "手机已配对",
+			"attemptsLeft": "还剩 {n} 次尝试"
+		},
+		"modules": {
+			"footer": "关闭某个模块会对此工作区中的所有人隐藏它。你的数据会保留，重新开启后一切如初。",
+			"coreDescription": "始终可用。你可以为自己隐藏其中任何一项。"
+		}
 	}
 }

@@ -236,5 +236,81 @@
 		"pullRequests": "Pull requests ({n})",
 		"by": "por {author}",
 		"loadFailed": "No se pudo cargar la actividad de git"
+	},
+	"helpers": {
+		"usage": {
+			"rows": {
+				"input": "Entrada",
+				"cache_read": "Lectura de caché",
+				"cache_write_5m": "Escritura de caché 5 min",
+				"cache_write_1h": "Escritura de caché 1 h",
+				"output": "Salida",
+				"reasoning": "Razonamiento"
+			},
+			"timeActive": "activo",
+			"timeWallClock": "tiempo real",
+			"summary": {
+				"you": "Tú {time}",
+				"agents": "Agentes {time}",
+				"ai": "{cost} de IA"
+			},
+			"server": {
+				"unsynced": "Este dispositivo tiene {amount} de uso sin sincronizar.",
+				"readFailed": "No se pudo leer el uso sincronizado.",
+				"localOnly": "Solo local: no sincronizado. La API de costes de tareas y los demás miembros no ven uso de IA en esta tarea. Ejecuta `tmgr usage sync` para subirlo."
+			},
+			"rates": {
+				"input": "entrada",
+				"output": "salida",
+				"cacheRead": "lectura de caché",
+				"cacheWrite5m": "escritura de caché 5 min",
+				"cacheWrite1h": "escritura de caché 1 h",
+				"line": "{label} {value}",
+				"per1M": "{parts} por 1M de tokens"
+			},
+			"unpriced": "{count} evento no tiene precio; el coste está subestimado. | {count} eventos no tienen precio; el coste está subestimado."
+		},
+		"status": {
+			"states": {
+				"working": "Trabajando",
+				"waiting": "Esperando",
+				"blocked": "Bloqueado",
+				"idle": "Inactivo",
+				"done": "Hecho",
+				"exited": "Finalizó"
+			},
+			"justNow": "justo ahora",
+			"minAgo": "hace {n} min",
+			"hourAgo": "hace {n} h",
+			"dayAgo": "hace {n} d",
+			"agent": "agente",
+			"on": " en {host}",
+			"line": "{state}: {who}{where}",
+			"since": "desde {since}",
+			"noRecent": "sin actualizaciones recientes"
+		},
+		"work": {
+			"agents": "Agentes",
+			"active": "Agentes activos",
+			"wall": "Tiempo real",
+			"waiting": "Espera entre ejecuciones",
+			"sum": "Tiempo de agentes (suma de ejecuciones)"
+		},
+		"approval": {
+			"revokedBy": {
+				"ui": "la aplicación web",
+				"cli": "la CLI",
+				"mcp": "MCP",
+				"persona": "una persona de agente",
+				"plugin": "un complemento",
+				"legacy": "un token heredado",
+				"other": "una integración"
+			},
+			"reasonEdited": "texto editado",
+			"reasonComment": "comentario añadido",
+			"reasonChanged": "modificado",
+			"noCategory": "Sin categoría",
+			"category": "Categoría #{id}"
+		}
 	}
 }

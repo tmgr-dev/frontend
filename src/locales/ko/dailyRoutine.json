@@ -218,5 +218,22 @@
 		"copyTitle": "{title} (사본)",
 		"importErrors": "\n오류:\n- {list}",
 		"importSummary": "{created}개 가져옴, {skipped}개 건너뜀, {replaced}개 교체됨.{errors}"
+	},
+	"helpers": {
+		"recurrence": {
+			"daily": "매일",
+			"everyNDays": "{n}일마다",
+			"weekly": "매주",
+			"weekdays": "평일",
+			"weekends": "주말",
+			"monthly": "매월 · {day}일",
+			"yearly": "매년 · {date}"
+		},
+		"relative": {
+			"now": "지금",
+			"secondsAgo": "{n}초 전",
+			"minutesAgo": "{n}분 전",
+			"hoursAgo": "{n}시간 전"
+		}
 	}
 }

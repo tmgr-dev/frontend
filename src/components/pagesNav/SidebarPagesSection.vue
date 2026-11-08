@@ -36,7 +36,7 @@
 						:key="option.type"
 						@select="createRoot(option.type)"
 					>
-						{{ option.label }}
+						{{ $t(option.labelKey) }}
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem

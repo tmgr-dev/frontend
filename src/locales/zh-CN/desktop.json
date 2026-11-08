@@ -483,5 +483,278 @@
 			"runnerNotRunning": "TMGR 运行器未运行。启动后即可在此查看自动驾驶。",
 			"updateRunner": "请更新 TMGR 运行器，以便在此查看自动驾驶。"
 		}
+	},
+	"helpers": {
+		"trayName": {
+			"menuBar": "菜单栏",
+			"systemTray": "系统托盘"
+		},
+		"revealInFileManager": {
+			"explorer": "在资源管理器中显示",
+			"fileManager": "在文件管理器中显示",
+			"finder": "在访达中显示"
+		},
+		"thisComputer": {
+			"mac": "这台 Mac",
+			"computer": "这台电脑"
+		},
+		"pluginWindowsUnavailable": "Windows 上暂不支持插件窗口。",
+		"download": {
+			"title": "已下载 {name}",
+			"finished": "下载完成",
+			"savedTo": "已保存到“下载”文件夹",
+			"failed": "下载失败",
+			"couldNotSave": "无法保存 {name}。",
+			"theFile": "该文件"
+		},
+		"updateCheck": {
+			"tryAgainLater": "请稍后再试。",
+			"upToDateVersion": "已是最新版本（v{version}）",
+			"upToDate": "已是最新版本",
+			"available": "有新版本 v{version} 可用",
+			"installHint": "安装并重启即可更新。",
+			"failed": "检查更新失败",
+			"couldNotCheck": "无法检查更新",
+			"checkConnection": "请检查网络连接后重试。"
+		},
+		"primaryModifiers": {
+			"mac": "至少使用 ⌘ ⌃ ⌥ 之一",
+			"other": "至少使用 Ctrl、Alt、{key} 之一",
+			"win": "Win",
+			"super": "Super"
+		},
+		"away": {
+			"hoursMinutes": "{h} 小时 {m} 分钟",
+			"minutes": "{m} 分钟"
+		},
+		"localOnly": {
+			"welcomeMac": "你的数据只保存在这台 Mac 上。以后可以再创建账号。",
+			"welcomeComputer": "你的数据只保存在这台电脑上。以后可以再创建账号。",
+			"noBackup": "暂无备份",
+			"backupJustNow": "上次备份：刚刚",
+			"backupMinutes": "上次备份：{n} 分钟前",
+			"backupHours": "上次备份：{n} 小时前",
+			"backupDays": "上次备份：{n} 天前",
+			"backupFailed": "上次备份失败：{error}",
+			"backupStale": "已有 {days} 天没有备份"
+		},
+		"upgradeFailure": {
+			"link": "无法将此设备关联到你的账号，因此本地数据暂时保留在此设备上。你可以继续使用、重试或跳过。",
+			"move": "部分本地数据暂时无法移动到此账号。你可以继续使用，下次启动应用时我们会再次尝试。"
+		},
+		"move": {
+			"copiedBanner": "已于 {date} 复制到你的云端工作区 {name}。此处的更改不会同步。",
+			"previousMove": "你已于 {date} 移动过此工作区。再次移动会创建第二份云端副本。",
+			"entities": {
+				"personas": "角色",
+				"statuses": "状态",
+				"categories": "项目",
+				"tasks": "任务",
+				"comments": "评论",
+				"files": "文件",
+				"pages": "页面",
+				"page_versions": "页面版本",
+				"routines": "例行事项",
+				"agent_runs": "智能体运行",
+				"assignments": "分配",
+				"relations": "关联",
+				"modules": "模块"
+			},
+			"skipReasons": {
+				"excluded": "已排除在移动之外",
+				"not_uploaded": "未上传",
+				"not_allowed": "不允许",
+				"persona_is_me": "属于你本人",
+				"disabled": "已停用",
+				"unsupported": "不支持",
+				"duplicate": "重复",
+				"unknown_module": "未知模块",
+				"unmapped_target": "其目标未被移动"
+			},
+			"report": {
+				"moved": "{entity}：已移动 {imported} / {expected}",
+				"movedSkipped": "{entity}：已移动 {imported} / {expected}，跳过 {skipped}",
+				"fileSkipped": "{name}：已跳过，{reason}",
+				"unmapped": "有 {n} 处引用指向未被移动的内容",
+				"countMismatch": "{entity}：应为 {expected}，已移动 {imported}，跳过 {skipped}",
+				"bundleMismatch": "{entity}：数据包中只有 {actual} / {expected} 项",
+				"unmappedRefs": "有 {count} 处引用指向未被移动的内容",
+				"failed": "服务器上的移动失败。"
+			},
+			"rows": {
+				"backup": "已创建备份",
+				"bundle": "已上传数据包",
+				"statuses": "状态和项目",
+				"tasks": "任务",
+				"comments": "评论",
+				"files": "文件",
+				"pages": "页面",
+				"links": "链接",
+				"routines": "例行事项和智能体运行",
+				"publish": "检查并发布"
+			},
+			"rowCount": "{label} {done} / {total}",
+			"rowSkipped": "{label} · 跳过 {skipped}（见报告）",
+			"excludedReasons": {
+				"missing": "文件缺失",
+				"too_large": "过大",
+				"mime": "类型不允许",
+				"refused": "被服务器拒绝"
+			},
+			"skillReasons": {
+				"library_full": "你的技能库已满",
+				"invalid": "不是有效的技能",
+				"not_owner": "该角色属于其他成员",
+				"not_moved": "该角色未被移动",
+				"attach_limit": "该角色的技能过多",
+				"invalid_files": "其文件无效（路径、文本或大小超出限制）",
+				"too_large": "过大，无法移到云端",
+				"files_limit": "其文件会超出你的 10 MiB 文件上限"
+			},
+			"skills": {
+				"aSkill": "一项技能",
+				"added": "新增 {n} 项",
+				"reused": "{n} 项已在你的技能库中",
+				"renamed": "{n} 项已重命名（{list}）",
+				"summary": "技能：{parts}",
+				"notCopied": "{name}：未复制，{reason}",
+				"notAttached": "{name}：未关联到 {n} 个角色，{reason}",
+				"dryRun": "技能：来自此设备技能库的 {count} 项"
+			},
+			"guards": {
+				"published": "移动已发布，并已在你的云端账号中验证",
+				"unchanged": "自快照以来，此工作区没有任何更改",
+				"files": "所有无法上传的文件都已导出，或已确认视为丢失",
+				"skills": "此设备上的技能已复制到你的云端技能库",
+				"removeAccount": "此次移动由另一个账号发布。请登录该账号后再移除本地副本。",
+				"cannotRemove": "暂时无法移除：{reason}。",
+				"signIn": "请登录后删除本地副本。",
+				"oldRecord": "此次迁移由旧版本记录，因此无法自动删除本地副本。"
+			},
+			"legacy": "此次移动由旧版本发起。请放弃并重新开始。",
+			"accountMismatch": "此次迁移由另一个账号发起。请登录该账号继续，或放弃迁移。",
+			"signInToMove": "请登录后将此工作区迁移到云端。",
+			"demo": "演示工作区会保留在这台 Mac 上，无法迁移到云端",
+			"cancelled": "迁移已取消",
+			"unsupportedSchema": "请更新 TMGR 以迁移此工作区。",
+			"quota": "每天最多可发起 3 次迁移，请明天再试。",
+			"running": "另一项迁移仍在进行中。",
+			"tooLarge": "此工作区过大，无法一次性迁移。",
+			"genericError": "出了点问题。"
+		},
+		"runner": {
+			"states": {
+				"done": "已完成",
+				"failed": "失败",
+				"interrupted": "已中断",
+				"starting": "启动中",
+				"working": "工作中",
+				"waiting": "空闲",
+				"blocked": "需要输入",
+				"unknown": "未知"
+			},
+			"exitCode": "已退出（代码 {code}）",
+			"status": {
+				"ready": "就绪",
+				"readyVersion": "就绪 v{version}",
+				"incompatible": "版本不兼容",
+				"absent": "未运行",
+				"checking": "检查中…",
+				"updateRunner": "更新 TMGR 运行器"
+			},
+			"errors": {
+				"busy": "智能体正忙，请稍后再试。",
+				"unknownProfile": "此智能体配置不可用。请选择其他配置。",
+				"sandbox": "沙盒阻止了此次运行。请检查项目文件夹后重试。",
+				"limit": "正在运行的智能体过多。请先停止一个再重试。",
+				"invalidParams": "运行器拒绝了该请求。请检查项目文件夹后重试。",
+				"taskNotFound": "在本地工作区中找不到此任务。",
+				"prefix": {
+					"start": "无法启动智能体",
+					"stop": "无法停止智能体",
+					"input": "无法向智能体发送输入",
+					"open": "无法打开终端"
+				},
+				"withMessage": "{prefix}：{message}",
+				"withoutMessage": "{prefix}。"
+			},
+			"cloudTooltip": "智能体运行目前只支持本地工作区。",
+			"absentTooltip": "TMGR 运行器未运行。用 `tmgr runner start` 启动它。",
+			"age": {
+				"justNow": "刚刚",
+				"minutes": "{n} 分钟前",
+				"hours": "{n} 小时前",
+				"days": "{n} 天前"
+			}
+		},
+		"autopilot": {
+			"empty": "自动驾驶未运行。",
+			"titleQueue": "队列循环",
+			"title": "自动驾驶",
+			"words": {
+				"starting": "启动中",
+				"running": "运行中",
+				"paused": "已暂停",
+				"stopping": "停止中",
+				"stopped": "已停止",
+				"suspended": "已挂起",
+				"notRunning": "未运行"
+			},
+			"lastState": "最近状态 {state}",
+			"lastStateUpdated": "最近状态 {state}，{age}前更新",
+			"counters": {
+				"done": "已完成（PR）",
+				"inWork": "进行中",
+				"needsFeedback": "需要反馈",
+				"blocked": "已阻塞",
+				"held": "已搁置",
+				"failed": "失败",
+				"queued": "排队中"
+			},
+			"limit": {
+				"unknown": {
+					"base": "{label}：未知",
+					"age": "{label}：未知 {age}前"
+				},
+				"pct": {
+					"base": "{label}：{pct}% {source}",
+					"resets": "{label}：{pct}% {source} · {time} 重置",
+					"marks": "{label}：{pct}% {source} （达 {soft}% 停止新增，达 {hard}% 暂停）",
+					"marksResets": "{label}：{pct}% {source} （达 {soft}% 停止新增，达 {hard}% 暂停） · {time} 重置",
+					"age": "{label}：{pct}% {source} {age}前",
+					"ageResets": "{label}：{pct}% {source} {age}前 · {time} 重置",
+					"ageMarks": "{label}：{pct}% {source} {age}前 （达 {soft}% 停止新增，达 {hard}% 暂停）",
+					"ageMarksResets": "{label}：{pct}% {source} {age}前 （达 {soft}% 停止新增，达 {hard}% 暂停） · {time} 重置"
+				}
+			},
+			"cost": {
+				"ofCap": "{used} / 上限 {cap}",
+				"noneYet": "暂无，上限 {cap}"
+			},
+			"guardOff": "无用量上限（防护已关闭）",
+			"nextStop": "在“{kind}”之前，{window}窗口约剩 {pct}%"
+		},
+		"connectAgent": {
+			"notes": {
+				"modules": "安装时还会在此工作区中开启本地智能体访问，以及“角色”和“智能体运行”模块。",
+				"keychain": "你的令牌保存在 macOS 钥匙串中，不包含在命令里。",
+				"oneWorkspace": "每个智能体只连接一个工作区。在此安装会替换之前的 TMGR 连接。"
+			},
+			"translocated": "请先把 TMGR 移到“应用程序”文件夹，从那里打开，再安装。",
+			"safeMode": "插件安全模式已开启，智能体无法连接。请关闭后重新打开此页面。",
+			"unsupported": "只有 macOS 支持在此页面安装。请改用“复制配置”。",
+			"bridge": "TMGR 无法确定自身的程序路径，因此智能体无法从这里连接。",
+			"timeout": "命令未能完成。请再次点击“安装”，或点击“移除”。",
+			"claudeFailureNote": "Claude Code 中之前的 TMGR 条目已被移除。",
+			"installed": "请重启 {title} 以加载 TMGR，然后让它列出你的 TMGR 任务。",
+			"installFailed": "无法连接 {title}。",
+			"removed": "已从 {title} 中移除 TMGR。",
+			"removeFailed": "无法从 {title} 中移除 TMGR。",
+			"demoRefusal": "请先创建你自己的工作区，再连接智能体。",
+			"rateLimit": "你在过去一小时内已创建了 10 个智能体令牌。请稍等片刻再试。"
+		},
+		"socialLogin": {
+			"startFailed": "无法开始登录。"
+		}
 	}
 }

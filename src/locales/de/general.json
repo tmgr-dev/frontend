@@ -293,5 +293,77 @@
 		"tracked": "Erfasste Zeit",
 		"running": "Läuft",
 		"overTime": "Zeitüberschreitung"
+	},
+	"helpers": {
+		"openTaskLink": {
+			"workspace": "Dieser Link führt zu einem Arbeitsbereich, auf den du keinen Zugriff hast.",
+			"notFound": "Diese Aufgabe existiert nicht mehr.",
+			"forbidden": "Du hast keinen Zugriff auf diese Aufgabe.",
+			"error": "Diese Aufgabe konnte nicht geladen werden. Prüfe deine Verbindung und versuch es noch einmal."
+		},
+		"modules": {
+			"needsColon": "benötigt: {list}",
+			"needs": "benötigt {list}",
+			"showModule": "Dieses Modul anzeigen",
+			"enableFeature": "Diese Funktion aktivieren",
+			"askOwner": "Bitte den Eigentümer, das einzuschalten",
+			"hiddenForYou": "Für dich ausgeblendet",
+			"showForMe": "Für mich anzeigen",
+			"hideForMe": "Für mich ausblenden",
+			"allModules": "Alle Module",
+			"coreOnly": "Keine Module, nur der Kern",
+			"workflowOffConfirm": "Aufgaben bekommen statt Status ein Kontrollkästchen „Erledigt“; das Board wird ausgeblendet. Status und ihre Aufgaben bleiben erhalten und sind wieder da, wenn du es einschaltest.",
+			"workflowOn": "Workflow: Kontrollkästchen „Erledigt“ → Status",
+			"workflowOff": "Workflow: Status → Kontrollkästchen „Erledigt“",
+			"presetSummary": {
+				"personal": "Nur ich: Aufgaben und Zeit, mit einem Kontrollkästchen „Erledigt“",
+				"team": "Zusammenarbeiten mit Status und einem Board",
+				"developer": "Ich und meine KI-Agenten, mit Status und einem Board",
+				"everything": "Alle Module eingeschaltet",
+				"minimal": "Nur Aufgaben: Liste, Timer und Kommentare"
+			}
+		},
+		"previewSurfaces": {
+			"nav": {
+				"dashboard": "Dashboard",
+				"projects": "Projekte",
+				"list": "Liste",
+				"board": "Board",
+				"routines": "Routinen",
+				"pages": "Seiten",
+				"map": "Karte",
+				"files": "Dateien",
+				"askAi": "KI fragen",
+				"personas": "Personas"
+			},
+			"task": {
+				"timer": "Timer",
+				"pomodoro": "Pomodoro",
+				"assignees": "Zuständige",
+				"checkpoints": "Checkpoints",
+				"attachments": "Anhänge",
+				"relations": "Beziehungen",
+				"agentWork": "Agent-Lauf",
+				"github": "GitHub",
+				"cursorAgents": "Cursor-Agenten",
+				"comments": "Kommentare",
+				"aiReply": "KI-Antwort"
+			}
+		},
+		"navTargets": {
+			"dashboard": "Dashboard",
+			"list": "Liste",
+			"board": "Board",
+			"localRoutines": "Lokale Routinen",
+			"dailyRoutines": "Tagesroutinen",
+			"archive": "Archiv",
+			"categories": "Projekte",
+			"pages": "Seiten",
+			"statistics": "Statistiken",
+			"aiUsage": "KI-Nutzung",
+			"files": "Dateien",
+			"map": "Karte",
+			"settings": "Einstellungen"
+		}
 	}
 }

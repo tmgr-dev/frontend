@@ -229,5 +229,51 @@
 		"page": "第 {page} 页，共 {last} 页",
 		"deleteTasksTitle": "删除任务",
 		"deleteTasksBody": "确定吗？"
+	},
+	"helpers": {
+		"doneDisabledTooltip": "此工作区没有“已完成”状态",
+		"state": {
+			"done": "已完成",
+			"archived": "已归档",
+			"open": "未完成"
+		},
+		"boardDate": {
+			"today": "今天",
+			"yesterday": "昨天"
+		},
+		"backlogTimer": {
+			"title": "任务在待办中",
+			"message": "任务“{title}”在待办中。要切换到“{status}”状态吗？"
+		},
+		"fileSize": {
+			"b": "{n} B",
+			"kb": "{n} KB",
+			"mb": "{n} MB",
+			"gb": "{n} GB"
+		},
+		"attachmentErrors": {
+			"tooLargeWithLimit": "文件太大，上限为 {limit}。",
+			"tooLarge": "文件太大。",
+			"typeNotAllowed": "无法添加此类型的文件。",
+			"notAttachable": "无法添加此文件。",
+			"noAccess": "你无权访问此文件。",
+			"uploadFailed": "上传失败，请重试。",
+			"empty": "文件为空。"
+		},
+		"priority": {
+			"urgent": "紧急",
+			"high": "高",
+			"medium": "中",
+			"low": "低"
+		},
+		"timeEntrySource": {
+			"attach": "终端会话"
+		},
+		"relativeTime": {
+			"justNow": "刚刚",
+			"minutesAgo": "{n} 分钟前",
+			"hoursAgo": "{n} 小时前",
+			"daysAgo": "{n} 天前"
+		}
 	}
 }

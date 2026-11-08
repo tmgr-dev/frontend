@@ -9,31 +9,31 @@ import {
 export const PRIORITIES = [
 	{
 		value: 'urgent',
-		label: 'Urgent',
+		labelKey: 'tasks.helpers.priority.urgent',
 		icon: ExclamationTriangleIcon,
 		colorClass: 'text-red-500 dark:text-red-400',
 	},
 	{
 		value: 'high',
-		label: 'High',
+		labelKey: 'tasks.helpers.priority.high',
 		icon: ArrowUpIcon,
 		colorClass: 'text-orange-500 dark:text-orange-400',
 	},
 	{
 		value: 'medium',
-		label: 'Medium',
+		labelKey: 'tasks.helpers.priority.medium',
 		icon: ArrowRightIcon,
 		colorClass: 'text-yellow-500 dark:text-yellow-400',
 	},
 	{
 		value: 'low',
-		label: 'Low',
+		labelKey: 'tasks.helpers.priority.low',
 		icon: ArrowDownIcon,
 		colorClass: 'text-green-500 dark:text-green-400',
 	},
 ] as const satisfies ReadonlyArray<{
 	value: TaskPriority;
-	label: string;
+	labelKey: string;
 	icon: unknown;
 	colorClass: string;
 }>;

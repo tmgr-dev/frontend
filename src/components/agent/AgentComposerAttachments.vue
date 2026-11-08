@@ -39,11 +39,11 @@
 	import { useAttachmentQueue } from '@/composable/useAttachmentQueue';
 	import {
 		ATTACHMENT_ACCEPT,
-		SUPPORTED_ATTACHMENTS_HINT,
+		supportedAttachmentsHint,
 	} from '@/utils/aiAttachments';
 	import { Paperclip } from 'lucide-vue-next';
 	import type { PropType } from 'vue';
-	import { defineComponent, ref, watch } from 'vue';
+	import { computed, defineComponent, ref, watch } from 'vue';
 
 	export default defineComponent({
 		name: 'AgentComposerAttachments',
@@ -108,7 +108,7 @@
 				pick,
 				onPicked,
 				accept: ATTACHMENT_ACCEPT,
-				hint: SUPPORTED_ATTACHMENTS_HINT,
+				hint: computed(() => supportedAttachmentsHint()),
 			};
 		},
 	});

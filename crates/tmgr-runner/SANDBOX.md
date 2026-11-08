@@ -215,6 +215,31 @@ reach) and returns `<self exe> __sandbox-exec <policy> -- <argv>`. The binary's 
 and exit 78), builds the ruleset with hard requirements, restricts itself, verifies full enforcement and execs the
 command (exec failure: exit 127).
 
+### Granted object stores
+
+A legacy clone that borrows objects through `objects/info/alternates` gets the source repository's object directory as a
+read-only grant. Landlock cannot restrict `chmod`, `chown`, `utime` or `setxattr`, so on Linux the helper also makes the
+directory read-only at the mount level:
+
+- Before Landlock is applied, the helper creates a user and mount namespace (identity uid/gid maps, so file ownership
+  looks unchanged), bind-mounts each granted object directory onto itself and remounts it read-only, keeping the original
+  mount's `nosuid`/`nodev`/`noexec`/atime flags. It then checks that the mount reports read-only. Changing modes,
+  owners, times or extended attributes under the directory then fails with `EROFS`. The mount is private to the session;
+  the host's view is unchanged.
+- The whole sequence is first tried in a forked probe process. If it cannot work, the helper continues without the
+  namespace: unprivileged user namespaces disabled (`kernel.unprivileged_userns_clone=0`, `user.max_user_namespaces=0`),
+  restricted by the distribution (Ubuntu 24.04 `kernel.apparmor_restrict_unprivileged_userns=1`), blocked by a container
+  seccomp profile (Docker's default), or a multithreaded helper process. Once the probe succeeds, any later failure
+  stops the run (exit 78).
+- The helper records the outcome in `<runner dir>/sessions/<id>/objects_ro` (`namespace` or `fallback: <reason>`), and the
+  daemon logs it when the run ends.
+- Independently of the namespace, the daemon records the mode of every directory and file under each granted object
+  directory before the run (`objects-modes` in the session directory, outside the sandbox) and, after the run ends
+  (also after a daemon restart, or when the session is removed), restores any mode that changed. Directories are
+  restored before their contents, symlinks are never followed, and entries that did not exist at the start or whose inode
+  changed are left alone. Owner, modification times and extended attributes are not restored, and the restore runs when
+  the runner sees the session exit, so a process that outlives the session could change modes again afterwards.
+
 ## Known limitations
 
 - Network is open unless the run is `Restricted` (macOS only, see above); an open network is not data-exfiltration protection for anything the agent can read.
@@ -250,7 +275,7 @@ command (exec failure: exit 127).
 - Toolchain directories are read-only: `cargo fetch`, `npm install -g` and similar that write there fail.
 - Terminals: the agent reaches its own PTY through inherited fds 0/1/2 and `/dev/tty`. Opening any other terminal device by path is denied (macOS: explicit deny on `/dev/ttys*`, `/dev/pty[p-w]*` and `/dev/tty[p-w]*`; Linux: no `/dev/pts` grant except the session's own slave). Consequence: PTYs the agent creates itself (`openpty`, `script`, `tmux`, pexpect) cannot open their slave by path and fail.
 - Private directories: the runner directory is trusted only if it, its canonical ancestors and every symlink component of the given path live in directories owned by root or the user that are not group/other-writable (unless sticky); there is no group-name exception, so on Ubuntu with umask 002 the fallback `~/.local/state/tmgr/run` is refused until `chmod g-w` or `TMGR_RUNNER_DIR` is set. The homes directory holds no secrets, so it gets only the final-directory checks (owner, 0700, not a symlink).
-- The Linux sandbox tests skip when Landlock is unavailable, unless `TMGR_TEST_REQUIRE_LANDLOCK=1` is set, in which case they fail. CI sets it on Linux.
+- The Linux sandbox tests skip when Landlock is unavailable, unless `TMGR_TEST_REQUIRE_LANDLOCK=1` is set, in which case they fail. CI sets it on Linux. `TMGR_TEST_REQUIRE_RO_MOUNT=1` likewise makes the test for the read-only object mount fail instead of reporting that only the mode restore was exercised.
 - Linux helper: every read/write root is re-opened and its kernel-resolved path must equal the policy path, and the working directory (handed over by the shim as a descriptor, not looked up by path) must be the directory with the
   `st_dev`/`st_ino` the runner approved, and the Landlock rule for it is created from that same descriptor; otherwise the run does not start (exit 78). This closes the swap-for-a-symlink race between validation and enforcement.
 - macOS: the agent also starts in the approved directory object, but Seatbelt rules are path based, so if that directory was renamed meanwhile the agent keeps no write access there (fail closed).
@@ -260,4 +285,6 @@ command (exec failure: exit 127).
 
 ## Worktree setup git (not yet wired)
 
-`src/worktree.rs` runs git outside the sandbox with hooks disabled, a cleared environment, system/global config ignored, repository config keys that run programs refused, and every configured filter neutralized. Known gap: a process that can write the repository's `.git/config` between the inspection and the checkout could add a new filter; that requires write access to the owner's repository configuration, which sandboxed sessions do not have.
+`src/worktree.rs` runs git outside the sandbox with hooks disabled, a cleared environment, system/global config ignored, repository config keys that run programs refused, and every configured filter neutralized. Known gap: a process that can write the repository's `.git/config` between the inspection and the checkout could add a new filter. A session that starts in a session clone can write only the clone's own `.git`, never the owner's repository. Sandboxed sessions started in a git repository use a session clone by default (`attach.worktree`, `--no-worktree`); a session started in place (explicit opt-out, `--no-sandbox`, or a parent folder that is not a repository but contains nested ones) can still write the `.git` of every repository below its folder, and changes it makes there (configuration, hooks) take effect when git is later used on that repository.
+
+The clone is made with a fresh configuration, so the owner's filter settings are not copied: files that a Git LFS attribute names are checked out as the pointer files stored in the repository, and submodules are not populated (the folder is empty). The clone's objects are its own (no alternates), so `tmgr runner import` copies them as data and runs no git inside the clone.

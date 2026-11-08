@@ -1,23 +1,20 @@
+import { t } from '@/i18n';
 import type { GraphEdge, GraphMap, GraphNode } from '@/types/graph';
 import { hashString, truncateLabel } from '../graphLogic';
 import type { LayoutInit } from './mapLayoutCore';
 
 export const PAGES_CLUSTER = 'pages';
 export const NONE_CLUSTER = 'none';
-export const PAGES_TITLE = 'Pages & docs';
-export const NONE_TITLE = 'No category';
 export const BOTTLENECK_COLOR = '#ff8a4c';
 export const DAY_MS = 86400000;
-export const MAP_LEGEND =
-	'Clusters = categories · Bright curves = links between areas · Dashed rings = items with no links · Orange = bottleneck';
 
 export type RangeKey = '7' | '30' | '90' | 'all';
 
-export const RANGES: { key: RangeKey; label: string; days: number | null }[] = [
-	{ key: '7', label: 'Last 7 days', days: 7 },
-	{ key: '30', label: 'Last 30 days', days: 30 },
-	{ key: '90', label: 'Last 90 days', days: 90 },
-	{ key: 'all', label: 'All time', days: null },
+export const RANGES: { key: RangeKey; days: number | null }[] = [
+	{ key: '7', days: 7 },
+	{ key: '30', days: 30 },
+	{ key: '90', days: 90 },
+	{ key: 'all', days: null },
 ];
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -241,10 +238,12 @@ export const prepareMap = (
 		const sample = kept[keys.indexOf(key)];
 		const title =
 			key === PAGES_CLUSTER
-				? PAGES_TITLE
+				? t('board.helpers.map.pagesTitle')
 				: key === NONE_CLUSTER
-					? (titles.get(key) ?? NONE_TITLE)
-					: (titles.get(key) ?? sample.category ?? 'Category');
+					? (titles.get(key) ?? t('board.helpers.map.noCategory'))
+					: (titles.get(key) ??
+						sample.category ??
+						t('board.helpers.map.category'));
 		return {
 			key,
 			title,
@@ -430,7 +429,10 @@ export const shouldLabel = (level: LabelLevel, f: LabelFlags): boolean => {
 
 export const listJoin = (items: string[]): string => {
 	if (items.length <= 1) return items.join('');
-	return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+	return t('board.helpers.map.listAnd', {
+		head: items.slice(0, -1).join(', '),
+		last: items[items.length - 1],
+	});
 };
 
 export interface Insight {
@@ -444,9 +446,6 @@ export interface MapInsights {
 	bridges: Insight | null;
 	orphans: Insight;
 }
-
-const plural = (n: number, one: string, many: string) =>
-	`${n} ${n === 1 ? one : many}`;
 
 export const bridgePairs = (
 	prepared: PreparedMap,
@@ -505,13 +504,11 @@ export const buildInsights = (prepared: PreparedMap): MapInsights => {
 			.slice(0, 3)
 			.map(([name]) => name);
 		const who = nodes[b].key ?? nodeLabel(nodes[b]);
-		const base = `${who} blocks ${plural(
-			prepared.bottleneckBlocks,
-			'task',
-			'tasks',
-		)}`;
+		const n = prepared.bottleneckBlocks;
 		bottleneck = {
-			text: names.length ? `${base} in ${listJoin(names)}` : base,
+			text: names.length
+				? t('board.helpers.map.blocksIn', { who, n, names: listJoin(names) }, n)
+				: t('board.helpers.map.blocks', { who, n }, n),
 			ids: [nodes[b].id, ...blocked.map((i) => nodes[i].id)],
 		};
 	}
@@ -524,9 +521,11 @@ export const buildInsights = (prepared: PreparedMap): MapInsights => {
 	});
 	if (hubNodes.length) {
 		hubs = {
-			text: `${listJoin(hubNodes)} ${
-				hubNodes.length === 1 ? 'ties' : 'tie'
-			} the most items together`,
+			text: t(
+				'board.helpers.map.hubs',
+				{ list: listJoin(hubNodes) },
+				hubNodes.length,
+			),
 			ids: prepared.hubIds.slice(0, 2),
 		};
 	}
@@ -561,9 +560,10 @@ export const buildInsights = (prepared: PreparedMap): MapInsights => {
 			}
 		}
 		bridges = {
-			text: `${clusters[connector].title} connect ${listJoin(
-				partners.map((p) => clusters[p].title),
-			)}`,
+			text: t('board.helpers.map.bridges', {
+				from: clusters[connector].title,
+				to: listJoin(partners.map((p) => clusters[p].title)),
+			}),
 			ids: [...ids],
 		};
 	}
@@ -578,23 +578,10 @@ export const buildInsights = (prepared: PreparedMap): MapInsights => {
 	);
 	const orphans: Insight = {
 		text: total
-			? `${plural(
-					total,
-					'item',
-					'items',
-				)} — pages nobody links to, tasks with no relations`
-			: 'Every item has at least one link',
+			? t('board.helpers.map.orphans', { n: total }, total)
+			: t('board.helpers.map.noOrphans'),
 		ids: orphanIds,
 	};
 
 	return { bottleneck, hubs, bridges, orphans };
 };
-
-export const truncationNotice = (
-	shown: number,
-	total: number,
-	truncated: boolean,
-): string | null =>
-	truncated || total > shown
-		? `Showing ${shown} of ${total} — narrow the time range`
-		: null;

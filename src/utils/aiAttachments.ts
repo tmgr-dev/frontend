@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_MESSAGE = 5;
 
@@ -74,8 +76,8 @@ const EXTENSIONS = [
 	'gradle',
 ];
 
-export const SUPPORTED_ATTACHMENTS_HINT =
-	'PDF, images, Word, Excel, PowerPoint and text files';
+export const supportedAttachmentsHint = (): string =>
+	t('agents.helpers.attachments.hint');
 
 export const ATTACHMENT_ACCEPT = [
 	...EXTENSIONS.map((ext) => `.${ext}`),
@@ -124,7 +126,7 @@ export const attachmentKindLabel = (
 	const ext = extensionOf(name);
 	if (ext) return ext.toUpperCase();
 	const sub = baseType(type).split('/')[1];
-	return sub ? sub.toUpperCase() : 'FILE';
+	return sub ? sub.toUpperCase() : t('agents.helpers.attachments.file');
 };
 
 export const validateAttachment = (
@@ -133,37 +135,40 @@ export const validateAttachment = (
 	maxFiles = MAX_ATTACHMENTS_PER_MESSAGE,
 ): string | null => {
 	if (alreadyAttached >= maxFiles) {
-		return `You can attach up to ${maxFiles} files to one message.`;
+		return t('agents.helpers.attachments.tooMany', { max: maxFiles });
 	}
 	if (!isSupportedAttachment(file)) {
-		return `${file.name}: this file type is not supported. Supported: ${SUPPORTED_ATTACHMENTS_HINT}.`;
+		return t('agents.helpers.attachments.unsupported', {
+			name: file.name,
+			hint: supportedAttachmentsHint(),
+		});
 	}
 	if (file.size > MAX_ATTACHMENT_BYTES) {
-		return `${file.name} is larger than ${formatBytes(MAX_ATTACHMENT_BYTES)}.`;
+		return t('agents.helpers.attachments.tooLarge', {
+			name: file.name,
+			size: formatBytes(MAX_ATTACHMENT_BYTES),
+		});
 	}
 	if (file.size === 0) {
-		return `${file.name} is empty.`;
+		return t('agents.helpers.attachments.empty', { name: file.name });
 	}
 	return null;
 };
 
-const ERROR_MESSAGES: Record<string, string> = {
-	file_not_found: 'An attached file was not found. Remove it and try again.',
-	forbidden: 'You don’t have access to one of the attached files.',
-	file_not_on_task: 'Only files attached to this task can be used here.',
-	file_too_large: `An attached file is larger than ${formatBytes(
-		MAX_ATTACHMENT_BYTES,
-	)}.`,
-	too_many_files: `You can attach up to ${MAX_ATTACHMENTS_PER_MESSAGE} files to one message.`,
-	unsupported_file_type: `One of the files can’t be read by the assistant. Supported: ${SUPPORTED_ATTACHMENTS_HINT}.`,
-	too_many_pages: 'A PDF has too many pages (the limit is 40).',
-	unreadable_file: 'One of the files could not be read.',
-	documents_too_large:
-		'The attached documents are too large to send together. Remove some and try again.',
-	invalid_file: 'The file name is not valid.',
-	invalid_file_path: 'The upload could not be attached. Try again.',
-	file_bound_elsewhere: 'The upload could not be attached. Try again.',
-};
+const ERROR_CODES = new Set([
+	'file_not_found',
+	'forbidden',
+	'file_not_on_task',
+	'file_too_large',
+	'too_many_files',
+	'unsupported_file_type',
+	'too_many_pages',
+	'unreadable_file',
+	'documents_too_large',
+	'invalid_file',
+	'invalid_file_path',
+	'file_bound_elsewhere',
+]);
 
 export const attachmentErrorCode = (error: unknown): string | null => {
 	const data = (error as { response?: { data?: { error?: unknown } } })
@@ -173,7 +178,13 @@ export const attachmentErrorCode = (error: unknown): string | null => {
 
 export const attachmentErrorMessage = (error: unknown): string | null => {
 	const code = attachmentErrorCode(error);
-	return code ? (ERROR_MESSAGES[code] ?? null) : null;
+	return code && ERROR_CODES.has(code)
+		? t(`agents.helpers.attachments.errors.${code}`, {
+				size: formatBytes(MAX_ATTACHMENT_BYTES),
+				max: MAX_ATTACHMENTS_PER_MESSAGE,
+				hint: supportedAttachmentsHint(),
+			})
+		: null;
 };
 
 const pad = (n: number): string => String(n).padStart(2, '0');

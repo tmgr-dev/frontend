@@ -293,5 +293,77 @@
 		"tracked": "Tempo registrado",
 		"running": "Em andamento",
 		"overTime": "Tempo excedido"
+	},
+	"helpers": {
+		"openTaskLink": {
+			"workspace": "Este link aponta para um espaço de trabalho ao qual você não tem acesso.",
+			"notFound": "Esta tarefa não existe mais.",
+			"forbidden": "Você não tem acesso a esta tarefa.",
+			"error": "Não foi possível carregar esta tarefa. Verifique sua conexão e tente novamente."
+		},
+		"modules": {
+			"needsColon": "requer: {list}",
+			"needs": "requer {list}",
+			"showModule": "Mostrar este módulo",
+			"enableFeature": "Ativar este recurso",
+			"askOwner": "Peça ao dono para ativar isto",
+			"hiddenForYou": "Oculto para você",
+			"showForMe": "Mostrar para mim",
+			"hideForMe": "Ocultar para mim",
+			"allModules": "Todos os módulos",
+			"coreOnly": "Sem módulos, só o essencial",
+			"workflowOffConfirm": "As tarefas ganham uma caixa Concluída em vez de status; o Quadro fica oculto. Os status e as tarefas deles permanecem e voltam quando você ativar de novo.",
+			"workflowOn": "Fluxo: caixa Concluída → status",
+			"workflowOff": "Fluxo: status → caixa Concluída",
+			"presetSummary": {
+				"personal": "Só eu: tarefas e tempo, com uma caixa Concluída",
+				"team": "Trabalhe em equipe com status e um quadro",
+				"developer": "Eu e meus agentes de IA, com status e um quadro",
+				"everything": "Todos os módulos ativados",
+				"minimal": "Só tarefas: Lista, Cronômetro e Comentários"
+			}
+		},
+		"previewSurfaces": {
+			"nav": {
+				"dashboard": "Painel",
+				"projects": "Projetos",
+				"list": "Lista",
+				"board": "Quadro",
+				"routines": "Rotinas",
+				"pages": "Páginas",
+				"map": "Mapa",
+				"files": "Arquivos",
+				"askAi": "Perguntar à IA",
+				"personas": "Personas"
+			},
+			"task": {
+				"timer": "Cronômetro",
+				"pomodoro": "Pomodoro",
+				"assignees": "Responsáveis",
+				"checkpoints": "Checkpoints",
+				"attachments": "Anexos",
+				"relations": "Relações",
+				"agentWork": "Execução do agente",
+				"github": "GitHub",
+				"cursorAgents": "Agentes do Cursor",
+				"comments": "Comentários",
+				"aiReply": "Resposta da IA"
+			}
+		},
+		"navTargets": {
+			"dashboard": "Painel",
+			"list": "Lista",
+			"board": "Quadro",
+			"localRoutines": "Rotinas locais",
+			"dailyRoutines": "Rotinas diárias",
+			"archive": "Arquivo",
+			"categories": "Projetos",
+			"pages": "Páginas",
+			"statistics": "Estatísticas",
+			"aiUsage": "Uso de IA",
+			"files": "Arquivos",
+			"map": "Mapa",
+			"settings": "Configurações"
+		}
 	}
 }

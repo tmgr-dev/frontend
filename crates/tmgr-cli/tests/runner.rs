@@ -1872,25 +1872,159 @@ fn worktree_run_in_a_folder_that_is_not_a_repository_is_refused() {
 }
 
 #[test]
-fn worktree_is_off_unless_asked_and_the_config_turns_it_on() {
+fn sandboxed_session_in_a_repository_starts_in_a_clone_unless_opted_out() {
     let env = Env::new();
     worktree_agent(&env, "sleep 30\n");
     git_repo(&env.proj);
     let Some(()) = sandbox_usable().then_some(()) else {
         return;
     };
-    let out = wt_run(&env, &[]);
+    let out = wt_run(&env, &["--name", "dflt"]);
     assert!(out.status.success(), "{}", out_text(&out));
-    assert!(!env.tmp.path().join("p-worktrees").exists());
-    let cfg = env.tmp.path().join("cfg/tmgr");
-    fs::create_dir_all(&cfg).unwrap();
-    fs::write(cfg.join("config.toml"), "[attach]\nworktree = true\n").unwrap();
-    let out = wt_run(&env, &["--name", "cfgon"]);
-    assert!(out.status.success(), "{}", out_text(&out));
-    assert!(env.tmp.path().join("p-worktrees/cfgon/.git").is_dir());
+    assert!(env.tmp.path().join("p-worktrees/dflt/.git").is_dir());
+    let real = fs::canonicalize(env.tmp.path().join("p-worktrees/dflt")).unwrap();
+    assert_eq!(json_of(&out)["data"]["cwd"], real.to_str().unwrap());
     let out = wt_run(&env, &["--no-worktree", "--name", "plain"]);
     assert!(out.status.success(), "{}", out_text(&out));
     assert!(!env.tmp.path().join("p-worktrees/plain").exists());
+    let cfg = env.tmp.path().join("cfg/tmgr");
+    fs::create_dir_all(&cfg).unwrap();
+    fs::write(cfg.join("config.toml"), "[attach]\nworktree = false\n").unwrap();
+    let out = wt_run(&env, &["--name", "cfgoff"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    assert!(!env.tmp.path().join("p-worktrees/cfgoff").exists());
+    let out = wt_run(&env, &["--worktree", "--name", "asked"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    assert!(env.tmp.path().join("p-worktrees/asked/.git").is_dir());
+}
+
+#[test]
+fn a_default_session_writing_its_git_folder_leaves_the_repository_untouched() {
+    let env = Env::new();
+    worktree_agent(
+        &env,
+        "exec 2>err.log\necho '[core]' >> .git/config\necho '\\thooksPath = /tmp' >> .git/config\nmkdir -p .git/hooks\necho '#!/bin/sh' > .git/hooks/pre-commit\nchmod +x .git/hooks/pre-commit\n",
+    );
+    git_repo(&env.proj);
+    if !sandbox_usable() {
+        return;
+    }
+    let read = |p: &str| fs::read(env.proj.join(p)).unwrap();
+    let hooks = || {
+        let mut names: Vec<_> = fs::read_dir(env.proj.join(".git/hooks"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        names.sort();
+        names
+    };
+    let (config, listed) = (read(".git/config"), hooks());
+    let out = wt_run(&env, &["--name", "writer"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    let id = json_of(&out)["data"]["id"].as_str().unwrap().to_string();
+    wait_session_state(&env, &id, "exited");
+    let clone = env.tmp.path().join("p-worktrees/writer");
+    if env
+        .sessions()
+        .iter()
+        .any(|s| s["id"] == id.as_str() && s["state"]["exit_code"] == 71)
+    {
+        eprintln!("skipped: the sandbox could not be applied on this host");
+        return;
+    }
+    assert!(
+        fs::read(clone.join(".git/hooks/pre-commit")).is_ok(),
+        "{}",
+        fs::read_to_string(clone.join("err.log")).unwrap_or_default()
+    );
+    assert_eq!(read(".git/config"), config);
+    assert_eq!(hooks(), listed);
+}
+
+#[test]
+fn import_gc_and_rm_run_nothing_from_a_hostile_session_clone() {
+    let env = Env::new();
+    git_repo(&env.proj);
+    let sc = tmgr_runner::sessionwt::create(&env.proj, Some("hos"), "wt", &[]).unwrap();
+    fs::write(sc.path.join("n.txt"), "n").unwrap();
+    git_cli(&sc.path, &["add", "n.txt"]);
+    git_cli(&sc.path, &["commit", "-q", "-m", "n"]);
+    fs::write(sc.path.join(".gitattributes"), "* filter=x\n").unwrap();
+    git_cli(&sc.path, &["add", ".gitattributes"]);
+    git_cli(&sc.path, &["commit", "-q", "-m", "attrs"]);
+    let tip = Command::new("git")
+        .current_dir(&sc.path)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .unwrap();
+    let tip = String::from_utf8_lossy(&tip.stdout).trim().to_string();
+    let marker = fs::canonicalize(env.tmp.path()).unwrap().join("ran");
+    let touch = format!("touch {}", marker.display());
+    let hooks = sc.path.join(".git/evil-hooks");
+    fs::create_dir_all(&hooks).unwrap();
+    for dir in [hooks.clone(), sc.path.join(".git/hooks")] {
+        for h in [
+            "pre-commit",
+            "post-checkout",
+            "reference-transaction",
+            "pre-auto-gc",
+        ] {
+            fs::write(dir.join(h), format!("#!/bin/sh\n{touch}\n")).unwrap();
+            fs::set_permissions(dir.join(h), fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    }
+    let extra = sc.path.join(".git/extra.cfg");
+    fs::write(&extra, format!("[core]\n\tfsmonitor = {touch}\n")).unwrap();
+    let mut cfg = fs::read_to_string(sc.path.join(".git/config")).unwrap();
+    cfg.push_str(&format!(
+        "[core]\n\tfsmonitor = {touch}\n\thooksPath = {}\n[filter \"x\"]\n\tclean = {touch}\n\tsmudge = {touch}\n[include]\n\tpath = {}\n[uploadpack]\n\tpackObjectsHook = {touch}\n[alias]\n\tstatus = !{touch}\n",
+        hooks.display(),
+        extra.display()
+    ));
+    fs::write(sc.path.join(".git/config"), cfg).unwrap();
+    let source_config = fs::read(env.proj.join(".git/config")).unwrap();
+    let path = sc.path.display().to_string();
+    let mut in_agent = env.cmd(&["runner", "import", &path, "--json"]);
+    in_agent.env("TMGR_SESSION_ID", "s_x");
+    let refused = run_bounded(in_agent, Duration::from_secs(60));
+    assert!(!refused.status.success());
+    assert!(!out_text(&refused).contains("\"commit\""));
+    let mut import = env.cmd(&["runner", "import", &path, "--json"]);
+    for k in ["TMGR_RUN_TOKEN", "TMGR_RUN_ID", "TMGR_SESSION_ID"] {
+        import.env_remove(k);
+    }
+    let out = run_bounded(import, Duration::from_secs(60));
+    assert!(out.status.success(), "{}", out_text(&out));
+    assert_eq!(json_of(&out)["data"]["commit"], tip.as_str());
+    let landed = Command::new("git")
+        .current_dir(&env.proj)
+        .args(["rev-parse", "refs/heads/hos"])
+        .output()
+        .unwrap();
+    assert_eq!(String::from_utf8_lossy(&landed.stdout).trim(), tip);
+    let gc = env.tmgr(&["runner", "gc", "--dry-run", "--json"]);
+    assert!(!out_text(&gc).contains("hos"), "{}", out_text(&gc));
+    let rm = env.tmgr(&["rm", &path]);
+    assert!(out_text(&rm).contains("hos"), "{}", out_text(&rm));
+    assert!(!marker.exists(), "a program of the clone ran");
+    assert_eq!(
+        fs::read(env.proj.join(".git/config")).unwrap(),
+        source_config
+    );
+}
+
+#[test]
+fn session_outside_a_repository_starts_in_place_with_the_default_config() {
+    let env = Env::new();
+    worktree_agent(&env, "sleep 30\n");
+    let Some(()) = sandbox_usable().then_some(()) else {
+        return;
+    };
+    let out = wt_run(&env, &["--name", "norepo"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    let real = fs::canonicalize(&env.proj).unwrap();
+    assert_eq!(json_of(&out)["data"]["cwd"], real.to_str().unwrap());
+    assert!(!env.tmp.path().join("p-worktrees").exists());
 }
 
 #[test]

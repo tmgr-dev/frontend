@@ -9,6 +9,7 @@ const item = (over: Partial<PendingTaskComment> = {}): PendingTaskComment => ({
 	seq: 1,
 	task_id: 42,
 	origin: 'https://tmgr.dev',
+	workspace: 'ws',
 	body: 'answer [decision c_1#1]',
 	...over,
 });
@@ -18,10 +19,17 @@ const httpError = (status: number) => ({ response: { status } });
 const setup = (pending: PendingTaskComment[] = [item()]) => {
 	let clock = 1_000_000;
 	const marked: string[] = [];
+	const skipped: string[] = [];
 	const deps = {
 		invoke: jest.fn(async (cmd: string, args?: any) => {
 			if (cmd === 'decisions_pending_task_comments') {
-				return pending.filter((p) => !marked.includes(`${p.card_id}#${p.seq}`));
+				return pending.filter((p) => {
+					const key = `${p.card_id}#${p.seq}`;
+					return (
+						!marked.includes(key) &&
+						!skipped.some((s) => s.startsWith(`${key}:`))
+					);
+				});
 			}
 			marked.push(`${args.cardId}#${args.seq}`);
 			return undefined;
@@ -30,16 +38,74 @@ const setup = (pending: PendingTaskComment[] = [item()]) => {
 			async (_taskId: number) => [] as { message: string }[],
 		),
 		postComment: jest.fn(async (_taskId: number, _message: string) => ({})),
+		skip: jest.fn(async (cardId: string, seq: number, reason: string) => {
+			skipped.push(`${cardId}#${seq}:${reason}`);
+		}),
+		taskWorkspaceCode: jest.fn(
+			async (_taskId: number) => 'ws' as string | null,
+		),
 		now: () => clock,
 		origin: 'https://tmgr.dev',
 	};
 	const advance = (ms: number) => {
 		clock += ms;
 	};
-	return { deps, marked, advance, sync: createDecisionTaskCommentSync(deps) };
+	return {
+		deps,
+		marked,
+		skipped,
+		advance,
+		sync: createDecisionTaskCommentSync(deps),
+	};
 };
 
 describe('decision task comment sync', () => {
+	it('posts when the task belongs to the workspace of the card link', async () => {
+		const { deps, marked, sync } = setup();
+		await sync.run();
+		expect(deps.taskWorkspaceCode).toHaveBeenCalledWith(42);
+		expect(deps.postComment).toHaveBeenCalledTimes(1);
+		expect(marked).toEqual(['c_1#1']);
+	});
+
+	it('skips permanently when the task is in another workspace and logs it', async () => {
+		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+		const { deps, marked, skipped, advance, sync } = setup();
+		deps.taskWorkspaceCode.mockResolvedValue('other');
+		await sync.run();
+		expect(deps.postComment).not.toHaveBeenCalled();
+		expect(deps.fetchComments).not.toHaveBeenCalled();
+		expect(marked).toEqual([]);
+		expect(deps.skip).toHaveBeenCalledTimes(1);
+		expect(skipped).toEqual(['c_1#1:workspace mismatch']);
+		expect(warn).toHaveBeenCalledTimes(1);
+		advance(BACKOFF_MS + 1);
+		await sync.run();
+		await sync.run();
+		expect(deps.taskWorkspaceCode).toHaveBeenCalledTimes(1);
+		expect(skipped).toHaveLength(1);
+		warn.mockRestore();
+	});
+
+	it('does not post when the task workspace cannot be resolved', async () => {
+		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+		const { deps, marked, skipped, advance, sync } = setup();
+		deps.taskWorkspaceCode.mockResolvedValue(null);
+		await sync.run();
+		expect(deps.postComment).not.toHaveBeenCalled();
+		expect(marked).toEqual([]);
+		expect(deps.skip).not.toHaveBeenCalled();
+		expect(skipped).toEqual([]);
+		await sync.run();
+		expect(deps.taskWorkspaceCode).toHaveBeenCalledTimes(1);
+		advance(BACKOFF_MS + 1);
+		deps.taskWorkspaceCode.mockResolvedValue('ws');
+		await sync.run();
+		expect(deps.postComment).toHaveBeenCalledTimes(1);
+		expect(marked).toEqual(['c_1#1']);
+		warn.mockRestore();
+	});
+
 	it('posts exactly once for concurrent triggers and then marks', async () => {
 		const { deps, marked, sync } = setup();
 		await Promise.all([sync.run(), sync.run()]);

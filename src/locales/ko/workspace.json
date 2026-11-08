@@ -316,5 +316,44 @@
 		"restoreFailed": "이 항목을 복원하지 못했어요",
 		"deleted": "삭제됨",
 		"undo": "실행 취소"
+	},
+	"helpers": {
+		"emails": {
+			"empty": "입력값이 비어 있을 수 없어요",
+			"emptyAt": "{position}번째 위치의 이메일이 비어 있어요",
+			"invalid": "올바르지 않은 이메일 형식: {email}"
+		},
+		"notificationTypes": {
+			"fallback": "알림",
+			"taskCreated": "작업 생성됨",
+			"taskUpdated": "작업 수정됨",
+			"taskStatusChanged": "작업 상태 변경됨",
+			"taskAssigned": "작업 지정됨",
+			"taskDeleted": "작업 삭제됨",
+			"taskRestored": "작업 복원됨",
+			"taskCompleted": "작업 완료됨",
+			"commentCreated": "새 댓글",
+			"commentUpdated": "댓글 수정됨",
+			"commentDeleted": "댓글 삭제됨",
+			"categoryCreated": "프로젝트 생성됨",
+			"categoryUpdated": "프로젝트 수정됨",
+			"categoryDeleted": "프로젝트 삭제됨",
+			"categoryRestored": "프로젝트 복원됨",
+			"fileUploaded": "파일 업로드됨",
+			"fileDeleted": "파일 삭제됨",
+			"memberJoined": "멤버 참여함",
+			"memberLeft": "멤버가 워크스페이스를 떠남",
+			"memberRemoved": "멤버 제거됨",
+			"taskPersonaAssigned": "작업이 페르소나에게 지정됨",
+			"taskPersonaUnassigned": "작업의 페르소나 지정 해제됨",
+			"commentReactionToggled": "댓글 반응",
+			"agentWorkStarted": "에이전트 작업 시작됨",
+			"agentWorkUpdated": "에이전트 작업 업데이트됨",
+			"agentWorkFinished": "에이전트 작업 종료됨",
+			"pageCreated": "새 페이지",
+			"pageUpdated": "페이지 수정됨",
+			"pageMentioned": "페이지에서 멘션되었어요",
+			"memoryAdded": "메모리에 추가됨"
+		}
 	}
 }

@@ -225,5 +225,73 @@
 		"loading": "Wird geladen...",
 		"notFound": "Diese Seite wurde nicht gefunden.",
 		"openFailed": "Die Seite konnte nicht geöffnet werden. Schließe dieses Fenster und versuche es erneut."
+	},
+	"helpers": {
+		"network": {
+			"operational": "Operativ",
+			"personal": "Persönlich",
+			"strategic": "Strategisch"
+		},
+		"aliasSource": {
+			"telegram": "Telegram",
+			"rocketchat": "Rocket.Chat",
+			"slack": "Slack",
+			"github": "GitHub",
+			"email": "E-Mail",
+			"other": "Andere"
+		},
+		"validation": {
+			"invalidMember": "Ungültiges Mitglied",
+			"mustBeList": "Muss eine Liste sein",
+			"chooseSource": "Wähle eine Quelle",
+			"enterIdentifier": "Gib eine Kennung ein",
+			"nameTooLong": "Der Name ist zu lang",
+			"chooseRelationship": "Wähle einen Beziehungstyp",
+			"maxChars": "Höchstens 255 Zeichen",
+			"dateFormat": "Datum im Format JJJJ-MM-TT",
+			"invalidTask": "Ungültige Aufgabe",
+			"invalidValue": "Ungültiger Wert",
+			"invalidProperties": "Ungültige Eigenschaften"
+		},
+		"property": {
+			"member": "Mitglied",
+			"relationship": "Beziehung",
+			"company": "Unternehmen",
+			"role": "Rolle",
+			"aliases": "Aliase",
+			"lastContact": "Letzter Kontakt",
+			"date": "Datum",
+			"participants": "Teilnehmer",
+			"tasks": "Aufgaben"
+		},
+		"pageType": {
+			"plain": "Einfache Seite",
+			"context": "Kontext",
+			"person": "Person",
+			"meeting": "Meeting"
+		},
+		"owner": {
+			"persona": "Persona",
+			"member": "Mitglied",
+			"system": "System",
+			"agents": "Agenten"
+		},
+		"taskFromSelection": {
+			"selectionNotFound": "Der ausgewählte Text wurde auf der Seite nicht gefunden. Lade die Seite neu und versuch es noch einmal.",
+			"pageChanged": "Die Seite hat sich geändert. Lade sie neu und versuch es noch einmal.",
+			"noAccess": "Kein Zugriff auf das Projekt.",
+			"failed": "Die Aufgabe konnte nicht erstellt werden."
+		},
+		"image": {
+			"alignLeft": "Linksbündig",
+			"alignCenter": "Zentriert",
+			"alignRight": "Rechtsbündig",
+			"fullWidth": "Volle Breite",
+			"download": "Herunterladen",
+			"replaceImage": "Bild ersetzen",
+			"deleteImage": "Bild löschen",
+			"captionPlaceholder": "Bildunterschrift schreiben",
+			"loadFailed": "Das Bild konnte nicht geladen werden"
+		}
 	}
 }

@@ -229,5 +229,51 @@
 		"page": "Page {page} sur {last}",
 		"deleteTasksTitle": "Supprimer les tâches",
 		"deleteTasksBody": "Êtes-vous sûr ?"
+	},
+	"helpers": {
+		"doneDisabledTooltip": "Cet espace de travail n'a pas de statut Terminée",
+		"state": {
+			"done": "Terminée",
+			"archived": "Archivée",
+			"open": "Ouverte"
+		},
+		"boardDate": {
+			"today": "Aujourd'hui",
+			"yesterday": "Hier"
+		},
+		"backlogTimer": {
+			"title": "Tâche dans le backlog",
+			"message": "La tâche « {title} » est dans le backlog. Passer au statut « {status} » ?"
+		},
+		"fileSize": {
+			"b": "{n} o",
+			"kb": "{n} Ko",
+			"mb": "{n} Mo",
+			"gb": "{n} Go"
+		},
+		"attachmentErrors": {
+			"tooLargeWithLimit": "Le fichier est trop volumineux. La limite est de {limit}.",
+			"tooLarge": "Le fichier est trop volumineux.",
+			"typeNotAllowed": "Ce type de fichier ne peut pas être joint.",
+			"notAttachable": "Ce fichier ne peut pas être joint.",
+			"noAccess": "Vous n'avez pas accès à ce fichier.",
+			"uploadFailed": "Échec du téléversement. Veuillez réessayer.",
+			"empty": "Le fichier est vide."
+		},
+		"priority": {
+			"urgent": "Urgente",
+			"high": "Haute",
+			"medium": "Moyenne",
+			"low": "Basse"
+		},
+		"timeEntrySource": {
+			"attach": "Session de terminal"
+		},
+		"relativeTime": {
+			"justNow": "à l'instant",
+			"minutesAgo": "il y a {n} min",
+			"hoursAgo": "il y a {n} h",
+			"daysAgo": "il y a {n} j"
+		}
 	}
 }

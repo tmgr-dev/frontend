@@ -1,3 +1,4 @@
+use crate::clone;
 use crate::hostview::{Access, HostView};
 use crate::worktree;
 #[cfg(test)]
@@ -51,8 +52,41 @@ fn quote(p: &Path) -> String {
     }
 }
 
-pub fn import_hint(repo: &Path, path: &Path, name: &str) -> String {
-    format!("git -C {} fetch {} {name}:{name}", quote(repo), quote(path))
+pub fn in_repo(cwd: &Path) -> bool {
+    let Ok(cwd) = fs::canonicalize(cwd) else {
+        return true;
+    };
+    !matches!(
+        HostView::discover(&cwd, Access::Read),
+        Err(e) if e.starts_with("not a git repository")
+    )
+}
+
+pub fn import_hint(path: &Path) -> String {
+    format!("tmgr runner import {}", quote(path))
+}
+
+/// Resolves a session clone from its name (looked up beside the repository `cwd` is in) or its path.
+pub fn find(target: &str, cwd: &Path) -> Result<(PathBuf, PathBuf, String), String> {
+    let path = if target.contains('/') {
+        let abs = std::path::absolute(cwd.join(target)).map_err(|e| format!("{target}: {e}"))?;
+        let name = abs
+            .file_name()
+            .ok_or_else(|| format!("{target} is not a session clone"))?
+            .to_owned();
+        let parent = abs.parent().unwrap_or(Path::new("/"));
+        fs::canonicalize(parent)
+            .map_err(|e| format!("{}: {e}", parent.display()))?
+            .join(name)
+    } else {
+        check_name(target)?;
+        let (repo, _) = locate(cwd)?;
+        worktree::worktrees_root(&repo)?.join(target)
+    };
+    let repo = repo_of(&path)
+        .ok_or_else(|| format!("{} is not a session clone made by tmgr", path.display()))?;
+    let name = session_dir(&repo, &path)?;
+    Ok((repo, path, name))
 }
 
 pub fn check_name(name: &str) -> Result<(), String> {
@@ -79,6 +113,10 @@ pub fn check_name(name: &str) -> Result<(), String> {
 }
 
 fn locate(cwd: &Path) -> Result<(PathBuf, String), String> {
+    locate_with(cwd, tmgr_ipc::dirs::homes_dir().ok().as_deref())
+}
+
+fn locate_with(cwd: &Path, homes: Option<&Path>) -> Result<(PathBuf, String), String> {
     let cwd = fs::canonicalize(cwd).map_err(|e| format!("{}: {e}", cwd.display()))?;
     let git = HostView::discover(&cwd, Access::Read).map_err(|e| {
         if e.starts_with("not a git repository") {
@@ -99,12 +137,7 @@ fn locate(cwd: &Path) -> Result<(PathBuf, String), String> {
             repo.display()
         ));
     }
-    if repo
-        .ancestors()
-        .skip(1)
-        .filter_map(Path::file_name)
-        .any(|n| n.to_string_lossy().ends_with("-worktrees"))
-    {
+    if is_task_clone(&repo, homes) {
         return Err(format!(
             "{} is itself a task clone; start the session from the original repository",
             repo.display()
@@ -112,6 +145,40 @@ fn locate(cwd: &Path) -> Result<(PathBuf, String), String> {
     }
     let base = git.run(&["rev-parse", "--verify", "HEAD^{commit}"])?;
     Ok((repo, base))
+}
+
+fn is_task_clone(repo: &Path, homes: Option<&Path>) -> bool {
+    if homes.is_some_and(|h| clone::is_marked_clone(h, repo)) {
+        return true;
+    }
+    repo.ancestors().skip(1).any(|anc| {
+        let Some(stem) = anc
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.strip_suffix("-worktrees"))
+        else {
+            return false;
+        };
+        let Some(sibling) = anc.parent().map(|p| p.join(stem)) else {
+            return false;
+        };
+        if !fs::metadata(sibling.join(".git")).is_ok_and(|m| m.is_dir()) {
+            return false;
+        }
+        let rel: Vec<_> = repo
+            .strip_prefix(anc)
+            .map(|r| r.components().collect())
+            .unwrap_or_default();
+        match rel.as_slice() {
+            [first, ..] if first.as_os_str() == "queue" => true,
+            _ if homes.is_none() => true,
+            [name] => name.as_os_str().to_str().is_some_and(|n| {
+                HostView::open(&sibling, Access::Read)
+                    .is_ok_and(|v| v.succeeds(&["show-ref", "--verify", "--quiet", &base_ref(n)]))
+            }),
+            _ => false,
+        }
+    })
 }
 
 fn free(repo: &Path, git: &HostView, name: &str) -> bool {
@@ -396,7 +463,7 @@ fn inspect(
                 .unwrap_or_default();
             return Ok(Err(format!(
                 "branch {name} has {n} commit(s) that are not merged into the current branch; bring them over with: {}",
-                import_hint(repo, shown, &name)
+                import_hint(shown)
             )));
         }
     }
@@ -794,7 +861,7 @@ mod tests {
         commit(&s.path, "new.txt");
         let w = kept(remove(&fx.repo, &s.path).unwrap());
         assert!(w.contains("1 commit"), "{w}");
-        assert!(w.contains("fetch"), "{w}");
+        assert!(w.contains("tmgr runner import"), "{w}");
         assert!(s.path.exists());
     }
 
@@ -931,8 +998,8 @@ mod tests {
 
     #[test]
     fn the_import_hint_quotes_paths_and_odd_profiles_still_get_names() {
-        let hint = import_hint(Path::new("/a b/p"), Path::new("/a b/p-worktrees/n"), "n");
-        assert_eq!(hint, "git -C '/a b/p' fetch '/a b/p-worktrees/n' n:n");
+        let hint = import_hint(Path::new("/a b/p-worktrees/n"));
+        assert_eq!(hint, "tmgr runner import '/a b/p-worktrees/n'");
         let fx = fixture();
         let s = create(&fx.repo, None, "-weird", &[]).unwrap();
         assert_eq!(s.name, "weird-1");
@@ -1057,5 +1124,78 @@ mod tests {
         .unwrap();
         assert!(locate(&fake).is_err());
         assert!(locate(&fx.repo).is_ok());
+    }
+
+    fn homes() -> TempDir {
+        tempfile::tempdir().unwrap()
+    }
+
+    fn plain_clone(src: &Path, dest: &Path) {
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        git(
+            dest.parent().unwrap(),
+            &["clone", "-q", src.to_str().unwrap(), dest.to_str().unwrap()],
+        );
+    }
+
+    #[test]
+    fn a_plain_clone_under_a_worktrees_folder_without_a_sibling_repository_is_accepted() {
+        let fx = fixture();
+        let dest = fx.root.join("foo-worktrees/x");
+        plain_clone(&fx.repo, &dest);
+        let h = homes();
+        assert!(locate_with(&dest, Some(h.path())).is_ok());
+    }
+
+    #[test]
+    fn a_plain_repository_next_to_an_unrelated_sibling_is_accepted() {
+        let fx = fixture();
+        let other = fx.root.join("foo");
+        fs::create_dir(&other).unwrap();
+        git(&other, &["init", "-q", "-b", "main"]);
+        commit(&other, "o.txt");
+        let dest = fx.root.join("foo-worktrees/x");
+        plain_clone(&fx.repo, &dest);
+        let h = homes();
+        assert!(locate_with(&dest, Some(h.path())).is_ok());
+        let deeper = fx.root.join("foo-worktrees/queue");
+        plain_clone(&fx.repo, &deeper.join("q1/lead"));
+        assert!(locate_with(&deeper.join("q1/lead"), Some(h.path())).is_err());
+    }
+
+    #[test]
+    fn marked_and_session_clones_are_refused_wherever_they_sit() {
+        let fx = fixture();
+        let h = homes();
+        let s = make(&fx, "first");
+        let err = locate_with(&s.path, Some(h.path())).unwrap_err();
+        assert!(err.contains("task clone"), "{err}");
+        let queue = fx.root.join("proj-worktrees/queue/q9");
+        for member in ["lead", "w1"] {
+            let dest = queue.join(member);
+            plain_clone(&fx.repo, &dest);
+            let err = locate_with(&dest, Some(h.path())).unwrap_err();
+            assert!(err.contains("task clone"), "{member}: {err}");
+        }
+        let moved = fx.root.join("elsewhere/kept");
+        plain_clone(&fx.repo, &moved);
+        assert!(locate_with(&moved, Some(h.path())).is_ok());
+        crate::clone::mark_task_clone(h.path(), &moved, &fx.repo).unwrap();
+        let err = locate_with(&moved, Some(h.path())).unwrap_err();
+        assert!(err.contains("task clone"), "{err}");
+        let copy = fx.root.join("elsewhere/copy");
+        plain_clone(&moved, &copy);
+        assert!(locate_with(&copy, Some(h.path())).is_ok());
+    }
+
+    #[test]
+    fn without_a_homes_folder_a_clone_next_to_its_repository_is_refused() {
+        let fx = fixture();
+        let dest = fx.root.join("proj-worktrees/x");
+        plain_clone(&fx.repo, &dest);
+        assert!(locate_with(&dest, None).is_err());
+        let far = fx.root.join("foo-worktrees/x");
+        plain_clone(&fx.repo, &far);
+        assert!(locate_with(&far, None).is_ok());
     }
 }

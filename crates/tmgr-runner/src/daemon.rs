@@ -7,6 +7,7 @@ use crate::exe::{resolve_exe, verify_pin};
 use crate::folders;
 use crate::humantime;
 use crate::login;
+use crate::objectmodes;
 use crate::orchestrator;
 use crate::permit::{self, spool, Eval};
 use crate::permit_hook;
@@ -655,10 +656,16 @@ const REVOKE_WAIT: Duration = Duration::from_secs(2);
 fn finish_seeds(sdir: &Path, id: &str) {
     let (sdir, id) = (sdir.to_path_buf(), id.to_string());
     thread::spawn(move || {
-        for line in seedguard::finish(&sdir) {
+        for line in finish_guards(&sdir) {
             log(&format!("session {id}: {line}"));
         }
     });
+}
+
+fn finish_guards(sdir: &Path) -> Vec<String> {
+    let mut lines = seedguard::finish(sdir);
+    lines.extend(objectmodes::finish(sdir));
+    lines
 }
 
 fn terminate(s: &Session) -> bool {
@@ -4227,7 +4234,7 @@ impl Runner {
         let home = self.cfg.homes.join(&id);
         let mut moved_home = false;
         if let Some(old) = restore_from {
-            for line in seedguard::finish(&self.sdir(old)) {
+            for line in finish_guards(&self.sdir(old)) {
                 log(&format!("session {old}: {line}"));
             }
             if !restore::staging_complete(&self.sdir(old)) {
@@ -4435,6 +4442,21 @@ impl Runner {
             log(&format!("session {id}: {n}"));
         }
         if unsandboxed.is_none() {
+            #[cfg(target_os = "linux")]
+            {
+                let roots: Vec<PathBuf> = spec
+                    .grants
+                    .objects_ro
+                    .iter()
+                    .map(|(p, _)| p.clone())
+                    .collect();
+                objectmodes::save(sdir, &roots).map_err(|e| {
+                    api(
+                        ErrorCode::Sandbox,
+                        format!("cannot record the modes of the granted object stores: {e}"),
+                    )
+                })?;
+            }
             let records =
                 login::apply_seeds(&seeds, home).map_err(|e| api(ErrorCode::Sandbox, e))?;
             seedguard::save(sdir, &records).map_err(internal)?;
@@ -4710,7 +4732,7 @@ impl Runner {
         }
         s.settle_agent_work();
         s.shim_msg(&ToShim::Reap);
-        for line in seedguard::finish(&self.sdir(id)) {
+        for line in finish_guards(&self.sdir(id)) {
             log(&format!("session {id}: {line}"));
         }
         lock(&self.sessions).remove(id);

@@ -229,5 +229,199 @@
 		"privacyNote": "TMGR은 AI 도구가 이 컴퓨터에 기록하는 세션 로그를 읽고, 토큰 수, 비용, 모델 이름, 타임스탬프, 세션 ID, 프로젝트 폴더와 git 브랜치, AI가 사용한 도구·스킬·명령의 이름, 편집한 파일 형식, 연 풀 리퀘스트를 보관해요. 프롬프트와 응답 텍스트는 저장하지 않아요. tmgr usage sync로 업로드하지 않는 한 데이터는 이 기기에 남아요.",
 		"matchFailed": "사용량을 작업에 매칭하지 못했어요: {error}",
 		"documentTitle": "AI 사용량"
+	},
+	"helpers": {
+		"usage": {
+			"consent": {
+				"granted": "켜짐: TMGR가 이 기기에서 이 로그를 읽어 비용과 한도를 보여 주고, 러너는 직접 시작한 세션을 읽어요.",
+				"denied": "꺼짐: TMGR는 이 기기에서 AI 사용량을 위해 이 로그를 읽지 않고, 러너도 전혀 읽지 않아요.",
+				"unset": "아직 선택하지 않았어요. 데스크톱 앱과 백그라운드 작업은 AI 사용량을 위해 이 로그를 읽지 않지만, 직접 실행하는 tmgr usage 명령은 읽어요. 허용하기 전까지 러너는 전혀 읽지 않아요.",
+				"forgetDone": "삭제했어요. AI 도구 로그 읽기가 꺼졌어요."
+			},
+			"format": {
+				"now": "지금",
+				"justNow": "방금",
+				"ago": "{span} 전"
+			},
+			"error": {
+				"generic": "문제가 발생했어요."
+			}
+		},
+		"toolLabels": {
+			"get_task": "작업을 읽는 중",
+			"list_tasks": "작업 목록을 불러오는 중",
+			"search_tasks": "작업을 검색하는 중",
+			"list_comments": "댓글을 읽는 중",
+			"list_statuses": "보드 상태를 읽는 중",
+			"list_members": "멤버를 읽는 중",
+			"list_routines": "루틴을 읽는 중",
+			"time_summary": "추적한 시간을 합산하는 중",
+			"deadline_report": "마감을 확인하는 중",
+			"routine_agenda": "내 루틴을 읽는 중",
+			"get_routine": "루틴을 읽는 중",
+			"create_task": "작업을 준비하는 중",
+			"add_comment": "댓글을 준비하는 중",
+			"update_task": "작업 수정을 준비하는 중",
+			"add_checkpoint": "체크포인트를 준비하는 중",
+			"start_timer": "타이머 시작을 준비하는 중",
+			"stop_timer": "타이머 중지를 준비하는 중",
+			"link_tasks": "작업 연결을 준비하는 중",
+			"create_routine": "루틴을 준비하는 중",
+			"update_routine": "루틴 변경을 준비하는 중",
+			"set_routine_state": "루틴 체크를 준비하는 중",
+			"move_routine_instance": "루틴 이동을 준비하는 중",
+			"convert_routine": "루틴을 작업으로 바꾸는 것을 준비하는 중"
+		},
+		"compaction": {
+			"nothing": "지금은 압축할 내용이 없어요.",
+			"rateLimited": "압축 요청이 너무 많아요. 나중에 다시 시도해 주세요.",
+			"failed": "기록을 압축하지 못했어요. 다시 시도해 주세요."
+		},
+		"pins": {
+			"saveFailed": "고정한 사실을 저장하지 못했어요. 다시 시도해 주세요.",
+			"invalid": "고정한 사실이 올바르지 않아요.",
+			"limit": "사실은 최대 {max}개까지 고정할 수 있어요. 하나를 제거한 뒤 추가해 주세요.",
+			"charsLeft": "고정한 사실에 쓸 수 있는 글자가 {left}자 남았어요."
+		},
+		"cursor": {
+			"taskFallback": "작업 #{id}"
+		},
+		"scenarios": {
+			"run": {
+				"morning_summary": "아침 요약",
+				"day_results": "오늘의 결과",
+				"week_results": "이번 주 결과",
+				"blockers_stale": "막힌 작업과 오래된 작업",
+				"estimate_similar": "비슷한 작업으로 예상 시간 산정"
+			},
+			"fill": {
+				"epic": "에픽을 하위 작업으로 나누기",
+				"meeting": "회의 검토하기"
+			}
+		},
+		"message": {
+			"today": "오늘",
+			"yesterday": "어제",
+			"seconds": "{n}초",
+			"minSec": "{min}분 {sec}초",
+			"min": "{min}분",
+			"tokensInOut": "입력 {input} / 출력 {output} 토큰",
+			"tokensIn": "입력 {n} 토큰",
+			"tokensOut": "출력 {n} 토큰"
+		},
+		"quotes": {
+			"limit": "메시지는 최대 {max}개까지 인용할 수 있어요.",
+			"unavailable": "원본 메시지를 사용할 수 없어요",
+			"you": "나",
+			"ai": "AI",
+			"message": "메시지"
+		},
+		"confirmation": {
+			"expired": "만료됨 — 변경된 내용이 없어요",
+			"lessThanMinute": "1분 이내에 만료돼요",
+			"expiresIn": "{n}분 후 만료돼요",
+			"applying": "적용하는 중…",
+			"done": "완료",
+			"failedWith": "실패: {message}",
+			"failed": "실패",
+			"cancelled": "취소됨",
+			"superseded": "건너뜀 — 새 메시지를 보냈어요",
+			"conflict": "이 카드는 이미 처리되었거나 만료되었어요."
+		},
+		"attachments": {
+			"hint": "PDF, 이미지, Word, Excel, PowerPoint, 텍스트 파일",
+			"file": "파일",
+			"tooMany": "메시지 하나에 파일을 최대 {max}개까지 첨부할 수 있어요.",
+			"unsupported": "{name}: 지원하지 않는 파일 형식이에요. 지원 형식: {hint}.",
+			"tooLarge": "{name}의 크기가 {size}보다 커요.",
+			"empty": "{name}이(가) 비어 있어요.",
+			"errors": {
+				"file_not_found": "첨부한 파일을 찾을 수 없어요. 제거한 뒤 다시 시도해 주세요.",
+				"forbidden": "첨부한 파일 중 하나에 접근할 권한이 없어요.",
+				"file_not_on_task": "이 작업에 첨부된 파일만 여기서 사용할 수 있어요.",
+				"file_too_large": "첨부한 파일의 크기가 {size}보다 커요.",
+				"too_many_files": "메시지 하나에 파일을 최대 {max}개까지 첨부할 수 있어요.",
+				"unsupported_file_type": "어시스턴트가 읽을 수 없는 파일이 있어요. 지원 형식: {hint}.",
+				"too_many_pages": "PDF의 페이지 수가 너무 많아요. (최대 40페이지)",
+				"unreadable_file": "읽을 수 없는 파일이 있어요.",
+				"documents_too_large": "첨부한 문서가 너무 커서 한 번에 보낼 수 없어요. 일부를 제거한 뒤 다시 시도해 주세요.",
+				"invalid_file": "파일 이름이 올바르지 않아요.",
+				"invalid_file_path": "업로드를 첨부하지 못했어요. 다시 시도해 주세요.",
+				"file_bound_elsewhere": "업로드를 첨부하지 못했어요. 다시 시도해 주세요."
+			}
+		},
+		"personas": {
+			"nameRequired": "이름을 입력해 주세요",
+			"nameTooLong": "이름은 {max}자 이하여야 해요",
+			"nameAt": "이름에 \"{'@'}\"를 넣을 수 없어요",
+			"validationFailed": "검증에 실패했어요",
+			"reserved": "이 스킬은 예약된 이름을 사용해요. tmgr CLI로 이름을 바꾸거나 삭제해 주세요.",
+			"skill": {
+				"bodyBytes": "{max}바이트를 넘을 수 없어요",
+				"frontMatter": "'---' 프런트 매터 블록으로 시작하고 두 번째 '---'로 닫아야 해요",
+				"required": "필수 항목이에요",
+				"slugPattern": "소문자, 숫자, '-'만 사용할 수 있고 최대 60자예요",
+				"slugReserved": "예약된 이름이에요",
+				"slugMatch": "URL 슬러그와 일치해야 해요",
+				"titleLength": "{max}자를 넘을 수 없어요",
+				"deleteQuestion": "스킬 \"{title}\"을(를) 삭제할까요?",
+				"deleteAttached": "{question}\n\n{list}에 연결되어 있어요. 이 스킬이 즉시 사라지고 사본은 남지 않아요.",
+				"pinned": "{name} (v{version}에 고정됨)",
+				"deleted": "스킬을 삭제했어요",
+				"deletedDetached": "스킬을 삭제하고 페르소나 {n}개에서 연결을 해제했어요"
+			},
+			"labelRequired": "라벨을 입력해 주세요",
+			"labelTooLong": "라벨은 {max}자 이하여야 해요",
+			"requestedBy": "{name} 님이 요청함",
+			"personaOf": "{name} 님의 페르소나",
+			"scopeWorkspace": "워크스페이스",
+			"scopeMe": "나만",
+			"converted": "공유 스킬로 변환했어요",
+			"convertedReplaced": "공유 스킬로 변환하고 페르소나 {n}개에서 교체했어요"
+		},
+		"skillImport": {
+			"fileStatus": {
+				"ok": "업로드할 예정",
+				"binary": "바이너리, 가져오지 않음",
+				"too_large": "너무 커서 가져오지 않음",
+				"secret": "비밀 정보로 보여 스킬을 차단함",
+				"symlink": "심볼릭 링크, 가져오지 않음",
+				"unsupported_name": "지원하지 않는 이름, 가져오지 않음",
+				"case_conflict": "대소문자를 무시하면 이름이 겹침, 가져오지 않음",
+				"too_deep": "경로가 너무 깊음, 가져오지 않음",
+				"skipped_hidden": "숨김 파일, 가져오지 않음",
+				"unreadable": "읽을 수 없음, 가져오지 않음"
+			},
+			"warn": {
+				"descriptionCut": "설명을 {max}자로 잘랐어요",
+				"pluginRoot": "라이브러리에 없는 {'$'}{'{'}CLAUDE_PLUGIN_ROOT{'}'}를 참조해요",
+				"relativePaths": "해석되지 않는 상대 경로를 참조해요",
+				"noFrontMatter": "프런트 매터가 없어요",
+				"invalidYaml": "프런트 매터가 올바른 YAML이 아니라 이름과 설명을 읽지 못했어요",
+				"filesSkipped": "파일 {n}개는 가져오지 않아요. 파일 목록을 확인해 주세요"
+			},
+			"blocked": {
+				"secret": "비밀 정보가 들어 있는 것 같아요",
+				"files": "파일: {files}",
+				"size": "{kib} KiB, 한도 {limit} KiB",
+				"empty": "빈 파일",
+				"noDescription": "설명 없음"
+			},
+			"plan": {
+				"duplicate": "선택 항목에 슬러그가 중복돼요",
+				"taken": "스캔 이후 라이브러리에서 슬러그가 이미 사용 중이에요",
+				"limit": "라이브러리 한도에 도달했어요"
+			},
+			"summary": {
+				"imported": "스킬 {n}개를 가져왔어요",
+				"failed": "{imported}, {failed}개 실패"
+			},
+			"flow": {
+				"changedSincePreview": "미리보기 이후 변경됨, 다시 스캔해 주세요",
+				"filesChanged": "스캔 이후 라이브러리의 파일이 변경되었어요. 다시 스캔한 뒤 시도해 주세요.",
+				"replaced": "마지막 가져오기 이후 라이브러리의 스킬이 교체되었어요. 덮어쓰려면 다시 체크해 주세요.",
+				"requestFailed": "요청에 실패했어요"
+			}
+		}
 	}
 }

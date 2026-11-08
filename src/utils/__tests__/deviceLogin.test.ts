@@ -1,5 +1,5 @@
 import {
-	SCOPE_DESCRIPTIONS,
+	SCOPE_KEYS,
 	describeScope,
 	isCompleteUserCode,
 	normalizeUserCode,
@@ -40,7 +40,7 @@ describe('isCompleteUserCode', () => {
 
 describe('scope descriptions', () => {
 	it('describes all fourteen scopes', () => {
-		expect(Object.keys(SCOPE_DESCRIPTIONS)).toHaveLength(16);
+		expect(Object.keys(SCOPE_KEYS)).toHaveLength(16);
 		expect(describeScope('agent-status:write')).toBe(
 			'Share your local AI agent status (working, waiting, done) with your workspace',
 		);

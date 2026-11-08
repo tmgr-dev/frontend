@@ -229,5 +229,51 @@
 		"page": "Страница {page} из {last}",
 		"deleteTasksTitle": "Удалить задачи",
 		"deleteTasksBody": "Вы уверены?"
+	},
+	"helpers": {
+		"doneDisabledTooltip": "В этом рабочем пространстве нет статуса «Выполнено»",
+		"state": {
+			"done": "Выполнено",
+			"archived": "В архиве",
+			"open": "Открыто"
+		},
+		"boardDate": {
+			"today": "Сегодня",
+			"yesterday": "Вчера"
+		},
+		"backlogTimer": {
+			"title": "Задача в бэклоге",
+			"message": "Задача «{title}» в бэклоге. Переключить на статус «{status}»?"
+		},
+		"fileSize": {
+			"b": "{n} Б",
+			"kb": "{n} КБ",
+			"mb": "{n} МБ",
+			"gb": "{n} ГБ"
+		},
+		"attachmentErrors": {
+			"tooLargeWithLimit": "Файл слишком большой. Лимит — {limit}.",
+			"tooLarge": "Файл слишком большой.",
+			"typeNotAllowed": "Файл этого типа нельзя прикрепить.",
+			"notAttachable": "Этот файл нельзя прикрепить.",
+			"noAccess": "У вас нет доступа к этому файлу.",
+			"uploadFailed": "Не удалось загрузить. Попробуйте ещё раз.",
+			"empty": "Файл пуст."
+		},
+		"priority": {
+			"urgent": "Срочный",
+			"high": "Высокий",
+			"medium": "Средний",
+			"low": "Низкий"
+		},
+		"timeEntrySource": {
+			"attach": "Сессия терминала"
+		},
+		"relativeTime": {
+			"justNow": "только что",
+			"minutesAgo": "{n} мин назад",
+			"hoursAgo": "{n} ч назад",
+			"daysAgo": "{n} д назад"
+		}
 	}
 }

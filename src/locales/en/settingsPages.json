@@ -969,5 +969,83 @@
 		"copyFailed": "Could not copy",
 		"contactFailed": "Could not download the contact",
 		"confirmRemove": "Remove the alarm phone?"
+	},
+	"helpers": {
+		"editorLegacy": "{label} — legacy",
+		"featureToggle": {
+			"groups": {
+				"pages": "Pages",
+				"task": "Tasks",
+				"notifications": "Notifications"
+			},
+			"descriptions": {
+				"categories": "Group tasks into categories to organize your workspace.",
+				"board": "Switch to a kanban board view for tracking task status.",
+				"workflow": "Custom statuses, the status picker and board columns.",
+				"pages": "Keep notes, context and documentation in a tree of pages that people and agents can edit.",
+				"graph": "See how tasks, pages, people and agent runs connect: a Graph section on tasks and pages, and the workspace Map.",
+				"agentWork": "Lets AI agents report their work and time on tasks; when off, agent runs are hidden and agents skip reporting.",
+				"dashboard": "See an overview of activity and progress across your workspace.",
+				"dailyRoutines": "Track recurring routines and notes separate from your tasks.",
+				"taskComments": "Allow comments and discussion on tasks.",
+				"taskCountdown": "Track time spent on tasks with a start/stop timer.",
+				"taskFiles": "Allow files to be attached to tasks.",
+				"taskRelations": "Allow tasks to be linked to related tasks.",
+				"taskCheckpoints": "Break tasks down into smaller checkpoints.",
+				"taskAssignees": "Assign tasks to specific workspace members.",
+				"exports": "Export workspace data.",
+				"defaultLandingPage": "Choose which page opens first when you log in."
+			}
+		},
+		"deviceScope": {
+			"workspacesRead": "See your workspaces, statuses and projects",
+			"tasksRead": "Read tasks and their comments",
+			"tasksWrite": "Change task status and fields",
+			"tasksCreate": "Create tasks",
+			"commentsCreate": "Add comments",
+			"timeRead": "Read time reports",
+			"timeWrite": "Start and stop your timer",
+			"agentWorkWrite": "Record AI agent work on tasks",
+			"agentStatusWrite": "Share your local AI agent status (working, waiting, done) with your workspace",
+			"pagesRead": "Read Pages",
+			"pagesWrite": "Edit Pages",
+			"pagesAppend": "Append to Pages",
+			"notifySend": "Send notifications and phone alarms to your devices",
+			"agentApprovalsWrite": "Sign agent-run approvals with this computer's key",
+			"skillsRead": "Read your shared skills and which personas use them",
+			"skillsWrite": "Create, change and delete your shared skills and attach them to your personas (changes what those agents are told to do)"
+		},
+		"workspaceColor": {
+			"red": "Red",
+			"orange": "Orange",
+			"yellow": "Yellow",
+			"green": "Green",
+			"teal": "Teal",
+			"blue": "Blue",
+			"violet": "Violet",
+			"pink": "Pink"
+		},
+		"phones": {
+			"pairStartFailed": "Could not start pairing",
+			"enterName": "Enter a name for this Mac",
+			"signIn": "Sign in to pair a phone",
+			"genericError": "Something went wrong",
+			"never": "never",
+			"justNow": "just now",
+			"minutesAgo": "{n} min ago",
+			"hoursAgo": "{n} h ago",
+			"daysAgo": "{n} d ago",
+			"scanCode": "Scan this code with the TMGR iPhone app",
+			"typeCodeOn": "Type the code shown on {name}",
+			"typeCodeOnIphone": "Type the code shown on your iPhone",
+			"pairingFailed": "Pairing failed",
+			"isPaired": "{name} is paired",
+			"phonePaired": "Phone paired",
+			"attemptsLeft": "{n} attempt left | {n} attempts left"
+		},
+		"modules": {
+			"footer": "Turning a module off hides it for everyone in this workspace. Your data stays. Turn it back on and everything is where you left it.",
+			"coreDescription": "Always available. You can hide any of them for yourself."
+		}
 	}
 }

@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { type SkillFileEntry, type SkillFileSet } from '@/local/skillFileSet';
 import {
 	EMPTY_FILES_SHA256,
@@ -17,9 +18,10 @@ import {
 	type ScanSkill,
 } from '@/utils/skillImport';
 
-export const CHANGED_SINCE_PREVIEW = 'changed since preview, rescan';
-export const FILES_CHANGED_IN_LIBRARY =
-	'Files changed in the library since the scan. Rescan and try again.';
+export const changedSincePreview = (): string =>
+	t('agents.helpers.skillImport.flow.changedSincePreview');
+export const filesChangedInLibrary = (): string =>
+	t('agents.helpers.skillImport.flow.filesChanged');
 
 export interface SkillFilesRead {
 	key: string;
@@ -202,8 +204,7 @@ export const runImport = async (
 				results.push({
 					skillKey: key,
 					ok: false,
-					error:
-						'The library skill was replaced since the last import. Tick it again to overwrite.',
+					error: t('agents.helpers.skillImport.flow.replaced'),
 				});
 				continue;
 			}
@@ -214,7 +215,7 @@ export const runImport = async (
 					results.push({
 						skillKey: key,
 						ok: false,
-						error: read?.error || CHANGED_SINCE_PREVIEW,
+						error: read?.error || changedSincePreview(),
 					});
 					continue;
 				}
@@ -245,8 +246,8 @@ export const runImport = async (
 				ok: false,
 				error:
 					error?.response?.status === 409
-						? FILES_CHANGED_IN_LIBRARY
-						: detail || 'Request failed',
+						? filesChangedInLibrary()
+						: detail || t('agents.helpers.skillImport.flow.requestFailed'),
 			});
 		}
 	}

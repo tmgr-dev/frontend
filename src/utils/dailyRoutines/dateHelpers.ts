@@ -1,3 +1,5 @@
+import { currentLocale } from '@/i18n';
+
 export const ONE_DAY = 86_400_000;
 
 export function startOfDay(d: Date): Date {
@@ -42,26 +44,11 @@ export function fmtDate(d: Date): string {
 }
 
 export function dowShort(d: Date): string {
-	return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][
-		(d.getDay() + 6) % 7
-	];
+	return d.toLocaleDateString(currentLocale(), { weekday: 'short' });
 }
 
 export function monthShort(d: Date): string {
-	return [
-		'Jan',
-		'Feb',
-		'Mar',
-		'Apr',
-		'May',
-		'Jun',
-		'Jul',
-		'Aug',
-		'Sep',
-		'Oct',
-		'Nov',
-		'Dec',
-	][d.getMonth()];
+	return d.toLocaleDateString(currentLocale(), { month: 'short' });
 }
 
 export function parseTime(

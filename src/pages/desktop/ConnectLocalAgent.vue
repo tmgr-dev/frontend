@@ -183,7 +183,7 @@ $ {{ step.command }}</pre>
 							>{{ line.commands.join('\n') }}</pre>
 					</div>
 					<p
-						v-for="note in INSTALL_NOTES"
+						v-for="note in installNotes"
 						:key="note"
 						class="text-xs text-ink-subtle"
 					>
@@ -253,7 +253,7 @@ $ {{ step.command }}</pre>
 	} from '@/components/ui/alert-dialog';
 	import { Button } from '@/components/ui/button';
 	import {
-		INSTALL_NOTES,
+		installNotes,
 		useConnectLocalAgent,
 	} from '@/composable/useConnectLocalAgent';
 	import {
@@ -370,7 +370,7 @@ $ {{ step.command }}</pre>
 				askRemove,
 				confirmRemove,
 				copy,
-				INSTALL_NOTES,
+				installNotes: computed(() => installNotes()),
 			};
 		},
 	});

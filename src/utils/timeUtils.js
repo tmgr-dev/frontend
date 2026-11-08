@@ -1,3 +1,4 @@
+import { currentLocale, t } from '@/i18n';
 import { formatDuration } from '@/utils/formatDuration';
 
 export const formatTime = formatDuration;
@@ -60,13 +61,13 @@ export function formatRelativeTime(dateString) {
 	const diffDays = Math.floor(diffHours / 24);
 
 	if (diffMinutes < 1) {
-		return 'just now';
+		return t('tasks.helpers.relativeTime.justNow');
 	} else if (diffMinutes < 60) {
-		return `${diffMinutes}m ago`;
+		return t('tasks.helpers.relativeTime.minutesAgo', { n: diffMinutes });
 	} else if (diffHours < 24) {
-		return `${diffHours}h ago`;
+		return t('tasks.helpers.relativeTime.hoursAgo', { n: diffHours });
 	} else if (diffDays < 7) {
-		return `${diffDays}d ago`;
+		return t('tasks.helpers.relativeTime.daysAgo', { n: diffDays });
 	} else {
 		const isCurrentYear = date.getFullYear() === now.getFullYear();
 		if (!isCurrentYear) {
@@ -75,7 +76,7 @@ export function formatRelativeTime(dateString) {
 			const day = String(date.getDate()).padStart(2, '0');
 			return `${year}/${month}/${day}`;
 		}
-		return date.toLocaleDateString('en-US', {
+		return date.toLocaleDateString(currentLocale(), {
 			month: 'short',
 			day: 'numeric',
 			hour: '2-digit',

@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { AgentPin, AgentPinLimits } from '@/types/agent';
 
 export const DEFAULT_PIN_LIMITS: AgentPinLimits = {
@@ -6,16 +7,14 @@ export const DEFAULT_PIN_LIMITS: AgentPinLimits = {
 	max_total_chars: 4000,
 };
 
-const SAVE_FAILED = 'Could not save the pinned fact. Please try again.';
-
 export const pinErrorMessage = (
 	status: number | undefined,
 	serverMessage?: string,
 ): string => {
 	if (status === 422) {
-		return serverMessage?.trim() || 'The pinned fact is not valid.';
+		return serverMessage?.trim() || t('agents.helpers.pins.invalid');
 	}
-	return SAVE_FAILED;
+	return t('agents.helpers.pins.saveFailed');
 };
 
 export const pinTextFromMessage = (
@@ -71,10 +70,10 @@ export const pinLimitHint = (
 	editingId: number | null,
 ): string => {
 	if (editingId === null && pins.length >= limits.max_pins) {
-		return `You can pin up to ${limits.max_pins} facts. Remove one to add another.`;
+		return t('agents.helpers.pins.limit', { max: limits.max_pins });
 	}
 	const left = pinCharsLeft(pins, limits, editingId);
 	return text.trim().length > left
-		? `Only ${left} characters left for pinned facts.`
+		? t('agents.helpers.pins.charsLeft', { left })
 		: '';
 };

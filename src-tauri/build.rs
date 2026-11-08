@@ -146,6 +146,7 @@ const APP_COMMANDS: &[&str] = &[
   "decisions_open_link",
   "decisions_pending_task_comments",
   "decisions_mark_task_comment",
+  "decisions_skip_task_comment",
   "phones_begin_pairing",
   "phones_open_window",
   "phones_list",

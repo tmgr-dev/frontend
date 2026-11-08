@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import {
 	matchesPriorityFilter,
 	normalizePriority,
@@ -12,7 +13,7 @@ import {
 
 describe('priority helper', () => {
 	it('lists the four levels from Urgent to Low', () => {
-		expect(PRIORITIES.map((p) => p.label)).toEqual([
+		expect(PRIORITIES.map((p) => t(p.labelKey))).toEqual([
 			'Urgent',
 			'High',
 			'Medium',
@@ -24,7 +25,7 @@ describe('priority helper', () => {
 		'treats %p as medium',
 		(value) => {
 			expect(normalizePriority(value)).toBe('medium');
-			expect(priorityOption(value).label).toBe('Medium');
+			expect(t(priorityOption(value).labelKey)).toBe('Medium');
 			expect(showPriorityBadge(value)).toBe(false);
 		},
 	);

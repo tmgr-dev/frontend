@@ -316,5 +316,44 @@
 		"restoreFailed": "Не удалось восстановить эту запись",
 		"deleted": "Удалено",
 		"undo": "Отменить"
+	},
+	"helpers": {
+		"emails": {
+			"empty": "Строка не может быть пустой",
+			"emptyAt": "Пустой email в позиции {position}",
+			"invalid": "Неверный формат email: {email}"
+		},
+		"notificationTypes": {
+			"fallback": "Уведомление",
+			"taskCreated": "Задача создана",
+			"taskUpdated": "Задача обновлена",
+			"taskStatusChanged": "Статус задачи изменён",
+			"taskAssigned": "Задача назначена",
+			"taskDeleted": "Задача удалена",
+			"taskRestored": "Задача восстановлена",
+			"taskCompleted": "Задача выполнена",
+			"commentCreated": "Новый комментарий",
+			"commentUpdated": "Комментарий обновлён",
+			"commentDeleted": "Комментарий удалён",
+			"categoryCreated": "Проект создан",
+			"categoryUpdated": "Проект обновлён",
+			"categoryDeleted": "Проект удалён",
+			"categoryRestored": "Проект восстановлен",
+			"fileUploaded": "Файл загружен",
+			"fileDeleted": "Файл удалён",
+			"memberJoined": "Участник присоединился",
+			"memberLeft": "Участник покинул рабочее пространство",
+			"memberRemoved": "Участник удалён",
+			"taskPersonaAssigned": "Задача назначена персоне",
+			"taskPersonaUnassigned": "Задача снята с персоны",
+			"commentReactionToggled": "Реакция на комментарий",
+			"agentWorkStarted": "Работа агента начата",
+			"agentWorkUpdated": "Работа агента обновлена",
+			"agentWorkFinished": "Работа агента завершена",
+			"pageCreated": "Новая страница",
+			"pageUpdated": "Страница обновлена",
+			"pageMentioned": "Вас упомянули на странице",
+			"memoryAdded": "Добавлено в память"
+		}
 	}
 }

@@ -236,5 +236,81 @@
 		"pullRequests": "Pull requesty ({n})",
 		"by": "autor: {author}",
 		"loadFailed": "Nie udało się wczytać aktywności git"
+	},
+	"helpers": {
+		"usage": {
+			"rows": {
+				"input": "Wejście",
+				"cache_read": "Odczyt z pamięci podręcznej",
+				"cache_write_5m": "Zapis do pamięci podręcznej 5 min",
+				"cache_write_1h": "Zapis do pamięci podręcznej 1 godz.",
+				"output": "Wyjście",
+				"reasoning": "Rozumowanie"
+			},
+			"timeActive": "aktywny",
+			"timeWallClock": "czas zegarowy",
+			"summary": {
+				"you": "Ty: {time}",
+				"agents": "Agenci: {time}",
+				"ai": "{cost} AI"
+			},
+			"server": {
+				"unsynced": "To urządzenie ma niezsynchronizowane zużycie w wysokości {amount}.",
+				"readFailed": "Nie udało się odczytać zsynchronizowanego zużycia.",
+				"localOnly": "Tylko lokalnie — niezsynchronizowane. API kosztów zadania i inni członkowie nie widzą zużycia AI dla tego zadania. Uruchom `tmgr usage sync`, aby je przesłać."
+			},
+			"rates": {
+				"input": "wejście",
+				"output": "wyjście",
+				"cacheRead": "odczyt z pamięci podręcznej",
+				"cacheWrite5m": "zapis do pamięci podręcznej 5 min",
+				"cacheWrite1h": "zapis do pamięci podręcznej 1 godz.",
+				"line": "{label} {value}",
+				"per1M": "{parts} za 1 mln tokenów"
+			},
+			"unpriced": "{count} zdarzenie nie ma ceny; koszt jest zaniżony. | {count} zdarzenia nie mają ceny; koszt jest zaniżony. | {count} zdarzeń nie ma ceny; koszt jest zaniżony."
+		},
+		"status": {
+			"states": {
+				"working": "Pracuje",
+				"waiting": "Czeka",
+				"blocked": "Zablokowany",
+				"idle": "Bezczynny",
+				"done": "Gotowe",
+				"exited": "Zakończył"
+			},
+			"justNow": "przed chwilą",
+			"minAgo": "{n} min temu",
+			"hourAgo": "{n} godz. temu",
+			"dayAgo": "{n} d temu",
+			"agent": "agent",
+			"on": " na {host}",
+			"line": "{state}: {who}{where}",
+			"since": "od {since}",
+			"noRecent": "brak ostatnich aktualizacji"
+		},
+		"work": {
+			"agents": "Agenci",
+			"active": "Aktywni agenci",
+			"wall": "Czas zegarowy",
+			"waiting": "Oczekiwanie między uruchomieniami",
+			"sum": "Czas agentów (suma uruchomień)"
+		},
+		"approval": {
+			"revokedBy": {
+				"ui": "aplikację webową",
+				"cli": "CLI",
+				"mcp": "MCP",
+				"persona": "personę agenta",
+				"plugin": "wtyczkę",
+				"legacy": "starszy token",
+				"other": "integrację"
+			},
+			"reasonEdited": "tekst edytowano",
+			"reasonComment": "dodano komentarz",
+			"reasonChanged": "zmieniono",
+			"noCategory": "Bez kategorii",
+			"category": "Kategoria #{id}"
+		}
 	}
 }

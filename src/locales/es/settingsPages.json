@@ -969,5 +969,83 @@
 		"copyFailed": "No se pudo copiar",
 		"contactFailed": "No se pudo descargar el contacto",
 		"confirmRemove": "¿Quitar el teléfono de alarma?"
+	},
+	"helpers": {
+		"editorLegacy": "{label} — heredado",
+		"featureToggle": {
+			"groups": {
+				"pages": "Páginas",
+				"task": "Tareas",
+				"notifications": "Notificaciones"
+			},
+			"descriptions": {
+				"categories": "Agrupa las tareas en categorías para organizar tu espacio de trabajo.",
+				"board": "Cambia a una vista de tablero kanban para seguir el estado de las tareas.",
+				"workflow": "Estados personalizados, selector de estado y columnas del tablero.",
+				"pages": "Guarda notas, contexto y documentación en un árbol de páginas que personas y agentes pueden editar.",
+				"graph": "Mira cómo se conectan tareas, páginas, personas y ejecuciones de agentes: una sección Grafo en tareas y páginas, y el Mapa del espacio de trabajo.",
+				"agentWork": "Permite que los agentes de IA informen de su trabajo y tiempo en las tareas; si está desactivado, las ejecuciones de agentes se ocultan y los agentes no informan.",
+				"dashboard": "Consulta un resumen de la actividad y el progreso de tu espacio de trabajo.",
+				"dailyRoutines": "Sigue rutinas recurrentes y notas aparte de tus tareas.",
+				"taskComments": "Permite comentarios y debate en las tareas.",
+				"taskCountdown": "Registra el tiempo dedicado a las tareas con un temporizador de inicio y parada.",
+				"taskFiles": "Permite adjuntar archivos a las tareas.",
+				"taskRelations": "Permite vincular tareas con tareas relacionadas.",
+				"taskCheckpoints": "Divide las tareas en puntos de control más pequeños.",
+				"taskAssignees": "Asigna tareas a miembros concretos del espacio de trabajo.",
+				"exports": "Exporta los datos del espacio de trabajo.",
+				"defaultLandingPage": "Elige qué página se abre primero al iniciar sesión."
+			}
+		},
+		"deviceScope": {
+			"workspacesRead": "Ver tus espacios de trabajo, estados y proyectos",
+			"tasksRead": "Leer tareas y sus comentarios",
+			"tasksWrite": "Cambiar el estado y los campos de las tareas",
+			"tasksCreate": "Crear tareas",
+			"commentsCreate": "Añadir comentarios",
+			"timeRead": "Leer informes de tiempo",
+			"timeWrite": "Iniciar y detener tu temporizador",
+			"agentWorkWrite": "Registrar el trabajo de agentes de IA en las tareas",
+			"agentStatusWrite": "Compartir con tu espacio de trabajo el estado de tu agente de IA local (trabajando, esperando, hecho)",
+			"pagesRead": "Leer páginas",
+			"pagesWrite": "Editar páginas",
+			"pagesAppend": "Añadir contenido a páginas",
+			"notifySend": "Enviar notificaciones y alarmas a tus dispositivos",
+			"agentApprovalsWrite": "Firmar aprobaciones de ejecuciones de agentes con la clave de este equipo",
+			"skillsRead": "Leer tus habilidades compartidas y qué personas las usan",
+			"skillsWrite": "Crear, cambiar y eliminar tus habilidades compartidas y asociarlas a tus personas (cambia lo que se indica hacer a esos agentes)"
+		},
+		"workspaceColor": {
+			"red": "Rojo",
+			"orange": "Naranja",
+			"yellow": "Amarillo",
+			"green": "Verde",
+			"teal": "Verde azulado",
+			"blue": "Azul",
+			"violet": "Violeta",
+			"pink": "Rosa"
+		},
+		"phones": {
+			"pairStartFailed": "No se pudo iniciar la vinculación",
+			"enterName": "Introduce un nombre para este Mac",
+			"signIn": "Inicia sesión para vincular un teléfono",
+			"genericError": "Algo salió mal",
+			"never": "nunca",
+			"justNow": "justo ahora",
+			"minutesAgo": "hace {n} min",
+			"hoursAgo": "hace {n} h",
+			"daysAgo": "hace {n} d",
+			"scanCode": "Escanea este código con la aplicación TMGR para iPhone",
+			"typeCodeOn": "Introduce el código que se muestra en {name}",
+			"typeCodeOnIphone": "Introduce el código que se muestra en tu iPhone",
+			"pairingFailed": "Falló la vinculación",
+			"isPaired": "{name} está vinculado",
+			"phonePaired": "Teléfono vinculado",
+			"attemptsLeft": "Queda {n} intento | Quedan {n} intentos"
+		},
+		"modules": {
+			"footer": "Desactivar un módulo lo oculta para todos en este espacio de trabajo. Tus datos se conservan. Vuelve a activarlo y todo estará donde lo dejaste.",
+			"coreDescription": "Siempre disponibles. Puedes ocultar cualquiera de ellos solo para ti."
+		}
 	}
 }

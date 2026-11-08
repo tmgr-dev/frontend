@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type {
 	MemberTaskRow,
 	MemberTasksPage,
@@ -31,7 +32,7 @@ export function thirtyDayHint(
 	window: TeamActivityWindow,
 	hint: string,
 ): string {
-	return window === 'all' ? `${hint} · last 30 days` : hint;
+	return window === 'all' ? t('board.helpers.thirtyDayHint', { hint }) : hint;
 }
 
 /** "25%" — or "<1%" for a share that is real but rounds to zero, null when there is no team total. */
@@ -73,16 +74,22 @@ export function relativeAge(
 	const seconds = Math.max(0, Math.floor((now - at) / 1000));
 
 	if (seconds < 60) {
-		return 'just now';
+		return t('tasks.helpers.relativeTime.justNow');
 	}
 	if (seconds < 3600) {
-		return `${Math.floor(seconds / 60)}m ago`;
+		return t('tasks.helpers.relativeTime.minutesAgo', {
+			n: Math.floor(seconds / 60),
+		});
 	}
 	if (seconds < 86400) {
-		return `${Math.floor(seconds / 3600)}h ago`;
+		return t('tasks.helpers.relativeTime.hoursAgo', {
+			n: Math.floor(seconds / 3600),
+		});
 	}
 
-	return `${Math.floor(seconds / 86400)}d ago`;
+	return t('tasks.helpers.relativeTime.daysAgo', {
+		n: Math.floor(seconds / 86400),
+	});
 }
 
 /**

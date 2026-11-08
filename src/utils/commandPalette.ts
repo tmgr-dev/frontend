@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { ref } from 'vue';
 
 export const commandPaletteOpen = ref(false);
@@ -118,28 +119,64 @@ export const navTargets = (code: string, flags: NavFlags): NavTarget[] =>
 	[
 		flags.dashboard && {
 			key: 'dashboard',
-			label: 'Dashboard',
+			label: t('general.helpers.navTargets.dashboard'),
 			to: `/${code}/dashboard`,
 		},
-		{ key: 'list', label: 'List', to: `/${code}/list` },
-		flags.board && { key: 'board', label: 'Board', to: `/${code}/board` },
+		{
+			key: 'list',
+			label: t('general.helpers.navTargets.list'),
+			to: `/${code}/list`,
+		},
+		flags.board && {
+			key: 'board',
+			label: t('general.helpers.navTargets.board'),
+			to: `/${code}/board`,
+		},
 		flags.routines && {
 			key: 'routines',
 			label: flags.localRoutines ? 'Local routines' : 'Daily Routines',
 			to: '/routines',
 		},
-		{ key: 'archive', label: 'Archive', to: `/${code}/archive` },
+		{
+			key: 'archive',
+			label: t('general.helpers.navTargets.archive'),
+			to: `/${code}/archive`,
+		},
 		flags.categories && {
 			key: 'categories',
-			label: 'Categories',
+			label: t('general.helpers.navTargets.categories'),
 			to: `/${code}/categories`,
 		},
-		flags.pages && { key: 'pages', label: 'Pages', to: `/${code}/pages` },
-		{ key: 'stats', label: 'Statistics', to: '/stats' },
-		flags.aiUsage && { key: 'ai-usage', label: 'AI usage', to: '/ai-usage' },
-		flags.files && { key: 'files', label: 'Files', to: `/${code}/files` },
-		flags.map && { key: 'map', label: 'Map', to: `/${code}/map` },
-		{ key: 'settings', label: 'Settings', to: '/settings' },
+		flags.pages && {
+			key: 'pages',
+			label: t('general.helpers.navTargets.pages'),
+			to: `/${code}/pages`,
+		},
+		{
+			key: 'stats',
+			label: t('general.helpers.navTargets.statistics'),
+			to: '/stats',
+		},
+		flags.aiUsage && {
+			key: 'ai-usage',
+			label: t('general.helpers.navTargets.aiUsage'),
+			to: '/ai-usage',
+		},
+		flags.files && {
+			key: 'files',
+			label: t('general.helpers.navTargets.files'),
+			to: `/${code}/files`,
+		},
+		flags.map && {
+			key: 'map',
+			label: t('general.helpers.navTargets.map'),
+			to: `/${code}/map`,
+		},
+		{
+			key: 'settings',
+			label: t('general.helpers.navTargets.settings'),
+			to: '/settings',
+		},
 	].filter((item): item is NavTarget => !!item);
 
 export interface RecentEntry {

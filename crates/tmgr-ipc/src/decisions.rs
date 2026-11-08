@@ -403,6 +403,8 @@ pub struct PendingDelivery {
     pub task: Option<String>,
     pub answered_ms: i64,
     pub delivery_state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comment_skipped: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

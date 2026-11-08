@@ -1066,5 +1066,30 @@
 			"command": "Comando ejecutado",
 			"agent": "Agente conectado"
 		}
+	},
+	"helpers": {
+		"checklist": {
+			"human": {
+				"createTask": "Crea una tarea",
+				"runTimer": "Ejecuta un temporizador durante un minuto",
+				"moveCard": "Mueve una tarjeta en el tablero",
+				"addRoutine": "Añade una rutina diaria",
+				"writePage": "Escribe una página",
+				"connectAgent": "Conecta un agente de IA"
+			},
+			"agent": {
+				"connectAgent": "Conecta un agente",
+				"firstAgentRun": "Ejecuta tu primera tarea con un agente",
+				"phoneAlert": "Recibe una alerta en el móvil cuando tu agente te necesite",
+				"startTimer": "Inicia un temporizador en una tarea",
+				"contextPage": "Escribe una página de contexto que lean tus agentes",
+				"inviteTeammate": "Invita a un compañero"
+			},
+			"verifyEmail": "Verifica primero tu correo electrónico"
+		},
+		"aha": {
+			"firstRun": "Primera ejecución de agente registrada. Esto es lo que hace TMGR.",
+			"timerLogged": "Se registraron {minutes} min en {title}. Tu tiempo se queda con la tarea."
+		}
 	}
 }

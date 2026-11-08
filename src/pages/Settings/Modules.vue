@@ -58,7 +58,7 @@
 
 				<SettingsSection
 					:title="$t('settingsPages.modules.core')"
-					:description="CORE_DESCRIPTION"
+					:description="$t('settingsPages.helpers.modules.coreDescription')"
 				>
 					<p class="text-sm text-ink" data-testid="core-line">
 						<template v-for="(item, index) in view.coreItems" :key="item.name">
@@ -217,7 +217,7 @@
 				</AlertDialog>
 
 				<p class="text-sm text-ink-subtle" data-testid="modules-footer">
-					{{ MODULES_FOOTER }}
+					{{ $t('settingsPages.helpers.modules.footer') }}
 				</p>
 
 				<SettingsSection
@@ -346,10 +346,8 @@
 	import {
 		buildModulesView,
 		canApplyPreset,
-		CORE_DESCRIPTION,
 		hiddenBadge,
 		hideButtonLabel,
-		MODULES_FOOTER,
 		payloadFromLegacy,
 		payloadNotices,
 		workflowOffConfirm,

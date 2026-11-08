@@ -218,5 +218,22 @@
 		"copyTitle": "{title} (kopia)",
 		"importErrors": "\nBłędy:\n- {list}",
 		"importSummary": "Zaimportowano: {created}, pominięto: {skipped}, zastąpiono: {replaced}.{errors}"
+	},
+	"helpers": {
+		"recurrence": {
+			"daily": "Codziennie",
+			"everyNDays": "Co {n} dzień | Co {n} dni | Co {n} dni",
+			"weekly": "Co tydzień",
+			"weekdays": "Dni robocze",
+			"weekends": "Weekendy",
+			"monthly": "Co miesiąc · dzień {day}",
+			"yearly": "Co rok · {date}"
+		},
+		"relative": {
+			"now": "teraz",
+			"secondsAgo": "{n} sekundę temu | {n} sekundy temu | {n} sekund temu",
+			"minutesAgo": "{n} minutę temu | {n} minuty temu | {n} minut temu",
+			"hoursAgo": "{n} godzinę temu | {n} godziny temu | {n} godzin temu"
+		}
 	}
 }

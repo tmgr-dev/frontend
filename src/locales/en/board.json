@@ -785,5 +785,84 @@
 		"createTask": "+ Create task",
 		"archiveDialogTitle": "Archive done tasks",
 		"archiveDialogBody": "Archive {n} done task? | Archive {n} done tasks?"
+	},
+	"helpers": {
+		"thirtyDayHint": "{hint} · last 30 days",
+		"tracked": {
+			"minutes": "{m}m",
+			"hoursMinutes": "{h}h {m}m"
+		},
+		"heatmap": {
+			"days": "{n} day | {n} days",
+			"headlineYear": "{n} contribution in {year} | {n} contributions in {year}",
+			"headlineLastYear": "{n} contribution in the last year | {n} contributions in the last year",
+			"streakCurrent": "Current streak: {current} • Longest: {longest}",
+			"streakYear": "Longest streak in {year}: {longest}"
+		},
+		"categoryTransfer": {
+			"tasksMoved": "{n} task moved. | {n} tasks moved.",
+			"mapping": "{from} → {to} ({tasks})",
+			"noStatus": "no status",
+			"statuses": "Statuses: {mappings}.",
+			"assigneesRemoved": "{n} assignee removed (not a member of the target workspace). | {n} assignees removed (not members of the target workspace)."
+		},
+		"activityTitles": {
+			"assignedToPersona": "Assigned a task to {persona}",
+			"unassignedFromPersona": "Unassigned a task from {persona}",
+			"fallback": "Activity",
+			"taskCreated": "Created a task",
+			"taskUpdated": "Updated a task",
+			"taskCompleted": "Completed a task",
+			"taskDeleted": "Deleted a task",
+			"taskRestored": "Restored a task",
+			"taskStatusChanged": "Moved a task",
+			"taskAssigned": "Assigned a task",
+			"taskPersonaAssigned": "Assigned a task to a persona",
+			"taskPersonaUnassigned": "Unassigned a task from a persona",
+			"taskTimerStarted": "Started a timer",
+			"taskTimerStopped": "Stopped a timer",
+			"commentCreated": "Wrote a comment",
+			"commentUpdated": "Edited a comment",
+			"commentDeleted": "Deleted a comment",
+			"categoryCreated": "Created a category",
+			"categoryUpdated": "Updated a category",
+			"categoryDeleted": "Deleted a category",
+			"fileUploaded": "Attached a file",
+			"fileDeleted": "Removed a file",
+			"memberJoined": "Joined the workspace",
+			"memberLeft": "Left the workspace",
+			"routineCompleted": "Completed a routine",
+			"agentWorkStarted": "Started agent work",
+			"agentWorkUpdated": "Updated agent work",
+			"agentWorkFinished": "Finished agent work"
+		},
+		"graph": {
+			"comment": "Comment",
+			"thisTask": "this task",
+			"thisPage": "this page"
+		},
+		"map": {
+			"pagesTitle": "Pages & docs",
+			"noCategory": "No category",
+			"category": "Category",
+			"listAnd": "{head} and {last}",
+			"blocks": "{who} blocks {n} task | {who} blocks {n} tasks",
+			"blocksIn": "{who} blocks {n} task in {names} | {who} blocks {n} tasks in {names}",
+			"hubs": "{list} ties the most items together | {list} tie the most items together",
+			"bridges": "{from} connect {to}",
+			"orphans": "{n} item — pages nobody links to, tasks with no relations | {n} items — pages nobody links to, tasks with no relations",
+			"noOrphans": "Every item has at least one link"
+		},
+		"integrationHint": {
+			"github": {
+				"title": "No GitHub repository linked",
+				"message": "This category has no GitHub repository linked yet. Connect one in the category settings to track commits, branches and pull requests for its tasks."
+			},
+			"cursor": {
+				"title": "No Cursor agent configured",
+				"message": "This category has no Cursor agent configured yet. Add a Cursor API key in the category settings to launch agents on its tasks."
+			},
+			"openCategorySettings": "Open category settings"
+		}
 	}
 }

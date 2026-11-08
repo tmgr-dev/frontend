@@ -229,5 +229,199 @@
 		"privacyNote": "TMGR reads the session logs your AI tools write on this computer and keeps token counts, cost, model names, timestamps, session ids, project folders and git branches, and the names of tools, skills and commands the AI used, file types it edited and pull requests it opened. Prompt and reply text is never stored. Data stays on this device unless you upload it with tmgr usage sync.",
 		"matchFailed": "Could not match usage to tasks: {error}",
 		"documentTitle": "AI usage"
+	},
+	"helpers": {
+		"usage": {
+			"consent": {
+				"granted": "On: TMGR reads these logs on this device to show cost and limits, and the runner reads the sessions it starts.",
+				"denied": "Off: TMGR doesn't read these logs for AI usage on this device, and the runner reads none of them.",
+				"unset": "Not chosen yet: the desktop app and background jobs don't read them for AI usage, tmgr usage commands you run yourself still do. The runner reads none of them until you allow it.",
+				"forgetDone": "Deleted. Reading AI tool logs is off."
+			},
+			"format": {
+				"now": "now",
+				"justNow": "just now",
+				"ago": "{span} ago"
+			},
+			"error": {
+				"generic": "Something went wrong."
+			}
+		},
+		"toolLabels": {
+			"get_task": "Reading the task",
+			"list_tasks": "Listing tasks",
+			"search_tasks": "Searching tasks",
+			"list_comments": "Reading comments",
+			"list_statuses": "Reading the board statuses",
+			"list_members": "Reading the members",
+			"list_routines": "Reading the routines",
+			"time_summary": "Summing tracked time",
+			"deadline_report": "Checking deadlines",
+			"routine_agenda": "Reading your routines",
+			"get_routine": "Reading the routine",
+			"create_task": "Preparing a task",
+			"add_comment": "Preparing a comment",
+			"update_task": "Preparing a task update",
+			"add_checkpoint": "Preparing a checkpoint",
+			"start_timer": "Preparing to start the timer",
+			"stop_timer": "Preparing to stop the timer",
+			"link_tasks": "Preparing a task link",
+			"create_routine": "Preparing a routine",
+			"update_routine": "Preparing a routine change",
+			"set_routine_state": "Preparing a routine check-off",
+			"move_routine_instance": "Preparing to move a routine",
+			"convert_routine": "Preparing to turn a routine into a task"
+		},
+		"compaction": {
+			"nothing": "Nothing to compact right now.",
+			"rateLimited": "Compacting is rate limited. Try again later.",
+			"failed": "Could not compact the history. Please try again."
+		},
+		"pins": {
+			"saveFailed": "Could not save the pinned fact. Please try again.",
+			"invalid": "The pinned fact is not valid.",
+			"limit": "You can pin up to {max} facts. Remove one to add another.",
+			"charsLeft": "Only {left} characters left for pinned facts."
+		},
+		"cursor": {
+			"taskFallback": "Task #{id}"
+		},
+		"scenarios": {
+			"run": {
+				"morning_summary": "Morning summary",
+				"day_results": "Day results",
+				"week_results": "Week results",
+				"blockers_stale": "Blockers and stale tasks",
+				"estimate_similar": "Estimate by similar tasks"
+			},
+			"fill": {
+				"epic": "Break an epic into subtasks",
+				"meeting": "Review a meeting"
+			}
+		},
+		"message": {
+			"today": "Today",
+			"yesterday": "Yesterday",
+			"seconds": "{n} s",
+			"minSec": "{min} min {sec} s",
+			"min": "{min} min",
+			"tokensInOut": "{input} in / {output} out tokens",
+			"tokensIn": "{n} in tokens",
+			"tokensOut": "{n} out tokens"
+		},
+		"quotes": {
+			"limit": "You can quote up to {max} messages.",
+			"unavailable": "Original message unavailable",
+			"you": "You",
+			"ai": "AI",
+			"message": "Message"
+		},
+		"confirmation": {
+			"expired": "Expired — nothing was changed",
+			"lessThanMinute": "Expires in less than a minute",
+			"expiresIn": "Expires in {n} min",
+			"applying": "Applying…",
+			"done": "Done",
+			"failedWith": "Failed: {message}",
+			"failed": "Failed",
+			"cancelled": "Cancelled",
+			"superseded": "Skipped — you sent a new message",
+			"conflict": "This card was already handled or has expired."
+		},
+		"attachments": {
+			"hint": "PDF, images, Word, Excel, PowerPoint and text files",
+			"file": "FILE",
+			"tooMany": "You can attach up to {max} files to one message.",
+			"unsupported": "{name}: this file type is not supported. Supported: {hint}.",
+			"tooLarge": "{name} is larger than {size}.",
+			"empty": "{name} is empty.",
+			"errors": {
+				"file_not_found": "An attached file was not found. Remove it and try again.",
+				"forbidden": "You don’t have access to one of the attached files.",
+				"file_not_on_task": "Only files attached to this task can be used here.",
+				"file_too_large": "An attached file is larger than {size}.",
+				"too_many_files": "You can attach up to {max} files to one message.",
+				"unsupported_file_type": "One of the files can’t be read by the assistant. Supported: {hint}.",
+				"too_many_pages": "A PDF has too many pages (the limit is 40).",
+				"unreadable_file": "One of the files could not be read.",
+				"documents_too_large": "The attached documents are too large to send together. Remove some and try again.",
+				"invalid_file": "The file name is not valid.",
+				"invalid_file_path": "The upload could not be attached. Try again.",
+				"file_bound_elsewhere": "The upload could not be attached. Try again."
+			}
+		},
+		"personas": {
+			"nameRequired": "Name is required",
+			"nameTooLong": "Name must be {max} characters or fewer",
+			"nameAt": "Name cannot contain \"{'@'}\"",
+			"validationFailed": "Validation failed",
+			"reserved": "This skill uses a reserved name. Rename it with the tmgr CLI, or delete it.",
+			"skill": {
+				"bodyBytes": "must not exceed {max} bytes",
+				"frontMatter": "must start with a '---' front-matter block closed by a second '---'",
+				"required": "is required",
+				"slugPattern": "must be lowercase letters, digits or '-', up to 60 characters",
+				"slugReserved": "This name is reserved",
+				"slugMatch": "must match the URL slug",
+				"titleLength": "must not exceed {max} characters",
+				"deleteQuestion": "Delete skill \"{title}\"?",
+				"deleteAttached": "{question}\n\nAttached to {list}. They lose this skill immediately; no copy is kept.",
+				"pinned": "{name} (pinned to v{version})",
+				"deleted": "Skill deleted",
+				"deletedDetached": "Skill deleted and detached from {n} persona | Skill deleted and detached from {n} personas"
+			},
+			"labelRequired": "Label is required",
+			"labelTooLong": "Label must be {max} characters or fewer",
+			"requestedBy": "requested by {name}",
+			"personaOf": "persona of {name}",
+			"scopeWorkspace": "Workspace",
+			"scopeMe": "Only me",
+			"converted": "Converted to a shared skill",
+			"convertedReplaced": "Converted to a shared skill and replaced on {n} persona | Converted to a shared skill and replaced on {n} personas"
+		},
+		"skillImport": {
+			"fileStatus": {
+				"ok": "will be uploaded",
+				"binary": "binary, not imported",
+				"too_large": "too large, not imported",
+				"secret": "looks like a secret, blocks the skill",
+				"symlink": "symlink, not imported",
+				"unsupported_name": "unsupported name, not imported",
+				"case_conflict": "name clashes ignoring case, not imported",
+				"too_deep": "too deep, not imported",
+				"skipped_hidden": "hidden, not imported",
+				"unreadable": "cannot be read, not imported"
+			},
+			"warn": {
+				"descriptionCut": "description cut to {max} characters",
+				"pluginRoot": "refers to {'$'}{'{'}CLAUDE_PLUGIN_ROOT{'}'}, which does not exist in the library",
+				"relativePaths": "refers to relative paths that will not resolve",
+				"noFrontMatter": "no front matter",
+				"invalidYaml": "front matter is not valid YAML; name and description were not read",
+				"filesSkipped": "{n} file will not be imported, see the file list | {n} files will not be imported, see the file list"
+			},
+			"blocked": {
+				"secret": "looks like it contains a secret",
+				"files": "files: {files}",
+				"size": "{kib} KiB, limit {limit} KiB",
+				"empty": "empty file",
+				"noDescription": "no description"
+			},
+			"plan": {
+				"duplicate": "duplicate slug in selection",
+				"taken": "slug taken in the library since the scan",
+				"limit": "library limit reached"
+			},
+			"summary": {
+				"imported": "Imported {n} skill | Imported {n} skills",
+				"failed": "{imported}, {failed} failed"
+			},
+			"flow": {
+				"changedSincePreview": "changed since preview, rescan",
+				"filesChanged": "Files changed in the library since the scan. Rescan and try again.",
+				"replaced": "The library skill was replaced since the last import. Tick it again to overwrite.",
+				"requestFailed": "Request failed"
+			}
+		}
 	}
 }

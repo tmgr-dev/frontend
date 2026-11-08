@@ -9,7 +9,7 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { t } from '@/i18n';
-	import { LEGACY_MOVE_MESSAGE, type MoveView } from '@/local/moveToCloud/flow';
+	import { legacyMoveMessage, type MoveView } from '@/local/moveToCloud/flow';
 	import { stepIndex } from '@/local/moveToCloud/model';
 	import { summarize } from '@/local/moveToCloud/progress';
 	import { reportLines, serverErrorLines } from '@/local/moveToCloud/report';
@@ -79,7 +79,7 @@
 			const done = computed(() => !view.value.job && !!view.value.published);
 			const summary = computed(() => summarize(view.value));
 			const failure = computed(() => {
-				if (view.value.legacy) return LEGACY_MOVE_MESSAGE;
+				if (view.value.legacy) return legacyMoveMessage();
 				if (view.value.job?.error) return view.value.job.error;
 				if (view.value.failedOnServer) return serverError(view.value);
 				return '';

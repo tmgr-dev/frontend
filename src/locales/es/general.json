@@ -293,5 +293,77 @@
 		"tracked": "Tiempo registrado",
 		"running": "En marcha",
 		"overTime": "Tiempo excedido"
+	},
+	"helpers": {
+		"openTaskLink": {
+			"workspace": "Este enlace apunta a un espacio de trabajo al que no tienes acceso.",
+			"notFound": "Esta tarea ya no existe.",
+			"forbidden": "No tienes acceso a esta tarea.",
+			"error": "No se pudo cargar esta tarea. Comprueba tu conexión e inténtalo de nuevo."
+		},
+		"modules": {
+			"needsColon": "requiere: {list}",
+			"needs": "requiere {list}",
+			"showModule": "Mostrar este módulo",
+			"enableFeature": "Activar esta función",
+			"askOwner": "Pide al propietario que lo active",
+			"hiddenForYou": "Oculto para ti",
+			"showForMe": "Mostrar para mí",
+			"hideForMe": "Ocultar para mí",
+			"allModules": "Todos los módulos",
+			"coreOnly": "Sin módulos, solo lo esencial",
+			"workflowOffConfirm": "Las tareas tienen una casilla Hecho en lugar de estados; el tablero se oculta. Los estados y sus tareas se conservan y vuelven al activarlo.",
+			"workflowOn": "Flujo de trabajo: casilla Hecho → estados",
+			"workflowOff": "Flujo de trabajo: estados → casilla Hecho",
+			"presetSummary": {
+				"personal": "Solo yo: tareas y tiempo, con una casilla Hecho",
+				"team": "Trabajo en equipo con estados y un tablero",
+				"developer": "Yo y mis agentes de IA, con estados y un tablero",
+				"everything": "Todos los módulos activados",
+				"minimal": "Solo tareas: Lista, Temporizador y Comentarios"
+			}
+		},
+		"previewSurfaces": {
+			"nav": {
+				"dashboard": "Panel",
+				"projects": "Proyectos",
+				"list": "Lista",
+				"board": "Tablero",
+				"routines": "Rutinas",
+				"pages": "Páginas",
+				"map": "Mapa",
+				"files": "Archivos",
+				"askAi": "Preguntar a la IA",
+				"personas": "Personas"
+			},
+			"task": {
+				"timer": "Temporizador",
+				"pomodoro": "Pomodoro",
+				"assignees": "Responsables",
+				"checkpoints": "Puntos de control",
+				"attachments": "Adjuntos",
+				"relations": "Relaciones",
+				"agentWork": "Trabajo del agente",
+				"github": "GitHub",
+				"cursorAgents": "Agentes de Cursor",
+				"comments": "Comentarios",
+				"aiReply": "Respuesta de la IA"
+			}
+		},
+		"navTargets": {
+			"dashboard": "Panel",
+			"list": "Lista",
+			"board": "Tablero",
+			"localRoutines": "Rutinas locales",
+			"dailyRoutines": "Rutinas diarias",
+			"archive": "Archivo",
+			"categories": "Categorías",
+			"pages": "Páginas",
+			"statistics": "Estadísticas",
+			"aiUsage": "Uso de IA",
+			"files": "Archivos",
+			"map": "Mapa",
+			"settings": "Ajustes"
+		}
 	}
 }

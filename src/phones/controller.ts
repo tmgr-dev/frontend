@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { reactive } from 'vue';
 import { isValidCode } from './code';
 import type { PairingView, PhoneView } from './types';
@@ -13,7 +14,8 @@ export interface PhonesApi {
 const messageOf = (error: unknown): string =>
 	typeof error === 'string' && error
 		? error
-		: ((error as any)?.message ?? 'Something went wrong');
+		: ((error as any)?.message ??
+			t('settingsPages.helpers.phones.genericError'));
 
 export const createPhonesController = (api: PhonesApi) => {
 	const state = reactive({

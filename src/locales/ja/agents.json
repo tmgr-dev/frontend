@@ -229,5 +229,199 @@
 		"privacyNote": "TMGR は、AI ツールがこのコンピューターに書き出すセッションログを読み取り、トークン数、コスト、モデル名、タイムスタンプ、セッション ID、プロジェクトフォルダー、Git ブランチ、AI が使ったツール・スキル・コマンドの名前、編集したファイルの種類、作成したプルリクエストを保持します。プロンプトや返信のテキストは保存されません。tmgr usage sync でアップロードしない限り、データはこのデバイスに残ります。",
 		"matchFailed": "使用量をタスクに照合できませんでした: {error}",
 		"documentTitle": "AI 使用量"
+	},
+	"helpers": {
+		"usage": {
+			"consent": {
+				"granted": "オン: TMGR はこのデバイス上のこれらのログを読み取ってコストと上限を表示し、ランナーは自分が起動したセッションを読み取ります。",
+				"denied": "オフ: TMGR はこのデバイスで AI 利用状況のためにこれらのログを読み取らず、ランナーも一切読み取りません。",
+				"unset": "未選択: デスクトップアプリとバックグラウンドジョブは読み取りませんが、ご自身で実行する tmgr usage コマンドは読み取ります。許可するまでランナーは何も読み取りません。",
+				"forgetDone": "削除しました。AI ツールのログの読み取りはオフです。"
+			},
+			"format": {
+				"now": "今",
+				"justNow": "たった今",
+				"ago": "{span}前"
+			},
+			"error": {
+				"generic": "問題が発生しました。"
+			}
+		},
+		"toolLabels": {
+			"get_task": "タスクを読み取り中",
+			"list_tasks": "タスクを一覧表示中",
+			"search_tasks": "タスクを検索中",
+			"list_comments": "コメントを読み取り中",
+			"list_statuses": "ボードのステータスを読み取り中",
+			"list_members": "メンバーを読み取り中",
+			"list_routines": "ルーティンを読み取り中",
+			"time_summary": "記録時間を集計中",
+			"deadline_report": "期限を確認中",
+			"routine_agenda": "ルーティンを読み取り中",
+			"get_routine": "ルーティンを読み取り中",
+			"create_task": "タスクを準備中",
+			"add_comment": "コメントを準備中",
+			"update_task": "タスクの更新を準備中",
+			"add_checkpoint": "チェックポイントを準備中",
+			"start_timer": "タイマーの開始を準備中",
+			"stop_timer": "タイマーの停止を準備中",
+			"link_tasks": "タスクのリンクを準備中",
+			"create_routine": "ルーティンを準備中",
+			"update_routine": "ルーティンの変更を準備中",
+			"set_routine_state": "ルーティンのチェックを準備中",
+			"move_routine_instance": "ルーティンの移動を準備中",
+			"convert_routine": "ルーティンのタスク化を準備中"
+		},
+		"compaction": {
+			"nothing": "今のところ圧縮するものはありません。",
+			"rateLimited": "圧縮はレート制限中です。後でもう一度お試しください。",
+			"failed": "履歴を圧縮できませんでした。もう一度お試しください。"
+		},
+		"pins": {
+			"saveFailed": "固定した事実を保存できませんでした。もう一度お試しください。",
+			"invalid": "固定した事実が正しくありません。",
+			"limit": "固定できる事実は最大 {max} 件です。追加するには 1 件削除してください。",
+			"charsLeft": "固定する事実に使える文字数は残り {left} 文字です。"
+		},
+		"cursor": {
+			"taskFallback": "タスク #{id}"
+		},
+		"scenarios": {
+			"run": {
+				"morning_summary": "朝のサマリー",
+				"day_results": "今日の成果",
+				"week_results": "今週の成果",
+				"blockers_stale": "ブロッカーと停滞中のタスク",
+				"estimate_similar": "類似タスクで見積もる"
+			},
+			"fill": {
+				"epic": "エピックをサブタスクに分解する",
+				"meeting": "会議を振り返る"
+			}
+		},
+		"message": {
+			"today": "今日",
+			"yesterday": "昨日",
+			"seconds": "{n} 秒",
+			"minSec": "{min} 分 {sec} 秒",
+			"min": "{min} 分",
+			"tokensInOut": "入力 {input} / 出力 {output} トークン",
+			"tokensIn": "入力 {n} トークン",
+			"tokensOut": "出力 {n} トークン"
+		},
+		"quotes": {
+			"limit": "引用できるメッセージは最大 {max} 件です。",
+			"unavailable": "元のメッセージは利用できません",
+			"you": "あなた",
+			"ai": "AI",
+			"message": "メッセージ"
+		},
+		"confirmation": {
+			"expired": "期限切れ — 何も変更されていません",
+			"lessThanMinute": "あと 1 分未満で期限切れ",
+			"expiresIn": "あと {n} 分で期限切れ",
+			"applying": "適用中…",
+			"done": "完了",
+			"failedWith": "失敗: {message}",
+			"failed": "失敗",
+			"cancelled": "キャンセルしました",
+			"superseded": "スキップ — 新しいメッセージを送信しました",
+			"conflict": "このカードはすでに処理済みか、期限が切れています。"
+		},
+		"attachments": {
+			"hint": "PDF、画像、Word、Excel、PowerPoint、テキストファイル",
+			"file": "ファイル",
+			"tooMany": "1 件のメッセージに添付できるファイルは最大 {max} 件です。",
+			"unsupported": "{name}: このファイル形式には対応していません。対応形式: {hint}。",
+			"tooLarge": "{name} は {size} を超えています。",
+			"empty": "{name} は空です。",
+			"errors": {
+				"file_not_found": "添付ファイルが見つかりません。削除してもう一度お試しください。",
+				"forbidden": "添付ファイルの 1 つにアクセスする権限がありません。",
+				"file_not_on_task": "ここで使えるのは、このタスクに添付されたファイルだけです。",
+				"file_too_large": "添付ファイルが {size} を超えています。",
+				"too_many_files": "1 件のメッセージに添付できるファイルは最大 {max} 件です。",
+				"unsupported_file_type": "アシスタントが読み取れないファイルがあります。対応形式: {hint}。",
+				"too_many_pages": "PDF のページ数が多すぎます(上限は 40 ページ)。",
+				"unreadable_file": "読み取れないファイルがあります。",
+				"documents_too_large": "添付したドキュメントは合計が大きすぎて送信できません。いくつか削除してもう一度お試しください。",
+				"invalid_file": "ファイル名が正しくありません。",
+				"invalid_file_path": "アップロードを添付できませんでした。もう一度お試しください。",
+				"file_bound_elsewhere": "アップロードを添付できませんでした。もう一度お試しください。"
+			}
+		},
+		"personas": {
+			"nameRequired": "名前は必須です",
+			"nameTooLong": "名前は {max} 文字以内にしてください",
+			"nameAt": "名前に「{'@'}」は使用できません",
+			"validationFailed": "検証に失敗しました",
+			"reserved": "このスキルは予約された名前を使用しています。tmgr CLI で名前を変更するか、削除してください。",
+			"skill": {
+				"bodyBytes": "{max} バイトを超えることはできません",
+				"frontMatter": "'---' のフロントマターブロックで始まり、2 つ目の '---' で閉じる必要があります",
+				"required": "必須です",
+				"slugPattern": "小文字の英字、数字、'-' のみで、60 文字以内にしてください",
+				"slugReserved": "この名前は予約されています",
+				"slugMatch": "URL スラッグと一致している必要があります",
+				"titleLength": "{max} 文字を超えることはできません",
+				"deleteQuestion": "スキル「{title}」を削除しますか?",
+				"deleteAttached": "{question}\n\n{list} に添付されています。これらはすぐにこのスキルを失い、コピーは残りません。",
+				"pinned": "{name}(v{version} に固定)",
+				"deleted": "スキルを削除しました",
+				"deletedDetached": "スキルを削除し、{n} 件のペルソナから切り離しました"
+			},
+			"labelRequired": "ラベルは必須です",
+			"labelTooLong": "ラベルは {max} 文字以内にしてください",
+			"requestedBy": "{name} さんがリクエスト",
+			"personaOf": "{name} さんのペルソナ",
+			"scopeWorkspace": "ワークスペース",
+			"scopeMe": "自分のみ",
+			"converted": "共有スキルに変換しました",
+			"convertedReplaced": "共有スキルに変換し、{n} 件のペルソナで置き換えました"
+		},
+		"skillImport": {
+			"fileStatus": {
+				"ok": "アップロードされます",
+				"binary": "バイナリのため取り込まれません",
+				"too_large": "大きすぎるため取り込まれません",
+				"secret": "シークレットの可能性があり、スキルをブロックします",
+				"symlink": "シンボリックリンクのため取り込まれません",
+				"unsupported_name": "非対応の名前のため取り込まれません",
+				"case_conflict": "大文字小文字を無視すると名前が重複するため取り込まれません",
+				"too_deep": "階層が深すぎるため取り込まれません",
+				"skipped_hidden": "隠しファイルのため取り込まれません",
+				"unreadable": "読み取れないため取り込まれません"
+			},
+			"warn": {
+				"descriptionCut": "説明を {max} 文字に切り詰めました",
+				"pluginRoot": "ライブラリに存在しない {'$'}{'{'}CLAUDE_PLUGIN_ROOT{'}'} を参照しています",
+				"relativePaths": "解決できない相対パスを参照しています",
+				"noFrontMatter": "フロントマターがありません",
+				"invalidYaml": "フロントマターが有効な YAML ではないため、名前と説明を読み取れませんでした",
+				"filesSkipped": "{n} 件のファイルは取り込まれません。ファイル一覧をご確認ください"
+			},
+			"blocked": {
+				"secret": "シークレットが含まれている可能性があります",
+				"files": "ファイル: {files}",
+				"size": "{kib} KiB(上限 {limit} KiB)",
+				"empty": "空のファイル",
+				"noDescription": "説明がありません"
+			},
+			"plan": {
+				"duplicate": "選択内でスラッグが重複しています",
+				"taken": "スキャン後にライブラリでスラッグが使われました",
+				"limit": "ライブラリの上限に達しました"
+			},
+			"summary": {
+				"imported": "{n} 件のスキルを取り込みました",
+				"failed": "{imported}、{failed} 件が失敗"
+			},
+			"flow": {
+				"changedSincePreview": "プレビュー後に変更されました。再スキャンしてください",
+				"filesChanged": "スキャン後にライブラリ内のファイルが変更されました。再スキャンしてもう一度お試しください。",
+				"replaced": "前回の取り込み後にライブラリのスキルが置き換えられました。上書きするには、もう一度チェックを入れてください。",
+				"requestFailed": "リクエストに失敗しました"
+			}
+		}
 	}
 }

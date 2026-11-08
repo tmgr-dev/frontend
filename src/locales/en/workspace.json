@@ -316,5 +316,44 @@
 		"restoreFailed": "Could not restore this entry",
 		"deleted": "Deleted",
 		"undo": "Undo"
+	},
+	"helpers": {
+		"emails": {
+			"empty": "Input string cannot be empty",
+			"emptyAt": "Empty email at position {position}",
+			"invalid": "Invalid email format: {email}"
+		},
+		"notificationTypes": {
+			"fallback": "Notification",
+			"taskCreated": "Task created",
+			"taskUpdated": "Task updated",
+			"taskStatusChanged": "Task status changed",
+			"taskAssigned": "Task assigned",
+			"taskDeleted": "Task deleted",
+			"taskRestored": "Task restored",
+			"taskCompleted": "Task completed",
+			"commentCreated": "New comment",
+			"commentUpdated": "Comment updated",
+			"commentDeleted": "Comment deleted",
+			"categoryCreated": "Category created",
+			"categoryUpdated": "Category updated",
+			"categoryDeleted": "Category deleted",
+			"categoryRestored": "Category restored",
+			"fileUploaded": "File uploaded",
+			"fileDeleted": "File deleted",
+			"memberJoined": "Member joined",
+			"memberLeft": "Member left workspace",
+			"memberRemoved": "Member removed",
+			"taskPersonaAssigned": "Task assigned to a persona",
+			"taskPersonaUnassigned": "Task unassigned from a persona",
+			"commentReactionToggled": "Comment reaction",
+			"agentWorkStarted": "Agent work started",
+			"agentWorkUpdated": "Agent work updated",
+			"agentWorkFinished": "Agent work finished",
+			"pageCreated": "New page",
+			"pageUpdated": "Page updated",
+			"pageMentioned": "You were mentioned on a page",
+			"memoryAdded": "Added to memory"
+		}
 	}
 }

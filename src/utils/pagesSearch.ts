@@ -1,4 +1,5 @@
 import type { PageSearchHit } from '@/actions/tmgr/pages';
+import { t } from '@/i18n';
 import { pageUrl } from '@/utils/pagesTree';
 
 export const MIN_SEARCH_LENGTH = 2;
@@ -14,15 +15,10 @@ export const pageHitUrl = (
 	hit: Pick<PageSearchHit, 'slug'>,
 ): string => pageUrl(workspaceCode, hit.slug);
 
-export const PAGE_TYPE_LABELS: Record<string, string> = {
-	plain: 'Plain page',
-	context: 'Context',
-	person: 'Person',
-	meeting: 'Meeting',
-};
+const PAGE_TYPES = ['plain', 'context', 'person', 'meeting'];
 
 export const pageTypeLabel = (type: string): string =>
-	PAGE_TYPE_LABELS[type] ?? type;
+	PAGE_TYPES.includes(type) ? t(`pages.helpers.pageType.${type}`) : type;
 
 export const cleanSnippet = (snippet: string): string =>
 	snippet

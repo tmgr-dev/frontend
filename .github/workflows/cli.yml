@@ -53,6 +53,7 @@ jobs:
     env:
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
       TMGR_TEST_REQUIRE_LANDLOCK: ${{ startsWith(matrix.name, 'linux') && '1' || '' }}
+      TMGR_TEST_REQUIRE_RO_MOUNT: ${{ matrix.name == 'linux-x86_64' && '1' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -73,6 +74,13 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           key: ${{ matrix.name }}
+
+      - name: allow unprivileged user namespaces
+        if: matrix.name == 'linux-x86_64'
+        run: |
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
 
       - name: test
         timeout-minutes: 30

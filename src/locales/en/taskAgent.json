@@ -236,5 +236,81 @@
 		"pullRequests": "Pull Requests ({n})",
 		"by": "by {author}",
 		"loadFailed": "Failed to load git activity"
+	},
+	"helpers": {
+		"usage": {
+			"rows": {
+				"input": "Input",
+				"cache_read": "Cache read",
+				"cache_write_5m": "Cache write 5m",
+				"cache_write_1h": "Cache write 1h",
+				"output": "Output",
+				"reasoning": "Reasoning"
+			},
+			"timeActive": "active",
+			"timeWallClock": "wall-clock",
+			"summary": {
+				"you": "You {time}",
+				"agents": "Agents {time}",
+				"ai": "{cost} AI"
+			},
+			"server": {
+				"unsynced": "This device has {amount} of usage not yet synced.",
+				"readFailed": "Could not read the synced usage.",
+				"localOnly": "Local only — not synced. The task cost API and other members see no AI usage for this task. Run `tmgr usage sync` to upload it."
+			},
+			"rates": {
+				"input": "input",
+				"output": "output",
+				"cacheRead": "cache read",
+				"cacheWrite5m": "cache write 5m",
+				"cacheWrite1h": "cache write 1h",
+				"line": "{label} {value}",
+				"per1M": "{parts} per 1M tokens"
+			},
+			"unpriced": "{count} event has no price; the cost is understated. | {count} events have no price; the cost is understated."
+		},
+		"status": {
+			"states": {
+				"working": "Working",
+				"waiting": "Waiting",
+				"blocked": "Blocked",
+				"idle": "Idle",
+				"done": "Done",
+				"exited": "Exited"
+			},
+			"justNow": "just now",
+			"minAgo": "{n} min ago",
+			"hourAgo": "{n} h ago",
+			"dayAgo": "{n} d ago",
+			"agent": "agent",
+			"on": " on {host}",
+			"line": "{state}: {who}{where}",
+			"since": "since {since}",
+			"noRecent": "no recent updates"
+		},
+		"work": {
+			"agents": "Agents",
+			"active": "Agents active",
+			"wall": "Wall-clock",
+			"waiting": "Waiting between runs",
+			"sum": "Agent time (sum of runs)"
+		},
+		"approval": {
+			"revokedBy": {
+				"ui": "the web app",
+				"cli": "the CLI",
+				"mcp": "MCP",
+				"persona": "an agent persona",
+				"plugin": "a plugin",
+				"legacy": "a legacy token",
+				"other": "an integration"
+			},
+			"reasonEdited": "text edited",
+			"reasonComment": "comment added",
+			"reasonChanged": "changed",
+			"noCategory": "No category",
+			"category": "Category #{id}"
+		}
 	}
 }

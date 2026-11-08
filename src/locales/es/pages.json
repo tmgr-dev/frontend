@@ -225,5 +225,73 @@
 		"loading": "Cargando...",
 		"notFound": "No se encontró esta página.",
 		"openFailed": "No se pudo abrir la página. Cierra esta ventana e inténtalo de nuevo."
+	},
+	"helpers": {
+		"network": {
+			"operational": "Operativa",
+			"personal": "Personal",
+			"strategic": "Estratégica"
+		},
+		"aliasSource": {
+			"telegram": "Telegram",
+			"rocketchat": "Rocket.Chat",
+			"slack": "Slack",
+			"github": "GitHub",
+			"email": "Correo electrónico",
+			"other": "Otro"
+		},
+		"validation": {
+			"invalidMember": "Miembro no válido",
+			"mustBeList": "Debe ser una lista",
+			"chooseSource": "Elige una fuente",
+			"enterIdentifier": "Introduce un identificador",
+			"nameTooLong": "El nombre es demasiado largo",
+			"chooseRelationship": "Elige un tipo de relación",
+			"maxChars": "Máximo 255 caracteres",
+			"dateFormat": "Fecha en formato AAAA-MM-DD",
+			"invalidTask": "Tarea no válida",
+			"invalidValue": "Valor no válido",
+			"invalidProperties": "Propiedades no válidas"
+		},
+		"property": {
+			"member": "Miembro",
+			"relationship": "Relación",
+			"company": "Empresa",
+			"role": "Cargo",
+			"aliases": "Alias",
+			"lastContact": "Último contacto",
+			"date": "Fecha",
+			"participants": "Participantes",
+			"tasks": "Tareas"
+		},
+		"pageType": {
+			"plain": "Página simple",
+			"context": "Contexto",
+			"person": "Persona",
+			"meeting": "Reunión"
+		},
+		"owner": {
+			"persona": "Persona",
+			"member": "Miembro",
+			"system": "Sistema",
+			"agents": "Agentes"
+		},
+		"taskFromSelection": {
+			"selectionNotFound": "No se encontró el texto seleccionado en la página. Actualiza la página e inténtalo de nuevo.",
+			"pageChanged": "La página ha cambiado. Actualízala e inténtalo de nuevo.",
+			"noAccess": "Sin acceso a la categoría.",
+			"failed": "No se pudo crear la tarea."
+		},
+		"image": {
+			"alignLeft": "Alinear a la izquierda",
+			"alignCenter": "Centrar",
+			"alignRight": "Alinear a la derecha",
+			"fullWidth": "Ancho completo",
+			"download": "Descargar",
+			"replaceImage": "Reemplazar imagen",
+			"deleteImage": "Eliminar imagen",
+			"captionPlaceholder": "Escribe un pie de foto",
+			"loadFailed": "No se pudo cargar la imagen"
+		}
 	}
 }

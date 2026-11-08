@@ -1,4 +1,5 @@
 import type { TaskTimeEntry } from '@/actions/tmgr/timeEntries';
+import { t } from '@/i18n';
 import { formatWorkDuration } from '@/utils/agentWork';
 import { format } from 'date-fns';
 
@@ -12,12 +13,8 @@ export interface TimeEntryRow {
 	partial: boolean;
 }
 
-const SOURCE_LABELS: Record<string, string> = {
-	attach: 'Terminal session',
-};
-
 export const timeEntrySourceLabel = (source: string): string =>
-	SOURCE_LABELS[source] ?? source;
+	source === 'attach' ? t('tasks.helpers.timeEntrySource.attach') : source;
 
 export const shouldLoadTimeEntries = (
 	taskId: number | null | undefined,

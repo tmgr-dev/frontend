@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { CursorAgent } from '../types/cursor';
 
 export const ACTIVE_CURSOR_AGENT_STATUSES: ReadonlyArray<
@@ -27,7 +28,7 @@ export function cursorAgentLabel(
 		agent.branch_name ||
 		agent.summary ||
 		agent.cursor_agent_id ||
-		`Task #${agent.task_id}`
+		t('agents.helpers.cursor.taskFallback', { id: agent.task_id })
 	);
 }
 

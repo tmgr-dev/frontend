@@ -68,7 +68,7 @@
 								:key="option.type"
 								@select="ctx.createChild(node, option.type)"
 							>
-								{{ option.label }}
+								{{ $t(option.labelKey) }}
 							</DropdownMenuItem>
 						</DropdownMenuSubContent>
 					</DropdownMenuSub>

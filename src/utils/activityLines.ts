@@ -5,7 +5,7 @@
  * add rather than leaving an empty element behind.
  */
 
-import { formatDistance } from 'date-fns';
+import { currentLocale, t } from '@/i18n';
 
 export interface ActivityLike {
 	type?: string | null;
@@ -18,33 +18,41 @@ export interface ActivityLike {
 	created_at?: string | null;
 }
 
-const TITLES: Record<string, string> = {
-	task_created: 'Created a task',
-	task_updated: 'Updated a task',
-	task_completed: 'Completed a task',
-	task_deleted: 'Deleted a task',
-	task_restored: 'Restored a task',
-	task_status_changed: 'Moved a task',
-	task_assigned: 'Assigned a task',
-	task_persona_assigned: 'Assigned a task to a persona',
-	task_persona_unassigned: 'Unassigned a task from a persona',
-	task_timer_started: 'Started a timer',
-	task_timer_stopped: 'Stopped a timer',
-	comment_created: 'Wrote a comment',
-	comment_updated: 'Edited a comment',
-	comment_deleted: 'Deleted a comment',
-	category_created: 'Created a category',
-	category_updated: 'Updated a category',
-	category_deleted: 'Deleted a category',
-	file_uploaded: 'Attached a file',
-	file_deleted: 'Removed a file',
-	member_joined: 'Joined the workspace',
-	member_left: 'Left the workspace',
-	routine_completed: 'Completed a routine',
-	agent_work_started: 'Started agent work',
-	agent_work_updated: 'Updated agent work',
-	agent_work_finished: 'Finished agent work',
-};
+const TITLE_TYPES = [
+	'task_created',
+	'task_updated',
+	'task_completed',
+	'task_deleted',
+	'task_restored',
+	'task_status_changed',
+	'task_assigned',
+	'task_persona_assigned',
+	'task_persona_unassigned',
+	'task_timer_started',
+	'task_timer_stopped',
+	'comment_created',
+	'comment_updated',
+	'comment_deleted',
+	'category_created',
+	'category_updated',
+	'category_deleted',
+	'file_uploaded',
+	'file_deleted',
+	'member_joined',
+	'member_left',
+	'routine_completed',
+	'agent_work_started',
+	'agent_work_updated',
+	'agent_work_finished',
+];
+
+const camel = (type: string) =>
+	type.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+
+const knownTitle = (type: string): string =>
+	TITLE_TYPES.includes(type)
+		? t(`board.helpers.activityTitles.${camel(type)}`)
+		: '';
 
 const metadataOf = (activity: ActivityLike): Record<string, unknown> => {
 	const raw = activity.metadata;
@@ -74,10 +82,16 @@ export function activityTitle(activity: ActivityLike): string {
 	const type = text(activity.type);
 	const persona = text(metadataOf(activity).persona_name);
 	if (persona && type === 'task_persona_assigned')
-		return `Assigned a task to ${persona}`;
+		return t('board.helpers.activityTitles.assignedToPersona', { persona });
 	if (persona && type === 'task_persona_unassigned')
-		return `Unassigned a task from ${persona}`;
-	return TITLES[type] || fromType(type) || 'Activity';
+		return t('board.helpers.activityTitles.unassignedFromPersona', {
+			persona,
+		});
+	return (
+		knownTitle(type) ||
+		fromType(type) ||
+		t('board.helpers.activityTitles.fallback')
+	);
 }
 
 export function activitySubject(activity: ActivityLike): string {
@@ -100,7 +114,18 @@ export function activityTime(
 	const created = text(activity.created_at);
 	const at = created ? Date.parse(created) : NaN;
 	if (Number.isNaN(at)) return '';
-	return formatDistance(at, now, { addSuffix: true })
-		.replace('less than a minute ago', 'just now')
-		.replace(/^about /, '');
+	const seconds = Math.round((at - now) / 1000);
+	const abs = Math.abs(seconds);
+	if (abs < 60) return t('tasks.helpers.relativeTime.justNow');
+	const units: [Intl.RelativeTimeFormatUnit, number][] = [
+		['year', 31536000],
+		['month', 2592000],
+		['day', 86400],
+		['hour', 3600],
+		['minute', 60],
+	];
+	const [unit, size] = units.find(([, s]) => abs >= s)!;
+	return new Intl.RelativeTimeFormat(currentLocale(), {
+		numeric: 'auto',
+	}).format(Math.trunc(seconds / size), unit);
 }

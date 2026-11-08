@@ -316,5 +316,44 @@
 		"restoreFailed": "Nie udało się przywrócić tego wpisu",
 		"deleted": "Usunięto",
 		"undo": "Cofnij"
+	},
+	"helpers": {
+		"emails": {
+			"empty": "Ciąg wejściowy nie może być pusty",
+			"emptyAt": "Pusty adres email na pozycji {position}",
+			"invalid": "Nieprawidłowy format adresu email: {email}"
+		},
+		"notificationTypes": {
+			"fallback": "Powiadomienie",
+			"taskCreated": "Zadanie utworzone",
+			"taskUpdated": "Zadanie zaktualizowane",
+			"taskStatusChanged": "Zmieniono status zadania",
+			"taskAssigned": "Zadanie przypisane",
+			"taskDeleted": "Zadanie usunięte",
+			"taskRestored": "Zadanie przywrócone",
+			"taskCompleted": "Zadanie ukończone",
+			"commentCreated": "Nowy komentarz",
+			"commentUpdated": "Komentarz zaktualizowany",
+			"commentDeleted": "Komentarz usunięty",
+			"categoryCreated": "Kategoria utworzona",
+			"categoryUpdated": "Kategoria zaktualizowana",
+			"categoryDeleted": "Kategoria usunięta",
+			"categoryRestored": "Kategoria przywrócona",
+			"fileUploaded": "Plik przesłany",
+			"fileDeleted": "Plik usunięty",
+			"memberJoined": "Członek dołączył",
+			"memberLeft": "Członek opuścił przestrzeń roboczą",
+			"memberRemoved": "Członek usunięty",
+			"taskPersonaAssigned": "Zadanie przypisane do persony",
+			"taskPersonaUnassigned": "Cofnięto przypisanie zadania od persony",
+			"commentReactionToggled": "Reakcja na komentarz",
+			"agentWorkStarted": "Rozpoczęto pracę agenta",
+			"agentWorkUpdated": "Zaktualizowano pracę agenta",
+			"agentWorkFinished": "Zakończono pracę agenta",
+			"pageCreated": "Nowa strona",
+			"pageUpdated": "Strona zaktualizowana",
+			"pageMentioned": "Wspomniano o Tobie na stronie",
+			"memoryAdded": "Dodano do pamięci"
+		}
 	}
 }

@@ -2,10 +2,10 @@ import {
 	apiErrorMessage,
 	createImportApi,
 	isUnsupportedSchema,
-	QUOTA_MESSAGE,
-	RUNNING_MESSAGE,
-	TOO_LARGE_MESSAGE,
-	UNSUPPORTED_SCHEMA_MESSAGE,
+	quotaMessage,
+	runningMessage,
+	tooLargeMessage,
+	unsupportedSchemaMessage,
 } from '../api';
 
 const http = () => {
@@ -97,14 +97,14 @@ describe('import api', () => {
 		const err = (status: number, code?: string) => ({
 			response: { status, data: { error: code, message: 'server text' } },
 		});
-		expect(apiErrorMessage(err(429, 'import_quota'))).toBe(QUOTA_MESSAGE);
-		expect(QUOTA_MESSAGE).toBe(
+		expect(apiErrorMessage(err(429, 'import_quota'))).toBe(quotaMessage());
+		expect(quotaMessage()).toBe(
 			'You can start up to 3 moves a day. Try again tomorrow.',
 		);
-		expect(apiErrorMessage(err(409, 'import_running'))).toBe(RUNNING_MESSAGE);
-		expect(RUNNING_MESSAGE).toBe('Another move is still running.');
+		expect(apiErrorMessage(err(409, 'import_running'))).toBe(runningMessage());
+		expect(runningMessage()).toBe('Another move is still running.');
 		expect(apiErrorMessage(err(413, 'bundle_too_large'))).toBe(
-			TOO_LARGE_MESSAGE,
+			tooLargeMessage(),
 		);
 		expect(apiErrorMessage(err(413))).toBe(
 			'This workspace is too large to move in one go.',
@@ -120,7 +120,7 @@ describe('import api', () => {
 			},
 		};
 		expect(isUnsupportedSchema(error)).toBe(true);
-		expect(apiErrorMessage(error)).toBe(UNSUPPORTED_SCHEMA_MESSAGE);
+		expect(apiErrorMessage(error)).toBe(unsupportedSchemaMessage());
 		expect(
 			isUnsupportedSchema({
 				response: { status: 422, data: { error: 'other' } },

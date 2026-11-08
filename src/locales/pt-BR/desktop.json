@@ -483,5 +483,278 @@
 			"runnerNotRunning": "O runner do TMGR não está em execução. Inicie-o para ver o piloto automático aqui.",
 			"updateRunner": "Atualize o runner do TMGR para ver o piloto automático aqui."
 		}
+	},
+	"helpers": {
+		"trayName": {
+			"menuBar": "barra de menus",
+			"systemTray": "bandeja do sistema"
+		},
+		"revealInFileManager": {
+			"explorer": "Mostrar no Explorer",
+			"fileManager": "Mostrar no gerenciador de arquivos",
+			"finder": "Mostrar no Finder"
+		},
+		"thisComputer": {
+			"mac": "este Mac",
+			"computer": "este computador"
+		},
+		"pluginWindowsUnavailable": "As janelas de plugin ainda não estão disponíveis no Windows.",
+		"download": {
+			"title": "{name} baixado",
+			"finished": "Download concluído",
+			"savedTo": "Salvo em Downloads",
+			"failed": "Falha no download",
+			"couldNotSave": "Não foi possível salvar {name}.",
+			"theFile": "O arquivo"
+		},
+		"updateCheck": {
+			"tryAgainLater": "Tente novamente mais tarde.",
+			"upToDateVersion": "Você está na versão mais recente (v{version})",
+			"upToDate": "Você está na versão mais recente",
+			"available": "Atualização v{version} disponível",
+			"installHint": "Instale e reinicie para atualizar.",
+			"failed": "Falha ao verificar atualizações",
+			"couldNotCheck": "Não foi possível verificar atualizações",
+			"checkConnection": "Verifique sua conexão e tente novamente."
+		},
+		"primaryModifiers": {
+			"mac": "Use pelo menos um de ⌘ ⌃ ⌥",
+			"other": "Use pelo menos um de Ctrl, Alt, {key}",
+			"win": "Win",
+			"super": "Super"
+		},
+		"away": {
+			"hoursMinutes": "{h} h {m} min",
+			"minutes": "{m} min"
+		},
+		"localOnly": {
+			"welcomeMac": "Seus dados ficam neste Mac. Você pode criar uma conta depois.",
+			"welcomeComputer": "Seus dados ficam neste computador. Você pode criar uma conta depois.",
+			"noBackup": "Ainda sem backup",
+			"backupJustNow": "Último backup: agora mesmo",
+			"backupMinutes": "Último backup: há {n} minuto | Último backup: há {n} minutos",
+			"backupHours": "Último backup: há {n} hora | Último backup: há {n} horas",
+			"backupDays": "Último backup: há {n} dia | Último backup: há {n} dias",
+			"backupFailed": "O último backup falhou: {error}",
+			"backupStale": "Sem backup há {days} dias"
+		},
+		"upgradeFailure": {
+			"link": "Não foi possível vincular este dispositivo à sua conta, então seus dados locais ficam neste dispositivo por enquanto. Você pode continuar trabalhando, tentar de novo ou pular.",
+			"move": "Alguns dados locais ainda não puderam ser movidos para esta conta. Você pode continuar trabalhando, e tentaremos de novo na próxima vez que iniciar o aplicativo."
+		},
+		"move": {
+			"copiedBanner": "Copiado para o seu espaço de trabalho na nuvem {name} em {date}. As alterações aqui não são sincronizadas.",
+			"previousMove": "Você moveu este espaço de trabalho em {date}. Isso cria uma segunda cópia na nuvem.",
+			"entities": {
+				"personas": "Personas",
+				"statuses": "Status",
+				"categories": "Projetos",
+				"tasks": "Tarefas",
+				"comments": "Comentários",
+				"files": "Arquivos",
+				"pages": "Páginas",
+				"page_versions": "Versões de páginas",
+				"routines": "Rotinas",
+				"agent_runs": "Execuções de agentes",
+				"assignments": "Atribuições",
+				"relations": "Relações",
+				"modules": "Módulos"
+			},
+			"skipReasons": {
+				"excluded": "deixado de fora da mudança",
+				"not_uploaded": "não enviado",
+				"not_allowed": "não permitido",
+				"persona_is_me": "pertence a você",
+				"disabled": "desativado",
+				"unsupported": "não compatível",
+				"duplicate": "duplicado",
+				"unknown_module": "módulo desconhecido",
+				"unmapped_target": "o destino dele não foi movido"
+			},
+			"report": {
+				"moved": "{entity}: {imported} de {expected} movidos",
+				"movedSkipped": "{entity}: {imported} de {expected} movidos, {skipped} ignorados",
+				"fileSkipped": "{name}: ignorado, {reason}",
+				"unmapped": "{n} referência aponta para algo que não foi movido | {n} referências apontam para algo que não foi movido",
+				"countMismatch": "{entity}: esperado {expected}, movido {imported}, ignorado {skipped}",
+				"bundleMismatch": "{entity}: o pacote continha {actual} de {expected} itens",
+				"unmappedRefs": "{count} referências apontam para algo que não foi movido",
+				"failed": "A mudança falhou no servidor."
+			},
+			"rows": {
+				"backup": "Backup criado",
+				"bundle": "Pacote enviado",
+				"statuses": "Status e projetos",
+				"tasks": "Tarefas",
+				"comments": "Comentários",
+				"files": "Arquivos",
+				"pages": "Páginas",
+				"links": "Vínculos",
+				"routines": "Rotinas e execuções de agentes",
+				"publish": "Verificar e publicar"
+			},
+			"rowCount": "{label} {done} de {total}",
+			"rowSkipped": "{label} · {skipped} ignorados (veja o relatório)",
+			"excludedReasons": {
+				"missing": "o arquivo está ausente",
+				"too_large": "grande demais",
+				"mime": "tipo não permitido",
+				"refused": "recusado pelo servidor"
+			},
+			"skillReasons": {
+				"library_full": "sua biblioteca está cheia",
+				"invalid": "não é uma habilidade válida",
+				"not_owner": "a persona pertence a outro membro",
+				"not_moved": "a persona não foi movida",
+				"attach_limit": "a persona tem habilidades demais",
+				"invalid_files": "os arquivos dela não são válidos (limites de caminho, texto ou tamanho)",
+				"too_large": "grande demais para mover para a nuvem",
+				"files_limit": "os arquivos dela excederiam seu limite de 10 MiB"
+			},
+			"skills": {
+				"aSkill": "uma habilidade",
+				"added": "{n} adicionadas",
+				"reused": "{n} já na sua biblioteca",
+				"renamed": "{n} renomeadas ({list})",
+				"summary": "Habilidades: {parts}",
+				"notCopied": "{name}: não copiada, {reason}",
+				"notAttached": "{name}: não anexada a {n} persona, {reason} | {name}: não anexada a {n} personas, {reason}",
+				"dryRun": "Habilidades: {count} da biblioteca deste dispositivo"
+			},
+			"guards": {
+				"published": "A mudança foi publicada e verificada na sua conta na nuvem",
+				"unchanged": "Nada mudou neste espaço de trabalho desde o snapshot",
+				"files": "Todo arquivo que não pôde ser enviado foi exportado ou aceito como perdido",
+				"skills": "As habilidades deste dispositivo foram copiadas para a sua biblioteca na nuvem",
+				"removeAccount": "Esta mudança foi publicada por outra conta. Entre com essa conta para remover a cópia local.",
+				"cannotRemove": "Ainda não é possível remover: {reason}.",
+				"signIn": "Entre para remover a cópia local.",
+				"oldRecord": "Esta migração foi registrada por uma versão mais antiga, então a cópia local não pode ser removida automaticamente."
+			},
+			"legacy": "Esta mudança foi iniciada por uma versão antiga. Descarte-a e comece de novo.",
+			"accountMismatch": "Esta migração foi iniciada por outra conta. Entre com essa conta para continuar ou descarte-a.",
+			"signInToMove": "Entre para mover este espaço de trabalho para a nuvem.",
+			"demo": "O espaço de trabalho de demonstração fica neste Mac e não pode ser movido para a nuvem",
+			"cancelled": "Migração cancelada",
+			"unsupportedSchema": "Atualize o TMGR para mover este espaço de trabalho.",
+			"quota": "Você pode iniciar até 3 migrações por dia. Tente novamente amanhã.",
+			"running": "Outra migração ainda está em andamento.",
+			"tooLarge": "Este espaço de trabalho é grande demais para ser movido de uma vez.",
+			"genericError": "Algo deu errado."
+		},
+		"runner": {
+			"states": {
+				"done": "Concluído",
+				"failed": "Falhou",
+				"interrupted": "Interrompido",
+				"starting": "Iniciando",
+				"working": "Trabalhando",
+				"waiting": "Ocioso",
+				"blocked": "Precisa de resposta",
+				"unknown": "Desconhecido"
+			},
+			"exitCode": "Encerrado (código {code})",
+			"status": {
+				"ready": "Pronto",
+				"readyVersion": "Pronto v{version}",
+				"incompatible": "Versão incompatível",
+				"absent": "Não está em execução",
+				"checking": "Verificando…",
+				"updateRunner": "Atualizar o runner do TMGR"
+			},
+			"errors": {
+				"busy": "O agente está ocupado, tente novamente em instantes.",
+				"unknownProfile": "Este perfil de agente não está disponível. Escolha outro perfil.",
+				"sandbox": "O sandbox bloqueou esta execução. Verifique a pasta do projeto e tente novamente.",
+				"limit": "Há agentes demais em execução. Pare um e tente novamente.",
+				"invalidParams": "O runner rejeitou a solicitação. Verifique a pasta do projeto e tente novamente.",
+				"taskNotFound": "Esta tarefa não foi encontrada no espaço de trabalho local.",
+				"prefix": {
+					"start": "Não foi possível iniciar o agente",
+					"stop": "Não foi possível parar o agente",
+					"input": "Não foi possível enviar entrada ao agente",
+					"open": "Não foi possível abrir o terminal"
+				},
+				"withMessage": "{prefix}: {message}",
+				"withoutMessage": "{prefix}."
+			},
+			"cloudTooltip": "Por enquanto, as execuções de agentes funcionam só com espaços de trabalho locais.",
+			"absentTooltip": "O runner do TMGR não está em execução. Inicie-o com `tmgr runner start`.",
+			"age": {
+				"justNow": "agora mesmo",
+				"minutes": "há {n}min",
+				"hours": "há {n}h",
+				"days": "há {n}d"
+			}
+		},
+		"autopilot": {
+			"empty": "O piloto automático não está em execução.",
+			"titleQueue": "Ciclo da fila",
+			"title": "Piloto automático",
+			"words": {
+				"starting": "iniciando",
+				"running": "em execução",
+				"paused": "pausado",
+				"stopping": "parando",
+				"stopped": "parado",
+				"suspended": "suspenso",
+				"notRunning": "não está em execução"
+			},
+			"lastState": "último estado {state}",
+			"lastStateUpdated": "último estado {state}, atualizado há {age}",
+			"counters": {
+				"done": "concluídas (PR)",
+				"inWork": "em andamento",
+				"needsFeedback": "precisam de retorno",
+				"blocked": "bloqueadas",
+				"held": "retidas",
+				"failed": "com falha",
+				"queued": "na fila"
+			},
+			"limit": {
+				"unknown": {
+					"base": "{label}: desconhecido",
+					"age": "{label}: desconhecido há {age}"
+				},
+				"pct": {
+					"base": "{label}: {pct}% {source}",
+					"resets": "{label}: {pct}% {source} · reinicia {time}",
+					"marks": "{label}: {pct}% {source} (parar novas em {soft}%, pausar em {hard}%)",
+					"marksResets": "{label}: {pct}% {source} (parar novas em {soft}%, pausar em {hard}%) · reinicia {time}",
+					"age": "{label}: {pct}% {source} há {age}",
+					"ageResets": "{label}: {pct}% {source} há {age} · reinicia {time}",
+					"ageMarks": "{label}: {pct}% {source} há {age} (parar novas em {soft}%, pausar em {hard}%)",
+					"ageMarksResets": "{label}: {pct}% {source} há {age} (parar novas em {soft}%, pausar em {hard}%) · reinicia {time}"
+				}
+			},
+			"cost": {
+				"ofCap": "{used} de {cap} de limite",
+				"noneYet": "nenhum ainda, limite de {cap}"
+			},
+			"guardOff": "sem limite de uso (a proteção está desativada)",
+			"nextStop": "≈ {pct}% da janela de {window} restante antes de \"{kind}\""
+		},
+		"connectAgent": {
+			"notes": {
+				"modules": "A instalação também ativa o acesso local de agentes e os módulos Personas e Execução do agente neste espaço de trabalho.",
+				"keychain": "Seu token fica no Chaveiro do macOS. Ele não faz parte do comando.",
+				"oneWorkspace": "Cada agente se conecta a um espaço de trabalho. Instalar aqui substitui uma conexão anterior do TMGR."
+			},
+			"translocated": "Mova o TMGR para Aplicativos, abra-o de lá e então instale.",
+			"safeMode": "O modo seguro de plugins está ativado, então os agentes não podem se conectar. Desative-o e reabra esta tela.",
+			"unsupported": "A instalação por esta tela funciona só no macOS. Use Copiar configuração.",
+			"bridge": "O TMGR não consegue descobrir o próprio caminho do programa, então os agentes não podem se conectar daqui.",
+			"timeout": "O comando não terminou. Pressione Instalar novamente ou Remover.",
+			"claudeFailureNote": "A entrada anterior do TMGR no Claude Code já foi removida.",
+			"installed": "Reinicie {title} para que ele reconheça o TMGR. Depois peça que liste suas tarefas do TMGR.",
+			"installFailed": "Não foi possível conectar {title}.",
+			"removed": "TMGR removido de {title}.",
+			"removeFailed": "Não foi possível remover o TMGR de {title}.",
+			"demoRefusal": "Crie primeiro seu próprio espaço de trabalho e depois conecte seu agente.",
+			"rateLimit": "Você já criou 10 tokens de agente na última hora. Aguarde um pouco e tente novamente."
+		},
+		"socialLogin": {
+			"startFailed": "Não foi possível iniciar o login."
+		}
 	}
 }

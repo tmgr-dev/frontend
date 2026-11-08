@@ -229,5 +229,199 @@
 		"privacyNote": "O TMGR lê os logs de sessão que suas ferramentas de IA gravam neste computador e mantém contagem de tokens, custo, nomes de modelos, carimbos de data e hora, ids de sessão, pastas de projeto e branches do git, além dos nomes das ferramentas, habilidades e comandos que a IA usou, dos tipos de arquivo que editou e dos pull requests que abriu. O texto de prompts e respostas nunca é armazenado. Os dados ficam neste dispositivo, a menos que você os envie com tmgr usage sync.",
 		"matchFailed": "Não foi possível associar o uso às tarefas: {error}",
 		"documentTitle": "Uso de IA"
+	},
+	"helpers": {
+		"usage": {
+			"consent": {
+				"granted": "Ativado: o TMGR lê esses logs neste dispositivo para mostrar custo e limites, e o runner lê as sessões que ele inicia.",
+				"denied": "Desativado: o TMGR não lê esses logs para o uso de IA neste dispositivo, e o runner não lê nenhum deles.",
+				"unset": "Ainda não escolhido: o aplicativo para desktop e as tarefas em segundo plano não os leem para o uso de IA, mas os comandos tmgr usage que você executa continuam lendo. O runner não lê nenhum deles até você permitir.",
+				"forgetDone": "Excluído. A leitura dos logs de ferramentas de IA está desativada."
+			},
+			"format": {
+				"now": "agora",
+				"justNow": "agora mesmo",
+				"ago": "há {span}"
+			},
+			"error": {
+				"generic": "Algo deu errado."
+			}
+		},
+		"toolLabels": {
+			"get_task": "Lendo a tarefa",
+			"list_tasks": "Listando tarefas",
+			"search_tasks": "Buscando tarefas",
+			"list_comments": "Lendo comentários",
+			"list_statuses": "Lendo os status do quadro",
+			"list_members": "Lendo os membros",
+			"list_routines": "Lendo as rotinas",
+			"time_summary": "Somando o tempo registrado",
+			"deadline_report": "Verificando prazos",
+			"routine_agenda": "Lendo suas rotinas",
+			"get_routine": "Lendo a rotina",
+			"create_task": "Preparando uma tarefa",
+			"add_comment": "Preparando um comentário",
+			"update_task": "Preparando a atualização de uma tarefa",
+			"add_checkpoint": "Preparando um checkpoint",
+			"start_timer": "Preparando para iniciar o cronômetro",
+			"stop_timer": "Preparando para parar o cronômetro",
+			"link_tasks": "Preparando um vínculo entre tarefas",
+			"create_routine": "Preparando uma rotina",
+			"update_routine": "Preparando a alteração de uma rotina",
+			"set_routine_state": "Preparando a marcação de uma rotina",
+			"move_routine_instance": "Preparando para mover uma rotina",
+			"convert_routine": "Preparando para transformar uma rotina em tarefa"
+		},
+		"compaction": {
+			"nothing": "Nada para compactar no momento.",
+			"rateLimited": "A compactação está limitada. Tente novamente mais tarde.",
+			"failed": "Não foi possível compactar o histórico. Tente novamente."
+		},
+		"pins": {
+			"saveFailed": "Não foi possível salvar o fato fixado. Tente novamente.",
+			"invalid": "O fato fixado não é válido.",
+			"limit": "Você pode fixar até {max} fatos. Remova um para adicionar outro.",
+			"charsLeft": "Restam apenas {left} caracteres para os fatos fixados."
+		},
+		"cursor": {
+			"taskFallback": "Tarefa #{id}"
+		},
+		"scenarios": {
+			"run": {
+				"morning_summary": "Resumo da manhã",
+				"day_results": "Resultados do dia",
+				"week_results": "Resultados da semana",
+				"blockers_stale": "Bloqueios e tarefas paradas",
+				"estimate_similar": "Estimar por tarefas semelhantes"
+			},
+			"fill": {
+				"epic": "Dividir um épico em subtarefas",
+				"meeting": "Revisar uma reunião"
+			}
+		},
+		"message": {
+			"today": "Hoje",
+			"yesterday": "Ontem",
+			"seconds": "{n} s",
+			"minSec": "{min} min {sec} s",
+			"min": "{min} min",
+			"tokensInOut": "{input} tokens de entrada / {output} de saída",
+			"tokensIn": "{n} tokens de entrada",
+			"tokensOut": "{n} tokens de saída"
+		},
+		"quotes": {
+			"limit": "Você pode citar até {max} mensagens.",
+			"unavailable": "Mensagem original indisponível",
+			"you": "Você",
+			"ai": "IA",
+			"message": "Mensagem"
+		},
+		"confirmation": {
+			"expired": "Expirado — nada foi alterado",
+			"lessThanMinute": "Expira em menos de um minuto",
+			"expiresIn": "Expira em {n} min",
+			"applying": "Aplicando…",
+			"done": "Concluído",
+			"failedWith": "Falhou: {message}",
+			"failed": "Falhou",
+			"cancelled": "Cancelado",
+			"superseded": "Ignorado — você enviou uma nova mensagem",
+			"conflict": "Este cartão já foi tratado ou expirou."
+		},
+		"attachments": {
+			"hint": "PDF, imagens, Word, Excel, PowerPoint e arquivos de texto",
+			"file": "ARQUIVO",
+			"tooMany": "Você pode anexar até {max} arquivos a uma mensagem.",
+			"unsupported": "{name}: este tipo de arquivo não é compatível. Compatíveis: {hint}.",
+			"tooLarge": "{name} é maior que {size}.",
+			"empty": "{name} está vazio.",
+			"errors": {
+				"file_not_found": "Um arquivo anexado não foi encontrado. Remova-o e tente novamente.",
+				"forbidden": "Você não tem acesso a um dos arquivos anexados.",
+				"file_not_on_task": "Aqui só podem ser usados arquivos anexados a esta tarefa.",
+				"file_too_large": "Um arquivo anexado é maior que {size}.",
+				"too_many_files": "Você pode anexar até {max} arquivos a uma mensagem.",
+				"unsupported_file_type": "Um dos arquivos não pode ser lido pelo assistente. Compatíveis: {hint}.",
+				"too_many_pages": "Um PDF tem páginas demais (o limite é 40).",
+				"unreadable_file": "Não foi possível ler um dos arquivos.",
+				"documents_too_large": "Os documentos anexados são grandes demais para serem enviados juntos. Remova alguns e tente novamente.",
+				"invalid_file": "O nome do arquivo não é válido.",
+				"invalid_file_path": "Não foi possível anexar o upload. Tente novamente.",
+				"file_bound_elsewhere": "Não foi possível anexar o upload. Tente novamente."
+			}
+		},
+		"personas": {
+			"nameRequired": "O nome é obrigatório",
+			"nameTooLong": "O nome deve ter no máximo {max} caracteres",
+			"nameAt": "O nome não pode conter \"{'@'}\"",
+			"validationFailed": "Falha na validação",
+			"reserved": "Esta habilidade usa um nome reservado. Renomeie-a com a CLI do tmgr ou exclua-a.",
+			"skill": {
+				"bodyBytes": "não pode exceder {max} bytes",
+				"frontMatter": "deve começar com um bloco front matter '---' fechado por outro '---'",
+				"required": "é obrigatório",
+				"slugPattern": "deve ter letras minúsculas, dígitos ou '-', até 60 caracteres",
+				"slugReserved": "Este nome é reservado",
+				"slugMatch": "deve corresponder ao slug da URL",
+				"titleLength": "não pode exceder {max} caracteres",
+				"deleteQuestion": "Excluir a habilidade \"{title}\"?",
+				"deleteAttached": "{question}\n\nAnexada a {list}. Elas perdem esta habilidade imediatamente; nenhuma cópia é mantida.",
+				"pinned": "{name} (fixada na v{version})",
+				"deleted": "Habilidade excluída",
+				"deletedDetached": "Habilidade excluída e desvinculada de {n} persona | Habilidade excluída e desvinculada de {n} personas"
+			},
+			"labelRequired": "O rótulo é obrigatório",
+			"labelTooLong": "O rótulo deve ter no máximo {max} caracteres",
+			"requestedBy": "solicitada por {name}",
+			"personaOf": "persona de {name}",
+			"scopeWorkspace": "Espaço de trabalho",
+			"scopeMe": "Só eu",
+			"converted": "Convertida em habilidade compartilhada",
+			"convertedReplaced": "Convertida em habilidade compartilhada e substituída em {n} persona | Convertida em habilidade compartilhada e substituída em {n} personas"
+		},
+		"skillImport": {
+			"fileStatus": {
+				"ok": "será enviado",
+				"binary": "binário, não importado",
+				"too_large": "grande demais, não importado",
+				"secret": "parece um segredo, bloqueia a habilidade",
+				"symlink": "link simbólico, não importado",
+				"unsupported_name": "nome incompatível, não importado",
+				"case_conflict": "nome conflita ignorando maiúsculas e minúsculas, não importado",
+				"too_deep": "profundo demais, não importado",
+				"skipped_hidden": "oculto, não importado",
+				"unreadable": "não pode ser lido, não importado"
+			},
+			"warn": {
+				"descriptionCut": "descrição cortada em {max} caracteres",
+				"pluginRoot": "faz referência a {'$'}{'{'}CLAUDE_PLUGIN_ROOT{'}'}, que não existe na biblioteca",
+				"relativePaths": "faz referência a caminhos relativos que não serão resolvidos",
+				"noFrontMatter": "sem front matter",
+				"invalidYaml": "o front matter não é um YAML válido; nome e descrição não foram lidos",
+				"filesSkipped": "{n} arquivo não será importado, veja a lista de arquivos | {n} arquivos não serão importados, veja a lista de arquivos"
+			},
+			"blocked": {
+				"secret": "parece conter um segredo",
+				"files": "arquivos: {files}",
+				"size": "{kib} KiB, limite de {limit} KiB",
+				"empty": "arquivo vazio",
+				"noDescription": "sem descrição"
+			},
+			"plan": {
+				"duplicate": "slug duplicado na seleção",
+				"taken": "slug ocupado na biblioteca desde a verificação",
+				"limit": "limite da biblioteca atingido"
+			},
+			"summary": {
+				"imported": "{n} habilidade importada | {n} habilidades importadas",
+				"failed": "{imported}, {failed} com falha"
+			},
+			"flow": {
+				"changedSincePreview": "alterado desde a prévia, verifique novamente",
+				"filesChanged": "Os arquivos mudaram na biblioteca desde a verificação. Verifique novamente e tente de novo.",
+				"replaced": "A habilidade da biblioteca foi substituída desde a última importação. Marque-a novamente para sobrescrever.",
+				"requestFailed": "A solicitação falhou"
+			}
+		}
 	}
 }

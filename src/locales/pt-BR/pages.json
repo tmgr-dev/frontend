@@ -225,5 +225,73 @@
 		"loading": "Carregando...",
 		"notFound": "Não foi possível encontrar esta página.",
 		"openFailed": "Não foi possível abrir a página. Feche esta janela e tente novamente."
+	},
+	"helpers": {
+		"network": {
+			"operational": "Operacional",
+			"personal": "Pessoal",
+			"strategic": "Estratégico"
+		},
+		"aliasSource": {
+			"telegram": "Telegram",
+			"rocketchat": "Rocket.Chat",
+			"slack": "Slack",
+			"github": "GitHub",
+			"email": "E-mail",
+			"other": "Outro"
+		},
+		"validation": {
+			"invalidMember": "Membro inválido",
+			"mustBeList": "Deve ser uma lista",
+			"chooseSource": "Escolha uma origem",
+			"enterIdentifier": "Informe um identificador",
+			"nameTooLong": "O nome é longo demais",
+			"chooseRelationship": "Escolha um tipo de relacionamento",
+			"maxChars": "No máximo 255 caracteres",
+			"dateFormat": "Data no formato AAAA-MM-DD",
+			"invalidTask": "Tarefa inválida",
+			"invalidValue": "Valor inválido",
+			"invalidProperties": "Propriedades inválidas"
+		},
+		"property": {
+			"member": "Membro",
+			"relationship": "Relacionamento",
+			"company": "Empresa",
+			"role": "Cargo",
+			"aliases": "Apelidos",
+			"lastContact": "Último contato",
+			"date": "Data",
+			"participants": "Participantes",
+			"tasks": "Tarefas"
+		},
+		"pageType": {
+			"plain": "Página simples",
+			"context": "Contexto",
+			"person": "Pessoa",
+			"meeting": "Reunião"
+		},
+		"owner": {
+			"persona": "Persona",
+			"member": "Membro",
+			"system": "Sistema",
+			"agents": "Agentes"
+		},
+		"taskFromSelection": {
+			"selectionNotFound": "O texto selecionado não foi encontrado na página. Atualize a página e tente novamente.",
+			"pageChanged": "A página mudou. Atualize-a e tente novamente.",
+			"noAccess": "Sem acesso ao projeto.",
+			"failed": "Falha ao criar a tarefa."
+		},
+		"image": {
+			"alignLeft": "Alinhar à esquerda",
+			"alignCenter": "Centralizar",
+			"alignRight": "Alinhar à direita",
+			"fullWidth": "Largura total",
+			"download": "Baixar",
+			"replaceImage": "Substituir imagem",
+			"deleteImage": "Excluir imagem",
+			"captionPlaceholder": "Escreva uma legenda",
+			"loadFailed": "Falha ao carregar a imagem"
+		}
 	}
 }

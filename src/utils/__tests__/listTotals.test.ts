@@ -1,23 +1,4 @@
-import {
-	formatTaskCount,
-	listTotalSeconds,
-	sumTaskSeconds,
-} from '@/utils/listTotals';
-
-describe('formatTaskCount', () => {
-	it('uses the singular only for one task', () => {
-		expect(formatTaskCount(0)).toBe('0 tasks');
-		expect(formatTaskCount(1)).toBe('1 task');
-		expect(formatTaskCount(2)).toBe('2 tasks');
-		expect(formatTaskCount(98)).toBe('98 tasks');
-	});
-
-	it('shows 0 tasks for a missing or broken count', () => {
-		expect(formatTaskCount(undefined)).toBe('0 tasks');
-		expect(formatTaskCount(null)).toBe('0 tasks');
-		expect(formatTaskCount(NaN)).toBe('0 tasks');
-	});
-});
+import { listTotalSeconds, sumTaskSeconds } from '@/utils/listTotals';
 
 describe('sumTaskSeconds', () => {
 	it('sums tracked time and treats missing time as zero', () => {

@@ -125,7 +125,7 @@
 					class="text-xs"
 					:model-value="isDone(task.status)"
 					:disabled="doneStatusId === null"
-					:tooltip="DONE_DISABLED_TOOLTIP"
+					:tooltip="doneDisabledTooltip()"
 					@update:model-value="handleDoneChange"
 				/>
 
@@ -186,7 +186,7 @@
 	import { cn } from '@/utils';
 	import { priorityOption } from '@/utils/priority';
 	import {
-		DONE_DISABLED_TOOLTIP,
+		doneDisabledTooltip,
 		isDone,
 		stateLabel,
 	} from '@/utils/simpleStatus';

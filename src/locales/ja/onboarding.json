@@ -1066,5 +1066,30 @@
 			"command": "コマンドを実行しました",
 			"agent": "エージェントが接続されました"
 		}
+	},
+	"helpers": {
+		"checklist": {
+			"human": {
+				"createTask": "タスクを作成する",
+				"runTimer": "タイマーを 1 分間動かす",
+				"moveCard": "ボードでカードを移動する",
+				"addRoutine": "デイリールーティンを追加する",
+				"writePage": "ページを書く",
+				"connectAgent": "AI エージェントを接続する"
+			},
+			"agent": {
+				"connectAgent": "エージェントを接続する",
+				"firstAgentRun": "最初のエージェントタスクを実行する",
+				"phoneAlert": "エージェントが必要としたときにスマホで通知を受け取る",
+				"startTimer": "タスクでタイマーを開始する",
+				"contextPage": "エージェントが読むコンテキストページを書く",
+				"inviteTeammate": "チームメイトを招待する"
+			},
+			"verifyEmail": "まずメールアドレスを確認してください"
+		},
+		"aha": {
+			"firstRun": "最初のエージェントの実行が記録されました。これが TMGR の役割です。",
+			"timerLogged": "{title} に {minutes} 分を記録しました。時間はタスクに紐づいて残ります。"
+		}
 	}
 }

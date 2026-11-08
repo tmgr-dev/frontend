@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import {
 	DesktopAuthProvider,
 	beginDesktopAuth,
@@ -29,7 +30,9 @@ export const startDesktopSocialLogin = async (
 		window.location.href = url;
 	} catch (error) {
 		failDesktopSocialLogin(
-			error instanceof Error ? error.message : 'Could not start sign-in.',
+			error instanceof Error
+				? error.message
+				: t('desktop.helpers.socialLogin.startFailed'),
 		);
 	}
 };

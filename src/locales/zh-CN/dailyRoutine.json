@@ -218,5 +218,22 @@
 		"copyTitle": "{title}（副本）",
 		"importErrors": "\n错误：\n- {list}",
 		"importSummary": "已导入 {created} 项，跳过 {skipped} 项，替换 {replaced} 项。{errors}"
+	},
+	"helpers": {
+		"recurrence": {
+			"daily": "每天",
+			"everyNDays": "每 {n} 天",
+			"weekly": "每周",
+			"weekdays": "工作日",
+			"weekends": "周末",
+			"monthly": "每月 · {day} 日",
+			"yearly": "每年 · {date}"
+		},
+		"relative": {
+			"now": "现在",
+			"secondsAgo": "{n} 秒前",
+			"minutesAgo": "{n} 分钟前",
+			"hoursAgo": "{n} 小时前"
+		}
 	}
 }

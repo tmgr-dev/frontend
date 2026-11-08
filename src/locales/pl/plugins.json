@@ -36,5 +36,17 @@
 		"openFailed": "Nie udało się otworzyć okna wtyczki: {error}",
 		"nothingToShow": "Wtyczka nie zwróciła niczego do wyświetlenia.",
 		"drawFailed": "Wtyczka nie mogła narysować tej strony: {error}"
+	},
+	"helpers": {
+		"time": {
+			"fewSeconds": "kilka sekund",
+			"min": "{n} min",
+			"hour": "{n} godz.",
+			"day": "{n} d",
+			"justNow": "przed chwilą",
+			"ago": "{span} temu",
+			"in": "za {span}",
+			"overdue": "po terminie: {span}"
+		}
 	}
 }

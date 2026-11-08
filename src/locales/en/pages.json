@@ -225,5 +225,73 @@
 		"loading": "Loading...",
 		"notFound": "This page could not be found.",
 		"openFailed": "The page could not be opened. Close this window and try again."
+	},
+	"helpers": {
+		"network": {
+			"operational": "Operational",
+			"personal": "Personal",
+			"strategic": "Strategic"
+		},
+		"aliasSource": {
+			"telegram": "Telegram",
+			"rocketchat": "Rocket.Chat",
+			"slack": "Slack",
+			"github": "GitHub",
+			"email": "Email",
+			"other": "Other"
+		},
+		"validation": {
+			"invalidMember": "Invalid member",
+			"mustBeList": "Must be a list",
+			"chooseSource": "Choose a source",
+			"enterIdentifier": "Enter an identifier",
+			"nameTooLong": "Name is too long",
+			"chooseRelationship": "Choose a relationship type",
+			"maxChars": "At most 255 characters",
+			"dateFormat": "Date in YYYY-MM-DD format",
+			"invalidTask": "Invalid task",
+			"invalidValue": "Invalid value",
+			"invalidProperties": "Invalid properties"
+		},
+		"property": {
+			"member": "Member",
+			"relationship": "Relationship",
+			"company": "Company",
+			"role": "Role",
+			"aliases": "Aliases",
+			"lastContact": "Last contact",
+			"date": "Date",
+			"participants": "Participants",
+			"tasks": "Tasks"
+		},
+		"pageType": {
+			"plain": "Plain page",
+			"context": "Context",
+			"person": "Person",
+			"meeting": "Meeting"
+		},
+		"owner": {
+			"persona": "Persona",
+			"member": "Member",
+			"system": "System",
+			"agents": "Agents"
+		},
+		"taskFromSelection": {
+			"selectionNotFound": "The selected text was not found on the page. Refresh the page and try again.",
+			"pageChanged": "The page has changed. Refresh it and try again.",
+			"noAccess": "No access to the category.",
+			"failed": "Failed to create task."
+		},
+		"image": {
+			"alignLeft": "Align left",
+			"alignCenter": "Align center",
+			"alignRight": "Align right",
+			"fullWidth": "Full width",
+			"download": "Download",
+			"replaceImage": "Replace image",
+			"deleteImage": "Delete image",
+			"captionPlaceholder": "Write a caption",
+			"loadFailed": "Image failed to load"
+		}
 	}
 }

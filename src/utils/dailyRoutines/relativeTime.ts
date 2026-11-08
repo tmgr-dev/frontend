@@ -1,3 +1,5 @@
+import { currentLocale, t } from '@/i18n';
+
 /**
  * Human relative timestamp for routine rows: "now" → "N seconds ago" →
  * "N minutes ago" → "N hours ago" → absolute date+time (locale) once the
@@ -8,28 +10,29 @@ export function formatRelativeTime(
 	nowMs: number = Date.now(),
 ): string {
 	if (!iso) return '';
-	const t = Date.parse(iso);
-	if (Number.isNaN(t)) return '';
+	const at = Date.parse(iso);
+	if (Number.isNaN(at)) return '';
 
-	const diffSec = Math.floor((nowMs - t) / 1000);
-	if (diffSec < 0) return absolute(t, nowMs);
-	if (diffSec < 10) return 'now';
-	if (diffSec < 60) return `${diffSec} seconds ago`;
+	const diffSec = Math.floor((nowMs - at) / 1000);
+	if (diffSec < 0) return absolute(at, nowMs);
+	if (diffSec < 10) return t('dailyRoutine.helpers.relative.now');
+	if (diffSec < 60)
+		return t('dailyRoutine.helpers.relative.secondsAgo', diffSec);
 	if (diffSec < 3600) {
 		const m = Math.floor(diffSec / 60);
-		return m === 1 ? '1 minute ago' : `${m} minutes ago`;
+		return t('dailyRoutine.helpers.relative.minutesAgo', m);
 	}
 	if (diffSec < 86400) {
 		const h = Math.floor(diffSec / 3600);
-		return h === 1 ? '1 hour ago' : `${h} hours ago`;
+		return t('dailyRoutine.helpers.relative.hoursAgo', h);
 	}
-	return absolute(t, nowMs);
+	return absolute(at, nowMs);
 }
 
 function absolute(t: number, nowMs: number): string {
 	const d = new Date(t);
 	const sameYear = d.getFullYear() === new Date(nowMs).getFullYear();
-	return d.toLocaleString(undefined, {
+	return d.toLocaleString(currentLocale(), {
 		month: 'short',
 		day: 'numeric',
 		...(sameYear ? {} : { year: 'numeric' }),

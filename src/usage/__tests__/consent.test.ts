@@ -5,7 +5,7 @@ jest.mock('@tauri-apps/api/core', () => ({
 
 import {
 	consentGate,
-	FORGET_DONE,
+	forgetDone,
 	readingNote,
 	useUsageConsent,
 } from '@/components/usage/consent';
@@ -160,7 +160,7 @@ describe('useUsageConsent', () => {
 		const c = useUsageConsent(consent({ state: 'granted', has_data: true }));
 		expect(await c.forget()).toBe(true);
 		expect(invoke.mock.calls).toEqual([['usage_forget']]);
-		expect(c.message.value).toBe(FORGET_DONE);
+		expect(c.message.value).toBe(forgetDone());
 		expect(c.gate.value).toBe('off');
 	});
 

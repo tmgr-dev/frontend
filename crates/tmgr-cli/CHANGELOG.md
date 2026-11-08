@@ -1,8 +1,14 @@
 # Changelog
 
+## 1.0.113
+
+- Sandboxed agent sessions started in a git repository now run in their own session clone by default, so two agents never write the same files. Use `--no-worktree`, or set `attach.worktree = false` in the config, to start in place. The new command `tmgr runner import <name>` brings a session's branch back into the repository.
+- Folders that only look like task clones are no longer refused as a session source.
+- On Linux, object stores shared with a session are mounted read-only where the kernel allows it; otherwise their file modes are restored when the session ends.
+
 ## 1.0.112
 
-- New command `tmgr decisions pending-delivery [--json]`: lists the owner's final answers that no agent has picked up yet (card, task, answer time, delivery state), oldest first, from the last 7 days (including answers with no delivery record). Against an older desktop app it prints "desktop too old, update TMGR desktop" and exits with an error. Needs the desktop app with the same release.
+- New command `tmgr decisions pending-delivery [--json]`: lists the owner's final answers that no agent has picked up yet (card, task, answer time, delivery state, and "skipped: workspace mismatch" when the desktop will never post the answer to a task in another workspace), oldest first, from the last 7 days (including answers with no delivery record). Against an older desktop app it prints "desktop too old, update TMGR desktop" and exits with an error. Needs the desktop app with the same release.
 
 ## 1.0.111
 
