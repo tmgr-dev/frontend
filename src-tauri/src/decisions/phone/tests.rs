@@ -43,17 +43,17 @@ impl Host for FakeHost {
     self.notes.lock().unwrap().push(body.to_owned());
   }
 
-  fn route(&self, card_id: &str, event: &Event, bound: &str) -> RouteOutcome {
+  fn route(&self, card_id: &str, event: &Event, bound: Option<&str>) -> RouteOutcome {
     if let Some(f) = self.before_route.lock().unwrap().take() {
       f();
     }
     self.delivered.lock().unwrap().push((
       card_id.to_owned(),
-      event.free_text.clone().unwrap_or_default(),
-      bound.to_owned(),
+      event.free_text.clone().or_else(|| event.text.clone()).unwrap_or_default(),
+      bound.unwrap_or_default().to_owned(),
     ));
     let hub = self.hub.lock().unwrap().clone().expect("hub");
-    let out = route_with(&hub, &Queue::default(), &NoSocket, card_id, event, Some(bound));
+    let out = route_with(&hub, &Queue::default(), &NoSocket, card_id, event, bound);
     self.outcomes.lock().unwrap().push(out);
     out
   }
@@ -863,7 +863,7 @@ fn projection_is_deterministic_and_capped() {
   let a = project(&v1, "").unwrap();
   assert_eq!(a.json, project(&v2, "").unwrap().json);
   assert_eq!(a.digest, tmgr_phone::digest(&a.json));
-  assert!(a.json.starts_with(r#"{"p":1,"kind":"decision","reply_via":"mcp","agent":"claude""#));
+  assert!(a.json.starts_with(r#"{"p":2,"kind":"decision","reply_via":"mcp","agent":"claude""#));
   let h = project(&r.hub.get(&huge).unwrap(), "").unwrap();
   assert!(h.json.len() <= 16 * 1024);
   let parsed: serde_json::Value = serde_json::from_str(&h.json).unwrap();
@@ -1208,4 +1208,219 @@ fn pairing_polls_handle_a_hundred_hellos_and_drop_unsafe_ids() {
   p.r.phones.poll_pairing();
   assert_eq!(p.r.relay.0.lock().unwrap().inbox.len(), 51);
   assert!(p.r.phones.pairing.lock().unwrap().as_ref().unwrap().seen.len() <= 100);
+}
+
+fn plain_hook_card(r: &Rig, title: &str) -> String {
+  let card = CardIn {
+    title: title.into(),
+    kind: "decision".into(),
+    reply_via: "hook".into(),
+    source: Source { agent: "claude".into(), session: Some("s3".into()), ..Default::default() },
+    ..Default::default()
+  };
+  r.hub.create(card).unwrap().id
+}
+
+fn owner_texts(r: &Rig, id: &str) -> Vec<String> {
+  r.hub.get(id).unwrap().messages.iter().filter(|m| m.author == "owner").map(|m| m.text.clone()).collect()
+}
+
+fn snapshots_sent(r: &Rig) -> usize {
+  r.relay.0.lock().unwrap().snapshots.len()
+}
+
+fn hold_wait(r: &Rig, id: &str) -> std::thread::JoinHandle<()> {
+  let (hub, id) = (r.hub.clone(), id.to_owned());
+  let t = std::thread::spawn(move || {
+    let _ = hub.wait(&id, 0, std::time::Duration::from_secs(20), false);
+  });
+  std::thread::sleep(std::time::Duration::from_millis(150));
+  t
+}
+
+#[test]
+fn chat_is_applied_keeps_the_card_open_and_adds_an_owner_message() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  let (digest, session) = r.bind(&p, &id);
+  let body = r.body(&id, &digest, &session, Action::Chat, None, Some("wait for CI"));
+  let ack = r.answer_ack(&p, &body);
+  assert_eq!((ack.result, ack.label.as_deref()), (AckResult::Applied, Some("Message")));
+  let view = r.hub.get(&id).unwrap();
+  assert_eq!(view.state, "open");
+  assert!(view.answer.is_none());
+  assert_eq!(owner_texts(&r, &id), ["wait for CI"]);
+  let event = r.hub.wait(&id, 0, std::time::Duration::ZERO, false).unwrap().1.unwrap();
+  assert_eq!((event.kind.as_str(), event.text.as_deref(), event.via.as_deref()), ("message", Some("wait for CI"), Some("phone")));
+  assert_eq!(event.via_fp.as_deref(), Some(&p.pin.phone_fp[..8]));
+  assert_eq!(r.host.notes.lock().unwrap().as_slice(), ["Message from iPhone"]);
+  assert_eq!(r.host.outcomes.lock().unwrap().len(), 1);
+  assert!(r.phones.pins.get("mb1").unwrap().unwrap().last_used_ms > 0);
+}
+
+#[test]
+fn a_replayed_chat_is_a_duplicate_and_stores_one_message() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  let (digest, session) = r.bind(&p, &id);
+  let body = r.body(&id, &digest, &session, Action::Chat, None, Some("once"));
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Applied);
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Duplicate);
+  assert_eq!(owner_texts(&r, &id), ["once"]);
+  assert_eq!(r.host.notes.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn chat_ignores_a_stale_digest_and_session_but_an_answer_does_not() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  r.bind(&p, &id);
+  let stale = "0".repeat(64);
+  let chat = r.body(&id, &stale, "runner:old", Action::Chat, None, Some("still goes"));
+  assert_eq!(r.answer_ack(&p, &chat).result, AckResult::Applied);
+  let answer = r.body(&id, &stale, "runner:old", Action::Answer, Some("a"), None);
+  assert_eq!(r.answer_ack(&p, &answer).result, AckResult::Changed);
+  assert_eq!(r.state(&id), "open");
+}
+
+#[test]
+fn chat_on_a_closed_card_is_closed_and_stores_nothing() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  let (digest, session) = r.bind(&p, &id);
+  r.hub.answer(&id, AnswerIn { choice: Some("b".into()), ..Default::default() }).unwrap();
+  let body = r.body(&id, &digest, &session, Action::Chat, None, Some("too late"));
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Closed);
+  assert!(owner_texts(&r, &id).is_empty());
+}
+
+#[test]
+fn chat_on_a_hook_card_that_is_not_stopped_is_not_eligible() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = plain_hook_card(&r, "Hook only");
+  let (digest, session) = r.bind(&p, &id);
+  let body = r.body(&id, &digest, &session, Action::Chat, None, Some("hello"));
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::NotEligible);
+  assert!(owner_texts(&r, &id).is_empty());
+  assert_eq!(r.typed(), 0);
+}
+
+#[test]
+fn chat_with_empty_long_or_choice_input_is_invalid() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  let (digest, session) = r.bind(&p, &id);
+  let long = "x".repeat(1001);
+  let cases = [
+    r.body(&id, &digest, &session, Action::Chat, None, None),
+    r.body(&id, &digest, &session, Action::Chat, None, Some("   ")),
+    r.body(&id, &digest, &session, Action::Chat, None, Some(&long)),
+    r.body(&id, &digest, &session, Action::Chat, Some("a"), Some("hi")),
+  ];
+  for body in &cases {
+    assert_eq!(r.answer_ack(&p, body).result, AckResult::Invalid);
+  }
+  assert!(owner_texts(&r, &id).is_empty());
+}
+
+#[test]
+fn the_projection_is_v2_with_message_seq_chat_and_task_flags() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  r.hub.message(&id, tmgr_ipc_message("hi")).unwrap();
+  let hook = plain_hook_card(&r, "Hook only");
+  let stopped = r.hook_card("Stopped", "run-1");
+  let linked = r
+    .hub
+    .create(CardIn {
+      title: "Linked".into(),
+      source: Source { agent: "claude".into(), ..Default::default() },
+      links: tmgr_ipc::decisions::Links { task: Some("https://tmgr.dev/ws/tasks/5".into()), ..Default::default() },
+      ..Default::default()
+    })
+    .unwrap()
+    .id;
+  let snap = r.snapshot(&p);
+  let proj = |id: &str| -> serde_json::Value {
+    serde_json::from_str(&snap.cards.iter().find(|c| c.id == id).unwrap().projection).unwrap()
+  };
+  let a = proj(&id);
+  assert_eq!((a["p"].as_u64(), a["chat"].as_bool(), a["task"].as_bool()), (Some(2), Some(true), Some(false)));
+  assert_eq!(a["messages"][0]["seq"], 1);
+  assert!(a["messages"][0]["created_ms"].as_i64().unwrap() > 0);
+  assert_eq!(proj(&hook)["chat"], false);
+  assert_eq!(proj(&stopped)["chat"], true);
+  assert_eq!(proj(&linked)["task"], true);
+}
+
+fn tmgr_ipc_message(text: &str) -> crate::decisions::store::MessageIn {
+  crate::decisions::store::MessageIn { text: text.into(), ..Default::default() }
+}
+
+#[test]
+fn the_snapshot_reports_listening_for_an_mcp_card_with_a_blocked_wait_and_nothing_for_hook_cards() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  let hook = plain_hook_card(&r, "Hook only");
+  let live = |s: &SnapshotBody, id: &str| s.cards.iter().find(|c| c.id == id).unwrap().live.clone().unwrap();
+  let before = r.snapshot(&p);
+  assert_eq!(live(&before, &id).listening, Some(false));
+  let waiter = hold_wait(&r, &id);
+  let during = r.snapshot(&p);
+  assert_eq!(live(&during, &id).listening, Some(true));
+  assert_eq!(live(&during, &hook).listening, None);
+  assert_eq!(during.cards.iter().find(|c| c.id == id).unwrap().digest, before.cards.iter().find(|c| c.id == id).unwrap().digest);
+  r.hub.answer(&id, AnswerIn { dismissed: true, ..Default::default() }).unwrap();
+  waiter.join().unwrap();
+}
+
+#[test]
+fn delivered_ms_appears_once_the_agent_picks_the_message_up() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  let (digest, session) = r.bind(&p, &id);
+  let body = r.body(&id, &digest, &session, Action::Chat, None, Some("ping"));
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Applied);
+  let messages = |r: &Rig| r.snapshot(&p).cards.iter().find(|c| c.id == id).unwrap().live.clone().unwrap().messages;
+  let first = messages(&r);
+  assert_eq!((first.len(), first[0].seq, first[0].delivered_ms), (1, 1, None));
+  assert!(r.hub.wait(&id, 0, std::time::Duration::ZERO, false).unwrap().1.is_some());
+  let second = messages(&r);
+  assert!(second[0].delivered_ms.is_some());
+  assert_eq!(second[0].saved_ms, None);
+}
+
+#[test]
+fn a_listening_card_refreshes_every_minute_and_an_idle_one_every_five() {
+  let r = rig();
+  let _p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  r.phones.refresh_snapshots(false);
+  let idle = snapshots_sent(&r);
+  r.clock.fetch_add(61_000, Ordering::SeqCst);
+  r.phones.refresh_snapshots(false);
+  assert_eq!(snapshots_sent(&r), idle);
+  r.clock.fetch_add(5 * 60_000, Ordering::SeqCst);
+  r.phones.refresh_snapshots(false);
+  assert_eq!(snapshots_sent(&r), idle + 1);
+  let waiter = hold_wait(&r, &id);
+  r.phones.refresh_snapshots(false);
+  let base = snapshots_sent(&r);
+  r.clock.fetch_add(30_000, Ordering::SeqCst);
+  r.phones.refresh_snapshots(false);
+  assert_eq!(snapshots_sent(&r), base);
+  r.clock.fetch_add(31_000, Ordering::SeqCst);
+  r.phones.refresh_snapshots(false);
+  assert_eq!(snapshots_sent(&r), base + 1);
+  r.hub.answer(&id, AnswerIn { dismissed: true, ..Default::default() }).unwrap();
+  waiter.join().unwrap();
 }

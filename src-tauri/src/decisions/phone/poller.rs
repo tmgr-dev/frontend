@@ -3,8 +3,11 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
-use tmgr_phone::{Pairing, SnapshotBody, SnapshotCard};
+use tmgr_phone::{CardLive, Pairing, SnapshotBody, SnapshotCard};
 
+use super::super::store::CardView;
+
+use super::super::hub::Hub;
 use super::pins::Pin;
 use super::relay;
 use super::projection::{eligible, project, CARDS_MAX};
@@ -17,6 +20,24 @@ const DEBOUNCE_MS: i64 = 1_000;
 const REFRESH_MS: i64 = 60_000;
 const WAKE_JUMP_MS: i64 = 30_000;
 const PENDING_MAX: usize = 999;
+
+fn live_of(hub: &Hub, v: &CardView) -> CardLive {
+  let listening = matches!(v.reply_via.as_str(), "mcp" | "cli").then_some(v.listening);
+  CardLive { listening, messages: hub.live_messages(&v.id) }
+}
+
+fn live_sig(c: &SnapshotCard) -> String {
+  serde_json::to_string(&c.live).unwrap_or_default()
+}
+
+fn skip_window(cards: &[SnapshotCard]) -> i64 {
+  let listening = cards.iter().any(|c| c.live.as_ref().is_some_and(|l| l.listening == Some(true)));
+  if listening {
+    REFRESH_MS
+  } else {
+    IDLE_MS
+  }
+}
 
 impl Phones {
   pub fn start(self: &Arc<Self>) {
@@ -91,7 +112,7 @@ impl Phones {
           state: v.state.clone(),
           session_gone: v.session_gone,
           projection: p.json,
-          live: None,
+          live: Some(live_of(&self.hub, v)),
         });
       }
     }
@@ -99,7 +120,7 @@ impl Phones {
     let sig = tmgr_phone::h(
       &cards
         .iter()
-        .map(|c| format!("{}:{}:{}:{}", c.id, c.digest, c.state, c.session_gone))
+        .map(|c| format!("{}:{}:{}:{}:{}", c.id, c.digest, c.state, c.session_gone, live_sig(c)))
         .collect::<Vec<_>>()
         .join("|"),
     ) + &more.to_string();
@@ -116,7 +137,7 @@ impl Phones {
       match g.get(&pin.mailbox) {
         Some(s) => {
           let fresh = s.ids.as_ref().is_some_and(|ids| cards.iter().any(|c| c.state == "open" && !ids.contains(&c.id)));
-          (fresh, !force && s.sig == sig && now - s.at < IDLE_MS)
+          (fresh, !force && s.sig == sig && now - s.at < skip_window(cards))
         }
         None => (cards.iter().any(|c| c.state == "open"), false),
       }

@@ -284,7 +284,10 @@ impl Hub {
     }
     let mut rose = false;
     for (id, (_, since)) in ids.iter().zip(cards) {
-      rose |= !final_only && self.deliver(id, *since);
+      if !final_only && self.deliver(id, *since) {
+        rose = true;
+        let _ = guard.deliver_through(id, *since);
+      }
     }
     if let Some((i, e)) = Self::first_event(&mut guard, &ids, cards, final_only)? {
       rose |= !final_only && !e.is_final() && self.deliver(&ids[i], e.seq);
@@ -395,6 +398,10 @@ impl Hub {
   pub fn list(&self) -> Result<Vec<CardView>, String> {
     let store = self.lock();
     Ok(store.list()?.into_iter().map(|v| self.mark(&store, v)).collect())
+  }
+
+  pub fn live_messages(&self, id: &str) -> Vec<tmgr_phone::LiveMessage> {
+    self.lock().live_messages(id)
   }
 
   pub fn pending_task_comments(&self) -> Result<Vec<PendingTaskComment>, String> {
@@ -686,5 +693,24 @@ mod tests {
     assert!(!pid_alive(pid));
     assert!(pid_alive(0));
     assert!(pid_alive(u32::MAX));
+  }
+
+  #[test]
+  fn a_cursor_past_a_message_writes_a_delivered_row_that_survives_a_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("decisions.db");
+    let card = CardIn { title: "Q".into(), source: Source { agent: "claude".into(), ..Default::default() }, ..Default::default() };
+    let hub = Arc::new(Hub::new(Store::open(&path).unwrap(), Box::new(|_, _| {})));
+    let id = hub.create(card).unwrap().id;
+    say(&hub, &id, "one");
+    assert!(hub.get(&id).unwrap().delivery.is_none());
+    assert!(hub.wait(&id, 1, Duration::ZERO, false).unwrap().1.is_none());
+    let d = hub.get(&id).unwrap().delivery.unwrap();
+    assert_eq!((d.state.as_str(), d.via.as_str()), ("delivered", "agent"));
+    drop(hub);
+    let again = Arc::new(Hub::new(Store::open(&path).unwrap(), Box::new(|_, _| {})));
+    let d = again.get(&id).unwrap().delivery.unwrap();
+    assert_eq!((d.state.as_str(), d.via.as_str()), ("delivered", "agent"));
+    assert!(again.live_messages(&id)[0].delivered_ms.is_some());
   }
 }

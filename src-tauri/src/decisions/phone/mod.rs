@@ -29,7 +29,7 @@ const MAIN_LABEL: &str = "main";
 
 pub trait Host: Send + Sync {
   fn notify(&self, title: &str, body: &str);
-  fn route(&self, card_id: &str, event: &Event, bound: &str) -> RouteOutcome;
+  fn route(&self, card_id: &str, event: &Event, bound: Option<&str>) -> RouteOutcome;
   fn changed(&self);
   fn open_window(&self);
 }
@@ -160,8 +160,8 @@ impl<R: Runtime> Host for TauriHost<R> {
     crate::plugin_notify::plugin_notify(self.0.clone(), title.to_owned(), body.to_owned(), None);
   }
 
-  fn route(&self, card_id: &str, event: &Event, bound: &str) -> RouteOutcome {
-    super::push::route(&self.0, card_id, event, Some(bound))
+  fn route(&self, card_id: &str, event: &Event, bound: Option<&str>) -> RouteOutcome {
+    super::push::route(&self.0, card_id, event, bound)
   }
 
   fn changed(&self) {

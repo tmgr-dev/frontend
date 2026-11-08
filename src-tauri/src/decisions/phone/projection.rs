@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use super::super::store::CardView;
+use super::super::store::{agent_expected, cloud_task_of, CardView};
 
 pub const CONTEXT_MAX: usize = 8000;
 pub const CARD_MAX: usize = 16 * 1024;
@@ -44,8 +44,10 @@ struct RepoOut {
 
 #[derive(Serialize)]
 struct MessageOut {
+  seq: u64,
   author: String,
   text: String,
+  created_ms: i64,
 }
 
 #[derive(Serialize)]
@@ -66,6 +68,8 @@ struct Projection {
   links: Vec<LinkOut>,
   repos: Vec<RepoOut>,
   messages: Vec<MessageOut>,
+  chat: bool,
+  task: bool,
   created_ms: i64,
   rev: String,
 }
@@ -110,7 +114,7 @@ fn build(view: &CardView, session: &str, context_max: usize, skip: usize, light:
     }
   }
   Projection {
-    p: 1,
+    p: 2,
     kind: view.kind.clone(),
     reply_via: view.reply_via.clone(),
     agent: view.source.agent.clone(),
@@ -145,8 +149,15 @@ fn build(view: &CardView, session: &str, context_max: usize, skip: usize, light:
       .messages
       .iter()
       .skip(skip)
-      .map(|m| MessageOut { author: m.author.clone(), text: chars(&m.text, MESSAGE_MAX).0 })
+      .map(|m| MessageOut {
+        seq: m.seq,
+        author: m.author.clone(),
+        text: chars(&m.text, MESSAGE_MAX).0,
+        created_ms: m.created_ms,
+      })
       .collect(),
+    chat: eligible(view) && agent_expected(&view.reply_via, &view.kind),
+    task: cloud_task_of(&view.links).is_some(),
     created_ms: view.created_ms,
     rev: view.rev.clone(),
   }

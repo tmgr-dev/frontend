@@ -261,6 +261,7 @@ fn event_label(e: &Event) -> String {
 fn phone_answer_in_of(r: &PhoneReq, card: &CardIn) -> Option<AnswerIn> {
   use tmgr_phone::Action;
   match r.action {
+    Action::Chat => None,
     Action::Defer | Action::Dismiss if r.choice.is_some() || r.text.is_some() => None,
     Action::Defer => Some(AnswerIn { deferred: true, ..Default::default() }),
     Action::Dismiss => Some(AnswerIn { dismissed: true, ..Default::default() }),
@@ -489,13 +490,21 @@ fn found(r: &Row, c: &CardIn, answer: Option<&Event>) -> Found {
   }
 }
 
+pub(crate) fn agent_expected(reply_via: &str, kind: &str) -> bool {
+  matches!(reply_via, "mcp" | "cli") || (reply_via == "hook" && kind == "stopped")
+}
+
 fn expects_agent(c: &CardIn) -> bool {
-  matches!(c.reply_via.as_str(), "mcp" | "cli") || (c.reply_via == "hook" && c.kind == "stopped")
+  agent_expected(&c.reply_via, &c.kind)
+}
+
+pub(crate) fn cloud_task_of(links: &Links) -> Option<(String, String, i64)> {
+  let urls = links.task.iter().map(String::as_str).chain(links.items.iter().filter(|i| i.kind == "task").map(|i| i.url.as_str()));
+  urls.filter_map(parse_cloud_task).next()
 }
 
 fn cloud_task(c: &CardIn) -> Option<(String, String, i64)> {
-  let urls = c.links.task.iter().map(String::as_str).chain(c.links.items.iter().filter(|i| i.kind == "task").map(|i| i.url.as_str()));
-  urls.filter_map(parse_cloud_task).next()
+  cloud_task_of(&c.links)
 }
 
 fn parse_cloud_task(link: &str) -> Option<(String, String, i64)> {
@@ -543,6 +552,18 @@ fn comment_body(c: &CardIn, a: &Event, card_id: &str) -> String {
   tail.push(format!("[decision {card_id}#{}]", a.seq));
   let tail = tail.join("\n\n");
   let head = head.join("\n\n");
+  let room = COMMENT_BODY_MAX.saturating_sub(tail.len() + 2);
+  format!("{}\n\n{tail}", cap(&head, room))
+}
+
+fn message_comment_body(c: &CardIn, text: &str, card_id: &str, seq: u64) -> String {
+  let head = format!("Message on decision: {}", unmarked(&c.title));
+  let tail = [
+    format!("Message: {}", cap(&unmarked(text), COMMENT_TAIL_FIELD_MAX)),
+    format!("Card: {card_id}"),
+    format!("[decision {card_id}#{seq}]"),
+  ]
+  .join("\n\n");
   let room = COMMENT_BODY_MAX.saturating_sub(tail.len() + 2);
   format!("{}\n\n{tail}", cap(&head, room))
 }
@@ -1246,6 +1267,48 @@ impl Store {
   }
 
   pub fn pending_task_comments(&self) -> Result<Vec<PendingTaskComment>, String> {
+    self.pending_task_comments_at(now_ms())
+  }
+
+  fn pending_task_comments_at(&self, now: i64) -> Result<Vec<PendingTaskComment>, String> {
+    let mut out = self.pending_answer_comments()?;
+    out.extend(self.pending_phone_messages(now)?);
+    Ok(out)
+  }
+
+  fn pending_phone_messages(&self, now: i64) -> Result<Vec<PendingTaskComment>, String> {
+    let mut stmt = self
+      .conn
+      .prepare(
+        "SELECT e.card_id, e.seq, e.json FROM events e
+         WHERE json_extract(e.json,'$.type')='message' AND json_extract(e.json,'$.via')='phone'
+           AND NOT EXISTS(SELECT 1 FROM deliveries d WHERE d.card_id=e.card_id AND d.seq=e.seq AND d.state IN ('delivered','sent'))
+           AND NOT EXISTS(SELECT 1 FROM task_comments t WHERE t.card_id=e.card_id AND t.seq=e.seq)",
+      )
+      .map_err(sql_err)?;
+    let found = stmt
+      .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64, r.get::<_, String>(2)?)))
+      .map_err(sql_err)?
+      .collect::<Result<Vec<_>, _>>()
+      .map_err(sql_err)?;
+    let mut out: Vec<(i64, PendingTaskComment)> = Vec::new();
+    for (card_id, seq, json) in found {
+      let (Some(r), Ok(event)) = (self.raw(&card_id)?, serde_json::from_str::<Event>(&json)) else { continue };
+      let Ok(c) = serde_json::from_str::<CardIn>(&r.card) else { continue };
+      let Some(created) = self.owner_messages(&card_id)?.into_iter().find(|m| m.2 == seq).map(|m| m.1) else { continue };
+      let age = now - created;
+      if !expects_agent(&c) || age > UNPICKED_WINDOW_MS || !(age > UNPICKED_MS || !is_live(&r.state)) {
+        continue;
+      }
+      let Some((origin, workspace, task_id)) = cloud_task(&c) else { continue };
+      let body = message_comment_body(&c, event.text.as_deref().unwrap_or_default(), &card_id, seq);
+      out.push((created, PendingTaskComment { card_id, seq, task_id, origin, workspace, body }));
+    }
+    out.sort_by_key(|(created, _)| *created);
+    Ok(out.into_iter().map(|(_, p)| p).collect())
+  }
+
+  fn pending_answer_comments(&self) -> Result<Vec<PendingTaskComment>, String> {
     let mut stmt = self
       .conn
       .prepare(&format!(
@@ -1488,6 +1551,24 @@ impl Store {
     let card: CardIn = serde_json::from_str(&row.card).map_err(json_err)?;
     let view = self.view(row, now_ms())?;
     let target = delivery_target(&self.conn, &r.card_id).unwrap_or_default();
+    if r.action == tmgr_phone::Action::Chat {
+      if !phone::eligible(&view) || !expects_agent(&card) {
+        return reject(self, AckResult::NotEligible);
+      }
+      let text = r.text.clone().filter(|t| !t.trim().is_empty() && tmgr_phone::check_text(t).is_ok());
+      let Some(text) = text.filter(|_| r.choice.is_none()) else { return reject(self, AckResult::Invalid) };
+      let fp = r.phone_fp.get(..8).unwrap_or(&r.phone_fp);
+      let event =
+        self.owner_message_in(&self.conn, &r.card_id, MessageIn { text, ..Default::default() }, Some(("phone", fp)))?;
+      let out = PhoneOutcome {
+        result: AckResult::Applied,
+        winner: None,
+        label: Some("Message".into()),
+        applied: Some((event, card)),
+        target,
+      };
+      return record(self, out);
+    }
     match phone::project(&view, &target) {
       Some(p) if p.digest == r.card_digest && target == r.session => {}
       _ => return reject(self, AckResult::Changed),
@@ -1507,6 +1588,19 @@ impl Store {
   pub fn owner_message(&mut self, id: &str, m: MessageIn) -> Result<Event, String> {
     let id = &self.canon(id)?;
     self.live_card(id)?;
+    let tx = self.conn.unchecked_transaction().map_err(sql_err)?;
+    let event = self.owner_message_in(&tx, id, m, None)?;
+    tx.commit().map_err(sql_err)?;
+    Ok(event)
+  }
+
+  fn owner_message_in(
+    &self,
+    conn: &Connection,
+    id: &str,
+    m: MessageIn,
+    via: Option<(&str, &str)>,
+  ) -> Result<Event, String> {
     let text = cap(&m.text, TEXT_MAX);
     if text.is_empty() {
       return Err("text is required".into());
@@ -1523,21 +1617,23 @@ impl Store {
       text: Some(text.clone()),
       thread: file.clone().zip(line).map(|(file, line)| ThreadRef { file, line, side: side.clone() }),
       action: Some(action),
+      via: via.map(|(v, _)| v.to_owned()),
+      via_fp: via.map(|(_, fp)| fp.to_owned()),
       ..Default::default()
     };
     let mseq = self.next_message_seq(id)?;
-    let tx = self.conn.transaction().map_err(sql_err)?;
-    tx.execute(
-      "INSERT INTO events(card_id, seq, json) VALUES(?1, ?2, ?3)",
-      params![id, seq as i64, serde_json::to_string(&event).map_err(json_err)?],
-    )
-    .map_err(sql_err)?;
-    tx.execute(
-      "INSERT INTO messages(card_id, seq, author, text, file, line, side, created_ms) VALUES(?1, ?2, 'owner', ?3, ?4, ?5, ?6, ?7)",
-      params![id, mseq, text, file, line.map(i64::from), side, now_ms()],
-    )
-    .map_err(sql_err)?;
-    tx.commit().map_err(sql_err)?;
+    conn
+      .execute(
+        "INSERT INTO events(card_id, seq, json) VALUES(?1, ?2, ?3)",
+        params![id, seq as i64, serde_json::to_string(&event).map_err(json_err)?],
+      )
+      .map_err(sql_err)?;
+    conn
+      .execute(
+        "INSERT INTO messages(card_id, seq, author, text, file, line, side, created_ms) VALUES(?1, ?2, 'owner', ?3, ?4, ?5, ?6, ?7)",
+        params![id, mseq, text, file, line.map(i64::from), side, now_ms()],
+      )
+      .map_err(sql_err)?;
     Ok(event)
   }
 
@@ -1686,6 +1782,47 @@ impl Store {
         .collect()
     };
     query().unwrap_or_default()
+  }
+
+  fn owner_messages(&self, id: &str) -> Result<Vec<(u64, i64, u64)>, String> {
+    let mut stmt = self
+      .conn
+      .prepare("SELECT seq, created_ms FROM messages WHERE card_id=?1 AND author='owner' ORDER BY seq")
+      .map_err(sql_err)?;
+    let rows = stmt
+      .query_map([id], |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)?)))
+      .map_err(sql_err)?
+      .collect::<Result<Vec<_>, _>>()
+      .map_err(sql_err)?;
+    let seqs = self.message_event_seqs(id);
+    Ok(rows.into_iter().zip(seqs).map(|((m, at), e)| (m, at, e)).collect())
+  }
+
+  pub fn live_messages(&self, id: &str) -> Vec<tmgr_phone::LiveMessage> {
+    let at = |sql: &str, e: u64| -> Option<i64> {
+      self.conn.query_row(sql, params![id, e as i64], |r| r.get(0)).optional().ok().flatten()
+    };
+    self
+      .owner_messages(id)
+      .unwrap_or_default()
+      .into_iter()
+      .map(|(seq, _, e)| tmgr_phone::LiveMessage {
+        seq,
+        delivered_ms: at("SELECT at_ms FROM deliveries WHERE card_id=?1 AND seq=?2 AND state IN ('delivered','sent')", e),
+        saved_ms: at("SELECT posted_ms FROM task_comments WHERE card_id=?1 AND seq=?2 AND posted_ms>0 AND skipped IS NULL", e),
+      })
+      .collect()
+  }
+
+  pub fn deliver_through(&self, id: &str, upto: u64) -> Result<bool, String> {
+    let mut changed = false;
+    for e in self.message_event_seqs(id).into_iter().filter(|e| *e <= upto) {
+      if self.delivery_state(id, e)?.as_deref().is_some_and(|s| matches!(s, "delivered" | "sent")) {
+        continue;
+      }
+      changed |= self.record_delivery(id, e, "delivered", "agent", "")? != Recorded::Same;
+    }
+    Ok(changed)
   }
 
   pub fn wait_event(&self, id: &str, since: u64, final_only: bool) -> Result<Option<Event>, String> {
@@ -3106,5 +3243,81 @@ mod tests {
     let body = comment_body(&c, &a, "c_1");
     assert_eq!(body.matches("[decision ").count(), 1, "{body}");
     assert!(body.ends_with("[decision c_1#1]"));
+  }
+
+  fn phone_msg(s: &Store, id: &str, text: &str, created: i64, via: Option<&str>) -> u64 {
+    let e = s
+      .owner_message_in(&s.conn, id, MessageIn { text: text.into(), ..Default::default() }, via.map(|v| (v, "abcd1234")))
+      .unwrap();
+    s.conn.execute("UPDATE messages SET created_ms=?2 WHERE card_id=?1", params![id, created]).unwrap();
+    e.seq
+  }
+
+  fn msg_card(task: Option<&str>, via: &str) -> CardIn {
+    let links = Links { task: task.map(Into::into), ..Default::default() };
+    CardIn { links, reply_via: via.into(), ..card("Ship?") }
+  }
+
+  #[test]
+  fn a_phone_message_is_posted_after_thirty_minutes_not_before() {
+    let mut s = mem();
+    let id = s.create(msg_card(Some(CLOUD_TASK), "mcp")).unwrap().id;
+    let seq = phone_msg(&s, &id, "please wait", 1000, Some("phone"));
+    assert!(s.pending_task_comments_at(1000 + HALF_HOUR).unwrap().is_empty());
+    let p = s.pending_task_comments_at(1001 + HALF_HOUR).unwrap();
+    assert_eq!(p.len(), 1);
+    assert_eq!((p[0].card_id.as_str(), p[0].seq, p[0].task_id), (id.as_str(), seq, 211));
+    assert_eq!(
+      p[0].body,
+      format!("Message on decision: Ship?\n\nMessage: please wait\n\nCard: {id}\n\n[decision {id}#{seq}]")
+    );
+    s.mark_task_comment(&id, seq).unwrap();
+    assert!(s.pending_task_comments_at(1001 + HALF_HOUR).unwrap().is_empty());
+    assert!(s.live_messages(&id)[0].saved_ms.is_some());
+  }
+
+  #[test]
+  fn a_phone_message_is_posted_at_once_when_the_card_is_closed_and_not_after_a_week() {
+    let mut s = mem();
+    let id = s.create(msg_card(Some(CLOUD_TASK), "mcp")).unwrap().id;
+    phone_msg(&s, &id, "late", 1000, Some("phone"));
+    s.answer(&id, pick_a()).unwrap();
+    let ids: Vec<_> = s.pending_task_comments_at(2000).unwrap().into_iter().filter(|p| p.body.contains("Message:")).collect();
+    assert_eq!(ids.len(), 1);
+    assert!(s.pending_task_comments_at(1000 + UNPICKED_WINDOW_MS + 1).unwrap().iter().all(|p| !p.body.contains("Message:")));
+  }
+
+  #[test]
+  fn delivered_desktop_typed_and_unlinked_phone_messages_are_not_posted() {
+    let mut s = mem();
+    let late = 1001 + HALF_HOUR;
+    let delivered = s.create(msg_card(Some(CLOUD_TASK), "mcp")).unwrap().id;
+    let seq = phone_msg(&s, &delivered, "seen", 1000, Some("phone"));
+    s.record_delivery(&delivered, seq, "delivered", "agent", "").unwrap();
+    let desktop = s.create(CardIn { title: "Other".into(), ..msg_card(Some(CLOUD_TASK), "mcp") }).unwrap().id;
+    phone_msg(&s, &desktop, "typed", 1000, None);
+    let unlinked = s.create(CardIn { title: "Third".into(), ..msg_card(None, "mcp") }).unwrap().id;
+    phone_msg(&s, &unlinked, "no task", 1000, Some("phone"));
+    let hook = s.create(CardIn { title: "Fourth".into(), kind: "decision".into(), ..msg_card(Some(CLOUD_TASK), "hook") }).unwrap().id;
+    phone_msg(&s, &hook, "hook", 1000, Some("phone"));
+    assert!(s.pending_task_comments_at(late).unwrap().is_empty());
+  }
+
+  #[test]
+  fn live_messages_report_delivery_and_saved_times_by_message_seq() {
+    let mut s = mem();
+    let id = s.create(msg_card(Some(CLOUD_TASK), "mcp")).unwrap().id;
+    let a = phone_msg(&s, &id, "one", 1000, Some("phone"));
+    let b = phone_msg(&s, &id, "two", 1000, Some("phone"));
+    phone_msg(&s, &id, "three", 1000, Some("phone"));
+    s.record_delivery(&id, a, "sent", "claude", "").unwrap();
+    s.mark_task_comment(&id, b).unwrap();
+    let live = s.live_messages(&id);
+    assert_eq!(live.iter().map(|m| m.seq).collect::<Vec<_>>(), [1, 2, 3]);
+    assert!(live[0].delivered_ms.is_some() && live[0].saved_ms.is_none());
+    assert!(live[1].delivered_ms.is_none() && live[1].saved_ms.is_some());
+    assert!(live[2].delivered_ms.is_none() && live[2].saved_ms.is_none());
+    s.skip_task_comment(&id, 3, "x").unwrap();
+    assert!(s.live_messages(&id)[2].saved_ms.is_none());
   }
 }

@@ -834,7 +834,7 @@ mod tests {
     let run = FakeRunner::with(vec![]);
     q.tick(&hub, &run, Instant::now());
     assert!(run.calls().is_empty() && q.is_empty());
-    assert_eq!(state(&hub, &id).unwrap().0, "queued");
+    assert_eq!(state(&hub, &id).unwrap().0, "delivered");
     hub.answer(&id, AnswerIn { dismissed: true, ..Default::default() }).unwrap();
     waiter.join().unwrap();
   }
