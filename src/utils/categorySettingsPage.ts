@@ -1,4 +1,3 @@
-import { t } from '@/i18n';
 import { titlePatternHandler } from '@/utils/titlePatternHandler';
 
 export const TITLE_PATTERN_KEY = 'task_name_pattern_date&time';
@@ -150,10 +149,8 @@ export const formatDuration = (value: string | number | null | undefined) => {
 	if (!Number.isFinite(seconds) || seconds < 0) return '';
 	const hours = Math.floor(seconds / 3600);
 	const minutes = Math.floor((seconds % 3600) / 60);
-	if (!hours) return t('common.duration.minutes', { minutes });
-	return minutes
-		? t('common.duration.hoursMinutes', { hours, minutes })
-		: t('common.duration.hours', { hours });
+	if (!hours) return `${minutes}m`;
+	return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
 };
 
 export const parseDuration = (text: string) => {
