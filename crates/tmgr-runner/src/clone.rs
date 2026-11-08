@@ -481,8 +481,19 @@ pub fn check(cwd: &Dir, clone_of: &str, homes: &Path) -> Result<Objects, Refusal
     let repo = Repo::open(clone_of)?;
     let rel = folder_below(cwd, &repo.worktrees())?;
     let referenced = repo.check_clone(cwd.raw_fd(), &cwd.path)?;
-    let owned = referenced || marked(homes, cwd.id(), &cwd.path, repo.id);
+    let marked = marked(homes, cwd.id(), &cwd.path, repo.id);
+    if marked && referenced {
+        return refuse(late_alternates(&cwd.path));
+    }
+    let owned = referenced || marked;
     Ok(repo.objects(referenced, owned && rel.len() == 1 && rel[0] != "queue"))
+}
+
+fn late_alternates(clone: &Path) -> String {
+    format!(
+        "{} was made without alternates; its objects/info/alternates was added later. Remove that file or re-clone",
+        clone.display()
+    )
 }
 
 fn valid_clone_name(name: &str) -> bool {
@@ -558,10 +569,13 @@ pub fn check_multi(
         })?;
         let shown = run.path.join(name);
         let referenced = repo.check_clone(dir.as_raw_fd(), &shown)?;
-        let owned = referenced
-            || dir
-                .metadata()
-                .is_ok_and(|m| marked(homes, (m.dev(), m.ino()), &shown, repo.id));
+        let marked = dir
+            .metadata()
+            .is_ok_and(|m| marked(homes, (m.dev(), m.ino()), &shown, repo.id));
+        if marked && referenced {
+            return refuse(late_alternates(&shown));
+        }
+        let owned = referenced || marked;
         out.push(repo.objects(referenced, owned && task_folder));
     }
     Ok(out)
@@ -894,6 +908,57 @@ mod tests {
         mark_task_clone(&homes, &run.join("fe"), &repo).unwrap();
         let after = check_multi(&open(), &src, &clones, None, &homes).unwrap();
         assert!(after[0].task_clone && !after[0].borrows);
+    }
+
+    fn add_alternates(repo: &Path, clone: &Path) {
+        let info = clone.join(".git/objects/info");
+        std::fs::create_dir_all(&info).unwrap();
+        std::fs::write(
+            info.join("alternates"),
+            format!("{}/.git/objects\n", repo.display()),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_marked_clone_that_gained_alternates_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (repo, dest, homes) = self_contained(&root);
+        mark_task_clone(&homes, &dest, &repo).unwrap();
+        add_alternates(&repo, &dest);
+        let (code, msg) = check(
+            &open_path(dest.clone()).unwrap(),
+            repo.to_str().unwrap(),
+            &homes,
+        )
+        .unwrap_err();
+        assert_eq!(code, ErrorCode::InvalidParams);
+        assert!(msg.contains(dest.to_str().unwrap()), "{msg}");
+    }
+
+    #[test]
+    fn a_marked_clone_of_a_run_folder_that_gained_alternates_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (repo, dest, homes) = self_contained(&root);
+        let run = root.join("repo-worktrees/run");
+        std::fs::create_dir(&run).unwrap();
+        std::fs::rename(&dest, run.join("fe")).unwrap();
+        let src = repo.to_str().unwrap().to_string();
+        let clones = vec![("fe".to_string(), src.clone())];
+        mark_task_clone(&homes, &run.join("fe"), &repo).unwrap();
+        add_alternates(&repo, &run.join("fe"));
+        let (code, msg) = check_multi(
+            &open_path(run.clone()).unwrap(),
+            &src,
+            &clones,
+            None,
+            &homes,
+        )
+        .unwrap_err();
+        assert_eq!(code, ErrorCode::InvalidParams);
+        assert!(msg.contains(run.join("fe").to_str().unwrap()), "{msg}");
     }
 
     #[test]

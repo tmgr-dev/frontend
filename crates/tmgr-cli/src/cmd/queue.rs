@@ -4,6 +4,7 @@ use crate::cmd::runner::cloud::{
     bound_set_paths, cloud_gate, parse_eligibility, publish_outcome, CloneRef, Mode, Outcome,
     PublishTarget, QueueRun,
 };
+use crate::cmd::runner::marked_queue::MarkedClone;
 use crate::cmd::runner::Opts;
 use crate::ctx::Ctx;
 use crate::out::{stdout_style, table, Output};
@@ -30,7 +31,6 @@ use tmgr_queue::state::{self, Status};
 use tmgr_queue::taken::{
     assess, owners_of, people_of, personas_of, running_agents_of, Facts, Fresh, FreshTask,
 };
-use tmgr_queue::workdir::GitClone;
 use tmgr_queue::{Deps, Paths, Publisher};
 
 pub(crate) const WARNING: &str = "\
@@ -1800,7 +1800,7 @@ pub(crate) fn with_deps<T>(
         publisher: &publisher,
         runs,
         profiles: &RunnerProfiles,
-        workdirs: &GitClone,
+        workdirs: &MarkedClone::new(),
         fresh: &fresh,
         now: Utc::now(),
         local_minutes: now.hour() * 60 + now.minute(),

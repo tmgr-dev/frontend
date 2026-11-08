@@ -57,7 +57,10 @@ pub(super) fn start(
         &req.profile,
         taken,
     )?;
-    super::run_task::mark_task_clone(&sc.path, &sc.repo.display().to_string());
+    if let Err(e) = super::run_task::mark_task_clone(&sc.path, &sc.repo.display().to_string()) {
+        sessionwt::abandon(&sc);
+        return Err(e.to_string());
+    }
     req.cwd = sc.path.display().to_string();
     req.name = Some(sc.name.clone());
     req.clone_of = Some(sc.repo.display().to_string());

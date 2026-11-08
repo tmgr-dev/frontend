@@ -33,6 +33,7 @@ pub(crate) mod cloud;
 mod gate;
 mod gc;
 mod local;
+pub(crate) mod marked_queue;
 pub(crate) mod menu;
 mod observe;
 mod ops;

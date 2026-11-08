@@ -1224,7 +1224,9 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         Layout::Single { repo, clone } => {
             write_record(&ws.code, task_id, repo, clone, &branch, None, &[])?;
             workdir::prepare_clone(repo, clone, &branch, a.base.as_deref())?;
-            super::run_task::mark_task_clone(clone, repo);
+            super::run_task::mark_or_remove(clone, || {
+                super::run_task::mark_task_clone(clone, repo)
+            })?;
             (repo.clone(), clone.clone(), Vec::new())
         }
         Layout::Multi { run_dir, plans } => {
@@ -1250,9 +1252,11 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
                 .map(|p| (p.name.clone(), p.path.clone()))
                 .collect();
             workdir::prepare_run_folder(run_dir, &pairs, &branch)?;
-            for p in plans {
-                super::run_task::mark_task_clone(&run_dir.join(&p.name), &p.path);
-            }
+            super::run_task::mark_or_remove(run_dir, || {
+                plans.iter().try_for_each(|p| {
+                    super::run_task::mark_task_clone(&run_dir.join(&p.name), &p.path)
+                })
+            })?;
             let identified = plans
                 .iter()
                 .map(|p| {

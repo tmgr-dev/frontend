@@ -355,10 +355,30 @@ fn create_request(
     }
 }
 
-pub(super) fn mark_task_clone(clone: &std::path::Path, repo: &str) {
-    if let Ok(homes) = tmgr_ipc::dirs::homes_dir() {
-        let _ = tmgr_runner::clone::mark_task_clone(&homes, clone, std::path::Path::new(repo));
+pub(super) fn mark_in(homes: &Path, clone: &Path, repo: &str) -> Result<()> {
+    tmgr_runner::clone::mark_task_clone(homes, clone, Path::new(repo)).map_err(|e| {
+        Error::internal(format!(
+            "cannot record {} as a task clone: {e}",
+            clone.display()
+        ))
+    })
+}
+
+pub(super) fn homes() -> Result<PathBuf> {
+    tmgr_ipc::dirs::homes_dir()
+        .map_err(|e| Error::internal(format!("the runner homes folder is unavailable: {e}")))
+}
+
+pub(super) fn mark_task_clone(clone: &Path, repo: &str) -> Result<()> {
+    mark_in(&homes()?, clone, repo)
+}
+
+pub(super) fn mark_or_remove(fresh: &Path, mark: impl FnOnce() -> Result<()>) -> Result<()> {
+    let done = mark();
+    if done.is_err() {
+        let _ = std::fs::remove_dir_all(fresh);
     }
+    done
 }
 
 pub(super) fn execute(p: &Prepared, l: &Launch) -> Result<Started> {
@@ -392,7 +412,7 @@ fn execute_with(p: &Prepared, l: &Launch, no_sandbox: bool) -> Result<Started> {
     }
     remember(plan)?;
     workdir::prepare_clone(&plan.repo, &plan.clone, &plan.branch, l.base)?;
-    mark_task_clone(&plan.clone, &plan.repo);
+    mark_or_remove(&plan.clone, || mark_task_clone(&plan.clone, &plan.repo))?;
     let cwd = std::fs::canonicalize(&plan.clone)
         .map_err(|e| Error::internal(format!("clone {}: {e}", plan.clone.display())))?
         .to_string_lossy()
@@ -582,6 +602,31 @@ mod tests {
             base: None,
             size: (100, 30),
         }
+    }
+
+    #[test]
+    fn a_marker_that_cannot_be_written_fails_and_the_fresh_clone_is_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let clone = root.join("clone");
+        std::fs::create_dir(&clone).unwrap();
+        let homes = root.join("homes-file");
+        std::fs::write(&homes, "x").unwrap();
+        let err = mark_or_remove(&clone, || mark_in(&homes, &clone, "/r")).unwrap_err();
+        assert!(err.to_string().contains("task clone"), "{err}");
+        assert!(!clone.exists());
+    }
+
+    #[test]
+    fn a_written_marker_keeps_the_clone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (clone, repo, homes) = (root.join("clone"), root.join("repo"), root.join("homes"));
+        for d in [&clone, &repo, &homes] {
+            std::fs::create_dir(d).unwrap();
+        }
+        mark_or_remove(&clone, || mark_in(&homes, &clone, repo.to_str().unwrap())).unwrap();
+        assert!(tmgr_runner::clone::is_marked_clone(&homes, &clone));
     }
 
     #[test]
