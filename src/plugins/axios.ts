@@ -1,3 +1,4 @@
+import { currentLocale } from '@/i18n';
 import store from '@/store';
 import { desktopWindowLabel } from '@/utils/desktop';
 import {
@@ -132,6 +133,7 @@ $axios.interceptors.request.use(
 		if (blockedModule) {
 			throw moduleOffError(config, blockedModule);
 		}
+		if (config.headers) config.headers['X-Tmgr-Lang'] = currentLocale();
 		const token = store.state.token?.token;
 		if (token && config.headers) {
 			config.headers.Authorization = `Bearer ${token}`;

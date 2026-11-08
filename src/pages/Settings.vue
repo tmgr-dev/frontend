@@ -122,6 +122,8 @@
 							<ThemePicker />
 						</SettingsSection>
 
+						<LanguageSetting v-if="isTheme" />
+
 						<TimeZoneSetting v-if="isTheme && !localOnly" />
 
 						<div v-if="isProfile && localOnly" class="flex flex-col gap-6">
@@ -386,6 +388,7 @@
 	import CommandChip from '@/components/general/CommandChip.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import ThemePicker from '@/components/general/ThemePicker.vue';
+	import LanguageSetting from '@/components/general/LanguageSetting.vue';
 	import TimeZoneSetting from '@/components/general/TimeZoneSetting.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
@@ -441,6 +444,7 @@
 			LocalDataSettings,
 			LocalProfileSettings,
 			ThemePicker,
+			LanguageSetting,
 			TimeZoneSetting,
 			CommandChip,
 			SettingsSection,

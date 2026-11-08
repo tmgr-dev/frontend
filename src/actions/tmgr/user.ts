@@ -1,4 +1,5 @@
 import { FormSetting, Setting } from '@/actions/tmgr/settings';
+import { currentLocale, isSupportedLocale, setLocale } from '@/i18n';
 import $axios from '@/plugins/axios';
 import store from '@/store';
 import { pickThemeFromSettings } from '@/theme/reconcile';
@@ -62,7 +63,33 @@ export const getUser = async () => {
 		onSaved: (timezone) => store.commit('setUserTimeZone', timezone),
 	});
 
+	void applyUserLanguage();
+
 	return data;
+};
+
+const languageSettingKnown = () =>
+	store.getters.isLoggedIn && !!store.getters.userSettingByKey('language');
+
+export const saveUserLanguage = async (
+	language: string,
+	ifUnset = false,
+): Promise<void> => {
+	if (!languageSettingKnown()) return;
+	await $axios.put(
+		'user/language',
+		ifUnset ? { language, if_unset: true } : { language },
+	);
+};
+
+const applyUserLanguage = async () => {
+	if (!languageSettingKnown()) return;
+	const saved = store.getters.userSettingByKey('language')?.value;
+	if (isSupportedLocale(saved)) {
+		await setLocale(saved);
+		return;
+	}
+	await saveUserLanguage(currentLocale(), true).catch(() => undefined);
 };
 
 export const saveUserTimeZone = async (

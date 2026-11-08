@@ -12,6 +12,7 @@ module.exports = {
   // and was removed rather than wiring up vue-jest/babel for zero assertions.
   testMatch: ['**/__tests__/**/*.test.ts', '**/?(*.)+(spec|test).ts'],
   moduleNameMapper: {
+    '^\\./messageCatalog$': '<rootDir>/src/i18n/messageCatalog.node.ts',
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   // marked ships ESM only and jest runs CommonJS here, so it is compiled like
