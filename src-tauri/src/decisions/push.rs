@@ -25,6 +25,7 @@ const QUEUE_MAX: Duration = Duration::from_secs(2 * 3600);
 const WAITING: &str = "Waiting for the agent's prompt";
 const UNCONFIRMABLE: &str = "Can't confirm the agent's prompt";
 const UNREAD: &str = "Waiting for the agent to read it";
+pub const CHANGED: &str = "The agent session changed before delivery";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RouteOutcome {
@@ -180,6 +181,7 @@ pub fn route_with(
 ) -> RouteOutcome {
   let Ok(Some(r)) = hub.routing(card_id) else { return RouteOutcome::Skipped };
   if bound_target.is_some() && bound_target != r.target.as_deref() {
+    hub.record_delivery(&r.id, event.seq, "undelivered", "", CHANGED);
     return RouteOutcome::TargetChanged;
   }
   let card = &r.card;
@@ -583,14 +585,29 @@ mod tests {
     let s = FakeSocket::default();
     let q = Queue::default();
     let now = hub.routing(&id).unwrap().unwrap().target.unwrap();
-    assert_eq!(now, "claude:sess-1");
+    assert!(now.starts_with("claude:sess-1@"));
     assert_eq!(route_with(&hub, &q, &s, &id, &e, Some("claude:other")), RouteOutcome::TargetChanged);
-    assert_eq!(route_with(&hub, &q, &s, &id, &e, Some("claude:sess-1|runner:r2")), RouteOutcome::TargetChanged);
+    assert_eq!(route_with(&hub, &q, &s, &id, &e, Some("claude:sess-1@0000000000000000|runner:r2")), RouteOutcome::TargetChanged);
     assert!(s.calls().is_empty());
     assert_eq!(route_with(&hub, &q, &s, &id, &e, Some(&now)), RouteOutcome::Sent);
     let bare = hub.create(mcp("Other")).unwrap().id;
     let e2 = answer(&hub, &bare, None);
     assert_eq!(route_with(&hub, &q, &s, &bare, &e2, Some("claude:1")), RouteOutcome::TargetChanged);
+  }
+
+  #[test]
+  fn a_target_re_registered_under_the_same_session_label_is_not_the_bound_target() {
+    let hub = hub();
+    let id = hub.create_with(mcp("Q"), Some(inbox(SOCK))).unwrap().id;
+    let bound = hub.routing(&id).unwrap().unwrap().target.unwrap();
+    hub.drop_target(&id, SOCK);
+    let swapped = CardIn { id: Some(id.clone()), ..mcp("Q") };
+    hub.create_with(swapped, Some(inbox("/tmp/cc-socks/9999.sock"))).unwrap();
+    let e = answer(&hub, &id, Some("secret"));
+    let s = FakeSocket::default();
+    assert_eq!(route_with(&hub, &Queue::default(), &s, &id, &e, Some(&bound)), RouteOutcome::TargetChanged);
+    assert!(s.calls().is_empty());
+    assert_eq!(state(&hub, &id), Some(("undelivered".into(), String::new(), CHANGED.into())));
   }
 
   #[test]

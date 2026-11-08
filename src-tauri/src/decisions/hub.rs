@@ -364,6 +364,15 @@ impl Hub {
     Ok(out)
   }
 
+  #[cfg(test)]
+  pub fn stored_phone_ack(&self, answer_id: &str) -> Option<String> {
+    self.lock().stored_phone_ack(answer_id)
+  }
+
+  pub fn set_phone_ack_result(&self, answer_id: &str, result: tmgr_phone::AckResult) {
+    let _ = self.lock().set_phone_ack_result(answer_id, result);
+  }
+
   pub fn message(&self, id: &str, m: MessageIn) -> Result<Event, String> {
     let e = self.lock().owner_message(id, m)?;
     self.changed(Change::Updated);

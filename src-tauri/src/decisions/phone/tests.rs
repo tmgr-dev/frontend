@@ -6,7 +6,7 @@ use tmgr_ipc::decisions::{CardIn, Event, Inbox, Opt, Secret, Source};
 use tmgr_phone::{AckBody, AckResult, Action, AnswerBody, Dir, HelloBody, HelloCtx, Kind, Pairing, SnapshotBody};
 
 use super::super::hub::Hub;
-use super::super::push::{route_with, PushErr, Queue, SocketSender};
+use super::super::push::{route_with, CHANGED, PushErr, Queue, SocketSender};
 use super::super::store::{AnswerIn, Store};
 use super::audit::Audit;
 use super::pairing::PairState;
@@ -240,6 +240,11 @@ impl Rig {
     self.hub.get(id).unwrap().state
   }
 
+  fn stored_ack(&self, answer_id: &str) -> String {
+    let ack = self.hub.stored_phone_ack(answer_id).expect("a stored ack");
+    serde_json::from_str::<serde_json::Value>(&ack).unwrap()["result"].as_str().unwrap().to_owned()
+  }
+
   fn typed(&self) -> usize {
     self.host.delivered.lock().unwrap().len()
   }
@@ -458,14 +463,42 @@ fn a_target_change_between_the_check_and_delivery_types_nothing_and_acks_changed
   };
   let id = r.hub.create_with(card, Some(inbox)).unwrap().id;
   let (digest, session) = r.bind(&p, &id);
-  assert_eq!(session, "claude:sess-1|runner:run-1");
+  assert!(session.starts_with("claude:sess-1@") && session.ends_with("|runner:run-1"));
   let hub = r.hub.clone();
   let moved = id.clone();
   *r.host.before_route.lock().unwrap() = Some(Box::new(move || hub.drop_target(&moved, endpoint)));
   let body = r.body(&id, &digest, &session, Action::Answer, None, Some("go on"));
   assert_eq!(r.answer_ack(&p, &body).result, AckResult::Changed);
   assert_eq!(r.host.outcomes.lock().unwrap().as_slice(), [RouteOutcome::TargetChanged]);
-  assert!(r.hub.get(&id).unwrap().delivery.is_none());
+  let d = r.hub.get(&id).unwrap().delivery.unwrap();
+  assert_eq!((d.state.as_str(), d.detail.as_str()), ("undelivered", CHANGED));
+  assert_eq!(r.stored_ack(&body.answer_id), "changed");
+}
+
+#[test]
+fn a_session_label_re_registered_with_another_endpoint_is_changed_and_nothing_is_sent() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let card = CardIn {
+    title: "Agent stopped".into(),
+    kind: "stopped".into(),
+    reply_via: "hook".into(),
+    source: Source { agent: "claude".into(), session: Some("s2".into()), ..Default::default() },
+    ..Default::default()
+  };
+  let inbox = |endpoint: &str| Inbox {
+    kind: "claude".into(),
+    endpoint: endpoint.into(),
+    token: Some(Secret::new("tok")),
+    session: Some("sess-1".into()),
+  };
+  let id = r.hub.create_with(card.clone(), Some(inbox("/tmp/cc-socks/77.sock"))).unwrap().id;
+  let (digest, session) = r.bind(&p, &id);
+  r.hub.drop_target(&id, "/tmp/cc-socks/77.sock");
+  r.hub.create_with(CardIn { id: Some(id.clone()), ..card }, Some(inbox("/tmp/cc-socks/88.sock"))).unwrap();
+  let body = r.body(&id, &digest, &session, Action::Answer, None, Some("secret"));
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Changed);
+  assert_eq!(r.state(&id), "open");
 }
 
 #[test]

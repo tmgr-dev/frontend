@@ -486,6 +486,10 @@ fn plain(s: String, max: usize) -> Option<String> {
   (!s.is_empty() && s.chars().count() <= max && !s.chars().any(|c| c.is_control() || c == '|')).then_some(s)
 }
 
+fn endpoint_tag(endpoint: &str) -> String {
+  tmgr_phone::hex(&Sha256::digest(endpoint.as_bytes())).chars().take(16).collect()
+}
+
 pub fn delivery_target(conn: &Connection, card_id: &str) -> Option<String> {
   let mut parts: Vec<String> = Vec::new();
   if let Ok(mut stmt) = conn.prepare("SELECT kind, endpoint, session FROM push_targets WHERE card_id=?1") {
@@ -494,7 +498,11 @@ pub fn delivery_target(conn: &Connection, card_id: &str) -> Option<String> {
       .map(|rows| rows.filter_map(Result::ok).collect::<Vec<_>>())
       .unwrap_or_default();
     for (kind, endpoint, session) in rows {
-      let who = session.filter(|s| !s.is_empty()).or_else(|| pid_of(&endpoint)).unwrap_or_else(|| "unknown".into());
+      let who = match session.filter(|s| !s.is_empty()) {
+        Some(s) if kind == "claude" => format!("{s}@{}", endpoint_tag(&endpoint)),
+        Some(s) => s,
+        None => pid_of(&endpoint).unwrap_or_else(|| "unknown".into()),
+      };
       parts.push(format!("{kind}:{who}"));
     }
   }
@@ -1142,6 +1150,23 @@ impl Store {
     conn.execute("UPDATE cards SET state=?2, answer=?3, session_gone=CASE WHEN ?2='deferred' THEN session_gone ELSE 0 END WHERE id=?1", params![id, state, json])
       .map_err(sql_err)?;
     Ok((event, card))
+  }
+
+  #[cfg(test)]
+  pub fn stored_phone_ack(&self, answer_id: &str) -> Option<String> {
+    self.conn.query_row("SELECT ack FROM phone_answers WHERE answer_id=?1", [answer_id], |x| x.get(0)).ok()
+  }
+
+  pub fn set_phone_ack_result(&self, answer_id: &str, result: AckResult) -> Result<(), String> {
+    let ack = StoredAck { result: result.as_str().to_owned(), winner: None, label: None };
+    self
+      .conn
+      .execute(
+        "UPDATE phone_answers SET ack=?2 WHERE answer_id=?1",
+        params![answer_id, serde_json::to_string(&ack).map_err(json_err)?],
+      )
+      .map(drop)
+      .map_err(sql_err)
   }
 
   pub fn phone_answer(&mut self, r: &PhoneReq, now: i64) -> Result<PhoneOutcome, String> {

@@ -116,7 +116,10 @@ impl Phones {
       self.touch(&pin.mailbox, now);
     }
     let (result, label) = match self.after_apply(&req.card_id, &out) {
-      Some(RouteOutcome::TargetChanged) => (AckResult::Changed, None),
+      Some(RouteOutcome::TargetChanged) => {
+        self.hub.set_phone_ack_result(&req.answer_id, AckResult::Changed);
+        (AckResult::Changed, None)
+      }
       _ => (out.result, out.label.clone()),
     };
     self.audit.append(
