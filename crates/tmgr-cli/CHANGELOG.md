@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.111
+
+- `tmgr start` now accepts repositories whose git config sets `advice.*` or `status.*` keys (except `status.submoduleSummary`). With `--stash`, untracked files are found and stashed even when `status.showUntrackedFiles` is `no`.
+
 ## 1.0.110
 
 - Sandboxed agent runs can no longer read or write the desktop app's Decisions database or its phone audit log (including the rotated copy). The Decisions socket stays reachable, so `tmgr ask` and the MCP decision tools work as before. This protects answers sent from a paired iPhone (desktop 0.9.129).
