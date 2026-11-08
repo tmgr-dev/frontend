@@ -1,0 +1,222 @@
+{
+	"views": {
+		"list": "Lista",
+		"day": "Dia",
+		"week": "Semana",
+		"month": "Mês",
+		"year": "Ano"
+	},
+	"clusterPopover": {
+		"overlapping": "{n} sobrepostos"
+	},
+	"markDoneAria": "Marcar \"{title}\" como concluída",
+	"editAria": "Editar \"{title}\"",
+	"eventBlock": {
+		"dragStart": "Arraste para alterar o horário de início",
+		"dragDuration": "Arraste para alterar a duração"
+	},
+	"convert": {
+		"title": "Converter em tarefa",
+		"workspace": "Espaço de trabalho",
+		"category": "Projeto",
+		"noCategory": "Sem projeto",
+		"submit": "Converter"
+	},
+	"routineRow": {
+		"moreTitle": "Mais (clique com o botão direito para o menu)",
+		"more": "Mais",
+		"created": "criada {created}",
+		"createdUpdated": "criada {created} · atualizada {updated}"
+	},
+	"deleteDialog": {
+		"title": "Excluir rotina?",
+		"description": "\"{title}\" e todas as suas ocorrências serão excluídas. Esta ação não pode ser desfeita."
+	},
+	"clusterBlock": {
+		"events": "{n} eventos"
+	},
+	"more": "+ {n} mais",
+	"contextMenu": {
+		"duplicate": "Duplicar",
+		"archive": "Arquivar"
+	},
+	"unscheduled": "Sem data",
+	"archiveDone": "Arquivar concluídas ({n})",
+	"today": "Hoje",
+	"allDay": "DIA INTEIRO",
+	"dow": {
+		"mo": "Sg",
+		"tu": "Te",
+		"we": "Qa",
+		"th": "Qi",
+		"fr": "Sx",
+		"sa": "Sá",
+		"su": "Do"
+	},
+	"dowUpper": {
+		"mon": "SEG",
+		"tue": "TER",
+		"wed": "QUA",
+		"thu": "QUI",
+		"fri": "SEX",
+		"sat": "SÁB",
+		"sun": "DOM"
+	},
+	"dowLetter": {
+		"mon": "S",
+		"tue": "T",
+		"wed": "Q",
+		"thu": "Q",
+		"fri": "S",
+		"sat": "S",
+		"sun": "D"
+	},
+	"yearView": {
+		"less": "Menos",
+		"more": "Mais"
+	},
+	"editModal": {
+		"headerNew": "Nova rotina",
+		"headerEdit": "Editar rotina",
+		"untitled": "(sem título)",
+		"fields": {
+			"title": "Título",
+			"titlePlaceholder": "Qual é a rotina?",
+			"description": "Descrição",
+			"chars": "{n} caracteres",
+			"optional": "Opcional",
+			"descriptionPlaceholder": "Notas, contexto, links, checklist…",
+			"category": "Projeto",
+			"schedule": "Agenda",
+			"unscheduled": "Sem data (sem data/hora específica)",
+			"date": "Data",
+			"time": "Hora",
+			"start": "Início",
+			"end": "Fim",
+			"repeats": "Repete",
+			"onDay": "No dia",
+			"ofEveryMonth": "de cada mês",
+			"reminder": "Lembrete",
+			"reminderOnlyRepeating": "Somente para rotinas recorrentes",
+			"moveToWorkspace": "Mover para um espaço de trabalho como tarefa comum…"
+		},
+		"created": "Criada {when}",
+		"updated": "Atualizada {when}",
+		"deleteRoutine": "Excluir rotina",
+		"createRoutine": "Criar rotina",
+		"saveChanges": "Salvar alterações",
+		"duration": {
+			"hm": "{h}h {m}min",
+			"h": "{h}h",
+			"m": "{m}min"
+		},
+		"freq": {
+			"once": "Uma vez",
+			"daily": "Diariamente",
+			"weekly": "Semanalmente",
+			"monthly": "Mensalmente",
+			"yearly": "Anualmente"
+		},
+		"reminder": {
+			"off": "Desativado",
+			"atTime": "No horário",
+			"min5": "5 min",
+			"min15": "15 min",
+			"min30": "30 min",
+			"hour1": "1 h"
+		},
+		"summary": {
+			"daily": "Todos os dias",
+			"pickDay": "Escolha pelo menos um dia",
+			"everyDayOfWeek": "Todos os dias da semana",
+			"weekdays": "Todos os dias úteis (seg–sex)",
+			"weekends": "Todos os fins de semana",
+			"onDays": "Em {days}",
+			"monthly": "No dia {day} de cada mês",
+			"yearly": "Anualmente"
+		}
+	},
+	"moveToCloud": {
+		"cloudWorkspace": "Espaço de trabalho na nuvem",
+		"ticketKey": "O servidor atribui a chave do ticket.",
+		"statement": "{n} rotina será enviada ao servidor do TMGR e sairá deste dispositivo. Cada cópia local é removida depois que o servidor confirmar. | {n} rotinas serão enviadas ao servidor do TMGR e sairão deste dispositivo. Cada cópia local é removida depois que o servidor confirmar.",
+		"destination": "Destino:",
+		"pastCompletions": "As conclusões anteriores não são movidas; a cópia na nuvem começa do zero.",
+		"keptRoutines": "Título, descrição, agenda e padrão de repetição são mantidos. Projeto e prioridade não.",
+		"keptTasks": "As tarefas mantêm apenas o título e a descrição. Agenda, padrão de repetição e duração não são mantidos.",
+		"sendAndRemove": "Enviar ao TMGR e remover aqui",
+		"sending": "Enviando para {name}…",
+		"summary": "{moved} de {total} movidas para {name}.",
+		"removeLocalCopy": "Remover cópia local",
+		"retryFailed": "Tentar novamente {n} com falha",
+		"open": "Abrir {name}",
+		"status": {
+			"moved": "Movida",
+			"failed": "Falhou",
+			"inCloud": "Na nuvem, cópia local não removida",
+			"notSent": "Não enviada"
+		},
+		"titleRoutines": "Mover para rotinas na nuvem",
+		"titleTasks": "Converter em tarefas na nuvem",
+		"subtitleSetup": "Escolha para onde vão as rotinas locais selecionadas.",
+		"selected": "{n} selecionadas",
+		"categoriesError": "Não foi possível carregar os projetos: {message}",
+		"localWorkspaceChanged": "O espaço de trabalho local aberto mudou, então a cópia local não foi removida.",
+		"selectAllAria": "Selecionar todas as rotinas locais",
+		"selectAll": "Selecionar tudo",
+		"pickHint": "Escolha as rotinas locais a enviar para um espaço de trabalho na nuvem.",
+		"empty": "Não há rotinas locais para mover.",
+		"selectAria": "Selecionar {title}",
+		"readError": "Não foi possível ler as rotinas locais."
+	},
+	"page": {
+		"gate": {
+			"title": "Rotinas diárias",
+			"description": "Crie tarefas recorrentes e acompanhe seus hábitos diários. Monte rotinas consistentes e monitore seu progresso ao longo do tempo."
+		},
+		"localRoutines": "Rotinas locais",
+		"dailyRoutines": "Rotinas diárias",
+		"localBadge": "Local",
+		"storedLocally": "Armazenadas somente neste dispositivo — não sincronizadas com a nuvem.",
+		"select": "Selecionar",
+		"quickAddAria": "Adicionar rotina rapidamente",
+		"quickAddMobile": "Adição rápida…",
+		"quickAddPlaceholder": "Adição rápida → Sem data",
+		"quickAddHint": "Adiciona a {unscheduled} — agende depois pela lista",
+		"countRoutines": "Rotinas",
+		"countDone": "Concluídas",
+		"countArchived": "Arquivadas",
+		"chipRoutines": "ROTINAS",
+		"chipDone": "CONCLUÍDAS",
+		"chipArchived": "ARQUIVADAS",
+		"importCalendar": "Importar calendário .ics",
+		"import": "Importar",
+		"exportCalendar": "Exportar calendário .ics",
+		"export": "Exportar",
+		"importIcs": "Importar .ics",
+		"exportIcs": "Exportar .ics",
+		"prevPeriod": "Período anterior",
+		"nextPeriod": "Próximo período",
+		"loading": "Carregando rotinas",
+		"converted": {
+			"title": "Rotina convertida em tarefa",
+			"description": "Abrir a tarefa agora?"
+		},
+		"newRoutineTitle": "Nova rotina (N)",
+		"newRoutine": "Nova rotina",
+		"weekRange": "{start} – {end} de {month} de {year}",
+		"weekRangeCross": "{start} de {startMonth} – {end} de {endMonth} de {year}",
+		"monthLabel": "{month} de {year}",
+		"noCloudWorkspace": "Nenhum espaço de trabalho na nuvem para onde mover as rotinas.",
+		"signInToMove": "Entre para mover rotinas para a nuvem.",
+		"loadError": "Não foi possível carregar as rotinas.",
+		"tryAgain": "Tente novamente.",
+		"openError": "Não foi possível abrir a rotina",
+		"deleteError": "Não foi possível excluir a rotina",
+		"duplicateError": "Não foi possível duplicar a rotina",
+		"convertError": "Não foi possível converter a rotina",
+		"copyTitle": "{title} (cópia)",
+		"importErrors": "\nErros:\n- {list}",
+		"importSummary": "Importadas: {created}, ignoradas: {skipped}, substituídas: {replaced}.{errors}"
+	}
+}

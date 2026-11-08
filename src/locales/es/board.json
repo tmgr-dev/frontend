@@ -1,0 +1,789 @@
+{
+	"taskCount": {
+		"label": "{n} tarea | {n} tareas",
+		"inProgress": "{n} en curso",
+		"done": "{n} completadas",
+		"hidden": "{n} ocultas",
+		"summary": "{parts} — {percent}% completado"
+	},
+	"graph": {
+		"section": {
+			"title": "Grafo"
+		},
+		"canvas": {
+			"label": "Grafo de {count} elementos conectados"
+		},
+		"neighborhood": {
+			"expand": "Ampliar",
+			"zoomIn": "Acercar",
+			"zoomOut": "Alejar",
+			"fitToView": "Ajustar a la vista",
+			"rings": "Anillo interior: vínculos directos · Anillo exterior: a 2 pasos, atenuado · Discontinuo: vínculo débil",
+			"truncatedWithHidden": "Mostrando los {closest} más cercanos — {hidden} más ocultos",
+			"truncated": "Mostrando los {closest} más cercanos",
+			"empty": "Aún no hay vínculos: relaciona tareas, vincula páginas o asigna personas para ver el grafo",
+			"loadFailed": "No se pudo cargar el grafo",
+			"retry": "Reintentar",
+			"loading": "Cargando grafo…"
+		},
+		"types": {
+			"task": "Tarea",
+			"page": "Página",
+			"user": "Persona",
+			"persona": "Persona",
+			"agentRun": "Ejecución del agente"
+		},
+		"groups": {
+			"tasks": "Tareas",
+			"pages": "Páginas",
+			"people": "Personas y personas de IA",
+			"agentRuns": "Ejecuciones de agentes"
+		},
+		"overlay": {
+			"dialogLabel": "Grafo",
+			"title": "Grafo",
+			"task": "Tarea",
+			"page": "Página",
+			"back": "Atrás",
+			"closeLabel": "Cerrar el grafo",
+			"selected": "SELECCIONADO",
+			"whyConnected": "POR QUÉ ESTÁ CONECTADO",
+			"more": "+{n} más",
+			"centre": "Este es el centro del grafo.",
+			"openTask": "Abrir tarea",
+			"openPage": "Abrir página",
+			"centerHere": "Centrar aquí",
+			"loading": "Cargando…",
+			"depth": "PROFUNDIDAD",
+			"depthLabel": "Profundidad",
+			"steps": "{n} paso | {n} pasos",
+			"show": "MOSTRAR",
+			"similarLater": "Similares por significado (próximamente)"
+		}
+	},
+	"dashboard": {
+		"activityChart": {
+			"title": "Actividad a lo largo del tiempo",
+			"loadError": "No se pudieron cargar los datos del gráfico",
+			"empty": "No hay actividad en este período",
+			"scaleNote": "Cada línea está escalada a su propio máximo",
+			"dateColumn": "Fecha",
+			"summaryIntro": "Actividad a lo largo del tiempo, últimos {n} días.",
+			"summaryTotal": "{label}: total {total}.",
+			"summaryTotalPeak": "{label}: total {total}, máximo {peak} el {day}.",
+			"summaryPeakOnly": "{label}: máximo {peak} el {day}.",
+			"summaryNone": "{label}: ninguna."
+		},
+		"activityFeed": {
+			"title": "Actividad reciente",
+			"refreshAria": "Actualizar actividades",
+			"clearDayAria": "Quitar el filtro de día",
+			"dayFilterLoading": "Actividades del {day}",
+			"dayFilterCount": "{count} el {day}",
+			"activityCount": "{n} actividad | {n} actividades",
+			"dayLoadError": "No se pudieron cargar las actividades de este día",
+			"loadingMore": "Cargando...",
+			"loadMore": "Cargar más actividades",
+			"noMatch": "Ninguna actividad coincide con este filtro",
+			"emptyTitle": "Aún no hay actividades",
+			"emptyDescription": "Las actividades aparecerán aquí a medida que los miembros del equipo trabajen en tareas.",
+			"live": "Actualizaciones en vivo activadas",
+			"authorAll": "Todos",
+			"authorPeople": "Personas",
+			"authorPersonas": "Personas de IA",
+			"authorPlugins": "Complementos"
+		},
+		"activityItem": {
+			"by": "por {name}"
+		},
+		"activityFilters": {
+			"types": {
+				"allTypes": "Todos los tipos",
+				"taskCreated": "Tarea creada",
+				"taskUpdated": "Tarea actualizada",
+				"taskCompleted": "Tarea completada",
+				"taskDeleted": "Tarea eliminada",
+				"statusChanged": "Estado cambiado",
+				"taskAssigned": "Tarea asignada",
+				"personaAssigned": "Persona asignada",
+				"timerStarted": "Temporizador iniciado",
+				"timerStopped": "Temporizador detenido",
+				"commentAdded": "Comentario añadido",
+				"commentUpdated": "Comentario actualizado",
+				"commentDeleted": "Comentario eliminado",
+				"categoryCreated": "Categoría creada",
+				"categoryUpdated": "Categoría actualizada",
+				"categoryDeleted": "Categoría eliminada",
+				"fileUploaded": "Archivo subido",
+				"fileDeleted": "Archivo eliminado",
+				"memberJoined": "Miembro incorporado",
+				"memberLeft": "Miembro salido",
+				"routineCompleted": "Rutina completada"
+			},
+			"ranges": {
+				"allTime": "Todo el tiempo",
+				"today": "Hoy",
+				"yesterday": "Ayer",
+				"thisWeek": "Esta semana",
+				"lastWeek": "La semana pasada",
+				"thisMonth": "Este mes",
+				"lastMonth": "El mes pasado"
+			},
+			"allUsers": "Todos los usuarios",
+			"clearAria": "Quitar filtros"
+		},
+		"kpiCard": {
+			"unavailable": "No disponible"
+		},
+		"recentTaskItem": {
+			"overdue": "Vencida",
+			"assignees": "Responsables:",
+			"moreAssignees": "+{n} más",
+			"stopTimer": "Detener temporizador",
+			"startTimer": "Iniciar temporizador",
+			"noStatus": "Sin estado",
+			"ariaTask": "Tarea: {title}",
+			"ariaStatus": "Estado: {status}",
+			"ariaAssignedTo": "Asignada a: {name}",
+			"ariaUpdated": "Actualizada: {when}",
+			"timerRunning": "Temporizador en marcha"
+		},
+		"recentTasksList": {
+			"title": "Tareas recientes",
+			"refreshAria": "Actualizar tareas recientes",
+			"viewAll": "Ver todas",
+			"emptyTitle": "No hay tareas recientes",
+			"emptyDescription": "Las actualizaciones recientes de tareas aparecerán aquí.",
+			"createTask": "Crear tarea"
+		},
+		"statisticsGrid": {
+			"totalTasks": {
+				"title": "Total de tareas",
+				"description": "Todas las tareas del espacio de trabajo"
+			},
+			"activeTasks": {
+				"title": "Tareas activas",
+				"description": "Actualmente en curso"
+			},
+			"completedToday": {
+				"title": "Completadas hoy",
+				"description": "Tareas terminadas hoy"
+			},
+			"completedWeek": {
+				"title": "Completadas esta semana",
+				"description": "Tareas terminadas esta semana"
+			},
+			"timeToday": {
+				"title": "Tiempo de hoy",
+				"description": "Tiempo registrado hoy"
+			},
+			"timeWeek": {
+				"title": "Tiempo de esta semana",
+				"description": "Tiempo registrado esta semana"
+			},
+			"teamMembers": {
+				"title": "Miembros del equipo",
+				"description": "Miembros activos del espacio de trabajo"
+			},
+			"overdueTasks": {
+				"title": "Tareas vencidas",
+				"description": "Tareas con la fecha de vencimiento superada"
+			},
+			"dailyRoutine": {
+				"title": "Rutina diaria",
+				"description": "Tasa de cumplimiento"
+			}
+		},
+		"teamActivityWidget": {
+			"title": "Miembros activos",
+			"windowAria": "Intervalo de actividad",
+			"windows": {
+				"today": "Hoy",
+				"d7": "7 d",
+				"d30": "30 d",
+				"all": "Todo el tiempo"
+			},
+			"subtitles": {
+				"today": "Actividad de los miembros hoy",
+				"all": "Actividad de los miembros, todo el tiempo",
+				"d30": "Actividad de los miembros en los últimos 30 días",
+				"d7": "Actividad de los miembros en los últimos 7 días"
+			},
+			"activeNow": "{n} activos ahora",
+			"refreshAria": "Actualizar la actividad del equipo",
+			"colMember": "Miembro",
+			"colActivity": "Actividad",
+			"colDone": "Completadas",
+			"colTracked": "Registrado",
+			"colActive": "Activas",
+			"colLastActive": "Última actividad",
+			"totalMembers": "Total de miembros",
+			"activeToday": "Activos hoy",
+			"activeTimers": "Temporizadores activos",
+			"trackedWindow": "Registrado · {window}",
+			"doneWindow": "Completadas · {window}",
+			"emptyTitle": "No hay miembros del equipo",
+			"emptyDescription": "Invita a miembros del equipo para ver aquí su actividad.",
+			"invite": "Invitar miembros"
+		},
+		"topCategoriesCard": {
+			"title": "Categorías principales",
+			"empty": "No hay tiempo registrado en este período"
+		},
+		"teamMemberItem": {
+			"activeRecently": "Activo en los últimos 5 minutos",
+			"inactive": "Inactivo",
+			"lastTouched": "Último cambio",
+			"noRecentActivity": "Sin actividad reciente",
+			"summaryLine": "{done} completadas · {tracked} · {active} activas · {last}",
+			"activityTitle": "Actividad, últimos {n} día(s)",
+			"dtDone": "Completadas",
+			"dtTracked": "Registrado",
+			"dtActiveTasks": "Tareas activas",
+			"dtLastActive": "Última actividad",
+			"justNow": "ahora mismo",
+			"minutesAgo": "hace {n} min",
+			"hoursAgo": "hace {n} h",
+			"daysAgo": "hace {n} d",
+			"commentsCount": "{n} comentarios",
+			"streak": "racha {n}",
+			"ariaMember": "Miembro del equipo: {name}",
+			"online": "En línea",
+			"offline": "Desconectado",
+			"workingOn": "Trabajando en: {title}",
+			"timerRunning": "Temporizador en marcha",
+			"lastActive": "Última actividad: {when}",
+			"ariaStats": "{tracked} registrado, {done} completadas, {active} activas, {comments} comentarios, racha {streak}"
+		}
+	},
+	"graphMap": {
+		"canvas": {
+			"emptyLabel": "Mapa de tareas y páginas agrupadas por categoría",
+			"bottleneck": "Cuello de botella: {name} bloquea {count}.",
+			"label": "Mapa de {nodes} tareas y páginas en {clusters} grupos: {names}.{bottleneck} Usa el cuadro de búsqueda para moverte por el mapa con el teclado."
+		},
+		"timeline": {
+			"pause": "Pausar la línea de tiempo",
+			"play": "Reproducir la línea de tiempo",
+			"label": "Línea de tiempo"
+		},
+		"insights": {
+			"whatMapShows": "QUÉ MUESTRA EL MAPA",
+			"bottleneck": "Cuello de botella",
+			"hubs": "Núcleos",
+			"bridges": "Puentes",
+			"noLinks": "Sin vínculos",
+			"empty": "Los datos analíticos aparecen cuando el mapa tiene datos.",
+			"hideOrphans": "Ocultar elementos sin vínculos",
+			"showOrphans": "Mostrar elementos sin vínculos",
+			"howToUse": "CÓMO USARLO",
+			"howToUseText": "Haz clic en un grupo para acercarte. Haz clic en un punto para abrir su entorno. Arrastra el intervalo de tiempo para ver cómo crece el mapa semana a semana.",
+			"legend": "Grupos = categorías · Curvas brillantes = vínculos entre áreas · Anillos discontinuos = elementos sin vínculos · Naranja = cuello de botella"
+		}
+	},
+	"categoryPage": {
+		"gate": {
+			"title": "Categorías de proyectos",
+			"description": "Organiza tus tareas en categorías y subcategorías. Crea una estructura jerárquica para gestionar mejor los proyectos."
+		},
+		"loadingLabel": "Cargando categorías",
+		"empty": {
+			"title": "Aún no hay categorías",
+			"body": "Una categoría agrupa tareas y define valores predeterminados para las nuevas: patrón de título como {pattern}, tarifa por hora, estimación.",
+			"create": "Nueva categoría"
+		},
+		"missing": {
+			"title": "Categoría no encontrada",
+			"body": "Puede que se haya eliminado o movido a otro espacio de trabajo.",
+			"open": "Abrir categorías"
+		},
+		"subcategory": "Subcategoría",
+		"createTask": "Crear tarea",
+		"createTaskTitle": "Crear una tarea en esta categoría",
+		"navLabel": "Categoría",
+		"tabs": {
+			"tasks": "Tareas",
+			"subcategories": "Subcategorías",
+			"settings": "Ajustes"
+		},
+		"discard": {
+			"title": "¿Descartar los cambios sin guardar?",
+			"description": "Se perderán tus cambios en esta categoría.",
+			"keep": "Seguir editando",
+			"confirm": "Descartar"
+		},
+		"workspaceFallback": "Espacio de trabajo",
+		"topLevel": "Nivel superior",
+		"newCategory": "Nueva categoría",
+		"documentTitle": {
+			"categories": "Categorías"
+		}
+	},
+	"workspaceMap": {
+		"workspace": "Espacio de trabajo",
+		"title": "Mapa: cómo se conecta todo",
+		"searchPlaceholder": "tarea, página, persona",
+		"searchLabel": "Buscar en el mapa",
+		"searchResults": "Resultados de búsqueda",
+		"timeRange": "Intervalo de tiempo",
+		"ranges": {
+			"d7": "Últimos 7 días",
+			"d30": "Últimos 30 días",
+			"d90": "Últimos 90 días",
+			"all": "Todo el tiempo"
+		},
+		"groupByCategory": "Agrupar por categoría",
+		"truncated": "Mostrando {shown} de {total}: reduce el intervalo de tiempo",
+		"loading": "Trazando el mapa de tu espacio de trabajo…",
+		"loadFailed": "No se pudo cargar el mapa.",
+		"retry": "Reintentar",
+		"emptyTitle": "No hay nada que mostrar en este período",
+		"emptyText": "Las tareas y páginas aparecen aquí cuando se crean o se actualizan en el intervalo de tiempo seleccionado.",
+		"showAllTime": "Mostrar todo el tiempo",
+		"legend": "Grupos = categorías · Curvas brillantes = vínculos entre áreas · Anillos discontinuos = elementos sin vínculos · Naranja = cuello de botella",
+		"whatMapShows": "Qué muestra el mapa",
+		"zoomIn": "Acercar",
+		"zoomOut": "Alejar",
+		"fitToScreen": "Ajustar a la pantalla"
+	},
+	"categories": {
+		"agentRepositories": {
+			"title": "Repositorios de ejecuciones de agentes",
+			"description": "Repositorios en los que los agentes pueden trabajar para las tareas de esta categoría. Déjalo vacío para usar el repositorio de GitHub vinculado.",
+			"saveFailed": "No se pudieron guardar los repositorios."
+		},
+		"titlePattern": {
+			"defaultLabel": "Patrón de título de tarea",
+			"noPlaceholders": "Sin marcadores.",
+			"literalNotice": "Cada tarea nueva empezará literalmente por «{pattern}».",
+			"use": "Usar {fix}",
+			"preview": "Vista previa",
+			"sampleTitle": "Título de la tarea",
+			"chips": {
+				"categoryNumber": "número de categoría",
+				"workspaceNumber": "número de espacio de trabajo",
+				"date": "fecha",
+				"weekday": "día de la semana"
+			}
+		},
+		"cursor": {
+			"title": "Integración con Cursor AI",
+			"configureTitle": "Configurar el agente de Cursor AI",
+			"configureDescription": "Añade tu clave de API de Cursor para activar la generación de código con IA en esta categoría",
+			"apiKeyLabel": "Clave de API de Cursor",
+			"apiKeyHelp": "Obtén tu clave de API en {link}",
+			"dashboard": "el panel de Cursor",
+			"validating": "Validando…",
+			"saveKey": "Guardar clave de API",
+			"configured": "Agente de Cursor AI configurado",
+			"ready": "Listo para ayudar con la generación de código en esta categoría",
+			"updateKey": "Actualizar clave",
+			"removeKey": "Quitar clave",
+			"removing": "Quitando…",
+			"newApiKeyLabel": "Nueva clave de API de Cursor",
+			"saveFailed": "No se pudo guardar la clave de API",
+			"removeFailed": "No se pudo quitar la clave de API",
+			"removeConfirm": "¿Seguro que quieres quitar la clave de API de Cursor de esta categoría?"
+		},
+		"github": {
+			"title": "Integración con GitHub",
+			"connectTitle": "Conectar un repositorio de GitHub",
+			"connectDescription": "Vincula tu repositorio de GitHub para hacer seguimiento automático de commits, ramas y pull requests",
+			"installing": "Instalando…",
+			"installApp": "Instalar la app de GitHub",
+			"installed": "✓ La app de GitHub está instalada. Selecciona un repositorio para conectar:",
+			"noRepositories": "No hay repositorios disponibles. Asegúrate de que la app de GitHub tenga acceso a tus repositorios.",
+			"selectRepository": "Seleccionar repositorio",
+			"selectPlaceholder": "— Selecciona un repositorio —",
+			"connecting": "Conectando…",
+			"connectRepository": "Conectar repositorio",
+			"connectedTo": "Conectado a",
+			"lastSynced": "Última sincronización: {date}",
+			"syncing": "Sincronizando…",
+			"syncNow": "Sincronizar ahora",
+			"relinking": "Revinculando…",
+			"relinkTasks": "Revincular tareas",
+			"relinkTitle": "Revincular a tareas los commits y ramas existentes",
+			"disconnecting": "Desconectando…",
+			"disconnect": "Desconectar",
+			"loadFailed": "No se pudo cargar el estado de la integración con GitHub",
+			"installFailed": "No se pudo iniciar la instalación de la app de GitHub",
+			"connectFailed": "No se pudo conectar el repositorio",
+			"disconnectConfirm": "¿Seguro que quieres desconectar este repositorio?",
+			"disconnectFailed": "No se pudo desconectar el repositorio",
+			"syncFailed": "No se pudo sincronizar el repositorio",
+			"relinkFailed": "No se pudieron revincular las referencias de tareas",
+			"justNow": "ahora mismo",
+			"minutesAgo": "hace {n} minuto | hace {n} minutos",
+			"hoursAgo": "hace {n} hora | hace {n} horas",
+			"daysAgo": "hace {n} día | hace {n} días"
+		},
+		"pane": {
+			"fixAll": "Corregir las {count}",
+			"saveFirst": "Guarda o descarta antes tus cambios",
+			"issues": "{n} categoría nombra las tareas nuevas de forma literal | {n} categorías nombran las tareas nuevas de forma literal",
+			"sections": {
+				"general": "General",
+				"newTasks": "Tareas nuevas",
+				"newTasksHint": "Valores predeterminados de las tareas creadas en esta categoría",
+				"integrations": "Integraciones",
+				"dangerZone": "Zona de peligro"
+			},
+			"fields": {
+				"name": "Nombre",
+				"code": "Código",
+				"codeHint": "Letras y dígitos",
+				"codePlaceholder": "p. ej., PROJ, FEAT, BUG",
+				"parent": "Superior",
+				"noParent": "Sin superior",
+				"copyFrom": "Copiar ajustes de",
+				"copyFromHint": "Rellena los campos de abajo; aún puedes cambiarlos",
+				"dontCopy": "No copiar"
+			},
+			"createNote": "Las integraciones y la zona de peligro aparecen cuando se crea la categoría.",
+			"integrations": {
+				"cursorLabel": "Agente de Cursor AI",
+				"cursorHint": "Envía las tareas de esta categoría a agentes de Cursor",
+				"connected": "Conectado",
+				"notConnected": "Sin conectar",
+				"unavailable": "No disponible",
+				"manage": "Gestionar",
+				"connect": "Conectar",
+				"githubLabel": "GitHub",
+				"githubHint": "Vincula tareas a un repositorio",
+				"installApp": "Instalar la app de GitHub",
+				"reposLabel": "Repositorios de agentes",
+				"reposHint": "Dónde pueden trabajar las ejecuciones de agentes, como propietario/nombre",
+				"addRepository": "Añadir repositorio",
+				"repositoriesCount": "{n} repositorio | {n} repositorios"
+			},
+			"danger": {
+				"moveLabel": "Mover a otro espacio de trabajo",
+				"moveHint": "Con sus subcategorías y tareas",
+				"move": "Mover…",
+				"deleteLabel": "Eliminar categoría",
+				"deleteHint": "La categoría se quita de la lista",
+				"delete": "Eliminar…"
+			},
+			"bar": {
+				"discard": "Descartar",
+				"newSubcategory": "Nueva subcategoría de {title}",
+				"newTopLevel": "Nueva categoría de nivel superior",
+				"changes": "{n} cambio sin guardar | {n} cambios sin guardar"
+			},
+			"deleteDialog": {
+				"title": "¿Eliminar «{title}»?",
+				"description": "La categoría se quita de la lista."
+			},
+			"transfer": {
+				"title": "Mover la categoría a otro espacio de trabajo",
+				"description": "«{title}» se moverá con todas sus subcategorías y tareas. Los estados de las tareas se asocian con los del espacio de trabajo de destino por nombre y, si no, por tipo; los responsables que no sean miembros del espacio de trabajo de destino se quitan.",
+				"placeholder": "Seleccionar espacio de trabajo",
+				"noOther": "No eres miembro de ningún otro espacio de trabajo.",
+				"moving": "Moviendo...",
+				"move": "Mover"
+			},
+			"settings": {
+				"titlePatternLabel": "Patrón de título de tarea",
+				"titlePatternHint": "Prefijo del título de cada tarea nueva",
+				"rateLabel": "Tarifa por hora",
+				"estimateLabel": "Estimación predeterminada",
+				"reminderLabel": "Recordatorio del temporizador cada",
+				"reminderHint": "Suena cada vez que el temporizador en marcha lo supera",
+				"durationError": "Usa una duración como 45m, 2h o 1h 30m",
+				"durationHint": "Como 45m, 2h o 1h 30m",
+				"durationPlaceholder": "p. ej., 45m",
+				"rateUnit": "/ h",
+				"select": "Seleccionar",
+				"customValue": "Valor personalizado"
+			},
+			"toasts": {
+				"success": "Correcto",
+				"tryAgain": "Inténtalo de nuevo.",
+				"cursorConfigured": "Clave de API de Cursor configurada correctamente",
+				"cursorRemoved": "Clave de API de Cursor quitada",
+				"githubConnected": "Conectado a {name}",
+				"githubDisconnected": "Repositorio desconectado",
+				"githubSynced": "Repositorio sincronizado correctamente",
+				"relinked": "Revinculados {total} elementos: {commits} commits, {branches} ramas, {pullRequests} PR",
+				"saveFailed": "No se pudo guardar la categoría",
+				"defaultsNotSaved": "No se guardaron los valores predeterminados de las tareas nuevas",
+				"kept": {
+					"code": "El servidor conservó el código anterior",
+					"parent": "El servidor conservó la categoría superior anterior",
+					"codeAndParent": "El servidor conservó el código y la categoría superior anteriores"
+				},
+				"otherSaved": "Los demás cambios se guardaron.",
+				"saved": "Guardado",
+				"categorySaved": "La categoría se guardó",
+				"createFailed": "No se pudo crear la categoría",
+				"created": "Categoría creada",
+				"createdDefaultsFailed": "No se guardaron sus valores predeterminados para tareas nuevas. Vuelve a definirlos y guarda.",
+				"fixedPatterns": "Corregido {n} patrón de título | Corregidos {n} patrones de título",
+				"fixedPartial": "Corregidos {fixed} de {total} patrones de título",
+				"fixedPartialRest": "No se pudieron guardar {rest}. Inténtalo de nuevo con el resto.",
+				"deleteFailed": "No se pudo eliminar la categoría",
+				"deleted": "Categoría eliminada",
+				"workspacesFailed": "No se pudieron cargar los espacios de trabajo",
+				"moved": "«{title}» se movió a {workspace}",
+				"anotherWorkspace": "otro espacio de trabajo",
+				"transferFailed": "Error en el traslado",
+				"moveFailed": "No se pudo mover la categoría. Inténtalo de nuevo."
+			}
+		}
+	},
+	"boardPage": {
+		"featureGate": {
+			"title": "Tablero Kanban",
+			"description": "Visualiza tus tareas en un tablero de estilo Kanban. Arrastra y suelta tareas entre columnas para actualizar su estado."
+		},
+		"refresh": "Actualizar",
+		"filters": "Filtros",
+		"addStatus": "Añadir estado",
+		"editStatus": "Editar estado",
+		"createStatus": "Crear estado",
+		"refreshingTasks": "Actualizando tareas…",
+		"dragToReorderColumns": "Arrastra para reordenar las columnas",
+		"overtime": "Horas extra",
+		"createTask": "Crear tarea",
+		"createATask": "Crear una tarea",
+		"moveAllTasksTo": "Mover todas las tareas a…",
+		"archiveAll": "Archivar todas",
+		"addTask": "Añadir tarea",
+		"taskTitlePlaceholder": "Escribe el título de la tarea...",
+		"statusForm": {
+			"namePlaceholder": "Nombre",
+			"typePlaceholder": "Selecciona el tipo",
+			"nameLabel": "Nombre del estado:",
+			"typeLabel": "Tipo de estado:",
+			"colorLabel": "Color del estado:"
+		},
+		"moveModal": {
+			"title": "Mover todas las tareas a",
+			"description": "Mover {count} tarea(s) de «{title}» a:"
+		},
+		"reorderModal": {
+			"title": "Reordenar estados",
+			"hint": "Mantén pulsado y arrastra el icono de seis puntos para reordenar",
+			"save": "Guardar orden"
+		},
+		"allCategories": "Todas las categorías",
+		"allUsers": "Todos los usuarios",
+		"errors": {
+			"loadMoreTasks": "No se pudieron cargar más tareas.",
+			"refreshColumn": "No se pudo actualizar la columna.",
+			"saveOrder": "No se pudo guardar el orden de las tareas. Actualiza para restaurar el orden del servidor.",
+			"moveRefreshed": "No se pudo mover la tarea. Se actualizó la columna.",
+			"moveRestore": "No se pudo mover la tarea. Actualiza para restaurar el orden del servidor.",
+			"refreshBoard": "No se pudo actualizar el tablero.",
+			"loadBoard": "No se pudo cargar el tablero.",
+			"refreshTasks": "No se pudieron actualizar las tareas."
+		},
+		"toasts": {
+			"loadAllFailed": {
+				"title": "No se pudieron cargar todas las tareas",
+				"description": "Inténtalo de nuevo."
+			},
+			"noTasksToArchive": "No hay tareas que archivar en esta columna",
+			"archiveStatusMissing": {
+				"title": "Estado de archivo no encontrado",
+				"description": "Crea primero un estado de archivo."
+			},
+			"archiveFailed": {
+				"title": "No se pudieron archivar las tareas",
+				"description": "Inténtalo de nuevo."
+			}
+		},
+		"confirms": {
+			"deleteStatus": {
+				"title": "Eliminar estado",
+				"body": "¿Seguro?"
+			},
+			"archive": {
+				"title": "¿Archivar {n} tarea? | ¿Archivar {n} tareas?",
+				"body": "Todas las tareas de «{name}» se moverán al archivo."
+			},
+			"move": {
+				"title": "Mover todas las tareas",
+				"body": "¿Mover {count} tarea(s) de «{source}» a «{target}»?"
+			}
+		},
+		"userSaved": {
+			"title": "Guardado",
+			"body": "Datos de usuario guardados"
+		}
+	},
+	"dashboardPage": {
+		"title": "Panel",
+		"titleWithWorkspace": "Panel de {name}",
+		"subtitle": "Actividad, miembros y tiempo registrado en tu espacio de trabajo.",
+		"gateDescription": "Obtén información sobre tu productividad con estadísticas, mapas de calor de actividad y novedades del equipo en tiempo real.",
+		"errors": {
+			"offline": "Parece que estás sin conexión. Es posible que algunas funciones no funcionen correctamente.",
+			"realtime": "Falló la conexión en tiempo real. Las actualizaciones pueden retrasarse.",
+			"unexpected": "Ocurrió un error inesperado.",
+			"connectionLostMessage": "Se perdió la conexión de red",
+			"connectionLost": "Conexión perdida",
+			"dashboardError": "Error del panel",
+			"retrying": "Reintentando...",
+			"tryAgain": "Reintentar",
+			"checkConnection": "Comprobar conexión",
+			"boundaryMessage": "El panel encontró un error inesperado. Intenta actualizar la página."
+		},
+		"periods": {
+			"week": "Últimos 7 días",
+			"month": "Últimos 30 días"
+		},
+		"periodLabel": "Período del panel",
+		"realtime": {
+			"active": "Actualizaciones en tiempo real activas",
+			"inactive": "Actualizaciones en tiempo real inactivas",
+			"live": "En vivo",
+			"offline": "Sin conexión",
+			"youreOffline": "Estás sin conexión"
+		},
+		"refresh": {
+			"label": "Actualizar",
+			"ariaBusy": "Actualizando los datos del panel",
+			"ariaIdle": "Actualizar los datos del panel",
+			"status": "El panel se está actualizando"
+		},
+		"actionsLabel": "Acciones del panel",
+		"a11y": {
+			"shortcuts": "Atajos de teclado: Ctrl+R para actualizar, Ctrl+1-5 para navegar entre secciones, Escape para borrar errores",
+			"keyNumbers": "Cifras clave, último {n} día | Cifras clave, últimos {n} días",
+			"loadedAnnouncement": "Panel cargado correctamente",
+			"failedAnnouncement": "No se pudo cargar el panel",
+			"teamDescription": "Actividad y estado de los miembros del equipo. Muestra quién está en línea y sus tareas actuales.",
+			"teamLoading": "Cargando la actividad del equipo",
+			"heatmapLoading": "Cargando el mapa de calor de actividad",
+			"statisticsLoading": "Cargando las estadísticas del espacio de trabajo",
+			"statisticsDescription": "Cuadrícula de estadísticas del espacio de trabajo, con número de tareas, control de tiempo y métricas del equipo. Usa las teclas de flecha para moverte entre tarjetas.",
+			"activityHeading": "Feed de actividad reciente",
+			"activityDescription": "Lista de actividades recientes del espacio de trabajo. Usa las teclas de flecha para moverte y Intro para abrir los detalles de una actividad.",
+			"activityLoading": "Cargando actividades recientes"
+		},
+		"kpi": {
+			"activity": "Actividad",
+			"members": "Miembros activos",
+			"tracked": "Horas registradas",
+			"completed": "Completadas",
+			"activityHint": "Acciones registradas en el espacio de trabajo",
+			"membersHint": "de {total} miembros",
+			"trackedHint": "Tiempo en temporizadores de tareas",
+			"completedHint": "Tareas movidas a completadas",
+			"vsPrevious": "frente al {n} día anterior | frente a los {n} días anteriores"
+		},
+		"hours": "{n} h",
+		"teamActivity": "Actividad del equipo",
+		"chartSubtitle": "Por día, último {n} día | Por día, últimos {n} días",
+		"categoriesSubtitle": "Por tiempo registrado · último {n} día | Por tiempo registrado · últimos {n} días",
+		"heatmap": {
+			"title": "Mapa de calor de actividad",
+			"description": "Actividad de todos en este espacio de trabajo. Cada cuadrado es un día (UTC); los cuadrados más oscuros indican más actividad.",
+			"rangeLabel": "Intervalo del mapa de calor",
+			"last12Months": "Últimos 12 meses",
+			"groupLabel": "Mapa de calor de actividad con {n} contribuciones en total",
+			"groupLabelLoading": "Cargando el mapa de calor de actividad",
+			"loadFailed": "No se pudieron cargar los datos del mapa de calor",
+			"retry": "Reintentar",
+			"noData": "No hay datos de contribuciones"
+		},
+		"statisticsTitle": "Estadísticas del espacio de trabajo",
+		"loadingState": {
+			"label": "Cargando el panel",
+			"title": "Cargando el panel",
+			"body": "Obteniendo los datos de tu espacio de trabajo..."
+		},
+		"boundaryTitle": "Error del panel",
+		"mainLabel": "Panel"
+	},
+	"projectCategoryList": {
+		"perPage": "{n} por página",
+		"documentTitle": "Categorías",
+		"loadTasksFailed": "No se pudieron cargar las tareas de la categoría.",
+		"loadCategoriesFailed": "No se pudieron cargar las categorías.",
+		"anotherWorkspace": "otro espacio de trabajo",
+		"movedTitle": "«{title}» se movió a {workspace}",
+		"transferFailed": "Error en el traslado",
+		"transferFailedText": "No se pudo mover la categoría. Inténtalo de nuevo.",
+		"loadingCategories": "Cargando categorías",
+		"loadingTasks": "Cargando las tareas de la categoría",
+		"noSubcategories": "Aún no hay subcategorías.",
+		"deletedHint": "(eliminada, pero se puede restaurar)",
+		"subcategories": "subcategorías",
+		"tasks": "tareas",
+		"author": "autor",
+		"moveToWorkspace": "Mover a un espacio de trabajo",
+		"restore": "Restaurar",
+		"transferTitle": "Mover la categoría a otro espacio de trabajo",
+		"transferDescription": "«{title}» se moverá con todas sus subcategorías y tareas. Los estados de las tareas se asocian con los del espacio de trabajo de destino por nombre y, si no, por tipo; los responsables que no sean miembros del espacio de trabajo de destino se quitan.",
+		"selectWorkspace": "Seleccionar espacio de trabajo",
+		"noOtherWorkspaces": "No eres miembro de ningún otro espacio de trabajo.",
+		"moving": "Moviendo...",
+		"move": "Mover",
+		"showing": "Mostrando de {from} a {to} de {total} categorías",
+		"previous": "Anterior",
+		"page": "Página {current} de {last}",
+		"createFirstTask": "Crea tu primera tarea en esta categoría",
+		"createTask": "+ Crear tarea"
+	},
+	"tasksList": {
+		"titles": {
+			"current": "Tareas actuales",
+			"hidden": "Tareas ocultas",
+			"archive": "Archivo",
+			"tasks": "Tareas",
+			"fallback": "Lista de tareas"
+		},
+		"workspaceTasksTitle": "Tareas de {name}",
+		"stateFilters": {
+			"open": "Abiertas",
+			"done": "Completadas",
+			"all": "Todas"
+		},
+		"sortFields": {
+			"updatedAt": "Actualización",
+			"createdAt": "Creación",
+			"expiredAt": "Fecha límite",
+			"scheduledDate": "Programada"
+		},
+		"noDoneToArchive": "No hay tareas completadas que archivar",
+		"loadDoneFailed": "No se pudieron cargar las tareas completadas",
+		"archivedCount": "Archivadas {n} tareas completadas",
+		"archiveFailed": "No se pudieron archivar las tareas",
+		"daySummary": "Resumen del día",
+		"totalTime": "Tiempo total",
+		"workingDays": "Días laborables",
+		"perDay": "(8 h/día)",
+		"workingMonths": "Meses laborables",
+		"perMonth": "(160 h/mes)",
+		"workingYears": "Años laborables",
+		"perYear": "(2000 h/año)",
+		"overtime": "Horas extra",
+		"totalOvertime": "Total de horas extra",
+		"showTasks": "Mostrar tareas",
+		"archiveDone": "Archivar completadas",
+		"searchPlaceholder": "buscar tarea",
+		"searchLabel": "Buscar tareas",
+		"sortByDate": "Ordenar por fecha",
+		"newestFirst": "Más recientes primero",
+		"oldestFirst": "Más antiguas primero",
+		"filtersTitle": "filtros",
+		"filtersDialogTitle": "Filtros",
+		"status": "Estado",
+		"priority": "Prioridad",
+		"sortByPriority": "Ordenar por prioridad",
+		"reset": "restablecer",
+		"selectionMode": "Modo de selección de tareas",
+		"updating": "Actualizando tareas…",
+		"loadFailed": "No se pudieron cargar las tareas. Inténtalo de nuevo.",
+		"retry": "Reintentar",
+		"noMatches": "Ninguna tarea coincide con tus filtros",
+		"clearFilters": "Quitar filtros",
+		"createFirst": "Crea tu primera tarea para empezar",
+		"createTask": "+ Crear tarea",
+		"archiveDialogTitle": "Archivar tareas completadas",
+		"archiveDialogBody": "¿Archivar {n} tarea completada? | ¿Archivar {n} tareas completadas?"
+	}
+}
