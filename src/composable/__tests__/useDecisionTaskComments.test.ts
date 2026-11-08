@@ -270,4 +270,23 @@ describe('decision task comment sync', () => {
 		expect(deps.postComment).toHaveBeenCalledTimes(1);
 		expect(marked).toEqual(['c_1#1']);
 	});
+
+	it('still marks after a failed mark when the task workspace changed', async () => {
+		const { deps, marked, sync } = setup();
+		const realInvoke = deps.invoke.getMockImplementation()!;
+		let failMark = true;
+		deps.invoke.mockImplementation(async (cmd: string, args?: any) => {
+			if (cmd === 'decisions_mark_task_comment' && failMark) {
+				failMark = false;
+				throw new Error('db locked');
+			}
+			return realInvoke(cmd, args);
+		});
+		await sync.run();
+		deps.taskWorkspaceCode.mockResolvedValue('other');
+		await sync.run();
+		expect(deps.skip).not.toHaveBeenCalled();
+		expect(deps.postComment).toHaveBeenCalledTimes(1);
+		expect(marked).toEqual(['c_1#1']);
+	});
 });

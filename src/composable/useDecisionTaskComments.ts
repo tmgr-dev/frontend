@@ -58,6 +58,15 @@ export const createDecisionTaskCommentSync = (
 		if ((backoffUntil.get(key) ?? 0) > deps.now()) return;
 		if (deps.origin === null || item.origin !== deps.origin) return;
 		try {
+			if (deps.posted.has(key)) {
+				await deps.invoke('decisions_mark_task_comment', {
+					cardId: item.card_id,
+					seq: item.seq,
+				});
+				deps.posted.remove(key);
+				backoffUntil.delete(key);
+				return;
+			}
 			const code = await deps.taskWorkspaceCode(item.task_id);
 			if (code === null) {
 				console.warn(
@@ -73,14 +82,12 @@ export const createDecisionTaskCommentSync = (
 				await deps.skip(item.card_id, item.seq, 'workspace mismatch');
 				return;
 			}
-			if (!deps.posted.has(key)) {
-				const comments = await deps.fetchComments(item.task_id);
-				const present = comments.some((c) =>
-					String(c.message ?? '').includes(marker(item)),
-				);
-				if (!present) await deps.postComment(item.task_id, item.body);
-				deps.posted.add(key);
-			}
+			const comments = await deps.fetchComments(item.task_id);
+			const present = comments.some((c) =>
+				String(c.message ?? '').includes(marker(item)),
+			);
+			if (!present) await deps.postComment(item.task_id, item.body);
+			deps.posted.add(key);
 			await deps.invoke('decisions_mark_task_comment', {
 				cardId: item.card_id,
 				seq: item.seq,
