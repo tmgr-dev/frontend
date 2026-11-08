@@ -43,6 +43,8 @@ export const createController = (deps: {
 	let offset = 0;
 	let max = 0;
 	let closed = false;
+	let noticeError: unknown = null;
+	let hasNotice = false;
 
 	const scrollTo = (target: number) => {
 		const next = Math.max(0, Math.min(max, target));
@@ -76,10 +78,16 @@ export const createController = (deps: {
 		onInput(data: string) {
 			if (closed) return;
 			Promise.resolve(api.input(data)).then(
-				() => view.setNotice(null),
+				() => {
+					hasNotice = false;
+					view.setNotice(null);
+				},
 				(error) => {
 					const failure = describeRunnerError(error, 'input');
-					if (!failure.cancelled) view.setNotice(failure.text);
+					if (failure.cancelled) return;
+					hasNotice = true;
+					noticeError = error;
+					view.setNotice(failure.text);
 				},
 			);
 		},
@@ -110,10 +118,16 @@ export const createController = (deps: {
 			await api.detach();
 			view.closeWindow();
 		},
+		relocalize() {
+			if (offset > 0) view.setScrollText(scrollIndicatorText(offset));
+			if (hasNotice)
+				view.setNotice(describeRunnerError(noticeError, 'input').text);
+		},
 		reopened() {
 			closed = false;
 			offset = 0;
 			max = 0;
+			hasNotice = false;
 			view.hideClosed();
 			view.setScrollText(null);
 			view.setNotice(null);

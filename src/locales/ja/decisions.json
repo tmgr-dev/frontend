@@ -184,7 +184,7 @@
 	"phones": {
 		"title": "tmgr · スマートフォン",
 		"qrAlt": "ペアリング用 QR コード",
-		"expiresIn": "有効期限まで",
+		"expiresInTime": "有効期限まで {time}",
 		"typeCode": "iPhone に表示されたコードを入力してください",
 		"confirm": "確認",
 		"done": "これでスマートフォンから判断カードに回答できます。",

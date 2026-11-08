@@ -21,6 +21,7 @@ followStoredLocale();
 
 void setLocale(
 	detectLocale({ stored: storedLocale(), browser: navigator.languages ?? [] }),
+	{ persist: false },
 )
 	.catch(() => undefined)
 	.then(() => createApp(App).use(i18n).mount('#root'));

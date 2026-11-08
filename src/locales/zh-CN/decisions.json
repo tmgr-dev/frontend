@@ -184,7 +184,7 @@
 	"phones": {
 		"title": "tmgr · 手机",
 		"qrAlt": "配对二维码",
-		"expiresIn": "有效期剩余",
+		"expiresInTime": "有效期剩余 {time}",
 		"typeCode": "输入 iPhone 上显示的代码",
 		"confirm": "确认",
 		"done": "现在可以在手机上回答决策卡片了。",

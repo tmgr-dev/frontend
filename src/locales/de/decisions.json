@@ -97,7 +97,7 @@
 		"defer": "zurückstellen",
 		"dismiss": "verwerfen",
 		"cards": "Karten",
-		"waiting": "{n} wartend"
+		"waiting": "{n} wartend | {n} wartend"
 	},
 	"queue": {
 		"title": "Warteschlange",
@@ -184,7 +184,7 @@
 	"phones": {
 		"title": "tmgr · Telefone",
 		"qrAlt": "QR-Code zum Koppeln",
-		"expiresIn": "Läuft ab in",
+		"expiresInTime": "Läuft ab in {time}",
 		"typeCode": "Gib den Code ein, der auf deinem iPhone angezeigt wird",
 		"confirm": "Bestätigen",
 		"done": "Du kannst jetzt Entscheidungskarten vom Telefon aus beantworten.",

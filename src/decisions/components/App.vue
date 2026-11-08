@@ -154,9 +154,7 @@
 				>
 			</div>
 			<span class="dot"></span>
-			<span>{{
-				$t('decisions.statusbar.waiting', { n: progress.pending })
-			}}</span>
+			<span>{{ $t('decisions.statusbar.waiting', progress.pending) }}</span>
 		</footer>
 		<div class="toast" :class="{ on: toast.on, error: toast.error }">
 			<span>{{ toast.text }}</span>
@@ -173,7 +171,7 @@
 </template>
 
 <script lang="ts">
-	import { t } from '@/i18n';
+	import { onLocaleChange, t } from '@/i18n';
 	import { defineComponent } from 'vue';
 	import {
 		answerToast,
@@ -269,6 +267,7 @@
 				toast: { on: false, error: false, text: '' },
 				toastTimer: 0 as number,
 				unlisten: null as null | (() => void),
+				stopLocale: null as null | (() => void),
 				refreshing: false,
 				refreshAgain: false,
 				isMac: /Mac/i.test(navigator.userAgent),
@@ -358,6 +357,9 @@
 		async mounted() {
 			window.addEventListener('keydown', this.onKeydown);
 			document.title = t('decisions.window.title');
+			this.stopLocale = onLocaleChange(() => {
+				document.title = t('decisions.window.title');
+			});
 			this.openedAt = Date.now();
 			let ticks = 0;
 			this.clock = window.setInterval(() => {
@@ -379,6 +381,7 @@
 			window.clearTimeout(this.doomModeTimer);
 			window.clearInterval(this.clock);
 			this.unlisten?.();
+			this.stopLocale?.();
 		},
 		methods: {
 			isFinal,

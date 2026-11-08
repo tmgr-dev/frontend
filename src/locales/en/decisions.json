@@ -97,7 +97,7 @@
 		"defer": "defer",
 		"dismiss": "dismiss",
 		"cards": "cards",
-		"waiting": "{n} waiting"
+		"waiting": "{n} waiting | {n} waiting"
 	},
 	"queue": {
 		"title": "Queue",
@@ -184,7 +184,7 @@
 	"phones": {
 		"title": "tmgr · Phones",
 		"qrAlt": "Pairing QR code",
-		"expiresIn": "Expires in",
+		"expiresInTime": "Expires in {time}",
 		"typeCode": "Type the code shown on your iPhone",
 		"confirm": "Confirm",
 		"done": "You can answer Decisions cards from the phone now.",

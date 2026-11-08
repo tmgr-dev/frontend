@@ -15,8 +15,11 @@
 						:alt="$t('decisions.phones.qrAlt')"
 					/>
 					<p class="muted">
-						{{ $t('decisions.phones.expiresIn') }}
-						<strong data-test="countdown">{{ countdown }}</strong>
+						<i18n-t keypath="decisions.phones.expiresInTime" scope="global">
+							<template #time>
+								<strong data-test="countdown">{{ countdown }}</strong>
+							</template>
+						</i18n-t>
 					</p>
 				</template>
 				<form

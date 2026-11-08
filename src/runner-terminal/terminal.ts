@@ -175,8 +175,9 @@ export const start = () => {
 		);
 		sessionName = info.name;
 		renderLabels();
-		lastState = info.state;
-		controller.handleFrame({ type: 'state', state: info.state });
+		const state = lastState ?? info.state;
+		lastState = state;
+		controller.handleFrame({ type: 'state', state });
 	};
 
 	detachButton.addEventListener('click', () => void controller.detach());
@@ -192,6 +193,7 @@ export const start = () => {
 	onLocaleChange(() => {
 		renderLabels();
 		if (lastState) controller.handleFrame({ type: 'state', state: lastState });
+		controller.relocalize();
 	});
 
 	term.open(host);

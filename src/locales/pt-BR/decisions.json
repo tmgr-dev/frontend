@@ -97,7 +97,7 @@
 		"defer": "adiar",
 		"dismiss": "dispensar",
 		"cards": "cards",
-		"waiting": "{n} aguardando"
+		"waiting": "{n} aguardando | {n} aguardando"
 	},
 	"queue": {
 		"title": "Fila",
@@ -184,7 +184,7 @@
 	"phones": {
 		"title": "tmgr · Celulares",
 		"qrAlt": "QR code de pareamento",
-		"expiresIn": "Expira em",
+		"expiresInTime": "Expira em {time}",
 		"typeCode": "Digite o código exibido no seu iPhone",
 		"confirm": "Confirmar",
 		"done": "Agora você pode responder cards de Decisões pelo celular.",

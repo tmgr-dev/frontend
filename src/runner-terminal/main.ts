@@ -6,6 +6,7 @@ followStoredLocale();
 
 void setLocale(
 	detectLocale({ stored: storedLocale(), browser: navigator.languages ?? [] }),
+	{ persist: false },
 )
 	.catch(() => undefined)
 	.then(start);

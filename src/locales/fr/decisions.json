@@ -97,7 +97,7 @@
 		"defer": "reporter",
 		"dismiss": "écarter",
 		"cards": "cartes",
-		"waiting": "{n} en attente"
+		"waiting": "{n} en attente | {n} en attente"
 	},
 	"queue": {
 		"title": "File",
@@ -184,7 +184,7 @@
 	"phones": {
 		"title": "tmgr · Téléphones",
 		"qrAlt": "QR code d'appairage",
-		"expiresIn": "Expire dans",
+		"expiresInTime": "Expire dans {time}",
 		"typeCode": "Saisissez le code affiché sur votre iPhone",
 		"confirm": "Confirmer",
 		"done": "Vous pouvez désormais répondre aux cartes Décisions depuis le téléphone.",

@@ -97,7 +97,7 @@
 		"defer": "odłóż",
 		"dismiss": "odrzuć",
 		"cards": "karty",
-		"waiting": "czeka: {n}"
+		"waiting": "czeka: {n} | czekają: {n} | czeka: {n}"
 	},
 	"queue": {
 		"title": "Kolejka",
@@ -184,7 +184,7 @@
 	"phones": {
 		"title": "tmgr · Telefony",
 		"qrAlt": "Kod QR do parowania",
-		"expiresIn": "Wygasa za",
+		"expiresInTime": "Wygasa za {time}",
 		"typeCode": "Wpisz kod widoczny na Twoim iPhonie",
 		"confirm": "Potwierdź",
 		"done": "Możesz teraz odpowiadać na karty Decyzji z telefonu.",

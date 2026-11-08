@@ -37,6 +37,7 @@ export const currentLocale = (): LocaleCode =>
 	i18n.global.locale.value as LocaleCode;
 
 const loaded = new Set<LocaleCode>([DEFAULT_LOCALE]);
+let latestRequest = 0;
 const listeners = new Set<(locale: LocaleCode) => void>();
 
 export const onLocaleChange = (listener: (locale: LocaleCode) => void) => {
@@ -52,19 +53,26 @@ export const storedLocale = (): string | null => {
 	}
 };
 
-export const setLocale = async (locale: unknown): Promise<LocaleCode> => {
+export const setLocale = async (
+	locale: unknown,
+	options: { persist?: boolean } = {},
+): Promise<LocaleCode> => {
 	const next = isSupportedLocale(locale) ? locale : DEFAULT_LOCALE;
+	const ticket = ++latestRequest;
 	if (!loaded.has(next)) {
 		i18n.global.setLocaleMessage(next, (await loadMessages(next)) as any);
 		loaded.add(next);
 	}
+	if (ticket !== latestRequest) return currentLocale();
 	const changed = next !== currentLocale();
 	i18n.global.locale.value = next;
 	if (typeof document !== 'undefined') document.documentElement.lang = next;
-	try {
-		localStorage.setItem(LOCALE_STORAGE_KEY, next);
-	} catch {
-		/* private mode */
+	if (options.persist !== false) {
+		try {
+			localStorage.setItem(LOCALE_STORAGE_KEY, next);
+		} catch {
+			/* private mode */
+		}
 	}
 	if (changed) {
 		requestCache.clear();

@@ -97,7 +97,7 @@
 		"defer": "aplazar",
 		"dismiss": "descartar",
 		"cards": "tarjetas",
-		"waiting": "{n} en espera"
+		"waiting": "{n} en espera | {n} en espera"
 	},
 	"queue": {
 		"title": "Cola",
@@ -184,7 +184,7 @@
 	"phones": {
 		"title": "tmgr · Teléfonos",
 		"qrAlt": "Código QR de emparejamiento",
-		"expiresIn": "Caduca en",
+		"expiresInTime": "Caduca en {time}",
 		"typeCode": "Escribe el código que aparece en tu iPhone",
 		"confirm": "Confirmar",
 		"done": "Ya puedes responder tarjetas de Decisiones desde el teléfono.",
