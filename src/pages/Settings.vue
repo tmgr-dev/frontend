@@ -98,9 +98,6 @@
 									>
 										Command line (tmgr)
 									</a>
-									<p v-if="isDesktop" class="text-muted-foreground">
-										The desktop app already installs the tmgr command.
-									</p>
 								</div>
 							</SettingsSection>
 							<TipsSettings />

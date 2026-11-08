@@ -31,13 +31,13 @@ export const CLI_SCENARIOS: CliScenario[] = [
 			'tmgr project map',
 			'tmgr init zsh',
 		],
-		note: 'git install-hooks and project map tie your commits to the task of the current branch.',
+		note: 'git install-hooks adds the task key to your commit messages. project map tells tmgr which folder holds the code of a project. init zsh shows the active task in your prompt.',
 	},
 	{
 		id: 'runner',
 		title: 'Run AI agents under supervision',
 		benefit:
-			'Each agent works in its own copy of your project, inside a sandbox, and its work is saved after every turn. It cannot touch your main branch, you can look at what it is doing at any moment, and you can roll its changes back.',
+			'Agents run inside a sandbox. Start one with --worktree and it works in its own copy of your project, on its own branch, so two agents never write the same files. Start it with --checkpoints and its work is saved after every turn, so you can see what changed and roll it back. You can look at what it is doing at any moment.',
 		example: 'tmgr run --agent claude-code --worktree --checkpoints',
 		also: [
 			'tmgr attach',
@@ -52,7 +52,7 @@ export const CLI_SCENARIOS: CliScenario[] = [
 			'tmgr runner trust',
 			'tmgr runner allow',
 		],
-		note: 'session export --page saves the story of a session as a page on the task. runner trust and runner allow decide which folders and workspaces agents may work in.',
+		note: 'session export --page saves a session as a page in your workspace. Checkpoints need a git folder. runner trust and runner allow are experimental: they set which folders and workspaces agents may start in.',
 	},
 	{
 		id: 'decisions',
@@ -60,8 +60,8 @@ export const CLI_SCENARIOS: CliScenario[] = [
 		benefit:
 			'When an agent needs a decision, it sends you a card with the question, the options, its recommendation and the changes to look at. You answer once in the TMGR desktop app, and the agent gets your answer and carries on. Answers you already gave can be found again, so agents do not ask the same thing twice.',
 		example:
-			'tmgr ask "Which database?" --option SQLite --option Postgres --recommended 1 --wait',
-		also: ['tmgr decisions answers', 'tmgr mcp'],
+			'tmgr ask --title "Which database?" --option SQLite --option Postgres --recommended 1 --wait',
+		also: ['tmgr decisions answers', 'tmgr hook install decisions', 'tmgr mcp'],
 		note: 'The Decisions inbox works in the desktop app on macOS and Linux. Agents can also ask through the MCP tools ask_owner and find_answers.',
 	},
 	{
@@ -75,28 +75,22 @@ export const CLI_SCENARIOS: CliScenario[] = [
 			'tmgr hook install claude',
 			'tmgr hook install codex',
 		],
-		note: 'Needs the TMGR iOS app and a token from Settings, Agent notifications. The same tools ship as the @tmgr/notify package for any MCP client.',
+		note: 'Needs the TMGR iOS app and a signed-in tmgr (tmgr login). The same tools ship as the @tmgr/notify package for any MCP client; it uses a token from Settings, Agent notifications.',
 	},
 	{
 		id: 'autopilot',
 		title: 'Let agents work through your backlog',
 		benefit:
-			'Point autopilot at a workspace and it starts agent teams on your tasks, with limits you set: how many teams, how long, how much to spend. It stops before you hit your plan limit and can continue after the limit resets.',
+			'Point autopilot at a workspace and it starts agent teams on your tasks, with limits you set: how many teams, how long, how much to spend. With usage reading allowed (tmgr usage consent allow), it stops before you hit your plan limit and can continue after the limit resets.',
 		example: 'tmgr autopilot start --max-teams 2 --max-hours 4 --dry-run',
-		also: [
-			'tmgr autopilot status',
-			'tmgr queue rules list',
-			'tmgr queue approve',
-			'tmgr agents login',
-			'tmgr agents sync',
-		],
-		note: '--dry-run only plans: nothing is started. The queue commands are experimental. agents login and agents sync keep separate accounts for your agent tools.',
+		also: ['tmgr autopilot status', 'tmgr agents login', 'tmgr agents sync'],
+		note: '--dry-run only plans: nothing is started. --max-cost counts only runs paid by API key. agents login and agents sync are experimental: they manage the sign-in of an agent profile used by runner sessions.',
 	},
 	{
 		id: 'usage',
 		title: 'See what your AI tools cost and how much limit is left',
 		benefit:
-			'Know the cost per day, per task and per account, and how close you are to the limit, without opening a billing page. tmgr reads the usage logs of Claude Code and Codex on your computer. It never stores your prompts.',
+			'Know the cost per day, per task and per account, and how close you are to the limit, without opening a billing page. tmgr reads the usage logs of Claude Code and Codex on your computer. The usage database never stores your prompts.',
 		example: 'tmgr usage --week --by task',
 		also: [
 			'tmgr usage limits',
@@ -104,13 +98,13 @@ export const CLI_SCENARIOS: CliScenario[] = [
 			'tmgr usage statusline install',
 			'tmgr time',
 		],
-		note: 'Reading the logs needs your consent, and you can withdraw it any time with tmgr usage consent deny.',
+		note: 'The desktop app asks before reading the logs. In the terminal, usage commands you run by hand read them until you run tmgr usage consent deny.',
 	},
 	{
 		id: 'desktop',
 		title: 'Pair it with the desktop app',
 		benefit:
-			'The TMGR desktop app already installs tmgr for you. Runner sessions and Decisions show up in the app, local workspaces that never touch the cloud work from the command line too, and shared skills can be attached to your personas.',
+			'Use tmgr next to the TMGR desktop app. Decisions show up in the app, local workspaces that never touch the cloud work from the command line too, and shared skills can be attached to your personas.',
 		example: 'tmgr --ws local:my-notes status',
 		also: ['tmgr skills list', 'tmgr skills attach'],
 	},
@@ -118,7 +112,7 @@ export const CLI_SCENARIOS: CliScenario[] = [
 		id: 'agents',
 		title: 'Give your agents the same tools',
 		benefit:
-			'tmgr speaks MCP, so Claude Code, Codex, Cursor and other agents can create tasks, ask you questions and send you notifications on their own.',
+			'tmgr speaks MCP, so Claude Code, Codex, Cursor and other agents can ask you questions, find your earlier answers and send you notifications on their own. To let them work with your tasks, connect the TMGR task server too.',
 		example: 'tmgr mcp',
 		also: ['tmgr hook install claude', 'tmgr hook install codex'],
 		note: 'Step-by-step setup for each agent is in the AI agents guide.',
@@ -126,10 +120,10 @@ export const CLI_SCENARIOS: CliScenario[] = [
 ];
 
 export const CLI_SAFETY: string[] = [
-	'Your sign-in token is kept in the system keychain, and tmgr never prints it.',
+	'Your sign-in token is kept in the system keychain (or in a private file when there is none), and tmgr never prints it.',
 	'tmgr self-update installs only releases with a valid signature, and checks them before replacing itself.',
 	'Agents run in a sandbox by default. Leaving it needs a typed confirmation.',
-	'Agents are controlled only from your own computer. The TMGR server never sends them commands.',
+	'The TMGR server never sends commands to your agents. You control them from your own computer.',
 	'tmgr setup terminal makes copying from tmgr attach work over SSH. It shows what it will change and asks first.',
 ];
 

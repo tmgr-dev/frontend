@@ -27,6 +27,18 @@ const snapshot = read(
 const tokenize = (cmd: string): string[] =>
 	(cmd.match(/"[^"]*"|\S+/g) ?? []).map((t) => t.replace(/^"|"$/g, ''));
 
+const POSITIONAL = new Set([
+	'add',
+	'notify',
+	'alarm',
+	'start',
+	'switch',
+	'task show',
+	'usage task',
+	'hook install',
+	'init',
+]);
+
 function check(cmd: string): string[] {
 	const problems: string[] = [];
 	const tokens = tokenize(cmd);
@@ -60,6 +72,9 @@ function check(cmd: string): string[] {
 		return [`${cmd}: unknown command`];
 	}
 	const entry = snapshot.find((s) => s.name === name)!;
+	const positional = words.slice(name.split(' ').length);
+	if (positional.length && !POSITIONAL.has(name))
+		problems.push(`${cmd}: "${name}" takes no positional argument`);
 	const rootFlags = snapshot.find((s) => s.name === '<root>')!.flags;
 	for (const f of flags) {
 		if (![f, `${f}s`].some((x) => entry.flags.has(x) || rootFlags.has(x)))
@@ -89,10 +104,12 @@ describe('tmgr CLI explainer', () => {
 	it('keeps README Why commands real', () => {
 		const readme = read('crates/README.md');
 		const why = readme.split('## Why tmgr')[1].split('\n## ')[0];
-		const cmds = why
+		const fenced = why
 			.split('\n')
 			.map((l) => l.trim())
 			.filter((l) => l.startsWith('tmgr '));
+		const inline = [...why.matchAll(/`(tmgr [^`]+)`/g)].map((m) => m[1]);
+		const cmds = [...fenced, ...inline];
 		expect(cmds.length).toBeGreaterThanOrEqual(7);
 		expect(cmds.flatMap(check)).toEqual([]);
 	});
@@ -100,7 +117,7 @@ describe('tmgr CLI explainer', () => {
 	it('registers /cli as a public route', () => {
 		const routes = read('src/router/routes.js').replace(/\s+/g, ' ');
 		expect(routes).toMatch(
-			/path: '\/cli', component: \(\) => import\('@\/pages\/CliGuide.vue'\), meta: \{[^}]*allowedGuests: true/,
+			/path: '\/cli', component: \(\) => import\('@\/pages\/CliGuide.vue'\), meta: \{[^}]*allowedGuests: true, notOnlyForLoggedUsers: true/,
 		);
 	});
 

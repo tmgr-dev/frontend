@@ -9,10 +9,7 @@
 					<p class="text-base">{{ intro }}</p>
 					<p class="font-medium">Install on macOS or Linux</p>
 					<CodeSnippet :code="installCommand" label="tmgr install command" />
-					<p class="text-ink-subtle">
-						No sudo needed. On Windows, use WSL2. The TMGR desktop app installs
-						tmgr for you too.
-					</p>
+					<p class="text-ink-subtle">No sudo needed. On Windows, use WSL2.</p>
 				</section>
 
 				<section
