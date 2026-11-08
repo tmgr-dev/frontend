@@ -18,13 +18,9 @@ html.dark .docs-prose {
 	@extend .md-editor-dark;
 }
 
-// The task form loads the atom theme matching the colour scheme; here both
-// come from the package and are scoped to the scheme.
-html:not(.dark) .docs-code {
-	@include meta.load-css('highlight.js/styles/atom-one-light.css');
-}
-
-html.dark .docs-code {
+// md-editor-v3 reverses the code style to dark for the default preview theme
+// (codeStyleReverse), so the task form uses atom-one-dark in both schemes.
+.docs-code {
 	@include meta.load-css('highlight.js/styles/atom-one-dark.css');
 }
 
