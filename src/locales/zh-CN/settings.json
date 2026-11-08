@@ -69,7 +69,8 @@
 	"about": {
 		"version": "版本 {version}",
 		"moreTitle": "来自开发者的更多产品",
-		"moreDescription": "TMGR 开发团队的其他产品。"
+		"moreDescription": "TMGR 开发团队的其他产品。",
+		"cliLink": "命令行 (tmgr)"
 	},
 	"theme": {
 		"title": "主题",

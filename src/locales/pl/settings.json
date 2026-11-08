@@ -69,7 +69,8 @@
 	"about": {
 		"version": "Wersja {version}",
 		"moreTitle": "Więcej od autora",
-		"moreDescription": "Inne produkty twórców TMGR."
+		"moreDescription": "Inne produkty twórców TMGR.",
+		"cliLink": "Wiersz poleceń (tmgr)"
 	},
 	"theme": {
 		"title": "Motyw",

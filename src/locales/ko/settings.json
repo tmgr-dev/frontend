@@ -69,7 +69,8 @@
 	"about": {
 		"version": "버전 {version}",
 		"moreTitle": "제작자의 다른 제품",
-		"moreDescription": "TMGR을 만드는 사람들의 다른 제품이에요."
+		"moreDescription": "TMGR을 만드는 사람들의 다른 제품이에요.",
+		"cliLink": "명령줄 (tmgr)"
 	},
 	"theme": {
 		"title": "테마",

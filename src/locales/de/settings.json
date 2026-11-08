@@ -69,7 +69,8 @@
 	"about": {
 		"version": "Version {version}",
 		"moreTitle": "Mehr vom Entwickler",
-		"moreDescription": "Weitere Produkte von den Machern von TMGR."
+		"moreDescription": "Weitere Produkte von den Machern von TMGR.",
+		"cliLink": "Befehlszeile (tmgr)"
 	},
 	"theme": {
 		"title": "Design",

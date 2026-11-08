@@ -69,7 +69,8 @@
 	"about": {
 		"version": "Version {version}",
 		"moreTitle": "Autres créations de l'éditeur",
-		"moreDescription": "D'autres produits des personnes qui créent TMGR."
+		"moreDescription": "D'autres produits des personnes qui créent TMGR.",
+		"cliLink": "Ligne de commande (tmgr)"
 	},
 	"theme": {
 		"title": "Thème",

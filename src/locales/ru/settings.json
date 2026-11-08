@@ -69,7 +69,8 @@
 	"about": {
 		"version": "Версия {version}",
 		"moreTitle": "Ещё от автора",
-		"moreDescription": "Другие продукты от создателей TMGR."
+		"moreDescription": "Другие продукты от создателей TMGR.",
+		"cliLink": "Командная строка (tmgr)"
 	},
 	"theme": {
 		"title": "Тема",
