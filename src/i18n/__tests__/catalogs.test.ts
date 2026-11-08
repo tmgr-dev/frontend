@@ -42,10 +42,13 @@ const readLocale = (locale: string): Flat => {
 const stripLiterals = (message: string) => message.replace(/\{'[^']*'\}/g, '');
 
 const placeholders = (message: string) =>
-	[...stripLiterals(message).matchAll(/\{\s*([A-Za-z_]\w*)\s*\}/g)]
-		.map((m) => m[1])
-		.filter((name) => name !== 'n' && name !== 'count')
-		.sort();
+	[
+		...new Set(
+			[...stripLiterals(message).matchAll(/\{\s*([A-Za-z_]\w*)\s*\}/g)]
+				.map((m) => m[1])
+				.filter((name) => name !== 'n' && name !== 'count'),
+		),
+	].sort();
 
 const segments = (message: string) => stripLiterals(message).split('|').length;
 
