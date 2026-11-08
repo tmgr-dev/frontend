@@ -34,8 +34,15 @@ impl Phones {
         self.expire_pin(&pin);
         continue;
       }
-      let Ok(msgs) = self.relay.list_messages(&pin.conn()) else {
-        continue;
+      let msgs = match self.relay.list_messages(&pin.conn()) {
+        Ok(m) => {
+          self.poll_recovered(&pin.mailbox);
+          m
+        }
+        Err(e) => {
+          self.poll_failed(&pin.mailbox, "reading the messages of a paired phone failed", &e);
+          continue;
+        }
       };
       for msg in relay::usable(msgs) {
         if msg.kind == "answer" {
@@ -47,6 +54,19 @@ impl Phones {
         }
       }
     }
+  }
+
+  pub(super) fn poll_failed(&self, key: &str, what: &str, e: &relay::RelayError) {
+    let msg = e.to_string();
+    let mut g = self.poll_errors.lock().unwrap_or_else(|p| p.into_inner());
+    if g.get(key) != Some(&msg) {
+      log::warn!("[phones] {what}: {msg}");
+      g.insert(key.to_owned(), msg);
+    }
+  }
+
+  pub(super) fn poll_recovered(&self, key: &str) {
+    self.poll_errors.lock().unwrap_or_else(|p| p.into_inner()).remove(key);
   }
 
   pub fn refresh_snapshots(&self, force: bool) {

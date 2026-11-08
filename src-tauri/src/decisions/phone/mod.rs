@@ -57,6 +57,7 @@ pub struct Phones {
   last_alert: AtomicI64,
   dirty_since: AtomicI64,
   kick: (Mutex<bool>, Condvar),
+  poll_errors: Mutex<HashMap<String, String>>,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -104,6 +105,7 @@ impl Phones {
       last_alert: AtomicI64::new(i64::MIN),
       dirty_since: AtomicI64::new(0),
       kick: (Mutex::new(true), Condvar::new()),
+      poll_errors: Mutex::new(HashMap::new()),
     })
   }
 

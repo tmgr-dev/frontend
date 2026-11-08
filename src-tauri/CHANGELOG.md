@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## Unreleased
+
+- Phone pairing no longer stalls on "waiting" after the phone scans the QR code. The pairing steps are now also written to TMGR.log (no codes, keys or message contents).
+
 ## 0.9.129 — 2026-11-08
 
 - You can answer Decisions cards from the TMGR iPhone app (coming in its next update). In Settings → Agent alerts → Phones, choose Pair an iPhone, scan the QR code with the iPhone app and type the 6-digit code it shows. The phone sees your open cards and can pick an option, defer, dismiss or send a short text reply, with Face ID. Everything between the phone and this computer is end-to-end encrypted and signed: the TMGR server only relays sealed messages and cannot read cards, change answers or send commands. Answers older than 24 hours, or for a card that changed after the phone saw it, are refused. You can see and revoke paired phones at any time. Needs the TMGR iPhone app with phone pairing.
