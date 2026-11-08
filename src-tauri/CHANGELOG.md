@@ -3,7 +3,7 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
-## Unreleased
+## 0.9.130 — 2026-11-08
 
 - Phone pairing no longer stalls on "waiting" after the phone scans the QR code. The pairing steps are now also written to TMGR.log (no codes, keys or message contents).
 
