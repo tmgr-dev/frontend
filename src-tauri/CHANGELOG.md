@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.135 — 2026-11-09
+
+- Decisions: an answer saved to a task as a comment is no longer posted twice when the app could not record the first post and the task's comment list was slow to show it.
+
 ## 0.9.134 — 2026-11-08
 
 - The tray menu, the File and View items TMGR adds to the app menu, and the titles of the Decisions, Paired phones, Quick add and Agent terminal windows now follow the language chosen in the main window (English, Russian, Spanish, Chinese, Portuguese, German, French, Japanese, Korean, Polish). The macOS system menus (Edit, Window, Help) keep the system language.
