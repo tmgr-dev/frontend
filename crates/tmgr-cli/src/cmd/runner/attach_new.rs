@@ -565,7 +565,10 @@ pub(super) fn start_session(
             super::privilege::check_cards_cap(&client.welcome().caps, r.permission_cards)
                 .map_err(|e| fail(&e.message))?;
             let mut made = None;
-            if req.worktree && tmgr_runner::sessionwt::in_repo(Path::new(&req.folder)) {
+            if req.worktree
+                && !req.no_sandbox
+                && tmgr_runner::sessionwt::in_repo(Path::new(&req.folder))
+            {
                 let taken: Vec<String> = client
                     .list()
                     .map_err(|e| fail(&rerr(e).message))?

@@ -337,7 +337,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let touch = format!("touch {}", marker.display());
         let script = format!("#!/bin/sh\n{touch}\n");
-        let hooks = clone.join("evil-hooks");
+        let hooks = clone.join(".git/evil-hooks");
         fs::create_dir_all(&hooks).unwrap();
         for dir in [hooks.clone(), clone.join(".git/hooks")] {
             fs::create_dir_all(&dir).unwrap();
@@ -361,9 +361,8 @@ mod tests {
                 fs::set_permissions(&f, fs::Permissions::from_mode(0o755)).unwrap();
             }
         }
-        let extra = clone.join("extra.cfg");
+        let extra = clone.join(".git/extra.cfg");
         fs::write(&extra, format!("[core]\n\tfsmonitor = {touch}\n")).unwrap();
-        fs::write(clone.join(".gitattributes"), "* filter=x\n").unwrap();
         let mut cfg = fs::read_to_string(clone.join(".git/config")).unwrap();
         cfg.push_str(&format!(
             "[core]\n\tfsmonitor = {touch}\n\thooksPath = {hp}\n\tsshCommand = {touch}\n\tpager = {touch}\n\teditor = {touch}\n\tgitProxy = {touch}\n[filter \"x\"]\n\tclean = {touch}\n\tsmudge = {touch}\n\tprocess = {touch}\n\trequired = true\n[include]\n\tpath = {extra}\n[uploadpack]\n\tpackObjectsHook = {touch}\n[alias]\n\tlog = !{touch}\n\tstatus = !{touch}\n\tfetch = !{touch}\n[gc]\n\tauto = 1\n[credential]\n\thelper = {touch}\n[diff]\n\texternal = {touch}\n[remote \"origin\"]\n\tuploadpack = {touch}\n",
@@ -376,14 +375,27 @@ mod tests {
     #[test]
     fn importing_a_hostile_clone_runs_nothing_and_lands_the_branch() {
         let (t, sc) = setup();
-        let tip = commit_in(&sc.path, "n.txt");
+        commit_in(&sc.path, "n.txt");
+        fs::write(sc.path.join(".gitattributes"), "* filter=x\n").unwrap();
+        git(&sc.path, &["add", ".gitattributes"]);
+        git(&sc.path, &["commit", "-m", "attrs"]);
+        let tip = git(&sc.path, &["rev-parse", "HEAD"]);
         let marker = fs::canonicalize(t.path()).unwrap().join("ran");
         arm_hostile_clone(&sc.path, &marker);
+        let twin = fs::canonicalize(t.path()).unwrap().join("twin");
+        assert!(std::process::Command::new("cp")
+            .arg("-R")
+            .arg(&sc.path)
+            .arg(&twin)
+            .status()
+            .unwrap()
+            .success());
         let _ = std::process::Command::new("git")
-            .args(["-C", &sc.path.display().to_string(), "status"])
+            .args(["-C", &twin.display().to_string(), "status"])
             .output();
         assert!(marker.exists(), "the clone is not hostile enough");
         fs::remove_file(&marker).unwrap();
+        fs::remove_dir_all(&twin).unwrap();
         let source_config = fs::read(sc.repo.join(".git/config")).unwrap();
         let done = import_session(&sc.path.display().to_string(), t.path()).unwrap();
         assert_eq!(
@@ -396,8 +408,17 @@ mod tests {
             fs::read(sc.repo.join(".git/config")).unwrap(),
             source_config
         );
-        let _ = sessionwt::assess(&sc.repo, &sc.path);
-        let _ = sessionwt::remove(&sc.repo, &sc.path);
+        let verdict = sessionwt::assess(&sc.repo, &sc.path).unwrap();
+        assert!(
+            matches!(verdict, sessionwt::Verdict::Removable { .. }),
+            "{verdict:?}"
+        );
+        let removed = sessionwt::remove(&sc.repo, &sc.path).unwrap();
+        assert!(
+            matches!(removed, sessionwt::Verdict::Removable { .. }),
+            "{removed:?}"
+        );
+        assert!(!sc.path.exists());
         assert!(!marker.exists(), "a program of the clone ran");
         assert_eq!(git(&sc.repo, &["rev-parse", "refs/heads/s1"]), tip);
     }

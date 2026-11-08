@@ -1949,6 +1949,9 @@ fn import_gc_and_rm_run_nothing_from_a_hostile_session_clone() {
     fs::write(sc.path.join("n.txt"), "n").unwrap();
     git_cli(&sc.path, &["add", "n.txt"]);
     git_cli(&sc.path, &["commit", "-q", "-m", "n"]);
+    fs::write(sc.path.join(".gitattributes"), "* filter=x\n").unwrap();
+    git_cli(&sc.path, &["add", ".gitattributes"]);
+    git_cli(&sc.path, &["commit", "-q", "-m", "attrs"]);
     let tip = Command::new("git")
         .current_dir(&sc.path)
         .args(["rev-parse", "HEAD"])
@@ -1957,7 +1960,7 @@ fn import_gc_and_rm_run_nothing_from_a_hostile_session_clone() {
     let tip = String::from_utf8_lossy(&tip.stdout).trim().to_string();
     let marker = fs::canonicalize(env.tmp.path()).unwrap().join("ran");
     let touch = format!("touch {}", marker.display());
-    let hooks = sc.path.join("evil-hooks");
+    let hooks = sc.path.join(".git/evil-hooks");
     fs::create_dir_all(&hooks).unwrap();
     for dir in [hooks.clone(), sc.path.join(".git/hooks")] {
         for h in [
@@ -1970,9 +1973,8 @@ fn import_gc_and_rm_run_nothing_from_a_hostile_session_clone() {
             fs::set_permissions(dir.join(h), fs::Permissions::from_mode(0o755)).unwrap();
         }
     }
-    let extra = sc.path.join("extra.cfg");
+    let extra = sc.path.join(".git/extra.cfg");
     fs::write(&extra, format!("[core]\n\tfsmonitor = {touch}\n")).unwrap();
-    fs::write(sc.path.join(".gitattributes"), "* filter=x\n").unwrap();
     let mut cfg = fs::read_to_string(sc.path.join(".git/config")).unwrap();
     cfg.push_str(&format!(
         "[core]\n\tfsmonitor = {touch}\n\thooksPath = {}\n[filter \"x\"]\n\tclean = {touch}\n\tsmudge = {touch}\n[include]\n\tpath = {}\n[uploadpack]\n\tpackObjectsHook = {touch}\n[alias]\n\tstatus = !{touch}\n",
@@ -2003,7 +2005,7 @@ fn import_gc_and_rm_run_nothing_from_a_hostile_session_clone() {
     let gc = env.tmgr(&["runner", "gc", "--dry-run", "--json"]);
     assert!(!out_text(&gc).contains("hos"), "{}", out_text(&gc));
     let rm = env.tmgr(&["rm", &path]);
-    assert!(!out_text(&rm).is_empty());
+    assert!(out_text(&rm).contains("hos"), "{}", out_text(&rm));
     assert!(!marker.exists(), "a program of the clone ran");
     assert_eq!(
         fs::read(env.proj.join(".git/config")).unwrap(),
