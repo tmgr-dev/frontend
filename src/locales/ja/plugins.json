@@ -14,7 +14,8 @@
 	"chart": {
 		"summaryBar": "{series} の棒グラフ({n} 点)",
 		"summaryLine": "{series} の折れ線グラフ({n} 点)",
-		"keyHint": "矢印キーで値を読み取れます。"
+		"keyHint": "矢印キーで値を読み取れます。",
+		"noData": "データなし"
 	},
 	"markdown": {
 		"done": "完了",

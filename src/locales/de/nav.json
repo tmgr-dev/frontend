@@ -53,5 +53,53 @@
 		"logout": "Abmelden",
 		"workspaceUsers": "Benutzer des Arbeitsbereichs:"
 	},
-	"layout": { "back": "Zurück" }
+	"layout": {
+		"back": "Zurück"
+	},
+	"categories": {
+		"title": "Kategorien",
+		"filter": "Kategorien filtern",
+		"new": "Neue Kategorie",
+		"loadFailed": "Kategorien konnten nicht geladen werden",
+		"noMatch": "Keine Kategorie passt zu „{query}“",
+		"expand": "{title} aufklappen",
+		"collapse": "{title} einklappen",
+		"cursorConnected": "Cursor verbunden",
+		"literalPattern": "Das Titelmuster hat keine Platzhalter",
+		"showLess": "Weniger anzeigen",
+		"showMore": "{count} weitere anzeigen"
+	},
+	"routes": {
+		"dashboard": "Dashboard",
+		"currentTasks": "Aktuelle Aufgaben",
+		"archive": "Archiv",
+		"files": "Dateien",
+		"welcome": "Willkommen",
+		"connectAgent": "Agent verbinden",
+		"gettingStarted": "Erste Schritte",
+		"plugin": "Plugin",
+		"board": "Board",
+		"dailyRoutines": "Tagesroutinen",
+		"quickAdd": "Schnell hinzufügen",
+		"settings": "Einstellungen",
+		"workspaceSettings": "Arbeitsbereich-Einstellungen",
+		"modules": "Module",
+		"personas": "Personas",
+		"agentAlerts": "Agent-Benachrichtigungen",
+		"plugins": "Plugins",
+		"howPluginsWork": "So funktionieren Plugins",
+		"privacyPolicy": "Datenschutzerklärung",
+		"workspaceDashboard": "Workspace-Dashboard",
+		"workspaceMember": "Workspace-Mitglied",
+		"notifications": "Benachrichtigungen",
+		"taskList": "Aufgabenliste",
+		"map": "Karte",
+		"pages": "Seiten",
+		"memory": "Speicher",
+		"categoryView": "Kategorieansicht",
+		"categories": "Kategorien",
+		"newCategory": "Neue Kategorie",
+		"subcategories": "Unterkategorien",
+		"categoryChildren": "Unterkategorien"
+	}
 }

@@ -37,6 +37,31 @@
 	},
 	"errors": {
 		"generic": "Algo salió mal. Inténtalo de nuevo.",
-		"network": "Error de red. Comprueba tu conexión e inténtalo de nuevo."
+		"network": "Error de red. Comprueba tu conexión e inténtalo de nuevo.",
+		"loadNotifications": "No se pudieron cargar las notificaciones"
+	},
+	"duration": {
+		"minutes": "{minutes} min",
+		"hours": "{hours} h",
+		"hoursMinutes": "{hours} h {minutes} min"
+	},
+	"pagination": {
+		"label": "Paginación",
+		"previous": "Página anterior",
+		"next": "Página siguiente",
+		"showing": "Mostrando {from}–{to} de {total}",
+		"itemsPerPage": "Elementos por página",
+		"perPage": "{size} por página"
+	},
+	"share": {
+		"label": "Compartir",
+		"copyLink": "Copiar enlace",
+		"copyAppLink": "Copiar enlace de la app",
+		"copyMarkdown": "Copiar como Markdown",
+		"openInApp": "Abrir en la app de TMGR",
+		"linkCopied": "Enlace copiado",
+		"linkFailed": "No se pudo copiar el enlace",
+		"markdownCopied": "Markdown copiado",
+		"markdownFailed": "No se pudo copiar el Markdown"
 	}
 }

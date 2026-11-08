@@ -14,7 +14,8 @@
 	"chart": {
 		"summaryBar": "Wykres słupkowy: {series}, {n} punkt | Wykres słupkowy: {series}, {n} punkty | Wykres słupkowy: {series}, {n} punktów",
 		"summaryLine": "Wykres liniowy: {series}, {n} punkt | Wykres liniowy: {series}, {n} punkty | Wykres liniowy: {series}, {n} punktów",
-		"keyHint": "Użyj klawiszy strzałek, aby odczytać wartości."
+		"keyHint": "Użyj klawiszy strzałek, aby odczytać wartości.",
+		"noData": "brak danych"
 	},
 	"markdown": {
 		"done": "Ukończone",

@@ -14,7 +14,8 @@
 	"chart": {
 		"summaryBar": "{series} 的柱状图，共 {n} 个数据点",
 		"summaryLine": "{series} 的折线图，共 {n} 个数据点",
-		"keyHint": "使用方向键查看数值。"
+		"keyHint": "使用方向键查看数值。",
+		"noData": "无数据"
 	},
 	"markdown": {
 		"done": "已完成",

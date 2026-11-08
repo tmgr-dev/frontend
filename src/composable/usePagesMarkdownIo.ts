@@ -1,4 +1,5 @@
 import { useToast } from '@/components/ui/toast';
+import { t } from '@/i18n';
 import type { ExportResult } from '@/utils/pages/markdownIo/types';
 import { reactive, ref } from 'vue';
 
@@ -124,15 +125,16 @@ export function usePagesMarkdownIo(getWorkspaceCode: () => string | undefined) {
 			api.downloadExport(result);
 			if (result.warnings.length) {
 				toaster.toast({
-					title: `Exported with ${result.warnings.length} warning${
-						result.warnings.length === 1 ? '' : 's'
-					}`,
+					title: t(
+						'pages.markdownIo.exportedWithWarnings',
+						result.warnings.length,
+					),
 					description: result.warnings[0].message,
 				});
 			}
 		} catch (error) {
 			toaster.toast({
-				title: 'Export failed',
+				title: t('pages.markdownIo.exportFailed'),
 				description: error instanceof Error ? error.message : undefined,
 				variant: 'destructive',
 			});

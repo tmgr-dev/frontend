@@ -53,5 +53,53 @@
 		"logout": "Выйти",
 		"workspaceUsers": "участники рабочего пространства:"
 	},
-	"layout": { "back": "Назад" }
+	"layout": {
+		"back": "Назад"
+	},
+	"categories": {
+		"title": "Категории",
+		"filter": "Фильтр категорий",
+		"new": "Новая категория",
+		"loadFailed": "Не удалось загрузить категории",
+		"noMatch": "Нет категорий по запросу «{query}»",
+		"expand": "Развернуть {title}",
+		"collapse": "Свернуть {title}",
+		"cursorConnected": "Cursor подключён",
+		"literalPattern": "В шаблоне заголовка нет подстановок",
+		"showLess": "Показать меньше",
+		"showMore": "Показать ещё {count}"
+	},
+	"routes": {
+		"dashboard": "Дашборд",
+		"currentTasks": "Текущие задачи",
+		"archive": "Архив",
+		"files": "Файлы",
+		"welcome": "Добро пожаловать",
+		"connectAgent": "Подключите агента",
+		"gettingStarted": "Начало работы",
+		"plugin": "Плагин",
+		"board": "Доска",
+		"dailyRoutines": "Ежедневные рутины",
+		"quickAdd": "Быстрое добавление",
+		"settings": "Настройки",
+		"workspaceSettings": "Настройки рабочего пространства",
+		"modules": "Модули",
+		"personas": "Персоны",
+		"agentAlerts": "Уведомления агентов",
+		"plugins": "Плагины",
+		"howPluginsWork": "Как работают плагины",
+		"privacyPolicy": "Политика конфиденциальности",
+		"workspaceDashboard": "Дашборд рабочего пространства",
+		"workspaceMember": "Участник рабочего пространства",
+		"notifications": "Уведомления",
+		"taskList": "Список задач",
+		"map": "Карта",
+		"pages": "Страницы",
+		"memory": "Память",
+		"categoryView": "Просмотр категории",
+		"categories": "Категории",
+		"newCategory": "Новая категория",
+		"subcategories": "Подкатегории",
+		"categoryChildren": "Вложенные категории"
+	}
 }

@@ -8,6 +8,7 @@ import {
 	type NotificationPaginatedResponse,
 } from '@/actions/tmgr/notifications';
 import { usePusher } from '@/composable/usePusher';
+import { t } from '@/i18n';
 import type { ActionError } from '@/types/dashboard';
 import { requestCache } from '@/utils/requestCache';
 import { computed, getCurrentScope, onScopeDispose, ref, watch } from 'vue';
@@ -76,7 +77,8 @@ export function useNotifications(): UseNotificationsReturn {
 		} catch (err: any) {
 			if (startedAt !== generation) return;
 			error.value = {
-				message: err.response?.data?.message || 'Failed to load notifications',
+				message:
+					err.response?.data?.message || t('common.errors.loadNotifications'),
 				type: 'server',
 				timestamp: new Date().toISOString(),
 				recoverable: true,

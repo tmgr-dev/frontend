@@ -180,5 +180,14 @@
 		"deleteTitle": "删除所有上传内容？",
 		"deleteBody": "此账号已上传的所有内容都将从 TMGR 中删除。智能体用量同步保持当前状态。",
 		"genericError": "出了点问题。"
+	},
+	"featureDisabled": {
+		"moduleOff": "模块已关闭",
+		"title": "{name} 已关闭",
+		"description": "{name} 已{scope}关闭。可在 设置 → 模块 中开启。",
+		"forAccount": "对你的账户",
+		"inWorkspace": "在此工作区",
+		"openModulesLabel": "打开模块设置",
+		"openModules": "打开模块"
 	}
 }

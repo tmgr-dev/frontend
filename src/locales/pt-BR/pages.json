@@ -28,7 +28,8 @@
 		"empty": "Vazio"
 	},
 	"editor": {
-		"searching": "Buscando..."
+		"searching": "Buscando...",
+		"toolbarGroup": "Página"
 	},
 	"files": {
 		"title": "Arquivos",
@@ -293,5 +294,15 @@
 			"captionPlaceholder": "Escreva uma legenda",
 			"loadFailed": "Falha ao carregar a imagem"
 		}
+	},
+	"actions": {
+		"createFailed": "Não foi possível criar a página",
+		"renameFailed": "Não foi possível renomear a página",
+		"pinFailed": "Não foi possível alterar a fixação",
+		"archiveFailed": "Não foi possível arquivar a página"
+	},
+	"markdownIo": {
+		"exportedWithWarnings": "Exportado com {n} aviso | Exportado com {n} avisos",
+		"exportFailed": "Falha na exportação"
 	}
 }

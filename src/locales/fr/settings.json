@@ -180,5 +180,14 @@
 		"deleteTitle": "Supprimer tous les envois ?",
 		"deleteBody": "Tout ce que ce compte a envoyé est supprimé de TMGR. La synchronisation de l'utilisation des agents reste inchangée.",
 		"genericError": "Une erreur s'est produite."
+	},
+	"featureDisabled": {
+		"moduleOff": "Le module est désactivé",
+		"title": "{name} est désactivé",
+		"description": "{name} est désactivé {scope}. Activez-le dans Paramètres → Modules.",
+		"forAccount": "pour votre compte",
+		"inWorkspace": "dans cet espace de travail",
+		"openModulesLabel": "Ouvrir les paramètres des modules",
+		"openModules": "Ouvrir les modules"
 	}
 }

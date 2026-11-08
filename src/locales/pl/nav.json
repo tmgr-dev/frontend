@@ -53,5 +53,53 @@
 		"logout": "Wyloguj się",
 		"workspaceUsers": "użytkownicy przestrzeni roboczej:"
 	},
-	"layout": { "back": "Wstecz" }
+	"layout": {
+		"back": "Wstecz"
+	},
+	"categories": {
+		"title": "Kategorie",
+		"filter": "Filtruj kategorie",
+		"new": "Nowa kategoria",
+		"loadFailed": "Nie udało się wczytać kategorii",
+		"noMatch": "Brak kategorii pasujących do „{query}”",
+		"expand": "Rozwiń {title}",
+		"collapse": "Zwiń {title}",
+		"cursorConnected": "Cursor połączony",
+		"literalPattern": "Wzór tytułu nie ma symboli zastępczych",
+		"showLess": "Pokaż mniej",
+		"showMore": "Pokaż jeszcze {count}"
+	},
+	"routes": {
+		"dashboard": "Pulpit",
+		"currentTasks": "Bieżące zadania",
+		"archive": "Archiwum",
+		"files": "Pliki",
+		"welcome": "Witaj",
+		"connectAgent": "Połącz agenta",
+		"gettingStarted": "Pierwsze kroki",
+		"plugin": "Wtyczka",
+		"board": "Tablica",
+		"dailyRoutines": "Codzienne rutyny",
+		"quickAdd": "Szybkie dodawanie",
+		"settings": "Ustawienia",
+		"workspaceSettings": "Ustawienia przestrzeni roboczej",
+		"modules": "Moduły",
+		"personas": "Persony",
+		"agentAlerts": "Alerty agenta",
+		"plugins": "Wtyczki",
+		"howPluginsWork": "Jak działają wtyczki",
+		"privacyPolicy": "Polityka prywatności",
+		"workspaceDashboard": "Pulpit przestrzeni roboczej",
+		"workspaceMember": "Członek przestrzeni roboczej",
+		"notifications": "Powiadomienia",
+		"taskList": "Lista zadań",
+		"map": "Mapa",
+		"pages": "Strony",
+		"memory": "Pamięć",
+		"categoryView": "Widok kategorii",
+		"categories": "Kategorie",
+		"newCategory": "Nowa kategoria",
+		"subcategories": "Podkategorie",
+		"categoryChildren": "Kategorie podrzędne"
+	}
 }

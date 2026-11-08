@@ -211,7 +211,13 @@
 	"skillFiles": {
 		"title": "Dateien · {slug}",
 		"loading": "Dateien werden geladen…",
-		"deleteFile": "{path} löschen"
+		"deleteFile": "{path} löschen",
+		"loadFailed": "Dateien konnten nicht geladen werden",
+		"confirmDelete": "{path} löschen? Dies kann nicht rückgängig gemacht werden.",
+		"deleted": "Datei gelöscht",
+		"viewFailed": "Datei konnte nicht geladen werden",
+		"deleteFailed": "Datei konnte nicht gelöscht werden",
+		"stale": "Dateien wurden anderswo geändert und neu geladen"
 	},
 	"deletedSkills": {
 		"recentlyDeleted": "Kürzlich gelöscht",
@@ -250,7 +256,11 @@
 		"pinnedBy": "Angeheftet von: {names}",
 		"compare": "Mit aktueller Version vergleichen",
 		"restoreVersion": "Diese Version wiederherstellen",
-		"confirmRestore": "Version {version} wiederherstellen? Dadurch wird Version {next} mit ihrem Inhalt erstellt."
+		"confirmRestore": "Version {version} wiederherstellen? Dadurch wird Version {next} mit ihrem Inhalt erstellt.",
+		"loadFailed": "Verlauf konnte nicht geladen werden",
+		"restored": "Version {version} wiederhergestellt",
+		"changedMeanwhile": "Dieser Skill wurde inzwischen geändert. Lade den Verlauf neu.",
+		"restoreFailed": "Diese Version konnte nicht wiederhergestellt werden"
 	},
 	"skillsLibrary": {
 		"importFromAgents": "Aus lokalen Agents importieren",
@@ -921,7 +931,9 @@
 			"rateLimitedIn": "Zu viele Benachrichtigungen — versuche es in {seconds} s erneut.",
 			"rateLimited": "Zu viele Benachrichtigungen — versuche es gleich erneut.",
 			"unauthorized": "Dieses Token wurde abgelehnt. Erstelle ein neues.",
-			"unreachable": "TMGR war nicht erreichbar."
+			"unreachable": "TMGR war nicht erreichbar.",
+			"title": "Test von TMGR",
+			"body": "Deine Agent-Benachrichtigungen sind eingerichtet. Gesendet um {time}"
 		},
 		"copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",
 		"confirmRevoke": "Token „{label}“ widerrufen?",

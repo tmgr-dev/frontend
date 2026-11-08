@@ -37,6 +37,31 @@
 	},
 	"errors": {
 		"generic": "문제가 발생했어요. 다시 시도해 주세요.",
-		"network": "네트워크 오류예요. 연결을 확인하고 다시 시도해 주세요."
+		"network": "네트워크 오류예요. 연결을 확인하고 다시 시도해 주세요.",
+		"loadNotifications": "알림을 불러오지 못했습니다"
+	},
+	"duration": {
+		"minutes": "{minutes}분",
+		"hours": "{hours}시간",
+		"hoursMinutes": "{hours}시간 {minutes}분"
+	},
+	"pagination": {
+		"label": "페이지 번호",
+		"previous": "이전 페이지",
+		"next": "다음 페이지",
+		"showing": "{from}–{to} / 전체 {total}",
+		"itemsPerPage": "페이지당 항목 수",
+		"perPage": "페이지당 {size}개"
+	},
+	"share": {
+		"label": "공유",
+		"copyLink": "링크 복사",
+		"copyAppLink": "앱 링크 복사",
+		"copyMarkdown": "Markdown으로 복사",
+		"openInApp": "TMGR 앱에서 열기",
+		"linkCopied": "링크를 복사했습니다",
+		"linkFailed": "링크를 복사하지 못했습니다",
+		"markdownCopied": "Markdown을 복사했습니다",
+		"markdownFailed": "Markdown을 복사하지 못했습니다"
 	}
 }

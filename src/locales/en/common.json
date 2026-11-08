@@ -37,6 +37,31 @@
 	},
 	"errors": {
 		"generic": "Something went wrong. Please try again.",
-		"network": "Network error. Check your connection and try again."
+		"network": "Network error. Check your connection and try again.",
+		"loadNotifications": "Failed to load notifications"
+	},
+	"duration": {
+		"minutes": "{minutes}m",
+		"hours": "{hours}h",
+		"hoursMinutes": "{hours}h {minutes}m"
+	},
+	"pagination": {
+		"label": "Pagination",
+		"previous": "Previous page",
+		"next": "Next page",
+		"showing": "Showing {from}–{to} of {total}",
+		"itemsPerPage": "Items per page",
+		"perPage": "{size} per page"
+	},
+	"share": {
+		"label": "Share",
+		"copyLink": "Copy link",
+		"copyAppLink": "Copy app link",
+		"copyMarkdown": "Copy as Markdown",
+		"openInApp": "Open in TMGR app",
+		"linkCopied": "Link copied",
+		"linkFailed": "Couldn't copy the link",
+		"markdownCopied": "Markdown copied",
+		"markdownFailed": "Couldn't copy the Markdown"
 	}
 }

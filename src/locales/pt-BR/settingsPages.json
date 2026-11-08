@@ -211,7 +211,13 @@
 	"skillFiles": {
 		"title": "Arquivos · {slug}",
 		"loading": "Carregando arquivos…",
-		"deleteFile": "Excluir {path}"
+		"deleteFile": "Excluir {path}",
+		"loadFailed": "Não foi possível carregar os arquivos",
+		"confirmDelete": "Excluir {path}? Isso não pode ser desfeito.",
+		"deleted": "Arquivo excluído",
+		"viewFailed": "Não foi possível carregar o arquivo",
+		"deleteFailed": "Não foi possível excluir o arquivo",
+		"stale": "Os arquivos foram alterados em outro lugar e recarregados"
 	},
 	"deletedSkills": {
 		"recentlyDeleted": "Excluídas recentemente",
@@ -250,7 +256,11 @@
 		"pinnedBy": "Fixada por: {names}",
 		"compare": "Comparar com a atual",
 		"restoreVersion": "Restaurar esta versão",
-		"confirmRestore": "Restaurar a versão {version}? Isso cria a versão {next} com o conteúdo dela."
+		"confirmRestore": "Restaurar a versão {version}? Isso cria a versão {next} com o conteúdo dela.",
+		"loadFailed": "Não foi possível carregar o histórico",
+		"restored": "Versão {version} restaurada",
+		"changedMeanwhile": "Esta habilidade mudou nesse meio-tempo. Recarregue o histórico.",
+		"restoreFailed": "Não foi possível restaurar esta versão"
 	},
 	"skillsLibrary": {
 		"importFromAgents": "Importar de agentes locais",
@@ -921,7 +931,9 @@
 			"rateLimitedIn": "Notificações demais — tente novamente em {seconds} s.",
 			"rateLimited": "Notificações demais — tente novamente em breve.",
 			"unauthorized": "Este token foi rejeitado. Crie um novo.",
-			"unreachable": "Não foi possível alcançar o TMGR."
+			"unreachable": "Não foi possível alcançar o TMGR.",
+			"title": "Teste do TMGR",
+			"body": "As notificações do seu agente estão configuradas. Enviado às {time}"
 		},
 		"copyFailed": "Não foi possível copiar para a área de transferência",
 		"confirmRevoke": "Revogar o token \"{label}\"?",

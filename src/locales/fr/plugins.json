@@ -14,7 +14,8 @@
 	"chart": {
 		"summaryBar": "Histogramme de {series} sur {n} point | Histogramme de {series} sur {n} points",
 		"summaryLine": "Courbe de {series} sur {n} point | Courbe de {series} sur {n} points",
-		"keyHint": "Utilisez les flèches du clavier pour lire les valeurs."
+		"keyHint": "Utilisez les flèches du clavier pour lire les valeurs.",
+		"noData": "aucune donnée"
 	},
 	"markdown": {
 		"done": "Terminée",

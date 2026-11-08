@@ -28,7 +28,8 @@
 		"empty": "Pusto"
 	},
 	"editor": {
-		"searching": "Szukanie..."
+		"searching": "Szukanie...",
+		"toolbarGroup": "Strona"
 	},
 	"files": {
 		"title": "Pliki",
@@ -293,5 +294,15 @@
 			"captionPlaceholder": "Dodaj podpis",
 			"loadFailed": "Nie udało się wczytać obrazu"
 		}
+	},
+	"actions": {
+		"createFailed": "Nie udało się utworzyć strony",
+		"renameFailed": "Nie udało się zmienić nazwy strony",
+		"pinFailed": "Nie udało się zmienić przypięcia",
+		"archiveFailed": "Nie udało się zarchiwizować strony"
+	},
+	"markdownIo": {
+		"exportedWithWarnings": "Wyeksportowano z {n} ostrzeżeniem | Wyeksportowano z {n} ostrzeżeniami | Wyeksportowano z {n} ostrzeżeniami",
+		"exportFailed": "Eksport nie powiódł się"
 	}
 }

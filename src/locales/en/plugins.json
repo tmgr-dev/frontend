@@ -14,7 +14,8 @@
 	"chart": {
 		"summaryBar": "Bar chart of {series} over {n} point | Bar chart of {series} over {n} points",
 		"summaryLine": "Line chart of {series} over {n} point | Line chart of {series} over {n} points",
-		"keyHint": "Use arrow keys to read values."
+		"keyHint": "Use arrow keys to read values.",
+		"noData": "no data"
 	},
 	"markdown": {
 		"done": "Done",

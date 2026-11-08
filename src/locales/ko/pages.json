@@ -28,7 +28,8 @@
 		"empty": "비어 있음"
 	},
 	"editor": {
-		"searching": "검색 중…"
+		"searching": "검색 중…",
+		"toolbarGroup": "페이지"
 	},
 	"files": {
 		"title": "파일",
@@ -293,5 +294,15 @@
 			"captionPlaceholder": "캡션을 입력하세요",
 			"loadFailed": "이미지를 불러오지 못했어요"
 		}
+	},
+	"actions": {
+		"createFailed": "페이지를 만들지 못했습니다",
+		"renameFailed": "페이지 이름을 바꾸지 못했습니다",
+		"pinFailed": "고정 상태를 바꾸지 못했습니다",
+		"archiveFailed": "페이지를 보관하지 못했습니다"
+	},
+	"markdownIo": {
+		"exportedWithWarnings": "경고 {n}개와 함께 내보냈습니다",
+		"exportFailed": "내보내기 실패"
 	}
 }

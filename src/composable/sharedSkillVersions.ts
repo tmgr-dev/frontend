@@ -8,6 +8,7 @@ import {
 	type SharedSkillVersionRow,
 } from '@/actions/tmgr/personas';
 import { toast } from '@/components/ui/toast';
+import { t } from '@/i18n';
 import { lineDiff, type DiffLine } from '@/utils/lineDiff';
 import { ref } from 'vue';
 
@@ -102,7 +103,10 @@ export const useSharedSkillHistory = (slug: string, onChanged: () => void) => {
 			selected.value = next?.version ?? null;
 			await refreshDiff();
 		} catch {
-			toast({ title: 'Could not load the history', variant: 'destructive' });
+			toast({
+				title: t('settingsPages.sharedSkillHistory.loadFailed'),
+				variant: 'destructive',
+			});
 		} finally {
 			loading.value = false;
 		}
@@ -114,7 +118,9 @@ export const useSharedSkillHistory = (slug: string, onChanged: () => void) => {
 		restoring.value = true;
 		try {
 			await restoreSharedSkill(slug, version, current.version);
-			toast({ title: `Version ${version} restored` });
+			toast({
+				title: t('settingsPages.sharedSkillHistory.restored', { version }),
+			});
 			await load();
 			onChanged();
 		} catch (error) {
@@ -122,14 +128,14 @@ export const useSharedSkillHistory = (slug: string, onChanged: () => void) => {
 				(error as { response?: { status?: number } })?.response?.status === 409
 			) {
 				toast({
-					title: 'This skill changed meanwhile. Reload the history.',
+					title: t('settingsPages.sharedSkillHistory.changedMeanwhile'),
 					variant: 'destructive',
 				});
 				await load();
 				onChanged();
 			} else {
 				toast({
-					title: 'Could not restore this version',
+					title: t('settingsPages.sharedSkillHistory.restoreFailed'),
 					variant: 'destructive',
 				});
 			}

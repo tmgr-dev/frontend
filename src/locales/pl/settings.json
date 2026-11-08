@@ -180,5 +180,14 @@
 		"deleteTitle": "Usunąć wszystkie przesłane dane?",
 		"deleteBody": "Wszystko, co przesłało to konto, zostanie usunięte z TMGR. Synchronizacja użycia agentów pozostanie bez zmian.",
 		"genericError": "Coś poszło nie tak."
+	},
+	"featureDisabled": {
+		"moduleOff": "Moduł jest wyłączony",
+		"title": "{name} jest wyłączony",
+		"description": "{name} jest wyłączony {scope}. Włącz go w Ustawieniach → Modułach.",
+		"forAccount": "dla Twojego konta",
+		"inWorkspace": "w tej przestrzeni roboczej",
+		"openModulesLabel": "Otwórz ustawienia modułów",
+		"openModules": "Otwórz moduły"
 	}
 }

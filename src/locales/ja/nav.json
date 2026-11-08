@@ -53,5 +53,53 @@
 		"logout": "ログアウト",
 		"workspaceUsers": "ワークスペースのユーザー："
 	},
-	"layout": { "back": "戻る" }
+	"layout": {
+		"back": "戻る"
+	},
+	"categories": {
+		"title": "カテゴリー",
+		"filter": "カテゴリーを絞り込む",
+		"new": "新しいカテゴリー",
+		"loadFailed": "カテゴリーを読み込めませんでした",
+		"noMatch": "「{query}」に一致するカテゴリーはありません",
+		"expand": "{title}を展開",
+		"collapse": "{title}を折りたたむ",
+		"cursorConnected": "Cursor接続済み",
+		"literalPattern": "タイトルパターンにプレースホルダーがありません",
+		"showLess": "折りたたむ",
+		"showMore": "さらに{count}件表示"
+	},
+	"routes": {
+		"dashboard": "ダッシュボード",
+		"currentTasks": "現在のタスク",
+		"archive": "アーカイブ",
+		"files": "ファイル",
+		"welcome": "ようこそ",
+		"connectAgent": "エージェントを接続",
+		"gettingStarted": "はじめに",
+		"plugin": "プラグイン",
+		"board": "ボード",
+		"dailyRoutines": "デイリールーティン",
+		"quickAdd": "クイック追加",
+		"settings": "設定",
+		"workspaceSettings": "ワークスペースの設定",
+		"modules": "モジュール",
+		"personas": "ペルソナ",
+		"agentAlerts": "エージェントのアラート",
+		"plugins": "プラグイン",
+		"howPluginsWork": "プラグインの仕組み",
+		"privacyPolicy": "プライバシーポリシー",
+		"workspaceDashboard": "ワークスペースのダッシュボード",
+		"workspaceMember": "ワークスペースのメンバー",
+		"notifications": "通知",
+		"taskList": "タスク一覧",
+		"map": "マップ",
+		"pages": "ページ",
+		"memory": "メモリー",
+		"categoryView": "カテゴリービュー",
+		"categories": "カテゴリー",
+		"newCategory": "新しいカテゴリー",
+		"subcategories": "サブカテゴリー",
+		"categoryChildren": "子カテゴリー"
+	}
 }

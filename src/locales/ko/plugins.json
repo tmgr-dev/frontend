@@ -14,7 +14,8 @@
 	"chart": {
 		"summaryBar": "{series}의 막대 차트, {n}개 지점",
 		"summaryLine": "{series}의 꺾은선 차트, {n}개 지점",
-		"keyHint": "화살표 키로 값을 읽을 수 있어요."
+		"keyHint": "화살표 키로 값을 읽을 수 있어요.",
+		"noData": "데이터 없음"
 	},
 	"markdown": {
 		"done": "완료",

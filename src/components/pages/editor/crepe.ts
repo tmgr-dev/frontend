@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { parseTmgrUrl } from '@/utils/pages/tmgrLinks';
 import { syntaxHighlighting } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
@@ -115,17 +116,19 @@ export const createPageCrepe = (options: PageCrepeOptions): Crepe => {
 				codeIcon: icons.code,
 				linkIcon: icons.link,
 				buildToolbar: (builder) => {
-					builder.addGroup('tmgr', 'Page').addItem('make-task', {
-						label: 'Make a task',
-						icon: icons.makeTask,
-						active: () => false,
-						onRun: (ctx) => {
-							const { state } = ctx.get(editorViewCtx);
-							const { from, to } = state.selection;
-							const text = state.doc.textBetween(from, to, '\n').trim();
-							if (text) options.onMakeTask(text);
-						},
-					});
+					builder
+						.addGroup('tmgr', t('pages.editor.toolbarGroup'))
+						.addItem('make-task', {
+							label: t('pages.view.makeTask'),
+							icon: icons.makeTask,
+							active: () => false,
+							onRun: (ctx) => {
+								const { state } = ctx.get(editorViewCtx);
+								const { from, to } = state.selection;
+								const text = state.doc.textBetween(from, to, '\n').trim();
+								if (text) options.onMakeTask(text);
+							},
+						});
 				},
 			},
 			[Crepe.Feature.ListItem]: {

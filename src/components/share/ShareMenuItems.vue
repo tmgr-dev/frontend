@@ -3,7 +3,7 @@
 		<DropdownMenuSub v-if="submenu">
 			<DropdownMenuSubTrigger :data-testid="`${testIdPrefix}-submenu`">
 				<Share2 class="mr-2 h-4 w-4" />
-				<span>Share</span>
+				<span>{{ $t('common.share.label') }}</span>
 			</DropdownMenuSubTrigger>
 			<DropdownMenuSubContent class="w-56">
 				<DropdownMenuItem
@@ -39,15 +39,19 @@
 		DropdownMenuSubTrigger,
 	} from '@/components/ui/dropdown-menu';
 	import { toast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import { canOpenInApp, writeClipboard } from '@/utils/share';
 	import { AppWindow, FileText, Link, Link2, Share2 } from 'lucide-vue-next';
 	import { computed, defineComponent, type PropType } from 'vue';
 
 	const TOASTS = {
-		link: { copied: 'Link copied', failed: "Couldn't copy the link" },
+		link: {
+			copied: () => t('common.share.linkCopied'),
+			failed: () => t('common.share.linkFailed'),
+		},
 		markdown: {
-			copied: 'Markdown copied',
-			failed: "Couldn't copy the Markdown",
+			copied: () => t('common.share.markdownCopied'),
+			failed: () => t('common.share.markdownFailed'),
 		},
 	};
 
@@ -87,8 +91,8 @@
 					write = Promise.reject(error);
 				}
 				write.then(
-					() => toast({ title: TOASTS[kind].copied }),
-					() => toast({ title: TOASTS[kind].failed, variant: 'destructive' }),
+					() => toast({ title: TOASTS[kind].copied() }),
+					() => toast({ title: TOASTS[kind].failed(), variant: 'destructive' }),
 				);
 			};
 
@@ -98,7 +102,7 @@
 				if (web) {
 					list.push({
 						key: 'copy-link',
-						label: 'Copy link',
+						label: t('common.share.copyLink'),
 						icon: Link,
 						run: () => copy(() => web, 'link'),
 					});
@@ -106,7 +110,7 @@
 				if (app) {
 					list.push({
 						key: 'copy-app-link',
-						label: 'Copy app link',
+						label: t('common.share.copyAppLink'),
 						icon: Link2,
 						run: () => copy(() => app, 'link'),
 					});
@@ -114,7 +118,7 @@
 				if (markdown) {
 					list.push({
 						key: 'copy-markdown',
-						label: 'Copy as Markdown',
+						label: t('common.share.copyMarkdown'),
 						icon: FileText,
 						run: () => copy(markdown, props.markdownToast),
 					});
@@ -122,7 +126,7 @@
 				if (app && props.openInApp && canOpenInApp()) {
 					list.push({
 						key: 'open-app',
-						label: 'Open in TMGR app',
+						label: t('common.share.openInApp'),
 						icon: AppWindow,
 						run: () => {
 							window.location.href = app;

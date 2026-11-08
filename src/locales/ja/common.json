@@ -37,6 +37,31 @@
 	},
 	"errors": {
 		"generic": "問題が発生しました。もう一度お試しください。",
-		"network": "ネットワークエラーです。接続を確認して、もう一度お試しください。"
+		"network": "ネットワークエラーです。接続を確認して、もう一度お試しください。",
+		"loadNotifications": "通知を読み込めませんでした"
+	},
+	"duration": {
+		"minutes": "{minutes}分",
+		"hours": "{hours}時間",
+		"hoursMinutes": "{hours}時間{minutes}分"
+	},
+	"pagination": {
+		"label": "ページネーション",
+		"previous": "前のページ",
+		"next": "次のページ",
+		"showing": "{from}–{to} / 全{total}件",
+		"itemsPerPage": "1ページあたりの件数",
+		"perPage": "1ページ{size}件"
+	},
+	"share": {
+		"label": "共有",
+		"copyLink": "リンクをコピー",
+		"copyAppLink": "アプリのリンクをコピー",
+		"copyMarkdown": "Markdownとしてコピー",
+		"openInApp": "TMGRアプリで開く",
+		"linkCopied": "リンクをコピーしました",
+		"linkFailed": "リンクをコピーできませんでした",
+		"markdownCopied": "Markdownをコピーしました",
+		"markdownFailed": "Markdownをコピーできませんでした"
 	}
 }

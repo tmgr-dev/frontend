@@ -28,7 +28,8 @@
 		"empty": "Vide"
 	},
 	"editor": {
-		"searching": "Recherche…"
+		"searching": "Recherche…",
+		"toolbarGroup": "Page"
 	},
 	"files": {
 		"title": "Fichiers",
@@ -293,5 +294,15 @@
 			"captionPlaceholder": "Écrivez une légende",
 			"loadFailed": "Échec du chargement de l'image"
 		}
+	},
+	"actions": {
+		"createFailed": "Impossible de créer la page",
+		"renameFailed": "Impossible de renommer la page",
+		"pinFailed": "Impossible de modifier l’épinglage",
+		"archiveFailed": "Impossible d’archiver la page"
+	},
+	"markdownIo": {
+		"exportedWithWarnings": "Exporté avec {n} avertissement | Exporté avec {n} avertissements",
+		"exportFailed": "Échec de l’export"
 	}
 }

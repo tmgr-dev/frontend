@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import $axios from '@/plugins/axios';
 
 export interface AlarmPhone {
@@ -165,5 +166,7 @@ export const formatRetryAfter = (seconds: number): string => {
 	const totalMinutes = Math.ceil(seconds / 60);
 	const hours = Math.floor(totalMinutes / 60);
 	const minutes = totalMinutes % 60;
-	return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+	return hours > 0
+		? t('common.duration.hoursMinutes', { hours, minutes })
+		: t('common.duration.minutes', { minutes });
 };

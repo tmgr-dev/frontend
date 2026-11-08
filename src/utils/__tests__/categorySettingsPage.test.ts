@@ -1,3 +1,4 @@
+import { setLocale } from '@/i18n';
 import {
 	buildCategoryGroups,
 	composeTitle,
@@ -254,5 +255,18 @@ describe('parseDuration', () => {
 	test('round-trips formatDuration for whole minutes', () => {
 		for (const seconds of [60, 1200, 3600, 5400, 14400, 90060])
 			expect(parseDuration(formatDuration(seconds))).toBe(seconds);
+	});
+});
+
+describe('duration units follow the current locale', () => {
+	afterEach(async () => {
+		await setLocale('en');
+	});
+
+	test('formats duration in Russian after switching locale', async () => {
+		await setLocale('ru');
+		expect(formatDuration(5400)).toBe('1 ч 30 мин');
+		expect(formatDuration(1500)).toBe('25 мин');
+		expect(formatDuration(7200)).toBe('2 ч');
 	});
 });

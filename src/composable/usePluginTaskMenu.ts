@@ -1,4 +1,5 @@
 import { useToast } from '@/components/ui/toast/use-toast';
+import { t } from '@/i18n';
 import { pluginHost, pluginState } from '@/pluginSystem/state';
 import {
 	needsTaskMenuSubmenu,
@@ -35,7 +36,7 @@ export const usePluginTaskMenu = () => {
 		} catch (error) {
 			if (pluginState.plugins[item.pluginId]?.status === 'crashed') return;
 			toast({
-				title: 'The plugin command failed',
+				title: t('plugins.view.commandFailed'),
 				description: error instanceof Error ? error.message : String(error),
 				variant: 'destructive',
 			});
