@@ -36,6 +36,8 @@ pub mod hostview;
 #[cfg(unix)]
 pub mod humantime;
 #[cfg(unix)]
+pub mod objectmodes;
+#[cfg(unix)]
 pub mod permit_hook;
 #[cfg(unix)]
 pub mod questions;
