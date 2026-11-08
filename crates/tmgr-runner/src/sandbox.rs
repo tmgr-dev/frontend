@@ -915,7 +915,10 @@ mod linux {
         RulesetCreatedAttr, RulesetStatus, Scope, ABI,
     };
     use serde::Deserialize;
+    use std::ffi::CString;
+    use std::io::Read;
     use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
+    use std::os::unix::ffi::OsStrExt;
     use std::os::unix::process::CommandExt;
     use std::path::Path;
     use std::process::Command;
@@ -1112,7 +1115,185 @@ mod linux {
         Ok(())
     }
 
-    pub fn run(policy_path: &str, argv: &[String]) -> i32 {
+    const ST_NOSYMFOLLOW: u64 = 0x2000;
+    const MS_NOSYMFOLLOW: libc::c_ulong = 0x100;
+    const LOCKED_FLAGS: [(u64, libc::c_ulong); 8] = [
+        (2, libc::MS_NOSUID),
+        (4, libc::MS_NODEV),
+        (8, libc::MS_NOEXEC),
+        (16, libc::MS_SYNCHRONOUS),
+        (64, libc::MS_MANDLOCK),
+        (1024, libc::MS_NOATIME),
+        (2048, libc::MS_NODIRATIME),
+        (4096, libc::MS_RELATIME),
+    ];
+
+    fn os_err(what: &str) -> String {
+        format!("{what}: {}", std::io::Error::last_os_error())
+    }
+
+    fn cpath(p: &Path) -> Result<CString, String> {
+        CString::new(p.as_os_str().as_bytes())
+            .map_err(|_| format!("{} has a NUL byte", p.display()))
+    }
+
+    fn mount_call(
+        source: Option<&CString>,
+        target: &CString,
+        flags: libc::c_ulong,
+    ) -> Result<(), String> {
+        let rc = unsafe {
+            libc::mount(
+                source.map_or(std::ptr::null(), |s| s.as_ptr()),
+                target.as_ptr(),
+                std::ptr::null(),
+                flags,
+                std::ptr::null(),
+            )
+        };
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(os_err(&format!("mount {:?} flags {flags:#x}", target)))
+        }
+    }
+
+    fn mount_flags(path: &CString) -> Result<u64, String> {
+        let mut vfs: libc::statvfs = unsafe { std::mem::zeroed() };
+        if unsafe { libc::statvfs(path.as_ptr(), &mut vfs) } != 0 {
+            return Err(os_err("statvfs"));
+        }
+        Ok(vfs.f_flag as u64)
+    }
+
+    fn remount_bits(st: u64) -> libc::c_ulong {
+        let mut bits = LOCKED_FLAGS
+            .iter()
+            .filter(|(s, _)| st & s != 0)
+            .fold(0, |acc, (_, m)| acc | m);
+        if st & ST_NOSYMFOLLOW != 0 {
+            bits |= MS_NOSYMFOLLOW;
+        }
+        bits
+    }
+
+    fn write_proc(file: &str, text: &str) -> Result<(), String> {
+        std::fs::write(file, text).map_err(|e| format!("{file}: {e}"))
+    }
+
+    fn path_id(p: &Path) -> Option<(u64, u64)> {
+        use std::os::unix::fs::MetadataExt;
+        std::fs::metadata(p).ok().map(|m| (m.dev(), m.ino()))
+    }
+
+    fn enter_read_only_namespace(roots: &[(String, u64, u64)]) -> Result<(), String> {
+        let uid = unsafe { libc::geteuid() };
+        let gid = unsafe { libc::getegid() };
+        if unsafe { libc::unshare(libc::CLONE_NEWUSER | libc::CLONE_NEWNS) } != 0 {
+            return Err(os_err("unshare"));
+        }
+        write_proc("/proc/self/setgroups", "deny")?;
+        write_proc("/proc/self/uid_map", &format!("{uid} {uid} 1"))?;
+        write_proc("/proc/self/gid_map", &format!("{gid} {gid} 1"))?;
+        mount_call(
+            None,
+            &cpath(Path::new("/"))?,
+            libc::MS_REC | libc::MS_PRIVATE,
+        )?;
+        for (root, dev, ino) in roots {
+            let p = Path::new(root);
+            let c = cpath(p)?;
+            if std::fs::canonicalize(p).ok().as_deref() != Some(p)
+                || path_id(p) != Some((*dev, *ino))
+            {
+                return Err(format!("{root} is not the directory that was validated"));
+            }
+            mount_call(Some(&c), &c, libc::MS_BIND)?;
+            if path_id(p) != Some((*dev, *ino)) {
+                return Err(format!("{root} changed while it was being mounted"));
+            }
+            let flags = remount_bits(mount_flags(&c)?);
+            mount_call(
+                None,
+                &c,
+                libc::MS_REMOUNT | libc::MS_BIND | libc::MS_RDONLY | flags,
+            )?;
+            if mount_flags(&c)? & 1 == 0 {
+                return Err(format!("{root} is still writable after the remount"));
+            }
+        }
+        Ok(())
+    }
+
+    fn probe_read_only_namespace(roots: &[(String, u64, u64)]) -> Result<(), String> {
+        let mut fds = [0 as RawFd; 2];
+        if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+            return Err(os_err("pipe"));
+        }
+        let (rd, wr) = unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) };
+        match unsafe { libc::fork() } {
+            -1 => Err(os_err("fork")),
+            0 => {
+                drop(rd);
+                let code = match enter_read_only_namespace(roots) {
+                    Ok(()) => 0,
+                    Err(m) => {
+                        let _ =
+                            std::io::Write::write_all(&mut std::fs::File::from(wr), m.as_bytes());
+                        1
+                    }
+                };
+                unsafe { libc::_exit(code) }
+            }
+            pid => {
+                drop(wr);
+                let mut msg = String::new();
+                let _ = std::fs::File::from(rd).read_to_string(&mut msg);
+                let mut status = 0;
+                unsafe { libc::waitpid(pid, &mut status, 0) };
+                if libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0 {
+                    Ok(())
+                } else if msg.is_empty() {
+                    Err("the probe process ended abnormally".into())
+                } else {
+                    Err(msg)
+                }
+            }
+        }
+    }
+
+    fn mount_objects_read_only(
+        policy: &Policy,
+        policy_path: &str,
+        force_fallback: bool,
+    ) -> Result<(), String> {
+        if policy.read_ids.is_empty() {
+            return Ok(());
+        }
+        let single_thread = std::fs::read_dir("/proc/self/task").is_ok_and(|d| d.count() == 1);
+        let probed = if force_fallback {
+            Err("the namespace was disabled for a test".to_string())
+        } else if !single_thread {
+            Err("the helper process has several threads".to_string())
+        } else {
+            probe_read_only_namespace(&policy.read_ids)
+        };
+        let note = match probed {
+            Ok(()) => {
+                enter_read_only_namespace(&policy.read_ids).map_err(|e| {
+                    format!("tmgr: sandbox setup failed: read-only object mount: {e}; the run does not start")
+                })?;
+                "namespace".to_string()
+            }
+            Err(why) => format!("fallback: {why}"),
+        };
+        if let Some(dir) = Path::new(policy_path).parent() {
+            let _ = std::fs::write(dir.join(crate::objectmodes::RO_RECORD), note);
+        }
+        Ok(())
+    }
+
+    pub fn run(policy_path: &str, argv: &[String], force_fallback: bool) -> i32 {
         let tier = match landlock_tier(kernel_abi()) {
             Ok(t) => t,
             Err(m) => {
@@ -1130,10 +1311,12 @@ mod linux {
                 return 78;
             }
         };
-        let cwd_fd = match open_cwd(&policy).and_then(|fd| {
-            refuse_granted_deny_roots(&policy)?;
-            Ok(fd)
-        }) {
+        let cwd_fd = match mount_objects_read_only(&policy, policy_path, force_fallback)
+            .and_then(|()| open_cwd(&policy))
+            .and_then(|fd| {
+                refuse_granted_deny_roots(&policy)?;
+                Ok(fd)
+            }) {
             Ok(fd) => fd,
             Err(m) => {
                 eprintln!("{m}");
@@ -1158,6 +1341,10 @@ pub fn parse_helper_args(args: &[String]) -> Result<(&str, &[String]), String> {
 }
 
 pub fn exec_helper(args: &[String]) -> i32 {
+    exec_helper_with(args, false)
+}
+
+pub fn exec_helper_with(args: &[String], force_fallback: bool) -> i32 {
     let (policy, argv) = match parse_helper_args(args) {
         Ok(v) => v,
         Err(m) => {
@@ -1167,11 +1354,11 @@ pub fn exec_helper(args: &[String]) -> i32 {
     };
     #[cfg(target_os = "linux")]
     {
-        linux::run(policy, argv)
+        linux::run(policy, argv, force_fallback)
     }
     #[cfg(not(target_os = "linux"))]
     {
-        let _ = (policy, argv);
+        let _ = (policy, argv, force_fallback);
         eprintln!("tmgr: sandbox helper is only used on Linux");
         2
     }
