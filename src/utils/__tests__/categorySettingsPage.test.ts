@@ -1,4 +1,3 @@
-import { setLocale } from '@/i18n';
 import {
 	buildCategoryGroups,
 	composeTitle,
