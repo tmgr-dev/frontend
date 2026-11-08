@@ -12,6 +12,7 @@ pub fn public_key(secret: &[u8]) -> Result<Vec<u8>> {
 pub fn sign(sign_secret: &[u8], message: &str) -> Result<String> {
     let key = SigningKey::from_slice(sign_secret).map_err(|_| Error::BadKey)?;
     let sig: Signature = key.sign(message.as_bytes());
+    let sig = sig.normalize_s().unwrap_or(sig);
     Ok(b64(sig.to_der().as_bytes()))
 }
 
@@ -27,4 +28,20 @@ pub fn verify(sign_pub: &[u8], message: &str, sig_b64: &str) -> Result<()> {
     let sig = sig.normalize_s().unwrap_or(sig);
     key.verify(message.as_bytes(), &sig)
         .map_err(|_| Error::BadSignature)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn emitted_signatures_are_low_s() {
+        let secret = [7u8; 32];
+        for i in 0..64 {
+            let sig = sign(&secret, &format!("message {i}")).unwrap();
+            let parsed = Signature::from_der(&b64_decode(&sig).unwrap()).unwrap();
+            assert!(parsed.normalize_s().is_none());
+            verify(&public_key(&secret).unwrap(), &format!("message {i}"), &sig).unwrap();
+        }
+    }
 }
