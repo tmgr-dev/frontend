@@ -110,6 +110,7 @@
 	import { usePusher } from '@/composable/usePusher';
 	import { useRunningTimerSync } from '@/composable/useRunningTimerSync';
 	import { useWorkflowMode } from '@/composable/useWorkflowMode';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import { tourBus } from '@/tours/events';
 	import { EditorType } from '@/types';
@@ -749,8 +750,7 @@
 			}
 			const parsed = Number(value);
 			if (!Number.isInteger(parsed) || parsed < 1) {
-				taskKeyError.value =
-					'Enter a whole number of 1 or greater, or leave it blank to auto-assign.';
+				taskKeyError.value = t('taskForm.form.taskKeyInvalid');
 				return;
 			}
 			form.value.category_tasks_sequence_id = parsed;
@@ -761,8 +761,7 @@
 	const handleTaskSaveError = (e: any) => {
 		console.error(e);
 		if (e?.response?.status === 409) {
-			taskKeyError.value =
-				"There's a conflict saving this task — if you set a custom key, try another number or clear it to auto-assign.";
+			taskKeyError.value = t('taskForm.form.taskKeyConflict');
 		}
 	};
 
@@ -1140,8 +1139,7 @@
 					)
 					.catch(() => {
 						if (!formDisposed)
-							saveError.value =
-								'Some task options could not load. Reload to retry.';
+							saveError.value = t('taskForm.form.optionsLoadFailed');
 					});
 
 			loadTaskReferenceData = loadReferenceData;
@@ -1673,7 +1671,7 @@
 		}
 		if (failed.length) {
 			toast({
-				title: 'Some files were not attached',
+				title: t('taskForm.form.filesNotAttached'),
 				description: failed.map((file) => file.name).join(', '),
 				variant: 'destructive',
 			});
@@ -1866,8 +1864,7 @@
 			await blockEditorRef.value?.replace(form.value.description_json);
 			await saveTask();
 		} catch (error) {
-			saveError.value =
-				'Could not restore the editor. Your draft is still available.';
+			saveError.value = t('taskForm.form.restoreEditorFailed');
 			loadDraft();
 		}
 	};
@@ -1946,7 +1943,7 @@
 			}
 		} catch (e) {
 			console.error(e);
-			toast({ title: "Couldn't delete the task", variant: 'destructive' });
+			toast({ title: t('taskForm.form.deleteFailed'), variant: 'destructive' });
 		} finally {
 			isLoading.value = false;
 		}
@@ -2115,8 +2112,7 @@
 		},
 		onError: (error, snapshot) => {
 			if (!formDisposed && form.value.id === snapshot.id) {
-				saveError.value =
-					'Could not save changes. Retry before closing this tab.';
+				saveError.value = t('taskForm.form.saveFailed');
 				loadDraft();
 				handleTaskSaveError(error);
 			}
@@ -2199,7 +2195,7 @@
 		} catch (e) {
 			console.error('Failed to open the task window:', e);
 			toast({
-				title: 'Could not open the task window',
+				title: t('taskForm.form.openWindowFailed'),
 				description: String(e),
 				variant: 'destructive',
 			});
@@ -2264,7 +2260,7 @@
 		} catch (e) {
 			console.error('Failed to update persona assignees:', e);
 			toast({
-				title: 'Could not update persona assignees',
+				title: t('taskForm.form.personaUpdateFailed'),
 				variant: 'destructive',
 			});
 		}
@@ -2513,8 +2509,10 @@
 		:aria-busy="!taskLoadError"
 	>
 		<div v-if="taskLoadError" role="alert">
-			Could not load task.
-			<button class="underline" @click="reloadTask">Retry</button>
+			{{ $t('taskForm.form.loadError') }}
+			<button class="underline" @click="reloadTask">
+				{{ $t('common.actions.retry') }}
+			</button>
 		</div>
 		<TaskFormSkeleton v-else />
 	</div>
@@ -2545,17 +2543,14 @@
 					role="alert"
 					class="shrink-0 border-b border-line bg-surface-sunken p-3 text-sm"
 				>
-					<span>{{
-						saveError ||
-						'Unsaved changes from an earlier attempt are available.'
-					}}</span>
+					<span>{{ saveError || $t('taskForm.form.draftAvailable') }}</span>
 					<button
 						v-if="recoverableDraft"
 						type="button"
 						class="ml-3 underline"
 						@click="restoreDraft"
 					>
-						Restore draft
+						{{ $t('taskForm.form.restoreDraft') }}
 					</button>
 					<button
 						v-if="recoverableDraft"
@@ -2563,7 +2558,7 @@
 						class="ml-3 underline"
 						@click="discardDraft"
 					>
-						Discard draft
+						{{ $t('taskForm.form.discardDraft') }}
 					</button>
 					<button
 						v-if="saveError"
@@ -2571,7 +2566,7 @@
 						class="ml-3 underline"
 						@click="saveTask"
 					>
-						Retry save
+						{{ $t('taskForm.form.retrySave') }}
 					</button>
 				</div>
 				<!-- HEADER - Fixed at top -->
@@ -2592,7 +2587,9 @@
 								data-tour="task-form.status"
 								class="h-7 w-auto gap-1.5 rounded-pill border-0 bg-surface-sunken px-2.5 text-2xs font-bold tracking-wide text-ink-muted uppercase hover:bg-surface-hover"
 							>
-								<SelectValue placeholder="status" />
+								<SelectValue
+									:placeholder="$t('taskForm.form.statusPlaceholder')"
+								/>
 							</SelectTrigger>
 							<SelectContent class="bg-popover text-popover-foreground">
 								<SelectItem
@@ -2631,7 +2628,11 @@
 									? 'bg-status-fix-bg text-status-fix-fg hover:bg-status-fix/25'
 									: 'text-ink-subtle hover:bg-surface-hover hover:text-ink',
 							]"
-							:title="pomodoroEnabled ? 'Disable Pomodoro' : 'Enable Pomodoro'"
+							:title="
+								pomodoroEnabled
+									? $t('taskForm.form.pomodoroDisable')
+									: $t('taskForm.form.pomodoroEnable')
+							"
 						>
 							<span aria-hidden="true">🍅</span>
 						</button>
@@ -2641,7 +2642,7 @@
 							type="button"
 							@click="openCursorAgent"
 							class="relative flex h-7 items-center justify-center rounded-pill bg-purple-500/80 px-2 text-xs text-white hover:bg-purple-500 dark:bg-purple-600/70 dark:hover:bg-purple-600/90"
-							title="Run with Cursor Agent"
+							:title="$t('taskForm.form.runWithCursor')"
 						>
 							<Bot class="h-3.5 w-3.5" />
 						</button>
@@ -2658,7 +2659,7 @@
 								<button
 									type="button"
 									class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
-									aria-label="Task actions"
+									:aria-label="$t('taskForm.form.taskActions')"
 								>
 									<MoreVertical class="size-4" />
 								</button>
@@ -2669,11 +2670,11 @@
 									@click="unarchiveTask"
 								>
 									<ArchiveRestore class="mr-2 h-4 w-4" />
-									<span>Restore</span>
+									<span>{{ $t('taskForm.form.restore') }}</span>
 								</DropdownMenuItem>
 								<DropdownMenuItem v-if="canArchiveTask" @click="archiveTask">
 									<ArchiveIcon class="mr-2 h-4 w-4" />
-									<span>Archive</span>
+									<span>{{ $t('taskForm.form.archive') }}</span>
 								</DropdownMenuItem>
 								<PluginTaskMenuItems :task-id="form.id" :separator="false" />
 							</DropdownMenuContent>
@@ -2685,7 +2686,7 @@
 							v-if="isModal"
 							@click="emit('close')"
 							class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
-							title="Close (Esc)"
+							:title="$t('taskForm.form.closeEsc')"
 						>
 							<XMarkIcon class="size-4" />
 						</button>
@@ -2711,7 +2712,7 @@
 							<div class="flex items-center gap-2">
 								<span class="material-icons text-yellow-500">sync</span>
 								<span class="text-sm text-yellow-700 dark:text-yellow-300">
-									This task was updated by another user
+									{{ $t('taskForm.form.externalUpdated') }}
 								</span>
 							</div>
 							<div class="flex gap-2">
@@ -2719,13 +2720,13 @@
 									@click="applyExternalUpdate"
 									class="rounded bg-yellow-500 px-3 py-1 text-xs font-medium text-white hover:bg-yellow-600"
 								>
-									Apply Changes
+									{{ $t('taskForm.form.applyChanges') }}
 								</button>
 								<button
 									@click="dismissExternalUpdate"
 									class="rounded border border-yellow-400 px-3 py-1 text-xs font-medium text-yellow-600 hover:bg-yellow-100 dark:text-yellow-300 dark:hover:bg-yellow-900"
 								>
-									Dismiss
+									{{ $t('taskForm.form.dismiss') }}
 								</button>
 							</div>
 						</div>
@@ -2747,13 +2748,13 @@
 							data-tour="task-form.title"
 							v-model="form.title"
 							ref="titleTextarea"
-							aria-label="Task name"
+							:aria-label="$t('taskForm.form.taskName')"
 							class="w-full resize-none overflow-hidden border-0 bg-transparent px-0 outline-hidden placeholder:text-ink-subtle"
 							:class="[
 								'text-2xl leading-snug font-semibold tracking-tight text-ink',
 								{ 'text-status-fix-fg': isTitleAtLimit },
 							]"
-							placeholder="Task name"
+							:placeholder="$t('taskForm.form.taskName')"
 							rows="1"
 							maxlength="255"
 							@input="autoResizeTitle"
@@ -2769,7 +2770,11 @@
 							<span class="material-icons" style="font-size: 14px"
 								>warning</span
 							>
-							<span>{{ form.title?.length || 0 }}/255 characters</span>
+							<span>{{
+								$t('taskForm.form.characterCount', {
+									count: form.title?.length || 0,
+								})
+							}}</span>
 						</div>
 					</div>
 
@@ -2802,7 +2807,7 @@
 						v-if="showLastTaskSettingsPrompt"
 						class="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink-muted"
 					>
-						<span>Apply settings from the previous task?</span>
+						<span>{{ $t('taskForm.form.applyPrevious') }}</span>
 						<div class="flex gap-2">
 							<Button
 								type="button"
@@ -2811,7 +2816,7 @@
 								class="h-8 text-ink-muted hover:bg-surface-hover hover:text-ink"
 								@click="lastTaskSettings = null"
 							>
-								Dismiss
+								{{ $t('taskForm.form.dismiss') }}
 							</Button>
 							<Button
 								type="button"
@@ -2819,7 +2824,7 @@
 								class="h-8 bg-brand text-on-accent hover:bg-brand-hover"
 								@click="applyLastTaskSettings"
 							>
-								Apply
+								{{ $t('common.actions.apply') }}
 							</Button>
 						</div>
 					</div>
@@ -2834,7 +2839,7 @@
 						<template v-if="showSurface('assignees.task-row')">
 							<div class="flex items-center gap-2 text-ink-subtle">
 								<UserIcon class="h-3.5 w-3.5" />
-								<span>Assignee</span>
+								<span>{{ $t('taskForm.form.assignee') }}</span>
 							</div>
 							<div class="flex min-w-0 items-center gap-2">
 								<AssigneesCombobox
@@ -2858,7 +2863,7 @@
 									type="button"
 									@click="assignToMe"
 									class="flex h-7 items-center justify-center rounded-pill bg-brand-bg px-2 text-2xs font-semibold text-ink hover:opacity-90"
-									title="Assign to me"
+									:title="$t('taskForm.form.assignToMe')"
 								>
 									<span class="material-icons" style="font-size: 14px"
 										>person_add</span
@@ -2869,7 +2874,9 @@
 
 						<div class="flex items-center gap-2 text-ink-subtle">
 							<FlagIcon class="h-3.5 w-3.5" />
-							<span id="task-form-priority-label">Priority</span>
+							<span id="task-form-priority-label">{{
+								$t('taskForm.form.priority')
+							}}</span>
 						</div>
 						<div class="flex min-w-0 items-center">
 							<Select v-model="priorityValue">
@@ -2905,7 +2912,7 @@
 						<template v-if="showSurface('categories.task-picker')">
 							<div class="flex items-center gap-2 text-ink-subtle">
 								<FolderIcon class="h-3.5 w-3.5" />
-								<span>Category</span>
+								<span>{{ $t('taskForm.form.category') }}</span>
 							</div>
 							<div class="flex min-w-0 items-center gap-1.5">
 								<CategoriesCombobox
@@ -2926,9 +2933,12 @@
 									v-if="form.project_category_id"
 									type="button"
 									class="shrink-0 rounded-md border border-line px-1.5 py-1 text-ink-subtle hover:text-ink"
-									:title="`New task in ${
-										currentCategoryCode || 'this category'
-									}`"
+									:title="
+										$t('taskForm.form.newTaskIn', {
+											category:
+												currentCategoryCode || $t('taskForm.form.thisCategory'),
+										})
+									"
 									@click="createAnotherInCategory"
 								>
 									<PlusIcon class="h-3.5 w-3.5" />
@@ -2938,7 +2948,7 @@
 							<template v-if="form.project_category_id">
 								<div class="flex items-center gap-2 text-ink-subtle">
 									<HashtagIcon class="h-3.5 w-3.5" />
-									<span>Key</span>
+									<span>{{ $t('taskForm.form.key') }}</span>
 								</div>
 								<div class="flex min-w-0 items-center gap-1.5">
 									<span class="shrink-0 font-mono text-sm text-ink-subtle"
@@ -2949,13 +2959,13 @@
 										min="1"
 										step="1"
 										v-model="taskKeyNumber"
-										placeholder="auto"
+										:placeholder="$t('taskForm.form.keyPlaceholder')"
 										class="w-20 min-w-0 rounded-md border border-line bg-surface-sunken px-2 py-1 font-mono text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-strong"
 									/>
 									<span
 										v-if="isAutoSaving && !taskKeyError"
 										class="text-2xs text-ink-subtle"
-										>Saving…</span
+										>{{ $t('common.actions.saving') }}</span
 									>
 								</div>
 								<div
@@ -2970,7 +2980,7 @@
 						<template v-if="form.id && isFeatureEnabled('github')">
 							<div class="flex items-center gap-2 text-ink-subtle">
 								<CodeBracketIcon class="h-3.5 w-3.5" />
-								<span>Git activity</span>
+								<span>{{ $t('taskForm.form.gitActivity') }}</span>
 							</div>
 							<div class="min-w-0">
 								<button
@@ -2981,8 +2991,8 @@
 									<CodeBracketIcon class="h-3.5 w-3.5" />
 									<span>{{
 										gitActivityCount > 0
-											? `${gitActivityCount} events`
-											: 'View activity'
+											? $t('taskForm.form.gitEvents', gitActivityCount)
+											: $t('taskForm.form.viewActivity')
 									}}</span>
 								</button>
 							</div>
@@ -2998,7 +3008,7 @@
 						>
 							<div class="flex items-center gap-2 text-ink-subtle">
 								<LinkIcon class="h-3.5 w-3.5" />
-								<span>Linked tasks</span>
+								<span>{{ $t('taskForm.form.linkedTasks') }}</span>
 							</div>
 							<div class="flex min-w-0 items-center gap-2">
 								<span
@@ -3008,9 +3018,11 @@
 									"
 									class="text-xs text-ink tabular-nums"
 								>
-									{{ form.relationTypeWithTask.length }}
 									{{
-										form.relationTypeWithTask.length === 1 ? 'link' : 'links'
+										$t(
+											'taskForm.form.linkCount',
+											form.relationTypeWithTask.length,
+										)
 									}}
 								</span>
 								<button
@@ -3021,7 +3033,7 @@
 									<span class="material-icons" style="font-size: 14px"
 										>add</span
 									>
-									<span>Link</span>
+									<span>{{ $t('taskForm.form.link') }}</span>
 								</button>
 							</div>
 						</template>
@@ -3029,7 +3041,7 @@
 						<template v-if="form.user">
 							<div class="flex items-center gap-2 text-ink-subtle">
 								<UserCircleIcon class="h-3.5 w-3.5" />
-								<span>Author</span>
+								<span>{{ $t('taskForm.form.author') }}</span>
 							</div>
 							<div class="flex h-7 min-w-0 items-center text-sm text-ink">
 								{{ form.user.name }}
@@ -3042,7 +3054,7 @@
 						<div
 							class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 						>
-							Description
+							{{ $t('taskForm.form.descriptionLabel') }}
 						</div>
 						<AiRewritePanel
 							v-if="!isLocalWorkspaceTask && isFeatureEnabled('ai.assistant')"
@@ -3050,7 +3062,7 @@
 							:description="form.description ?? ''"
 							:disabled-reason="
 								editorType === 'block'
-									? 'Not available for descriptions written in Editor.js'
+									? $t('taskForm.form.aiRewriteUnavailable')
 									: undefined
 							"
 							@apply="onDescriptionInput('description', $event)"
@@ -3093,7 +3105,7 @@
 							@update:model-value="
 								onDescriptionInput('description_json', $event)
 							"
-							placeholder="Type your description here or enter / to see commands or "
+							:placeholder="$t('taskForm.form.descriptionPlaceholderBlock')"
 							class="block-editor-container mb-0 min-h-[240px] px-2"
 						/>
 
@@ -3103,7 +3115,7 @@
 							v-else-if="editorType === 'blockmd'"
 							:model-value="form.description"
 							@update:model-value="onDescriptionInput('description', $event)"
-							placeholder="Type your description here or enter / to see commands"
+							:placeholder="$t('taskForm.form.descriptionPlaceholder')"
 							class="mb-0 min-h-[240px]"
 						/>
 					</div>
@@ -3116,7 +3128,7 @@
 							class="h-8 text-ink-muted hover:bg-surface-hover hover:text-ink"
 							@click="cancelDescriptionEdit"
 						>
-							Cancel
+							{{ $t('common.actions.cancel') }}
 						</Button>
 						<Button
 							type="button"
@@ -3124,7 +3136,7 @@
 							class="h-8 bg-brand text-on-accent hover:bg-brand-hover"
 							@click="finishDescriptionEdit"
 						>
-							Done
+							{{ $t('common.actions.done') }}
 						</Button>
 					</div>
 
@@ -3135,14 +3147,18 @@
 
 					<div class="flex flex-col gap-0.5 text-2xs text-ink-subtle">
 						<div class="flex items-center gap-1">
-							<span>Editor: {{ EDITOR_LABELS[editorType] }}</span>
+							<span>{{
+								$t('taskForm.form.editorLabel', {
+									name: EDITOR_LABELS[editorType],
+								})
+							}}</span>
 							<span aria-hidden="true">·</span>
 							<router-link to="/settings" class="underline hover:text-ink">
-								Change in Settings
+								{{ $t('taskForm.form.changeInSettings') }}
 							</router-link>
 						</div>
 						<span v-if="showsLegacyEditorNote">
-							This task was written in Editor.js and always opens in it.
+							{{ $t('taskForm.form.legacyEditorNote') }}
 						</span>
 					</div>
 
@@ -3165,12 +3181,16 @@
 							<div class="flex items-baseline gap-2">
 								<span
 									class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
-									>Checkpoints</span
+									>{{ $t('taskForm.form.checkpoints') }}</span
 								>
 								<span
 									v-if="checkpointsTotalLabel"
 									class="text-2xs text-ink-subtle"
-									>· {{ checkpointsTotalLabel }} logged</span
+									>{{
+										$t('taskForm.form.checkpointsLogged', {
+											total: checkpointsTotalLabel,
+										})
+									}}</span
 								>
 							</div>
 							<button
@@ -3179,7 +3199,7 @@
 								class="flex h-7 items-center gap-1 rounded-pill border border-dashed border-line-strong px-2.5 text-2xs font-semibold text-ink-subtle transition hover:bg-surface-sunken hover:text-ink"
 							>
 								<span class="material-icons" style="font-size: 14px">add</span>
-								Add entry
+								{{ $t('taskForm.form.addEntry') }}
 							</button>
 						</div>
 						<div
@@ -3192,7 +3212,7 @@
 							v-else
 							class="rounded-card border border-dashed border-line-strong px-3 py-3 text-center text-xs text-ink-subtle"
 						>
-							No time logged yet — click “Add entry” to log what you worked on.
+							{{ $t('taskForm.form.noTimeLogged') }}
 						</div>
 					</section>
 
@@ -3298,9 +3318,11 @@
 						class="mb-3 flex [scrollbar-width:none] flex-nowrap items-center gap-2 overflow-x-auto text-xs whitespace-nowrap text-ink-subtle [&::-webkit-scrollbar]:hidden"
 					>
 						<Loader2 class="h-3.5 w-3.5 shrink-0 animate-spin" />
-						<span class="shrink-0"
-							>AI is looking around{{ aiPendingSteps.length ? ':' : '…' }}</span
-						>
+						<span class="shrink-0">{{
+							aiPendingSteps.length
+								? $t('taskForm.form.aiLookingSteps')
+								: $t('taskForm.form.aiLooking')
+						}}</span>
 						<span
 							v-for="s in aiPendingSteps"
 							:key="s.seq"
@@ -3322,7 +3344,7 @@
 							@paste="commentAttachments?.onPaste($event)"
 							@dragover.prevent
 							@drop="commentAttachments?.onDrop($event)"
-							placeholder="Write a comment…"
+							:placeholder="$t('taskForm.form.writeComment')"
 							class="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-5 text-ink outline-hidden placeholder:text-ink-subtle"
 							@keydown.enter="onCommentEnter"
 							@keydown.esc="blurCommentInput"
@@ -3340,7 +3362,7 @@
 							:disabled="!newComment?.trim() || isSendingComment"
 							@click="sendToCursor"
 							class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-							title="Send to Cursor Agent"
+							:title="$t('taskForm.form.sendToCursor')"
 						>
 							<Bot class="h-4 w-4" />
 						</button>
@@ -3348,8 +3370,16 @@
 							v-if="!isLocalWorkspaceTask && isFeatureEnabled('ai.assistant')"
 							type="button"
 							:aria-pressed="commentAiReply"
-							:title="commentAiReply ? 'AI reply: on' : 'AI reply: off'"
-							:aria-label="commentAiReply ? 'AI reply: on' : 'AI reply: off'"
+							:title="
+								commentAiReply
+									? $t('taskForm.form.aiReplyOn')
+									: $t('taskForm.form.aiReplyOff')
+							"
+							:aria-label="
+								commentAiReply
+									? $t('taskForm.form.aiReplyOn')
+									: $t('taskForm.form.aiReplyOff')
+							"
 							:class="[
 								'flex h-7 w-7 items-center justify-center rounded-pill transition',
 								commentAiReply
@@ -3367,7 +3397,9 @@
 							@click="submitComment"
 							class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-on-accent transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
 							:title="
-								commentAiReply ? 'Ask AI (Enter)' : 'Send comment (Enter)'
+								commentAiReply
+									? $t('taskForm.form.askAi')
+									: $t('taskForm.form.sendComment')
 							"
 						>
 							<Send class="h-3.5 w-3.5" />
@@ -3383,8 +3415,8 @@
 							variant="ghost"
 							size="icon"
 							data-tour="task-form.open-window"
-							title="Open in a separate window"
-							aria-label="Open in a separate window"
+							:title="$t('taskForm.form.openInWindow')"
+							:aria-label="$t('taskForm.form.openInWindow')"
 							class="h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink"
 							@click="openInSeparateWindow"
 						>
@@ -3396,8 +3428,8 @@
 							variant="ghost"
 							size="icon"
 							:href="generateTaskUrlForAdvancedForm()"
-							title="Open advanced form"
-							aria-label="Open advanced form"
+							:title="$t('taskForm.form.openAdvanced')"
+							:aria-label="$t('taskForm.form.openAdvanced')"
 							class="h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink"
 						>
 							<ArrowTopRightOnSquareIcon />
@@ -3411,7 +3443,7 @@
 								v-if="creator"
 								data-testid="task-form-creator"
 								class="hidden min-w-0 items-center gap-1 sm:flex"
-								:title="'Created by ' + creator.name"
+								:title="$t('taskForm.form.createdBy', { name: creator.name })"
 							>
 								<UserAvatar
 									:user-id="creator.id"
@@ -3420,7 +3452,7 @@
 									:size="14"
 								/>
 								<span class="max-w-[12rem] truncate">
-									Created by {{ creator.name }}
+									{{ $t('taskForm.form.createdBy', { name: creator.name }) }}
 								</span>
 							</span>
 							<TaskTimeInfo
@@ -3435,12 +3467,12 @@
 								v-if="!taskId && !form.id"
 								type="button"
 								size="sm"
-								title="Create"
+								:title="$t('common.actions.create')"
 								class="h-8 bg-brand text-on-accent hover:bg-brand-hover"
 								@click="createTask"
 							>
 								<DocumentPlusIcon />
-								Create
+								{{ $t('common.actions.create') }}
 							</Button>
 
 							<Button
@@ -3448,8 +3480,8 @@
 								type="button"
 								variant="ghost"
 								size="icon"
-								title="Save"
-								aria-label="Save"
+								:title="$t('common.actions.save')"
+								:aria-label="$t('common.actions.save')"
 								:aria-busy="isAutoSaving || isLoading"
 								:data-unsaved="hasUnsavedChanges || undefined"
 								:class="
@@ -3471,8 +3503,8 @@
 								type="button"
 								variant="ghost"
 								size="icon"
-								title="Export to Markdown"
-								aria-label="Export to Markdown"
+								:title="$t('taskForm.form.exportMarkdown')"
+								:aria-label="$t('taskForm.form.exportMarkdown')"
 								class="h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink"
 								@click="exportTaskToMarkdown"
 							>
@@ -3484,8 +3516,8 @@
 								type="button"
 								variant="ghost"
 								size="icon"
-								title="Delete"
-								aria-label="Delete"
+								:title="$t('common.actions.delete')"
+								:aria-label="$t('common.actions.delete')"
 								:disabled="isLoading"
 								class="h-8 w-8 text-ink-muted hover:bg-status-fix-bg hover:text-status-fix focus-visible:bg-status-fix-bg focus-visible:text-status-fix"
 								@click="showDeleteConfirm = true"
@@ -3507,7 +3539,9 @@
 				<div
 					class="flex min-h-[var(--task-header-height)] shrink-0 items-center justify-between border-b border-line px-4 py-3"
 				>
-					<span class="text-sm font-semibold">Comments</span>
+					<span class="text-sm font-semibold">{{
+						$t('taskForm.form.comments')
+					}}</span>
 					<span v-if="commentsCount" class="text-xs text-ink-subtle">{{
 						commentsCount
 					}}</span>
@@ -3541,9 +3575,11 @@
 						class="mb-3 flex [scrollbar-width:none] flex-nowrap items-center gap-2 overflow-x-auto text-xs whitespace-nowrap text-ink-subtle [&::-webkit-scrollbar]:hidden"
 					>
 						<Loader2 class="h-3.5 w-3.5 shrink-0 animate-spin" />
-						<span class="shrink-0"
-							>AI is looking around{{ aiPendingSteps.length ? ':' : '…' }}</span
-						>
+						<span class="shrink-0">{{
+							aiPendingSteps.length
+								? $t('taskForm.form.aiLookingSteps')
+								: $t('taskForm.form.aiLooking')
+						}}</span>
 						<span
 							v-for="s in aiPendingSteps"
 							:key="s.seq"
@@ -3563,7 +3599,7 @@
 							@paste="commentAttachments?.onPaste($event)"
 							@dragover.prevent
 							@drop="commentAttachments?.onDrop($event)"
-							placeholder="Write a comment…"
+							:placeholder="$t('taskForm.form.writeComment')"
 							class="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-5 text-ink outline-hidden placeholder:text-ink-subtle"
 							@keydown.enter="onCommentEnter"
 							@keydown.esc="blurCommentInput"
@@ -3580,7 +3616,7 @@
 							:disabled="!newComment?.trim() || isSendingComment"
 							@click="sendToCursor"
 							class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-							title="Send to Cursor Agent"
+							:title="$t('taskForm.form.sendToCursor')"
 						>
 							<Bot class="h-4 w-4" />
 						</button>
@@ -3588,8 +3624,16 @@
 							v-if="!isLocalWorkspaceTask && isFeatureEnabled('ai.assistant')"
 							type="button"
 							:aria-pressed="commentAiReply"
-							:title="commentAiReply ? 'AI reply: on' : 'AI reply: off'"
-							:aria-label="commentAiReply ? 'AI reply: on' : 'AI reply: off'"
+							:title="
+								commentAiReply
+									? $t('taskForm.form.aiReplyOn')
+									: $t('taskForm.form.aiReplyOff')
+							"
+							:aria-label="
+								commentAiReply
+									? $t('taskForm.form.aiReplyOn')
+									: $t('taskForm.form.aiReplyOff')
+							"
 							:class="[
 								'flex h-7 w-7 items-center justify-center rounded-pill transition',
 								commentAiReply
@@ -3607,7 +3651,9 @@
 							@click="submitComment"
 							class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-on-accent transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
 							:title="
-								commentAiReply ? 'Ask AI (Enter)' : 'Send comment (Enter)'
+								commentAiReply
+									? $t('taskForm.form.askAi')
+									: $t('taskForm.form.sendComment')
 							"
 						>
 							<Send class="h-3.5 w-3.5" />
@@ -3619,8 +3665,8 @@
 
 		<Confirm
 			v-if="showDeleteConfirm"
-			title="Delete task"
-			:body="`Are you sure you want to delete &quot;${form.title}&quot;?`"
+			:title="$t('taskForm.form.deleteTask')"
+			:body="$t('taskForm.form.deleteBody', { title: form.title })"
 			@onCancel="showDeleteConfirm = false"
 			@closing-modal="showDeleteConfirm = false"
 			@onOk="confirmDeleteTask"
@@ -3628,7 +3674,7 @@
 
 		<Confirm
 			v-if="showBacklogStatusChangeConfirm"
-			title="Task in Backlog"
+			:title="$t('taskForm.form.backlogTitle')"
 			:body="backlogConfirmBody"
 			@onCancel="
 				showBacklogStatusChangeConfirm = false;
@@ -3640,11 +3686,10 @@
 		<Dialog v-model:open="showGitActivityModal">
 			<DialogContent class="max-h-[80vh] max-w-3xl overflow-y-auto">
 				<DialogHeader>
-					<DialogTitle>Git Activity</DialogTitle>
-					<DialogDescription class="sr-only"
-						>View git commits and pull requests related to this
-						task</DialogDescription
-					>
+					<DialogTitle>{{ $t('taskForm.form.gitDialogTitle') }}</DialogTitle>
+					<DialogDescription class="sr-only">{{
+						$t('taskForm.form.gitDialogDescription')
+					}}</DialogDescription>
 				</DialogHeader>
 				<TaskGitActivity
 					v-if="form.id"
@@ -3660,10 +3705,12 @@
 				class="max-h-[80vh] max-w-3xl overflow-y-auto rounded-card border border-line bg-surface text-ink"
 			>
 				<DialogHeader>
-					<DialogTitle class="text-ink">Cursor AI Agent</DialogTitle>
-					<DialogDescription class="sr-only"
-						>Run AI agent to help with this task</DialogDescription
-					>
+					<DialogTitle class="text-ink">{{
+						$t('taskForm.form.cursorDialogTitle')
+					}}</DialogTitle>
+					<DialogDescription class="sr-only">{{
+						$t('taskForm.form.cursorDialogDescription')
+					}}</DialogDescription>
 				</DialogHeader>
 				<TaskCursorAgent
 					v-if="form.id"
@@ -3701,7 +3748,7 @@
 						class="h-9 rounded-pill border border-line bg-surface px-4 text-sm font-medium text-ink hover:bg-surface-hover"
 						@click="integrationHint = null"
 					>
-						Not now
+						{{ $t('taskForm.form.notNow') }}
 					</button>
 					<button
 						type="button"
@@ -3723,11 +3770,15 @@
 			>
 				<template v-if="isUploadingPendingFiles">
 					<Loader2 :size="32" class="animate-spin" />
-					<span class="text-lg font-semibold">Uploading files…</span>
+					<span class="text-lg font-semibold">{{
+						$t('taskForm.form.uploading')
+					}}</span>
 				</template>
 				<template v-else>
 					<Upload :size="32" />
-					<span class="text-lg font-semibold">Drop it here to upload</span>
+					<span class="text-lg font-semibold">{{
+						$t('taskForm.form.dropToUpload')
+					}}</span>
 				</template>
 			</div>
 		</div>
