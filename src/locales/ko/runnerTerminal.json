@@ -1,0 +1,9 @@
+{
+	"title": "에이전트 터미널",
+	"agentSession": "에이전트 세션",
+	"connecting": "연결 중",
+	"detach": "분리",
+	"reattach": "다시 연결",
+	"sessionEnded": "세션 종료됨: {reason}",
+	"scrolledBack": "{n}줄 위로 스크롤했어요 — End를 눌러 돌아가세요"
+}

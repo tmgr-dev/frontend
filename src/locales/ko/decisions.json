@@ -1,0 +1,200 @@
+{
+	"window": {
+		"title": "결정 · 둠 솔빙",
+		"titlebar": "tmgr · 결정 · 둠 솔빙"
+	},
+	"kind": {
+		"decision": "결정",
+		"review": "리뷰",
+		"release": "릴리스",
+		"check": "확인",
+		"question": "질문",
+		"permission": "권한",
+		"stopped": "종료됨"
+	},
+	"link": {
+		"pr": "PR #{n}",
+		"sections": {
+			"pr": "PR",
+			"commit": "커밋",
+			"tag": "태그",
+			"task": "작업",
+			"url": "기타"
+		}
+	},
+	"subtitle": {
+		"default": "둠 솔빙",
+		"rare": {
+			"scrollingUseful": "둠 스크롤링, 하지만 쓸모 있게",
+			"oneMoreCard": "카드 하나만 더 보고 자야지",
+			"optionalDoom": "둠은 선택, 결정은 필수",
+			"solvingNotScrolling": "스크롤 말고 해결",
+			"touchGrass": "이것만 끝내고 바깥바람 쐬세요",
+			"notProcrastination": "에이전트가 기다리고 있다면 미루는 게 아니에요",
+			"hello": "안녕, 둠"
+		}
+	},
+	"doom": {
+		"awaits": "당신의 둠이 기다리고 있어요",
+		"streak": "둠 솔빙 연속 기록: {n}",
+		"lifetime": "해결한 결정 {n}개",
+		"speedrun": "스피드런 any%",
+		"nightOwl": "올빼미: 아직 해결 중",
+		"inboxZero": "받은 편지함 제로. 오늘의 둠을 해결했어요.",
+		"mode": "DOOM 모드: 작동 중"
+	},
+	"answer": {
+		"dismissed": "무시함",
+		"deferred": "보류함",
+		"answered": "답변함",
+		"withNote": "{text} + 메모",
+		"sessionGone": "저장했지만 세션이 종료되었어요",
+		"toast": "{title}: {summary}"
+	},
+	"delivery": {
+		"sent": "세션으로 보냈어요 (확인되지 않음)",
+		"deliveredRunner": "러너를 통해 전달했어요",
+		"delivered": "전달했어요",
+		"queued": "에이전트의 프롬프트를 기다리는 중",
+		"undelivered": "전달하지 못했어요: {reason}",
+		"sessionClosed": "세션이 닫혔어요"
+	},
+	"unpicked": "어떤 에이전트도 가져가지 않았어요",
+	"wait": {
+		"sessionGone": "세션이 종료되어 어떤 에이전트도 이 내용을 보지 못해요.",
+		"notListening": "지금은 듣고 있는 에이전트가 없어요. 돌아오면 이 내용을 보게 돼요.",
+		"waiting": "에이전트를 기다리는 중…",
+		"noReplyDelivered": "에이전트가 아직 답하지 않았어요.",
+		"noReplyPending": "에이전트가 아직 답하지 않았어요. 다음에 확인할 때 이 내용을 보게 돼요."
+	},
+	"toast": {
+		"loadFailed": "결정을 불러오지 못했어요: {error}",
+		"answerFailed": "답변을 보내지 못했어요: {error}",
+		"messageFailed": "메시지를 보내지 못했어요: {error}"
+	},
+	"tabs": {
+		"changes": "변경 사항",
+		"checks": "확인",
+		"chat": "채팅",
+		"refresh": "새로고침",
+		"partial": "일부",
+		"totalExact": "이 카드에서 변경된 전체 줄 수",
+		"totalPartial": "일부 파일은 집계하지 못해 합계가 일부만 반영되었어요"
+	},
+	"empty": {
+		"done": "둠 솔빙 완료. 바깥바람 쐬러 가세요.",
+		"doneHint": "결정을 기다리는 항목이 없어요.",
+		"loadFailed": "결정을 불러오지 못했어요",
+		"noMatches": "일치하는 항목 없음",
+		"noMatchesHint": "검색을 지우면 대기열을 볼 수 있어요.",
+		"loading": "불러오는 중…"
+	},
+	"statusbar": {
+		"accept": "수락",
+		"pick": "선택",
+		"note": "+ 메모",
+		"freeText": "직접 입력",
+		"defer": "보류",
+		"dismiss": "무시",
+		"cards": "카드",
+		"waiting": "{n}개 대기 중"
+	},
+	"queue": {
+		"title": "대기열",
+		"count": "{pending} / {total}",
+		"search": "대기열 검색",
+		"complete": "둠 솔빙 완료. 바깥바람 쐬러 가세요.",
+		"noMatches": "일치하는 항목 없음",
+		"empty": "대기열이 비어 있어요.",
+		"deferred": "보류됨",
+		"updated": "업데이트됨",
+		"agentWaiting": "에이전트가 기다리고 있어요",
+		"closeCard": "카드 닫기"
+	},
+	"card": {
+		"sessionEnded": "세션 종료됨",
+		"agentWaiting": "에이전트가 기다리고 있어요",
+		"updatedAt": "{time}에 업데이트됨",
+		"position": "· {position} / {total}",
+		"dismissed": "무시됨",
+		"closed": "닫힘",
+		"deferred": "보류됨",
+		"answered": "답변함",
+		"dismissOnly": "이 카드는 회신 경로가 없는 터미널 세션에서 왔어요. 에이전트 세션에서 답하거나 여기서 무시하세요.",
+		"dismiss": "무시",
+		"recommended": "★ 추천",
+		"addNote": "✎ + 메모",
+		"addNoteTitle": "선택하고 메모 추가",
+		"notePlaceholder": "“{label}”에 남길 메모… 선택과 함께 전송돼요",
+		"noteSend": "Enter — 전송 · Shift+Enter — 줄바꿈",
+		"noteCancel": "Esc — 메모 없이",
+		"viaRunner": "답변이 에이전트 세션에 입력돼요.",
+		"freeWithOptions": "직접 답변… (T) — 댓글로 에이전트에게 전송",
+		"freeOnly": "답변… (T) — Enter로 전송",
+		"hints": {
+			"accept": "수락 ★",
+			"pick": "선택",
+			"pickNote": "선택 + 메모",
+			"defer": "보류",
+			"dismiss": "무시",
+			"chat": "채팅",
+			"cards": "카드"
+		}
+	},
+	"chat": {
+		"empty": "이 카드에는 아직 메시지가 없어요.",
+		"you": "나",
+		"agent": "에이전트",
+		"placeholder": "이 카드에 대해 에이전트에게 질문… Enter",
+		"unavailable": "채팅을 사용할 수 없어요",
+		"answerInSession": "에이전트 세션에서 답해 주세요."
+	},
+	"checks": {
+		"empty": "표시할 확인 항목이 없어요."
+	},
+	"diff": {
+		"noneAttached": "이 카드에 첨부된 변경 사항이 없어요.",
+		"loading": "변경 사항 불러오는 중…",
+		"loadFailed": "변경 사항을 불러오지 못했어요: {error}",
+		"none": "변경 사항이 없어요.",
+		"truncated": "diff가 너무 커서 일부가 잘렸어요.",
+		"commentOnLine": "이 줄에 댓글 달기",
+		"you": "나",
+		"agent": "에이전트",
+		"draftLabel": "나 · 답변과 함께 전송돼요",
+		"remove": "삭제",
+		"fix": "수정",
+		"fixClarify": "수정 + 설명…",
+		"keep": "유지",
+		"reply": "답글",
+		"send": "전송",
+		"addToAnswer": "답변에 추가",
+		"close": "닫기",
+		"keptAsIs": "그대로 유지함",
+		"sentFix": "에이전트에게 보냈어요: 수정",
+		"fixPlaceholder": "어떻게 수정할지 구체적으로… (비워 두면 “수정”만 전송)",
+		"commentPlaceholder": "이 줄에 댓글…",
+		"hintSend": "Enter — 에이전트에게 전송 · Shift+Enter — 줄바꿈",
+		"hintDraft": "Enter — 답변에 추가 · Shift+Enter — 줄바꿈",
+		"groupKind": {
+			"repo": "저장소",
+			"patch": "패치"
+		}
+	},
+	"phones": {
+		"title": "tmgr · 휴대폰",
+		"qrAlt": "페어링 QR 코드",
+		"expiresIn": "만료까지",
+		"typeCode": "iPhone에 표시된 코드를 입력하세요",
+		"confirm": "확인",
+		"done": "이제 휴대폰에서 결정 카드에 답할 수 있어요.",
+		"cancel": "취소",
+		"close": "닫기",
+		"pairedPhones": "페어링된 휴대폰",
+		"none": "아직 페어링된 휴대폰이 없어요.",
+		"pairedInfo": "{date}에 페어링 · 마지막 사용 {since}",
+		"revokeQuestion": "{name}을(를) 해제할까요?",
+		"revoke": "해제",
+		"keep": "유지"
+	}
+}

@@ -1,0 +1,200 @@
+{
+	"window": {
+		"title": "判断 · ドゥームソルビング",
+		"titlebar": "tmgr · 判断 · ドゥームソルビング"
+	},
+	"kind": {
+		"decision": "判断",
+		"review": "レビュー",
+		"release": "リリース",
+		"check": "チェック",
+		"question": "質問",
+		"permission": "権限",
+		"stopped": "終了"
+	},
+	"link": {
+		"pr": "PR #{n}",
+		"sections": {
+			"pr": "PR",
+			"commit": "コミット",
+			"tag": "タグ",
+			"task": "タスク",
+			"url": "その他"
+		}
+	},
+	"subtitle": {
+		"default": "ドゥームソルビング",
+		"rare": {
+			"scrollingUseful": "ドゥームスクロールを、役に立つものに",
+			"oneMoreCard": "あと1枚だけ、そしたら寝よう",
+			"optionalDoom": "ドゥームは任意、判断は必須",
+			"solvingNotScrolling": "スクロールじゃなく、解決を",
+			"touchGrass": "これが終わったら外の空気を吸おう",
+			"notProcrastination": "エージェントが待っているなら先延ばしじゃない",
+			"hello": "こんにちは、ドゥーム"
+		}
+	},
+	"doom": {
+		"awaits": "あなたのドゥームが待っています",
+		"streak": "ドゥームソルビング連続記録：{n}",
+		"lifetime": "解決した判断：{n} 件",
+		"speedrun": "スピードラン any%",
+		"nightOwl": "夜更かし：まだ解決中",
+		"inboxZero": "受信トレイはゼロ。今日のドゥームは解決しました。",
+		"mode": "DOOM モード：起動中"
+	},
+	"answer": {
+		"dismissed": "却下しました",
+		"deferred": "保留しました",
+		"answered": "回答しました",
+		"withNote": "{text} + メモ",
+		"sessionGone": "保存しましたが、セッションは終了しています",
+		"toast": "{title}：{summary}"
+	},
+	"delivery": {
+		"sent": "セッションに送信しました（未確認）",
+		"deliveredRunner": "ランナー経由で配信しました",
+		"delivered": "配信しました",
+		"queued": "エージェントのプロンプトを待っています",
+		"undelivered": "配信できませんでした：{reason}",
+		"sessionClosed": "セッションは終了しています"
+	},
+	"unpicked": "どのエージェントも受け取っていません",
+	"wait": {
+		"sessionGone": "セッションが終了したため、エージェントには届きません。",
+		"notListening": "現在待ち受けているエージェントはいません。戻ってきたときに確認されます。",
+		"waiting": "エージェントを待っています…",
+		"noReplyDelivered": "エージェントはまだ返信していません。",
+		"noReplyPending": "エージェントはまだ返信していません。次に確認したときに届きます。"
+	},
+	"toast": {
+		"loadFailed": "判断を読み込めませんでした：{error}",
+		"answerFailed": "回答を送信できませんでした：{error}",
+		"messageFailed": "メッセージを送信できませんでした：{error}"
+	},
+	"tabs": {
+		"changes": "変更",
+		"checks": "チェック",
+		"chat": "チャット",
+		"refresh": "更新",
+		"partial": "一部",
+		"totalExact": "このカードの変更行数の合計",
+		"totalPartial": "一部のファイルを数えられなかったため、合計は一部のみです"
+	},
+	"empty": {
+		"done": "ドゥームソルビング完了。外の空気を吸ってきましょう。",
+		"doneHint": "判断待ちのものはありません。",
+		"loadFailed": "判断を読み込めませんでした",
+		"noMatches": "一致なし",
+		"noMatchesHint": "検索をクリアするとキューが表示されます。",
+		"loading": "読み込み中…"
+	},
+	"statusbar": {
+		"accept": "採用",
+		"pick": "選択",
+		"note": "+ メモ",
+		"freeText": "自由入力",
+		"defer": "保留",
+		"dismiss": "却下",
+		"cards": "カード",
+		"waiting": "{n} 件待機中"
+	},
+	"queue": {
+		"title": "キュー",
+		"count": "{pending} / {total}",
+		"search": "キューを検索",
+		"complete": "ドゥームソルビング完了。外の空気を吸ってきましょう。",
+		"noMatches": "一致なし",
+		"empty": "キューは空です。",
+		"deferred": "保留",
+		"updated": "更新",
+		"agentWaiting": "エージェントが待っています",
+		"closeCard": "カードを閉じる"
+	},
+	"card": {
+		"sessionEnded": "セッション終了",
+		"agentWaiting": "エージェントが待っています",
+		"updatedAt": "{time} に更新",
+		"position": "· {position} / {total}",
+		"dismissed": "却下済み",
+		"closed": "閉じました",
+		"deferred": "保留中",
+		"answered": "回答済み",
+		"dismissOnly": "このカードは返信経路のないターミナルセッションからのものです。エージェントのセッションで回答するか、ここで却下してください。",
+		"dismiss": "却下",
+		"recommended": "★ おすすめ",
+		"addNote": "✎ + メモ",
+		"addNoteTitle": "選択してメモを追加",
+		"notePlaceholder": "「{label}」へのメモ… 選択と一緒に送信されます",
+		"noteSend": "Enter — 送信 · Shift+Enter — 改行",
+		"noteCancel": "Esc — メモなし",
+		"viaRunner": "回答はエージェントのセッションに入力されます。",
+		"freeWithOptions": "自分の回答… (T) — コメントとしてエージェントに送信",
+		"freeOnly": "回答… (T) — Enter で送信",
+		"hints": {
+			"accept": "採用 ★",
+			"pick": "選択",
+			"pickNote": "選択 + メモ",
+			"defer": "保留",
+			"dismiss": "却下",
+			"chat": "チャット",
+			"cards": "カード"
+		}
+	},
+	"chat": {
+		"empty": "このカードにはまだメッセージがありません。",
+		"you": "あなた",
+		"agent": "エージェント",
+		"placeholder": "このカードについてエージェントに質問… Enter",
+		"unavailable": "チャットは利用できません",
+		"answerInSession": "エージェントのセッションで回答してください。"
+	},
+	"checks": {
+		"empty": "チェック項目はありません。"
+	},
+	"diff": {
+		"noneAttached": "このカードに添付された変更はありません。",
+		"loading": "変更を読み込み中…",
+		"loadFailed": "変更を読み込めませんでした：{error}",
+		"none": "変更はありません。",
+		"truncated": "差分が大きすぎるため、省略されました。",
+		"commentOnLine": "この行にコメント",
+		"you": "あなた",
+		"agent": "エージェント",
+		"draftLabel": "あなた · 回答と一緒に送信されます",
+		"remove": "削除",
+		"fix": "修正",
+		"fixClarify": "修正 + 補足…",
+		"keep": "そのまま",
+		"reply": "返信",
+		"send": "送信",
+		"addToAnswer": "回答に追加",
+		"close": "閉じる",
+		"keptAsIs": "そのままにしました",
+		"sentFix": "エージェントに送信しました：修正",
+		"fixPlaceholder": "どう修正するか具体的に… （空欄なら「修正」のみ）",
+		"commentPlaceholder": "この行にコメント…",
+		"hintSend": "Enter — エージェントに送信 · Shift+Enter — 改行",
+		"hintDraft": "Enter — 回答に追加 · Shift+Enter — 改行",
+		"groupKind": {
+			"repo": "リポジトリ",
+			"patch": "パッチ"
+		}
+	},
+	"phones": {
+		"title": "tmgr · スマートフォン",
+		"qrAlt": "ペアリング用 QR コード",
+		"expiresIn": "有効期限まで",
+		"typeCode": "iPhone に表示されたコードを入力してください",
+		"confirm": "確認",
+		"done": "これでスマートフォンから判断カードに回答できます。",
+		"cancel": "キャンセル",
+		"close": "閉じる",
+		"pairedPhones": "ペアリング済みのスマートフォン",
+		"none": "ペアリング済みのスマートフォンはまだありません。",
+		"pairedInfo": "{date} にペアリング · 最終使用 {since}",
+		"revokeQuestion": "{name} を解除しますか？",
+		"revoke": "解除",
+		"keep": "残す"
+	}
+}

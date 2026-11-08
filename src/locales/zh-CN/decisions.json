@@ -1,0 +1,200 @@
+{
+	"window": {
+		"title": "决策 · 末日清单",
+		"titlebar": "tmgr · 决策 · 末日清单"
+	},
+	"kind": {
+		"decision": "决策",
+		"review": "审查",
+		"release": "发布",
+		"check": "检查",
+		"question": "问题",
+		"permission": "权限",
+		"stopped": "已结束"
+	},
+	"link": {
+		"pr": "PR #{n}",
+		"sections": {
+			"pr": "PR",
+			"commit": "提交",
+			"tag": "标签",
+			"task": "任务",
+			"url": "其他"
+		}
+	},
+	"subtitle": {
+		"default": "清理末日清单",
+		"rare": {
+			"scrollingUseful": "刷末日清单，但刷得有用",
+			"oneMoreCard": "再看一张卡片就去睡",
+			"optionalDoom": "末日可以不刷，决策不能不做",
+			"solvingNotScrolling": "解决问题，而不是刷屏",
+			"touchGrass": "处理完这张就去晒晒太阳",
+			"notProcrastination": "智能体在等你，这不算拖延",
+			"hello": "你好，末日"
+		}
+	},
+	"doom": {
+		"awaits": "你的末日清单在等你",
+		"streak": "连续清理天数：{n}",
+		"lifetime": "已解决 {n} 个决策",
+		"speedrun": "速通任意%",
+		"nightOwl": "夜猫子：还在清理",
+		"inboxZero": "收件箱清零，今天的末日已解决。",
+		"mode": "末日模式：已开启"
+	},
+	"answer": {
+		"dismissed": "已忽略",
+		"deferred": "已推迟",
+		"answered": "已回答",
+		"withNote": "{text} + 备注",
+		"sessionGone": "已保存，但会话已结束",
+		"toast": "{title}：{summary}"
+	},
+	"delivery": {
+		"sent": "已发送到会话（未确认）",
+		"deliveredRunner": "已通过运行器送达",
+		"delivered": "已送达",
+		"queued": "等待智能体的提示",
+		"undelivered": "未送达：{reason}",
+		"sessionClosed": "会话已关闭"
+	},
+	"unpicked": "没有智能体接手",
+	"wait": {
+		"sessionGone": "会话已结束，没有智能体会看到这条内容。",
+		"notListening": "目前没有智能体在监听，它回来后会看到这条内容。",
+		"waiting": "等待智能体…",
+		"noReplyDelivered": "智能体还没有回复。",
+		"noReplyPending": "智能体还没有回复，它下次检查时会看到这条内容。"
+	},
+	"toast": {
+		"loadFailed": "无法加载决策：{error}",
+		"answerFailed": "无法发送回答：{error}",
+		"messageFailed": "无法发送消息：{error}"
+	},
+	"tabs": {
+		"changes": "变更",
+		"checks": "检查",
+		"chat": "聊天",
+		"refresh": "刷新",
+		"partial": "部分",
+		"totalExact": "此卡片的变更总行数",
+		"totalPartial": "部分文件无法统计，因此总数不完整"
+	},
+	"empty": {
+		"done": "末日清单已清空，去晒晒太阳吧。",
+		"doneHint": "没有等待你决策的事项。",
+		"loadFailed": "无法加载决策",
+		"noMatches": "没有匹配项",
+		"noMatchesHint": "清除搜索即可查看队列。",
+		"loading": "加载中…"
+	},
+	"statusbar": {
+		"accept": "采纳",
+		"pick": "选择",
+		"note": "+ 备注",
+		"freeText": "自由输入",
+		"defer": "推迟",
+		"dismiss": "忽略",
+		"cards": "卡片",
+		"waiting": "{n} 个等待中"
+	},
+	"queue": {
+		"title": "队列",
+		"count": "{pending} / {total}",
+		"search": "搜索队列",
+		"complete": "末日清单已清空，去晒晒太阳吧。",
+		"noMatches": "没有匹配项",
+		"empty": "队列为空。",
+		"deferred": "已推迟",
+		"updated": "已更新",
+		"agentWaiting": "有智能体在等待",
+		"closeCard": "关闭卡片"
+	},
+	"card": {
+		"sessionEnded": "会话已结束",
+		"agentWaiting": "智能体在等待",
+		"updatedAt": "更新于 {time}",
+		"position": "· 第 {position} 张，共 {total} 张",
+		"dismissed": "已忽略",
+		"closed": "已关闭",
+		"deferred": "已推迟",
+		"answered": "已回答",
+		"dismissOnly": "此卡片来自没有回传通道的终端会话。请在智能体会话中回答，或在此处忽略。",
+		"dismiss": "忽略",
+		"recommended": "★ 推荐",
+		"addNote": "✎ + 备注",
+		"addNoteTitle": "选择并添加备注",
+		"notePlaceholder": "“{label}”的备注… 将与你的选择一起发送",
+		"noteSend": "Enter — 发送 · Shift+Enter — 换行",
+		"noteCancel": "Esc — 不加备注",
+		"viaRunner": "你的回答会输入到智能体会话中。",
+		"freeWithOptions": "自己的回答… (T) — 作为评论发送给智能体",
+		"freeOnly": "你的回答… (T) — 按 Enter 发送",
+		"hints": {
+			"accept": "采纳 ★",
+			"pick": "选择",
+			"pickNote": "选择 + 备注",
+			"defer": "推迟",
+			"dismiss": "忽略",
+			"chat": "聊天",
+			"cards": "卡片"
+		}
+	},
+	"chat": {
+		"empty": "此卡片还没有消息。",
+		"you": "你",
+		"agent": "智能体",
+		"placeholder": "就此卡片向智能体提问… Enter",
+		"unavailable": "聊天不可用",
+		"answerInSession": "请在智能体会话中回答。"
+	},
+	"checks": {
+		"empty": "没有列出检查项。"
+	},
+	"diff": {
+		"noneAttached": "此卡片没有附带变更。",
+		"loading": "正在加载变更…",
+		"loadFailed": "无法加载变更：{error}",
+		"none": "没有变更。",
+		"truncated": "差异过大，已被截断。",
+		"commentOnLine": "评论此行",
+		"you": "你",
+		"agent": "智能体",
+		"draftLabel": "你 · 将随你的回答一起发送",
+		"remove": "移除",
+		"fix": "修复",
+		"fixClarify": "修复 + 说明…",
+		"keep": "保留",
+		"reply": "回复",
+		"send": "发送",
+		"addToAnswer": "加入回答",
+		"close": "关闭",
+		"keptAsIs": "保持原样",
+		"sentFix": "已发送给智能体：修复",
+		"fixPlaceholder": "具体怎么修复… （留空即只发送“修复”）",
+		"commentPlaceholder": "评论此行…",
+		"hintSend": "Enter — 发送给智能体 · Shift+Enter — 换行",
+		"hintDraft": "Enter — 加入你的回答 · Shift+Enter — 换行",
+		"groupKind": {
+			"repo": "仓库",
+			"patch": "补丁"
+		}
+	},
+	"phones": {
+		"title": "tmgr · 手机",
+		"qrAlt": "配对二维码",
+		"expiresIn": "有效期剩余",
+		"typeCode": "输入 iPhone 上显示的代码",
+		"confirm": "确认",
+		"done": "现在可以在手机上回答决策卡片了。",
+		"cancel": "取消",
+		"close": "关闭",
+		"pairedPhones": "已配对的手机",
+		"none": "还没有配对的手机。",
+		"pairedInfo": "配对于 {date} · 上次使用 {since}",
+		"revokeQuestion": "撤销 {name}？",
+		"revoke": "撤销",
+		"keep": "保留"
+	}
+}

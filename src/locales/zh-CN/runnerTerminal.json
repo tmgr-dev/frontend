@@ -1,0 +1,9 @@
+{
+	"title": "智能体终端",
+	"agentSession": "智能体会话",
+	"connecting": "正在连接",
+	"detach": "断开",
+	"reattach": "重新连接",
+	"sessionEnded": "会话已结束：{reason}",
+	"scrolledBack": "已向上滚动 {n} 行 — 按 End 返回"
+}

@@ -1,0 +1,9 @@
+{
+	"title": "エージェントターミナル",
+	"agentSession": "エージェントのセッション",
+	"connecting": "接続中",
+	"detach": "切断",
+	"reattach": "再接続",
+	"sessionEnded": "セッションが終了しました：{reason}",
+	"scrolledBack": "{n} 行分さかのぼっています — End キーで戻ります"
+}
