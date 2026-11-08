@@ -1,0 +1,229 @@
+{
+	"actionLines": {
+		"title": "Elementos de acción",
+		"toTask": "→ tarea"
+	},
+	"aliases": {
+		"add": "Añadir alias",
+		"displayName": "Nombre visible",
+		"identifier": "Identificador",
+		"remove": "Quitar alias"
+	},
+	"conflict": {
+		"description": "Apareció la versión {version} mientras editabas. Elige cuál conservar.",
+		"difference": "Diferencia",
+		"hint": "Quedarme con la suya: carga la versión {version} y descarta tu borrador. Mantener la mía: guarda tu texto sobre la versión {version}.",
+		"keepMine": "Mantener la mía",
+		"showBoth": "Mostrar ambas",
+		"takeTheirs": "Quedarme con la suya",
+		"theirVersion": "Su versión",
+		"title": "La página cambió en otro lugar",
+		"yourDraft": "Tu borrador"
+	},
+	"descriptionPreview": {
+		"edit": "Editar descripción",
+		"empty": "Sin descripción: haz clic para añadir"
+	},
+	"diff": {
+		"empty": "Vacío"
+	},
+	"editor": {
+		"searching": "Buscando..."
+	},
+	"files": {
+		"title": "Archivos",
+		"upload": "Subir",
+		"uploading": "Subiendo..."
+	},
+	"gate": {
+		"description": "Notas, contexto del espacio de trabajo y documentación en un árbol de páginas que editan tanto las personas como los agentes.",
+		"title": "Páginas"
+	},
+	"import": {
+		"badgeExists": "existe",
+		"badgeSkipped": "omitida",
+		"choose": "Elegir archivos",
+		"conflictPolicy": "Cuando ya existe un título",
+		"created": "Se creó {n} página. | Se crearon {n} páginas.",
+		"drop": "Suelta aquí archivos Markdown, imágenes o un .zip",
+		"policyImport": "Importar de todos modos",
+		"policyRename": "Renombrar (añade (2))",
+		"policySkip": "Omitir",
+		"reading": "Leyendo archivos…",
+		"root": "Raíz de páginas",
+		"skippedCount": "Omitidas: {n}.",
+		"stopped": "Importación detenida: {error}. Se creó {n} página | Importación detenida: {error}. Se crearon {n} páginas",
+		"submit": "Importar {n} página | Importar {n} páginas",
+		"target": "Importar en: {title}",
+		"title": "Importar Markdown",
+		"warnings": "{n} advertencia | {n} advertencias",
+		"willCreate": "Se creará {n} página | Se crearán {n} páginas",
+		"willCreateConflicts": "Se creará {n} página, {conflicts} con un título que ya existe | Se crearán {n} páginas, {conflicts} con un título que ya existe"
+	},
+	"index": {
+		"allPages": "Todas las páginas",
+		"archive": "Archivo",
+		"create": "Crear página",
+		"emptyHint": "Crea tu primera página para notas y documentación.",
+		"emptyTitle": "Aún no hay páginas",
+		"exportAll": "Exportar todo",
+		"failed": "No se pudieron cargar las páginas",
+		"import": "Importar",
+		"pinned": "Fijadas",
+		"title": "Páginas"
+	},
+	"nav": {
+		"dialogs": {
+			"archiveBody": "\"{title}\" y todas sus subpáginas se moverán al {archive}. Puedes restaurarlas desde allí.",
+			"archiveConfirm": "Archivar",
+			"archiveLink": "archivo",
+			"archiveTitle": "Archivar página",
+			"renameTitle": "Renombrar página",
+			"titlePlaceholder": "Título"
+		},
+		"node": {
+			"actions": "Acciones de la página",
+			"addSubpage": "Añadir subpágina",
+			"archive": "Archivar",
+			"collapse": "Contraer",
+			"expand": "Expandir",
+			"exportSubtree": "Exportar con subpáginas",
+			"importHere": "Importar Markdown aquí…",
+			"openInWindow": "Abrir en ventana",
+			"pin": "Fijar",
+			"rename": "Renombrar",
+			"unpin": "Desfijar"
+		},
+		"sidebar": {
+			"allPages": "Todas las páginas",
+			"archive": "Archivo",
+			"choosePageType": "Elige el tipo de página",
+			"failed": "No se pudieron cargar las páginas",
+			"importMarkdown": "Importar Markdown…",
+			"newPage": "Nueva página",
+			"pageType": "Tipo de página",
+			"title": "Páginas"
+		}
+	},
+	"previews": {
+		"board": {
+			"archived": "Archivadas",
+			"done": "Completadas",
+			"inProgress": "En curso",
+			"todo": "Por hacer"
+		},
+		"dashboard": {
+			"completed": "Completadas",
+			"inProgress": "En curso",
+			"timeTracked": "Tiempo registrado",
+			"totalTasks": "Total de tareas"
+		}
+	},
+	"properties": {
+		"author": "Autor",
+		"editedBy": "Editado por",
+		"hintMember": "miembro",
+		"hintPerson": "persona",
+		"member": "Miembro",
+		"memberName": "Nombre del miembro",
+		"personOrMember": "Persona o miembro",
+		"searchTasks": "Buscar tareas",
+		"select": "Seleccionar",
+		"task": "Tarea"
+	},
+	"sidePanel": {
+		"allVersions": "Todas",
+		"backlinks": "Enlaces entrantes",
+		"contents": "Contenido",
+		"versions": "Versiones"
+	},
+	"taskFromSelection": {
+		"category": "Proyecto",
+		"create": "Crear tarea",
+		"description": "El texto de la página se sustituirá por un enlace a la tarea.",
+		"statusDefault": "Predeterminado",
+		"statusOptional": "Estado (opcional)",
+		"title": "Crear una tarea"
+	},
+	"trash": {
+		"alreadyDeleted": "Esta página ya se eliminó",
+		"archivedAt": "Archivada el {date}",
+		"back": "Páginas",
+		"confirmType": "Escribe {word} para confirmar",
+		"countLabel": "La página archivada y sus subpáginas | Las {n} páginas archivadas y sus subpáginas",
+		"deleteAll": "Eliminar todo",
+		"deleteFailed": "No se pudo eliminar la página",
+		"deleteForbidden": "Solo el autor o el propietario del espacio de trabajo puede eliminar esta página",
+		"emptied": "Archivo vaciado",
+		"empty": "El archivo está vacío.",
+		"emptyBody": "{label} se eliminará para siempre. Esta acción no se puede deshacer.",
+		"emptyFailed": "No se pudo vaciar el archivo",
+		"emptyTitle": "¿Eliminar todas las páginas archivadas?",
+		"failed": "No se pudo cargar el archivo",
+		"noPermissionDelete": "No tienes permiso para eliminar esta página",
+		"noPermissionEmpty": "No tienes permiso para vaciar el archivo",
+		"notArchived": "Esta página ya no está archivada",
+		"purgeBody": "\"{title}\" y sus subpáginas archivadas se eliminarán para siempre. Esta acción no se puede deshacer.",
+		"purgeConfirm": "Eliminar definitivamente",
+		"purgeTitle": "¿Eliminar definitivamente?",
+		"purged": "Página eliminada definitivamente",
+		"restore": "Restaurar",
+		"restoreFailed": "No se pudo restaurar la página",
+		"restoreForbidden": "Solo el autor o el propietario del espacio de trabajo puede restaurar esta página",
+		"someKept": "Se conservaron algunas páginas",
+		"someKeptBody": "{n} página archivada que no puedes eliminar se quedó en el archivo. | {n} páginas archivadas que no puedes eliminar se quedaron en el archivo.",
+		"title": "Archivo"
+	},
+	"versions": {
+		"backToPage": "Volver a la página",
+		"current": "actual",
+		"failed": "No se pudo cargar el historial",
+		"history": "Historial: {title}",
+		"loading": "Cargando...",
+		"modeCurrent": "Cambios desde esta versión",
+		"modePrevious": "Qué cambió esta versión",
+		"modeSnapshot": "Instantánea",
+		"restore": "Restaurar",
+		"restoreBody": "Se creará una nueva versión de la página con el contenido de la versión {version}. El texto actual se queda en el historial.",
+		"restoreTitle": "¿Restaurar la versión {version}?",
+		"select": "Selecciona una versión"
+	},
+	"view": {
+		"conflictBanner": "Sin guardar: conflicto de versión",
+		"editorPlaceholder": "Escribe / para bloques, {'@'} para enlazar, [[ para una página",
+		"exportMarkdown": "Exportar como Markdown",
+		"exportSubtree": "Exportar con subpáginas",
+		"follow": "Seguir",
+		"forbidden": "Las páginas están desactivadas o no tienes acceso",
+		"history": "Historial",
+		"importHere": "Importar Markdown aquí…",
+		"loadFailed": "No se pudo cargar la página",
+		"loading": "Cargando...",
+		"makeTask": "Crear una tarea",
+		"moreActions": "Más acciones",
+		"notFound": "Página no encontrada",
+		"openFileFailed": "No se pudo abrir {name}",
+		"openInWindow": "Abrir en ventana",
+		"openTask": "Abrir tarea",
+		"refresh": "Actualizar",
+		"resolve": "Resolver",
+		"resolveFirst": "Resuelve primero el conflicto de versión.",
+		"saveFailed": "No se pudo guardar",
+		"saved": "Guardado, versión {version}",
+		"saving": "Guardando...",
+		"subscriptionFailed": "No se pudo cambiar la suscripción",
+		"taskCreated": "Tarea creada",
+		"unfollow": "Dejar de seguir",
+		"unsaved": "Cambios sin guardar",
+		"untitled": "Sin título",
+		"updateBanner": "La página cambió, versión {version}",
+		"uploadFailed": "No se pudo subir {name}",
+		"versionConflict": "Conflicto de versión"
+	},
+	"window": {
+		"closeWindow": "Cerrar ventana",
+		"loading": "Cargando...",
+		"notFound": "No se encontró esta página.",
+		"openFailed": "No se pudo abrir la página. Cierra esta ventana e inténtalo de nuevo."
+	}
+}
