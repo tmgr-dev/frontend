@@ -275,5 +275,12 @@
 			"hoursAgo": "{n} ч назад",
 			"daysAgo": "{n} д назад"
 		}
+	},
+	"duration": {
+		"hours": "{n} час | {n} часа | {n} часов",
+		"minutes": "{n} минута | {n} минуты | {n} минут",
+		"hoursShort": "{n} ч",
+		"minutesShort": "{n} мин",
+		"secondsShort": "{n} с"
 	}
 }

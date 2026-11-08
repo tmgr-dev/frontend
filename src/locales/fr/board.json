@@ -91,7 +91,10 @@
 			"authorAll": "Tous",
 			"authorPeople": "Personnes",
 			"authorPersonas": "Personas",
-			"authorPlugins": "Plugins"
+			"authorPlugins": "Plugins",
+			"errors": {
+				"loadMore": "Impossible de charger plus d'activités"
+			}
 		},
 		"activityItem": {
 			"by": "par {name}"
@@ -254,6 +257,22 @@
 			"timerRunning": "Minuteur en cours",
 			"lastActive": "Dernière activité : {when}",
 			"ariaStats": "{tracked} suivi, {done} terminées, {active} actives, {comments} commentaires, série {streak}"
+		},
+		"errors": {
+			"noWorkspace": "Aucun espace de travail valide trouvé. Vérifiez que vous avez accès à au moins un espace de travail, puis actualisez la page.",
+			"loadFailed": {
+				"statistics": "Impossible de charger les statistiques",
+				"activities": "Impossible de charger les activités",
+				"heatmap": "Impossible de charger la carte de chaleur",
+				"recentTasks": "Impossible de charger les tâches récentes",
+				"teamActivity": "Impossible de charger l'activité de l'équipe"
+			}
+		},
+		"memberPage": {
+			"errors": {
+				"loadMember": "Impossible de charger ce membre",
+				"loadTasks": "Impossible de charger les tâches du membre"
+			}
 		}
 	},
 	"graphMap": {
@@ -864,5 +883,9 @@
 			},
 			"openCategorySettings": "Ouvrir les paramètres du projet"
 		}
+	},
+	"duration": {
+		"hours": "{n} h",
+		"minutes": "{n} min"
 	}
 }

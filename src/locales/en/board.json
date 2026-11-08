@@ -91,7 +91,10 @@
 			"authorAll": "All",
 			"authorPeople": "People",
 			"authorPersonas": "Personas",
-			"authorPlugins": "Plugins"
+			"authorPlugins": "Plugins",
+			"errors": {
+				"loadMore": "Failed to load more activities"
+			}
 		},
 		"activityItem": {
 			"by": "by {name}"
@@ -254,6 +257,22 @@
 			"timerRunning": "Timer running",
 			"lastActive": "Last active: {when}",
 			"ariaStats": "{tracked} tracked, {done} done, {active} active, {comments} comments, streak {streak}"
+		},
+		"errors": {
+			"noWorkspace": "No valid workspace found. Please ensure you have access to at least one workspace and try refreshing the page.",
+			"loadFailed": {
+				"statistics": "Failed to load statistics",
+				"activities": "Failed to load activities",
+				"heatmap": "Failed to load heatmap",
+				"recentTasks": "Failed to load recent tasks",
+				"teamActivity": "Failed to load team activity"
+			}
+		},
+		"memberPage": {
+			"errors": {
+				"loadMember": "Could not load this member",
+				"loadTasks": "Could not load member tasks"
+			}
 		}
 	},
 	"graphMap": {
@@ -864,5 +883,9 @@
 			},
 			"openCategorySettings": "Open category settings"
 		}
+	},
+	"duration": {
+		"hours": "{n} h",
+		"minutes": "{n} m"
 	}
 }

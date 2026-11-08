@@ -91,7 +91,10 @@
 			"authorAll": "全部",
 			"authorPeople": "人员",
 			"authorPersonas": "角色",
-			"authorPlugins": "插件"
+			"authorPlugins": "插件",
+			"errors": {
+				"loadMore": "无法加载更多活动"
+			}
 		},
 		"activityItem": {
 			"by": "由 {name}"
@@ -254,6 +257,22 @@
 			"timerRunning": "计时器运行中",
 			"lastActive": "最后活跃：{when}",
 			"ariaStats": "已跟踪 {tracked}，已完成 {done}，进行中 {active}，评论 {comments}，连续 {streak}"
+		},
+		"errors": {
+			"noWorkspace": "未找到有效的工作区。请确保您有权访问至少一个工作区，然后刷新页面重试。",
+			"loadFailed": {
+				"statistics": "无法加载统计数据",
+				"activities": "无法加载活动",
+				"heatmap": "无法加载热力图",
+				"recentTasks": "无法加载最近的任务",
+				"teamActivity": "无法加载团队活动"
+			}
+		},
+		"memberPage": {
+			"errors": {
+				"loadMember": "无法加载该成员",
+				"loadTasks": "无法加载成员的任务"
+			}
 		}
 	},
 	"graphMap": {
@@ -864,5 +883,9 @@
 			},
 			"openCategorySettings": "打开项目设置"
 		}
+	},
+	"duration": {
+		"hours": "{n} 小时",
+		"minutes": "{n} 分钟"
 	}
 }

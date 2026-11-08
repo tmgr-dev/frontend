@@ -275,5 +275,12 @@
 			"hoursAgo": "hace {n} h",
 			"daysAgo": "hace {n} d"
 		}
+	},
+	"duration": {
+		"hours": "{n} hora | {n} horas",
+		"minutes": "{n} minuto | {n} minutos",
+		"hoursShort": "{n} h",
+		"minutesShort": "{n} min",
+		"secondsShort": "{n} s"
 	}
 }

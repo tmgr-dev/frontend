@@ -1,4 +1,5 @@
 import { getActivityFeed, withRetry } from '@/actions/tmgr/dashboard';
+import { t } from '@/i18n';
 import store from '@/store';
 import type {
 	ActionError,
@@ -286,7 +287,9 @@ export function useActivityFeed(
 			if (!isCurrent()) return;
 			if (filters.value.date) activities.value = [];
 			const errorMessage =
-				err instanceof Error ? err.message : 'Failed to load activities';
+				err instanceof Error
+					? err.message
+					: t('board.dashboard.errors.loadFailed.activities');
 			handleError({
 				message: errorMessage,
 				type: 'server',
@@ -335,7 +338,9 @@ export function useActivityFeed(
 		} catch (err) {
 			if (!isCurrent()) return;
 			const errorMessage =
-				err instanceof Error ? err.message : 'Failed to load more activities';
+				err instanceof Error
+					? err.message
+					: t('board.dashboard.activityFeed.errors.loadMore');
 			handleError({
 				message: errorMessage,
 				type: 'server',

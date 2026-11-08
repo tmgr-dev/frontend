@@ -91,7 +91,10 @@
 			"authorAll": "Wszyscy",
 			"authorPeople": "Osoby",
 			"authorPersonas": "Persony",
-			"authorPlugins": "Wtyczki"
+			"authorPlugins": "Wtyczki",
+			"errors": {
+				"loadMore": "Nie udało się wczytać kolejnych aktywności"
+			}
 		},
 		"activityItem": {
 			"by": "przez {name}"
@@ -254,6 +257,22 @@
 			"timerRunning": "Timer działa",
 			"lastActive": "Ostatnia aktywność: {when}",
 			"ariaStats": "śledzony czas: {tracked}, ukończone: {done}, aktywne: {active}, komentarze: {comments}, seria: {streak}"
+		},
+		"errors": {
+			"noWorkspace": "Nie znaleziono prawidłowej przestrzeni roboczej. Upewnij się, że masz dostęp do co najmniej jednej przestrzeni roboczej, i odśwież stronę.",
+			"loadFailed": {
+				"statistics": "Nie udało się wczytać statystyk",
+				"activities": "Nie udało się wczytać aktywności",
+				"heatmap": "Nie udało się wczytać mapy ciepła",
+				"recentTasks": "Nie udało się wczytać ostatnich zadań",
+				"teamActivity": "Nie udało się wczytać aktywności zespołu"
+			}
+		},
+		"memberPage": {
+			"errors": {
+				"loadMember": "Nie udało się wczytać tego członka",
+				"loadTasks": "Nie udało się wczytać zadań członka"
+			}
 		}
 	},
 	"graphMap": {
@@ -864,5 +883,9 @@
 			},
 			"openCategorySettings": "Otwórz ustawienia kategorii"
 		}
+	},
+	"duration": {
+		"hours": "{n} godz.",
+		"minutes": "{n} min"
 	}
 }

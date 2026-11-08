@@ -91,7 +91,10 @@
 			"authorAll": "전체",
 			"authorPeople": "사람",
 			"authorPersonas": "페르소나",
-			"authorPlugins": "플러그인"
+			"authorPlugins": "플러그인",
+			"errors": {
+				"loadMore": "활동을 더 불러오지 못했습니다"
+			}
 		},
 		"activityItem": {
 			"by": "{name}"
@@ -254,6 +257,22 @@
 			"timerRunning": "타이머 실행 중",
 			"lastActive": "마지막 활동: {when}",
 			"ariaStats": "추적 {tracked}, 완료 {done}, 진행 중 {active}, 댓글 {comments}, 연속 {streak}"
+		},
+		"errors": {
+			"noWorkspace": "유효한 워크스페이스를 찾을 수 없습니다. 하나 이상의 워크스페이스에 접근할 수 있는지 확인하고 페이지를 새로고침해 주세요.",
+			"loadFailed": {
+				"statistics": "통계를 불러오지 못했습니다",
+				"activities": "활동을 불러오지 못했습니다",
+				"heatmap": "히트맵을 불러오지 못했습니다",
+				"recentTasks": "최근 작업을 불러오지 못했습니다",
+				"teamActivity": "팀 활동을 불러오지 못했습니다"
+			}
+		},
+		"memberPage": {
+			"errors": {
+				"loadMember": "이 멤버를 불러오지 못했습니다",
+				"loadTasks": "멤버의 작업을 불러오지 못했습니다"
+			}
 		}
 	},
 	"graphMap": {
@@ -864,5 +883,9 @@
 			},
 			"openCategorySettings": "프로젝트 설정 열기"
 		}
+	},
+	"duration": {
+		"hours": "{n}시간",
+		"minutes": "{n}분"
 	}
 }

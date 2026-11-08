@@ -897,7 +897,7 @@
 		resyncPagedColumns,
 	} from '@/utils/boardColumnPaging';
 	import { boardTaskCounts } from '@/utils/boardSummary';
-	import { t } from '@/i18n';
+	import { currentLocale, t } from '@/i18n';
 	import { hexToHsl, hslToHex } from '@/utils/colors';
 	import {
 		parsePriorityFilter,
@@ -1941,11 +1941,16 @@
 			},
 			formatTime(taskTime) {
 				if (taskTime < 3600) {
-					let min = Math.ceil(taskTime / 60);
-					return `${min} m${min > 1 ? '' : ''}`;
+					const min = Math.ceil(taskTime / 60);
+					return t('board.duration.minutes', { n: min });
 				} else {
-					let hoursDecimal = taskTime / 3600;
-					return `${hoursDecimal.toFixed(2)} h`;
+					const hoursDecimal = taskTime / 3600;
+					const formatted = new Intl.NumberFormat(currentLocale(), {
+						minimumFractionDigits: 2,
+						maximumFractionDigits: 2,
+						useGrouping: false,
+					}).format(hoursDecimal);
+					return t('board.duration.hours', { n: formatted });
 				}
 			},
 			getApproximatelyTime(task) {
@@ -1966,10 +1971,10 @@
 				const minutes = Math.floor((overtimeSeconds % 3600) / 60);
 				const parts = [];
 				if (hours > 0) {
-					parts.push(`${hours}h`);
+					parts.push(t('tasks.duration.hoursShort', { n: hours }));
 				}
 				if (minutes > 0) {
-					parts.push(`${minutes}m`);
+					parts.push(t('tasks.duration.minutesShort', { n: minutes }));
 				}
 				return parts.length > 0 ? parts.join(' ') : null;
 			},

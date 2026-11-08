@@ -51,11 +51,16 @@
 	}>();
 
 	const formatTime = (seconds: number): string => {
-		if (seconds < 60) return `${seconds}s`;
-		if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-		return `${Math.floor(seconds / 3600)}h ${Math.floor(
-			(seconds % 3600) / 60,
-		)}m`;
+		if (seconds < 60) return t('tasks.duration.secondsShort', { n: seconds });
+		if (seconds < 3600)
+			return t('tasks.duration.minutesShort', {
+				n: Math.floor(seconds / 60),
+			});
+		return `${t('tasks.duration.hoursShort', {
+			n: Math.floor(seconds / 3600),
+		})} ${t('tasks.duration.minutesShort', {
+			n: Math.floor((seconds % 3600) / 60),
+		})}`;
 	};
 
 	const formatPercentage = (value: number): string => {

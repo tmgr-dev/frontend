@@ -82,6 +82,19 @@ const MAX_K = 4;
 const TICK_MS = 1000 / 60;
 const GLOW_NODE_LIMIT = 260;
 
+const pageTypeLabel = (value: string): string => {
+	switch (value) {
+		case 'context':
+			return t('pages.helpers.pageType.context').toLowerCase();
+		case 'person':
+			return t('pages.helpers.pageType.person').toLowerCase();
+		case 'meeting':
+			return t('pages.helpers.pageType.meeting').toLowerCase();
+		default:
+			return value;
+	}
+};
+
 const overlaps = (a: LabelRect, list: LabelRect[]): boolean =>
 	list.some(
 		(b) =>
@@ -768,9 +781,11 @@ export class GraphEngine {
 				: d.type === 'page'
 					? (d.meta?.page_type as string | undefined)
 					: null;
+		const extraLabel =
+			d.type === 'page' && extra ? pageTypeLabel(extra) : extra;
 		return {
 			title: truncateLabel(d.title, 22),
-			sub: extra && extra !== 'plain' ? `${type} · ${extra}` : type,
+			sub: extra && extra !== 'plain' ? `${type} · ${extraLabel}` : type,
 		};
 	}
 

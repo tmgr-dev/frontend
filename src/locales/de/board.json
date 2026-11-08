@@ -91,7 +91,10 @@
 			"authorAll": "Alle",
 			"authorPeople": "Personen",
 			"authorPersonas": "Personas",
-			"authorPlugins": "Plugins"
+			"authorPlugins": "Plugins",
+			"errors": {
+				"loadMore": "Weitere Aktivitäten konnten nicht geladen werden"
+			}
 		},
 		"activityItem": {
 			"by": "von {name}"
@@ -254,6 +257,22 @@
 			"timerRunning": "Timer läuft",
 			"lastActive": "Zuletzt aktiv: {when}",
 			"ariaStats": "{tracked} erfasst, {done} erledigt, {active} aktiv, {comments} Kommentare, Serie {streak}"
+		},
+		"errors": {
+			"noWorkspace": "Kein gültiger Arbeitsbereich gefunden. Stelle sicher, dass du Zugriff auf mindestens einen Arbeitsbereich hast, und lade die Seite neu.",
+			"loadFailed": {
+				"statistics": "Statistiken konnten nicht geladen werden",
+				"activities": "Aktivitäten konnten nicht geladen werden",
+				"heatmap": "Heatmap konnte nicht geladen werden",
+				"recentTasks": "Letzte Aufgaben konnten nicht geladen werden",
+				"teamActivity": "Teamaktivität konnte nicht geladen werden"
+			}
+		},
+		"memberPage": {
+			"errors": {
+				"loadMember": "Dieses Mitglied konnte nicht geladen werden",
+				"loadTasks": "Aufgaben des Mitglieds konnten nicht geladen werden"
+			}
 		}
 	},
 	"graphMap": {
@@ -864,5 +883,9 @@
 			},
 			"openCategorySettings": "Projekteinstellungen öffnen"
 		}
+	},
+	"duration": {
+		"hours": "{n} Std.",
+		"minutes": "{n} Min."
 	}
 }

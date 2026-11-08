@@ -183,7 +183,7 @@
 	import { Label } from '@/components/ui/label';
 	import { createDeviceApproval } from '@/composable/useDeviceApproval';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
-	import { t } from '@/i18n';
+	import { currentLocale, t } from '@/i18n';
 	import { computed, defineComponent, onMounted } from 'vue';
 	import { useRoute } from 'vue-router';
 
@@ -225,7 +225,7 @@
 				const value = approval.request.value?.created_at;
 				const date = value ? new Date(value) : null;
 				return date && !Number.isNaN(date.getTime())
-					? date.toLocaleString()
+					? date.toLocaleString(currentLocale())
 					: '';
 			});
 

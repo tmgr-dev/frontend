@@ -275,5 +275,12 @@
 			"hoursAgo": "{n} 時間前",
 			"daysAgo": "{n} 日前"
 		}
+	},
+	"duration": {
+		"hours": "{n} 時間",
+		"minutes": "{n} 分",
+		"hoursShort": "{n} 時間",
+		"minutesShort": "{n} 分",
+		"secondsShort": "{n}秒"
 	}
 }
