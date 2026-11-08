@@ -1,0 +1,789 @@
+{
+	"taskCount": {
+		"label": "{n} 个任务",
+		"inProgress": "{n} 个进行中",
+		"done": "{n} 个已完成",
+		"hidden": "{n} 个已隐藏",
+		"summary": "{parts} — 已完成 {percent}%"
+	},
+	"graph": {
+		"section": {
+			"title": "关系图"
+		},
+		"canvas": {
+			"label": "包含 {count} 个关联项的关系图"
+		},
+		"neighborhood": {
+			"expand": "展开",
+			"zoomIn": "放大",
+			"zoomOut": "缩小",
+			"fitToView": "适应视图",
+			"rings": "内圈：直接关联 · 外圈：相隔 2 步，已淡化 · 虚线：弱关联",
+			"truncatedWithHidden": "显示最近的 {closest} 项 — 另有 {hidden} 项已隐藏",
+			"truncated": "显示最近的 {closest} 项",
+			"empty": "暂无关联 — 关联任务、链接页面或分配人员后即可查看关系图",
+			"loadFailed": "无法加载关系图",
+			"retry": "重试",
+			"loading": "正在加载关系图…"
+		},
+		"types": {
+			"task": "任务",
+			"page": "页面",
+			"user": "人员",
+			"persona": "角色",
+			"agentRun": "智能体运行"
+		},
+		"groups": {
+			"tasks": "任务",
+			"pages": "页面",
+			"people": "人员和角色",
+			"agentRuns": "智能体运行"
+		},
+		"overlay": {
+			"dialogLabel": "关系图",
+			"title": "关系图",
+			"task": "任务",
+			"page": "页面",
+			"back": "返回",
+			"closeLabel": "关闭关系图",
+			"selected": "已选中",
+			"whyConnected": "关联原因",
+			"more": "还有 {n} 项",
+			"centre": "这是关系图的中心。",
+			"openTask": "打开任务",
+			"openPage": "打开页面",
+			"centerHere": "以此为中心",
+			"loading": "加载中…",
+			"depth": "深度",
+			"depthLabel": "深度",
+			"steps": "{n} 步",
+			"show": "显示",
+			"similarLater": "语义相近（即将推出）"
+		}
+	},
+	"dashboard": {
+		"activityChart": {
+			"title": "活动趋势",
+			"loadError": "无法加载图表数据",
+			"empty": "此期间没有活动",
+			"scaleNote": "每条线按各自的峰值缩放",
+			"dateColumn": "日期",
+			"summaryIntro": "最近 {n} 天的活动趋势。",
+			"summaryTotal": "{label}：共 {total}。",
+			"summaryTotalPeak": "{label}：共 {total}，{day} 达到峰值 {peak}。",
+			"summaryPeakOnly": "{label}：{day} 达到峰值 {peak}。",
+			"summaryNone": "{label}：无。"
+		},
+		"activityFeed": {
+			"title": "最近活动",
+			"refreshAria": "刷新活动",
+			"clearDayAria": "清除日期筛选",
+			"dayFilterLoading": "{day}的活动",
+			"dayFilterCount": "{day}共 {count} 项",
+			"activityCount": "{n} 项活动",
+			"dayLoadError": "无法加载当天的活动",
+			"loadingMore": "加载中...",
+			"loadMore": "加载更多活动",
+			"noMatch": "没有符合此筛选条件的活动",
+			"emptyTitle": "暂无活动",
+			"emptyDescription": "团队成员处理任务时，活动会显示在这里。",
+			"live": "已启用实时更新",
+			"authorAll": "全部",
+			"authorPeople": "人员",
+			"authorPersonas": "角色",
+			"authorPlugins": "插件"
+		},
+		"activityItem": {
+			"by": "由 {name}"
+		},
+		"activityFilters": {
+			"types": {
+				"allTypes": "所有类型",
+				"taskCreated": "任务已创建",
+				"taskUpdated": "任务已更新",
+				"taskCompleted": "任务已完成",
+				"taskDeleted": "任务已删除",
+				"statusChanged": "状态已更改",
+				"taskAssigned": "任务已分配",
+				"personaAssigned": "角色已分配",
+				"timerStarted": "计时器已启动",
+				"timerStopped": "计时器已停止",
+				"commentAdded": "评论已添加",
+				"commentUpdated": "评论已更新",
+				"commentDeleted": "评论已删除",
+				"categoryCreated": "分类已创建",
+				"categoryUpdated": "分类已更新",
+				"categoryDeleted": "分类已删除",
+				"fileUploaded": "文件已上传",
+				"fileDeleted": "文件已删除",
+				"memberJoined": "成员已加入",
+				"memberLeft": "成员已离开",
+				"routineCompleted": "例行事项已完成"
+			},
+			"ranges": {
+				"allTime": "全部时间",
+				"today": "今天",
+				"yesterday": "昨天",
+				"thisWeek": "本周",
+				"lastWeek": "上周",
+				"thisMonth": "本月",
+				"lastMonth": "上月"
+			},
+			"allUsers": "所有用户",
+			"clearAria": "清除筛选"
+		},
+		"kpiCard": {
+			"unavailable": "不可用"
+		},
+		"recentTaskItem": {
+			"overdue": "已逾期",
+			"assignees": "负责人：",
+			"moreAssignees": "还有 {n} 位",
+			"stopTimer": "停止计时器",
+			"startTimer": "启动计时器",
+			"noStatus": "无状态",
+			"ariaTask": "任务：{title}",
+			"ariaStatus": "状态：{status}",
+			"ariaAssignedTo": "分配给：{name}",
+			"ariaUpdated": "更新于：{when}",
+			"timerRunning": "计时器运行中"
+		},
+		"recentTasksList": {
+			"title": "最近任务",
+			"refreshAria": "刷新最近任务",
+			"viewAll": "查看全部",
+			"emptyTitle": "没有最近任务",
+			"emptyDescription": "最近的任务更新会显示在这里。",
+			"createTask": "创建任务"
+		},
+		"statisticsGrid": {
+			"totalTasks": {
+				"title": "任务总数",
+				"description": "工作区中的所有任务"
+			},
+			"activeTasks": {
+				"title": "进行中的任务",
+				"description": "当前进行中"
+			},
+			"completedToday": {
+				"title": "今日完成",
+				"description": "今天完成的任务"
+			},
+			"completedWeek": {
+				"title": "本周完成",
+				"description": "本周完成的任务"
+			},
+			"timeToday": {
+				"title": "今日工时",
+				"description": "今天跟踪的时间"
+			},
+			"timeWeek": {
+				"title": "本周工时",
+				"description": "本周跟踪的时间"
+			},
+			"teamMembers": {
+				"title": "团队成员",
+				"description": "活跃的工作区成员"
+			},
+			"overdueTasks": {
+				"title": "逾期任务",
+				"description": "已超过到期日的任务"
+			},
+			"dailyRoutine": {
+				"title": "日常事项",
+				"description": "完成率"
+			}
+		},
+		"teamActivityWidget": {
+			"title": "活跃成员",
+			"windowAria": "活动时间范围",
+			"windows": {
+				"today": "今天",
+				"d7": "7 天",
+				"d30": "30 天",
+				"all": "全部时间"
+			},
+			"subtitles": {
+				"today": "成员今日活动",
+				"all": "成员全部时间的活动",
+				"d30": "成员最近 30 天的活动",
+				"d7": "成员最近 7 天的活动"
+			},
+			"activeNow": "{n} 人在线",
+			"refreshAria": "刷新团队活动",
+			"colMember": "成员",
+			"colActivity": "活动",
+			"colDone": "已完成",
+			"colTracked": "已跟踪",
+			"colActive": "进行中",
+			"colLastActive": "最后活跃",
+			"totalMembers": "成员总数",
+			"activeToday": "今日活跃",
+			"activeTimers": "运行中的计时器",
+			"trackedWindow": "已跟踪 · {window}",
+			"doneWindow": "已完成 · {window}",
+			"emptyTitle": "没有团队成员",
+			"emptyDescription": "邀请团队成员后，即可在此查看他们的活动。",
+			"invite": "邀请成员"
+		},
+		"topCategoriesCard": {
+			"title": "热门分类",
+			"empty": "此期间没有跟踪的时间"
+		},
+		"teamMemberItem": {
+			"activeRecently": "最近 5 分钟内活跃",
+			"inactive": "不活跃",
+			"lastTouched": "最后处理",
+			"noRecentActivity": "最近没有活动",
+			"summaryLine": "已完成 {done} · {tracked} · 进行中 {active} · {last}",
+			"activityTitle": "最近 {n} 天的活动",
+			"dtDone": "已完成",
+			"dtTracked": "已跟踪",
+			"dtActiveTasks": "进行中的任务",
+			"dtLastActive": "最后活跃",
+			"justNow": "刚刚",
+			"minutesAgo": "{n} 分钟前",
+			"hoursAgo": "{n} 小时前",
+			"daysAgo": "{n} 天前",
+			"commentsCount": "{n} 条评论",
+			"streak": "连续 {n} 天",
+			"ariaMember": "团队成员：{name}",
+			"online": "在线",
+			"offline": "离线",
+			"workingOn": "正在处理：{title}",
+			"timerRunning": "计时器运行中",
+			"lastActive": "最后活跃：{when}",
+			"ariaStats": "已跟踪 {tracked}，已完成 {done}，进行中 {active}，评论 {comments}，连续 {streak}"
+		}
+	},
+	"graphMap": {
+		"canvas": {
+			"emptyLabel": "按分类分组的任务和页面地图",
+			"bottleneck": "瓶颈：{name} 阻塞了 {count} 项。",
+			"label": "包含 {clusters} 个集群、共 {nodes} 个任务和页面的地图：{names}。{bottleneck}使用搜索框可通过键盘在地图中移动。"
+		},
+		"timeline": {
+			"pause": "暂停时间线",
+			"play": "播放时间线",
+			"label": "时间线"
+		},
+		"insights": {
+			"whatMapShows": "地图显示的内容",
+			"bottleneck": "瓶颈",
+			"hubs": "枢纽",
+			"bridges": "桥接",
+			"noLinks": "无关联",
+			"empty": "地图有数据后会显示洞察。",
+			"hideOrphans": "隐藏无关联的项目",
+			"showOrphans": "显示无关联的项目",
+			"howToUse": "使用方法",
+			"howToUseText": "点击集群可放大，点击圆点可打开其周边。拖动时间范围，可逐周观察地图的增长。",
+			"legend": "集群 = 分类 · 亮色曲线 = 领域之间的关联 · 虚线圆环 = 无关联的项目 · 橙色 = 瓶颈"
+		}
+	},
+	"categoryPage": {
+		"gate": {
+			"title": "项目分类",
+			"description": "将任务整理到分类和子分类中。建立层级结构，让项目管理更有条理。"
+		},
+		"loadingLabel": "正在加载分类",
+		"empty": {
+			"title": "还没有分类",
+			"body": "分类用于对任务分组，并为新任务设置默认值：标题模式（如 {pattern}）、每小时费率、预估时间。",
+			"create": "新建分类"
+		},
+		"missing": {
+			"title": "未找到分类",
+			"body": "它可能已被删除或移到其他工作区。",
+			"open": "打开分类"
+		},
+		"subcategory": "子分类",
+		"createTask": "创建任务",
+		"createTaskTitle": "在此分类中创建任务",
+		"navLabel": "分类",
+		"tabs": {
+			"tasks": "任务",
+			"subcategories": "子分类",
+			"settings": "设置"
+		},
+		"discard": {
+			"title": "放弃未保存的更改？",
+			"description": "你对此分类的修改将会丢失。",
+			"keep": "继续编辑",
+			"confirm": "放弃"
+		},
+		"workspaceFallback": "工作区",
+		"topLevel": "顶层",
+		"newCategory": "新建分类",
+		"documentTitle": {
+			"categories": "分类"
+		}
+	},
+	"workspaceMap": {
+		"workspace": "工作区",
+		"title": "地图 — 一切如何关联",
+		"searchPlaceholder": "任务、页面、人员",
+		"searchLabel": "搜索地图",
+		"searchResults": "搜索结果",
+		"timeRange": "时间范围",
+		"ranges": {
+			"d7": "最近 7 天",
+			"d30": "最近 30 天",
+			"d90": "最近 90 天",
+			"all": "全部时间"
+		},
+		"groupByCategory": "按分类分组",
+		"truncated": "显示 {shown} / {total} — 请缩小时间范围",
+		"loading": "正在绘制你的工作区…",
+		"loadFailed": "无法加载地图。",
+		"retry": "重试",
+		"emptyTitle": "此期间没有可绘制的内容",
+		"emptyText": "任务和页面在所选时间范围内创建或更新后会显示在这里。",
+		"showAllTime": "显示全部时间",
+		"legend": "集群 = 分类 · 亮色曲线 = 领域之间的关联 · 虚线圆环 = 无关联的项目 · 橙色 = 瓶颈",
+		"whatMapShows": "地图显示的内容",
+		"zoomIn": "放大",
+		"zoomOut": "缩小",
+		"fitToScreen": "适应屏幕"
+	},
+	"categories": {
+		"agentRepositories": {
+			"title": "智能体运行仓库",
+			"description": "智能体在处理此分类的任务时可使用的仓库。留空则使用已关联的 GitHub 仓库。",
+			"saveFailed": "无法保存仓库。"
+		},
+		"titlePattern": {
+			"defaultLabel": "任务标题模式",
+			"noPlaceholders": "没有占位符。",
+			"literalNotice": "每个新任务都会以“{pattern}”原样开头。",
+			"use": "使用 {fix}",
+			"preview": "预览",
+			"sampleTitle": "任务标题",
+			"chips": {
+				"categoryNumber": "分类编号",
+				"workspaceNumber": "工作区编号",
+				"date": "日期",
+				"weekday": "星期"
+			}
+		},
+		"cursor": {
+			"title": "Cursor AI 集成",
+			"configureTitle": "配置 Cursor AI 智能体",
+			"configureDescription": "添加你的 Cursor API 密钥，即可为此分类启用 AI 代码生成",
+			"apiKeyLabel": "Cursor API 密钥",
+			"apiKeyHelp": "从 {link} 获取你的 API 密钥",
+			"dashboard": "Cursor 控制台",
+			"validating": "正在验证…",
+			"saveKey": "保存 API 密钥",
+			"configured": "Cursor AI 智能体已配置",
+			"ready": "可协助为此分类生成代码",
+			"updateKey": "更新密钥",
+			"removeKey": "移除密钥",
+			"removing": "正在移除…",
+			"newApiKeyLabel": "新的 Cursor API 密钥",
+			"saveFailed": "无法保存 API 密钥",
+			"removeFailed": "无法移除 API 密钥",
+			"removeConfirm": "确定要从此分类中移除 Cursor API 密钥吗？"
+		},
+		"github": {
+			"title": "GitHub 集成",
+			"connectTitle": "连接 GitHub 仓库",
+			"connectDescription": "关联你的 GitHub 仓库，自动跟踪提交、分支和拉取请求",
+			"installing": "正在安装…",
+			"installApp": "安装 GitHub App",
+			"installed": "✓ GitHub App 已安装。请选择要连接的仓库：",
+			"noRepositories": "没有可用的仓库。请确认 GitHub App 有权访问你的仓库。",
+			"selectRepository": "选择仓库",
+			"selectPlaceholder": "— 选择仓库 —",
+			"connecting": "正在连接…",
+			"connectRepository": "连接仓库",
+			"connectedTo": "已连接到",
+			"lastSynced": "上次同步：{date}",
+			"syncing": "正在同步…",
+			"syncNow": "立即同步",
+			"relinking": "正在重新关联…",
+			"relinkTasks": "重新关联任务",
+			"relinkTitle": "将现有提交/分支重新关联到任务",
+			"disconnecting": "正在断开…",
+			"disconnect": "断开连接",
+			"loadFailed": "无法加载 GitHub 集成状态",
+			"installFailed": "无法启动 GitHub App 安装",
+			"connectFailed": "无法连接仓库",
+			"disconnectConfirm": "确定要断开此仓库吗？",
+			"disconnectFailed": "无法断开仓库",
+			"syncFailed": "无法同步仓库",
+			"relinkFailed": "无法重新关联任务引用",
+			"justNow": "刚刚",
+			"minutesAgo": "{n} 分钟前",
+			"hoursAgo": "{n} 小时前",
+			"daysAgo": "{n} 天前"
+		},
+		"pane": {
+			"fixAll": "全部修复（{count}）",
+			"saveFirst": "请先保存或放弃你的更改",
+			"issues": "{n} 个分类会让新任务按原样命名",
+			"sections": {
+				"general": "常规",
+				"newTasks": "新任务",
+				"newTasksHint": "在此分类中创建任务时的默认值",
+				"integrations": "集成",
+				"dangerZone": "危险区域"
+			},
+			"fields": {
+				"name": "名称",
+				"code": "代码",
+				"codeHint": "字母和数字",
+				"codePlaceholder": "例如 PROJ、FEAT、BUG",
+				"parent": "上级",
+				"noParent": "无上级",
+				"copyFrom": "复制设置自",
+				"copyFromHint": "会填充下方字段，之后仍可修改",
+				"dontCopy": "不复制"
+			},
+			"createNote": "分类创建后才会显示集成和危险区域。",
+			"integrations": {
+				"cursorLabel": "Cursor AI 智能体",
+				"cursorHint": "将此分类的任务发送给 Cursor 智能体",
+				"connected": "已连接",
+				"notConnected": "未连接",
+				"unavailable": "不可用",
+				"manage": "管理",
+				"connect": "连接",
+				"githubLabel": "GitHub",
+				"githubHint": "将任务关联到仓库",
+				"installApp": "安装 GitHub App",
+				"reposLabel": "智能体仓库",
+				"reposHint": "智能体运行可使用的位置，格式为 owner/name",
+				"addRepository": "添加仓库",
+				"repositoriesCount": "{n} 个仓库"
+			},
+			"danger": {
+				"moveLabel": "移到其他工作区",
+				"moveHint": "包括其子分类和任务",
+				"move": "移动…",
+				"deleteLabel": "删除分类",
+				"deleteHint": "该分类将从列表中移除",
+				"delete": "删除…"
+			},
+			"bar": {
+				"discard": "放弃",
+				"newSubcategory": "{title} 的新子分类",
+				"newTopLevel": "新建顶层分类",
+				"changes": "{n} 项未保存的更改"
+			},
+			"deleteDialog": {
+				"title": "删除“{title}”？",
+				"description": "该分类将从列表中移除。"
+			},
+			"transfer": {
+				"title": "将分类移到其他工作区",
+				"description": "“{title}”将连同其所有子分类和任务一起移动。任务状态会先按名称、再按类型匹配到目标工作区；不是目标工作区成员的负责人会被移除。",
+				"placeholder": "选择工作区",
+				"noOther": "你不是任何其他工作区的成员。",
+				"moving": "正在移动...",
+				"move": "移动"
+			},
+			"settings": {
+				"titlePatternLabel": "任务标题模式",
+				"titlePatternHint": "每个新任务标题的前缀",
+				"rateLabel": "每小时费率",
+				"estimateLabel": "默认预估",
+				"reminderLabel": "计时器提醒间隔",
+				"reminderHint": "运行中的计时器每经过该时长就响一次",
+				"durationError": "请使用 45m、2h 或 1h 30m 这样的时长",
+				"durationHint": "如 45m、2h 或 1h 30m",
+				"durationPlaceholder": "例如 45m",
+				"rateUnit": "/ 小时",
+				"select": "选择",
+				"customValue": "自定义值"
+			},
+			"toasts": {
+				"success": "成功",
+				"tryAgain": "请重试。",
+				"cursorConfigured": "Cursor API 密钥配置成功",
+				"cursorRemoved": "Cursor API 密钥已移除",
+				"githubConnected": "已连接到 {name}",
+				"githubDisconnected": "仓库已断开连接",
+				"githubSynced": "仓库同步成功",
+				"relinked": "已重新关联 {total} 项：{commits} 个提交，{branches} 个分支，{pullRequests} 个 PR",
+				"saveFailed": "无法保存分类",
+				"defaultsNotSaved": "新任务的默认值未保存",
+				"kept": {
+					"code": "服务器保留了旧代码",
+					"parent": "服务器保留了旧上级",
+					"codeAndParent": "服务器保留了旧代码和旧上级"
+				},
+				"otherSaved": "其他更改已保存。",
+				"saved": "已保存",
+				"categorySaved": "分类已保存",
+				"createFailed": "无法创建分类",
+				"created": "分类已创建",
+				"createdDefaultsFailed": "其新任务的默认值未保存。请重新设置并保存。",
+				"fixedPatterns": "已修复 {n} 个标题模式",
+				"fixedPartial": "已修复 {total} 个标题模式中的 {fixed} 个",
+				"fixedPartialRest": "{rest} 个无法保存。请重试以处理其余部分。",
+				"deleteFailed": "无法删除分类",
+				"deleted": "分类已删除",
+				"workspacesFailed": "无法加载工作区",
+				"moved": "“{title}”已移到 {workspace}",
+				"anotherWorkspace": "其他工作区",
+				"transferFailed": "转移失败",
+				"moveFailed": "无法移动分类，请重试。"
+			}
+		}
+	},
+	"boardPage": {
+		"featureGate": {
+			"title": "看板",
+			"description": "以看板形式直观呈现你的任务。在列之间拖放任务即可更新其状态。"
+		},
+		"refresh": "刷新",
+		"filters": "筛选",
+		"addStatus": "添加状态",
+		"editStatus": "编辑状态",
+		"createStatus": "创建状态",
+		"refreshingTasks": "正在刷新任务…",
+		"dragToReorderColumns": "拖动以调整列顺序",
+		"overtime": "超时",
+		"createTask": "创建任务",
+		"createATask": "创建任务",
+		"moveAllTasksTo": "将所有任务移到…",
+		"archiveAll": "全部归档",
+		"addTask": "添加任务",
+		"taskTitlePlaceholder": "输入任务标题...",
+		"statusForm": {
+			"namePlaceholder": "名称",
+			"typePlaceholder": "选择类型",
+			"nameLabel": "状态名称：",
+			"typeLabel": "状态类型：",
+			"colorLabel": "状态颜色："
+		},
+		"moveModal": {
+			"title": "将所有任务移到",
+			"description": "将 {count} 个任务从“{title}”移到："
+		},
+		"reorderModal": {
+			"title": "调整状态顺序",
+			"hint": "按住六点图标并拖动即可调整顺序",
+			"save": "保存顺序"
+		},
+		"allCategories": "所有分类",
+		"allUsers": "所有用户",
+		"errors": {
+			"loadMoreTasks": "无法加载更多任务。",
+			"refreshColumn": "无法刷新该列。",
+			"saveOrder": "无法保存任务顺序。请刷新以恢复服务器上的顺序。",
+			"moveRefreshed": "无法移动任务。该列已刷新。",
+			"moveRestore": "无法移动任务。请刷新以恢复服务器上的顺序。",
+			"refreshBoard": "无法刷新看板。",
+			"loadBoard": "无法加载看板。",
+			"refreshTasks": "无法刷新任务。"
+		},
+		"toasts": {
+			"loadAllFailed": {
+				"title": "无法加载所有任务",
+				"description": "请重试。"
+			},
+			"noTasksToArchive": "此列中没有可归档的任务",
+			"archiveStatusMissing": {
+				"title": "未找到归档状态",
+				"description": "请先创建归档状态。"
+			},
+			"archiveFailed": {
+				"title": "无法归档任务",
+				"description": "请重试。"
+			}
+		},
+		"confirms": {
+			"deleteStatus": {
+				"title": "删除状态",
+				"body": "确定吗？"
+			},
+			"archive": {
+				"title": "归档 {n} 个任务？",
+				"body": "“{name}”中的所有任务都将移到归档。"
+			},
+			"move": {
+				"title": "移动所有任务",
+				"body": "将 {count} 个任务从“{source}”移到“{target}”？"
+			}
+		},
+		"userSaved": {
+			"title": "已保存",
+			"body": "用户数据已保存"
+		}
+	},
+	"dashboardPage": {
+		"title": "仪表盘",
+		"titleWithWorkspace": "{name} 仪表盘",
+		"subtitle": "整个工作区的活动、成员和已跟踪时间。",
+		"gateDescription": "通过统计数据、活动热力图和实时团队动态，洞察你的工作效率。",
+		"errors": {
+			"offline": "你似乎已离线，部分功能可能无法正常使用。",
+			"realtime": "实时连接失败，更新可能会延迟。",
+			"unexpected": "发生意外错误。",
+			"connectionLostMessage": "网络连接已断开",
+			"connectionLost": "连接已断开",
+			"dashboardError": "仪表盘错误",
+			"retrying": "正在重试...",
+			"tryAgain": "重试",
+			"checkConnection": "检查连接",
+			"boundaryMessage": "仪表盘遇到意外错误。请尝试刷新页面。"
+		},
+		"periods": {
+			"week": "最近 7 天",
+			"month": "最近 30 天"
+		},
+		"periodLabel": "仪表盘周期",
+		"realtime": {
+			"active": "实时更新已开启",
+			"inactive": "实时更新未开启",
+			"live": "实时",
+			"offline": "离线",
+			"youreOffline": "你已离线"
+		},
+		"refresh": {
+			"label": "刷新",
+			"ariaBusy": "正在刷新仪表盘数据",
+			"ariaIdle": "刷新仪表盘数据",
+			"status": "仪表盘正在刷新"
+		},
+		"actionsLabel": "仪表盘操作",
+		"a11y": {
+			"shortcuts": "键盘快捷键：Ctrl+R 刷新，Ctrl+1-5 切换区域，Escape 清除错误",
+			"keyNumbers": "最近 {n} 天的关键数据",
+			"loadedAnnouncement": "仪表盘加载成功",
+			"failedAnnouncement": "仪表盘加载失败",
+			"teamDescription": "团队成员的活动和状态。显示谁在线以及他们当前的任务。",
+			"teamLoading": "正在加载团队活动",
+			"heatmapLoading": "正在加载活动热力图",
+			"statisticsLoading": "正在加载工作区统计",
+			"statisticsDescription": "工作区统计网格，包括任务数、时间跟踪和团队指标。使用方向键在卡片之间切换。",
+			"activityHeading": "最近活动动态",
+			"activityDescription": "最近的工作区活动列表。使用方向键浏览，按 Enter 打开活动详情。",
+			"activityLoading": "正在加载最近活动"
+		},
+		"kpi": {
+			"activity": "活动",
+			"members": "活跃成员",
+			"tracked": "已跟踪小时数",
+			"completed": "已完成",
+			"activityHint": "工作区中记录的操作",
+			"membersHint": "共 {total} 名成员",
+			"trackedHint": "任务计时器上的时间",
+			"completedHint": "已移到完成的任务",
+			"vsPrevious": "较前 {n} 天"
+		},
+		"hours": "{n} 小时",
+		"teamActivity": "团队活动",
+		"chartSubtitle": "每日，最近 {n} 天",
+		"categoriesSubtitle": "按跟踪时间 · 最近 {n} 天",
+		"heatmap": {
+			"title": "活动热力图",
+			"description": "此工作区中所有人的活动。每个方块代表一天（UTC），颜色越深表示活动越多。",
+			"rangeLabel": "热力图范围",
+			"last12Months": "最近 12 个月",
+			"groupLabel": "活动热力图，共 {n} 次贡献",
+			"groupLabelLoading": "活动热力图加载中",
+			"loadFailed": "无法加载热力图数据",
+			"retry": "重试",
+			"noData": "没有可用的贡献数据"
+		},
+		"statisticsTitle": "工作区统计",
+		"loadingState": {
+			"label": "正在加载仪表盘",
+			"title": "正在加载仪表盘",
+			"body": "正在获取你的工作区数据..."
+		},
+		"boundaryTitle": "仪表盘错误",
+		"mainLabel": "仪表盘"
+	},
+	"projectCategoryList": {
+		"perPage": "每页 {n} 条",
+		"documentTitle": "分类",
+		"loadTasksFailed": "无法加载分类任务。",
+		"loadCategoriesFailed": "无法加载分类。",
+		"anotherWorkspace": "其他工作区",
+		"movedTitle": "“{title}”已移到 {workspace}",
+		"transferFailed": "转移失败",
+		"transferFailedText": "无法移动分类，请重试。",
+		"loadingCategories": "正在加载分类",
+		"loadingTasks": "正在加载分类任务",
+		"noSubcategories": "还没有子分类。",
+		"deletedHint": "（已删除，但可以恢复）",
+		"subcategories": "子分类",
+		"tasks": "任务",
+		"author": "创建者",
+		"moveToWorkspace": "移到工作区",
+		"restore": "恢复",
+		"transferTitle": "将分类移到其他工作区",
+		"transferDescription": "“{title}”将连同其所有子分类和任务一起移动。任务状态会先按名称、再按类型匹配到目标工作区；不是目标工作区成员的负责人会被移除。",
+		"selectWorkspace": "选择工作区",
+		"noOtherWorkspaces": "你不是任何其他工作区的成员。",
+		"moving": "正在移动...",
+		"move": "移动",
+		"showing": "显示第 {from} 至 {to} 条，共 {total} 个分类",
+		"previous": "上一页",
+		"page": "第 {current} 页，共 {last} 页",
+		"createFirstTask": "在此分类中创建你的第一个任务",
+		"createTask": "+ 创建任务"
+	},
+	"tasksList": {
+		"titles": {
+			"current": "当前任务",
+			"hidden": "已隐藏的任务",
+			"archive": "归档",
+			"tasks": "任务",
+			"fallback": "任务列表"
+		},
+		"workspaceTasksTitle": "{name} 的任务",
+		"stateFilters": {
+			"open": "未完成",
+			"done": "已完成",
+			"all": "全部"
+		},
+		"sortFields": {
+			"updatedAt": "更新时间",
+			"createdAt": "创建时间",
+			"expiredAt": "截止时间",
+			"scheduledDate": "计划时间"
+		},
+		"noDoneToArchive": "没有可归档的已完成任务",
+		"loadDoneFailed": "无法加载已完成的任务",
+		"archivedCount": "已归档 {n} 个已完成任务",
+		"archiveFailed": "无法归档任务",
+		"daySummary": "当日汇总",
+		"totalTime": "总时间",
+		"workingDays": "工作日数",
+		"perDay": "（每天 8 小时）",
+		"workingMonths": "工作月数",
+		"perMonth": "（每月 160 小时）",
+		"workingYears": "工作年数",
+		"perYear": "（每年 2000 小时）",
+		"overtime": "超时",
+		"totalOvertime": "总超时",
+		"showTasks": "显示任务",
+		"archiveDone": "归档已完成",
+		"searchPlaceholder": "搜索任务",
+		"searchLabel": "搜索任务",
+		"sortByDate": "按日期排序",
+		"newestFirst": "最新的在前",
+		"oldestFirst": "最早的在前",
+		"filtersTitle": "筛选",
+		"filtersDialogTitle": "筛选",
+		"status": "状态",
+		"priority": "优先级",
+		"sortByPriority": "按优先级排序",
+		"reset": "重置",
+		"selectionMode": "任务选择模式",
+		"updating": "正在更新任务…",
+		"loadFailed": "无法加载任务，请重试。",
+		"retry": "重试",
+		"noMatches": "没有符合筛选条件的任务",
+		"clearFilters": "清除筛选",
+		"createFirst": "创建你的第一个任务以开始使用",
+		"createTask": "+ 创建任务",
+		"archiveDialogTitle": "归档已完成的任务",
+		"archiveDialogBody": "归档 {n} 个已完成任务？"
+	}
+}

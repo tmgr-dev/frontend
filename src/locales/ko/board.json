@@ -1,0 +1,789 @@
+{
+	"taskCount": {
+		"label": "작업 {n}개",
+		"inProgress": "진행 중 {n}개",
+		"done": "완료 {n}개",
+		"hidden": "숨김 {n}개",
+		"summary": "{parts} — {percent}% 완료"
+	},
+	"graph": {
+		"section": {
+			"title": "그래프"
+		},
+		"canvas": {
+			"label": "연결된 항목 {count}개의 그래프"
+		},
+		"neighborhood": {
+			"expand": "확대",
+			"zoomIn": "확대",
+			"zoomOut": "축소",
+			"fitToView": "화면에 맞춤",
+			"rings": "안쪽 원: 직접 연결 · 바깥 원: 2단계 거리, 흐리게 표시 · 점선: 약한 연결",
+			"truncatedWithHidden": "가장 가까운 {closest}개 표시 중 — {hidden}개 더 숨겨져 있어요",
+			"truncated": "가장 가까운 {closest}개 표시 중",
+			"empty": "아직 연결이 없어요 — 작업을 연관시키거나, 페이지를 연결하거나, 사람을 지정하면 그래프가 표시돼요",
+			"loadFailed": "그래프를 불러오지 못했어요",
+			"retry": "다시 시도",
+			"loading": "그래프 불러오는 중…"
+		},
+		"types": {
+			"task": "작업",
+			"page": "페이지",
+			"user": "사람",
+			"persona": "페르소나",
+			"agentRun": "에이전트 실행"
+		},
+		"groups": {
+			"tasks": "작업",
+			"pages": "페이지",
+			"people": "사람 및 페르소나",
+			"agentRuns": "에이전트 실행"
+		},
+		"overlay": {
+			"dialogLabel": "그래프",
+			"title": "그래프",
+			"task": "작업",
+			"page": "페이지",
+			"back": "뒤로",
+			"closeLabel": "그래프 닫기",
+			"selected": "선택됨",
+			"whyConnected": "연결된 이유",
+			"more": "+{n}개 더",
+			"centre": "그래프의 중심이에요.",
+			"openTask": "작업 열기",
+			"openPage": "페이지 열기",
+			"centerHere": "여기를 중심으로",
+			"loading": "불러오는 중…",
+			"depth": "깊이",
+			"depthLabel": "깊이",
+			"steps": "{n}단계",
+			"show": "표시",
+			"similarLater": "의미가 비슷한 항목 (나중에 지원)"
+		}
+	},
+	"dashboard": {
+		"activityChart": {
+			"title": "시간에 따른 활동",
+			"loadError": "차트 데이터를 불러오지 못했어요",
+			"empty": "이 기간에는 활동이 없어요",
+			"scaleNote": "각 선은 자체 최댓값 기준으로 조정돼요",
+			"dateColumn": "날짜",
+			"summaryIntro": "최근 {n}일간 시간에 따른 활동.",
+			"summaryTotal": "{label}: 합계 {total}.",
+			"summaryTotalPeak": "{label}: 합계 {total}, {day}에 최대 {peak}.",
+			"summaryPeakOnly": "{label}: {day}에 최대 {peak}.",
+			"summaryNone": "{label}: 없음."
+		},
+		"activityFeed": {
+			"title": "최근 활동",
+			"refreshAria": "활동 새로 고침",
+			"clearDayAria": "날짜 필터 해제",
+			"dayFilterLoading": "{day}의 활동",
+			"dayFilterCount": "{day} {count}건",
+			"activityCount": "활동 {n}건",
+			"dayLoadError": "이 날짜의 활동을 불러오지 못했어요",
+			"loadingMore": "불러오는 중...",
+			"loadMore": "활동 더 불러오기",
+			"noMatch": "이 필터에 맞는 활동이 없어요",
+			"emptyTitle": "아직 활동이 없어요",
+			"emptyDescription": "팀 멤버가 작업을 진행하면 여기에 활동이 표시돼요.",
+			"live": "실시간 업데이트 사용 중",
+			"authorAll": "전체",
+			"authorPeople": "사람",
+			"authorPersonas": "페르소나",
+			"authorPlugins": "플러그인"
+		},
+		"activityItem": {
+			"by": "{name}"
+		},
+		"activityFilters": {
+			"types": {
+				"allTypes": "모든 유형",
+				"taskCreated": "작업 생성",
+				"taskUpdated": "작업 수정",
+				"taskCompleted": "작업 완료",
+				"taskDeleted": "작업 삭제",
+				"statusChanged": "상태 변경",
+				"taskAssigned": "작업 담당 지정",
+				"personaAssigned": "페르소나 지정",
+				"timerStarted": "타이머 시작",
+				"timerStopped": "타이머 중지",
+				"commentAdded": "댓글 추가",
+				"commentUpdated": "댓글 수정",
+				"commentDeleted": "댓글 삭제",
+				"categoryCreated": "프로젝트 생성",
+				"categoryUpdated": "프로젝트 수정",
+				"categoryDeleted": "프로젝트 삭제",
+				"fileUploaded": "파일 업로드",
+				"fileDeleted": "파일 삭제",
+				"memberJoined": "멤버 참여",
+				"memberLeft": "멤버 탈퇴",
+				"routineCompleted": "루틴 완료"
+			},
+			"ranges": {
+				"allTime": "전체 기간",
+				"today": "오늘",
+				"yesterday": "어제",
+				"thisWeek": "이번 주",
+				"lastWeek": "지난주",
+				"thisMonth": "이번 달",
+				"lastMonth": "지난달"
+			},
+			"allUsers": "모든 사용자",
+			"clearAria": "필터 해제"
+		},
+		"kpiCard": {
+			"unavailable": "사용할 수 없음"
+		},
+		"recentTaskItem": {
+			"overdue": "기한 초과",
+			"assignees": "담당자:",
+			"moreAssignees": "+{n}명 더",
+			"stopTimer": "타이머 중지",
+			"startTimer": "타이머 시작",
+			"noStatus": "상태 없음",
+			"ariaTask": "작업: {title}",
+			"ariaStatus": "상태: {status}",
+			"ariaAssignedTo": "담당: {name}",
+			"ariaUpdated": "수정: {when}",
+			"timerRunning": "타이머 실행 중"
+		},
+		"recentTasksList": {
+			"title": "최근 작업",
+			"refreshAria": "최근 작업 새로 고침",
+			"viewAll": "모두 보기",
+			"emptyTitle": "최근 작업이 없어요",
+			"emptyDescription": "최근 작업 업데이트가 여기에 표시돼요.",
+			"createTask": "작업 만들기"
+		},
+		"statisticsGrid": {
+			"totalTasks": {
+				"title": "전체 작업",
+				"description": "워크스페이스의 모든 작업"
+			},
+			"activeTasks": {
+				"title": "진행 중인 작업",
+				"description": "현재 진행 중"
+			},
+			"completedToday": {
+				"title": "오늘 완료",
+				"description": "오늘 끝낸 작업"
+			},
+			"completedWeek": {
+				"title": "이번 주 완료",
+				"description": "이번 주에 끝낸 작업"
+			},
+			"timeToday": {
+				"title": "오늘 시간",
+				"description": "오늘 추적한 시간"
+			},
+			"timeWeek": {
+				"title": "이번 주 시간",
+				"description": "이번 주에 추적한 시간"
+			},
+			"teamMembers": {
+				"title": "팀 멤버",
+				"description": "활동 중인 워크스페이스 멤버"
+			},
+			"overdueTasks": {
+				"title": "기한 초과 작업",
+				"description": "마감일이 지난 작업"
+			},
+			"dailyRoutine": {
+				"title": "데일리 루틴",
+				"description": "완료율"
+			}
+		},
+		"teamActivityWidget": {
+			"title": "활동 중인 멤버",
+			"windowAria": "활동 기간",
+			"windows": {
+				"today": "오늘",
+				"d7": "7일",
+				"d30": "30일",
+				"all": "전체 기간"
+			},
+			"subtitles": {
+				"today": "오늘 멤버 활동",
+				"all": "전체 기간 멤버 활동",
+				"d30": "최근 30일 멤버 활동",
+				"d7": "최근 7일 멤버 활동"
+			},
+			"activeNow": "지금 {n}명 활동 중",
+			"refreshAria": "팀 활동 새로 고침",
+			"colMember": "멤버",
+			"colActivity": "활동",
+			"colDone": "완료",
+			"colTracked": "추적 시간",
+			"colActive": "진행 중",
+			"colLastActive": "마지막 활동",
+			"totalMembers": "전체 멤버",
+			"activeToday": "오늘 활동",
+			"activeTimers": "실행 중인 타이머",
+			"trackedWindow": "추적 시간 · {window}",
+			"doneWindow": "완료 · {window}",
+			"emptyTitle": "팀 멤버가 없어요",
+			"emptyDescription": "팀 멤버를 초대하면 여기에서 활동을 볼 수 있어요.",
+			"invite": "멤버 초대"
+		},
+		"topCategoriesCard": {
+			"title": "상위 프로젝트",
+			"empty": "이 기간에 추적한 시간이 없어요"
+		},
+		"teamMemberItem": {
+			"activeRecently": "최근 5분 이내 활동",
+			"inactive": "비활성",
+			"lastTouched": "마지막 변경",
+			"noRecentActivity": "최근 활동 없음",
+			"summaryLine": "완료 {done} · {tracked} · 진행 중 {active} · {last}",
+			"activityTitle": "활동, 최근 {n}일",
+			"dtDone": "완료",
+			"dtTracked": "추적 시간",
+			"dtActiveTasks": "진행 중인 작업",
+			"dtLastActive": "마지막 활동",
+			"justNow": "방금",
+			"minutesAgo": "{n}분 전",
+			"hoursAgo": "{n}시간 전",
+			"daysAgo": "{n}일 전",
+			"commentsCount": "댓글 {n}개",
+			"streak": "연속 {n}",
+			"ariaMember": "팀 멤버: {name}",
+			"online": "온라인",
+			"offline": "오프라인",
+			"workingOn": "작업 중: {title}",
+			"timerRunning": "타이머 실행 중",
+			"lastActive": "마지막 활동: {when}",
+			"ariaStats": "추적 {tracked}, 완료 {done}, 진행 중 {active}, 댓글 {comments}, 연속 {streak}"
+		}
+	},
+	"graphMap": {
+		"canvas": {
+			"emptyLabel": "프로젝트별로 묶은 작업과 페이지 지도",
+			"bottleneck": "병목: {name}이(가) {count}개를 막고 있어요.",
+			"label": "{clusters}개 클러스터({names})의 작업과 페이지 {nodes}개 지도.{bottleneck} 검색창을 사용하면 키보드로 지도를 이동할 수 있어요."
+		},
+		"timeline": {
+			"pause": "타임라인 일시정지",
+			"play": "타임라인 재생",
+			"label": "타임라인"
+		},
+		"insights": {
+			"whatMapShows": "지도가 보여주는 것",
+			"bottleneck": "병목",
+			"hubs": "허브",
+			"bridges": "브리지",
+			"noLinks": "연결 없음",
+			"empty": "지도에 데이터가 있으면 인사이트가 표시돼요.",
+			"hideOrphans": "연결 없는 항목 숨기기",
+			"showOrphans": "연결 없는 항목 표시",
+			"howToUse": "사용 방법",
+			"howToUseText": "클러스터를 클릭하면 확대돼요. 점을 클릭하면 주변 항목이 열려요. 시간 범위를 드래그하면 지도가 주 단위로 커지는 모습을 볼 수 있어요.",
+			"legend": "클러스터 = 프로젝트 · 밝은 곡선 = 영역 간 연결 · 점선 원 = 연결 없는 항목 · 주황색 = 병목"
+		}
+	},
+	"categoryPage": {
+		"gate": {
+			"title": "프로젝트",
+			"description": "작업을 프로젝트와 하위 프로젝트로 정리하세요. 계층 구조를 만들어 프로젝트를 더 잘 관리할 수 있어요."
+		},
+		"loadingLabel": "프로젝트 불러오는 중",
+		"empty": {
+			"title": "아직 프로젝트가 없어요",
+			"body": "프로젝트는 작업을 묶고 새 작업의 기본값(예: {pattern} 같은 제목 패턴, 시간당 요율, 예상 시간)을 정해요.",
+			"create": "새 프로젝트"
+		},
+		"missing": {
+			"title": "프로젝트를 찾을 수 없어요",
+			"body": "삭제되었거나 다른 워크스페이스로 이동했을 수 있어요.",
+			"open": "프로젝트 열기"
+		},
+		"subcategory": "하위 프로젝트",
+		"createTask": "작업 만들기",
+		"createTaskTitle": "이 프로젝트에 작업 만들기",
+		"navLabel": "프로젝트",
+		"tabs": {
+			"tasks": "작업",
+			"subcategories": "하위 프로젝트",
+			"settings": "설정"
+		},
+		"discard": {
+			"title": "저장하지 않은 변경 사항을 버릴까요?",
+			"description": "이 프로젝트에 대한 수정 내용이 사라져요.",
+			"keep": "계속 편집",
+			"confirm": "버리기"
+		},
+		"workspaceFallback": "워크스페이스",
+		"topLevel": "최상위",
+		"newCategory": "새 프로젝트",
+		"documentTitle": {
+			"categories": "프로젝트"
+		}
+	},
+	"workspaceMap": {
+		"workspace": "워크스페이스",
+		"title": "지도 — 모든 것이 연결되는 방식",
+		"searchPlaceholder": "작업, 페이지, 사람",
+		"searchLabel": "지도 검색",
+		"searchResults": "검색 결과",
+		"timeRange": "시간 범위",
+		"ranges": {
+			"d7": "최근 7일",
+			"d30": "최근 30일",
+			"d90": "최근 90일",
+			"all": "전체 기간"
+		},
+		"groupByCategory": "프로젝트별로 묶기",
+		"truncated": "{total}개 중 {shown}개 표시 중 — 시간 범위를 좁혀 보세요",
+		"loading": "워크스페이스 지도를 만드는 중…",
+		"loadFailed": "지도를 불러오지 못했어요.",
+		"retry": "다시 시도",
+		"emptyTitle": "이 기간에는 지도에 표시할 항목이 없어요",
+		"emptyText": "선택한 시간 범위에서 작업과 페이지가 생성되거나 수정되면 여기에 표시돼요.",
+		"showAllTime": "전체 기간 보기",
+		"legend": "클러스터 = 프로젝트 · 밝은 곡선 = 영역 간 연결 · 점선 원 = 연결 없는 항목 · 주황색 = 병목",
+		"whatMapShows": "지도가 보여주는 것",
+		"zoomIn": "확대",
+		"zoomOut": "축소",
+		"fitToScreen": "화면에 맞춤"
+	},
+	"categories": {
+		"agentRepositories": {
+			"title": "에이전트 실행 저장소",
+			"description": "이 프로젝트의 작업에 에이전트가 작업할 수 있는 저장소예요. 비워 두면 연결된 GitHub 저장소를 사용해요.",
+			"saveFailed": "저장소를 저장하지 못했어요."
+		},
+		"titlePattern": {
+			"defaultLabel": "작업 제목 패턴",
+			"noPlaceholders": "플레이스홀더가 없어요.",
+			"literalNotice": "모든 새 작업의 제목이 그대로 “{pattern}”(으)로 시작해요.",
+			"use": "{fix} 사용",
+			"preview": "미리보기",
+			"sampleTitle": "작업 제목",
+			"chips": {
+				"categoryNumber": "프로젝트 번호",
+				"workspaceNumber": "워크스페이스 번호",
+				"date": "날짜",
+				"weekday": "요일"
+			}
+		},
+		"cursor": {
+			"title": "Cursor AI 연동",
+			"configureTitle": "Cursor AI 에이전트 설정",
+			"configureDescription": "Cursor API 키를 추가하면 이 프로젝트에서 AI 코드 생성을 사용할 수 있어요",
+			"apiKeyLabel": "Cursor API 키",
+			"apiKeyHelp": "{link}에서 API 키를 받으세요",
+			"dashboard": "Cursor 대시보드",
+			"validating": "확인하는 중…",
+			"saveKey": "API 키 저장",
+			"configured": "Cursor AI 에이전트 설정됨",
+			"ready": "이 프로젝트의 코드 생성을 도울 준비가 되었어요",
+			"updateKey": "키 업데이트",
+			"removeKey": "키 제거",
+			"removing": "제거하는 중…",
+			"newApiKeyLabel": "새 Cursor API 키",
+			"saveFailed": "API 키를 저장하지 못했어요",
+			"removeFailed": "API 키를 제거하지 못했어요",
+			"removeConfirm": "이 프로젝트에서 Cursor API 키를 제거할까요?"
+		},
+		"github": {
+			"title": "GitHub 연동",
+			"connectTitle": "GitHub 저장소 연결",
+			"connectDescription": "GitHub 저장소를 연결하면 커밋, 브랜치, 풀 리퀘스트를 자동으로 추적해요",
+			"installing": "설치하는 중…",
+			"installApp": "GitHub 앱 설치",
+			"installed": "✓ GitHub 앱이 설치되었어요. 연결할 저장소를 선택하세요:",
+			"noRepositories": "사용할 수 있는 저장소가 없어요. GitHub 앱이 저장소에 접근할 수 있는지 확인하세요.",
+			"selectRepository": "저장소 선택",
+			"selectPlaceholder": "— 저장소 선택 —",
+			"connecting": "연결하는 중…",
+			"connectRepository": "저장소 연결",
+			"connectedTo": "연결됨:",
+			"lastSynced": "마지막 동기화: {date}",
+			"syncing": "동기화하는 중…",
+			"syncNow": "지금 동기화",
+			"relinking": "다시 연결하는 중…",
+			"relinkTasks": "작업 다시 연결",
+			"relinkTitle": "기존 커밋/브랜치를 작업에 다시 연결",
+			"disconnecting": "연결 해제하는 중…",
+			"disconnect": "연결 해제",
+			"loadFailed": "GitHub 연동 상태를 불러오지 못했어요",
+			"installFailed": "GitHub 앱 설치를 시작하지 못했어요",
+			"connectFailed": "저장소를 연결하지 못했어요",
+			"disconnectConfirm": "이 저장소의 연결을 해제할까요?",
+			"disconnectFailed": "저장소 연결을 해제하지 못했어요",
+			"syncFailed": "저장소를 동기화하지 못했어요",
+			"relinkFailed": "작업 참조를 다시 연결하지 못했어요",
+			"justNow": "방금",
+			"minutesAgo": "{n}분 전",
+			"hoursAgo": "{n}시간 전",
+			"daysAgo": "{n}일 전"
+		},
+		"pane": {
+			"fixAll": "{count}개 모두 고치기",
+			"saveFirst": "먼저 변경 사항을 저장하거나 버리세요",
+			"issues": "프로젝트 {n}개가 새 작업 제목을 고정 문구로 지정해요",
+			"sections": {
+				"general": "일반",
+				"newTasks": "새 작업",
+				"newTasksHint": "이 프로젝트에서 만드는 작업의 기본값",
+				"integrations": "연동",
+				"dangerZone": "위험 구역"
+			},
+			"fields": {
+				"name": "이름",
+				"code": "코드",
+				"codeHint": "영문자와 숫자",
+				"codePlaceholder": "예: PROJ, FEAT, BUG",
+				"parent": "상위 프로젝트",
+				"noParent": "상위 프로젝트 없음",
+				"copyFrom": "설정 복사 원본",
+				"copyFromHint": "아래 필드를 채워 주며, 이후에도 바꿀 수 있어요",
+				"dontCopy": "복사 안 함"
+			},
+			"createNote": "연동과 위험 구역은 프로젝트를 만든 후에 표시돼요.",
+			"integrations": {
+				"cursorLabel": "Cursor AI 에이전트",
+				"cursorHint": "이 프로젝트의 작업을 Cursor 에이전트에 보내요",
+				"connected": "연결됨",
+				"notConnected": "연결 안 됨",
+				"unavailable": "사용할 수 없음",
+				"manage": "관리",
+				"connect": "연결",
+				"githubLabel": "GitHub",
+				"githubHint": "작업을 저장소에 연결해요",
+				"installApp": "GitHub 앱 설치",
+				"reposLabel": "에이전트 저장소",
+				"reposHint": "에이전트가 작업할 수 있는 위치 (owner/name 형식)",
+				"addRepository": "저장소 추가",
+				"repositoriesCount": "저장소 {n}개"
+			},
+			"danger": {
+				"moveLabel": "다른 워크스페이스로 이동",
+				"moveHint": "하위 프로젝트와 작업도 함께 이동해요",
+				"move": "이동…",
+				"deleteLabel": "프로젝트 삭제",
+				"deleteHint": "프로젝트가 목록에서 삭제돼요",
+				"delete": "삭제…"
+			},
+			"bar": {
+				"discard": "버리기",
+				"newSubcategory": "{title}의 새 하위 프로젝트",
+				"newTopLevel": "새 최상위 프로젝트",
+				"changes": "저장하지 않은 변경 {n}건"
+			},
+			"deleteDialog": {
+				"title": "“{title}”을(를) 삭제할까요?",
+				"description": "프로젝트가 목록에서 삭제돼요."
+			},
+			"transfer": {
+				"title": "프로젝트를 다른 워크스페이스로 이동",
+				"description": "\"{title}\"이(가) 모든 하위 프로젝트와 작업과 함께 이동해요. 작업 상태는 대상 워크스페이스에서 이름, 그다음 유형 순으로 맞춰지며, 대상 워크스페이스의 멤버가 아닌 담당자는 제거돼요.",
+				"placeholder": "워크스페이스 선택",
+				"noOther": "다른 워크스페이스의 멤버가 아니에요.",
+				"moving": "이동하는 중...",
+				"move": "이동"
+			},
+			"settings": {
+				"titlePatternLabel": "작업 제목 패턴",
+				"titlePatternHint": "모든 새 작업 제목의 접두사",
+				"rateLabel": "시간당 요율",
+				"estimateLabel": "기본 예상 시간",
+				"reminderLabel": "타이머 알림 간격",
+				"reminderHint": "실행 중인 타이머가 이 시간을 지날 때마다 소리가 나요",
+				"durationError": "45m, 2h, 1h 30m 같은 형식으로 입력하세요",
+				"durationHint": "예: 45m, 2h, 1h 30m",
+				"durationPlaceholder": "예: 45m",
+				"rateUnit": "/ 시간",
+				"select": "선택",
+				"customValue": "사용자 지정 값"
+			},
+			"toasts": {
+				"success": "성공",
+				"tryAgain": "다시 시도해 주세요.",
+				"cursorConfigured": "Cursor API 키를 설정했어요",
+				"cursorRemoved": "Cursor API 키를 제거했어요",
+				"githubConnected": "{name}에 연결했어요",
+				"githubDisconnected": "저장소 연결을 해제했어요",
+				"githubSynced": "저장소를 동기화했어요",
+				"relinked": "{total}개 항목을 다시 연결했어요: 커밋 {commits}개, 브랜치 {branches}개, PR {pullRequests}개",
+				"saveFailed": "프로젝트를 저장하지 못했어요",
+				"defaultsNotSaved": "새 작업의 기본값을 저장하지 못했어요",
+				"kept": {
+					"code": "서버가 기존 코드를 유지했어요",
+					"parent": "서버가 기존 상위 프로젝트를 유지했어요",
+					"codeAndParent": "서버가 기존 코드와 상위 프로젝트를 유지했어요"
+				},
+				"otherSaved": "다른 변경 사항은 저장했어요.",
+				"saved": "저장됨",
+				"categorySaved": "프로젝트를 저장했어요",
+				"createFailed": "프로젝트를 만들지 못했어요",
+				"created": "프로젝트를 만들었어요",
+				"createdDefaultsFailed": "새 작업의 기본값을 저장하지 못했어요. 다시 설정하고 저장하세요.",
+				"fixedPatterns": "제목 패턴 {n}개를 고쳤어요",
+				"fixedPartial": "제목 패턴 {total}개 중 {fixed}개를 고쳤어요",
+				"fixedPartialRest": "{rest}개는 저장하지 못했어요. 나머지를 다시 시도하세요.",
+				"deleteFailed": "프로젝트를 삭제하지 못했어요",
+				"deleted": "프로젝트를 삭제했어요",
+				"workspacesFailed": "워크스페이스를 불러오지 못했어요",
+				"moved": "\"{title}\"을(를) {workspace}(으)로 이동했어요",
+				"anotherWorkspace": "다른 워크스페이스",
+				"transferFailed": "이동하지 못했어요",
+				"moveFailed": "프로젝트를 이동하지 못했어요. 다시 시도해 주세요."
+			}
+		}
+	},
+	"boardPage": {
+		"featureGate": {
+			"title": "칸반 보드",
+			"description": "작업을 칸반 스타일 보드로 한눈에 확인하세요. 열 사이로 작업을 끌어다 놓아 상태를 바꿀 수 있어요."
+		},
+		"refresh": "새로 고침",
+		"filters": "필터",
+		"addStatus": "상태 추가",
+		"editStatus": "상태 편집",
+		"createStatus": "상태 만들기",
+		"refreshingTasks": "작업 새로 고치는 중…",
+		"dragToReorderColumns": "드래그하여 열 순서 변경",
+		"overtime": "초과 근무",
+		"createTask": "작업 만들기",
+		"createATask": "작업 만들기",
+		"moveAllTasksTo": "모든 작업 이동…",
+		"archiveAll": "모두 보관",
+		"addTask": "작업 추가",
+		"taskTitlePlaceholder": "작업 제목 입력...",
+		"statusForm": {
+			"namePlaceholder": "이름",
+			"typePlaceholder": "유형 선택",
+			"nameLabel": "상태 이름:",
+			"typeLabel": "상태 유형:",
+			"colorLabel": "상태 색상:"
+		},
+		"moveModal": {
+			"title": "모든 작업 이동",
+			"description": "\"{title}\"의 작업 {count}개를 다음으로 이동:"
+		},
+		"reorderModal": {
+			"title": "상태 순서 변경",
+			"hint": "점 6개 아이콘을 길게 눌러 드래그하여 순서를 바꾸세요",
+			"save": "순서 저장"
+		},
+		"allCategories": "모든 프로젝트",
+		"allUsers": "모든 사용자",
+		"errors": {
+			"loadMoreTasks": "작업을 더 불러오지 못했어요.",
+			"refreshColumn": "열을 새로 고치지 못했어요.",
+			"saveOrder": "작업 순서를 저장하지 못했어요. 새로 고침하면 서버의 순서로 복원돼요.",
+			"moveRefreshed": "작업을 이동하지 못했어요. 열을 새로 고쳤어요.",
+			"moveRestore": "작업을 이동하지 못했어요. 새로 고침하면 서버의 순서로 복원돼요.",
+			"refreshBoard": "보드를 새로 고치지 못했어요.",
+			"loadBoard": "보드를 불러오지 못했어요.",
+			"refreshTasks": "작업을 새로 고치지 못했어요."
+		},
+		"toasts": {
+			"loadAllFailed": {
+				"title": "모든 작업을 불러오지 못했어요",
+				"description": "다시 시도해 주세요."
+			},
+			"noTasksToArchive": "이 열에는 보관할 작업이 없어요",
+			"archiveStatusMissing": {
+				"title": "보관 상태를 찾을 수 없어요",
+				"description": "먼저 보관 상태를 만드세요."
+			},
+			"archiveFailed": {
+				"title": "작업을 보관하지 못했어요",
+				"description": "다시 시도해 주세요."
+			}
+		},
+		"confirms": {
+			"deleteStatus": {
+				"title": "상태 삭제",
+				"body": "정말 삭제할까요?"
+			},
+			"archive": {
+				"title": "작업 {n}개를 보관할까요?",
+				"body": "\"{name}\"의 모든 작업이 보관함으로 이동해요."
+			},
+			"move": {
+				"title": "모든 작업 이동",
+				"body": "\"{source}\"의 작업 {count}개를 \"{target}\"(으)로 이동할까요?"
+			}
+		},
+		"userSaved": {
+			"title": "저장됨",
+			"body": "사용자 데이터를 저장했어요"
+		}
+	},
+	"dashboardPage": {
+		"title": "대시보드",
+		"titleWithWorkspace": "{name} 대시보드",
+		"subtitle": "워크스페이스 전체의 활동, 멤버, 추적 시간을 확인하세요.",
+		"gateDescription": "통계, 활동 히트맵, 실시간 팀 업데이트로 생산성에 대한 인사이트를 얻으세요.",
+		"errors": {
+			"offline": "오프라인 상태인 것 같아요. 일부 기능이 제대로 작동하지 않을 수 있어요.",
+			"realtime": "실시간 연결에 실패했어요. 업데이트가 늦어질 수 있어요.",
+			"unexpected": "예기치 않은 오류가 발생했어요.",
+			"connectionLostMessage": "네트워크 연결이 끊겼어요",
+			"connectionLost": "연결 끊김",
+			"dashboardError": "대시보드 오류",
+			"retrying": "다시 시도하는 중...",
+			"tryAgain": "다시 시도",
+			"checkConnection": "연결 확인",
+			"boundaryMessage": "대시보드에서 예기치 않은 오류가 발생했어요. 페이지를 새로 고쳐 보세요."
+		},
+		"periods": {
+			"week": "최근 7일",
+			"month": "최근 30일"
+		},
+		"periodLabel": "대시보드 기간",
+		"realtime": {
+			"active": "실시간 업데이트 사용 중",
+			"inactive": "실시간 업데이트 꺼짐",
+			"live": "실시간",
+			"offline": "오프라인",
+			"youreOffline": "오프라인 상태예요"
+		},
+		"refresh": {
+			"label": "새로 고침",
+			"ariaBusy": "대시보드 데이터 새로 고치는 중",
+			"ariaIdle": "대시보드 데이터 새로 고침",
+			"status": "대시보드를 새로 고치는 중이에요"
+		},
+		"actionsLabel": "대시보드 동작",
+		"a11y": {
+			"shortcuts": "키보드 단축키: Ctrl+R 새로 고침, Ctrl+1-5 섹션 이동, Escape 오류 지우기",
+			"keyNumbers": "최근 {n}일 주요 수치",
+			"loadedAnnouncement": "대시보드를 불러왔어요",
+			"failedAnnouncement": "대시보드를 불러오지 못했어요",
+			"teamDescription": "팀 멤버의 활동과 상태예요. 누가 온라인인지와 현재 작업을 보여줘요.",
+			"teamLoading": "팀 활동 불러오는 중",
+			"heatmapLoading": "활동 히트맵 불러오는 중",
+			"statisticsLoading": "워크스페이스 통계 불러오는 중",
+			"statisticsDescription": "작업 수, 시간 추적, 팀 지표를 포함한 워크스페이스 통계 그리드예요. 방향키로 카드 사이를 이동하세요.",
+			"activityHeading": "최근 활동 피드",
+			"activityDescription": "최근 워크스페이스 활동 목록이에요. 방향키로 이동하고 Enter로 활동 세부 정보를 여세요.",
+			"activityLoading": "최근 활동 불러오는 중"
+		},
+		"kpi": {
+			"activity": "활동",
+			"members": "활동 중인 멤버",
+			"tracked": "추적 시간",
+			"completed": "완료",
+			"activityHint": "워크스페이스에 기록된 동작",
+			"membersHint": "전체 {total}명 중",
+			"trackedHint": "작업 타이머로 기록한 시간",
+			"completedHint": "완료로 이동한 작업",
+			"vsPrevious": "이전 {n}일 대비"
+		},
+		"hours": "{n}시간",
+		"teamActivity": "팀 활동",
+		"chartSubtitle": "일별, 최근 {n}일",
+		"categoriesSubtitle": "추적 시간 기준 · 최근 {n}일",
+		"heatmap": {
+			"title": "활동 히트맵",
+			"description": "이 워크스페이스 전체의 활동이에요. 각 칸은 하루(UTC)이며 색이 진할수록 활동이 많아요.",
+			"rangeLabel": "히트맵 범위",
+			"last12Months": "최근 12개월",
+			"groupLabel": "총 {n}건의 기여를 보여주는 활동 히트맵",
+			"groupLabelLoading": "활동 히트맵 불러오는 중",
+			"loadFailed": "히트맵 데이터를 불러오지 못했어요",
+			"retry": "다시 시도",
+			"noData": "기여 데이터가 없어요"
+		},
+		"statisticsTitle": "워크스페이스 통계",
+		"loadingState": {
+			"label": "대시보드 불러오는 중",
+			"title": "대시보드 불러오는 중",
+			"body": "워크스페이스 데이터를 가져오는 중..."
+		},
+		"boundaryTitle": "대시보드 오류",
+		"mainLabel": "대시보드"
+	},
+	"projectCategoryList": {
+		"perPage": "페이지당 {n}개",
+		"documentTitle": "프로젝트",
+		"loadTasksFailed": "프로젝트 작업을 불러오지 못했어요.",
+		"loadCategoriesFailed": "프로젝트를 불러오지 못했어요.",
+		"anotherWorkspace": "다른 워크스페이스",
+		"movedTitle": "\"{title}\"을(를) {workspace}(으)로 이동했어요",
+		"transferFailed": "이동하지 못했어요",
+		"transferFailedText": "프로젝트를 이동하지 못했어요. 다시 시도해 주세요.",
+		"loadingCategories": "프로젝트 불러오는 중",
+		"loadingTasks": "프로젝트 작업 불러오는 중",
+		"noSubcategories": "아직 하위 프로젝트가 없어요.",
+		"deletedHint": "(삭제됨, 복원 가능)",
+		"subcategories": "하위 프로젝트",
+		"tasks": "작업",
+		"author": "작성자",
+		"moveToWorkspace": "워크스페이스로 이동",
+		"restore": "복원",
+		"transferTitle": "프로젝트를 다른 워크스페이스로 이동",
+		"transferDescription": "\"{title}\"이(가) 모든 하위 프로젝트와 작업과 함께 이동해요. 작업 상태는 대상 워크스페이스에서 이름, 그다음 유형 순으로 맞춰지며, 대상 워크스페이스의 멤버가 아닌 담당자는 제거돼요.",
+		"selectWorkspace": "워크스페이스 선택",
+		"noOtherWorkspaces": "다른 워크스페이스의 멤버가 아니에요.",
+		"moving": "이동하는 중...",
+		"move": "이동",
+		"showing": "프로젝트 {total}개 중 {from}–{to}번째 표시",
+		"previous": "이전",
+		"page": "{last}페이지 중 {current}페이지",
+		"createFirstTask": "이 프로젝트에서 첫 작업을 만드세요",
+		"createTask": "+ 작업 만들기"
+	},
+	"tasksList": {
+		"titles": {
+			"current": "현재 작업",
+			"hidden": "숨긴 작업",
+			"archive": "보관함",
+			"tasks": "작업",
+			"fallback": "작업 목록"
+		},
+		"workspaceTasksTitle": "{name} 작업",
+		"stateFilters": {
+			"open": "미완료",
+			"done": "완료",
+			"all": "전체"
+		},
+		"sortFields": {
+			"updatedAt": "수정일",
+			"createdAt": "생성일",
+			"expiredAt": "마감",
+			"scheduledDate": "예정일"
+		},
+		"noDoneToArchive": "보관할 완료 작업이 없어요",
+		"loadDoneFailed": "완료 작업을 불러오지 못했어요",
+		"archivedCount": "완료 작업 {n}개를 보관했어요",
+		"archiveFailed": "작업을 보관하지 못했어요",
+		"daySummary": "일일 요약",
+		"totalTime": "총 시간",
+		"workingDays": "근무 일수",
+		"perDay": "(하루 8시간)",
+		"workingMonths": "근무 개월",
+		"perMonth": "(월 160시간)",
+		"workingYears": "근무 연수",
+		"perYear": "(연 2000시간)",
+		"overtime": "초과 근무",
+		"totalOvertime": "총 초과 근무",
+		"showTasks": "작업 보기",
+		"archiveDone": "완료 항목 보관",
+		"searchPlaceholder": "작업 검색",
+		"searchLabel": "작업 검색",
+		"sortByDate": "날짜순 정렬",
+		"newestFirst": "최신순",
+		"oldestFirst": "오래된 순",
+		"filtersTitle": "필터",
+		"filtersDialogTitle": "필터",
+		"status": "상태",
+		"priority": "우선순위",
+		"sortByPriority": "우선순위순 정렬",
+		"reset": "초기화",
+		"selectionMode": "작업 선택 모드",
+		"updating": "작업 업데이트 중…",
+		"loadFailed": "작업을 불러오지 못했어요. 다시 시도해 주세요.",
+		"retry": "다시 시도",
+		"noMatches": "필터에 맞는 작업이 없어요",
+		"clearFilters": "필터 해제",
+		"createFirst": "첫 작업을 만들어 시작하세요",
+		"createTask": "+ 작업 만들기",
+		"archiveDialogTitle": "완료 작업 보관",
+		"archiveDialogBody": "완료 작업 {n}개를 보관할까요?"
+	}
+}

@@ -1,0 +1,222 @@
+{
+	"views": {
+		"list": "목록",
+		"day": "일",
+		"week": "주",
+		"month": "월",
+		"year": "연"
+	},
+	"clusterPopover": {
+		"overlapping": "{n}개 겹침"
+	},
+	"markDoneAria": "\"{title}\" 완료로 표시",
+	"editAria": "\"{title}\" 편집",
+	"eventBlock": {
+		"dragStart": "드래그하여 시작 시간 변경",
+		"dragDuration": "드래그하여 소요 시간 변경"
+	},
+	"convert": {
+		"title": "작업으로 변환",
+		"workspace": "워크스페이스",
+		"category": "프로젝트",
+		"noCategory": "프로젝트 없음",
+		"submit": "변환"
+	},
+	"routineRow": {
+		"moreTitle": "더 보기 (우클릭하면 메뉴)",
+		"more": "더 보기",
+		"created": "생성: {created}",
+		"createdUpdated": "생성: {created} · 수정: {updated}"
+	},
+	"deleteDialog": {
+		"title": "루틴을 삭제할까요?",
+		"description": "\"{title}\"과(와) 모든 반복 항목이 삭제돼요. 되돌릴 수 없어요."
+	},
+	"clusterBlock": {
+		"events": "일정 {n}개"
+	},
+	"more": "+ {n}개 더",
+	"contextMenu": {
+		"duplicate": "복제",
+		"archive": "보관"
+	},
+	"unscheduled": "일정 미정",
+	"archiveDone": "완료 항목 보관 ({n})",
+	"today": "오늘",
+	"allDay": "종일",
+	"dow": {
+		"mo": "월",
+		"tu": "화",
+		"we": "수",
+		"th": "목",
+		"fr": "금",
+		"sa": "토",
+		"su": "일"
+	},
+	"dowUpper": {
+		"mon": "월",
+		"tue": "화",
+		"wed": "수",
+		"thu": "목",
+		"fri": "금",
+		"sat": "토",
+		"sun": "일"
+	},
+	"dowLetter": {
+		"mon": "월",
+		"tue": "화",
+		"wed": "수",
+		"thu": "목",
+		"fri": "금",
+		"sat": "토",
+		"sun": "일"
+	},
+	"yearView": {
+		"less": "적음",
+		"more": "많음"
+	},
+	"editModal": {
+		"headerNew": "새 루틴",
+		"headerEdit": "루틴 편집",
+		"untitled": "(제목 없음)",
+		"fields": {
+			"title": "제목",
+			"titlePlaceholder": "어떤 루틴인가요?",
+			"description": "설명",
+			"chars": "{n}자",
+			"optional": "선택 사항",
+			"descriptionPlaceholder": "메모, 맥락, 링크, 체크리스트…",
+			"category": "프로젝트",
+			"schedule": "일정",
+			"unscheduled": "일정 미정 (특정 날짜/시간 없음)",
+			"date": "날짜",
+			"time": "시간",
+			"start": "시작",
+			"end": "종료",
+			"repeats": "반복",
+			"onDay": "날짜",
+			"ofEveryMonth": "매월",
+			"reminder": "알림",
+			"reminderOnlyRepeating": "반복 루틴에서만 사용할 수 있어요",
+			"moveToWorkspace": "워크스페이스의 일반 작업으로 이동…"
+		},
+		"created": "생성: {when}",
+		"updated": "수정: {when}",
+		"deleteRoutine": "루틴 삭제",
+		"createRoutine": "루틴 만들기",
+		"saveChanges": "변경 사항 저장",
+		"duration": {
+			"hm": "{h}시간 {m}분",
+			"h": "{h}시간",
+			"m": "{m}분"
+		},
+		"freq": {
+			"once": "한 번",
+			"daily": "매일",
+			"weekly": "매주",
+			"monthly": "매월",
+			"yearly": "매년"
+		},
+		"reminder": {
+			"off": "끄기",
+			"atTime": "정각",
+			"min5": "5분 전",
+			"min15": "15분 전",
+			"min30": "30분 전",
+			"hour1": "1시간 전"
+		},
+		"summary": {
+			"daily": "매일",
+			"pickDay": "요일을 하나 이상 선택하세요",
+			"everyDayOfWeek": "매일 (모든 요일)",
+			"weekdays": "평일마다 (월–금)",
+			"weekends": "주말마다",
+			"onDays": "{days}",
+			"monthly": "매월 {day}일",
+			"yearly": "매년"
+		}
+	},
+	"moveToCloud": {
+		"cloudWorkspace": "클라우드 워크스페이스",
+		"ticketKey": "티켓 키는 서버에서 지정해요.",
+		"statement": "루틴 {n}개가 TMGR 서버로 전송되고 이 기기를 떠나요. 서버가 확인하면 각 로컬 사본은 삭제돼요.",
+		"destination": "대상:",
+		"pastCompletions": "지난 완료 기록은 이동하지 않아요. 클라우드 사본은 새로 시작해요.",
+		"keptRoutines": "제목, 설명, 일정, 반복 패턴은 유지돼요. 프로젝트와 우선순위는 유지되지 않아요.",
+		"keptTasks": "작업에는 제목과 설명만 유지돼요. 일정, 반복 패턴, 소요 시간은 유지되지 않아요.",
+		"sendAndRemove": "TMGR로 보내고 여기서 삭제",
+		"sending": "{name}(으)로 보내는 중…",
+		"summary": "{total}개 중 {moved}개를 {name}(으)로 이동했어요.",
+		"removeLocalCopy": "로컬 사본 삭제",
+		"retryFailed": "실패한 {n}개 다시 시도",
+		"open": "{name} 열기",
+		"status": {
+			"moved": "이동됨",
+			"failed": "실패",
+			"inCloud": "클라우드에 있음, 로컬 사본은 삭제되지 않음",
+			"notSent": "보내지 않음"
+		},
+		"titleRoutines": "클라우드 루틴으로 이동",
+		"titleTasks": "클라우드 작업으로 변환",
+		"subtitleSetup": "선택한 로컬 루틴을 보낼 위치를 고르세요.",
+		"selected": "{n}개 선택됨",
+		"categoriesError": "프로젝트를 불러오지 못했어요: {message}",
+		"localWorkspaceChanged": "열려 있는 로컬 워크스페이스가 바뀌어 로컬 사본을 삭제하지 않았어요.",
+		"selectAllAria": "모든 로컬 루틴 선택",
+		"selectAll": "모두 선택",
+		"pickHint": "클라우드 워크스페이스로 보낼 로컬 루틴을 선택하세요.",
+		"empty": "이동할 로컬 루틴이 없어요.",
+		"selectAria": "{title} 선택",
+		"readError": "로컬 루틴을 읽지 못했어요."
+	},
+	"page": {
+		"gate": {
+			"title": "데일리 루틴",
+			"description": "반복 작업을 만들고 매일의 습관을 기록하세요. 꾸준한 루틴을 만들고 진행 상황을 확인할 수 있어요."
+		},
+		"localRoutines": "로컬 루틴",
+		"dailyRoutines": "데일리 루틴",
+		"localBadge": "로컬",
+		"storedLocally": "이 기기에만 저장돼요. 클라우드와 동기화되지 않아요.",
+		"select": "선택",
+		"quickAddAria": "루틴 빠르게 추가",
+		"quickAddMobile": "빠른 추가…",
+		"quickAddPlaceholder": "빠른 추가 → 일정 미정",
+		"quickAddHint": "{unscheduled}에 추가돼요. 나중에 목록에서 일정을 잡으세요",
+		"countRoutines": "루틴",
+		"countDone": "완료",
+		"countArchived": "보관됨",
+		"chipRoutines": "루틴",
+		"chipDone": "완료",
+		"chipArchived": "보관됨",
+		"importCalendar": ".ics 캘린더 가져오기",
+		"import": "가져오기",
+		"exportCalendar": ".ics 캘린더 내보내기",
+		"export": "내보내기",
+		"importIcs": ".ics 가져오기",
+		"exportIcs": ".ics 내보내기",
+		"prevPeriod": "이전 기간",
+		"nextPeriod": "다음 기간",
+		"loading": "루틴 불러오는 중",
+		"converted": {
+			"title": "루틴이 작업으로 변환되었어요",
+			"description": "지금 작업을 열까요?"
+		},
+		"newRoutineTitle": "새 루틴 (N)",
+		"newRoutine": "새 루틴",
+		"weekRange": "{year}년 {month} {start} – {end}",
+		"weekRangeCross": "{year}년 {startMonth} {start} – {endMonth} {end}",
+		"monthLabel": "{year}년 {month}",
+		"noCloudWorkspace": "루틴을 이동할 클라우드 워크스페이스가 없어요.",
+		"signInToMove": "루틴을 클라우드로 이동하려면 로그인하세요.",
+		"loadError": "루틴을 불러오지 못했어요.",
+		"tryAgain": "다시 시도해 주세요.",
+		"openError": "루틴을 열지 못했어요",
+		"deleteError": "루틴을 삭제하지 못했어요",
+		"duplicateError": "루틴을 복제하지 못했어요",
+		"convertError": "루틴을 변환하지 못했어요",
+		"copyTitle": "{title} (사본)",
+		"importErrors": "\n오류:\n- {list}",
+		"importSummary": "{created}개 가져옴, {skipped}개 건너뜀, {replaced}개 교체됨.{errors}"
+	}
+}
