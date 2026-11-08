@@ -53,6 +53,50 @@ pub(crate) const FACTS: Limits = Limits {
     max_stderr: 64 * 1024,
 };
 
+const ALTERNATES_LINES: usize = 64;
+
+pub fn regular_files_size(root: &Path) -> u64 {
+    let mut total = 0u64;
+    let mut todo = vec![root.to_path_buf()];
+    while let Some(dir) = todo.pop() {
+        let Ok(read) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in read.flatten() {
+            let Ok(meta) = fs::symlink_metadata(entry.path()) else {
+                continue;
+            };
+            if meta.is_dir() {
+                todo.push(entry.path());
+            } else if meta.is_file() {
+                total = total.saturating_add(meta.len());
+            }
+        }
+    }
+    total
+}
+
+/// Bytes of the object store of `repo` plus the object folders its own alternates file names.
+pub fn objects_size(repo: &Path) -> u64 {
+    let objects = repo.join(".git/objects");
+    let mut total = regular_files_size(&objects);
+    let Ok(text) = fs::read_to_string(objects.join("info/alternates")) else {
+        return total;
+    };
+    for line in text.lines().take(ALTERNATES_LINES) {
+        let dir = Path::new(line.trim());
+        if dir.is_absolute() && dir.is_dir() {
+            total = total.saturating_add(regular_files_size(dir));
+        }
+    }
+    total
+}
+
+/// `base` plus five minutes for every started GiB of `bytes`.
+pub fn scaled_deadline(base: Duration, bytes: u64) -> Duration {
+    base + Duration::from_secs(300 * bytes.div_ceil(1 << 30))
+}
+
 pub struct GitEnv {
     dir: Option<PathBuf>,
     filters: Vec<String>,
@@ -269,6 +313,11 @@ impl GitEnv {
         }
         env.filters = filters.into_iter().collect();
         Ok(env)
+    }
+
+    pub fn with_deadline(mut self, deadline: Duration) -> GitEnv {
+        self.limits.deadline = deadline;
+        self
     }
 
     pub fn env(mut self, key: &str, value: &str) -> GitEnv {
@@ -577,7 +626,8 @@ pub fn clone_mode(plan: &Plan) -> Result<Worktree, String> {
         "--verify",
         &format!("{}^{{commit}}", plan.base),
     ])?;
-    let src = GitEnv::bare(&worktrees_root(&plan.repo)?);
+    let deadline = scaled_deadline(PLUMBING.deadline, objects_size(&plan.repo));
+    let src = GitEnv::bare(&worktrees_root(&plan.repo)?).with_deadline(deadline);
     let repo = utf8(&plan.repo)?;
     let built = (|| -> Result<GitEnv, String> {
         src.run(&[
@@ -590,7 +640,7 @@ pub fn clone_mode(plan: &Plan) -> Result<Worktree, String> {
             repo,
             utf8(&plan.path)?,
         ])?;
-        let git = GitEnv::open(&plan.path)?;
+        let git = GitEnv::open(&plan.path)?.with_deadline(deadline);
         git.run(&["checkout", "--no-track", "-b", &plan.branch, &sha])?;
         git.run(&["repack", "-a", "-d", "-q"])?;
         match fs::remove_file(plan.path.join(".git/objects/info/alternates")) {
@@ -1671,6 +1721,63 @@ mod tests {
         assert_eq!(shared_objects(&wt.path), Vec::<PathBuf>::new());
         assert!(wt.path.join("a.txt").is_file());
         git(&wt.path, &["fsck", "--connectivity-only"]);
+    }
+
+    #[test]
+    fn the_clone_deadline_grows_by_five_minutes_per_started_gib() {
+        let base = Duration::from_secs(300);
+        assert_eq!(scaled_deadline(base, 0), base);
+        assert_eq!(scaled_deadline(base, 1), base + Duration::from_secs(300));
+        assert_eq!(
+            scaled_deadline(base, 1 << 30),
+            base + Duration::from_secs(300)
+        );
+        assert_eq!(
+            scaled_deadline(base, (1 << 30) + 1),
+            base + Duration::from_secs(600)
+        );
+        assert_eq!(
+            scaled_deadline(base, 2 << 30),
+            base + Duration::from_secs(600)
+        );
+    }
+
+    #[test]
+    fn the_object_store_size_counts_the_alternates_of_the_source() {
+        let fx = fixture();
+        let own = objects_size(&fx.repo);
+        let borrowed = fx.outside.join("borrowed-objects");
+        fs::create_dir(&borrowed).unwrap();
+        fs::File::create(borrowed.join("pad"))
+            .unwrap()
+            .set_len(5000)
+            .unwrap();
+        let nested = fx.outside.join("nested-objects");
+        fs::create_dir(&nested).unwrap();
+        fs::File::create(nested.join("pad"))
+            .unwrap()
+            .set_len(7000)
+            .unwrap();
+        fs::create_dir_all(borrowed.join("info")).unwrap();
+        fs::write(
+            borrowed.join("info/alternates"),
+            format!("{}\n", nested.display()),
+        )
+        .unwrap();
+        let info = fx.repo.join(".git/objects/info");
+        fs::create_dir_all(&info).unwrap();
+        fs::write(
+            info.join("alternates"),
+            format!("{}\nrelative/path\n/does/not/exist\n", borrowed.display()),
+        )
+        .unwrap();
+        let alternates = info.join("alternates");
+        let alt_len = fs::metadata(&alternates).unwrap().len();
+        assert_eq!(
+            objects_size(&fx.repo),
+            own + alt_len + regular_files_size(&borrowed)
+        );
+        assert!(regular_files_size(&borrowed) >= 5000);
     }
 
     #[test]

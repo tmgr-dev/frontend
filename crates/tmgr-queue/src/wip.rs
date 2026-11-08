@@ -313,6 +313,17 @@ fn write_in_git(
     replace: bool,
     mode: u32,
 ) -> Result<()> {
+    stream_in_git(git, rel, &mut &data[..], replace, mode, None)
+}
+
+fn stream_in_git(
+    git: &std::fs::File,
+    rel: &str,
+    data: &mut dyn Read,
+    replace: bool,
+    mode: u32,
+    deadline: Option<std::time::Instant>,
+) -> Result<()> {
     let parts: Vec<&str> = rel.split('/').collect();
     let (last, inner) = parts
         .split_last()
@@ -361,8 +372,9 @@ fn write_in_git(
         )));
     }
     let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
-    let written = file.write_all(data).and_then(|_| file.flush());
+    let written = copy_until(data, &mut file, deadline).and_then(|_| file.flush());
     drop(file);
+    let timed_out = matches!(&written, Err(e) if e.kind() == std::io::ErrorKind::TimedOut);
     let renamed = written.is_ok()
         && unsafe {
             libc::renameat(
@@ -374,6 +386,9 @@ fn write_in_git(
         } == 0;
     if !renamed {
         unsafe { libc::unlinkat(dir.as_raw_fd(), tmp.as_ptr(), 0) };
+        if timed_out {
+            return Err(Error::internal("copying objects timed out"));
+        }
         return Err(Error::internal(format!(
             "cannot write {rel} in the clone's .git"
         )));
@@ -381,7 +396,49 @@ fn write_in_git(
     Ok(())
 }
 
-pub(crate) fn copy_new_objects(from: &Path, git: &std::fs::File) -> Result<()> {
+fn copy_until(
+    from: &mut dyn Read,
+    to: &mut std::fs::File,
+    deadline: Option<std::time::Instant>,
+) -> std::io::Result<()> {
+    let mut chunk = vec![0u8; 1 << 20];
+    loop {
+        if deadline.is_some_and(|d| std::time::Instant::now() >= d) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "timed out",
+            ));
+        }
+        let n = from.read(&mut chunk)?;
+        if n == 0 {
+            return Ok(());
+        }
+        to.write_all(&chunk[..n])?;
+    }
+}
+
+/// Copies `file` into `objects/pack/<name>` of the clone's `.git`, streaming and skipping a name already there.
+pub(crate) fn copy_pack_file(
+    git: &std::fs::File,
+    name: &str,
+    file: &mut std::fs::File,
+    deadline: std::time::Instant,
+) -> Result<()> {
+    stream_in_git(
+        git,
+        &format!("objects/pack/{name}"),
+        file,
+        false,
+        0o444,
+        Some(deadline),
+    )
+}
+
+pub(crate) fn copy_new_objects(
+    from: &Path,
+    git: &std::fs::File,
+    deadline: std::time::Instant,
+) -> Result<()> {
     for fan in std::fs::read_dir(from.join("objects"))? {
         let fan = fan?;
         let name = fan.file_name().to_string_lossy().into_owned();
@@ -393,6 +450,9 @@ pub(crate) fn copy_new_objects(from: &Path, git: &std::fs::File) -> Result<()> {
             let file = obj.file_name().to_string_lossy().into_owned();
             if !obj.file_type()?.is_file() || !file.bytes().all(|b| b.is_ascii_hexdigit()) {
                 continue;
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(Error::internal("copying objects timed out"));
             }
             let data = std::fs::read(obj.path())?;
             write_in_git(git, &format!("objects/{name}/{file}"), &data, false, 0o444)?;
@@ -522,7 +582,11 @@ pub fn wip_commit(
     if !is_sha(&commit) {
         return Err(Error::internal("git did not return a commit id"));
     }
-    copy_new_objects(&scratch.git_dir, &git)?;
+    copy_new_objects(
+        &scratch.git_dir,
+        &git,
+        std::time::Instant::now() + GIT_TIMEOUT,
+    )?;
     if clone_tip(clone, branch).as_deref() != Some(tip.as_str()) {
         return Err(Error::conflict(
             "the clone's branch moved while it was saved",
@@ -614,6 +678,29 @@ mod tests {
         fn sources(&self) -> Vec<String> {
             vec![self.root.join("proj").to_string_lossy().into_owned()]
         }
+    }
+
+    #[test]
+    fn copying_objects_after_the_deadline_fails() {
+        let f = fx();
+        let bare = f.root.join("src.git");
+        std::fs::create_dir(&bare).unwrap();
+        git(&bare, &["init", "-q", "--bare", "--template=", "."]);
+        let blob = Command::new("git")
+            .current_dir(&bare)
+            .args(["hash-object", "-w", "--stdin"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .and_then(|mut c| {
+                c.stdin.take().unwrap().write_all(b"x\n")?;
+                c.wait()
+            })
+            .unwrap();
+        assert!(blob.success());
+        let git_dir = open_beneath(&f.clone, ".git", libc::O_DIRECTORY).unwrap();
+        let err = copy_new_objects(&bare, &git_dir, std::time::Instant::now()).unwrap_err();
+        assert!(err.to_string().contains("timed out"), "{err}");
     }
 
     fn files(dir: &Path, rev: &str) -> Vec<String> {

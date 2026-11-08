@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_runner::hostview::{Access, HostView};
+use tmgr_runner::worktree::objects_size;
 
 pub fn clone_dir(repo: &str, pickup_id: &str) -> Option<PathBuf> {
     let repo = Path::new(repo);
@@ -571,8 +572,12 @@ pub(crate) fn repo_git_bytes(
 }
 
 fn git(dir: Option<&Path>, args: &[&str]) -> Result<String> {
+    git_within(dir, args, GIT_TIMEOUT)
+}
+
+fn git_within(dir: Option<&Path>, args: &[&str], limit: std::time::Duration) -> Result<String> {
     let mut cmd = git_command(dir);
-    let out = output_within(cmd.args(args), GIT_TIMEOUT)?;
+    let out = output_within(cmd.args(args), limit)?;
     if !out.status.success() {
         let msg = String::from_utf8_lossy(&out.stderr);
         let line = msg.lines().next().unwrap_or("git failed");
@@ -585,6 +590,10 @@ fn git(dir: Option<&Path>, args: &[&str]) -> Result<String> {
 }
 
 pub(crate) const GIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+fn scaled_deadline(bytes: u64) -> std::time::Duration {
+    tmgr_runner::worktree::scaled_deadline(GIT_TIMEOUT, bytes)
+}
 
 pub(crate) fn output_within(
     cmd: &mut Command,
@@ -653,6 +662,52 @@ pub(crate) fn output_within_input(
         stdout: out.join().unwrap_or_default(),
         stderr: err.join().unwrap_or_default(),
     })
+}
+
+fn output_to_file(
+    cmd: &mut Command,
+    limit: std::time::Duration,
+    cap: u64,
+    input: Vec<u8>,
+    path: &Path,
+) -> Result<std::process::ExitStatus> {
+    use std::io::Write;
+    use std::process::Stdio;
+    use std::time::Instant;
+    let file = std::fs::File::create(path)?;
+    let mut child = cmd
+        .stdin(Stdio::piped())
+        .stdout(Stdio::from(file))
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| Error::internal(format!("cannot run git: {e}")))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(&input);
+        });
+    }
+    let deadline = Instant::now() + limit;
+    loop {
+        if let Some(st) = child.try_wait()? {
+            if std::fs::metadata(path)?.len() > cap {
+                return Err(Error::internal(format!(
+                    "git printed more than {cap} bytes"
+                )));
+            }
+            return Ok(st);
+        }
+        let over = std::fs::metadata(path).is_ok_and(|m| m.len() > cap);
+        if over || Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(Error::internal(if over {
+                format!("git printed more than {cap} bytes")
+            } else {
+                "git did not finish in time".into()
+            }));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
 }
 
 pub const TRUSTED_OUTPUT_CAP: usize = 64 << 20;
@@ -916,6 +971,8 @@ fn make_clone(repo: &str, dest: &Path, checkout: &dyn Fn(&Path) -> Result<()>) -
         .parent()
         .ok_or_else(|| Error::internal("the run directory has no parent"))?;
     std::fs::create_dir_all(parent)?;
+    let limit = scaled_deadline(objects_size(Path::new(repo)));
+    let git = |dir: Option<&Path>, args: &[&str]| git_within(dir, args, limit);
     let result = (|| -> Result<()> {
         let d = dest.to_string_lossy();
         git(
@@ -1218,29 +1275,8 @@ pub(crate) fn entries(dir: &std::fs::File) -> Vec<std::ffi::OsString> {
 
 const MAX_IMPORT: u64 = 2 << 30;
 
-fn regular_files_size(root: &Path) -> u64 {
-    let mut total = 0u64;
-    let mut todo = vec![root.to_path_buf()];
-    while let Some(dir) = todo.pop() {
-        let Ok(read) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in read.flatten() {
-            let Ok(meta) = std::fs::symlink_metadata(entry.path()) else {
-                continue;
-            };
-            if meta.is_dir() {
-                todo.push(entry.path());
-            } else if meta.is_file() {
-                total = total.saturating_add(meta.len());
-            }
-        }
-    }
-    total
-}
-
 fn import_allowance(repo: &str) -> u64 {
-    MAX_IMPORT.saturating_add(regular_files_size(&Path::new(repo).join(".git/objects")))
+    MAX_IMPORT.saturating_add(objects_size(Path::new(repo)))
 }
 
 fn copy_regular(
@@ -2035,9 +2071,12 @@ pub fn restore_branch(
 /// Puts the objects of `base..tip` from `source` into the object store of the clone `lead`, writing only
 /// through directory handles opened without following links; no git runs inside the lead.
 pub fn deliver_commits(source: &Path, lead: &Path, base: &str, tip: &str) -> Result<()> {
+    use std::time::Instant;
     if !is_sha(base) || !is_sha(tip) {
         return Err(Error::usage("the commits to deliver are not commit ids"));
     }
+    let deadline = Instant::now() + scaled_deadline(objects_size(source));
+    let left = || deadline.saturating_duration_since(Instant::now());
     let view = host_view(source, Access::Read)?;
     let mut cmd = view
         .prepared(&[], &["pack-objects", "--revs", "--stdout", "-q"])
@@ -2048,16 +2087,17 @@ pub fn deliver_commits(source: &Path, lead: &Path, base: &str, tip: &str) -> Res
         format!("{tip}\n")
     }
     .into_bytes();
-    let out = output_bounded_input(&mut cmd, GIT_TIMEOUT, MAX_IMPORT as usize, Some(input))?;
-    if !out.status.success() {
-        return Err(Error::internal("git pack-objects failed"));
-    }
     let tmp = tempfile::Builder::new()
         .prefix("tmgr-deliver")
         .tempdir()
         .map_err(|e| Error::internal(format!("temporary directory: {e}")))?;
+    let incoming = tmp.path().join("incoming.pack");
+    let status = output_to_file(&mut cmd, left(), MAX_IMPORT, input, &incoming)?;
+    if !status.success() {
+        return Err(Error::internal("git pack-objects failed"));
+    }
     let bare = tmp.path().join("b.git");
-    git(
+    git_within(
         None,
         &[
             "init",
@@ -2066,11 +2106,24 @@ pub fn deliver_commits(source: &Path, lead: &Path, base: &str, tip: &str) -> Res
             "--template=",
             &bare.to_string_lossy(),
         ],
+        left(),
     )?;
-    git_bytes(&bare, &["unpack-objects", "-q"], Some(out.stdout))?;
+    let hash = git_within(
+        Some(&bare),
+        &["index-pack", &incoming.to_string_lossy()],
+        left(),
+    )?;
+    let hash = hash.rsplit(char::is_whitespace).next().unwrap_or_default();
+    if !is_sha(hash) {
+        return Err(Error::internal("git index-pack returned no pack name"));
+    }
     let git_dir = open_beneath(lead, ".git", libc::O_DIRECTORY)
         .ok_or_else(|| Error::usage("the lead clone has no .git folder of its own"))?;
-    crate::wip::copy_new_objects(&bare, &git_dir)
+    for ext in ["pack", "idx"] {
+        let mut file = std::fs::File::open(incoming.with_extension(ext))?;
+        crate::wip::copy_pack_file(&git_dir, &format!("pack-{hash}.{ext}"), &mut file, deadline)?;
+    }
+    Ok(())
 }
 
 pub fn import_branch(repo: &str, clone: &Path, branch: &str) -> Result<String> {
@@ -2381,6 +2434,7 @@ pub fn init_repo(dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tmgr_runner::worktree::regular_files_size;
 
     #[test]
     fn clones_beside_the_repo_on_a_new_branch_without_hooks() {
@@ -2860,16 +2914,11 @@ mod tests {
         let outside = root.join("outside");
         std::fs::create_dir(&outside).unwrap();
         let objects = lead.join(".git/objects");
-        for fan in 0..256 {
-            let dir = objects.join(format!("{fan:02x}"));
-            let _ = std::fs::remove_dir(&dir);
-            std::os::unix::fs::symlink(&outside, &dir).unwrap();
-        }
+        std::fs::rename(objects.join("pack"), objects.join("pack.real")).unwrap();
+        std::os::unix::fs::symlink(&outside, objects.join("pack")).unwrap();
         assert!(deliver_commits(&repo, &lead, &base, &tip).is_err());
         assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 0);
-        for fan in 0..256 {
-            std::fs::remove_file(objects.join(format!("{fan:02x}"))).unwrap();
-        }
+        std::fs::remove_file(objects.join("pack")).unwrap();
         std::fs::rename(&objects, lead.join(".git/objects.real")).unwrap();
         std::os::unix::fs::symlink(&outside, &objects).unwrap();
         assert!(deliver_commits(&repo, &lead, &base, &tip).is_err());
@@ -4465,6 +4514,100 @@ mod tests {
         let pad = std::fs::File::create(repo.join(".git/objects/pack/pack-pad.pack")).unwrap();
         pad.set_len(MAX_IMPORT).unwrap();
         assert_eq!(import_allowance(&r), before + MAX_IMPORT);
+    }
+
+    #[test]
+    fn the_import_allowance_counts_the_alternates_of_the_source() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let before = import_allowance(&r);
+        let borrowed = root.join("borrowed-objects");
+        std::fs::create_dir(&borrowed).unwrap();
+        let pad = std::fs::File::create(borrowed.join("pack-pad.pack")).unwrap();
+        pad.set_len(MAX_IMPORT).unwrap();
+        let line = format!("{}\n", borrowed.display());
+        std::fs::create_dir_all(repo.join(".git/objects/info")).unwrap();
+        std::fs::write(repo.join(".git/objects/info/alternates"), &line).unwrap();
+        assert_eq!(
+            import_allowance(&r),
+            before + MAX_IMPORT + line.len() as u64
+        );
+    }
+
+    #[test]
+    fn the_queue_clone_deadline_starts_at_the_git_timeout() {
+        assert_eq!(scaled_deadline(0), GIT_TIMEOUT);
+        assert_eq!(
+            scaled_deadline(1),
+            GIT_TIMEOUT + std::time::Duration::from_secs(300)
+        );
+        assert_eq!(
+            scaled_deadline(2 << 30),
+            GIT_TIMEOUT + std::time::Duration::from_secs(600)
+        );
+    }
+
+    #[test]
+    fn delivered_commits_arrive_as_a_pack_without_loose_objects() {
+        let (_tmp, root) = canon_tmp();
+        let repo = repo_at(&root, "proj");
+        let r = repo.to_string_lossy().into_owned();
+        let team = clone_dir(&r, "q_pack").unwrap();
+        let lead = lead_dir(&team);
+        GitClone
+            .prepare_member(&r, "q_pack", &lead.to_string_lossy(), "queue/q_pack")
+            .unwrap();
+        let base = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        commit_file(&repo, "p.txt");
+        let tip = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        let packs = |dir: &Path| {
+            let mut names: Vec<String> = std::fs::read_dir(dir.join(".git/objects/pack"))
+                .unwrap()
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect();
+            names.sort();
+            names
+        };
+        let before = packs(&lead);
+        deliver_commits(&repo, &lead, &base, &tip).unwrap();
+        let after = packs(&lead);
+        let fresh: Vec<&String> = after.iter().filter(|n| !before.contains(n)).collect();
+        assert_eq!(fresh.len(), 2, "{fresh:?}");
+        assert!(fresh.iter().any(|n| n.ends_with(".pack")));
+        assert!(fresh.iter().any(|n| n.ends_with(".idx")));
+        let fans = std::fs::read_dir(lead.join(".git/objects"))
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().len() == 2)
+            .count();
+        assert_eq!(fans, 0);
+        run_git(&lead, &["cat-file", "-e", &format!("{tip}^{{commit}}")]);
+        run_git(&lead, &["fsck", "--full", "--strict"]);
+    }
+
+    #[test]
+    fn output_to_a_file_stops_at_the_cap_and_at_the_deadline() {
+        let (_tmp, root) = canon_tmp();
+        let out = root.join("out");
+        let mut flood = Command::new("sh");
+        flood.args(["-c", "yes | head -c 100000"]);
+        let err = output_to_file(&mut flood, GIT_TIMEOUT, 1000, Vec::new(), &out).unwrap_err();
+        assert!(err.to_string().contains("more than"), "{err}");
+        let mut slow = Command::new("sleep");
+        slow.arg("30");
+        let started = std::time::Instant::now();
+        let err = output_to_file(
+            &mut slow,
+            std::time::Duration::from_millis(100),
+            1000,
+            Vec::new(),
+            &out,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("in time"), "{err}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
     }
 
     fn prune_source(repo: &Path) {
