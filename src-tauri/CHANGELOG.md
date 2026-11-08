@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.133 — 2026-11-08
+
+- The Decisions window shows whether an agent is waiting for an answer on the selected card: "Agent is listening" or "Agent offline - reply will be saved to the task".
+- From the TMGR iPhone app you can now send a message to the agent on a Decisions card without answering it; the card stays open. The agent gets the message the next time it checks the card. If no agent picks it up within 30 minutes, or the card closes first, the message is posted to the linked TMGR task as a comment.
+- The phone now sees whether the agent is listening and whether each message was read by the agent, saved to the task or delivered later. Needs the TMGR iPhone app 1.21.0 with its latest update; older phone versions keep working as before.
+
 ## 0.9.132 — 2026-11-08
 
 - The TMGR iPhone app can now show how many decisions are waiting: this app tells the phone the number of open cards along with each update, so the iPhone shows it on its Decisions tab and app icon. After this app restarts, the phone gets one "New decision waiting" notification if any cards are still open. Needs the TMGR iPhone app 1.20.1 with its latest update.
