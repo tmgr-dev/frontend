@@ -14,7 +14,7 @@ curl -fsSL https://tmgr.dev/install.sh | sh
 tmgr start TM-123
 ```
 
-**Run AI agents under supervision.** Agents run inside a sandbox. In a git repository an agent works in its own copy of your project on its own branch (a session clone; `--no-worktree` or `tmgr config set attach.worktree false` starts in place), so two agents never write the same files, and `tmgr runner import <session>` brings the branch back; with `--checkpoints` its work is saved after every turn (git folders). You can look at it at any moment (`tmgr attach`, `tmgr peek`) and roll its changes back (`tmgr checkpoints restore`).
+**Run AI agents under supervision.** Agents run inside a sandbox. In a git repository an agent works in its own copy of your project on its own branch (a session clone; `--no-worktree`, or `attach.worktree = false` in the config, starts in place), so two agents never write the same files, and `tmgr runner import` with the session name brings the branch back; with `--checkpoints` its work is saved after every turn (git folders). You can look at it at any moment (`tmgr attach`, `tmgr peek`) and roll its changes back (`tmgr checkpoints restore`).
 
 ```bash
 tmgr run --agent claude-code --checkpoints
