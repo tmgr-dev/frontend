@@ -39,6 +39,9 @@ server {
         try_files $uri =404;
     }
 
+    # public/docs/ holds static files; the docs page itself is the SPA.
+    location ~ ^/docs/?$ { rewrite ^ /index.html last; }
+
     location / {
         try_files $uri $uri/ /index.html;
     }
