@@ -6,10 +6,11 @@ use tmgr_phone::{AckBody, AckResult, Pairing};
 use super::super::store::{PhoneOutcome, PhoneReq};
 use super::pins::Pin;
 use super::projection::{delivery_target, session_of};
-use super::relay::RelayMsg;
+use super::relay::{self, RelayMsg};
 use super::Phones;
 
 const ALERT_EVERY_MS: i64 = 10 * 60 * 1000;
+const FAILED_IDS_MAX: usize = 1024;
 const OTHER_PHONE: &str = "another phone";
 
 impl Phones {
@@ -39,10 +40,20 @@ impl Phones {
     )
   }
 
+  fn first_failure(&self, id: &str) -> bool {
+    let mut seen = self.failed_ids.lock().unwrap_or_else(|p| p.into_inner());
+    if seen.len() >= FAILED_IDS_MAX {
+      seen.clear();
+    }
+    seen.insert(id.to_owned())
+  }
+
   pub(super) fn verification_failed(&self, pin: &Pin, msg: &RelayMsg) {
     let now = (self.now)();
     self.failures.fetch_add(1, Ordering::SeqCst);
-    self.audit.append(now, "verify_failed", &[("mailbox", &pin.mailbox), ("message", &msg.id)]);
+    if self.first_failure(&msg.id) {
+      self.audit.append(now, "verify_failed", &[("mailbox", &pin.mailbox), ("message", &msg.id)]);
+    }
     let last = self.last_alert.load(Ordering::SeqCst);
     if now.saturating_sub(last) >= ALERT_EVERY_MS {
       self.last_alert.store(now, Ordering::SeqCst);
@@ -120,7 +131,7 @@ impl Phones {
   pub fn cleanup_revoked(&self, pin: &Pin) {
     let conn = pin.conn();
     if let Ok(msgs) = self.relay.list_messages(&conn) {
-      for m in msgs.iter().filter(|m| m.kind == "answer" && tmgr_phone::valid_answer_id(&m.reference)) {
+      for m in relay::usable(msgs).filter(|m| m.kind == "answer" && tmgr_phone::valid_answer_id(&m.reference)) {
         let _ = self.send_ack(pin, &m.reference, self.ack_body(&m.reference, AckResult::Revoked, None, None));
       }
     }

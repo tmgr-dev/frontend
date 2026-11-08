@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
+pub const MAX_BYTES: u64 = 4 << 20;
 const GENESIS: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
 pub struct Audit {
@@ -27,6 +28,10 @@ impl Audit {
     std::fs::read_to_string(&self.path)
       .ok()
       .and_then(|t| t.lines().last().map(sha))
+      .or_else(|| {
+        let old = std::fs::read_to_string(self.path.with_extension("jsonl.1")).ok()?;
+        old.lines().last().map(sha)
+      })
       .unwrap_or_else(|| GENESIS.to_owned())
   }
 
@@ -38,6 +43,9 @@ impl Audit {
       entry[*k] = json!(v);
     }
     let line = entry.to_string();
+    if std::fs::metadata(&self.path).is_ok_and(|m| m.len() > MAX_BYTES) {
+      let _ = std::fs::rename(&self.path, self.path.with_extension("jsonl.1"));
+    }
     let written =
       OpenOptions::new().create(true).append(true).mode(0o600).open(&self.path).and_then(|mut f| writeln!(f, "{line}"));
     match written {

@@ -6,7 +6,7 @@ mod poller;
 mod projection;
 mod relay;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -52,6 +52,7 @@ pub struct Phones {
   pairing: Mutex<Option<Pending>>,
   synced: Mutex<HashMap<String, Synced>>,
   failures: AtomicU64,
+  failed_ids: Mutex<HashSet<String>>,
   last_alert: AtomicI64,
   dirty_since: AtomicI64,
   kick: (Mutex<bool>, Condvar),
@@ -98,6 +99,7 @@ impl Phones {
       pairing: Mutex::new(None),
       synced: Mutex::new(HashMap::new()),
       failures: AtomicU64::new(0),
+      failed_ids: Mutex::new(HashSet::new()),
       last_alert: AtomicI64::new(i64::MIN),
       dirty_since: AtomicI64::new(0),
       kick: (Mutex::new(true), Condvar::new()),

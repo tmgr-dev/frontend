@@ -6,6 +6,7 @@ use std::time::Duration;
 use tmgr_phone::{Pairing, SnapshotBody, SnapshotCard};
 
 use super::pins::Pin;
+use super::relay;
 use super::projection::{eligible, project, session_of, CARDS_MAX};
 use super::Phones;
 
@@ -36,7 +37,7 @@ impl Phones {
       let Ok(msgs) = self.relay.list_messages(&pin.conn()) else {
         continue;
       };
-      for msg in msgs {
+      for msg in relay::usable(msgs) {
         if msg.kind == "answer" {
           if let Err(e) = self.handle_answer(&pin, &msg) {
             log::warn!("[phones] an answer could not be processed: {e}");

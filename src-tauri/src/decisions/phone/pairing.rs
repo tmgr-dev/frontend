@@ -7,12 +7,13 @@ use subtle::ConstantTimeEq;
 use tmgr_phone::{HelloCtx, OpenedHello, PairOkBody, Pairing};
 
 use super::pins::{Pin, MAX_PHONES};
-use super::relay::Conn;
+use super::relay::{self, Conn};
 use super::{PairingView, Phones};
 
 pub const QR_TTL_MS: i64 = 5 * 60 * 1000;
 pub const CODE_ATTEMPTS: u8 = 3;
 const NAME_MAX: usize = 64;
+const SEEN_MAX: usize = 100;
 
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -84,6 +85,14 @@ fn url_safe(s: &str, max: usize) -> bool {
   !s.is_empty() && s.len() <= max && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
+fn is_uuid(s: &str) -> bool {
+  s.len() == 36
+    && s.bytes().enumerate().all(|(i, b)| match i {
+      8 | 13 | 18 | 23 => b == b'-',
+      _ => b.is_ascii_hexdigit(),
+    })
+}
+
 fn qr_data_url(text: &str) -> Result<String, String> {
   let code = qrcode::QrCode::new(text.as_bytes()).map_err(|_| "could not draw the QR code".to_owned())?;
   let svg = code.render::<qrcode::render::svg::Color>().min_dimensions(320, 320).quiet_zone(true).build();
@@ -101,7 +110,7 @@ impl Phones {
     desktop_name: &str,
   ) -> Result<(), String> {
     let base = crate::local_move::trusted_api_base(api_base, crate::local_move::EXTRA_API)?;
-    if !url_safe(mailbox_id, 64) || !url_safe(desktop_token, 128) || !url_safe(phone_token, 128) {
+    if !is_uuid(mailbox_id) || !url_safe(desktop_token, 128) || !url_safe(phone_token, 128) {
       return Err("the relay mailbox data is not valid".into());
     }
     let name = clean_name(desktop_name);
@@ -181,7 +190,7 @@ impl Phones {
       qr_svg_data_url: if p.state == PairState::Waiting { p.qr.clone() } else { String::new() },
       expires_ms: p.exp_ms,
       attempts_left: p.attempts_left,
-      phone_name: p.hello.as_ref().map(|(h, _)| h.body.name.clone()),
+      phone_name: p.hello.as_ref().map(|(h, _)| clean_name(&h.body.name)),
       error: p.error.clone(),
     })
   }
@@ -237,13 +246,16 @@ impl Phones {
       if p.conn.mailbox != conn.mailbox || p.finishing || !matches!(p.state, PairState::Waiting | PairState::Confirm) {
         return;
       }
-      for m in msgs.iter().filter(|m| m.kind == "hello") {
+      for m in relay::usable(msgs).filter(|m| m.kind == "hello") {
         if p.seen.contains(&m.id) {
           continue;
         }
-        p.seen.push(m.id.clone());
         let ctx = HelloCtx { host: &ctx_base.0, user_id: ctx_base.1, mailbox: &conn.mailbox, desktop_fp: &ctx_base.2 };
-        match tmgr_phone::open_hello(&kex, &ctx, &secret, &m.body) {
+        let opened = tmgr_phone::open_hello(&kex, &ctx, &secret, &m.body);
+        if opened.is_ok() && p.seen.len() < SEEN_MAX {
+          p.seen.push(m.id.clone());
+        }
+        match opened {
           Err(_) => junk.push(m.clone()),
           Ok(h) => match &p.hello {
             None => {

@@ -17,6 +17,7 @@ use super::*;
 const T0: i64 = 1_700_000_000_000;
 const HOUR: i64 = 3_600_000;
 const BASE: &str = "http://127.0.0.1:9/api/";
+const MBX: &str = "3f2b8c1e-5d4a-4b7e-9c3d-1a2b3c4d5e6f";
 
 #[derive(Default)]
 struct FakeHost {
@@ -723,7 +724,7 @@ struct Pairer {
 }
 
 fn begin(r: Rig) -> Pairer {
-  r.phones.begin_pairing(BASE, 7, "mbx-1", "dtok", "ptok", "Studio Mac").unwrap();
+  r.phones.begin_pairing(BASE, 7, MBX, "dtok", "ptok", "Studio Mac").unwrap();
   Pairer { r, ps: key(50), pk: key(51) }
 }
 
@@ -734,7 +735,7 @@ impl Pairer {
       let p = g.as_ref().unwrap();
       (tmgr_phone::public_key(&p.kex_secret).unwrap(), p.desktop_fp.clone(), p.secret.clone())
     };
-    let ctx = HelloCtx { host: BASE, user_id: user, mailbox: "mbx-1", desktop_fp: &d_fp };
+    let ctx = HelloCtx { host: BASE, user_id: user, mailbox: MBX, desktop_fp: &d_fp };
     let body = HelloBody::build(
       &ctx,
       &secret_override.unwrap_or(secret),
@@ -776,10 +777,10 @@ fn pairing_happy_path_pins_the_phone_and_uploads_a_snapshot() {
   drop(st);
   let list = p.r.phones.list().unwrap();
   assert_eq!((list.len(), list[0].name.as_str(), list[0].last_used_ms), (1, "My iPhone", 0));
-  let pin = p.r.phones.pins.get("mbx-1").unwrap().unwrap();
+  let pin = p.r.phones.pins.get(MBX).unwrap().unwrap();
   let (sign_pub, kex_pub) = (tmgr_phone::public_key(&p.ps).unwrap(), tmgr_phone::public_key(&p.pk).unwrap());
   assert_eq!(pin.phone_fp, tmgr_phone::fingerprint(&sign_pub, &kex_pub));
-  let pairing = Pairing { mailbox: "mbx-1", desktop_fp: &pin.desktop_fp, phone_fp: &pin.phone_fp };
+  let pairing = Pairing { mailbox: MBX, desktop_fp: &pin.desktop_fp, phone_fp: &pin.phone_fp };
   let d_sign_pub = tmgr_phone::public_key(&pin.keys().unwrap().sign_secret).unwrap();
   let sealed = p.r.relay.0.lock().unwrap().posted[0].2.clone();
   let ok = tmgr_phone::open_pair_ok(&p.pk, &pairing, &d_sign_pub, &sealed).unwrap();
@@ -845,15 +846,15 @@ fn at_most_three_phones_and_expired_ones_do_not_count() {
   for (i, n) in ["a", "b", "c"].iter().enumerate() {
     r.pair(&format!("mb{n}"), n, 10 + 10 * i as u8);
   }
-  assert!(r.phones.begin_pairing(BASE, 7, "mbx-1", "dtok", "ptok", "Mac").is_err());
+  assert!(r.phones.begin_pairing(BASE, 7, MBX, "dtok", "ptok", "Mac").is_err());
   r.clock.fetch_add(31 * 24 * HOUR, Ordering::SeqCst);
-  assert!(r.phones.begin_pairing(BASE, 7, "mbx-1", "dtok", "ptok", "Mac").is_ok());
+  assert!(r.phones.begin_pairing(BASE, 7, MBX, "dtok", "ptok", "Mac").is_ok());
 }
 
 #[test]
 fn untrusted_api_bases_are_refused() {
   let r = rig();
-  assert!(r.phones.begin_pairing("https://evil.example/api/", 7, "mbx-1", "dtok", "ptok", "Mac").is_err());
+  assert!(r.phones.begin_pairing("https://evil.example/api/", 7, MBX, "dtok", "ptok", "Mac").is_err());
   assert!(r.phones.begin_pairing(BASE, 7, "../x", "dtok", "ptok", "Mac").is_err());
 }
 
@@ -903,4 +904,84 @@ fn update_changes_a_live_pin_in_place() {
   assert_eq!(out.last_seq, 9);
   assert_eq!(r.phones.pins.get("mb1").unwrap().unwrap().last_seq, 9);
   assert_eq!(r.phones.pins.list().unwrap().len(), 1);
+}
+
+#[test]
+fn a_non_uuid_mailbox_is_refused_and_cannot_collide_with_the_index() {
+  let r = rig();
+  for bad in ["index", "mbx-1", "3f2b8c1e-5d4a-4b7e-9c3d-1a2b3c4d5e6", "3f2b8c1e-5d4a-4b7e-9c3d-1a2b3c4d5e6g"] {
+    assert!(r.phones.begin_pairing(BASE, 7, bad, "dtok", "ptok", "Mac").is_err(), "{bad}");
+  }
+  assert!(r.phones.begin_pairing(BASE, 7, MBX, "dtok", "ptok", "Mac").is_ok());
+}
+
+#[test]
+fn the_phone_name_in_the_pairing_view_is_cleaned() {
+  let p = begin(rig());
+  p.r.relay.push("hello", "hello", &p.hello(7, "  My\u{7}iPhone\n ", None));
+  p.r.phones.poll_pairing();
+  assert_eq!(p.r.phones.pairing_view().unwrap().phone_name.as_deref(), Some("MyiPhone"));
+}
+
+#[test]
+fn at_most_a_hundred_messages_are_processed_per_poll() {
+  let r = rig();
+  r.pair("mb1", "Pocket", 10);
+  for _ in 0..150 {
+    r.relay.push("answer", &r.next_id(), "{}");
+  }
+  r.phones.poll_all();
+  assert_eq!(r.phones.verification_failures(), 100);
+  assert_eq!(r.relay.0.lock().unwrap().inbox.len(), 50);
+}
+
+#[test]
+fn messages_with_unsafe_ids_are_dropped_unprocessed() {
+  let r = rig();
+  r.pair("mb1", "Pocket", 10);
+  for id in ["../x", "a/b", "", &"a".repeat(65)] {
+    r.relay.push_with_id(id, "answer", &r.next_id(), "{}");
+  }
+  r.phones.poll_all();
+  assert_eq!(r.phones.verification_failures(), 0);
+  assert!(r.relay.0.lock().unwrap().deleted.is_empty());
+  assert!(!r.dir.path().join("audit.jsonl").exists());
+}
+
+#[test]
+fn a_replayed_message_id_is_audited_once() {
+  let r = rig();
+  r.pair("mb1", "Pocket", 10);
+  for _ in 0..3 {
+    r.relay.push_with_id("same", "answer", &r.next_id(), "{}");
+    r.phones.poll_all();
+  }
+  let log = std::fs::read_to_string(r.dir.path().join("audit.jsonl")).unwrap();
+  assert_eq!(log.lines().filter(|l| l.contains("verify_failed")).count(), 1);
+  assert_eq!(r.phones.verification_failures(), 3);
+}
+
+#[test]
+fn the_audit_file_stays_near_its_cap() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("audit.jsonl");
+  let audit = Audit::new(path.clone());
+  let big = "x".repeat(50_000);
+  for i in 0..300 {
+    audit.append(i, "verify_failed", &[("message", &big)]);
+  }
+  let size = std::fs::metadata(&path).unwrap().len();
+  assert!(size <= audit::MAX_BYTES + 60_000, "{size}");
+}
+
+#[test]
+fn pairing_polls_handle_a_hundred_hellos_and_drop_unsafe_ids() {
+  let p = begin(rig());
+  for _ in 0..150 {
+    p.r.relay.push("hello", "hello", "{}");
+  }
+  p.r.relay.push_with_id("../x", "hello", "hello", "{}");
+  p.r.phones.poll_pairing();
+  assert_eq!(p.r.relay.0.lock().unwrap().inbox.len(), 51);
+  assert!(p.r.phones.pairing.lock().unwrap().as_ref().unwrap().seen.len() <= 100);
 }

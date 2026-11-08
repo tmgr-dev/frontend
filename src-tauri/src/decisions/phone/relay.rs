@@ -53,6 +53,10 @@ impl fmt::Debug for RelayMsg {
 
 pub type RelayResult<T> = Result<T, RelayError>;
 
+pub fn usable(msgs: Vec<RelayMsg>) -> impl Iterator<Item = RelayMsg> {
+  msgs.into_iter().filter(|m| safe_segment(&m.id)).take(MESSAGES_PER_POLL)
+}
+
 pub trait Relay: Send + Sync {
   fn put_snapshot(&self, c: &Conn, body: &str, nudge: bool) -> RelayResult<()>;
   fn put_phone_token(&self, c: &Conn, token: &str) -> RelayResult<()>;
@@ -64,7 +68,9 @@ pub trait Relay: Send + Sync {
 
 pub struct HttpRelay;
 
-fn safe_segment(s: &str) -> bool {
+pub const MESSAGES_PER_POLL: usize = 100;
+
+pub fn safe_segment(s: &str) -> bool {
   !s.is_empty() && s.len() <= 64 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
@@ -167,11 +173,18 @@ pub mod fake {
 
   impl FakeRelay {
     pub fn push(&self, kind: &str, reference: &str, body: &str) -> String {
+      let id = {
+        let mut s = self.0.lock().unwrap();
+        s.next += 1;
+        format!("m{}", s.next)
+      };
+      self.push_with_id(&id, kind, reference, body)
+    }
+
+    pub fn push_with_id(&self, id: &str, kind: &str, reference: &str, body: &str) -> String {
       let mut s = self.0.lock().unwrap();
-      s.next += 1;
-      let id = format!("m{}", s.next);
-      s.inbox.push(RelayMsg { id: id.clone(), kind: kind.into(), reference: reference.into(), body: body.into() });
-      id
+      s.inbox.push(RelayMsg { id: id.into(), kind: kind.into(), reference: reference.into(), body: body.into() });
+      id.to_owned()
     }
   }
 
