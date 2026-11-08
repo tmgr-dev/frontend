@@ -1,4 +1,5 @@
-import { t } from '@/i18n';
+import { currentLocale, onLocaleChange, t } from '@/i18n';
+import { isDesktopApp } from '@/utils/desktop';
 
 export interface TrayTask {
 	id: number;
@@ -109,4 +110,19 @@ export const pushTrayState = async (state: TrayState): Promise<void> => {
 	} catch (error) {
 		console.error('tray_update failed', error);
 	}
+};
+
+export const pushNativeLocale = async (): Promise<void> => {
+	if (!isDesktopApp()) return;
+	try {
+		const { invoke } = await import('@tauri-apps/api/core');
+		await invoke('native_locale_set', { locale: currentLocale() });
+	} catch (error) {
+		console.error('native_locale_set failed', error);
+	}
+};
+
+export const installNativeLocale = (): void => {
+	void pushNativeLocale();
+	onLocaleChange(() => void pushNativeLocale());
 };

@@ -55,7 +55,7 @@ pub fn open_window<R: Runtime>(app: &AppHandle<R>) {
     return;
   }
   let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("decisions.html".into()))
-    .title("Decisions · Doom Solving")
+    .title(crate::native_i18n::tr(crate::native_i18n::Key::DecisionsWindow))
     .inner_size(1280.0, 820.0)
     .min_inner_size(980.0, 640.0)
     .resizable(true)

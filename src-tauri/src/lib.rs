@@ -21,6 +21,7 @@ mod local_profile;
 mod local_watch;
 mod local_demo;
 mod local_workspaces;
+mod native_i18n;
 mod plugin_catalog;
 mod persona_cache;
 #[doc(hidden)]
@@ -235,6 +236,7 @@ pub fn run() {
       usage::usage_task,
       tray::tray_update,
       tray::dnd_update,
+      native_i18n::native_locale_set,
       update_relaunch::mark_update_relaunch,
       update_relaunch::relaunch_after_update,
       task_windows::open_task_window,

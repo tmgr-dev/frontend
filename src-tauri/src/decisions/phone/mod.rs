@@ -181,7 +181,7 @@ pub fn open_phones_window<R: Runtime>(app: &AppHandle<R>) {
     return;
   }
   let builder = WebviewWindowBuilder::new(app, PHONES_LABEL, WebviewUrl::App("decisions-phones.html".into()))
-    .title("Paired phones")
+    .title(crate::native_i18n::tr(crate::native_i18n::Key::PairedPhones))
     .inner_size(560.0, 760.0)
     .min_inner_size(480.0, 560.0)
     .resizable(true)

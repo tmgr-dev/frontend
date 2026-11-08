@@ -24,6 +24,7 @@ import {
 	isDesktopApp,
 } from '@/utils/desktop';
 import { installDesktopDiagnostics } from '@/utils/desktopDiagnostics';
+import { installNativeLocale } from '@/utils/desktopTray';
 import { startUpdateChecks } from '@/utils/desktopUpdater';
 import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import { installFileDropGuard } from '@/utils/fileDrag';
@@ -280,6 +281,7 @@ const start = async () => {
 	await Promise.all([profileReady, localeReady]);
 	if (isDesktopApp() && desktopWindowLabel() === 'main') {
 		void startRunnerStore();
+		installNativeLocale();
 		installCloudIdentitySync(store);
 		if (store.state.localProfile)
 			installLocalUpgrade(

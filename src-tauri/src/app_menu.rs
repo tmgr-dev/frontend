@@ -1,6 +1,7 @@
 use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
+use crate::native_i18n::{tr, Key};
 use crate::tray;
 
 pub const CHECK_FOR_UPDATES_ID: &str = "check_for_updates";
@@ -19,7 +20,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
   });
   if let Some(file_menu) = file_menu {
     let check_for_updates =
-      MenuItemBuilder::with_id(CHECK_FOR_UPDATES_ID, "Check for Updates…").build(app)?;
+      MenuItemBuilder::with_id(CHECK_FOR_UPDATES_ID, tr(Key::CheckForUpdates)).build(app)?;
     file_menu.insert(&PredefinedMenuItem::separator(app)?, 0)?;
     file_menu.insert(&check_for_updates, 0)?;
   }
@@ -30,8 +31,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
       .cloned()
   });
   if let Some(view_menu) = view_menu {
-    let back = MenuItemBuilder::with_id(NAV_BACK_ID, "Back").build(app)?;
-    let forward = MenuItemBuilder::with_id(NAV_FORWARD_ID, "Forward").build(app)?;
+    let back = MenuItemBuilder::with_id(NAV_BACK_ID, tr(Key::Back)).build(app)?;
+    let forward = MenuItemBuilder::with_id(NAV_FORWARD_ID, tr(Key::Forward)).build(app)?;
     view_menu.insert(&PredefinedMenuItem::separator(app)?, 0)?;
     view_menu.insert(&forward, 0)?;
     view_menu.insert(&back, 0)?;
