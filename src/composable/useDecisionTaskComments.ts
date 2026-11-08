@@ -13,12 +13,22 @@ export interface DecisionTaskCommentDeps {
 	fetchComments: (taskId: number) => Promise<{ message: string }[]>;
 	postComment: (taskId: number, message: string) => Promise<unknown>;
 	now: () => number;
-	origin: string;
+	origin: string | null;
 }
 
 export const BACKOFF_MS = 15 * 60 * 1000;
 const DEBOUNCE_MS = 2000;
 const INTERVAL_MS = 60 * 1000;
+
+export const PROD_API_ORIGIN = 'https://api.tmgr.dev';
+
+const apiOrigin = (baseURL: string | undefined): string | null => {
+	try {
+		return new URL(baseURL ?? '').origin;
+	} catch {
+		return null;
+	}
+};
 
 const httpStatus = (error: unknown): number | undefined =>
 	(error as { response?: { status?: number } })?.response?.status;
@@ -36,7 +46,7 @@ export const createDecisionTaskCommentSync = (
 	const deliver = async (item: PendingTaskComment) => {
 		const key = `${item.card_id}#${item.seq}`;
 		if ((backoffUntil.get(key) ?? 0) > deps.now()) return;
-		if (item.origin !== deps.origin) return;
+		if (deps.origin === null || item.origin !== deps.origin) return;
 		try {
 			const comments = await deps.fetchComments(item.task_id);
 			const present = comments.some((c) =>
@@ -50,7 +60,13 @@ export const createDecisionTaskCommentSync = (
 			backoffUntil.delete(key);
 		} catch (error) {
 			const status = httpStatus(error);
-			if (status === 403 || status === 404) {
+			if (
+				status !== undefined &&
+				status >= 400 &&
+				status < 500 &&
+				status !== 408 &&
+				status !== 429
+			) {
 				backoffUntil.set(key, deps.now() + BACKOFF_MS);
 			}
 		}
@@ -89,18 +105,26 @@ export const createDecisionTaskCommentSync = (
 };
 
 const defaultDeps = async (): Promise<DecisionTaskCommentDeps> => {
-	const [{ invoke }, { getComments, createComment }, { WEB_ORIGIN }] =
-		await Promise.all([
-			import('@tauri-apps/api/core'),
-			import('@/actions/tmgr/comments'),
-			import('@/utils/taskLinks'),
-		]);
+	const [
+		{ invoke },
+		{ getComments, createComment },
+		{ WEB_ORIGIN },
+		{ default: $axios },
+	] = await Promise.all([
+		import('@tauri-apps/api/core'),
+		import('@/actions/tmgr/comments'),
+		import('@/utils/taskLinks'),
+		import('@/plugins/axios'),
+	]);
 	return {
 		invoke,
 		fetchComments: (taskId) => getComments(taskId, false),
 		postComment: (taskId, message) => createComment(taskId, { message }),
 		now: Date.now,
-		origin: WEB_ORIGIN,
+		origin:
+			apiOrigin($axios.defaults.baseURL) === PROD_API_ORIGIN
+				? WEB_ORIGIN
+				: null,
 	};
 };
 

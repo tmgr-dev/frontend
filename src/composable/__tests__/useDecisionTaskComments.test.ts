@@ -104,6 +104,32 @@ describe('decision task comment sync', () => {
 		expect(marked).toEqual([]);
 	});
 
+	it.each([400, 401, 410, 422])('backs off on %i', async (status) => {
+		const { deps, marked, sync } = setup();
+		deps.postComment.mockRejectedValueOnce(httpError(status));
+		await sync.run();
+		await sync.run();
+		expect(deps.postComment).toHaveBeenCalledTimes(1);
+		expect(marked).toEqual([]);
+	});
+
+	it.each([408, 429])('retries on the next tick after %i', async (status) => {
+		const { deps, marked, sync } = setup();
+		deps.postComment.mockRejectedValueOnce(httpError(status));
+		await sync.run();
+		await sync.run();
+		expect(deps.postComment).toHaveBeenCalledTimes(2);
+		expect(marked).toEqual(['c_1#1']);
+	});
+
+	it('skips everything when the API is not production', async () => {
+		const { deps, marked } = setup();
+		const sync = createDecisionTaskCommentSync({ ...deps, origin: null });
+		await sync.run();
+		expect(deps.fetchComments).not.toHaveBeenCalled();
+		expect(marked).toEqual([]);
+	});
+
 	it('skips items from another origin without marking', async () => {
 		const { deps, marked, sync } = setup([
 			item({ origin: 'https://other.example' }),
