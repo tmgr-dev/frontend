@@ -13,22 +13,23 @@ use std::sync::{Arc, Condvar, Mutex};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
-use tmgr_ipc::decisions::{CardIn, Event};
+use tmgr_ipc::decisions::Event;
 
 use super::hub::Hub;
+use super::push::RouteOutcome;
 use audit::Audit;
 use pairing::Pending;
 use pins::{Keychain, Pins};
 use relay::{HttpRelay, Relay};
 
-pub use projection::{delivery_target, eligible, project};
+pub use projection::{eligible, project};
 
 pub const PHONES_LABEL: &str = "decisions-phones";
 const MAIN_LABEL: &str = "main";
 
 pub trait Host: Send + Sync {
   fn notify(&self, title: &str, body: &str);
-  fn deliver(&self, card: &CardIn, event: &Event, bound: &str);
+  fn route(&self, card_id: &str, event: &Event, bound: &str) -> RouteOutcome;
   fn changed(&self);
   fn open_window(&self);
 }
@@ -157,8 +158,8 @@ impl<R: Runtime> Host for TauriHost<R> {
     crate::plugin_notify::plugin_notify(self.0.clone(), title.to_owned(), body.to_owned(), None);
   }
 
-  fn deliver(&self, card: &CardIn, event: &Event, _bound: &str) {
-    super::deliver(&self.0, card, event);
+  fn route(&self, card_id: &str, event: &Event, bound: &str) -> RouteOutcome {
+    super::push::route(&self.0, card_id, event, Some(bound))
   }
 
   fn changed(&self) {

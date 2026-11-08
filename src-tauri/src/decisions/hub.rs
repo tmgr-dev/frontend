@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
-use tmgr_ipc::decisions::{drain_spool, CardIn, Event, Found, LineComment, PatchIn};
+use tmgr_ipc::decisions::{drain_spool, CardIn, Event, Found, Inbox, LineComment, PatchIn};
 
-use super::store::{AnswerIn, CardView, Created, MessageIn, PhoneOutcome, PhoneReq, Store};
+use super::store::{AnswerIn, CardView, Created, MessageIn, PhoneOutcome, PhoneReq, Recorded, Routing, Store};
 
 pub enum Change {
   Created { title: String, body: String },
@@ -164,14 +164,43 @@ impl Hub {
     self.lock().open_count()
   }
 
+  #[cfg(test)]
   pub fn create(&self, card: CardIn) -> Result<Created, String> {
-    let created = self.lock().create(card)?;
+    self.create_with(card, None)
+  }
+
+  pub fn create_with(&self, card: CardIn, inbox: Option<Inbox>) -> Result<Created, String> {
+    let created = self.lock().create_with(card, inbox)?;
     if created.fresh {
       self.changed(Change::Created { title: created.card.title.clone(), body: body_of(&created.card) });
     } else if created.changed {
       self.changed(Change::Updated);
     }
     Ok(created)
+  }
+
+  pub fn listening(&self, id: &str) -> bool {
+    self.lock_listen().get(id).is_some_and(|l| l.active(self.grace))
+  }
+
+  pub fn routing(&self, id: &str) -> Result<Option<Routing>, String> {
+    self.lock().routing(id)
+  }
+
+  pub fn delivery_target(&self, id: &str) -> String {
+    self.lock().delivery_target(id).ok().flatten().unwrap_or_default()
+  }
+
+  pub fn drop_target(&self, id: &str, endpoint: &str) {
+    self.lock().drop_target(id, endpoint);
+    self.changed(Change::Updated);
+  }
+
+  pub fn record_delivery(&self, id: &str, seq: u64, state: &str, via: &str, detail: &str) {
+    let recorded = self.lock().record_delivery(id, seq, state, via, detail).unwrap_or(Recorded::Same);
+    if recorded != Recorded::Same {
+      self.changed(Change::Updated);
+    }
   }
 
   pub fn find(&self, task: Option<&str>, key: Option<&str>, query: Option<&str>, limit: usize) -> Result<Vec<Found>, String> {
@@ -259,6 +288,7 @@ impl Hub {
     }
     if let Some((i, e)) = Self::first_event(&mut guard, &ids, cards, final_only)? {
       rose |= !final_only && !e.is_final() && self.deliver(&ids[i], e.seq);
+      rose |= guard.record_delivery(&ids[i], e.seq, "delivered", "agent", "") == Ok(Recorded::Changed);
       drop(guard);
       if rose {
         self.changed(Change::Updated);
@@ -276,7 +306,8 @@ impl Hub {
         if !alive() {
           return Ok((ids, None));
         }
-        let rose = !final_only && !e.is_final() && self.deliver(&ids[i], e.seq);
+        let mut rose = !final_only && !e.is_final() && self.deliver(&ids[i], e.seq);
+        rose |= guard.record_delivery(&ids[i], e.seq, "delivered", "agent", "") == Ok(Recorded::Changed);
         drop(guard);
         if rose {
           self.changed(Change::Updated);
@@ -602,6 +633,23 @@ mod tests {
     for t in handles {
       t.join().unwrap();
     }
+  }
+
+  #[test]
+  fn a_returned_event_is_recorded_as_delivered_by_the_agent_final_ones_included() {
+    let (hub, _, id) = rig();
+    hub.record_delivery(&id, 1, "sent", "claude", "");
+    say(&hub, &id, "one");
+    hub.record_delivery(&id, 1, "sent", "claude", "");
+    hub.wait(&id, 0, Duration::ZERO, false).unwrap();
+    let d = hub.get(&id).unwrap().delivery.unwrap();
+    assert_eq!((d.state.as_str(), d.via.as_str()), ("delivered", "agent"));
+    hub.answer(&id, AnswerIn { dismissed: true, ..Default::default() }).unwrap();
+    hub.record_delivery(&id, 2, "sent", "claude", "");
+    hub.wait(&id, 0, Duration::ZERO, true).unwrap();
+    let d = hub.get(&id).unwrap().delivery.unwrap();
+    assert_eq!((d.state.as_str(), d.via.as_str()), ("delivered", "agent"));
+    assert_eq!(hub.routing(&id).unwrap().unwrap().latest_seq, 2);
   }
 
   #[test]

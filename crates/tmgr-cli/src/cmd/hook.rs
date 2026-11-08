@@ -726,7 +726,8 @@ fn decisions_work(event: &str) {
         "permission-request" => cards::permission_card(&input, &cwd, session),
         _ => return,
     };
-    if let Err(e) = client.create(card) {
+    let inbox = cards::hook_inbox(&card);
+    if let Err(e) = client.create_with(card, inbox) {
         debug(&format!("decisions card not sent: {e}"));
     }
 }

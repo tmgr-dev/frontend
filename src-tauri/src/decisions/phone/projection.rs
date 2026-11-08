@@ -1,5 +1,4 @@
 use serde::Serialize;
-use tmgr_ipc::decisions::CardIn;
 
 use super::super::store::CardView;
 
@@ -74,14 +73,6 @@ struct Projection {
 pub struct Projected {
   pub json: String,
   pub digest: String,
-}
-
-pub fn delivery_target(card: &CardIn) -> String {
-  card.source.runner_session.as_ref().map(|s| format!("runner:{s}")).unwrap_or_default()
-}
-
-pub fn session_of(view: &CardView) -> String {
-  delivery_target(&CardIn { source: view.source.clone(), ..Default::default() })
 }
 
 pub fn eligible(view: &CardView) -> bool {

@@ -3,12 +3,11 @@ use std::sync::atomic::Ordering;
 
 use sha2::{Digest, Sha256};
 
-use tmgr_ipc::decisions::{CardIn, Event};
 use tmgr_phone::{AckBody, AckResult, Pairing};
 
+use super::super::push::RouteOutcome;
 use super::super::store::{PhoneOutcome, PhoneReq};
 use super::pins::Pin;
-use super::projection::{delivery_target, session_of};
 use super::relay::{self, RelayMsg};
 use super::Phones;
 
@@ -116,35 +115,26 @@ impl Phones {
     if out.result == AckResult::Applied {
       self.touch(&pin.mailbox, now);
     }
+    let (result, label) = match self.after_apply(&req.card_id, &out) {
+      Some(RouteOutcome::TargetChanged) => (AckResult::Changed, None),
+      _ => (out.result, out.label.clone()),
+    };
     self.audit.append(
       now,
       "answer",
-      &[("answer_id", &req.answer_id), ("result", out.result.as_str()), ("phone_fp", &pin.phone_fp)],
+      &[("answer_id", &req.answer_id), ("result", result.as_str()), ("phone_fp", &pin.phone_fp)],
     );
-    self.after_apply(&req.card_id, &out);
-    let ack = self.ack_body(&req.answer_id, out.result, self.winner_name(&pin, out.winner.clone()), out.label.clone());
+    let ack = self.ack_body(&req.answer_id, result, self.winner_name(&pin, out.winner.clone()), label);
     self.send_ack(&pin, &req.answer_id, ack)?;
     let _ = self.relay.delete_message(&conn, &msg.id);
     Ok(())
   }
 
-  fn after_apply(&self, card_id: &str, out: &PhoneOutcome) {
-    let Some((event, card)) = &out.applied else {
-      return;
-    };
+  fn after_apply(&self, card_id: &str, out: &PhoneOutcome) -> Option<RouteOutcome> {
+    let (event, _) = out.applied.as_ref()?;
     let label = out.label.as_deref().unwrap_or("Text reply");
     self.host.notify("TMGR", &format!("Answered from iPhone: {label}"));
-    self.deliver_bound(card_id, card, event, &out.target);
-  }
-
-  fn deliver_bound(&self, card_id: &str, card: &CardIn, event: &Event, bound: &str) {
-    if bound.is_empty() || delivery_target(card) != bound {
-      return;
-    }
-    let unchanged = self.hub.get(card_id).is_ok_and(|v| session_of(&v) == bound);
-    if unchanged {
-      self.host.deliver(card, event, bound);
-    }
+    (!out.target.is_empty()).then(|| self.host.route(card_id, event, &out.target))
   }
 
   pub fn cleanup_revoked(&self, pin: &Pin) {

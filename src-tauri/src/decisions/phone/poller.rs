@@ -7,7 +7,7 @@ use tmgr_phone::{Pairing, SnapshotBody, SnapshotCard};
 
 use super::pins::Pin;
 use super::relay;
-use super::projection::{eligible, project, session_of, CARDS_MAX};
+use super::projection::{eligible, project, CARDS_MAX};
 use super::Phones;
 
 const BUSY_MS: i64 = 10_000;
@@ -63,7 +63,7 @@ impl Phones {
       if cards.len() == CARDS_MAX {
         break;
       }
-      if let Some(p) = project(v, &session_of(v)) {
+      if let Some(p) = project(v, &self.hub.delivery_target(&v.id)) {
         cards.push(SnapshotCard {
           id: v.id.clone(),
           digest: p.digest,

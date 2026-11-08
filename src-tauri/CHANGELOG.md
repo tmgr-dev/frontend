@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.126 — 2026-11-08
+
+- When you answer a Decisions card or write in its chat, the agent that asked gets it right away, even if it is idle. A Claude Code session wakes up and picks up your answer. A session in the tmgr runner gets it typed in, but only at its prompt: while the agent is busy or a dialog is open, the message waits and is sent once the prompt is back. The card shows whether the answer was sent, delivered, is waiting for the agent's prompt, or could not be delivered because the session closed. You can now also answer an agent's "stopped" card when its session can receive it. Needs tmgr 1.0.108 for the agent side.
+
 ## 0.9.125 — 2026-11-08
 
 - The Decisions inbox no longer lets an agent re-ask a question you already answered. When a new card on the same task has the same question as one you answered, dismissed, or still have open, the agent gets the earlier card back instead of a duplicate. Agents can also search your past answers by task, key or text with the new `find_answers` tool (the `tmgr decisions answers` command does the same). Needs tmgr 1.0.107 for the agent side.

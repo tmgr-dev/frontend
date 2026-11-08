@@ -2,10 +2,11 @@ use std::path::Path;
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use tmgr_ipc::decisions::{CardIn, Event, Opt, Source};
+use tmgr_ipc::decisions::{CardIn, Event, Inbox, Opt, Secret, Source};
 use tmgr_phone::{AckBody, AckResult, Action, AnswerBody, Dir, HelloBody, HelloCtx, Kind, Pairing, SnapshotBody};
 
 use super::super::hub::Hub;
+use super::super::push::{route_with, PushErr, Queue, SocketSender};
 use super::super::store::{AnswerIn, Store};
 use super::audit::Audit;
 use super::pairing::PairState;
@@ -23,7 +24,18 @@ const MBX: &str = "3f2b8c1e-5d4a-4b7e-9c3d-1a2b3c4d5e6f";
 struct FakeHost {
   notes: Mutex<Vec<String>>,
   delivered: Mutex<Vec<(String, String, String)>>,
+  hub: Mutex<Option<Arc<Hub>>>,
+  before_route: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+  outcomes: Mutex<Vec<RouteOutcome>>,
   changed: AtomicUsize,
+}
+
+struct NoSocket;
+
+impl SocketSender for NoSocket {
+  fn send(&self, _: &str, _: &str, _: &str) -> Result<(), PushErr> {
+    panic!("nothing may be typed into a session");
+  }
 }
 
 impl Host for FakeHost {
@@ -31,12 +43,19 @@ impl Host for FakeHost {
     self.notes.lock().unwrap().push(body.to_owned());
   }
 
-  fn deliver(&self, card: &CardIn, event: &Event, bound: &str) {
+  fn route(&self, card_id: &str, event: &Event, bound: &str) -> RouteOutcome {
+    if let Some(f) = self.before_route.lock().unwrap().take() {
+      f();
+    }
     self.delivered.lock().unwrap().push((
-      card.source.runner_session.clone().unwrap_or_default(),
+      card_id.to_owned(),
       event.free_text.clone().unwrap_or_default(),
       bound.to_owned(),
     ));
+    let hub = self.hub.lock().unwrap().clone().expect("hub");
+    let out = route_with(&hub, &Queue::default(), &NoSocket, card_id, event, Some(bound));
+    self.outcomes.lock().unwrap().push(out);
+    out
   }
 
   fn changed(&self) {
@@ -78,6 +97,7 @@ fn rig() -> Rig {
   let hub = Arc::new(Hub::new(Store::open(Path::new(":memory:")).unwrap(), Box::new(|_, _| {})));
   let relay = Arc::new(FakeRelay::default());
   let host = Arc::new(FakeHost::default());
+  *host.hub.lock().unwrap() = Some(hub.clone());
   let store = Arc::new(MemStore::default());
   let phones = Phones::new(
     store.clone(),
@@ -258,8 +278,9 @@ fn applied_for_a_hook_card_types_into_its_bound_session_only() {
   assert_eq!(r.answer_ack(&p, &body).result, AckResult::Applied);
   assert_eq!(
     r.host.delivered.lock().unwrap().as_slice(),
-    [("run-1".to_owned(), "go on".to_owned(), "runner:run-1".to_owned())]
+    [(id.clone(), "go on".to_owned(), "runner:run-1".to_owned())]
   );
+  assert_eq!(r.host.outcomes.lock().unwrap().as_slice(), [RouteOutcome::Queued]);
   assert_eq!(r.host.notes.lock().unwrap().as_slice(), ["Answered from iPhone: Text reply"]);
 }
 
@@ -410,6 +431,41 @@ fn a_moved_session_target_is_changed_and_nothing_is_typed() {
   assert_eq!(r.answer_ack(&p, &body).result, AckResult::Changed);
   assert_eq!(r.typed(), 0);
   assert_eq!(r.state(&id), "open");
+}
+
+#[test]
+fn a_target_change_between_the_check_and_delivery_types_nothing_and_acks_changed() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let card = CardIn {
+    title: "Agent stopped".into(),
+    kind: "stopped".into(),
+    reply_via: "hook".into(),
+    source: Source {
+      agent: "claude".into(),
+      session: Some("s2".into()),
+      runner_session: Some("run-1".into()),
+      ..Default::default()
+    },
+    ..Default::default()
+  };
+  let endpoint = "/tmp/cc-socks/77.sock";
+  let inbox = Inbox {
+    kind: "claude".into(),
+    endpoint: endpoint.into(),
+    token: Some(Secret::new("tok")),
+    session: Some("sess-1".into()),
+  };
+  let id = r.hub.create_with(card, Some(inbox)).unwrap().id;
+  let (digest, session) = r.bind(&p, &id);
+  assert_eq!(session, "claude:sess-1|runner:run-1");
+  let hub = r.hub.clone();
+  let moved = id.clone();
+  *r.host.before_route.lock().unwrap() = Some(Box::new(move || hub.drop_target(&moved, endpoint)));
+  let body = r.body(&id, &digest, &session, Action::Answer, None, Some("go on"));
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Changed);
+  assert_eq!(r.host.outcomes.lock().unwrap().as_slice(), [RouteOutcome::TargetChanged]);
+  assert!(r.hub.get(&id).unwrap().delivery.is_none());
 }
 
 #[test]
@@ -700,14 +756,6 @@ fn projection_is_deterministic_and_capped() {
   let parsed: serde_json::Value = serde_json::from_str(&h.json).unwrap();
   assert_eq!(parsed["context_cut"], true);
   assert!(parsed["context"].as_str().unwrap().chars().count() <= 8000);
-}
-
-#[test]
-fn delivery_target_is_the_runner_session_or_empty() {
-  let mut card = CardIn::default();
-  assert_eq!(delivery_target(&card), "");
-  card.source.runner_session = Some("abc".into());
-  assert_eq!(delivery_target(&card), "runner:abc");
 }
 
 fn signature_of(p: &Phone, kind: Kind, sealed: &str) -> p256::ecdsa::Signature {
