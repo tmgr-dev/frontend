@@ -1,8 +1,12 @@
 # Changelog
 
-## 1.0.108
+## 1.0.109
 
 - Cards created by `tmgr mcp` now tell the desktop app how to reach the asking Claude Code session, so the owner's answer or chat message reaches the agent right away, waking it if it is idle. The session token is kept only in the desktop app's local store. Stop-hook cards register the session too, and inside OpenCode or Gemini CLI started from Claude no inbox is registered. Needs TMGR Desktop 0.9.126.
+
+## 1.0.108
+
+- Not released, superseded by 1.0.109.
 
 ## 1.0.107
 
