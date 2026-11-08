@@ -1,0 +1,9 @@
+{
+	"title": "Terminal agenta",
+	"agentSession": "Sesja agenta",
+	"connecting": "Łączenie",
+	"detach": "Odłącz",
+	"reattach": "Połącz ponownie",
+	"sessionEnded": "Sesja zakończona: {reason}",
+	"scrolledBack": "Przewinięto wstecz o {n} linię — naciśnij End, aby wrócić | Przewinięto wstecz o {n} linie — naciśnij End, aby wrócić | Przewinięto wstecz o {n} linii — naciśnij End, aby wrócić"
+}

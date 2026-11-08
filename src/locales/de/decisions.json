@@ -1,0 +1,200 @@
+{
+	"window": {
+		"title": "Entscheidungen · Doom Solving",
+		"titlebar": "tmgr · Entscheidungen · Doom Solving"
+	},
+	"kind": {
+		"decision": "Entscheidung",
+		"review": "Review",
+		"release": "Release",
+		"check": "Prüfung",
+		"question": "Frage",
+		"permission": "Berechtigung",
+		"stopped": "Beendet"
+	},
+	"link": {
+		"pr": "PR #{n}",
+		"sections": {
+			"pr": "PRs",
+			"commit": "Commits",
+			"tag": "Tags",
+			"task": "Aufgabe",
+			"url": "Sonstiges"
+		}
+	},
+	"subtitle": {
+		"default": "doom solving",
+		"rare": {
+			"scrollingUseful": "Doomscrolling, aber nützlich",
+			"oneMoreCard": "noch eine Karte, dann ab ins Bett",
+			"optionalDoom": "der Doom ist optional, die Entscheidungen nicht",
+			"solvingNotScrolling": "lösen statt scrollen",
+			"touchGrass": "fass danach Gras an",
+			"notProcrastination": "Es ist keine Prokrastination, wenn die Agenten warten",
+			"hello": "hallo, Doom"
+		}
+	},
+	"doom": {
+		"awaits": "Dein Doom wartet",
+		"streak": "Doom-Solving-Serie: {n}",
+		"lifetime": "Entscheidungen getroffen: {n}",
+		"speedrun": "Speedrun any%",
+		"nightOwl": "Nachteule: löst immer noch",
+		"inboxZero": "Inbox Zero. Doom für heute gelöst.",
+		"mode": "DOOM-Modus: aktiv"
+	},
+	"answer": {
+		"dismissed": "verworfen",
+		"deferred": "zurückgestellt",
+		"answered": "beantwortet",
+		"withNote": "{text} + Notiz",
+		"sessionGone": "gespeichert, aber die Sitzung ist beendet",
+		"toast": "{title}: {summary}"
+	},
+	"delivery": {
+		"sent": "An die Sitzung gesendet (unbestätigt)",
+		"deliveredRunner": "Über den Runner zugestellt",
+		"delivered": "Zugestellt",
+		"queued": "Wartet auf die Eingabeaufforderung des Agents",
+		"undelivered": "Nicht zugestellt: {reason}",
+		"sessionClosed": "Sitzung geschlossen"
+	},
+	"unpicked": "Von keinem Agent übernommen",
+	"wait": {
+		"sessionGone": "Die Sitzung ist beendet, daher sieht kein Agent das.",
+		"notListening": "Gerade hört kein Agent zu; er sieht es, sobald er zurück ist.",
+		"waiting": "warte auf den Agent…",
+		"noReplyDelivered": "Der Agent hat noch nicht geantwortet.",
+		"noReplyPending": "Der Agent hat noch nicht geantwortet; er sieht es bei der nächsten Prüfung."
+	},
+	"toast": {
+		"loadFailed": "Entscheidungen konnten nicht geladen werden: {error}",
+		"answerFailed": "Die Antwort konnte nicht gesendet werden: {error}",
+		"messageFailed": "Die Nachricht konnte nicht gesendet werden: {error}"
+	},
+	"tabs": {
+		"changes": "Änderungen",
+		"checks": "Prüfungen",
+		"chat": "Chat",
+		"refresh": "Aktualisieren",
+		"partial": "teilweise",
+		"totalExact": "Geänderte Zeilen insgesamt in dieser Karte",
+		"totalPartial": "Einige Dateien konnten nicht gezählt werden, daher ist die Summe unvollständig"
+	},
+	"empty": {
+		"done": "Doom Solving abgeschlossen. Fass Gras an.",
+		"doneHint": "Nichts wartet auf deine Entscheidung.",
+		"loadFailed": "Entscheidungen konnten nicht geladen werden",
+		"noMatches": "Keine Treffer",
+		"noMatchesHint": "Leere die Suche, um die Warteschlange zu sehen.",
+		"loading": "Wird geladen…"
+	},
+	"statusbar": {
+		"accept": "annehmen",
+		"pick": "wählen",
+		"note": "+ Notiz",
+		"freeText": "eigener Text",
+		"defer": "zurückstellen",
+		"dismiss": "verwerfen",
+		"cards": "Karten",
+		"waiting": "{n} wartend"
+	},
+	"queue": {
+		"title": "Warteschlange",
+		"count": "{pending} von {total}",
+		"search": "Warteschlange durchsuchen",
+		"complete": "Doom Solving abgeschlossen. Fass Gras an.",
+		"noMatches": "Keine Treffer",
+		"empty": "Die Warteschlange ist leer.",
+		"deferred": "zurückgestellt",
+		"updated": "aktualisiert",
+		"agentWaiting": "Ein Agent wartet",
+		"closeCard": "Karte schließen"
+	},
+	"card": {
+		"sessionEnded": "Sitzung beendet",
+		"agentWaiting": "Agent wartet",
+		"updatedAt": "aktualisiert {time}",
+		"position": "· {position} von {total}",
+		"dismissed": "Verworfen",
+		"closed": "Geschlossen",
+		"deferred": "Zurückgestellt",
+		"answered": "Beantwortet",
+		"dismissOnly": "Diese Karte stammt aus einer Terminal-Sitzung ohne Rückkanal. Antworte in der Agent-Sitzung oder verwirf sie hier.",
+		"dismiss": "Verwerfen",
+		"recommended": "★ empfohlen",
+		"addNote": "✎ + Notiz",
+		"addNoteTitle": "Auswählen und Notiz hinzufügen",
+		"notePlaceholder": "Notiz zu „{label}“… wird mit deiner Auswahl gesendet",
+		"noteSend": "Enter — senden · Shift+Enter — neue Zeile",
+		"noteCancel": "Esc — ohne Notiz",
+		"viaRunner": "Deine Antwort wird in die Agent-Sitzung getippt.",
+		"freeWithOptions": "Deine eigene Antwort… (T) — wird dem Agent als Kommentar gesendet",
+		"freeOnly": "Deine Antwort… (T) — mit Enter senden",
+		"hints": {
+			"accept": "annehmen ★",
+			"pick": "wählen",
+			"pickNote": "wählen + Notiz",
+			"defer": "zurückstellen",
+			"dismiss": "verwerfen",
+			"chat": "Chat",
+			"cards": "Karten"
+		}
+	},
+	"chat": {
+		"empty": "Noch keine Nachrichten zu dieser Karte.",
+		"you": "Du",
+		"agent": "Agent",
+		"placeholder": "Frag den Agent zu dieser Karte… Enter",
+		"unavailable": "Chat ist nicht verfügbar",
+		"answerInSession": "Antworte in der Agent-Sitzung."
+	},
+	"checks": {
+		"empty": "Keine Prüfungen aufgelistet."
+	},
+	"diff": {
+		"noneAttached": "Dieser Karte sind keine Änderungen angehängt.",
+		"loading": "Änderungen werden geladen…",
+		"loadFailed": "Änderungen konnten nicht geladen werden: {error}",
+		"none": "Keine Änderungen.",
+		"truncated": "Der Diff ist zu groß und wurde gekürzt.",
+		"commentOnLine": "Diese Zeile kommentieren",
+		"you": "Du",
+		"agent": "Agent",
+		"draftLabel": "Du · wird mit deiner Antwort gesendet",
+		"remove": "Entfernen",
+		"fix": "Beheben",
+		"fixClarify": "Beheben + präzisieren…",
+		"keep": "Beibehalten",
+		"reply": "Antworten",
+		"send": "Senden",
+		"addToAnswer": "Zur Antwort hinzufügen",
+		"close": "Schließen",
+		"keptAsIs": "Unverändert beibehalten",
+		"sentFix": "An den Agent gesendet: beheben",
+		"fixPlaceholder": "Wie genau soll es behoben werden… (leer — nur „Beheben“)",
+		"commentPlaceholder": "Kommentar zu dieser Zeile…",
+		"hintSend": "Enter — an den Agent senden · Shift+Enter — neue Zeile",
+		"hintDraft": "Enter — zur Antwort hinzufügen · Shift+Enter — neue Zeile",
+		"groupKind": {
+			"repo": "Repo",
+			"patch": "Patch"
+		}
+	},
+	"phones": {
+		"title": "tmgr · Telefone",
+		"qrAlt": "QR-Code zum Koppeln",
+		"expiresIn": "Läuft ab in",
+		"typeCode": "Gib den Code ein, der auf deinem iPhone angezeigt wird",
+		"confirm": "Bestätigen",
+		"done": "Du kannst jetzt Entscheidungskarten vom Telefon aus beantworten.",
+		"cancel": "Abbrechen",
+		"close": "Schließen",
+		"pairedPhones": "Gekoppelte Telefone",
+		"none": "Noch keine Telefone gekoppelt.",
+		"pairedInfo": "Gekoppelt am {date} · zuletzt verwendet {since}",
+		"revokeQuestion": "{name} widerrufen?",
+		"revoke": "Widerrufen",
+		"keep": "Behalten"
+	}
+}

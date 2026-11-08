@@ -1,0 +1,9 @@
+{
+	"title": "Agent-Terminal",
+	"agentSession": "Agent-Sitzung",
+	"connecting": "Verbindung wird hergestellt",
+	"detach": "Trennen",
+	"reattach": "Erneut verbinden",
+	"sessionEnded": "Sitzung beendet: {reason}",
+	"scrolledBack": "{n} Zeile zurückgescrollt — mit Ende zurückkehren | {n} Zeilen zurückgescrollt — mit Ende zurückkehren"
+}
