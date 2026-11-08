@@ -115,6 +115,15 @@ impl Fx {
     }
 
     pub fn run_with_objects(&self, objects: &std::path::Path, script: &str) -> Out {
+        self.run_objects(objects, script, &[])
+    }
+
+    pub fn run_objects(
+        &self,
+        objects: &std::path::Path,
+        script: &str,
+        helper_env: &[(&str, &str)],
+    ) -> Out {
         use std::os::unix::fs::MetadataExt;
         let meta = objects.metadata().unwrap();
         let spec = SandboxSpec {
@@ -139,6 +148,7 @@ impl Fx {
             .args(&l.argv[1..])
             .env_clear()
             .envs(l.env.iter().cloned())
+            .envs(helper_env.iter().copied())
             .current_dir(&l.cwd)
             .stdin(Stdio::null())
             .output()
@@ -148,6 +158,43 @@ impl Fx {
             stdout: String::from_utf8_lossy(&o.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
         }
+    }
+
+    pub fn borrowing_clone(&self) -> PathBuf {
+        let source = self.root.join("source");
+        fs::create_dir(&source).unwrap();
+        let git = |dir: &Path, args: &[&str]| {
+            let o = Command::new("git")
+                .current_dir(dir)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(o.status.success(), "{args:?}: {o:?}");
+        };
+        git(&source, &["init", "-q", "-b", "main"]);
+        for n in ["a", "b", "c"] {
+            fs::write(source.join(format!("{n}.txt")), format!("{n}\n")).unwrap();
+        }
+        git(&source, &["add", "."]);
+        git(&source, &["commit", "-q", "-m", "a"]);
+        fs::remove_dir(&self.cwd).unwrap();
+        git(
+            &self.root,
+            &[
+                "clone",
+                "-q",
+                "--shared",
+                source.to_str().unwrap(),
+                self.cwd.to_str().unwrap(),
+            ],
+        );
+        let objects = source.join(".git/objects");
+        let alt = fs::read_to_string(self.cwd.join(".git/objects/info/alternates")).unwrap();
+        assert_eq!(Path::new(alt.trim()), objects);
+        objects
     }
 
     pub fn run_net(&self, script: &str, network: Network) -> Out {

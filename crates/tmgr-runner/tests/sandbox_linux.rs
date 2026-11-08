@@ -413,3 +413,35 @@ fn a_self_contained_clone_works_without_an_objects_grant() {
     );
     assert!(o.ok(), "{} {}", o.stdout, o.stderr);
 }
+
+const CHMOD_THROUGH_ALTERNATES: &str = r#"alt=$(head -n1 .git/objects/info/alternates); obj=$(ls -d "$alt"/??/* | head -n1); fan=$(dirname "$obj"); for p in "$obj" "$fan" "$alt"; do chmod 000 "$p" 2>/dev/null; echo "rc=$?"; done"#;
+
+fn modes(root: &std::path::Path) -> std::collections::BTreeMap<std::path::PathBuf, u32> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut out = std::collections::BTreeMap::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(p) = stack.pop() {
+        let m = fs::symlink_metadata(&p).unwrap();
+        out.insert(p.clone(), m.permissions().mode() & 0o7777);
+        if m.is_dir() {
+            for e in fs::read_dir(&p).unwrap() {
+                stack.push(e.unwrap().path());
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn read_only_grant_denies_metadata_changes() {
+    let f = fx();
+    if !landlock_usable(&f) {
+        return;
+    }
+    let objects = f.borrowing_clone();
+    let before = modes(&objects);
+    let o = f.run_with_objects(&objects, CHMOD_THROUGH_ALTERNATES);
+    assert!(o.ok(), "{} {}", o.stdout, o.stderr);
+    assert_eq!(o.stdout.matches("rc=0").count(), 0, "{}", o.stdout);
+    assert_eq!(modes(&objects), before);
+}
