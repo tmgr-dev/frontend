@@ -4,8 +4,8 @@ import {
 	buildAnswer,
 	cardMode,
 	deliveryLabel,
-	unpickedLabel,
 	isEmptyAnswer,
+	unpickedLabel,
 } from '../answer';
 import { makeCard } from './fixtures';
 
