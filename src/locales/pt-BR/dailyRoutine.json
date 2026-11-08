@@ -167,7 +167,17 @@
 		"pickHint": "Escolha as rotinas locais a enviar para um espaço de trabalho na nuvem.",
 		"empty": "Não há rotinas locais para mover.",
 		"selectAria": "Selecionar {title}",
-		"readError": "Não foi possível ler as rotinas locais."
+		"readError": "Não foi possível ler as rotinas locais.",
+		"messages": {
+			"sessionExpiredStop": "Sua sessão expirou, então as rotinas restantes não foram enviadas. Entre novamente e tente de novo.",
+			"networkStop": "Não foi possível acessar o servidor do TMGR, então as rotinas restantes não foram enviadas. Verifique sua conexão e tente de novo.",
+			"maybeSent": "Talvez a solicitação tenha chegado ao servidor. Verifique o espaço de trabalho antes de tentar de novo.",
+			"somethingWrong": "Algo deu errado.",
+			"serverUnreachable": "Não foi possível acessar o servidor do TMGR.",
+			"sessionExpired": "Sua sessão expirou.",
+			"notConfirmed": "O servidor não confirmou que a rotina foi criada.",
+			"noActiveStatus": "Esse espaço de trabalho não tem um status ativo para colocar as tarefas."
+		}
 	},
 	"page": {
 		"gate": {

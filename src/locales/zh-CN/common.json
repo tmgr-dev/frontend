@@ -37,6 +37,31 @@
 	},
 	"errors": {
 		"generic": "出了点问题，请重试。",
-		"network": "网络错误。请检查网络连接后重试。"
+		"network": "网络错误。请检查网络连接后重试。",
+		"loadNotifications": "无法加载通知"
+	},
+	"duration": {
+		"minutes": "{minutes}分",
+		"hours": "{hours}小时",
+		"hoursMinutes": "{hours}小时{minutes}分"
+	},
+	"pagination": {
+		"label": "分页",
+		"previous": "上一页",
+		"next": "下一页",
+		"showing": "显示 {from}–{to}，共 {total}",
+		"itemsPerPage": "每页条数",
+		"perPage": "每页 {size} 条"
+	},
+	"share": {
+		"label": "分享",
+		"copyLink": "复制链接",
+		"copyAppLink": "复制应用链接",
+		"copyMarkdown": "复制为 Markdown",
+		"openInApp": "在 TMGR 应用中打开",
+		"linkCopied": "链接已复制",
+		"linkFailed": "无法复制链接",
+		"markdownCopied": "Markdown 已复制",
+		"markdownFailed": "无法复制 Markdown"
 	}
 }

@@ -482,6 +482,10 @@
 			"events": "Ereignisse",
 			"runnerNotRunning": "Der TMGR-Runner läuft nicht. Starte ihn, um den Autopiloten hier zu sehen.",
 			"updateRunner": "Aktualisiere den TMGR-Runner, um den Autopiloten hier zu sehen."
+		},
+		"allowReminder": {
+			"title": "Cloud-Agent-Läufe laufen bald ab",
+			"body": "Der Arbeitsbereich {workspace} nimmt auf diesem Computer bald keine Agent-Läufe mehr an. Verlängere sie im Terminal: {command}"
 		}
 	},
 	"helpers": {
@@ -640,7 +644,17 @@
 			"quota": "Du kannst bis zu 3 Umzüge pro Tag starten. Versuche es morgen erneut.",
 			"running": "Ein anderer Umzug läuft noch.",
 			"tooLarge": "Dieser Arbeitsbereich ist zu groß, um ihn in einem Schritt zu verschieben.",
-			"genericError": "Etwas ist schiefgelaufen."
+			"genericError": "Etwas ist schiefgelaufen.",
+			"errors": {
+				"noMoveInProgress": "Gerade läuft kein Verschieben",
+				"bundleUpload": "Upload des Verschiebe-Pakets",
+				"uploadOf": "Upload von {key}",
+				"httpFailed": "{what} fehlgeschlagen (HTTP {status})",
+				"revisionChanged": "Die Cloud-Kopie wurde aus einer anderen Version dieses Arbeitsbereichs erstellt.",
+				"notPublished": "Der Server hat das Verschieben noch nicht veröffentlicht.",
+				"alreadyInProgress": "Für diesen Arbeitsbereich läuft bereits ein Verschieben",
+				"noPublishedMove": "Dieser Arbeitsbereich hat kein veröffentlichtes Verschieben"
+			}
 		},
 		"runner": {
 			"states": {

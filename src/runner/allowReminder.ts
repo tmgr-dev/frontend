@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { expiringSoon, type AllowedEntry } from '@/utils/agentApprovalPolicy';
 import { isDesktopApp } from '@/utils/desktop';
 import { invoke } from '@tauri-apps/api/core';
@@ -52,12 +53,11 @@ export const checkAllowReminders = async (
 		shown[entry.workspaceCode] = localDay(now);
 		writeShown(shown);
 		await invoke('plugin_notify', {
-			title: 'Cloud agent runs expire soon',
-			body: `Workspace ${
-				entry.workspaceCode
-			} stops accepting agent runs on this computer soon. Renew in a terminal: ${allowCommand(
-				entry.workspaceCode,
-			)}`,
+			title: t('desktop.runner.allowReminder.title'),
+			body: t('desktop.runner.allowReminder.body', {
+				workspace: entry.workspaceCode,
+				command: allowCommand(entry.workspaceCode),
+			}),
 			token: null,
 		}).catch(() => undefined);
 	}

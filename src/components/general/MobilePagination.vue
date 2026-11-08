@@ -1,9 +1,12 @@
 <template>
-	<nav class="flex flex-col items-center gap-3 px-1" aria-label="Pagination">
+	<nav
+		class="flex flex-col items-center gap-3 px-1"
+		:aria-label="$t('common.pagination.label')"
+	>
 		<div class="flex items-center gap-0.5">
 			<button
 				type="button"
-				aria-label="Previous page"
+				:aria-label="$t('common.pagination.previous')"
 				:disabled="current <= 1"
 				class="flex h-9 w-9 items-center justify-center rounded-pill text-ink disabled:opacity-30"
 				@click="$emit('page', current - 1)"
@@ -33,7 +36,7 @@
 			</template>
 			<button
 				type="button"
-				aria-label="Next page"
+				:aria-label="$t('common.pagination.next')"
 				:disabled="current >= last"
 				class="flex h-9 w-9 items-center justify-center rounded-pill text-ink disabled:opacity-30"
 				@click="$emit('page', current + 1)"
@@ -42,17 +45,17 @@
 			</button>
 		</div>
 		<span class="text-xs text-ink-subtle">
-			Showing {{ from }}–{{ to }} of {{ total }} ·
+			{{ $t('common.pagination.showing', { from, to, total }) }} ·
 			<select
 				:value="perPage"
-				aria-label="Items per page"
+				:aria-label="$t('common.pagination.itemsPerPage')"
 				class="appearance-none bg-transparent text-xs text-ink-subtle underline outline-hidden"
 				@change="
 					$emit('per-page', Number(($event.target as HTMLSelectElement).value))
 				"
 			>
 				<option v-for="size in perPageOptions" :key="size" :value="size">
-					{{ size }} per page
+					{{ $t('common.pagination.perPage', { size }) }}
 				</option>
 			</select>
 		</span>

@@ -215,7 +215,8 @@ export const createMover = (deps: MoveDeps) => {
 
 	const update = (code: string, change: (job: MoveJob) => void) => {
 		const state = load(code);
-		if (!state.job) throw new Error('No move in progress');
+		if (!state.job)
+			throw new Error(t('desktop.helpers.move.errors.noMoveInProgress'));
 		change(state.job);
 		save(code, state);
 		emit(code);
@@ -348,7 +349,12 @@ export const createMover = (deps: MoveDeps) => {
 		const result = await native.movePut(url, headers, path);
 		ensureActive(code);
 		if (result.status < 200 || result.status >= 300) {
-			throw new Error(`${what} failed (HTTP ${result.status})`);
+			throw new Error(
+				t('desktop.helpers.move.errors.httpFailed', {
+					what,
+					status: result.status,
+				}),
+			);
 		}
 	};
 
@@ -362,7 +368,7 @@ export const createMover = (deps: MoveDeps) => {
 		if (created.status === 'created' && created.upload_url) {
 			await putOrThrow(
 				code,
-				'Bundle upload',
+				t('desktop.helpers.move.errors.bundleUpload'),
 				created.upload_url,
 				created.upload_headers ?? {},
 				job.bundlePath!,
@@ -400,7 +406,7 @@ export const createMover = (deps: MoveDeps) => {
 				if (target.upload_url) {
 					await putOrThrow(
 						code,
-						`Upload of ${file.key}`,
+						t('desktop.helpers.move.errors.uploadOf', { key: file.key }),
 						target.upload_url,
 						target.upload_headers ?? {},
 						`${job.dir}/files/${file.key}`,
@@ -486,9 +492,7 @@ export const createMover = (deps: MoveDeps) => {
 			status.source_revision !== undefined &&
 			status.source_revision !== job.revision
 		) {
-			throw new Error(
-				'The cloud copy was made from a different revision of this workspace.',
-			);
+			throw new Error(t('desktop.helpers.move.errors.revisionChanged'));
 		}
 		state.published = {
 			jobId,
@@ -575,7 +579,7 @@ export const createMover = (deps: MoveDeps) => {
 		ensureActive(code);
 		const status = await api.status(jobId);
 		if (status.status !== 'published') {
-			throw failure ?? new Error('The server has not published the move yet.');
+			throw failure ?? new Error(t('desktop.helpers.move.errors.notPublished'));
 		}
 		return status;
 	};
@@ -656,7 +660,7 @@ export const createMover = (deps: MoveDeps) => {
 		if (userId == null) throw new Error(signInToMoveMessage());
 		const state = load(code);
 		if (state.job)
-			throw new Error('A move of this workspace is already in progress');
+			throw new Error(t('desktop.helpers.move.errors.alreadyInProgress'));
 		state.job = {
 			step: 'started',
 			localName,

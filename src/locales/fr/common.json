@@ -37,6 +37,31 @@
 	},
 	"errors": {
 		"generic": "Une erreur s'est produite. Veuillez réessayer.",
-		"network": "Erreur réseau. Vérifiez votre connexion et réessayez."
+		"network": "Erreur réseau. Vérifiez votre connexion et réessayez.",
+		"loadNotifications": "Impossible de charger les notifications"
+	},
+	"duration": {
+		"minutes": "{minutes} min",
+		"hours": "{hours} h",
+		"hoursMinutes": "{hours} h {minutes} min"
+	},
+	"pagination": {
+		"label": "Pagination",
+		"previous": "Page précédente",
+		"next": "Page suivante",
+		"showing": "{from}–{to} sur {total}",
+		"itemsPerPage": "Éléments par page",
+		"perPage": "{size} par page"
+	},
+	"share": {
+		"label": "Partager",
+		"copyLink": "Copier le lien",
+		"copyAppLink": "Copier le lien de l’application",
+		"copyMarkdown": "Copier en Markdown",
+		"openInApp": "Ouvrir dans l’application TMGR",
+		"linkCopied": "Lien copié",
+		"linkFailed": "Impossible de copier le lien",
+		"markdownCopied": "Markdown copié",
+		"markdownFailed": "Impossible de copier le Markdown"
 	}
 }

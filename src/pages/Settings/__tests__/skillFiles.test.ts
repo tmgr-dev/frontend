@@ -18,7 +18,7 @@ jest.mock('@/components/ui/toast', () => ({
 	toast: (...a: unknown[]) => mockToast(...a),
 }));
 
-import { STALE_FILES_MESSAGE, useSkillFiles } from '@/composable/skillFiles';
+import { staleFilesMessage, useSkillFiles } from '@/composable/skillFiles';
 import { i18n } from '@/i18n';
 
 const index = (paths: string[], sha = 'sha-1') => ({
@@ -102,9 +102,9 @@ describe('useSkillFiles', () => {
 		expect(mockList).toHaveBeenCalledTimes(2);
 		expect(state.filesSha256.value).toBe('fresh');
 		expect(mockToast).toHaveBeenCalledWith(
-			expect.objectContaining({ title: STALE_FILES_MESSAGE }),
+			expect.objectContaining({ title: staleFilesMessage() }),
 		);
-		expect(STALE_FILES_MESSAGE).toBe('Files changed elsewhere, reloaded');
+		expect(staleFilesMessage()).toBe('Files changed elsewhere, reloaded');
 	});
 
 	it('ignores a late failure for an earlier file', async () => {
@@ -160,7 +160,7 @@ describe('useSkillFiles', () => {
 		await state.load();
 		await state.remove('a.md');
 		expect(mockToast).not.toHaveBeenCalledWith(
-			expect.objectContaining({ title: STALE_FILES_MESSAGE }),
+			expect.objectContaining({ title: staleFilesMessage() }),
 		);
 		expect(mockToast).toHaveBeenCalledWith(
 			expect.objectContaining({ title: 'Could not load files' }),

@@ -37,6 +37,31 @@
 	},
 	"errors": {
 		"generic": "Algo deu errado. Tente novamente.",
-		"network": "Erro de rede. Verifique sua conexão e tente novamente."
+		"network": "Erro de rede. Verifique sua conexão e tente novamente.",
+		"loadNotifications": "Não foi possível carregar as notificações"
+	},
+	"duration": {
+		"minutes": "{minutes} min",
+		"hours": "{hours} h",
+		"hoursMinutes": "{hours} h {minutes} min"
+	},
+	"pagination": {
+		"label": "Paginação",
+		"previous": "Página anterior",
+		"next": "Próxima página",
+		"showing": "Mostrando {from}–{to} de {total}",
+		"itemsPerPage": "Itens por página",
+		"perPage": "{size} por página"
+	},
+	"share": {
+		"label": "Compartilhar",
+		"copyLink": "Copiar link",
+		"copyAppLink": "Copiar link do app",
+		"copyMarkdown": "Copiar como Markdown",
+		"openInApp": "Abrir no app TMGR",
+		"linkCopied": "Link copiado",
+		"linkFailed": "Não foi possível copiar o link",
+		"markdownCopied": "Markdown copiado",
+		"markdownFailed": "Não foi possível copiar o Markdown"
 	}
 }

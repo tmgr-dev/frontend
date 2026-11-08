@@ -37,6 +37,31 @@
 	},
 	"errors": {
 		"generic": "Coś poszło nie tak. Spróbuj ponownie.",
-		"network": "Błąd sieci. Sprawdź połączenie i spróbuj ponownie."
+		"network": "Błąd sieci. Sprawdź połączenie i spróbuj ponownie.",
+		"loadNotifications": "Nie udało się wczytać powiadomień"
+	},
+	"duration": {
+		"minutes": "{minutes} min",
+		"hours": "{hours} godz.",
+		"hoursMinutes": "{hours} godz. {minutes} min"
+	},
+	"pagination": {
+		"label": "Paginacja",
+		"previous": "Poprzednia strona",
+		"next": "Następna strona",
+		"showing": "Pokazano {from}–{to} z {total}",
+		"itemsPerPage": "Elementów na stronie",
+		"perPage": "{size} na stronie"
+	},
+	"share": {
+		"label": "Udostępnij",
+		"copyLink": "Kopiuj link",
+		"copyAppLink": "Kopiuj link do aplikacji",
+		"copyMarkdown": "Kopiuj jako Markdown",
+		"openInApp": "Otwórz w aplikacji TMGR",
+		"linkCopied": "Link skopiowany",
+		"linkFailed": "Nie udało się skopiować linku",
+		"markdownCopied": "Markdown skopiowany",
+		"markdownFailed": "Nie udało się skopiować Markdown"
 	}
 }

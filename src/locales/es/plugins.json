@@ -14,7 +14,8 @@
 	"chart": {
 		"summaryBar": "Gráfico de barras de {series} con {n} punto | Gráfico de barras de {series} con {n} puntos",
 		"summaryLine": "Gráfico de líneas de {series} con {n} punto | Gráfico de líneas de {series} con {n} puntos",
-		"keyHint": "Usa las teclas de flecha para leer los valores."
+		"keyHint": "Usa las teclas de flecha para leer los valores.",
+		"noData": "sin datos"
 	},
 	"markdown": {
 		"done": "Hecho",

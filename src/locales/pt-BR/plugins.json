@@ -14,7 +14,8 @@
 	"chart": {
 		"summaryBar": "Gráfico de barras de {series} em {n} ponto | Gráfico de barras de {series} em {n} pontos",
 		"summaryLine": "Gráfico de linhas de {series} em {n} ponto | Gráfico de linhas de {series} em {n} pontos",
-		"keyHint": "Use as setas do teclado para ler os valores."
+		"keyHint": "Use as setas do teclado para ler os valores.",
+		"noData": "sem dados"
 	},
 	"markdown": {
 		"done": "Concluído",

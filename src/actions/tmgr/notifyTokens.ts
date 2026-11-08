@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import $axios from '@/plugins/axios';
 import { requestCache } from '@/utils/requestCache';
 
@@ -78,8 +79,8 @@ export const sendTestNotification = async (
 				'Content-Type': 'application/json',
 			},
 			body: JSON.stringify({
-				title: 'Test from TMGR',
-				body: `Your agent notifications are set up. Sent at ${time}`,
+				title: t('settingsPages.agentNotifications.test.title'),
+				body: t('settingsPages.agentNotifications.test.body', { time }),
 				priority: 'normal',
 				source: 'settings-test',
 			}),

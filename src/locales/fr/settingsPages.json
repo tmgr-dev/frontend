@@ -211,7 +211,13 @@
 	"skillFiles": {
 		"title": "Fichiers · {slug}",
 		"loading": "Chargement des fichiers…",
-		"deleteFile": "Supprimer {path}"
+		"deleteFile": "Supprimer {path}",
+		"loadFailed": "Impossible de charger les fichiers",
+		"confirmDelete": "Supprimer {path} ? Cette action est irréversible.",
+		"deleted": "Fichier supprimé",
+		"viewFailed": "Impossible de charger le fichier",
+		"deleteFailed": "Impossible de supprimer le fichier",
+		"stale": "Fichiers modifiés ailleurs, rechargés"
 	},
 	"deletedSkills": {
 		"recentlyDeleted": "Supprimées récemment",
@@ -250,7 +256,11 @@
 		"pinnedBy": "Épinglée par : {names}",
 		"compare": "Comparer avec la version actuelle",
 		"restoreVersion": "Restaurer cette version",
-		"confirmRestore": "Restaurer la version {version} ? Cela crée la version {next} avec son contenu."
+		"confirmRestore": "Restaurer la version {version} ? Cela crée la version {next} avec son contenu.",
+		"loadFailed": "Impossible de charger l’historique",
+		"restored": "Version {version} restaurée",
+		"changedMeanwhile": "Cette compétence a entre-temps changé. Rechargez l’historique.",
+		"restoreFailed": "Impossible de restaurer cette version"
 	},
 	"skillsLibrary": {
 		"importFromAgents": "Importer depuis les agents locaux",
@@ -921,7 +931,9 @@
 			"rateLimitedIn": "Trop de notifications — réessayez dans {seconds} s.",
 			"rateLimited": "Trop de notifications — réessayez dans un instant.",
 			"unauthorized": "Ce jeton a été rejeté. Créez-en un nouveau.",
-			"unreachable": "Impossible de joindre TMGR."
+			"unreachable": "Impossible de joindre TMGR.",
+			"title": "Test depuis TMGR",
+			"body": "Les notifications de votre agent sont configurées. Envoyé à {time}"
 		},
 		"copyFailed": "Impossible de copier dans le presse-papiers",
 		"confirmRevoke": "Révoquer le jeton « {label} » ?",

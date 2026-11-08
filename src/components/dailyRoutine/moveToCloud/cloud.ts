@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { CloudError } from './batch';
 
 export { CloudError };
@@ -37,12 +38,14 @@ export const toCloudError = (error: unknown): CloudError => {
 	if (!response)
 		return new CloudError(
 			'network',
-			(error as Error)?.message || 'The TMGR server could not be reached.',
+			(error as Error)?.message ||
+				t('dailyRoutine.moveToCloud.messages.serverUnreachable'),
 		);
 	if (response.status === 401)
 		return new CloudError(
 			'auth',
-			response.data?.message || 'Your session expired.',
+			response.data?.message ||
+				t('dailyRoutine.moveToCloud.messages.sessionExpired'),
 		);
 	return new CloudError(
 		'rejected',
@@ -90,7 +93,7 @@ export const createCloudApi = (
 		if (id == null)
 			throw new CloudError(
 				'rejected',
-				'The server did not confirm the routine was created.',
+				t('dailyRoutine.moveToCloud.messages.notConfirmed'),
 			);
 		return { id };
 	};

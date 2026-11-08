@@ -1,4 +1,5 @@
 import { getMemberStats, getMemberTasks } from '@/actions/tmgr/dashboard';
+import { t } from '@/i18n';
 import type {
 	MemberStats,
 	MemberTaskRow,
@@ -85,11 +86,14 @@ export function useMemberPage(
 				notFound.value = true;
 			else
 				statsError.value =
-					result.error?.message ?? 'Could not load this member';
+					result.error?.message ??
+					t('board.dashboard.memberPage.errors.loadMember');
 		} catch (e) {
 			if (current())
 				statsError.value =
-					e instanceof Error ? e.message : 'Could not load this member';
+					e instanceof Error
+						? e.message
+						: t('board.dashboard.memberPage.errors.loadMember');
 		} finally {
 			if (current()) statsLoading.value = false;
 		}
@@ -122,11 +126,14 @@ export function useMemberPage(
 				tasksPage.value = page;
 			} else
 				tasksError.value =
-					result.error?.message ?? 'Could not load member tasks';
+					result.error?.message ??
+					t('board.dashboard.memberPage.errors.loadTasks');
 		} catch (e) {
 			if (current())
 				tasksError.value =
-					e instanceof Error ? e.message : 'Could not load member tasks';
+					e instanceof Error
+						? e.message
+						: t('board.dashboard.memberPage.errors.loadTasks');
 		} finally {
 			if (current()) {
 				tasksLoading.value = false;

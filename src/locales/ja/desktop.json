@@ -482,6 +482,10 @@
 			"events": "イベント",
 			"runnerNotRunning": "TMGR ランナーが起動していません。オートパイロットを表示するには起動してください。",
 			"updateRunner": "オートパイロットを表示するには、TMGR ランナーをアップデートしてください。"
+		},
+		"allowReminder": {
+			"title": "クラウドエージェントの実行権限がまもなく期限切れになります",
+			"body": "ワークスペース {workspace} は、このコンピューターでのエージェント実行をまもなく受け付けなくなります。ターミナルで更新してください: {command}"
 		}
 	},
 	"helpers": {
@@ -640,7 +644,17 @@
 			"quota": "移行は 1 日に最大 3 回まで開始できます。明日もう一度お試しください。",
 			"running": "別の移行がまだ実行中です。",
 			"tooLarge": "このワークスペースは大きすぎて、一度に移行できません。",
-			"genericError": "問題が発生しました。"
+			"genericError": "問題が発生しました。",
+			"errors": {
+				"noMoveInProgress": "進行中の移行はありません",
+				"bundleUpload": "移行パッケージのアップロード",
+				"uploadOf": "{key} のアップロード",
+				"httpFailed": "{what} に失敗しました (HTTP {status})",
+				"revisionChanged": "クラウドのコピーは、このワークスペースの別のリビジョンから作成されています。",
+				"notPublished": "サーバーはまだ移行を公開していません。",
+				"alreadyInProgress": "このワークスペースの移行は既に進行中です",
+				"noPublishedMove": "このワークスペースには公開済みの移行がありません"
+			}
 		},
 		"runner": {
 			"states": {

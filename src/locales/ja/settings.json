@@ -180,5 +180,14 @@
 		"deleteTitle": "すべてのアップロードを削除しますか？",
 		"deleteBody": "このアカウントでアップロードしたすべての内容が TMGR から削除されます。エージェント使用量の同期の設定は変わりません。",
 		"genericError": "問題が発生しました。"
+	},
+	"featureDisabled": {
+		"moduleOff": "モジュールはオフです",
+		"title": "{name}はオフです",
+		"description": "{name}は{scope}オフになっています。設定 → モジュールでオンにできます。",
+		"forAccount": "お使いのアカウントで",
+		"inWorkspace": "このワークスペースで",
+		"openModulesLabel": "モジュールの設定を開く",
+		"openModules": "モジュールを開く"
 	}
 }

@@ -167,7 +167,17 @@
 		"pickHint": "클라우드 워크스페이스로 보낼 로컬 루틴을 선택하세요.",
 		"empty": "이동할 로컬 루틴이 없어요.",
 		"selectAria": "{title} 선택",
-		"readError": "로컬 루틴을 읽지 못했어요."
+		"readError": "로컬 루틴을 읽지 못했어요.",
+		"messages": {
+			"sessionExpiredStop": "세션이 만료되어 남은 루틴을 보내지 않았어요. 다시 로그인하고 재시도해 주세요.",
+			"networkStop": "TMGR 서버에 연결할 수 없어 남은 루틴을 보내지 않았어요. 연결을 확인하고 재시도해 주세요.",
+			"maybeSent": "서버에 전달되었을 수도 있어요. 재시도하기 전에 워크스페이스를 확인해 주세요.",
+			"somethingWrong": "문제가 발생했어요.",
+			"serverUnreachable": "TMGR 서버에 연결할 수 없어요.",
+			"sessionExpired": "세션이 만료되었어요.",
+			"notConfirmed": "서버가 루틴이 생성되었다고 확인하지 않았어요.",
+			"noActiveStatus": "이 워크스페이스에는 작업을 넣을 활성 상태가 없어요."
+		}
 	},
 	"page": {
 		"gate": {

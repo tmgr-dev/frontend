@@ -348,6 +348,12 @@
 				"invalid_file": "Der Dateiname ist ungültig.",
 				"invalid_file_path": "Der Upload konnte nicht angehängt werden. Versuch es noch einmal.",
 				"file_bound_elsewhere": "Der Upload konnte nicht angehängt werden. Versuch es noch einmal."
+			},
+			"uploadFailed": "Upload fehlgeschlagen.",
+			"size": {
+				"bytes": "{n} B",
+				"kilobytes": "{n} KB",
+				"megabytes": "{n} MB"
 			}
 		},
 		"personas": {
@@ -422,6 +428,17 @@
 				"replaced": "Der Bibliotheks-Skill wurde seit dem letzten Import ersetzt. Hake ihn erneut an, um ihn zu überschreiben.",
 				"requestFailed": "Anfrage fehlgeschlagen"
 			}
+		},
+		"chat": {
+			"justNow": "gerade eben",
+			"minutesAgo": "vor {n} Min.",
+			"hoursAgo": "vor {n} Std.",
+			"newChat": "Neuer Chat",
+			"pinsLoadFailed": "Angeheftete Fakten konnten nicht geladen werden.",
+			"loadFailed": "Unterhaltung konnte nicht geladen werden",
+			"noActiveConversation": "Keine aktive Unterhaltung",
+			"decisionFailed": "Deine Entscheidung konnte nicht gesendet werden. Bitte versuche es erneut.",
+			"newChatFailed": "Neue Unterhaltung konnte nicht gestartet werden"
 		}
 	}
 }

@@ -482,6 +482,10 @@
 			"events": "Eventos",
 			"runnerNotRunning": "El runner de TMGR no está en ejecución. Inícialo para ver aquí el piloto automático.",
 			"updateRunner": "Actualiza el runner de TMGR para ver aquí el piloto automático."
+		},
+		"allowReminder": {
+			"title": "Las ejecuciones de agentes en la nube caducan pronto",
+			"body": "El espacio de trabajo {workspace} dejará pronto de aceptar ejecuciones de agentes en este equipo. Renuévalo en una terminal: {command}"
 		}
 	},
 	"helpers": {
@@ -640,7 +644,17 @@
 			"quota": "Puedes iniciar hasta 3 traslados al día. Inténtalo de nuevo mañana.",
 			"running": "Otro traslado sigue en curso.",
 			"tooLarge": "Este espacio de trabajo es demasiado grande para trasladarlo de una vez.",
-			"genericError": "Algo salió mal."
+			"genericError": "Algo salió mal.",
+			"errors": {
+				"noMoveInProgress": "No hay ningún traslado en curso",
+				"bundleUpload": "Subida del paquete del traslado",
+				"uploadOf": "Subida de {key}",
+				"httpFailed": "{what} falló (HTTP {status})",
+				"revisionChanged": "La copia en la nube se creó desde otra revisión de este espacio de trabajo.",
+				"notPublished": "El servidor aún no ha publicado el traslado.",
+				"alreadyInProgress": "Ya hay un traslado en curso de este espacio de trabajo",
+				"noPublishedMove": "Este espacio de trabajo no tiene un traslado publicado"
+			}
 		},
 		"runner": {
 			"states": {

@@ -180,5 +180,14 @@
 		"deleteTitle": "Alle Uploads löschen?",
 		"deleteBody": "Alles, was dieses Konto hochgeladen hat, wird aus TMGR gelöscht. Die Synchronisierung der Agent-Nutzung bleibt unverändert.",
 		"genericError": "Etwas ist schiefgelaufen."
+	},
+	"featureDisabled": {
+		"moduleOff": "Modul ist deaktiviert",
+		"title": "{name} ist deaktiviert",
+		"description": "{name} ist {scope} deaktiviert. Aktiviere es unter Einstellungen → Module.",
+		"forAccount": "für dein Konto",
+		"inWorkspace": "in diesem Arbeitsbereich",
+		"openModulesLabel": "Moduleinstellungen öffnen",
+		"openModules": "Module öffnen"
 	}
 }

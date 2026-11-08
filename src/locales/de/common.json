@@ -37,6 +37,31 @@
 	},
 	"errors": {
 		"generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
-		"network": "Netzwerkfehler. Prüfe deine Verbindung und versuche es erneut."
+		"network": "Netzwerkfehler. Prüfe deine Verbindung und versuche es erneut.",
+		"loadNotifications": "Benachrichtigungen konnten nicht geladen werden"
+	},
+	"duration": {
+		"minutes": "{minutes} Min.",
+		"hours": "{hours} Std.",
+		"hoursMinutes": "{hours} Std. {minutes} Min."
+	},
+	"pagination": {
+		"label": "Seitennavigation",
+		"previous": "Vorherige Seite",
+		"next": "Nächste Seite",
+		"showing": "{from}–{to} von {total}",
+		"itemsPerPage": "Einträge pro Seite",
+		"perPage": "{size} pro Seite"
+	},
+	"share": {
+		"label": "Teilen",
+		"copyLink": "Link kopieren",
+		"copyAppLink": "App-Link kopieren",
+		"copyMarkdown": "Als Markdown kopieren",
+		"openInApp": "In der TMGR-App öffnen",
+		"linkCopied": "Link kopiert",
+		"linkFailed": "Link konnte nicht kopiert werden",
+		"markdownCopied": "Markdown kopiert",
+		"markdownFailed": "Markdown konnte nicht kopiert werden"
 	}
 }

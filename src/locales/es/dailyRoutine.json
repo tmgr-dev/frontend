@@ -167,7 +167,17 @@
 		"pickHint": "Elige las rutinas locales que enviar a un espacio de trabajo en la nube.",
 		"empty": "No hay rutinas locales que mover.",
 		"selectAria": "Seleccionar {title}",
-		"readError": "No se pudieron leer las rutinas locales."
+		"readError": "No se pudieron leer las rutinas locales.",
+		"messages": {
+			"sessionExpiredStop": "Tu sesión caducó, así que las rutinas restantes no se enviaron. Vuelve a iniciar sesión y reintenta el envío.",
+			"networkStop": "No se pudo contactar con el servidor de TMGR, así que las rutinas restantes no se enviaron. Revisa la conexión y reintenta el envío.",
+			"maybeSent": "Puede que la solicitud haya llegado al servidor. Revisa el espacio de trabajo antes de reintentar.",
+			"somethingWrong": "Algo salió mal.",
+			"serverUnreachable": "No se pudo contactar con el servidor de TMGR.",
+			"sessionExpired": "Tu sesión caducó.",
+			"notConfirmed": "El servidor no confirmó que la rutina se creó.",
+			"noActiveStatus": "Ese espacio de trabajo no tiene un estado activo donde poner las tareas."
+		}
 	},
 	"page": {
 		"gate": {

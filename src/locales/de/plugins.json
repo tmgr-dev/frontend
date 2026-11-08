@@ -14,7 +14,8 @@
 	"chart": {
 		"summaryBar": "Balkendiagramm von {series} über {n} Punkt | Balkendiagramm von {series} über {n} Punkte",
 		"summaryLine": "Liniendiagramm von {series} über {n} Punkt | Liniendiagramm von {series} über {n} Punkte",
-		"keyHint": "Mit den Pfeiltasten kannst du die Werte lesen."
+		"keyHint": "Mit den Pfeiltasten kannst du die Werte lesen.",
+		"noData": "keine Daten"
 	},
 	"markdown": {
 		"done": "Erledigt",

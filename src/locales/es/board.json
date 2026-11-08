@@ -91,7 +91,10 @@
 			"authorAll": "Todos",
 			"authorPeople": "Personas",
 			"authorPersonas": "Personas de IA",
-			"authorPlugins": "Complementos"
+			"authorPlugins": "Complementos",
+			"errors": {
+				"loadMore": "No se pudieron cargar más actividades"
+			}
 		},
 		"activityItem": {
 			"by": "por {name}"
@@ -254,6 +257,22 @@
 			"timerRunning": "Temporizador en marcha",
 			"lastActive": "Última actividad: {when}",
 			"ariaStats": "{tracked} registrado, {done} completadas, {active} activas, {comments} comentarios, racha {streak}"
+		},
+		"errors": {
+			"noWorkspace": "No se encontró un espacio de trabajo válido. Asegúrate de tener acceso a al menos un espacio de trabajo e intenta actualizar la página.",
+			"loadFailed": {
+				"statistics": "No se pudieron cargar las estadísticas",
+				"activities": "No se pudo cargar la actividad",
+				"heatmap": "No se pudo cargar el mapa de calor",
+				"recentTasks": "No se pudieron cargar las tareas recientes",
+				"teamActivity": "No se pudo cargar la actividad del equipo"
+			}
+		},
+		"memberPage": {
+			"errors": {
+				"loadMember": "No se pudo cargar este miembro",
+				"loadTasks": "No se pudieron cargar las tareas del miembro"
+			}
 		}
 	},
 	"graphMap": {
@@ -864,5 +883,9 @@
 			},
 			"openCategorySettings": "Abrir ajustes de la categoría"
 		}
+	},
+	"duration": {
+		"hours": "{n} h",
+		"minutes": "{n} min"
 	}
 }

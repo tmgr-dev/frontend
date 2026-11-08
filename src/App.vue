@@ -297,8 +297,8 @@
 			'$route.name'(to, from) {
 				if (to !== from) {
 					if (this.$route.meta.title) {
-						this.$store.commit('setMetaTitle', this.$route.meta.title);
-						setDocumentTitle(this.$route.meta.title);
+						this.$store.commit('setMetaTitle', this.$t(this.$route.meta.title));
+						setDocumentTitle(this.$t(this.$route.meta.title));
 					} else {
 						this.$store.commit('setMetaTitle', '');
 						setDocumentTitle();
@@ -587,8 +587,11 @@
 
 						// Update the meta title if needed
 						if (this.$route.meta.title) {
-							this.$store.commit('setMetaTitle', this.$route.meta.title);
-							setDocumentTitle(this.$route.meta.title);
+							this.$store.commit(
+								'setMetaTitle',
+								this.$t(this.$route.meta.title),
+							);
+							setDocumentTitle(this.$t(this.$route.meta.title));
 						}
 
 						// Force UI components to update by triggering an app rerender
@@ -689,8 +692,8 @@
 						!to.name?.includes('TasksList') &&
 						!to.name?.includes('WorkspaceTasksList')
 					) {
-						this.$store.commit('setMetaTitle', to.meta.title);
-						setDocumentTitle(to.meta.title);
+						this.$store.commit('setMetaTitle', this.$t(to.meta.title));
+						setDocumentTitle(this.$t(to.meta.title));
 					} else if (
 						!to.name?.includes('TasksList') &&
 						!to.name?.includes('WorkspaceTasksList')

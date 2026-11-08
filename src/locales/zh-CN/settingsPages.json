@@ -211,7 +211,13 @@
 	"skillFiles": {
 		"title": "文件 · {slug}",
 		"loading": "正在加载文件…",
-		"deleteFile": "删除 {path}"
+		"deleteFile": "删除 {path}",
+		"loadFailed": "无法加载文件",
+		"confirmDelete": "删除 {path}？此操作无法撤销。",
+		"deleted": "文件已删除",
+		"viewFailed": "无法加载文件",
+		"deleteFailed": "无法删除文件",
+		"stale": "文件已在别处更改，已重新加载"
 	},
 	"deletedSkills": {
 		"recentlyDeleted": "最近删除",
@@ -250,7 +256,11 @@
 		"pinnedBy": "固定者：{names}",
 		"compare": "与当前版本比较",
 		"restoreVersion": "恢复此版本",
-		"confirmRestore": "恢复版本 {version}？这将创建包含其内容的版本 {next}。"
+		"confirmRestore": "恢复版本 {version}？这将创建包含其内容的版本 {next}。",
+		"loadFailed": "无法加载历史记录",
+		"restored": "已恢复版本 {version}",
+		"changedMeanwhile": "此技能已被更改。请重新加载历史记录。",
+		"restoreFailed": "无法恢复此版本"
 	},
 	"skillsLibrary": {
 		"importFromAgents": "从本地智能体导入",
@@ -921,7 +931,9 @@
 			"rateLimitedIn": "通知过多 — 请在 {seconds} 秒后重试。",
 			"rateLimited": "通知过多 — 请稍后重试。",
 			"unauthorized": "此令牌被拒绝。请创建一个新的。",
-			"unreachable": "无法连接到 TMGR。"
+			"unreachable": "无法连接到 TMGR。",
+			"title": "来自 TMGR 的测试",
+			"body": "智能体通知已设置完成。发送时间 {time}"
 		},
 		"copyFailed": "无法复制到剪贴板",
 		"confirmRevoke": "撤销“{label}”令牌？",

@@ -211,7 +211,13 @@
 	"skillFiles": {
 		"title": "Pliki · {slug}",
 		"loading": "Wczytywanie plików…",
-		"deleteFile": "Usuń {path}"
+		"deleteFile": "Usuń {path}",
+		"loadFailed": "Nie udało się wczytać plików",
+		"confirmDelete": "Usunąć {path}? Tej operacji nie można cofnąć.",
+		"deleted": "Plik usunięty",
+		"viewFailed": "Nie udało się wczytać pliku",
+		"deleteFailed": "Nie udało się usunąć pliku",
+		"stale": "Pliki zmieniono w innym miejscu, wczytano ponownie"
 	},
 	"deletedSkills": {
 		"recentlyDeleted": "Ostatnio usunięte",
@@ -250,7 +256,11 @@
 		"pinnedBy": "Przypięte przez: {names}",
 		"compare": "Porównaj z bieżącą",
 		"restoreVersion": "Przywróć tę wersję",
-		"confirmRestore": "Przywrócić wersję {version}? Utworzy to wersję {next} z jej treścią."
+		"confirmRestore": "Przywrócić wersję {version}? Utworzy to wersję {next} z jej treścią.",
+		"loadFailed": "Nie udało się wczytać historii",
+		"restored": "Przywrócono wersję {version}",
+		"changedMeanwhile": "Ta umiejętność została w międzyczasie zmieniona. Wczytaj historię ponownie.",
+		"restoreFailed": "Nie udało się przywrócić tej wersji"
 	},
 	"skillsLibrary": {
 		"importFromAgents": "Importuj z lokalnych agentów",
@@ -921,7 +931,9 @@
 			"rateLimitedIn": "Zbyt wiele powiadomień — spróbuj ponownie za {seconds} s.",
 			"rateLimited": "Zbyt wiele powiadomień — spróbuj ponownie wkrótce.",
 			"unauthorized": "Ten token został odrzucony. Utwórz nowy.",
-			"unreachable": "Nie udało się połączyć z TMGR."
+			"unreachable": "Nie udało się połączyć z TMGR.",
+			"title": "Test z TMGR",
+			"body": "Powiadomienia agenta są skonfigurowane. Wysłano o {time}"
 		},
 		"copyFailed": "Nie udało się skopiować do schowka",
 		"confirmRevoke": "Unieważnić token „{label}”?",

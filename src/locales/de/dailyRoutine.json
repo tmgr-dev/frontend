@@ -167,7 +167,17 @@
 		"pickHint": "Wähle die lokalen Routinen aus, die an einen Cloud-Arbeitsbereich gesendet werden sollen.",
 		"empty": "Es gibt keine lokalen Routinen zum Verschieben.",
 		"selectAria": "{title} auswählen",
-		"readError": "Die lokalen Routinen konnten nicht gelesen werden."
+		"readError": "Die lokalen Routinen konnten nicht gelesen werden.",
+		"messages": {
+			"sessionExpiredStop": "Deine Sitzung ist abgelaufen, daher wurden die übrigen Routinen nicht gesendet. Melde dich erneut an und versuche es noch einmal.",
+			"networkStop": "Der TMGR-Server war nicht erreichbar, daher wurden die übrigen Routinen nicht gesendet. Prüfe deine Verbindung und versuche es noch einmal.",
+			"maybeSent": "Möglicherweise ist die Anfrage beim Server angekommen. Prüfe den Arbeitsbereich, bevor du es noch einmal versuchst.",
+			"somethingWrong": "Etwas ist schiefgelaufen.",
+			"serverUnreachable": "Der TMGR-Server war nicht erreichbar.",
+			"sessionExpired": "Deine Sitzung ist abgelaufen.",
+			"notConfirmed": "Der Server hat nicht bestätigt, dass die Routine erstellt wurde.",
+			"noActiveStatus": "Dieser Arbeitsbereich hat keinen aktiven Status für die Aufgaben."
+		}
 	},
 	"page": {
 		"gate": {

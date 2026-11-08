@@ -210,8 +210,8 @@
 		},
 		(newTitle) => {
 			if (newTitle && !store.state.metaTitle) {
-				store.commit('setMetaTitle', newTitle);
-				setDocumentTitle(newTitle as string);
+				store.commit('setMetaTitle', t(newTitle as string));
+				setDocumentTitle(t(newTitle as string));
 			}
 		},
 		{ immediate: true },

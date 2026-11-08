@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { humanizeKey } from '@/utils/featureToggleCopy';
 import { featureDisabledMessage } from '@/utils/modules';
 
@@ -26,14 +27,18 @@ export const describeFeatureDisabled = (
 	const message = featureDisabledMessage(error);
 	if (message === null || isRead(error)) return null;
 	const key: string | undefined = error.response.data.feature;
-	if (!key) return { title: 'Module is off', description: message };
+	if (!key)
+		return {
+			title: t('settings.featureDisabled.moduleOff'),
+			description: message,
+		};
 	const name = moduleName(key) || humanizeKey(key);
 	const scope = message.includes('for your account')
-		? 'for your account'
-		: 'in this workspace';
+		? t('settings.featureDisabled.forAccount')
+		: t('settings.featureDisabled.inWorkspace');
 	return {
-		title: `${name} is turned off`,
-		description: `${name} is turned off ${scope}. Turn it on in Settings → Modules.`,
+		title: t('settings.featureDisabled.title', { name }),
+		description: t('settings.featureDisabled.description', { name, scope }),
 	};
 };
 
@@ -80,10 +85,10 @@ export const showFeatureDisabledToast = (
 			action: h(
 				ToastAction,
 				{
-					altText: 'Open Modules settings',
+					altText: t('settings.featureDisabled.openModulesLabel'),
 					onClick: () => router.push('/settings/modules'),
 				},
-				() => 'Open Modules',
+				() => t('settings.featureDisabled.openModules'),
 			),
 		}),
 	);

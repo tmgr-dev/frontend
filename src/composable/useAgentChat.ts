@@ -13,6 +13,7 @@ import {
 	startNewConversation,
 	updateAgentPin,
 } from '@/actions/tmgr/agent';
+import { t } from '@/i18n';
 import store from '@/store';
 import type {
 	AgentCompactedEvent,
@@ -249,7 +250,7 @@ export function useAgentChat(): UseAgentChatReturn {
 			pinLimits.value = result.limits;
 		} catch {
 			if (!pinRequests.isCurrent(token)) return;
-			pinError.value = 'Could not load pinned facts.';
+			pinError.value = t('agents.helpers.chat.pinsLoadFailed');
 		} finally {
 			if (pinRequests.isCurrent(token)) pinsLoading.value = false;
 		}
@@ -393,7 +394,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		} catch (e) {
 			if (!current()) return;
 			error.value =
-				e instanceof Error ? e.message : 'Failed to load conversation';
+				e instanceof Error ? e.message : t('agents.helpers.chat.loadFailed');
 		} finally {
 			if (!current()) return;
 			loading.value = false;
@@ -436,7 +437,7 @@ export function useAgentChat(): UseAgentChatReturn {
 				return;
 			}
 			error.value =
-				e instanceof Error ? e.message : 'Failed to load conversation';
+				e instanceof Error ? e.message : t('agents.helpers.chat.loadFailed');
 		} finally {
 			if (current()) loading.value = false;
 		}
@@ -460,7 +461,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		const current = () => sendRequests.isCurrent(token);
 		const conversationId = state.value.conversationId;
 		if (!conversationId) {
-			error.value = 'No active conversation';
+			error.value = t('agents.helpers.chat.noActiveConversation');
 			return false;
 		}
 
@@ -572,7 +573,7 @@ export function useAgentChat(): UseAgentChatReturn {
 				await refreshMessages(conversationId);
 				return;
 			}
-			error.value = 'Could not send your decision. Please try again.';
+			error.value = t('agents.helpers.chat.decisionFailed');
 		}
 	};
 
@@ -600,7 +601,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		} catch (e) {
 			if (!current()) return;
 			error.value =
-				e instanceof Error ? e.message : 'Failed to start new conversation';
+				e instanceof Error ? e.message : t('agents.helpers.chat.newChatFailed');
 		} finally {
 			if (!current()) return;
 			loading.value = false;

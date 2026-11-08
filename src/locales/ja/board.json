@@ -91,7 +91,10 @@
 			"authorAll": "すべて",
 			"authorPeople": "ユーザー",
 			"authorPersonas": "ペルソナ",
-			"authorPlugins": "プラグイン"
+			"authorPlugins": "プラグイン",
+			"errors": {
+				"loadMore": "さらにアクティビティを読み込めませんでした"
+			}
 		},
 		"activityItem": {
 			"by": "{name}による"
@@ -254,6 +257,22 @@
 			"timerRunning": "タイマー実行中",
 			"lastActive": "最終アクティブ：{when}",
 			"ariaStats": "記録時間 {tracked}、完了 {done}、アクティブ {active}、コメント {comments}、連続 {streak}"
+		},
+		"errors": {
+			"noWorkspace": "有効なワークスペースが見つかりません。少なくとも1つのワークスペースにアクセスできるか確認し、ページを再読み込みしてください。",
+			"loadFailed": {
+				"statistics": "統計を読み込めませんでした",
+				"activities": "アクティビティを読み込めませんでした",
+				"heatmap": "ヒートマップを読み込めませんでした",
+				"recentTasks": "最近のタスクを読み込めませんでした",
+				"teamActivity": "チームのアクティビティを読み込めませんでした"
+			}
+		},
+		"memberPage": {
+			"errors": {
+				"loadMember": "このメンバーを読み込めませんでした",
+				"loadTasks": "メンバーのタスクを読み込めませんでした"
+			}
 		}
 	},
 	"graphMap": {
@@ -864,5 +883,9 @@
 			},
 			"openCategorySettings": "プロジェクト設定を開く"
 		}
+	},
+	"duration": {
+		"hours": "{n} 時間",
+		"minutes": "{n} 分"
 	}
 }

@@ -348,6 +348,12 @@
 				"invalid_file": "El nombre del archivo no es válido.",
 				"invalid_file_path": "No se pudo adjuntar la subida. Inténtalo de nuevo.",
 				"file_bound_elsewhere": "No se pudo adjuntar la subida. Inténtalo de nuevo."
+			},
+			"uploadFailed": "Error al subir el archivo.",
+			"size": {
+				"bytes": "{n} B",
+				"kilobytes": "{n} KB",
+				"megabytes": "{n} MB"
 			}
 		},
 		"personas": {
@@ -422,6 +428,17 @@
 				"replaced": "La habilidad de la biblioteca se reemplazó desde la última importación. Márcala de nuevo para sobrescribirla.",
 				"requestFailed": "La solicitud falló"
 			}
+		},
+		"chat": {
+			"justNow": "justo ahora",
+			"minutesAgo": "hace {n} min",
+			"hoursAgo": "hace {n} h",
+			"newChat": "Nuevo chat",
+			"pinsLoadFailed": "No se pudieron cargar los datos fijados.",
+			"loadFailed": "No se pudo cargar la conversación",
+			"noActiveConversation": "No hay ninguna conversación activa",
+			"decisionFailed": "No se pudo enviar tu decisión. Inténtalo de nuevo.",
+			"newChatFailed": "No se pudo iniciar una conversación nueva"
 		}
 	}
 }

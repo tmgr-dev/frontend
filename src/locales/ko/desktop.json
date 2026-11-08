@@ -482,6 +482,10 @@
 			"events": "이벤트",
 			"runnerNotRunning": "TMGR 러너가 실행 중이 아니에요. 여기서 오토파일럿을 보려면 시작하세요.",
 			"updateRunner": "여기서 오토파일럿을 보려면 TMGR 러너를 업데이트하세요."
+		},
+		"allowReminder": {
+			"title": "클라우드 에이전트 실행이 곧 만료돼요",
+			"body": "워크스페이스 {workspace}은(는) 곧 이 컴퓨터에서 에이전트 실행을 받지 않아요. 터미널에서 갱신하세요: {command}"
 		}
 	},
 	"helpers": {
@@ -640,7 +644,17 @@
 			"quota": "이전은 하루에 최대 3번 시작할 수 있습니다. 내일 다시 시도하세요.",
 			"running": "다른 이전이 아직 진행 중입니다.",
 			"tooLarge": "이 워크스페이스는 너무 커서 한 번에 이전할 수 없습니다.",
-			"genericError": "문제가 발생했습니다."
+			"genericError": "문제가 발생했습니다.",
+			"errors": {
+				"noMoveInProgress": "진행 중인 이전이 없어요",
+				"bundleUpload": "이전 패키지 업로드",
+				"uploadOf": "{key} 업로드",
+				"httpFailed": "{what} 실패 (HTTP {status})",
+				"revisionChanged": "클라우드 사본은 이 워크스페이스의 다른 버전으로 만들어졌어요.",
+				"notPublished": "서버가 아직 이전을 게시하지 않았어요.",
+				"alreadyInProgress": "이 워크스페이스의 이전이 이미 진행 중이에요",
+				"noPublishedMove": "이 워크스페이스에는 게시된 이전이 없어요"
+			}
 		},
 		"runner": {
 			"states": {

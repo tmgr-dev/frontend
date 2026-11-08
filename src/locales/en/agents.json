@@ -348,6 +348,12 @@
 				"invalid_file": "The file name is not valid.",
 				"invalid_file_path": "The upload could not be attached. Try again.",
 				"file_bound_elsewhere": "The upload could not be attached. Try again."
+			},
+			"uploadFailed": "Upload failed.",
+			"size": {
+				"bytes": "{n} B",
+				"kilobytes": "{n} KB",
+				"megabytes": "{n} MB"
 			}
 		},
 		"personas": {
@@ -422,6 +428,17 @@
 				"replaced": "The library skill was replaced since the last import. Tick it again to overwrite.",
 				"requestFailed": "Request failed"
 			}
+		},
+		"chat": {
+			"justNow": "just now",
+			"minutesAgo": "{n} min ago",
+			"hoursAgo": "{n} h ago",
+			"newChat": "New chat",
+			"pinsLoadFailed": "Could not load pinned facts.",
+			"loadFailed": "Failed to load conversation",
+			"noActiveConversation": "No active conversation",
+			"decisionFailed": "Could not send your decision. Please try again.",
+			"newChatFailed": "Failed to start new conversation"
 		}
 	}
 }

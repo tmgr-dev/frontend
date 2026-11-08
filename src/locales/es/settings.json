@@ -180,5 +180,14 @@
 		"deleteTitle": "¿Eliminar todas las subidas?",
 		"deleteBody": "Todo lo que ha subido esta cuenta se elimina de TMGR. La sincronización del uso de agentes se queda como está.",
 		"genericError": "Algo salió mal."
+	},
+	"featureDisabled": {
+		"moduleOff": "El módulo está desactivado",
+		"title": "{name} está desactivado",
+		"description": "{name} está desactivado {scope}. Actívalo en Ajustes → Módulos.",
+		"forAccount": "para tu cuenta",
+		"inWorkspace": "en este espacio de trabajo",
+		"openModulesLabel": "Abrir ajustes de módulos",
+		"openModules": "Abrir módulos"
 	}
 }

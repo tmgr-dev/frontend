@@ -207,7 +207,7 @@ const routes = [
 		path: '/app',
 		component: DashboardPage,
 		meta: {
-			title: 'Dashboard',
+			title: 'nav.routes.dashboard',
 			transitionName: 'slide',
 			navbarHidden: true,
 			requiresAuth: true,
@@ -239,7 +239,7 @@ const routes = [
 		path: '/list',
 		component: TasksListPage,
 		meta: {
-			title: 'Current tasks',
+			title: 'nav.routes.currentTasks',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
@@ -250,7 +250,7 @@ const routes = [
 		path: '/fallback-list',
 		component: TasksListPage,
 		meta: {
-			title: 'Current tasks',
+			title: 'nav.routes.currentTasks',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
@@ -260,7 +260,7 @@ const routes = [
 		path: '/archive',
 		component: TasksListPage,
 		meta: {
-			title: 'Archive',
+			title: 'nav.routes.archive',
 			status: 'done',
 			transitionName: 'slide',
 			navbarHidden: true,
@@ -366,7 +366,7 @@ const routes = [
 			() => import('@/pages/WorkspaceFilesPage.vue'),
 		),
 		meta: {
-			title: 'Files',
+			title: 'nav.routes.files',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
@@ -376,7 +376,7 @@ const routes = [
 		path: '/welcome-setup',
 		component: () => import('@/pages/onboarding/WelcomeSetup.vue'),
 		meta: {
-			title: 'Welcome',
+			title: 'nav.routes.welcome',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 		},
@@ -386,7 +386,7 @@ const routes = [
 		path: '/welcome-setup/agent',
 		component: () => import('@/pages/onboarding/ConnectAgent.vue'),
 		meta: {
-			title: 'Connect your agent',
+			title: 'nav.routes.connectAgent',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 		},
@@ -396,7 +396,7 @@ const routes = [
 		path: '/:workspace_code/connect-agent',
 		component: () => import('@/pages/desktop/ConnectLocalAgent.vue'),
 		meta: {
-			title: 'Connect your agent',
+			title: 'nav.routes.connectAgent',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 		},
@@ -406,7 +406,7 @@ const routes = [
 		path: '/:workspace_code/getting-started',
 		component: () => import('@/pages/GettingStarted.vue'),
 		meta: {
-			title: 'Getting started',
+			title: 'nav.routes.gettingStarted',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
@@ -415,14 +415,18 @@ const routes = [
 	{
 		path: '/:workspace_code/plugins/:pluginId/:viewId',
 		component: () => import('@/pages/PluginPage.vue'),
-		meta: { title: 'Plugin', transitionName: 'slide', navbarHidden: true },
+		meta: {
+			title: 'nav.routes.plugin',
+			transitionName: 'slide',
+			navbarHidden: true,
+		},
 		name: 'WorkspacePluginPage',
 	},
 	{
 		path: '/:workspace_code/archive',
 		component: TasksListPage,
 		meta: {
-			title: 'Archive',
+			title: 'nav.routes.archive',
 			status: 'done',
 			transitionName: 'slide',
 			navbarHidden: true,
@@ -470,7 +474,7 @@ const routes = [
 		beforeEnter: simpleModeBoardGuard,
 		component: () => import('@/pages/Board.vue'),
 		meta: {
-			title: 'Board',
+			title: 'nav.routes.board',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 		},
@@ -481,7 +485,7 @@ const routes = [
 		path: '/routines',
 		component: () => import('@/pages/DailyRoutine.vue'),
 		meta: {
-			title: 'Daily routines',
+			title: 'nav.routes.dailyRoutines',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 		},
@@ -528,7 +532,7 @@ const routes = [
 	{
 		path: '/quick-add',
 		component: () => import('@/pages/QuickAdd.vue'),
-		meta: { title: 'Quick add' },
+		meta: { title: 'nav.routes.quickAdd' },
 		name: 'QuickAdd',
 	},
 	{
@@ -539,7 +543,7 @@ const routes = [
 				? { path: '/settings/workspaces', replace: true }
 				: true,
 		meta: {
-			title: 'Settings',
+			title: 'nav.routes.settings',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 			settingsLayout: true,
@@ -554,7 +558,7 @@ const routes = [
 				? true
 				: '/settings/workspaces',
 		meta: {
-			title: 'Settings',
+			title: 'nav.routes.settings',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 			settingsLayout: true,
@@ -565,7 +569,7 @@ const routes = [
 		path: '/settings/workspaces',
 		component: () => import('@/pages/Settings/Workspaces.vue'),
 		meta: {
-			title: 'Workspace settings',
+			title: 'nav.routes.workspaceSettings',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 			settingsLayout: true,
@@ -576,7 +580,7 @@ const routes = [
 		path: '/settings/modules',
 		component: () => import('@/pages/Settings/Modules.vue'),
 		meta: {
-			title: 'Modules',
+			title: 'nav.routes.modules',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 			settingsLayout: true,
@@ -595,7 +599,7 @@ const routes = [
 			() => import('@/pages/Settings/Personas.vue'),
 		),
 		meta: {
-			title: 'Personas',
+			title: 'nav.routes.personas',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 			settingsLayout: true,
@@ -610,7 +614,7 @@ const routes = [
 			() => import('@/pages/Settings/AgentNotifications.vue'),
 		),
 		meta: {
-			title: 'Agent alerts',
+			title: 'nav.routes.agentAlerts',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 			settingsLayout: true,
@@ -621,7 +625,7 @@ const routes = [
 		path: '/settings/plugins',
 		component: () => import('@/pages/Settings/Plugins.vue'),
 		meta: {
-			title: 'Plugins',
+			title: 'nav.routes.plugins',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 			settingsLayout: true,
@@ -632,7 +636,7 @@ const routes = [
 		path: '/settings/plugins/help',
 		component: () => import('@/pages/Settings/PluginsHelp.vue'),
 		meta: {
-			title: 'How plugins work',
+			title: 'nav.routes.howPluginsWork',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 			settingsLayout: true,
@@ -695,7 +699,7 @@ const routes = [
 		path: '/privacy',
 		component: () => import('@/pages/Privacy.vue'),
 		meta: {
-			title: 'Privacy policy',
+			title: 'nav.routes.privacyPolicy',
 			transitionName: 'fade-fast',
 			navbarHidden: false,
 			allowedGuests: true,
@@ -711,7 +715,7 @@ const routes = [
 		path: '/:workspace_code/dashboard',
 		component: DashboardPage,
 		meta: {
-			title: 'Workspace Dashboard',
+			title: 'nav.routes.workspaceDashboard',
 			transitionName: 'slide',
 			navbarHidden: true,
 			keepAlive: true,
@@ -722,7 +726,7 @@ const routes = [
 		path: '/:workspace_code/team/:user_id',
 		component: () => import('@/pages/MemberPage.vue'),
 		meta: {
-			title: 'Workspace Member',
+			title: 'nav.routes.workspaceMember',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
@@ -732,7 +736,7 @@ const routes = [
 		path: '/:workspace_code/notifications',
 		component: () => import('@/pages/NotificationsPage.vue'),
 		meta: {
-			title: 'Notifications',
+			title: 'nav.routes.notifications',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
@@ -742,7 +746,7 @@ const routes = [
 		path: '/:workspace_code/list',
 		component: TasksListPage,
 		meta: {
-			title: 'Task List',
+			title: 'nav.routes.taskList',
 			transitionName: 'slide',
 			navbarHidden: true,
 			keepAlive: true,
@@ -754,7 +758,7 @@ const routes = [
 		beforeEnter: simpleModeBoardGuard,
 		component: () => import('@/pages/Board.vue'),
 		meta: {
-			title: 'Board',
+			title: 'nav.routes.board',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 		},
@@ -764,7 +768,7 @@ const routes = [
 		path: '/:workspace_code/map',
 		component: () => import('@/pages/WorkspaceMap.vue'),
 		meta: {
-			title: 'Map',
+			title: 'nav.routes.map',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 		},
@@ -786,7 +790,7 @@ const routes = [
 		path: '/:workspace_code/pages',
 		component: () => import('@/pages/PagesLayout.vue'),
 		meta: {
-			title: 'Pages',
+			title: 'nav.routes.pages',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 			pages: true,
@@ -826,7 +830,7 @@ const routes = [
 		path: '/:workspace_code/memory',
 		component: () => import('@/pages/WorkspaceMemory.vue'),
 		meta: {
-			title: 'Memory',
+			title: 'nav.routes.memory',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 		},
@@ -836,7 +840,7 @@ const routes = [
 		path: '/:workspace_code/:category_code',
 		component: CategoryPage,
 		meta: {
-			title: 'Category View',
+			title: 'nav.routes.categoryView',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
@@ -864,7 +868,7 @@ const routes = [
 		path: '/:workspace_code/categories',
 		component: CategoryPage,
 		meta: {
-			title: 'Categories',
+			title: 'nav.routes.categories',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
@@ -875,7 +879,7 @@ const routes = [
 		path: '/:workspace_code/categories/create',
 		component: CategoryPage,
 		meta: {
-			title: 'New category',
+			title: 'nav.routes.newCategory',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
@@ -898,7 +902,7 @@ const routes = [
 	{
 		path: '/:workspace_code/categories/:id/children/:status?',
 		meta: {
-			title: 'Subcategories',
+			title: 'nav.routes.subcategories',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
@@ -909,7 +913,7 @@ const routes = [
 		path: '/:workspace_code/categories/:category_id/create',
 		component: CategoryPage,
 		meta: {
-			title: 'New category',
+			title: 'nav.routes.newCategory',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
@@ -921,7 +925,7 @@ const routes = [
 		path: '/fallback-categories',
 		component: CategoryPage,
 		meta: {
-			title: 'Categories',
+			title: 'nav.routes.categories',
 			transitionName: 'slide',
 			navbarHidden: true,
 			fallback: true,
@@ -950,7 +954,7 @@ const routes = [
 		path: '/projects-categories/:id/children',
 		component: CategoryPage,
 		meta: {
-			title: 'Category Children',
+			title: 'nav.routes.categoryChildren',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},

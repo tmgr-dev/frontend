@@ -28,7 +28,8 @@
 		"empty": "空"
 	},
 	"editor": {
-		"searching": "検索中…"
+		"searching": "検索中…",
+		"toolbarGroup": "ページ"
 	},
 	"files": {
 		"title": "ファイル",
@@ -293,5 +294,15 @@
 			"captionPlaceholder": "キャプションを入力",
 			"loadFailed": "画像を読み込めませんでした"
 		}
+	},
+	"actions": {
+		"createFailed": "ページを作成できませんでした",
+		"renameFailed": "ページの名前を変更できませんでした",
+		"pinFailed": "ピン留めを変更できませんでした",
+		"archiveFailed": "ページをアーカイブできませんでした"
+	},
+	"markdownIo": {
+		"exportedWithWarnings": "{n}件の警告付きでエクスポートしました",
+		"exportFailed": "エクスポートに失敗しました"
 	}
 }

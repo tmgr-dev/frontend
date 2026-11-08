@@ -180,5 +180,14 @@
 		"deleteTitle": "Delete all uploads?",
 		"deleteBody": "Everything this account has uploaded is deleted from TMGR. Agent usage sync stays as it is.",
 		"genericError": "Something went wrong."
+	},
+	"featureDisabled": {
+		"moduleOff": "Module is off",
+		"title": "{name} is turned off",
+		"description": "{name} is turned off {scope}. Turn it on in Settings → Modules.",
+		"forAccount": "for your account",
+		"inWorkspace": "in this workspace",
+		"openModulesLabel": "Open Modules settings",
+		"openModules": "Open Modules"
 	}
 }

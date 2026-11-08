@@ -348,6 +348,12 @@
 				"invalid_file": "Nazwa pliku jest nieprawidłowa.",
 				"invalid_file_path": "Nie udało się dołączyć przesłanego pliku. Spróbuj ponownie.",
 				"file_bound_elsewhere": "Nie udało się dołączyć przesłanego pliku. Spróbuj ponownie."
+			},
+			"uploadFailed": "Wysyłanie nie powiodło się.",
+			"size": {
+				"bytes": "{n} B",
+				"kilobytes": "{n} KB",
+				"megabytes": "{n} MB"
 			}
 		},
 		"personas": {
@@ -422,6 +428,17 @@
 				"replaced": "Skill w bibliotece został zastąpiony od ostatniego importu. Zaznacz go ponownie, aby nadpisać.",
 				"requestFailed": "Żądanie nie powiodło się"
 			}
+		},
+		"chat": {
+			"justNow": "przed chwilą",
+			"minutesAgo": "{n} min temu",
+			"hoursAgo": "{n} godz. temu",
+			"newChat": "Nowy czat",
+			"pinsLoadFailed": "Nie udało się wczytać przypiętych faktów.",
+			"loadFailed": "Nie udało się wczytać rozmowy",
+			"noActiveConversation": "Brak aktywnej rozmowy",
+			"decisionFailed": "Nie udało się wysłać decyzji. Spróbuj ponownie.",
+			"newChatFailed": "Nie udało się rozpocząć nowej rozmowy"
 		}
 	}
 }

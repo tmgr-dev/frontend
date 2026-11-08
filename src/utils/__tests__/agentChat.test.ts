@@ -1,3 +1,4 @@
+import { setLocale } from '@/i18n';
 import type { PendingAction } from '@/types/agent';
 import {
 	appendPending,
@@ -349,6 +350,17 @@ describe('chat list helpers', () => {
 		expect(formatChatTime('2026-10-14T10:00:00Z', now)).toBe('2 h ago');
 		expect(formatChatTime('2026-10-01T12:00:00Z', now)).toBe('Oct 1');
 		expect(formatChatTime('2025-10-01T12:00:00Z', now)).toBe('Oct 1, 2025');
+	});
+
+	it('localizes chat labels to the current locale', async () => {
+		const now = Date.parse('2026-10-14T12:00:00Z');
+		await setLocale('ru');
+		try {
+			expect(formatChatTime('2026-10-14T11:30:00Z', now)).toBe('30 мин назад');
+			expect(chatTitle(null)).toBe('Новый чат');
+		} finally {
+			await setLocale('en');
+		}
 	});
 });
 

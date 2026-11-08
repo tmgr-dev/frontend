@@ -9,6 +9,7 @@ import {
 	type PageType,
 } from '@/actions/tmgr/pages';
 import { useToast } from '@/components/ui/toast';
+import { t } from '@/i18n';
 import { DEFAULT_PAGE_TITLE, pageUrl } from '@/utils/pagesTree';
 import { useRouter } from 'vue-router';
 
@@ -37,7 +38,7 @@ export function usePagesActions(getWorkspaceCode: () => string | undefined) {
 			open(page);
 			return page;
 		} catch {
-			fail('Failed to create page');
+			fail(t('pages.actions.createFailed'));
 			return null;
 		}
 	};
@@ -50,7 +51,7 @@ export function usePagesActions(getWorkspaceCode: () => string | undefined) {
 			await updatePage(page.id, { version: current.version, title: next });
 			return true;
 		} catch {
-			fail('Failed to rename page');
+			fail(t('pages.actions.renameFailed'));
 			return false;
 		}
 	};
@@ -60,7 +61,7 @@ export function usePagesActions(getWorkspaceCode: () => string | undefined) {
 			await (page.pinned ? unpinPage(page.id) : pinPage(page.id));
 			return true;
 		} catch {
-			fail('Failed to change pin');
+			fail(t('pages.actions.pinFailed'));
 			return false;
 		}
 	};
@@ -70,7 +71,7 @@ export function usePagesActions(getWorkspaceCode: () => string | undefined) {
 			await deletePage(page.id);
 			return true;
 		} catch {
-			fail('Failed to archive page');
+			fail(t('pages.actions.archiveFailed'));
 			return false;
 		}
 	};

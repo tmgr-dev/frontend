@@ -482,6 +482,10 @@
 			"events": "Events",
 			"runnerNotRunning": "The TMGR runner is not running. Start it to see autopilot here.",
 			"updateRunner": "Update the TMGR runner to see autopilot here."
+		},
+		"allowReminder": {
+			"title": "Cloud agent runs expire soon",
+			"body": "Workspace {workspace} stops accepting agent runs on this computer soon. Renew in a terminal: {command}"
 		}
 	},
 	"helpers": {
@@ -640,7 +644,17 @@
 			"quota": "You can start up to 3 moves a day. Try again tomorrow.",
 			"running": "Another move is still running.",
 			"tooLarge": "This workspace is too large to move in one go.",
-			"genericError": "Something went wrong."
+			"genericError": "Something went wrong.",
+			"errors": {
+				"noMoveInProgress": "No move in progress",
+				"bundleUpload": "Bundle upload",
+				"uploadOf": "Upload of {key}",
+				"httpFailed": "{what} failed (HTTP {status})",
+				"revisionChanged": "The cloud copy was made from a different revision of this workspace.",
+				"notPublished": "The server has not published the move yet.",
+				"alreadyInProgress": "A move of this workspace is already in progress",
+				"noPublishedMove": "This workspace has no published move"
+			}
 		},
 		"runner": {
 			"states": {

@@ -28,7 +28,8 @@
 		"empty": "Empty"
 	},
 	"editor": {
-		"searching": "Searching..."
+		"searching": "Searching...",
+		"toolbarGroup": "Page"
 	},
 	"files": {
 		"title": "Files",
@@ -293,5 +294,15 @@
 			"captionPlaceholder": "Write a caption",
 			"loadFailed": "Image failed to load"
 		}
+	},
+	"actions": {
+		"createFailed": "Failed to create page",
+		"renameFailed": "Failed to rename page",
+		"pinFailed": "Failed to change pin",
+		"archiveFailed": "Failed to archive page"
+	},
+	"markdownIo": {
+		"exportedWithWarnings": "Exported with {n} warning | Exported with {n} warnings",
+		"exportFailed": "Export failed"
 	}
 }

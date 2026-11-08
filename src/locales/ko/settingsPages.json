@@ -211,7 +211,13 @@
 	"skillFiles": {
 		"title": "파일 · {slug}",
 		"loading": "파일을 불러오는 중…",
-		"deleteFile": "{path} 삭제"
+		"deleteFile": "{path} 삭제",
+		"loadFailed": "파일을 불러오지 못했습니다",
+		"confirmDelete": "{path}을(를) 삭제할까요? 되돌릴 수 없습니다.",
+		"deleted": "파일을 삭제했습니다",
+		"viewFailed": "파일을 불러오지 못했습니다",
+		"deleteFailed": "파일을 삭제하지 못했습니다",
+		"stale": "다른 곳에서 파일이 변경되어 다시 불러왔습니다"
 	},
 	"deletedSkills": {
 		"recentlyDeleted": "최근 삭제됨",
@@ -250,7 +256,11 @@
 		"pinnedBy": "고정한 곳: {names}",
 		"compare": "현재 버전과 비교",
 		"restoreVersion": "이 버전으로 복원",
-		"confirmRestore": "버전 {version}을(를) 복원할까요? 그 내용으로 버전 {next}이(가) 만들어져요."
+		"confirmRestore": "버전 {version}을(를) 복원할까요? 그 내용으로 버전 {next}이(가) 만들어져요.",
+		"loadFailed": "기록을 불러오지 못했습니다",
+		"restored": "버전 {version}을(를) 복원했습니다",
+		"changedMeanwhile": "그사이 이 스킬이 변경되었습니다. 기록을 다시 불러오세요.",
+		"restoreFailed": "이 버전을 복원하지 못했습니다"
 	},
 	"skillsLibrary": {
 		"importFromAgents": "로컬 에이전트에서 가져오기",
@@ -921,7 +931,9 @@
 			"rateLimitedIn": "알림이 너무 많아요. {seconds}초 후에 다시 시도해 주세요.",
 			"rateLimited": "알림이 너무 많아요. 잠시 후에 다시 시도해 주세요.",
 			"unauthorized": "이 토큰이 거부됐어요. 새로 만들어 주세요.",
-			"unreachable": "TMGR에 연결하지 못했어요."
+			"unreachable": "TMGR에 연결하지 못했어요.",
+			"title": "TMGR에서 보낸 테스트",
+			"body": "에이전트 알림 설정이 완료되었습니다. 전송 시각 {time}"
 		},
 		"copyFailed": "클립보드에 복사하지 못했어요",
 		"confirmRevoke": "\"{label}\" 토큰을 취소할까요?",

@@ -352,10 +352,10 @@
 		const minutes = Math.floor((totalOvertime.value % 3600) / 60);
 		const parts = [];
 		if (hours > 0) {
-			parts.push(`${hours}h`);
+			parts.push(t('tasks.duration.hoursShort', { n: hours }));
 		}
 		if (minutes > 0) {
-			parts.push(`${minutes}m`);
+			parts.push(t('tasks.duration.minutesShort', { n: minutes }));
 		}
 		return parts.length > 0 ? parts.join(' ') : null;
 	});

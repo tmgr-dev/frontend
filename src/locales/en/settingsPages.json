@@ -211,7 +211,13 @@
 	"skillFiles": {
 		"title": "Files · {slug}",
 		"loading": "Loading files…",
-		"deleteFile": "Delete {path}"
+		"deleteFile": "Delete {path}",
+		"loadFailed": "Could not load files",
+		"confirmDelete": "Delete {path}? This cannot be undone.",
+		"deleted": "File deleted",
+		"viewFailed": "Could not load the file",
+		"deleteFailed": "Could not delete the file",
+		"stale": "Files changed elsewhere, reloaded"
 	},
 	"deletedSkills": {
 		"recentlyDeleted": "Recently deleted",
@@ -250,7 +256,11 @@
 		"pinnedBy": "Pinned by: {names}",
 		"compare": "Compare with current",
 		"restoreVersion": "Restore this version",
-		"confirmRestore": "Restore version {version}? This creates version {next} with its content."
+		"confirmRestore": "Restore version {version}? This creates version {next} with its content.",
+		"loadFailed": "Could not load the history",
+		"restored": "Version {version} restored",
+		"changedMeanwhile": "This skill changed meanwhile. Reload the history.",
+		"restoreFailed": "Could not restore this version"
 	},
 	"skillsLibrary": {
 		"importFromAgents": "Import from local agents",
@@ -921,7 +931,9 @@
 			"rateLimitedIn": "Too many notifications — try again in {seconds} s.",
 			"rateLimited": "Too many notifications — try again shortly.",
 			"unauthorized": "This token was rejected. Create a new one.",
-			"unreachable": "Could not reach TMGR."
+			"unreachable": "Could not reach TMGR.",
+			"title": "Test from TMGR",
+			"body": "Your agent notifications are set up. Sent at {time}"
 		},
 		"copyFailed": "Could not copy to clipboard",
 		"confirmRevoke": "Revoke the \"{label}\" token?",

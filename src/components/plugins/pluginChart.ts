@@ -1,4 +1,4 @@
-import { t } from '@/i18n';
+import { currentLocale, t } from '@/i18n';
 import type { Color } from '@/pluginSystem/uiTree';
 
 export interface ChartBox {
@@ -116,13 +116,13 @@ export const formatTick = (value: number): string => {
 	if (abs >= 1e9) return compact(value / 1e9, 'B');
 	if (abs >= 1e6) return compact(value / 1e6, 'M');
 	if (abs >= 1e4) return compact(value / 1e3, 'k');
-	return Number(value.toFixed(2)).toLocaleString('en-US');
+	return Number(value.toFixed(2)).toLocaleString(currentLocale());
 };
 
 export const formatValue = (value: number | null | undefined): string =>
 	value == null
-		? 'no data'
-		: Number(value.toFixed(4)).toLocaleString('en-US', {
+		? t('plugins.chart.noData')
+		: Number(value.toFixed(4)).toLocaleString(currentLocale(), {
 				maximumFractionDigits: 4,
 			});
 

@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import {
 	CloudError,
 	type MoveDeps,
@@ -40,7 +41,7 @@ export const prepareTarget = async (
 	if (statusId === null)
 		throw new CloudError(
 			'rejected',
-			'That workspace has no active status to put the tasks in.',
+			t('dailyRoutine.moveToCloud.messages.noActiveStatus'),
 		);
 	return { workspaceId, categoryId, statusId };
 };

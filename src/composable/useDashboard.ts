@@ -6,6 +6,7 @@ import {
 	getUserHeatmap,
 	withRetry,
 } from '@/actions/tmgr/dashboard';
+import { t } from '@/i18n';
 import store from '@/store';
 import type {
 	ActionError,
@@ -258,9 +259,7 @@ export function useDashboard(
 		try {
 			const wsId = getCurrentWorkspaceId();
 			if (!wsId) {
-				throw new Error(
-					'No valid workspace found. Please ensure you have access to at least one workspace and try refreshing the page.',
-				);
+				throw new Error(t('board.dashboard.errors.noWorkspace'));
 			}
 			console.log('Loading statistics for workspace ID:', wsId);
 
@@ -291,7 +290,9 @@ export function useDashboard(
 		} catch (err) {
 			if (!isCurrent()) return;
 			const errorMessage =
-				err instanceof Error ? err.message : 'Failed to load statistics';
+				err instanceof Error
+					? err.message
+					: t('board.dashboard.errors.loadFailed.statistics');
 			updateLoadingState('statistics', createErrorState(errorMessage));
 			handleError(
 				{
@@ -322,9 +323,7 @@ export function useDashboard(
 		try {
 			const wsId = getCurrentWorkspaceId();
 			if (!wsId) {
-				throw new Error(
-					'No valid workspace found. Please ensure you have access to at least one workspace and try refreshing the page.',
-				);
+				throw new Error(t('board.dashboard.errors.noWorkspace'));
 			}
 
 			const params: ActivityFeedParams = {
@@ -378,7 +377,9 @@ export function useDashboard(
 		} catch (err) {
 			if (!isCurrent()) return;
 			const errorMessage =
-				err instanceof Error ? err.message : 'Failed to load activities';
+				err instanceof Error
+					? err.message
+					: t('board.dashboard.errors.loadFailed.activities');
 
 			if (append) {
 				loadingStates.value.loadingMore = false;
@@ -409,9 +410,7 @@ export function useDashboard(
 		try {
 			const wsId = getCurrentWorkspaceId();
 			if (!wsId) {
-				throw new Error(
-					'No valid workspace found. Please ensure you have access to at least one workspace and try refreshing the page.',
-				);
+				throw new Error(t('board.dashboard.errors.noWorkspace'));
 			}
 			console.log('Loading heatmap for workspace ID:', wsId);
 
@@ -441,7 +440,9 @@ export function useDashboard(
 		} catch (err) {
 			if (!isCurrent()) return;
 			const errorMessage =
-				err instanceof Error ? err.message : 'Failed to load heatmap';
+				err instanceof Error
+					? err.message
+					: t('board.dashboard.errors.loadFailed.heatmap');
 			updateLoadingState('heatmap', createErrorState(errorMessage));
 			handleError(
 				{
@@ -466,9 +467,7 @@ export function useDashboard(
 		try {
 			const wsId = getCurrentWorkspaceId();
 			if (!wsId) {
-				throw new Error(
-					'No valid workspace found. Please ensure you have access to at least one workspace and try refreshing the page.',
-				);
+				throw new Error(t('board.dashboard.errors.noWorkspace'));
 			}
 
 			const taskParams: RecentTasksParams = {
@@ -503,7 +502,9 @@ export function useDashboard(
 		} catch (err) {
 			if (!isCurrent()) return;
 			const errorMessage =
-				err instanceof Error ? err.message : 'Failed to load recent tasks';
+				err instanceof Error
+					? err.message
+					: t('board.dashboard.errors.loadFailed.recentTasks');
 			updateLoadingState('recentTasks', createErrorState(errorMessage));
 			handleError(
 				{
@@ -529,9 +530,7 @@ export function useDashboard(
 		try {
 			const wsId = getCurrentWorkspaceId();
 			if (!wsId) {
-				throw new Error(
-					'No valid workspace found. Please ensure you have access to at least one workspace and try refreshing the page.',
-				);
+				throw new Error(t('board.dashboard.errors.noWorkspace'));
 			}
 
 			const result = await withRetry(
@@ -566,7 +565,9 @@ export function useDashboard(
 		} catch (err) {
 			if (!isCurrent()) return;
 			const errorMessage =
-				err instanceof Error ? err.message : 'Failed to load team activity';
+				err instanceof Error
+					? err.message
+					: t('board.dashboard.errors.loadFailed.teamActivity');
 			updateLoadingState('teamActivity', createErrorState(errorMessage));
 			handleError(
 				{

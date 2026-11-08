@@ -180,5 +180,14 @@
 		"deleteTitle": "모든 업로드를 삭제할까요?",
 		"deleteBody": "이 계정이 업로드한 모든 내용이 TMGR에서 삭제돼요. 에이전트 사용량 동기화는 지금 상태로 유지돼요.",
 		"genericError": "문제가 발생했어요."
+	},
+	"featureDisabled": {
+		"moduleOff": "모듈이 꺼져 있습니다",
+		"title": "{name}이(가) 꺼져 있습니다",
+		"description": "{name}이(가) {scope} 꺼져 있습니다. 설정 → 모듈에서 켤 수 있습니다.",
+		"forAccount": "회원님의 계정에서",
+		"inWorkspace": "이 워크스페이스에서",
+		"openModulesLabel": "모듈 설정 열기",
+		"openModules": "모듈 열기"
 	}
 }

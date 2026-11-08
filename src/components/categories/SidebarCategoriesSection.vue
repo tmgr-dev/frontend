@@ -3,7 +3,7 @@
 		class="group-data-[collapsible=icon]:hidden"
 		data-testid="categories-sidebar-section"
 	>
-		<SidebarGroupLabel>Categories</SidebarGroupLabel>
+		<SidebarGroupLabel>{{ $t('nav.categories.title') }}</SidebarGroupLabel>
 		<div class="absolute top-3.5 right-3 flex items-center gap-0.5">
 			<button
 				type="button"
@@ -11,8 +11,8 @@
 				:class="
 					filterOpen && 'bg-sidebar-accent text-sidebar-accent-foreground'
 				"
-				title="Filter categories"
-				aria-label="Filter categories"
+				:title="$t('nav.categories.filter')"
+				:aria-label="$t('nav.categories.filter')"
 				:aria-expanded="filterOpen"
 				@click="toggleFilter"
 			>
@@ -21,8 +21,8 @@
 			<button
 				type="button"
 				class="flex h-5 w-5 items-center justify-center rounded text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-				title="New category"
-				aria-label="New category"
+				:title="$t('nav.categories.new')"
+				:aria-label="$t('nav.categories.new')"
 				data-tour="categories.create"
 				@click="createTop"
 			>
@@ -35,8 +35,8 @@
 			ref="filterInput"
 			v-model="filter"
 			type="search"
-			placeholder="Filter categories"
-			aria-label="Filter categories"
+			:placeholder="$t('nav.categories.filter')"
+			:aria-label="$t('nav.categories.filter')"
 			class="mb-1 h-7 w-full rounded-md border border-sidebar-border bg-transparent px-2 text-sm text-sidebar-foreground outline-hidden placeholder:text-sidebar-foreground/50 focus:border-line-focus"
 			@keydown.esc="closeFilter"
 		/>
@@ -45,21 +45,23 @@
 			v-if="!loaded && pending"
 			class="px-2 py-1 text-xs text-sidebar-foreground/60"
 		>
-			Loading…
+			{{ $t('common.states.loading') }}
 		</div>
 		<div
 			v-else-if="!loaded && error"
 			class="flex items-center gap-2 px-2 py-1 text-xs text-destructive"
 		>
-			Failed to load categories
-			<button type="button" class="underline" @click="refresh">Retry</button>
+			{{ $t('nav.categories.loadFailed') }}
+			<button type="button" class="underline" @click="refresh">
+				{{ $t('common.actions.retry') }}
+			</button>
 		</div>
 		<template v-else>
 			<p
 				v-if="filter.trim() && !shownRows.length"
 				class="px-2 py-1 text-xs text-sidebar-foreground/60"
 			>
-				No categories match “{{ filter.trim() }}”
+				{{ $t('nav.categories.noMatch', { query: filter.trim() }) }}
 			</p>
 			<ul class="flex flex-col gap-px">
 				<li v-for="row in shownRows" :key="row.key">
@@ -75,9 +77,11 @@
 							v-if="row.hasChildren"
 							type="button"
 							class="flex h-7 w-6 shrink-0 items-center justify-center rounded text-sidebar-foreground/60 hover:text-sidebar-foreground"
-							:aria-label="`${row.expanded ? 'Collapse' : 'Expand'} ${
-								row.title
-							}`"
+							:aria-label="
+								row.expanded
+									? $t('nav.categories.collapse', { title: row.title })
+									: $t('nav.categories.expand', { title: row.title })
+							"
 							:aria-expanded="row.expanded"
 							@click="toggle(row.id)"
 						>
@@ -93,7 +97,7 @@
 							class="flex h-7 min-w-0 flex-1 items-center gap-2 italic"
 						>
 							<FolderPlus class="h-4 w-4 shrink-0" aria-hidden="true" />
-							<span class="truncate">New category</span>
+							<span class="truncate">{{ $t('nav.categories.new') }}</span>
 						</span>
 						<router-link
 							v-else
@@ -107,13 +111,13 @@
 							<Bot
 								v-if="row.cursor"
 								role="img"
-								aria-label="Cursor connected"
+								:aria-label="$t('nav.categories.cursorConnected')"
 								class="h-3.5 w-3.5 shrink-0 text-status-done"
 							/>
 							<TriangleAlert
 								v-if="row.literal"
 								role="img"
-								aria-label="Title pattern has no placeholders"
+								:aria-label="$t('nav.categories.literalPattern')"
 								class="h-3.5 w-3.5 shrink-0 text-status-progress"
 							/>
 						</router-link>
@@ -146,6 +150,7 @@
 <script lang="ts">
 	import { SidebarGroup, SidebarGroupLabel } from '@/components/ui/sidebar';
 	import { useCategoryTree } from '@/composable/useCategoryTree';
+	import { t } from '@/i18n';
 	import {
 		isLiteralPattern,
 		settingValue,
@@ -307,8 +312,8 @@
 			);
 			const toggleLabel = computed(() =>
 				toggleKind.value === 'less'
-					? 'Show less'
-					: `Show ${collapsed.value.hidden} more`,
+					? t('nav.categories.showLess')
+					: t('nav.categories.showMore', { count: collapsed.value.hidden }),
 			);
 			watch(
 				[currentId, rows],

@@ -1,4 +1,4 @@
-import { t } from '@/i18n';
+import { currentLocale, t } from '@/i18n';
 
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_MESSAGE = 5;
@@ -112,11 +112,26 @@ export const isSupportedAttachment = (file: {
 export const isImageAttachment = (type: string | null | undefined): boolean =>
 	baseType(type).startsWith('image/');
 
+const formatNumber = (value: number, fractionDigits = 0): string =>
+	new Intl.NumberFormat(currentLocale(), {
+		minimumFractionDigits: fractionDigits,
+		maximumFractionDigits: fractionDigits,
+		useGrouping: false,
+	}).format(value);
+
 export const formatBytes = (bytes: number | null | undefined): string => {
 	if (bytes == null || !Number.isFinite(bytes)) return '';
-	if (bytes < 1024) return `${bytes} B`;
-	if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	if (bytes < 1024)
+		return t('agents.helpers.attachments.size.bytes', {
+			n: formatNumber(bytes),
+		});
+	if (bytes < 1024 * 1024)
+		return t('agents.helpers.attachments.size.kilobytes', {
+			n: formatNumber(Math.round(bytes / 1024)),
+		});
+	return t('agents.helpers.attachments.size.megabytes', {
+		n: formatNumber(bytes / (1024 * 1024), 1),
+	});
 };
 
 export const attachmentKindLabel = (

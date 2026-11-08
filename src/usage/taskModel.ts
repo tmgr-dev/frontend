@@ -1,4 +1,4 @@
-import { t } from '@/i18n';
+import { currentLocale, t } from '@/i18n';
 import { formatWorkDuration, isHttpUrl } from '../utils/agentWork';
 import type {
 	HookStat,
@@ -10,17 +10,18 @@ import type {
 	TaskToolStat,
 } from './taskUsage';
 
-const usdFormatter = new Intl.NumberFormat('en-US', {
-	style: 'currency',
-	currency: 'USD',
-	minimumFractionDigits: 2,
-	maximumFractionDigits: 2,
-});
+const usdFormatter = () =>
+	new Intl.NumberFormat(currentLocale(), {
+		style: 'currency',
+		currency: 'USD',
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2,
+	});
 
 export const formatUsd = (n: number): string => {
 	if (!Number.isFinite(n)) return '—';
-	if (n > 0 && n < 0.01) return '<$0.01';
-	return usdFormatter.format(n);
+	if (n > 0 && n < 0.01) return `<${usdFormatter().format(0.01)}`;
+	return usdFormatter().format(n);
 };
 
 export const formatUsdString = (

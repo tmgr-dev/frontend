@@ -211,7 +211,13 @@
 	"skillFiles": {
 		"title": "ファイル · {slug}",
 		"loading": "ファイルを読み込み中…",
-		"deleteFile": "{path} を削除"
+		"deleteFile": "{path} を削除",
+		"loadFailed": "ファイルを読み込めませんでした",
+		"confirmDelete": "{path}を削除しますか？この操作は元に戻せません。",
+		"deleted": "ファイルを削除しました",
+		"viewFailed": "ファイルを読み込めませんでした",
+		"deleteFailed": "ファイルを削除できませんでした",
+		"stale": "ファイルが別の場所で変更されたため、再読み込みしました"
 	},
 	"deletedSkills": {
 		"recentlyDeleted": "最近削除したもの",
@@ -250,7 +256,11 @@
 		"pinnedBy": "固定しているペルソナ：{names}",
 		"compare": "現在と比較",
 		"restoreVersion": "このバージョンを復元",
-		"confirmRestore": "バージョン {version} を復元しますか？その内容でバージョン {next} が作成されます。"
+		"confirmRestore": "バージョン {version} を復元しますか？その内容でバージョン {next} が作成されます。",
+		"loadFailed": "履歴を読み込めませんでした",
+		"restored": "バージョン{version}を復元しました",
+		"changedMeanwhile": "このスキルはその間に変更されました。履歴を再読み込みしてください。",
+		"restoreFailed": "このバージョンを復元できませんでした"
 	},
 	"skillsLibrary": {
 		"importFromAgents": "ローカルのエージェントからインポート",
@@ -921,7 +931,9 @@
 			"rateLimitedIn": "通知が多すぎます。{seconds} 秒後にもう一度お試しください。",
 			"rateLimited": "通知が多すぎます。しばらくしてからもう一度お試しください。",
 			"unauthorized": "このトークンは拒否されました。新しいものを作成してください。",
-			"unreachable": "TMGR に接続できませんでした。"
+			"unreachable": "TMGR に接続できませんでした。",
+			"title": "TMGRからのテスト",
+			"body": "エージェントの通知が設定されました。送信時刻 {time}"
 		},
 		"copyFailed": "クリップボードにコピーできませんでした",
 		"confirmRevoke": "トークン「{label}」を取り消しますか？",

@@ -180,5 +180,14 @@
 		"deleteTitle": "Excluir todos os envios?",
 		"deleteBody": "Tudo o que esta conta enviou é excluído do TMGR. A sincronização do uso de agentes continua como está.",
 		"genericError": "Algo deu errado."
+	},
+	"featureDisabled": {
+		"moduleOff": "O módulo está desativado",
+		"title": "{name} está desativado",
+		"description": "{name} está desativado {scope}. Ative em Configurações → Módulos.",
+		"forAccount": "para a sua conta",
+		"inWorkspace": "neste espaço de trabalho",
+		"openModulesLabel": "Abrir configurações de módulos",
+		"openModules": "Abrir módulos"
 	}
 }

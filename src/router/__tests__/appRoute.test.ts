@@ -42,7 +42,7 @@ describe('app home route', () => {
 		const app = find(loadRoutes(true), '/app');
 		expect(app.name).toBe('Dashboard');
 		expect(app.meta).toMatchObject({
-			title: 'Dashboard',
+			title: 'nav.routes.dashboard',
 			navbarHidden: true,
 			requiresAuth: true,
 		});

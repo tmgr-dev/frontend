@@ -28,7 +28,8 @@
 		"empty": "Leer"
 	},
 	"editor": {
-		"searching": "Suche..."
+		"searching": "Suche...",
+		"toolbarGroup": "Seite"
 	},
 	"files": {
 		"title": "Dateien",
@@ -293,5 +294,15 @@
 			"captionPlaceholder": "Bildunterschrift schreiben",
 			"loadFailed": "Das Bild konnte nicht geladen werden"
 		}
+	},
+	"actions": {
+		"createFailed": "Seite konnte nicht erstellt werden",
+		"renameFailed": "Seite konnte nicht umbenannt werden",
+		"pinFailed": "Anheften konnte nicht geändert werden",
+		"archiveFailed": "Seite konnte nicht archiviert werden"
+	},
+	"markdownIo": {
+		"exportedWithWarnings": "Export mit {n} Warnung | Export mit {n} Warnungen",
+		"exportFailed": "Export fehlgeschlagen"
 	}
 }

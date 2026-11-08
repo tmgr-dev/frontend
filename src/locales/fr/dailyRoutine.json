@@ -167,7 +167,17 @@
 		"pickHint": "Choisissez les routines locales à envoyer vers un espace de travail cloud.",
 		"empty": "Aucune routine locale à déplacer.",
 		"selectAria": "Sélectionner {title}",
-		"readError": "Impossible de lire les routines locales."
+		"readError": "Impossible de lire les routines locales.",
+		"messages": {
+			"sessionExpiredStop": "Votre session a expiré, les routines restantes n'ont donc pas été envoyées. Reconnectez-vous et réessayez.",
+			"networkStop": "Le serveur TMGR est injoignable, les routines restantes n'ont donc pas été envoyées. Vérifiez votre connexion et réessayez.",
+			"maybeSent": "La demande a peut-être atteint le serveur. Vérifiez l'espace de travail avant de réessayer.",
+			"somethingWrong": "Une erreur s'est produite.",
+			"serverUnreachable": "Le serveur TMGR est injoignable.",
+			"sessionExpired": "Votre session a expiré.",
+			"notConfirmed": "Le serveur n'a pas confirmé la création de la routine.",
+			"noActiveStatus": "Cet espace de travail n'a aucun statut actif où placer les tâches."
+		}
 	},
 	"page": {
 		"gate": {

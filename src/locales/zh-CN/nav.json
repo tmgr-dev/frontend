@@ -53,5 +53,53 @@
 		"logout": "退出登录",
 		"workspaceUsers": "工作区用户："
 	},
-	"layout": { "back": "返回" }
+	"layout": {
+		"back": "返回"
+	},
+	"categories": {
+		"title": "分类",
+		"filter": "筛选分类",
+		"new": "新建分类",
+		"loadFailed": "无法加载分类",
+		"noMatch": "没有匹配“{query}”的分类",
+		"expand": "展开 {title}",
+		"collapse": "收起 {title}",
+		"cursorConnected": "已连接 Cursor",
+		"literalPattern": "标题模式中没有占位符",
+		"showLess": "收起",
+		"showMore": "再显示 {count} 个"
+	},
+	"routes": {
+		"dashboard": "仪表盘",
+		"currentTasks": "当前任务",
+		"archive": "归档",
+		"files": "文件",
+		"welcome": "欢迎",
+		"connectAgent": "连接你的智能体",
+		"gettingStarted": "快速入门",
+		"plugin": "插件",
+		"board": "看板",
+		"dailyRoutines": "日常事项",
+		"quickAdd": "快速添加",
+		"settings": "设置",
+		"workspaceSettings": "工作区设置",
+		"modules": "模块",
+		"personas": "角色",
+		"agentAlerts": "智能体提醒",
+		"plugins": "插件",
+		"howPluginsWork": "插件如何工作",
+		"privacyPolicy": "隐私政策",
+		"workspaceDashboard": "工作区仪表盘",
+		"workspaceMember": "工作区成员",
+		"notifications": "通知",
+		"taskList": "任务列表",
+		"map": "地图",
+		"pages": "页面",
+		"memory": "记忆",
+		"categoryView": "分类视图",
+		"categories": "分类",
+		"newCategory": "新建分类",
+		"subcategories": "子分类",
+		"categoryChildren": "子分类"
+	}
 }

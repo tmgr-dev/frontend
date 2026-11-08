@@ -28,7 +28,8 @@
 		"empty": "空"
 	},
 	"editor": {
-		"searching": "搜索中…"
+		"searching": "搜索中…",
+		"toolbarGroup": "页面"
 	},
 	"files": {
 		"title": "文件",
@@ -293,5 +294,15 @@
 			"captionPlaceholder": "写一段图注",
 			"loadFailed": "图片加载失败"
 		}
+	},
+	"actions": {
+		"createFailed": "无法创建页面",
+		"renameFailed": "无法重命名页面",
+		"pinFailed": "无法更改置顶",
+		"archiveFailed": "无法归档页面"
+	},
+	"markdownIo": {
+		"exportedWithWarnings": "已导出，含 {n} 条警告",
+		"exportFailed": "导出失败"
 	}
 }

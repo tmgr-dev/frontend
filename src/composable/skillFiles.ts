@@ -5,9 +5,10 @@ import {
 	type SharedSkillFile,
 } from '@/actions/tmgr/personas';
 import { toast } from '@/components/ui/toast';
+import { t } from '@/i18n';
 import { ref } from 'vue';
 
-export const STALE_FILES_MESSAGE = 'Files changed elsewhere, reloaded';
+export const staleFilesMessage = () => t('settingsPages.skillFiles.stale');
 
 export const useSkillFiles = (
 	slug: () => string,
@@ -46,7 +47,10 @@ export const useSkillFiles = (
 			}
 			return true;
 		} catch {
-			toast({ title: 'Could not load files', variant: 'destructive' });
+			toast({
+				title: t('settingsPages.skillFiles.loadFailed'),
+				variant: 'destructive',
+			});
 			return false;
 		} finally {
 			loading.value = false;
@@ -67,17 +71,20 @@ export const useSkillFiles = (
 		} catch {
 			if (request !== viewRequest) return;
 			openPath.value = null;
-			toast({ title: 'Could not load the file', variant: 'destructive' });
+			toast({
+				title: t('settingsPages.skillFiles.viewFailed'),
+				variant: 'destructive',
+			});
 		} finally {
 			if (request === viewRequest) contentLoading.value = false;
 		}
 	};
 
 	const remove = async (path: string) => {
-		if (!confirm(`Delete ${path}? This cannot be undone.`)) return;
+		if (!confirm(t('settingsPages.skillFiles.confirmDelete', { path }))) return;
 		try {
 			await deleteSharedSkillFile(slug(), path, filesSha256.value);
-			toast({ title: 'File deleted' });
+			toast({ title: t('settingsPages.skillFiles.deleted') });
 			await load();
 			onChanged();
 		} catch (error) {
@@ -85,7 +92,7 @@ export const useSkillFiles = (
 				?.status;
 			if (status === 409) {
 				if (await load()) {
-					toast({ title: STALE_FILES_MESSAGE, variant: 'destructive' });
+					toast({ title: staleFilesMessage(), variant: 'destructive' });
 				} else {
 					files.value = [];
 					filesSha256.value = '';
@@ -93,7 +100,10 @@ export const useSkillFiles = (
 				}
 				onChanged();
 			} else {
-				toast({ title: 'Could not delete the file', variant: 'destructive' });
+				toast({
+					title: t('settingsPages.skillFiles.deleteFailed'),
+					variant: 'destructive',
+				});
 			}
 		}
 	};
