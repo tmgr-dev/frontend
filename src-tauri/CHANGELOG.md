@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.131 — 2026-11-08
+
+- When you answer a Decisions card that links to a TMGR task, the answer is now also posted to that task as a comment (the question, your choice or text, and the card id), once per answer and retried if you were offline. The comment is written only when the task is in the workspace named in the card link; otherwise it is skipped and the answer stays in the Decisions inbox. Only answers from the last 7 days are posted after the update.
+- A card whose answer no agent has picked up for 30 minutes now shows "Not picked up by any agent".
+
 ## 0.9.130 — 2026-11-08
 
 - Phone pairing no longer stalls on "waiting" after the phone scans the QR code. The pairing steps are now also written to TMGR.log (no codes, keys or message contents).
