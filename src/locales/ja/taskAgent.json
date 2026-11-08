@@ -6,7 +6,7 @@
 	},
 	"statusChip": {
 		"ariaLabel": "エージェント {state}",
-		"ariaLabelSessions": "エージェント {state}、セッション {n} 件（{state}）"
+		"ariaLabelSessions": "エージェント {state}、セッション {n} 件"
 	},
 	"details": {
 		"title": "エージェントの作業 — 詳細",
@@ -27,7 +27,7 @@
 		"treeCapped": "一部のエージェントは表示されていません。ツリーの表示数が上限に達しました。",
 		"tools": "ツール",
 		"mcpEntry": "{server} ×{calls}",
-		"mcpEntryErrors": "{server} ×{calls}（{server} でエラー {errors} 件、呼び出し {calls} 回、{errors} 件）",
+		"mcpEntryErrors": "{server} ×{calls}（エラー {errors} 件）",
 		"hookEntry": "{event} {name} ×{count}（{duration}）",
 		"hookEntryFailed": "{event} {name} ×{count}（{duration}）、{errors} 件失敗",
 		"context": "コンテキスト",

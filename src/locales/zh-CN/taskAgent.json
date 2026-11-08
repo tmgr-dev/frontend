@@ -6,7 +6,7 @@
 	},
 	"statusChip": {
 		"ariaLabel": "智能体{state}",
-		"ariaLabelSessions": "智能体{state}，{n} 个会话（{state}）"
+		"ariaLabelSessions": "智能体{state}，{n} 个会话"
 	},
 	"details": {
 		"title": "智能体运行 — 详情",
@@ -27,7 +27,7 @@
 		"treeCapped": "部分智能体未显示：树已达上限。",
 		"tools": "工具",
 		"mcpEntry": "{server} ×{calls}",
-		"mcpEntryErrors": "{server} ×{calls}（{server} 出错 {errors} 次，调用 {calls} 次，{errors} 个错误）",
+		"mcpEntryErrors": "{server} ×{calls}（{errors} 个错误）",
 		"hookEntry": "{event} {name} ×{count}（{duration}）",
 		"hookEntryFailed": "{event} {name} ×{count}（{duration}），{errors} 次失败",
 		"context": "上下文",

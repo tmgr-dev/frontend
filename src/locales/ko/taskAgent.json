@@ -6,7 +6,7 @@
 	},
 	"statusChip": {
 		"ariaLabel": "에이전트 {state}",
-		"ariaLabelSessions": "에이전트 {state}, 세션 {n}개 ({state})"
+		"ariaLabelSessions": "에이전트 {state}, 세션 {n}개"
 	},
 	"details": {
 		"title": "에이전트 작업 — 상세",
@@ -27,7 +27,7 @@
 		"treeCapped": "일부 에이전트는 표시되지 않아요. 트리 크기가 제한돼 있어요.",
 		"tools": "도구",
 		"mcpEntry": "{server} ×{calls}",
-		"mcpEntryErrors": "{server} ×{calls} ({server} 오류 {errors}건, 호출 {calls}회, {errors}건)",
+		"mcpEntryErrors": "{server} ×{calls} (오류 {errors}건)",
 		"hookEntry": "{event} {name} ×{count} ({duration})",
 		"hookEntryFailed": "{event} {name} ×{count} ({duration}), {errors}건 실패",
 		"context": "컨텍스트",
