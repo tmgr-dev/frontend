@@ -1,0 +1,142 @@
+{
+	"index": {
+		"header": {
+			"eyebrow": "Suivez vos tâches ici ! Pourquoi pas ?",
+			"headline": "Une application légère pour suivre vos tâches lourdes.",
+			"lead": "Suivez vos tâches plus facilement avec notre application.",
+			"getStarted": "Commencer",
+			"goToSystem": "Accéder au système",
+			"imageAlt": "TMGR.DEV"
+		},
+		"nav": {
+			"brand": "TASK MANAGER",
+			"menu": "Menu",
+			"login": "Connexion",
+			"goToSystem": "Accéder au système",
+			"register": "Inscription"
+		},
+		"pricing": {
+			"title": "Tarifs",
+			"free": "Gratuit",
+			"manageTasks": "Gérez vos tâches",
+			"createCategories": "Créez des projets",
+			"runTimer": "Lancez le minuteur",
+			"perUser": "/ par utilisateur",
+			"signUp": "S'inscrire"
+		},
+		"twitter": {
+			"title": "Twitter",
+			"kicker": "xPREMIERS PAS",
+			"cardTitle": "Lorem ipsum dolor sit amet.",
+			"cardText": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at ipsum eu nunc commodo posuere et sit amet ligula.",
+			"action": "Action"
+		},
+		"features": {
+			"title": "Fonctionnalités",
+			"itemTitle": "Lorem ipsum dolor sit amet",
+			"travelBooking": "réservation de voyages",
+			"connectedWorld": "monde connecté",
+			"itemText": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at ipsum eu nunc commodo posuere et sit amet ligula.",
+			"imagesFrom": "Images de :"
+		},
+		"footer": {
+			"brand": "TASK MANAGER",
+			"links": "Liens",
+			"faq": "FAQ",
+			"help": "Aide",
+			"support": "Assistance",
+			"legal": "Mentions légales",
+			"terms": "Conditions",
+			"privacy": "Confidentialité",
+			"social": "Réseaux",
+			"facebook": "Facebook",
+			"linkedin": "Linkedin",
+			"twitter": "Twitter",
+			"company": "Entreprise",
+			"blog": "Blog officiel",
+			"about": "À propos",
+			"contact": "Contact",
+			"freepik": "Vecteur d'arrière-plan créé par freepik - www.freepik.com",
+			"template": "Basé sur Tailwind Toolbox - Landing Page Template"
+		}
+	},
+	"error404": {
+		"goHome": "Retour à l'accueil",
+		"documentTitle": "Page introuvable"
+	},
+	"voice": {
+		"cancelAria": "Annuler la saisie vocale",
+		"cancel": "Annuler",
+		"stopRecordingAria": "Arrêter l'enregistrement",
+		"startAria": "Démarrer la saisie vocale",
+		"unsupported": "La saisie vocale n'est pas prise en charge ici",
+		"stopTranscribe": "Arrêter et transcrire",
+		"dictate": "Dicter"
+	},
+	"cliGuide": {
+		"title": "Ligne de commande tmgr",
+		"installHeading": "Installation sur macOS ou Linux",
+		"installLabel": "Commande d'installation de tmgr",
+		"installNote": "Pas besoin de sudo. Sous Windows, utilisez WSL2.",
+		"also": "Aussi :",
+		"safetyHeading": "Conçu pour être sûr",
+		"moreHeading": "Plus",
+		"more": {
+			"agents": "{link} : connectez Claude Code, Codex et Cursor.",
+			"agentsLink": "Guide des agents IA",
+			"notify": "{link} : notifications push et alarmes sur téléphone pour tout client MCP.",
+			"notifyLink": "{'@'}tmgr/notify",
+			"source": "{link} : tmgr est open source.",
+			"sourceLink": "Code source"
+		}
+	},
+	"agentsGuide": {
+		"title": "Configuration des agents IA",
+		"intro": "Connectez Claude Code, Codex, Cursor et d'autres agents compatibles MCP à TMGR. Deux serveurs MCP couvrent deux besoins : travailler avec vos tâches, et vous joindre quand un agent a besoin d'attention.",
+		"personaHint": "Besoin qu'un agent agisse dans un espace de travail sous une persona nommée ? Créez un jeton de persona dans Paramètres → Personas → Connecter un agent.",
+		"token": {
+			"heading": "1. Obtenir un jeton",
+			"body": "Ouvrez {link} et cliquez sur Créer un jeton. Le jeton commence par {prefix} et ne s'affiche qu'une seule fois : copiez-le tout de suite.",
+			"link": "Paramètres → Alertes des agents"
+		},
+		"connect": {
+			"heading": "2. Connecter votre agent",
+			"body": "Choisissez votre client ci-dessous. Remplacez l'espace réservé par votre jeton. Nécessite Node 22+ et l'application mobile TMGR pour les notifications push et les alarmes."
+		},
+		"taskMcp": {
+			"heading": "MCP des tâches (tmgr)",
+			"body": "Un serveur MCP HTTP distant pour gérer les tâches, statuts, commentaires, le suivi du temps et les routines. Générez un jeton d'appareil dans {link} et envoyez-le dans l'en-tête {header}.",
+			"link": "Paramètres → Appareils connectés",
+			"claudeCode": "Claude Code",
+			"claudeLabel": "Commande tmgr pour Claude Code",
+			"jsonLabel": "mcp.json de tmgr",
+			"note": "Ce n'est pas un connecteur OAuth : les connecteurs personnalisés de claude.ai qui exigent OAuth ne sont pas pris en charge."
+		},
+		"alarms": {
+			"heading": "Alarmes",
+			"body": "L'outil {tool} sonne d'abord dans l'application iOS, puis appelle votre téléphone s'il n'est pas acquitté (appuyez sur 1 pour acquitter). Pour une fiabilité maximale :",
+			"item1": "Définissez et vérifiez un téléphone d'alarme dans Paramètres → Alertes des agents.",
+			"item2": "Ajoutez le numéro d'appel TMGR à vos contacts ou à vos favoris.",
+			"item3": "Activez les appels répétés dans les réglages iOS.",
+			"item4": "Autorisez les alarmes pour l'application TMGR."
+		},
+		"troubleshooting": {
+			"heading": "Dépannage",
+			"noPush": "Aucune notification n'arrive : vérifiez que {path} existe et est lisible. Les hooks se terminent toujours avec le code 0 et n'affichent rien.",
+			"mcpList": "Exécutez {command} pour vérifier que le serveur est connecté.",
+			"settingsJson": "Les serveurs MCP ne vont pas dans {file} ; utilisez {command}.",
+			"codex": "Codex ignore {key} dans un {local} propre au projet ; placez-le dans {global}.",
+			"rateLimit": "Les requêtes sont limitées à 20 par minute et par jeton."
+		},
+		"links": {
+			"heading": "Liens",
+			"npm": "{'@'}tmgr/notify sur npm",
+			"github": "tmgr-notify sur GitHub"
+		},
+		"plugins": {
+			"heading": "Créer un plugin avec votre agent",
+			"body": "Demandez à votre agent de créer un plugin de bureau TMGR. Indiquez-lui {guide} ou {llms} : il couvre le manifeste, les permissions et toute la boucle écrire, tester, essayer.",
+			"guide": "le guide des plugins"
+		}
+	}
+}

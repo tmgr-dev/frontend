@@ -1,0 +1,40 @@
+{
+	"view": {
+		"moreActions": "Plus d'actions",
+		"send": "Envoyer",
+		"select": "Sélectionner",
+		"toggleDetails": "Afficher ou masquer les détails",
+		"sparkline": "Courbe miniature",
+		"confirmTitle": "Plugin {name} : {text}",
+		"commandFailed": "La commande du plugin a échoué",
+		"showLess": "Afficher moins",
+		"more": "{hidden} de plus",
+		"controlLabel": "Plugin : {name}"
+	},
+	"chart": {
+		"summaryBar": "Histogramme de {series} sur {n} point | Histogramme de {series} sur {n} points",
+		"summaryLine": "Courbe de {series} sur {n} point | Courbe de {series} sur {n} points",
+		"keyHint": "Utilisez les flèches du clavier pour lire les valeurs."
+	},
+	"markdown": {
+		"done": "Terminée",
+		"notDone": "Non terminée"
+	},
+	"taskMenu": {
+		"submenu": "Plugins"
+	},
+	"taskSections": {
+		"unavailable": "Indisponible : {error}"
+	},
+	"page": {
+		"notInstalled": "Ce plugin n'est pas installé.",
+		"notRunning": "{name} n'est pas en cours d'exécution dans cet espace de travail.",
+		"notRunningWithError": "{name} n'est pas en cours d'exécution dans cet espace de travail : {error}",
+		"openSettings": "Ouvrir les paramètres du plugin",
+		"ownWindow": "« {title} » est la page propre du plugin. Elle s'ouvre dans une fenêtre séparée, afin de ne pas ralentir ni figer l'application.",
+		"openWindow": "Ouvrir la fenêtre",
+		"openFailed": "Impossible d'ouvrir la fenêtre du plugin : {error}",
+		"nothingToShow": "Le plugin n'a rien renvoyé à afficher.",
+		"drawFailed": "Le plugin n'a pas pu afficher cette page : {error}"
+	}
+}

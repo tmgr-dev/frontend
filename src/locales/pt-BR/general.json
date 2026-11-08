@@ -1,0 +1,297 @@
+{
+	"breadcrumbs": {
+		"label": "trilha de navegação",
+		"categories": "Projetos",
+		"title": "Trilha de navegação",
+		"currentPage": "Página atual"
+	},
+	"buttonWithActions": {
+		"saveAnd": "Salvar e ..."
+	},
+	"checkpoints": {
+		"descriptionPlaceholder": "No que você trabalhou?",
+		"editTime": "Clique para editar o tempo",
+		"deleteEntry": "Excluir registro",
+		"saveEnter": "Salvar (Enter)",
+		"cancelEsc": "Cancelar (Esc)",
+		"invalidTimeFormat": "Formato de tempo inválido. Use o formato HH:MM:SS (ex.: 01:30:00)",
+		"startBeforeEnd": "O horário de início deve ser anterior ao de término"
+	},
+	"categoryBadge": {
+		"createTask": "Criar uma tarefa neste projeto"
+	},
+	"assigneeUsers": {
+		"assign": "Atribuir"
+	},
+	"assigneePersonaGroup": {
+		"personas": "Personas"
+	},
+	"authorBadge": {
+		"permissions": "Permissões: {list}"
+	},
+	"commandChip": {
+		"copyCommand": "Copiar comando: {command}",
+		"copyFailed": "Não foi possível copiar o comando"
+	},
+	"confirm": {
+		"ok": "Ok"
+	},
+	"confirmByNameDialog": {
+		"typeToConfirm": "Digite {name} para confirmar.",
+		"nameLabel": "Nome do espaço de trabalho"
+	},
+	"commandPalette": {
+		"description": "Encontre tarefas, páginas, lugares e espaços de trabalho",
+		"placeholder": "Pergunte ou busque qualquer coisa…",
+		"searching": "Buscando…",
+		"failed": "A busca falhou",
+		"empty": "Nada encontrado",
+		"groups": {
+			"recent": "Recentes",
+			"tasks": "Tarefas",
+			"pages": "Páginas",
+			"navigation": "Navegação",
+			"workspaces": "Espaços de trabalho"
+		}
+	},
+	"heatmapCalendar": {
+		"less": "Menos",
+		"more": "Mais",
+		"weekdays": {
+			"mon": "Seg",
+			"wed": "Qua",
+			"fri": "Sex"
+		},
+		"contributionsOn": "{n} contribuição em {date} | {n} contribuições em {date}",
+		"dayLabel": "{activity} em {date}"
+	},
+	"countdown": {
+		"editHint": "Clique duas vezes para editar o tempo",
+		"timeIsOver": "O tempo acabou",
+		"update": "Atualizar"
+	},
+	"featureGate": {
+		"notInLocalWorkspace": "Indisponível em espaços de trabalho locais"
+	},
+	"moduleOffNotice": {
+		"notInLocalWorkspace": "Indisponível em espaços de trabalho locais",
+		"off": "Este módulo está desativado."
+	},
+	"requiresAccount": {
+		"title": "Requer uma conta",
+		"cloudOnly": "Este recurso roda na nuvem do TMGR.",
+		"createAccount": "Criar conta"
+	},
+	"darkMode": {
+		"light": "Modo claro",
+		"dark": "Modo escuro"
+	},
+	"modulePresetOptions": {
+		"custom": "Eu escolho"
+	},
+	"dropdown": {
+		"openOptions": "Abrir opções"
+	},
+	"emailVerifyBanner": {
+		"confirm": "Confirme seu endereço de e-mail — enviamos um link para {email}.",
+		"sent": "Um novo link está a caminho.",
+		"rateLimited": "Muitas requisições. Tente novamente em {wait}.",
+		"error": "Não foi possível enviar o link. Tente novamente.",
+		"resend": "Reenviar",
+		"dismiss": "Dispensar"
+	},
+	"globalSearch": {
+		"placeholder": "Buscar…",
+		"withHint": "Buscar ({hint})"
+	},
+	"filtersBoard": {
+		"searchTasks": "Buscar tarefas…",
+		"selectCategory": "Selecionar projeto",
+		"selectUser": "Selecionar usuário",
+		"selectPersona": "Selecionar persona",
+		"priority": "Prioridade",
+		"sortByPriority": "Ordenar por prioridade",
+		"clearFilters": "Limpar filtros",
+		"reorderStatuses": "Reordenar status",
+		"filters": "Filtros",
+		"allCategories": "Todos os projetos",
+		"allUsers": "Todos os usuários",
+		"allPersonas": "Todas as personas",
+		"myPersonasQueue": "Fila das minhas personas",
+		"refresh": "Atualizar"
+	},
+	"textField": {
+		"placeholder": "Digite um valor"
+	},
+	"select": {
+		"placeholder": "Selecionar"
+	},
+	"navbarMenu": {
+		"categories": "Projetos"
+	},
+	"personaAssigneeChips": {
+		"personaLabel": "Persona {name}",
+		"personaOf": "persona de {name}"
+	},
+	"memberAvatarLink": {
+		"open": "Abrir {label}",
+		"openMember": "Abrir membro"
+	},
+	"userAvatar": {
+		"alt": "Avatar"
+	},
+	"personaAvatar": {
+		"alt": "Avatar da persona"
+	},
+	"modulePresetPreview": {
+		"menu": "Menu",
+		"task": "Tarefa",
+		"taskTitle": "Título da tarefa",
+		"status": "Status",
+		"badges": {
+			"off": "desativado",
+			"new": "novo",
+			"willHide": "será ocultado"
+		}
+	},
+	"modulesPicker": {
+		"title": "Para que você quer usar o TMGR?",
+		"description": "Você pode mudar isso a qualquer momento em Configurações → Módulos.",
+		"notNow": "Agora não",
+		"saveFailed": "Não foi possível salvar sua escolha. Tente novamente."
+	},
+	"modulesPresetDialog": {
+		"title": "Aplicar uma predefinição",
+		"description": "Escolha uma predefinição para ver o que muda antes de aplicar qualquer coisa.",
+		"nothingChanges": "Nada muda",
+		"willTurnOn": "Será ativado:",
+		"willTurnOff": "Será desativado:",
+		"dataKept": "Seus dados nunca são excluídos. Ao reativar um módulo, tudo volta.",
+		"applying": "Aplicando…",
+		"applyFailed": "Não foi possível aplicar a predefinição. Tente novamente."
+	},
+	"workspaceUsers": {
+		"viewAllMembers": "{name} - Clique para ver todos os membros",
+		"memberLabel": "{name} – membros do espaço de trabalho",
+		"inviteUser": "Convidar usuário",
+		"sendInvitations": "Enviar convite(s)",
+		"emailsPlaceholder": "Digite os e-mails (separados por vírgula), por exemplo:\nuser1{'@'}example.com,\nuser2{'@'}example.com,\n...\nuserN{'@'}example.com",
+		"sending": "Enviando...",
+		"send": "Enviar",
+		"invitationsSent": "Convites enviados",
+		"invitationsSentDescription": "Os convites foram enviados com sucesso",
+		"errorTitle": "Erro",
+		"sendFailed": "Falha ao enviar os convites. Tente novamente."
+	},
+	"breadcrumbEllipsis": {
+		"more": "Mais"
+	},
+	"sidebar": {
+		"toggle": "Alternar barra lateral"
+	},
+	"addTaskModalTrigger": {
+		"open": "Abrir janela de nova tarefa"
+	},
+	"assigneesCombobox": {
+		"search": "Buscar responsáveis...",
+		"empty": "Nenhum responsável encontrado.",
+		"trigger": "Responsável"
+	},
+	"categoriesCombobox": {
+		"search": "Buscar projeto...",
+		"empty": "Nenhum projeto encontrado.",
+		"trigger": "Projeto"
+	},
+	"combobox": {
+		"search": "Buscar entidades",
+		"empty": "Nenhuma entidade encontrada."
+	},
+	"blockEditor": {
+		"header": "Digite um cabeçalho",
+		"quote": "Digite uma citação",
+		"quoteAuthor": "Autor da citação",
+		"warningTitle": "Título",
+		"warningMessage": "Mensagem"
+	},
+	"editor": {
+		"descriptionPlaceholder": "Adicionar descrição..."
+	},
+	"emptyState": {
+		"title": "Nada aqui ainda"
+	},
+	"currentWorkspace": {
+		"trigger": "Espaço de trabalho",
+		"searchCategory": "Buscar projeto...",
+		"noCategory": "Nenhum projeto encontrado.",
+		"addWorkspace": "Adicionar novo espaço de trabalho",
+		"newWorkspaceName": "Nome do novo espaço de trabalho",
+		"sendInvitationToWorkspace": "Enviar convite para o espaço de trabalho",
+		"emailAddresses": "Endereços de e-mail",
+		"emailsPlaceholder": "email1{'@'}example.com, email2{'@'}example.com",
+		"separateEmails": "Separe vários e-mails com vírgulas",
+		"creating": "Criando...",
+		"sendInvitation": "Enviar convite",
+		"invitationSent": "Convite enviado!",
+		"invitationsSentToEmails": "Os convites foram enviados para os endereços de e-mail informados.",
+		"shareLink": "Você pode compartilhar este link com quem quiser convidar:",
+		"copied": "Copiado!",
+		"copyToClipboard": "Copiar para a área de transferência"
+	},
+	"daySummary": {
+		"title": "Resumo do dia",
+		"collecting": "Coletando as tarefas de hoje…",
+		"counts": "{tasks} tarefas de {workspaces} espaços de trabalho",
+		"skipped": "Não foi possível ler: {names}",
+		"lanNotice": "Títulos de tarefas, status e trechos de comentários (inclusive de espaços de trabalho na nuvem) serão enviados para {origin}.",
+		"send": "Enviar",
+		"aiGenerated": "Gerado por IA, pode conter imprecisões",
+		"noAi": "Sem IA",
+		"setUpAi": "Configurar IA local",
+		"summarizing": "Resumindo…",
+		"summarize": "Resumir",
+		"regenerate": "Gerar de novo",
+		"sendsTo": "Envia títulos de tarefas, status e trechos de comentários para {origin}.",
+		"saveAsPage": "Salvar como página",
+		"copied": "Copiado.",
+		"savedAsPage": "Salvo como página neste espaço de trabalho.",
+		"pageTitle": "Resumo do dia {date}"
+	},
+	"errorBoundary": {
+		"title": "Algo deu errado",
+		"message": "Ocorreu um erro inesperado. Tente atualizar a página.",
+		"showDetails": "Mostrar detalhes técnicos",
+		"retrying": "Tentando novamente...",
+		"tryAgain": "Tentar novamente",
+		"reload": "Recarregar página",
+		"report": "Relatar problema",
+		"updateTitle": "Atualização disponível",
+		"updateMessage": "Uma nova versão do aplicativo está disponível. Atualize a página para receber as últimas novidades.",
+		"networkTitle": "Problema de conexão",
+		"networkMessage": "Não foi possível conectar ao servidor. Verifique sua conexão com a internet e tente novamente."
+	},
+	"forbiddenAccess": {
+		"title": "Acesso negado",
+		"message": "Desculpe, você não tem as permissões necessárias para ver este conteúdo.",
+		"goBack": "Voltar"
+	},
+	"settingsComponent": {
+		"description": "Faça alterações nas configurações da tarefa aqui. Clique em salvar quando terminar."
+	},
+	"taskTimeInfo": {
+		"title": "Informações de tempo da tarefa",
+		"heading": "Informações de tempo da tarefa",
+		"lastStart": "Último horário de início:",
+		"approxEnd": "Horário aproximado de término:",
+		"timeLeft": "Tempo restante:",
+		"hideEdit": "Ocultar modo de edição do tempo",
+		"showEdit": "Modo de edição do tempo",
+		"stopFirst": "Você pode editar o tempo, mas antes precisa parar o cronômetro",
+		"editHint": "Edite o tempo e pressione o botão de salvar",
+		"stopTimer": "Parar o cronômetro"
+	},
+	"timeCounter": {
+		"tracked": "Tempo registrado",
+		"running": "Em andamento",
+		"overTime": "Tempo excedido"
+	}
+}

@@ -1,0 +1,297 @@
+{
+	"breadcrumbs": {
+		"label": "fil d'Ariane",
+		"categories": "Projets",
+		"title": "Fil d'Ariane",
+		"currentPage": "Page actuelle"
+	},
+	"buttonWithActions": {
+		"saveAnd": "Enregistrer et ..."
+	},
+	"checkpoints": {
+		"descriptionPlaceholder": "Sur quoi avez-vous travaillé ?",
+		"editTime": "Cliquez pour modifier l'heure",
+		"deleteEntry": "Supprimer l'entrée",
+		"saveEnter": "Enregistrer (Entrée)",
+		"cancelEsc": "Annuler (Échap)",
+		"invalidTimeFormat": "Format d'heure invalide. Utilisez le format HH:MM:SS (par ex. 01:30:00)",
+		"startBeforeEnd": "L'heure de début doit précéder l'heure de fin"
+	},
+	"categoryBadge": {
+		"createTask": "Créer une tâche dans ce projet"
+	},
+	"assigneeUsers": {
+		"assign": "Assigner"
+	},
+	"assigneePersonaGroup": {
+		"personas": "Personas"
+	},
+	"authorBadge": {
+		"permissions": "Permissions : {list}"
+	},
+	"commandChip": {
+		"copyCommand": "Copier la commande : {command}",
+		"copyFailed": "Impossible de copier la commande"
+	},
+	"confirm": {
+		"ok": "OK"
+	},
+	"confirmByNameDialog": {
+		"typeToConfirm": "Saisissez {name} pour confirmer.",
+		"nameLabel": "Nom de l'espace de travail"
+	},
+	"commandPalette": {
+		"description": "Trouvez des tâches, des pages, des lieux et des espaces de travail",
+		"placeholder": "Demandez ou recherchez n'importe quoi…",
+		"searching": "Recherche…",
+		"failed": "Échec de la recherche",
+		"empty": "Aucun résultat",
+		"groups": {
+			"recent": "Récents",
+			"tasks": "Tâches",
+			"pages": "Pages",
+			"navigation": "Navigation",
+			"workspaces": "Espaces de travail"
+		}
+	},
+	"heatmapCalendar": {
+		"less": "Moins",
+		"more": "Plus",
+		"weekdays": {
+			"mon": "Lun",
+			"wed": "Mer",
+			"fri": "Ven"
+		},
+		"contributionsOn": "{n} contribution le {date} | {n} contributions le {date}",
+		"dayLabel": "{activity} le {date}"
+	},
+	"countdown": {
+		"editHint": "Double-cliquez pour modifier le temps",
+		"timeIsOver": "Le temps est écoulé",
+		"update": "Mettre à jour"
+	},
+	"featureGate": {
+		"notInLocalWorkspace": "Indisponible dans les espaces de travail locaux"
+	},
+	"moduleOffNotice": {
+		"notInLocalWorkspace": "Indisponible dans les espaces de travail locaux",
+		"off": "Ce module est désactivé."
+	},
+	"requiresAccount": {
+		"title": "Un compte est requis",
+		"cloudOnly": "Cette fonctionnalité s'exécute dans le cloud TMGR.",
+		"createAccount": "Créer un compte"
+	},
+	"darkMode": {
+		"light": "Mode clair",
+		"dark": "Mode sombre"
+	},
+	"modulePresetOptions": {
+		"custom": "Je choisis moi-même"
+	},
+	"dropdown": {
+		"openOptions": "Ouvrir les options"
+	},
+	"emailVerifyBanner": {
+		"confirm": "Veuillez confirmer votre adresse e-mail : nous avons envoyé un lien à {email}.",
+		"sent": "Un nouveau lien est en route.",
+		"rateLimited": "Trop de requêtes. Réessayez dans {wait}.",
+		"error": "Impossible d'envoyer le lien. Veuillez réessayer.",
+		"resend": "Renvoyer",
+		"dismiss": "Ignorer"
+	},
+	"globalSearch": {
+		"placeholder": "Rechercher…",
+		"withHint": "Rechercher ({hint})"
+	},
+	"filtersBoard": {
+		"searchTasks": "Rechercher des tâches…",
+		"selectCategory": "Sélectionner un projet",
+		"selectUser": "Sélectionner un utilisateur",
+		"selectPersona": "Sélectionner une persona",
+		"priority": "Priorité",
+		"sortByPriority": "Trier par priorité",
+		"clearFilters": "Effacer les filtres",
+		"reorderStatuses": "Réorganiser les statuts",
+		"filters": "Filtres",
+		"allCategories": "Tous les projets",
+		"allUsers": "Tous les utilisateurs",
+		"allPersonas": "Toutes les personas",
+		"myPersonasQueue": "File de mes personas",
+		"refresh": "Actualiser"
+	},
+	"textField": {
+		"placeholder": "Saisissez une valeur"
+	},
+	"select": {
+		"placeholder": "Sélectionner"
+	},
+	"navbarMenu": {
+		"categories": "Projets"
+	},
+	"personaAssigneeChips": {
+		"personaLabel": "Persona {name}",
+		"personaOf": "persona de {name}"
+	},
+	"memberAvatarLink": {
+		"open": "Ouvrir {label}",
+		"openMember": "Ouvrir le membre"
+	},
+	"userAvatar": {
+		"alt": "Avatar"
+	},
+	"personaAvatar": {
+		"alt": "Avatar de la persona"
+	},
+	"modulePresetPreview": {
+		"menu": "Menu",
+		"task": "Tâche",
+		"taskTitle": "Titre de la tâche",
+		"status": "Statut",
+		"badges": {
+			"off": "désactivé",
+			"new": "nouveau",
+			"willHide": "sera masqué"
+		}
+	},
+	"modulesPicker": {
+		"title": "Pour quoi voulez-vous utiliser TMGR ?",
+		"description": "Vous pouvez le modifier à tout moment dans Paramètres → Modules.",
+		"notNow": "Pas maintenant",
+		"saveFailed": "Impossible d'enregistrer votre choix. Réessayez."
+	},
+	"modulesPresetDialog": {
+		"title": "Appliquer un préréglage",
+		"description": "Choisissez un préréglage pour voir ce qui change avant son application.",
+		"nothingChanges": "Rien ne change",
+		"willTurnOn": "Sera activé :",
+		"willTurnOff": "Sera désactivé :",
+		"dataKept": "Vos données ne sont jamais supprimées. Réactiver un module restaure tout.",
+		"applying": "Application…",
+		"applyFailed": "Impossible d'appliquer le préréglage. Réessayez."
+	},
+	"workspaceUsers": {
+		"viewAllMembers": "{name} - Cliquez pour voir tous les membres",
+		"memberLabel": "{name} – membres de l'espace de travail",
+		"inviteUser": "Inviter un utilisateur",
+		"sendInvitations": "Envoyer les invitations",
+		"emailsPlaceholder": "Saisissez des e-mails (séparés par des virgules), par exemple :\nuser1{'@'}example.com,\nuser2{'@'}example.com,\n...\nuserN{'@'}example.com",
+		"sending": "Envoi...",
+		"send": "Envoyer",
+		"invitationsSent": "Invitations envoyées",
+		"invitationsSentDescription": "Les invitations ont bien été envoyées",
+		"errorTitle": "Erreur",
+		"sendFailed": "Échec de l'envoi des invitations. Veuillez réessayer."
+	},
+	"breadcrumbEllipsis": {
+		"more": "Plus"
+	},
+	"sidebar": {
+		"toggle": "Afficher ou masquer la barre latérale"
+	},
+	"addTaskModalTrigger": {
+		"open": "Ouvrir la fenêtre d'ajout de tâche"
+	},
+	"assigneesCombobox": {
+		"search": "Rechercher des assignés...",
+		"empty": "Aucun assigné trouvé.",
+		"trigger": "Assigné"
+	},
+	"categoriesCombobox": {
+		"search": "Rechercher un projet...",
+		"empty": "Aucun projet trouvé.",
+		"trigger": "Projet"
+	},
+	"combobox": {
+		"search": "Rechercher des éléments",
+		"empty": "Aucun élément trouvé."
+	},
+	"blockEditor": {
+		"header": "Saisissez un titre",
+		"quote": "Saisissez une citation",
+		"quoteAuthor": "Auteur de la citation",
+		"warningTitle": "Titre",
+		"warningMessage": "Message"
+	},
+	"editor": {
+		"descriptionPlaceholder": "Ajouter une description..."
+	},
+	"emptyState": {
+		"title": "Rien ici pour l'instant"
+	},
+	"currentWorkspace": {
+		"trigger": "Espace de travail",
+		"searchCategory": "Rechercher un projet...",
+		"noCategory": "Aucun projet trouvé.",
+		"addWorkspace": "Ajouter un espace de travail",
+		"newWorkspaceName": "Nom du nouvel espace de travail",
+		"sendInvitationToWorkspace": "Envoyer une invitation à l'espace de travail",
+		"emailAddresses": "Adresses e-mail",
+		"emailsPlaceholder": "email1{'@'}example.com, email2{'@'}example.com",
+		"separateEmails": "Séparez plusieurs adresses par des virgules",
+		"creating": "Création...",
+		"sendInvitation": "Envoyer l'invitation",
+		"invitationSent": "Invitation envoyée !",
+		"invitationsSentToEmails": "Les invitations ont été envoyées aux adresses e-mail indiquées.",
+		"shareLink": "Vous pouvez partager ce lien avec toute personne que vous souhaitez inviter :",
+		"copied": "Copié !",
+		"copyToClipboard": "Copier dans le presse-papiers"
+	},
+	"daySummary": {
+		"title": "Résumé de la journée",
+		"collecting": "Collecte des tâches du jour…",
+		"counts": "{tasks} tâches dans {workspaces} espaces de travail",
+		"skipped": "Lecture impossible : {names}",
+		"lanNotice": "Les titres de tâches, statuts et extraits de commentaires (y compris des espaces de travail cloud) seront envoyés à {origin}.",
+		"send": "Envoyer",
+		"aiGenerated": "Généré par IA, peut être inexact",
+		"noAi": "Sans IA",
+		"setUpAi": "Configurer l'IA locale",
+		"summarizing": "Résumé en cours…",
+		"summarize": "Résumer",
+		"regenerate": "Régénérer",
+		"sendsTo": "Envoie les titres de tâches, statuts et extraits de commentaires à {origin}.",
+		"saveAsPage": "Enregistrer comme page",
+		"copied": "Copié.",
+		"savedAsPage": "Enregistré comme page dans cet espace de travail.",
+		"pageTitle": "Résumé de la journée {date}"
+	},
+	"errorBoundary": {
+		"title": "Une erreur s'est produite",
+		"message": "Une erreur inattendue s'est produite. Essayez d'actualiser la page.",
+		"showDetails": "Afficher les détails techniques",
+		"retrying": "Nouvelle tentative...",
+		"tryAgain": "Réessayer",
+		"reload": "Recharger la page",
+		"report": "Signaler un problème",
+		"updateTitle": "Mise à jour disponible",
+		"updateMessage": "Une nouvelle version de l'application est disponible. Actualisez la page pour obtenir les dernières mises à jour.",
+		"networkTitle": "Problème de connexion",
+		"networkMessage": "Impossible de se connecter au serveur. Vérifiez votre connexion Internet et réessayez."
+	},
+	"forbiddenAccess": {
+		"title": "Accès refusé",
+		"message": "Désolé, vous n'avez pas les permissions nécessaires pour voir ce contenu.",
+		"goBack": "Retour"
+	},
+	"settingsComponent": {
+		"description": "Modifiez ici les paramètres de la tâche. Cliquez sur Enregistrer une fois terminé."
+	},
+	"taskTimeInfo": {
+		"title": "Infos de temps de la tâche",
+		"heading": "Informations de temps de la tâche",
+		"lastStart": "Dernier démarrage :",
+		"approxEnd": "Fin estimée :",
+		"timeLeft": "Temps restant :",
+		"hideEdit": "Masquer le mode d'édition du temps",
+		"showEdit": "Mode d'édition du temps",
+		"stopFirst": "Vous pouvez modifier le temps, mais arrêtez d'abord le minuteur",
+		"editHint": "Modifiez le temps puis cliquez sur Enregistrer",
+		"stopTimer": "Arrêter le minuteur"
+	},
+	"timeCounter": {
+		"tracked": "Temps suivi",
+		"running": "En cours",
+		"overTime": "Dépassement"
+	}
+}

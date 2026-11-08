@@ -1,0 +1,40 @@
+{
+	"view": {
+		"moreActions": "Más acciones",
+		"send": "Enviar",
+		"select": "Seleccionar",
+		"toggleDetails": "Mostrar u ocultar detalles",
+		"sparkline": "Minigráfico",
+		"confirmTitle": "Plugin {name}: {text}",
+		"commandFailed": "El comando del plugin falló",
+		"showLess": "Mostrar menos",
+		"more": "{hidden} más",
+		"controlLabel": "Plugin: {name}"
+	},
+	"chart": {
+		"summaryBar": "Gráfico de barras de {series} con {n} punto | Gráfico de barras de {series} con {n} puntos",
+		"summaryLine": "Gráfico de líneas de {series} con {n} punto | Gráfico de líneas de {series} con {n} puntos",
+		"keyHint": "Usa las teclas de flecha para leer los valores."
+	},
+	"markdown": {
+		"done": "Hecho",
+		"notDone": "Sin hacer"
+	},
+	"taskMenu": {
+		"submenu": "Plugins"
+	},
+	"taskSections": {
+		"unavailable": "No disponible: {error}"
+	},
+	"page": {
+		"notInstalled": "Este plugin no está instalado.",
+		"notRunning": "{name} no se está ejecutando en este espacio de trabajo.",
+		"notRunningWithError": "{name} no se está ejecutando en este espacio de trabajo: {error}",
+		"openSettings": "Abrir ajustes del plugin",
+		"ownWindow": "«{title}» es la página propia del plugin. Se abre en una ventana aparte, así que no puede ralentizar ni congelar la aplicación.",
+		"openWindow": "Abrir ventana",
+		"openFailed": "No se pudo abrir la ventana del plugin: {error}",
+		"nothingToShow": "El plugin no devolvió nada que mostrar.",
+		"drawFailed": "El plugin no pudo dibujar esta página: {error}"
+	}
+}

@@ -1,0 +1,40 @@
+{
+	"view": {
+		"moreActions": "Mais ações",
+		"send": "Enviar",
+		"select": "Selecionar",
+		"toggleDetails": "Alternar detalhes",
+		"sparkline": "Gráfico de linha compacto",
+		"confirmTitle": "Plugin {name}: {text}",
+		"commandFailed": "O comando do plugin falhou",
+		"showLess": "Mostrar menos",
+		"more": "mais {hidden}",
+		"controlLabel": "Plugin: {name}"
+	},
+	"chart": {
+		"summaryBar": "Gráfico de barras de {series} em {n} ponto | Gráfico de barras de {series} em {n} pontos",
+		"summaryLine": "Gráfico de linhas de {series} em {n} ponto | Gráfico de linhas de {series} em {n} pontos",
+		"keyHint": "Use as setas do teclado para ler os valores."
+	},
+	"markdown": {
+		"done": "Concluído",
+		"notDone": "Não concluído"
+	},
+	"taskMenu": {
+		"submenu": "Plugins"
+	},
+	"taskSections": {
+		"unavailable": "Indisponível: {error}"
+	},
+	"page": {
+		"notInstalled": "Este plugin não está instalado.",
+		"notRunning": "{name} não está em execução neste espaço de trabalho.",
+		"notRunningWithError": "{name} não está em execução neste espaço de trabalho: {error}",
+		"openSettings": "Abrir configurações do plugin",
+		"ownWindow": "“{title}” é a página própria do plugin. Ela abre em uma janela separada, para não deixar o app lento nem travar.",
+		"openWindow": "Abrir janela",
+		"openFailed": "Não foi possível abrir a janela do plugin: {error}",
+		"nothingToShow": "O plugin não retornou nada para exibir.",
+		"drawFailed": "O plugin não conseguiu desenhar esta página: {error}"
+	}
+}

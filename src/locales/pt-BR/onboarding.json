@@ -1,0 +1,1069 @@
+{
+	"tours": {
+		"ui": {
+			"stepOf": "Passo {position} de {total}",
+			"positionOf": "{position} de {total}",
+			"waiting": "Esperando por você…",
+			"skipThisStep": "Pular este passo",
+			"skipStep": "Pular passo",
+			"skipTour": "Pular tour",
+			"skip": "Pular",
+			"more": "Mais",
+			"takeMeThere": "Me leve até lá",
+			"done": "Concluir",
+			"next": "Avançar"
+		},
+		"skipMenu": {
+			"skipStep": {
+				"label": "Pular este passo",
+				"hint": "Ir para o próximo"
+			},
+			"pause": {
+				"label": "Pausar tour",
+				"hint": "Retome em Primeiros passos"
+			},
+			"explore": {
+				"label": "Vou explorar sozinho",
+				"hint": "Parar os tours automáticos. Primeiros passos continua no menu."
+			},
+			"never": {
+				"label": "Nunca mostrar dicas",
+				"hint": "Reative nas Configurações"
+			},
+			"skipTour": {
+				"label": "Pular tour",
+				"hint": "Encerrar este tour"
+			}
+		},
+		"tips": {
+			"title": "Dicas e tours",
+			"description": "Tours guiados e curtos que aparecem enquanto você usa o TMGR.",
+			"legend": "Quando mostrar dicas",
+			"saveFailed": "Não foi possível salvar sua escolha. Tente novamente.",
+			"resetAll": "Redefinir todos os tours",
+			"resetPrompt": "Recomeçar todos os tours?",
+			"options": {
+				"auto": {
+					"label": "Mostrar dicas automaticamente",
+					"description": "Um tour curto é oferecido na primeira vez que você abre um recurso."
+				},
+				"hubOnly": {
+					"label": "Só em Primeiros passos",
+					"description": "Sem tours automáticos. Inicie qualquer tour você mesmo na página Primeiros passos."
+				},
+				"off": {
+					"label": "Nunca mostrar dicas",
+					"description": "Os tours continuam na página Primeiros passos, se você quiser."
+				}
+			}
+		},
+		"help": {
+			"label": "Ajuda e tours",
+			"gettingStarted": "Primeiros passos",
+			"watchDemo": "Ver a demonstração",
+			"restartPageTour": "Reiniciar o tour desta página",
+			"tipsSettings": "Configurações de dicas"
+		},
+		"host": {
+			"resume": "Retomar tour",
+			"dismiss": "Dispensar",
+			"hints": {
+				"notOpen": "Você está na página certa, mas esta parte ainda não está aberta. Abra-a ou pule este passo.",
+				"notFound": "Não conseguimos encontrar isto na tela agora.",
+				"timerTooShort": "Deixe o cronômetro rodar por pelo menos um minuto."
+			}
+		},
+		"keycaps": {
+			"systemTray": "bandeja do sistema",
+			"fallback": "seu atalho {name} (Configurações → Desktop)",
+			"shortcuts": {
+				"quickAdd": "adicionar rápido",
+				"timer": "cronômetro",
+				"screenshot": "captura de tela",
+				"selection": "captura de texto"
+			}
+		},
+		"a11y": {
+			"stepAnnouncement": "Passo {position} de {total}: {title}.",
+			"waitingForYou": "Esperando por você."
+		},
+		"groups": {
+			"start": "Primeiros passos",
+			"tasks": "Tarefas e quadro",
+			"time": "Tempo",
+			"agents": "Agentes e MCP",
+			"personas": "Personas",
+			"pages": "Páginas e contexto",
+			"graph": "Grafo e mapa",
+			"routines": "Rotinas",
+			"workspace": "Espaços de trabalho e configurações",
+			"desktop": "Desktop"
+		},
+		"hub": {
+			"turnOnModule": "Ative {label} em Configurações -> Módulos",
+			"askOwnerModule": "Peça ao proprietário do espaço de trabalho para ativar {label}",
+			"progress": "passo {position} de {total}"
+		},
+		"catalog": {
+			"agents": {
+				"workLog": {
+					"title": "Veja um agente registrar seu trabalho",
+					"steps": {
+						"s1": {
+							"title": "Execuções do agente",
+							"body": "As execuções do seu agente aparecem aqui: branch, commits, testes e tempo."
+						},
+						"s2": {
+							"title": "Execução em andamento",
+							"body": "Esperando o agente terminar a execução…"
+						},
+						"s3": {
+							"title": "Tempo do agente",
+							"body": "O tempo do agente nunca é somado ao seu tempo registrado. Você vê os dois."
+						}
+					}
+				},
+				"phoneAlerts": {
+					"title": "Alertas no celular para agentes",
+					"steps": {
+						"s1": {
+							"title": "Crie um token de notificação",
+							"body": "Crie um token de notificação para que seu agente possa avisar seu celular."
+						},
+						"s2": {
+							"title": "Adicione ao seu agente",
+							"body": "Adicione npx -y {'@'}tmgr/notify mcp ao seu agente e envie um teste."
+						},
+						"s3": {
+							"title": "Envie um teste",
+							"body": "O iPhone (beta no TestFlight) toca mesmo no modo Silencioso no iOS 26 ou superior."
+						}
+					}
+				},
+				"mcpToken": {
+					"title": "Token MCP pessoal",
+					"steps": {
+						"s1": {
+							"title": "Crie um token",
+							"body": "Este token permite que qualquer cliente MCP aja como você. É exibido uma vez e guardado com hash."
+						}
+					}
+				},
+				"askAi": {
+					"title": "Pergunte à IA sobre seu espaço de trabalho",
+					"steps": {
+						"s1": {
+							"title": "Abra a IA",
+							"body": "Faça perguntas sobre tarefas, tempo e prazos.",
+							"mobileBody": "Toque em Perguntar à IA na barra superior."
+						},
+						"s2": {
+							"title": "Faça uma pergunta",
+							"body": "Experimente: no que trabalhei esta semana?"
+						}
+					}
+				},
+				"connectLater": {
+					"title": "Conecte um agente",
+					"steps": {
+						"s1": {
+							"title": "Escolha seu cliente",
+							"body": "Escolha o cliente que você usa. Cada aba mostra o próprio comando."
+						},
+						"s2": {
+							"title": "Copie o comando",
+							"body": "Copie este comando e execute no seu terminal. O token é exibido uma vez.",
+							"mobileBody": "Abra esta página no computador ou copie o comando para enviá-lo para lá."
+						},
+						"s3": {
+							"title": "Esperando seu agente",
+							"body": "Esperando seu agente se conectar. Isto se atualiza sozinho."
+						},
+						"s4": {
+							"title": "Experimente um prompt",
+							"body": "Cole este prompt no seu agente. Ele vai assumir a tarefa inicial."
+						}
+					}
+				}
+			},
+			"desktop": {
+				"quickAdd": {
+					"title": "Adicione uma tarefa de qualquer lugar",
+					"steps": {
+						"s1": {
+							"title": "Adição rápida",
+							"body": "Pressione {'{'}key:quickAdd{'}'} em qualquer app. Uma pequena janela de captura se abre."
+						},
+						"s2": {
+							"title": "Capture algo",
+							"body": "Digite um título e pressione Enter. Ele entra na sua rotina diária ou vira uma tarefa do quadro se tiver uma captura de tela."
+						}
+					}
+				},
+				"capture": {
+					"title": "De captura de tela e seleção para tarefa",
+					"steps": {
+						"s1": {
+							"title": "Atalhos de captura",
+							"body": "{'{'}key:screenshot{'}'} transforma uma captura de tela em tarefa. {'{'}key:selection{'}'} faz o mesmo com o texto selecionado.",
+							"bodyMacos": "{'{'}key:screenshot{'}'} transforma uma captura de tela em tarefa. {'{'}key:selection{'}'} faz o mesmo com o texto selecionado.",
+							"bodyOther": "{'{'}key:screenshot{'}'} transforma uma captura de tela em tarefa."
+						},
+						"s2": {
+							"title": "Mude um atalho",
+							"body": "Mude qualquer atalho aqui."
+						}
+					}
+				},
+				"menuBarTimer": {
+					"title": "Cronômetro na barra de menus ou na bandeja",
+					"steps": {
+						"s1": {
+							"title": "Seu cronômetro em andamento",
+							"body": "Seu cronômetro em andamento fica na barra de menus. Pare ou troque sem abrir o TMGR.",
+							"bodyMacos": "Seu cronômetro em andamento fica na barra de menus. Pare ou troque sem abrir o TMGR.",
+							"bodyOther": "Seu cronômetro em andamento fica no menu do TMGR na bandeja do sistema. Pare ou troque por lá."
+						},
+						"s2": {
+							"title": "Ao fechar a janela",
+							"body": "Ao fechar a janela, o TMGR continua rodando na {'{'}tray{'}'}."
+						}
+					}
+				},
+				"windows": {
+					"title": "Tarefas em janela própria",
+					"steps": {
+						"s1": {
+							"title": "Janela própria",
+							"body": "Abra uma tarefa ou página em uma janela própria. Ela continua sincronizada."
+						}
+					}
+				},
+				"localWorkspace": {
+					"title": "Seu espaço de trabalho local",
+					"steps": {
+						"s1": {
+							"title": "Guardado neste computador",
+							"body": "Este espaço de trabalho fica guardado neste computador. Tarefas e páginas ficam aqui, a menos que você as mova para a nuvem."
+						},
+						"s2": {
+							"title": "Selo local",
+							"body": "Espaços de trabalho locais mostram este selo. Os da nuvem não."
+						},
+						"s3": {
+							"title": "Crie uma conta",
+							"body": "Crie uma conta depois para usar o TMGR em outros dispositivos.",
+							"mobileBody": "Abra o menu para criar uma conta depois e usar o TMGR em outros dispositivos."
+						}
+					}
+				},
+				"backups": {
+					"title": "Backups",
+					"steps": {
+						"s1": {
+							"title": "Backups automáticos",
+							"body": "O TMGR faz backup diário dos espaços de trabalho locais. Mantém 7 cópias diárias, 4 semanais e 3 mensais."
+						},
+						"s2": {
+							"title": "Fazer backup agora",
+							"body": "Faça backup agora antes de grandes mudanças."
+						}
+					}
+				},
+				"localAgent": {
+					"title": "Conecte um agente local",
+					"steps": {
+						"s1": {
+							"title": "Conecte seu agente",
+							"body": "Agentes neste computador podem trabalhar em espaços de trabalho locais. Marque o seu e pressione Instalar. O TMGR configura a conexão e ativa o que for preciso."
+						},
+						"s2": {
+							"title": "Conecte seu agente",
+							"body": "Escolha seu agente e pressione Instalar. Continuamos na primeira chamada dele."
+						}
+					}
+				},
+				"plugins": {
+					"title": "Plugins",
+					"steps": {
+						"s1": {
+							"title": "Instale um plugin",
+							"body": "Instale um plugin a partir de uma URL do GitHub. Plugins rodam em um sandbox com permissões declaradas."
+						},
+						"s2": {
+							"title": "Permissões",
+							"body": "A Ajuda explica cada permissão antes de você concedê-la."
+						}
+					}
+				},
+				"whatsNew": {
+					"title": "O que há de novo",
+					"steps": {
+						"s1": {
+							"title": "Novidades desta versão",
+							"body": "Novidades desta versão. Faça um tour de um minuto."
+						}
+					}
+				},
+				"moveToCloud": {
+					"title": "Mova um espaço de trabalho local para sua conta",
+					"steps": {
+						"s1": {
+							"title": "Mover para a nuvem",
+							"body": "Copie este espaço de trabalho local para sua conta na nuvem. Sua cópia local permanece."
+						},
+						"s2": {
+							"title": "Copiando",
+							"body": "Copiando seu espaço de trabalho. Isso pode levar um minuto."
+						},
+						"s3": {
+							"title": "Movido",
+							"body": "Pronto. Abra o espaço de trabalho na nuvem."
+						}
+					}
+				},
+				"ghostWatch": {
+					"title": "Veja um agente trabalhar",
+					"steps": {
+						"s1": {
+							"title": "Um agente de demonstração em ação",
+							"body": "Abrimos um espaço de trabalho de demonstração onde um agente simulado corrige um bug. Nada roda no seu Mac."
+						},
+						"s2": {
+							"title": "Acompanhe o quadro",
+							"body": "O cartão se move, o cronômetro corre e a execução se preenche. Pressione Esc para avançar."
+						}
+					}
+				}
+			},
+			"graph": {
+				"map": {
+					"title": "O mapa do seu espaço de trabalho",
+					"steps": {
+						"s1": {
+							"title": "O mapa",
+							"body": "Tarefas, páginas e pessoas em um mapa. As linhas são links, relações e menções."
+						},
+						"s2": {
+							"title": "Filtros",
+							"body": "Filtre por tipo ou projeto para ver um canto do espaço de trabalho."
+						},
+						"s3": {
+							"title": "Busca",
+							"body": "Busque ou clique em qualquer nó para abri-lo."
+						}
+					}
+				},
+				"enable": {
+					"title": "Ative o Grafo",
+					"steps": {
+						"s1": {
+							"title": "Ligue o Grafo",
+							"body": "O Grafo está desativado neste espaço de trabalho. Ligue-o para ver o mapa."
+						}
+					}
+				}
+			},
+			"pages": {
+				"first": {
+					"title": "Escreva sua primeira página",
+					"steps": {
+						"s1": {
+							"title": "Crie uma página",
+							"body": "Crie uma página. Markdown, imagens e arquivos são bem-vindos."
+						},
+						"s2": {
+							"title": "Árvore de páginas",
+							"body": "Páginas fixadas e recentes ficam na barra lateral. Todas as páginas mostra a árvore inteira: arraste páginas para aninhá-las."
+						}
+					}
+				},
+				"context": {
+					"title": "Uma página de contexto que os agentes leem",
+					"steps": {
+						"s1": {
+							"title": "Crie uma página de contexto",
+							"body": "Escolha o tipo de página de contexto. Os agentes a leem antes de trabalhar."
+						},
+						"s2": {
+							"title": "Escreva o contexto",
+							"body": "Escreva o que todo agente deve saber: stack, convenções, onde ficam as coisas."
+						}
+					}
+				},
+				"links": {
+					"title": "Vincule páginas e tarefas",
+					"steps": {
+						"s1": {
+							"title": "Adicione um link",
+							"body": "Digite {'@'} ou [[ para vincular uma tarefa, página, projeto ou pessoa."
+						},
+						"s2": {
+							"title": "Backlinks",
+							"body": "Os backlinks mostram todas as páginas que mencionam esta."
+						}
+					}
+				},
+				"versions": {
+					"title": "Versões e restauração",
+					"steps": {
+						"s1": {
+							"title": "Versões",
+							"body": "Abra uma página e depois o Histórico. Cada salvamento é uma versão que você pode comparar e restaurar."
+						}
+					}
+				},
+				"peopleMeetings": {
+					"title": "Páginas de pessoas e reuniões",
+					"steps": {
+						"s1": {
+							"title": "Tipos de página",
+							"body": "Crie uma página de pessoa (cargo, empresa, tarefas abertas) ou de reunião (data, participantes)."
+						}
+					}
+				},
+				"import": {
+					"title": "Traga suas anotações",
+					"steps": {
+						"s1": {
+							"title": "Importar",
+							"body": "Importe arquivos .md ou um .zip: um vault do Obsidian ou uma exportação do Notion."
+						},
+						"s2": {
+							"title": "Exportar",
+							"body": "Exporte uma página como .md ou a árvore inteira como .zip."
+						}
+					}
+				},
+				"taskFromSelection": {
+					"title": "Transforme texto em tarefa",
+					"steps": {
+						"s1": {
+							"title": "Criar uma tarefa",
+							"body": "Selecione o texto e escolha Criar uma tarefa. A tarefa aponta de volta para esta página."
+						}
+					}
+				}
+			},
+			"personas": {
+				"create": {
+					"title": "Dê uma identidade ao seu agente",
+					"steps": {
+						"s1": {
+							"title": "Crie uma persona",
+							"body": "Crie uma persona: nome, prompt de sistema e habilidades para um agente."
+						},
+						"s2": {
+							"title": "Acesso ao espaço de trabalho",
+							"body": "Conceda espaços de trabalho e permissões: permitido, somente leitura ou proibido."
+						}
+					}
+				},
+				"token": {
+					"title": "Token de persona",
+					"steps": {
+						"s1": {
+							"title": "Crie um token",
+							"body": "Crie um token para esta persona. Válido de 1 a 365 dias, exibido uma vez."
+						}
+					}
+				},
+				"assign": {
+					"title": "Atribua uma tarefa a uma persona",
+					"steps": {
+						"s1": {
+							"title": "Atribua a tarefa",
+							"body": "Atribua esta tarefa à sua persona. Ela aparece na fila do agente."
+						},
+						"s2": {
+							"title": "O agente assume a tarefa",
+							"body": "O agente lê a fila com list_my_queue e assume a tarefa."
+						}
+					}
+				},
+				"skills": {
+					"title": "Habilidades da persona",
+					"steps": {
+						"s1": {
+							"title": "Habilidades",
+							"body": "Habilidades são instruções reutilizáveis que o agente carrega quando precisa."
+						}
+					}
+				}
+			},
+			"routines": {
+				"first": {
+					"title": "Adicione uma rotina diária",
+					"steps": {
+						"s1": {
+							"title": "Adicione uma rotina",
+							"body": "Adicione algo que você repete: diariamente, semanalmente, mensalmente ou anualmente."
+						},
+						"s2": {
+							"title": "Marque como feita",
+							"body": "Marque como feita hoje."
+						}
+					}
+				},
+				"views": {
+					"title": "Dia, semana, mês, ano",
+					"steps": {
+						"s1": {
+							"title": "Visualizações",
+							"body": "Troque de visualização. A visão anual é um mapa de calor do que você manteve em dia."
+						}
+					}
+				},
+				"reminders": {
+					"title": "Lembretes e conversão",
+					"steps": {
+						"s1": {
+							"title": "Abra uma rotina",
+							"body": "Abra uma rotina para editá-la. Adicione uma antes se a lista estiver vazia."
+						},
+						"s2": {
+							"title": "Lembrete",
+							"body": "Defina um lembrete antes do vencimento de uma rotina."
+						},
+						"s3": {
+							"title": "Converter em tarefa",
+							"body": "Transforme uma rotina em tarefa quando ela crescer."
+						}
+					}
+				}
+			},
+			"start": {
+				"nav": {
+					"title": "Oriente-se",
+					"steps": {
+						"s1": {
+							"title": "Seu espaço de trabalho",
+							"body": "Este é o seu espaço de trabalho. Lista, Quadro, Rotinas e Páginas ficam aqui.",
+							"mobileBody": "Toque no menu para alternar entre Lista, Quadro, Rotinas e Páginas."
+						},
+						"s2": {
+							"title": "Espaços de trabalho",
+							"body": "Troque de espaço de trabalho ou crie um novo aqui.",
+							"mobileBody": "Abra o menu para trocar de espaço de trabalho ou criar um novo."
+						},
+						"s3": {
+							"title": "Nova tarefa",
+							"body": "Crie uma tarefa de qualquer lugar com este botão."
+						},
+						"s4": {
+							"title": "Seu menu",
+							"body": "Seu perfil, as Configurações e o modo claro ou escuro ficam no seu menu.",
+							"mobileBody": "Abra o menu para ver seu perfil, as Configurações e o modo claro ou escuro."
+						},
+						"s5": {
+							"title": "Primeiros passos",
+							"body": "Tours e sua lista de verificação esperam aqui. Volte quando quiser.",
+							"mobileBody": "Tours e sua lista de verificação estão no menu. Volte quando quiser."
+						}
+					}
+				},
+				"firstTask": {
+					"title": "Crie sua primeira tarefa",
+					"steps": {
+						"s1": {
+							"title": "Crie uma tarefa",
+							"body": "Clique aqui para criar uma tarefa.",
+							"mobileBody": "Toque aqui para criar uma tarefa."
+						},
+						"s2": {
+							"title": "Dê um título",
+							"body": "Digite um título e pressione Criar ou Ctrl+S. O resto é opcional.",
+							"mobileBody": "Digite um título e toque em Criar. O resto é opcional."
+						},
+						"s3": {
+							"title": "Sua primeira tarefa",
+							"body": "Pronto. Clique em uma tarefa para abrir detalhes, um cronômetro e comentários.",
+							"mobileBody": "Pronto. Toque em uma tarefa para abrir detalhes, um cronômetro e comentários."
+						}
+					}
+				},
+				"hub": {
+					"title": "Sua página Primeiros passos",
+					"steps": {
+						"s1": {
+							"title": "Lista de verificação",
+							"body": "Sua lista de verificação se marca sozinha conforme você avança."
+						},
+						"s2": {
+							"title": "Tours",
+							"body": "Tours curtos para cada recurso. Faça na ordem que quiser."
+						},
+						"s3": {
+							"title": "Dicas automáticas",
+							"body": "Desative as dicas automáticas aqui. Os tours continuam disponíveis nesta página."
+						}
+					}
+				},
+				"connectAgent": {
+					"title": "Conecte seu agente de IA",
+					"steps": {
+						"s1": {
+							"title": "Escolha seu cliente",
+							"body": "Escolha o cliente que você usa. Cada aba mostra o próprio comando."
+						},
+						"s2": {
+							"title": "Copie o comando",
+							"body": "Copie este comando e execute no seu terminal. O token é exibido uma vez.",
+							"mobileBody": "Abra esta página no computador ou copie o comando para enviá-lo para lá."
+						},
+						"s3": {
+							"title": "Esperando seu agente",
+							"body": "Esperando seu agente se conectar. Isto se atualiza sozinho."
+						},
+						"s4": {
+							"title": "Experimente um prompt",
+							"body": "Cole este prompt no seu agente. Ele vai assumir a tarefa inicial."
+						}
+					}
+				}
+			},
+			"tasks": {
+				"anatomy": {
+					"title": "Por dentro de uma tarefa",
+					"steps": {
+						"s1": {
+							"title": "Status",
+							"body": "O status move a tarefa pelo seu quadro."
+						},
+						"s2": {
+							"title": "Projeto",
+							"body": "Projetos dão códigos de ticket às tarefas: um prefixo curto mais um número."
+						},
+						"s3": {
+							"title": "Responsáveis",
+							"body": "Atribua pessoas ou personas. Personas são seus agentes de IA."
+						},
+						"s4": {
+							"title": "Descrição",
+							"body": "Escreva os detalhes aqui. Os agentes também leem isto."
+						},
+						"s5": {
+							"title": "Concluída",
+							"body": "Marque para concluir. Tarefas concluídas vão para o arquivo."
+						}
+					}
+				},
+				"boardMove": {
+					"title": "Mova um cartão no quadro",
+					"steps": {
+						"s1": {
+							"title": "Colunas",
+							"body": "Cada coluna é um status."
+						},
+						"s2": {
+							"title": "Mova um cartão",
+							"body": "Arraste este cartão pela alça até Em andamento. Ou abra-o e mude o Status.",
+							"mobileBody": "Abra um cartão e mude o Status. Sem precisar arrastar."
+						},
+						"s3": {
+							"title": "Adicione a uma coluna",
+							"body": "Adicione uma tarefa direto em uma coluna aqui."
+						}
+					}
+				},
+				"commentsFiles": {
+					"title": "Comentários e arquivos",
+					"steps": {
+						"s1": {
+							"title": "Comentários",
+							"body": "Deixe um comentário. Os agentes também publicam suas notas aqui."
+						},
+						"s2": {
+							"title": "Arquivos",
+							"body": "Anexe arquivos de até 25 MB ou cole uma imagem."
+						}
+					}
+				},
+				"archive": {
+					"title": "Conclua e arquive",
+					"steps": {
+						"s1": {
+							"title": "Arquivo",
+							"body": "As tarefas concluídas ficam guardadas aqui. Abra o arquivo para encontrá-las de novo.",
+							"mobileBody": "Abra o menu para encontrar o arquivo, onde as tarefas concluídas ficam guardadas."
+						}
+					}
+				},
+				"statuses": {
+					"title": "Molde seu fluxo de trabalho",
+					"steps": {
+						"s1": {
+							"title": "Status",
+							"body": "Renomeie, colora e reordene os status. O tipo define o que conta como ativo ou concluído."
+						},
+						"s2": {
+							"title": "Adicione um status",
+							"body": "Adicione um status para sua própria etapa, por exemplo Revisão."
+						}
+					}
+				},
+				"categories": {
+					"title": "Projetos e códigos de ticket",
+					"steps": {
+						"s1": {
+							"title": "Crie um projeto",
+							"body": "Crie um projeto. O código curto vira o prefixo de todo número de tarefa nele.",
+							"mobileBody": "Abra o menu e toque em + ao lado de Projetos. O código curto vira o prefixo de todo número de tarefa nele."
+						},
+						"s2": {
+							"title": "Abra um projeto",
+							"body": "Abra um projeto para ver só as tarefas dele. Projetos podem ser aninhados.",
+							"mobileBody": "Seus projetos ficam no menu. Abra um para ver só as tarefas dele."
+						}
+					}
+				},
+				"relations": {
+					"title": "Vincule tarefas relacionadas",
+					"steps": {
+						"s1": {
+							"title": "Relações",
+							"body": "Marque que esta tarefa bloqueia, duplica ou se relaciona com outra."
+						}
+					}
+				},
+				"filesPage": {
+					"title": "Todos os arquivos em um só lugar",
+					"steps": {
+						"s1": {
+							"title": "Arquivos",
+							"body": "Todo arquivo anexado a uma tarefa ou página neste espaço de trabalho."
+						}
+					}
+				},
+				"multiSelect": {
+					"title": "Aja em várias tarefas",
+					"steps": {
+						"s1": {
+							"title": "Modo de seleção",
+							"body": "Selecione várias tarefas para movê-las, concluí-las ou exportá-las juntas."
+						}
+					}
+				}
+			},
+			"time": {
+				"timer": {
+					"title": "Inicie um cronômetro",
+					"steps": {
+						"s1": {
+							"title": "Inicie o cronômetro",
+							"body": "Pressione play. Seguimos em frente assim que ele estiver rodando."
+						},
+						"s2": {
+							"title": "Cronômetros em andamento",
+							"body": "Os cronômetros em andamento ficam visíveis aqui, mesmo com a tarefa fechada."
+						},
+						"s3": {
+							"title": "Pare o cronômetro",
+							"body": "Pare quando terminar. O tempo é somado à tarefa."
+						},
+						"s4": {
+							"title": "Estimativas",
+							"body": "Defina uma estimativa nas configurações da tarefa para ver quando você estourar."
+						}
+					}
+				},
+				"parallel": {
+					"title": "Vários cronômetros ao mesmo tempo",
+					"steps": {
+						"s1": {
+							"title": "Vários cronômetros ao mesmo tempo",
+							"body": "Inicie um cronômetro em cada tarefa em que você trabalha. Todos os cronômetros em andamento ficam reunidos em um só selo."
+						},
+						"s2": {
+							"title": "Cronômetros em andamento",
+							"body": "Pare ou troque seus cronômetros em andamento aqui."
+						}
+					}
+				},
+				"checkpoints": {
+					"title": "Checkpoints",
+					"steps": {
+						"s1": {
+							"title": "Registre um checkpoint",
+							"body": "Registre um checkpoint: uma fatia de tempo com título dentro desta tarefa."
+						}
+					}
+				},
+				"pomodoro": {
+					"title": "Pomodoro",
+					"steps": {
+						"s1": {
+							"title": "Ative o Pomodoro",
+							"body": "Ative o Pomodoro nesta tarefa. Foco e pausas sincronizam com o iPhone e o Watch."
+						},
+						"s2": {
+							"title": "Configurações do Pomodoro",
+							"body": "Mude as durações, o início automático e se as pausas interrompem o tempo registrado."
+						}
+					}
+				},
+				"export": {
+					"title": "Exporte suas horas",
+					"steps": {
+						"s1": {
+							"title": "Selecione tarefas",
+							"body": "Selecione as tarefas a exportar."
+						},
+						"s2": {
+							"title": "Abra as ações",
+							"body": "Abra as ações das tarefas selecionadas."
+						},
+						"s3": {
+							"title": "Configurações de exportação",
+							"body": "Escolha arredondamento, dias de fim de semana e feriados para o relatório."
+						},
+						"s4": {
+							"title": "Baixar",
+							"body": "Baixe XLSX, CSV ou uma imagem (JPEG)."
+						}
+					}
+				}
+			},
+			"ws": {
+				"modules": {
+					"title": "Ative e desative recursos",
+					"steps": {
+						"s1": {
+							"title": "Predefinições",
+							"body": "Comece por uma predefinição: pessoal, desenvolvedor, equipe ou tudo."
+						},
+						"s2": {
+							"title": "Módulos",
+							"body": "Cada módulo pode ser ligado ou desligado. Os tours dos módulos novos aparecem em Primeiros passos."
+						},
+						"s3": {
+							"title": "Oculte só para você",
+							"body": "Membros podem ocultar um módulo só para si."
+						}
+					}
+				},
+				"invite": {
+					"title": "Convide um colega",
+					"steps": {
+						"s1": {
+							"title": "Convide alguém",
+							"body": "Convide por e-mail ou compartilhe um link. Verifique seu e-mail primeiro."
+						}
+					}
+				},
+				"dashboard": {
+					"title": "Painel da equipe",
+					"steps": {
+						"s1": {
+							"title": "Atividade da equipe",
+							"body": "Veja no que a equipe trabalhou e quem está online."
+						},
+						"s2": {
+							"title": "Membros da equipe",
+							"body": "Abra um membro para ver as tarefas e o tempo dele."
+						}
+					}
+				},
+				"workspaces": {
+					"title": "Vários espaços de trabalho",
+					"steps": {
+						"s1": {
+							"title": "Espaços de trabalho",
+							"body": "Mantenha trabalho e tarefas pessoais separados. Cada espaço de trabalho tem seu próprio quadro e módulos.",
+							"mobileBody": "Abra o menu para manter trabalho e tarefas pessoais em espaços de trabalho separados."
+						}
+					}
+				},
+				"appearance": {
+					"title": "Tema e cores",
+					"steps": {
+						"s1": {
+							"title": "Tema",
+							"body": "Claro, escuro ou do sistema, e uma cor de destaque."
+						}
+					}
+				},
+				"notifications": {
+					"title": "Notificações",
+					"steps": {
+						"s1": {
+							"title": "Notificações",
+							"body": "Menções, atribuições e atualizações de agentes chegam aqui.",
+							"mobileBody": "Toque no sino na barra superior."
+						}
+					}
+				},
+				"privacy": {
+					"title": "Privacidade e dicas",
+					"steps": {
+						"s1": {
+							"title": "Dados de uso",
+							"body": "Compartilhe dados de uso não vinculados à sua conta, ou não. Desative quando quiser."
+						},
+						"s2": {
+							"title": "Dicas",
+							"body": "Desative as dicas automáticas ou redefina todos os tours."
+						}
+					}
+				},
+				"telegram": {
+					"title": "Bot do Telegram",
+					"steps": {
+						"s1": {
+							"title": "Vincule o Telegram",
+							"body": "Vincule o Telegram. Envie texto ou voz para criar um rascunho de rotina e receba notificações."
+						}
+					}
+				},
+				"defaultLanding": {
+					"title": "Escolha sua página inicial",
+					"steps": {
+						"s1": {
+							"title": "Página inicial",
+							"body": "Abra o TMGR em Lista, Quadro, Painel ou Rotinas."
+						}
+					}
+				}
+			}
+		}
+	},
+	"removeSampleTasks": {
+		"button": "Remover tarefas de exemplo",
+		"none": "Nenhuma tarefa de exemplo para remover",
+		"removed": "{n} tarefa de exemplo removida | {n} tarefas de exemplo removidas",
+		"failed": "Não foi possível remover as tarefas de exemplo"
+	},
+	"starterPrompt": {
+		"ready": "Sua primeira tarefa está pronta: {task}",
+		"paste": "Cole isto no seu agente:",
+		"label": "Prompt inicial",
+		"runLogged": "Execução registrada. O TMGR registrou o que seu agente fez."
+	},
+	"tryIt": {
+		"region": "Experimente você mesmo",
+		"title": "Agora é a sua vez",
+		"items": {
+			"move": "Mova um cartão para outra coluna",
+			"timer": "Inicie um cronômetro em um cartão",
+			"add": "Adicione uma tarefa sua"
+		},
+		"createWorkspace": "Criar meu espaço de trabalho",
+		"createAndDelete": "Criar e excluir a demonstração",
+		"createFailed": "Não foi possível criar o espaço de trabalho."
+	},
+	"copyCommand": {
+		"copyLabel": "Copiar {label}",
+		"failed": "Não foi possível copiar. Selecione o texto e copie manualmente.",
+		"defaultLabel": "Comando"
+	},
+	"stillWaiting": {
+		"title": "Ainda esperando seu agente",
+		"intro": "Nenhuma chamada chegou ao TMGR ainda. Confira estes pontos:",
+		"runCommand": "Execute o comando no terminal em que você inicia o {client}, não dentro de uma sessão.",
+		"restart": "Reinicie o agente para que ele recarregue a configuração de MCP.",
+		"verify": "Execute {command} e procure por tmgr.",
+		"checkAgain": "Verificar de novo",
+		"differentClient": "Usar outro cliente",
+		"guide": "Abrir o guia de solução de problemas",
+		"later": "Fazer isso depois",
+		"defaultClient": "seu agente"
+	},
+	"connectStatus": {
+		"connected": "Conectado",
+		"stalled": "Ainda não conectado",
+		"waiting": "Esperando seu agente…"
+	},
+	"ahaWatcher": {
+		"fallbackTitle": "sua tarefa"
+	},
+	"checklist": {
+		"show": "Mostrar lista de verificação",
+		"title": "Primeiros passos",
+		"count": "{done} de {total}",
+		"options": "Opções da lista de verificação",
+		"hide": "Ocultar lista de verificação",
+		"optional": "(opcional)"
+	},
+	"ghost": {
+		"simulated": "Simulado localmente. Nenhum agente real está rodando. Pressione Esc para parar.",
+		"demoAgent": "Agente de demonstração",
+		"replay": "Repetir"
+	},
+	"gettingStarted": {
+		"title": "Primeiros passos",
+		"subtitle": "Tours guiados e curtos. Faça na ordem que quiser e pule os que não quiser.",
+		"showTips": "Mostrar dicas automaticamente",
+		"showInSidebar": "Mostrar na barra lateral",
+		"hidePage": "Ocultar esta página",
+		"progress": "{done} de {total} tours concluídos",
+		"minutes": "{n} min",
+		"updated": "Atualizado",
+		"resumeTour": "Retomar {title}",
+		"startTour": "Iniciar {title}",
+		"resume": "Retomar",
+		"start": "Iniciar"
+	},
+	"welcomeSetup": {
+		"title": "Como você quer começar?",
+		"subtitle": "Você pode fazer os dois depois. Nada aqui é permanente.",
+		"group": "Começar com",
+		"human": {
+			"title": "Só acompanhar minhas tarefas",
+			"description": "Tarefas, um quadro e um cronômetro. Pronto em um minuto."
+		},
+		"agent": {
+			"title": "Conectar meu agente de IA",
+			"description": "Para Claude Code, Codex, Cursor ou qualquer cliente MCP."
+		},
+		"empty": "Começar com um espaço de trabalho vazio",
+		"skip": "Pular, vou dar uma olhada",
+		"saveFailed": "Não foi possível salvar sua escolha. Tente novamente."
+	},
+	"connectAgent": {
+		"title": "Conecte seu agente de IA",
+		"turnOnMcp": "Ativar o MCP",
+		"continueToWorkspace": "Continuar para meu espaço de trabalho",
+		"connected": "{client} está conectado",
+		"openWorkspace": "Abrir meu espaço de trabalho",
+		"pick": "Escolha a ferramenta que você usa. O TMGR gera um token e seu agente começa a assumir tarefas.",
+		"mobileHint": "Abra esta página no computador ou copie o comando para enviá-lo para lá.",
+		"clientTabs": "Cliente",
+		"otherTab": "Outro (JSON)",
+		"yourAgent": "Seu agente",
+		"checking": "Verificando sua conta…",
+		"creating": "Criando seu token…",
+		"checkFailed": "Não foi possível verificar sua conta.",
+		"reconnect": "Um agente já se conectou a esta conta antes e você não tem nenhum token ativo.",
+		"generate": "Gerar um token",
+		"mintFailed": "Não foi possível criar um token.",
+		"haveToken": "Você já tem um token e o TMGR não consegue mostrá-lo de novo. Cole-o para montar o comando ou gere um novo.",
+		"existingToken": "Token existente",
+		"pasteToken": "Cole seu token existente",
+		"useToken": "Usar este token",
+		"generateNew": "Gerar um novo token",
+		"replaceWarning": "Um novo token substitui o antigo. Agentes que já usam o token antigo serão desconectados.",
+		"generateNewShort": "Gerar novo token",
+		"labels": {
+			"claude": "Comando do Claude Code",
+			"codex": "Configuração do Codex",
+			"cursor": "Link de instalação do Cursor",
+			"other": "Configuração do cliente MCP"
+		},
+		"addToFile": "Adicionar a {path}:",
+		"addToCursor": "Adicionar ao Cursor",
+		"cursorHint": "Ou copie o link de instalação e abra no seu computador.",
+		"addToClient": "Adicione à configuração de MCP do seu cliente:",
+		"shownOnce": "Token exibido uma vez. O TMGR guarda apenas um hash, então copie o comando agora.",
+		"ranIt": "Já executei",
+		"later": "Fazer isso depois",
+		"needsCloud": "Conectar um agente de IA exige uma conta na nuvem do TMGR.",
+		"mcpOff": "O módulo MCP está desativado neste espaço de trabalho, então os agentes ainda não podem se conectar.",
+		"step": "Passo {n} de {total}",
+		"liveConnected": "Agente conectado",
+		"done": {
+			"token": "Token criado",
+			"command": "Comando executado",
+			"agent": "Agente conectado"
+		}
+	}
+}
