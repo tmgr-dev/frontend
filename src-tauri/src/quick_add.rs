@@ -13,7 +13,7 @@ fn window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::WebviewWindow<
     return Ok(window);
   }
   WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("quick-add".into()))
-    .title("Quick add")
+    .title(crate::native_i18n::tr(crate::native_i18n::Key::QuickAdd))
     .inner_size(620.0, 132.0)
     .resizable(false)
     .decorations(false)

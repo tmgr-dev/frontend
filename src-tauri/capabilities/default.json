@@ -76,6 +76,7 @@
 		"allow-take-quick-add",
 		"allow-tray-update",
 		"allow-dnd-update",
+		"allow-native-locale-set",
 		"allow-mark-update-relaunch",
 		"allow-relaunch-after-update",
 		"allow-plugin-page-put",

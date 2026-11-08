@@ -7,9 +7,11 @@ use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tauri_plugin_autostart::ManagerExt;
 
+use crate::native_i18n::{decisions_label, tr, Key};
+
 /// The tray shows which do-not-disturb option is active; the timing itself is owned by JS (localStorage).
-const DND_OPTIONS: [(&str, &str); 4] =
-  [("off", "Off"), ("1h", "For 1 hour"), ("3h", "For 3 hours"), ("tomorrow", "Until tomorrow")];
+const DND_OPTIONS: [(&str, Key); 4] =
+  [("off", Key::DndOff), ("1h", Key::Dnd1h), ("3h", Key::Dnd3h), ("tomorrow", Key::DndTomorrow)];
 
 pub struct DndStore(pub Mutex<String>);
 
@@ -203,7 +205,7 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
   for task in &state.running {
     menu = menu
       .item(&MenuItemBuilder::with_id(format!("open:{}", task.key()), truncate(&task.title, LABEL_MAX)).build(app)?)
-      .item(&MenuItemBuilder::with_id(format!("stop:{}", task.key()), "      ■  Stop timer").build(app)?);
+      .item(&MenuItemBuilder::with_id(format!("stop:{}", task.key()), format!("      ■  {}", tr(Key::StopTimer))).build(app)?);
   }
   let recent: Vec<&TrayTask> = state
     .recent
@@ -214,7 +216,7 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
     menu = menu.separator();
   }
   if !recent.is_empty() {
-    menu = menu.item(&MenuItemBuilder::new("Switch to").enabled(false).build(app)?);
+    menu = menu.item(&MenuItemBuilder::new(tr(Key::SwitchTo)).enabled(false).build(app)?);
     for task in recent {
       menu = menu.item(
         &MenuItemBuilder::with_id(format!("switch:{}", task.key()), format!("▶  {}", truncate(&task.title, LABEL_MAX)))
@@ -227,30 +229,30 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
   }
   let autostart = app.autolaunch().is_enabled().unwrap_or(false);
   let dnd_current = app.state::<DndStore>().0.lock().unwrap().clone();
-  let mut dnd_menu = SubmenuBuilder::new(app, "Do Not Disturb");
+  let mut dnd_menu = SubmenuBuilder::new(app, tr(Key::DoNotDisturb));
   for (id, label) in DND_OPTIONS {
     dnd_menu = dnd_menu.item(
-      &CheckMenuItemBuilder::with_id(format!("dnd:{id}"), label)
+      &CheckMenuItemBuilder::with_id(format!("dnd:{id}"), tr(label))
         .checked(dnd_current == id)
         .build(app)?,
     );
   }
-  menu = menu.item(&MenuItemBuilder::with_id("open", "Open TMGR").build(app)?);
+  menu = menu.item(&MenuItemBuilder::with_id("open", tr(Key::OpenApp)).build(app)?);
   #[cfg(unix)]
   {
-    let label = format!("Decisions ({})", crate::decisions::open_count());
+    let label = decisions_label(crate::decisions::open_count());
     menu = menu.item(&MenuItemBuilder::with_id(crate::decisions::TRAY_ID, label).build(app)?);
   }
   menu = menu
     .item(&dnd_menu.build()?)
-    .item(&MenuItemBuilder::with_id("shortcuts", "Shortcuts…").build(app)?)
+    .item(&MenuItemBuilder::with_id("shortcuts", tr(Key::Shortcuts)).build(app)?)
     .item(
-      &CheckMenuItemBuilder::with_id("autostart", "Launch at Login")
+      &CheckMenuItemBuilder::with_id("autostart", tr(Key::LaunchAtLogin))
         .checked(autostart)
         .build(app)?,
     );
   if cfg!(not(target_os = "macos")) && crate::updater_enabled() {
-    menu = menu.item(&MenuItemBuilder::with_id(CHECK_FOR_UPDATES_ID, "Check for Updates…").build(app)?);
+    menu = menu.item(&MenuItemBuilder::with_id(CHECK_FOR_UPDATES_ID, tr(Key::CheckForUpdates)).build(app)?);
   }
   if !state.plugin_sections.is_empty() {
     menu = menu.separator();
@@ -267,7 +269,7 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
   menu
     .separator()
     .item(
-      &MenuItemBuilder::with_id("quit", "Quit TMGR")
+      &MenuItemBuilder::with_id("quit", tr(Key::Quit))
         .accelerator("CmdOrCtrl+Q")
         .build(app)?,
     )

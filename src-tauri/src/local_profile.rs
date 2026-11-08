@@ -201,7 +201,7 @@ pub async fn local_profile_unlink<R: Runtime>(app: AppHandle<R>, window: tauri::
     dialog_app
       .dialog()
       .message("Unlink your local profile from this account? The next account that signs in on this device can then take over the local data that is still on it.")
-      .title("Unlink local profile")
+      .title(crate::native_i18n::tr(crate::native_i18n::Key::UnlinkProfile))
       .kind(MessageDialogKind::Warning)
       .buttons(MessageDialogButtons::OkCancelCustom("Unlink".to_owned(), "Cancel".to_owned()))
       .blocking_show()

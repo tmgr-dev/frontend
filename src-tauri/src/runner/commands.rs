@@ -259,7 +259,7 @@ pub async fn runner_open_terminal<R: Runtime>(app: AppHandle<R>, runner: State<'
     return Err("session not found".to_owned());
   }
   let builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("runner-terminal.html".into()))
-    .title("Agent terminal")
+    .title(crate::native_i18n::tr(crate::native_i18n::Key::AgentTerminal))
     .inner_size(980.0, 640.0)
     .min_inner_size(480.0, 300.0)
     .resizable(true)
