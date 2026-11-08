@@ -27,7 +27,7 @@ interface RenderOptions {
 
 type IdHeading = Tokens.Heading & { docsId?: string };
 
-const escapeHtml = (value: string): string =>
+export const escapeHtml = (value: string): string =>
 	value
 		.replace(/&/g, '&amp;')
 		.replace(/</g, '&lt;')

@@ -1,3 +1,5 @@
+import { APP_NAME, SEPARATOR } from '../composable/useDocumentTitle';
+
 export type DocsLang = 'en' | 'ru';
 
 export const DOCS_LANGS: DocsLang[] = ['en', 'ru'];
@@ -142,6 +144,73 @@ export function resolveDoc(
 	if (own) return { page: own, fallback: false };
 	const other = pages.find((p) => p.slug === slug);
 	return other ? { page: other, fallback: true } : null;
+}
+
+export const DOCS_ORIGIN = 'https://tmgr.dev';
+
+export interface DocsHeadTag {
+	tag: 'meta' | 'link';
+	attrs: Record<string, string>;
+}
+
+export interface DocsHead {
+	lang: DocsLang;
+	title: string;
+	canonical: string;
+	alternates: { hreflang: string; href: string }[];
+	tags: DocsHeadTag[];
+}
+
+export function docsHead(
+	pages: DocPage[],
+	lang: DocsLang,
+	slug: string,
+): DocsHead | null {
+	const resolved = resolveDoc(pages, lang, slug);
+	if (!resolved) return null;
+	const { page } = resolved;
+	const url = (l: DocsLang) => `${DOCS_ORIGIN}${docPath(l, slug)}`;
+	const langs = DOCS_LANGS.filter((l) =>
+		pages.some((p) => p.lang === l && p.slug === slug),
+	);
+	const canonical = url(page.lang);
+	const alternates = [
+		...langs.map((l) => ({ hreflang: l, href: url(l) })),
+		{
+			hreflang: 'x-default',
+			href: url(langs.includes('en') ? 'en' : page.lang),
+		},
+	];
+	const meta = (key: string, name: string, content: string): DocsHeadTag => ({
+		tag: 'meta',
+		attrs: { [key]: name, content },
+	});
+	const description = page.description
+		? [
+				meta('name', 'description', page.description),
+				meta('property', 'og:description', page.description),
+			]
+		: [];
+	return {
+		lang,
+		title: `${page.title}${SEPARATOR}${APP_NAME}`,
+		canonical,
+		alternates,
+		tags: [
+			...description,
+			{ tag: 'link', attrs: { rel: 'canonical', href: canonical } },
+			...alternates.map((a): DocsHeadTag => ({
+				tag: 'link',
+				attrs: { rel: 'alternate', hreflang: a.hreflang, href: a.href },
+			})),
+			meta('property', 'og:title', page.title),
+			meta('property', 'og:url', canonical),
+			meta('property', 'og:type', 'article'),
+			meta('property', 'og:locale', page.lang === 'ru' ? 'ru_RU' : 'en_US'),
+			meta('property', 'og:site_name', APP_NAME),
+			meta('name', 'twitter:card', 'summary'),
+		],
+	};
 }
 
 const byOrder = (a: DocPage, b: DocPage) =>

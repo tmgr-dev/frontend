@@ -248,12 +248,14 @@
 	import { toast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { DOCS_PAGES } from '@/docs/loader';
+	import { currentLocale, onLocaleChange } from '@/i18n';
 	import {
 		buildNav,
 		buildSearchIndex,
 		docPath,
 		DOCS_COMPONENTS,
 		DOCS_UI,
+		docsHead,
 		parseDocsPath,
 		prevNext,
 		resolveDoc,
@@ -283,6 +285,13 @@
 	} from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import { useStore } from 'vuex';
+
+	const HEAD_ATTR = 'data-docs-head';
+
+	const clearDocsHead = () =>
+		document.head
+			.querySelectorAll(`[${HEAD_ATTR}]`)
+			.forEach((el) => el.remove());
 
 	const REGISTRY: Record<
 		(typeof DOCS_COMPONENTS)[number],
@@ -370,6 +379,29 @@
 				},
 				{ immediate: true },
 			);
+
+			const applyHead = () => {
+				clearDocsHead();
+				document.documentElement.lang = lang.value;
+				for (const { tag, attrs } of docsHead(
+					DOCS_PAGES,
+					lang.value,
+					slug.value,
+				)?.tags ?? [
+					{ tag: 'meta', attrs: { name: 'robots', content: 'noindex' } },
+				]) {
+					const el = document.createElement(tag);
+					Object.entries(attrs).forEach(([key, value]) =>
+						el.setAttribute(key, value),
+					);
+					el.setAttribute(HEAD_ATTR, '');
+					document.head.appendChild(el);
+				}
+			};
+			watch(location, applyHead, { immediate: true });
+			const offLocaleChange = onLocaleChange(() => {
+				document.documentElement.lang = lang.value;
+			});
 
 			const scrollToId = (id: string, focus: boolean) => {
 				const target = id ? document.getElementById(id) : null;
@@ -505,6 +537,11 @@
 			});
 
 			onBeforeUnmount(() => {
+				offLocaleChange();
+				if (!/^\/docs(\/|$)/.test(router.currentRoute.value.path)) {
+					clearDocsHead();
+					document.documentElement.lang = currentLocale();
+				}
 				window.removeEventListener('keydown', onKeydown);
 				copyTimers.forEach((timer) => clearTimeout(timer));
 			});
@@ -536,116 +573,3 @@
 		},
 	});
 </script>
-
-<style>
-	.docs-prose {
-		color: var(--fg);
-		font-size: 0.9375rem;
-		line-height: 1.7;
-	}
-
-	.docs-prose > * + * {
-		margin-top: 1rem;
-	}
-
-	.docs-prose h2,
-	.docs-prose h3,
-	.docs-prose h4 {
-		font-weight: 600;
-		line-height: 1.3;
-		scroll-margin-top: calc(var(--titlebar-h, 0px) + 1rem);
-	}
-
-	.docs-prose h2 {
-		margin-top: 2.5rem;
-		font-size: 1.25rem;
-	}
-
-	.docs-prose h3 {
-		margin-top: 1.75rem;
-		font-size: 1.0625rem;
-	}
-
-	.docs-prose h4 {
-		margin-top: 1.5rem;
-		font-size: 1rem;
-	}
-
-	.docs-prose > :first-child {
-		margin-top: 0;
-	}
-
-	.docs-prose [tabindex='-1']:focus {
-		outline: none;
-	}
-
-	.docs-prose a {
-		color: hsl(var(--primary));
-		text-decoration: underline;
-		text-underline-offset: 2px;
-	}
-
-	.docs-prose a:hover {
-		text-decoration-thickness: 2px;
-	}
-
-	.docs-prose ul {
-		list-style: disc;
-		padding-left: 1.25rem;
-	}
-
-	.docs-prose ol {
-		list-style: decimal;
-		padding-left: 1.25rem;
-	}
-
-	.docs-prose li + li,
-	.docs-prose li > ul,
-	.docs-prose li > ol {
-		margin-top: 0.25rem;
-	}
-
-	.docs-prose strong {
-		font-weight: 600;
-	}
-
-	.docs-prose :not(pre) > code {
-		border-radius: 0.25rem;
-		background: hsl(var(--muted));
-		padding: 0.1rem 0.3rem;
-		font-family: var(--font-mono);
-		font-size: 0.85em;
-		overflow-wrap: anywhere;
-	}
-
-	.docs-prose blockquote {
-		border-left: 3px solid hsl(var(--border));
-		padding-left: 1rem;
-		color: var(--fg-subtle);
-	}
-
-	.docs-prose table {
-		display: block;
-		max-width: 100%;
-		overflow-x: auto;
-		border-collapse: collapse;
-		font-size: 0.875rem;
-	}
-
-	.docs-prose th,
-	.docs-prose td {
-		border: 1px solid hsl(var(--border));
-		padding: 0.4rem 0.6rem;
-		text-align: left;
-	}
-
-	.docs-prose th {
-		background: hsl(var(--muted));
-		font-weight: 600;
-	}
-
-	.docs-prose hr {
-		margin: 2rem 0;
-		border-color: hsl(var(--border));
-	}
-</style>

@@ -22,6 +22,7 @@ export const pwaWorkbox = {
 	],
 	globIgnores: [
 		'**/assets/**/{exo-2,jetbrains-mono,quicksand,instrument-serif}-*.woff2',
+		'docs/**/*.html',
 	],
 	directoryIndex: null,
 	navigateFallbackDenylist: [

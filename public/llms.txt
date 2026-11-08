@@ -18,3 +18,18 @@ Start with the guide; it ends with the full API reference.
 ## Connect an agent to TMGR
 
 - [Agents setup guide](https://tmgr.dev/docs/agents): MCP server, tokens, notifications
+
+## Docs
+
+User docs as plain HTML pages. Every page exists in English and Russian.
+
+- [Overview](https://tmgr.dev/docs): what the TMGR docs cover and where to start
+- [AI agents](https://tmgr.dev/docs/agents): connect Claude Code, Codex, Cursor and other MCP agents to TMGR
+- [Command line (tmgr)](https://tmgr.dev/docs/cli): work with tasks from the terminal and run AI agents under supervision
+- [1. Install and sign in](https://tmgr.dev/docs/cli/install-and-sign-in): install tmgr, sign in with a device code, pick a workspace and open the menu
+- [2. Tasks from the terminal](https://tmgr.dev/docs/cli/tasks-from-the-terminal): create, list and open tasks, move them on the board and script tmgr with JSON
+- [Обзор](https://tmgr.dev/docs/ru): о чём эта документация TMGR и с чего начать
+- [AI-агенты](https://tmgr.dev/docs/ru/agents): как подключить к TMGR Claude Code, Codex, Cursor и других MCP-агентов
+- [Командная строка (tmgr)](https://tmgr.dev/docs/ru/cli): задачи из терминала и AI-агенты под присмотром
+- [1. Установка и вход](https://tmgr.dev/docs/ru/cli/install-and-sign-in): установка tmgr, вход по коду устройства, выбор воркспейса и интерактивное меню
+- [2. Задачи из терминала](https://tmgr.dev/docs/ru/cli/tasks-from-the-terminal): создаём и смотрим задачи, двигаем их по доске и используем JSON в скриптах

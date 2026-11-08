@@ -315,6 +315,9 @@ const start = async () => {
 	if (isDesktopApp()) installDesktopDiagnostics(app, router, store);
 
 	installFocusSource(document);
+	// Prerendered docs HTML stays in #app until the lazy docs page is loaded.
+	if (/^\/docs(\/|$)/.test(location.pathname))
+		await router.isReady().catch(() => undefined);
 	app.mount('#app');
 	startPrivacy();
 	void import('@/telemetry/start').then(({ startTelemetry }) =>

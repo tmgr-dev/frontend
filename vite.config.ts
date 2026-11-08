@@ -1,10 +1,11 @@
 import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { pwaWorkbox } from './pwa/pwaWorkbox';
+import { prerenderDocs } from './src/utils/docsPrerender';
 import { stripAnalytics } from './src/utils/stripAnalytics';
 
 const appVersion: string =
@@ -38,6 +39,62 @@ const desktopWithoutAnalytics = (): Plugin => {
 	};
 };
 
+const docsDir = fileURLToPath(new URL('./src/docs/', import.meta.url));
+
+const docsPrerender = (): Plugin => {
+	let mode = '';
+	let apiBase: string | undefined;
+	return {
+		name: 'docs-prerender',
+		apply: 'build',
+		enforce: 'post',
+		configResolved(config) {
+			mode = config.mode;
+			apiBase = loadEnv(mode, process.cwd(), '').VITE_API_BASE_URL;
+		},
+		generateBundle(_options, bundle) {
+			if (mode === 'desktop') return;
+			const index = bundle['index.html'];
+			if (index?.type !== 'asset')
+				this.error('docs-prerender: index.html is not in the bundle');
+			const files = Object.fromEntries(
+				readdirSync(docsDir, { recursive: true, encoding: 'utf8' })
+					.filter((file) => file.endsWith('.md'))
+					.map((file) => [
+						`./${file.split('\\').join('/')}`,
+						readFileSync(`${docsDir}${file}`, 'utf8'),
+					]),
+			);
+			const docsChunk = Object.values(bundle).find(
+				(item) =>
+					item.type === 'chunk' &&
+					/[\\/]src[\\/]pages[\\/]DocsPage\.vue$/.test(
+						item.facadeModuleId ?? '',
+					),
+			);
+			const { pages, sitemap } = prerenderDocs({
+				files,
+				template: String(index.source),
+				apiBase,
+				headExtra: docsChunk
+					? `<link rel="modulepreload" crossorigin href="/${docsChunk.fileName}">`
+					: '',
+			});
+			for (const page of pages)
+				this.emitFile({
+					type: 'asset',
+					fileName: page.fileName,
+					source: page.html,
+				});
+			this.emitFile({
+				type: 'asset',
+				fileName: 'sitemap.xml',
+				source: sitemap,
+			});
+		},
+	};
+};
+
 const standaloneDevPages = [
 	'/runner-terminal.html',
 	'/decisions.html',
@@ -66,6 +123,7 @@ export default defineConfig({
 		vue(),
 		desktopWithoutAnalytics(),
 		runnerTerminalDevCsp(),
+		docsPrerender(),
 		VitePWA({
 			disable: Boolean(process.env.TAURI_ENV_PLATFORM),
 			registerType: 'autoUpdate',
