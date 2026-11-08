@@ -1,0 +1,972 @@
+{
+	"workspaces": {
+		"documentTitle": "ワークスペース設定",
+		"loadFailed": "ワークスペース設定を読み込めませんでした。",
+		"toast": {
+			"editorUpdated": "エディターを更新しました。ページを再読み込みしています...",
+			"saved": "保存しました。",
+			"saveSettingsFailed": "ワークスペース設定を保存できませんでした",
+			"workspaceSaved": "ワークスペースを保存しました",
+			"error": "エラー",
+			"saveWorkspaceFailed": "ワークスペースを保存できませんでした",
+			"defaultSaved": "デフォルトのワークスペースを保存しました",
+			"defaultSaveFailed": "デフォルトのワークスペースを保存できませんでした",
+			"created": "作成しました。",
+			"inviteFailed": "招待を送信できませんでした。もう一度お試しください。",
+			"deleteFailed": "ワークスペースを削除できませんでした。もう一度お試しください。",
+			"leaveFailed": "ワークスペースから退出できませんでした。もう一度お試しください。",
+			"memberRemoved": "メンバーを削除しました",
+			"memberRemovedDescription": "{name} をワークスペースから削除しました",
+			"removeMemberFailed": "メンバーを削除できませんでした"
+		},
+		"membersLoadFailed": "ワークスペースのメンバーを読み込めませんでした。",
+		"title": "ワークスペース設定",
+		"newWorkspace": "新しいワークスペース",
+		"create": {
+			"title": "新しいワークスペースを作成",
+			"description": "新しいワークスペースの名前を入力してください",
+			"namePlaceholder": "新しいワークスペース名"
+		},
+		"invite": {
+			"label": "招待",
+			"title": "招待を送信",
+			"description": "このワークスペースにメンバーを招待するメールアドレスを入力してください",
+			"emailsPlaceholder": "メールアドレスを入力（カンマ区切り）。例：\nuser1{'@'}example.com,\nuser2{'@'}example.com,\n...\nuserN{'@'}example.com",
+			"send": "送信"
+		},
+		"delete": {
+			"label": "ワークスペースを削除",
+			"description": "ワークスペース {name} と、そのタスク、ページ、ファイルがすべてのメンバーに対して完全に削除されます。この操作は元に戻せません。"
+		},
+		"exit": {
+			"label": "ワークスペースから退出",
+			"confirmTitle": "本当によろしいですか？",
+			"confirmDescription": "この操作はご自身では元に戻せません。このワークスペースに戻りたい場合は、メンバーに招待をもう一度送ってもらってください。"
+		},
+		"loading": "ワークスペース設定を読み込み中",
+		"general": {
+			"title": "ワークスペース",
+			"name": "名前",
+			"nameEmpty": "名前は空にできません",
+			"colour": "色",
+			"defaultColour": "デフォルト"
+		},
+		"preferences": {
+			"title": "環境設定",
+			"customValue": "カスタム値を設定"
+		},
+		"default": {
+			"title": "デフォルトのワークスペース",
+			"description": "Telegram、MCP、スマートデバイス、新しいデバイスで TMGR を開いたときに使われます。",
+			"choose": "ワークスペースを選択",
+			"setAsDefault": "デフォルトに設定"
+		},
+		"members": {
+			"title": "メンバー",
+			"loading": "メンバーを読み込み中",
+			"none": "メンバーが見つかりません",
+			"owner": "オーナー",
+			"removeTitle": "メンバーを削除",
+			"removeConfirm": "{name} をこのワークスペースから削除してもよろしいですか？この操作は元に戻せません。"
+		},
+		"invitations": {
+			"title": "招待"
+		}
+	},
+	"plugins": {
+		"title": "プラグイン",
+		"subtitle": "プラグインはローカルのワークスペースで動作し、共有ワークスペースでは作成者が全員向けにオンにすると動作します。各プラグインは専用のサンドボックスで、カードに表示された権限のみで動作します。",
+		"howItWorks": "プラグインの仕組み",
+		"openWorkspace": "ワークスペースを開くと、そのワークスペースのプラグインをオン/オフできます。",
+		"sharedCreator": "共有ワークスペース：{name}。あなたが作成したため、ここでオンにしたプラグインは全メンバーに対して動作します。",
+		"sharedMember": "共有ワークスペース：{name}。ここでプラグインをオンにできるのは作成者のみで、プラグインは全メンバーに対して動作します。",
+		"currentWorkspace": "現在のワークスペース：{name}",
+		"safeMode": {
+			"title": "セーフモード",
+			"description": "すべてのプラグインをオフにします。アプリを --safe-mode 付きで起動しても同じ結果になります。"
+		},
+		"devMode": {
+			"title": "開発者モード",
+			"description": "~/.tmgr.dev/plugins からプラグインを読み込みます。最初はオフの状態です。"
+		},
+		"tray": {
+			"title": "{tray} のテキスト",
+			"description": "1 つのプラグインに、{tray} のタイマーの横にテキストを表示させます。"
+		},
+		"dev": {
+			"showFolder": "フォルダーを表示",
+			"reload": "プラグインを再読み込み"
+		},
+		"install": {
+			"title": "GitHub からインストール",
+			"description": "プラグインのリポジトリを貼り付けてください。アプリが最新リリースを読み取り、インストール前に何ができるかを表示します。",
+			"repoLabel": "プラグインのリポジトリ",
+			"checking": "確認中…",
+			"check": "確認"
+		},
+		"offer": {
+			"updateTitle": "{name} {version} を更新しますか？",
+			"installTitle": "{name} {version} をインストールしますか？",
+			"from": "提供元：github.com/{repo}（{tag}）、発行者：{publisher}。",
+			"verified": "確認済みの発行者：TMGR カタログに登録されたキーで署名されています。",
+			"unverified": "未確認の発行者：署名はされていますが、TMGR カタログには登録されていません。キーは記憶され、更新には同じキーでの署名が必要です。",
+			"itCan": "できること：",
+			"connectTo": "接続先：{origins}（このコンピューターのみ）",
+			"openLinks": "リンクを開ける先：{domains}",
+			"telegram": "Telegram のリンク (tg://) を開けます。",
+			"pictures": "画像の読み込み元：{domains}。プラグインが画像を表示するたびに、これらのサイトにリクエストが送られます。",
+			"companion": "自分でインストールする外部プログラム（{description}）と連携します。選択したペルソナとして書き込みます。",
+			"newInVersion": "このバージョンの新機能：",
+			"schemeLinks": "{scheme}:// リンク",
+			"imagesFrom": "{domain} の画像",
+			"startOff": "インストールしたプラグインは最初はオフです。ワークスペースごとにオンにしてください。",
+			"update": "更新",
+			"install": "インストール"
+		},
+		"remove": {
+			"title": "{name} を削除しますか？",
+			"description": "プラグインはこのコンピューターから削除されます。ワークスペース内のデータは、再インストールするかワークスペースを消去するまで残ります。"
+		},
+		"card": {
+			"originVerified": "提供元：github.com/{repo} · {tag} · 確認済みの発行者",
+			"originUnverified": "提供元：github.com/{repo} · {tag} · 未確認の発行者",
+			"checkUpdate": "更新を確認",
+			"turnOn": "{name} をオンにする",
+			"allowed": "このコンピューターのネットワークとファイルの使用が許可されています。",
+			"notAllowed": "許可するまで、このコンピューターのネットワークとファイルへのアクセスはオフのままです。",
+			"stopAllowing": "許可を取り消す",
+			"allow": "このコンピューターで許可",
+			"connectTo": "接続できる先：{origins}（このコンピューターのみ）",
+			"openLinks": "リンクを開ける先：{domains}",
+			"telegram": "Telegram のリンク (tg://) を開けます",
+			"pictures": "画像の読み込み元：{domains}。プラグインが画像を表示するたびに、これらのサイトにリクエストが送られます。",
+			"can": "できること：",
+			"openView": "「{title}」を開く",
+			"saveSettings": "設定を保存",
+			"log": "ログ ({count})",
+			"copyDiagnostics": "診断情報をコピー"
+		},
+		"permission": {
+			"tasksRead": "タスクの読み取り",
+			"tasksWrite": "タスクの作成と変更",
+			"statusesRead": "ステータスの読み取り",
+			"categoriesRead": "プロジェクトの読み取り",
+			"timeRead": "記録済み時間の読み取り",
+			"timeWrite": "タイマーの開始と停止",
+			"commentsRead": "コメントの読み取り",
+			"commentsWrite": "コメントの追加",
+			"notifications": "通知の表示",
+			"filesExport": "このワークスペースのエクスポートフォルダーへのファイル保存",
+			"filesAttachments": "タスクの添付ファイルの読み取り",
+			"filesPick": "選択したファイルの読み取り",
+			"statusesWrite": "ステータスの作成と変更",
+			"categoriesWrite": "プロジェクトの作成と変更",
+			"relationsRead": "タスク間のリンクの読み取り",
+			"relationsWrite": "タスクのリンクとリンク解除",
+			"agentWorkRead": "タスクの AI エージェントの作業の読み取り",
+			"agentWorkWrite": "タスクの AI エージェントの作業の記録",
+			"alarms": "バックグラウンドでスケジュールに従って起動",
+			"tray": "{tray} アイコンへの項目とテキストの追加",
+			"deeplinks": "他のアプリの tmgr:// リンクから開かれる",
+			"linksOpen": "Web リンクをブラウザーで開く",
+			"imagesRemote": "宣言したサイトからの画像の読み込み",
+			"routinesRead": "メモとルーティンの読み取り（ローカルのワークスペースのみ）",
+			"routinesWrite": "メモとルーティンの追加、名前変更、完了、変換（ローカルのワークスペースのみ）",
+			"viewsBadge": "サイドバー項目へのカウンター表示",
+			"pagesRead": "ページとページごとのデータの読み取り",
+			"pagesWrite": "ページの作成、テキストの変更、ページごとのデータの保存",
+			"pagesSections": "ページ内の専用管理セクションへの書き込み",
+			"menusTask": "タスクの … メニューへの項目の追加",
+			"none": "自身のストレージ以外は何もなし",
+			"groupReads": "データを読み取る",
+			"groupChanges": "データを変更する",
+			"groupInterface": "インターフェースを変更する",
+			"groupOutside": "アプリの外部にアクセスする"
+		},
+		"toast": {
+			"upToDate": "{name} は最新です",
+			"updated": "{name} を更新しました",
+			"installed": "{name} をインストールしました",
+			"removed": "{name} を削除しました",
+			"changeFailed": "このワークスペースのプラグインを変更できませんでした",
+			"commandFailed": "プラグインのコマンドが失敗しました",
+			"settingsSaved": "プラグイン設定を保存しました",
+			"diagnosticsCopied": "診断情報をコピーしました",
+			"diagnosticsFailed": "診断情報をコピーできませんでした"
+		},
+		"source": {
+			"builtin": "内蔵",
+			"folder": "フォルダー",
+			"installed": "インストール済み"
+		},
+		"status": {
+			"running": "実行中",
+			"starting": "起動中…",
+			"stopped": "オフ",
+			"failed": "起動に失敗しました",
+			"crashed": "エラーのためオフになりました",
+			"blocked": "TMGR によりブロックされています"
+		}
+	},
+	"skillFiles": {
+		"title": "ファイル · {slug}",
+		"loading": "ファイルを読み込み中…",
+		"deleteFile": "{path} を削除"
+	},
+	"deletedSkills": {
+		"recentlyDeleted": "最近削除したもの",
+		"loadFailed": "最近削除したスキルを読み込めませんでした。",
+		"filesCount": "{n} 個のファイル",
+		"hideVersions": "バージョンを隠す",
+		"versions": "バージョン",
+		"deletedUser": "削除されたユーザー",
+		"previewFailed": "このバージョンを読み込めませんでした。もう一度お試しください。",
+		"restore": "復元",
+		"restoredFrom": "v{version} から復元",
+		"kind": {
+			"baseline": "ベースライン",
+			"create": "作成",
+			"edit": "編集",
+			"restore": "復元",
+			"convert": "変換"
+		},
+		"deletedOn": "削除：{when} · {date} に完全に削除されます",
+		"attachmentsNote": "ペルソナの添付ファイルは復元されません。"
+	},
+	"sharedSkillHistory": {
+		"deletedUser": "削除されたユーザー",
+		"previewFailed": "このバージョンを読み込めませんでした。もう一度お試しください。",
+		"restoredFrom": "v{version} から復元",
+		"kind": {
+			"baseline": "ベースライン",
+			"create": "作成",
+			"edit": "編集",
+			"restore": "復元",
+			"convert": "変換"
+		},
+		"title": "履歴：{title}",
+		"loading": "履歴を読み込み中…",
+		"current": "現在",
+		"pinnedBy": "固定しているペルソナ：{names}",
+		"compare": "現在と比較",
+		"restoreVersion": "このバージョンを復元",
+		"confirmRestore": "バージョン {version} を復元しますか？その内容でバージョン {next} が作成されます。"
+	},
+	"skillsLibrary": {
+		"importFromAgents": "ローカルのエージェントからインポート",
+		"loading": "ライブラリを読み込み中…",
+		"empty": "共有スキルはまだありません。",
+		"notAttached": "未接続",
+		"overriddenTitle": "このペルソナ独自のスキルで上書きされています",
+		"overridden": "（上書き済み）",
+		"historyOf": "{title} の履歴",
+		"filesOf": "{title} のファイル",
+		"history": "履歴",
+		"filesButton": "ファイル ({count})",
+		"used": "{count}/{limit} 使用中",
+		"editing": "{slug} を編集",
+		"newSkill": "新しい共有スキル",
+		"bytes": "{count} / {max} バイト",
+		"saveChanges": "変更を保存",
+		"createSkill": "スキルを作成",
+		"loadFailed": "スキルライブラリを読み込めませんでした",
+		"loadSkillFailed": "このスキルを読み込めませんでした",
+		"limitReached": "ライブラリにはすでに {limit} 個のスキルがあります",
+		"saved": "スキルを保存しました",
+		"saveFailed": "スキルを保存できませんでした",
+		"deleteFailed": "スキルを削除できませんでした"
+	},
+	"modules": {
+		"title": "モジュール",
+		"subtitleWorkspace": "ワークスペース「{name}」：TMGR で利用できる機能を選択します",
+		"subtitle": "TMGR で利用できる機能を選択します",
+		"loading": "モジュールを読み込み中",
+		"ownerOnlyNotice": "モジュールをオン/オフできるのはワークスペースのオーナーのみです。自分用にモジュールを非表示にすることはできます。",
+		"applyPreset": "プリセットを適用",
+		"ownerOnlyHint": "モジュールを変更できるのはオーナーのみです",
+		"core": "コア",
+		"hideCore": "自分用にコアのセクションを非表示",
+		"packCount": "{total} 件中 {enabled} 件がオン",
+		"askOwner": "オンにするようオーナーに依頼してください",
+		"account": "このアカウント",
+		"accountDescription": "すべてのワークスペースであなたに適用されます",
+		"turnOffTitle": "ワークフローをオフにしますか？",
+		"turnOff": "オフにする",
+		"personal": "個人設定",
+		"personalDescription": "これらの設定はあなたのアカウントにのみ影響します",
+		"errorTitle": "エラー",
+		"updated": "モジュールを更新しました",
+		"personalUpdated": "個人設定を更新しました",
+		"updateFailed": "モジュールを更新できませんでした",
+		"preferenceFailed": "設定を更新できませんでした",
+		"loadFailed": "モジュールを読み込めませんでした。"
+	},
+	"skillImportDialog": {
+		"title": "ローカルのエージェントからスキルをインポート",
+		"introDevice": "このコンピューターのスキルフォルダーを読み取り専用でスキャンします。何も実行されず、チェックを入れたスキルだけがこのデバイスのスキルライブラリに保存されます。",
+		"introCloud": "このコンピューターのスキルフォルダーを読み取り専用でスキャンします。何も実行されず、チェックを入れたスキルだけがスキルライブラリに送信されます。",
+		"scanning": "スキャン中…",
+		"scanFailed": "このコンピューターをスキャンできませんでした。",
+		"empty": "スキルが見つかりません。「フォルダーを追加…」でプロジェクトをスキャンしてください。",
+		"cannotImport": "インポートできません：{reason}",
+		"slugLabel": "ライブラリのスラッグ",
+		"useInstead": "代わりに {slug} を使う",
+		"droppedFields": "引き継がれない項目：{fields}",
+		"filesSummary": "ファイル：{total} 個中 {count} 個をアップロード（{bytes}）",
+		"fileSize": "{size} B",
+		"truncated": "リストは省略されています。このスキルはファイルが多すぎてインポートできません。",
+		"uploadNoteDevice": "「アップロード対象」と表示されたファイルだけが、テキストとしてこのデバイスのライブラリに送られます。シークレットのチェックは完全ではありません。上のリストを確認してください。",
+		"uploadNoteCloud": "「アップロード対象」と表示されたファイルだけが、テキストとしてクラウドに送られます。シークレットのチェックは完全ではありません。上のリストを確認してください。",
+		"selectPrompt": "スキルを選択するとプレビューが表示されます。",
+		"addFolder": "フォルダーを追加…",
+		"selectedCount": "{count} 件選択中",
+		"importSelected": "選択したものをインポート",
+		"bytes": "{count} B",
+		"kib": "{count} KiB",
+		"imported": "インポートしました",
+		"importedSkipped": "インポートしました（{n} 個のファイルは未インポート）",
+		"folderFailed": "フォルダーを開けませんでした",
+		"indexFailed": "インポート済みの内容を記憶できませんでした",
+		"indexFailedDescription": "次回のインポートでは、これらのスキルはすでにライブラリにあるものとして扱われます。",
+		"refreshFailed": "ライブラリを更新できませんでした",
+		"importFailed": "スキルをインポートできませんでした",
+		"status": {
+			"new": "新規",
+			"upToDate": "最新",
+			"changed": "前回のインポート後に変更あり — 更新されます",
+			"editedInLibrary": "インポート後にライブラリで編集済み — 上書きされます",
+			"slugTaken": "ライブラリでスラッグが使用済み — チェックすると上書きします",
+			"previouslyImportedDeleted": "以前インポート済みで、ライブラリから削除済み",
+			"blocked": "インポートできません"
+		}
+	},
+	"pluginsHelp": {
+		"title": "プラグインの仕組み",
+		"subtitle": "プラグインは、TMGR デスクトップアプリにバッジ、ページ、タスクのセクション、コマンドを追加します。",
+		"backLabel": "プラグインに戻る",
+		"glanceLabel": "概要",
+		"glance": {
+			"sandboxed": {
+				"title": "サンドボックス",
+				"text": "カードに表示された権限のみ。"
+			},
+			"signed": {
+				"title": "署名付き",
+				"text": "GitHub のプラグインは作者の署名が必要です。"
+			},
+			"shared": {
+				"title": "作成者が共有",
+				"text": "共有ワークスペースでは、作成者のみがプラグインをオンにできます。"
+			},
+			"stop": {
+				"title": "簡単に停止",
+				"text": "セーフモードですべてのプラグインを一度にオフにできます。"
+			}
+		},
+		"abilities": {
+			"data": {
+				"title": "あなたのデータ",
+				"text": "「タスクの読み取り」など、求められた範囲のみ。"
+			},
+			"network": {
+				"title": "ネットワーク",
+				"text": "宣言した localhost アドレスのみ。赤で表示されます。"
+			},
+			"pages": {
+				"title": "専用ページ",
+				"text": "他には何にも触れない別ウィンドウで表示されます。"
+			}
+		},
+		"can": {
+			"title": "プラグインにできること",
+			"intro": "カードに書かれていることだけです。それ以外はすべて閉じられています。"
+		},
+		"github": {
+			"title": "GitHub からのインストール",
+			"step1": "リンクを貼り付ける",
+			"check": "確認",
+			"step2": "できることを確認する",
+			"installPrompt": "Timer 1.0.0 をインストールしますか？",
+			"itCan": "できること：タスクの読み取り",
+			"verified": "確認済みの発行者",
+			"step3": "オンにする",
+			"running": "実行中",
+			"verifiedText": "TMGR はこの作者の署名キーを把握しています。",
+			"unverified": "未確認の発行者",
+			"unverifiedText": "署名はされていますが、TMGR による審査は行われていません。作者を信頼できる場合のみインストールしてください。",
+			"signed": "すべてのリリースに署名が必要です。アプリは作者のキーを記憶するため、別の人が署名した更新は拒否されます。"
+		},
+		"unsigned": {
+			"title": "署名のないプラグイン",
+			"intro": "自分で書いたプラグインや、公開していないプラグイン向けです。",
+			"step1": "フォルダーをそこに置く",
+			"step2": "開発者モードをオンにする",
+			"step3": "「プラグインを再読み込み」を押す",
+			"note": "サンドボックスも権限も同じですが、作者は誰にも確認されていません。フォルダーのプラグインはワークスペースと共有できません。"
+		},
+		"shared": {
+			"title": "共有ワークスペース",
+			"creator": "作成者",
+			"turnsOn": "が Timer 1.2 をオンにする",
+			"point1": "プラグインをオンにできるのは作成者のみです。全員が同じバージョンを使います。",
+			"point2": "プラグインは短期間のみ有効な専用キーを使います。このワークスペース専用で、権限の範囲内のみです。",
+			"point3": "お使いのコンピューターでのネットワーク、ファイル、{tray}、tmgr:// リンク、Web リンクは、次の許可があるまで待機します：",
+			"allow": "このコンピューターで許可",
+			"point4": "プラグインが保存した内容は全メンバーで共有されます。"
+		},
+		"trouble": {
+			"title": "プラグインが邪魔なとき",
+			"switchOff": "オフにする",
+			"switchOffText": "カードから操作するか、削除します。",
+			"safeMode": "セーフモード",
+			"everythingOff": "すべてオフ",
+			"everythingOffText": "または {flag} 付きでアプリを起動します。",
+			"blocked": "TMGR によりブロック",
+			"weStop": "有害なものは停止します",
+			"weStopText": "署名付きのブロックリストにより、有害なプラグインはすべての環境でオフになります。",
+			"note": "5 分間に 3 回失敗したプラグインは、自動的にオフになります。"
+		},
+		"authors": {
+			"title": "プラグイン作者向け",
+			"step1": "テンプレートから始める",
+			"step2": "署名して公開する",
+			"step2Text": "{keygen}、キーを {secret} シークレットとして保存し、{tag} のようなタグをプッシュします。",
+			"step3": "確認を受ける（任意）",
+			"step3Text": "ID、リポジトリ、公開鍵を添えて {link} にプルリクエストを送ってください。有害なプラグインの報告もそこで受け付けています。",
+			"api11": "API 1.1：新しい機能はそれぞれ個別の権限になります（アラーム、{tray}、tmgr:// リンク、Web リンク、ステータス、リレーション、エージェントの作業）。インストールまたは更新時に表示されます。開発者モードで {example} を使うとすべて試せます。プラグインのログに、呼び出しが拒否された理由が表示されます。",
+			"api12": "API 1.2：プラグインがデイリールーティン（メモとルーティン）を読み書きできます。このデバイス上のみで、共有ワークスペースにはまだ対応していません。",
+			"api14": "API 1.4：プラグインが自身のサイドバー項目にカウンターを表示できます。views:badge 権限が必要で、インストールまたは更新時に表示されます。追加の同意は不要です。長い {tray} のタイトルは拒否されず、「…」で短縮されます。",
+			"api15": "API 1.5：プラグインがページを扱えます。pages:read で読み取りと検索、pages:write で作成、編集、追記ができ、pages:sections ではプラグインが自身の管理セクションにのみ書き込めます。それぞれインストールまたは更新時に表示されます。プラグインはページの種類を追加できません。",
+			"api16": "API 1.6：プラグインが、ボードカード、タスクリスト、タスクページのタスクの … メニューに最大 3 件の項目を追加できます。menus:task が必要で、インストールまたは更新時に表示されます。項目はプラグインの実行中、専用のグループに表示され、プラグインの項目が合計 4 件を超えると 1 つの「プラグイン」サブメニューにまとめられます。"
+		}
+	},
+	"personaForm": {
+		"whoCanAssign": "割り当てできる人",
+		"onlyMe": "自分のみ",
+		"onlyMeHint": "アクセスを許可したワークスペースで割り当て可能",
+		"thisWorkspace": "このワークスペース",
+		"thisWorkspaceHint": "全メンバーがタスクを割り当てられます。編集できるのはあなただけです",
+		"name": "名前",
+		"namePlaceholder": "レビュアー",
+		"description": "説明",
+		"descriptionPlaceholder": "このペルソナの用途",
+		"systemPrompt": "システムプロンプト（Markdown）",
+		"systemPromptPlaceholder": "あなたは...",
+		"bytes": "{used} / {max} バイト",
+		"notify": "このペルソナの動きを通知する",
+		"notifyAll": "すべて",
+		"notifyMentions": "自分への確認依頼のみ",
+		"notifyNone": "通知しない"
+	},
+	"personaTokens": {
+		"loading": "エージェント接続を読み込み中…",
+		"empty": "エージェント接続はまだありません。",
+		"details": "{prefix}… · {workspace} · 有効期限 {expires} · 最終使用 {lastUsed}",
+		"never": "なし",
+		"revoke": "取り消す",
+		"connect": "エージェントを接続",
+		"revokeAll": "すべて取り消す",
+		"loadFailed": "エージェント接続を読み込めませんでした",
+		"revoked": "取り消し済み",
+		"expired": "期限切れ",
+		"active": "有効",
+		"confirmRevoke": "「{label}」の接続を取り消しますか？",
+		"revokeFailed": "トークンを取り消せませんでした",
+		"confirmRevokeAll": "このペルソナのすべてのエージェント接続を取り消しますか？",
+		"revokeAllFailed": "トークンを取り消せませんでした"
+	},
+	"personaConnectDialog": {
+		"title": "エージェントを接続",
+		"loadingWorkspaces": "ワークスペースを読み込み中…",
+		"noGrant": "このペルソナには、有効なワークスペースの許可がまだありません。上の「ワークスペース」でアクセスを許可してから、ここに戻ってください。",
+		"workspace": "ワークスペース",
+		"label": "ラベル",
+		"labelPlaceholder": "ノート PC の Claude Code",
+		"expires": "有効期限",
+		"days": "{n} 日",
+		"tokenNote": "デバイストークンとは異なり、このトークンは 1 つのワークスペースでのみ動作し、そこでのこのペルソナの許可範囲に制限され、書き込まれる内容はすべてこのペルソナとして署名されます。",
+		"issuing": "発行中…",
+		"issue": "トークンを発行",
+		"copyNow": "このトークンを今すぐコピーしてください。再表示されません。",
+		"addToConfig": "エージェントの {file} に追加してください：",
+		"mcpConfig": "MCP 設定",
+		"secretNote": "トークン自体は、環境変数か gitignore 済みのシークレットファイルに保存してください。コミットは絶対にしないでください。",
+		"issueFailed": "トークンを発行できませんでした",
+		"copyFailed": "クリップボードにコピーできませんでした"
+	},
+	"personaConvertSkillDialog": {
+		"title": "共有に変換",
+		"loadFailed": "変換の詳細を読み込めませんでした。",
+		"clash": "スキルライブラリには、スラッグ「{slug}」のスキルがすでにあります。どちらかを削除するか名前を変更してください。",
+		"intro": "このスキルをスキルライブラリに移動し、{name} に接続します。エージェントの指示は変わりません。",
+		"replaceCopy": "{name} のコピーも置き換える",
+		"archived": "（アーカイブ済み）",
+		"sameText": "同じテキスト",
+		"differentText": "テキストが異なります — 置き換えられます",
+		"convert": "変換",
+		"convertFailed": "このスキルを変換できませんでした"
+	},
+	"personaSharedSkills": {
+		"fromLibrary": "ライブラリから",
+		"loading": "ライブラリのスキルを読み込み中…",
+		"empty": "接続されたライブラリのスキルはありません。ペルソナの下にあるスキルライブラリで作成し、ここで接続してください。",
+		"pinned": "v{pinned} に固定 · 最新は v{latest}",
+		"overridden": "このペルソナ独自のスキルで上書きされています",
+		"versionFor": "{slug} のバージョン",
+		"latest": "最新 (v{version})",
+		"detach": "切り離す",
+		"attachedCount": "{count}/{limit} 接続中",
+		"attach": "ライブラリのスキルを接続",
+		"versionsFailed": "バージョンを読み込めませんでした",
+		"loadFailed": "ライブラリのスキルを読み込めませんでした",
+		"attachFailed": "スキルを接続できませんでした",
+		"detachFailed": "スキルを切り離せませんでした",
+		"versionFailed": "スキルのバージョンを変更できませんでした",
+		"filesNotPinned": "ファイルは固定されません"
+	},
+	"personaSkills": {
+		"loading": "スキルを読み込み中…",
+		"empty": "スキルはまだありません。",
+		"convert": "共有に変換",
+		"usedCount": "{count}/{limit} 使用中",
+		"editing": "{slug} を編集",
+		"newSkill": "新しいスキル",
+		"bytes": "{used} / {max} バイト",
+		"saveChanges": "変更を保存",
+		"createSkill": "スキルを作成",
+		"loadFailed": "スキルを読み込めませんでした",
+		"loadOneFailed": "このスキルを読み込めませんでした",
+		"limitReached": "すでに {limit} 個のスキルがあります",
+		"saved": "スキルを保存しました",
+		"saveFailed": "スキルを保存できませんでした",
+		"confirmDelete": "スキル「{title}」を削除しますか？",
+		"deleteFailed": "スキルを削除できませんでした"
+	},
+	"personaWorkspaceGrants": {
+		"localNote": "ローカルのワークスペースはここには表示されません。ローカルのワークスペースを開き、そのペルソナの「このデバイス上」パネルでこのペルソナを許可してください。",
+		"onThisDevice": "このデバイス上",
+		"loading": "ワークスペースを読み込み中…",
+		"empty": "共有ワークスペースはありません。",
+		"home": "ホームのワークスペース · アクセスを外すにはペルソナをアーカイブしてください",
+		"blocked": "ワークスペースの作成者によりブロックされています",
+		"effective": "ここでの有効な権限：{permissions}",
+		"changeFailed": "このワークスペースを変更できませんでした",
+		"blockedByCreator": "ワークスペースの作成者によりブロックされています",
+		"permissionsFailed": "権限を更新できませんでした"
+	},
+	"personas": {
+		"agentsTitle": "エージェント",
+		"agentsSubtitle": "Claude Code やその他の MCP クライアントをローカルのワークスペースに接続します。",
+		"title": "ペルソナ",
+		"subtitle": "ペルソナは、AI エージェントが名乗る ID です。専用の名前、アバター、システムプロンプトを持ち、ワークスペースごとに権限が設定されます。{count}/{limit} 使用中。",
+		"showArchived": "アーカイブ済みを表示",
+		"localAi": "ローカル AI",
+		"editPersona": "ペルソナを編集",
+		"newPersona": "新しいペルソナ",
+		"saveChanges": "変更を保存",
+		"createPersona": "ペルソナを作成",
+		"change": "変更",
+		"archived": "アーカイブ済み",
+		"promptVersion": "プロンプト v{version}",
+		"archive": "アーカイブする",
+		"restore": "復元",
+		"workspaces": "ワークスペース",
+		"skills": "スキル",
+		"agentConnections": "エージェント接続",
+		"empty": "ペルソナはまだありません。",
+		"skillsLibrary": "スキルライブラリ",
+		"skillsLibraryDescription": "一度書けば、どのペルソナにも接続できるスキルです。1 つを編集すると、接続されているすべてのペルソナが更新されます。",
+		"workspacePersonas": "ワークスペースのペルソナ",
+		"workspacePersonasDescription": "{name} の他のメンバーがワークスペース全体向けに作成したペルソナです。誰でもタスクを割り当てられますが、編集できるのは所有者のみです。",
+		"personaOf": "{name} のペルソナ",
+		"workspaceScope": "ワークスペース：{name}",
+		"thisWorkspace": "このワークスペース",
+		"loadFailed": "ペルソナを読み込めませんでした。",
+		"updated": "ペルソナを更新しました",
+		"created": "ペルソナを作成しました",
+		"saveFailed": "ペルソナを保存できませんでした",
+		"archiveFailed": "ペルソナをアーカイブできませんでした",
+		"restoreFailed": "ペルソナを復元できませんでした（上限は {limit} 個です）",
+		"avatarFailed": "アバターをアップロードできませんでした"
+	},
+	"consentPanel": {
+		"ariaLabel": "プライバシーの選択",
+		"saveFailed": "このブラウザーで選択を保存できませんでした。このウィンドウでは共有を停止しています。",
+		"usage": {
+			"title": "TMGR の改善にご協力いただけますか？",
+			"intro": "アカウントに紐付かない利用イベントです。デフォルトではオフです。",
+			"whatWeSend": "送信する内容",
+			"whatWeCollect": "収集する内容",
+			"details": "同意すると、TMGR はアカウントに紐付かない利用イベントを送信します。開いた画面やツアー、完了したステップ、アプリのバージョンとプラットフォームが対象です。",
+			"weSend": "送信するもの：",
+			"weSendText": "tour_step_completed などのイベント名 · ランダムなインストール ID · アプリのバージョン、OS、画面サイズの区分",
+			"weNeverSend": "送信しないもの：",
+			"weNeverSendText": "タスク、ページ、コメントのテキスト · 名前、メールアドレス、ファイル名 · アカウント ID。IP アドレスはイベントとともに保存されません。",
+			"changeAnytime": "設定 → プライバシーでいつでも変更できます。オフにするとすぐに送信が止まり、送信済みのデータを削除することもできます。",
+			"decline": "いいえ",
+			"accept": "利用データを共有"
+		},
+		"analytics": {
+			"title": "Cookie とアナリティクス",
+			"text": "TMGR がどのように見つけられ、使われているかを把握するため、Google アナリティクスを利用したいと考えています。Cookie を設定し、Google にデータを送信します。許可しない限りオフのままです。いつでも変更できます。",
+			"privacyPolicy": "プライバシーポリシー",
+			"decline": "許可しない",
+			"accept": "アナリティクスを許可"
+		}
+	},
+	"privacyLinks": {
+		"privacy": "プライバシー",
+		"commandLine": "コマンドライン",
+		"cookieSettings": "Cookie 設定"
+	},
+	"privacySettings": {
+		"cookiesTitle": "Cookie とアナリティクス",
+		"googleAnalytics": "Google アナリティクス",
+		"googleAnalyticsDescription": "TMGR の利用状況の把握に役立てます。Cookie を設定し、Google にデータを送信します。許可しない限りオフです。",
+		"privacyPolicy": "プライバシーポリシー"
+	},
+	"usageDataControls": {
+		"title": "利用データ",
+		"saveFailed": "このブラウザーで選択を保存できませんでした。このウィンドウでは共有を停止しています。",
+		"receiptError": "このインストールの削除キーを保持できませんでした。データを削除するには「送信済みのデータを削除」を使ってください。",
+		"shareLabel": "利用データを共有",
+		"shareDescription": "アカウントに紐付きません。イベント名、ランダムなインストール ID、アプリのバージョン、プラットフォームのみです。タスクの内容、名前、メールアドレスは送信しません。",
+		"installId": "インストール ID：",
+		"resetId": "ID をリセット",
+		"pending": "送信待ちのイベント：",
+		"view": "表示",
+		"dataSent": "送信済みのデータ",
+		"deleteSent": "送信済みのデータを削除",
+		"coverage": "このスイッチはこのデバイスのイベントが対象です。アカウントデータから集計したオンボーディングの統計については、プライバシーポリシーに記載しています。",
+		"readMore": "詳しく見る",
+		"footer": "共有をオフにすると、すぐに停止します。生のイベントは 30 日間保持されます。",
+		"queueTitle": "送信待ちのイベント",
+		"deleteFailed": "すべてを削除できませんでした。共有はオフです。後でもう一度お試しください。",
+		"deleted": "削除しました。共有はオフです。",
+		"nothingToDelete": "削除するものはありません。共有はオフです。"
+	},
+	"signedInDevices": {
+		"title": "ログイン中のデバイス",
+		"description": "tmgr login でログインしているコマンドラインのセッションです。",
+		"loadFailed": "デバイスを読み込めませんでした。",
+		"tryAgain": "やり直す",
+		"empty": "CLI デバイスはまだありません。ターミナルで {command} を実行してください。",
+		"onHost": "{host} 上",
+		"lastUsed": "ログイン：{signedIn} · 最終使用：{lastUsed}",
+		"never": "なし",
+		"editScopes": "スコープを編集",
+		"revoke": "取り消す",
+		"savedTitle": "保存しました",
+		"savedDescription": "デバイスのスコープを更新しました",
+		"errorTitle": "エラー",
+		"updateFailed": "デバイスのスコープを更新できませんでした",
+		"confirmRevoke": "{host} の {client} を取り消しますか？ログアウトされます。",
+		"doneTitle": "完了",
+		"revoked": "デバイスを取り消しました",
+		"revokeFailed": "デバイスを取り消せませんでした"
+	},
+	"phonesSection": {
+		"title": "スマートフォン",
+		"intro": "TMGR の iPhone アプリから「判断」カードに回答します。ペアリングにはこの Mac の電源が入っている必要があります。",
+		"macName": "この Mac の名前",
+		"manage": "スマートフォンを管理",
+		"openFailed": "ウィンドウを開けませんでした",
+		"pair": "iPhone をペアリング"
+	},
+	"profile": {
+		"title": "プロフィール",
+		"pictureTitle": "プロフィール画像",
+		"uploading": "アップロード中…",
+		"changePicture": "画像を変更",
+		"acceptedFormats": "対応形式：PNG、JPEG、WebP、GIF。",
+		"accountTitle": "アカウント",
+		"name": "名前",
+		"email": "メールアドレス",
+		"emailReadonly": "メールアドレスはここでは変更できません",
+		"changePassword": "パスワードを変更",
+		"leaveBlank": "現在のパスワードを維持する場合は空欄のままにしてください。",
+		"currentPassword": "現在のパスワード",
+		"newPassword": "新しいパスワード",
+		"confirmPassword": "パスワードの確認",
+		"socialHint": "Google、GitHub、Apple で登録し、パスワードを設定していませんか？ログインページの「パスワードをお忘れですか」から設定できます。",
+		"signOutOthers": "他のデバイスからログアウト",
+		"signOutOthersHint": "他の人がアカウントにアクセスした可能性がある場合におすすめします。このデバイスはログインしたままです。",
+		"agentTitle": "エージェント接続",
+		"agentDescription": "すべてのペルソナとワークスペースにわたり、ペルソナのトークンをすべて取り消します。",
+		"revoking": "取り消し中…",
+		"revokeAll": "ペルソナのトークンをすべて取り消す",
+		"tokensRevokedNotice": "デバイス、エージェント、通知のトークンを取り消しました。新しいトークンを生成してください。",
+		"pickImage": "画像ファイルを選択してください",
+		"readFailed": "その画像を読み込めませんでした",
+		"uploadFailed": "その画像をアップロードできませんでした",
+		"removeFailed": "画像を削除できませんでした",
+		"passwordChanged": "パスワードを変更しました",
+		"savedTitle": "保存しました",
+		"savedDescription": "ユーザーデータを保存しました",
+		"confirmRevokeAll": "すべてのペルソナのトークンを取り消しますか？",
+		"doneTitle": "完了",
+		"allRevoked": "ペルソナのトークンをすべて取り消しました",
+		"errorTitle": "エラー",
+		"revokeFailed": "ペルソナのトークンを取り消せませんでした"
+	},
+	"avatarCropModal": {
+		"title": "アバターを切り抜き",
+		"description": "ドラッグで移動、スクロールまたはスライダーで拡大縮小します。",
+		"zoom": "ズーム"
+	},
+	"privacy": {
+		"title": "プライバシーポリシー",
+		"lastUpdated": "最終更新日：2026年10月13日",
+		"summary": {
+			"store": "サービスを動作させるため、TMGR に入力された内容（アカウント、タスク、ページ、ファイル、時間ログ）を保存します。これらを販売することも、広告を表示することもありません。",
+			"local": "デスクトップアプリのローカルのワークスペースは、お使いのデバイスに保存されたままです。",
+			"consent": "Google アナリティクスは、許可するまでオフです。利用データも、許可するまでオフです。どちらもいつでも変更できます。",
+			"thirdParties": "一部の機能は、他の企業にデータを送信します。たとえば、AI 機能では OpenAI、アラーム通話では Twilio です。以下に一覧を示します。",
+			"title": "概要"
+		},
+		"controller": {
+			"todoName": "[管理者の名称と住所 — 確認中]",
+			"text": "個人データの管理者は {controller} です。連絡先：{contact}。",
+			"title": "責任者"
+		},
+		"todoEmail": "[連絡先メールアドレス — 確認中]",
+		"accountData": {
+			"accountLabel": "アカウント：",
+			"account": "{label} 名前、メールアドレス、パスワードのハッシュ、利用しているログインプロバイダー（GitHub、Google、Apple、Telegram）の ID、アバター、設定。",
+			"contentLabel": "あなたのコンテンツ：",
+			"content": "{label} ワークスペース、タスク、コメント、ページ、アップロードしたファイル、時間ログ、ルーティン、AI アシスタントとの会話、接続した AI エージェントの作業ログ。",
+			"devicesLabel": "デバイスと通知：",
+			"devices": "{label} ログインセッション、Face ID ログイン用のデバイスキー、iOS アプリのプッシュトークン、専用の通知トピック、エージェントやデバイス用に作成したアクセストークン。",
+			"alarmLabel": "アラーム用の電話番号：",
+			"alarm": "{label} アラーム通話を設定した場合のみ。暗号化して保存されます。",
+			"integrationsLabel": "接続した連携サービス：",
+			"integrations": "{label} Telegram の ID とユーザー名、リンクした GitHub リポジトリのデータ（コミット作成者の名前とメールアドレスを含む）、Cursor の API キー。",
+			"usage": "これらのデータは、あなたのために TMGR を動作させるために使用します。IP アドレスはデータベースに保存しません。サーバーは、パスワードの総当たり攻撃などの不正利用を抑えるため、クライアントの IP アドレスを最大 1 時間メモリ上に保持します。",
+			"title": "アカウントのために保存するデータ"
+		},
+		"desktopLocal": {
+			"intro": "デスクトップアプリのローカルのワークスペースは、お使いのコンピューター上のデータベースファイルであり、そのバックアップもコンピューター上のフォルダーに保存されます。内容が当社に送信されることはありません。",
+			"connects": "デスクトップアプリは、次のいくつかの目的でインターネットに接続します：",
+			"updates": "アプリの更新を GitHub で確認します。GitHub には IP アドレスが見えます。",
+			"plugins": "起動時と 6 時間ごとに、GitHub からプラグインカタログを更新します。",
+			"ai": "ご自身で設定した場合は、その AI エンドポイントと通信します。",
+			"usage": "利用データをオンにした場合のみ、利用データを送信します（下記参照）。",
+			"noAnalytics": "デスクトップアプリは、Google アナリティクスも Plausible も読み込みません。",
+			"title": "アカウントなしのデスクトップアプリ"
+		},
+		"usageData": {
+			"intro": "同意すると、アプリはアカウントに紐付かない利用イベントを送信します。どの画面やガイドツアーが開かれ、どのステップが完了したかを把握し、TMGR の改善に役立てます。",
+			"sentLabel": "送信される内容：",
+			"sent": "{label} {code} などのイベント名と固定値（たとえば、どのツアーのどのステップか）、お使いのデバイスで作成されるランダムなインストール ID、アプリ起動ごとのランダムな ID、アプリのバージョン（メジャーとマイナー）、プラットフォーム、クラウドアカウントとローカルのワークスペースのどちらを使っているか、画面サイズの区分（小、中、大）、イベントが発生した時刻（時間単位）。",
+			"neverSentLabel": "送信されない内容：",
+			"neverSent": "{label} タスク、ページ、コメントのテキスト、名前、メールアドレス、ファイル名、ワークスペース名、リンク、アカウント ID、ログイントークンや Cookie。",
+			"ipLabel": "IP アドレス",
+			"ip": "{label} はイベントとともに保存されません。不正利用を抑えるため、最大 1 時間メモリ上に保持されます。",
+			"retentionLabel": "保持期間：",
+			"retention": "{label} 生のイベントは 30 日後に削除されます。日次の合計（インストール ID を含まないイベントごとの件数）は 13 か月間保持されます。",
+			"offLabel": "オフにする：",
+			"off": "{label} 設定 → プライバシー、またはこのページの下部で「利用データを共有」をオフにします。すべてのタブとウィンドウで送信がすぐに止まり、デバイス上の送信待ちイベントは削除されます。",
+			"deleteLabel": "送信済みデータの削除：",
+			"delete": "{label} お使いのデバイスは、インストール ID ごとに削除キーを保持しています。設定 → プライバシー、またはこのページの下部にある「送信済みのデータを削除」は、このキーを使って、共有をオフにした後でも、それらのイベントを当社のサーバーから削除します。",
+			"pseudonymous": "インストール ID は時間が経っても変わらないため、利用データは仮名化された個人データとして扱います。法的根拠はあなたの同意であり、いつでも撤回できます。",
+			"title": "利用データ（任意）"
+		},
+		"analytics": {
+			"title": "Google アナリティクスとページビュー数（Web）",
+			"gaLabel": "Google アナリティクス",
+			"googlePolicy": "Google のプライバシーポリシー",
+			"google": "{ga} は、許可した後にのみ Web アプリに読み込まれます。Cookie（{cookie}）を設定し、IP アドレス、デバイスとブラウザーの詳細、閲覧したページを Google に送信します。許可しない場合は、読み込まれません。選択は、下の「Cookie 設定」、ログインページの下部、または設定からいつでも変更できます。法的根拠はあなたの同意です。{policy} をご覧ください。",
+			"choice": "現在の選択：{status}",
+			"cookieSettings": "Cookie 設定",
+			"plausibleLabel": "Plausible：",
+			"plausible": "{label} Web アプリは、当社が自社で運用する Plausible でページビュー数を集計します。Cookie は設定せず、IP アドレスや個人を特定できる識別子も保存しません。デスクトップアプリでは読み込まれません。法的根拠は、サイトの利用者数を把握するという当社の正当な利益です。",
+			"yandex": "Yandex Metrica は使用していません。"
+		},
+		"onboardingAggregates": {
+			"counts": "オンボーディングが機能しているかを確認するため、全アカウントを通じて、登録した人数、メールアドレスを確認した人数、最初のタスクを作成した人数、タイマーを開始した人数、AI エージェントを接続した人数、ガイドツアーを完了した人数を集計しています。これらの数値は、TMGR がもともと保存しているデータから得られます。合計としてのみ表示され、10 人未満のグループは表示されません。",
+			"basis": "これは、デバイスのイベントではなくアカウントデータを使用するため、利用データを共有するかどうかにかかわらず行われます。法的根拠は、オンボーディングを改善するという当社の正当な利益です。当社に連絡することで異議を申し立てることができます（お問い合わせをご覧ください）。",
+			"title": "アカウントデータによるオンボーディング統計"
+		},
+		"thirdParties": {
+			"title": "利用しているサービス",
+			"service": "サービス",
+			"whatFor": "用途",
+			"receive": "受け取る情報",
+			"rows": {
+				"hetzner": {
+					"use": "TMGR を動かすサーバー",
+					"receive": "TMGR に保存されているすべてのデータ"
+				},
+				"bunny": {
+					"use": "Web アプリとウェブサイトのコンテンツ配信",
+					"receive": "ページを読み込む際の IP アドレスとブラウザーの詳細"
+				},
+				"storage": {
+					"todo": "[名称 — 確認中]",
+					"name": "オブジェクトストレージのプロバイダー {todo}",
+					"use": "アップロードしたファイル、アバター、エクスポート",
+					"receive": "アップロードしたファイル"
+				},
+				"email": {
+					"todo": "[名称 — 確認中]",
+					"name": "メールのプロバイダー {todo}",
+					"use": "確認メール、パスワード再設定メール、通知メール",
+					"receive": "メールアドレスとメールの内容"
+				},
+				"openai": {
+					"use": "AI 機能：AI アシスタント、「説明を最適化」、Telegram の音声メッセージの文字起こし",
+					"receive": "これらの機能が処理するテキスト、タスクデータ、音声メッセージ。ご利用になったときのみ"
+				},
+				"twilio": {
+					"use": "アラーム通話と、電話番号を確認する SMS コード",
+					"receive": "電話番号と、通話で読み上げられるアラームのタイトルとメッセージ"
+				},
+				"expo": {
+					"use": "iOS アプリのプッシュ通知、Live Activities、更新",
+					"receive": "プッシュトークンと通知の内容",
+					"name": "Expo と Apple"
+				},
+				"signin": {
+					"use": "そのプロバイダーを選んだ場合のログイン",
+					"receive": "ログインに必要な情報。当社は名前とメールアドレスを受け取ります"
+				},
+				"github": {
+					"use": "インストールした場合の GitHub 連携と、デスクトップアプリの更新",
+					"receive": "リンクしたリポジトリのデータ。デスクトップアプリが更新を確認する際の IP アドレス"
+				},
+				"telegram": {
+					"use": "接続した場合の Telegram ボット",
+					"receive": "チャット ID と、ボットが送受信するメッセージ"
+				},
+				"cursor": {
+					"use": "Cursor の API キーを追加した場合の Cursor エージェントの起動",
+					"receive": "送信するタスクのプロンプトとリポジトリの詳細"
+				},
+				"jsdelivr": {
+					"use": "コードのハイライト用スタイルシート",
+					"receive": "読み込み時の IP アドレスとブラウザーの詳細"
+				},
+				"ga": {
+					"use": "許可した場合のみの Web アナリティクス",
+					"receive": "上記を参照"
+				}
+			},
+			"selfHosted": "リアルタイム更新、ブラウザー通知 (ntfy)、ページビュー数の集計 (Plausible)、シークレットの保存は、当社自身のサーバーで動作しています。"
+		},
+		"retention": {
+			"account": "アカウントデータとコンテンツ：アカウントが存在する間。",
+			"sessions": "ログインセッション：アクセストークンは 1 時間、リフレッシュトークンは最長 30 日で期限切れになります。",
+			"usage": "利用データ：生のイベントは 30 日、日次の合計は 13 か月。",
+			"logsTodo": "[保持期間 — 確認中]",
+			"logs": "サーバーと CDN のアクセスログ：{todo}。",
+			"title": "データの保持期間"
+		},
+		"yourRights": {
+			"intro": "あなたは、データのコピーの請求、訂正、削除、正当な利益に基づく処理への異議申し立て、同意の撤回を行うことができます。データ保護当局に苦情を申し立てることもできます。",
+			"export": "アプリでは、タスク（CSV、XLSX）、ルーティン（iCal）、ローカルのワークスペース（Markdown）のエクスポート、ワークスペースの削除、プロフィールの変更ができます。",
+			"delete": "アカウント全体の削除やデータの完全なコピーをご希望の場合は、当社までご連絡ください（お問い合わせをご覧ください）。アプリには、アカウントを自分で削除する機能はまだありません。",
+			"children": "TMGR は 16 歳未満のお子様を対象としていません。",
+			"title": "あなたの権利"
+		},
+		"changes": {
+			"text": "このポリシーが変更された場合は、冒頭の日付を更新します。重要な変更については、適用前にアプリ内でお知らせします。",
+			"title": "変更"
+		},
+		"contact": {
+			"text": "データに関するご質問やご要望：{todo}。",
+			"title": "お問い合わせ"
+		},
+		"status": {
+			"granted": "許可",
+			"denied": "許可しない",
+			"unset": "未選択"
+		}
+	},
+	"agentNotifications": {
+		"title": "エージェント通知",
+		"subtitle": "Claude Code、Codex、その他の AI エージェントがあなたを必要としたときに、スマートフォンにプッシュ通知を受け取ります。受信者は常にトークンの所有者であるあなたで、トークンは参加しているすべてのワークスペースで使えます。トークンを作成して、Claude Code、Codex、Cursor を 1 ステップで接続しましょう。",
+		"newToken": "新しいトークン",
+		"labelOptional": "ラベル（任意）",
+		"labelPlaceholder": "ノート PC の Claude Code",
+		"creating": "作成中…",
+		"createToken": "トークンを作成",
+		"copyNow": "このトークンを今すぐコピーしてください。再表示されません。",
+		"showSetup": "セットアップを表示",
+		"tokens": "トークン",
+		"loadingTokens": "トークンを読み込み中…",
+		"noTokens": "エージェント通知のトークンはまだありません。",
+		"untitled": "無題のトークン",
+		"never": "なし",
+		"meta": "{prefix}… · 作成：{created} · 最終使用：{lastUsed}",
+		"revoke": "取り消す",
+		"howToConnect": "接続方法",
+		"haveToken": "すでにトークンをお持ちですか？以下のスニペットを使い、{placeholder} をそのトークンに置き換えてください。",
+		"yourToken": "<あなたのトークン>",
+		"hideSnippets": "スニペットを隠す",
+		"showSnippets": "スニペットを表示",
+		"fullGuide": "セットアップガイド全文",
+		"connectTitle": "エージェントを接続",
+		"notifyTokenLabel": "通知トークン",
+		"sending": "送信中…",
+		"sendTest": "テスト通知を送信",
+		"phoneCall": "障害時に電話を受け取りたいですか？下の{link}をご利用ください。",
+		"setupAlarm": "アラーム用の電話を設定",
+		"loadFailed": "トークンを読み込めませんでした。",
+		"createFailed": "トークンを作成できませんでした",
+		"test": {
+			"sent": "送信しました。スマートフォンを確認してください。（{channels} 経由）",
+			"noChannels": "何も配信されませんでした。TMGR モバイルアプリをインストールして通知を許可するか、プロフィールで Telegram をリンクしてください。",
+			"deduplicated": "先ほど送信済みです。",
+			"rateLimitedIn": "通知が多すぎます。{seconds} 秒後にもう一度お試しください。",
+			"rateLimited": "通知が多すぎます。しばらくしてからもう一度お試しください。",
+			"unauthorized": "このトークンは拒否されました。新しいものを作成してください。",
+			"unreachable": "TMGR に接続できませんでした。"
+		},
+		"copyFailed": "クリップボードにコピーできませんでした",
+		"confirmRevoke": "トークン「{label}」を取り消しますか？",
+		"revokeFailed": "トークンを取り消せませんでした"
+	},
+	"alarmPhoneSection": {
+		"title": "アラーム用の電話",
+		"loading": "アラーム用の電話を読み込み中…",
+		"unconfigured": "このサーバーではアラーム用の電話が設定されていません。",
+		"unreadable": "保存されている番号を読み取れません。削除して、もう一度入力してください。",
+		"intro": "プッシュ通知が確認されない重大なアラームにのみ使用します。暗号化して保存されます。確認のためにコードを SMS で送信します。",
+		"verified": "確認済み",
+		"notVerified": "未確認",
+		"testCall": "テスト通話",
+		"change": "変更",
+		"callsFrom": "アラームは {number} から発信されます",
+		"addContact": "連絡先に追加",
+		"tipFavorites": "お気に入りに追加してください。",
+		"tipIphone": "iPhone：集中モード → おやすみモードと睡眠で、お気に入りからの通話を許可し、「繰り返しの着信」をオンにしてください。",
+		"tipAndroid": "Android：連絡先にスターを付け、サイレントモードでスター付きの連絡先を許可してください。",
+		"verificationCode": "確認コード",
+		"verify": "確認",
+		"resendIn": "{seconds} 秒後に再送信",
+		"resend": "コードを再送信",
+		"tryAgainIn": "{time}後にもう一度お試しください",
+		"phoneLabel": "電話番号（E.164）",
+		"invalidFormat": "国際形式で入力してください。例：+15550100123。",
+		"errors": {
+			"callFailed": "通話を発信できませんでした",
+			"unconfigured": "このサーバーではアラーム用の電話が設定されていません",
+			"invalidPhone": "電話番号が正しくありません",
+			"tryAgainIn": "{time}後にもう一度お試しください",
+			"tooMany": "試行回数が多すぎます。後でもう一度お試しください",
+			"reset": "誤ったコードが多すぎます。番号をもう一度入力してください。",
+			"conflict": "この番号に対して、現時点で行うことはありません",
+			"generic": "問題が発生しました"
+		},
+		"loadFailed": "アラーム用の電話を読み込めませんでした。",
+		"numberChanged": "この番号が変更されました。もう一度確認してください",
+		"wrongCode": "コードが正しくありません。",
+		"wrongCodeLeft": "コードが正しくありません。残り {count} 回。",
+		"calling": "発信中です。",
+		"callsUnconfigured": "このサーバーでは通話が設定されていません",
+		"verifyFirst": "先に番号を確認してください",
+		"copyFailed": "コピーできませんでした",
+		"contactFailed": "連絡先をダウンロードできませんでした",
+		"confirmRemove": "アラーム用の電話を削除しますか？"
+	}
+}

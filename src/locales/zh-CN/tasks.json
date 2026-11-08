@@ -1,0 +1,233 @@
+{
+	"doneCheckbox": {
+		"label": "完成"
+	},
+	"linkChips": {
+		"title": "关联",
+		"page": "页面 {id}"
+	},
+	"pageMentions": {
+		"title": "在页面中被提及"
+	},
+	"priorityBadge": {
+		"title": "{label}优先级"
+	},
+	"shareMenu": {
+		"share": "分享"
+	},
+	"timeEntries": {
+		"title": "终端会话",
+		"partial": "部分与其他已跟踪时间重叠"
+	},
+	"timeInfo": {
+		"created": "创建于：{time}",
+		"edited": "编辑于：{time}",
+		"overtime": "超时"
+	},
+	"actions": {
+		"delete": "删除",
+		"save": "保存",
+		"create": "创建",
+		"settings": "设置"
+	},
+	"reminder": {
+		"label": "提醒"
+	},
+	"sidePanel": {
+		"label": "任务"
+	},
+	"exportSettings": {
+		"title": "导出设置",
+		"roundHoursUp": "小时数向上取整",
+		"zeroExpectedWeekends": "休息日的预期工时记为 0",
+		"weekendDays": "周末：",
+		"customHolidays": "自定义假日：",
+		"add": "添加",
+		"parseDateFromTitle": "从任务标题解析日期",
+		"days": {
+			"sun": "周日",
+			"mon": "周一",
+			"tue": "周二",
+			"wed": "周三",
+			"thu": "周四",
+			"fri": "周五",
+			"sat": "周六"
+		}
+	},
+	"multipleActions": {
+		"title": "批量操作",
+		"updateTasks": "更新任务",
+		"markDone": "标记为完成",
+		"markDoneNoStatus": "标记为完成（无“已完成”状态）",
+		"markOpen": "标记为未完成",
+		"archive": "归档",
+		"delete": "删除",
+		"moveToStatus": "移动到状态",
+		"agentRuns": "智能体运行",
+		"confirmAgentRuns": "确认智能体运行",
+		"export": "导出",
+		"exportCsv": "导出为 CSV",
+		"exportJpg": "导出为 JPEG",
+		"exportXlsx": "导出为 XLSX",
+		"seconds": "{n} 秒",
+		"execute": "执行"
+	},
+	"pomodoroSettings": {
+		"dialogLabel": "番茄钟设置",
+		"title": "番茄钟",
+		"description": "配置专注和休息时长。设置适用于你的所有任务。",
+		"focusDuration": "专注时长",
+		"shortBreak": "短休息",
+		"longBreak": "长休息",
+		"longBreakEvery": "长休息间隔",
+		"pomodoros": "个番茄钟",
+		"autoStart": "自动开始下一阶段",
+		"autoStartHint": "专注与休息之间无需点击播放",
+		"pauseTracking": "休息时暂停计时",
+		"pauseTrackingHint": "休息期间停止真实时间的计算",
+		"notifications": "通知",
+		"notify": {
+			"silent": "静音",
+			"system": "系统",
+			"both": "两者"
+		},
+		"sound": "阶段结束提示音",
+		"sounds": {
+			"bell": "铃声",
+			"chime": "钟声",
+			"wood": "木鱼",
+			"digital": "电子音"
+		},
+		"minutesUnit": "分钟",
+		"saveError": "无法保存设置，请重试。"
+	},
+	"pomodoroBlock": {
+		"phase": {
+			"focus": "专注",
+			"short": "短休息",
+			"long": "长休息"
+		},
+		"skipPhase": "跳过此阶段",
+		"reset": "重置",
+		"distractedHint": "我分心了",
+		"distracted": "分心",
+		"distractedCount": "分心 · {n}",
+		"settings": "番茄钟设置",
+		"disable": "为此任务停用番茄钟",
+		"summary": "{n} 个番茄钟 · {focus}/{short}/{long}"
+	},
+	"attachments": {
+		"loadError": "无法加载附件。",
+		"title": "附件",
+		"addFiles": "添加文件",
+		"pendingNote": "{size} · 将在创建任务时上传",
+		"open": "打开 {name}",
+		"uploading": "正在上传 {size}…",
+		"dismiss": "取消上传",
+		"none": "暂无附件",
+		"addMore": "添加更多文件",
+		"dropHint": "点击或拖动文件到此处，以添加文档、图片或其他文件",
+		"download": "下载"
+	},
+	"gallery": {
+		"file": "文件",
+		"position": "第 {n} 个，共 {total} 个文件",
+		"downloadFailed": "下载失败",
+		"zoomOut": "缩小",
+		"zoomIn": "放大",
+		"fitTitle": "适应窗口（0）",
+		"fit": "适应窗口",
+		"actualSizeTitle": "实际大小（100%）",
+		"actualSize": "实际大小",
+		"previous": "上一个",
+		"previousFile": "上一个文件",
+		"next": "下一个",
+		"nextFile": "下一个文件",
+		"imageError": "无法加载图片。重试",
+		"fileError": "无法加载文件",
+		"unsupported": "此处无法预览",
+		"previewOf": "{name} 的预览"
+	},
+	"comments": {
+		"activity": "动态",
+		"filter": {
+			"all": "全部",
+			"people": "用户",
+			"personas": "角色",
+			"plugins": "插件"
+		},
+		"empty": "暂无评论",
+		"noMatch": "没有符合此筛选条件的评论",
+		"aiAssistant": "AI 助手",
+		"deleteComment": "删除评论",
+		"confirmDelete": "删除这条评论？",
+		"addReaction": "添加表情回应"
+	},
+	"relations": {
+		"title": "关联任务",
+		"link": "关联",
+		"removeRelation": "移除关联",
+		"dialogTitle": "关联事项",
+		"issue": "事项",
+		"searchPlaceholder": "搜索…",
+		"searching": "正在搜索…",
+		"type": "类型",
+		"select": "选择…",
+		"linking": "正在关联…",
+		"removeTitle": "移除关联",
+		"removeBody": "移除与任务 #{id} 的“{type}”关联？",
+		"errors": {
+			"loadTypes": "无法加载关联类型",
+			"fillAll": "请填写所有字段",
+			"add": "无法添加任务关联",
+			"remove": "无法移除任务关联"
+		}
+	},
+	"boardCard": {
+		"dragReorder": "拖动以重新排序",
+		"dragMove": "拖动以移动",
+		"stopTimer": "停止计时器",
+		"startTimer": "开始计时器",
+		"changeAssignee": "更改负责人",
+		"assignSomeone": "指派负责人",
+		"searchMembers": "搜索成员...",
+		"noMembers": "未找到成员。",
+		"taskActions": "任务操作",
+		"openDetails": "打开详情",
+		"settings": "设置",
+		"moveToTop": "移到顶部",
+		"moveToBottom": "移到底部",
+		"archive": "归档",
+		"delete": "删除",
+		"commentsLabel": "{n} 条评论",
+		"archiveTitle": "归档任务",
+		"archiveBody": "确定要归档“{title}”吗？",
+		"deleteTitle": "删除任务",
+		"deleteBody": "确定要删除“{title}”吗？",
+		"archiveStatusMissing": "未找到归档状态",
+		"archiveStatusMissingHint": "请先创建归档状态。",
+		"archiveFailed": "无法归档任务",
+		"tryAgain": "请重试。",
+		"deleteFailed": "无法删除任务，请重试。"
+	},
+	"list": {
+		"selectedTasks": "已选任务：",
+		"deselectAll": "取消全选",
+		"selectAll": "全选",
+		"process": "处理（{n}）",
+		"summary": "已选 {selected}/{total} · {hours} 小时",
+		"summaryOvertime": "已选 {selected}/{total} · {hours} 小时 · 超时 +{overtime}",
+		"restore": "恢复",
+		"restoreFromTrash": "从回收站恢复",
+		"deleteTask": "删除任务",
+		"timerRunning": "计时器运行中",
+		"overtime": "超时 +{time}",
+		"showing": "显示第 {from} 到 {to} 个，共 {total} 个任务",
+		"perPage": "每页 {n} 个",
+		"previous": "上一页",
+		"next": "下一页",
+		"page": "第 {page} 页，共 {last} 页",
+		"deleteTasksTitle": "删除任务",
+		"deleteTasksBody": "确定吗？"
+	}
+}
