@@ -1,6 +1,6 @@
 <template>
 	<nav
-		aria-label="Settings"
+		:aria-label="$t('settings.page.settings')"
 		data-testid="settings-nav"
 		class="flex flex-col"
 		:class="variant === 'list' ? 'gap-6' : 'gap-5'"

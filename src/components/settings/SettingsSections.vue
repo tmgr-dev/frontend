@@ -1,6 +1,6 @@
 <template>
 	<PageContainer width="narrow">
-		<PageHeader title="Settings" />
+		<PageHeader :title="$t('settings.page.settings')" />
 		<SettingsNav variant="list" />
 	</PageContainer>
 </template>

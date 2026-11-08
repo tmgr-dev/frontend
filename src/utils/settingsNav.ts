@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 export interface SettingsNavFlags {
 	isLocalOnly: boolean;
 	isDesktop: boolean;
@@ -20,64 +22,55 @@ export interface SettingsNavGroup {
 	items: SettingsNavItem[];
 }
 
-const tab = (key: string, label: string, icon: string): SettingsNavItem => ({
+type NavItemDef = Omit<SettingsNavItem, 'label'>;
+
+const tab = (key: string, icon: string): NavItemDef => ({
 	key,
-	label,
 	path: '/settings',
 	tab: key,
 	icon,
 });
 
-const page = (
-	key: string,
-	label: string,
-	path: string,
-	icon: string,
-): SettingsNavItem => ({ key, label, path, icon });
+const page = (key: string, path: string, icon: string): NavItemDef => ({
+	key,
+	path,
+	icon,
+});
 
-const GROUPS: SettingsNavGroup[] = [
+const GROUPS: { key: string; items: NavItemDef[] }[] = [
 	{
 		key: 'account',
-		label: 'Account',
 		items: [
-			tab('profile', 'Profile', 'profile'),
-			tab('notification', 'Notifications', 'notifications'),
-			tab('device', 'Smart Devices', 'devices'),
-			tab('privacy', 'Privacy', 'privacy'),
+			tab('profile', 'profile'),
+			tab('notification', 'notifications'),
+			tab('device', 'devices'),
+			tab('privacy', 'privacy'),
 		],
 	},
 	{
 		key: 'workspace',
-		label: 'Workspace',
 		items: [
-			page('workspaces', 'General', '/settings/workspaces', 'workspace'),
-			page('modules', 'Modules', '/settings/modules', 'modules'),
-			page('personas', 'Personas', '/settings/personas', 'personas'),
+			page('workspaces', '/settings/workspaces', 'workspace'),
+			page('modules', '/settings/modules', 'modules'),
+			page('personas', '/settings/personas', 'personas'),
 		],
 	},
 	{
 		key: 'agents',
-		label: 'Agents',
 		items: [
-			tab('agent-work', 'Agent work', 'agent-work'),
-			page(
-				'agent-notifications',
-				'Agent alerts',
-				'/settings/agent-notifications',
-				'alerts',
-			),
-			page('plugins', 'Plugins', '/settings/plugins', 'plugins'),
+			tab('agent-work', 'agent-work'),
+			page('agent-notifications', '/settings/agent-notifications', 'alerts'),
+			page('plugins', '/settings/plugins', 'plugins'),
 		],
 	},
 	{
 		key: 'app',
-		label: 'App',
 		items: [
-			tab('theme', 'Theme', 'theme'),
-			tab('desktop', 'Desktop', 'shortcuts'),
-			tab('data', 'Local data', 'local-data'),
-			tab('experimental', 'Experimental', 'experimental'),
-			tab('about', 'About', 'about'),
+			tab('theme', 'theme'),
+			tab('desktop', 'shortcuts'),
+			tab('data', 'local-data'),
+			tab('experimental', 'experimental'),
+			tab('about', 'about'),
 		],
 	},
 ];
@@ -98,8 +91,11 @@ export const SETTINGS_NAV_COLUMN_QUERY = '(min-width: 1280px)';
 
 export function settingsNavGroups(flags: SettingsNavFlags): SettingsNavGroup[] {
 	return GROUPS.map((group) => ({
-		...group,
-		items: group.items.filter((item) => VISIBLE[item.key]?.(flags) ?? true),
+		key: group.key,
+		label: t(`settings.nav.groups.${group.key}`),
+		items: group.items
+			.filter((item) => VISIBLE[item.key]?.(flags) ?? true)
+			.map((item) => ({ ...item, label: t(`settings.nav.items.${item.key}`) })),
 	})).filter((group) => group.items.length > 0);
 }
 

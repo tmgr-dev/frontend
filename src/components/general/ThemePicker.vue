@@ -23,7 +23,9 @@
 				<span
 					class="text-[13px] font-semibold"
 					:style="{ color: t.tokens.text }"
-					>{{ t.name }}</span
+					>{{
+						t.id === 'default' ? $t('settings.theme.default') : t.name
+					}}</span
 				>
 				<span
 					class="font-mono text-[9px] tracking-wide uppercase"
@@ -34,7 +36,7 @@
 					v-if="selected === t.id"
 					class="ml-auto rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
 					:style="{ background: t.tokens.brand, color: t.tokens.onAccent }"
-					>active</span
+					>{{ $t('settings.theme.active') }}</span
 				>
 			</div>
 
@@ -194,26 +196,26 @@
 				class="mt-2 flex items-center gap-2"
 				@click.stop
 			>
-				<span class="text-[11px]" :style="{ color: t.tokens.muted }"
-					>Mode:</span
-				>
+				<span class="text-[11px]" :style="{ color: t.tokens.muted }">{{
+					$t('settings.theme.mode')
+				}}</span>
 				<span
 					class="cursor-pointer rounded-full px-2 py-0.5 text-[11px]"
 					:style="modeStyle('default', t.tokens)"
 					@click="chooseScheme('default')"
-					>Light</span
+					>{{ $t('settings.theme.light') }}</span
 				>
 				<span
 					class="cursor-pointer rounded-full px-2 py-0.5 text-[11px]"
 					:style="modeStyle('dark', t.tokens)"
 					@click="chooseScheme('dark')"
-					>Dark</span
+					>{{ $t('settings.theme.dark') }}</span
 				>
 				<span
 					class="cursor-pointer rounded-full px-2 py-0.5 text-[11px]"
 					:style="modeStyle('system', t.tokens)"
 					@click="chooseScheme('system')"
-					>System</span
+					>{{ $t('settings.theme.system') }}</span
 				>
 			</div>
 		</button>
@@ -222,35 +224,14 @@
 
 <script lang="ts">
 	import { persistThemeSettings } from '@/actions/tmgr/user';
+	import { i18n } from '@/i18n';
 	import store from '@/store';
 	import { THEME_REGISTRY, ThemeDef } from '@/theme/registry';
 	import { computed, defineComponent } from 'vue';
 
-	const TAGS: Record<string, string> = {
-		default: 'canonical',
-		dracula: 'purple',
-		nord: 'frost',
-		'one-dark': 'atom',
-		monokai: 'classic',
-		'solarized-dark': 'muted',
-		'gruvbox-dark': 'retro',
-		'tokyo-night': 'night',
-		'github-dark': 'default',
-		'night-owl': 'deep',
-		cobalt2: 'blue',
-		palenight: 'material',
-		'ayu-dark': 'warm',
-		'catppuccin-mocha': 'pastel',
-		'synthwave-84': 'neon',
-		'github-light': 'light',
-		oled: 'true black',
-		colorblind: 'okabe-ito',
-	};
-
 	const DEFAULT_CARD = {
 		id: 'default',
 		name: 'Default',
-		tag: TAGS.default,
 		tokens: {
 			bg: 'var(--bg)',
 			surface: 'var(--bg-raised)',
@@ -267,12 +248,20 @@
 	export default defineComponent({
 		name: 'ThemePicker',
 		setup() {
+			const global = i18n.global as unknown as {
+				te: (key: string) => boolean;
+				t: (key: string) => string;
+			};
+			const tagFor = (id: string) => {
+				const key = `settings.theme.tags.${id}`;
+				return global.te(key) ? global.t(key) : '';
+			};
 			const cards = computed(() => [
-				DEFAULT_CARD,
+				{ ...DEFAULT_CARD, tag: tagFor('default') },
 				...THEME_REGISTRY.map((t: ThemeDef) => ({
 					id: t.id,
 					name: t.name,
-					tag: TAGS[t.id] || '',
+					tag: tagFor(t.id),
 					tokens: t.tokens,
 				})),
 			]);

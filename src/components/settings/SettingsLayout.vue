@@ -13,12 +13,12 @@
 		<div v-else-if="!onSections" class="px-4 pt-4 md:px-6">
 			<router-link
 				to="/settings/sections"
-				aria-label="Back to Settings"
+				:aria-label="$t('settings.layout.back')"
 				data-testid="settings-back"
 				class="inline-flex items-center gap-1 text-sm text-ink-subtle hover:text-ink dark:text-ink-subtle dark:hover:text-ink"
 			>
 				<ChevronLeft class="h-4 w-4" />
-				Settings
+				{{ $t('settings.page.settings') }}
 			</router-link>
 		</div>
 		<div class="flex min-w-0 flex-1 flex-col">
