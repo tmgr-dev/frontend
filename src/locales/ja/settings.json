@@ -1,0 +1,183 @@
+{
+	"language": {
+		"title": "言語",
+		"label": "表示言語",
+		"description": "アプリ全体、メール、通知で使われます。",
+		"saveFailed": "言語を保存できませんでした"
+	},
+	"page": {
+		"settings": "設定",
+		"profile": "プロフィール",
+		"devices": "スマートデバイス",
+		"notifications": "通知",
+		"theme": "テーマ",
+		"experimental": "試験的機能",
+		"desktop": "デスクトップ",
+		"localData": "ローカルデータ",
+		"privacy": "プライバシー",
+		"agentWork": "エージェントの実行",
+		"about": "概要"
+	},
+	"loading": "設定を読み込み中",
+	"loadFailed": "設定を読み込めませんでした。",
+	"layout": {
+		"back": "設定に戻る"
+	},
+	"nav": {
+		"groups": {
+			"account": "アカウント",
+			"workspace": "ワークスペース",
+			"agents": "エージェント",
+			"app": "アプリ"
+		},
+		"items": {
+			"profile": "プロフィール",
+			"notification": "通知",
+			"device": "スマートデバイス",
+			"privacy": "プライバシー",
+			"workspaces": "一般",
+			"modules": "モジュール",
+			"personas": "ペルソナ",
+			"agent-work": "エージェントの実行",
+			"agent-notifications": "エージェント通知",
+			"plugins": "プラグイン",
+			"theme": "テーマ",
+			"desktop": "デスクトップ",
+			"data": "ローカルデータ",
+			"experimental": "試験的機能",
+			"about": "概要"
+		}
+	},
+	"alerts": {
+		"errorTitle": "エラー",
+		"updated": "設定を更新しました",
+		"updateFailed": "設定を更新できませんでした",
+		"editorUpdated": "エディターを更新しました。ページを再読み込みしています..."
+	},
+	"push": {
+		"title": "プッシュ通知（旧方式）",
+		"enable": "Web プッシュを有効にする",
+		"test": "テスト通知を送信",
+		"showTooltips": "ツールチップを表示",
+		"registrationTitle": "通知の登録",
+		"registrationBody": "通知の権限を確認してください"
+	},
+	"desktop": {
+		"gitTracking": "Git 自動トラッキング",
+		"shortcuts": "キーボードショートカット"
+	},
+	"about": {
+		"version": "バージョン {version}",
+		"moreTitle": "開発元のその他の製品",
+		"moreDescription": "TMGR を開発しているチームのその他の製品です。"
+	},
+	"theme": {
+		"title": "テーマ",
+		"description": "カラーテーマとライト/ダークモードを選択します。",
+		"active": "使用中",
+		"mode": "モード:",
+		"light": "ライト",
+		"dark": "ダーク",
+		"system": "システム",
+		"default": "デフォルト",
+		"tags": {
+			"default": "標準",
+			"dracula": "パープル",
+			"nord": "フロスト",
+			"one-dark": "Atom",
+			"monokai": "クラシック",
+			"solarized-dark": "落ち着いた色",
+			"gruvbox-dark": "レトロ",
+			"tokyo-night": "ナイト",
+			"github-dark": "デフォルト",
+			"night-owl": "ディープ",
+			"cobalt2": "ブルー",
+			"palenight": "Material",
+			"ayu-dark": "ウォーム",
+			"catppuccin-mocha": "パステル",
+			"synthwave-84": "ネオン",
+			"github-light": "ライト",
+			"oled": "純黒",
+			"colorblind": "Okabe-Ito"
+		}
+	},
+	"timezone": {
+		"title": "タイムゾーン",
+		"description": "デイリールーティンの実行と 1 日の開始は、このタイムゾーンに従います。",
+		"placeholder": "タイムゾーンを選択",
+		"search": "タイムゾーンを検索",
+		"notFound": "タイムゾーンが見つかりません。",
+		"detected": "検出されたタイムゾーン: {zone}",
+		"useDetected": "検出されたものを使用",
+		"saveFailed": "タイムゾーンを保存できませんでした"
+	},
+	"telegram": {
+		"title": "Telegram",
+		"connectedAs": "{'@'}{username} として連携中",
+		"unlink": "連携を解除",
+		"connect": "Telegram を連携",
+		"connectBody": "下のボタンをクリックして Telegram を開き、アカウントを連携してください。連携すると、Telegram で通知を受け取れます。",
+		"open": "Telegram を開く",
+		"unlinkTitle": "Telegram の連携を解除",
+		"unlinkBody": "Telegram アカウントの連携を解除しますか？今後、Telegram では通知を受け取れなくなります。"
+	},
+	"device": {
+		"tokenTitle": "API トークン",
+		"tokenHidden": "トークンは設定済みです（非表示）。紛失した場合は新しく生成してください。",
+		"tokenNeeded": "トークンを生成する必要があります",
+		"hide": "非表示",
+		"show": "表示",
+		"copyNow": "今すぐコピーしてください。再表示はされません。",
+		"created": "作成日: {date}",
+		"generateNew": "新しいトークンを生成",
+		"generate": "トークンを生成",
+		"revoke": "トークンを無効化",
+		"generateTitle": "新しいトークンを生成",
+		"regenerateBody": "新しいトークンを生成しますか？既存のトークンは無効になり、それを使用しているデバイスは更新が必要になります。",
+		"generateBody": "スマートデバイス用の新しいトークンを生成しますか？",
+		"generateFailed": "トークンを生成できませんでした",
+		"generated": "トークンを生成しました",
+		"revokeTitle": "トークンを無効化",
+		"revokeBody": "このトークンを無効化しますか？このトークンを使用しているすべてのデバイスは、新しいトークンで再設定するまで動作しなくなります。",
+		"revokeFailed": "トークンを無効化できませんでした",
+		"revoked": "トークンを無効化しました",
+		"howTo": {
+			"title": "使い方",
+			"step1": "1. 上のボタンでトークンを生成します",
+			"step2": "2. デバイスの API リクエストに、次のヘッダーでトークンを含めます:",
+			"secure": "トークンは安全に保管してください。漏えいした場合は、すぐに新しいトークンを生成してください。"
+		},
+		"mcp": {
+			"title": "MCP の設定",
+			"intro": "TMGR MCP は、スマートデバイスのトークンをカスタムヘッダーとして使用します。上でトークンを生成してから、ヘッダー付きのリモート Streamable HTTP サーバーに対応した MCP クライアントを設定してください（Claude Code: {command}）。",
+			"serverUrl": "サーバー URL",
+			"clientConfig": "クライアント設定",
+			"oauth": "OAuth に関する注意: この TMGR MCP サーバーは、まだ OAuth コネクターではありません。Spendly とは異なり、`/mcp/**` を `X-Smart-Device-Token` で認証するため、OAuth ディスカバリーが必要な Claude.ai のカスタムコネクターは、この設定ではサポートされません。",
+			"notify": "この MCP は、タスクと時間を扱います。エージェントからのスマートフォン通知やアラームを使うには、{link}で tmgr-notify を連携してください。",
+			"notifyLink": "エージェント通知"
+		},
+		"docs": {
+			"title": "ドキュメント",
+			"api": "スマートデバイス API リファレンス",
+			"mcp": "MCP サーバーの設定"
+		}
+	},
+	"agentUsage": {
+		"title": "エージェントの実行",
+		"description": "AI エージェントがタスクにかけたコストを、すべてのデバイスで確認できます。",
+		"syncLabel": "エージェント使用量の同期",
+		"syncDescription": "Web とモバイルで表示できるよう、タスクごとの合計をアップロードします。対象はトークン数、AI コスト（API 換算）、エージェント・モデル・ツールの名前、回数です。プロンプト、返信、ファイルパス、コマンド引数は一切アップロードしません。アップロードは tmgr CLI で有効にした後にのみ開始されます。手動で `tmgr usage sync` を実行するか、`tmgr usage sync auto on` も確認した場合はエージェントの実行ごとに自動で行われます。オフにすると、アップロード済みのデータはすべて削除されます。",
+		"unavailable": "このサーバーでは、エージェント使用量の同期はまだ利用できません。",
+		"uploadsTitle": "アップロード履歴",
+		"uploadsDescription": "このアカウントでアップロードした内容を、新しい順に表示します。",
+		"deleteAll": "すべて削除",
+		"empty": "アップロードはありません。",
+		"turnOffTitle": "エージェント使用量の同期をオフにしますか？",
+		"turnOffBody": "このアカウントでアップロードしたすべての内容が TMGR から削除されます。あとで再びオンにできます。",
+		"keepOn": "オンのままにする",
+		"turnOff": "オフにして削除",
+		"deleteTitle": "すべてのアップロードを削除しますか？",
+		"deleteBody": "このアカウントでアップロードしたすべての内容が TMGR から削除されます。エージェント使用量の同期の設定は変わりません。",
+		"genericError": "問題が発生しました。"
+	}
+}

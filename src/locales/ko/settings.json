@@ -1,0 +1,183 @@
+{
+	"language": {
+		"title": "언어",
+		"label": "인터페이스 언어",
+		"description": "앱, 이메일, 알림 전반에 사용돼요.",
+		"saveFailed": "언어를 저장하지 못했어요"
+	},
+	"page": {
+		"settings": "설정",
+		"profile": "프로필",
+		"devices": "스마트 기기",
+		"notifications": "알림",
+		"theme": "테마",
+		"experimental": "실험 기능",
+		"desktop": "데스크톱",
+		"localData": "로컬 데이터",
+		"privacy": "개인정보",
+		"agentWork": "에이전트 작업",
+		"about": "정보"
+	},
+	"loading": "설정을 불러오는 중",
+	"loadFailed": "설정을 불러오지 못했어요.",
+	"layout": {
+		"back": "설정으로 돌아가기"
+	},
+	"nav": {
+		"groups": {
+			"account": "계정",
+			"workspace": "워크스페이스",
+			"agents": "에이전트",
+			"app": "앱"
+		},
+		"items": {
+			"profile": "프로필",
+			"notification": "알림",
+			"device": "스마트 기기",
+			"privacy": "개인정보",
+			"workspaces": "일반",
+			"modules": "모듈",
+			"personas": "페르소나",
+			"agent-work": "에이전트 작업",
+			"agent-notifications": "에이전트 알림",
+			"plugins": "플러그인",
+			"theme": "테마",
+			"desktop": "데스크톱",
+			"data": "로컬 데이터",
+			"experimental": "실험 기능",
+			"about": "정보"
+		}
+	},
+	"alerts": {
+		"errorTitle": "오류",
+		"updated": "설정을 업데이트했어요",
+		"updateFailed": "설정을 업데이트하지 못했어요",
+		"editorUpdated": "편집기를 업데이트했어요. 페이지를 새로고침하는 중..."
+	},
+	"push": {
+		"title": "푸시 알림(레거시)",
+		"enable": "웹 푸시 사용",
+		"test": "테스트 알림 보내기",
+		"showTooltips": "툴팁 표시",
+		"registrationTitle": "알림 등록",
+		"registrationBody": "알림 권한을 확인해 주세요"
+	},
+	"desktop": {
+		"gitTracking": "Git 자동 추적",
+		"shortcuts": "키보드 단축키"
+	},
+	"about": {
+		"version": "버전 {version}",
+		"moreTitle": "제작자의 다른 제품",
+		"moreDescription": "TMGR을 만드는 사람들의 다른 제품이에요."
+	},
+	"theme": {
+		"title": "테마",
+		"description": "컬러 테마와 라이트/다크 모드를 선택하세요.",
+		"active": "사용 중",
+		"mode": "모드:",
+		"light": "라이트",
+		"dark": "다크",
+		"system": "시스템",
+		"default": "기본",
+		"tags": {
+			"default": "기본형",
+			"dracula": "보라",
+			"nord": "서리",
+			"one-dark": "Atom",
+			"monokai": "클래식",
+			"solarized-dark": "차분함",
+			"gruvbox-dark": "레트로",
+			"tokyo-night": "밤",
+			"github-dark": "기본",
+			"night-owl": "딥",
+			"cobalt2": "파랑",
+			"palenight": "Material",
+			"ayu-dark": "따뜻함",
+			"catppuccin-mocha": "파스텔",
+			"synthwave-84": "네온",
+			"github-light": "라이트",
+			"oled": "순흑",
+			"colorblind": "Okabe-Ito"
+		}
+	},
+	"timezone": {
+		"title": "시간대",
+		"description": "데일리 루틴은 이 시간대 기준으로 실행되고, 하루도 이 시간대 기준으로 시작돼요.",
+		"placeholder": "시간대 선택",
+		"search": "시간대 검색",
+		"notFound": "시간대를 찾을 수 없어요.",
+		"detected": "감지됨: {zone}",
+		"useDetected": "감지된 시간대 사용",
+		"saveFailed": "시간대를 저장하지 못했어요"
+	},
+	"telegram": {
+		"title": "Telegram",
+		"connectedAs": "{'@'}{username}(으)로 연결됨",
+		"unlink": "연결 해제",
+		"connect": "Telegram 연결",
+		"connectBody": "아래 버튼을 눌러 Telegram을 열고 계정을 연결하세요. 연결하면 Telegram으로 알림을 받을 수 있어요.",
+		"open": "Telegram 열기",
+		"unlinkTitle": "Telegram 연결 해제",
+		"unlinkBody": "Telegram 계정 연결을 해제할까요? 이후에는 Telegram으로 알림을 받을 수 없어요."
+	},
+	"device": {
+		"tokenTitle": "API 토큰",
+		"tokenHidden": "토큰이 설정되어 있어요(숨김). 잃어버렸다면 새로 생성하세요.",
+		"tokenNeeded": "토큰을 생성해야 해요",
+		"hide": "숨기기",
+		"show": "표시",
+		"copyNow": "지금 복사하세요. 다시 표시되지 않아요.",
+		"created": "생성일: {date}",
+		"generateNew": "새 토큰 생성",
+		"generate": "토큰 생성",
+		"revoke": "토큰 폐기",
+		"generateTitle": "새 토큰 생성",
+		"regenerateBody": "새 토큰을 생성할까요? 기존 토큰은 무효화되고, 이 토큰을 사용하는 기기는 모두 업데이트해야 해요.",
+		"generateBody": "스마트 기기용 새 토큰을 생성할까요?",
+		"generateFailed": "토큰을 생성하지 못했어요",
+		"generated": "토큰을 생성했어요",
+		"revokeTitle": "토큰 폐기",
+		"revokeBody": "이 토큰을 폐기할까요? 이 토큰을 사용하는 모든 기기는 새 토큰으로 다시 설정할 때까지 작동하지 않아요.",
+		"revokeFailed": "토큰을 폐기하지 못했어요",
+		"revoked": "토큰을 폐기했어요",
+		"howTo": {
+			"title": "사용 방법",
+			"step1": "1. 위의 버튼으로 토큰을 생성하세요",
+			"step2": "2. 기기의 API 요청에 다음 헤더로 토큰을 포함하세요:",
+			"secure": "토큰은 안전하게 보관하세요. 유출되었다면 즉시 새로 생성하세요."
+		},
+		"mcp": {
+			"title": "MCP 설정",
+			"intro": "TMGR MCP는 스마트 기기 토큰을 커스텀 헤더로 사용해요. 위에서 토큰을 생성한 뒤, 헤더를 지원하는 원격 Streamable HTTP 서버용 MCP 클라이언트를 설정하세요(Claude Code: {command}).",
+			"serverUrl": "서버 URL",
+			"clientConfig": "클라이언트 설정",
+			"oauth": "OAuth 참고: 이 TMGR MCP 서버는 아직 OAuth 커넥터가 아니에요. Spendly와 달리 `/mcp/**`를 `X-Smart-Device-Token`으로 인증하므로, OAuth 디스커버리가 필요한 Claude.ai 커스텀 커넥터는 이 설정에서 지원되지 않아요.",
+			"notify": "이 MCP는 작업과 시간을 다뤄요. 에이전트의 휴대폰 알림과 알람을 받으려면 {link}에서 tmgr-notify를 연결하세요.",
+			"notifyLink": "에이전트 알림"
+		},
+		"docs": {
+			"title": "문서",
+			"api": "스마트 기기 API 레퍼런스",
+			"mcp": "MCP 서버 설정"
+		}
+	},
+	"agentUsage": {
+		"title": "에이전트 작업",
+		"description": "AI 에이전트가 작업에 얼마나 비용을 썼는지 모든 기기에서 확인하세요.",
+		"syncLabel": "에이전트 사용량 동기화",
+		"syncDescription": "웹과 모바일에서 보여줄 수 있도록 작업별 합계를 업로드해요. 토큰 수, AI 비용(API 환산), 에이전트·모델·도구 이름, 횟수가 포함돼요. 프롬프트, 응답, 파일 경로, 명령어 인수는 절대 업로드하지 않아요. 업로드는 tmgr CLI에서 켠 뒤에만 시작돼요. `tmgr usage sync`로 직접 실행하거나, `tmgr usage sync auto on`도 확인하면 에이전트를 실행할 때마다 자동으로 업로드돼요. 끄면 이미 업로드된 모든 데이터가 삭제돼요.",
+		"unavailable": "이 서버에서는 에이전트 사용량 동기화를 아직 사용할 수 없어요.",
+		"uploadsTitle": "내 업로드",
+		"uploadsDescription": "이 계정이 업로드한 내용이에요. 최신순으로 표시돼요.",
+		"deleteAll": "모두 삭제",
+		"empty": "업로드한 내용이 없어요.",
+		"turnOffTitle": "에이전트 사용량 동기화를 끌까요?",
+		"turnOffBody": "이 계정이 업로드한 모든 내용이 TMGR에서 삭제돼요. 나중에 다시 켤 수 있어요.",
+		"keepOn": "계속 켜 두기",
+		"turnOff": "끄고 삭제",
+		"deleteTitle": "모든 업로드를 삭제할까요?",
+		"deleteBody": "이 계정이 업로드한 모든 내용이 TMGR에서 삭제돼요. 에이전트 사용량 동기화는 지금 상태로 유지돼요.",
+		"genericError": "문제가 발생했어요."
+	}
+}
