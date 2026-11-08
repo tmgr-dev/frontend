@@ -7,6 +7,7 @@ export const makeCard = (over: Partial<CardView> = {}): CardView => ({
 	session_gone: false,
 	can_reply: true,
 	listening: false,
+	unpicked: false,
 	messages: [],
 	source: { agent: 'claude-code', cwd: '/work/alpha' },
 	kind: 'decision',

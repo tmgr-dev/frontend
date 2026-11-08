@@ -53,6 +53,9 @@
 						}}</span>
 						<span v-if="card.state === 'deferred'" class="k">deferred</span>
 						<span v-if="card.updated_ms" class="upd">updated</span>
+						<span v-if="card.unpicked" class="unpicked">{{
+							UNPICKED_LABEL
+						}}</span>
 						<span
 							v-if="card.blocking && !isDone(card) && !card.session_gone"
 							class="block"
@@ -78,6 +81,7 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
+	import { UNPICKED_LABEL } from '../answer';
 	import { KIND_LABELS } from '../format';
 	import { isPending, type QueueGroup, type QueueProgress } from '../queue';
 	import type { CardView } from '../types';
@@ -93,7 +97,7 @@
 		},
 		emits: ['select', 'dismiss', 'update:query'],
 		data() {
-			return { KIND_LABELS };
+			return { KIND_LABELS, UNPICKED_LABEL };
 		},
 		methods: {
 			onInput(event: Event) {

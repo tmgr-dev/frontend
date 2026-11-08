@@ -124,6 +124,7 @@ export interface CardView {
 	closed_reason?: string;
 	can_reply: boolean;
 	listening: boolean;
+	unpicked: boolean;
 	answer?: Answer;
 	messages: CardMessage[];
 	source: CardSource;

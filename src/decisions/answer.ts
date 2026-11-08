@@ -91,3 +91,8 @@ export const deliveryLabel = (
 			return null;
 	}
 };
+
+export const UNPICKED_LABEL = 'Not picked up by any agent';
+
+export const unpickedLabel = (card: CardView): string | null =>
+	card.unpicked ? UNPICKED_LABEL : null;

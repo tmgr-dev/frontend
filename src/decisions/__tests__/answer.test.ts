@@ -4,6 +4,7 @@ import {
 	buildAnswer,
 	cardMode,
 	deliveryLabel,
+	unpickedLabel,
 	isEmptyAnswer,
 } from '../answer';
 import { makeCard } from './fixtures';
@@ -179,5 +180,14 @@ describe('closing a card from the list', () => {
 			line_comments: [],
 			deferred: false,
 		});
+	});
+});
+
+describe('unpickedLabel', () => {
+	it('labels unpicked cards only', () => {
+		expect(unpickedLabel(makeCard({ unpicked: true }))).toBe(
+			'Not picked up by any agent',
+		);
+		expect(unpickedLabel(makeCard({ unpicked: false }))).toBeNull();
 	});
 });

@@ -65,6 +65,7 @@
 		</div>
 
 		<div v-if="delivery" class="notice">{{ delivery }}</div>
+		<div v-if="unpicked" class="notice unpicked">{{ unpicked }}</div>
 
 		<div v-if="mode === 'final'" class="notice final">
 			<div class="what">{{ finalTitle }}</div>
@@ -167,7 +168,12 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
-	import { cardMode, deliveryLabel, type CardMode } from '../answer';
+	import {
+		cardMode,
+		deliveryLabel,
+		unpickedLabel,
+		type CardMode,
+	} from '../answer';
 	import {
 		KIND_LABELS,
 		isHttpUrl,
@@ -214,6 +220,9 @@
 			},
 			delivery(): string | null {
 				return deliveryLabel(this.card.delivery);
+			},
+			unpicked(): string | null {
+				return unpickedLabel(this.card);
 			},
 			hasRecommended(): boolean {
 				return recommendedOption(this.card) !== null;
