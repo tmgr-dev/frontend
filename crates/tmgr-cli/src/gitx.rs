@@ -485,7 +485,13 @@ impl Git {
 
     pub fn is_dirty(&self) -> Result<bool> {
         let out = self.mutate(
-            &["status", "--porcelain", "-z", "--ignore-submodules=all"],
+            &[
+                "status",
+                "--porcelain",
+                "-z",
+                "--untracked-files=normal",
+                "--ignore-submodules=all",
+            ],
             "status",
         )?;
         Ok(!out.is_empty())

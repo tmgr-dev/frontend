@@ -426,6 +426,21 @@ async fn start_accepts_a_repository_with_advice_and_status_settings() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn start_stashes_only_untracked_files_hidden_by_status_settings() {
+    let (env, repo) = start_env().await;
+    git(&repo, &["config", "status.showUntrackedFiles", "no"]);
+    std::fs::write(repo.join("new.txt"), "x\n").unwrap();
+    let out = env
+        .tmgr_in(&repo, None)
+        .args(["start", "TM-512", "--stash", "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(!repo.join("new.txt").exists());
+    assert!(git(&repo, &["stash", "list"]).contains("tmgr: before TM-512"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn start_ignores_files_that_the_global_excludes_file_ignores() {
     let (env, repo) = start_env().await;
     let ignore = env.tmp.path().join("global-ignore");
