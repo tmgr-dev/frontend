@@ -1282,7 +1282,7 @@ impl Store {
       .prepare(
         "SELECT e.card_id, e.seq, e.json FROM events e
          WHERE json_extract(e.json,'$.type')='message' AND json_extract(e.json,'$.via')='phone'
-           AND NOT EXISTS(SELECT 1 FROM deliveries d WHERE d.card_id=e.card_id AND d.seq=e.seq AND d.state IN ('delivered','sent'))
+           AND NOT EXISTS(SELECT 1 FROM deliveries d WHERE d.card_id=e.card_id AND d.seq=e.seq AND d.state='delivered')
            AND NOT EXISTS(SELECT 1 FROM task_comments t WHERE t.card_id=e.card_id AND t.seq=e.seq)",
       )
       .map_err(sql_err)?;
@@ -1297,6 +1297,10 @@ impl Store {
       let Ok(c) = serde_json::from_str::<CardIn>(&r.card) else { continue };
       let Some(created) = self.owner_messages(&card_id)?.into_iter().find(|m| m.2 == seq).map(|m| m.1) else { continue };
       let age = now - created;
+      let sent = self.delivery_state(&card_id, seq)?.as_deref() == Some("sent");
+      if sent && c.reply_via != "mcp" {
+        continue;
+      }
       if !expects_agent(&c) || age > UNPICKED_WINDOW_MS || !(age > UNPICKED_MS || !is_live(&r.state)) {
         continue;
       }
@@ -1798,7 +1802,12 @@ impl Store {
     Ok(rows.into_iter().zip(seqs).map(|((m, at), e)| (m, at, e)).collect())
   }
 
-  pub fn live_messages(&self, id: &str) -> Vec<tmgr_phone::LiveMessage> {
+  pub fn live_messages(&self, id: &str, reply_via: &str) -> Vec<tmgr_phone::LiveMessage> {
+    let delivered = if reply_via == "mcp" {
+      "SELECT at_ms FROM deliveries WHERE card_id=?1 AND seq=?2 AND state='delivered'"
+    } else {
+      "SELECT at_ms FROM deliveries WHERE card_id=?1 AND seq=?2 AND state IN ('delivered','sent')"
+    };
     let at = |sql: &str, e: u64| -> Option<i64> {
       self.conn.query_row(sql, params![id, e as i64], |r| r.get(0)).optional().ok().flatten()
     };
@@ -1808,7 +1817,7 @@ impl Store {
       .into_iter()
       .map(|(seq, _, e)| tmgr_phone::LiveMessage {
         seq,
-        delivered_ms: at("SELECT at_ms FROM deliveries WHERE card_id=?1 AND seq=?2 AND state IN ('delivered','sent')", e),
+        delivered_ms: at(delivered, e),
         saved_ms: at("SELECT posted_ms FROM task_comments WHERE card_id=?1 AND seq=?2 AND posted_ms>0 AND skipped IS NULL", e),
       })
       .collect()
@@ -3273,7 +3282,7 @@ mod tests {
     );
     s.mark_task_comment(&id, seq).unwrap();
     assert!(s.pending_task_comments_at(1001 + HALF_HOUR).unwrap().is_empty());
-    assert!(s.live_messages(&id)[0].saved_ms.is_some());
+    assert!(s.live_messages(&id, "hook")[0].saved_ms.is_some());
   }
 
   #[test]
@@ -3306,18 +3315,37 @@ mod tests {
   #[test]
   fn live_messages_report_delivery_and_saved_times_by_message_seq() {
     let mut s = mem();
-    let id = s.create(msg_card(Some(CLOUD_TASK), "mcp")).unwrap().id;
+    let id = s.create(msg_card(Some(CLOUD_TASK), "hook")).unwrap().id;
     let a = phone_msg(&s, &id, "one", 1000, Some("phone"));
     let b = phone_msg(&s, &id, "two", 1000, Some("phone"));
     phone_msg(&s, &id, "three", 1000, Some("phone"));
     s.record_delivery(&id, a, "sent", "claude", "").unwrap();
     s.mark_task_comment(&id, b).unwrap();
-    let live = s.live_messages(&id);
+    let live = s.live_messages(&id, "hook");
     assert_eq!(live.iter().map(|m| m.seq).collect::<Vec<_>>(), [1, 2, 3]);
     assert!(live[0].delivered_ms.is_some() && live[0].saved_ms.is_none());
     assert!(live[1].delivered_ms.is_none() && live[1].saved_ms.is_some());
     assert!(live[2].delivered_ms.is_none() && live[2].saved_ms.is_none());
     s.skip_task_comment(&id, 3, "x").unwrap();
-    assert!(s.live_messages(&id)[2].saved_ms.is_none());
+    assert!(s.live_messages(&id, "hook")[2].saved_ms.is_none());
+  }
+
+  #[test]
+  fn a_sent_row_is_not_a_read_for_an_mcp_card_but_is_for_a_hook_card() {
+    let mut s = mem();
+    let late = 10 * HALF_HOUR;
+    let mcp = s.create(msg_card(Some(CLOUD_TASK), "mcp")).unwrap().id;
+    let hook = s.create(msg_card(Some(CLOUD_TASK), "hook")).unwrap().id;
+    let m = phone_msg(&s, &mcp, "ping", 1000, Some("phone"));
+    let h = phone_msg(&s, &hook, "ping", 1000, Some("phone"));
+    s.record_delivery(&mcp, m, "sent", "claude", "").unwrap();
+    s.record_delivery(&hook, h, "sent", "claude", "").unwrap();
+    assert!(s.live_messages(&mcp, "mcp")[0].delivered_ms.is_none());
+    assert!(s.live_messages(&hook, "hook")[0].delivered_ms.is_some());
+    let pending = s.pending_task_comments_at(late).unwrap();
+    assert_eq!(pending.iter().map(|p| p.card_id.as_str()).collect::<Vec<_>>(), [mcp.as_str()]);
+    s.record_delivery(&mcp, m, "delivered", "agent", "").unwrap();
+    assert!(s.live_messages(&mcp, "mcp")[0].delivered_ms.is_some());
+    assert!(s.pending_task_comments_at(late).unwrap().is_empty());
   }
 }

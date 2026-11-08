@@ -400,8 +400,8 @@ impl Hub {
     Ok(store.list()?.into_iter().map(|v| self.mark(&store, v)).collect())
   }
 
-  pub fn live_messages(&self, id: &str) -> Vec<tmgr_phone::LiveMessage> {
-    self.lock().live_messages(id)
+  pub fn live_messages(&self, id: &str, reply_via: &str) -> Vec<tmgr_phone::LiveMessage> {
+    self.lock().live_messages(id, reply_via)
   }
 
   pub fn pending_task_comments(&self) -> Result<Vec<PendingTaskComment>, String> {
@@ -711,6 +711,6 @@ mod tests {
     let again = Arc::new(Hub::new(Store::open(&path).unwrap(), Box::new(|_, _| {})));
     let d = again.get(&id).unwrap().delivery.unwrap();
     assert_eq!((d.state.as_str(), d.via.as_str()), ("delivered", "agent"));
-    assert!(again.live_messages(&id)[0].delivered_ms.is_some());
+    assert!(again.live_messages(&id, "hook")[0].delivered_ms.is_some());
   }
 }

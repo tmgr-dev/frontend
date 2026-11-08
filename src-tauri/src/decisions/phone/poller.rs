@@ -18,12 +18,19 @@ const IDLE_MS: i64 = 5 * 60 * 1000;
 const PAIR_MS: i64 = 3_000;
 const DEBOUNCE_MS: i64 = 1_000;
 const REFRESH_MS: i64 = 60_000;
+const HEARTBEAT_MS: i64 = 45_000;
 const WAKE_JUMP_MS: i64 = 30_000;
 const PENDING_MAX: usize = 999;
 
-fn live_of(hub: &Hub, v: &CardView) -> CardLive {
+fn live_of(hub: &Hub, v: &CardView, projection: &str) -> CardLive {
   let listening = matches!(v.reply_via.as_str(), "mcp" | "cli").then_some(v.listening);
-  CardLive { listening, messages: hub.live_messages(&v.id) }
+  let kept: HashSet<u64> = serde_json::from_str::<serde_json::Value>(projection)
+    .ok()
+    .and_then(|p| p["messages"].as_array().map(|m| m.iter().filter_map(|m| m["seq"].as_u64()).collect()))
+    .unwrap_or_default();
+  let mut messages = hub.live_messages(&v.id, &v.reply_via);
+  messages.retain(|m| kept.contains(&m.seq));
+  CardLive { listening, messages }
 }
 
 fn live_sig(c: &SnapshotCard) -> String {
@@ -33,7 +40,7 @@ fn live_sig(c: &SnapshotCard) -> String {
 fn skip_window(cards: &[SnapshotCard]) -> i64 {
   let listening = cards.iter().any(|c| c.live.as_ref().is_some_and(|l| l.listening == Some(true)));
   if listening {
-    REFRESH_MS
+    HEARTBEAT_MS
   } else {
     IDLE_MS
   }
@@ -111,8 +118,8 @@ impl Phones {
           digest: p.digest,
           state: v.state.clone(),
           session_gone: v.session_gone,
+          live: Some(live_of(&self.hub, v, &p.json)),
           projection: p.json,
-          live: Some(live_of(&self.hub, v)),
         });
       }
     }

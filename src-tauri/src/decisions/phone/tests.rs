@@ -1400,6 +1400,21 @@ fn delivered_ms_appears_once_the_agent_picks_the_message_up() {
 }
 
 #[test]
+fn live_messages_cover_only_the_messages_the_projection_kept() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  for i in 0..12 {
+    r.hub.message(&id, tmgr_ipc_message(&format!("{i}{}", "m".repeat(1900)))).unwrap();
+  }
+  let card = r.snapshot(&p).cards.into_iter().find(|c| c.id == id).unwrap();
+  let parsed: serde_json::Value = serde_json::from_str(&card.projection).unwrap();
+  let kept: Vec<u64> = parsed["messages"].as_array().unwrap().iter().map(|m| m["seq"].as_u64().unwrap()).collect();
+  assert!(!kept.is_empty() && kept.len() < 12);
+  assert_eq!(card.live.unwrap().messages.iter().map(|m| m.seq).collect::<Vec<_>>(), kept);
+}
+
+#[test]
 fn a_listening_card_refreshes_every_minute_and_an_idle_one_every_five() {
   let r = rig();
   let _p = r.pair("mb1", "Pocket", 10);
@@ -1418,9 +1433,15 @@ fn a_listening_card_refreshes_every_minute_and_an_idle_one_every_five() {
   r.clock.fetch_add(30_000, Ordering::SeqCst);
   r.phones.refresh_snapshots(false);
   assert_eq!(snapshots_sent(&r), base);
-  r.clock.fetch_add(31_000, Ordering::SeqCst);
+  r.clock.fetch_add(29_000, Ordering::SeqCst);
   r.phones.refresh_snapshots(false);
   assert_eq!(snapshots_sent(&r), base + 1);
+  r.clock.fetch_add(44_000, Ordering::SeqCst);
+  r.phones.refresh_snapshots(false);
+  assert_eq!(snapshots_sent(&r), base + 1);
+  r.clock.fetch_add(15_000, Ordering::SeqCst);
+  r.phones.refresh_snapshots(false);
+  assert_eq!(snapshots_sent(&r), base + 2);
   r.hub.answer(&id, AnswerIn { dismissed: true, ..Default::default() }).unwrap();
   waiter.join().unwrap();
 }
