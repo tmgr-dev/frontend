@@ -110,11 +110,13 @@ const HOME_DENY: &[&str] = &[
     "Library/Application Support/dev.tmgr.desktop/decisions/decisions.db-shm",
     "Library/Application Support/dev.tmgr.desktop/decisions/decisions.db-journal",
     "Library/Application Support/dev.tmgr.desktop/decisions/phone-audit.jsonl",
+    "Library/Application Support/dev.tmgr.desktop/decisions/phone-audit.jsonl.1",
     ".local/share/dev.tmgr.desktop/decisions/decisions.db",
     ".local/share/dev.tmgr.desktop/decisions/decisions.db-wal",
     ".local/share/dev.tmgr.desktop/decisions/decisions.db-shm",
     ".local/share/dev.tmgr.desktop/decisions/decisions.db-journal",
     ".local/share/dev.tmgr.desktop/decisions/phone-audit.jsonl",
+    ".local/share/dev.tmgr.desktop/decisions/phone-audit.jsonl.1",
     "Library/Application Support/Google/Chrome",
     "Library/Application Support/Firefox",
     "Library/Safari",
@@ -1880,6 +1882,7 @@ mod tests {
                 "decisions.db-wal",
                 "decisions.db-shm",
                 "phone-audit.jsonl",
+                "phone-audit.jsonl.1",
             ] {
                 assert!(deny.contains(&dir.join(file)), "{base} {file}");
             }
