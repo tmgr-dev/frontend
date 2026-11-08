@@ -48,6 +48,25 @@ pub struct SnapshotCard {
     pub state: String,
     pub session_gone: bool,
     pub projection: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub live: Option<CardLive>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct CardLive {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listening: Option<bool>,
+    #[serde(default)]
+    pub messages: Vec<LiveMessage>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct LiveMessage {
+    pub seq: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivered_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub saved_ms: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -66,6 +85,7 @@ pub enum Action {
     Answer,
     Defer,
     Dismiss,
+    Chat,
 }
 
 impl Action {
@@ -74,6 +94,7 @@ impl Action {
             Action::Answer => "answer",
             Action::Defer => "defer",
             Action::Dismiss => "dismiss",
+            Action::Chat => "chat",
         }
     }
 }

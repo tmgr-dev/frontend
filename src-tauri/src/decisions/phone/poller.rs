@@ -91,6 +91,7 @@ impl Phones {
           state: v.state.clone(),
           session_gone: v.session_gone,
           projection: p.json,
+          live: None,
         });
       }
     }

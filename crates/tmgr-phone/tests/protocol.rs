@@ -95,6 +95,7 @@ fn snapshot_body() -> SnapshotBody {
             state: "open".into(),
             session_gone: false,
             projection: CARD_PROJECTION.into(),
+            live: None,
         }],
         more: 0,
     }
@@ -782,4 +783,84 @@ fn compressed_or_short_public_keys_are_refused() {
     compressed[0] = 2;
     let r = seal(&compressed, MAILBOX, Dir::D2p, Kind::Snapshot, "1", b"x");
     assert_eq!(r.err(), Some(Error::BadKey));
+}
+
+fn live_card() -> CardLive {
+    CardLive {
+        listening: Some(true),
+        messages: vec![
+            LiveMessage {
+                seq: 3,
+                delivered_ms: Some(NOW - 5),
+                saved_ms: None,
+            },
+            LiveMessage {
+                seq: 5,
+                delivered_ms: None,
+                saved_ms: Some(NOW - 1),
+            },
+            LiveMessage {
+                seq: 6,
+                delivered_ms: None,
+                saved_ms: None,
+            },
+        ],
+    }
+}
+
+#[test]
+fn snapshot_with_live_seals_and_opens() {
+    let (d, p) = (desktop(), phone());
+    let pr = pairing(&d, &p);
+    let mut body = snapshot_body();
+    body.cards[0].live = Some(live_card());
+    let sealed = seal_snapshot(&p.kex_pub, &pr, &unhex(&d.sign_secret), &body).unwrap();
+    let opened = open_snapshot(&unhex(&p.kex_secret), &pr, &d.sign_pub, &sealed).unwrap();
+    assert_eq!(opened, body);
+}
+
+#[test]
+fn snapshot_json_without_live_still_parses() {
+    let json = serde_json::to_string(&snapshot_body()).unwrap();
+    assert!(!json.contains("\"live\""));
+    let parsed: SnapshotBody = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.cards[0].live, None);
+}
+
+#[test]
+fn live_omits_empty_optionals_and_defaults_messages() {
+    let v = serde_json::to_value(live_card()).unwrap();
+    assert_eq!(v["messages"][1], json!({"seq": 5, "saved_ms": NOW - 1}));
+    assert_eq!(v["messages"][2], json!({"seq": 6}));
+    let bare: CardLive = serde_json::from_str("{}").unwrap();
+    assert_eq!(bare, CardLive::default());
+    assert!(serde_json::to_value(&bare)
+        .unwrap()
+        .get("listening")
+        .is_none());
+}
+
+#[test]
+fn chat_action_round_trips_in_a_sealed_answer() {
+    let (d, p) = (desktop(), phone());
+    let pr = pairing(&d, &p);
+    let mut a = answer_body();
+    a.action = Action::Chat;
+    a.choice = None;
+    assert_eq!(Action::Chat.as_str(), "chat");
+    let sealed = seal_answer(&d.kex_pub, &pr, &unhex(&p.sign_secret), &a).unwrap();
+    assert_eq!(
+        open_answer(&unhex(&d.kex_secret), &pr, &p.sign_pub, &sealed).unwrap(),
+        a
+    );
+    assert_ne!(
+        answer_signed(&pr, &a),
+        answer_signed(
+            &pr,
+            &AnswerBody {
+                action: Action::Answer,
+                ..a
+            }
+        )
+    );
 }
