@@ -1034,7 +1034,9 @@
 				initial.value = current();
 				if (kept.length) {
 					notify(
-						t(`board.categories.pane.toasts.kept.${kept.join('And')}`),
+						t(
+							`board.categories.pane.toasts.kept.${kept.length === 2 ? 'codeAndParent' : kept[0]}`,
+						),
 						t('board.categories.pane.toasts.otherSaved'),
 						'destructive',
 					);

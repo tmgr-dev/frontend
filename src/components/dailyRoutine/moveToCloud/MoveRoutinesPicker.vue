@@ -54,10 +54,15 @@
 							class="mt-0.5 flex items-center gap-2 text-2xs text-ink-subtle"
 						>
 							<span v-if="r.pattern" class="capitalize">{{
-								$t(
+								$te(
 									'dailyRoutine.editModal.freq.' +
 										r.pattern.frequency.toLowerCase(),
 								)
+									? $t(
+											'dailyRoutine.editModal.freq.' +
+												r.pattern.frequency.toLowerCase(),
+										)
+									: r.pattern.frequency.toLowerCase()
 							}}</span>
 							<span v-if="r.scheduledDate">{{ r.scheduledDate }}</span>
 						</span>

@@ -248,14 +248,14 @@
 	const windowLabel = computed(() =>
 		t(
 			'board.dashboard.teamActivityWidget.windows.' +
-				windowKeys[currentWindow.value],
+				(windowKeys[currentWindow.value] ?? 'd7'),
 		),
 	);
 
 	const subtitle = computed(() =>
 		t(
 			'board.dashboard.teamActivityWidget.subtitles.' +
-				windowKeys[currentWindow.value],
+				(windowKeys[currentWindow.value] ?? 'd7'),
 		),
 	);
 
