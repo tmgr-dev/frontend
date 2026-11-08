@@ -33,6 +33,9 @@ export const i18n = createI18n({
 
 export const t = i18n.global.t;
 
+export const te = (key: string): boolean =>
+	(i18n.global.te as (key: string) => boolean)(key);
+
 export const currentLocale = (): LocaleCode =>
 	i18n.global.locale.value as LocaleCode;
 

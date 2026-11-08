@@ -1,4 +1,4 @@
-import { currentLocale, i18n, t } from '@/i18n';
+import { currentLocale, t, te } from '@/i18n';
 import type {
 	CardKind,
 	CardLinkKind,
@@ -9,7 +9,7 @@ import type {
 
 export const kindLabel = (kind: CardKind): string => {
 	const key = `decisions.kind.${kind}`;
-	return i18n.global.te(key) ? t(key) : kind;
+	return te(key) ? t(key) : kind;
 };
 
 export const isHttpUrl = (value: string): boolean => {

@@ -175,7 +175,7 @@ export const start = () => {
 		);
 		sessionName = info.name;
 		renderLabels();
-		const state = lastState ?? info.state;
+		const state = lastState ?? (info.state as RunnerState);
 		lastState = state;
 		controller.handleFrame({ type: 'state', state });
 	};

@@ -188,7 +188,7 @@
 </template>
 
 <script lang="ts">
-	import { i18n, t } from '@/i18n';
+	import { t, te } from '@/i18n';
 	import { defineComponent, type PropType } from 'vue';
 	import {
 		agentWaitNotice,
@@ -298,7 +298,7 @@
 			},
 			groupKind(kind: string): string {
 				const key = `decisions.diff.groupKind.${kind}`;
-				return i18n.global.te(key) ? t(key) : kind;
+				return te(key) ? t(key) : kind;
 			},
 			rangeLabel(base?: string, head?: string): string {
 				return `${base ?? ''}..${head ?? ''}`;
