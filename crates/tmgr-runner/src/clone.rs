@@ -31,6 +31,15 @@ fn marked(homes: &Path, id: (u64, u64), path: &Path, repo_id: (u64, u64)) -> boo
         .is_some_and(|m| m.repo == repo_id && Path::new(&m.path) == path)
 }
 
+/// Whether the host recorded `clone` as a clone it made, whatever folder it sits in.
+pub fn is_marked_clone(homes: &Path, clone: &Path) -> bool {
+    let Ok(m) = std::fs::metadata(clone) else {
+        return false;
+    };
+    read_marker(&marker_file(homes, (m.dev(), m.ino())))
+        .is_some_and(|k| Path::new(&k.path) == clone)
+}
+
 fn sweep_markers(dir: &Path) {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return;
