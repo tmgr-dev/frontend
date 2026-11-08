@@ -104,7 +104,7 @@ tmgr hook install claude
 tmgr hook install codex
 ```
 
-Нужны iOS-приложение TMGR и вход в `tmgr` (`tmgr login`). Те же инструменты есть в пакете [@tmgr/notify](https://www.npmjs.com/package/@tmgr/notify) для любого MCP-клиента; он работает с токеном из Settings → Agent alerts.
+Нужны iOS-приложение TMGR и вход в `tmgr` (`tmgr login`). Те же инструменты есть в пакете [@tmgr/notify](https://www.npmjs.com/package/@tmgr/notify) для любого MCP-клиента; он работает с токеном из раздела Настройки → Оповещения агентов.
 
 ## Агенты разбирают ваш бэклог {#autopilot}
 

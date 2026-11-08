@@ -23,7 +23,7 @@ Pick your client below and replace the placeholder with your token. You need Nod
 
 ## Task MCP (tmgr) {#task-mcp}
 
-A remote HTTP MCP server to work with tasks, statuses, comments, time tracking and routines. Generate a device token in [Settings → Smart devices](/settings?tab=device) and send it in the `X-Smart-Device-Token` header.
+A remote HTTP MCP server to work with tasks, statuses, comments, time tracking and routines. Generate a device token in [Settings → Smart Devices](/settings?tab=device) and send it in the `X-Smart-Device-Token` header.
 
 ### Claude Code {#task-mcp-claude-code}
 
