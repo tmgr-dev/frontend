@@ -51,10 +51,7 @@ impl Phones {
   }
 
   fn touch(&self, mailbox: &str, now: i64) {
-    if let Ok(Some(mut pin)) = self.pins.get(mailbox) {
-      pin.last_used_ms = now;
-      let _ = self.pins.put(&pin);
-    }
+    let _ = self.pins.update(mailbox, |p| p.last_used_ms = now);
   }
 
   pub(super) fn handle_answer(&self, listed: &Pin, msg: &RelayMsg) -> Result<(), String> {
@@ -86,7 +83,9 @@ impl Phones {
       issued_at: body.issued_at,
     };
     let out = self.hub.answer_from_phone(&req, now)?;
-    self.touch(&pin.mailbox, now);
+    if out.result == AckResult::Applied {
+      self.touch(&pin.mailbox, now);
+    }
     self.audit.append(
       now,
       "answer",

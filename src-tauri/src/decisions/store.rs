@@ -991,10 +991,6 @@ impl Store {
       .query_row("SELECT ack FROM phone_answers WHERE answer_id=?1", [&r.answer_id], |x| x.get(0))
       .optional()
       .map_err(sql_err)?;
-    if let Some(stored) = seen {
-      let first: StoredAck = serde_json::from_str(&stored).map_err(json_err)?;
-      return Ok(PhoneOutcome::rejected(AckResult::Duplicate, first.winner, first.label));
-    }
     let record = |this: &Self, out: PhoneOutcome| -> Result<PhoneOutcome, String> {
       let ack = serde_json::to_string(&StoredAck {
         result: out.result.as_str().to_owned(),
@@ -1013,7 +1009,14 @@ impl Store {
     };
     let reject = |this: &Self, result| record(this, PhoneOutcome::rejected(result, None, None));
     if tmgr_phone::check_issued_at(r.issued_at, now).is_err() {
+      if seen.is_some() {
+        return Ok(PhoneOutcome::rejected(AckResult::Expired, None, None));
+      }
       return reject(self, AckResult::Expired);
+    }
+    if let Some(stored) = seen {
+      let first: StoredAck = serde_json::from_str(&stored).map_err(json_err)?;
+      return Ok(PhoneOutcome::rejected(AckResult::Duplicate, first.winner, first.label));
     }
     if self.resolve(&r.card_id)?.as_deref() != Some(r.card_id.as_str()) {
       return reject(self, AckResult::Closed);
