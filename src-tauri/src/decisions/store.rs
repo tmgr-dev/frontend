@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use tmgr_phone::AckResult;
 use tmgr_ipc::decisions::{
   new_card_id, valid_card_id, CardIn, Check, DiffSpec, Event, Fact, Found, Inbox, LineComment, LinkItem, Links, Opt,
-  PatchIn, Secret, Source, ThreadRef, MAX_DIFFS, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES, OUTCOME_CREATED, OUTCOME_FINAL,
+  PatchIn, PendingDelivery, Secret, Source, ThreadRef, MAX_DIFFS, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES, OUTCOME_CREATED, OUTCOME_FINAL,
   OUTCOME_SIMILAR, OUTCOME_UPDATED,
 };
 
@@ -35,6 +35,7 @@ const SIMILAR_SCAN: usize = 50;
 const SIMILAR_MAX: usize = 3;
 const SIMILAR_MIN_SCORE: f64 = 0.8;
 const FOUND_TEXT_MAX: usize = 2000;
+const UNPICKED_MS: i64 = 30 * 60 * 1000;
 const NOT_TASK_KEYS: [&str; 8] = ["utf", "sha", "gpt", "iso", "rfc", "node", "python", "es"];
 
 pub const KINDS: [&str; 7] = ["decision", "review", "release", "check", "question", "permission", "stopped"];
@@ -144,8 +145,18 @@ pub struct CardView {
   pub reply_via: String,
   pub answer: Option<Event>,
   pub messages: Vec<MessageView>,
+  pub unpicked: bool,
   #[serde(skip)]
   pub rev: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct PendingTaskComment {
+  pub card_id: String,
+  pub seq: u64,
+  pub task_id: i64,
+  pub origin: String,
+  pub body: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -474,6 +485,52 @@ fn found(r: &Row, c: &CardIn, answer: Option<&Event>) -> Found {
   }
 }
 
+fn expects_agent(c: &CardIn) -> bool {
+  matches!(c.reply_via.as_str(), "mcp" | "cli") || (c.reply_via == "hook" && c.kind == "stopped")
+}
+
+fn cloud_task(c: &CardIn) -> Option<(String, i64)> {
+  let urls = c.links.task.iter().map(String::as_str).chain(c.links.items.iter().filter(|i| i.kind == "task").map(|i| i.url.as_str()));
+  urls.filter_map(parse_cloud_task).next()
+}
+
+fn parse_cloud_task(link: &str) -> Option<(String, i64)> {
+  let url = url::Url::parse(link.trim()).ok()?;
+  if !matches!(url.scheme(), "http" | "https") {
+    return None;
+  }
+  let host = url.host_str()?;
+  let segments: Vec<&str> = url.path_segments()?.filter(|s| !s.is_empty()).collect();
+  let [ws, "tasks", id] = segments[..] else { return None };
+  if ws.is_empty() || id.is_empty() || !id.bytes().all(|b| b.is_ascii_digit()) {
+    return None;
+  }
+  let origin = match url.port() {
+    Some(port) => format!("{}://{host}:{port}", url.scheme()),
+    None => format!("{}://{host}", url.scheme()),
+  };
+  Some((origin, id.parse().ok()?))
+}
+
+fn comment_body(c: &CardIn, a: &Event, card_id: &str) -> String {
+  let mut lines = vec![format!("Decision answered: {}", c.title)];
+  if let Some(q) = c.question.as_deref().filter(|q| !q.trim().is_empty()) {
+    lines.push(format!("Question: {q}"));
+  }
+  if let Some(choice) = a.choice_label.as_deref().or(a.choice.as_deref()).filter(|v| !v.is_empty()) {
+    lines.push(format!("Answer: {choice}"));
+  }
+  if let Some(t) = a.free_text.as_deref().filter(|t| !t.trim().is_empty()) {
+    lines.push(format!("Free text: {t}"));
+  }
+  if let Some(n) = a.note.as_deref().filter(|n| !n.trim().is_empty()) {
+    lines.push(format!("Note: {n}"));
+  }
+  lines.push(format!("Card: {card_id}"));
+  lines.push(format!("[decision {card_id}#{}]", a.seq));
+  lines.join("\n\n")
+}
+
 fn is_live(state: &str) -> bool {
   state == "open" || state == "deferred"
 }
@@ -589,6 +646,9 @@ impl Store {
     let conn = Connection::open(path).map_err(sql_err)?;
     conn.busy_timeout(std::time::Duration::from_secs(5)).map_err(sql_err)?;
     let _ = conn.pragma_update(None, "journal_mode", "WAL");
+    let had_comments: bool = conn
+      .query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='task_comments')", [], |r| r.get(0))
+      .map_err(sql_err)?;
     conn
       .execute_batch(
         "CREATE TABLE IF NOT EXISTS cards(
@@ -613,6 +673,8 @@ impl Store {
          CREATE TABLE IF NOT EXISTS deliveries(
            card_id TEXT NOT NULL, seq INTEGER NOT NULL, state TEXT NOT NULL, via TEXT NOT NULL,
            detail TEXT NOT NULL, at_ms INTEGER NOT NULL, PRIMARY KEY(card_id, seq));
+         CREATE TABLE IF NOT EXISTS task_comments(
+           card_id TEXT NOT NULL, seq INTEGER NOT NULL, posted_ms INTEGER NOT NULL, PRIMARY KEY(card_id, seq));
          UPDATE deliveries SET state='undelivered', detail='desktop restarted' WHERE state='queued';",
       )
       .map_err(sql_err)?;
@@ -627,6 +689,23 @@ impl Store {
       .map_err(sql_err)?;
     if has_side == 0 {
       conn.execute("ALTER TABLE messages ADD COLUMN side TEXT", []).map_err(sql_err)?;
+    }
+    let has_at: i64 = conn
+      .query_row("SELECT COUNT(*) FROM pragma_table_info('events') WHERE name='at_ms'", [], |r| r.get(0))
+      .map_err(sql_err)?;
+    if has_at == 0 {
+      conn.execute("ALTER TABLE events ADD COLUMN at_ms INTEGER", []).map_err(sql_err)?;
+    }
+    if !had_comments {
+      conn
+        .execute(
+          "INSERT OR IGNORE INTO task_comments(card_id, seq, posted_ms)
+           SELECT d.card_id, d.seq, 0 FROM deliveries d JOIN cards c ON c.id=d.card_id
+           WHERE d.state IN ('delivered','sent') AND c.state IN ('answered','dismissed')
+             AND d.seq = json_extract(c.answer, '$.seq')",
+          [],
+        )
+        .map_err(sql_err)?;
     }
     Ok(Store { conn })
   }
@@ -670,13 +749,15 @@ impl Store {
     let same = self
       .conn
       .query_row(
-        "SELECT state=?3 AND via=?4 AND detail=?5 FROM deliveries WHERE card_id=?1 AND seq=?2",
+        "SELECT state=?3 AND via=?4 AND detail=?5,
+                (state IN ('delivered','sent') AND ?3 NOT IN ('delivered','sent')) OR (state='delivered' AND ?3='sent')
+         FROM deliveries WHERE card_id=?1 AND seq=?2",
         params![id, seq as i64, state, via, detail],
-        |r| r.get::<_, bool>(0),
+        |r| Ok((r.get::<_, bool>(0)?, r.get::<_, bool>(1)?)),
       )
       .optional()
       .map_err(sql_err)?;
-    if same == Some(true) {
+    if matches!(same, Some((true, _) | (_, true))) {
       return Ok(Recorded::Same);
     }
     self
@@ -929,7 +1010,39 @@ impl Store {
     self.conn.query_row(&format!("SELECT {CARD_COLS} FROM cards WHERE id=?1"), [id], row).optional().map_err(sql_err)
   }
 
-  fn view(&self, r: Row) -> Result<CardView, String> {
+  fn answered_ms(&self, r: &Row, seq: u64) -> Result<i64, String> {
+    self
+      .conn
+      .query_row(
+        "SELECT COALESCE((SELECT at_ms FROM events WHERE card_id=?1 AND seq=?2),
+                         (SELECT updated_ms FROM cards WHERE id=?1),
+                         (SELECT at_ms FROM deliveries WHERE card_id=?1 AND seq=?2),
+                         ?3)",
+        params![r.id, seq as i64, r.created_ms],
+        |t| t.get(0),
+      )
+      .map_err(sql_err)
+  }
+
+  fn delivery_state(&self, id: &str, seq: u64) -> Result<Option<String>, String> {
+    self
+      .conn
+      .query_row("SELECT state FROM deliveries WHERE card_id=?1 AND seq=?2", params![id, seq as i64], |t| t.get(0))
+      .optional()
+      .map_err(sql_err)
+  }
+
+  fn unpicked(&self, r: &Row, c: &CardIn, answer: Option<&Event>, now: i64) -> Result<bool, String> {
+    let Some(a) = answer.filter(|a| !a.deferred && matches!(r.state.as_str(), "answered" | "dismissed")) else {
+      return Ok(false);
+    };
+    if !expects_agent(c) || matches!(self.delivery_state(&r.id, a.seq)?.as_deref(), Some("delivered" | "sent")) {
+      return Ok(false);
+    }
+    Ok(now - self.answered_ms(r, a.seq)? > UNPICKED_MS)
+  }
+
+  fn view(&self, r: Row, now: i64) -> Result<CardView, String> {
     let c: CardIn = serde_json::from_str(&r.card).map_err(json_err)?;
     let answer = r.answer.as_deref().map(serde_json::from_str::<Event>).transpose().map_err(json_err)?;
     let live = is_live(&r.state);
@@ -968,6 +1081,7 @@ impl Store {
       .collect::<Result<Vec<_>, _>>()
       .map_err(sql_err)?;
     let rev = self.revision(&r, &messages)?;
+    let unpicked = self.unpicked(&r, &c, answer.as_ref(), now)?;
     Ok(CardView {
       id: r.id,
       created_ms: r.created_ms,
@@ -995,6 +1109,7 @@ impl Store {
       reply_via: c.reply_via,
       answer,
       messages,
+      unpicked,
       rev,
     })
   }
@@ -1044,11 +1159,19 @@ impl Store {
   }
 
   pub fn get(&self, id: &str) -> Result<Option<CardView>, String> {
+    self.get_at(id, now_ms())
+  }
+
+  pub fn get_at(&self, id: &str, now: i64) -> Result<Option<CardView>, String> {
     let Some(id) = self.resolve(id)? else { return Ok(None) };
-    self.raw(&id)?.map(|r| self.view(r)).transpose()
+    self.raw(&id)?.map(|r| self.view(r, now)).transpose()
   }
 
   pub fn list(&self) -> Result<Vec<CardView>, String> {
+    self.list_at(now_ms())
+  }
+
+  pub fn list_at(&self, now: i64) -> Result<Vec<CardView>, String> {
     let mut stmt = self
       .conn
       .prepare(&format!(
@@ -1058,7 +1181,7 @@ impl Store {
       ))
       .map_err(sql_err)?;
     let rows = stmt.query_map([], row).map_err(sql_err)?.collect::<Result<Vec<_>, _>>().map_err(sql_err)?;
-    rows.into_iter().map(|r| self.view(r)).collect()
+    rows.into_iter().map(|r| self.view(r, now)).collect()
   }
 
   pub fn open_count(&self) -> usize {
@@ -1090,6 +1213,66 @@ impl Store {
     }
     let c = serde_json::from_str(&r.card).map_err(json_err)?;
     Ok((r, c))
+  }
+
+  pub fn pending_task_comments(&self) -> Result<Vec<PendingTaskComment>, String> {
+    let mut stmt = self
+      .conn
+      .prepare(&format!(
+        "SELECT {CARD_COLS} FROM cards c WHERE state IN ('answered','dismissed') AND answer IS NOT NULL
+           AND NOT EXISTS(SELECT 1 FROM task_comments t WHERE t.card_id=c.id AND t.seq=json_extract(c.answer, '$.seq'))
+         ORDER BY created_ms, rowid"
+      ))
+      .map_err(sql_err)?;
+    let rows = stmt.query_map([], row).map_err(sql_err)?.collect::<Result<Vec<_>, _>>().map_err(sql_err)?;
+    let mut out = Vec::new();
+    for r in rows {
+      let (Some(a), Ok(c)) = (parse_answer(&r)?, serde_json::from_str::<CardIn>(&r.card)) else { continue };
+      let text = a.free_text.as_deref().is_some_and(|t| !t.trim().is_empty());
+      if a.deferred || (a.dismissed && !text) {
+        continue;
+      }
+      let Some((origin, task_id)) = cloud_task(&c) else { continue };
+      out.push(PendingTaskComment { body: comment_body(&c, &a, &r.id), card_id: r.id, seq: a.seq, task_id, origin });
+    }
+    Ok(out)
+  }
+
+  pub fn mark_task_comment(&self, card_id: &str, seq: u64) -> Result<(), String> {
+    self
+      .conn
+      .execute(
+        "INSERT OR IGNORE INTO task_comments(card_id, seq, posted_ms) VALUES(?1, ?2, ?3)",
+        params![card_id, seq as i64, now_ms()],
+      )
+      .map(drop)
+      .map_err(sql_err)
+  }
+
+  pub fn pending_delivery(&self) -> Result<Vec<PendingDelivery>, String> {
+    let mut stmt = self
+      .conn
+      .prepare(&format!("SELECT {CARD_COLS} FROM cards WHERE state IN ('answered','dismissed') AND answer IS NOT NULL"))
+      .map_err(sql_err)?;
+    let rows = stmt.query_map([], row).map_err(sql_err)?.collect::<Result<Vec<_>, _>>().map_err(sql_err)?;
+    let mut out = Vec::new();
+    for r in rows {
+      let (Some(a), Ok(c)) = (parse_answer(&r)?, serde_json::from_str::<CardIn>(&r.card)) else { continue };
+      let state = self.delivery_state(&r.id, a.seq)?;
+      if a.deferred || !expects_agent(&c) || matches!(state.as_deref(), Some("delivered" | "sent")) {
+        continue;
+      }
+      out.push(PendingDelivery {
+        answered_ms: self.answered_ms(&r, a.seq)?,
+        task: c.links.task.clone().or_else(|| title_key(&c.title)),
+        delivery_state: state.unwrap_or_else(|| "none".into()),
+        card_id: r.id,
+        seq: a.seq,
+        title: c.title,
+      });
+    }
+    out.sort_by(|x, y| x.answered_ms.cmp(&y.answered_ms).then_with(|| x.card_id.cmp(&y.card_id)));
+    Ok(out)
   }
 
   pub fn answer(&mut self, id: &str, a: AnswerIn) -> Result<(Event, CardIn), String> {
@@ -1147,7 +1330,7 @@ impl Store {
     };
     let json = serde_json::to_string(&event).map_err(json_err)?;
     conn
-      .execute("INSERT INTO events(card_id, seq, json) VALUES(?1, ?2, ?3)", params![id, seq as i64, json])
+      .execute("INSERT INTO events(card_id, seq, json, at_ms) VALUES(?1, ?2, ?3, ?4)", params![id, seq as i64, json, now_ms()])
       .map_err(sql_err)?;
     conn.execute("UPDATE cards SET state=?2, answer=?3, session_gone=CASE WHEN ?2='deferred' THEN session_gone ELSE 0 END WHERE id=?1", params![id, state, json])
       .map_err(sql_err)?;
@@ -1243,7 +1426,7 @@ impl Store {
       return record(self, PhoneOutcome::rejected(AckResult::Closed, winner, label));
     }
     let card: CardIn = serde_json::from_str(&row.card).map_err(json_err)?;
-    let view = self.view(row)?;
+    let view = self.view(row, now_ms())?;
     let target = delivery_target(&self.conn, &r.card_id).unwrap_or_default();
     match phone::project(&view, &target) {
       Some(p) if p.digest == r.card_digest && target == r.session => {}
@@ -2515,5 +2698,232 @@ mod tests {
     let json = serde_json::to_value(s.get(&id).unwrap().unwrap()).unwrap();
     assert_eq!(json["delivery"]["detail"], "w");
     assert_eq!(json["push"], false);
+  }
+
+  const CLOUD_TASK: &str = "https://tmgr.dev/ws/tasks/211";
+
+  fn linked(title: &str, task: &str) -> CardIn {
+    CardIn { links: Links { task: Some(task.into()), ..Default::default() }, ..card(title) }
+  }
+
+  fn delivery_state(s: &Store, id: &str, seq: u64) -> (String, String, String) {
+    s.conn
+      .query_row("SELECT state, via, detail FROM deliveries WHERE card_id=?1 AND seq=?2", params![id, seq as i64], |r| {
+        Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+      })
+      .unwrap()
+  }
+
+  #[test]
+  fn a_delivered_or_sent_row_is_never_downgraded() {
+    let mut s = mem();
+    let id = s.create(card("Q")).unwrap().id;
+    s.record_delivery(&id, 1, "delivered", "agent", "").unwrap();
+    assert_eq!(s.record_delivery(&id, 1, "undelivered", "runner", "session closed").unwrap(), Recorded::Same);
+    assert_eq!(delivery_state(&s, &id, 1), ("delivered".into(), "agent".into(), "".into()));
+    s.record_delivery(&id, 2, "sent", "claude", "").unwrap();
+    assert_eq!(s.record_delivery(&id, 2, "queued", "runner", "w").unwrap(), Recorded::Same);
+    assert_eq!(delivery_state(&s, &id, 2).0, "sent");
+    assert_eq!(s.record_delivery(&id, 2, "delivered", "agent", "").unwrap(), Recorded::Changed);
+    assert_eq!(s.record_delivery(&id, 2, "sent", "claude", "").unwrap(), Recorded::Same);
+    assert_eq!(delivery_state(&s, &id, 2).0, "delivered");
+    s.record_delivery(&id, 3, "undelivered", "runner", "x").unwrap();
+    assert_eq!(s.record_delivery(&id, 3, "queued", "runner", "w").unwrap(), Recorded::Changed);
+  }
+
+  #[test]
+  fn answers_store_their_time_in_the_event_row() {
+    let mut s = mem();
+    let id = s.create(card("Q")).unwrap().id;
+    let before = now_ms();
+    s.answer(&id, pick_a()).unwrap();
+    let at: Option<i64> =
+      s.conn.query_row("SELECT at_ms FROM events WHERE card_id=?1 AND seq=1", [&id], |r| r.get(0)).unwrap();
+    assert!(at.unwrap() >= before);
+  }
+
+  #[test]
+  fn a_final_answer_on_a_cloud_task_is_pending_once() {
+    let mut s = mem();
+    let id = s.create(linked("Ship?", CLOUD_TASK)).unwrap().id;
+    assert!(s.pending_task_comments().unwrap().is_empty());
+    s.answer(&id, pick_a()).unwrap();
+    let _ = s.answer(&id, pick_a());
+    let pending = s.pending_task_comments().unwrap();
+    assert_eq!(pending.len(), 1);
+    let p = &pending[0];
+    assert_eq!((p.card_id.as_str(), p.seq, p.task_id, p.origin.as_str()), (id.as_str(), 1, 211, "https://tmgr.dev"));
+    assert!(p.body.contains(&format!("[decision {id}#1]")));
+    assert!(p.body.contains("Ship?") && p.body.contains("Ship") && p.body.contains(&id));
+    s.mark_task_comment(&id, 1).unwrap();
+    s.mark_task_comment(&id, 1).unwrap();
+    assert!(s.pending_task_comments().unwrap().is_empty());
+    let _ = s.answer(&id, pick_a());
+    assert!(s.pending_task_comments().unwrap().is_empty());
+  }
+
+  #[test]
+  fn body_carries_question_free_text_and_note() {
+    let mut s = mem();
+    let c = CardIn { question: Some("Which way?".into()), ..linked("Route", CLOUD_TASK) };
+    let id = s.create(c).unwrap().id;
+    s.answer(&id, AnswerIn { free_text: Some("Take the long one".into()), note: Some("trust me".into()), ..Default::default() })
+      .unwrap();
+    let body = s.pending_task_comments().unwrap().remove(0).body;
+    for part in ["Route", "Which way?", "Take the long one", "trust me", &id] {
+      assert!(body.contains(part), "{part} missing in {body}");
+    }
+  }
+
+  #[test]
+  fn task_links_are_found_in_items_and_unusable_ones_are_skipped() {
+    let mut s = mem();
+    let items = CardIn {
+      links: Links {
+        items: vec![LinkItem { kind: "task".into(), url: "http://localhost:8080/team/tasks/9".into(), label: None }],
+        ..Default::default()
+      },
+      ..card("Items")
+    };
+    let a = s.create(items).unwrap().id;
+    let bare = s.create(linked("Bare", "TM-5")).unwrap().id;
+    let none = s.create(card("None")).unwrap().id;
+    let deferred = s.create(linked("Later", CLOUD_TASK)).unwrap().id;
+    let bare_dismissed = s.create(linked("Dismissed", CLOUD_TASK)).unwrap().id;
+    let text_dismissed = s.create(linked("Dismissed with text", "https://tmgr.dev/ws/tasks/12")).unwrap().id;
+    for id in [&a, &bare, &none] {
+      s.answer(id, pick_a()).unwrap();
+    }
+    s.answer(&deferred, AnswerIn { deferred: true, ..Default::default() }).unwrap();
+    s.answer(&bare_dismissed, AnswerIn { dismissed: true, ..Default::default() }).unwrap();
+    s.answer(&text_dismissed, AnswerIn { dismissed: true, free_text: Some("not needed".into()), ..Default::default() })
+      .unwrap();
+    let mut got: Vec<_> = s.pending_task_comments().unwrap().into_iter().map(|p| (p.card_id, p.task_id, p.origin)).collect();
+    got.sort();
+    let mut want = vec![
+      (a, 9, "http://localhost:8080".to_owned()),
+      (text_dismissed, 12, "https://tmgr.dev".to_owned()),
+    ];
+    want.sort();
+    assert_eq!(got, want);
+  }
+
+  #[test]
+  fn history_picked_up_before_the_table_existed_is_backfilled_and_the_rest_is_pending() {
+    let dir = tempfile::Builder::new().prefix("ds").tempdir_in("/tmp").unwrap();
+    let path = dir.path().join("decisions.db");
+    let (picked, unpicked, none) = {
+      let mut s = Store::open(&path).unwrap();
+      let picked = s.create(linked("Picked", CLOUD_TASK)).unwrap().id;
+      let unpicked = s.create(linked("Unpicked", CLOUD_TASK)).unwrap().id;
+      let none = s.create(linked("Old", CLOUD_TASK)).unwrap().id;
+      for id in [&picked, &unpicked, &none] {
+        s.answer(id, pick_a()).unwrap();
+      }
+      s.record_delivery(&picked, 1, "delivered", "agent", "").unwrap();
+      s.record_delivery(&unpicked, 1, "undelivered", "runner", "session closed").unwrap();
+      s.conn.execute("DROP TABLE task_comments", []).unwrap();
+      (picked, unpicked, none)
+    };
+    let s = Store::open(&path).unwrap();
+    let mut got: Vec<_> = s.pending_task_comments().unwrap().into_iter().map(|p| p.card_id).collect();
+    got.sort();
+    let mut want = vec![unpicked, none];
+    want.sort();
+    assert_eq!(got, want);
+    let kept: i64 = s.conn.query_row("SELECT COUNT(*) FROM task_comments WHERE card_id=?1", [&picked], |r| r.get(0)).unwrap();
+    assert_eq!(kept, 1);
+    drop(s);
+    let reopened = Store::open(&path).unwrap();
+    assert_eq!(reopened.pending_task_comments().unwrap().len(), 2);
+  }
+
+  fn expecting(title: &str, via: &str, kind: &str) -> CardIn {
+    CardIn { reply_via: via.into(), kind: kind.into(), ..card(title) }
+  }
+
+  const HALF_HOUR: i64 = 30 * 60 * 1000;
+
+  fn answered_at(s: &mut Store, c: CardIn, at: i64) -> String {
+    let id = s.create(c).unwrap().id;
+    s.answer(&id, pick_a()).unwrap();
+    s.conn.execute("UPDATE events SET at_ms=?2 WHERE card_id=?1", params![id, at]).unwrap();
+    id
+  }
+
+  fn unpicked_at(s: &Store, id: &str, now: i64) -> bool {
+    s.get_at(id, now).unwrap().unwrap().unpicked
+  }
+
+  #[test]
+  fn unpicked_flips_after_thirty_minutes_without_a_pickup() {
+    let mut s = mem();
+    let id = answered_at(&mut s, expecting("Q", "mcp", "decision"), 1_000);
+    assert!(!unpicked_at(&s, &id, 1_000 + HALF_HOUR));
+    assert!(unpicked_at(&s, &id, 1_001 + HALF_HOUR));
+    s.record_delivery(&id, 1, "undelivered", "runner", "session closed").unwrap();
+    assert!(unpicked_at(&s, &id, 1_001 + HALF_HOUR));
+    s.record_delivery(&id, 1, "delivered", "agent", "").unwrap();
+    assert!(!unpicked_at(&s, &id, 1_001 + HALF_HOUR));
+    let sent = answered_at(&mut s, expecting("Q2", "cli", "decision"), 1_000);
+    s.record_delivery(&sent, 1, "sent", "claude", "").unwrap();
+    assert!(!unpicked_at(&s, &sent, 10 * HALF_HOUR));
+  }
+
+  #[test]
+  fn unpicked_only_counts_cards_that_expect_an_agent() {
+    let mut s = mem();
+    let late = 10 * HALF_HOUR;
+    let cli = answered_at(&mut s, expecting("A", "cli", "decision"), 1);
+    let stopped = answered_at(&mut s, expecting("B", "hook", "stopped"), 1);
+    let permission = answered_at(&mut s, expecting("C", "hook", "permission"), 1);
+    assert!(unpicked_at(&s, &cli, late) && unpicked_at(&s, &stopped, late));
+    assert!(!unpicked_at(&s, &permission, late));
+    let open = s.create(expecting("D", "mcp", "decision")).unwrap().id;
+    assert!(!unpicked_at(&s, &open, late));
+    let dismissed = s.create(expecting("E", "mcp", "decision")).unwrap().id;
+    s.answer(&dismissed, AnswerIn { dismissed: true, ..Default::default() }).unwrap();
+    assert!(unpicked_at(&s, &dismissed, now_ms() + late));
+    let deferred = s.create(expecting("F", "mcp", "decision")).unwrap().id;
+    s.answer(&deferred, AnswerIn { deferred: true, ..Default::default() }).unwrap();
+    assert!(!unpicked_at(&s, &deferred, now_ms() + late));
+  }
+
+  #[test]
+  fn answer_time_falls_back_to_the_card_update_then_the_delivery() {
+    let mut s = mem();
+    let id = answered_at(&mut s, expecting("Q", "mcp", "decision"), 0);
+    s.conn.execute("UPDATE events SET at_ms=NULL WHERE card_id=?1", [&id]).unwrap();
+    s.conn.execute("UPDATE cards SET updated_ms=5000 WHERE id=?1", [&id]).unwrap();
+    assert!(!unpicked_at(&s, &id, 5_000 + HALF_HOUR));
+    assert!(unpicked_at(&s, &id, 5_001 + HALF_HOUR));
+    s.conn.execute("UPDATE cards SET updated_ms=NULL WHERE id=?1", [&id]).unwrap();
+    s.record_delivery(&id, 1, "undelivered", "runner", "x").unwrap();
+    let at: i64 = s.conn.query_row("SELECT at_ms FROM deliveries WHERE card_id=?1", [&id], |r| r.get(0)).unwrap();
+    assert!(!unpicked_at(&s, &id, at + HALF_HOUR));
+    assert!(unpicked_at(&s, &id, at + HALF_HOUR + 1));
+  }
+
+  #[test]
+  fn pending_delivery_lists_unpicked_final_cards_oldest_answer_first() {
+    let mut s = mem();
+    let late = answered_at(&mut s, linked_via("Late", "mcp"), 2_000);
+    let early = answered_at(&mut s, linked_via("Early", "cli"), 1_000);
+    let picked = answered_at(&mut s, linked_via("Picked", "mcp"), 500);
+    s.record_delivery(&picked, 1, "delivered", "agent", "").unwrap();
+    let hooked = answered_at(&mut s, expecting("Hook", "hook", "permission"), 100);
+    let _ = hooked;
+    let got = s.pending_delivery().unwrap();
+    assert_eq!(got.iter().map(|d| d.card_id.as_str()).collect::<Vec<_>>(), vec![early.as_str(), late.as_str()]);
+    assert_eq!(got[0].answered_ms, 1_000);
+    assert_eq!(got[0].delivery_state, "none");
+    assert_eq!(got[0].title, "Early");
+    assert_eq!(got[0].task.as_deref(), Some(CLOUD_TASK));
+    s.record_delivery(&early, 1, "undelivered", "runner", "session closed").unwrap();
+    assert_eq!(s.pending_delivery().unwrap()[0].delivery_state, "undelivered");
+  }
+
+  fn linked_via(title: &str, via: &str) -> CardIn {
+    CardIn { reply_via: via.into(), ..linked(title, CLOUD_TASK) }
   }
 }

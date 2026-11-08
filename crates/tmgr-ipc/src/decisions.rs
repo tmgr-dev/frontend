@@ -390,6 +390,19 @@ pub enum Op {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         limit: Option<u32>,
     },
+    /// Final answers that no agent has picked up yet, oldest answer first.
+    PendingDelivery,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PendingDelivery {
+    pub card_id: String,
+    pub seq: u64,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<String>,
+    pub answered_ms: i64,
+    pub delivery_state: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -505,6 +518,8 @@ pub struct Response {
     pub found: Vec<Found>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub similar: Vec<Found>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pending: Vec<PendingDelivery>,
 }
 
 impl Response {
@@ -838,6 +853,18 @@ impl Client {
             line_replies,
         })
         .map(|_| ())
+    }
+
+    pub fn pending_delivery(&self) -> io::Result<Vec<PendingDelivery>> {
+        let r = self.call(Op::PendingDelivery)?;
+        if r.ok {
+            return Ok(r.pending);
+        }
+        let msg = r.error.unwrap_or_else(|| "refused".into());
+        if msg == BAD_REQUEST {
+            return Err(io::Error::new(io::ErrorKind::Unsupported, msg));
+        }
+        Err(io::Error::other(msg))
     }
 
     pub fn close_session(&self, agent: &str, session: &str) -> io::Result<u64> {

@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
-use tmgr_ipc::decisions::{drain_spool, CardIn, Event, Found, Inbox, LineComment, PatchIn};
+use tmgr_ipc::decisions::{drain_spool, CardIn, Event, Found, Inbox, LineComment, PatchIn, PendingDelivery};
 
-use super::store::{AnswerIn, CardView, Created, MessageIn, PhoneOutcome, PhoneReq, Recorded, Routing, Store};
+use super::store::{AnswerIn, CardView, Created, MessageIn, PendingTaskComment, PhoneOutcome, PhoneReq, Recorded, Routing, Store};
 
 pub enum Change {
   Created { title: String, body: String },
@@ -395,6 +395,18 @@ impl Hub {
   pub fn list(&self) -> Result<Vec<CardView>, String> {
     let store = self.lock();
     Ok(store.list()?.into_iter().map(|v| self.mark(&store, v)).collect())
+  }
+
+  pub fn pending_task_comments(&self) -> Result<Vec<PendingTaskComment>, String> {
+    self.lock().pending_task_comments()
+  }
+
+  pub fn mark_task_comment(&self, card_id: &str, seq: u64) -> Result<(), String> {
+    self.lock().mark_task_comment(card_id, seq)
+  }
+
+  pub fn pending_delivery(&self) -> Result<Vec<PendingDelivery>, String> {
+    self.lock().pending_delivery()
   }
 
   pub fn check_liveness(&self, alive: impl Fn(u32) -> bool) {

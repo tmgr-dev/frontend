@@ -150,6 +150,9 @@ fn dispatch(hub: &Arc<Hub>, op: Op, stream: &UnixStream) -> Response {
       card_id: Some(card_id),
       ..Default::default()
     })),
+    Op::PendingDelivery => {
+      done(hub.pending_delivery().map(|pending| Response { ok: true, pending, ..Default::default() }))
+    }
     Op::CloseSession { agent, session } => {
       done(hub.close_session(&agent, &session).map(|n| Response { ok: true, closed: Some(n), ..Default::default() }))
     }

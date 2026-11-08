@@ -19,7 +19,7 @@ use tmgr_ipc::decisions::{decisions_dir, Event, DB};
 use diff::DiffGroups;
 use hub::{pid_alive, Change, Hub};
 use server::Server;
-use store::{AnswerIn, CardView, MessageIn, Store};
+use store::{AnswerIn, CardView, MessageIn, PendingTaskComment, Store};
 
 pub const LABEL: &str = "decisions";
 pub const SHORTCUT: &str = "CmdOrCtrl+Shift+D";
@@ -196,6 +196,35 @@ pub async fn decisions_diff<R: Runtime>(app: AppHandle<R>, id: String) -> Result
     Ok(diff::groups(&repos, &patches))
   })
   .await
+}
+
+fn main_window_only<R: Runtime>(window: &tauri::Window<R>, command: &str) -> Result<(), String> {
+  if window.label() != "main" {
+    return Err(format!("{command} may only be called from the main window"));
+  }
+  Ok(())
+}
+
+#[tauri::command]
+pub async fn decisions_pending_task_comments<R: Runtime>(
+  app: AppHandle<R>,
+  window: tauri::Window<R>,
+) -> Result<Vec<PendingTaskComment>, String> {
+  main_window_only(&window, "decisions_pending_task_comments")?;
+  let hub = hub_of(&app)?;
+  blocking(move || hub.pending_task_comments()).await
+}
+
+#[tauri::command]
+pub async fn decisions_mark_task_comment<R: Runtime>(
+  app: AppHandle<R>,
+  window: tauri::Window<R>,
+  card_id: String,
+  seq: u64,
+) -> Result<(), String> {
+  main_window_only(&window, "decisions_mark_task_comment")?;
+  let hub = hub_of(&app)?;
+  blocking(move || hub.mark_task_comment(&card_id, seq)).await
 }
 
 #[tauri::command]
