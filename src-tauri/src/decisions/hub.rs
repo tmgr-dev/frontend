@@ -401,6 +401,10 @@ impl Hub {
     self.lock().pending_task_comments()
   }
 
+  pub fn skip_task_comment(&self, card_id: &str, seq: u64, reason: &str) -> Result<(), String> {
+    self.lock().skip_task_comment(card_id, seq, reason)
+  }
+
   pub fn mark_task_comment(&self, card_id: &str, seq: u64) -> Result<(), String> {
     self.lock().mark_task_comment(card_id, seq)
   }

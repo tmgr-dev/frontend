@@ -5,6 +5,7 @@
 	"windows": ["main"],
 	"permissions": [
 		"allow-decisions-pending-task-comments",
-		"allow-decisions-mark-task-comment"
+		"allow-decisions-mark-task-comment",
+		"allow-decisions-skip-task-comment"
 	]
 }

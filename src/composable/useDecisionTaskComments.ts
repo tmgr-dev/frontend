@@ -13,6 +13,7 @@ export interface DecisionTaskCommentDeps {
 	invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 	fetchComments: (taskId: number) => Promise<{ message: string }[]>;
 	postComment: (taskId: number, message: string) => Promise<unknown>;
+	skip: (cardId: string, seq: number, reason: string) => Promise<unknown>;
 	taskWorkspaceCode: (taskId: number) => Promise<string | null>;
 	now: () => number;
 	origin: string | null;
@@ -51,15 +52,18 @@ export const createDecisionTaskCommentSync = (
 		if (deps.origin === null || item.origin !== deps.origin) return;
 		try {
 			const code = await deps.taskWorkspaceCode(item.task_id);
-			if (code !== item.workspace) {
+			if (code === null) {
 				console.warn(
-					`[decisions] answer ${key} not posted: task ${
-						item.task_id
-					} is in workspace ${code ?? 'unknown'}, the card link says ${
-						item.workspace
-					}`,
+					`[decisions] answer ${key} not posted: workspace of task ${item.task_id} not determined`,
 				);
 				backoffUntil.set(key, deps.now() + BACKOFF_MS);
+				return;
+			}
+			if (code !== item.workspace) {
+				console.warn(
+					`[decisions] answer ${key} not posted: task ${item.task_id} is in workspace ${code}, the card link says ${item.workspace}`,
+				);
+				await deps.skip(item.card_id, item.seq, 'workspace mismatch');
 				return;
 			}
 			const comments = await deps.fetchComments(item.task_id);
@@ -138,6 +142,8 @@ const defaultDeps = async (): Promise<DecisionTaskCommentDeps> => {
 		invoke,
 		fetchComments: (taskId) => getComments(taskId, false),
 		postComment: (taskId, message) => createComment(taskId, { message }),
+		skip: (cardId, seq, reason) =>
+			invoke('decisions_skip_task_comment', { cardId, seq, reason }),
 		taskWorkspaceCode: async (taskId) => {
 			const task = await getTask(taskId, false);
 			if (task.workspace_id === undefined) return null;

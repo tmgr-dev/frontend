@@ -2173,6 +2173,7 @@ fn pending_rows() -> Handler {
                 task: Some("https://tmgr.dev/ws/tasks/7".into()),
                 answered_ms: 1_700_000_000_000,
                 delivery_state: "none".into(),
+                comment_skipped: Some("workspace mismatch".into()),
             },
             PendingDelivery {
                 card_id: "c_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
@@ -2181,6 +2182,7 @@ fn pending_rows() -> Handler {
                 task: None,
                 answered_ms: 1_700_000_100_000,
                 delivery_state: "undelivered".into(),
+                comment_skipped: None,
             },
         ],
         ..Response::ok()
@@ -2201,6 +2203,13 @@ fn pending_delivery_json_lists_the_rows() {
     assert_eq!(rows[0]["card_id"], "c_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     assert_eq!(rows[0]["delivery_state"], "none");
     assert_eq!(rows[1]["task"], Value::Null);
+    assert_eq!(rows[0]["comment_skipped"], "workspace mismatch");
+    assert!(rows[1]
+        .as_object()
+        .unwrap()
+        .get("comment_skipped")
+        .unwrap()
+        .is_null());
     assert_eq!(fake.ops(), [Op::PendingDelivery]);
 }
 
@@ -2219,6 +2228,7 @@ fn pending_delivery_prints_a_table_and_a_clear_empty_line() {
         "{t}"
     );
     assert!(t.contains("2023-11-14"), "{t}");
+    assert!(t.contains("(skipped: workspace mismatch)"), "{t}");
 
     let st = stand();
     let _fake = serve(&st, Box::new(|_| Response::ok()));

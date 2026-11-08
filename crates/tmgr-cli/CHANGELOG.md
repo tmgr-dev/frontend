@@ -8,7 +8,7 @@
 
 ## 1.0.112
 
-- New command `tmgr decisions pending-delivery [--json]`: lists the owner's final answers that no agent has picked up yet (card, task, answer time, delivery state), oldest first, from the last 7 days (including answers with no delivery record). Against an older desktop app it prints "desktop too old, update TMGR desktop" and exits with an error. Needs the desktop app with the same release.
+- New command `tmgr decisions pending-delivery [--json]`: lists the owner's final answers that no agent has picked up yet (card, task, answer time, delivery state, and "skipped: workspace mismatch" when the desktop will never post the answer to a task in another workspace), oldest first, from the last 7 days (including answers with no delivery record). Against an older desktop app it prints "desktop too old, update TMGR desktop" and exits with an error. Needs the desktop app with the same release.
 
 ## 1.0.111
 

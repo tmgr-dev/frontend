@@ -228,6 +228,19 @@ pub async fn decisions_mark_task_comment<R: Runtime>(
 }
 
 #[tauri::command]
+pub async fn decisions_skip_task_comment<R: Runtime>(
+  app: AppHandle<R>,
+  window: tauri::Window<R>,
+  card_id: String,
+  seq: u64,
+  reason: String,
+) -> Result<(), String> {
+  main_window_only(&window, "decisions_skip_task_comment")?;
+  let hub = hub_of(&app)?;
+  blocking(move || hub.skip_task_comment(&card_id, seq, &reason)).await
+}
+
+#[tauri::command]
 pub fn decisions_open_link<R: Runtime>(app: AppHandle<R>, url: String) -> Result<(), String> {
   let parsed = url::Url::parse(&url).map_err(|_| "invalid link".to_owned())?;
   if !matches!(parsed.scheme(), "http" | "https") {

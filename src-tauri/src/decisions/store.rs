@@ -691,7 +691,7 @@ impl Store {
            card_id TEXT NOT NULL, seq INTEGER NOT NULL, state TEXT NOT NULL, via TEXT NOT NULL,
            detail TEXT NOT NULL, at_ms INTEGER NOT NULL, PRIMARY KEY(card_id, seq));
          CREATE TABLE IF NOT EXISTS task_comments(
-           card_id TEXT NOT NULL, seq INTEGER NOT NULL, posted_ms INTEGER NOT NULL, PRIMARY KEY(card_id, seq));
+           card_id TEXT NOT NULL, seq INTEGER NOT NULL, posted_ms INTEGER NOT NULL, skipped TEXT, PRIMARY KEY(card_id, seq));
          UPDATE deliveries SET state='undelivered', detail='desktop restarted' WHERE state='queued';",
       )
       .map_err(sql_err)?;
@@ -712,6 +712,12 @@ impl Store {
       .map_err(sql_err)?;
     if has_at == 0 {
       tx.execute("ALTER TABLE events ADD COLUMN at_ms INTEGER", []).map_err(sql_err)?;
+    }
+    let has_skipped: i64 = tx
+      .query_row("SELECT COUNT(*) FROM pragma_table_info('task_comments') WHERE name='skipped'", [], |r| r.get(0))
+      .map_err(sql_err)?;
+    if has_skipped == 0 {
+      tx.execute("ALTER TABLE task_comments ADD COLUMN skipped TEXT", []).map_err(sql_err)?;
     }
     if !had_comments {
       tx
@@ -1273,6 +1279,27 @@ impl Store {
       .map_err(sql_err)
   }
 
+  pub fn skip_task_comment(&self, card_id: &str, seq: u64, reason: &str) -> Result<(), String> {
+    let reason: String = reason.chars().take(64).collect();
+    self
+      .conn
+      .execute(
+        "INSERT OR IGNORE INTO task_comments(card_id, seq, posted_ms, skipped) VALUES(?1, ?2, 0, ?3)",
+        params![card_id, seq as i64, reason],
+      )
+      .map(drop)
+      .map_err(sql_err)
+  }
+
+  fn comment_skipped(&self, card_id: &str, seq: u64) -> Result<Option<String>, String> {
+    self
+      .conn
+      .query_row("SELECT skipped FROM task_comments WHERE card_id=?1 AND seq=?2", params![card_id, seq as i64], |r| r.get(0))
+      .optional()
+      .map(Option::flatten)
+      .map_err(sql_err)
+  }
+
   pub fn pending_delivery(&self) -> Result<Vec<PendingDelivery>, String> {
     self.pending_delivery_at(now_ms())
   }
@@ -1298,6 +1325,7 @@ impl Store {
         answered_ms,
         task: c.links.task.clone().or_else(|| title_key(&c.title)),
         delivery_state: state.unwrap_or_else(|| "none".into()),
+        comment_skipped: self.comment_skipped(&r.id, a.seq)?,
         card_id: r.id,
         seq: a.seq,
         title: c.title,
@@ -2869,6 +2897,56 @@ mod tests {
     drop(s);
     let reopened = Store::open(&path).unwrap();
     assert_eq!(reopened.pending_task_comments().unwrap().len(), 2);
+  }
+
+  #[test]
+  fn a_skipped_comment_is_not_pending_survives_reopen_and_shows_in_pending_delivery() {
+    let dir = tempfile::Builder::new().prefix("ds").tempdir_in("/tmp").unwrap();
+    let path = dir.path().join("decisions.db");
+    let id = {
+      let mut s = Store::open(&path).unwrap();
+      let id = s.create(linked_via("Ship?", "mcp")).unwrap().id;
+      s.answer(&id, pick_a()).unwrap();
+      assert_eq!(s.pending_task_comments().unwrap().len(), 1);
+      assert_eq!(s.pending_delivery().unwrap()[0].comment_skipped, None);
+      s.skip_task_comment(&id, 1, "workspace mismatch").unwrap();
+      s.skip_task_comment(&id, 1, "workspace mismatch").unwrap();
+      assert!(s.pending_task_comments().unwrap().is_empty());
+      id
+    };
+    let s = Store::open(&path).unwrap();
+    assert!(s.pending_task_comments().unwrap().is_empty());
+    let got = s.pending_delivery().unwrap();
+    assert_eq!(got.len(), 1);
+    assert_eq!((got[0].card_id.as_str(), got[0].comment_skipped.as_deref()), (id.as_str(), Some("workspace mismatch")));
+  }
+
+  #[test]
+  fn the_skip_reason_is_capped() {
+    let mut s = mem();
+    let id = s.create(linked_via("Ship?", "mcp")).unwrap().id;
+    s.answer(&id, pick_a()).unwrap();
+    s.skip_task_comment(&id, 1, &"x".repeat(200)).unwrap();
+    assert_eq!(s.pending_delivery().unwrap()[0].comment_skipped.as_deref().unwrap().chars().count(), 64);
+  }
+
+  #[test]
+  fn a_database_without_the_skipped_column_is_migrated() {
+    let dir = tempfile::Builder::new().prefix("ds").tempdir_in("/tmp").unwrap();
+    let path = dir.path().join("decisions.db");
+    let id = {
+      let mut s = Store::open(&path).unwrap();
+      let id = s.create(linked_via("Ship?", "mcp")).unwrap().id;
+      s.answer(&id, pick_a()).unwrap();
+      s.conn.execute_batch("DROP TABLE task_comments; CREATE TABLE task_comments(card_id TEXT NOT NULL, seq INTEGER NOT NULL, posted_ms INTEGER NOT NULL, PRIMARY KEY(card_id, seq));").unwrap();
+      s.mark_task_comment(&id, 1).unwrap();
+      id
+    };
+    let s = Store::open(&path).unwrap();
+    let cols: i64 = s.conn.query_row("SELECT COUNT(*) FROM pragma_table_info('task_comments') WHERE name='skipped'", [], |r| r.get(0)).unwrap();
+    assert_eq!(cols, 1);
+    assert!(s.pending_task_comments().unwrap().is_empty());
+    s.skip_task_comment(&id, 2, "workspace mismatch").unwrap();
   }
 
   fn expecting(title: &str, via: &str, kind: &str) -> CardIn {
