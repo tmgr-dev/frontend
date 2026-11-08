@@ -2208,16 +2208,23 @@ fn pending_delivery_json_lists_the_rows() {
 fn pending_delivery_prints_a_table_and_a_clear_empty_line() {
     let st = stand();
     let _fake = serve(&st, pending_rows());
-    let out = base(&st, &["decisions", "pending-delivery"]).output().unwrap();
+    let out = base(&st, &["decisions", "pending-delivery"])
+        .output()
+        .unwrap();
     let t = text(&out.stdout);
     assert!(out.status.success(), "{}", text(&out.stderr));
     assert!(t.contains("Ship it?") && t.contains("Roll back?"), "{t}");
-    assert!(t.contains("undelivered") && t.contains("c_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"), "{t}");
+    assert!(
+        t.contains("undelivered") && t.contains("c_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+        "{t}"
+    );
     assert!(t.contains("2023-11-14"), "{t}");
 
     let st = stand();
     let _fake = serve(&st, Box::new(|_| Response::ok()));
-    let out = base(&st, &["decisions", "pending-delivery"]).output().unwrap();
+    let out = base(&st, &["decisions", "pending-delivery"])
+        .output()
+        .unwrap();
     assert!(out.status.success());
     assert!(text(&out.stdout).contains("Every answer was picked up"));
 }
@@ -2226,7 +2233,9 @@ fn pending_delivery_prints_a_table_and_a_clear_empty_line() {
 fn pending_delivery_on_an_old_desktop_says_so_and_fails() {
     let st = stand();
     let _fake = serve(&st, Box::new(|_| Response::err("bad request")));
-    let out = base(&st, &["decisions", "pending-delivery"]).output().unwrap();
+    let out = base(&st, &["decisions", "pending-delivery"])
+        .output()
+        .unwrap();
     assert!(!out.status.success());
     assert!(text(&out.stderr).contains("desktop too old, update TMGR desktop"));
     assert!(text(&out.stdout).is_empty());

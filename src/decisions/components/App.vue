@@ -348,8 +348,11 @@
 			window.addEventListener('keydown', this.onKeydown);
 			document.title = 'Decisions · Doom Solving';
 			this.openedAt = Date.now();
+			let ticks = 0;
 			this.clock = window.setInterval(() => {
 				this.now = Date.now();
+				ticks += 1;
+				if (ticks % 4 === 0) void this.refresh();
 			}, 15000);
 			try {
 				this.unlisten = await onDecisionsChanged(() => void this.refresh());

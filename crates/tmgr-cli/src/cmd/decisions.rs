@@ -9,8 +9,8 @@ use tmgr_core::error::{Error, Result as CoreResult};
 use tmgr_core::text::sanitize_line;
 use tmgr_ipc::decisions::{
     self, Cancel, CardIn, Check, Client, DiffSpec, Event, Fact, Found, Inbox, LinkItem, Links, Opt,
-    PatchIn, PendingDelivery, Response, Secret, Source, WaitCard, MAX_DIFFS, MAX_LINE, MAX_LINKS, MAX_PATCHES,
-    MAX_PATCH_BYTES,
+    PatchIn, PendingDelivery, Response, Secret, Source, WaitCard, MAX_DIFFS, MAX_LINE, MAX_LINKS,
+    MAX_PATCHES, MAX_PATCH_BYTES,
 };
 
 pub const KINDS: [&str; 5] = ["decision", "review", "release", "check", "question"];
