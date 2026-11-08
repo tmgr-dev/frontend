@@ -68,7 +68,10 @@
 			<label class="flex items-center justify-between gap-4">
 				<span>
 					<span class="block text-sm font-medium">{{
-						$t('settingsPages.plugins.tray.title', { tray: trayLabel })
+						$t('settingsPages.plugins.tray.title', { tray: trayName }).replace(
+							/^./,
+							(c) => c.toUpperCase(),
+						)
 					}}</span>
 					<span class="block text-xs text-muted-foreground">
 						{{
@@ -836,10 +839,7 @@
 					),
 				})[group] ?? group.toLowerCase();
 
-			const trayLabel = trayName().replace(/^./, (c) => c.toUpperCase());
-
 			return {
-				trayLabel,
 				timeLabel: (at: number | string | Date) =>
 					new Date(at).toLocaleTimeString(currentLocale()),
 				trayName: trayName(),
