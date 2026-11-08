@@ -4,9 +4,9 @@
 		class="flex flex-col gap-1"
 		data-tour="task-form.agent-work"
 	>
-		<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
-			>Agent work</span
-		>
+		<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase">{{
+			$t('taskAgent.agentWork.title')
+		}}</span>
 		<button
 			type="button"
 			class="flex items-center justify-between gap-2 rounded-card border border-line bg-surface px-3 py-2 text-left text-xs text-ink hover:bg-surface-hover"
@@ -15,7 +15,9 @@
 			@click="detailsOpen = true"
 		>
 			<span class="min-w-0 truncate">{{ blockLine }}</span>
-			<span class="shrink-0 text-ink-subtle">Details ▸</span>
+			<span class="shrink-0 text-ink-subtle"
+				>{{ $t('taskAgent.agentWork.details') }} ▸</span
+			>
 		</button>
 		<AgentWorkDetails
 			v-model:open="detailsOpen"
@@ -34,12 +36,17 @@
 		data-tour="task-form.agent-work"
 	>
 		<div class="flex items-baseline justify-between gap-2">
-			<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
-				>Agent work</span
+			<span
+				class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
+				>{{ $t('taskAgent.agentWork.title') }}</span
 			>
 			<span class="text-2xs text-ink-subtle" data-tour="task-form.agent-totals">
-				Agents {{ formatWorkDuration(totals.agentSeconds) }} · You
-				{{ formatWorkDuration(totals.humanSeconds) }}
+				{{
+					$t('taskAgent.agentWork.totalsLine', {
+						agents: formatWorkDuration(totals.agentSeconds),
+						you: formatWorkDuration(totals.humanSeconds),
+					})
+				}}
 			</span>
 		</div>
 
@@ -65,7 +72,7 @@
 						<span
 							v-if="run.status === 'running'"
 							class="mr-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current align-middle"
-						/>{{ run.status }}
+						/>{{ $t(`taskAgent.agentWork.status.${run.status}`) }}
 					</span>
 					<span class="ml-auto font-mono text-ink-subtle">
 						{{ formatWorkDuration(liveSeconds(run, now, receivedAt[run.id])) }}
@@ -93,7 +100,7 @@
 						target="_blank"
 						rel="noopener noreferrer"
 						class="text-brand hover:underline"
-						>Pull request</a
+						>{{ $t('taskAgent.agentWork.pullRequest') }}</a
 					>
 					<button
 						v-if="run.commits.length"
@@ -101,19 +108,19 @@
 						class="hover:text-ink"
 						@click="toggle(run.id)"
 					>
-						{{ run.commits.length }}
-						{{ run.commits.length === 1 ? 'commit' : 'commits' }}
+						{{ $t('taskAgent.agentWork.commits', run.commits.length) }}
 						{{ expanded[run.id] ? '▾' : '▸' }}
 					</button>
 					<span v-if="run.tests">
-						tests
-						<span class="text-emerald-600 dark:text-emerald-400"
-							>{{ run.tests.passed ?? 0 }} passed</span
+						{{ $t('taskAgent.agentWork.tests') }}
+						<span class="text-emerald-600 dark:text-emerald-400">{{
+							$t('taskAgent.agentWork.testsPassed', run.tests.passed ?? 0)
+						}}</span
 						><template v-if="run.tests.failed"
 							>,
-							<span class="text-red-600 dark:text-red-400"
-								>{{ run.tests.failed }} failed</span
-							></template
+							<span class="text-red-600 dark:text-red-400">{{
+								$t('taskAgent.agentWork.testsFailed', run.tests.failed)
+							}}</span></template
 						>
 					</span>
 					<span class="ml-auto text-ink-subtle">{{
@@ -139,7 +146,7 @@
 		class="rounded-card border border-dashed border-line-strong px-3 py-3 text-center text-xs text-ink-subtle"
 		data-tour="task-form.agent-work"
 	>
-		No agent runs yet. Runs from your MCP agent appear here.
+		{{ $t('taskAgent.agentWork.empty') }}
 	</section>
 </template>
 
@@ -148,6 +155,7 @@
 	import { getTaskCost } from '@/actions/tmgr/taskCost';
 	import AgentWorkDetails from '@/components/tasks/AgentWorkDetails.vue';
 	import { usePusher } from '@/composable/usePusher';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import {
 		agentRunEvent,
@@ -392,7 +400,7 @@
 				costState,
 				workspaceCode,
 				blockLine: computed(() => {
-					const t = liveTotals(
+					const live = liveTotals(
 						runs.value,
 						serverTotals.value,
 						now.value,
@@ -405,15 +413,15 @@
 							: null;
 					return (
 						blockSummary({
-							youSeconds: t.humanSeconds,
-							agentSeconds: t.agentSeconds,
+							youSeconds: live.humanSeconds,
+							agentSeconds: live.agentSeconds,
 							aiCostUsd:
 								localCost.value ?? (Number.isFinite(synced) ? synced : null),
 							prLabel: prLabel(
 								[],
 								runs.value.map((r) => r.pr_url),
 							),
-						}) || 'Details'
+						}) || t('taskAgent.agentWork.details')
 					);
 				}),
 				agentLabel,

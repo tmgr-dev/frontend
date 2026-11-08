@@ -12,7 +12,7 @@
 					@click="showLaunchForm = !showLaunchForm"
 					class="flex w-full items-center justify-between text-sm font-medium text-ink"
 				>
-					<span>Launch New Agent</span>
+					<span>{{ $t('taskAgent.cursor.launchNew') }}</span>
 					<svg
 						:class="[
 							'h-5 w-5 text-ink-subtle transition-transform',
@@ -44,13 +44,13 @@
 					<div v-else-if="branches.length || branchSearch" class="space-y-4">
 						<div>
 							<label class="mb-2 block text-sm font-medium text-ink">
-								Source Branch
+								{{ $t('taskAgent.cursor.sourceBranch') }}
 							</label>
 							<input
 								v-model="branchSearch"
 								@input="onBranchSearch"
 								type="text"
-								placeholder="Search branches..."
+								:placeholder="$t('taskAgent.cursor.searchPlaceholder')"
 								class="mb-2 w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong"
 							/>
 							<div
@@ -60,7 +60,9 @@
 								<div
 									class="h-4 w-4 animate-spin rounded-full border-2 border-brand border-t-transparent"
 								></div>
-								<span class="ml-2 text-xs text-ink-subtle">Searching...</span>
+								<span class="ml-2 text-xs text-ink-subtle">{{
+									$t('taskAgent.cursor.searching')
+								}}</span>
 							</div>
 							<template v-else-if="branches.length">
 								<select
@@ -77,15 +79,14 @@
 									</option>
 								</select>
 								<p class="mt-1 text-xs text-ink-subtle">
-									{{ branches.length }} branch{{
-										branches.length !== 1 ? 'es' : ''
-									}}
-									found
+									{{ $t('taskAgent.cursor.branchesFound', branches.length) }}
 								</p>
 							</template>
 							<div v-else class="py-4 text-center">
 								<p class="text-sm text-ink-subtle">
-									No branches found for "{{ branchSearch }}"
+									{{
+										$t('taskAgent.cursor.noBranches', { search: branchSearch })
+									}}
 								</p>
 								<button
 									@click="
@@ -94,7 +95,7 @@
 									"
 									class="mt-2 text-sm text-brand hover:underline"
 								>
-									Clear search
+									{{ $t('taskAgent.cursor.clearSearch') }}
 								</button>
 							</div>
 						</div>
@@ -122,23 +123,27 @@
 								v-else
 								class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
 							></div>
-							{{ launching ? 'Launching...' : 'Launch Cursor Agent' }}
+							{{
+								launching
+									? $t('taskAgent.cursor.launching')
+									: $t('taskAgent.cursor.launch')
+							}}
 						</button>
 
 						<button
 							@click="launchAgent('research')"
 							:disabled="launching || !selectedBranch"
-							title="The agent investigates the task and posts a report as a comment. It does not change code."
+							:title="$t('taskAgent.cursor.researchTitle')"
 							data-testid="cursor-research-button"
 							class="flex w-full items-center justify-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink transition hover:bg-surface-hover disabled:opacity-50"
 						>
-							Research
+							{{ $t('taskAgent.cursor.research') }}
 						</button>
 					</div>
 
 					<div v-else class="text-center">
 						<p class="mb-2 text-sm text-status-fix-fg">
-							{{ branchesError || 'Failed to load branches' }}
+							{{ branchesError || $t('taskAgent.cursor.branchesLoadFailed') }}
 						</p>
 						<button
 							@click="
@@ -147,7 +152,7 @@
 							"
 							class="text-sm text-brand hover:underline"
 						>
-							Try again
+							{{ $t('taskAgent.cursor.tryAgain') }}
 						</button>
 					</div>
 				</div>
@@ -170,12 +175,13 @@
 						d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
 					></path>
 				</svg>
-				<p class="text-ink-subtle">No agents launched yet</p>
+				<p class="text-ink-subtle">{{ $t('taskAgent.cursor.noAgents') }}</p>
 			</div>
 
 			<div v-else class="space-y-3">
 				<h3 class="text-2xs font-bold tracking-wide text-ink-subtle uppercase">
-					Agent History <span class="tabular-nums">({{ agents.length }})</span>
+					{{ $t('taskAgent.cursor.history') }}
+					<span class="tabular-nums">({{ agents.length }})</span>
 				</h3>
 
 				<div
@@ -203,7 +209,7 @@
 								v-if="agent.status === 'CREATING' || agent.status === 'RUNNING'"
 								@click="loadAgents"
 								class="rounded-pill p-1 text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
-								title="Refresh status"
+								:title="$t('taskAgent.cursor.refreshStatus')"
 							>
 								<svg
 									class="h-3 w-3"
@@ -230,12 +236,18 @@
 							:disabled="stopping"
 							class="rounded-md bg-status-fix px-3 py-1 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
 						>
-							{{ stopping ? 'Stopping...' : 'Stop' }}
+							{{
+								stopping
+									? $t('taskAgent.cursor.stopping')
+									: $t('taskAgent.cursor.stop')
+							}}
 						</button>
 					</div>
 
 					<div v-if="agent.branch_name" class="mb-2 text-sm text-ink">
-						<span class="font-medium text-ink-subtle">Branch:</span>
+						<span class="font-medium text-ink-subtle">{{
+							$t('taskAgent.cursor.branch')
+						}}</span>
 						<code
 							class="ml-1 rounded border border-line bg-surface px-2 py-0.5 font-mono text-xs text-ink"
 							>{{ agent.branch_name }}</code
@@ -243,7 +255,9 @@
 					</div>
 
 					<div v-if="agent.summary" class="mb-2 text-sm text-ink">
-						<span class="font-medium text-ink-subtle">Summary:</span>
+						<span class="font-medium text-ink-subtle">{{
+							$t('taskAgent.cursor.summary')
+						}}</span>
 						<p class="mt-1">{{ agent.summary }}</p>
 					</div>
 
@@ -266,7 +280,7 @@
 									d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
 								></path>
 							</svg>
-							View Pull Request
+							{{ $t('taskAgent.cursor.viewPullRequest') }}
 						</a>
 					</div>
 
@@ -279,14 +293,14 @@
 
 					<div v-if="agent.status === 'RUNNING'" class="space-y-2 mt-4">
 						<label class="block text-sm font-medium text-ink">
-							Send Follow-up Instruction
+							{{ $t('taskAgent.cursor.followUpLabel') }}
 						</label>
 						<div class="flex gap-2">
 							<textarea
 								v-model="followUpPrompt"
 								rows="1"
 								data-follow-up
-								placeholder="Type additional instructions..."
+								:placeholder="$t('taskAgent.cursor.followUpPlaceholder')"
 								class="max-h-40 flex-1 resize-none rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong"
 								@keydown.enter="onFollowUpEnter($event, agent.id)"
 							></textarea>
@@ -295,7 +309,11 @@
 								:disabled="!followUpPrompt || sendingFollowUp"
 								class="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-on-accent transition hover:bg-brand-hover disabled:opacity-50"
 							>
-								{{ sendingFollowUp ? 'Sending...' : 'Send' }}
+								{{
+									sendingFollowUp
+										? $t('taskAgent.cursor.sending')
+										: $t('taskAgent.cursor.send')
+								}}
 							</button>
 						</div>
 					</div>
@@ -321,6 +339,7 @@
 		sendFollowUp,
 		stopCursorAgent,
 	} from '@/actions/tmgr/cursor';
+	import { currentLocale, t } from '@/i18n';
 	import { apiErrorText } from '@/utils/apiErrorText';
 	import { autosizeTextarea, isEnterSend } from '@/utils/commentComposer';
 	import { createCursorConversationSync } from '@/utils/cursorConversationSync';
@@ -441,7 +460,7 @@
 				} catch (e) {
 					console.error('Failed to load Cursor agents:', e);
 					if (e.response?.status !== 404) {
-						this.error = 'Failed to load agents';
+						this.error = t('taskAgent.cursor.errors.loadAgents');
 					}
 				} finally {
 					this.loading = false;
@@ -470,7 +489,7 @@
 					console.error('Failed to load branches:', e);
 					this.branchesError = apiErrorText(
 						e,
-						'Failed to load branches from GitHub',
+						t('taskAgent.cursor.errors.loadBranches'),
 					);
 				} finally {
 					this.loadingBranches = false;
@@ -499,7 +518,7 @@
 					this.$emit('launched', agent);
 				} catch (e) {
 					console.error('Failed to launch agent:', e);
-					this.error = apiErrorText(e, 'Failed to launch agent');
+					this.error = apiErrorText(e, t('taskAgent.cursor.errors.launch'));
 				} finally {
 					this.launching = false;
 				}
@@ -512,7 +531,7 @@
 					this.$emit('stopped');
 				} catch (e) {
 					console.error('Failed to stop agent:', e);
-					this.error = apiErrorText(e, 'Failed to stop agent');
+					this.error = apiErrorText(e, t('taskAgent.cursor.errors.stop'));
 				} finally {
 					this.stopping = false;
 				}
@@ -527,7 +546,7 @@
 					this.$emit('followup-sent');
 				} catch (e) {
 					console.error('Failed to send follow-up:', e);
-					this.error = apiErrorText(e, 'Failed to send follow-up');
+					this.error = apiErrorText(e, t('taskAgent.cursor.errors.followUp'));
 				} finally {
 					this.sendingFollowUp = false;
 				}
@@ -540,12 +559,14 @@
 				const diffHours = Math.floor(diffMs / 3600000);
 				const diffDays = Math.floor(diffMs / 86400000);
 
-				if (diffMins < 1) return 'just now';
-				if (diffMins < 60) return `${diffMins}m ago`;
-				if (diffHours < 24) return `${diffHours}h ago`;
-				if (diffDays < 7) return `${diffDays}d ago`;
+				if (diffMins < 1) return t('taskAgent.time.justNow');
+				if (diffMins < 60)
+					return t('taskAgent.time.minutesAgo', { n: diffMins });
+				if (diffHours < 24)
+					return t('taskAgent.time.hoursAgo', { n: diffHours });
+				if (diffDays < 7) return t('taskAgent.time.daysAgo', { n: diffDays });
 
-				return date.toLocaleDateString();
+				return date.toLocaleDateString(currentLocale());
 			},
 			startPolling() {
 				if (this.pollingInterval) return;

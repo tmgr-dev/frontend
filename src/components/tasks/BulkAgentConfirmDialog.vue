@@ -5,21 +5,20 @@
 			data-testid="bulk-confirm-dialog"
 		>
 			<DialogHeader>
-				<DialogTitle>Confirm for agent runs</DialogTitle>
+				<DialogTitle>{{ $t('taskAgent.bulkConfirm.title') }}</DialogTitle>
 				<DialogDescription>
-					This is exactly what agents will read from each of these
-					{{ taskIds.length }} tasks. Confirm only if you wrote or checked all
-					of it.
+					{{ $t('taskAgent.bulkConfirm.description', taskIds.length) }}
 				</DialogDescription>
 			</DialogHeader>
-			<p v-if="loading" class="text-sm text-ink-subtle">Loading tasks...</p>
+			<p v-if="loading" class="text-sm text-ink-subtle">
+				{{ $t('taskAgent.bulkConfirm.loading') }}
+			</p>
 			<p
 				v-if="anyInvisible"
 				class="rounded border border-amber-500 bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200"
 				data-testid="bulk-confirm-warning"
 			>
-				Some text contains invisible or direction-changing characters, shown
-				highlighted as code points.
+				{{ $t('taskAgent.bulkConfirm.invisibleWarning') }}
 			</p>
 			<div
 				v-if="personaGroups.length || contextGroups.length"
@@ -30,15 +29,13 @@
 					v-for="group in personaGroups"
 					:key="group.key"
 					:persona="group.persona"
-					:persona-note="`${group.count} ${
-						group.count === 1 ? 'task' : 'tasks'
-					}`"
+					:persona-note="$t('taskAgent.bulkConfirm.taskCount', group.count)"
 				/>
 				<AgentOwnerTexts
 					v-for="group in contextGroups"
 					:key="group.key"
 					:context="group.context"
-					:rules-note="`${group.count} ${group.count === 1 ? 'task' : 'tasks'}`"
+					:rules-note="$t('taskAgent.bulkConfirm.taskCount', group.count)"
 				/>
 			</div>
 			<div class="flex max-h-[50vh] flex-col gap-3 overflow-y-auto text-sm">
@@ -52,13 +49,15 @@
 						class="text-2xs font-bold text-ink-subtle uppercase"
 						:data-testid="`bulk-category-${row.id}`"
 					>
-						Category: {{ row.category }}
+						{{
+							$t('taskAgent.bulkConfirm.category', { category: row.category })
+						}}
 					</div>
 					<div
 						v-if="row.repositories"
 						class="text-2xs font-bold text-ink-subtle uppercase"
 					>
-						Repositories
+						{{ $t('taskAgent.bulkConfirm.repositories') }}
 					</div>
 					<ul
 						v-if="row.repositories"
@@ -72,7 +71,7 @@
 					><template v-for="(piece, i) in row.title" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
 					<pre
 						class="mt-1 font-mono text-xs break-words whitespace-pre-wrap"
-					><template v-if="!row.description.length">(empty)</template><template v-for="(piece, i) in row.description" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
+					><template v-if="!row.description.length">{{ $t('taskAgent.ownerTexts.empty') }}</template><template v-for="(piece, i) in row.description" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
 					<p
 						v-if="results[row.id]"
 						class="mt-1 text-xs"
@@ -84,7 +83,9 @@
 						:data-testid="`bulk-result-${row.id}`"
 					>
 						{{
-							results[row.id].ok ? 'Confirmed' : describe(results[row.id].code)
+							results[row.id].ok
+								? $t('taskAgent.bulkConfirm.confirmed')
+								: describe(results[row.id].code)
 						}}
 					</p>
 				</div>
@@ -94,7 +95,7 @@
 			</p>
 			<DialogFooter>
 				<Button variant="outline" @click="$emit('close')">{{
-					done ? 'Close' : 'Cancel'
+					done ? $t('common.actions.close') : $t('common.actions.cancel')
 				}}</Button>
 				<Button
 					v-if="!done"
@@ -102,7 +103,7 @@
 					data-testid="bulk-confirm-submit"
 					@click="submit"
 				>
-					Confirm {{ rows.length }}
+					{{ $t('taskAgent.bulkConfirm.confirmCount', { n: rows.length }) }}
 				</Button>
 			</DialogFooter>
 		</DialogContent>
@@ -134,22 +135,26 @@
 		hasInvisible,
 		splitInvisible,
 	} from '@/utils/agentApprovalPolicy';
+	import { t } from '@/i18n';
 	import { computed, defineComponent, onMounted, ref } from 'vue';
 
-	const CODES: Record<string, string> = {
-		hash_mismatch: 'Changed since it was shown',
-		setting_off: 'Agent runs are off for you here',
-		approval_revoked: 'Needs a new confirmation',
-		category_mismatch: 'Category changed',
-		signature_invalid: 'Signature rejected',
-		signed_at_skew: 'Your clock is off',
-		key_unknown: 'Signing key not accepted',
-		repositories_changed: 'Repositories changed since it was shown',
-		invalid_repositories: 'Repositories of this category are not valid',
-		persona_changed: 'Persona instructions changed since they were shown',
-		context_changed: 'Workspace rules changed since they were shown',
-		invalid_persona: 'The persona cannot be signed',
+	const CODE_KEYS: Record<string, string> = {
+		hash_mismatch: 'taskAgent.bulkConfirm.codes.hashMismatch',
+		setting_off: 'taskAgent.bulkConfirm.codes.settingOff',
+		approval_revoked: 'taskAgent.bulkConfirm.codes.approvalRevoked',
+		category_mismatch: 'taskAgent.bulkConfirm.codes.categoryMismatch',
+		signature_invalid: 'taskAgent.bulkConfirm.codes.signatureInvalid',
+		signed_at_skew: 'taskAgent.bulkConfirm.codes.signedAtSkew',
+		key_unknown: 'taskAgent.bulkConfirm.codes.keyUnknown',
+		repositories_changed: 'taskAgent.bulkConfirm.codes.repositoriesChanged',
+		invalid_repositories: 'taskAgent.bulkConfirm.codes.invalidRepositories',
+		persona_changed: 'taskAgent.bulkConfirm.codes.personaChanged',
+		context_changed: 'taskAgent.bulkConfirm.codes.contextChanged',
+		invalid_persona: 'taskAgent.bulkConfirm.codes.invalidPersona',
 	};
+
+	const codeText = (code?: string | null) =>
+		code && CODE_KEYS[code] ? t(CODE_KEYS[code]) : undefined;
 
 	export default defineComponent({
 		name: 'BulkAgentConfirmDialog',
@@ -289,15 +294,14 @@
 				} catch (e) {
 					const code = agentRunErrorCode(e);
 					error.value =
-						(code && CODES[code]) ||
-						(e instanceof Error ? e.message : String(e));
+						codeText(code) || (e instanceof Error ? e.message : String(e));
 				} finally {
 					busy.value = false;
 				}
 			};
 
 			const describe = (code?: string) =>
-				(code && CODES[code]) || code || 'Failed';
+				codeText(code) || code || t('taskAgent.bulkConfirm.failed');
 
 			return {
 				loading,

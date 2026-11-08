@@ -10,6 +10,7 @@
 	import { Avatar } from '@/components/ui/avatar';
 	import { Button } from '@/components/ui/button';
 	import { Textarea } from '@/components/ui/textarea';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import { autosizeTextarea, isEnterSend } from '@/utils/commentComposer';
 	import { formatRelativeTime } from '@/utils/timeUtils';
@@ -153,7 +154,7 @@
 	};
 
 	const handleDelete = async (commentId: number) => {
-		if (!confirm('Delete this comment?')) return;
+		if (!confirm(t('taskAgent.chat.deleteConfirm'))) return;
 
 		try {
 			await deleteComment(commentId);
@@ -209,7 +210,9 @@
 			<div class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
 					<MessageCircle class="h-5 w-5 text-ink-muted" />
-					<h3 class="font-semibold text-ink">Comments</h3>
+					<h3 class="font-semibold text-ink">
+						{{ $t('taskAgent.chat.comments') }}
+					</h3>
 					<span
 						v-if="commentsCount > 0"
 						class="flex items-center justify-center rounded-full bg-brand px-2 py-0.5 text-xs text-on-accent"
@@ -252,8 +255,12 @@
 					class="flex flex-col items-center justify-center py-12 text-center"
 				>
 					<MessageCircle class="mb-3 h-12 w-12 text-ink-subtle" />
-					<p class="text-sm text-ink-subtle">No comments yet</p>
-					<p class="mt-1 text-xs text-ink-subtle">Start the conversation</p>
+					<p class="text-sm text-ink-subtle">
+						{{ $t('taskAgent.chat.noComments') }}
+					</p>
+					<p class="mt-1 text-xs text-ink-subtle">
+						{{ $t('taskAgent.chat.startConversation') }}
+					</p>
 				</div>
 
 				<div v-else class="space-y-4">
@@ -364,7 +371,9 @@
 			>
 				<div class="flex-1">
 					<div class="text-xs font-medium text-ink-muted">
-						Replying to {{ replyingTo.user.name }}
+						{{
+							$t('taskAgent.chat.replyingTo', { name: replyingTo.user.name })
+						}}
 					</div>
 					<div class="line-clamp-1 text-xs text-ink-muted">
 						{{ replyingTo.message }}
@@ -384,7 +393,9 @@
 				v-if="editingComment"
 				class="mb-2 flex items-center justify-between rounded-lg bg-brand-bg px-3 py-2"
 			>
-				<div class="text-xs font-medium text-brand">Editing comment</div>
+				<div class="text-xs font-medium text-brand">
+					{{ $t('taskAgent.chat.editing') }}
+				</div>
 				<Button
 					variant="ghost"
 					size="icon"
@@ -399,7 +410,7 @@
 				<Textarea
 					ref="chatInput"
 					v-model="newMessage"
-					placeholder="Type a message..."
+					:placeholder="$t('taskAgent.chat.placeholder')"
 					rows="1"
 					class="max-h-[120px] min-h-[40px] resize-none"
 					@keydown.enter="onEnter"
@@ -419,7 +430,7 @@
 						:disabled="!newMessage.trim() || isSending"
 						@click="askAI"
 						class="shrink-0"
-						title="Ask AI"
+						:title="$t('taskAgent.chat.askAi')"
 					>
 						<Sparkles class="h-4 w-4" />
 					</Button>

@@ -5,8 +5,9 @@
 		data-testid="cloud-agent-approval"
 	>
 		<div class="flex flex-wrap items-center gap-2">
-			<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
-				>Agent runs</span
+			<span
+				class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
+				>{{ $t('taskAgent.cloudApproval.agentRuns') }}</span
 			>
 			<span
 				class="rounded-full px-2 py-0.5 text-xs"
@@ -22,7 +23,7 @@
 				data-testid="cloud-confirm-open"
 				@click="openDialog"
 			>
-				Confirm for agent runs
+				{{ $t('taskAgent.cloudApproval.confirmForAgentRuns') }}
 			</Button>
 		</div>
 		<p
@@ -45,11 +46,11 @@
 				data-testid="cloud-confirm-dialog"
 			>
 				<DialogHeader>
-					<DialogTitle>Confirm for agent runs</DialogTitle>
+					<DialogTitle>{{
+						$t('taskAgent.cloudApproval.confirmForAgentRuns')
+					}}</DialogTitle>
 					<DialogDescription>
-						This is exactly what an agent will read from this task. Confirm only
-						if you wrote or checked all of it. Any later change by someone or
-						something else cancels the confirmation.
+						{{ $t('taskAgent.cloudApproval.dialogDescription') }}
 					</DialogDescription>
 				</DialogHeader>
 				<div v-if="fresh" class="flex flex-col gap-3 text-sm">
@@ -58,13 +59,11 @@
 						class="rounded border border-amber-500 bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200"
 						data-testid="cloud-confirm-warning"
 					>
-						This text contains invisible or direction-changing characters. They
-						are shown highlighted as code points. Do not confirm unless you
-						expect them.
+						{{ $t('taskAgent.cloudApproval.invisibleWarning') }}
 					</p>
 					<div>
 						<div class="text-2xs font-bold text-ink-subtle uppercase">
-							Title
+							{{ $t('taskAgent.cloudApproval.title') }}
 						</div>
 						<pre
 							class="font-mono text-xs break-words whitespace-pre-wrap"
@@ -73,16 +72,16 @@
 					</div>
 					<div>
 						<div class="text-2xs font-bold text-ink-subtle uppercase">
-							Description
+							{{ $t('taskAgent.cloudApproval.description') }}
 						</div>
 						<pre
 							class="font-mono text-xs break-words whitespace-pre-wrap"
 							data-testid="cloud-confirm-description"
-						><template v-if="!descriptionPieces.length">(empty)</template><template v-for="(piece, i) in descriptionPieces" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
+						><template v-if="!descriptionPieces.length">{{ $t('taskAgent.ownerTexts.empty') }}</template><template v-for="(piece, i) in descriptionPieces" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
 					</div>
 					<div>
 						<div class="text-2xs font-bold text-ink-subtle uppercase">
-							Category
+							{{ $t('taskAgent.cloudApproval.category') }}
 						</div>
 						<div class="text-sm" data-testid="cloud-confirm-category">
 							{{ categoryText }}
@@ -93,14 +92,16 @@
 						data-testid="cloud-confirm-repositories"
 					>
 						<div class="text-2xs font-bold text-ink-subtle uppercase">
-							Repositories
+							{{ $t('taskAgent.cloudApproval.repositories') }}
 						</div>
 						<ul class="font-mono text-xs">
 							<li v-for="name in shownRepositories" :key="name">{{ name }}</li>
 						</ul>
 					</div>
 					<AgentOwnerTexts :persona="shownPersona" :context="shownContext" />
-					<div class="text-xs text-ink-subtle">Snapshot {{ shortHash }}</div>
+					<div class="text-xs text-ink-subtle">
+						{{ $t('taskAgent.cloudApproval.snapshot', { hash: shortHash }) }}
+					</div>
 				</div>
 				<p
 					v-if="error"
@@ -110,13 +111,15 @@
 					{{ error }}
 				</p>
 				<DialogFooter>
-					<Button variant="outline" @click="open = false">Cancel</Button>
+					<Button variant="outline" @click="open = false">{{
+						$t('common.actions.cancel')
+					}}</Button>
 					<Button
 						:disabled="!fresh || busy"
 						data-testid="cloud-confirm-submit"
 						@click="submit"
 					>
-						Confirm
+						{{ $t('common.actions.confirm') }}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -158,6 +161,7 @@
 		revokedReasonLabel,
 		splitInvisible,
 	} from '@/utils/agentApprovalPolicy';
+	import { t } from '@/i18n';
 	import {
 		computed,
 		defineComponent,
@@ -167,23 +171,19 @@
 		watch,
 	} from 'vue';
 
-	const MESSAGES: Record<string, string> = {
-		repositories_changed:
-			'The repositories of this category changed. Reopen this dialog.',
-		invalid_repositories:
-			'The repositories of this category are not valid. Fix them in the category settings.',
-		hash_mismatch:
-			'The task changed since it was shown. Reopen this dialog to review it again.',
-		setting_off:
-			'Agent runs are turned off for you in this workspace (Settings, Modules).',
-		ui_session_required: 'Confirm from the web or desktop app.',
-		signed_at_skew: 'Your clock is off by more than ten minutes.',
-		signature_invalid: 'The signature was rejected. Try again.',
-		key_unknown: 'The signing key was not accepted. Try again.',
-		category_mismatch: 'The task category changed. Reopen this dialog.',
-		persona_changed: 'The persona instructions changed. Reopen this dialog.',
-		context_changed: 'The workspace rules changed. Reopen this dialog.',
-		invalid_persona: 'The persona cannot be signed. Reopen this dialog.',
+	const MESSAGE_KEYS: Record<string, string> = {
+		repositories_changed: 'taskAgent.cloudApproval.errors.repositoriesChanged',
+		invalid_repositories: 'taskAgent.cloudApproval.errors.invalidRepositories',
+		hash_mismatch: 'taskAgent.cloudApproval.errors.hashMismatch',
+		setting_off: 'taskAgent.cloudApproval.errors.settingOff',
+		ui_session_required: 'taskAgent.cloudApproval.errors.uiSessionRequired',
+		signed_at_skew: 'taskAgent.cloudApproval.errors.signedAtSkew',
+		signature_invalid: 'taskAgent.cloudApproval.errors.signatureInvalid',
+		key_unknown: 'taskAgent.cloudApproval.errors.keyUnknown',
+		category_mismatch: 'taskAgent.cloudApproval.errors.categoryMismatch',
+		persona_changed: 'taskAgent.cloudApproval.errors.personaChanged',
+		context_changed: 'taskAgent.cloudApproval.errors.contextChanged',
+		invalid_persona: 'taskAgent.cloudApproval.errors.invalidPersona',
 	};
 
 	export default defineComponent({
@@ -247,26 +247,30 @@
 			const chipText = computed(() => {
 				const a = approval.value;
 				if (!a) return '';
-				if (a.state === 'active') return 'Approved for agent runs';
+				if (a.state === 'active')
+					return t('taskAgent.cloudApproval.chip.approved');
 				if (reposChanged.value && a.state === 'stale')
-					return 'Needs confirmation: the repositories of this category changed';
+					return t('taskAgent.cloudApproval.chip.reposChanged');
 				const reasons = a.stale_reasons ?? [];
 				if (a.state === 'stale' && !reasons.includes('content')) {
 					const persona = reasons.includes('persona');
 					const context = reasons.includes('context');
 					if (persona && context)
-						return 'Needs confirmation: the persona instructions and the workspace rules changed';
-					if (persona)
-						return 'Needs confirmation: the persona instructions changed';
-					if (context) return 'Needs confirmation: the workspace rules changed';
+						return t('taskAgent.cloudApproval.chip.personaAndContext');
+					if (persona) return t('taskAgent.cloudApproval.chip.persona');
+					if (context) return t('taskAgent.cloudApproval.chip.context');
 				}
 				if (a.state === 'revoked') {
-					const who = a.revoked_by_name ? ` by ${a.revoked_by_name}` : '';
-					return `Approval cancelled: ${revokedReasonLabel(
-						a.revoked_reason,
-					)}${who} via ${revokedByLabel(a.revoked_by_kind)}`;
+					const params = {
+						reason: revokedReasonLabel(a.revoked_reason),
+						kind: revokedByLabel(a.revoked_by_kind),
+						name: a.revoked_by_name,
+					};
+					return a.revoked_by_name
+						? t('taskAgent.cloudApproval.chip.revokedBy', params)
+						: t('taskAgent.cloudApproval.chip.revoked', params);
 				}
-				return 'Needs confirmation';
+				return t('taskAgent.cloudApproval.chip.needsConfirmation');
 			});
 
 			const chipClass = computed(() => {
@@ -286,7 +290,7 @@
 
 			const coverageHint = computed(() =>
 				approval.value?.state === 'active' && needsConfirm.value
-					? 'Confirm again to give agents the persona instructions and workspace rules.'
+					? t('taskAgent.cloudApproval.coverageHint')
 					: '',
 			);
 
@@ -294,11 +298,19 @@
 				const a = approval.value;
 				if (!a) return '';
 				const parts = [
-					a.persona_too_large ? 'the persona instructions' : '',
-					a.context_too_large ? 'the workspace rules' : '',
+					a.persona_too_large ? t('taskAgent.cloudApproval.partPersona') : '',
+					a.context_too_large ? t('taskAgent.cloudApproval.partContext') : '',
 				].filter(Boolean);
 				return parts.length
-					? `Agents do not get ${parts.join(' or ')}: too large to send.`
+					? t('taskAgent.cloudApproval.tooLarge', {
+							parts:
+								parts.length > 1
+									? t('taskAgent.cloudApproval.partsJoin', {
+											first: parts[0],
+											second: parts[1],
+										})
+									: parts[0],
+						})
 					: '';
 			});
 
@@ -368,7 +380,7 @@
 				} catch (e) {
 					const code = agentRunErrorCode(e);
 					error.value =
-						(code && MESSAGES[code]) ||
+						(code && MESSAGE_KEYS[code] && t(MESSAGE_KEYS[code])) ||
 						(e instanceof Error ? e.message : String(e));
 					if (
 						code === 'hash_mismatch' ||

@@ -5,8 +5,9 @@
 		data-testid="confirm-for-agent-runs"
 	>
 		<div class="flex flex-wrap items-center gap-2">
-			<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
-				>Agent runs</span
+			<span
+				class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
+				>{{ $t('taskAgent.confirmForAgentRuns.agentRuns') }}</span
 			>
 			<span class="flex-1" />
 			<Button
@@ -15,11 +16,11 @@
 				data-testid="confirm-open"
 				@click="openDialog"
 			>
-				Confirm for agent runs
+				{{ $t('taskAgent.confirmForAgentRuns.confirmForAgentRuns') }}
 			</Button>
 		</div>
 		<p v-if="done" class="text-xs text-ink-subtle" data-testid="confirm-done">
-			Confirmed. Agents may run on this exact text.
+			{{ $t('taskAgent.confirmForAgentRuns.done') }}
 		</p>
 		<Dialog :open="open" @update:open="(value) => (open = value)">
 			<DialogContent
@@ -27,17 +28,17 @@
 				data-testid="confirm-dialog"
 			>
 				<DialogHeader>
-					<DialogTitle>Confirm for agent runs</DialogTitle>
+					<DialogTitle>{{
+						$t('taskAgent.confirmForAgentRuns.confirmForAgentRuns')
+					}}</DialogTitle>
 					<DialogDescription>
-						This is everything an agent will read from this task. Confirm only
-						if you wrote or checked all of it. Any later change by someone or
-						something else asks for a new confirmation.
+						{{ $t('taskAgent.confirmForAgentRuns.dialogDescription') }}
 					</DialogDescription>
 				</DialogHeader>
 				<div v-if="preview" class="flex flex-col gap-3 text-sm">
 					<div>
 						<div class="text-2xs font-bold text-ink-subtle uppercase">
-							Title
+							{{ $t('taskAgent.confirmForAgentRuns.title') }}
 						</div>
 						<div class="break-words whitespace-pre-wrap">
 							{{ preview.title }}
@@ -45,15 +46,15 @@
 					</div>
 					<div>
 						<div class="text-2xs font-bold text-ink-subtle uppercase">
-							Description
+							{{ $t('taskAgent.confirmForAgentRuns.description') }}
 						</div>
 						<pre class="font-sans break-words whitespace-pre-wrap">{{
-							preview.description || '(empty)'
+							preview.description || $t('taskAgent.confirmForAgentRuns.empty')
 						}}</pre>
 					</div>
 					<div v-if="preview.descriptionJson">
 						<div class="text-2xs font-bold text-ink-subtle uppercase">
-							Description (editor data)
+							{{ $t('taskAgent.confirmForAgentRuns.descriptionData') }}
 						</div>
 						<pre class="font-mono text-xs break-words whitespace-pre-wrap">{{
 							preview.descriptionJson
@@ -61,7 +62,7 @@
 					</div>
 					<div v-if="preview.checkpoints.length">
 						<div class="text-2xs font-bold text-ink-subtle uppercase">
-							Checkpoints
+							{{ $t('taskAgent.confirmForAgentRuns.checkpoints') }}
 						</div>
 						<ul class="list-none">
 							<li
@@ -73,7 +74,7 @@
 							</li>
 						</ul>
 						<div class="mt-1 text-2xs text-ink-subtle">
-							Stored checkpoints, in full:
+							{{ $t('taskAgent.confirmForAgentRuns.checkpointsRaw') }}
 						</div>
 						<pre
 							class="font-mono text-xs break-words whitespace-pre-wrap"
@@ -82,7 +83,7 @@
 					</div>
 					<div v-if="preview.comments.length">
 						<div class="text-2xs font-bold text-ink-subtle uppercase">
-							Comments
+							{{ $t('taskAgent.confirmForAgentRuns.comments') }}
 						</div>
 						<div
 							v-for="comment in preview.comments"
@@ -101,7 +102,11 @@
 						</div>
 					</div>
 					<div class="text-xs text-ink-subtle" data-testid="confirm-hash">
-						Snapshot {{ preview.shortHash }}
+						{{
+							$t('taskAgent.confirmForAgentRuns.snapshot', {
+								hash: preview.shortHash,
+							})
+						}}
 					</div>
 				</div>
 				<p
@@ -112,13 +117,15 @@
 					{{ error }}
 				</p>
 				<DialogFooter>
-					<Button variant="outline" @click="open = false">Cancel</Button>
+					<Button variant="outline" @click="open = false">{{
+						$t('common.actions.cancel')
+					}}</Button>
 					<Button
 						:disabled="!preview || busy"
 						data-testid="confirm-submit"
 						@click="submit"
 					>
-						Confirm
+						{{ $t('common.actions.confirm') }}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -142,6 +149,7 @@
 		type ConfirmPreview,
 	} from '@/local/confirmPreview';
 	import { activeLocalWorkspace, localContext } from '@/local/runtime';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { defineComponent, ref } from 'vue';
@@ -184,7 +192,8 @@
 						(await context()).db,
 						props.taskId,
 					);
-					if (!preview.value) error.value = 'Task not found.';
+					if (!preview.value)
+						error.value = t('taskAgent.confirmForAgentRuns.taskNotFound');
 				} catch (e) {
 					error.value = e instanceof Error ? e.message : String(e);
 				}
@@ -199,8 +208,7 @@
 					done.value = true;
 					open.value = false;
 				} catch (e) {
-					error.value =
-						'The task changed since it was shown. Reopen this dialog to review it again.';
+					error.value = t('taskAgent.confirmForAgentRuns.changedSinceShown');
 					preview.value = null;
 				} finally {
 					busy.value = false;

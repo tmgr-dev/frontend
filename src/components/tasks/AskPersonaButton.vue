@@ -17,19 +17,22 @@
 			class="rounded-pill border border-line px-3 py-1 disabled:opacity-50"
 			@click="ask"
 		>
-			Ask persona
+			{{ $t('taskAgent.askPersona.ask') }}
 		</button>
 		<template v-else-if="pendingConfirm">
 			<span class="text-ink-subtle">
 				<template v-if="pendingConfirm.cutOff">
-					The model hit its length limit, so the answer is cut off ({{
-						pendingConfirm.length
+					{{
+						$t('taskAgent.askPersona.cutOff', { length: pendingConfirm.length })
 					}}
-					characters).
 				</template>
 				<template v-else>
-					The answer is {{ pendingConfirm.length }} characters, over the limit
-					of {{ pendingConfirm.limit }}.
+					{{
+						$t('taskAgent.askPersona.overLimit', {
+							length: pendingConfirm.length,
+							limit: pendingConfirm.limit,
+						})
+					}}
 				</template>
 			</span>
 			<button
@@ -37,24 +40,26 @@
 				class="rounded-pill border border-line px-3 py-1"
 				@click="settleConfirm(true)"
 			>
-				Publish anyway
+				{{ $t('taskAgent.askPersona.publishAnyway') }}
 			</button>
 			<button
 				type="button"
 				class="rounded-pill border border-line px-3 py-1"
 				@click="settleConfirm(false)"
 			>
-				Discard
+				{{ $t('taskAgent.askPersona.discard') }}
 			</button>
 		</template>
 		<template v-else>
-			<span class="text-ink-subtle">Asking…</span>
+			<span class="text-ink-subtle">{{
+				$t('taskAgent.askPersona.asking')
+			}}</span>
 			<button
 				type="button"
 				class="rounded-pill border border-line px-3 py-1"
 				@click="cancelAsk"
 			>
-				Cancel
+				{{ $t('common.actions.cancel') }}
 			</button>
 		</template>
 		<div

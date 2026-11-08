@@ -23,10 +23,11 @@
 					d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
 				></path>
 			</svg>
-			<p class="text-ink-muted">No git activity linked to this task yet</p>
+			<p class="text-ink-muted">{{ $t('taskAgent.git.none') }}</p>
 			<p class="mt-2 text-sm text-ink-subtle">
-				Use {{ categoryCode }}-{{ taskId }} in commits, branches, or PR titles
-				to link them
+				{{
+					$t('taskAgent.git.linkHint', { code: `${categoryCode}-${taskId}` })
+				}}
 			</p>
 		</div>
 
@@ -46,7 +47,7 @@
 							d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
 						></path>
 					</svg>
-					Branches ({{ activity.branches.length }})
+					{{ $t('taskAgent.git.branches', { n: activity.branches.length }) }}
 				</h4>
 				<div class="space-y-2">
 					<a
@@ -103,7 +104,7 @@
 							d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
 						></path>
 					</svg>
-					Commits ({{ activity.commits.length }})
+					{{ $t('taskAgent.git.commits', { n: activity.commits.length }) }}
 				</h4>
 				<div class="space-y-2">
 					<a
@@ -159,7 +160,11 @@
 							d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
 						></path>
 					</svg>
-					Pull Requests ({{ activity.pull_requests.length }})
+					{{
+						$t('taskAgent.git.pullRequests', {
+							n: activity.pull_requests.length,
+						})
+					}}
 				</h4>
 				<div class="space-y-2">
 					<a
@@ -195,7 +200,9 @@
 									class="space-x-3 mt-1 flex items-center text-xs text-ink-subtle"
 								>
 									<span>{{ pr.source_branch }} → {{ pr.target_branch }}</span>
-									<span>by {{ pr.author_username }}</span>
+									<span>{{
+										$t('taskAgent.git.by', { author: pr.author_username })
+									}}</span>
 								</div>
 							</div>
 							<svg
@@ -228,6 +235,7 @@
 
 <script>
 	import { getTaskGitActivity } from '@/actions/tmgr/github';
+	import { currentLocale, t } from '@/i18n';
 
 	export default {
 		name: 'TaskGitActivity',
@@ -285,7 +293,7 @@
 				} catch (e) {
 					console.error('Failed to load git activity:', e);
 					if (e.response?.status !== 404) {
-						this.error = 'Failed to load git activity';
+						this.error = t('taskAgent.git.loadFailed');
 					}
 				} finally {
 					this.loading = false;
@@ -299,12 +307,14 @@
 				const diffHours = Math.floor(diffMs / 3600000);
 				const diffDays = Math.floor(diffMs / 86400000);
 
-				if (diffMins < 1) return 'just now';
-				if (diffMins < 60) return `${diffMins}m ago`;
-				if (diffHours < 24) return `${diffHours}h ago`;
-				if (diffDays < 7) return `${diffDays}d ago`;
+				if (diffMins < 1) return t('taskAgent.time.justNow');
+				if (diffMins < 60)
+					return t('taskAgent.time.minutesAgo', { n: diffMins });
+				if (diffHours < 24)
+					return t('taskAgent.time.hoursAgo', { n: diffHours });
+				if (diffDays < 7) return t('taskAgent.time.daysAgo', { n: diffDays });
 
-				return date.toLocaleDateString();
+				return date.toLocaleDateString(currentLocale());
 			},
 		},
 	};
