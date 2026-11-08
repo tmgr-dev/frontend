@@ -415,7 +415,7 @@ fn a_self_contained_clone_works_without_an_objects_grant() {
     assert!(o.ok(), "{} {}", o.stdout, o.stderr);
 }
 
-const CHMOD_THROUGH_ALTERNATES: &str = r#"alt=$(head -n1 .git/objects/info/alternates); obj=$(ls -d "$alt"/??/* | head -n1); fan=$(dirname "$obj"); for p in "$obj" "$fan" "$alt"; do chmod 000 "$p" 2>/dev/null; echo "rc=$?"; done"#;
+const CHMOD_THROUGH_ALTERNATES: &str = r#"alt=$(head -n1 .git/objects/info/alternates); obj=$(ls -d "$alt"/??/* | head -n1); fan=$(dirname "$obj"); for p in "$obj" "$fan" "$alt"; do chmod 000 "$p" 2>&1; echo "rc=$?"; done"#;
 
 fn modes(root: &std::path::Path) -> std::collections::BTreeMap<std::path::PathBuf, u32> {
     use std::os::unix::fs::PermissionsExt;
@@ -438,6 +438,7 @@ struct Chmods {
     sdir: std::path::PathBuf,
     before: std::collections::BTreeMap<std::path::PathBuf, u32>,
     rcs: Vec<String>,
+    stdout: String,
     record: String,
 }
 
@@ -466,6 +467,7 @@ fn chmod_scenario(f: &Fx, helper_env: &[(&str, &str)]) -> Option<Chmods> {
         sdir,
         before,
         rcs,
+        stdout: o.stdout,
         record,
     })
 }
@@ -492,6 +494,12 @@ fn read_only_grant_denies_metadata_changes() {
     if s.record == "namespace" {
         assert_eq!(s.rcs.len(), 3, "{:?}", s.rcs);
         assert!(s.rcs.iter().all(|r| r != "rc=0"), "{:?}", s.rcs);
+        assert_eq!(
+            s.stdout.matches("Read-only file system").count(),
+            3,
+            "{}",
+            s.stdout
+        );
         assert_eq!(modes(&s.objects), s.before);
     } else {
         assert!(s.record.starts_with("fallback: "), "{}", s.record);
