@@ -293,7 +293,9 @@ describe('library wiring', () => {
 	it('says files are not pinned next to the pin label', () => {
 		const source = flat('PersonaSharedSkills.vue');
 		expect(source).toContain('skill.pinned_version && skill.files_count');
-		expect(source).toContain('Files are not pinned');
+		expect(source).toContain(
+			'settingsPages.personaSharedSkills.filesNotPinned',
+		);
 	});
 
 	it('shows the file count of deleted skills only when present', () => {

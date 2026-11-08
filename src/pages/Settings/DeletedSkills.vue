@@ -41,8 +41,12 @@
 							}}
 							·
 						</template>
-						Deleted {{ relative(item.deleted_at) }} · Removed for good on
-						{{ date(item.purge_at) }}
+						{{
+							$t('settingsPages.deletedSkills.deletedOn', {
+								when: relative(item.deleted_at),
+								date: date(item.purge_at),
+							})
+						}}
 					</p>
 				</div>
 				<Button
@@ -122,7 +126,7 @@
 							{{ $t('settingsPages.deletedSkills.restore') }}
 						</Button>
 						<span class="text-xs text-muted-foreground">
-							Persona attachments are not restored.
+							{{ $t('settingsPages.deletedSkills.attachmentsNote') }}
 						</span>
 					</div>
 				</div>

@@ -69,7 +69,8 @@
 	"about": {
 		"version": "Version {version}",
 		"moreTitle": "More from the maker",
-		"moreDescription": "Other products from the people who build TMGR."
+		"moreDescription": "Other products from the people who build TMGR.",
+		"cliLink": "Command line (tmgr)"
 	},
 	"theme": {
 		"title": "Theme",

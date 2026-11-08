@@ -22,7 +22,7 @@
 			</p>
 			<div class="flex flex-wrap gap-2">
 				<Button type="button" size="sm" :disabled="busy" @click="pair">
-					Pair an iPhone
+					{{ $t('settingsPages.phonesSection.pair') }}
 				</Button>
 				<Button
 					type="button"

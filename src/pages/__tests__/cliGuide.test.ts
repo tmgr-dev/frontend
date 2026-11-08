@@ -124,7 +124,7 @@ describe('tmgr CLI explainer', () => {
 	it('links to the page from Settings and the public footer', () => {
 		const settings = read('src/pages/Settings.vue').replace(/\s+/g, ' ');
 		expect(settings).toContain('href="https://tmgr.dev/cli" target="_blank"');
-		expect(settings).toContain('Command line (tmgr)');
+		expect(settings).toContain("$t('settings.about.cliLink')");
 		expect(read('src/components/privacy/PrivacyLinks.vue')).toContain(
 			'to="/cli"',
 		);

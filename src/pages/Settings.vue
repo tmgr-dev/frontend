@@ -96,7 +96,7 @@
 										class="text-primary hover:underline"
 										data-testid="settings-cli-link"
 									>
-										Command line (tmgr)
+										{{ $t('settings.about.cliLink') }}
 									</a>
 								</div>
 							</SettingsSection>

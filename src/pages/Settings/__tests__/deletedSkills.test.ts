@@ -22,8 +22,8 @@ describe('DeletedSkills section', () => {
 	});
 
 	it('shows the purge date and the attachments note', () => {
-		expect(source.replace(/\s+/g, ' ')).toContain('Removed for good on');
-		expect(source).toContain('Persona attachments are not restored');
+		expect(source).toContain('settingsPages.deletedSkills.deletedOn');
+		expect(source).toContain('settingsPages.deletedSkills.attachmentsNote');
 	});
 
 	it('reloads when the reload token changes', () => {

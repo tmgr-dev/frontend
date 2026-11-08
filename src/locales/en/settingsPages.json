@@ -229,7 +229,9 @@
 			"edit": "Edited",
 			"restore": "Restored",
 			"convert": "Converted"
-		}
+		},
+		"deletedOn": "Deleted {when} · Removed for good on {date}",
+		"attachmentsNote": "Persona attachments are not restored."
 	},
 	"sharedSkillHistory": {
 		"deletedUser": "Deleted user",
@@ -519,7 +521,8 @@
 		"loadFailed": "Could not load library skills",
 		"attachFailed": "Could not attach skill",
 		"detachFailed": "Could not detach skill",
-		"versionFailed": "Could not change the skill version"
+		"versionFailed": "Could not change the skill version",
+		"filesNotPinned": "Files are not pinned"
 	},
 	"personaSkills": {
 		"loading": "Loading skills…",
@@ -667,7 +670,8 @@
 		"intro": "Answer Decisions cards from the TMGR iPhone app. Pairing needs this Mac to be on.",
 		"macName": "Name of this Mac",
 		"manage": "Manage phones",
-		"openFailed": "Could not open the window"
+		"openFailed": "Could not open the window",
+		"pair": "Pair an iPhone"
 	},
 	"profile": {
 		"title": "Profile",

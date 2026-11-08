@@ -38,7 +38,7 @@
 						data-testid="shared-skill-files-not-pinned"
 						class="mt-1 mr-1 inline-block text-2xs text-muted-foreground"
 					>
-						Files are not pinned
+						{{ $t('settingsPages.personaSharedSkills.filesNotPinned') }}
 					</span>
 					<span
 						v-if="skill.overridden"
